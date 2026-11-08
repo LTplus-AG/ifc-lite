@@ -14,7 +14,7 @@ import type { StructuralBackendMethods } from './structural-types.js';
 import type { ScheduleBackendMethods } from './schedule-types.js';
 import type { CostBackendMethods } from './cost-types.js';
 import type { SpacesBackendMethods, StyleBackendMethods } from './backend-extension-types.js';
-import type { StoreAuthoringBackendMethods } from './store-authoring-types.js';
+import type { StoreAuthoringBackendMethods } from './store-authoring-types.js'; import type { TopConstraintParams } from './store-top-types.js';
 import type {
   BeamInStoreParams, ColumnInStoreParams, MemberInStoreParams,
   ProfiledBeamInStoreParams, ProfiledColumnInStoreParams, ProfiledMemberInStoreParams,
@@ -449,10 +449,10 @@ export interface AddElementCommonParams {
 
 /** Rectangular column parameters retain their public interface and inherit
  * the canonical geometry fields, including storey-local RefDirection. */
-export interface AddColumnInStoreParams extends AddElementCommonParams,
+export interface AddColumnInStoreParams extends AddElementCommonParams, TopConstraintParams,
   Pick<ColumnInStoreParams, 'Position' | 'Width' | 'Depth' | 'Height' | 'RefDirection'> {}
 
-export interface AddWallInStoreParams extends AddElementCommonParams {
+export interface AddWallInStoreParams extends AddElementCommonParams, TopConstraintParams {
   Start: [number, number, number];
   End: [number, number, number];
   Thickness: number;
@@ -480,7 +480,7 @@ export interface AddSlabPolygonParams extends AddElementCommonParams {
   Thickness: number;
 }
 
-export interface AddBeamInStoreParams extends AddElementCommonParams,
+export interface AddBeamInStoreParams extends AddElementCommonParams, TopConstraintParams,
   Pick<BeamInStoreParams, 'Start' | 'End' | 'Width' | 'Height'> {}
 
 export interface AddDoorInStoreParams extends AddElementCommonParams {
@@ -556,7 +556,7 @@ export interface AddPlatePolygonParams extends AddElementCommonParams {
   PredefinedType?: 'CURTAIN_PANEL' | 'SHEET' | 'USERDEFINED' | 'NOTDEFINED';
 }
 
-export interface AddMemberInStoreParams extends AddElementCommonParams,
+export interface AddMemberInStoreParams extends AddElementCommonParams, TopConstraintParams,
   Pick<MemberInStoreParams, 'Start' | 'End' | 'Width' | 'Height' | 'PredefinedType'> {}
 
 export interface StoreBackendMethods extends StoreAuthoringBackendMethods {

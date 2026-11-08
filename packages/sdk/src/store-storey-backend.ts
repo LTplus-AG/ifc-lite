@@ -3,8 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import {
-  addStoreyInStore, applyStoreyDelete, applyStoreyLevelEdit, planStoreyDelete, planStoreyLevelEdit,
-  readStoreyInventory, renameStoreyInStore, suggestStorey, summarizeStoreys,
+  addStoreyInStore, applyStoreyDelete, applyStoreyLevelEdit, planStoreyAdd, planStoreyDelete, planStoreyLevelEdit,
+  readStoreyInventory, renameStoreyInStore, setTopConstraintInStore, suggestStorey, summarizeStoreys,
 } from '@ifc-lite/create';
 import type { ModellingStoreModelResolver } from './store-modelling-backend.js';
 import type { StoreyStoreBackendMethods } from './store-storey-types.js';
@@ -28,6 +28,13 @@ export function createStoreyStoreBackend(resolve: ModellingStoreModelResolver): 
     addStorey(modelId, params) {
       const model = resolve(modelId);
       return { modelId: model.modelId, expressId: addStoreyInStore(model.store, model.editor, params).storeyId };
+    },
+    planAddStorey(modelId, params) {
+      return planStoreyAdd(inventory(modelId).inventory, params);
+    },
+    setTopConstraint(ref, constraint) {
+      const model = resolve(ref.modelId);
+      return refs(model.modelId, [ref.expressId, ...setTopConstraintInStore(model.store, model.editor, ref.expressId, constraint).remesh]);
     },
     renameStorey(ref, Name) {
       const model = resolve(ref.modelId);

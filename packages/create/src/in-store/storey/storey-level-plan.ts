@@ -38,7 +38,8 @@ import {
 import { storeyStateFingerprint } from './storey-fingerprint.js';
 import { gridPlacementParent, gridPlacementsOn } from './storey-grid.js';
 import { readPlacementLeaf, worldLiftInParent, type PlacementLeaf } from './storey-placement.js';
-import { planStoreyDependents, type StairRefit, type WallHeightChange } from './storey-dependents.js';
+import { planStoreyDependents, type AttachedHeightChange, type StairRefit, type WallHeightChange } from './storey-dependents.js';
+import type { RailingRefit } from '../railing-stair-refit.js';
 import { writeStoreyLevelPlan } from './storey-level-write.js';
 import {
   MIN_STOREY_SPACING, StoreyEditRefusedError, describeElevation, describeLength, type StoreyNotice, type StoreyRefusal,
@@ -85,10 +86,14 @@ export interface StoreyLevelPlan {
   /** Products another storey owns that hang from a moved placement and are held in place. */
   readonly held: readonly number[];
   readonly spacing: readonly SpacingChange[];
-  /** Walls attached to a storey above whose height follows it. */
+  /** Walls attached to a storey above (or a slab) whose height follows it. */
   readonly walls: readonly WallHeightChange[];
+  /** Columns, beams, members and curtain walls whose top follows their attachment (#9296). */
+  readonly attached: readonly AttachedHeightChange[];
   /** Stairs refit so the top tread still lands on their storey. */
   readonly stairs: readonly StairRefit[];
+  /** Railings that run up a refit stair, stretched with it. */
+  readonly railings: readonly RailingRefit[];
   /** Elements a person counts as moving: openings and aggregated parts excluded. */
   readonly movedElementCount: number;
   readonly refusals: readonly StoreyRefusal[];
@@ -104,7 +109,7 @@ export interface StoreyLevelPlan {
 const EPS = 1e-9;
 
 function emptyPlan(edit: StoreyLevelEdit, refusals: StoreyRefusal[]): StoreyLevelPlan {
-  return { edit, storeys: [], placements: [], moved: [], held: [], spacing: [], walls: [], stairs: [], movedElementCount: 0, refusals, notices: [], fingerprint: '' };
+  return { edit, storeys: [], placements: [], moved: [], held: [], spacing: [], walls: [], attached: [], stairs: [], railings: [], movedElementCount: 0, refusals, notices: [], fingerprint: '' };
 }
 
 /** Neighbour checks for one storey landing at `target` metres. */
@@ -285,11 +290,15 @@ export function planStoreyLevelEdit(inventory: StoreyInventory, edit: StoreyLeve
   refusals.push(...dependents.refusals);
   const plan: StoreyLevelPlan = {
     edit, storeys, placements, moved, held, spacing: spacingChanges(inventory, deltas),
-    walls: dependents.walls, stairs: dependents.stairs, movedElementCount, refusals, notices: dependents.notices,
-    // Resized walls and refit stairs are pinned as reviewed too.
+    walls: dependents.walls, attached: dependents.attached, stairs: dependents.stairs, railings: dependents.railings,
+    movedElementCount, refusals, notices: dependents.notices,
+    // Resized elements, refit stairs and their railings are pinned as reviewed too.
     fingerprint: storeyStateFingerprint(
       reader, referencers,
-      [...deltas.keys(), ...dependents.walls.map((wall) => wall.wallId), ...dependents.stairs.flatMap((stair) => [stair.stairId, stair.flightId])],
+      [
+        ...deltas.keys(), ...dependents.walls.map((wall) => wall.wallId), ...dependents.attached.map((element) => element.elementId),
+        ...dependents.stairs.flatMap((stair) => [stair.stairId, stair.flightId]), ...dependents.railings.map((railing) => railing.railingId),
+      ],
       placements.map(({ leaf }) => leaf.placementId),
     ),
   };

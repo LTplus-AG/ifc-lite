@@ -8,6 +8,7 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import { copyProductInStore, copyRefusal, createCopyContext, productStoreyOrigin, type CopyContext, type CopyProductResult, type CopyTransform } from './copy-product.js';
 import type { DuplicateInStoreOptions } from './duplicate.js';
 import { copiedProductWork, COPY_PRODUCT_WORK_LIMIT } from './copy-dependent-walk.js';
+import { readCopyAttachments, rebindCopiedAttachments } from './copy-attachment.js';
 
 /** Bound pruned root fan-out before allocating products/transforms. */
 export const COPY_BATCH_LIMIT = 10_000;
@@ -66,6 +67,8 @@ export interface CopyBatchOptions {
 /**
  * Each transform copies each selected root, in transform-major order. All
  * graph writes succeed together or leave records, journal and allocator intact.
+ * A copy on another storey re-resolves its top attachment there
+ * (`copy-attachment.ts`).
  * The same selection policy is applied at preview and commit: selected hosted
  * children never create a second independent copy.
  */
@@ -91,11 +94,37 @@ export function copyBatchInStore(
     }
     const sources = copySourcesInStore(ctx, ids, transforms.length);
     if ('refusal' in sources) throw new Error(sources.refusal);
-    return transforms.flatMap((transform) => sources.ids.map((id) => {
-      if (!options.duplicate) return copyProductInStore(ctx, id, transform);
-      const sourceName = ctx.read(id)?.attributes[2];
-      const name = options.duplicate.name ?? (typeof sourceName === 'string' && sourceName.length > 0 ? `${sourceName} (copy)` : sourceName);
-      return copyProductInStore(ctx, id, transform, typeof name === 'string' ? { Name: name } : {});
-    }));
+    const attachments = readCopyAttachments(ctx, copiedProductsInStore(ctx, sources.ids));
+    return transforms.flatMap((transform) => {
+      const results = sources.ids.map((id) => {
+        if (!options.duplicate) return copyProductInStore(ctx, id, transform);
+        const sourceName = ctx.read(id)?.attributes[2];
+        const name = options.duplicate.name ?? (typeof sourceName === 'string' && sourceName.length > 0 ? `${sourceName} (copy)` : sourceName);
+        return copyProductInStore(ctx, id, transform, typeof name === 'string' ? { Name: name } : {});
+      });
+      rebindCopiedAttachments(ctx, attachments, results);
+      return results;
+    });
   });
+}
+
+/** One storey's copies from {@link copyToStoreysInStore}. */
+export interface StoreyCopies {
+  readonly storeyId: number;
+  readonly results: readonly CopyProductResult[];
+}
+
+/**
+ * Copy a selection onto each of `storeyIds` at the same plan position and
+ * height above the floor (Revit's Paste Aligned to Selected Levels, Archicad's
+ * copy to storeys): one atomic operation, one Undo step, results per storey.
+ */
+export function copyToStoreysInStore(
+  store: IfcDataStore, editor: StoreEditor, ids: readonly number[], storeyIds: readonly number[],
+): readonly StoreyCopies[] {
+  if (new Set(storeyIds).size !== storeyIds.length) throw new Error('Each storey can be a copy target only once');
+  const results = copyBatchInStore(store, editor, ids, storeyIds.map((targetStoreyId) => ({ targetStoreyId })));
+  // Transform-major: each storey's copies are one contiguous run.
+  const per = results.length / Math.max(1, storeyIds.length);
+  return storeyIds.map((storeyId, i) => ({ storeyId, results: results.slice(i * per, (i + 1) * per) }));
 }

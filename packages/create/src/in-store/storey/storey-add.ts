@@ -22,8 +22,9 @@ import { assertHostedGlobalIdAvailable } from '../hosted-global-id.js';
 import { readStoreyInventory, ref, type StoreyInventory, type StoreyRecord } from './storey-model.js';
 import { readPlacementLeaf, worldLiftInParent } from './storey-placement.js';
 import { MIN_STOREY_SPACING, StoreyEditRefusedError, describeElevation } from './storey-validation.js';
-import { planAttachmentBindings, type WallHeightChange } from './storey-dependents.js';
+import { planAttachmentBindings, type StoreyBinding, type WallHeightChange } from './storey-dependents.js';
 import { writeTopAttachment } from './storey-attachment.js';
+import { writeAttachedTop } from './storey-attached.js';
 import { setWallSectionInStore } from '../wall-section-edit.js';
 import { scaleWallQuantities, wallGeometry } from './storey-level-write.js';
 
@@ -48,11 +49,17 @@ export interface AddStoreyResult {
   readonly storeyId: number;
   readonly placementId: number;
   readonly relAggregatesId: number;
-  /** Walls drawn attached with no storey above, now bound to this storey and resized to reach it. */
-  /** Walls drawn attached that the new storey binds but cannot resize (their body or placement is unreadable). */
+  /** Elements that the new storey binds but cannot resize (their body or placement is unreadable). */
   readonly unresizedWalls: readonly number[];
+  /** Walls now bound to this storey and resized to reach it. */
   readonly boundWalls: readonly WallHeightChange[];
-  /** Products whose shape changed (the bound walls and their openings). */
+  /**
+   * Every element now bound to this storey (walls included): drawn attached
+   * with no storey above, or relatively bound to the storey above theirs and
+   * re-bound because this one was inserted between (#9296).
+   */
+  readonly bindings: readonly StoreyBinding[];
+  /** Products whose shape changed (the bound elements, their openings and parts). */
   readonly reshaped: readonly number[];
 }
 
@@ -115,6 +122,29 @@ function soleBuilding(inventory: StoreyInventory, requested: number | undefined)
   return buildings[0];
 }
 
+/** What adding a storey would do, before anything is written. */
+export interface StoreyAddPlan {
+  /** Why the storey cannot be added, or null. */
+  readonly refusal: string | null;
+  /** Elements the new storey would bind or re-bind (#9296), with the heights they would take. */
+  readonly bindings: readonly StoreyBinding[];
+  /** Elements it would bind but could not resize. */
+  readonly unresized: readonly number[];
+}
+
+/** Dry run of `addStoreyInStore`: its refusal and the attachments it would (re-)bind. Pure read. */
+export function planStoreyAdd(inventory: StoreyInventory, params: AddStoreyParams): StoreyAddPlan {
+  try {
+    const { parentId } = joinedBuilding(inventory, params);
+    const refusal = addStoreyRefusal(inventory, params, parentId);
+    if (refusal) return { refusal, bindings: [], unresized: [] };
+    const planned = planAttachmentBindings(inventory, params.Elevation, parentId);
+    return { refusal: null, bindings: planned.bindings, unresized: planned.unreadable };
+  } catch (error) {
+    return { refusal: error instanceof Error ? error.message.replace(`${OP}: `, '') : String(error), bindings: [], unresized: [] };
+  }
+}
+
 /** Add a storey atomically. Throws (writing nothing) when the storey cannot be placed. */
 export function addStoreyInStore(store: IfcDataStore, editor: StoreEditor, params: AddStoreyParams): AddStoreyResult {
   return editor.runAtomic((draft) => {
@@ -155,21 +185,28 @@ export function addStoreyInStore(store: IfcDataStore, editor: StoreEditor, param
     const guid = String(draft.getNewEntity(storeyId)?.attributes[0]);
     const bindings = planAttachmentBindings(inventory, params.Elevation, parentId);
     const boundWalls = bindings.walls.map((wall) => ({ ...wall, targetStoreyId: storeyId }));
-    for (const wallId of bindings.unreadable) writeTopAttachment(draft.getMutationView(), wallId, guid);
+    const view = draft.getMutationView();
+    for (const id of bindings.unreadable) writeTopAttachment(view, id, guid, 'relative');
     const reshaped: number[] = [];
-    for (const wall of boundWalls) {
-      writeTopAttachment(draft.getMutationView(), wall.wallId, guid);
-      if (Math.abs(wall.to - wall.from) < 1e-9) continue;
-      const geometry = wallGeometry(store, draft.getMutationView(), draft, wall.wallId);
-      const outcome = setWallSectionInStore({ dataStore: store, view: draft.getMutationView(), editor: draft }, wall.wallId, { height: wall.to });
-      if (!outcome.ok) {
-        throw new StoreyEditRefusedError([{ code: 'dependent', elementIds: [wall.wallId], message: `Wall #${wall.wallId} is attached to the storey above but cannot reach the new storey: ${outcome.reason}` }]);
-      }
+    const target = { dataStore: store, view, editor: draft };
+    for (const binding of bindings.bindings) {
+      writeTopAttachment(view, binding.elementId, guid, 'relative');
+      if (Math.abs(binding.to - binding.from) < 1e-9) continue;
+      const refuse = (reason: string) => new StoreyEditRefusedError([{
+        code: 'dependent', elementIds: [binding.elementId],
+        message: `#${binding.elementId} is attached to the storey above but cannot reach the new storey: ${reason}`,
+      }]);
+      if (binding.to < 0.01 && binding.kind !== 'linear') throw refuse(`it would end ${binding.to.toFixed(3)} m tall`);
+      const geometry = binding.kind === 'wall' ? wallGeometry(store, view, draft, binding.elementId) : undefined;
+      const outcome = binding.kind === 'wall'
+        ? setWallSectionInStore(target, binding.elementId, { height: binding.to })
+        : writeAttachedTop(target, binding.elementId, binding.kind, binding.from, binding.to);
+      if (!outcome.ok) throw refuse(outcome.reason);
       // The same quantity upkeep as a re-level: Height, areas and volumes follow the new height.
-      scaleWallQuantities(store, draft.getMutationView(), wall.wallId, wall.to / wall.from, geometry);
+      if (binding.kind === 'wall') scaleWallQuantities(store, view, binding.elementId, binding.to / binding.from, geometry);
       reshaped.push(...outcome.remesh);
     }
-    return { storeyId, placementId, relAggregatesId, boundWalls, unresizedWalls: bindings.unreadable, reshaped };
+    return { storeyId, placementId, relAggregatesId, boundWalls, bindings: bindings.bindings, unresizedWalls: bindings.unreadable, reshaped: [...new Set(reshaped)] };
   });
 }
 

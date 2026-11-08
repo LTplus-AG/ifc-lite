@@ -25,11 +25,22 @@ describe('#6232 MCP paste/array parity', () => {
       const result = await call(name, { model_id: target, express_ids: [1222, 1262], ...args });
       expect(result.isError).not.toBe(true);
       const entities = result.structuredContent?.entities as { modelId: string; expressId: number }[];
-      expect(entities).toHaveLength(name === 'copy_elements' ? 1 : 2);
+      // #9352/#9407: both selected elements are returned, including the carried filling.
+      const transforms = name === 'copy_elements' ? 1 : 2;
+      expect(entities).toHaveLength(transforms * 2);
+      expect(new Set(entities.map(ref => ref.expressId)).size).toBe(transforms * 2);
+      const context = createCopyContext(model.store, model.backend.ensureEditor());
+      for (let i = 0; i < transforms; i++) {
+        const host = entities[i * 2].expressId, filling = entities[i * 2 + 1].expressId;
+        expect(context.read(host)?.type).toBe(context.read(1222)?.type);
+        expect(context.read(filling)?.type).toBe(context.read(1262)?.type);
+        const opening = context.filledBy.get(filling);
+        expect(context.voids.get(host)?.some(link => link.id === opening)).toBe(true);
+      }
       expect(entities.every(ref => ref.modelId === target)).toBe(true);
       const rows = model.backend.getMutationView()!.getNewEntities();
-      expect(rows.filter(row => row.type === 'IfcRelVoidsElement')).toHaveLength(entities.length * 2);
-      expect(rows.filter(row => row.type === 'IfcRelFillsElement')).toHaveLength(entities.length * 2);
+      expect(rows.filter(row => row.type === 'IfcRelVoidsElement')).toHaveLength(transforms * 2);
+      expect(rows.filter(row => row.type === 'IfcRelFillsElement')).toHaveLength(transforms * 2);
       expect(exported(model)).not.toEqual(before);
       expect(exported(peer)).toEqual(peerBefore);
       expect((await call('mutation_undo', { model_id: target })).isError).not.toBe(true);

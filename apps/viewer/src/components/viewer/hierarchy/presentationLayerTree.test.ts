@@ -5,7 +5,7 @@
 import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
-import { IfcParser, extractClassificationsOnDemand, type IfcDataStore } from '@ifc-lite/parser';
+import { IfcParser, extractClassificationsOnDemand, EMPTY_SOURCE_BYTES, contiguousSourceBytes, type IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { resolveEntityRef, useViewerStore, type FederatedModel } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
@@ -306,7 +306,7 @@ const parseClassification = (extra: string) => new IfcParser().parseColumnar(
 
 test('#9383 source-empty classified members have a distinct unavailable bucket', async () => {
   const store = await parseClassification("#62=IFCRELASSOCIATESCLASSIFICATION('rel',$,$,$,(#2),#61);");
-  const transport = { ...store, source: new Uint8Array() };
+  const transport = { ...store, source: EMPTY_SOURCE_BYTES };
   const view = new MutablePropertyView(null, '__legacy__');
   view.setExpressIdWatermark(100);
   // Native metadata-only inputs can still have live authored geometry/layers.
@@ -367,8 +367,7 @@ test('#9383 shared reference decodes once and edits invalidate it without sharin
   assert.equal(next[0].identification, 'EF_25', 'callers cannot corrupt a shared cached reference');
   assert.deepEqual(next[0].path, [], 'path arrays are independent too');
   assert.equal(reads, 1, 'shared references decode once instead of once per product');
-  assert.ok(store.source instanceof Uint8Array);
-  store.source = store.source.slice();
+  store.source = contiguousSourceBytes(store.source.slice(0, store.source.byteLength).slice());
   assert.equal(extractClassificationsOnDemand(store, 2)[0].identification, 'EF_25');
   assert.equal(reads, 2, 'source replacement invalidates the reference memo');
   const view = new MutablePropertyView(null, '__legacy__');

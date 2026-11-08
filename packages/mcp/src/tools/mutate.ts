@@ -46,6 +46,7 @@ import { copyElementsTools } from './copy-elements.js';
 import { physicalEditTool } from './physical-edit.js';
 import { roomCommandTool } from './room-command.js';
 import { designPlaceTools } from './design-place.js';
+import { storeyTools } from './storeys.js';
 
 interface MutationContext {
   m: ReturnType<typeof resolveModel>;
@@ -359,6 +360,7 @@ const modelSave: Tool = {
 export const mutationTools: Tool[] = [
   ...hostedPlaceTools,
   ...designPlaceTools,
+  ...storeyTools,
   hostedEditTool,
   ...copyElementsTools,
   physicalEditTool,

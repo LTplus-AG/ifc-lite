@@ -143,6 +143,7 @@ pub struct WorstHost {
 ///   just a rename, hence the bump.
 /// - 3: added `total_unsupported_items` / `unsupported_items_by_type` (previously uncounted drops).
 /// - 4: total_unsupported_items / unsupported_items_by_type also count openings whose id does not decode or whose body fails/meshes empty (ROUTER-37, #8385).
+/// - 5: work-budget refusals carry budget, demand and product/source identity separately from unsupported items.
 pub const GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION: u32 = 5;
 
 /// Aggregate CSG / opening diagnostics for one geometry pass — the public

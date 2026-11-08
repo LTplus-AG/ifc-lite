@@ -21,7 +21,6 @@ impl MappingControl<'_> {
             }
         }
         let (budget, limit, reached) = refusal.details();
-        router.record_budget_refusal(item_id, budget, limit, reached);
         let error = match GeometryRouter::recoverable_source_error(refusal.into_error(item_id)) {
             Ok(error) => error,
             Err(stop) => {
@@ -30,6 +29,7 @@ impl MappingControl<'_> {
                 return;
             }
         };
+        router.record_budget_refusal(item_id, budget, limit, reached);
         self.logical_stopped = true;
         if self.retained.is_some() {
             self.action = Action::Complete(Err(error));

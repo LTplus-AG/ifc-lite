@@ -121,4 +121,14 @@ export interface GeometryDiagnostics {
   totalUnsupportedItems?: number;
   /** `totalUnsupportedItems` broken down by IFC type, sorted desc by count. */
   unsupportedItemsByType?: Array<{ reason: string; count: number }>;
+  /** Safety-policy refusals, separate from unsupported/failed geometry (v5). */
+  budgetRefusals?: Array<{
+    budget: string;
+    limit: number;
+    reached: number;
+    sourceId: number;
+    productId: number | null;
+    productType: string | null;
+    GlobalId: string | null;
+  }>;
 }

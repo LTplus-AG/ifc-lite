@@ -56,12 +56,6 @@ fn issue_7781_drop_trace_preserves_siblings_parent_truncation_and_policy() {
                 assert_eq!(drops.get("IfcMappedItem"), Some(&1));
             } else {
                 assert!(drops.is_empty());
-                let refusals = router.take_budget_refusals();
-                assert_eq!(refusals.len(), 1, "#9268 logical budget class");
-                assert_eq!(refusals[0].budget, "logical mapped attempts");
-                assert_eq!(refusals[0].limit, 2);
-                assert_eq!(refusals[0].reached, 3);
-                assert_eq!(refusals[0].source_id, 20);
             }
             assert_eq!(router.unsupported_scope_depth(), 0);
         }

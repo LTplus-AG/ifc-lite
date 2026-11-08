@@ -168,3 +168,110 @@ test('ledger: refuses vacuous or mismatched summaries', () => {
     rmSync(empty, { recursive: true, force: true });
   }
 });
+
+test('score.mjs CLI: --out naming the --check baseline is refused before anything is written', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'parity-score-same-'));
+  try {
+    const cat = join(dir, 'catalogue.json');
+    writeFileSync(cat, JSON.stringify(CATALOGUE));
+    mkdirSync(join(dir, 'res'));
+    writeFileSync(join(dir, 'res', 'r.json'), JSON.stringify(RESULTS));
+    const base = join(dir, 'base.json');
+    const baseline = JSON.stringify({ ...score(CATALOGUE, RESULTS), score: 99 });
+    writeFileSync(base, baseline);
+    const r = spawnSync(process.execPath, [SCORE, join(dir, 'res'), '--catalogue', cat, '--quiet', '--out', base, '--check', base], { encoding: 'utf8' });
+    assert.equal(r.status, 2, `${r.stdout}${r.stderr}`);
+    assert.equal(readFileSync(base, 'utf8'), baseline, 'the baseline must be untouched');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+const { settleResult } = await import(pathToFileURL(join(ROOT, 'tests/modelling-parity/probes/sdk/run.mjs')).href);
+
+test('SDK runner: any nonzero exit or timeout after a written result is an error', () => {
+  const body = (status) => ({ capability: 'storeys', status, reason: 'r' });
+  assert.equal(settleResult(body('pass'), { capability: 'storeys', code: 0 }).status, 'pass');
+  assert.equal(settleResult(body('partial'), { capability: 'storeys', code: 0 }).status, 'partial');
+  for (const status of ['pass', 'partial', 'fail', 'skip']) {
+    const s = settleResult(body(status), { capability: 'storeys', code: 1, tail: 'boom' });
+    assert.equal(s.status, 'error', `${status} then exit 1`);
+    assert.match(s.reason, new RegExp(`after reporting ${status}`)); // @source-text-assertion-ok asserts on the runner's own returned reason, not on unexecuted source text
+  }
+  assert.equal(settleResult(body('partial'), { capability: 'storeys', code: 0, timedOut: true }).status, 'error');
+  assert.equal(settleResult(null, { capability: 'storeys', code: 0 }).status, 'error');
+  assert.equal(settleResult(body('pass'), { capability: 'grids', code: 0 }).status, 'error', "another capability's result");
+});
+
+const ART = await import(pathToFileURL(join(ROOT, 'tests/modelling-parity/output/artifacts.mjs')).href);
+const SVG = '<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><!-- plan --><g class="cut"><line x1="0" y1="0" x2="1" y2="1"/><path d="M0 0 L1 1"/></g></svg>';
+const PDF = '%PDF-1.4\n1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj\n3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 2384 1684] >> endobj\ntrailer << /Root 1 0 R >>\n%%EOF\n';
+const DXF = ['0', 'SECTION', '2', 'ENTITIES', '0', 'LINE', '8', 'A-WALL', '10', '0', '20', '0', '11', '1', '21', '1', '0', 'ENDSEC', '0', 'EOF'].join('\n') + '\n';
+
+test('drawing sanity checks accept real content and refuse empty or broken files', () => {
+  assert.equal(ART.checkSvg(Buffer.from(SVG)).status, 'pass');
+  assert.equal(ART.checkPdf(Buffer.from(PDF)).status, 'pass');
+  assert.match(ART.checkPdf(Buffer.from(PDF)).detail, /1 page\(s\), first MediaBox 2384 x 1684 pt/);
+  assert.equal(ART.checkDxf(Buffer.from(DXF)).status, 'pass');
+  for (const [label, check, text] of [
+    ['empty svg', ART.checkSvg, ''],
+    ['svg with no linework', ART.checkSvg, '<svg xmlns="http://www.w3.org/2000/svg"><g></g></svg>'],
+    ['unclosed svg', ART.checkSvg, '<svg><g><line/></svg>'],
+    ['not svg', ART.checkSvg, '<html><line/></html>'],
+    ['empty pdf', ART.checkPdf, ''],
+    ['truncated pdf', ART.checkPdf, PDF.replace('%%EOF', '')],
+    ['pdf without pages', ART.checkPdf, PDF.replace(/\/Type \/Page \//, '/Type /Annot /').replace('/Count 1', '/Count 0')],
+    ['empty dxf', ART.checkDxf, ''],
+    ['dxf without EOF', ART.checkDxf, DXF.replace('0\nEOF\n', '')],
+    ['dxf without linework', ART.checkDxf, DXF.replace('LINE', 'POINT')],
+    ['dxf with a broken group code', ART.checkDxf, DXF.replace('\n8\n', '\nX\n')],
+  ]) assert.equal(check(Buffer.from(text)).status, 'fail', label);
+});
+
+test('artifact sets: UI handoffs count, failing results and SDK intermediates do not', () => {
+  const sets = ART.artifactSets([
+    result('sheets-pdf-dwg', 'ui', 'pass', { file: 'x/ui/sheets.json', artifacts: { pdf: 'artifacts/sheets-pdf-dwg/a1.pdf' }, evidence: ['artifacts/sheets-pdf-dwg/a1.dxf', 'frames/shot.png'] }),
+    result('sheets-pdf-dwg', 'ui', 'fail', { artifacts: { pdf: 'bad.pdf' } }),
+    result('storeys', 'sdk', 'partial', { artifacts: { ifc: 'a/storeys.IFC4.ifc', census: { IfcWall: 2 } }, evidence: ['a/storeys-f2f.IFC4.ifc'] }),
+    result('storeys', 'ui', 'pass', { artifacts: { ifc: 'C:\\Users\\me\\out\\storeys.ifc' } }),
+  ], 'sheets-pdf-dwg', { root: '/repo' });
+  assert.equal(sets.length, 1, 'the failing UI result hands over nothing');
+  assert.deepEqual(Object.keys(sets[0].files).sort(), ['dxf', 'pdf']);
+  const storeys = ART.artifactSets([
+    result('storeys', 'sdk', 'partial', { artifacts: { ifc: 'a/storeys.IFC4.ifc', census: { IfcWall: 2 } }, evidence: ['a/storeys-f2f.IFC4.ifc'] }),
+    result('storeys', 'ui', 'pass', { artifacts: { ifc: 'C:\\Users\\me\\out\\storeys.ifc' } }),
+  ], 'storeys', { root: '/repo' });
+  assert.deepEqual(storeys.map((s) => s.files.ifc), [['/repo/a/storeys.IFC4.ifc'], ['/mnt/c/Users/me/out/storeys.ifc']], 'SDK intermediates ignored; Windows paths mapped');
+  assert.deepEqual(storeys[0].census, { IfcWall: 2 });
+});
+
+test('output runner: documentation rows are judged on UI-handed drawings and can pass', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'parity-output-ui-'));
+  try {
+    const art = join(dir, 'ui', 'artifacts', 'sheets-pdf-dwg');
+    mkdirSync(art, { recursive: true });
+    writeFileSync(join(art, 'a1.pdf'), PDF);
+    writeFileSync(join(art, 'a1.dxf'), DXF);
+    writeFileSync(join(dir, 'ui', 'artifacts', 'plan.svg'), SVG);
+    writeFileSync(join(dir, 'ui', 'results.json'), JSON.stringify([
+      result('sheets-pdf-dwg', 'ui', 'pass', { artifacts: { pdf: join(art, 'a1.pdf') }, evidence: [join(art, 'a1.dxf')] }),
+      result('plans-sections-elevations', 'ui', 'partial', { artifacts: { svg: join(dir, 'ui', 'artifacts', 'plan.svg') } }),
+      result('dimensions-tags', 'ui', 'pass', { artifacts: { pdf: join(dir, 'missing.pdf') } }),
+    ]));
+    const out = join(dir, 'out');
+    const r = spawnSync(process.execPath, [join(ROOT, 'tests/modelling-parity/output/run.mjs'), '--out', out, '--ui', join(dir, 'ui'), '--only', 'sheets-pdf-dwg,plans-sections-elevations,dimensions-tags,roof-by-footprint'], { encoding: 'utf8' });
+    assert.equal(r.status, 0, `${r.stdout}${r.stderr}`);
+    const read = (id) => JSON.parse(readFileSync(join(out, 'output', `${id}.json`), 'utf8'));
+    assert.equal(read('sheets-pdf-dwg').status, 'pass', JSON.stringify(read('sheets-pdf-dwg')));
+    assert.equal(read('plans-sections-elevations').status, 'pass');
+    assert.equal(read('dimensions-tags').status, 'fail', 'a listed file that is not there fails');
+    assert.equal(read('roof-by-footprint').status, 'skip', 'no SDK result and no UI handoff');
+    const s = score(realCatalogue, readResults([out, join(dir, 'ui')]));
+    assert.equal(s.rows.find((x) => x.capability === 'sheets-pdf-dwg').status, 'met', 'UI pass + output pass, SDK not applicable');
+    rmSync(join(art, 'a1.dxf'));
+    spawnSync(process.execPath, [join(ROOT, 'tests/modelling-parity/output/run.mjs'), '--out', out, '--ui', join(dir, 'ui'), '--only', 'sheets-pdf-dwg'], { encoding: 'utf8' });
+    assert.equal(read('sheets-pdf-dwg').status, 'partial', 'the DXF a sheet row requires is missing');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

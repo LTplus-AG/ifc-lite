@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 // Modelling parity SDK probe: large-tall-model-performance (#9296). Run by ./run.mjs.
 // Oracle (issue #9296 R1, Revit/Archicad handle 40-storey towers interactively): the F5 tower
 // (40 storeys, 7 x 7 grid, ~50-element typical floor copied to 39 storeys) authors headless in
@@ -43,4 +47,6 @@ for (const s of storeys) { if (left() <= 0) break; if (t.step('copy floor', () =
 const towerMs = Date.now() - t0;
 Object.assign(t.metrics, { storeys: storeys.length + 1, typicalElements: typical.length, typicalMs, copiedFloors, towerMs, elements: bim.query().toArray().length });
 t.check('F5 tower authored headless in under 60 s', () => (storeys.length === FLOORS - 1 && copiedFloors === FLOORS - 1 && towerMs <= BUDGET_MS) || `after ${Math.round(towerMs / 1000)} s: ${storeys.length + 1}/${FLOORS} storeys, typical floor ${typical.length} elements in ${typicalMs} ms, ${copiedFloors}/${FLOORS - 1} floors copied`, { core: true });
+// The tower is exported (not meshed) so the output level can validate it once performance passes.
+await t.exportModel(t.capability, 'IFC4', { mesh: false });
 t.done();

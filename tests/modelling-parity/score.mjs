@@ -19,10 +19,11 @@
  * Usage:
  *   node tests/modelling-parity/score.mjs [DIR ...] [--out summary.json] [--check baseline.json] [--quiet]
  *     --out    where the JSON summary goes (default tests/modelling-parity/.out/summary.json)
- *     --check  ratchet: exit 1 if the score or any row's status is below the baseline summary's
+ *     --check  ratchet: exit 1 if the score or any row's status is below the baseline summary's;
+ *              the baseline is read first, and --out naming the same file is refused (exit 2)
  */
 
-import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isMainEntry } from '../../scripts/lib/is-main-entry.mjs';
@@ -164,22 +165,28 @@ function main(argv) {
   const dirs = argv.filter((a, i) => !a.startsWith('--') && !valued.has(argv[i - 1])).map((d) => resolve(d));
   const inputs = dirs.length ? dirs : [join(ROOT, 'tests/modelling-parity/.out')];
   const catalogue = JSON.parse(readFileSync(resolve(flag('--catalogue') ?? join(ROOT, 'tests/modelling-parity/catalogue.json')), 'utf8'));
-  const summary = score(catalogue, readResults(inputs), { inputs: inputs.map(rel) });
   const out = resolve(flag('--out') ?? join(ROOT, 'tests/modelling-parity/.out/summary.json'));
+  const check = flag('--check') ? resolve(flag('--check')) : null;
+  // Read the baseline before anything is written: --out must never replace the file it is checked against.
+  const sameFile = (a, b) => a === b || (existsSync(a) && existsSync(b) && realpathSync(a) === realpathSync(b));
+  if (check && sameFile(check, out)) {
+    console.error(`score: --out and --check both name ${rel(out)}; a regressed summary would overwrite the baseline it is checked against. Write the summary elsewhere, check it, then copy it over.`);
+    return 2;
+  }
+  const baseline = check ? JSON.parse(readFileSync(check, 'utf8')) : null;
+  const summary = score(catalogue, readResults(inputs), { inputs: inputs.map(rel) });
   mkdirSync(dirname(out), { recursive: true });
   writeFileSync(out, JSON.stringify(summary, null, 2) + '\n');
   if (!argv.includes('--quiet')) print(summary);
   console.log(`Summary written to ${rel(out)}`);
-  const check = flag('--check');
-  if (check) {
-    const baseline = JSON.parse(readFileSync(resolve(check), 'utf8'));
+  if (baseline) {
     for (const w of levelDrops(baseline, summary)) console.warn(`level drop (warning): ${w}`);
     const problems = ratchet(baseline, summary);
     if (problems.length) {
-      console.error(`\nRatchet FAILED against ${rel(resolve(check))} (baseline score ${baseline.score}):\n  ${problems.join('\n  ')}`);
+      console.error(`\nRatchet FAILED against ${rel(check)} (baseline score ${baseline.score}):\n  ${problems.join('\n  ')}`);
       return 1;
     }
-    console.log(`Ratchet OK against ${rel(resolve(check))}: ${summary.score} >= ${baseline.score}, no row dropped.`);
+    console.log(`Ratchet OK against ${rel(check)}: ${summary.score} >= ${baseline.score}, no row dropped.`);
   }
   return 0;
 }

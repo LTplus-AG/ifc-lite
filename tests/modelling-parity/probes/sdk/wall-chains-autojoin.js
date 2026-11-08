@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 // Modelling parity SDK probe: wall-chains-autojoin (#9296). Run by ./run.mjs through `ifc-lite run`.
 // Oracle: walls drawn end to end as a closed chain join at their corners like Revit/Archicad
 // walls do (clean L corners: the outer corner is filled, the inner corner is not doubled), and

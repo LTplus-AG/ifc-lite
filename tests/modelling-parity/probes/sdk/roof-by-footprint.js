@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 // Modelling parity SDK probe: roof-by-footprint (#9296). Run by ./run.mjs through `ifc-lite run`.
 // Oracle (Revit Roof by Footprint, Archicad multi-plane roof, Bonsai roof by footprint): from a
 // 10 x 8 m footprint with a slope per edge, a hip roof (30° on all four edges) rises 4·tan30 =

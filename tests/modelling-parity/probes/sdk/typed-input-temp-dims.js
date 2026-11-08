@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 // Modelling parity SDK probe: typed-input-temp-dims (#9296). UI-only capability: there is no SDK surface by
 // design (a script passes exact coordinates), so the SDK level reports skip, never pass.
 // The UI probe (lane L4, tests/modelling-parity/ui) measures it on the real GPU.

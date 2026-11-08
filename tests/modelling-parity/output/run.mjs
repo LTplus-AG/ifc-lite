@@ -6,22 +6,32 @@
 /**
  * Modelling-parity output probes (#9296, lane L1).
  *
- * For every catalogue row whose output level applies, takes the IFC4 file its
- * SDK probe exported (`artifacts.ifc` in `$PARITY_OUT/sdk/<id>.json`) and runs:
+ * For every catalogue row whose output level applies, judges the files handed
+ * over by that row's passing or partial results: the SDK probe's IFC4 export
+ * (`artifacts.ifc` in `$PARITY_OUT/sdk/<id>.json`) and, under the contract's
+ * Handoffs section, files a UI result (probe "ui", lane L4) lists in
+ * `artifacts.{ifc,svg,pdf,dxf}` or `evidence` (normally under
+ * `$PARITY_OUT/artifacts/<capability-id>/`). Each handed-over set yields one
+ * output result; the scorer keeps the best.
+ *
+ * An IFC file gets three checks:
  *   1. `node packages/cli/dist/index.js validate <file> --json`: no errors;
  *   2. a reopen: `ifc-lite run reopen.js <file>` reproduces the session's
- *      product census and the row's key classes, and a second export of the
- *      reopened model reopens with the same census;
+ *      product census (when the result carries one) and the row's key classes,
+ *      and a second export of the reopened model reopens with the same census;
  *   3. IfcOpenShell: `tools/ifcopenshell_reference/validate_export.py <file>`
  *      (express rules) reports no issues.
- * All three pass -> pass; some -> partial; none -> fail. When IfcOpenShell
- * cannot be imported, check 3 is SKIPPED and the row can be partial at best.
- * A row with nothing to validate (SDK probe skipped or failed, or a drawing
- * row with no UI artifact yet) reports skip with the reason, never pass.
+ * An SVG, PDF or DXF file gets a SANITY check only (output/artifacts.mjs: it
+ * parses, is not empty and carries linework or pages), not a validation.
+ * A row's `requires` lists the kinds it needs (default: an IFC); a missing kind
+ * is a failed check. All checks pass -> pass; some -> partial; none -> fail.
+ * When IfcOpenShell cannot be imported its check is SKIPPED, capping the row at
+ * partial. A row with nothing handed over reports skip with the reason.
  *
  * Usage:
  *   node tests/modelling-parity/output/run.mjs [--out DIR] [--only id,id]
- *     [--python PATH] [--build-root DIR]
+ *     [--ui DIR[,DIR]] [--python PATH] [--build-root DIR]
+ * --ui: where to look for UI results (default tests/modelling-parity/.out, all lanes).
  * PATH defaults to $PARITY_PYTHON, then ~/modelling-parity/venv/bin/python, then python3.
  */
 
@@ -31,6 +41,8 @@ import { homedir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { sourceInfo } from '../probes/sdk/run.mjs';
+import { readResults } from '../score.mjs';
+import { artifactSets, checkDrawing, requiredKinds } from './artifacts.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '../../..');
@@ -38,6 +50,7 @@ const rel = (p) => relative(ROOT, p).split('\\').join('/');
 const arg = (name, fallback = null) => { const i = process.argv.indexOf(name); return i !== -1 && process.argv[i + 1] ? process.argv[i + 1] : fallback; };
 const OUT = resolve(arg('--out', process.env.PARITY_OUT ?? join(ROOT, 'tests/modelling-parity/.out/L1')));
 const ONLY = arg('--only')?.split(',').map((s) => s.trim()).filter(Boolean) ?? null;
+const UI_DIRS = (arg('--ui') ?? join(ROOT, 'tests/modelling-parity/.out')).split(',').map((d) => resolve(d.trim())).filter((d) => existsSync(d));
 const BUILD = resolve(arg('--build-root', process.env.PARITY_BUILD_ROOT ?? ROOT));
 const CLI = join(BUILD, 'packages/cli/dist/index.js');
 const VENV = join(homedir(), 'modelling-parity/venv/bin/python');
@@ -77,15 +90,15 @@ function reopen(file, expected, keyTypes, work, id) {
     const first = census(file, second);
     const again = census(second);
     const diff = (a, b) => [...new Set([...Object.keys(a), ...Object.keys(b)])].filter((k) => (a[k] ?? 0) !== (b[k] ?? 0)).map((k) => `${k} ${a[k] ?? 0}->${b[k] ?? 0}`);
-    const lost = diff(expected ?? {}, first), drift = diff(first, again);
+    const lost = expected ? diff(expected, first) : [], drift = diff(first, again);
     const missingKeys = (keyTypes ?? []).filter((k) => !Object.keys(first).some((t) => t.replace(/StandardCase$/, '') === k));
     const problems = [
-      ...(expected ? [] : ['the SDK result carries no session census to compare']),
       ...(lost.length ? [`session vs reopened census: ${lost.join(', ')}`] : []),
       ...(drift.length ? [`reopened vs re-exported census: ${drift.join(', ')}`] : []),
       ...(missingKeys.length ? [`key classes missing after reopen: ${missingKeys.join(', ')}`] : []),
     ];
-    return problems.length ? { name, status: 'fail', detail: problems.join('; ') } : { name, status: 'pass', census: first };
+    if (problems.length) return { name, status: 'fail', detail: problems.join('; ') };
+    return { name, status: 'pass', census: first, ...(expected ? {} : { note: 'no session census handed over: compared the reopen with its re-export only' }) };
   } catch (e) {
     return { name, status: 'fail', detail: String(e.message ?? e).slice(0, 300) };
   }
@@ -106,44 +119,87 @@ function statusOf(checks) {
   return pass > 0 ? 'partial' : 'fail';
 }
 
+let ios = null;
+function ifcOpenShellVersion() {
+  if (ios) return ios.version;
+  const r = run(PYTHON, ['-c', 'import ifcopenshell, ifcopenshell.validate; print(ifcopenshell.version)']);
+  ios = { version: r.code === 0 ? r.stdout.trim() : null };
+  if (!ios.version) console.error(`\n!!! IfcOpenShell is NOT importable with ${PYTHON}: every IfcOpenShell check is SKIPPED and no IFC output row can pass.\n`);
+  return ios.version;
+}
+
+function ifcChecks(file, census, keyTypes, work, tag) {
+  if (!existsSync(CLI)) return [{ name: 'ifc-lite validate', status: 'fail', detail: `no built CLI at ${rel(CLI)} to validate ${rel(file)}` }];
+  if (!existsSync(file)) return [{ name: 'IFC file', status: 'fail', detail: `handed-over file not found: ${file}` }];
+  const v = ifcOpenShellVersion();
+  return [
+    ifcLiteValidate(file),
+    reopen(file, census, keyTypes, work, tag),
+    v ? ifcOpenShell(file) : { name: 'IfcOpenShell validate (express rules)', status: 'skip', detail: `IfcOpenShell not importable with ${PYTHON}` },
+  ];
+}
+
+/** Judge one handed-over artifact set against the row's required kinds. */
+function judge(cap, set, work, tag) {
+  const checks = [];
+  for (const group of requiredKinds(cap)) {
+    if (!group.some((k) => set.files[k]?.length)) checks.push({ name: `${group.join(' or ')} file`, status: 'fail', detail: `the ${set.source} result handed over no ${group.join(' or ')} file` });
+  }
+  for (const [kind, files] of Object.entries(set.files)) {
+    for (const [i, file] of files.entries()) {
+      if (kind === 'ifc') checks.push(...ifcChecks(file, set.census, cap.probes.output.keyTypes, work, `${tag}${i ? `-${i}` : ''}`).map((c) => ({ ...c, file: rel(file) })));
+      else checks.push({ ...checkDrawing(kind, file), file: rel(file) });
+    }
+  }
+  return checks;
+}
+
+function skipReason(cap, sdk) {
+  if (cap.probes.sdk?.applicable === false) {
+    const kinds = requiredKinds(cap).map((g) => g.join('/')).join(' and ');
+    return `nothing handed over: the SDK level does not apply to this ${cap.group === 'Documentation' ? 'documentation' : 'UI-only'} row and no passing or partial UI result lists a ${kinds} file under artifacts/${cap.id}/`;
+  }
+  if (!sdk) return 'no SDK result to take an export from';
+  if (!['pass', 'partial'].includes(sdk.status)) return `nothing to validate: the SDK probe is ${sdk.status}, so its export does not show this capability`;
+  return 'the SDK probe recorded no IFC export';
+}
+
 async function main() {
-  if (!existsSync(CLI)) { console.error(`output probes need a built CLI at ${CLI}`); process.exit(2); }
   const catalogue = JSON.parse(readFileSync(join(ROOT, 'tests/modelling-parity/catalogue.json'), 'utf8'));
   const outDir = join(OUT, 'output'), work = join(OUT, 'work');
   mkdirSync(outDir, { recursive: true });
   mkdirSync(work, { recursive: true });
   const source = sourceInfo(ROOT);
-  const ios = run(PYTHON, ['-c', 'import ifcopenshell, ifcopenshell.validate; print(ifcopenshell.version)']);
-  const iosVersion = ios.code === 0 ? ios.stdout.trim() : null;
-  if (!iosVersion) console.error(`\n!!! IfcOpenShell is NOT importable with ${PYTHON}: every IfcOpenShell check is SKIPPED and no output row can pass.\n`);
+  const uiResults = UI_DIRS.length ? readResults(UI_DIRS).filter((r) => r.probe === 'ui') : [];
   const counts = {};
   for (const cap of catalogue.capabilities) {
     const level = cap.probes?.output;
     if (!level?.applicable || (ONLY && !ONLY.includes(cap.id))) continue;
     if (!cap.tableStakes && !cap.probes?.sdk?.script) continue;
     const sdkFile = join(OUT, 'sdk', `${cap.id}.json`);
-    const sdk = existsSync(sdkFile) ? JSON.parse(readFileSync(sdkFile, 'utf8')) : null;
-    const file = sdk?.artifacts?.ifc ? join(ROOT, sdk.artifacts.ifc) : null;
-    const base = { schema: 'ifclite-parity-result/1', capability: cap.id, probe: 'output', id: `output.${cap.id}`, source, runner: `node tests/modelling-parity/output/run.mjs --only ${cap.id}` };
-    let result;
-    if (!sdk || !file || !existsSync(file) || !['pass', 'partial'].includes(sdk.status)) {
-      const why = !sdk ? 'no SDK result to take an export from'
-        : cap.probes.sdk?.applicable === false ? `no headless artifact: the SDK level is ${sdk.status} for this ${cap.group === 'Documentation' ? 'documentation' : 'UI-only'} row, so the output probe needs a file from the UI probe (L4)`
-          : !['pass', 'partial'].includes(sdk.status) ? `nothing to validate: the SDK probe is ${sdk.status}, so its export does not show this capability`
-            : 'the SDK probe recorded no IFC export';
-      result = { ...base, status: 'skip', reason: why, metrics: {}, evidence: [] };
-    } else {
+    const sdk = existsSync(sdkFile) ? { ...JSON.parse(readFileSync(sdkFile, 'utf8')), file: rel(sdkFile) } : null;
+    const sets = artifactSets([...(sdk ? [sdk] : []), ...uiResults], cap.id, { root: ROOT });
+    const base = { schema: 'ifclite-parity-result/1', capability: cap.id, probe: 'output', source, runner: `node tests/modelling-parity/output/run.mjs --only ${cap.id}` };
+    const results = [];
+    if (!sets.length) {
+      results.push({ ...base, id: `output.${cap.id}`, status: 'skip', reason: skipReason(cap, sdk), metrics: {}, evidence: [] });
+    }
+    for (const [n, set] of sets.entries()) {
       const t0 = Date.now();
-      const checks = [ifcLiteValidate(file), reopen(file, sdk.artifacts.census, level.keyTypes, work, cap.id), iosVersion ? ifcOpenShell(file) : { name: 'IfcOpenShell validate (express rules)', status: 'skip', detail: `IfcOpenShell not importable with ${PYTHON}` }];
+      const id = set.source === 'sdk' ? `output.${cap.id}` : `output.${cap.id}.ui${n}`;
+      const checks = judge(cap, set, work, set.source === 'sdk' ? cap.id : `${cap.id}.ui${n}`);
       const status = statusOf(checks);
       const reason = checks.filter((c) => c.status !== 'pass').map((c) => `${c.name} ${c.status === 'skip' ? 'SKIPPED' : 'failed'}: ${c.detail}`).join('; ');
-      result = { ...base, status, ...(status === 'pass' ? {} : { reason }), metrics: { ms: Date.now() - t0, ifcopenshell: iosVersion }, evidence: [rel(file)], checks };
+      const evidence = [...new Set(Object.values(set.files).flat().map(rel))];
+      results.push({ ...base, id, status, ...(status === 'pass' ? {} : { reason }), from: { probe: set.source, id: set.resultId }, metrics: { ms: Date.now() - t0, ...(ios?.version ? { ifcopenshell: ios.version } : {}) }, evidence, checks });
     }
-    writeFileSync(join(outDir, `${cap.id}.json`), JSON.stringify(result, null, 2) + '\n');
-    counts[result.status] = (counts[result.status] ?? 0) + 1;
-    console.log(`${result.status.padEnd(7)} ${cap.id}${result.reason ? ` — ${result.reason.slice(0, 200)}` : ''}`);
+    writeFileSync(join(outDir, `${cap.id}.json`), JSON.stringify(results.length === 1 ? results[0] : results, null, 2) + '\n');
+    for (const result of results) {
+      counts[result.status] = (counts[result.status] ?? 0) + 1;
+      console.log(`${result.status.padEnd(7)} ${result.id}${result.reason ? ` — ${result.reason.slice(0, 200)}` : ''}`);
+    }
   }
-  console.log(`\nOutput probes (IfcOpenShell ${iosVersion ?? 'MISSING'}): ${JSON.stringify(counts)} -> ${rel(outDir)}`);
+  console.log(`\nOutput probes (IfcOpenShell ${ios ? ios.version ?? 'MISSING' : 'not needed'}): ${JSON.stringify(counts)} -> ${rel(outDir)}`);
 }
 
 main().catch((e) => { console.error(e); process.exit(1); });

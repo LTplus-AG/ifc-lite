@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 // Modelling parity SDK probe: storeys (#9296). Run by ./run.mjs through `ifc-lite run`.
 // Oracle: storeys at typed elevations, rename, floor-to-floor edit shifts the storeys above
 // and attached walls follow, Archicad-style insert re-binds walls attached to the next

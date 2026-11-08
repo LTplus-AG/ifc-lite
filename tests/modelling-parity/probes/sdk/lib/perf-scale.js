@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 // Helper for large-tall-model-performance.js (not a probe itself): grows a fresh blank session
 // with batches of 50 columns until PARITY_SCALE_BUDGET_MS runs out, printing one JSON line with
 // the cost of one addColumn per batch. Run by the probe as `ifc-lite run lib/perf-scale.js`.

@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 // Modelling parity SDK probe: type-editing (#9296). Run by ./run.mjs through `ifc-lite run`.
 // Oracle (Revit Edit Type, Archicad favourites/composites, Bonsai type manager): type data
 // reaches every occurrence, editing the type updates them all at once, an occurrence can swap

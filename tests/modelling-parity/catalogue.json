@@ -11,7 +11,7 @@
     "perf": "L3"
   },
   "scoring": "A table-stakes row is met (1) when every applicable level's best result is pass, partial (0.5) when any level has a pass or partial, and missing (0) otherwise. skip never counts as a pass. Rows with tableStakes: false are reported but never scored.",
-  "commonOutputOracle": "The SDK probe's exported IFC4 has no errors in `ifc-lite validate`, no issues in IfcOpenShell validate with express rules, and reopens with the session's product census (counts by IFC class) and the row's key entity classes intact; a second export from the reopened model keeps that census.",
+  "commonOutputOracle": "The SDK probe's exported IFC4 has no errors in `ifc-lite validate`, no issues in IfcOpenShell validate with express rules, and reopens with the session's product census (counts by IFC class) and the row's key entity classes intact; a second export from the reopened model keeps that census. Files a UI result hands over are judged too: an IFC by the same checks, an SVG/PDF/DXF drawing by a sanity check only. A row's output `requires` names the file kinds it needs (default: an IFC).",
   "capabilities": [
     {
       "id": "storeys",
@@ -282,7 +282,7 @@
       "probes": {
         "sdk": { "owner": "L1", "applicable": false, "script": "tests/modelling-parity/probes/sdk/plans-sections-elevations.js", "oracle": "Documentation capability: the SDK level reports skip with the reason that no headless operation cuts drawings from the model." },
         "ui": { "owner": "L4", "applicable": true, "oracle": "Generate a floor plan, a section and an elevation of F2; cut walls show poured fill, the section line and elevation markers appear in plan, and the views update when the model changes." },
-        "output": { "owner": "L1", "applicable": true, "oracle": "The exported drawing (SVG/PDF) of a plan and a section opens in a third-party reader with the cut elements on their own layers at the stated scale. Needs a drawing file from the UI probe; until one is handed over the output probe reports skip." }
+        "output": { "owner": "L1", "applicable": true, "requires": [["svg", "pdf", "dxf"]], "oracle": "Handed over by the UI probe (L4) under $PARITY_OUT/artifacts/<id>/ per the contract's Handoffs. The exported plan/section drawing (SVG, PDF or DXF) passes the sanity check; the target is that it opens in a third-party reader with the cut elements on their own layers at the stated scale. Drawing files get a sanity check only (they parse, are not empty and carry linework or pages), not a check of the drawing's correctness." }
       },
       "exercises": { "owner": "L2", "refs": ["F3"] }
     },
@@ -295,7 +295,7 @@
       "probes": {
         "sdk": { "owner": "L1", "applicable": false, "script": "tests/modelling-parity/probes/sdk/dimensions-tags.js", "oracle": "Documentation capability: the SDK level reports skip." },
         "ui": { "owner": "L4", "applicable": true, "oracle": "On a plan, place a dimension string across walls and tags on a door and a room; moving a wall updates the dimension value and the tag shows the element's live data." },
-        "output": { "owner": "L1", "applicable": true, "oracle": "Dimensions and tags appear in the exported drawing file and, when saved into the model, as IfcAnnotation that validates and reopens. Needs an artifact from the UI probe; until then skip." }
+        "output": { "owner": "L1", "applicable": true, "requires": [["svg", "pdf", "dxf", "ifc"]], "oracle": "Handed over by the UI probe (L4) under $PARITY_OUT/artifacts/<id>/ per the contract's Handoffs. A drawing file with the dimensions and tags passes the sanity check, or, when they are saved into the model, an IFC with IfcAnnotation passes the full IFC checks (ifc-lite validate, reopen, IfcOpenShell). Drawing files get a sanity check only (they parse, are not empty and carry linework or pages), not a check of the drawing's correctness." }
       },
       "exercises": { "owner": "L2", "refs": ["F3"] }
     },
@@ -308,7 +308,7 @@
       "probes": {
         "sdk": { "owner": "L1", "applicable": false, "script": "tests/modelling-parity/probes/sdk/sheets-pdf-dwg.js", "oracle": "Documentation capability: the SDK level reports skip." },
         "ui": { "owner": "L4", "applicable": true, "oracle": "Place a plan and a section on an A1 sheet with a title block and export it to PDF and DXF in a few actions." },
-        "output": { "owner": "L1", "applicable": true, "oracle": "The exported PDF has the sheet's page size and the views at their scale; the DXF opens in a third-party reader (ezdxf) with layers per category. Needs files from the UI probe; until then skip." }
+        "output": { "owner": "L1", "applicable": true, "requires": [["pdf"], ["dxf"]], "oracle": "Handed over by the UI probe (L4) under $PARITY_OUT/artifacts/<id>/ per the contract's Handoffs. Both a sheet PDF (at least one page; the MediaBox is reported) and a DXF (ENTITIES with linework, EOF) pass the sanity check; the target is the sheet's paper size and per-category layers in a third-party reader. Drawing files get a sanity check only (they parse, are not empty and carry linework or pages), not a check of the drawing's correctness." }
       },
       "exercises": { "owner": "L2", "refs": ["F3"] }
     },

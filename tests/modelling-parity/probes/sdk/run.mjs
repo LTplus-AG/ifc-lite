@@ -57,6 +57,27 @@ export function sourceInfo(root = ROOT) {
   }
 }
 
+/**
+ * The probe's own result, unless the process says otherwise: no result (or another
+ * capability's) is an error, and so is ANY nonzero exit or timeout after a result was
+ * written. A probe that wrote partial, fail or skip and then crashed did not finish
+ * its oracle, so it never keeps the half point (or the clean fail) it had written.
+ */
+export function settleResult(body, { capability, code, timedOut = false, timeoutMs = TIMEOUT_MS, tail = '', ms = 0 }) {
+  if (!body || body.capability !== capability) {
+    return {
+      capability, status: 'error',
+      reason: timedOut ? `probe timed out after ${timeoutMs} ms` : `probe wrote no result (exit ${code}): ${tail}`,
+      metrics: { ms }, evidence: [],
+    };
+  }
+  if (code !== 0 || timedOut) {
+    const how = timedOut ? `timed out after ${timeoutMs} ms` : `exited ${code}`;
+    return { ...body, status: 'error', reason: `probe ${how} after reporting ${body.status}${body.reason ? ` (${body.reason})` : ''}: ${tail}` };
+  }
+  return body;
+}
+
 async function makeBlank(path) {
   const { IfcCreator } = await import(pathToFileURL(join(BUILD, 'packages/create/dist/index.js')).href);
   const c = new IfcCreator({ Name: 'Modelling parity probe' });
@@ -98,16 +119,7 @@ function runOne(capability, script, blank, work, source) {
         try { body = JSON.parse(readFileSync(resultFile, 'utf8')); } catch { body = null; }
       }
       const tail = log.trim().split('\n').slice(-3).join(' | ');
-      if (!body || body.capability !== capability) {
-        body = {
-          capability, status: 'error',
-          reason: timedOut ? `probe timed out after ${TIMEOUT_MS} ms` : `probe wrote no result (exit ${code}): ${tail}`,
-          metrics: { ms }, evidence: [],
-        };
-      } else if (code !== 0 && body.status === 'pass') {
-        body.status = 'error';
-        body.reason = `probe exited ${code} after reporting pass: ${tail}`;
-      }
+      body = settleResult(body, { capability, code, timedOut, timeoutMs: TIMEOUT_MS, tail, ms });
       const result = {
         schema: 'ifclite-parity-result/1',
         capability,

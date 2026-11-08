@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 // Modelling parity SDK probe: wall-top-base-constraints (#9296). Run by ./run.mjs through `ifc-lite run`.
 // Oracle (Revit Base/Top Constraint + offsets, Archicad Home storey + Top link): a wall's top
 // follows the storey it is attached to, a top offset is kept, the base follows its own storey,

@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 // Modelling parity SDK probe: transforms-move-copy-rotate-mirror-array (#9296). Run by ./run.mjs.
 // Oracle (Revit Modify tools, Archicad Drag/Rotate/Mirror/Multiply): move, rotate about a
 // pivot, copy, mirror about an axis, linear array and polar array each put the element where

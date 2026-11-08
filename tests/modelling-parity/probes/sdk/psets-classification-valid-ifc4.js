@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 // Modelling parity SDK probe: psets-classification-valid-ifc4 (#9296). Run by ./run.mjs.
 // Oracle (Revit IFC export with property mapping + classification, Archicad Classification
 // Manager, Bonsai ifcopenshell.api.classification): standard and custom psets with typed values

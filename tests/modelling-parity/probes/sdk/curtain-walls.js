@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 // Modelling parity SDK probe: curtain-walls (#9296). Run by ./run.mjs through `ifc-lite run`.
 // Oracle (Revit/Archicad curtain wall with a U/V grid): a 6 x 3 m curtain wall with 4 x 2 bays
 // is an IfcCurtainWall aggregate of 8 panels plus mullions and transoms filling its extent, and

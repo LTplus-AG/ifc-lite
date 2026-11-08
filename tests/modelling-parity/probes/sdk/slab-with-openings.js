@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 // Modelling parity SDK probe: slab-with-openings (#9296). Run by ./run.mjs through `ifc-lite run`.
 // Oracle: an L-shaped slab from a sketched outline, a shaft opening that really voids it,
 // and a thickness edit that keeps the opening (Revit floor + shaft, Archicad slab + hole).

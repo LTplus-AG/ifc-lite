@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 // Modelling parity SDK probe: hosted-doors-windows-from-types (#9296). Run by ./run.mjs.
 // Oracle (Revit hosted families, Archicad door/window objects): a door and a window placed
 // from their types cut real openings in the wall, are typed occurrences, move with their host

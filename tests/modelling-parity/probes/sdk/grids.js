@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 // Modelling parity SDK probe: grids (#9296). Run by ./run.mjs through `ifc-lite run`.
 // Oracle: a tagged 3 x 3 structural grid exports its axes, a column placed on a crossing
 // lands on it, and moving the grid carries the columns bound to it (Revit "moves with grids").

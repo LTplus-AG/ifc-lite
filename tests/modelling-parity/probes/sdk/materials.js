@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 // Modelling parity SDK probe: materials (#9296). Run by ./run.mjs through `ifc-lite run`.
 // Oracle (Revit/Archicad materials and surfaces, Bonsai IfcMaterial): materials are assigned
 // to elements, read back, survive export, can be reassigned, and carry an appearance colour

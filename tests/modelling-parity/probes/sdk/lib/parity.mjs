@@ -199,8 +199,8 @@ export class Probe {
     return this.check(name, () => r, opts);
   }
 
-  /** Export the session to IFC4, write it under the work dir and mesh it. */
-  async exportModel(tag = this.capability, schema = 'IFC4') {
+  /** Export the session to IFC4, write it under the work dir and (unless mesh: false) mesh it. */
+  async exportModel(tag = this.capability, schema = 'IFC4', { mesh = true } = {}) {
     const t = Date.now();
     const content = String(this.bim.export.ifc(null, { schema }));
     this.metrics.exportMs = (this.metrics.exportMs ?? 0) + (Date.now() - t);
@@ -212,7 +212,7 @@ export class Probe {
       this.artifacts.ifc = rel;
       this.artifacts.census = this.census();
     }
-    return new ExportedModel(this, content, await meshIfc(content), rel);
+    return new ExportedModel(this, content, mesh ? await meshIfc(content) : new Map(), rel);
   }
 
   /** Product counts by IFC type in the live session (the reopen oracle compares against it). */

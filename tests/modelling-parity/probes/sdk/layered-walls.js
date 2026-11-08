@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 // Modelling parity SDK probe: layered-walls (#9296). Run by ./run.mjs through `ifc-lite run`.
 // Oracle: a wall carries an ordered material layer set (IfcMaterialLayerSetUsage) that reads
 // back and exports, and, like a Revit/Archicad wall type, the layers drive the wall's thickness.

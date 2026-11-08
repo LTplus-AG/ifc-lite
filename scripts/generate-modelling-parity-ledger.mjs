@@ -115,7 +115,7 @@ function render() {
   lines.push('');
   lines.push('- **SDK**: a headless script on a blank model through `bim.store` / `@ifc-lite/create`, checked against a geometry or data oracle read back from the exported, meshed IFC (`tests/modelling-parity/probes/sdk/`).');
   lines.push('- **UI**: the same capability in the Model workspace on the real GPU via `ifc-gpu-check` (`tests/modelling-parity/ui/`).');
-  lines.push('- **Output**: the SDK probe\'s IFC4 export through `ifc-lite validate`, a reopen round trip and IfcOpenShell validate with express rules (`tests/modelling-parity/output/`).');
+  lines.push('- **Output**: the SDK probe\'s IFC4 export, and any IFC a UI result hands over, through `ifc-lite validate`, a reopen round trip and IfcOpenShell validate with express rules (`tests/modelling-parity/output/`). Drawing files a UI result hands over (SVG, PDF, DXF, for the documentation rows) get a **sanity check only**: they parse, are not empty and carry linework or pages. That is not a check that the drawing is correct.');
   lines.push('- **Exercise**: the best result of the F1–F6 exercises that exercise the row (reported, not scored).');
   lines.push('');
   lines.push('✅ pass · ◐ partial · ❌ fail or error · – skipped, not run, or not applicable. A row is **met** when every applicable level passes, **partial** when any level passes or partly passes, **missing** otherwise; `skip` never counts as a pass.');

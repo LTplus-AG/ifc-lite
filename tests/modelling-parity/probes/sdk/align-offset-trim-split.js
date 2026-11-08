@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 // Modelling parity SDK probe: align-offset-trim-split (#9296). Run by ./run.mjs.
 // Oracle (Revit Align/Offset/Trim-Extend/Split, Archicad Adjust/Offset/Trim/Split): align an
 // element's edge to a reference, offset a wall to a parallel copy at a typed distance, extend

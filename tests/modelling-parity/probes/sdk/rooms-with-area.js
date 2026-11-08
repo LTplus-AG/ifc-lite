@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 // Modelling parity SDK probe: rooms-with-area (#9296). Run by ./run.mjs through `ifc-lite run`.
 // Oracle (Revit Room, Archicad Zone, Bonsai space generation): two rooms bounded by walls are
 // found, each room's area is the net floor area inside the wall faces (4.85 x 5.8 = 28.13 m²),

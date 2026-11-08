@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 // Modelling parity SDK probe: copy-to-levels (#9296). Run by ./run.mjs through `ifc-lite run`.
 // Oracle (Revit Paste Aligned to Selected Levels, Archicad copy to storeys): a typical floor
 // (walls attached to the storey above, a hosted door, a slab, a column) copies to several

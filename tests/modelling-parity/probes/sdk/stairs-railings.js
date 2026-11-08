@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 // Modelling parity SDK probe: stairs-railings (#9296). Run by ./run.mjs through `ifc-lite run`.
 // Oracle (Revit stair by component + railing, Archicad stair tool): a straight stair from
 // Level 1 lands exactly on Level 2, refits its risers when the floor-to-floor changes, and a

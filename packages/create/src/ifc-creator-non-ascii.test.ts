@@ -22,7 +22,7 @@ describe('IfcCreator non-ASCII text', () => {
   });
 
   it('writes an ASCII-only file and reads the names back unchanged', async () => {
-    const creator = new IfcCreator({ Name: 'Kleines Haus', Author: 'Louis Trümpler', Timestamp: 0 });
+    const creator = new IfcCreator({ Name: 'Kleines Haus', Author: 'Zoë Müller', Timestamp: 0 });
     const storey = creator.addIfcBuildingStorey({ Name: 'Erdgeschoss', Elevation: 0 });
     const wall = creator.addIfcWall(storey, { Name: 'Wand Süd', Start: [0, 0, 0], End: [4, 0, 0], Thickness: 0.2, Height: 3 });
     creator.addIfcWallDoor(wall, { Name: 'Gartentür', Position: [2, 0, 0], Width: 0.9, Height: 2.1 });

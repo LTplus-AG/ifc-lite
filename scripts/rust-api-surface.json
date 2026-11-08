@@ -143,7 +143,7 @@
     "BoolOp": "ambiguous",
     "BooleanClippingProcessor": "struct {  }",
     "BooleanOp2D": "enum { Difference; Intersection; Union }",
-    "BudgetRefusal": "struct { budget: String; global_id: Option<String>; limit: u32; product_id: Option<u32>; product_type: Option<String>; reached: u64; source_id: u32 }",
+    "BudgetRefusal": "struct (non_exhaustive)",
     "ClassificationStats": "struct { diagonal: usize; non_rectangular: usize; rectangular: usize }",
     "ClassificationSummary": "struct { diagonal: u64; non_rectangular: u64; rectangular: u64; total: u64 }",
     "ClippingProcessor": "struct { epsilon: f64 }",

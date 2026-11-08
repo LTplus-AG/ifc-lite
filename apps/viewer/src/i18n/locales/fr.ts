@@ -3,6 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { Catalogue } from '../registry';
+import { registryFr } from './fr/registry';
+import { storeyManagerFr } from './fr/storey-manager';
 import { activityTrayFr } from './fr/activity-tray';
 import { aiReportsFr } from './fr/ai-reports';
 import { alignmentSectionFr } from './fr/alignment-section';
@@ -321,4 +323,6 @@ export default {
   ...workspaceMigrationFr,
   ...zoneEmissionFr,
   ...zonesPanelFr,
+  ...registryFr,
+  ...storeyManagerFr,
 } satisfies Catalogue;

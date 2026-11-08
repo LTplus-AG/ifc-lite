@@ -2044,7 +2044,7 @@
     "reason": "Composition of interpolated model values, symbols, units or shared French words; no English sentence is embedded."
   },
   "viewportLighting.container.emptyState.webgpuBanner.supportedBrowsers": {
-    "value": "Chrome 113+ / Edge 113+ / Firefox 141+ / Safari 18+",
+    "value": "Chrome 113+ / Edge 113+ / Firefox 141+ / Safari 26+",
     "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
   },
   "viewportLighting.sunSkyPanel.sunStudy.dateLabel": {

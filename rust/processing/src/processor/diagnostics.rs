@@ -35,10 +35,11 @@ pub(super) struct DiagnosticCollectors {
     /// rect_fast engagement, drained per-job router so this pass's `rectFast`
     /// is isolated from any concurrent geometry pass.
     pub(super) rect_fast: std::sync::Mutex<ifc_lite_geometry::RectFastStats>,
+    /// Safety-policy refusals, independent of unsupported/failed geometry.
+    pub(super) budget_refusals: std::sync::Mutex<Vec<ifc_lite_geometry::BudgetRefusal>>,
     /// Dropped representation items by IFC type: no processor for the type, or
     /// the processor errored. Non-empty means the model has elements whose
     /// geometry the router refused to build.
-    pub(super) budget_refusals: std::sync::Mutex<Vec<ifc_lite_geometry::BudgetRefusal>>,
     pub(super) unsupported_items: std::sync::Mutex<FxHashMap<String, u64>>,
     /// Degenerate-backstop drop tally; non-zero means the f32-collapse safety
     /// net engaged for this model.

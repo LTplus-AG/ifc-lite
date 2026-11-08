@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import type { GeometryDiagnostics, StallPhaseHandle } from '@ifc-lite/geometry';
-import { buildModelLoadedGeometryProps, geometryProcessingStallPhase, reportOmittedTypeRecords, reportRefusedLengthUnit, reportSkippedHungElements } from './modelLoadedGeometryProps.js';
+import { buildModelLoadedGeometryProps, geometryProcessingStallPhase, reportOmittedTypeRecords, reportRefusedLengthUnit, reportSkippedHungElements, warnGeometryDiagnostics } from './modelLoadedGeometryProps.js';
 import { stripSource } from '@/test/strip-comments.js';
 
 function diag(over: Partial<GeometryDiagnostics> = {}): GeometryDiagnostics {
@@ -490,3 +490,18 @@ describe('ifc_model_loaded wiring (#2388)', () => {
  * of 0 would prove nothing. A fixture that stopped reaching the cache-hit
  * branch fails loudly rather than passing vacuously — verified.
  */
+
+
+it('#9268 warns with budget demand and product/source identity', () => {
+  const calls: unknown[][] = [];
+  const original = console.warn;
+  console.warn = (...args: unknown[]) => { calls.push(args); };
+  try {
+    warnGeometryDiagnostics('model.ifc', diag({ budgetRefusals: [{
+      budget: 'walk mapped attempts', limit: 65536, reached: 65537,
+      productId: 25, productType: 'IfcFlowTerminal', GlobalId: 'test', sourceId: 22,
+    }] }));
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0][0], '[useIfc] model.ifc: work budget refusal: walk mapped attempts limit=65536 reached=65537 product=#25 IfcFlowTerminal GlobalId=test source=#22');
+  } finally { console.warn = original; }
+});

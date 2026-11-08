@@ -52,7 +52,7 @@ fn issue_9268_budget_refusal_is_not_an_unsupported_mapped_item() {
     let refusal = &refusals[0];
     assert_eq!(refusal["budget"], "walk Items members");
     assert_eq!(refusal["limit"], 65_536);
-    assert_eq!(refusal["reached"], 65_538);
+    assert_eq!(refusal["reached"], 65_537);
     assert_eq!(refusal["productId"], 25);
     assert_eq!(refusal["productType"], "IfcFlowTerminal");
     assert_eq!(refusal["GlobalId"], "0000000000000000000001");

@@ -6,7 +6,7 @@
  * The storey manager (#9013), in the Model inspector, reached from the
  * storey chip and the plan's storey picker. Storeys highest first, each
  * edited in place; the active one is the storey being drawn on. Adding one
- * makes it active straight away. Elevation and floor-to-floor edits preview
+ * keeps the active drawing plane; its toast offers Draw on. Elevation and floor-to-floor edits preview
  * in 3D and the plan while typing, with the impact beside them, and apply as
  * one undo step.
  */
@@ -22,9 +22,10 @@ import { Spinner } from '@/components/ui/spinner';
 import { toast } from '@/components/ui/toast';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { commitStoreyOp } from '@/store/slices/mutation-storey';
-import { activateStorey, addStoreyNextTo, deleteStorey, reviewStoreyDeletion } from '@/lib/storeys/storey-actions';
+import { activateStorey, deleteStorey, reviewStoreyDeletion } from '@/lib/storeys/storey-actions';
 import { formatElevation } from '@/lib/storeys/storey-length';
 import { refusalText } from '@/lib/storeys/storey-text';
+import { addStoreyKeepingSession } from './add-storey';
 import { StoreyRow } from './StoreyRow';
 import { StoreyDeletePanel } from './StoreyDeletePanel';
 import { StoreySectionStrip } from './StoreySectionStrip';
@@ -72,7 +73,7 @@ export function StoreyManager({ onBack }: { onBack: () => void }) {
 
   const add = (referenceId: number, side: 'above' | 'below') => {
     if (!modelId) return;
-    const outcome = addStoreyNextTo(useViewerStore, modelId, referenceId, side, fallbackName);
+    const outcome = addStoreyKeepingSession(modelId, referenceId, side, fallbackName);
     if (!outcome.ok) { toast.error(t('storeyManager.refusal.other', { reason: outcome.reason })); return; }
     if (outcome.storeyId !== null) {
       const state = useViewerStore.getState();
@@ -80,7 +81,11 @@ export function StoreyManager({ onBack }: { onBack: () => void }) {
       const name = typeof added?.attributes[2] === 'string' ? added.attributes[2] : '';
       const store = state.models.get(modelId)?.ifcDataStore;
       const elevation = store ? formatElevation(effectiveStoreyElevation(store, state.mutationViews.get(modelId), outcome.storeyId)) : '';
-      toast.success(t('storeyManager.added', { storey: name, elevation }));
+      const createdId = outcome.storeyId;
+      toast.success(t('storeyManager.added', { storey: name, elevation }), {
+        label: t('storeyManager.drawOn'),
+        onClick: () => activateStorey(useViewerStore.getState(), modelId, createdId),
+      });
       focusName(outcome.storeyId);
     }
   };

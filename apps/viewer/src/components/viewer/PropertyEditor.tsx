@@ -1,3 +1,4 @@
+import { storeyAttachmentDisplay } from '@/lib/actions/storey-attachment-display';
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
@@ -157,7 +158,9 @@ export function PropertyEditor({
     }
   }, [handleSave, handleCancel, showScopeConfirm]);
 
-  const displayValue = formatDisplayValue(currentValue, t);
+  const attachment = psetName === 'IfcLite_StoreyAttachment'
+    ? storeyAttachmentDisplay(useViewerStore.getState(), modelId, entityId, currentValue, t) : null;
+  const displayValue = attachment?.text ?? formatDisplayValue(currentValue, t);
 
   // Non-editing view: value with pen icon on right (always visible)
   if (!isEditing) {

@@ -75,7 +75,7 @@ export async function walkHistory({ repository, ref = 'HEAD', command = ['ifc-li
         const [, mode, , blob] = delta[i].slice(1).split(' ');
         const path = delta[i + 1];
         const old = previous.get(path);
-        if (mode === '000000' || mode === '120000') {
+        if (mode !== '100644' && mode !== '100755') {
           previous.delete(path);
           continue;
         }

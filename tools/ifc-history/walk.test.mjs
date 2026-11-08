@@ -23,9 +23,12 @@ const script = fileURLToPath(new URL('./walk.mjs', import.meta.url));
 const cli = fileURLToPath(new URL('../../packages/cli/dist/index.js', import.meta.url));
 const fixture = readFileSync(new URL('../../tests/fixtures/cli-retained/layered-wall.ifc', import.meta.url), 'utf8');
 
-function history(t) {
+function history(t, release = () => {}) {
   const repo = mkdtempSync(join(tmpdir(), 'ifc-history-test-'));
-  t.after(() => rmSync(repo, { recursive: true, force: true }));
+  t.after(async () => {
+    await release();
+    rmSync(repo, { recursive: true, force: true });
+  });
   const git = (...args) => execFileSync('git', ['-C', repo, ...args], {
     encoding: 'utf8', env: { ...process.env, GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null',
       GIT_AUTHOR_NAME: 'Test', GIT_AUTHOR_EMAIL: 'test@example.invalid',
@@ -127,6 +130,11 @@ test('#9332 first-parent merge, blob reuse, non-IFC commits, subdirectories and 
   symlinkSync(h.path, join(h.repo, 'link.ifc'));
   h.git('add', 'notes.txt', 'link.ifc');
   h.git('-c', 'commit.gpgsign=false', 'commit', '--quiet', '-m', 'no IFC blob changes');
+  // A gitlink named .ifc is a directory, not a model blob.
+  for (const target of [h.base, h.same]) {
+    h.git('update-index', '--add', '--cacheinfo', `160000,${target},module.ifc`);
+    h.git('-c', 'commit.gpgsign=false', 'commit', '--quiet', '-m', 'submodule revision');
+  }
   h.git('-c', 'commit.gpgsign=false', 'merge', '--quiet', '--no-ff', '-s', 'ours', 'side', '-m', 'retain first-parent delivery');
   const next = h.commit(h.regenerated.replace('edited-box', 'after-merge'), 'next delivery');
   const lines = [];
@@ -202,15 +210,20 @@ console.log(JSON.stringify({counts:{unchanged:5,modified:0,added:0,deleted:0},co
 
 test('#9332 SIGINT removes scratch files while a diff is active', async (t) => {
   assert.equal(typeof walker.walkHistory, 'function');
-  const h = history(t);
+  let child;
+  const h = history(t, async () => {
+    if (child && child.exitCode === null && child.signalCode === null) {
+      child.kill('SIGKILL');
+      await once(child, 'exit');
+    }
+  });
   const marker = join(h.repo, 'ready.json');
   const consumer = join(h.repo, 'wait.mjs');
   writeFileSync(consumer, `import {writeFileSync} from 'node:fs';
 writeFileSync(${JSON.stringify(marker)}, JSON.stringify({path:process.argv[3]}));
 setInterval(()=>{},1000);`);
-  const child = spawn(process.execPath, ['--input-type=module', '-e',
+  child = spawn(process.execPath, ['--input-type=module', '-e',
     `const {walkHistory}=await import(${JSON.stringify(pathToFileURL(script).href)}); await walkHistory({repository:${JSON.stringify(h.repo)},command:${JSON.stringify([process.execPath, consumer])}});`], { stdio: 'ignore' });
-  t.after(() => { if (child.exitCode === null) child.kill('SIGKILL'); });
   const exited = once(child, 'exit');
   const deadline = Date.now() + 10_000;
   while (!existsSync(marker) && Date.now() < deadline && child.exitCode === null) {

@@ -10,6 +10,7 @@
  */
 
 import '@/test/setup-dom.js';
+import { undoSteps } from '@/test/undo-steps';
 import { installLayout } from '@/test/dom-layout.js';
 installLayout();
 import { afterEach, beforeEach, describe, it } from 'node:test';
@@ -74,7 +75,8 @@ function walls(): { id: number; start: Vec2; end: Vec2 }[] {
     });
 }
 
-const undoDepth = () => useViewerStore.getState().undoStacks.get(MODEL_ID)?.length ?? 0;
+// Undo steps, not raw entries: a wall and its recorded top (#9013) are one step.
+const undoDepth = () => undoSteps(MODEL_ID);
 const near = (a: Vec2, b: Vec2) => Math.hypot(a[0] - b[0], a[1] - b[1]) < 1e-6;
 
 beforeEach(async () => {

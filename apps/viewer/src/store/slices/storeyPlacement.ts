@@ -4,6 +4,7 @@
 
 import { EntityExtractor, type IfcDataStore } from '@ifc-lite/parser';
 import type { StoreEditor } from '@ifc-lite/mutations';
+import { effectiveStoreyElevation } from '@ifc-lite/create';
 
 /**
  * IfcBuildingStorey.ObjectPlacement is optional in the schema —
@@ -46,7 +47,9 @@ export function ensureStoreyPlacement(
   // Build a fresh placement at world origin. The storey's elevation
   // (if any) carries through the geometry pipeline elsewhere; this
   // placement gives the IFC graph what resolveSpatialAnchor needs.
-  const elevation = dataStore.spatialHierarchy?.storeyElevations?.get(storeyExpressId) ?? 0;
+  // The point is in file units; the live elevation is metres (#9013: in a
+  // millimetre file the metre value put the placement 1000x too low).
+  const elevation = effectiveStoreyElevation(dataStore, editor.getMutationView(), storeyExpressId) / (dataStore.lengthUnitScale || 1);
   const originPt = editor.addEntity('IfcCartesianPoint', [[0, 0, elevation]]).expressId;
   const axisPlacement = editor.addEntity('IfcAxis2Placement3D', [`#${originPt}`, null, null]).expressId;
   const localPlacement = editor.addEntity('IfcLocalPlacement', [null, `#${axisPlacement}`]).expressId;

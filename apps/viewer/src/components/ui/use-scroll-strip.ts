@@ -27,7 +27,9 @@ function fadeOf(strip: HTMLElement): ScrollFade {
  *  strip: `scrollIntoView` would also scroll the dialog, which clips with
  *  `overflow: hidden`. Self-contained, so a layout test can run it in Chrome. */
 export function revealSelected(strip: HTMLElement): void {
-  const fadePx = 32; // `[data-scroll-fade]` in index.css: 2rem
+  // `[data-scroll-fade]` in index.css fades 2rem, so measure it in the root's
+  // font size: 32 px by default, 40 px at a 20 px root.
+  const fadePx = 2 * (parseFloat(getComputedStyle(document.documentElement).fontSize) || 16);
   const max = strip.scrollWidth - strip.clientWidth;
   if (max <= 1) return;
   const tab = strip.querySelector<HTMLElement>('[role="tab"][data-state="active"]');

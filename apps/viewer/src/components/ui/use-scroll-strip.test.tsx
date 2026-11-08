@@ -76,6 +76,25 @@ describe('TabsList scrollable (#8802)', () => {
     }
   });
 
+  it('clears the 2rem fade at a larger root font size (#8802 review)', async () => {
+    const restore = stubGeometry();
+    const root = document.documentElement;
+    root.style.fontSize = '20px';
+    try {
+      const strip = mount(true);
+      const third = strip.querySelectorAll<HTMLElement>('[role="tab"]')[2];
+      mouseDown(third);
+      await advance(0);
+      assert.equal(third.getAttribute('data-state'), 'active', 'the third tab is selected');
+      const { right } = third.getBoundingClientRect();
+      // 2rem at a 20 px root is 40 px; a fixed 32 px would leave 8 px under it.
+      assert.equal(right <= STRIP - 40, true, `the selected tab ends clear of the 40px fade (right ${right}px of ${STRIP}px)`);
+    } finally {
+      root.style.fontSize = '';
+      restore();
+    }
+  });
+
   it('leaves a plain tab list alone', async () => {
     const restore = stubGeometry();
     try {

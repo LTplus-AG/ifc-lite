@@ -10,8 +10,9 @@
  * unbreakable row (the nowrap Learn descriptions, four `flex-1` tabs, the
  * nowrap pill) while the panel stayed `max-w-md`.
  *
- * Each tab is mounted for real (happy-dom) in English and German, the longer
- * labels, then its markup is laid out in real Chrome with the compiled app
+ * Each tab is mounted for real (happy-dom) in English and in every shipped
+ * locale (found the way `locales.boot.ts` finds them, so a new language is
+ * covered the day it lands), then its markup is laid out in real Chrome with the compiled app
  * stylesheet at desktop and phone sizes in light and dark. Only numbers,
  * booleans and short descriptions leave the page, never an element.
  */
@@ -35,6 +36,9 @@ import '@/test/setup-dom.js';
 
 import { after, afterEach, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { readdirSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { Page } from 'playwright-core';
 import { registerLocale, setLocale } from '@/i18n';
 import { cleanup, render, waitFor } from '@/test/render.js';
@@ -49,12 +53,18 @@ const VIEWPORTS = [
   { width: 320, height: 640 },
 ] as const;
 const TABS: InfoDialogTab[] = ['about', 'whatsnew', 'shortcuts', 'learn'];
-const LOCALES = ['en', 'de'] as const;
+/** Every shipped locale: `locales.boot.ts` globs `locales/*.ts` (not tests). */
+const LOCALE_DIR = join(dirname(fileURLToPath(import.meta.url)), '../../i18n/locales');
+const SHIPPED = readdirSync(LOCALE_DIR).filter((file) => /^[^.]+\.ts$/.test(file)).map((file) => file.slice(0, -'.ts'.length)).sort();
+const CATALOGUES = new Map<string, Parameters<typeof registerLocale>[1]>();
+for (const tag of SHIPPED) {
+  CATALOGUES.set(tag, (await import(pathToFileURL(join(LOCALE_DIR, `${tag}.ts`)).href)).default);
+}
+const LOCALES = ['en', ...SHIPPED];
 const THEMES: Theme[] = ['light', 'dark'];
 /** Below this the dialog would be cramped on a desktop; `max-w-md` was 448. */
 const MIN_DESKTOP_WIDTH_PX = 440;
 
-const de = (await import('@/i18n/locales/de')).default;
 // Dynamic: the revert oracle deletes this module, and a static import would
 // fail the whole file instead of letting the assertions go red.
 const strip = await import('@/components/ui/use-scroll-strip').catch(() => null);
@@ -67,8 +77,9 @@ afterEach(() => {
 after(closeContrastBrowser);
 
 /** Markup of the open dialog on `tab`, as Radix portals it into the body. */
-async function dialogHtml(tab: InfoDialogTab, locale: (typeof LOCALES)[number]): Promise<string> {
-  registerLocale('de', de);
+async function dialogHtml(tab: InfoDialogTab, locale: string): Promise<string> {
+  const catalogue = CATALOGUES.get(locale);
+  if (catalogue) registerLocale(locale, catalogue);
   setLocale(locale);
   render(<KeyboardShortcutsDialog open onClose={() => {}} initialTab={tab} />);
   if (tab === 'whatsnew') {
@@ -157,6 +168,10 @@ async function probeLayout(page: Page, reveal: string | null): Promise<LayoutPro
 }
 
 describe('Info dialog layout (#8802)', () => {
+  it('finds the shipped locales the way the app does', () => {
+    for (const tag of ['de', 'fr', 'ru']) assert.equal(SHIPPED.includes(tag), true, `locales/${tag}.ts is covered`);
+  });
+
   for (const tab of TABS) {
     it(`keeps the ${tab} tab on the panel at desktop and phone sizes`, async () => {
       for (const locale of LOCALES) {

@@ -52,13 +52,14 @@ catalogueBatchContract('it', 8906, [
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { registerLocale, resolve, setLocale } from './registry';
-import { activityTrayIt } from './locales/it/activity-tray';
-import { anonymizedExportIt } from './locales/it/anonymized-export';
-import { copyArrayIt } from './locales/it/copy-array';
-import { extensionsPanelsIt } from './locales/it/extensions-panels';
-import { flowPanelIt } from './locales/it/flow-panel';
+import { requiredModule } from './__tests__/required-module';
 
-test('#8906 Italian recovery and privacy guidance states the effective action', () => {
+test('#8906 Italian recovery and privacy guidance states the effective action', async () => {
+  const { activityTrayIt } = await requiredModule(() => import('./locales/it/activity-tray'), 'activity-tray: Italian guidance must be available');
+  const { anonymizedExportIt } = await requiredModule(() => import('./locales/it/anonymized-export'), 'anonymized-export: Italian guidance must be available');
+  const { copyArrayIt } = await requiredModule(() => import('./locales/it/copy-array'), 'copy-array: Italian guidance must be available');
+  const { extensionsPanelsIt } = await requiredModule(() => import('./locales/it/extensions-panels'), 'extensions-panels: Italian guidance must be available');
+  const { flowPanelIt } = await requiredModule(() => import('./locales/it/flow-panel'), 'flow-panel: Italian guidance must be available');
   registerLocale('it', { ...activityTrayIt, ...anonymizedExportIt, ...copyArrayIt, ...extensionsPanelsIt, ...flowPanelIt });
   setLocale('it');
   try {

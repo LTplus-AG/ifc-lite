@@ -76,10 +76,28 @@ async function planCutAtGroundStorey(page) {
  */
 async function openSettingsDialog(page, { toEnd = false } = {}) {
   await page.evaluate(() => window.dispatchEvent(new CustomEvent('ifc-lite:open-settings', { detail: { section: 'general' } })));
-  await page.waitForSelector('[role="dialog"]');
-  // General's lazily loaded groups are network chunks: let them arrive before
-  // either scene is captured, so neither shows partial content.
+  await page.waitForSelector('[data-settings-dialog]');
+  // General mounts two groups lazily, about 1.5 s after the dialog opens and
+  // after the network is already idle. Wait until the dialog's content has
+  // stopped growing for a full second (bounded at 8 s), so neither scene shows
+  // partial content and the end scene scrolls the full body.
   await page.waitForLoadState('networkidle');
+  await page.evaluate(async () => {
+    const dialog = document.querySelector('[data-settings-dialog]');
+    const size = () => {
+      let tallest = 0;
+      for (const el of dialog.querySelectorAll('*')) tallest = Math.max(tallest, el.scrollHeight);
+      return `${dialog.querySelectorAll('*').length}:${tallest}`;
+    };
+    let last = size();
+    let still = 0;
+    for (let waited = 0; waited < 8000 && still < 10; waited += 100) {
+      await new Promise((r) => setTimeout(r, 100));
+      const now = size();
+      still = now === last ? still + 1 : 0;
+      last = now;
+    }
+  });
   if (!toEnd) return;
   // General loads two groups lazily (null Suspense fallbacks), so content can
   // grow after the first scroll. Scroll, wait two frames, and repeat until
@@ -87,7 +105,7 @@ async function openSettingsDialog(page, { toEnd = false } = {}) {
   await page.evaluate(async () => {
     const frames = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
     const scrollers = () => {
-      const dialog = document.querySelector('[role="dialog"]');
+      const dialog = document.querySelector('[data-settings-dialog]');
       // Only what a user could scroll: `overflow: hidden` can still be
       // scrolled from code, which would show settings a phone cannot reach.
       return [dialog, ...dialog.querySelectorAll('*')].filter((el) => {

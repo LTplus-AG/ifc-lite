@@ -1,12 +1,12 @@
 {
   "schema": "ifclite-parity-summary/1",
-  "generatedAt": "2026-11-08T07:42:36.674Z",
+  "generatedAt": "2026-11-08T08:15:10.253Z",
   "inputs": [
     "tests/modelling-parity/.out/L1"
   ],
   "sources": [
     {
-      "commit": "c19b4ea49458fc34a2f887897672e516fa3c5988",
+      "commit": "b629cd669c1099760bed56f4cd66f5e82091ebf7",
       "dirty": false
     }
   ],
@@ -32,7 +32,7 @@
           "reason": "inserted storey re-binds walls attached to the storey above: after inserting a storey at 3.3 m the attached wall top is at 6.3 m (still bound to the storey now at 6.3 m)",
           "results": 1,
           "source": {
-            "commit": "c19b4ea49458fc34a2f887897672e516fa3c5988",
+            "commit": "b629cd669c1099760bed56f4cd66f5e82091ebf7",
             "dirty": false
           }
         },
@@ -45,7 +45,7 @@
           "id": "output.storeys",
           "results": 1,
           "source": {
-            "commit": "c19b4ea49458fc34a2f887897672e516fa3c5988",
+            "commit": "b629cd669c1099760bed56f4cd66f5e82091ebf7",
             "dirty": false
           }
         },
@@ -72,7 +72,7 @@
           "reason": "moving the grid carries bound columns: after moving the grid +1 m the column centre x is 5 (expected 6) [setup: move grid 1 m east threw: Can't move #83's placement does not hang from its storey.]",
           "results": 1,
           "source": {
-            "commit": "c19b4ea49458fc34a2f887897672e516fa3c5988",
+            "commit": "b629cd669c1099760bed56f4cd66f5e82091ebf7",
             "dirty": false
           }
         },
@@ -85,7 +85,7 @@
           "id": "output.grids",
           "results": 1,
           "source": {
-            "commit": "c19b4ea49458fc34a2f887897672e516fa3c5988",
+            "commit": "b629cd669c1099760bed56f4cd66f5e82091ebf7",
             "dirty": false
           }
         },
@@ -112,7 +112,7 @@
           "reason": "a drawn chain joins automatically: as drawn: 0 IfcRelConnectsPathElements; corner fill/overlap counts [{\"outer\":0,\"inner\":2},{\"outer\":0,\"inner\":2},{\"outer\":0,\"inner\":2},{\"outer\":0,\"inner\":2}]",
           "results": 1,
           "source": {
-            "commit": "c19b4ea49458fc34a2f887897672e516fa3c5988",
+            "commit": "b629cd669c1099760bed56f4cd66f5e82091ebf7",
             "dirty": false
           }
         },
@@ -125,7 +125,7 @@
           "id": "output.wall-chains-autojoin",
           "results": 1,
           "source": {
-            "commit": "c19b4ea49458fc34a2f887897672e516fa3c5988",
+            "commit": "b629cd669c1099760bed56f4cd66f5e82091ebf7",
             "dirty": false
           }
         },
@@ -152,7 +152,7 @@
           "reason": "layers read back in the live session: bim.materials() on the authored wall returns null in the session (the layers only read back after export and reopen); a layered wall type drives the wall thickness: typing a 0.1 m wall with the 0.23 m layered type leaves its body 0.1 m thick",
           "results": 1,
           "source": {
-            "commit": "c19b4ea49458fc34a2f887897672e516fa3c5988",
+            "commit": "b629cd669c1099760bed56f4cd66f5e82091ebf7",
             "dirty": false
           }
         },
@@ -165,7 +165,7 @@
           "id": "output.layered-walls",
           "results": 1,
           "source": {
-            "commit": "c19b4ea49458fc34a2f887897672e516fa3c5988",
+            "commit": "b629cd669c1099760bed56f4cd66f5e82091ebf7",
             "dirty": false
           }
         },
@@ -192,7 +192,7 @@
           "reason": "top attaches to a slab or roof: a wall attached to the slab underside (3.1 m) has its top at 3.4 m",
           "results": 1,
           "source": {
-            "commit": "c19b4ea49458fc34a2f887897672e516fa3c5988",
+            "commit": "b629cd669c1099760bed56f4cd66f5e82091ebf7",
             "dirty": false
           }
         },
@@ -205,7 +205,7 @@
           "id": "output.wall-top-base-constraints",
           "results": 1,
           "source": {
-            "commit": "c19b4ea49458fc34a2f887897672e516fa3c5988",
+            "commit": "b629cd669c1099760bed56f4cd66f5e82091ebf7",
             "dirty": false
           }
         },
@@ -231,7 +231,7 @@
           "id": "sdk.slab-with-openings",
           "results": 1,
           "source": {
-            "commit": "c19b4ea49458fc34a2f887897672e516fa3c5988",
+            "commit": "b629cd669c1099760bed56f4cd66f5e82091ebf7",
             "dirty": false
           }
         },
@@ -244,7 +244,7 @@
           "id": "output.slab-with-openings",
           "results": 1,
           "source": {
-            "commit": "c19b4ea49458fc34a2f887897672e516fa3c5988",
+            "commit": "b629cd669c1099760bed56f4cd66f5e82091ebf7",
             "dirty": false
           }
         },
@@ -271,7 +271,7 @@
           "reason": "[core] hip roof by footprint: addRoof built a flat 0.25 m slab (rise 0 m, expected 2.309): it has no slope per edge; gable roof by footprint: addRoof built a flat 0.25 m slab (rise 0 m, expected 2.309): it has no slope per edge; mono roof by footprint: addRoof built a flat 0.25 m slab (rise 0 m, expected 1.411): it has no slope per edge",
           "results": 1,
           "source": {
-            "commit": "c19b4ea49458fc34a2f887897672e516fa3c5988",
+            "commit": "b629cd669c1099760bed56f4cd66f5e82091ebf7",
             "dirty": false
           }
         },
@@ -285,7 +285,7 @@
           "reason": "nothing to validate: the SDK probe is fail, so its export does not show this capability",
           "results": 1,
           "source": {
-            "commit": "c19b4ea49458fc34a2f887897672e516fa3c5988",
+            "commit": "b629cd669c1099760bed56f4cd66f5e82091ebf7",
             "dirty": false
           }
         },
@@ -312,7 +312,7 @@
           "reason": "[core] column tops follow the storey above: after Level 2 moved to 6 m the column tops are at 3.5, 3.5, 3.5, 3.5 m (leaving a 2.5 m void)",
           "results": 1,
           "source": {
-            "commit": "c19b4ea49458fc34a2f887897672e516fa3c5988",
+            "commit": "b629cd669c1099760bed56f4cd66f5e82091ebf7",
             "dirty": false
           }
         },
@@ -326,7 +326,7 @@
           "reason": "nothing to validate: the SDK probe is fail, so its export does not show this capability",
           "results": 1,
           "source": {
-            "commit": "c19b4ea49458fc34a2f887897672e516fa3c5988",
+            "commit": "b629cd669c1099760bed56f4cd66f5e82091ebf7",
             "dirty": false
           }
         },
@@ -353,7 +353,7 @@
           "reason": "top follows the storey above: after Level 2 moved to 4 m the curtain wall top is at 3 m",
           "results": 1,
           "source": {
-            "commit": "c19b4ea49458fc34a2f887897672e516fa3c5988",
+            "commit": "b629cd669c1099760bed56f4cd66f5e82091ebf7",
             "dirty": false
           }
         },
@@ -366,7 +366,7 @@
           "id": "output.curtain-walls",
           "results": 1,
           "source": {
-            "commit": "c19b4ea49458fc34a2f887897672e516fa3c5988",
+            "commit": "b629cd669c1099760bed56f4cd66f5e82091ebf7",
             "dirty": false
           }
         },
@@ -392,7 +392,7 @@
           "id": "sdk.hosted-doors-windows-from-types",
           "results": 1,
           "source": {
-            "commit": "c19b4ea49458fc34a2f887897672e516fa3c5988",
+            "commit": "b629cd669c1099760bed56f4cd66f5e82091ebf7",
             "dirty": false
           }
         },
@@ -405,7 +405,7 @@
           "id": "output.hosted-doors-windows-from-types",
           "results": 1,
           "source": {
-            "commit": "c19b4ea49458fc34a2f887897672e516fa3c5988",
+            "commit": "b629cd669c1099760bed56f4cd66f5e82091ebf7",
             "dirty": false
           }
         },
@@ -432,7 +432,7 @@
           "reason": "railing follows the stair refit: railing top at 3.896 m, expected 4.2 over the refitted stair",
           "results": 1,
           "source": {
-            "commit": "c19b4ea49458fc34a2f887897672e516fa3c5988",
+            "commit": "b629cd669c1099760bed56f4cd66f5e82091ebf7",
             "dirty": false
           }
         },
@@ -445,7 +445,7 @@
           "id": "output.stairs-railings",
           "results": 1,
           "source": {
-            "commit": "c19b4ea49458fc34a2f887897672e516fa3c5988",
+            "commit": "b629cd669c1099760bed56f4cd66f5e82091ebf7",
             "dirty": false
           }
         },
@@ -472,7 +472,7 @@
           "reason": "type data reads back on every occurrence in the live session: bim.typeProperties() on the occurrences returns FireRating nothing, nothing, nothing in the session (it reads back only after export and reopen); a type parameter drives occurrence geometry: a wall retyped to WT-300 keeps its own 0.2 m body; no type-level thickness parameter exists",
           "results": 1,
           "source": {
-            "commit": "c19b4ea49458fc34a2f887897672e516fa3c5988",
+            "commit": "b629cd669c1099760bed56f4cd66f5e82091ebf7",
             "dirty": false
           }
         },
@@ -485,7 +485,7 @@
           "id": "output.type-editing",
           "results": 1,
           "source": {
-            "commit": "c19b4ea49458fc34a2f887897672e516fa3c5988",
+            "commit": "b629cd669c1099760bed56f4cd66f5e82091ebf7",
             "dirty": false
           }
         },
@@ -512,7 +512,7 @@
           "reason": "materials read back in the live session: bim.materials() on the slab returns null in the session; a material carries its appearance: no IfcMaterialDefinitionRepresentation: colour is per element (bim.style), not a property of the material",
           "results": 1,
           "source": {
-            "commit": "c19b4ea49458fc34a2f887897672e516fa3c5988",
+            "commit": "b629cd669c1099760bed56f4cd66f5e82091ebf7",
             "dirty": false
           }
         },
@@ -525,7 +525,7 @@
           "id": "output.materials",
           "results": 1,
           "source": {
-            "commit": "c19b4ea49458fc34a2f887897672e516fa3c5988",
+            "commit": "b629cd669c1099760bed56f4cd66f5e82091ebf7",
             "dirty": false
           }
         },
@@ -552,7 +552,7 @@
           "reason": "mirror about an axis: no SDK mirror operation (bim.store has no mirrorElements)",
           "results": 1,
           "source": {
-            "commit": "c19b4ea49458fc34a2f887897672e516fa3c5988",
+            "commit": "b629cd669c1099760bed56f4cd66f5e82091ebf7",
             "dirty": false
           }
         },
@@ -565,7 +565,7 @@
           "id": "output.transforms-move-copy-rotate-mirror-array",
           "results": 1,
           "source": {
-            "commit": "c19b4ea49458fc34a2f887897672e516fa3c5988",
+            "commit": "b629cd669c1099760bed56f4cd66f5e82091ebf7",
             "dirty": false
           }
         },
@@ -592,7 +592,7 @@
           "reason": "align an edge to a reference: reference min y -0.2, aligned min y 0.5 [setup: align bottom threw: bim.store.alignElements: native Align capability is unavailable on this backend]",
           "results": 1,
           "source": {
-            "commit": "c19b4ea49458fc34a2f887897672e516fa3c5988",
+            "commit": "b629cd669c1099760bed56f4cd66f5e82091ebf7",
             "dirty": false
           }
         },
@@ -605,7 +605,7 @@
           "id": "output.align-offset-trim-split",
           "results": 1,
           "source": {
-            "commit": "c19b4ea49458fc34a2f887897672e516fa3c5988",
+            "commit": "b629cd669c1099760bed56f4cd66f5e82091ebf7",
             "dirty": false
           }
         },
@@ -632,7 +632,7 @@
           "reason": "copied walls attach to the storey above their new storey: copied walls keep TopConstraint Level 2 (copied verbatim)/Level 2 (copied verbatim)/Level 2 (copied verbatim)/Level 2 (copied verbatim) | Level 2 (copied verbatim)/Level 2 (copied verbatim)/Level 2 (copied verbatim)/Level 2 (copied verbatim)",
           "results": 1,
           "source": {
-            "commit": "c19b4ea49458fc34a2f887897672e516fa3c5988",
+            "commit": "b629cd669c1099760bed56f4cd66f5e82091ebf7",
             "dirty": false
           }
         },
@@ -645,7 +645,7 @@
           "id": "output.copy-to-levels",
           "results": 1,
           "source": {
-            "commit": "c19b4ea49458fc34a2f887897672e516fa3c5988",
+            "commit": "b629cd669c1099760bed56f4cd66f5e82091ebf7",
             "dirty": false
           }
         },
@@ -672,7 +672,7 @@
           "reason": "UI-only capability: a headless script passes exact coordinates, so there is nothing to probe at the SDK level; measured by the UI probe (L4)",
           "results": 1,
           "source": {
-            "commit": "c19b4ea49458fc34a2f887897672e516fa3c5988",
+            "commit": "b629cd669c1099760bed56f4cd66f5e82091ebf7",
             "dirty": false
           },
           "applicable": false
@@ -709,7 +709,7 @@
           "reason": "UI-only capability: a headless script passes exact coordinates, so there is nothing to probe at the SDK level; measured by the UI probe (L4)",
           "results": 1,
           "source": {
-            "commit": "c19b4ea49458fc34a2f887897672e516fa3c5988",
+            "commit": "b629cd669c1099760bed56f4cd66f5e82091ebf7",
             "dirty": false
           },
           "applicable": false
@@ -746,7 +746,7 @@
           "reason": "[core] room area is the net area inside the wall faces: room areas [30, 30] m² (the wall-centreline area), expected the net 28.13 m² inside the wall faces; area is stored as NetFloorArea: exported NetFloorArea [30, 30] m², expected 28.13 m² per room; rooms follow a moved bounding wall: after moving the partition 1 m the room areas are [30, 30] m² (expected [22.33, 33.93])",
           "results": 1,
           "source": {
-            "commit": "c19b4ea49458fc34a2f887897672e516fa3c5988",
+            "commit": "b629cd669c1099760bed56f4cd66f5e82091ebf7",
             "dirty": false
           }
         },
@@ -760,7 +760,7 @@
           "reason": "nothing to validate: the SDK probe is fail, so its export does not show this capability",
           "results": 1,
           "source": {
-            "commit": "c19b4ea49458fc34a2f887897672e516fa3c5988",
+            "commit": "b629cd669c1099760bed56f4cd66f5e82091ebf7",
             "dirty": false
           }
         },
@@ -787,7 +787,7 @@
           "reason": "[core] wall quantities match the geometry: W0 Length=∅ NetVolume=∅ (mesh 7.028 m³); W1 Length=∅ NetVolume=∅ (mesh 6 m³); W2 Length=∅ NetVolume=∅ (mesh 7.5 m³); W3 Length=∅ NetVolume=∅ (mesh 6 m³); a door schedule lists the door width: door schedule rows: [{\"Mark\":null,\"Name\":\"D1\",\"FireRating\":null,\"IsExternal\":null,\"Width\":null,\"Height\":null}]",
           "results": 1,
           "source": {
-            "commit": "c19b4ea49458fc34a2f887897672e516fa3c5988",
+            "commit": "b629cd669c1099760bed56f4cd66f5e82091ebf7",
             "dirty": false
           }
         },
@@ -801,7 +801,7 @@
           "reason": "nothing to validate: the SDK probe is fail, so its export does not show this capability",
           "results": 1,
           "source": {
-            "commit": "c19b4ea49458fc34a2f887897672e516fa3c5988",
+            "commit": "b629cd669c1099760bed56f4cd66f5e82091ebf7",
             "dirty": false
           }
         },
@@ -828,7 +828,7 @@
           "reason": "documentation capability: the headless SDK has no operation that cuts plans, sections or elevations from the model or lays out sheets (bim.drawing only offers presets, symbols and SVG export of a caller-built drawing); measured by the UI probe (L4)",
           "results": 1,
           "source": {
-            "commit": "c19b4ea49458fc34a2f887897672e516fa3c5988",
+            "commit": "b629cd669c1099760bed56f4cd66f5e82091ebf7",
             "dirty": false
           },
           "applicable": false
@@ -840,10 +840,10 @@
         "output": {
           "status": "skip",
           "id": "output.plans-sections-elevations",
-          "reason": "no headless artifact: the SDK level is skip for this documentation row, so the output probe needs a file from the UI probe (L4)",
+          "reason": "nothing handed over: the SDK level does not apply to this documentation row and no passing or partial UI result lists a svg/pdf/dxf file under artifacts/plans-sections-elevations/",
           "results": 1,
           "source": {
-            "commit": "c19b4ea49458fc34a2f887897672e516fa3c5988",
+            "commit": "b629cd669c1099760bed56f4cd66f5e82091ebf7",
             "dirty": false
           }
         },
@@ -870,7 +870,7 @@
           "reason": "documentation capability: the headless SDK has no operation that cuts plans, sections or elevations from the model or lays out sheets (bim.drawing only offers presets, symbols and SVG export of a caller-built drawing); measured by the UI probe (L4)",
           "results": 1,
           "source": {
-            "commit": "c19b4ea49458fc34a2f887897672e516fa3c5988",
+            "commit": "b629cd669c1099760bed56f4cd66f5e82091ebf7",
             "dirty": false
           },
           "applicable": false
@@ -882,10 +882,10 @@
         "output": {
           "status": "skip",
           "id": "output.dimensions-tags",
-          "reason": "no headless artifact: the SDK level is skip for this documentation row, so the output probe needs a file from the UI probe (L4)",
+          "reason": "nothing handed over: the SDK level does not apply to this documentation row and no passing or partial UI result lists a svg/pdf/dxf/ifc file under artifacts/dimensions-tags/",
           "results": 1,
           "source": {
-            "commit": "c19b4ea49458fc34a2f887897672e516fa3c5988",
+            "commit": "b629cd669c1099760bed56f4cd66f5e82091ebf7",
             "dirty": false
           }
         },
@@ -912,7 +912,7 @@
           "reason": "documentation capability: the headless SDK has no operation that cuts plans, sections or elevations from the model or lays out sheets (bim.drawing only offers presets, symbols and SVG export of a caller-built drawing); measured by the UI probe (L4)",
           "results": 1,
           "source": {
-            "commit": "c19b4ea49458fc34a2f887897672e516fa3c5988",
+            "commit": "b629cd669c1099760bed56f4cd66f5e82091ebf7",
             "dirty": false
           },
           "applicable": false
@@ -924,10 +924,10 @@
         "output": {
           "status": "skip",
           "id": "output.sheets-pdf-dwg",
-          "reason": "no headless artifact: the SDK level is skip for this documentation row, so the output probe needs a file from the UI probe (L4)",
+          "reason": "nothing handed over: the SDK level does not apply to this documentation row and no passing or partial UI result lists a pdf and dxf file under artifacts/sheets-pdf-dwg/",
           "results": 1,
           "source": {
-            "commit": "c19b4ea49458fc34a2f887897672e516fa3c5988",
+            "commit": "b629cd669c1099760bed56f4cd66f5e82091ebf7",
             "dirty": false
           }
         },
@@ -954,7 +954,7 @@
           "reason": "an element carries a classification reference: no SDK classification API (bim.store has no addClassification/assignClassification); only the raw addEntity escape hatch",
           "results": 1,
           "source": {
-            "commit": "c19b4ea49458fc34a2f887897672e516fa3c5988",
+            "commit": "b629cd669c1099760bed56f4cd66f5e82091ebf7",
             "dirty": false
           }
         },
@@ -967,7 +967,7 @@
           "id": "output.psets-classification-valid-ifc4",
           "results": 1,
           "source": {
-            "commit": "c19b4ea49458fc34a2f887897672e516fa3c5988",
+            "commit": "b629cd669c1099760bed56f4cd66f5e82091ebf7",
             "dirty": false
           }
         },
@@ -991,10 +991,10 @@
         "sdk": {
           "status": "fail",
           "id": "sdk.large-tall-model-performance",
-          "reason": "[core] operation cost grows under 2x as the session grows: one addColumn costs 7.54 ms at 4 session elements and 120.54 ms at 454 (15.987x); the session reached 454 of 1000 elements in 30 s; [core] F5 tower authored headless in under 60 s: after 66 s: 40/40 storeys, typical floor 50 elements in 1395 ms, 4/39 floors copied",
+          "reason": "[core] operation cost grows under 2x as the session grows: one addColumn costs 11.7 ms at 4 session elements and 107.17 ms at 504 (9.16x); the session reached 504 of 1000 elements in 30 s; [core] F5 tower authored headless in under 60 s: after 83 s: 40/40 storeys, typical floor 50 elements in 1212 ms, 5/39 floors copied",
           "results": 1,
           "source": {
-            "commit": "c19b4ea49458fc34a2f887897672e516fa3c5988",
+            "commit": "b629cd669c1099760bed56f4cd66f5e82091ebf7",
             "dirty": false
           }
         },
@@ -1008,7 +1008,7 @@
           "reason": "nothing to validate: the SDK probe is fail, so its export does not show this capability",
           "results": 1,
           "source": {
-            "commit": "c19b4ea49458fc34a2f887897672e516fa3c5988",
+            "commit": "b629cd669c1099760bed56f4cd66f5e82091ebf7",
             "dirty": false
           }
         },

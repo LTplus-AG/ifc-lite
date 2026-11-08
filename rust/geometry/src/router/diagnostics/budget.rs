@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Work-budget refusals are safety-policy diagnostics, never unsupported items.
 use super::GeometryRouter;
-use ifc_lite_core::DecodedEntity;
+use ifc_lite_core::{slot::IfcRoot, DecodedEntity};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -32,7 +32,7 @@ impl GeometryRouter {
         if let Some(refusal) = state.budget_refusals.last_mut() {
             refusal.product_id = Some(product.id);
             refusal.product_type = Some(product.ifc_type.to_string());
-            refusal.global_id = product.get(0).and_then(|a| a.as_string()).map(str::to_owned);
+            refusal.global_id = product.get(IfcRoot::GLOBAL_ID.index()).and_then(|a| a.as_string()).map(str::to_owned);
         }
         // Native empty-geometry retries must not report the same refusal three
         // times. This work is reached only after a refusal, never per item.

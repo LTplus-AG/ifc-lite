@@ -82,7 +82,8 @@ it('sparse success and failure preserve ordinary writer behavior across mixed ed
   const expected = make(), actual = make();
   const read = (view: MutablePropertyView) => ({
     entities: view.getNewEntities().map(({ creationId: _creationId, ...row }) => row),
-    properties: Array.from({ length: 6 }, (_, i) => view.getForEntity(i + 1)),
+    // Independently-created virtual sets have different generated identities.
+    properties: Array.from({ length: 6 }, (_, i) => view.getForEntity(i + 1).map(({ globalId: _globalId, ...set }) => set)),
     attributes: Array.from({ length: 6 }, (_, i) => view.getAttributeMutationsForEntity(i + 1)),
     positional: Array.from({ length: 6 }, (_, i) => view.getPositionalMutationsForEntity(i + 1)),
     changes: view.getEffectiveChanges(), next: view.peekNextExpressId(), count: view.getMutationCount(),
@@ -105,4 +106,17 @@ it('sparse success and failure preserve ordinary writer behavior across mixed ed
     actual.runAtomic(draft => draft.runAtomic(edit));
     expect(read(actual)).toEqual(read(expected));
   }
+});
+
+it('compound inverse restores forgotten tail records in original order #8452', () => {
+  const view = new MutablePropertyView(null, 'order');
+  for (let i = 0; i < 4; i++) view.createEntity('IfcCartesianPoint', [[i, 0, 0]]);
+  recordCompoundMutation(view, draft => {
+    draft.deleteEntity(4);
+    draft.deleteEntity(2);
+    draft.deleteEntity(3);
+    draft.createEntity('IfcCartesianPoint', [[9, 0, 0]]);
+  });
+  undoRecordedMutationOperations(view, 1, () => { throw new Error('Expected compound inverse'); });
+  expect(view.getNewEntities().map(e => e.expressId)).toEqual([1, 2, 3, 4]);
 });

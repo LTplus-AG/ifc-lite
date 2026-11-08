@@ -19,11 +19,15 @@ export class NewEntityMap extends Map<number, NewEntity> {
   // Lazy, and `declare`d so no runtime field is emitted: `Map`'s constructor
   // calls `set` before subclass fields initialise, and an emitted field would
   // then reset whatever `super(entries)` had indexed.
+  declare private positions?: Map<number, number>;
+  declare private nextPosition?: number;
   declare private byReference?: Map<number, Set<number>>;
   declare private referencesById?: Map<number, Set<number>>;
   declare private byType?: Map<string, Map<number, NewEntity>>;
 
   override set(expressId: number, entity: NewEntity): this {
+    this.positions ??= new Map();
+    if (!this.positions.has(expressId)) this.positions.set(expressId, this.nextPosition = (this.nextPosition ?? 0) + 1);
     this.unindexReferences(expressId);
     const previous = super.get(expressId);
     if (previous && previous.type.toUpperCase() !== entity.type.toUpperCase()) this.unindex(previous);
@@ -51,6 +55,7 @@ export class NewEntityMap extends Map<number, NewEntity> {
   }
 
   override delete(expressId: number): boolean {
+    this.positions?.delete(expressId);
     this.unindexReferences(expressId);
     const previous = super.get(expressId);
     if (previous) this.unindex(previous);
@@ -58,6 +63,7 @@ export class NewEntityMap extends Map<number, NewEntity> {
   }
 
   override clear(): void {
+    this.positions?.clear();
     this.byType?.clear();
     this.byReference?.clear();
     this.referencesById?.clear();
@@ -76,6 +82,9 @@ export class NewEntityMap extends Map<number, NewEntity> {
   ofType(type: string): IterableIterator<NewEntity> {
     return (this.byType?.get(type.toUpperCase()) ?? new Map<number, NewEntity>()).values();
   }
+
+  /** Insertion order for sparse inverse capture; new keys sort after old keys. */
+  positionOf(id: number): number { return this.positions?.get(id) ?? Infinity; }
 
   /** Authored reference candidates; effective readers apply queued slot edits. */
   *referencing(id: number): IterableIterator<NewEntity> {

@@ -10,7 +10,7 @@ export async function author(bim) {
   const floors = Number(process.env.FLOORS);
   const M = bim.model.activeId(), start = performance.now();
   let peak = 0, elements = 0, actions = 0;
-  const expected = [], openings = [], shafts = []; let movedWall=null; const quantityIds=[];
+  const expected = [], openings = [], shafts = [], copyPlans = [], spaceIds = []; let movedWall=null; const quantityIds=[];
   const sample = () => { peak = Math.max(peak, process.memoryUsage().heapUsed); writeFileSync(`${out}/progress.state`,JSON.stringify({elements,peakHeap:peak,ms:performance.now()-start,actions})); };
   const step = (name, capability, fn) => {
     const t = performance.now(); sample();
@@ -72,7 +72,8 @@ export async function author(bim) {
     if(!tall) {
       make('window','hosted-doors-windows-from-types',()=>bim.store.addHostedWindow(M,walls[2].expressId,{Offset:1,Sill:0.9,Width:1.2,Height:1.4}));
       openings.push({expressId:walls[2].expressId,x:W-1.13,z:1.6,y:D});
-      make('space','rooms-with-area',()=>bim.store.addSpace(M,s,{Position:[0,0,0],Width:W,Depth:D,Height:h}));
+      const space=make('space','rooms-with-area',()=>bim.store.addSpace(M,s,{Position:[0,0,0],Width:W,Depth:D,Height:h}));
+      if(space) spaceIds.push(space.expressId);
     } else {
       make('shaft','slab-with-openings',()=>bim.store.addWall(M,s,{Start:[W/2,D/3,0],End:[W/2,2*D/3,0],Thickness:0.2,Height:h}));
       for(let i=0;i<4;i++) {
@@ -87,7 +88,13 @@ export async function author(bim) {
       make('railing','stairs-railings',()=>bim.store.addRailing(M,s,{Path:[[1,1,0.9],[1,5,h+0.9]],Height:0.9}));
     }
     for(let i=1;i<floors;i++) {
-      const copies=step(`copy-level-${i}`,'copy-to-levels',()=>bim.store.copyElements(M,typical,[{offset:[0,0,0],targetStoreyId:ls[i].expressId}]));
+      const plan={count:typical.length,storeyId:ls[i].expressId,ids:[]}; copyPlans.push(plan);
+      const copies=step(`copy-level-${i}`,'copy-to-levels',()=>{
+        const refs=bim.store.copyElements(M,typical,[{offset:[0,0,0],targetStoreyId:ls[i].expressId}]);
+        plan.ids=(refs||[]).map(r=>r.expressId);
+        if(plan.ids.length!==plan.count) throw new Error(`Expected ${plan.count} copies; returned ${plan.ids.length}`);
+        return refs;
+      });
       if(copies) {
         elements+=copies.length;
         // A copied wall must follow its own next level, not the original GUID.
@@ -102,5 +109,5 @@ export async function author(bim) {
   }
   for(const schema of ['IFC4','IFC2X3']) step(`export-${schema}`,'psets-classification-valid-ifc4',()=>writeFileSync(`${out}/${schema}.ifc`,bim.export.ifc(null,{schema})));
   sample();
-  writeFileSync(`${out}/expected.state`,JSON.stringify({expected,openings,shafts,movedWall,quantityIds,levels:levels(),elements,peakHeap:peak,actions,ms:performance.now()-start}));
+  writeFileSync(`${out}/expected.state`,JSON.stringify({expected,openings,shafts,copyPlans,spaceIds,movedWall,quantityIds,levels:levels(),elements,peakHeap:peak,actions,ms:performance.now()-start}));
 }

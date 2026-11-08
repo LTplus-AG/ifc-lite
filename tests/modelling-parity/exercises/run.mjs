@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { copyCoverage, spaceAreas } from './export-oracles.mjs';
 import { copiedWallAttachments } from './copy-rebinding.mjs';
 import { createHash } from 'node:crypto';
 import { compareFzk } from './fzk-oracle.mjs';
@@ -88,8 +89,8 @@ export async function run(id,args=process.argv.slice(2)) {
       emit(`quantities-${schema}`,'schedules-quantities',needed.length&&!missing.length?'pass':needed.length>missing.length?'partial':'fail',missing.length?`Missing base quantities on ${missing.length}/${needed.length} checked elements`:!needed.length?'No checked geometry elements with base quantities':null,{quantities:qty,covered:needed.length-missing.length,missing:missing.length,totalQuantityOwners:covered.size});
       if(id==='F1') {
         const area=20;
-        const areas=[...text.matchAll(/IFCQUANTITYAREA\('NetFloorArea',\$,\$,([-+.0-9eE]+)[,)]/g)].map(m=>Number(m[1]));
-        const ok=areas.length>=floors&&areas.every(v=>Math.abs(v-area)<1e-6);
+        const areas=spaceAreas(text,meta.spaceIds||[]);
+        const ok=areas.length===1&&areas.every(v=>Math.abs(v-area)<1e-6);
         emit(`space-area-${schema}`,'rooms-with-area',ok?'pass':'fail',ok?null:`Expected ${floors} space areas of ${area}m²; got ${areas.join(',')}`,{area,spaces:areas.length});
       }
     }
@@ -143,6 +144,10 @@ export async function run(id,args=process.argv.slice(2)) {
         if(kind) originalExpected.push({expressId,kind,copied:true,level,min:meta.levels[level].elevation,max:meta.levels[level+1].elevation});
       }
     }
+    const coverage=copyCoverage(meta.copyPlans||[],text);
+    if(meta.copyPlans?.length) emit('copy-coverage','copy-to-levels',coverage.ok?'pass':'fail',coverage.ok?null:`Expected ${coverage.expected} copies; returned ${coverage.returned}; contained in target storeys ${coverage.present}`,coverage);
+    // Keep returned IDs even when containment omits them.
+    for(const e of meta.expected.filter(e=>e.kind==='copied')) if(!originalExpected.some(n=>n.expressId===e.expressId)) originalExpected.push(e);
     meta.expected=originalExpected;
     for(const e of meta.expected) {
       if(e.kind==='copied') continue;

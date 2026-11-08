@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { target } from './fzk.mjs';
 // This parses exported STEP data, never implementation source text.
-function fields(record) {
+export function fields(record) {
   const body=record.slice(record.indexOf('(')+1,-1), result=[];
   let depth=0, quoted=false, start=0;
   for(let i=0;i<body.length;i++) {
@@ -59,10 +59,10 @@ export function compareFzk({text,find,levels,emit}) {
   check('footprint','wall-chains-autojoin',Math.abs(width-target.footprint.bboxWidthX)<=tol&&Math.abs(depth-target.footprint.bboxDepthY)<=tol,`Expected 12×10m footprint ±${tol}m; got ${width}×${depth}`,{width,depth});
   for(const wanted of target.spaces) {
     const id=all.find(id=>type(id)==='IFCSPACE'&&args(id)[2]===`'${wanted.name}'`), mesh=id&&find(id);
-    const area=mesh?(mesh.max[0]-mesh.min[0])*(mesh.max[2]-mesh.min[2]):NaN;
-    const qtos=quantities.get(id)||[], areaIds=qtos.flatMap(q=>refs(args(q).at(-1))), quantity=areaIds.find(q=>type(q)==='IFCQUANTITYAREA'&&args(q)[0]==="'NetFloorArea'");
+    const area=mesh?floorArea(mesh):NaN;
+    const qtos=quantities.get(id)||[], areaIds=qtos.flatMap(q=>refs(args(q).at(-1))), quantity=areaIds.find(q=>type(q)==='IFCQUANTITYAREA'&&args(q)[0]===`'${wanted.areaProperty.name.split('.').at(-1)}'`);
     const qArea=quantity?Number(args(quantity)[3]):NaN, allowed=wanted.area*target.tolerances.spaceAreaM2.value;
-    check(`space-${wanted.name}`,'rooms-with-area',Math.abs(area-wanted.area)<=allowed&&Math.abs(qArea-wanted.area)<=allowed,`Space ${wanted.name}: expected ${wanted.area}m² ±5%; mesh ${area}, quantity ${qArea}`,{area,quantity:qArea,expected:wanted.area});
+    check(`space-${wanted.name}`,'rooms-with-area',Math.abs(area-wanted.area)<=allowed&&Math.abs(qArea-wanted.areaProperty.value)<=allowed,`Space ${wanted.name}: expected ${wanted.area}m² ±5%; mesh ${area}, quantity ${qArea}`,{area,quantity:qArea,expected:wanted.area});
   }
   const roofs=all.filter(id=>type(id)==='IFCROOF'||(type(id)==='IFCSLAB'&&args(id)[8]==='.ROOF.'));
   // Flatten roof aggregates once so a roof slab represented under IfcRoof is
@@ -85,6 +85,14 @@ export function compareFzk({text,find,levels,emit}) {
       if(horizontal>0) directions.push([n[0]/horizontal,n[2]/horizontal]);
     }
   }
-  check('gable-roof','roof-by-footprint',total>0&&inclined>total*0.9&&(roofs.some(id=>records.get(id).includes('.GABLE_ROOF.'))||directions.some(a=>directions.some(b=>a[0]*b[0]+a[1]*b[1]<-0.99))),'SDK addRoof request cannot produce the reference 30° gable; export contains a flat roof',{upwardArea:total,areaAt30Deg:inclined});
+  check('gable-roof','roof-by-footprint',total>0&&inclined>total*0.9&&(directions.some(a=>directions.some(b=>a[0]*b[0]+a[1]*b[1]<-0.99))),'Expected two opposing roof planes at 30° within tolerance',{upwardArea:total,areaAt30Deg:inclined});
   check('roof-area','roof-by-footprint',Math.abs(total-target.roof.totalUpwardArea)<=target.roof.totalUpwardArea*target.tolerances.roofSlopeAreaShare.value,`Reference upward roof area ${target.roof.totalUpwardArea}m² ±10%; got ${total}`,{area:total});
+}
+
+// #9314: project only downward-facing floor triangles, not the bounding box.
+export function floorArea(mesh) {
+  return mesh.triangles.reduce((sum,[a,b,c])=>{
+    const ny=(b[2]-a[2])*(c[0]-a[0])-(b[0]-a[0])*(c[2]-a[2]);
+    return sum+(ny < -1e-8 ? -ny/2 : 0);
+  },0);
 }

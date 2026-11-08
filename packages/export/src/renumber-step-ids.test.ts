@@ -85,6 +85,25 @@ describe('renumberStepIds', () => {
     for (const [oldId, newId] of idMap) expect(after.get(newId)).toBe(before.get(oldId));
   });
 
+  it('never gives an instance the id of a dangling reference', () => {
+    // #2 is referenced but not declared; the three instances must not receive 2.
+    const file = 'ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\n#1=IFCLOCALPLACEMENT(#2,#3);\n#3=IFCAXIS2PLACEMENT3D(#4,$,$);\n#4=IFCCARTESIANPOINT((0.,0.,0.));\nENDSEC;\nEND-ISO-10303-21;\n';
+    for (const seed of [1, 2, 3, 4, 5]) {
+      const { text, idMap, danglingReferences } = renumberStepIds(file, { random: seeded(seed) });
+      expect(danglingReferences).toEqual([2]);
+      expect([...idMap.values()].sort()).toEqual([1, 3, 4]);
+      expect(text).toContain(`IFCLOCALPLACEMENT(#2,#${idMap.get(3)});`);
+    }
+  });
+
+  it('a #id inside a comment within a record is neither a reference nor rewritten', () => {
+    const file = 'ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\n#1=IFCCARTESIANPOINT((/* #2 */0.,0.,0.));\n#5=IFCDIRECTION(/* it\'s #1 */(0.,0.,1.));\nENDSEC;\nEND-ISO-10303-21;\n';
+    const { text, danglingReferences } = renumberStepIds(file, { random: seeded(4) });
+    expect(danglingReferences).toEqual([]);
+    expect(text).toContain('/* #2 */0.,0.,0.');
+    expect(text).toContain("/* it's #1 */(0.,0.,1.)");
+  });
+
   it('rejects a file that declares an instance twice', () => {
     expect(() => renumberStepIds(FILE.replace('#11=IFCLOCALPLACEMENT', '#10=IFCLOCALPLACEMENT'), { random: seeded(1) }))
       .toThrow(/declared twice/);

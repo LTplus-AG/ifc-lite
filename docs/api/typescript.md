@@ -592,7 +592,7 @@ Spatial matching is tunable per container type via `mergeSites` / `mergeBuilding
 
 ### renumberStepIds
 
-Give every entity instance of a STEP file a new `#id` from a seeded permutation and rewrite every reference to match. Only `#digits` tokens outside string literals change, so `'Room #205'` survives; the HEADER and comments between records are copied as is. Useful for teaching that `#id`s are file-local (GlobalIds stay), and for test corpora that must not depend on `#id` values or instance order.
+Give every entity instance of a STEP file a new `#id` from a seeded permutation and rewrite every reference to match. Only `#digits` tokens outside string literals and comments change, so `'Room #205'` survives; the HEADER and all comments are copied as is. Useful for teaching that `#id`s are file-local (GlobalIds stay), and for test corpora that must not depend on `#id` values or instance order.
 
 ```typescript
 import { renumberStepIds } from '@ifc-lite/export';

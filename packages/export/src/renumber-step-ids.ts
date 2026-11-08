@@ -16,7 +16,8 @@
  * `#digits` tokens outside string literals change, so `'Room #205'` survives.
  * Statements are split at `;` outside string literals (`stepStringLiteralEnd`,
  * which also honours the `\S\'` PAGE operand) and outside comments. The HEADER
- * section and every non-record statement are copied verbatim.
+ * section, every non-record statement and every comment are copied verbatim, and
+ * a `#digits` inside a comment is neither a reference nor rewritten.
  */
 
 import { stepStringLiteralEnd, type RandomSource } from '@ifc-lite/encoding';
@@ -85,20 +86,58 @@ const RECORD_NAME = /^(?:\s|\/\*[\s\S]*?\*\/)*#(\d+)(?:\s|\/\*[\s\S]*?\*\/)*=/;
 const LEADING_TRIVIA = /^(?:\s|\/\*[\s\S]*?\*\/)*/;
 const leadLength = (raw: string) => LEADING_TRIVIA.exec(raw)![0].length;
 
-/** `#digits` tokens outside string literals. */
-function referencedIds(text: string, into: Set<number>): void {
-  for (let i = 0; i < text.length; i++) {
-    const c = text[i];
-    if (c === "'") {
+/**
+ * A record split into code and `/* *\/` comments, comments found outside
+ * string literals (a `/*` inside `'...'` is text). String literals stay inside
+ * the code parts, where `remapEntityText` already leaves them alone.
+ */
+function codeAndComments(text: string): Array<{ text: string; comment: boolean }> {
+  const parts: Array<{ text: string; comment: boolean }> = [];
+  let codeStart = 0;
+  let i = 0;
+  while (i < text.length) {
+    if (text[i] === "'") {
       const end = stepStringLiteralEnd(text, i);
-      i = (end === -1 ? text.length : end) - 1;
-    } else if (c === '#' && text[i + 1] >= '0' && text[i + 1] <= '9') {
-      let j = i + 1;
-      while (j < text.length && text[j] >= '0' && text[j] <= '9') j++;
-      into.add(Number(text.slice(i + 1, j)));
-      i = j - 1;
+      i = end === -1 ? text.length : end;
+      continue;
+    }
+    if (text[i] === '/' && text[i + 1] === '*') {
+      const end = text.indexOf('*/', i + 2);
+      const stop = end === -1 ? text.length : end + 2;
+      if (i > codeStart) parts.push({ text: text.slice(codeStart, i), comment: false });
+      parts.push({ text: text.slice(i, stop), comment: true });
+      i = codeStart = stop;
+      continue;
+    }
+    i++;
+  }
+  if (codeStart < text.length) parts.push({ text: text.slice(codeStart), comment: false });
+  return parts;
+}
+
+/** `#digits` tokens in code: outside string literals and comments. */
+function referencedIds(text: string, into: Set<number>): void {
+  for (const part of codeAndComments(text)) {
+    if (part.comment) continue;
+    const code = part.text;
+    for (let i = 0; i < code.length; i++) {
+      const c = code[i];
+      if (c === "'") {
+        const end = stepStringLiteralEnd(code, i);
+        i = (end === -1 ? code.length : end) - 1;
+      } else if (c === '#' && code[i + 1] >= '0' && code[i + 1] <= '9') {
+        let j = i + 1;
+        while (j < code.length && code[j] >= '0' && code[j] <= '9') j++;
+        into.add(Number(code.slice(i + 1, j)));
+        i = j - 1;
+      }
     }
   }
+}
+
+/** `remapEntityText` on the code parts only; comments are copied unchanged. */
+function remapRecord(text: string, idMap: ReadonlyMap<number, number>): string {
+  return codeAndComments(text).map(p => (p.comment ? p.text : remapEntityText(p.text, 0, idMap))).join('');
 }
 
 function shuffleInPlace<T>(items: T[], random: RandomSource): T[] {
@@ -153,7 +192,7 @@ export function renumberStepIds(text: string, options: RenumberStepIdsOptions): 
 
   // Rewrite each record in its slot. With `reorder`, the records of a section
   // trade slots; the whitespace and comments before each slot stay where they
-  // were, unchanged. A comment INSIDE a record body is rewritten like the body.
+  // were, unchanged. Comments inside a record body are copied unchanged too.
   const replacement = new Map<Statement, string>();
   for (const section of sections) {
     const bodies = section.map(s => {
@@ -164,7 +203,7 @@ export function renumberStepIds(text: string, options: RenumberStepIdsOptions): 
     section.forEach((slot, i) => {
       const raw = text.slice(slot.start, slot.end);
       const lead = raw.slice(0, leadLength(raw));
-      replacement.set(slot, lead + remapEntityText(bodies[order[i]], 0, idMap));
+      replacement.set(slot, lead + remapRecord(bodies[order[i]], idMap));
     });
   }
 

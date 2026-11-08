@@ -182,7 +182,13 @@ describe('edge pass line coverage', () => {
     for (const name of ['axisStep', 'tapCrosses', 'fs_edges']) {
       const body = wgslFnBody(ms, name);
       assert.doesNotMatch(body, /loadDepth\(/, `${name} reads sample 0 only`);
-      assert.match(body, /loadDepthSample\([^)]*, s\)/, `${name} reads sample s`);
+      const calls = [...body.matchAll(/loadDepthSample\(([^()]*)\)/g)];
+      assert.ok(calls.length > 0, `${name} reads depth`);
+      // Every call is matched (none hides its arguments in nested parentheses).
+      assert.equal(calls.length, body.split('loadDepthSample(').length - 1, `${name}: unparsed loadDepthSample call`);
+      for (const call of calls) {
+        assert.match(call[1], /,\s*s$/, `${name}: ${call[0]} must read sample s`);
+      }
     }
     assert.match(wgslFnBody(ms, 'loadId'), /textureLoad\(idTex, c, s\)/);
   });

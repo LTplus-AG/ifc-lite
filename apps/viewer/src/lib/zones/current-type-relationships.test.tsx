@@ -231,6 +231,23 @@ test('#9192 past the old 65,536-row limit, the store emitted before the definiti
   assert.deepEqual(describeAll(store, view), CLEAN, 'the full store answers');
 });
 
+test('#9192 a complete store past 65,536 typing rows with no native definition relationship answers for one a view creates, never "still loading"', async () => {
+  // Review of #9319: this store has typing edges and no definition edge, as the spatial-ready one
+  // does, but nothing will replace it. Only the parser's spatial-ready store refuses as loading.
+  const rows = Array.from({ length: 90_000 }, (_, i) => typing(100_000 + i, `(#${FILLER})`, '#20'));
+  const store = await parse([...BASE.filter(line => !/IFCRELDEFINESBYPROPERTIES/.test(line)), wall(FILLER), ...rows]);
+  assert.equal(store.relationships.getRelated(20, RelationshipType.DefinesByProperties, 'inverse').length, 0,
+    'the model has no native definition relationship');
+  const view = new MutablePropertyView(null, 'm');
+  assert.equal(describe(store, 10, view), 'A: Qto_Own');
+  view.createEntity('IfcRelDefinesByProperties', [gid(51), null, null, null, ['#20'], '#24']);
+  const read = readCurrentTypeQuantities(store, 10, view);
+  assert.equal(read.status, 'available', `refused: ${read.reason}`);
+  assert.equal(describe(store, 10, view), 'A: Qto_Own,Qto_Related');
+  assert.equal(describe(store, FILLER, view), 'A: Qto_Own,Qto_Related');
+  assert.equal(describe(everyRelationshipRead(store), 10, view), 'A: Qto_Own,Qto_Related', 'reading every relationship agrees');
+});
+
 test('#9192 the panel says still loading on the early store of a large model, then shows the answer once the full store replaces it', async () => {
   const { store, early } = await parseLarge();
   const seed = (ifcDataStore: IfcDataStore) => useViewerStore.setState({

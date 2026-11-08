@@ -155,7 +155,7 @@ function statementWork(st, sf) {
 
 /** Top-level statements that may run work when the module loads. */
 export function topLevelEffects(fileName, source) {
-  const kind = /\.tsx$/.test(fileName) ? ts.ScriptKind.TSX : /\.[cm]?js$/.test(fileName) ? ts.ScriptKind.JS : ts.ScriptKind.TS;
+  const kind = fileName.endsWith('.tsx') ? ts.ScriptKind.TSX : /\.[cm]?js$/.test(fileName) ? ts.ScriptKind.JS : ts.ScriptKind.TS;
   const sf = ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest, true, kind);
   const effects = [];
   for (const st of sf.statements) {
@@ -236,7 +236,8 @@ test('inert module shapes are not flagged', () => {
     'export enum E { A = 1, B = A << 1 }',
     'export function f() { register(1); }',
     'export const table = new Map([[1, 2]]);',
-    'const ids = Object.freeze({ a: 1, b: [2, `t${3}`] });',
+    // Concatenated so the fixture keeps a literal `${3}` without tripping no-template-curly-in-string.
+    'const ids = Object.freeze({ a: 1, b: [2, `t$' + '{3}`] });',
     'export const n = -1, s = cond ? a.b : null, g = () => register(2);',
     'class C { static x = 1; static y = new Set(); m() { register(3); } }',
     'export default function main() { register(4); }',

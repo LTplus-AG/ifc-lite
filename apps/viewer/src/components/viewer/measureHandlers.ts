@@ -17,7 +17,7 @@ import { reprojectMeasurementsForCamera } from './measureCameraState.js';
 import type { MeshData } from '@ifc-lite/geometry';
 import { measureSnapOptions, updateSnapViz } from './measurePick.js';
 import { pressPastClickSlop } from './pointerGesture.js';
-import { noteMeasureCursor } from './measureCursor.js';
+import { measureCursor, noteMeasureCursor } from './measureCursor.js';
 
 /**
  * Projects a world position onto the closest orthogonal constraint axis.
@@ -108,7 +108,8 @@ export function handleMeasureDrag(ctx: MouseHandlerContext, e: MouseEvent, x: nu
     ctx.measureRaycastFrameRef.current = requestAnimationFrame(() => {
       ctx.measureRaycastPendingRef.current = false;
       ctx.measureRaycastFrameRef.current = null;
-      moveRubberBand(ctx, x, y, useOrthogonalConstraint);
+      // Shift can change while a view change prevents its immediate re-pick (#9242).
+      moveRubberBand(ctx, x, y, measureCursor(ctx)?.orthogonal ?? useOrthogonalConstraint);
     });
   }
 

@@ -52,6 +52,7 @@ import { DocumentCard } from './properties/DocumentCard';
 import { effectiveDocuments } from './properties/effectiveDocuments';
 import { RelationshipsCard } from './properties/RelationshipsCard';
 import { SpatialLocationBadge } from './properties/SpatialLocationBadge';
+import { PresentationLayersSection } from './properties/PresentationLayersSection';
 import { AssemblyBadge } from './properties/AssemblyBadge';
 import type { PropertySet, QuantitySet } from './properties/encodingUtils';
 import { BsddCard } from './properties/BsddCard';
@@ -1169,9 +1170,8 @@ export function PropertiesPanel() {
         globalId={entityGlobalId}
       >
         <SpatialLocationBadge spatialInfo={renderedSpatialInfo} />
-        {/* Part of Assembly (#3620) */}
+        {selectedEntity && <PresentationLayersSection entityRef={selectedEntity} />}
         <AssemblyBadge assembly={assemblyParent} onSelect={handleSelectAssembly} />
-        {/* World coordinates + Georeferencing: one Position row with a disclosure */}
         {(entityCoordinates || renderedGeoref || editMode) && (
           <EntityPositionSection
             coordinates={entityCoordinates}

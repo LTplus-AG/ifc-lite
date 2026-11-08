@@ -117,6 +117,8 @@ export interface UISlice extends GeometryLoadSettingsState, GeometryLoadSettings
   propertiesActiveTab: 'properties' | 'quantities' | 'bsdd' | 'raw-step';
   /** Active grouping tab shared by the Hierarchy panel and Ribbon. */
   hierarchyMode: HierarchyMode;
+  /** One-shot reveal of a presentation-layer header from the inspector (#9273). */
+  pendingPresentationLayerReveal: { nodeId: string } | null;
   /** One-shot "scroll to + highlight + edit this property" request, armed by
    *  the bSDD add flow and consumed by the Properties panel. Null when idle. */
   pendingPropertyFocus: PropertyFocusTarget | null;
@@ -216,6 +218,7 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
   editEnabled: false,
   propertiesActiveTab: 'properties',
   hierarchyMode: getInitialHierarchyMode(),
+  pendingPresentationLayerReveal: null,
   pendingPropertyFocus: null,
   pendingArtifactEditor: null,
   pendingStandaloneArtifactImport: null,

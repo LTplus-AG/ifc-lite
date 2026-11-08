@@ -66,7 +66,7 @@ export function PersistentToolHosts({ children }: { children: ReactNode }) {
       </Suspense>
     </ChunkErrorBoundary>}
     <Dialog open={classes} onOpenChange={setClasses}>
-      <DialogContent className="max-w-sm max-h-[85dvh] overflow-y-auto" aria-describedby={undefined}
+      <DialogContent viewportBounds="height" className="max-w-sm overflow-y-auto" aria-describedby={undefined}
         onCloseAutoFocus={event => { event.preventDefault(); if (classLauncher.current?.isConnected) classLauncher.current.focus(); }}>
         <DialogTitle>{t('classVisibility.heading')}</DialogTitle>
         <ClassVisibilityControls onNavigate={() => setClasses(false)} />

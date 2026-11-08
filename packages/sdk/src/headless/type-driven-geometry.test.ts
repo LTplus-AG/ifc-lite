@@ -117,6 +117,13 @@ describe('placed doors and windows are typed occurrences', () => {
     }
   });
 
+  it('a custom door operation types the door as USERDEFINED with that description, as the door itself is', async () => {
+    const { S, storey, exported } = await session();
+    const wall = S.addWall('m', storey, { Start: [0, 0, 0], End: [5, 0, 0], Thickness: 0.2, Height: 3 });
+    S.addHostedDoor('m', wall.expressId, { Offset: 2, Width: 1, Height: 2.1, OperationType: 'Custom pivot' });
+    expect(exported()).toMatch(/IFCDOORTYPE\('[^']+',[^,]*,'Door 1000 \\X2\\00D7\\X0\\ 2100 custom pivot',\$,\$,\$,\$,\$,\$,\.DOOR\.,\.USERDEFINED\.,\$,'Custom pivot'\);/);
+  });
+
   it('copying a typed element extends its type relationship rather than adding one', async () => {
     const { S, storey, exported } = await session();
     const type = S.addElementType('m', { Type: 'IfcWallType', Name: 'WT', PredefinedType: 'STANDARD' });
@@ -148,5 +155,17 @@ describe('a material carries its appearance', () => {
     expect(text).toMatch(new RegExp(`#${rep?.[1]}=IFCSTYLEDREPRESENTATION\\(#\\d+,'Style','Material',\\(#\\d+\\)\\);`));
     expect(text).toMatch(/IFCCOLOURRGB\(\$,0\.6039\d*,0\.6039\d*,0\.6039\d*\)/);
     expect(() => S.addMaterial('m', { Name: 'Bad', Color: 'grey' })).toThrow(/not a hex colour/);
+  });
+
+  it('writes a schema-valid IFC2X3 appearance (style assignment wrapper, one-attribute shading)', async () => {
+    const creator = new IfcCreator({ Schema: 'IFC2X3', Timestamp: 0 });
+    creator.addIfcBuildingStorey({ Name: 'L0', Elevation: 0 });
+    const { S, exported } = await session(new TextEncoder().encode(creator.toIfc().content));
+    S.addMaterial('m', { Name: 'Brick', Color: '#aa5533' });
+    const text = exported();
+    expect(text).toMatch(/IFCSURFACESTYLESHADING\(#\d+\);/);
+    expect(text).toMatch(/IFCSTYLEDITEM\(\$,\(#(\d+)\),\$\);/);
+    const assignment = text.match(/IFCSTYLEDITEM\(\$,\(#(\d+)\),\$\);/)?.[1];
+    expect(text).toMatch(new RegExp(`#${assignment}=IFCPRESENTATIONSTYLEASSIGNMENT\\(`));
   });
 });

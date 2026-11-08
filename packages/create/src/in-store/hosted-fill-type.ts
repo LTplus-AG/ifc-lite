@@ -18,6 +18,8 @@ import type { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { HostAnchor } from './anchor.js';
 import { addElementTypeToStore, assignTypeInStore } from './element-type.js';
+import { DOOR_OPERATION_ENUM } from './door.js';
+import { WINDOW_PARTITIONING_ENUM } from './window.js';
 import { AnchorEntityReader } from './resolve-anchor.js';
 import { liveEntityConforms, readRelatedLists } from './resolve-relations.js';
 
@@ -26,7 +28,9 @@ export interface HostedFillTypeParams {
   Height: number;
   PredefinedType?: string;
   OperationType?: string;
+  UserDefinedOperationType?: string;
   PartitioningType?: string;
+  UserDefinedPartitioningType?: string;
   /** Type the fill by this IfcDoorType / IfcWindowType; omitted reuses or creates one by size. */
   TypeId?: number;
 }
@@ -63,10 +67,25 @@ export function typeHostedFillInStore(
   }
   const name = hostedFillTypeName(kind, params);
   const typeId = params.TypeId ?? findTypeByName(store, view, typeClass, name) ?? addElementTypeToStore(draft, host, kind === 'door'
-    ? { Type: typeClass, Name: name, PredefinedType: params.PredefinedType ?? 'DOOR', OperationType: params.OperationType ?? DEFAULT_OPERATION }
-    : { Type: typeClass, Name: name, PredefinedType: params.PredefinedType ?? 'WINDOW', PartitioningType: params.PartitioningType ?? 'NOTDEFINED' }).typeId;
+    ? { Type: typeClass, Name: name, PredefinedType: params.PredefinedType ?? 'DOOR',
+      ...enumOrUserDefined(params.OperationType ?? DEFAULT_OPERATION, params.UserDefinedOperationType, DOOR_OPERATION_ENUM, 'OperationType') }
+    : { Type: typeClass, Name: name, PredefinedType: params.PredefinedType ?? 'WINDOW',
+      ...enumOrUserDefined(params.PartitioningType ?? 'NOTDEFINED', params.UserDefinedPartitioningType, WINDOW_PARTITIONING_ENUM, 'PartitioningType') }).typeId;
   assignTypeInStore(draft, host, typeId, [fillId], readRelatedLists(store, 'IfcRelDefinesByType', view));
   return typeId;
+}
+
+/**
+ * The occurrence's own rule (`doorAttributeTail` / `windowAttributeTail`): a value
+ * outside the IFC enumeration is written as USERDEFINED with the value as its
+ * user-defined description, so the type matches the door it types.
+ */
+function enumOrUserDefined<K extends 'OperationType' | 'PartitioningType'>(
+  requested: string, userDefined: string | undefined, known: ReadonlySet<string>, key: K,
+): Record<K | `UserDefined${K}`, string | undefined> {
+  const value = known.has(requested) ? requested : 'USERDEFINED';
+  const description = value !== 'USERDEFINED' ? undefined : known.has(requested) ? userDefined : requested;
+  return { [key]: value, [`UserDefined${key}`]: description } as Record<K | `UserDefined${K}`, string | undefined>;
 }
 
 function findTypeByName(store: IfcDataStore, view: MutablePropertyView, typeClass: string, name: string): number | null {

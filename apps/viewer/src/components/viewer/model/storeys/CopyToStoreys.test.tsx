@@ -11,6 +11,7 @@ import { act } from 'react';
 import { useViewerStore } from '@/store';
 import { seedModelingSession, MODEL_ID, STOREY } from '@/test/modeling-session-fixture';
 import { cleanup, click, render, waitFor } from '@/test/render';
+import { WORKSPACE_SURFACE_COMMANDS } from '../../surface-commands-workspace';
 import { CopyToStoreys } from './CopyToStoreys';
 import { setRequestRemesh } from '@/lib/commands/modeling/transaction';
 let restore = () => {};
@@ -50,4 +51,14 @@ it('#9296 cancelling preparation creates no entities or history', async () => {
   assert.equal(walls().length, before);
   assert.equal(useViewerStore.getState().undoStacks.get(MODEL_ID)!.length, stack);
   assert.equal(button(ui, 'Copy now'), undefined);
+});
+
+it('#9334 the canonical palette entry requires a real model session as well as editing permission', () => {
+  const command = WORKSPACE_SURFACE_COMMANDS.find(c => c.id === 'model:copy-to-storeys')!;
+  act(() => { useViewerStore.getState().exitModelWorkspace(); });
+  assert.equal(command.enabled({ canEditInSession: true }), false);
+  act(() => { useViewerStore.getState().enterModelWorkspace({ modelId: MODEL_ID, storeyId: STOREY }); });
+  assert.equal(command.enabled({ canEditInSession: true }), true);
+  assert.equal(command.enabled({ canEditInSession: false }), false);
+  act(() => { useViewerStore.getState().exitModelWorkspace(); });
 });

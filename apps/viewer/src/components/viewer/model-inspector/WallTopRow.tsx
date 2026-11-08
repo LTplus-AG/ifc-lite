@@ -32,9 +32,9 @@ function readWallTop(modelId: string, wallId: number): { top: WallTop; target: {
   const inventory = readStoreyInventory(target.dataStore, target.view);
   const raw = target.view.getPropertyValue(wallId, STOREY_ATTACHMENT_PSET, 'TopConstraint');
   const attachment = readTopAttachment(inventory, wallId);
-  if (!attachment) return { top: 'fixed', target: typeof raw === 'string' && raw !== 'Fixed' ? { text: raw, raw } : null };
-  const display = storeyAttachmentDisplay(s, modelId, wallId, raw);
-  return { top: 'storeyAbove', target: display ?? (typeof raw === 'string' ? { text: raw, raw } : null) };
+  const value = raw ?? inventory.storeys.find(storey => storey.expressId === attachment?.targetStoreyId)?.GlobalId;
+  const display = storeyAttachmentDisplay(s, modelId, wallId, value);
+  return { top: attachment ? 'storeyAbove' : 'fixed', target: display ?? (typeof raw === 'string' && raw !== 'Fixed' ? { text: raw, raw } : null) };
 }
 
 /**

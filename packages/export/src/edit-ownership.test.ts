@@ -105,3 +105,18 @@ it('#9013 an edited deferred property atom keeps its references in the live look
   editor.setPositionalAttribute(2, 3, null);
   expect(effectiveReferencers(store, view)(1), 'clearing its unit does').toEqual([]);
 });
+
+it('#8452 ownership lookup does not serialize unrelated authored records', async () => {
+  const bytes = new Uint8Array(await readFile(new URL('../../../apps/viewer/public/samples/hello-wall.ifc', import.meta.url)));
+  const store = await new IfcParser().parseColumnar(bytes.buffer as ArrayBuffer, { disableWorkerScan: true });
+  const view = new MutablePropertyView(null, 'm'), editor = new StoreEditor(store, view);
+  let visits = 0;
+  for (let i = 0; i < 2000; i++) {
+    const entity = view.createEntity('IfcCartesianPoint', [[i, 0, 0]]);
+    Object.defineProperty(entity, 'type', { enumerable: true, get() { visits++; return 'IfcCartesianPoint'; } });
+  }
+  const other = editor.addEntity('IfcWall', ['guid', null, 'Shared', null, null, '#1235', '#1230', null, null]).expressId;
+  visits = 0;
+  expect(effectiveReferencers(store, view)(1230)).toContain(other);
+  expect(visits).toBe(0);
+});

@@ -195,6 +195,20 @@ describe('edge pass line coverage', () => {
     }
   });
 
+  it('never fits a tangent through a texel outside the viewport, and an unknown normal is no crease', () => {
+    for (const src of [ms, ss]) {
+      const axis = wgslFnBody(src, 'axisStep');
+      // A clamped load at the border returns the texel itself: a zero step
+      // that fits perfectly and would face the normal at the camera.
+      assert.match(axis, /let okPlus = inViewport\(ip \+ e\) && d1p > BACKGROUND_DEPTH;/);
+      assert.match(axis, /let okMinus = inViewport\(ip - e\) && d1m > BACKGROUND_DEPTH;/);
+      assert.match(axis, /inViewport\(ip \+ e \* 2\) && d2p > BACKGROUND_DEPTH/);
+      assert.match(axis, /inViewport\(ip - e \* 2\) && d2m > BACKGROUND_DEPTH/);
+      assert.match(wgslFnBody(src, 'planeAt'), /plane\.n = select\(vec3<f32>\(0\.0\), /);
+      assert.match(wgslFnBody(src, 'tapCrosses'), /dot\(centre\.n, centre\.n\) > 0\.5 && dot\(nq, nq\) > 0\.5 && dot\(centre\.n, nq\) < EDGE_CREASE_COS/);
+    }
+  });
+
   it('places samples at the standard 4x positions, where a plane\'s depth is extrapolated', () => {
     assert.match(ms, /vec2<f32>\(0\.375, 0\.125\), vec2<f32>\(0\.875, 0\.375\), vec2<f32>\(0\.125, 0\.625\), vec2<f32>\(0\.625, 0\.875\)/);
     assert.match(ss, /const SAMPLE_POS = array<vec2<f32>, 1>\(\s*vec2<f32>\(0\.5, 0\.5\),/);

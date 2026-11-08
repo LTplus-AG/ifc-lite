@@ -116,7 +116,8 @@ export function edgeShaderSource(multisampled: boolean): string {
         );
         const NO_FIT: f32 = 3.0e38;
 
-        // The plane sample \`s\` of a texel lies on: view-space normal, and
+        // The plane sample \`s\` of a texel lies on: view-space normal (zero
+        // when a tangent axis has no neighbour, e.g. a one-pixel sliver), and
         // device depth \`d\` at pixel position \`at\` with its per-pixel gradient.
         // Device depth is affine in screen space across a plane, which is
         // what \`onPlane\` extrapolates.
@@ -133,13 +134,19 @@ export function edgeShaderSource(multisampled: boolean): string {
         // one (zero second difference: one plane) is on this sample's own
         // surface; the smaller depth change, \`normalFromNeighbours\`' rule,
         // picks the side on a silhouette, but on a crease it can take the
-        // other face. Background never counts; with neither neighbour the
-        // step is zero.
+        // other face. Background never counts, nor does a texel outside the
+        // viewport (the clamped load would return this texel itself, a
+        // zero step that fits perfectly); with neither neighbour the step is
+        // zero.
+        fn inViewport(ip: vec2<i32>) -> bool {
+          return all(ip >= vec2<i32>(0)) && all(ip < vec2<i32>(params.viewport.xy));
+        }
+
         fn axisStep(P: vec3<f32>, d: f32, ip: vec2<i32>, e: vec2<i32>, s: i32) -> vec4<f32> {
           let d1p = loadDepthSample(ip + e, s);
           let d1m = loadDepthSample(ip - e, s);
-          let okPlus = d1p > BACKGROUND_DEPTH;
-          let okMinus = d1m > BACKGROUND_DEPTH;
+          let okPlus = inViewport(ip + e) && d1p > BACKGROUND_DEPTH;
+          let okMinus = inViewport(ip - e) && d1m > BACKGROUND_DEPTH;
           if (!okPlus && !okMinus) {
             return vec4<f32>(0.0);
           }
@@ -147,8 +154,8 @@ export function edgeShaderSource(multisampled: boolean): string {
           if (okPlus && okMinus) {
             let d2p = loadDepthSample(ip + e * 2, s);
             let d2m = loadDepthSample(ip - e * 2, s);
-            let errPlus = select(NO_FIT, abs((d2p - d1p) - (d1p - d)), d2p > BACKGROUND_DEPTH);
-            let errMinus = select(NO_FIT, abs((d1m - d2m) - (d - d1m)), d2m > BACKGROUND_DEPTH);
+            let errPlus = select(NO_FIT, abs((d2p - d1p) - (d1p - d)), inViewport(ip + e * 2) && d2p > BACKGROUND_DEPTH);
+            let errMinus = select(NO_FIT, abs((d1m - d2m) - (d - d1m)), inViewport(ip - e * 2) && d2m > BACKGROUND_DEPTH);
             if (errPlus == errMinus) {
               plus = abs(d1p - d) <= abs(d - d1m);
             } else {
@@ -169,7 +176,7 @@ export function edgeShaderSource(multisampled: boolean): string {
           let n = cross(ty.xyz, tx.xyz);
           let len2 = dot(n, n);
           var plane: Plane;
-          plane.n = select(vec3<f32>(0.0, 0.0, 1.0), n * inverseSqrt(max(len2, 1e-30)), len2 >= 1e-30);
+          plane.n = select(vec3<f32>(0.0), n * inverseSqrt(max(len2, 1e-30)), len2 >= 1e-30);
           plane.grad = vec2<f32>(tx.w, ty.w);
           plane.d = d;
           plane.at = vec2<f32>(ip) + SAMPLE_POS[s];
@@ -210,7 +217,9 @@ export function edgeShaderSource(multisampled: boolean): string {
           if (onPlane(centre, qc, s, dq)) {
             return false;
           }
-          return dot(centre.n, planeAt(qc, s, dq).n) < EDGE_CREASE_COS;
+          // An unknown (zero) normal on either side is no evidence of a crease.
+          let nq = planeAt(qc, s, dq).n;
+          return dot(centre.n, centre.n) > 0.5 && dot(nq, nq) > 0.5 && dot(centre.n, nq) < EDGE_CREASE_COS;
         }
 
         const TAPS = array<vec2<i32>, 8>(

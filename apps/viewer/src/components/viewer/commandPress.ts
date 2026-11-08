@@ -45,7 +45,7 @@ export function createCommandPressController(ctx: MouseHandlerContext) {
     captured: () => press !== null && ctx.canvas.hasPointerCapture(press.pointerId),
     begin(event: PointerEvent): boolean {
       cancel();
-      if (refuseCaptureHeldPick(ctx.renderer)) { ctx.mouseState.didDrag = true; return false; }
+      if (refuseCaptureHeldPick(ctx.renderer)) { ctx.mouseState.didDrag = true; ctx.mouseState.isDragging = false; return false; }
       const runtime = getCommandRuntime();
       if (!runtime.command || !runtime.ctx) return false;
       cancelCommandPointer(ctx);

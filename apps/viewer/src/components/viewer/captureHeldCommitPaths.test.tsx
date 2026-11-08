@@ -90,7 +90,7 @@ for (const phase of ['begin', 'end'] as const) test(`#9232 command ${phase} refu
     pointerCancel: g => { calls.push('cancel'); return g; },
   });
   useViewerStore.getState().startCommand(id);
-  const ctx = { canvas: h.canvas, renderer: h.renderer, mouseState: { didDrag: false },
+  const ctx = { canvas: h.canvas, renderer: h.renderer, mouseState: { didDrag: false, isDragging: false },
     measureRaycastPendingRef: { current: false }, measureRaycastFrameRef: { current: null },
     snapEnabledRef: { current: false }, setSnapTarget() {},
     getPickOptions: () => ({ hiddenIds: new Set(), isolatedIds: null, isStreaming: false }),
@@ -99,7 +99,11 @@ for (const phase of ['begin', 'end'] as const) test(`#9232 command ${phase} refu
   try {
     if (phase === 'end') { controller.begin(event('pointerdown')); assert.deepEqual(calls, ['down']); }
     await h.capture();
+    // handleMouseDown marks the press dragging before the controller sees it
+    ctx.mouseState.isDragging = true;
     if (phase === 'begin') controller.begin(event('pointerdown')); else controller.end(event('pointerup'));
+    // A release with both set reports an orbit to the camera listeners (tours), for a click that moved nothing
+    assert.equal(ctx.mouseState.isDragging, false, 'BUG: a refused command press stays dragging, so its release reports an orbit');
     assert.deepEqual(calls, phase === 'begin' ? [] : ['down', 'cancel']);
     assert.equal(controller.hasPress(), false);
     assert.equal(ctx.mouseState.didDrag, true);
@@ -107,4 +111,15 @@ for (const phase of ['begin', 'end'] as const) test(`#9232 command ${phase} refu
     controller.begin(event('pointerdown')); controller.end(event('pointerup'));
     assert.deepEqual(calls.slice(-2), ['down', 'up']);
   } finally { controller.dispose(); h.unregister(); unregisterCommand(); }
+});
+
+test('#9232 a capture whose session unregisters mid-capture asks the gone renderer for no frame', async () => {
+  const h = rig();
+  let rendersAtUnregister = -1;
+  // Unregistering aborts the capture, so it returns no pixels; what matters is the frame request
+  await captureViewportFrame(h.renderer, {
+    read: () => { h.unregister(); rendersAtUnregister = h.counts().renders; return 'pixels'; },
+  });
+  assert.ok(rendersAtUnregister >= 0, 'the capture reached its read');
+  assert.equal(h.counts().renders, rendersAtUnregister, 'BUG: the unmounted viewport was asked for a live frame');
 });

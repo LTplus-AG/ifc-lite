@@ -5119,7 +5119,7 @@
     "reassignElementsToStoreyInStore: function",
     "reassignHostedOpeningsInStore: function",
     "rectangularGridAxes: function",
-    "refreshedBaseQuantitySetName: function",
+    "refreshedBaseQuantitySet: function",
     "refreshedBaseQuantitySets: function",
     "refusalReason: function",
     "removeCostEntityInStore: function",

@@ -52,7 +52,7 @@ export function QuantitySetCard({ qset, projectUnits, projectUnitsAvailable = tr
       <InspectorSectionTrigger
         title={<PropertySearchHighlight text={setDisplayName(qset.name, t('properties.quantitySet.unnamed'))} query={searchQuery} />}
         count={formatLocaleNumber(locale, qset.quantities.length)}
-        trailing={entity ? <QuantitySetSourceBadge entity={entity} qsetName={qset.name} /> : undefined}
+        trailing={entity ? <QuantitySetSourceBadge entity={entity} qset={qset} /> : undefined}
       />
       <CollapsibleContent>
         <div className={INSPECTOR_ROWS}>

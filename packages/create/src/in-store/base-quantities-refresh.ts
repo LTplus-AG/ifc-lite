@@ -118,11 +118,15 @@ export function withRefreshedBaseQuantities(dataStore: IfcDataStore, view: Mutab
   return found ? fileSets.map((set) => (set === found.target ? found.refreshed : set)) : fileSets;
 }
 
-/** The name of the set `withRefreshedBaseQuantities` replaces for `expressId`, for a "from geometry" marker; null when none is. */
-export function refreshedBaseQuantitySetName(dataStore: IfcDataStore, view: MutablePropertyView, expressId: number): string | null {
+/**
+ * The set `withRefreshedBaseQuantities` puts in for `expressId`, for a "from
+ * geometry" marker; null when none is. The whole set, not its name: a file can
+ * give an element a second set of the same name, which stays as it was.
+ */
+export function refreshedBaseQuantitySet(dataStore: IfcDataStore, view: MutablePropertyView, expressId: number): QuantitySet | null {
   const id = view.resolveBaseEntityId(expressId);
   if (id !== expressId) return null;
-  return refreshedSet(dataStore, view, id, extractQuantitiesOnDemand(dataStore, id, view))?.refreshed.name ?? null;
+  return refreshedSet(dataStore, view, id, extractQuantitiesOnDemand(dataStore, id, view))?.refreshed ?? null;
 }
 
 /** Whether `expressId` is a loaded element whose base quantity set a geometry edit would refresh. */
@@ -141,7 +145,7 @@ export function refreshedBaseQuantitySets(dataStore: IfcDataStore, view: Mutable
   const revisions: QuantityBaseRevision[] = [];
   for (const entityId of candidates(dataStore, view)) {
     if (view.isDeleted(entityId)) continue;
-    const setName = refreshedBaseQuantitySetName(dataStore, view, entityId);
+    const setName = refreshedBaseQuantitySet(dataStore, view, entityId)?.name;
     if (setName) revisions.push({ entityId, setName });
   }
   return revisions;

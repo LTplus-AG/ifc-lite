@@ -18,7 +18,7 @@ import { IfcCreator } from '../ifc-creator.js';
 import { deriveAuthoredBaseQuantities } from './base-quantities.js';
 import {
   hasRefreshableBaseQuantities,
-  refreshedBaseQuantitySetName,
+  refreshedBaseQuantitySet,
   refreshedBaseQuantitySets,
   withRefreshedBaseQuantities,
 } from './base-quantities-refresh.js';
@@ -81,7 +81,7 @@ describe('a loaded wall', () => {
     const { file, ids: wall } = await loaded((s, a) => addWallToStore(s.editor, a, { Start: [0, 0, 0], End: [8, 0, 0], Thickness: 0.2, Height: 3 }).wallId);
     const s = open(await parse(file));
     expect(hasRefreshableBaseQuantities(s.store, s.view, wall)).toBe(true);
-    expect(refreshedBaseQuantitySetName(s.store, s.view, wall)).toBeNull();
+    expect(refreshedBaseQuantitySet(s.store, s.view, wall)).toBeNull();
     expect(refreshedBaseQuantitySets(s.store, s.view)).toEqual([]);
     // The same file the setting off writes: nothing about it is rewritten.
     const body = (text: string) => text.slice(text.indexOf('DATA;'));
@@ -162,7 +162,7 @@ describe('a loaded wall', () => {
     const { file, ids: wall } = await loaded((s, a) => addWallToStore(s.editor, a, { Start: [0, 0, 0], End: [8, 0, 0], Thickness: 0.2, Height: 3 }).wallId);
     const s = open(await parse(file));
     s.view.setAttribute(wall, 'Name', 'Renamed');
-    expect(refreshedBaseQuantitySetName(s.store, s.view, wall)).toBeNull();
+    expect(refreshedBaseQuantitySet(s.store, s.view, wall)).toBeNull();
     expect(refreshedBaseQuantitySets(s.store, s.view)).toEqual([]);
   });
 
@@ -173,7 +173,7 @@ describe('a loaded wall', () => {
     expect(read).not.toBeNull();
     // A georeferenced storey-local position: the last digits of a placed length move with it.
     s.editor.setPositionalAttribute(read!.locationPointId, 0, [2_600_123.123, 1_200_456.789, 0]);
-    expect(refreshedBaseQuantitySetName(s.store, s.view, wall)).toBeNull();
+    expect(refreshedBaseQuantitySet(s.store, s.view, wall)).toBeNull();
     expect(refreshedBaseQuantitySets(s.store, s.view)).toEqual([]);
   });
 

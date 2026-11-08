@@ -185,7 +185,7 @@ export { setElementSizeInStore } from './in-store/element-size-edit.js';
 export { deriveAuthoredBaseQuantities } from './in-store/base-quantities.js';
 export {
   hasRefreshableBaseQuantities,
-  refreshedBaseQuantitySetName,
+  refreshedBaseQuantitySet,
   refreshedBaseQuantitySets,
   withRefreshedBaseQuantities,
 } from './in-store/base-quantities-refresh.js';

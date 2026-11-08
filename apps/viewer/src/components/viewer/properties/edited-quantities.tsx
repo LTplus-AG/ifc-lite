@@ -10,7 +10,7 @@
  */
 
 import { useMemo } from 'react';
-import { hasRefreshableBaseQuantities, refreshedBaseQuantitySetName } from '@ifc-lite/create';
+import { hasRefreshableBaseQuantities, refreshedBaseQuantitySet } from '@ifc-lite/create';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { Badge } from '@/components/ui/badge';
@@ -20,6 +20,8 @@ import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
 
 export interface QuantityEntityRef { readonly modelId: string; readonly expressId: number }
+/** A quantity set as a card shows it: its name and each quantity's name and value. */
+export interface ShownSet { readonly name: string; readonly quantities: readonly { readonly name: string; readonly value: number }[] }
 
 /** The store and view an entity's quantities read through, or null without a mutation view. */
 function useQuantityReaders(entity: QuantityEntityRef | null | undefined): { dataStore: IfcDataStore; view: MutablePropertyView } | null {
@@ -35,15 +37,25 @@ function useQuantityReaders(entity: QuantityEntityRef | null | undefined): { dat
   }, [entity, models, legacyStore, mutationViews]);
 }
 
-/** Whether `qsetName` on `entity` was refreshed from its edited geometry. */
-function useRefreshedFromGeometry(entity: QuantityEntityRef | null | undefined, qsetName: string): boolean {
+/**
+ * Whether the card's set is the refreshed one: by name and every quantity, not
+ * the name alone, since a file can give an element a second set of the same
+ * name, which keeps the file's values.
+ */
+export function isRefreshedSet(qset: ShownSet, refreshed: ShownSet | null): boolean {
+  return refreshed !== null && qset.name === refreshed.name && qset.quantities.length === refreshed.quantities.length
+    && qset.quantities.every((q, i) => q.name === refreshed.quantities[i].name && q.value === refreshed.quantities[i].value);
+}
+
+/** Whether `qset` on `entity` was refreshed from its edited geometry. */
+function useRefreshedFromGeometry(entity: QuantityEntityRef | null | undefined, qset: ShownSet): boolean {
   const [enabled] = useEditedQuantityRefresh();
   const readers = useQuantityReaders(enabled ? entity : null);
   const mutationVersion = useViewerStore((s) => s.mutationVersion);
   const refreshed = useMemo(() => {
     if (!readers || !entity) return null;
     try {
-      return refreshedBaseQuantitySetName(readers.dataStore, readers.view, entity.expressId);
+      return refreshedBaseQuantitySet(readers.dataStore, readers.view, entity.expressId);
     } catch (error) {
       console.warn('[quantities] could not tell whether a set was refreshed', error);
       return null;
@@ -51,13 +63,13 @@ function useRefreshedFromGeometry(entity: QuantityEntityRef | null | undefined, 
     // `mutationVersion` stands for the overlay the readers see.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [readers, entity, mutationVersion]);
-  return refreshed === qsetName;
+  return isRefreshedSet(qset, refreshed);
 }
 
 /** "Updated from geometry", beside a refreshed set's name. Renders nothing for a set read from the file. */
-export function QuantitySetSourceBadge({ entity, qsetName }: { entity?: QuantityEntityRef | null; qsetName: string }) {
+export function QuantitySetSourceBadge({ entity, qset }: { entity?: QuantityEntityRef | null; qset: ShownSet }) {
   const { t } = useTranslation();
-  if (!useRefreshedFromGeometry(entity, qsetName)) return null;
+  if (!useRefreshedFromGeometry(entity, qset)) return null;
   return (
     <Badge
       variant="secondary"

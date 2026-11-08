@@ -13,13 +13,20 @@ mod appearance_transfer;
 mod annotation_plane;
 mod captured_mesh;
 mod appearance_calibration;
+#[cfg(feature = "scan")]
 mod scan_outline;
+#[cfg(feature = "scan")]
 mod scan_registration;
+#[cfg(feature = "scan")]
 mod scan_proposals;
+#[cfg(feature = "scan")]
 mod scan_segmentation;
+#[cfg(feature = "pdf-vector")]
 mod pdf_vector;
 mod bool2d;
+#[cfg(feature = "clash")]
 mod clash;
+#[cfg(feature = "clash")]
 mod clash_solid;
 mod csg_console;
 mod csg_diagnostics;
@@ -30,17 +37,26 @@ mod content_caches;
 mod content_install;
 mod content_lazy;
 mod extrusion_definitions;
+#[cfg(feature = "export")]
 mod export_data;
+#[cfg(feature = "export")]
 mod export_dfjson;
+#[cfg(feature = "export")]
 mod export_glb;
+#[cfg(feature = "export")]
 mod export_hbjson;
+#[cfg(all(feature = "export", feature = "landxml"))]
 mod export_landxml;
+#[cfg(feature = "export")]
 mod export_obj;
+#[cfg(feature = "export")]
 mod export_step;
 mod extract_profiles;
 mod gpu_meshes;
 mod grid_lines;
+#[cfg(feature = "landxml")]
 mod landxml;
+#[cfg(feature = "landxml")]
 mod landxml_stream;
 mod mesh_outline;
 mod overlay_frame;

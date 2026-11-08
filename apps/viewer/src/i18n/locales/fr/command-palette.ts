@@ -120,4 +120,8 @@ export const commandPaletteFr = {
   'commandPalette.category.learn': 'Apprendre',
   'commandPalette.noResultsHint': 'Essayez un autre nom ou mot-clé.',
   'commandPalette.clearSearch': 'Effacer la recherche',
+  "commandPalette.availability.refresh": "Rouvrez tous les modèles disposant encore d’un accès direct à leur fichier pour les actualiser",
+  "commandPalette.availability.gpuChecking": "Attendez la fin de la vérification de WebGPU",
+  "commandPalette.availability.gpu": "WebGPU est indisponible — consultez l’écran d’accueil pour obtenir de l’aide",
+  "commandPalette.availability.reopen": "Rouvrez le fichier depuis le disque ; la copie en cache n’est plus disponible",
 } satisfies Catalogue;

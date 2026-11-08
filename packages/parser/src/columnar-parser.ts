@@ -632,12 +632,13 @@ export async function parseColumnarInput(
         for (let i = 0; i < associationRelRefs.length; i++) {
             if ((i & 0x3FF) === 0) await yieldIfNeeded();
             const ref = associationRelRefs[i];
-            const result = extractPropertyRelFast(uint8Buffer, ref.byteOffset, ref.byteLength);
+            const result = extractPropertyRelFast(uint8Buffer, ref.byteOffset, ref.byteLength, true);
             if (result) {
                 // IfcRelAssociates{Material,Classification,Document}'s Relating*
                 // selects are always single refs (unlike RelatingPropertyDefinition
                 // above, none of IfcMaterialSelect/IfcClassificationSelect/
-                // IfcDocumentSelect admit a SET alternative) — take the one entry.
+                // IfcDocumentSelect admit a SET alternative) — take the one entry
+                // (`true` above skips a record whose relating value names more).
                 const { relatedObjects, relatingDefs } = result;
                 const relatingRef = relatingDefs[0];
                 const typeUpper = getTypeUpper(ref.type);

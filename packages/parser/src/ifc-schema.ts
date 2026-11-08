@@ -12,6 +12,7 @@ import { getCanonicalEntityName, type SchemaEntityNameSnapshot } from './schema-
 
 import { SCHEMA_REGISTRY, getAllAttributesForEntity, isKnownEntity, getInheritanceChainForEntity, getEntityMetadata } from './generated/schema-registry.js';
 import { getSchemaRegistryForVersion } from './generated/schema-registry-by-version.js';
+import { schemaFromIdentifier } from './source-header.js';
 import { ENTITIES_IFC2X3, ENTITIES_IFC4_EXPRESS, ENTITIES_IFC4X3, IFC_DATA_TYPES, type IfcEntityInfo } from '@ifc-lite/data';
 
 // Union map across every bundled IFC schema (2X3 + 4 + 4X3). The parser
@@ -178,11 +179,22 @@ export function getAttributeNamesAcrossSchemas(type: string): string[] {
     return info ? [...info.attributes] : [];
 }
 
+/**
+ * The bundled registry family for a schema given either as a store's
+ * `schemaVersion` (`IFC4X3`) or as a FILE_SCHEMA identifier (`IFC4X3_ADD2`,
+ * `IFC2X3_TC1`). Stripping punctuation instead (`IFC4X3_ADD2` -> `IFC4X3ADD2`)
+ * matched no family, so those identifiers silently got IFC4 answers.
+ */
+function registryFamily(schema: string | undefined): 'IFC2X3' | 'IFC4' | 'IFC4X3' | undefined {
+    const family = schema === undefined ? undefined : schemaFromIdentifier(schema);
+    return family === 'IFC2X3' || family === 'IFC4' || family === 'IFC4X3' ? family : undefined;
+}
+
 /** Attribute names in one model schema, falling back to the bundled union. */
 export function getAttributeNamesForSchema(type: string, schema: string | undefined, snapshot?: SchemaEntityNameSnapshot): string[] {
-    const normalized = schema?.toUpperCase().replace(/[^A-Z0-9]/g, '');
-    if (normalized === 'IFC2X3' || normalized === 'IFC4' || normalized === 'IFC4X3') {
-        const registry = getSchemaRegistryForVersion(normalized);
+    const family = registryFamily(schema);
+    if (family) {
+        const registry = getSchemaRegistryForVersion(family);
         const canonical = getCanonicalEntityName(registry, type, snapshot);
         const attributes = canonical ? registry.entities[canonical]?.allAttributes : undefined;
         if (attributes) return attributes.map(attribute => attribute.name);
@@ -197,10 +209,10 @@ export function getAttributeNamesForSchema(type: string, schema: string | undefi
  * predefined property set's attributes as properties, and this is their dataType.
  */
 export function getAttributeTypeForSchema(type: string, attribute: string, schema: string | undefined): string | undefined {
-    const normalized = schema?.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const family = registryFamily(schema);
     let attributes: ReadonlyArray<{ name: string; type: string }> | undefined;
-    if (normalized === 'IFC2X3' || normalized === 'IFC4' || normalized === 'IFC4X3') {
-        const registry = getSchemaRegistryForVersion(normalized);
+    if (family) {
+        const registry = getSchemaRegistryForVersion(family);
         const canonical = getCanonicalEntityName(registry, type);
         attributes = canonical ? registry.entities[canonical]?.allAttributes : undefined;
     }

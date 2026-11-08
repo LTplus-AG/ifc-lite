@@ -1259,3 +1259,9 @@ For asynchronous work on a fork, use
 `const fork = view.prepareAtomic(draft => draft).result` and leave that
 transaction uncommitted. Later asynchronous code can edit, snapshot or export
 the detached fork without publishing it to the original view.
+
+Walls added through `bim.store.addWall` join coincident, non-parallel chain
+endpoints automatically. Crossings and T junctions still use `joinWalls`.
+Moving an `IfcGrid` with `transformElements` carries its grid-bound products.
+The headless CLI supports `alignElements` using current native mesh bounds,
+including hosted cuts, rather than uncut parametric bounding boxes.

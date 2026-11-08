@@ -54,3 +54,7 @@ export function uniqueWallJoins(step) {
     return a !== b && walls.has(a) && walls.has(b) ? [[a,b].sort((x,y) => x-y).join(':')] : [];
   })).size;
 }
+
+export function hasDwgDownload(download) {
+  return !!download?.bytes && /^AC10[0-9]{2}$/.test(download.bytes.subarray(0, 6).toString());
+}

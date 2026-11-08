@@ -21,7 +21,7 @@
  * - `notes`: where the UI blocked or misled, in plain words.
  */
 
-import { assignedTypes, ownOpenings, wallPropertySets, wallQuantityCoverage } from './lib/oracles.mjs';
+import { uniqueWallJoins, hasDwgDownload, assignedTypes, ownOpenings, wallPropertySets, wallQuantityCoverage } from './lib/oracles.mjs';
 import { downloadCount, nextDownload, task } from './lib/driver.mjs';
 import {
   escape, hudText, oracleModel, openStoreyManager, readSession, readStoreyManager, switchStorey, tool, toasts, typeFields,
@@ -175,7 +175,7 @@ export const PROBES = [
       const shot = await s.shot('chain');
       const { step } = await oracleModel(s);
       const axes = step.wallAxes();
-      const joins = step.count('IFCRELCONNECTSPATHELEMENTS');
+      const joins = uniqueWallJoins(step);
       const tol = 0.05;
       const closed = axes.length >= 4 && nearPt(axes[0].start, axes.at(-1).end, 1e-6);
       const onTarget = axes.length === 4 && axes.every((a, i) => nearPt(a.start, pts[i], tol) && nearPt(a.end, pts[i + 1], tol));
@@ -662,6 +662,7 @@ export const PROBES = [
           { name: 'a sheet is active (paper, frame, title block)', ok: state.sheetEnabled && state.activeSheet, detail: `sheetEnabled ${state.sheetEnabled}, activeSheet ${state.activeSheet}` },
           { name: 'sheet exported as PDF', ok: isPdf(files.pdf), detail: files.pdf ? `${files.pdf.name}, ${files.pdf.bytes.length} bytes` : 'no PDF' },
           { name: 'drawing exported as DXF (no DWG export exists)', ok: isDxf(files.dxf), detail: files.dxf ? `${files.dxf.name}, ${files.dxf.bytes.length} bytes` : 'no DXF' },
+          { name: 'drawing exported as DWG', ok: hasDwgDownload(files.dwg), detail: files.dwg?.name ?? 'no DWG export exists' },
         ],
       };
     },

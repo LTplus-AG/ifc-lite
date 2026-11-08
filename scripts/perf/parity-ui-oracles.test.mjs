@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { assignedTypes, uniqueWallJoins, hardwareAdapter, loadTarget, ownOpenings, themedResult, wallPropertySets, wallQuantityCoverage } from '../../tests/modelling-parity/ui/lib/oracles.mjs';
+import { hasDwgDownload, assignedTypes, uniqueWallJoins, hardwareAdapter, loadTarget, ownOpenings, themedResult, wallPropertySets, wallQuantityCoverage } from '../../tests/modelling-parity/ui/lib/oracles.mjs';
 import { readStep } from '../../tests/modelling-parity/ui/lib/step.mjs';
 test('#9324 fallback flags and software adapter descriptions are refused',()=>{
   assert.equal(hardwareAdapter({architecture:'blackwell'}),true);
@@ -53,4 +53,10 @@ test('#9324 duplicate wall connections and unassigned types cannot certify behav
   assert.equal(assignedTypes(step, step.of('IFCDOOR')), false);
   const linked = readStep('DATA;' + base + "#7=IFCRELDEFINESBYTYPE('r',$,$,$,(#3),#4);ENDSEC;");
   assert.equal(assignedTypes(linked, linked.of('IFCDOOR')), true);
+});
+
+test('#9324 PDF and DXF exports cannot stand in for the required DWG output', () => {
+  assert.equal(hasDwgDownload(undefined), false);
+  assert.equal(hasDwgDownload({bytes: Buffer.from('%PDF-1.7')}), false);
+  assert.equal(hasDwgDownload({bytes: Buffer.from('AC1032payload')}), true);
 });

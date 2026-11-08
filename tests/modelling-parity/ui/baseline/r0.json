@@ -1020,7 +1020,7 @@
       "probe": "ui",
       "id": "ui.sheet",
       "title": "Put the 2D section on a sheet and export the sheet as PDF and DXF",
-      "status": "pass",
+      "status": "partial",
       "metrics": {
         "ms": 5768,
         "actions": 7,
@@ -1043,6 +1043,11 @@
           "name": "drawing exported as DXF (no DWG export exists)",
           "ok": true,
           "detail": "section-front-50.dxf, 2597 bytes"
+        },
+        {
+          "name": "drawing exported as DWG",
+          "ok": false,
+          "detail": "no DWG export exists (rejudged from the recorded R0 note and PDF/DXF artifacts)"
         }
       ],
       "tasks": [
@@ -1080,7 +1085,8 @@
         }
       ],
       "notes": [
-        "The drawing exports DXF; there is no DWG export."
+        "The drawing exports DXF; there is no DWG export.",
+        "Baseline oracle correction: rejudged from the existing evidence; no new GPU measurement."
       ],
       "scripted": [],
       "pageErrors": [],
@@ -1095,7 +1101,8 @@
       "artifacts": {
         "pdf": "artifacts/sheets-pdf-dwg/Drawing Sheet-front-50.pdf",
         "dxf": "artifacts/sheets-pdf-dwg/section-front-50.dxf"
-      }
+      },
+      "reason": "drawing exported as DWG: no DWG export exists"
     },
     {
       "schema": "ifclite-parity-result/1",

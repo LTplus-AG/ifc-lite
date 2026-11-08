@@ -19,7 +19,7 @@ beforeAll(async () => {
   const runtime = await import('@ifc-lite/wasm');
   runtime.initSync({ module: readFileSync(wasm) });
 });
-const exported = (model: LoadedModel | null) => model ? canonicalQuantityIds(new StepExporter(model.store, model.backend.getMutationView() ?? undefined).export({ schema: 'IFC4', applyMutations: true, timeStamp: '2026-10-03T00:00:00' }).content) : undefined;
+const exported = (model: LoadedModel | null) => model ? canonicalQuantityIds(new StepExporter(model.store, model.backend.getMutationView() ?? undefined).export({ schema: 'IFC4', applyMutations: true, timeStamp: '2026-10-03T00:00:00' }).content, new Set(model.store.entityIndex.byId.keys())) : undefined;
 const outcome = (result: CallToolResult): RoomCommandResult => {
   expect(result.isError).not.toBe(true);
   expect(result.structuredContent).toHaveProperty('created');

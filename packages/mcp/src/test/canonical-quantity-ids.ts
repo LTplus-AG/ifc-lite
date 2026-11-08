@@ -9,7 +9,7 @@
  * reference, value and all non-quantity entity ids in strict undo assertions.
  * Only used on StepExporter output (one physical line per record).
  */
-export function canonicalQuantityIds(content: string | Uint8Array): string {
+export function canonicalQuantityIds(content: string | Uint8Array, sourceIds: ReadonlySet<number>): string {
   const text = typeof content === 'string' ? content : new TextDecoder().decode(content);
   const records = new Map<number, { type: string; body: string }>();
   for (const match of text.matchAll(/^#(\d+)=(\w+)\((.*)\);$/gm)) {
@@ -18,10 +18,10 @@ export function canonicalQuantityIds(content: string | Uint8Array): string {
   // Never rewrite # tokens embedded inside IFC string values.
   const refs = (body: string): number[] => [...body.matchAll(/'(?:''|[^'])*'|#(\d+)/g)]
     .flatMap(match => match[1] === undefined ? [] : [Number(match[1])]);
-  const sets = [...records].filter(([, record]) => record.type === 'IFCELEMENTQUANTITY')
+  const sets = [...records].filter(([id, record]) => record.type === 'IFCELEMENTQUANTITY' && !sourceIds.has(id))
     .sort((a, b) => a[1].body.localeCompare(b[1].body));
   const ids = new Map<number, number>();
-  const assign = (id: number) => { if (!ids.has(id)) ids.set(id, 0); };
+  const assign = (id: number) => { if (!sourceIds.has(id) && !ids.has(id)) ids.set(id, 0); };
   for (const [id, set] of sets) {
     assign(id);
     for (const child of refs(set.body)) {

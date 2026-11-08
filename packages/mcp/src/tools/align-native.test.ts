@@ -28,7 +28,7 @@ beforeAll(async () => {
 });
 const exportModel = (model: LoadedModel) => new StepExporter(model.store, model.backend.getMutationView() ?? undefined).export({ schema: model.store.schemaVersion ?? 'IFC4', applyMutations: true, timeStamp: '2026-10-03T00:00:00' }).content;
 async function graph(model: LoadedModel) {
-  const store = await new IfcParser().parseColumnar(new TextEncoder().encode(canonicalQuantityIds(exportModel(model))).buffer, { disableWorkerScan: true });
+  const store = await new IfcParser().parseColumnar(new TextEncoder().encode(canonicalQuantityIds(exportModel(model), new Set(model.store.entityIndex.byId.keys()))).buffer, { disableWorkerScan: true });
   const extractor = new EntityExtractor(store.source);
   return [...store.entityIndex.byId].map(([id, location]) => ({ id, ...extractor.extractEntity(location)! })).sort((a, b) => a.id - b.id);
 }

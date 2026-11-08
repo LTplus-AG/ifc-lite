@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import type { LoadedModel } from '../context.js';
 import { describe, expect, it } from 'vitest';
 import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -14,8 +15,8 @@ import { AnchorEntityReader } from '../../../create/src/in-store/resolve-anchor.
 import { canonicalQuantityIds } from '../test/canonical-quantity-ids.js';
 import { liveToolSession } from '../test/live-tool-session.js';
 
-async function graph(content: string | Uint8Array) {
-  const bytes = new TextEncoder().encode(canonicalQuantityIds(content));
+async function graph(model: LoadedModel, content: string | Uint8Array = model.bim.export.ifc()) {
+  const bytes = new TextEncoder().encode(canonicalQuantityIds(content, new Set(model.store.entityIndex.byId.keys())));
   const store = await new IfcParser().parseColumnar(bytes.slice().buffer as ArrayBuffer, { disableWorkerScan: true });
   const extractor = new EntityExtractor(store.source);
   return [...store.entityIndex.byId].map(([id, location]) => {
@@ -40,25 +41,25 @@ describe('#6232 physical command protocol', () => {
       const moved = await call('edit_element_geometry', { model_id: target, operation: { kind: 'transform', express_ids: [1222], transform: { kind: 'move', delta: [0, 2] } } });
       expect(moved.isError).not.toBe(true);
       expect(extent().min[1]).toBeCloseTo(original.min[1] + 2);
-      if (peer && peerBefore) expect(await graph(peer.bim.export.ifc())).toEqual(await graph(peerBefore));
+      if (peer && peerBefore) expect(await graph(peer)).toEqual(await graph(peer, peerBefore));
       expect((await call('mutation_undo', { model_id: target })).isError).not.toBe(true);
-      expect(await graph(model.bim.export.ifc())).toEqual(await graph(before));
+      expect(await graph(model)).toEqual(await graph(model, before));
       const sized = await call('edit_element_geometry', { model_id: target, operation: { kind: 'size', express_id: 1222, patch: { kind: 'wall', Height: 4 } } });
       // The real Bonsai wall uses IfcArbitraryClosedProfileDef. The strict
       // shared viewer policy refuses this profile instead of guessing slots.
       expect(sized.isError).toBe(true);
       expect(sized.structuredContent?.message).toContain('simple IfcRectangleProfileDef');
-      expect(await graph(model.bim.export.ifc())).toEqual(await graph(before));
+      expect(await graph(model)).toEqual(await graph(model, before));
       const supported = model.bim.store.addWall(target, 42, { Start: [0, 30, 0], End: [5, 30, 0], Thickness: .2, Height: 3 });
-      const beforeSize = await graph(model.bim.export.ifc());
+      const beforeSize = await graph(model);
       const height = await call('edit_element_geometry', { model_id: target,
         operation: { kind: 'size', express_id: supported.expressId, patch: { kind: 'wall', Height: 4 } } });
       expect(height.isError, JSON.stringify(height)).not.toBe(true);
       const changed = placedBodyExtent(model.store, supported.expressId, view)!;
       expect(changed.max[2] - changed.min[2]).toBeCloseTo(4);
       expect((await call('mutation_undo', { model_id: target })).isError).not.toBe(true);
-      expect(await graph(model.bim.export.ifc())).toEqual(beforeSize);
-      if (peer && peerBefore) expect(await graph(peer.bim.export.ifc())).toEqual(await graph(peerBefore));
+      expect(await graph(model)).toEqual(beforeSize);
+      if (peer && peerBefore) expect(await graph(peer)).toEqual(await graph(peer, peerBefore));
     });
   }
   for (const count of [1, 2]) {
@@ -78,9 +79,9 @@ describe('#6232 physical command protocol', () => {
       expect(read(first.expressId).wall.end).toEqual([6, 11]);
       expect(read(second.expressId).wall.start).toEqual([6, 11]);
       expect(readWallJoinRels(model.store, view)).toHaveLength(1);
-      if (peer && peerBefore) expect(await graph(peer.bim.export.ifc())).toEqual(await graph(peerBefore));
+      if (peer && peerBefore) expect(await graph(peer)).toEqual(await graph(peer, peerBefore));
       expect((await call('mutation_undo', { model_id: target })).isError).not.toBe(true);
-      expect(await graph(model.bim.export.ifc())).toEqual(await graph(before));
+      expect(await graph(model)).toEqual(await graph(model, before));
       const turning = model.bim.store.addWall(target, 42, { Start: [10, 10, 0], End: [15, 10, 0], Thickness: .2, Height: 3 });
       const beforeTurn = model.bim.export.ifc();
       const rotated = await call('edit_element_geometry', { model_id: target,
@@ -89,9 +90,9 @@ describe('#6232 physical command protocol', () => {
       expect(read(turning.expressId).wall.start[0]).toBeCloseTo(10);
       expect(read(turning.expressId).wall.end[0]).toBeCloseTo(10);
       expect(read(turning.expressId).wall.end[1]).toBeCloseTo(15);
-      if (peer && peerBefore) expect(await graph(peer.bim.export.ifc())).toEqual(await graph(peerBefore));
+      if (peer && peerBefore) expect(await graph(peer)).toEqual(await graph(peer, peerBefore));
       expect((await call('mutation_undo', { model_id: target })).isError).not.toBe(true);
-      expect(await graph(model.bim.export.ifc())).toEqual(await graph(beforeTurn));
+      expect(await graph(model)).toEqual(await graph(model, beforeTurn));
     });
 
     it(`splits the larger identity-preserving segment, trims the picked end and undoes each complete graph (${count} models)`, async () => {
@@ -112,26 +113,26 @@ describe('#6232 physical command protocol', () => {
       expect(new AnchorEntityReader(model.store, view).entity(wall.expressId)?.attributes[0]).toEqual(sourceGlobalId);
       expect(readWallJoinTarget(model.store, view, wall.expressId, 1)?.wall.start).toEqual([2, 20]);
       expect(readWallJoinTarget(model.store, view, row.added.expressId, 1)?.wall.end).toEqual([2, 20]);
-      if (peer && peerBefore) expect(await graph(peer.bim.export.ifc())).toEqual(await graph(peerBefore));
+      if (peer && peerBefore) expect(await graph(peer)).toEqual(await graph(peer, peerBefore));
       expect((await call('mutation_undo', { model_id: target })).isError).not.toBe(true);
-      expect(await graph(model.bim.export.ifc())).toEqual(await graph(before));
+      expect(await graph(model)).toEqual(await graph(model, before));
       const trimmed = await call('edit_element_geometry', { model_id: target,
         operation: { kind: 'trim_extend', express_id: wall.expressId, params: { mode: 'trim', click: [7, 20],
           boundary: { a: [5, 19], b: [5, 21], tMin: 0, tMax: 1, reach: 0 } } } });
       expect(trimmed.isError).not.toBe(true);
       expect(readWallJoinTarget(model.store, view, wall.expressId, 1)?.wall.end).toEqual([5, 20]);
       expect(new AnchorEntityReader(model.store, view).entity(wall.expressId)?.attributes[0]).toEqual(sourceGlobalId);
-      if (peer && peerBefore) expect(await graph(peer.bim.export.ifc())).toEqual(await graph(peerBefore));
+      if (peer && peerBefore) expect(await graph(peer)).toEqual(await graph(peer, peerBefore));
       expect((await call('mutation_undo', { model_id: target })).isError).not.toBe(true);
-      expect(await graph(model.bim.export.ifc())).toEqual(await graph(before));
+      expect(await graph(model)).toEqual(await graph(model, before));
       const extended = await call('edit_element_geometry', { model_id: target,
         operation: { kind: 'trim_extend', express_id: wall.expressId, params: { mode: 'extend', click: [7, 20],
           boundary: { a: [10, 19], b: [10, 21], tMin: 0, tMax: 1, reach: 0 } } } });
       expect(extended.isError).not.toBe(true);
       expect(readWallJoinTarget(model.store, view, wall.expressId, 1)?.wall.end).toEqual([10, 20]);
       expect((await call('mutation_undo', { model_id: target })).isError).not.toBe(true);
-      expect(await graph(model.bim.export.ifc())).toEqual(await graph(before));
-      if (peer && peerBefore) expect(await graph(peer.bim.export.ifc())).toEqual(await graph(peerBefore));
+      expect(await graph(model)).toEqual(await graph(model, before));
+      if (peer && peerBefore) expect(await graph(peer)).toEqual(await graph(peer, peerBefore));
     });
   }
   for (const persistedPeer of [false, true]) {
@@ -154,8 +155,8 @@ describe('#6232 physical command protocol', () => {
           expect(registry.get('alpha')!.backend.getMutationView()).toBeNull();
           expect(registry.get('alpha')!.store.entities.getExpressIdByGlobalId(occupied)).toBeGreaterThan(0);
         }
-        const peerBefore = await graph(registry.get('alpha')!.bim.export.ifc());
-        const before = await graph(target.bim.export.ifc());
+        const peerBefore = await graph(registry.get('alpha')!);
+        const before = await graph(target);
         const split = async () => {
           const result = await call('edit_element_geometry', { model_id: 'beta', operation: {
             kind: 'split', requests: [{ expressId: wall.expressId, cut: { kind: 'wall', distance: 2 } }] } });
@@ -166,11 +167,11 @@ describe('#6232 physical command protocol', () => {
           expect(row.source).toEqual(wall);
           expect(new AnchorEntityReader(target.store, view).entity(row.added.expressId)?.attributes[0]).toEqual(expected);
           expect(new AnchorEntityReader(target.store, view).entity(wall.expressId)?.attributes[0]).toEqual(guid);
-          expect(await graph(registry.get('alpha')!.bim.export.ifc())).toEqual(peerBefore);
+          expect(await graph(registry.get('alpha')!)).toEqual(peerBefore);
         };
         await split();
         expect((await call('mutation_undo', { model_id: 'beta' })).isError).not.toBe(true);
-        expect(await graph(target.bim.export.ifc())).toEqual(before);
+        expect(await graph(target)).toEqual(before);
         await split();
       } finally {
         if (directory) await rm(directory, { recursive: true, force: true });
@@ -184,7 +185,7 @@ describe('#6232 physical command protocol', () => {
     expect((await call('edit_element_geometry', { operation })).isError).toBe(true);
     const before = registry.get('beta')!.bim.export.ifc();
     expect((await call('edit_element_geometry', { model_id: 'beta', operation: { kind: 'transform', express_ids: [1222, 999999], transform: { kind: 'move', delta: [1, 1] } } })).isError).toBe(true);
-    expect(await graph(registry.get('beta')!.bim.export.ifc())).toEqual(await graph(before));
+    expect(await graph(registry.get('beta')!)).toEqual(await graph(registry.get('beta')!, before));
     const readOnly = await liveToolSession(1, true);
     expect((await readOnly.call('edit_element_geometry', { operation })).isError).toBe(true);
   });

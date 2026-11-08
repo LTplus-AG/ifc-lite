@@ -13,6 +13,7 @@ import { addPlateToStore, type PlateInStoreParams } from './plate.js';
 import { addRoofToStore, type RoofInStoreParams } from './roof.js';
 import { addSlabToStore, type SlabInStoreParams } from './slab.js';
 import { addSpaceToStore, type SpaceInStoreParams } from './space.js';
+import { autojoinWallInStore } from './wall-autojoin.js';
 import { addWallToStore, type WallInStoreParams } from './wall.js';
 
 /** The eight ordinary builders shared by loaded-model gestures and SDK/MCP.
@@ -41,14 +42,23 @@ export function addOrdinaryElementInStore(
    * The new element's top constraint (#9296), applied in the same
    * transaction to a wall, column, beam or member (`applyNewElementTop`).
    */
-  options: { readonly top?: TopConstraint | 'auto'; readonly store?: IfcDataStore } = {},
+  options: {
+    readonly top?: TopConstraint | 'auto'; readonly store?: IfcDataStore;
+    /** Receives skipped implicit-join notices after creation commits. */
+    readonly notices?: string[];
+  } = {},
 ): number {
-  return editor.runAtomic(draft => {
+  const notices: string[] = [];
+  const id = editor.runAtomic(draft => {
     const resolved = typeof anchor === 'function' ? anchor(draft) : anchor;
     const id = emitOrdinaryElement(draft, resolved, element);
     if (options.top !== undefined && options.store && TOP_KINDS.has(element.kind)) applyNewElementTop(options.store, draft, id, options.top, resolved.storeyId);
+    if (element.kind === 'wall' && options.store) notices.push(...autojoinWallInStore(options.store, draft, id));
     return id;
   });
+  if (options.notices) options.notices.push(...notices);
+  else for (const notice of notices) console.warn(`[ifc-lite/create] ${notice}`);
+  return id;
 }
 
 const TOP_KINDS = new Set<OrdinaryInStoreElement['kind']>(['wall', 'column', 'beam', 'member']);

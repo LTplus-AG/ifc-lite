@@ -66,6 +66,25 @@ async function planCutAtGroundStorey(page) {
   });
 }
 
+/**
+ * Open Settings the way every opener does (the `ifc-lite:open-settings`
+ * window event, #5857), then wait for its dialog. `toEnd` scrolls every
+ * scrollable element inside the dialog to its end, so a still shows whether
+ * the last settings are reachable; on a build where nothing scrolls, the
+ * clipped body shows as clipped.
+ */
+async function openSettingsDialog(page, { toEnd = false } = {}) {
+  await page.evaluate(() => window.dispatchEvent(new CustomEvent('ifc-lite:open-settings', { detail: { section: 'general' } })));
+  await page.waitForSelector('[role="dialog"]');
+  if (!toEnd) return;
+  await page.evaluate(() => {
+    const dialog = document.querySelector('[role="dialog"]');
+    for (const el of [dialog, ...dialog.querySelectorAll('*')]) {
+      if (el.scrollHeight > el.clientHeight + 1) el.scrollTop = el.scrollHeight;
+    }
+  });
+}
+
 export const SCENES = [
   {
     id: 'empty',
@@ -166,5 +185,19 @@ export const SCENES = [
     model: ARCH,
     viewport: { width: 390, height: 844 },
     async run() {},
+  },
+  {
+    id: 'mobile-settings',
+    title: 'Phone, Settings open',
+    model: ARCH,
+    viewport: { width: 390, height: 844 },
+    async run({ page }) { await openSettingsDialog(page); },
+  },
+  {
+    id: 'mobile-settings-end',
+    title: 'Phone, Settings scrolled to the end',
+    model: ARCH,
+    viewport: { width: 390, height: 844 },
+    async run({ page }) { await openSettingsDialog(page, { toEnd: true }); },
   },
 ].map((scene) => ({ viewport: DESKTOP, ...scene }));

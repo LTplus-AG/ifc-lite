@@ -29,6 +29,12 @@ export const SlabIcon = createLucideIcon('model-slab', [
   ['path', { d: 'M16 17l6-6V8', key: 'end' }],
 ]);
 
+/** A roof seen from its gable: two slopes over the eaves. */
+export const RoofIcon = createLucideIcon('model-roof', [
+  ['path', { d: 'M2 13 12 5l10 8', key: 'slopes' }],
+  ['path', { d: 'M5 11v8h14v-8', key: 'walls' }],
+]);
+
 /** A column seen from a corner: a tall box on the floor. */
 export const ColumnIcon = createLucideIcon('model-column', [
   ['path', { d: 'M8 6h6v15H8z', key: 'front' }],

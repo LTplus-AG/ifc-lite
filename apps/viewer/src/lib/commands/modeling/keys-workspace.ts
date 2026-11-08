@@ -29,6 +29,20 @@ export function launchModelCommand(id: CommandId, opts: { drawsOnWorkplane?: boo
   return useViewerStore.getState().session?.activeCommandId === id;
 }
 
+/**
+ * Slab and Roof are one command, `slab.place`, told apart by its class: the
+ * Slab entry leaves the roof class (a plate stays a plate), the Roof entry
+ * takes it, and the session raises the plane for a roof (`authoringSessionSlice`).
+ */
+export function launchSlabTool(tool: 'slab' | 'roof'): boolean {
+  const s = useViewerStore.getState();
+  const current = s.authoringDefaults.slabClass;
+  if (tool === 'roof') {
+    if (current !== 'roof') s.setAuthoringDefaults({ slabClass: 'roof' });
+  } else if (current === 'roof') s.setAuthoringDefaults({ slabClass: 'slab' });
+  return launchModelCommand('slab.place');
+}
+
 function workspaceKeysLive(): boolean {
   const s = useViewerStore.getState();
   return s.workspaceMode === 'model' && s.activeTool !== 'walk';
@@ -38,7 +52,8 @@ export function bindModelWorkspaceKeys(): () => void {
   const active = workspaceKeysLive;
   const disposers = [
     registerKeyboardCommand('model.wall', () => launchModelCommand('wall.place'), { active }),
-    registerKeyboardCommand('model.slab', () => launchModelCommand('slab.place'), { active }),
+    registerKeyboardCommand('model.slab', () => launchSlabTool('slab'), { active }),
+    registerKeyboardCommand('model.roof', () => launchSlabTool('roof'), { active }),
     registerKeyboardCommand('model.column', () => launchModelCommand('column.place'), { active }),
     registerKeyboardCommand('model.beam', () => launchModelCommand('beam.place'), { active }),
     registerKeyboardCommand('model.room', () => launchModelCommand('room.place'), { active }),

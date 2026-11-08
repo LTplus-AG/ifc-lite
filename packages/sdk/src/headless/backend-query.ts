@@ -78,6 +78,28 @@ export function createQueryAdapter(
   const PaginationError = options.paginationError ?? Error;
   const normalizeTypePropertyValue = options.normalizeTypePropertyValue ??
     ((value: unknown) => value as string | number | boolean | null);
+  /** The mutation view, only once it holds edits: an untouched session reads the store as parsed. */
+  function liveView(): MutablePropertyView | undefined {
+    const view = mutationView();
+    return view?.hasPendingChanges() ? view : undefined;
+  }
+
+  /**
+   * Type data with the session's edits applied: the effective IfcRelDefinesByType
+   * (queued, superseded and deleted relationships folded by `related`) and the
+   * type's property sets as the overlay holds them (its own HasPropertySets and
+   * IfcRelDefinesByProperties sets, plus queued property writes).
+   */
+  function liveTypeProperties(ref: EntityRef, pending: PendingOverlay) {
+    if (pending.deleted.has(ref.expressId)) return null;
+    const typeRef = adapter.related(ref, 'IfcRelDefinesByType', 'inverse')[0];
+    if (!typeRef) return null;
+    const properties = pending.propertySets(typeRef.expressId);
+    if (properties.length === 0) return null;
+    const type = entityData(typeRef);
+    return { typeName: type?.name || type?.type || '', typeId: typeRef.expressId, properties };
+  }
+
   function entityData(ref: EntityRef): EntityData | null {
     const pending = overlay();
     if (pending?.deleted.has(ref.expressId)) return null;
@@ -217,7 +239,7 @@ export function createQueryAdapter(
     return out;
   }
 
-  return {
+  const adapter: QueryBackendMethods = {
     entities(descriptor: QueryDescriptor): EntityData[] {
       const pending = overlay();
       const requested = descriptor.types && descriptor.types.length > 0
@@ -299,14 +321,21 @@ export function createQueryAdapter(
     attributes,
     properties: (ref: EntityRef) => properties(ref),
     quantities,
+    // Relationship-derived reads (materials, classifications, documents, type
+    // data) resolve through the live mutation view, so an association, layer
+    // set, IfcRelDefinesByType or type pset authored in this session reads back
+    // before export (#9296). The parser's resolvers take the view and fold
+    // created records, edits and deletions; a read-only session passes null and
+    // keeps the store-only path.
     classifications(ref: EntityRef): ClassificationData[] {
-      return extractClassificationsOnDemand(store, ref.expressId);
+      return extractClassificationsOnDemand(store, ref.expressId, liveView());
     },
     materials(ref: EntityRef): MaterialData | null {
-      return extractMaterialsOnDemand(store, ref.expressId);
+      return extractMaterialsOnDemand(store, ref.expressId, liveView());
     },
     typeProperties(ref: EntityRef): TypePropertiesData | null {
-      const info = extractTypePropertiesOnDemand(store, ref.expressId);
+      const pending = overlay();
+      const info = pending ? liveTypeProperties(ref, pending) : extractTypePropertiesOnDemand(store, ref.expressId);
       if (!info) return null;
       return {
         typeName: info.typeName,
@@ -319,7 +348,7 @@ export function createQueryAdapter(
       };
     },
     documents(ref: EntityRef): DocumentData[] {
-      return extractDocumentsOnDemand(store, ref.expressId);
+      return extractDocumentsOnDemand(store, ref.expressId, liveView());
     },
     relationships(ref: EntityRef): EntityRelationshipsData {
       const result = extractRelationshipsOnDemand(store, ref.expressId);
@@ -376,4 +405,5 @@ export function createQueryAdapter(
       return out.map((expressId: number) => ({ modelId: ref.modelId, expressId }));
     },
   };
+  return adapter;
 }

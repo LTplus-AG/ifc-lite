@@ -201,7 +201,7 @@ export function sparseOverlay(original: OverlaySnapshot) {
     const tail = appendOnly ? structuredClone(nextHistory.slice(original.mutationHistory.length)) : structuredClone(Array.from(nextHistory));
     const publication = { ...original, nextAllocatedId: after.nextAllocatedId };
     const replacements = changes.filter(c => after[c.key] !== state[c.key]).map(c => [c.key, structuredClone(after[c.key])] as const);
-    return { inverse, written, changed: changes.some(c => !sameOverlayValue(c.before, c.after)) || !appendOnly || tail.length > 0,
+    return { inverse, written, changed: after.nextAllocatedId !== original.nextAllocatedId || changes.some(c => !sameOverlayValue(c.before, c.after)) || !appendOnly || tail.length > 0,
       publish() {
         for (const change of changes) if (after[change.key] === state[change.key]) change.apply();
         for (const [key, value] of replacements) Object.assign(publication, { [key]: value });

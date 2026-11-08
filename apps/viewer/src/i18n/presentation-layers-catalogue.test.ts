@@ -14,6 +14,9 @@ for (const [locale, expected] of [['en', 'Presentation layers'], ['de', 'Darstel
     const catalogues = Object.values(module).filter(isCatalogueRecord);
     const value = catalogues.map(catalogue => catalogue['properties.panel.presentationLayersHeading']).find(Boolean);
     assert.equal(value, expected);
+    for (const key of ['properties.panel.presentationLayersLoadError', 'properties.panel.presentationLayersRetry']) {
+      assert.ok(catalogues.some(catalogue => typeof catalogue[key] === 'string' && String(catalogue[key]).length > 0), key);
+    }
     for (const catalogue of catalogues) assert.deepEqual(checkCatalogue(catalogue).problems, []);
   });
 }

@@ -6,6 +6,8 @@ import type { Catalogue } from '../../registry';
 
 export const propertiesPanelIt = {
   'properties.panel.presentationLayersHeading': 'Layer di presentazione',
+  'properties.panel.presentationLayersLoadError': 'Impossibile caricare i layer di presentazione.',
+  'properties.panel.presentationLayersRetry': 'Riprova',
   "properties.panel.positionLabel": "Posizione",
   "properties.panel.crsLabel": "CRS",
   "properties.panel.localCoordinates": "Locali",

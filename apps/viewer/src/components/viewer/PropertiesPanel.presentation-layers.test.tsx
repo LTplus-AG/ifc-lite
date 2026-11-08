@@ -16,6 +16,7 @@ import { useViewerStore } from '@/store';
 import * as layerIndex from '@/lib/presentation-layers.js';
 import { PropertiesPanel } from './PropertiesPanel.js';
 import { HierarchyPanel } from './HierarchyPanel.js';
+import { PresentationLayersSection } from './properties/PresentationLayersSection.js';
 
 const initial = useViewerStore.getState();
 afterEach(() => { cleanup(); useViewerStore.setState(initial, true); });
@@ -275,4 +276,40 @@ it('#9273 a metadata load that never completes cannot arm layer focus forever', 
     cleanup();
     t.mock.timers.reset();
   }
+});
+
+
+it('#9273 a failed lazy download displays an error and retry loads real layer membership', async () => {
+  await setup();
+  let attempts = 0;
+  const loadLookup = () => ++attempts === 1 ? Promise.reject(new Error('Chunk download failed'))
+    : import('@/lib/presentation-layer-selection.js');
+  const ui = render(<PresentationLayersSection entityRef={{ modelId: 'own', expressId: 7 }} loadLookup={loadLookup} />);
+  await waitFor(() => !!ui.querySelector('[role="alert"]'), 'a failed download is visible in the inspector');
+  assert.match(ui.textContent!, /Unable to load presentation layers/);
+  const retry = [...ui.querySelectorAll('button')].find(button => button.textContent === 'Retry');
+  assert.ok(retry);
+  click(retry);
+  await waitFor(() => !!section(ui)?.textContent?.includes('Walls (A-01)'), 'retry resolves the real parsed model');
+  assert.deepEqual([...section(ui)!.querySelectorAll('button')].map(button => button.textContent), ['Walls (A-01)', 'Structure']);
+  assert.ok(ui.querySelector('[role="alert"]') === null);
+});
+
+it('#9273 changing selection retries a failed layer download without retaining the previous error', async () => {
+  await setup();
+  let attempts = 0;
+  const loadLookup = () => ++attempts === 1 ? Promise.reject(new Error('Chunk download failed'))
+    : import('@/lib/presentation-layer-selection.js');
+  function SelectedLayers() {
+    const selected = useViewerStore(state => state.selectedEntity);
+    return selected ? <PresentationLayersSection entityRef={selected} loadLookup={loadLookup} /> : null;
+  }
+  const ui = render(<SelectedLayers />);
+  await waitFor(() => !!ui.querySelector('[role="alert"]'), 'initial download failed');
+  act(() => useViewerStore.setState({ selectedEntity: { modelId: 'own', expressId: 8 } }));
+  await advance(20);
+  assert.ok(section(ui) === null, 'successful unlayered lookup has no section or stale error');
+  act(() => useViewerStore.setState({ selectedEntity: { modelId: 'own', expressId: 7 } }));
+  await waitFor(() => !!section(ui)?.textContent?.includes('Walls (A-01)'), 'selection retries the module and resolves its layers');
+  assert.ok(ui.querySelector('[role="alert"]') === null);
 });

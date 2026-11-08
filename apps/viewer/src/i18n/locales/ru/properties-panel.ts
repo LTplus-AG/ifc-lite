@@ -6,6 +6,8 @@ import type { Catalogue } from '../../registry';
 
 export const propertiesPanelRu = {
   'properties.panel.presentationLayersHeading': 'Слои представления',
+  'properties.panel.presentationLayersLoadError': 'Не удалось загрузить слои представления.',
+  'properties.panel.presentationLayersRetry': 'Повторить',
   "properties.panel.title": "Свойства",
   "properties.panel.findLabel": "Поиск свойств",
   "properties.panel.findPlaceholder": "Найти свойство или значение",

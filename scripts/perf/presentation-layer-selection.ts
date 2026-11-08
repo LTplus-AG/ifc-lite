@@ -10,6 +10,7 @@ import { pathToFileURL } from 'node:url';
 import assert from 'node:assert/strict';
 import { IfcParser } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
+import type { PresentationLayer } from '../../apps/viewer/src/lib/presentation-layers';
 import { presentationLayersByProduct } from '../../apps/viewer/src/lib/presentation-layer-selection';
 import { generatedLayerModel } from '../../apps/viewer/src/test/fixtures/presentation-layer-model';
 
@@ -29,7 +30,7 @@ console.log(execFileSync('ps', ['-eo', 'pid,ppid,pcpu,rss,args', '--sort=-pcpu']
 const baselinePath = resolve('apps/viewer/src/lib/.presentation-layer-selection-before.ts');
 writeFileSync(baselinePath, execFileSync('git', ['show', `${base}:apps/viewer/src/lib/presentation-layers.ts`]));
 try {
-  const before = await import(pathToFileURL(baselinePath).href) as { presentationLayersByProduct: typeof presentationLayersByProduct };
+  const before = await import(pathToFileURL(baselinePath).href) as typeof import('../../apps/viewer/src/lib/presentation-layers');
   const sources = [false, true].map(withLayer => new TextEncoder().encode(generatedLayerModel(20_000, withLayer)));
   const rows: Array<{ round: number; side: string; withLayer: boolean; edited: boolean; milliseconds: number }> = [];
   for (let round = 0; round < 5; round++) {
@@ -42,8 +43,22 @@ try {
         for (const edited of [false, true]) {
           if (edited) view.setProperty(1, 'Pset_Test', 'Unrelated', 'changed');
           const start = performance.now();
-          const lookup = side === 'before' ? before.presentationLayersByProduct : presentationLayersByProduct;
-          const layers = lookup(store, view).get(1) ?? [];
+          // Reproduce the original selection path using the base's actual API:
+          // fully resolve every layer, then invert layer -> products for selection.
+          let layers: readonly PresentationLayer[];
+          if (side === 'before') {
+            const index = new Map<number, PresentationLayer[]>();
+            for (const layer of before.resolvePresentationLayers(store, view)) {
+              for (const id of layer.productIds) {
+                const memberships = index.get(id) ?? [];
+                memberships.push(layer);
+                index.set(id, memberships);
+              }
+            }
+            layers = index.get(1) ?? [];
+          } else {
+            layers = presentationLayersByProduct(store, view).get(1) ?? [];
+          }
           const milliseconds = performance.now() - start;
           assert.deepEqual(layers.map(layer => [layer.expressId, layer.Name, layer.Identifier]),
             withLayer ? [[620001, 'BREP layer', 'L-1']] : []);

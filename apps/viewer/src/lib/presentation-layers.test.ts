@@ -6,17 +6,26 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
 import { IfcParser } from '@ifc-lite/parser';
-import { MutablePropertyView } from '@ifc-lite/mutations';
+import { expandTypeNamesToDescendants } from '@ifc-lite/data';
+import { iterateEffectiveEntityIds, MutablePropertyView } from '@ifc-lite/mutations';
 import * as presentation from './presentation-layers.js';
 
 // #9273: both traversal directions must agree for every existing ownership fixture.
 function resolvePresentationLayers(...args: Parameters<typeof presentation.resolvePresentationLayers>) {
   const layers = presentation.resolvePresentationLayers(...args);
   const selected = presentation.presentationLayersByProduct(...args);
-  const ids = new Set([1, 2, 3, ...layers.flatMap(layer => layer.productIds)]);
+  const [store, view] = args;
+  const ids = new Set([...iterateEffectiveEntityIds(store, view,
+    expandTypeNamesToDescendants(['IfcProduct'], store.schemaVersion))].map(entry => entry.expressId));
   const info = ({ productIds: _ids, ...layer }: (typeof layers)[number]) => layer;
   for (const id of ids) {
     assert.deepEqual((selected.get(id) ?? []).map(info), layers.filter(layer => layer.productIds.includes(id)).map(info), `product ${id}`);
+  }
+  // Check the inverse too: neither path may invent or omit any product, even
+  // when the full resolver never mentions it in a layer's productIds.
+  for (const layer of layers) {
+    assert.deepEqual([...ids].filter(id => selected.get(id)?.some(item => item.expressId === layer.expressId)).sort((a, b) => a - b),
+      [...layer.productIds].sort((a, b) => a - b), `layer ${layer.expressId}`);
   }
   return layers;
 }
@@ -72,6 +81,18 @@ test('#7619 resolves representations, direct items, shared nested maps and dupli
   // LayerOn/LayerFrozen do not remove products, and shared #90 does not
   // associate the unrelated wall with any other layer.
   assert.deepEqual(layers[1].productIds, [1]);
+});
+
+test('#9273 compares every effective product, including products outside the old hard-coded IDs', async () => {
+  const store = await parse(fixture.replace('#10=IFCPRODUCTDEFINITIONSHAPE',
+    "#7000=IFCWALL('0Wall00000000000007000',$,'Mapped wall',$,$,$,#10,$,$);\n#10=IFCPRODUCTDEFINITIONSHAPE"));
+  const layers = resolvePresentationLayers(store);
+  assert.deepEqual(layers.find(layer => layer.expressId === 50)?.productIds, [1, 2, 7000]);
+  const view = new MutablePropertyView(null, 'legacy');
+  view.setAttribute(7000, 'Representation', '#12');
+  const edited = resolvePresentationLayers(store, view);
+  assert.deepEqual(edited.find(layer => layer.expressId === 50)?.productIds, [1, 2]);
+  assert.deepEqual(edited.find(layer => layer.expressId === 52)?.productIds, [3, 7000]);
 });
 
 test('#7619 cyclic mapped geometry terminates and retains reachable products', async () => {

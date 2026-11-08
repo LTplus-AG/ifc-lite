@@ -18,6 +18,8 @@ import type { TranslationValue } from '../types';
  */
 export const propertiesPanelEn = {
   'properties.panel.presentationLayersHeading': 'Presentation layers',
+  'properties.panel.presentationLayersLoadError': 'Unable to load presentation layers.',
+  'properties.panel.presentationLayersRetry': 'Retry',
   // PropertiesPanel: empty state
   'properties.panel.title': 'Properties',
   'properties.panel.findLabel': 'Find properties',

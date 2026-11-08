@@ -1,8 +1,8 @@
-import { storeyAttachmentDisplay } from '@/lib/actions/storey-attachment-display';
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { storeyAttachmentDisplay } from '@/lib/actions/storey-attachment-display';
 /**
  * Property Editor component for editing IFC property values inline.
  * Includes schema-aware property addition with IFC4 standard validation.

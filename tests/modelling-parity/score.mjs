@@ -19,7 +19,8 @@
  * Usage:
  *   node tests/modelling-parity/score.mjs [DIR ...] [--out summary.json] [--check baseline.json] [--quiet]
  *     --out    where the JSON summary goes (default tests/modelling-parity/.out/summary.json)
- *     --check  ratchet: exit 1 if the score or any row's status is below the baseline summary's;
+ *     --check  ratchet: exit 1 if the score or any row's status is below the baseline summary's,
+ *              or the set of table-stakes rows (and so the denominator) differs from it;
  *              the baseline is read first, and --out naming the same file is refused (exit 2)
  */
 
@@ -111,6 +112,7 @@ export function score(catalogue, results, meta = {}) {
     results: results.length,
     score: counts.met + counts.partial * 0.5,
     maxScore: stakes.length,
+    tableStakesIds: stakes.map((r) => r.capability),
     counts,
     ...(unknown.length ? { unknownCapabilities: unknown } : {}),
     rows,
@@ -121,6 +123,14 @@ export function score(catalogue, results, meta = {}) {
 export function ratchet(baseline, current) {
   const problems = [];
   if (current.score < baseline.score) problems.push(`score dropped from ${baseline.score} to ${current.score}`);
+  // The scored set is part of the ratchet: demoting, removing or renaming a table-stakes row would
+  // otherwise move the denominator (or drop a missing row) with the score and every row unchanged.
+  const ids = (s) => new Set(s.tableStakesIds ?? s.rows.filter((r) => r.tableStakes).map((r) => r.capability));
+  const was = ids(baseline), is = ids(current);
+  const gone = [...was].filter((id) => !is.has(id)), added = [...is].filter((id) => !was.has(id));
+  if (gone.length || added.length || current.maxScore !== baseline.maxScore) {
+    problems.push(`table-stakes set changed (${baseline.maxScore} -> ${current.maxScore} rows${gone.length ? `; no longer scored: ${gone.join(', ')}` : ''}${added.length ? `; newly scored: ${added.join(', ')}` : ''})`);
+  }
   const now = new Map(current.rows.map((r) => [r.capability, r]));
   for (const was of baseline.rows) {
     const is = now.get(was.capability);

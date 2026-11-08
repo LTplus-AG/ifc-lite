@@ -15,6 +15,8 @@
  */
 
 import { existsSync, readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { parseEntityTable } from '../../../scripts/lib/entity-table.mjs';
 import { dirname, isAbsolute, resolve } from 'node:path';
 import { CENSUS_CLASSES } from '../probes/sdk/lib/parity.mjs';
 
@@ -50,11 +52,39 @@ export function resolveArtifact(path, { root, resultFile }) {
   return candidates.find((p) => existsSync(p)) ?? candidates[0];
 }
 
-/** Census classes an IFC export actually contains, by its own STEP records (exact class names). */
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
+const ENTITY_TABLES = ['ifc2x3', 'ifc4', 'ifc4x3'].map((v) => `packages/data/src/ifc-schema/generated/entities-${v}.ts`);
+let censusOf = null;
+/**
+ * UPPER-CASE STEP type -> the census classes it counts as: itself and every census-class
+ * supertype, from the generated buildingSMART tables (the same parser the coverage ledger
+ * uses), so IFCWALLSTANDARDCASE counts as IfcWall exactly as the reopened model's
+ * `byType('IfcWall')` does. Fails loudly rather than matching names only.
+ */
+export function censusClassesByStepType() {
+  if (censusOf) return censusOf;
+  const parent = new Map();
+  for (const rel of ENTITY_TABLES) {
+    const file = resolve(ROOT, rel);
+    if (!existsSync(file)) throw new Error(`fileClasses: schema table ${rel} is missing; cannot resolve IFC subtypes`);
+    for (const [name, e] of parseEntityTable(readFileSync(file, 'utf8'))) if (!parent.has(name)) parent.set(name, e.parent);
+  }
+  if (!parent.has('IfcWallStandardCase')) throw new Error('fileClasses: the schema tables lost IfcWallStandardCase; the subtype parser is broken');
+  const census = new Set(CENSUS_CLASSES);
+  censusOf = new Map();
+  for (const name of parent.keys()) {
+    const hit = [];
+    for (let t = name; t; t = parent.get(t)) if (census.has(t)) hit.push(t);
+    if (hit.length) censusOf.set(name.toUpperCase(), hit);
+  }
+  return censusOf;
+}
+
+/** Census classes an IFC export actually contains, by its own STEP records, subtypes folded in. */
 export function fileClasses(content) {
   const present = new Set();
-  const byUpper = new Map(CENSUS_CLASSES.map((c) => [c.toUpperCase(), c]));
-  for (const m of content.matchAll(/^#\d+\s*=\s*(IFC[A-Z0-9_]+)\s*\(/gm)) { const c = byUpper.get(m[1]); if (c) present.add(c); }
+  const map = censusClassesByStepType();
+  for (const m of content.matchAll(/^#\d+\s*=\s*(IFC[A-Z0-9_]+)\s*\(/gm)) for (const c of map.get(m[1]) ?? []) present.add(c);
   return [...present].sort();
 }
 

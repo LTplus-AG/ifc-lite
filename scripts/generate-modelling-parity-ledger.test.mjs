@@ -309,7 +309,11 @@ test('artifact paths resolve in both lane layouts, nearest result-relative locat
 
 test('a UI export is judged on the classes it contains', () => {
   const ifc = "ISO-10303-21;\nDATA;\n#1=IFCPROJECT('0YvctVUKr0kugbFTf53O9L',$,'P',$,$,$,$,$,$);\n#2=IFCBUILDINGSTOREY('1YvctVUKr0kugbFTf53O9L',$,'L1',$,$,$,$,$,.ELEMENT.,0.);\n#3=IFCWALLSTANDARDCASE('2YvctVUKr0kugbFTf53O9L',$,'W',$,$,$,$,$,$);\nENDSEC;\nEND-ISO-10303-21;\n";
-  assert.deepEqual(ART.fileClasses(ifc), ['IfcBuildingStorey'], 'exact census classes only; no IfcWall for a file without IFCWALL');
+  assert.deepEqual(ART.fileClasses(ifc), ['IfcBuildingStorey', 'IfcWall'], 'IFCWALLSTANDARDCASE counts as IfcWall, as byType does after a reopen');
+  const sub = ART.censusClassesByStepType();
+  assert.deepEqual(sub.get('IFCSLABSTANDARDCASE'), ['IfcSlab']);
+  assert.deepEqual(sub.get('IFCDOORSTANDARDCASE'), ['IfcDoor']);
+  assert.equal(sub.get('IFCPROJECT'), undefined, 'non-census classes add nothing');
 });
 
 test('round 3: annotations count, bad --jobs exits 2, SVG ends after its root, --summary follows --root', () => {
@@ -339,4 +343,22 @@ test('round 3: annotations count, bad --jobs exits 2, SVG ends after its root, -
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test('ratchet: demoting, removing or renaming a table-stakes row fails', () => {
+  const base = score(CATALOGUE, RESULTS);
+  assert.deepEqual(base.tableStakesIds, ['a', 'b', 'd', 'e']);
+  const variants = {
+    demoted: { capabilities: CATALOGUE.capabilities.map((c) => (c.id === 'd' ? { ...c, tableStakes: false } : c)) },
+    removed: { capabilities: CATALOGUE.capabilities.filter((c) => c.id !== 'd') },
+    renamed: { capabilities: CATALOGUE.capabilities.map((c) => (c.id === 'd' ? { ...c, id: 'd2' } : c)) },
+  };
+  for (const [label, cat] of Object.entries(variants)) {
+    const problems = ratchet(base, score(cat, RESULTS));
+    assert.ok(problems.some((p) => p.startsWith('table-stakes set changed')), `${label}: ${problems.join('; ')}`); // @source-text-assertion-ok asserts on ratchet()'s own returned problems, not on unexecuted source text
+  }
+  const legacy = { ...base };
+  delete legacy.tableStakesIds; // summaries written before the field fall back to their rows
+  assert.deepEqual(ratchet(legacy, base), []);
+  assert.ok(ratchet(legacy, score(variants.demoted, RESULTS)).length > 0);
 });

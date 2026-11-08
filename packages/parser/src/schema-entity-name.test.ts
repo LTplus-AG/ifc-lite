@@ -100,3 +100,15 @@ describe('canonical registry lookup #7362', () => {
     expect(getAttributeNamesForSchema('IFCRAILWAY', 'IFC4X3', snapshot)).toContain('PredefinedType');
   });
 });
+
+
+it('snapshot reads retain the empty-registry diagnostic after their witness is hidden #8452', () => {
+  const registry = getSchemaRegistryForVersion('IFC4'), original = registry.entities;
+  try {
+    registry.entities = { IfcWall: original.IfcWall };
+    const snapshot = parserApi.createSchemaEntityNameSnapshot(registry);
+    expect(getAttributeNamesForSchema('IfcWall', 'IFC4', snapshot)).toContain('GlobalId');
+    Object.defineProperty(registry.entities, 'IfcWall', { enumerable: false });
+    expect(() => getAttributeNamesForSchema('IfcWall', 'IFC4', snapshot)).toThrow('zero entities');
+  } finally { registry.entities = original; }
+});

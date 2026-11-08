@@ -455,6 +455,8 @@ jobs:
               # integration harness: a guard that the PR it should catch can skip
               # is not a guard.
               - 'tools/ifc-git-corpus/**'
+              # The history walker and its fast-lane Node guard tests.
+              - 'tools/ifc-history/**'
               - 'tests/integration.test.ts'
               # The tsconfig BOTH `pnpm test:integration` and `pnpm test:api`
               # compile against (`tsx --tsconfig tests/tsconfig.json`). Same
@@ -1683,6 +1685,8 @@ jobs:
       # Execute each discovered test file once. Literal paths preserve the path
       # auditor's existing input census; globs discover every new suite. sort -u
       # removes the overlap before Node starts any tests.
+      - name: Exercise IFC git history walk against the real CLI
+        run: node --test tools/ifc-history/*.test.mjs
       - name: Run every scripts/ test file (glob catch-all)
         id: scripts_tests
         run: |

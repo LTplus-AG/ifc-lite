@@ -140,6 +140,24 @@ describe('a loaded wall', () => {
     expect(refreshedBaseQuantitySets(s.store, s.view)).toEqual([{ entityId: wall, setName: WALL }]);
   });
 
+  it('a file door re-pointed to another loaded wall moves its cut there, in the view and the export', async () => {
+    const { file, ids } = await loaded((s, a) => {
+      const first = addWallToStore(s.editor, a, { Start: [0, 0, 0], End: [8, 0, 0], Thickness: 0.2, Height: 3 }).wallId;
+      const second = addWallToStore(s.editor, a, { Start: [0, 0, 0], End: [8, 0, 0], Thickness: 0.2, Height: 3 }).wallId;
+      addHostedElementInStore(s.store, s.editor, first, { kind: 'door', params: { Offset: 2, Width: 1, Height: 2 } });
+      return { first, second };
+    });
+    const s = open(await parse(file));
+    const rel = [...(s.store.entityIndex.byType.get('IFCRELVOIDSELEMENT') ?? [])][0];
+    expect(rel).toBeDefined();
+    // The two walls coincide, so the door's box cuts the second exactly as it cut the first.
+    s.editor.setPositionalAttribute(rel, 4, `#${ids.second}`);
+    expect(values(s.view, ids.first, WALL)).toMatchObject({ NetVolume: 4.8 });
+    expect(values(s.view, ids.second, WALL)).toMatchObject({ NetVolume: 4.4 });
+    expect(refreshedBaseQuantitySets(s.store, s.view).map((r) => r.entityId).sort()).toEqual([ids.first, ids.second].sort());
+    expect(await fileValues(exportText(s), ids.second, WALL)).toEqual(values(s.view, ids.second, WALL));
+  });
+
   it('an edit that leaves the shape alone refreshes nothing', async () => {
     const { file, ids: wall } = await loaded((s, a) => addWallToStore(s.editor, a, { Start: [0, 0, 0], End: [8, 0, 0], Thickness: 0.2, Height: 3 }).wallId);
     const s = open(await parse(file));

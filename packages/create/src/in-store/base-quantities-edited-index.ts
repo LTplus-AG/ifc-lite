@@ -145,9 +145,16 @@ export function editedElementCandidates(dataStore: IfcDataStore, view: MutablePr
     if (host !== null && !view.getNewEntity(host)) candidates.add(host);
   }
   if (touched.size === 0) return candidates;
-  // A loaded element retyped into a supported kind is its own candidate.
   for (const id of touched) {
-    if (!view.getNewEntity(id) && BASE_QUANTITY_TYPES.includes(effectiveElementType(dataStore, view, id))) candidates.add(id);
+    if (view.getNewEntity(id)) continue;
+    const type = effectiveElementType(dataStore, view, id);
+    // A loaded element retyped into a supported kind is its own candidate.
+    if (BASE_QUANTITY_TYPES.includes(type)) candidates.add(id);
+    // A file void relationship re-pointed at another loaded host: the index knows only its old one.
+    if (type === 'IFCRELVOIDSELEMENT' && !view.isDeleted(id)) {
+      const host = asExpressIdRef(readAttributes(dataStore, view, view, id)?.[4]);
+      if (host !== null && !view.getNewEntity(host)) candidates.add(host);
+    }
   }
   let index = indexes.get(dataStore);
   if (!index) indexes.set(dataStore, index = buildIndex(dataStore));

@@ -94,6 +94,15 @@ afterEach(() => {
   cleanup();
 });
 
+describe('slab.place: the bar names the class being drawn (#9202)', () => {
+  it('Roof and Plate title the bar; a slab keeps the command label', () => {
+    for (const [slabClass, title] of [['slab', undefined], ['roof', 'modelWorkspace.tool.roof'], ['plate', 'modelingCommand.class.plate']] as const) {
+      act(() => { useViewerStore.getState().setAuthoringDefaults({ slabClass }); });
+      assert.equal(SLAB_PLACE.hud.title?.(useViewerStore.getState()), title, slabClass);
+    }
+  });
+});
+
 describe('slab.place: rectangle (#6232 M2.2)', () => {
   it('two corners make one IfcSlab, one undo step, re-meshed through wasm', () => {
     const before = undoDepth();

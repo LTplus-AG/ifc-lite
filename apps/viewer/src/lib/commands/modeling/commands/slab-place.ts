@@ -18,6 +18,7 @@
 import { SlabPlaceBar } from '@/components/viewer/tools/command/PlacementBars';
 import { SlabPlaceScene } from '@/components/viewer/tools/command/SlabPlaceScene';
 import type { SlabClass } from '@/store/slices/authoringDefaultsSlice';
+import type { TranslationKey } from '@/i18n';
 import type { ViewerState } from '@/store';
 import { commandGhostId } from '../ghost.js';
 import { prismGhostMesh } from '../ghost-shapes.js';
@@ -71,12 +72,19 @@ function slabParams(g: SlabPlaceGesture, cls: SlabClass, z: number, thickness: n
   return { Position: [rect.min[0], rect.min[1], z], Width: rect.width, Depth: rect.depth, Thickness: thickness, ...extrusion };
 }
 
+const SLAB_CLASS_TITLES: Record<SlabClass, TranslationKey | undefined> = {
+  slab: undefined,
+  roof: 'modelWorkspace.tool.roof',
+  plate: 'modelingCommand.class.plate',
+};
+
 export const SLAB_PLACE: ModelingCommand<SlabPlaceGesture> = {
   id: 'slab.place',
   labelKey: 'modelingCommand.slab.label',
   hud: {
-    // The rail's Roof entry is this command: the bar says what is being drawn.
-    title: (s) => (s.authoringDefaults.slabClass === 'roof' ? 'modelWorkspace.tool.roof' : undefined),
+    // The rail's Roof entry is this command: the bar says what is being drawn,
+    // roof or plate, and a slab keeps the command's own label.
+    title: (s) => SLAB_CLASS_TITLES[s.authoringDefaults.slabClass],
     Bar: SlabPlaceBar,
     Scene: SlabPlaceScene,
     hint: (g) => {

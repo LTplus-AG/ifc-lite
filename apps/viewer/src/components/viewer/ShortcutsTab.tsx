@@ -98,9 +98,10 @@ export function ShortcutsTab() {
                 data-shortcut-command={row.id}
                 className="flex flex-wrap items-center justify-between gap-x-3 gap-y-0.5 py-1"
               >
-                <span className="text-sm">{t(row.labelKey, row.params)}</span>
-                {/* A chord list too long for a phone row moves under its
-                    label, right-aligned, and wraps there (#8802). */}
+                {/* The label wraps first (its 10rem basis); only a chord
+                    list too long for a phone row moves under it,
+                    right-aligned, and wraps there (#8802). */}
+                <span className="grow basis-40 text-sm">{t(row.labelKey, row.params)}</span>
                 <kbd className="ml-auto px-2 py-0.5 text-xs bg-muted rounded border font-mono">
                   {row.keys}
                 </kbd>

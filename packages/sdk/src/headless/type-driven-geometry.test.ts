@@ -135,6 +135,22 @@ describe('placed doors and windows are typed occurrences', () => {
     expect(exported()).toMatch(/IFCDOORTYPE\('[^']+',[^,]*,'Door 1000 \\X2\\00D7\\X0\\ 2100 custom pivot',\$,\$,\$,\$,\$,\$,\.DOOR\.,\.USERDEFINED\.,\$,'Custom pivot'\);/);
   });
 
+  it('explicit USERDEFINED doors and windows with different descriptions get their own types', async () => {
+    const { S, storey, exported } = await session();
+    const wall = S.addWall('m', storey, { Start: [0, 0, 0], End: [12, 0, 0], Thickness: 0.2, Height: 3 });
+    S.addHostedDoor('m', wall.expressId, { Offset: 1.5, Width: 0.9, Height: 2.1, OperationType: 'USERDEFINED', UserDefinedOperationType: 'Pivot' });
+    S.addHostedDoor('m', wall.expressId, { Offset: 3.5, Width: 0.9, Height: 2.1, OperationType: 'USERDEFINED', UserDefinedOperationType: 'Revolving' });
+    S.addHostedWindow('m', wall.expressId, { Offset: 6, Sill: 0.9, Width: 1.2, Height: 1.4, PartitioningType: 'USERDEFINED', UserDefinedPartitioningType: 'Bay' });
+    S.addHostedWindow('m', wall.expressId, { Offset: 9, Sill: 0.9, Width: 1.2, Height: 1.4, PartitioningType: 'USERDEFINED', UserDefinedPartitioningType: 'Oriel' });
+    const text = exported();
+    for (const description of ['Pivot', 'Revolving']) {
+      expect(text.match(new RegExp(`IFCDOORTYPE\\([^;]*\\.USERDEFINED\\.,\\$,'${description}'\\);`, 'g'))).toHaveLength(1);
+    }
+    for (const description of ['Bay', 'Oriel']) {
+      expect(text.match(new RegExp(`IFCWINDOWTYPE\\([^;]*\\.USERDEFINED\\.,\\$,'${description}'\\);`, 'g'))).toHaveLength(1);
+    }
+  });
+
   it('copying a typed element extends its type relationship rather than adding one', async () => {
     const { S, storey, exported } = await session();
     const type = S.addElementType('m', { Type: 'IfcWallType', Name: 'WT', PredefinedType: 'STANDARD' });

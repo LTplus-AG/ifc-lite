@@ -99,6 +99,51 @@ test('existing Open event still reaches the single mounted file hook (#8947)', (
   assert.equal(document.querySelectorAll('#file-input-add').length, 1);
 });
 
+for (const nativePicker of [false, true]) {
+  test(`shared Open/Add refuse live loading before ${nativePicker ? 'native picker' : 'input'} activation (#8947)`, async () => {
+    function PickerHost() {
+      const commands = useFileCommands();
+      return <>{commands.fileInputs}
+        <button onClick={commands.handleOpenClick}>Open from toolbar</button>
+        <button onClick={commands.handleAddModelClick}>Add from toolbar</button>
+      </>;
+    }
+    const inputs: string[] = [];
+    let pickerCalls = 0;
+    const executions: string[] = [];
+    mock.method(HTMLInputElement.prototype, 'click', function (this: HTMLInputElement) {
+      if (this.type === 'file') inputs.push(this.id);
+    });
+    mock.method(posthog, 'capture', (event: string) => {
+      if (event === 'command_executed') executions.push(event);
+    });
+    if (nativePicker) Object.defineProperty(window, 'showOpenFilePicker', {
+      configurable: true, value: () => { pickerCalls++; return Promise.resolve([]); },
+    });
+    const ui = render(<BimReactContext.Provider value={{} as BimContext}><PickerHost /></BimReactContext.Provider>);
+    const buttons = [...ui.querySelectorAll('button')];
+    const open = buttons.find(button => button.textContent === 'Open from toolbar')!;
+    const add = buttons.find(button => button.textContent === 'Add from toolbar')!;
+    assert.ok(open);
+    assert.ok(add);
+    const invokeAll = () => {
+      window.dispatchEvent(new CustomEvent('ifc-lite:open-files'));
+      open.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+      add.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+    };
+    // Change loading and invoke before React can refresh any handler closures.
+    act(() => { useViewerStore.setState({ loading: true }); invokeAll(); });
+    assert.deepEqual(inputs, []);
+    assert.equal(pickerCalls, 0);
+    assert.equal(localStorage.getItem(RECENT_KEY), null);
+    assert.deepEqual(executions, []);
+    act(() => { useViewerStore.setState({ loading: false }); invokeAll(); });
+    assert.deepEqual(inputs, nativePicker ? [] : ['file-input-open', 'file-input-open', 'file-input-add']);
+    assert.equal(pickerCalls, nativePicker ? 3 : 0, 'unlocked picker starts in the original event stack');
+    await settle();
+  });
+}
+
 test('loading, mixed refresh handles and host loss refuse pointer/Enter without history or telemetry (#8947)', async () => {
   const executions: string[] = [];
   mock.method(posthog, 'capture', (event: string) => { if (event === 'command_executed') executions.push(event); });

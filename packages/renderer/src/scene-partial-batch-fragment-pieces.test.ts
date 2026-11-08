@@ -20,7 +20,8 @@ import { Scene } from './scene.js';
 import { BATCH_CONSTANTS } from './constants.js';
 import { PartialBatchRequests } from './partial-batch-requests.js';
 import { XRayAlpha } from './xray-alpha.js';
-import type { RGBAOverrideMap } from './overlay-routing.js';
+import { shouldRouteBatchTransparent, type RGBAOverrideMap } from './overlay-routing.js';
+import type { BatchedMesh, RenderOptions } from './types.js';
 
 (globalThis as Record<string, unknown>).GPUBufferUsage = {
   MAP_READ: 1, MAP_WRITE: 2, COPY_SRC: 4, COPY_DST: 8, INDEX: 16,
@@ -164,7 +165,7 @@ describe('Scene partial batches of streaming fragments draw an entity once (#908
     stream(scene, meshes.slice(2));
     assertSpread(scene, T);
     assertDrawnOnce(scene, meshes, { 'isolate T': [T], 'hide U': [T, V, W], 'hide U and V': [T, W] });
-    // A lens colour on W: a fragment cannot be partitioned, so its subset stays one slot (#9220).
+    // A lens colour on W splits the fragment holding it by promotion (#9254), still drawing each mesh once.
     const lens: RGBAOverrideMap = new Map([[W, [1, 0, 0, 1]]]);
     assertDrawnOnce(scene, meshes, { 'hide U and V, W promoted': [T, W] }, lens);
   });
@@ -192,4 +193,148 @@ describe('Scene partial batches of streaming fragments draw an entity once (#908
       assertDrawnOnce(scene, meshes, isolateEach);
     });
   }
+});
+
+/**
+ * One frame as the render loop classifies it (index.ts): a partly visible
+ * batch through `pushAlphaSplit`, else `pushVisible`; a fully visible one
+ * through `pushWholeSplit`, else drawn whole. Indices are tallied by the route
+ * each drawn (sub-)batch takes: pipeline and resolved X-Ray alpha.
+ */
+function routedIndices(scene: Scene, visible: ReadonlySet<number> | null, overrides: RGBAOverrideMap | null, xray: XRayAlpha): Map<string, number> {
+  const routes = new Map<string, number>();
+  const draw = (batch: BatchedMesh) => {
+    const alpha = xray.forBatch(batch, batch.color[3]);
+    const route = `${shouldRouteBatchTransparent(alpha, batch.expressIds, overrides) ? 'transparent' : 'opaque'}@${alpha}`;
+    routes.set(route, (routes.get(route) ?? 0) + batch.indexCount);
+  };
+  const requests = new PartialBatchRequests(overrides, xray, (batch) => scene.canPartitionBatch(batch));
+  for (const batch of scene.getBatchedMeshes()) {
+    const transparent = xray.forBatch(batch, batch.color[3]) < 0.99;
+    const ids = new Set(batch.expressIds.filter((id) => visible?.has(id) ?? true));
+    if (ids.size === 0) continue;
+    if (ids.size < new Set(batch.expressIds).size) {
+      if (!requests.pushAlphaSplit(batch, ids)) requests.pushVisible(batch, ids, transparent);
+    } else if (!requests.pushWholeSplit(batch, transparent)) draw(batch);
+  }
+  for (const { sourceBatchKey, colorKey, visibleIds } of requests.items) {
+    const partial = scene.getOrCreatePartialBatch(sourceBatchKey, colorKey, visibleIds, device, pipeline);
+    if (partial) draw(partial);
+  }
+  return routes;
+}
+
+/** The routes `routedIndices` must report: each visible mesh once, on its own entity's route. */
+function expectedRoutes(meshes: MeshData[], visible: ReadonlySet<number> | null, overrides: RGBAOverrideMap | null, xray: XRayAlpha): Map<string, number> {
+  const routes = new Map<string, number>();
+  for (const m of meshes) {
+    if (visible && !visible.has(m.expressId)) continue;
+    const alpha = xray.forEntity(m.expressId, m.color[3]);
+    const route = `${shouldRouteBatchTransparent(alpha, [m.expressId], overrides) ? 'transparent' : 'opaque'}@${alpha}`;
+    routes.set(route, (routes.get(route) ?? 0) + m.indices.length);
+  }
+  return routes;
+}
+
+function assertRoutes(scene: Scene, meshes: MeshData[], cases: Record<string, number[] | null>, overrides: RGBAOverrideMap | null, xrayOptions: RenderOptions = {}): void {
+  const xray = new XRayAlpha(xrayOptions, new Set());
+  for (const [label, ids] of Object.entries(cases)) {
+    const visible = ids && new Set(ids);
+    const sorted = (routes: Map<string, number>) => [...routes].sort(([a], [b]) => a.localeCompare(b));
+    assert.deepStrictEqual(sorted(routedIndices(scene, visible, overrides, xray)), sorted(expectedRoutes(meshes, visible, overrides, xray)), label);
+  }
+}
+
+describe('a streaming fragment splits per entity like a finalized batch (#9254)', () => {
+  const glass = (id: number, x: number, triangles: number) => mesh(id, x, { triangles, color: GLASS });
+  const RED: [number, number, number, number] = [1, 0, 0, 1];
+
+  it('a transparent fragment with mixed overrides shows its override colour while streaming, each mesh drawn once', () => {
+    const scene = new Scene();
+    const T = 1, U = 2, V = 3, W = 4;
+    const meshes = [glass(T, 0, 1), glass(U, 2, 2), glass(T, 4, 4), glass(V, 6, 8), glass(W, 8, 16)];
+    stream(scene, meshes.slice(0, 2));
+    stream(scene, meshes.slice(2));
+    assertSpread(scene, T);
+    const lens: RGBAOverrideMap = new Map([[T, RED], [W, RED]]);
+    assertRoutes(scene, meshes, { 'all visible': null, 'hide U': [T, V, W], 'hide W': [T, U, V], 'isolate T': [T] }, lens);
+  });
+
+  it('a mesh split across two fragments by the buffer limit: each fragment promotes only its own pieces', () => {
+    const scene = new Scene();
+    const P = 1, B = 2;
+    // One piece's 180_000 indices fill a GPU buffer, so P's second piece opens the next fragment, beside B.
+    scene['cachedMaxBufferSize'] = 180_000 * BATCH_CONSTANTS.BYTES_PER_INDEX;
+    const meshes = [glass(P, 0, 60_001), glass(B, 2, 2)];
+    stream(scene, meshes);
+    assertSpread(scene, P);
+    assertRoutes(scene, meshes, { 'all visible': null, 'isolate P': [P] }, new Map([[P, RED]]));
+  });
+
+  it('X-Ray fades only the overridden entity of a fragment, not its batchmates', () => {
+    const scene = new Scene();
+    const A = 1, B = 2, C = 3;
+    const meshes = [mesh(A, 0), mesh(B, 2, { triangles: 2 }), mesh(A, 4, { triangles: 4 }), mesh(C, 6, { triangles: 8 })];
+    stream(scene, meshes.slice(0, 2));
+    stream(scene, meshes.slice(2));
+    assertSpread(scene, A);
+    assertRoutes(scene, meshes, { 'all visible': null, 'hide C': [A, B] }, null, { transparencyOverrides: new Map([[B, 0.2]]) });
+  });
+
+  it('a fragment holding a colour-merged mesh is not partitioned: drawn whole, once', () => {
+    const scene = new Scene();
+    // One mesh carrying entities 7 and 8 per vertex, registered under both ids.
+    const merged: MeshData = {
+      ...glass(7, 0, 1),
+      positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0, 2, 0, 0, 3, 0, 0, 2, 1, 0]),
+      normals: new Float32Array(18).map((_, i) => (i % 3 === 2 ? 1 : 0)),
+      indices: new Uint32Array([0, 1, 2, 3, 4, 5]),
+      entityIds: new Uint32Array([7, 7, 7, 8, 8, 8]),
+    };
+    stream(scene, [merged]);
+    const [fragment] = scene.getBatchedMeshes();
+    assert.strictEqual(scene.canPartitionBatch(fragment), false);
+    const routes = routedIndices(scene, null, new Map([[7, RED]]), new XRayAlpha({}, new Set()));
+    assert.deepStrictEqual([...routes.values()], [6], 'one whole draw of the merged mesh, not one per subset');
+  });
+
+  it('an ephemeral stream keeps no piece list, so its fragments are drawn whole, once', () => {
+    const scene = new Scene();
+    scene.setEphemeralStreamingMode(true);
+    const meshes = [glass(1, 0, 1), glass(2, 2, 2)];
+    stream(scene, meshes);
+    for (const fragment of scene.getBatchedMeshes()) assert.strictEqual(scene.canPartitionBatch(fragment), false);
+    const routes = routedIndices(scene, null, new Map([[1, RED]]), new XRayAlpha({}, new Set()));
+    assert.deepStrictEqual([...routes.values()], [9], 'one whole draw of the fragment, not one per subset');
+  });
+
+  it('a time-sliced finalize under tight budgets leaves the old fragments their pieces until the swap', async () => {
+    const scene = new Scene();
+    const T = 1, U = 2, V = 3, W = 4;
+    const TINT: [number, number, number, number] = [0.9, 0.6, 0.3, 0.4];
+    const meshes = [glass(T, 0, 1), glass(U, 2, 2), mesh(V, 4, { triangles: 4, color: TINT }), glass(T, 6, 8), mesh(W, 8, { triangles: 16, color: TINT })];
+    scene.setColdGeometryProvider({ loadMeshesInBounds: async () => [] });
+    scene.setGpuResidencyBudget(1);
+    scene.setHostResidencyBudget(1);
+    stream(scene, meshes.slice(0, 3));
+    stream(scene, meshes.slice(3));
+    assertSpread(scene, T);
+
+    // A zero time budget yields after the first rebuilt bucket. Its batch is
+    // built but not yet published, so it has never been drawn: to the budget
+    // passes it looks old enough to evict, then to demote cold, which would
+    // take its meshes out of meshDataMap while the old fragments still cut
+    // their subsets from them.
+    const finalized = scene.finalizeStreamingAsync(device, pipeline, 0);
+    assert.strictEqual(scene.isFinalizeInProgress(), true, 'inside the finalize window');
+    for (let i = 0; i < 200; i++) {
+      scene.beginResidencyFrame();
+      scene.enforceGpuBudget();
+    }
+    const lens: RGBAOverrideMap = new Map([[T, RED], [V, RED]]);
+    assertRoutes(scene, meshes, { 'all visible, T and V promoted': null }, lens);
+    await finalized;
+    assert.strictEqual(scene.isFinalizeInProgress(), false);
+    assert.ok(scene.getBatchedMeshes().every((batch) => batch.gpuResident !== false), 'no batch was evicted before it was published');
+  });
 });

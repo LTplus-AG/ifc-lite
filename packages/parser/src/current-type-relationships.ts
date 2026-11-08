@@ -12,11 +12,17 @@
  *
  *   - the graph cannot vouch for it: an edit touched it, the session created
  *     it, the parser recorded no edge for it (a record the byte reader could
- *     not use, or a store whose graph is not complete yet), or an edge of it has
- *     the wrong class on its relating side (a record the byte reader misread, see
- *     readGraphFacts). These are read once
- *     per revision, so they keep refusing for the whole model as they always did;
+ *     not use, or a store whose graph is not complete yet), or it is a
+ *     definition set naming something other than a definition (see
+ *     readGraphFacts). These are read once per revision, so they keep refusing
+ *     for the whole model as they always did;
  *   - a lookup needs it: it names the element or type being asked about.
+ *
+ * The byte reader records edges for a relationship only when its related list
+ * and relating value read cleanly, so the edges a relationship has are every
+ * reference it holds in those two attributes. A record it would misread (a
+ * nested or typed value in the list, say) gets no edges at all and is read up
+ * front (#9192).
  *
  * One more case is read only when it decides the answer: a definition relationship the graph
  * over-counts because an edit removed a definition it names (or the view cannot list deletions)
@@ -82,7 +88,7 @@ function readRelation(store: IfcDataStore, expressId: number, view: MetadataRead
 interface GraphFacts {
     /** Per typing relationship, the edges the parser recorded for it, repeats included. */
     counts: Map<number, number>;
-    /** Typing relationships with an edge whose relating side has the wrong class. */
+    /** Definition relationships with an edge from something that is not a property definition. */
     irregular: Set<number>;
 }
 const graphFacts = new WeakMap<RelationshipEdges, GraphFacts>();
@@ -90,13 +96,9 @@ const graphFacts = new WeakMap<RelationshipEdges, GraphFacts>();
 /**
  * What the graph can say about every typing relationship, once per graph. Reads no source.
  *
- * Its edges are not every element a record names when the byte reader misread the record:
- * `readRefList` stops a list at a nested or typed value and the rest shifts into the relating
- * slot, so `((#10),#14),#40` becomes one edge typing #10 by the wall #14, and #14 gets none. An
- * edge whose relating side is not an IfcTypeObject (or, for definitions, not an
- * IfcPropertySetDefinition) marks such a record, which is then read like one with no edges.
- * The same mark covers a definition set naming a non-definition, which a read counts
- * differently from its edges (#7681).
+ * A definition set naming a non-definition is marked: the graph has an edge per member, but a
+ * read counts only the effective property definitions (#7681), so the reference budget needs
+ * the read. Such a record is then read like one with no edges.
  */
 function readGraphFacts(store: IfcDataStore, edges: RelationshipEdges): GraphFacts {
     const known = graphFacts.get(edges);
@@ -117,13 +119,11 @@ function readGraphFacts(store: IfcDataStore, edges: RelationshipEdges): GraphFac
     const classes = new Map<string, boolean>();
     for (const [source, offset] of edges.offsets) {
         const end = offset + (edges.counts.get(source) ?? 0);
-        let type: boolean | undefined;
         let definition: boolean | undefined;
         for (let edge = offset; edge < end; edge++) {
             const kind = edgeTypes[edge];
             if (kind === RelationshipType.DefinesByType) {
-                type ??= hasAncestor(store, source, 'IfcTypeObject', classes);
-                eachRelationship(edge, type ? count : (id) => { count(id); mark(id); });
+                eachRelationship(edge, count);
             } else if (kind === RelationshipType.DefinesByProperties) {
                 definition ??= hasAncestor(store, source, 'IfcPropertySetDefinition', classes);
                 eachRelationship(edge, definition ? count : (id) => { count(id); mark(id); });
@@ -146,13 +146,6 @@ function hasAncestor(store: IfcDataStore, id: number, ancestor: string, memo: Ma
         memo.set(key, result);
     }
     return result;
-}
-
-/** Every reference a decoded value holds, at any depth. */
-function referencesIn(value: unknown, into: number[] = []): number[] {
-    if (typeof value === 'number' && Number.isSafeInteger(value) && value > 0) into.push(value);
-    else if (Array.isArray(value)) for (const member of value) referencesIn(member, into);
-    return into;
 }
 
 interface Contribution { order: number; targets: readonly number[] }
@@ -247,33 +240,9 @@ export function resolveCurrentTypeRelationships(store: IfcDataStore, view: Metad
         if (referenceCount > MAX_RELATION_REFERENCES) throw new CurrentQuantityRefusal('Native type relationship references exceed the read limit');
     }
 
-    // A refusal narrows to what a relationship names only while the graph lists all of it. A
-    // refused record naming anything the graph has no edge for refuses the model, as on main.
-    let incomplete: CurrentQuantityRefusal | undefined;
-    const graphLists = new Map<number, boolean>();
-    const namedByGraph = (id: number, type: RelationshipType): boolean => {
-        const known = graphLists.get(id);
-        if (known !== undefined) return known;
-        const record = effectiveMetadataRecord(store, id, view);
-        const via = (edges: readonly { relationshipId: number; shadowedRelationshipIds?: number[] }[]) =>
-            edges.some(edge => edge.relationshipId === id || edge.shadowedRelationshipIds?.includes(id));
-        const listed = !!record && referencesIn(record.attributes[4]).every(member => via(graph.inverse.getEdges(member, type)))
-            && referencesIn(record.attributes[5]).every(relating => via(graph.forward.getEdges(relating, type)));
-        graphLists.set(id, listed);
-        return listed;
-    };
-    const readNamed = (id: number, type: RelationshipType): RelationRead => {
-        try {
-            return readOnce(id);
-        } catch (error) {
-            if (error instanceof CurrentQuantityRefusal && !namedByGraph(id, type)) incomplete = error;
-            throw error;
-        }
-    };
     const lookup = (edited: Map<number, Contribution[]>, type: RelationshipType) => {
         const memo = new Map<number, readonly number[]>();
         return (id: number): readonly number[] => {
-            if (incomplete) throw incomplete;
             const known = memo.get(id);
             if (known) return known;
             const rows = [...(edited.get(id) ?? [])];
@@ -281,7 +250,7 @@ export function resolveCurrentTypeRelationships(store: IfcDataStore, view: Metad
                 for (const edge of graph.inverse.getEdges(id, type)) {
                     for (const relationshipId of [edge.relationshipId, ...(edge.shadowedRelationshipIds ?? [])]) {
                         const order = vouched.get(relationshipId);
-                        const targets = order === undefined ? undefined : readNamed(relationshipId, type)?.targets;
+                        const targets = order === undefined ? undefined : readOnce(relationshipId)?.targets;
                         if (order !== undefined && targets) rows.push({ order, targets });
                     }
                 }

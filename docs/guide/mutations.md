@@ -1106,6 +1106,12 @@ Elements whose shape depends on storey spacing follow the edit in the same trans
 
 Walls added through `bim.store.addWall` join coincident, non-parallel chain
 endpoints automatically. Crossings and T junctions still use `joinWalls`.
+Implicit joins are best-effort: if a join is refused (for example, a loaded
+wall has unreadable hosted-opening geometry), the new wall is still added
+without that join. The returned entity ref includes `notices?: string[]`
+with the skipped pair and reason. Explicit `joinWalls` requests still refuse
+atomically. Low-level `addOrdinaryElementInStore` callers can collect the
+same notices through `options.notices`; otherwise they are logged.
 Moving an `IfcGrid` with `transformElements` carries its grid-bound products.
 The headless CLI supports `alignElements` using current native mesh bounds,
 including hosted cuts, rather than uncut parametric bounding boxes.

@@ -243,6 +243,9 @@ export function readRefList(buffer: Uint8Array, pos: number, end: number): [numb
             if (b === 0x23) {
                 const [id, np] = readRefId(buffer, pos, end);
                 if (id >= 0) ids.push(id);
+                // `#0` and a bare `#` read as 0, an id past 2^32 as -1: neither names an
+                // entity, while a full read refuses on it, so not a plain list (#9192).
+                if (id <= 0) plain = false;
                 pos = np;
             } else if (b === 0x27) {
                 plain = false;

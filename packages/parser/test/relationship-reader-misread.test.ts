@@ -54,6 +54,9 @@ describe('#9192 readRefList says where a list really ends', () => {
     ['an enumeration', '(#1,.T.)'],
     ['no closing parenthesis', '(#1,#2'],
     ['an unterminated comment', '(#1,/* #2)'],
+    ['a reference to #0', '(#1,#0)'],
+    ['a bare #', '(#1,#)'],
+    ['an id past the 32-bit id columns', '(#1,#4294967296)'],
   ])('%s is not a plain reference list', (_label, value) => {
     const buf = bytes(value);
     expect(readRefList(buf, 0, buf.length)[2]).toBe(-1);
@@ -73,6 +76,7 @@ describe('#9192 extractRelFast records nothing for a record it would misread', (
     ['a number member', '(#10,14)', '#40'],
     ['a string member', "(#10,'#14')", '#40'],
     ['an unclosed list', '(#10,#11', '#40'],
+    ['a #0 member, which no entity can be', '(#10,#0)', '#40'],
   ])('%s', (_label, members, type) => {
     expect(typing(members, type)).toBeNull();
   });
@@ -124,6 +128,9 @@ describe('#9192 extractPropertyRelFast records nothing for a record it would mis
     ['a string that looks like a reference', '(#20)', "('#41',#24)"],
     ['a number in a definition set', '(#20)', '(#24,41)'],
     ['an empty member in a definition set', '(#20)', '(#24,,#41)'],
+    ['a #0 member in RelatedObjects', '(#20,#0)', '#24'],
+    ['a #0 definition', '(#20)', '#0'],
+    ['a #0 member in a definition set', '(#20)', '(#24,#0)'],
   ])('%s', (_label, members, relating) => {
     expect(definition(members, relating)).toBeNull();
   });

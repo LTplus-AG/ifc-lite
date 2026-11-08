@@ -178,7 +178,7 @@ export function readPropertyDefinitionValue(
 
     let members: Value[];
     if (typeof value === 'number') {
-        return { ids: value >= 0 ? [value] : [], plain: value >= 0 || value === NULL, next };
+        return { ids: value >= 0 ? [value] : [], plain: value > 0 || value === NULL, next };
     } else if (Array.isArray(value)) {
         members = value;
     } else {
@@ -189,7 +189,8 @@ export function readPropertyDefinitionValue(
     let plain = true;
     for (const member of members) {
         if (typeof member === 'number' && member >= 0) ids.push(member);
-        else if (member !== NULL) plain = false;
+        // `#0` and a bare `#` read as 0 and name no entity: a full read refuses on them (#9192)
+        if (member !== NULL && !(typeof member === 'number' && member > 0)) plain = false;
     }
     return { ids, plain, next };
 }

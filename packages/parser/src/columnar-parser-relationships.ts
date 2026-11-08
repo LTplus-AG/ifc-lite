@@ -157,7 +157,8 @@ export function extractPropertyRelFast(
         // reader below gives for it, without tokenizing a value tree.
         const [id, after] = readRefId(buffer, pos, end);
         if (!endsSlot(buffer, after, end, true)) return null;
-        relatingDefs = id >= 0 ? [id] : [];
+        if (id === 0) return null; // `#0` or a bare `#`: names no entity (#9192)
+        relatingDefs = id > 0 ? [id] : [];
     } else {
         const relating = pos < 0 ? null : readPropertyDefinitionValue(buffer, pos, end);
         if (!relating || !relating.plain || !endsSlot(buffer, relating.next, end, true)) return null;

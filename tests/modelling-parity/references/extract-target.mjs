@@ -22,6 +22,7 @@
 //
 // Requires a built CLI/wasm (`pnpm turbo build --filter=@ifc-lite/cli...`).
 
+import { isMainEntry } from '../../../scripts/lib/is-main-entry.mjs';
 import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
@@ -669,7 +670,7 @@ export async function extract(refId_, entry, file) {
       windows: classCount(['IFCWINDOW']),
       stairs: classCount(['IFCSTAIR']),
       stairFlights: classCount(['IFCSTAIRFLIGHT']),
-      slabs: classCount(['IFCSLAB']),
+      slabs: slabIds.length,
       columns: classCount(['IFCCOLUMN']),
       beams: classCount(['IFCBEAM']),
       spaces: spaceIds.length,
@@ -684,7 +685,7 @@ export async function extract(refId_, entry, file) {
 
 // ----------------------------------------------------------------------- CLI
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isMainEntry(import.meta.url)) {
   const args = process.argv.slice(2);
   const id = args.find((a) => !a.startsWith('--'));
   const outIdx = args.indexOf('--out');

@@ -23,6 +23,7 @@
 //   - Idempotent. Exit 1 on any mismatch or failure.
 //   - No third-party dependencies.
 
+import { isMainEntry } from '../../../scripts/lib/is-main-entry.mjs';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { createReadStream, createWriteStream, existsSync, mkdirSync, readFileSync, renameSync, statSync, unlinkSync } from 'node:fs';
@@ -128,4 +129,4 @@ async function main() {
   if (failed) process.exit(1);
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) await main();
+if (isMainEntry(import.meta.url)) await main();

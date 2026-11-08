@@ -16,7 +16,7 @@ Files here:
 | `references.test.mjs` | Offline tests (manifest invariants, verifier, STEP reader, target/manifest agreement) |
 
 ```sh
-pnpm parity:references                 # fetch + verify everything (about 14 MB of downloads plus 3 repo fixtures, ~19 MB)
+node tests/modelling-parity/references/fetch-references.mjs                 # fetch + verify everything (about 14 MB of downloads plus 3 repo fixtures, ~19 MB)
 node tests/modelling-parity/references/fetch-references.mjs --check   # offline verify
 node --test tests/modelling-parity/references/references.test.mjs
 

@@ -27,7 +27,6 @@
     "fixtures:list-missing": "node scripts/fixtures/fetch-fixtures.mjs --list",
     "fixtures:manifest": "node scripts/fixtures/build-manifest.mjs",
     "fixtures:upload": "node scripts/fixtures/upload-fixtures.mjs",
-    "parity:references": "node tests/modelling-parity/references/fetch-references.mjs",
     "test": "node scripts/test-cache.mjs",
     "test:revert-oracle-selfcheck": "node scripts/revert-oracle-selfcheck.mjs",
     "test:collab": "pnpm --filter @ifc-lite/collab --filter @ifc-lite/collab-server test",

@@ -7,11 +7,13 @@
 //   node --test tests/modelling-parity/references/references.test.mjs
 
 import assert from 'node:assert/strict';
-import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, readdirSync, symlinkSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { HERE, MANIFEST_PATH } from './lib.mjs';
+import { elementCountsFromInfo } from './refresh-info.mjs';
 import { verifyPath } from './fetch-references.mjs';
 import { Model, parseStep } from './extract-target.mjs';
 
@@ -80,7 +82,29 @@ test('committed target specs agree with the manifest', () => {
     assert.equal(t.totals.walls, t.storeys.reduce((a, s) => a + s.walls.count, 0), file);
     assert.equal(t.totals.doors, t.storeys.reduce((a, s) => a + s.doors.count, 0), file);
     assert.equal(t.totals.windows, t.storeys.reduce((a, s) => a + s.windows.count, 0), file);
+    assert.equal(t.totals.slabs, t.storeys.reduce((a, s) => a + s.slabs.count, 0), file);
     assert.equal(t.totals.spaces, t.spaces.length, file);
     assert.ok(t.tolerances.doorCountPerStorey, file);
   }
+});
+
+// #9304: equipment is a product even though its EXPRESS name contains Unit.
+test('#9304 reference counts retain IfcUnitaryEquipment and exclude resource/type records', () => {
+  assert.deepEqual(elementCountsFromInfo({ typeCounts: { IfcUnitaryEquipment: 2, IfcUnitaryEquipmentType: 1, IfcSIUnit: 3, IfcWall: 4, IfcWallType: 1 } }), { IfcUnitaryEquipment: 2, IfcWall: 4 });
+});
+
+test('#9304 reference CLIs execute through symlinks containing spaces', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'parity ref cli '));
+  try {
+    for (const [script, args, expected, output] of [
+      ['fetch-references.mjs', ['--list', 'nibs-duplex-ifc2x3'], 0, /nibs-duplex-ifc2x3/],
+      ['extract-target.mjs', ['not-a-reference'], 2, /unknown reference/],
+    ]) {
+      const link = join(dir, script);
+      symlinkSync(join(HERE, script), link);
+      const run = spawnSync(process.execPath, [link, ...args], { encoding: 'utf8', timeout: 10000 });
+      assert.equal(run.status, expected, run.stderr);
+      assert.match(run.stdout + run.stderr, output);
+    }
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });

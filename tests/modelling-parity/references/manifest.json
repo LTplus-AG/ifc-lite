@@ -110,7 +110,7 @@
         "status": "informal-unrestricted-use",
         "spdx": null,
         "redistributable": "unclear",
-        "text": "These examples are made by the Institute for Applied Computer Science (IAI) at the Karlsruhe Institute of Technology (KIT), and are for unrestricted use. If you use these examples for publications, please provide the following source: Institute for Automation and Applied Informatics (IAI) / Karlsruhe Institute of Technology (KIT) or Institut für Automation und angewandte Information / Karlsruher Institut für Technologie",
+        "text": "These examples are made by the Institute for Applied Computer Science (IAI) at the Karlsruhe Institute of Technology (KIT), and are for unrestricted use. If you use these examples for publications, please provide the following source: Institute for Automation and Applied Informatics (IAI) / Karlsruhe Institute of Technology (KIT) or Institut f\u00fcr Automation und angewandte Information / Karlsruher Institut f\u00fcr Technologie",
         "url": "https://www.ifcwiki.org/index.php?title=KIT_IFC_Examples&oldid=552",
         "attribution": "Institute for Automation and Applied Informatics (IAI) / Karlsruhe Institute of Technology (KIT)",
         "caveat": "A statement on a wiki page, not a licence text with an SPDX id and not on a KIT-hosted page. 'Unrestricted use' probably covers redistribution but does not say so. The bytes are therefore never committed; attribution is kept anyway."
@@ -174,7 +174,7 @@
         "status": "informal-unrestricted-use",
         "spdx": null,
         "redistributable": "unclear",
-        "text": "These examples are made by the Institute for Applied Computer Science (IAI) at the Karlsruhe Institute of Technology (KIT), and are for unrestricted use. If you use these examples for publications, please provide the following source: Institute for Automation and Applied Informatics (IAI) / Karlsruhe Institute of Technology (KIT) or Institut für Automation und angewandte Information / Karlsruher Institut für Technologie",
+        "text": "These examples are made by the Institute for Applied Computer Science (IAI) at the Karlsruhe Institute of Technology (KIT), and are for unrestricted use. If you use these examples for publications, please provide the following source: Institute for Automation and Applied Informatics (IAI) / Karlsruhe Institute of Technology (KIT) or Institut f\u00fcr Automation und angewandte Information / Karlsruher Institut f\u00fcr Technologie",
         "url": "https://www.ifcwiki.org/index.php?title=KIT_IFC_Examples&oldid=552",
         "attribution": "Institute for Automation and Applied Informatics (IAI) / Karlsruhe Institute of Technology (KIT)",
         "caveat": "A statement on a wiki page, not a licence text with an SPDX id and not on a KIT-hosted page. 'Unrestricted use' probably covers redistribution but does not say so. The bytes are therefore never committed; attribution is kept anyway."
@@ -237,8 +237,8 @@
         "redistributable": "unclear",
         "text": null,
         "url": "https://www.wbdg.org/bim/cobie/common-bim-files",
-        "attribution": "National Institute of Building Sciences (NIBS), Common Building Information Model Files; Duplex Apartment model by Kristine Fallon Associates from a student design",
-        "caveat": "Neither the WBDG page nor the NIBS disclaimer grants a licence for the model files. The disclaimer says 'Neither the United States Government nor NIBS ... makes any warranty' and the footer reads '(c) 2023 National Institute of Building Sciences. All rights reserved.' The page is credited to the U.S. Army Corps of Engineers ERDC-CERL, but the model was made by a contractor, so no public-domain status is assumed. Treated as not redistributable: referenced by URL and hash only. The bytes used here come from the repo's own fixture release (tests/models/ara3d/duplex.ifc), which this lane did not create."
+        "attribution": "National Institute of Building Sciences (NIBS), Common Building Information Model Files; NIBS Office Building (IFC2X3, Solibri-optimised derivative); model author not verified",
+        "caveat": "Neither the WBDG page nor the NIBS disclaimer grants a licence for the model files. The disclaimer says 'Neither the United States Government nor NIBS ... makes any warranty' and the footer reads '(c) 2023 National Institute of Building Sciences. All rights reserved.' The page is credited to the U.S. Army Corps of Engineers ERDC-CERL; model authorship is unverified, so no public-domain status is assumed. Treated as not redistributable: referenced by URL and hash only. The bytes used here come from the repo's own fixture release (tests/models/ara3d/Office_A_20110811.ifc), which this lane did not create."
       },
       "ifc": {
         "cliSchema": "IFC2X3",
@@ -298,8 +298,8 @@
         "redistributable": "unclear",
         "text": null,
         "url": "https://www.wbdg.org/bim/cobie/common-bim-files",
-        "attribution": "National Institute of Building Sciences (NIBS), Common Building Information Model Files; Duplex Apartment model by Kristine Fallon Associates from a student design",
-        "caveat": "Neither the WBDG page nor the NIBS disclaimer grants a licence for the model files. The disclaimer says 'Neither the United States Government nor NIBS ... makes any warranty' and the footer reads '(c) 2023 National Institute of Building Sciences. All rights reserved.' The page is credited to the U.S. Army Corps of Engineers ERDC-CERL, but the model was made by a contractor, so no public-domain status is assumed. Treated as not redistributable: referenced by URL and hash only. The bytes used here come from the repo's own fixture release (tests/models/ara3d/duplex.ifc), which this lane did not create."
+        "attribution": "National Institute of Building Sciences (NIBS), Common Building Information Model Files; NIBS Medical Clinic (IFC2X3, Solibri-optimised derivative); model author not verified",
+        "caveat": "Neither the WBDG page nor the NIBS disclaimer grants a licence for the model files. The disclaimer says 'Neither the United States Government nor NIBS ... makes any warranty' and the footer reads '(c) 2023 National Institute of Building Sciences. All rights reserved.' The page is credited to the U.S. Army Corps of Engineers ERDC-CERL; model authorship is unverified, so no public-domain status is assumed. Treated as not redistributable: referenced by URL and hash only. The bytes used here come from the repo's own fixture release (tests/models/ara3d/dental_clinic.ifc), which this lane did not create."
       },
       "ifc": {
         "cliSchema": "IFC2X3",

@@ -227,6 +227,23 @@ export const SCENES = [
     viewport: { width: 390, height: 844 },
     async run() {},
   },
+  ...[[320, 640], [360, 740], [390, 844]].flatMap(([width, height]) =>
+    [true, false].map((cancel) => ({
+      id: `mobile-loading-${width}${cancel ? '' : '-no-cancel'}`,
+      title: `Phone (${width}px), second model loading${cancel ? ' with Cancel' : ''}`,
+      model: ARCH,
+      viewport: { width, height },
+      async run({ page }) {
+        await page.evaluate((cancel) => {
+          globalThis.__ifc_lite_viewer_store__.setState({
+            loading: true,
+            loadingFileName: 'building-architecture-rev-b.ifc',
+            geometryProgress: { phase: 'Processing geometry', percent: 42 },
+            activeLoadCanceller: cancel ? () => {} : null,
+          });
+        }, cancel);
+      },
+    }))),
   {
     id: 'mobile-settings',
     title: 'Phone, Settings open',

@@ -583,7 +583,8 @@ export const PROBES = [
           { name: '2D section drawing shows the cut walls', ok: section.panel && section.cutPolygons >= 2, detail: `status ${section.status}, panel ${section.panel}, ${section.cutPolygons} cut polygons, ${section.lines} lines` },
           { name: 'section exported as SVG with geometry', ok: svgShapes(files.svg) >= 2, detail: files.svg ? `${files.svg.name}, ${svgShapes(files.svg)} shapes` : 'no SVG' },
           { name: 'section exported as DXF', ok: isDxf(files.dxf), detail: files.dxf ? `${files.dxf.name}, ${files.dxf.bytes.length} bytes` : 'no DXF' },
-          { name: 'section exported as PDF (to scale)', ok: isPdf(files.pdf), detail: files.pdf ? `${files.pdf.name}, ${files.pdf.bytes.length} bytes` : 'no PDF' },
+          { name: 'section exported as PDF', ok: isPdf(files.pdf), detail: files.pdf ? `${files.pdf.name}, ${files.pdf.bytes.length} bytes` : 'no PDF' },
+          { name: 'PDF geometry is at the requested drawing scale', ok: false, detail: 'unmeasured: requires PDF geometry-to-model dimension evidence (#9328)' },
         ],
       };
     },

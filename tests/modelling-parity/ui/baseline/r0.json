@@ -832,7 +832,7 @@
       "probe": "ui",
       "id": "ui.plan-section",
       "title": "Show the plan, then a 2D section drawing",
-      "status": "pass",
+      "status": "partial",
       "metrics": {
         "ms": 9883,
         "actions": 14,
@@ -862,9 +862,14 @@
           "detail": "section-front-50.dxf, 2597 bytes"
         },
         {
-          "name": "section exported as PDF (to scale)",
+          "name": "section exported as PDF",
           "ok": true,
           "detail": "section-front-50-1-100.pdf, 4696 bytes"
+        },
+        {
+          "name": "PDF geometry is at the requested drawing scale",
+          "ok": false,
+          "detail": "unmeasured: the recorded PDF header evidence does not measure geometry scale"
         }
       ],
       "tasks": [
@@ -907,7 +912,8 @@
         }
       ],
       "notes": [
-        "At 1600x900 \"Show the plan\" is disabled (\"No room for the plan beside 3D\"): the modeller has to close a side panel before the plan can open."
+        "At 1600x900 \"Show the plan\" is disabled (\"No room for the plan beside 3D\"): the modeller has to close a side panel before the plan can open.",
+        "Baseline oracle correction: the existing PDF evidence confirms a PDF download, not its drawing scale; no new GPU measurement."
       ],
       "scripted": [],
       "pageErrors": [],

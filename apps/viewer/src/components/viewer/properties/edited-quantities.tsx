@@ -41,12 +41,13 @@ function useQuantityReaders(entity: QuantityEntityRef | null | undefined): { dat
  * Whether the card's set is the refreshed one. The refresh keeps the file
  * set's GlobalId, which `IfcElementQuantity` must have, so the set is matched by
  * it: a second set of the same name has its own, and an edit made by hand
- * on top of the refreshed values leaves it as it was. A malformed file whose
- * sets have none is matched by name.
+ * on top of the refreshed values leaves it as it was. Only when the refreshed
+ * set itself has none (a malformed file) is a card matched by name.
  */
 export function isRefreshedSet(qset: ShownSet, refreshed: ShownSet | null): boolean {
   if (refreshed === null || qset.name !== refreshed.name) return false;
-  return qset.globalId && refreshed.globalId ? qset.globalId === refreshed.globalId : true;
+  // A refreshed set with a GlobalId is that set only; a twin without one is not it.
+  return refreshed.globalId ? qset.globalId === refreshed.globalId : true;
 }
 
 /** Whether `qset` on `entity` was refreshed from its edited geometry. */

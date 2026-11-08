@@ -379,29 +379,29 @@ for (const mode of ['class', 'classification'] as const) {
 }
 
 for (const [ifcType, visibilityKey] of [['IfcSpace', 'spaces'], ['IfcSpatialZone', 'spatialZones']] as const) {
-for (const mode of ['none', 'class', 'classification'] as const) {
-  it(`#9272 ${mode} Show preserves the disabled ${ifcType} class gate`, async () => {
-    act(() => useViewerStore.setState({ typeVisibility: {
-      ...useViewerStore.getState().typeVisibility, [visibilityKey]: false,
-    } }));
-    const container = await mount(await model(`layer-space-show-${mode}`, false, ifcType === 'IfcSpace' ? true : 'IfcSpatialZone'));
-    const control = container.querySelector<HTMLSelectElement>('select[aria-label="Group layer elements"]');
-    assert.ok(control);
-    act(() => { control.value = mode; control.dispatchEvent(new Event('change', { bubbles: true })); });
-    if (mode !== 'none') click(button(layerRows(container)[0], 'Expand Walls'));
-    const name = mode === 'class' ? ifcType : mode === 'classification' ? 'Unclassified' : 'Walls';
-    const row = [...container.querySelectorAll<HTMLElement>('[role="treeitem"]')]
-      .find(row => row.textContent?.includes(name));
-    assert.ok(row);
-    const persisted = localStorage.getItem(TYPE_VISIBILITY_STORAGE_KEYS[visibilityKey]);
-    click(button(row, `Hide ${name}`));
-    click(button(row, `Show ${name}`));
-    assert.equal(localStorage.getItem(TYPE_VISIBILITY_STORAGE_KEYS[visibilityKey]), persisted);
-    assert.equal(useViewerStore.getState().typeVisibility[visibilityKey], false);
-    assert.deepEqual(useViewerStore.getState().hiddenEntities, new Set());
-    assert.equal(useViewerStore.getState().isolatedEntities, null, 'Show does not isolate');
-  });
-}
+  for (const mode of ['none', 'class', 'classification'] as const) {
+    it(`#9272 ${mode} Show preserves the disabled ${ifcType} class gate`, async () => {
+      act(() => useViewerStore.setState({ typeVisibility: {
+        ...useViewerStore.getState().typeVisibility, [visibilityKey]: false,
+      } }));
+      const container = await mount(await model(`layer-space-show-${mode}`, false, ifcType === 'IfcSpace' ? true : 'IfcSpatialZone'));
+      const control = container.querySelector<HTMLSelectElement>('select[aria-label="Group layer elements"]');
+      assert.ok(control);
+      act(() => { control.value = mode; control.dispatchEvent(new Event('change', { bubbles: true })); });
+      if (mode !== 'none') click(button(layerRows(container)[0], 'Expand Walls'));
+      const name = mode === 'class' ? ifcType : mode === 'classification' ? 'Unclassified' : 'Walls';
+      const row = [...container.querySelectorAll<HTMLElement>('[role="treeitem"]')]
+        .find(row => row.textContent?.includes(name));
+      assert.ok(row);
+      const persisted = localStorage.getItem(TYPE_VISIBILITY_STORAGE_KEYS[visibilityKey]);
+      click(button(row, `Hide ${name}`));
+      click(button(row, `Show ${name}`));
+      assert.equal(localStorage.getItem(TYPE_VISIBILITY_STORAGE_KEYS[visibilityKey]), persisted);
+      assert.equal(useViewerStore.getState().typeVisibility[visibilityKey], false);
+      assert.deepEqual(useViewerStore.getState().hiddenEntities, new Set());
+      assert.equal(useViewerStore.getState().isolatedEntities, null, 'Show does not isolate');
+    });
+  }
 }
 
 for (const mode of ['class', 'classification'] as const) {

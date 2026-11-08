@@ -362,9 +362,15 @@ test('#9383 shared reference decodes once and edits invalidate it without sharin
   store.getEntity = id => { if (id === 61) reads++; return original(id); };
   const first = extractClassificationsOnDemand(store, 2);
   first[0].identification = 'Caller edit';
+  first[0].path?.push('Caller path edit');
   const next = extractClassificationsOnDemand(store, 4);
   assert.equal(next[0].identification, 'EF_25', 'callers cannot corrupt a shared cached reference');
+  assert.deepEqual(next[0].path, [], 'path arrays are independent too');
   assert.equal(reads, 1, 'shared references decode once instead of once per product');
+  assert.ok(store.source instanceof Uint8Array);
+  store.source = store.source.slice();
+  assert.equal(extractClassificationsOnDemand(store, 2)[0].identification, 'EF_25');
+  assert.equal(reads, 2, 'source replacement invalidates the reference memo');
   const view = new MutablePropertyView(null, '__legacy__');
   assert.equal(extractClassificationsOnDemand(store, 2, view)[0].identification, 'EF_25');
   view.setAttribute(61, 'Identification', 'EF_30');

@@ -14,6 +14,7 @@ import { posthog } from '@/lib/analytics';
 import { advance, cleanup, click, press, render, type as typeInto } from '@/test/render';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { CommandPalette } from './CommandPalette';
+import { MobileToolbar } from './MobileToolbar';
 import { useFileCommands } from './toolbar/useFileCommands';
 import { getMountedFileHost, registerMountedFileHost } from './toolbar/mounted-file-host';
 import { ActivityTrayDialog } from './activity/ActivityTray';
@@ -46,11 +47,11 @@ afterEach(() => {
 });
 
 function FileHost() { return <>{useFileCommands().fileInputs}</>; }
-function Harness({ withFiles = true }: { withFiles?: boolean }) {
+function Harness({ withFiles = true, mobile = false }: { withFiles?: boolean; mobile?: boolean }) {
   const [open, setOpen] = useState(true);
   const [activity, setActivity] = useState(false);
   return <BimReactContext.Provider value={{} as BimContext}>
-    {withFiles && <FileHost />}
+    {withFiles && (mobile ? <MobileToolbar /> : <FileHost />)}
     <CommandPalette open={open} onOpenChange={setOpen} surfaceContext={{ openActivity: () => setActivity(true) }} />
     <ActivityTrayDialog open={activity} onOpenChange={setActivity} />
   </BimReactContext.Provider>;
@@ -143,6 +144,50 @@ for (const nativePicker of [false, true]) {
     await settle();
   });
 }
+
+test('real mobile toolbar owns palette Open/Add and shares loading refusal (#8947)', async () => {
+  for (const id of ['file:open', 'file:add-model']) {
+    useViewerStore.setState({ ...fixtureModels(fixtureModel('a')), loading: false });
+    localStorage.clear();
+    render(<Harness mobile />);
+    await settle();
+    assert.ok(getMountedFileHost(), 'mobile registers the canonical file host');
+    assert.equal(document.querySelectorAll('#file-input-open').length, 1);
+    assert.equal(document.querySelectorAll('#file-input-add').length, 1);
+    const inputs: string[] = [];
+    mock.method(HTMLInputElement.prototype, 'click', function (this: HTMLInputElement) {
+      if (this.type === 'file') inputs.push(this.id);
+    });
+    const toolbar = document.querySelector('[data-command-surface="mobile"]')!;
+    const mobileOpen = toolbar.querySelector<HTMLButtonElement>('[data-command-id="file:open"]')!;
+    const mobileAdd = toolbar.querySelector<HTMLButtonElement>('[data-command-id="file:add-model"]')!;
+    const paletteRow = () => document.querySelector<HTMLButtonElement>(`[role="option"][data-command-id="${id}"]`)!;
+    assert.ok(mobileOpen);
+    assert.ok(mobileAdd);
+    act(() => useViewerStore.setState({ loading: true }));
+    assert.equal(mobileOpen.disabled, true);
+    assert.equal(mobileAdd.disabled, true);
+    assert.equal(paletteRow().getAttribute('aria-disabled'), 'true');
+    click(mobileOpen);
+    click(mobileAdd);
+    click(paletteRow());
+    act(() => window.dispatchEvent(new CustomEvent('ifc-lite:open-files')));
+    assert.deepEqual(inputs, []);
+    assert.equal(localStorage.getItem(RECENT_KEY), null);
+    act(() => useViewerStore.setState({ loading: false }));
+    assert.equal(mobileOpen.disabled, false);
+    assert.equal(mobileAdd.disabled, false);
+    assert.notEqual(paletteRow().getAttribute('aria-disabled'), 'true');
+    click(mobileOpen);
+    click(mobileAdd);
+    assert.deepEqual(inputs, ['file-input-open', 'file-input-add']);
+    click(paletteRow());
+    assert.deepEqual(inputs, ['file-input-open', 'file-input-add', id === 'file:open' ? 'file-input-open' : 'file-input-add']);
+    assert.equal(JSON.parse(localStorage.getItem(RECENT_KEY) ?? '[]')[0], id);
+    cleanup();
+    mock.restoreAll();
+  }
+});
 
 test('loading, mixed refresh handles and host loss refuse pointer/Enter without history or telemetry (#8947)', async () => {
   const executions: string[] = [];

@@ -23,6 +23,7 @@ import { toast } from '@/components/ui/toast';
 import { useTranslation } from '@/i18n';
 import { isCollabEnabled } from '@/lib/collab/config';
 import { ingestDxfFiles, splitDxfFiles } from '@/hooks/ingest/dxfIngest';
+import { reportFileOpenRejected } from '@/hooks/ingest/fileOpenRejected';
 import { usePreparedModelFileRoute } from '@/hooks/ingest/usePreparedModelFileRoute';
 import { registerMountedFileHost } from './mounted-file-host';
 import { ShareDialog } from '../ShareDialog';
@@ -163,6 +164,7 @@ export function useFileCommands(): FileCommands {
     const supportedFiles = modelFiles.filter(file => isSupportedModelFile(file) || isModelSidecarFile(file));
 
     if (supportedFiles.length === 0) {
+      if (modelFiles.length > 0) reportFileOpenRejected(modelFiles);
       e.target.value = '';
       return;
     }
@@ -208,7 +210,8 @@ export function useFileCommands(): FileCommands {
     if (dxfFiles.length > 0) void ingestDxfFiles(dxfFiles);
     // <input> yields no live handle, so models added this way aren't refreshable.
     const supportedFiles = modelFiles.filter(file => isSupportedModelFile(file) || isModelSidecarFile(file));
-    prepareAndAdd(supportedFiles);
+    if (supportedFiles.length === 0 && modelFiles.length > 0) reportFileOpenRejected(modelFiles);
+    else prepareAndAdd(supportedFiles);
     // Reset input so same files can be selected again
     e.target.value = '';
   }, [prepareAndAdd]);

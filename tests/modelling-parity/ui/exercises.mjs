@@ -17,7 +17,7 @@
  * Change a checkpoint only between campaigns: a new one has no baseline.
  */
 
-import { loadTarget, ownOpenings, wallEndpointsJoined } from './lib/oracles.mjs';
+import { loadTarget, ownOpenings, uncontainedInStoreys, wallEndpointsJoined } from './lib/oracles.mjs';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { downloadCount, nextDownload, sha256, task } from './lib/driver.mjs';
@@ -115,9 +115,8 @@ async function confirmExport(s) {
 function commonChecks(step, want) {
   const c = step.counts(['IFCWALL', 'IFCDOOR', 'IFCWINDOW', 'IFCSLAB', 'IFCSPACE', 'IFCOPENINGELEMENT', 'IFCRELFILLSELEMENT', 'IFCRELCONNECTSPATHELEMENTS', 'IFCSTAIR', 'IFCSTAIRFLIGHT', 'IFCROOF']);
   const floorSlabs = step.of('IFCSLAB').filter((x) => x.args?.[8]?.enum !== 'ROOF');
-  const contained = step.containment();
   const elements = ['IFCWALL', 'IFCDOOR', 'IFCWINDOW', 'IFCSLAB', 'IFCSTAIR'].flatMap((t) => step.of(t));
-  const uncontained = elements.filter((e) => !contained.has(e.id)).length;
+  const uncontained = uncontainedInStoreys(step, elements);
   // Each filler is matched to its own opening and host wall, so two fills on one door can't stand in for a window.
   const wallIds = new Set(step.of('IFCWALL').map((w) => w.id));
   const fillers = [...step.of('IFCDOOR'), ...step.of('IFCWINDOW')];

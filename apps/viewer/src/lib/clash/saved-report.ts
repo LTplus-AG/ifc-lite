@@ -11,6 +11,8 @@
  * exactly the values a chart of the current result showed when it was saved.
  */
 
+import { captureQualityGates } from './quality-gate';
+import { useQualityGatePreferences } from './quality-gate-preferences';
 import type { ClashResult } from '@ifc-lite/clash';
 import { analysisStampOf, isAnalysisStale } from '@/hooks/useAnalysisStaleness';
 import type { ViewerState } from '@/store';
@@ -75,6 +77,10 @@ export function snapshotClashReport(state: ClashReportCaptureState, name: string
       group: facts.group,
     };
   });
+  const raw = state.clashRawResult ?? result;
+  for (const coverage of raw.ruleCoverage ?? []) {
+    for (const member of coverage.matchedElements ?? []) modelIds.add(member.model);
+  }
   const models: SavedClashModel[] = [...modelIds].map((id) => {
     // Stamped runs retain their run-start identity even after a model swap or unload.
     const model = stamp ? stamp.placement?.get(id) : state.models.get(id);
@@ -84,8 +90,10 @@ export function snapshotClashReport(state: ClashReportCaptureState, name: string
       ...(model?.sourceContentHash ? { sourceContentHash: model.sourceContentHash } : {}),
     };
   });
+  const stale = isAnalysisStale(stamp, state);
   const id = newClashReportId();
   return {
+    qualityGates: captureQualityGates(raw, useQualityGatePreferences.getState().config, stale),
     version: 1, id, name: name.trim() || defaultClashReportName(result, now), savedAt: now.toISOString(),
     run: {
       settings: { tolerance: result.settings.tolerance, excludeVoidsAndHosts: result.settings.excludeVoidsAndHosts },
@@ -95,8 +103,7 @@ export function snapshotClashReport(state: ClashReportCaptureState, name: string
     models,
     completeness: {
       ...(result.truncated ? { truncated: { reason: result.truncated.reason, droppedPairs: result.truncated.droppedPairs } } : {}),
-      stale: isAnalysisStale(stamp, { mutationVersion: state.mutationVersion, geometryContentVersion: state.geometryContentVersion,
-        modelPlacement: state.modelPlacement, models: state.models }),
+      stale,
       excluded: state.clashSuppressedCount,
     },
     grouping: state.clashGroupsKind,

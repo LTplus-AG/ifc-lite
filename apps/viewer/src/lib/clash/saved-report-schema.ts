@@ -19,6 +19,8 @@
  * historical run there without a schema change.
  */
 
+import { isQualityGateSnapshot, type QualityGateSnapshot } from './quality-gate';
+
 import type { ClashDistanceKind, ClashMode, ClashReviewStatus, ClashSeverity, ClashStatus } from '@ifc-lite/clash';
 
 /** One model the run drew elements from. `id` is the per-load id the rows refer to; it is a join key inside this report, never a live model id. */
@@ -90,6 +92,8 @@ export interface SavedClashCompleteness {
 
 export interface SavedClashReport {
   version: 1;
+  /** Immutable raw-run object quality, including the threshold policy used (#9259). */
+  qualityGates?: QualityGateSnapshot;
   id: string;
   name: string;
   savedAt: string;
@@ -150,6 +154,7 @@ function isClash(v: unknown, models: ReadonlySet<string>): v is SavedClash {
 
 /** Strict: one invalid row refuses the whole report rather than charting a subset of a run as if it were the run. */
 export function isSavedClashReport(v: unknown): v is SavedClashReport {
+  if (record(v) && !optional(v.qualityGates, isQualityGateSnapshot)) return false;
   if (!record(v) || v.version !== 1 || !text(v.id) || !text(v.name, false, CLASH_REPORT_LIMITS.name) || !v.name.trim()) return false;
   if (typeof v.savedAt !== 'string' || !Number.isFinite(Date.parse(v.savedAt))) return false;
   const run = v.run;

@@ -136,10 +136,16 @@ export async function runClash(
           matchedKeysB!.add(el.key);
         }
       }
+      const matchedElements = new Map<string, { model: string; key: string }>();
+      for (const index of [...groupA, ...(groupB ?? [])]) {
+        const { model, key } = elements[index];
+        matchedElements.set(qualifiedKey(model, key), { model, key });
+      }
       const coverageEntry: ClashRuleCoverage = {
         rule: rule.id,
         matchedA: groupA.length,
         matchedB: groupB ? groupB.length : null,
+        matchedElements: [...matchedElements.values()],
         matchedKeysA: [...matchedKeysA].sort(),
         matchedKeysB: matchedKeysB ? [...matchedKeysB].sort() : null,
         ...(membersA ? { fromMembersA: true } : {}),

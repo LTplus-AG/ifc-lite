@@ -132,6 +132,7 @@ describe('runClash: rule membership', () => {
       rule: 'r',
       matchedA: 1,
       matchedB: 0,
+      matchedElements: [{ model: 'm', key: 'wall-1' }],
       matchedKeysA: ['wall-1'],
       matchedKeysB: [],
       fromMembersA: true,
@@ -148,6 +149,7 @@ describe('runClash: rule membership', () => {
       rule: 'r',
       matchedA: 2,
       matchedB: 2,
+      matchedElements: [{ model: 'm', key: 'wall-1' }, { model: 'm', key: 'wall-2' }, { model: 'm', key: 'duct-1' }, { model: 'other', key: 'duct-2' }],
       matchedKeysA: ['wall-1', 'wall-2'],
       matchedKeysB: ['duct-1', 'duct-2'],
       // EmptyKernel reports 0 candidatesProcessed; runClash threads it onto

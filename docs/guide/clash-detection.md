@@ -204,3 +204,37 @@ const csv = tableToCsv(CLASH_TABLE_COLUMNS, rows);
 ```
 
 For the full API, see the [`@ifc-lite/clash` README](https://github.com/LTplus-AG/ifc-lite/tree/main/packages/clash).
+
+## Object quality gates
+
+The viewer's Clash tab shows a quality gate for each rule in the last run.
+Configure separate category ranges for clash checks and duplicate checks under
+**Configure quality gates**. Each category has an inclusive minimum percentage,
+a name and a color; the next category starts where the preceding one ends.
+The first category starts at zero. Defaults are Failed below 90%, Partially
+passed from 90% to below 95%, and Passed from 95% through 100%. Classification
+uses the full precision percentage, before display rounding.
+
+The score is `100 × (checked unique objects − affected unique objects) / checked unique objects`.
+Checked objects are the union of the rule's matched sides. Both objects of a
+finding count as affected, with each object counted once using its model and
+engine key. Duplicate checks count all involved objects, rather than excess
+copies. Hiding rows, changing review status or applying result exclusions does
+not improve the score: it uses the raw engine findings. This percentage does
+not measure clash severity; one critical clash can still need action even when
+the percentage is high.
+
+An empty matched side is **Not evaluated**. Missing object coverage is **Coverage
+unavailable**, truncated runs are **Incomplete run**, and changed models make a
+live result **Outdated run**. These states never receive a passing category.
+The checked population is the geometry objects eligible for the check, not every
+IFC entity in the file.
+
+**Saved clash reports** captures the gate, the current category policy and model
+identities with the run's rule and tolerances. Later preference edits leave that
+evidence unchanged. Expand a saved report's **Quality gates**, then choose
+**Add quality gates to Documentation** to create an independent document with
+colored rings, counts, rule names, model identities, tolerances and capture time.
+The document embeds its images and literal text, so it remains usable after the
+saved report or source models are removed. Older reports without object coverage
+remain readable but do not acquire a retrospective score.

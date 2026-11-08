@@ -1129,7 +1129,7 @@ Elements whose shape depends on storey spacing follow the edit in the same trans
   - `TopConstraint` may hold a slab's GlobalId instead: the top ends on the slab's underside and follows it when the slab's storey moves. A roof is not followed yet (pitched roofs come in a later round); the plan lists it as a notice.
   - Revit's own `Constraints` › `Top Constraint` = `Up to level: <name>` is read as an explicit binding.
   - An element with neither record keeps its height. `Fixed` in the IfcLite record is an explicit fixed height and overrides a Revit record; `clearTopAttachment` writes it for an element Revit recorded as attached.
-  - A record that names nothing it can follow (a deleted storey's GlobalId, a Revit level renamed or shared by two storeys, a roof) is not guessed at: the element keeps its height and the plan lists it in `notices` (`wallAttachmentUnresolved`; `topAttachmentProblem` gives the reason).
+  - A record that names nothing it can follow (a deleted storey's GlobalId, a Revit level renamed or shared by two storeys, or an unreadable underside) is not guessed at: the element keeps its height and the plan lists it in `notices` (`wallAttachmentUnresolved`; `topAttachmentProblem` gives the reason).
   - `readTopAttachment` / `writeTopAttachment` / `clearTopAttachment` read and write the record. `setTopConstraintInStore(dataStore, editor, elementId, constraint)` sets it and fits the top there now, atomically: `{ kind: 'storeyAbove' }` (relative), `{ kind: 'storey', storeyId }` (explicit), `{ kind: 'slab', slabId }`, `{ kind: 'roof', roofId }` (walls) or `{ kind: 'fixed' }`.
 - **Stairs and their railings.** A stair whose top tread lands on a storey is refit with the riser height it was built with, rounded to whole risers. It lands on a storey when its base plus `NumberOfRisers × RiserHeight` equals that storey's elevation within 1 mm. The refit runs through `editStairDimensionsInStore`, which now also takes `NumberOfRisers`, so the IfcStair and IfcStairFlight keep their identities. A rise no flight fits (under 0.30 m), or a waist that no longer fits, is refused. A railing that runs up the stair (the railing builder's layout on the stair's storey, from its foot to its top tread, beside or over the flight) is stretched with it: along the new run and up the new rise, keeping its height above the pitch.
 - **What is left alone.** Attached elements that are not simple extrusions, and stairs that are not a single stepped flight this editor can rebuild, still move with their storey but keep their shape. The plan lists them in `notices`, before anything is applied.
@@ -1149,10 +1149,8 @@ storey edit refit the attached tops in the same atomic edit. An invalid fit leav
 the original model unchanged. Fixed detaches the top and keeps its last shape;
 attaching to a storey or slab restores a planar top.
 
-Custom hosts writing placements directly can call
-`refreshTopAttachmentsInStore({ dataStore, view, editor }, movedElementIds)` inside
-their transaction and remesh the returned product ids. The shared transform
-operations do this themselves.
+The shared placement and transform operations refit attached tops inside their
+transaction and return every product that needs remeshing.
 
 Walls fitted to pitched roofs retain their editable base extrusion beneath the roof cuts. Their derived quantities retain length, width and floor footprint; prism height, side area and volume are omitted until the quantity reader can measure the finished CSG body. Loaded files retain their original quantity sets under the normal opt-in refresh policy.
 

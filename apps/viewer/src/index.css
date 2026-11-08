@@ -160,10 +160,15 @@
 /* Component layer: Tailwind utilities on the same element (`absolute`,
    `z-10`, …) still win over these shell classes. */
 @layer components {
-  /* A horizontally scrolling strip fades the edge that hides more items, so
-     a strip that ends exactly at a tab boundary still reads as scrollable
-     (Settings sections on a phone, #8802). Set by the strip's own scroll
-     state: `start`, `end` or `both`. */
+  /* A tab strip wider than its box scrolls sideways without a scrollbar
+     (`TabsList scrollable`, #8802: Settings sections and the Info dialog's
+     tabs on a phone). It fades the edge that hides more items, so a strip
+     that ends exactly at a tab boundary still reads as scrollable. The fade
+     is set by the strip's own scroll state: `start`, `end` or `both`. */
+  [data-scroll-strip] {
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
   [data-scroll-fade="end"] {
     mask-image: linear-gradient(to right, #000 calc(100% - 2rem), transparent);
   }

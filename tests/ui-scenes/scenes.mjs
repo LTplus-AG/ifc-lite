@@ -66,6 +66,17 @@ async function planCutAtGroundStorey(page) {
   });
 }
 
+/** Opens the Info dialog on `tab` the way the Learn command does, and waits
+ *  for its open animation to finish. */
+async function openInfoDialog(page, tab) {
+  await page.evaluate((t) => window.dispatchEvent(new CustomEvent('ifc-lite:show-shortcuts', { detail: { tab: t } })), tab);
+  await page.waitForSelector(`[role="dialog"] [role="tabpanel"][data-state="active"]`);
+  await page.evaluate(async () => {
+    for (const animation of document.getAnimations()) animation.finish();
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+  });
+}
+
 /**
  * Open Settings the way every opener does (the `ifc-lite:open-settings`
  * window event, #5857), then wait for its dialog. `toEnd` scrolls every
@@ -219,6 +230,20 @@ export const SCENES = [
     title: 'Keyboard shortcuts dialog',
     model: ARCH,
     async run({ page }) { await page.keyboard.press('Shift+?'); },
+  },
+  {
+    id: 'info-learn',
+    title: 'Info dialog, Learn tab, in a small desktop window',
+    model: ARCH,
+    viewport: { width: 1033, height: 676 },
+    async run({ page }) { await openInfoDialog(page, 'learn'); },
+  },
+  {
+    id: 'mobile-info-learn',
+    title: 'Phone, Info dialog on the Learn tab',
+    model: ARCH,
+    viewport: { width: 390, height: 844 },
+    async run({ page }) { await openInfoDialog(page, 'learn'); },
   },
   {
     id: 'mobile-loaded',

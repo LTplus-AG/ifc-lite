@@ -13,6 +13,7 @@ import { addPlateToStore, type PlateInStoreParams } from './plate.js';
 import { addRoofToStore, type RoofInStoreParams } from './roof.js';
 import { addSlabToStore, type SlabInStoreParams } from './slab.js';
 import { addSpaceToStore, type SpaceInStoreParams } from './space.js';
+import { autojoinWallInStore } from './wall-autojoin.js';
 import { addWallToStore, type WallInStoreParams } from './wall.js';
 
 /** The eight ordinary builders shared by loaded-model gestures and SDK/MCP.
@@ -47,6 +48,7 @@ export function addOrdinaryElementInStore(
     const resolved = typeof anchor === 'function' ? anchor(draft) : anchor;
     const id = emitOrdinaryElement(draft, resolved, element);
     if (options.top !== undefined && options.store && TOP_KINDS.has(element.kind)) applyNewElementTop(options.store, draft, id, options.top, resolved.storeyId);
+    if (element.kind === 'wall' && options.store) autojoinWallInStore(options.store, draft, id);
     return id;
   });
 }

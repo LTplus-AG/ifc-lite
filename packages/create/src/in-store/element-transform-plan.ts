@@ -26,7 +26,7 @@
 import { IfcTypeEnum, IfcTypeEnumFromString } from '@ifc-lite/data';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
-import { expandAffectedSet } from '@ifc-lite/export';
+import { expandAffectedSet, gridPlacementDependents } from '@ifc-lite/export';
 import {
   IDENTITY_FRAME, applyFrame, frameInStorey, objectPlacementOf, placementAncestors, placementOrigin, uprightFrame,
   type PlacementReader, type PlanFrame,
@@ -106,6 +106,8 @@ function placementOf(input: Pick<TransformPlanInput, 'dataStore' | 'view'>, prod
 export function planElementTransform(input: TransformPlanInput): TransformPlan {
   const reader: PlacementReader = { dataStore: input.dataStore, view: input.view };
   const moved = movedSet(input);
+  const grids = new Set(input.selected.filter(id => typeOf(input, id) === 'IFCGRID'));
+  const gridCarried = grids.size ? gridPlacementDependents(input.dataStore, input.view, grids) : new Set<number>();
   const placements = new Map<number, number>();
   for (const id of moved.keys()) {
     const placement = placementOf(input, id);
@@ -116,6 +118,10 @@ export function planElementTransform(input: TransformPlanInput): TransformPlan {
   const carried: number[] = [];
   const refused: TransformRefusal[] = [];
   for (const [expressId, storeyId] of moved) {
+    if (gridCarried.has(expressId)) {
+      carried.push(expressId);
+      continue;
+    }
     const placement = placementOf(input, expressId);
     if (placement === null) {
       refused.push({ expressId, reason: 'noPlacement' });

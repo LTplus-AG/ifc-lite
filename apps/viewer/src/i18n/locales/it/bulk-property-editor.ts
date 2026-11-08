@@ -110,7 +110,7 @@ export const bulkPropertyEditorIt = {
   'bulkPropertyEditor.entityError': 'Entità {id}: {detail}',
   'bulkPropertyEditor.executionFailed': 'Modifica in blocco non riuscita: {detail}',
   'bulkPropertyEditor.cancel': 'Annulla',
-  'bulkPropertyEditor.cancelledAfter': 'Interrotto dopo {done} di {total} entità. Annulla annulla le modifiche già applicate.',
+  'bulkPropertyEditor.cancelledAfter': 'Interrotto dopo {done} di {total} entità. Le modifiche già applicate restano attive. Per ripristinare lo stato precedente, usa il comando di annullamento delle modifiche.',
   'bulkPropertyEditor.reset': 'Reimposta',
   'bulkPropertyEditor.preview': 'Anteprima',
   'bulkPropertyEditor.editorAccessRequired': 'In questa sessione condivisa la modifica richiede l’accesso come editor',

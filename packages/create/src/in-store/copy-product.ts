@@ -38,6 +38,8 @@ import {
   type CopyVec3, type LiveRead, type RigidFrame,
 } from './copy-frame.js';
 
+import { readCopyAttachments, rebindCopiedAttachments } from './copy-attachment.js';
+
 export { productStoreyOrigin } from './copy-placement.js';
 
 export interface CopyTransform {
@@ -161,8 +163,25 @@ export function copyRefusal(ctx: CopyContext, sourceId: number): string | null {
   return gridCopyRefusal(ctx, sourceId);
 }
 
-/** Copy the complete product graph. `options.Name` overrides only the root product’s Name. */
+/**
+ * Copy the complete product graph. `options.Name` overrides only the root
+ * product’s Name. A copy on another storey re-resolves its top attachment
+ * there (`copy-attachment.ts`), as the batch does.
+ */
 export function copyProductInStore(ctx: CopyContext, sourceId: number, transform: CopyTransform = {}, options: { Name?: string } = {}): CopyProductResult {
+  const carried = [sourceId, ...(ctx.parts.get(sourceId) ?? []).flatMap((link) => link.parts)];
+  const attachments = readCopyAttachments(ctx, carried);
+  const result = copyProductGraph(ctx, sourceId, transform, options);
+  rebindCopiedAttachments(ctx, attachments, [result]);
+  return result;
+}
+
+/**
+ * `copyProductInStore` without the attachment step: for a batch, which reads
+ * every source's attachment once before its first copy and re-binds each
+ * transform's copies together (so a slab copied alongside is found).
+ */
+export function copyProductGraph(ctx: CopyContext, sourceId: number, transform: CopyTransform = {}, options: { Name?: string } = {}): CopyProductResult {
   const refusal = copyRefusal(ctx, sourceId);
   if (refusal) throw new Error(refusal);
   copiedProductWork(ctx, sourceId);

@@ -193,11 +193,13 @@ describe('inserting a storey re-binds relative attachments (#9296)', () => {
     expect(top(s, tall, 'wall')).toBeCloseTo(6, 9);
   });
 
-  it('refuses an insert that would leave a re-bound element no height, writing nothing', async () => {
+  it('refuses an insert that would leave a re-bound element no height, writing nothing; the dry run says so first (#9340 review)', async () => {
     const s = await levels();
     const raised = addOrdinaryElementInStore(s.editor, anchor(s, s.l1), { kind: 'column', params: { Position: [0, 0, 1], Width: 0.4, Depth: 0.4, Height: 2 } });
     writeTopAttachment(s.view, raised, s.guid(s.l2), 'relative');
     const before = s.snapshot();
+    expect(create.planStoreyAdd(readStoreyInventory(s.store, s.view), { Name: 'Low', Elevation: 0.5 }).refusal).toMatch(/cannot reach the new storey/);
+    expect(s.snapshot()).toEqual(before);
     expect(() => addStoreyInStore(s.store, s.editor, { Name: 'Low', Elevation: 0.5 })).toThrow(/cannot reach the new storey/);
     expect(s.snapshot()).toEqual(before);
   });
@@ -262,6 +264,14 @@ describe('copies to other storeys re-resolve their attachments (#9296)', () => {
     const before = s.snapshot();
     expect(() => create.copyToStoreysInStore(s.store, s.editor, [source], [s.l2])).toThrow(/attached to Level 2, which is not above its new storey Level 2/);
     expect(s.snapshot()).toEqual(before);
+  });
+
+  it('a single copyProductInStore re-binds as the batch does (#9340 review)', async () => {
+    const s = await levels();
+    const source = wall(s, s.l1, 0);
+    writeTopAttachment(s.view, source, s.guid(s.l2), 'relative');
+    const copy = s.editor.runAtomic((draft) => create.copyProductInStore(create.createCopyContext(s.store, draft), source, { targetStoreyId: s.l2 }));
+    expect(readTopAttachment(readStoreyInventory(s.store, s.view), copy.copyId)?.targetStoreyId).toBe(s.l3);
   });
 
   it('keeps the copyElements transform-list call shape', async () => {

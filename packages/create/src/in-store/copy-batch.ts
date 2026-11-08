@@ -5,7 +5,7 @@
 /** Shared selection, preview and atomic write for paste, array and Duplicate (#6232 D5). */
 import type { StoreEditor } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
-import { copyProductInStore, copyRefusal, createCopyContext, productStoreyOrigin, type CopyContext, type CopyProductResult, type CopyTransform } from './copy-product.js';
+import { copyProductGraph, copyRefusal, createCopyContext, productStoreyOrigin, type CopyContext, type CopyProductResult, type CopyTransform } from './copy-product.js';
 import type { DuplicateInStoreOptions } from './duplicate.js';
 import { copiedProductWork, COPY_PRODUCT_WORK_LIMIT } from './copy-dependent-walk.js';
 import { readCopyAttachments, rebindCopiedAttachments } from './copy-attachment.js';
@@ -97,10 +97,10 @@ export function copyBatchInStore(
     const attachments = readCopyAttachments(ctx, copiedProductsInStore(ctx, sources.ids));
     return transforms.flatMap((transform) => {
       const results = sources.ids.map((id) => {
-        if (!options.duplicate) return copyProductInStore(ctx, id, transform);
+        if (!options.duplicate) return copyProductGraph(ctx, id, transform);
         const sourceName = ctx.read(id)?.attributes[2];
         const name = options.duplicate.name ?? (typeof sourceName === 'string' && sourceName.length > 0 ? `${sourceName} (copy)` : sourceName);
-        return copyProductInStore(ctx, id, transform, typeof name === 'string' ? { Name: name } : {});
+        return copyProductGraph(ctx, id, transform, typeof name === 'string' ? { Name: name } : {});
       });
       rebindCopiedAttachments(ctx, attachments, results);
       return results;

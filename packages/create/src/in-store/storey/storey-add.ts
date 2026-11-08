@@ -14,7 +14,7 @@
  */
 
 import { generateIfcGuid, isValidIfcGuid } from '@ifc-lite/encoding';
-import type { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
+import { StoreEditor, type MutablePropertyView } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { ownerHistoryRef } from '../_emit-helpers.js';
 import { refId } from '../host-geometry-frame.js';
@@ -132,17 +132,32 @@ export interface StoreyAddPlan {
   readonly unresized: readonly number[];
 }
 
-/** Dry run of `addStoreyInStore`: its refusal and the attachments it would (re-)bind. Pure read. */
+/**
+ * Dry run of `addStoreyInStore`: its refusal and the attachments it would
+ * (re-)bind. The complete add is written into a draft that is never
+ * published, so a late refusal (a re-bound element left no height, an
+ * opening above a wall's new top) is reported here exactly as the add would
+ * refuse it. Writes nothing.
+ */
 export function planStoreyAdd(inventory: StoreyInventory, params: AddStoreyParams): StoreyAddPlan {
+  const refused = (error: unknown): StoreyAddPlan => ({
+    refusal: error instanceof Error ? error.message.replace(`${OP}: `, '') : String(error), bindings: [], unresized: [],
+  });
+  let planned: ReturnType<typeof planAttachmentBindings>;
   try {
     const { parentId } = joinedBuilding(inventory, params);
     const refusal = addStoreyRefusal(inventory, params, parentId);
     if (refusal) return { refusal, bindings: [], unresized: [] };
-    const planned = planAttachmentBindings(inventory, params.Elevation, parentId);
-    return { refusal: null, bindings: planned.bindings, unresized: planned.unreadable };
+    planned = planAttachmentBindings(inventory, params.Elevation, parentId);
   } catch (error) {
-    return { refusal: error instanceof Error ? error.message.replace(`${OP}: `, '') : String(error), bindings: [], unresized: [] };
+    return refused(error);
   }
+  try {
+    inventory.view.prepareAtomic((draft) => addStoreyInStore(inventory.store, new StoreEditor(inventory.store, draft), params)).rollback();
+  } catch (error) {
+    return refused(error);
+  }
+  return { refusal: null, bindings: planned.bindings, unresized: planned.unreadable };
 }
 
 /** Add a storey atomically. Throws (writing nothing) when the storey cannot be placed. */

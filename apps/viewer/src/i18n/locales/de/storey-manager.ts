@@ -138,4 +138,5 @@ export const storeyManagerDe = {
   "storeyManager.wallTarget": "Bis {storey} ({elevation} m)",
   'storeyManager.copy.from': 'Von Geschoss',
   'storeyManager.copy.to': 'Bis Geschoss',
+  "storeyManager.copy.readOnly": "Kopieren ist nicht möglich: {reason}",
 } satisfies Catalogue;

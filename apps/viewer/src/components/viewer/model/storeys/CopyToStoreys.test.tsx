@@ -59,6 +59,28 @@ it('#9334 the canonical palette entry requires a real model session as well as e
   assert.equal(command.enabled({ canEditInSession: true }), false);
   act(() => { useViewerStore.getState().enterModelWorkspace({ modelId: MODEL_ID, storeyId: STOREY }); });
   assert.equal(command.enabled({ canEditInSession: true }), true);
+  act(() => { useViewerStore.setState({ editEnabled: false }); });
+  assert.equal(command.enabled({ canEditInSession: true }), false, 'a read-only session is also disabled');
+  act(() => { useViewerStore.setState({ editEnabled: true }); });
   assert.equal(command.enabled({ canEditInSession: false }), false);
   act(() => { useViewerStore.getState().exitModelWorkspace(); });
+});
+
+it('#9334 read-only copy controls explain the denial and discard a prepared batch', async () => {
+  act(() => { useViewerStore.setState({ editEnabled: false }); });
+  const ui = render(<CopyToStoreys />);
+  assert.equal(button(ui, 'Prepare copies').disabled, true);
+  assert.match(ui.textContent ?? '', /Copying is unavailable/);
+  const before = walls().length;
+  const stack = useViewerStore.getState().undoStacks.get(MODEL_ID)!.length;
+  act(() => { useViewerStore.setState({ editEnabled: true }); });
+  click(button(ui, 'Select all storeys'));
+  click(button(ui, 'Prepare copies'));
+  await waitFor(() => !!button(ui, 'Copy now'), 'prepared');
+  act(() => { useViewerStore.setState({ editEnabled: false }); });
+  assert.equal(button(ui, 'Copy now'), undefined, 'revocation discards preparation');
+  assert.equal(button(ui, 'Prepare copies').disabled, true);
+  click(button(ui, 'Prepare copies'));
+  assert.equal(walls().length, before);
+  assert.equal(useViewerStore.getState().undoStacks.get(MODEL_ID)!.length, stack);
 });

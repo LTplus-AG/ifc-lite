@@ -22,6 +22,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ChevronDown, Eye, EyeOff, Layers, TriangleAlert } from 'lucide-react';
 import { useViewerStore } from '@/store';
+import { mutationDenial } from '@/store/mutation-permission';
 import { applyLevelDisplayMode } from '@/store/levelDisplay';
 import { activateStorey, isStoreyIsolated } from '@/lib/storeys/storey-session';
 import { useTranslation } from '@/i18n';
@@ -59,6 +60,7 @@ export function WorkspaceStoreyChip() {
   const session = useViewerStore((s) => s.session);
   const isolated = useViewerStore((s) => (s.session?.storeyId != null ? isStoreyIsolated(s, s.session.modelId, s.session.storeyId) : false));
   const groups = useWorkspaceStoreyGroups();
+  const copyDenial = useViewerStore((s) => s.session ? mutationDenial(s, s.session.modelId) : null);
   useEffect(() => {
     const show = () => { setCopyOpen(true); setOpen(true); };
     window.addEventListener(COPY_TO_STOREYS_EVENT, show);
@@ -119,7 +121,7 @@ export function WorkspaceStoreyChip() {
           </HudChip>
           <HudPopoverContent onCloseAutoFocus={(event) => { event.preventDefault(); document.querySelector<HTMLElement>('[data-testid="model-3d-panel"] canvas')?.focus(); }} align="start" className="p-1">
             {copyOpen ? <CopyToStoreys /> : <StoreyPicker groups={groups} current={{ modelId: session.modelId, storeyId: session.storeyId }} onPick={(storey) => { pickWorkspaceStorey(storey); setOpen(false); }} />}
-            <Button size="sm" variant="ghost" onClick={() => setCopyOpen(!copyOpen)}>{t('storeyManager.copy.title')}</Button>
+            <Button size="sm" variant="ghost" disabled={copyDenial !== null} title={copyDenial ? t('storeyManager.copy.readOnly', { reason: copyDenial }) : undefined} onClick={() => setCopyOpen(!copyOpen)}>{t('storeyManager.copy.title')}</Button>
             <StoreyPickerActions />
           </HudPopoverContent>
         </HudPopover>

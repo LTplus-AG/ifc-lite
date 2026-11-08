@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { wallEndpointsJoined, copiedPlansMatch, hasDwgDownload, assignedTypes, uniqueWallJoins, hardwareAdapter, loadTarget, ownOpenings, themedResult, wallPropertySets, wallQuantityCoverage } from '../../tests/modelling-parity/ui/lib/oracles.mjs';
+import { wallEndpointsJoined, copiedPlansMatch, hasDwgDownload, assignedTypes, uniqueWallJoins, hardwareAdapter, loadTarget, ownOpenings, themedResult, wallPropertySets, wallQuantityCoverage, uncontainedInStoreys } from '../../tests/modelling-parity/ui/lib/oracles.mjs';
 import { readStep } from '../../tests/modelling-parity/ui/lib/step.mjs';
 test('#9324 fallback flags and software adapter descriptions are refused',()=>{
   assert.equal(hardwareAdapter({architecture:'blackwell'}),true);
@@ -85,4 +85,12 @@ test('#9324 repeated pairs cannot stand in for all four joined corners', () => {
   assert.equal(wallEndpointsJoined(repeated),false);
   const ring = readStep('DATA;'+walls+[1,2,3,4].map((id,i)=>link(5+i,id,id%4+1,'ATEND','ATSTART')).join('')+'ENDSEC;');
   assert.equal(wallEndpointsJoined(ring),true);
+});
+
+test('#9324 containment in a building, not a storey, counts as uncontained',()=>{
+  const head="DATA;#1=IFCBUILDING('b',$,'B',$,$,$,$,$,$,$,$,$);#2=IFCBUILDINGSTOREY('s',$,'L0',$,$,$,$,$,$,0.);#3=IFCWALL('w',$,'W',$,$,$,$,$,$);";
+  const inBuilding=readStep(head+"#4=IFCRELCONTAINEDINSPATIALSTRUCTURE('r',$,$,$,(#3),#1);ENDSEC;");
+  assert.equal(uncontainedInStoreys(inBuilding,inBuilding.of('IFCWALL')),1);
+  const inStorey=readStep(head+"#4=IFCRELCONTAINEDINSPATIALSTRUCTURE('r',$,$,$,(#3),#2);ENDSEC;");
+  assert.equal(uncontainedInStoreys(inStorey,inStorey.of('IFCWALL')),0);
 });

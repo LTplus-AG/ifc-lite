@@ -104,5 +104,5 @@ it('#9273 leaving Layers cancels an unconsumed reveal instead of stealing focus 
   await waitFor(() => !!hierarchy.querySelector('[data-node-id="presentation-layer-own-51"]'),
     'the previously requested layer is available after returning');
   await advance(50);
-  assert.equal(document.activeElement, button, 'returning to Layers does not revive the cancelled focus request');
+  assert.ok(document.activeElement === button, 'returning to Layers does not revive the cancelled focus request');
 });

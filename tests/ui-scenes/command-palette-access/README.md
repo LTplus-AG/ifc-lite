@@ -102,14 +102,14 @@ are observed access gaps, not failures of the already accepted general UX scope.
 Raw observation `theme: null` means the light theme's absent HTML class; the
 manifest explicitly identifies light/dark for every capture.
 
-![Unloaded selection action lacks a reason](https://github.com/LTplus-AG/ifc-lite/blob/9814a77731295ee7642f7601d49aa01b05d1882f/tests/ui-scenes/command-palette-access/evidence/baseline-access-unloaded-hide.light.png)
-![Real selected wall and Hide command](https://github.com/LTplus-AG/ifc-lite/blob/9814a77731295ee7642f7601d49aa01b05d1882f/tests/ui-scenes/command-palette-access/evidence/baseline-access-selected-hide.dark.png)
-![After canonical Hide execution](https://github.com/LTplus-AG/ifc-lite/blob/9814a77731295ee7642f7601d49aa01b05d1882f/tests/ui-scenes/command-palette-access/evidence/baseline-access-selected-hide-run.dark.png)
-![Undo query has no Undo action](https://github.com/LTplus-AG/ifc-lite/blob/9814a77731295ee7642f7601d49aa01b05d1882f/tests/ui-scenes/command-palette-access/evidence/baseline-access-history.light.png)
-![Privacy query misses Settings](https://github.com/LTplus-AG/ifc-lite/blob/9814a77731295ee7642f7601d49aa01b05d1882f/tests/ui-scenes/command-palette-access/evidence/baseline-access-settings-privacy.light.png)
+![Unloaded selection action lacks a reason](https://github.com/LTplus-AG/ifc-lite/blob/05232c2fd01c4b5abe9092868db84fb94debcc6d/tests/ui-scenes/command-palette-access/evidence/baseline-access-unloaded-hide.light.png)
+![Real selected wall and Hide command](https://github.com/LTplus-AG/ifc-lite/blob/05232c2fd01c4b5abe9092868db84fb94debcc6d/tests/ui-scenes/command-palette-access/evidence/baseline-access-selected-hide.dark.png)
+![After canonical Hide execution](https://github.com/LTplus-AG/ifc-lite/blob/05232c2fd01c4b5abe9092868db84fb94debcc6d/tests/ui-scenes/command-palette-access/evidence/baseline-access-selected-hide-run.dark.png)
+![Undo query has no Undo action](https://github.com/LTplus-AG/ifc-lite/blob/05232c2fd01c4b5abe9092868db84fb94debcc6d/tests/ui-scenes/command-palette-access/evidence/baseline-access-history.light.png)
+![Privacy query misses Settings](https://github.com/LTplus-AG/ifc-lite/blob/05232c2fd01c4b5abe9092868db84fb94debcc6d/tests/ui-scenes/command-palette-access/evidence/baseline-access-settings-privacy.light.png)
 
-[Recorded contexts and outcomes](https://github.com/LTplus-AG/ifc-lite/blob/9814a77731295ee7642f7601d49aa01b05d1882f/tests/ui-scenes/command-palette-access/evidence/baseline-context-observations.json) and
-[exact-artifact capture manifest](https://github.com/LTplus-AG/ifc-lite/blob/9814a77731295ee7642f7601d49aa01b05d1882f/tests/ui-scenes/command-palette-access/evidence/baseline-manifest.json) retain the facts.
+[Recorded contexts and outcomes](https://github.com/LTplus-AG/ifc-lite/blob/05232c2fd01c4b5abe9092868db84fb94debcc6d/tests/ui-scenes/command-palette-access/evidence/baseline-context-observations.json) and
+[exact-artifact capture manifest](https://github.com/LTplus-AG/ifc-lite/blob/05232c2fd01c4b5abe9092868db84fb94debcc6d/tests/ui-scenes/command-palette-access/evidence/baseline-manifest.json) retain the facts.
 No candidate access verdict has been issued yet.
 
 ## Round 1 foundation checkpoint
@@ -158,3 +158,19 @@ revert oracle and performance ratchet passing. Node shard 2/4 failed nine BCF
 fixture tests, and its dependent aggregate failed; Rust/path-gated lanes skipped
 as configured. This is not a full-CI pass. Separate test-only repair PR #8959
 and its original admitted validation are parent-owned; UX head remains frozen.
+
+## Round 1 mounted file/activity host checkpoint
+
+The Ribbon-owned file hook now publishes one typed, identity-checked host.
+Palette Open/Add invoke the real picker synchronously; Refresh requires live
+handles for every loaded model; Share opens the existing persistent dialog.
+Activity uses the real tray dialog outside the closing palette. Open/Add/recent
+files share the cached WebGPU prerequisite. Recent cache miss/error recovery no
+longer attempts a picker after an asynchronous cache read. Eight mounted host
+regressions cover these paths; their runtime assertions are still unverified.
+
+Focused lint and module-size/source-text/i18n/whitespace guards passed. The root
+Turbo dry run selected the intended tests but found 58 missing dependency builds,
+so it was not counted as execution. The host implementer removed its own 44,204
+bytes of redundant scratch; no active jobs, source, fixtures or evidence were
+removed. Author dialogs and class filtering remain for the next serial batch.

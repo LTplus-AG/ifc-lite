@@ -108,4 +108,8 @@ export const commandPaletteIt = {
   'commandPalette.category.learn': 'Apprendimento',
   "commandPalette.noResultsHint": "Prova un altro nome o una parola chiave.",
   "commandPalette.clearSearch": "Cancella ricerca",
+  "commandPalette.availability.refresh": "Riapri tutti i modelli con un accesso diretto al file per aggiornarli",
+  "commandPalette.availability.gpuChecking": "Attendi il completamento della verifica WebGPU",
+  "commandPalette.availability.gpu": "WebGPU non è disponibile — consulta la schermata iniziale per assistenza",
+  "commandPalette.availability.reopen": "Riapri il file dal disco; la copia nella cache non è più disponibile",
 } satisfies Catalogue;

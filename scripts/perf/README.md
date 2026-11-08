@@ -38,6 +38,28 @@ not only the byte total, and measure boot with each build in both A/B positions:
 shared host, position alone moved the result by about 15 ms. A group that claimed every
 QuickJS module also failed, because the one eager module in it made the whole group eager.
 
+## Presentation-layer membership follows the selected shape (#9273)
+
+**Selection query verdict: remove the model-wide ownership scan.** The hierarchy's
+layer-to-products resolver is appropriate when opening the Layers grouping; calling
+it to populate one element's inspector decodes unrelated products and geometric
+constituents, even when there are no assignments. A mutation revision invalidation
+then repeats that work on an unrelated property edit.
+
+The inspector now caches the assignment declarations, returns immediately for an
+empty assignment set, and walks only the selected product's ownership graph. Shape
+aspects supply the inverse owner edges; shared maps, boolean operands and topology
+use the same schema ownership table as the full hierarchy resolver. Existing
+ownership fixtures compare both directions. The code and lookup load after render,
+and the generated BREP regression guards cold, empty and edited selections. The
+paired selection probe is `scripts/perf/presentation-layer-selection.ts`; it reports
+query latency and selected layer identity, not whole-viewer loading or rendering.
+
+Lesson: a model-wide reverse index can amortize a hierarchy view while still being
+the wrong query plan for selection. Cache small declarations and follow the selected
+shape, rather than making the first click or every authoring revision pay for every
+other product in the model.
+
 ## First selection reads typing relationships from the graph (#9192)
 
 **Shipped: the scan is gone, not made cheaper.** `readCurrentTypeQuantities` read every

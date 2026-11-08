@@ -22,7 +22,6 @@
     "pkg/snippets/**",
     "pkg-core/ifc-lite_bg.wasm",
     "pkg-core/ifc-lite.js",
-    "pkg-core/ifc-lite.d.ts",
     "pkg-core/snippets/**",
     "retained.js",
     "retained.d.ts",
@@ -44,7 +43,7 @@
     },
     "./ifc-lite_bg.wasm": "./pkg/ifc-lite_bg.wasm",
     "./core": {
-      "types": "./pkg-core/ifc-lite.d.ts",
+      "types": "./pkg/ifc-lite.d.ts",
       "import": "./pkg-core/ifc-lite.js",
       "default": "./pkg-core/ifc-lite.js"
     },

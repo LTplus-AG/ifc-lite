@@ -179,6 +179,22 @@ pre-pass frame whenever these results accompany already-produced meshes.
 
 All classes implement `free()` and `[Symbol.dispose]()` — call `free()` (or use `using`) to release Rust-side memory.
 
+## Geometry-core engine (`@ifc-lite/wasm/core`)
+
+`@ifc-lite/wasm/core` is the same engine built without the exporters, LandXML,
+clash detection, point-cloud scan operations and PDF underlays
+(`--no-default-features` on `rust/wasm-bindings`; the `full` feature is
+everything else). Its binary is `@ifc-lite/wasm/core_bg.wasm`. Meshing goes
+through the same code, so meshes are byte-identical
+(`scripts/check-wasm-core-identity.mjs`). It is meant to replace
+`@ifc-lite/wasm` wholesale through an exact bundler alias, so that
+`@ifc-lite/geometry` loads it in the page and in its workers; see
+[Geometry Processing, geometry-core](https://ifclite.dev/docs/guide/geometry/#smaller-engine-for-mesh-only-pages-geometry-core).
+Both glues export `ENGINE_BINARY_URL`: `null` for the full engine, the core
+binary's URL for the core one, so a shared compile fetches the binary the glue
+links against. Build it locally with `BUILD_CORE=1 scripts/build-wasm.sh`; the
+release build always includes it.
+
 ## When to use a higher-level package instead
 
 | You want… | Use |

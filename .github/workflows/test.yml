@@ -2529,7 +2529,7 @@ jobs:
         run: |
           BUILD_RETAINED=1 bash scripts/build-wasm.sh
           pnpm build --filter=@ifc-lite/cli
-          node --test --test-reporter=tap --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=mergify-junit.xml scripts/retained-compare/inert.test.mjs scripts/retained-compare/metrics.test.mjs scripts/retained-compare/tolerances.test.mjs scripts/retained-compare/browser-metrics.test.mjs scripts/retained-compare/real-authoring-support.test.mjs scripts/retained-compare/corpus-shards.test.mjs
+          node --test --test-reporter=tap --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=mergify-junit.xml scripts/retained-compare/inert.test.mjs scripts/retained-compare/metrics.test.mjs scripts/retained-compare/tolerances.test.mjs scripts/retained-compare/browser-metrics.test.mjs scripts/retained-compare/browser-corpus-pages.test.mjs scripts/retained-compare/real-authoring-support.test.mjs scripts/retained-compare/corpus-shards.test.mjs
       - name: Mergify CI Upload
         if: (success() || failure()) && env.HAS_MERGIFY_TOKEN == 'true' && hashFiles('mergify-junit.xml') != ''
         continue-on-error: true

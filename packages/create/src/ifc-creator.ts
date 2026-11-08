@@ -2026,8 +2026,7 @@ export class IfcCreator {
 
   private buildHeader(): string {
     return buildStepHeader(this.nowMs(), this.projectParams.Author ?? '', this.projectParams.Organization ?? '',
-      fileSchemaIdentifier(this.schema),
-      { fileName: this.projectParams.FileName, fileDescription: this.projectParams.FileDescription });
+      fileSchemaIdentifier(this.schema), this.projectParams);
   }
 
   // ============================================================================

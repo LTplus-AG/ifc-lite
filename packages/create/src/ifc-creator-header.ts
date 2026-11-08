@@ -18,9 +18,10 @@ const DEFAULT_FILE_DESCRIPTION: readonly string[] = ['Created by ifc-lite'];
 /** ISO 10303-21 declares both `FILE_NAME.name` and each description entry as `STRING (256)`. */
 const MAX_HEADER_STRING = 256;
 
+/** The `ProjectParams` fields the header reads. */
 interface StepHeaderText {
-  fileName?: string;
-  fileDescription?: string | readonly string[];
+  FileName?: string;
+  FileDescription?: string | readonly string[];
 }
 
 function checkHeaderString(value: string, what: string): string {
@@ -34,8 +35,8 @@ export function buildStepHeader(nowMs: number, author: string, organization: str
   // ISO 8601 time_stamp: keep '-'/':', drop only milliseconds and the 'Z'.
   const now = new Date(nowMs).toISOString().replace(/\.\d{3}Z$/, '');
   const app = 'ifc-lite';
-  const fileName = checkHeaderString(text.fileName ?? DEFAULT_FILE_NAME, 'FileName');
-  const rawDescription = text.fileDescription ?? DEFAULT_FILE_DESCRIPTION;
+  const fileName = checkHeaderString(text.FileName ?? DEFAULT_FILE_NAME, 'FileName');
+  const rawDescription = text.FileDescription ?? DEFAULT_FILE_DESCRIPTION;
   const description: readonly string[] = typeof rawDescription === 'string' ? [rawDescription] : rawDescription;
   // FILE_DESCRIPTION.description is LIST [1:?] OF STRING: an empty list is not a valid header.
   if (description.length === 0) throw new RangeError('FileDescription needs at least one entry');

@@ -121,6 +121,18 @@ export function attachedTopWorldOrigin(target: EditTarget, id: number, kind: Att
   return (placementInAncestor(reader, parentId, null)?.o[2] ?? Number.NaN) * scale;
 }
 
+/**
+ * Whether moving the element's top rewrites its body (a wall's, column's or
+ * curtain wall's extrusion, a vertical or sloped member's depth) rather than
+ * only its own placement (a level beam or member is lifted whole). A body
+ * shared with another element cannot be rewritten for one of them.
+ */
+export function attachedTopEditsBody(target: EditTarget, id: number, kind: AttachedKind): boolean {
+  if (kind !== 'linear') return true;
+  const ends = linearEnds(target, id);
+  return !ends || Math.abs(ends.chain.axisDirection[2]) >= 1e-9;
+}
+
 /** Move the element's top from `from` to `to` (metres, its `top` measure). Caller owns the atomic transaction. */
 export function writeAttachedTop(target: EditTarget, id: number, kind: AttachedKind, from: number, to: number): AttachedOutcome {
   if (kind === 'wall') return setWallSectionInStore(target, id, { height: to });
@@ -157,10 +169,12 @@ function liftLinearTop(target: EditTarget, id: number, change: number): Attached
   const placementId = refId(reader.entity(id)?.attributes[5]);
   const leaf = placementId === null ? null : readPlacementLeaf(reader, placementId);
   if (!leaf) return { ok: false, reason: 'Its placement cannot be read' };
-  const ownership = editOwnershipRefusal(target.dataStore, target.view, [leaf.placementId, chain.extrudedSolidId],
+  const level = Math.abs(a[2]) < 1e-9;
+  // A level lift writes only the placement; a turn writes the solid's depth too.
+  const ownership = editOwnershipRefusal(target.dataStore, target.view, level ? [leaf.placementId] : [leaf.placementId, chain.extrudedSolidId],
     expandAffectedSet(target.dataStore, target.view, [id], 'hostsChanged'));
   if (ownership) return { ok: false, reason: ownership };
-  if (Math.abs(a[2]) < 1e-9) {
+  if (level) {
     // Level: the whole element follows, so it stays at the same depth under the storey.
     const lift = worldLiftInParent(reader, leaf.parentId, change / scale);
     if (!lift) return { ok: false, reason: 'Its placement cannot be read' };

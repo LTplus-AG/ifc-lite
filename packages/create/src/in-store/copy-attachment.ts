@@ -22,7 +22,9 @@
  * be resized without resizing the source. It is recorded fixed at the
  * source's height instead, never left attached at the wrong height, and
  * listed in the result's `unattachedTops` with the reason. (Deep-copying
- * file shapes is #8447.)
+ * file shapes is #8447.) A level beam or member is not affected: it follows
+ * by moving its own placement. A copy whose body cannot be read is listed
+ * the same way, unless its re-bound record needs no new height.
  *
  * Elements with no record are fixed and are copied as they are.
  */
@@ -31,7 +33,9 @@ import { readStoreyInventory, storeyNeighbour, type StoreyInventory } from './st
 import {
   clearTopAttachment, homeStoreyOf, readTopAttachment, writeTopAttachment, NEXT_STOREY_ABOVE, STOREY_ATTACHMENT_PSET, TOP_CONSTRAINT, type TopAttachment,
 } from './storey/storey-attachment.js';
-import { attachedKind, attachedTopWorldOrigin, readAttachedTop, writeAttachedTop, MIN_ATTACHED_EXTENT } from './storey/storey-attached.js';
+import {
+  attachedKind, attachedTopEditsBody, attachedTopWorldOrigin, readAttachedTop, writeAttachedTop, MIN_ATTACHED_EXTENT,
+} from './storey/storey-attached.js';
 import { slabUndersideWorld } from './storey/storey-attachment-target.js';
 import { scaleWallQuantities, wallGeometry } from './storey/storey-level-write.js';
 import { placementInAncestor, refId } from './host-geometry-frame.js';
@@ -68,6 +72,7 @@ export interface CopyUnattachedTop {
   readonly reason: string;
 }
 
+const UNREADABLE_BODY = 'its body cannot be read, so its top cannot follow; it keeps its height and is no longer attached';
 const SHARED_BODY = "it shares the source's shape from the file, which a copy cannot resize; it keeps the source's height and is no longer attached";
 
 const fail = (copyId: number, reason: string) => new Error(`The copy #${copyId} cannot keep its top attachment on its new storey: ${reason}`);
@@ -103,7 +108,7 @@ export function rebindCopiedAttachments(
       const here = inventory.storeys.find((storey) => storey.expressId === storeyId);
       if (!here) continue;
       const next = storeyNeighbour(inventory, storeyId, 1);
-      // The record first: a copy whose body cannot be read is still bound right, and keeps its height.
+      // The record first; a copy whose body cannot be read keeps it only where it needs no refit (below).
       if (attachment.kind === 'element') {
         if (slabCopy !== undefined) writeTopAttachment(view, copyId, String(ctx.read(slabCopy)?.attributes[0]), 'explicit');
       } else if (attachment.binding === 'relative') {
@@ -113,7 +118,17 @@ export function rebindCopiedAttachments(
         if (here.elevation >= reached.elevation) throw fail(copyId, `it is attached to ${reached.Name}, which is not above its new storey ${here.Name}`);
       }
       const from = readAttachedTop(target, copyId, kind);
-      if (from === null) continue;
+      if (from === null) {
+        // Only a relative top with the same spacing above (or no storey above yet) is right without a refit.
+        const reached = attachment.targetStoreyId === null ? null : inventory.storeys.find((storey) => storey.expressId === attachment.targetStoreyId);
+        const sameGap = attachment.kind === 'storey' && attachment.binding === 'relative'
+          && (!next || (reached !== null && reached !== undefined && Math.abs((next.elevation - here.elevation) - (reached.elevation - home.elevation)) < 1e-9));
+        if (!sameGap) {
+          clearTopAttachment(view, copyId);
+          unattached.push({ copyId, reason: UNREADABLE_BODY });
+        }
+        continue;
+      }
       let to = from;
       if (attachment.kind === 'element') {
         const slabId = slabCopy ?? attachment.targetElementId!;
@@ -140,7 +155,8 @@ export function rebindCopiedAttachments(
       if (Math.abs(to - from) < 1e-9) continue;
       if (kind !== 'linear' && to < MIN_ATTACHED_EXTENT) throw fail(copyId, `it would end ${to.toFixed(3)} m tall`);
       const shape = refId(ctx.read(copyId)?.attributes[6]);
-      if (shape !== null && shape === refId(ctx.read(sourceId)?.attributes[6])) {
+      // A level beam is lifted by its own placement, so a shared body does not stop it.
+      if (shape !== null && shape === refId(ctx.read(sourceId)?.attributes[6]) && attachedTopEditsBody(target, copyId, kind)) {
         clearTopAttachment(view, copyId);
         unattached.push({ copyId, reason: SHARED_BODY });
         continue;

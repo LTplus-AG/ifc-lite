@@ -208,6 +208,39 @@ describe('round-3 review of #9340', () => {
   });
 });
 
+describe('round-4 review of #9340', () => {
+  it('an imported level beam copied to a taller gap still follows the new upper storey; the source is unchanged', async () => {
+    const creator = new IfcCreator({ Name: 'Imported' });
+    const l1 = creator.addIfcBuildingStorey({ Name: 'Level 1', Elevation: 0 });
+    creator.addIfcBuildingStorey({ Name: 'Level 2', Elevation: 3 });
+    creator.addIfcBuildingStorey({ Name: 'Level 3', Elevation: 7 });
+    creator.addIfcBeam(l1, { Start: [0, 0, 2.8], End: [6, 0, 2.8], Width: 0.3, Height: 0.4 });
+    const s = session(await parse(creator.toIfc().content));
+    const storeys = readStoreyInventory(s.store, s.view).storeys;
+    const beam = [...new AnchorEntityReader(s.store, s.view).ids('IFCBEAM')][0];
+    writeTopAttachment(s.view, beam, storeys[1].GlobalId, 'relative');
+    const before = top(s, beam, 'linear')!;
+    const [copy] = create.copyBatchInStore(s.store, s.editor, [beam], [{ targetStoreyId: storeys[1].expressId }]);
+    // A level beam is lifted by its own placement: the shared file body is not touched.
+    expect(copy.unattachedTops).toBeUndefined();
+    expect(readTopAttachment(readStoreyInventory(s.store, s.view), copy.copyId)?.targetStoreyId).toBe(storeys[2].expressId);
+    expect(top(s, copy.copyId, 'linear')).toBeCloseTo(before + 1, 9);
+    expect(top(s, beam, 'linear')).toBeCloseTo(before, 9);
+  });
+
+  it('a copy whose body cannot be read, needing a new height, is left unattached and says so', async () => {
+    const s = await levels();
+    addStoreyInStore(s.store, s.editor, { Name: 'Level 4', Elevation: 10 });
+    const beam = addOrdinaryElementInStore(s.editor, anchor(s, s.l1), { kind: 'beam', params: { Start: [0, 0, 2.8], End: [6, 0, 2.8], Width: 0.3, Height: 0.4 } });
+    writeTopAttachment(s.view, beam, s.guid(s.l2), 'relative');
+    liftSolid(s, beam, 0.1);
+    // Level 3 to Level 4 is 4 m, Level 1 to Level 2 was 3 m: the top would have to move, and cannot.
+    const [copy] = create.copyBatchInStore(s.store, s.editor, [beam], [{ targetStoreyId: s.l3 }]);
+    expect(copy.unattachedTops).toEqual([{ copyId: copy.copyId, reason: expect.stringMatching(/its body cannot be read, so its top cannot follow/) }]);
+    expect(readTopAttachment(readStoreyInventory(s.store, s.view), copy.copyId)).toBeNull();
+  });
+});
+
 describe('a railing on a stair refits with it (#9296)', () => {
   it('stretches along the new run and up the new rise; a railing elsewhere stays', async () => {
     const s = await levels();

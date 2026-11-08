@@ -97,7 +97,7 @@ export function BulkPropertyEditor(props: ToolDialogProps) {
   const [selectedModelId, setSelectedModelId] = useState<string>('');
   const [targetSource, setTargetSource] = useState<BulkTargetSource>('query');
   const targetGroups = useBulkTargets(open, targetSource, models);
-  const targetIdsKey = JSON.stringify([...targetGroups].map(([id, ids]) => [id, [...ids].sort((a, b) => a - b)]).sort());
+  const targetIdsKey = useMemo(() => JSON.stringify([...targetGroups].map(([id, ids]) => [id, [...ids].sort((a, b) => a - b)]).sort()), [targetGroups]);
   const editDenialReason = useMemo(() => {
     const ids = targetSource === 'query' ? [selectedModelId] : targetGroups.keys();
     const result = mutationPermissionForModels(useViewerStore.getState(), ids);
@@ -184,7 +184,7 @@ export function BulkPropertyEditor(props: ToolDialogProps) {
   const targetView = mutationViews.get(selectedModelId);
   // Only a replaced participant invalidates a successful batch, including while closed.
   useEffect(() => {
-    if (completedTargets.current && !completedTargets.current.isCurrent()) setExecuteDirty(true);
+    if (completedTargets.current && !completedTargets.current.isCurrent()) { completedTargets.current = null; setExecuteDirty(true); }
   }, [models, mutationViews, legacyIfcDataStore]);
   const isCurrent = useAuthoringOperation(open, selectedModelId, selectedModel?.ifcDataStore, targetView);
   useEffect(() => {

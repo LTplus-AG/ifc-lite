@@ -28,3 +28,12 @@ export function ownOpenings(step,fillers) {
 export function themedResult(result,theme) {
   return {...result,id:`${result.id}.${theme}`,theme};
 }
+
+
+export function wallPropertySets(step) {
+  return step.of('IFCWALL').map((wall) => step.of('IFCRELDEFINESBYPROPERTIES')
+    .filter((rel) => rel.args?.[4]?.some((ref) => ref.ref === wall.id))
+    .map((rel) => step.get(rel.args?.[5]))
+    .filter((set) => set?.type === 'IFCPROPERTYSET')
+    .map((set) => set.args?.[2]));
+}

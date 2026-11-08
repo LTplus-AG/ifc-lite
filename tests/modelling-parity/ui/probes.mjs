@@ -21,7 +21,7 @@
  * - `notes`: where the UI blocked or misled, in plain words.
  */
 
-import { ownOpenings } from './lib/oracles.mjs';
+import { ownOpenings, wallPropertySets } from './lib/oracles.mjs';
 import { downloadCount, nextDownload, task } from './lib/driver.mjs';
 import {
   escape, hudText, oracleModel, openStoreyManager, readSession, readStoreyManager, switchStorey, tool, toasts, typeFields,
@@ -397,17 +397,14 @@ export const PROBES = [
       const shot = await s.shot('roof');
       const { step } = await oracleModel(s);
       const roofs = [...step.of('IFCROOF'), ...step.of('IFCSLAB').filter((x) => x.args?.[8]?.enum === 'ROOF')];
-      // A sloped roof needs a non-vertical extrusion or a faceted/brep body; a flat slab is one vertical extrusion.
-      const sloped = roofs.some((r) => {
-        const shape = step.get(r.args?.[6]);
-        const reps = (shape?.args?.[2] ?? []).map(step.get);
-        return reps.some((rep) => rep?.args?.[2] && !/SweptSolid/.test(rep.args[2]));
-      });
+      // Representation categories do not prove slope or hip form (#9324).
+      // Until the geometric oracle is implemented, this check is unmeasured.
+      const sloped = false;
       return {
         tasks, notes, evidence: [shot],
         checks: [
           { name: 'a roof element exists (IfcRoof or IfcSlab ROOF)', ok: roofs.length >= 1, detail: `${roofs.length} roof elements` },
-          { name: 'the roof is sloped (hip by footprint)', ok: sloped, detail: sloped ? 'non-extrusion body' : 'flat extrusion only' },
+          { name: 'the roof is sloped (hip by footprint)', ok: sloped, detail: 'unmeasured: requires geometric slope and hip-form evidence (#9328)' },
         ],
       };
     },
@@ -691,7 +688,7 @@ export const PROBES = [
       const step = dl ? readStep(dl.text) : null;
       const wall = step?.of('IFCWALL')[0];
       const q = wall ? step.quantities(wall.id) : {};
-      const psets = step ? step.of('IFCPROPERTYSET').map((p) => p.args?.[2]) : [];
+      const psets = step ? wallPropertySets(step) : [];
       const classified = step ? step.count('IFCCLASSIFICATIONREFERENCE') > 0 : false;
       return {
         tasks, notes: [], evidence: [],
@@ -700,7 +697,7 @@ export const PROBES = [
           { name: 'download is IFC4', ok: step?.schema === 'IFC4', detail: `${dl?.name ?? 'no download'} schema ${step?.schema}` },
           { name: '4 walls in the file', ok: (step?.count('IFCWALL') ?? 0) === 4, detail: `${step?.count('IFCWALL')}` },
           { name: 'base quantities on walls', ok: typeof q.Length === 'number' && typeof q.NetVolume === 'number', detail: JSON.stringify(q) },
-          { name: 'a property set on the walls', ok: psets.length > 0, detail: psets.slice(0, 6).join(', ') || 'none' },
+          { name: 'a property set on the walls', ok: psets.length === 4 && psets.every((names) => names.length > 0), detail: JSON.stringify(psets) },
           { name: 'classification reference present', ok: classified, detail: classified ? 'yes' : 'none: the modelling flow assigns no classification' },
         ],
       };

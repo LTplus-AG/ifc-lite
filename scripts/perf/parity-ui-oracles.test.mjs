@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { hardwareAdapter, loadTarget, ownOpenings, themedResult } from '../../tests/modelling-parity/ui/lib/oracles.mjs';
+import { hardwareAdapter, loadTarget, ownOpenings, themedResult, wallPropertySets } from '../../tests/modelling-parity/ui/lib/oracles.mjs';
 import { readStep } from '../../tests/modelling-parity/ui/lib/step.mjs';
 test('#9324 fallback flags and software adapter descriptions are refused',()=>{
   assert.equal(hardwareAdapter({architecture:'blackwell'}),true);
@@ -32,4 +32,11 @@ test('#9324 door and window need distinct IfcOpeningElements',()=>{
   const base="#1=IFCDOOR('d');#2=IFCWINDOW('w');#3=IFCOPENINGELEMENT('o');#4=IFCOPENINGELEMENT('p');#5=IFCRELFILLSELEMENT('r',$,$,$,#3,#1);";
   const check=(id)=>ownOpenings(readStep("DATA;"+base+`#6=IFCRELFILLSELEMENT('s',$,$,$,#${id},#2);ENDSEC;`),[{id:1},{id:2}]);
   assert.equal(check(3),false); assert.equal(check(4),true); assert.equal(check(1),false);
+});
+
+test('#9324 unrelated property sets cannot certify wall assignments', () => {
+  const base = "#1=IFCWALL('w',$,$,$,$,$,$,$,$);#2=IFCPROPERTYSET('p',$,'Pset_WallCommon',$,());";
+  const read = (rel) => readStep('DATA;' + base + rel + 'ENDSEC;');
+  assert.deepEqual(wallPropertySets(read("#3=IFCRELDEFINESBYPROPERTIES('r',$,$,$,(#99),#2);")), [[]]);
+  assert.deepEqual(wallPropertySets(read("#3=IFCRELDEFINESBYPROPERTIES('r',$,$,$,(#1),#2);")), [['Pset_WallCommon']]);
 });

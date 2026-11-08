@@ -58,4 +58,7 @@ export const settingsFr = {
   "settings.general.language": "Langue",
   "settings.general.languageAuto": "Automatique (langue du navigateur)",
   "settings.general.languageFailed": "Impossible de charger cette langue ; la langue précédente reste active.",
+  "settings.general.quantitiesTitle": "Quantités",
+  "settings.general.updateEditedQuantities": "Mettre à jour les quantités des éléments modifiés",
+  "settings.general.updateEditedQuantitiesHint": "Après une modification de forme d’un mur, d’une dalle, d’une toiture, d’un poteau ou d’une poutre chargés, recalcule leurs quantités de base à partir de la nouvelle géométrie. Désactivé : elles restent telles que le fichier les a écrites.",
 } satisfies Catalogue;

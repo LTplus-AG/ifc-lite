@@ -4,13 +4,13 @@
 
 /** Storey authoring methods of bim.store (#9013). Lengths are metres. */
 import type {
-  AddStoreyParams, StoreyDeleteMode, StoreyDeletePlan, StoreyLevelEdit, StoreyLevelPlan, StoreySummary,
+  AddStoreyParams, StoreyDeleteMode, StoreyDeletePlan, StoreyLevelEdit, StoreyLevelPlan, StoreySuggestion, StoreySummary,
 } from '@ifc-lite/create';
 import type { EntityRef } from '../types.js';
 import { StoreModellingNamespace } from './store-modelling.js';
 
 export class StoreStoreyNamespace extends StoreModellingNamespace {
-  private storeyMethod<K extends 'listStoreyLevels' | 'addStorey' | 'renameStorey' | 'planStoreyEdit' | 'editStorey' | 'planStoreyDelete' | 'deleteStorey'>(name: K) {
+  private storeyMethod<K extends 'listStoreyLevels' | 'suggestStorey' | 'addStorey' | 'renameStorey' | 'planStoreyEdit' | 'editStorey' | 'planStoreyDelete' | 'deleteStorey'>(name: K) {
     const method = this.backend.store[name];
     if (!method) throw new Error(`bim.store.${name}: storey authoring is not available on this backend`);
     return method.bind(this.backend.store) as NonNullable<typeof method>;
@@ -19,6 +19,11 @@ export class StoreStoreyNamespace extends StoreModellingNamespace {
   /** Live storeys, highest first, with floor-to-floor height and element count. */
   listStoreyLevels(modelId: string): StoreySummary[] {
     return this.storeyMethod('listStoreyLevels')(modelId);
+  }
+
+  /** The neighbours' naming and spacing for a new storey above or below `referenceStoreyId`. Writes nothing. */
+  suggestStorey(modelId: string, referenceStoreyId: number, side: 'above' | 'below'): StoreySuggestion {
+    return this.storeyMethod('suggestStorey')(modelId, referenceStoreyId, side);
   }
 
   /** Add an IfcBuildingStorey aggregated under the building, placed like its neighbours. */

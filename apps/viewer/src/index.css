@@ -160,6 +160,20 @@
 /* Component layer: Tailwind utilities on the same element (`absolute`,
    `z-10`, …) still win over these shell classes. */
 @layer components {
+  /* A horizontally scrolling strip fades the edge that hides more items, so
+     a strip that ends exactly at a tab boundary still reads as scrollable
+     (Settings sections on a phone, #8802). Set by the strip's own scroll
+     state: `start`, `end` or `both`. */
+  [data-scroll-fade="end"] {
+    mask-image: linear-gradient(to right, #000 calc(100% - 2rem), transparent);
+  }
+  [data-scroll-fade="start"] {
+    mask-image: linear-gradient(to left, #000 calc(100% - 2rem), transparent);
+  }
+  [data-scroll-fade="both"] {
+    mask-image: linear-gradient(to right, transparent, #000 2rem, #000 calc(100% - 2rem), transparent);
+  }
+
   /* Splitters: a 1px divider at rest that keeps a 9px pointer target and
      shows the accent on hover / drag. `.shell-splitter-v` separates columns
      (drag sideways), `.shell-splitter-h` separates rows (drag vertically).

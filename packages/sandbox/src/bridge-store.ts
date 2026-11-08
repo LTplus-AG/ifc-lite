@@ -13,6 +13,7 @@ import type { NamespaceSchema } from './bridge-schema.js';
 import { toRef } from './bridge-helpers.js';
 import { buildStoreCostMethods } from './bridge-store-cost.js';
 import { buildStoreModellingMethods } from './bridge-store-modelling.js';
+import { buildStoreStoreyMethods } from './bridge-store-storey.js';
 import { buildStoreGroupMethods } from './bridge-store-group.js';
 
 export function buildStoreNamespace(): NamespaceSchema {
@@ -306,6 +307,7 @@ export function buildStoreNamespace(): NamespaceSchema {
         returns: 'value',
       },
       ...buildStoreModellingMethods(),
+      ...buildStoreStoreyMethods(),
       ...buildStoreCostMethods(),
       ...buildStoreGroupMethods(),
     ],

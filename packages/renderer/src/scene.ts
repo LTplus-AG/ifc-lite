@@ -1265,7 +1265,7 @@ export class Scene {
         if (!bucket) {
           bucket = { key: bucketKey, meshData: [], batchedMesh: null, vertexBytes: 0 };
           this.buckets.set(bucketKey, bucket);
-        }
+        } else if (isStreaming) this.fragmentPieces.recordBuilt(bucket); // its batch draws on without this mesh (#9270)
         bucket.meshData.push(meshData);
 
         // Track reverse mapping for O(1) bucket lookup in updateMeshColors
@@ -1998,6 +1998,7 @@ export class Scene {
       bucketBaseKey: (md) => this.bucketBaseKey(md),
       resolveActiveBucket: (base, md) => this.resolveActiveBucket(base, md),
       createBucket: (key) => ({ key, meshData: [], batchedMesh: null, vertexBytes: 0 }),
+      beforeJoin: (bucket) => this.fragmentPieces.recordBuilt(bucket),
     });
   }
 
@@ -2050,7 +2051,7 @@ export class Scene {
     // already retired by rebuildAndPublishBatches.
     this.retireFinalizedBatches(oldFragments);
     this.retireFinalizedBatches(regroup?.retired ?? []);
-    this.fragmentPieces.retainOnly(this.streamingFragments);
+    this.fragmentPieces.retainOnly(this.batchedMeshes);
     // #6957: same batch tally as the time-sliced path (only reached when the rebuild succeeded).
     if (perfCounters.enabled) perfCount('render.finalize.batches', this.batchedMeshes.filter((b) => !oldBatchSet.has(b)).length);
   }
@@ -2186,7 +2187,7 @@ export class Scene {
             ...scene.streamingFragments,
           ];
           scene.retireFinalizedBatches(retired); scene.pickGeometryRevision++;
-          scene.fragmentPieces.retainOnly(scene.streamingFragments);
+          scene.fragmentPieces.retainOnly(scene.batchedMeshes); // a batch built here may already have a record
           perfCount('render.finalize.batches', createdOwned.length);
           scene.finalizeInProgress = false;
           scene.streamingFragmentIndexBudget = Number.POSITIVE_INFINITY;
@@ -2546,18 +2547,17 @@ export class Scene {
    * - its CPU geometry was released (GPU-resident mode) — nothing to re-merge;
    * - a snapshot is hydrating: the partial builder has no pieces yet and hands
    *   back the bucket's whole batch for every slot, so each subset would draw it;
-   * - it is neither the live batch of a warm bucket nor a recorded streaming
-   *   fragment. An evicted (cold) bucket has had its `meshData` dropped, and a
-   *   sub-batch or ephemeral fragment has no piece list the partial builder can
-   *   look pieces up in, so a subset would silently come back empty;
+   * - it is neither the live batch of a warm bucket nor a batch with a piece
+   *   record (a fragment, or a replaced batch drawing until the finalize swap).
+   *   A cold bucket has had its `meshData` dropped, and a sub-batch or ephemeral
+   *   fragment has no piece list, so a subset would silently come back empty;
    * - it holds a colour-merged piece, where many entities share ONE MeshData
    *   tagged per vertex. Such a piece is registered under every contained id,
    *   so it would land whole in more than one subset — the same geometry drawn
    *   twice, at two different alphas.
    *
-   * A recorded fragment cuts its subsets from its own pieces only (#9081), so
-   * a mesh split across fragments still draws each piece once: in the subset
-   * of the one fragment that holds it (#9254).
+   * A recorded batch cuts its subsets from its own pieces only (#9081, #9270), so
+   * each piece of a mesh split across batches is drawn once, by the batch holding it (#9254).
    *
    * The caller must fall back to drawing the batch whole when this is false.
    */
@@ -2565,8 +2565,8 @@ export class Scene {
     if (this.geometryReleased || this.snapshots.hydrating) return false;
     const bucket = this.buckets.get(batch.colorKey);
     if (!bucket || bucket.batchedMesh !== batch) {
-      const fragment = this.fragmentPieces.forBatch(batch);
-      return fragment !== undefined && !fragment.colorMerged;
+      const record = this.fragmentPieces.forBatch(batch);
+      return record !== undefined && !record.colorMerged;
     }
     if (bucket.meshData.length === 0) return false;
     for (const md of bucket.meshData) {
@@ -2661,8 +2661,8 @@ export class Scene {
     // `colorKey` is the bucket key: match each piece's OWNING bucket exactly.
     // Matching the base key (suffix "#N" stripped) pulled sibling overflow
     // buckets' pieces in — drawn twice, wrong quantization inherited (#4832).
-    // A streaming fragment draws only its own pieces (#9081): fragments share
-    // a bucket, and after a finalize regroup it may hold other meshes.
+    // A fragment, or a built batch its bucket has outgrown, draws only its own
+    // pieces (#9081, #9270): the bucket holds other batches' meshes too.
     const bucket = this.buckets.get(colorKey);
     const baseKey = this.baseColorKey(colorKey);
     const own = this.fragmentPieces.forSlot(sourceBatchKey, colorKey);
@@ -2680,7 +2680,7 @@ export class Scene {
     // Drawn INSTEAD of its source batch, so it inherits the source's f32/quantized
     // decision (#4832): the overlay built from the same source must match its depth.
     const color = visibleMeshData[0].color;
-    const source = own ? own.fragment : bucket?.batchedMesh;
+    const source = own ? own.batch : bucket?.batchedMesh;
     const partialBatch = this.createBatchedMesh(visibleMeshData, color, device, pipeline, undefined,
       inheritedQuantization(this.quantizedBatchesEnabled, source), source?.origin);
 

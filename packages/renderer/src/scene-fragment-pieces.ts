@@ -32,17 +32,25 @@ export function groupStreamingPieces(
   return { groups, sourceOf };
 }
 
+/** The pieces one batch draws, so a partial batch cut from it draws only those. */
+export interface BatchPieces {
+  readonly batch: BatchedMesh;
+  /** Holds a colour-merged mesh, registered under every id it carries: a subset
+   *  split would put it in more than one subset (see `Scene.canPartitionBatch`). */
+  readonly colorMerged: boolean;
+  /** Add this batch's pieces of the registered mesh `mesh` to `into`. */
+  collect(mesh: MeshData, into: Set<MeshData>): void;
+}
+
 /** What one streaming fragment was uploaded from. */
-export class FragmentPieces {
+export class FragmentPieces implements BatchPieces {
   /** Registered meshes uploaded whole: their own piece. */
   private readonly whole = new Set<MeshData>();
   /** Registered meshes split for streaming: this fragment's pieces of each. */
   private readonly split = new Map<MeshData, MeshData[]>();
-  /** Holds a colour-merged mesh, registered under every id it carries: a subset
-   *  split would put it in more than one subset (see `Scene.canPartitionBatch`). */
   readonly colorMerged: boolean = false;
 
-  constructor(readonly fragment: BatchedMesh, pieces: readonly MeshData[], sourceOf: ReadonlyMap<MeshData, MeshData>) {
+  constructor(readonly batch: BatchedMesh, pieces: readonly MeshData[], sourceOf: ReadonlyMap<MeshData, MeshData>) {
     for (const piece of pieces) {
       const source = sourceOf.get(piece);
       if ((source ?? piece).entityIds?.length) this.colorMerged = true;
@@ -53,7 +61,6 @@ export class FragmentPieces {
     }
   }
 
-  /** Add this fragment's pieces of the registered mesh `mesh` to `into`. */
   collect(mesh: MeshData, into: Set<MeshData>): void {
     if (this.whole.has(mesh)) {
       into.add(mesh);
@@ -70,16 +77,40 @@ export class FragmentPieces {
 }
 
 /**
+ * What a bucket's built batch was uploaded from: its bucket's meshes at the
+ * moment the bucket first outgrew it (#9270). The batch keeps drawing exactly
+ * these until finalize replaces it, while the meshes added since are drawn by
+ * streaming fragments, or by nothing yet. Built lazily: most such batches are
+ * never cut into a partial before they are replaced.
+ */
+export class BuiltBatchPieces implements BatchPieces {
+  private held?: Set<MeshData>;
+  private merged?: boolean;
+
+  /** @param meshes A copy of the bucket's meshes, taken before the first mesh the batch does not hold joins it. */
+  constructor(readonly batch: BatchedMesh, private readonly meshes: readonly MeshData[]) {}
+
+  get colorMerged(): boolean {
+    return (this.merged ??= this.meshes.some((mesh) => (mesh.entityIds?.length ?? 0) > 0));
+  }
+
+  collect(mesh: MeshData, into: Set<MeshData>): void {
+    if ((this.held ??= new Set(this.meshes)).has(mesh)) into.add(mesh);
+  }
+}
+
+/**
  * The pieces each streaming fragment was uploaded from, so its partial batch
  * draws only those (#9081): fragments of one bucket share it, and after a
- * finalize regroup the bucket may hold other meshes.
+ * finalize regroup the bucket may hold other meshes. Likewise the pieces of a
+ * built bucket batch whose bucket gained meshes it does not hold (#9270).
  *
  * Keyed by batch id because a partial request names its source batch only by
  * its slot key, `${colorKey}:${id}` plus an optional slot suffix (the same
  * convention `dropPartialCacheForBatch` relies on).
  */
 export class StreamingFragmentPieces {
-  private readonly byBatchId = new Map<number, FragmentPieces>();
+  private readonly byBatchId = new Map<number, BatchPieces>();
 
   /**
    * @param pieces What the fragment was uploaded from.
@@ -89,22 +120,33 @@ export class StreamingFragmentPieces {
     this.byBatchId.set(fragment.id, new FragmentPieces(fragment, pieces, sourceOf));
   }
 
-  /** `batch`'s record, or `undefined` when it is not a live recorded fragment. */
-  forBatch(batch: BatchedMesh): FragmentPieces | undefined {
-    const record = this.byBatchId.get(batch.id);
-    return record?.fragment === batch ? record : undefined;
+  /**
+   * Call before a mesh the bucket's built batch does not hold joins the bucket,
+   * while that batch draws on until a finalize swap replaces it: records what
+   * the batch holds. Only the first call per batch records; after that the
+   * bucket has outgrown it. A bucket with no built batch has nothing to record.
+   */
+  recordBuilt(bucket: { readonly batchedMesh: BatchedMesh | null; readonly meshData: readonly MeshData[] }): void {
+    const batch = bucket.batchedMesh;
+    if (batch && this.byBatchId.get(batch.id)?.batch !== batch) this.byBatchId.set(batch.id, new BuiltBatchPieces(batch, bucket.meshData.slice()));
   }
 
-  /** The slot's fragment record, or `undefined` when the slot's batch is not a recorded fragment. */
-  forSlot(sourceBatchKey: string, colorKey: string): FragmentPieces | undefined {
+  /** `batch`'s record, or `undefined` when it has none. */
+  forBatch(batch: BatchedMesh): BatchPieces | undefined {
+    const record = this.byBatchId.get(batch.id);
+    return record?.batch === batch ? record : undefined;
+  }
+
+  /** The slot's batch record, or `undefined` when the slot's batch has none. */
+  forSlot(sourceBatchKey: string, colorKey: string): BatchPieces | undefined {
     if (!sourceBatchKey.startsWith(`${colorKey}:`)) return undefined;
     return this.byBatchId.get(Number.parseInt(sourceBatchKey.slice(colorKey.length + 1), 10));
   }
 
-  /** Forget every fragment but `live`: at each finalize swap, `finishEphemeralStreaming`, `clear()` and device recovery. */
+  /** Forget every batch but `live`: at each finalize swap, `finishEphemeralStreaming`, `clear()` and device recovery. */
   retainOnly(live: readonly BatchedMesh[]): void {
     if (this.byBatchId.size === 0) return;
-    const keep = new Set(live.map((fragment) => fragment.id));
+    const keep = new Set(live.map((batch) => batch.id));
     for (const id of this.byBatchId.keys()) if (!keep.has(id)) this.byBatchId.delete(id);
   }
 }

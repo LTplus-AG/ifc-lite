@@ -9,7 +9,8 @@
 // would fail at instantiation (and download the 10 MB engine it replaced).
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-const CORE_BINARY = 'https://course.test/assets/ifc-lite_bg-core.wasm';
+// vi.mock is hoisted above every declaration, so the URL comes through vi.hoisted.
+const { CORE_BINARY } = vi.hoisted(() => ({ CORE_BINARY: 'https://course.test/assets/ifc-lite_bg-core.wasm' }));
 vi.mock('@ifc-lite/wasm', () => ({
   ENGINE_BINARY_URL: new URL(CORE_BINARY),
   default: async () => undefined,

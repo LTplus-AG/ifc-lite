@@ -13,6 +13,10 @@
  * Usage: node scripts/check-wasm-core-identity.mjs [--max-mb N] [fixture.ifc ...]
  * Without fixture arguments it walks tests/models (`pnpm fixtures`).
  * Exit 1 on any digest, count or error mismatch; prints a summary and sizes.
+ *
+ * @unwired-by-design ordinary CI lanes do not build the core bundle (a second
+ * LTO link, `BUILD_CORE=1`), and the release that does has no fixtures. Run it
+ * when a change could split the two engines' mesh code; PR #9377 records the run.
  */
 
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';

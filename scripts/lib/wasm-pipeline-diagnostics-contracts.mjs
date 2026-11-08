@@ -8,6 +8,7 @@ import { join } from 'path';
 import { pathToFileURL } from 'url';
 
 export async function runPipelineDiagnosticsContracts({ IfcAPI, test, root: ROOT_DIR, columnContent }) {
+  runBudgetRefusalContract({ IfcAPI, test });
   // ===== Pipeline diagnostics channel (wasm boundary) =====
   // This replaces the orphaned rust/wasm-bindings/tests/pipeline_diagnostics.rs
   // (a #![cfg(target_arch="wasm32")] test no CI lane ran) with an assertion in
@@ -191,7 +192,7 @@ export async function runPipelineDiagnosticsContracts({ IfcAPI, test, root: ROOT
 
 // #9268: generated, data-free IFC. Repeated root references trip the actual
 // walk meter before geometry, and cross the production feature-off WASM API.
-export function runBudgetRefusalContract({ IfcAPI, test }) {
+function runBudgetRefusalContract({ IfcAPI, test }) {
   test('#9268 work budget refusal carries identity and demand through WASM', () => {
     const items = Array(65538).fill('#22').join(',');
     const source = `ISO-10303-21;HEADER;FILE_DESCRIPTION(('budget'),'2;1');FILE_NAME('budget.ifc','',(),(),'','','');FILE_SCHEMA(('IFC2X3'));ENDSEC;DATA;

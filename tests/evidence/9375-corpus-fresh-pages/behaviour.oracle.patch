@@ -1,0 +1,21 @@
+diff --git a/scripts/retained-compare/browser-pages.mjs b/scripts/retained-compare/browser-pages.mjs
+--- a/scripts/retained-compare/browser-pages.mjs
++++ b/scripts/retained-compare/browser-pages.mjs
+@@ -28,13 +28,15 @@ export async function runModelInFreshPage(browser, setupPage, model, pageErrors)
+     const browserMemory = await measureMemory(page);
+     await page.evaluate(() => window.harness.dispose());
+     return { result, browserMemory };
++  } catch (error) {
++    return { error: error instanceof Error ? error.message : String(error) };
+   } finally {
+-    void pageErrors;
++    await page?.close().catch(error => pageErrors.push(String(error)));
+   }
+ }
+ 
+ /** Corpus-mode browser memory: the largest per-model fresh-page measurement. */
+ export function corpusBrowserMemory(models) {
+-  const bytes = models.map(m => m.browserMemory.bytes).filter(Number.isFinite);
++  const bytes = models.filter(m => !m.crashed).map(m => m.browserMemory?.bytes).filter(Number.isFinite);
+   return { bytes: bytes.length ? Math.max(...bytes) : null, basis: 'max over per-model fresh pages (corpus mode)' };
+ }

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { corpusBrowserMemory, runModelInFreshPage } from './browser.mjs';
+import { corpusBrowserMemory, runModelInFreshPage } from './browser-pages.mjs';
 
 // A stand-in for a Playwright page: `evaluate` answers in call order, so the
 // helper's runModel -> measure memory -> dispose sequence is observable.

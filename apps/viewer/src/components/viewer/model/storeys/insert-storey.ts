@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { addStoreyInStore, applyStoreyLevelEdit, planStoreyLevelEdit, readStoreyInventory } from '@ifc-lite/create';
+import { addStoreyInStore, applyStoreyLevelEdit, planStoreyLevelEdit, readStoreyInventory, readTopAttachment } from '@ifc-lite/create';
 import { resolve } from '@/i18n/registry';
 import { useViewerStore } from '@/store';
 import { modelEditTarget, recordModellingCommit } from '@/store/slices/mutation-modelling-records';
@@ -25,7 +25,8 @@ export function reviewStoreyInsertion(modelId: string, referenceId: number, fall
   const suggestion = storeySuggestion(s, modelId, lowerId, 'above', fallbackName);
   if (!suggestion) return null;
   const plan = planStoreyLevelEdit(inventory, { kind: 'floorHeight', storeyId: lowerId, Height: lower.height * 2 });
-  return { plan, height: lower.height, params: { Name: suggestion.Name, Elevation: lower.elevation + lower.height, referenceStoreyId: lowerId }, version: s.mutationVersion, entry: s.session?.entry };
+  const reboundWallIds = plan.walls.filter(wall => wall.storeyId === lowerId && readTopAttachment(inventory, wall.wallId)?.binding === 'relative').map(wall => wall.wallId);
+  return { plan, reboundWallIds, height: lower.height, params: { Name: suggestion.Name, Elevation: lower.elevation + lower.height, referenceStoreyId: lowerId }, version: s.mutationVersion, entry: s.session?.entry };
 }
 
 export type StoreyInsertion = NonNullable<ReturnType<typeof reviewStoreyInsertion>>;

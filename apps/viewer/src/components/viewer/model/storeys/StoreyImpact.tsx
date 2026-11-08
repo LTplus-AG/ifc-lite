@@ -21,19 +21,22 @@ interface StoreyImpactProps {
   draft: LevelDraft;
   rows: readonly StoreySummary[];
   previewHint?: boolean;
-  insertion?: boolean;
+  reboundWallIds?: readonly number[];
   onSelect: (ids: readonly number[]) => void;
 }
 
-export function StoreyImpact({ draft, rows, onSelect, previewHint = true, insertion = false }: StoreyImpactProps) {
+export function StoreyImpact({ draft, rows, onSelect, previewHint = true, reboundWallIds = [] }: StoreyImpactProps) {
   const { t } = useTranslation();
   const shared = useViewerStore((s) => s.collabSession !== null);
   const storey = rows.find((row) => row.expressId === draft.storeyId)?.Name ?? '';
   const plan = draft.plan;
   // An insertion expands the gap, then rebinds relative tops into it. Their
   // final height can stay the same: describe updated tops, not intermediate resizes.
-  const parts = plan ? impactParts(t, insertion ? { ...plan, walls: [] } : plan) : [];
-  if (insertion && plan?.walls.length) parts.push(t('storeyManager.impact.wallTops', { count: plan.walls.length }));
+  const rebound = new Set(reboundWallIds);
+  const walls = plan?.walls.filter(wall => !rebound.has(wall.wallId)) ?? [];
+  const parts = plan ? impactParts(t, { ...plan, walls }) : [];
+  const updatedTops = (plan?.walls.length ?? 0) - walls.length;
+  if (updatedTops) parts.push(t('storeyManager.impact.wallTops', { count: updatedTops }));
   return (
     <section
       aria-live="polite"

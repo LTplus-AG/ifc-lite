@@ -37,7 +37,7 @@ export function StoreyInsertionPanel({ modelId, review, rows, readOnly, onSelect
       {review.plan.storeys.map(move => <li key={move.expressId}>{t('storeyManager.insert.move', { storey: move.Name, from: formatElevation(move.from), to: formatElevation(move.to) })}</li>)}
     </ul>
     {review.plan.refusals[0] && <p role="alert" className="text-xs text-danger">{refusalText(t, review.plan.refusals[0])}</p>}
-    <StoreyImpact insertion previewHint={false} draft={{ storeyId: review.plan.edit.storeyId, field: 'height', plan: review.plan, previewing: false, error: null }} rows={rows} onSelect={onSelect} />
+    <StoreyImpact reboundWallIds={review.reboundWallIds} previewHint={false} draft={{ storeyId: review.plan.edit.storeyId, field: 'height', plan: review.plan, previewing: false, error: null }} rows={rows} onSelect={onSelect} />
     <div className="flex gap-2">
       <Button size="sm" disabled={readOnly || review.plan.refusals.length > 0} onClick={() => {
         const result = commitStoreyInsertion(modelId, review);

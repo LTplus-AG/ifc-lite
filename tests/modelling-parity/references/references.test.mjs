@@ -15,7 +15,7 @@ import test from 'node:test';
 import { HERE, MANIFEST_PATH } from './lib.mjs';
 import { elementCountsFromInfo, requireVerifiedReference } from './refresh-info.mjs';
 import { verifyPath } from './fetch-references.mjs';
-import { Model, parseStep, countRoofParts, storeyAtElevation } from './extract-target.mjs';
+import { Model, parseStep, countRoofParts, storeyAtElevation, dimensionKey, sumKnown } from './extract-target.mjs';
 
 const manifest = JSON.parse(readFileSync(MANIFEST_PATH, 'utf8'));
 
@@ -134,4 +134,13 @@ test('#9304 uncontained element assignment uses a five-centimetre world toleranc
   const levels = [{id: 1, placementZ: 0}, {id: 2, placementZ: 3}];
   assert.equal(storeyAtElevation(levels, 2.98), 2);
   assert.equal(storeyAtElevation(levels, 2.9), 1);
+});
+
+test('#9304 unavailable dimensions and wall lengths never become zero', () => {
+  assert.equal(dimensionKey(null, 0.001), 'unknown');
+  assert.equal(dimensionKey(900, 0.001), '0.9');
+  assert.equal(sumKnown([null, null]), null);
+  assert.equal(sumKnown([4, null]), null);
+  assert.equal(sumKnown([4, 5]), 9);
+  assert.equal(sumKnown([]), 0);
 });

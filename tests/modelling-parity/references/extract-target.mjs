@@ -489,6 +489,14 @@ export const TOLERANCES = {
   spaceAreaM2: { kind: 'rel', value: 0.05, why: 'net floor area; match spaces by name/number, not by order' },
 };
 
+export function dimensionKey(value, scale) {
+  const n = numVal(value);
+  return n === null ? 'unknown' : String(round(n * scale, 3));
+}
+export function sumKnown(values) {
+  return values.some((value) => value === null) ? null : values.reduce((sum, value) => sum + value, 0);
+}
+
 export function storeyAtElevation(storeys, z) {
   let best = storeys[0]?.id ?? null;
   for (const st of storeys) if (st.placementZ <= z + 0.05) best = st.id;
@@ -565,7 +573,7 @@ export async function extract(refId_, entry, file) {
 
   const sizeKey = (id) => {
     const a = model.get(id).args;
-    return `${round(numVal(a[9]) * S, 3)}x${round(numVal(a[8]) * S, 3)}`; // OverallWidth x OverallHeight
+    return `${dimensionKey(a[9], S)}x${dimensionKey(a[8], S)}`; // OverallWidth x OverallHeight
   };
 
   const spaceArea = (id) => {
@@ -585,7 +593,7 @@ export async function extract(refId_, entry, file) {
     const b = perStorey.get(s.id);
     const next = storeyIds[i + 1];
     const walls = b.walls.map((id) => ({ id, ...wallLength(id)}));
-    const lens = walls.map((w) => w.length).filter((x) => x !== null);
+    const lens = walls.map((w) => w.length);
     const slabTopArea = b.slabs.reduce((acc, id) => acc + (mesh?.tris.get(id) ?? []).filter((t) => t.n[2] > 0.9).reduce((x, t) => x + t.a, 0), 0);
     const spaces = b.spaces.map((id) => {
       const a = spaceArea(id);
@@ -606,7 +614,7 @@ export async function extract(refId_, entry, file) {
       floorToFloor: next ? round(next.elevation - s.elevation, 3) : null,
       walls: {
         count: b.walls.length,
-        totalLength: round(lens.reduce((a, c) => a + c, 0), 2),
+        totalLength: sumKnown(lens) === null ? null : round(sumKnown(lens), 2),
         lengthSources: Object.fromEntries(walls.reduce((m, w) => m.set(w.source, (m.get(w.source) ?? 0) + 1), new Map())),
       },
       doors: { count: b.doors.length, widthXHeight: sizes(b.doors) },
@@ -678,7 +686,7 @@ export async function extract(refId_, entry, file) {
     totals: {
       storeys: storeys.length,
       walls: storeys.reduce((a, s) => a + s.walls.count, 0),
-      wallTotalLength: round(storeys.reduce((a, s) => a + s.walls.totalLength, 0), 2),
+      wallTotalLength: sumKnown(storeys.map((s) => s.walls.totalLength)) === null ? null : round(sumKnown(storeys.map((s) => s.walls.totalLength)), 2),
       doors: classCount(['IFCDOOR']),
       windows: classCount(['IFCWINDOW']),
       stairs: classCount(['IFCSTAIR']),

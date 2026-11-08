@@ -164,6 +164,8 @@ try {
         const hostEnd = cpu();
         const hostSeconds = (hostEnd.total - hostStart.total - hostEnd.idle + hostStart.idle) / ticks;
         const foreignBusy = Math.max(0, hostSeconds - (own.user + own.system) / 1e6) / (ms / 1000 * cores);
+        if (!(foreignBusy < 0.05)) console.log(JSON.stringify({ kind: 'rejected-sample', count,
+          round, name: v.name, ms, busy, foreignBusy, hostSeconds, ownCpuMicros: own, cores, ticks }));
         assert.ok(foreignBusy < 0.05, `${v.name}: competing CPU load during timing; reject cohort`);
         assert.equal(rows.length, hashes[v.name].rows);
         samples.push({ round, name: v.name, ms, busy, foreignBusy });

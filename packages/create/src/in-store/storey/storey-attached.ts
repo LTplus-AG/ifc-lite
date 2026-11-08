@@ -59,7 +59,7 @@ function number(value: unknown): number | null {
 }
 
 /** A column's single vertical body: one extrusion straight up from its placement, which stands upright. */
-function columnBody(target: EditTarget, columnId: number): { solidId: number; depth: number } | null {
+function columnBody(target: EditTarget, columnId: number): { solidId: number; depth: number; base: number } | null {
   const reader = new AnchorEntityReader(target.dataStore, target.view);
   const column = reader.entity(columnId);
   const placement = column ? reader.entity(refId(column.attributes[5]) ?? -1) : null;
@@ -77,8 +77,9 @@ function columnBody(target: EditTarget, columnId: number): { solidId: number; de
   const depth = number(solid.attributes[3]);
   if (!position || !direction || depth === null || depth <= 0 || Math.abs(position.z[2] - 1) > 1e-9
     || Math.abs(direction[0]) > 1e-9 || Math.abs(direction[1]) > 1e-9 || direction[2] <= 0) return null;
-  // Straight up, so the depth is the height.
-  return { solidId: solidId!, depth: depth * getModelLengthUnitScale(target.dataStore) };
+  // Straight up, so the depth is the height; the solid may start above its placement (an imported column).
+  const scale = getModelLengthUnitScale(target.dataStore);
+  return { solidId: solidId!, depth: depth * scale, base: position.o[2] * scale };
 }
 
 /** A beam's or member's ends in its placement's parent frame, metres. */
@@ -104,7 +105,7 @@ export function readAttachedTop(target: EditTarget, id: number, kind: AttachedKi
   return ends ? Math.max(ends.start[2], ends.end[2]) : null;
 }
 
-/** World Z of the element's base (walls, columns, curtain walls) or its placement's parent origin (beams), metres. */
+/** World Z of the element's base (walls, curtain walls: their placement; columns: where the solid starts) or its placement's parent origin (beams), metres. */
 export function attachedTopWorldOrigin(target: EditTarget, id: number, kind: AttachedKind): number | null {
   const reader = new AnchorEntityReader(target.dataStore, target.view);
   const placementId = refId(reader.entity(id)?.attributes[5]);
@@ -112,6 +113,8 @@ export function attachedTopWorldOrigin(target: EditTarget, id: number, kind: Att
   if (placementId === null) return null;
   // A grid-bound column hangs from an IfcGridPlacement: read through it.
   const z = kind !== 'linear' ? placementWorldZ(reader, placementId) : null;
+  // A column's body may start above its placement: its base is where the solid starts.
+  if (kind === 'column') { const body = columnBody(target, id); return z === null || !body ? null : z * scale + body.base; }
   if (kind !== 'linear') return z === null ? null : z * scale;
   const parentId = refId(reader.entity(placementId)?.attributes[0]);
   if (parentId === null) return 0;

@@ -13,6 +13,10 @@
  * The U grid is unchanged. The V grid follows the height the way it was
  * specified: interior lines at equal fractions of the height (a bay count)
  * keep dividing it equally, any other line keeps its height above the base.
+ * The file records no V-grid spec, so lines GIVEN at heights that happen to
+ * divide the wall exactly equally (1 m and 2 m in a 3 m wall) read as a bay
+ * count. Recording the spec needs a property set whose GlobalId stays the
+ * same across exports; that and this case are tracked in the #9296 follow-up.
  * Mullions get the new height, transoms and panels move to their new rows and
  * panels take the new clear heights. A layout whose rows no longer fit is
  * refused, as the builder refuses it.

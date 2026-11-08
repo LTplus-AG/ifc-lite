@@ -55,6 +55,17 @@ const wall = (s: Session, storey: number, y: number, Height = 3) =>
   addOrdinaryElementInStore(s.editor, anchor(s, storey), { kind: 'wall', params: { Start: [0, y, 0], End: [6, y, 0], Thickness: 0.2, Height } });
 const raise = (s: Levels, storeyId: number, Height: number) => applyStoreyLevelEdit(s.store, s.editor, { kind: 'floorHeight', storeyId, Height });
 
+/** Lift an element's single body solid `dz` (file units) above its placement, as some exporters write it. */
+function liftSolid(s: Session, id: number, dz: number): void {
+  const reader = new AnchorEntityReader(s.store, s.view);
+  const shape = reader.entity(refId(reader.entity(id)!.attributes[6])!)!;
+  const rep = reader.entity(refId((shape.attributes[2] as unknown[])[0])!)!;
+  const solid = refId((rep.attributes[3] as unknown[])[0])!;
+  const point = s.editor.addEntity('IfcCartesianPoint', [[0, 0, dz]]).expressId;
+  const position = s.editor.addEntity('IfcAxis2Placement3D', [`#${point}`, null, null]).expressId;
+  s.editor.setPositionalAttribute(solid, 1, `#${position}`);
+}
+
 describe('columns, beams and curtain walls follow their level (#9296)', () => {
   it('a column attached to the storey above follows a floor-to-floor edit; a fixed one keeps its height', async () => {
     const s = await levels();
@@ -128,6 +139,38 @@ describe('columns, beams and curtain walls follow their level (#9296)', () => {
       expect(parts.get(id)!.depth).toBeCloseTo(expected.panels[i].v1 - expected.panels[i].v0, 9);
     });
     built.mullionIds.forEach((id) => expect(parts.get(id)!.depth).toBeCloseTo(4, 9));
+  });
+});
+
+describe('round-2 review of #9340', () => {
+  it('fits a column whose solid starts above its placement by where the solid starts', async () => {
+    const s = await levels();
+    const column = addOrdinaryElementInStore(s.editor, anchor(s, s.l1), { kind: 'column', params: { Position: [0, 0, 0], Width: 0.4, Depth: 0.4, Height: 1.5 } });
+    liftSolid(s, column, 1);
+    create.setTopConstraintInStore(s.store, s.editor, column, { kind: 'storeyAbove' });
+    // Base at 1 m, so reaching Level 2 at 3 m takes a 2 m body, not 3 m.
+    expect(top(s, column, 'column')).toBeCloseTo(2, 9);
+  });
+
+  it('a copy whose body cannot be read is still re-bound to the storey above its new one', async () => {
+    const s = await levels();
+    const beam = addOrdinaryElementInStore(s.editor, anchor(s, s.l1), { kind: 'beam', params: { Start: [0, 0, 2.8], End: [6, 0, 2.8], Width: 0.3, Height: 0.4 } });
+    writeTopAttachment(s.view, beam, s.guid(s.l2), 'relative');
+    liftSolid(s, beam, 0.1);
+    expect(top(s, beam, 'linear')).toBeNull();
+    const [copy] = create.copyBatchInStore(s.store, s.editor, [beam], [{ targetStoreyId: s.l2 }]);
+    expect(readTopAttachment(readStoreyInventory(s.store, s.view), copy.copyId)?.targetStoreyId).toBe(s.l3);
+  });
+
+  it('V-grid lines given at heights that do not divide the wall equally keep their heights', async () => {
+    const s = await levels();
+    const built = s.editor.runAtomic((draft) => addCurtainWallToStore(draft, anchor(s, s.l1)(draft), { Start: [0, 0, 0], End: [6, 0, 0], Height: 3, UGrid: 2, VGrid: [0.9, 2.1] }));
+    writeTopAttachment(s.view, built.curtainWallId, s.guid(s.l2));
+    raise(s, s.l1, 4);
+    const after = readCurtainWallParts(target(s), built.curtainWallId)!;
+    const rows = [...new Set(after.parts.filter((p) => p.role === 'transom').map((p) => Math.round(p.v * 1e6) / 1e6))].sort((a, b) => a - b);
+    expect(after.height).toBeCloseTo(4, 9);
+    expect(rows.slice(1, -1)).toEqual([0.9, 2.1]);
   });
 });
 

@@ -81,42 +81,43 @@ export function rebindCopiedAttachments(ctx: CopyContext, attachments: CopyAttac
       // Only a copy whose target changes needs a new record: a slab copied with it, or another storey.
       const slabCopy = attachment.targetElementId === undefined ? undefined : copyOf.get(attachment.targetElementId);
       if (storeyId === homeId && slabCopy === undefined) continue;
-      const from = readAttachedTop(target, copyId, kind);
-      if (from === null) continue;
       const home = inventory.storeys.find((storey) => storey.expressId === homeId)!;
       const here = inventory.storeys.find((storey) => storey.expressId === storeyId);
       if (!here) continue;
+      const next = storeyNeighbour(inventory, storeyId, 1);
+      // The record first: a copy whose body cannot be read is still bound right, and keeps its height.
+      if (attachment.kind === 'element') {
+        if (slabCopy !== undefined) writeTopAttachment(view, copyId, String(ctx.read(slabCopy)?.attributes[0]), 'explicit');
+      } else if (attachment.binding === 'relative') {
+        writeTopAttachment(view, copyId, next ? next.GlobalId : NEXT_STOREY_ABOVE, 'relative');
+      } else {
+        const reached = inventory.storeys.find((storey) => storey.expressId === attachment.targetStoreyId)!;
+        if (here.elevation >= reached.elevation) throw fail(copyId, `it is attached to ${reached.Name}, which is not above its new storey ${here.Name}`);
+      }
+      const from = readAttachedTop(target, copyId, kind);
+      if (from === null) continue;
       let to = from;
       if (attachment.kind === 'element') {
         const slabId = slabCopy ?? attachment.targetElementId!;
-        if (slabCopy !== undefined) writeTopAttachment(view, copyId, String(ctx.read(slabCopy)?.attributes[0]), 'explicit');
         const underside = slabUndersideWorld(target, slabId);
         const origin = attachedTopWorldOrigin(target, copyId, kind);
         if (underside === null || origin === null || !Number.isFinite(origin)) throw fail(copyId, `the slab #${slabId} or the copy cannot be read`);
         to = underside - origin;
       } else if (attachment.binding === 'explicit') {
-        const reached = inventory.storeys.find((storey) => storey.expressId === attachment.targetStoreyId)!;
         // The top stays on the storey it names; the base moved with the copy.
         to = from - (here.elevation - home.elevation);
-        if (here.elevation >= reached.elevation) throw fail(copyId, `it is attached to ${reached.Name}, which is not above its new storey ${here.Name}`);
+      } else if (!next) {
+        continue;
+      } else if (attachment.targetStoreyId !== null) {
+        const reached = inventory.storeys.find((storey) => storey.expressId === attachment.targetStoreyId)!;
+        // The same offset from the floor above: the height follows the new floor-to-floor.
+        to = from + (next.elevation - here.elevation) - (reached.elevation - home.elevation);
       } else {
-        const next = storeyNeighbour(inventory, storeyId, 1);
-        if (!next) {
-          writeTopAttachment(view, copyId, NEXT_STOREY_ABOVE, 'relative');
-          continue;
-        }
-        writeTopAttachment(view, copyId, next.GlobalId, 'relative');
-        if (attachment.targetStoreyId !== null) {
-          const reached = inventory.storeys.find((storey) => storey.expressId === attachment.targetStoreyId)!;
-          // The same offset from the floor above: the height follows the new floor-to-floor.
-          to = from + (next.elevation - here.elevation) - (reached.elevation - home.elevation);
-        } else {
-          // Drawn unbound: the copy reaches the storey above its new one.
-          const origin = attachedTopWorldOrigin(target, copyId, kind);
-          const floor = here.placementId === null ? null : placementInAncestor(inventory.reader, here.placementId, null);
-          if (origin === null || !Number.isFinite(origin)) continue;
-          to = from + (next.elevation - here.elevation) - (origin + from - (floor ? floor.o[2] * inventory.scale : here.elevation));
-        }
+        // Drawn unbound: the copy reaches the storey above its new one.
+        const origin = attachedTopWorldOrigin(target, copyId, kind);
+        const floor = here.placementId === null ? null : placementInAncestor(inventory.reader, here.placementId, null);
+        if (origin === null || !Number.isFinite(origin)) continue;
+        to = from + (next.elevation - here.elevation) - (origin + from - (floor ? floor.o[2] * inventory.scale : here.elevation));
       }
       if (Math.abs(to - from) < 1e-9) continue;
       if (kind !== 'linear' && to < MIN_ATTACHED_EXTENT) throw fail(copyId, `it would end ${to.toFixed(3)} m tall`);

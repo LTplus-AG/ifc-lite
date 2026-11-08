@@ -2,7 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { deriveAuthoredBaseQuantities } from '@ifc-lite/create';
+import { deriveAuthoredBaseQuantities, refreshedBaseQuantitySets, withRefreshedBaseQuantities } from '@ifc-lite/create';
+import { isEditedQuantityRefreshEnabled } from '@/lib/quantities/edited-quantity-refresh';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { getInheritanceChainAcrossSchemas } from '@ifc-lite/parser';
 import {
@@ -116,8 +117,12 @@ export function configureMutationView(
   if (dataStore.onDemandQuantityMap && dataStore.source?.length > 0) {
     mutationView.setQuantityExtractor((entityId, view, occurrenceId) => {
       const own = extractQuantitiesOnDemand(dataStore, entityId, view);
-      return own.length > 0 ? own : deriveAuthoredBaseQuantities(dataStore, view, occurrenceId);
+      if (own.length === 0) return deriveAuthoredBaseQuantities(dataStore, view, occurrenceId);
+      // Opt-in (#9026): a loaded element's own set follows its edited geometry. A copy reads its source's sets as before.
+      return isEditedQuantityRefreshEnabled() && entityId === occurrenceId ? withRefreshedBaseQuantities(dataStore, view, entityId, own) : own;
     });
+    // The export writes a refreshed set as it writes an edited one, so the file says what the tab does.
+    mutationView.setQuantityBaseRevisions((view) => (isEditedQuantityRefreshEnabled() ? refreshedBaseQuantitySets(dataStore, view) : []));
   }
 
   mutationView.setAttributeExtractor((entityId: number, attrName: string) =>

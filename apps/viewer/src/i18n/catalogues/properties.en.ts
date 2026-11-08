@@ -27,6 +27,10 @@ export const propertiesEn = {
   'properties.quantitySet.type.count': 'Count',
   'properties.quantitySet.type.weight': 'Weight',
   'properties.quantitySet.type.time': 'Time',
+  'properties.quantitySet.fromGeometry': 'Updated from geometry',
+  'properties.quantitySet.fromGeometryHint': 'This set was recomputed from the element’s edited geometry. The file’s own values for it are replaced on export.',
+  'properties.quantitySet.updateEdited': 'Update quantities of edited elements',
+  'properties.quantitySet.updateEditedHint': 'Off: base quantities stay as the file wrote them, even after a shape edit.',
   // AssemblyBadge
   'properties.assemblyBadge.tooltip': 'Select the parent assembly',
   'properties.assemblyBadge.label': 'Part of Assembly',

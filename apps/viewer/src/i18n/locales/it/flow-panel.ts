@@ -35,7 +35,7 @@ export const flowPanelIt = {
   'flowPanel.contributed.badge': 'Dall’estensione «{extension}»: sola lettura',
   'flowPanel.contributed.duplicate': 'Duplica nei miei grafi',
   'flowPanel.contributed.duplicateAriaLabel': 'Duplica questo grafo tra i tuoi grafi salvati',
-  'flowPanel.contributed.diagnostics': 'Grafi di estensioni non validati: {count}. Vedi la console',
+  'flowPanel.contributed.diagnostics': 'Grafi di estensioni che non hanno superato la convalida: {count}. Vedi la console',
   'flowPanel.run.ok': 'Esecuzione completata',
   'flowPanel.run.failed': 'Esecuzione non riuscita',
   'flowPanel.run.awaitingReview': 'In attesa di revisione',

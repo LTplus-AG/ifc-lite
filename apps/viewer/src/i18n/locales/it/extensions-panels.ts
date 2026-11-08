@@ -115,10 +115,10 @@ export const extensionsPanelsIt = {
   "extensionsPanels.ideasPanel.helpRecurringSubject": "Suggerimenti ricorrenti",
   "extensionsPanels.ideasPanel.helpRecurring": "{subject} appaiono quando un flusso di lavoro si ripete nel registro locale delle attività (caricamenti di modelli, applicazioni di Lens, esportazioni). Le soglie si riducono quando il registro è scarso, per mostrare presto qualcosa; diventano più rigorose con l'accumularsi dei dati.",
   "extensionsPanels.ideasPanel.helpActions": "Fai clic su {tryIt} per inviare l'idea all'assistente IA della chat: la chat si apre e tu rispondi alle domande successive. Fai clic su {customize} per ridurre le funzionalità o rinominare il comando prima che la chat lo riceva.",
-  "extensionsPanels.ideasPanel.helpPrivacy": "Il registro delle azioni è locale. Nulla di quanto mostrato qui lascia il dispositivo.",
+  "extensionsPanels.ideasPanel.helpPrivacy": "Il registro delle azioni resta locale. Le idee che scegli di inviare alla chat IA sono incluse nei messaggi inviati al fornitore IA configurato.",
   "extensionsPanels.ideasPanel.remineAriaLabel": "Analizza di nuovo ora",
   "extensionsPanels.ideasPanel.remineButton": "Analizza di nuovo",
-  "extensionsPanels.ideasPanel.footerPrivacy": "Sequenze ricorrenti nel registro locale delle attività. Nulla di quanto mostrato qui lascia il dispositivo.",
+  "extensionsPanels.ideasPanel.footerPrivacy": "Il registro delle azioni resta locale. Le idee che scegli di inviare alla chat IA sono incluse nei messaggi inviati al fornitore IA configurato.",
   "extensionsPanels.ideasPanel.recurringHeading": "Ricorrenti nelle tue attività",
   "extensionsPanels.ideasPanel.occurrenceSummary": {
     "one": "{occurrences}× in {sessions} sessione · ultima {date} · punteggio {score}",

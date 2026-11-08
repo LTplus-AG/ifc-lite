@@ -47,3 +47,37 @@ catalogueBatchContract('it', 8906, [
   'landxml-georef-assumptions',
   'landxml-terrain-export',
 ]);
+
+// #8906: rendered guidance must distinguish local loading, recovery, and privacy boundaries.
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import { registerLocale, resolve, setLocale } from './registry';
+import { activityTrayIt } from './locales/it/activity-tray';
+import { anonymizedExportIt } from './locales/it/anonymized-export';
+import { copyArrayIt } from './locales/it/copy-array';
+import { extensionsPanelsIt } from './locales/it/extensions-panels';
+import { flowPanelIt } from './locales/it/flow-panel';
+
+test('#8906 Italian recovery and privacy guidance states the effective action', () => {
+  registerLocale('it', { ...activityTrayIt, ...anonymizedExportIt, ...copyArrayIt, ...extensionsPanelsIt, ...flowPanelIt });
+  setLocale('it');
+  try {
+    for (const count of [1, 2, 1_000_000]) {
+      for (const key of ['activityTray.sourceDownload.partialCancelled', 'activityTray.sourceDownload.partialFailed', 'activityTray.sourceDownload.failed'] as const) {
+        const message = resolve(key, { count });
+        assert.match(message, /caricamento.*nel visualizzatore/);
+        assert.doesNotMatch(message, /inviat/);
+      }
+    }
+    assert.match(resolve('copyArray.paste.stale'), /non possono più essere incollati.*copiali di nuovo/);
+    assert.match(resolve('flowPanel.contributed.diagnostics', { count: 3 }), /non hanno superato la convalida: 3.*console/);
+    const description = resolve('anonymizedExport.dialog.description');
+    assert.match(description, /solo le categorie selezionate/);
+    assert.match(description, /Mantieni conservano i valori originali/);
+    for (const key of ['extensionsPanels.ideasPanel.helpPrivacy', 'extensionsPanels.ideasPanel.footerPrivacy'] as const) {
+      const message = resolve(key);
+      assert.match(message, /registro delle azioni resta locale/);
+      assert.match(message, /idee.*chat IA.*messaggi inviati al fornitore IA configurato/);
+    }
+  } finally { setLocale('en'); }
+});

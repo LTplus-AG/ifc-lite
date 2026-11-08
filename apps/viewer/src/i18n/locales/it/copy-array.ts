@@ -22,7 +22,7 @@ export const copyArrayIt = {
   "copyArray.paste.label": "Incolla",
   "copyArray.paste.hint": "Fai clic dove inserire la copia. Per incollare su un altro piano, cambia prima piano",
   "copyArray.paste.empty": "Nessun elemento copiato: seleziona gli elementi e copiali prima",
-  "copyArray.paste.stale": "Gli elementi copiati non possono più essere copiati: selezionali e copiali di nuovo",
+  "copyArray.paste.stale": "Gli elementi copiati non possono più essere incollati: selezionali e copiali di nuovo",
   "copyArray.paste.otherModel": "Gli elementi copiati sono in un altro modello: incollali lì",
   "copyArray.tool.array": "Serie",
   "copyArray.blocked.array": "Seleziona prima gli elementi da ripetere",

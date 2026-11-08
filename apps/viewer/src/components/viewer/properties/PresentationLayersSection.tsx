@@ -4,7 +4,7 @@
 
 import { useTranslation } from '@/i18n';
 import { useViewerStore, type EntityRef } from '@/store';
-import { presentationLayersByProduct } from '@/lib/presentation-layer-index';
+import { presentationLayersByProduct } from '@/lib/presentation-layers';
 import { liftStartFold } from '../welcome/useEmptyStartFold';
 
 /** Current model-local layer membership, including authored edits (#9273). */

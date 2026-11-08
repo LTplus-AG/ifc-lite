@@ -13,7 +13,7 @@ import { cleanup, click, render, waitFor } from '@/test/render.js';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { SourceHostProvider } from '@/services/sources/SourceHostProvider.js';
 import { useViewerStore } from '@/store';
-import * as layerIndex from '@/lib/presentation-layer-index.js';
+import * as layerIndex from '@/lib/presentation-layers.js';
 import { PropertiesPanel } from './PropertiesPanel.js';
 import { HierarchyPanel } from './HierarchyPanel.js';
 
@@ -66,6 +66,7 @@ it('#9273 lists both own-model layers with Identifier and omits the section for 
 it('#9273 clicking the second layer reveals that exact header in the hierarchy', async () => {
   await setup();
   const ui = render(<SourceHostProvider><PropertiesPanel /><HierarchyPanel /></SourceHostProvider>);
+  assert.ok(section(ui), 'the layer links are available');
   const button = [...section(ui)!.querySelectorAll('button')].find(b => b.textContent === 'Structure');
   assert.ok(button);
   click(button);
@@ -81,6 +82,7 @@ it('#9273 reuses the reverse index across selections and invalidates it on edits
   const first = layerIndex.presentationLayersByProduct(store, view);
   assert.equal(layerIndex.presentationLayersByProduct(store, view), first);
   const ui = render(<PropertiesPanel />);
+  assert.ok(section(ui));
   editor.setAttribute(50, 'Name', 'Renamed');
   editor.setAttribute(51, 'AssignedItems', '()');
   act(() => useViewerStore.setState({ mutationVersion: 1 }));

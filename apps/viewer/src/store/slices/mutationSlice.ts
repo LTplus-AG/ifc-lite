@@ -666,7 +666,7 @@ export interface MutationSlice extends CostUndoMethods {
     storeyExpressId: number,
     params: SpaceInStoreParams,
   ) => { expressId: number } | { error: string };
-  /** Add an IfcRoof (flat roof) — slab-like rectangle or polygon. */
+  /** Add an IfcRoof: a flat slab-like rectangle or polygon, or a roof by footprint with EdgeSlopes. */
   addRoof: (
     modelId: string,
     storeyExpressId: number,

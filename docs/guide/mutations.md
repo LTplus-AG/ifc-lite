@@ -515,7 +515,7 @@ The viewer's **Start blank** action opens an empty IFC project with a storey, wa
 | `addBeamToStore` | `Start`, `End`, `Width × Height` or `Profile` | rectangle / parameterised `Profile` |
 | `addMemberToStore` | `Start`, `End`, `Width × Height` or `Profile`, `PredefinedType` | rectangle / parameterised `Profile` |
 | `addSlabToStore` | `Position` + `Width × Depth × Thickness` **or** `OuterCurve` polygon | rectangle / polygon |
-| `addRoofToStore` | same shape as slab; emits `.FLAT_ROOF.` PredefinedType | rectangle / polygon |
+| `addRoofToStore` | same shape as slab; emits `.FLAT_ROOF.` PredefinedType. With `EdgeSlopes` / `Overhang`, a roof by footprint (below) | rectangle / polygon |
 | `addPlateToStore` | same shape as slab — thin extruded plate | rectangle / polygon |
 | `addSpaceToStore` | rectangle or polygon footprint, extruded by `Height`. Aggregated to its storey via `IfcRelAggregates` | rectangle / polygon |
 | `addDoorToStore` | `Position`, `Width × Height`, optional `OperationType` + `UserDefinedOperationType` | n/a |
@@ -553,6 +553,30 @@ Builders read the schema from the resolved anchor (`anchor.schema`) and drop att
 `editStairDimensionsInStore(dataStore, editor, stairOrFlightExpressId, patch)` accepts the four length fields and `NumberOfRisers` (a whole number; the tread count follows it). It rebuilds only that flight's occurrence body through the same geometry emitter and validation as creation, and removes the replaced shape when nothing else uses it. The first-riser foot, placements, identities, type relationships and shared source/style leaves stay fixed. Changing riser height or the riser count changes the total rise; changing tread length changes the total run. The editor itself does not refit a stair to the storey above; a storey edit does, through this editor (see "Storey authoring"). Omitted fields keep their existing values; waist thickness can be added to a solid-to-base flight. Unsupported bodies, invalid dimensions and late unreadable styles refuse atomically without writes. The Model inspector exposes these edits for the actual selected flight and its parent, each as one Undo step and one remesh of the stair and flight.
 
 [Native viewer evidence](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/docs/architecture/evidence/6232-stair-inspector/README.md) records the four dimension edits, each Undo and Redo, and the unchanged neighboring wall and windows.
+
+#### Roofs by footprint
+
+`addRoofToStore` (and `bim.store.addRoof`) makes a roof by footprint, as Revit's Roof by Footprint and Archicad's multi-plane roof do, when its rectangle or polygon params carry `EdgeSlopes` or `Overhang`. `EdgeSlopes[i]` is the slope of the edge from point i to point i+1, in radians. For a rectangle the edges run from its `Position` corner along +X and then anticlockwise. A slope of 0 is a gable end, or the high side of a mono-pitch roof. Each sloped edge is a pivot line: the roof's underside passes through it at the placement's height (`Position[2]`, storey-relative) and rises inward at its slope. `Overhang` (metres) carries every edge out horizontally. Eaves drop with their plane and gable ends move out as a rake. `Thickness` is measured square to each plane.
+
+The planes come from a weighted straight skeleton of the footprint. Hip, gable, mono-pitch and L-, T- and U-shaped roofs work on convex and rectilinear footprints; anything else is refused with a reason, as are slopes over 85°, a slope passed in degrees, and an overhang that would cross the eaves. The result is one `IfcRoof` whose Body holds one `IfcExtrudedAreaSolid` per plane: the plane's outline is swept straight up, which gives plumb eaves and mitred hips and ridges. Its `PredefinedType` (`ShapeType` on IFC2X3) follows from the slopes: `HIP_ROOF`, `GABLE_ROOF`, `SHED_ROOF`, `FREEFORM`, or `FLAT_ROOF` when no edge slopes. The definition is recorded on the roof as `IfcLite_RoofFootprint` (`Footprint`, `EdgeSlopes`, `Overhang`, `Thickness`, in metres and radians). Base quantities are derived from the planes as `Qto_RoofBaseQuantities` (`GrossArea` and `NetArea` sloped, `ProjectedArea` in plan).
+
+`editFootprintRoofInStore(dataStore, editor, roofId, patch)` (`bim.store.editRoof(ref, patch)`) changes one edge's slope (`Edge: { Index, Slope }`), every slope (`EdgeSlopes`), `Overhang` or `Thickness`, and rebuilds the planes as one atomic edit. The roof keeps its identity, placement and containment. The replaced shape is removed and a refusal writes nothing. The viewer and the headless SDK record it as one Undo step.
+
+```typescript
+import { StoreEditor } from '@ifc-lite/mutations';
+import { addRoofToStore, editFootprintRoofInStore, resolveSpatialAnchor } from '@ifc-lite/create';
+
+const editor = new StoreEditor(dataStore, view);
+const anchor = resolveSpatialAnchor(dataStore, storeyExpressId, view);
+const deg = Math.PI / 180;
+// A 12 x 10 m gable roof: the long edges slope at 30°, the short ones are gable ends.
+const { roofId } = addRoofToStore(editor, anchor, {
+  Position: [0, 0, 2.7], Width: 12, Depth: 10, Thickness: 0.3,
+  EdgeSlopes: [30 * deg, 0, 30 * deg, 0], Overhang: 0.5,
+});
+// Hip the east end.
+editFootprintRoofInStore(dataStore, editor, roofId, { Edge: { Index: 1, Slope: 45 * deg } });
+```
 
 #### Openings and hosted doors / windows
 

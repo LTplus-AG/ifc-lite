@@ -49,6 +49,9 @@ describe('rooms inside wall faces (#9296)', () => {
       transformElementsInStore({ dataStore: s.store, view, editor, selected: [s.partition], op: { kind: 'move', delta: [1, 0] } });
     });
     expect(s.areas()).toEqual([expect.closeTo(22.33, 5), expect.closeTo(33.93, 5)]);
+    const nets = s.generated.emitted.map(({ result }) => s.view.getQuantitiesForEntity(result.spaceId)
+      .find(q => q.name === 'Qto_SpaceBaseQuantities')?.quantities.find(q => q.name === 'NetFloorArea')?.value).sort((a, b) => (a ?? 0) - (b ?? 0));
+    expect(nets).toEqual([expect.closeTo(22.33, 5), expect.closeTo(33.93, 5)]);
     expect(s.view.getMutations().length).toBeGreaterThan(before);
     undoRecordedMutationOperations(s.view, 1, () => { throw new Error('Expected compound inverse'); });
     expect(s.areas()).toEqual([expect.closeTo(28.13, 5), expect.closeTo(28.13, 5)]);

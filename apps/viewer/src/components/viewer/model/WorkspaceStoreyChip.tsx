@@ -120,7 +120,7 @@ export function WorkspaceStoreyChip() {
             </span>
           </HudChip>
           <HudPopoverContent onCloseAutoFocus={(event) => { event.preventDefault(); document.querySelector<HTMLElement>('[data-testid="model-3d-panel"] canvas')?.focus(); }} align="start" className="p-1">
-            {copyOpen ? <CopyToStoreys /> : <StoreyPicker groups={groups} current={{ modelId: session.modelId, storeyId: session.storeyId }} onPick={(storey) => { pickWorkspaceStorey(storey); setOpen(false); }} />}
+            {copyOpen ? <CopyToStoreys /> : <StoreyPicker groups={groups} current={{ modelId: session.modelId, storeyId: session.storeyId }} onPick={pickWorkspaceStorey} />}
             <Button size="sm" variant="ghost" disabled={copyDenial !== null} title={copyDenial ? t('storeyManager.copy.readOnly', { reason: copyDenial }) : undefined} onClick={() => setCopyOpen(!copyOpen)}>{t('storeyManager.copy.title')}</Button>
             <StoreyPickerActions />
           </HudPopoverContent>

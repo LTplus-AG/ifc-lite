@@ -27,7 +27,8 @@ import '@/lib/commands/modeling/builtin';
 import { commandPointerDown, commandPointerMove, getCommandRuntime } from '@/lib/commands/modeling/runtime';
 import { setRequestRemesh } from '@/lib/commands/modeling/transaction';
 import { modelStoreys } from '@/lib/commands/modeling/workspace-storeys';
-import { ViewportHud } from '../../viewport-ui/hud';
+import { StoreyPicker } from './StoreyPicker';
+import { ViewportHud, HudPopover, HudPopoverTrigger, HudPopoverContent } from '../../viewport-ui/hud';
 import { WorkspaceStoreyChip } from './WorkspaceStoreyChip';
 
 const topLeft = () => document.querySelector('[data-hud-region="top-left"]');
@@ -241,4 +242,16 @@ it('#9334 the chip disables copy to storeys in a read-only model session', () =>
   act(() => { useViewerStore.setState({ editEnabled: false }); });
   assert.equal(copy.disabled, true);
   assert.match(copy.title, /Copying is unavailable/);
+});
+
+it('#9296 the shared picker dismisses an uncontrolled popover, as used by the plan header', () => {
+  const groups = [{ modelId: MODEL_ID, modelName: 'Model', storeys: modelStoreys(useViewerStore.getState(), MODEL_ID) }];
+  render(<HudPopover defaultOpen>
+    <HudPopoverTrigger>Storeys</HudPopoverTrigger>
+    <HudPopoverContent><StoreyPicker groups={groups} current={null} onPick={() => {}} /></HudPopoverContent>
+  </HudPopover>);
+  const option = document.querySelector('[data-storey-picker] button');
+  assert.ok(option);
+  click(option);
+  assert.equal(document.querySelector('[data-storey-picker]'), null, 'the picker closes its own popover without caller state');
 });

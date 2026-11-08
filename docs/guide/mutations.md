@@ -1123,4 +1123,9 @@ an effective relationship. Slot overrides that introduce a reference must also
 be considered through `view.getAttributeOverrideEntityIds()`. Pass a list of
 IFC classes to that method to narrow created candidates by their effective
 class; edited source records remain conservative candidates for the caller to
-check against its source store.
+check against its source store. The optional second argument narrows creations
+to overrides that could contain a reference to that ID. These remain
+candidates; verify their effective slots with the relevant schema and grammar.
+`view.getAttributeOverrideReferenceCandidates(id)` also indexes source edits
+that might introduce a reference. Combine these with the immutable source and
+authored reference indices; retained or removed references need those indices.

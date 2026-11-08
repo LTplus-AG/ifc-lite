@@ -49,6 +49,7 @@ export function storeyMutationTracking(store: StoreApi): StoreyMethods {
   };
   return {
     listStoreyLevels: (...args) => live('listStoreyLevels').listStoreyLevels(...args),
+    suggestStorey: (...args) => live('suggestStorey').suggestStorey(...args),
     addStorey: (...args) => live('addStorey').addStorey(...args),
     renameStorey: (...args) => live('renameStorey').renameStorey(...args),
     planStoreyEdit: (...args) => live('planStoreyEdit').planStoreyEdit(...args),

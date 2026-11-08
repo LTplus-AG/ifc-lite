@@ -14,7 +14,7 @@ export function PresentationLayersSection({ entityRef }: { entityRef: EntityRef 
   const legacyStore = useViewerStore(s => s.ifcDataStore);
   const views = useViewerStore(s => s.mutationViews);
   useViewerStore(s => s.mutationVersion);
-  const legacy = entityRef.modelId === 'legacy' || entityRef.modelId === '__legacy__';
+  const legacy = entityRef.modelId === 'legacy';
   const store = legacy ? legacyStore : models.get(entityRef.modelId)?.ifcDataStore;
   const view = views.get(legacy ? '__legacy__' : entityRef.modelId);
   const layers = store ? presentationLayersByProduct(store, view).get(entityRef.expressId) : undefined;

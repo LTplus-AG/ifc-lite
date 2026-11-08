@@ -36,10 +36,10 @@ DATA;
 #51=IFCPRESENTATIONLAYERASSIGNMENT('Structure',$,(#22),$);
 ENDSEC;
 END-ISO-10303-21;`;
-async function setup() {
+async function setup(modelId = 'own') {
   const store = await new IfcParser().parseColumnar(new TextEncoder().encode(IFC).buffer);
   const otherStore = await new IfcParser().parseColumnar(new TextEncoder().encode(IFC.replaceAll('Walls', 'Foreign layer')).buffer);
-  const model = { ...fixtureModel('own', { idOffset: 1_000_000 }), ifcDataStore: store };
+  const model = { ...fixtureModel(modelId, { idOffset: 1_000_000 }), ifcDataStore: store };
   const other = { ...fixtureModel('other', { idOffset: 2_000_000 }), ifcDataStore: otherStore };
   const view = new MutablePropertyView(null, model.id);
   useViewerStore.setState({ ...fixtureModels(model, other),
@@ -105,4 +105,12 @@ it('#9273 leaving Layers cancels an unconsumed reveal instead of stealing focus 
     'the previously requested layer is available after returning');
   await advance(50);
   assert.ok(document.activeElement === button, 'returning to Layers does not revive the cancelled focus request');
+});
+
+
+it('#9273 resolves a federated __legacy__ model through its own store, matching the inspector', async () => {
+  await setup('__legacy__');
+  const ui = render(<PropertiesPanel />);
+  assert.ok(section(ui));
+  assert.deepEqual([...section(ui)!.querySelectorAll('button')].map(b => b.textContent), ['Walls (A-01)', 'Structure']);
 });

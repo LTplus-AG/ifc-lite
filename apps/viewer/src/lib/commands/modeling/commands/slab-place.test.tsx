@@ -29,7 +29,7 @@ import { resolveSlabEditChain } from '@/lib/slab-edit';
 import { readPushPullTarget } from '@/lib/push-pull/push-pull-target';
 import { applyMaterialLayers, setElementDimensions } from '@/components/viewer/model-inspector/inspector-edits';
 import { authoredElementMeshPayload } from '@/store/slices/authoredFallbackMesh';
-import { planeZ } from './placement-shared.js';
+import { planeHeightField, planeZ } from './placement-shared.js';
 import { SLAB_PLACE } from './slab-place.js';
 import type { SlabPlaceGesture } from './slab-place-geometry.js';
 
@@ -100,6 +100,16 @@ describe('slab.place: the bar names the class being drawn (#9202)', () => {
       act(() => { useViewerStore.getState().setAuthoringDefaults({ slabClass }); });
       assert.equal(SLAB_PLACE.hud.title?.(useViewerStore.getState()), title, slabClass);
     }
+  });
+});
+
+describe('the plane height field (#9202)', () => {
+  it('shows on a storey plane and hides on any other, where it could set nothing', () => {
+    const field = planeHeightField<null>();
+    const on = (spec: unknown) => ({ get: useViewerStore.getState, workplane: spec === null ? undefined : { spec } }) as unknown as CommandContext;
+    assert.equal(field.hidden?.(null, on({ kind: 'storey', storeyId: STOREY, offset: 0 })), false);
+    assert.equal(field.hidden?.(null, on({ kind: 'section' })), true);
+    assert.equal(field.hidden?.(null, on(null)), true);
   });
 });
 

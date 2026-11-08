@@ -59,6 +59,8 @@ export function planeHeightField<G>(): CommandField<G> {
     id: 'planeHeight',
     labelKey: 'modelWorkspace.height.field',
     unit: 'm',
+    // Only a storey plane has a height to type; a section plane would show a dead 0.
+    hidden: (_g, ctx) => ctx.workplane?.spec.kind !== 'storey',
     read: (_g, ctx) => planeZ(ctx.workplane),
     write: (g, v, ctx) => {
       const spec = ctx.workplane?.spec;

@@ -12,12 +12,13 @@
  * A pick from another model, or one that no longer exists (its creation was
  * undone), is skipped. A layer set is attached through an
  * IfcMaterialLayerSetUsage per element: across a wall, centred on its axis;
- * up from a slab's underside.
+ * along a slab's depth from its reference plane.
  */
 
 import { liveEntityConforms } from '@ifc-lite/create';
 import type { AuthoredElementKind } from '@/store/slices/authoringDefaultsSlice';
 import { modelEditTarget, recordModellingEdit, type ModellingStore } from '@/store/slices/mutation-modelling-records';
+import { layerSenseOf } from '@/lib/authoring/material-layers';
 import { AUTHORED_KINDS, authoredKindOf, readLayerSet } from './authored-kinds.js';
 
 export function applyAuthoredDefaults(store: ModellingStore, modelId: string, ids: readonly number[]): void {
@@ -50,7 +51,10 @@ export function applyAuthoredDefaults(store: ModellingStore, modelId: string, id
       if (typeId !== null) methods.assignType(modelId, typeId, elements);
       if (layerSetId === null) continue;
       for (const element of elements) {
-        const usage = methods.addMaterialLayerSetUsage(modelId, { ForLayerSet: layerSetId, LayerSetDirection: direction, OffsetFromReferenceLine: offset });
+        const usage = methods.addMaterialLayerSetUsage(modelId, {
+          ForLayerSet: layerSetId, LayerSetDirection: direction, OffsetFromReferenceLine: offset,
+          ...(direction === 'AXIS3' ? { DirectionSense: layerSenseOf(target, element) } : {}),
+        });
         methods.assignMaterial(modelId, usage.expressId, [element]);
       }
     }

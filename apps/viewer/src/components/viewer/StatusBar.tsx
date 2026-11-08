@@ -228,12 +228,14 @@ export function StatusBar() {
           <span>{t('shellChrome.statusBar.ready')}</span>
         )}
         {/* Cancel: shown while a model load (#5849) or point-cloud stream
-            has published a canceller; the loading card uses the same selector. */}
+            has published a canceller; the loading card uses the same selector.
+            `h-6` keeps the 24px target minimum (WCAG 2.5.8, #5826) inside
+            the 28px bar; `py-0.5` on the 14px label made it 20px (#8802). */}
         {activeStreamCanceller && (
           <button
             type="button"
             onClick={() => activeStreamCanceller()}
-            className="px-2 py-0.5 rounded border border-destructive/40 text-destructive text-2xs uppercase tracking-wider hover:bg-destructive hover:text-destructive-foreground transition-colors"
+            className="inline-flex h-6 items-center px-2 rounded border border-destructive/40 text-destructive text-2xs uppercase tracking-wider hover:bg-destructive hover:text-destructive-foreground transition-colors"
             title={t('shellChrome.statusBar.cancelStreamTitle')}
           >
             {t('shellChrome.statusBar.cancelButton')}

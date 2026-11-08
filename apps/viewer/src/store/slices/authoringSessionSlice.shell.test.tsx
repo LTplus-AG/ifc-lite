@@ -126,6 +126,8 @@ describe('Model workspace scene layer (#6232 M2.1)', () => {
 describe('Workspace defaults (#6232 M2.1)', () => {
   it('wall.place builds with the wall defaults', () => {
     useViewerStore.getState().setAuthoringDims('wall', { Thickness: 0.35, Height: 2.5 });
+    // A fixed-height wall builds at the stored height; "To storey above" would reach the next storey (#9013).
+    useViewerStore.getState().setAuthoringDefaults({ wallTop: 'fixed' });
     useViewerStore.getState().enterModelWorkspace({ command: 'wall.place' });
     commandPointerMove(at(0, 0)); commandPointerDown(at(0, 0));
     commandPointerMove(at(3, 0)); commandPointerDown(at(3, 0));

@@ -60,8 +60,13 @@ for (const schema of ['IFC2X3', 'IFC4', 'IFC4X3'] as const) describe(`#6232 gene
     const text = new StepExporter(a.store, a.view).export({ schema, applyMutations: true });
     const restored = await parse(new TextDecoder().decode(text.content));
     const reader = new AnchorEntityReader(restored, null);
-    expect(reader.entity(result.placementId)?.type.toUpperCase()).toBe('IFCGRIDPLACEMENT');
-    expect(reader.entity(result.intersectionId)?.attributes[0]).toEqual([a.grid.uAxisIds[1], a.grid.vAxisIds[0]]);
+    if (schema === 'IFC2X3') {
+      // IFC2X3 places exactly one product per placement (#9209): one that places nothing is not written.
+      expect(reader.entity(result.placementId)).toBeNull();
+    } else {
+      expect(reader.entity(result.placementId)?.type.toUpperCase()).toBe('IFCGRIDPLACEMENT');
+      expect(reader.entity(result.intersectionId)?.attributes[0]).toEqual([a.grid.uAxisIds[1], a.grid.vAxisIds[0]]);
+    }
     const curve = reader.entity(a.grid.uAxisIds[1])!.attributes[1];
     expect(typeof curve).toBe('number');
     expect(reader.entity(Number(curve))?.type.toUpperCase()).toBe('IFCCIRCLE');

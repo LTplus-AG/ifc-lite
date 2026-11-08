@@ -229,6 +229,7 @@ import type { InteractionMode as ControlsMode } from '@ifc-lite/renderer';
 import type { LandXmlSchema, LandXmlTinDocument } from '../hooks/ingest/landXmlSemantics.js';
 import type { LandXmlGeorefAssumption } from '../hooks/ingest/landXmlGeorefAssumptions.js';
 import type { GaussianSplatModel } from '../hooks/ingest/gaussianIngest.js';
+import type { ModelSpatialPlacement } from '../hooks/ingest/federationAlign.js';
 export type { CustomSectionPlane, SectionPlane, SectionBox, SectionBoxFace } from './section-types';
 
 // ============================================================================
@@ -618,6 +619,14 @@ export interface FederatedModel extends ModelLoadReportFields {
    * drift apart, because there is one value to write and one to read.
    */
   preAlignment?: PreAlignmentSnapshot;
+  /**
+   * The anchor placement this model's geometry was re-baked into, set with a
+   * `same-crs` or `reprojected` status and absent otherwise. Pinning another
+   * anchor moves no mesh until a re-align, so anything placed next to the
+   * meshes (the selected centreline, #9229) maps through this record, not
+   * through the anchor the federation would pick now.
+   */
+  alignmentReference?: ModelSpatialPlacement;
   /**
    * How this model was placed in the current federation:
    *   - `'anchor'`       — this model drives the world frame, no alignment

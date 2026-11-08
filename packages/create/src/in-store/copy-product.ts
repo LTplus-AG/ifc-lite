@@ -62,6 +62,8 @@ export interface CopyProductResult {
   readonly partIds: readonly number[];
   /** Source product id for every copied product, including openings, fillings and assembly parts. */
   readonly copiedFrom: ReadonlyMap<number, number>;
+  /** Copied child → copied parent, including nested assemblies and hosted dependents. */
+  readonly carriedBy?: ReadonlyMap<number, number>;
   /** The storey the copy (and its doors and windows) is contained in. */
   readonly storeyId: number | null;
   /** Every element the copy wrote with a shape to mesh: the copy and its doors and windows. */
@@ -218,13 +220,13 @@ export function copyProductGraph(ctx: CopyContext, sourceId: number, transform: 
   const copy = writeCopy(ctx, source, placed, targetStoreyId, options.Name);
 
   // Openings, their doors and windows, and the parts of an assembly follow it.
-  const acc: Dependents = { placements: new Map([[source.placementExpressId, copy.placementId]]), openingIds: [], fillingIds: [], partIds: [], copiedFrom: new Map([[copy.id, sourceId]]), boundToGrid: [], cameFree: [] };
+  const acc: Dependents = { placements: new Map([[source.placementExpressId, copy.placementId]]), openingIds: [], fillingIds: [], partIds: [], copiedFrom: new Map([[copy.id, sourceId]]), carriedBy: new Map(), boundToGrid: [], cameFree: [] };
   noteGridOutcome(acc, placed, copy.id);
   copyDependents(ctx, sourceId, copy.id, source, targetStoreyId, move, acc);
   for (const [copiedId, originalId] of acc.copiedFrom) cloneEffectiveMetadata(ctx.editor.getMutationView(), ctx.editor, originalId, [copiedId]);
   return {
     copyId: copy.id, openingIds: acc.openingIds, fillingIds: acc.fillingIds, partIds: acc.partIds, storeyId: targetStoreyId,
-    meshed: [copy.id, ...acc.partIds, ...acc.fillingIds], copiedFrom: acc.copiedFrom,
+    meshed: [copy.id, ...acc.partIds, ...acc.fillingIds], copiedFrom: acc.copiedFrom, carriedBy: acc.carriedBy,
     boundToGrid: acc.boundToGrid, cameFree: acc.cameFree,
   };
 }
@@ -236,6 +238,7 @@ interface Dependents {
   readonly fillingIds: number[];
   readonly partIds: number[];
   readonly copiedFrom: Map<number, number>;
+  readonly carriedBy: Map<number, number>;
   readonly boundToGrid: number[];
   readonly cameFree: number[];
 }
@@ -260,6 +263,7 @@ function copyDependents(ctx: CopyContext, sourceId: number, copyId: number, root
     const copy = writeCopy(ctx, source, placed, step.kind === 'filling' ? targetStoreyId : null);
     noteGridOutcome(acc, placed, copy.id);
     acc.placements.set(source.placementExpressId, copy.placementId);
+    acc.carriedBy.set(copy.id, parentCopy);
     acc.copiedFrom.set(copy.id, step.sourceId); copies.set(step.sourceId, copy.id);
     if (step.kind === 'part') acc.partIds.push(copy.id);
     else if (step.kind === 'opening') {

@@ -56,7 +56,7 @@ function HeightPicker({ plane }: { plane: StoreyPlane }) {
       <button type="button" data-workplane-height-preset="floor" className={preset} onClick={() => toFloor(plane)}>
         {t('modelWorkspace.height.floor')}
       </button>
-      {top !== null && Number.isFinite(top) && top !== 0 && (
+      {top !== null && Number.isFinite(top) && (
         <button type="button" data-workplane-height-preset="top-of-walls" className={preset} onClick={() => setHeight(plane, top)}>
           {t('modelWorkspace.height.topOfWalls', { height: formatStoreyElevation(top) })}
         </button>

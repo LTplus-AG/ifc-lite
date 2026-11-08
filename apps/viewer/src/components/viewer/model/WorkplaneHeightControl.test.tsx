@@ -98,6 +98,18 @@ describe('the height control (#9202)', () => {
     assert.ok(Math.abs(offset()! + 1) < 1e-9, 'Roof takes the unpinned plane down to the wall top');
   });
 
+  it('walls that top out at the floor still offer Top of walls, and it pins the height', () => {
+    state().addWall(MODEL_ID, STOREY, { Start: [0, 0, -3], End: [4, 0, -3], Thickness: 0.2, Height: 3 });
+    const ui = mount();
+    open(planButton(ui));
+    const top = picker()?.querySelector('[data-workplane-height-preset="top-of-walls"]') as HTMLButtonElement | null;
+    assert.ok(top, 'a wall top of 0 is a height, not none');
+    assert.match(top.textContent ?? '', /Top of walls ±0\.00 m/);
+    click(top);
+    assert.equal(offset(), 0);
+    assert.equal(state().session?.planeHeightPinned, true, 'unlike Floor, it keeps the height the user picked');
+  });
+
   it('a typed height reaches the running command', () => {
     const ui = mount();
     act(() => { state().startCommand('wall.place'); });

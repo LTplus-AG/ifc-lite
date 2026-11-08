@@ -20,7 +20,6 @@ impl MappingControl<'_> {
                 router.rollback_logical_template(pending.source_id, claim);
             }
         }
-        let (budget, limit, reached) = refusal.details();
         let error = match GeometryRouter::recoverable_source_error(refusal.into_error(item_id)) {
             Ok(error) => error,
             Err(stop) => {
@@ -29,6 +28,10 @@ impl MappingControl<'_> {
                 return;
             }
         };
+        let (budget, limit, reached) = refusal.details();
+        // Product walks already undergo cache-independent admission with the
+        // same allowance, which reports their product identity before meshing.
+        // Standalone mapping/type-map callers have no owning product.
         router.record_budget_refusal(item_id, budget, limit, reached);
         self.logical_stopped = true;
         if self.retained.is_some() {

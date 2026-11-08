@@ -34,7 +34,7 @@ impl<'a> ProductControl<'a> {
             ProductReply::Mapping(reply) => {
                 let Child::Mapping(control) = &mut self.child else { return };
                 control.accept(reply, router);
-                let Some(next) = self.mapping_next(router) else { return };
+                let Some(next) = self.mapping_next() else { return };
                 next
             }
             reply => {
@@ -70,11 +70,10 @@ impl<'a> ProductControl<'a> {
 
     /// The next action once the mapping child has completed; `None` while it
     /// still has steps.
-    pub(super) fn mapping_next(&mut self, router: &GeometryRouter) -> Option<Action> {
+    pub(super) fn mapping_next(&mut self) -> Option<Action> {
         let Child::Mapping(control) = &mut self.child else { return None };
         let Action::Mapping { role } = &self.action else { return None };
         let result = control.take_result()?;
-        if control.logical_stopped { router.attribute_budget_refusals(self.element); }
         let role = *role;
         self.child = Child::None;
         Some(self.mapping_done(result, role))

@@ -56,6 +56,7 @@ export const commandsEn = {
   'commands.command.columnRotate': 'Turn the column 15° (placing a column)',
   'commands.model.wall': 'Draw walls (Model workspace)',
   'commands.model.slab': 'Draw slabs, roofs and plates (Model workspace)',
+  'commands.model.roof': 'Draw roofs at the top of the walls (Model workspace)',
   'commands.model.column': 'Place columns (Model workspace)',
   'commands.model.beam': 'Draw beams and members (Model workspace)',
   'commands.model.storeyUp': 'Work on the storey above (Model workspace)',

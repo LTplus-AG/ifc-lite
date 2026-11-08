@@ -106,7 +106,7 @@ describe('packEdgeUniforms (#5385)', () => {
     assert.equal(packed(perspective(), { radiusPx: 3 })[e], 3);
   });
 
-  it('darkens a line pixel by the intensity times the share of taps an axis-aligned edge crosses', () => {
+  it('darkens a line pixel by the intensity times the share of taps an axis-aligned edge crosses (#9360)', () => {
     // Beside a horizontal edge, 1 of the 4 cardinal taps crosses it, and 3 of
     // 8 once the diagonals join: the weight the averaged votes gave those
     // edges, now given to every pixel of a slanted edge too, instead of a

@@ -19,7 +19,7 @@ const TOLERANCE = 1;
  * dot, for every cue, quality, tap radius and MSAA count. A crease hidden
  * behind an occluder still draws nothing.
  */
-test('edge-pass lines stay continuous along slanted straight edges (#5385)', async ({ page }, info) => {
+test('edge-pass lines stay continuous along slanted straight edges (#9360)', async ({ page }, info) => {
   const server = await startViewerDevServer('edge-line-continuity');
   try {
     await page.goto(new URL('/oauth/autodesk/callback', server.url).href);

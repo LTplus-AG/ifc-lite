@@ -98,7 +98,7 @@ function toPixel(proj: Float32Array, p: Vec3): [number, number] {
   return [(x * 0.5 + 0.5) * WIDTH, (0.5 - y * 0.5) * HEIGHT];
 }
 
-/** Production EdgePass over a hand-built depth/id frame (#5385). */
+/** Production EdgePass over a hand-built depth/id frame (#5385, #9360). */
 export async function runEdgeLineWitness(): Promise<EdgeLineReport> {
   const adapter = await navigator.gpu.requestAdapter();
   if (!adapter) throw new Error('WebGPU adapter unavailable');

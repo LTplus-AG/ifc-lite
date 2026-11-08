@@ -11,9 +11,9 @@ export const tableCorrectionsIt = {
   "tableChanges.dialogTitle": "Controlla le modifiche",
   "tableChanges.dialogDescription": "Non viene scritto nulla finché non applichi. Ogni parte viene applicata come un unico passaggio annullabile, con la propria ricevuta.",
   "tableChanges.summary": {
-    one: "{count} modifica in {parts} parte/i · {unchanged} già impostati · {issues} saltati",
-    other: "{count} modifiche in {parts} parte/i · {unchanged} già impostati · {issues} saltati",
-    many: "{count} modifiche in {parts} parte/i · {unchanged} già impostati · {issues} saltati",
+    one: "{count} modifica · parti: {parts} · {unchanged} già impostati · {issues} saltati",
+    other: "{count} modifiche · parti: {parts} · {unchanged} già impostati · {issues} saltati",
+    many: "{count} modifiche · parti: {parts} · {unchanged} già impostati · {issues} saltati",
   },
   "tableChanges.refused": "Questo produce {total} modifiche, più delle {limit} che possono essere controllate. Restringi la tabella o la selezione, oppure usa il percorso diretto.",
   "tableChanges.refusedModel": "Il modello di destinazione non è caricato.",

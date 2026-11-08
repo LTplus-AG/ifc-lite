@@ -81,6 +81,10 @@ function leadingToken(text: string): string {
 
 const RECORD_NAME = /^(?:\s|\/\*[\s\S]*?\*\/)*#(\d+)(?:\s|\/\*[\s\S]*?\*\/)*=/;
 
+/** Whitespace and comments before a statement: they stay in place, untouched. */
+const LEADING_TRIVIA = /^(?:\s|\/\*[\s\S]*?\*\/)*/;
+const leadLength = (raw: string) => LEADING_TRIVIA.exec(raw)![0].length;
+
 /** `#digits` tokens outside string literals. */
 function referencedIds(text: string, into: Set<number>): void {
   for (let i = 0; i < text.length; i++) {
@@ -148,17 +152,18 @@ export function renumberStepIds(text: string, options: RenumberStepIdsOptions): 
   [...declared.keys()].forEach((id, i) => idMap.set(id, pool[i]));
 
   // Rewrite each record in its slot. With `reorder`, the records of a section
-  // trade slots; the whitespace before each slot stays where it was.
+  // trade slots; the whitespace and comments before each slot stay where they
+  // were, unchanged. A comment INSIDE a record body is rewritten like the body.
   const replacement = new Map<Statement, string>();
   for (const section of sections) {
     const bodies = section.map(s => {
       const raw = text.slice(s.start, s.end);
-      return raw.slice(raw.length - raw.trimStart().length);
+      return raw.slice(leadLength(raw));
     });
     const order = options.reorder ? shuffleInPlace(bodies.map((_, i) => i), options.random) : bodies.map((_, i) => i);
     section.forEach((slot, i) => {
       const raw = text.slice(slot.start, slot.end);
-      const lead = raw.slice(0, raw.length - raw.trimStart().length);
+      const lead = raw.slice(0, leadLength(raw));
       replacement.set(slot, lead + remapEntityText(bodies[order[i]], 0, idMap));
     });
   }

@@ -119,18 +119,31 @@ fn incircle_matches_geometry_predicates_bit_for_bit_issue_9016() {
         check(&mut paths, on(t[0]), [ox + rng.unit(), oy + rng.unit()], on(t[1]), on(t[2]));
     }
 
-    // Lattice-cocircular `a`, `b`, `c` and a `d` nudged by ~1e-25: the rounded
-    // differences stay exactly cocircular, so stage B cannot decide, but their
-    // tails are not zero, so the crate's stage C must be reached.
+    // Lattice-cocircular `a`, `b`, `c` and a `d` one ulp off the lattice in x,
+    // y or both: the differences round back to the cocircular lattice ones, so
+    // stage B cannot decide, but their tails are not zero, so the crate's
+    // stage C must be reached. (An additive nudge far below `d`'s ulp rounds
+    // straight back to `d`, which is why the nudge is made on the bits.)
+    let ulp_away = |x: f64| f64::from_bits(x.to_bits() + 1);
+    let stage_c_before = paths.stage_c;
     for i in 0..ring.len() {
         for j in 0..ring.len() {
             for k in 0..ring.len() {
                 let d = ring[(i + j + k) % ring.len()];
-                let nudged = [d[0] + rng.unit() * 1e-25, d[1] + rng.unit() * 1e-25];
+                let nudged = match rng.next() % 3 {
+                    0 => [ulp_away(d[0]), d[1]],
+                    1 => [d[0], ulp_away(d[1])],
+                    _ => [ulp_away(d[0]), ulp_away(d[1])],
+                };
+                assert_ne!(nudged, d, "the nudge must move d off the lattice");
                 check(&mut paths, ring[i], ring[j], ring[k], nudged);
             }
         }
     }
+    let nudged_stage_c = paths.stage_c - stage_c_before;
+    // 1166 of the 1728 cases reach stage C with this seed; the additive 1e-25
+    // nudge this replaced reached it only for `d` on an axis (560).
+    assert!(nudged_stage_c > 1_000, "nudged lattice cases reached stage C only {nudged_stage_c} times");
 
     // Cocircular points with rounded coordinates: most are decided in stage B.
     for _ in 0..5_000 {

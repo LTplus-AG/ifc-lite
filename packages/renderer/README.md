@@ -30,6 +30,13 @@ renderer.requestRender();
 
 Camera zoom refuses a step that would move the eye or target outside the renderer's supported source-coordinate envelope (±1,000,000,000 metres per axis). The previous pose, cursor anchor and orbit pivot remain intact, so reversing the gesture works. If another control has already moved outside the envelope, zoom may recover incrementally: each accepted step must strictly reduce the largest absolute eye/target coordinate until the pose is supported again. This applies to ordinary, cursor-anchored, fast, surface and inertial zoom. Orthographic zoom keeps its existing scale behavior while its cursor translation observes the same coordinate boundary.
 
+### Mesh-only pages
+
+`import { Renderer } from '@ifc-lite/renderer/core'` is the same renderer
+without point-cloud rendering and scan deviation, so those pipelines and
+shaders stay out of the bundle. Its point-cloud and deviation methods throw.
+See [Rendering](https://ifclite.dev/docs/guide/rendering/#mesh-only-pages-ifc-literenderercore).
+
 ## Inspect GPU pass timing
 
 Timestamp queries are opt-in. Enable them before rendering, then read resolved

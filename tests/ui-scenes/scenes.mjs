@@ -69,7 +69,8 @@ async function planCutAtGroundStorey(page) {
 /**
  * Open Settings the way every opener does (the `ifc-lite:open-settings`
  * window event, #5857), then wait for its dialog. `toEnd` scrolls every
- * scrollable element inside the dialog to its end, so a still shows whether
+ * element inside the dialog that a user could scroll (`overflow-y` auto or
+ * scroll) to its end, so a still shows whether
  * the last settings are reachable; on a build where nothing scrolls, the
  * clipped body shows as clipped.
  */
@@ -80,7 +81,11 @@ async function openSettingsDialog(page, { toEnd = false } = {}) {
   await page.evaluate(() => {
     const dialog = document.querySelector('[role="dialog"]');
     for (const el of [dialog, ...dialog.querySelectorAll('*')]) {
-      if (el.scrollHeight > el.clientHeight + 1) el.scrollTop = el.scrollHeight;
+      // Only what a user could scroll: `overflow: hidden` can still be
+      // scrolled from code, which would show settings a phone cannot reach.
+      const { overflowY } = getComputedStyle(el);
+      const userScrollable = overflowY === 'auto' || overflowY === 'scroll';
+      if (userScrollable && el.scrollHeight > el.clientHeight + 1) el.scrollTop = el.scrollHeight;
     }
   });
 }

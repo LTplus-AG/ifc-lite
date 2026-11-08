@@ -10,6 +10,8 @@
  */
 
 import { editFootprintRoofInStore, footprintDefinitionProperties, ROOF_FOOTPRINT_PSET, type RoofFootprintEdit } from '@ifc-lite/create';
+import type { MutablePropertyView } from '@ifc-lite/mutations';
+import type { ViewerState } from '../index.js';
 import { mutationDenial } from '../mutation-permission.js';
 import { modelEditTarget, recordModellingEdit, type ModellingStore } from './mutation-modelling-records.js';
 
@@ -31,5 +33,13 @@ export function editRoofIn(store: ModellingStore, modelId: string, expressId: nu
     return { ok: true };
   } catch (error) {
     return { ok: false, reason: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+/** New roofs use the same definition as edits, on both the SDK and Model tool paths. */
+export function mirrorNewRoofDefinition(state: Pick<ViewerState, 'mirrorPropertyEdit'>, modelId: string, id: number, view: MutablePropertyView): void {
+  const definition = view.getForEntity(id).find(pset => pset.name === ROOF_FOOTPRINT_PSET);
+  for (const property of definition?.properties ?? []) {
+    state.mirrorPropertyEdit(modelId, id, ROOF_FOOTPRINT_PSET, property.name, property.value, property.type);
   }
 }

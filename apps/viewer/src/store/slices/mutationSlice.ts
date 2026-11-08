@@ -6,6 +6,7 @@
  * Mutation slice - manages property/quantity mutations for IFC export
  */
 
+import { mirrorNewRoofDefinition } from './mutation-roof.js';
 import { type StateCreator } from 'zustand';
 import type { ViewerState } from '../index.js';
 import type { MutablePropertyView, NewEntity, IfcAttributeValue } from '@ifc-lite/mutations';
@@ -891,6 +892,7 @@ function recordAuthoredElementIn(
   options: { historyRecorded?: boolean } = {},
 ): void {
   const ifcType = authoredIfcType(element);
+  if (element.kind === 'roof') mirrorNewRoofDefinition(get(), modelId, entityId, view);
 
   // Make the authored element a first-class citizen immediately: register it in
   // the spatial hierarchy so it appears in the spatial tree under its storey and

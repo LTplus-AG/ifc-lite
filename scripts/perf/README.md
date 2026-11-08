@@ -47,7 +47,8 @@ keeps its existing Result types, with a compile-time bound against the decoder
 error carrier on both native and wasm32. Empty routers hold only a nullable
 pointer to the refusal log; the buffer, identity strings and refusal constructors
 are cold work. The public diagnostics remain complete and the work allowances
-stay unchanged. The native instruction comparison and output counts are recorded in
+stay unchanged. RTC geometry probing is outlined so its refusal handling cannot
+enlarge the loop that filters every model record. The native instruction comparison and output counts are recorded in
 PR #9386; this is cost containment, not an end-to-end worker-pool speedup claim.
 
 Lesson: refusal-only reporting can still affect successful work through error

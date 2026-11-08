@@ -81,7 +81,7 @@ impl ProductControl<'_> {
                         let reply = control.execute(router, decoder)?;
                         control.accept(reply, router);
                     }
-                    self.mapping_next().ok_or(ProgramError::Outstanding)?
+                    self.mapping_next(router).ok_or(ProgramError::Outstanding)?
                 }
                 Action::Merge(_) => {
                     let Action::Merge(parts) = std::mem::replace(&mut self.action, Action::Taken) else {

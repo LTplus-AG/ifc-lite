@@ -275,7 +275,7 @@ pub(super) struct MappingControl<'a> {
     levels: Vec<Level>,
     action: Action<'a>,
     budget: super::mapping_budget::LogicalBudget,
-    logical_stopped: bool,
+    pub(super) logical_stopped: bool,
 }
 
 impl<'a> MappingControl<'a> {

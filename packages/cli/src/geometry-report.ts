@@ -53,6 +53,10 @@ export function formatGeometryReport(d: GeometryDiagnostics): string {
       `too-many ${rf.deferTooManyOpenings ?? 0})`,
   );
 
+  for (const refusal of d.budgetRefusals ?? []) {
+    lines.push(`Work budget refusal: ${refusal.budget} limit=${refusal.limit} reached=${refusal.reached} ` +
+      `product=#${refusal.productId} ${refusal.productType} GlobalId=${refusal.GlobalId ?? 'unavailable'} source=#${refusal.sourceId}`);
+  }
   if ((d.totalUnsupportedItems ?? 0) > 0) {
     lines.push('');
     lines.push(`Dropped representation items: ${d.totalUnsupportedItems} (no processor, or the processor failed)`);

@@ -120,6 +120,11 @@ export function warnGeometryDiagnostics(
       diagnostics,
     );
   }
+  for (const refusal of diagnostics.budgetRefusals ?? []) {
+    console.warn(`[useIfc] ${fileName}: work budget refusal: ${refusal.budget} ` +
+      `limit=${refusal.limit} reached=${refusal.reached} product=#${refusal.productId} ` +
+      `${refusal.productType} GlobalId=${refusal.GlobalId ?? 'unavailable'} source=#${refusal.sourceId}`);
+  }
   if ((diagnostics.totalUnsupportedItems ?? 0) > 0) {
     console.warn(
       `[useIfc] ${fileName}: ${diagnostics.totalUnsupportedItems} representation item(s) dropped ` +

@@ -133,6 +133,7 @@ pub(super) fn finish(
         tracing::debug_span!(target: "ifc_lite_processing::processor", "collate_diagnostics")
             .in_scope(|| {
                 diagnostics::collate(
+                    diag.budget_refusals,
                     diag.classification,
                     diag.host_diags,
                     diag.rect_fast,

@@ -21,7 +21,7 @@ pub enum WalkRefusal {
     /// The mapped representation has no `Items` attribute.
     MissingItems,
     /// The mapped-level or total Items-member allowance was exhausted.
-    Budget { max_levels: u32 },
+    Budget { max_levels: u32, budget: &'static str, reached: u64 },
     /// The decoder failed on one of the references.
     Decode(ifc_lite_core::Error),
 }
@@ -36,7 +36,7 @@ impl WalkRefusal {
             WalkRefusal::TooDeep { max_depth } => format!(
                 "MappedItem nesting exceeded maximum depth of {max_depth} at #{item}"
             ),
-            WalkRefusal::Budget { max_levels } => format!(
+            WalkRefusal::Budget { max_levels, .. } => format!(
                 "Representation expansion exceeded the work budget of {max_levels} levels or item references at #{item}"
             ),
             WalkRefusal::MissingSource => "MappedItem missing MappingSource".to_string(),

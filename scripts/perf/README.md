@@ -8,6 +8,29 @@ Citations to `evidence/`, `tests/evidence/` and `docs/architecture/evidence/` pa
 at commit [`f98785c722`](https://github.com/LTplus-AG/ifc-lite/tree/f98785c722); the retained
 bundles left the tree in #9054.
 
+## First selection reads typing relationships from the graph (#9192)
+
+**Shipped: the scan is gone, not made cheaper.** `readCurrentTypeQuantities` read every
+`IfcRelDefinesByType`/`IfcRelDefinesByProperties` record from block-compressed source on the
+first selection, so the cost was decode and inflate per record, multiplied by the model's
+relationship count. A per-scan schema snapshot cuts the registry cost per record but keeps
+the reads. The parsed graph already records which relationship names which element (with
+repeats as shadowed ids), so the read now walks effective rows from the index only and
+decodes a relationship only when an edit touched it, the parser recorded no edge for it, an
+edge of it has the wrong class on its relating side (the byte reader misread the record, or a
+definition set names a non-definition), or it names the element or type being read. A
+definition relationship an edit over-counts enters the reference budget at its graph count, an
+upper bound, and is decoded only if that bound would cross it.
+Answers were compared against base by digest,
+under edits, on five large fixtures. That included raised-limit copies of the two models
+whose row count passes `MAX_RELATIONSHIPS`, and a probe quantity on every type so each digest
+compares the assigned type.
+
+Lessons: on models past the 65,536-row limit, base read 65,536 records only to refuse, and
+did not memoise the refusal, so every click repeated the walk. A refusal is now kept for the
+edit revision, model-wide, per relationship and per type, as an answer always was. The limit itself still applies and still refuses those models; it bounded
+work the read no longer does, so raising it is a behaviour change, not a perf lever.
+
 ## Opt-in gross host geometry (#8875)
 
 **Default worker-pool path qualified: no material regression within the preset

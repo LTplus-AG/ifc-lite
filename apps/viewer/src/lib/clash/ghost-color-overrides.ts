@@ -13,7 +13,7 @@
  * draws the renderer's colour table paints (#6076,
  * `packages/renderer/src/overlay-routing.ts`). `ghostExceptIds` fades an
  * entity through the transparent-pipeline alpha path
- * (`packages/renderer/src/index.ts`'s `alphaForMesh`/`alphaForBatch`) and
+ * (`packages/renderer/src/renderer.ts`'s `alphaForMesh`/`alphaForBatch`) and
  * does not survive that promotion — a ghosted entity that ALSO carries a
  * lens colour override renders opaque anyway, defeating the ghost.
  *

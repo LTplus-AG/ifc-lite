@@ -51,3 +51,11 @@ test('#9318 check refuses missing F5 result fields',async ()=>{
   for(const key of ['ms','elements','peakHeap','completedSteps','totalSteps']) { const result=f5();delete result.metrics[key];assert.ok(checkTargets(complete(),targets,result).some(f=>f.includes('F5'))); }
 });
 
+
+test('#9318 empty F5 exercises cannot certify the round-1 target', async () => {
+  await loadScripts();
+  const result = f5();
+  result.metrics.completedSteps = 0;
+  result.metrics.totalSteps = 0;
+  assert.ok(checkTargets(complete(), targets, result).some(f => f.includes('F5')));
+});

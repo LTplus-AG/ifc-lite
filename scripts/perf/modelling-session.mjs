@@ -37,7 +37,7 @@ export function checkTargets(results, ratchet, f5) {
     const value = growth(results, op, p, 1000, 50000);
     if (value === null || value >= ratchet.targets.maxGrowthExclusive) failures.push(`${op} ${p}: growth ${value ?? 'unmeasured'}`);
   }
-  if (!f5 || f5.probe !== 'exercise' || !/^F5(?:[.\-]|$)/.test(f5.id ?? '') || f5.status !== 'pass' || !Number.isFinite(f5.metrics?.ms) || !Number.isFinite(f5.metrics?.elements) || !Number.isFinite(f5.metrics?.peakHeap) || !Number.isInteger(f5.metrics?.completedSteps) || !Number.isInteger(f5.metrics?.totalSteps) || f5.metrics.completedSteps!==f5.metrics.totalSteps || f5.metrics.ms >= ratchet.targets.f5MsExclusive) failures.push('F5 requires a passing exercise result under 60000 ms (--f5-result)');
+  if (!f5 || f5.probe !== 'exercise' || !/^F5(?:[.\-]|$)/.test(f5.id ?? '') || f5.status !== 'pass' || !Number.isFinite(f5.metrics?.ms) || !Number.isFinite(f5.metrics?.elements) || !Number.isFinite(f5.metrics?.peakHeap) || !Number.isInteger(f5.metrics?.completedSteps) || !Number.isInteger(f5.metrics?.totalSteps) || f5.metrics.totalSteps <= 0 || f5.metrics.completedSteps!==f5.metrics.totalSteps || f5.metrics.ms >= ratchet.targets.f5MsExclusive) failures.push('F5 requires a passing exercise result under 60000 ms (--f5-result)');
   return failures;
 }
 export function table(results) {

@@ -159,12 +159,7 @@ export const MAGIC = 0x4C434649; // "IFCL" in little-endian
 /** v21: relationship indexing covers every schema-resolvable exact IfcRel*
  * class (#4205). The bytes are unchanged, but cache keys must miss v20 graphs
  * that were produced before those buckets existed. */
-/** v26: the parser records no relationship edges for a relationship record its
- * byte reader cannot read cleanly (#9192); a v25 graph may hold a misread edge
- * (`((#10),#14),#40` stored as "#14 relates #10"), and the readers that used to
- * refuse such an edge downstream are gone. The bytes are unchanged, but cache
- * keys must miss v25 graphs. */
-export const FORMAT_VERSION = 26; // v26: graphs without misread relationship edges, #9192; v25: per-mesh shadingColor/localBounds/localToWorld trailer (sections/mesh-metadata.ts), #7350; v24: optional CoordinateInfo recovery count and length-unit scale, #7239; v23: type/mapped/instanced finishes, #5984
+export const FORMAT_VERSION = 26; // v26: bytes unchanged, but keys must miss v25 graphs, which may hold a misread relationship edge (`((#10),#14),#40` as "#14 relates #10") that nothing downstream refuses any more, #9192; v25: per-mesh shadingColor/localBounds/localToWorld trailer (sections/mesh-metadata.ts), #7350; v24: optional CoordinateInfo recovery count and length-unit scale, #7239; v23: type/mapped/instanced finishes, #5984
 
 /** Geometry chunking parameters (v13+). Grouping is a WRITE-side layout
  *  policy: readers only trust the directory, so these can change without a

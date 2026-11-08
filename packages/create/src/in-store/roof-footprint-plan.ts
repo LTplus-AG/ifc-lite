@@ -73,8 +73,9 @@ export function roofShapeType(slopes: readonly number[]): RoofShapeType {
   if (count === 0) return 'FLAT_ROOF';
   if (count === slopes.length) return 'HIP_ROOF';
   if (count === 1) return 'SHED_ROOF';
-  // Gable ends sit between sloped edges; two unsloped edges in a row are no named form.
-  return sloped.every((s, i) => s || sloped[(i + 1) % sloped.length]) ? 'GABLE_ROOF' : 'FREEFORM';
+  // A named gable has two opposing pitches separated by two gable ends.
+  return slopes.length === 4 && count === 2 && sloped[0] === sloped[2] && sloped[1] === sloped[3]
+    ? 'GABLE_ROOF' : 'FREEFORM';
 }
 
 function slopeError(index: number, value: unknown): string | null {

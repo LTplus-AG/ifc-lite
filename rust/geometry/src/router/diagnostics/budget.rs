@@ -4,7 +4,7 @@ use super::GeometryRouter;
 use ifc_lite_core::DecodedEntity;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BudgetRefusal {
     pub budget: String,
@@ -25,13 +25,18 @@ impl GeometryRouter {
         });
     }
     pub(crate) fn attribute_budget_refusals(&self, product: &DecodedEntity) {
-        for refusal in &mut self.unsupported.borrow_mut().budget_refusals {
+        let mut state = self.unsupported.borrow_mut();
+        for refusal in &mut state.budget_refusals {
             if refusal.product_id.is_none() {
                 refusal.product_id = Some(product.id);
                 refusal.product_type = Some(product.ifc_type.to_string());
                 refusal.global_id = product.get(0).and_then(|a| a.as_string()).map(str::to_owned);
             }
         }
+        // Native empty-geometry retries must not report the same refusal three
+        // times. This work is reached only after a refusal, never per item.
+        let mut seen = rustc_hash::FxHashSet::default();
+        state.budget_refusals.retain(|refusal| seen.insert(refusal.clone()));
     }
     pub fn take_budget_refusals(&self) -> Vec<BudgetRefusal> {
         std::mem::take(&mut self.unsupported.borrow_mut().budget_refusals)

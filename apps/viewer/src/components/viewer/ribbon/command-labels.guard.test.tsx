@@ -6,7 +6,7 @@ import '@/test/setup-dom.js';
 import { afterEach, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
-import { click, cleanup, mouseDown, press, render } from '@/test/render.js';
+import { click, cleanup, mouseDown, press, render, waitFor } from '@/test/render.js';
 import { resolve } from '@/i18n/registry';
 import { posthog } from '@/lib/analytics';
 import { setCollabEnabledOverride } from '@/lib/collab/config';
@@ -15,6 +15,7 @@ import { useViewerStore, type RibbonTabId } from '@/store';
 import { SURFACE_COMMANDS, type SurfaceCommandDefinition } from '../surface-commands.js';
 import { EXPORT_COMMANDS } from '../toolbar/export-commands.js';
 import type { FileCommands } from '../toolbar/useFileCommands.js';
+import { PersistentToolHosts } from '../PersistentToolHosts';
 import { RibbonToolbar } from './RibbonToolbar.js';
 import { FileTab } from './tabs/FileTab.js';
 
@@ -276,7 +277,7 @@ it('#5878 Author edit executes through a registered ribbon control; every kind i
     useViewerStore.getState().exitModelWorkspace();
     useViewerStore.setState({ models: new Map(), activeModelId: null });
   }));
-  const container = render(<RibbonToolbar />);
+  const container = render(<PersistentToolHosts><RibbonToolbar /></PersistentToolHosts>);
   const control = (id: string): HTMLButtonElement => {
     const button = container.querySelector<HTMLButtonElement>(`button[data-command-id="${id}"]`);
     assert.ok(button, `${id} is mounted`);
@@ -288,21 +289,22 @@ it('#5878 Author edit executes through a registered ribbon control; every kind i
   const authorControls = [...container.querySelectorAll<HTMLButtonElement>('button[data-command-id^="author:"]')]
     .map((b) => b.dataset.commandId).sort();
   assert.deepEqual(authorControls, ['author:bulk-properties', 'author:import-data', 'author:redo', 'author:undo']);
-  assert.equal(control('author:bulk-properties').dataset.commandTrigger, 'true');
-  assert.equal(control('author:import-data').dataset.commandTrigger, 'true');
+  assert.equal(control('author:bulk-properties').disabled, false, 'persistent bulk host is available');
+  assert.equal(control('author:import-data').disabled, false, 'persistent CSV host is available');
 });
 
-it('#5878 Author dialog trigger opens once and records its registered command', () => {
+it('#5878 Author dialog trigger opens once and records its registered command', async () => {
   act(() => useViewerStore.setState({
     ribbonTab: 'author', ribbonCollapsed: false, ifcDataStore: fixtureDataStore(),
   }));
-  const container = render(<RibbonToolbar />);
+  const container = render(<PersistentToolHosts><RibbonToolbar /></PersistentToolHosts>);
   const trigger = container.querySelector<HTMLButtonElement>('button[data-command-id="author:bulk-properties"]');
   assert.ok(trigger);
   assert.equal(trigger.disabled, false);
   const capture = mock.method(posthog, 'capture', () => undefined);
   click(trigger);
-  assert.ok(document.querySelector('[role="dialog"]'), 'the mounted Bulk Property Editor opens');
+  await waitFor(() => !!document.querySelector('button[aria-label="Target source"]'), 'real Bulk Property Editor body loads');
+  assert.equal(document.querySelectorAll('[role="dialog"]').length, 1, 'one canonical author dialog opens');
   assert.deepEqual(capture.mock.calls.filter((call) => call.arguments[0] === 'command_executed')
     .map((call) => call.arguments), [
     ['command_executed', { command_id: 'author:bulk-properties', surface: 'ribbon' }],

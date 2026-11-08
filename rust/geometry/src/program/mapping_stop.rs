@@ -33,11 +33,11 @@ impl MappingControl<'_> {
         // same allowance, which reports their product identity before meshing.
         // Standalone mapping/type-map callers have no owning product.
         router.record_budget_refusal(item_id, budget, limit, reached);
-        self.logical_stopped = true;
         if self.retained.is_some() {
             self.action = Action::Complete(Err(error));
             return;
         }
+        self.logical_stopped = true;
         let Some(parent) = self.levels.last() else {
             // Root refusal is observable as an error, never a counted drop.
             self.complete(Err(error));

@@ -10,6 +10,7 @@
 
 import type { ViewerState } from '@/store';
 import { effectiveStoreyElevation, effectiveStoreyIds } from '@/lib/commands/modeling/effective-storeys';
+import { effectiveTreeEntityName } from '@/components/viewer/hierarchy/effectiveTypeEntities';
 import { resolveWorkplane } from './registry.js';
 
 export interface WorkspaceStorey {
@@ -29,7 +30,8 @@ export function modelStoreys(s: Pick<ViewerState, 'models' | 'mutationViews'>, m
     .map((expressId) => ({
       modelId,
       expressId,
-      name: store.entities.getName(expressId) || `#${expressId}`,
+      // The live Name: a storey renamed or added this session reads as it is now (#9013).
+      name: effectiveTreeEntityName(store, view, expressId),
       elevation: effectiveStoreyElevation(store, view, expressId),
     }))
     .sort((a, b) => a.elevation - b.elevation || a.expressId - b.expressId);

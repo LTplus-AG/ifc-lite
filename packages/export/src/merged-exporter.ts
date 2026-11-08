@@ -11,10 +11,7 @@
  */
 
 import type { IfcDataStore, IfcSourceBytes } from '@ifc-lite/parser';
-import {
-  IfcParser,
-  asSourceBytes,
-} from '@ifc-lite/parser';
+import { IfcParser, asSourceBytes } from '@ifc-lite/parser';
 import { decodeIfcString, stepStringLiteralEnd } from '@ifc-lite/encoding';
 import { buildMergedHeader } from './merged-header.js';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
@@ -27,6 +24,7 @@ import { firstWrittenOwnerHistoryRef, Ifc2x3SlotFill } from './schema-converter-
 import { Ifc4SlotCheck } from './schema-converter-ifc4-slots.js';
 import { EnumReconciliation } from './schema-converter-enums.js';
 import { assembleStepBytes, assembleStepBlob } from './step-file-assembly.js';
+import { placeObjectsForSchema } from './schema-ifc2x3-placements.js';
 import { getCompleteEntityIndex, getMaxExpressId, type CompleteEntityIndex, type ExportEntityRef } from './entity-iteration.js';
 import { StepExporter } from './step-exporter.js';
 import { rescaleEntityLengths, computeNormalizeFactor } from './unit-normalize.js';
@@ -548,7 +546,7 @@ export class MergedExporter {
 
     // Assemble final file as Uint8Array chunks to avoid V8 string length limit
     if (onProgress) onProgress({ phase: 'assembling', percent: 0.9, entitiesProcessed: allEntityLines.length, entitiesTotal: allEntityLines.length });
-    const content = assembleStepBytes(header, allEntityLines);
+    const content = assembleStepBytes(header, placeObjectsForSchema(schema, allEntityLines)); // #9209
 
     return {
       content,
@@ -715,7 +713,7 @@ export class MergedExporter {
     }
     await new Promise(r => setTimeout(r, 0));
 
-    return { header, allEntityLines, federatedModelCount, normalizedModelCount, normalizeWarnings, droppedContainerCount: containerDrops?.count ?? 0, totalEntities };
+    return { header, allEntityLines: placeObjectsForSchema(schema, allEntityLines), federatedModelCount, normalizedModelCount, normalizeWarnings, droppedContainerCount: containerDrops?.count ?? 0, totalEntities };
   }
 
   /**

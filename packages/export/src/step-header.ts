@@ -32,6 +32,7 @@
 import type { IfcSourceHeader } from '@ifc-lite/parser';
 import { generateHeader } from '@ifc-lite/parser';
 import { assembleStepBytes } from './step-file-assembly.js';
+import { placeObjectsForSchema } from './schema-ifc2x3-placements.js';
 import type { ExportPass, StepExportOptions, StepExportResult } from './step-exporter.js';
 
 /**
@@ -113,7 +114,8 @@ export function assembleExportResult(pass: ExportPass): StepExportResult {
   // Assemble final file as Uint8Array chunks to avoid V8 string length limit.
   // The header is built last so its provenance item reflects the real count.
   const header = pass.buildHeader(pass.newEntityCount + modifiedEntityCount);
-  const content = assembleStepBytes(header, pass.entities);
+  // IFC2X3 places one product per placement (#9209); IFC4 and later pass as written.
+  const content = assembleStepBytes(header, placeObjectsForSchema(pass.schema, pass.entities));
 
   return {
     content,

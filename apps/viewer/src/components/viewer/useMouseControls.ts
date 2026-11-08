@@ -38,6 +38,7 @@ import { invalidateSelectionPick } from './referenceSelection.js';
 import { createHoverPicker } from './hoverPicker.js';
 import { forgetCommandPointer } from '@/lib/commands/modeling/pointer-replay';
 import { routeCommandPointer } from './commandPointer.js';
+import { refuseCaptureHeldPick } from '@/lib/viewport-capture';
 import { createCommandPressController } from './commandPress.js';
 import { handleSelectionClick, handleContextMenu as handleContextMenuSelection } from './selectionHandlers.js';
 import { handleMeasureDoubleClick } from './measurementDoubleClick.js';
@@ -687,7 +688,8 @@ export function useMouseControls(params: UseMouseControlsParams): void {
         // Tiny rect (just a click + tiny twitch) → no-op so we don't
         // accidentally clear selection on a missed Ctrl-click.
         const rectSize = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0));
-        if (rectSize >= 4) {
+        // Nor ids through a capture's frame (#9137): the selection stays as it is.
+        if (rectSize >= 4 && !refuseCaptureHeldPick(renderer)) {
           // pickRect can reject on WebGPU validation / device-loss
           // paths — swallow the error so the pointer event doesn't
           // surface an unhandled rejection. Selection stays

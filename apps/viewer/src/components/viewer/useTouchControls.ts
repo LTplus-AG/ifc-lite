@@ -25,6 +25,7 @@ import { applyDragNavigation, dragNavigationFor, type DragNavigation } from './d
 import { openContextMenuAt } from './contextMenuSelection.js';
 import { createTouchLongPress } from './touchLongPress.js';
 import { withinTapSlop } from './tapSlop.js';
+import { refuseCaptureHeldPick } from '@/lib/viewport-capture';
 
 /** Locked gesture mode for 2-finger interactions */
 type TwoFingerGesture = 'none' | 'pinch' | 'pan';
@@ -314,7 +315,8 @@ export function useTouchControls(params: UseTouchControlsParams): void {
           const x = touchState.tapStartPos.x - rect.left;
           const y = touchState.tapStartPos.y - rect.top;
 
-          if (tool === 'measure') {
+          if (refuseCaptureHeldPick(renderer)) markTouchSelection(canvas, x, y); // not through a capture's frame, nor its compatibility click (#9137)
+          else if (tool === 'measure') {
             // The measure logic lives with the mouse controls; touchstart's
             // preventDefault suppresses the compatibility click, so hand the tap over (#5856).
             routeMeasureTap(canvas, x, y, touchState);

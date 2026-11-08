@@ -4,7 +4,7 @@
 
 /**
  * The placing commands' own bar controls (charter #6232, M2 §1.6), after
- * their typed fields: Wall's Align and Chain, Slab's draw mode and class,
+ * their typed fields: Wall's Align, Top and Chain, Slab's draw mode and class,
  * Beam's class and Chain. Every toggle writes the defaults slice, so the
  * next element, the inspector and the bar agree.
  */
@@ -15,7 +15,7 @@ import { useViewerStore } from '@/store';
 import { updateCommandGesture } from '@/lib/commands/modeling/runtime';
 import type { CommandHudProps } from '@/lib/commands/modeling/types';
 import { initSlabGesture, type SlabPlaceGesture } from '@/lib/commands/modeling/commands/slab-place-geometry';
-import type { BeamClass, SlabClass, SlabDrawMode, WallAlign } from '@/store/slices/authoringDefaultsSlice';
+import type { BeamClass, SlabClass, SlabDrawMode, WallAlign, WallTop } from '@/store/slices/authoringDefaultsSlice';
 import { HudDivider, HudSegmented, HudToggle } from '../../../viewport-ui/hud';
 
 function options<T extends string>(values: readonly T[], keys: Record<T, TranslationKey>, t: (key: TranslationKey) => string) {
@@ -44,9 +44,15 @@ const ALIGN_KEYS: Record<WallAlign, TranslationKey> = {
   right: 'modelingCommand.wall.alignRight',
 };
 
+const TOP_KEYS: Record<WallTop, TranslationKey> = {
+  storeyAbove: 'modelingCommand.wall.topStoreyAbove',
+  fixed: 'modelingCommand.wall.topFixed',
+};
+
 export function WallPlaceBar() {
   const { t } = useTranslation();
   const align = useViewerStore((s) => s.authoringDefaults.wallAlign);
+  const top = useViewerStore((s) => s.authoringDefaults.wallTop);
   const setDefaults = useViewerStore((s) => s.setAuthoringDefaults);
   return (
     <>
@@ -56,6 +62,14 @@ export function WallPlaceBar() {
         options={options(['left', 'centre', 'right'] as const, ALIGN_KEYS, t)}
         value={align}
         onChange={(wallAlign) => setDefaults({ wallAlign })}
+      />
+      <HudDivider />
+      {/* Storey above: the wall follows that storey when it is re-levelled (#9013). */}
+      <HudSegmented
+        aria-label={t('modelingCommand.wall.top')}
+        options={options(['storeyAbove', 'fixed'] as const, TOP_KEYS, t)}
+        value={top}
+        onChange={(wallTop) => setDefaults({ wallTop })}
       />
       <HudDivider />
       <ChainToggle />

@@ -58,7 +58,7 @@ export function writeSpaceEnvelope(tx: AuthoringTransaction, modelId: string, ex
     const add = (type: string, attrs: IfcAttributeValue[]) => draft.addEntity(type, attrs).expressId;
     const n = (v: number) => v / k;
     const emitted = emitClippedProfile(draft, chain.footprint, chain.placementOrigin, envelope.floor - chain.placementOrigin[2], k);
-    const solid = add('IfcExtrudedAreaSolid', [`#${emitted.profile}`, `#${emitted.solidPosition}`, `#${emitted.up}`, n(measures.height)]);
+    const solid = add('IfcExtrudedAreaSolid', [`#${emitted.profile}`, `#${emitted.solidPosition}`, `#${emitted.direction}`, n(measures.height)]);
     let item = solid;
     for (const { a, b, c } of envelope.ceiling) {
       const [x, y, z] = chain.placementOrigin;

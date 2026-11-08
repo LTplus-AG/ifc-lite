@@ -1007,6 +1007,7 @@ export class MutablePropertyView extends MutableOverlayState {
     }
     const oldValue = entityMap.has(index) ? entityMap.get(index)! : null;
     entityMap.set(index, value);
+    this.indexAttributeOverride(entityId);
     this.markOverlayChanged();
 
     const mutation: Mutation = {
@@ -1043,6 +1044,7 @@ export class MutablePropertyView extends MutableOverlayState {
     if (entityMap.size === 0) {
       this.positionalAttrMutations.delete(entityId);
     }
+    this.indexAttributeOverride(entityId);
   }
 
   // ---------------------------------------------------------------------------
@@ -1111,6 +1113,7 @@ export class MutablePropertyView extends MutableOverlayState {
       oldType: baseType,
       predefinedType: predefinedType ?? null,
     });
+    this.indexAttributeOverride(entityId);
 
     const mutation: Mutation = {
       id: generateMutationId(),
@@ -1148,6 +1151,7 @@ export class MutablePropertyView extends MutableOverlayState {
    */
   removeTypeMutation(entityId: number): void {
     if (this.typeMutations.delete(entityId)) this.markOverlayChanged();
+    this.indexAttributeOverride(entityId);
   }
 
   // ---------------------------------------------------------------------------
@@ -1176,6 +1180,7 @@ export class MutablePropertyView extends MutableOverlayState {
       creationId,
     };
     this.newEntities.set(expressId, entity);
+    this.indexAttributeOverride(expressId);
     this.markOverlayChanged();
 
     this.mutationHistory.push({
@@ -1342,6 +1347,7 @@ export class MutablePropertyView extends MutableOverlayState {
     // mutations, newPsets/newQsets, history) — a no-op if this entity was
     // never forgotten (e.g. a plain create with nothing purged).
     this.unstashEntityOverlay(entity.expressId);
+    this.indexAttributeOverride(entity.expressId);
   }
 
   /**
@@ -1443,6 +1449,7 @@ export class MutablePropertyView extends MutableOverlayState {
     if (hasStashedData) {
       this.forgottenEntityOverlay.set(expressId, stash);
     }
+    this.indexAttributeOverride(expressId);
   }
 
   /**
@@ -1792,6 +1799,8 @@ export class MutablePropertyView extends MutableOverlayState {
     this.positionalAttrMutations.clear();
     this.typeMutations.clear();
     this.newEntities.clear();
+    this.overriddenCreations.clear();
+    this.overriddenSourceIds.clear();
     this.tombstones.clear();
     this.forgottenCreatedEntities.clear();
     this.forgottenEntityOverlay.clear();

@@ -52,6 +52,9 @@ export class MutableOverlayState {
   protected positionalAttrMutations: Map<number, Map<number, IfcAttributeValue>> = new Map(); // entityId -> argIndex -> value
   protected typeMutations: Map<number, EntityTypeMutation> = new Map(); // entityId -> retype intent
   protected newEntities: NewEntityMap = new NewEntityMap();
+  // Membership-only rows: no geometry/metadata payload is copied into this index.
+  protected overriddenCreations: NewEntityMap = new NewEntityMap();
+  protected overriddenSourceIds: Set<number> = new Set();
   protected tombstones: Set<number> = new Set();
   /**
    * Ids `createEntity` allocated and `deleteEntity` then forgot (removed from
@@ -109,7 +112,11 @@ export class MutableOverlayState {
   /** Snapshot candidate ids for effective attribute reads. Includes named,
    * positional and type overrides even when written without journal records;
    * callers apply their normal live-entity and attribute-layout checks. */
-  getAttributeOverrideEntityIds(): number[] {
+  getAttributeOverrideEntityIds(createdTypes?: readonly string[]): number[] {
+    if (createdTypes) return [...new Set([
+      ...createdTypes.flatMap(type => [...this.overriddenCreations.ofType(type)].map(row => row.expressId)),
+      ...this.overriddenSourceIds,
+    ])];
     return [...new Set([
       ...this.attributeKeysByEntity.keys(),
       ...this.positionalAttrMutations.keys(),
@@ -135,6 +142,22 @@ export class MutableOverlayState {
 
   protected markOverlayChanged(): void { this.mutationRevision++; }
 
+  /** Narrow creations by effective class; source rows remain conservative
+   * candidates because this overlay does not own the immutable source index. */
+  protected indexAttributeOverride(entityId: number): void {
+    if (!this.attributeKeysByEntity.has(entityId) && !this.positionalAttrMutations.has(entityId) && !this.typeMutations.has(entityId)) {
+      this.overriddenCreations.delete(entityId); this.overriddenSourceIds.delete(entityId); return;
+    }
+    const created = this.newEntities.get(entityId);
+    if (created) {
+      const type = this.typeMutations.get(entityId)?.newType ?? created.type;
+      this.overriddenCreations.set(entityId, { expressId: entityId, type, attributes: [] });
+      this.overriddenSourceIds.delete(entityId);
+    } else {
+      this.overriddenCreations.delete(entityId); this.overriddenSourceIds.add(entityId);
+    }
+  }
+
   protected setAttributeMutation(entityId: number, key: string, mutation: AttributeMutation): void {
     this.attributeMutations.set(key, mutation);
     this.markOverlayChanged();
@@ -144,6 +167,7 @@ export class MutableOverlayState {
       this.attributeKeysByEntity.set(entityId, bucket);
     }
     bucket.add(key);
+    this.indexAttributeOverride(entityId);
   }
 
   protected deleteAttributeMutation(entityId: number, key: string): boolean {
@@ -155,6 +179,7 @@ export class MutableOverlayState {
         bucket.delete(key);
         if (bucket.size === 0) this.attributeKeysByEntity.delete(entityId);
       }
+      this.indexAttributeOverride(entityId);
     }
     return removed;
   }
@@ -298,6 +323,8 @@ export class MutableOverlayState {
       positionalAttrMutations: this.positionalAttrMutations,
       typeMutations: this.typeMutations,
       newEntities: this.newEntities,
+      overriddenCreations: this.overriddenCreations,
+      overriddenSourceIds: this.overriddenSourceIds,
       tombstones: this.tombstones,
       forgottenCreatedEntities: this.forgottenCreatedEntities,
       forgottenEntityOverlay: this.forgottenEntityOverlay,
@@ -316,6 +343,7 @@ export class MutableOverlayState {
     this.markOverlayChanged();
     // A cloned snapshot carries a plain Map: rebuild the class index (#5413).
     this.newEntities = NewEntityMap.from(this.newEntities);
+    this.overriddenCreations = NewEntityMap.from(this.overriddenCreations);
   }
 
   protected matchesOverlayState(state: ReturnType<MutableOverlayState['copyOverlayState']>): boolean {

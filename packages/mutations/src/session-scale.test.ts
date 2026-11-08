@@ -143,3 +143,32 @@ it('compound recording rejects allocator-only edits without journal records #845
   expect(() => recordCompoundMutation(view, draft => draft.setExpressIdWatermark(100))).toThrow('must record its mutations');
   expect(view.peekNextExpressId()).toBe(1);
 });
+
+it('typed override candidates follow writes, retypes, rollback and delete restoration #8452', () => {
+  const view = new MutablePropertyView(null, 'override-index');
+  const relation = view.createEntity('IfcRelAggregates', []);
+  const id = relation.expressId, types = ['IFCRELAGGREGATES'];
+  const candidates = () => view.getAttributeOverrideEntityIds(types).sort((a, b) => a - b);
+  expect(candidates()).toEqual([]);
+  view.setPositionalAttribute(id, 4, ['#99'], true);
+  view.setAttribute(99, 'Name', 'Source edit', undefined, true);
+  expect(candidates()).toEqual([id, 99]); // Source records remain conservative candidates.
+  expect(() => view.runAtomic(draft => {
+    draft.setEntityType(id, 'IfcCartesianPoint');
+    expect(draft.getAttributeOverrideEntityIds(types)).toEqual([99]);
+    throw new Error('rollback');
+  })).toThrow('rollback');
+  expect(candidates()).toEqual([id, 99]);
+  recordCompoundMutation(view, draft => draft.setEntityType(id, 'IfcCartesianPoint'));
+  expect(candidates()).toEqual([99]);
+  undoRecordedMutationOperations(view, 1, () => { throw new Error('Expected compound inverse'); });
+  expect(candidates()).toEqual([id, 99]);
+  view.deleteEntity(id);
+  expect(candidates()).toEqual([99]);
+  view.restoreNewEntity(relation);
+  expect(candidates()).toEqual([id, 99]);
+  view.removePositionalMutation(id, 4);
+  expect(candidates()).toEqual([99]);
+  view.clear();
+  expect(candidates()).toEqual([]);
+});

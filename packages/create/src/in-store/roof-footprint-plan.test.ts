@@ -123,6 +123,12 @@ describe('planFootprintRoof (#9296 round 3)', () => {
     expect(plan.shapeType).toBe('GABLE_ROOF');
   });
 
+  it('a gable end split into two collinear edges is still a gable roof (#9356 review)', () => {
+    const plan = planFootprintRoof([[0, 0], [10, 0], [10, 4], [10, 8], [0, 8]], [0.5, 0, 0, 0.5, 0], 0);
+    expect(plan.shapeType).toBe('GABLE_ROOF');
+    expect(plan.planes).toHaveLength(2);
+  });
+
   it('no sloped edge is a flat roof over the eaves', () => {
     const plan = planFootprintRoof(RECT, [0, 0, 0, 0], 0.5);
     expect(plan.shapeType).toBe('FLAT_ROOF');

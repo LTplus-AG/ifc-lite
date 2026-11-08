@@ -88,13 +88,24 @@ function slopeError(index: number, value: unknown): string | null {
 
 interface Footprint { points: PlanPoint[]; slopes: number[]; edges: number[] }
 
+/** Points closer than this, relative to the outline's size, are one point. */
+const SAME_POINT = 1e-9;
+
+/** The footprint without a repeated closing point: one point per edge start. */
+export function openFootprint(outline: ReadonlyArray<readonly [number, number]>): PlanPoint[] {
+  const points = outline.map((p) => [p[0], p[1]] as PlanPoint);
+  if (points.length < 2) return points;
+  const size = Math.max(...points.map((p) => Math.hypot(p[0] - points[0][0], p[1] - points[0][1])), 1e-12);
+  const closed = points.length > 3 && Math.hypot(...sub(points[0], points[points.length - 1])) <= SAME_POINT * size;
+  return closed ? points.slice(0, -1) : points;
+}
+
 /** Closed, simple, counter-clockwise, with collinear runs of one slope merged. Edge ids map back to the caller's order. */
 function normaliseFootprint(outline: ReadonlyArray<readonly [number, number]>, slopes: readonly number[]): Footprint {
-  let points = outline.map((p) => [p[0], p[1]] as PlanPoint);
-  if (points.some((p) => !Number.isFinite(p[0]) || !Number.isFinite(p[1]))) throw new Error('The footprint has a non-finite point');
+  if (outline.some((p) => !Number.isFinite(p[0]) || !Number.isFinite(p[1]))) throw new Error('The footprint has a non-finite point');
+  let points = openFootprint(outline);
   const size = Math.max(...points.map((p) => Math.hypot(p[0] - points[0][0], p[1] - points[0][1])), 1e-12);
-  const tol = 1e-9 * size;
-  if (points.length > 3 && Math.hypot(...sub(points[0], points[points.length - 1])) <= tol) points = points.slice(0, -1);
+  const tol = SAME_POINT * size;
   const n = points.length;
   if (n < 3) throw new Error('The footprint needs at least three points');
   if (slopes.length !== n) throw new Error(`EdgeSlopes needs one slope per footprint edge (edge i runs from point i to point i+1): the footprint has ${n} edges, EdgeSlopes has ${slopes.length}`);
@@ -183,7 +194,8 @@ export function planFootprintRoof(
 
   const eaves = linesOutline(normals.map((nm, i) => ({ nx: nm[0], ny: nm[1], k: pivots[i] - overhang, s: 0 })), dirs, overhang);
   const sloped = s.map((a) => a > NO_SLOPE);
-  const shapeType = roofShapeType(slopes);
+  // Named from the footprint as roofed: a straight run split in two is one edge.
+  const shapeType = roofShapeType(s);
   if (!sloped.some(Boolean)) return { shapeType, planes: [], eaves, rise: 0 };
 
   // The skeleton starts at the lowest eave; every line is where its plane is at that height.

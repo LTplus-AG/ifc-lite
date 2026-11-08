@@ -9,8 +9,9 @@
  * Each plane is an `IfcExtrudedAreaSolid`: its outline lies in the plane's
  * underside and is swept straight up by the thickness over the cosine of the
  * slope. The roof is then `Thickness` thick square to every plane, with plumb
- * eaves, vertical gable ends and mitred hips and ridges, from one swept-solid
- * kind the kernel already meshes. One `IfcRoof` carrying its own body keeps
+ * eaves and vertical gable ends, from one swept-solid kind the kernel already
+ * meshes. Hips and ridges between planes of one slope meet exactly; where the
+ * slopes differ, the tops meet with a step of Thickness * (1/cos a - 1/cos b). One `IfcRoof` carrying its own body keeps
  * the convention of `IfcCreator.addIfcGableRoof`.
  *
  * The footprint, slopes, overhang and thickness are recorded on the roof as
@@ -27,7 +28,7 @@ import { emitExtrudedSolid, emitPolygonProfile } from './_emit-helpers.js';
 import { getModelLengthUnitScale } from './edit/length-unit-scale.js';
 import { refId } from './host-geometry-frame.js';
 import { AnchorEntityReader } from './resolve-anchor.js';
-import { heightAt, planFootprintRoof, type FootprintRoofPlan, type RoofShapeType } from './roof-footprint-plan.js';
+import { heightAt, openFootprint, planFootprintRoof, type FootprintRoofPlan, type RoofShapeType } from './roof-footprint-plan.js';
 
 export const ROOF_FOOTPRINT_PSET = 'IfcLite_RoofFootprint';
 
@@ -128,12 +129,75 @@ export function emitFootprintRoofBody(
   return { shapeRepId, productShapeId, solidIds, profileIds, plan };
 }
 
-/** Record the definition on the roof, in metres and radians. */
+/** The `IfcLite_RoofFootprint` properties a definition is recorded as, in metres and radians. */
+export function footprintDefinitionProperties(definition: FootprintRoofDefinition): Array<[name: string, value: string | number, type: PropertyValueType]> {
+  return [
+    ['Footprint', JSON.stringify(definition.Footprint), PropertyValueType.Text],
+    ['EdgeSlopes', JSON.stringify(definition.EdgeSlopes), PropertyValueType.Text],
+    ['Overhang', definition.Overhang, PropertyValueType.Real],
+    ['Thickness', definition.Thickness, PropertyValueType.Real],
+  ];
+}
+
+/** Record the definition on the roof. */
 export function writeFootprintDefinition(view: MutablePropertyView, roofId: number, definition: FootprintRoofDefinition): void {
-  view.setProperty(roofId, ROOF_FOOTPRINT_PSET, 'Footprint', JSON.stringify(definition.Footprint), PropertyValueType.Text);
-  view.setProperty(roofId, ROOF_FOOTPRINT_PSET, 'EdgeSlopes', JSON.stringify(definition.EdgeSlopes), PropertyValueType.Text);
-  view.setProperty(roofId, ROOF_FOOTPRINT_PSET, 'Overhang', definition.Overhang, PropertyValueType.Real);
-  view.setProperty(roofId, ROOF_FOOTPRINT_PSET, 'Thickness', definition.Thickness, PropertyValueType.Real);
+  for (const [name, value, type] of footprintDefinitionProperties(definition)) view.setProperty(roofId, ROOF_FOOTPRINT_PSET, name, value, type);
+}
+
+/** The entity kinds a plane solid is built from; nothing else is collected with it. */
+const PLANE_GEOMETRY = new Set([
+  'IFCEXTRUDEDAREASOLID', 'IFCARBITRARYCLOSEDPROFILEDEF', 'IFCRECTANGLEPROFILEDEF', 'IFCPOLYLINE',
+  'IFCCARTESIANPOINT', 'IFCDIRECTION', 'IFCAXIS2PLACEMENT2D', 'IFCAXIS2PLACEMENT3D',
+]);
+
+/**
+ * Remove the replaced planes' solids and what they are built from, where nothing
+ * outside them refers to it. The walk is bounded by a visited set and stops at
+ * anything that is not plane geometry.
+ */
+function removeReplacedPlanes(store: IfcDataStore, draft: StoreEditor, itemIds: readonly number[]): void {
+  const view = draft.getMutationView();
+  const reader = new AnchorEntityReader(store, view);
+  const found = new Set<number>();
+  const stack = [...itemIds];
+  const visit = (value: unknown): void => {
+    if (Array.isArray(value)) { value.forEach(visit); return; }
+    const id = refId(value);
+    if (id !== null) stack.push(id);
+  };
+  while (stack.length > 0) {
+    const id = stack.pop()!;
+    if (found.has(id)) continue;
+    const entity = reader.entity(id);
+    if (!entity || !PLANE_GEOMETRY.has(entity.type.toUpperCase())) continue;
+    found.add(id);
+    entity.attributes.forEach(visit);
+  }
+  const referencers = effectiveReferencers(store, view);
+  // Keep anything still used from outside the replaced planes, and what it uses in turn.
+  for (let changed = true; changed;) {
+    changed = false;
+    for (const id of found) {
+      if (referencers(id).some((parent) => !found.has(parent))) { found.delete(id); changed = true; }
+    }
+  }
+  for (const id of found) draft.removeEntity(id);
+}
+
+function assertRoofEdit(patch: RoofFootprintEdit): void {
+  if (!patch || typeof patch !== 'object' || Array.isArray(patch)) throw new Error('A roof edit must be an object');
+  for (const name of Object.keys(patch)) {
+    if (!['EdgeSlopes', 'Edge', 'Overhang', 'Thickness'].includes(name)) throw new Error(`Unsupported roof edit field ${name}`);
+  }
+  if (patch.EdgeSlopes !== undefined && !Array.isArray(patch.EdgeSlopes)) throw new Error('EdgeSlopes must be an array of radians, one per footprint edge');
+  const edge = patch.Edge as unknown;
+  if (edge !== undefined && (edge === null || typeof edge !== 'object' || Array.isArray(edge)
+    || typeof (edge as { Slope?: unknown }).Slope !== 'number' || !Number.isInteger((edge as { Index?: unknown }).Index))) {
+    throw new Error('Edge must be { Index: footprint edge number, Slope: radians }');
+  }
+  for (const name of ['Overhang', 'Thickness'] as const) {
+    if (patch[name] !== undefined && typeof patch[name] !== 'number') throw new Error(`${name} must be a length in metres`);
+  }
 }
 
 function parseNumbers(value: unknown, pairs: boolean): unknown {
@@ -175,11 +239,9 @@ export function editFootprintRoofInStore(store: IfcDataStore, editor: StoreEdito
     const view = draft.getMutationView();
     const current = readFootprintRoofInStore(store, roofId, view);
     if (!current) throw new Error(`#${roofId} is not a roof by footprint (it has no ${ROOF_FOOTPRINT_PSET} definition)`);
-    for (const name of Object.keys(patch)) {
-      if (!['EdgeSlopes', 'Edge', 'Overhang', 'Thickness'].includes(name)) throw new Error(`Unsupported roof edit field ${name}`);
-    }
+    assertRoofEdit(patch);
     const slopes = [...(patch.EdgeSlopes ?? current.EdgeSlopes)];
-    if (patch.Edge) {
+    if (patch.Edge !== undefined) {
       const { Index } = patch.Edge;
       if (!Number.isInteger(Index) || Index < 0 || Index >= slopes.length) {
         throw new Error(`Edge.Index must be a footprint edge, 0 to ${slopes.length - 1}`);
@@ -198,6 +260,7 @@ export function editFootprintRoofInStore(store: IfcDataStore, editor: StoreEdito
     if (shapeId === null || bodyRepId == null || contextId === null || !Array.isArray(reps) || reps.length !== 1) {
       throw new Error(`The roof #${roofId} no longer has the single Body representation its footprint built`);
     }
+    const oldItems = reader.entity(bodyRepId)?.attributes[3];
     const scale = { lengthUnitScale: getModelLengthUnitScale(store) };
     const body = emitFootprintRoofBody(draft, scale, contextId, next);
     draft.setPositionalAttribute(roofId, 6, `#${body.productShapeId}`);
@@ -205,7 +268,10 @@ export function editFootprintRoofInStore(store: IfcDataStore, editor: StoreEdito
     const referencers = effectiveReferencers(store, view);
     if (referencers(shapeId).length === 0) {
       draft.removeEntity(shapeId);
-      if (referencers(bodyRepId).every((parent) => parent === shapeId)) draft.removeEntity(bodyRepId);
+      if (referencers(bodyRepId).every((parent) => parent === shapeId)) {
+        draft.removeEntity(bodyRepId);
+        removeReplacedPlanes(store, draft, Array.isArray(oldItems) ? oldItems.map(refId).filter((id): id is number => id !== null) : []);
+      }
     }
     if (roof.attributes.length > 8) draft.setPositionalAttribute(roofId, 8, `.${body.plan.shapeType}.`);
     const definition = { ...next, PredefinedType: body.plan.shapeType };
@@ -216,8 +282,10 @@ export function editFootprintRoofInStore(store: IfcDataStore, editor: StoreEdito
 
 /** Footprint params in metres to a recorded definition (lengths as given, in metres). */
 export function footprintDefinition(footprint: Array<[number, number]>, fields: RoofFootprintFields, thickness: number): Omit<FootprintRoofDefinition, 'PredefinedType'> {
-  const slopes = fields.EdgeSlopes ?? footprint.map(() => 0);
+  // One point per edge: a repeated closing point would count an edge that is not there.
+  const points = openFootprint(footprint);
+  const slopes = fields.EdgeSlopes ?? points.map(() => 0);
   if (!Array.isArray(slopes)) throw new Error('EdgeSlopes must be an array of radians, one per footprint edge');
-  return { Footprint: footprint.map((p) => [p[0], p[1]]), EdgeSlopes: [...slopes], Overhang: fields.Overhang ?? 0, Thickness: thickness };
+  return { Footprint: points, EdgeSlopes: [...slopes], Overhang: fields.Overhang ?? 0, Thickness: thickness };
 }
 

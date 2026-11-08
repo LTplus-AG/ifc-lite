@@ -5,6 +5,7 @@
 import { useContext, useEffect, useLayoutEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react';
 import { ChunkErrorBoundary } from '@/components/ChunkErrorBoundary';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
 import { useTranslation } from '@/i18n';
 import { PaletteLauncherContext } from './command-palette-launcher';
 import { PALETTE_DIALOG_LAYOUT, PALETTE_DIALOG_TOP } from './command-palette-layout';
@@ -47,7 +48,7 @@ export function CommandPaletteHost(props: CommandPaletteHostProps) {
       <PaletteLoadDialog {...props}>{fallback}</PaletteLoadDialog>
     )}>
       {!load || composing ? <PaletteLoadDialog {...props}>
-        <input type="search" aria-label={t('commandPalette.searchAriaLabel')}
+        <Input type="search" aria-label={t('commandPalette.searchAriaLabel')}
           placeholder={t('commandPalette.searchPlaceholder')} value={pendingQuery}
           onChange={event => setPendingQuery(event.currentTarget.value)}
           onCompositionStart={() => setComposing(true)}
@@ -55,7 +56,7 @@ export function CommandPaletteHost(props: CommandPaletteHostProps) {
             setPendingQuery(event.currentTarget.value);
             setComposing(false);
           }}
-          className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="h-auto py-2 shadow-none outline-none focus-visible:ring-2"
           autoComplete="off" spellCheck={false} />
         <output className="text-sm text-muted-foreground">{t('shellChrome.statusBar.loadingFallback')}</output>
       </PaletteLoadDialog> : 'error' in load ? <PaletteLoadFailure error={load.error} /> :

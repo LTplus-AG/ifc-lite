@@ -219,6 +219,7 @@ export function useFileCommands(): FileCommands {
   // Preferred Add-Model path: the picker captures a handle per file so the
   // resulting federation can be refreshed. Falls back to the hidden <input>.
   const handleAddModelClick = useCallback(async () => {
+    if (useViewerStore.getState().loading) return;
     if (!supportsFileSystemAccess()) {
       addModelInputRef.current?.click();
       return;
@@ -237,6 +238,7 @@ export function useFileCommands(): FileCommands {
   // Refresh button re-read the same file from disk later (issue #1345). Browsers
   // without the API fall back to the hidden <input type="file">.
   const handleOpenClick = useCallback(async () => {
+    if (useViewerStore.getState().loading) return;
     if (!supportsFileSystemAccess()) {
       fileInputRef.current?.click();
       return;

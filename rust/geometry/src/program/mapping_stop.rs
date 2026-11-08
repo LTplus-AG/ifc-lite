@@ -20,6 +20,8 @@ impl MappingControl<'_> {
                 router.rollback_logical_template(pending.source_id, claim);
             }
         }
+        let (budget, limit, reached) = refusal.details();
+        router.record_budget_refusal(item_id, budget, limit, reached);
         let error = match GeometryRouter::recoverable_source_error(refusal.into_error(item_id)) {
             Ok(error) => error,
             Err(stop) => {
@@ -28,22 +30,17 @@ impl MappingControl<'_> {
                 return;
             }
         };
+        self.logical_stopped = true;
         if self.retained.is_some() {
             self.action = Action::Complete(Err(error));
             return;
         }
-        self.logical_stopped = true;
         let Some(parent) = self.levels.last() else {
             // Root refusal is observable as an error, never a counted drop.
             self.complete(Err(error));
             return;
         };
-        report_drop(
-            DropReason::LogicalStop { item_id },
-            &error,
-            parent.policy,
-            router,
-        );
+        report_drop(DropReason::LogicalStop { item_id }, &error, parent.policy, router);
         for level in &mut self.levels {
             level.truncated = true;
             level.items = Vec::new().into_iter();

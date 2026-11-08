@@ -174,3 +174,12 @@ describe('formatGeometryReport', () => {
     expect(bboxOnly).not.toContain('triangles=');
   });
 });
+
+it('#9268 prints budget refusal identity and demand separately from dropped items', () => {
+  const report = formatGeometryReport(makeDiagnostics({ budgetRefusals: [{
+    budget: 'walk mapped attempts', limit: 65536, reached: 65537,
+    productId: 25, productType: 'IfcFlowTerminal', GlobalId: 'test', sourceId: 22,
+  }] }));
+  expect(report).toContain('Work budget refusal: walk mapped attempts limit=65536 reached=65537 product=#25 IfcFlowTerminal GlobalId=test source=#22');
+  expect(report).not.toContain('Dropped representation items');
+});

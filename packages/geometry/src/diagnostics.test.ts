@@ -251,3 +251,11 @@ describe('the streaming `complete` event payload (buildGeometryWorkerCompleteMes
     expect(wh.triangleCount).toBeUndefined();
   });
 });
+
+it('#9268 preserves budget refusals through worker/batch merging', () => {
+  const refusal = { budget: 'walk mapped attempts', limit: 65536, reached: 65537,
+    productId: 25, productType: 'IfcFlowTerminal', GlobalId: 'test', sourceId: 22 };
+  const merged = mergeGeometryDiagnostics(make({ budgetRefusals: [refusal] }), make());
+  expect(merged?.budgetRefusals).toEqual([refusal]);
+  expect(merged?.totalUnsupportedItems).toBeUndefined();
+});

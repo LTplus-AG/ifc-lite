@@ -11,11 +11,16 @@ use std::sync::Arc;
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct LogicalRefusal {
     limit: u32,
+    reached: u64,
+    budget: &'static str,
 }
 impl LogicalRefusal {
+    pub(super) fn details(self) -> (&'static str, u32, u64) { (self.budget, self.limit, self.reached) }
     pub(super) fn into_error(self, item: u32) -> Error {
         crate::representation::WalkRefusal::Budget {
             max_levels: self.limit,
+            budget: self.budget,
+            reached: self.reached,
         }
         .into_error(item)
     }
@@ -73,7 +78,7 @@ impl LogicalBudget {
             .ok()
             .and_then(|count| used.checked_add(count))
             .filter(|next| *next <= limit)
-            .ok_or(LogicalRefusal { limit })?;
+            .ok_or_else(|| LogicalRefusal { limit, reached: u64::from(*used).saturating_add(count as u64), budget: "logical Items members" })?;
         *used = next;
         Ok(())
     }
@@ -90,7 +95,7 @@ impl LogicalBudget {
     /// Enter a mapped item. Every attempt pays, distinct item or not: each one
     /// expands a shared source, so it is the amplifier this meter bounds.
     pub(super) fn mapped_attempt(&mut self) -> std::result::Result<(), LogicalRefusal> {
-        Self::debit(&mut self.maps, 1, self.limit)
+        Self::debit(&mut self.maps, 1, self.limit).map_err(|mut refusal| { refusal.budget = "logical mapped attempts"; refusal })
     }
     /// Materialize representation `rep`'s Items `members`. A repeated list
     /// pays every member, and a first read every repeated reference within

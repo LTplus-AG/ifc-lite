@@ -178,3 +178,17 @@ fn a_failed_host_is_not_also_a_silent_no_op() {
     assert!(lines.iter().any(|(_, line)| line.starts_with("[IFC-LITE] Rectangular cut SILENT NO-OP on 1 hosts ")));
     assert!(lines.iter().any(|(_, line)| line.contains("  #2 IfcWall — 0 openings, 1 CSG failure(s) (EmptyOperand)")));
 }
+
+#[test]
+fn issue_9268_budget_refusal_prints_its_own_class_and_identity() {
+    let mut diag = GeometryDiagnostics::default();
+    // Deserialize so reverting production still compiles and fails an assertion.
+    let mut json = serde_json::to_value(&diag).unwrap();
+    json["budgetRefusals"] = serde_json::json!([{
+        "budget": "walk mapped attempts", "limit": 65536, "reached": 65537,
+        "productId": 25, "productType": "IfcFlowTerminal", "GlobalId": "0000000000000000000001", "sourceId": 22
+    }]);
+    diag = serde_json::from_value(json).unwrap();
+    assert_eq!(console_summary(&diag), vec![(Level::Warn,
+        "[IFC-LITE] Work budget refusal: walk mapped attempts limit=65536 reached=65537 product=#25 IfcFlowTerminal GlobalId=0000000000000000000001 source=#22".into())]);
+}

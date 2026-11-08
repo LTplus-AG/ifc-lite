@@ -1,0 +1,71 @@
+// SPDX-License-Identifier: MPL-2.0
+//! #9268: real walk refusal through the public native processing API.
+use ifc_lite_processing::process_geometry;
+fn source(items: usize) -> String {
+    let ids: Vec<String> = (0..items).map(|i| format!("#{}", 1000 + i)).collect();
+    let members: String = ids
+        .iter()
+        .map(|id| format!("{id}=IFCSHELLBASEDSURFACEMODEL((#7));\n"))
+        .collect();
+    format!(
+        "ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('mapped breadth regression'),'2;1');
+FILE_NAME('mapped.ifc','2026-11-06T00:00:00',(),(),'','','');
+FILE_SCHEMA(('IFC2X3'));
+ENDSEC;
+DATA;
+#1=IFCCARTESIANPOINT((0.,0.,0.));
+#2=IFCCARTESIANPOINT((1.,0.,0.));
+#3=IFCCARTESIANPOINT((0.,1.,0.));
+#4=IFCPOLYLOOP((#1,#2,#3));
+#5=IFCFACEOUTERBOUND(#4,.T.);
+#6=IFCFACE((#5));
+#7=IFCOPENSHELL((#6));
+#9=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#1,1.,$);
+#10=IFCAXIS2PLACEMENT3D(#1,$,$);
+#11=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,0.00001,#10,$);
+#20=IFCSHAPEREPRESENTATION(#11,'Body','SurfaceModel',({}));
+#21=IFCREPRESENTATIONMAP(#10,#20);
+#22=IFCMAPPEDITEM(#21,#9);
+#23=IFCSHAPEREPRESENTATION(#11,'Body','MappedRepresentation',(#22));
+#24=IFCPRODUCTDEFINITIONSHAPE($,$,(#23));
+#25=IFCFLOWTERMINAL('0000000000000000000001',$,'synthetic mapped surface',$,$,$,#24,$);
+{members}ENDSEC;
+END-ISO-10303-21;
+",
+        ids.join(",")
+    )
+}
+
+#[test]
+fn issue_9268_budget_refusal_is_not_an_unsupported_mapped_item() {
+    let members = vec!["#22"; 65_538].join(",");
+    let content = source(1).replace("MappedRepresentation',(#22)", &format!("MappedRepresentation',({members})"));
+    let result = process_geometry(content.as_bytes());
+    let diag = result.stats.geometry_diagnostics.expect("budget refusal is diagnostic-worthy");
+    let json = serde_json::to_value(&diag).unwrap();
+    assert_eq!(json["totalUnsupportedItems"], 0, "budget refusal is not unsupported");
+    assert_eq!(json["totalCsgFailures"], 0);
+    let refusals = json["budgetRefusals"].as_array().expect("distinct budget class");
+    assert_eq!(refusals.len(), 1);
+    let refusal = &refusals[0];
+    assert_eq!(refusal["budget"], "walk Items members");
+    assert_eq!(refusal["limit"], 65_536);
+    assert_eq!(refusal["reached"], 65_538);
+    assert_eq!(refusal["productId"], 25);
+    assert_eq!(refusal["productType"], "IfcFlowTerminal");
+    assert_eq!(refusal["GlobalId"], "0000000000000000000001");
+    assert_eq!(refusal["sourceId"], 23);
+}
+
+#[test]
+fn issue_9268_real_unsupported_item_stays_unsupported() {
+    let content = source(1).replace("#1000=IFCSHELLBASEDSURFACEMODEL((#7));", "#1000=IFCCARTESIANPOINT((0.,0.,0.));");
+    let result = process_geometry(content.as_bytes());
+    let diag = result.stats.geometry_diagnostics.expect("unsupported item diagnostic");
+    assert_eq!(diag.total_unsupported_items, 1);
+    assert_eq!(diag.unsupported_items_by_type[0].reason, "IfcCartesianPoint");
+    let json = serde_json::to_value(diag).unwrap();
+    assert!(json.get("budgetRefusals").is_none());
+}

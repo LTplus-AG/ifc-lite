@@ -152,7 +152,7 @@ fn issue_7781_skip_and_stop_suppress_only_post_entry_items_work() {
             assert_eq!(denied.events, ["refuse 10 depth 0 shape None"]);
             assert!(matches!(
                 denied.refusals[0].1,
-                WalkRefusal::Budget { max_levels: 0 }
+                WalkRefusal::Budget { max_levels: 0, .. }
             ));
         }
     }
@@ -218,7 +218,7 @@ fn issue_7781_nested_overbudget_items_report_once_before_decode_and_unwind() {
     assert_eq!(trace.refusals.len(), 1);
     assert!(matches!(
         trace.refusals[0],
-        (20, WalkRefusal::Budget { max_levels: 3 })
+        (20, WalkRefusal::Budget { max_levels: 3, .. })
     ));
     // Root list was already fully decoded; #1 is cached but never visited.
     assert!(d.get_cached(1).is_some());
@@ -339,7 +339,7 @@ fn issue_7781_typed_refusals_preserve_missing_unresolved_and_decode_distinctions
     for (why, text) in [
         (WalkRefusal::Cyclic, "Detected cyclic IfcMappedItem reference at #42"),
         (WalkRefusal::TooDeep { max_depth: 3 }, "MappedItem nesting exceeded maximum depth of 3 at #42"),
-        (WalkRefusal::Budget { max_levels: 2 }, "Representation expansion exceeded the work budget of 2 levels or item references at #42"),
+        (WalkRefusal::Budget { max_levels: 2, budget: "walk mapped attempts", reached: 3 }, "Representation expansion exceeded the work budget of 2 levels or item references at #42"),
     ] {
         assert_eq!(why.into_error(42).to_string(), format!("Geometry processing error: {text}"));
     }

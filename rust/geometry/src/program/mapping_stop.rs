@@ -21,7 +21,7 @@ impl MappingControl<'_> {
             }
         }
         let (budget, limit, reached) = refusal.details();
-        let error = match GeometryRouter::recoverable_source_error(refusal.into_error(item_id)) {
+        let error = match GeometryRouter::recoverable_source_error(refusal.to_error(item_id)) {
             Ok(error) => error,
             Err(stop) => {
                 let event = self.fail_level(stop, router);

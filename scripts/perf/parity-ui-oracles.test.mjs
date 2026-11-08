@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { copiedPlansMatch, hasDwgDownload, assignedTypes, uniqueWallJoins, hardwareAdapter, loadTarget, ownOpenings, themedResult, wallPropertySets, wallQuantityCoverage } from '../../tests/modelling-parity/ui/lib/oracles.mjs';
+import { wallEndpointsJoined, copiedPlansMatch, hasDwgDownload, assignedTypes, uniqueWallJoins, hardwareAdapter, loadTarget, ownOpenings, themedResult, wallPropertySets, wallQuantityCoverage } from '../../tests/modelling-parity/ui/lib/oracles.mjs';
 import { readStep } from '../../tests/modelling-parity/ui/lib/step.mjs';
 test('#9324 fallback flags and software adapter descriptions are refused',()=>{
   assert.equal(hardwareAdapter({architecture:'blackwell'}),true);
@@ -75,4 +75,14 @@ test('#9324 joins between the same walls retain distinct endpoints', () => {
 
 test('#9324 malformed products cannot contribute counts or relationships', () => {
   assert.throws(() => readStep("DATA;#42=IFCDOOR(BROKEN);#43=IFCRELFILLSELEMENT('r',$,$,$,#1,#42);ENDSEC;"), /STEP parse error/);
+});
+
+test('#9324 repeated pairs cannot stand in for all four joined corners', () => {
+  const walls = "#1=IFCWALL('a');#2=IFCWALL('b');#3=IFCWALL('c');#4=IFCWALL('d');";
+  const link = (id,a,b,start,end) => `#${id}=IFCRELCONNECTSPATHELEMENTS('r',$,$,$,$,#${a},#${b},(),(),.${end}.,.${start}.);`;
+  const repeated = readStep('DATA;'+walls+link(5,1,2,'ATSTART','ATSTART')+link(6,1,2,'ATSTART','ATEND')+link(7,1,2,'ATEND','ATSTART')+link(8,1,2,'ATEND','ATEND')+'ENDSEC;');
+  assert.equal(uniqueWallJoins(repeated),4);
+  assert.equal(wallEndpointsJoined(repeated),false);
+  const ring = readStep('DATA;'+walls+[1,2,3,4].map((id,i)=>link(5+i,id,id%4+1,'ATEND','ATSTART')).join('')+'ENDSEC;');
+  assert.equal(wallEndpointsJoined(ring),true);
 });

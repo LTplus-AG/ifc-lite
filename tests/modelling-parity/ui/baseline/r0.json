@@ -122,7 +122,7 @@
       "probe": "ui",
       "id": "ui.wall-chain",
       "title": "Draw a closed 5x4 m wall chain by clicking corners",
-      "status": "pass",
+      "status": "partial",
       "metrics": {
         "ms": 2142,
         "actions": 7,
@@ -148,8 +148,8 @@
         },
         {
           "name": "corners auto-joined (4 IfcRelConnectsPathElements)",
-          "ok": true,
-          "detail": "4 joins"
+          "ok": false,
+          "detail": "unmeasured: retained baseline has a join count but no per-wall endpoint coverage"
         }
       ],
       "tasks": [
@@ -175,7 +175,8 @@
       },
       "artifacts": {
         "ifc": "artifacts/wall-chains-autojoin/ui.wall-chain.ifc"
-      }
+      },
+      "reason": "wall endpoint connectivity is unmeasured in the retained round-0 evidence (#9328)"
     },
     {
       "schema": "ifclite-parity-result/1",
@@ -1285,7 +1286,7 @@
       "mode": "ui",
       "id": "F1.ui",
       "title": "A room, 5x4 m, with a door, window, floor slab and space",
-      "status": "pass",
+      "status": "partial",
       "metrics": {
         "ms": 12007,
         "actions": 48,
@@ -1302,8 +1303,8 @@
         },
         {
           "name": "walls joined at every corner (4 joins)",
-          "ok": true,
-          "detail": "4"
+          "ok": false,
+          "detail": "unmeasured: retained baseline has a join count but no per-wall endpoint coverage"
         },
         {
           "name": "1 door(s)",
@@ -1417,7 +1418,8 @@
       ],
       "artifacts": {
         "ifc": "artifacts/F1/F1.ui.ifc"
-      }
+      },
+      "reason": "wall endpoint connectivity is unmeasured in the retained round-0 evidence (#9328)"
     },
     {
       "schema": "ifclite-parity-result/1",

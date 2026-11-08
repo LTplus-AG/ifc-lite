@@ -55,6 +55,21 @@ export function uniqueWallJoins(step) {
   })).size;
 }
 
+/** Counts alone cannot establish that every wall endpoint is joined. */
+export function wallEndpointsJoined(step) {
+  const walls = new Set(step.of('IFCWALL').map(w => w.id));
+  if (!walls.size) return false;
+  const joined = new Set();
+  for (const rel of step.of('IFCRELCONNECTSPATHELEMENTS')) {
+    const a = rel.args?.[5]?.ref, b = rel.args?.[6]?.ref;
+    if (a === b || !walls.has(a) || !walls.has(b)) continue;
+    for (const [id, endpoint] of [[a, rel.args?.[10]?.enum], [b, rel.args?.[9]?.enum]]) {
+      if (endpoint === 'ATSTART' || endpoint === 'ATEND') joined.add(`${id}:${endpoint}`);
+    }
+  }
+  return [...walls].every(id => joined.has(`${id}:ATSTART`) && joined.has(`${id}:ATEND`));
+}
+
 export function hasDwgDownload(download) {
   return !!download?.bytes && /^AC10[0-9]{2}$/.test(download.bytes.subarray(0, 6).toString());
 }

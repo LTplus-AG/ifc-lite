@@ -21,7 +21,7 @@
  * - `notes`: where the UI blocked or misled, in plain words.
  */
 
-import { copiedPlansMatch, uniqueWallJoins, hasDwgDownload, assignedTypes, ownOpenings, wallPropertySets, wallQuantityCoverage } from './lib/oracles.mjs';
+import { copiedPlansMatch, uniqueWallJoins, wallEndpointsJoined, hasDwgDownload, assignedTypes, ownOpenings, wallPropertySets, wallQuantityCoverage } from './lib/oracles.mjs';
 import { downloadCount, nextDownload, task } from './lib/driver.mjs';
 import {
   escape, hudText, oracleModel, openStoreyManager, readSession, readStoreyManager, switchStorey, tool, toasts, typeFields,
@@ -189,7 +189,7 @@ export const PROBES = [
           { name: '4 walls', ok: axes.length === 4, detail: `${axes.length} walls` },
           { name: 'corners within 50 mm of the clicked points', ok: onTarget, detail: axes.map((a) => `${fmt(a.start)}->${fmt(a.end)}`).join(' ') },
           { name: 'loop closed exactly (snapped to the first point)', ok: closed, detail: closed ? 'closed' : 'open' },
-          { name: 'corners auto-joined (4 IfcRelConnectsPathElements)', ok: joins >= 4, detail: `${joins} joins` },
+          { name: 'corners auto-joined (4 IfcRelConnectsPathElements)', ok: joins >= 4 && wallEndpointsJoined(step), detail: `${joins} joins` },
         ],
         metrics: { cameraJumps: s.counters.cameraJumps },
       };

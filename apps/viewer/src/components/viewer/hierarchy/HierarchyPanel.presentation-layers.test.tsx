@@ -310,3 +310,48 @@ describe('Presentation layers hierarchy (#7619)', () => {
     assert.match(container.textContent ?? '', /No presentation layers/);
   });
 });
+
+// #9272: real parsed mixed-class, multi-layer fixture drives row actions.
+for (const mode of ['none', 'class', 'classification'] as const) {
+  it(`#9272 ${mode} layer rows select and toggle exactly their members`, async () => {
+    const mixed = await model(`layer-subgroups-${mode}`);
+    const content = IFC.replace("#50=IFCPRESENTATIONLAYERASSIGNMENT('Walls',$,(#21),$);",
+      "#50=IFCPRESENTATIONLAYERASSIGNMENT('Walls',$,(#21,#41),$);")
+      .replace('ENDSEC;\nEND-ISO', `
+#9=IFCDOOR('0GUID000000000000000009',$,'Layer door',$,$,$,#40,$,$,$,$,$,$);
+#40=IFCPRODUCTDEFINITIONSHAPE($,$,(#41));
+#41=IFCSHAPEREPRESENTATION($,'Body','SweptSolid',(#42));
+#42=IFCEXTRUDEDAREASOLID($,$,$,1.);
+#60=IFCCLASSIFICATION($,$,$,'Uniclass',$,$,$);
+#61=IFCCLASSIFICATIONREFERENCE($,'EF_25','Walls',#60,$,$);
+#62=IFCRELASSOCIATESCLASSIFICATION('0GUID000000000000000062',$,$,$,(#7),#61);
+ENDSEC;\nEND-ISO`);
+    mixed.ifcDataStore = await new IfcParser().parseColumnar(new TextEncoder().encode(content).buffer);
+    mixed.geometryResult = geometry([7, 8, 9]);
+    const container = await mount(mixed);
+    const control = container.querySelector<HTMLSelectElement>('select[aria-label="Group layer elements"]');
+    assert.ok(control);
+    assert.equal(control.value, 'none', 'every new panel starts with the unchanged flat mode');
+    act(() => { control.value = mode; control.dispatchEvent(new Event('change', { bubbles: true })); });
+    click(button(layerRows(container)[0], 'Expand Walls'));
+    const name = mode === 'class' ? 'IfcWall' : mode === 'classification' ? 'Uniclass: EF_25' : 'Layer wall';
+    const row = [...container.querySelectorAll<HTMLElement>('[role="treeitem"]')]
+      .find(row => row.textContent?.includes(name));
+    assert.ok(row, `${name} renders`);
+    click(row);
+    assert.deepEqual(useViewerStore.getState().selectedEntityIds, new Set([7]));
+    click(button(row, `Hide ${name}`));
+    assert.deepEqual(useViewerStore.getState().hiddenEntities, new Set([7]));
+    click(button(row, `Show ${name}`));
+    assert.deepEqual(useViewerStore.getState().hiddenEntities, new Set());
+    if (mode === 'classification') {
+      const unclassified = [...container.querySelectorAll<HTMLElement>('[role="treeitem"]')]
+        .find(row => row.textContent?.includes('Unclassified'));
+      assert.ok(unclassified, 'unclassified doors are never dropped');
+      click(unclassified);
+      assert.deepEqual(useViewerStore.getState().selectedEntityIds, new Set([9]));
+      click(button(unclassified, 'Hide Unclassified'));
+      assert.deepEqual(useViewerStore.getState().hiddenEntities, new Set([9]));
+    }
+  });
+}

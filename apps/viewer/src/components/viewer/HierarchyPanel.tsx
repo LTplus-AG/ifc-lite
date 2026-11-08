@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { LayerGroupingControl } from './hierarchy/LayerGroupingControl';
+
 import { useState, useCallback, useRef, useMemo } from 'react';
 import { useTranslation } from '@/i18n';
 import { useVirtualizer } from '@tanstack/react-virtual';
@@ -136,6 +138,7 @@ export function HierarchyPanel() {
     setSearchQuery,
     groupingMode,
     setGroupingMode,
+    layerGrouping, setLayerGrouping,
     sortMode,
     setSortMode,
     groupFilter,
@@ -382,7 +385,7 @@ export function HierarchyPanel() {
     }
     const actions: HierarchyRowAction[] = [];
     if (getNodeElements(node).length > 0) actions.push('isolate');
-    if (node.type === 'type-group' || node.type === 'ifc-type' ||
+    if ((node.type === 'type-group' && !node.id.startsWith('presentation-layer-')) || node.type === 'ifc-type' ||
         node.type === 'material-group' || node.type === 'group') actions.push('filter');
     return actions;
   }, [getNodeElements]);
@@ -667,7 +670,9 @@ export function HierarchyPanel() {
         icon={groupingMode === 'spatial' ? Building2 : groupingMode === 'type' ? Shapes : groupingMode === 'material' ? Palette : groupingMode === 'groups' ? Network : groupingMode === 'presentation-layers' ? Layers3 : FileBox}
         title={singleTreeSectionTitle}
         count={filteredNodes.length}
-        actions={groupingMode === 'spatial'
+        actions={groupingMode === 'presentation-layers'
+          ? <LayerGroupingControl value={layerGrouping} onChange={setLayerGrouping} />
+          : groupingMode === 'spatial'
           ? <><HierarchySortControl value={sortMode} onChange={setSortMode} /><StoreyFloorplanButton /></>
           : undefined}
       />

@@ -5,6 +5,12 @@
 import type { Catalogue } from '../../registry';
 
 export const hierarchyDe = {
+  "hierarchy.layerGrouping.label": "Elemente im Layer gruppieren",
+  "hierarchy.layerGrouping.none": "Keine",
+  "hierarchy.layerGrouping.class": "Klasse",
+  "hierarchy.layerGrouping.classification": "Klassifikation",
+  "hierarchy.layerGrouping.unclassified": "Nicht klassifiziert",
+
   "hierarchy.node.repositionAriaLabel": "Modell {name} neu positionieren",
   "hierarchy.node.repositionTooltip": "Modell neu positionieren",
   "hierarchy.node.hideModelAriaLabel": "Modell {name} ausblenden",

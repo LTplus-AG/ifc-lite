@@ -201,3 +201,42 @@ test('#7619 curve-only annotation layers retain overlay owner IDs for hide/show 
   assert.ok(annotation);
   assert.equal(annotation.noGeometry, false);
 });
+
+test('#9272 optional layer grouping preserves flat rows, counts and exact selection/geometry membership', async () => {
+  const content = IFC.replace('ENDSEC;\nEND-ISO', `
+#5=IFCDOOR('0GUID000000000000000005',$,'Door',$,$,$,#14,$,$,$,$,$,$);
+#14=IFCPRODUCTDEFINITIONSHAPE($,$,(#24));
+#24=IFCSHAPEREPRESENTATION($,'Body','SweptSolid',(#34));
+#34=IFCEXTRUDEDAREASOLID($,$,$,1.);
+#54=IFCPRESENTATIONLAYERASSIGNMENT('Mixed',$,(#21,#24,#23),$);
+#60=IFCCLASSIFICATION($,$,$,'Uniclass',$,$,$);
+#61=IFCCLASSIFICATIONREFERENCE($,'EF_25','Walls',#60,$,$);
+#62=IFCRELASSOCIATESCLASSIFICATION('0GUID000000000000000062',$,$,$,(#2),#61);
+ENDSEC;\nEND-ISO`);
+  const store = await new IfcParser().parseColumnar(new TextEncoder().encode(content).buffer);
+  const build = (mode?: 'none' | 'class' | 'classification') => buildPresentationLayerTree(
+    new Map(), store, ALL, new Set([2, 3, 5]), new Set(['legacy']), undefined, mode);
+  assert.deepEqual(build(), build('none'), 'none is byte-for-byte the existing flat row projection');
+  assert.equal(build().some(row => row.type === 'type-group'), false);
+  for (const mode of ['class', 'classification'] as const) {
+    const nodes = build(mode);
+    const mixed = nodes.find(row => row.entityExpressId === 54)!;
+    assert.equal(mixed.elementCount, 3);
+    const groups = nodes.filter(row => row.type === 'type-group' && row.id.startsWith(mixed.id));
+    assert.equal(groups.length, 2);
+    assert.deepEqual(groups.map(row => row.elementCount).sort(), [1, 2]);
+    const wall = groups.find(row => row.name === (mode === 'class' ? 'IfcWall' : 'Uniclass: EF_25'))!;
+    assert.ok(wall);
+    assert.deepEqual(wall.globalIds, [2], 'non-geometric members are selectable but never visibility targets');
+    assert.deepEqual(wall.memberGlobalIds, mode === 'class' ? [4, 2] : [2]);
+    const selected = hierarchyRowSelection(wall, new Map(), id => ({ modelId: 'legacy', expressId: id }));
+    assert.deepEqual(selected.map(item => item.globalId), wall.memberGlobalIds);
+    const unclassified = groups.find(row => row.name === 'Unclassified');
+    if (mode === 'classification') {
+      assert.ok(unclassified);
+      assert.deepEqual(new Set(unclassified.memberGlobalIds), new Set([4, 5]));
+      assert.deepEqual(unclassified.globalIds, [5]);
+    }
+    for (const group of groups) assert.equal(nodes.filter(row => row.id.startsWith(`${group.id}-product-`)).length, group.elementCount);
+  }
+});

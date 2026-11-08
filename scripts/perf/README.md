@@ -60,6 +60,24 @@ the wrong query plan for selection. Cache small declarations and follow the sele
 shape, rather than making the first click or every authoring revision pay for every
 other product in the model.
 
+## Session authoring envelope (#8452, part of #9296)
+
+The pre-change CPU profile attributes ordinary creation primarily to whole-overlay
+cloning, whole-overlay deep comparison, and collection of snapshot garbage,
+in that order. Rebuilding class indices also repeats at each publication. A
+no-op pays those costs, and nested builder transactions multiply them.
+
+Synchronous edits now stage sparse entry copies and history appends, publish
+only changed entries, and derive compound inverses from those entries. Escaping
+prepared transactions retain exact snapshot validation. Copy source resolution
+uses authored reference buckets plus edited-slot candidates, with effective
+slot checks; metadata cloning asks for one entity's changes. Schema names use
+one finite-operation snapshot. The deterministic regression counts unrelated
+payload reads, rather than timing a host that may be running other jobs.
+
+Timing qualification and the F5 verdict are still pending; no measured scale
+acceptance is claimed by the structural guard alone.
+
 ## First selection reads typing relationships from the graph (#9192)
 
 **Shipped: the scan is gone, not made cheaper.** `readCurrentTypeQuantities` read every

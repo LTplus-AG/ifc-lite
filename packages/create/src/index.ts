@@ -182,6 +182,7 @@ export { arrayCopyTransforms, type CopyArrayParams } from './in-store/copy-array
 export type { CopyTransform } from './in-store/copy-product.js';
 
 export { setElementSizeInStore } from './in-store/element-size-edit.js';
+export { configureAuthoredQuantityReader } from './in-store/configure-authored-quantities.js';
 export { deriveAuthoredBaseQuantities } from './in-store/base-quantities.js';
 export { resizeWallInStore } from './in-store/wall-size-edit.js';
 

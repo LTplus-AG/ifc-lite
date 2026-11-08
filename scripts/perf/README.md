@@ -8,28 +8,35 @@ Citations to `evidence/`, `tests/evidence/` and `docs/architecture/evidence/` pa
 at commit [`f98785c722`](https://github.com/LTplus-AG/ifc-lite/tree/f98785c722); the retained
 bundles left the tree in #9054.
 
-## The QuickJS runtime leaves the eager sandbox chunk (#9200)
+## Storey planners and the QuickJS runtime leave the boot path (#9200)
 
-**Shipped: a small eager-bytes cut, no boot-time change.** The viewer's `sandbox`
-manual chunk is eager, because eager code imports `SandboxAbortError` and the bridge
-schema. A recursive group also takes every dependency of its modules, so it carried the
-QuickJS runtime core, which only a script run needs. A non-recursive, higher-priority
-group now claims that core, except `quickjs-emscripten-core`'s index, which eager code
-does reach. The first script run fetches it as one extra lazy file.
-`@ifc-lite/create` now declares `sideEffects: false`, and `@ifc-lite/sdk` lists only its
-index, which registers the schema normalizer at load. That declaration took three
-`create` modules off the boot path.
+**Shipped: an eager-bytes cut, no boot-time change.** Three changes, each one
+synchronous with no behaviour change:
 
-Lessons. Most of `create` is eager for a real reason: the boot path calls
-`createModellingStoreBackend`, which builds one object holding every modelling method,
-the storey planner included. No chunk rule or `sideEffects` flag can split a static
-use. Moving the planner off the boot path means splitting that factory. Making the whole
-`sandbox` group non-recursive saved slightly fewer bytes. Default splitting broke the
-old chunk into 19 more small eager files, and boot to the welcome card measured about
-20 ms slower unthrottled. So check the eager file count, not only the byte total, and
-measure boot with each build in both A/B positions: on a shared host, position alone
-moved the result by about 15 ms. A group that claimed every QuickJS module also failed,
-because the one eager module in it made the whole group eager.
+- The viewer's startup modules reference `createModellingStoreBackend` statically and
+  call it only when an edit runs. That factory spread `createStoreyStoreBackend`, so it
+  linked every storey planner, although the viewer's `bim.store` storey methods come from
+  its own storey adapter, which loads on first use. The viewer now uses
+  `createModellingStoreBackendWithoutStoreys`, and the full factory is that plus the
+  storey methods, unchanged for the CLI and headless backends.
+- The `sandbox` manual chunk is eager (eager code imports `SandboxAbortError` and the
+  bridge schema). As a recursive group it also took the QuickJS runtime core, which only
+  a script run needs. A non-recursive, higher-priority group now claims that core, except
+  `quickjs-emscripten-core`'s index, which eager code does reach.
+- `@ifc-lite/create` declares `sideEffects: false`. `@ifc-lite/sdk` lists only its index,
+  which registers the schema normalizer at load.
+
+Lessons. The bundler splits by module, not by function. The storey-free factory first
+lived in the same module as the full one. The lazy headless backend still used the full
+factory, so the shared module stayed eager and kept its import of the storey backend:
+zero bytes saved until the factory moved to its own module. Storey code that
+`ordinary-element` and `copy-attachment` really use at boot (the storey model, top
+constraints, attachments) stays eager. Making the whole `sandbox` group non-recursive
+saved fewer bytes and broke the old chunk into 19 more small eager files, and boot to
+the welcome card measured about 20 ms slower unthrottled. So check the eager file count,
+not only the byte total, and measure boot with each build in both A/B positions: on a
+shared host, position alone moved the result by about 15 ms. A group that claimed every
+QuickJS module also failed, because the one eager module in it made the whole group eager.
 
 ## First selection reads typing relationships from the graph (#9192)
 

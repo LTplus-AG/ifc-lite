@@ -23,7 +23,7 @@
 import type { StoreEditor } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { removeStairInStore } from '@ifc-lite/create';
-import type { createModellingStoreBackend, EntityRef } from '@ifc-lite/sdk';
+import type { createModellingStoreBackendWithoutStoreys, EntityRef, ModellingStoreBackendMethods } from '@ifc-lite/sdk';
 import { createStoreMutationTracker } from './store-adapter-cost.js';
 import { normalizeMutationModelId } from './mutation-view.js';
 import { editHostedFillIn, type HostedFillSpec } from '@/store/slices/mutation-hosted-fill';
@@ -41,13 +41,14 @@ import { physicalMutationTracking } from './store-adapter-physical.js';
 import { storeyMutationTracking } from './store-adapter-storey.js';
 import { completeEntityRemoval } from '@/store/slices/mutation-mesh-stash';
 
-type ModellingMethods = ReturnType<typeof createModellingStoreBackend>;
+type ModellingMethods = ReturnType<typeof createModellingStoreBackendWithoutStoreys>;
 
+/** `methods` has no storey methods; the result takes them from `storeyMutationTracking` (#9200). */
 export function withModellingMutationTracking(
   methods: ModellingMethods,
   store: StoreApi,
   resolve: (modelId: string) => { editor: StoreEditor; dataStore: IfcDataStore } | null,
-): ModellingMethods {
+): ModellingStoreBackendMethods {
   const { create, relationship } = createStoreMutationTracker(store, resolve, 'modelling');
   const compound = <A extends [string, ...unknown[]]>(fn: (...args: A) => EntityRef) =>
     relationship((...args: A): EntityRef => {

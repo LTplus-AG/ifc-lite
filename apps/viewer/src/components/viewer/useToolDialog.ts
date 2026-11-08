@@ -9,6 +9,7 @@ export interface ToolDialogProps {
   trigger?: React.ReactNode;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  onCloseAutoFocus?: (event: Event) => void;
 }
 export function useToolDialog(props: ToolDialogProps) {
   const [local, setLocal] = useState(false);

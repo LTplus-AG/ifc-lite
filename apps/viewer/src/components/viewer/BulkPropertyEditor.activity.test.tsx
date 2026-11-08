@@ -5,7 +5,7 @@ import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
 import { afterEach, it } from 'node:test';
 import { act } from 'react';
-import { MutablePropertyView } from '@ifc-lite/mutations';
+import { BulkQueryEngine, MutablePropertyView } from '@ifc-lite/mutations';
 import { useViewerStore } from '@/store';
 import { configureMutationView } from '@/utils/configureMutationView';
 import { render, click, type, cleanup, advance, waitFor } from '@/test/render';
@@ -97,4 +97,41 @@ it('#7128 two native Apply events before paint keep one owned mutation run', asy
   await waitFor(() => useActivityJournal.getState().jobs[0]?.outcome === 'completed', 'single native batch completes');
   assert.equal(view.getAttributeMutationsForEntity(1209).find(m => m.name === 'Name')?.value, 'First applied name');
   assert.equal(useViewerStore.getState().undoStacks.get('native')?.flat().length, 1200, 'one mutation run wrote each target once');
+});
+
+for (const fails of [false, true]) it(`#8962 retired query ${fails ? 'error' : 'result'} cannot overwrite a reopened bulk operation`, async t => {
+  const { view, apply } = await setup();
+  const source = document.querySelector<HTMLButtonElement>('button[aria-label="Target source"]'); assert.ok(source);
+  click(source); await advance(0);
+  const query = [...document.querySelectorAll('[role="option"]')].find(node => node.textContent?.trim() === 'Query');
+  assert.ok(query); click(query); await advance(100);
+  const select = BulkQueryEngine.prototype.select;
+  const pending: Array<{ resolve: () => void; reject: () => void }> = [];
+  let hold = false;
+  t.mock.method(BulkQueryEngine.prototype, 'select', function (this: BulkQueryEngine, ...args: Parameters<BulkQueryEngine['select']>) {
+    const ids = select.apply(this, args);
+    if (!hold) return ids;
+    hold = false;
+    // Preserve the real query result; defer only its async delivery to the caller.
+    // This scheduling oracle deliberately delays async result assimilation.
+    // eslint-disable-next-line unicorn/no-thenable -- preserve real IDs while controlling their delivery
+    return Object.assign(ids, { then(resolve: (ids: number[]) => void, reject: (error: Error) => void) {
+      pending.push({ resolve: () => resolve(ids.slice()), reject: () => reject(new Error('Retired query failed')) });
+    } });
+  });
+  hold = true; apply(); await waitFor(() => pending.length === 1, 'first real query suspended');
+  click(button('Close')!); await advance(0); click(button('Open native bulk')!); await advance(100);
+  const reopenedSource = document.querySelector<HTMLButtonElement>('button[aria-label="Target source"]'); assert.ok(reopenedSource);
+  click(reopenedSource); await advance(0);
+  const reopenedQuery = [...document.querySelectorAll('[role="option"]')].find(node => node.textContent?.trim() === 'Query');
+  assert.ok(reopenedQuery); click(reopenedQuery); await advance(100);
+  hold = true; apply(); await waitFor(() => pending.length === 2, 'new real query suspended');
+  await act(async () => { if (fails) pending[0].reject(); else pending[0].resolve(); });
+  await advance(30);
+  assert.equal(view.getModifiedEntityCount(), 0, 'retired query never writes');
+  assert.doesNotMatch(document.querySelector('[role="dialog"]')?.textContent ?? '', /Retired query failed|Cancelled/);
+  assert.ok(button('Cancel'), 'old finally cannot clear the new running state');
+  await act(async () => pending[1].resolve());
+  await waitFor(() => useActivityJournal.getState().jobs.at(-1)?.outcome === 'completed', 'current query applies');
+  assert.equal(view.getAttributeMutationsForEntity(1209).find(m => m.name === 'Name')?.value, 'First applied name');
 });

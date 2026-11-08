@@ -33,8 +33,8 @@ export interface SurfaceCommandContext {
   /** The context menu owns the current entity and supplies its target-specific action. */
   contextAction?: () => void;
   toolHostIsCurrent?: () => boolean;
-  openBulkProperties?: () => void;
-  openImportData?: () => void;
+  openBulkProperties?: (launcher?: HTMLElement | null) => void;
+  openImportData?: (launcher?: HTMLElement | null) => void;
   openClassFilter?: (launcher?: HTMLElement | null) => void;
 }
 

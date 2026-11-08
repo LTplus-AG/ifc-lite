@@ -138,6 +138,10 @@ export function CommandPalette({ open, onOpenChange, surfaceContext, initialQuer
   const commands = useMemo<Command[]>(() => !open ? [] : buildCommandPaletteCommands({
     execute,
     surfaceContext: { ...toolHosts, ...surfaceContext,
+      openBulkProperties: (surfaceContext?.openBulkProperties ?? toolHosts.openBulkProperties)
+        ? () => (surfaceContext?.openBulkProperties ?? toolHosts.openBulkProperties)?.(paletteLauncher.current) : undefined,
+      openImportData: (surfaceContext?.openImportData ?? toolHosts.openImportData)
+        ? () => (surfaceContext?.openImportData ?? toolHosts.openImportData)?.(paletteLauncher.current) : undefined,
       openClassFilter: (surfaceContext?.openClassFilter ?? toolHosts.openClassFilter)
         ? () => (surfaceContext?.openClassFilter ?? toolHosts.openClassFilter)?.(paletteLauncher.current) : undefined,
       ...fileHost, fileHostIsCurrent: () => fileHost !== null && getMountedFileHost() === fileHost },

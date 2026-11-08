@@ -95,13 +95,18 @@ describe('live session readback of authored relationships', () => {
     } finally { model.close(); }
   });
 
-  it('keeps the parsed answer for a session that only reads', async () => {
-    const { model, bim } = await session();
+  it('answers the parsed model the same before and after the session starts editing', async () => {
+    const { model, bim, S, storey } = await session();
     try {
-      const wall = bim.query().byType('IfcWall').toArray()[0];
-      const before = bim.materials(wall.ref);
-      expect(bim.typeProperties(wall.ref)).toEqual(bim.typeProperties(wall.ref));
-      expect(before).toEqual(bim.materials(wall.ref));
+      const wall = bim.query().byType('IfcWall').toArray()[0].ref;
+      const parsed = { type: 'MaterialLayerSet', layers: [{ materialName: 'CONCRETE', thickness: 0.1 }] };
+      // Read-only: the store path.
+      expect(bim.materials(wall)).toEqual(parsed);
+      expect(bim.typeProperties(wall)).toBeNull();
+      // An unrelated edit routes every read through the live view; the parsed wall must not change.
+      S.addWall('m', storey, { Start: [0, 5, 0], End: [5, 5, 0], Thickness: 0.2, Height: 3 });
+      expect(bim.materials(wall)).toEqual(parsed);
+      expect(bim.typeProperties(wall)).toBeNull();
     } finally { model.close(); }
   });
 });

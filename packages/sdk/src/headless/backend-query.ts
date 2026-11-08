@@ -38,6 +38,7 @@ import { iterateEffectiveEntityIds, type MutablePropertyView } from '@ifc-lite/m
 import type { CreatedEntity, PendingOverlay } from './overlay.js';
 import { authoredValue } from './authored-attribute-value.js';
 import { foldRelationshipRows } from './backend-query-relationships.js';
+import { liveTypeProperties } from './backend-query-type-properties.js';
 // `expandTypes` used to be defined here; it now comes from `@ifc-lite/parser`,
 // shared with the other query backends (see `query-backend-maps.ts`). Re-exported
 // so this module's consumers are unaffected by where it lives.
@@ -82,22 +83,6 @@ export function createQueryAdapter(
   function liveView(): MutablePropertyView | undefined {
     const view = mutationView();
     return view?.hasPendingChanges() ? view : undefined;
-  }
-
-  /**
-   * Type data with the session's edits applied: the effective IfcRelDefinesByType
-   * (queued, superseded and deleted relationships folded by `related`) and the
-   * type's property sets as the overlay holds them (its own HasPropertySets and
-   * IfcRelDefinesByProperties sets, plus queued property writes).
-   */
-  function liveTypeProperties(ref: EntityRef, pending: PendingOverlay) {
-    if (pending.deleted.has(ref.expressId)) return null;
-    const typeRef = adapter.related(ref, 'IfcRelDefinesByType', 'inverse')[0];
-    if (!typeRef) return null;
-    const properties = pending.propertySets(typeRef.expressId);
-    if (properties.length === 0) return null;
-    const type = entityData(typeRef);
-    return { typeName: type?.name || type?.type || '', typeId: typeRef.expressId, properties };
   }
 
   function entityData(ref: EntityRef): EntityData | null {
@@ -321,12 +306,8 @@ export function createQueryAdapter(
     attributes,
     properties: (ref: EntityRef) => properties(ref),
     quantities,
-    // Relationship-derived reads (materials, classifications, documents, type
-    // data) resolve through the live mutation view, so an association, layer
-    // set, IfcRelDefinesByType or type pset authored in this session reads back
-    // before export (#9296). The parser's resolvers take the view and fold
-    // created records, edits and deletions; a read-only session passes null and
-    // keeps the store-only path.
+    // Relationship-derived reads resolve through the live mutation view, so what
+    // this session authored reads back before export (#9296); read-only keeps the store path.
     classifications(ref: EntityRef): ClassificationData[] {
       return extractClassificationsOnDemand(store, ref.expressId, liveView());
     },
@@ -335,7 +316,7 @@ export function createQueryAdapter(
     },
     typeProperties(ref: EntityRef): TypePropertiesData | null {
       const pending = overlay();
-      const info = pending ? liveTypeProperties(ref, pending) : extractTypePropertiesOnDemand(store, ref.expressId);
+      const info = pending ? liveTypeProperties(ref, pending, adapter.related, entityData) : extractTypePropertiesOnDemand(store, ref.expressId);
       if (!info) return null;
       return {
         typeName: info.typeName,

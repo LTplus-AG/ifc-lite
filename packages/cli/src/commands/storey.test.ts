@@ -90,6 +90,26 @@ describe.skipIf(!existsSync(SAMPLE))('ifc-lite storey (#9025)', () => {
     expect(existsSync(out)).toBe(false);
   });
 
+  it('a dry-run add is refused exactly as the real one, and a dry-run rename writes nothing (#9121 review)', async () => {
+    const run = await storey();
+    // My Storey is at 0 m: a second storey there is refused, dry run or not.
+    await expect(run([SAMPLE, 'add', '--name', 'Duplicate', '--elevation', '0', '--dry-run'])).rejects.toThrow('exit 1');
+    expect(stderr).toMatch(/My Storey is already at ±0\.00 m/);
+    const out = join(dir, 'never.ifc');
+    await run([SAMPLE, 'rename', '--storey', 'My Storey', '--name', 'Renamed', '--dry-run', '--out', out]);
+    expect(existsSync(out)).toBe(false);
+    expect(stderr).toMatch(/Dry run: .*"Name":"Renamed"/);
+  });
+
+  it('an exact storey name is not ambiguous with one that differs only in letter case (#9121 review)', async () => {
+    const run = await storey();
+    const two = join(dir, 'two.ifc');
+    await run([SAMPLE, 'add', '--name', 'my storey', '--elevation', '3', '--out', two]);
+    const renamed = join(dir, 'renamed.ifc');
+    await run([two, 'rename', '--storey', 'My Storey', '--name', 'Ground', '--out', renamed]);
+    expect((await storeysOf(renamed)).map(([name]) => name)).toEqual(['Ground', 'my storey']);
+  });
+
   it('refuses an invalid edit, exits non-zero and writes nothing', async () => {
     const run = await storey();
     const added = join(dir, 'added.ifc');

@@ -43,7 +43,10 @@ function resolveStorey(rows: readonly StoreySummary[], value: string | undefined
   const id = Number(value);
   const byId = Number.isInteger(id) ? rows.find((row) => row.expressId === id) : undefined;
   if (byId) return byId.expressId;
-  const named = rows.filter((row) => row.Name.toLowerCase() === value!.toLowerCase());
+  // The exact name first; letter case is only a fallback, so "Level 1" still names
+  // one storey in a file that also has "level 1".
+  const exact = rows.filter((row) => row.Name === value);
+  const named = exact.length > 0 ? exact : rows.filter((row) => row.Name.toLowerCase() === value!.toLowerCase());
   if (named.length === 1) return named[0].expressId;
   const available = rows.map((row) => `${row.Name} (#${row.expressId})`).join(', ') || '(none)';
   return fatal(named.length > 1 ? `More than one storey is named "${value}": use its express id` : `Storey "${value}" not found. Available: ${available}`);
@@ -103,8 +106,9 @@ export async function storeyCommand(args: string[]): Promise<void> {
         Elevation ??= suggestion.Elevation;
       }
       if (!Name || Elevation === undefined) fatal('add needs --name and --elevation, or --from <storey>');
-      if (dryRun) { report({ action, Name, Elevation }, json); return; }
+      // A dry run makes the same add in memory, so it is refused exactly as the real one; only the file is not written.
       const ref = run(() => s.addStorey(modelId, { Name: Name!, Elevation: Elevation!, referenceStoreyId }));
+      if (dryRun) { report({ action, Name, Elevation }, json); return; }
       if (!json) process.stderr.write(`Added ${Name} at ${Elevation!.toFixed(3)} m as #${ref.expressId}\n`);
       await save({ action, added: ref.expressId });
       return;
@@ -113,6 +117,7 @@ export async function storeyCommand(args: string[]): Promise<void> {
       const storeyId = resolveStorey(rows(), getFlag(args, '--storey'), '--storey');
       const Name = getFlag(args, '--name') ?? fatal('rename needs --name');
       run(() => s.renameStorey({ modelId, expressId: storeyId }, Name));
+      if (dryRun) { report({ action, storey: storeyId, Name }, json); return; }
       await save({ action, storey: storeyId, Name });
       return;
     }

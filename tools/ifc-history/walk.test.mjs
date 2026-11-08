@@ -297,3 +297,36 @@ process.stdin.on('end', () => process.stdout.write(input.startsWith('version htt
   for (const line of lines.slice(-3)) assert.ok(line.includes('5 unchanged, 0 modified, 0 added, 0 deleted'));
   assert.ok(lines.at(-1).startsWith(removed.slice(0, 12)));
 });
+
+test('#9332 nested invocation resolves root and nested LFS attributes from the toplevel', async (t) => {
+  assert.equal(typeof walker.walkHistory, 'function');
+  const h = history(t);
+  h.commit(fixture, 'restore canonical delivery');
+  const nested = join(h.repo, 'nested');
+  mkdirSync(nested);
+  const filter = join(h.repo, 'subdir-smudge.mjs');
+  writeFileSync(filter, `let input=''; process.stdin.setEncoding('utf8');
+process.stdin.on('data', chunk => input+=chunk);
+process.stdin.on('end', () => process.stdout.write(input.startsWith('version https://git-lfs.github.com/spec/v1') ? ${JSON.stringify(fixture)} : input));`);
+  h.git('config', 'filter.lfs.smudge', `"${process.execPath}" "${filter}"`);
+  h.git('config', 'filter.lfs.clean', 'cat');
+  h.git('config', 'filter.lfs.required', 'true');
+  writeFileSync(join(h.repo, '.gitattributes'), '"/model with spaces.ifc" filter=lfs\n/nested/inside.ifc filter=lfs\n');
+  const pointer = oid => 'version https://git-lfs.github.com/spec/v1\noid sha256:' + oid.repeat(64) + '\nsize ' + Buffer.byteLength(fixture) + '\n';
+  writeFileSync(join(nested, 'inside.ifc'), pointer('a'));
+  h.git('add', '.gitattributes', 'nested/inside.ifc');
+  h.commit(pointer('a'), 'first LFS deliveries');
+  writeFileSync(join(nested, 'inside.ifc'), pointer('b'));
+  h.git('add', 'nested/inside.ifc');
+  const final = h.commit(pointer('b'), 'second LFS deliveries');
+  const fromNested = [];
+  await walker.walkHistory({ repository: nested, command: [process.execPath, cli], out: line => fromNested.push(line) });
+  assert.equal(fromNested.length, 6);
+  assert.ok(fromNested.at(-1).startsWith(final.slice(0, 12)));
+  assert.ok(fromNested.at(-1).includes('10 unchanged, 0 modified, 0 added, 0 deleted'));
+  assert.ok(fromNested.at(-1).includes('"model with spaces.ifc"'));
+  assert.ok(fromNested.at(-1).includes('"nested/inside.ifc"'));
+  const fromRoot = [];
+  await walker.walkHistory({ repository: h.repo, command: [process.execPath, cli], out: line => fromRoot.push(line) });
+  assert.deepEqual(fromNested, fromRoot, 'nested invocation walks the entire repository, not just its subtree');
+});

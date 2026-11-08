@@ -17,7 +17,10 @@ One line per commit with pairs; content matches (including renamed) stay separat
 
 /** Walk a local repository without checking out or changing its working tree. */
 export async function walkHistory({ repository, ref = 'HEAD', command = ['ifc-lite'], out = console.log, timeout = 300_000 }) {
-  const git = (...args) => execFileSync('git', ['-C', resolve(repository), ...args], {
+  const root = execFileSync('git', ['-C', resolve(repository), 'rev-parse', '--show-toplevel'], {
+    encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+  }).trim();
+  const git = (...args) => execFileSync('git', ['-C', root, ...args], {
     maxBuffer: 256 * 1024 * 1024,
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -39,7 +42,7 @@ export async function walkHistory({ repository, ref = 'HEAD', command = ['ifc-li
     const stream = (args) => {
       const fd = openSync(destination, 'w');
       try {
-        execFileSync('git', ['-C', resolve(repository),
+        execFileSync('git', ['-C', root,
           ...(args.includes('--filters') ? [`--attr-source=${commit}`] : []),
           'cat-file', ...args], {
           stdio: ['ignore', fd, 'pipe'], timeout,

@@ -495,6 +495,10 @@
     "value": "PDF",
     "reason": "exportCommands.pdf.label: Canonical file-format abbreviation on the export choice; translating it would rename the interoperable format."
   },
+  "exportCommands.rhino.label": {
+    "value": "Rhino (.3dm)",
+    "reason": "exportCommands.rhino.label: Product name and canonical file extension on the export choice; translating it would rename the interoperable format."
+  },
   "exportCommands.usd.label": {
     "value": "USD",
     "reason": "exportCommands.usd.label: Canonical file-format abbreviation on the export choice; translating it would rename the interoperable format."
@@ -1254,6 +1258,14 @@
   "reviewWorkspace.runIncomplete": {
     "value": "{run}: {reasons}",
     "reason": "reviewWorkspace.runIncomplete: Run label and supplied reasons are separated by a colon."
+  },
+  "rhinoExport.version.7": {
+    "value": "Rhino 7",
+    "reason": "rhinoExport.version.7: Product name and version number; required for exact product recognition when choosing the archive version."
+  },
+  "rhinoExport.version.8": {
+    "value": "Rhino 8",
+    "reason": "rhinoExport.version.8: Product name and version number; required for exact product recognition when choosing the archive version."
   },
   "ribbon.commandsShortcut": {
     "value": "Ctrl+K",

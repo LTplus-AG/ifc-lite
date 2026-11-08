@@ -13,9 +13,10 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import JSZip from 'jszip';
 import { EMPTY_SOURCE_BYTES, IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import type { FederatedModel } from '@/store/types.js';
-import { isUsdExportableModel, resolveUsdExportBytes, type UsdExportModel } from './usd-export-source.js';
+import { isStepSourceModel, resolveStepExportBytes, type StepExportModel } from './step-export-source.js';
 
 /** Trivial but valid IFC4 file — just enough for `IfcParser.parseColumnar`. */
 const MINIMAL_IFC = `ISO-10303-21;
@@ -53,22 +54,22 @@ function model(name: string | null): FederatedModel {
   };
 }
 
-describe('isUsdExportableModel', () => {
+describe('isStepSourceModel', () => {
   it('accepts STEP-backed IFC sources (.ifc, .ifczip), case-insensitively', () => {
-    assert.equal(isUsdExportableModel(model('building.ifc')), true);
-    assert.equal(isUsdExportableModel(model('site.IFC')), true);
-    assert.equal(isUsdExportableModel(model('archive.ifczip')), true);
-    assert.equal(isUsdExportableModel(model('archive.IfcZip')), true);
+    assert.equal(isStepSourceModel(model('building.ifc')), true);
+    assert.equal(isStepSourceModel(model('site.IFC')), true);
+    assert.equal(isStepSourceModel(model('archive.ifczip')), true);
+    assert.equal(isStepSourceModel(model('archive.IfcZip')), true);
   });
 
   it('excludes .ifcx (USD-flavored JSON — a separate exporter, not a STEP source)', () => {
-    assert.equal(isUsdExportableModel(model('model.ifcx')), false);
+    assert.equal(isStepSourceModel(model('model.ifcx')), false);
   });
 
   it('excludes models with no source file (cache-restored) and non-IFC sources', () => {
-    assert.equal(isUsdExportableModel(model(null)), false);
-    assert.equal(isUsdExportableModel(model('scan.glb')), false);
-    assert.equal(isUsdExportableModel(model('cloud.las')), false);
+    assert.equal(isStepSourceModel(model(null)), false);
+    assert.equal(isStepSourceModel(model('scan.glb')), false);
+    assert.equal(isStepSourceModel(model('cloud.las')), false);
   });
 });
 
@@ -82,11 +83,11 @@ describe('isUsdExportableModel', () => {
  * source-less store (server-parsed, synthetic) instead of silently handing
  * `exportUsd` zero bytes, which produces an empty USD stage with no error.
  */
-describe('resolveUsdExportBytes', () => {
+describe('resolveStepExportBytes', () => {
   const RAW_FILE_BYTES = new Uint8Array([1, 2, 3, 4, 5]);
   const noMutationView = () => null;
 
-  function usdModel(ifcDataStore: IfcDataStore | null): UsdExportModel {
+  function usdModel(ifcDataStore: IfcDataStore | null): StepExportModel {
     return {
       id: 'm',
       name: 'building',
@@ -96,15 +97,28 @@ describe('resolveUsdExportBytes', () => {
     };
   }
 
+  it('unwraps a store-less IFCZIP into STEP bytes for Rhino and USD (review finding 4)', async () => {
+    const zip = new JSZip();
+    zip.file('building.ifc', MINIMAL_IFC);
+    const archive = await zip.generateAsync({ type: 'uint8array', compression: 'DEFLATE' });
+    const source = usdModel(null);
+    source.sourceFile = new File([new Uint8Array(archive).buffer], 'building.ifczip');
+    assert.equal(isStepSourceModel({ ...model('building.ifczip'), sourceFile: source.sourceFile }), true);
+    const bytes = await resolveStepExportBytes(source, noMutationView);
+    assert.equal(new TextDecoder().decode(bytes), MINIMAL_IFC);
+    const parsed = await new IfcParser().parseColumnar(new Uint8Array(bytes).buffer, { disableWorkerScan: true });
+    assert.equal(parsed.schemaVersion, 'IFC4');
+  });
+
   it('falls back to the raw sourceFile bytes when ifcDataStore is null', async () => {
-    const bytes = await resolveUsdExportBytes(usdModel(null), noMutationView);
+    const bytes = await resolveStepExportBytes(usdModel(null), noMutationView);
     assert.deepEqual(bytes, RAW_FILE_BYTES);
   });
 
   it('falls back to the raw sourceFile bytes when the store has an EMPTY source (server-parsed / synthetic)', async () => {
     const parsed = await parsedDataStore();
     const store: IfcDataStore = { ...parsed, source: EMPTY_SOURCE_BYTES };
-    const bytes = await resolveUsdExportBytes(usdModel(store), noMutationView);
+    const bytes = await resolveStepExportBytes(usdModel(store), noMutationView);
     // RED (pre-fix): materialize()'d EMPTY_SOURCE_BYTES yields a zero-length
     // array here instead — a silent empty USD stage, not an error.
     assert.deepEqual(bytes, RAW_FILE_BYTES);
@@ -112,7 +126,7 @@ describe('resolveUsdExportBytes', () => {
 
   it('still prefers the parsed store bytes when the store DOES have real source (bounding control)', async () => {
     const store = await parsedDataStore();
-    const bytes = await resolveUsdExportBytes(usdModel(store), noMutationView);
+    const bytes = await resolveStepExportBytes(usdModel(store), noMutationView);
     assert.deepEqual(bytes, store.source.materialize());
     assert.ok(bytes.byteLength > 0);
   });

@@ -2114,7 +2114,7 @@ export class Scene {
       // null for a freshly built bucket and, for a surviving bucket the
       // re-group added meshes to, the batch still drawn from the old array —
       // put back on failure, retired on success.
-      type Owned = { bucket: BatchBucket; previous: BatchedMesh | null; previousFrameOrigin?: [number, number, number]; batch: BatchedMesh };
+      type Owned = { bucket: BatchBucket; previous: BatchedMesh | null; previousFrameOrigin?: [number, number, number]; batch: BatchedMesh | null };
       const createdOwned: Owned[] = [];
       // Pending keys whose bucket ended up empty: deleted (and their batch
       // retired) at the swap, exactly as rebuildPendingBatches would.
@@ -2133,7 +2133,7 @@ export class Scene {
             bucket.batchedMesh = previous;
             bucket.frameOrigin = previousFrameOrigin;
           }
-          if (!oldBatchSet.has(batch) && !fragmentSet.has(batch)) {
+          if (batch && !oldBatchSet.has(batch) && !fragmentSet.has(batch)) {
             destroyGpuResources(batch);
           }
         }
@@ -2154,12 +2154,13 @@ export class Scene {
               emptied.push(key);
               continue;
             }
-            const color = bucket.meshData[0].color;
             const previous = bucket.batchedMesh;
             const previousFrameOrigin = bucket.frameOrigin;
-            const batchedMesh = scene.createBatchedMesh(bucket.meshData, color, device, pipeline, key);
+            const own = scene.fragmentPieces.unclaimed(bucket.meshData, scene.streamingFragments); // a window append stays its fragment's (#9270)
+            const batchedMesh = own.meshes.length ? scene.createBatchedMesh(own.meshes, own.meshes[0].color, device, pipeline, key) : null;
+            if (batchedMesh) own.held(batchedMesh);
             bucket.batchedMesh = batchedMesh;
-            bucket.frameOrigin = batchedMesh.origin;
+            bucket.frameOrigin = batchedMesh?.origin ?? previousFrameOrigin;
             createdOwned.push({ bucket, previous, previousFrameOrigin, batch: batchedMesh });
 
             // Check time budget — yield if exceeded. A MessageChannel task, not
@@ -2551,10 +2552,10 @@ export class Scene {
    *   record (a fragment, or a replaced batch drawing until the finalize swap).
    *   A cold bucket has had its `meshData` dropped, and a sub-batch or ephemeral
    *   fragment has no piece list, so a subset would silently come back empty;
-   * - it holds a colour-merged piece, where many entities share ONE MeshData
-   *   tagged per vertex. Such a piece is registered under every contained id,
-   *   so it would land whole in more than one subset — the same geometry drawn
-   *   twice, at two different alphas.
+   * - it holds a colour-merged piece (a recorded batch: among its own, #9270),
+   *   where many entities share ONE MeshData tagged per vertex. Such a piece is
+   *   registered under every contained id, so it would land whole in more than
+   *   one subset — the same geometry drawn twice, at two different alphas.
    *
    * A recorded batch cuts its subsets from its own pieces only (#9081, #9270), so
    * each piece of a mesh split across batches is drawn once, by the batch holding it (#9254).
@@ -2564,11 +2565,10 @@ export class Scene {
   canPartitionBatch(batch: BatchedMesh): boolean {
     if (this.geometryReleased || this.snapshots.hydrating) return false;
     const bucket = this.buckets.get(batch.colorKey);
-    if (!bucket || bucket.batchedMesh !== batch) {
-      const record = this.fragmentPieces.forBatch(batch);
-      return record !== undefined && !record.colorMerged;
-    }
-    if (bucket.meshData.length === 0) return false;
+    const live = bucket !== undefined && bucket.batchedMesh === batch;
+    if (live && bucket.meshData.length === 0) return false;
+    const record = this.fragmentPieces.forBatch(batch);
+    if (record || !live) return record !== undefined && !record.colorMerged;
     for (const md of bucket.meshData) {
       if (md.entityIds && md.entityIds.length > 0) return false;
     }

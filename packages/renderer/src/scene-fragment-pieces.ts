@@ -61,6 +61,12 @@ export class FragmentPieces implements BatchPieces {
     }
   }
 
+  /** Add the registered meshes this fragment draws to `into`. */
+  registered(into: Set<MeshData>): void {
+    for (const mesh of this.whole) into.add(mesh);
+    for (const mesh of this.split.keys()) into.add(mesh);
+  }
+
   collect(mesh: MeshData, into: Set<MeshData>): void {
     if (this.whole.has(mesh)) {
       into.add(mesh);
@@ -131,6 +137,36 @@ export class StreamingFragmentPieces {
     if (batch && this.byBatchId.get(batch.id)?.batch !== batch) this.byBatchId.set(batch.id, new BuiltBatchPieces(batch, bucket.meshData.slice()));
   }
 
+  /**
+   * `meshes` less those a fragment in `fragments` draws, and record what the
+   * rebuilt batch then holds via the returned `held`. A time-sliced finalize
+   * that rebuilds a bucket after a window append joined it must leave that mesh
+   * to its fragment, or both draw it from the swap on (#9270). The bucket keeps
+   * the mesh, so the next finalize takes it in. Returns `meshes` itself when no
+   * fragment draws any of them.
+   */
+  unclaimed(meshes: MeshData[], fragments: readonly BatchedMesh[]): { meshes: MeshData[]; held(batch: BatchedMesh): void } {
+    const drawn = this.drawnBy(fragments);
+    const own = drawn.size ? meshes.filter((mesh) => !drawn.has(mesh)) : meshes;
+    if (own.length === meshes.length) return { meshes, held: () => {} };
+    return { meshes: own, held: (batch) => this.byBatchId.set(batch.id, new BuiltBatchPieces(batch, own)) };
+  }
+
+  /** The registered meshes `fragments` draw, kept while that list only grows (a finalize window's appends). */
+  private drawnBy(fragments: readonly BatchedMesh[]): ReadonlySet<MeshData> {
+    if (fragments.length === 0) return new Set();
+    const memo = this.drawnMemo;
+    if (memo?.fragments === fragments && memo.count === fragments.length) return memo.drawn;
+    const drawn = new Set<MeshData>();
+    for (const fragment of fragments) {
+      const record = this.forBatch(fragment);
+      if (record instanceof FragmentPieces) record.registered(drawn);
+    }
+    this.drawnMemo = { fragments, count: fragments.length, drawn };
+    return drawn;
+  }
+  private drawnMemo?: { fragments: readonly BatchedMesh[]; count: number; drawn: ReadonlySet<MeshData> };
+
   /** `batch`'s record, or `undefined` when it has none. */
   forBatch(batch: BatchedMesh): BatchPieces | undefined {
     const record = this.byBatchId.get(batch.id);
@@ -145,6 +181,7 @@ export class StreamingFragmentPieces {
 
   /** Forget every batch but `live`: at each finalize swap, `finishEphemeralStreaming`, `clear()` and device recovery. */
   retainOnly(live: readonly BatchedMesh[]): void {
+    this.drawnMemo = undefined;
     if (this.byBatchId.size === 0) return;
     const keep = new Set(live.map((batch) => batch.id));
     for (const id of this.byBatchId.keys()) if (!keep.has(id)) this.byBatchId.delete(id);

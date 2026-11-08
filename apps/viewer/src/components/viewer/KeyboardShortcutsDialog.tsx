@@ -70,7 +70,7 @@ export function KeyboardShortcutsDialog({ open, onClose, initialTab }: InfoDialo
           explicitly (CodeRabbit, #5817 review) rather than leaving it
           unset, which some Radix versions read as "forgot to wire one up"
           and warn about in dev. */}
-      <DialogContent scrollBody hideCloseButton aria-describedby={undefined} className="gap-0 p-0 bg-card" data-info-dialog>
+      <DialogContent scrollBody hideCloseButton aria-describedby={undefined} className="gap-0 p-0 bg-card">
         {/* Header — the MCP CTA lives here, in line with the title, so
             it's a discoverable "what else can this do?" affordance
             without crowding the modeling toolbar. On a narrow screen its

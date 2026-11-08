@@ -52,16 +52,17 @@ export function useScrollStrip<T extends HTMLElement>(
   // State, not a ref: a dialog portals its content a render after it opens.
   const [node, setNode] = useState<T | null>(null);
   const [fade, setFade] = useState<ScrollFade>();
+  // A plain tab list only forwards its ref: no state, no extra render.
   const setStrip = useCallback((next: T | null) => {
-    setNode(next);
+    if (enabled) setNode(next);
     assignRef(forwardedRef, next);
-  }, [forwardedRef]);
+  }, [enabled, forwardedRef]);
   const strip = enabled ? node : null;
 
   // Labels can change width without the strip's own box changing (a language
   // switch), so the fade is recomputed after every render of the strip.
   useLayoutEffect(() => {
-    setFade(strip ? fadeOf(strip) : undefined);
+    if (strip) setFade(fadeOf(strip));
   });
 
   useEffect(() => {
@@ -85,5 +86,5 @@ export function useScrollStrip<T extends HTMLElement>(
     };
   }, [strip]);
 
-  return { setStrip, fade };
+  return { setStrip, fade: strip ? fade : undefined };
 }

@@ -240,3 +240,33 @@ ENDSEC;\nEND-ISO`);
     for (const group of groups) assert.equal(nodes.filter(row => row.id.startsWith(`${group.id}-product-`)).length, group.elementCount);
   }
 });
+
+test('#9272 large mixed-layer fixture keeps every member across classification groups', async (t) => {
+  // Generated STEP stress fixture: 12,000 products, shared representations and
+  // four overlapping layers. No mesh generation is needed for a metadata tree.
+  const count = 12_000;
+  const rows = Array.from({ length: count }, (_, index) => {
+    const id = 1000 + index;
+    return `#${id}=${index % 2 ? 'IFCDOOR' : 'IFCWALL'}('guid${id}',$,'Element ${id}',$,$,$,#11,$);`;
+  });
+  const productIds = Array.from({ length: count }, (_, index) => 1000 + index);
+  const content = IFC.replace('ENDSEC;\nEND-ISO', `${rows.join('\n')}
+#63=IFCCLASSIFICATION($,$,$,'Uniclass',$,$,$);
+#64=IFCCLASSIFICATIONREFERENCE($,'EF_25','Walls',#63,$,$);
+#65=IFCRELASSOCIATESCLASSIFICATION('stress',$,$,$,(${productIds.filter(id => id % 2 === 0).map(id => `#${id}`).join(',')}),#64);
+#66=IFCPRESENTATIONLAYERASSIGNMENT('Stress A',$,(#21),$);
+#67=IFCPRESENTATIONLAYERASSIGNMENT('Stress B',$,(#21),$);
+ENDSEC;\nEND-ISO`);
+  const store = await new IfcParser().parseColumnar(new TextEncoder().encode(content).buffer);
+  for (const mode of ['none', 'class', 'classification'] as const) {
+    const nodes = buildPresentationLayerTree(new Map(), store, ALL, new Set(), new Set(), undefined, mode);
+    const layer = nodes.find(row => row.entityExpressId === 66)!;
+    assert.equal(layer.elementCount, count + 1); // original wall #2 shares #21
+    const children = nodes.filter(row => row.id.startsWith(`${layer.id}-group-`) && row.type === 'type-group');
+    if (mode !== 'none') {
+      assert.equal(children.length, 2);
+      assert.equal(children.reduce((sum, row) => sum + row.elementCount!, 0), count + 1);
+    }
+    t.diagnostic(`${mode}: ${count} generated products, ${nodes.length} rows; membership complete`);
+  }
+});

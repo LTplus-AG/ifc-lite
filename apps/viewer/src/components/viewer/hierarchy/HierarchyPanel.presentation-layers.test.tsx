@@ -15,6 +15,7 @@ import { cleanup, click, render, type, waitFor } from '@/test/render.js';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { SourceHostProvider } from '@/services/sources/SourceHostProvider.js';
 import { useViewerStore, type FederatedModel } from '@/store';
+import { TYPE_VISIBILITY_SEMANTIC_DEFAULTS, TYPE_VISIBILITY_STORAGE_KEYS } from '@/store/constants';
 import { HierarchyPanel } from '../HierarchyPanel.js';
 
 afterEach(cleanup);
@@ -62,7 +63,8 @@ async function model(id: string, federated = false, space: boolean | 'IfcSpatial
 }
 
 function mountPanel(models: FederatedModel[], selectedId: number | null = null) {
-  useViewerStore.setState({ ...fixtureModels(...models), ifcDataStore: models[0].ifcDataStore,
+  for (const key of Object.values(TYPE_VISIBILITY_STORAGE_KEYS)) localStorage.removeItem(key);
+  useViewerStore.setState({ typeVisibility: { ...TYPE_VISIBILITY_SEMANTIC_DEFAULTS }, ...fixtureModels(...models), ifcDataStore: models[0].ifcDataStore,
     hierarchyMode: 'spatial', selectedEntityId: selectedId, selectedEntityIds: new Set(selectedId == null ? [] : [selectedId]),
     hiddenEntities: new Set(), isolatedEntities: null, mutationViews: new Map(),
     mergeLayers: false, classFilter: null, selectedStoreys: new Set() });
@@ -378,7 +380,7 @@ for (const mode of ['class', 'classification'] as const) {
 
 for (const [ifcType, visibilityKey] of [['IfcSpace', 'spaces'], ['IfcSpatialZone', 'spatialZones']] as const) {
 for (const mode of ['none', 'class', 'classification'] as const) {
-  it(`#9272 ${mode} Show reveals default-hidden ${ifcType} members`, async () => {
+  it(`#9272 ${mode} Show preserves the disabled ${ifcType} class gate`, async () => {
     act(() => useViewerStore.setState({ typeVisibility: {
       ...useViewerStore.getState().typeVisibility, [visibilityKey]: false,
     } }));
@@ -391,9 +393,11 @@ for (const mode of ['none', 'class', 'classification'] as const) {
     const row = [...container.querySelectorAll<HTMLElement>('[role="treeitem"]')]
       .find(row => row.textContent?.includes(name));
     assert.ok(row);
+    const persisted = localStorage.getItem(TYPE_VISIBILITY_STORAGE_KEYS[visibilityKey]);
     click(button(row, `Hide ${name}`));
     click(button(row, `Show ${name}`));
-    assert.equal(useViewerStore.getState().typeVisibility[visibilityKey], true);
+    assert.equal(localStorage.getItem(TYPE_VISIBILITY_STORAGE_KEYS[visibilityKey]), persisted);
+    assert.equal(useViewerStore.getState().typeVisibility[visibilityKey], false);
     assert.deepEqual(useViewerStore.getState().hiddenEntities, new Set());
     assert.equal(useViewerStore.getState().isolatedEntities, null, 'Show does not isolate');
   });
@@ -416,5 +420,42 @@ for (const mode of ['class', 'classification'] as const) {
     click(button(row, `Isolate ${name}`));
     assert.equal(useViewerStore.getState().typeVisibility.spatialZones, true);
     assert.deepEqual(useViewerStore.getState().isolatedEntities, new Set([7]));
+  });
+}
+
+// #9383: an unrelated space in another layer must not appear after Show.
+it('#9383 default layer Show keeps unrelated spaces behind the disabled class gate', async () => {
+  const m = await model('layer-show-scope', false, true);
+  m.ifcDataStore = await new IfcParser().parseColumnar(new TextEncoder().encode(
+    IFC.replaceAll('IFCWALL(', 'IFCSPACE(')).buffer);
+  const container = await mount(m);
+  const row = layerRows(container)[0];
+  const persisted = localStorage.getItem(TYPE_VISIBILITY_STORAGE_KEYS.spaces);
+  click(button(row, 'Hide Walls'));
+  assert.deepEqual(useViewerStore.getState().hiddenEntities, new Set([7]));
+  click(button(row, 'Show Walls'));
+  assert.equal(useViewerStore.getState().typeVisibility.spaces, false);
+  assert.equal(localStorage.getItem(TYPE_VISIBILITY_STORAGE_KEYS.spaces), persisted);
+  assert.deepEqual(useViewerStore.getState().hiddenEntities, new Set(), 'unrelated #8 is never hidden to simulate a scoped type override');
+});
+
+for (const mode of ['none', 'class', 'classification'] as const) {
+  it(`#9383 ${mode} product Isolate does not enable the global space gate`, async () => {
+    const container = await mount(await model(`product-isolate-${mode}`, false, true));
+    const control = container.querySelector<HTMLSelectElement>('select[aria-label="Group layer elements"]');
+    assert.ok(control);
+    act(() => { control.value = mode; control.dispatchEvent(new Event('change', { bubbles: true })); });
+    click(button(layerRows(container)[0], 'Expand Walls'));
+    if (mode !== 'none') {
+      const name = mode === 'class' ? 'IfcSpace' : 'Unclassified';
+      const group = [...container.querySelectorAll<HTMLElement>('[role="treeitem"]')].find(row => row.textContent?.includes(name));
+      assert.ok(group);
+      click(button(group, `Expand ${name}`));
+    }
+    const row = [...container.querySelectorAll<HTMLElement>('[role="treeitem"]')].find(row => row.textContent?.includes('Layer wall'));
+    assert.ok(row);
+    click(button(row, 'Isolate Layer wall'));
+    assert.deepEqual(useViewerStore.getState().isolatedEntities, new Set([7]));
+    assert.equal(useViewerStore.getState().typeVisibility.spaces, false);
   });
 }

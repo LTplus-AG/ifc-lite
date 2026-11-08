@@ -10,6 +10,7 @@ export const hierarchyDe = {
   "hierarchy.layerGrouping.class": "Klasse",
   "hierarchy.layerGrouping.classification": "Klassifikation",
   "hierarchy.layerGrouping.unclassified": "Nicht klassifiziert",
+  "hierarchy.layerGrouping.unavailable": "Klassifizierung nicht verfügbar",
 
   "hierarchy.node.repositionAriaLabel": "Modell {name} neu positionieren",
   "hierarchy.node.repositionTooltip": "Modell neu positionieren",

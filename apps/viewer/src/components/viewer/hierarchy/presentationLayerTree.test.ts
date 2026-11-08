@@ -5,7 +5,7 @@
 import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
-import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
+import { IfcParser, extractClassificationsOnDemand, type IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { resolveEntityRef, useViewerStore, type FederatedModel } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
@@ -295,3 +295,80 @@ for (const mode of ['class', 'classification'] as const) {
     }
   });
 }
+
+const classificationIfc = (extra: string) => IFC.replace('ENDSEC;\nEND-ISO', `
+#60=IFCCLASSIFICATION($,$,$,'Uniclass',$,$,$);
+#61=IFCCLASSIFICATIONREFERENCE($,'EF_25','Walls',#60,$,$);
+${extra}
+ENDSEC;\nEND-ISO`);
+const parseClassification = (extra: string) => new IfcParser().parseColumnar(
+  new TextEncoder().encode(classificationIfc(extra)).buffer, { disableWorkerScan: true });
+
+test('#9383 source-empty classified members have a distinct unavailable bucket', async () => {
+  const store = await parseClassification("#62=IFCRELASSOCIATESCLASSIFICATION('rel',$,$,$,(#2),#61);");
+  const transport = { ...store, source: new Uint8Array() };
+  const view = new MutablePropertyView(null, '__legacy__');
+  view.setExpressIdWatermark(100);
+  // Native metadata-only inputs can still have live authored geometry/layers.
+  view.setAttribute(2, 'Representation', '#11');
+  view.setAttribute(11, 'Representations', '(#21)');
+  const unclassified = view.createEntity('IfcWall', ['new', null, 'Unclassified wall', null, null, null, 11, null, null]);
+  const layer = view.createEntity('IfcPresentationLayerAssignment', ['Transport layer', null, [21], null]);
+  const rows = buildPresentationLayerTree(new Map(), transport, ALL, new Set([2]), new Set(['legacy']),
+    () => view, 'classification', 'Unclassified', 'Classification unavailable');
+  const header = rows.find(row => row.entityExpressId === layer.expressId);
+  assert.ok(header);
+  const groups = rows.filter(row => row.type === 'type-group' && row.id.startsWith(header.id));
+  assert.deepEqual(groups.find(row => row.name === 'Classification unavailable')?.memberGlobalIds, [2]);
+  assert.deepEqual(groups.find(row => row.name === 'Unclassified')?.memberGlobalIds, [unclassified.expressId]);
+});
+
+test('#9383 direct classification uses the system name once', async () => {
+  const store = await parseClassification("#62=IFCRELASSOCIATESCLASSIFICATION('rel',$,$,$,(#2),#60);");
+  const rows = buildPresentationLayerTree(new Map(), store, ALL, new Set([2]), new Set(['legacy']), undefined, 'classification');
+  const group = rows.find(row => row.type === 'type-group' && row.name === 'Uniclass');
+  assert.ok(group);
+  assert.deepEqual(group.memberGlobalIds, [2]);
+  assert.equal(rows.some(row => row.name === 'Uniclass: Uniclass'), false);
+});
+
+test('#9383 direct and type-level references populate both groups with exact deduplicated counts', async () => {
+  const store = await parseClassification(`
+#62=IFCCLASSIFICATIONREFERENCE($,'EF_30','Type class',#60,$,$);
+#70=IFCWALLTYPE('type',$,'Wall type',$,$,$,$,$,$,.NOTDEFINED.);
+#71=IFCRELASSOCIATESCLASSIFICATION('direct',$,$,$,(#2),#61);
+#72=IFCRELASSOCIATESCLASSIFICATION('typeclass',$,$,$,(#70),#62);
+#73=IFCRELDEFINESBYTYPE('types',$,$,$,(#2,#4),#70);
+#74=IFCRELASSOCIATESCLASSIFICATION('duplicate',$,$,$,(#2),#62);
+#54=IFCPRESENTATIONLAYERASSIGNMENT('Mixed',$,(#21,#23),$);`);
+  const rows = buildPresentationLayerTree(new Map(), store, ALL, new Set([2]), new Set(['legacy']), undefined, 'classification');
+  const header = rows.find(row => row.entityExpressId === 54);
+  assert.ok(header);
+  const groups = rows.filter(row => row.type === 'type-group' && row.id.startsWith(header.id));
+  assert.equal(groups.length, 2);
+  for (const [name, ids] of [['Uniclass: EF_25', [2]], ['Uniclass: EF_30', [2, 4]]] as const) {
+    const group = groups.find(row => row.name === name);
+    assert.ok(group);
+    assert.equal(group.elementCount, ids.length);
+    assert.deepEqual(group.memberGlobalIds, [...ids]);
+    assert.deepEqual(rows.filter(row => row.id.startsWith(`${group.id}-product-`)).map(row => row.expressIds[0]), [...ids]);
+  }
+});
+
+test('#9383 shared reference decodes once and edits invalidate it without sharing mutable results', async () => {
+  const store = await parseClassification("#62=IFCRELASSOCIATESCLASSIFICATION('rel',$,$,$,(#2,#4),#61);");
+  const original = store.getEntity.bind(store);
+  let reads = 0;
+  store.getEntity = id => { if (id === 61) reads++; return original(id); };
+  const first = extractClassificationsOnDemand(store, 2);
+  first[0].identification = 'Caller edit';
+  const next = extractClassificationsOnDemand(store, 4);
+  assert.equal(next[0].identification, 'EF_25', 'callers cannot corrupt a shared cached reference');
+  assert.equal(reads, 1, 'shared references decode once instead of once per product');
+  const view = new MutablePropertyView(null, '__legacy__');
+  assert.equal(extractClassificationsOnDemand(store, 2, view)[0].identification, 'EF_25');
+  view.setAttribute(61, 'Identification', 'EF_30');
+  assert.equal(extractClassificationsOnDemand(store, 4, view)[0].identification, 'EF_30');
+  view.setAttribute(60, 'Name', 'Changed system');
+  assert.equal(extractClassificationsOnDemand(store, 2, view)[0].system, 'Changed system');
+});

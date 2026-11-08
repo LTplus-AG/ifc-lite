@@ -10,6 +10,7 @@ export const hierarchyRu = {
   "hierarchy.layerGrouping.class": "Класс",
   "hierarchy.layerGrouping.classification": "Классификация",
   "hierarchy.layerGrouping.unclassified": "Без классификации",
+  "hierarchy.layerGrouping.unavailable": "Классификация недоступна",
 
   "hierarchy.node.repositionAriaLabel": "Изменить положение модели {name}",
   "hierarchy.node.repositionTooltip": "Изменить положение модели",

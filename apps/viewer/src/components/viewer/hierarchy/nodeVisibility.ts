@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { IfcDataStore } from '@ifc-lite/parser';
-import { resolveEntityRef, useViewerStore, type FederatedModel } from '@/store';
+import type { EntityRef, FederatedModel, ViewerState } from '@/store';
 import { collectIfcBuildingStoreyElementsWithIfcSpace, collectSpatialSubtreeElementsWithIfcSpace } from '@/store/basketVisibleSet';
 import { ownedAggregationRelationships } from '@/utils/entity-ownership';
 import { resolveTreeGlobalId } from './productTree';
@@ -92,13 +92,21 @@ export function hierarchyNodeAppearance(
   return { ...hierarchyNodeVisibility(node, elements, hidden), outsideIsolation };
 }
 
-/** #9272: Show and Isolate must reveal default-hidden member geometry too. */
-export function revealMembershipSpatialTypes(node: TreeNode, elements: readonly number[]): void {
-  if (node.type !== 'group' && !node.id.startsWith('presentation-layer-')) return;
-  const state = useViewerStore.getState();
+/** A subgroup is a container, never a product whose id shares its prefix. */
+export function isLayerSubgroup(node: TreeNode): boolean {
+  return node.type === 'type-group' && node.id.startsWith('presentation-layer-');
+}
+
+/** #9272: only explicit container Isolate enables default-hidden spatial types. */
+export function revealMembershipSpatialTypes(
+  node: TreeNode, elements: readonly number[],
+  state: Pick<ViewerState, 'models' | 'ifcDataStore' | 'mutationViews' | 'typeVisibility' | 'toggleTypeVisibility'>,
+  resolve: (globalId: number) => EntityRef | null,
+): void {
+  if (node.type !== 'group' && node.type !== 'presentation-layer' && !isLayerSubgroup(node)) return;
   const memberTypes = new Set<string>();
   for (const globalId of new Set([...(node.memberGlobalIds ?? []), ...elements])) {
-    const ref = resolveEntityRef(globalId);
+    const ref = resolve(globalId);
     if (!ref) continue;
     const store = state.models.get(ref.modelId)?.ifcDataStore ?? state.ifcDataStore;
     if (!store) continue;

@@ -58,6 +58,7 @@ export function buildTreeForGrouping(
   presentationLayerBuilder?: PresentationLayerBuilder,
   layerGrouping: LayerGrouping = 'none',
   unclassified?: string,
+  unavailable?: string,
 ): TreeNode[] {
   const treeOverlay = (modelId: string) => mutationViews.get(modelId); // deletes/retypes, re-run per mutationVersion (#5249)
   if (groupingMode === 'type') {
@@ -72,7 +73,7 @@ export function buildTreeForGrouping(
   if (groupingMode === 'presentation-layers') {
     // Curve-only annotations render in the symbolic overlay rather than meshes.
     // Their owner IDs obey the same hide/show contract as meshed products.
-    return presentationLayerBuilder?.(models, ifcDataStore, expansion, classTreeIds, geometryReadyModelIds, treeOverlay, layerGrouping, unclassified) ?? [];
+    return presentationLayerBuilder?.(models, ifcDataStore, expansion, classTreeIds, geometryReadyModelIds, treeOverlay, layerGrouping, unclassified, unavailable) ?? [];
   }
   if (groupingMode === 'groups') {
     return buildGroupTree(models, ifcDataStore, expansion, isMultiModel, geometricIds, groupFilter, treeOverlay);

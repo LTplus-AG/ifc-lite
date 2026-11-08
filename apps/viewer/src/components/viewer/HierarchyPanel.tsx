@@ -215,7 +215,6 @@ export function HierarchyPanel() {
         clearSelection();
       }
     } else {
-      revealMembershipSpatialTypes(node, elements);
       showEntities(elements);
     }
   }, [getNodeElements, hiddenEntities, hideEntities, showEntities, selectedEntityId, clearSelection]);
@@ -339,7 +338,7 @@ export function HierarchyPanel() {
     if (action === 'isolate') {
       const elements = getNodeElements(node);
       if (elements.length === 0) return;
-      revealMembershipSpatialTypes(node, elements);
+      revealMembershipSpatialTypes(node, elements, useViewerStore.getState(), resolveEntityRef);
       isolateEntities(elements);
       return;
     }

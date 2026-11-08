@@ -26,6 +26,7 @@ export function buildPresentationLayerTree(
   overlay?: TreeOverlay,
   grouping: LayerGrouping = 'none',
   unclassified = 'Unclassified',
+  unavailable = 'Classification unavailable',
 ): TreeNode[] {
   const nodes: TreeNode[] = [];
   const append = (store: IfcDataStore, ownerModelIds: string[]) => {
@@ -43,9 +44,10 @@ export function buildPresentationLayerTree(
       if (!classificationGroups.has(id)) {
         const refs = extractClassificationsOnDemand(store, id, view ?? undefined);
         classificationGroups.set(id, refs.flatMap(ref => {
+          if (ref.unresolved) return [{ key: 'unavailable', name: unavailable }];
           const code = ref.identification?.trim() || ref.name?.trim();
           return code ? [{ key: JSON.stringify([ref.system, code]),
-            name: ref.system ? `${ref.system}: ${code}` : code }] : [];
+            name: ref.system && ref.system !== code ? `${ref.system}: ${code}` : code }] : [];
         }));
       }
       const groups = classificationGroups.get(id)!;

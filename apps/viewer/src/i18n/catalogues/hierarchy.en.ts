@@ -19,11 +19,12 @@ import type { TranslationValue } from '../types';
  * footer chips and their clear controls, and the resize-divider hint.
  */
 export const hierarchyEn = {
-  "hierarchy.layerGrouping.label": "Group layer elements",
-  "hierarchy.layerGrouping.none": "None",
-  "hierarchy.layerGrouping.class": "Class",
-  "hierarchy.layerGrouping.classification": "Classification",
-  "hierarchy.layerGrouping.unclassified": "Unclassified",
+  'hierarchy.layerGrouping.class': 'Class',
+  'hierarchy.layerGrouping.classification': 'Classification',
+  'hierarchy.layerGrouping.label': 'Group layer elements',
+  'hierarchy.layerGrouping.none': 'None',
+  'hierarchy.layerGrouping.unavailable': 'Classification unavailable',
+  'hierarchy.layerGrouping.unclassified': 'Unclassified',
 
   // HierarchyNode: model-header row
   'hierarchy.node.repositionAriaLabel': 'Reposition model {name}',

@@ -25,11 +25,13 @@
  *     static blocks, decorators, `import x = require(...)`.
  *   - an inert value is built from literals, names, property reads, object,
  *     array and untagged template literals, operators other than assignment,
- *     increment and the comma, functions and classes (their bodies run later,
- *     so they are not inspected, apart from a class's static fields),
+ *     increment and the comma, stored functions and classes (their bodies run
+ *     later, so they are not inspected, apart from a class's static fields),
  *     `new Set|Map|WeakMap|WeakSet(...)` and the few built-ins listed in
- *     PURE_CALLS that read only their arguments. Any other call or `new`,
- *     a tagged template, `await`, `yield` or `delete` is flagged.
+ *     PURE_CALLS that read only their arguments. A function under such a
+ *     call's arguments may run (`Array.from`'s mapper), so its body is checked
+ *     as load-time code. Any other call or `new` (an IIFE included), a tagged
+ *     template, `await`, `yield` or `delete` is flagged.
  * TypeScript and JavaScript modules under each package's src/ are scanned.
  *
  * Every published package that declares `sideEffects` is checked: a module
@@ -70,18 +72,31 @@ const ASSIGNMENT_OPERATORS = new Set([
 const hasModifier = (node, kind) => !!node.modifiers?.some((m) => m.kind === kind);
 const decorated = (node) => ts.canHaveDecorators(node) && (ts.getDecorators(node)?.length ?? 0) > 0;
 
-/** The first reason `node` may do work when evaluated, or null when it is inert. */
+/**
+ * The first reason `node` may do work when evaluated, or null when it is inert.
+ *
+ * A function's body runs when it is called, so a function that is only stored
+ * (assigned, exported, put in an array, object or `new Set|Map|...`) is not
+ * inspected. A function that may be called during evaluation is: anything
+ * under the arguments of a PURE_CALLS callee (`Array.from`'s mapper runs
+ * there, `String`/`Number` call `toString`/`valueOf`), walked as load-time
+ * code. Any other call, an IIFE included, is flagged as a call already.
+ */
 function work(node, sf) {
   let reason = null;
-  const visit = (n) => {
+  const visit = (n, invoked) => {
     if (reason) return;
-    // Bodies run when called, not at load.
-    if (ts.isFunctionExpression(n) || ts.isArrowFunction(n) || ts.isMethodDeclaration(n)
-      || ts.isGetAccessorDeclaration(n) || ts.isSetAccessorDeclaration(n) || ts.isConstructorDeclaration(n)) return;
+    const isFunction = ts.isFunctionExpression(n) || ts.isArrowFunction(n) || ts.isMethodDeclaration(n)
+      || ts.isGetAccessorDeclaration(n) || ts.isSetAccessorDeclaration(n) || ts.isConstructorDeclaration(n);
+    if (isFunction && !invoked) return;
     if (ts.isClassExpression(n) || ts.isClassDeclaration(n)) { reason = classWork(n, sf); return; }
     if (ts.isCallExpression(n)) {
       const callee = n.expression.getText(sf);
       if (!PURE_CALLS.has(callee)) { reason = `call ${callee}()`; return; }
+      // An allowed callee may still run what it is given: walk its arguments' functions too.
+      visit(n.expression, invoked);
+      for (const arg of n.arguments) visit(arg, true);
+      return;
     } else if (ts.isNewExpression(n)) {
       const callee = n.expression.getText(sf);
       if (!PURE_CONSTRUCTORS.has(callee)) { reason = `new ${callee}`; return; }
@@ -94,9 +109,9 @@ function work(node, sf) {
     else if (ts.isBinaryExpression(n) && ASSIGNMENT_OPERATORS.has(n.operatorToken.kind)) {
       reason = n.operatorToken.kind === K.CommaToken ? 'comma expression' : 'assignment'; return;
     }
-    ts.forEachChild(n, visit);
+    ts.forEachChild(n, (child) => visit(child, invoked));
   };
-  visit(node);
+  visit(node, false);
   return reason;
 }
 
@@ -239,6 +254,8 @@ test('inert module shapes are not flagged', () => {
     // Concatenated so the fixture keeps a literal `${3}` without tripping no-template-curly-in-string.
     'const ids = Object.freeze({ a: 1, b: [2, `t$' + '{3}`] });',
     'export const n = -1, s = cond ? a.b : null, g = () => register(2);',
+    'export const handlers = new Map([[1, () => register(5)]]), set = new Set([() => register(6)]);',
+    'const copy = Array.from([1, 2]);',
     'class C { static x = 1; static y = new Set(); m() { register(3); } }',
     'export default function main() { register(4); }',
     'export { a as default };',
@@ -276,6 +293,13 @@ test('every load-time form the first detector missed is flagged (#9200 review)',
     'class W extends mixin(Base) {}': 'call mixin() in extends at line 1',
     'enum E { A = compute() }': 'call compute() in an enum member at line 1',
     'import fs = require("fs");': 'import = at line 1',
+    // #9200 review: allowed callees that run what they are given, and what was always flagged.
+    'const entries = Array.from([1], () => registerX());': 'call registerX() at line 1',
+    'const doubled = [1, 2].map((x) => registerX(x));': 'call [1, 2].map() at line 1',
+    'const once = (() => { registerX(); return 1; })();': 'call (() => { registerX(); return 1; })() at line 1',
+    'const s = String({ toString() { registerX(); return ""; } });': 'call registerX() at line 1',
+    'const table = Object.fromEntries([1].map((k) => [k, registerX(k)]));': 'call [1].map() at line 1',
+    'export const installed = register();': 'call register() at line 1',
   };
   for (const [source, expected] of Object.entries(cases)) assert.deepEqual(flags(source), [expected], source);
 });

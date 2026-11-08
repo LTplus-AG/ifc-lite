@@ -199,3 +199,60 @@ test('#6947 two saved clash reports and the current result chart side by side, a
   expect(await population(page, 'Chart of run A')).toBe(0);
   await page.screenshot({ path: info.outputPath('5-report-deleted.png') });
 });
+
+test('#9259 real IFC quality evidence survives threshold edits, documentation capture and reload', async ({ page }, info) => {
+  test.setTimeout(480_000);
+  await page.setViewportSize({ width: 1700, height: 1250 });
+  await loadModel(page);
+  await openPanels(page);
+  expect(await run(page, { mode: 'hard', reportTouch: false })).toBeGreaterThan(0);
+  const gates = page.locator('[data-quality-rule]');
+  await expect(gates.first()).toBeVisible();
+  // Independent population oracle from actual engine membership and findings,
+  // rather than reproducing the evaluator or trusting its displayed percentage.
+  const expected = await page.evaluate(() => {
+    const result = globalThis.__ifc_lite_viewer_store__.getState().clashRawResult;
+    if (!result) throw new Error('Real model detection produced no raw result');
+    return result.rulesRun.map(rule => {
+      const members = result.ruleCoverage?.find(row => row.rule === rule.id)?.matchedElements;
+      if (!members) throw new Error('Real model detection omitted membership');
+      const checked = new Set(members.map(member => JSON.stringify([member.model, member.key]))).size;
+      const affected = new Set(result.clashes.filter(clash => clash.rule === rule.id)
+        .flatMap(clash => [clash.a, clash.b]).map(member => JSON.stringify([member.model, member.key]))).size;
+      return { rule: rule.id, checked, affected };
+    });
+  });
+  for (const row of expected) {
+    await expect(page.locator('[data-quality-rule]').filter({ hasText: `${row.checked} checked · ${row.affected} affected` }).first()).toBeVisible();
+  }
+  await page.screenshot({ path: info.outputPath('9259-real-ifc-quality.png') });
+  await saveAs(page, 'Quality evidence 9259');
+  const captured = await page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().savedClashReports
+    .find(report => report.name === 'Quality evidence 9259')?.qualityGates);
+  expect(captured?.rows.map(({ rule, checked, affected }) => ({ rule, checked, affected }))).toEqual(expected);
+  await page.keyboard.press('Escape');
+  await page.getByText('Configure quality gates', { exact: true }).click();
+  await page.getByLabel('Clash checks Category name 1', { exact: true }).fill('Changed after capture');
+  await page.getByRole('button', { name: 'Save thresholds', exact: true }).click();
+  await clickPanelAction(page, panelHeader(page, 'Clash detection'), 'Saved clash reports');
+  const reportRow = page.getByRole('dialog').locator('li[data-clash-report]', { hasText: 'Quality evidence 9259' });
+  await reportRow.getByText('Quality gates', { exact: true }).click();
+  await reportRow.getByRole('button', { name: 'Add quality gates to Documentation', exact: true }).click();
+  await page.waitForFunction(() => {
+    const state = globalThis.__ifc_lite_viewer_store__.getState();
+    return state.documents.some(doc => doc.name === 'Quality evidence 9259' && state.documentsStorage.items[doc.id] === 'saved');
+  });
+  const documentCopy = await page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().documents.find(doc => doc.name === 'Quality evidence 9259'));
+  expect(documentCopy?.blocks.some(block => block.kind === 'image' && block.dataUrl.startsWith('data:image/png;base64,'))).toBe(true);
+  expect(documentCopy?.blocks.filter(block => block.kind === 'text').map(block => block.text).join('\n')).not.toContain('Changed after capture');
+  await loadModel(page);
+  await page.evaluate(async () => {
+    const state = globalThis.__ifc_lite_viewer_store__.getState();
+    await state.initializeSavedClashReports();
+    await state.initializeDocuments();
+  });
+  expect(await page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().savedClashReports
+    .find(report => report.name === 'Quality evidence 9259')?.qualityGates)).toEqual(captured);
+  expect(await page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().documents
+    .find(doc => doc.name === 'Quality evidence 9259'))).toEqual(documentCopy);
+});

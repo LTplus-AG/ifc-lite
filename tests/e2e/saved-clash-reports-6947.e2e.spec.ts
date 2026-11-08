@@ -216,9 +216,9 @@ test('#9259 real IFC quality evidence survives threshold edits, documentation ca
     return result.rulesRun.map(rule => {
       const members = result.ruleCoverage?.find(row => row.rule === rule.id)?.matchedElements;
       if (!members) throw new Error('Real model detection omitted membership');
-      const checked = new Set(members.map(member => JSON.stringify([member.model, member.key]))).size;
+      const checked = new Set(members.map(member => JSON.stringify([member.model, member.ref]))).size;
       const affected = new Set(result.clashes.filter(clash => clash.rule === rule.id)
-        .flatMap(clash => [clash.a, clash.b]).map(member => JSON.stringify([member.model, member.key]))).size;
+        .flatMap(clash => [clash.a, clash.b]).map(member => JSON.stringify([member.model, member.ref]))).size;
       return { rule: rule.id, checked, affected };
     });
   });

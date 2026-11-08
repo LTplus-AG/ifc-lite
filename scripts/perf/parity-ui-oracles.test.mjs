@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { hardwareAdapter, loadTarget, ownOpenings, themedResult, wallPropertySets } from '../../tests/modelling-parity/ui/lib/oracles.mjs';
+import { hardwareAdapter, loadTarget, ownOpenings, themedResult, wallPropertySets, wallQuantityCoverage } from '../../tests/modelling-parity/ui/lib/oracles.mjs';
 import { readStep } from '../../tests/modelling-parity/ui/lib/step.mjs';
 test('#9324 fallback flags and software adapter descriptions are refused',()=>{
   assert.equal(hardwareAdapter({architecture:'blackwell'}),true);
@@ -39,4 +39,9 @@ test('#9324 unrelated property sets cannot certify wall assignments', () => {
   const read = (rel) => readStep('DATA;' + base + rel + 'ENDSEC;');
   assert.deepEqual(wallPropertySets(read("#3=IFCRELDEFINESBYPROPERTIES('r',$,$,$,(#99),#2);")), [[]]);
   assert.deepEqual(wallPropertySets(read("#3=IFCRELDEFINESBYPROPERTIES('r',$,$,$,(#1),#2);")), [['Pset_WallCommon']]);
+});
+
+test('#9324 base quantities on one wall cannot certify all walls', () => {
+  const step = readStep("DATA;#1=IFCWALL('a');#2=IFCWALL('b');#3=IFCQUANTITYLENGTH('Length',$,$,5.,$);#4=IFCQUANTITYVOLUME('NetVolume',$,$,3.,$);#5=IFCELEMENTQUANTITY('q',$,$,$,$,(#3,#4));#6=IFCRELDEFINESBYPROPERTIES('r',$,$,$,(#1),#5);ENDSEC;");
+  assert.deepEqual(wallQuantityCoverage(step), [{Length: 5, NetVolume: 3}, {}]);
 });

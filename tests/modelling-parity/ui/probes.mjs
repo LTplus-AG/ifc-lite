@@ -21,7 +21,7 @@
  * - `notes`: where the UI blocked or misled, in plain words.
  */
 
-import { ownOpenings, wallPropertySets } from './lib/oracles.mjs';
+import { ownOpenings, wallPropertySets, wallQuantityCoverage } from './lib/oracles.mjs';
 import { downloadCount, nextDownload, task } from './lib/driver.mjs';
 import {
   escape, hudText, oracleModel, openStoreyManager, readSession, readStoreyManager, switchStorey, tool, toasts, typeFields,
@@ -686,8 +686,7 @@ export const PROBES = [
         dl = await nextDownload(page, before);
       }));
       const step = dl ? readStep(dl.text) : null;
-      const wall = step?.of('IFCWALL')[0];
-      const q = wall ? step.quantities(wall.id) : {};
+      const q = step ? wallQuantityCoverage(step) : [];
       const psets = step ? wallPropertySets(step) : [];
       const classified = step ? step.count('IFCCLASSIFICATIONREFERENCE') > 0 : false;
       return {
@@ -696,7 +695,7 @@ export const PROBES = [
         checks: [
           { name: 'download is IFC4', ok: step?.schema === 'IFC4', detail: `${dl?.name ?? 'no download'} schema ${step?.schema}` },
           { name: '4 walls in the file', ok: (step?.count('IFCWALL') ?? 0) === 4, detail: `${step?.count('IFCWALL')}` },
-          { name: 'base quantities on walls', ok: typeof q.Length === 'number' && typeof q.NetVolume === 'number', detail: JSON.stringify(q) },
+          { name: 'base quantities on walls', ok: q.length === 4 && q.every((values) => Number.isFinite(values.Length) && Number.isFinite(values.NetVolume)), detail: JSON.stringify(q) },
           { name: 'a property set on the walls', ok: psets.length === 4 && psets.every((names) => names.length > 0), detail: JSON.stringify(psets) },
           { name: 'classification reference present', ok: classified, detail: classified ? 'yes' : 'none: the modelling flow assigns no classification' },
         ],

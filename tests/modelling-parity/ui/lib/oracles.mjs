@@ -37,3 +37,7 @@ export function wallPropertySets(step) {
     .filter((set) => set?.type === 'IFCPROPERTYSET')
     .map((set) => set.args?.[2]));
 }
+
+export function wallQuantityCoverage(step) {
+  return step.of('IFCWALL').map((wall) => step.quantities(wall.id));
+}

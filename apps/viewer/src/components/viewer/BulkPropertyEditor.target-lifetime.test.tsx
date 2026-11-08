@@ -80,6 +80,51 @@ for (const replacement of ['data', 'view'] as const) {
   });
 }
 
+// #8962: the selected model is A, but the successful operation belongs only to B.
+for (const source of ['selection', 'search'] as const) {
+  for (const replacement of ['data', 'view'] as const) {
+    it(`#8962 clean ${source} draft tracks secondary target ${replacement}, not unrelated model churn`, async () => {
+      const { data, views } = await setup(2, 2, source);
+      act(() => {
+        const state = useViewerStore.getState();
+        useViewerStore.setState({
+          selectedEntityIds: new Set([10, 11].map(id => toGlobalIdFromModels(state.models, 'b', id))),
+          searchFilterResult: { columns: ['model_id', 'express_id'], rows: [['b', 10], ['b', 11]], runMs: 0 },
+        });
+      });
+      await waitFor(() => !applyButton().disabled && applyButton().textContent?.includes('2'), 'B-only targets are ready');
+      click(applyButton());
+      await waitFor(() => useActivityJournal.getState().jobs.at(-1)?.outcome === 'completed' && applyButton().disabled, 'B Apply completes and stays clean');
+      assert.equal(views.get('a')!.getModifiedEntityCount(), 0, 'selected A was not a participant');
+      assert.equal(views.get('b')!.getAttributeMutationsForEntity(10).find(m => m.name === 'Name')?.value, 'Applied name');
+      // Replacing the maps or even the nonparticipating A data/view must not dirty B.
+      const unrelatedData = await operationWalls(2);
+      act(() => {
+        const state = useViewerStore.getState();
+        useViewerStore.setState({ models: new Map(state.models).set('a', { ...state.models.get('a')!, ifcDataStore: unrelatedData }),
+          mutationViews: new Map(state.mutationViews).set('a', makeView(unrelatedData, 'a')) });
+      });
+      await advance(0);
+      assert.equal(applyButton().disabled, true, 'unrelated data/view and rebuilt target maps preserve the successful clean draft');
+      if (source === 'selection') {
+        click(button('Close')!); await advance(0); click(button('Open bulk')!); await advance(0);
+        assert.equal(applyButton().disabled, true, 'ordinary close/reopen stays clean');
+      }
+      const nextData = replacement === 'data' ? await operationWalls(2) : data;
+      act(() => {
+        const state = useViewerStore.getState();
+        if (replacement === 'data') useViewerStore.setState({ models: new Map(state.models).set('b', { ...state.models.get('b')!, ifcDataStore: nextData }) });
+        else state.registerMutationView('b', makeView(data, 'b'));
+      });
+      await waitFor(() => !applyButton().disabled, 'B replacement re-enables unchanged draft with A still selected');
+      click(applyButton());
+      await waitFor(() => useActivityJournal.getState().jobs.length === 2 && useActivityJournal.getState().jobs.at(-1)?.outcome === 'completed' && applyButton().disabled, 'reapply completes on current B');
+      assert.equal(useViewerStore.getState().getMutationView('b')?.getAttributeMutationsForEntity(11).find(m => m.name === 'Name')?.value, 'Applied name');
+      assert.equal(useViewerStore.getState().getMutationView('a')?.getModifiedEntityCount(), 0, 'reapply still does not touch A');
+    });
+  }
+}
+
 for (const [modelCount, source] of [[1, 'selection'], [2, 'selection'], [2, 'search']] as const) {
   for (const replacement of ['data', 'view'] as const) {
     it(`#8962 ${source} ${modelCount}-model batch retires on ${replacement} replacement during its yield`, async () => {

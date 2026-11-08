@@ -76,7 +76,7 @@ export function rewriteRoomOutlineInStore(store: IfcDataStore, editor: StoreEdit
   const emitted = emitClippedProfile(editor, outline, origin, chain.baseElevation - origin[2], getModelLengthUnitScale(store));
   editor.setPositionalAttribute(chain.extrudedSolidId, 0, `#${emitted.profile}`);
   editor.setPositionalAttribute(chain.extrudedSolidId, 1, `#${emitted.solidPosition}`);
-  editor.setPositionalAttribute(chain.extrudedSolidId, 2, `#${emitted.up}`);
+  editor.setPositionalAttribute(chain.extrudedSolidId, 2, `#${emitted.direction}`);
   setRoomAreasInStore(editor, id, areas, chain.thickness);
 }
 

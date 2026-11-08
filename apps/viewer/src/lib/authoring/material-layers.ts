@@ -4,6 +4,8 @@
 
 import type { StoreEditor } from '@ifc-lite/mutations';
 import { liveEntityConforms } from '@ifc-lite/create';
+import { getModelLengthUnitScale } from '@/lib/length-unit-scale';
+import { resolveSlabEditChain } from '@/lib/slab-edit';
 import { setWallSectionInStore } from '../../../../../packages/create/src/in-store/wall-section-edit.js';
 import { AUTHORED_KINDS, occurrencesOf } from '@/lib/commands/modeling/authored-kinds';
 import type { AuthoredElementKind } from '@/store/slices/authoringDefaultsSlice';
@@ -21,6 +23,12 @@ export interface ApplyLayersSpec {
   /** Native inspector defaults may create an unassigned set; reviewed proposals require an existing element. */
   readonly elementId?: number;
   readonly typeId: number | null;
+}
+
+/** IfcMaterialLayerSetUsage.DirectionSense: a slab hung from its top builds its layers down from there, as its depth does (#9198). */
+export function layerSenseOf(target: Pick<ModelEditTarget, 'dataStore' | 'view' | 'editor'>, elementId: number): 'POSITIVE' | 'NEGATIVE' {
+  const chain = resolveSlabEditChain(target.dataStore, target.view, target.editor, elementId, getModelLengthUnitScale(target.dataStore));
+  return chain && chain.baseElevation !== null && !chain.extrusionUp ? 'NEGATIVE' : 'POSITIVE';
 }
 
 /** The inspector's native layer constructor and coupled wall edit, on the caller's unpublished atomic draft (#7275). */
@@ -55,6 +63,7 @@ export function writeMaterialLayersInDraft(target: ModelEditTarget, draft: Store
   if (elementId === undefined) return { layerSetId, remesh: [] };
   const usage = methods.addMaterialLayerSetUsage(target.modelId, {
     ForLayerSet: layerSetId, LayerSetDirection: direction, OffsetFromReferenceLine: direction === 'AXIS2' ? -total / 2 : 0,
+    ...(direction === 'AXIS3' ? { DirectionSense: layerSenseOf(live, elementId) } : {}),
   });
   methods.assignMaterial(target.modelId, usage.expressId, [elementId]);
   if (kind !== 'wall') return { layerSetId, remesh: [elementId] };

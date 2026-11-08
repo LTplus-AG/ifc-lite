@@ -19,7 +19,9 @@ place points.
 
 In the Model workspace, plain left movement and dragging update the active
 command preview without moving the camera. Placement commands commit on
-click; polygon placement still closes on double-click. Room shape editing
+click; polygon placement still closes on double-click. A floor slab's top sits
+at the level and the slab extrudes down, so walls and columns drawn at that
+level stand on it, and a thickness edit keeps its top there. Room shape editing
 grabs a corner on press, previews its movement, and commits on release as one
 Undo/Redo operation. A lost capture, focus loss, or command change cancels the
 owned room drag. A captured drag can finish outside the canvas. Shift + left,

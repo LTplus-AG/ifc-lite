@@ -5,7 +5,7 @@
 /** Single-finger long press without an orbit, tap, or duplicate native menu (#5859). */
 import { TAP_SLOP_PX } from './tapSlop.js';
 
-const HOLD_MS = 500;
+export const HOLD_MS = 500;
 /** How long after a long press fires or lifts, and how near its point (CSS px), the touch's own native menu may still come. */
 const MENU_MS = 1_000, MENU_RADIUS_PX = 24;
 
@@ -31,7 +31,12 @@ export function forgetTouchLongPress(canvas: HTMLCanvasElement, e: MouseEvent): 
 }
 
 export function createTouchLongPress(canvas: HTMLCanvasElement, onHold: (x: number, y: number) => void): {
-  begin: (touch: Touch) => void;
+  /**
+   * A finger landed. `hold: false` for a press whose rest is no long press (a
+   * command's grab, #9228): `onHold` never fires, yet the touch's own native
+   * menu is still suppressed, so it opens no viewer menu under the drag.
+   */
+  begin: (touch: Touch, options?: { hold?: boolean }) => void;
   move: (touch: Touch) => boolean;
   end: () => boolean;
   cancel: () => void;
@@ -41,6 +46,8 @@ export function createTouchLongPress(canvas: HTMLCanvasElement, onHold: (x: numb
   let timer: ReturnType<typeof setTimeout> | null = null;
   let start: (MenuPoint & { id: number }) | null = null;
   let fired = false;
+  /** The press may fire `onHold` (`begin`'s `hold`). */
+  let holds = true;
   /** A mouse or trackpad menu press near the finger stopped its hold: the menu is the press's (#9223). */
   let muted = false;
   let startedAt = 0;
@@ -71,9 +78,10 @@ export function createTouchLongPress(canvas: HTMLCanvasElement, onHold: (x: numb
   longPresses.set(canvas, registration);
 
   return {
-    begin(touch) {
+    begin(touch, { hold = true } = {}) {
       cancel();
       fired = false;
+      holds = hold;
       start = { id: touch.identifier, x: touch.clientX, y: touch.clientY, mouse: false };
       startedAt = Date.now();
       // A finger landing next to a menu press whose menu has not come yet: that menu is the press's (#9223).
@@ -82,6 +90,7 @@ export function createTouchLongPress(canvas: HTMLCanvasElement, onHold: (x: numb
         start.mouse = muted = true;
         return;
       }
+      if (!hold) return;
       timer = setTimeout(() => {
         timer = null;
         if (!start) return;
@@ -100,12 +109,13 @@ export function createTouchLongPress(canvas: HTMLCanvasElement, onHold: (x: numb
       return true;
     },
     end() {
-      // A muted finger held past the long-press threshold is still a hold: no tool places on its lift (#9223)
-      const held = fired || (muted && start !== null && Date.now() - startedAt >= HOLD_MS);
+      // A muted finger held past the long-press threshold is still a hold: no tool places on its lift (#9223).
+      // A press with no hold (a grab) stays the command's press and release, muted or not (#9228).
+      const held = fired || (holds && muted && start !== null && Date.now() - startedAt >= HOLD_MS);
       // Windows sends a held touch's own menu at the lift, however long the hold, and whether or
       // not a mouse press muted it (#9223): its window runs from the lift.
       if (fired && menuWindow) menuWindow.until = Date.now() + MENU_MS;
-      else if (muted && start) menuWindow = { ...start, until: Date.now() + MENU_MS };
+      else if (start && (muted || (!holds && Date.now() - startedAt >= HOLD_MS))) menuWindow = { ...start, until: Date.now() + MENU_MS };
       cancel();
       return held;
     },

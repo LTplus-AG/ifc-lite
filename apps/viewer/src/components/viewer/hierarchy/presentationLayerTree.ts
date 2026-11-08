@@ -27,6 +27,7 @@ export function buildPresentationLayerTree(
   grouping: LayerGrouping = 'none',
   unclassified = 'Unclassified',
   unavailable = 'Classification unavailable',
+  noCode: (source: string) => string = source => `${source || 'Classification'} (no code)`,
 ): TreeNode[] {
   const nodes: TreeNode[] = [];
   const append = (store: IfcDataStore, ownerModelIds: string[]) => {
@@ -46,8 +47,11 @@ export function buildPresentationLayerTree(
         classificationGroups.set(id, refs.flatMap(ref => {
           if (ref.unresolved) return [{ key: 'unavailable', name: unavailable }];
           const code = ref.identification?.trim() || ref.name?.trim();
-          return code ? [{ key: JSON.stringify([ref.system, code]),
-            name: ref.system && ref.system !== code ? `${ref.system}: ${code}` : code }] : [];
+          if (code) return [{ key: JSON.stringify([ref.system, code]),
+            name: ref.system && ref.system !== code ? `${ref.system}: ${code}` : code }];
+          const path = ref.path?.join(' / ');
+          const source = [ref.system, path].filter(Boolean).join(': ');
+          return [{ key: JSON.stringify(['no-code', ref.system, ref.path]), name: noCode(source) }];
         }));
       }
       const groups = classificationGroups.get(id)!;

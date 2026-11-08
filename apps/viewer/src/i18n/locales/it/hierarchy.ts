@@ -6,6 +6,7 @@ import type { Catalogue } from '../../registry';
 
 export const hierarchyIt = {
   "hierarchy.layerGrouping.label": "Raggruppa gli elementi del livello",
+  "hierarchy.layerGrouping.noCode": "{source} (senza codice)",
   "hierarchy.layerGrouping.none": "Nessuno",
   "hierarchy.layerGrouping.class": "Classe",
   "hierarchy.layerGrouping.classification": "Riferimento di classificazione",

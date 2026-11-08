@@ -6,6 +6,7 @@ import type { Catalogue } from '../../registry';
 
 export const hierarchyFr = {
   "hierarchy.layerGrouping.label": "Regrouper les éléments du calque",
+  "hierarchy.layerGrouping.noCode": "{source} (sans code)",
   "hierarchy.layerGrouping.none": "Aucun",
   "hierarchy.layerGrouping.class": "Classe",
   "hierarchy.layerGrouping.classification": "Référence de classification",

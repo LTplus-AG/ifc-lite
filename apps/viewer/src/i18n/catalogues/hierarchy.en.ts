@@ -22,6 +22,7 @@ export const hierarchyEn = {
   'hierarchy.layerGrouping.class': 'Class',
   'hierarchy.layerGrouping.classification': 'Classification',
   'hierarchy.layerGrouping.label': 'Group layer elements',
+  'hierarchy.layerGrouping.noCode': '{source} (no code)',
   'hierarchy.layerGrouping.none': 'None',
   'hierarchy.layerGrouping.unavailable': 'Classification unavailable',
   'hierarchy.layerGrouping.unclassified': 'Unclassified',

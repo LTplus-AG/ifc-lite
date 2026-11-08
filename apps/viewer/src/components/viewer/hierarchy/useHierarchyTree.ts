@@ -236,7 +236,7 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
     (): TreeNode[] => !builderReady ? [] : buildTreeForGrouping(
       groupingMode, models, ifcDataStore, EXPAND_ALL, isMultiModel, unifiedStoreys, sortMode,
       geometricIds, classTreeIds, authoredProducts, groupFilter, geometryReadyModelIds,
-      georefMutations, mutationViews, materialSourceStores, presentationLayers.builder, layerGrouping, t('hierarchy.layerGrouping.unclassified'), t('hierarchy.layerGrouping.unavailable'),
+      georefMutations, mutationViews, materialSourceStores, presentationLayers.builder, layerGrouping, t('hierarchy.layerGrouping.unclassified'), t('hierarchy.layerGrouping.unavailable'), source => t('hierarchy.layerGrouping.noCode', { source: source || t('hierarchy.layerGrouping.classification') }),
     ),
     [groupingMode, models, ifcDataStore, isMultiModel, unifiedStoreys, sortMode,
       geometricIds, classTreeIds, authoredProducts, groupFilter, geometryReadyModelIds,

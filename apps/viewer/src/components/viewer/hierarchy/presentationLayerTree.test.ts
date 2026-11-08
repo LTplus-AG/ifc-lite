@@ -378,3 +378,26 @@ test('#9383 shared reference decodes once and edits invalidate it without sharin
   view.setAttribute(60, 'Name', 'Changed system');
   assert.equal(extractClassificationsOnDemand(store, 2, view)[0].system, 'Changed system');
 });
+
+
+test('#9383 unnamed resolved reference stays classified under its source', async () => {
+  const content = classificationIfc(`
+#62=IFCRELASSOCIATESCLASSIFICATION('resolved',$,$,$,(#2),#61);
+#63=IFCRELASSOCIATESCLASSIFICATION('unresolved',$,$,$,(#1),#999);
+#54=IFCPRESENTATIONLAYERASSIGNMENT('Mixed',$,(#20,#21,#23),$);`)
+    .replace("IFCCLASSIFICATIONREFERENCE($,'EF_25','Walls',#60,$,$)", 'IFCCLASSIFICATIONREFERENCE($,$,$,#60,$,$)');
+  const store = await new IfcParser().parseColumnar(new TextEncoder().encode(content).buffer, { disableWorkerScan: true });
+  const rows = buildPresentationLayerTree(new Map(), store, ALL, new Set([2, 3]), new Set(['legacy']), undefined, 'classification');
+  const layer = rows.find(row => row.entityExpressId === 54);
+  assert.ok(layer);
+  const groups = rows.filter(row => row.type === 'type-group' && row.id.startsWith(layer.id));
+  assert.equal(groups.length, 3);
+  for (const [name, members] of [
+    ['Uniclass (no code)', [2]], ['Classification unavailable', [1]], ['Unclassified', [4]],
+  ] as const) {
+    const group = groups.find(row => row.name === name);
+    assert.ok(group, `${name} remains a distinct classification state`);
+    assert.equal(group.elementCount, 1);
+    assert.deepEqual(group.memberGlobalIds, [...members]);
+  }
+});

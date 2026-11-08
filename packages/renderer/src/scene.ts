@@ -669,7 +669,7 @@ export class Scene {
       if (!b || b.gpuResident !== false) continue;             // hot buckets stay warm-skippable
       if (bucket.meshData.length === 0) continue;              // already cold
       if (bucket.key.includes('#')) continue;                  // overflow sub-bucket
-      if (this.dirtyBuckets.has(bucket.key)) continue;         // diverged from disk
+      if (this.dirtyBuckets.has(bucket.key) || this.fragmentPieces.forBatch(b)) continue; // diverged from disk, or outgrew its batch: a restore keyed by its ids drops the rest (#9270)
       // Colour-merged meshes (per-vertex entityIds) are registered in
       // meshDataMap under EVERY contained id; evicting only the primary id's
       // entry would leave the typed arrays reachable (no memory freed) and a
@@ -2051,7 +2051,7 @@ export class Scene {
     // already retired by rebuildAndPublishBatches.
     this.retireFinalizedBatches(oldFragments);
     this.retireFinalizedBatches(regroup?.retired ?? []);
-    this.fragmentPieces.retainOnly(this.batchedMeshes);
+    this.fragmentPieces.retainOnly(this.streamingFragments);
     // #6957: same batch tally as the time-sliced path (only reached when the rebuild succeeded).
     if (perfCounters.enabled) perfCount('render.finalize.batches', this.batchedMeshes.filter((b) => !oldBatchSet.has(b)).length);
   }
@@ -2324,8 +2324,8 @@ export class Scene {
     this.coldBuckets.clear();
     this.dirtyBuckets.clear();
 
-    // 3. Clear partial batch cache (would need mesh data to rebuild)
-    this.dropAllPartialCaches();
+    // 3. Clear partial batch cache (would need mesh data to rebuild), and the piece records partials are cut from
+    this.dropAllPartialCaches(); this.fragmentPieces.retainOnly([]);
 
     this.geometryReleased = true;
 

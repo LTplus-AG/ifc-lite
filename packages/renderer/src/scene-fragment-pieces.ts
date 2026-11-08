@@ -82,6 +82,8 @@ export class FragmentPieces implements BatchPieces {
   }
 }
 
+const NO_MESHES: ReadonlySet<MeshData> = new Set();
+
 /**
  * What a bucket's built batch was uploaded from: its bucket's meshes at the
  * moment the bucket first outgrew it (#9270). The batch keeps drawing exactly
@@ -154,7 +156,7 @@ export class StreamingFragmentPieces {
 
   /** The registered meshes `fragments` draw, kept while that list only grows (a finalize window's appends). */
   private drawnBy(fragments: readonly BatchedMesh[]): ReadonlySet<MeshData> {
-    if (fragments.length === 0) return new Set();
+    if (fragments.length === 0) return NO_MESHES;
     const memo = this.drawnMemo;
     if (memo?.fragments === fragments && memo.count === fragments.length) return memo.drawn;
     const drawn = new Set<MeshData>();
@@ -179,7 +181,7 @@ export class StreamingFragmentPieces {
     return this.byBatchId.get(Number.parseInt(sourceBatchKey.slice(colorKey.length + 1), 10));
   }
 
-  /** Forget every batch but `live`: at each finalize swap, `finishEphemeralStreaming`, `clear()` and device recovery. */
+  /** Forget every batch but `live`: at each finalize swap, `finishEphemeralStreaming`, `releaseGeometryData`, `clear()` and device recovery. */
   retainOnly(live: readonly BatchedMesh[]): void {
     this.drawnMemo = undefined;
     if (this.byBatchId.size === 0) return;

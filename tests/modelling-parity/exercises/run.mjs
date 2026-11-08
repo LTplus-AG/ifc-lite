@@ -1,10 +1,11 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { copiedWallAttachments } from './copy-rebinding.mjs';
 import { createHash } from 'node:crypto';
 import { compareFzk } from './fzk-oracle.mjs';
 import { boundedNode } from './process.mjs';
-import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, appendFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, appendFileSync } from 'node:fs';
 import { resolve, relative } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { execFileSync } from 'node:child_process';
@@ -36,12 +37,8 @@ export async function run(id,args=process.argv.slice(2)) {
     if(id==='F3') { emit('reference','psets-classification-valid-ifc4','skip','deferred to R1'); return results; }
     let input=option('--fixture',null);
     if(id==='F6'&&!input) {
-      const manifest=JSON.parse(readFileSync(resolve(root,'tests/models/manifest.json'),'utf8'));
-      const candidates=[];
-      const walk=p=>{for(const f of readdirSync(p,{withFileTypes:true})) {const full=resolve(p,f.name);if(f.isDirectory())walk(full);else if(f.name.endsWith('.ifc'))candidates.push(full);}};
-      walk(resolve(root,'tests/models'));
-      input=candidates.find(p=>/AC20-FZK-Haus|Revit|Archicad/i.test(p));
-      if(!input) throw new Error(`No offline Revit/Archicad corpus fixture; run pnpm fixtures (${Object.keys(manifest).length} manifest fields)`);
+      input=resolve(root,'tests/models/ara3d/AC20-FZK-Haus.ifc');
+      if(!existsSync(input)) throw new Error('Missing tests/models/ara3d/AC20-FZK-Haus.ifc; run pnpm fixtures');
     }
     if(!input) {
       input=resolve(out,'blank.ifc');
@@ -164,22 +161,8 @@ export async function run(id,args=process.argv.slice(2)) {
       emit(`opening-${e.expressId}`,'hosted-doors-windows-from-types',ok?'pass':'fail',ok?null:'GLB ray at hosted opening centre must miss host and adjacent ray must hit');
     }
     const records=new Map([...text.matchAll(/#(\d+)\s*=\s*([^;]+);/g)].map(m=>[Number(m[1]),m[2]]));
-    let checked=0, wrong=0;
-    const copiedIds=new Set(meta.expected.filter(e=>e.kind==='copied'||e.copied).map(e=>e.expressId));
-    for(const record of records.values()) {
-      if(!record.startsWith('IFCRELDEFINESBYPROPERTIES(')) continue;
-      const rel=record.match(/\(([^()]*)\),#(\d+)\)$/); if(!rel) continue;
-      const ids=[...rel[1].matchAll(/#(\d+)/g)].map(m=>Number(m[1])).filter(n=>copiedIds.has(n)&&records.get(n)?.startsWith('IFCWALL('));
-      const pset=records.get(Number(rel[2])); if(!ids.length||!pset?.includes("'IfcLite_StoreyAttachment'")) continue;
-      const constraint=[...pset.matchAll(/#(\d+)/g)].map(m=>records.get(Number(m[1]))).find(v=>v?.includes("'TopConstraint'"));
-      const guid=constraint?.match(/IFCLABEL\('([^']+)'\)/)?.[1];
-      for(const entityId of ids) {
-        const e=meta.expected.find(e=>e.expressId===entityId);
-        const next=meta.levels[e.level!==undefined?e.level+1:meta.levels.findIndex(s=>Math.abs(s.elevation-e.min)<0.01)+1];
-        checked++; if(guid!=='NextStoreyAbove'&&guid!==next?.GlobalId) wrong++;
-      }
-    }
-    if(copiedIds.size) emit('copy-rebinding','copy-to-levels',checked&&!wrong?'pass':wrong?'fail':'partial',wrong?`${wrong}/${checked} copied wall top constraints still target a different storey`:checked?null:'No copied wall attachment could be resolved',{checked,wrong});
+    const {checked,wrong,missing,copiedWalls,copiedCount}=copiedWallAttachments(meta,records);
+    if(copiedCount) emit('copy-rebinding','copy-to-levels',copiedWalls&&!wrong&&!missing?'pass':wrong||missing?'fail':'partial',wrong||missing?`${wrong}/${checked} copied wall constraints target a different storey; ${missing}/${copiedWalls} walls lack an attachment`:copiedWalls?null:'No copied walls to check',{checked,wrong,missing,copiedWalls:copiedWalls});
   } catch(e) {if(existsSync(resolve(out,'progress.state'))) meta=JSON.parse(readFileSync(resolve(out,'progress.state'),'utf8'))||meta; emit('execution','large-tall-model-performance','fail',e.message,{ms:performance.now()-start,completedSteps:results.length});}
   finally {
     const failed=results.filter(r=>['fail','error','partial'].includes(r.status)).length;

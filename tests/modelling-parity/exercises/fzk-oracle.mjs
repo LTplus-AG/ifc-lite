@@ -49,7 +49,7 @@ export function compareFzk({text,find,levels,emit}) {
   }
   const all=[...records.keys()];
   for(const [kind,T,cap] of [['stairs','IFCSTAIR','stairs-railings'],['spaces','IFCSPACE','rooms-with-area'],['beams','IFCBEAM','columns-beams-on-grid-follow-levels'],['slabs','IFCSLAB','slab-with-openings']]) {
-    const count=all.filter(id=>type(id)===T).length;
+    const count=all.filter(id=>type(id)===T&&(T!=='IFCSLAB'||args(id)[8]!=='.ROOF.')).length;
     check(`${kind}-total`,cap,count===target.totals[kind],`Expected ${target.totals[kind]} ${kind}; got ${count}`,{count});
   }
   const ground=levels.find(s=>s.Name===target.footprint.storey);
@@ -64,14 +64,27 @@ export function compareFzk({text,find,levels,emit}) {
     const qArea=quantity?Number(args(quantity)[3]):NaN, allowed=wanted.area*target.tolerances.spaceAreaM2.value;
     check(`space-${wanted.name}`,'rooms-with-area',Math.abs(area-wanted.area)<=allowed&&Math.abs(qArea-wanted.area)<=allowed,`Space ${wanted.name}: expected ${wanted.area}m² ±5%; mesh ${area}, quantity ${qArea}`,{area,quantity:qArea,expected:wanted.area});
   }
-  const roofs=all.filter(id=>type(id)==='IFCROOF'), roofMeshes=roofs.map(find).filter(Boolean);
+  const roofs=all.filter(id=>type(id)==='IFCROOF'||(type(id)==='IFCSLAB'&&args(id)[8]==='.ROOF.'));
+  // Flatten roof aggregates once so a roof slab represented under IfcRoof is
+  // neither omitted nor counted twice when its parent mesh includes children.
+  const pending=[...roofs], seen=new Set(), parts=[];
+  while(pending.length) {
+    const id=pending.pop(); if(seen.has(id)) continue; seen.add(id);
+    const nested=children.get(id)||[];
+    if(nested.length) pending.push(...nested); else parts.push(id);
+  }
+  const roofMeshes=parts.map(find).filter(Boolean);
   let total=0, inclined=0;
+  const directions=[];
   for(const mesh of roofMeshes) for(const [a,b,c] of mesh.triangles) {
     const u=b.map((v,k)=>v-a[k]),v=c.map((n,k)=>n-a[k]),n=[u[1]*v[2]-u[2]*v[1],u[2]*v[0]-u[0]*v[2],u[0]*v[1]-u[1]*v[0]],length=Math.hypot(...n);
     if(n[1]<=1e-8) continue;
     const area=length/2, tilt=Math.acos(Math.min(1,n[1]/length))*180/Math.PI;total+=area;
-    if(Math.abs(tilt-30)<=target.tolerances.roofSlopeDeg.value) inclined+=area;
+    if(Math.abs(tilt-30)<=target.tolerances.roofSlopeDeg.value) {
+      inclined+=area; const horizontal=Math.hypot(n[0],n[2]);
+      if(horizontal>0) directions.push([n[0]/horizontal,n[2]/horizontal]);
+    }
   }
-  check('gable-roof','roof-by-footprint',roofs.some(id=>records.get(id).includes('.GABLE_ROOF.'))&&inclined>total*0.9,'SDK addRoof request cannot produce the reference 30° gable; export contains a flat roof',{upwardArea:total,areaAt30Deg:inclined});
+  check('gable-roof','roof-by-footprint',total>0&&inclined>total*0.9&&(roofs.some(id=>records.get(id).includes('.GABLE_ROOF.'))||directions.some(a=>directions.some(b=>a[0]*b[0]+a[1]*b[1]<-0.99))),'SDK addRoof request cannot produce the reference 30° gable; export contains a flat roof',{upwardArea:total,areaAt30Deg:inclined});
   check('roof-area','roof-by-footprint',Math.abs(total-target.roof.totalUpwardArea)<=target.roof.totalUpwardArea*target.tolerances.roofSlopeAreaShare.value,`Reference upward roof area ${target.roof.totalUpwardArea}m² ±10%; got ${total}`,{area:total});
 }

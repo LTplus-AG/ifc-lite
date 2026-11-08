@@ -118,5 +118,3 @@ scripts/check-ci-path-coverage.test.mjs tests/extensions # quoted in an assertio
 scripts/check-ci-path-coverage.test.mjs tests/perf-ratchets # `tests` prefix fragment expanded over the tree, not read (#6959)
 scripts/check-agents-md-size.test.mjs README.md # a temp-fixture FILENAME inside the harness (a repo built in a tmpdir to prove a non-AGENTS.md file is ignored), not a path in this repository.
 scripts/smlib-browser-worker-probe.mjs tests/** # a subdirectory the probe creates inside its temp /smlib staging root (mkdir(join(root, 'tests'))), not a path in this repository; every file it reads is under native/smlib-adapter/browser, covered by native/**
-scripts/check-ci-path-coverage.test.mjs tests/modelling-parity # inferred `tests` prefix; this gate test reads its own synthetic coverage fixtures, not the offline modelling ladder (#9296)
-scripts/docs/generate-docs-sections.mjs tests/modelling-parity # inferred `tests` prefix; docs sections consume benchmark fixtures, not modelling exercises or baseline evidence (#9296)

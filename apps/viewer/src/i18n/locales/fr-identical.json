@@ -1567,6 +1567,10 @@
     "value": "{face} {delta} m",
     "reason": "Composition of interpolated model values, symbols, units or shared French words; no English sentence is embedded."
   },
+  "registry.release": {
+    "value": "Version",
+    "reason": "The French noun « Version » has the same spelling as English and identifies a published model version."
+  },
   "reportExportDialog.orientationAriaLabel": {
     "value": "Orientation",
     "reason": "French uses the same spelling « Orientation » for this contextual label; reviewed against its feature meaning."

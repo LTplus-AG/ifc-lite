@@ -20,7 +20,6 @@ export const toursFr = {
   'tours.tourHost.cancel': 'Annuler',
   'tours.tourHost.loadDemoStack': 'Charger la pile de démonstration',
   'tours.tourHost.loadDemoProject': 'Charger le projet de démonstration',
-  'tours.tourInvite.prompt': 'Vous découvrez l’application ?',
   'tours.tourInvite.start': 'Suivre la visite guidée de deux minutes',
   'tours.tourInvite.dismissAriaLabel': 'Ignorer l’invitation à la visite guidée',
   'tours.tourStepCard.ariaLabel': 'Étape {step} sur {total} de la visite guidée : {title}',

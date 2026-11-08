@@ -5,6 +5,7 @@
 import type { Catalogue } from '../../registry';
 
 export const shellChromeFr = {
+  "shellChrome.activityBar.morePanelsWaitingHint": "Les panneaux qui nécessitent un modèle et ceux qui ne tiennent pas dans la barre latérale",
   "shellChrome.shared.customizeSidebar": "Personnaliser la barre latérale",
   "shellChrome.shared.doneCustomizing": "Terminer la personnalisation",
   "shellChrome.shared.collapseToIcons": "Réduire en icônes",
@@ -72,11 +73,8 @@ export const shellChromeFr = {
   "shellChrome.panelWindowHost.liveSyncedNotice": "En direct · synchronisé avec la fenêtre principale",
   "shellChrome.layout.safeModeNotice": "Mode sans échec : les extensions et le profil actif ne sont pas chargés pour cette session. Ajoutez {flag} ou rechargez sans ce paramètre pour reprendre.",
   "shellChrome.layout.hierarchyLabel": "Hiérarchie",
-  "shellChrome.layout.openHierarchyAriaLabel": "Ouvrir la hiérarchie",
-  "shellChrome.layout.openPropertiesAriaLabel": "Ouvrir les propriétés",
   "shellChrome.layout.closePanelsAriaLabel": "Fermer les panneaux",
   "shellChrome.layout.panelsLabel": "Panneaux",
-  "shellChrome.layout.openPanelsAriaLabel": "Ouvrir la liste des panneaux",
   "shellChrome.layout.closePanelListAriaLabel": "Fermer la liste des panneaux",
   "shellChrome.layout.analysisFallback": "Analyse",
   "shellChrome.layout.dragToResizeAriaLabel": "Faites glisser pour redimensionner ou fermer",

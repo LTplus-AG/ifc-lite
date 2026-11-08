@@ -151,6 +151,15 @@ describe('the Roof tool draws at the top of the walls (#9202)', () => {
     assert.match(ui.textContent ?? '', /^Slab/);
   });
 
+  it('a wall top at zero replaces an unpinned nonzero plane (#9214 review)', () => {
+    const added = state().addWall(MODEL_ID, STOREY, { Start: [0,0,-3], End: [4,0,-3], Thickness: .2, Height: 3 });
+    assert.ok('expressId' in added);
+    act(() => { state().setWorkplane({ kind: 'storey', storeyId: STOREY, offset: 2 }, { pinned: false }); });
+    act(() => { launchSlabTool('roof'); });
+    assert.equal(offset(), 0, 'zero is the actual wall top, not an absent height');
+    assert.equal(((getCommandRuntime().ctx as CommandContext).workplane?.spec as { offset: number }).offset, 0);
+  });
+
   it('with no walls it takes the spacing to the storey above', () => {
     act(() => { launchSlabTool('roof'); });
     assert.equal(round(offset()!), 3, 'the fixture\'s upper storey is 3 m up');

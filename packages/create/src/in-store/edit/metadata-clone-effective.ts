@@ -14,7 +14,7 @@ const MAX_EFFECTIVE_METADATA_WRITES = 10000;
  * the complete operation, including assembly parts and repeated source copies. */
 export function cloneEffectiveMetadata(view: MutablePropertyView, editor: StoreEditor, source: number, targets: number[]): void {
   if (!view.hasChanges(source)) return;
-  const changes = view.getEffectiveChanges().filter(row => row.entityId === source);
+  const changes = view.getEffectiveChanges(source);
   const propertyNames = new Set(changes.filter(row => row.kind === 'pset-added' || row.kind === 'property').map(row => row.setName));
   const quantityNames = new Set(changes.filter(row => row.kind === 'qset-added' || row.kind === 'quantity').map(row => row.setName));
   const properties = view.getForEntity(source).filter(set => propertyNames.has(set.name));

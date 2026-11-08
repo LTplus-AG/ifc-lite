@@ -12,6 +12,7 @@
  * for optimal performance with large models.
  */
 
+import { runSparseAtomic } from './sparse-atomic.js';
 import { registerCooperativeOverlay } from './cooperative-overlay-access.js';
 import type { PropertyTable, PropertySet, Property, QuantitySet, Quantity } from '@ifc-lite/data';
 import { quantityHistoryBefore } from './quantity-history-before.js';
@@ -20,6 +21,7 @@ import { encodeNonFiniteNumbers, decodeNonFiniteNumbers } from './nonfinite-json
 import { PropertyValueType, QuantityType } from '@ifc-lite/data';
 import type { IfcAttributeValue, PropertyValue, PropertyMutation, QuantityMutation, EntityTypeMutation, Mutation, NewEntity, EffectiveChange } from './types.js';
 import { propertyKey, quantityKey, attributeKey, generateMutationId } from './types.js';
+import { changesForEntity } from './effective-entity-changes.js';
 import { collectEffectiveChanges, type AttributeExtractor } from './effective-changes.js';
 import { applyMutationsBatch } from './apply-mutations.js';
 import { MutableOverlayState, type ForgottenEntityOverlay } from './mutable-overlay-state.js';
@@ -57,6 +59,7 @@ export class MutablePropertyView extends MutableOverlayState {
     this.baseTable = baseTable;
     this.modelId = modelId;
     registerCooperativeOverlay(this, { modelId,
+      transact: (edit, record) => runSparseAtomic(this, edit, record),
       capture: () => this.overlayState(),
       matches: snapshot => this.matchesOverlayState(snapshot),
       publish: snapshot => this.restoreOverlayState(snapshot),
@@ -80,10 +83,9 @@ export class MutablePropertyView extends MutableOverlayState {
    * External effects (files, renderer or network) belong outside this callback.
    */
   runAtomic<T>(edit: (draft: MutablePropertyView) => T): T {
-    const prepared = this.prepareAtomic(edit);
-    prepared.commit();
-    return prepared.result;
+    return runSparseAtomic(this, edit, false).result;
   }
+
 
   /**
    * Prepare an overlay publication without changing live IFC state (#4243).
@@ -1256,6 +1258,8 @@ export class MutablePropertyView extends MutableOverlayState {
   /** Look up a single overlay-created entity. */
   /** Created entities authored as `type`, in creation order, from an index (#5413). */
   getNewEntitiesOfType(type: string): IterableIterator<NewEntity> { return this.newEntities.ofType(type); }
+  /** Authored reference candidates, before named/positional overrides. */
+  getNewEntitiesReferencing(id: number): IterableIterator<NewEntity> { return this.newEntities.referencing(id); }
 
   getNewEntity(expressId: number): NewEntity | null {
     return this.newEntities.get(expressId) ?? null;
@@ -1759,31 +1763,15 @@ export class MutablePropertyView extends MutableOverlayState {
    *
    * Deterministic ordering: entityId, then kind, then name, then setName.
    */
-  getEffectiveChanges(): EffectiveChange[] {
-    return collectEffectiveChanges(
-      {
-        attributeMutations: this.attributeMutations,
-        positionalAttrMutations: this.positionalAttrMutations,
-        typeMutations: this.typeMutations,
-        newPsets: this.newPsets,
-        deletedPsets: this.deletedPsets,
-        newQsets: this.newQsets,
-        deletedQsets: this.deletedQsets,
-        propertyKeysByEntity: this.propertyKeysByEntity,
-        propertyMutations: this.propertyMutations,
-        quantityKeysByEntity: this.quantityKeysByEntity,
-        quantityMutations: this.quantityMutations,
-        newEntities: this.newEntities,
-        tombstones: this.tombstones,
-        forgottenCreatedEntities: this.forgottenCreatedEntities,
-      },
-      {
-        attributeExtractor: this.attributeExtractor,
-        resolveBaseEntityId: (entityId: number) => this.resolveBaseEntityId(entityId),
-        getBasePropertiesForEntity: (entityId: number) => this.getBasePropertiesForEntity(entityId),
-        getBaseQuantitiesForEntity: (entityId: number) => this.getBaseQuantitiesForEntity(entityId),
-      },
-    );
+  /** With an entity ID, visit only that entity's indexed mutation rows. */
+  getEffectiveChanges(entityId?: number): EffectiveChange[] {
+    const state = this.overlayState();
+    return collectEffectiveChanges(entityId === undefined ? state : changesForEntity(state, entityId, this.attributeKeysByEntity.get(entityId) ?? []), {
+      attributeExtractor: this.attributeExtractor,
+      resolveBaseEntityId: id => this.resolveBaseEntityId(id),
+      getBasePropertiesForEntity: id => this.getBasePropertiesForEntity(id),
+      getBaseQuantitiesForEntity: id => this.getBaseQuantitiesForEntity(id),
+    });
   }
 
   /**

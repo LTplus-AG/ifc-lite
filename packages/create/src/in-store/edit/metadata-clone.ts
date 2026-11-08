@@ -80,7 +80,7 @@ export function cloneElementMetadata(
   // first pass both copies would land in the new list.
   const uniqueTargets = Array.from(new Set(targetExpressIds));
   const notSharedProperties = new Set<string>(), notSharedQuantities = new Set<string>();
-  if (view.hasChanges(sourceExpressId)) for (const change of view.getEffectiveChanges()) {
+  if (view.hasChanges(sourceExpressId)) for (const change of view.getEffectiveChanges(sourceExpressId)) {
     if (change.entityId !== sourceExpressId || change.setName === undefined) continue;
     if (change.kind === 'pset-deleted') notSharedProperties.add(change.setName);
     if (change.kind === 'qset-deleted') notSharedQuantities.add(change.setName);

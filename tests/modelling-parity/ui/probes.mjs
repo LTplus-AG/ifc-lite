@@ -134,12 +134,15 @@ export const PROBES = [
         await s.ui.type('First floor');
         await s.ui.key('Enter', { settle: 500 });
       }));
+      let sawAdded = false;
+      let sawDeleted = false;
       tasks.push(await task(s, 'add and delete a storey', async () => {
         await s.ui.click(s.page.locator('[data-storey-manager]').getByRole('button', { name: 'Add storey above' }).first(), { settle: 600 });
         const rows = await readStoreyManager(s);
-        const name = /Level 3/.test(rows) ? 'Level 3' : null;
-        if (!name) throw new Error(`no Level 3 after adding: ${rows?.slice(0, 200)}`);
-        await s.ui.click(s.page.getByRole('button', { name: `Delete ${name}` }), { settle: 600 });
+        sawAdded = /Level 3/.test(rows ?? '');
+        if (!sawAdded) throw new Error(`no Level 3 after adding: ${rows?.slice(0, 200)}`);
+        await s.ui.click(s.page.getByRole('button', { name: 'Delete Level 3' }), { settle: 600 });
+        sawDeleted = !/Level 3/.test((await readStoreyManager(s)) ?? '');
       }));
       const shot = await s.shot('storeys');
       const { step } = await oracleModel(s);
@@ -149,6 +152,7 @@ export const PROBES = [
       return {
         tasks, notes, evidence: [shot],
         checks: [
+          { name: 'the manager showed Level 3 after adding it and not after deleting it', ok: sawAdded && sawDeleted, detail: `added ${sawAdded}, deleted ${sawDeleted}` },
           { name: 'two storeys after add, add, delete', ok: storeys.length === 2, detail: storeys.map((x) => `${x.name}@${x.elevation}`).join(', ') },
           { name: 'renamed storey exported as "First floor"', ok: !!l2, detail: storeys.map((x) => x.name).join(', ') },
           { name: 'floor-to-floor 3.5 moved First floor to +3.5', ok: !!l1 && !!l2 && near(l2.elevation - l1.elevation, 3.5, 1e-6), detail: l2 ? `First floor at ${l2.elevation}` : 'missing' },
@@ -288,13 +292,16 @@ export const PROBES = [
       const shot = await s.shot('hosted');
       const { step } = await oracleModel(s);
       const c = step.counts(['IFCDOOR', 'IFCWINDOW', 'IFCOPENINGELEMENT', 'IFCRELVOIDSELEMENT', 'IFCRELFILLSELEMENT', 'IFCDOORTYPE', 'IFCWINDOWTYPE', 'IFCRELDEFINESBYTYPE']);
+      const wallIds = new Set(step.of('IFCWALL').map((w) => w.id));
+      const fillers = [...step.of('IFCDOOR'), ...step.of('IFCWINDOW')];
+      const unhosted = fillers.filter((e) => !wallIds.has(step.hostOf(e.id)));
       const typed = c.IFCDOORTYPE > 0 && c.IFCWINDOWTYPE > 0;
       if (!typed) notes.push('Doors and windows are placed without an IfcDoorType / IfcWindowType: the click flow offers no type to place from.');
       return {
         tasks, notes, evidence: [shot],
         checks: [
           { name: '1 door and 1 window', ok: c.IFCDOOR === 1 && c.IFCWINDOW === 1, detail: `${c.IFCDOOR} doors, ${c.IFCWINDOW} windows` },
-          { name: 'each cuts an opening that it fills', ok: c.IFCOPENINGELEMENT === 2 && c.IFCRELVOIDSELEMENT === 2 && c.IFCRELFILLSELEMENT === 2, detail: JSON.stringify(c) },
+          { name: 'each fills its own opening in a wall', ok: fillers.length === 2 && unhosted.length === 0, detail: unhosted.length ? `not hosted: #${unhosted.map((e) => e.id).join(', #')}; ${JSON.stringify(c)}` : JSON.stringify(c) },
           { name: 'placed from a door type and a window type', ok: typed, detail: `${c.IFCDOORTYPE} door types, ${c.IFCWINDOWTYPE} window types` },
         ],
       };
@@ -782,7 +789,8 @@ export async function runProbe(probe, openFresh, base, { saveArtifact } = {}) {
   const okChecks = out.checks.filter((c) => c.ok).length;
   let status;
   if (error) status = 'error';
-  else if (out.checks.length && okChecks === out.checks.length && !s.scriptedSteps.length) status = 'pass';
+  // A failed task can leave an earlier, correct state behind; it never reads as a pass.
+  else if (out.checks.length && okChecks === out.checks.length && !s.scriptedSteps.length && !failedTasks.length) status = 'pass';
   else if (okChecks > 0) status = 'partial';
   else status = 'fail';
   const reasons = [];

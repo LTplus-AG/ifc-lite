@@ -180,6 +180,16 @@ export function readStep(text) {
       }
       return out;
     },
+    /**
+     * The element an opening filler (door, window) is hosted in: filler -> IfcRelFillsElement ->
+     * opening -> IfcRelVoidsElement -> host. Null when any link is missing.
+     */
+    hostOf(fillerId) {
+      const fill = of('IFCRELFILLSELEMENT').find((r) => r.args?.[5]?.ref === fillerId);
+      const opening = fill?.args?.[4]?.ref;
+      const voids = opening && of('IFCRELVOIDSELEMENT').find((r) => r.args?.[5]?.ref === opening);
+      return voids?.args?.[4]?.ref ?? null;
+    },
     /** Pairs of related ids for a two-sided relationship (relating index, related index). */
     pairs(type, a, b) {
       return of(type).map((r) => [r.args?.[a]?.ref, r.args?.[b]?.ref]);

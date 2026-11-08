@@ -104,6 +104,7 @@ export function DataConnector(props: ToolDialogProps) {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const fileReadGeneration = useRef(0);
+  const [draftGeneration, setDraftGeneration] = useState(0);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const { trigger } = props;
   const [open, setOpen] = useToolDialog(props);
@@ -184,7 +185,8 @@ export function DataConnector(props: ToolDialogProps) {
   }, [open, modelList, selectedModelId]);
   const selectedView = mutationViews.get(selectedModelId);
   const isCurrent = useAuthoringOperation(open, selectedModelId, selectedModel?.ifcDataStore, selectedView);
-  useEffect(() => { setIsProcessing(false); setSuggesting(false); setImportProgress(null); }, [isCurrent]);
+  const isDraftCurrent = useCallback(() => isCurrent() && draftGeneration === fileReadGeneration.current, [isCurrent, draftGeneration]);
+  useEffect(() => { setIsProcessing(false); setSuggesting(false); setImportProgress(null); }, [isDraftCurrent]);
   useEffect(() => {
     setImportDirty(true); setImportStats(null); setMatchResults(null); setAiMapping(null); setReview(null); setError(null);
   }, [selectedModelId, selectedModel?.ifcDataStore, selectedView]);
@@ -220,9 +222,9 @@ export function DataConnector(props: ToolDialogProps) {
       dataStore.entities,
       mutationView,
       dataStore.strings || null,
-      () => isCurrent() && canMutate(useViewerStore.getState(), selectedModelId)
+      () => isDraftCurrent() && canMutate(useViewerStore.getState(), selectedModelId)
     );
-  }, [isCurrent, selectedModel, selectedModelId, getMutationView, mutationViews]);
+  }, [isDraftCurrent, selectedModel, selectedModelId, getMutationView, mutationViews]);
 
   // Parse CSV file
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -230,6 +232,7 @@ export function DataConnector(props: ToolDialogProps) {
     if (!file) return;
 
     const generation = ++fileReadGeneration.current;
+    setDraftGeneration(generation);
     const reader = new FileReader();
     reader.onload = (event) => {
       if (!isCurrent() || generation !== fileReadGeneration.current) return;
@@ -454,7 +457,7 @@ export function DataConnector(props: ToolDialogProps) {
   // Import using CsvConnector.importAsync for non-blocking progress
   const handleImport = () => importCsvDraft({
     connector: csvConnector, content: csvContent, canEdit: canEditInSession, modelId: selectedModelId,
-    isCurrent, mapping: buildDataMapping, processing: setIsProcessing, stats: setImportStats,
+    isCurrent: isDraftCurrent, mapping: buildDataMapping, processing: setIsProcessing, stats: setImportStats,
     progress: setImportProgress, error: setError, dirty: setImportDirty,
   });
 
@@ -476,11 +479,11 @@ export function DataConnector(props: ToolDialogProps) {
     const state = useViewerStore.getState();
     const outcome = await suggestTableMapping(tableMappingContext(state, selectedModelId, headers, tableRows),
       state.chatActiveModel, import.meta.env.VITE_LLM_PROXY_URL || '/api/chat');
-    if (!isCurrent()) return;
+    if (!isDraftCurrent()) return;
     setSuggesting(false);
     if (outcome.ok) setAiMapping(outcome.mapping);
     else setError(t(`tableChanges.suggestError.${outcome.reason}`, { detail: outcome.detail ?? '' }));
-  }, [tableRows, selectedModelId, headers, t, isCurrent]);
+  }, [tableRows, selectedModelId, headers, t, isDraftCurrent]);
 
   // Scroll to bottom of the body area — double rAF ensures DOM is painted
   const scrollToBottom = useCallback(() => {
@@ -585,7 +588,7 @@ export function DataConnector(props: ToolDialogProps) {
           </Button>
         )}
       </DialogTrigger>}
-      <DialogContent className="sm:max-w-4xl max-h-[85vh] flex flex-col p-0 gap-0">
+      <DialogContent onCloseAutoFocus={props.onCloseAutoFocus} className="sm:max-w-4xl max-h-[85vh] flex flex-col p-0 gap-0">
         {/* Fixed Header */}
         <DialogHeader className="px-6 pt-6 pb-4 shrink-0 border-b">
           <DialogTitle className="flex items-center gap-2">

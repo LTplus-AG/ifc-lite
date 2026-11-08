@@ -200,11 +200,7 @@ impl From<crate::resource::ProgramStop> for StructureError {
 impl StructureError {
     pub(super) fn into_common(self, selection: &RetainedSelection) -> Error {
         match self {
-            Self::Budget { entity, allowance, reached } => crate::representation::WalkRefusal::Budget {
-                max_levels: allowance,
-                budget: "walk Items members",
-                reached: Box::new(reached),
-            }
+            Self::Budget { entity, allowance, reached } => crate::representation::WalkRefusal::work_budget(allowance, "walk Items members", reached)
             .into_error(entity),
             Self::Stop(stop) => Error::ProgramStopped(stop),
             Self::Origin {

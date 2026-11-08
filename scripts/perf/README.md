@@ -44,8 +44,10 @@ budget identity enlarged the errors returned by per-attempt admission helpers.
 Boxing the logical refusal and the walk's demand payload keeps that detail out
 of successful Results; allocation occurs only when work is refused. The walk
 keeps its existing Result types, with a compile-time bound against the decoder
-error carrier on both native and wasm32. The public diagnostics remain complete and the work allowances stay
-unchanged. The native instruction comparison and output counts are recorded in
+error carrier on both native and wasm32. Empty routers hold only a nullable
+pointer to the refusal log; the buffer, identity strings and refusal constructors
+are cold work. The public diagnostics remain complete and the work allowances
+stay unchanged. The native instruction comparison and output counts are recorded in
 PR #9386; this is cost containment, not an end-to-end worker-pool speedup claim.
 
 Lesson: refusal-only reporting can still affect successful work through error

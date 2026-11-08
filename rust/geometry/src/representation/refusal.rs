@@ -34,6 +34,12 @@ const _: () = assert!(
 );
 
 impl WalkRefusal {
+    #[cold]
+    #[inline(never)]
+    pub(crate) fn work_budget(max_levels: u32, budget: &'static str, reached: u64) -> Self {
+        Self::Budget { max_levels, budget, reached: Box::new(reached) }
+    }
+
     /// Convert to a geometry error, preserving historical strict messages for
     /// existing refusals. `item` is the refused mapped item's id, or the holding
     /// representation's id for a root-list budget refusal.

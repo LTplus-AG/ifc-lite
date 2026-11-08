@@ -26,13 +26,17 @@ struct LogicalRefusalDetail {
     budget: &'static str,
 }
 impl LogicalRefusal {
+    #[cold]
+    #[inline(never)]
+    fn exceeded(limit: u32, used: u32, count: usize) -> Self {
+        Self(Box::new(LogicalRefusalDetail {
+            limit, reached: u64::from(used).saturating_add(count as u64), budget: "logical Items members",
+        }))
+    }
+
     pub(super) fn details(&self) -> (&'static str, u32, u64) { (self.0.budget, self.0.limit, self.0.reached) }
     pub(super) fn to_error(&self, item: u32) -> Error {
-        crate::representation::WalkRefusal::Budget {
-            max_levels: self.0.limit,
-            budget: self.0.budget,
-            reached: Box::new(self.0.reached),
-        }
+        crate::representation::WalkRefusal::work_budget(self.0.limit, self.0.budget, self.0.reached)
         .into_error(item)
     }
 }
@@ -89,7 +93,7 @@ impl LogicalBudget {
             .ok()
             .and_then(|count| used.checked_add(count))
             .filter(|next| *next <= limit)
-            .ok_or_else(|| LogicalRefusal(Box::new(LogicalRefusalDetail { limit, reached: u64::from(*used).saturating_add(count as u64), budget: "logical Items members" })))?;
+            .ok_or_else(|| LogicalRefusal::exceeded(limit, *used, count))?;
         *used = next;
         Ok(())
     }

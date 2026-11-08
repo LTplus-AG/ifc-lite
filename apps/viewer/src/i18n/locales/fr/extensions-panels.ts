@@ -137,7 +137,7 @@ export const extensionsPanelsFr = {
   "extensionsPanels.privacyPanel.extractFromChat": "Extraire de la discussion",
   "extensionsPanels.privacyPanel.storeHeading": "Ce que nous stockons localement",
   "extensionsPanels.privacyPanel.storeBody1": "ifc-lite conserve un journal des actions générales sans leur contenu (chargements de modèles, applications de Lens, exports). Il permet de détecter les habitudes et de proposer des outils en un clic. Il n’enregistre jamais le contenu des modèles ou des discussions, les noms de fichiers ou les clés API.",
-  "extensionsPanels.privacyPanel.storeBody2": "Les suggestions, le journal d’audit, les instructions complémentaires et votre bibliothèque de profils sont stockés dans IndexedDB dans votre navigateur. Rien ne quitte l’appareil, sauf en cas d’export explicite.",
+  "extensionsPanels.privacyPanel.storeBody2": "Les suggestions, le journal d’audit, les instructions complémentaires et votre bibliothèque de profils sont stockés dans IndexedDB dans votre navigateur. Le journal d’actions reste local, sauf si vous l’exportez. Les instructions complémentaires sont envoyées avec les requêtes de conversation IA.",
   "extensionsPanels.privacyPanel.actionLogHeading": "Journal d’activité",
   "extensionsPanels.privacyPanel.actionLogStats": "{events} événements · {kib} Kio",
   "extensionsPanels.privacyPanel.exportJsonButton": "Exporter en JSON",

@@ -1,0 +1,48 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import type { Catalogue } from '../../registry';
+
+export const modelWorkspaceFr = {
+  "modelWorkspace.rail.aria": "Outils de modélisation",
+  "modelWorkspace.rail.hosted": "Ouvertures, portes et fenêtres",
+  "modelWorkspace.rail.circulation": "Escaliers et garde-corps",
+  "modelWorkspace.rail.active": "Outil actif",
+  "modelWorkspace.tool.select": "Sélectionner",
+  "modelWorkspace.tool.wall": "Mur",
+  "modelWorkspace.tool.slab": "Dalle",
+  "modelWorkspace.tool.column": "Poteau",
+  "modelWorkspace.tool.beam": "Poutre",
+  "modelWorkspace.tool.split": "Découper",
+  "modelWorkspace.tool.leave": "Quitter l’espace Modèle",
+  "modelWorkspace.tool.shortcutHint": "· {key}",
+  "modelWorkspace.blocked.noStorey": "Ce modèle n’a aucun étage sur lequel dessiner",
+  "modelWorkspace.blocked.split": "Sélectionnez d’abord un élément à découper",
+  "modelWorkspace.storey.none": "Aucun étage",
+  "modelWorkspace.storey.withModel": "{model} · {storey}",
+  "modelWorkspace.storey.elevation": "{elevation} m",
+  "modelWorkspace.storey.pick": "Choisir l’étage sur lequel dessiner",
+  "modelWorkspace.storey.listAria": "Étages",
+  "modelWorkspace.storey.isolate": "Afficher uniquement cet étage",
+  "modelWorkspace.storey.showAll": "Afficher tous les étages",
+  "modelWorkspace.noStorey.title": "Aucun étage sur lequel dessiner",
+  "modelWorkspace.noStorey.description": "Ce modèle n’a pas d’IfcBuildingStorey ; les murs n’ont donc aucun étage d’appui.",
+  "modelWorkspace.plan.title": "Plan",
+  "modelWorkspace.plan.show": "Afficher le plan",
+  "modelWorkspace.plan.hide": "Masquer le plan",
+  "modelWorkspace.plan.noRoom": "Pas assez de place pour le plan à côté de la 3D : élargissez la fenêtre ou fermez un panneau latéral",
+  "modelWorkspace.plan.noPlane": "Cet étage n’a aucun plan de référence pour dessiner.",
+  "modelWorkspace.plan.cutting": "Coupe en cours…",
+  "modelWorkspace.plan.cutFailed": "Échec de la coupe",
+  "modelWorkspace.plan.retry": "Réessayer",
+  "modelWorkspace.plan.simplified": "Plan simplifié",
+  "modelWorkspace.plan.simplifiedTitle": "Ce modèle est trop volumineux pour recalculer la coupe à chaque modification ; le plan affiche donc uniquement les axes des murs",
+  "modelWorkspace.plan.grid": "Grille",
+  "modelWorkspace.plan.fit": "Cadrer le plan dans la vue",
+  "modelWorkspace.layout.aria": "Disposition",
+  "modelWorkspace.layout.plan": "Plan",
+  "modelWorkspace.layout.split": "Vue partagée",
+  "modelWorkspace.layout.3d": "3D",
+  "modelWorkspace.hint.onboarding": "W mur · Maj+S dalle · cliquer sur un élément pour le modifier · E pour quitter",
+} satisfies Catalogue;

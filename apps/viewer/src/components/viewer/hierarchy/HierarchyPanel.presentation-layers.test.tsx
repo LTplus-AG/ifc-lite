@@ -355,3 +355,23 @@ ENDSEC;\nEND-ISO`);
     }
   });
 }
+
+for (const mode of ['class', 'classification'] as const) {
+  it(`#9272 ${mode} subgroup isolation reveals default-hidden spaces`, async () => {
+    act(() => useViewerStore.setState({ typeVisibility: {
+      ...useViewerStore.getState().typeVisibility, spaces: false,
+    } }));
+    const container = await mount(await model(`layer-space-${mode}`, false, true));
+    const control = container.querySelector<HTMLSelectElement>('select[aria-label="Group layer elements"]');
+    assert.ok(control);
+    act(() => { control.value = mode; control.dispatchEvent(new Event('change', { bubbles: true })); });
+    click(button(layerRows(container)[0], 'Expand Walls'));
+    const name = mode === 'class' ? 'IfcSpace' : 'Unclassified';
+    const row = [...container.querySelectorAll<HTMLElement>('[role="treeitem"]')]
+      .find(row => row.textContent?.includes(name));
+    assert.ok(row);
+    click(button(row, `Isolate ${name}`));
+    assert.equal(useViewerStore.getState().typeVisibility.spaces, true);
+    assert.deepEqual(useViewerStore.getState().isolatedEntities, new Set([7]));
+  });
+}

@@ -340,7 +340,7 @@ export function HierarchyPanel() {
     if (action === 'isolate') {
       const elements = getNodeElements(node);
       if (elements.length === 0) return;
-      if (node.type === 'group' || node.type === 'presentation-layer') {
+      if (node.type === 'group' || node.id.startsWith('presentation-layer-')) {
         // Explicit membership isolation also reveals hidden-by-default spatial
         // products. Include resolved descendants for nested groups (#7870),
         // alongside direct members whose geometry may be substituted by parts.

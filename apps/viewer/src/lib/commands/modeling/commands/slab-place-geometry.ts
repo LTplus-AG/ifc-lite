@@ -15,7 +15,7 @@
  */
 
 import type { Vec2 } from '@/lib/snap/types';
-import type { SlabDrawMode } from '@/store/slices/authoringDefaultsSlice';
+import type { SlabClass, SlabDrawMode } from '@/store/slices/authoringDefaultsSlice';
 import { rectOutline } from '../ghost-shapes.js';
 
 export const MIN_SLAB_SIDE = 0.01;
@@ -77,6 +77,15 @@ export function previewOutline(g: SlabPlaceGesture): Vec2[] | null {
   }
   const outline = [...g.points, ...(g.cursor ? [g.cursor] : [])];
   return outline.length >= 3 ? outline : null;
+}
+
+/**
+ * The drawn class's body above the workplane (#9198). A floor slab hangs from
+ * the plane, so its top is the level and walls start on it; a roof or plate
+ * sits on the plane.
+ */
+export function slabBodyRange(cls: SlabClass, thickness: number): readonly [number, number] {
+  return cls === 'slab' ? [-thickness, 0] : [0, thickness];
 }
 
 /** Whether a polygon click at `p` lands back on the first vertex (closing it). */

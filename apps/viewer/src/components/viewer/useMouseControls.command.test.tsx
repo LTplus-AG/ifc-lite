@@ -56,6 +56,8 @@ describe('mounted 3D modelling gesture ownership (#6232)', () => {
     const state = useViewerStore.getState(), primary = state.models.get(MODEL_ID)!;
     const peer = { ...fixtureModel('peer', { idOffset: 1_000_000 }), ifcDataStore: primary.ifcDataStore };
     if (count === 2) useViewerStore.setState({ models: new Map([[MODEL_ID, primary], ['peer', peer]]) });
+    // One record per commit: a fixed-height wall records no storey attachment (#9013).
+    useViewerStore.getState().setAuthoringDefaults({ wallTop: 'fixed' });
     useViewerStore.getState().startCommand('wall.place');
     const { canvas, camera } = canvasProbe();
     click(canvas, 10, 10);

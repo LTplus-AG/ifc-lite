@@ -146,6 +146,7 @@ import { spaceEnvelopeDe } from './de/space-envelope';
 import { splitToolDe } from './de/split-tool';
 import { stairRailingDe } from './de/stair-railing';
 import { storeyContextDe } from './de/storey-context';
+import { storeyManagerDe } from './de/storey-manager';
 import { structuralPropertiesDe } from './de/structural-properties';
 import { structuralReviewDe } from './de/structural-review';
 import { sweptDiskInspectionDe } from './de/swept-disk-inspection';
@@ -307,6 +308,7 @@ export default {
   ...splitToolDe,
   ...stairRailingDe,
   ...storeyContextDe,
+  ...storeyManagerDe,
   ...structuralPropertiesDe,
   ...structuralReviewDe,
   ...sweptDiskInspectionDe,

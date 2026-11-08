@@ -14,7 +14,10 @@
 //! finding (output length unchanged), once when delete stopped pruning
 //! objects the plan did not name (the comments below say which moved), and
 //! once when a patch whose every part is refused stopped counting as patched
-//! (quirks: two refused placements; output bytes unchanged). Any implementation change that alters
+//! (quirks: two refused placements; output bytes unchanged), and once when
+//! IFC2X3 output began placing one product per placement (#9209): every
+//! IFC2X3 scenario but `delete_storey_placement` gains one 37-byte copy of the
+//! placement two products share; IFC4 is unchanged. Any implementation change that alters
 //! a single output byte, a count, a refusal or a finding fails here.
 //!
 //! To re-record after an intended output change:
@@ -73,15 +76,15 @@ fn run_all() -> Vec<(String, String)> {
 }
 
 const PINNED: &[(&str, &str)] = &[
-    ("IFC2X3/preserve", "80411c334de4bd07:124189"),
-    ("IFC2X3/rename_by_guid", "1518d1d507065968:124205"),
-    ("IFC2X3/placements", "f819f59591d7f6dd:125065"),
+    ("IFC2X3/preserve", "ab693db8904310ba:124226"),
+    ("IFC2X3/rename_by_guid", "4c827df678f41e51:124242"),
+    ("IFC2X3/placements", "7ce04d727726bf5b:125102"),
     // `props` and `benchmark` each write one IfcQuantityLength value. It is
     // written bare (`7.`), not as `IFCLENGTHMEASURE(7.)`: LengthValue is the
     // defined type itself, not a SELECT. 18 bytes shorter per scenario.
-    ("IFC2X3/props", "f734d93209564412:124753"),
-    ("IFC2X3/delete_with_opening_and_boundary", "0cd5d0106d59a06f:121863"),
-    ("IFC2X3/delete_storey", "3b513ac1102c088d:123783"),
+    ("IFC2X3/props", "2d63a7ee5d89205a:124790"),
+    ("IFC2X3/delete_with_opening_and_boundary", "8e8de201a824f201:121900"),
+    ("IFC2X3/delete_storey", "48b2ff02b282094f:123820"),
     // `delete_storey_placement` reaches the quirks block's dangling reference.
     // It names no record, so it is not counted in `deleted`. It and
     // `delete_whole_group` also delete every wall bounding one space. The
@@ -89,13 +92,13 @@ const PINNED: &[(&str, &str)] = &[
     // did not delete it now stays (one 70-byte IFCSPACE line more in each,
     // nothing else moved).
     ("IFC2X3/delete_storey_placement", "68fd48c10ae89f54:84042"),
-    ("IFC2X3/delete_whole_group", "9aa3b99085fac62d:75012"),
-    ("IFC2X3/delete_type", "5e55d9b1b4ab4a9e:123831"),
+    ("IFC2X3/delete_whole_group", "6293a3c3f4310e49:75049"),
+    ("IFC2X3/delete_type", "ca392d068aa1b586:123868"),
     // `delete_wins_and_unknowns` includes an Add keyed by a wall that
     // already exists. It is refused and writes nothing, so the output bytes
     // are unchanged; only the report moved (a refusal, `added` 0).
-    ("IFC2X3/delete_wins_and_unknowns", "c285ce7a2ab0f818:122990"),
-    ("IFC2X3/quirks", "2bb19458dc72f530:124395"),
+    ("IFC2X3/delete_wins_and_unknowns", "b6f17bd7acf2eca6:123027"),
+    ("IFC2X3/quirks", "99b09b375dda1f54:124432"),
     // `benchmark` deletes a wall from a shared-pset group and patches
     // another wall of the SAME group in one plan. The delete's own list
     // rewrite and the patch's copy-on-write detach used to be resolved
@@ -105,12 +108,12 @@ const PINNED: &[(&str, &str)] = &[
     // of its new one, and the validator flagged the resulting duplicate
     // `Pset_Shared`. Composing both strips into one rewrite drops that
     // stray reference (6 fewer bytes) and the finding along with it.
-    ("IFC2X3/benchmark", "70f5086a7d06d781:129144"),
+    ("IFC2X3/benchmark", "345ad0bd2065df2d:129181"),
     // New bodies for eight walls (one with an opening, one with a space
     // boundary), each replacing an extruded solid and its profile chain.
-    ("IFC2X3/geometry", "b35e09ad010fe5c7:136389"),
+    ("IFC2X3/geometry", "31ad94378d5ca40f:136426"),
     // Two of three storeys and every wall they contain.
-    ("IFC2X3/bulk_delete", "4f15a6999000e0a9:45378"),
+    ("IFC2X3/bulk_delete", "6e43d2da160df417:45415"),
     ("IFC4/preserve", "bd388bd3c7e550c2:124703"),
     ("IFC4/rename_by_guid", "82e307937639bf61:124719"),
     ("IFC4/placements", "f6119086b8ffe1a4:125579"),

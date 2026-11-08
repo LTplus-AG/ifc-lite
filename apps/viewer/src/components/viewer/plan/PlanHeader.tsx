@@ -15,6 +15,7 @@ import { useTranslation } from '@/i18n';
 import { cn } from '@/lib/utils';
 import type { ModelLayout } from '@/store/slices/authoringSessionSidebar';
 import { HudPopover, HudPopoverContent, HudPopoverTrigger, HudSegmented } from '../../viewport-ui/hud';
+import { StoreyPickerActions } from '../model/storeys/StoreyPickerActions';
 import { StoreyPicker, formatStoreyElevation } from '../model/StoreyPicker';
 import { pickWorkspaceStorey, useWorkspaceStoreyGroups } from '../model/WorkspaceStoreyChip';
 
@@ -68,6 +69,7 @@ export function PlanHeader({ grid, onToggleGrid, onFit, loading, simplified, fai
             current={session ? { modelId: session.modelId, storeyId: session.storeyId } : null}
             onPick={pickWorkspaceStorey}
           />
+          <StoreyPickerActions />
         </HudPopoverContent>
       </HudPopover>
       {loading && <span data-plan-status="loading" className="shrink-0 text-2xs text-muted-foreground">{t('modelWorkspace.plan.cutting')}</span>}

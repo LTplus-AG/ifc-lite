@@ -218,6 +218,12 @@ ENDSEC;\nEND-ISO`);
     new Map(), store, ALL, new Set([2, 3, 5]), new Set(['legacy']), undefined, mode);
   assert.deepEqual(build(), build('none'), 'none is byte-for-byte the existing flat row projection');
   assert.equal(build().some(row => row.type === 'type-group'), false);
+  const flatLayer = build().find(row => row.entityExpressId === 54)!;
+  assert.equal(flatLayer.elementCount, 3);
+  assert.deepEqual(build().filter(row => row.id.startsWith(`${flatLayer.id}-product-`))
+    .map(row => [row.expressIds[0], row.name, row.ifcType, row.depth]), [
+      [5, 'Door', 'IfcDoor', 1], [2, 'Wall', 'IfcWall', 1], [4, 'Without mesh', 'IfcWall', 1],
+    ], 'flat mode retains every expected element in its original name order');
   for (const mode of ['class', 'classification'] as const) {
     const nodes = build(mode);
     const mixed = nodes.find(row => row.entityExpressId === 54)!;
@@ -270,3 +276,22 @@ ENDSEC;\nEND-ISO`);
     t.diagnostic(`${mode}: ${count} generated products, ${nodes.length} rows; membership complete`);
   }
 });
+
+for (const mode of ['class', 'classification'] as const) {
+  test(`#9272 shared IFCX ${mode} groups retain every owner and aligned member selection`, async () => {
+    const store = await parse();
+    const owners = ['presentation-shared-overlay', 'presentation-shared-base'];
+    const { models } = fixtureModels(...owners.map(id => sharedModel(id, store)));
+    const nodes = buildPresentationLayerTree(models, null, ALL, new Set([2, 3]), new Set([owners[1]]), undefined, mode);
+    const groups = nodes.filter(row => row.type === 'type-group');
+    assert.ok(groups.length > 0);
+    for (const group of groups) {
+      assert.deepEqual(group.modelIds, owners, 'badges retain both shared-store owners');
+      assert.equal(group.modelId, undefined, 'shared groups never invent single-owner attribution');
+      const selection = hierarchyRowSelection(group, models, () => null);
+      assert.deepEqual(selection.map(row => row.expressId), group.expressIds);
+      assert.deepEqual(selection.map(row => row.modelId), group.expressIds.map(() => owners[0]),
+        'every member resolves through the same representative as the layer, regardless of group size');
+    }
+  });
+}

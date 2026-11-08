@@ -117,9 +117,17 @@ test.describe('#8946 unloaded palette UX', () => {
         await testInfo.attach('browse.png', { body: await page.screenshot(), contentType: 'image/png' });
 
         await search.fill('annot');
-        await expect(options).toHaveCount(2);
-        await expect(options.nth(0)).toHaveAttribute('aria-label', 'Annotate');
-        await expect(options.nth(1)).toHaveAttribute('aria-label', 'Annotations');
+        // #8962 adds the canonical class filter, whose real controls include annotations.
+        const annotationCommands = [
+          ['tool:annotate', 'Annotate'],
+          ['vis:ifcAnnotations', 'Annotations'],
+          ['elements:class-filter', 'Filter'],
+        ] as const;
+        await expect(options).toHaveCount(annotationCommands.length);
+        for (const [index, [id, label]] of annotationCommands.entries()) {
+          await expect(options.nth(index)).toHaveAttribute('data-command-id', id);
+          await expect(options.nth(index)).toHaveAttribute('aria-label', label);
+        }
         await expectSearchTop(search, initial!.y);
         await search.fill('secton');
         await expect(options.first()).toContainText('Section');

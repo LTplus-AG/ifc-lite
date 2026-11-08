@@ -57,8 +57,11 @@ type ScrollFade = 'start' | 'end' | 'both' | undefined;
 
 /** Which edges of a horizontal strip hide items, for `[data-scroll-fade]`.
  *  Takes the element itself: the dialog's portal mounts its content a render
- *  after `open` flips, so a ref read in the same effect would still be null. */
-function useScrollFade(el: HTMLElement | null): ScrollFade {
+ *  after `open` flips, so a ref read in the same effect would still be null.
+ *  The strip's own box does not change when its labels do (a language switch
+ *  in General), so it also watches each item's size and recomputes whenever
+ *  `contentKey` (the labels) changes. */
+function useScrollFade(el: HTMLElement | null, contentKey: string): ScrollFade {
   const [fade, setFade] = useState<ScrollFade>();
   useEffect(() => {
     if (!el) return;
@@ -71,11 +74,12 @@ function useScrollFade(el: HTMLElement | null): ScrollFade {
     el.addEventListener('scroll', update, { passive: true });
     const resize = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(update);
     resize?.observe(el);
+    for (const item of el.children) resize?.observe(item);
     return () => {
       el.removeEventListener('scroll', update);
       resize?.disconnect();
     };
-  }, [el]);
+  }, [el, contentKey]);
   return fade;
 }
 
@@ -89,11 +93,21 @@ function useScrollFade(el: HTMLElement | null): ScrollFade {
 const TAB_LIST_CLASS = 'flex h-auto w-full shrink-0 justify-start gap-1 overflow-x-auto rounded-none border-b bg-transparent px-3 py-1.5 [scrollbar-width:none] sm:w-40 sm:flex-col sm:items-stretch sm:overflow-visible sm:border-b-0 sm:p-0';
 const TAB_TRIGGER_CLASS = 'min-h-11 shrink-0 justify-start px-3 data-[state=active]:font-medium data-[state=active]:shadow-none max-sm:data-[state=active]:bg-active-surface! max-sm:data-[state=active]:text-active! max-sm:data-[state=active]:ring-1 max-sm:data-[state=active]:ring-inset max-sm:data-[state=active]:ring-active-border sm:min-h-0 sm:data-[state=active]:bg-muted sm:data-[state=active]:text-foreground';
 
+/**
+ * Desktop keeps a steady height across sections: the 20rem body floor it had
+ * before, plus the 67 px header and the 2 px border. The floor sits on the
+ * dialog and is capped at the dialog's own viewport limit. A floor on the body
+ * could outgrow a short window and push the body's end past the dialog's
+ * clipped bottom (#8802 review).
+ */
+const DIALOG_CLASS = 'w-[calc(100%-2rem)] max-w-2xl gap-0 p-0 sm:min-h-[min(calc(20rem+69px),calc(100dvh-2rem))]';
+
 export function SettingsDialog({ open, section, onSectionChange, onOpenChange }: SettingsDialogProps) {
   const { t } = useTranslation();
   const wide = useSyncExternalStore(subscribeSm, isSmViewport, () => true);
   const [list, setList] = useState<HTMLDivElement | null>(null);
-  const fade = useScrollFade(list);
+  const labels = SETTINGS_SECTIONS.map((id) => t(SECTIONS[id].label));
+  const fade = useScrollFade(list, labels.join('\n'));
   // Keep the selected tab in view when the strip is wider than the phone.
   useEffect(() => {
     const active = list?.querySelector<HTMLElement>('[role="tab"][data-state="active"]');
@@ -101,7 +115,7 @@ export function SettingsDialog({ open, section, onSectionChange, onOpenChange }:
   }, [list, section, wide]);
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent scrollBody className="w-[calc(100%-2rem)] max-w-2xl gap-0 p-0" data-settings-dialog>
+      <DialogContent scrollBody className={DIALOG_CLASS} data-settings-dialog>
         <div className="shrink-0 border-b px-5 pb-3 pt-5">
           <DialogTitle>{t('settings.title')}</DialogTitle>
           <DialogDescription className="text-xs">{t('settings.description')}</DialogDescription>
@@ -110,12 +124,12 @@ export function SettingsDialog({ open, section, onSectionChange, onOpenChange }:
           orientation={wide ? 'vertical' : 'horizontal'}
           value={section}
           onValueChange={(value) => { const next = SETTINGS_SECTIONS.find((id) => id === value); if (next) onSectionChange(next); }}
-          className="flex min-h-0 flex-1 flex-col sm:min-h-[20rem] sm:flex-row sm:gap-4 sm:px-5 sm:pb-5 sm:pt-3"
+          className="flex min-h-0 flex-1 flex-col sm:flex-row sm:gap-4 sm:px-5 sm:pb-5 sm:pt-3"
         >
           <TabsList ref={setList} className={TAB_LIST_CLASS} data-scroll-fade={fade}>
-            {SETTINGS_SECTIONS.map((id) => (
+            {SETTINGS_SECTIONS.map((id, index) => (
               <TabsTrigger key={id} value={id} className={TAB_TRIGGER_CLASS}>
-                {t(SECTIONS[id].label)}
+                {labels[index]}
               </TabsTrigger>
             ))}
           </TabsList>

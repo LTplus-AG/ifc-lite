@@ -34,6 +34,14 @@ const PHONES = [
   { width: 390, height: 844 },
   { width: 320, height: 640 },
 ] as const;
+/** Short desktop windows: the body must shrink with the capped dialog
+ *  instead of holding a floor that pushes its end past the dialog's bottom. */
+const SHORT_DESKTOPS = [
+  { width: 1024, height: 240 },
+  { width: 1280, height: 400 },
+] as const;
+/** Desktop's steady floor before the fix: 20rem body + 67 px header + 2 px border. */
+const DESKTOP_FLOOR_PX = 389;
 const THEMES: Theme[] = ['light', 'dark', 'colorful'];
 /** The smallest touch target a phone tab may have (WCAG 2.5.5 / platform HIGs). */
 const MIN_TAB_PX = 44;
@@ -81,6 +89,8 @@ interface ScrollProbe {
   dialogFits: boolean;
   dialogTop: number;
   dialogBottom: number;
+  bodyInside: boolean;
+  bodyBottom: number;
   scrollers: number;
   controls: number;
   lastControlVisible: boolean;
@@ -101,6 +111,9 @@ function probeScroll(page: Page): Promise<ScrollProbe> {
     });
     const frame = dialog.getBoundingClientRect();
     for (const el of scrollers) el.scrollTop = el.scrollHeight;
+    // The scroller's own box must end inside the dialog: past its clipped
+    // bottom, the end of the content can never be scrolled into view.
+    const body = scrollers.length ? scrollers[scrollers.length - 1].getBoundingClientRect() : frame;
     const panel = dialog.querySelector('[role="tabpanel"][data-state="active"]') as HTMLElement;
     const controls = [...panel.querySelectorAll<HTMLElement>('button, input, select, textarea, [role="switch"]')];
     const last = controls[controls.length - 1];
@@ -122,6 +135,8 @@ function probeScroll(page: Page): Promise<ScrollProbe> {
       dialogFits: frame.top >= -0.5 && frame.bottom <= window.innerHeight + 0.5,
       dialogTop: Math.round(frame.top),
       dialogBottom: Math.round(frame.bottom),
+      bodyInside: body.top >= frame.top - 0.5 && body.bottom <= frame.bottom + 0.5,
+      bodyBottom: Math.round(body.bottom),
       scrollers: scrollers.length,
       controls: controls.length,
       lastControlVisible: box.top >= top - 0.5 && box.bottom <= bottom + 0.5 && box.left >= left - 0.5 && box.right <= right + 0.5,
@@ -191,10 +206,33 @@ describe('Settings on a phone (#8802)', () => {
       });
       assert.ok(probe.controls >= GENERAL_SWITCHES + 2, `General renders its controls at ${width}x${height} (${probe.controls})`);
       assert.equal(probe.dialogFits, true, `the dialog (top ${probe.dialogTop}px, bottom ${probe.dialogBottom}px) fits the ${width}x${height} viewport`);
+      assert.equal(probe.bodyInside, true, `the scrolling body (bottom ${probe.bodyBottom}px) ends inside the dialog (bottom ${probe.dialogBottom}px) at ${width}x${height}`);
       assert.equal(probe.lastControlVisible, true,
         `after scrolling, the last General control (bottom ${probe.lastControlBottom}px) is inside the visible area (bottom ${probe.visibleBottom}px) at ${width}x${height}`);
       assert.equal(probe.scrollers, 1, `exactly one element scrolls at ${width}x${height}, not ${probe.scrollers}`);
     }
+  });
+
+  it('keeps the body inside the dialog at short desktop heights (#8802 review)', async () => {
+    const html = await dialogHtml('general');
+    for (const { width, height } of SHORT_DESKTOPS) {
+      const probe = await withThemedPage('light', html, async (page) => {
+        await settle(page, width, height);
+        return probeScroll(page);
+      });
+      assert.equal(probe.dialogFits, true, `the dialog (top ${probe.dialogTop}px, bottom ${probe.dialogBottom}px) fits the ${width}x${height} viewport`);
+      assert.equal(probe.bodyInside, true, `the scrolling body (bottom ${probe.bodyBottom}px) ends inside the dialog (bottom ${probe.dialogBottom}px) at ${width}x${height}`);
+      assert.equal(probe.lastControlVisible, true,
+        `after scrolling, the last General control (bottom ${probe.lastControlBottom}px) is inside the visible area (bottom ${probe.visibleBottom}px) at ${width}x${height}`);
+      assert.equal(probe.scrollers, 1, `exactly one element scrolls at ${width}x${height}, not ${probe.scrollers}`);
+    }
+    // A tall window keeps desktop's steady floor for a short section.
+    const short = await dialogHtml('collaboration');
+    const height = await withThemedPage('light', short, async (page) => {
+      await settle(page, 1280, 800);
+      return page.evaluate(() => Math.round((document.querySelector('[data-settings-dialog]') as HTMLElement).getBoundingClientRect().height));
+    });
+    assert.ok(height >= DESKTOP_FLOOR_PX, `a short section keeps the ${DESKTOP_FLOOR_PX}px desktop floor at 1280x800 (${height}px)`);
   });
 
   it('shows its sections as one row of 44 px tabs with an obvious selection', async () => {

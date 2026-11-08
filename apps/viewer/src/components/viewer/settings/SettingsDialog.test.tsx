@@ -15,6 +15,7 @@ import assert from 'node:assert/strict';
 import { act, type ComponentType } from 'react';
 import { advance, cleanup, click, press, render } from '@/test/render.js';
 import { useViewerStore } from '@/store';
+import { registerLocale, setLocale } from '@/i18n';
 
 // Dynamic: the revert oracle deletes these modules, and a static import would
 // fail the whole file instead of letting the assertions go red.
@@ -146,6 +147,36 @@ describe('Settings dialog (#5857)', () => {
       act(() => { list.scrollLeft = 300; list.dispatchEvent(new Event('scroll')); });
       assert.equal(list.getAttribute('data-scroll-fade'), 'start');
     } finally {
+      for (const [key, descriptor] of saved) {
+        if (descriptor) Object.defineProperty(proto, key, descriptor);
+        else delete (proto as unknown as Record<string, unknown>)[key];
+      }
+    }
+  });
+  // #8802 review: a language switch in General changes the labels' width but
+  // not the strip's own box and fires no scroll event, so the fade must be
+  // recomputed for the new labels. Widths here are 10 px per label character:
+  // English (45 characters) fits a 500 px strip, German (53) does not.
+  it('the strip fade follows a language change that makes the labels overflow (#8802)', async () => {
+    const de = (await import('@/i18n/locales/de')).default;
+    registerLocale('de', de);
+    const proto = HTMLElement.prototype;
+    const saved = ['scrollWidth', 'clientWidth'].map((key) => [key, Object.getOwnPropertyDescriptor(proto, key)] as const);
+    const labelWidth = (list: Element) => [...list.querySelectorAll('[role="tab"]')].reduce((sum, tab) => sum + (tab.textContent ?? '').length * 10, 0);
+    Object.defineProperty(proto, 'scrollWidth', { configurable: true, get() { return this.getAttribute('role') === 'tablist' ? Math.max(500, labelWidth(this)) : 0; } });
+    Object.defineProperty(proto, 'clientWidth', { configurable: true, get() { return this.getAttribute('role') === 'tablist' ? 500 : 0; } });
+    try {
+      const dialog = mountAndOpen('general');
+      const list = dialog.querySelector<HTMLElement>('[role="tablist"]');
+      assert.ok(list, 'the section tab list');
+      assert.equal(list.getAttribute('data-scroll-fade'), null, 'English labels fit the strip: no fade');
+      act(() => setLocale('de'));
+      assert.equal(labelWidth(list) > 500, true, 'German labels outgrow the strip');
+      assert.equal(list.getAttribute('data-scroll-fade'), 'end', 'after switching to German the hidden end fades');
+      act(() => setLocale('en'));
+      assert.equal(list.getAttribute('data-scroll-fade'), null, 'back in English the fade clears');
+    } finally {
+      act(() => setLocale('en'));
       for (const [key, descriptor] of saved) {
         if (descriptor) Object.defineProperty(proto, key, descriptor);
         else delete (proto as unknown as Record<string, unknown>)[key];

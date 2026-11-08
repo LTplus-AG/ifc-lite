@@ -52,9 +52,11 @@ export function hostedFillTypeName(kind: 'door' | 'window', params: HostedFillTy
   const predefined = typePredefined(kind, params);
   const label = KIND_LABEL[predefined] ?? `${kind === 'door' ? 'Door' : 'Window'} (${predefined.toLowerCase()})`;
   const base = `${label} ${mm(params.Width)} × ${mm(params.Height)}`;
-  const variant = kind === 'door'
-    ? (params.OperationType && params.OperationType !== DEFAULT_OPERATION ? params.OperationType : undefined)
-    : (params.PartitioningType && params.PartitioningType !== 'NOTDEFINED' ? params.PartitioningType : undefined);
+  const [requested, described] = kind === 'door'
+    ? [params.OperationType && params.OperationType !== DEFAULT_OPERATION ? params.OperationType : undefined, params.UserDefinedOperationType]
+    : [params.PartitioningType && params.PartitioningType !== 'NOTDEFINED' ? params.PartitioningType : undefined, params.UserDefinedPartitioningType];
+  // An explicit USERDEFINED is named by its description, as a free-text value already is.
+  const variant = requested === 'USERDEFINED' && described ? described : requested;
   return variant ? `${base} ${variant.toLowerCase().replace(/_/g, ' ')}` : base;
 }
 

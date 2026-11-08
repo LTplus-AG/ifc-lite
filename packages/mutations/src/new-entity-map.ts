@@ -86,6 +86,8 @@ export class NewEntityMap extends Map<number, NewEntity> {
   /** Insertion order for sparse inverse capture; new keys sort after old keys. */
   positionOf(id: number): number { return this.positions?.get(id) ?? Infinity; }
 
+  referencesId(entityId: number, targetId: number): boolean { return this.referencesById?.get(entityId)?.has(targetId) ?? false; }
+
   /** Authored reference candidates; effective readers apply queued slot edits. */
   *referencing(id: number): IterableIterator<NewEntity> {
     for (const entityId of this.byReference?.get(id) ?? []) {

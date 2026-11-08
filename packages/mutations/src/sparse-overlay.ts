@@ -21,11 +21,16 @@ export function materializeOverlay(state: OverlaySnapshot): OverlaySnapshot {
 
 function sparseMap<K, V, T extends Map<K, V>>(base: T): { value: T; changes(): Change } {
   const reads = new Map<K, V>(), removed = new Set<K>(), inserted = new Set<K>();
+  const localEntities = base instanceof NewEntityMap ? new NewEntityMap() : null;
   let size = base.size;
   const has = (key: K) => inserted.has(key) || (!removed.has(key) && base.has(key));
   const get = (key: K): V | undefined => {
     if (!has(key)) return undefined;
-    if (!reads.has(key)) reads.set(key, structuredClone(base.get(key)!));
+    if (!reads.has(key)) {
+      const row = structuredClone(base.get(key)!);
+      reads.set(key, row);
+      localEntities?.set(key as number, row as unknown as NewEntity);
+    }
     return reads.get(key);
   };
   function* keys(): MapIterator<K> {
@@ -42,13 +47,13 @@ function sparseMap<K, V, T extends Map<K, V>>(base: T): { value: T; changes(): C
     if (name === 'has') return has;
     if (name === 'set') return (key: K, next: V) => {
       if (!has(key)) { size++; inserted.add(key); }
-      reads.set(key, next); return value;
+      reads.set(key, next); localEntities?.set(key as number, next as NewEntity); return value;
     };
     if (name === 'delete') return (key: K) => {
       if (!has(key)) return false;
-      size--; inserted.delete(key); removed.add(key); reads.delete(key); return true;
+      size--; inserted.delete(key); removed.add(key); reads.delete(key); localEntities?.delete(key as number); return true;
     };
-    if (name === 'clear') return () => { for (const key of keys()) removed.add(key); inserted.clear(); reads.clear(); size = 0; };
+    if (name === 'clear') return () => { for (const key of keys()) removed.add(key); inserted.clear(); reads.clear(); localEntities?.clear(); size = 0; };
     if (name === 'keys') return keys;
     if (name === 'values') return values;
     if (name === 'entries' || name === Symbol.iterator) return entries;
@@ -57,19 +62,18 @@ function sparseMap<K, V, T extends Map<K, V>>(base: T): { value: T; changes(): C
     };
     if ((name === 'ofType' || name === 'referencing') && base instanceof NewEntityMap) return function* (query: string | number): IterableIterator<NewEntity> {
       const seen = new Set<number>();
-      const matches = (entity: NewEntity) => name === 'ofType' ? entity.type.toUpperCase() === String(query).toUpperCase()
-        : [...new NewEntityMap([[entity.expressId, entity]]).referencing(Number(query))].length > 0;
       const candidates = name === 'ofType' ? base.ofType(String(query)) : base.referencing(Number(query));
       for (const entity of candidates) {
         const key = entity.expressId as K;
         if (removed.has(key)) continue;
         const next = get(key) as NewEntity;
-        if (matches(next)) { seen.add(next.expressId); yield next; }
+        // A replaced entry is checked in the private draft bucket below.
+        if (name === 'ofType' ? next.type.toUpperCase() !== String(query).toUpperCase()
+          : !localEntities!.referencesId(next.expressId, Number(query))) continue;
+        seen.add(next.expressId); yield next;
       }
-      for (const [key, row] of reads) {
-        const entity = row as NewEntity;
-        if (!seen.has(entity.expressId) && has(key) && matches(entity)) yield entity;
-      }
+      const local = name === 'ofType' ? localEntities!.ofType(String(query)) : localEntities!.referencing(Number(query));
+      for (const entity of local) if (!seen.has(entity.expressId) && has(entity.expressId as K)) yield entity;
     };
     return Reflect.get(_target, name, _target);
   } }) as T;

@@ -23,7 +23,7 @@ node tests/modelling-parity/exercises/f4.mjs
 node tests/modelling-parity/exercises/f5.mjs --floors 10 --budget-s 900
 node tests/modelling-parity/exercises/f5.mjs --floors 40 --budget-s 900
 node tests/modelling-parity/exercises/f6.mjs
-pnpm parity:exercises
+node tests/modelling-parity/exercises/all.mjs
 ```
 
 Use admission for the full ladder and tall exercises. The `ms` metrics are
@@ -101,4 +101,4 @@ results against main's product code at a6e0a577f8; no product code is changed.
 Helper invariants and the real deadline smoke test run with
 `node --test tests/modelling-parity/exercises/*.test.mjs`.
 
-Run `PARITY_BASELINE=path pnpm parity:exercises` to capture a fresh full baseline.
+Run `PARITY_BASELINE=path node tests/modelling-parity/exercises/all.mjs` to capture a fresh full baseline.

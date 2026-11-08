@@ -100,11 +100,23 @@ describe('packEdgeUniforms (#5385)', () => {
     got.forEach((g, i) => assert.ok(Math.abs(g - want[i]) < 1e-6, `[${i}] ${g} !~ ${want[i]}`));
   });
 
-  it('floors the tap radius at 1 px and carries the intensity through', () => {
+  it('floors the tap radius at 1 px', () => {
     const e = EDGE_UNIFORM_LAYOUT.edge;
     assert.equal(packed(perspective(), { radiusPx: 0.2 })[e], 1);
     assert.equal(packed(perspective(), { radiusPx: 3 })[e], 3);
-    assert.ok(Math.abs(packed(perspective(), { intensity: 0.35 })[e + 1] - 0.35) < 1e-6);
+  });
+
+  it('darkens a line pixel by the intensity times the share of taps an axis-aligned edge crosses', () => {
+    // Beside a horizontal edge, 1 of the 4 cardinal taps crosses it, and 3 of
+    // 8 once the diagonals join: the weight the averaged votes gave those
+    // edges, now given to every pixel of a slanted edge too, instead of a
+    // double weight at each step of its staircase (the dotted-edge bug).
+    const e = EDGE_UNIFORM_LAYOUT.edge;
+    const across = { low: 1 / 4, high: 3 / 8 } as const;
+    for (const quality of ['low', 'high'] as const) {
+      assert.equal(EDGE_QUALITY_PRESETS[quality].lineCoverage, across[quality]);
+      assert.ok(Math.abs(packed(perspective(), { quality, intensity: 0.8 })[e + 1] - 0.8 * across[quality]) < 1e-6);
+    }
   });
 
   it('flags high quality (diagonals on) only at high quality', () => {

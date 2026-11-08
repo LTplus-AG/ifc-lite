@@ -548,7 +548,7 @@ describe('walls drawn to the storey above (#9013 requirement 4)', () => {
     useViewerStore.getState().setAuthoringDefaults({ wallTop: 'storeyAbove' });
     useViewerStore.getState().setSessionStorey(UPPER_STOREY);
     const wall = draw(0);
-    assert.deepEqual(attachment(wall), { targetStoreyId: null, source: 'ifclite' });
+    assert.deepEqual(attachment(wall), { targetStoreyId: null, kind: 'storey', binding: 'relative', source: 'ifclite' });
     const added = m.addStoreyNextTo(useViewerStore, MODEL_ID, UPPER_STOREY, 'above', fallback);
     assert.ok(added.ok);
     assert.equal(attachment(wall)?.targetStoreyId, added.storeyId);

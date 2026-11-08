@@ -15,7 +15,7 @@
  */
 
 import {
-  copyBatchInStore, arrayCopyTransforms,
+  copyBatchInStore, copyToStoreysInStore, arrayCopyTransforms, applyNewElementTop,
   editHostedElementInStore,
   addCurtainWallToStore,
   addGridToStore,
@@ -87,6 +87,11 @@ export function createModellingStoreBackend(resolve: ModellingStoreModelResolver
       return copyBatchInStore(model.store, model.editor, expressIds, transforms)
         .map(result => ref(model.modelId, result.copyId));
     },
+    copyToStoreys(modelId, expressIds, storeyIds) {
+      const model = resolve(modelId);
+      return copyToStoreysInStore(model.store, model.editor, expressIds, storeyIds)
+        .map(({ storeyId, results }) => ({ storeyId, refs: results.map(result => ref(model.modelId, result.copyId)) }));
+    },
     duplicateElement(entity, options) {
       const model = resolve(entity.modelId);
       const [result] = copyBatchInStore(model.store, model.editor, [entity.expressId], [{ offset: options.offset }],
@@ -105,11 +110,13 @@ export function createModellingStoreBackend(resolve: ModellingStoreModelResolver
       editHostedElementInStore(model.store, model.editor, entity.expressId, patch);
       return ref(model.modelId, entity.expressId);
     },
-    addCurtainWall(modelId, storeyExpressId, params) {
+    addCurtainWall(modelId, storeyExpressId, { TopConstraint, ...params }) {
       const model = resolve(modelId);
-      const built = model.editor.runAtomic(draft => addCurtainWallToStore(
-        draft, resolveSpatialAnchor(model.store, storeyExpressId, draft.getMutationView()), params,
-      ));
+      const built = model.editor.runAtomic(draft => {
+        const wall = addCurtainWallToStore(draft, resolveSpatialAnchor(model.store, storeyExpressId, draft.getMutationView()), params);
+        applyNewElementTop(model.store, draft, wall.curtainWallId, TopConstraint ?? 'auto', storeyExpressId);
+        return wall;
+      });
       return ref(model.modelId, built.curtainWallId);
     },
     addGrid(modelId, storeyExpressId, params) {
@@ -119,11 +126,13 @@ export function createModellingStoreBackend(resolve: ModellingStoreModelResolver
       ));
       return ref(model.modelId, built.gridId);
     },
-    addColumnOnGrid(modelId, storeyExpressId, params, binding) {
+    addColumnOnGrid(modelId, storeyExpressId, { TopConstraint, ...params }, binding) {
       const model = resolve(modelId);
-      const built = model.editor.runAtomic(draft => addColumnOnGridToStore(
-        draft, model.store, resolveSpatialAnchor(model.store, storeyExpressId, draft.getMutationView()), params, binding,
-      ));
+      const built = model.editor.runAtomic(draft => {
+        const column = addColumnOnGridToStore(draft, model.store, resolveSpatialAnchor(model.store, storeyExpressId, draft.getMutationView()), params, binding);
+        applyNewElementTop(model.store, draft, column.columnId, TopConstraint ?? 'auto', storeyExpressId);
+        return column;
+      });
       return ref(model.modelId, built.columnId);
     },
     replaceElement(entity, storeyExpressId, element) {

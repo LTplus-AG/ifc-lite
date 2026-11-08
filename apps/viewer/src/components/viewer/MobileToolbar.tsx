@@ -21,9 +21,9 @@ import {
   DropdownMenuCheckboxItem,
   DropdownMenuLabel,
 } from '@/components/ui/dropdown-menu';
-import { Progress } from '@/components/ui/progress';
 import { selectActiveLoadProgress } from '@/store/slices/loadingSlice';
 import { useViewerStore } from '@/store';
+import { cn } from '@/lib/utils';
 import { useTranslation } from '@/i18n';
 import { useFileCommands } from './toolbar/useFileCommands';
 import { useExportRunner } from './useExportRunner';
@@ -32,12 +32,18 @@ import { surfaceCommand, type SurfaceCommandDefinition, type SurfaceCommandId } 
 import { runSurfaceCommand, trackCommandExecution } from './surface-command-run';
 import { ActivityTrayDialog } from './activity/ActivityTray';
 
+/** A phone target (#8802): the 36px face stays, and an invisible 4px
+ * extension on every side makes the hit area 44x44. The 4px margins keep
+ * neighbouring hit areas edge to edge, never overlapping. */
+const PHONE_TARGET = 'relative h-9 w-9 mx-1 flex-shrink-0 after:absolute after:-inset-1 after:content-[""]';
+
 export function MobileToolbar() {
   const { t } = useTranslation();
   const [activityOpen, setActivityOpen] = useState(false);
   const fileCommands = useFileCommands();
   const loading = useViewerStore(state => state.loading);
   const activeProgress = useViewerStore(selectActiveLoadProgress);
+  const loadPercent = Math.round(activeProgress?.percent ?? 0);
 
   const { hasModelsLoaded } = fileCommands;
   const activeTool = useViewerStore((state) => state.activeTool);
@@ -64,7 +70,9 @@ export function MobileToolbar() {
   const OpenFileIcon = mobileIcon(openFile);
   const AddModelIcon = mobileIcon(addModel);
   const toolButtons = ['tool:select', 'tool:measure', 'tool:section'] as const;
-  const quickActions = ['view:home', 'view:fit', 'vis:show'] as const;
+  // Seven 44px targets fit a 320px phone in one row (7 x 44 = 308px); nine did
+  // not, so Add model and Show all live in More (#8802, maintainer's call).
+  const quickActions = ['view:home', 'view:fit'] as const;
   const walk = mobileCommand('tool:walk');
   const activity = mobileCommand('ui:activity');
   const ActivityIcon = mobileIcon(activity);
@@ -81,14 +89,16 @@ export function MobileToolbar() {
   };
 
   return (
-    <div data-command-surface="mobile" className="flex items-center gap-0.5 px-1.5 h-11 border-b bg-white border-border relative z-50 overflow-x-auto">
+    // `box-content`: the bar's content box is the full 44px target height, so
+    // no target is clipped by the bottom border.
+    <div data-command-surface="mobile" className="flex items-center box-content px-1 h-11 border-b bg-white border-border relative z-50 overflow-x-auto">
       {fileCommands.fileInputs}
 
       {/* Open File */}
       <Button
         variant="ghost"
         size="icon-sm"
-        className="h-9 w-9 flex-shrink-0"
+        className={PHONE_TARGET}
         data-command-id={openFile.id}
         onClick={() => runSurfaceCommand(openFile, { surface: 'mobile', openFiles: fileCommands.handleOpenClick })}
         disabled={loading}
@@ -101,23 +111,8 @@ export function MobileToolbar() {
         )}
       </Button>
 
-      {/* Add Model */}
-      {hasModelsLoaded && (
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          className="h-9 w-9 flex-shrink-0"
-          data-command-id={addModel.id}
-          onClick={() => runSurfaceCommand(addModel, { surface: 'mobile', addModel: fileCommands.handleAddModelClick })}
-          disabled={loading}
-          aria-label={mobileLabel(addModel)}
-        >
-          <AddModelIcon className="h-4 w-4" />
-        </Button>
-      )}
-
       {/* Divider */}
-      <div className="w-px h-5 bg-border mx-0.5 flex-shrink-0" />
+      <div className="w-px h-5 bg-border flex-shrink-0" />
 
       {/* Tool buttons */}
       {toolButtons.map((id) => {
@@ -134,7 +129,7 @@ export function MobileToolbar() {
             // At rest it keeps the foreground ink of the actions beside it.
             variant="toggle"
             size="icon-sm"
-            className="h-9 w-9 flex-shrink-0 text-foreground"
+            className={`${PHONE_TARGET} text-foreground`}
             aria-pressed={active}
             onClick={() => runMobile(command)}
             aria-label={mobileLabel(command)}
@@ -145,7 +140,7 @@ export function MobileToolbar() {
       })}
 
       {/* Divider */}
-      <div className="w-px h-5 bg-border mx-0.5 flex-shrink-0" />
+      <div className="w-px h-5 bg-border flex-shrink-0" />
 
       {/* Quick actions: Home, Fit, Show All */}
       {quickActions.map((id) => {
@@ -157,7 +152,7 @@ export function MobileToolbar() {
             data-command-id={id}
             variant="ghost"
             size="icon-sm"
-            className="h-9 w-9 flex-shrink-0"
+            className={PHONE_TARGET}
             onClick={() => runMobile(command)}
             aria-label={mobileLabel(command)}
           >
@@ -167,16 +162,27 @@ export function MobileToolbar() {
       })}
 
       {/* Spacer */}
-      <div className="flex-1 min-w-2" />
+      <div className="flex-1 min-w-0" />
 
-      {/* Loading progress (compact) */}
+      {/* Loading progress: a thin line along the bar's bottom edge, out of the
+          row (#8802). In the row it took width the seven 44px targets need, so
+          at 320px loading pushed More off-screen and the bar scrolled. It does
+          not take taps; the loading card announces each phase. */}
       {loading && activeProgress && (
-        <div className="flex items-center gap-1.5 mr-1 flex-shrink-0">
-          <Progress value={activeProgress.percent} className="w-16 h-1.5" />
-          <span className="text-2xs text-muted-foreground tabular-nums">
-            {Math.round(activeProgress.percent)}%
-          </span>
-        </div>
+        // Native <progress>: a progressbar to assistive tech, indeterminate
+        // when it has no value.
+        <progress
+          data-mobile-load-progress
+          aria-label={t('viewportLighting.container.loadingCard.titleFallback')}
+          aria-valuetext={activeProgress.indeterminate ? activeProgress.phase : `${activeProgress.phase} · ${loadPercent}%`}
+          max={100}
+          value={activeProgress.indeterminate ? undefined : loadPercent}
+          className={cn(
+            'pointer-events-none absolute inset-x-0 bottom-0 block h-0.5 w-full appearance-none overflow-hidden border-0 bg-primary/20',
+            '[&::-webkit-progress-bar]:bg-primary/20 [&::-webkit-progress-value]:bg-primary [&::-moz-progress-bar]:bg-primary',
+            activeProgress.indeterminate && 'animate-pulse [&::-webkit-progress-bar]:bg-primary/60',
+          )}
+        />
       )}
 
       {/* Overflow menu */}
@@ -185,7 +191,7 @@ export function MobileToolbar() {
           <Button
             variant="ghost"
             size="icon-sm"
-            className="h-9 w-9 flex-shrink-0"
+            className={PHONE_TARGET}
             data-command-disclosure="mobile:more"
             aria-label={t('shellChrome.mobileToolbar.moreActionsAriaLabel')}
           >
@@ -193,6 +199,19 @@ export function MobileToolbar() {
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent data-mobile-command-menu align="end" className="w-64 max-h-[80vh] overflow-y-auto">
+          {hasModelsLoaded && (
+            <>
+              <DropdownMenuItem
+                data-command-id={addModel.id}
+                disabled={loading}
+                onClick={() => runSurfaceCommand(addModel, { surface: 'mobile', addModel: fileCommands.handleAddModelClick })}
+              >
+                <AddModelIcon className="h-4 w-4 mr-2" />
+                {mobileLabel(addModel)}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+            </>
+          )}
           {menuItem('ui:commands')}
           {menuItem('pref:settings')}
           <DropdownMenuSeparator />
@@ -211,6 +230,7 @@ export function MobileToolbar() {
           {/* Visibility */}
           {menuItem('vis:isolate')}
           {menuItem('vis:hide', !hasSelection)}
+          {menuItem('vis:show')}
           {hasSelection && menuItem('view:frame')}
 
           <DropdownMenuSeparator />

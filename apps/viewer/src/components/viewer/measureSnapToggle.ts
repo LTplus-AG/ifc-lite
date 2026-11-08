@@ -8,6 +8,7 @@ import type { MouseHandlerContext } from './mouseHandlerTypes.js';
 import { cancelMeasureRaycast, moveRubberBand, syncMeasureScreenCoords } from './measureHandlers.js';
 import { hoverMeasurePoint } from './measurePointMode.js';
 import { measureCursor, type MeasureCursor } from './measureCursor.js';
+import { flySpeedStore } from './flySpeedStore.js';
 import { viewportPicksAwaitLiveFrame } from '@/lib/viewport-capture';
 
 /**
@@ -35,8 +36,8 @@ export function measureSnapToggle(ctx: MouseHandlerContext, snap: boolean): void
  * a blur, `setMeasureContext`). The cursor record follows it, so a Snap
  * toggle's re-pick does too (#9022), and the Distance rubber band is re-picked
  * there now, as a move with that Shift state would draw it, axis highlight
- * included (#9161). A queued rubber-band frame read the old Shift state and is
- * dropped by the re-pick; with no re-pick it stays, as a move's frame. Point
+ * included (#9161). A queued rubber-band frame is dropped by the re-pick;
+ * with no re-pick it reads the updated Shift state when it runs (#9242). Point
  * mode's pick ignores Shift: its record changes in place, which keeps a queued
  * trailing hover valid.
  */
@@ -47,7 +48,7 @@ export function measureShiftChange(ctx: MouseHandlerContext, held: boolean): voi
   if (!cursor || cursor.orthogonal === orthogonal) return;
   cursor.orthogonal = orthogonal;
   // A command's preview frame is its own
-  if (ctx.activeToolRef.current !== 'measure' || useViewerStore.getState().measureMode === 'point') return;
+  if (flySpeedStore.get().active || ctx.activeToolRef.current !== 'measure' || useViewerStore.getState().measureMode === 'point') return;
   // Snap did not change, but its ref and the lock's may still lag a toggle's store update by a render
   const { snapEnabled: snap, edgeLockState } = useViewerStore.getState();
   if (!cursorToRepick(ctx, snap)) return;

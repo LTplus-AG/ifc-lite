@@ -11,6 +11,7 @@ export {
   MutablePropertyView,
   type PropertyExtractor,
   type QuantityExtractor,
+  type QuantityBaseRevision,
   type AttributeExtractor,
 } from './mutable-property-view.js';
 export {

@@ -8,7 +8,6 @@
  * active at once, ready to draw on), or open the storey manager.
  */
 
-import { addStoreyKeepingSession } from './add-storey';
 import { activateStorey } from '@/lib/storeys/storey-session';
 import { Plus, SlidersHorizontal } from 'lucide-react';
 import { useViewerStore, type ViewerState } from '@/store';
@@ -37,7 +36,7 @@ export function StoreyPickerActions() {
     const state = useViewerStore.getState();
     if (topReference(state, modelId) === undefined) { openStoreyManager(state); return; }
     // The storey write path loads on first use, so the picker costs the boot bundle nothing.
-    void import('@/lib/storeys/storey-actions').then(() => {
+    void import('./add-storey').then(({ addStoreyKeepingSession }) => {
       // The session may have moved while the module loaded: add above the storey drawn on now,
       // and nothing at all once the session that was clicked in has ended, even if a new
       // one has since opened on the same model.

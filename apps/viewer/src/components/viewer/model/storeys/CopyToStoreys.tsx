@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import type { CopyTransform } from '@ifc-lite/create';
+import { buildStoreyWorkplane, isWorkplane } from '@/lib/commands/modeling/workplane';
 import { useEffect, useRef, useState } from 'react';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
@@ -28,6 +30,7 @@ export function CopyToStoreys() {
   const [busy, setBusy] = useState(false);
   const version = useRef(useViewerStore.getState().mutationVersion);
   const generation = useRef(0);
+  const prepared = useRef<CopyTransform[]>([]);
   useEffect(() => () => { generation.current++; }, []);
   const chooseRange = (start: string | undefined, end: string | undefined) => {
     setRangeStart(start); setRangeEnd(end);
@@ -36,18 +39,29 @@ export function CopyToStoreys() {
     const b = levels.findIndex(level => String(level.expressId) === end);
     setPicked(new Set(levels.slice(Math.min(a, b), Math.max(a, b) + 1).map(level => level.expressId)));
   };
-  const cancel = () => { generation.current++; setProgress(null); setReady(false); };
+  const cancel = () => { generation.current++; setProgress(null); setReady(false); prepared.current = []; };
   const prepare = async () => {
     if (!selection) return;
     const token = ++generation.current;
     version.current = useViewerStore.getState().mutationVersion;
     setProgress(0);
-    for (const [index] of [...picked].entries()) {
+    prepared.current = [];
+    try {
+      const sources = copySources(useViewerStore.getState(), selection.modelId, selection.ids);
+      if ('refusal' in sources) throw new Error(sources.refusal);
+      for (const [index, targetStoreyId] of [...picked].entries()) {
       await new Promise<void>(resolve => setTimeout(resolve, 0));
       if (generation.current !== token) return;
+      const plane = buildStoreyWorkplane(useViewerStore.getState(), selection.modelId, targetStoreyId, 0);
+      if (!isWorkplane(plane)) throw new Error(t('storeyManager.copy.stale'));
+      prepared.current.push({ targetStoreyId });
       setProgress(index + 1);
     }
-    setReady(true);
+      setReady(true);
+    } catch (error) {
+      toast.error(t('storeyManager.refusal.other', { reason: error instanceof Error ? error.message : String(error) }));
+      cancel();
+    }
   };
   const commit = () => {
     if (!selection) return;
@@ -56,7 +70,7 @@ export function CopyToStoreys() {
       const sources = copySources(useViewerStore.getState(), selection.modelId, selection.ids);
       if ('refusal' in sources) throw new Error(sources.refusal);
       setBusy(true);
-      const copies = createStoreAdapter(useViewerStore).copyElements!(selection.modelId, sources.ids, [...picked].map(targetStoreyId => ({ targetStoreyId })));
+      const copies = createStoreAdapter(useViewerStore).copyElements!(selection.modelId, sources.ids, prepared.current);
       toast.success(t('storeyManager.copy.done', { count: copies.length }));
       cancel();
     } catch (error) {

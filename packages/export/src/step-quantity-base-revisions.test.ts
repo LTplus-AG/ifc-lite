@@ -109,3 +109,31 @@ describe('a set the quantity base revises for a loaded element', () => {
     expect(exported(f, { schema: 'IFC4', applyMutations: true, includeQuantities: false })).not.toContain('IFCQUANTITYLENGTH(\'Height\',$,$,4.');
   });
 });
+
+describe('a refreshed set beside a second set of the same name', () => {
+  const TWIN_IFC = IFC.replace('ENDSEC;\nEND-ISO', `#80=IFCELEMENTQUANTITY('0OSuGGYUFyIf0LtE29OSuZ',$,'${SET}',$,$,(#81));
+#81=IFCQUANTITYCOUNT('Fixings',$,$,2.,$);
+#82=IFCRELDEFINESBYPROPERTIES('0OSuGGYUFyIf0LtE29OSv0',$,$,$,(#8),#80);
+ENDSEC;
+END-ISO`);
+
+  it('reaches the file once, and the second set keeps its own values', async () => {
+    const store = await parse(TWIN_IFC);
+    const view = new MutablePropertyView(null, 'm');
+    // The first set refreshed by identity, as `withRefreshedBaseQuantities` does; the twin as the file has it.
+    view.setQuantityExtractor((id) => {
+      const own = extractQuantitiesOnDemand(store, id);
+      if (id !== WALL) return own;
+      const first = own.findIndex((s) => s.name === SET);
+      return own.map((s, i) => (i === first
+        ? { ...s, quantities: [{ name: 'Height', type: QuantityType.Length, value: 4 }, { name: 'GrossVolume', type: QuantityType.Volume, value: 6.4 }] }
+        : s));
+    });
+    view.setQuantityBaseRevisions(() => [{ entityId: WALL, setName: SET }]);
+    const reopened = await parse(new TextDecoder().decode(new StepExporter(store, view).export({ schema: 'IFC4', applyMutations: true }).content));
+    const sets = extractQuantitiesOnDemand(reopened, WALL).filter((s) => s.name === SET);
+    expect(sets).toHaveLength(2);
+    expect(sets.map((s) => Object.fromEntries(s.quantities.map((q) => [q.name, q.value])))).toEqual(
+      expect.arrayContaining([{ Height: 4, GrossVolume: 6.4 }, { Fixings: 2 }]));
+  });
+});

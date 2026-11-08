@@ -356,11 +356,16 @@ describe('storey manager (#9013)', () => {
   });
 });
 
-it('#9334 explicit insertion reviews the shift, preserves floor heights and undoes as one step', async () => {
+it('#9334 insertion distinguishes explicit wall resizes from relative top updates and undoes as one step', async () => {
   const s = useViewerStore.getState();
   const wall = s.addWall(MODEL_ID, STOREY, { Start: [0, 0, 0], End: [4, 0, 0], Height: 3, Thickness: 0.2 });
   assert.ok('expressId' in wall);
   s.setProperty(MODEL_ID, wall.expressId, 'IfcLite_StoreyAttachment', 'TopConstraint', s.models.get(MODEL_ID)!.ifcDataStore!.entities.getGlobalId(UPPER_STOREY)!, PropertyValueType.Label);
+  s.setProperty(MODEL_ID, wall.expressId, 'IfcLite_StoreyAttachment', 'TopBinding', 'Explicit', PropertyValueType.Label);
+  const relative = s.addWall(MODEL_ID, STOREY, { Start: [0, 2, 0], End: [4, 2, 0], Height: 3, Thickness: 0.2 });
+  assert.ok('expressId' in relative);
+  s.setProperty(MODEL_ID, relative.expressId, 'IfcLite_StoreyAttachment', 'TopConstraint', s.models.get(MODEL_ID)!.ifcDataStore!.entities.getGlobalId(UPPER_STOREY)!, PropertyValueType.Label);
+  s.setProperty(MODEL_ID, relative.expressId, 'IfcLite_StoreyAttachment', 'TopBinding', 'Relative', PropertyValueType.Label);
   const ui = await mount();
   const ground = rows(ui).at(-1)!;
   const insert = ground.querySelector<HTMLButtonElement>('[aria-label="Insert storey above L0"]')!;
@@ -370,14 +375,19 @@ it('#9334 explicit insertion reviews the shift, preserves floor heights and undo
   assert.equal(useViewerStore.getState().undoStacks.get(MODEL_ID)?.length ?? 0, before);
   await waitFor(() => !!ui.querySelector('[data-storey-insertion]'), 'the first-click insertion review loads');
   assert.match(ui.querySelector('[data-storey-insertion]')?.textContent ?? '', /Floor-to-floor stays 3.00 m. Storeys shifted: 1/);
-  assert.match(ui.querySelector('[data-storey-insertion]')?.textContent ?? '', /Updates 1 wall top/);
+  const impact = ui.querySelector('[data-storey-impact-summary]')?.textContent ?? '';
+  assert.match(impact, /resizes 1 wall(?: ·|$)/, 'the explicit GUID-bound wall really stretches');
+  assert.match(impact, /Updates 1 wall top(?: ·|$)/, 'only the relative top rebinds without a final resize');
   const confirm = [...ui.querySelectorAll('button')].find(b => b.textContent === 'Insert storey')!;
   click(confirm);
   await waitFor(() => rows(ui).length === 3, 'inserted floor appears');
   assert.deepEqual(elevations(), [0, 3, 6]);
+  assert.equal(useViewerStore.getState().readWallEndpoints(MODEL_ID, wall.expressId)?.height, 6, 'the explicitly bound wall follows its shifted target');
+  assert.equal(useViewerStore.getState().readWallEndpoints(MODEL_ID, relative.expressId)?.height, 3, 'the relative top rebinds at its original height');
   assert.equal(useViewerStore.getState().session?.storeyId, STOREY, 'drawing plane stays on L0');
   act(() => useViewerStore.getState().undo(MODEL_ID));
   assert.deepEqual(elevations(), [0, 3], 'one Undo restores both the shifted storey and the insertion');
+  assert.equal(useViewerStore.getState().readWallEndpoints(MODEL_ID, wall.expressId)?.height, 3, 'Undo also restores the resized wall');
 });
 
 it('#9334 a first-click insertion that finishes loading after session replacement does nothing', async () => {

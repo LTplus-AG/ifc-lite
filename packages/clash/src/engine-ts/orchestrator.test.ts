@@ -144,6 +144,7 @@ describe('runClash: identity / dedup', () => {
     const elements = [element('A', 'IfcWall'), element('B', 'IfcDuct')];
     const result = await run(elements, [hard('r')], [[rec(0, 1), rec(1, 0)]]);
     expect(result.summary.total).toBe(1);
+    expect(result.clashes[0].id).toBe('r m A m B'); // #9259 valid-key ids remain compatible with saved review lineage
   });
 
   it('keeps both clashes when two DIFFERENT rules match the same element pair', async () => {
@@ -157,8 +158,9 @@ describe('runClash: identity / dedup', () => {
     expect(new Set(result.clashes.map((c) => c.id)).size).toBe(2);
   });
 
-  it('skips a same-entity pair (same key + model) even if the kernel emits it', async () => {
-    const elements = [element('K', 'IfcWall'), element('K', 'IfcWall')];
+  it('skips a same-entity pair (same ref + model) even if the kernel emits it (#9259)', async () => {
+    const first = element('K', 'IfcWall');
+    const elements = [first, { ...first, key: 'K:subpart' }];
     const result = await run(elements, [{ id: 'r', name: 'r', a: 'IfcWall', mode: 'hard' }], [[rec(0, 1)]]);
     expect(result.summary.total).toBe(0);
   });

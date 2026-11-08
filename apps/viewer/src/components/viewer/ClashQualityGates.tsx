@@ -18,11 +18,11 @@ export function QualityGateCards({ snapshot, models }: { snapshot: QualityGateSn
       return <div key={`${row.rule}-${index}`} className="flex items-center gap-3 rounded border border-border p-2" data-quality-rule={row.rule}>
         {/* Inline SVG keeps the ring and percentage accessible as one named image. */}
         {/* eslint-disable-next-line jsx-a11y/prefer-tag-over-role */}
-        <svg width="68" height="68" viewBox="0 0 68 68" role="img" aria-label={row.percent === null ? t(`clashQuality.${row.status as Exclude<QualityGateRow['status'], 'evaluated'>}`) : `${displayQualityPercent(row.percent)}% ${band?.label}`}>
+        <svg width="68" height="68" viewBox="0 0 68 68" role="img" aria-label={row.percent === null ? t(`clashQuality.${row.status as Exclude<QualityGateRow['status'], 'evaluated'>}`) : `${displayQualityPercent(row.percent, snapshot.config[row.kind])}% ${band?.label}`}>
           <circle cx="34" cy="34" r="27" fill="none" stroke="currentColor" className="text-muted" strokeWidth="6" />
           {band && <circle cx="34" cy="34" r="27" fill="none" stroke={band.color} strokeWidth="6" pathLength="100"
             strokeDasharray={`${row.percent} 100`} transform="rotate(-90 34 34)" />}
-          <text x="34" y="38" textAnchor="middle" fill="currentColor" fontSize="12">{row.percent === null ? '—' : `${displayQualityPercent(row.percent)}%`}</text>
+          <text x="34" y="38" textAnchor="middle" fill="currentColor" fontSize="12">{row.percent === null ? '—' : `${displayQualityPercent(row.percent, snapshot.config[row.kind])}%`}</text>
         </svg>
         <div className="min-w-0 text-xs">
           <div className="font-medium break-words">{row.name}</div>

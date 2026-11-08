@@ -213,20 +213,22 @@ Configure separate category ranges for clash checks and duplicate checks under
 a name and a color; the next category starts where the preceding one ends.
 The first category starts at zero. Defaults are Failed below 90%, Partially
 passed from 90% to below 95%, and Passed from 95% through 100%. Classification
-uses the full precision percentage; the displayed value is rounded down to one
-decimal place so it cannot appear to cross a category boundary prematurely.
+uses the full precision percentage; the displayed value uses at least one decimal place and increases precision
+when needed to stay within the measured category.
 
 The score is `100 × (checked unique objects − affected unique objects) / checked unique objects`.
 Checked objects are the union of the rule's matched sides. Both objects of a
 finding count as affected, with each object counted once using its model and
-per-load entity reference. Repeated GlobalIds do not merge distinct checked objects. Duplicate checks count all involved objects, rather than excess
+per-load entity reference. Multiple meshes or GPU-instanced occurrences of one
+IFC object share that reference and count once. Repeated GlobalIds do not merge
+distinct checked objects. Duplicate checks count all involved objects, rather than excess
 copies. Hiding rows, changing review status or applying result exclusions does
 not improve the score: it uses the raw engine findings. Void/host exclusions
 applied during detection still apply and are recorded on the gate. This percentage does
 not measure clash severity; one critical clash can still need action even when
 the percentage is high.
 
-An empty matched side is **Not evaluated**. Missing object coverage is **Coverage
+An empty matched side, or fewer than two distinct checked objects, is **Not evaluated**. Missing object coverage is **Coverage
 unavailable**, truncated runs are **Incomplete run**, and changed models make a
 live result **Outdated run**. These states never receive a passing category.
 The checked population is the geometry objects eligible for the check, not every

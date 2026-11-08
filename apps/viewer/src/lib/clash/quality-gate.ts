@@ -62,7 +62,7 @@ export function evaluateQualityGates(result: ClashResult, stale = false, kind: Q
     const verified = checked !== null && [...affected].every(key => checked.has(key));
     const emptySide = matched?.matchedA === 0 || matched?.matchedB === 0;
     const status: QualityGateStatus = stale ? 'outdated' : result.truncated ? 'incomplete'
-      : !verified ? 'unavailable' : emptySide || checked.size === 0 ? 'not-evaluated' : 'evaluated';
+      : !verified ? 'unavailable' : emptySide || checked.size < 2 ? 'not-evaluated' : 'evaluated';
     return {
       rule: rule.id, name: rule.name, kind,
       checked: checked?.size ?? null, affected: verified ? affected.size : null,
@@ -91,10 +91,17 @@ export function isQualityGateSnapshot(value: unknown): value is QualityGateSnaps
       || (row.clearance !== undefined && (typeof row.clearance !== 'number' || !Number.isFinite(row.clearance)))) return false;
     if (typeof row.affected === 'number' && typeof row.checked === 'number' && row.affected > row.checked) return false;
     return row.status === 'evaluated'
-      ? count(row.checked) && row.checked > 0 && count(row.affected) && row.percent === 100 * (row.checked - row.affected) / row.checked
+      ? count(row.checked) && row.checked >= 2 && count(row.affected) && row.percent === 100 * (row.checked - row.affected) / row.checked
       : row.percent === null;
   });
 }
 
-/** Floor the display so 94.999% cannot visually masquerade as the 95% passing boundary. */
-export const displayQualityPercent = (percent: number): string => (Math.floor(percent * 10) / 10).toFixed(1);
+/** Increase precision until the displayed number stays in the measured category (#9259). */
+export function displayQualityPercent(percent: number, ranges?: readonly QualityBand[]): string {
+  for (let digits = 1; digits <= 15; digits++) {
+    const scale = 10 ** digits;
+    const value = Math.floor(percent * scale) / scale;
+    if (value <= percent && (!ranges || qualityBand(value, ranges) === qualityBand(percent, ranges))) return value.toFixed(digits);
+  }
+  return String(percent);
+}

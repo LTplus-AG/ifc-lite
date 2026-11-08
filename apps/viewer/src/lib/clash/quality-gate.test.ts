@@ -48,7 +48,7 @@ describe('Object quality gate invariants (#9259)', () => {
     assert.equal(row.percent, 25);
   });
   it('never invents a passing result from empty, missing, truncated or stale coverage', async () => {
-    const result = await run([box('clean', 'A', 1)]);
+    const result = await run([box('clean', 'A', 1), box('also-clean', 'A', 2, 10)]);
     assert.equal(evaluateQualityGates(result)[0].percent, 100);
     assert.equal(evaluateQualityGates(result, true)[0].status, 'outdated');
     const capped = { ...result, truncated: { reason: 'test work cap', droppedPairs: 1 } };
@@ -70,6 +70,24 @@ describe('Object quality gate invariants (#9259)', () => {
     const result = await run([box('same', 'A', 1), box('same', 'A', 2, 10)]);
     assert.equal(evaluateQualityGates(result)[0].checked, 2);
   });
+  it('reports every distinct repeated-GUID object as affected instead of deduplicating its findings (#9259)', async () => {
+    const result = await run([box('same', 'A', 1), box('same', 'A', 2), box('third', 'A', 3), box('clean', 'A', 4, 10)]);
+    assert.equal(result.clashes.length, 3, 'three distinct objects produce three pair findings');
+    const [row] = evaluateQualityGates(result);
+    assert.equal(row.checked, 4);
+    assert.equal(row.affected, 3);
+    assert.equal(row.percent, 25);
+    const pair = await run([box('same', 'A', 1), box('same', 'A', 2)]);
+    assert.equal(pair.clashes.length, 1, 'repeated GlobalId is not proof of a self-pair');
+    assert.equal(evaluateQualityGates(pair)[0].percent, 0);
+  });
+  it('never evaluates a population that cannot form an object pair (#9259)', async () => {
+    for (const b of [undefined, 'IfcWall']) {
+      const result = await engine().run([box('single', 'A', 1)], [{ ...rule, ...(b ? { b } : {}) }]);
+      assert.equal(evaluateQualityGates(result)[0].status, 'not-evaluated');
+      assert.equal(evaluateQualityGates(result)[0].percent, null);
+    }
+  });
   it('classifies exact boundaries before rounding and rejects ambiguous bands', () => {
     const config = defaultQualityGateConfig();
     assert.equal(qualityBand(89.9999, config.clash).label, 'Failed');
@@ -77,6 +95,10 @@ describe('Object quality gate invariants (#9259)', () => {
     assert.equal(qualityBand(94.9999, config.clash).label, 'Partially passed');
     assert.equal(qualityBand(95, config.clash).label, 'Passed');
     assert.equal(displayQualityPercent(94.9999), '94.9');
+    const decimalBands = [{ minimum: 0, label: 'Fail', color: '#dc2626' }, { minimum: 94.95, label: 'Pass', color: '#16a34a' }];
+    assert.equal(displayQualityPercent(94.95, decimalBands), '94.95');
+    assert.equal(qualityBand(Number(displayQualityPercent(94.95, decimalBands)), decimalBands).label, 'Pass');
+    assert.equal(qualityBand(Number(displayQualityPercent(94.94999, decimalBands)), decimalBands).label, 'Fail');
     assert.equal(qualityBand(100, config.clash).label, 'Passed');
     for (const minimum of [NaN, Infinity, -1, 101, 0]) {
       assert.equal(isQualityGateConfig({ ...config, clash: [config.clash[0], { ...config.clash[1], minimum }] }), false);

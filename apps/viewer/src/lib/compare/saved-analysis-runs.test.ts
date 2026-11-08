@@ -95,6 +95,8 @@ describe('saved analysis runs reconcile across sessions (#7370)', () => {
     const after = await session(pair, { A: 'A-session-2' });
     const { saved, bound } = roundTrip(base, before, after);
     assert.ok(saved.kind === 'clash');
+    assert.ok(base.kind === 'clash' && base.result.ruleCoverage?.some(coverage => coverage.matchedElements?.length), '#9259 the native run held per-load object members');
+    assert.ok(saved.result.ruleCoverage?.every(coverage => !Object.hasOwn(coverage, 'matchedElements')), '#9259 portable evidence strips per-load members');
     assert.ok(!JSON.stringify(saved).includes('"A"'), 'no session model id is stored');
     assert.equal(saved.models[0].sourceContentHash, (await sourceHashes()).A);
     assert.ok(bound.ok);

@@ -6,7 +6,7 @@ capture, collects independent model reviews, and tallies them into numbers.
 
 | file | role |
 |---|---|
-| `scenes.mjs` | the fixed scene set (15 states, captured in light and dark) |
+| `scenes.mjs` | the fixed scene set (17 states, captured in light and dark) |
 | `capture.mjs` | serves a built `dist/`, drives Windows Chrome on the real GPU, writes PNGs and `manifest.json` with layout metrics |
 | `pair.mjs` | builds a blind packet: per-item random X/Y labels, identical-image controls, and a key kept outside the packet |
 | `COUNCIL.md` | the reviewer brief, rubric, output schema and hard constraints |

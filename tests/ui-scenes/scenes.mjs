@@ -77,6 +77,66 @@ async function openInfoDialog(page, tab) {
   });
 }
 
+/**
+ * Open Settings the way every opener does (the `ifc-lite:open-settings`
+ * window event, #5857), then wait for its dialog. `toEnd` scrolls every
+ * element inside the dialog that a user could scroll (`overflow-y` auto or
+ * scroll) to its end, so a still shows whether
+ * the last settings are reachable; on a build where nothing scrolls, the
+ * clipped body shows as clipped.
+ */
+async function openSettingsDialog(page, { toEnd = false } = {}) {
+  await page.evaluate(() => window.dispatchEvent(new CustomEvent('ifc-lite:open-settings', { detail: { section: 'general' } })));
+  await page.waitForSelector('[data-settings-dialog]');
+  // General mounts two groups lazily, about 1.5 s after the dialog opens and
+  // after the network is already idle. Wait until the dialog's content has
+  // stopped growing for a full second (bounded at 8 s), so neither scene shows
+  // partial content and the end scene scrolls the full body.
+  await page.waitForLoadState('networkidle');
+  await page.evaluate(async () => {
+    const dialog = document.querySelector('[data-settings-dialog]');
+    const size = () => {
+      let tallest = 0;
+      for (const el of dialog.querySelectorAll('*')) tallest = Math.max(tallest, el.scrollHeight);
+      return `${dialog.querySelectorAll('*').length}:${tallest}`;
+    };
+    let last = size();
+    let still = 0;
+    for (let waited = 0; waited < 8000 && still < 10; waited += 100) {
+      await new Promise((r) => setTimeout(r, 100));
+      const now = size();
+      still = now === last ? still + 1 : 0;
+      last = now;
+    }
+  });
+  if (!toEnd) return;
+  // General loads two groups lazily (null Suspense fallbacks), so content can
+  // grow after the first scroll. Scroll, wait two frames, and repeat until
+  // nothing grows and every scroller rests at its end (bounded, ~3 s).
+  await page.evaluate(async () => {
+    const frames = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    const scrollers = () => {
+      const dialog = document.querySelector('[data-settings-dialog]');
+      // Only what a user could scroll: `overflow: hidden` can still be
+      // scrolled from code, which would show settings a phone cannot reach.
+      return [dialog, ...dialog.querySelectorAll('*')].filter((el) => {
+        const { overflowY } = getComputedStyle(el);
+        return (overflowY === 'auto' || overflowY === 'scroll') && el.scrollHeight > el.clientHeight + 1;
+      });
+    };
+    let stable = 0;
+    let last = '';
+    for (let i = 0; i < 90 && stable < 3; i += 1) {
+      for (const el of scrollers()) el.scrollTop = el.scrollHeight;
+      await frames();
+      const now = scrollers().map((el) => `${el.scrollHeight}:${Math.round(el.scrollTop + el.clientHeight)}`).join('|');
+      const atEnd = scrollers().every((el) => el.scrollTop + el.clientHeight >= el.scrollHeight - 1);
+      stable = now === last && atEnd ? stable + 1 : 0;
+      last = now;
+    }
+  });
+}
+
 export const SCENES = [
   {
     id: 'empty',
@@ -191,5 +251,19 @@ export const SCENES = [
     model: ARCH,
     viewport: { width: 390, height: 844 },
     async run() {},
+  },
+  {
+    id: 'mobile-settings',
+    title: 'Phone, Settings open',
+    model: ARCH,
+    viewport: { width: 390, height: 844 },
+    async run({ page }) { await openSettingsDialog(page); },
+  },
+  {
+    id: 'mobile-settings-end',
+    title: 'Phone, Settings scrolled to the end',
+    model: ARCH,
+    viewport: { width: 390, height: 844 },
+    async run({ page }) { await openSettingsDialog(page, { toEnd: true }); },
   },
 ].map((scene) => ({ viewport: DESKTOP, ...scene }));

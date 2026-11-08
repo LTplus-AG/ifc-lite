@@ -22,6 +22,8 @@ export interface SurfaceCommandContext {
   activateRightPanel?: (panel: RightPanel) => void;
   activateBottomPanel?: (panel: BottomPanelId) => void;
   runExport?: (request: ExportRequest) => void;
+  /** Reject a row captured before the mounted file owner was replaced/unmounted. */
+  fileHostIsCurrent?: () => boolean;
   openFiles?: () => void;
   addModel?: () => void;
   /** The phone's activity tray dialog (#6925); the status bar hosts it elsewhere. */

@@ -143,7 +143,7 @@ export function AnonymizationOptionsPanel({ toggles, onTogglesChange, disabled }
                 disabled={disabled}
                 onCheckedChange={(checked) => onTogglesChange({ ...toggles, [row.key]: checked })}
                 aria-label={t('anonymizedExport.options.toggleAriaLabel', { label })}
-                className="data-[state=checked]:bg-red-500 data-[state=unchecked]:bg-emerald-600/40"
+                className="data-[state=checked]:bg-danger-solid data-[state=unchecked]:bg-ok-solid/40"
               />
               <Label htmlFor={id} className="flex-1 flex items-baseline gap-2 text-sm cursor-pointer">
                 <span>{label}</span>

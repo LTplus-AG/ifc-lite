@@ -226,5 +226,6 @@ jobs:
       jobs: content-matching-fixture
       result: ${{ needs.content-matching-fixture.result }}
     permissions:
+      actions: read
       contents: read
       issues: write

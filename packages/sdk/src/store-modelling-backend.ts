@@ -53,6 +53,7 @@ import type { CostStoreModelResolution } from './cost-store-backend.js';
 import type { ModellingStoreBackendMethods } from './store-modelling-types.js';
 import type { EntityRef } from './types.js';
 import { createPhysicalStoreBackend } from './store-physical-backend.js';
+import { createStoreyStoreBackend } from './store-storey-backend.js';
 
 /** Same per-call resolution the cost and structural factories take. */
 export type ModellingStoreModelResolver = (modelId?: string) => CostStoreModelResolution;
@@ -80,6 +81,7 @@ export function createModellingStoreBackend(resolve: ModellingStoreModelResolver
 
   return {
     ...createPhysicalStoreBackend(resolve),
+    ...createStoreyStoreBackend(resolve),
     copyElements(modelId, expressIds, transforms) {
       const model = resolve(modelId);
       return copyBatchInStore(model.store, model.editor, expressIds, transforms)

@@ -38,6 +38,7 @@ import { useViewerStore } from '@/store';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { ACTIVE_TAB_CLASS } from '@/components/ui/active-state';
 import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
 import { IDSPanel } from '@/components/viewer/IDSPanel';
 import { IDSPanelResults } from '@/components/viewer/IDSPanelResults';
@@ -261,7 +262,7 @@ function SourceToggle() {
         <TabsTrigger
           key={source}
           value={source}
-          className="rounded px-2 py-1 text-xs transition-colors data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-none"
+          className={`rounded px-2 py-1 text-xs transition-colors ${ACTIVE_TAB_CLASS}`}
         >
           {t(labelKey)}
         </TabsTrigger>

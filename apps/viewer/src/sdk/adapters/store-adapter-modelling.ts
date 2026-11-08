@@ -38,6 +38,7 @@ import { replaceElementIn } from '@/store/slices/mutation-element-replacement';
 import { alignMutationTracking } from './store-adapter-align.js';
 import { roomMutationTracking } from './store-adapter-room.js';
 import { physicalMutationTracking } from './store-adapter-physical.js';
+import { storeyMutationTracking } from './store-adapter-storey.js';
 import { completeEntityRemoval } from '@/store/slices/mutation-mesh-stash';
 
 type ModellingMethods = ReturnType<typeof createModellingStoreBackend>;
@@ -64,6 +65,7 @@ export function withModellingMutationTracking(
     };
   return {
     ...physicalMutationTracking(store),
+    ...storeyMutationTracking(store),
     ...roomMutationTracking(store),
     ...alignMutationTracking(store),
     editHostedElement(ref, patch) {

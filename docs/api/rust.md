@@ -691,12 +691,17 @@ pub fn meshed_representations(element, representations) -> impl Iterator; // = S
 `NestedMaps::Expand { max_depth, max_levels }` bounds branching work in the
 walker. Use `MAX_WALK_LEVELS` (65,536) as the default allowance.
 Two independent counters share that limit: mapped-level attempts (after depth
-and cycle checks, before resolving the source) and total `Items` members.
-Every expanded occurrence pays again, including repeated valid DAG nodes. Each full list
-is charged before allocating or decoding its members, including ignored
-non-reference members. Product representations share the counters; each public
-walk call starts fresh. This bounds expansion work, not source parsing or
-visitor-owned computation.
+and cycle checks, before resolving the source) and `Items` members. Every
+attempt pays, distinct mapped item or not, because each one expands a shared
+source. A first read of a distinct `Items` list pays only for references that
+repeat an earlier one in the same list; its distinct items are bounded by the
+file itself and free, so one wide list of distinct items is never refused
+(#9102). A repeated read pays every member, including repeated valid DAG nodes
+and ignored non-reference members.
+Each charge is admitted before allocating or decoding the list's members.
+Product representations share the counters; each public walk call starts
+fresh. This bounds expansion work, not source parsing or visitor-owned
+computation.
 
 Exhaustion reports one `WalkRefusal::Budget { max_levels }` and stops the entire
 walk, unwinding every entered level. A root-list refusal identifies the
@@ -780,10 +785,12 @@ API assessment; no new cargo-semver-checks measurement is claimed.
 The ordinary renderer remains owned by GeometryProgram/MappingControl. Its
 separate internal Class X policy (#7873) gives each controller invocation two
 independent 65,536 allowances: reached mapped attempts and materialized Items
-members. The four source-list boundaries precharge the full list, including
-ignored non-reference members, before decoding it. Repeated DAG occurrences
-pay again; cache hits and don't-bake skips can avoid child-list charges, but
-still pay their mapped attempt. Existing path/depth checks take precedence.
+members. Every mapped attempt pays, including cache hits and don't-bake skips,
+which avoid child-list charges but still pay their attempt. The four
+source-list boundaries charge a repeated list in full, including ignored
+non-reference members, before decoding it; a controller's first read of a
+distinct list pays only for its repeated references (#9102). Existing
+path/depth checks take precedence.
 
 A typed logical refusal is distinct from resource/cancellation `ProgramStop`.
 Root refusal returns an error. Nested refusal reports once under its parent's

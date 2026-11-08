@@ -49,6 +49,7 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
+import { ACTIVE_STATE_CLASS } from '@/components/ui/active-state';
 import { useViewerStore } from '@/store';
 import { useTranslation, localeCount } from '@/i18n';
 import { canMutate, mutationDenialKey, mutationPermission } from '@/store/mutation-permission';
@@ -622,11 +623,8 @@ export function DataConnector({ trigger }: DataConnectorProps) {
               <div key={step} className="flex items-center gap-1">
                 <div
                   className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
-                    idx < currentStep
-                      ? 'bg-primary/10 text-primary'
-                      : idx === currentStep
-                        ? 'bg-primary text-primary-foreground'
-                        : 'bg-muted text-muted-foreground'
+                    idx === currentStep ? ACTIVE_STATE_CLASS
+                      : idx < currentStep ? 'bg-muted text-foreground' : 'bg-muted text-muted-foreground'
                   }`}
                 >
                   {idx < currentStep ? (

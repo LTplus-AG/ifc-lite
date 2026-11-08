@@ -558,7 +558,7 @@ describe('native durable BCF publication (#7374)', () => {
     const epochs = join(await entryDir(dir, entry.id), `${entry.id}.epochs`);
     expect((await readdir(epochs)).sort()).toEqual(['1', '2']);
     expect(await readdir(join(epochs, '1'))).toContain(`${entry.id}.checked-16.json`);
-  });
+  }, 30000); // #9165: 17 durable recovery checks plus restart, like the bounded-history neighbours.
 
   it('resumes interrupted check16 in fresh hosts and exclusive results preserve the real effect (#7374)', async () => {
     const { peer, dir, gateway, transport } = await fixture();

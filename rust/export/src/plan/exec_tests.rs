@@ -41,6 +41,34 @@ fn all_preserve_plan_changes_zero_records() {
 }
 
 #[test]
+fn ifc2x3_plan_output_places_one_product_per_placement() {
+    // #9209: IFC2X3 declares PlacesObject [1:1], so the second wall sharing #20 gets its own copy.
+    for schema in ["IFC2X3", "IFC4"] {
+        let shared = String::from_utf8(wall_with_own_pset(schema)).unwrap();
+        let wall = super::test_fixtures::wall(schema, 11, "Wall 2", 20);
+        // Before the DATA section's ENDSEC, not the header's.
+        let (head, tail) = shared.rsplit_once("ENDSEC;").unwrap();
+        let content = format!("{head}{wall}ENDSEC;{tail}").into_bytes();
+        let plan = ExportPlan { dispositions: vec![(ObjectRef::Id(10), Disposition::Preserve)], context: PlanContext::attributed() };
+        let mut out = Vec::new();
+        let report = execute(&content, &plan, &mut out).expect(schema);
+        let (before, after) = (entity_lines(&content), entity_lines(&out));
+        assert_eq!(report.written, after.len(), "{schema}");
+        let placement = |line: &str| line.split(',').nth(5).map(str::to_string);
+        if schema == "IFC4" {
+            assert_eq!(after, before, "{schema}: IFC4 allows a shared placement");
+            continue;
+        }
+        assert_eq!(after.len(), before.len() + 1, "{schema}: one copy");
+        assert_eq!(placement(&after[&10]).as_deref(), Some("#20"), "{schema}: the first wall keeps #20");
+        let copy: u32 = placement(&after[&11]).unwrap().trim_start_matches('#').parse().unwrap();
+        assert!(!before.contains_key(&copy), "{schema}: #11 names a new record");
+        let body = |line: &str| line.split_once('=').unwrap().1.to_string();
+        assert_eq!(body(&after[&copy]), body(&before[&20]), "{schema}: the copy says what #20 says");
+    }
+}
+
+#[test]
 fn same_plan_produces_byte_identical_output_twice() {
     let content = wall_with_own_pset("IFC4");
     let plan = ExportPlan {

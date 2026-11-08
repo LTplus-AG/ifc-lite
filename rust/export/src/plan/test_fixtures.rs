@@ -73,7 +73,7 @@ fn header(schema: &str) -> String {
 
 const FOOTER: &str = "ENDSEC;\nEND-ISO-10303-21;\n";
 
-fn wall(schema: &str, id: u32, name: &str, placement_id: u32) -> String {
+pub(super) fn wall(schema: &str, id: u32, name: &str, placement_id: u32) -> String {
     entity_line(
         schema,
         id,

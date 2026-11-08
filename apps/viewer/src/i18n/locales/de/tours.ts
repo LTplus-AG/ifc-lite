@@ -20,7 +20,6 @@ export const toursDe = {
   'tours.tourHost.cancel': 'Abbrechen',
   'tours.tourHost.loadDemoStack': 'Demostapel laden',
   'tours.tourHost.loadDemoProject': 'Demoprojekt laden',
-  'tours.tourInvite.prompt': 'Neu hier?',
   'tours.tourInvite.start': 'Zweiminütigen Rundgang starten',
   'tours.tourInvite.dismissAriaLabel': 'Einladung zum Rundgang schließen',
   'tours.tourStepCard.ariaLabel': 'Rundgangschritt {step} von {total}: {title}',

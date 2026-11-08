@@ -6,6 +6,10 @@ import type { Catalogue } from '../../registry';
 
 export const modelingCommandDe = {
   "modelingCommand.closeAria": "Befehl verlassen",
+  "modelingCommand.aim.tag": "Auf Arbeitsebene",
+  "modelingCommand.aim.holdAlt": "{key} halten, um Fangpunkte und Flächen zu ignorieren: Der Punkt liegt auf der Arbeitsebene",
+  "modelingCommand.aim.altHeld": "{key} gehalten: Der Punkt liegt auf der Arbeitsebene, Fangpunkte und Flächen davor werden ignoriert",
+  "modelingCommand.aim.snapOff": "Fang ist aus: Der Punkt liegt auf der Arbeitsebene, Flächen davor werden ignoriert",
   "modelingCommand.unit.m": "m",
   "modelingCommand.unit.deg": "°",
   "modelingCommand.unit.count": "",
@@ -20,6 +24,9 @@ export const modelingCommandDe = {
   "modelingCommand.wall.alignLeft": "Links",
   "modelingCommand.wall.alignCentre": "Mitte",
   "modelingCommand.wall.alignRight": "Rechts",
+  "modelingCommand.wall.top": "Wo die Oberkante der Wand liegt",
+  "modelingCommand.wall.topStoreyAbove": "Bis Geschoss darüber",
+  "modelingCommand.wall.topFixed": "Feste Höhe",
   "modelingCommand.field.width": "Breite",
   "modelingCommand.field.depth": "Tiefe",
   "modelingCommand.field.height": "Höhe",

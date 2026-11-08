@@ -49,3 +49,10 @@ describe('source relationship lookup #8452', () => {
     expect(resolveDuplicateSource(store, column.columnId, editor).storeyId).toBeNull();
   });
 });
+
+it('deleted file-backed containment is filtered by the source graph edge guard #8452', async () => {
+  const { store, editor } = await session();
+  expect(resolveDuplicateSource(store, 1222, editor).storeyId).toBe(42);
+  editor.removeEntity(1223); // Bonsai's actual IfcRelContainedInSpatialStructure.
+  expect(resolveDuplicateSource(store, 1222, editor).storeyId).toBeNull();
+});

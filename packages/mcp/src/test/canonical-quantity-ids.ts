@@ -2,13 +2,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { iterateEffectiveEntityIds } from '@ifc-lite/mutations';
 import type { LoadedModel } from '../context.js';
 
 export function persistentQuantityIds(model: LoadedModel): ReadonlySet<number> {
-  return new Set([
-    ...model.store.entityIndex.byId.keys(),
-    ...(model.backend.getMutationView()?.getNewEntities() ?? []).map(entity => entity.expressId),
-  ]);
+  return new Set(Array.from(
+    iterateEffectiveEntityIds(model.store, model.backend.getMutationView()),
+    entity => entity.expressId,
+  ));
 }
 
 /**

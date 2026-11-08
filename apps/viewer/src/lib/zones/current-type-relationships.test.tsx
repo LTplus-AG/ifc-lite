@@ -341,6 +341,22 @@ test('#9192 the misread records the reader caught before refuse the model, which
   }
 });
 
+test('#9192 a definition the byte reader cannot read cleanly refuses the model, whichever element is asked first', async () => {
+  // A nested, typed or string member in RelatingPropertyDefinition. The reader used to take the
+  // bare references (#41) and vouch for the record, so only the elements it named were refused.
+  for (const set of ['((#24),#41)', '(#41,(#24))', "(#41,'x')", 'IFCPROPERTYSETDEFINITIONSET((#24),#41)']) {
+    const line = `#5=IFCRELDEFINESBYPROPERTIES('${gid(5)}',$,$,$,(#20,$),${set});`;
+    const store = await parse([line, ...BASE]);
+    const refused = ['refused', 'refused', 'refused', 'refused', 'refused'];
+    assert.deepEqual(describeAll(everyRelationshipRead(store), new MutablePropertyView(null, 'm')), refused, `${line}: a read of every relationship`);
+    for (const first of ELEMENTS) {
+      const view = new MutablePropertyView(null, 'm');
+      assert.equal(describe(store, first, view), 'refused', `${line}: #${first} asked first`);
+      assert.deepEqual(describeAll(store, view), refused, `${line}: after #${first}`);
+    }
+  }
+});
+
 test('#9192 a well-formed record naming the wrong class gets the answers a read of every relationship gives', async () => {
   // The graph used to mark these for an up-front read; the byte reader now leaves misread records
   // without edges, so these are vouched for like any other and read on lookup, with the same answers.

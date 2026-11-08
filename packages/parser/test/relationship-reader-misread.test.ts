@@ -26,6 +26,10 @@ const definition = (members: string, relating: string) => {
   const buf = bytes(`#5=IFCRELDEFINESBYPROPERTIES('g',$,$,$,${members},${relating});`);
   return extractPropertyRelFast(buf, 0, buf.length);
 };
+const association = (members: string, relating: string) => {
+  const buf = bytes(`#5=IFCRELASSOCIATESMATERIAL('g',$,$,$,${members},${relating});`);
+  return extractPropertyRelFast(buf, 0, buf.length, true);
+};
 
 describe('#9192 readRefList says where a list really ends', () => {
   it.each([
@@ -83,6 +87,16 @@ describe('#9192 extractRelFast records nothing for a record it would misread', (
     expect(typing(members, type)).toEqual({ relatingObject: 40, relatedObjects: related });
   });
 
+  // A string attribute before the slots may hold `)`, `,` and an escaped quote.
+  it('reads past an escaped ) or , in Name', () => {
+    const read = (members: string) => {
+      const buf = bytes(`#5=IFCRELDEFINESBYTYPE('g',$,'a),b''c,(d',$,${members},#40);`);
+      return extractRelFast(buf, 0, buf.length, 'IFCRELDEFINESBYTYPE', 'IFC4');
+    };
+    expect(read('(#10,#11)')).toEqual({ relatingObject: 40, relatedObjects: [10, 11] });
+    expect(read('((#10),#14)')).toBeNull();
+  });
+
   it('keeps a record without its ; and one with fewer attributes than the schema declares', () => {
     const aggregates = bytes("#1=IFCRELAGGREGATES('g',$,$,$,#1,(#2,#3))");
     expect(extractRelFast(aggregates, 0, aggregates.length, 'IFCRELAGGREGATES', 'IFC4')).toEqual({ relatingObject: 1, relatedObjects: [2, 3] });
@@ -101,6 +115,15 @@ describe('#9192 extractPropertyRelFast records nothing for a record it would mis
     ['a stray ) after the definition', '(#20)', '#24),#25'],
     ['a value after the definition, the last attribute', '(#20)', '#24,#25'],
     ['RelatedObjects followed by something else', '(#20) #21', '#24'],
+    // The definition is read like a related list: only references and `$`.
+    ['a nested list before a definition', '(#20,$)', '((#24),#41)'],
+    ['a nested list after a definition', '(#20)', '(#41,(#24))'],
+    ['a typed definition set with two arguments', '(#20)', 'IFCPROPERTYSETDEFINITIONSET((#24),#41)'],
+    ['a nested typed definition set', '(#20)', 'IFCPROPERTYSETDEFINITIONSET(((#24),#41))'],
+    ['a string in a definition set', '(#20)', "(#24,'x')"],
+    ['a string that looks like a reference', '(#20)', "('#41',#24)"],
+    ['a number in a definition set', '(#20)', '(#24,41)'],
+    ['an empty member in a definition set', '(#20)', '(#24,,#41)'],
   ])('%s', (_label, members, relating) => {
     expect(definition(members, relating)).toBeNull();
   });
@@ -111,8 +134,29 @@ describe('#9192 extractPropertyRelFast records nothing for a record it would mis
     ['a bare definition set', '(#24,#41)', [24, 41]],
     ['a typed definition set', 'IFCPROPERTYSETDEFINITIONSET((#24,#41))', [24, 41]],
     ['a typed definition set with trivia', ' IFCPROPERTYSETDEFINITIONSET /* s */ ( ( #24 , #41 ) ) ', [24, 41]],
+    ['a definition set with an empty member', '(#24,$,#41)', [24, 41]],
   ])('keeps %s', (_label, relating, defs) => {
     expect(definition('(#20)', relating)).toEqual({ relatedObjects: [20], relatingDefs: defs });
+  });
+});
+
+describe('#9192 an association records nothing for a record it would misread', () => {
+  it.each([
+    ['two entities in the relating value', '(#20)', '(#40,#41)'],
+    ['one entity written twice', '(#20)', '(#40,#40)'],
+    ['a nested relating value', '(#20)', '((#40))'],
+    ['a string beside the relating entity', '(#20)', "(#40,'x')"],
+    ['a nested value in RelatedObjects', '((#20),#21)', '#40'],
+    ['a value after the relating attribute, the last one', '(#20)', '#40,#41'],
+  ])('%s', (_label, members, relating) => {
+    expect(association(members, relating)).toBeNull();
+  });
+
+  it.each([
+    ['one reference', '#40'],
+    ['a one-entity list', '(#40)'],
+  ])('keeps %s', (_label, relating) => {
+    expect(association('(#20,$,#21)', relating)).toEqual({ relatedObjects: [20, 21], relatingDefs: [40] });
   });
 });
 
@@ -129,6 +173,8 @@ describe('#9192 the parsed graph has no edge for a misread record, and every oth
       "#24=IFCELEMENTQUANTITY('q24',$,'Qto',$,$,());",
       "#25=IFCPROPERTYSET('p25',$,'Pset',$,());",
       "#30=IFCOPENINGELEMENT('o30',$,$,$,$,$,$,$,$);",
+      "#60=IFCMATERIAL('M60',$,$);",
+      "#61=IFCMATERIAL('M61',$,$);",
       ...lines, 'ENDSEC;', 'END-ISO-10303-21;',
     ].join('\n');
     const encoded = bytes(text);
@@ -137,7 +183,28 @@ describe('#9192 the parsed graph has no edge for a misread record, and every oth
     return new IfcParser().parseColumnar(buffer, { disableWorkerScan: true });
   };
 
-  it.each(['IFC4', 'IFC4X3_ADD2'])('in an %s file', async (schema) => {
+  // IFC2X3 has no IfcPropertySetDefinitionSet: its definitions are single references.
+  const sets = {
+    lines: [
+      "#47=IFCRELDEFINESBYPROPERTIES('d',$,$,$,(#10),IFCPROPERTYSETDEFINITIONSET((#24,#25)));",
+      "#48=IFCRELDEFINESBYPROPERTIES('d2',$,$,$,(#11),(#24,#25));",
+    ],
+    to10: [[24, 47], [25, 47]],
+    to11: [[24, 48], [25, 48]],
+  };
+  const singles = {
+    lines: [
+      "#47=IFCRELDEFINESBYPROPERTIES('d',$,$,$,(#10),#24);",
+      "#48=IFCRELDEFINESBYPROPERTIES('d2',$,$,$,(#11),#25);",
+    ],
+    to10: [[24, 47]],
+    to11: [[25, 48]],
+  };
+  it.each([
+    ['IFC2X3', singles],
+    ['IFC4', sets],
+    ['IFC4X3_ADD2', sets],
+  ])('in an %s file', async (schema, definitions) => {
     const store = await file(schema, [
       "#40=IFCRELAGGREGATES('a',$,$,$,#1,(#2));",
       "#41=IFCRELAGGREGATES('a2',$,$,$,#2,(#3));",
@@ -146,9 +213,11 @@ describe('#9192 the parsed graph has no edge for a misread record, and every oth
       "#44=IFCRELVOIDSELEMENT('v',$,$,$,#10,#30);",
       "#45=IFCRELDEFINESBYTYPE('t',$,$,$,(#10,#11),#20);",
       "#46=IFCRELDEFINESBYTYPE('t2',$,$,$,((#12),#14),#20);",
-      "#47=IFCRELDEFINESBYPROPERTIES('d',$,$,$,(#10),IFCPROPERTYSETDEFINITIONSET((#24,#25)));",
-      "#48=IFCRELDEFINESBYPROPERTIES('d2',$,$,$,(#11),(#24,#25));",
+      ...definitions.lines,
       "#49=IFCRELDEFINESBYPROPERTIES('d3',$,$,$,((#12),#13),#25);",
+      "#50=IFCRELDEFINESBYPROPERTIES('d4',$,$,$,(#14,$),((#24),#25));",
+      "#51=IFCRELASSOCIATESMATERIAL('m',$,$,$,(#10),#60);",
+      "#52=IFCRELASSOCIATESMATERIAL('m2',$,$,$,(#13),(#60,#61));",
     ]);
     const graph = store.relationships;
     const from = (id: number, type: RelationshipType) => graph.forward.getEdges(id, type).map((edge) => [edge.target, edge.relationshipId]);
@@ -158,18 +227,23 @@ describe('#9192 the parsed graph has no edge for a misread record, and every oth
     expect(from(3, RelationshipType.ContainsElements)).toEqual([[10, 42], [11, 42]]);
     expect(from(10, RelationshipType.VoidsElement)).toEqual([[30, 44]]);
     expect(from(20, RelationshipType.DefinesByType)).toEqual([[10, 45], [11, 45]]);
-    expect(to(10, RelationshipType.DefinesByProperties)).toEqual([[24, 47], [25, 47]]);
-    expect(to(11, RelationshipType.DefinesByProperties)).toEqual([[24, 48], [25, 48]]);
+    expect(to(10, RelationshipType.DefinesByProperties)).toEqual(definitions.to10);
+    expect(to(11, RelationshipType.DefinesByProperties)).toEqual(definitions.to11);
+    expect(from(60, RelationshipType.AssociatesMaterial)).toEqual([[10, 51]]);
 
     // The misread records name #12, #13 and #14 nowhere in the graph, rather than shifting
-    // #13 or #14 into the relating slot (a wall containing, typing or defining #12).
+    // #13 or #14 into the relating slot (a wall containing, typing or defining #12), or
+    // reading only part of a relating value (#25 defining #14, #60 the material of #13).
     for (const id of [12, 13, 14]) expect(graph.inverse.getEdges(id)).toEqual([]);
-    for (const id of [13, 14]) expect(graph.forward.getEdges(id)).toEqual([]);
-    for (const id of [43, 46, 49]) {
+    for (const id of [13, 14, 61]) expect(graph.forward.getEdges(id)).toEqual([]);
+    for (const id of [43, 46, 49, 50, 52]) {
       expect([...graph.forward.offsets.keys()].some((source) => graph.forward.getEdges(source).some((edge) => edge.relationshipId === id)), `#${id}`).toBe(false);
     }
     expect(store.onDemandPropertyMap?.get(12)).toBeUndefined();
+    expect(store.onDemandPropertyMap?.get(14)).toBeUndefined();
     expect(store.onDemandPropertyMap?.get(11)).toEqual([25]);
     expect(store.onDemandQuantityMap?.get(10)).toEqual([24]);
+    expect(store.onDemandMaterialMap?.get(10)).toEqual([60]);
+    expect(store.onDemandMaterialMap?.get(13)).toBeUndefined();
   });
 });

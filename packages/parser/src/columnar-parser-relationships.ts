@@ -120,11 +120,19 @@ export function extractRelFast(
  * list's opening `(` instead of `#`, returned -1, and this function returned
  * null, silently dropping the WHOLE `IfcRelDefinesByProperties` relationship:
  * every related object lost all properties/quantities from that pset group.
+ *
+ * As in {@link extractRelFast}, a record gets no edges unless its relating
+ * value holds only references (and empty `$` members): `((#24),#41)`,
+ * `(#24,'x')` and `IFCPROPERTYSETDEFINITIONSET((#24),#41)` are skipped, not
+ * read as `[#41]` or `[#24]` (#9192). `singleRelating` is for the
+ * `IfcRelAssociates*` classes, whose relating attribute names one entity:
+ * `(#40,#41)` is skipped there rather than read as #40 alone.
  */
 export function extractPropertyRelFast(
     buffer: Uint8Array,
     byteOffset: number,
     byteLength: number,
+    singleRelating = false,
 ): { relatedObjects: number[]; relatingDefs: number[] } | null {
     const end = byteOffset + byteLength;
     let pos = byteOffset;
@@ -152,9 +160,10 @@ export function extractPropertyRelFast(
         relatingDefs = id >= 0 ? [id] : [];
     } else {
         const relating = pos < 0 ? null : readPropertyDefinitionValue(buffer, pos, end);
-        if (!relating || !endsSlot(buffer, relating.next, end, true)) return null;
+        if (!relating || !relating.plain || !endsSlot(buffer, relating.next, end, true)) return null;
         // A SET holds each member once; `(#20,#20)` must not add the edge twice.
         const written = relating.ids;
+        if (singleRelating && written.length !== 1) return null;
         relatingDefs = written.length > 1 ? [...new Set(written)] : written;
     }
     if (relatingDefs.length === 0 || relatedObjects.length === 0) return null;

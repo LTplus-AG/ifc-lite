@@ -41,10 +41,13 @@ import { isSpaceByte, opensComment, skipGap as skipTrivia, skipStringLiteral } f
 const MAX_NESTING_DEPTH = 256;
 
 const KEYWORD = 'IFCPROPERTYSETDEFINITIONSET';
+/** A member that is not an entity reference: a string, number, enum, `*`. */
 const OTHER = -1;
+/** An empty `$` member: no reference, and no decoder reads one as a reference. */
+const NULL = -2;
 
 interface Typed { definitionSet: boolean; args: Value[] }
-/** An entity id (>= 0), `OTHER`, a list, or a typed value. */
+/** An entity id (>= 0), `OTHER`, `NULL`, a list, or a typed value. */
 type Value = number | Value[] | Typed;
 
 function isKeywordByte(b: number): boolean {
@@ -126,7 +129,7 @@ function readValue(buffer: Uint8Array, pos: number, end: number, depth: number, 
         if (c === 0x2c || c === 0x29 || c === 0x28 || c === 0x27 || isSpaceByte(c) || opensComment(buffer, next, end)) break;
         next++;
     }
-    into.push(OTHER);
+    into.push(b === 0x24 && next === pos + 1 ? NULL : OTHER);
     return next;
 }
 
@@ -150,8 +153,19 @@ export function readPropertyDefinitionRefs(buffer: Uint8Array, pos: number, end:
  * {@link readPropertyDefinitionRefs} plus the position after the value, so the
  * relationship reader can check the record ends there (#9192). `null` when
  * the value does not tokenize or is not followed by `,` or `)`.
+ *
+ * `plain` is false when a member of the value is anything other than a
+ * reference or an empty `$`: a nested list, a typed value, a string, a number.
+ * `ids` still skips such members, as Rust's `get_refs` does, but the
+ * relationship reader records no edges for the record (#9192): a full read
+ * decodes `14` and `'#14'` as references, and the graph would not hold
+ * exactly the references the record names.
  */
-export function readPropertyDefinitionValue(buffer: Uint8Array, pos: number, end: number): { ids: number[]; next: number } | null {
+export function readPropertyDefinitionValue(
+    buffer: Uint8Array,
+    pos: number,
+    end: number,
+): { ids: number[]; plain: boolean; next: number } | null {
     const parsed: Value[] = [];
     const next = readValue(buffer, pos, end, 0, parsed);
     if (next < 0) return null;
@@ -164,7 +178,7 @@ export function readPropertyDefinitionValue(buffer: Uint8Array, pos: number, end
 
     let members: Value[];
     if (typeof value === 'number') {
-        return { ids: value >= 0 ? [value] : [], next };
+        return { ids: value >= 0 ? [value] : [], plain: value >= 0 || value === NULL, next };
     } else if (Array.isArray(value)) {
         members = value;
     } else {
@@ -172,10 +186,12 @@ export function readPropertyDefinitionValue(buffer: Uint8Array, pos: number, end
         members = value.definitionSet && only ? only : value.args;
     }
     const ids: number[] = [];
+    let plain = true;
     for (const member of members) {
         if (typeof member === 'number' && member >= 0) ids.push(member);
+        else if (member !== NULL) plain = false;
     }
-    return { ids, next };
+    return { ids, plain, next };
 }
 
 function numericRef(value: unknown): number | null {

@@ -81,7 +81,8 @@ describe('writeHeader', () => {
     // invalidates graphs built before exact relationship coverage (#4205).
     // v24 preserves optional unit scale and recovery-count metadata (#7239);
     // v25 appends optional per-mesh shading/local metadata (#7350).
-    expect(view.getUint16(4, true)).toBe(25);
+    // v26 invalidates graphs that may hold misread relationship edges (#9192).
+    expect(view.getUint16(4, true)).toBe(26);
   });
 
   it('writes each section-table entry field at its documented byte offset within the 16-byte entry', () => {

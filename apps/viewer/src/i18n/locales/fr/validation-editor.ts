@@ -33,7 +33,7 @@ export const validationEditorFr = {
   "validationEditor.ruleCard.tolerance": "Tolérance",
   "validationEditor.ruleCard.cardinalityMin": "Min. concernés",
   "validationEditor.ruleCard.cardinalityMax": "Max. concernés",
-  "validationEditor.ruleCard.cardinalityAny": "tous",
+  "validationEditor.ruleCard.cardinalityAny": "sans contrainte",
   "validationEditor.ruleBlockEditor.chipsMode": "Puces",
   "validationEditor.ruleBlockEditor.selectorMode": "Texte du sélecteur",
   "validationEditor.ruleBlockEditor.exactClassNotice": "Contient une règle de classe exacte : le texte du sélecteur ne peut pas l'exprimer.",

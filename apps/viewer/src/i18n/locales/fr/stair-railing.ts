@@ -16,7 +16,7 @@ export const stairRailingFr = {
   'stairRailing.inspector.TreadLength': 'Longueur du giron',
   'stairRailing.inspector.WaistThickness': 'Épaisseur de la paillasse',
   'stairRailing.inspector.effect': 'Le pied et le nombre de contremarches restent fixes. La hauteur de marche modifie la hauteur totale ; la longueur du giron modifie la longueur totale.',
-  'stairRailing.field.postSpacing': 'Poteaux',
+  'stairRailing.field.postSpacing': 'Espacement des poteaux',
   'stairRailing.stair.hintStart': 'Cliquez au pied de la première contremarche · saisissez une longueur pour fixer la longueur de la volée',
   'stairRailing.stair.hintEnd': 'Cliquez ou appuyez sur Entrée pour placer l’escalier · saisissez une longueur, Tab pour l’angle, la contremarche, le giron · Retour arrière pour recommencer · Échap pour quitter',
   'stairRailing.stair.tooShort': 'La volée est trop courte : des girons de moins de 0,1 m ne forment pas un escalier. Dessinez-la plus longue, ou demandez une contremarche plus haute pour moins de marches',

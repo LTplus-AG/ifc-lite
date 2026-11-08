@@ -56,7 +56,7 @@ export const sectionPlanesFr = {
   'sectionPlanes.views.empty': 'Rien d’enregistré pour l’instant. Enregistre les plans de coupe, le zoom et la caméra.',
   'sectionPlanes.views.listAria': 'Vues enregistrées',
   'sectionPlanes.views.applyTitle': 'Appliquer : remplace les plans de coupe ({count}) et restaure la caméra',
-  'sectionPlanes.views.planeCount': '{count} plans',
+  "sectionPlanes.views.planeCount": {"one": "{count} plan", "many": "{count} plans", "other": "{count} plans"},
   'sectionPlanes.views.renameTitle': 'Renommer',
   'sectionPlanes.views.renameAria': 'Nouveau nom de la vue enregistrée',
   'sectionPlanes.views.deleteTitle': 'Supprimer',

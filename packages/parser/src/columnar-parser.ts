@@ -94,6 +94,9 @@ export interface IfcDataStore extends IfcStoreBase {
     properties: ReturnType<PropertyTableBuilder['build']>;
     quantities: QuantityTable;
     relationships: ReturnType<RelationshipGraphBuilder['build']>;
+    /** Only on the store `onSpatialReady` emits: `relationships` holds the hierarchy and typing edges, no
+     * IfcRelDefinesByProperties or association edges yet. Never on a completed or cache-restored store (#9192). */
+    relationshipsPending?: true;
 
     /**
      * On-demand property lookup: entityId -> array of property set expressIds
@@ -560,7 +563,7 @@ export async function parseColumnarInput(
             getProperties(expressId) { return this.properties.getForEntity(expressId); },
             getQuantities(expressId) { return this.quantities.getForEntity(expressId); },
         };
-        options.onSpatialReady?.(earlyStore);
+        options.onSpatialReady?.({ ...earlyStore, relationshipsPending: true }); // finalStore spreads earlyStore: unmarked
 
         await yieldIfNeeded(); // Let geometry process after hierarchy emission
 

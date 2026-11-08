@@ -62,6 +62,9 @@ for (const tag of SHIPPED) {
 }
 const LOCALES = ['en', ...SHIPPED];
 const THEMES: Theme[] = ['light', 'dark'];
+/** Tabs whose content outgrows the body on a small phone, so the body must
+ *  scroll (the in-CI review of 35c524503: zero scrollers also passed `<= 1`). */
+const MUST_SCROLL = new Set(['shortcuts@320x640', 'learn@320x640']);
 /** Below this the dialog would be cramped on a desktop; `max-w-md` was 448. */
 const MIN_DESKTOP_WIDTH_PX = 440;
 
@@ -106,6 +109,15 @@ interface LayoutProbe {
   headerInside: boolean;
   footerInside: boolean;
   scrollers: number;
+  /** The one scroller is the active tab panel, i.e. the `DialogBody`. */
+  bodyIsScroller: boolean;
+  /** The tab's content is taller than its body (`scrollHeight` over `clientHeight`). */
+  contentTaller: boolean;
+  /** After every user scroller is scrolled to its end, the active panel's last
+   *  visible element lies inside what its clipping ancestors leave visible. */
+  lastReachable: boolean;
+  lastBottom: number;
+  visibleBottom: number;
   stripScrolls: boolean;
   selectedTabVisible: boolean;
 }
@@ -154,6 +166,25 @@ async function probeLayout(page: Page, reveal: string | null): Promise<LayoutPro
     const selected = tablist.querySelector('[role="tab"][aria-selected="true"]') as HTMLElement;
     const stripBox = tablist.getBoundingClientRect();
     const tabBox = selected.getBoundingClientRect();
+    // Reachability, measured last because it scrolls.
+    const panel = dialog.querySelector('[role="tabpanel"][data-state="active"]') as HTMLElement;
+    const contentTaller = panel.scrollHeight > panel.clientHeight + 1;
+    for (const el of scrollers) el.scrollTop = el.scrollHeight;
+    const sized = [...panel.querySelectorAll<HTMLElement>('*')].filter((el) => {
+      const box = el.getBoundingClientRect();
+      return box.width > 0 && box.height > 0;
+    });
+    const last = sized[sized.length - 1] ?? panel;
+    const lastBox = last.getBoundingClientRect();
+    let top = 0;
+    let bottom = window.innerHeight;
+    for (let el = last.parentElement; el; el = el.parentElement) {
+      const style = getComputedStyle(el);
+      if (style.overflowX === 'visible' && style.overflowY === 'visible') continue;
+      const clip = el.getBoundingClientRect();
+      top = Math.max(top, clip.top);
+      bottom = Math.min(bottom, clip.bottom);
+    }
     return {
       panelWidth: Math.round(frame.width),
       panelFits: frame.left >= -0.5 && frame.right <= window.innerWidth + 0.5 && frame.top >= -0.5 && frame.bottom <= window.innerHeight + 0.5,
@@ -161,6 +192,11 @@ async function probeLayout(page: Page, reveal: string | null): Promise<LayoutPro
       headerInside: inside(dialog.firstElementChild),
       footerInside: inside(dialog.lastElementChild),
       scrollers: scrollers.length,
+      bodyIsScroller: scrollers.length === 1 && scrollers[0] === panel,
+      contentTaller,
+      lastReachable: lastBox.top >= top - 0.5 && lastBox.bottom <= bottom + 0.5,
+      lastBottom: Math.round(lastBox.bottom),
+      visibleBottom: Math.round(bottom),
       stripScrolls: ['auto', 'scroll'].includes(getComputedStyle(tablist).overflowX),
       selectedTabVisible: tabBox.left >= stripBox.left - 0.5 && tabBox.right <= stripBox.right + 0.5,
     };
@@ -187,6 +223,14 @@ describe('Info dialog layout (#8802)', () => {
               assert.equal(probe.headerInside, true, `${where}: the header, with its close button, is inside the panel`);
               assert.equal(probe.footerInside, true, `${where}: the footer is inside the panel`);
               assert.ok(probe.scrollers <= 1, `${where}: at most one element scrolls, not ${probe.scrollers}`);
+              assert.equal(probe.lastReachable, true,
+                `${where}: scrolled to the end, the tab's last element (bottom ${probe.lastBottom}px) is visible (visible bottom ${probe.visibleBottom}px)`);
+              if (MUST_SCROLL.has(`${tab}@${width}x${height}`)) {
+                // Zero scrollers must not pass: the dialog's overflow-hidden would clip the rest.
+                assert.equal(probe.contentTaller, true, `${where}: the tab's content is taller than its body`);
+                assert.equal(probe.scrollers, 1, `${where}: exactly one element scrolls, not ${probe.scrollers}`);
+                assert.equal(probe.bodyIsScroller, true, `${where}: the scroller is the dialog body`);
+              }
               assert.equal(probe.stripScrolls, true, `${where}: the tab strip scrolls sideways when it is too narrow`);
               assert.equal(probe.selectedTabVisible, true, `${where}: the selected tab is in view in the strip`);
               if (width >= 1024) {

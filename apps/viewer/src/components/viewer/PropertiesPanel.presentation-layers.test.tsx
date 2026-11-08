@@ -12,7 +12,7 @@ import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import { advance, cleanup, click, render, waitFor } from '@/test/render.js';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { SourceHostProvider } from '@/services/sources/SourceHostProvider.js';
-import { useViewerStore } from '@/store';
+import { useViewerStore, type FederatedModel } from '@/store';
 import * as layerIndex from '@/lib/presentation-layers.js';
 import { PropertiesPanel } from './PropertiesPanel.js';
 import { HierarchyPanel } from './HierarchyPanel.js';
@@ -214,9 +214,8 @@ it('#9273 retires a reveal for a missing layer once the hierarchy metadata is re
     'a fully loaded tree retires a target it cannot supply');
 });
 
-it('#9273 an explicit off-screen layer reveal wins over the held product selection', async () => {
-  // Supply the layout/scroll events a real browser gives TanStack Virtual.
-  const scrolls: number[] = [];
+// Browser scroll events let the real TanStack virtualizer materialise off-screen rows.
+function installTreeScroll(scrolls: number[] = []): () => void {
   const height = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollHeight');
   const scroll = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollTo');
   Object.defineProperty(HTMLElement.prototype, 'scrollHeight', { configurable: true, get(this: HTMLElement) {
@@ -227,6 +226,18 @@ it('#9273 an explicit off-screen layer reveal wins over the held product selecti
     if (this.getAttribute('role') === 'tree') scrolls.push(this.scrollTop);
     this.dispatchEvent(new window.Event('scroll'));
   } });
+  return () => {
+    if (height) Object.defineProperty(HTMLElement.prototype, 'scrollHeight', height);
+    else Reflect.deleteProperty(HTMLElement.prototype, 'scrollHeight');
+    if (scroll) Object.defineProperty(HTMLElement.prototype, 'scrollTo', scroll);
+    else Reflect.deleteProperty(HTMLElement.prototype, 'scrollTo');
+  };
+}
+
+it('#9273 an explicit off-screen layer reveal wins over the held product selection', async () => {
+  // Supply the layout/scroll events a real browser gives TanStack Virtual.
+  const scrolls: number[] = [];
+  const restoreScroll = installTreeScroll(scrolls);
   try {
     await setup('priority');
     const extra = Array.from({ length: 300 }, (_, i) => `#${100 + i}=IFCPRESENTATIONLAYERASSIGNMENT('Layer ${String(i).padStart(3, '0')}',$,(#21),$);`).join('\n');
@@ -255,10 +266,7 @@ it('#9273 an explicit off-screen layer reveal wins over the held product selecti
     assert.ok(document.activeElement?.getAttribute('data-node-id') === 'presentation-layer-priority-50');
   } finally {
     cleanup();
-    if (height) Object.defineProperty(HTMLElement.prototype, 'scrollHeight', height);
-    else Reflect.deleteProperty(HTMLElement.prototype, 'scrollHeight');
-    if (scroll) Object.defineProperty(HTMLElement.prototype, 'scrollTo', scroll);
-    else Reflect.deleteProperty(HTMLElement.prototype, 'scrollTo');
+    restoreScroll();
   }
 });
 
@@ -324,53 +332,65 @@ it('#9273 changing selection retries a failed layer download without retaining t
 });
 
 
-for (const via of ['viewport', 'SDK'] as const) {
-  it(`#9273 a newer ${via} selection replaces a layer reveal while metadata is loading`, async () => {
-    await setup('new-intent');
-    const text = IFC.replace("'Unlayered wall',$,$,$,$,$", "'Second wall',$,$,$,#30,$")
-      .replace("(#22),$);", "(#22,#32),$);")
-      .replace('ENDSEC;\nEND-ISO', "#30=IFCPRODUCTDEFINITIONSHAPE($,$,(#31));\n#31=IFCSHAPEREPRESENTATION($,'Body','SweptSolid',(#32));\n#32=IFCEXTRUDEDAREASOLID($,$,$,1.);\nENDSEC;\nEND-ISO");
-    const store = await new IfcParser().parseColumnar(new TextEncoder().encode(text).buffer);
-    const state = useViewerStore.getState();
-    const offset = state.registerModelOffset('new-intent', 51);
-    const model = { ...fixtureModel('new-intent', { idOffset: offset }), ifcDataStore: store, loadedAt: 0, fileSize: 1 };
-    act(() => {
-      useViewerStore.setState({ models: new Map([[model.id, model]]), ifcDataStore: store, mutationViews: new Map() });
-      state.setSelectedEntityId(state.toGlobalId(model.id, 7));
-      state.setSelectedEntity({ modelId: model.id, expressId: 7 });
-    });
-    const inspector = render(<PropertiesPanel />);
-    await waitFor(() => !!section(inspector), 'initial product layer links load');
-    const layer = [...section(inspector)!.querySelectorAll('button')].find(button => button.textContent === 'Walls (A-01)');
-    assert.ok(layer);
-    click(layer);
-    act(() => useViewerStore.setState({ models: new Map([[model.id, { ...model, ifcDataStore: null, metadataLoadState: 'querying' }]]), ifcDataStore: null }));
-    const hierarchy = render(<SourceHostProvider><HierarchyPanel /></SourceHostProvider>);
-    const focused: string[] = [];
-    hierarchy.addEventListener('focusin', event => {
-      if (event.target instanceof HTMLElement && event.target.dataset.nodeId) focused.push(event.target.dataset.nodeId);
-    });
-    // Model-context hydration projects the existing pick; it is not a new intent.
-    act(() => state.setSelectedEntity({ modelId: model.id, expressId: 7 }));
-    assert.ok(useViewerStore.getState().pendingPresentationLayerReveal);
-    act(() => {
-      if (via === 'SDK') {
-        // The SDK validates refs against the model. Metadata is still available
-        // to it while this mounted hierarchy is waiting for its next render.
-        useViewerStore.setState({ models: new Map([[model.id, model]]) });
-        createSelectionAdapter(useViewerStore).set([{ modelId: model.id, expressId: 8 }]);
-      } else {
-        state.setSelectedEntityId(state.toGlobalId(model.id, 8));
-        state.setSelectedEntity({ modelId: model.id, expressId: 8 });
+for (const modelCount of [1, 2]) for (const via of ['viewport', 'SDK'] as const) {
+  it(`#9273 a newer ${via} selection replaces a layer reveal while metadata is loading (${modelCount} models)`, async () => {
+    const restoreScroll = installTreeScroll();
+    try {
+      await setup('new-intent');
+      let text = IFC.replace("'Unlayered wall',$,$,$,$,$", "'Second wall',$,$,$,#30,$")
+        .replace("(#22),$);", "(#22,#32),$);")
+        .replace('ENDSEC;\nEND-ISO', "#30=IFCPRODUCTDEFINITIONSHAPE($,$,(#31));\n#31=IFCSHAPEREPRESENTATION($,'Body','SweptSolid',(#32));\n#32=IFCEXTRUDEDAREASOLID($,$,$,1.);\nENDSEC;\nEND-ISO");
+      if (modelCount === 2) {
+        const layers = Array.from({ length: 300 }, (_, i) => `#${100 + i}=IFCPRESENTATIONLAYERASSIGNMENT('Layer ${String(i).padStart(3, '0')}',$,(#72),$);`).join('\n');
+        text = text.replace('ENDSEC;\nEND-ISO', "#9=IFCWALL('0GUID000000000000000009',$,'Filler wall',$,$,$,#70,$);\n#70=IFCPRODUCTDEFINITIONSHAPE($,$,(#71));\n#71=IFCSHAPEREPRESENTATION($,'Body','SweptSolid',(#72));\n#72=IFCEXTRUDEDAREASOLID($,$,$,1.);\n" + layers + '\nENDSEC;\nEND-ISO');
       }
-    });
-    assert.equal(useViewerStore.getState().pendingPresentationLayerReveal, null, 'the newer selection cancels the old layer intent');
-    act(() => useViewerStore.setState({ models: new Map([[model.id, model]]), ifcDataStore: store }));
-    const target = 'presentation-layer-new-intent-51-product-8';
-    await waitFor(() => !!hierarchy.querySelector(`[data-node-id="${target}"]`), 'the newer product is expanded and revealed after metadata arrives');
-    await waitFor(() => document.activeElement?.getAttribute('data-node-id') === target, 'focus follows the newer product rather than the stale layer header');
-    await advance(50);
-    assert.equal(document.activeElement?.getAttribute('data-node-id'), target);
-    assert.ok(!focused.includes('presentation-layer-new-intent-50'), 'the stale layer must never take focus after the newer selection');
+      const store = await new IfcParser().parseColumnar(new TextEncoder().encode(text).buffer);
+      const state = useViewerStore.getState();
+      const offset = state.registerModelOffset('new-intent', modelCount === 2 ? 399 : 51);
+      const model = { ...fixtureModel('new-intent', { idOffset: offset }), ifcDataStore: store, loadedAt: 0, fileSize: 1 };
+      const loadedModels = new Map<string, FederatedModel>([[model.id, model]]);
+      if (modelCount === 2) loadedModels.set('foreign-intent', { ...state.models.get('other')!, id: 'foreign-intent',
+        idOffset: state.registerModelOffset('foreign-intent', 51) });
+      act(() => {
+        useViewerStore.setState({ models: loadedModels, ifcDataStore: store, mutationViews: new Map() });
+        state.setSelectedEntityId(state.toGlobalId(model.id, 7));
+        state.setSelectedEntity({ modelId: model.id, expressId: 7 });
+      });
+      const inspector = render(<PropertiesPanel />);
+      await waitFor(() => !!section(inspector), 'initial product layer links load');
+      const layer = [...section(inspector)!.querySelectorAll('button')].find(button => button.textContent === 'Walls (A-01)');
+      assert.ok(layer);
+      click(layer);
+      const loadingModels = new Map(loadedModels);
+      loadingModels.set(model.id, { ...model, ifcDataStore: null, metadataLoadState: 'querying' });
+      act(() => useViewerStore.setState({ models: loadingModels, ifcDataStore: null }));
+      const hierarchy = render(<SourceHostProvider><HierarchyPanel /></SourceHostProvider>);
+      const focused: string[] = [];
+      hierarchy.addEventListener('focusin', event => {
+        if (event.target instanceof HTMLElement && event.target.dataset.nodeId) focused.push(event.target.dataset.nodeId);
+      });
+      // Model-context hydration projects the existing pick; it is not a new intent.
+      act(() => state.setSelectedEntity({ modelId: model.id, expressId: 7 }));
+      assert.ok(useViewerStore.getState().pendingPresentationLayerReveal);
+      act(() => {
+        if (via === 'SDK') {
+          // The SDK validates refs against the model. Metadata is still available
+          // to it while this mounted hierarchy is waiting for its next render.
+          useViewerStore.setState({ models: loadedModels });
+          createSelectionAdapter(useViewerStore).set([{ modelId: model.id, expressId: 8 }]);
+        } else {
+          state.setSelectedEntityId(state.toGlobalId(model.id, 8));
+          state.setSelectedEntity({ modelId: model.id, expressId: 8 });
+        }
+      });
+      assert.equal(useViewerStore.getState().pendingPresentationLayerReveal, null, 'the newer selection cancels the old layer intent');
+      act(() => useViewerStore.setState({ models: loadedModels, ifcDataStore: store }));
+      const target = 'presentation-layer-new-intent-51-product-8';
+      await waitFor(() => !!hierarchy.querySelector(`[data-node-id="${target}"]`), 'the newer product is expanded and revealed after metadata arrives');
+      await waitFor(() => document.activeElement?.getAttribute('data-node-id') === target, 'focus follows the newer product rather than the stale layer header');
+      await advance(50);
+      assert.equal(document.activeElement?.getAttribute('data-node-id'), target);
+      assert.ok(!focused.includes('presentation-layer-new-intent-50'), 'the stale layer must never take focus after the newer selection');
+    } finally { cleanup(); restoreScroll(); }
   });
 }

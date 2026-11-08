@@ -199,7 +199,7 @@ export function HierarchyPanel() {
   // Reveal an outside selection by expanding its ancestors and scrolling to it (#5881).
   const { markFromTreeClick } = useRevealSelection({
     selectedEntityId, groupingMode, revealGlobalId, storeysNodes, modelsNodes, filteredNodes,
-    isMultiModel, storeysVirtualizer, modelsVirtualizer, virtualizer, container: parentRef, setSearchQuery, searchQuery, groupingReady,
+    isMultiModel: isMultiModel && groupingMode === 'spatial', storeysVirtualizer, modelsVirtualizer, virtualizer, container: parentRef, setSearchQuery, searchQuery, groupingReady,
   });
 
   // Toggle visibility for a node

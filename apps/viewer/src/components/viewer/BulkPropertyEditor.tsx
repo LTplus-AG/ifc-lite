@@ -2,7 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { useBulkExecutionScroll } from './useBulkExecutionScroll';
-import { useAuthoringOperation } from './authoring-operation';
+import { useDialogOperation } from './authoring-operation';
+import { bulkDraftKey, useBulkCompletedDraft, useBulkTargetSource } from './useBulkDraft';
 import { useToolDialog, type ToolDialogProps } from './useToolDialog';
 
 /**
@@ -95,9 +96,8 @@ export function BulkPropertyEditor(props: ToolDialogProps) {
   const { trigger } = props;
   const [open, setOpen] = useToolDialog(props);
   const [selectedModelId, setSelectedModelId] = useState<string>('');
-  const [targetSource, setTargetSource] = useState<BulkTargetSource>('query');
+  const [targetSource, setTargetSource] = useBulkTargetSource(open);
   const targetGroups = useBulkTargets(open, targetSource, models);
-  const targetIdsKey = useMemo(() => JSON.stringify([...targetGroups].map(([id, ids]) => [id, [...ids].sort((a, b) => a - b)]).sort()), [targetGroups]);
   const editDenialReason = useMemo(() => {
     const ids = targetSource === 'query' ? [selectedModelId] : targetGroups.keys();
     const result = mutationPermissionForModels(useViewerStore.getState(), ids);
@@ -129,9 +129,6 @@ export function BulkPropertyEditor(props: ToolDialogProps) {
   const [executeResult, setExecuteResult] = useState<BulkQueryResult | null>(null);
   const [validationFailure, setValidationFailure] = useState<Extract<BulkParseResult, { ok: false }> | null>(null);
   const [runtimeFailures, setRuntimeFailures] = useState<BulkRuntimeFailure[]>([]);
-  // Track whether config changed since last execute (disables button after success)
-  const [executeDirty, setExecuteDirty] = useState(true);
-  const completedTargets = useRef<ReturnType<typeof captureBulkTargetEngines> | null>(null);
   useBulkExecutionScroll(scrollAreaRef, executeResult, executeProgress);
 
   // --- All expensive computation is gated behind `open` so IFC loading is never impacted ---
@@ -181,12 +178,7 @@ export function BulkPropertyEditor(props: ToolDialogProps) {
     return models.get(selectedModelId);
   }, [open, models, selectedModelId, legacyIfcDataStore, legacyGeometryResult, t, locale, revision]);
 
-  const targetView = mutationViews.get(selectedModelId);
-  // Only a replaced participant invalidates a successful batch, including while closed.
-  useEffect(() => {
-    if (completedTargets.current && !completedTargets.current.isCurrent()) { completedTargets.current = null; setExecuteDirty(true); }
-  }, [models, mutationViews, legacyIfcDataStore]);
-  const isCurrent = useAuthoringOperation(open, selectedModelId, selectedModel?.ifcDataStore, targetView);
+  const isCurrent = useDialogOperation(open, targetSource === 'query' ? `query:${selectedModelId}` : targetSource);
   useEffect(() => {
     setIsExecuting(false); setExecuteProgress(null); setExecuteResult(null); setRuntimeFailures([]);
     return () => { executeAbortRef.current?.abort(); executeAbortRef.current = null; };
@@ -278,9 +270,18 @@ export function BulkPropertyEditor(props: ToolDialogProps) {
     return { ok: true, action };
   }, [actionType, targetPset, targetProp, targetValue, valueType, t]);
 
+  const captureTargets = useCallback(() => captureBulkTargetEngines(
+    targetSource === 'query' ? new Map([[selectedModelId, queryEngine]]) : targetEngines,
+    id => id === '__legacy__' ? legacyIfcDataStore : models.get(id)?.ifcDataStore, mutationViews),
+  [targetSource, selectedModelId, queryEngine, targetEngines, legacyIfcDataStore, models, mutationViews]);
+  const draftKey = useMemo(() => bulkDraftKey(targetSource, selectedModelId, queryGroups, targetGroups, buildAction()),
+    [targetSource, selectedModelId, queryGroups, targetGroups, buildAction]);
+  const { executeDirty, completeDraft, resetDraft } = useBulkCompletedDraft(draftKey);
+  const reviewCurrent = useDialogOperation(open, draftKey);
+
   // Preview query
   const handlePreview = useCallback(() => {
-    if (!targetsReady) return;
+    if (!isCurrent() || !targetsReady) return;
 
     setPreviewResult(null);
     setExecuteResult(null);
@@ -302,10 +303,10 @@ export function BulkPropertyEditor(props: ToolDialogProps) {
       console.error('Preview failed:', error);
       setPreviewResult({ matchedEntityIds: [], matchedCount: 0, estimatedMutations: 0 });
     }
-  }, [targetsReady, targetSource, liveMatchCount, queryIds, buildAction]);
+  }, [isCurrent, targetsReady, targetSource, liveMatchCount, queryIds, buildAction]);
 
   const handleExecute = useCallback(async () => {
-    if (!targetsReady || liveMatchCount === 0 || !canEditInSession || executeAbortRef.current) return;
+    if (!isCurrent() || !targetsReady || liveMatchCount === 0 || !canEditInSession || executeAbortRef.current) return;
 
     const built = buildAction();
     // Refuse before touching a single entity — one bad value must not half-apply across the selection.
@@ -325,9 +326,8 @@ export function BulkPropertyEditor(props: ToolDialogProps) {
     const controller = new AbortController();
     executeAbortRef.current = controller;
     const ownsOperation = () => isCurrent() && executeAbortRef.current === controller;
-    const runTargets = captureBulkTargetEngines(
-      targetSource === 'query' ? new Map([[selectedModelId, queryEngine]]) : targetEngines,
-      id => id === '__legacy__' ? legacyIfcDataStore : models.get(id)?.ifcDataStore, mutationViews);
+    const runTargets = captureTargets();
+    const acceptsResults = () => ownsOperation() && runTargets.isCurrent();
     const activity = startBulkOperationActivity(controller, executeAbortRef, executeCancelRef, t);
 
     await new Promise(r => setTimeout(r, 0));
@@ -336,7 +336,7 @@ export function BulkPropertyEditor(props: ToolDialogProps) {
       const ids = targetSource === 'query'
         ? await resolveBulkQueryIds(useViewerStore.getState(), selectedModelId, queryGroups, controller.signal)
         : null;
-      if (!ownsOperation() || !runTargets.isCurrent()) throw new DOMException('Authoring operation retired', 'AbortError');
+      if (!acceptsResults()) { controller.abort(); throw new DOMException('Authoring operation retired', 'AbortError'); }
       const targets = ids
         ? ids.map((id) => ({ modelId: selectedModelId, id }))
         : [...targetGroups].flatMap(([modelId, group]) => group.map((id) => ({ modelId, id })));
@@ -346,23 +346,23 @@ export function BulkPropertyEditor(props: ToolDialogProps) {
       const { result, failures } = await runBulkTargetBatches({
         targets,
         action,
-        getEngine: runTargets.getEngine,
-        isCancelled: () => !ownsOperation() || !runTargets.isCurrent() || controller.signal.aborted || executeCancelRef.current,
-        onProgress: (done, count) => { activity.progress(done, count); if (ownsOperation()) setExecuteProgress({ done, total: count }); },
+        getEngine: id => acceptsResults() ? runTargets.getEngine(id) : undefined,
+        isCancelled: () => !acceptsResults() || controller.signal.aborted || executeCancelRef.current,
+        onProgress: (done, count) => { if (!acceptsResults()) return; activity.progress(done, count); if (acceptsResults()) setExecuteProgress({ done, total: count }); },
         modelUnavailable: (modelId) => t('bulkPropertyEditor.modelUnavailable', { modelId }),
         entityError: (id, detail) => t('bulkPropertyEditor.entityError', {
           id, detail: detail ?? t('bulkPropertyEditor.unknownError'),
         }),
       });
       activity.finish(result, failures);
-      if (!ownsOperation() || !runTargets.isCurrent()) return;
+      if (!acceptsResults()) return;
       setExecuteResult(result);
       setRuntimeFailures(failures);
-      if (result.success) { completedTargets.current = runTargets; setExecuteDirty(false); }
+      if (result.success) completeDraft(draftKey, runTargets);
     } catch (error) {
       activity.fail(error);
-      if (!ownsOperation()) return;
-      if (controller.signal.aborted || !runTargets.isCurrent()) {
+      if (!acceptsResults()) return;
+      if (controller.signal.aborted) {
         setExecuteResult({ mutations: [], affectedEntityCount: 0, success: false });
         setRuntimeFailures([{ kind: 'cancelled', done: 0, total: 0 }]);
         return;
@@ -382,28 +382,32 @@ export function BulkPropertyEditor(props: ToolDialogProps) {
       }
     }
   }, [queryEngine, targetEngines, targetGroups, targetSource, targetsReady,
-    liveMatchCount, canEditInSession, queryGroups, buildAction, selectedModelId, t, isCurrent, models, legacyIfcDataStore, mutationViews]);
+    liveMatchCount, canEditInSession, queryGroups, buildAction, selectedModelId, t, isCurrent, captureTargets, draftKey, completeDraft]);
 
   // Review as changes (P15): the same targets and action as a checked batch with current values expected.
   const [review, setReview] = useState<ChangeConversion | null>(null);
   const handleReview = useCallback(async () => {
+    if (!isCurrent() || !targetsReady || executeAbortRef.current) return;
     const built = buildAction();
     if (!built.ok) { setValidationFailure(built); return setExecuteResult({ mutations: [], affectedEntityCount: 0, success: false }); }
-    let ids: number[] | null = null;
+    const controller = new AbortController(); executeAbortRef.current = controller;
+    const ownsOperation = () => isCurrent() && executeAbortRef.current === controller;
+    const runTargets = captureTargets();
+    const acceptsResults = () => ownsOperation() && reviewCurrent() && runTargets.isCurrent() && !controller.signal.aborted;
     try {
-      ids = targetSource === 'query' ? await resolveBulkQueryIds(useViewerStore.getState(), selectedModelId, queryGroups) : null;
+      const ids = targetSource === 'query' ? await resolveBulkQueryIds(useViewerStore.getState(), selectedModelId, queryGroups, controller.signal) : null;
+      if (!acceptsResults()) return;
+      const targets = ids ? ids.map((expressId) => ({ modelId: selectedModelId, expressId }))
+        : [...targetGroups].flatMap(([modelId, group]) => group.map((expressId) => ({ modelId, expressId })));
+      const field = actionType === 'SET_ATTRIBUTE' ? targetProp : `${targetPset}.${targetProp}`;
+      setReview(bulkActionToModelChanges(useViewerStore.getState(), targets, built.action, t('tableChanges.bulkTitle', { field })));
     } catch (error) {
-      if (!isCurrent()) return;
+      if (!acceptsResults()) return;
       console.error('[bulk-edit] review targets failed', error);
       setRuntimeFailures([{ kind: 'execute', detail: error instanceof Error ? error.message : undefined }]);
-      return setExecuteResult({ mutations: [], affectedEntityCount: 0, success: false });
-    }
-    if (!isCurrent()) return;
-    const targets = ids ? ids.map((expressId) => ({ modelId: selectedModelId, expressId }))
-      : [...targetGroups].flatMap(([modelId, group]) => group.map((expressId) => ({ modelId, expressId })));
-    const field = actionType === 'SET_ATTRIBUTE' ? targetProp : `${targetPset}.${targetProp}`;
-    setReview(bulkActionToModelChanges(useViewerStore.getState(), targets, built.action, t('tableChanges.bulkTitle', { field })));
-  }, [buildAction, targetSource, selectedModelId, queryGroups, targetGroups, actionType, targetPset, targetProp, t, isCurrent]);
+    } finally { if (ownsOperation()) executeAbortRef.current = null; }
+  }, [buildAction, targetSource, selectedModelId, queryGroups, targetGroups, actionType, targetPset, targetProp, t,
+    isCurrent, targetsReady, captureTargets, reviewCurrent]);
 
   // Reset form
   const handleReset = useCallback(() => {
@@ -415,21 +419,8 @@ export function BulkPropertyEditor(props: ToolDialogProps) {
     setExecuteResult(null);
     setValidationFailure(null);
     setRuntimeFailures([]);
-    setExecuteDirty(true);
-  }, []);
-
-  // Mark config dirty when criteria or action settings change after a completed execute
-  useEffect(() => {
-    if (open && executeResult) { setExecuteDirty(true); setExecuteResult(null); }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- only fire on config changes
-  }, [targetSource, targetIdsKey, selectedModelId, queryGroups, actionType, targetPset, targetProp, targetValue, valueType]);
-
-  useEffect(() => {
-    if (!open) { executeCancelRef.current = true; executeAbortRef.current?.abort(); return; }
-    const selection = useViewerStore.getState();
-    setTargetSource(selection.models.size > 0
-      && (selection.selectedEntityIds.size > 0 || selection.selectedEntityId !== null) ? 'selection' : 'query');
-  }, [open]);
+    resetDraft();
+  }, [resetDraft]);
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>

@@ -14,6 +14,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { extractPropertiesOnDemand, extractQuantitiesOnDemand } from '@ifc-lite/parser';
 import { IfcAPI, initSync } from '@ifc-lite/wasm';
 import { deriveAuthoredBaseQuantities } from './base-quantities.js';
+import { resolveSlabEditChain } from './edit/slab-edit.js';
 import { addRoofToStore } from './roof.js';
 import { editFootprintRoofInStore, readFootprintRoofInStore, ROOF_FOOTPRINT_PSET } from './roof-footprint.js';
 import { exportText, newStorey, parse, type Schema } from './wall-join-mesh.oracle.js';
@@ -82,6 +83,14 @@ describe('a roof by footprint in a loaded model (#9296 round 3)', () => {
     expect(text.match(/IFCPRODUCTDEFINITIONSHAPE\(/g)).toHaveLength(1);
     definition = readFootprintRoofInStore(s.store, roofId, s.view)!;
     expect(definition.Overhang).toBe(0.5);
+  });
+
+  it('slab tools leave a roof by footprint to its own edit: their chain does not take its first plane', async () => {
+    const s = await storey();
+    const { roofId } = addRoofToStore(s.editor, s.anchor, HIP);
+    expect(resolveSlabEditChain(s.store, s.view, s.editor, roofId, 1)).toBeNull();
+    const flat = addRoofToStore(s.editor, s.anchor, { Position: [0, 0, 0], Width: 6, Depth: 4, Thickness: 0.3 });
+    expect(resolveSlabEditChain(s.store, s.view, s.editor, flat.roofId, 1)).not.toBeNull();
   });
 
   it('a refused edit writes nothing', async () => {

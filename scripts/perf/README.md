@@ -41,15 +41,17 @@ QuickJS module also failed, because the one eager module in it made the whole gr
 
 **Retained: detailed refusals behind cold error carriers.** Adding demand and
 budget identity enlarged the errors returned by per-attempt admission helpers.
-Boxing the logical refusal and the private walk helpers' error carrier keeps
-that detail out of successful Results; allocation occurs only when work is
-refused. The public diagnostics remain complete and the work allowances stay
+Boxing the logical refusal and the walk's demand payload keeps that detail out
+of successful Results; allocation occurs only when work is refused. The walk
+keeps its existing Result types, with a compile-time bound against the decoder
+error carrier on both native and wasm32. The public diagnostics remain complete and the work allowances stay
 unchanged. The native instruction comparison and output counts are recorded in
 PR #9386; this is cost containment, not an end-to-end worker-pool speedup claim.
 
 Lesson: refusal-only reporting can still affect successful work through error
-layout. Check the compiled pipeline instead of assuming a cold constructor is
-free; the logical attempt Result now has a compile-time pointer-size invariant.
+layout. Shrinking an entire Result can also change its optimized callers;
+contain the cold payload while preserving the common carrier, then check the
+compiled pipeline. The logical attempt Result has a pointer-size invariant.
 
 ## Presentation-layer membership follows the selected shape (#9273)
 

@@ -46,7 +46,7 @@ impl ProductControl<'_> {
         if self.retained.is_some() {
             if let Some((item, why)) = plan.refusal.take().map(|failure| *failure) {
                 if let crate::representation::WalkRefusal::Budget { max_levels, budget, reached } = &why {
-                    router.record_budget_refusal(item.id, budget, *max_levels, *reached);
+                    router.record_budget_refusal(item.id, budget, *max_levels, **reached);
                     router.attribute_budget_refusals(self.element);
                 }
                 return Err(why.into_error(item.id));

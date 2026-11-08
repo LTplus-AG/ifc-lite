@@ -203,7 +203,7 @@ impl StructureError {
             Self::Budget { entity, allowance, reached } => crate::representation::WalkRefusal::Budget {
                 max_levels: allowance,
                 budget: "walk Items members",
-                reached,
+                reached: Box::new(reached),
             }
             .into_error(entity),
             Self::Stop(stop) => Error::ProgramStopped(stop),

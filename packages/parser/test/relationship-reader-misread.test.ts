@@ -55,6 +55,7 @@ describe('#9192 readRefList says where a list really ends', () => {
     ['no closing parenthesis', '(#1,#2'],
     ['an unterminated comment', '(#1,/* #2)'],
     ['a reference to #0', '(#1,#0)'],
+    ['a bare #0', '#0'],
     ['a bare #', '(#1,#)'],
     ['an id past the 32-bit id columns', '(#1,#4294967296)'],
   ])('%s is not a plain reference list', (_label, value) => {
@@ -77,6 +78,9 @@ describe('#9192 extractRelFast records nothing for a record it would misread', (
     ['a string member', "(#10,'#14')", '#40'],
     ['an unclosed list', '(#10,#11', '#40'],
     ['a #0 member, which no entity can be', '(#10,#0)', '#40'],
+    ['a bare #0 as RelatingType', '(#10,#11)', '#0'],
+    ['a bare # as RelatingType', '(#10,#11)', '#'],
+    ['a bare #0 as RelatedObjects', '#0', '#40'],
   ])('%s', (_label, members, type) => {
     expect(typing(members, type)).toBeNull();
   });

@@ -262,7 +262,8 @@ export function readRefList(buffer: Uint8Array, pos: number, end: number): [numb
     if (pos < end && buffer[pos] === 0x23) {
         const [id, np] = readRefId(buffer, pos, end);
         if (id >= 0) ids.push(id);
-        pos = np;
+        // A bare `#0` or `#` names no entity, as in a list (#9192)
+        return [ids, np, id > 0 ? np : -1];
     }
     return [ids, pos, pos];
 }

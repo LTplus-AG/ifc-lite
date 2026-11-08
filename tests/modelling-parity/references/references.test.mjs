@@ -144,3 +144,8 @@ test('#9304 unavailable dimensions and wall lengths never become zero', () => {
   assert.equal(sumKnown([4, 5]), 9);
   assert.equal(sumKnown([]), 0);
 });
+
+test('#9304 typed area properties follow project units before space-area fallback', () => {
+  const model = new Model("DATA;#1=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);#2=IFCMEASUREWITHUNIT(IFCLENGTHMEASURE(0.3048),#1);#3=IFCCONVERSIONBASEDUNIT($,.LENGTHUNIT.,'foot',#2);#4=IFCUNITASSIGNMENT((#3));#5=IFCPROJECT('g',$,$,$,$,$,$,$,#4);#6=IFCSPACE('s');#7=IFCPROPERTYSINGLEVALUE('Area',$,IFCAREAMEASURE(100.),$);#8=IFCPROPERTYSET('p',$,'Dimensions',$,(#7));#9=IFCRELDEFINESBYPROPERTIES('r',$,$,$,(#6),#8);ENDSEC;");
+  assert.ok(Math.abs(model.props(6)['Dimensions.Area'] - 9.290304) < 1e-9);
+});

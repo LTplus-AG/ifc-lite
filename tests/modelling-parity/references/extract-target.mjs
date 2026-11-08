@@ -320,7 +320,12 @@ export class Model {
         const setName = strVal(d.args[2]);
         for (const pid of refList(d.args[4])) {
           const p = this.get(pid);
-          if (p?.type === 'IFCPROPERTYSINGLEVALUE') out[`${setName}.${strVal(p.args[0])}`] = numVal(p.args[2]) ?? strVal(p.args[2]) ?? enumVal(p.args[2]?.v);
+          if (p?.type === 'IFCPROPERTYSINGLEVALUE') {
+            const n = numVal(p.args[2]);
+            const scale = { IFCAREAMEASURE: this.areaScale, IFCLENGTHMEASURE: this.lengthScale, IFCVOLUMEMEASURE: this.lengthScale ** 3 }[p.args[2]?.t] ?? 1;
+            if (n !== null && scale !== 1 && p.args[3] !== null) throw new Error('Explicit dimensional property units require independent conversion');
+            out[`${setName}.${strVal(p.args[0])}`] = n === null ? strVal(p.args[2]) ?? enumVal(p.args[2]?.v) : n * scale;
+          }
         }
       } else if (d.type === 'IFCELEMENTQUANTITY') {
         const setName = strVal(d.args[2]);
@@ -695,7 +700,7 @@ export async function extract(refId_, entry, file) {
       columns: classCount(['IFCCOLUMN']),
       beams: classCount(['IFCBEAM']),
       spaces: spaceIds.length,
-      totalSpaceArea: round(spaces.reduce((a, s) => a + (s.area ?? 0), 0), 2),
+      totalSpaceArea: sumKnown(spaces.map((s) => s.area)) === null ? null : round(sumKnown(spaces.map((s) => s.area)), 2),
     },
     footprint,
     roof,

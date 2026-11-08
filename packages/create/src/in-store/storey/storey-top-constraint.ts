@@ -21,6 +21,7 @@
  * draws it. Anything else is fixed unless the caller asks.
  */
 
+import { ROOF_ATTACHMENT } from '../edit/wall-base-solid.js';
 import type { StoreEditor } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { placementInAncestor, refId } from '../host-geometry-frame.js';
@@ -111,8 +112,8 @@ export function setTopConstraintInStore(store: IfcDataStore, editor: StoreEditor
     const geometry = kind === 'wall' ? wallGeometry(store, view, draft, elementId) : undefined;
     const outcome = writeAttachedTop(target, elementId, kind, top.from, to);
     if (!outcome.ok) throw new Error(`#${elementId} cannot reach what it is attached to: ${outcome.reason}`);
-    if (kind === 'wall') scaleWallQuantities(store, view, elementId, to / top.from, geometry);
     if (constraint.kind === 'roof') clipWallToRoof(target, elementId, constraint.roofId);
+    if (kind === 'wall' && view.getPropertyValue(elementId, ROOF_ATTACHMENT, 'Clipped') !== true) scaleWallQuantities(store, view, elementId, to / top.from, geometry);
     return { remesh: constraint.kind === 'roof' ? [...new Set([elementId, ...outcome.remesh])] : outcome.remesh };
   });
 }

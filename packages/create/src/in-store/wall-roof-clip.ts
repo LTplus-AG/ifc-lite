@@ -136,6 +136,8 @@ export function clipWallToRoof(target: EditTarget, wallId: number, roofId: numbe
     if (oldPosition !== null) removeCuts(target, oldPosition, -1);
     root = target.editor.addEntity('IfcBooleanResult', ['.DIFFERENCE.', `#${root}`, `#${id}`]).expressId;
   }
+  // StandardCase requires an extrusion/clipping representation, not general Boolean CSG.
+  if (target.editor.getEntityType(wallId)?.toUpperCase() === 'IFCWALLSTANDARDCASE') target.editor.setEntityType(wallId, 'IfcWall');
   target.editor.setPositionalAttribute(own.repId, 2, 'CSG');
   target.editor.setPositionalAttribute(own.repId, 3, [`#${root}`]);
   target.view.setProperty(wallId, ROOF_ATTACHMENT, 'Clipped', true, PropertyValueType.Boolean);

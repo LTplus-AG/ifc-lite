@@ -8,6 +8,7 @@ import { IfcAPI, initSync } from '@ifc-lite/wasm';
 import { addWallToStore } from './wall.js';
 import { addRoofToStore } from './roof.js';
 import { addSlabToStore } from './slab.js';
+import { deriveBaseQuantitySet } from './base-quantities.js';
 import { setTopConstraintInStore } from './storey/storey-top-constraint.js';
 import { translateProduct } from './edit/placement-core.js';
 import { exportText, newStorey, meshWalls, insideMesh } from './wall-join-mesh.oracle.js';
@@ -69,4 +70,17 @@ it('a roof that does not cover the wall refuses without a partial resize (#9296)
   expect(insideMesh(meshes, [5, 3.02, -1])).toBe(false);
 });
 
+});
+
+it('roof cuts omit prism-only quantities rather than report the uncut envelope (#9296)', async () => {
+  const s = await newStorey();
+  const roof = addRoofToStore(s.editor, s.anchor, { Position: [0, 0, 4], Width: 10, Depth: 8, Thickness: .25, EdgeSlopes: [Math.PI / 6, 0, Math.PI / 6, 0], Overhang: .5 }).roofId;
+  const wall = addWallToStore(s.editor, s.anchor, { Start: [5, 0, 0], End: [5, 8, 0], Height: 3, Thickness: .2 }).wallId;
+  expect(deriveBaseQuantitySet(s.store, s.view, wall)?.quantities.some(q => q.name === 'NetVolume')).toBe(true);
+  s.editor.setEntityType(wall, 'IfcWallStandardCase');
+  setTopConstraintInStore(s.store, s.editor, wall, { kind: 'roof', roofId: roof });
+  expect.soft(s.editor.getEntityType(wall)).toBe('IfcWall'); // A Boolean CSG body is not a StandardCase extrusion.
+  const quantities = deriveBaseQuantitySet(s.store, s.view, wall)?.quantities ?? [];
+  expect(quantities.find(q => q.name === 'Length')?.value).toBe(8);
+  expect.soft(quantities.some(q => ['Height', 'GrossSideArea', 'NetSideArea', 'GrossVolume', 'NetVolume'].includes(q.name))).toBe(false);
 });

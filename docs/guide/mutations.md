@@ -1154,6 +1154,8 @@ Custom hosts writing placements directly can call
 their transaction and remesh the returned product ids. The shared transform
 operations do this themselves.
 
+Walls fitted to pitched roofs retain their editable base extrusion beneath the roof cuts. Their derived quantities retain length, width and floor footprint; prism height, side area and volume are omitted until the quantity reader can measure the finished CSG body. Loaded files retain their original quantity sets under the normal opt-in refresh policy.
+
 Cyclic or unreadable session-created shape graphs are refused atomically in both copy modes. Valid shapes retain the default sharing policy.
 
 The `IfcAttributeValue` typed marker accepts `number[]` for IFC4 indexed segments:

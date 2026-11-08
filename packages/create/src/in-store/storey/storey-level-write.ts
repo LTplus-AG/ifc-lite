@@ -10,6 +10,7 @@
  * here means nothing is published.
  */
 
+import { ROOF_ATTACHMENT } from '../edit/wall-base-solid.js';
 import { refreshTopAttachmentsInStore } from '../top-attachment-refresh.js';
 import type { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import { extractProjectUnits, extractQuantitiesOnDemand, quantitySiScale, type IfcDataStore, type ProjectUnits } from '@ifc-lite/parser';
@@ -27,6 +28,7 @@ export const WALL_QTO = 'Qto_WallBaseQuantities';
 
 /** How many `Qto_WallBaseQuantities` instances a wall has, source ones included. Only the first is kept true by a resize. */
 export function wallQuantitySetCount(store: IfcDataStore, view: MutablePropertyView, wallId: number): number {
+  if (view.getPropertyValue(wallId, ROOF_ATTACHMENT, 'Clipped') === true) return;
   const base = view.hasQuantityBase() ? undefined : (id: number) => extractQuantitiesOnDemand(store, id);
   return view.getQuantitiesForEntity(wallId, base).filter((set) => set.name === WALL_QTO).length;
 }

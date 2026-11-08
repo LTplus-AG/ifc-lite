@@ -135,6 +135,7 @@ describe('#9192 extractPropertyRelFast records nothing for a record it would mis
     ['a #0 member in RelatedObjects', '(#20,#0)', '#24'],
     ['a #0 definition', '(#20)', '#0'],
     ['a #0 member in a definition set', '(#20)', '(#24,#0)'],
+    ['a typed value that is not a definition set', '(#20)', 'IFCLABEL(#24,#25)'],
   ])('%s', (_label, members, relating) => {
     expect(definition(members, relating)).toBeNull();
   });

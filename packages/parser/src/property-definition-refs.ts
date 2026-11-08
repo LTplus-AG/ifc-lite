@@ -186,7 +186,9 @@ export function readPropertyDefinitionValue(
         members = value.definitionSet && only ? only : value.args;
     }
     const ids: number[] = [];
-    let plain = true;
+    // A typed value other than a definition set (`IFCLABEL(#24,#25)`) is no reference list:
+    // a full read does not take its arguments as the definitions (#9192)
+    let plain = Array.isArray(value) || value.definitionSet;
     for (const member of members) {
         if (typeof member === 'number' && member >= 0) ids.push(member);
         // `#0` and a bare `#` read as 0 and name no entity: a full read refuses on them (#9192)

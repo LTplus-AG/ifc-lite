@@ -19,9 +19,12 @@ export class NewEntityMap extends Map<number, NewEntity> {
   // Lazy, and `declare`d so no runtime field is emitted: `Map`'s constructor
   // calls `set` before subclass fields initialise, and an emitted field would
   // then reset whatever `super(entries)` had indexed.
+  declare private byReference?: Map<number, Set<number>>;
+  declare private referencesById?: Map<number, Set<number>>;
   declare private byType?: Map<string, Map<number, NewEntity>>;
 
   override set(expressId: number, entity: NewEntity): this {
+    this.unindexReferences(expressId);
     const previous = super.get(expressId);
     if (previous && previous.type.toUpperCase() !== entity.type.toUpperCase()) this.unindex(previous);
     super.set(expressId, entity);
@@ -30,10 +33,25 @@ export class NewEntityMap extends Map<number, NewEntity> {
     let bucket = this.byType.get(key);
     if (!bucket) this.byType.set(key, (bucket = new Map()));
     bucket.set(expressId, entity);
+    const references = new Set<number>(), visited = new Set<unknown[]>(), pending: unknown[] = [entity.attributes];
+    while (pending.length) {
+      const value = pending.pop();
+      if (Array.isArray(value) && !visited.has(value)) { visited.add(value); for (const child of value) pending.push(child); }
+      else if (typeof value === 'string' && /^#[0-9]+$/.test(value)) references.add(Number(value.slice(1)));
+    }
+    this.referencesById ??= new Map();
+    this.byReference ??= new Map();
+    if (references.size) this.referencesById.set(expressId, references);
+    for (const id of references) {
+      let bucket = this.byReference.get(id);
+      if (!bucket) this.byReference.set(id, bucket = new Set());
+      bucket.add(expressId);
+    }
     return this;
   }
 
   override delete(expressId: number): boolean {
+    this.unindexReferences(expressId);
     const previous = super.get(expressId);
     if (previous) this.unindex(previous);
     return super.delete(expressId);
@@ -41,6 +59,8 @@ export class NewEntityMap extends Map<number, NewEntity> {
 
   override clear(): void {
     this.byType?.clear();
+    this.byReference?.clear();
+    this.referencesById?.clear();
     super.clear();
   }
 
@@ -55,6 +75,23 @@ export class NewEntityMap extends Map<number, NewEntity> {
   /** Created entities authored as `type` (case-insensitive), in creation order. */
   ofType(type: string): IterableIterator<NewEntity> {
     return (this.byType?.get(type.toUpperCase()) ?? new Map<number, NewEntity>()).values();
+  }
+
+  /** Authored reference candidates; effective readers apply queued slot edits. */
+  *referencing(id: number): IterableIterator<NewEntity> {
+    for (const entityId of this.byReference?.get(id) ?? []) {
+      const entity = this.get(entityId);
+      if (entity) yield entity;
+    }
+  }
+
+  private unindexReferences(expressId: number): void {
+    for (const id of this.referencesById?.get(expressId) ?? []) {
+      const bucket = this.byReference?.get(id);
+      bucket?.delete(expressId);
+      if (bucket?.size === 0) this.byReference?.delete(id);
+    }
+    this.referencesById?.delete(expressId);
   }
 
   private unindex(entity: NewEntity): void {

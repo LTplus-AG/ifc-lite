@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { materializeOverlay } from './sparse-overlay.js';
 import { sameOverlayValue } from './overlay-value-equality.js';
 import { NewEntityMap } from './new-entity-map.js';
 import type { PropertySet, QuantitySet } from '@ifc-lite/data';
@@ -306,8 +307,8 @@ export class MutableOverlayState {
     };
   }
 
-  protected copyOverlayState() {
-    return structuredClone(this.overlayState());
+  protected copyOverlayState(): ReturnType<MutableOverlayState['overlayState']> {
+    return structuredClone(materializeOverlay(this.overlayState()));
   }
 
   protected restoreOverlayState(state: ReturnType<MutableOverlayState['copyOverlayState']>): void {

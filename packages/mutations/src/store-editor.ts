@@ -79,7 +79,7 @@ export class StoreEditor {
    * Prepare image/worker resources before calling this. Returned entity IDs are
    * valid after success; the draft editor is detached after this callback. */
   runAtomic<T>(edit: (draft: StoreEditor) => T): T {
-    return this.view.runAtomic(draft => edit(new StoreEditor(this.store, draft)));
+    return this.view.runAtomic(draft => edit(this.forkPreparedEditor(draft)));
   }
 
   /** Cooperatively prepare owned entity operations without exposing a draft.

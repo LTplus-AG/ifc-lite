@@ -11,9 +11,6 @@ use ifc_lite_core::{
     IfcType,
 };
 
-// Refusal detail is cold. Keep it out of every successful list/level Result.
-type WalkResult<T> = Result<T, Box<WalkRefusal>>;
-
 pub(super) enum Task {
     List {
         rep: Option<DecodedEntity>,
@@ -184,14 +181,14 @@ impl RepresentationWalk {
         if let NestedMaps::Expand { max_levels, .. } = self.nested {
             if run.levels >= max_levels {
                 let reached = u64::from(run.levels) + 1;
-                refuse(run, WalkRefusal::Budget { max_levels, budget: "walk mapped attempts", reached });
+                refuse(run, WalkRefusal::Budget { max_levels, budget: "walk mapped attempts", reached: Box::new(reached) });
                 return Flow::Stop;
             }
             run.levels += 1;
         }
         let (map, mapped_rep) = match Self::resolve_level(item, decoder) {
             Ok(resolved) => resolved,
-            Err(why) => return refuse(run, *why),
+            Err(why) => return refuse(run, why),
         };
         let level = MappedLevel {
             item: item.clone(),
@@ -229,8 +226,8 @@ impl RepresentationWalk {
                     shape_rep: None,
                     path: &run.path[..last],
                 };
-                let terminal = matches!(*why, WalkRefusal::Budget { .. });
-                run.visitor.refused(item, *why, &at);
+                let terminal = matches!(why, WalkRefusal::Budget { .. });
+                run.visitor.refused(item, why, &at);
                 if bail || terminal {
                     return Flow::Stop;
                 }
@@ -244,7 +241,7 @@ impl RepresentationWalk {
     fn resolve_level(
         item: &DecodedEntity,
         decoder: &mut EntityDecoder,
-    ) -> WalkResult<(DecodedEntity, DecodedEntity)> {
+    ) -> Result<(DecodedEntity, DecodedEntity), WalkRefusal> {
         let source = item
             .get(IfcMappedItem::MAPPING_SOURCE.index())
             .ok_or(WalkRefusal::MissingSource)?;
@@ -275,11 +272,11 @@ impl RepresentationWalk {
         seen: &mut FirstSeen,
         rep: &DecodedEntity,
         members: &[ifc_lite_core::AttributeValue],
-    ) -> WalkResult<()> {
+    ) -> Result<(), WalkRefusal> {
         if let NestedMaps::Expand { max_levels, .. } = self.nested {
             let charge = seen.price(&[], rep.id, members);
             if charge.cost > (max_levels - *used) as usize {
-                return Err(Box::new(WalkRefusal::Budget { max_levels, budget: "walk Items members", reached: u64::from(*used).saturating_add(charge.cost as u64) }));
+                return Err(WalkRefusal::Budget { max_levels, budget: "walk Items members", reached: Box::new(u64::from(*used).saturating_add(charge.cost as u64)) });
             }
             *used += charge.cost as u32; // bounded by the u32 allowance above
             seen.admit(charge);
@@ -309,7 +306,7 @@ impl RepresentationWalk {
                 shape_rep: Some(rep),
                 path: &run.path,
             };
-            run.visitor.refused(rep, *why, &at);
+            run.visitor.refused(rep, why, &at);
             return Ok(None);
         }
         Ok(Some(decoder.resolve_ref_list(list)?))
@@ -321,11 +318,11 @@ impl RepresentationWalk {
         seen: &mut FirstSeen,
         rep: &DecodedEntity,
         decoder: &mut EntityDecoder,
-    ) -> WalkResult<Vec<DecodedEntity>> {
+    ) -> Result<Vec<DecodedEntity>, WalkRefusal> {
         let list = rep
             .get(IfcRepresentation::ITEMS.index())
             .ok_or(WalkRefusal::MissingItems)?;
         self.admit_items(used, seen, rep, list.as_list().unwrap_or(&[]))?;
-        decoder.resolve_ref_list(list).map_err(|error| Box::new(WalkRefusal::Decode(error)))
+        decoder.resolve_ref_list(list).map_err(WalkRefusal::Decode)
     }
 }

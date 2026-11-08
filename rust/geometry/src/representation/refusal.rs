@@ -21,10 +21,17 @@ pub enum WalkRefusal {
     /// The mapped representation has no `Items` attribute.
     MissingItems,
     /// The mapped-level or total Items-member allowance was exhausted.
-    Budget { max_levels: u32, budget: &'static str, reached: u64 },
+    // Keep u64 alignment out of the common carrier on wasm32. Allocate the
+    // demand only after refusing work, preserving the existing Result layout.
+    Budget { max_levels: u32, budget: &'static str, reached: Box<u64> },
     /// The decoder failed on one of the references.
     Decode(ifc_lite_core::Error),
 }
+
+// Refusal details must fit within the decoder error this carrier already held.
+const _: () = assert!(
+    std::mem::size_of::<WalkRefusal>() <= std::mem::size_of::<ifc_lite_core::Error>()
+);
 
 impl WalkRefusal {
     /// Convert to a geometry error, preserving historical strict messages for

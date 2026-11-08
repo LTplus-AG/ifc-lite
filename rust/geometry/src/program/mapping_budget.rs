@@ -31,7 +31,7 @@ impl LogicalRefusal {
         crate::representation::WalkRefusal::Budget {
             max_levels: self.0.limit,
             budget: self.0.budget,
-            reached: self.0.reached,
+            reached: Box::new(self.0.reached),
         }
         .into_error(item)
     }

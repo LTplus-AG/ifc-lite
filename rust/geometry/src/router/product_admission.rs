@@ -15,7 +15,7 @@ impl GeometryRouter {
     pub(crate) fn report_product_admission(&self, plan: &ProductItems, product: &ifc_lite_core::DecodedEntity) -> Result<()> {
         if let Some((item, WalkRefusal::Budget { max_levels, budget, reached })) = plan.refusal.as_deref() {
             crate::resource::check_current()?;
-            self.record_budget_refusal(item.id, budget, *max_levels, *reached);
+            self.record_budget_refusal(item.id, budget, *max_levels, **reached);
             self.attribute_budget_refusals(product);
         }
         Ok(())

@@ -216,8 +216,7 @@ export function readRefId(buffer: Uint8Array, pos: number, end: number): [number
  * (#9192, see `endsSlot`). `ids` is unchanged.
  */
 export function readRefList(buffer: Uint8Array, pos: number, end: number): [number[], number, number] {
-    // Trivia is whitespace AND `/* ... */` comments (#7785): a `#` or `)` inside
-    // a comment is not structure. A comment that never closes runs to `end`.
+    // Trivia includes `/* ... */` comments (#7785); one that never closes runs to `end`.
     const start = skipGap(buffer, pos, end);
     pos = start < 0 ? end : start;
     const ids: number[] = [];
@@ -243,9 +242,7 @@ export function readRefList(buffer: Uint8Array, pos: number, end: number): [numb
             if (b === 0x23) {
                 const [id, np] = readRefId(buffer, pos, end);
                 if (id >= 0) ids.push(id);
-                // `#0` and a bare `#` read as 0, an id past 2^32 as -1: neither names an
-                // entity, while a full read refuses on it, so not a plain list (#9192).
-                if (id <= 0) plain = false;
+                if (id <= 0) plain = false; // `#0`/`#` read as 0, past 2^32 as -1: no entity (#9192)
                 pos = np;
             } else if (b === 0x27) {
                 plain = false;
@@ -262,8 +259,7 @@ export function readRefList(buffer: Uint8Array, pos: number, end: number): [numb
     if (pos < end && buffer[pos] === 0x23) {
         const [id, np] = readRefId(buffer, pos, end);
         if (id >= 0) ids.push(id);
-        // A bare `#0` or `#` names no entity, as in a list (#9192)
-        return [ids, np, id > 0 ? np : -1];
+        return [ids, np, id > 0 ? np : -1]; // a bare `#0` or `#` names no entity (#9192)
     }
     return [ids, pos, pos];
 }

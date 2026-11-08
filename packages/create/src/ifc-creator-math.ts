@@ -7,16 +7,22 @@
  * These have zero coupling to class state — they take inputs and return outputs.
  */
 
-import { firstProjAxis, formatStepReal } from '@ifc-lite/data';
+import { escapeStepString, firstProjAxis, formatStepReal } from '@ifc-lite/data';
 import type { Point3D, PropertyDef, QuantityDef } from './types.js';
 
 // ============================================================================
 // Internal helpers
 // ============================================================================
 
-/** Escape a string for STEP format */
+/**
+ * Escape a string for a STEP literal: `\` and `'` doubled, and every character
+ * outside printable ASCII written as a `\X2\…\X0\` / `\X4\…\X0\` directive, as
+ * ISO 10303-21 requires. Delegates to the one TS implementation,
+ * `escapeStepString` in `@ifc-lite/data`, rather than keeping a second copy
+ * that wrote raw UTF-8 (`'Gartentür'` instead of `'Gartent\X2\00FC\X0\r'`).
+ */
 export function esc(str: string): string {
-  return str.replace(/\\/g, '\\\\').replace(/'/g, "''");
+  return escapeStepString(str);
 }
 
 /** Format a STEP line: #ID=TYPE(args); */

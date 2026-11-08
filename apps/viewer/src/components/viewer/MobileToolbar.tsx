@@ -21,9 +21,9 @@ import {
   DropdownMenuCheckboxItem,
   DropdownMenuLabel,
 } from '@/components/ui/dropdown-menu';
-import { Progress } from '@/components/ui/progress';
 import { selectActiveLoadProgress } from '@/store/slices/loadingSlice';
 import { useViewerStore } from '@/store';
+import { cn } from '@/lib/utils';
 import { useTranslation } from '@/i18n';
 import { useIfc } from '@/hooks/useIfc';
 import { useExportRunner } from './useExportRunner';
@@ -53,6 +53,7 @@ export function MobileToolbar() {
     loadFilesSequentially,
   } = useIfc();
   const activeProgress = useViewerStore(selectActiveLoadProgress);
+  const loadPercent = Math.round(activeProgress?.percent ?? 0);
 
   const hasModelsLoaded = models.size > 0 || (geometryResult?.meshes && geometryResult.meshes.length > 0);
   const activeTool = useViewerStore((state) => state.activeTool);
@@ -219,14 +220,25 @@ export function MobileToolbar() {
       {/* Spacer */}
       <div className="flex-1 min-w-0" />
 
-      {/* Loading progress (compact) */}
+      {/* Loading progress: a thin line along the bar's bottom edge, out of the
+          row (#8802). In the row it took width the seven 44px targets need, so
+          at 320px loading pushed More off-screen and the bar scrolled. It does
+          not take taps; the loading card announces each phase. */}
       {loading && activeProgress && (
-        <div className="flex items-center gap-1.5 mr-1 flex-shrink-0">
-          <Progress value={activeProgress.percent} className="w-16 h-1.5" />
-          <span className="text-2xs text-muted-foreground tabular-nums">
-            {Math.round(activeProgress.percent)}%
-          </span>
-        </div>
+        // Native <progress>: a progressbar to assistive tech, indeterminate
+        // when it has no value.
+        <progress
+          data-mobile-load-progress
+          aria-label={t('viewportLighting.container.loadingCard.titleFallback')}
+          aria-valuetext={activeProgress.indeterminate ? activeProgress.phase : `${activeProgress.phase} · ${loadPercent}%`}
+          max={100}
+          value={activeProgress.indeterminate ? undefined : loadPercent}
+          className={cn(
+            'pointer-events-none absolute inset-x-0 bottom-0 block h-0.5 w-full appearance-none overflow-hidden border-0 bg-primary/20',
+            '[&::-webkit-progress-bar]:bg-primary/20 [&::-webkit-progress-value]:bg-primary [&::-moz-progress-bar]:bg-primary',
+            activeProgress.indeterminate && 'animate-pulse [&::-webkit-progress-bar]:bg-primary/60',
+          )}
+        />
       )}
 
       {/* Overflow menu */}

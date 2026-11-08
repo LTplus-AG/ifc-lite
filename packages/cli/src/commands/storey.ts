@@ -97,12 +97,17 @@ export async function storeyCommand(args: string[]): Promise<void> {
 
   if (action === 'list') {
     const list = rows();
-    if (json) { printJson(list); return; }
-    for (const row of list) {
-      const height = row.height === null ? '—' : `${row.height.toFixed(3)} m`;
-      // The listing is the command's data: stdout, so it pipes (diagnostics stay on stderr).
-      process.stdout.write(`#${row.expressId}\t${row.Name}\t${row.elevation.toFixed(3)} m\tfloor-to-floor ${height}\t${row.elementCount} elements\n`);
-    }
+    // The listing is the command's data: stdout, so it pipes, or the --out file
+    // instead of stdout, as every other command treats --out. Diagnostics stay on stderr.
+    const text = json
+      ? `${JSON.stringify(list, null, 2)}\n`
+      : list.map((row) => {
+        const height = row.height === null ? '—' : `${row.height.toFixed(3)} m`;
+        return `#${row.expressId}\t${row.Name}\t${row.elevation.toFixed(3)} m\tfloor-to-floor ${height}\t${row.elementCount} elements\n`;
+      }).join('');
+    if (out) { await writeFile(out, text); process.stderr.write(`Written to ${out}\n`); }
+    else if (json) printJson(list);
+    else process.stdout.write(text);
     return;
   }
 

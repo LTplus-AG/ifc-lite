@@ -60,6 +60,16 @@ describe.skipIf(!existsSync(SAMPLE))('ifc-lite storey (#9025)', () => {
     expect(rows.map((row: { Name: string; elevation: number }) => [row.Name, row.elevation])).toEqual([['My Storey', 0]]);
   });
 
+  it('list --out writes the listing to the file instead of stdout (#9121 review)', async () => {
+    const run = await storey();
+    const report = join(dir, 'report.json');
+    stdout = '';
+    await run([SAMPLE, 'list', '--json', '--out', report]);
+    expect(stdout).toBe('');
+    const rows = JSON.parse(await readFile(report, 'utf8'));
+    expect(rows.map((row: { Name: string }) => row.Name)).toEqual(['My Storey']);
+  });
+
   it('the plain listing goes to stdout, so it pipes (#9121 review)', async () => {
     const run = await storey();
     await run([SAMPLE, 'list']);

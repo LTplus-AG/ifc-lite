@@ -21,7 +21,8 @@ import { asRef, createStyleEntityReader } from '../../../../../../packages/creat
 
 /**
  * A placement's height above the world origin, in model units; null when a
- * link of its chain does not read. Its frames turn only in plan, so heights add.
+ * link of its chain does not read or tilts. Its frames turn only in plan, so
+ * heights add.
  */
 function worldZ(read: LiveRead, placementId: number | null): number | null {
   let z = 0;
@@ -29,7 +30,13 @@ function worldZ(read: LiveRead, placementId: number | null): number | null {
   for (let id = placementId; id !== null;) {
     if (seen.has(id)) return null;
     seen.add(id);
-    const hop = localPlacementHop(read, id);
+    // A tilted frame has no plain height; the hop refuses it by throwing.
+    let hop: ReturnType<typeof localPlacementHop>;
+    try {
+      hop = localPlacementHop(read, id);
+    } catch {
+      return null;
+    }
     if (!hop) return null;
     z += hop.frame.origin[2];
     id = hop.parentId;

@@ -5,6 +5,11 @@
 import type { Catalogue } from '../../registry';
 
 export const propertiesIt = {
+  "properties.quantitySet.fromGeometry": "Aggiornato dalla geometria",
+  "properties.quantitySet.fromGeometryHint": "Questo insieme è stato ricalcolato dalla geometria modificata dell’elemento. All’esportazione sostituisce i valori presenti nel file.",
+  "properties.quantitySet.updateEdited": "Aggiorna le quantità degli elementi modificati",
+  "properties.quantitySet.updateEditedHint": "Disattivato: le quantità di base restano quelle del file, anche dopo una modifica della forma.",
+
   "properties.spatialLocation.storeyLabel": "Piano",
   "properties.spatialLocation.elevationLabel": "Quota del piano",
   "properties.spatialLocation.heightLabel": "Altezza del piano",

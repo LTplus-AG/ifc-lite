@@ -2540,25 +2540,35 @@ export class Scene {
   /**
    * Whether this batch's entities can be drawn as separate sub-batches right
    * now — the precondition for splitting a batch by per-entity X-Ray alpha
-   * (#4129) or by any other per-entity property.
+   * (#4129) or by override promotion (#677, #9220).
    *
-   * Three ways a batch is indivisible:
+   * A batch is indivisible when:
    * - its CPU geometry was released (GPU-resident mode) — nothing to re-merge;
-   * - it is not the live batch of a warm bucket: an evicted (cold) bucket has
-   *   had its `meshData` dropped, and non-bucket batches (streaming fragments,
-   *   sub-batches) have no piece list keyed the way the partial builder looks
-   *   pieces up, so it would silently come back empty;
+   * - a snapshot is hydrating: the partial builder has no pieces yet and hands
+   *   back the bucket's whole batch for every slot, so each subset would draw it;
+   * - it is neither the live batch of a warm bucket nor a recorded streaming
+   *   fragment. An evicted (cold) bucket has had its `meshData` dropped, and a
+   *   sub-batch or ephemeral fragment has no piece list the partial builder can
+   *   look pieces up in, so a subset would silently come back empty;
    * - it holds a colour-merged piece, where many entities share ONE MeshData
    *   tagged per vertex. Such a piece is registered under every contained id,
    *   so it would land whole in more than one subset — the same geometry drawn
    *   twice, at two different alphas.
    *
+   * A recorded fragment cuts its subsets from its own pieces only (#9081), so
+   * a mesh split across fragments still draws each piece once: in the subset
+   * of the one fragment that holds it (#9254).
+   *
    * The caller must fall back to drawing the batch whole when this is false.
    */
   canPartitionBatch(batch: BatchedMesh): boolean {
-    if (this.geometryReleased) return false;
+    if (this.geometryReleased || this.snapshots.hydrating) return false;
     const bucket = this.buckets.get(batch.colorKey);
-    if (!bucket || bucket.batchedMesh !== batch || bucket.meshData.length === 0) return false;
+    if (!bucket || bucket.batchedMesh !== batch) {
+      const fragment = this.fragmentPieces.forBatch(batch);
+      return fragment !== undefined && !fragment.colorMerged;
+    }
+    if (bucket.meshData.length === 0) return false;
     for (const md of bucket.meshData) {
       if (md.entityIds && md.entityIds.length > 0) return false;
     }

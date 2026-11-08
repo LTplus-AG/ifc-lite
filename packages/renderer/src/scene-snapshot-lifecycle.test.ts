@@ -14,6 +14,8 @@ import type { MeshData } from '@ifc-lite/geometry';
 import { Scene } from './scene.js';
 import type { RenderPipeline } from './pipeline.js';
 import { decodeSceneSnapshot, encodeSceneSnapshot, type SceneSnapshot } from './scene-snapshot.js';
+import { PartialBatchRequests } from './partial-batch-requests.js';
+import { XRayAlpha } from './xray-alpha.js';
 
 (globalThis as unknown as { GPUBufferUsage: Record<string, number> }).GPUBufferUsage = { VERTEX: 32, INDEX: 16, UNIFORM: 64, COPY_DST: 8, COPY_SRC: 4, STORAGE: 128 };
 
@@ -127,6 +129,37 @@ describe('finished-scene snapshot', () => {
     scene.adoptSceneSnapshot(await roundTrip(snapshot!), device, pipeline);
     const batch = scene.getBatchedMeshes().find((b) => b.expressIds.length === 2)!;
     assert.strictEqual(scene.getOrCreatePartialBatch(batch.colorKey, batch.colorKey, new Set([1]), device, pipeline), batch);
+  });
+
+  it('while hydrating, a transparent batch with mixed promotion draws whole, once (#9254)', async () => {
+    const GLASS: [number, number, number, number] = [0.6, 0.8, 0.9, 0.4];
+    const glassModel = () => [triangle(4, 0, GLASS), triangle(5, 2, GLASS), triangle(6, 4, GLASS)];
+    const device = stubDevice();
+    const snapshot = await captureScene(glassModel(), device);
+    const scene = freshScene();
+    scene.adoptSceneSnapshot(await roundTrip(snapshot!), device, pipeline);
+    const glass = scene.getBatchedMeshes().find((b) => b.expressIds.includes(4))!;
+    const lens = new Map([[4, [1, 0, 0, 1] as [number, number, number, number]]]);
+    // Each slot the frame requests comes back as the whole batch while there are no pieces,
+    // so a promotion split here would draw it through both :promoted and :remaining.
+    const drawnIndices = (visible: Set<number> | null): number => {
+      const requests = new PartialBatchRequests(lens, new XRayAlpha({}, new Set()), (b) => scene.canPartitionBatch(b));
+      let drawn = 0;
+      if (visible) requests.pushVisible(glass, visible, true);
+      else if (!requests.pushWholeSplit(glass, true)) drawn += glass.indexCount;
+      for (const r of requests.items) drawn += scene.getOrCreatePartialBatch(r.sourceBatchKey, r.colorKey, r.visibleIds, device, pipeline)?.indexCount ?? 0;
+      return drawn;
+    };
+    assert.strictEqual(scene.isSceneSnapshotHydrating(), true);
+    assert.strictEqual(drawnIndices(null), 9, 'fully visible: the whole batch, once');
+    assert.strictEqual(drawnIndices(new Set([4, 5])), 9, 'under hide: the whole batch, once, until the pieces arrive');
+
+    // A fragment streamed in meanwhile has its own pieces, but every slot is still served
+    // the bucket's whole batch: splitting it would draw that batch once per subset.
+    scene.appendToBatches([triangle(7, 6, GLASS), triangle(8, 8, GLASS)], device, pipeline, true);
+    const fragment = scene.getBatchedMeshes().find((b) => b.expressIds.includes(7))!;
+    assert.notStrictEqual(fragment, glass, 'a separate streaming fragment');
+    assert.strictEqual(scene.canPartitionBatch(fragment), false);
   });
 
   it('a later append joins the adopted buckets', async () => {

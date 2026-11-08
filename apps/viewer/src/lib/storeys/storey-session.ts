@@ -20,7 +20,7 @@ export function isStoreyIsolated(s: ViewerState, modelId: string, storeyId: numb
 /** Move the session to another storey of its model; an isolated storey hands its isolation on. */
 export function switchSessionStorey(s: ViewerState, storeyId: number): void {
   const session = s.session;
-  if (!session || session.storeyId === storeyId) return;
+  if (!session) return;
   const isolated = session.storeyId !== null && isStoreyIsolated(s, session.modelId, session.storeyId);
   s.setSessionStorey(storeyId);
   if (isolated) applyLevelDisplayMode('solo', [{ modelId: session.modelId, expressId: storeyId }]);

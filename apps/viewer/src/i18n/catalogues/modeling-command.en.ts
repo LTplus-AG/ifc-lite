@@ -29,7 +29,7 @@ export const modelingCommandEn = {
   'modelingCommand.wall.alignLeft': 'Left',
   'modelingCommand.wall.alignCentre': 'Centre',
   'modelingCommand.wall.alignRight': 'Right',
-  'modelingCommand.wall.top': "Where the wall's top goes",
+  'modelingCommand.wall.top': "Wall top",
   'modelingCommand.wall.topStoreyAbove': 'To storey above',
   'modelingCommand.wall.topFixed': 'Fixed height',
   'modelingCommand.field.width': 'Width',

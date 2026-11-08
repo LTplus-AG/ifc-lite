@@ -18,7 +18,7 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { useViewerStore } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
-import { cleanup, click, render } from '@/test/render.js';
+import { cleanup, click, render, waitFor } from '@/test/render.js';
 import { MODEL_ID, STOREY, UPPER_STOREY, seedModelingSession } from '@/test/modeling-session-fixture';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { fixtureModels } from '@/test/store-fixture';
@@ -109,7 +109,7 @@ describe('Workspace storey chip (#6232 M2.1)', () => {
     assert.equal(useViewerStore.getState().session?.storeyId, STOREY, 'and the new session stays where it opened');
   });
 
-  it('Add storey above goes above the storey drawn on when the click resolves (#9037 review)', async () => {
+  it('Add storey above goes above the topmost storey when the click resolves (#9037 review)', async () => {
     act(() => { useViewerStore.getState().enterModelWorkspace({ storeyId: STOREY }); });
     openList();
     const add = [...document.body.querySelectorAll<HTMLButtonElement>('[data-storey-picker-actions] button')]
@@ -254,4 +254,22 @@ it('#9296 the shared picker dismisses an uncontrolled popover, as used by the pl
   assert.ok(option);
   click(option);
   assert.equal(document.querySelector('[data-storey-picker]'), null, 'the picker closes its own popover without caller state');
+});
+
+it('#9334 completing a copy closes the flow and reopens the chip on its storey list', async () => {
+  const restore = setRequestRemesh(() => {});
+  try {
+    act(() => { useViewerStore.getState().enterModelWorkspace({ modelId: MODEL_ID, storeyId: STOREY }); });
+    const s = useViewerStore.getState();
+    const wall = s.addWall(MODEL_ID, STOREY, { Start: [0, 0, 0], End: [4, 0, 0], Height: 3, Thickness: 0.2 });
+    assert.ok('expressId' in wall);
+    act(() => s.setSelectedEntityId(toGlobalIdFromModels(s.models, MODEL_ID, wall.expressId)));
+    openList();
+    const button = (name: string) => [...document.body.querySelectorAll('button')].find(b => b.textContent === name)!;
+    click(button('Copy to storeys…')); click(button('Select all storeys')); click(button('Prepare copies'));
+    await waitFor(() => !!button('Copy now'), 'copy prepared');
+    click(button('Copy now'));
+    await waitFor(() => !document.querySelector('[data-copy-to-storeys]'), 'copy flow closed');
+    assert.equal(openList().length, 2, 'the next chip opening shows its normal storey list');
+  } finally { restore(); }
 });

@@ -39,9 +39,12 @@ export interface SettingsDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
-/** Matches Tailwind's `sm` breakpoint (40rem, 640px): below it the section list is a
- *  horizontal strip, so arrow keys follow its orientation. */
-const SM_QUERY = '(min-width: 640px)';
+/** Tailwind's `sm` breakpoint, in the same unit Tailwind uses (`40rem`): below
+ *  it the section list is a horizontal strip, so arrow keys follow its
+ *  orientation. A `rem` in a media query follows the browser's default font
+ *  size, as the CSS does; a px query would disagree between 640 and 800 px at
+ *  a 20 px default (#8802 review). */
+const SM_QUERY = '(min-width: 40rem)';
 
 function subscribeSm(onChange: () => void): () => void {
   const query = window.matchMedia?.(SM_QUERY);

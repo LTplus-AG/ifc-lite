@@ -114,7 +114,7 @@ export function configureMutationView(
     });
   }
 
-  if (dataStore.onDemandQuantityMap && dataStore.source?.length > 0) {
+  if (dataStore.source?.length > 0) {
     configureAuthoredQuantityReader(dataStore, mutationView, (entityId, view, occurrenceId) => {
       const own = extractQuantitiesOnDemand(dataStore, entityId, view);
       if (own.length === 0) return own;

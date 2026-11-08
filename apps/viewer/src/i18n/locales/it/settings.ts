@@ -5,6 +5,10 @@
 import type { Catalogue } from '../../registry';
 
 export const settingsIt = {
+  "settings.general.quantitiesTitle": "Quantità",
+  "settings.general.updateEditedQuantities": "Aggiorna le quantità degli elementi modificati",
+  "settings.general.updateEditedQuantitiesHint": "Dopo aver modificato la forma di un muro, solaio, tetto, pilastro o trave caricati, ricalcola le quantità di base dalla nuova geometria. Disattivato: restano quelle presenti nel file.",
+
   "settings.title": "Impostazioni",
   "settings.description": "Salvate in questo browser.",
   "settings.sections.general": "Generale",

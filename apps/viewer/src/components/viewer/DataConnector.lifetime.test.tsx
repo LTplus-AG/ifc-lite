@@ -213,3 +213,49 @@ test('#8947 a suggestion for an old target cannot populate the current target dr
   replies[1](response()); await advance(100);
   assert.ok(document.querySelector('section[aria-label="Suggested table mapping"]'), 'a fresh request still works');
 });
+
+for (const partial of [false, true]) test(`#8962 replacing CSV during ${partial ? 'apply' : 'matching'} retires A and keeps B importable`, async t => {
+  if (partial) useViewerStore.setState({ ...fixtureModels(await parsedModel('a', 201)) });
+  render(<Harness />); await advance(0); await upload(partial ? 201 : 2);
+  const view = useViewerStore.getState().getMutationView('a'); assert.ok(view);
+  const target = mappingTarget();
+  t.mock.timers.enable({ apis: ['setTimeout'] }); click(importButton());
+  if (partial) {
+    for (let i = 0; i < 10 && view.getModifiedEntityCount() === 0; i++) await ticks(t, 1);
+    assert.equal(view.getModifiedEntityCount(), 200);
+  }
+  chooseCsv('b.csv', `GlobalId,FireRating\n${guid(1)},CSV-B\n`);
+  await ticks(t, 80);
+  assert.match(document.body.textContent ?? '', /b\.csv/);
+  assert.equal(view.getModifiedEntityCount(), partial ? 200 : 0, 'A cannot apply its remaining batch');
+  assert.equal(importButton().disabled, false, 'A cannot mark B clean');
+  if (partial) {
+    act(() => replayWorkspaceHistory(useViewerStore.getState(), 'undo'));
+    assert.equal(view.getModifiedEntityCount(), 0, 'already applied A batch retains history');
+  }
+  click(importButton()); await ticks(t);
+  assert.equal(view.getPropertyValue(1, target.pset, target.property), 'CSV-B');
+  assert.equal(view.getModifiedEntityCount(), 1);
+});
+
+test('#8962 replacing CSV retires an AI mapping for the same model', async t => {
+  useViewerStore.setState({ chatActiveModel: 'openai/gpt-free' });
+  const replies: Array<(response: Response) => void> = [];
+  t.mock.method(globalThis, 'fetch', () => new Promise<Response>(resolve => replies.push(resolve)));
+  render(<Harness />); await advance(0); await upload();
+  const response = () => new Response(`data: ${JSON.stringify({ choices: [{ delta: { content: JSON.stringify({
+    version: 1, kind: 'table.mapping', title: 'Fire ratings', identity: { column: 'GlobalId', key: 'GlobalId' },
+    columns: [{ column: 'FireRating', target: 'property', pset: 'Pset_Custom', name: 'FireRating', valueType: 'text' }],
+  }) }, finish_reason: 'stop' }] })}\n\n`);
+  click(button('Suggest mapping'));
+  for (let i = 0; i < 20 && replies.length === 0; i++) await advance(10);
+  assert.equal(replies.length, 1);
+  chooseCsv('b.csv', `GlobalId,FireRating\n${guid(1)},CSV-B\n`); await advance(50);
+  replies[0](response()); await advance(100);
+  assert.equal(document.querySelector('section[aria-label="Suggested table mapping"]'), null);
+  assert.equal(button('Suggest mapping').disabled, false);
+  click(button('Suggest mapping'));
+  for (let i = 0; i < 20 && replies.length < 2; i++) await advance(10);
+  assert.equal(replies.length, 2); replies[1](response()); await advance(100);
+  assert.ok(document.querySelector('section[aria-label="Suggested table mapping"]'));
+});

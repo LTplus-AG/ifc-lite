@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { createContext, lazy, Suspense, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { createContext, lazy, Suspense, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
@@ -28,6 +28,10 @@ export function PersistentToolHosts({ children }: { children: ReactNode }) {
   const [dataRequested, setDataRequested] = useState(false);
   const [classes, setClasses] = useState(false);
   const alive = useRef(true);
+  const bulkLauncher = useRef<HTMLElement | null>(null);
+  const dataLauncher = useRef<HTMLElement | null>(null);
+  const restoreBulk = (event: Event) => { event.preventDefault(); if (bulkLauncher.current?.isConnected) bulkLauncher.current.focus(); };
+  const restoreData = (event: Event) => { event.preventDefault(); if (dataLauncher.current?.isConnected) dataLauncher.current.focus(); };
   const classLauncher = useRef<HTMLElement | null>(null);
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
   const context = useMemo<ToolContext>(() => {
@@ -38,8 +42,8 @@ export function PersistentToolHosts({ children }: { children: ReactNode }) {
     };
     return {
       toolHostIsCurrent: () => alive.current,
-      openBulkProperties: () => { if (canOpenAuthor()) { setBulkRequested(true); setBulk(true); } },
-      openImportData: () => { if (canOpenAuthor()) { setDataRequested(true); setData(true); } },
+      openBulkProperties: (launcher) => { if (canOpenAuthor()) { bulkLauncher.current = launcher ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null); setBulkRequested(true); setBulk(true); } },
+      openImportData: (launcher) => { if (canOpenAuthor()) { dataLauncher.current = launcher ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null); setDataRequested(true); setData(true); } },
       openClassFilter: (launcher) => { if (alive.current) {
         classLauncher.current = launcher ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
         setClasses(true);
@@ -50,21 +54,21 @@ export function PersistentToolHosts({ children }: { children: ReactNode }) {
     {children}
     {/* Latch the first eligible request; closing must retain each tool's drafts (#8947). */}
     {bulkRequested && <ChunkErrorBoundary label="Bulk Property Editor" renderFallback={fallback => (
-      <AuthorLoadDialog open={bulk} onOpenChange={setBulk} title={t('bulkPropertyEditor.title')}>{fallback}</AuthorLoadDialog>
+      <AuthorLoadDialog open={bulk} onOpenChange={setBulk} onCloseAutoFocus={restoreBulk} title={t('bulkPropertyEditor.title')}>{fallback}</AuthorLoadDialog>
     )}>
-      <Suspense fallback={<AuthorLoadDialog open={bulk} onOpenChange={setBulk} title={t('bulkPropertyEditor.title')}>
+      <Suspense fallback={<AuthorLoadDialog open={bulk} onOpenChange={setBulk} onCloseAutoFocus={restoreBulk} title={t('bulkPropertyEditor.title')}>
         <output>{t('shellChrome.statusBar.loadingFallback')}</output>
       </AuthorLoadDialog>}>
-        <BulkPropertyEditor open={bulk} onOpenChange={setBulk} />
+        <BulkPropertyEditor open={bulk} onOpenChange={setBulk} onCloseAutoFocus={restoreBulk} />
       </Suspense>
     </ChunkErrorBoundary>}
     {dataRequested && <ChunkErrorBoundary label="Data Connector" renderFallback={fallback => (
-      <AuthorLoadDialog open={data} onOpenChange={setData} title={t('dataConnector.dialogTitle')}>{fallback}</AuthorLoadDialog>
+      <AuthorLoadDialog open={data} onOpenChange={setData} onCloseAutoFocus={restoreData} title={t('dataConnector.dialogTitle')}>{fallback}</AuthorLoadDialog>
     )}>
-      <Suspense fallback={<AuthorLoadDialog open={data} onOpenChange={setData} title={t('dataConnector.dialogTitle')}>
+      <Suspense fallback={<AuthorLoadDialog open={data} onOpenChange={setData} onCloseAutoFocus={restoreData} title={t('dataConnector.dialogTitle')}>
         <output>{t('shellChrome.statusBar.loadingFallback')}</output>
       </AuthorLoadDialog>}>
-        <DataConnector open={data} onOpenChange={setData} />
+        <DataConnector open={data} onOpenChange={setData} onCloseAutoFocus={restoreData} />
       </Suspense>
     </ChunkErrorBoundary>}
     <Dialog open={classes} onOpenChange={setClasses}>
@@ -78,18 +82,20 @@ export function PersistentToolHosts({ children }: { children: ReactNode }) {
 }
 
 /** Only the loading/error overlay is transient; the real tool retains its owner. */
-function AuthorLoadDialog({ open, onOpenChange, title, children }: {
+function AuthorLoadDialog({ open, onOpenChange, onCloseAutoFocus, title, children }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onCloseAutoFocus: (event: Event) => void;
   title: string;
   children: ReactNode;
 }) {
   const openRef = useRef(open);
-  openRef.current = open;
+  useLayoutEffect(() => { openRef.current = open; }, [open]);
   return <Dialog open={open} onOpenChange={onOpenChange}>
     <DialogContent aria-describedby={undefined} onCloseAutoFocus={event => {
       // Resolving Suspense transfers focus to the real dialog, not the old launcher.
       if (openRef.current) event.preventDefault();
+      else onCloseAutoFocus(event);
     }}>
       <DialogTitle>{title}</DialogTitle>
       {children}

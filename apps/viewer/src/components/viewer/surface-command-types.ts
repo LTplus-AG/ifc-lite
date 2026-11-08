@@ -37,8 +37,8 @@ export interface SurfaceCommandContext {
   addSectionPlane?: (kind: import('./tools/SectionAddMenu').AddKind) => boolean;
   sectionAddUnavailable?: (kind: import('./tools/SectionAddMenu').AddKind) => TranslationKey | undefined;
   toolHostIsCurrent?: () => boolean;
-  openBulkProperties?: () => void;
-  openImportData?: () => void;
+  openBulkProperties?: (launcher?: HTMLElement | null) => void;
+  openImportData?: (launcher?: HTMLElement | null) => void;
   openClassFilter?: (launcher?: HTMLElement | null) => void;
 }
 

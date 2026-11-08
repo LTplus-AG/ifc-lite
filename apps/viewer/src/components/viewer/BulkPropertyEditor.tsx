@@ -97,6 +97,7 @@ export function BulkPropertyEditor(props: ToolDialogProps) {
   const [selectedModelId, setSelectedModelId] = useState<string>('');
   const [targetSource, setTargetSource] = useState<BulkTargetSource>('query');
   const targetGroups = useBulkTargets(open, targetSource, models);
+  const targetIdsKey = useMemo(() => JSON.stringify([...targetGroups].map(([id, ids]) => [id, [...ids].sort((a, b) => a - b)]).sort()), [targetGroups]);
   const editDenialReason = useMemo(() => {
     const ids = targetSource === 'query' ? [selectedModelId] : targetGroups.keys();
     const result = mutationPermissionForModels(useViewerStore.getState(), ids);
@@ -130,6 +131,7 @@ export function BulkPropertyEditor(props: ToolDialogProps) {
   const [runtimeFailures, setRuntimeFailures] = useState<BulkRuntimeFailure[]>([]);
   // Track whether config changed since last execute (disables button after success)
   const [executeDirty, setExecuteDirty] = useState(true);
+  const completedTargets = useRef<ReturnType<typeof captureBulkTargetEngines> | null>(null);
   useBulkExecutionScroll(scrollAreaRef, executeResult, executeProgress);
 
   // --- All expensive computation is gated behind `open` so IFC loading is never impacted ---
@@ -179,9 +181,11 @@ export function BulkPropertyEditor(props: ToolDialogProps) {
     return models.get(selectedModelId);
   }, [open, models, selectedModelId, legacyIfcDataStore, legacyGeometryResult, t, locale, revision]);
 
-  const targetData = selectedModelId === '__legacy__' ? legacyIfcDataStore : models.get(selectedModelId)?.ifcDataStore;
   const targetView = mutationViews.get(selectedModelId);
-  useEffect(() => { setExecuteDirty(true); }, [selectedModelId, targetData, targetView]);
+  // Only a replaced participant invalidates a successful batch, including while closed.
+  useEffect(() => {
+    if (completedTargets.current && !completedTargets.current.isCurrent()) { completedTargets.current = null; setExecuteDirty(true); }
+  }, [models, mutationViews, legacyIfcDataStore]);
   const isCurrent = useAuthoringOperation(open, selectedModelId, selectedModel?.ifcDataStore, targetView);
   useEffect(() => {
     setIsExecuting(false); setExecuteProgress(null); setExecuteResult(null); setRuntimeFailures([]);
@@ -354,7 +358,7 @@ export function BulkPropertyEditor(props: ToolDialogProps) {
       if (!ownsOperation() || !runTargets.isCurrent()) return;
       setExecuteResult(result);
       setRuntimeFailures(failures);
-      if (result.success) setExecuteDirty(false);
+      if (result.success) { completedTargets.current = runTargets; setExecuteDirty(false); }
     } catch (error) {
       activity.fail(error);
       if (!ownsOperation()) return;
@@ -418,7 +422,7 @@ export function BulkPropertyEditor(props: ToolDialogProps) {
   useEffect(() => {
     if (open && executeResult) { setExecuteDirty(true); setExecuteResult(null); }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only fire on config changes
-  }, [targetSource, targetGroups, selectedModelId, queryGroups, actionType, targetPset, targetProp, targetValue, valueType]);
+  }, [targetSource, targetIdsKey, selectedModelId, queryGroups, actionType, targetPset, targetProp, targetValue, valueType]);
 
   useEffect(() => {
     if (!open) { executeCancelRef.current = true; executeAbortRef.current?.abort(); return; }

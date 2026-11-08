@@ -10,6 +10,6 @@ New opt-in viewer setting, "Update quantities of edited elements" (#9026). It is
 A refresh only replaces a `Qto_*BaseQuantities` (or IFC2X3 `BaseQuantities`) set the file already has. It never adds one. If you edit or delete a quantity yourself, your edit still wins, and undo takes back the refresh along with the edit.
 
 New API:
-- `@ifc-lite/create` exports `withRefreshedBaseQuantities`, `refreshedBaseQuantitySetName`, `refreshedBaseQuantitySets` and `hasRefreshableBaseQuantities`.
+- `@ifc-lite/create` exports `withRefreshedBaseQuantities`, `refreshedBaseQuantitySet`, `refreshedBaseQuantitySets` and `hasRefreshableBaseQuantities`.
 - `@ifc-lite/mutations` adds `MutablePropertyView.setQuantityBaseRevisions` / `getQuantityBaseRevisions` and the `QuantityBaseRevision` type. A view's quantity base uses them to name the sets it reads differently from the file.
 - `@ifc-lite/export` writes the named sets the same way it writes an edited set.

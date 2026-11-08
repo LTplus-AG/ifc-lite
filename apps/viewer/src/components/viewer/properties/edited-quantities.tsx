@@ -20,8 +20,8 @@ import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
 
 export interface QuantityEntityRef { readonly modelId: string; readonly expressId: number }
-/** A quantity set as a card shows it: its name and each quantity's name and value. */
-export interface ShownSet { readonly name: string; readonly quantities: readonly { readonly name: string; readonly value: number }[] }
+/** A quantity set as a card shows it: what identifies it is its GlobalId, and its name. */
+export interface ShownSet { readonly name: string; readonly globalId?: string }
 
 /** The store and view an entity's quantities read through, or null without a mutation view. */
 function useQuantityReaders(entity: QuantityEntityRef | null | undefined): { dataStore: IfcDataStore; view: MutablePropertyView } | null {
@@ -38,13 +38,15 @@ function useQuantityReaders(entity: QuantityEntityRef | null | undefined): { dat
 }
 
 /**
- * Whether the card's set is the refreshed one: by name and every quantity, not
- * the name alone, since a file can give an element a second set of the same
- * name, which keeps the file's values.
+ * Whether the card's set is the refreshed one. The refresh keeps the file
+ * set's GlobalId, which `IfcElementQuantity` must have, so the set is matched by
+ * it: a second set of the same name has its own, and an edit made by hand
+ * on top of the refreshed values leaves it as it was. A malformed file whose
+ * sets have none is matched by name.
  */
 export function isRefreshedSet(qset: ShownSet, refreshed: ShownSet | null): boolean {
-  return refreshed !== null && qset.name === refreshed.name && qset.quantities.length === refreshed.quantities.length
-    && qset.quantities.every((q, i) => q.name === refreshed.quantities[i].name && q.value === refreshed.quantities[i].value);
+  if (refreshed === null || qset.name !== refreshed.name) return false;
+  return qset.globalId && refreshed.globalId ? qset.globalId === refreshed.globalId : true;
 }
 
 /** Whether `qset` on `entity` was refreshed from its edited geometry. */

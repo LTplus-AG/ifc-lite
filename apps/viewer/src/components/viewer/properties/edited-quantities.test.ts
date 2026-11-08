@@ -8,16 +8,25 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { isRefreshedSet } from './edited-quantities';
 
-const refreshed = { name: 'BaseQuantities', quantities: [{ name: 'Height', value: 4 }, { name: 'GrossVolume', value: 6.4 }] };
+const refreshed = { name: 'BaseQuantities', globalId: '2xRefreshed00000000000a', quantities: [{ name: 'Height', value: 4 }] };
 
 describe('the refreshed-set marker', () => {
-  it('marks the refreshed set, and not a second set of the same name that keeps the file values', () => {
-    assert.equal(isRefreshedSet({ ...refreshed, quantities: [...refreshed.quantities] }, refreshed), true);
-    assert.equal(isRefreshedSet({ name: 'BaseQuantities', quantities: [{ name: 'Fixings', value: 2 }] }, refreshed), false);
-    assert.equal(isRefreshedSet({ name: 'BaseQuantities', quantities: [{ name: 'Height', value: 3 }, { name: 'GrossVolume', value: 4.8 }] }, refreshed), false);
+  it('marks the refreshed set by its GlobalId, and not a second set of the same name', () => {
+    assert.equal(isRefreshedSet({ name: 'BaseQuantities', globalId: '2xRefreshed00000000000a' }, refreshed), true);
+    assert.equal(isRefreshedSet({ name: 'BaseQuantities', globalId: '3yTwin000000000000000b' }, refreshed), false);
+  });
+
+  it('keeps marking the refreshed set after a quantity in it is edited by hand', () => {
+    const edited = { name: 'BaseQuantities', globalId: refreshed.globalId, quantities: [{ name: 'Height', value: 9 }] };
+    assert.equal(isRefreshedSet(edited, refreshed), true);
+  });
+
+  it('matches by name when a malformed file gives its sets no GlobalId', () => {
+    assert.equal(isRefreshedSet({ name: 'BaseQuantities' }, { name: 'BaseQuantities' }), true);
+    assert.equal(isRefreshedSet({ name: 'Qto_WallBaseQuantities' }, { name: 'BaseQuantities' }), false);
   });
 
   it('marks nothing when no set was refreshed', () => {
-    assert.equal(isRefreshedSet(refreshed, null), false);
+    assert.equal(isRefreshedSet({ name: 'BaseQuantities', globalId: refreshed.globalId }, null), false);
   });
 });

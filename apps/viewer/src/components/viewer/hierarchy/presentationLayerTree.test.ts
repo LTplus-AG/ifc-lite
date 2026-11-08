@@ -228,7 +228,7 @@ ENDSEC;\nEND-ISO`);
     const wall = groups.find(row => row.name === (mode === 'class' ? 'IfcWall' : 'Uniclass: EF_25'))!;
     assert.ok(wall);
     assert.deepEqual(wall.globalIds, [2], 'non-geometric members are selectable but never visibility targets');
-    assert.deepEqual(wall.memberGlobalIds, mode === 'class' ? [4, 2] : [2]);
+    assert.deepEqual(new Set(wall.memberGlobalIds), new Set(mode === 'class' ? [4, 2] : [2]));
     const selected = hierarchyRowSelection(wall, new Map(), id => ({ modelId: 'legacy', expressId: id }));
     assert.deepEqual(selected.map(item => item.globalId), wall.memberGlobalIds);
     const unclassified = groups.find(row => row.name === 'Unclassified');

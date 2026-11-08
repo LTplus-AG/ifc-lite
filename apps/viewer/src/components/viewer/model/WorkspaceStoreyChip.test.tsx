@@ -231,3 +231,14 @@ describe('Workspace storey chip (#6232 M2.1)', () => {
     assert.match(document.querySelector('[data-hud-region="top-center"]')?.textContent ?? '', /No storey to draw on/);
   });
 });
+
+it('#9334 the chip disables copy to storeys in a read-only model session', () => {
+  act(() => { useViewerStore.getState().enterModelWorkspace({ modelId: MODEL_ID, storeyId: STOREY }); });
+  openList();
+  const copy = [...document.body.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === 'Copy to storeys…')!;
+  assert.ok(copy);
+  assert.equal(copy.disabled, false);
+  act(() => { useViewerStore.setState({ editEnabled: false }); });
+  assert.equal(copy.disabled, true);
+  assert.match(copy.title, /Copying is unavailable/);
+});

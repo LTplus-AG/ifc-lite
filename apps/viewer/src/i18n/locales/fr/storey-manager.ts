@@ -153,4 +153,5 @@ export const storeyManagerFr = {
   "storeyManager.wallTarget": "Jusqu’à {storey} ({elevation} m)",
   'storeyManager.copy.from': 'Depuis l’étage',
   'storeyManager.copy.to': 'Jusqu’à l’étage',
+  "storeyManager.copy.readOnly": "La copie est indisponible : {reason}",
 } satisfies Catalogue;

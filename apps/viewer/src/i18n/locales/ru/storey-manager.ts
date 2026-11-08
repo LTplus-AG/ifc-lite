@@ -168,4 +168,5 @@ export const storeyManagerRu = {
   "storeyManager.wallTarget": "До {storey} ({elevation} м)",
   'storeyManager.copy.from': 'С этажа',
   'storeyManager.copy.to': 'По этаж',
+  "storeyManager.copy.readOnly": "Копирование недоступно: {reason}",
 } satisfies Catalogue;

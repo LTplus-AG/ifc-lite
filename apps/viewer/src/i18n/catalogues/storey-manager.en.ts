@@ -98,4 +98,5 @@ export const storeyManagerEn = {
   "storeyManager.wallTarget": "To {storey} ({elevation} m)",
   'storeyManager.copy.from': 'From storey',
   'storeyManager.copy.to': 'To storey',
+  "storeyManager.copy.readOnly": "Copying is unavailable: {reason}",
 } as const satisfies Record<string, TranslationValue>;

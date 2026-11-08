@@ -53,7 +53,10 @@ export async function handleSelectionClick(ctx: MouseHandlerContext, e: MouseEve
     return;
   }
   // Every tool below picks: not through a capture's frame (#9137).
-  if (refuseCaptureHeldPick(renderer)) return;
+  if (refuseCaptureHeldPick(renderer)) {
+    ctx.lastClickTimeRef.current = 0; ctx.lastClickPosRef.current = null;
+    return;
+  }
 
   if (tool === 'appearance-face') {
     const message = viewportFacePickError(pickViewportAppearanceFace(renderer.raycastScene(x, y, ctx.getPickOptions())?.intersection ?? null));
@@ -94,6 +97,7 @@ export async function handleSelectionClick(ctx: MouseHandlerContext, e: MouseEve
   if (tool === 'select') {
     await selectViewportTarget({ canvas, renderer, x, y, getTool: () => ctx.activeToolRef.current,
       getPickOptions: ctx.getPickOptions, onIfc: applyIfc,
+      onRefused: () => { ctx.lastClickTimeRef.current = 0; ctx.lastClickPosRef.current = null; },
       onReference: () => { ctx.lastClickTimeRef.current = 0; ctx.lastClickPosRef.current = null; } });
   } else {
     applyIfc(await renderer.pick(x, y, ctx.getPickOptions()));

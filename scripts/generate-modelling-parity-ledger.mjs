@@ -146,7 +146,7 @@ function render() {
   lines.push('```bash');
   lines.push('node tests/modelling-parity/probes/sdk/run.mjs     # SDK probes -> tests/modelling-parity/.out/L1/sdk');
   lines.push('node tests/modelling-parity/output/run.mjs         # output probes -> tests/modelling-parity/.out/L1/output');
-  lines.push('pnpm parity:score                                  # score every lane under tests/modelling-parity/.out');
+  lines.push('node tests/modelling-parity/score.mjs              # score every lane under tests/modelling-parity/.out');
   lines.push('node tests/modelling-parity/score.mjs <dirs> --out tests/modelling-parity/baseline/<round>.json');
   lines.push('node scripts/generate-modelling-parity-ledger.mjs  # this file, from the newest baseline summary');
   lines.push('```');

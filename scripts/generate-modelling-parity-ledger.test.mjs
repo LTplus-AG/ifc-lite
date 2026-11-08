@@ -14,7 +14,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
@@ -117,12 +117,17 @@ function tree(summaries) {
   for (const [name, body] of Object.entries(summaries)) writeFileSync(join(dir, 'tests/modelling-parity/baseline', name), JSON.stringify(body));
   return dir;
 }
-const generate = (root, ...args) => spawnSync(process.execPath, [GENERATOR, '--root', root, ...args], { encoding: 'utf8' });
+/** Spawn the real generator. It must exist first: without it every ledger assertion below is a plain failure. */
+function runGenerator(args, opts = {}) {
+  assert.ok(existsSync(GENERATOR), `the ledger generator ${GENERATOR} is missing`);
+  return spawnSync(process.execPath, [GENERATOR, ...args], { encoding: 'utf8', ...opts });
+}
+const generate = (root, ...args) => runGenerator(['--root', root, ...args]);
 const realCatalogue = JSON.parse(readFileSync(join(ROOT, 'tests/modelling-parity/catalogue.json'), 'utf8'));
 const summaryOf = (results, generatedAt) => score(realCatalogue, results, { generatedAt });
 
 test('the committed ledger matches the newest committed baseline summary', () => {
-  const r = spawnSync(process.execPath, [GENERATOR, '--check'], { encoding: 'utf8' });
+  const r = runGenerator(['--check']);
   assert.equal(r.status, 0, `${r.stdout}${r.stderr}`);
 });
 
@@ -337,7 +342,7 @@ test('round 3: annotations count, bad --jobs exits 2, SVG ends after its root, -
   try {
     mkdirSync(join(dir, 'elsewhere'));
     writeFileSync(join(dir, 'elsewhere', 'only-here.json'), JSON.stringify(good));
-    const r = spawnSync(process.execPath, [GENERATOR, '--root', dir, '--summary', 'elsewhere/only-here.json'], { encoding: 'utf8', cwd: tmpdir() });
+    const r = runGenerator(['--root', dir, '--summary', 'elsewhere/only-here.json'], { cwd: tmpdir() });
     assert.equal(r.status, 0, `${r.stdout}${r.stderr}`);
     assert.match(readFileSync(join(dir, 'docs/architecture/modelling-parity-ledger.md'), 'utf8'), /Summary: `elsewhere\/only-here\.json`/); // @source-text-assertion-ok asserts on the generator's emitted ledger, not on unexecuted source text
   } finally {

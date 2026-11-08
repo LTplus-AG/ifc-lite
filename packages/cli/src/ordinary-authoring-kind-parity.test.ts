@@ -64,6 +64,7 @@ function metadataSnapshot(saved: Awaited<ReturnType<typeof records>>, known: Rea
   };
   const metadata = [];
   let spaceRecords = 0;
+  const quantityOwners = new Set<number>();
   const quantityNames: Record<string, string> = { IFCWALL: 'Qto_WallBaseQuantities', IFCSLAB: 'Qto_SlabBaseQuantities', IFCROOF: 'Qto_RoofBaseQuantities', IFCCOLUMN: 'Qto_ColumnBaseQuantities', IFCBEAM: 'Qto_BeamBaseQuantities' };
   for (const [id, entity] of generated) {
     if (entity?.type !== 'IFCRELDEFINESBYPROPERTIES') continue;
@@ -79,6 +80,7 @@ function metadataSnapshot(saved: Awaited<ReturnType<typeof records>>, known: Rea
       // #9296: live headless base quantities also generate metadata for authored products.
       expect(authoredIds).toContain(ownerId);
       expect(quantityNames[ownerType]).toBeDefined();
+      quantityOwners.add(ownerId);
     }
     const definition = consume(relation.attributes[5]);
     expect(definition.attributes[0]).toMatch(/^[0-9A-Za-z_$]{22}$/);
@@ -100,6 +102,9 @@ function metadataSnapshot(saved: Awaited<ReturnType<typeof records>>, known: Rea
       GlobalId: isSpace ? undefined : definition.attributes[0], relationGlobalId: isSpace ? undefined : relation.attributes[0],
       definition: definition.attributes.slice(1, -1), leaves });
   }
+  // #9355: an empty relation loop must not hide missing authored quantities.
+  const expectedOwners = authoredIds.filter(id => quantityNames[all.get(id)?.type ?? '']);
+  expect([...quantityOwners].sort((a,b) => a-b)).toEqual(expectedOwners.sort((a,b) => a-b));
   expect(spaceRecords).toBe(spaceId !== undefined && all.has(spaceId) ? 13 : 0);
   expect(consumed.size).toBe(generated.size);
   return { count: saved.length, known: saved.filter(([id]) => known.has(id)),

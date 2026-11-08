@@ -10,7 +10,7 @@ impl MappingControl<'_> {
     pub(super) fn stop_logical(
         &mut self,
         item_id: u32,
-        refusal: LogicalRefusal,
+        refusal: &LogicalRefusal,
         router: &GeometryRouter,
     ) {
         // Styled admission may own a provisional template before Items. Roll

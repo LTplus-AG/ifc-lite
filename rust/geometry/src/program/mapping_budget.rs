@@ -27,7 +27,7 @@ struct LogicalRefusalDetail {
 }
 impl LogicalRefusal {
     pub(super) fn details(&self) -> (&'static str, u32, u64) { (self.0.budget, self.0.limit, self.0.reached) }
-    pub(super) fn into_error(self, item: u32) -> Error {
+    pub(super) fn into_error(&self, item: u32) -> Error {
         crate::representation::WalkRefusal::Budget {
             max_levels: self.0.limit,
             budget: self.0.budget,

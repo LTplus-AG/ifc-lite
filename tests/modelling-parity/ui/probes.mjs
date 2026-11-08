@@ -21,6 +21,7 @@
  * - `notes`: where the UI blocked or misled, in plain words.
  */
 
+import { ownOpenings } from './lib/oracles.mjs';
 import { downloadCount, nextDownload, task } from './lib/driver.mjs';
 import {
   escape, hudText, oracleModel, openStoreyManager, readSession, readStoreyManager, switchStorey, tool, toasts, typeFields,
@@ -301,7 +302,7 @@ export const PROBES = [
         tasks, notes, evidence: [shot],
         checks: [
           { name: '1 door and 1 window', ok: c.IFCDOOR === 1 && c.IFCWINDOW === 1, detail: `${c.IFCDOOR} doors, ${c.IFCWINDOW} windows` },
-          { name: 'each fills its own opening in a wall', ok: fillers.length === 2 && unhosted.length === 0, detail: unhosted.length ? `not hosted: #${unhosted.map((e) => e.id).join(', #')}; ${JSON.stringify(c)}` : JSON.stringify(c) },
+          { name: 'each fills its own opening in a wall', ok: fillers.length === 2 && ownOpenings(step,fillers) && unhosted.length === 0, detail: unhosted.length ? `not hosted: #${unhosted.map((e) => e.id).join(', #')}; ${JSON.stringify(c)}` : JSON.stringify(c) },
           { name: 'placed from a door type and a window type', ok: typed, detail: `${c.IFCDOORTYPE} door types, ${c.IFCWINDOWTYPE} window types` },
         ],
       };

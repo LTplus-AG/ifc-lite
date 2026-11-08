@@ -17,7 +17,7 @@
  * Change a checkpoint only between campaigns: a new one has no baseline.
  */
 
-import { readFileSync } from 'node:fs';
+import { loadTarget, ownOpenings } from './lib/oracles.mjs';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { downloadCount, nextDownload, sha256, task } from './lib/driver.mjs';
@@ -129,7 +129,7 @@ function commonChecks(step, want) {
       { name: `walls joined at every corner (${want.walls} joins)`, ok: c.IFCRELCONNECTSPATHELEMENTS >= want.walls, detail: `${c.IFCRELCONNECTSPATHELEMENTS}` },
       { name: `${want.doors} door(s)`, ok: c.IFCDOOR === want.doors, detail: `${c.IFCDOOR}` },
       { name: `${want.windows} window(s)`, ok: c.IFCWINDOW === want.windows, detail: `${c.IFCWINDOW}` },
-      { name: 'every door and window fills its own opening in a wall', ok: unhosted.length === 0 && fillers.length === want.doors + want.windows, detail: unhosted.length ? `${unhosted.length} of ${fillers.length} not hosted in a wall: #${unhosted.map((e) => e.id).join(', #')}` : `${fillers.length} hosted` },
+      { name: 'every door and window fills its own opening in a wall', ok: ownOpenings(step,fillers) && unhosted.length === 0 && fillers.length === want.doors + want.windows, detail: unhosted.length ? `${unhosted.length} of ${fillers.length} not hosted in a wall: #${unhosted.map((e) => e.id).join(', #')}` : `${fillers.length} hosted` },
       { name: `${want.slabs} floor slab(s)`, ok: floorSlabs.length === want.slabs, detail: `${floorSlabs.length}` },
       { name: `${want.spaces} space(s)`, ok: c.IFCSPACE === want.spaces, detail: `${c.IFCSPACE}` },
       { name: 'every element is contained in a storey', ok: uncontained === 0, detail: `${uncontained} uncontained` },
@@ -174,8 +174,7 @@ const FZK_TARGET_FALLBACK = {
 };
 const TARGET_FILE = new URL('../references/f2-fzk-haus-target.json', import.meta.url);
 function fzkTarget() {
-  try { return { ...JSON.parse(readFileSync(TARGET_FILE, 'utf8')), from: 'tests/modelling-parity/references/f2-fzk-haus-target.json' }; }
-  catch { return { ...FZK_TARGET_FALLBACK, from: 'embedded copy of f2-fzk-haus-target.json (PR #9304)' }; }
+  return loadTarget(TARGET_FILE,FZK_TARGET_FALLBACK);
 }
 
 function fzkOracle(step) {
@@ -200,7 +199,7 @@ function fzkOracle(step) {
       checks.push({ name: `${label}: ${ts[kind].count} ${kind}`, ok: got.length === ts[kind].count, detail: `${got.length}` });
       const wallIds = new Set(step.of('IFCWALL').map((w) => w.id));
       const unhosted = got.filter((e) => !wallIds.has(step.hostOf(e.id)));
-      if (got.length) checks.push({ name: `${label}: every ${kind.slice(0, -1)} fills its own opening in a wall`, ok: unhosted.length === 0, detail: unhosted.length ? `not hosted: #${unhosted.map((e) => e.id).join(', #')}` : `${got.length} hosted` });
+      if (got.length) checks.push({ name: `${label}: every ${kind.slice(0, -1)} fills its own opening in a wall`, ok: ownOpenings(step,[...step.of('IFCDOOR'),...step.of('IFCWINDOW')]) && unhosted.length === 0, detail: unhosted.length ? `not hosted: #${unhosted.map((e) => e.id).join(', #')}` : `${got.length} hosted` });
       if (!ts[kind].count) continue;
       // Sizes: every reference size bucket is matched by that many elements within the tolerance.
       const sizes = got.map((e) => [e.args?.[8], e.args?.[9]]);

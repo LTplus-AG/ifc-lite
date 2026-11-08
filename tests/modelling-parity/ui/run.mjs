@@ -30,6 +30,7 @@
  * @unwired-by-design needs a real GPU and Windows Chrome; run by the parity loop, not CI.
  */
 
+import { hardwareAdapter, themedResult } from './lib/oracles.mjs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -106,10 +107,10 @@ async function main() {
     await page.goto(`${preview.url}/favicon.ico`).catch(() => page.goto(preview.url));
     adapter = await page.evaluate(async () => {
       const a = await navigator.gpu?.requestAdapter();
-      return a ? { vendor: a.info?.vendor, architecture: a.info?.architecture, description: a.info?.description, fallback: a.info?.isFallbackAdapter ?? false } : null;
+      return a ? { vendor: a.info?.vendor, architecture: a.info?.architecture, description: a.info?.description, fallback: !!(a.isFallbackAdapter || a.info?.isFallbackAdapter) } : null;
     });
     await probe.close();
-    if (!adapter || adapter.fallback || adapter.architecture === 'swiftshader') {
+    if (!hardwareAdapter(adapter)) {
       throw new Error(`no hardware WebGPU adapter in the browser (${JSON.stringify(adapter)}); the model canvas would be empty`);
     }
     console.log(`adapter ${adapter.vendor} ${adapter.architecture ?? ''}`);
@@ -127,10 +128,10 @@ async function main() {
     for (const id of args.exercises) {
       // The first theme's run is the measured one; every theme's run writes council frames.
       for (const [i, theme] of args.themes.entries()) {
-        if (!args.frames && i > 0) break;
+
         const run = await runExercise(EXERCISES[id], { openFresh, theme, shots, frames: args.frames ? frames : null, saveArtifact, base, measured: i === 0 });
-        if (i === 0) {
-          exerciseResults.push(run.result);
+        {
+          exerciseResults.push(themedResult(run.result,theme));
           console.log(`${run.result.status.padEnd(7)} ${run.result.id.padEnd(20)} actions ${String(run.result.metrics.actions).padStart(3)}  ${String(run.result.metrics.ms).padStart(6)} ms${run.result.reason ? `  ${run.result.reason.slice(0, 160)}` : ''}`);
         }
         frameResults.push(...run.frames);

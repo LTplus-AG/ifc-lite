@@ -11,6 +11,11 @@ const t = P.probe(bim, 'type-editing');
 const S = bim.store, M = t.M, L1 = t.ground();
 const A = t.step('type A', () => S.addElementType(M, { Type: 'IfcWallType', Name: 'WT-200', PredefinedType: 'STANDARD' }));
 const B = t.step('type B', () => S.addElementType(M, { Type: 'IfcWallType', Name: 'WT-300', PredefinedType: 'STANDARD' }));
+// Each type's structure is its layer set (Revit Edit Type > Structure, an IFC wall type's IfcMaterialLayerSet).
+const brick = t.step('brick', () => S.addMaterial(M, { Name: 'Brick' }));
+for (const [type, depth] of [[A, 0.2], [B, 0.3]]) {
+  t.step(`type ${depth} m structure`, () => S.assignMaterial(M, S.addMaterialLayerSet(M, { LayerSetName: `Brick ${depth * 1000}`, MaterialLayers: [{ Material: brick.expressId, LayerThickness: depth }] }).expressId, [type.expressId]));
+}
 const walls = [0, 2, 4].map((y, i) => t.step(`wall ${i}`, () => S.addWall(M, L1.expressId, { Start: [0, y, 0], End: [5, y, 0], Thickness: 0.2, Height: 3, Name: `W${i}` })));
 t.step('assign type A', () => S.assignType(M, A.expressId, walls.map((w) => w.expressId)));
 t.step('type property', () => bim.mutate.setProperty(A, 'Pset_WallCommon', 'FireRating', 'EI60', 'IfcLabel'));
@@ -31,9 +36,9 @@ t.check('an occurrence swaps type', () => {
   return (onB && !onA) || `W2 typed by WT-300: ${onB}, still typed by WT-200: ${onA}`;
 });
 t.check('a type parameter drives occurrence geometry', () => {
-  // Revit: Edit Type > Structure > thickness 0.3 resizes every WT-300 wall. The SDK has no type-level
-  // geometric parameter; the closest record is the type's layer set, which layered-walls probes.
+  // Revit: Edit Type > Structure > thickness 0.3 resizes every WT-300 wall. Here the type's
+  // structure is its 0.3 m layer set: retyping W2 to WT-300 must bring its body to 0.3 m.
   const b = x.bbox(walls[2]);
-  return (b && P.near(b.size[1], 0.3, 2e-3)) || `a wall retyped to WT-300 keeps its own ${P.fmt(b?.size[1])} m body; no type-level thickness parameter exists`;
+  return (b && P.near(b.size[1], 0.3, 2e-3)) || `a wall retyped to WT-300 (a 0.3 m layer set) keeps its own ${P.fmt(b?.size[1])} m body`;
 });
 t.done();

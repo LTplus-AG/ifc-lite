@@ -81,12 +81,15 @@ export {
   addMaterialLayerSetUsageToStore,
   assignMaterialInStore,
   type MaterialInStoreParams,
+  type MaterialInStoreOptions,
   type MaterialLayerInStoreParams,
   type MaterialLayerSetInStoreParams,
   type MaterialLayerSetBuildResult,
   type MaterialLayerSetUsageInStoreParams,
 } from './material.js';
 export type { OneToManyResult } from './relate.js';
+export { applyLayerThicknessInStore, effectiveLayerSetThickness, typeOccurrencesInStore } from './type-layer-thickness.js';
+export { hostedFillTypeName, typeHostedFillInStore, type HostedFillTypeParams } from './hosted-fill-type.js';
 export { resolveAuthoringAnchor, readRelatedLists, liveEntityType, liveEntityConforms } from './resolve-relations.js';
 export { addSpaceToStore, type SpaceInStoreParams, type SpaceRectangleParams, type SpacePolygonParams, type SpaceBuildResult } from './space.js';
 export {
@@ -115,7 +118,7 @@ export {
   type CostAnchor, type ExistingRelatedList,
 } from './cost.js';
 export { removeCostEntityInStore, type CostRemovalReferrers } from './cost-removal.js';
-export { resolveSpatialAnchor } from './resolve-anchor.js';
+export { resolveSpatialAnchor, resolveBodyContextId } from './resolve-anchor.js';
 export { placedBodyExtent, resolveHostAnchor } from './resolve-host.js';
 export { toNativeLength, fromNativeLength } from './anchor.js';
 export type { SpatialAnchor, HostAnchor, HostBounds, HostKind } from './anchor.js';

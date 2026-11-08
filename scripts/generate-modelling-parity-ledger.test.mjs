@@ -362,3 +362,35 @@ test('ratchet: demoting, removing or renaming a table-stakes row fails', () => {
   assert.deepEqual(ratchet(legacy, base), []);
   assert.ok(ratchet(legacy, score(variants.demoted, RESULTS)).length > 0);
 });
+
+const ROOF = await import(pathToFileURL(join(ROOT, 'tests/modelling-parity/probes/sdk/lib/roof-oracle.mjs')).href);
+/** A closed hexahedron from 8 corners, index = x-bit + 2*y-bit + 4*z-bit, outward-wound. */
+function hexahedron(corner) {
+  const pts = new Float64Array(24);
+  for (let i = 0; i < 8; i++) pts.set(corner(i & 1, (i >> 1) & 1, (i >> 2) & 1), i * 3);
+  const quads = [[0, 2, 3, 1], [4, 5, 7, 6], [0, 1, 5, 4], [2, 6, 7, 3], [0, 4, 6, 2], [1, 3, 7, 5]];
+  return [{ pts, idx: Uint32Array.from(quads.flatMap(([a, b, c, d]) => [a, b, c, a, c, d])) }];
+}
+const FOOT = [[0, 0], [10, 0], [10, 8], [0, 8]];
+const DEG = Math.PI / 180;
+const SHAPES = { hip: [30, 30, 30, 30], gable: [30, 0, 30, 0], mono: [10, 0, 0, 0] };
+
+test('roof oracle: a full-height prism and a flat slab fail every shape; a real mono-pitch plate passes', () => {
+  for (const [shape, deg] of Object.entries(SHAPES)) {
+    const slopes = deg.map((d) => d * DEG), rise = shape === 'mono' ? 8 * Math.tan(10 * DEG) : 4 * Math.tan(30 * DEG);
+    const prism = hexahedron((x, y, z) => [x * 10, y * 8, z * (0.25 + rise)]);
+    const slab = hexahedron((x, y, z) => [x * 10, y * 8, z * 0.25]);
+    for (const [label, parts] of [['prism', prism], ['flat slab', slab]]) {
+      assert.notEqual(ROOF.judgeRoof(parts, { footprint: FOOT, slopes, thickness: 0.25, hip: shape === 'hip' }), true, `${shape} ${label} must fail`);
+    }
+  }
+  // A 0.25 m plate rising at 10° from the y = 0 eave (vertical thickness 0.25 / cos 10°).
+  const t = Math.tan(10 * DEG), tv = 0.25 / Math.cos(10 * DEG);
+  const plate = hexahedron((x, y, z) => [x * 10, y * 8, y * 8 * t + z * tv]);
+  assert.equal(ROOF.judgeRoof(plate, { footprint: FOOT, slopes: SHAPES.mono.map((d) => d * DEG), thickness: 0.25 }), true);
+  // ...and the same plate is not a hip.
+  assert.notEqual(ROOF.judgeRoof(plate, { footprint: FOOT, slopes: SHAPES.hip.map((d) => d * DEG), thickness: 0.25, hip: true }), true);
+  const v = ROOF.analyticVolumes(FOOT, SHAPES.hip.map((d) => d * DEG), 0.25);
+  assert.ok(Math.abs(v.mass - (20 + Math.tan(30 * DEG) * 64 * 22 / 12)) < 0.5, `hip mass volume ${v.mass}`);
+  assert.ok(Math.abs(v.plate - 20 / Math.cos(30 * DEG)) < 0.1, `hip plate volume ${v.plate}`);
+});

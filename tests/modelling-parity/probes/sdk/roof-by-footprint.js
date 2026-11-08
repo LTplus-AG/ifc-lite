@@ -7,7 +7,9 @@
 // 10 x 8 m footprint with a slope per edge, a hip roof (30° on all four edges) rises 4·tan30 =
 // 2.31 m to a 2 m ridge, a gable roof (30° on the long edges) has vertical gable ends, and a
 // mono-pitch roof (10° on one edge) rises 8·tan10 = 1.41 m. The SDK's only live-model roof is
-// addRoof; the probe asks it for each shape with a per-edge slope and measures what it built.
+// addRoof; the probe asks it for each shape with a per-edge slope and judges the meshed roof's
+// sloped surface, corners, centre and volume (lib/roof-oracle.mjs), so a prism of the right
+// height does not pass.
 const P = await import(process.env.PARITY_LIB);
 const t = P.probe(bim, 'roof-by-footprint');
 const S = bim.store, M = t.M, L1 = t.ground();
@@ -26,11 +28,17 @@ for (const [k, s] of Object.entries(shapes)) {
   }));
 }
 const x = await t.exportModel();
+// The surface, eave-to-ridge, corner/centre and volume oracle lives in lib/roof-oracle.mjs so it is
+// unit-tested against a flat slab, a full-height prism (both must fail) and a real sloped plate.
+const { judgeRoof } = await import(new URL('./roof-oracle.mjs', process.env.PARITY_LIB).href);
 for (const [k, s] of Object.entries(shapes)) {
   t.check(`${k} roof by footprint`, () => {
     if (!roofs[k]) return 'addRoof refused the footprint';
     const b = x.bbox(roofs[k]);
-    return (b && P.near(b.size[2] - 0.25, s.rise, 0.05)) || `addRoof built a flat ${P.fmt(b?.size[2])} m slab (rise ${P.fmt(Math.max(0, (b?.size[2] ?? 0.25) - 0.25))} m, expected ${P.fmt(s.rise)}): it has no slope per edge`;
+    const verdict = judgeRoof(x.parts(roofs[k]), { footprint, slopes: s.slopes.map((a) => a * D), thickness: 0.25, hip: k === 'hip' });
+    if (verdict === true) return true;
+    const flat = b && P.near(b.size[2], 0.25, 0.01);
+    return flat ? `addRoof built a flat ${P.fmt(b.size[2])} m slab (expected a ${P.fmt(s.rise)} m rise from per-edge slopes): ${verdict}` : verdict;
   }, { core: k === 'hip' });
 }
 t.done();

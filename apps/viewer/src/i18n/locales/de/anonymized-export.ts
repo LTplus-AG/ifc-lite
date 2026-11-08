@@ -48,7 +48,7 @@ export const anonymizedExportDe = {
   'anonymizedExport.typeCategoryBar.blockedTitle': 'Gesperrt – klicken zum Einschließen',
   'anonymizedExport.typeCategoryBar.includedTitle': 'Enthalten – klicken zum Sperren',
   'anonymizedExport.dialog.title': 'Anonymisierte Teilmenge exportieren',
-  'anonymizedExport.dialog.description': 'Die rechts in der 3D-Ansicht hervorgehobenen Objekte werden exportiert – alle projektidentifizierenden Merkmale entfernt, lokale Transformationen beibehalten.',
+  "anonymizedExport.dialog.description": "Die rechts in der 3D-Ansicht hervorgehobenen Objekte werden exportiert. Nur zur Anonymisierung ausgewählte Kategorien werden anonymisiert; auf Behalten gesetzte Kategorien behalten ihre ursprünglichen Werte. Lokale Transformationen bleiben erhalten.",
   'anonymizedExport.dialog.otherModelSeedsExcluded': {
     one: '{count} ausgewähltes Objekt in anderen Modellen nicht enthalten',
     other: '{count} ausgewählte Objekte in anderen Modellen nicht enthalten',

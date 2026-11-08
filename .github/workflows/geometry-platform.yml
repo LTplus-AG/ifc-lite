@@ -463,6 +463,17 @@ jobs:
           path: ${{ runner.temp }}/cli-retained-engine
           if-no-files-found: error
           retention-days: 3
+      # browser.mjs imports the CLI's compiled retained validator and report
+      # (packages/cli/dist/retained/*.js). The browser corpus job has no Rust
+      # or WASM toolchain to rebuild them, so hand over the dist built above.
+      - name: Keep the built CLI for the browser corpus
+        if: inputs.corpus == true || github.event_name == 'schedule'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: cli-dist
+          path: packages/cli/dist
+          if-no-files-found: error
+          retention-days: 3
       - name: Browser parity and real retained viewer
         id: viewer-retained
         continue-on-error: true
@@ -690,6 +701,10 @@ jobs:
         with:
           name: cli-retained-engine
           path: ${{ runner.temp }}/cli-retained-engine
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: cli-dist
+          path: packages/cli/dist
       - name: Compare the corpus in the browser
         run: |
           node scripts/retained-compare/browser.mjs --engine "$RUNNER_TEMP/cli-retained-engine" \

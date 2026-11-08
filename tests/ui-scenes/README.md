@@ -49,6 +49,12 @@ Pair mode requires equal candidate/reference item-id sets. `--partial`
 allows their intersection for diagnostics, records `partial: true` in the
 key, and makes the tally ineligible for round acceptance.
 
+Changing the scene set therefore invalidates existing reference captures.
+When a PR adds or removes scenes, the next round recaptures `R0-base` and the
+previous accepted round from their kept builds (`~/ui-overhaul/builds/<label>`,
+step 1) with the new `scenes.mjs` before pairing. The builds are frozen, so a
+recapture changes only which states are shown, not the reference itself.
+
 ## Behaviour evidence
 
 Run the full viewer unit suite through root Turbo, e2e (the viewer-e2e

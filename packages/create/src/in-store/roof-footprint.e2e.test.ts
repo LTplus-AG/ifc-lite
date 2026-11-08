@@ -10,13 +10,13 @@
 
 import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { extractPropertiesOnDemand, extractQuantitiesOnDemand } from '@ifc-lite/parser';
 import { IfcAPI, initSync } from '@ifc-lite/wasm';
 import { deriveAuthoredBaseQuantities } from './base-quantities.js';
 import { resolveSlabEditChain } from './edit/slab-edit.js';
 import { addRoofToStore } from './roof.js';
-import { editFootprintRoofInStore, readFootprintRoofInStore, ROOF_FOOTPRINT_PSET } from './roof-footprint.js';
+import { requiredModule } from './__test__/required-module.js';
 import { exportText, newStorey, parse, type Schema } from './wall-join-mesh.oracle.js';
 
 const WASM_PATH = fileURLToPath(new URL('../../../wasm/pkg/ifc-lite_bg.wasm', import.meta.url));
@@ -32,6 +32,10 @@ async function storey(schema: Schema = 'IFC4') {
   return s;
 }
 
+/** Loaded per test, so a revert of the footprint roof fails these assertions rather than this file's load. */
+let f: typeof import('./roof-footprint.js');
+beforeEach(async () => { f = await requiredModule(() => import('./roof-footprint.js'), 'the roof-by-footprint builder exists (#9296)'); });
+
 const roofRecord = (text: string) => /#\d+=IFCROOF\(([^;]*)\);/.exec(text)?.[1] ?? '';
 
 describe('a roof by footprint in a loaded model (#9296 round 3)', () => {
@@ -41,11 +45,11 @@ describe('a roof by footprint in a loaded model (#9296 round 3)', () => {
     expect(built.solidIds).toHaveLength(4);
     const text = exportText(s);
     expect(roofRecord(text)).toMatch(/\.HIP_ROOF\.\s*$/);
-    expect(text).toContain(`'${ROOF_FOOTPRINT_PSET}'`);
+    expect(text).toContain(`'${f.ROOF_FOOTPRINT_PSET}'`);
     const reopened = await parse(text);
     const roofId = reopened.entityIndex.byType.get('IFCROOF')?.[0];
     expect(roofId).toBeDefined();
-    const names = extractPropertiesOnDemand(reopened, roofId!).find((set) => set.name === ROOF_FOOTPRINT_PSET)?.properties.map((p) => p.name);
+    const names = extractPropertiesOnDemand(reopened, roofId!).find((set) => set.name === f.ROOF_FOOTPRINT_PSET)?.properties.map((p) => p.name);
     expect(names?.sort()).toEqual(['EdgeSlopes', 'Footprint', 'Overhang', 'Thickness']);
   });
 
@@ -53,7 +57,7 @@ describe('a roof by footprint in a loaded model (#9296 round 3)', () => {
     const s = await storey();
     const built = addRoofToStore(s.editor, s.anchor, { Position: [0, 0, 0], Width: 6, Depth: 4, Thickness: 0.3 });
     expect(built.solidIds).toBeUndefined();
-    expect(readFootprintRoofInStore(s.store, built.roofId, s.view)).toBeNull();
+    expect(f.readFootprintRoofInStore(s.store, built.roofId, s.view)).toBeNull();
     expect(roofRecord(exportText(s))).toMatch(/\.FLAT_ROOF\.\s*$/);
   });
 
@@ -71,17 +75,17 @@ describe('a roof by footprint in a loaded model (#9296 round 3)', () => {
     const s = await storey();
     const { roofId } = addRoofToStore(s.editor, s.anchor, HIP);
     const placement = s.editor.getNewEntity(roofId)?.attributes[5];
-    editFootprintRoofInStore(s.store, s.editor, roofId, { Edge: { Index: 1, Slope: 0 } });
-    let definition = editFootprintRoofInStore(s.store, s.editor, roofId, { Edge: { Index: 3, Slope: 0 }, Overhang: 0.5 });
+    f.editFootprintRoofInStore(s.store, s.editor, roofId, { Edge: { Index: 1, Slope: 0 } });
+    let definition = f.editFootprintRoofInStore(s.store, s.editor, roofId, { Edge: { Index: 3, Slope: 0 }, Overhang: 0.5 });
     expect(definition.PredefinedType).toBe('GABLE_ROOF');
     expect(definition.EdgeSlopes).toEqual([30 * D, 0, 30 * D, 0]);
-    expect(readFootprintRoofInStore(s.store, roofId, s.view)).toEqual(definition);
+    expect(f.readFootprintRoofInStore(s.store, roofId, s.view)).toEqual(definition);
     const text = exportText(s);
     expect(roofRecord(text)).toMatch(/\.GABLE_ROOF\.\s*$/);
     expect(s.editor.getNewEntity(roofId)?.attributes[5]).toBe(placement);
     // The replaced representation is gone, not orphaned: one product shape for one roof.
     expect(text.match(/IFCPRODUCTDEFINITIONSHAPE\(/g)).toHaveLength(1);
-    definition = readFootprintRoofInStore(s.store, roofId, s.view)!;
+    definition = f.readFootprintRoofInStore(s.store, roofId, s.view)!;
     expect(definition.Overhang).toBe(0.5);
   });
 
@@ -96,11 +100,26 @@ describe('a roof by footprint in a loaded model (#9296 round 3)', () => {
   it('an edit leaves no orphaned planes behind: only the new ones are exported (#9356 review)', async () => {
     const s = await storey();
     const { roofId } = addRoofToStore(s.editor, s.anchor, HIP);
-    editFootprintRoofInStore(s.store, s.editor, roofId, { EdgeSlopes: [30 * D, 0, 30 * D, 0] });
-    editFootprintRoofInStore(s.store, s.editor, roofId, { Overhang: 0.4 });
+    f.editFootprintRoofInStore(s.store, s.editor, roofId, { EdgeSlopes: [30 * D, 0, 30 * D, 0] });
+    f.editFootprintRoofInStore(s.store, s.editor, roofId, { Overhang: 0.4 });
     const text = exportText(s);
     expect(text.match(/IFCEXTRUDEDAREASOLID\(/g)).toHaveLength(2);
     expect(text.match(/IFCSHAPEREPRESENTATION\('?#?\d*'?[^;]*'Body'/g)).toHaveLength(1);
+  });
+
+  it('an edit keeps a styled roof styled: each new plane takes the old planes\' style (#9356 review)', async () => {
+    const s = await storey();
+    const built = addRoofToStore(s.editor, s.anchor, HIP);
+    expect(built.solidIds).toHaveLength(4);
+    const style = s.editor.addEntity('IfcSurfaceStyle', ['Tiles', '.BOTH.', []]).expressId;
+    for (const solid of built.solidIds ?? []) s.editor.addEntity('IfcStyledItem', [`#${solid}`, [`#${style}`], null]);
+    f.editFootprintRoofInStore(s.store, s.editor, built.roofId, { EdgeSlopes: [30 * D, 0, 30 * D, 0] });
+    const text = exportText(s);
+    const solids = [...text.matchAll(/#(\d+)=IFCEXTRUDEDAREASOLID\(/g)].map((m) => m[1]);
+    const styled = [...text.matchAll(/IFCSTYLEDITEM\(#(\d+),\(#(\d+)\)/g)].map((m) => [m[1], m[2]]);
+    expect(solids).toHaveLength(2);
+    expect(styled.map(([item]) => item).sort()).toEqual([...solids].sort());
+    expect(new Set(styled.map(([, used]) => used)).size).toBe(1);
   });
 
   it('a closed outline with only an overhang counts one slope per edge (#9356 review)', async () => {
@@ -108,7 +127,7 @@ describe('a roof by footprint in a loaded model (#9296 round 3)', () => {
     const { roofId } = addRoofToStore(s.editor, s.anchor, {
       Profile: 'polygon', OuterCurve: [[0, 0], [6, 0], [6, 4], [0, 4], [0, 0]], Thickness: 0.2, Overhang: 0.3,
     });
-    const definition = readFootprintRoofInStore(s.store, roofId, s.view)!;
+    const definition = f.readFootprintRoofInStore(s.store, roofId, s.view)!;
     expect(definition.Footprint).toHaveLength(4);
     expect(definition.EdgeSlopes).toEqual([0, 0, 0, 0]);
     expect(definition.PredefinedType).toBe('FLAT_ROOF');
@@ -123,7 +142,7 @@ describe('a roof by footprint in a loaded model (#9296 round 3)', () => {
     const s = await storey();
     const { roofId } = addRoofToStore(s.editor, s.anchor, HIP);
     const journal = s.view.getMutations().length;
-    expect(() => editFootprintRoofInStore(s.store, s.editor, roofId, patch as never)).toThrow(reason);
+    expect(() => f.editFootprintRoofInStore(s.store, s.editor, roofId, patch as never)).toThrow(reason);
     expect(s.view.getMutations()).toHaveLength(journal);
   });
 
@@ -133,15 +152,15 @@ describe('a roof by footprint in a loaded model (#9296 round 3)', () => {
     // Property sets written from the overlay take a fresh GlobalId on every export.
     const data = () => { const text = exportText(s); return text.slice(text.indexOf('DATA;')).replace(/'[0-9A-Za-z_$]{22}'/g, "'guid'"); };
     const before = data();
-    expect(() => editFootprintRoofInStore(s.store, s.editor, roofId, { Edge: { Index: 0, Slope: 30 } })).toThrow(/slopes are radians/);
-    expect(() => editFootprintRoofInStore(s.store, s.editor, roofId, { Edge: { Index: 7, Slope: 0 } })).toThrow(/Edge.Index/);
+    expect(() => f.editFootprintRoofInStore(s.store, s.editor, roofId, { Edge: { Index: 0, Slope: 30 } })).toThrow(/slopes are radians/);
+    expect(() => f.editFootprintRoofInStore(s.store, s.editor, roofId, { Edge: { Index: 7, Slope: 0 } })).toThrow(/Edge.Index/);
     expect(data()).toBe(before);
   });
 
   it('refuses to edit a roof that is not one by footprint', async () => {
     const s = await storey();
     const { roofId } = addRoofToStore(s.editor, s.anchor, { Position: [0, 0, 0], Width: 6, Depth: 4, Thickness: 0.3 });
-    expect(() => editFootprintRoofInStore(s.store, s.editor, roofId, { Overhang: 1 })).toThrow(/not a roof by footprint/);
+    expect(() => f.editFootprintRoofInStore(s.store, s.editor, roofId, { Overhang: 1 })).toThrow(/not a roof by footprint/);
   });
 
   it('refuses a footprint it cannot roof, before writing anything', async () => {
@@ -156,7 +175,7 @@ describe('a roof by footprint in a loaded model (#9296 round 3)', () => {
   it('a millimetre model gets its planes in millimetres', async () => {
     const s = await storey();
     const { roofId } = addRoofToStore(s.editor, { ...s.anchor, lengthUnitScale: 0.001 }, HIP);
-    const definition = readFootprintRoofInStore(s.store, roofId, s.view)!;
+    const definition = f.readFootprintRoofInStore(s.store, roofId, s.view)!;
     // The definition stays in metres; only the emitted geometry is native.
     expect(definition.Footprint).toEqual([[0, 0], [10, 0], [10, 8], [0, 8]]);
     const depths = [...exportText(s).matchAll(/IFCEXTRUDEDAREASOLID\([^;]*,([\d.E+-]+)\);/g)].map((m) => Number(m[1]));

@@ -121,6 +121,7 @@ function normaliseFootprint(outline: ReadonlyArray<readonly [number, number]>, s
       }
     }
   }
+  if (Math.abs(signedArea(points)) <= tol * size) throw new Error('The footprint encloses no area');
   let edges = points.map((_, i) => i);
   let s = [...slopes];
   if (signedArea(points) < 0) {

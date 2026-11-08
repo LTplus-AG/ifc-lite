@@ -10,17 +10,22 @@
  * values the parity probe asks for (10 × 8 m: hip and gable 4·tan30, mono 8·tan10).
  */
 
-import { describe, expect, it } from 'vitest';
-import { heightAt, planFootprintRoof, roofShapeType, signedArea, type FootprintRoofPlan, type PlanPoint } from './roof-footprint-plan.js';
+import { beforeEach, describe, expect, it } from 'vitest';
+import type { FootprintRoofPlan, PlanPoint } from './roof-footprint-plan.js';
+import { requiredModule } from './__test__/required-module.js';
+
+/** Loaded per test, so a revert of the planner fails these assertions rather than this file's load. */
+let m: typeof import('./roof-footprint-plan.js');
+beforeEach(async () => { m = await requiredModule(() => import('./roof-footprint-plan.js'), 'the roof-by-footprint planner exists (#9296)'); });
 
 const D = Math.PI / 180;
 const RECT: PlanPoint[] = [[0, 0], [10, 0], [10, 8], [0, 8]];
-const planArea = (plan: FootprintRoofPlan) => plan.planes.reduce((sum, p) => sum + signedArea(p.outline), 0);
-const slopedArea = (plan: FootprintRoofPlan) => plan.planes.reduce((sum, p) => sum + signedArea(p.outline) / Math.cos(p.slope), 0);
+const planArea = (plan: FootprintRoofPlan) => plan.planes.reduce((sum, p) => sum + m.signedArea(p.outline), 0);
+const slopedArea = (plan: FootprintRoofPlan) => plan.planes.reduce((sum, p) => sum + m.signedArea(p.outline) / Math.cos(p.slope), 0);
 
 /** Every corner shared in plan by two planes has one height: the roof has no step. */
 function expectWatertight(plan: FootprintRoofPlan) {
-  const corners = plan.planes.flatMap((plane) => plane.outline.map((p) => ({ p, z: heightAt(plane, p) })));
+  const corners = plan.planes.flatMap((plane) => plane.outline.map((p) => ({ p, z: m.heightAt(plane, p) })));
   for (const a of corners) {
     for (const b of corners) {
       if (Math.hypot(a.p[0] - b.p[0], a.p[1] - b.p[1]) < 1e-7) expect(Math.abs(a.z - b.z)).toBeLessThan(1e-7);
@@ -30,7 +35,7 @@ function expectWatertight(plan: FootprintRoofPlan) {
 
 describe('planFootprintRoof (#9296 round 3)', () => {
   it('a hip roof on 10 × 8 m at 30° rises 4·tan30 to a 2 m ridge, in four planes tiling the footprint', () => {
-    const plan = planFootprintRoof(RECT, [30 * D, 30 * D, 30 * D, 30 * D], 0);
+    const plan = m.planFootprintRoof(RECT, [30 * D, 30 * D, 30 * D, 30 * D], 0);
     expect(plan.shapeType).toBe('HIP_ROOF');
     expect(plan.planes).toHaveLength(4);
     expect(plan.rise).toBeCloseTo(4 * Math.tan(30 * D), 9);
@@ -42,16 +47,16 @@ describe('planFootprintRoof (#9296 round 3)', () => {
   });
 
   it('a gable roof slopes its long edges and stops on vertical gable ends', () => {
-    const plan = planFootprintRoof(RECT, [30 * D, 0, 30 * D, 0], 0);
+    const plan = m.planFootprintRoof(RECT, [30 * D, 0, 30 * D, 0], 0);
     expect(plan.shapeType).toBe('GABLE_ROOF');
     expect(plan.planes.map((p) => p.edge)).toEqual([0, 2]);
     expect(plan.rise).toBeCloseTo(4 * Math.tan(30 * D), 9);
-    for (const plane of plan.planes) expect(signedArea(plane.outline)).toBeCloseTo(40, 9);
+    for (const plane of plan.planes) expect(m.signedArea(plane.outline)).toBeCloseTo(40, 9);
     expectWatertight(plan);
   });
 
   it('a mono-pitch roof rises across the whole depth to its high side', () => {
-    const plan = planFootprintRoof(RECT, [10 * D, 0, 0, 0], 0);
+    const plan = m.planFootprintRoof(RECT, [10 * D, 0, 0, 0], 0);
     expect(plan.shapeType).toBe('SHED_ROOF');
     expect(plan.planes).toHaveLength(1);
     expect(plan.rise).toBeCloseTo(8 * Math.tan(10 * D), 9);
@@ -59,25 +64,25 @@ describe('planFootprintRoof (#9296 round 3)', () => {
   });
 
   it('the FZK-Haus gable (12 × 10 m, 30°, 0.5 m overhang) has the reference model\'s 165.12 m² of roof', () => {
-    const plan = planFootprintRoof([[0, 0], [12, 0], [12, 10], [0, 10]], [30 * D, 0, 30 * D, 0], 0.5);
+    const plan = m.planFootprintRoof([[0, 0], [12, 0], [12, 10], [0, 10]], [30 * D, 0, 30 * D, 0], 0.5);
     expect(slopedArea(plan)).toBeCloseTo(165.12, 2);
     // Eaves drop with their plane; gable ends carry the rake out as far.
     const all = plan.planes.flatMap((p) => p.outline);
     expect(Math.min(...all.map((p) => p[0]))).toBeCloseTo(-0.5, 9);
-    expect(Math.min(...plan.planes.flatMap((plane) => plane.outline.map((p) => heightAt(plane, p))))).toBeCloseTo(-0.5 * Math.tan(30 * D), 9);
+    expect(Math.min(...plan.planes.flatMap((plane) => plane.outline.map((p) => m.heightAt(plane, p))))).toBeCloseTo(-0.5 * Math.tan(30 * D), 9);
     expect(plan.rise).toBeCloseTo(5 * Math.tan(30 * D), 9);
   });
 
   it('a convex footprint with a different slope per edge is the lower envelope of its planes', () => {
     const hexagon: PlanPoint[] = [[0, 0], [6, -1], [10, 2], [9, 7], [3, 8], [-1, 4]];
     const slopes = [20, 45, 30, 35, 25, 50].map((a) => a * D);
-    const plan = planFootprintRoof(hexagon, slopes, 0);
-    expect(planArea(plan)).toBeCloseTo(signedArea(hexagon), 9);
+    const plan = m.planFootprintRoof(hexagon, slopes, 0);
+    expect(planArea(plan)).toBeCloseTo(m.signedArea(hexagon), 9);
     const all = plan.planes.map((p) => p);
     for (const plane of plan.planes) {
       for (const p of plane.outline) {
-        const own = heightAt(plane, p);
-        for (const other of all) expect(heightAt(other, p)).toBeGreaterThanOrEqual(own - 1e-7);
+        const own = m.heightAt(plane, p);
+        for (const other of all) expect(m.heightAt(other, p)).toBeGreaterThanOrEqual(own - 1e-7);
       }
     }
     expectWatertight(plan);
@@ -93,47 +98,47 @@ describe('planFootprintRoof (#9296 round 3)', () => {
     ['a stepped outline', [[0, 0], [9, 0], [9, 3], [6, 3], [6, 6], [3, 6], [3, 9], [0, 9]] as PlanPoint[], Array(8).fill(1), 3],
   ])('rectilinear: %s tiles its footprint and reaches its widest wing\'s ridge', (_name, footprint, flags, halfWidth) => {
     const slopes = flags.map((f) => f * 45 * D);
-    const plan = planFootprintRoof(footprint, slopes, 0);
-    expect(planArea(plan)).toBeCloseTo(signedArea(footprint), 9);
+    const plan = m.planFootprintRoof(footprint, slopes, 0);
+    expect(planArea(plan)).toBeCloseTo(m.signedArea(footprint), 9);
     expect(plan.rise).toBeCloseTo(halfWidth, 9);
-    for (const plane of plan.planes) for (const p of plane.outline) expect(heightAt(plane, p)).toBeGreaterThanOrEqual(-1e-9);
+    for (const plane of plan.planes) for (const p of plane.outline) expect(m.heightAt(plane, p)).toBeGreaterThanOrEqual(-1e-9);
     expectWatertight(plan);
   });
 
   it('an L hip with an overhang keeps its eaves level and its valley at the inside corner', () => {
     const footprint: PlanPoint[] = [[0, 0], [10, 0], [10, 4], [6, 4], [6, 10], [0, 10]];
-    const plan = planFootprintRoof(footprint, footprint.map(() => 30 * D), 0.4);
+    const plan = m.planFootprintRoof(footprint, footprint.map(() => 30 * D), 0.4);
     const eaveHeight = -0.4 * Math.tan(30 * D);
-    for (const plane of plan.planes) for (const p of plane.outline) expect(heightAt(plane, p)).toBeGreaterThanOrEqual(eaveHeight - 1e-9);
-    expect(planArea(plan)).toBeCloseTo(signedArea(plan.eaves), 9);
+    for (const plane of plan.planes) for (const p of plane.outline) expect(m.heightAt(plane, p)).toBeGreaterThanOrEqual(eaveHeight - 1e-9);
+    expect(planArea(plan)).toBeCloseTo(m.signedArea(plan.eaves), 9);
     expectWatertight(plan);
   });
 
   it('a clockwise footprint gives the same roof, with each plane named by the caller\'s edge', () => {
     const cw = [...RECT].reverse();
     // Reversed, the caller's edge 0 runs (0,8)→(10,8): slope it and the opposite edge.
-    const plan = planFootprintRoof(cw, [30 * D, 0, 30 * D, 0], 0);
+    const plan = m.planFootprintRoof(cw, [30 * D, 0, 30 * D, 0], 0);
     expect(plan.planes.map((p) => p.edge).sort()).toEqual([0, 2]);
     expect(plan.rise).toBeCloseTo(4 * Math.tan(30 * D), 9);
   });
 
   it('a point on a straight run with one slope is one edge', () => {
-    const plan = planFootprintRoof([[0, 0], [5, 0], [10, 0], [10, 8], [0, 8]], [30 * D, 30 * D, 0, 30 * D, 0], 0);
+    const plan = m.planFootprintRoof([[0, 0], [5, 0], [10, 0], [10, 8], [0, 8]], [30 * D, 30 * D, 0, 30 * D, 0], 0);
     expect(plan.planes).toHaveLength(2);
     expect(plan.shapeType).toBe('GABLE_ROOF');
   });
 
   it('a gable end split into two collinear edges is still a gable roof (#9356 review)', () => {
-    const plan = planFootprintRoof([[0, 0], [10, 0], [10, 4], [10, 8], [0, 8]], [0.5, 0, 0, 0.5, 0], 0);
+    const plan = m.planFootprintRoof([[0, 0], [10, 0], [10, 4], [10, 8], [0, 8]], [0.5, 0, 0, 0.5, 0], 0);
     expect(plan.shapeType).toBe('GABLE_ROOF');
     expect(plan.planes).toHaveLength(2);
   });
 
   it('no sloped edge is a flat roof over the eaves', () => {
-    const plan = planFootprintRoof(RECT, [0, 0, 0, 0], 0.5);
+    const plan = m.planFootprintRoof(RECT, [0, 0, 0, 0], 0.5);
     expect(plan.shapeType).toBe('FLAT_ROOF');
     expect(plan.planes).toHaveLength(0);
-    expect(signedArea(plan.eaves)).toBeCloseTo(11 * 9, 9);
+    expect(m.signedArea(plan.eaves)).toBeCloseTo(11 * 9, 9);
   });
 
   it.each([
@@ -146,15 +151,16 @@ describe('planFootprintRoof (#9296 round 3)', () => {
     ['unequal slopes at an inside corner under an overhang', [[0, 0], [10, 0], [10, 4], [6, 4], [6, 10], [0, 10]] as PlanPoint[], [0.5, 0.5, 0.3, 0.5, 0.5, 0.5], 0.2, /inside corner need/],
     ['collinear edges with different slopes', [[0, 0], [5, 0], [10, 0], [10, 8], [0, 8]] as PlanPoint[], [0.5, 0.3, 0, 0.5, 0], 0, /in line but have different slopes/],
     ['a negative overhang', RECT, [0.5, 0.5, 0.5, 0.5], -1, /Overhang/],
+    ['a footprint with no area (#9356 review)', [[0, 0], [5, 0], [10, 0]] as PlanPoint[], [0, 0, 0], 0, /encloses no area/],
   ])('refuses %s with a reason', (_name, footprint, slopes, overhang, reason) => {
-    expect(() => planFootprintRoof(footprint, slopes, overhang)).toThrow(reason);
+    expect(() => m.planFootprintRoof(footprint, slopes, overhang)).toThrow(reason);
   });
 
   it('names the predefined type from the slopes alone', () => {
-    expect(roofShapeType([0, 0, 0])).toBe('FLAT_ROOF');
-    expect(roofShapeType([1, 0, 0, 0])).toBe('SHED_ROOF');
-    expect(roofShapeType([1, 0, 1, 0])).toBe('GABLE_ROOF');
-    expect(roofShapeType([1, 1, 1, 1])).toBe('HIP_ROOF');
-    expect(roofShapeType([1, 1, 0, 0])).toBe('FREEFORM');
+    expect(m.roofShapeType([0, 0, 0])).toBe('FLAT_ROOF');
+    expect(m.roofShapeType([1, 0, 0, 0])).toBe('SHED_ROOF');
+    expect(m.roofShapeType([1, 0, 1, 0])).toBe('GABLE_ROOF');
+    expect(m.roofShapeType([1, 1, 1, 1])).toBe('HIP_ROOF');
+    expect(m.roofShapeType([1, 1, 0, 0])).toBe('FREEFORM');
   });
 });

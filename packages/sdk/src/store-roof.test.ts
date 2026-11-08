@@ -9,9 +9,19 @@ import { IfcParser } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor, undoRecordedMutationOperations } from '@ifc-lite/mutations';
 import { StepExporter } from '@ifc-lite/export';
 import { createRecordedModellingBackend } from './headless/headless-backend-modelling.js';
-import { createRecordedRoofBackend } from './headless/headless-backend-roof.js';
 import { StoreNamespace } from './namespaces/store.js';
 import type { BimBackend } from './types.js';
+
+/** Loaded in the test, so a revert fails an assertion here rather than this file's load (#8890). */
+async function roofBackend() {
+  try {
+    return await import('./headless/headless-backend-roof.js');
+  } catch (error) {
+    // Only a missing module becomes the assertion below; anything else is a real failure.
+    if (!(error instanceof Error) || !/Failed to load url|Cannot find module|ERR_MODULE_NOT_FOUND|does not exist/.test(error.message)) throw error;
+    return undefined;
+  }
+}
 
 const SAMPLE = new URL('../../../apps/viewer/public/samples/hello-wall.ifc', import.meta.url);
 const STOREY = 42;
@@ -26,9 +36,12 @@ async function model() {
     if (modelId !== 'm') throw new Error('Unknown model');
     return { modelId, store, editor, mutationView: view, ownerHistoryId: null };
   };
-  const methods = { ...createRecordedModellingBackend(resolve), ...createRecordedRoofBackend(resolve) };
+  const roof = await roofBackend();
+  expect(roof, 'the headless roof edit backend exists (#9296)').toBeDefined();
+  const methods = { ...createRecordedModellingBackend(resolve), ...roof?.createRecordedRoofBackend(resolve) };
   // The public namespace over just the store methods this test exercises.
   const bim = new StoreNamespace({ store: methods } as unknown as BimBackend);
+  expect(typeof bim.editRoof, 'bim.store.editRoof exists (#9296)').toBe('function');
   const exported = () => new TextDecoder().decode(new StepExporter(store, view).export({ schema: 'IFC4', applyMutations: true }).content);
   return { view, bim, exported };
 }

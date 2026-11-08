@@ -32,7 +32,11 @@ edit revision, model-wide, per relationship and per type, as an answer always wa
 bounded work the read no longer does, so it was then raised to 131,072 rows: Holter (80,276)
 and BWK (92,432) now answer, with a first read of about 0.1 s through the graph, and answers
 matching a full read by probed digest. A store the graph cannot vouch for still reads every
-row (about 45 us each), which is what the bound now caps.
+row (about 45 us each), which is what the bound now caps. One store is not covered by that:
+the one the viewer shows at spatial-ready time has typing edges but no definition edges yet,
+and the panel reads synchronously in render, so a first click there read every definition
+relationship from source (Holter 1.6 s, slower than base's refusal). Past 65,536 rows that
+store now refuses as still loading without reading a relationship; the full store answers.
 
 ## Right-sized in-circle scratch restores the large instruction ceiling (#9016)
 

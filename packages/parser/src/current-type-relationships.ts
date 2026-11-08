@@ -12,7 +12,8 @@
  *
  *   - the graph cannot vouch for it: an edit touched it, the session created
  *     it, the parser recorded no edge for it (a record the byte reader could
- *     not use, or a store whose graph is not complete yet), or it is a
+ *     not use, or a store whose graph is not complete yet: the early store, which
+ *     refuses as still loading past LOADING_ROW_LIMIT rows), or it is a
  *     definition set naming something other than a definition (see
  *     readGraphFacts). These are read once per revision, so they keep refusing
  *     for the whole model as they always did;
@@ -47,6 +48,17 @@ import { getInheritanceChain, normalizeIfcTypeName } from './ifc-schema.js';
  */
 const MAX_RELATIONSHIPS = 131_072;
 const MAX_RELATION_REFERENCES = 262_144;
+/**
+ * The row bound before #9192 raised it, kept for the store emitted before the definition edges
+ * exist. The viewer makes that store active at spatial-ready time (`onSpatialReady`) while property
+ * parsing goes on; its graph has typing edges but no definition edges, so every definition
+ * relationship there is read from source. The Properties panel runs this walk synchronously in
+ * render (useInheritedTypeQuantities), on the UI thread. Past this many rows that store refuses as
+ * still loading, without reading a relationship, and the full store answers once it replaces it.
+ * Measured there on a first selection: Holter 1.6-1.7 s and BWK 1.6 s to answer, against 1.3-1.4 s
+ * and 1.1-1.2 s for the refusal at this bound before #9192. Below it the early store still answers.
+ */
+const LOADING_ROW_LIMIT = 65_536;
 
 export class CurrentQuantityRefusal extends Error {}
 
@@ -96,6 +108,8 @@ interface GraphFacts {
     counts: Map<number, number>;
     /** Definition relationships with an edge from something that is not a property definition. */
     irregular: Set<number>;
+    /** Whether the graph holds any definition edge: the store emitted at spatial-ready time has none. */
+    definitionEdges: boolean;
 }
 const graphFacts = new WeakMap<RelationshipEdges, GraphFacts>();
 
@@ -123,6 +137,7 @@ function readGraphFacts(store: IfcDataStore, edges: RelationshipEdges): GraphFac
     const count = (id: number) => { counts.set(id, (counts.get(id) ?? 0) + 1); };
     const mark = (id: number) => { irregular.add(id); };
     const classes = new Map<string, boolean>();
+    let definitionEdges = false;
     for (const [source, offset] of edges.offsets) {
         const end = offset + (edges.counts.get(source) ?? 0);
         let definition: boolean | undefined;
@@ -131,12 +146,13 @@ function readGraphFacts(store: IfcDataStore, edges: RelationshipEdges): GraphFac
             if (kind === RelationshipType.DefinesByType) {
                 eachRelationship(edge, count);
             } else if (kind === RelationshipType.DefinesByProperties) {
+                definitionEdges = true;
                 definition ??= hasAncestor(store, source, 'IfcPropertySetDefinition', classes);
                 eachRelationship(edge, definition ? count : (id) => { count(id); mark(id); });
             }
         }
     }
-    const facts = { counts, irregular };
+    const facts = { counts, irregular, definitionEdges };
     graphFacts.set(edges, facts);
     return facts;
 }
@@ -164,6 +180,24 @@ export interface CurrentTypeRelationships {
 }
 
 /**
+ * A graph with edges but no definition edge, on a model with definition relationships, is the
+ * store emitted before property parsing finished: every definition relationship would be read from
+ * source. Past LOADING_ROW_LIMIT rows that read is refused until the full store arrives, as main
+ * refused every model past that bound. Counts rows only; reads no relationship.
+ */
+function refuseWhileDefinitionsLoad(store: IfcDataStore, view: MetadataReadView): void {
+    let rows = 0;
+    let definitions = false;
+    for (const row of iterateEffectiveEntities(store, view, ['IfcRelDefinesByType', 'IfcRelDefinesByProperties'])) {
+        rows++;
+        if (row.type === 'IFCRELDEFINESBYPROPERTIES') definitions = true;
+        if (rows > LOADING_ROW_LIMIT && definitions) {
+            throw new CurrentQuantityRefusal(`Native type relationships are still loading (more than ${LOADING_ROW_LIMIT} relationships)`);
+        }
+    }
+}
+
+/**
  * Walk the effective rows (no source read) and read only what the graph cannot
  * vouch for. Refuses, as a whole, on what makes the model's relationships
  * unusable: too many rows, too many references, or an unreadable row of those read.
@@ -172,6 +206,9 @@ export function resolveCurrentTypeRelationships(store: IfcDataStore, view: Metad
     const graph = store.relationships;
     const facts = store.source?.length && graph ? readGraphFacts(store, graph.forward) : undefined;
     const counts = facts?.counts;
+    // The early store's graph is the hierarchy graph: edges, but none for definitions. A store
+    // with no graph at all is not that store; it reads every row, within MAX_RELATIONSHIPS.
+    if (facts && !facts.definitionEdges && graph.forward.edgeTypes.length > 0) refuseWhileDefinitionsLoad(store, view);
     const retypes = view.getTypeMutations?.();
     // A definition deleted or retyped by an edit drops out of the sets naming it, so the graph
     // over-counts those relationships, as it does every definition relationship of a view that
@@ -243,7 +280,7 @@ export function resolveCurrentTypeRelationships(store: IfcDataStore, view: Metad
             const relation = readOnce(next.id);
             if (relation) referenceCount += relation.members.length * relation.targets.length;
         }
-        if (referenceCount > MAX_RELATION_REFERENCES) throw new CurrentQuantityRefusal(`Native type relationship references exceed the read limit of ${MAX_RELATION_REFERENCES}`);
+        if (referenceCount > MAX_RELATION_REFERENCES) throw new CurrentQuantityRefusal(`Native type relationship references exceed the read limit of ${MAX_RELATION_REFERENCES} references`);
     }
 
     const lookup = (edited: Map<number, Contribution[]>, type: RelationshipType) => {

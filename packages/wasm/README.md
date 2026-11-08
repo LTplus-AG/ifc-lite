@@ -184,7 +184,7 @@ All classes implement `free()` and `[Symbol.dispose]()` — call `free()` (or us
 `@ifc-lite/wasm/core` is the same engine built without the exporters, LandXML,
 clash detection, point-cloud scan operations and PDF underlays
 (`--no-default-features` on `rust/wasm-bindings`; the `full` feature is
-everything else). Its binary is `@ifc-lite/wasm/core_bg.wasm`. Meshing goes
+everything else). Its binary is `pkg-core/ifc-lite_bg.wasm`, which the core glue exports as `ENGINE_BINARY_URL`. Meshing goes
 through the same code, so meshes are byte-identical
 (`scripts/check-wasm-core-identity.mjs`). It is meant to replace
 `@ifc-lite/wasm` wholesale through an exact bundler alias, so that

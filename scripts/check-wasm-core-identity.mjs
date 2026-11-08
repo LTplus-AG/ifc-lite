@@ -122,11 +122,13 @@ for (const file of files) {
   const fullApi = new full.glue.IfcAPI(), coreApi = new core.glue.IfcAPI();
   const a = mesh(fullApi, content), b = mesh(coreApi, content);
   fullApi.free(); coreApi.free();
-  const ok = JSON.stringify(a) === JSON.stringify(b);
-  if (ok) same++; else differ++;
+  // A fixture that fails on both engines is not identity evidence, whatever
+  // the messages say: count it apart, never as identical.
+  const ok = !(a.error && b.error) && JSON.stringify(a) === JSON.stringify(b);
+  if (a.error && b.error) { /* counted in failedBoth below */ } else if (ok) same++; else differ++;
   if (!a.error && a.meshes > 0) meshed++;
   if (a.error && b.error) failedBoth++;
-  if (!ok) console.log(`DIFF ${relative(ROOT, file)} full=${JSON.stringify(a)} core=${JSON.stringify(b)}`);
+  if (!ok && !(a.error && b.error)) console.log(`DIFF ${relative(ROOT, file)} full=${JSON.stringify(a)} core=${JSON.stringify(b)}`);
 }
 console.log(`identity: ${same} identical, ${differ} different, ${meshed} with meshes, ${failedBoth} failing on both, of ${files.length} fixtures`);
 // Identical errors compare equal, so a run in which nothing meshed proves

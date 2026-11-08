@@ -753,6 +753,8 @@ imports, in the page and in its workers:
 <!-- docs-check: skip -->
 ```ts
 // vite.config.ts (applies to worker bundles too)
+import { defineConfig } from 'vite';
+
 export default defineConfig({
   resolve: {
     alias: [{ find: /^@ifc-lite\/wasm$/, replacement: '@ifc-lite/wasm/core' }],
@@ -765,8 +767,9 @@ export default defineConfig({
 ```
 
 A page that passes explicit `wasmUrls: { wasm }` (see the geometry README's
-Vite setup) must point that URL at the core binary too,
-`@ifc-lite/wasm/core_bg.wasm?url`: an explicit URL wins over the glue's own,
+Vite setup) must point that URL at the core binary too, for example
+`ENGINE_BINARY_URL.href` imported from `@ifc-lite/wasm/core`: an explicit URL
+wins over the glue's own,
 and the alias does not rewrite the `ifc-lite_bg.wasm` subpath. Match the bare
 specifier only: `@ifc-lite/wasm/diff` and the other subpaths
 must keep resolving to themselves. The core engine is typed with the full engine's

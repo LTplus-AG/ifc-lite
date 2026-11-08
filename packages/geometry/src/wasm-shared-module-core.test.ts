@@ -43,16 +43,21 @@ describe('shared wasm module under the geometry-core engine', () => {
     expect(exports.answer()).toBe(7);
   });
 
-  it('main-thread init options resolve to the same core binary memo', async () => {
-    let requests = 0;
-    vi.stubGlobal('fetch', async () => {
-      requests++;
+  it('main-thread init options resolve to the core binary, one fetch per binary', async () => {
+    const requested: string[] = [];
+    vi.stubGlobal('fetch', async (input: RequestInfo | URL) => {
+      requested.push(String(input));
       return new Response(answerBytes, { headers: { 'Content-Type': 'application/wasm' } });
     });
-    const options = await prepareSharedWasmInit(undefined, 'https://course.test/assets/worker.js');
-    if (!options) throw new Error('core binary produced no init options');
-    expect(await options.module_or_path).toBeInstanceOf(WebAssembly.Module);
-    // Joined the first test's compile of CORE_BINARY: one binary, one fetch.
-    expect(requests).toBe(0);
+    const first = await prepareSharedWasmInit(undefined, 'https://course.test/assets/worker.js');
+    const second = await prepareSharedWasmInit(undefined, 'https://course.test/assets/worker.js');
+    if (!first || !second) throw new Error('core binary produced no init options');
+    const [a, b] = await Promise.all([first.module_or_path, second.module_or_path]);
+    expect(a).toBeInstanceOf(WebAssembly.Module);
+    expect(b).toBe(a);
+    // Fetched at most once, and never anything but the core binary (the
+    // first test may already have compiled it in this file's memo).
+    expect(requested.length).toBeLessThanOrEqual(1);
+    expect(requested.every((url) => url === CORE_BINARY)).toBe(true);
   });
 });

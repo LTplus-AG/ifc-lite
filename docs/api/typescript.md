@@ -590,6 +590,26 @@ class MergedExporter {
 
 Spatial matching is tunable per container type via `mergeSites` / `mergeBuildings` (`'single' | 'by-name'`) and `mergeStoreys` (`'by-name' | 'by-elevation' | 'by-name-then-elevation'`).
 
+### renumberStepIds
+
+Give every entity instance of a STEP file a new `#id` from a seeded permutation and rewrite every reference to match. Only `#digits` tokens outside string literals and comments change, so `'Room #205'` survives, and the HEADER is copied as is. Useful for teaching that `#id`s are file-local (GlobalIds stay), and for test corpora that must not depend on `#id` values or instance order.
+
+```typescript
+import { renumberStepIds } from '@ifc-lite/export';
+import { readFileSync } from 'node:fs';
+
+let seed = 42;
+const random = () => {
+  seed = (seed * 1103515245 + 12345) % 2147483648;
+  return seed / 2147483648;
+};
+
+const source = readFileSync('model.ifc', 'latin1');
+const { text, idMap, danglingReferences } = renumberStepIds(source, { random, reorder: true });
+// idMap: old #id -> new #id. New ids are 1..n, skipping any id a dangling reference uses.
+console.log(idMap.size, danglingReferences.length, text.length);
+```
+
 ### ParquetExporter
 
 Creates a `.bos` archive (ZIP of Parquet files) from a parsed store, optionally with geometry buffers.

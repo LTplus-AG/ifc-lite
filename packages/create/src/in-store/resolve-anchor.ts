@@ -12,7 +12,7 @@
  * IfcLocalPlacement.
  */
 
-import { EntityExtractor, resolveEffectiveEntityRecord, type EffectiveEntityRecord, type IfcDataStore, type SchemaEntityNameSnapshot } from '@ifc-lite/parser';
+import { createSchemaEntityNameSnapshot, EntityExtractor, getSchemaRegistryForVersion, resolveEffectiveEntityRecord, type EffectiveEntityRecord, type IfcDataStore, type SchemaEntityNameSnapshot } from '@ifc-lite/parser';
 import { iterateEffectiveEntityIds, type MutablePropertyView } from '@ifc-lite/mutations';
 import type { SpatialAnchor, SpatialAnchorSchema } from './anchor.js';
 import { safeLengthUnitScale } from './length-unit-scale.js';
@@ -89,7 +89,7 @@ export class AnchorEntityReader {
   constructor(
     private readonly store: IfcDataStore | null,
     private readonly view: MutablePropertyView | null | undefined,
-    private readonly schemaNames?: SchemaEntityNameSnapshot,
+    private schemaNames?: SchemaEntityNameSnapshot,
   ) {
     this.extractor = store && store.source.byteLength > 0 ? new EntityExtractor(store.source) : null;
   }
@@ -151,6 +151,8 @@ export class AnchorEntityReader {
     const source = ref && this.extractor ? this.extractor.extractEntity(ref) : null;
     const entity = created ?? source;
     if (!entity) return null;
+    const schema = this.store?.schemaVersion;
+    this.schemaNames ??= createSchemaEntityNameSnapshot(getSchemaRegistryForVersion(schema === 'IFC2X3' ? schema : schema === 'IFC4X3' || schema === 'IFC5' ? 'IFC4X3' : 'IFC4'));
     return resolveEffectiveEntityRecord(entity, {
       retype: this.view?.getEntityTypeMutation(id)?.newType,
       named: this.view?.getAttributeMutationsForEntity(id).map(({ name, value }) => [name, value] as const) ?? [],

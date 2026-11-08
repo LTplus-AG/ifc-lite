@@ -20,6 +20,7 @@ import { cn } from '@/lib/utils';
 import { HudChip, HudItem, HudPopover, HudPopoverContent, HudPopoverTrigger, HudValueField } from '../../viewport-ui/hud';
 import { METRE_SYMBOL } from '../model-inspector/inspector-fields';
 import { formatStoreyElevation } from './StoreyPicker';
+import { Button } from '@/components/ui/button';
 
 type StoreyPlane = Extract<WorkplaneSpec, { kind: 'storey' }>;
 
@@ -40,7 +41,7 @@ function HeightPicker({ plane }: { plane: StoreyPlane }) {
     void mutationVersion; // a wall drawn or resized moves it
     return modelId === null ? null : resolveRoofHeight(useViewerStore.getState(), modelId, plane.storeyId);
   }, [modelId, plane.storeyId, mutationVersion]);
-  const preset = 'rounded-sm px-1.5 py-1 text-left text-xs tabular-nums hover:bg-accent hover:text-accent-foreground';
+  const preset = 'h-auto justify-start rounded-sm px-1.5 py-1 text-left text-xs font-normal tabular-nums';
 
   return (
     <div data-workplane-height-picker className="flex flex-col gap-1">
@@ -53,13 +54,13 @@ function HeightPicker({ plane }: { plane: StoreyPlane }) {
         precision={2}
         onChange={(offset) => setHeight(plane, offset)}
       />
-      <button type="button" data-workplane-height-preset="floor" className={preset} onClick={() => toFloor(plane)}>
+      <Button type="button" variant="ghost" data-workplane-height-preset="floor" className={preset} onClick={() => toFloor(plane)}>
         {t('modelWorkspace.height.floor')}
-      </button>
+      </Button>
       {top !== null && Number.isFinite(top) && (
-        <button type="button" data-workplane-height-preset="top-of-walls" className={preset} onClick={() => setHeight(plane, top)}>
+        <Button type="button" variant="ghost" data-workplane-height-preset="top-of-walls" className={preset} onClick={() => setHeight(plane, top)}>
           {t('modelWorkspace.height.topOfWalls', { height: formatStoreyElevation(top) })}
-        </button>
+        </Button>
       )}
     </div>
   );

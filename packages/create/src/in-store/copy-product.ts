@@ -172,12 +172,16 @@ export function copyRefusal(ctx: CopyContext, sourceId: number): string | null {
 /**
  * Copy the complete product graph. `options.Name` overrides only the root
  * product’s Name. A copy on another storey re-resolves its top attachment
- * there (`copy-attachment.ts`), as the batch does.
+ * there (`copy-attachment.ts`), as the batch does. The copy and the re-bind
+ * are one atomic write: when either refuses, nothing is left behind (#9352).
  */
 export function copyProductInStore(ctx: CopyContext, sourceId: number, transform: CopyTransform = {}, options: { Name?: string } = {}): CopyProductResult {
-  const attachments = readCopyAttachments(ctx, carriedParts(ctx, sourceId));
-  const result = copyProductGraph(ctx, sourceId, transform, options);
-  return withUnattachedTops([result], rebindCopiedAttachments(ctx, attachments, [result]).unattached)[0];
+  return ctx.editor.runAtomic((draft) => {
+    const inner: CopyContext = { ...ctx, editor: draft, read: createStyleEntityReader(ctx.store, draft) };
+    const attachments = readCopyAttachments(inner, carriedParts(inner, sourceId));
+    const result = copyProductGraph(inner, sourceId, transform, options);
+    return withUnattachedTops([result], rebindCopiedAttachments(inner, attachments, [result]).unattached)[0];
+  });
 }
 
 /** The product and every assembly part it carries, at every depth (iterative, visited set). */

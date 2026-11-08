@@ -239,7 +239,9 @@ test('#9259 real IFC quality evidence survives threshold edits, documentation ca
     const label = percent >= 95 ? 'Passed' : percent >= 90 ? 'Partially passed' : 'Failed';
     await expect(gates.first()).toContainText(label);
     await expect(gates.first().getByRole('img')).toHaveAccessibleName(new RegExp(`${label}$`));
-    await expect(gates.first().locator('svg text')).toHaveText(/\d+(\.\d+)?%/);
+    const displayedPercent = Number((await gates.first().locator('svg text').textContent())?.replace('%', ''));
+    expect(displayedPercent).toBeLessThanOrEqual(percent + 1e-9);
+    expect(percent - displayedPercent).toBeLessThan(0.100001);
   }
   await page.screenshot({ path: info.outputPath('9259-real-ifc-quality.png') });
   await saveAs(page, 'Quality evidence 9259');

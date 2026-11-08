@@ -328,6 +328,40 @@ describe.skipIf(!ifcopenshellAvailable())('IfcGridPlacement converted to IFC4X3 
   );
 });
 
+/**
+ * The same model with a second, turned column on another crossing and a site
+ * and building sharing one placement, as IFC4 allows (#9209).
+ */
+const GRID_COLUMNS_IFC4 = GRID_COLUMN_IFC4.replace('ENDSEC;\nEND-ISO-10303-21;', [
+  '#60=IFCVIRTUALGRIDINTERSECTION((#35,#36),(0.,0.,0.));', '#61=IFCGRIDPLACEMENT(#60,$);',
+  '#62=IFCCARTESIANPOINT((0.,0.,1.));', '#63=IFCDIRECTION((0.,0.,1.));', '#64=IFCDIRECTION((0.,1.,0.));',
+  '#65=IFCAXIS2PLACEMENT3D(#62,#63,#64);', '#66=IFCLOCALPLACEMENT(#61,#65);',
+  "#71=IFCCOLUMN('3YvctVUKr0kugbFTf53O9L',#5,'D',$,$,#66,$,$,.COLUMN.);",
+  "#80=IFCSITE('0ZvctVUKr0kugbFTf53O9L',#5,'S',$,$,#22,$,$,.ELEMENT.,$,$,$,$,$);",
+  "#81=IFCBUILDING('1ZvctVUKr0kugbFTf53O9L',#5,'B',$,$,#22,$,$,.ELEMENT.,$,$,$);",
+  "#82=IFCRELAGGREGATES('2ZvctVUKr0kugbFTf53O9L',#5,$,$,#12,(#80));",
+  "#83=IFCRELAGGREGATES('3ZvctVUKr0kugbFTf53O9L',#5,$,$,#80,(#81));",
+  'ENDSEC;', 'END-ISO-10303-21;',
+].join('\n'));
+
+describe.skipIf(!ifcopenshellAvailable())('IFC2X3 output places one product per placement per IfcOpenShell (#9209)', () => {
+  it(
+    'validates a grid-bound column, a turned one and a shared placement, from both writers',
+    async () => {
+      const store = await new IfcParser().parseColumnar(toArrayBuffer(Buffer.from(GRID_COLUMNS_IFC4)));
+      const single = new TextDecoder().decode(new StepExporter(store).export({ schema: 'IFC2X3' }).content);
+      expect(single).toContain('#54=IFCGRIDPLACEMENT(#50,$);');
+      expect(single).toMatch(/#66=IFCLOCALPLACEMENT\(#22,#\d+\);/);
+      const merged = new TextDecoder().decode(new MergedExporter([{ id: 'grid', name: 'grid', dataStore: store }]).export({ schema: 'IFC2X3' }).content);
+      const dir = mkdtempSync(join(tmpdir(), 'ifc-lite-export-conformance-grid-2x3-'));
+      writeFileSync(join(dir, 'single.ifc'), single);
+      writeFileSync(join(dir, 'merged.ifc'), merged);
+      runValidateOrThrow([join(dir, 'single.ifc'), join(dir, 'merged.ifc')]);
+    },
+    IFCOPENSHELL_TEST_TIMEOUT_MS,
+  );
+});
+
 const canRunIfc4x3 = fixturesAvailable(IFC4X3_FIXTURES) && ifcopenshellAvailable();
 if (!canRunIfc4x3) {
   console.warn('[ifcopenshell-schema-conformance] IFC4X3 block SKIPPED: fixtures missing (run `pnpm fixtures`) or ifcopenshell unavailable.');

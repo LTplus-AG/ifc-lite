@@ -63,17 +63,22 @@ describe('copies of a grid column across export and reopening (#9199)', () => {
       const step = new StepExporter(store, view).export({ schema: exported, applyMutations: true }).content;
       const reopened = columnsIn(await parse(step)).sort((a, b) => a.at[1] - b.at[1] || a.at[0] - b.at[0]);
 
+      // IFC2X3 places one product per placement (#9209) and its grid placement
+      // cannot carry a heading. These columns keep the storey's heading on a
+      // grid turned a quarter, so each turns back in the grid's frame and comes
+      // free, at the same point.
+      const bound = exported !== 'IFC2X3';
       expect(reopened.map(({ at, onGrid }) => ({ at, onGrid }))).toEqual([
-        { at: [10, 20], onGrid: true },
+        { at: [10, 20], onGrid: bound },
         { at: [11, 21], onGrid: false },
-        { at: [6, 20], onGrid: true },
-        { at: [10, 26], onGrid: true },
-        { at: [10, 32], onGrid: true },
+        { at: [6, 20], onGrid: bound },
+        { at: [10, 26], onGrid: bound },
+        { at: [10, 32], onGrid: bound },
       ].sort((a, b) => a.at[1] - b.at[1] || a.at[0] - b.at[0]));
       expect(reopened.every((c) => c.z === 0)).toBe(true);
 
-      const placements = new TextDecoder().decode(step).match(/IFCGRIDPLACEMENT\([^;]*\);/g)!;
-      expect(placements).toHaveLength(4);
+      const placements = new TextDecoder().decode(step).match(/IFCGRIDPLACEMENT\([^;]*\);/g) ?? [];
+      expect(placements).toHaveLength(bound ? 4 : 0);
       // IFC4X3 names the grid's placement first; below it only two attributes exist.
       for (const record of placements) expect(record).toMatch(exported === 'IFC4X3' ? /^IFCGRIDPLACEMENT\(#\d+,#\d+,\$\);$/ : /^IFCGRIDPLACEMENT\(#\d+,\$\);$/);
     });

@@ -254,12 +254,21 @@ ENDSEC;\nEND-ISO`));
     const after = new EntityExtractor(reopened.source!);
     expect(reopened.schemaVersion).toBe('IFC2X3');
     const reachableBreps = new Set<number>();
+    // IFC2X3 places one product per placement (#9209): the slab keeps the #22 it
+    // shares with the wall, duct and storey, which each get a copy. So a
+    // placement is compared by what it says, not by its id.
+    const placed = (x: EntityExtractor, s: typeof store, attrs: unknown[]) =>
+      attrs.map((value,i) => i === 5 && typeof value === 'number' && s.entityIndex.byId.get(value)?.type === 'IFCLOCALPLACEMENT'
+        ? x.extractEntity(s.entityIndex.byId.get(value)!)?.attributes : value);
+    const placements = [50,51,52,90].map(id => after.extractEntity(reopened.entityIndex.byId.get(id)!)!.attributes[5]);
+    expect(placements[0]).toBe(22);
+    expect(new Set(placements).size).toBe(4);
     for (const [id,type,guid] of products) {
       expect(reopened.entities.getTypeName(id)).toBe(type);
       expect(reopened.entities.getGlobalId(id)).toBe(guid);
       const originalAttrs = before.extractEntity(store.entityIndex.byId.get(id)!)!.attributes;
       const attrs = after.extractEntity(reopened.entityIndex.byId.get(id)!)!.attributes;
-      expect(attrs.map((value,i) => i === 6 ? null : value)).toEqual(originalAttrs.map((value,i) => i === 6 ? null : value));
+      expect(placed(after,reopened,attrs).map((value,i) => i === 6 ? null : value)).toEqual(placed(before,store,originalAttrs).map((value,i) => i === 6 ? null : value));
       const representation = attrs[6];
       if (typeof representation !== 'number') throw new Error(`Product #${id} lost its representation`);
       const shapes = after.extractEntity(reopened.entityIndex.byId.get(representation)!)!.attributes[2];
@@ -277,8 +286,8 @@ ENDSEC;\nEND-ISO`));
       }
     }
     for (const id of [5,6,7,8,9,60,61,62,70,71,80,81,82,90,91]) {
-      expect(after.extractEntity(reopened.entityIndex.byId.get(id)!)?.attributes)
-        .toEqual(before.extractEntity(store.entityIndex.byId.get(id)!)?.attributes);
+      expect(placed(after,reopened,after.extractEntity(reopened.entityIndex.byId.get(id)!)!.attributes))
+        .toEqual(placed(before,store,before.extractEntity(store.entityIndex.byId.get(id)!)!.attributes));
     }
     expect(reopened.entityIndex.byType.get('IFCTRIANGULATEDFACESET')?.length ?? 0).toBe(0);
     expect(reopened.entityIndex.byType.get('IFCFACETEDBREP')).toHaveLength(3);

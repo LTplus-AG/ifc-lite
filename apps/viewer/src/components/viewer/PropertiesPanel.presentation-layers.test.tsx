@@ -9,7 +9,7 @@ import { afterEach, it } from 'node:test';
 import { act } from 'react';
 import { IfcParser } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
-import { cleanup, click, render, waitFor } from '@/test/render.js';
+import { advance, cleanup, click, render, waitFor } from '@/test/render.js';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { SourceHostProvider } from '@/services/sources/SourceHostProvider.js';
 import { useViewerStore } from '@/store';
@@ -88,4 +88,21 @@ it('#9273 reuses the reverse index across selections and invalidates it on edits
   act(() => useViewerStore.setState({ mutationVersion: 1 }));
   assert.notEqual(layerIndex.presentationLayersByProduct(store, view), first);
   assert.deepEqual([...section(ui)!.querySelectorAll('button')].map(b => b.textContent), ['Renamed (A-01)']);
+});
+
+
+it('#9273 leaving Layers cancels an unconsumed reveal instead of stealing focus on return', async () => {
+  await setup();
+  const inspector = render(<PropertiesPanel />);
+  const button = [...section(inspector)!.querySelectorAll('button')].find(b => b.textContent === 'Structure');
+  assert.ok(button);
+  button.focus();
+  click(button); // Hierarchy has not mounted/loaded yet, so the reveal is pending.
+  act(() => useViewerStore.getState().setHierarchyMode('spatial'));
+  act(() => useViewerStore.getState().setHierarchyMode('presentation-layers'));
+  const hierarchy = render(<SourceHostProvider><HierarchyPanel /></SourceHostProvider>);
+  await waitFor(() => !!hierarchy.querySelector('[data-node-id="presentation-layer-own-51"]'),
+    'the previously requested layer is available after returning');
+  await advance(50);
+  assert.equal(document.activeElement, button, 'returning to Layers does not revive the cancelled focus request');
 });

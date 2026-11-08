@@ -315,7 +315,7 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
   setPropertiesActiveTab: (propertiesActiveTab) => set({ propertiesActiveTab }),
 
   setHierarchyMode: (mode) => {
-    set({ hierarchyMode: mode });
+    set({ hierarchyMode: mode, ...(mode !== 'presentation-layers' ? { pendingPresentationLayerReveal: null } : {}) });
     persistHierarchyMode(mode);
   },
 

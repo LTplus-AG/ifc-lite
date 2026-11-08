@@ -11,7 +11,13 @@ use std::sync::Arc;
 // Keep successful per-attempt Results pointer-sized. Allocate detail only on
 // refusal; growing the error payload must not grow every accepted reply.
 #[derive(Debug)]
+#[repr(transparent)]
 pub(crate) struct LogicalRefusal(Box<LogicalRefusalDetail>);
+
+const _: () = assert!(
+    std::mem::size_of::<std::result::Result<(), LogicalRefusal>>()
+        == std::mem::size_of::<usize>()
+);
 
 #[derive(Debug)]
 struct LogicalRefusalDetail {

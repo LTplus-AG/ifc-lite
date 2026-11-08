@@ -7,14 +7,15 @@ import assert from 'node:assert/strict';
 import {
   EDGE_CREASE_ANGLE_DEG,
   EDGE_CREASE_COS,
-  EDGE_LINE_WEIGHT,
   EDGE_QUALITY_PRESETS,
-  EDGE_SAMPLE_COUNT,
   EDGE_UNIFORM_BYTES,
   EDGE_UNIFORM_LAYOUT,
   packEdgeUniforms,
   type EdgeFrameParams,
 } from './edge-params.js';
+// Constants added with per-sample coverage are read through the namespace, so
+// this file still loads against the code before them (the revert oracle).
+import * as edgeParams from './edge-params.js';
 import { MathUtils } from './math.js';
 import { edgeShaderSource } from './shaders/edges.wgsl.js';
 import type { Mat4 } from './types.js';
@@ -153,11 +154,11 @@ describe('edge pass line coverage', () => {
   const ss = edgeShaderSource(false);
 
   it('darkens a covered pixel by half the intensity at low and three quarters at high (the old 1.5 ratio)', () => {
-    assert.equal(EDGE_LINE_WEIGHT.low, 0.5);
-    assert.equal(EDGE_LINE_WEIGHT.high, 0.75);
+    assert.equal(edgeParams.EDGE_LINE_WEIGHT.low, 0.5);
+    assert.equal(edgeParams.EDGE_LINE_WEIGHT.high, 0.75);
     for (const src of [ms, ss]) {
-      assert.match(src, new RegExp(`EDGE_LINE_WEIGHT_LOW: f32 = ${EDGE_LINE_WEIGHT.low.toFixed(6)}`));
-      assert.match(src, new RegExp(`EDGE_LINE_WEIGHT_HIGH: f32 = ${EDGE_LINE_WEIGHT.high.toFixed(6)}`));
+      assert.match(src, new RegExp(`EDGE_LINE_WEIGHT_LOW: f32 = ${edgeParams.EDGE_LINE_WEIGHT.low.toFixed(6)}`));
+      assert.match(src, new RegExp(`EDGE_LINE_WEIGHT_HIGH: f32 = ${edgeParams.EDGE_LINE_WEIGHT.high.toFixed(6)}`));
     }
   });
 
@@ -174,8 +175,8 @@ describe('edge pass line coverage', () => {
   });
 
   it('tests every MSAA sample against the same sample of its neighbours on a multisampled target', () => {
-    assert.equal(EDGE_SAMPLE_COUNT, 4);
-    assert.match(ms, new RegExp(`const EDGE_SAMPLES: i32 = ${EDGE_SAMPLE_COUNT};`));
+    assert.equal(edgeParams.EDGE_SAMPLE_COUNT, 4);
+    assert.match(ms, new RegExp(`const EDGE_SAMPLES: i32 = ${edgeParams.EDGE_SAMPLE_COUNT};`));
     assert.match(wgslFnBody(ms, 'fs_edges'), /for \(var s = 0; s < EDGE_SAMPLES; s = s \+ 1\)/);
     // Every depth/id read of the line test takes the sample index; none uses
     // the sample-0-only `loadDepth`.

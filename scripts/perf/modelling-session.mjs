@@ -25,13 +25,18 @@ export function growth(results, op, percentile, from, to) {
 export function checkTargets(results, ratchet, f5) {
   const failures = [];
   for (const size of [1000, 10000, 50000]) {
-    if (!results.some(r => r.metrics?.target === size && r.status === 'pass')) failures.push(`Missing complete ${size} result`);
+    const row=results.find(r=>r.metrics?.target===size);
+    if(!row || row.status!=='pass' || row.metrics.reached!==size) failures.push(`Missing complete ${size} result (reached must equal target)`);
+    for(const op of OPERATIONS) {
+      const sample=row?.metrics?.operations?.[op];
+      if(!Number.isInteger(sample?.count) || sample.count<5 || !Number.isFinite(sample.p50) || !Number.isFinite(sample.p95)) failures.push(`${size} ${op}: at least 5 finite samples required`);
+    }
   }
   for (const op of OPERATIONS) for (const p of ['p50', 'p95']) {
     const value = growth(results, op, p, 1000, 50000);
     if (value === null || value >= ratchet.targets.maxGrowthExclusive) failures.push(`${op} ${p}: growth ${value ?? 'unmeasured'}`);
   }
-  if (!f5 || f5.probe !== 'exercise' || !/^F5(?:[.\-]|$)/.test(f5.id ?? '') || f5.status !== 'pass' || !Number.isFinite(f5.metrics?.ms) || f5.metrics.ms >= ratchet.targets.f5MsExclusive) failures.push('F5 requires a passing exercise result under 60000 ms (--f5-result)');
+  if (!f5 || f5.probe !== 'exercise' || !/^F5(?:[.\-]|$)/.test(f5.id ?? '') || f5.status !== 'pass' || !Number.isFinite(f5.metrics?.ms) || !Number.isFinite(f5.metrics?.elements) || !Number.isFinite(f5.metrics?.peakHeap) || !Number.isInteger(f5.metrics?.completedSteps) || !Number.isInteger(f5.metrics?.totalSteps) || f5.metrics.completedSteps!==f5.metrics.totalSteps || f5.metrics.ms >= ratchet.targets.f5MsExclusive) failures.push('F5 requires a passing exercise result under 60000 ms (--f5-result)');
   return failures;
 }
 export function table(results) {
@@ -76,7 +81,7 @@ async function runSize(target, budgetMs, samples, directory) {
 async function main() {
   const args = process.argv.slice(2);
   if (args.includes('--help')) {
-    console.log('pnpm parity:perf [--budget-ms 540000] [--samples 5] [--check] [--input results.json] [--f5-result F5.json]\nPARITY_OUT defaults to tests/modelling-parity/.out/l3. Each size gets a fresh process; 75% fill, 25% sampling; hard deadline kills only that worker. --check verifies round-1 targets; missing sizes/F5 fail. --input checks without rerunning.');
+    console.log('node scripts/perf/modelling-session.mjs [--budget-ms 540000] [--samples 5] [--check] [--input results.json] [--f5-result F5.json]\nPARITY_OUT defaults to tests/modelling-parity/.out/l3. Each size gets a fresh process; 75% fill, 25% sampling; hard deadline kills only that worker. --check verifies round-1 targets; missing sizes/F5 fail. --input checks without rerunning.');
     return;
   }
   const valuedFlags = new Set(['--budget-ms', '--samples', '--input', '--f5-result']);

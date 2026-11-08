@@ -5972,7 +5972,7 @@ rather than rebuilding a whole-file entity index to resolve a small styled subse
 
 Build the CLI and dependencies first (`pnpm install --frozen-lockfile`,
 `pnpm build:wasm:fetch`, `pnpm turbo build --filter=@ifc-lite/cli...`) through
-fleet admission. Run `nice -n 10 pnpm parity:perf` under local ordinary admission
+fleet admission. Run `nice -n 10 node scripts/perf/modelling-session.mjs` under local ordinary admission
 for **diagnostic timings**, recording the shared host load rather than claiming
 benchmark evidence. No product code is changed. Each target (1K, 10K, 50K) starts
 with a new CLI headless context and uses public `bim.store` authoring throughout.
@@ -5998,7 +5998,7 @@ commit and dirty state are retained with results.
 contract JSON array and Markdown table there. The committed baseline and
 round-1 targets live in `tests/perf-ratchets/modelling-session.json`. These noisy
 diagnostics deliberately do not join daily automatic ceiling lowering.
-`pnpm parity:perf --check --input <results.json> --f5-result <F5.json>` checks the
+`node scripts/perf/modelling-session.mjs --check --input <results.json> --f5-result <F5.json>` checks the
 round-1 goals without re-running: complete sizes, both latency quantiles growing
 strictly less than 2× from 1K to 50K, and a passing F5 exercise result whose
 `metrics.ms` is strictly below 60 seconds. The F5 time comes from the exercise

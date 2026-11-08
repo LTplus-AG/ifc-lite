@@ -1,6 +1,6 @@
 {
   "family": "modelling-session",
-  "description": "Shared-host diagnostic authoring timings for #9296, not benchmark evidence or a speedup claim. Entries are measured 1K reference values only; stopped sizes below are not ceilings at their requested targets. Not wired into daily automatic lowering: modelling-session.mjs --check enforces the separate round-1 targets, requiring complete size results and F5 evidence. No timing regression tolerance is asserted for this noisy baseline.",
+  "description": "Shared-host diagnostic authoring timings for #9296, not benchmark evidence or a speedup claim. Entries are measured 1K reference values only; stopped sizes below are not ceilings at their requested targets. Not wired into daily automatic lowering: node scripts/perf/modelling-session.mjs --check enforces the separate round-1 targets, requiring complete size results and F5 evidence. No timing regression tolerance is asserted for this noisy baseline.",
   "entries": [
     {
       "id": "session-1000.addwall.p50",

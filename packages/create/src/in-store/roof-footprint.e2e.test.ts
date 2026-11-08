@@ -36,6 +36,7 @@ async function storey(schema: Schema = 'IFC4') {
 let f: typeof import('./roof-footprint.js');
 beforeEach(async () => { f = await requiredModule(() => import('./roof-footprint.js'), 'the roof-by-footprint builder exists (#9296)'); });
 
+// @source-text-assertion-ok Checks generated IFC export output, never implementation source text.
 const roofRecord = (text: string) => /#\d+=IFCROOF\(([^;]*)\);/.exec(text)?.[1] ?? '';
 
 describe('a roof by footprint in a loaded model (#9296 round 3)', () => {
@@ -44,7 +45,9 @@ describe('a roof by footprint in a loaded model (#9296 round 3)', () => {
     const built = addRoofToStore(s.editor, s.anchor, HIP);
     expect(built.solidIds).toHaveLength(4);
     const text = exportText(s);
+    // @source-text-assertion-ok Checks generated IFC export output, never implementation source text.
     expect(roofRecord(text)).toMatch(/\.HIP_ROOF\.\s*$/);
+    // @source-text-assertion-ok Checks generated IFC export output, never implementation source text.
     expect(text).toContain(`'${f.ROOF_FOOTPRINT_PSET}'`);
     const reopened = await parse(text);
     const roofId = reopened.entityIndex.byType.get('IFCROOF')?.[0];
@@ -58,6 +61,7 @@ describe('a roof by footprint in a loaded model (#9296 round 3)', () => {
     const built = addRoofToStore(s.editor, s.anchor, { Position: [0, 0, 0], Width: 6, Depth: 4, Thickness: 0.3 });
     expect(built.solidIds).toBeUndefined();
     expect(f.readFootprintRoofInStore(s.store, built.roofId, s.view)).toBeNull();
+    // @source-text-assertion-ok Checks generated IFC export output, never implementation source text.
     expect(roofRecord(exportText(s))).toMatch(/\.FLAT_ROOF\.\s*$/);
   });
 
@@ -81,9 +85,11 @@ describe('a roof by footprint in a loaded model (#9296 round 3)', () => {
     expect(definition.EdgeSlopes).toEqual([30 * D, 0, 30 * D, 0]);
     expect(f.readFootprintRoofInStore(s.store, roofId, s.view)).toEqual(definition);
     const text = exportText(s);
+    // @source-text-assertion-ok Checks generated IFC export output, never implementation source text.
     expect(roofRecord(text)).toMatch(/\.GABLE_ROOF\.\s*$/);
     expect(s.editor.getNewEntity(roofId)?.attributes[5]).toBe(placement);
     // The replaced representation is gone, not orphaned: one product shape for one roof.
+    // @source-text-assertion-ok Checks generated IFC export output, never implementation source text.
     expect(text.match(/IFCPRODUCTDEFINITIONSHAPE\(/g)).toHaveLength(1);
     definition = f.readFootprintRoofInStore(s.store, roofId, s.view)!;
     expect(definition.Overhang).toBe(0.5);
@@ -120,7 +126,9 @@ describe('a roof by footprint in a loaded model (#9296 round 3)', () => {
     f.editFootprintRoofInStore(s.store, s.editor, roofId, { EdgeSlopes: [30 * D, 0, 30 * D, 0] });
     f.editFootprintRoofInStore(s.store, s.editor, roofId, { Overhang: 0.4 });
     const text = exportText(s);
+    // @source-text-assertion-ok Checks generated IFC export output, never implementation source text.
     expect(text.match(/IFCEXTRUDEDAREASOLID\(/g)).toHaveLength(2);
+    // @source-text-assertion-ok Checks generated IFC export output, never implementation source text.
     expect(text.match(/IFCSHAPEREPRESENTATION\('?#?\d*'?[^;]*'Body'/g)).toHaveLength(1);
   });
 
@@ -167,6 +175,7 @@ describe('a roof by footprint in a loaded model (#9296 round 3)', () => {
     const s = await storey();
     const { roofId } = addRoofToStore(s.editor, s.anchor, HIP);
     // Property sets written from the overlay take a fresh GlobalId on every export.
+    // @source-text-assertion-ok Checks generated IFC export output, never implementation source text.
     const data = () => { const text = exportText(s); return text.slice(text.indexOf('DATA;')).replace(/'[0-9A-Za-z_$]{22}'/g, "'guid'"); };
     const before = data();
     expect(() => f.editFootprintRoofInStore(s.store, s.editor, roofId, { Edge: { Index: 0, Slope: 30 } })).toThrow(/slopes are radians/);

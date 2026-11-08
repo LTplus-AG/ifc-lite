@@ -36,9 +36,10 @@
  */
 
 import { propertyDefinitionRefsOfValue, type IfcDataStore } from '@ifc-lite/parser';
-import { iterateEffectiveEntityIds, type IfcAttributeValue, type MutablePropertyView, type StoreEditor } from '@ifc-lite/mutations';
+import { type IfcAttributeValue, type MutablePropertyView, type StoreEditor } from '@ifc-lite/mutations';
 import { readAttributes } from './placement-core.js';
 import { asRef, refList } from '../style-entity-reader.js';
+import { sourceAssociationCandidates } from '../source-relationships.js';
 import { cloneEffectiveMetadata } from './metadata-clone-effective.js';
 import { refToken } from '../copy-frame.js';
 
@@ -105,7 +106,7 @@ export function cloneElementMetadata(
 
   let touched = 0;
   for (const [type, index] of RELATIONSHIPS_TO_CLONE) {
-    for (const { expressId: relId } of iterateEffectiveEntityIds(dataStore, view, [type])) {
+    for (const { expressId: relId } of sourceAssociationCandidates(dataStore, view, sourceExpressId, [type])) {
       const attrs = readAttributes(dataStore, view, editor, relId);
       if (!attrs) continue;
       const currentRelated = refList(attrs[index]);

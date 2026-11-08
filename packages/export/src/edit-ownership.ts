@@ -9,7 +9,7 @@ import { getCompleteEntityIndex } from './entity-iteration.js';
 import { effectiveCreatedRecord, effectiveSourceRecord } from './effective-source-record.js';
 
 /** The parsed source/index are immutable. Build their reverse references once
- * per loaded model; only the live overlay is rescanned for each edit. */
+ * per loaded model; slot edits and indexed created-reference candidates are read per edit. */
 const sourceReferences = new WeakMap<IfcDataStore, {
   source: IfcDataStore['source'];
   primary: IfcDataStore['entityIndex']['byId'];
@@ -38,14 +38,13 @@ function sourceInverse(store: IfcDataStore): Map<number, number[]> {
 /**
  * The live reverse-reference lookup: which entities reference `id` once the
  * overlay is applied (created records, edited source records and tombstones).
- * The immutable source inverse is cached per model; only changed records are
- * rescanned, once per call of this function, so callers that walk many ids
- * build it once per planning request.
+ * The immutable source inverse is cached per model; slot edits are read once,
+ * and authored creations are read by indexed reference candidate on demand.
+ * Build one lookup per synchronous planning request.
  */
 export function effectiveReferencers(store: IfcDataStore, view: MutablePropertyView): (id: number) => readonly number[] {
   const baseline = sourceInverse(store), inverse = new Map<number, number[]>();
-  const changed = new Set(view.getEffectiveChanges().map(change => change.entityId));
-  for (const entity of view.getNewEntities()) changed.add(entity.expressId);
+  const changed = new Set(view.getAttributeOverrideEntityIds());
   const encoder = new TextEncoder();
   const tombstones = view.getTombstones();
   for (const expressId of changed) {
@@ -75,10 +74,24 @@ export function effectiveReferencers(store: IfcDataStore, view: MutablePropertyV
       parents.push(expressId); inverse.set(ref, parents);
     }
   }
+  const cached = new Map<number, readonly number[]>();
   return (id) => {
+    const found = cached.get(id);
+    if (found) return found;
     const parents: number[] = [];
     for (const parent of baseline.get(id) ?? []) if (!changed.has(parent) && !tombstones.has(parent)) parents.push(parent);
     for (const parent of inverse.get(id) ?? []) parents.push(parent);
+    // Unedited creations already have an authored reference index. Verify only
+    // its candidates through the exact exporter grammar (numeric coordinates,
+    // SELECT strings and declined REAL edits must never become references).
+    for (const entity of view.getNewEntitiesReferencing(id)) {
+      if (entity.expressId === id || changed.has(entity.expressId) || tombstones.has(entity.expressId)) continue;
+      const record = effectiveCreatedRecord(view, entity.expressId, store.schemaVersion);
+      if (!record) continue;
+      const bytes = encoder.encode(record.text);
+      if (collectRefsInByteRange(bytes, 0, bytes.length).includes(id)) parents.push(entity.expressId);
+    }
+    cached.set(id, parents);
     return parents;
   };
 }

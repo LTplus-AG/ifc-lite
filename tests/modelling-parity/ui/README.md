@@ -38,7 +38,7 @@ software adapter: an empty model canvas would read as a UI failure.
 pnpm install --frozen-lockfile && pnpm build:wasm:fetch
 NODE_OPTIONS=--max-old-space-size=8192 pnpm turbo build --filter=@ifc-lite/viewer --concurrency=2
 cp -r apps/viewer/dist ../dist-candidate   # later builds overwrite apps/viewer/dist
-IFC_GPU_CDP_URL=http://127.0.0.1:<port> pnpm parity:ui --dist ../dist-candidate
+IFC_GPU_CDP_URL=http://127.0.0.1:<port> node tests/modelling-parity/ui/run.mjs --dist ../dist-candidate
 ```
 
 Options:

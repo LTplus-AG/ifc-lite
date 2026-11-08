@@ -22,7 +22,6 @@
     "build:imported-geometry": "node scripts/build-imported-geometry.mjs",
     "build:wasm": "node scripts/run-build-wasm.mjs",
     "build:wasm:fetch": "node scripts/fetch-prebuilt-wasm.mjs",
-    "parity:ui": "node tests/modelling-parity/ui/run.mjs",
     "fixtures": "node scripts/fixtures/fetch-fixtures.mjs",
     "fixtures:check": "node scripts/fixtures/fetch-fixtures.mjs --check",
     "fixtures:list-missing": "node scripts/fixtures/fetch-fixtures.mjs --list",

@@ -104,6 +104,24 @@ describe('renumberStepIds', () => {
     expect(text).toContain("/* it's #1 */(0.,0.,1.)");
   });
 
+  it('rewrites ANCHOR and REFERENCE sections and leaves <uri> literals alone (ISO 10303-21 ed. 3)', () => {
+    const file = [
+      'ISO-10303-21;', 'HEADER;', 'ENDSEC;',
+      'ANCHOR;', '<a>=#1;', '<b>=#2;', 'ENDSEC;',
+      'REFERENCE;', '#12=<http://example.org/lib.ifc#12>;', 'ENDSEC;',
+      'DATA;', '#1=IFCCARTESIANPOINT((0.,0.,0.));', '#2=IFCAXIS2PLACEMENT3D(#1,#12,$);', 'ENDSEC;',
+      'END-ISO-10303-21;', '',
+    ].join('\n');
+    // A source returning 0 swaps the instances, which a DATA-only rewrite would miss in ANCHOR.
+    const { text, idMap, danglingReferences } = renumberStepIds(file, { random: () => 0 });
+    expect(danglingReferences).toEqual([]);
+    expect([...idMap.keys()].sort((x, y) => x - y)).toEqual([1, 2, 12]);
+    expect(text).toContain(`<a>=#${idMap.get(1)};`);
+    expect(text).toContain(`<b>=#${idMap.get(2)};`);
+    expect(text).toContain(`#${idMap.get(12)}=<http://example.org/lib.ifc#12>;`);
+    expect(text).toContain(`IFCAXIS2PLACEMENT3D(#${idMap.get(1)},#${idMap.get(12)},$);`);
+  });
+
   it('rejects a file that declares an instance twice', () => {
     expect(() => renumberStepIds(FILE.replace('#11=IFCLOCALPLACEMENT', '#10=IFCLOCALPLACEMENT'), { random: seeded(1) }))
       .toThrow(/declared twice/);

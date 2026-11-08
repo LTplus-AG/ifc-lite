@@ -15,9 +15,12 @@
  * Reference rewriting is `remapEntityText` (the merged exporter's rule): only
  * `#digits` tokens outside string literals change, so `'Room #205'` survives.
  * Statements are split at `;` outside string literals (`stepStringLiteralEnd`,
- * which also honours the `\S\'` PAGE operand) and outside comments. The HEADER
- * section, every non-record statement and every comment are copied verbatim, and
- * a `#digits` inside a comment is neither a reference nor rewritten.
+ * which also honours the `\S\'` PAGE operand) and outside comments. References
+ * are rewritten in DATA records and in the edition-3 ANCHOR and REFERENCE
+ * sections; REFERENCE entries (`#12=<uri>;`) declare instance names like DATA
+ * records do. The HEADER, comments and `<...>` resource literals (anchor names,
+ * URIs such as `<http://x#12>`) are copied verbatim, so a `#digits` inside them
+ * is neither a reference nor rewritten.
  */
 
 import { stepStringLiteralEnd, type RandomSource } from '@ifc-lite/encoding';
@@ -87,12 +90,13 @@ const LEADING_TRIVIA = /^(?:\s|\/\*[\s\S]*?\*\/)*/;
 const leadLength = (raw: string) => LEADING_TRIVIA.exec(raw)![0].length;
 
 /**
- * A record split into code and `/* *\/` comments, comments found outside
- * string literals (a `/*` inside `'...'` is text). String literals stay inside
- * the code parts, where `remapEntityText` already leaves them alone.
+ * A statement split into code and verbatim parts. Verbatim: `/* *\/` comments
+ * and edition-3 resource literals `<...>` (anchor names, URIs such as
+ * `<http://x#12>`), both found outside string literals. String literals stay
+ * inside the code parts, where `remapEntityText` already leaves them alone.
  */
-function codeAndComments(text: string): Array<{ text: string; comment: boolean }> {
-  const parts: Array<{ text: string; comment: boolean }> = [];
+function segments(text: string): Array<{ text: string; verbatim: boolean }> {
+  const parts: Array<{ text: string; verbatim: boolean }> = [];
   let codeStart = 0;
   let i = 0;
   while (i < text.length) {
@@ -101,24 +105,25 @@ function codeAndComments(text: string): Array<{ text: string; comment: boolean }
       i = end === -1 ? text.length : end;
       continue;
     }
-    if (text[i] === '/' && text[i + 1] === '*') {
-      const end = text.indexOf('*/', i + 2);
-      const stop = end === -1 ? text.length : end + 2;
-      if (i > codeStart) parts.push({ text: text.slice(codeStart, i), comment: false });
-      parts.push({ text: text.slice(i, stop), comment: true });
+    const comment = text[i] === '/' && text[i + 1] === '*';
+    if (comment || text[i] === '<') {
+      const end = comment ? text.indexOf('*/', i + 2) : text.indexOf('>', i + 1);
+      const stop = end === -1 ? text.length : end + (comment ? 2 : 1);
+      if (i > codeStart) parts.push({ text: text.slice(codeStart, i), verbatim: false });
+      parts.push({ text: text.slice(i, stop), verbatim: true });
       i = codeStart = stop;
       continue;
     }
     i++;
   }
-  if (codeStart < text.length) parts.push({ text: text.slice(codeStart), comment: false });
+  if (codeStart < text.length) parts.push({ text: text.slice(codeStart), verbatim: false });
   return parts;
 }
 
-/** `#digits` tokens in code: outside string literals and comments. */
+/** `#digits` tokens in code: outside string literals, comments and `<...>` literals. */
 function referencedIds(text: string, into: Set<number>): void {
-  for (const part of codeAndComments(text)) {
-    if (part.comment) continue;
+  for (const part of segments(text)) {
+    if (part.verbatim) continue;
     const code = part.text;
     for (let i = 0; i < code.length; i++) {
       const c = code[i];
@@ -135,9 +140,9 @@ function referencedIds(text: string, into: Set<number>): void {
   }
 }
 
-/** `remapEntityText` on the code parts only; comments are copied unchanged. */
+/** `remapEntityText` on the code parts only; comments and `<...>` literals are copied unchanged. */
 function remapRecord(text: string, idMap: ReadonlyMap<number, number>): string {
-  return codeAndComments(text).map(p => (p.comment ? p.text : remapEntityText(p.text, 0, idMap))).join('');
+  return segments(text).map(p => (p.verbatim ? p.text : remapEntityText(p.text, 0, idMap))).join('');
 }
 
 function shuffleInPlace<T>(items: T[], random: RandomSource): T[] {
@@ -157,27 +162,37 @@ function shuffleInPlace<T>(items: T[], random: RandomSource): T[] {
  */
 export function renumberStepIds(text: string, options: RenumberStepIdsOptions): RenumberStepIdsResult {
   const statements = splitStatements(text);
-  // Record statements, grouped by the DATA section they sit in.
-  const sections: Statement[][] = [];
+  // DATA records grouped by section (they may be reordered within one), plus the
+  // edition-3 ANCHOR and REFERENCE statements, rewritten in place.
+  const dataSections: Statement[][] = [];
+  const inPlace: Statement[] = [];
+  const named: Statement[] = [];
+  let section: string | null = null;
   let current: Statement[] | null = null;
   for (const s of statements) {
     const token = leadingToken(text.slice(s.start, s.end));
-    if (token === 'DATA') { current = []; sections.push(current); continue; }
-    if (token === 'ENDSEC') { current = null; continue; }
-    if (current && token === '#') current.push(s);
+    if (token === 'DATA') { section = 'DATA'; current = []; dataSections.push(current); continue; }
+    if (token === 'ANCHOR' || token === 'REFERENCE') { section = token; current = null; continue; }
+    if (token === 'ENDSEC') { section = null; current = null; continue; }
+    if (section === 'DATA' && current && token === '#') { current.push(s); named.push(s); }
+    else if (section === 'REFERENCE' && token === '#') { inPlace.push(s); named.push(s); }
+    else if (section === 'ANCHOR') inPlace.push(s);
   }
 
-  const records = sections.flat();
+  // Instance names come from DATA records and from REFERENCE entries (`#12=<uri>;`).
   const declared = new Map<number, Statement>();
   const referenced = new Set<number>();
-  for (const r of records) {
+  const namedSet = new Set(named);
+  for (const r of [...named, ...inPlace.filter(s => !namedSet.has(s))]) {
     const body = text.slice(r.start, r.end);
-    const m = RECORD_NAME.exec(body);
-    if (!m) throw new Error(`renumberStepIds: cannot read the instance name of: ${body.trim().slice(0, 80)}`);
-    const id = Number(m[1]);
-    if (declared.has(id)) throw new Error(`renumberStepIds: instance #${id} is declared twice`);
-    declared.set(id, r);
-    referencedIds(body.slice(m[0].length), referenced);
+    const m = namedSet.has(r) ? RECORD_NAME.exec(body) : null;
+    if (namedSet.has(r)) {
+      if (!m) throw new Error(`renumberStepIds: cannot read the instance name of: ${body.trim().slice(0, 80)}`);
+      const id = Number(m[1]);
+      if (declared.has(id)) throw new Error(`renumberStepIds: instance #${id} is declared twice`);
+      declared.set(id, r);
+    }
+    referencedIds(m ? body.slice(m[0].length) : body, referenced);
   }
 
   const danglingReferences = [...referenced].filter(id => !declared.has(id)).sort((a, b) => a - b);
@@ -190,26 +205,25 @@ export function renumberStepIds(text: string, options: RenumberStepIdsOptions): 
   const idMap = new Map<number, number>();
   [...declared.keys()].forEach((id, i) => idMap.set(id, pool[i]));
 
-  // Rewrite each record in its slot. With `reorder`, the records of a section
-  // trade slots; the whitespace and comments before each slot stay where they
-  // were, unchanged. Comments inside a record body are copied unchanged too.
+  // Rewrite each DATA record in its slot. With `reorder`, the records of a
+  // section trade slots; the whitespace and comments before each slot stay where
+  // they were, unchanged. Comments inside a record body are copied unchanged too.
   const replacement = new Map<Statement, string>();
-  for (const section of sections) {
-    const bodies = section.map(s => {
-      const raw = text.slice(s.start, s.end);
-      return raw.slice(leadLength(raw));
-    });
+  const rewrite = (slot: Statement, body: string) => {
+    const raw = text.slice(slot.start, slot.end);
+    replacement.set(slot, raw.slice(0, leadLength(raw)) + remapRecord(body, idMap));
+  };
+  const bodyOf = (s: Statement) => { const raw = text.slice(s.start, s.end); return raw.slice(leadLength(raw)); };
+  for (const sectionRecords of dataSections) {
+    const bodies = sectionRecords.map(bodyOf);
     const order = options.reorder ? shuffleInPlace(bodies.map((_, i) => i), options.random) : bodies.map((_, i) => i);
-    section.forEach((slot, i) => {
-      const raw = text.slice(slot.start, slot.end);
-      const lead = raw.slice(0, leadLength(raw));
-      replacement.set(slot, lead + remapRecord(bodies[order[i]], idMap));
-    });
+    sectionRecords.forEach((slot, i) => rewrite(slot, bodies[order[i]]));
   }
+  for (const s of inPlace) rewrite(s, bodyOf(s));
 
   let out = '';
   let last = 0;
-  for (const s of records) {
+  for (const s of [...replacement.keys()].sort((a, b) => a.start - b.start)) {
     out += text.slice(last, s.start) + replacement.get(s);
     last = s.end;
   }

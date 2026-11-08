@@ -8,7 +8,7 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import { copyProductGraph, copyRefusal, createCopyContext, productStoreyOrigin, type CopyContext, type CopyProductResult, type CopyTransform } from './copy-product.js';
 import type { DuplicateInStoreOptions } from './duplicate.js';
 import { copiedProductWork, COPY_PRODUCT_WORK_LIMIT } from './copy-dependent-walk.js';
-import { readCopyAttachments, rebindCopiedAttachments } from './copy-attachment.js';
+import { readCopyAttachments, rebindCopiedAttachments, withUnattachedTops } from './copy-attachment.js';
 
 /** Bound pruned root fan-out before allocating products/transforms. */
 export const COPY_BATCH_LIMIT = 10_000;
@@ -102,8 +102,7 @@ export function copyBatchInStore(
         const name = options.duplicate.name ?? (typeof sourceName === 'string' && sourceName.length > 0 ? `${sourceName} (copy)` : sourceName);
         return copyProductGraph(ctx, id, transform, typeof name === 'string' ? { Name: name } : {});
       });
-      rebindCopiedAttachments(ctx, attachments, results);
-      return results;
+      return withUnattachedTops(results, rebindCopiedAttachments(ctx, attachments, results).unattached);
     });
   });
 }

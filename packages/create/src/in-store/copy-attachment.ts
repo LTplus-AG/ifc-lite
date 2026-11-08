@@ -17,17 +17,24 @@
  * - a slab: the copy reaches the copy of that slab when the slab was copied
  *   in the same operation, else the slab itself, refit to its underside.
  *
+ * A copy that needs a new height but still shares its source's shape (a
+ * shape read from the file is shared by reference, `copy-product.ts`) cannot
+ * be resized without resizing the source. It is recorded fixed at the
+ * source's height instead, never left attached at the wrong height, and
+ * listed in the result's `unattachedTops` with the reason. (Deep-copying
+ * file shapes is #8447.)
+ *
  * Elements with no record are fixed and are copied as they are.
  */
 
 import { readStoreyInventory, storeyNeighbour, type StoreyInventory } from './storey/storey-model.js';
 import {
-  homeStoreyOf, readTopAttachment, writeTopAttachment, NEXT_STOREY_ABOVE, STOREY_ATTACHMENT_PSET, TOP_CONSTRAINT, type TopAttachment,
+  clearTopAttachment, homeStoreyOf, readTopAttachment, writeTopAttachment, NEXT_STOREY_ABOVE, STOREY_ATTACHMENT_PSET, TOP_CONSTRAINT, type TopAttachment,
 } from './storey/storey-attachment.js';
 import { attachedKind, attachedTopWorldOrigin, readAttachedTop, writeAttachedTop, MIN_ATTACHED_EXTENT } from './storey/storey-attached.js';
 import { slabUndersideWorld } from './storey/storey-attachment-target.js';
 import { scaleWallQuantities, wallGeometry } from './storey/storey-level-write.js';
-import { placementInAncestor } from './host-geometry-frame.js';
+import { placementInAncestor, refId } from './host-geometry-frame.js';
 import type { CopyContext, CopyProductResult } from './copy-product.js';
 
 /** What the copies of one batch read from the model as it stood before the batch. */
@@ -55,6 +62,14 @@ export function readCopyAttachments(ctx: CopyContext, ids: Iterable<number>): Co
   return { inventory, sources };
 }
 
+/** A copy left fixed at its source's height because its top could not follow its new storey. */
+export interface CopyUnattachedTop {
+  readonly copyId: number;
+  readonly reason: string;
+}
+
+const SHARED_BODY = "it shares the source's shape from the file, which a copy cannot resize; it keeps the source's height and is no longer attached";
+
 const fail = (copyId: number, reason: string) => new Error(`The copy #${copyId} cannot keep its top attachment on its new storey: ${reason}`);
 
 /**
@@ -62,9 +77,12 @@ const fail = (copyId: number, reason: string) => new Error(`The copy #${copyId} 
  * slab copied alongside is found). Throws, inside the batch's atomic
  * transaction, when a copy cannot take its new height.
  */
-export function rebindCopiedAttachments(ctx: CopyContext, attachments: CopyAttachmentContext, results: readonly CopyProductResult[]): number[] {
+export function rebindCopiedAttachments(
+  ctx: CopyContext, attachments: CopyAttachmentContext, results: readonly CopyProductResult[],
+): { reshaped: number[]; unattached: CopyUnattachedTop[] } {
   const { inventory } = attachments;
-  if (!inventory || attachments.sources.size === 0) return [];
+  const unattached: CopyUnattachedTop[] = [];
+  if (!inventory || attachments.sources.size === 0) return { reshaped: [], unattached };
   const copyOf = new Map<number, number>();
   for (const result of results) for (const [copy, source] of result.copiedFrom) copyOf.set(source, copy);
   const view = ctx.editor.getMutationView();
@@ -121,6 +139,12 @@ export function rebindCopiedAttachments(ctx: CopyContext, attachments: CopyAttac
       }
       if (Math.abs(to - from) < 1e-9) continue;
       if (kind !== 'linear' && to < MIN_ATTACHED_EXTENT) throw fail(copyId, `it would end ${to.toFixed(3)} m tall`);
+      const shape = refId(ctx.read(copyId)?.attributes[6]);
+      if (shape !== null && shape === refId(ctx.read(sourceId)?.attributes[6])) {
+        clearTopAttachment(view, copyId);
+        unattached.push({ copyId, reason: SHARED_BODY });
+        continue;
+      }
       const geometry = kind === 'wall' ? wallGeometry(ctx.store, view, ctx.editor, copyId) : undefined;
       const outcome = writeAttachedTop(target, copyId, kind, from, to);
       if (!outcome.ok) throw fail(copyId, outcome.reason);
@@ -128,5 +152,14 @@ export function rebindCopiedAttachments(ctx: CopyContext, attachments: CopyAttac
       reshaped.push(...outcome.remesh);
     }
   }
-  return reshaped;
+  return { reshaped, unattached };
+}
+
+/** `results` with each copy's `unattachedTops` filled in from one re-bind. */
+export function withUnattachedTops(results: readonly CopyProductResult[], unattached: readonly CopyUnattachedTop[]): CopyProductResult[] {
+  if (unattached.length === 0) return [...results];
+  return results.map((result) => {
+    const own = unattached.filter(({ copyId }) => result.copiedFrom.has(copyId));
+    return own.length ? { ...result, unattachedTops: own } : result;
+  });
 }

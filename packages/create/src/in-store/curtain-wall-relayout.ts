@@ -10,13 +10,14 @@
  * The layout is read back from the parts `addCurtainWallToStore` writes
  * (`curtain-wall.ts`): mullions stand at their U offset and run full height,
  * transoms lie at their V height along the path, panels fill the openings.
- * The U grid is unchanged. The V grid follows the height the way it was
- * specified: interior lines at equal fractions of the height (a bay count)
- * keep dividing it equally, any other line keeps its height above the base.
- * The file records no V-grid spec, so lines GIVEN at heights that happen to
- * divide the wall exactly equally (1 m and 2 m in a 3 m wall) read as a bay
- * count. Recording the spec needs a property set whose GlobalId stays the
- * same across exports; that and this case are tracked in the #9296 follow-up.
+ * The U grid is unchanged. The file records no V-grid spec, so the V grid is
+ * read from where the transoms are: interior lines at exact equal fractions
+ * of the height are re-spaced proportionally to the new height, and any
+ * other line keeps its height above the base. That includes lines GIVEN at
+ * heights that happen to divide the wall equally (`VGrid: [1, 2]` on a 3 m
+ * wall): they are re-spaced proportionally too (to 1.33 m and 2.67 m at
+ * 4 m), not kept. Recording the spec needs a property set whose GlobalId
+ * stays the same across exports; tracked in #9352.
  * Mullions get the new height, transoms and panels move to their new rows and
  * panels take the new clear heights. A layout whose rows no longer fit is
  * refused, as the builder refuses it.

@@ -38,7 +38,7 @@ import {
   type CopyVec3, type LiveRead, type RigidFrame,
 } from './copy-frame.js';
 
-import { readCopyAttachments, rebindCopiedAttachments } from './copy-attachment.js';
+import { readCopyAttachments, rebindCopiedAttachments, withUnattachedTops, type CopyUnattachedTop } from './copy-attachment.js';
 
 export { productStoreyOrigin } from './copy-placement.js';
 
@@ -74,6 +74,12 @@ export interface CopyProductResult {
   readonly boundToGrid: readonly number[];
   /** Copies that found their own place on the grid and landed on no crossing, now free of it. Listed as {@link boundToGrid}. */
   readonly cameFree: readonly number[];
+  /**
+   * Copies whose top attachment could not follow their new storey, left fixed
+   * at the source's height, with the reason (`copy-attachment.ts`). Absent
+   * when every attached copy followed.
+   */
+  readonly unattachedTops?: readonly CopyUnattachedTop[];
 }
 
 /** Classes that are copied with their host, never on their own. */
@@ -169,11 +175,22 @@ export function copyRefusal(ctx: CopyContext, sourceId: number): string | null {
  * there (`copy-attachment.ts`), as the batch does.
  */
 export function copyProductInStore(ctx: CopyContext, sourceId: number, transform: CopyTransform = {}, options: { Name?: string } = {}): CopyProductResult {
-  const carried = [sourceId, ...(ctx.parts.get(sourceId) ?? []).flatMap((link) => link.parts)];
-  const attachments = readCopyAttachments(ctx, carried);
+  const attachments = readCopyAttachments(ctx, carriedParts(ctx, sourceId));
   const result = copyProductGraph(ctx, sourceId, transform, options);
-  rebindCopiedAttachments(ctx, attachments, [result]);
-  return result;
+  return withUnattachedTops([result], rebindCopiedAttachments(ctx, attachments, [result]).unattached)[0];
+}
+
+/** The product and every assembly part it carries, at every depth (iterative, visited set). */
+function carriedParts(ctx: CopyContext, sourceId: number): number[] {
+  const seen = new Set<number>();
+  const pending = [sourceId];
+  while (pending.length > 0) {
+    const id = pending.pop()!;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    for (const link of ctx.parts.get(id) ?? []) pending.push(...link.parts);
+  }
+  return [...seen];
 }
 
 /**

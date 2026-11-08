@@ -174,6 +174,40 @@ describe('round-2 review of #9340', () => {
   });
 });
 
+describe('round-3 review of #9340', () => {
+  it('an imported attached column copied to a storey with other spacing stays at its height, unattached, and says why', async () => {
+    const creator = new IfcCreator({ Name: 'Imported' });
+    const l1 = creator.addIfcBuildingStorey({ Name: 'Level 1', Elevation: 0 });
+    creator.addIfcBuildingStorey({ Name: 'Level 2', Elevation: 3 });
+    creator.addIfcBuildingStorey({ Name: 'Level 3', Elevation: 7 });
+    creator.addIfcColumn(l1, { Position: [0, 0, 0], Width: 0.3, Depth: 0.3, Height: 3 });
+    const s = session(await parse(creator.toIfc().content));
+    const storeys = readStoreyInventory(s.store, s.view).storeys;
+    const column = [...new AnchorEntityReader(s.store, s.view).ids('IFCCOLUMN')][0];
+    writeTopAttachment(s.view, column, storeys[1].GlobalId, 'relative');
+    const [copy] = create.copyBatchInStore(s.store, s.editor, [column], [{ targetStoreyId: storeys[1].expressId }]);
+    // The copy shares the file's shape: resizing it would resize the source, so it is not attached at a wrong height.
+    expect(copy.unattachedTops).toEqual([{ copyId: copy.copyId, reason: expect.stringMatching(/shares the source's shape/) }]);
+    expect(readTopAttachment(readStoreyInventory(s.store, s.view), copy.copyId)).toBeNull();
+    expect(top(s, copy.copyId, 'column')).toBeCloseTo(3, 9);
+    expect(top(s, column, 'column')).toBeCloseTo(3, 9);
+    expect(readTopAttachment(readStoreyInventory(s.store, s.view), column)?.targetStoreyId).toBe(storeys[1].expressId);
+  });
+
+  it('a direct copyProductInStore re-binds an attached part nested two assemblies deep', async () => {
+    const s = await levels();
+    const beam = (y: number) => addOrdinaryElementInStore(s.editor, anchor(s, s.l1), { kind: 'beam', params: { Start: [0, y, 2.8], End: [6, y, 2.8], Width: 0.3, Height: 0.4 } });
+    const root = beam(0), middle = beam(2);
+    const column = addOrdinaryElementInStore(s.editor, anchor(s, s.l1), { kind: 'column', params: { Position: [0, 4, 0], Width: 0.4, Depth: 0.4, Height: 3 } });
+    writeTopAttachment(s.view, column, s.guid(s.l2), 'relative');
+    s.editor.addEntity('IfcRelAggregates', ['1g8fBOlnn55vW74SLxb0PA', null, null, null, `#${root}`, [`#${middle}`]]);
+    s.editor.addEntity('IfcRelAggregates', ['2g8fBOlnn55vW74SLxb0PA', null, null, null, `#${middle}`, [`#${column}`]]);
+    const copy = s.editor.runAtomic((draft) => create.copyProductInStore(create.createCopyContext(s.store, draft), root, { targetStoreyId: s.l2 }));
+    const copiedColumn = [...copy.copiedFrom].find(([, source]) => source === column)![0];
+    expect(readTopAttachment(readStoreyInventory(s.store, s.view), copiedColumn)?.targetStoreyId).toBe(s.l3);
+  });
+});
+
 describe('a railing on a stair refits with it (#9296)', () => {
   it('stretches along the new run and up the new rise; a railing elsewhere stays', async () => {
     const s = await levels();

@@ -368,6 +368,7 @@ it('#9334 explicit insertion reviews the shift, preserves floor heights and undo
   click(insert);
   assert.deepEqual(elevations(), [0, 3], 'review writes no history');
   assert.equal(useViewerStore.getState().undoStacks.get(MODEL_ID)?.length ?? 0, before);
+  await waitFor(() => !!ui.querySelector('[data-storey-insertion]'), 'the first-click insertion review loads');
   assert.match(ui.querySelector('[data-storey-insertion]')?.textContent ?? '', /Floor-to-floor stays 3.00 m. Storeys shifted: 1/);
   assert.match(ui.querySelector('[data-storey-insertion]')?.textContent ?? '', /Updates 1 wall top/);
   const confirm = [...ui.querySelectorAll('button')].find(b => b.textContent === 'Insert storey')!;
@@ -377,6 +378,19 @@ it('#9334 explicit insertion reviews the shift, preserves floor heights and undo
   assert.equal(useViewerStore.getState().session?.storeyId, STOREY, 'drawing plane stays on L0');
   act(() => useViewerStore.getState().undo(MODEL_ID));
   assert.deepEqual(elevations(), [0, 3], 'one Undo restores both the shifted storey and the insertion');
+});
+
+it('#9334 a first-click insertion that finishes loading after session replacement does nothing', async () => {
+  const ui = await mount();
+  click(rows(ui).at(-1)!.querySelector('[aria-label="Insert storey above L0"]')!);
+  act(() => {
+    useViewerStore.getState().exitModelWorkspace();
+    useViewerStore.getState().enterModelWorkspace({ modelId: MODEL_ID, storeyId: STOREY });
+  });
+  await requiredModule(() => import('./StoreyInsertionPanel'), 'the clicked insertion module loads (#9334)');
+  await advance(0);
+  assert.equal(ui.querySelector('[data-storey-insertion]'), null, 'an abandoned click opens no review in the replacement session');
+  assert.deepEqual(elevations(), [0, 3], 'an abandoned click adds nothing');
 });
 
 it('#9334 consecutive header adds use the live topmost storey and merge their toasts', async () => {
@@ -406,6 +420,7 @@ it('#9334 the added-storey Draw on toast still activates a live drawable target'
   await waitFor(() => rows(ui).length === 3, 'the added storey appears');
   const created = modelStoreys(useViewerStore.getState(), MODEL_ID).at(-1)!.expressId;
   click([...notices.querySelectorAll('button')].find(button => button.textContent === 'Draw on')!);
+  await waitFor(() => useViewerStore.getState().session?.storeyId === created, 'the clicked action loads and activates the storey');
   assert.equal(useViewerStore.getState().session?.storeyId, created);
   assert.deepEqual(useViewerStore.getState().session?.workplane, { kind: 'storey', storeyId: created, offset: 0 });
 });
@@ -428,6 +443,8 @@ for (const invalidation of ['undo', 'delete', 'reprojection'] as const) {
     });
     const plane = useViewerStore.getState().session!.workplane;
     click(draw);
+    await requiredModule(() => import('./storey-toast-actions'), 'the clicked toast action loads (#9334)');
+    await advance(0);
     assert.equal(useViewerStore.getState().session?.storeyId, STOREY, 'a stale or undrawable target cannot become active');
     assert.equal(useViewerStore.getState().session?.workplane, plane, 'the existing drawing plane stays intact');
     assert.equal(draw.isConnected, false, 'the stale toast action dismisses itself');

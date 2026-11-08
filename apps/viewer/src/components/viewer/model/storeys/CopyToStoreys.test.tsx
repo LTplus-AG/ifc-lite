@@ -113,6 +113,7 @@ it('#9296 closing the picker before the painted commit writes no copies', async 
 });
 
 it('#9334 copy completion offers Show and Undo, revealing hidden storeys and undoing only this copy', async () => {
+  act(() => useViewerStore.getState().setStoreyContextMode('hide'));
   const ui = render(<><CopyToStoreys /><Toaster /></>);
   const before = walls().length;
   click(button(ui, 'Select all storeys'));
@@ -124,10 +125,12 @@ it('#9334 copy completion offers Show and Undo, revealing hidden storeys and und
   assert.match(ui.textContent ?? '', /Copied 2 elements to 2 storeys/);
   assert.ok(button(ui, 'Undo'));
   click(button(ui, 'Show'));
+  await waitFor(() => useViewerStore.getState().storeyContextMode === 'all', 'the first-click Show action loads');
   assert.equal(useViewerStore.getState().storeyContextMode, 'all');
   assert.equal(useViewerStore.getState().levelDisplayMode, 'stacked');
   assert.ok(button(ui, 'Undo'), 'Show keeps Undo available');
   click(button(ui, 'Undo'));
+  await waitFor(() => walls().filter(w => !useViewerStore.getState().mutationViews.get(MODEL_ID)!.isDeleted(w.expressId)).length === before, 'the clicked Undo action completes');
   assert.equal(walls().filter(w => !useViewerStore.getState().mutationViews.get(MODEL_ID)!.isDeleted(w.expressId)).length, before);
 });
 
@@ -152,6 +155,7 @@ it('#9334 the copy toast refuses Undo with an explanation after editing permissi
   const depth = useViewerStore.getState().undoStacks.get(MODEL_ID)!.length;
   act(() => useViewerStore.setState({ editEnabled: false }));
   click(button(ui, 'Undo'));
+  await waitFor(() => /Copying is unavailable/.test(ui.querySelector('[role="alert"]')?.textContent ?? ''), 'the lazy Undo action checks current editing permission');
   assert.equal(useViewerStore.getState().undoStacks.get(MODEL_ID)!.length, depth);
   assert.match(ui.querySelector('[role="alert"]')?.textContent ?? '', /Copying is unavailable/);
 });

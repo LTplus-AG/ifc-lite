@@ -11,7 +11,7 @@
  * one undo step.
  */
 
-import { useRef, useState } from 'react';
+import { lazy, Suspense, useRef, useState } from 'react';
 import { effectiveStoreyElevation, type StoreyDeletePlan } from '@ifc-lite/create';
 import { ChevronLeft, Layers, Plus } from 'lucide-react';
 import { useViewerStore } from '@/store';
@@ -23,16 +23,20 @@ import { toast } from '@/components/ui/toast';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { commitStoreyOp } from '@/store/slices/mutation-storey';
 import { activateStorey, deleteStorey, reviewStoreyDeletion } from '@/lib/storeys/storey-actions';
-import { formatElevation, formatHeight } from '@/lib/storeys/storey-length';
+import { formatElevation } from '@/lib/storeys/storey-length';
 import { refusalText } from '@/lib/storeys/storey-text';
 import { modelStoreys } from '@/lib/commands/modeling/workspace-storeys';
-import { addStoreyKeepingSession, drawOnAddedStorey } from './add-storey';
+import { addStoreyKeepingSession } from './add-storey';
+import { loadStoreyToastAction } from './storey-toast';
 import { StoreyRow } from './StoreyRow';
 import { StoreyDeletePanel } from './StoreyDeletePanel';
 import { StoreySectionStrip } from './StoreySectionStrip';
-import { StoreyImpact } from './StoreyImpact';
-import { commitStoreyInsertion, reviewStoreyInsertion, type StoreyInsertion } from './insert-storey';
+import type { StoreyInsertion } from './insert-storey';
 import { useStoreyEditDenial, useStoreyLevelEditing, useStoreyRename, useStoreyRows } from './useStoreyManager';
+
+const loadInsertionPanel = () => import('./StoreyInsertionPanel');
+const StoreyInsertionPanel = lazy(() => loadInsertionPanel().then(module => ({ default: module.StoreyInsertionPanel })));
+const StoreyImpact = lazy(() => import('./StoreyImpact').then(module => ({ default: module.StoreyImpact })));
 
 /** The batch (or the lone record) on top of a model's undo stack. */
 function topUndoStep(modelId: string): string | null {
@@ -52,6 +56,7 @@ export function StoreyManager({ onBack }: { onBack: () => void }) {
   const renaming = useStoreyRename(modelId);
   // `reviewed`: what the open delete panel shows, and all that confirming it may delete.
   const [inserting, setInserting] = useState<{ modelId: string; review: StoreyInsertion } | null>(null);
+  const [loadingInsertion, setLoadingInsertion] = useState(false);
   const [deletingState, setDeleting] = useState<{
     modelId: string | null; storeyId: number; error: string | null; reviewed: StoreyDeletePlan | null;
   } | null>(null);
@@ -59,7 +64,6 @@ export function StoreyManager({ onBack }: { onBack: () => void }) {
   const deleting = deletingState?.modelId === modelId ? deletingState : null;
   const review = (storeyId: number) => (modelId ? reviewStoreyDeletion(useViewerStore.getState(), modelId, storeyId) : null);
   const radios = useRef(new Map<number, HTMLButtonElement>());
-  const insertionPanel = useRef<HTMLElement>(null);
   const names = useRef(new Map<number, HTMLInputElement>());
   const fallbackName = (index: number) => t('storeyManager.fallbackName', { index });
   const rows = rowsState.status === 'ready' ? rowsState.rows : [];
@@ -84,7 +88,7 @@ export function StoreyManager({ onBack }: { onBack: () => void }) {
     const elevation = store ? formatElevation(effectiveStoreyElevation(store, state.mutationViews.get(modelId), storeyId)) : '';
     toast.success(t('storeyManager.added', { storey: name, elevation }), {
       label: t('storeyManager.drawOn'),
-      onClick: () => drawOnAddedStorey(modelId, storeyId),
+      onClick: () => loadStoreyToastAction(actions => actions.drawOnAddedStorey(modelId, storeyId)),
     }, `storey-added:${modelId}`);
     focusName(storeyId);
   };
@@ -220,9 +224,17 @@ export function StoreyManager({ onBack }: { onBack: () => void }) {
                 onLevelCancel={editing.onCancel}
                 onAdd={(side) => {
                   editing.onCancel();
-                  const review = reviewStoreyInsertion(modelId, row.expressId, fallbackName, side);
-                  if (review) { setInserting({ modelId, review }); requestAnimationFrame(() => { insertionPanel.current?.scrollIntoView?.({ block: 'nearest' }); insertionPanel.current?.focus(); }); }
-                  else add(row.expressId, side);
+                  const entry = useViewerStore.getState().session?.entry;
+                  setLoadingInsertion(true);
+                  void loadInsertionPanel().then(({ reviewStoreyInsertion }) => {
+                    const session = useViewerStore.getState().session;
+                    if (session?.modelId !== modelId || session.entry !== entry) return;
+                    const review = reviewStoreyInsertion(modelId, row.expressId, fallbackName, side);
+                    if (review) setInserting({ modelId, review });
+                    else add(row.expressId, side);
+                  }).catch((error: unknown) => {
+                    toast.error(t('storeyManager.refusal.other', { reason: error instanceof Error ? error.message : String(error) }));
+                  }).finally(() => setLoadingInsertion(false));
                 }}
                 onDelete={() => askDelete(row.expressId)}
                 radioRef={(element) => { if (element) radios.current.set(row.expressId, element); else radios.current.delete(row.expressId); }}
@@ -242,26 +254,10 @@ export function StoreyManager({ onBack }: { onBack: () => void }) {
               </StoreyRow>
             ))}
           </ul>
-          {inserting?.modelId === modelId && <section ref={insertionPanel} tabIndex={-1} aria-label={t('storeyManager.addAboveOf', { storey: rows.find(row => row.expressId === inserting.review.plan.edit.storeyId)?.Name ?? '' })} data-storey-insertion className="space-y-2 border-t border-border p-2">
-            <p className="text-xs font-medium">{t('storeyManager.addAboveOf', { storey: rows.find(row => row.expressId === inserting.review.plan.edit.storeyId)?.Name ?? '' })}</p>
-            <p className="text-xs">{t('storeyManager.insert.summary', { storey: inserting.review.params.Name, elevation: formatElevation(inserting.review.params.Elevation), count: inserting.review.plan.storeys.length, height: formatHeight(inserting.review.height) })}</p>
-            <ul className="max-h-24 overflow-y-auto text-xs">
-              {inserting.review.plan.storeys.map(move => <li key={move.expressId}>{t('storeyManager.insert.move', { storey: move.Name, from: formatElevation(move.from), to: formatElevation(move.to) })}</li>)}
-            </ul>
-            {inserting.review.plan.refusals[0] && <p role="alert" className="text-xs text-danger">{refusalText(t, inserting.review.plan.refusals[0])}</p>}
-            <StoreyImpact insertion previewHint={false} draft={{ storeyId: inserting.review.plan.edit.storeyId, field: 'height', plan: inserting.review.plan, previewing: false, error: null }} rows={rows} onSelect={selectElements} />
-            <div className="flex gap-2">
-              <Button size="sm" disabled={readOnly || inserting.review.plan.refusals.length > 0} onClick={() => {
-                const result = commitStoreyInsertion(modelId, inserting.review);
-                if (!result.ok) { toast.error(t('storeyManager.refusal.other', { reason: result.reason })); return; }
-                setInserting(null);
-                if (result.storeyId !== null) added(result.storeyId);
-              }}>{t('storeyManager.insert.confirm')}</Button>
-              <Button size="sm" variant="ghost" onClick={() => setInserting(null)}>{t('storeyManager.copy.cancel')}</Button>
-            </div>
-          </section>}
+          {loadingInsertion && <output className="flex justify-center p-2"><Spinner label={t('storeyManager.insert.confirm')} /></output>}
+          {inserting?.modelId === modelId && <Suspense fallback={<Spinner label={t('storeyManager.insert.confirm')} />}><StoreyInsertionPanel modelId={modelId} review={inserting.review} rows={rows} readOnly={readOnly} onSelect={selectElements} onAdded={added} onCancel={() => setInserting(null)} /></Suspense>}
           {editing.draft && (
-            <StoreyImpact draft={editing.draft} rows={rows} onSelect={selectElements} />
+            <Suspense fallback={<Spinner label={t('storeyManager.impact.title')} />}><StoreyImpact draft={editing.draft} rows={rows} onSelect={selectElements} /></Suspense>
           )}
           <div className="border-t border-border px-2 py-2">
             <StoreySectionStrip rows={rows} activeId={activeId} plan={inserting?.modelId === modelId ? inserting.review.plan : editing.draft?.previewing ? editing.draft.plan : null} onActivate={activate} />

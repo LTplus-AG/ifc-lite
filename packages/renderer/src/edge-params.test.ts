@@ -200,7 +200,12 @@ describe('edge pass line coverage', () => {
     assert.match(ss, /const SAMPLE_POS = array<vec2<f32>, 1>\(\s*vec2<f32>\(0\.5, 0\.5\),/);
     // A tap on the centre's plane skips its normal; only one off it fits one.
     const tap = wgslFnBody(ms, 'tapCrosses');
-    assert.ok(tap.indexOf('onPlane(centre, qc, s, dq)') < tap.indexOf('planeAt(qc, s, dq)'));
+    const onPlane = tap.indexOf('if (onPlane(centre, qc, s, dq)) {');
+    const fit = tap.indexOf('planeAt(qc, s, dq)');
+    assert.ok(onPlane >= 0, 'tapCrosses tests the centre plane');
+    assert.ok(fit >= 0, 'tapCrosses fits a plane for an off-plane tap');
+    assert.ok(onPlane < fit, 'the on-plane test comes before the fit');
+    assert.match(tap.slice(onPlane, fit), /^if \(onPlane\(centre, qc, s, dq\)\) \{\s*return false;\s*\}/);
   });
 
   it('reads only sample 0 on a single-sampled target', () => {

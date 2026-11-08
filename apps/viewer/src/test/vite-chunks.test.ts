@@ -39,3 +39,27 @@ test('the tslib group claims nothing else', () => {
   ]) assert.equal(group.test.test(id), false, id);
   assert.equal(chunks.legacyManualChunk('/repo/node_modules/tslib/tslib.es6.mjs'), undefined);
 });
+
+// #9200: the recursive `sandbox` chunk is eager (eager code imports
+// SandboxAbortError and the bridge schema), and it swallowed the QuickJS
+// runtime core that only a script run needs. The runtime group claims that
+// core first. It must leave the core's index alone: eager code reaches the
+// index, and any eager module in a group makes the whole group eager.
+test('the QuickJS runtime group claims the lazy runtime files, not the eager index', () => {
+  const group = (chunks as Record<string, unknown>).quickjsRuntimeChunkGroup as Group | undefined;
+  assert.ok(group, 'vite-chunks must export quickjsRuntimeChunkGroup');
+  assert.ok(group.priority > 0, 'must outrank the recursive legacy group');
+  assert.equal(group.includeDependenciesRecursively, false);
+  const core = '/repo/node_modules/.pnpm/quickjs-emscripten-core@0.32.0/node_modules/quickjs-emscripten-core/dist/';
+  for (const id of [
+    `${core}chunk-V2S4ZYJR.mjs`,
+    `${core}module-ES6BEMUI.mjs`,
+    '/repo/node_modules/.pnpm/@jitl+quickjs-ffi-types@0.32.0/node_modules/@jitl/quickjs-ffi-types/dist/index.mjs',
+  ]) assert.ok(group.test.test(id), id);
+  for (const id of [
+    `${core}index.mjs`,
+    '/repo/node_modules/.pnpm/quickjs-emscripten@0.32.0/node_modules/quickjs-emscripten/dist/chunk-OHAYRCBA.mjs',
+    '/repo/node_modules/.pnpm/@jitl+quickjs-wasmfile-release-sync@0.32.0/node_modules/@jitl/quickjs-wasmfile-release-sync/dist/index.mjs',
+    '/repo/packages/sandbox/src/quickjs-module.ts',
+  ]) assert.equal(group.test.test(id), false, id);
+});

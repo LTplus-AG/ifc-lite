@@ -8,6 +8,29 @@ Citations to `evidence/`, `tests/evidence/` and `docs/architecture/evidence/` pa
 at commit [`f98785c722`](https://github.com/LTplus-AG/ifc-lite/tree/f98785c722); the retained
 bundles left the tree in #9054.
 
+## The QuickJS runtime leaves the eager sandbox chunk (#9200)
+
+**Shipped: a small eager-bytes cut, no boot-time change.** The viewer's `sandbox`
+manual chunk is eager, because eager code imports `SandboxAbortError` and the bridge
+schema. A recursive group also takes every dependency of its modules, so it carried the
+QuickJS runtime core, which only a script run needs. A non-recursive, higher-priority
+group now claims that core, except `quickjs-emscripten-core`'s index, which eager code
+does reach. The first script run fetches it as one extra lazy file.
+`@ifc-lite/create` now declares `sideEffects: false`, and `@ifc-lite/sdk` lists only its
+index, which registers the schema normalizer at load. That declaration took three
+`create` modules off the boot path.
+
+Lessons. Most of `create` is eager for a real reason: the boot path calls
+`createModellingStoreBackend`, which builds one object holding every modelling method,
+the storey planner included. No chunk rule or `sideEffects` flag can split a static
+use. Moving the planner off the boot path means splitting that factory. Making the whole
+`sandbox` group non-recursive saved slightly fewer bytes. Default splitting broke the
+old chunk into 19 more small eager files, and boot to the welcome card measured about
+20 ms slower unthrottled. So check the eager file count, not only the byte total, and
+measure boot with each build in both A/B positions: on a shared host, position alone
+moved the result by about 15 ms. A group that claimed every QuickJS module also failed,
+because the one eager module in it made the whole group eager.
+
 ## First selection reads typing relationships from the graph (#9192)
 
 **Shipped: the scan is gone, not made cheaper.** `readCurrentTypeQuantities` read every

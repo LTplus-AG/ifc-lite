@@ -118,19 +118,9 @@ fn check(
 }
 
 fn check_report(router: &GeometryRouter, refusal_type: Option<&str>) {
-    let report = router.take_unsupported_items();
-    assert_eq!(
-        report.len(),
-        usize::from(refusal_type.is_some()),
-        "{report:?}"
-    );
-    if let Some(kind) = refusal_type {
-        assert_eq!(
-            report.get(kind),
-            Some(&1),
-            "one observable product refusal: {report:?}"
-        );
-    }
+    assert!(router.take_unsupported_items().is_empty(), "#9268 budget is not unsupported");
+    let refusals = router.take_budget_refusals();
+    assert_eq!(refusals.len(), usize::from(refusal_type.is_some()));
 }
 
 #[test]

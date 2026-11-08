@@ -17,7 +17,13 @@ impl ProductControl<'_> {
             // members, including skipped representations. Reuse selected roots.
             let roots =
                 retained_structure::validated_product_shape(self.element, decoder, self.allowance)
-                    .map_err(|error| error.into_common(selection))?;
+                    .map_err(|error| {
+                        if let retained_structure::StructureError::Budget { entity, allowance, reached } = &error {
+                            router.record_budget_refusal(*entity, "walk Items members", *allowance, *reached);
+                            router.attribute_budget_refusals(self.element);
+                        }
+                        error.into_common(selection)
+                    })?;
             crate::representation::product_budget::admit_retained_product(
                 self.element,
                 decoder,
@@ -39,6 +45,10 @@ impl ProductControl<'_> {
         // Retained output is complete-or-refused, never a partial exact success.
         if self.retained.is_some() {
             if let Some((item, why)) = plan.refusal.take().map(|failure| *failure) {
+                if let crate::representation::WalkRefusal::Budget { max_levels, budget, reached } = &why {
+                    router.record_budget_refusal(item.id, budget, *max_levels, *reached);
+                    router.attribute_budget_refusals(self.element);
+                }
                 return Err(why.into_error(item.id));
             }
         }

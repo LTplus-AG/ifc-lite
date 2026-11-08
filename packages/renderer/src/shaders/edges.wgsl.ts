@@ -14,12 +14,15 @@
  *
  * Each of `directions` tap offsets (4 cardinal at `low`, +4 diagonal at
  * `high`) votes 0/1 on three cues — id change, normal crease, depth
- * silhouette — and the pass darkens by the AVERAGE vote across directions.
- * That average is a coverage estimate, not a single hard sample, so a line
- * that only grazes one direction fades instead of dashing on/off between
- * frames of the same seam (the bug this pass replaces, `post-processor.ts`
- * introduced its own version of this coverage trick for the id test alone;
- * this generalises it to all three cues and both new tests).
+ * silhouette. A pixel is on the line when ANY tap votes, and every line
+ * pixel darkens by the same amount (`edge.y`, see `packEdgeUniforms`).
+ *
+ * It used to darken by the AVERAGE vote. Beside a slanted edge, the pixel at
+ * each step of the raster staircase sees the other side in two directions
+ * (above AND beside it) where its neighbours see it in one, so it drew twice
+ * as dark: a long straight edge, like the top of a wall seen in perspective,
+ * came out as a row of dots, one per step, at both qualities. The vote count
+ * says where the staircase steps, not how close the edge passes.
  */
 import { EDGE_CREASE_COS, EDGE_MAX_DARKEN, EDGE_SILHOUETTE_REL_THRESHOLD } from '../edge-params.js';
 import { OUTLINE_SEARCH_RADIUS, OUTLINE_WIDTH_PX, SELECTION_HIDDEN_ALPHA } from '../outline-params.js';
@@ -40,7 +43,7 @@ export function edgeShaderSource(multisampled: boolean): string {
           xyParams: vec4<f32>,     // m0, m5, m12, m13
           shearParams: vec4<f32>,  // m8, m9, 0, 0 (lens shift, #8688)
           viewport: vec4<f32>,     // full-res width, height, 1/width, 1/height
-          edge: vec4<f32>,         // tap radius px, intensity, highQuality (0/1), _pad
+          edge: vec4<f32>,         // tap radius px, line darkening, highQuality (0/1), _pad
         }
 
         ${depthTextureWgsl(0, multisampled)}
@@ -139,23 +142,19 @@ export function edgeShaderSource(multisampled: boolean): string {
           );
 
           let r = i32(round(params.edge.x));
-          var votes = 0.0;
-          votes = votes + tapVote(p, p + vec2<i32>( r,  0), dims, centerId, centerP, centerN);
-          votes = votes + tapVote(p, p + vec2<i32>(-r,  0), dims, centerId, centerP, centerN);
-          votes = votes + tapVote(p, p + vec2<i32>( 0,  r), dims, centerId, centerP, centerN);
-          votes = votes + tapVote(p, p + vec2<i32>( 0, -r), dims, centerId, centerP, centerN);
-          var directions = 4.0;
+          var onLine = tapVote(p, p + vec2<i32>( r,  0), dims, centerId, centerP, centerN);
+          onLine = max(onLine, tapVote(p, p + vec2<i32>(-r,  0), dims, centerId, centerP, centerN));
+          onLine = max(onLine, tapVote(p, p + vec2<i32>( 0,  r), dims, centerId, centerP, centerN));
+          onLine = max(onLine, tapVote(p, p + vec2<i32>( 0, -r), dims, centerId, centerP, centerN));
 
           if (params.edge.z > 0.5) {
-            votes = votes + tapVote(p, p + vec2<i32>( r,  r), dims, centerId, centerP, centerN);
-            votes = votes + tapVote(p, p + vec2<i32>(-r,  r), dims, centerId, centerP, centerN);
-            votes = votes + tapVote(p, p + vec2<i32>( r, -r), dims, centerId, centerP, centerN);
-            votes = votes + tapVote(p, p + vec2<i32>(-r, -r), dims, centerId, centerP, centerN);
-            directions = 8.0;
+            onLine = max(onLine, tapVote(p, p + vec2<i32>( r,  r), dims, centerId, centerP, centerN));
+            onLine = max(onLine, tapVote(p, p + vec2<i32>(-r,  r), dims, centerId, centerP, centerN));
+            onLine = max(onLine, tapVote(p, p + vec2<i32>( r, -r), dims, centerId, centerP, centerN));
+            onLine = max(onLine, tapVote(p, p + vec2<i32>(-r, -r), dims, centerId, centerP, centerN));
           }
 
-          let coverage = votes / directions;
-          let darken = clamp(coverage * params.edge.y, 0.0, EDGE_MAX_DARKEN);
+          let darken = clamp(onLine * params.edge.y, 0.0, EDGE_MAX_DARKEN);
           return vec4<f32>(0.0, 0.0, 0.0, darken);
         }
 `;

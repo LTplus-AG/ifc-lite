@@ -16,9 +16,10 @@
  * geometry). This pass instead:
  *  - also fires on a normal crease (a real angle, not a coplanar seam) and a
  *    depth silhouette, both in linear view-space units;
- *  - blends a coverage estimate over several tap directions (as the old pass
- *    already did for its id test, `edge4Count * 0.25`) instead of a single
- *    hard sample, so a line antialiases instead of dashing.
+ *  - draws every pixel beside the edge equally dark. Averaging the votes of
+ *    several tap directions (as the old pass did for its id test,
+ *    `edge4Count * 0.25`) darkened each step of a slanted edge's raster
+ *    staircase twice, so long straight edges drew as dotted lines.
  */
 
 import { depthReconstructParams } from './depth-reconstruct.js';
@@ -29,11 +30,19 @@ export type EdgeQuality = Exclude<SeparationLinesQuality, 'off'>;
 export interface EdgeQualityPreset {
   /** Tap directions: 4 (cardinal) at low, 8 (+ diagonals) at high. */
   directions: 4 | 8;
+  /**
+   * Darkening of a line pixel per unit intensity: the share of taps that
+   * cross an axis-aligned edge from the pixel beside it (1 of 4 at low, 3 of
+   * 8 at high). Those edges keep the weight the averaged votes gave them;
+   * slanted edges now get that weight along their whole length, without a
+   * darker pixel at each step of their staircase.
+   */
+  lineCoverage: number;
 }
 
 export const EDGE_QUALITY_PRESETS: Readonly<Record<EdgeQuality, EdgeQualityPreset>> = {
-  low: { directions: 4 },
-  high: { directions: 8 },
+  low: { directions: 4, lineCoverage: 1 / 4 },
+  high: { directions: 8, lineCoverage: 3 / 8 },
 };
 
 /** Crease angle (degrees) above which two adjacent face normals draw an edge. */
@@ -72,7 +81,7 @@ export interface EdgeFrameParams {
   quality: EdgeQuality;
   /** Tap distance in pixels, already scaled by device pixel ratio. */
   radiusPx: number;
-  /** Darkening strength, already clamped to [0, 1]. */
+  /** Darkening strength, already clamped to [0, 1]; scaled by the preset's `lineCoverage`. */
   intensity: number;
 }
 
@@ -88,7 +97,8 @@ export function packEdgeUniforms(out: Float32Array, frame: EdgeFrameParams): voi
   out[L.viewport + 2] = 1 / frame.width;
   out[L.viewport + 3] = 1 / frame.height;
   out[L.edge] = Math.max(1, frame.radiusPx);
-  out[L.edge + 1] = frame.intensity;
-  out[L.edge + 2] = EDGE_QUALITY_PRESETS[frame.quality].directions === 8 ? 1 : 0;
+  const preset = EDGE_QUALITY_PRESETS[frame.quality];
+  out[L.edge + 1] = frame.intensity * preset.lineCoverage;
+  out[L.edge + 2] = preset.directions === 8 ? 1 : 0;
   out[L.edge + 3] = 0;
 }

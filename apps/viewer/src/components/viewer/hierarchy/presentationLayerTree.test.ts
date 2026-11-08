@@ -306,7 +306,8 @@ const parseClassification = (extra: string) => new IfcParser().parseColumnar(
 
 test('#9383 source-empty classified members have a distinct unavailable bucket', async () => {
   const store = await parseClassification("#62=IFCRELASSOCIATESCLASSIFICATION('rel',$,$,$,(#2),#61);");
-  const transport = { ...store, source: EMPTY_SOURCE_BYTES };
+  const transport = { ...store, source: EMPTY_SOURCE_BYTES, onDemandClassificationMap: undefined };
+  assert.equal(extractClassificationsOnDemand(transport, 2)[0]?.unresolved, true, 'server graph proves classification without source attributes');
   const view = new MutablePropertyView(null, '__legacy__');
   view.setExpressIdWatermark(100);
   // Native metadata-only inputs can still have live authored geometry/layers.

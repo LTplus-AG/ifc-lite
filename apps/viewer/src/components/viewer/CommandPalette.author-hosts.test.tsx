@@ -257,3 +257,23 @@ test('persistent bulk editor reconciles a removed model before querying and appl
   assert.equal(useViewerStore.getState().getMutationView('b')?.getPropertyValue(1, 'CESIUM', 'Stage'), 6);
   assert.equal(useViewerStore.getState().getMutationView('a')?.getPropertyValue(1, 'CESIUM', 'Stage'), null);
 });
+
+for (const id of ['author:bulk-properties', 'author:import-data']) {
+  for (const from of ['ribbon', 'palette']) test(`#8962 ${id} returns focus to its ${from} launcher`, async () => {
+    render(<Harness />); await advance(30);
+    press(document.querySelector('[role="combobox"]')!, 'Escape'); await advance(0);
+    let launcher: HTMLButtonElement;
+    if (from === 'ribbon') {
+      click(button('Ribbon'));
+      const trigger = document.querySelector<HTMLButtonElement>(`[data-command-id="${id}"]`); assert.ok(trigger);
+      launcher = trigger; activate(launcher); await waitForAuthor(id);
+    } else {
+      launcher = button('Palette'); activate(launcher); await advance(30); await launch(id);
+    }
+    closeDialog(); await advance(30);
+    assert.equal(document.activeElement, launcher);
+    activate(launcher); await advance(30);
+    if (from === 'palette') assert.ok(document.querySelector('[role="combobox"]'));
+    else await waitForAuthor(id);
+  });
+}

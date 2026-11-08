@@ -35,8 +35,8 @@ export interface SurfaceCommandContext {
   /** Explicit focus return target for the selected-entity destination. */
   entityActionsLauncher?: () => HTMLElement | null;
   toolHostIsCurrent?: () => boolean;
-  openBulkProperties?: () => void;
-  openImportData?: () => void;
+  openBulkProperties?: (launcher?: HTMLElement | null) => void;
+  openImportData?: (launcher?: HTMLElement | null) => void;
   openClassFilter?: (launcher?: HTMLElement | null) => void;
 }
 

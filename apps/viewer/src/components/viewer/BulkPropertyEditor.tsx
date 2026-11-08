@@ -1,6 +1,8 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { useBulkExecutionScroll } from './useBulkExecutionScroll';
+import { useAuthoringOperation } from './authoring-operation';
 import { useToolDialog, type ToolDialogProps } from './useToolDialog';
 
 /**
@@ -127,7 +129,7 @@ export function BulkPropertyEditor(props: ToolDialogProps) {
   const [runtimeFailures, setRuntimeFailures] = useState<BulkRuntimeFailure[]>([]);
   // Track whether config changed since last execute (disables button after success)
   const [executeDirty, setExecuteDirty] = useState(true);
-  const prevProgressRef = useRef<{ done: number; total: number } | null>(null);
+  useBulkExecutionScroll(scrollAreaRef, executeResult, executeProgress);
 
   // --- All expensive computation is gated behind `open` so IFC loading is never impacted ---
 
@@ -175,6 +177,12 @@ export function BulkPropertyEditor(props: ToolDialogProps) {
     }
     return models.get(selectedModelId);
   }, [open, models, selectedModelId, legacyIfcDataStore, legacyGeometryResult, t, locale, revision]);
+
+  const isCurrent = useAuthoringOperation(open, selectedModelId, selectedModel?.ifcDataStore, mutationViews.get(selectedModelId));
+  useEffect(() => {
+    setIsExecuting(false); setExecuteProgress(null); setExecuteResult(null); setRuntimeFailures([]);
+    return () => { executeAbortRef.current?.abort(); executeAbortRef.current = null; };
+  }, [isCurrent]);
 
   // Ensure mutation view exists for selected model — only when dialog is open
   useEffect(() => {
@@ -308,6 +316,7 @@ export function BulkPropertyEditor(props: ToolDialogProps) {
     executeCancelRef.current = false;
     const controller = new AbortController();
     executeAbortRef.current = controller;
+    const ownsOperation = () => isCurrent() && executeAbortRef.current === controller;
     const activity = startBulkOperationActivity(controller, executeAbortRef, executeCancelRef, t);
 
     await new Promise(r => setTimeout(r, 0));
@@ -316,6 +325,7 @@ export function BulkPropertyEditor(props: ToolDialogProps) {
       const ids = targetSource === 'query'
         ? await resolveBulkQueryIds(useViewerStore.getState(), selectedModelId, queryGroups, controller.signal)
         : null;
+      if (!ownsOperation()) throw new DOMException('Authoring operation retired', 'AbortError');
       const targets = ids
         ? ids.map((id) => ({ modelId: selectedModelId, id }))
         : [...targetGroups].flatMap(([modelId, group]) => group.map((id) => ({ modelId, id })));
@@ -326,19 +336,21 @@ export function BulkPropertyEditor(props: ToolDialogProps) {
         targets,
         action,
         getEngine: (modelId) => targetSource === 'query' ? queryEngine : targetEngines.get(modelId),
-        isCancelled: () => executeCancelRef.current,
-        onProgress: (done, count) => { activity.progress(done, count); setExecuteProgress({ done, total: count }); },
+        isCancelled: () => !ownsOperation() || controller.signal.aborted || executeCancelRef.current,
+        onProgress: (done, count) => { activity.progress(done, count); if (ownsOperation()) setExecuteProgress({ done, total: count }); },
         modelUnavailable: (modelId) => t('bulkPropertyEditor.modelUnavailable', { modelId }),
         entityError: (id, detail) => t('bulkPropertyEditor.entityError', {
           id, detail: detail ?? t('bulkPropertyEditor.unknownError'),
         }),
       });
       activity.finish(result, failures);
+      if (!ownsOperation()) return;
       setExecuteResult(result);
       setRuntimeFailures(failures);
       if (result.success) setExecuteDirty(false);
     } catch (error) {
       activity.fail(error);
+      if (!ownsOperation()) return;
       if (controller.signal.aborted) {
         setExecuteResult({ mutations: [], affectedEntityCount: 0, success: false });
         setRuntimeFailures([{ kind: 'cancelled', done: 0, total: 0 }]);
@@ -354,12 +366,12 @@ export function BulkPropertyEditor(props: ToolDialogProps) {
       setValidationFailure(null);
       setRuntimeFailures([{ kind: 'execute', detail: error instanceof Error ? error.message : undefined }]);
     } finally {
-      if (executeAbortRef.current === controller) executeAbortRef.current = null;
-      setIsExecuting(false);
-      setExecuteProgress(null);
+      if (ownsOperation()) {
+        executeAbortRef.current = null; setIsExecuting(false); setExecuteProgress(null);
+      }
     }
   }, [queryEngine, targetEngines, targetGroups, targetSource, targetsReady,
-    liveMatchCount, canEditInSession, queryGroups, buildAction, selectedModelId, t]);
+    liveMatchCount, canEditInSession, queryGroups, buildAction, selectedModelId, t, isCurrent]);
 
   // Review as changes (P15): the same targets and action as a checked batch with current values expected.
   const [review, setReview] = useState<ChangeConversion | null>(null);
@@ -370,15 +382,17 @@ export function BulkPropertyEditor(props: ToolDialogProps) {
     try {
       ids = targetSource === 'query' ? await resolveBulkQueryIds(useViewerStore.getState(), selectedModelId, queryGroups) : null;
     } catch (error) {
+      if (!isCurrent()) return;
       console.error('[bulk-edit] review targets failed', error);
       setRuntimeFailures([{ kind: 'execute', detail: error instanceof Error ? error.message : undefined }]);
       return setExecuteResult({ mutations: [], affectedEntityCount: 0, success: false });
     }
+    if (!isCurrent()) return;
     const targets = ids ? ids.map((expressId) => ({ modelId: selectedModelId, expressId }))
       : [...targetGroups].flatMap(([modelId, group]) => group.map((expressId) => ({ modelId, expressId })));
     const field = actionType === 'SET_ATTRIBUTE' ? targetProp : `${targetPset}.${targetProp}`;
     setReview(bulkActionToModelChanges(useViewerStore.getState(), targets, built.action, t('tableChanges.bulkTitle', { field })));
-  }, [buildAction, targetSource, selectedModelId, queryGroups, targetGroups, actionType, targetPset, targetProp, t]);
+  }, [buildAction, targetSource, selectedModelId, queryGroups, targetGroups, actionType, targetPset, targetProp, t, isCurrent]);
 
   // Reset form
   const handleReset = useCallback(() => {
@@ -392,29 +406,6 @@ export function BulkPropertyEditor(props: ToolDialogProps) {
     setRuntimeFailures([]);
     setExecuteDirty(true);
   }, []);
-
-  // Scroll to bottom — double rAF ensures DOM is painted
-  const scrollToBottom = useCallback(() => {
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        scrollAreaRef.current?.scrollTo({
-          top: scrollAreaRef.current.scrollHeight,
-          behavior: 'smooth',
-        });
-      });
-    });
-  }, []);
-
-  // Auto-scroll when execute completes
-  useEffect(() => {
-    if (executeResult) scrollToBottom();
-  }, [executeResult, scrollToBottom]);
-
-  // Auto-scroll when progress first appears
-  useEffect(() => {
-    if (executeProgress && !prevProgressRef.current) scrollToBottom();
-    prevProgressRef.current = executeProgress;
-  }, [executeProgress, scrollToBottom]);
 
   // Mark config dirty when criteria or action settings change after a completed execute
   useEffect(() => {
@@ -439,7 +430,7 @@ export function BulkPropertyEditor(props: ToolDialogProps) {
           </Button>
         )}
       </DialogTrigger>}
-      <DialogContent className="sm:max-w-2xl max-h-[85vh] flex flex-col p-0 gap-0">
+      <DialogContent onCloseAutoFocus={props.onCloseAutoFocus} className="sm:max-w-2xl max-h-[85vh] flex flex-col p-0 gap-0">
         <DialogHeader className="px-6 pt-6 pb-4 shrink-0 border-b">
           <DialogTitle className="flex items-center gap-2">
             <Filter className="h-5 w-5" />

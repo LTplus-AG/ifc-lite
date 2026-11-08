@@ -9,6 +9,7 @@ import { performance } from 'node:perf_hooks';
 import { tmpdir } from 'node:os';
 import { resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isMainEntry } from '../lib/is-main-entry.mjs';
 
 export const OPERATIONS = ['addWall', 'addColumn', 'addSlab', 'addHostedWindow', 'joinWalls', 'copyElements', 'planStoreyEdit', 'editStorey', 'exportIfc'];
 export function summarize(values) {
@@ -131,4 +132,4 @@ async function main() {
     if (failures.length) process.exitCode = 1;
   }
 }
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) await main();
+if (isMainEntry(import.meta.url)) await main();

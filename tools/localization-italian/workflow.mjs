@@ -226,7 +226,7 @@ try {
       await page.getByRole('button', {name:'Altre azioni', exact:true}).click();
       await page.getByRole('menuitem', {name:'Impostazioni…', exact:true}).waitFor({state:'visible'});
       await page.keyboard.press('Escape');
-      await page.getByRole('button', {name:"Apri l'elenco dei pannelli", exact:true}).click();
+      await page.getByRole('button', {name:'Pannelli', exact:true}).click();
       await page.getByRole('button', {name:'Validazione dei dati', exact:true}).click();
       await page.locator('[data-tour="ids-summary"]').waitFor({state:'visible'});
       const exportButton = page.getByRole('button', {name:'Scegli il formato di esportazione', exact:true});

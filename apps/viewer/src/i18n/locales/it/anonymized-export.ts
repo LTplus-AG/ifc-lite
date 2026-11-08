@@ -48,7 +48,7 @@ export const anonymizedExportIt = {
   'anonymizedExport.typeCategoryBar.blockedTitle': 'Esclusa: fai clic per includerla',
   'anonymizedExport.typeCategoryBar.includedTitle': 'Inclusa: fai clic per escluderla',
   'anonymizedExport.dialog.title': 'Esporta un sottoinsieme anonimizzato',
-  'anonymizedExport.dialog.description': 'Gli oggetti evidenziati nella vista 3D a destra sono quelli che vengono esportati, con ogni segnale identificativo del progetto rimosso e le trasformazioni locali mantenute.',
+  "anonymizedExport.dialog.description": "Vengono esportati gli oggetti evidenziati nella vista 3D a destra. Vengono anonimizzate solo le categorie selezionate; le categorie impostate su Mantieni conservano i valori originali. Le trasformazioni locali sono mantenute.",
   'anonymizedExport.dialog.otherModelSeedsExcluded': {
     one: '{count} oggetto selezionato in altri modelli non è incluso',
     many: '{count} oggetti selezionati in altri modelli non sono inclusi',

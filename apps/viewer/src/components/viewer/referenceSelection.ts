@@ -47,6 +47,7 @@ export async function selectViewportTarget(options: {
   getPickOptions: () => PickOptions;
   onIfc: (pick: PickResult | null) => void;
   onReference?: () => void;
+  onRefused?: () => void;
 }): Promise<void> {
   const { renderer, x, y } = options;
   const { before, pickOptions, rect, camera, current } = captureViewportPick({
@@ -65,7 +66,7 @@ export async function selectViewportTarget(options: {
       }
     }
   }
-  if (refuseCaptureHeldPick(renderer)) return;
+  if (refuseCaptureHeldPick(renderer)) { options.onRefused?.(); return; }
   const pick = await renderer.pick(x, y, pickOptions);
   if (!current()) return;
   useViewerStore.getState().selectAppearanceReference(null);

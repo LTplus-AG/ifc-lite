@@ -97,6 +97,7 @@ export async function handleSelectionClick(ctx: MouseHandlerContext, e: MouseEve
   if (tool === 'select') {
     await selectViewportTarget({ canvas, renderer, x, y, getTool: () => ctx.activeToolRef.current,
       getPickOptions: ctx.getPickOptions, onIfc: applyIfc,
+      onRefused: () => { ctx.lastClickTimeRef.current = 0; ctx.lastClickPosRef.current = null; },
       onReference: () => { ctx.lastClickTimeRef.current = 0; ctx.lastClickPosRef.current = null; } });
   } else {
     applyIfc(await renderer.pick(x, y, ctx.getPickOptions()));

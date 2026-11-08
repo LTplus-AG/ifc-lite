@@ -190,6 +190,9 @@ test('#9232 Select rechecks after reference readback before the IFC pick', async
   Object.assign(f.ctx.renderer, { renderWithResult: () => true, getGPUDevice: () => null });
   const unregister = registerViewportCapture(f.ctx.renderer, f.canvas, () => ({}));
   try {
+    f.setReferencePick(async () => null);
+    await handleSelectionClick(f.ctx, clickEvent());
+    f.calls.ifc = 0; f.calls.selected.length = 0;
     let resolve!: (hit: null) => void;
     f.setReferencePick(() => new Promise(yes => { resolve = yes; }));
     const selection = handleSelectionClick(f.ctx, clickEvent());
@@ -197,6 +200,8 @@ test('#9232 Select rechecks after reference readback before the IFC pick', async
     resolve(null); await selection;
     assert.equal(f.calls.ifc, 0, 'readback must not start an IFC pick through a capture');
     assert.equal(f.calls.selected.length, 0);
+    // A late refusal must also break a previous click's double-click chain.
+    assert.equal(f.ctx.lastClickPosRef.current, null);
     noteLiveFrameSubmitted(f.ctx.renderer);
     f.setReferencePick(async () => null);
     await handleSelectionClick(f.ctx, clickEvent());

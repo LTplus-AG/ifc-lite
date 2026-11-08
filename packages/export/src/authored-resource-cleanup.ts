@@ -78,7 +78,7 @@ export function planAuthoredResourceCleanup(
   let sourceBytes = 0, sourceHashes = 0, emittedBytes = 0, emittedHashes = 0;
   for (const [entityId, record] of needsGraph ? graphRecords() : imageRecords()) {
     account();
-    inspect(view.getNewEntity(entityId)?.attributes);
+    inspect(view.readNewEntity(entityId)?.attributes);
     for (const value of view.getPositionalMutationsForEntity(entityId)?.values() ?? []) inspect(value);
     for (const attribute of view.getAttributeMutationsForEntity(entityId)) inspect(attribute.value);
     const isImage = index.typeOf(entityId) === 'IFCIMAGETEXTURE';

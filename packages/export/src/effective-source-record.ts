@@ -83,7 +83,7 @@ export function effectiveCreatedRecord(
   expressId: number,
   schemaVersion: string | undefined,
 ): { type: string; text: string; notWritten: string[] } | null {
-  const created = view.getNewEntity(expressId);
+  const created = view.readNewEntity(expressId);
   if (!created) return null;
   const schema = (schemaVersion as IfcSchemaVersion | undefined) || 'IFC4';
   const named = new Map(view.getAttributeMutationsForEntity(expressId).map(({ name, value }) => [name, value]));

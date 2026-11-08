@@ -37,7 +37,7 @@ export function createStyleEntityReader(store: IfcDataStore, editor: StoreEditor
   const extractor = store.source.byteLength > 0 ? new EntityExtractor(store.source) : null;
   return (id) => {
     if (!editor.hasEntity(id)) return null;
-    const created = view.getNewEntity(id);
+    const created = view.readNewEntity(id);
     // @raw-entity-enumeration-ok point lookup for one effective candidate's source attributes
     const ref = created ? undefined : (
       store.entityIndex.byId.get(id) ?? store.deferredEntityIndex?.get(id)

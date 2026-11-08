@@ -188,7 +188,7 @@ class ViewOverlay implements PendingOverlay {
   }
 
   get createdAll(): readonly CreatedEntity[] {
-    if (!this.all) this.all = this.view.getNewEntities().map(entity => this.effectiveCreatedEntity(entity));
+    if (!this.all) this.all = this.view.readNewEntities().map(entity => this.effectiveCreatedEntity(entity));
     return this.all;
   }
 
@@ -207,7 +207,7 @@ class ViewOverlay implements PendingOverlay {
   createdEntity(expressId: number): CreatedEntity | null {
     // The view already indexes new entities by id; going through `createdAll`
     // here made every `entityData` call O(number of queued creates).
-    const raw = this.view.getNewEntity(expressId);
+    const raw = this.view.readNewEntity(expressId);
     return raw ? this.effectiveCreatedEntity(raw) : null;
   }
 
@@ -244,7 +244,7 @@ class ViewOverlay implements PendingOverlay {
 
   private get relationshipOverlay(): EffectiveRelationshipOverlay {
     if (!this.effectiveRelations) this.effectiveRelations = resolveEffectiveRelationshipOverlay(this.store, {
-      createdEntities: () => this.view.getNewEntities(),
+      createdEntities: () => this.view.readNewEntities(),
       mutatedEntityIds: () => this.view.getEffectiveChanges().map(change => change.entityId),
       namedAttributes: id => this.view.getAttributeMutationsForEntity(id).map(({ name, value }) => [name, value] as const),
       positionalAttributes: id => this.view.getPositionalMutationsForEntity(id) ?? [],

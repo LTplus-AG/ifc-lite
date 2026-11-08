@@ -59,7 +59,7 @@ function effectiveRelation(
 ): { psetId: number | undefined; related: number[] } | null {
   const view = ctx.mutationView;
   if (!view) return null;
-  const created = effective.isOverlayCreated(relId) ? view.getNewEntity(relId) : null;
+  const created = effective.isOverlayCreated(relId) ? view.readNewEntity(relId) : null;
   // @raw-entity-enumeration-ok point lookup for source attributes; authored relations are read from the overlay above
   const sourceRef = created ? null : ctx.dataStore.entityIndex.byId.get(relId);
   const source = sourceRef && ctx.entityExtractor?.extractEntity(sourceRef);

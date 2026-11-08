@@ -41,6 +41,8 @@ export interface OverlayWallReader {
   getNewEntities(): Iterable<{ expressId: number; type: string; attributes: IfcAttributeValue[] }>;
   /** Indexed creation reads; plain structural snapshots may omit these. */
   getNewEntity?(expressId: number): { expressId: number; type: string; attributes: IfcAttributeValue[] } | null;
+  readNewEntity?(expressId: number): { expressId: number; type: string; attributes: IfcAttributeValue[] } | null;
+  readNewEntities?(): Iterable<{ expressId: number; type: string; attributes: IfcAttributeValue[] }>;
   getNewEntitiesOfType?(type: string): Iterable<{ expressId: number; type: string; attributes: IfcAttributeValue[] }>;
   /** Resolve a positional attribute (with mutations applied). */
   getAttribute?(expressId: number, index: number): IfcAttributeValue | undefined;
@@ -308,7 +310,8 @@ export function readEntity(
   }
   // Overlay-only entity: fall back to the overlay reader.
   if (!entity && overlay) {
-    if (overlay.getNewEntity) entity = overlay.getNewEntity(expressId);
+    if (overlay.readNewEntity) entity = overlay.readNewEntity(expressId);
+    else if (overlay.getNewEntity) entity = overlay.getNewEntity(expressId);
     else for (const ent of overlay.getNewEntities()) {
       if (ent.expressId === expressId) {
         entity = { type: ent.type, attributes: ent.attributes };

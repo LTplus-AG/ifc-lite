@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { materializeOverlay } from './sparse-overlay.js';
+import { withoutEntityExposure } from './entity-read-barrier.js';
 import { sameOverlayValue } from './overlay-value-equality.js';
 import { NewEntityMap } from './new-entity-map.js';
 import { overlayReferenceCandidates } from './overlay-reference-candidates.js';
@@ -348,7 +349,7 @@ export class MutableOverlayState {
   }
 
   protected copyOverlayState(): ReturnType<MutableOverlayState['overlayState']> {
-    return structuredClone(materializeOverlay(this.overlayState()));
+    return withoutEntityExposure(() => structuredClone(materializeOverlay(this.overlayState())));
   }
 
   protected restoreOverlayState(state: ReturnType<MutableOverlayState['copyOverlayState']>): void {
@@ -360,6 +361,6 @@ export class MutableOverlayState {
   }
 
   protected matchesOverlayState(state: ReturnType<MutableOverlayState['copyOverlayState']>): boolean {
-    return sameOverlayValue(this.overlayState(), state);
+    return withoutEntityExposure(() => sameOverlayValue(this.overlayState(), state));
   }
 }

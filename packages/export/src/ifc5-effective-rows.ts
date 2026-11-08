@@ -90,7 +90,7 @@ export function ifc5EntityRows(store: IfcDataStore, mutationView: MutablePropert
       });
       continue;
     }
-    const created = view?.getNewEntity(entity.expressId);
+    const created = view?.readNewEntity(entity.expressId);
     if (!created) continue;
     const record = resolveEffectiveEntityRecord(
       { type: created.type, attributes: created.attributes },

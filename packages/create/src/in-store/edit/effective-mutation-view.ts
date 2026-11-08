@@ -14,7 +14,7 @@ export function effectiveMutationRelationships(
   // and read-only viewer folds explicitly retain source-origin rows (#7179).
   const readable = store.source?.length ? store : { ...store, getEntity: () => null };
   const result = resolveEffectiveRelationshipOverlay(readable, {
-    createdEntities: () => view.getNewEntities(),
+    createdEntities: () => view.readNewEntities(),
     // Current overlay entries include edits made with skipHistory (undo and
     // atomic replay); append-only history can also retain undone edits.
     mutatedEntityIds: () => view.getEffectiveChanges().map(change => change.entityId),

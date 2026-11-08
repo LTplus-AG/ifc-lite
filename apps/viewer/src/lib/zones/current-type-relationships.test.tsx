@@ -12,6 +12,7 @@
 import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
+import { act } from 'react';
 import { RelationshipGraphBuilder, RelationshipType, relationshipGraphFromColumns, relationshipGraphToColumns } from '@ifc-lite/data';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { IfcParser, compressSource, compressSourceInPlace, readCurrentTypeQuantities, type IfcDataStore } from '@ifc-lite/parser';
@@ -182,15 +183,99 @@ test('#9192 a malformed relationship the graph does name refuses the elements an
   assert.equal(describe(store, 10, view), 'A: Qto_Own,Qto_Related', 'an element the record does not name keeps its answer');
 });
 
-test('#9192 the row limit still refuses, without reading a relationship and once per revision', async () => {
-  const rows = Array.from({ length: 65_537 }, (_, i) => typing(100_000 + i, '(#10)', '#20'));
+/**
+ * 90,000 typing relationships, between BWK's 92,432 rows and Holter's 80,276, all typing wall #15
+ * by type A. Parsed once for the tests below, with the store the parser emits at spatial-ready
+ * time, before the definition edges exist.
+ */
+const FILLER = 15;
+let largeModel: Promise<{ store: IfcDataStore; early: IfcDataStore }> | undefined;
+const parseLarge = () => largeModel ??= (async () => {
+  const rows = Array.from({ length: 90_000 }, (_, i) => typing(100_000 + i, `(#${FILLER})`, '#20'));
+  let early: IfcDataStore | undefined;
+  const store = await new IfcParser().parseColumnar(bytesOf([...BASE, wall(FILLER), ...rows]),
+    { disableWorkerScan: true, onSpatialReady: value => { early = value; } });
+  assert.ok(early);
+  return { store, early };
+})();
+const isRelationship = (id: number) => (id >= 30 && id <= 37) || id >= 100_000;
+
+test('#9192 a model past the old 65,536-row limit, as Holter and BWK are, gets the answers a read of every relationship gives', async () => {
+  const { store } = await parseLarge();
+  const reads: number[] = [];
+  const counted: IfcDataStore = { ...store, getEntity: id => { reads.push(id); return store.getEntity(id); } };
+  const view = new MutablePropertyView(null, 'm');
+  assert.deepEqual(describeAll(counted, view), CLEAN);
+  assertReadIds(reads.filter(id => id >= 100_000), [], 'no filler relationship asked about by nobody is decoded');
+  const oracle = everyRelationshipRead(store);
+  assert.deepEqual(describeAll(oracle, new MutablePropertyView(null, 'm')), CLEAN, 'reading every relationship gives the same answers');
+  // #15 is named by all 90,000 rows: its type's definitions are looked up past the old limit.
+  assert.equal(describe(counted, FILLER, view), 'A: Qto_Own,Qto_Related');
+  assert.equal(describe(oracle, FILLER, new MutablePropertyView(null, 'm')), 'A: Qto_Own,Qto_Related', 'the full read agrees for #15');
+});
+
+test('#9192 past the old 65,536-row limit, the store emitted before the definition edges exist refuses as still loading; the full store answers', async () => {
+  // That store is the active one while property parsing goes on; without definition edges it
+  // would read every definition relationship from source, synchronously in the panel's render.
+  const { store, early } = await parseLarge();
+  assert.equal(early.relationships.getRelated(20, RelationshipType.DefinesByProperties, 'inverse').length, 0,
+    'this store really has no definition edges yet');
+  const reads: number[] = [];
+  const counted: IfcDataStore = { ...early, getEntity: id => { reads.push(id); return early.getEntity(id); } };
+  const view = new MutablePropertyView(null, 'm');
+  const read = readCurrentTypeQuantities(counted, 10, view);
+  assert.equal(read.status, 'unavailable');
+  assert.match(read.reason ?? '', /^Native type relationships are still loading \(more than 65536 relationships\)$/);
+  assertReadIds(reads.filter(isRelationship), [], 'the refusal reads no relationship');
+  // The same view, as the viewer keeps it across the swap.
+  assert.deepEqual(describeAll(store, view), CLEAN, 'the full store answers');
+});
+
+test('#9192 a complete store past 65,536 typing rows with no native definition relationship answers for one a view creates, never "still loading"', async () => {
+  // Review of #9319: this store has typing edges and no definition edge, as the spatial-ready one
+  // does, but nothing will replace it. Only the parser's spatial-ready store refuses as loading.
+  const rows = Array.from({ length: 90_000 }, (_, i) => typing(100_000 + i, `(#${FILLER})`, '#20'));
+  const store = await parse([...BASE.filter(line => !/IFCRELDEFINESBYPROPERTIES/.test(line)), wall(FILLER), ...rows]);
+  assert.equal(store.relationships.getRelated(20, RelationshipType.DefinesByProperties, 'inverse').length, 0,
+    'the model has no native definition relationship');
+  const view = new MutablePropertyView(null, 'm');
+  assert.equal(describe(store, 10, view), 'A: Qto_Own');
+  view.createEntity('IfcRelDefinesByProperties', [gid(51), null, null, null, ['#20'], '#24']);
+  const read = readCurrentTypeQuantities(store, 10, view);
+  assert.equal(read.status, 'available', `refused: ${read.reason}`);
+  assert.equal(describe(store, 10, view), 'A: Qto_Own,Qto_Related');
+  assert.equal(describe(store, FILLER, view), 'A: Qto_Own,Qto_Related');
+  assert.equal(describe(everyRelationshipRead(store), 10, view), 'A: Qto_Own,Qto_Related', 'reading every relationship agrees');
+});
+
+test('#9192 the panel says still loading on the early store of a large model, then shows the answer once the full store replaces it', async () => {
+  const { store, early } = await parseLarge();
+  const seed = (ifcDataStore: IfcDataStore) => useViewerStore.setState({
+    models: new Map([['a', { ...fixtureModel('a'), ifcDataStore }]]), activeModelId: 'a', ifcDataStore,
+  });
+  useViewerStore.setState({ mutationViews: new Map(), storeEditors: new Map(), propertiesActiveTab: 'quantities', unitDisplayOverrides: {} });
+  seed(early);
+  assert.ok(getOrCreateMutationView(useViewerStore, 'a'));
+  useViewerStore.setState({ selectedEntity: { modelId: 'a', expressId: 10 }, selectedEntityId: 10 });
+  const panel = render(<PropertiesPanel />);
+  assert.match(panel.textContent ?? '', /still loading/);
+  assert.doesNotMatch(panel.textContent ?? '', /Qto_Related/);
+
+  act(() => seed(store));
+  assert.match(panel.textContent ?? '', /Qto_Own/);
+  assert.match(panel.textContent ?? '', /Qto_Related/);
+  assert.doesNotMatch(panel.textContent ?? '', /still loading/);
+});
+
+test('#9192 the row limit still refuses, says so, without reading a relationship and once per revision', async () => {
+  const rows = Array.from({ length: 131_073 }, (_, i) => typing(100_000 + i, '(#10)', '#20'));
   const store = await parse([...BASE, ...rows]);
   const reads: number[] = [];
   const counted: IfcDataStore = { ...store, getEntity: id => { reads.push(id); return store.getEntity(id); } };
   const view = new MutablePropertyView(null, 'm');
   const read = readCurrentTypeQuantities(counted, 11, view);
   assert.equal(read.status, 'unavailable');
-  assert.match(read.reason ?? '', /exceeds the read limit/);
+  assert.match(read.reason ?? '', /inventory exceeds the read limit of 131072 relationships/);
   assertReadIds(reads, [], 'the row limit refuses without reading a relationship');
 
   // Not re-derived for the next element: on a large model that walk ran on every click.
@@ -203,7 +288,7 @@ test('#9192 the row limit still refuses, without reading a relationship and once
   view.setPositionalAttribute(100_000, 4, ['#11']);
   rowsWalked = 0;
   assert.equal(readCurrentTypeQuantities(counted, 12, view).status, 'unavailable', 'the limit still holds at the next revision');
-  assert.ok(rowsWalked > 65_536, `a new revision walks the rows again (walked ${rowsWalked})`);
+  assert.ok(rowsWalked > 131_072, `a new revision walks the rows again (walked ${rowsWalked})`);
 });
 
 test('#9192 the reference budget counts only what a read of each relationship counts', async () => {
@@ -221,6 +306,8 @@ test('#9192 the reference budget counts only what a read of each relationship co
 
   const psets = await parse([...BASE, ...objects.map(wall), ...definitions.map(id => `#${id}=IFCPROPERTYSET('${gid(id)}',$,'P${id}',$,());`), relationship(definitions)]);
   assert.deepEqual(read(psets, new MutablePropertyView(null, 'm')), ['refused', 'refused'], 'a set of 600 definitions does');
+  assert.match(readCurrentTypeQuantities(psets, 10, new MutablePropertyView(null, 'm')).reason ?? '',
+    /^Native type relationship references exceed the read limit of 262144 references$/, 'the refusal names its bound and unit');
   const fewer = new MutablePropertyView(null, 'm');
   for (const id of definitions.slice(0, 200)) fewer.deleteEntity(id);
   assert.deepEqual(read(psets, fewer), ['A: Qto_Own,Qto_Related', 'A: Qto_Own,Qto_Related'],

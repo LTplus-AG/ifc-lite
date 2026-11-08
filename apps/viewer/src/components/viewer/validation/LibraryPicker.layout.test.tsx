@@ -3,15 +3,16 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * The definition picker keeps its whole label and a usable select at the side
- * panel's real widths (#8802 "Select IDS document" clips).
+ * The validation library pickers keep their whole label and a usable select
+ * at the side panel's real widths (#8802 "Select IDS document" clips).
  *
  * The toolbar is mounted for real (happy-dom), then its markup is laid out in
  * real Chrome with the compiled app stylesheet, inside a panel-width box. When
  * the label shared a wrapping row with the four or five library actions, they
  * squeezed it to about 45 px: "Select IDS document" broke over three lines and
- * clipped to "documer", and the select shrank to a stub. Both the IDS and the
- * rule-set toolbars share this one component.
+ * clipped to "documer", and the select shrank to a stub. The IDS, rule-set and
+ * manual-checklist toolbars all lay out through `LibraryPicker`; the manual
+ * checklist library had the same squeezed row (PR 9286 review).
  *
  * Only numbers and booleans leave the page, never an element.
  */
@@ -24,10 +25,12 @@ import { parseIDS } from '@ifc-lite/ids';
 import { parseRuleSetFile } from '@ifc-lite/rules';
 import { registerLocale, setLocale } from '@/i18n';
 import { validationPanelDe } from '@/i18n/locales/de/validation-panel';
+import { manualValidationDe } from '@/i18n/locales/de/manual-validation';
 import { useViewerStore } from '@/store';
 import { cleanup, render } from '@/test/render.js';
 import { closeContrastBrowser, warmContrastBrowser, withThemedPage } from '@/test/contrast/render-harness.js';
 import { DefinitionLibraryToolbar } from './DefinitionLibraryToolbar.js';
+import { ManualChecklistLibrary } from './ManualChecklistLibrary.js';
 
 /** The floating panel's minimum, the docked panel's default, and wider. */
 const PANEL_WIDTHS = [260, 350, 480] as const;
@@ -53,13 +56,20 @@ function seedLibrary(): void {
   const store = useViewerStore.getState();
   store.addValidationDefinition({ kind: 'ids', xml: idsXml, document: parseIDS(idsXml) });
   store.addValidationDefinition({ kind: 'rules', file: rules });
+  store.setManualChecklist({ version: 1, name: 'Site handover', groups: [{ id: 'g', name: 'Delivery', items: [{ id: 'q', text: 'Survey approved' }] }] });
 }
 
+type PickerKind = 'ids' | 'rules' | 'manual';
+/** Each toolbar's actions with every optional one shown. */
+const MIN_ACTIONS: Record<PickerKind, number> = { ids: 4, rules: 4, manual: 3 };
+
 /** Markup of the toolbar as the panel mounts it, every action present. */
-function toolbarHtml(kind: 'ids' | 'rules'): string {
+function toolbarHtml(kind: PickerKind): string {
   const ui = kind === 'ids'
     ? render(<DefinitionLibraryToolbar kind="ids" onImport={() => {}} />)
-    : render(<DefinitionLibraryToolbar kind="rules" onNew={() => {}} onImportFile={async () => {}} />);
+    : kind === 'rules'
+      ? render(<DefinitionLibraryToolbar kind="rules" onNew={() => {}} onImportFile={async () => {}} />)
+      : render(<ManualChecklistLibrary model={null} onNew={() => {}} onSelected={() => {}} active />);
   const html = ui.innerHTML;
   cleanup();
   return html;
@@ -100,19 +110,19 @@ async function layoutAt(html: string, width: number): Promise<PickerLayout> {
   });
 }
 
-describe('definition picker layout at side-panel widths (#8802)', () => {
+describe('validation library picker layout at side-panel widths (#8802)', () => {
   for (const locale of ['en', 'de'] as const) {
-    for (const kind of ['ids', 'rules'] as const) {
+    for (const kind of ['ids', 'rules', 'manual'] as const) {
       it(`${kind} picker keeps its whole label and a full-width select (${locale})`, async () => {
         if (locale === 'de') {
-          registerLocale('de', validationPanelDe);
+          registerLocale('de', { ...validationPanelDe, ...manualValidationDe });
           setLocale('de');
         }
         seedLibrary();
         const html = toolbarHtml(kind);
         for (const width of PANEL_WIDTHS) {
           const layout = await layoutAt(html, width);
-          assert.ok(layout.buttonCount >= 4, `${kind} at ${width}px renders its library actions (${layout.buttonCount})`);
+          assert.ok(layout.buttonCount >= MIN_ACTIONS[kind], `${kind} at ${width}px renders its library actions (${layout.buttonCount})`);
           assert.equal(layout.labelLines, 1, `"${layout.labelText}" at ${width}px sits on one line, not ${layout.labelLines}`);
           assert.equal(layout.labelClipped, false, `"${layout.labelText}" at ${width}px is not clipped`);
           assert.ok(layout.selectWidth >= layout.contentWidth * SELECT_MIN_SHARE,

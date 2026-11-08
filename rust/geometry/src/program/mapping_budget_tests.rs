@@ -141,7 +141,7 @@ fn issue_7873_each_list_boundary_has_exact_small_threshold_and_ignored_members_p
     // list's repeated #8 pays one more. Three attempts fit both limits; the
     // six members fit only the second.
     let source = nested("#8,#8").replace("(#4)", "(#4,$,17,$,$)");
-    for (limit, indices, dropped) in [(5, 3, Some(&1)), (6, 6, None)] {
+    for (limit, indices) in [(5, 3), (6, 6)] {
         let router = GeometryRouter::new();
         let mut decoder = EntityDecoder::new(&source);
         let item = decoder.decode_by_id(18).unwrap();
@@ -165,7 +165,7 @@ fn issue_7873_each_list_boundary_has_exact_small_threshold_and_ignored_members_p
                 .sum::<usize>(),
             indices
         );
-        assert_eq!(router.take_unsupported_items().get("IfcMappedItem"), dropped);
+        assert!(router.take_unsupported_items().is_empty(), "#9268 budget is not unsupported");
     }
 }
 
@@ -219,10 +219,7 @@ fn issue_7873_repeated_dag_occurrences_pay_and_prefix_never_publishes() {
             };
             // Both keep the two completed occurrences and stop the rest.
             assert_eq!(indices, 6);
-            assert_eq!(
-                router.take_unsupported_items().get("IfcMappedItem"),
-                Some(&1)
-            );
+            assert!(router.take_unsupported_items().is_empty(), "#9268 budget is not unsupported");
             assert!(!cache.lock().unwrap().contains_key(&16));
             // Same router, same source: a fresh invocation has fresh counters,
             // and cannot hit a previously published partial local/shared root.
@@ -260,10 +257,7 @@ fn issue_7873_attempt_meter_counts_warm_cache_hits_independently_of_members() {
             parts.iter().map(|mesh| mesh.indices.len()).sum::<usize>(),
             6
         );
-        assert_eq!(
-            router.take_unsupported_items().get("IfcMappedItem"),
-            Some(&1)
-        );
+        assert!(router.take_unsupported_items().is_empty(), "#9268 budget is not unsupported");
         let parts = limited(GeometryProgram::mapped_item(&item), 4)
             .drain_parts(&router, &mut decoder)
             .unwrap();
@@ -288,7 +282,7 @@ fn issue_9102_distinct_mapped_items_over_one_source_each_pay_an_attempt() {
         #51=IFCREPRESENTATIONMAP(#2,#50);"
     );
     let textures = FxHashMap::default();
-    for (limit, indices, dropped) in [(5, 15, Some(&1)), (6, 18, None)] {
+    for (limit, indices) in [(5, 15), (6, 18)] {
         let mut router = GeometryRouter::new();
         router.enable_shared_mapped_item_cache(GeometryRouter::new_mapped_item_cache());
         let mut decoder = EntityDecoder::new(&source);
@@ -297,7 +291,7 @@ fn issue_9102_distinct_mapped_items_over_one_source_each_pay_an_attempt() {
             .drain_type_parts(&router, &mut decoder)
             .unwrap();
         assert_eq!(parts.iter().map(|part| part.0.indices.len()).sum::<usize>(), indices, "limit {limit}");
-        assert_eq!(router.take_unsupported_items().get("IfcMappedItem"), dropped, "limit {limit}");
+        assert!(router.take_unsupported_items().is_empty(), "#9268 budget is not unsupported at limit {limit}");
     }
 }
 
@@ -387,10 +381,7 @@ fn issue_7873_default_nested_budget_keeps_prefix_and_stops_siblings_in_both_rend
         // The merged walk serves the second #28 from its source cache, which
         // reads no Items; the styled walk re-reads them and is refused.
         assert_eq!(indices, if styled { 6 } else { 12 });
-        assert_eq!(
-            router.take_unsupported_items().get("IfcMappedItem"),
-            styled.then_some(&1)
-        );
+        assert!(router.take_unsupported_items().is_empty(), "#9268 budget is not unsupported");
         assert_eq!(router.unsupported_scope_depth(), 0);
     }
 }
@@ -664,11 +655,7 @@ fn issue_7781_logical_drop_keeps_parent_attribution_and_prefix_without_cache_pub
         assert_eq!(meshes.sub_meshes[0].mesh.indices.len(), 3);
         assert!(cache.lock().unwrap().is_empty());
         let drops = router.take_unsupported_items();
-        assert_eq!(
-            drops.get("IfcMappedItem").copied().unwrap_or(0),
-            u64::from(body)
-        );
-        assert_eq!(drops.len(), usize::from(body));
+        assert!(drops.is_empty(), "#9268 budget is not unsupported (Body={body})");
         assert_eq!(router.unsupported_scope_depth(), 0);
     }
 }

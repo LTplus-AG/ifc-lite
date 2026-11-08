@@ -18,6 +18,7 @@ export async function run(id,args=process.argv.slice(2)) {
   if(!Number.isInteger(floors)||floors<1||!Number.isFinite(budget)||budget<=0) throw new Error('Positive integer floors and positive finite budget required');
   const out=resolve(process.env.PARITY_OUT||resolve(root,'tests/modelling-parity/.out/L2'),`${id}${id==='F5'?`-${floors}`:''}`);
   mkdirSync(out,{recursive:true});
+  writeFileSync(resolve(out,'.gitignore'),'*\n');
   const reuse=args.includes('--reuse');
   const prior=reuse&&existsSync(resolve(out,'results.json'))?JSON.parse(readFileSync(resolve(out,'results.json'),'utf8')):[];
   for(const f of reuse?['results.jsonl']:['author.jsonl','results.jsonl']) writeFileSync(resolve(out,f),'');

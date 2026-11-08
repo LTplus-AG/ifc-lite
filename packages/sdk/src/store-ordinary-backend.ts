@@ -21,11 +21,12 @@ type WithoutTop<T> = T extends unknown ? Omit<T, 'TopConstraint'> : never;
 export function createOrdinaryStoreBackend(
   resolve: (modelId: string) => Pick<CostStoreModelResolution, 'modelId' | 'store' | 'editor' | 'mutationView'>,
 ): OrdinaryStoreBackendMethods {
-  const add = (modelId: string, storeyId: number, element: OrdinaryInStoreElement, top?: TopConstraintParams['TopConstraint']): EntityRef => {
+  const add = (modelId: string, storeyId: number, element: OrdinaryInStoreElement, top?: TopConstraintParams['TopConstraint']): EntityRef & { notices?: string[] } => {
     const model = resolve(modelId);
     const anchor = resolveSpatialAnchor(model.store, storeyId, model.mutationView);
-    const expressId = addOrdinaryElementInStore(model.editor, anchor, element, { store: model.store, top: top ?? 'auto' });
-    return { modelId: model.modelId, expressId };
+    const notices: string[] = [];
+    const expressId = addOrdinaryElementInStore(model.editor, anchor, element, { store: model.store, top: top ?? 'auto', notices });
+    return { modelId: model.modelId, expressId, ...(notices.length ? { notices } : {}) };
   };
   // The top constraint is the SDK's own field: the builders never see it.
   const split = <T extends object>(params: T): [WithoutTop<T>, TopConstraintParams['TopConstraint']] => {

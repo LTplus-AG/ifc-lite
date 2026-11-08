@@ -150,6 +150,7 @@ export class StoreNamespace extends StoreGroupNamespace {
    * Add an IfcWall from `Start` to `End` (storey-local metres). Profile
    * spans the full length along the wall axis, centred on `Thickness`,
    * and is extruded upward by `Height`.
+   * Refused implicit joins leave the wall added and return `notices`.
    *
    * @example
    *   bim.store.addWall('default', storeyId, {
@@ -157,7 +158,7 @@ export class StoreNamespace extends StoreGroupNamespace {
    *     Thickness: 0.2, Height: 3, Name: 'North Wall',
    *   });
    */
-  addWall(modelId: string, storeyExpressId: number, params: AddWallInStoreParams): EntityRef {
+  addWall(modelId: string, storeyExpressId: number, params: AddWallInStoreParams): ReturnType<StoreBackendMethods['addWall']> {
     return this.backend.store.addWall(modelId, storeyExpressId, params);
   }
 

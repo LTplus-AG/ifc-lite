@@ -1267,8 +1267,8 @@ declare const bim: {
     setPositionalAttribute(entity: { modelId: string; expressId: number }, index: number, value: unknown): void;
     /** Add an IfcColumn to a parsed model anchored to an existing IfcBuildingStorey. Returns the new column entity ref. */
     addColumn(modelId: string, storeyExpressId: number, params: BimCreate.ColumnInStoreParams | BimCreate.ProfiledColumnInStoreParams): { modelId: string; expressId: number };
-    /** Add an IfcWall from Start to End anchored to an IfcBuildingStorey. Returns the new wall entity ref. */
-    addWall(modelId: string, storeyExpressId: number, params: { Start: [number, number, number]; End: [number, number, number]; Thickness: number; Height: number; Name?: string; Description?: string; ObjectType?: string; Tag?: string }): { modelId: string; expressId: number };
+    /** Add an IfcWall from Start to End anchored to an IfcBuildingStorey. Returns the new wall entity ref, with notices for skipped implicit joins. */
+    addWall(modelId: string, storeyExpressId: number, params: { Start: [number, number, number]; End: [number, number, number]; Thickness: number; Height: number; Name?: string; Description?: string; ObjectType?: string; Tag?: string }): { modelId: string; expressId: number; notices?: string[] };
     /** Add an IfcSlab anchored to an IfcBuildingStorey. Two modes: rectangle (Position + Width + Depth) or polygon (OuterCurve = Array<[x, y]> with ≥3 points). */
     addSlab(modelId: string, storeyExpressId: number, params: { Position: [number, number, number]; Width: number; Depth: number; Thickness: number; Profile?: "rectangle"; Name?: string; Description?: string; ObjectType?: string; Tag?: string } | { Profile: "polygon"; OuterCurve: Array<[number, number]>; Position?: [number, number, number]; Thickness: number; Name?: string; Description?: string; ObjectType?: string; Tag?: string }): { modelId: string; expressId: number };
     /** Add an IfcBeam from Start to End with a centred rectangular or canonical parameterised cross-section. */

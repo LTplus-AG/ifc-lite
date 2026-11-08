@@ -7,7 +7,19 @@ import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
 import { IfcParser } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
-import { resolvePresentationLayers } from './presentation-layers.js';
+import * as presentation from './presentation-layers.js';
+
+// #9273: both traversal directions must agree for every existing ownership fixture.
+function resolvePresentationLayers(...args: Parameters<typeof presentation.resolvePresentationLayers>) {
+  const layers = presentation.resolvePresentationLayers(...args);
+  const selected = presentation.presentationLayersByProduct(...args);
+  const ids = new Set([1, 2, 3, ...layers.flatMap(layer => layer.productIds)]);
+  const info = ({ productIds: _ids, ...layer }: (typeof layers)[number]) => layer;
+  for (const id of ids) {
+    assert.deepEqual((selected.get(id) ?? []).map(info), layers.filter(layer => layer.productIds.includes(id)).map(info), `product ${id}`);
+  }
+  return layers;
+}
 
 const fixture = `ISO-10303-21;
 HEADER;

@@ -2,9 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { expandTypeNamesToDescendants } from '@ifc-lite/data';
 import { iterateEffectiveEntityIds, type MutablePropertyView } from '@ifc-lite/mutations';
 import { effectiveMetadataRecord, type IfcDataStore } from '@ifc-lite/parser';
+
+import { LAYER_TYPES, references, presentationOwnership } from './presentation-layer-ownership';
 
 export interface PresentationLayer {
   expressId: number;
@@ -16,31 +17,7 @@ export interface PresentationLayer {
   productIds: number[];
 }
 
-const LAYER_TYPES = ['IfcPresentationLayerAssignment', 'IfcPresentationLayerWithStyle'];
-
-/** References in parsed records are numbers; named authoring edits use STEP refs. */
-function references(value: unknown): number[] {
-  const result: number[] = [];
-  const pending = [value];
-  const visited = new Set<unknown[]>();
-  while (pending.length > 0) {
-    const item = pending.pop();
-    if (Array.isArray(item)) {
-      if (visited.has(item)) continue;
-      visited.add(item);
-      for (const child of item) pending.push(child);
-    } else if (typeof item === 'number') {
-      if (Number.isInteger(item) && item > 0 && item <= 0xffffffff) result.push(item);
-    } else if (typeof item === 'string'
-      && /^\s*(?:\(\s*)?#\d+(?:\s*,\s*#\d+)*(?:\s*\))?\s*$/.test(item)) {
-      for (const match of item.matchAll(/#(\d+)/g)) {
-        const id = Number(match[1]);
-        if (Number.isInteger(id) && id > 0 && id <= 0xffffffff) result.push(id);
-      }
-    }
-  }
-  return result;
-}
+export { presentationLayersByProduct } from './presentation-layer-selection';
 
 /**
  * Product-level membership of presentation layers (#7619). This deliberately
@@ -56,71 +33,8 @@ export function resolvePresentationLayers(
   store: IfcDataStore,
   view?: MutablePropertyView | null,
 ): PresentationLayer[] {
-  const productTypes = expandTypeNamesToDescendants(['IfcProduct'], store.schemaVersion);
-  const shapeTypes = expandTypeNamesToDescendants(['IfcRepresentation'], store.schemaVersion);
-  const containers = new Map<string, readonly string[]>();
-  const ownership = [
-    ['IfcGeometricSet', ['Elements']],
-    ['IfcManifoldSolidBrep', ['Outer', 'Voids']],
-    ['IfcConnectedFaceSet', ['CfsFaces']],
-    ['IfcFace', ['Bounds']],
-    ['IfcFaceBound', ['Bound']],
-    ['IfcShellBasedSurfaceModel', ['SbsmBoundary']],
-    ['IfcFaceBasedSurfaceModel', ['FbsmFaces']],
-    ['IfcCompositeCurve', ['Segments']],
-    ['IfcCompositeCurveSegment', ['ParentCurve']],
-    ['IfcTrimmedCurve', ['BasisCurve']],
-    ['IfcPolyline', ['Points']],
-    ['IfcIndexedPolyCurve', ['Points']],
-    ['IfcEdgeLoop', ['EdgeList']],
-    ['IfcOrientedEdge', ['EdgeElement']],
-    ['IfcEdgeCurve', ['EdgeGeometry']],
-    ['IfcVertexPoint', ['VertexGeometry']],
-    ['IfcSweptDiskSolid', ['Directrix']],
-    ['IfcSweptAreaSolid', ['SweptArea', 'EndSweptArea']],
-    ['IfcFixedReferenceSweptAreaSolid', ['Directrix']],
-    ['IfcSurfaceCurveSweptAreaSolid', ['Directrix']],
-    ['IfcSectionedSolid', ['Directrix', 'CrossSections']],
-    ['IfcSectionedSpine', ['SpineCurve', 'CrossSections']],
-    ['IfcSweptSurface', ['SweptCurve']],
-    ['IfcArbitraryClosedProfileDef', ['OuterCurve', 'InnerCurves']],
-    ['IfcArbitraryOpenProfileDef', ['Curve']],
-    ['IfcCompositeProfileDef', ['Profiles']],
-    ['IfcDerivedProfileDef', ['ParentProfile']],
-    ['IfcOffsetCurve', ['BasisCurve']],
-    // IFC2X3/IFC4 registries may put these directly under IfcCurve.
-    ['IfcOffsetCurve2D', ['BasisCurve']],
-    ['IfcOffsetCurve3D', ['BasisCurve']],
-    ['IfcSurfaceCurve', ['Curve3D']],
-    ['IfcCurveSegment', ['ParentCurve']],
-    ['IfcTessellatedFaceSet', ['Coordinates']],
-    ['IfcPolygonalFaceSet', ['Faces']],
-    ['IfcFaceSurface', ['FaceSurface']],
-    ['IfcPolyLoop', ['Polygon']],
-    ['IfcEdge', ['EdgeStart', 'EdgeEnd']],
-    ['IfcAnnotationFillArea', ['OuterBoundary', 'InnerBoundaries']],
-    ['IfcBSplineCurve', ['ControlPointsList']],
-    ['IfcBSplineSurface', ['ControlPointsList']],
-    ['IfcLine', ['Pnt']],
-    ['IfcHalfSpaceSolid', ['BaseSurface']],
-    ['IfcPolygonalBoundedHalfSpace', ['PolygonalBoundary']],
-  ] as const;
-  for (const [root, attributes] of ownership) {
-    for (const type of expandTypeNamesToDescendants([root], store.schemaVersion)) {
-      const key = type.toUpperCase();
-      containers.set(key, [...new Set([...(containers.get(key) ?? []), ...attributes])]);
-    }
-  }
-  const productClasses = new Set(productTypes.map(type => type.toUpperCase()));
-  const shapeClasses = new Set(shapeTypes.map(type => type.toUpperCase()));
-  const shapeModelClasses = new Set(expandTypeNamesToDescendants(['IfcShapeModel'], store.schemaVersion)
-    .map(type => type.toUpperCase()));
-  const layeredClasses = new Set([...shapeTypes,
-    ...expandTypeNamesToDescendants(['IfcRepresentationItem'], store.schemaVersion)]
-    .map(type => type.toUpperCase()));
-  const types = [...productTypes, ...shapeTypes, ...containers.keys(), ...LAYER_TYPES,
-    'IfcProductDefinitionShape', 'IfcProductRepresentation', 'IfcRepresentationMap', 'IfcMappedItem',
-    'IfcBooleanResult', 'IfcBooleanClippingResult', 'IfcCsgSolid', 'IfcShapeAspect'];
+  if (iterateEffectiveEntityIds(store, view, LAYER_TYPES).next().done) return [];
+  const { productClasses, shapeModelClasses, layeredClasses, types, attributesFor } = presentationOwnership(store.schemaVersion);
   const parents = new Map<number, Set<number>>();
   const products = new Set<number>();
   const layers: Array<PresentationLayer & { assignedItems: number[] }> = [];
@@ -155,17 +69,6 @@ export function resolvePresentationLayers(
         Name: text('Name') ?? `${layerType} #${id}`,
         Description: text('Description'), Identifier: text('Identifier'),
         assignedItems: references(attrs.get('AssignedItems')), productIds: [] });
-    } else if (productClasses.has(type)) {
-      products.add(id);
-      addEdges(id, attrs.get('Representation'));
-    } else if (shapeClasses.has(type)) {
-      addEdges(id, attrs.get('Items'));
-    } else if (type === 'IFCPRODUCTDEFINITIONSHAPE' || type === 'IFCPRODUCTREPRESENTATION') {
-      addEdges(id, attrs.get('Representations'));
-    } else if (type === 'IFCMAPPEDITEM') {
-      addEdges(id, attrs.get('MappingSource'));
-    } else if (type === 'IFCREPRESENTATIONMAP') {
-      addEdges(id, attrs.get('MappedRepresentation'));
     } else if (type === 'IFCSHAPEASPECT') {
       // Shape aspects point back to their owning resource. Their shape models
       // need not also appear in that resource's main representation list.
@@ -178,13 +81,9 @@ export function resolvePresentationLayers(
         const shapeType = readRecord(shapeId)?.type.toUpperCase();
         if (shapeType && shapeModelClasses.has(shapeType)) addEdges(ownerId, shapeId);
       }
-    } else if (type === 'IFCCSGSOLID') {
-      addEdges(id, attrs.get('TreeRootExpression'));
-    } else if (type === 'IFCBOOLEANRESULT' || type === 'IFCBOOLEANCLIPPINGRESULT') {
-      addEdges(id, attrs.get('FirstOperand'));
-      addEdges(id, attrs.get('SecondOperand'));
     } else {
-      for (const attribute of containers.get(type) ?? []) addEdges(id, attrs.get(attribute));
+      if (productClasses.has(type)) products.add(id);
+      for (const attribute of attributesFor(type)) addEdges(id, attrs.get(attribute));
     }
   }
 
@@ -210,29 +109,4 @@ export function resolvePresentationLayers(
     layer.productIds = [...found].sort((a, b) => a - b);
     return layer;
   });
-}
-
-const cache = new WeakMap<IfcDataStore, {
-  view: MutablePropertyView | null | undefined;
-  revision: number | undefined;
-  source: IfcDataStore['source'];
-  index: ReadonlyMap<number, readonly PresentationLayer[]>;
-}>();
-
-/** #9273: selection is O(1); rebuild membership only when the model changes. */
-export function presentationLayersByProduct(store: IfcDataStore, view?: MutablePropertyView | null):
-ReadonlyMap<number, readonly PresentationLayer[]> {
-  const revision = view?.getMutationRevision();
-  const current = cache.get(store);
-  if (current && current.view === view && current.revision === revision && current.source === store.source) return current.index;
-  const index = new Map<number, PresentationLayer[]>();
-  for (const layer of resolvePresentationLayers(store, view)) {
-    for (const id of layer.productIds) {
-      const layers = index.get(id) ?? [];
-      layers.push(layer);
-      index.set(id, layers);
-    }
-  }
-  cache.set(store, { view, revision, source: store.source, index });
-  return index;
 }

@@ -4,7 +4,8 @@
 
 import { useTranslation } from '@/i18n';
 import { useViewerStore, type EntityRef } from '@/store';
-import { presentationLayersByProduct } from '@/lib/presentation-layers';
+import { presentationLayerOwner } from './presentationLayerOwner';
+import { useProductPresentationLayers } from './useProductPresentationLayers';
 import { liftStartFold } from '../welcome/useEmptyStartFold';
 
 /** Current model-local layer membership, including authored edits (#9273). */
@@ -13,15 +14,13 @@ export function PresentationLayersSection({ entityRef }: { entityRef: EntityRef 
   const models = useViewerStore(s => s.models);
   const legacyStore = useViewerStore(s => s.ifcDataStore);
   const views = useViewerStore(s => s.mutationViews);
-  useViewerStore(s => s.mutationVersion);
-  // Match PropertiesPanel: only the selection sentinel 'legacy' bypasses models.
-  const model = entityRef.modelId === 'legacy' ? undefined : models.get(entityRef.modelId);
-  const store = model?.ifcDataStore ?? legacyStore;
-  const view = views.get(entityRef.modelId === 'legacy' ? '__legacy__' : entityRef.modelId);
-  const layers = store ? presentationLayersByProduct(store, view).get(entityRef.expressId) : undefined;
+  const version = useViewerStore(s => s.mutationVersion);
+  const { store, modelId } = presentationLayerOwner(entityRef, models, legacyStore);
+  const view = modelId === 'legacy' ? views.get('__legacy__') ?? views.get('legacy') : views.get(modelId);
+  const layers = useProductPresentationLayers(store, view, entityRef.expressId, version);
   if (!layers?.length) return null;
-  return <section aria-label={t('hierarchy.panel.grouping.presentationLayersTooltip')} className="border-b border-border px-3 py-1 text-xs">
-    <div className="text-muted-foreground">{t('hierarchy.panel.grouping.presentationLayersTooltip')}</div>
+  return <section aria-label={t('properties.panel.presentationLayersHeading')} className="border-b border-border px-3 py-1 text-xs">
+    <div className="text-muted-foreground">{t('properties.panel.presentationLayersHeading')}</div>
     {layers.map(layer => <button key={layer.expressId} type="button" className="block w-full py-1 text-left text-primary hover:bg-muted/50"
       onClick={() => {
         const state = useViewerStore.getState();
@@ -31,7 +30,7 @@ export function PresentationLayersSection({ entityRef }: { entityRef: EntityRef 
         liftStartFold('left');
         state.setLeftPanelCollapsed(false);
         useViewerStore.setState({ pendingPresentationLayerReveal: {
-          nodeId: `presentation-layer-${entityRef.modelId}-${layer.expressId}`,
+          nodeId: `presentation-layer-${modelId}-${layer.expressId}`, modelId,
         } });
       }}>
       {layer.Name}{layer.Identifier ? ` (${layer.Identifier})` : ''}

@@ -5,6 +5,7 @@
 import type { Catalogue } from '../../registry';
 
 export const propertiesPanelRu = {
+  'properties.panel.presentationLayersHeading': 'Слои представления',
   "properties.panel.title": "Свойства",
   "properties.panel.findLabel": "Поиск свойств",
   "properties.panel.findPlaceholder": "Найти свойство или значение",

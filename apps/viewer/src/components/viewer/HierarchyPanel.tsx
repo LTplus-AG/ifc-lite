@@ -2,7 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { usePresentationLayerReveal } from './hierarchy/usePresentationLayerReveal';
 import { useState, useCallback, useRef, useMemo } from 'react';
 import { useTranslation } from '@/i18n';
 import { useVirtualizer } from '@tanstack/react-virtual';
@@ -189,6 +188,7 @@ export function HierarchyPanel() {
     overscan: 10,
   });
 
+  // Legacy virtualizer for single-model mode
   const virtualizer = useVirtualizer({
     count: filteredNodes.length,
     getScrollElement: () => parentRef.current,
@@ -196,11 +196,10 @@ export function HierarchyPanel() {
     overscan: 10,
   });
 
-  usePresentationLayerReveal(filteredNodes, parentRef, virtualizer, setSearchQuery);
-
+  // Reveal an outside selection by expanding its ancestors and scrolling to it (#5881).
   const { markFromTreeClick } = useRevealSelection({
     selectedEntityId, groupingMode, revealGlobalId, storeysNodes, modelsNodes, filteredNodes,
-    isMultiModel, storeysVirtualizer, modelsVirtualizer, virtualizer,
+    isMultiModel, storeysVirtualizer, modelsVirtualizer, virtualizer, container: parentRef, setSearchQuery, searchQuery, groupingReady,
   });
 
   // Toggle visibility for a node

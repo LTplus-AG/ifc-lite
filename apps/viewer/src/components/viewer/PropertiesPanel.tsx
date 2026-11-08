@@ -75,15 +75,12 @@ import { PropertyFindBox } from './properties/PropertyFindBox';
 import { AssociationAttributeSearchCard, findAssociationAttributes } from './properties/associationAttributeSearch';
 import { associationDisclosureId } from './properties/associationDisclosureId';
 import { PersistentCollapsible } from './properties/PersistentCollapsible';
-import { INSPECTOR_ROWS, INSPECTOR_SECTION, InspectorGroupLabel, InspectorRow, InspectorSectionTrigger, isNumericDisplay } from './properties/inspector-ui';
+import { DISCLOSURE_CHEVRON_CLASSES, MULTI_SELECTION_TRIGGER_CLASSES, MULTI_SELECTION_SECTION_CLASSES, INSPECTOR_ROWS, INSPECTOR_SECTION, InspectorGroupLabel, InspectorRow, InspectorSectionTrigger, isNumericDisplay } from './properties/inspector-ui';
 import { AttributeEditorField } from './properties/AttributeEditorField';
 import { CopyValueButton } from './properties/CopyValueButton';
 import { SelectionSummaryPanel } from './properties/SelectionSummaryPanel';
 import { AssistantAction } from './assistant/AssistantAction';
 
-const DISCLOSURE_CHEVRON_CLASSES = 'size-3 transition-transform group-data-[state=closed]/disclosure:-rotate-90';
-const MULTI_SELECTION_TRIGGER_CLASSES = 'group/disclosure flex items-center gap-2 w-full p-2 hover:bg-muted text-left text-xs';
-const MULTI_SELECTION_SECTION_CLASSES = 'border-b border-border';
 export function PropertiesPanel() {
   const { t, locale } = useTranslation();
   // Display-unit converter overrides (issue #1573 proposal 2) — read once
@@ -1171,7 +1168,9 @@ export function PropertiesPanel() {
       >
         <SpatialLocationBadge spatialInfo={renderedSpatialInfo} />
         {selectedEntity && <PresentationLayersSection entityRef={selectedEntity} />}
+        {/* Part of Assembly (#3620) */}
         <AssemblyBadge assembly={assemblyParent} onSelect={handleSelectAssembly} />
+        {/* World coordinates + Georeferencing: one Position row with a disclosure */}
         {(entityCoordinates || renderedGeoref || editMode) && (
           <EntityPositionSection
             coordinates={entityCoordinates}

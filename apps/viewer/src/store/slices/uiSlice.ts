@@ -118,7 +118,7 @@ export interface UISlice extends GeometryLoadSettingsState, GeometryLoadSettings
   /** Active grouping tab shared by the Hierarchy panel and Ribbon. */
   hierarchyMode: HierarchyMode;
   /** One-shot reveal of a presentation-layer header from the inspector (#9273). */
-  pendingPresentationLayerReveal: { nodeId: string } | null;
+  pendingPresentationLayerReveal: { nodeId: string; modelId: string } | null;
   /** One-shot "scroll to + highlight + edit this property" request, armed by
    *  the bSDD add flow and consumed by the Properties panel. Null when idle. */
   pendingPropertyFocus: PropertyFocusTarget | null;

@@ -5,6 +5,7 @@
 import type { Catalogue } from '../../registry';
 
 export const propertiesPanelFr = {
+  'properties.panel.presentationLayersHeading': 'Calques de présentation',
   "properties.panel.positionLabel": "Position",
   "properties.panel.crsLabel": "SCR",
   "properties.panel.localCoordinates": "Locales",

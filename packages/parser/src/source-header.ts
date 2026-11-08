@@ -320,7 +320,13 @@ export function parseSourceHeader(
  * tried before the `IFC4` one. Returns `undefined` for an identifier naming no
  * schema we model, so the caller can keep looking.
  */
-function schemaFromIdentifier(identifier: string): IfcStoreBase['schemaVersion'] | undefined {
+/**
+ * The schema family a FILE_SCHEMA identifier names: `IFC4X3_ADD2` -> `IFC4X3`,
+ * `IFC2X3_TC1` -> `IFC2X3`, `IFC4` -> `IFC4`. Undefined when no family matches.
+ * The one rule for reading an identifier, shared with the per-schema attribute
+ * lookups in `ifc-schema.ts`.
+ */
+export function schemaFromIdentifier(identifier: string): IfcStoreBase['schemaVersion'] | undefined {
   // ASCII fold, as Rust's `to_ascii_uppercase`: `toUpperCase()` maps the
   // dotless `ı` to `I`, so `('ıfc2x3')` resolved here and nowhere else (#7740).
   const token = asciiUpper(identifier.trim());

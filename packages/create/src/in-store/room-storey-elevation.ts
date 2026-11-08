@@ -11,7 +11,7 @@ export function effectiveStoreyElevation(
   view: MutablePropertyView | null | undefined,
   storeyId: number,
 ): number {
-  const created = view?.getNewEntity(storeyId);
+  const created = view?.readNewEntity(storeyId);
   const retype = view?.getEntityTypeMutation(storeyId)?.newType;
   const named = view?.getAttributeMutationsForEntity(storeyId) ?? [];
   const positional = view?.getPositionalMutationsForEntity(storeyId);

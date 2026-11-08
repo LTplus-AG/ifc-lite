@@ -41,7 +41,7 @@ export function sourceSpatialContext(store: IfcDataStore, view: MutablePropertyV
     isDeleted: (id: number) => view.isDeleted(id),
   };
   // Edited creations are also candidates even if their original refs differ.
-  for (const id of edited) { const row = view.getNewEntity(id); if (row) created.set(id, row); }
+  for (const id of edited) { const row = view.readNewEntity(id); if (row) created.set(id, row); }
   const typeName = (id: number) => view.getEntityTypeMutation(id)?.newType ?? view.getNewEntity(id)?.type ?? store.entities.getTypeName(id);
   const queue = [sourceId], visited = new Set(queue);
   let relationships = resolveEffectiveRelationshipOverlay(store, reader);

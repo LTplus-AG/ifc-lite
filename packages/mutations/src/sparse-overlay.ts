@@ -5,6 +5,7 @@
 /** Detached synchronous drafts: copy values on first read, publish only changed
  * entries. Neither transaction setup nor an append visits the session prefix. */
 import { NewEntityMap } from './new-entity-map.js';
+import { withoutEntityExposure } from './entity-read-barrier.js';
 import { sameOverlayValue } from './overlay-value-equality.js';
 import { captureCompoundInverse, type CompoundInverse } from './compound-inverse.js';
 import type { OverlaySnapshot } from './cooperative-overlay-access.js';
@@ -27,7 +28,7 @@ function sparseMap<K, V, T extends Map<K, V>>(base: T): { value: T; changes(): C
   const get = (key: K): V | undefined => {
     if (!has(key)) return undefined;
     if (!reads.has(key)) {
-      const row = structuredClone(base.get(key)!);
+      const row = withoutEntityExposure(() => structuredClone(base.get(key)!));
       reads.set(key, row);
       localEntities?.set(key as number, row as unknown as NewEntity);
     }
@@ -61,6 +62,7 @@ function sparseMap<K, V, T extends Map<K, V>>(base: T): { value: T; changes(): C
       for (const [k, v] of entries()) fn.call(self, v, k, value);
     };
     if ((name === 'ofType' || name === 'referencing') && base instanceof NewEntityMap) return function* (query: string | number): IterableIterator<NewEntity> {
+      if (name === 'referencing') localEntities!.refreshReferences();
       const seen = new Set<number>();
       const candidates = name === 'ofType' ? base.ofType(String(query)) : base.referencing(Number(query));
       for (const entity of candidates) {

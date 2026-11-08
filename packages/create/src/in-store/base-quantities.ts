@@ -91,7 +91,7 @@ function revisionOf(dataStore: IfcDataStore, view: MutablePropertyView): Revisio
  */
 function overlayOpenings(dataStore: IfcDataStore, view: MutablePropertyView, editor: StoreEditor): Map<number, number[]> {
   const byHost = new Map<number, number[]>();
-  for (const rel of view.getNewEntitiesOfType('IFCRELVOIDSELEMENT')) {
+  for (const rel of view.readNewEntitiesOfType('IFCRELVOIDSELEMENT')) {
     const attributes = readAttributes(dataStore, view, editor, rel.expressId);
     const host = asExpressIdRef(attributes?.[4]);
     const opening = asExpressIdRef(attributes?.[5]);

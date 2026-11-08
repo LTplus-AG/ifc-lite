@@ -53,13 +53,13 @@ export function createOverlayLookup(overlay: OverlayWallReader | undefined): Ove
     };
   }
   if (overlay.getNewEntity && overlay.getNewEntitiesOfType) {
-    const created = overlay.getNewEntity.bind(overlay);
+    const created = (overlay.readNewEntity ?? overlay.getNewEntity).bind(overlay);
     const isDeleted = (id: number) => overlay.isDeleted?.(id) ?? false;
     return {
       overlay, isDeleted,
       iteratorOverlay: {
         isDeleted, getNewEntity: created,
-        getNewEntities: () => Array.from(overlay.getNewEntities()),
+        getNewEntities: () => Array.from(overlay.readNewEntities?.() ?? overlay.getNewEntities()),
         getNewEntitiesOfType: overlay.getNewEntitiesOfType.bind(overlay),
         getTypeMutations: () => overlay.getTypeMutations?.() ?? new Map(),
       },

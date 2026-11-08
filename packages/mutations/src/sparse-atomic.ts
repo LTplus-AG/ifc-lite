@@ -4,6 +4,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { cooperativeOverlay } from './cooperative-overlay-access.js';
 import { sparseOverlay } from './sparse-overlay.js';
+import { withoutEntityExposure } from './entity-read-barrier.js';
 import type { MutablePropertyView } from './mutable-property-view.js';
 
 export function runSparseAtomic<T>(view: MutablePropertyView, edit: (draft: MutablePropertyView) => T, record: boolean) {
@@ -17,7 +18,7 @@ export function runSparseAtomic<T>(view: MutablePropertyView, edit: (draft: Muta
     throw new TypeError('Overlay transactions must be synchronous; prepare asynchronous work before editing');
   }
   if (view.getMutationRevision() !== revision) throw new Error('The IFC overlay changed during a prepared transaction.');
-  const prepared = transaction.finish(cooperativeOverlay(draft).capture(), record);
+  const prepared = withoutEntityExposure(() => transaction.finish(cooperativeOverlay(draft).capture(), record));
   if (record && prepared.changed && !prepared.written.length) throw new Error('A compound edit must record its mutations');
   access.publish(prepared.publish());
   return { result, inverse: prepared.inverse, written: prepared.written };

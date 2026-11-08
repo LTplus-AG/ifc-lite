@@ -1129,3 +1129,11 @@ candidates; verify their effective slots with the relevant schema and grammar.
 `view.getAttributeOverrideReferenceCandidates(id)` also indexes source edits
 that might introduce a reference. Combine these with the immutable source and
 authored reference indices; retained or removed references need those indices.
+
+The ordinary entity getters keep their mutable-array contract. Reference
+lookups conservatively recheck a record after its attribute array is exposed,
+including later edits through a retained alias. Pure readers can use
+`readNewEntity`, `readNewEntities`, and `readNewEntitiesOfType`; these borrow
+attributes for reading and must not mutate them. Reference-query results also
+borrow their arrays for reading. Use the ordinary getters or mutation methods
+for writes. `StoreEditor.readNewEntity` provides the same read-only borrow.

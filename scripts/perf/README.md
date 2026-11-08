@@ -75,6 +75,11 @@ slot checks; metadata cloning asks for one entity's changes. Schema names use
 one finite-operation snapshot. The deterministic regression counts unrelated
 payload reads, rather than timing a host that may be running other jobs.
 
+Mutable attribute aliases remain supported: a read barrier tracks exposed rows
+and reference lookups recheck those rows. Internal readers borrow attributes
+without exposing mutable aliases, so an earlier model inventory does not turn
+every subsequent reference lookup into another inventory scan.
+
 Timing qualification and the F5 verdict are still pending; no measured scale
 acceptance is claimed by the structural guard alone.
 

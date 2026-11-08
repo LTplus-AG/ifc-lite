@@ -22,7 +22,7 @@ function memberIds(
   if (!member) return [];
   const view = ctx.mutationView;
   if (effective.isOverlayCreated(id)) {
-    const created = view?.getNewEntity(id);
+    const created = view?.readNewEntity(id);
     if (!created) return [];
     const record = resolveEffectiveEntityRecord(
       { type: created.type, attributes: created.attributes },

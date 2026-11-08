@@ -190,3 +190,20 @@ it('override reference candidates track source and created retargets without num
   expect(view.getAttributeOverrideReferenceCandidates(90)).toEqual([]);
   expect(view.getAttributeOverrideReferenceCandidates(91)).toEqual([]);
 });
+
+it('reference queries follow in-place draft attributes and retained array aliases #8452 review', () => {
+  const view = new MutablePropertyView(null, 'in-place');
+  const relation = view.createEntity('IfcRelAggregates', ['guid', null, null, null, '#1', []]);
+  view.runAtomic(draft => {
+    const row = draft.getNewEntity(relation.expressId)!;
+    const attributes = row.attributes;
+    attributes[4] = ['#42'];
+    expect([...draft.getNewEntitiesReferencing(42)].map(e => e.expressId)).toEqual([relation.expressId]);
+    // No second getter: the same escaped array can be edited again.
+    attributes[4] = ['#43'];
+    expect([...draft.getNewEntitiesReferencing(42)]).toEqual([]);
+    expect([...draft.getNewEntitiesReferencing(43)].map(e => e.expressId)).toEqual([relation.expressId]);
+    expect(structuredClone(row).attributes[4]).toEqual(['#43']);
+  });
+  expect([...view.getNewEntitiesReferencing(43)].map(e => e.expressId)).toEqual([relation.expressId]);
+});

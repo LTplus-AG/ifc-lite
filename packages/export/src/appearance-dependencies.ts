@@ -86,7 +86,7 @@ export function captureAppearanceDependencies(
         result = { line: '', refs: collectRefsInByteRange(span, 0, span.length) };
         rows.set(id, result); return result;
       }
-      inspect(current.getNewEntity(id)?.attributes);
+      inspect(current.readNewEntity(id)?.attributes);
       for (const value of current.getPositionalMutationsForEntity(id)?.values() ?? []) inspect(value);
       for (const attribute of current.getAttributeMutationsForEntity(id)) inspect(attribute.value);
       const line = effectiveAppearanceRecord(store, current, index, id);

@@ -13,6 +13,7 @@
  */
 
 import { runSparseAtomic } from './sparse-atomic.js';
+import { readEntitySnapshot } from './entity-read-barrier.js';
 import { registerCooperativeOverlay } from './cooperative-overlay-access.js';
 import type { PropertyTable, PropertySet, Property, QuantitySet, Quantity } from '@ifc-lite/data';
 import { quantityHistoryBefore } from './quantity-history-before.js';
@@ -1264,7 +1265,11 @@ export class MutablePropertyView extends MutableOverlayState {
   /** Created entities authored as `type`, in creation order, from an index (#5413). */
   getNewEntitiesOfType(type: string): IterableIterator<NewEntity> { return this.newEntities.ofType(type); }
   /** Authored reference candidates, before named/positional overrides. */
-  getNewEntitiesReferencing(id: number): IterableIterator<NewEntity> { return this.newEntities.referencing(id); }
+  *getNewEntitiesReferencing(id: number): IterableIterator<NewEntity> { for (const row of this.newEntities.referencing(id)) yield readEntitySnapshot(row); }
+  /** Read-only borrows; use the ordinary getters when retaining mutable arrays. */
+  readNewEntity(id: number): NewEntity | null { const row = this.newEntities.get(id); return row ? readEntitySnapshot(row) : null; }
+  readNewEntities(): NewEntity[] { return Array.from(this.newEntities.values(), readEntitySnapshot); }
+  *readNewEntitiesOfType(type: string): IterableIterator<NewEntity> { for (const row of this.newEntities.ofType(type)) yield readEntitySnapshot(row); }
 
   getNewEntity(expressId: number): NewEntity | null {
     return this.newEntities.get(expressId) ?? null;

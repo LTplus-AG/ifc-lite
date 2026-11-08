@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { NewEntity } from './types.js';
+import { observeEntityAttributes, withoutEntityExposure } from './entity-read-barrier.js';
 
 /**
  * The overlay's created entities, still an ordinary `Map` by express id, plus
@@ -24,6 +25,9 @@ export class NewEntityMap extends Map<number, NewEntity> {
   declare private byReference?: Map<number, Set<number>>;
   declare private referencesById?: Map<number, Set<number>>;
   declare private byType?: Map<string, Map<number, NewEntity>>;
+  declare private exposed?: Set<number>;
+  declare private callbacks?: WeakMap<NewEntity, () => void>;
+  declare private weakSelf?: WeakRef<NewEntityMap>;
 
   override set(expressId: number, entity: NewEntity): this {
     this.positions ??= new Map();
@@ -37,7 +41,7 @@ export class NewEntityMap extends Map<number, NewEntity> {
     let bucket = this.byType.get(key);
     if (!bucket) this.byType.set(key, (bucket = new Map()));
     bucket.set(expressId, entity);
-    const references = new Set<number>(), visited = new Set<unknown[]>(), pending: unknown[] = [entity.attributes];
+    const references = new Set<number>(), visited = new Set<unknown[]>(), pending: unknown[] = [withoutEntityExposure(() => entity.attributes)];
     while (pending.length) {
       const value = pending.pop();
       if (Array.isArray(value) && !visited.has(value)) { visited.add(value); for (const child of value) pending.push(child); }
@@ -51,11 +55,19 @@ export class NewEntityMap extends Map<number, NewEntity> {
       if (!bucket) this.byReference.set(id, bucket = new Set());
       bucket.add(expressId);
     }
+    this.callbacks ??= new WeakMap();
+    if (!this.callbacks.has(entity)) {
+      const owner = this.weakSelf ??= new WeakRef(this);
+      const exposed = () => { const map = owner.deref(); if (map?.has(expressId)) (map.exposed ??= new Set()).add(expressId); };
+      this.callbacks.set(entity, exposed);
+      observeEntityAttributes(entity, exposed);
+    }
     return this;
   }
 
   override delete(expressId: number): boolean {
     this.positions?.delete(expressId);
+    this.exposed?.delete(expressId);
     this.unindexReferences(expressId);
     const previous = super.get(expressId);
     if (previous) this.unindex(previous);
@@ -67,6 +79,7 @@ export class NewEntityMap extends Map<number, NewEntity> {
     this.byType?.clear();
     this.byReference?.clear();
     this.referencesById?.clear();
+    this.exposed?.clear();
     super.clear();
   }
 
@@ -88,8 +101,16 @@ export class NewEntityMap extends Map<number, NewEntity> {
 
   referencesId(entityId: number, targetId: number): boolean { return this.referencesById?.get(entityId)?.has(targetId) ?? false; }
 
+  /** Mutable aliases require rechecking only the rows whose arrays escaped. */
+  refreshReferences(): void {
+    withoutEntityExposure(() => {
+      for (const id of this.exposed ?? []) { const row = super.get(id); if (row) this.set(id, row); }
+    });
+  }
+
   /** Authored reference candidates; effective readers apply queued slot edits. */
   *referencing(id: number): IterableIterator<NewEntity> {
+    this.refreshReferences();
     for (const entityId of this.byReference?.get(id) ?? []) {
       const entity = this.get(entityId);
       if (entity) yield entity;

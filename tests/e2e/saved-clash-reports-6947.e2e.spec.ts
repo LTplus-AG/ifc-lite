@@ -257,6 +257,7 @@ test('#9259 real IFC quality evidence survives threshold edits, documentation ca
   const reportRow = page.getByRole('dialog').locator('li[data-clash-report]', { hasText: 'Quality evidence 9259' });
   await reportRow.getByText('Quality gates', { exact: true }).click();
   await reportRow.getByRole('button', { name: 'Add quality gates to Documentation', exact: true }).click();
+  await expect(page.locator('[data-document-panel]').first()).toBeVisible();
   await page.waitForFunction(() => {
     const state = globalThis.__ifc_lite_viewer_store__.getState();
     return state.documents.some(doc => doc.name === 'Quality evidence 9259' && state.documentsStorage.items[doc.id] === 'saved');
@@ -264,6 +265,7 @@ test('#9259 real IFC quality evidence survives threshold edits, documentation ca
   const documentCopy = await page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().documents.find(doc => doc.name === 'Quality evidence 9259'));
   expect(documentCopy?.blocks.some(block => block.kind === 'image' && block.dataUrl.startsWith('data:image/png;base64,'))).toBe(true);
   expect(documentCopy?.blocks.filter(block => block.kind === 'text').map(block => block.text).join('\n')).not.toContain('Changed after capture');
+  await page.screenshot({ path: info.outputPath('9259-quality-document.png') });
   await loadModel(page, true);
   await page.evaluate(async () => {
     const state = globalThis.__ifc_lite_viewer_store__.getState();

@@ -8,6 +8,36 @@ Citations to `evidence/`, `tests/evidence/` and `docs/architecture/evidence/` pa
 at commit [`f98785c722`](https://github.com/LTplus-AG/ifc-lite/tree/f98785c722); the retained
 bundles left the tree in #9054.
 
+## Storey planners and the QuickJS runtime leave the boot path (#9200)
+
+**Shipped: an eager-bytes cut, no boot-time change.** Three changes, each one
+synchronous with no behaviour change:
+
+- The viewer's startup modules reference `createModellingStoreBackend` statically and
+  call it only when an edit runs. That factory spread `createStoreyStoreBackend`, so it
+  linked every storey planner, although the viewer's `bim.store` storey methods come from
+  its own storey adapter, which loads on first use. The viewer now uses
+  `createModellingStoreBackendWithoutStoreys`, and the full factory is that plus the
+  storey methods, unchanged for the CLI and headless backends.
+- The `sandbox` manual chunk is eager (eager code imports `SandboxAbortError` and the
+  bridge schema). As a recursive group it also took the QuickJS runtime core, which only
+  a script run needs. A non-recursive, higher-priority group now claims that core, except
+  `quickjs-emscripten-core`'s index, which eager code does reach.
+- `@ifc-lite/create` declares `sideEffects: false`. `@ifc-lite/sdk` lists only its index,
+  which registers the schema normalizer at load.
+
+Lessons. The bundler splits by module, not by function. The storey-free factory first
+lived in the same module as the full one. The lazy headless backend still used the full
+factory, so the shared module stayed eager and kept its import of the storey backend:
+zero bytes saved until the factory moved to its own module. Storey code that
+`ordinary-element` and `copy-attachment` really use at boot (the storey model, top
+constraints, attachments) stays eager. Making the whole `sandbox` group non-recursive
+saved fewer bytes and broke the old chunk into 19 more small eager files, and boot to
+the welcome card measured about 20 ms slower unthrottled. So check the eager file count,
+not only the byte total, and measure boot with each build in both A/B positions: on a
+shared host, position alone moved the result by about 15 ms. A group that claimed every
+QuickJS module also failed, because the one eager module in it made the whole group eager.
+
 ## First selection reads typing relationships from the graph (#9192)
 
 **Shipped: the scan is gone, not made cheaper.** `readCurrentTypeQuantities` read every

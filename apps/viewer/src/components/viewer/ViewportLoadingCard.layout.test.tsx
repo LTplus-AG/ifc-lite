@@ -62,6 +62,7 @@ for (const [width, height] of [[320, 640], [360, 740], [375, 553], [390, 844], [
             return {
               overlaps, targets: targets.length, width: rect.width,
               top: rect.top - viewport.top,
+              centeredX: Math.abs((rect.left + rect.right) / 2 - (viewport.left + viewport.right) / 2),
               centered: Math.abs((rect.top + rect.bottom) / 2 - (viewport.top + viewport.bottom) / 2),
               font: parseFloat(getComputedStyle(card.querySelector('output')!).fontSize),
             };
@@ -74,6 +75,7 @@ for (const [width, height] of [[320, 640], [360, 740], [375, 553], [390, 844], [
           assert.equal(result.width, width - 32);
           assert.equal(result.top, VIEW_CUBE_REACH_PX + 32, 'portrait uses the docking offset');
         } else {
+          assert.ok(result.centeredX < 1, `horizontal center delta ${result.centeredX}`);
           assert.ok(result.centered < 1, `center delta ${result.centered}`);
           assert.ok(result.width <= 384, `centered card width ${result.width}`);
         }

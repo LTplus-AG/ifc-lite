@@ -2,7 +2,8 @@
 /* This Source Code Form is subject to the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { NewEntityMap } from './new-entity-map.js';
 import { MutablePropertyView } from './mutable-property-view.js';
 import { recordCompoundMutation, undoRecordedMutationOperations } from './compound-recording.js';
 import { PropertyValueType } from '@ifc-lite/data';
@@ -119,4 +120,19 @@ it('compound inverse restores forgotten tail records in original order #8452', (
   });
   undoRecordedMutationOperations(view, 1, () => { throw new Error('Expected compound inverse'); });
   expect(view.getNewEntities().map(e => e.expressId)).toEqual([1, 2, 3, 4]);
+});
+
+
+it('draft reference lookup does not rebuild an index per previously read record #8452', () => {
+  const view = new MutablePropertyView(null, 'draft-index');
+  for (let i = 0; i < 2000; i++) view.createEntity('IfcCartesianPoint', [[i, 0, 0]]);
+  const axis = view.createEntity('IfcAxis2Placement3D', ['#1', null, null]);
+  view.runAtomic(draft => {
+    draft.getNewEntities(); // A planner has already read the session.
+    const writes = vi.spyOn(NewEntityMap.prototype, 'set');
+    try {
+      expect([...draft.getNewEntitiesReferencing(1)].map(row => row.expressId)).toEqual([axis.expressId]);
+      expect(writes.mock.calls.length).toBeLessThanOrEqual(1);
+    } finally { writes.mockRestore(); }
+  });
 });

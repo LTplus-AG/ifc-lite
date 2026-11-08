@@ -5967,3 +5967,41 @@ Allocation checks and finish equality checks support removing the duplicate inde
 are finish-join attribution, not end-to-end worker-pool throughput. No speedup or performance-neutrality
 claim is established. The exact default path does not call the new join. Preserve the shared scan
 rather than rebuilding a whole-file entity index to resolve a small styled subset.
+
+## Modelling session scale (`modelling-session.mjs`, #9296)
+
+Build the CLI and dependencies first (`pnpm install --frozen-lockfile`,
+`pnpm build:wasm:fetch`, `pnpm turbo build --filter=@ifc-lite/cli...`) through
+fleet admission. Run `nice -n 10 pnpm parity:perf` under local ordinary admission
+for **diagnostic timings**, recording the shared host load rather than claiming
+benchmark evidence. No product code is changed. Each target (1K, 10K, 50K) starts
+with a new CLI headless context and uses public `bim.store` authoring throughout.
+The default hard budget is nine minutes per target, at most 27 minutes overall;
+`--budget-ms` can reduce it. The first 75% is available to fill with columns.
+The remainder samples at the reached size, reported as failure if below target.
+A parent deadline also stops synchronous SDK calls and preserves checkpoints.
+
+The session has ten storeys, a 50-element typical floor (40 columns, nine walls, one slab) and a host wall. Fill
+columns span the ten storeys. Each of five interleaved sample rounds adds a wall,
+column, slab and hosted window; joins a fresh wall pair; copies the typical floor
+to one storey; plans and applies alternating floor-height edits; and exports IFC4.
+Counts mean authored architectural elements, excluding storeys, opening voids
+and representation records. Sampling grows the session: each raw sample records
+its before/after counts. Export includes the whole current session. There is no
+warm-up subtraction or private overlay injection. Quantiles use nearest rank;
+with five samples p95 is the maximum. Missing/unfinished operations stay absent.
+Heap/RSS peaks are sampled between operations (lower bounds, not V8 allocation
+high-water marks). Node version, CPU, host, load before/after, command, source
+commit and dirty state are retained with results.
+
+`PARITY_OUT` defaults to `tests/modelling-parity/.out/l3`; the runner writes a
+contract JSON array and Markdown table there. The committed baseline and
+round-1 targets live in `tests/perf-ratchets/modelling-session.json`. These noisy
+diagnostics deliberately do not join daily automatic ceiling lowering.
+`pnpm parity:perf --check --input <results.json> --f5-result <F5.json>` checks the
+round-1 goals without re-running: complete sizes, both latency quantiles growing
+strictly less than 2× from 1K to 50K, and a passing F5 exercise result whose
+`metrics.ms` is strictly below 60 seconds. The F5 time comes from the exercise
+lane, not a substitute tower here. Missing sizes or F5 evidence fail the check.
+The baseline is a description of current main, not an accepted round-1 result
+or a speedup claim.

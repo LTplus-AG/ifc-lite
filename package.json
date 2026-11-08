@@ -127,7 +127,8 @@
     "check:codegen-sync": "node scripts/check-codegen-sync.mjs",
     "check:generated": "node scripts/check-generated.mjs",
     "test:packed": "node scripts/check-packed-workflows.mjs",
-    "docs:api": "node scripts/docs/build-api-reference.mjs"
+    "docs:api": "node scripts/docs/build-api-reference.mjs",
+    "parity:perf": "node scripts/perf/modelling-session.mjs"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",

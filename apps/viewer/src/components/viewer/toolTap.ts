@@ -92,12 +92,13 @@ export function runToolAt(ctx: MouseHandlerContext, tool: string, x: number, y: 
 }
 
 /**
- * The tools `runToolAt` drives place something where a click lands, and a
- * click has no time limit: their tap has none short of the long press
- * (#9092), where tap-to-select keeps its 300 ms.
+ * The tools `runToolAt` drives, and Measure, place something where a click
+ * lands, and a click has no time limit: their tap has none short of the long
+ * press (#9092, Measure #9228), where tap-to-select keeps its 300 ms.
  */
 export function placesOnTap(ctx: MouseHandlerContext | null, tool: string): boolean {
-  return tool === 'command' || tool === 'annotate' || (tool === 'section' && ctx?.sectionPickModeRef?.current === true);
+  return tool === 'command' || tool === 'annotate' || tool === 'measure'
+    || (tool === 'section' && ctx?.sectionPickModeRef?.current === true);
 }
 
 /**

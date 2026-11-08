@@ -23,7 +23,7 @@ assert.ok(process.env.IFC_GPU_CDP_URL || process.env.IFC_GPU_CHROME_ARGS, 'Use i
 const chromeRoot = path.join(os.homedir(), '.t3/tools/chrome-headless-shell/linux64');
 // A CDP worker owns its browser installation; local Chrome is only for launch.
 const executablePath = process.env.IFC_GPU_CDP_URL ? undefined
-  : process.env.IFC_GPU_CHROME_PATH ?? path.join(chromeRoot, fs.readdirSync(chromeRoot).sort().at(-1), 'chrome-headless-shell');
+  : process.env.IFC_GPU_CHROME_PATH ?? path.join(chromeRoot, (fs.readdirSync(chromeRoot).sort().at(-1) ?? assert.fail(`No Chrome install under ${chromeRoot}`)), 'chrome-headless-shell');
 const browser = process.env.IFC_GPU_CDP_URL
   ? await chromium.connectOverCDP(process.env.IFC_GPU_CDP_URL)
   : await chromium.launch({ executablePath, headless: true, args: ['--no-sandbox', '--disable-dev-shm-usage', ...process.env.IFC_GPU_CHROME_ARGS.split(/\s+/)] });

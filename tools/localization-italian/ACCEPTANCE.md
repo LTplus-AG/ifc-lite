@@ -4,7 +4,7 @@ Current-source Settings-based GPU acceptance is pending after the rebase. Histor
 
 Maximum eight total improvement rounds. Stop early when functional acceptance is demonstrated; preserve accepted text and repair concrete defects only.
 
-- Cover every current eager and lazy English key (derive the exact total from current English) in 158 bounded Italian modules. Startup owns every key before lazy English registration. No broad fallback or invented token heuristics; identical exceptions pin exact values and give individual reasons.
+- Cover every current eager and lazy English key (derive the exact total from current English) in 160 bounded Italian modules. Startup owns every key before lazy English registration. No broad fallback or invented token heuristics; identical exceptions pin exact values and give individual reasons.
 - Preserve complete actor/action/object/condition/negation/consequence, placeholders in every plural branch and canonical protected tokens. Keep IFC EXPRESS names, proper names and runtime model values exact. Unchecked-model count means quantity, not identifier. Quoted saved change-set names do not promise translation of model content.
 - Glossary: piano (storey), elemento (model product), proprietà, quantità, interferenza (clash), sezione / piano di sezione, misura. Generic level may use livello. Use Italian grammar, never transplanted French forms. Exercise Intl one/other/many including decimals and million.
 - Runtime tests: all-key coverage/placeholder validation, explicit identical exceptions, lazy ownership, it-CH negotiation, Settings/storage/reload/English/Auto switch and html lang, IDS Italian synchronization and rendered findings.

@@ -39,7 +39,13 @@ import { effectiveMetadataRecord, type MetadataReadView } from './effective-meta
 import { propertyDefinitionsInModel } from './property-definition-members.js';
 import { getInheritanceChain, normalizeIfcTypeName } from './ifc-schema.js';
 
-const MAX_RELATIONSHIPS = 65_536;
+/**
+ * The bounds on one model's typing and definition relationships (#9192). The largest real models
+ * in the fixture manifest need 92,432 rows (BWK) and 140,475 references (Holter); a first read
+ * there takes about 0.1 s through the graph. A store the graph cannot vouch for reads every row
+ * from source (about 45 us each on those models), so the row bound also caps that walk near 6 s.
+ */
+const MAX_RELATIONSHIPS = 131_072;
 const MAX_RELATION_REFERENCES = 262_144;
 
 export class CurrentQuantityRefusal extends Error {}
@@ -205,7 +211,7 @@ export function resolveCurrentTypeRelationships(store: IfcDataStore, view: Metad
     let referenceCount = 0;
     for (const row of iterateEffectiveEntities(store, view, ['IfcRelDefinesByType', 'IfcRelDefinesByProperties'])) {
         const order = ++relationshipCount;
-        if (relationshipCount > MAX_RELATIONSHIPS) throw new CurrentQuantityRefusal('Native type relationship inventory exceeds the read limit');
+        if (relationshipCount > MAX_RELATIONSHIPS) throw new CurrentQuantityRefusal(`Native type relationship inventory exceeds the read limit of ${MAX_RELATIONSHIPS} relationships`);
         const touched = row.overlayCreated || retypes?.has(row.expressId)
             || view.getPositionalMutationsForEntity(row.expressId) !== null
             || view.getAttributeMutationsForEntity(row.expressId).length > 0
@@ -237,7 +243,7 @@ export function resolveCurrentTypeRelationships(store: IfcDataStore, view: Metad
             const relation = readOnce(next.id);
             if (relation) referenceCount += relation.members.length * relation.targets.length;
         }
-        if (referenceCount > MAX_RELATION_REFERENCES) throw new CurrentQuantityRefusal('Native type relationship references exceed the read limit');
+        if (referenceCount > MAX_RELATION_REFERENCES) throw new CurrentQuantityRefusal(`Native type relationship references exceed the read limit of ${MAX_RELATION_REFERENCES}`);
     }
 
     const lookup = (edited: Map<number, Contribution[]>, type: RelationshipType) => {

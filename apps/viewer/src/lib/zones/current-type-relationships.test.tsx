@@ -182,15 +182,28 @@ test('#9192 a malformed relationship the graph does name refuses the elements an
   assert.equal(describe(store, 10, view), 'A: Qto_Own,Qto_Related', 'an element the record does not name keeps its answer');
 });
 
-test('#9192 the row limit still refuses, without reading a relationship and once per revision', async () => {
-  const rows = Array.from({ length: 65_537 }, (_, i) => typing(100_000 + i, '(#10)', '#20'));
+test('#9192 a model past the old 65,536-row limit, as Holter and BWK are, gets the answers a read of every relationship gives', async () => {
+  // 90,000 typing relationships, between BWK's 92,432 rows and Holter's 80,276; all of them name a
+  // wall nobody asks about, so the read through the graph decodes none of them.
+  const filler = 15;
+  const rows = Array.from({ length: 90_000 }, (_, i) => typing(100_000 + i, `(#${filler})`, '#20'));
+  const store = await parse([...BASE, wall(filler), ...rows]);
+  const reads: number[] = [];
+  const counted: IfcDataStore = { ...store, getEntity: id => { reads.push(id); return store.getEntity(id); } };
+  assert.deepEqual(describeAll(counted, new MutablePropertyView(null, 'm')), CLEAN);
+  assertReadIds(reads.filter(id => id >= 100_000), [], 'no filler relationship is decoded');
+  assert.deepEqual(describeAll(everyRelationshipRead(store), new MutablePropertyView(null, 'm')), CLEAN, 'reading every relationship gives the same answers');
+});
+
+test('#9192 the row limit still refuses, says so, without reading a relationship and once per revision', async () => {
+  const rows = Array.from({ length: 131_073 }, (_, i) => typing(100_000 + i, '(#10)', '#20'));
   const store = await parse([...BASE, ...rows]);
   const reads: number[] = [];
   const counted: IfcDataStore = { ...store, getEntity: id => { reads.push(id); return store.getEntity(id); } };
   const view = new MutablePropertyView(null, 'm');
   const read = readCurrentTypeQuantities(counted, 11, view);
   assert.equal(read.status, 'unavailable');
-  assert.match(read.reason ?? '', /exceeds the read limit/);
+  assert.match(read.reason ?? '', /inventory exceeds the read limit of 131072 relationships/);
   assertReadIds(reads, [], 'the row limit refuses without reading a relationship');
 
   // Not re-derived for the next element: on a large model that walk ran on every click.
@@ -203,7 +216,7 @@ test('#9192 the row limit still refuses, without reading a relationship and once
   view.setPositionalAttribute(100_000, 4, ['#11']);
   rowsWalked = 0;
   assert.equal(readCurrentTypeQuantities(counted, 12, view).status, 'unavailable', 'the limit still holds at the next revision');
-  assert.ok(rowsWalked > 65_536, `a new revision walks the rows again (walked ${rowsWalked})`);
+  assert.ok(rowsWalked > 131_072, `a new revision walks the rows again (walked ${rowsWalked})`);
 });
 
 test('#9192 the reference budget counts only what a read of each relationship counts', async () => {

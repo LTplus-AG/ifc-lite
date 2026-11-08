@@ -28,8 +28,11 @@ compares the assigned type.
 
 Lessons: on models past the 65,536-row limit, base read 65,536 records only to refuse, and
 did not memoise the refusal, so every click repeated the walk. A refusal is now kept for the
-edit revision, model-wide, per relationship and per type, as an answer always was. The limit itself still applies and still refuses those models; it bounded
-work the read no longer does, so raising it is a behaviour change, not a perf lever.
+edit revision, model-wide, per relationship and per type, as an answer always was. The limit
+bounded work the read no longer does, so it was then raised to 131,072 rows: Holter (80,276)
+and BWK (92,432) now answer, with a first read of about 0.1 s through the graph, and answers
+matching a full read by probed digest. A store the graph cannot vouch for still reads every
+row (about 45 us each), which is what the bound now caps.
 
 ## Right-sized in-circle scratch restores the large instruction ceiling (#9016)
 

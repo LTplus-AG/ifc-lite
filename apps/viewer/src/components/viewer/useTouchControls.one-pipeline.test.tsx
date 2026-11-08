@@ -156,6 +156,20 @@ describe('Measure by tap (#5856)', () => {
   });
 });
 
+describe('a careful Measure tap has no time limit, as a click (#9228)', () => {
+  it('a 400 ms tap sets the Distance start, short of the long press', async (t) => {
+    let now = Date.now();
+    t.mock.method(Date, 'now', () => now);
+    useViewerStore.setState({ measureMode: 'drag' });
+    const { canvas, menus } = rig('measure');
+    act(() => canvas.dispatchEvent(touchEvent('touchstart', canvas, [[200, 300]])));
+    now += 400; // past tap-to-select's 300 ms
+    await act(async () => { canvas.dispatchEvent(touchEvent('touchend', canvas, [])); });
+    assert.ok(useViewerStore.getState().activeMeasurement, 'BUG: a 400 ms tap placed no Measure point');
+    assert.deepEqual(menus, []);
+  });
+});
+
 describe('a touch that began before a Measure gesture reset places no point (#8786)', () => {
   it('a Distance touch, a switch to Polyline while held, then lift, adds no polyline point', async () => {
     useViewerStore.setState({ measureMode: 'drag', activePolyline: null });

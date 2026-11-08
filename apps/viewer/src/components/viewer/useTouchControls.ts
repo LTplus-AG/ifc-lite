@@ -170,8 +170,11 @@ export function useTouchControls(params: UseTouchControlsParams): void {
         touchState.tapStartTime = Date.now();
         touchState.tapStartPos = { ...touchState.lastCenter };
         touchState.didMove = false;
-        beginMeasurePress(touchState); // a press that grabs for the command has no long press: its drag is the command's (#9092)
-        if (!command.begin(touchState.touches[0], e)) longPress.begin(touchState.touches[0]);
+        beginMeasurePress(touchState);
+        // A press that grabs for the command has no long press: its drag is the command's (#9092).
+        // Its rest still suppresses the touch's own native menu (#9228).
+        const grabs = command.begin(touchState.touches[0], e);
+        longPress.begin(touchState.touches[0], { hold: !grabs });
 
         if (drag !== 'pan') anchorOrbitPivotUnderFinger(touchState.touches[0]); // as the mouse, a pan has no pivot
       } else if (touchState.touches.length === 1) {

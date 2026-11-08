@@ -74,7 +74,7 @@ function copy(input: Record<string, unknown>, ctx: Parameters<Tool['handler']>[1
     const refs = array ? model.bim.store.arrayElements(model.id, ids, input.params as CopyArrayParams)
       : model.bim.store.copyElements(model.id, ids, input.transforms as CopyTransform[]);
     // Each ref lists the copies whose top could not follow their new storey (#9352).
-    const unattached = refs.flatMap(ref => ref.unattachedTops ?? []);
+    const unattached = [...new Map(refs.flatMap(ref => ref.unattachedTops ?? []).map(notice => [notice.expressId, notice])).values()];
     const notice = unattached.length === 0 ? '' : ` ${unattached.length} ${unattached.length === 1 ? 'copy keeps its' : 'copies keep their'} height and ${unattached.length === 1 ? 'is' : 'are'} no longer attached: ${unattached.map(({ expressId, reason }) => `#${expressId} ${reason}`).join('; ')}.`;
     return okResult(`Copied ${refs.length} selected products.${notice}`, { modelId: model.id, entities: refs, unattachedTops: unattached });
   } catch (error) {

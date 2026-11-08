@@ -114,7 +114,7 @@ export interface SelectedCopy {
   /** Its copy: a door or window selected with its wall is its copy in the wall's copy. */
   readonly copyId: number;
   /**
-   * For an element copied as a root (not carried by another selected one):
+   * For a root, includes carried copies; a selected carried element reports its own notice:
    * the copies of it or of what it carries whose top could not follow their
    * new storey, left fixed with the reason. Absent when there are none.
    */
@@ -139,7 +139,9 @@ export function copiesOfSelection(ids: readonly number[], results: readonly Copy
     const group = results.slice(i * per, (i + 1) * per);
     const copyOf = new Map<number, number>();
     const rootOf = new Map<number, CopyProductResult>();
+    const noticeOf = new Map<number, CopyUnattachedTop>();
     for (const result of group) {
+      for (const notice of result.unattachedTops ?? []) noticeOf.set(notice.copyId, notice);
       for (const [copy, source] of result.copiedFrom) if (!copyOf.has(source)) copyOf.set(source, copy);
       const root = result.copiedFrom.get(result.copyId);
       if (root !== undefined) rootOf.set(root, result);
@@ -147,7 +149,8 @@ export function copiesOfSelection(ids: readonly number[], results: readonly Copy
     return selection.map((sourceId) => {
       const copyId = copyOf.get(sourceId);
       if (copyId === undefined) throw new Error(`#${sourceId} was not copied: nothing in the copy carries it`);
-      const unattachedTops = rootOf.get(sourceId)?.unattachedTops;
+      const ownNotice = noticeOf.get(copyId);
+      const unattachedTops = rootOf.get(sourceId)?.unattachedTops ?? (ownNotice ? [ownNotice] : undefined);
       return unattachedTops?.length ? { sourceId, copyId, unattachedTops } : { sourceId, copyId };
     });
   });

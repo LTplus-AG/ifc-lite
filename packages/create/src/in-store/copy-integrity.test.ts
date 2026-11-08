@@ -15,6 +15,7 @@
 
 import { describe, expect, it } from 'vitest';
 import * as create from '../index.js';
+import { generateIfcGuid } from '@ifc-lite/encoding';
 import { IfcCreator } from '../ifc-creator.js';
 import { addOrdinaryElementInStore } from './ordinary-element.js';
 import { addHostedElementInStore } from './hosted-element.js';
@@ -135,4 +136,27 @@ describe('auto attaches a level beam by its top face (#9352)', () => {
     expect(readTopAttachment(inventory, touching)).toMatchObject({ targetStoreyId: s.l2, binding: 'relative' });
     expect(readTopAttachment(inventory, below)).toBeNull();
   });
+});
+
+
+it('#9407 selected assembly parts retain their own unattached-top notice', async () => {
+  const creator = new IfcCreator({ Name: 'Assembly' });
+  const ground = creator.addIfcBuildingStorey({ Name: 'Ground', Elevation: 0 });
+  creator.addIfcBuildingStorey({ Name: 'Middle', Elevation: 3 });
+  creator.addIfcBuildingStorey({ Name: 'Top', Elevation: 7 });
+  creator.addIfcColumn(ground, { Position: [0,0,0], Width: .4, Depth: .4, Height: 3 });
+  const f = session(await parse(creator.toIfc().content));
+  const storeys = readStoreyInventory(f.store, f.view).storeys.slice().sort((a,b) => a.elevation-b.elevation);
+  const reader = new AnchorEntityReader(f.store, f.view);
+  const column = [...reader.ids('IFCCOLUMN')][0];
+  const placement = reader.entity(column)!.attributes[5];
+  if (typeof placement !== 'number' && typeof placement !== 'string') throw new Error('Column placement must be readable');
+  const assembly = f.editor.addEntity('IfcElementAssembly', [generateIfcGuid(), null, 'Assembly', null, null, typeof placement === 'number' ? `#${placement}` : placement, null, null, null, null]).expressId;
+  f.editor.addEntity('IfcRelAggregates', [generateIfcGuid(), null, null, null, `#${assembly}`, [`#${column}`]]);
+  f.editor.addEntity('IfcRelContainedInSpatialStructure', [generateIfcGuid(), null, null, null, [`#${assembly}`], `#${storeys[0].expressId}`]);
+  writeTopAttachment(f.view, column, storeys[1].GlobalId, 'relative');
+  const [copied] = create.copyToStoreysInStore(f.store, f.editor, [assembly,column], [storeys[1].expressId]);
+  const part = copied.copies[1];
+  expect(copied.unattachedTops).toEqual([{copyId: part.copyId, reason: expect.stringMatching(/shares the source's shape/)}]);
+  expect(part.unattachedTops).toEqual(copied.unattachedTops);
 });

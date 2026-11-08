@@ -17,7 +17,7 @@
  * Change a checkpoint only between campaigns: a new one has no baseline.
  */
 
-import { loadTarget, ownOpenings } from './lib/oracles.mjs';
+import { loadTarget, ownOpenings, uniqueWallJoins } from './lib/oracles.mjs';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { downloadCount, nextDownload, sha256, task } from './lib/driver.mjs';
@@ -126,7 +126,7 @@ function commonChecks(step, want) {
     c,
     checks: [
       { name: `${want.walls} walls`, ok: c.IFCWALL === want.walls, detail: `${c.IFCWALL}` },
-      { name: `walls joined at every corner (${want.walls} joins)`, ok: c.IFCRELCONNECTSPATHELEMENTS >= want.walls, detail: `${c.IFCRELCONNECTSPATHELEMENTS}` },
+      { name: `walls joined at every corner (${want.walls} joins)`, ok: uniqueWallJoins(step) >= want.walls, detail: `${c.IFCRELCONNECTSPATHELEMENTS}` },
       { name: `${want.doors} door(s)`, ok: c.IFCDOOR === want.doors, detail: `${c.IFCDOOR}` },
       { name: `${want.windows} window(s)`, ok: c.IFCWINDOW === want.windows, detail: `${c.IFCWINDOW}` },
       { name: 'every door and window fills its own opening in a wall', ok: ownOpenings(step,fillers) && unhosted.length === 0 && fillers.length === want.doors + want.windows, detail: unhosted.length ? `${unhosted.length} of ${fillers.length} not hosted in a wall: #${unhosted.map((e) => e.id).join(', #')}` : `${fillers.length} hosted` },

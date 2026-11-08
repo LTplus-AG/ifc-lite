@@ -170,7 +170,7 @@ async function main() {
       frameFailures,
     }, null, 2)}\n`);
   }
-  const bad = [...probeResults, ...exerciseResults].filter((r) => r.status === 'error').length;
+  const bad = [...probeResults, ...exerciseResults].filter((r) => r.status === 'error' || r.status === 'fail').length;
   console.log(`${probeResults.length} probes, ${exerciseResults.length} exercises, ${frameResults.length} frames (${frameFailures.length} failed) -> ${args.out}`);
   if (bad || frameFailures.length) process.exitCode = 1;
 }

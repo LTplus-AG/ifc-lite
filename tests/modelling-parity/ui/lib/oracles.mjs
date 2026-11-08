@@ -41,3 +41,16 @@ export function wallPropertySets(step) {
 export function wallQuantityCoverage(step) {
   return step.of('IFCWALL').map((wall) => step.quantities(wall.id));
 }
+
+export function assignedTypes(step, elements) {
+  return elements.every((element) => step.of('IFCRELDEFINESBYTYPE').some((rel) =>
+    rel.args?.[4]?.some((ref) => ref.ref === element.id) &&
+    step.get(rel.args?.[5])?.type === element.type + 'TYPE'));
+}
+export function uniqueWallJoins(step) {
+  const walls = new Set(step.of('IFCWALL').map((w) => w.id));
+  return new Set(step.of('IFCRELCONNECTSPATHELEMENTS').flatMap((rel) => {
+    const a = rel.args?.[5]?.ref, b = rel.args?.[6]?.ref;
+    return a !== b && walls.has(a) && walls.has(b) ? [[a,b].sort((x,y) => x-y).join(':')] : [];
+  })).size;
+}

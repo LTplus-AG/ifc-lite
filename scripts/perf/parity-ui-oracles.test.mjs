@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { hardwareAdapter, loadTarget, ownOpenings, themedResult, wallPropertySets, wallQuantityCoverage } from '../../tests/modelling-parity/ui/lib/oracles.mjs';
+import { assignedTypes, uniqueWallJoins, hardwareAdapter, loadTarget, ownOpenings, themedResult, wallPropertySets, wallQuantityCoverage } from '../../tests/modelling-parity/ui/lib/oracles.mjs';
 import { readStep } from '../../tests/modelling-parity/ui/lib/step.mjs';
 test('#9324 fallback flags and software adapter descriptions are refused',()=>{
   assert.equal(hardwareAdapter({architecture:'blackwell'}),true);
@@ -44,4 +44,13 @@ test('#9324 unrelated property sets cannot certify wall assignments', () => {
 test('#9324 base quantities on one wall cannot certify all walls', () => {
   const step = readStep("DATA;#1=IFCWALL('a');#2=IFCWALL('b');#3=IFCQUANTITYLENGTH('Length',$,$,5.,$);#4=IFCQUANTITYVOLUME('NetVolume',$,$,3.,$);#5=IFCELEMENTQUANTITY('q',$,$,$,$,(#3,#4));#6=IFCRELDEFINESBYPROPERTIES('r',$,$,$,(#1),#5);ENDSEC;");
   assert.deepEqual(wallQuantityCoverage(step), [{Length: 5, NetVolume: 3}, {}]);
+});
+
+test('#9324 duplicate wall connections and unassigned types cannot certify behaviour', () => {
+  const base = "#1=IFCWALL('a');#2=IFCWALL('b');#3=IFCDOOR('d');#4=IFCDOORTYPE('t');";
+  const step = readStep("DATA;" + base + "#5=IFCRELCONNECTSPATHELEMENTS('a',$,$,$,$,#1,#2,(),(),.ATSTART.,.ATEND.);#6=IFCRELCONNECTSPATHELEMENTS('b',$,$,$,$,#1,#2,(),(),.ATSTART.,.ATEND.);ENDSEC;");
+  assert.equal(uniqueWallJoins(step), 1);
+  assert.equal(assignedTypes(step, step.of('IFCDOOR')), false);
+  const linked = readStep('DATA;' + base + "#7=IFCRELDEFINESBYTYPE('r',$,$,$,(#3),#4);ENDSEC;");
+  assert.equal(assignedTypes(linked, linked.of('IFCDOOR')), true);
 });

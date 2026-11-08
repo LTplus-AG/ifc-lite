@@ -21,7 +21,7 @@
  * - `notes`: where the UI blocked or misled, in plain words.
  */
 
-import { ownOpenings, wallPropertySets, wallQuantityCoverage } from './lib/oracles.mjs';
+import { assignedTypes, ownOpenings, wallPropertySets, wallQuantityCoverage } from './lib/oracles.mjs';
 import { downloadCount, nextDownload, task } from './lib/driver.mjs';
 import {
   escape, hudText, oracleModel, openStoreyManager, readSession, readStoreyManager, switchStorey, tool, toasts, typeFields,
@@ -296,7 +296,7 @@ export const PROBES = [
       const wallIds = new Set(step.of('IFCWALL').map((w) => w.id));
       const fillers = [...step.of('IFCDOOR'), ...step.of('IFCWINDOW')];
       const unhosted = fillers.filter((e) => !wallIds.has(step.hostOf(e.id)));
-      const typed = c.IFCDOORTYPE > 0 && c.IFCWINDOWTYPE > 0;
+      const typed = fillers.length === 2 && assignedTypes(step, fillers);
       if (!typed) notes.push('Doors and windows are placed without an IfcDoorType / IfcWindowType: the click flow offers no type to place from.');
       return {
         tasks, notes, evidence: [shot],

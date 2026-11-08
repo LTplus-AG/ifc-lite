@@ -4,6 +4,7 @@
 
 /** #6232: one viewport press belongs to the command/context that received it. */
 import { commandPointerCancel, getCommandRuntime, type CommandRuntimeState } from '@/lib/commands/modeling/runtime';
+import { refuseCaptureHeldPick } from '@/lib/viewport-capture';
 import { releasePointer } from '@/lib/pointer-capture';
 import { useViewerStore } from '@/store';
 import { cancelCommandPointer, routeCommandPointer } from './commandPointer.js';
@@ -44,6 +45,7 @@ export function createCommandPressController(ctx: MouseHandlerContext) {
     captured: () => press !== null && ctx.canvas.hasPointerCapture(press.pointerId),
     begin(event: PointerEvent): boolean {
       cancel();
+      if (refuseCaptureHeldPick(ctx.renderer)) { ctx.mouseState.didDrag = true; return false; }
       const runtime = getCommandRuntime();
       if (!runtime.command || !runtime.ctx) return false;
       cancelCommandPointer(ctx);
@@ -59,6 +61,7 @@ export function createCommandPressController(ctx: MouseHandlerContext) {
     },
     end(event: PointerEvent): boolean {
       if (!press || event.pointerId !== press.pointerId) return false;
+      if (refuseCaptureHeldPick(ctx.renderer)) { cancel(); return true; }
       const owner = press;
       press = null; // Clear before releasePointer emits lostpointercapture.
       const current = sameRuntime(owner);

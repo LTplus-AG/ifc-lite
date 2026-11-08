@@ -15,6 +15,7 @@ import { placementFrameKey } from '@/lib/model-placement/persistence.js';
 import { handleSelectionClick } from './selectionHandlers.js';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
 import { useTouchControls, type UseTouchControlsParams } from './useTouchControls.js';
+import { captureViewportFrame, registerViewportCapture, noteLiveFrameSubmitted } from '@/lib/viewport-capture';
 import { invalidateSelectionPick } from './referenceSelection.js';
 import { registerViewportFacePicker } from './appearance/face-mask/viewport-face-picker.js';
 
@@ -181,4 +182,40 @@ test('RTC-only frame changes retain normal reference picking (#4308)', async () 
   assert.equal(useViewerStore.getState().selectedAppearanceReferenceId, 'drawing:one');
   assert.equal(f.calls.reference, 1);
   assert.equal(f.calls.ifc, 0);
+});
+
+
+test('#9232 Select rechecks after reference readback before the IFC pick', async () => {
+  const f = await fixture();
+  Object.assign(f.ctx.renderer, { renderWithResult: () => true, getGPUDevice: () => null });
+  const unregister = registerViewportCapture(f.ctx.renderer, f.canvas, () => ({}));
+  try {
+    let resolve!: (hit: null) => void;
+    f.setReferencePick(() => new Promise(yes => { resolve = yes; }));
+    const selection = handleSelectionClick(f.ctx, clickEvent());
+    await captureViewportFrame(f.ctx.renderer, { read: () => 'pixels' });
+    resolve(null); await selection;
+    assert.equal(f.calls.ifc, 0, 'readback must not start an IFC pick through a capture');
+    assert.equal(f.calls.selected.length, 0);
+    noteLiveFrameSubmitted(f.ctx.renderer);
+    f.setReferencePick(async () => null);
+    await handleSelectionClick(f.ctx, clickEvent());
+    assert.equal(f.calls.selected.at(-1)?.expressId, 19);
+  } finally { unregister(); }
+});
+
+test('#9232 a refused Select click breaks the double-click chain so Ctrl still toggles', async () => {
+  const f = await fixture(); f.setReferencePick(async () => null);
+  Object.assign(f.ctx.renderer, { renderWithResult: () => true, getGPUDevice: () => null });
+  const unregister = registerViewportCapture(f.ctx.renderer, f.canvas, () => ({}));
+  const dateNow = Date.now;
+  Date.now = () => 10000;
+  try {
+    await handleSelectionClick(f.ctx, clickEvent());
+    await captureViewportFrame(f.ctx.renderer, { read: () => 'pixels' });
+    await handleSelectionClick(f.ctx, clickEvent());
+    noteLiveFrameSubmitted(f.ctx.renderer);
+    await handleSelectionClick(f.ctx, new MouseEvent('click', { clientX: 40, clientY: 30, ctrlKey: true }));
+    assert.deepEqual(f.calls.toggled, [19], 'a refused middle click must not turn Ctrl-click into a double-click');
+  } finally { Date.now = dateNow; unregister(); }
 });

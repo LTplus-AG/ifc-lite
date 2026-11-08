@@ -59,17 +59,25 @@ const POINT_CLOUD_MODULES = [
 
 type CoreModule = typeof import('./core.js');
 let core: CoreModule;
+let coreLoaded = false;
 
 describe('@ifc-lite/renderer/core', () => {
-    before(async () => { core = await importAndSettle<CoreModule>('./core.js'); });
+    // A missing or throwing entry is a failed assertion below, not a hook
+    // error: without the entry there is nothing to observe, and that is RED.
+    before(async () => {
+        try { core = await importAndSettle<CoreModule>('./core.js'); coreLoaded = true; }
+        catch (error) { console.log('core entry import failed:', error instanceof Error ? error.name : typeof error); }
+    });
 
     it('loads no point-cloud renderer, point pipeline, EDL or deviation module', () => {
+        assert.ok(coreLoaded, 'the core entry (./core.js) did not load');
         const sources = loadedSources();
         assert.ok(sources.has('renderer.ts') && sources.has('scene.ts'), 'the hook saw the Renderer load');
         assert.deepStrictEqual(POINT_CLOUD_MODULES.filter((m) => sources.has(m)), []);
     });
 
     it('publishes the root surface minus the point-cloud and deviation values', () => {
+        assert.ok(coreLoaded, 'the core entry (./core.js) did not load');
         for (const name of ['PointCloudRenderer', 'PointRenderPipeline', 'computeDeviationStatistics']) {
             assert.strictEqual(name in core, false, `${name} must not be exported by core`);
         }
@@ -78,6 +86,7 @@ describe('@ifc-lite/renderer/core', () => {
     });
 
     it('rejects point-cloud and deviation calls with a pointer to the root entry', async () => {
+        assert.ok(coreLoaded, 'the core entry (./core.js) did not load');
         const canvas = { width: 8, height: 8, getBoundingClientRect: () => ({ width: 8, height: 8 }) } as unknown as HTMLCanvasElement;
         const renderer = new core.Renderer(canvas);
         const unavailable = /not included in @ifc-lite\/renderer\/core/;
@@ -94,6 +103,7 @@ describe('@ifc-lite/renderer/core', () => {
 
     // Last: importing the root installs point-cloud support for this process.
     it('the root entry does load them, so the check above is not vacuous', async () => {
+        assert.ok(coreLoaded, 'the core entry (./core.js) did not load');
         const root = await importAndSettle<typeof import('./index.js')>('./index.js');
         const sources = loadedSources();
         assert.deepStrictEqual(POINT_CLOUD_MODULES.filter((m) => !sources.has(m)), []);

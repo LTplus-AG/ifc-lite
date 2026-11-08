@@ -128,6 +128,12 @@ function sparseHistory(base: OverlaySnapshot['mutationHistory']) {
       return i === null ? Reflect.get(target, key, receiver) : i < length ? get(i) : undefined;
     },
     has(target, key) { const i = index(key); return i === null ? Reflect.has(target, key) : i < length; },
+    ownKeys() { return [...Array.from({ length }, (_, i) => String(i)), 'length']; },
+    getOwnPropertyDescriptor(target, key) {
+      const i = index(key);
+      return i === null ? Reflect.getOwnPropertyDescriptor(target, key)
+        : i < length ? { configurable: true, enumerable: true, writable: true, value: get(i) } : undefined;
+    },
     set(_target, key, next) {
       if (key === 'length') { length = Number(next); for (const i of rows.keys()) if (i >= length) rows.delete(i); return true; }
       const i = index(key);

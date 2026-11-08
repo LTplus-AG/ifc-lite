@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
 /* This Source Code Form is subject to the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
@@ -57,4 +58,17 @@ it('entity-scoped effective changes equal the full diff under edits and deletion
   view.deleteEntity(a.expressId);
   expect(view.getEffectiveChanges(a.expressId)).toEqual([]);
   expect(view.getEffectiveChanges(b.expressId)).toEqual(view.getEffectiveChanges().filter(change => change.entityId === b.expressId));
+});
+
+
+it('nested snapshot previews compare sparse history exactly #8452', () => {
+  const view = new MutablePropertyView(null, 'preview');
+  const entity = view.createEntity('IfcWall', ['guid', null, 'Wall']);
+  view.runAtomic(draft => {
+    const prepared = draft.prepareAtomic(preview => preview.setPositionalAttribute(entity.expressId, 2, 'Preview'));
+    prepared.validate();
+    expect(draft.getPositionalMutationsForEntity(entity.expressId)).toBeNull();
+    prepared.commit();
+  });
+  expect(view.getPositionalMutationsForEntity(entity.expressId)?.get(2)).toBe('Preview');
 });

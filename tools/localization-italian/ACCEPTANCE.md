@@ -1,6 +1,6 @@
 # Italian acceptance
 
-Current-source Settings-based GPU acceptance is pending after the rebase. Historical review and validation records retain their original source identities.
+Settings-based hardware GPU acceptance passed all 10 checks on `b4173c8cd1ff92b9ff4d38d45adaa7b136740482` (2026-11-08). The NVIDIA Blackwell adapter was not a fallback; no browser errors were recorded. The real house IFC loaded 14 meshes and 97 entities. Italian IDS findings and the parsed JSON export agreed (3 specifications, 1 passed, 11 entity checks, 8 passed). At 390 px the document remained 390 px wide, the selected model remained visible, and both flat-canvas negative controls failed as required. Locale persistence, English switching and fresh it-CH negotiation passed. Report: PC `/tmp/italian-acceptance-b4173c8cd1-rkn1haqe/results/workflow.json`. The earlier `20fb0c3d57` attempt failed on the retired phone panel-launcher label and remains preserved separately. Subsequent changes correct the module count and the local-only empty-Chrome diagnostic; viewer runtime is unchanged. Historical records retain their original source identities.
 
 Maximum eight total improvement rounds. Stop early when functional acceptance is demonstrated; preserve accepted text and repair concrete defects only.
 

@@ -5,8 +5,8 @@
 /**
  * The plan pane's header bar (charter #6232, M2 §1.5), in the sidebar
  * chrome bar's style: the storey (the shared `StoreyPicker`, so it moves
- * the session exactly like the HUD chip), the grid toggle, Fit, the cut's
- * state, and the Plan | Split | 3D layout.
+ * the session exactly like the HUD chip), the plane's height, the grid
+ * toggle, Fit, the cut's state, and the Plan | Split | 3D layout.
  */
 
 import { ChevronDown, Grid3x3, Layers, Maximize } from 'lucide-react';
@@ -18,6 +18,7 @@ import { HudPopover, HudPopoverContent, HudPopoverTrigger, HudSegmented } from '
 import { StoreyPickerActions } from '../model/storeys/StoreyPickerActions';
 import { StoreyPicker, formatStoreyElevation } from '../model/StoreyPicker';
 import { pickWorkspaceStorey, useWorkspaceStoreyGroups } from '../model/WorkspaceStoreyChip';
+import { PlanWorkplaneHeight } from '../model/WorkplaneHeightControl';
 
 export interface PlanHeaderProps {
   grid: boolean;
@@ -72,6 +73,7 @@ export function PlanHeader({ grid, onToggleGrid, onFit, loading, simplified, fai
           <StoreyPickerActions />
         </HudPopoverContent>
       </HudPopover>
+      <PlanWorkplaneHeight />
       {loading && <span data-plan-status="loading" className="shrink-0 text-2xs text-muted-foreground">{t('modelWorkspace.plan.cutting')}</span>}
       {simplified && (
         <span data-plan-status="simplified" title={t('modelWorkspace.plan.simplifiedTitle')} className="shrink-0 rounded-sm bg-muted px-1 text-2xs text-muted-foreground">

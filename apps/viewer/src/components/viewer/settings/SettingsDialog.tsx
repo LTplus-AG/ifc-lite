@@ -53,44 +53,15 @@ function isSmViewport(): boolean {
   return window.matchMedia?.(SM_QUERY).matches ?? true;
 }
 
-type ScrollFade = 'start' | 'end' | 'both' | undefined;
-
-/** Which edges of a horizontal strip hide items, for `[data-scroll-fade]`.
- *  Takes the element itself: the dialog's portal mounts its content a render
- *  after `open` flips, so a ref read in the same effect would still be null.
- *  The strip's own box does not change when its labels do (a language switch
- *  in General), so it also watches each item's size and recomputes whenever
- *  `contentKey` (the labels) changes. */
-function useScrollFade(el: HTMLElement | null, contentKey: string): ScrollFade {
-  const [fade, setFade] = useState<ScrollFade>();
-  useEffect(() => {
-    if (!el) return;
-    const update = () => {
-      const start = el.scrollLeft > 1;
-      const end = el.scrollLeft + el.clientWidth < el.scrollWidth - 1;
-      setFade(start && end ? 'both' : start ? 'start' : end ? 'end' : undefined);
-    };
-    update();
-    el.addEventListener('scroll', update, { passive: true });
-    const resize = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(update);
-    resize?.observe(el);
-    for (const item of el.children) resize?.observe(item);
-    return () => {
-      el.removeEventListener('scroll', update);
-      resize?.disconnect();
-    };
-  }, [el, contentKey]);
-  return fade;
-}
-
 /**
  * Phone (below `sm`, #8802): the sections are one horizontally scrolling tab
  * strip under the header, each tab a 44 px target, the selected one in the
- * R4 active state, and the edge that hides more tabs fades. Its classes carry `!` so they win over the theme rules
- * that repaint every `[data-state="active"]` in dark and colorful.
+ * R4 active state, and the edge that hides more tabs fades (`TabsList
+ * scrollable`). Its classes carry `!` so they win over the theme rules that
+ * repaint every `[data-state="active"]` in dark and colorful.
  * Desktop keeps the vertical side list.
  */
-const TAB_LIST_CLASS = 'flex h-auto w-full shrink-0 justify-start gap-1 overflow-x-auto rounded-none border-b bg-transparent px-3 py-1.5 [scrollbar-width:none] sm:w-40 sm:flex-col sm:items-stretch sm:overflow-visible sm:border-b-0 sm:p-0';
+const TAB_LIST_CLASS = 'flex h-auto w-full shrink-0 justify-start gap-1 rounded-none border-b bg-transparent px-3 py-1.5 sm:w-40 sm:flex-col sm:items-stretch sm:overflow-visible sm:border-b-0 sm:p-0';
 const TAB_TRIGGER_CLASS = 'min-h-11 shrink-0 justify-start px-3 data-[state=active]:font-medium data-[state=active]:shadow-none max-sm:data-[state=active]:bg-active-surface! max-sm:data-[state=active]:text-active! max-sm:data-[state=active]:ring-1 max-sm:data-[state=active]:ring-inset max-sm:data-[state=active]:ring-active-border sm:min-h-0 sm:data-[state=active]:bg-muted sm:data-[state=active]:text-foreground';
 
 /**
@@ -100,19 +71,11 @@ const TAB_TRIGGER_CLASS = 'min-h-11 shrink-0 justify-start px-3 data-[state=acti
  * could outgrow a short window and push the body's end past the dialog's
  * clipped bottom (#8802 review).
  */
-const DIALOG_CLASS = 'w-[calc(100%-2rem)] max-w-2xl gap-0 p-0 sm:min-h-[min(calc(20rem+69px),calc(100dvh-2rem))]';
+const DIALOG_CLASS = 'max-w-2xl gap-0 p-0 sm:min-h-[min(calc(20rem+69px),calc(100dvh-2rem))]';
 
 export function SettingsDialog({ open, section, onSectionChange, onOpenChange }: SettingsDialogProps) {
   const { t } = useTranslation();
   const wide = useSyncExternalStore(subscribeSm, isSmViewport, () => true);
-  const [list, setList] = useState<HTMLDivElement | null>(null);
-  const labels = SETTINGS_SECTIONS.map((id) => t(SECTIONS[id].label));
-  const fade = useScrollFade(list, labels.join('\n'));
-  // Keep the selected tab in view when the strip is wider than the phone.
-  useEffect(() => {
-    const active = list?.querySelector<HTMLElement>('[role="tab"][data-state="active"]');
-    active?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
-  }, [list, section, wide]);
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent scrollBody className={DIALOG_CLASS} data-settings-dialog>
@@ -126,10 +89,10 @@ export function SettingsDialog({ open, section, onSectionChange, onOpenChange }:
           onValueChange={(value) => { const next = SETTINGS_SECTIONS.find((id) => id === value); if (next) onSectionChange(next); }}
           className="flex min-h-0 flex-1 flex-col sm:flex-row sm:gap-4 sm:px-5 sm:pb-5 sm:pt-3"
         >
-          <TabsList ref={setList} className={TAB_LIST_CLASS} data-scroll-fade={fade}>
-            {SETTINGS_SECTIONS.map((id, index) => (
+          <TabsList scrollable className={TAB_LIST_CLASS}>
+            {SETTINGS_SECTIONS.map((id) => (
               <TabsTrigger key={id} value={id} className={TAB_TRIGGER_CLASS}>
-                {labels[index]}
+                {t(SECTIONS[id].label)}
               </TabsTrigger>
             ))}
           </TabsList>

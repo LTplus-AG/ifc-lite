@@ -96,10 +96,12 @@ export function ShortcutsTab() {
               <div
                 key={row.id}
                 data-shortcut-command={row.id}
-                className="flex items-center justify-between gap-3 py-1"
+                className="flex flex-wrap items-center justify-between gap-x-3 gap-y-0.5 py-1"
               >
                 <span className="text-sm">{t(row.labelKey, row.params)}</span>
-                <kbd className="shrink-0 px-2 py-0.5 text-xs bg-muted rounded border font-mono">
+                {/* A chord list too long for a phone row moves under its
+                    label, right-aligned, and wraps there (#8802). */}
+                <kbd className="ml-auto px-2 py-0.5 text-xs bg-muted rounded border font-mono">
                   {row.keys}
                 </kbd>
               </div>

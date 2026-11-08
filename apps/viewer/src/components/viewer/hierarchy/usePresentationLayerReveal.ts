@@ -14,6 +14,7 @@ export function usePresentationLayerReveal(
 ) {
   const request = useViewerStore(s => s.pendingPresentationLayerReveal);
   const mode = useViewerStore(s => s.hierarchyMode);
+  const selectionRevision = useViewerStore(s => s.selectionRevision);
   const models = useViewerStore(s => s.models);
   const store = useViewerStore(s => s.ifcDataStore);
   const rendered = virtualizer.getVirtualItems?.().map(item => item.index).join(',');
@@ -35,6 +36,7 @@ export function usePresentationLayerReveal(
         useViewerStore.setState({ pendingPresentationLayerReveal: null });
       }
     };
+    if (request.selectionRevision !== useViewerStore.getState().selectionRevision) { clear(); return; }
     if (request.modelId === 'legacy' ? !store : !models.has(request.modelId)) { clear(); return; }
     if (searchQuery) return; // Wait for the unfiltered tree, not the previous search result.
     const index = nodes.findIndex(node => node.id === request.nodeId);
@@ -48,5 +50,5 @@ export function usePresentationLayerReveal(
     if (!row) return; // Retry after the virtualizer materialises the row.
     row.focus();
     clear();
-  }, [request, mode, models, store, nodes, container, virtualizer, rendered, searchQuery, ready]);
+  }, [request, mode, models, store, nodes, container, virtualizer, rendered, searchQuery, ready, selectionRevision]);
 }

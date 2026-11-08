@@ -34,7 +34,7 @@ export function PresentationLayersSection({ entityRef, loadLookup }: { entityRef
         liftStartFold('left');
         state.setLeftPanelCollapsed(false);
         useViewerStore.setState({ pendingPresentationLayerReveal: {
-          nodeId: `presentation-layer-${modelId}-${layer.expressId}`, modelId,
+          nodeId: `presentation-layer-${modelId}-${layer.expressId}`, modelId, selectionRevision: state.selectionRevision,
         } });
       }}>
       {layer.Name}{layer.Identifier ? ` (${layer.Identifier})` : ''}

@@ -13,6 +13,7 @@ import { matchesRevealTarget } from './revealGlobalId';
  *  `HierarchyPanel.tsx` without importing virtualizer generics here. */
 interface ScrollableVirtualizer {
   scrollToIndex: (index: number, opts?: { align?: 'auto' | 'start' | 'center' | 'end' }) => void;
+  getVirtualItems?: () => { index: number }[];
 }
 
 interface UseRevealSelectionParams {
@@ -92,7 +93,9 @@ export function useRevealSelection({
   virtualizer, container, setSearchQuery, searchQuery, groupingReady,
 }: UseRevealSelectionParams): { markFromTreeClick: () => void } {
   const fallbackContainer = useRef<HTMLDivElement | null>(null);
-  const layerRequest = useViewerStore(s => s.pendingPresentationLayerReveal);
+  const requestedLayer = useViewerStore(s => s.pendingPresentationLayerReveal);
+  const selectionRevision = useViewerStore(s => s.selectionRevision);
+  const layerRequest = requestedLayer?.selectionRevision === selectionRevision ? requestedLayer : null;
   usePresentationLayerReveal(filteredNodes, container ?? fallbackContainer, virtualizer, setSearchQuery, searchQuery, groupingReady);
   const findTargetId = useCallback((globalId: number) =>
     findAlreadyVisibleTargetId(isMultiModel, storeysNodes, modelsNodes, filteredNodes, globalId)
@@ -108,7 +111,15 @@ export function useRevealSelection({
     fromTreeClickRef.current = { id: state.selectedEntityId, revision: state.selectionRevision };
   }, []);
 
-  const selectionRevision = useViewerStore((s) => s.selectionRevision);
+  const focusSelectionRef = useRef<{ id: number; revision: number; expiresAt: number } | null>(null);
+  const rendered = virtualizer.getVirtualItems?.().map(item => item.index).join(',');
+  useEffect(() => {
+    if (groupingMode !== 'presentation-layers' || layerRequest
+      || focusSelectionRef.current?.revision !== selectionRevision) focusSelectionRef.current = null;
+    if (requestedLayer && !layerRequest && selectedEntityId !== null) {
+      focusSelectionRef.current = { id: selectedEntityId, revision: selectionRevision, expiresAt: Date.now() + 30_000 };
+    }
+  }, [requestedLayer, layerRequest, selectedEntityId, selectionRevision, groupingMode]);
 
   useEffect(() => {
     if (layerRequest) { pendingTargetRef.current = null; unresolvedRef.current = null; }
@@ -178,6 +189,20 @@ export function useRevealSelection({
       pendingTargetRef.current = null;
     }
   }, [storeysNodes, modelsNodes, filteredNodes, isMultiModel, storeysVirtualizer, modelsVirtualizer, virtualizer, layerRequest]);
+
+  // A newer selection replaces an explicit layer-focus intent, even if the
+  // selected product's row only arrives after the lazy tree finishes loading.
+  useEffect(() => {
+    const focus = focusSelectionRef.current;
+    if (!focus) return;
+    const latest = useViewerStore.getState();
+    if (latest.selectionRevision !== focus.revision || Date.now() > focus.expiresAt) { focusSelectionRef.current = null; return; }
+    if (latest.pendingPresentationLayerReveal) return;
+    const target = findAlreadyVisibleTargetId(isMultiModel, storeysNodes, modelsNodes, filteredNodes, focus.id);
+    const row = [...(container?.current?.querySelectorAll<HTMLElement>('[data-node-id]') ?? [])]
+      .find(element => element.dataset.nodeId === target);
+    if (row) { row.focus(); focusSelectionRef.current = null; }
+  }, [filteredNodes, modelsNodes, storeysNodes, isMultiModel, container, selectionRevision, rendered, requestedLayer]);
 
   return { markFromTreeClick };
 }

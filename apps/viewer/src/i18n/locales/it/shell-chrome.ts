@@ -5,6 +5,7 @@
 import type { Catalogue } from '../../registry';
 
 export const shellChromeIt = {
+  "shellChrome.activityBar.morePanelsWaitingHint": "Pannelli che richiedono un modello e quelli che non entrano nella barra laterale",
   "shellChrome.shared.customizeSidebar": "Personalizza la barra laterale",
   "shellChrome.shared.doneCustomizing": "Personalizzazione completata",
   "shellChrome.shared.collapseToIcons": "Comprimi a icone",
@@ -72,11 +73,8 @@ export const shellChromeIt = {
   "shellChrome.panelWindowHost.liveSyncedNotice": "In tempo reale · sincronizzato con la finestra principale",
   "shellChrome.layout.safeModeNotice": "Modalità provvisoria: estensioni e profilo attivo non vengono caricati in questa sessione. Aggiungi {flag} o ricarica senza il flag per ripristinarli.",
   "shellChrome.layout.hierarchyLabel": "Gerarchia",
-  "shellChrome.layout.openHierarchyAriaLabel": "Apri Gerarchia",
-  "shellChrome.layout.openPropertiesAriaLabel": "Apri Proprietà",
   "shellChrome.layout.closePanelsAriaLabel": "Chiudi i pannelli",
   "shellChrome.layout.panelsLabel": "Pannelli",
-  "shellChrome.layout.openPanelsAriaLabel": "Apri l'elenco dei pannelli",
   "shellChrome.layout.closePanelListAriaLabel": "Chiudi l'elenco dei pannelli",
   "shellChrome.layout.analysisFallback": "Analisi",
   "shellChrome.layout.dragToResizeAriaLabel": "Trascina per ridimensionare o chiudere",

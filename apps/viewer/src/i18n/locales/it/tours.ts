@@ -20,7 +20,6 @@ export const toursIt = {
   'tours.tourHost.cancel': 'Annulla',
   'tours.tourHost.loadDemoStack': 'Carica lo stack dimostrativo',
   'tours.tourHost.loadDemoProject': 'Carica il progetto dimostrativo',
-  'tours.tourInvite.prompt': 'Sei nuovo qui?',
   'tours.tourInvite.start': 'Segui la guida di due minuti',
   'tours.tourInvite.dismissAriaLabel': 'Ignora l’invito alla guida',
   'tours.tourStepCard.ariaLabel': 'Passaggio {step} di {total} della guida: {title}',

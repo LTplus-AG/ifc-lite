@@ -81,6 +81,7 @@ test('#9332 failed pair exits nonzero and identifies the commit and path', (t) =
 test('#9332 real CLI counts added/deleted entities and aggregates files per commit', (t) => {
   assert.equal(typeof walker.walkHistory, 'function');
   const h = history(t);
+  h.commit(fixture, 'restore original identities before independent add/delete checks');
   const extra = "#90=IFCWALL('0000000000000000000090',$,'extra-wall',$,$,#24,#26,$,.NOTDEFINED.);\n";
   const withExtra = fixture.replace('ENDSEC;\nEND-ISO', extra + 'ENDSEC;\nEND-ISO');
   const added = h.commit(withExtra, 'extra wall and original identities');

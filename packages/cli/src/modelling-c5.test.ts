@@ -49,7 +49,12 @@ it('#9296 C5 mirrors a wall copy with its hosted door', async () => {
   const { bim, level } = await setup();
   const wall = bim.store.addWall('default', level, { Start: [10, 1, 0], End: [13, 1, 0], Thickness: .2, Height: 3 });
   bim.store.addHostedDoor('default', wall.expressId, { Offset: 1, Width: .9, Height: 2, OperationType: 'SINGLE_SWING_LEFT' });
-  const subtypeSource = exportStep(bim).replace(/=IFCDOOR\(/g, '=IFCDOORSTANDARDCASE(');
+  const source = exportStep(bim);
+  const bodyRep = source.match(/#(\d+)=IFCSHAPEREPRESENTATION\([^;]*'Body'[^;]*\);/)![1];
+  const layeredSource = source.replace('\nENDSEC;\nEND-ISO-10303-21;', `\n#900001=IFCPRESENTATIONLAYERASSIGNMENT('Layer',$,(#${bodyRep}),$);\nENDSEC;\nEND-ISO-10303-21;`);
+  const layeredBim = await loadInlineModel(layeredSource);
+  expect(() => layeredBim.store.mirrorElements('default', [wall.expressId], { axis: [[9, -10], [9, 10]] })).toThrow(/representation owners/);
+  const subtypeSource = source.replace(/=IFCDOOR\(/g, '=IFCDOORSTANDARDCASE(');
   const subtypeBim = await loadInlineModel(subtypeSource);
   subtypeBim.store.mirrorElements('default', [wall.expressId], { axis: [[9, -10], [9, 10]] });
   expect(exportStep(subtypeBim)).toContain('.SINGLE_SWING_RIGHT.');

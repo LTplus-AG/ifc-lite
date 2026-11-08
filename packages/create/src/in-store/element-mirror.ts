@@ -53,6 +53,14 @@ export function mirrorElementsInStore(store: IfcDataStore, editor: StoreEditor, 
       if (shapeId !== null && references(shapeId).some(ref => reader.entity(ref)?.type.toUpperCase() === 'IFCSHAPEASPECT')) {
         throw new Error('Mirror does not support products with shape aspects');
       }
+      const shape = shapeId === null ? null : reader.entity(shapeId);
+      const representations = shape?.attributes[2];
+      if (Array.isArray(representations)) for (const rep of representations) {
+        const repId = refId(rep);
+        if (repId !== null && references(repId).some(owner => owner !== shapeId)) {
+          throw new Error('Mirror does not support additional representation owners');
+        }
+      }
     }
     for (const join of readWallJoinRels(store, view)) {
       if (products.has(join.relatingId) !== products.has(join.relatedId)) {

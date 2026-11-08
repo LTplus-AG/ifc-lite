@@ -1305,8 +1305,8 @@ Mirror upright local products with `bim.store.mirrorElements(modelId, ids,
 metres; omit `copy` to edit in place. Hosted openings and fillings travel with
 their host. The reflected representation retains its handedness and door
 operation names swap left and right. In-place selections must include both
-sides of any wall join; shared placements and products with shape aspects are
-refused before writing.
+sides of any wall join; shared placements, shape aspects and additional
+representation owners (such as presentation layers) are refused before writing.
 
 `bim.store.addClassification(modelId, { System: 'Uniclass 2015',
 Identification: 'EF_25_10', Name: 'Walls', objects: ids })` returns a classification

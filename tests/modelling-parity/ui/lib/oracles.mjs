@@ -38,6 +38,13 @@ export function wallPropertySets(step) {
     .map((set) => set.args?.[2]));
 }
 
+/** Elements not contained directly in an IfcBuildingStorey (a building or site container doesn't count). */
+export function uncontainedInStoreys(step, elements) {
+  const contained = step.containment();
+  const storeys = new Set(step.of('IFCBUILDINGSTOREY').map((s) => s.id));
+  return elements.filter((e) => !storeys.has(contained.get(e.id))).length;
+}
+
 export function wallQuantityCoverage(step) {
   return step.of('IFCWALL').map((wall) => step.quantities(wall.id));
 }

@@ -32,7 +32,7 @@ function makeView(data: Awaited<ReturnType<typeof operationWalls>>, id: string) 
   const view = new MutablePropertyView(data.properties ?? null, id);
   configureMutationView(view, data); return view;
 }
-async function setup(count: number, modelCount = 1, source: 'selection' | 'search' = 'selection') {
+async function setup(count: number, modelCount = 1, source: 'selection' | 'search' | 'query' = 'selection') {
   useActivityJournal.setState({ jobs: [] });
   const data = await operationWalls(count);
   const models = ['a', 'b'].slice(0, modelCount).map((id, index) => ({
@@ -48,7 +48,7 @@ async function setup(count: number, modelCount = 1, source: 'selection' | 'searc
     editEnabled: true, collabRole: null });
   render(<BulkPropertyEditor trigger={<button>Open bulk</button>} />);
   click(button('Open bulk')!); await advance(0);
-  if (source === 'search') await choose('Selection', 'Search result');
+  if (source !== 'query') await choose('Query', source === 'selection' ? 'Selection' : 'Search result');
   await choose('Set Property', 'Set Attribute'); await choose('Select attribute', 'Name');
   const input = document.querySelector<HTMLInputElement>('input[placeholder="Value"]'); assert.ok(input);
   type(input, 'Applied name'); await waitFor(() => !applyButton().disabled, 'configured targets enable Apply');
@@ -57,7 +57,7 @@ async function setup(count: number, modelCount = 1, source: 'selection' | 'searc
 
 for (const replacement of ['data', 'view'] as const) {
   it(`#8962 successful clean draft becomes applicable after same-ID ${replacement} replacement`, async () => {
-    const { data } = await setup(2);
+    const { data } = await setup(2, 1, 'query');
     click(applyButton()); await waitFor(() => useActivityJournal.getState().jobs.at(-1)?.outcome === 'completed', 'first Apply completes');
     await waitFor(() => applyButton().disabled, 'completed unchanged draft is clean');
     click(button('Close')!); await advance(0); click(button('Open bulk')!); await advance(0);

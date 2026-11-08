@@ -461,6 +461,10 @@ jobs:
         with:
           name: cli-retained-engine
           path: ${{ runner.temp }}/cli-retained-engine
+          # The engine manifest lists pkg-retained/.gitignore and .npmignore, and
+          # validateEngine rejects an inventory that differs from it. upload-artifact
+          # drops dotfiles unless told otherwise.
+          include-hidden-files: true
           if-no-files-found: error
           retention-days: 3
       # browser.mjs imports the CLI's compiled retained validator and report

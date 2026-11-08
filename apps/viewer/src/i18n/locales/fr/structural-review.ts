@@ -11,7 +11,7 @@ export const structuralReviewFr = {
   "structuralReview.references": "Cible native : {target} · enregistrements liés : {related}",
   "structuralReview.acknowledgement": "Je confirme que les valeurs de charge et de rigidité sont fournies dans les unités natives du modèle. Aucune conversion ni déclaration d’unité manquante n’est supposée.",
   "structuralReview.previewUnavailable": "Aucun aperçu de la géométrie analytique n’est disponible ici. Examinez les enregistrements IFC natifs avant d’appliquer.",
-  "structuralReview.population": "{records} enregistrements source révisés · {created} créés · {modified} modifiés · {deleted} supprimés. Les identités IFC créées sont attribuées à l’application.",
+  "structuralReview.population": "{records} enregistrements source révisés · {created} créés · {modified} modifiés · {deleted} supprimés. Les identifiants IFC des nouvelles entités sont attribués lors de l’application.",
   "structuralReview.units": "Examiner les unités natives déclarées et les déclarations indisponibles",
   "structuralReview.nativeChanges": "Examiner les modifications IFC natives, y compris les références partagées et les suppressions",
   "structuralReview.receiptProblem": "Les modifications ont été appliquées, mais leur reçu n’a pas pu être enregistré. L’historique natif contient toujours les modifications.",

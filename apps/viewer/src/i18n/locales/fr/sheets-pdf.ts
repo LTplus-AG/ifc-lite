@@ -77,7 +77,7 @@ export const sheetsPdfFr = {
   "sheetsPdf.pdfView.hiddenEdgesNoteOn": "Les arêtes situées derrière d'autres géométries s'impriment en tirets.",
   "sheetsPdf.pdfView.hiddenEdgesNoteOff": "Seules les arêtes réellement visibles sont imprimées.",
   "sheetsPdf.pdfView.scaleStampLabel": "Imprimer une échelle graphique et l'échelle sur la feuille",
-  "sheetsPdf.pdfView.scaleStampNoteOn": "Une échelle graphique et le texte « Échelle {scaleLabel} » s'impriment dans une bande sous le dessin, ce qui rend la page légèrement plus haute. La barre est dessinée à l'échelle ; elle reste donc juste sur une photocopie que le rapport imprimé ne décrit plus.",
+  "sheetsPdf.pdfView.scaleStampNoteOn": "Une échelle graphique et le texte « Échelle {scaleLabel} » s'impriment dans une bande sous le dessin, ce qui rend la page légèrement plus haute. La barre est dessinée à l'échelle ; elle reste donc juste sur une photocopie que le rapport d’échelle imprimé ne décrit plus.",
   "sheetsPdf.pdfView.scaleStampNoteOff": "La feuille ne porte aucune échelle. Ne le faites que si elle est insérée dans un cartouche qui indique l'échelle, car un tirage que personne ne peut vérifier risque d'être mesuré à la mauvaise échelle.",
   "sheetsPdf.pdfView.exportPdfButton": "Exporter en PDF",
   "sheetsPdf.pdfView.dialogTitle": "Exporter en PDF (vue 3D à l'échelle)",

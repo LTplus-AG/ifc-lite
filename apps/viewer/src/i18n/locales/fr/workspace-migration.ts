@@ -6,7 +6,7 @@ import type { Catalogue } from '../../registry';
 
 export const workspaceMigrationFr = {
   'workspaceMigration.layout.title': 'Vérifiez votre disposition mise à jour',
-  'workspaceMigration.layout.summary': '{count} modifications de disposition sont prêtes à être vérifiées. Votre travail enregistré est préservé.',
+  "workspaceMigration.layout.summary": {"one": "{count} modification de disposition est prête à être vérifiée. Votre travail enregistré est préservé.", "many": "{count} modifications de disposition sont prêtes à être vérifiées. Votre travail enregistré est préservé.", "other": "{count} modifications de disposition sont prêtes à être vérifiées. Votre travail enregistré est préservé."},
   'workspaceMigration.layout.showChanges': 'Afficher les modifications',
   'workspaceMigration.layout.hideChanges': 'Masquer les modifications',
   'workspaceMigration.layout.keep': 'Conserver la disposition',

@@ -8,9 +8,10 @@ import { propertiesPanelFr } from './locales/fr/properties-panel';
 import { sectionPlanesFr } from './locales/fr/section-planes';
 import { shellChromeFr } from './locales/fr/shell-chrome';
 import { sheetsPdfFr } from './locales/fr/sheets-pdf';
+import { workspaceMigrationFr } from './locales/fr/workspace-migration';
 
 test('#8904 French property, quantity and section counts distinguish one from multiple', () => {
-  registerLocale('fr', { ...propertiesPanelFr, ...sectionPlanesFr, ...shellChromeFr, ...sheetsPdfFr });
+  registerLocale('fr', { ...propertiesPanelFr, ...sectionPlanesFr, ...shellChromeFr, ...sheetsPdfFr, ...workspaceMigrationFr });
   setLocale('fr');
   try {
     for (const key of ['properties.panel.multiEntity.propertySetsCount', 'properties.panel.multiEntity.quantitySetsCount'] as const) {
@@ -28,5 +29,7 @@ test('#8904 French property, quantity and section counts distinguish one from mu
     assert.equal(resolve('shellChrome.statusBar.hiddenCount', { count: 2 }), '2 masqués');
     assert.equal(resolve('sheetsPdf.sheetSetup.fieldsConfigured', { count: 1 }), '1 champ configuré');
     assert.equal(resolve('sheetsPdf.sheetSetup.fieldsConfigured', { count: 2 }), '2 champs configurés');
+    assert.equal(resolve('workspaceMigration.layout.summary', { count: 1 }), '1 modification de disposition est prête à être vérifiée. Votre travail enregistré est préservé.');
+    assert.equal(resolve('workspaceMigration.layout.summary', { count: 2 }), '2 modifications de disposition sont prêtes à être vérifiées. Votre travail enregistré est préservé.');
   } finally { setLocale('en'); }
 });

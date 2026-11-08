@@ -2,6 +2,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import type { LoadedModel } from '../context.js';
+
+export function persistentQuantityIds(model: LoadedModel): ReadonlySet<number> {
+  return new Set([
+    ...model.store.entityIndex.byId.keys(),
+    ...(model.backend.getMutationView()?.getNewEntities() ?? []).map(entity => entity.expressId),
+  ]);
+}
+
 /**
  * #9296: derived quantities are export-only records, allocated above the live
  * overlay's id cursor. Undo restores the IFC graph but need not rewind that
@@ -9,7 +18,7 @@
  * reference, value and all non-quantity entity ids in strict undo assertions.
  * Only used on StepExporter output (one physical line per record).
  */
-export function canonicalQuantityIds(content: string | Uint8Array, sourceIds: ReadonlySet<number>): string {
+export function canonicalQuantityIds(content: string | Uint8Array, persistentIds: ReadonlySet<number>): string {
   const text = typeof content === 'string' ? content : new TextDecoder().decode(content);
   const records = new Map<number, { type: string; body: string }>();
   for (const match of text.matchAll(/^#(\d+)=(\w+)\((.*)\);$/gm)) {
@@ -18,10 +27,10 @@ export function canonicalQuantityIds(content: string | Uint8Array, sourceIds: Re
   // Never rewrite # tokens embedded inside IFC string values.
   const refs = (body: string): number[] => [...body.matchAll(/'(?:''|[^'])*'|#(\d+)/g)]
     .flatMap(match => match[1] === undefined ? [] : [Number(match[1])]);
-  const sets = [...records].filter(([id, record]) => record.type === 'IFCELEMENTQUANTITY' && !sourceIds.has(id))
+  const sets = [...records].filter(([id, record]) => record.type === 'IFCELEMENTQUANTITY' && !persistentIds.has(id))
     .sort((a, b) => a[1].body.localeCompare(b[1].body));
   const ids = new Map<number, number>();
-  const assign = (id: number) => { if (!sourceIds.has(id) && !ids.has(id)) ids.set(id, 0); };
+  const assign = (id: number) => { if (!persistentIds.has(id) && !ids.has(id)) ids.set(id, 0); };
   for (const [id, set] of sets) {
     assign(id);
     for (const child of refs(set.body)) {

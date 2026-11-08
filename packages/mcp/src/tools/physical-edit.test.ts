@@ -12,11 +12,11 @@ import { deriveSplitGlobalId } from '../../../create/src/in-store/edit/split-gui
 import { EntityExtractor, IfcParser } from '@ifc-lite/parser';
 import { placedBodyExtent, readWallJoinTarget, readWallJoinRels } from '@ifc-lite/create';
 import { AnchorEntityReader } from '../../../create/src/in-store/resolve-anchor.js';
-import { canonicalQuantityIds } from '../test/canonical-quantity-ids.js';
+import { canonicalQuantityIds, persistentQuantityIds } from '../test/canonical-quantity-ids.js';
 import { liveToolSession } from '../test/live-tool-session.js';
 
 async function graph(model: LoadedModel, content: string | Uint8Array = model.bim.export.ifc()) {
-  const bytes = new TextEncoder().encode(canonicalQuantityIds(content, new Set(model.store.entityIndex.byId.keys())));
+  const bytes = new TextEncoder().encode(canonicalQuantityIds(content, persistentQuantityIds(model)));
   const store = await new IfcParser().parseColumnar(bytes.slice().buffer as ArrayBuffer, { disableWorkerScan: true });
   const extractor = new EntityExtractor(store.source);
   return [...store.entityIndex.byId].map(([id, location]) => {

@@ -17,7 +17,7 @@ import { createAlignCommandBackend } from '@ifc-lite/sdk';
 import { recordCompoundMutation, StoreEditor } from '@ifc-lite/mutations';
 import { provideHeadlessAlignGeometry } from '../headless-backend-align.js';
 import { AnchorEntityReader } from '../../../create/src/in-store/resolve-anchor.js';
-import { canonicalQuantityIds } from '../test/canonical-quantity-ids.js';
+import { canonicalQuantityIds, persistentQuantityIds } from '../test/canonical-quantity-ids.js';
 import { liveToolSession } from '../test/live-tool-session.js';
 
 const wasm = new URL('../../../wasm/pkg/ifc-lite_bg.wasm', import.meta.url), available = existsSync(wasm);
@@ -28,7 +28,7 @@ beforeAll(async () => {
 });
 const exportModel = (model: LoadedModel) => new StepExporter(model.store, model.backend.getMutationView() ?? undefined).export({ schema: model.store.schemaVersion ?? 'IFC4', applyMutations: true, timeStamp: '2026-10-03T00:00:00' }).content;
 async function graph(model: LoadedModel) {
-  const store = await new IfcParser().parseColumnar(new TextEncoder().encode(canonicalQuantityIds(exportModel(model), new Set(model.store.entityIndex.byId.keys()))).buffer, { disableWorkerScan: true });
+  const store = await new IfcParser().parseColumnar(new TextEncoder().encode(canonicalQuantityIds(exportModel(model), persistentQuantityIds(model))).buffer, { disableWorkerScan: true });
   const extractor = new EntityExtractor(store.source);
   return [...store.entityIndex.byId].map(([id, location]) => ({ id, ...extractor.extractEntity(location)! })).sort((a, b) => a.id - b.id);
 }

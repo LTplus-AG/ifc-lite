@@ -31,3 +31,8 @@ it('#9355 preserves loaded quantity set, leaf and relationship EXPRESS ids', () 
   expect(canonical(model(100).replace('#102=', '#202='), sourceIds)).not.toBe(before);
   expect(canonical(model(100).replaceAll('#100', '#200'), sourceIds)).not.toBe(before);
 });
+
+it('#9355 overlay-authored quantity records retain their persistent identity', () => {
+  const overlayIds = new Set([10, 100, 101, 102, 200, 201, 202]);
+  expect(canonical(model(100), overlayIds)).not.toBe(canonical(model(200), overlayIds));
+});

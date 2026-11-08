@@ -208,6 +208,7 @@ export interface DataStoreTransport {
   properties: PropertyTableColumns;
   quantities: QuantityTableColumns;
   relationships: RelationshipGraphColumns;
+  relationshipsPending?: true;
 
   spatialHierarchy?: SpatialHierarchyColumns;
 
@@ -376,6 +377,8 @@ export function toTransport(
     properties: propertyTableToColumns(store.properties),
     quantities: quantityTableToColumns(store.quantities),
     relationships: relationshipGraphToColumns(store.relationships),
+    // The spatial-ready store crosses the worker boundary still marked as such (#9192).
+    ...(store.relationshipsPending ? { relationshipsPending: true as const } : {}),
 
     spatialHierarchy: store.spatialHierarchy
       ? spatialHierarchyToColumns(store.spatialHierarchy)
@@ -461,6 +464,7 @@ export function fromTransport(
     properties,
     quantities,
     relationships,
+    ...(payload.relationshipsPending ? { relationshipsPending: true as const } : {}),
     spatialHierarchy,
 
     onDemandPropertyMap,

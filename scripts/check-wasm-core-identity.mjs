@@ -128,6 +128,7 @@ for (const file of files) {
   if (a.error && b.error) { /* counted in failedBoth below */ } else if (ok) same++; else differ++;
   if (!a.error && a.meshes > 0) meshed++;
   if (a.error && b.error) failedBoth++;
+  if (a.error && b.error) console.log(`BOTH-FAILED ${relative(ROOT, file)} ${a.error === b.error ? a.error : `full=${a.error} core=${b.error}`}`);
   if (!ok && !(a.error && b.error)) console.log(`DIFF ${relative(ROOT, file)} full=${JSON.stringify(a)} core=${JSON.stringify(b)}`);
 }
 console.log(`identity: ${same} identical, ${differ} different, ${meshed} with meshes, ${failedBoth} failing on both, of ${files.length} fixtures`);
@@ -135,4 +136,6 @@ console.log(`identity: ${same} identical, ${differ} different, ${meshed} with me
 // nothing: require meshes, and that most fixtures produced them.
 const vacuous = meshed === 0 || meshed < files.length / 2;
 if (vacuous) console.error(`only ${meshed} of ${files.length} fixtures produced meshes: no identity evidence`);
-process.exit(differ === 0 && !vacuous ? 0 : 1);
+// A fixture neither engine can mesh has no identity evidence: fail and name it
+// (BOTH-FAILED above) rather than let it pass silently beside the others.
+process.exit(differ === 0 && failedBoth === 0 && !vacuous ? 0 : 1);

@@ -12,3 +12,5 @@
  */
 export * from './pkg/ifc-lite.js';
 export { default } from './pkg/ifc-lite.js';
+/** The core binary, `pkg-core/ifc-lite_bg.wasm`; never null for this engine. */
+export declare const ENGINE_BINARY_URL: URL;

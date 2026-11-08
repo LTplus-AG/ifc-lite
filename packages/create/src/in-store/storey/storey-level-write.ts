@@ -5,14 +5,17 @@
 /**
  * Write a planned storey re-level into a draft (#9013): placement lifts,
  * storey Elevation attributes, attached-wall heights (with their base
- * quantities) and stair refits. Callers own the atomic transaction; a throw
+ * quantities), the tops of attached columns, beams and curtain walls, stair
+ * refits and the railings that run up them. Callers own the atomic transaction; a throw
  * here means nothing is published.
  */
 
 import type { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import { extractProjectUnits, extractQuantitiesOnDemand, quantitySiScale, type IfcDataStore, type ProjectUnits } from '@ifc-lite/parser';
 import type { QuantityType } from '@ifc-lite/data';
-import { editStairDimensionsInStore } from '../stair-edit.js';
+import { refitStairRailing } from '../railing-stair-refit.js';
+import { editStairDimensionsInStore, readStairDimensions } from '../stair-edit.js';
+import { writeAttachedTop } from './storey-attached.js';
 import { setWallSectionInStore } from '../wall-section-edit.js';
 import { readWallMetres } from '../wall-size-edit.js';
 import type { StoreyLevelPlan } from './storey-level-plan.js';
@@ -43,6 +46,24 @@ export function writeStoreyLevelPlan(store: IfcDataStore, draft: StoreEditor, pl
     }
     scaleWallQuantities(store, view, wall.wallId, wall.to / wall.from, geometry);
     reshaped.push(...outcome.remesh);
+  }
+  const target = { dataStore: store, view, editor: draft };
+  for (const element of plan.attached) {
+    const outcome = writeAttachedTop(target, element.elementId, element.kind, element.from, element.to);
+    if (!outcome.ok) {
+      throw new StoreyEditRefusedError([{ code: 'dependent', elementIds: [element.elementId], message: `#${element.elementId} cannot follow its level: ${outcome.reason}` }]);
+    }
+    reshaped.push(...outcome.remesh);
+  }
+  // Railings first: they are found on the stair as it stands before its refit.
+  for (const railing of plan.railings) {
+    const stair = plan.stairs.find((candidate) => candidate.stairId === railing.stairId);
+    const dims = readStairDimensions(store, railing.stairId, view);
+    if (!stair || !dims) continue;
+    const before = { stairId: stair.stairId, run: dims.NumberOfRisers * dims.TreadLength, rise: dims.NumberOfRisers * dims.RiserHeight, width: dims.Width };
+    const reason = refitStairRailing(target, railing.railingId, before, { run: stair.to.NumberOfRisers * dims.TreadLength, rise: stair.to.NumberOfRisers * stair.to.RiserHeight });
+    if (reason) throw new StoreyEditRefusedError([{ code: 'dependent', elementIds: [railing.railingId], message: `The railing #${railing.railingId} cannot follow its stair: ${reason}` }]);
+    reshaped.push(railing.railingId);
   }
   for (const stair of plan.stairs) {
     try {

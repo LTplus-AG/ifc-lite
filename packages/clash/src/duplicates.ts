@@ -427,7 +427,7 @@ export function findDuplicates(elements: ClashElement[], options: DuplicateOptio
     clashes,
     summary: summarizeClashes(clashes),
     rulesRun: [DUPLICATES_RULE],
-    ruleCoverage: [{ rule: DUPLICATES_RULE.id, matchedA: elements.length, matchedB: null, matchedKeysA: [...new Set(elements.map((el) => el.key))].sort(), matchedKeysB: null, matchedElements: elements.map(({ model, key }) => ({ model, key })) }],
+    ruleCoverage: [{ rule: DUPLICATES_RULE.id, matchedA: elements.length, matchedB: null, matchedKeysA: [...new Set(elements.map((el) => el.key))].sort(), matchedKeysB: null, matchedElements: [...new Map(elements.map(({ model, key, ref }) => [JSON.stringify([model, ref]), { model, key, ref }])).values()] }],
     settings: { tolerance: positionTolerance, excludeVoidsAndHosts: exclusions != null },
   };
 }

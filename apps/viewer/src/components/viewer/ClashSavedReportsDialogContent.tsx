@@ -23,6 +23,7 @@ import { useTranslation } from '@/i18n';
 import { CLASH_REPORT_LIMITS, clashReportRevision, defaultClashReportName, snapshotClashReport, type SavedClashReport } from '@/lib/clash/saved-report';
 import { clashReportLimitBadges } from '@/lib/charts/chart-source-message';
 import { QualityGateCards } from './ClashQualityGates';
+import { useQualityGatePreferences } from '@/lib/clash/quality-gate-preferences';
 import { qualityGateDocument } from '@/lib/document/clash-quality-report';
 import { useViewerStore } from '@/store';
 import { useLibraryFocus } from '@/lib/libraries/library-focus';
@@ -107,7 +108,7 @@ export function ClashSavedReportsDialogContent({ open, onOpenChange }: { open: b
 
   const saveCurrent = async (): Promise<void> => {
     const state = useViewerStore.getState();
-    const report = snapshotClashReport(state, name);
+    const report = snapshotClashReport(state, name, new Date(), useQualityGatePreferences.getState().config);
     if (!report) return;
     if (await state.saveClashReport(report)) {
       toast.success(t('clashTools.savedReports.savedToast', { name: report.name }));

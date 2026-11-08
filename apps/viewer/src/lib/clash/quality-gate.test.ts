@@ -1,8 +1,12 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import '@/test/setup-dom.js';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { createClashEngine, findDuplicates, type ClashElement } from '@ifc-lite/clash';
-import { captureQualityGates, defaultQualityGateConfig, evaluateQualityGates, isQualityGateConfig, isQualityGateSnapshot, qualityBand } from './quality-gate';
+import { captureQualityGates, defaultQualityGateConfig, evaluateQualityGates, isQualityGateConfig, isQualityGateSnapshot, qualityBand, displayQualityPercent } from './quality-gate';
 import { snapshotClashReport, isSavedClashReport } from './saved-report';
 import { useViewerStore } from '@/store';
 import { qualityGateDocument } from '../document/clash-quality-report';
@@ -37,7 +41,7 @@ describe('Object quality gate invariants (#9259)', () => {
   it('counts all involved duplicate objects and retains clean objects in the denominator', () => {
     const result = findDuplicates([box('same', 'A', 1), box('same', 'B', 2), box('third', 'B', 3), box('clean', 'B', 4, 10)]);
     assert.equal(result.clashes.length, 3);
-    const row = evaluateQualityGates(result)[0];
+    const row = evaluateQualityGates(result, false, 'duplicates')[0];
     assert.equal(row.kind, 'duplicates');
     assert.equal(row.checked, 4);
     assert.equal(row.affected, 3);
@@ -55,12 +59,24 @@ describe('Object quality gate invariants (#9259)', () => {
     assert.equal(evaluateQualityGates(empty)[0].status, 'not-evaluated');
     assert.equal(evaluateQualityGates(empty)[0].percent, null);
   });
+  it('propagates a real engine work cap without granting a passing category', async () => {
+    const result = await engine().run([box('a', 'A', 1), box('b', 'A', 2), box('c', 'A', 3)], [rule], { maxCandidatePairs: 1 });
+    assert.ok(result.truncated && result.truncated.droppedPairs > 0);
+    const row = evaluateQualityGates(result)[0];
+    assert.equal(row.status, 'incomplete');
+    assert.equal(row.percent, null);
+  });
+  it('keeps distinct object references even when an invalid file repeats GlobalIds', async () => {
+    const result = await run([box('same', 'A', 1), box('same', 'A', 2, 10)]);
+    assert.equal(evaluateQualityGates(result)[0].checked, 2);
+  });
   it('classifies exact boundaries before rounding and rejects ambiguous bands', () => {
     const config = defaultQualityGateConfig();
     assert.equal(qualityBand(89.9999, config.clash).label, 'Failed');
     assert.equal(qualityBand(90, config.clash).label, 'Partially passed');
     assert.equal(qualityBand(94.9999, config.clash).label, 'Partially passed');
     assert.equal(qualityBand(95, config.clash).label, 'Passed');
+    assert.equal(displayQualityPercent(94.9999), '94.9');
     assert.equal(qualityBand(100, config.clash).label, 'Passed');
     for (const minimum of [NaN, Infinity, -1, 101, 0]) {
       assert.equal(isQualityGateConfig({ ...config, clash: [config.clash[0], { ...config.clash[1], minimum }] }), false);
@@ -89,6 +105,9 @@ describe('Object quality gate invariants (#9259)', () => {
     assert.equal(report.qualityGates?.rows[0].affected, 2);
     assert.equal(report.qualityGates?.rows[0].percent, 0);
     assert.ok(isSavedClashReport(report));
+    assert.equal(isSavedClashReport({ ...report, models: [] }), false, 'gate model ids must join the saved provenance');
+    assert.equal(isSavedClashReport({ ...report, run: { ...report.run, rules: [] } }), false, 'gate rules must join the saved run');
+    assert.equal(snapshotClashReport({ ...state, clashRawResult: null, clashResult: raw }, 'No raw')?.qualityGates?.rows[0].status, 'unavailable');
     assert.ok(isSavedClashReport({ ...report, qualityGates: undefined }), 'old reports remain valid');
     const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aL1sAAAAASUVORK5CYII=';
     const document = qualityGateDocument(report, resolve, () => png);
@@ -97,7 +116,7 @@ describe('Object quality gate invariants (#9259)', () => {
     assert.equal(reopened.blocks.filter(block => block.kind === 'image').length, 1);
     const text = reopened.blocks.filter(block => block.kind === 'text').map(block => block.text).join('\n');
     assert.match(text, /2 checked · 2 affected/);
-    assert.match(text, /2026-11-08T12:00:00Z/);
+    assert.match(text, /2026-11-08T12:00:00/);
     assert.ok(text.includes('Quality {{Model.Name}}'), 'file-supplied braces stay literal');
   });
 });

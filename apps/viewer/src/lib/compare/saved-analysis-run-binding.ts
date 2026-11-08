@@ -53,7 +53,7 @@ function rekey(key: string, to: (model: string) => string | undefined): string {
   return match && model !== undefined ? `expressid:${encodeURIComponent(model)}:${match[2]}` : key;
 }
 type Coverage = NonNullable<ClashResult['ruleCoverage']>[number];
-const rekeyCoverage = (coverage: Coverage, to: (model: string) => string | undefined): Coverage => ({ ...coverage,
+const rekeyCoverage = ({ matchedElements: _objects, ...coverage }: Coverage, to: (model: string) => string | undefined): Coverage => ({ ...coverage,
   ...(coverage.matchedKeysA ? { matchedKeysA: coverage.matchedKeysA.map(k => rekey(k, to)) } : {}),
   ...(coverage.matchedKeysB ? { matchedKeysB: coverage.matchedKeysB.map(k => rekey(k, to)) } : {}) });
 

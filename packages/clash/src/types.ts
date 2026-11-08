@@ -275,11 +275,11 @@ export interface ClashRuleCoverage {
    * MUST treat an absent `matchedKeysA` as "cannot verify", never as "matched
    * nothing".
    */
-  /** Model-qualified union of both matched sides, for object-based quality gates (#9259).
-   * Unlike bare keys, this preserves equal GlobalIds in different models. */
-  matchedElements?: readonly { model: string; key: string }[];
   matchedKeysA?: readonly string[];
   matchedKeysB?: readonly string[] | null;
+  /** Model-qualified union of both matched sides, for object-based quality gates (#9259).
+   * The per-load ref distinguishes objects even when GlobalIds are repeated. */
+  matchedElements?: readonly { model: string; key: string; ref: number }[];
   /**
    * Broad-phase candidate pairs the geometry kernel actually narrow-phase
    * tested for THIS rule (`RuleDetection.candidatesProcessed` in

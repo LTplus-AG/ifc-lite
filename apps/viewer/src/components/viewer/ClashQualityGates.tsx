@@ -6,7 +6,8 @@ import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { toast } from '@/components/ui/toast';
 import { analysisStampOf, useAnalysisStaleness } from '@/hooks/useAnalysisStaleness';
-import { evaluateQualityGates, isQualityGateConfig, qualityBand, type QualityGateConfig, type QualityGateRow, type QualityGateSnapshot } from '@/lib/clash/quality-gate';
+import { displayQualityPercent, evaluateQualityGates, isQualityGateConfig, qualityBand, type QualityGateConfig, type QualityGateRow, type QualityGateSnapshot } from '@/lib/clash/quality-gate';
+import { runRequestOf } from '@/lib/clash/run-request';
 import { useQualityGatePreferences } from '@/lib/clash/quality-gate-preferences';
 
 export function QualityGateCards({ snapshot, models }: { snapshot: QualityGateSnapshot; models: readonly { id: string; name: string }[] }) {
@@ -15,11 +16,11 @@ export function QualityGateCards({ snapshot, models }: { snapshot: QualityGateSn
     {snapshot.rows.map((row, index) => {
       const band = row.percent === null ? null : qualityBand(row.percent, snapshot.config[row.kind]);
       return <div key={`${row.rule}-${index}`} className="flex items-center gap-3 rounded border border-border p-2" data-quality-rule={row.rule}>
-        <svg width="68" height="68" viewBox="0 0 68 68" role="img" aria-label={row.percent === null ? t(`clashQuality.${row.status as Exclude<QualityGateRow['status'], 'evaluated'>}`) : `${row.percent.toFixed(1)}% ${band?.label}`}>
+        <svg width="68" height="68" viewBox="0 0 68 68" role="img" aria-label={row.percent === null ? t(`clashQuality.${row.status as Exclude<QualityGateRow['status'], 'evaluated'>}`) : `${displayQualityPercent(row.percent)}% ${band?.label}`}>
           <circle cx="34" cy="34" r="27" fill="none" stroke="currentColor" className="text-muted" strokeWidth="6" />
           {band && <circle cx="34" cy="34" r="27" fill="none" stroke={band.color} strokeWidth="6" pathLength="100"
             strokeDasharray={`${row.percent} 100`} transform="rotate(-90 34 34)" />}
-          <text x="34" y="38" textAnchor="middle" fill="currentColor" fontSize="12">{row.percent === null ? '—' : `${row.percent.toFixed(1)}%`}</text>
+          <text x="34" y="38" textAnchor="middle" fill="currentColor" fontSize="12">{row.percent === null ? '—' : `${displayQualityPercent(row.percent)}%`}</text>
         </svg>
         <div className="min-w-0 text-xs">
           <div className="font-medium break-words">{row.name}</div>
@@ -28,6 +29,7 @@ export function QualityGateCards({ snapshot, models }: { snapshot: QualityGateSn
           <div className="break-words text-muted-foreground">{t('clashQuality.models', { models: row.models.map(id => models.find(model => model.id === id)?.name ?? id).join(', ') || '—' })}</div>
           <div className="text-muted-foreground">{t('clashQuality.tolerance', { tolerance: row.tolerance })}
             {row.clearance !== undefined && ` · ${t('clashQuality.clearance', { clearance: row.clearance })}`}</div>
+          <div className="text-muted-foreground">{t('clashQuality.detectionExclusions', { value: row.excludeVoidsAndHosts ? t('clashQuality.enabled') : t('clashQuality.disabled') })}</div>
         </div>
       </div>;
     })}
@@ -74,7 +76,7 @@ export function ClashQualityGates() {
   const models = useViewerStore(s => s.models);
   const config = useQualityGatePreferences(s => s.config);
   const stale = useAnalysisStaleness(analysisStampOf(result));
-  const rows = useMemo(() => result ? evaluateQualityGates(result, stale || running) : [], [result, stale, running]);
+  const rows = useMemo(() => result ? evaluateQualityGates(result, stale || running, runRequestOf(result)?.kind === 'duplicates' ? 'duplicates' : 'clash') : [], [result, stale, running]);
   return <section className="space-y-2 border-b border-border px-3 py-2">
     <h3 className="text-xs font-medium">{t('clashQuality.title')}</h3>
     <QualityGateEditor />

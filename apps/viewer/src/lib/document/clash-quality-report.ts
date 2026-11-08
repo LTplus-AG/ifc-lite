@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import type { UseTranslationResult } from '@/i18n';
 import type { SavedClashReport } from '../clash/saved-report-schema';
-import { qualityBand, type QualityGateRow } from '../clash/quality-gate';
+import { displayQualityPercent, qualityBand, type QualityGateRow } from '../clash/quality-gate';
 import { literalTemplateText } from './bindings';
 import { freshBlockId, freshDocumentId } from './persistence';
 import { DOCUMENT_VERSION, type DocumentBlock, type DocumentSpec } from './types';
@@ -22,7 +22,7 @@ export function qualityRingPng(percent: number | null, color: string): string {
     ctx.arc(120, 120, 94, -Math.PI / 2, -Math.PI / 2 + 2 * Math.PI * percent / 100); ctx.stroke();
   }
   ctx.fillStyle = '#111827'; ctx.font = 'bold 32px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillText(percent === null ? '—' : `${percent.toFixed(1)}%`, 120, 120);
+  ctx.fillText(percent === null ? '—' : `${displayQualityPercent(percent)}%`, 120, 120);
   return canvas.toDataURL('image/png');
 }
 
@@ -38,10 +38,11 @@ export function qualityGateDocument(report: SavedClashReport, t: UseTranslationR
     const label = band?.label ?? t(`clashQuality.${row.status as Exclude<QualityGateRow['status'], 'evaluated'>}`);
     blocks.push(text(row.name, 'heading'),
       { kind: 'image', id: freshBlockId(), dataUrl: renderRing(row.percent, band?.color ?? '#64748b'), height: 90, align: 'left', caption: label },
-      text([t('clashQuality.metric'), `${row.percent === null ? '—' : row.percent.toFixed(1) + '%'} · ${label}`,
+      text([t('clashQuality.metric'), `${row.percent === null ? '—' : displayQualityPercent(row.percent) + '%'} · ${label}`,
         t('clashQuality.counts', { checked: row.checked ?? '—', affected: row.affected ?? '—' }),
         t('clashQuality.models', { models: row.models.map(id => report.models.find(model => model.id === id)?.name ?? id).join(', ') || '—' }),
         t('clashQuality.tolerance', { tolerance: row.tolerance }),
+        t('clashQuality.detectionExclusions', { value: row.excludeVoidsAndHosts ? t('clashQuality.enabled') : t('clashQuality.disabled') }),
         ...(row.clearance !== undefined ? [t('clashQuality.clearance', { clearance: row.clearance })] : []),
       ].join('\n')));
     const policy = report.qualityGates.config[row.kind].map(band => `${band.minimum}%: ${band.label} (${band.color})`).join('; ');

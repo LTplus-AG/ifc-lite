@@ -21,6 +21,8 @@ import { MODEL_ID, STOREY, UPPER_STOREY, seedModelingSession } from '@/test/mode
 import { setRequestRemesh, type RemeshRequest } from '@/lib/commands/modeling/transaction';
 import { modelStoreys } from '@/lib/commands/modeling/workspace-storeys';
 import { resolveWallTop } from '@/lib/commands/modeling/wall-top';
+import { authoringDim } from './authoringDefaultsSlice.js';
+import { readElementSize } from './mutation-element-size.js';
 import '@/lib/commands/modeling/builtin.js';
 import { commandPointerDown, commandPointerMove, writeCommandField } from '@/lib/commands/modeling/runtime';
 import { modelEditTarget } from './mutation-modelling-records.js';
@@ -604,5 +606,78 @@ describe('walls drawn to the storey above (#9013 requirement 4)', () => {
     const wall = draw(0);
     assert.equal(attachment(wall), null, 'no NextStoreyAbove is recorded');
     assert.equal(Math.round(height(wall)! * 1000), 2400);
+  });
+});
+
+describe('columns, curtain walls and beams drawn to the storey above (#9296)', () => {
+  const at = (x: number, y: number) => ({ local: [x, y] as [number, number], winner: null, guides: [], locked: false, metresPerPixel: 0.02 });
+  const click = (x: number, y: number) => { commandPointerMove(at(x, y)); commandPointerDown(at(x, y)); };
+  const created = (type: string) => useViewerStore.getState().mutationViews.get(MODEL_ID)!.getNewEntities().filter((e) => e.type === type).at(-1)!.expressId;
+  const attachment = (id: number) => {
+    const target = modelEditTarget(useViewerStore.getState(), MODEL_ID)!;
+    return readTopAttachment(readStoreyInventory(target.dataStore, target.view), id);
+  };
+  /** A column's or mullion's live extrusion length, metres, as the inspector reads it. */
+  const depth = (id: number) => {
+    const size = readElementSize(useViewerStore.getState(), MODEL_ID, id);
+    assert.ok(size?.kind === 'linear', `#${id} reads as a straight extrusion`);
+    return size.length;
+  };
+  const raise = (m: Awaited<ReturnType<typeof storey>>) => {
+    const outcome = m.commitStoreyOp(useViewerStore, MODEL_ID, { kind: 'level', edit: { kind: 'floorHeight', storeyId: STOREY, Height: 3.5 } });
+    assert.ok(outcome.ok);
+    return outcome;
+  };
+
+  it('the Column tool draws up to the storey above, records it in the same step, and the column follows', async () => {
+    const m = await storey();
+    useViewerStore.getState().setAuthoringDefaults({ wallTop: 'storeyAbove' });
+    useViewerStore.getState().startCommand('column.place');
+    click(1, 1);
+    const column = created('IfcColumn');
+    assert.equal(attachment(column)?.targetStoreyId, UPPER_STOREY);
+    assert.equal(attachment(column)?.binding, 'relative');
+    assert.equal(Math.round(depth(column) * 1000), 3000);
+    const outcome = raise(m);
+    assert.ok(outcome.ok && outcome.remeshed.includes(column), 'the followed column is re-meshed');
+    assert.equal(Math.round(depth(column) * 1000), 3500);
+  });
+
+  it('a column under "Fixed height" keeps its typed height and no attachment', async () => {
+    const m = await storey();
+    useViewerStore.getState().setAuthoringDefaults({ wallTop: 'fixed' });
+    useViewerStore.getState().startCommand('column.place');
+    click(1, 1);
+    const column = created('IfcColumn');
+    assert.equal(attachment(column), null);
+    const drawn = depth(column);
+    raise(m);
+    assert.equal(depth(column), drawn);
+  });
+
+  it('the Curtain Wall tool lays the wall out to the storey above, and a level edit lays it out again', async () => {
+    const m = await storey();
+    useViewerStore.getState().setAuthoringDefaults({ wallTop: 'storeyAbove' });
+    useViewerStore.getState().startCommand('curtainwall.place');
+    click(0, 0);
+    click(6, 0);
+    const wall = created('IfcCurtainWall');
+    // The builder writes the mullions first.
+    const mullion = useViewerStore.getState().mutationViews.get(MODEL_ID)!.getNewEntities().find((e) => e.type === 'IfcMember')!.expressId;
+    assert.equal(attachment(wall)?.targetStoreyId, UPPER_STOREY);
+    raise(m);
+    assert.equal(Math.round(depth(mullion) * 1000), 3500, 'the mullions reach the moved storey');
+  });
+
+  it('the Beam tool attaches a beam whose top lands on the storey above', async () => {
+    await storey();
+    useViewerStore.getState().setAuthoringDefaults({ wallTop: 'storeyAbove' });
+    const height = authoringDim(useViewerStore.getState().authoringDefaults, 'beam', 'Height');
+    useViewerStore.getState().setAuthoringDims('beam', { Bottom: 3 - height });
+    useViewerStore.getState().startCommand('beam.place');
+    click(0, 0);
+    click(4, 0);
+    const under = created('IfcBeam');
+    assert.equal(attachment(under)?.targetStoreyId, UPPER_STOREY);
   });
 });

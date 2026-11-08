@@ -85,7 +85,7 @@ describe('Workspace storey chip (#6232 M2.1)', () => {
       useViewerStore.getState().exitModelWorkspace();
       useViewerStore.getState().enterModelWorkspace({ modelId: second.id, storeyId: STOREY });
     });
-    await import('@/lib/storeys/storey-actions');
+    await import('./storeys/add-storey');
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
     assert.equal(added(firstView), 0, 'no storey was written to the model left behind');
     assert.equal(useViewerStore.getState().session?.modelId, second.id, 'the session stays on the model now open');
@@ -102,7 +102,7 @@ describe('Workspace storey chip (#6232 M2.1)', () => {
       useViewerStore.getState().exitModelWorkspace();
       useViewerStore.getState().enterModelWorkspace({ storeyId: STOREY });
     });
-    await import('@/lib/storeys/storey-actions');
+    await import('./storeys/add-storey');
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
     assert.equal(modelStoreys(useViewerStore.getState(), MODEL_ID).length, before, 'the abandoned click added nothing');
     assert.equal(useViewerStore.getState().session?.storeyId, STOREY, 'and the new session stays where it opened');
@@ -115,7 +115,7 @@ describe('Workspace storey chip (#6232 M2.1)', () => {
       .find((b) => b.textContent?.includes('Add storey above'))!;
     // Clicked on L0; the session moves to L1 before the module load resolves.
     act(() => { click(add); useViewerStore.getState().setSessionStorey(UPPER_STOREY); });
-    await import('@/lib/storeys/storey-actions');
+    await import('./storeys/add-storey');
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
     const created = useViewerStore.getState().session!.storeyId!;
     assert.equal(created, UPPER_STOREY, '#9296 adding keeps the active drawing storey');

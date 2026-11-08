@@ -24,8 +24,16 @@ it('#9296 shows the wall target name and elevation, with its GlobalId in details
   const ui = render(<WallTopRow modelId={MODEL_ID} wallId={result.expressId} />);
   assert.match(ui.textContent ?? '', /To L1 \(\+3.00 m\)/);
   assert.equal(ui.querySelector('[title]')?.getAttribute('title'), guid);
-  const properties = render(<TooltipProvider><PropertyEditor modelId={MODEL_ID} entityId={result.expressId} psetName="IfcLite_StoreyAttachment" propName="TopConstraint" currentValue={guid} /></TooltipProvider>);
+  for (const value of [guid, ['IFCLABEL', guid], `IFCLABEL,${guid}`]) {
+  const properties = render(<TooltipProvider><PropertyEditor modelId={MODEL_ID} entityId={result.expressId} psetName="IfcLite_StoreyAttachment" propName="TopConstraint" currentValue={value} /></TooltipProvider>);
   assert.match(properties.textContent ?? '', /To L1 \(\+3.00 m\)/);
+  assert.equal(storeyAttachmentDisplay(useViewerStore.getState(), MODEL_ID, result.expressId, value)?.text, 'To L1 (+3.00 m)');
+  if (typeof value === 'string') {
+    s.setProperty(MODEL_ID, result.expressId, 'IfcLite_StoreyAttachment', 'TopConstraint', value, PropertyValueType.Label);
+    const row = render(<WallTopRow modelId={MODEL_ID} wallId={result.expressId} />);
+    assert.match(row.textContent ?? '', /To L1 \(\+3.00 m\)/);
+  }
+  }
   const display = storeyAttachmentDisplay(useViewerStore.getState(), MODEL_ID, result.expressId, 'NextStoreyAbove');
   assert.equal(display?.text, `To L1 (+3.00 m)`);
   assert.equal(storeyAttachmentDisplay(useViewerStore.getState(), MODEL_ID, result.expressId, 'unknown-binding-kind'), null);

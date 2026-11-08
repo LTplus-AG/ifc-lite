@@ -79,6 +79,12 @@ test('committed target specs agree with the manifest', () => {
     const t = JSON.parse(readFileSync(join(HERE, file), 'utf8'));
     assert.equal(t.source.sha256, ref.sha256, `${file}: stale against manifest sha256`);
     assert.equal(t.totals.storeys, ref.ifc.storeys.length, file);
+    const counts = ref.ifc.elementCounts;
+    assert.equal(t.totals.walls, (counts.IfcWall ?? 0) + (counts.IfcWallStandardCase ?? 0), file);
+    for (const [key, type] of [['doors','IfcDoor'],['windows','IfcWindow'],['stairs','IfcStair'],['stairFlights','IfcStairFlight'],['columns','IfcColumn'],['beams','IfcBeam'],['spaces','IfcSpace']]) {
+      assert.equal(t.totals[key], counts[type] ?? 0, `${file}: ${key} versus independent CLI manifest`);
+    }
+    assert.equal(t.totals.slabs + (t.roof.entityTypes.IFCSLAB ?? 0), counts.IfcSlab ?? 0, file);
     assert.equal(t.totals.walls, t.storeys.reduce((a, s) => a + s.walls.count, 0), file);
     assert.equal(t.totals.doors, t.storeys.reduce((a, s) => a + s.doors.count, 0), file);
     assert.equal(t.totals.windows, t.storeys.reduce((a, s) => a + s.windows.count, 0), file);

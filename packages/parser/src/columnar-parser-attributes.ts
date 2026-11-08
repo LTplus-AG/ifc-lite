@@ -12,7 +12,7 @@
 import type { EntityRef } from './types.js';
 import { decodeIfcString } from '@ifc-lite/encoding';
 import { isIndexableExpressId } from './express-id.js';
-import { opensComment, skipComment, skipStringLiteral, skipTrivia } from './step-lexing.js';
+import { opensComment, skipComment, skipGap, skipStringLiteral, skipTrivia } from './step-lexing.js';
 import { EntityExtractor } from './entity-extractor.js';
 import { getRootAttrIndices } from './columnar-parser-root-attributes.js';
 
@@ -208,40 +208,60 @@ export function readRefId(buffer: Uint8Array, pos: number, end: number): [number
     return [-1, pos];
 }
 
-/** Read a list of entity refs (#id1,#id2,...) or a single #id. Returns [ids, newPos]. */
-export function readRefList(buffer: Uint8Array, pos: number, end: number): [number[], number] {
+/**
+ * Read a list of entity refs (#id1,#id2,...) or a single #id. Returns [ids, newPos, next]:
+ * `newPos` is where reading stopped (a list's `)`, or after a bare ref); `next` is the
+ * position after the value, or -1 unless it is a plain list of `#id`/`$` members, one comma
+ * apart, ending at its own `)`: the relationship reader then records no edges for the record
+ * (#9192, see `endsSlot`). `ids` is unchanged.
+ */
+export function readRefList(buffer: Uint8Array, pos: number, end: number): [number[], number, number] {
     // Trivia is whitespace AND `/* ... */` comments (#7785): a `#` or `)` inside
     // a comment is not structure. A comment that never closes runs to `end`.
-    pos = skipTrivia(buffer, pos, end).next;
+    const start = skipGap(buffer, pos, end);
+    pos = start < 0 ? end : start;
     const ids: number[] = [];
 
     if (pos < end && buffer[pos] === 0x28) {
         pos++;
+        // `member`: at the start or after a comma, so a member comes next.
+        let plain = true, member = true, empty = true;
         while (pos < end && buffer[pos] !== 0x29) {
-            const gap = skipTrivia(buffer, pos, end);
-            pos = gap.next;
-            if (gap.stop) break;
+            const next = skipGap(buffer, pos, end);
+            if (next < 0) { pos = end; break; }
+            pos = next;
             if (pos >= end || buffer[pos] === 0x29) break;
             const b = buffer[pos];
             if (b === 0x2C) {
+                if (member) plain = false;
+                member = true;
                 pos++;
-            } else if (b === 0x23) {
+                continue;
+            }
+            if (!member) plain = false;
+            member = empty = false;
+            if (b === 0x23) {
                 const [id, np] = readRefId(buffer, pos, end);
                 if (id >= 0) ids.push(id);
                 pos = np;
             } else if (b === 0x27) {
+                plain = false;
                 const next = skipStringLiteral(buffer, pos, end);
                 pos = next < 0 ? end : next;
             } else {
+                if (b !== 0x24) plain = false;
                 pos++;
             }
         }
-    } else if (pos < end && buffer[pos] === 0x23) {
+        if (member && !empty) plain = false;
+        return [ids, pos, plain && pos < end && buffer[pos] === 0x29 ? pos + 1 : -1];
+    }
+    if (pos < end && buffer[pos] === 0x23) {
         const [id, np] = readRefId(buffer, pos, end);
         if (id >= 0) ids.push(id);
         pos = np;
     }
-    return [ids, pos];
+    return [ids, pos, pos];
 }
 
 /**

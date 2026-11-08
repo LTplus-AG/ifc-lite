@@ -9,10 +9,38 @@
  * from STEP relationship entities without TextDecoder overhead.
  */
 
-import { skipCommas, readRefList } from './columnar-parser-attributes.js';
-import { readPropertyDefinitionRefs } from './property-definition-refs.js';
-import { getRelationshipSlotPlan } from './relationship-schema-slots.js';
+import { skipCommas, readRefId, readRefList } from './columnar-parser-attributes.js';
+import { readPropertyDefinitionValue } from './property-definition-refs.js';
+import { getRelationshipReadPlan } from './relationship-schema-slots.js';
+import { skipGap } from './step-lexing.js';
 import type { IfcDataStore } from './columnar-parser.js';
+
+/**
+ * True when the slot value that ended at `next` is followed by what the class
+ * declares there: the next attribute's `,`, or the record's own closing `)`.
+ * The last declared attribute admits only the closing `)`.
+ *
+ * This is where a misread record shows (#9192). A related list that stopped
+ * at a nested or typed value has `next` -1, as does one whose members are not
+ * `#id` or `$` one comma apart: `(#10 #11)` decodes as `[#10]` while the byte
+ * reader took both, and a string or number member (`'#12'`, `12`) decodes as
+ * a reference the byte reader skipped. A value followed by a stray `)`,
+ * as in `(#10),#14),#40`, is not at the record's end. And a related value
+ * missing its parentheses, `#10,#11,#40`, leaves the relating slot followed
+ * by another value. In each case the graph would not list exactly the
+ * references the record holds, so the caller records no edge for the record,
+ * and its readers treat it as unreadable.
+ */
+function endsSlot(buffer: Uint8Array, next: number, end: number, last: boolean): boolean {
+    if (next < 0) return false;
+    let pos = skipGap(buffer, next, end);
+    if (pos < 0 || pos >= end) return false;
+    if (buffer[pos] === 0x2C) return !last;
+    if (buffer[pos] !== 0x29) return false;
+    pos = skipGap(buffer, pos + 1, end);
+    // The record's range may or may not include its `;`.
+    return pos >= end || buffer[pos] === 0x3B;
+}
 
 /**
  * Extract relatingObject and relatedObjects from a relationship entity using
@@ -34,7 +62,7 @@ export function extractRelFast(
     typeUpper: string,
     schemaVersion?: IfcDataStore['schemaVersion'],
 ): { relatingObject: number; relatedObjects: number[] } | null {
-    const plan = getRelationshipSlotPlan(typeUpper, schemaVersion);
+    const plan = getRelationshipReadPlan(typeUpper, schemaVersion);
     if (!plan) return null;
 
     const end = byteOffset + byteLength;
@@ -48,31 +76,28 @@ export function extractRelFast(
     // IfcRoot+IfcRelationship attrs: GlobalId, OwnerHistory, Name, Description).
     pos = skipCommas(buffer, pos, end, 4);
 
-    const slots = [
-        { kind: 'relating' as const, ...plan.relating },
-        { kind: 'related' as const, ...plan.related },
-    ].sort((a, b) => a.index - b.index);
-
-    let relatingIds: number[] = [];
+    let relatingObject = -1;
     let relatedIds: number[] = [];
     let cursor = 0;
-    for (const slot of slots) {
+    for (const slot of plan.order) {
         pos = skipCommas(buffer, pos, end, slot.index - cursor);
         cursor = slot.index;
-        const [ids, rp] = readRefList(buffer, pos, end);
-        if (slot.kind === 'relating') relatingIds = ids;
-        else relatedIds = ids;
-        pos = rp;
-        // `readRefList` returns `rp` pointing AT the closing `)` when it read
-        // a parenthesised list — `skipCommas` tracks paren depth from its
-        // start position, so leaving `pos` there makes that `)` register as
-        // an unmatched close and miscount every comma after it. Advance past
-        // it before the next slot's `skipCommas` call. A bare single `#id`
-        // never leaves `rp` sitting on a `)`, so this is a no-op for it.
-        if (pos < end && buffer[pos] === 0x29) pos++;
+        const [ids, , next] = readRefList(buffer, pos, end);
+        if (!endsSlot(buffer, next, end, slot.index === plan.lastIndex)) return null;
+        if (slot.relating) {
+            // A relating attribute names one entity. `(#40,#41)` would give
+            // an edge from #40 alone and hide that the record names #41.
+            if (ids.length !== 1) return null;
+            relatingObject = ids[0];
+        } else {
+            relatedIds = ids;
+        }
+        // `next` is past a list's closing `)`: `skipCommas` tracks paren depth
+        // from its start position, so starting AT that `)` would count it as
+        // an unmatched close and miscount every comma after it.
+        pos = next;
     }
 
-    const relatingObject = relatingIds[0] ?? -1;
     if (relatingObject < 0 || relatedIds.length === 0) return null;
     return { relatingObject, relatedObjects: relatedIds };
 }
@@ -110,14 +135,28 @@ export function extractPropertyRelFast(
 
     pos = skipCommas(buffer, pos, end, 4);
 
-    const [relatedObjects, rp] = readRefList(buffer, pos, end);
-    pos = rp;
-    while (pos < end && buffer[pos] !== 0x2C) pos++;
+    // RelatedObjects, then the relating attribute, which every class read
+    // here declares last (#9192: see endsSlot).
+    const [relatedObjects, , next] = readRefList(buffer, pos, end);
+    pos = next < 0 ? -1 : skipGap(buffer, next, end);
+    if (pos < 0 || buffer[pos] !== 0x2C) return null;
     pos++;
 
-    // A SET holds each member once; `(#20,#20)` must not add the edge twice.
-    const written = readPropertyDefinitionRefs(buffer, pos, end);
-    const relatingDefs = written.length > 1 ? [...new Set(written)] : written;
+    let relatingDefs: number[];
+    pos = skipGap(buffer, pos, end);
+    if (pos >= 0 && buffer[pos] === 0x23) {
+        // One reference, as nearly every record writes it: what the general
+        // reader below gives for it, without tokenizing a value tree.
+        const [id, after] = readRefId(buffer, pos, end);
+        if (!endsSlot(buffer, after, end, true)) return null;
+        relatingDefs = id >= 0 ? [id] : [];
+    } else {
+        const relating = pos < 0 ? null : readPropertyDefinitionValue(buffer, pos, end);
+        if (!relating || !endsSlot(buffer, relating.next, end, true)) return null;
+        // A SET holds each member once; `(#20,#20)` must not add the edge twice.
+        const written = relating.ids;
+        relatingDefs = written.length > 1 ? [...new Set(written)] : written;
+    }
     if (relatingDefs.length === 0 || relatedObjects.length === 0) return null;
     return { relatedObjects, relatingDefs };
 }

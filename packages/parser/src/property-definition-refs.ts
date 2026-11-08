@@ -35,7 +35,7 @@
  */
 
 import { readRefId } from './columnar-parser-attributes.js';
-import { isSpaceByte, opensComment, skipComment, skipStringLiteral } from './step-lexing.js';
+import { isSpaceByte, opensComment, skipGap as skipTrivia, skipStringLiteral } from './step-lexing.js';
 
 /** Same bound as `MAX_NESTING_DEPTH` in rust/core/src/parser/tokenizer.rs. */
 const MAX_NESTING_DEPTH = 256;
@@ -49,16 +49,6 @@ type Value = number | Value[] | Typed;
 
 function isKeywordByte(b: number): boolean {
     return (b >= 0x30 && b <= 0x39) || (b >= 0x41 && b <= 0x5a) || (b >= 0x61 && b <= 0x7a) || b === 0x5f;
-}
-
-/** Skip whitespace and `/* ... *\/` comments; -1 for a comment that never closes. */
-function skipTrivia(buffer: Uint8Array, pos: number, end: number): number {
-    for (;;) {
-        while (pos < end && isSpaceByte(buffer[pos])) pos++;
-        if (pos >= end || !opensComment(buffer, pos, end)) return pos;
-        pos = skipComment(buffer, pos, end);
-        if (pos < 0) return -1;
-    }
 }
 
 function isDefinitionSetName(buffer: Uint8Array, start: number, stop: number): boolean {
@@ -153,19 +143,28 @@ function itemsOf(value: Value): Value[] | null {
  * decides whether to collapse it). Empty when the value holds none.
  */
 export function readPropertyDefinitionRefs(buffer: Uint8Array, pos: number, end: number): number[] {
+    return readPropertyDefinitionValue(buffer, pos, end)?.ids ?? [];
+}
+
+/**
+ * {@link readPropertyDefinitionRefs} plus the position after the value, so the
+ * relationship reader can check the record ends there (#9192). `null` when
+ * the value does not tokenize or is not followed by `,` or `)`.
+ */
+export function readPropertyDefinitionValue(buffer: Uint8Array, pos: number, end: number): { ids: number[]; next: number } | null {
     const parsed: Value[] = [];
     const next = readValue(buffer, pos, end, 0, parsed);
-    if (next < 0) return [];
+    if (next < 0) return null;
     // The value must be followed by the next attribute or the record's own `)`.
     // A set missing its `)` otherwise swallows the record's, and a record Rust
     // refuses to decode would still yield references here.
     const after = skipTrivia(buffer, next, end);
-    if (after < 0 || after >= end || (buffer[after] !== 0x2c && buffer[after] !== 0x29)) return [];
+    if (after < 0 || after >= end || (buffer[after] !== 0x2c && buffer[after] !== 0x29)) return null;
     const value = parsed[0];
 
     let members: Value[];
     if (typeof value === 'number') {
-        return value >= 0 ? [value] : [];
+        return { ids: value >= 0 ? [value] : [], next };
     } else if (Array.isArray(value)) {
         members = value;
     } else {
@@ -176,7 +175,7 @@ export function readPropertyDefinitionRefs(buffer: Uint8Array, pos: number, end:
     for (const member of members) {
         if (typeof member === 'number' && member >= 0) ids.push(member);
     }
-    return ids;
+    return { ids, next };
 }
 
 function numericRef(value: unknown): number | null {

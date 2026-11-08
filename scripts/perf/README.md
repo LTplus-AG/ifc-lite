@@ -16,9 +16,9 @@ first selection, so the cost was decode and inflate per record, multiplied by th
 relationship count. A per-scan schema snapshot cuts the registry cost per record but keeps
 the reads. The parsed graph already records which relationship names which element (with
 repeats as shadowed ids), so the read now walks effective rows from the index only and
-decodes a relationship only when an edit touched it, the parser recorded no edge for it, an
-edge of it has the wrong class on its relating side (the byte reader misread the record, or a
-definition set names a non-definition), or it names the element or type being read. A
+decodes a relationship only when an edit touched it, the parser recorded no edge for it (the
+byte reader records none for a record it cannot read cleanly), a definition set names a
+non-definition, or it names the element or type being read. A
 definition relationship an edit over-counts enters the reference budget at its graph count, an
 upper bound, and is decoded only if that bound would cross it.
 Answers were compared against base by digest,

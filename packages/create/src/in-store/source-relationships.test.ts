@@ -25,6 +25,7 @@ describe('source relationship lookup #8452', () => {
     let visits = 0;
     for (let i = 0; i < 2000; i++) {
       const entity = view.createEntity('IfcCartesianPoint', [[i, 0, 0]]);
+      view.setPositionalAttribute(entity.expressId, 0, [i + 1, 0, 0], true);
       Object.defineProperty(entity, 'type', { enumerable: true, get() { visits++; return 'IfcCartesianPoint'; } });
     }
     visits = 0;

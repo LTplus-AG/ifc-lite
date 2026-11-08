@@ -1120,4 +1120,7 @@ that entity's current effective changes in the same order as filtering
 **authored attributes** contain a `#expressId` reference. These are candidates:
 apply named and positional overrides and deletion checks before interpreting
 an effective relationship. Slot overrides that introduce a reference must also
-be considered through `view.getAttributeOverrideEntityIds()`.
+be considered through `view.getAttributeOverrideEntityIds()`. Pass a list of
+IFC classes to that method to narrow created candidates by their effective
+class; edited source records remain conservative candidates for the caller to
+check against its source store.

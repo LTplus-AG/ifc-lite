@@ -18,7 +18,7 @@ export function* sourceAssociationCandidates(store: IfcDataStore, view: MutableP
   }
   if (!view) return;
   const candidates = new Set([...view.getNewEntitiesReferencing(id)].map(e => e.expressId));
-  for (const entityId of view.getAttributeOverrideEntityIds()) candidates.add(entityId);
+  for (const entityId of view.getAttributeOverrideEntityIds(types)) candidates.add(entityId);
   for (const expressId of candidates) {
     if (seen.has(expressId) || view.isDeleted(expressId)) continue;
     const type = view.getEntityTypeMutation(expressId)?.newType ?? view.getNewEntity(expressId)?.type ?? store.getEntity(expressId)?.type;
@@ -30,7 +30,7 @@ export function* sourceAssociationCandidates(store: IfcDataStore, view: MutableP
  * The immutable source graph already indexes its inverse edges. Created
  * relationships use the overlay's maintained reference buckets. */
 export function sourceSpatialContext(store: IfcDataStore, view: MutablePropertyView, sourceId: number) {
-  const edited = view.getAttributeOverrideEntityIds();
+  const edited = view.getAttributeOverrideEntityIds(['IFCRELCONTAINEDINSPATIALSTRUCTURE', 'IFCRELAGGREGATES', 'IFCRELNESTS']);
   const created = new Map<number, NewEntity>();
   const reader = {
     createdEntities: () => [...created.values()],

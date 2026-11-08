@@ -489,6 +489,12 @@ export const TOLERANCES = {
   spaceAreaM2: { kind: 'rel', value: 0.05, why: 'net floor area; match spaces by name/number, not by order' },
 };
 
+export function storeyAtElevation(storeys, z) {
+  let best = storeys[0]?.id ?? null;
+  for (const st of storeys) if (st.placementZ <= z + 0.05) best = st.id;
+  return best;
+}
+
 export function countRoofParts(model, roots) {
   return new Set(roots.flatMap((id) => model.partsOf.get(id) ?? [])).size;
 }
@@ -523,9 +529,7 @@ export async function extract(refId_, entry, file) {
     const s = model.storeyOf(id);
     if (s) return s;
     const z = model.worldOrigin(id)[2];
-    let best = storeyIds[0]?.id ?? null;
-    for (const st of storeyIds) if (st.placementZ <= z + 0.05 * S) best = st.id;
-    return best;
+    return storeyAtElevation(storeyIds, z);
   };
 
   const perStorey = new Map(storeyIds.map((s) => [s.id, { walls: [], doors: [], windows: [], slabs: [], stairs: [], stairFlights: [], spaces: [], columns: [], beams: [], roofs: [] }]));

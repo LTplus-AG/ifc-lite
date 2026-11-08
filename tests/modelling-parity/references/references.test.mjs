@@ -15,7 +15,7 @@ import test from 'node:test';
 import { HERE, MANIFEST_PATH } from './lib.mjs';
 import { elementCountsFromInfo, requireVerifiedReference } from './refresh-info.mjs';
 import { verifyPath } from './fetch-references.mjs';
-import { Model, parseStep, countRoofParts } from './extract-target.mjs';
+import { Model, parseStep, countRoofParts, storeyAtElevation } from './extract-target.mjs';
 
 const manifest = JSON.parse(readFileSync(MANIFEST_PATH, 'utf8'));
 
@@ -128,4 +128,10 @@ test('#9304 metadata refresh rejects missing and tampered reference bytes', asyn
 test('#9304 roof slabs remain counted as parts when also selected as roots', () => {
   const model = new Model("DATA;#1=IFCROOF('r');#2=IFCSLAB('a');#3=IFCSLAB('b');#4=IFCRELAGGREGATES('g',$,$,$,#1,(#2,#3));ENDSEC;");
   assert.equal(countRoofParts(model, [1, 2, 3]), 2);
+});
+
+test('#9304 uncontained element assignment uses a five-centimetre world tolerance', () => {
+  const levels = [{id: 1, placementZ: 0}, {id: 2, placementZ: 3}];
+  assert.equal(storeyAtElevation(levels, 2.98), 2);
+  assert.equal(storeyAtElevation(levels, 2.9), 1);
 });

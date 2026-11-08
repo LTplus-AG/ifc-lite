@@ -1,0 +1,6 @@
+---
+"@ifc-lite/parser": patch
+"@ifc-lite/viewer": patch
+---
+
+Selecting an element on a large model no longer reads every typing relationship from the source on the way to the Properties panel (#9192). `readCurrentTypeQuantities` now takes them from the parsed relationship graph, and reads a relationship's record only when an edit touched it, the parser recorded no edge for it, it is a definition set naming a non-definition, or it names the element or type being read. One more case is read only when it decides the answer: a definition relationship that an edit over-counts (it names a definition the edit removed) is read when that bound would cross the reference budget. Answers are unchanged, with one narrowing: an unreadable relationship whose every reference the parsed graph lists, on its related side and on its relating side, now refuses only the elements and types it names, rather than every read in the file. Examples are valid references mixed with an empty member (`(#10,$,#14)`) or a list in `RelatingType` (`(#40)`). A record the byte reader cannot read cleanly (a nested or typed value, as in `((#10),#14)`) gets no edges and is read up front, so it refuses the whole model, as before. A refusal now holds for the edit revision like an answer does (model-wide, per relationship and per type), instead of being worked out again on every click.

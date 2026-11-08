@@ -92,12 +92,14 @@ const NOT_RENDERED_IN_THIS_STATE: PaletteKey[] = [
   // #8947: modified-IFC's disabled reason is now visible in the unloaded palette.
   // These prerequisites need roles, loaded models, or a missing host beyond this seed.
   'commandPalette.availability.editor',
-  'commandPalette.availability.feature',
   'commandPalette.availability.camera',
   'commandPalette.availability.selection',
   'commandPalette.availability.workplane',
   'commandPalette.availability.schedule',
-  'commandPalette.availability.host',
+  'commandPalette.availability.refresh',
+  'commandPalette.availability.gpuChecking',
+  'commandPalette.availability.gpu',
+  'commandPalette.availability.reopen',
   'commandPalette.availability.loading',
 ];
 

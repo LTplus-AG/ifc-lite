@@ -85,7 +85,8 @@ export async function storeyCommand(args: string[]): Promise<void> {
     if (json) { printJson(list); return; }
     for (const row of list) {
       const height = row.height === null ? '—' : `${row.height.toFixed(3)} m`;
-      process.stderr.write(`#${row.expressId}\t${row.Name}\t${row.elevation.toFixed(3)} m\tfloor-to-floor ${height}\t${row.elementCount} elements\n`);
+      // The listing is the command's data: stdout, so it pipes (diagnostics stay on stderr).
+      process.stdout.write(`#${row.expressId}\t${row.Name}\t${row.elevation.toFixed(3)} m\tfloor-to-floor ${height}\t${row.elementCount} elements\n`);
     }
     return;
   }

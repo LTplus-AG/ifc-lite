@@ -60,6 +60,12 @@ describe.skipIf(!existsSync(SAMPLE))('ifc-lite storey (#9025)', () => {
     expect(rows.map((row: { Name: string; elevation: number }) => [row.Name, row.elevation])).toEqual([['My Storey', 0]]);
   });
 
+  it('the plain listing goes to stdout, so it pipes (#9121 review)', async () => {
+    const run = await storey();
+    await run([SAMPLE, 'list']);
+    expect(stdout).toMatch(/^#\d+\tMy Storey\t0\.000 m\t/m);
+  });
+
   it('adds a storey from its neighbour, re-levels it and writes a file that reads back the same', async () => {
     const run = await storey();
     const added = join(dir, 'added.ifc');

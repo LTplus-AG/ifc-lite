@@ -124,6 +124,7 @@ test('CSV upload and mapping draft survive close and reopen from palette (#8947)
 });
 
 test('role, unload and missing hosts refuse author commands without usage or execution events (#8947)', async () => {
+  const loaded = useViewerStore.getState();
   const events: string[] = [];
   mock.method(posthog, 'capture', (event: string) => { if (event === 'command_executed') events.push(event); });
   render(<Harness />); await advance(30);
@@ -134,6 +135,22 @@ test('role, unload and missing hosts refuse author commands without usage or exe
     }
   }
   assert.equal(localStorage.getItem(RECENT_KEY), null); assert.deepEqual(events, []);
+  cleanup(); useViewerStore.setState(loaded); render(<Harness />); await advance(30);
+  press(document.querySelector('[role="combobox"]')!, 'Escape'); await advance(0);
+  click(button('Ribbon'));
+  act(() => useViewerStore.setState({ loading: true }));
+  for (const id of ['author:bulk-properties', 'author:import-data']) {
+    const trigger = document.querySelector<HTMLButtonElement>(`[data-command-id="${id}"]`); assert.ok(trigger);
+    assert.equal(trigger.disabled, true, 'a second load disables the actual ribbon author control'); click(trigger);
+  }
+  assert.equal(document.querySelector('[role="dialog"]'), null);
+  assert.equal(localStorage.getItem(RECENT_KEY), null); assert.deepEqual(events, []);
+  act(() => useViewerStore.setState({ loading: false }));
+  const bulk = document.querySelector<HTMLButtonElement>('[data-command-id="author:bulk-properties"]'); assert.ok(bulk);
+  const data = document.querySelector<HTMLButtonElement>('[data-command-id="author:import-data"]'); assert.ok(data);
+  assert.equal(bulk.disabled, false); assert.equal(data.disabled, false);
+  click(bulk); await waitForAuthor('author:bulk-properties');
+  assert.ok(document.querySelector('button[aria-label="Target source"]'), 'unlock reaches the real editor');
   cleanup(); useViewerStore.setState(original); render(<Harness hosts={false} />); await advance(30);
   assert.equal(option('elements:class-filter').getAttribute('aria-disabled'), 'true');
 });

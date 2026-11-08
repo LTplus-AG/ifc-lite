@@ -1334,13 +1334,37 @@ describe('Shift pressed or released at rest re-picks the Distance rubber band (#
     assert.equal(xy(s().activeMeasurement?.current), '2,2', 'the queued frame moved the end back off the axis');
   });
 
-  it('a frame queued before a view change Shift cannot re-pick under stays queued, as a move\'s frame', () => {
-    const { canvas, camera } = mount();
+  for (const held of [true, false]) {
+    it(`a queued frame uses Shift ${held ? 'pressed' : 'released'} after a view change skips the re-pick (#9242)`, () => {
+      const { canvas, camera } = mount();
+      freeEnd(canvas, !held);
+      fire(canvas, 'pointermove', 250, 100, { shiftKey: !held });
+      assert.equal(frames.size, 1, 'setup: a rubber-band frame is queued');
+      camera.setPosition(2, 1.6, 10);
+      locksSeen.length = 0;
+      shift(held ? 'keydown' : 'keyup', held);
+      assert.equal(locksSeen.length, 0, 'setup: the changed view skips the immediate re-pick');
+      assert.equal(frames.size, 1, 'Shift dropped the frame with no re-pick to replace it');
+      flushFrames();
+      assert.equal(xy(s().activeMeasurement?.current), held ? '2,2' : '2.5,2', 'the queued preview used the old Shift state');
+      assert.equal(axis(), held ? 'axis2' : 'none', 'the axis highlight used the old Shift state');
+    });
+  }
+
+  it('Shift during fly leaves the Distance preview alone until a measure move (#9242)', () => {
+    const { canvas } = mount();
     freeEnd(canvas);
-    fire(canvas, 'pointermove', 250, 100); // queues a frame
-    camera.setPosition(2, 1.6, 10);
+    fire(canvas, 'pointerdown', 250, 100, { button: 2, buttons: 2 });
+    locksSeen.length = 0;
     shift('keydown', true);
-    assert.equal(frames.size, 1, 'Shift dropped the frame with no re-pick to replace it');
+    assert.equal(xy(s().activeMeasurement?.current), '2.5,2', 'Shift moved the end during fly');
+    assert.equal(axis(), 'none', 'Shift highlighted an axis during fly');
+    assert.equal(locksSeen.length, 0, 'Shift raycast during fly');
+    fire(canvas, 'pointerup', 250, 100, { button: 2 });
+    fire(canvas, 'pointermove', 250, 100, { shiftKey: true });
+    flushFrames();
+    assert.equal(xy(s().activeMeasurement?.current), '2,2', 'a measure move after fly did not resume the Shift preview');
+    assert.equal(axis(), 'axis2');
   });
 
   it('with the lock ref a render behind Snap off, the Shift re-pick slides along no old edge', () => {

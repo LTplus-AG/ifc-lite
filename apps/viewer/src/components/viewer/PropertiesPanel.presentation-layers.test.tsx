@@ -16,7 +16,7 @@ import { useViewerStore } from '@/store';
 import * as layerIndex from '@/lib/presentation-layers.js';
 import { PropertiesPanel } from './PropertiesPanel.js';
 import { HierarchyPanel } from './HierarchyPanel.js';
-import { PresentationLayersSection } from './properties/PresentationLayersSection.js';
+import * as presentationSection from './properties/PresentationLayersSection.js';
 
 const initial = useViewerStore.getState();
 afterEach(() => { cleanup(); useViewerStore.setState(initial, true); });
@@ -284,7 +284,9 @@ it('#9273 a failed lazy download displays an error and retry loads real layer me
   let attempts = 0;
   const loadLookup = () => ++attempts === 1 ? Promise.reject(new Error('Chunk download failed'))
     : import('@/lib/presentation-layer-selection.js');
-  const ui = render(<PresentationLayersSection entityRef={{ modelId: 'own', expressId: 7 }} loadLookup={loadLookup} />);
+  assert.equal(typeof presentationSection.PresentationLayersSection, 'function');
+  const LayersSection = presentationSection.PresentationLayersSection;
+  const ui = render(<LayersSection entityRef={{ modelId: 'own', expressId: 7 }} loadLookup={loadLookup} />);
   await waitFor(() => !!ui.querySelector('[role="alert"]'), 'a failed download is visible in the inspector');
   assert.match(ui.textContent!, /Unable to load presentation layers/);
   const retry = [...ui.querySelectorAll('button')].find(button => button.textContent === 'Retry');
@@ -300,9 +302,11 @@ it('#9273 changing selection retries a failed layer download without retaining t
   let attempts = 0;
   const loadLookup = () => ++attempts === 1 ? Promise.reject(new Error('Chunk download failed'))
     : import('@/lib/presentation-layer-selection.js');
+  assert.equal(typeof presentationSection.PresentationLayersSection, 'function');
+  const LayersSection = presentationSection.PresentationLayersSection;
   function SelectedLayers() {
     const selected = useViewerStore(state => state.selectedEntity);
-    return selected ? <PresentationLayersSection entityRef={selected} loadLookup={loadLookup} /> : null;
+    return selected ? <LayersSection entityRef={selected} loadLookup={loadLookup} /> : null;
   }
   const ui = render(<SelectedLayers />);
   await waitFor(() => !!ui.querySelector('[role="alert"]'), 'initial download failed');

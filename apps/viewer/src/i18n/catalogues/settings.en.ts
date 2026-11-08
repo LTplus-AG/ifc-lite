@@ -30,6 +30,9 @@ export const settingsEn = {
   'settings.general.helpersTitle': 'Helpers',
   'settings.general.hoverTooltips': 'Hover tooltips',
   'settings.general.hoverTooltipsHint': 'Show an element’s name and class under the pointer.',
+  'settings.general.quantitiesTitle': 'Quantities',
+  'settings.general.updateEditedQuantities': 'Update quantities of edited elements',
+  'settings.general.updateEditedQuantitiesHint': 'After you change the shape of a loaded wall, slab, roof, column or beam, recompute its base quantities from the new geometry. Off: they stay as the file wrote them.',
 
   'settings.display.navigationTitle': 'Navigation',
   'settings.display.navigationPreset': 'Pointer and wheel controls',

@@ -38,7 +38,7 @@ ENDSEC;
 END-ISO-10303-21;`;
 async function setup(modelId = 'own') {
   const store = await new IfcParser().parseColumnar(new TextEncoder().encode(IFC).buffer);
-  const otherStore = await new IfcParser().parseColumnar(new TextEncoder().encode(IFC.replaceAll('Walls', 'Foreign layer')).buffer);
+  const otherStore = await new IfcParser().parseColumnar(new TextEncoder().encode(IFC.replaceAll('Walls', 'Foreign layer').replaceAll('A-01', 'F-99')).buffer);
   const model = { ...fixtureModel(modelId, { idOffset: 1_000_000 }), ifcDataStore: store };
   const other = { ...fixtureModel('other', { idOffset: 2_000_000 }), ifcDataStore: otherStore };
   const view = new MutablePropertyView(null, model.id);
@@ -107,6 +107,32 @@ it('#9273 leaving Layers cancels an unconsumed reveal instead of stealing focus 
   assert.ok(document.activeElement === button, 'returning to Layers does not revive the cancelled focus request');
 });
 
+
+for (const modelId of ['__legacy__', 'legacy']) {
+  it(`#9273 ${modelId} uses its own layers, mutation view and hierarchy reveal ID`, async () => {
+    const { store, editor } = await setup(modelId);
+    if (modelId === 'legacy') {
+      const view = new MutablePropertyView(null, '__legacy__');
+      useViewerStore.setState({ models: new Map(), ifcDataStore: store,
+        mutationViews: new Map([['__legacy__', view]]),
+        selectedEntityId: 7, selectedEntityIds: new Set([7]) });
+      new StoreEditor(store, view).setAttribute(50, 'Name', 'Edited fallback layer');
+    } else {
+      // A real federated __legacy__ owner must win over the different global store.
+      editor.setAttribute(50, 'Name', 'Edited own layer');
+    }
+    const ui = render(<SourceHostProvider><PropertiesPanel /><HierarchyPanel /></SourceHostProvider>);
+    assert.ok(section(ui));
+    const expected = modelId === 'legacy' ? 'Edited fallback layer (A-01)' : 'Edited own layer (A-01)';
+    assert.deepEqual([...section(ui)!.querySelectorAll('button')].map(b => b.textContent), [expected, 'Structure']);
+    assert.doesNotMatch(section(ui)!.textContent!, /Foreign/);
+    const button = [...section(ui)!.querySelectorAll('button')].find(b => b.textContent === expected);
+    assert.ok(button);
+    click(button);
+    await waitFor(() => document.activeElement?.getAttribute('data-node-id') === `presentation-layer-${modelId}-50`,
+      'the owning model layer header receives focus');
+  });
+}
 
 it('#9273 resolves a federated __legacy__ model through its own store, matching the inspector', async () => {
   await setup('__legacy__');

@@ -14,9 +14,10 @@ export function PresentationLayersSection({ entityRef }: { entityRef: EntityRef 
   const legacyStore = useViewerStore(s => s.ifcDataStore);
   const views = useViewerStore(s => s.mutationViews);
   useViewerStore(s => s.mutationVersion);
-  const legacy = entityRef.modelId === 'legacy';
-  const store = legacy ? legacyStore : models.get(entityRef.modelId)?.ifcDataStore;
-  const view = views.get(legacy ? '__legacy__' : entityRef.modelId);
+  // Match PropertiesPanel: only the selection sentinel 'legacy' bypasses models.
+  const model = entityRef.modelId === 'legacy' ? undefined : models.get(entityRef.modelId);
+  const store = model?.ifcDataStore ?? legacyStore;
+  const view = views.get(entityRef.modelId === 'legacy' ? '__legacy__' : entityRef.modelId);
   const layers = store ? presentationLayersByProduct(store, view).get(entityRef.expressId) : undefined;
   if (!layers?.length) return null;
   return <section aria-label={t('hierarchy.panel.grouping.presentationLayersTooltip')} className="border-b border-border px-3 py-1 text-xs">
@@ -30,7 +31,7 @@ export function PresentationLayersSection({ entityRef }: { entityRef: EntityRef 
         liftStartFold('left');
         state.setLeftPanelCollapsed(false);
         useViewerStore.setState({ pendingPresentationLayerReveal: {
-          nodeId: `presentation-layer-${legacy ? 'legacy' : entityRef.modelId}-${layer.expressId}`,
+          nodeId: `presentation-layer-${entityRef.modelId}-${layer.expressId}`,
         } });
       }}>
       {layer.Name}{layer.Identifier ? ` (${layer.Identifier})` : ''}

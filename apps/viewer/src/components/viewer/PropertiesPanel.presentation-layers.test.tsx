@@ -226,18 +226,23 @@ it('#9273 an explicit off-screen layer reveal wins over the held product selecti
     this.dispatchEvent(new window.Event('scroll'));
   } });
   try {
-    await setup();
+    await setup('priority');
     const extra = Array.from({ length: 300 }, (_, i) => `#${100 + i}=IFCPRESENTATIONLAYERASSIGNMENT('Layer ${String(i).padStart(3, '0')}',$,(#21),$);`).join('\n');
     const store = await new IfcParser().parseColumnar(new TextEncoder().encode(IFC.replace('ENDSEC;\nEND-ISO', `${extra}\nENDSEC;\nEND-ISO`)).buffer);
-    act(() => useViewerStore.setState({ models: new Map([['own', { ...fixtureModel('own', { idOffset: 1_000_000 }), ifcDataStore: store }]]),
-      ifcDataStore: store, mutationViews: new Map() }));
+    const state = useViewerStore.getState();
+    const offset = state.registerModelOffset('priority', 399);
+    act(() => {
+      useViewerStore.setState({ models: new Map([['priority', { ...fixtureModel('priority', { idOffset: offset }), ifcDataStore: store }]]),
+        ifcDataStore: store, mutationViews: new Map() });
+      state.setSelectedEntityId(state.toGlobalId('priority', 7));
+    });
     const ui = render(<SourceHostProvider><PropertiesPanel /><HierarchyPanel /></SourceHostProvider>);
     await waitFor(() => !!section(ui), 'large model inspector links load');
     const target = [...section(ui)!.querySelectorAll('button')].find(b => b.textContent === 'Walls (A-01)');
     assert.ok(target); // Alphabetically last, beyond 300 collapsed layer headers.
     scrolls.length = 0;
     click(target);
-    await waitFor(() => document.activeElement?.getAttribute('data-node-id') === 'presentation-layer-own-50',
+    await waitFor(() => document.activeElement?.getAttribute('data-node-id') === 'presentation-layer-priority-50',
       'the virtualizer materialises and focuses the requested off-screen header');
     await advance(100);
     const tree = ui.querySelector<HTMLElement>('[role="tree"]')!;
@@ -245,7 +250,7 @@ it('#9273 an explicit off-screen layer reveal wins over the held product selecti
     assert.ok(firstFarScroll >= 0);
     assert.ok(scrolls.slice(firstFarScroll).every(top => top > 2_000), `product reveal must not fight the explicit header: ${scrolls}`);
     assert.ok(tree.scrollTop > 2_000, `requested layer stays in view (scrollTop ${tree.scrollTop})`);
-    assert.ok(document.activeElement?.getAttribute('data-node-id') === 'presentation-layer-own-50');
+    assert.ok(document.activeElement?.getAttribute('data-node-id') === 'presentation-layer-priority-50');
   } finally {
     cleanup();
     if (height) Object.defineProperty(HTMLElement.prototype, 'scrollHeight', height);

@@ -18,3 +18,10 @@ export function useAuthoringOperation(open: boolean, modelId: string,
     return token.active && liveData === data && (state.getMutationView(modelId) ?? undefined) === view;
   }, [token, modelId, data, view]);
 }
+
+/** A committed dialog/source lease; model validity belongs to the operation's actual participants. */
+export function useDialogOperation(open: boolean, context: string) {
+  const token = useMemo(() => ({ active: false }), [open, context]);
+  useLayoutEffect(() => { token.active = open; return () => { token.active = false; }; }, [token, open]);
+  return useMemo(() => () => token.active, [token]);
+}

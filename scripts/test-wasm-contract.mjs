@@ -36,7 +36,7 @@ import { runRtcPrecisionContracts } from './lib/wasm-rtc-precision-contracts.mjs
 import { finishContractRun } from './lib/wasm-landxml-contracts.mjs';
 import { runEarlyContracts } from './lib/wasm-early-contracts.mjs';
 import { runScanOutlineContracts } from './lib/wasm-scan-outline-contracts.mjs';
-import { runPipelineDiagnosticsContracts } from './lib/wasm-pipeline-diagnostics-contracts.mjs';
+import { runPipelineDiagnosticsContracts, runBudgetRefusalContract } from './lib/wasm-pipeline-diagnostics-contracts.mjs';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = join(__dirname, '..');
 const FIXTURES_DIR = join(ROOT_DIR, 'tests/models');
@@ -83,11 +83,11 @@ console.log('✅ WASM initialized\n');
 const columnContent = COLUMN_AVAILABLE ? readFileSync(COLUMN_IFC, 'utf-8') : '';
 
 const api = new IfcAPI();
-
 let passed = 0;
 let failed = 0;
 let skipped = 0;
 runSkipVoidsContracts({ test, skip, IfcAPI });
+runBudgetRefusalContract({ IfcAPI, test });
 
 /**
  * A test (or a whole fixture-gated block of them) that did NOT run.

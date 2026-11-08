@@ -15,7 +15,7 @@ import test from 'node:test';
 import { HERE, MANIFEST_PATH, resolveReferencePath } from './lib.mjs';
 import { elementCountsFromInfo, requireVerifiedReference } from './refresh-info.mjs';
 import { verifyPath } from './fetch-references.mjs';
-import { Model, parseStep, countRoofParts, storeyAtElevation, dimensionKey, sumKnown, extract, roofSlopes, requireMeasuredExtents } from './extract-target.mjs';
+import { Model, parseStep, countRoofParts, storeyAtElevation, dimensionKey, sumKnown, extract, roofSlopes, requireRoofMeshes, requireMeasuredExtents } from './extract-target.mjs';
 
 const manifest = JSON.parse(readFileSync(MANIFEST_PATH, 'utf8'));
 
@@ -196,4 +196,17 @@ test('#9304 missing or non-finite mesh evidence cannot certify extraction', () =
   assert.throws(()=>requireMeasuredExtents(new Map()),/mesh extents/);
   assert.throws(()=>requireMeasuredExtents(new Map([[1,{min:[Infinity,0,0],max:[0,0,0]}]])),/mesh extents/);
   assert.doesNotThrow(()=>requireMeasuredExtents(new Map([[1,{min:[0,0,0],max:[1,1,1]}]])));
+});
+
+test('#9304 explicit units also scale untyped numeric space properties', () => {
+  const model = new Model("DATA;#1=IFCSIUNIT(*,.AREAUNIT.,$,.SQUARE_METRE.);#2=IFCMEASUREWITHUNIT(IFCAREAMEASURE(0.09290304),#1);#3=IFCCONVERSIONBASEDUNIT($,.AREAUNIT.,'square foot',#2);#6=IFCSPACE('s');#7=IFCPROPERTYSINGLEVALUE('Area',$,IFCREAL(100.),#3);#8=IFCPROPERTYSET('p',$,'Dimensions',$,(#7));#9=IFCRELDEFINESBYPROPERTIES('r',$,$,$,(#6),#8);ENDSEC;");
+  assert.ok(Math.abs(model.props(6)['Dimensions.Area'] - 9.290304) < 1e-9);
+});
+test('#9304 another element mesh cannot certify an unmeasured roof', () => {
+  const model = new Model("DATA;#1=IFCROOF('r');#2=IFCSLAB('a');#3=IFCSLAB('b');#4=IFCRELAGGREGATES('g',$,$,$,#1,(#2,#3));ENDSEC;");
+  const tris = new Map([[99,[{a:3}]], [2,[{a:2}]]]);
+  assert.throws(() => requireRoofMeshes(model,[1],tris), /Missing roof mesh evidence for #3/);
+  tris.set(3,[{a:1}]);
+  assert.doesNotThrow(() => requireRoofMeshes(model,[1],tris));
+  assert.doesNotThrow(() => requireRoofMeshes(model,[],new Map()));
 });

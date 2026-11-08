@@ -330,7 +330,7 @@ export class Model {
           if (p?.type === 'IFCPROPERTYSINGLEVALUE') {
             const n = numVal(p.args[2]);
             const dimensional = { IFCAREAMEASURE: this.areaScale, IFCLENGTHMEASURE: this.lengthScale, IFCVOLUMEMEASURE: this.volumeScale }[p.args[2]?.t];
-            const scale = dimensional === undefined ? 1 : p.args[3] ? this.unitScale(refId(p.args[3])) : dimensional;
+            const scale = p.args[3] ? this.unitScale(refId(p.args[3])) : dimensional ?? 1;
             out[`${setName}.${strVal(p.args[0])}`] = n === null ? strVal(p.args[2]) ?? enumVal(p.args[2]?.v) : n * scale;
           }
         }
@@ -452,6 +452,21 @@ async function meshPassInner(bytes, wantedIds) {
 export function requireMeasuredExtents(extents) {
   if (extents.size === 0 || [...extents.values()].some(ext => ![...ext.min,...ext.max].every(Number.isFinite))) {
     throw new Error('No complete finite mesh extents were measured');
+  }
+}
+
+/** Every roof must have its own mesh or measured aggregate parts. */
+export function requireRoofMeshes(model, roots, tris) {
+  const pending = [...roots];
+  const seen = new Set();
+  while (pending.length) {
+    const id = pending.pop();
+    if (seen.has(id)) continue;
+    seen.add(id);
+    if ((tris.get(id) ?? []).some(t => Number.isFinite(t.a) && t.a > 0)) continue;
+    const parts = model.partsOf.get(id) ?? [];
+    if (!parts.length) throw new Error(`Missing roof mesh evidence for #${id}`);
+    pending.push(...parts);
   }
 }
 
@@ -687,6 +702,7 @@ export async function extract(refId_, entry, file) {
   }
 
   // ---- roof
+  if (mesh) requireRoofMeshes(model, roofRoots, mesh.tris);
   const roofTris = [...roofParts].map((id) => mesh?.tris.get(id)).filter(Boolean);
   const roof = {
     elements: roofRoots.length,

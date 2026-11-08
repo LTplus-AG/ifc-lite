@@ -91,3 +91,6 @@ export interface ModellingStoreBackendMethods extends PhysicalStoreBackendMethod
   /** Associate a material (any IfcMaterialSelect) with objects via `IfcRelAssociatesMaterial`, replacing their previous association. Returns the relationship. */
   assignMaterial(modelId: string, materialExpressId: number, objectExpressIds: number[]): EntityRef;
 }
+
+/** What `createModellingStoreBackendWithoutStoreys` builds: everything but the storey methods. */
+export type ModellingStoreBackendMethodsWithoutStoreys = Omit<ModellingStoreBackendMethods, keyof StoreyStoreBackendMethods>;

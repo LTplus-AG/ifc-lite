@@ -1,0 +1,450 @@
+{
+  "schema": "ifclite-parity-catalogue/1",
+  "issue": 9296,
+  "description": "The modelling parity scorecard: one row per capability an architect treats as table stakes in Revit, Archicad, Vectorworks and Bonsai. Each row has an SDK, a UI and an output probe; their results (ifclite-parity-result/1) are scored by tests/modelling-parity/score.mjs and rendered into docs/architecture/modelling-parity-ledger.md by scripts/generate-modelling-parity-ledger.mjs.",
+  "levels": ["sdk", "ui", "output"],
+  "owners": {
+    "sdk": "L1",
+    "output": "L1",
+    "ui": "L4",
+    "exercise": "L2",
+    "perf": "L3"
+  },
+  "scoring": "A table-stakes row is met (1) when every applicable level's best result is pass, partial (0.5) when any level has a pass or partial, and missing (0) otherwise. skip never counts as a pass. Rows with tableStakes: false are reported but never scored.",
+  "commonOutputOracle": "The SDK probe's exported IFC4 has no errors in `ifc-lite validate`, no issues in IfcOpenShell validate with express rules, and reopens with the session's product census (counts by IFC class) and the row's key entity classes intact; a second export from the reopened model keeps that census. Files a UI result hands over are judged too: an IFC by the same checks, an SVG/PDF/DXF drawing by a sanity check only. A row's output `requires` names the file kinds it needs (default: an IFC).",
+  "capabilities": [
+    {
+      "id": "storeys",
+      "title": "Storeys and levels",
+      "group": "Levels and grids",
+      "tableStakes": true,
+      "reference": "Revit Levels, Archicad Story Settings (Insert above/below), Bonsai IfcBuildingStorey with elevations.",
+      "probes": {
+        "sdk": { "owner": "L1", "applicable": true, "script": "tests/modelling-parity/probes/sdk/storeys.js", "oracle": "On a blank model, storeys added at 3.0 and 6.0 m list at those elevations; a rename shows; a floor-to-floor edit of the ground storey to 3.3 m moves every storey above by 0.3 m; a wall whose top is attached to the storey above re-heights to 3.3 m while a fixed-height wall keeps 2.5 m; inserting a storey between two others re-binds walls attached to the next storey (Archicad Insert above); deleting a storey that holds elements moves them to the chosen storey. Heights are read from the exported, meshed IFC." },
+        "ui": { "owner": "L4", "applicable": true, "oracle": "In the Model workspace on the real GPU, the storey manager adds a storey above, renames it and edits its floor-to-floor height; the list shows storey names (never GUIDs), adding a storey does not switch the active storey, and attached walls visibly re-height in the viewport." },
+        "output": { "owner": "L1", "applicable": true, "keyTypes": ["IfcBuildingStorey", "IfcWall"], "oracle": "Common output oracle; the edited storeys reopen with their elevations and the walls stay contained in them." }
+      },
+      "exercises": { "owner": "L2", "refs": ["F2", "F4", "F5", "F6"] }
+    },
+    {
+      "id": "grids",
+      "title": "Structural grids",
+      "group": "Levels and grids",
+      "tableStakes": true,
+      "reference": "Revit Grids (columns move with grids), Archicad Grid System, Bonsai IfcGrid.",
+      "probes": {
+        "sdk": { "owner": "L1", "applicable": true, "script": "tests/modelling-parity/probes/sdk/grids.js", "oracle": "A 3 x 3 grid tagged A-C / 1-3 exports one IfcGrid with six IfcGridAxis; a column placed on crossing B2 is centred on (5, 4) through an IfcGridPlacement; moving the grid 1 m east carries the bound column with it." },
+        "ui": { "owner": "L4", "applicable": true, "oracle": "Draw a grid with typed spacings, see bubbles with tags in plan and 3D, snap a column to a crossing, and drag a grid line: the bound columns follow." },
+        "output": { "owner": "L1", "applicable": true, "keyTypes": ["IfcGrid", "IfcGridAxis", "IfcColumn"], "oracle": "Common output oracle; the grid axes and the column's grid placement survive the round trip." }
+      },
+      "exercises": { "owner": "L2", "refs": ["F4", "F5"] }
+    },
+    {
+      "id": "wall-chains-autojoin",
+      "title": "Wall chains that auto-join",
+      "group": "Walls",
+      "tableStakes": true,
+      "reference": "Revit walls clean up at corners as drawn, Archicad wall chains with intersection priority, Bonsai joins walls on draw.",
+      "probes": {
+        "sdk": { "owner": "L1", "applicable": true, "script": "tests/modelling-parity/probes/sdk/wall-chains-autojoin.js", "oracle": "Four walls drawn end to end around a 10 x 8 m rectangle join at every corner without a further call (the outer corner point is inside exactly one wall, the inner corner point is not inside two); after explicit joins every corner is clean; a partition meeting the outer wall forms a clean T. Point-in-solid tests on the exported meshes." },
+        "ui": { "owner": "L4", "applicable": true, "oracle": "Draw a closed wall chain with the wall tool in one gesture sequence; corners render as clean L joins and a partition snapped onto a wall forms a T, with no manual join step." },
+        "output": { "owner": "L1", "applicable": true, "keyTypes": ["IfcWall"], "oracle": "Common output oracle; IfcRelConnectsPathElements between the joined walls survive the round trip." }
+      },
+      "exercises": { "owner": "L2", "refs": ["F1", "F2", "F3"] }
+    },
+    {
+      "id": "layered-walls",
+      "title": "Layered (compound) walls",
+      "group": "Walls",
+      "tableStakes": true,
+      "reference": "Revit wall type Structure layers, Archicad composites, Bonsai IfcMaterialLayerSet types.",
+      "probes": {
+        "sdk": { "owner": "L1", "applicable": true, "script": "tests/modelling-parity/probes/sdk/layered-walls.js", "oracle": "A wall gets an ordered three-layer set (brick 115, insulation 100, plaster 15 mm) through IfcMaterialLayerSetUsage; the layers read back in order in the live session and export; typing a 0.1 m wall with a layered wall type makes its body the layers' 0.23 m total, as a Revit/Archicad type does." },
+        "ui": { "owner": "L4", "applicable": true, "oracle": "Pick a layered wall type from the type list, draw a wall, see its layers in the properties panel and section, and change the type: the drawn wall's thickness follows." },
+        "output": { "owner": "L1", "applicable": true, "keyTypes": ["IfcWall"], "oracle": "Common output oracle; the IfcMaterialLayerSetUsage and its layers survive the round trip." }
+      },
+      "exercises": { "owner": "L2", "refs": ["F2", "F3"] }
+    },
+    {
+      "id": "wall-top-base-constraints",
+      "title": "Wall top and base constraints",
+      "group": "Walls",
+      "tableStakes": true,
+      "reference": "Revit Base/Top Constraint with offsets and Attach Top/Base, Archicad Home story and Top link, Bonsai wall-to-slab extension.",
+      "probes": {
+        "sdk": { "owner": "L1", "applicable": true, "script": "tests/modelling-parity/probes/sdk/wall-top-base-constraints.js", "oracle": "With walls attached to the storey above, raising that storey from 3.0 to 3.4 m brings the attached wall top to 3.4 m, keeps a -0.2 m top offset (3.2 m), moves an upper-storey wall's base with its own storey, and a wall attached to a slab underside reaches that underside." },
+        "ui": { "owner": "L4", "applicable": true, "oracle": "Set a wall's top constraint to the storey above (shown by name), give it an offset, attach another wall's top to a slab, then edit the storey: walls re-height in the viewport." },
+        "output": { "owner": "L1", "applicable": true, "keyTypes": ["IfcWall", "IfcSlab"], "oracle": "Common output oracle; the constraint records (IfcLite_StoreyAttachment) survive the round trip." }
+      },
+      "exercises": { "owner": "L2", "refs": ["F2", "F4"] }
+    },
+    {
+      "id": "slab-with-openings",
+      "title": "Slabs from outlines, with openings",
+      "group": "Slabs and roofs",
+      "tableStakes": true,
+      "reference": "Revit floor by sketch + shaft opening, Archicad slab with holes, Bonsai slab with IfcOpeningElement.",
+      "probes": {
+        "sdk": { "owner": "L1", "applicable": true, "script": "tests/modelling-parity/probes/sdk/slab-with-openings.js", "oracle": "An L-shaped slab from a sketched outline has the outline's 84 m² footprint; a 1.5 x 2 m shaft opening voids it (a point in the shaft is not solid, the volume drops by 3 m² x thickness); thickening the slab to 0.3 m keeps the opening." },
+        "ui": { "owner": "L4", "applicable": true, "oracle": "Sketch an L-shaped slab and cut a shaft into it with the opening tool; the void shows in 3D and plan, and editing the slab's thickness keeps it." },
+        "output": { "owner": "L1", "applicable": true, "keyTypes": ["IfcSlab", "IfcOpeningElement"], "oracle": "Common output oracle; the IfcRelVoidsElement survives the round trip." }
+      },
+      "exercises": { "owner": "L2", "refs": ["F1", "F2", "F5"] }
+    },
+    {
+      "id": "roof-by-footprint",
+      "title": "Roof by footprint (hip, gable, mono-pitch)",
+      "group": "Slabs and roofs",
+      "tableStakes": true,
+      "reference": "Revit Roof by Footprint with slope per edge, Archicad multi-plane roof, Bonsai roof by footprint (#9214).",
+      "probes": {
+        "sdk": { "owner": "L1", "applicable": true, "script": "tests/modelling-parity/probes/sdk/roof-by-footprint.js", "oracle": "From a 10 x 8 m footprint with a slope per edge: a hip roof at 30° on every edge rises 4·tan 30° = 2.31 m above the eaves; a gable roof (30° on the long edges) rises the same with vertical gable ends; a mono-pitch roof at 10° rises 1.41 m. The hip roof is the core oracle." },
+        "ui": { "owner": "L4", "applicable": true, "oracle": "Pick a footprint (or walls), set slopes per edge, and get a hip, gable and mono-pitch roof whose planes meet at ridges and hips in the viewport." },
+        "output": { "owner": "L1", "applicable": true, "keyTypes": ["IfcRoof"], "oracle": "Common output oracle; the sloped roof's geometry survives the round trip." }
+      },
+      "exercises": { "owner": "L2", "refs": ["F2", "F3"] }
+    },
+    {
+      "id": "columns-beams-on-grid-follow-levels",
+      "title": "Columns and beams on grids that follow levels",
+      "group": "Structure",
+      "tableStakes": true,
+      "reference": "Revit columns with Base/Top Level and beams on a reference level, Archicad columns linked to the storey above.",
+      "probes": {
+        "sdk": { "owner": "L1", "applicable": true, "script": "tests/modelling-parity/probes/sdk/columns-beams-on-grid-follow-levels.js", "oracle": "Four columns placed on grid crossings with their tops attached to the storey above; after the ground storey's floor-to-floor goes from 3.5 to 6 m, every column top is at 6 m (core), a beam on Level 2 moves with it, and the columns keep their crossings." },
+        "ui": { "owner": "L4", "applicable": true, "oracle": "Place columns at grid crossings with Top = storey above, edit the floor-to-floor height in the storey manager, and see the columns stretch with no void under the slab." },
+        "output": { "owner": "L1", "applicable": true, "keyTypes": ["IfcColumn", "IfcBeam", "IfcGrid"], "oracle": "Common output oracle." }
+      },
+      "exercises": { "owner": "L2", "refs": ["F4", "F5"] }
+    },
+    {
+      "id": "curtain-walls",
+      "title": "Curtain walls with grids, mullions and panels",
+      "group": "Facade",
+      "tableStakes": true,
+      "reference": "Revit curtain wall types with grids/mullions/panels, Archicad Curtain Wall tool, Bonsai IfcCurtainWall aggregates.",
+      "probes": {
+        "sdk": { "owner": "L1", "applicable": true, "script": "tests/modelling-parity/probes/sdk/curtain-walls.js", "oracle": "A 6 x 3 m curtain wall with 4 x 2 bays is an IfcCurtainWall aggregating 8 IfcPlate panels and at least 8 IfcMember mullions/transoms that fill its extent (core); attached to the storey above, its top follows a floor-to-floor edit to 4 m." },
+        "ui": { "owner": "L4", "applicable": true, "oracle": "Draw a curtain wall along a facade, set its grid spacing, and see mullions and panels; it follows a storey edit like a wall." },
+        "output": { "owner": "L1", "applicable": true, "keyTypes": ["IfcCurtainWall", "IfcPlate", "IfcMember"], "oracle": "Common output oracle; the aggregate decomposition survives the round trip." }
+      },
+      "exercises": { "owner": "L2", "refs": ["F4", "F5"] }
+    },
+    {
+      "id": "hosted-doors-windows-from-types",
+      "title": "Hosted doors and windows from types",
+      "group": "Openings and circulation",
+      "tableStakes": true,
+      "reference": "Revit hosted door/window families, Archicad door/window objects, Bonsai typed IfcDoor/IfcWindow with fillings.",
+      "probes": {
+        "sdk": { "owner": "L1", "applicable": true, "script": "tests/modelling-parity/probes/sdk/hosted-doors-windows-from-types.js", "oracle": "A door (0.9 x 2.1 m) and a window (1.2 x 1.4 m, sill 0.9 m) placed in a wall cut real openings (void at the door and window, solid above the door and below the sill, two IfcRelFillsElement) (core); both are occurrences of an IfcDoorType / IfcWindowType; moving the wall 1 m carries opening and filling; sliding the door along the wall moves the void." },
+        "ui": { "owner": "L4", "applicable": true, "oracle": "Pick a door and a window type from a catalogue, click into a wall, see the cut, then drag the door along the wall; moving the wall carries both." },
+        "output": { "owner": "L1", "applicable": true, "keyTypes": ["IfcDoor", "IfcWindow", "IfcOpeningElement"], "oracle": "Common output oracle; fills, voids and type relations survive the round trip." }
+      },
+      "exercises": { "owner": "L2", "refs": ["F1", "F2", "F3", "F6"] }
+    },
+    {
+      "id": "stairs-railings",
+      "title": "Stairs and railings between levels",
+      "group": "Openings and circulation",
+      "tableStakes": true,
+      "reference": "Revit stair by component with automatic railings, Archicad Stair and Railing tools, Bonsai IfcStair/IfcRailing.",
+      "probes": {
+        "sdk": { "owner": "L1", "applicable": true, "script": "tests/modelling-parity/probes/sdk/stairs-railings.js", "oracle": "A straight 17-riser stair from Level 1 tops out exactly at Level 2 (3.0 m) (core); a 0.9 m railing along it reaches 3.9 m; after a floor-to-floor edit to 3.3 m the stair refits to land at 3.3 m and the railing follows to 4.2 m." },
+        "ui": { "owner": "L4", "applicable": true, "oracle": "Draw a stair from storey to storey with the stair tool (riser count derived from the height), add a railing to it, then edit the storey height: both refit." },
+        "output": { "owner": "L1", "applicable": true, "keyTypes": ["IfcStair", "IfcStairFlight", "IfcRailing"], "oracle": "Common output oracle." }
+      },
+      "exercises": { "owner": "L2", "refs": ["F2", "F5"] }
+    },
+    {
+      "id": "type-editing",
+      "title": "Type editing that updates every instance",
+      "group": "Types and materials",
+      "tableStakes": true,
+      "reference": "Revit Edit Type, Archicad favourites and composites, Bonsai type manager (IfcRelDefinesByType).",
+      "probes": {
+        "sdk": { "owner": "L1", "applicable": true, "script": "tests/modelling-parity/probes/sdk/type-editing.js", "oracle": "Three walls typed WT-200: a type pset value reads back on every occurrence in the live session; editing it on the type changes the one type pset that defines all three (core, judged on the export); one wall swaps to WT-300; a type-level geometric parameter (wall thickness) drives the occurrences' bodies." },
+        "ui": { "owner": "L4", "applicable": true, "oracle": "Open a type, edit a property and a geometric parameter, and see every instance update; swap one instance's type from the properties panel." },
+        "output": { "owner": "L1", "applicable": true, "keyTypes": ["IfcWall"], "oracle": "Common output oracle; IfcRelDefinesByType and type psets survive the round trip." }
+      },
+      "exercises": { "owner": "L2", "refs": ["F3", "F4"] }
+    },
+    {
+      "id": "materials",
+      "title": "Materials with appearance",
+      "group": "Types and materials",
+      "tableStakes": true,
+      "reference": "Revit materials with graphics/appearance, Archicad building materials and surfaces, Bonsai IfcMaterial with styles.",
+      "probes": {
+        "sdk": { "owner": "L1", "applicable": true, "script": "tests/modelling-parity/probes/sdk/materials.js", "oracle": "Concrete and steel materials are assigned to a slab and a column, read back in the live session, survive export, and reassigning the column to steel replaces its concrete association (core); a material carries its own appearance colour (IfcMaterialDefinitionRepresentation)." },
+        "ui": { "owner": "L4", "applicable": true, "oracle": "Create a material with a colour, assign it to elements from the properties panel, and see them render in that colour; reassign and see the change." },
+        "output": { "owner": "L1", "applicable": true, "keyTypes": ["IfcSlab", "IfcColumn"], "oracle": "Common output oracle; IfcRelAssociatesMaterial survives the round trip." }
+      },
+      "exercises": { "owner": "L2", "refs": ["F2", "F3"] }
+    },
+    {
+      "id": "transforms-move-copy-rotate-mirror-array",
+      "title": "Move, copy, rotate, mirror, array",
+      "group": "Editing",
+      "tableStakes": true,
+      "reference": "Revit Modify tools (Move, Copy, Rotate, Mirror, Array), Archicad Drag/Rotate/Mirror/Multiply, Bonsai transform operators.",
+      "probes": {
+        "sdk": { "owner": "L1", "applicable": true, "script": "tests/modelling-parity/probes/sdk/transforms-move-copy-rotate-mirror-array.js", "oracle": "Move by (1, 2) m (core), rotate 90° about a pivot, copy by (0, 3) m, mirror about an axis, a 4-item linear array at 2 m spacing and a 4-item polar array about the origin each place the element at the typed position, read from the exported meshes." },
+        "ui": { "owner": "L4", "applicable": true, "oracle": "Each tool runs from the toolbar or a shortcut with typed values and a preview, and Undo reverts it." },
+        "output": { "owner": "L1", "applicable": true, "keyTypes": ["IfcColumn", "IfcWall"], "oracle": "Common output oracle." }
+      },
+      "exercises": { "owner": "L2", "refs": ["F3", "F6"] }
+    },
+    {
+      "id": "align-offset-trim-split",
+      "title": "Align, offset, trim/extend, split",
+      "group": "Editing",
+      "tableStakes": true,
+      "reference": "Revit Align/Offset/Trim-Extend/Split Element, Archicad Adjust/Offset/Trim/Split, Bonsai extend/trim/split operators.",
+      "probes": {
+        "sdk": { "owner": "L1", "applicable": true, "script": "tests/modelling-parity/probes/sdk/align-offset-trim-split.js", "oracle": "A column's edge aligns to a reference column's edge; a wall offsets to a parallel copy 1.5 m away; a wall extends to a boundary wall (core); a wall trims at a crossing wall (core); a 6 m wall splits at 2 m into 2 m and 4 m pieces (core)." },
+        "ui": { "owner": "L4", "applicable": true, "oracle": "Each tool runs with picks on the real GPU: align to an edge, offset by a typed distance, trim/extend to a boundary, split at a click." },
+        "output": { "owner": "L1", "applicable": true, "keyTypes": ["IfcWall", "IfcColumn"], "oracle": "Common output oracle." }
+      },
+      "exercises": { "owner": "L2", "refs": ["F3"] }
+    },
+    {
+      "id": "copy-to-levels",
+      "title": "Copy to levels",
+      "group": "Editing",
+      "tableStakes": true,
+      "reference": "Revit Paste Aligned to Selected Levels, Archicad copy to multiple storeys, Bonsai copy to storeys.",
+      "probes": {
+        "sdk": { "owner": "L1", "applicable": true, "script": "tests/modelling-parity/probes/sdk/copy-to-levels.js", "oracle": "A typical floor (four walls attached to the storey above, a hosted door, a slab, a column) copies to Level 2 and Level 3 in one operation (core); copies land at their storey elevations with the door still hosted; the copied walls attach to the storey above their new storey (re-bound, not copied verbatim) and reach it." },
+        "ui": { "owner": "L4", "applicable": true, "oracle": "Select a floor's elements and copy them to several storeys at once from one dialog, with attachments re-bound." },
+        "output": { "owner": "L1", "applicable": true, "keyTypes": ["IfcWall", "IfcSlab", "IfcColumn", "IfcDoor"], "oracle": "Common output oracle." }
+      },
+      "exercises": { "owner": "L2", "refs": ["F4", "F5"] }
+    },
+    {
+      "id": "snapping-inference",
+      "title": "Snapping and inference",
+      "group": "Precision input",
+      "tableStakes": true,
+      "reference": "Revit snaps and alignment lines, Archicad Guide Lines and Snap Guides, SketchUp-style inference in Bonsai.",
+      "probes": {
+        "sdk": { "owner": "L1", "applicable": false, "script": "tests/modelling-parity/probes/sdk/snapping-inference.js", "oracle": "Not applicable: a headless script passes exact coordinates. The probe reports skip." },
+        "ui": { "owner": "L4", "applicable": true, "oracle": "Drawing a wall, the cursor snaps to endpoints, midpoints, intersections, grid crossings and perpendicular/parallel inference lines with a visible indicator; the committed geometry lands exactly on the snapped point." },
+        "output": { "owner": "L1", "applicable": false, "oracle": "Not applicable: snapping produces no artifact beyond the geometry other rows validate." }
+      },
+      "exercises": { "owner": "L2", "refs": ["F1", "F2", "F3"] }
+    },
+    {
+      "id": "typed-input-temp-dims",
+      "title": "Typed input and temporary dimensions",
+      "group": "Precision input",
+      "tableStakes": true,
+      "reference": "Revit temporary dimensions you type into, Archicad Tracker, Bonsai typed distances while drawing.",
+      "probes": {
+        "sdk": { "owner": "L1", "applicable": false, "script": "tests/modelling-parity/probes/sdk/typed-input-temp-dims.js", "oracle": "Not applicable: a headless script passes exact values. The probe reports skip." },
+        "ui": { "owner": "L4", "applicable": true, "oracle": "While drawing, typing a length or angle sets it exactly; after placing, a temporary dimension to the nearest element can be clicked and edited to move the element by the typed distance." },
+        "output": { "owner": "L1", "applicable": false, "oracle": "Not applicable: typed input produces no artifact beyond the geometry other rows validate." }
+      },
+      "exercises": { "owner": "L2", "refs": ["F1", "F2"] }
+    },
+    {
+      "id": "rooms-with-area",
+      "title": "Rooms with computed area",
+      "group": "Spaces and data",
+      "tableStakes": true,
+      "reference": "Revit Room (area at wall finish), Archicad Zone (net area), Bonsai space generation with Qto_SpaceBaseQuantities.",
+      "probes": {
+        "sdk": { "owner": "L1", "applicable": true, "script": "tests/modelling-parity/probes/sdk/rooms-with-area.js", "oracle": "In a 10 x 6 m outline (0.2 m walls) split by a 0.1 m partition, room generation finds two rooms (core) whose areas are the net 4.85 x 5.8 = 28.13 m² inside the wall faces (core); the area is stored as Qto_SpaceBaseQuantities.NetFloorArea; moving the partition 1 m updates the two room areas." },
+        "ui": { "owner": "L4", "applicable": true, "oracle": "Click inside walls to place a room, see its name and area tag, then move a wall and see the room boundary and area update." },
+        "output": { "owner": "L1", "applicable": true, "keyTypes": ["IfcSpace"], "oracle": "Common output oracle; space boundaries and quantities survive the round trip." }
+      },
+      "exercises": { "owner": "L2", "refs": ["F1", "F2", "F3"] }
+    },
+    {
+      "id": "schedules-quantities",
+      "title": "Schedules and quantities",
+      "group": "Spaces and data",
+      "tableStakes": true,
+      "reference": "Revit schedules/quantities, Archicad Interactive Schedule, Bonsai/IfcOpenShell base quantities (Qto_*BaseQuantities).",
+      "probes": {
+        "sdk": { "owner": "L1", "applicable": true, "script": "tests/modelling-parity/probes/sdk/schedules-quantities.js", "oracle": "From the exported file, `ifc-lite schedule --preset wall` lists all four walls; each row's Length and NetVolume match the modelled geometry with the door opening deducted, within 1 % (core); `--preset door` lists the door's 0.9 m width." },
+        "ui": { "owner": "L4", "applicable": true, "oracle": "Open a wall schedule in the viewer: one row per wall with length, area and volume that update when a wall is edited, and the schedule exports to CSV." },
+        "output": { "owner": "L1", "applicable": true, "keyTypes": ["IfcWall", "IfcDoor"], "oracle": "Common output oracle; IfcElementQuantity sets survive the round trip." }
+      },
+      "exercises": { "owner": "L2", "refs": ["F3"] }
+    },
+    {
+      "id": "plans-sections-elevations",
+      "title": "Plans, sections and elevations",
+      "group": "Documentation",
+      "tableStakes": true,
+      "reference": "Revit plan/section/elevation views, Archicad floor plans and sections, Bonsai drawing generation.",
+      "probes": {
+        "sdk": { "owner": "L1", "applicable": false, "script": "tests/modelling-parity/probes/sdk/plans-sections-elevations.js", "oracle": "Documentation capability: the SDK level reports skip with the reason that no headless operation cuts drawings from the model." },
+        "ui": { "owner": "L4", "applicable": true, "oracle": "Generate a floor plan, a section and an elevation of F2; cut walls show poured fill, the section line and elevation markers appear in plan, and the views update when the model changes." },
+        "output": { "owner": "L1", "applicable": true, "requires": [["svg", "pdf", "dxf"]], "oracle": "Handed over by the UI probe (L4) under $PARITY_OUT/artifacts/<id>/ per the contract's Handoffs. The exported plan/section drawing (SVG, PDF or DXF) passes the sanity check; the target is that it opens in a third-party reader with the cut elements on their own layers at the stated scale. Drawing files get a sanity check only (they parse, are not empty and carry linework or pages), not a check of the drawing's correctness." }
+      },
+      "exercises": { "owner": "L2", "refs": ["F3"] }
+    },
+    {
+      "id": "dimensions-tags",
+      "title": "Dimensions and tags",
+      "group": "Documentation",
+      "tableStakes": true,
+      "reference": "Revit associative dimensions and tags, Archicad dimensions and labels, Bonsai annotations.",
+      "probes": {
+        "sdk": { "owner": "L1", "applicable": false, "script": "tests/modelling-parity/probes/sdk/dimensions-tags.js", "oracle": "Documentation capability: the SDK level reports skip." },
+        "ui": { "owner": "L4", "applicable": true, "oracle": "On a plan, place a dimension string across walls and tags on a door and a room; moving a wall updates the dimension value and the tag shows the element's live data." },
+        "output": { "owner": "L1", "applicable": true, "requires": [["svg", "pdf", "dxf", "ifc"]], "oracle": "Handed over by the UI probe (L4) under $PARITY_OUT/artifacts/<id>/ per the contract's Handoffs. A drawing file with the dimensions and tags passes the sanity check, or, when they are saved into the model, an IFC with IfcAnnotation passes the full IFC checks (ifc-lite validate, reopen, IfcOpenShell). Drawing files get a sanity check only (they parse, are not empty and carry linework or pages), not a check of the drawing's correctness." }
+      },
+      "exercises": { "owner": "L2", "refs": ["F3"] }
+    },
+    {
+      "id": "sheets-pdf-dwg",
+      "title": "Sheets, PDF and DWG/DXF export",
+      "group": "Documentation",
+      "tableStakes": true,
+      "reference": "Revit sheets with title blocks and PDF/DWG export, Archicad Layout Book and Publisher, Bonsai sheets with SVG/PDF.",
+      "probes": {
+        "sdk": { "owner": "L1", "applicable": false, "script": "tests/modelling-parity/probes/sdk/sheets-pdf-dwg.js", "oracle": "Documentation capability: the SDK level reports skip." },
+        "ui": { "owner": "L4", "applicable": true, "oracle": "Place a plan and a section on an A1 sheet with a title block and export it to PDF and DXF in a few actions." },
+        "output": { "owner": "L1", "applicable": true, "requires": [["pdf"], ["dxf"]], "oracle": "Handed over by the UI probe (L4) under $PARITY_OUT/artifacts/<id>/ per the contract's Handoffs. Both a sheet PDF (at least one page; the MediaBox is reported) and a DXF (ENTITIES with linework, EOF) pass the sanity check; the target is the sheet's paper size and per-category layers in a third-party reader. Drawing files get a sanity check only (they parse, are not empty and carry linework or pages), not a check of the drawing's correctness." }
+      },
+      "exercises": { "owner": "L2", "refs": ["F3"] }
+    },
+    {
+      "id": "psets-classification-valid-ifc4",
+      "title": "Psets, classification and valid IFC4",
+      "group": "Spaces and data",
+      "tableStakes": true,
+      "reference": "Revit IFC export with property mapping and classification, Archicad Classification Manager and IFC Translator, Bonsai native IFC4 with ifcopenshell.api.classification.",
+      "probes": {
+        "sdk": { "owner": "L1", "applicable": true, "script": "tests/modelling-parity/probes/sdk/psets-classification-valid-ifc4.js", "oracle": "Standard and custom psets with typed values (IfcBoolean, IfcLabel, IfcThermalTransmittanceMeasure, IfcReal) read back in the live session and export as IFC4 (core); an element carries a Uniclass classification reference through a classification API." },
+        "ui": { "owner": "L4", "applicable": true, "oracle": "Edit psets and assign a classification from the properties panel, export IFC4, and see the export review in plain language." },
+        "output": { "owner": "L1", "applicable": true, "keyTypes": ["IfcWall"], "oracle": "Common output oracle: the IFC4 export is valid to `ifc-lite validate` and IfcOpenShell express rules and keeps the psets on reopen." }
+      },
+      "exercises": { "owner": "L2", "refs": ["F1", "F2", "F6"] }
+    },
+    {
+      "id": "large-tall-model-performance",
+      "title": "Large and tall model performance",
+      "group": "Scale",
+      "tableStakes": true,
+      "reference": "Revit and Archicad stay interactive on 40-storey towers; issue #9296 R1 targets F5 authored headless in under 60 s with per-operation cost growing under 2x from 1K to 50K elements.",
+      "probes": {
+        "sdk": { "owner": "L1", "applicable": true, "script": "tests/modelling-parity/probes/sdk/large-tall-model-performance.js", "oracle": "The F5 tower (40 storeys, 7 x 7 grid, a ~50-element typical floor copied to 39 storeys) authors headless in under 60 s (core), and one addColumn costs less than twice as much at 1,000 session elements as in an empty session (core). Both phases are capped and report how far they got. Untimed host: a capability probe, not benchmark evidence (L3 owns the performance ratchet)." },
+        "ui": { "owner": "L4", "applicable": true, "oracle": "F5 loaded in the viewer orbits at interactive frame rates on the real GPU and a single edit (move a column) commits in under 100 ms." },
+        "output": { "owner": "L1", "applicable": true, "keyTypes": ["IfcColumn", "IfcBuildingStorey"], "oracle": "Common output oracle on the probe's tower export." }
+      },
+      "exercises": { "owner": "L2", "refs": ["F5"] }
+    },
+    {
+      "id": "curved-walls",
+      "title": "Curved walls",
+      "group": "Beyond table stakes",
+      "tableStakes": false,
+      "reference": "Revit arc walls, Archicad curved walls.",
+      "probes": {
+        "sdk": { "owner": "L1", "applicable": true, "oracle": "An arc wall of radius 5 m over 90° meshes as a curved solid of the right length; not probed in round 0." },
+        "ui": { "owner": "L4", "applicable": true, "oracle": "Draw an arc wall by three points." },
+        "output": { "owner": "L1", "applicable": true, "oracle": "Common output oracle." }
+      }
+    },
+    {
+      "id": "ramps",
+      "title": "Ramps and sloped slabs",
+      "group": "Beyond table stakes",
+      "tableStakes": false,
+      "reference": "Revit ramps and sloped floors, Archicad ramps.",
+      "probes": {
+        "sdk": { "owner": "L1", "applicable": true, "oracle": "A 1:12 ramp between two levels lands on both; not probed in round 0." },
+        "ui": { "owner": "L4", "applicable": true, "oracle": "Draw a ramp between storeys." },
+        "output": { "owner": "L1", "applicable": true, "oracle": "Common output oracle." }
+      }
+    },
+    {
+      "id": "ceilings",
+      "title": "Ceilings",
+      "group": "Beyond table stakes",
+      "tableStakes": false,
+      "reference": "Revit ceilings by room boundary, Archicad ceiling slabs.",
+      "probes": {
+        "sdk": { "owner": "L1", "applicable": true, "oracle": "A ceiling (IfcCovering CEILING) fills a room at a typed height; not probed in round 0." },
+        "ui": { "owner": "L4", "applicable": true, "oracle": "Click in a room to place a ceiling." },
+        "output": { "owner": "L1", "applicable": true, "oracle": "Common output oracle." }
+      }
+    },
+    {
+      "id": "footings",
+      "title": "Footings and foundations",
+      "group": "Beyond table stakes",
+      "tableStakes": false,
+      "reference": "Revit isolated/wall footings, Archicad foundations.",
+      "probes": {
+        "sdk": { "owner": "L1", "applicable": true, "oracle": "Isolated footings under columns and a strip footing under a wall in the live model; not probed in round 0." },
+        "ui": { "owner": "L4", "applicable": true, "oracle": "Place footings under selected columns." },
+        "output": { "owner": "L1", "applicable": true, "oracle": "Common output oracle." }
+      }
+    },
+    {
+      "id": "groups",
+      "title": "Groups",
+      "group": "Beyond table stakes",
+      "tableStakes": false,
+      "reference": "Revit model groups, Archicad groups/modules.",
+      "probes": {
+        "sdk": { "owner": "L1", "applicable": true, "oracle": "Elements grouped as an IfcGroup copy and move together; not probed in round 0." },
+        "ui": { "owner": "L4", "applicable": true, "oracle": "Group a selection and copy the group." },
+        "output": { "owner": "L1", "applicable": true, "oracle": "Common output oracle." }
+      }
+    },
+    {
+      "id": "georeferencing",
+      "title": "Georeferencing",
+      "group": "Beyond table stakes",
+      "tableStakes": false,
+      "reference": "Revit shared coordinates, Archicad survey point, Bonsai IfcMapConversion.",
+      "probes": {
+        "sdk": { "owner": "L1", "applicable": true, "oracle": "An IfcMapConversion with a projected CRS round-trips; not probed in round 0." },
+        "ui": { "owner": "L4", "applicable": true, "oracle": "Set the project base and survey point." },
+        "output": { "owner": "L1", "applicable": true, "oracle": "Common output oracle." }
+      }
+    },
+    {
+      "id": "terrain",
+      "title": "Terrain",
+      "group": "Out of scope for this climb",
+      "tableStakes": false,
+      "reference": "Revit toposolid, Archicad mesh. Out of scope for #9296.",
+      "probes": {
+        "sdk": { "owner": "L1", "applicable": true, "oracle": "Out of scope for this climb." },
+        "ui": { "owner": "L4", "applicable": true, "oracle": "Out of scope for this climb." },
+        "output": { "owner": "L1", "applicable": true, "oracle": "Out of scope for this climb." }
+      }
+    },
+    {
+      "id": "mep",
+      "title": "MEP systems",
+      "group": "Out of scope for this climb",
+      "tableStakes": false,
+      "reference": "Revit MEP, Archicad MEP Modeler. Out of scope for #9296.",
+      "probes": {
+        "sdk": { "owner": "L1", "applicable": true, "oracle": "Out of scope for this climb." },
+        "ui": { "owner": "L4", "applicable": true, "oracle": "Out of scope for this climb." },
+        "output": { "owner": "L1", "applicable": true, "oracle": "Out of scope for this climb." }
+      }
+    },
+    {
+      "id": "co-editing",
+      "title": "Multi-user co-editing",
+      "group": "Out of scope for this climb",
+      "tableStakes": false,
+      "reference": "Revit worksharing, Archicad Teamwork. Out of scope for #9296.",
+      "probes": {
+        "sdk": { "owner": "L1", "applicable": true, "oracle": "Out of scope for this climb." },
+        "ui": { "owner": "L4", "applicable": true, "oracle": "Out of scope for this climb." },
+        "output": { "owner": "L1", "applicable": true, "oracle": "Out of scope for this climb." }
+      }
+    }
+  ]
+}

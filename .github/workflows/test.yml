@@ -455,6 +455,8 @@ jobs:
               # integration harness: a guard that the PR it should catch can skip
               # is not a guard.
               - 'tools/ifc-git-corpus/**'
+              - 'tools/ifc-history/**'
+              - 'tests/fixtures/cli-retained/**'
               - 'tests/integration.test.ts'
               # The tsconfig BOTH `pnpm test:integration` and `pnpm test:api`
               # compile against (`tsx --tsconfig tests/tsconfig.json`). Same
@@ -1899,6 +1901,8 @@ jobs:
         with:
           name: example-build-output
           path: examples
+      - name: Exercise IFC git history walk against the real CLI
+        run: node --test tools/ifc-history/*.test.mjs
       - name: Cache test fixtures
         id: fixtures-cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0

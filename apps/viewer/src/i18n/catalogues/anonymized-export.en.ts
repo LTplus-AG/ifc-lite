@@ -69,7 +69,7 @@ export const anonymizedExportEn = {
 
   // AnonymizedExportDialog
   'anonymizedExport.dialog.title': 'Export Anonymized Subset',
-  'anonymizedExport.dialog.description': 'Objects highlighted in the 3D view on the right are what gets exported — every project-identifying signal removed, local transformations kept.',
+  "anonymizedExport.dialog.description": "Objects highlighted in the 3D view on the right are exported. Only categories selected for anonymization are anonymized; categories set to Keep retain their original values. Local transformations are preserved.",
   'anonymizedExport.dialog.otherModelSeedsExcluded': {
     one: '{count} selected object in other models not included',
     other: '{count} selected objects in other models not included',

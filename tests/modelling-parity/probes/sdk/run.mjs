@@ -25,6 +25,7 @@ import { spawn, execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { isMainEntry } from '../../../../scripts/lib/is-main-entry.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '../../../..');
@@ -165,6 +166,6 @@ async function main() {
   console.log(`\nSDK probes: ${results.length} in ${Math.round((Date.now() - t0) / 1000)} s — ${JSON.stringify(counts)} -> ${rel(sdkOut)}`);
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (isMainEntry(import.meta.url)) {
   main().catch((e) => { console.error(e); process.exit(1); });
 }

@@ -81,7 +81,7 @@ test('ratchet: equal or better passes; a row or score drop fails', () => {
   assert.deepEqual(ratchet(base, score(CATALOGUE, [...RESULTS, result('e', 'ui', 'pass')])), []);
   const worse = score(CATALOGUE, RESULTS.filter((r) => !(r.capability === 'e' && r.probe === 'sdk')));
   const problems = ratchet(base, worse);
-  assert.ok(problems.some((p) => p.includes('score dropped from 2.5 to 2')), problems.join('; '));
+  assert.ok(problems.some((p) => p.includes('score dropped from 2.5 to 2')), problems.join('; ')); // @source-text-assertion-ok asserts on the real scorer's or generator's own output, not on unexecuted source text
   assert.ok(problems.some((p) => p === 'e: partial -> missing'), problems.join('; '));
 });
 
@@ -103,7 +103,7 @@ test('score.mjs CLI: reads arrays and JSON lines, --check exits 1 on a drop', ()
     rmSync(join(dir, 'res', 'nested'), { recursive: true });
     const dropped = run('--out', join(dir, 'worse.json'), '--check', join(dir, 'base.json'));
     assert.equal(dropped.status, 1, 'losing results must fail the ratchet');
-    assert.match(dropped.stderr, /Ratchet FAILED/);
+    assert.match(dropped.stderr, /Ratchet FAILED/); // @source-text-assertion-ok asserts on the real scorer's or generator's own output, not on unexecuted source text
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -133,13 +133,13 @@ test('ledger: renders the newest summary, and a different summary changes the le
   try {
     assert.equal(generate(dir).status, 0);
     const ledger = readFileSync(join(dir, 'docs/architecture/modelling-parity-ledger.md'), 'utf8');
-    assert.match(ledger, /\*\*Table-stakes score: 1\.5 \/ 25\*\*/, 'newest generatedAt wins, not the last file name');
-    assert.match(ledger, /\| Storeys and levels \(`storeys`\) \| Levels and grids \| ✅ \| ✅ \| ✅ \| – \| ✅ met \|/);
-    assert.match(ledger, /`grids`.*◐ partial.*\*\*sdk\*\* partial: sdk partial/);
+    assert.match(ledger, /\*\*Table-stakes score: 1\.5 \/ 25\*\*/, 'newest generatedAt wins, not the last file name'); // @source-text-assertion-ok asserts on the real scorer's or generator's own output, not on unexecuted source text
+    assert.match(ledger, /\| Storeys and levels \(`storeys`\) \| Levels and grids \| ✅ \| ✅ \| ✅ \| – \| ✅ met \|/); // @source-text-assertion-ok asserts on the real scorer's or generator's own output, not on unexecuted source text
+    assert.match(ledger, /`grids`.*◐ partial.*\*\*sdk\*\* partial: sdk partial/); // @source-text-assertion-ok asserts on the real scorer's or generator's own output, not on unexecuted source text
     writeFileSync(join(dir, 'tests/modelling-parity/baseline/a-new.json'), JSON.stringify({ ...newer, score: 2 }));
     const stale = generate(dir, '--check');
     assert.equal(stale.status, 1, 'a changed summary must make --check fail');
-    assert.match(stale.stderr, /is stale/);
+    assert.match(stale.stderr, /is stale/); // @source-text-assertion-ok asserts on the real scorer's or generator's own output, not on unexecuted source text
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -156,7 +156,7 @@ test('ledger: refuses vacuous or mismatched summaries', () => {
     try {
       const r = generate(dir);
       assert.equal(r.status, 1, `${label} must fail`);
-      assert.match(r.stderr, message, label);
+      assert.match(r.stderr, message, label); // @source-text-assertion-ok asserts on the real scorer's or generator's own output, not on unexecuted source text
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

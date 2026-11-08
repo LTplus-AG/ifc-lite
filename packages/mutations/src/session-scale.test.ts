@@ -136,3 +136,10 @@ it('draft reference lookup does not rebuild an index per previously read record 
     } finally { writes.mockRestore(); }
   });
 });
+
+
+it('compound recording rejects allocator-only edits without journal records #8452', () => {
+  const view = new MutablePropertyView(null, 'allocator');
+  expect(() => recordCompoundMutation(view, draft => draft.setExpressIdWatermark(100))).toThrow('must record its mutations');
+  expect(view.peekNextExpressId()).toBe(1);
+});

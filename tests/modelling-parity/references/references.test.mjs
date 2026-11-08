@@ -8,11 +8,11 @@
 
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readdirSync, symlinkSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, symlinkSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { HERE, MANIFEST_PATH } from './lib.mjs';
+import { HERE, MANIFEST_PATH, resolveReferencePath } from './lib.mjs';
 import { elementCountsFromInfo, requireVerifiedReference } from './refresh-info.mjs';
 import { verifyPath } from './fetch-references.mjs';
 import { Model, parseStep, countRoofParts, storeyAtElevation, dimensionKey, sumKnown, extract } from './extract-target.mjs';
@@ -172,3 +172,16 @@ test('#9304 cyclic dimensional unit references are refused', () => {
   const model = new Model("DATA;#1=IFCCONVERSIONBASEDUNIT($,.AREAUNIT.,'loop',#2);#2=IFCMEASUREWITHUNIT(IFCAREAMEASURE(1.),#1);ENDSEC;");
   assert.throws(() => model.unitScale(1), /Cyclic unit conversion/);
 });
+
+for (const [id,target] of [['nibs-duplex-ifc2x3','f3-duplex-target.json'],['kit-fzk-haus-ifc4','f2-fzk-haus-target.json']]) {
+  test(`#9304 ${id} target roof-part count agrees with pinned IFC aggregates`, async t => {
+    const entry = manifest.references.find(r => r.id === id);
+    const file = resolveReferencePath(entry);
+    if (!existsSync(file)) return t.skip('Run fetch-references.mjs for pinned modelling-parity references');
+    assert.equal((await verifyPath(file,entry)).state,'ok');
+    const model = new Model(readFileSync(file,'utf8'));
+    const roots = [...model.all('IFCROOF'),...model.all('IFCSLAB').filter(id => model.get(id).args[8]?.en === 'ROOF')];
+    const saved = JSON.parse(readFileSync(join(HERE,target),'utf8'));
+    assert.equal(saved.roof.parts,countRoofParts(model,roots));
+  });
+}

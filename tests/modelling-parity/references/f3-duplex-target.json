@@ -498,7 +498,7 @@
       "NOTDEFINED": 1,
       "ROOF": 1
     },
-    "parts": 0,
+    "parts": 1,
     "inferredForm": "flat",
     "totalUpwardArea": 132.93,
     "flatArea": 132.93,

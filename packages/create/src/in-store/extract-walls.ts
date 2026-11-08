@@ -182,6 +182,18 @@ export function extractWallSegmentsForStorey(
   // own placement chain. See `frameInStoreyFrame`.
   const storeyChain = storeyPlacementChain(store, extractor, overlay, storeyExpressId);
 
+  // Read the live body: joined walls use arbitrary profiles, and authored
+  // walls need not have a material layer set at all (#9296).
+  const wallBodyThickness = (id: number): number | undefined => {
+    const wall = readEntity(store, extractor, overlay, id);
+    const rep = numericAttr(wall?.attributes[6]);
+    const points = rep === null ? null : gatherBodyFootprintPoints(store, extractor, overlay, rep);
+    if (!points?.length) return undefined;
+    const ys = points.map(p => p[1]);
+    const thickness = (Math.max(...ys) - Math.min(...ys)) * lengthUnitScale;
+    return thickness > 0 && Number.isFinite(thickness) ? thickness : undefined;
+  };
+
   for (const id of dividerIds) {
     // Created dividers have no source bytes; the overlay loop below reads them.
     if (lookup.createdType(id) !== undefined) continue;
@@ -189,7 +201,7 @@ export function extractWallSegmentsForStorey(
     if (result.segment) {
       segments.push(scaleSegment(result.segment, lengthUnitScale));
       contributing.push(id);
-      wallThicknesses.push(wallThicknessFromMaterial(store, id));
+      wallThicknesses.push(wallBodyThickness(id) ?? wallThicknessFromMaterial(store, id));
     } else {
       skipped.push({ wallId: id, reason: result.reason ?? 'no-axis-or-rect-profile' });
     }
@@ -213,7 +225,7 @@ export function extractWallSegmentsForStorey(
         // file's native length unit like the source (#6232): scale them too.
         segments.push(scaleSegment(result.segment, lengthUnitScale));
         contributing.push(ent.expressId);
-        wallThicknesses.push(undefined); // overlay walls carry no material yet
+        wallThicknesses.push(wallBodyThickness(ent.expressId));
       } else {
         skipped.push({ wallId: ent.expressId, reason: result.reason ?? 'no-axis-or-rect-profile' });
       }

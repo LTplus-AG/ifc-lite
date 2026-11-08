@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { prepareGeneratedRoomUpdate } from './generated-room-update.js';
 import { editOwnershipRefusal } from '@ifc-lite/export';
 import { planElementTransform, type TransformPlan, type TransformRefusal } from './element-transform-plan.js';
 import { rotateBy, unrotateBy } from './element-transform-frames.js';
@@ -92,6 +93,7 @@ export function transformElementsInStore(input: ElementTransformInput): ElementT
   if (new Set(writtenIds).size !== writtenIds.length) throw new Error('The selection shares writable placement leaves; shared occurrences cannot be transformed in place');
   const ownership = editOwnershipRefusal(input.dataStore, input.view, writtenIds, new Set([...plan.roots.map(root => root.expressId), ...plan.carried]));
   if (ownership) throw new Error(ownership);
+  const updateRooms = prepareGeneratedRoomUpdate(input.dataStore, input.editor, plan.roots.filter(root => /^(IFCWALL|IFCWALLSTANDARDCASE|IFCCURTAINWALL)$/.test(input.editor.getEntityType(root.expressId)?.toUpperCase() ?? '')).map(root => root.storeyId));
   for (const { root, turn, parentDelta: [dx, dy], nativeDelta } of prepared) {
     if (Math.hypot(dx, dy) > 1e-9) {
       if (input.translate) input.translate(root.expressId, [dx, dy, 0]);
@@ -110,7 +112,7 @@ export function transformElementsInStore(input: ElementTransformInput): ElementT
   }
   const joined = input.carryJoins ? input.carryJoins(plan) : carryWallJoinsInStore(input, plan, input.op.kind === 'rotate' ? input.op.angle : 0);
   return {
-    remesh: [...new Set([...plan.roots.map(root => root.expressId), ...plan.carried, ...joined])],
+    remesh: [...new Set([...plan.roots.map(root => root.expressId), ...plan.carried, ...joined, ...updateRooms()])],
     hostsChanged: joined.length > 0,
   };
 }

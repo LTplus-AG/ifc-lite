@@ -17,6 +17,7 @@ import { emitClippedProfile } from './element-split-slab.js';
 import { readAttributes } from './edit/placement-core.js';
 import { cloneElementMetadata } from './edit/metadata-clone.js';
 import { deriveSplitGlobalId, globalIdTakenIn, keepsFirstPiece, type GlobalIdScope } from './edit/split-guid.js';
+import { polygonPerimeter } from './base-quantities-measure.js';
 import { polygonArea as polyArea, pointInPolygon as pointInPoly } from './room-footprint-offset.js';
 import { roomAt, interiorPoint, roomOutline, type RoomBoundary, type RoomCandidate, type RoomLink } from './room-candidates.js';
 import type { LayoutFace, Pt } from './room-layout-core.js';
@@ -78,6 +79,7 @@ export function rewriteRoomOutlineInStore(store: IfcDataStore, editor: StoreEdit
   editor.setPositionalAttribute(chain.extrudedSolidId, 1, `#${emitted.solidPosition}`);
   editor.setPositionalAttribute(chain.extrudedSolidId, 2, `#${emitted.direction}`);
   setRoomAreasInStore(editor, id, areas, chain.thickness);
+  editor.getMutationView().setQuantity(id, 'Qto_SpaceBaseQuantities', 'GrossPerimeter', polygonPerimeter(outline) / getModelLengthUnitScale(store), QuantityType.Length);
 }
 
 export function updateRoomOutlineInStore(store: IfcDataStore, editor: StoreEditor, id: number, boundary: RoomBoundary, roomsOn: (storeyId: number) => readonly RoomCandidate[]): RoomUpdate {

@@ -274,7 +274,7 @@ function matchEdgeWalls(a: Vec2, b: Vec2, segments: Segment[], wallIds: number[]
  * room does (where exact edge-matching would miss). A wall stays INTERNAL if
  * any of its edges has a room on the far side. One boundary per distinct wall.
  */
-function buildSpaceBoundaries(
+export function buildSpaceBoundaries(
   outline: Vec2[],
   segments: Segment[],
   wallIds: number[],

@@ -72,3 +72,37 @@ it('nested snapshot previews compare sparse history exactly #8452', () => {
   });
   expect(view.getPositionalMutationsForEntity(entity.expressId)?.get(2)).toBe('Preview');
 });
+
+it('sparse success and failure preserve ordinary writer behavior across mixed edits #8452', () => {
+  const make = () => {
+    const view = new MutablePropertyView(null, 'mixed');
+    for (let i = 0; i < 6; i++) view.createEntity('IfcWall', [`guid${i}`, null, `Wall ${i}`]);
+    return view;
+  };
+  const expected = make(), actual = make();
+  const read = (view: MutablePropertyView) => ({
+    entities: view.getNewEntities().map(({ creationId: _creationId, ...row }) => row),
+    properties: Array.from({ length: 6 }, (_, i) => view.getForEntity(i + 1)),
+    attributes: Array.from({ length: 6 }, (_, i) => view.getAttributeMutationsForEntity(i + 1)),
+    positional: Array.from({ length: 6 }, (_, i) => view.getPositionalMutationsForEntity(i + 1)),
+    changes: view.getEffectiveChanges(), next: view.peekNextExpressId(), count: view.getMutationCount(),
+  });
+  let seed = 8452;
+  for (let step = 0; step < 32; step++) {
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+    const id = seed % 6 + 1, n = step;
+    const edit = (view: MutablePropertyView) => {
+      view.setAttribute(id, 'Name', `Edit ${n}`);
+      view.setPositionalAttribute(id, 2, `Position ${n}`, n % 2 === 0);
+      view.setProperty(id, 'Pset_Mixed', `P${n % 3}`, n);
+      if (n % 4 === 0) view.deletePropertySet(id, 'Old');
+      if (n % 5 === 0) view.createEntity('IfcCartesianPoint', [[n, 0, 0]]);
+    };
+    const before = structuredClone(read(actual));
+    expect(() => actual.runAtomic(draft => { edit(draft); throw new Error('abort'); })).toThrow('abort');
+    expect(read(actual)).toEqual(before);
+    edit(expected);
+    actual.runAtomic(draft => draft.runAtomic(edit));
+    expect(read(actual)).toEqual(read(expected));
+  }
+});

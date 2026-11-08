@@ -9,6 +9,7 @@
  * next element, the inspector and the bar agree.
  */
 
+import { RoofPlaceBar } from './RoofPlaceBar';
 import { Link2 } from 'lucide-react';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import { useViewerStore } from '@/store';
@@ -95,7 +96,7 @@ export function SlabPlaceBar({ gesture }: CommandHudProps<SlabPlaceGesture>) {
   const setMode = (slabMode: SlabDrawMode) => {
     setDefaults({ slabMode });
     // A half-drawn outline of the other kind means nothing in this one.
-    updateCommandGesture(() => initSlabGesture(slabMode));
+    updateCommandGesture((value) => ({ ...initSlabGesture(slabMode), roof: (value as SlabPlaceGesture).roof }));
   };
   return (
     <>
@@ -113,6 +114,7 @@ export function SlabPlaceBar({ gesture }: CommandHudProps<SlabPlaceGesture>) {
         value={slabClass}
         onChange={(next) => setDefaults({ slabClass: next })}
       />
+      {slabClass === 'roof' && <RoofPlaceBar gesture={gesture} />}
     </>
   );
 }

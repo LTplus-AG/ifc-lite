@@ -22,7 +22,7 @@ import { CommandFieldsBar } from '@/components/viewer/tools/command/CommandField
 import { SlabPlaceBar } from '@/components/viewer/tools/command/PlacementBars';
 import type { SnapResult, Vec2 } from '@/lib/snap/types';
 import '../builtin.js';
-import { commandDoubleClick, commandPointerDown, commandPointerMove, getCommandRuntime } from '../runtime.js';
+import { commandDoubleClick, commandPointerDown, commandPointerMove, getCommandRuntime, updateCommandGesture } from '../runtime.js';
 import { setRequestRemesh, type RemeshRequest } from '../transaction.js';
 import type { CommandContext } from '../types.js';
 import { resolveSlabEditChain } from '@/lib/slab-edit';
@@ -37,6 +37,11 @@ const at = (x: number, y: number, shift = false): SnapResult => ({
   local: [x, y], winner: null, guides: [], locked: false, modifiers: { shift, alt: false },
 });
 const gesture = () => getCommandRuntime().gesture as SlabPlaceGesture;
+function flatRoofGesture() {
+  // This suite exercises prism editing; pitched roofs have their own behavioural suite.
+  updateCommandGesture(value => { const g = value as SlabPlaceGesture; return { ...g, roof: { ...g.roof, preset: 'flat' } }; });
+}
+
 const ctx = () => getCommandRuntime().ctx as CommandContext;
 const undoDepth = () => useViewerStore.getState().undoStacks.get(MODEL_ID)?.length ?? 0;
 const click = (x: number, y: number, shift = false) => act(() => { commandPointerMove(at(x, y, shift)); commandPointerDown(at(x, y, shift)); });
@@ -86,7 +91,9 @@ beforeEach(async () => {
   useViewerStore.getState().setAuthoringDefaults({ slabMode: 'rectangle', slabClass: 'slab' });
   remeshed = [];
   restoreRemesh = setRequestRemesh((_get, request) => { remeshed.push(request); });
-  useViewerStore.getState().startCommand('slab.place');
+  useViewerStore.getState().startCommand('slab.place'); flatRoofGesture();
+  // These prism editing tests explicitly exercise the retained flat roof option.
+  updateCommandGesture(value => { const g = value as SlabPlaceGesture; return { ...g, roof: { ...g.roof, preset: 'flat' } }; });
 });
 afterEach(() => {
   restoreRemesh();
@@ -199,7 +206,7 @@ describe('slab.place: rectangle (#6232 M2.2)', () => {
 describe('slab.place: polygon (#6232 M2.2)', () => {
   beforeEach(() => {
     useViewerStore.getState().setAuthoringDefaults({ slabMode: 'polygon' });
-    useViewerStore.getState().startCommand('slab.place');
+    useViewerStore.getState().startCommand('slab.place'); flatRoofGesture();
   });
 
   const L_SHAPE: Vec2[] = [[0, 0], [4, 0], [4, 2], [2, 2], [2, 4], [0, 4]];
@@ -299,7 +306,7 @@ describe('slab.place: every class in both outline modes (#6232 A2)', () => {
         useViewerStore.getState().setAuthoringDefaults({ slabMode: mode, slabClass: cls });
         // Dimensions outlive a test (the slice is session state): pin this class's.
         useViewerStore.getState().setAuthoringDims(cls, { Thickness: thickness });
-        useViewerStore.getState().startCommand('slab.place');
+        useViewerStore.getState().startCommand('slab.place'); flatRoofGesture();
         const before = undoDepth();
         for (const [x, y] of clicks) click(x, y);
         if (mode === 'polygon') press(document.body, 'Enter');
@@ -357,7 +364,7 @@ describe('slab.place: a floor slab hangs from the plane (#9198)', () => {
     it(`a ${mode} slab's top is at the level, its underside a thickness below`, () => {
       useViewerStore.getState().setAuthoringDefaults({ slabMode: mode, slabClass: 'slab' });
       useViewerStore.getState().setAuthoringDims('slab', { Thickness: 0.3 });
-      useViewerStore.getState().startCommand('slab.place');
+      useViewerStore.getState().startCommand('slab.place'); flatRoofGesture();
       click(0, 0);
       click(2, 3);
       if (mode === 'polygon') { click(0, 3); press(document.body, 'Enter'); }
@@ -369,7 +376,7 @@ describe('slab.place: a floor slab hangs from the plane (#9198)', () => {
     it(`a ${cls} still sits on the plane`, () => {
       useViewerStore.getState().setAuthoringDefaults({ slabClass: cls });
       useViewerStore.getState().setAuthoringDims(cls, { Thickness: thickness });
-      useViewerStore.getState().startCommand('slab.place');
+      useViewerStore.getState().startCommand('slab.place'); flatRoofGesture();
       click(1, 1);
       act(() => { commandPointerMove(at(2, 2)); });
       const [ghost] = SLAB_PLACE.ghost!(gesture(), ctx());
@@ -386,7 +393,7 @@ describe('slab.place: a floor slab hangs from the plane (#9198)', () => {
 
   it('a thickness edit keeps the top at the level', () => {
     useViewerStore.getState().setAuthoringDims('slab', { Thickness: 0.3 });
-    useViewerStore.getState().startCommand('slab.place');
+    useViewerStore.getState().startCommand('slab.place'); flatRoofGesture();
     click(0, 0);
     click(2, 3);
     const id = drawn();
@@ -396,7 +403,7 @@ describe('slab.place: a floor slab hangs from the plane (#9198)', () => {
 
   it('push / pull takes the underside: the ghost and the write both keep the top', () => {
     useViewerStore.getState().setAuthoringDims('slab', { Thickness: 0.3 });
-    useViewerStore.getState().startCommand('slab.place');
+    useViewerStore.getState().startCommand('slab.place'); flatRoofGesture();
     click(0, 0);
     click(2, 3);
     const id = drawn();
@@ -412,7 +419,7 @@ describe('slab.place: a floor slab hangs from the plane (#9198)', () => {
 
   it('a split keeps both pieces hanging, so a later thickness edit keeps their tops', () => {
     useViewerStore.getState().setAuthoringDims('slab', { Thickness: 0.3 });
-    useViewerStore.getState().startCommand('slab.place');
+    useViewerStore.getState().startCommand('slab.place'); flatRoofGesture();
     click(0, 0);
     click(4, 3);
     const split = useViewerStore.getState().splitSlabByLine(MODEL_ID, drawn(), [1, -1], [1, 4]);
@@ -437,7 +444,7 @@ describe('slab.place: a floor slab hangs from the plane (#9198)', () => {
   it('a layered slab builds its layers down from the level', () => {
     const s = useViewerStore.getState();
     useViewerStore.getState().setAuthoringDims('slab', { Thickness: 0.3 });
-    s.startCommand('slab.place');
+    s.startCommand('slab.place'); flatRoofGesture();
     click(0, 0);
     click(2, 3);
     const id = drawn();

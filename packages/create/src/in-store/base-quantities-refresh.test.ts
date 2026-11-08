@@ -29,6 +29,7 @@ import { addHostedElementInStore } from './hosted-element.js';
 import { resolveSpatialAnchor } from './resolve-anchor.js';
 import { addSlabToStore } from './slab.js';
 import { addWallToStore } from './wall.js';
+import { readWallJoinTarget } from './wall-join-read.js';
 import { parse } from './wall-join-mesh.oracle.js';
 
 const WALL = 'Qto_WallBaseQuantities';
@@ -147,6 +148,17 @@ describe('a loaded wall', () => {
     expect(refreshedBaseQuantitySets(s.store, s.view)).toEqual([]);
   });
 
+  it('moving it far from the origin refreshes nothing, though the derivation reads placed points', async () => {
+    const { file, ids: wall } = await loaded((s, a) => addWallToStore(s.editor, a, { Start: [0, 0, 0], End: [8, 0, 0], Thickness: 0.2, Height: 3 }).wallId);
+    const s = open(await parse(file));
+    const read = readWallJoinTarget(s.store, s.view, wall, 1);
+    expect(read).not.toBeNull();
+    // A georeferenced storey-local position: the last digits of a placed length move with it.
+    s.editor.setPositionalAttribute(read!.locationPointId, 0, [2_600_123.123, 1_200_456.789, 0]);
+    expect(refreshedBaseQuantitySetName(s.store, s.view, wall)).toBeNull();
+    expect(refreshedBaseQuantitySets(s.store, s.view)).toEqual([]);
+  });
+
   it('a person\'s edit of a quantity and deletion of the set win over the refresh', async () => {
     const { file, ids: wall } = await loaded((s, a) => addWallToStore(s.editor, a, { Start: [0, 0, 0], End: [8, 0, 0], Thickness: 0.2, Height: 3 }).wallId);
     const s = open(await parse(file));
@@ -189,6 +201,11 @@ describe('what a refresh replaces', () => {
     resizeWall(s, wall, { height: 4 });
     const legacy: QuantitySet[] = [{ name: 'BaseQuantities', quantities: [{ name: 'Height', type: QuantityType.Length, value: 3 }] }];
     expect(withRefreshedBaseQuantities(s.store, s.view, wall, legacy)).toMatchObject([{ name: 'BaseQuantities', quantities: expect.arrayContaining([{ name: 'Height', type: QuantityType.Length, value: 4 }]) }]);
+    // A second set of the same name is a different set: only the first is refreshed.
+    const twin: QuantitySet = { name: 'BaseQuantities', quantities: [{ name: 'Fixings', type: QuantityType.Count, value: 2 }] };
+    const pair = withRefreshedBaseQuantities(s.store, s.view, wall, [...legacy, twin]);
+    expect(pair[1]).toBe(twin);
+    expect(pair[0]).not.toBe(legacy[0]);
     const other: QuantitySet[] = [{ name: 'Qto_Custom', quantities: [{ name: 'Fixings', type: QuantityType.Count, value: 4 }] }];
     expect(withRefreshedBaseQuantities(s.store, s.view, wall, other)).toBe(other);
   });

@@ -48,9 +48,28 @@ function pristineView(dataStore: IfcDataStore): MutablePropertyView {
   return view;
 }
 
+/**
+ * Equal to well below any edit. The derivation reads lengths off placed points,
+ * so at large storey-local coordinates a move alone shifts the last digits.
+ */
+const sameValue = (a: number | undefined, b: number | undefined): boolean =>
+  a !== undefined && b !== undefined && Math.abs(a - b) <= 1e-9 * Math.max(Math.abs(a), Math.abs(b), 1e-3);
+
 function sameQuantities(a: QuantitySet, b: QuantitySet): boolean {
   return a.quantities.length === b.quantities.length
-    && a.quantities.every((q, i) => q.name === b.quantities[i].name && q.value === b.quantities[i].value);
+    && a.quantities.every((q, i) => q.name === b.quantities[i].name && sameValue(q.value, b.quantities[i].value));
+}
+
+/** Per view, store and overlay revision: the export's candidates, which every read is gated on too. */
+const candidatesByView = new WeakMap<MutablePropertyView, { dataStore: IfcDataStore; revision: number; ids: Set<number> }>();
+
+function candidates(dataStore: IfcDataStore, view: MutablePropertyView): Set<number> {
+  const revision = view.getMutationRevision();
+  const known = candidatesByView.get(view);
+  if (known?.dataStore === dataStore && known.revision === revision) return known.ids;
+  const ids = editedElementCandidates(dataStore, view);
+  candidatesByView.set(view, { dataStore, revision, ids });
+  return ids;
 }
 
 /** The file set a refresh of `expressId` replaces, without reading any geometry. */
@@ -67,9 +86,10 @@ function refreshTarget(dataStore: IfcDataStore, view: MutablePropertyView, expre
  * supported kinds, has no base quantity set in the file, or its geometry
  * gives the same quantities it did in the file.
  */
-function refreshedSet(dataStore: IfcDataStore, view: MutablePropertyView, expressId: number, fileSets: readonly QuantitySet[]): QuantitySet | null {
+function refreshedSet(dataStore: IfcDataStore, view: MutablePropertyView, expressId: number, fileSets: readonly QuantitySet[]): { target: QuantitySet; refreshed: QuantitySet } | null {
   const target = refreshTarget(dataStore, view, expressId, fileSets);
-  if (!target) return null;
+  // Only an element the overlay touched is read: the export nominates the same ones, and a list over a large file stays cheap.
+  if (!target || !candidates(dataStore, view).has(expressId)) return null;
   const live = deriveBaseQuantitySet(dataStore, view, expressId);
   if (!live) return null;
   const file = deriveBaseQuantitySet(dataStore, pristineView(dataStore), expressId);
@@ -81,10 +101,10 @@ function refreshedSet(dataStore: IfcDataStore, view: MutablePropertyView, expres
   const own = new Map(target.quantities.map((q) => [q.name, q]));
   const quantities = live.quantities.map((q) => {
     const kept = own.get(q.name);
-    return kept && before.get(q.name) === q.value ? kept : q;
+    return kept && sameValue(before.get(q.name), q.value) ? kept : q;
   });
   // The file's set name and GlobalId stay, so its export replaces that set rather than add a second one.
-  return { name: target.name, globalId: target.globalId, quantities };
+  return { target, refreshed: { name: target.name, globalId: target.globalId, quantities } };
 }
 
 /**
@@ -93,15 +113,16 @@ function refreshedSet(dataStore: IfcDataStore, view: MutablePropertyView, expres
  * `fileSets` itself when nothing was refreshed.
  */
 export function withRefreshedBaseQuantities(dataStore: IfcDataStore, view: MutablePropertyView, expressId: number, fileSets: QuantitySet[]): QuantitySet[] {
-  const refreshed = refreshedSet(dataStore, view, expressId, fileSets);
-  return refreshed ? fileSets.map((set) => (set.name === refreshed.name ? refreshed : set)) : fileSets;
+  const found = refreshedSet(dataStore, view, expressId, fileSets);
+  // By identity: a second same-named set in the file is a different set and stays as it is.
+  return found ? fileSets.map((set) => (set === found.target ? found.refreshed : set)) : fileSets;
 }
 
 /** The name of the set `withRefreshedBaseQuantities` replaces for `expressId`, for a "from geometry" marker; null when none is. */
 export function refreshedBaseQuantitySetName(dataStore: IfcDataStore, view: MutablePropertyView, expressId: number): string | null {
   const id = view.resolveBaseEntityId(expressId);
   if (id !== expressId) return null;
-  return refreshedSet(dataStore, view, id, extractQuantitiesOnDemand(dataStore, id, view))?.name ?? null;
+  return refreshedSet(dataStore, view, id, extractQuantitiesOnDemand(dataStore, id, view))?.refreshed.name ?? null;
 }
 
 /** Whether `expressId` is a loaded element whose base quantity set a geometry edit would refresh. */
@@ -118,7 +139,7 @@ export function hasRefreshableBaseQuantities(dataStore: IfcDataStore, view: Muta
  */
 export function refreshedBaseQuantitySets(dataStore: IfcDataStore, view: MutablePropertyView): QuantityBaseRevision[] {
   const revisions: QuantityBaseRevision[] = [];
-  for (const entityId of editedElementCandidates(dataStore, view)) {
+  for (const entityId of candidates(dataStore, view)) {
     if (view.isDeleted(entityId)) continue;
     const setName = refreshedBaseQuantitySetName(dataStore, view, entityId);
     if (setName) revisions.push({ entityId, setName });

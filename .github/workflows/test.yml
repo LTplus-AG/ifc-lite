@@ -521,6 +521,11 @@ jobs:
               # The UI overhaul's scene/council tooling (#8802) is walked by the
               # same conservative gate inputs as every other tests/ subtree.
               - 'tests/ui-scenes/**'
+              # The modelling parity scorecard (#9296): the conservative gate
+              # inputs walk it, and scripts/generate-modelling-parity-ledger.test.mjs
+              # reads its catalogue and baseline summary plus the ledger it renders.
+              - 'tests/modelling-parity/**'
+              - 'docs/architecture/modelling-parity-ledger.md'
               # The AI evaluation gates (scripts/ai-eval) read the corpus,
               # recordings, label sheets and study records: an edit to any of
               # them must run the gates that validate them.

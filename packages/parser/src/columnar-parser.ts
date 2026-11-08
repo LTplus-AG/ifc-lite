@@ -94,6 +94,9 @@ export interface IfcDataStore extends IfcStoreBase {
     properties: ReturnType<PropertyTableBuilder['build']>;
     quantities: QuantityTable;
     relationships: ReturnType<RelationshipGraphBuilder['build']>;
+    /** Only on the store `onSpatialReady` emits: `relationships` holds the hierarchy and typing edges, no
+     * IfcRelDefinesByProperties or association edges yet. Never on a completed or cache-restored store (#9192). */
+    relationshipsPending?: true;
 
     /**
      * On-demand property lookup: entityId -> array of property set expressIds
@@ -560,7 +563,7 @@ export async function parseColumnarInput(
             getProperties(expressId) { return this.properties.getForEntity(expressId); },
             getQuantities(expressId) { return this.quantities.getForEntity(expressId); },
         };
-        options.onSpatialReady?.(earlyStore);
+        options.onSpatialReady?.({ ...earlyStore, relationshipsPending: true }); // finalStore spreads earlyStore: unmarked
 
         await yieldIfNeeded(); // Let geometry process after hierarchy emission
 
@@ -632,12 +635,13 @@ export async function parseColumnarInput(
         for (let i = 0; i < associationRelRefs.length; i++) {
             if ((i & 0x3FF) === 0) await yieldIfNeeded();
             const ref = associationRelRefs[i];
-            const result = extractPropertyRelFast(uint8Buffer, ref.byteOffset, ref.byteLength);
+            const result = extractPropertyRelFast(uint8Buffer, ref.byteOffset, ref.byteLength, true);
             if (result) {
                 // IfcRelAssociates{Material,Classification,Document}'s Relating*
                 // selects are always single refs (unlike RelatingPropertyDefinition
                 // above, none of IfcMaterialSelect/IfcClassificationSelect/
-                // IfcDocumentSelect admit a SET alternative) — take the one entry.
+                // IfcDocumentSelect admit a SET alternative) — take the one entry
+                // (`true` above skips a record whose relating value names more).
                 const { relatedObjects, relatingDefs } = result;
                 const relatingRef = relatingDefs[0];
                 const typeUpper = getTypeUpper(ref.type);

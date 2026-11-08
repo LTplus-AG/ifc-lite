@@ -41,11 +41,14 @@ export type PropertyExtractor = (entityId: number) => Array<{
  * Function type for on-demand quantity extraction. `view` is the view asking (a draft reads its own edits), `occurrenceId` the entity asked about before any alias.
  */
 export type QuantityExtractor = (entityId: number, view: MutablePropertyView, occurrenceId: number) => QuantitySet[];
+/** A set the view's quantity base reads differently from the file (a refreshed `Qto_*` of an edited element). */
+export type QuantityBaseRevision = { readonly entityId: number; readonly setName: string };
 
 export class MutablePropertyView extends MutableOverlayState {
   private baseTable: PropertyTable | null;
   private onDemandExtractor: PropertyExtractor | null = null;
   private quantityExtractor: QuantityExtractor | null = null;
+  private quantityBaseRevisions: ((view: MutablePropertyView) => Iterable<QuantityBaseRevision>) | null = null;
   private attributeExtractor: AttributeExtractor | null = null;
   private modelId: string;
 
@@ -61,6 +64,7 @@ export class MutablePropertyView extends MutableOverlayState {
         const draft = new MutablePropertyView(this.baseTable, this.modelId);
         draft.onDemandExtractor = this.onDemandExtractor;
         draft.quantityExtractor = this.quantityExtractor;
+        draft.quantityBaseRevisions = this.quantityBaseRevisions;
         draft.attributeExtractor = this.attributeExtractor;
         draft.restoreOverlayState(snapshot);
         return draft;
@@ -92,6 +96,7 @@ export class MutablePropertyView extends MutableOverlayState {
     const draft = new MutablePropertyView(this.baseTable, this.modelId);
     draft.onDemandExtractor = this.onDemandExtractor;
     draft.quantityExtractor = this.quantityExtractor;
+    draft.quantityBaseRevisions = this.quantityBaseRevisions;
     draft.attributeExtractor = this.attributeExtractor;
     draft.restoreOverlayState(structuredClone(original));
     const result = edit(draft);
@@ -154,6 +159,10 @@ export class MutablePropertyView extends MutableOverlayState {
   setQuantityExtractor(extractor: QuantityExtractor): void {
     this.quantityExtractor = extractor;
   }
+
+  /** Name the sets the quantity base revises, so a full export writes them as it writes an edited set. Installed beside `setQuantityExtractor`. */
+  setQuantityBaseRevisions(provider: ((view: MutablePropertyView) => Iterable<QuantityBaseRevision>) | null): void { this.quantityBaseRevisions = provider; }
+  getQuantityBaseRevisions(): Iterable<QuantityBaseRevision> { return this.quantityBaseRevisions?.(this) ?? []; }
 
   /**
    * Whether this view has anything UNDER its quantity overlay.

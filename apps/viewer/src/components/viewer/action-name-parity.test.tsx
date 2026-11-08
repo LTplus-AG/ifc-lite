@@ -13,7 +13,7 @@ import { registerLocale, setLocale } from '@/i18n';
 import { ACTION_NAME_KEYS } from '@/lib/commands/action-names';
 import { BimReactContext } from '@/sdk/BimProvider.js';
 import { useViewerStore } from '@/store';
-import { cleanup, render, type as typeInto } from '@/test/render.js';
+import { advance, cleanup, press, render, type as typeInto } from '@/test/render.js';
 import { parseFixtureModel, FIXTURE_WALL_A } from './anonymized-export/anonymized-export-fixture.test-support.js';
 import { CommandPalette } from './CommandPalette.js';
 import { EntityContextMenu } from './EntityContextMenu.js';
@@ -41,7 +41,7 @@ afterEach(() => {
 });
 
 describe('one action name across viewer surfaces (#5858)', () => {
-  it('shows the same localized Show all name in ribbon, mobile, palette and canvas menu', () => {
+  it('shows the same localized Show all name in ribbon, mobile, palette and canvas menu', async () => {
     registerLocale('action-name-parity-5858', { [ACTION_NAME_KEYS.showAll]: SHOW_ALL });
     setLocale('action-name-parity-5858');
 
@@ -49,8 +49,14 @@ describe('one action name across viewer surfaces (#5858)', () => {
     assert.ok(findNamedButton(SHOW_ALL), 'ribbon uses the canonical action name');
     cleanup();
 
+    // On the phone Show all lives in More actions since the 44px targets (#8802).
     render(<MobileToolbar />);
-    assert.ok(findNamedButton(SHOW_ALL), 'mobile toolbar uses the canonical action name');
+    const more = [...document.body.querySelectorAll('[data-command-disclosure="mobile:more"]')];
+    assert.equal(more.length, 1, 'the mobile toolbar has one More actions button');
+    press(more[0] as HTMLElement, 'ArrowDown');
+    await advance(10);
+    assert.ok([...document.body.querySelectorAll('[role="menuitem"]')].some((item) => item.textContent?.trim() === SHOW_ALL),
+      'mobile More actions uses the canonical action name');
     cleanup();
 
     render(

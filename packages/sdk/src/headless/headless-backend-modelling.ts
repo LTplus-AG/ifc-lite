@@ -34,6 +34,7 @@ export function createRecordedModellingBackend(resolve: ModellingStoreModelResol
     });
   return {
     listStoreyLevels: storeyReads.listStoreyLevels,
+    suggestStorey: storeyReads.suggestStorey,
     planStoreyEdit: storeyReads.planStoreyEdit,
     planStoreyDelete: storeyReads.planStoreyDelete,
     addStorey: storey('addStorey', (modelId) => modelId),

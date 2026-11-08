@@ -66,6 +66,10 @@ export function buildHelp(version: string): string {
     mutate    <file.ifc> --id N --set P=V --out F  Modify properties/attributes and save
     generate-spaces <file.ifc> --out F           Derive IfcSpace from walls (slab/roof-aware height)
     storey    <file.ifc> list|add|rename|edit|delete  Author storeys; geometry follows ("storey --help" for actions)
+              list [--json]                       Storeys with elevation, floor-to-floor height and element count
+              add --from S [--below] | --name N --elevation M  Add a storey (from a neighbour: its naming and spacing)
+              rename --storey S --name N | edit --storey S --elevation M | --floor-height M
+              delete --storey S [--move-to S | --delete-contents]  Each writes --out F; --dry-run writes nothing
     ask       <file.ifc> "<question>"            Natural language BIM queries
     view      <file.ifc> [--port N]              Interactive 3D viewer in browser
     analyze   <file.ifc> --viewer <port>        Query + visualize analysis results

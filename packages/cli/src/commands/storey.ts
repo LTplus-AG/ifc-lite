@@ -14,7 +14,7 @@ import { writeFile } from 'node:fs/promises';
 import { StepExporter } from '@ifc-lite/export';
 import type { StoreyDeleteMode, StoreyLevelEdit, StoreySummary } from '@ifc-lite/create';
 import { createHeadlessContext } from '../loader.js';
-import { fatal, getFlag, hasFlag, printJson } from '../output.js';
+import { fatal, hasFlag, printJson } from '../output.js';
 
 type Schema = 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5';
 
@@ -61,6 +61,19 @@ function resolveStorey(rows: readonly StoreySummary[], value: string | undefined
   return fatal(named.length > 1 ? `More than one storey is named "${value}": use #<express id>` : `Storey "${value}" not found. Available: ${available()}`);
 }
 
+/**
+ * A value flag's operand. Absent is undefined; present without an operand (the
+ * last argument, or followed by another `--flag`) is refused, never read as
+ * absent: `--elevation` typed with no number must not fall back to a default.
+ */
+function flagValue(args: string[], flag: string): string | undefined {
+  const index = args.indexOf(flag);
+  if (index === -1) return undefined;
+  const value = args[index + 1];
+  if (value === undefined || value.startsWith('--')) return fatal(`${flag} needs a value`);
+  return value;
+}
+
 function metres(value: string | undefined, flag: string): number {
   // `Number('')` is 0: a blank value must not read as ground level.
   const parsed = Number(value?.replace(',', '.'));
@@ -73,7 +86,7 @@ export async function storeyCommand(args: string[]): Promise<void> {
   if (!filePath || !action) fatal(STOREY_USAGE);
   const json = hasFlag(args, '--json');
   const dryRun = hasFlag(args, '--dry-run');
-  const out = getFlag(args, '--out');
+  const out = flagValue(args, '--out');
   const { bim, store, backend } = await createHeadlessContext(filePath!);
   // The CLI's headless backend holds one model under its fixed id.
   const modelId = 'default';
@@ -105,9 +118,9 @@ export async function storeyCommand(args: string[]): Promise<void> {
 
   switch (action) {
     case 'add': {
-      const from = getFlag(args, '--from');
-      let Name = getFlag(args, '--name');
-      let Elevation = getFlag(args, '--elevation') === undefined ? undefined : metres(getFlag(args, '--elevation'), '--elevation');
+      const from = flagValue(args, '--from');
+      let Name = flagValue(args, '--name');
+      let Elevation = flagValue(args, '--elevation') === undefined ? undefined : metres(flagValue(args, '--elevation'), '--elevation');
       let referenceStoreyId: number | undefined;
       if (from !== undefined) {
         referenceStoreyId = resolveStorey(rows(), from, '--from');
@@ -125,17 +138,17 @@ export async function storeyCommand(args: string[]): Promise<void> {
       return;
     }
     case 'rename': {
-      const storeyId = resolveStorey(rows(), getFlag(args, '--storey'), '--storey');
-      const Name = getFlag(args, '--name') ?? fatal('rename needs --name');
+      const storeyId = resolveStorey(rows(), flagValue(args, '--storey'), '--storey');
+      const Name = flagValue(args, '--name') ?? fatal('rename needs --name');
       run(() => s.renameStorey({ modelId, expressId: storeyId }, Name));
       if (dryRun) { report({ action, storey: storeyId, Name }, json); return; }
       await save({ action, storey: storeyId, Name });
       return;
     }
     case 'edit': {
-      const storeyId = resolveStorey(rows(), getFlag(args, '--storey'), '--storey');
-      const elevation = getFlag(args, '--elevation');
-      const height = getFlag(args, '--floor-height');
+      const storeyId = resolveStorey(rows(), flagValue(args, '--storey'), '--storey');
+      const elevation = flagValue(args, '--elevation');
+      const height = flagValue(args, '--floor-height');
       if ((elevation === undefined) === (height === undefined)) fatal('edit needs exactly one of --elevation or --floor-height');
       const edit: StoreyLevelEdit = elevation !== undefined
         ? { kind: 'elevation', storeyId, Elevation: metres(elevation, '--elevation') }
@@ -161,8 +174,8 @@ export async function storeyCommand(args: string[]): Promise<void> {
     }
     case 'delete': {
       const list = rows();
-      const storeyId = resolveStorey(list, getFlag(args, '--storey'), '--storey');
-      const moveTo = getFlag(args, '--move-to');
+      const storeyId = resolveStorey(list, flagValue(args, '--storey'), '--storey');
+      const moveTo = flagValue(args, '--move-to');
       const mode: StoreyDeleteMode = moveTo !== undefined
         ? { kind: 'move', targetStoreyId: resolveStorey(list, moveTo, '--move-to') }
         : hasFlag(args, '--delete-contents') ? { kind: 'deleteContents' } : { kind: 'empty' };

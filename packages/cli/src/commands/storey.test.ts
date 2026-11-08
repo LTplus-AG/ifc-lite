@@ -140,6 +140,22 @@ describe.skipIf(!existsSync(SAMPLE))('ifc-lite storey (#9025)', () => {
     expect(existsSync(out)).toBe(false);
   });
 
+  it('a value flag typed with no value is refused, not read as absent (#9121 review)', async () => {
+    const run = await storey();
+    const out = join(dir, 'never.ifc');
+    await expect(run([SAMPLE, 'add', '--out', out, '--from', 'My Storey', '--elevation'])).rejects.toThrow('exit 1');
+    expect(stderr).toMatch(/--elevation needs a value/);
+    expect(existsSync(out)).toBe(false);
+    await expect(run([SAMPLE, 'edit', '--storey', 'My Storey', '--elevation', '--out', out])).rejects.toThrow('exit 1');
+    expect(stderr).toMatch(/--elevation needs a value/);
+  });
+
+  it('storey --help lists the actions (#9121 review)', async () => {
+    const { buildCommandHelp } = await import('../help.js');
+    const help = buildCommandHelp('0.0.0', 'storey') ?? '';
+    for (const action of ['list [--json]', 'add --from S', 'rename --storey S', 'delete --storey S']) expect(help).toContain(action);
+  });
+
   it('refuses an invalid edit, exits non-zero and writes nothing', async () => {
     const run = await storey();
     const added = join(dir, 'added.ifc');

@@ -15,6 +15,20 @@ import { loadTolerances } from './tolerances.mjs';
 const ROOT = resolve(import.meta.dirname, '../..');
 const percentile = (values, q) => [...values].sort((a, b) => a - b)[Math.max(0, Math.ceil(values.length * q) - 1)] ?? null;
 
+// This API includes nested Workers when available. It does not isolate the
+// SMLib linear heap; report that limitation rather than inventing a figure.
+const measureMemory = page => page.evaluate(async () => {
+  if (!performance.measureUserAgentSpecificMemory) return { bytes: null, reason: 'measureUserAgentSpecificMemory unavailable' };
+  try {
+    const measurement = await performance.measureUserAgentSpecificMemory();
+    const sdk = measurement.breakdown.filter(entry =>
+      entry.attribution.some(owner => owner.url?.includes('/smlib/')));
+    return { bytes: measurement.bytes, smlibWorkerBytes: sdk.length ? sdk.reduce((sum, entry) => sum + entry.bytes, 0) : null,
+      smlibAttribution: sdk.length ? 'Browser-attributed Worker memory, not isolated SDK linear heap' : 'No separate SDK attribution supplied' };
+  }
+  catch (error) { return { bytes: null, reason: String(error) }; }
+});
+
 export async function runBrowserComparison({ engine, native, out, corpus = false }) {
   const { validateEngine } = await import('../../packages/cli/dist/retained/engine.js');
   const { retainedReport } = await import('../../packages/cli/dist/retained/report.js');
@@ -26,7 +40,7 @@ export async function runBrowserComparison({ engine, native, out, corpus = false
   if (tolerances.nativeWasmVolumeRelative !== 1e-9 || tolerances.viewStorageHalfUlp !== true) throw new Error('Preregistered M2 tolerances changed');
   const temporary = await mkdtemp(join(tmpdir(), 'retained-browser-parity-'));
   let server, browser;
-  const products = [], models = [], pageErrors = [];
+  const products = [], models = [], pageErrors = [], crashViolations = [];
   try {
     await writeFile(join(temporary, 'index.html'), '<!doctype html><title>Retained browser parity</title>');
     // The engine is ALREADY staged and validated. Reuse serveRoots, serving the
@@ -39,18 +53,41 @@ export async function runBrowserComparison({ engine, native, out, corpus = false
     });
     await new Promise(done => server.listen(0, '127.0.0.1', done));
     browser = await chromium.launch({ channel: process.env.IFCLITE_BROWSER_CHANNEL || 'chromium' });
-    const page = await browser.newPage();
-    page.on('pageerror', error => pageErrors.push(String(error)));
-    await page.goto(`http://127.0.0.1:${server.address().port}/page/index.html`);
+    const page = corpus ? null : await browser.newPage();
     const bindings = await readFile(join(validated.directory, 'pkg-retained/ifc-lite.js'), 'utf8');
     const driver = bindings.match(/from ['"](\.\/snippets\/[^'"]+\/retained-driver\.mjs)['"]/);
     if (!driver) throw new Error('Built retained package has no driver import to observe');
-    await page.evaluate(async driverUrl => {
-      window.harness = await import('/harness/browser-page.mjs');
-      await window.harness.initialize(driverUrl);
-    }, `/pkg/${driver[1].slice(2)}`);
+    async function setupPage(page) {
+      page.on('pageerror', error => pageErrors.push(String(error)));
+      await page.goto(`http://127.0.0.1:${server.address().port}/page/index.html`);
+      await page.evaluate(async driverUrl => {
+        window.harness = await import('/harness/browser-page.mjs');
+        await window.harness.initialize(driverUrl);
+      }, `/pkg/${driver[1].slice(2)}`);
+    }
+    if (!corpus) await setupPage(page);
     for (const model of [...new Set(blessed.map(p => p.model))].sort()) {
-      const result = await page.evaluate(model => window.harness.runModel(model), model);
+      let result, browserMemory;
+      if (corpus) {
+        // WASM linear memory cannot shrink: release the entire page per model.
+        let modelPage;
+        try {
+          modelPage = await browser.newPage();
+          await setupPage(modelPage);
+          result = await modelPage.evaluate(model => window.harness.runModel(model), model);
+          browserMemory = await measureMemory(modelPage);
+          await modelPage.evaluate(() => window.harness.dispose());
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          crashViolations.push(`${model}: browser page crashed: ${message}`);
+          models.push({ model, crashed: true, error: message });
+          continue;
+        } finally {
+          await modelPage?.close().catch(error => pageErrors.push(String(error)));
+        }
+      } else {
+        result = await page.evaluate(model => window.harness.runModel(model), model);
+      }
       // Playwright serializes typed arrays as plain data; restore the API's
       // actual shape contract before calling the shared CLI volume reporter.
       const outcomes = result.shape.outcomes.map(p => p.status !== 'published' ? p : { ...p,
@@ -63,40 +100,34 @@ export async function runBrowserComparison({ engine, native, out, corpus = false
       const view = compareView(result.shape, result.view, result.prepass);
       models.push({ model, ...report.summary, ...view, importMs: result.importMs,
         shape: { ...result.shape.summary, qualificationMs: result.shape.qualificationMs, productWallMs: result.shape.productWallMs, wasmHeapBytes: result.shape.wasmHeapBytes },
-        view: { ...result.view.summary, qualificationMs: result.view.qualificationMs, wasmHeapBytes: result.view.wasmHeapBytes } });
+        view: { ...result.view.summary, qualificationMs: result.view.qualificationMs, wasmHeapBytes: result.view.wasmHeapBytes },
+        ...(corpus ? { browserMemory } : {}) });
       console.log(`${model}: ${report.summary.published}/${report.summary.candidates} published; view violations=${view.violations.length}`);
     }
-    // This API includes nested Workers when available. It does not isolate the
-    // SMLib linear heap; report that limitation rather than inventing a figure.
-    const memory = await page.evaluate(async () => {
-      if (!performance.measureUserAgentSpecificMemory) return { bytes: null, reason: 'measureUserAgentSpecificMemory unavailable' };
-      try {
-        const measurement = await performance.measureUserAgentSpecificMemory();
-        const sdk = measurement.breakdown.filter(entry =>
-          entry.attribution.some(owner => owner.url?.includes('/smlib/')));
-        return { bytes: measurement.bytes, smlibWorkerBytes: sdk.length ? sdk.reduce((sum, entry) => sum + entry.bytes, 0) : null,
-          smlibAttribution: sdk.length ? 'Browser-attributed Worker memory, not isolated SDK linear heap' : 'No separate SDK attribution supplied' };
-      }
-      catch (error) { return { bytes: null, reason: String(error) }; }
-    });
-    await page.evaluate(() => window.harness.dispose());
+    const successfulModels = models.filter(m => !m.crashed);
+    const memoryBytes = corpus ? successfulModels.map(m => m.browserMemory.bytes).filter(Number.isFinite) : [];
+    const memory = corpus ? {
+      bytes: memoryBytes.length ? Math.max(...memoryBytes) : null,
+      basis: 'max over per-model fresh pages (corpus mode)',
+    } : await measureMemory(page);
+    if (!corpus) await page.evaluate(() => window.harness.dispose());
     const parity = compare(nativeRows, products, blessed, tolerances.nativeWasmVolumeRelative,
       tolerances.nativeWasmClippedCurvedVolumeRelative?.value);
     const byCode = {};
     for (const p of products) if (p.code) byCode[p.code] = (byCode[p.code] ?? 0) + 1;
     const published = products.filter(p => p.status === 'published').length;
-    const timings = models.flatMap(m => m.shape.productWallMs);
-    const violations = [...parity.violations, ...models.flatMap(m => m.violations.map(v => `${m.model}: ${v}`)), ...pageErrors];
+    const timings = successfulModels.flatMap(m => m.shape.productWallMs);
+    const violations = [...parity.violations, ...successfulModels.flatMap(m => m.violations.map(v => `${m.model}: ${v}`)), ...pageErrors, ...crashViolations];
     const summary = { source: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: ROOT, encoding: 'utf8' }).trim(),
       engineManifestSha256: validated.manifestSha256, nativeProductsSha256: createHash('sha256').update(nativeBytes).digest('hex'),
       corpus, evidence: violations.length === 0, candidates: products.length, published, refused: products.length - published,
       coverage: products.length ? published / products.length : 0,
-      byCode, ...parity, violations, maxVertexMetres: Math.max(0, ...models.map(m => m.maxVertexMetres)),
-      maxVertexUlps: Math.max(0, ...models.map(m => m.maxVertexUlps)),
-      startupMs: (models[0]?.importMs ?? 0) + (models.find(m => m.shape.qualificationMs > 0)?.shape.qualificationMs ?? 0),
-      productMs: models.reduce((sum, m) => sum + Math.max(0, m.shape.productMs - m.shape.qualificationMs), 0),
-      msPerProduct: { p50: percentile(timings, 0.5), p95: percentile(timings, 0.95), basis: 'shape callback wall time minus observed real SDK qualification; warm session' },
-      wasmHeapPeakBytes: Math.max(0, ...models.flatMap(m => [m.shape.wasmHeapBytes, m.view.wasmHeapBytes])),
+      byCode, ...parity, violations, maxVertexMetres: Math.max(0, ...successfulModels.map(m => m.maxVertexMetres)),
+      maxVertexUlps: Math.max(0, ...successfulModels.map(m => m.maxVertexUlps)),
+      startupMs: (successfulModels[0]?.importMs ?? 0) + (successfulModels.find(m => m.shape.qualificationMs > 0)?.shape.qualificationMs ?? 0),
+      productMs: successfulModels.reduce((sum, m) => sum + Math.max(0, m.shape.productMs - m.shape.qualificationMs), 0),
+      msPerProduct: { p50: percentile(timings, 0.5), p95: percentile(timings, 0.95), basis: `shape callback wall time minus observed real SDK qualification; ${corpus ? 'fresh page per model' : 'warm session'}` },
+      wasmHeapPeakBytes: Math.max(0, ...successfulModels.flatMap(m => [m.shape.wasmHeapBytes, m.view.wasmHeapBytes])),
       browserMemory: memory, smlibHeapBytes: null, smlibHeapReason: 'SDK linear heap is private to its module Worker; browserMemory includes Workers when supported', models };
     if (!(await readFile(native)).equals(nativeBytes)) throw new Error('Native products.tsv changed during parity');
     if (out) {

@@ -34,12 +34,15 @@ export function derivedSetGlobalIds(view: MutablePropertyView | null, entityId: 
 export function nominateViewBaseQuantitySets(view: MutablePropertyView, quantityEdits: Map<number, Set<string>>): void {
   // Optional like `collectPropertyAndQuantitySetMutations`' probe: an older view has no base to ask.
   if (!view.hasQuantityBase?.()) return;
+  const nominate = (entityId: number, name: string) => {
+    let names = quantityEdits.get(entityId);
+    if (!names) quantityEdits.set(entityId, names = new Set());
+    names.add(name);
+  };
+  // A loaded element's set the base refreshed from its edited geometry (opt-in, #9026). Optional: an older view names none.
+  for (const { entityId, setName } of view.getQuantityBaseRevisions?.() ?? []) nominate(entityId, setName);
   for (const { expressId } of view.getNewEntities()) {
     if (!view.getNewEntity(view.resolveBaseEntityId(expressId))) continue;
-    for (const set of view.getQuantitiesForEntity(expressId)) {
-      let names = quantityEdits.get(expressId);
-      if (!names) quantityEdits.set(expressId, names = new Set());
-      names.add(set.name);
-    }
+    for (const set of view.getQuantitiesForEntity(expressId)) nominate(expressId, set.name);
   }
 }

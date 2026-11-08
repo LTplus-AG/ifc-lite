@@ -47,6 +47,7 @@ import { LEFT_PANEL_DEFAULT_SIZE } from '@/store/layoutReset';
 /** Hierarchy's minimum width, % of the main row. */
 const LEFT_PANEL_MIN_SIZE = 10;
 import { useOverlayCompositor } from './schedule/useOverlayCompositor';
+import { ActivityTrayDialog } from './activity/ActivityTray';
 import { CommandPaletteHost as CommandPalette } from './CommandPaletteHost';
 import { SearchModal } from './SearchModal';
 import { FlowStartupPrompt } from './flow/FlowStartupPrompt';
@@ -128,6 +129,7 @@ export function ViewerLayout() {
   }, [collabGeometryNotice]);
 
   // Command palette state
+  const [activityOpen, setActivityOpen] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
 
   // The shared dispatcher owns the Ctrl+K chord and text-entry exception.
@@ -273,7 +275,9 @@ export function ViewerLayout() {
         {/* Global dialogs above, overlays below */}
         <EntityContextMenu />
         <HoverTooltip />
-        <CommandPalette open={commandPaletteOpen} onOpenChange={setCommandPaletteOpen} />
+        <CommandPalette open={commandPaletteOpen} onOpenChange={setCommandPaletteOpen}
+          surfaceContext={{ openActivity: () => setActivityOpen(true) }} />
+        <ActivityTrayDialog open={activityOpen} onOpenChange={setActivityOpen} announce={false} />
         <SearchModal />
         <TourHost />
         <FlowStartupPrompt />

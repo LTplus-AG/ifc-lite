@@ -106,7 +106,11 @@ function getBrowser(): Promise<Browser> {
     // "ifclite" runner (already relied on by the E2E lane's identical
     // `runs-on` expression). A developer machine needs real Chrome too, same
     // as running `pnpm test:e2e`.
-    browserPromise = chromium.launch({ headless: true, channel: 'chrome' });
+    // Qualified fleet workers may provide their installed full Chrome for Testing.
+    // An explicit path fails closed; ordinary local/CI runs retain the Chrome channel.
+    const executablePath = process.env.IFCLITE_TEST_CHROME_EXECUTABLE;
+    browserPromise = chromium.launch({ headless: true,
+      ...(executablePath ? { executablePath } : { channel: 'chrome' }) });
   }
   return browserPromise;
 }

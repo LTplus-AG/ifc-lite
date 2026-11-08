@@ -89,6 +89,23 @@ describe('a roof by footprint in a loaded model (#9296 round 3)', () => {
     expect(definition.Overhang).toBe(0.5);
   });
 
+  it('each edited plane keeps only its own style, including after a plane disappears (#9356 review)', async () => {
+    const s = await storey();
+    const built = addRoofToStore(s.editor, s.anchor, HIP);
+    const styles = built.solidIds!.map((item, index) => {
+      const colour = s.editor.addEntity('IfcColourRgb', [null, index / 4, 0.5, 1]).expressId;
+      const rendering = s.editor.addEntity('IfcSurfaceStyleShading', [`#${colour}`, 0]).expressId;
+      const style = s.editor.addEntity('IfcSurfaceStyle', [`Plane ${index}`, '.BOTH.', [`#${rendering}`]]).expressId;
+      s.editor.addEntity('IfcStyledItem', [`#${item}`, [`#${style}`], null]);
+      return style;
+    });
+    const attachedStyles = () => [...exportText(s).matchAll(/IFCSTYLEDITEM\(#\d+,\(#(\d+)\),\$\)/g)].map((match) => Number(match[1])).sort((a, b) => a - b);
+    editFootprintRoofInStore(s.store, s.editor, built.roofId, { Thickness: 0.3 });
+    expect(attachedStyles()).toEqual(styles);
+    editFootprintRoofInStore(s.store, s.editor, built.roofId, { EdgeSlopes: [30 * D, 0, 30 * D, 0] });
+    expect(attachedStyles()).toEqual([styles[0], styles[2]]);
+  });
+
   it('slab tools leave a roof by footprint to its own edit: their chain does not take its first plane', async () => {
     const s = await storey();
     const { roofId } = addRoofToStore(s.editor, s.anchor, HIP);

@@ -38,10 +38,14 @@ export class FragmentPieces {
   private readonly whole = new Set<MeshData>();
   /** Registered meshes split for streaming: this fragment's pieces of each. */
   private readonly split = new Map<MeshData, MeshData[]>();
+  /** Holds a colour-merged mesh, registered under every id it carries: a subset
+   *  split would put it in more than one subset (see `Scene.canPartitionBatch`). */
+  readonly colorMerged: boolean = false;
 
   constructor(readonly fragment: BatchedMesh, pieces: readonly MeshData[], sourceOf: ReadonlyMap<MeshData, MeshData>) {
     for (const piece of pieces) {
       const source = sourceOf.get(piece);
+      if ((source ?? piece).entityIds?.length) this.colorMerged = true;
       const list = source && this.split.get(source);
       if (!source) this.whole.add(piece);
       else if (list) list.push(piece);
@@ -83,6 +87,12 @@ export class StreamingFragmentPieces {
    */
   record(fragment: BatchedMesh, pieces: readonly MeshData[], sourceOf: ReadonlyMap<MeshData, MeshData>): void {
     this.byBatchId.set(fragment.id, new FragmentPieces(fragment, pieces, sourceOf));
+  }
+
+  /** `batch`'s record, or `undefined` when it is not a live recorded fragment. */
+  forBatch(batch: BatchedMesh): FragmentPieces | undefined {
+    const record = this.byBatchId.get(batch.id);
+    return record?.fragment === batch ? record : undefined;
   }
 
   /** The slot's fragment record, or `undefined` when the slot's batch is not a recorded fragment. */

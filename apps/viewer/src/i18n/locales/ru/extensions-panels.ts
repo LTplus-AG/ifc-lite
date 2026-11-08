@@ -116,10 +116,10 @@ export const extensionsPanelsRu = {
   "extensionsPanels.ideasPanel.helpRecurringSubject": "Повторяющиеся предложения",
   "extensionsPanels.ideasPanel.helpRecurring": "{subject} появляются, когда рабочий процесс неоднократно отображается в вашем локальном журнале активности (загрузка модели, применение схемы отображения, экспорт). Пороговые значения смягчаются, пока журнал неполный, поэтому что-то появляется рано; ужесточаются по мере накопления данных.",
   "extensionsPanels.ideasPanel.helpActions": "Нажмите {tryIt}, чтобы отправить идею в чат-помощник с искусственным интеллектом — откроется чат, и вы сможете ответить на последующие вопросы. Нажмите {customize}, если хотите ограничить возможности или переименовать команду до того, как она будет увидена чатом.",
-  "extensionsPanels.ideasPanel.helpPrivacy": "Журнал действий хранится локально. Никакие данные из него не покидают ваше устройство.",
+  "extensionsPanels.ideasPanel.helpPrivacy": "Журнал действий остаётся локальным. Идеи, которые вы отправляете в ИИ-чат, включаются в сообщения настроенному поставщику ИИ.",
   "extensionsPanels.ideasPanel.remineAriaLabel": "Повторить поиск закономерностей",
   "extensionsPanels.ideasPanel.remineButton": "Повторить поиск закономерностей",
-  "extensionsPanels.ideasPanel.footerPrivacy": "Повторяющиеся последовательности в вашем локальном журнале активности. Ничего из этого не покидает ваше устройство.",
+  "extensionsPanels.ideasPanel.footerPrivacy": "Журнал действий остаётся локальным. Идеи, которые вы отправляете в ИИ-чат, включаются в сообщения настроенному поставщику ИИ.",
   "extensionsPanels.ideasPanel.recurringHeading": "Повторяющееся в ваших действиях",
   "extensionsPanels.ideasPanel.occurrenceSummary": {
     one: "{occurrences}× за {sessions} сессию · последнее {date} · оценка {score}",

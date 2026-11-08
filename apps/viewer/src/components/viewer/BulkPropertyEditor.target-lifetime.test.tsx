@@ -48,7 +48,13 @@ async function setup(count: number, modelCount = 1, source: 'selection' | 'searc
     editEnabled: true, collabRole: null });
   render(<BulkPropertyEditor trigger={<button>Open bulk</button>} />);
   click(button('Open bulk')!); await advance(0);
-  if (source !== 'query') await choose('Query', source === 'selection' ? 'Selection' : 'Search result');
+  if (source !== 'query') {
+    const trigger = document.querySelector<HTMLButtonElement>('button[aria-label="Target source"]'); assert.ok(trigger);
+    click(trigger); await advance(0);
+    const label = source === 'selection' ? 'Selection' : 'Search result';
+    const item = [...document.querySelectorAll('[role="option"]')].find(node => node.textContent === label);
+    assert.ok(item, label); click(item); await advance(0);
+  }
   await choose('Set Property', 'Set Attribute'); await choose('Select attribute', 'Name');
   const input = document.querySelector<HTMLInputElement>('input[placeholder="Value"]'); assert.ok(input);
   type(input, 'Applied name'); await waitFor(() => !applyButton().disabled, 'configured targets enable Apply');

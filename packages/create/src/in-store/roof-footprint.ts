@@ -144,9 +144,10 @@ export function writeFootprintDefinition(view: MutablePropertyView, roofId: numb
   for (const [name, value, type] of footprintDefinitionProperties(definition)) view.setProperty(roofId, ROOF_FOOTPRINT_PSET, name, value, type);
 }
 
-/** Carry a plane's styles only to the replacement draining to the same footprint edge. */
-function carryPlaneStyles(store: IfcDataStore, draft: StoreEditor, replacements: ReadonlyMap<number, number | undefined>): void {
+/** Preserve edge styles; a split inherits its flat source, and a merge requires one uniform style. */
+function carryPlaneStyles(store: IfcDataStore, draft: StoreEditor, replacements: ReadonlyMap<number, readonly number[]>): void {
   const reader = new AnchorEntityReader(store, draft.getMutationView());
+  const styled: Array<{ id: number; item: number; styles: string[]; name: string | null; key: string }> = [];
   for (const id of reader.ids('IFCSTYLEDITEM')) {
     const entity = reader.entity(id);
     const item = refId(entity?.attributes[0]);
@@ -155,9 +156,25 @@ function carryPlaneStyles(store: IfcDataStore, draft: StoreEditor, replacements:
     const name = entity.attributes[2];
     if (!Array.isArray(styles) || styles.length === 0 || styles.some((v) => refId(v) === null)) throw new Error('Unreadable roof plane style');
     if (name !== null && name !== undefined && typeof name !== 'string') throw new Error('Unreadable roof plane style name');
-    const replacement = replacements.get(item);
-    if (replacement !== undefined) draft.addEntity('IfcStyledItem', [`#${replacement}`, styles.map((v) => `#${refId(v)}`), name ?? null]);
-    draft.removeEntity(id);
+    const refs = styles.map((v) => `#${refId(v)}`).sort();
+    styled.push({ id, item, styles: refs, name: name ?? null, key: JSON.stringify([refs, name ?? null]) });
+  }
+  const targets = [...replacements.values()];
+  const merging = targets.length > 1 && targets.every(ids => ids.length === 1 && ids[0] === targets[0][0]);
+  if (merging && styled.length && (new Set(styled.map(style => style.item)).size !== replacements.size || new Set(styled.map(style => style.key)).size !== 1)) {
+    throw new Error('Cannot merge roof planes with different styles into one flat plane; assign one common style first');
+  }
+  const written = new Map<number, string>();
+  for (const style of styled) {
+    for (const item of replacements.get(style.item)!) {
+      const previous = written.get(item);
+      if (previous !== undefined && previous !== style.key) throw new Error('Cannot merge roof planes with different styles');
+      if (previous === undefined) {
+        draft.addEntity('IfcStyledItem', [`#${item}`, style.styles, style.name]);
+        written.set(item, style.key);
+      }
+    }
+    draft.removeEntity(style.id);
   }
 }
 
@@ -291,7 +308,11 @@ export function editFootprintRoofInStore(store: IfcDataStore, editor: StoreEdito
         const oldPlan = planFootprintRoofNative(scale, current);
         const oldEdges = oldPlan.planes.length ? oldPlan.planes.map((plane) => plane.edge) : [-1];
         const newEdges = body.plan.planes.length ? body.plan.planes.map((plane) => plane.edge) : [-1];
-        carryPlaneStyles(store, draft, new Map(replaced.map((id, index) => [id, body.solidIds[newEdges.indexOf(oldEdges[index])]])));
+        carryPlaneStyles(store, draft, new Map(replaced.map((id, index): [number, readonly number[]] => {
+          const edge = oldEdges[index];
+          const next = newEdges.indexOf(edge);
+          return [id, edge === -1 ? body.solidIds : newEdges[0] === -1 ? [body.solidIds[0]] : next < 0 ? [] : [body.solidIds[next]]];
+        })));
         removeReplacedPlanes(store, draft, replaced);
       }
     }
@@ -306,8 +327,10 @@ export function editFootprintRoofInStore(store: IfcDataStore, editor: StoreEdito
 export function footprintDefinition(footprint: Array<[number, number]>, fields: RoofFootprintFields, thickness: number): Omit<FootprintRoofDefinition, 'PredefinedType'> {
   // One point per edge: a repeated closing point would count an edge that is not there.
   const points = openFootprint(footprint);
-  const slopes = fields.EdgeSlopes ?? points.map(() => 0);
+  const slopes = fields.EdgeSlopes === undefined ? points.map(() => 0) : fields.EdgeSlopes;
   if (!Array.isArray(slopes)) throw new Error('EdgeSlopes must be an array of radians, one per footprint edge');
-  return { Footprint: points, EdgeSlopes: [...slopes], Overhang: fields.Overhang ?? 0, Thickness: thickness };
+  const overhang = fields.Overhang === undefined ? 0 : fields.Overhang;
+  if (typeof overhang !== 'number') throw new Error('Overhang must be a length in metres');
+  return { Footprint: points, EdgeSlopes: [...slopes], Overhang: overhang, Thickness: thickness };
 }
 

@@ -15,6 +15,7 @@ import { extractPropertiesOnDemand, extractQuantitiesOnDemand } from '@ifc-lite/
 import { IfcAPI, initSync } from '@ifc-lite/wasm';
 import { deriveAuthoredBaseQuantities } from './base-quantities.js';
 import { resolveSlabEditChain } from './edit/slab-edit.js';
+import { AnchorEntityReader } from './resolve-anchor.js';
 import { addRoofToStore } from './roof.js';
 import { requiredModule } from './__test__/required-module.js';
 import { exportText, newStorey, parse, type Schema } from './wall-join-mesh.oracle.js';
@@ -110,6 +111,32 @@ describe('a roof by footprint in a loaded model (#9296 round 3)', () => {
     expect(attachedStyles()).toEqual(styles);
     f.editFootprintRoofInStore(s.store, s.editor, built.roofId, { EdgeSlopes: [30 * D, 0, 30 * D, 0] });
     expect(attachedStyles()).toEqual([styles[0], styles[2]]);
+    expect(() => f.editFootprintRoofInStore(s.store, s.editor, built.roofId, { EdgeSlopes: [0, 0, 0, 0] })).toThrow(/different styles/);
+    expect(attachedStyles()).toEqual([styles[0], styles[2]]);
+    expect(f.readFootprintRoofInStore(s.store, built.roofId, s.view)?.PredefinedType).toBe('GABLE_ROOF');
+  });
+
+  it.each([true, false])('a uniform roof style survives flat/pitched topology changes (starts flat=%s, #9356 review)', async (flat) => {
+    const s = await storey();
+    const built = addRoofToStore(s.editor, s.anchor, { ...HIP, EdgeSlopes: flat ? [0, 0, 0, 0] : HIP.EdgeSlopes, Overhang: 0.2 });
+    const colour = s.editor.addEntity('IfcColourRgb', [null, 0.2, 0.4, 0.8]).expressId;
+    const shading = s.editor.addEntity('IfcSurfaceStyleShading', [`#${colour}`, 0]).expressId;
+    const style = s.editor.addEntity('IfcSurfaceStyle', ['Roof', '.BOTH.', [`#${shading}`]]).expressId;
+    for (const item of built.solidIds!) s.editor.addEntity('IfcStyledItem', [`#${item}`, [`#${style}`], null]);
+    f.editFootprintRoofInStore(s.store, s.editor, built.roofId, { EdgeSlopes: flat ? HIP.EdgeSlopes : [0, 0, 0, 0] });
+    const reader = new AnchorEntityReader(s.store, s.view);
+    const styled = [...reader.ids('IFCSTYLEDITEM')].map(id => reader.entity(id)!.attributes[1]);
+    expect(styled).toEqual(Array.from({ length: flat ? 4 : 1 }, () => [`#${style}`]));
+  });
+
+  it.each([
+    [{ EdgeSlopes: null }, /EdgeSlopes.*array/],
+    [{ Overhang: null }, /Overhang.*length/],
+  ])('refuses malformed runtime footprint fields atomically (#9356 review): %j', async (fields, reason) => {
+    const s = await storey();
+    const count = s.view.getNewEntities().length;
+    expect(() => addRoofToStore(s.editor, s.anchor, { ...HIP, ...fields } as never)).toThrow(reason);
+    expect(s.view.getNewEntities()).toHaveLength(count);
   });
 
   it('slab tools leave a roof by footprint to its own edit: their chain does not take its first plane', async () => {

@@ -161,3 +161,8 @@ test('#9304 extraction rejects non-pinned bytes before any geometry is trusted',
     await assert.rejects(extract('test', {bytes: 5, sha256: '0'.repeat(64)}, file), /Reference pin mismatch/);
   } finally { rmSync(dir, {recursive: true, force: true}); }
 });
+
+test('#9304 cyclic dimensional unit references are refused', () => {
+  const model = new Model("DATA;#1=IFCCONVERSIONBASEDUNIT($,.AREAUNIT.,'loop',#2);#2=IFCMEASUREWITHUNIT(IFCAREAMEASURE(1.),#1);ENDSEC;");
+  assert.throws(() => model.unitScale(1), /Cyclic unit conversion/);
+});

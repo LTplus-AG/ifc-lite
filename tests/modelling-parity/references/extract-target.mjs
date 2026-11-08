@@ -197,23 +197,26 @@ export class Model {
   all(type) { return this.byType.get(type) ?? []; }
   get(id) { return this.e.get(id); }
 
-  unitScale(id, seen = new Set()) {
-    if (seen.has(id)) throw new Error('Cyclic unit conversion');
-    seen.add(id);
-    const unit = this.get(id);
-    if (unit?.type === 'IFCSIUNIT') {
-      const power = { METRE: 1, SQUARE_METRE: 2, CUBIC_METRE: 3 }[enumVal(unit.args[3])];
-      if (!power) throw new Error('Unsupported dimensional SI unit');
-      const prefix = { EXA: 1e18, PETA: 1e15, TERA: 1e12, GIGA: 1e9, MEGA: 1e6, KILO: 1e3, HECTO: 1e2, DECA: 10, DECI: .1, CENTI: .01, MILLI: .001, MICRO: 1e-6, NANO: 1e-9, PICO: 1e-12, FEMTO: 1e-15, ATTO: 1e-18 };
-      return (prefix[enumVal(unit.args[2])] ?? 1) ** power;
-    }
-    if (unit?.type === 'IFCCONVERSIONBASEDUNIT') {
+  unitScale(id) {
+    const seen = new Set();
+    let factor = 1;
+    for (;;) {
+      if (seen.has(id)) throw new Error('Cyclic unit conversion');
+      seen.add(id);
+      const unit = this.get(id);
+      if (unit?.type === 'IFCSIUNIT') {
+        const power = { METRE: 1, SQUARE_METRE: 2, CUBIC_METRE: 3 }[enumVal(unit.args[3])];
+        if (!power) throw new Error('Unsupported dimensional SI unit');
+        const prefix = { EXA: 1e18, PETA: 1e15, TERA: 1e12, GIGA: 1e9, MEGA: 1e6, KILO: 1e3, HECTO: 1e2, DECA: 10, DECI: .1, CENTI: .01, MILLI: .001, MICRO: 1e-6, NANO: 1e-9, PICO: 1e-12, FEMTO: 1e-15, ATTO: 1e-18 };
+        return factor * (prefix[enumVal(unit.args[2])] ?? 1) ** power;
+      }
+      if (unit?.type !== 'IFCCONVERSIONBASEDUNIT') throw new Error('Unsupported dimensional unit');
       const measure = this.get(refId(unit.args[3]));
-      const factor = numVal(measure?.args[0]);
-      if (factor === null) throw new Error('Missing unit conversion factor');
-      return factor * this.unitScale(refId(measure?.args[1]), seen);
+      const value = numVal(measure?.args[0]);
+      if (value === null) throw new Error('Missing unit conversion factor');
+      factor *= value;
+      id = refId(measure?.args[1]);
     }
-    throw new Error('Unsupported dimensional unit');
   }
 
   detectUnitScale(type, fallback) {

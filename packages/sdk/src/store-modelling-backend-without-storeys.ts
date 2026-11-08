@@ -38,6 +38,9 @@ import {
   liveEntityType,
   readRelatedLists,
   resolveAuthoringAnchor,
+  resolveBodyContextId,
+  applyLayerThicknessInStore,
+  typeOccurrencesInStore,
   type ElementTypeInStoreParams,
   type MaterialInStoreParams,
   type MaterialLayerSetInStoreParams,
@@ -70,6 +73,7 @@ export type ModellingStoreModelResolver = (modelId?: string) => CostStoreModelRe
  */
 export function createModellingStoreBackendWithoutStoreys(resolve: ModellingStoreModelResolver): ModellingStoreBackendMethodsWithoutStoreys {
   const ref = (modelId: string, expressId: number): EntityRef => ({ modelId, expressId });
+  const editTarget = (model: CostStoreModelResolution) => ({ dataStore: model.store, view: model.mutationView, editor: model.editor });
   const authoring = (modelId: string) => {
     const model = resolve(modelId);
     return { model, anchor: { ...resolveAuthoringAnchor(model.store, model.mutationView), ownerHistoryId: model.ownerHistoryId } };
@@ -196,11 +200,15 @@ export function createModellingStoreBackendWithoutStoreys(resolve: ModellingStor
       const { model, anchor } = authoring(modelId);
       requireKinds(model, 'assignType', [[[typeExpressId], ['IfcTypeObject']], [objectExpressIds, ['IfcObject']]]);
       const existing = readRelatedLists(model.store, 'IfcRelDefinesByType', model.mutationView);
-      return ref(model.modelId, assignTypeInStore(model.editor, anchor, typeExpressId, objectExpressIds, existing).relId);
+      const rel = assignTypeInStore(model.editor, anchor, typeExpressId, objectExpressIds, existing).relId;
+      // A layered type drives the thickness of what it types, in the same record (one undo step).
+      applyLayerThicknessInStore(editTarget(model), objectExpressIds);
+      return ref(model.modelId, rel);
     },
     addMaterial(modelId: string, params: MaterialInStoreParams): EntityRef {
       const { model, anchor } = authoring(modelId);
-      return ref(model.modelId, addMaterialToStore(model.editor, anchor, params).materialId);
+      const representationContextId = params.Color === undefined ? null : resolveBodyContextId(model.store, model.mutationView);
+      return ref(model.modelId, addMaterialToStore(model.editor, anchor, params, { representationContextId }).materialId);
     },
     addMaterialLayerSet(modelId: string, params: MaterialLayerSetInStoreParams): EntityRef {
       const { model, anchor } = authoring(modelId);
@@ -215,7 +223,13 @@ export function createModellingStoreBackendWithoutStoreys(resolve: ModellingStor
       const { model, anchor } = authoring(modelId);
       requireKinds(model, 'assignMaterial', [[[materialExpressId], ['IfcMaterialSelect']], [objectExpressIds, ['IfcObjectDefinition', 'IfcPropertyDefinition']]]);
       const existing = readRelatedLists(model.store, 'IfcRelAssociatesMaterial', model.mutationView);
-      return ref(model.modelId, assignMaterialInStore(model.editor, anchor, materialExpressId, objectExpressIds, existing).relId);
+      const rel = assignMaterialInStore(model.editor, anchor, materialExpressId, objectExpressIds, existing).relId;
+      // A layer set given to an occurrence sizes it; given to a type, it sizes every occurrence the
+      // type types (an occurrence's own layer set still wins). Same record, so one undo step.
+      const isType = (id: number) => liveEntityConforms(model.store, id, 'IfcTypeObject', model.mutationView);
+      const sized = objectExpressIds.flatMap(id => isType(id) ? typeOccurrencesInStore(editTarget(model), id) : [id]);
+      applyLayerThicknessInStore(editTarget(model), sized);
+      return ref(model.modelId, rel);
     },
   };
 }

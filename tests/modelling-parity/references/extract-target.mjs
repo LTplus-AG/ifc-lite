@@ -399,6 +399,7 @@ async function meshPassInner(bytes, wantedIds) {
     api.setSourceBytes(bytes);
     const pre = api.buildPrePassOnce(bytes);
     const total = pre?.totalJobs ?? 0;
+    if (total === 0) throw new Error('No geometry jobs were discovered');
     const rtc = pre?.rtcOffset ? Array.from(pre.rtcOffset) : [0, 0, 0];
     for (let s = 0; s < total; s += 512) {
       const e = Math.min(s + 512, total);
@@ -411,42 +412,50 @@ async function meshPassInner(bytes, wantedIds) {
         for (let i = 0; i < coll.length; i++) {
           const mesh = coll.get(i);
           if (!mesh) continue;
-          const id = mesh.expressId;
-          const pos = mesh.positions;
-          const idx = mesh.indices;
-          // Renderer Y-up -> IFC Z-up: (x, y, z) -> (x, -z, y)
-          const P = (k) => [pos[3 * k], -pos[3 * k + 2], pos[3 * k + 1]];
-          let ext = extents.get(id);
-          if (!ext) { ext = { min: [Infinity, Infinity, Infinity], max: [-Infinity, -Infinity, -Infinity] }; extents.set(id, ext); }
-          for (let k = 0; k < pos.length / 3; k++) {
-            const p = P(k);
-            for (let d = 0; d < 3; d++) { ext.min[d] = Math.min(ext.min[d], p[d]); ext.max[d] = Math.max(ext.max[d], p[d]); }
-          }
-          if (wantedIds.has(id)) {
-            const list = tris.get(id) ?? [];
-            for (let t = 0; t < idx.length; t += 3) {
-              const a = P(idx[t]), b = P(idx[t + 1]), c = P(idx[t + 2]);
-              const u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
-              const v = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
-              const nn = cross(u, v);
-              const area = Math.hypot(...nn) / 2;
-              if (area > 1e-9) list.push({ n: norm3(nn), a: area });
+          try {
+            const id = mesh.expressId;
+            const pos = mesh.positions;
+            const idx = mesh.indices;
+            // Renderer Y-up -> IFC Z-up: (x, y, z) -> (x, -z, y)
+            const P = (k) => [pos[3 * k], -pos[3 * k + 2], pos[3 * k + 1]];
+            let ext = extents.get(id);
+            if (!ext) { ext = { min: [Infinity, Infinity, Infinity], max: [-Infinity, -Infinity, -Infinity] }; extents.set(id, ext); }
+            for (let k = 0; k < pos.length / 3; k++) {
+              const p = P(k);
+              for (let d = 0; d < 3; d++) { ext.min[d] = Math.min(ext.min[d], p[d]); ext.max[d] = Math.max(ext.max[d], p[d]); }
             }
-            tris.set(id, list);
-          }
+            if (wantedIds.has(id)) {
+              const list = tris.get(id) ?? [];
+              for (let t = 0; t < idx.length; t += 3) {
+                const a = P(idx[t]), b = P(idx[t + 1]), c = P(idx[t + 2]);
+                const u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+                const v = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+                const nn = cross(u, v);
+                const area = Math.hypot(...nn) / 2;
+                if (area > 1e-9) list.push({ n: norm3(nn), a: area });
+              }
+              tris.set(id, list);
+            }
+          } finally { mesh.free(); }
         }
       } finally { coll.free(); }
     }
   } finally {
-    if (api.clearPrePassCache) api.clearPrePassCache();
-    api.free();
+    try { if (api.clearPrePassCache) api.clearPrePassCache(); } finally { api.free(); }
   }
+  requireMeasuredExtents(extents);
   return { extents, tris };
 }
 
 // ----------------------------------------------------------------- extractor
 
-function roofSlopes(triLists) {
+export function requireMeasuredExtents(extents) {
+  if (extents.size === 0 || [...extents.values()].some(ext => ![...ext.min,...ext.max].every(Number.isFinite))) {
+    throw new Error('No complete finite mesh extents were measured');
+  }
+}
+
+export function roofSlopes(triLists) {
   // Cluster upward-facing, tilted triangles by (tilt, azimuth).
   const clusters = new Map();
   let flatArea = 0;
@@ -464,7 +473,7 @@ function roofSlopes(triLists) {
       clusters.set(key, c);
     }
   }
-  const arr = [...clusters.values()].sort((x, y) => y.area - x.area).filter((c) => c.area >= 0.03 * total);
+  const arr = [...clusters.values()].sort((x, y) => y.area - x.area).filter((c) => c.area > 0);
   const tilted = arr.reduce((s, c) => s + c.area, 0);
   const dirs = new Set(arr.map((c) => c.azimuthDeg));
   let form = 'none';

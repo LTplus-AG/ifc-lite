@@ -15,7 +15,7 @@ import test from 'node:test';
 import { HERE, MANIFEST_PATH, resolveReferencePath } from './lib.mjs';
 import { elementCountsFromInfo, requireVerifiedReference } from './refresh-info.mjs';
 import { verifyPath } from './fetch-references.mjs';
-import { Model, parseStep, countRoofParts, storeyAtElevation, dimensionKey, sumKnown, extract } from './extract-target.mjs';
+import { Model, parseStep, countRoofParts, storeyAtElevation, dimensionKey, sumKnown, extract, roofSlopes, requireMeasuredExtents } from './extract-target.mjs';
 
 const manifest = JSON.parse(readFileSync(MANIFEST_PATH, 'utf8'));
 
@@ -185,3 +185,15 @@ for (const [id,target] of [['nibs-duplex-ifc2x3','f3-duplex-target.json'],['kit-
     assert.equal(saved.roof.parts,countRoofParts(model,roots));
   });
 }
+
+test('#9304 small real hip end planes are not erased by a relative area threshold', () => {
+  const z=Math.sqrt(3)/2;
+  const roof=roofSlopes([[{n:[0,.5,z],a:98},{n:[0,-.5,z],a:98},{n:[.5,0,z],a:2},{n:[-.5,0,z],a:2}]]);
+  assert.equal(roof.inferredForm,'hip-or-pyramid');
+  assert.equal(roof.slopes.length,4);
+});
+test('#9304 missing or non-finite mesh evidence cannot certify extraction', () => {
+  assert.throws(()=>requireMeasuredExtents(new Map()),/mesh extents/);
+  assert.throws(()=>requireMeasuredExtents(new Map([[1,{min:[Infinity,0,0],max:[0,0,0]}]])),/mesh extents/);
+  assert.doesNotThrow(()=>requireMeasuredExtents(new Map([[1,{min:[0,0,0],max:[1,1,1]}]])));
+});

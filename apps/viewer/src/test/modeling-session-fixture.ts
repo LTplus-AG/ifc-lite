@@ -51,6 +51,8 @@ export interface ModelingSessionOptions {
   storeyOffset?: [number, number];
   /** Imported native owners for the Room tests’ explicit remeshed geometry. */
   roomGeometry?: boolean;
+  /** A whole STEP file to load instead, e.g. one this fixture's session exported. */
+  step?: string;
 }
 
 function fixtureStep({ unit = 'metre', storeyOffset = [0, 0], roomGeometry = false }: ModelingSessionOptions): string {
@@ -149,7 +151,7 @@ function emptyGeometry(): GeometryResult {
 }
 
 export async function seedModelingSession(options: ModelingSessionOptions = {}): Promise<MutablePropertyView> {
-  const bytes = new TextEncoder().encode(fixtureStep(options));
+  const bytes = new TextEncoder().encode(options.step ?? fixtureStep(options));
   const dataStore = await new IfcParser().parseColumnar(bytes.buffer as ArrayBuffer, { disableWorkerScan: true });
   const geometry = emptyGeometry();
   const maxExpressId = Math.max(...dataStore.entities.expressId);

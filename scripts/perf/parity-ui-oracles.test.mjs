@@ -72,3 +72,7 @@ test('#9324 joins between the same walls retain distinct endpoints', () => {
   const step = readStep("DATA;#1=IFCWALL('a');#2=IFCWALL('b');#5=IFCRELCONNECTSPATHELEMENTS('a',$,$,$,$,#1,#2,(),(),.ATSTART.,.ATEND.);#6=IFCRELCONNECTSPATHELEMENTS('b',$,$,$,$,#1,#2,(),(),.ATEND.,.ATSTART.);ENDSEC;");
   assert.equal(uniqueWallJoins(step),2);
 });
+
+test('#9324 malformed products cannot contribute counts or relationships', () => {
+  assert.throws(() => readStep("DATA;#42=IFCDOOR(BROKEN);#43=IFCRELFILLSELEMENT('r',$,$,$,#1,#42);ENDSEC;"), /STEP parse error/);
+});

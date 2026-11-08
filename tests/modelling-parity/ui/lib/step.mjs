@@ -77,8 +77,7 @@ export function readStep(text) {
   for (let m = re.exec(data); m; m = re.exec(data)) {
     const id = Number(m[1]);
     const type = m[2];
-    let args;
-    try { args = parseArgs(m[3].replace(/\r?\n/g, '')); } catch { args = null; }
+    const args = parseArgs(m[3].replace(/\r?\n/g, ''));
     const entity = { id, type, args };
     entities.set(id, entity);
     if (!byType.has(type)) byType.set(type, []);

@@ -35,13 +35,13 @@ export function ViewportLoadingCard() {
   const percent = Math.round(progress?.percent ?? 0);
   return (
     <div
-      className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center p-4 max-sm:items-start max-sm:pt-(--phone-loading-top)"
+      className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center p-4 max-sm:portrait:items-start max-sm:portrait:pt-(--phone-loading-top)"
       // The rotated cube projects beyond its box; keep two gutter widths
-      // below its shared reach. On phones this clears the Home/zoom cluster
+      // below its shared reach. On portrait phones this clears the Home/zoom cluster
       // even when the card gains a Cancel row (#8802).
       style={{ '--phone-loading-top': `${VIEW_CUBE_REACH_PX + 32}px` } as CSSProperties}
     >
-      <div data-viewport-loading-card className="pointer-events-auto w-full max-w-sm max-sm:max-w-none rounded-lg border bg-background/95 p-4 shadow-lg backdrop-blur-sm">
+      <div data-viewport-loading-card className="pointer-events-auto w-full max-w-sm max-sm:portrait:max-w-none rounded-lg border bg-background/95 p-4 shadow-lg backdrop-blur-sm">
         <div className="flex items-center gap-2">
           <Spinner size="md" className="shrink-0 text-primary" />
           <p className="min-w-0 flex-1 truncate text-sm font-medium" title={fileName ?? undefined} aria-hidden="true">

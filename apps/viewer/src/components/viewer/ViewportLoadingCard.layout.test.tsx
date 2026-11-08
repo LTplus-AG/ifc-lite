@@ -13,17 +13,19 @@ import { closeContrastBrowser, warmContrastBrowser, withThemedPage } from '@/tes
 import { ViewportOverlays } from './ViewportOverlays';
 import { MobilePanelLauncher } from './MobilePanelLauncher';
 import { MobileToolbar } from './MobileToolbar';
+import { VIEW_CUBE_REACH_PX } from './viewcube-box';
 
 before(warmContrastBrowser);
 after(closeContrastBrowser);
 afterEach(cleanup);
 
 // #8802: the centered loading card grew into Home/zoom when Cancel appeared.
-for (const [width, height] of [[320, 640], [360, 740], [390, 844], [1280, 800], [1600, 1000]]) {
+for (const [width, height] of [[320, 640], [360, 740], [375, 553], [390, 844], [568, 320], [592, 360], [639, 360], [1280, 800], [1600, 1000]]) {
   for (const theme of ['light', 'dark'] as const) {
     for (const cancel of [true, false]) {
       it(`loading card clears viewport controls at ${width}x${height}, ${theme}, cancel=${cancel} (#8802)`, async () => {
         const phone = width < 640;
+        const docked = phone && height >= width;
         act(() => useViewerStore.setState({
           isMobile: phone, loading: true, error: null, cesiumEnabled: false,
           loadingFileName: 'building-architecture-rev-b.ifc',
@@ -59,6 +61,7 @@ for (const [width, height] of [[320, 640], [360, 740], [390, 844], [1280, 800], 
             const viewport = document.querySelector('[data-test-viewport]')!.getBoundingClientRect();
             return {
               overlaps, targets: targets.length, width: rect.width,
+              top: rect.top - viewport.top,
               centered: Math.abs((rect.top + rect.bottom) / 2 - (viewport.top + viewport.bottom) / 2),
               font: parseFloat(getComputedStyle(card.querySelector('output')!).fontSize),
             };
@@ -67,8 +70,13 @@ for (const [width, height] of [[320, 640], [360, 740], [390, 844], [1280, 800], 
         assert.equal(result.targets, phone ? 4 : 2, 'all expected controls were measured');
         assert.equal(result.overlaps.some(Boolean), false, `overlap flags: ${result.overlaps.join(',')}`);
         assert.ok(result.font >= 11, `font ${result.font}`);
-        if (phone) assert.equal(result.width, width - 32);
-        else assert.ok(result.centered < 1, `desktop center delta ${result.centered}`);
+        if (docked) {
+          assert.equal(result.width, width - 32);
+          assert.equal(result.top, VIEW_CUBE_REACH_PX + 32, 'portrait uses the docking offset');
+        } else {
+          assert.ok(result.centered < 1, `center delta ${result.centered}`);
+          assert.ok(result.width <= 384, `centered card width ${result.width}`);
+        }
       });
     }
   }

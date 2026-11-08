@@ -27,6 +27,7 @@ import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { verifyPath } from './fetch-references.mjs';
 import { HERE, ROOT, resolveReferencePath } from './lib.mjs';
 
 // ---------------------------------------------------------------- STEP reader
@@ -186,8 +187,9 @@ export class Model {
       this.byType.get(ent.type).push(id);
     }
     this.placementCache = new Map();
-    this.lengthScale = this.detectLengthScale();
-    this.areaScale = this.lengthScale ** 2;
+    this.lengthScale = this.detectUnitScale('LENGTHUNIT', 1);
+    this.areaScale = this.detectUnitScale('AREAUNIT', this.lengthScale ** 2);
+    this.volumeScale = this.detectUnitScale('VOLUMEUNIT', this.lengthScale ** 3);
     this.schema = /FILE_SCHEMA\s*\(\s*\(\s*'([^']+)'/i.exec(text.slice(0, 200000))?.[1] ?? null;
     this.header = text.slice(0, text.indexOf('DATA;') > 0 ? text.indexOf('DATA;') : 4000);
     this.buildRelations();
@@ -195,28 +197,30 @@ export class Model {
   all(type) { return this.byType.get(type) ?? []; }
   get(id) { return this.e.get(id); }
 
-  detectLengthScale() {
+  unitScale(id, seen = new Set()) {
+    if (seen.has(id)) throw new Error('Cyclic unit conversion');
+    seen.add(id);
+    const unit = this.get(id);
+    if (unit?.type === 'IFCSIUNIT') {
+      const power = { METRE: 1, SQUARE_METRE: 2, CUBIC_METRE: 3 }[enumVal(unit.args[3])];
+      if (!power) throw new Error('Unsupported dimensional SI unit');
+      const prefix = { EXA: 1e18, PETA: 1e15, TERA: 1e12, GIGA: 1e9, MEGA: 1e6, KILO: 1e3, HECTO: 1e2, DECA: 10, DECI: .1, CENTI: .01, MILLI: .001, MICRO: 1e-6, NANO: 1e-9, PICO: 1e-12, FEMTO: 1e-15, ATTO: 1e-18 };
+      return (prefix[enumVal(unit.args[2])] ?? 1) ** power;
+    }
+    if (unit?.type === 'IFCCONVERSIONBASEDUNIT') {
+      const measure = this.get(refId(unit.args[3]));
+      const factor = numVal(measure?.args[0]);
+      if (factor === null) throw new Error('Missing unit conversion factor');
+      return factor * this.unitScale(refId(measure?.args[1]), seen);
+    }
+    throw new Error('Unsupported dimensional unit');
+  }
+
+  detectUnitScale(type, fallback) {
     const project = this.get(this.all('IFCPROJECT')[0]);
     const assignment = this.get(refId(project?.args[8]));
-    const assigned = refList(assignment?.args[0] ?? []);
-    const scale = (id, seen = new Set()) => {
-      if (seen.has(id)) throw new Error('Cyclic length unit');
-      seen.add(id);
-      const unit = this.get(id);
-      if (unit?.type === 'IFCSIUNIT' && enumVal(unit.args[1]) === 'LENGTHUNIT' && enumVal(unit.args[3]) === 'METRE') {
-        return { MILLI: 1e-3, CENTI: 1e-2, DECI: 1e-1, KILO: 1e3 }[enumVal(unit.args[2])] ?? 1;
-      }
-      if (unit?.type === 'IFCCONVERSIONBASEDUNIT' && enumVal(unit.args[1]) === 'LENGTHUNIT') {
-        const measure = this.get(refId(unit.args[3]));
-        return numVal(measure?.args[0]) * scale(refId(measure?.args[1]), seen);
-      }
-      return null;
-    };
-    for (const id of assigned) {
-      const value = scale(id);
-      if (value !== null) return value;
-    }
-    return 1;
+    const id = refList(assignment?.args[0] ?? []).find((id) => enumVal(this.get(id)?.args[1]) === type);
+    return id === undefined ? fallback : this.unitScale(id);
   }
 
   buildRelations() {
@@ -322,8 +326,8 @@ export class Model {
           const p = this.get(pid);
           if (p?.type === 'IFCPROPERTYSINGLEVALUE') {
             const n = numVal(p.args[2]);
-            const scale = { IFCAREAMEASURE: this.areaScale, IFCLENGTHMEASURE: this.lengthScale, IFCVOLUMEMEASURE: this.lengthScale ** 3 }[p.args[2]?.t] ?? 1;
-            if (n !== null && scale !== 1 && p.args[3] !== null) throw new Error('Explicit dimensional property units require independent conversion');
+            const dimensional = { IFCAREAMEASURE: this.areaScale, IFCLENGTHMEASURE: this.lengthScale, IFCVOLUMEMEASURE: this.volumeScale }[p.args[2]?.t];
+            const scale = dimensional === undefined ? 1 : p.args[3] ? this.unitScale(refId(p.args[3])) : dimensional;
             out[`${setName}.${strVal(p.args[0])}`] = n === null ? strVal(p.args[2]) ?? enumVal(p.args[2]?.v) : n * scale;
           }
         }
@@ -333,7 +337,8 @@ export class Model {
           const q = this.get(qid);
           if (!q) continue;
           const v = numVal(q.args[3]);
-          const scale = q.type === 'IFCQUANTITYLENGTH' ? this.lengthScale : q.type === 'IFCQUANTITYAREA' ? this.areaScale : q.type === 'IFCQUANTITYVOLUME' ? this.lengthScale ** 3 : 1;
+          const projectScale = q.type === 'IFCQUANTITYLENGTH' ? this.lengthScale : q.type === 'IFCQUANTITYAREA' ? this.areaScale : q.type === 'IFCQUANTITYVOLUME' ? this.volumeScale : 1;
+          const scale = q.args[2] ? this.unitScale(refId(q.args[2])) : projectScale;
           out[`${setName}.${strVal(q.args[0])}`] = v === null ? null : v * scale;
         }
       }
@@ -513,6 +518,8 @@ export function countRoofParts(model, roots) {
 }
 
 export async function extract(refId_, entry, file) {
+  const verification = await verifyPath(file, entry);
+  if (verification.state !== 'ok') throw new Error(`Reference pin ${verification.state}: ${verification.detail ?? file}`);
   const buf = readFileSync(file);
   const text = buf.toString('latin1');
   const model = new Model(text);

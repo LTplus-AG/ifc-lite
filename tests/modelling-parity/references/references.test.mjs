@@ -15,7 +15,7 @@ import test from 'node:test';
 import { HERE, MANIFEST_PATH } from './lib.mjs';
 import { elementCountsFromInfo, requireVerifiedReference } from './refresh-info.mjs';
 import { verifyPath } from './fetch-references.mjs';
-import { Model, parseStep, countRoofParts, storeyAtElevation, dimensionKey, sumKnown } from './extract-target.mjs';
+import { Model, parseStep, countRoofParts, storeyAtElevation, dimensionKey, sumKnown, extract } from './extract-target.mjs';
 
 const manifest = JSON.parse(readFileSync(MANIFEST_PATH, 'utf8'));
 
@@ -148,4 +148,16 @@ test('#9304 unavailable dimensions and wall lengths never become zero', () => {
 test('#9304 typed area properties follow project units before space-area fallback', () => {
   const model = new Model("DATA;#1=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);#2=IFCMEASUREWITHUNIT(IFCLENGTHMEASURE(0.3048),#1);#3=IFCCONVERSIONBASEDUNIT($,.LENGTHUNIT.,'foot',#2);#4=IFCUNITASSIGNMENT((#3));#5=IFCPROJECT('g',$,$,$,$,$,$,$,#4);#6=IFCSPACE('s');#7=IFCPROPERTYSINGLEVALUE('Area',$,IFCAREAMEASURE(100.),$);#8=IFCPROPERTYSET('p',$,'Dimensions',$,(#7));#9=IFCRELDEFINESBYPROPERTIES('r',$,$,$,(#6),#8);ENDSEC;");
   assert.ok(Math.abs(model.props(6)['Dimensions.Area'] - 9.290304) < 1e-9);
+});
+
+test('#9304 explicit area quantity units override metre project defaults', () => {
+  const model = new Model("DATA;#1=IFCSIUNIT(*,.AREAUNIT.,$,.SQUARE_METRE.);#2=IFCMEASUREWITHUNIT(IFCAREAMEASURE(0.09290304),#1);#3=IFCCONVERSIONBASEDUNIT($,.AREAUNIT.,'square foot',#2);#6=IFCSPACE('s');#7=IFCQUANTITYAREA('Area',$,#3,100.,$);#8=IFCELEMENTQUANTITY('q',$,'BaseQuantities',$,$,(#7));#9=IFCRELDEFINESBYPROPERTIES('r',$,$,$,(#6),#8);ENDSEC;");
+  assert.ok(Math.abs(model.props(6)['BaseQuantities.Area'] - 9.290304) < 1e-9);
+});
+test('#9304 extraction rejects non-pinned bytes before any geometry is trusted', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'parity-extract-pin-'));
+  try {
+    const file = join(dir, 'x.ifc'); writeFileSync(file, 'hello');
+    await assert.rejects(extract('test', {bytes: 5, sha256: '0'.repeat(64)}, file), /Reference pin mismatch/);
+  } finally { rmSync(dir, {recursive: true, force: true}); }
 });

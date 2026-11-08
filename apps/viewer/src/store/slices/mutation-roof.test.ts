@@ -58,6 +58,27 @@ describe('roof by footprint in the viewer (#9296 round 3)', () => {
     assert.deepEqual(body(roofId), hip, 'undo restores the hip roof');
   });
 
+  it('publishes the recorded definition with the rebuilt body (#9356 review)', () => {
+    const added = useViewerStore.getState().addRoof(MODEL_ID, STOREY, {
+      Position: [0, 0, 3], Width: 10, Depth: 8, Thickness: 0.25, EdgeSlopes: [30 * D, 30 * D, 30 * D, 30 * D],
+    });
+    assert.ok('expressId' in added);
+    const published: Array<[string, unknown]> = [];
+    const original = useViewerStore.getState().mirrorPropertyEdit;
+    useViewerStore.setState({ mirrorPropertyEdit: (_model, entity, pset, name, value) => {
+      if (entity === added.expressId && pset === 'IfcLite_RoofFootprint') published.push([name, value]);
+    } });
+    try {
+      assert.deepEqual(editRoofIn(useViewerStore, MODEL_ID, added.expressId, { Edge: { Index: 1, Slope: 0 }, Overhang: 0.5 }), { ok: true });
+    } finally {
+      useViewerStore.setState({ mirrorPropertyEdit: original });
+    }
+    const sent = Object.fromEntries(published);
+    assert.equal(sent.Overhang, 0.5);
+    assert.deepEqual(JSON.parse(String(sent.EdgeSlopes)), [30 * D, 0, 30 * D, 30 * D]);
+    assert.deepEqual(Object.keys(sent).sort(), ['EdgeSlopes', 'Footprint', 'Overhang', 'Thickness']);
+  });
+
   it('a refused edit says why and leaves the undo stack alone', () => {
     const added = useViewerStore.getState().addRoof(MODEL_ID, STOREY, {
       Profile: 'polygon', OuterCurve: [[0, 0], [10, 0], [10, 8], [0, 8]], Thickness: 0.25, EdgeSlopes: [10 * D, 0, 0, 0],

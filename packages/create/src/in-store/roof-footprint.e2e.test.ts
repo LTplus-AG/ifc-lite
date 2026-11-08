@@ -93,6 +93,40 @@ describe('a roof by footprint in a loaded model (#9296 round 3)', () => {
     expect(resolveSlabEditChain(s.store, s.view, s.editor, flat.roofId, 1)).not.toBeNull();
   });
 
+  it('an edit leaves no orphaned planes behind: only the new ones are exported (#9356 review)', async () => {
+    const s = await storey();
+    const { roofId } = addRoofToStore(s.editor, s.anchor, HIP);
+    editFootprintRoofInStore(s.store, s.editor, roofId, { EdgeSlopes: [30 * D, 0, 30 * D, 0] });
+    editFootprintRoofInStore(s.store, s.editor, roofId, { Overhang: 0.4 });
+    const text = exportText(s);
+    expect(text.match(/IFCEXTRUDEDAREASOLID\(/g)).toHaveLength(2);
+    expect(text.match(/IFCSHAPEREPRESENTATION\('?#?\d*'?[^;]*'Body'/g)).toHaveLength(1);
+  });
+
+  it('a closed outline with only an overhang counts one slope per edge (#9356 review)', async () => {
+    const s = await storey();
+    const { roofId } = addRoofToStore(s.editor, s.anchor, {
+      Profile: 'polygon', OuterCurve: [[0, 0], [6, 0], [6, 4], [0, 4], [0, 0]], Thickness: 0.2, Overhang: 0.3,
+    });
+    const definition = readFootprintRoofInStore(s.store, roofId, s.view)!;
+    expect(definition.Footprint).toHaveLength(4);
+    expect(definition.EdgeSlopes).toEqual([0, 0, 0, 0]);
+    expect(definition.PredefinedType).toBe('FLAT_ROOF');
+  });
+
+  it.each([
+    [{ Edge: null, Overhang: 1 }, /Edge must be/],
+    [{ Edge: { Index: 1 } }, /Edge must be/],
+    [{ EdgeSlopes: 0.5 }, /EdgeSlopes must be an array/],
+    [{ Overhang: '1' }, /Overhang must be a length/],
+  ])('refuses a malformed edit %j without writing (#9356 review)', async (patch, reason) => {
+    const s = await storey();
+    const { roofId } = addRoofToStore(s.editor, s.anchor, HIP);
+    const journal = s.view.getMutations().length;
+    expect(() => editFootprintRoofInStore(s.store, s.editor, roofId, patch as never)).toThrow(reason);
+    expect(s.view.getMutations()).toHaveLength(journal);
+  });
+
   it('a refused edit writes nothing', async () => {
     const s = await storey();
     const { roofId } = addRoofToStore(s.editor, s.anchor, HIP);

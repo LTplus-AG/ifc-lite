@@ -107,7 +107,8 @@ export {
 } from './apply-style.js';
 export { addRoofToStore, type RoofInStoreParams, type RoofRectangleParams, type RoofPolygonParams, type RoofBuildResult } from './roof.js';
 export {
-  editFootprintRoofInStore, type RoofFootprintFields, type RoofFootprintEdit, type FootprintRoofDefinition,
+  editFootprintRoofInStore, footprintDefinitionProperties, ROOF_FOOTPRINT_PSET,
+  type RoofFootprintFields, type RoofFootprintEdit, type FootprintRoofDefinition,
 } from './roof-footprint.js';
 export type { RoofShapeType } from './roof-footprint-plan.js';
 export { addPlateToStore, type PlateInStoreParams, type PlateRectangleParams, type PlatePolygonParams, type PlateBuildResult } from './plate.js';

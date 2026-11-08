@@ -180,7 +180,8 @@ impl RepresentationWalk {
         }
         if let NestedMaps::Expand { max_levels, .. } = self.nested {
             if run.levels >= max_levels {
-                refuse(run, WalkRefusal::Budget { max_levels, budget: "walk mapped attempts", reached: u64::from(run.levels) + 1 });
+                let reached = u64::from(run.levels) + 1;
+                refuse(run, WalkRefusal::Budget { max_levels, budget: "walk mapped attempts", reached });
                 return Flow::Stop;
             }
             run.levels += 1;

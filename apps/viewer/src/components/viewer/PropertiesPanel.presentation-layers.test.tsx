@@ -55,12 +55,13 @@ const section = (ui: HTMLElement) => ui.querySelector('section[aria-label="Prese
 it('#9273 lists both own-model layers with Identifier and omits the section for an unlayered selection', async () => {
   await setup();
   const ui = render(<PropertiesPanel />);
+  assert.ok(section(ui) === null, 'layer membership is resolved after render, not in the render stack');
   await waitFor(() => !!section(ui), 'layer section appears in the actual inspector');
   assert.deepEqual([...section(ui)!.querySelectorAll('button')].map(b => b.textContent), ['Walls (A-01)', 'Structure']);
   assert.doesNotMatch(section(ui)!.textContent!, /Foreign/);
   act(() => useViewerStore.setState({ selectedEntity: { modelId: 'own', expressId: 8 },
     selectedEntityId: 1_000_008, selectedEntityIds: new Set([1_000_008]) }));
-  assert.equal(section(ui), null);
+  assert.ok(section(ui) === null);
 });
 
 it('#9273 clicking the second layer reveals that exact header in the hierarchy', async () => {

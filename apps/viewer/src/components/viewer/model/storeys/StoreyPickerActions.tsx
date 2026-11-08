@@ -16,6 +16,7 @@ import { toast } from '@/components/ui/toast';
 import { mutationDenial } from '@/store/mutation-permission';
 import { modelStoreys } from '@/lib/commands/modeling/workspace-storeys';
 import { openStoreyManager } from '@/lib/storeys/storey-manager-open';
+import { loadStoreyToastAction } from './storey-toast';
 import { HudPopoverClose } from '../../../viewport-ui/hud';
 
 /** A header add always appends above the live topmost storey. */
@@ -35,7 +36,7 @@ export function StoreyPickerActions() {
     const state = useViewerStore.getState();
     if (topReference(state, modelId) === undefined) { openStoreyManager(state); return; }
     // The storey write path loads on first use, so the picker costs the boot bundle nothing.
-    void import('./add-storey').then(({ addStoreyKeepingSession, drawOnAddedStorey }) => {
+    void import('./add-storey').then(({ addStoreyKeepingSession }) => {
       // The model may have changed while the module loaded: re-read its live topmost storey,
       // and nothing at all once the session that was clicked in has ended, even if a new
       // one has since opened on the same model.
@@ -49,7 +50,7 @@ export function StoreyPickerActions() {
         const createdId = outcome.storeyId;
         const level = modelStoreys(useViewerStore.getState(), modelId).find(s => s.expressId === createdId);
         toast.success(t('storeyManager.added', { storey: level?.name ?? '', elevation: String(level?.elevation ?? '') }), {
-          label: t('storeyManager.drawOn'), onClick: () => drawOnAddedStorey(modelId, createdId),
+          label: t('storeyManager.drawOn'), onClick: () => loadStoreyToastAction(actions => actions.drawOnAddedStorey(modelId, createdId)),
         }, `storey-added:${modelId}`);
       }
     }, (error: unknown) => {

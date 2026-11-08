@@ -18,7 +18,7 @@ import { createStoreAdapter } from '@/sdk/adapters/store-adapter';
 import { mutationDenial } from '@/store/mutation-permission';
 import { copySources } from '@/lib/commands/modeling/copy-elements';
 import { copySourceSummary } from './copy-summary';
-import { applyLevelDisplayMode } from '@/store/levelDisplay';
+import { loadStoreyToastAction } from './storey-toast';
 import { formatStoreyElevation } from '../StoreyPicker';
 
 /** #9296: one transform per storey, one atomic copy, one undo step. */
@@ -96,21 +96,8 @@ export function CopyToStoreys({ onDone }: { onDone?: () => void } = {}) {
       const top = state.undoStacks.get(selection.modelId)?.at(-1);
       const step = top ? state.mutationBatchTags.get(top.id) ?? top.id : null;
       toast.success(t('storeyManager.copy.done', { count: copies.length, targets: t('storeyManager.copy.targets', { count: picked.size }) }), [
-        { label: t('storeyManager.copy.show'), dismiss: false, onClick: () => {
-          if (!useViewerStore.getState().models.has(selection.modelId)) return;
-          useViewerStore.getState().clearIsolation();
-          applyLevelDisplayMode('stacked');
-          useViewerStore.getState().setStoreyContextMode('all');
-        } },
-        { label: t('storeyManager.undo'), onClick: () => {
-          const now = useViewerStore.getState();
-          const denied = mutationDenial(now, selection.modelId);
-          if (denied) { toast.error(t('storeyManager.copy.readOnly', { reason: denied })); return; }
-          const latest = now.undoStacks.get(selection.modelId)?.at(-1);
-          const latestStep = latest ? now.mutationBatchTags.get(latest.id) ?? latest.id : null;
-          if (step && latestStep === step) now.undo(selection.modelId);
-          else toast.error(t('storeyManager.copy.undoStale'));
-        } },
+        { label: t('storeyManager.copy.show'), dismiss: false, onClick: () => loadStoreyToastAction(actions => actions.showCopiedStoreys(selection.modelId)) },
+        { label: t('storeyManager.undo'), onClick: () => loadStoreyToastAction(actions => actions.undoCopiedStoreys(selection.modelId, step)) },
       ], `copy-to-storeys:${selection.modelId}`);
       cancel();
       onDone?.();

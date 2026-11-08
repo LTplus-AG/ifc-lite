@@ -19,7 +19,7 @@
  * and raises a notice: nothing can be drawn until it has one.
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { ChevronDown, Eye, EyeOff, Layers, TriangleAlert } from 'lucide-react';
 import { useViewerStore } from '@/store';
 import { mutationDenial } from '@/store/mutation-permission';
@@ -31,9 +31,11 @@ import { HudChip, HudItem, HudNotice, HudPopover, HudPopoverContent, HudPopoverT
 import { StoreyPickerActions } from './storeys/StoreyPickerActions';
 import { StoreyPicker, formatStoreyElevation, type StoreyPickerGroup } from './StoreyPicker';
 import { COPY_TO_STOREYS_EVENT } from '@/lib/actions/copy-to-storeys-open';
-import { CopyToStoreys } from './storeys/CopyToStoreys';
+import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
 import { StoreyContextControl } from './StoreyContextControl';
+
+const CopyToStoreys = lazy(() => import('./storeys/CopyToStoreys').then(module => ({ default: module.CopyToStoreys })));
 
 /** Move the session to `storey`, keeping the command and the isolation (the chip and the plan header). */
 export function pickWorkspaceStorey(storey: WorkspaceStorey): void {
@@ -120,7 +122,7 @@ export function WorkspaceStoreyChip() {
             </span>
           </HudChip>
           <HudPopoverContent onCloseAutoFocus={(event) => { event.preventDefault(); document.querySelector<HTMLElement>('[data-testid="model-3d-panel"] canvas')?.focus(); }} align="start" className="p-1">
-            {copyOpen ? <CopyToStoreys onDone={() => { setOpen(false); setCopyOpen(false); }} /> : <StoreyPicker groups={groups} current={{ modelId: session.modelId, storeyId: session.storeyId }} onPick={pickWorkspaceStorey} />}
+            {copyOpen ? <Suspense fallback={<div className="flex h-64 w-64 items-center justify-center p-2"><Spinner label={t('storeyManager.copy.title')} /></div>}><CopyToStoreys onDone={() => { setOpen(false); setCopyOpen(false); }} /></Suspense> : <StoreyPicker groups={groups} current={{ modelId: session.modelId, storeyId: session.storeyId }} onPick={pickWorkspaceStorey} />}
             {!copyOpen && <Button size="sm" variant="ghost" disabled={copyDenial !== null} title={copyDenial ? t('storeyManager.copy.readOnly', { reason: copyDenial }) : undefined} onClick={() => setCopyOpen(!copyOpen)}>{t('storeyManager.copy.title')}</Button>}
             {!copyOpen && <StoreyPickerActions />}
           </HudPopoverContent>

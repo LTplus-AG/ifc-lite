@@ -46,9 +46,10 @@ test.afterAll(async () => { await vite.close(); await rm(viteCache, { recursive:
 const clashCount = (page: Page): Promise<number | null> =>
   page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().clashResult?.clashes.length ?? null);
 
-async function loadModel(page: Page): Promise<void> {
+async function loadModel(page: Page, reload = false): Promise<void> {
   const loaded = page.waitForEvent('console', { predicate: (message) => message.text().includes('[ifc-lite] Added model building-architecture-rev-b.ifc'), timeout: 180_000 });
-  await page.goto(`${viewerUrl}?model=/samples/building-architecture-rev-b.ifc`);
+  if (reload) await page.reload();
+  else await page.goto(`${viewerUrl}?model=/samples/building-architecture-rev-b.ifc`);
   await loaded;
   await page.waitForFunction(() => (globalThis.__ifc_lite_viewer_store__.getState().geometryResult?.meshes.length ?? 0) > 0, undefined, { timeout: 180_000 });
 }
@@ -208,22 +209,37 @@ test('#9259 real IFC quality evidence survives threshold edits, documentation ca
   expect(await run(page, { mode: 'hard', reportTouch: false })).toBeGreaterThan(0);
   const gates = page.locator('[data-quality-rule]');
   await expect(gates.first()).toBeVisible();
-  // Independent population oracle from actual engine membership and findings,
-  // rather than reproducing the evaluator or trusting its displayed percentage.
-  const expected = await page.evaluate(() => {
-    const result = globalThis.__ifc_lite_viewer_store__.getState().clashRawResult;
+  // Count physical source entities from loaded geometry, independently of the
+  // engine's membership collection. Reuse the IFC eligibility classifier only.
+  const expected = await page.evaluate(async ({ adapterUrl, instancesUrl }) => {
+    const { isNonClashableTag }: typeof import('../../packages/clash/src/adapters/shared') = await import(adapterUrl);
+    const { withInstancedMeshes }: typeof import('../../apps/viewer/src/utils/instancedExport') = await import(instancesUrl);
+    const state = globalThis.__ifc_lite_viewer_store__.getState();
+    const result = state.clashRawResult;
     if (!result) throw new Error('Real model detection produced no raw result');
+    const population = new Set<string>();
+    for (const model of state.models.values()) {
+      if (!model.geometryResult || !model.ifcDataStore) continue;
+      const meshes = withInstancedMeshes(model.geometryResult, { modelId: model.id, idOffset: model.idOffset ?? 0, maxExpressId: model.maxExpressId ?? 0 }).meshes;
+      for (const mesh of meshes) {
+        const tag = model.ifcDataStore.entities.getTypeName(mesh.expressId - (model.idOffset ?? 0));
+        if (mesh.positions.length && !isNonClashableTag(tag)) population.add(JSON.stringify([model.id, mesh.expressId]));
+      }
+    }
     return result.rulesRun.map(rule => {
-      const members = result.ruleCoverage?.find(row => row.rule === rule.id)?.matchedElements;
-      if (!members) throw new Error('Real model detection omitted membership');
-      const checked = new Set(members.map(member => JSON.stringify([member.model, member.ref]))).size;
+      const checked = population.size;
       const affected = new Set(result.clashes.filter(clash => clash.rule === rule.id)
         .flatMap(clash => [clash.a, clash.b]).map(member => JSON.stringify([member.model, member.ref]))).size;
       return { rule: rule.id, checked, affected };
     });
-  });
+  }, { adapterUrl: `/@fs/${ROOT}/packages/clash/src/adapters/shared.ts`, instancesUrl: '/src/utils/instancedExport.ts' });
   for (const row of expected) {
     await expect(page.locator('[data-quality-rule]').filter({ hasText: `${row.checked} checked · ${row.affected} affected` }).first()).toBeVisible();
+    const percent = 100 * (row.checked - row.affected) / row.checked;
+    const label = percent >= 95 ? 'Passed' : percent >= 90 ? 'Partially passed' : 'Failed';
+    await expect(gates.first()).toContainText(label);
+    await expect(gates.first().getByRole('img')).toHaveAccessibleName(new RegExp(`${label}$`));
+    await expect(gates.first().locator('svg text')).toHaveText(/\d+(\.\d+)?%/);
   }
   await page.screenshot({ path: info.outputPath('9259-real-ifc-quality.png') });
   await saveAs(page, 'Quality evidence 9259');
@@ -232,8 +248,9 @@ test('#9259 real IFC quality evidence survives threshold edits, documentation ca
   expect(captured?.rows.map(({ rule, checked, affected }) => ({ rule, checked, affected }))).toEqual(expected);
   await page.keyboard.press('Escape');
   await page.getByText('Configure quality gates', { exact: true }).click();
-  await page.getByLabel('Clash checks Category name 1', { exact: true }).fill('Changed after capture');
+  for (const index of [1, 2, 3]) await page.getByLabel(`Clash checks Category name ${index}`, { exact: true }).fill(`Changed after capture ${index}`);
   await page.getByRole('button', { name: 'Save thresholds', exact: true }).click();
+  await expect(gates.first()).toContainText('Changed after capture');
   await clickPanelAction(page, panelHeader(page, 'Clash detection'), 'Saved clash reports');
   const reportRow = page.getByRole('dialog').locator('li[data-clash-report]', { hasText: 'Quality evidence 9259' });
   await reportRow.getByText('Quality gates', { exact: true }).click();
@@ -245,7 +262,7 @@ test('#9259 real IFC quality evidence survives threshold edits, documentation ca
   const documentCopy = await page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().documents.find(doc => doc.name === 'Quality evidence 9259'));
   expect(documentCopy?.blocks.some(block => block.kind === 'image' && block.dataUrl.startsWith('data:image/png;base64,'))).toBe(true);
   expect(documentCopy?.blocks.filter(block => block.kind === 'text').map(block => block.text).join('\n')).not.toContain('Changed after capture');
-  await loadModel(page);
+  await loadModel(page, true);
   await page.evaluate(async () => {
     const state = globalThis.__ifc_lite_viewer_store__.getState();
     await state.initializeSavedClashReports();

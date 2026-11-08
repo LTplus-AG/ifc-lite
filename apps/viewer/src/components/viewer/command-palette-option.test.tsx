@@ -32,7 +32,7 @@ function paletteOptionTypeContract(runtime: Extract<Command, { runtimeSource: st
   // @ts-expect-error A registered id whose definition does not declare the palette surface.
   const contextOnly: RegisteredPaletteOptionProps = { commandId: 'context:select-all-type', ...placement };
   // The Model workspace rail commands (#6232) are registered palette ids too.
-  const railIds: RegisteredPaletteOptionProps['commandId'][] = ['tool:wall', 'tool:slab', 'tool:column', 'tool:beam'];
+  const railIds: RegisteredPaletteOptionProps['commandId'][] = ['tool:wall', 'tool:slab', 'tool:roof', 'tool:column', 'tool:beam'];
   // @ts-expect-error A runtime row cannot be rendered without its runtime owner.
   const unowned: DynamicPaletteOptionProps = { command: { ...runtime, runtimeSource: undefined }, ...placement };
   const registered = { id: 'view:frame', label: 'Frame', labelKey: 'commandPalette.tool.wall.label', keywords: '',
@@ -97,7 +97,7 @@ it('renders a registered palette action by id and keeps runtime rows separate (#
 
 it('resolves the Model workspace rail commands through the registry (#5878, #6232)', async () => {
   const { RegisteredPaletteOption } = await loadOptions();
-  for (const id of ['tool:wall', 'tool:slab', 'tool:column', 'tool:beam'] as const) {
+  for (const id of ['tool:wall', 'tool:slab', 'tool:roof', 'tool:column', 'tool:beam'] as const) {
     const definition = surfaceCommand(id, 'palette');
     const shortcut = definition.shortcut;
     assert.ok(shortcut && shortcut.startsWith('model.'), `${id} shows its workspace key`);

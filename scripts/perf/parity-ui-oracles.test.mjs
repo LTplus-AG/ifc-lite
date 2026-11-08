@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { hasDwgDownload, assignedTypes, uniqueWallJoins, hardwareAdapter, loadTarget, ownOpenings, themedResult, wallPropertySets, wallQuantityCoverage } from '../../tests/modelling-parity/ui/lib/oracles.mjs';
+import { copiedPlansMatch, hasDwgDownload, assignedTypes, uniqueWallJoins, hardwareAdapter, loadTarget, ownOpenings, themedResult, wallPropertySets, wallQuantityCoverage } from '../../tests/modelling-parity/ui/lib/oracles.mjs';
 import { readStep } from '../../tests/modelling-parity/ui/lib/step.mjs';
 test('#9324 fallback flags and software adapter descriptions are refused',()=>{
   assert.equal(hardwareAdapter({architecture:'blackwell'}),true);
@@ -59,4 +59,16 @@ test('#9324 PDF and DXF exports cannot stand in for the required DWG output', ()
   assert.equal(hasDwgDownload(undefined), false);
   assert.equal(hasDwgDownload({bytes: Buffer.from('%PDF-1.7')}), false);
   assert.equal(hasDwgDownload({bytes: Buffer.from('AC1032payload')}), true);
+});
+
+test('#9324 every target floor retains copied plan positions and wall multiplicity', () => {
+  const wall = (x) => ({start:[x,0],end:[x,1]});
+  const source = [wall(0),wall(2)];
+  assert.equal(copiedPlansMatch(source,[source,source]),true);
+  assert.equal(copiedPlansMatch(source,[source,[wall(1),wall(3)]]),false);
+  assert.equal(copiedPlansMatch(source,[[wall(0),wall(0)],source]),false);
+});
+test('#9324 joins between the same walls retain distinct endpoints', () => {
+  const step = readStep("DATA;#1=IFCWALL('a');#2=IFCWALL('b');#5=IFCRELCONNECTSPATHELEMENTS('a',$,$,$,$,#1,#2,(),(),.ATSTART.,.ATEND.);#6=IFCRELCONNECTSPATHELEMENTS('b',$,$,$,$,#1,#2,(),(),.ATEND.,.ATSTART.);ENDSEC;");
+  assert.equal(uniqueWallJoins(step),2);
 });

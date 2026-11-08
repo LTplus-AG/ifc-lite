@@ -21,7 +21,7 @@
  * - `notes`: where the UI blocked or misled, in plain words.
  */
 
-import { uniqueWallJoins, hasDwgDownload, assignedTypes, ownOpenings, wallPropertySets, wallQuantityCoverage } from './lib/oracles.mjs';
+import { copiedPlansMatch, uniqueWallJoins, hasDwgDownload, assignedTypes, ownOpenings, wallPropertySets, wallQuantityCoverage } from './lib/oracles.mjs';
 import { downloadCount, nextDownload, task } from './lib/driver.mjs';
 import {
   escape, hudText, oracleModel, openStoreyManager, readSession, readStoreyManager, switchStorey, tool, toasts, typeFields,
@@ -449,7 +449,7 @@ export const PROBES = [
           { name: '4 walls selected by click and Ctrl+click', ok: selected === 4, detail: `${selected} selected; ${copied.join(' / ')}` },
           { name: '4 walls on Level 2', ok: l2.length === 4, detail: `${l2.length}` },
           { name: '4 walls on Level 3', ok: l3.length === 4, detail: `${l3.length}` },
-          { name: 'copies keep the plan position of the Level 1 walls', ok: l2.length === 4 && l2.every((w) => l1.some((o) => nearPt(o.start, w.start, 1e-3) && nearPt(o.end, w.end, 1e-3))), detail: l2.map((w) => fmt(w.start)).join(' ') || 'none' },
+          { name: 'copies keep the plan position of the Level 1 walls', ok: l1.length === 4 && copiedPlansMatch(l1, [l2,l3]), detail: [l2,l3].map((walls) => walls.map((w) => fmt(w.start)).join(' ') || 'none').join(' / ') },
           { name: 'Level 2 at +3.0 m', ok: near(z2 ?? -1, 3, 1e-6), detail: `${z2}` },
         ],
       };

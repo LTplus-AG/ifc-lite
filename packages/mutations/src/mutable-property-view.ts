@@ -1799,7 +1799,7 @@ export class MutablePropertyView extends MutableOverlayState {
     this.positionalAttrMutations.clear();
     this.typeMutations.clear();
     this.newEntities.clear();
-    this.overriddenCreations.clear();
+    this.overriddenEntities.clear();
     this.overriddenSourceIds.clear();
     this.tombstones.clear();
     this.forgottenCreatedEntities.clear();

@@ -38,58 +38,42 @@ function sourceInverse(store: IfcDataStore): Map<number, number[]> {
 /**
  * The live reverse-reference lookup: which entities reference `id` once the
  * overlay is applied (created records, edited source records and tombstones).
- * The immutable source inverse is cached per model; slot edits are read once,
- * and authored creations are read by indexed reference candidate on demand.
+ * The immutable source inverse is cached per model; authored and edited
+ * creations are read by indexed reference candidate on demand.
  * Build one lookup per synchronous planning request.
  */
 export function effectiveReferencers(store: IfcDataStore, view: MutablePropertyView): (id: number) => readonly number[] {
-  const baseline = sourceInverse(store), inverse = new Map<number, number[]>();
-  const changed = new Set(view.getAttributeOverrideEntityIds());
+  const baseline = sourceInverse(store);
   const encoder = new TextEncoder();
-  const tombstones = view.getTombstones();
-  for (const expressId of changed) {
-    if (tombstones.has(expressId)) continue;
-    const created = effectiveCreatedRecord(view, expressId, store.schemaVersion);
-    // A deferred property atom (an edited IfcPropertySingleValue) lives in the
-    // secondary index; its baseline references are excluded above, so it must be rescanned too.
-    // @raw-entity-enumeration-ok point lookup of an already changed record's source bytes; effectiveSourceRecord applies the overlay
-    const source = created ? undefined : store.entityIndex.byId.get(expressId) ?? store.deferredEntityIndex?.get(expressId);
-    let refs: number[];
-    if (created) {
-      const bytes = encoder.encode(created.text);
-      refs = collectRefsInByteRange(bytes, 0, bytes.length);
-    } else if (source) {
-      if (view.getPositionalMutationsForEntity(expressId)?.size || view.getAttributeMutationsForEntity(expressId).length || view.getEntityTypeMutation(expressId)) {
-        // A resident source's slice is a view over its (usually shared) buffer, which a browser
-        // TextDecoder rejects; decodeUtf8 is the source's SAB-safe decode.
-        const text = store.source.decodeUtf8(source.byteOffset, source.byteOffset + source.byteLength);
-        const effective = effectiveSourceRecord(view, expressId, text, source.type, store.schemaVersion);
-        const bytes = encoder.encode(effective.text);
-        refs = collectRefsInByteRange(bytes, 0, bytes.length);
-      } else refs = collectRefsInByteRange(store.source, source.byteOffset, source.byteLength);
-    } else continue;
-    for (const ref of new Set(refs)) {
-      if (ref === expressId) continue;
-      const parents = inverse.get(ref) ?? [];
-      parents.push(expressId); inverse.set(ref, parents);
-    }
-  }
   const cached = new Map<number, readonly number[]>();
   return (id) => {
     const found = cached.get(id);
     if (found) return found;
-    const parents: number[] = [];
-    for (const parent of baseline.get(id) ?? []) if (!changed.has(parent) && !tombstones.has(parent)) parents.push(parent);
-    for (const parent of inverse.get(id) ?? []) parents.push(parent);
-    // Unedited creations already have an authored reference index. Verify only
-    // its candidates through the exact exporter grammar (numeric coordinates,
-    // SELECT strings and declined REAL edits must never become references).
-    for (const entity of view.getNewEntitiesReferencing(id)) {
-      if (entity.expressId === id || changed.has(entity.expressId) || tombstones.has(entity.expressId)) continue;
-      const record = effectiveCreatedRecord(view, entity.expressId, store.schemaVersion);
-      if (!record) continue;
-      const bytes = encoder.encode(record.text);
-      if (collectRefsInByteRange(bytes, 0, bytes.length).includes(id)) parents.push(entity.expressId);
+    const parents: number[] = [], original = new Set(baseline.get(id));
+    const candidates = new Set([
+      ...original, ...view.getAttributeOverrideReferenceCandidates(id),
+      ...Array.from(view.getNewEntitiesReferencing(id), entity => entity.expressId),
+    ]);
+    // Candidate indices may over-count. Only the exact exporter grammar decides
+    // whether a queued slot edit actually writes a reference (including REAL
+    // rejection, quoted SELECT/string values and deferred source atoms).
+    for (const expressId of candidates) {
+      if (expressId === id || view.isDeleted(expressId)) continue;
+      const created = effectiveCreatedRecord(view, expressId, store.schemaVersion);
+      let text: string;
+      if (created) text = created.text;
+      else {
+        if (!view.getPositionalMutationsForEntity(expressId)?.size && !view.getAttributeMutationsForEntity(expressId).length && !view.getEntityTypeMutation(expressId)) {
+          if (original.has(expressId)) parents.push(expressId);
+          continue;
+        }
+        // @raw-entity-enumeration-ok point lookup of a candidate's immutable bytes, including deferred atoms
+        const source = store.entityIndex.byId.get(expressId) ?? store.deferredEntityIndex?.get(expressId);
+        if (!source) continue;
+        text = effectiveSourceRecord(view, expressId, store.source.decodeUtf8(source.byteOffset, source.byteOffset + source.byteLength), source.type, store.schemaVersion).text;
+      }
+      const bytes = encoder.encode(text);
+      if (collectRefsInByteRange(bytes, 0, bytes.length).includes(id)) parents.push(expressId);
     }
     cached.set(id, parents);
     return parents;
@@ -109,7 +93,7 @@ export function editOwnershipRefusal(
     const id = queue.pop()!;
     if (visited.has(id)) continue;
     visited.add(id);
-    if (view.getTombstones().has(id)) continue;
+    if (view.isDeleted(id)) continue;
     // @raw-entity-enumeration-ok point class fallback after tombstone, retype and created-record handling
     const type = view.getEntityTypeMutation(id)?.newType ?? view.getNewEntity(id)?.type ?? store.entityIndex.byId.get(id)?.type;
     if (type && getInheritanceChainAcrossSchemas(type).includes('IfcProduct')) {

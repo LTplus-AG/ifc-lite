@@ -104,6 +104,8 @@ it('#9013 an edited deferred property atom keeps its references in the live look
   expect(effectiveReferencers(store, view)(1), 'renaming the atom does not drop its unit reference').toEqual([2]);
   editor.setPositionalAttribute(2, 3, null);
   expect(effectiveReferencers(store, view)(1), 'clearing its unit does').toEqual([]);
+  editor.setPositionalAttribute(2, 3, '#13');
+  expect(effectiveReferencers(store, view)(13), 'a new source reference is indexed even without a baseline edge').toEqual([2]);
 });
 
 it('#8452 ownership lookup does not serialize unrelated authored records', async () => {
@@ -113,10 +115,13 @@ it('#8452 ownership lookup does not serialize unrelated authored records', async
   let visits = 0;
   for (let i = 0; i < 2000; i++) {
     const entity = view.createEntity('IfcCartesianPoint', [[i, 0, 0]]);
+    view.setPositionalAttribute(entity.expressId, 0, [i + 1, 0, 0], true);
     Object.defineProperty(entity, 'type', { enumerable: true, get() { visits++; return 'IfcCartesianPoint'; } });
   }
   const other = editor.addEntity('IfcWall', ['guid', null, 'Shared', null, null, '#1235', '#1230', null, null]).expressId;
   visits = 0;
   expect(effectiveReferencers(store, view)(1230)).toContain(other);
   expect(visits).toBe(0);
+  editor.setAttribute(other, 'Name', '#999');
+  expect(effectiveReferencers(store, view)(999), 'a quoted Name is not a STEP reference').not.toContain(other);
 });

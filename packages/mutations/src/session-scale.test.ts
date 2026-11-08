@@ -172,3 +172,21 @@ it('typed override candidates follow writes, retypes, rollback and delete restor
   view.clear();
   expect(candidates()).toEqual([]);
 });
+
+it('override reference candidates track source and created retargets without numeric coordinates #8452', () => {
+  const view = new MutablePropertyView(null, 'override-refs');
+  const relation = view.createEntity('IfcRelAggregates', []), id = relation.expressId;
+  view.setPositionalAttribute(id, 5, [['#90']], true);
+  view.setAttribute(77, 'Unit', '#90', undefined, true);
+  view.setPositionalAttribute(78, 0, [90, 0, 0], true);
+  expect(view.getAttributeOverrideReferenceCandidates(90)).toEqual([id, 77]);
+  view.runAtomic(draft => {
+    draft.setPositionalAttribute(id, 5, ['#91'], true);
+    expect(draft.getAttributeOverrideReferenceCandidates(90)).toEqual([77]);
+    expect(draft.getAttributeOverrideReferenceCandidates(91)).toEqual([id]);
+  });
+  view.removePositionalMutation(id, 5);
+  view.removeAttributeMutation(77, 'Unit');
+  expect(view.getAttributeOverrideReferenceCandidates(90)).toEqual([]);
+  expect(view.getAttributeOverrideReferenceCandidates(91)).toEqual([]);
+});

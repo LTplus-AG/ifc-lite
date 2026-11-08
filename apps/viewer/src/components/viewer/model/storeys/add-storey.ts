@@ -5,6 +5,17 @@
 import { useViewerStore } from '@/store';
 import { storeySuggestion } from '@/lib/storeys/storey-actions';
 import { commitStoreyOp } from '@/store/slices/mutation-storey';
+import { activateStorey } from '@/lib/storeys/storey-session';
+import { modelStoreys } from '@/lib/commands/modeling/workspace-storeys';
+import { resolveWorkplane } from '@/lib/commands/modeling/registry';
+
+/** #9334: a persistent add toast must recheck its target when clicked. */
+export function drawOnAddedStorey(modelId: string, storeyId: number): void {
+  const state = useViewerStore.getState();
+  if (!state.session || !modelStoreys(state, modelId).some(storey => storey.expressId === storeyId)) return;
+  if ('refused' in resolveWorkplane(state, modelId, { kind: 'storey', storeyId, offset: 0 })) return;
+  activateStorey(state, modelId, storeyId);
+}
 
 /** #9296: adding a level never changes the plane of the next drawing gesture. */
 export function addStoreyKeepingSession(modelId: string, referenceId: number, side: 'above' | 'below', fallbackName: (index: number) => string) {

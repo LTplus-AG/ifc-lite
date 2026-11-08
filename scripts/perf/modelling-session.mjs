@@ -90,6 +90,8 @@ async function main() {
   if (!(budgetMs > 0 && budgetMs <= 540000) || !Number.isInteger(samples) || samples < 1 || samples > 5) throw new Error('Budget must be 1..540000 ms; samples 1..5');
   const output = resolve(process.env.PARITY_OUT ?? 'tests/modelling-parity/.out/l3');
   mkdirSync(output, { recursive: true });
+  // Keep the default generated results local even before the other R0 lanes land.
+  if (!process.env.PARITY_OUT) writeFileSync(join(output, '.gitignore'), '*\n');
   let results;
   if (args.includes('--input')) results = JSON.parse(readFileSync(value('--input'), 'utf8'));
   else {

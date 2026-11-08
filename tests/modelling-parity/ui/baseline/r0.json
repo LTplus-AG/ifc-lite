@@ -4,7 +4,7 @@
   "round": 0,
   "label": "main-be383fb9d2",
   "source": {
-    "commit": "6b96cc21a452180c06bfefcccc8963cdd5c51a1b",
+    "commit": "0107d98528e7b3edeb5ca62e1a19b72b400b0608",
     "dirty": false
   },
   "distIndexSha256": "e3241f3678442056ee0155c3a8941a8d99d0f410cf0fa49d8c516c1c297fcc1d",
@@ -20,28 +20,33 @@
     "width": 1600,
     "height": 900
   },
-  "runner": "node tests/modelling-parity/ui/run.mjs --dist <dist> --out <out> --label main-be383fb9d2 --baseline tests/modelling-parity/ui/baseline/r0.json",
+  "runner": "node tests/modelling-parity/ui/run.mjs --dist <dist> --out <out> --label main-be383fb9d2 --dist-commit be383fb9d2a91abfc90882dcafdff24ab63179a0 --baseline tests/modelling-parity/ui/baseline/r0.json",
   "results": [
     {
       "schema": "ifclite-parity-result/1",
       "source": {
-        "commit": "6b96cc21a452180c06bfefcccc8963cdd5c51a1b",
+        "commit": "0107d98528e7b3edeb5ca62e1a19b72b400b0608",
         "dirty": false
       },
-      "runner": "node tests/modelling-parity/ui/run.mjs --dist <dist> --out <out> --label main-be383fb9d2 --baseline tests/modelling-parity/ui/baseline/r0.json",
+      "runner": "node tests/modelling-parity/ui/run.mjs --dist <dist> --out <out> --label main-be383fb9d2 --dist-commit be383fb9d2a91abfc90882dcafdff24ab63179a0 --baseline tests/modelling-parity/ui/baseline/r0.json",
       "capability": "storeys",
       "probe": "ui",
       "id": "ui.storeys",
       "title": "Storey manager: add above, edit floor-to-floor, rename, delete",
       "status": "pass",
       "metrics": {
-        "ms": 5561,
+        "ms": 5356,
         "actions": 25,
         "setupActions": 0,
-        "wallMs": 11859,
+        "wallMs": 10807,
         "cameraJumps": 0
       },
       "checks": [
+        {
+          "name": "the manager showed Level 3 after adding it and not after deleting it",
+          "ok": true,
+          "detail": "added true, deleted true"
+        },
         {
           "name": "two storeys after add, add, delete",
           "ok": true,
@@ -62,31 +67,31 @@
         {
           "name": "open storey manager",
           "ok": true,
-          "ms": 641,
+          "ms": 639,
           "actions": 2
         },
         {
           "name": "add storey above",
           "ok": true,
-          "ms": 714,
+          "ms": 684,
           "actions": 1
         },
         {
           "name": "edit Level 1 floor-to-floor to 3.5",
           "ok": true,
-          "ms": 1413,
+          "ms": 1365,
           "actions": 6
         },
         {
           "name": "rename Level 2 to First floor",
           "ok": true,
-          "ms": 1317,
+          "ms": 1282,
           "actions": 14
         },
         {
           "name": "add and delete a storey",
           "ok": true,
-          "ms": 1476,
+          "ms": 1386,
           "actions": 2
         }
       ],
@@ -109,20 +114,20 @@
     {
       "schema": "ifclite-parity-result/1",
       "source": {
-        "commit": "6b96cc21a452180c06bfefcccc8963cdd5c51a1b",
+        "commit": "0107d98528e7b3edeb5ca62e1a19b72b400b0608",
         "dirty": false
       },
-      "runner": "node tests/modelling-parity/ui/run.mjs --dist <dist> --out <out> --label main-be383fb9d2 --baseline tests/modelling-parity/ui/baseline/r0.json",
+      "runner": "node tests/modelling-parity/ui/run.mjs --dist <dist> --out <out> --label main-be383fb9d2 --dist-commit be383fb9d2a91abfc90882dcafdff24ab63179a0 --baseline tests/modelling-parity/ui/baseline/r0.json",
       "capability": "wall-chains-autojoin",
       "probe": "ui",
       "id": "ui.wall-chain",
       "title": "Draw a closed 5x4 m wall chain by clicking corners",
       "status": "pass",
       "metrics": {
-        "ms": 2431,
+        "ms": 2142,
         "actions": 7,
         "setupActions": 0,
-        "wallMs": 7023,
+        "wallMs": 6019,
         "cameraJumps": 1
       },
       "checks": [
@@ -151,7 +156,7 @@
         {
           "name": "click 5 corners (wall tool already active after Start blank)",
           "ok": true,
-          "ms": 2431,
+          "ms": 2142,
           "actions": 7
         }
       ],
@@ -175,20 +180,20 @@
     {
       "schema": "ifclite-parity-result/1",
       "source": {
-        "commit": "6b96cc21a452180c06bfefcccc8963cdd5c51a1b",
+        "commit": "0107d98528e7b3edeb5ca62e1a19b72b400b0608",
         "dirty": false
       },
-      "runner": "node tests/modelling-parity/ui/run.mjs --dist <dist> --out <out> --label main-be383fb9d2 --baseline tests/modelling-parity/ui/baseline/r0.json",
+      "runner": "node tests/modelling-parity/ui/run.mjs --dist <dist> --out <out> --label main-be383fb9d2 --dist-commit be383fb9d2a91abfc90882dcafdff24ab63179a0 --baseline tests/modelling-parity/ui/baseline/r0.json",
       "capability": "typed-input-temp-dims",
       "probe": "ui",
       "id": "ui.typed-dims",
       "title": "Typed lengths and angles for walls, typed width and depth for a slab",
       "status": "pass",
       "metrics": {
-        "ms": 5815,
+        "ms": 5518,
         "actions": 33,
         "setupActions": 0,
-        "wallMs": 10310,
+        "wallMs": 9369,
         "cameraJumps": 1
       },
       "checks": [
@@ -212,13 +217,13 @@
         {
           "name": "walls 5/4/5/4 m typed with angles",
           "ok": true,
-          "ms": 4057,
+          "ms": 3821,
           "actions": 25
         },
         {
           "name": "slab 5x4 m typed",
           "ok": true,
-          "ms": 1758,
+          "ms": 1697,
           "actions": 8
         }
       ],
@@ -239,10 +244,10 @@
     {
       "schema": "ifclite-parity-result/1",
       "source": {
-        "commit": "6b96cc21a452180c06bfefcccc8963cdd5c51a1b",
+        "commit": "0107d98528e7b3edeb5ca62e1a19b72b400b0608",
         "dirty": false
       },
-      "runner": "node tests/modelling-parity/ui/run.mjs --dist <dist> --out <out> --label main-be383fb9d2 --baseline tests/modelling-parity/ui/baseline/r0.json",
+      "runner": "node tests/modelling-parity/ui/run.mjs --dist <dist> --out <out> --label main-be383fb9d2 --dist-commit be383fb9d2a91abfc90882dcafdff24ab63179a0 --baseline tests/modelling-parity/ui/baseline/r0.json",
       "capability": "snapping-inference",
       "probe": "ui",
       "id": "ui.snapping",
@@ -250,10 +255,10 @@
       "status": "partial",
       "reason": "second wall starts exactly on the first wall end: (4.986, -0.100) vs (4.986, 0.000); second wall ends exactly on the first wall midpoint: (2.486, -0.100) vs (2.486, 0.000)",
       "metrics": {
-        "ms": 1495,
+        "ms": 1428,
         "actions": 4,
         "setupActions": 6,
-        "wallMs": 7286,
+        "wallMs": 6521,
         "cameraJumps": 1
       },
       "checks": [
@@ -282,14 +287,14 @@
         {
           "name": "setup: wall (0,0)-(5,0) typed",
           "ok": true,
-          "ms": 1224,
+          "ms": 1151,
           "actions": 6,
           "setup": true
         },
         {
           "name": "start a wall 80 mm off the endpoint, end it 80 mm off the midpoint",
           "ok": true,
-          "ms": 1495,
+          "ms": 1428,
           "actions": 4
         }
       ],
@@ -312,10 +317,10 @@
     {
       "schema": "ifclite-parity-result/1",
       "source": {
-        "commit": "6b96cc21a452180c06bfefcccc8963cdd5c51a1b",
+        "commit": "0107d98528e7b3edeb5ca62e1a19b72b400b0608",
         "dirty": false
       },
-      "runner": "node tests/modelling-parity/ui/run.mjs --dist <dist> --out <out> --label main-be383fb9d2 --baseline tests/modelling-parity/ui/baseline/r0.json",
+      "runner": "node tests/modelling-parity/ui/run.mjs --dist <dist> --out <out> --label main-be383fb9d2 --dist-commit be383fb9d2a91abfc90882dcafdff24ab63179a0 --baseline tests/modelling-parity/ui/baseline/r0.json",
       "capability": "hosted-doors-windows-from-types",
       "probe": "ui",
       "id": "ui.hosted-openings",
@@ -323,10 +328,10 @@
       "status": "partial",
       "reason": "placed from a door type and a window type: 0 door types, 0 window types",
       "metrics": {
-        "ms": 2079,
+        "ms": 1914,
         "actions": 8,
         "setupActions": 25,
-        "wallMs": 10590,
+        "wallMs": 9709,
         "cameraJumps": 1
       },
       "checks": [
@@ -336,7 +341,7 @@
           "detail": "1 doors, 1 windows"
         },
         {
-          "name": "each cuts an opening that it fills",
+          "name": "each fills its own opening in a wall",
           "ok": true,
           "detail": "{\"IFCDOOR\":1,\"IFCWINDOW\":1,\"IFCOPENINGELEMENT\":2,\"IFCRELVOIDSELEMENT\":2,\"IFCRELFILLSELEMENT\":2,\"IFCDOORTYPE\":0,\"IFCWINDOWTYPE\":0,\"IFCRELDEFINESBYTYPE\":0}"
         },
@@ -350,20 +355,20 @@
         {
           "name": "setup: typed 5x4 walls",
           "ok": true,
-          "ms": 4022,
+          "ms": 3812,
           "actions": 25,
           "setup": true
         },
         {
           "name": "door: Shift+D, click the south wall",
           "ok": true,
-          "ms": 1135,
+          "ms": 1048,
           "actions": 4
         },
         {
           "name": "window: Shift+W, click the east wall",
           "ok": true,
-          "ms": 944,
+          "ms": 866,
           "actions": 4
         }
       ],
@@ -386,20 +391,20 @@
     {
       "schema": "ifclite-parity-result/1",
       "source": {
-        "commit": "6b96cc21a452180c06bfefcccc8963cdd5c51a1b",
+        "commit": "0107d98528e7b3edeb5ca62e1a19b72b400b0608",
         "dirty": false
       },
-      "runner": "node tests/modelling-parity/ui/run.mjs --dist <dist> --out <out> --label main-be383fb9d2 --baseline tests/modelling-parity/ui/baseline/r0.json",
+      "runner": "node tests/modelling-parity/ui/run.mjs --dist <dist> --out <out> --label main-be383fb9d2 --dist-commit be383fb9d2a91abfc90882dcafdff24ab63179a0 --baseline tests/modelling-parity/ui/baseline/r0.json",
       "capability": "stairs-railings",
       "probe": "ui",
       "id": "ui.stair",
       "title": "Stair from Level 1 to the storey above, and a railing (two clicks, Enter)",
       "status": "pass",
       "metrics": {
-        "ms": 3210,
+        "ms": 3068,
         "actions": 13,
         "setupActions": 4,
-        "wallMs": 9539,
+        "wallMs": 8811,
         "cameraJumps": 1
       },
       "checks": [
@@ -423,20 +428,20 @@
         {
           "name": "setup: add storey above, back to Level 1",
           "ok": true,
-          "ms": 1612,
+          "ms": 1566,
           "actions": 4,
           "setup": true
         },
         {
           "name": "stair: Shift+T, click start and end of the run",
           "ok": true,
-          "ms": 1492,
+          "ms": 1402,
           "actions": 7
         },
         {
           "name": "railing: Shift+L, click two points, Enter",
           "ok": true,
-          "ms": 1718,
+          "ms": 1666,
           "actions": 6
         }
       ],
@@ -448,7 +453,7 @@
         "artifacts/stairs-railings/ui.stair.ifc"
       ],
       "evidenceSha256": {
-        "shots/ui.stair-01-stair.light.png": "87018f6b57a08f29fa8e4b572136abc08a5a63b76ff56e4f30e0083ef24e6611"
+        "shots/ui.stair-01-stair.light.png": "da0d553be343ffd6f2b9a361bb87687c9e92aebcfa9ed14df2cbce619dde42d9"
       },
       "artifacts": {
         "ifc": "artifacts/stairs-railings/ui.stair.ifc"
@@ -457,20 +462,20 @@
     {
       "schema": "ifclite-parity-result/1",
       "source": {
-        "commit": "6b96cc21a452180c06bfefcccc8963cdd5c51a1b",
+        "commit": "0107d98528e7b3edeb5ca62e1a19b72b400b0608",
         "dirty": false
       },
-      "runner": "node tests/modelling-parity/ui/run.mjs --dist <dist> --out <out> --label main-be383fb9d2 --baseline tests/modelling-parity/ui/baseline/r0.json",
+      "runner": "node tests/modelling-parity/ui/run.mjs --dist <dist> --out <out> --label main-be383fb9d2 --dist-commit be383fb9d2a91abfc90882dcafdff24ab63179a0 --baseline tests/modelling-parity/ui/baseline/r0.json",
       "capability": "curtain-walls",
       "probe": "ui",
       "id": "ui.curtain-wall",
       "title": "Curtain wall by two clicks",
       "status": "pass",
       "metrics": {
-        "ms": 1573,
+        "ms": 1399,
         "actions": 7,
         "setupActions": 0,
-        "wallMs": 6231,
+        "wallMs": 5255,
         "cameraJumps": 0
       },
       "checks": [
@@ -489,7 +494,7 @@
         {
           "name": "curtain wall: Shift+U, click two points",
           "ok": true,
-          "ms": 1573,
+          "ms": 1399,
           "actions": 7
         }
       ],
@@ -501,7 +506,7 @@
         "artifacts/curtain-walls/ui.curtain-wall.ifc"
       ],
       "evidenceSha256": {
-        "shots/ui.curtain-wall-01-curtain.light.png": "d0df4bb670632dba7ba9e4990efd278aab4ecd515000706e99ce91300f726b7a"
+        "shots/ui.curtain-wall-01-curtain.light.png": "c2af45df2010222c4c55e44da620aba7343dc62f74983b8c3f8988020ebbd242"
       },
       "artifacts": {
         "ifc": "artifacts/curtain-walls/ui.curtain-wall.ifc"
@@ -510,10 +515,10 @@
     {
       "schema": "ifclite-parity-result/1",
       "source": {
-        "commit": "6b96cc21a452180c06bfefcccc8963cdd5c51a1b",
+        "commit": "0107d98528e7b3edeb5ca62e1a19b72b400b0608",
         "dirty": false
       },
-      "runner": "node tests/modelling-parity/ui/run.mjs --dist <dist> --out <out> --label main-be383fb9d2 --baseline tests/modelling-parity/ui/baseline/r0.json",
+      "runner": "node tests/modelling-parity/ui/run.mjs --dist <dist> --out <out> --label main-be383fb9d2 --dist-commit be383fb9d2a91abfc90882dcafdff24ab63179a0 --baseline tests/modelling-parity/ui/baseline/r0.json",
       "capability": "roof-by-footprint",
       "probe": "ui",
       "id": "ui.roof",
@@ -521,10 +526,10 @@
       "status": "partial",
       "reason": "the roof is sloped (hip by footprint): flat extrusion only",
       "metrics": {
-        "ms": 2378,
+        "ms": 2015,
         "actions": 13,
         "setupActions": 25,
-        "wallMs": 11421,
+        "wallMs": 9973,
         "cameraJumps": 1
       },
       "checks": [
@@ -543,14 +548,14 @@
         {
           "name": "setup: typed 5x4 walls",
           "ok": true,
-          "ms": 4205,
+          "ms": 3877,
           "actions": 25,
           "setup": true
         },
         {
           "name": "Slab tool, class Roof, typed 5.6 x 4.6 m",
           "ok": true,
-          "ms": 2378,
+          "ms": 2015,
           "actions": 13
         }
       ],
@@ -573,20 +578,20 @@
     {
       "schema": "ifclite-parity-result/1",
       "source": {
-        "commit": "6b96cc21a452180c06bfefcccc8963cdd5c51a1b",
+        "commit": "0107d98528e7b3edeb5ca62e1a19b72b400b0608",
         "dirty": false
       },
-      "runner": "node tests/modelling-parity/ui/run.mjs --dist <dist> --out <out> --label main-be383fb9d2 --baseline tests/modelling-parity/ui/baseline/r0.json",
+      "runner": "node tests/modelling-parity/ui/run.mjs --dist <dist> --out <out> --label main-be383fb9d2 --dist-commit be383fb9d2a91abfc90882dcafdff24ab63179a0 --baseline tests/modelling-parity/ui/baseline/r0.json",
       "capability": "copy-to-levels",
       "probe": "ui",
       "id": "ui.copy-to-levels",
       "title": "Copy four walls to two storeys above with Ctrl+C, storey switch, Ctrl+Shift+V",
       "status": "pass",
       "metrics": {
-        "ms": 5386,
+        "ms": 4685,
         "actions": 15,
         "setupActions": 30,
-        "wallMs": 17124,
+        "wallMs": 14969,
         "cameraJumps": 0
       },
       "checks": [
@@ -620,33 +625,33 @@
         {
           "name": "setup: typed 5x4 walls",
           "ok": true,
-          "ms": 4269,
+          "ms": 3833,
           "actions": 25,
           "setup": true
         },
         {
           "name": "setup: add two storeys above",
           "ok": true,
-          "ms": 2522,
+          "ms": 2306,
           "actions": 5,
           "setup": true
         },
         {
           "name": "select the 4 walls (click, Ctrl+click) and copy",
           "ok": true,
-          "ms": 1882,
+          "ms": 1684,
           "actions": 7
         },
         {
           "name": "switch to Level 2 and paste in place",
           "ok": true,
-          "ms": 1778,
+          "ms": 1498,
           "actions": 4
         },
         {
           "name": "switch to Level 3 and paste in place",
           "ok": true,
-          "ms": 1726,
+          "ms": 1503,
           "actions": 4
         }
       ],
@@ -661,7 +666,7 @@
         "artifacts/copy-to-levels/ui.copy-to-levels.ifc"
       ],
       "evidenceSha256": {
-        "shots/ui.copy-to-levels-01-copied.light.png": "e9d51ce6f9b90205ab6dfeee6d6b07abd66b2a48fce34a38fa50dfa30eaf3602"
+        "shots/ui.copy-to-levels-01-copied.light.png": "1f49eb6690fbc4af45d6a7d73b8d7a259e7912eab3bc05c62233e924672b4ad6"
       },
       "artifacts": {
         "ifc": "artifacts/copy-to-levels/ui.copy-to-levels.ifc"
@@ -670,10 +675,10 @@
     {
       "schema": "ifclite-parity-result/1",
       "source": {
-        "commit": "6b96cc21a452180c06bfefcccc8963cdd5c51a1b",
+        "commit": "0107d98528e7b3edeb5ca62e1a19b72b400b0608",
         "dirty": false
       },
-      "runner": "node tests/modelling-parity/ui/run.mjs --dist <dist> --out <out> --label main-be383fb9d2 --baseline tests/modelling-parity/ui/baseline/r0.json",
+      "runner": "node tests/modelling-parity/ui/run.mjs --dist <dist> --out <out> --label main-be383fb9d2 --dist-commit be383fb9d2a91abfc90882dcafdff24ab63179a0 --baseline tests/modelling-parity/ui/baseline/r0.json",
       "capability": "transforms-move-copy-rotate-mirror-array",
       "probe": "ui",
       "id": "ui.transforms",
@@ -681,10 +686,10 @@
       "status": "partial",
       "reason": "a Mirror command in the Edit menu: Edit menu: Split, Array, Move, Rotate, Split by line, Push / Pull, Align, Trim / Extend",
       "metrics": {
-        "ms": 7264,
+        "ms": 6261,
         "actions": 34,
         "setupActions": 20,
-        "wallMs": 16258,
+        "wallMs": 14268,
         "cameraJumps": 1
       },
       "checks": [
@@ -713,32 +718,32 @@
         {
           "name": "setup: three 4 m walls at y = 0, 5, 10",
           "ok": true,
-          "ms": 4141,
+          "ms": 3744,
           "actions": 20,
           "setup": true
         },
         {
           "name": "move: select the y=0 wall, Shift+M, from (0,0), type 2 towards +Y",
           "ok": true,
-          "ms": 2336,
+          "ms": 2029,
           "actions": 9
         },
         {
           "name": "rotate: select the y=5 wall, Shift+Q, type 90",
           "ok": true,
-          "ms": 1766,
+          "ms": 1537,
           "actions": 9
         },
         {
           "name": "array: select the y=10 wall, Shift+A, count 3, spacing 1.5, two clicks for +Y",
           "ok": true,
-          "ms": 2677,
+          "ms": 2332,
           "actions": 14
         },
         {
           "name": "look for Mirror in the Edit menu",
           "ok": true,
-          "ms": 485,
+          "ms": 363,
           "actions": 2
         }
       ],
@@ -750,7 +755,7 @@
         "artifacts/transforms-move-copy-rotate-mirror-array/ui.transforms.ifc"
       ],
       "evidenceSha256": {
-        "shots/ui.transforms-01-transforms.light.png": "9464b51a1cebdf0f158c7080c2557dfa1ab37a9a43eb17cad1856ea5c945728c"
+        "shots/ui.transforms-01-transforms.light.png": "a195e92cb587cf965cb82f5652313e935d96229961f873afd15f9e791cdb3f49"
       },
       "artifacts": {
         "ifc": "artifacts/transforms-move-copy-rotate-mirror-array/ui.transforms.ifc"
@@ -759,20 +764,20 @@
     {
       "schema": "ifclite-parity-result/1",
       "source": {
-        "commit": "6b96cc21a452180c06bfefcccc8963cdd5c51a1b",
+        "commit": "0107d98528e7b3edeb5ca62e1a19b72b400b0608",
         "dirty": false
       },
-      "runner": "node tests/modelling-parity/ui/run.mjs --dist <dist> --out <out> --label main-be383fb9d2 --baseline tests/modelling-parity/ui/baseline/r0.json",
+      "runner": "node tests/modelling-parity/ui/run.mjs --dist <dist> --out <out> --label main-be383fb9d2 --dist-commit be383fb9d2a91abfc90882dcafdff24ab63179a0 --baseline tests/modelling-parity/ui/baseline/r0.json",
       "capability": "rooms-with-area",
       "probe": "ui",
       "id": "ui.rooms",
       "title": "Room by clicking inside four walls; area from the inner faces",
       "status": "pass",
       "metrics": {
-        "ms": 1195,
+        "ms": 1018,
         "actions": 4,
         "setupActions": 25,
-        "wallMs": 10110,
+        "wallMs": 8952,
         "cameraJumps": 1
       },
       "checks": [
@@ -791,14 +796,14 @@
         {
           "name": "setup: typed 5x4 walls",
           "ok": true,
-          "ms": 4279,
+          "ms": 3845,
           "actions": 25,
           "setup": true
         },
         {
           "name": "room: Shift+O, click inside",
           "ok": true,
-          "ms": 1195,
+          "ms": 1018,
           "actions": 4
         }
       ],
@@ -819,20 +824,20 @@
     {
       "schema": "ifclite-parity-result/1",
       "source": {
-        "commit": "6b96cc21a452180c06bfefcccc8963cdd5c51a1b",
+        "commit": "0107d98528e7b3edeb5ca62e1a19b72b400b0608",
         "dirty": false
       },
-      "runner": "node tests/modelling-parity/ui/run.mjs --dist <dist> --out <out> --label main-be383fb9d2 --baseline tests/modelling-parity/ui/baseline/r0.json",
+      "runner": "node tests/modelling-parity/ui/run.mjs --dist <dist> --out <out> --label main-be383fb9d2 --dist-commit be383fb9d2a91abfc90882dcafdff24ab63179a0 --baseline tests/modelling-parity/ui/baseline/r0.json",
       "capability": "plans-sections-elevations",
       "probe": "ui",
       "id": "ui.plan-section",
       "title": "Show the plan, then a 2D section drawing",
       "status": "pass",
       "metrics": {
-        "ms": 10799,
+        "ms": 9883,
         "actions": 14,
         "setupActions": 25,
-        "wallMs": 19409,
+        "wallMs": 17753,
         "cameraJumps": 0
       },
       "checks": [
@@ -866,38 +871,38 @@
         {
           "name": "setup: typed 5x4 walls",
           "ok": true,
-          "ms": 4363,
+          "ms": 3914,
           "actions": 25,
           "setup": true
         },
         {
           "name": "Show the plan (rail); close the inspector first if there is no room",
           "ok": true,
-          "ms": 3451,
+          "ms": 3346,
           "actions": 2
         },
         {
           "name": "Section tool (X), New cut: Front, then the 2D section toggle",
           "ok": true,
-          "ms": 5138,
+          "ms": 4838,
           "actions": 5
         },
         {
           "name": "Drawing > Export > SVG",
           "ok": true,
-          "ms": 694,
+          "ms": 498,
           "actions": 2
         },
         {
           "name": "Drawing > Export > DXF",
           "ok": true,
-          "ms": 651,
+          "ms": 471,
           "actions": 2
         },
         {
           "name": "Drawing > Export > PDF",
           "ok": true,
-          "ms": 865,
+          "ms": 730,
           "actions": 3
         }
       ],
@@ -915,7 +920,7 @@
       ],
       "evidenceSha256": {
         "shots/ui.plan-section-01-plan.light.png": "dd6ced91675ef00de09a1af7d1f3ab394e44dca25e0359720bf04470bf66ea57",
-        "shots/ui.plan-section-02-section.light.png": "abaf50b21a3fc92fe196feff1223246ee5e3e1a939fd3daa703d91e1b48e4b4d"
+        "shots/ui.plan-section-02-section.light.png": "f5e9c17a9ae530c023cb83a53c868c1bbb6c4d1f8163dcf84e164b5b3cff290c"
       },
       "artifacts": {
         "svg": "artifacts/plans-sections-elevations/section-front-50.svg",
@@ -926,10 +931,10 @@
     {
       "schema": "ifclite-parity-result/1",
       "source": {
-        "commit": "6b96cc21a452180c06bfefcccc8963cdd5c51a1b",
+        "commit": "0107d98528e7b3edeb5ca62e1a19b72b400b0608",
         "dirty": false
       },
-      "runner": "node tests/modelling-parity/ui/run.mjs --dist <dist> --out <out> --label main-be383fb9d2 --baseline tests/modelling-parity/ui/baseline/r0.json",
+      "runner": "node tests/modelling-parity/ui/run.mjs --dist <dist> --out <out> --label main-be383fb9d2 --dist-commit be383fb9d2a91abfc90882dcafdff24ab63179a0 --baseline tests/modelling-parity/ui/baseline/r0.json",
       "capability": "dimensions-tags",
       "probe": "ui",
       "id": "ui.drawing-dims",
@@ -937,10 +942,10 @@
       "status": "partial",
       "reason": "a tag tool for elements (door, window, room tags): toolbar: Select, Distance, Area, Text, Cloud, Symbolic, Annotations, Projection, 3D overlay, Print preview, Overrides, Sheet, Underlays, Scan, Fit",
       "metrics": {
-        "ms": 2020,
+        "ms": 1793,
         "actions": 5,
         "setupActions": 30,
-        "wallMs": 15762,
+        "wallMs": 14226,
         "cameraJumps": 0
       },
       "checks": [
@@ -964,27 +969,27 @@
         {
           "name": "setup: typed 5x4 walls",
           "ok": true,
-          "ms": 4360,
+          "ms": 3816,
           "actions": 25,
           "setup": true
         },
         {
           "name": "setup: 2D section of the room",
           "ok": true,
-          "ms": 5038,
+          "ms": 4805,
           "actions": 5,
           "setup": true
         },
         {
           "name": "Distance tool, drag from wall to wall, Esc",
           "ok": true,
-          "ms": 1418,
+          "ms": 1294,
           "actions": 3
         },
         {
           "name": "Drawing > Export > SVG",
           "ok": true,
-          "ms": 602,
+          "ms": 499,
           "actions": 2
         }
       ],
@@ -998,7 +1003,7 @@
         "artifacts/dimensions-tags/section-front-50.svg"
       ],
       "evidenceSha256": {
-        "shots/ui.drawing-dims-01-dimension.light.png": "6c83f0d332747e4004ce28bc5f06379b4b3d08e4ae63d4f1606969f0cde1e09d"
+        "shots/ui.drawing-dims-01-dimension.light.png": "13efdf7d3c69ec13f12c6141f75c89a69ffbf34d3192f668138815c2368be0bc"
       },
       "artifacts": {
         "svg": "artifacts/dimensions-tags/section-front-50.svg"
@@ -1007,20 +1012,20 @@
     {
       "schema": "ifclite-parity-result/1",
       "source": {
-        "commit": "6b96cc21a452180c06bfefcccc8963cdd5c51a1b",
+        "commit": "0107d98528e7b3edeb5ca62e1a19b72b400b0608",
         "dirty": false
       },
-      "runner": "node tests/modelling-parity/ui/run.mjs --dist <dist> --out <out> --label main-be383fb9d2 --baseline tests/modelling-parity/ui/baseline/r0.json",
+      "runner": "node tests/modelling-parity/ui/run.mjs --dist <dist> --out <out> --label main-be383fb9d2 --dist-commit be383fb9d2a91abfc90882dcafdff24ab63179a0 --baseline tests/modelling-parity/ui/baseline/r0.json",
       "capability": "sheets-pdf-dwg",
       "probe": "ui",
       "id": "ui.sheet",
       "title": "Put the 2D section on a sheet and export the sheet as PDF and DXF",
       "status": "pass",
       "metrics": {
-        "ms": 6992,
+        "ms": 5768,
         "actions": 7,
         "setupActions": 30,
-        "wallMs": 20169,
+        "wallMs": 17842,
         "cameraJumps": 0
       },
       "checks": [
@@ -1044,33 +1049,33 @@
         {
           "name": "setup: typed 5x4 walls",
           "ok": true,
-          "ms": 4017,
+          "ms": 3821,
           "actions": 25,
           "setup": true
         },
         {
           "name": "setup: 2D section of the room",
           "ok": true,
-          "ms": 4939,
+          "ms": 4802,
           "actions": 5,
           "setup": true
         },
         {
           "name": "Sheet, Enable Sheet",
           "ok": true,
-          "ms": 2534,
+          "ms": 2469,
           "actions": 2
         },
         {
           "name": "Drawing > Export > PDF (the sheet)",
           "ok": true,
-          "ms": 3874,
+          "ms": 2819,
           "actions": 3
         },
         {
           "name": "Drawing > Export > DXF",
           "ok": true,
-          "ms": 584,
+          "ms": 480,
           "actions": 2
         }
       ],
@@ -1085,7 +1090,7 @@
         "artifacts/sheets-pdf-dwg/section-front-50.dxf"
       ],
       "evidenceSha256": {
-        "shots/ui.sheet-01-sheet.light.png": "deb3b453943bfa3dbd4191150e3a3ffc34873559eb873e3fe25aaab2fcc6d810"
+        "shots/ui.sheet-01-sheet.light.png": "01b412f17fa4f614ac3918e8da8b3cdba5a6ec38d751be77473b9440c6aa726f"
       },
       "artifacts": {
         "pdf": "artifacts/sheets-pdf-dwg/Drawing Sheet-front-50.pdf",
@@ -1095,10 +1100,10 @@
     {
       "schema": "ifclite-parity-result/1",
       "source": {
-        "commit": "6b96cc21a452180c06bfefcccc8963cdd5c51a1b",
+        "commit": "0107d98528e7b3edeb5ca62e1a19b72b400b0608",
         "dirty": false
       },
-      "runner": "node tests/modelling-parity/ui/run.mjs --dist <dist> --out <out> --label main-be383fb9d2 --baseline tests/modelling-parity/ui/baseline/r0.json",
+      "runner": "node tests/modelling-parity/ui/run.mjs --dist <dist> --out <out> --label main-be383fb9d2 --dist-commit be383fb9d2a91abfc90882dcafdff24ab63179a0 --baseline tests/modelling-parity/ui/baseline/r0.json",
       "capability": "psets-classification-valid-ifc4",
       "probe": "ui",
       "id": "ui.export-ifc4",
@@ -1106,10 +1111,10 @@
       "status": "partial",
       "reason": "classification reference present: none: the modelling flow assigns no classification",
       "metrics": {
-        "ms": 1256,
+        "ms": 1167,
         "actions": 5,
         "setupActions": 25,
-        "wallMs": 9309,
+        "wallMs": 8308,
         "cameraJumps": 0
       },
       "checks": [
@@ -1143,14 +1148,14 @@
         {
           "name": "setup: typed 5x4 walls",
           "ok": true,
-          "ms": 4057,
+          "ms": 3828,
           "actions": 25,
           "setup": true
         },
         {
           "name": "File > Export IFC, schema IFC4, Export",
           "ok": true,
-          "ms": 1256,
+          "ms": 1167,
           "actions": 5
         }
       ],
@@ -1168,10 +1173,10 @@
     {
       "schema": "ifclite-parity-result/1",
       "source": {
-        "commit": "6b96cc21a452180c06bfefcccc8963cdd5c51a1b",
+        "commit": "0107d98528e7b3edeb5ca62e1a19b72b400b0608",
         "dirty": false
       },
-      "runner": "node tests/modelling-parity/ui/run.mjs --dist <dist> --out <out> --label main-be383fb9d2 --baseline tests/modelling-parity/ui/baseline/r0.json",
+      "runner": "node tests/modelling-parity/ui/run.mjs --dist <dist> --out <out> --label main-be383fb9d2 --dist-commit be383fb9d2a91abfc90882dcafdff24ab63179a0 --baseline tests/modelling-parity/ui/baseline/r0.json",
       "capability": "columns-beams-on-grid-follow-levels",
       "probe": "ui",
       "id": "ui.grid-columns",
@@ -1179,10 +1184,10 @@
       "status": "partial",
       "reason": "the column follows the storey height change to 4.0 m: column height 3",
       "metrics": {
-        "ms": 6518,
+        "ms": 6241,
         "actions": 27,
         "setupActions": 5,
-        "wallMs": 13224,
+        "wallMs": 12145,
         "cameraJumps": 1
       },
       "checks": [
@@ -1211,32 +1216,32 @@
         {
           "name": "setup: add a storey above, so columns run to it",
           "ok": true,
-          "ms": 1889,
+          "ms": 1803,
           "actions": 5,
           "setup": true
         },
         {
           "name": "grid: Shift+G, click origin, type 18 x 12",
           "ok": true,
-          "ms": 1902,
+          "ms": 1813,
           "actions": 12
         },
         {
           "name": "column: Shift+C, click near the grid intersection (6,6)",
           "ok": true,
-          "ms": 967,
+          "ms": 898,
           "actions": 4
         },
         {
           "name": "beam: Shift+B, click (0,0) then (6,0)",
           "ok": true,
-          "ms": 1426,
+          "ms": 1318,
           "actions": 5
         },
         {
           "name": "raise Level 1 floor-to-floor to 4.0 in the storey manager",
           "ok": true,
-          "ms": 2223,
+          "ms": 2212,
           "actions": 6
         }
       ],
@@ -1257,10 +1262,10 @@
     {
       "schema": "ifclite-parity-result/1",
       "source": {
-        "commit": "6b96cc21a452180c06bfefcccc8963cdd5c51a1b",
+        "commit": "0107d98528e7b3edeb5ca62e1a19b72b400b0608",
         "dirty": false
       },
-      "runner": "node tests/modelling-parity/ui/run.mjs --dist <dist> --out <out> --label main-be383fb9d2 --baseline tests/modelling-parity/ui/baseline/r0.json",
+      "runner": "node tests/modelling-parity/ui/run.mjs --dist <dist> --out <out> --label main-be383fb9d2 --dist-commit be383fb9d2a91abfc90882dcafdff24ab63179a0 --baseline tests/modelling-parity/ui/baseline/r0.json",
       "capability": null,
       "exercise": "F1",
       "probe": "exercise",
@@ -1269,7 +1274,7 @@
       "title": "A room, 5x4 m, with a door, window, floor slab and space",
       "status": "pass",
       "metrics": {
-        "ms": 12686,
+        "ms": 12007,
         "actions": 48,
         "clicks": 9,
         "keys": 39,
@@ -1298,9 +1303,9 @@
           "detail": "1"
         },
         {
-          "name": "every door and window fills an opening",
+          "name": "every door and window fills its own opening in a wall",
           "ok": true,
-          "detail": "2 fills"
+          "detail": "2 hosted"
         },
         {
           "name": "1 floor slab(s)",
@@ -1332,49 +1337,49 @@
         {
           "name": "Start blank",
           "ok": true,
-          "ms": 3666,
+          "ms": 3240,
           "actions": 1
         },
         {
           "name": "walls: typed 5/4/5/4 m (wall tool is active after Start blank)",
           "ok": true,
-          "ms": 3717,
+          "ms": 3550,
           "actions": 24
         },
         {
           "name": "door: Shift+D, click the south wall",
           "ok": true,
-          "ms": 932,
+          "ms": 934,
           "actions": 4
         },
         {
           "name": "window: Shift+W, click the east wall",
           "ok": true,
-          "ms": 936,
+          "ms": 937,
           "actions": 4
         },
         {
           "name": "floor slab: Shift+S, click a corner, typed 5 x 4",
           "ok": true,
-          "ms": 1609,
+          "ms": 1607,
           "actions": 8
         },
         {
           "name": "space: Shift+O, click inside",
           "ok": true,
-          "ms": 950,
+          "ms": 943,
           "actions": 4
         },
         {
           "name": "export: File > Modified IFC (review dialog)",
           "ok": true,
-          "ms": 516,
+          "ms": 515,
           "actions": 2
         },
         {
           "name": "export: confirm",
           "ok": true,
-          "ms": 360,
+          "ms": 281,
           "actions": 1
         }
       ],
@@ -1385,7 +1390,7 @@
         "command": null,
         "phase": "idle",
         "storeyId": 26,
-        "modelId": "a3c32d9c-f204-4901-9b13-7f0ba22b43e9",
+        "modelId": "2f8853de-8847-497e-8293-bb78312acc7c",
         "selected": 1,
         "layout": "auto"
       },
@@ -1404,10 +1409,10 @@
     {
       "schema": "ifclite-parity-result/1",
       "source": {
-        "commit": "6b96cc21a452180c06bfefcccc8963cdd5c51a1b",
+        "commit": "0107d98528e7b3edeb5ca62e1a19b72b400b0608",
         "dirty": false
       },
-      "runner": "node tests/modelling-parity/ui/run.mjs --dist <dist> --out <out> --label main-be383fb9d2 --baseline tests/modelling-parity/ui/baseline/r0.json",
+      "runner": "node tests/modelling-parity/ui/run.mjs --dist <dist> --out <out> --label main-be383fb9d2 --dist-commit be383fb9d2a91abfc90882dcafdff24ab63179a0 --baseline tests/modelling-parity/ui/baseline/r0.json",
       "capability": null,
       "exercise": "F2",
       "probe": "exercise",
@@ -1417,7 +1422,7 @@
       "status": "partial",
       "reason": "space areas match the reference (rel 0.05, matched by area): areas 14.49, 13.86, 24.34, 16.15, 11.12, 34.85, 115.64; unmatched reference 107.16, 25.99, 22.07, 12.99, 12.5; gable roof at 30 degrees: no roof: the UI has no sloped or gable roof (the Slab tool's Roof class makes a flat slab on the active storey floor; see ui.roof and #9214)",
       "metrics": {
-        "ms": 62854,
+        "ms": 58973,
         "actions": 321,
         "clicks": 59,
         "keys": 262,
@@ -1446,6 +1451,11 @@
           "detail": "5"
         },
         {
+          "name": "Erdgeschoss: every door fills its own opening in a wall",
+          "ok": true,
+          "detail": "5 hosted"
+        },
+        {
           "name": "Erdgeschoss: doors sizes match (abs 0.05 m)",
           "ok": true,
           "detail": "all matched"
@@ -1456,12 +1466,17 @@
           "detail": "9"
         },
         {
+          "name": "Erdgeschoss: every window fills its own opening in a wall",
+          "ok": true,
+          "detail": "9 hosted"
+        },
+        {
           "name": "Erdgeschoss: windows sizes match (abs 0.05 m)",
           "ok": true,
           "detail": "all matched"
         },
         {
-          "name": "Erdgeschoss: 1 stair",
+          "name": "Erdgeschoss: 1 stair(s)",
           "ok": true,
           "detail": "1"
         },
@@ -1491,9 +1506,19 @@
           "detail": "2"
         },
         {
+          "name": "Dachgeschoss: every window fills its own opening in a wall",
+          "ok": true,
+          "detail": "2 hosted"
+        },
+        {
           "name": "Dachgeschoss: windows sizes match (abs 0.05 m)",
           "ok": true,
           "detail": "all matched"
+        },
+        {
+          "name": "Dachgeschoss: 0 stair(s)",
+          "ok": true,
+          "detail": "0"
         },
         {
           "name": "footprint 12 x 10 m (abs 0.15)",
@@ -1521,103 +1546,103 @@
         {
           "name": "Start blank",
           "ok": true,
-          "ms": 3538,
+          "ms": 3188,
           "actions": 1
         },
         {
           "name": "storeys: Manage storeys, add above, floor-to-floor 2.7, rename both, draw on Erdgeschoss",
           "ok": true,
-          "ms": 5614,
+          "ms": 5484,
           "actions": 39
         },
         {
           "name": "close the storey manager: Back to the inspector",
           "ok": true,
-          "ms": 258,
+          "ms": 250,
           "actions": 1
         },
         {
           "name": "EG base slab: Shift+S, typed 12 x 10",
           "ok": true,
-          "ms": 1846,
+          "ms": 1768,
           "actions": 12
         },
         {
           "name": "EG outer walls: W, typed 12/10/12/10 m",
           "ok": true,
-          "ms": 4237,
+          "ms": 4090,
           "actions": 29
         },
         {
           "name": "EG inner walls: 5 walls, Alt+click each start (no surface snap), typed length and angle",
           "ok": true,
-          "ms": 6621,
+          "ms": 6348,
           "actions": 49
         },
         {
           "name": "EG doors: Shift+D, sizes in the Defaults panel, click the host walls",
           "ok": true,
-          "ms": 10717,
+          "ms": 10525,
           "actions": 58
         },
         {
           "name": "EG windows: Shift+W, 2.0 x 1.2 sill 0.8 in the Defaults panel, click 9 wall points",
           "ok": true,
-          "ms": 8067,
+          "ms": 7574,
           "actions": 28
         },
         {
           "name": "EG spaces: Shift+O, Pick in the 3 walled rooms, Draw rectangles for Kueche, Flur, Wohnen (no wall between them)",
           "ok": true,
-          "ms": 6697,
+          "ms": 5864,
           "actions": 37
         },
         {
           "name": "stair EG to DG: Shift+T, click the foot and the head of a 3.6 m run",
           "ok": true,
-          "ms": 1605,
+          "ms": 1340,
           "actions": 5
         },
         {
           "name": "switch to Dachgeschoss (storey chip)",
           "ok": true,
-          "ms": 589,
+          "ms": 588,
           "actions": 3
         },
         {
           "name": "DG floor slab: Shift+S, typed 12 x 10",
           "ok": true,
-          "ms": 1950,
+          "ms": 1759,
           "actions": 10
         },
         {
           "name": "DG walls: W, typed 12/10/12/10 m",
           "ok": true,
-          "ms": 4899,
+          "ms": 4514,
           "actions": 29
         },
         {
           "name": "DG gable windows: Shift+W, 1.0 x 1.0 in the Defaults panel, click both gable walls",
           "ok": true,
-          "ms": 4104,
+          "ms": 3746,
           "actions": 13
         },
         {
           "name": "DG space: Shift+O, Pick inside",
           "ok": true,
-          "ms": 1158,
+          "ms": 1059,
           "actions": 4
         },
         {
           "name": "export: File > Modified IFC (review dialog)",
           "ok": true,
-          "ms": 587,
+          "ms": 548,
           "actions": 2
         },
         {
           "name": "export: confirm",
           "ok": true,
-          "ms": 367,
+          "ms": 328,
           "actions": 1
         }
       ],
@@ -1631,7 +1656,7 @@
         "command": null,
         "phase": "idle",
         "storeyId": 36,
-        "modelId": "53610307-c730-4cb6-9f5f-db4753110ae9",
+        "modelId": "1d0e1fcf-21c7-42fd-8809-6ea5b82789ef",
         "selected": 1,
         "layout": "auto"
       },
@@ -1808,7 +1833,7 @@
     {
       "id": "F2-DG-done.light",
       "file": "frames/F2-DG-done.light.png",
-      "sha256": "125a9df3287f620dd20c922fdc94cf0709d2de6aaa9e70962d2df857b64314c7",
+      "sha256": "199ce7ed51fb8bb3587ce1b6077c3375bae3bd0f08231e6d10ce8121873492bb",
       "metrics": {
         "modelVisibleFraction": 0.456,
         "minFontPx": 11,
@@ -1830,7 +1855,7 @@
     {
       "id": "F2-done.light",
       "file": "frames/F2-done.light.png",
-      "sha256": "56623627cbc43e812305e7b60bae19ff7fd8c1c920a8ea2f85ef39c3befff2db",
+      "sha256": "d0ddf1f58c7d861ea63f5c7e8746f02454cf81861d50350f04a024a3440c30f4",
       "metrics": {
         "modelVisibleFraction": 0.457,
         "minFontPx": 11,
@@ -1874,7 +1899,7 @@
     {
       "id": "F2-EG-done.dark",
       "file": "frames/F2-EG-done.dark.png",
-      "sha256": "67f19839b524810a84a386d18ed634d47bc450f5a9ccb9bd67c86467e0ae1064",
+      "sha256": "93fc55a163cc4b81f1e6d5bdc6ff8ff21e150dae614c677aed1941015dd98b5b",
       "metrics": {
         "modelVisibleFraction": 0.457,
         "minFontPx": 11,

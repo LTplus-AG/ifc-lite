@@ -56,7 +56,7 @@ describe('planFootprintRoof (#9296 round 3)', () => {
   });
 
   it('a three-plane rectangle is not a two-plane gable (#9356 review)', () => {
-    const plan = planFootprintRoof(RECT, [0.5, 0.5, 0.5, 0], 0);
+    const plan = m.planFootprintRoof(RECT, [0.5, 0.5, 0.5, 0], 0);
     expect(plan.planes).toHaveLength(3);
     expect(plan.shapeType).toBe('FREEFORM');
   });

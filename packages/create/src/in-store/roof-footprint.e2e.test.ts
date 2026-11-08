@@ -100,9 +100,9 @@ describe('a roof by footprint in a loaded model (#9296 round 3)', () => {
       return style;
     });
     const attachedStyles = () => [...exportText(s).matchAll(/IFCSTYLEDITEM\(#\d+,\(#(\d+)\),\$\)/g)].map((match) => Number(match[1])).sort((a, b) => a - b);
-    editFootprintRoofInStore(s.store, s.editor, built.roofId, { Thickness: 0.3 });
+    f.editFootprintRoofInStore(s.store, s.editor, built.roofId, { Thickness: 0.3 });
     expect(attachedStyles()).toEqual(styles);
-    editFootprintRoofInStore(s.store, s.editor, built.roofId, { EdgeSlopes: [30 * D, 0, 30 * D, 0] });
+    f.editFootprintRoofInStore(s.store, s.editor, built.roofId, { EdgeSlopes: [30 * D, 0, 30 * D, 0] });
     expect(attachedStyles()).toEqual([styles[0], styles[2]]);
   });
 

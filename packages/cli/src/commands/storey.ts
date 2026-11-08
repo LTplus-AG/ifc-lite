@@ -212,7 +212,13 @@ export async function storeyCommand(args: string[]): Promise<void> {
         ? { kind: 'move', targetStoreyId: resolveStorey(list, moveTo, '--move-to') }
         : hasFlag(args, '--delete-contents') ? { kind: 'deleteContents' } : { kind: 'empty' };
       const plan = s.planStoreyDelete({ modelId, expressId: storeyId }, mode);
-      const summary = { action, storey: storeyId, mode: mode.kind, elements: plan.elementCount, refusals: plan.refusals };
+      // What the plan does, so a dry run shows it: where a move goes and which elements it re-parents
+      // (the storey's direct children), or everything a delete-with-contents removes.
+      const summary = {
+        action, storey: storeyId, mode: mode.kind, elements: plan.elementCount, refusals: plan.refusals,
+        ...(mode.kind === 'move' ? { moveTo: mode.targetStoreyId, moves: plan.roots } : {}),
+        ...(mode.kind === 'deleteContents' ? { deletes: plan.contents } : {}),
+      };
       if (plan.refusals.length) {
         if (json) printJson(summary);
         return fatal(`Refused: ${plan.refusals.map((r) => r.message).join('; ')}`);

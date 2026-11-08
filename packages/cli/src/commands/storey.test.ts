@@ -212,6 +212,26 @@ describe.skipIf(!existsSync(SAMPLE))('ifc-lite storey (#9025)', () => {
     expect(report.refusals[0].message).toMatch(/Storey "Missing" not found/);
   });
 
+  it('a delete dry run says where a move goes and what it moves, or what a delete removes (#9121 review)', async () => {
+    const run = await storey();
+    const two = join(dir, 'two.ifc');
+    await run([SAMPLE, 'add', '--name', 'Upper', '--elevation', '3', '--out', two]);
+    stdout = '';
+    await run([two, 'list', '--json']);
+    const ids = new Map((JSON.parse(stdout) as Array<{ Name: string; expressId: number }>).map((r) => [r.Name, r.expressId]));
+    stdout = '';
+    await run([two, 'delete', '--storey', 'My Storey', '--move-to', 'Upper', '--dry-run', '--json']);
+    const move = JSON.parse(stdout);
+    expect(move.moveTo).toBe(ids.get('Upper'));
+    expect(move.moves.length).toBeGreaterThan(0);
+    stdout = '';
+    await run([two, 'delete', '--storey', 'My Storey', '--delete-contents', '--dry-run', '--json']);
+    const removal = JSON.parse(stdout);
+    // Everything the storey holds: at least the direct children a move would re-parent.
+    expect(removal.deletes.length).toBeGreaterThanOrEqual(move.moves.length);
+    expect(removal.moveTo).toBeUndefined();
+  });
+
   it('storey --help lists the actions (#9121 review)', async () => {
     const { buildCommandHelp } = await import('../help.js');
     const help = buildCommandHelp('0.0.0', 'storey') ?? '';

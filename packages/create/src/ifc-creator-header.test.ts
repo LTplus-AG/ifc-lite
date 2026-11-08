@@ -38,8 +38,8 @@ describe('IfcCreator STEP header file name and description', () => {
   });
 
   it('escapes apostrophes and backslashes in both values', () => {
-    const h = header({ FileName: "Louis's model.ifc", FileDescription: ['C:\\models'] });
-    expect(h).toContain("FILE_NAME('Louis''s model.ifc',");
+    const h = header({ FileName: "Ann's model.ifc", FileDescription: ['C:\\models'] });
+    expect(h).toContain("FILE_NAME('Ann''s model.ifc',");
     expect(h).toContain("FILE_DESCRIPTION(('C:\\\\models'),'2;1');");
   });
 

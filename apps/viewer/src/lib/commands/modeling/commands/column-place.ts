@@ -8,7 +8,10 @@
  * in the bar), or a picked section (I, L, T, U, C, circle, hollow: the bar's
  * Section picker) in place of Width and Depth; Rotation turns the section counter-clockwise, R steps it by
  * 15°. The builder writes the turn as the placement's RefDirection, so a
- * turned column is one entity graph and one undo step.
+ * turned column is one entity graph and one undo step. Its top follows the
+ * same "Storey above / Fixed height" default as a wall's (`wall-top.ts`): it
+ * reaches the storey above and is recorded attached to it, in the same undo
+ * step, so it follows later level edits; a typed height makes it fixed.
  */
 
 import { commandGhostId } from '../ghost.js';
@@ -20,6 +23,12 @@ import { addGridColumnIn } from '@/store/slices/mutation-grid-column';
 import { defaultsField, dimOf, planeZ } from './placement-shared.js';
 import { rectangleOnly, sectionExtentOf, sectionGhost, sectionOf } from './linear-section.js';
 import { ColumnPlaceProfileBar } from '@/components/viewer/tools/command/ProfileBars';
+import { recordWallTop, resolveElementTop } from '../wall-top.js';
+import type { CommandContext } from '../types.js';
+
+/** Up to the storey above, or the column's default height. */
+const columnTopOf = (ctx: Pick<CommandContext, 'get' | 'modelId' | 'storeyId' | 'workplane'>) =>
+  resolveElementTop(ctx.get(), ctx.modelId, ctx.storeyId, planeZ(ctx.workplane), dimOf({ get: ctx.get }, 'column', 'Height'));
 
 const columnOwner = () => 'column' as const;
 
@@ -38,7 +47,18 @@ const normalise = (deg: number) => ((deg % 360) + 360) % 360;
 const FIELDS: readonly CommandField<ColumnPlaceGesture>[] = [
   rectangleOnly(defaultsField('width', 'column', 'Width', 'modelingCommand.field.width'), columnOwner),
   rectangleOnly(defaultsField('depth', 'column', 'Depth', 'modelingCommand.field.depth'), columnOwner),
-  defaultsField('height', 'column', 'Height', 'modelingCommand.field.height'),
+  // The height the next column gets: the storey spacing while it goes to the
+  // storey above. Typing a height means that height: the column becomes fixed.
+  {
+    ...defaultsField<ColumnPlaceGesture>('height', 'column', 'Height', 'modelingCommand.field.height'),
+    read: (_g, ctx) => columnTopOf(ctx).Height,
+    write: (g, v, ctx) => {
+      if (!(v > 0)) return g;
+      ctx.get().setAuthoringDims('column', { Height: v });
+      ctx.get().setAuthoringDefaults({ wallTop: 'fixed' });
+      return g;
+    },
+  },
   {
     id: 'rotation', labelKey: 'modelingCommand.field.rotation', unit: 'deg', group: 'rotation',
     read: (g) => g.rotation, write: (g, v) => ({ ...g, rotation: normalise(v) }),
@@ -75,10 +95,11 @@ export const COLUMN_PLACE: ModelingCommand<ColumnPlaceGesture> = {
     const ctx = { get: () => tx.store };
     const turn = (g.rotation * Math.PI) / 180;
     const profile = sectionOf(ctx, 'column');
+    const top = columnTopOf({ get: () => tx.store, modelId: tx.modelId, storeyId: tx.storeyId, workplane: tx.workplane });
     const params: ColumnInStoreParams | ProfiledColumnInStoreParams = {
       Position: [g.cursor[0], g.cursor[1], planeZ(tx.workplane)],
       ...(profile ? { Profile: profile } : { Width: dimOf(ctx, 'column', 'Width'), Depth: dimOf(ctx, 'column', 'Depth') }),
-      Height: dimOf(ctx, 'column', 'Height'),
+      Height: top.Height,
       // The section's Width axis, storey-local: the turn is written with the column.
       RefDirection: [Math.cos(turn), Math.sin(turn), 0],
     };
@@ -86,6 +107,8 @@ export const COLUMN_PLACE: ModelingCommand<ColumnPlaceGesture> = {
       ? addGridColumnIn(tx.api, tx.modelId, tx.storeyId, params, g.gridBinding)
       : tx.store.addColumn(tx.modelId, tx.storeyId, params);
     if ('error' in column) throw new Error(`Couldn't add column: ${column.error}`);
+    // The attachment is part of the same undo step as the column.
+    if (top.attachTo) recordWallTop(tx.store, tx.modelId, column.expressId, top.attachTo);
     return { created: [column.expressId], authored: [column.expressId], deleted: [], remesh: [column.expressId], select: [column.expressId] };
   },
   // The next column keeps the rotation.
@@ -98,12 +121,12 @@ export const COLUMN_PLACE: ModelingCommand<ColumnPlaceGesture> = {
       // The section's X runs along the turned RefDirection, as the builder writes it.
       const turn = (g.rotation * Math.PI) / 180;
       const [c, s] = [Math.cos(turn), Math.sin(turn)];
-      const swept = sectionGhost(ctx, profile, { origin: [g.cursor[0], g.cursor[1], 0], u: [c, s, 0], v: [-s, c, 0], along: [0, 0, 1], length: dimOf(ctx, 'column', 'Height') });
+      const swept = sectionGhost(ctx, profile, { origin: [g.cursor[0], g.cursor[1], 0], u: [c, s, 0], v: [-s, c, 0], along: [0, 0, 1], length: columnTopOf(ctx).Height });
       return swept ? [swept] : [];
     }
     const [width, depth] = sectionExtentOf(ctx, 'column');
     const outline = centredRectOutline(g.cursor, width, depth, g.rotation);
-    const mesh = prismGhostMesh(ctx.workplane, outline, 0, dimOf(ctx, 'column', 'Height'), commandGhostId(ctx.get()));
+    const mesh = prismGhostMesh(ctx.workplane, outline, 0, columnTopOf(ctx).Height, commandGhostId(ctx.get()));
     return mesh ? [mesh] : [];
   },
 };

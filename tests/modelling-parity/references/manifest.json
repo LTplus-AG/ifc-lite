@@ -1,0 +1,599 @@
+{
+  "schema": "ifclite-parity-references/1",
+  "generatedBy": "hand-curated; ifc blocks refreshed by refresh-info.mjs",
+  "checkedOn": "2026-11-08",
+  "cache": "tests/modelling-parity/references/.cache/<id>/<file> (git-ignored via **/.cache/)",
+  "policy": "No reference bytes are committed. Entries whose licence is not clearly permissive are referenced by URL and SHA-256 only; entries with a `fixture` block read their bytes from the repo fixture mechanism (tests/models/manifest.json).",
+  "references": [
+    {
+      "id": "nibs-duplex-ifc2x3",
+      "name": "NIBS Duplex Apartment (IFC2X3 coordination view)",
+      "role": "building",
+      "usedBy": [
+        "F3"
+      ],
+      "description": "Two-unit duplex apartment, 3 storeys plus a footing pseudo-storey, flat roof, 2 stairs. Revit Architecture 2011 export, Coordination View. Target for F3.",
+      "file": "duplex.ifc",
+      "bytes": 2380763,
+      "sha256": "b347a2c8aa8fff6db896a4417a9c50c22ac0ccd7c5cfc22b99b8d29336c606ed",
+      "ifcSchema": "IFC2X3",
+      "authoringTool": "Autodesk Revit Architecture 2011 - 1.0 (IFC exporter 20100326_1700)",
+      "fixture": {
+        "path": "ara3d/duplex.ifc",
+        "manifest": "tests/models/manifest.json",
+        "fetch": "pnpm fixtures ara3d/duplex.ifc"
+      },
+      "source": {
+        "officialPage": "https://www.wbdg.org/bim/cobie/common-bim-files",
+        "officialPageAlias": "https://www.wbdg.org/node/9165",
+        "officialFile": "2011-09-14-Duplex-IFC.zip ('2011-09-14-Duplex IFC 2x3 Coordination MVD', 7 MB)",
+        "officialDownload": "https://portal.nibs.org/files/wl/?id=O9inoVWDytV4P3UTS7iIdqhVKcTyVlcs&mode=grid&download=1",
+        "officialDownloadStatus": "portal.nibs.org timed out (TCP connect, 60 s, repeated) from the build host on 2026-11-08, and the Wayback Machine holds only the landing page, not the zip. The zip's SHA-256 is therefore not recorded and the bytes below are not byte-verified against it.",
+        "provenanceEvidence": [
+          "Header: FILE_DESCRIPTION 'ViewDefinition [CoordinationView]', FILE_NAME timestamp 2011-09-07, 'Autodesk Revit Architecture 2011', matching the NIBS '2011-09-14 Duplex IFC 2x3 Coordination MVD' description.",
+          "Content: storeys Level 1 / Level 2 / Roof, spaces A101..B205 and R301, matching the Duplex model.",
+          "Independent public copy with identical bytes (git blob 8210b5f627e92ea888252c318481babce31059c5, 2,380,763 bytes): https://github.com/ThatOpen/engine_web-ifc/blob/bbb34120e2dd2659836d849f84cf97d5f47e6587/tests/ifcfiles/public/duplex.ifc"
+        ],
+        "retrieved": "2026-11-08"
+      },
+      "licence": {
+        "status": "unknown",
+        "spdx": null,
+        "redistributable": "unclear",
+        "text": null,
+        "url": "https://www.wbdg.org/bim/cobie/common-bim-files",
+        "attribution": "National Institute of Building Sciences (NIBS), Common Building Information Model Files; Duplex Apartment model by Kristine Fallon Associates from a student design",
+        "caveat": "Neither the WBDG page nor the NIBS disclaimer grants a licence for the model files. The disclaimer says 'Neither the United States Government nor NIBS ... makes any warranty' and the footer reads '(c) 2023 National Institute of Building Sciences. All rights reserved.' The page is credited to the U.S. Army Corps of Engineers ERDC-CERL, but the model was made by a contractor, so no public-domain status is assumed. Treated as not redistributable: referenced by URL and hash only. The bytes used here come from the repo's own fixture release (tests/models/ara3d/duplex.ifc), which this lane did not create."
+      },
+      "targetFile": "f3-duplex-target.json",
+      "targetNotes": [
+        "T/FDN is a footing pseudo-storey at -1.25 m, not an occupied level; the occupied levels are Level 1 (0.0), Level 2 (3.1) and Roof (6.0).",
+        "Space areas are net floor areas measured on the space mesh; the file also carries Revit 'GSA BIM Area' (gross) as areaProperty, which is 10-30% larger.",
+        "The roof is a flat roof ('Basic Roof: Live Roof over Wood Joist Flat Roof'); the F3 spec has no pitched roof to match.",
+        "Revit exports no base quantities, so wall lengths come from each wall's Axis polyline."
+      ],
+      "ifc": {
+        "cliSchema": "IFC2X3",
+        "entityCount": 38898,
+        "storeys": [
+          "Level 1",
+          "Level 2",
+          "T/FDN",
+          "Roof"
+        ],
+        "elementCounts": {
+          "IfcBeam": 8,
+          "IfcBuilding": 1,
+          "IfcBuildingStorey": 4,
+          "IfcCovering": 13,
+          "IfcDoor": 14,
+          "IfcFooting": 7,
+          "IfcFurnishingElement": 61,
+          "IfcMember": 4,
+          "IfcOpeningElement": 50,
+          "IfcRailing": 4,
+          "IfcRoof": 1,
+          "IfcSite": 1,
+          "IfcSlab": 21,
+          "IfcSpace": 21,
+          "IfcStair": 2,
+          "IfcStairFlight": 2,
+          "IfcWall": 1,
+          "IfcWallStandardCase": 56,
+          "IfcWindow": 24
+        },
+        "command": "node packages/cli/dist/index.js info --json <file>"
+      }
+    },
+    {
+      "id": "kit-fzk-haus-ifc4",
+      "name": "KIT AC20-FZK-Haus (IFC4)",
+      "role": "building",
+      "usedBy": [
+        "F2"
+      ],
+      "description": "Small phantasy two-storey house, ArchiCAD 20 IFC4. Target for F2 (see README: it has a 30 degree gable roof, not a hip roof, and is 12 x 10 m).",
+      "file": "AC20-FZK-Haus.ifc",
+      "bytes": 2570803,
+      "sha256": "70cc8ff245fc0894201d96496c031005a5cbd7a96b22d8a1b87c5a883fb77994",
+      "ifcSchema": "IFC4",
+      "authoringTool": "GRAPHISOFT ARCHICAD-64 20.0.0 GER FULL Windows (via EXPRESS Data Manager 5.02.0100.09)",
+      "source": {
+        "kind": "url",
+        "url": "https://www.ifcwiki.org/images/e/e3/AC20-FZK-Haus.ifc",
+        "page": "https://www.ifcwiki.org/index.php?title=KIT_IFC_Examples",
+        "lastModified": "Mon, 15 Nov 2021 15:08:11 GMT",
+        "retrieved": "2026-11-08",
+        "note": "KIT's own site (iai.kit.edu / iai.fzk.de) no longer serves the file; the IFC Wiki page 'KIT IFC Examples' is the maintained origin. The repo fixture ara3d/AC20-FZK-Haus.ifc (sha256 d42ab0de..., 2,526,511 bytes) is a different export of the same house and must not be confused with this file."
+      },
+      "licence": {
+        "status": "informal-unrestricted-use",
+        "spdx": null,
+        "redistributable": "unclear",
+        "text": "These examples are made by the Institute for Applied Computer Science (IAI) at the Karlsruhe Institute of Technology (KIT), and are for unrestricted use. If you use these examples for publications, please provide the following source: Institute for Automation and Applied Informatics (IAI) / Karlsruhe Institute of Technology (KIT) or Institut für Automation und angewandte Information / Karlsruher Institut für Technologie",
+        "url": "https://www.ifcwiki.org/index.php?title=KIT_IFC_Examples&oldid=552",
+        "attribution": "Institute for Automation and Applied Informatics (IAI) / Karlsruhe Institute of Technology (KIT)",
+        "caveat": "A statement on a wiki page, not a licence text with an SPDX id and not on a KIT-hosted page. 'Unrestricted use' probably covers redistribution but does not say so. The bytes are therefore never committed; attribution is kept anyway."
+      },
+      "targetFile": "f2-fzk-haus-target.json",
+      "targetNotes": [
+        "12.0 x 10.0 m footprint, 2 storeys (Erdgeschoss 0.0, Dachgeschoss 2.7), one IfcStair, 5 doors, 11 windows, 7 spaces.",
+        "The roof is two IfcSlab(ROOF) planes forming a gable at 30 degrees; there is no hip. The F2 brief in the contract says '10x8 m ... hip roof': either the brief or the reference choice needs a decision.",
+        "Space 'Galerie' (attic) is 107.16 m2 gross floor area per BaseQuantities.",
+        "Wall lengths are summed from each wall's Axis polyline (113.80 m). The file's own BaseQuantities.Length sums to 109.66 m (3.6% lower, net of joins); both are within the 5% wall-length tolerance."
+      ],
+      "ifc": {
+        "cliSchema": "IFC4",
+        "entityCount": 44249,
+        "storeys": [
+          "Erdgeschoss",
+          "Dachgeschoss"
+        ],
+        "elementCounts": {
+          "IfcAnnotation": 14,
+          "IfcBeam": 4,
+          "IfcBuilding": 1,
+          "IfcBuildingStorey": 2,
+          "IfcDoor": 5,
+          "IfcMember": 42,
+          "IfcOpeningElement": 17,
+          "IfcRailing": 2,
+          "IfcSite": 1,
+          "IfcSlab": 4,
+          "IfcSpace": 7,
+          "IfcStair": 1,
+          "IfcWallStandardCase": 13,
+          "IfcWindow": 11
+        },
+        "command": "node packages/cli/dist/index.js info --json <file>"
+      }
+    },
+    {
+      "id": "kit-institute-var-2-ifc4",
+      "name": "KIT AC20-Institute-Var-2 (IFC4)",
+      "role": "building",
+      "usedBy": [
+        "F2-optional",
+        "F6-candidate"
+      ],
+      "description": "Phantasy office building, ArchiCAD 20 IFC4, about 10.9 MB. Not needed by round 0; listed for later rounds.",
+      "file": "AC20-Institute-Var-2.ifc",
+      "bytes": 10934237,
+      "sha256": "cfb2124497b25d9a72101075e84be0feb44ff669cb1bd3251be11efebeea945c",
+      "ifcSchema": "IFC4",
+      "authoringTool": "GRAPHISOFT ARCHICAD-64 20.0.0 GER FULL Windows (via EXPRESS Data Manager 5.02.0100.09)",
+      "source": {
+        "kind": "url",
+        "url": "https://www.ifcwiki.org/images/9/98/AC20-Institute-Var-2.ifc",
+        "page": "https://www.ifcwiki.org/index.php?title=KIT_IFC_Examples",
+        "lastModified": "Mon, 15 Nov 2021 15:08:12 GMT",
+        "retrieved": "2026-11-08",
+        "note": "The repo fixture ara3d/C20-Institute-Var-2.ifc (sha256 a06b9cf1..., 10,786,515 bytes) is a different export."
+      },
+      "licence": {
+        "status": "informal-unrestricted-use",
+        "spdx": null,
+        "redistributable": "unclear",
+        "text": "These examples are made by the Institute for Applied Computer Science (IAI) at the Karlsruhe Institute of Technology (KIT), and are for unrestricted use. If you use these examples for publications, please provide the following source: Institute for Automation and Applied Informatics (IAI) / Karlsruhe Institute of Technology (KIT) or Institut für Automation und angewandte Information / Karlsruher Institut für Technologie",
+        "url": "https://www.ifcwiki.org/index.php?title=KIT_IFC_Examples&oldid=552",
+        "attribution": "Institute for Automation and Applied Informatics (IAI) / Karlsruhe Institute of Technology (KIT)",
+        "caveat": "A statement on a wiki page, not a licence text with an SPDX id and not on a KIT-hosted page. 'Unrestricted use' probably covers redistribution but does not say so. The bytes are therefore never committed; attribution is kept anyway."
+      },
+      "ifc": {
+        "cliSchema": "IFC4",
+        "entityCount": 147712,
+        "storeys": [
+          "Keller",
+          "Erdgeschoss",
+          "1. Obergeschoss",
+          "2. Obergeschoss",
+          "Dachgeschoss"
+        ],
+        "elementCounts": {
+          "IfcAnnotation": 113,
+          "IfcBuilding": 1,
+          "IfcBuildingStorey": 5,
+          "IfcColumn": 2,
+          "IfcDoor": 77,
+          "IfcFurnishingElement": 253,
+          "IfcOpeningElement": 287,
+          "IfcRailing": 12,
+          "IfcSite": 1,
+          "IfcSlab": 26,
+          "IfcSpace": 82,
+          "IfcStair": 4,
+          "IfcWallStandardCase": 121,
+          "IfcWindow": 206
+        },
+        "command": "node packages/cli/dist/index.js info --json <file>"
+      }
+    },
+    {
+      "id": "nibs-office-solibri",
+      "name": "NIBS Office Building (IFC2X3, Solibri-optimised derivative)",
+      "role": "building-candidate",
+      "usedBy": [],
+      "description": "Candidate only. Revit Architecture 2011 coordination view run through Solibri IFC Optimizer; likely the NIBS Office model, but not byte-compared with the official zip.",
+      "file": "Office_A_20110811.ifc",
+      "bytes": 4036369,
+      "sha256": "3c8e362068a68fb54d0d170d2c12ede3b97608a7be0ad88f2edd5c7364e41b59",
+      "ifcSchema": "IFC2X3",
+      "authoringTool": "Autodesk Revit Architecture 2011 - 1.0 (Solibri IFC Optimizer)",
+      "fixture": {
+        "path": "ara3d/Office_A_20110811.ifc",
+        "manifest": "tests/models/manifest.json",
+        "fetch": "pnpm fixtures ara3d/Office_A_20110811.ifc"
+      },
+      "source": {
+        "officialPage": "https://www.wbdg.org/bim/cobie/common-bim-files",
+        "officialFile": "2011-09-14-Office-IFC.zip ('2011-09-14-Office IFC 2x3 Coordination MVD')",
+        "officialDownload": "https://portal.nibs.org/files/wl/?id=UT33sBxiERzskB4P6HYGpnbtqGQ1v9ER&mode=grid&download=1",
+        "officialDownloadStatus": "portal.nibs.org unreachable on 2026-11-08; provenance of the fixture bytes is inferred from the header only.",
+        "retrieved": "2026-11-08"
+      },
+      "licence": {
+        "status": "unknown",
+        "spdx": null,
+        "redistributable": "unclear",
+        "text": null,
+        "url": "https://www.wbdg.org/bim/cobie/common-bim-files",
+        "attribution": "National Institute of Building Sciences (NIBS), Common Building Information Model Files; Duplex Apartment model by Kristine Fallon Associates from a student design",
+        "caveat": "Neither the WBDG page nor the NIBS disclaimer grants a licence for the model files. The disclaimer says 'Neither the United States Government nor NIBS ... makes any warranty' and the footer reads '(c) 2023 National Institute of Building Sciences. All rights reserved.' The page is credited to the U.S. Army Corps of Engineers ERDC-CERL, but the model was made by a contractor, so no public-domain status is assumed. Treated as not redistributable: referenced by URL and hash only. The bytes used here come from the repo's own fixture release (tests/models/ara3d/duplex.ifc), which this lane did not create."
+      },
+      "ifc": {
+        "cliSchema": "IFC2X3",
+        "entityCount": 62930,
+        "storeys": [
+          "Level 1",
+          "Level 2",
+          "Roof"
+        ],
+        "elementCounts": {
+          "IfcBuilding": 1,
+          "IfcBuildingStorey": 3,
+          "IfcCovering": 83,
+          "IfcDoor": 102,
+          "IfcFlowTerminal": 31,
+          "IfcFurnishingElement": 7,
+          "IfcMember": 8,
+          "IfcOpeningElement": 181,
+          "IfcRailing": 10,
+          "IfcSite": 1,
+          "IfcSlab": 2,
+          "IfcSpace": 99,
+          "IfcStair": 2,
+          "IfcStairFlight": 4,
+          "IfcWallStandardCase": 487,
+          "IfcWindow": 69
+        },
+        "command": "node packages/cli/dist/index.js info --json <file>"
+      }
+    },
+    {
+      "id": "nibs-clinic-solibri",
+      "name": "NIBS Medical Clinic (IFC2X3, Solibri-optimised derivative)",
+      "role": "building-candidate",
+      "usedBy": [],
+      "description": "Candidate only. Same situation as the Office entry; 13 MB, redacted drawings exist separately on the NIBS page.",
+      "file": "dental_clinic.ifc",
+      "bytes": 13003205,
+      "sha256": "2ac970ce065ecac4e0c9e5f453a257169e90d0067f419b7e33533a64ef837880",
+      "ifcSchema": "IFC2X3",
+      "authoringTool": "Autodesk Revit Architecture 2011 - 1.0 (Solibri IFC Optimizer)",
+      "fixture": {
+        "path": "ara3d/dental_clinic.ifc",
+        "manifest": "tests/models/manifest.json",
+        "fetch": "pnpm fixtures ara3d/dental_clinic.ifc"
+      },
+      "source": {
+        "officialPage": "https://www.wbdg.org/bim/cobie/common-bim-files",
+        "officialFile": "2011-09-14-Clinic-IFC.zip ('2011-09-14-Clinic IFC 2x3 Coordination MVD')",
+        "officialDownload": "https://portal.nibs.org/files/wl/?id=Cu1FtqVtrR7AdjY6K16Ov6NSBzoZj56h&mode=grid&download=1",
+        "officialDownloadStatus": "portal.nibs.org unreachable on 2026-11-08; provenance of the fixture bytes is inferred from the header only.",
+        "retrieved": "2026-11-08"
+      },
+      "licence": {
+        "status": "unknown",
+        "spdx": null,
+        "redistributable": "unclear",
+        "text": null,
+        "url": "https://www.wbdg.org/bim/cobie/common-bim-files",
+        "attribution": "National Institute of Building Sciences (NIBS), Common Building Information Model Files; Duplex Apartment model by Kristine Fallon Associates from a student design",
+        "caveat": "Neither the WBDG page nor the NIBS disclaimer grants a licence for the model files. The disclaimer says 'Neither the United States Government nor NIBS ... makes any warranty' and the footer reads '(c) 2023 National Institute of Building Sciences. All rights reserved.' The page is credited to the U.S. Army Corps of Engineers ERDC-CERL, but the model was made by a contractor, so no public-domain status is assumed. Treated as not redistributable: referenced by URL and hash only. The bytes used here come from the repo's own fixture release (tests/models/ara3d/duplex.ifc), which this lane did not create."
+      },
+      "ifc": {
+        "cliSchema": "IFC2X3",
+        "entityCount": 209259,
+        "storeys": [
+          "First Floor",
+          "Second Floor",
+          "Roof - Main",
+          "TOF Footing"
+        ],
+        "elementCounts": {
+          "IfcBuilding": 1,
+          "IfcBuildingStorey": 4,
+          "IfcCovering": 250,
+          "IfcCurtainWall": 31,
+          "IfcDoor": 254,
+          "IfcFlowTerminal": 102,
+          "IfcFurnishingElement": 118,
+          "IfcMember": 534,
+          "IfcOpeningElement": 403,
+          "IfcPlate": 172,
+          "IfcRailing": 9,
+          "IfcSite": 1,
+          "IfcSlab": 3,
+          "IfcSpace": 269,
+          "IfcStair": 3,
+          "IfcStairFlight": 6,
+          "IfcWall": 15,
+          "IfcWallStandardCase": 1065,
+          "IfcWindow": 58
+        },
+        "command": "node packages/cli/dist/index.js info --json <file>"
+      }
+    },
+    {
+      "id": "bsi-ifc4-simple-scene-architecture",
+      "name": "buildingSMART Simple-Scene Building-Architecture (IFC4 Reference View)",
+      "role": "conformance",
+      "usedBy": [
+        "round-7-conformance"
+      ],
+      "description": "buildingSMART certification dataset, ViewDefinition ReferenceView_V1.2. Round 7 conformance reference for an authored architectural IFC4 file.",
+      "file": "Building-Architecture.ifc",
+      "bytes": 142325,
+      "sha256": "8790a1e193e82b8e7e7f337ec2633cd40f2120590317a1443503a25b079e2e80",
+      "ifcSchema": "IFC4",
+      "authoringTool": "Sketchup-IFC-manager 5.6.0 / SketchUp 2026",
+      "source": {
+        "kind": "url",
+        "url": "https://raw.githubusercontent.com/buildingSMART/Sample-Test-Files/80d976a9b193a26a8e928c3e79bff67af1de68a8/IFC%204.0.2.1%20%28IFC%204%20ADD2%20TC1%29/Simple-Scene/Building-Architecture.ifc",
+        "repository": "https://github.com/buildingSMART/Sample-Test-Files",
+        "commit": "80d976a9b193a26a8e928c3e79bff67af1de68a8",
+        "path": "IFC 4.0.2.1 (IFC 4 ADD2 TC1)/Simple-Scene/Building-Architecture.ifc",
+        "retrieved": "2026-11-08"
+      },
+      "licence": {
+        "status": "cc-by-4.0",
+        "spdx": "CC-BY-4.0",
+        "redistributable": "yes",
+        "text": "(C) buildingSMART International Ltd. This work is licensed under the Creative Commons Attribution 4.0 International License.",
+        "url": "https://github.com/buildingSMART/Sample-Test-Files/blob/80d976a9b193a26a8e928c3e79bff67af1de68a8/LICENSE",
+        "attribution": "buildingSMART International Ltd., Sample-Test-Files, CC BY 4.0",
+        "caveat": "GitHub's licence detector reports NOASSERTION because the LICENSE file is a short notice, not the licence text; the notice itself names CC BY 4.0. Bytes are still fetched on demand, not committed."
+      },
+      "ifc": {
+        "cliSchema": "IFC4",
+        "entityCount": 371,
+        "storeys": [
+          "00 groundfloor"
+        ],
+        "elementCounts": {
+          "IfcBuilding": 1,
+          "IfcBuildingElementProxy": 3,
+          "IfcBuildingStorey": 1,
+          "IfcChimney": 1,
+          "IfcRoof": 1,
+          "IfcSite": 2,
+          "IfcSlab": 3,
+          "IfcSpace": 2,
+          "IfcWall": 4
+        },
+        "command": "node packages/cli/dist/index.js info --json <file>"
+      }
+    },
+    {
+      "id": "bsi-rv12-wall-with-opening-and-window",
+      "name": "buildingSMART ReferenceView_V1.2 example: wall-with-opening-and-window.ifc",
+      "role": "conformance",
+      "usedBy": [
+        "round-7-conformance"
+      ],
+      "description": "IFC4 Reference View v1.2 spec example (the same set IFC4 Annex E and the ISO spec examples draw on). Small conformance file for round 7.",
+      "file": "wall-with-opening-and-window.ifc",
+      "bytes": 12492,
+      "sha256": "73b0e45d931d5dc13bfee5fdc7bd80f796526445458b2de74c4168d209097832",
+      "ifcSchema": "IFC4",
+      "authoringTool": "see file header",
+      "source": {
+        "kind": "url",
+        "url": "https://raw.githubusercontent.com/buildingSMART/Sample-Test-Files/80d976a9b193a26a8e928c3e79bff67af1de68a8/IFC%204.0.2.1%20%28IFC%204%20ADD2%20TC1%29/ISO%20Spec%20-%20ReferenceView_V1.2/wall-with-opening-and-window.ifc",
+        "repository": "https://github.com/buildingSMART/Sample-Test-Files",
+        "commit": "80d976a9b193a26a8e928c3e79bff67af1de68a8",
+        "path": "IFC 4.0.2.1 (IFC 4 ADD2 TC1)/ISO Spec - ReferenceView_V1.2/wall-with-opening-and-window.ifc",
+        "retrieved": "2026-11-08"
+      },
+      "licence": {
+        "status": "cc-by-4.0",
+        "spdx": "CC-BY-4.0",
+        "redistributable": "yes",
+        "text": "(C) buildingSMART International Ltd. This work is licensed under the Creative Commons Attribution 4.0 International License.",
+        "url": "https://github.com/buildingSMART/Sample-Test-Files/blob/80d976a9b193a26a8e928c3e79bff67af1de68a8/LICENSE",
+        "attribution": "buildingSMART International Ltd., Sample-Test-Files, CC BY 4.0",
+        "caveat": "GitHub's licence detector reports NOASSERTION because the LICENSE file is a short notice, not the licence text; the notice itself names CC BY 4.0. Bytes are still fetched on demand, not committed."
+      },
+      "ifc": {
+        "cliSchema": "IFC4",
+        "entityCount": 127,
+        "storeys": [
+          "Default Building Storey"
+        ],
+        "elementCounts": {
+          "IfcBuilding": 1,
+          "IfcBuildingStorey": 1,
+          "IfcOpeningElement": 1,
+          "IfcSite": 1,
+          "IfcWall": 1,
+          "IfcWindow": 1
+        },
+        "command": "node packages/cli/dist/index.js info --json <file>"
+      }
+    },
+    {
+      "id": "bsi-rv12-basin-tessellation",
+      "name": "buildingSMART ReferenceView_V1.2 example: basin-tessellation.ifc",
+      "role": "conformance",
+      "usedBy": [
+        "round-7-conformance"
+      ],
+      "description": "IFC4 Reference View v1.2 spec example (the same set IFC4 Annex E and the ISO spec examples draw on). Small conformance file for round 7.",
+      "file": "basin-tessellation.ifc",
+      "bytes": 12131,
+      "sha256": "7278769ec5ef35d388819d2f197519061c7f0f68dd43a733f333ddeb74578121",
+      "ifcSchema": "IFC4",
+      "authoringTool": "see file header",
+      "source": {
+        "kind": "url",
+        "url": "https://raw.githubusercontent.com/buildingSMART/Sample-Test-Files/80d976a9b193a26a8e928c3e79bff67af1de68a8/IFC%204.0.2.1%20%28IFC%204%20ADD2%20TC1%29/ISO%20Spec%20-%20ReferenceView_V1.2/basin-tessellation.ifc",
+        "repository": "https://github.com/buildingSMART/Sample-Test-Files",
+        "commit": "80d976a9b193a26a8e928c3e79bff67af1de68a8",
+        "path": "IFC 4.0.2.1 (IFC 4 ADD2 TC1)/ISO Spec - ReferenceView_V1.2/basin-tessellation.ifc",
+        "retrieved": "2026-11-08"
+      },
+      "licence": {
+        "status": "cc-by-4.0",
+        "spdx": "CC-BY-4.0",
+        "redistributable": "yes",
+        "text": "(C) buildingSMART International Ltd. This work is licensed under the Creative Commons Attribution 4.0 International License.",
+        "url": "https://github.com/buildingSMART/Sample-Test-Files/blob/80d976a9b193a26a8e928c3e79bff67af1de68a8/LICENSE",
+        "attribution": "buildingSMART International Ltd., Sample-Test-Files, CC BY 4.0",
+        "caveat": "GitHub's licence detector reports NOASSERTION because the LICENSE file is a short notice, not the licence text; the notice itself names CC BY 4.0. Bytes are still fetched on demand, not committed."
+      },
+      "ifc": {
+        "cliSchema": "IFC4",
+        "entityCount": 44,
+        "storeys": [],
+        "elementCounts": {
+          "IfcBuilding": 1,
+          "IfcSanitaryTerminal": 1
+        },
+        "command": "node packages/cli/dist/index.js info --json <file>"
+      }
+    },
+    {
+      "id": "bsi-rv12-column-straight-rectangle-tessellation",
+      "name": "buildingSMART ReferenceView_V1.2 example: column-straight-rectangle-tessellation.ifc",
+      "role": "conformance",
+      "usedBy": [
+        "round-7-conformance"
+      ],
+      "description": "IFC4 Reference View v1.2 spec example (the same set IFC4 Annex E and the ISO spec examples draw on). Small conformance file for round 7.",
+      "file": "column-straight-rectangle-tessellation.ifc",
+      "bytes": 4594,
+      "sha256": "58bb9b2cae96edf2c368de95f526650f3f282e4e7fc37c0065c501bdbeed00a1",
+      "ifcSchema": "IFC4",
+      "authoringTool": "Constructivity 0.9.8.1",
+      "source": {
+        "kind": "url",
+        "url": "https://raw.githubusercontent.com/buildingSMART/Sample-Test-Files/80d976a9b193a26a8e928c3e79bff67af1de68a8/IFC%204.0.2.1%20%28IFC%204%20ADD2%20TC1%29/ISO%20Spec%20-%20ReferenceView_V1.2/column-straight-rectangle-tessellation.ifc",
+        "repository": "https://github.com/buildingSMART/Sample-Test-Files",
+        "commit": "80d976a9b193a26a8e928c3e79bff67af1de68a8",
+        "path": "IFC 4.0.2.1 (IFC 4 ADD2 TC1)/ISO Spec - ReferenceView_V1.2/column-straight-rectangle-tessellation.ifc",
+        "retrieved": "2026-11-08"
+      },
+      "licence": {
+        "status": "cc-by-4.0",
+        "spdx": "CC-BY-4.0",
+        "redistributable": "yes",
+        "text": "(C) buildingSMART International Ltd. This work is licensed under the Creative Commons Attribution 4.0 International License.",
+        "url": "https://github.com/buildingSMART/Sample-Test-Files/blob/80d976a9b193a26a8e928c3e79bff67af1de68a8/LICENSE",
+        "attribution": "buildingSMART International Ltd., Sample-Test-Files, CC BY 4.0",
+        "caveat": "GitHub's licence detector reports NOASSERTION because the LICENSE file is a short notice, not the licence text; the notice itself names CC BY 4.0. Bytes are still fetched on demand, not committed."
+      },
+      "ifc": {
+        "cliSchema": "IFC4",
+        "entityCount": 26,
+        "storeys": [],
+        "elementCounts": {
+          "IfcColumn": 1,
+          "IfcSite": 1
+        },
+        "command": "node packages/cli/dist/index.js info --json <file>"
+      }
+    },
+    {
+      "id": "bsi-rv12-tessellated-item",
+      "name": "buildingSMART ReferenceView_V1.2 example: tessellated-item.ifc",
+      "role": "conformance",
+      "usedBy": [
+        "round-7-conformance"
+      ],
+      "description": "IFC4 Reference View v1.2 spec example (the same set IFC4 Annex E and the ISO spec examples draw on). Small conformance file for round 7.",
+      "file": "tessellated-item.ifc",
+      "bytes": 5199,
+      "sha256": "758974f7d558f11b8d8121816954179def32594ed7eafcd1faae70ee0a8e5946",
+      "ifcSchema": "IFC4",
+      "authoringTool": "see file header",
+      "source": {
+        "kind": "url",
+        "url": "https://raw.githubusercontent.com/buildingSMART/Sample-Test-Files/80d976a9b193a26a8e928c3e79bff67af1de68a8/IFC%204.0.2.1%20%28IFC%204%20ADD2%20TC1%29/ISO%20Spec%20-%20ReferenceView_V1.2/tessellated-item.ifc",
+        "repository": "https://github.com/buildingSMART/Sample-Test-Files",
+        "commit": "80d976a9b193a26a8e928c3e79bff67af1de68a8",
+        "path": "IFC 4.0.2.1 (IFC 4 ADD2 TC1)/ISO Spec - ReferenceView_V1.2/tessellated-item.ifc",
+        "retrieved": "2026-11-08"
+      },
+      "licence": {
+        "status": "cc-by-4.0",
+        "spdx": "CC-BY-4.0",
+        "redistributable": "yes",
+        "text": "(C) buildingSMART International Ltd. This work is licensed under the Creative Commons Attribution 4.0 International License.",
+        "url": "https://github.com/buildingSMART/Sample-Test-Files/blob/80d976a9b193a26a8e928c3e79bff67af1de68a8/LICENSE",
+        "attribution": "buildingSMART International Ltd., Sample-Test-Files, CC BY 4.0",
+        "caveat": "GitHub's licence detector reports NOASSERTION because the LICENSE file is a short notice, not the licence text; the notice itself names CC BY 4.0. Bytes are still fetched on demand, not committed."
+      },
+      "ifc": {
+        "cliSchema": "IFC4",
+        "entityCount": 29,
+        "storeys": [],
+        "elementCounts": {
+          "IfcBuilding": 1,
+          "IfcBuildingElementProxy": 1
+        },
+        "command": "node packages/cli/dist/index.js info --json <file>"
+      }
+    },
+    {
+      "id": "bsi-rv12-tessellation-with-individual-colors",
+      "name": "buildingSMART ReferenceView_V1.2 example: tessellation-with-individual-colors.ifc",
+      "role": "conformance",
+      "usedBy": [
+        "round-7-conformance"
+      ],
+      "description": "IFC4 Reference View v1.2 spec example (the same set IFC4 Annex E and the ISO spec examples draw on). Small conformance file for round 7.",
+      "file": "tessellation-with-individual-colors.ifc",
+      "bytes": 2593,
+      "sha256": "3ab1290207d8538da9d8ebc14826b769eeb79fce7d75aaa85c35ed7a5a8dbd92",
+      "ifcSchema": "IFC4",
+      "authoringTool": "see file header",
+      "source": {
+        "kind": "url",
+        "url": "https://raw.githubusercontent.com/buildingSMART/Sample-Test-Files/80d976a9b193a26a8e928c3e79bff67af1de68a8/IFC%204.0.2.1%20%28IFC%204%20ADD2%20TC1%29/ISO%20Spec%20-%20ReferenceView_V1.2/tessellation-with-individual-colors.ifc",
+        "repository": "https://github.com/buildingSMART/Sample-Test-Files",
+        "commit": "80d976a9b193a26a8e928c3e79bff67af1de68a8",
+        "path": "IFC 4.0.2.1 (IFC 4 ADD2 TC1)/ISO Spec - ReferenceView_V1.2/tessellation-with-individual-colors.ifc",
+        "retrieved": "2026-11-08"
+      },
+      "licence": {
+        "status": "cc-by-4.0",
+        "spdx": "CC-BY-4.0",
+        "redistributable": "yes",
+        "text": "(C) buildingSMART International Ltd. This work is licensed under the Creative Commons Attribution 4.0 International License.",
+        "url": "https://github.com/buildingSMART/Sample-Test-Files/blob/80d976a9b193a26a8e928c3e79bff67af1de68a8/LICENSE",
+        "attribution": "buildingSMART International Ltd., Sample-Test-Files, CC BY 4.0",
+        "caveat": "GitHub's licence detector reports NOASSERTION because the LICENSE file is a short notice, not the licence text; the notice itself names CC BY 4.0. Bytes are still fetched on demand, not committed."
+      },
+      "ifc": {
+        "cliSchema": "IFC4",
+        "entityCount": 32,
+        "storeys": [],
+        "elementCounts": {
+          "IfcBuilding": 1,
+          "IfcBuildingElementProxy": 1
+        },
+        "command": "node packages/cli/dist/index.js info --json <file>"
+      }
+    }
+  ]
+}

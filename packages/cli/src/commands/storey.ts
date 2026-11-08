@@ -69,6 +69,8 @@ function resolveStorey(rows: readonly StoreySummary[], value: string | undefined
 function flagValue(args: string[], flag: string): string | undefined {
   const index = args.indexOf(flag);
   if (index === -1) return undefined;
+  // Given twice, one copy would be silently ignored (perhaps one with no value).
+  if (args.indexOf(flag, index + 1) !== -1) return fatal(`${flag} is given more than once`);
   const value = args[index + 1];
   if (value === undefined || value.startsWith('--')) return fatal(`${flag} needs a value`);
   return value;
@@ -112,8 +114,13 @@ export async function storeyCommand(args: string[]): Promise<void> {
     if (json) printJson({ ...summary, output: out, storeys: rows() });
     else process.stderr.write(`Written to ${out}\n`);
   };
-  const run = <T>(write: () => T): T => {
-    try { return write(); } catch (error) { return fatal(error instanceof Error ? error.message : String(error)); }
+  // A refused write reports as edit and delete do: with --json, a JSON document naming the refusal.
+  const run = <T>(write: () => T, summary: Record<string, unknown> = {}): T => {
+    try { return write(); } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (json) printJson({ action, ...summary, refusals: [{ message }] });
+      return fatal(`Refused: ${message}`);
+    }
   };
 
   switch (action) {
@@ -131,7 +138,7 @@ export async function storeyCommand(args: string[]): Promise<void> {
       }
       if (!Name || Elevation === undefined) fatal('add needs --name and --elevation, or --from <storey>');
       // A dry run makes the same add in memory, so it is refused exactly as the real one; only the file is not written.
-      const ref = run(() => s.addStorey(modelId, { Name: Name!, Elevation: Elevation!, referenceStoreyId }));
+      const ref = run(() => s.addStorey(modelId, { Name: Name!, Elevation: Elevation!, referenceStoreyId }), { Name, Elevation });
       if (dryRun) { report({ action, Name, Elevation }, json); return; }
       if (!json) process.stderr.write(`Added ${Name} at ${Elevation!.toFixed(3)} m as #${ref.expressId}\n`);
       await save({ action, added: ref.expressId });
@@ -140,7 +147,7 @@ export async function storeyCommand(args: string[]): Promise<void> {
     case 'rename': {
       const storeyId = resolveStorey(rows(), flagValue(args, '--storey'), '--storey');
       const Name = flagValue(args, '--name') ?? fatal('rename needs --name');
-      run(() => s.renameStorey({ modelId, expressId: storeyId }, Name));
+      run(() => s.renameStorey({ modelId, expressId: storeyId }, Name), { storey: storeyId, Name });
       if (dryRun) { report({ action, storey: storeyId, Name }, json); return; }
       await save({ action, storey: storeyId, Name });
       return;
@@ -176,6 +183,7 @@ export async function storeyCommand(args: string[]): Promise<void> {
       const list = rows();
       const storeyId = resolveStorey(list, flagValue(args, '--storey'), '--storey');
       const moveTo = flagValue(args, '--move-to');
+      if (moveTo !== undefined && hasFlag(args, '--delete-contents')) fatal('delete takes --move-to or --delete-contents, not both');
       const mode: StoreyDeleteMode = moveTo !== undefined
         ? { kind: 'move', targetStoreyId: resolveStorey(list, moveTo, '--move-to') }
         : hasFlag(args, '--delete-contents') ? { kind: 'deleteContents' } : { kind: 'empty' };

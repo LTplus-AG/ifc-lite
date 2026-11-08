@@ -150,6 +150,29 @@ describe.skipIf(!existsSync(SAMPLE))('ifc-lite storey (#9025)', () => {
     expect(stderr).toMatch(/--elevation needs a value/);
   });
 
+  it('a value flag given twice is refused, so a trailing copy with no value is never ignored (#9121 review)', async () => {
+    const run = await storey();
+    const out = join(dir, 'never.ifc');
+    await expect(run([SAMPLE, 'add', '--from', 'My Storey', '--out', out, '--elevation', '3', '--elevation'])).rejects.toThrow('exit 1');
+    expect(stderr).toMatch(/--elevation is given more than once/);
+    expect(existsSync(out)).toBe(false);
+  });
+
+  it('a refused add reports JSON like edit and delete; delete refuses --move-to with --delete-contents (#9121 review)', async () => {
+    const run = await storey();
+    stdout = '';
+    await expect(run([SAMPLE, 'add', '--name', 'Duplicate', '--elevation', '0', '--json', '--dry-run'])).rejects.toThrow('exit 1');
+    const report = JSON.parse(stdout);
+    expect(report.action).toBe('add');
+    expect(report.refusals[0].message).toMatch(/My Storey is already at ±0\.00 m/);
+    const two = join(dir, 'two.ifc');
+    await run([SAMPLE, 'add', '--name', 'Upper', '--elevation', '3', '--out', two]);
+    const out = join(dir, 'never.ifc');
+    await expect(run([two, 'delete', '--storey', 'Upper', '--move-to', 'My Storey', '--delete-contents', '--out', out])).rejects.toThrow('exit 1');
+    expect(stderr).toMatch(/not both/);
+    expect(existsSync(out)).toBe(false);
+  });
+
   it('storey --help lists the actions (#9121 review)', async () => {
     const { buildCommandHelp } = await import('../help.js');
     const help = buildCommandHelp('0.0.0', 'storey') ?? '';

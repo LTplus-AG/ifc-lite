@@ -282,6 +282,7 @@ test('#9332 historical LFS attributes survive a later rule removal', async (t) =
 process.stdin.on('data', chunk => input+=chunk);
 process.stdin.on('end', () => process.stdout.write(input.startsWith('version https://git-lfs.github.com/spec/v1') ? ${JSON.stringify(fixture)} : input));`);
   h.git('config', 'filter.lfs.smudge', `"${process.execPath}" "${filter}"`);
+  h.git('config', 'filter.lfs.clean', 'cat');
   h.git('config', 'filter.lfs.required', 'true');
   writeFileSync(join(h.repo, '.gitattributes'), '*.ifc filter=lfs\n');
   h.git('add', '.gitattributes');

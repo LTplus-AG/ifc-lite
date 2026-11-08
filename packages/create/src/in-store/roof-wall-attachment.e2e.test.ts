@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { existsSync, readFileSync } from 'node:fs';
 import { beforeAll, it, expect, describe } from 'vitest';
+import { recordCompoundMutation, StoreEditor, undoRecordedMutationOperations } from '@ifc-lite/mutations';
 import { IfcAPI, initSync } from '@ifc-lite/wasm';
 import { addWallToStore } from './wall.js';
 import { addRoofToStore } from './roof.js';
@@ -41,6 +42,31 @@ it('a slab attachment follows a direct target lift, not only a storey edit (#929
   const meshes = meshWalls(api, exportText(s)).get(wall) ?? [];
   expect(insideMesh(meshes, [5, 4.68, -2])).toBe(true);
   expect(insideMesh(meshes, [5, 4.72, -2])).toBe(false);
+});
+
+it('a roof lift and every attached cut undo as one operation (#9296)', async () => {
+  const s = await newStorey();
+  const roof = addRoofToStore(s.editor, s.anchor, { Position: [0, 0, 4], Width: 10, Depth: 8, Thickness: .25, EdgeSlopes: [Math.PI / 6, 0, Math.PI / 6, 0], Overhang: .5 }).roofId;
+  const wall = addWallToStore(s.editor, s.anchor, { Start: [5, 0, 0], End: [5, 8, 0], Height: 3, Thickness: .2 }).wallId;
+  setTopConstraintInStore(s.store, s.editor, wall, { kind: 'roof', roofId: roof });
+  const lift = recordCompoundMutation(s.view, view => translateProduct(s.store, view, new StoreEditor(s.store, view), roof, [0, 0, 1]));
+  expect(lift.ok).toBe(true);
+  expect(insideMesh(meshWalls(api, exportText(s)).get(wall) ?? [], [5, 7.28, -4])).toBe(true);
+  undoRecordedMutationOperations(s.view, 1, () => { throw new Error('the roof and its wall must be one compound operation'); });
+  const restored = meshWalls(api, exportText(s)).get(wall) ?? [];
+  expect(insideMesh(restored, [5, 6.28, -4])).toBe(true);
+  expect(insideMesh(restored, [5, 7.28, -4])).toBe(false);
+});
+it('a roof that does not cover the wall refuses without a partial resize (#9296)', async () => {
+  const s = await newStorey();
+  const roof = addRoofToStore(s.editor, s.anchor, { Position: [0, 0, 4], Width: 2, Depth: 2, Thickness: .25, EdgeSlopes: Array(4).fill(Math.PI / 6) }).roofId;
+  const wall = addWallToStore(s.editor, s.anchor, { Start: [1, 1, 0], End: [9, 1, 0], Height: 3, Thickness: .2 }).wallId;
+  const count = s.view.getNewEntities().length;
+  expect(() => setTopConstraintInStore(s.store, s.editor, wall, { kind: 'roof', roofId: roof })).toThrow(/does not cover/);
+  expect(s.view.getNewEntities().length).toBe(count);
+  const meshes = meshWalls(api, exportText(s)).get(wall) ?? [];
+  expect(insideMesh(meshes, [5, 2.98, -1])).toBe(true);
+  expect(insideMesh(meshes, [5, 3.02, -1])).toBe(false);
 });
 
 });

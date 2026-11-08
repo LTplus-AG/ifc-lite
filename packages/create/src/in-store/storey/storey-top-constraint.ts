@@ -113,7 +113,7 @@ export function setTopConstraintInStore(store: IfcDataStore, editor: StoreEditor
     if (!outcome.ok) throw new Error(`#${elementId} cannot reach what it is attached to: ${outcome.reason}`);
     if (kind === 'wall') scaleWallQuantities(store, view, elementId, to / top.from, geometry);
     if (constraint.kind === 'roof') clipWallToRoof(target, elementId, constraint.roofId);
-    return { remesh: outcome.remesh };
+    return { remesh: constraint.kind === 'roof' ? [...new Set([elementId, ...outcome.remesh])] : outcome.remesh };
   });
 }
 

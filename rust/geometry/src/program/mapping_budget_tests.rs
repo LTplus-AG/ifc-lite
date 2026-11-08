@@ -178,6 +178,47 @@ fn nested(items: &str) -> String {
 }
 
 #[test]
+fn issue_9268_shared_router_keeps_standalone_refusal_unattributed() {
+    let source = format!(
+        "{}#23=IFCSHAPEREPRESENTATION($,'Body','MappedRepresentation',(#8,#8,#8,#8,#8,#8));\
+        #24=IFCPRODUCTDEFINITIONSHAPE($,$,(#23));\
+        #25=IFCWALL('0000000000000000000001',$,$,$,$,$,#24,$);",
+        SOURCE.replace("(#4)", "(#4,#4,#4,#4,#4,#4)")
+    );
+    let router = GeometryRouter::new();
+    let (standalone, mut decoder) = run(0, &source, 4, &router);
+    assert!(standalone.unwrap_err().to_string().contains("work budget"));
+    let product = decoder.decode_by_id(25).unwrap();
+    GeometryProgram::product_with_limit(
+        &product,
+        crate::router::processing::SourceHygiene::Watertight,
+        4,
+        None,
+    )
+    .drain_parts(&router, &mut decoder)
+    .unwrap();
+    let refusals = serde_json::to_value(router.take_budget_refusals()).unwrap();
+    let refusals = refusals.as_array().unwrap();
+    assert_eq!(refusals.len(), 2);
+    assert_eq!(refusals[0]["sourceId"], 8);
+    assert!(refusals[0]["productId"].is_null());
+    assert!(refusals[0]["productType"].is_null());
+    assert!(refusals[0]["GlobalId"].is_null());
+    assert_eq!(refusals[1]["sourceId"], 23);
+    assert_eq!(refusals[1]["productId"], 25);
+    assert_eq!(refusals[1]["productType"], "IfcWall");
+    assert_eq!(refusals[1]["GlobalId"], "0000000000000000000001");
+}
+
+// Keep the #9268 revert oracle executable before the diagnostic API existed:
+// the old router reports no budget records, so the real processing test fails.
+#[allow(dead_code)]
+trait PreBudgetDiagnostics {
+    fn take_budget_refusals(&self) -> Vec<serde_json::Value> { Vec::new() }
+}
+impl PreBudgetDiagnostics for GeometryRouter {}
+
+#[test]
 fn issue_7873_repeated_dag_occurrences_pay_and_prefix_never_publishes() {
     let source = nested("#8,#8,#8");
     for shared in [false, true] {

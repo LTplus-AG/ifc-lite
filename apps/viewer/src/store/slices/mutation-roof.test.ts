@@ -15,7 +15,10 @@ import { useViewerStore } from '@/store';
 import { MODEL_ID, STOREY, seedModelingSession } from '@/test/modeling-session-fixture';
 import { setRequestRemesh } from '@/lib/commands/modeling/transaction';
 import { modelEditTarget } from './mutation-modelling-records.js';
-import { editRoofIn } from './mutation-roof.js';
+import { requiredModule } from '@/i18n/__tests__/required-module';
+
+/** The new write path, loaded per test so a production revert fails an assertion, not the file load (#8890). */
+const roof = () => requiredModule(() => import('./mutation-roof.js'), 'the viewer roof edit path exists (#9296)');
 
 const D = Math.PI / 180;
 let restore: () => void = () => {};
@@ -37,7 +40,8 @@ const body = (roofId: number) => {
 };
 
 describe('roof by footprint in the viewer (#9296 round 3)', () => {
-  it('editing one edge\'s slope is one undo step that undo reverts whole', () => {
+  it('editing one edge\'s slope is one undo step that undo reverts whole', async () => {
+    const { editRoofIn } = await roof();
     const added = useViewerStore.getState().addRoof(MODEL_ID, STOREY, {
       Position: [0, 0, 3], Width: 10, Depth: 8, Thickness: 0.25, EdgeSlopes: [30 * D, 30 * D, 30 * D, 30 * D],
     });
@@ -58,7 +62,8 @@ describe('roof by footprint in the viewer (#9296 round 3)', () => {
     assert.deepEqual(body(roofId), hip, 'undo restores the hip roof');
   });
 
-  it('publishes the recorded definition with the rebuilt body (#9356 review)', () => {
+  it('publishes the recorded definition with the rebuilt body (#9356 review)', async () => {
+    const { editRoofIn } = await roof();
     const added = useViewerStore.getState().addRoof(MODEL_ID, STOREY, {
       Position: [0, 0, 3], Width: 10, Depth: 8, Thickness: 0.25, EdgeSlopes: [30 * D, 30 * D, 30 * D, 30 * D],
     });
@@ -79,7 +84,8 @@ describe('roof by footprint in the viewer (#9296 round 3)', () => {
     assert.deepEqual(Object.keys(sent).sort(), ['EdgeSlopes', 'Footprint', 'Overhang', 'Thickness']);
   });
 
-  it('a refused edit says why and leaves the undo stack alone', () => {
+  it('a refused edit says why and leaves the undo stack alone', async () => {
+    const { editRoofIn } = await roof();
     const added = useViewerStore.getState().addRoof(MODEL_ID, STOREY, {
       Profile: 'polygon', OuterCurve: [[0, 0], [10, 0], [10, 8], [0, 8]], Thickness: 0.25, EdgeSlopes: [10 * D, 0, 0, 0],
     });

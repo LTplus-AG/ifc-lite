@@ -144,6 +144,36 @@ export function writeFootprintDefinition(view: MutablePropertyView, roofId: numb
   for (const [name, value, type] of footprintDefinitionProperties(definition)) view.setProperty(roofId, ROOF_FOOTPRINT_PSET, name, value, type);
 }
 
+/**
+ * Carry the replaced planes' styles to the new ones: each `IfcStyledItem` on an
+ * old plane is re-made, with its shared styles, on every new plane, and the old
+ * one goes with the plane it styled.
+ */
+function carryPlaneStyles(store: IfcDataStore, draft: StoreEditor, oldItems: readonly number[], newItems: readonly number[]): void {
+  const reader = new AnchorEntityReader(store, draft.getMutationView());
+  const old = new Set(oldItems);
+  const styled: Array<{ id: number; styles: string[]; name: string | null }> = [];
+  for (const id of reader.ids('IFCSTYLEDITEM')) {
+    const entity = reader.entity(id);
+    const item = refId(entity?.attributes[0]);
+    if (!entity || item === null || !old.has(item)) continue;
+    const styles = entity.attributes[1];
+    const name = entity.attributes[2];
+    if (!Array.isArray(styles) || styles.length === 0 || styles.some((v) => refId(v) === null)) throw new Error('Unreadable roof plane style');
+    if (name !== null && name !== undefined && typeof name !== 'string') throw new Error('Unreadable roof plane style name');
+    styled.push({ id, styles: styles.map((v) => `#${refId(v)}`), name: name ?? null });
+  }
+  const kept = new Set<string>();
+  for (const style of styled) {
+    const key = JSON.stringify([style.styles, style.name]);
+    if (!kept.has(key)) {
+      kept.add(key);
+      for (const item of newItems) draft.addEntity('IfcStyledItem', [`#${item}`, style.styles, style.name]);
+    }
+    draft.removeEntity(style.id);
+  }
+}
+
 /** The entity kinds a plane solid is built from; nothing else is collected with it. */
 const PLANE_GEOMETRY = new Set([
   'IFCEXTRUDEDAREASOLID', 'IFCARBITRARYCLOSEDPROFILEDEF', 'IFCRECTANGLEPROFILEDEF', 'IFCPOLYLINE',
@@ -270,7 +300,9 @@ export function editFootprintRoofInStore(store: IfcDataStore, editor: StoreEdito
       draft.removeEntity(shapeId);
       if (referencers(bodyRepId).every((parent) => parent === shapeId)) {
         draft.removeEntity(bodyRepId);
-        removeReplacedPlanes(store, draft, Array.isArray(oldItems) ? oldItems.map(refId).filter((id): id is number => id !== null) : []);
+        const replaced = Array.isArray(oldItems) ? oldItems.map(refId).filter((id): id is number => id !== null) : [];
+        carryPlaneStyles(store, draft, replaced, body.solidIds);
+        removeReplacedPlanes(store, draft, replaced);
       }
     }
     if (roof.attributes.length > 8) draft.setPositionalAttribute(roofId, 8, `.${body.plan.shapeType}.`);

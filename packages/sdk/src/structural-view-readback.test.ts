@@ -116,6 +116,9 @@ const entries: Entry[] = [
   ['sdk.costReferenceOccurrences', ({ store, legacy, wall, relation }) => {
     expect(effectiveCostReferenceOccurrences(store, legacy, new Set([wall])).get(wall)?.get(relation)).toBe(1);
   }],
+  ['mutations.StoreEditor.borrowForwarder', ({ store, legacy, wall }) => {
+    expect(new StoreEditor(store, legacy).readNewEntity(wall)?.expressId).toBe(wall);
+  }],
   ['create.resolveDuplicateSource', ({ store, legacyEditor, wall, storey }) => {
     expect(resolveDuplicateSource(store, wall, legacyEditor)).toMatchObject({ placementExpressId: 1235, storeyId: storey });
   }],

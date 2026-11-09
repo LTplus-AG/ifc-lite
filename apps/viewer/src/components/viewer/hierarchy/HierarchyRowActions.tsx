@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import type { TreeNode } from './types';
+import { isLayerSubgroup } from './nodeVisibility';
 import { Eye, ListFilter, MoreHorizontal, SquareStack } from 'lucide-react';
 import { useTranslation } from '@/i18n';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -61,4 +63,17 @@ export function HierarchyRowActions({ name, actions, open, onOpenChange, onActio
       </DropdownMenu>
     </div>
   );
+}
+
+/** Layer subgroups offer the same bounded actions as their layer (#9272). */
+export function hierarchyRowActions(node: TreeNode, hasElements: boolean): HierarchyRowAction[] {
+  if (node.type === 'model-header' || node.type === 'model-tag-group') return [];
+  if (node.type === 'unified-storey' || node.type === 'IfcBuildingStorey') {
+    return ['solo', 'filter'];
+  }
+  const actions: HierarchyRowAction[] = [];
+  if (hasElements) actions.push('isolate');
+  if ((node.type === 'type-group' && !isLayerSubgroup(node)) || node.type === 'ifc-type' ||
+      node.type === 'material-group' || node.type === 'group') actions.push('filter');
+  return actions;
 }

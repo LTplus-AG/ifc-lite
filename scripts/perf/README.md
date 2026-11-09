@@ -5968,6 +5968,25 @@ their own bounded allowance so they cannot prevent subsequent ordinary products 
 publishing. Keep stable CLI reports free of timing and snap diagnostics; comparison
 summaries retain those observations without making artifact bytes depend on a run.
 
+### Presentation-layer classification references (#9272, #9383)
+
+Verdict: reference-decode counts and complete row digests qualify reusing a decoded
+classification reference across products. Memoize by store, source identity and
+view revision, and return independent objects and path arrays so consumers cannot
+mutate the cached result. Replacing source bytes or editing the view invalidates it.
+
+The flat-mode product walk, geometry targeting, sorting and row emission retain
+main's behavior. Grouping adds a mode check and fixed per-store resolver setup;
+classification extraction runs only for classification groups. Exact flat-row
+expectations and main/branch row digests establish output compatibility, not a
+measured latency-equivalence claim.
+
+Lesson: compare all grouping modes against a revision that actually implements
+them. Main supplies only the flat-mode control. Decode counts can establish
+reference reuse when host noise prevents timing qualification; keep rejected
+cohorts separate and never relax the timing guards. This tree-construction probe
+does not establish end-to-end model-loading or rendering performance.
+
 ## The app-start task: no top-level-await wrapper on the app build
 
 On a production build the app-start task (module evaluation, before a model is

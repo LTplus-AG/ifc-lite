@@ -186,9 +186,12 @@ function assertContextActionsRegistered(
   type = 'IfcWall',
   contributedIds: ReadonlySet<string> = new Set(),
 ): void {
-  const menu = document.querySelector<HTMLElement>('[role="menu"]');
-  assert.ok(menu, 'the context menu is mounted');
-  const actions = [...menu.querySelectorAll<HTMLElement>('[role="menuitem"], [role="menuitemcheckbox"]')];
+  // The Duplicate submenu portals to its own sibling `[role="menu"]`, so walk
+  // every open menu or an unregistered direction row would escape the guard.
+  const menus = [...document.querySelectorAll<HTMLElement>('[role="menu"]')];
+  assert.ok(menus.length > 0, 'the context menu is mounted');
+  const actions = menus.flatMap((menu) =>
+    [...menu.querySelectorAll<HTMLElement>('[role="menuitem"], [role="menuitemcheckbox"]')]);
   assert.ok(actions.length > 0, 'the guard examines visible menu actions');
   const commands: Map<string, (typeof SURFACE_COMMANDS)[number]> = new Map(SURFACE_COMMANDS
     .filter((command) => command.surfaces.some((surface) => surface === 'context'))
@@ -237,6 +240,7 @@ describe('context command ownership guard (#5878)', () => {
     const firstDirection = document.querySelector<HTMLElement>('[data-command-id="context:duplicate-x-plus"]');
     assert.ok(firstDirection, 'keyboard navigation reveals the first registered duplicate direction');
     assert.equal(firstDirection.getAttribute('aria-label'), resolveEnglish('entityContextMenu.duplicateXPlus'));
+    assert.equal(document.querySelectorAll('[role="menu"]').length, 2, 'the open submenu is a second menu the guard walks');
     assertContextActionsRegistered();
   });
 

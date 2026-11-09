@@ -31,15 +31,17 @@ async function openPreview(held: Promise<boolean>) {
   await waitFor(() => button(ui, 'Delete report')?.disabled === false, 'preview is ready for reviewed deletion');
   return { ui, calls: () => calls };
 }
-// Dispatch directly: a double-click's second press can arrive before React re-renders.
-const press = (node: Element) => act(() => { node.dispatchEvent(new window.MouseEvent('click', { bubbles: true })); });
+/** A double-click: both presses land in one act(), before React re-renders the button disabled. */
+const pressTwice = (node: Element) => act(() => {
+  node.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+  node.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+});
 
 test('C-9 a double-clicked Delete report runs one removal pass and disables Keep while it is in flight', async () => {
   const pending = deferred<boolean>();
   const { ui, calls } = await openPreview(pending.promise);
   const confirm = button(ui, 'Delete report')!;
-  press(confirm);
-  press(confirm);
+  pressTwice(confirm);
   await waitFor(() => calls() > 0, 'the first press reaches the removal action');
   await act(async () => { for (let i = 0; i < 20; i += 1) await Promise.resolve(); });
   assert.equal(calls(), 1, 'the second press is refused while the first removal is in flight');

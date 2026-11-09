@@ -26,16 +26,18 @@ const button = (ui: HTMLElement, name: string) => {
   const node = [...ui.querySelectorAll('button')].find(entry => entry.textContent?.trim() === name);
   assert.ok(node, `${name} button`); return node;
 };
-// Dispatch directly so the second press still arrives even if React already disabled the control.
-const press = (node: Element) => act(() => { node.dispatchEvent(new window.MouseEvent('click', { bubbles: true })); });
+/** A double-click: both presses land in one act(), before React re-renders the button disabled. */
+const pressTwice = (node: Element) => act(() => {
+  node.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+  node.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+});
 const settle = () => act(async () => { for (let i = 0; i < 5; i += 1) await Promise.resolve(); });
 
 test('C-11 ReviewDecision double-clicked Save writes once and disables Save and Clear while in flight', async () => {
   const pending = deferred<boolean>();
   const put = mock.method(reviewWorkspaceLibrary, 'put', () => pending.promise);
   const ui = render(<ReviewDecision cardKey="card-1" decision={DECISION} />);
-  press(button(ui, 'Save decision'));
-  press(button(ui, 'Save decision'));
+  pressTwice(button(ui, 'Save decision'));
   await settle();
   assert.equal(put.mock.callCount(), 1, 'a second press during the in-flight save is refused');
   assert.equal(button(ui, 'Save decision').disabled, true);

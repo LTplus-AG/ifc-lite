@@ -244,7 +244,6 @@ export function BCFPanel({ onClose }: BCFPanelProps) {
   const runCreate = createFlight.run;
   const handleCreateTopic = useCallback(
     (data: Partial<BCFTopic>, options?: { includeSnapshot: boolean }) => runCreate(async (isCurrent) => {
-      ensureProject();
       // Resolve the viewpoint first so the topic's source-file Header can be
       // derived from the models its selection references before it is stored.
       let viewpoint = options?.includeSnapshot === false ? null : createViewpoint;
@@ -257,12 +256,15 @@ export function BCFPanel({ onClose }: BCFPanelProps) {
           });
         } catch (err) {
           console.error('[BCFPanel] failed to capture viewpoint for new topic', err);
-          toast.error(t('bcf.panel.captureViewpointFailed'));
+          // A create the person already cancelled reports nothing.
+          if (isCurrent()) toast.error(t('bcf.panel.captureViewpointFailed'));
           return;
         }
       }
-      // The form was closed while the viewpoint was resolving: create nothing.
+      // The form was closed while the viewpoint was resolving: create nothing,
+      // not even the empty project.
       if (!isCurrent()) return;
+      ensureProject();
       const topic = createBCFTopic({
         title: data.title || t('bcf.panel.untitledTopic'),
         description: data.description,

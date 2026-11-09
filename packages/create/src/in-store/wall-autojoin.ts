@@ -13,7 +13,7 @@ import type { JoinAnchor } from './wall-join-apply.js';
 export function autojoinWallInStore(store: IfcDataStore, editor: StoreEditor, wallId: number, index: WallAutojoinIndex, anchor: JoinAnchor): string[] {
   const notices: string[] = [];
   const a = readWallJoinTarget(store, editor.getMutationView(), wallId, anchor.lengthUnitScale ?? 1);
-  if (!a) return notices;
+  if (!a) throw new Error(`Wall #${wallId} has unreadable join geometry (schema ${store.schemaVersion ?? 'unspecified'})`);
   for (const otherId of index.candidates(a)) {
     if (otherId === wallId) continue;
     try {

@@ -48,22 +48,27 @@ class Endpoints {
 
 const summary = (wall: WallJoinRead): WallEndpoints => ({ wallId: wall.wallId, parentPlacementId: wall.parentPlacementId,
   elevation: wall.location[2], start: wall.wall.start, end: wall.wall.end });
-const sessions = new WeakMap<MutablePropertyView, { store: IfcDataStore; source: IfcDataStore['source']; sourceCount: number; revision: number; endpoints: Endpoints }>();
+interface Session {
+  store: IfcDataStore; source: IfcDataStore['source']; schema: IfcDataStore['schemaVersion'];
+  sourceCount: number; revision: number; endpoints: Endpoints;
+}
+const sessions = new WeakMap<MutablePropertyView, Session>();
 
-/** Run ordinary wall creation at the COMMITTED view boundary, outside draft
- * wrappers. Each successful addition updates the index in O(1); any other
- * edit, Undo, Redo, or source swap invalidates it via the live revision.
- * Do not wrap arbitrary geometry edits: those must invalidate this cache. */
-export function withWallAutojoinIndex<T>(store: IfcDataStore, view: MutablePropertyView, edit: (index: WallAutojoinIndex) => T): T {
+function prepareIndex(store: IfcDataStore, view: MutablePropertyView): Session {
+  const schema = store.schemaVersion;
+  if (schema !== undefined && schema !== 'IFC2X3' && schema !== 'IFC4' && schema !== 'IFC4X3') {
+    throw new Error(`Automatic wall joins are unavailable for schema ${schema}`);
+  }
   let session = sessions.get(view);
   // @raw-entity-enumeration-ok Source count only invalidates the cache; reader.ids merges source/overlay membership, and view revision tracks session edits and tombstones.
   const sourceCount = store.entityIndex.byId.size;
-  if (!session || session.store !== store || session.source !== store.source || session.sourceCount !== sourceCount
+  if (!session || session.store !== store || session.source !== store.source || session.schema !== schema || session.sourceCount !== sourceCount
     || session.revision !== view.getMutationRevision()) {
     const endpoints = new Endpoints();
     // One finite read: avoid enumerating/serializing the complete schema key
     // list for every placement, representation and axis point of every wall.
-    const names = createSchemaEntityNameSnapshot(schemaRegistry(store.schemaVersion, 'wall-autojoin'));
+    const names = schema === 'IFC2X3' || schema === 'IFC4' || schema === 'IFC4X3'
+      ? createSchemaEntityNameSnapshot(schemaRegistry(schema, 'wall-autojoin')) : undefined;
     const reader = new AnchorEntityReader(store, view, names);
     const scale = store.source.byteLength ? safeLengthUnitScale(store.source, store.entityIndex, 'wall-autojoin') ?? 1 : 1;
     for (const type of ['IFCWALL', 'IFCWALLSTANDARDCASE']) for (const id of reader.ids(type)) {
@@ -71,22 +76,41 @@ export function withWallAutojoinIndex<T>(store: IfcDataStore, view: MutablePrope
         const wall = readWallJoinEndpoints(store, view, id, scale, reader);
         if (wall) endpoints.add(wall);
       } catch (error) {
-        console.warn(`[wall-autojoin] Cannot index wall #${id}`, error);
+        throw new Error(`Cannot index wall #${id}: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
-    session = { store, source: store.source, sourceCount, revision: view.getMutationRevision(), endpoints };
+    session = { store, source: store.source, schema, sourceCount, revision: view.getMutationRevision(), endpoints };
     sessions.set(view, session);
+  }
+  return session;
+}
+
+/** Run ordinary wall creation at the COMMITTED view boundary, outside draft
+ * wrappers. Each successful addition updates the index in O(1); any other
+ * edit, Undo, Redo, or source swap invalidates it via the live revision.
+ * Do not wrap arbitrary geometry edits: those must invalidate this cache. */
+export function withWallAutojoinIndex<T>(store: IfcDataStore, view: MutablePropertyView, edit: (index: WallAutojoinIndex) => T): T {
+  let current: Session;
+  try {
+    current = prepareIndex(store, view);
+  } catch (error) {
+    sessions.delete(view);
+    // Carry setup failure into ordinary creation's join-only catch. The host
+    // callback still runs once, and its permission/publication errors escape.
+    const unavailable = (): never => { throw error; };
+    return edit({ candidates: unavailable, remember: unavailable });
   }
   const pending = new Map<number, WallEndpoints>();
   const staged = new Endpoints();
-  const current = session;
   try {
     const result = edit({
       candidates: wall => [...new Set([...current.endpoints.candidates(summary(wall)), ...staged.candidates(summary(wall))])],
       remember: wall => { const row = summary(wall); pending.set(wall.wallId, row); staged.add(row); },
     });
-    for (const row of pending.values()) current.endpoints.add(row);
-    current.revision = view.getMutationRevision();
+    if (pending.size) {
+      for (const row of pending.values()) current.endpoints.add(row);
+      current.revision = view.getMutationRevision();
+    } else sessions.delete(view); // A failed initial join read left no endpoint for the surviving wall.
     return result;
   } catch (error) {
     // Publication/rollback can change the revision without a surviving wall.

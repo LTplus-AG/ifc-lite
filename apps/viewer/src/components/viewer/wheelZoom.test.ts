@@ -28,10 +28,10 @@ import assert from 'node:assert';
 import { Camera } from '@ifc-lite/renderer';
 
 import {
-  applyWheelZoom,
+  applyWheelZoomStep,
   createFineZoomModifierTracker,
   isFineZoomWheel,
-  wheelZoomDelta,
+  wheelZoomInput,
   FINE_ZOOM_STEP_FACTOR,
 } from './wheelZoom.js';
 
@@ -65,10 +65,10 @@ function makeCanvas(pixelRatio = 1): HTMLCanvasElement {
  * testing nothing, which is the exact failure they exist to catch. The
  * fixture-integrity test below keeps that honest.
  */
-function wheelEvent(init: { ctrlKey?: boolean; metaKey?: boolean; deltaY?: number } = {}): WheelEvent {
+function wheelEvent(init: { ctrlKey?: boolean; metaKey?: boolean; deltaY?: number; deltaMode?: number } = {}): WheelEvent {
   const e = new WheelEvent('wheel', {
     deltaY: init.deltaY ?? NOTCH_DELTA_Y,
-    deltaMode: 0, // WheelEvent.DOM_DELTA_PIXEL
+    deltaMode: init.deltaMode ?? 0, // WheelEvent.DOM_DELTA_PIXEL
     bubbles: true,
     cancelable: true,
   });
@@ -83,14 +83,14 @@ function wheelEvent(init: { ctrlKey?: boolean; metaKey?: boolean; deltaY?: numbe
   return e;
 }
 
-/** Camera travel and distance change produced by one wheel event. */
+/** Camera travel and distance change produced by one wheel event, applied as one step. */
 function zoomOnce(e: WheelEvent, opts: { fineModifierHeld: boolean }): { travel: number; distanceDelta: number } {
   const canvas = makeCanvas();
   const camera = new Camera();
   const before = { ...camera.getPosition() };
   const distanceBefore = camera.getDistance();
 
-  applyWheelZoom(e, { camera, canvas, fastZoom: false, fineModifierHeld: opts.fineModifierHeld });
+  applyWheelZoomStep(wheelZoomInput(e, opts.fineModifierHeld, 1).px, e, { camera, canvas, fastZoom: false });
 
   const after = camera.getPosition();
   return {
@@ -141,20 +141,15 @@ describe('wheel zoom - the fine-step modifier (#2683)', () => {
     );
   });
 
-  it('leaves the unmodified wheel bit-for-bit as it was', () => {
-    // The reference is the call the handler used to make: raw deltaY straight
+  it('applies a step as exactly the camera zoom at the cursor', () => {
+    // The reference is the camera call itself: the step's travel straight
     // into camera.zoom with the same cursor anchor.
     const canvas = makeCanvas();
     const reference = new Camera();
     reference.zoom(NOTCH_DELTA_Y, false, 400, 300, canvas.width, canvas.height, false);
 
     const subject = new Camera();
-    applyWheelZoom(wheelEvent(), {
-      camera: subject,
-      canvas,
-      fastZoom: false,
-      fineModifierHeld: false,
-    });
+    applyWheelZoomStep(NOTCH_DELTA_Y, wheelEvent(), { camera: subject, canvas, fastZoom: false });
 
     assert.deepStrictEqual(subject.getPosition(), reference.getPosition());
     assert.deepStrictEqual(subject.getTarget(), reference.getTarget());
@@ -173,56 +168,10 @@ describe('wheel zoom - the fine-step modifier (#2683)', () => {
     reference.zoom(NOTCH_DELTA_Y, false, 700, 100, 800, 600, false);
 
     const subject = new Camera();
-    applyWheelZoom(e, { camera: subject, canvas: makeCanvas(2), fastZoom: false, fineModifierHeld: false });
+    applyWheelZoomStep(NOTCH_DELTA_Y, e, { camera: subject, canvas: makeCanvas(2), fastZoom: false });
 
     assert.deepStrictEqual(subject.getTarget(), reference.getTarget());
     assert.deepStrictEqual(subject.getPosition(), reference.getPosition());
-  });
-
-  it('calls preventDefault when the modifier is active, so the browser does not zoom the page', () => {
-    const canvas = makeCanvas();
-    const camera = new Camera();
-    const e = wheelEvent({ ctrlKey: true });
-
-    // Dispatched, not just constructed: `defaultPrevented` is what the browser
-    // reads to decide whether to run its own Ctrl+wheel page zoom, and the
-    // listener is registered non-passive exactly as useMouseControls does.
-    canvas.addEventListener(
-      'wheel',
-      (ev) => {
-        applyWheelZoom(ev as WheelEvent, {
-          camera,
-          canvas,
-          fastZoom: false,
-          fineModifierHeld: true,
-        });
-      },
-      { passive: false },
-    );
-    canvas.dispatchEvent(e);
-
-    assert.strictEqual(e.defaultPrevented, true, 'ctrl+wheel must be cancelled');
-  });
-
-  it('also calls preventDefault on the unmodified wheel', () => {
-    const canvas = makeCanvas();
-    const camera = new Camera();
-    const e = wheelEvent();
-    canvas.addEventListener(
-      'wheel',
-      (ev) => {
-        applyWheelZoom(ev as WheelEvent, {
-          camera,
-          canvas,
-          fastZoom: false,
-          fineModifierHeld: false,
-        });
-      },
-      { passive: false },
-    );
-    canvas.dispatchEvent(e);
-
-    assert.strictEqual(e.defaultPrevented, true, 'plain wheel must stay cancelled too');
   });
 
   it('treats a trackpad pinch (synthesised ctrlKey, no key pressed) as a normal-speed zoom', () => {
@@ -231,6 +180,29 @@ describe('wheel zoom - the fine-step modifier (#2683)', () => {
     const plain = zoomOnce(wheelEvent(), { fineModifierHeld: false });
 
     assert.strictEqual(pinch.travel, plain.travel, 'a pinch must not be slowed to the fine step');
+  });
+
+  it('applies a pinch at once and eases a notch (#9507)', () => {
+    // A pinch already streams at frame rate; easing it would only add lag.
+    assert.strictEqual(wheelZoomInput(wheelEvent({ ctrlKey: true }), false, 1).eased, false);
+    assert.strictEqual(wheelZoomInput(wheelEvent(), false, 1).eased, true);
+    // A held Ctrl is the fine modifier on a real notch, so it still eases.
+    assert.strictEqual(wheelZoomInput(wheelEvent({ ctrlKey: true }), true, 1).eased, true);
+    // Small trackpad / smooth-wheel deltas are continuous input.
+    assert.strictEqual(wheelZoomInput(wheelEvent({ deltaY: 6 }), false, 1).eased, false);
+  });
+
+  it('reads a Firefox line-mode notch as the same travel as a pixel-mode notch (#9507)', () => {
+    const line = wheelZoomInput(wheelEvent({ deltaY: 3, deltaMode: 1 }), false, 1);
+    const pixel = wheelZoomInput(wheelEvent({ deltaY: 100 }), false, 1);
+    assert.ok(Math.abs(line.px - pixel.px) < 1e-9, `line ${line.px} vs pixel ${pixel.px}`);
+    assert.strictEqual(line.eased, true, 'a line-mode notch is a notch');
+  });
+
+  it('scales the travel by the sensitivity setting (#9507)', () => {
+    const normal = wheelZoomInput(wheelEvent(), false, 1).px;
+    assert.strictEqual(wheelZoomInput(wheelEvent(), false, 2).px, normal * 2);
+    assert.strictEqual(wheelZoomInput(wheelEvent(), false, 0.5).px, normal * 0.5);
   });
 
   it('ignores a stale held-flag when the wheel event says the key is up', () => {
@@ -243,13 +215,19 @@ describe('wheel zoom - the fine-step modifier (#2683)', () => {
   });
 
   it('scales the delta by the fine factor and leaves it alone otherwise', () => {
+    // A 120 px notch counts as one 100 px camera notch, as the camera's own cap made it (#9507).
     assert.strictEqual(
-      wheelZoomDelta({ deltaY: NOTCH_DELTA_Y, ctrlKey: true, metaKey: false }, true),
-      NOTCH_DELTA_Y * FINE_ZOOM_STEP_FACTOR,
+      wheelZoomInput({ deltaY: NOTCH_DELTA_Y, deltaMode: 0, ctrlKey: true, metaKey: false }, true, 1).px,
+      100 * FINE_ZOOM_STEP_FACTOR,
     );
     assert.strictEqual(
-      wheelZoomDelta({ deltaY: NOTCH_DELTA_Y, ctrlKey: false, metaKey: false }, false),
-      NOTCH_DELTA_Y,
+      wheelZoomInput({ deltaY: NOTCH_DELTA_Y, deltaMode: 0, ctrlKey: false, metaKey: false }, false, 1).px,
+      100,
+    );
+    // Continuous input is not clamped per event: the smoother bounds it.
+    assert.strictEqual(
+      wheelZoomInput({ deltaY: 30, deltaMode: 0, ctrlKey: false, metaKey: false }, false, 1).px,
+      30,
     );
     assert.ok(FINE_ZOOM_STEP_FACTOR > 0 && FINE_ZOOM_STEP_FACTOR < 1, 'finer, not faster and not dead');
   });
@@ -366,8 +344,8 @@ describe('wheel zoom toward the surface under the cursor (#5393)', () => {
   function zoomIn(r: ReturnType<typeof rig>, n: number, withSurface: boolean): number[] {
     const zs: number[] = [];
     for (let i = 0; i < n; i++) {
-      applyWheelZoom(wheelEvent({ deltaY: -NOTCH_DELTA_Y }), {
-        camera: r.camera, canvas: r.canvas, fastZoom: false, fineModifierHeld: false,
+      applyWheelZoomStep(-NOTCH_DELTA_Y, wheelEvent({ deltaY: -NOTCH_DELTA_Y }), {
+        camera: r.camera, canvas: r.canvas, fastZoom: false,
         ...(withSurface ? { pickSurface: r.pickSurface } : {}),
       });
       zs.push(r.camera.getPosition().z);
@@ -387,7 +365,7 @@ describe('wheel zoom toward the surface under the cursor (#5393)', () => {
     assert.ok(zs[zs.length - 1] - WALL_Z < 0.1, `60 notches got close to the wall: z ${zs[zs.length - 1]}`);
   });
 
-  it('picks once per gesture, not once per notch', () => {
+  it('picks once per gesture, not once per step', () => {
     const r = rig();
     zoomIn(r, 20, true);
     assert.strictEqual(r.picks.length, 1, `picks: ${JSON.stringify(r.picks)}`);
@@ -397,8 +375,8 @@ describe('wheel zoom toward the surface under the cursor (#5393)', () => {
   it('never picks under fast zoom, which ignores the surface (PR #5461 review)', () => {
     const r = rig();
     for (let i = 0; i < 5; i++) {
-      applyWheelZoom(wheelEvent({ deltaY: -NOTCH_DELTA_Y }), {
-        camera: r.camera, canvas: r.canvas, fastZoom: true, fineModifierHeld: false, pickSurface: r.pickSurface,
+      applyWheelZoomStep(-NOTCH_DELTA_Y, wheelEvent({ deltaY: -NOTCH_DELTA_Y }), {
+        camera: r.camera, canvas: r.canvas, fastZoom: true, pickSurface: r.pickSurface,
       });
     }
     assert.strictEqual(r.picks.length, 0);
@@ -410,8 +388,8 @@ describe('wheel zoom toward the surface under the cursor (#5393)', () => {
     assert.strictEqual(r.picks.length, 1);
     // A fast-zoom dolly (or orbit/pan) within the same gesture window moves the
     // camera off the cached point's ray: the next surface notch must re-pick.
-    applyWheelZoom(wheelEvent({ deltaY: -NOTCH_DELTA_Y }), {
-      camera: r.camera, canvas: r.canvas, fastZoom: true, fineModifierHeld: false, pickSurface: r.pickSurface,
+    applyWheelZoomStep(-NOTCH_DELTA_Y, wheelEvent({ deltaY: -NOTCH_DELTA_Y }), {
+      camera: r.camera, canvas: r.canvas, fastZoom: true, pickSurface: r.pickSurface,
     });
     zoomIn(r, 1, true);
     assert.strictEqual(r.picks.length, 2, 'a stale point was reused after the camera moved');
@@ -431,13 +409,13 @@ describe('wheel zoom toward the surface under the cursor (#5393)', () => {
     zoomIn(r, 2, true);
     const moved = wheelEvent({ deltaY: -NOTCH_DELTA_Y });
     Object.defineProperty(moved, 'clientX', { value: 410, configurable: true });
-    applyWheelZoom(moved, { camera: r.camera, canvas: r.canvas, fastZoom: false, fineModifierHeld: false, pickSurface: r.pickSurface });
+    applyWheelZoomStep(-NOTCH_DELTA_Y, moved, { camera: r.camera, canvas: r.canvas, fastZoom: false, pickSurface: r.pickSurface });
     assert.strictEqual(r.picks.length, 2, 'a 10 px cursor move starts a new gesture');
     const realNow = Date.now;
     try {
       const t = realNow();
       Date.now = () => t + 1000; // past the 400 ms idle window
-      applyWheelZoom(moved, { camera: r.camera, canvas: r.canvas, fastZoom: false, fineModifierHeld: false, pickSurface: r.pickSurface });
+      applyWheelZoomStep(-NOTCH_DELTA_Y, moved, { camera: r.camera, canvas: r.canvas, fastZoom: false, pickSurface: r.pickSurface });
     } finally {
       Date.now = realNow;
     }
@@ -447,8 +425,8 @@ describe('wheel zoom toward the surface under the cursor (#5393)', () => {
   it('never picks when zooming out, which cannot pass through anything', () => {
     const r = rig();
     for (let i = 0; i < 5; i++) {
-      applyWheelZoom(wheelEvent({ deltaY: NOTCH_DELTA_Y }), {
-        camera: r.camera, canvas: r.canvas, fastZoom: false, fineModifierHeld: false, pickSurface: r.pickSurface,
+      applyWheelZoomStep(NOTCH_DELTA_Y, wheelEvent({ deltaY: NOTCH_DELTA_Y }), {
+        camera: r.camera, canvas: r.canvas, fastZoom: false, pickSurface: r.pickSurface,
       });
     }
     assert.strictEqual(r.picks.length, 0);

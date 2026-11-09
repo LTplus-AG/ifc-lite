@@ -340,7 +340,8 @@ In the IFClite viewer:
 
 Wheel zoom follows the pointer and uses the input magnitude, including pixel,
 line and page wheel deltas. Hold Ctrl or Cmd for fine zoom. A trackpad pinch
-zooms normally unless that modifier key is physically held.
+zooms normally unless that modifier key is physically held. **Settings →
+Display → Navigation → Wheel zoom speed** applies here too.
 
 The navigation preset also applies to the Drawing panel: Default uses vertical
 wheel movement to zoom and horizontal movement to pan; Navisworks uses vertical

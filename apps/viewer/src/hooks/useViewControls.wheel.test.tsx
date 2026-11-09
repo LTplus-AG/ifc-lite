@@ -81,9 +81,9 @@ describe('drawing wheel navigation (#6614)', () => {
     near(latest.viewTransform.x, initial.x); near(latest.viewTransform.y, initial.y);
   });
 
-  it('normalizes pixel, line and page units before navigation', async () => {
+  it('normalizes pixel, line and page units before navigation (#9507: a three-line notch is 100 px)', async () => {
     await mount();
-    for (const [deltaY, deltaMode] of [[96, 0], [6, 1], [0.16, 2]]) {
+    for (const [deltaY, deltaMode] of [[96, 0], [2.88, 1], [0.16, 2]]) {
       await reset(); await wheel({ deltaY, deltaMode });
       near(latest.viewTransform.scale, initial.scale * Math.exp(-Math.log(1.1) * 0.96));
     }
@@ -128,7 +128,9 @@ describe('drawing wheel navigation (#6614)', () => {
     await mount(); await reset();
     await act(async () => useViewerStore.setState({ navigationPreset: 'trackpad' }));
     await wheel({ deltaX: 2, deltaY: 3, deltaMode: 1 });
-    assert.deepEqual(latest.viewTransform, { ...initial, x: initial.x - 32, y: initial.y - 48 });
+    // Two and three lines pan 2 x and 3 x 100/3 px (#9507).
+    near(latest.viewTransform.scale, initial.scale);
+    near(latest.viewTransform.x, initial.x - 200 / 3); near(latest.viewTransform.y, initial.y - 100);
     await reset(); await wheel({ deltaY: 100, ctrlKey: true });
     near(latest.viewTransform.scale, initial.scale / 1.1);
     await act(async () => useViewerStore.setState({ navigationPreset: 'navisworks' }));

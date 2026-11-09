@@ -17,6 +17,8 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
 import type { Fit } from '@/lib/rooms/plate-geometry';
 import { zoomStep } from './plan-zoom';
+import { useViewerStore } from '@/store/index.js';
+import { wheelDeltaPx, wheelZoomSensitivityFactor } from '@/lib/navigation/wheel-input.js';
 
 export interface PlanViewport {
   size: { width: number; height: number };
@@ -94,7 +96,9 @@ export function usePlanViewport(
       moved.current = true;
       const rect = svg.getBoundingClientRect();
       const ax = e.clientX - rect.left, ay = e.clientY - rect.top;
-      setFit((f) => (f ? zoomStep(f, e.deltaY, ax, ay) ?? f : f));
+      const px = wheelDeltaPx(e.deltaY, e.deltaMode, rect.height);
+      const factor = wheelZoomSensitivityFactor(useViewerStore.getState().wheelZoomSensitivity);
+      setFit((f) => (f ? zoomStep(f, px, ax, ay, factor) ?? f : f));
     };
     svg.addEventListener('wheel', onWheel, { passive: false });
     return () => svg.removeEventListener('wheel', onWheel);

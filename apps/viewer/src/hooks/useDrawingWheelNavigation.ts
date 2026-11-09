@@ -6,6 +6,7 @@ import { useEffect, useRef, type Dispatch, type RefObject, type SetStateAction }
 import { useViewerStore } from '@/store/index.js';
 import { createFineZoomModifierTracker, isFineZoomWheel } from '@/components/viewer/wheelZoom.js';
 import { drawingWheelTransform, type DrawingViewTransform } from '@/lib/drawing/wheel-navigation.js';
+import { wheelZoomSensitivityFactor } from '@/lib/navigation/wheel-input.js';
 
 /** Reconcile the actual DOM owner after every commit, including pop-out reparenting. */
 export function useDrawingWheelNavigation(
@@ -31,7 +32,8 @@ export function useDrawingWheelNavigation(
       event.stopPropagation();
       const rect = container.getBoundingClientRect();
       const fine = isFineZoomWheel(event, modifier.isHeld());
-      setTransform((previous) => drawingWheelTransform(previous, event, rect, presetRef.current, fine));
+      const sensitivity = wheelZoomSensitivityFactor(useViewerStore.getState().wheelZoomSensitivity);
+      setTransform((previous) => drawingWheelTransform(previous, event, rect, presetRef.current, fine, sensitivity));
     };
     container.addEventListener('wheel', onWheel, { passive: false });
     binding.current = { container, owner, dispose: () => {

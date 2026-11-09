@@ -11,12 +11,11 @@
  */
 
 import { zoomFit, type Fit } from '@/lib/rooms/plate-geometry';
+import { wheelZoomScale } from '@/lib/navigation/wheel-input.js';
 
 /** Wheel-zoom range. Outside it the gesture is refused, not clamped. */
 export const MIN_ZOOM_SCALE = 0.5;
 export const MAX_ZOOM_SCALE = 5000;
-/** Wheel sensitivity: scroll up (negative deltaY) zooms in. */
-const ZOOM_PER_WHEEL_UNIT = 0.0015;
 
 /**
  * Clamp a canvas-relative pointer position into the `w`×`h` canvas.
@@ -32,14 +31,16 @@ export function clampToCanvas(x: number, y: number, w: number, h: number): [numb
 }
 
 /**
- * The fit after a wheel notch of `deltaY` about canvas point `(ax, ay)`, or
+ * The fit after `px` CSS px of wheel travel about canvas point `(ax, ay)`
+ * (scroll up, negative `px`, zooms in), at the shared 2D wheel rate scaled by
+ * `factor` (the sensitivity setting, #9507), or
  * `null` when the result would leave the usable zoom range.
  *
  * Returning null rather than a clamped fit is deliberate: clamping the *scale*
  * while still applying the offset shift would drift the plan sideways under a
  * wheel that no longer zooms, so a refused gesture must move nothing at all.
  */
-export function zoomStep(f: Fit, deltaY: number, ax: number, ay: number): Fit | null {
-  const next = zoomFit(f, Math.exp(-deltaY * ZOOM_PER_WHEEL_UNIT), ax, ay);
+export function zoomStep(f: Fit, px: number, ax: number, ay: number, factor = 1): Fit | null {
+  const next = zoomFit(f, wheelZoomScale(px, factor), ax, ay);
   return next.scale >= MIN_ZOOM_SCALE && next.scale <= MAX_ZOOM_SCALE ? next : null;
 }

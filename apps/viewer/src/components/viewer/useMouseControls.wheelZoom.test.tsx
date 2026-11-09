@@ -173,10 +173,22 @@ function mountViewport(
   return { canvas, camera };
 }
 
-/** Camera travel produced by one dispatched wheel event. */
+/** Camera travel produced by one dispatched wheel event, in the event itself. */
 function travelOf(canvas: HTMLCanvasElement, camera: Camera, e: WheelEvent): number {
   const before = { ...camera.getPosition() };
   canvas.dispatchEvent(e);
+  const after = camera.getPosition();
+  return Math.hypot(after.x - before.x, after.y - before.y, after.z - before.z);
+}
+
+/** Real frames pass until the eased zoom (#9507, ~180 ms) has settled. */
+const settle = () => new Promise<void>((resolve) => setTimeout(resolve, 400));
+
+/** Camera travel once the zoom one dispatched wheel event started has settled. */
+async function settledTravelOf(canvas: HTMLCanvasElement, camera: Camera, e: WheelEvent): Promise<number> {
+  const before = { ...camera.getPosition() };
+  canvas.dispatchEvent(e);
+  await settle();
   const after = camera.getPosition();
   return Math.hypot(after.x - before.x, after.y - before.y, after.z - before.z);
 }
@@ -238,14 +250,64 @@ describe('useMouseControls wheel zoom - registration and wiring (#2683)', () => 
     assert.ok(fine < plain, `ctrl travel ${fine} should be smaller than plain travel ${plain}`);
   });
 
-  it('leaves a pinch (ctrlKey, no key pressed) at the normal step', () => {
+  it('leaves a pinch (ctrlKey, no key pressed) at the normal step', async () => {
     const pinchView = mountViewport();
-    const pinch = travelOf(pinchView.canvas, pinchView.camera, wheelEvent({ ctrlKey: true }));
+    const pinch = await settledTravelOf(pinchView.canvas, pinchView.camera, wheelEvent({ ctrlKey: true, deltaY: 30 }));
 
     const plainView = mountViewport();
-    const plain = travelOf(plainView.canvas, plainView.camera, wheelEvent());
+    const plain = await settledTravelOf(plainView.canvas, plainView.camera, wheelEvent({ deltaY: 30 }));
 
-    assert.equal(pinch, plain, 'pinch-zoom must keep its usual speed');
+    assert.ok(Math.abs(pinch - plain) < 1e-9, `pinch-zoom must keep its usual speed: ${pinch} vs ${plain}`);
+  });
+
+  it('eases a notch: a slice lands in the event and the rest over the next frames (#9507)', async () => {
+    const { canvas, camera } = mountViewport();
+    const reference = new Camera();
+    reference.zoom(NOTCH_DELTA_Y, false, 400, 300, 800, 600, false);
+    const notch = reference.getDistance() - new Camera().getDistance();
+
+    const startDistance = camera.getDistance();
+    canvas.dispatchEvent(wheelEvent());
+    const first = camera.getDistance() - startDistance;
+    assert.ok(first > 0, 'the zoom starts in the event itself');
+    assert.ok(first < notch * 0.5, `the event moved ${first} of a ${notch} notch: that is a jump, not an ease`);
+
+    await settle();
+    const total = camera.getDistance() - startDistance;
+    // Within 6 %: compounding the slices zooms exp(-0.1) where one step zooms 0.9.
+    assert.ok(Math.abs(total - notch) / notch < 0.06, `the eased notch lands where one notch does: ${total} vs ${notch}`);
+  });
+
+  it('zooms further with the Fast sensitivity and less with Slow (#9507)', async () => {
+    const travelAt = async (wheelZoomSensitivity: 'slow' | 'normal' | 'fast') => {
+      useViewerStore.setState({ wheelZoomSensitivity });
+      const view = mountViewport();
+      return settledTravelOf(view.canvas, view.camera, wheelEvent({ deltaY: 40 }));
+    };
+    try {
+      const slow = await travelAt('slow');
+      const normal = await travelAt('normal');
+      const fast = await travelAt('fast');
+      assert.ok(slow < normal && normal < fast, `slow ${slow} < normal ${normal} < fast ${fast}`);
+    } finally {
+      useViewerStore.setState({ wheelZoomSensitivity: 'normal' });
+    }
+  });
+
+  it('applies the whole notch in the event under prefers-reduced-motion (#9507)', () => {
+    const original = window.matchMedia;
+    const reduce = (query: string) => ({ matches: query.includes('prefers-reduced-motion'), media: query }) as MediaQueryList;
+    Object.defineProperty(window, 'matchMedia', { value: reduce, configurable: true, writable: true });
+    try {
+      const { canvas, camera } = mountViewport();
+      const reference = new Camera();
+      reference.zoom(NOTCH_DELTA_Y, false, 400, 300, 800, 600, false);
+      canvas.dispatchEvent(wheelEvent());
+      assert.ok(Math.abs(camera.getDistance() - reference.getDistance()) < 1e-9,
+        `reduced motion: ${camera.getDistance()} vs one notch ${reference.getDistance()}`);
+    } finally {
+      Object.defineProperty(window, 'matchMedia', { value: original, configurable: true, writable: true });
+    }
   });
 
   for (const modelCount of [1, 2]) {

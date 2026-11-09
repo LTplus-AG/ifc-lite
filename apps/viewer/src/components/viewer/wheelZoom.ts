@@ -3,28 +3,28 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Wheel zoom: the step the wheel applies, and the modifier that makes it finer
- * (#2683).
+ * Wheel zoom: how a wheel event becomes zoom input, the modifier that makes it
+ * finer (#2683), and the camera step the smoother (`wheelZoomSmoother.ts`,
+ * #9507) applies.
  *
- * QGIS is the reference the request cited. Its map canvas divides the *excess
- * over 1* of the wheel zoom factor by 20 while Ctrl is down, under the comment
- * "holding ctrl while wheel zooming results in a finer zoom"
+ * QGIS is the reference the fine-zoom request cited. Its map canvas divides
+ * the *excess over 1* of the wheel zoom factor by 20 while Ctrl is down, under
+ * the comment "holding ctrl while wheel zooming results in a finer zoom"
  * (`QgsMapCanvas::wheelEvent`, src/gui/qgsmapcanvas.cpp), and the user manual
  * says the same. So the convention is FINER, not faster, and it is a change of
  * step size, not of direction.
  *
  * We follow the intent rather than the literal divisor. QGIS' unmodified notch
- * is a 2x jump (100% of the current scale); ours is a tenth of that -- the
- * renderer clamps a notch at `MAX_ZOOM_DELTA` = 0.1, so a wheel notch moves
- * ~10% -- and dividing that by 20 would leave ~0.5% per notch, several hundred
- * notches to halve the view distance. A fifth of the default step lands at ~2%
- * per notch: finer than QGIS' fine zoom in absolute terms, still responsive
- * enough that a flick of the wheel visibly moves.
- *
- * The unmodified wheel is untouched, so existing muscle memory is unchanged.
+ * is a 2x jump (100% of the current scale); ours is a tenth of that -- a
+ * notch moves ~10% -- and dividing that by 20 would leave ~0.5% per notch,
+ * several hundred notches to halve the view distance. A fifth of the default
+ * step lands at ~2% per notch: finer than QGIS' fine zoom in absolute terms,
+ * still responsive enough that a flick of the wheel visibly moves.
  */
 
 import { cameraPoseKey, SURFACE_PICK_IDLE_MS, type SurfacePoint, type SurfaceZoomCamera, type ZoomSurfacePicker } from './zoomSurface.js';
+import { WHEEL_NOTCH_MIN_PX, wheelDeltaPx } from '@/lib/navigation/wheel-input.js';
+import { createWheelZoomSmoother, MAX_STEP_PX, type WheelZoomAnchor } from './wheelZoomSmoother.js';
 
 /** Fraction of the normal wheel step applied while the fine modifier is held. */
 export const FINE_ZOOM_STEP_FACTOR = 0.2;
@@ -32,11 +32,11 @@ export const FINE_ZOOM_STEP_FACTOR = 0.2;
 /** The part of a wheel event this module reads. */
 export interface WheelZoomEvent {
   deltaY: number;
+  deltaMode: number;
   ctrlKey: boolean;
   metaKey: boolean;
   clientX: number;
   clientY: number;
-  preventDefault(): void;
 }
 
 /**
@@ -121,23 +121,38 @@ export function isFineZoomWheel(
   return modifierKeyHeld && (e.ctrlKey || e.metaKey);
 }
 
-/** Wheel delta to feed the camera: the raw one, or a fraction of it. */
-export function wheelZoomDelta(
-  e: Pick<WheelZoomEvent, 'deltaY' | 'ctrlKey' | 'metaKey'>,
+/**
+ * The zoom input a wheel event carries, in camera units (wheel px, positive
+ * zooms out): `deltaY` in CSS px whatever its `deltaMode`, times the fine
+ * factor when the modifier is really held, times the sensitivity setting.
+ *
+ * `eased` marks a discrete notch. A pinch (`ctrlKey` with no key held) and the
+ * small deltas a trackpad or smooth wheel streams are continuous input, which
+ * already arrives at frame rate and would only lag if eased.
+ */
+export function wheelZoomInput(
+  e: Pick<WheelZoomEvent, 'deltaY' | 'deltaMode' | 'ctrlKey' | 'metaKey'>,
   modifierKeyHeld: boolean,
-): number {
-  return isFineZoomWheel(e, modifierKeyHeld) ? e.deltaY * FINE_ZOOM_STEP_FACTOR : e.deltaY;
+  sensitivity: number,
+): { px: number; eased: boolean } {
+  const raw = wheelDeltaPx(e.deltaY, e.deltaMode);
+  const fine = isFineZoomWheel(e, modifierKeyHeld);
+  const pinch = e.ctrlKey && !fine;
+  const eased = !pinch && Math.abs(raw) >= WHEEL_NOTCH_MIN_PX;
+  // A notch is at most one camera notch (~10 %), as the camera's per-call cap
+  // made it before the smoother split notches into smaller steps: Chromium
+  // reports 120 or, on a HiDPI screen, 150 px for the same notch.
+  const travel = eased ? Math.max(-MAX_STEP_PX, Math.min(MAX_STEP_PX, raw)) : raw;
+  return { px: travel * (fine ? FINE_ZOOM_STEP_FACTOR : 1) * sensitivity, eased };
 }
 
-export interface WheelZoomOptions {
-  /** The pose is read back after each notch so a cached surface point is only
+export interface WheelZoomStepOptions {
+  /** The pose is read back after each step so a cached surface point is only
    *  reused while nothing but the surface zoom has moved the camera (#5393). */
   camera: SurfaceZoomCamera;
   canvas: HTMLCanvasElement;
   /** Shift, or Cesium mode: pure dolly. Orthogonal to the fine step. */
   fastZoom: boolean;
-  /** {@link FineZoomModifierTracker.isHeld} at the time of the event. */
-  fineModifierHeld: boolean;
   /**
    * The visible surface under a canvas point, in CSS px (#5393), e.g. the
    * renderer's `raycastScene(...).intersection.point`. When given, zooming IN
@@ -162,7 +177,7 @@ const SURFACE_GESTURE_SLOP_PX = 4;
 interface SurfaceGesture { x: number; y: number; at: number; point: SurfacePoint | null; pose: string }
 const surfaceGestures = new WeakMap<object, SurfaceGesture>();
 
-function gestureSurface(opts: WheelZoomOptions, mouseX: number, mouseY: number): SurfaceGesture | null {
+function gestureSurface(opts: WheelZoomStepOptions, mouseX: number, mouseY: number): SurfaceGesture | null {
   const pick = opts.pickSurface;
   if (!pick) return null;
   const now = Date.now();
@@ -181,29 +196,24 @@ function gestureSurface(opts: WheelZoomOptions, mouseX: number, mouseY: number):
 }
 
 /**
- * Applies one wheel notch to the camera, anchored at the cursor.
+ * Applies one zoom step of `px` camera units to the camera, anchored at the
+ * cursor. The smoother calls this once per frame while a zoom eases.
  *
- * `preventDefault` is unconditional and comes first. Ctrl+wheel is the
- * browser's own page-zoom shortcut (and its pinch-zoom gesture), so without it
- * the fine-zoom modifier would scale the whole page instead of the model. It
- * only takes effect because the listener is registered with
- * `{ passive: false }` in `useMouseControls`; a passive listener cannot cancel
- * the default and the browser would zoom the page regardless.
+ * The wheel handler cancels the browser default itself: Ctrl+wheel is the
+ * browser's page-zoom shortcut (and its pinch-zoom gesture), which only a
+ * `{ passive: false }` listener can stop.
  */
-export function applyWheelZoom(e: WheelZoomEvent, opts: WheelZoomOptions): void {
-  e.preventDefault();
-
+export function applyWheelZoomStep(px: number, anchor: WheelZoomAnchor, opts: WheelZoomStepOptions): void {
   const rect = opts.canvas.getBoundingClientRect();
-  const mouseX = e.clientX - rect.left;
-  const mouseY = e.clientY - rect.top;
+  const mouseX = anchor.clientX - rect.left;
+  const mouseY = anchor.clientY - rect.top;
 
-  const delta = wheelZoomDelta(e, opts.fineModifierHeld);
   // Only zooming in can pass through a surface; zooming out and the fast
   // (pure dolly) zoom keep the plain path and never pick.
-  const gesture = delta < 0 && !opts.fastZoom ? gestureSurface(opts, mouseX, mouseY) : null;
+  const gesture = px < 0 && !opts.fastZoom ? gestureSurface(opts, mouseX, mouseY) : null;
   const surface = gesture?.point ?? undefined;
   opts.camera.zoom(
-    delta,
+    px,
     false,
     mouseX,
     mouseY,
@@ -215,4 +225,50 @@ export function applyWheelZoom(e: WheelZoomEvent, opts: WheelZoomOptions): void 
     surface,
   );
   if (gesture) gesture.pose = cameraPoseKey(opts.camera);
+}
+
+/** Read per gesture, so turning the OS setting on applies without a reload. */
+function prefersReducedMotion(): boolean {
+  return typeof window !== 'undefined' && (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false);
+}
+
+export interface ViewportWheelZoomOptions extends Omit<WheelZoomStepOptions, 'fastZoom'> {
+  /** The sensitivity setting's factor, read per event (#9507). */
+  sensitivity(): number;
+  /** After every camera step. */
+  onStep(): void;
+  /** When a zoom has finished easing, or was cancelled. */
+  onSettle(): void;
+  /** Where the fine-zoom modifier's key events are observed. */
+  keyTarget?: Pick<Window, 'addEventListener' | 'removeEventListener'>;
+  reducedMotion?(): boolean;
+}
+
+export interface ViewportWheelZoom {
+  zoom(e: WheelZoomEvent, fastZoom: boolean): void;
+  dispose(): void;
+}
+
+/** The 3D viewport's wheel zoom: event → input → eased camera steps (#9507). */
+export function createViewportWheelZoom(opts: ViewportWheelZoomOptions): ViewportWheelZoom {
+  const modifier = createFineZoomModifierTracker(opts.keyTarget);
+  const smoother = createWheelZoomSmoother({
+    step: (px, anchor, fastZoom) => {
+      applyWheelZoomStep(px, anchor, { camera: opts.camera, canvas: opts.canvas, fastZoom, pickSurface: opts.pickSurface });
+      opts.onStep();
+    },
+    poseKey: () => cameraPoseKey(opts.camera),
+    onSettle: opts.onSettle,
+    reducedMotion: opts.reducedMotion ?? prefersReducedMotion,
+  });
+  return {
+    zoom(e, fastZoom) {
+      const input = wheelZoomInput(e, modifier.isHeld(), opts.sensitivity());
+      smoother.push({ ...input, clientX: e.clientX, clientY: e.clientY, fastZoom });
+    },
+    dispose() {
+      smoother.dispose();
+      modifier.dispose();
+    },
+  };
 }

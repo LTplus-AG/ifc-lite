@@ -36,12 +36,12 @@ const CHILD_PATH_KEYS: Partial<Record<WorkspacePanelId, TranslationKey>> = {
 };
 
 function bottomCommand<const Id extends BottomPanelId>(
-  panel: Id, keywords: string, icon: Command['icon'],
+  panel: Id, keywords: string, icon: Command['icon'], ribbon = true,
 ): SurfaceCommandDefinition & { id: `panel:${Id}` } {
   return {
     id: `panel:${panel}`, panelId: panel, panelGroup: panelGroupFor(panel),
     labelKey: panelTitleKey(panel), keywords, keywordsKey: CHILD_PATH_KEYS[panel], detailKey: CHILD_PATH_KEYS[panel],
-    category: 'Panels', icon, surfaces: paletteAndRibbon, enabled: alwaysEnabled,
+    category: 'Panels', icon, surfaces: ribbon ? paletteAndRibbon : paletteOnly, enabled: alwaysEnabled,
     run: (context) => {
       if (!context.activateBottomPanel) throw new Error(`Cannot open ${panel} without a panel host`);
       context.activateBottomPanel(panel);
@@ -66,7 +66,7 @@ function rightCommand<const Id extends string>(
 }
 
 export const PANEL_SURFACE_COMMANDS = [
-  bottomCommand('presentation', 'presentation slides saved views viewpoints slideshow play baskets', Layout),
+  bottomCommand('presentation', 'presentation slides saved views viewpoints slideshow play baskets', Layout, false),
   bottomCommand('script', 'code automation console', FileCode2),
   bottomCommand('lists', 'entity lists table spreadsheet columns sort filter selection CSV export templates', FileSpreadsheet),
   bottomCommand('gantt', 'construction schedule (gantt) 4d timeline tasks ifctask sequence playback animation', CalendarClock),

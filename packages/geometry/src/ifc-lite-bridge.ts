@@ -204,6 +204,9 @@ export class IfcLiteBridge {
       log.error('Failed to initialize WASM geometry engine', error, {
         operation: 'init',
       });
+      // A stale attempt (overtaken by dispose()) never built a handle; its
+      // cleanup must not free or supersede the attempt that replaced it.
+      if (!this.gate.isCurrent(generation)) throw error;
       // An `apply*` replay after `new IfcAPI()` can throw or trap: free the
       // handle built here (a nulled one no `dispose()` can reach would leak
       // for the life of the document). Best-effort and never throws, so it
@@ -248,8 +251,8 @@ export class IfcLiteBridge {
    */
   dispose(): void {
     this.gate.invalidate();
-    this.ifcApi?.free();
-    this.reset();
+    // reset() even if free() throws, so the next init() rebuilds.
+    try { this.ifcApi?.free(); } finally { this.reset(); }
   }
 
   /**

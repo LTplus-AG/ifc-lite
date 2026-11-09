@@ -25,6 +25,12 @@ const wasm = vi.hoisted(() => {
     init: vi.fn(() => new Promise<void>((resolve, reject) => { pending.push({ resolve, reject }); })),
     finish: () => { for (const p of pending.splice(0)) p.resolve(); },
     finishFirst: () => { pending.shift()?.resolve(); },
+    /** Settle the engine-init call at `index` (in call order) without touching the others. */
+    settleAt: (index: number, error?: unknown) => {
+      const p = pending.splice(index, 1)[0];
+      if (!p) throw new Error(`no pending engine init at ${index}`);
+      if (error === undefined) p.resolve(); else p.reject(error);
+    },
     fail: (e: unknown) => { for (const p of pending.splice(0)) p.reject(e); },
     constructedCount: () => constructed,
     resetConstructed: () => { constructed = 0; },
@@ -103,7 +109,7 @@ describe('IfcLiteBridge init lifecycle (audit P6)', () => {
     expect(wasm.free).toHaveBeenCalledTimes(2);
   });
 
-  it('P6: init() after a mid-init dispose() starts a fresh attempt that the stale one cannot clobber', async () => {
+  it('P6: init() after a mid-init dispose() starts a fresh attempt that the stale one settling late does not drop', async () => {
     // Node path: each attempt gets its own engine-init call, so the stale
     // attempt can settle while the fresh one is still in flight.
     delete g.window;
@@ -123,6 +129,61 @@ describe('IfcLiteBridge init lifecycle (audit P6)', () => {
     expect(wasm.init).toHaveBeenCalledTimes(2);
     expect(wasm.constructedCount()).toBe(1);
     expect(bridge.isInitialized()).toBe(true);
+    bridge.dispose();
+  });
+
+  // Node path for the next two: each attempt gets its own engine-init call, so
+  // the stale attempt can FAIL independently of the fresh one (#9500 review).
+  it('P6: a stale init() failing after its replacement succeeded does not free the fresh handle', async () => {
+    delete g.window;
+    const { IfcLiteBridge } = await load();
+    const bridge = new IfcLiteBridge();
+    const stale = bridge.init();
+    await vi.waitFor(() => expect(wasm.init).toHaveBeenCalledTimes(1));
+    bridge.dispose();
+    const fresh = bridge.init();
+    await vi.waitFor(() => expect(wasm.init).toHaveBeenCalledTimes(2));
+    wasm.settleAt(1);
+    await fresh;
+    wasm.settleAt(0, new Error('CompileError: stale engine'));
+    await expect(stale).rejects.toThrow(/stale engine/);
+    expect(bridge.isInitialized()).toBe(true);
+    expect(wasm.free).not.toHaveBeenCalled();
+    expect(() => bridge.getApi()).not.toThrow();
+    bridge.dispose();
+  });
+
+  it('P6: a stale init() failing while its replacement is in flight does not supersede it', async () => {
+    delete g.window;
+    const { IfcLiteBridge } = await load();
+    const bridge = new IfcLiteBridge();
+    const stale = bridge.init();
+    await vi.waitFor(() => expect(wasm.init).toHaveBeenCalledTimes(1));
+    bridge.dispose();
+    const fresh = bridge.init();
+    await vi.waitFor(() => expect(wasm.init).toHaveBeenCalledTimes(2));
+    wasm.settleAt(0, new Error('CompileError: stale engine'));
+    await expect(stale).rejects.toThrow(/stale engine/);
+    wasm.settleAt(0);
+    await expect(fresh).resolves.toBeUndefined();
+    expect(bridge.isInitialized()).toBe(true);
+    expect(wasm.constructedCount()).toBe(1);
+    bridge.dispose();
+  });
+
+  it('P6: dispose() whose free() throws still lets the next init() rebuild', async () => {
+    const { IfcLiteBridge } = await load();
+    const bridge = new IfcLiteBridge();
+    const first = bridge.init();
+    await vi.waitFor(() => expect(wasm.init).toHaveBeenCalled());
+    wasm.finish();
+    await first;
+    wasm.free.mockImplementationOnce(() => { throw new Error('free failed'); });
+    expect(() => bridge.dispose()).toThrow('free failed');
+    expect(bridge.isInitialized()).toBe(false);
+    wasm.init.mockImplementationOnce(async () => undefined);
+    await expect(bridge.init()).resolves.toBeUndefined();
+    expect(wasm.constructedCount()).toBe(2);
     bridge.dispose();
   });
 

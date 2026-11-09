@@ -1,0 +1,783 @@
+{
+  "schema": "ifclite-parity-target/1",
+  "reference": "nibs-duplex-ifc2x3",
+  "source": {
+    "reference": "nibs-duplex-ifc2x3",
+    "licence": "unknown",
+    "sha256": "b347a2c8aa8fff6db896a4417a9c50c22ac0ccd7c5cfc22b99b8d29336c606ed",
+    "bytes": 2380763,
+    "ifcSchema": "IFC2X3",
+    "lengthUnitMetres": 1
+  },
+  "generatedBy": "tests/modelling-parity/references/extract-target.mjs",
+  "usedBy": [
+    "F3"
+  ],
+  "tolerances": {
+    "note": "A model rebuilt by hand or by script will not match to the millimetre. Counts that a tool cannot split differently are exact; lengths and areas are relative.",
+    "elevationM": {
+      "kind": "abs",
+      "value": 0.05
+    },
+    "floorToFloorM": {
+      "kind": "abs",
+      "value": 0.05
+    },
+    "wallCountPerStorey": {
+      "kind": "rel",
+      "value": 0.15,
+      "why": "tools split walls at joins differently"
+    },
+    "wallTotalLengthPerStorey": {
+      "kind": "rel",
+      "value": 0.05
+    },
+    "doorCountPerStorey": {
+      "kind": "exact"
+    },
+    "windowCountPerStorey": {
+      "kind": "exact"
+    },
+    "openingSizeM": {
+      "kind": "abs",
+      "value": 0.05
+    },
+    "stairCount": {
+      "kind": "exact"
+    },
+    "footprintBboxM": {
+      "kind": "abs",
+      "value": 0.15
+    },
+    "roofForm": {
+      "kind": "exact"
+    },
+    "roofSlopeDeg": {
+      "kind": "abs",
+      "value": 2
+    },
+    "roofSlopeAreaShare": {
+      "kind": "rel",
+      "value": 0.1
+    },
+    "spaceCount": {
+      "kind": "exact"
+    },
+    "spaceAreaM2": {
+      "kind": "rel",
+      "value": 0.05,
+      "why": "net floor area; match spaces by name/number, not by order"
+    }
+  },
+  "notes": [
+    "T/FDN is a footing pseudo-storey at -1.25 m, not an occupied level; the occupied levels are Level 1 (0.0), Level 2 (3.1) and Roof (6.0).",
+    "Space areas are net floor areas measured on the space mesh; the file also carries Revit 'GSA BIM Area' (gross) as areaProperty, which is 10-30% larger.",
+    "The roof is a flat roof ('Basic Roof: Live Roof over Wood Joist Flat Roof'); the F3 spec has no pitched roof to match.",
+    "Revit exports no base quantities, so wall lengths come from each wall's Axis polyline."
+  ],
+  "storeys": [
+    {
+      "name": "T/FDN",
+      "elevation": -1.25,
+      "floorToFloor": 1.25,
+      "walls": {
+        "count": 7,
+        "totalLength": 61.7,
+        "lengthSources": {
+          "axis-polyline": 7
+        }
+      },
+      "doors": {
+        "count": 0,
+        "widthXHeight": {}
+      },
+      "windows": {
+        "count": 0,
+        "widthXHeight": {}
+      },
+      "slabs": {
+        "count": 0,
+        "topFaceArea": null
+      },
+      "stairs": 0,
+      "stairFlights": 0,
+      "columns": 0,
+      "beams": 0,
+      "spaces": []
+    },
+    {
+      "name": "Level 1",
+      "elevation": 0,
+      "floorToFloor": 3.1,
+      "walls": {
+        "count": 21,
+        "totalLength": 102.17,
+        "lengthSources": {
+          "axis-polyline": 21
+        }
+      },
+      "doors": {
+        "count": 6,
+        "widthXHeight": {
+          "0.762x2.032": 2,
+          "0.813x2.42": 2,
+          "1.25x2.01": 2
+        }
+      },
+      "windows": {
+        "count": 4,
+        "widthXHeight": {
+          "0.75x2.2": 2,
+          "4.835x2.42": 2
+        }
+      },
+      "slabs": {
+        "count": 10,
+        "topFaceArea": 307.06
+      },
+      "stairs": 2,
+      "stairFlights": 2,
+      "columns": 0,
+      "beams": 4,
+      "spaces": [
+        {
+          "name": "A101",
+          "longName": "Foyer",
+          "number": null,
+          "area": 15.59,
+          "areaSource": "mesh-floor-faces",
+          "areaProperty": {
+            "name": "GSA Space Areas.GSA BIM Area",
+            "value": 17.94
+          },
+          "globalId": "0BTBFw6f90Nfh9rP1dlXrr"
+        },
+        {
+          "name": "A102",
+          "longName": "Living Room",
+          "number": null,
+          "area": 27.66,
+          "areaSource": "mesh-floor-faces",
+          "areaProperty": {
+            "name": "GSA Space Areas.GSA BIM Area",
+            "value": 30.14
+          },
+          "globalId": "0BTBFw6f90Nfh9rP1dlXr2"
+        },
+        {
+          "name": "A103",
+          "longName": "Kitchen",
+          "number": null,
+          "area": 12.95,
+          "areaSource": "mesh-floor-faces",
+          "areaProperty": {
+            "name": "GSA Space Areas.GSA BIM Area",
+            "value": 13.9
+          },
+          "globalId": "0BTBFw6f90Nfh9rP1dlXr$"
+        },
+        {
+          "name": "A104",
+          "longName": "Bathroom 1",
+          "number": null,
+          "area": 3.16,
+          "areaSource": "mesh-floor-faces",
+          "areaProperty": {
+            "name": "GSA Space Areas.GSA BIM Area",
+            "value": 4
+          },
+          "globalId": "0BTBFw6f90Nfh9rP1dlXru"
+        },
+        {
+          "name": "A105",
+          "longName": "Stair",
+          "number": null,
+          "area": 3.8,
+          "areaSource": "mesh-floor-faces",
+          "areaProperty": {
+            "name": "GSA Space Areas.GSA BIM Area",
+            "value": 4.92
+          },
+          "globalId": "10mjSDZJj9gPS2PrQaxa3z"
+        },
+        {
+          "name": "B101",
+          "longName": "Foyer",
+          "number": null,
+          "area": 15.59,
+          "areaSource": "mesh-floor-faces",
+          "areaProperty": {
+            "name": "GSA Space Areas.GSA BIM Area",
+            "value": 17.94
+          },
+          "globalId": "0BTBFw6f90Nfh9rP1dl_3Q"
+        },
+        {
+          "name": "B102",
+          "longName": "Living Room",
+          "number": null,
+          "area": 27.66,
+          "areaSource": "mesh-floor-faces",
+          "areaProperty": {
+            "name": "GSA Space Areas.GSA BIM Area",
+            "value": 30.14
+          },
+          "globalId": "0BTBFw6f90Nfh9rP1dl_CZ"
+        },
+        {
+          "name": "B103",
+          "longName": "Kitchen",
+          "number": null,
+          "area": 12.95,
+          "areaSource": "mesh-floor-faces",
+          "areaProperty": {
+            "name": "GSA Space Areas.GSA BIM Area",
+            "value": 13.9
+          },
+          "globalId": "0BTBFw6f90Nfh9rP1dl_3S"
+        },
+        {
+          "name": "B104",
+          "longName": "Bathroom 1",
+          "number": null,
+          "area": 3.16,
+          "areaSource": "mesh-floor-faces",
+          "areaProperty": {
+            "name": "GSA Space Areas.GSA BIM Area",
+            "value": 4
+          },
+          "globalId": "0BTBFw6f90Nfh9rP1dl_3P"
+        },
+        {
+          "name": "B105",
+          "longName": "Room",
+          "number": null,
+          "area": 3.8,
+          "areaSource": "mesh-floor-faces",
+          "areaProperty": {
+            "name": "GSA Space Areas.GSA BIM Area",
+            "value": 4.92
+          },
+          "globalId": "10mjSDZJj9gPS2PrQaxa4o"
+        }
+      ]
+    },
+    {
+      "name": "Level 2",
+      "elevation": 3.1,
+      "floorToFloor": 2.9,
+      "walls": {
+        "count": 25,
+        "totalLength": 111.66,
+        "lengthSources": {
+          "axis-polyline": 25
+        }
+      },
+      "doors": {
+        "count": 8,
+        "widthXHeight": {
+          "0.762x2.032": 2,
+          "0.864x2.032": 6
+        }
+      },
+      "windows": {
+        "count": 18,
+        "widthXHeight": {
+          "0.75x2.2": 2,
+          "0.819x0.759": 12,
+          "2.8x2.41": 4
+        }
+      },
+      "slabs": {
+        "count": 10,
+        "topFaceArea": 233.86
+      },
+      "stairs": 0,
+      "stairFlights": 0,
+      "columns": 0,
+      "beams": 4,
+      "spaces": [
+        {
+          "name": "A201",
+          "longName": "Hallway",
+          "number": null,
+          "area": 6.89,
+          "areaSource": "mesh-floor-faces",
+          "areaProperty": {
+            "name": "GSA Space Areas.GSA BIM Area",
+            "value": 7.8
+          },
+          "globalId": "0BTBFw6f90Nfh9rP1dlXri"
+        },
+        {
+          "name": "A202",
+          "longName": "Bedroom 1",
+          "number": null,
+          "area": 22.04,
+          "areaSource": "mesh-floor-faces",
+          "areaProperty": {
+            "name": "GSA Space Areas.GSA BIM Area",
+            "value": 26.12
+          },
+          "globalId": "0BTBFw6f90Nfh9rP1dlXrc"
+        },
+        {
+          "name": "A203",
+          "longName": "Bedroom 2",
+          "number": null,
+          "area": 22.04,
+          "areaSource": "mesh-floor-faces",
+          "areaProperty": {
+            "name": "GSA Space Areas.GSA BIM Area",
+            "value": 26.18
+          },
+          "globalId": "0BTBFw6f90Nfh9rP1dlXrb"
+        },
+        {
+          "name": "A204",
+          "longName": "Bathroom 2",
+          "number": null,
+          "area": 4.73,
+          "areaSource": "mesh-floor-faces",
+          "areaProperty": {
+            "name": "GSA Space Areas.GSA BIM Area",
+            "value": 5.42
+          },
+          "globalId": "0BTBFw6f90Nfh9rP1dlXre"
+        },
+        {
+          "name": "A205",
+          "longName": "Utility",
+          "number": null,
+          "area": 1.42,
+          "areaSource": "mesh-floor-faces",
+          "areaProperty": {
+            "name": "GSA Space Areas.GSA BIM Area",
+            "value": 1.75
+          },
+          "globalId": "2gRXFgjRn2HPE$YoDLX3FV"
+        },
+        {
+          "name": "B201",
+          "longName": "Hallway",
+          "number": null,
+          "area": 6.89,
+          "areaSource": "mesh-floor-faces",
+          "areaProperty": {
+            "name": "GSA Space Areas.GSA BIM Area",
+            "value": 7.8
+          },
+          "globalId": "0BTBFw6f90Nfh9rP1dl_3G"
+        },
+        {
+          "name": "B202",
+          "longName": "Bedroom 1",
+          "number": null,
+          "area": 22.04,
+          "areaSource": "mesh-floor-faces",
+          "areaProperty": {
+            "name": "GSA Space Areas.GSA BIM Area",
+            "value": 26.12
+          },
+          "globalId": "0BTBFw6f90Nfh9rP1dl_3A"
+        },
+        {
+          "name": "B203",
+          "longName": "Bedroom 2",
+          "number": null,
+          "area": 22.04,
+          "areaSource": "mesh-floor-faces",
+          "areaProperty": {
+            "name": "GSA Space Areas.GSA BIM Area",
+            "value": 26.18
+          },
+          "globalId": "0BTBFw6f90Nfh9rP1dl_39"
+        },
+        {
+          "name": "B204",
+          "longName": "Bathroom 2",
+          "number": null,
+          "area": 4.75,
+          "areaSource": "mesh-floor-faces",
+          "areaProperty": {
+            "name": "GSA Space Areas.GSA BIM Area",
+            "value": 5.44
+          },
+          "globalId": "0BTBFw6f90Nfh9rP1dl_3C"
+        },
+        {
+          "name": "B205",
+          "longName": "Utility",
+          "number": null,
+          "area": 1.4,
+          "areaSource": "mesh-floor-faces",
+          "areaProperty": {
+            "name": "GSA Space Areas.GSA BIM Area",
+            "value": 1.73
+          },
+          "globalId": "2gRXFgjRn2HPE$YoDLX3FC"
+        }
+      ]
+    },
+    {
+      "name": "Roof",
+      "elevation": 6,
+      "floorToFloor": null,
+      "walls": {
+        "count": 4,
+        "totalLength": 51.53,
+        "lengthSources": {
+          "axis-polyline": 4
+        }
+      },
+      "doors": {
+        "count": 0,
+        "widthXHeight": {}
+      },
+      "windows": {
+        "count": 2,
+        "widthXHeight": {
+          "1.173x0.635": 2
+        }
+      },
+      "slabs": {
+        "count": 0,
+        "topFaceArea": null
+      },
+      "stairs": 0,
+      "stairFlights": 0,
+      "columns": 0,
+      "beams": 0,
+      "spaces": [
+        {
+          "name": "R301",
+          "longName": "Roof",
+          "number": null,
+          "area": 135.15,
+          "areaSource": "mesh-floor-faces",
+          "areaProperty": {
+            "name": "GSA Space Areas.GSA BIM Area",
+            "value": 145.72
+          },
+          "globalId": "0pNy6pOyf7JPmXRLgxs3sW"
+        }
+      ]
+    }
+  ],
+  "totals": {
+    "storeys": 4,
+    "walls": 57,
+    "wallTotalLength": 327.06,
+    "doors": 14,
+    "windows": 24,
+    "stairs": 2,
+    "stairFlights": 2,
+    "slabs": 20,
+    "columns": 0,
+    "beams": 8,
+    "spaces": 21,
+    "totalSpaceArea": 375.71
+  },
+  "footprint": {
+    "basis": "walls and slabs of the lowest storey with spaces (Level 1), world-axis bounding box",
+    "storey": "Level 1",
+    "bboxWidthX": 8.8,
+    "bboxDepthY": 17.38,
+    "bboxHeightZ": 3.39,
+    "dominantWallDirectionDeg": 0,
+    "slabCount": 10,
+    "slabTopFaceArea": 307.06
+  },
+  "roof": {
+    "elements": 2,
+    "entityTypes": {
+      "IFCROOF": 1,
+      "IFCSLAB": 1
+    },
+    "predefinedTypes": {
+      "NOTDEFINED": 1,
+      "ROOF": 1
+    },
+    "parts": 1,
+    "inferredForm": "flat",
+    "totalUpwardArea": 132.93,
+    "flatArea": 132.93,
+    "slopes": []
+  },
+  "spaces": [
+    {
+      "storey": "Level 1",
+      "name": "A101",
+      "longName": "Foyer",
+      "number": null,
+      "area": 15.59,
+      "areaSource": "mesh-floor-faces",
+      "areaProperty": {
+        "name": "GSA Space Areas.GSA BIM Area",
+        "value": 17.94
+      },
+      "globalId": "0BTBFw6f90Nfh9rP1dlXrr"
+    },
+    {
+      "storey": "Level 1",
+      "name": "A102",
+      "longName": "Living Room",
+      "number": null,
+      "area": 27.66,
+      "areaSource": "mesh-floor-faces",
+      "areaProperty": {
+        "name": "GSA Space Areas.GSA BIM Area",
+        "value": 30.14
+      },
+      "globalId": "0BTBFw6f90Nfh9rP1dlXr2"
+    },
+    {
+      "storey": "Level 1",
+      "name": "A103",
+      "longName": "Kitchen",
+      "number": null,
+      "area": 12.95,
+      "areaSource": "mesh-floor-faces",
+      "areaProperty": {
+        "name": "GSA Space Areas.GSA BIM Area",
+        "value": 13.9
+      },
+      "globalId": "0BTBFw6f90Nfh9rP1dlXr$"
+    },
+    {
+      "storey": "Level 1",
+      "name": "A104",
+      "longName": "Bathroom 1",
+      "number": null,
+      "area": 3.16,
+      "areaSource": "mesh-floor-faces",
+      "areaProperty": {
+        "name": "GSA Space Areas.GSA BIM Area",
+        "value": 4
+      },
+      "globalId": "0BTBFw6f90Nfh9rP1dlXru"
+    },
+    {
+      "storey": "Level 1",
+      "name": "A105",
+      "longName": "Stair",
+      "number": null,
+      "area": 3.8,
+      "areaSource": "mesh-floor-faces",
+      "areaProperty": {
+        "name": "GSA Space Areas.GSA BIM Area",
+        "value": 4.92
+      },
+      "globalId": "10mjSDZJj9gPS2PrQaxa3z"
+    },
+    {
+      "storey": "Level 1",
+      "name": "B101",
+      "longName": "Foyer",
+      "number": null,
+      "area": 15.59,
+      "areaSource": "mesh-floor-faces",
+      "areaProperty": {
+        "name": "GSA Space Areas.GSA BIM Area",
+        "value": 17.94
+      },
+      "globalId": "0BTBFw6f90Nfh9rP1dl_3Q"
+    },
+    {
+      "storey": "Level 1",
+      "name": "B102",
+      "longName": "Living Room",
+      "number": null,
+      "area": 27.66,
+      "areaSource": "mesh-floor-faces",
+      "areaProperty": {
+        "name": "GSA Space Areas.GSA BIM Area",
+        "value": 30.14
+      },
+      "globalId": "0BTBFw6f90Nfh9rP1dl_CZ"
+    },
+    {
+      "storey": "Level 1",
+      "name": "B103",
+      "longName": "Kitchen",
+      "number": null,
+      "area": 12.95,
+      "areaSource": "mesh-floor-faces",
+      "areaProperty": {
+        "name": "GSA Space Areas.GSA BIM Area",
+        "value": 13.9
+      },
+      "globalId": "0BTBFw6f90Nfh9rP1dl_3S"
+    },
+    {
+      "storey": "Level 1",
+      "name": "B104",
+      "longName": "Bathroom 1",
+      "number": null,
+      "area": 3.16,
+      "areaSource": "mesh-floor-faces",
+      "areaProperty": {
+        "name": "GSA Space Areas.GSA BIM Area",
+        "value": 4
+      },
+      "globalId": "0BTBFw6f90Nfh9rP1dl_3P"
+    },
+    {
+      "storey": "Level 1",
+      "name": "B105",
+      "longName": "Room",
+      "number": null,
+      "area": 3.8,
+      "areaSource": "mesh-floor-faces",
+      "areaProperty": {
+        "name": "GSA Space Areas.GSA BIM Area",
+        "value": 4.92
+      },
+      "globalId": "10mjSDZJj9gPS2PrQaxa4o"
+    },
+    {
+      "storey": "Level 2",
+      "name": "A201",
+      "longName": "Hallway",
+      "number": null,
+      "area": 6.89,
+      "areaSource": "mesh-floor-faces",
+      "areaProperty": {
+        "name": "GSA Space Areas.GSA BIM Area",
+        "value": 7.8
+      },
+      "globalId": "0BTBFw6f90Nfh9rP1dlXri"
+    },
+    {
+      "storey": "Level 2",
+      "name": "A202",
+      "longName": "Bedroom 1",
+      "number": null,
+      "area": 22.04,
+      "areaSource": "mesh-floor-faces",
+      "areaProperty": {
+        "name": "GSA Space Areas.GSA BIM Area",
+        "value": 26.12
+      },
+      "globalId": "0BTBFw6f90Nfh9rP1dlXrc"
+    },
+    {
+      "storey": "Level 2",
+      "name": "A203",
+      "longName": "Bedroom 2",
+      "number": null,
+      "area": 22.04,
+      "areaSource": "mesh-floor-faces",
+      "areaProperty": {
+        "name": "GSA Space Areas.GSA BIM Area",
+        "value": 26.18
+      },
+      "globalId": "0BTBFw6f90Nfh9rP1dlXrb"
+    },
+    {
+      "storey": "Level 2",
+      "name": "A204",
+      "longName": "Bathroom 2",
+      "number": null,
+      "area": 4.73,
+      "areaSource": "mesh-floor-faces",
+      "areaProperty": {
+        "name": "GSA Space Areas.GSA BIM Area",
+        "value": 5.42
+      },
+      "globalId": "0BTBFw6f90Nfh9rP1dlXre"
+    },
+    {
+      "storey": "Level 2",
+      "name": "A205",
+      "longName": "Utility",
+      "number": null,
+      "area": 1.42,
+      "areaSource": "mesh-floor-faces",
+      "areaProperty": {
+        "name": "GSA Space Areas.GSA BIM Area",
+        "value": 1.75
+      },
+      "globalId": "2gRXFgjRn2HPE$YoDLX3FV"
+    },
+    {
+      "storey": "Level 2",
+      "name": "B201",
+      "longName": "Hallway",
+      "number": null,
+      "area": 6.89,
+      "areaSource": "mesh-floor-faces",
+      "areaProperty": {
+        "name": "GSA Space Areas.GSA BIM Area",
+        "value": 7.8
+      },
+      "globalId": "0BTBFw6f90Nfh9rP1dl_3G"
+    },
+    {
+      "storey": "Level 2",
+      "name": "B202",
+      "longName": "Bedroom 1",
+      "number": null,
+      "area": 22.04,
+      "areaSource": "mesh-floor-faces",
+      "areaProperty": {
+        "name": "GSA Space Areas.GSA BIM Area",
+        "value": 26.12
+      },
+      "globalId": "0BTBFw6f90Nfh9rP1dl_3A"
+    },
+    {
+      "storey": "Level 2",
+      "name": "B203",
+      "longName": "Bedroom 2",
+      "number": null,
+      "area": 22.04,
+      "areaSource": "mesh-floor-faces",
+      "areaProperty": {
+        "name": "GSA Space Areas.GSA BIM Area",
+        "value": 26.18
+      },
+      "globalId": "0BTBFw6f90Nfh9rP1dl_39"
+    },
+    {
+      "storey": "Level 2",
+      "name": "B204",
+      "longName": "Bathroom 2",
+      "number": null,
+      "area": 4.75,
+      "areaSource": "mesh-floor-faces",
+      "areaProperty": {
+        "name": "GSA Space Areas.GSA BIM Area",
+        "value": 5.44
+      },
+      "globalId": "0BTBFw6f90Nfh9rP1dl_3C"
+    },
+    {
+      "storey": "Level 2",
+      "name": "B205",
+      "longName": "Utility",
+      "number": null,
+      "area": 1.4,
+      "areaSource": "mesh-floor-faces",
+      "areaProperty": {
+        "name": "GSA Space Areas.GSA BIM Area",
+        "value": 1.73
+      },
+      "globalId": "2gRXFgjRn2HPE$YoDLX3FC"
+    },
+    {
+      "storey": "Roof",
+      "name": "R301",
+      "longName": "Roof",
+      "number": null,
+      "area": 135.15,
+      "areaSource": "mesh-floor-faces",
+      "areaProperty": {
+        "name": "GSA Space Areas.GSA BIM Area",
+        "value": 145.72
+      },
+      "globalId": "0pNy6pOyf7JPmXRLgxs3sW"
+    }
+  ],
+  "meshPass": "ok"
+}

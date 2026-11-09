@@ -1295,3 +1295,7 @@ atomically with a reason; include the other joined wall in the move or remove
 the join first. Joined walls carried together remain connected.
 The headless CLI supports `alignElements` using current native mesh bounds,
 including hosted cuts, rather than uncut parametric bounding boxes.
+
+The wall endpoint index also follows public raw `addEntity` creation. Incomplete
+forward-reference graphs and intervening geometry edits invalidate it; ordinary
+wall creation then reads the completed effective graph.

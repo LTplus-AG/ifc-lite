@@ -50,7 +50,7 @@ const summary = (wall: WallJoinRead): WallEndpoints => ({ wallId: wall.wallId, p
   elevation: wall.location[2], start: wall.wall.start, end: wall.wall.end });
 interface Session {
   store: IfcDataStore; source: IfcDataStore['source']; schema: IfcDataStore['schemaVersion'];
-  sourceCount: number; revision: number; endpoints: Endpoints;
+  sourceCount: number; revision: number; endpoints: Endpoints; scale: number; skipped: boolean;
 }
 const sessions = new WeakMap<MutablePropertyView, Session>();
 
@@ -71,18 +71,54 @@ function prepareIndex(store: IfcDataStore, view: MutablePropertyView): Session {
       ? createSchemaEntityNameSnapshot(schemaRegistry(schema, 'wall-autojoin')) : undefined;
     const reader = new AnchorEntityReader(store, view, names);
     const scale = store.source.byteLength ? safeLengthUnitScale(store.source, store.entityIndex, 'wall-autojoin') ?? 1 : 1;
+    let skipped = false;
     for (const type of ['IFCWALL', 'IFCWALLSTANDARDCASE']) for (const id of reader.ids(type)) {
       try {
         const wall = readWallJoinEndpoints(store, view, id, scale, reader);
         if (wall) endpoints.add(wall);
+        else skipped = true;
       } catch (error) {
         throw new Error(`Cannot index wall #${id}: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
-    session = { store, source: store.source, schema, sourceCount, revision: view.getMutationRevision(), endpoints };
+    session = { store, source: store.source, schema, sourceCount, revision: view.getMutationRevision(), endpoints, scale, skipped };
     sessions.set(view, session);
   }
   return session;
+}
+
+/** Maintain endpoints as public raw creation appends complete wall records.
+ * Appending a new record cannot change an already readable wall. Incomplete
+ * forward references or any intervening edit discard the cache instead.
+ * The append itself retains its errors and never depends on indexing success. */
+export function withWallAutojoinAppend<T extends { expressId: number }>(
+  store: IfcDataStore, view: MutablePropertyView, type: string, append: () => T,
+): T {
+  let session = sessions.get(view);
+  const revision = view.getMutationRevision();
+  const result = append();
+  if (store.schemaVersion !== undefined && !['IFC2X3', 'IFC4', 'IFC4X3'].includes(store.schemaVersion)) {
+    sessions.delete(view);
+    return result;
+  }
+  try {
+    const wall = ['IFCWALL', 'IFCWALLSTANDARDCASE'].includes(type.trim().toUpperCase());
+    if (!session || session.revision !== revision || session.store !== store || session.source !== store.source || session.schema !== store.schemaVersion) {
+      sessions.delete(view);
+      if (!wall) return result;
+      session = prepareIndex(store, view);
+    } else if (wall) {
+      const endpoints = readWallJoinEndpoints(store, view, result.expressId, session.scale);
+      if (!endpoints) { sessions.delete(view); return result; }
+      session.endpoints.add(endpoints);
+    }
+    if (session.skipped) sessions.delete(view);
+    else session.revision = view.getMutationRevision();
+  } catch (error) {
+    sessions.delete(view);
+    console.warn(`[ifc-lite/create] Wall endpoint index update skipped: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  return result;
 }
 
 /** Run ordinary wall creation at the COMMITTED view boundary, outside draft

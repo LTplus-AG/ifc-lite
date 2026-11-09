@@ -212,6 +212,14 @@ for (const surface of ['palette', 'toolbar', 'keyboard'] as const) {
         assert.deepEqual(first.events, retirement === 'none' ? ['onCommand:paint'] : []);
         assert.deepEqual(second.executions, []);
         if (retirement !== 'none') assert.match(document.body.textContent ?? '', /provider or contribution changed/);
+        if (retirement === 'provider' && surface === 'palette') {
+          const fresh = row('alpha');
+          assert.equal(fresh.getAttribute('aria-disabled'), null, 'replacement rows are immediately available');
+          click(fresh); await settle();
+          assert.deepEqual(second.executions, ['alpha']);
+          assert.deepEqual(second.activations, ['alpha']);
+          assert.deepEqual(first.executions, []);
+        }
       } finally {
         release(); await settle(); globalThis.requestAnimationFrame = previous;
       }

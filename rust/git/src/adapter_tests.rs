@@ -391,3 +391,33 @@ fn nested_composite_strings_and_object_keys_are_refused() {
         assert!(matches!(entity_nodes("key", &input), Err(AdapterError::NotWellFormed { .. })));
     }
 }
+
+// #9331: validation, canonical serialization and temporary cleanup must all
+// tolerate a deep Rust-supplied projection without overflowing a thread stack.
+#[test]
+fn deeply_nested_properties_convert_without_recursive_intermediates() {
+    let depth = 50_000;
+    let mut value = PropertyValue::Bool(true);
+    for index in 0..depth {
+        value = if index % 2 == 0 { PropertyValue::Array(vec![value]) }
+            else { PropertyValue::Object(vec![("x".into(), value)]) };
+    }
+    let mut input = wall();
+    input.property_sets = vec![PropertySetInput { name: "Pset".into(), properties: vec![PropertyEntryInput { name: "Deep".into(), value }].into() }].into();
+    let actual = entity_nodes("deep", &input);
+    // The API borrows the caller's tree. Dispose of that caller-owned fixture
+    // iteratively too, BEFORE assertions, so a failing test can unwind safely.
+    input.property_sets.map(|set| {
+        set.properties.map(|property| {
+            let mut pending = vec![property.value];
+            while let Some(value) = pending.pop() {
+                match value {
+                    PropertyValue::Array(values) => pending.extend(values),
+                    PropertyValue::Object(entries) => pending.extend(entries.into_iter().map(|(_, value)| value)),
+                    _ => {}
+                }
+            }
+        });
+    });
+    assert!(actual.is_ok(), "deep composite was refused: {actual:?}");
+}

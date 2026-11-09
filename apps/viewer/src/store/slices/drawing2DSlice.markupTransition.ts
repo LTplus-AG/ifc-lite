@@ -256,7 +256,8 @@ export function inProgressClearPatch(): Drawing2DTransitionClearPatch {
 /**
  * Session-scoped only — never written to or read from `localStorage`
  * directly (that stays `drawing2DSlice.persistence.ts`'s job). An entry
- * leaves with its model ({@link forgetLiveMarkup}, from the drawing teardown):
+ * leaves with its model ({@link forgetLiveMarkup}, from `removeModel`,
+ * `clearAllModels` and `resetViewerState`):
  * ids are reused (`room:<id>` for a collab room, an explicit id from a flow),
  * so an entry outliving its model would be restored into the next one.
  */

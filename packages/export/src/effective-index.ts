@@ -186,7 +186,7 @@ export function getEffectiveEntityIndex(
 
   const created = new Map<number, NewEntity>();
   if (view && typeof view.getNewEntities === 'function') {
-    for (const entity of view.getNewEntities()) created.set(entity.expressId, entity);
+    for (const entity of view.readNewEntities?.() ?? view.getNewEntities()) created.set(entity.expressId, entity);
   }
   const tombstones: ReadonlySet<number> =
     view && typeof view.getTombstones === 'function' ? view.getTombstones() : EMPTY_IDS;

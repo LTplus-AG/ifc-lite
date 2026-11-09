@@ -53,6 +53,8 @@
     "@ifc-lite/export": "workspace:^",
     "@ifc-lite/wasm": "workspace:^",
     "@mergifyio/vitest": "^2026.10.11",
+    "apache-arrow": "^21.2.0",
+    "parquet-wasm": "^0.9.0",
     "typescript": "^6.0.3",
     "vitest": "^5.0.5"
   },

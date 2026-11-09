@@ -149,6 +149,27 @@ describe('#6232 bim.store hosted openings, doors and windows', () => {
     assert.equal(useViewerStore.getState().canUndo(MODEL), false);
   });
 
+  it('#9406 returns skipped implicit-join notices to a viewer script and preserves the added wall', async () => {
+    const dataStore = await seed(), adapter = createStoreAdapter(useViewerStore);
+    const host = adapter.addWall(MODEL, 42, { Start: [0, 5, 0], End: [4, 5, 0], Thickness: .2, Height: 3 });
+    adapter.addHostedDoor(MODEL, host.expressId, { Offset: 1, Width: .9, Height: 2.1 });
+    const view = useViewerStore.getState().mutationViews.get(MODEL)!;
+    const opening = view.getNewEntities().find(entity => entity.type.toUpperCase() === 'IFCOPENINGELEMENT');
+    assert.ok(opening);
+    new StoreEditor(dataStore, view).setPositionalAttribute(opening.expressId, 6, null);
+    const beforeHost = readWallJoinTarget(dataStore, view, host.expressId, 1);
+    const beforeJoins = readWallJoinRels(dataStore, view);
+    const wall = adapter.addWall(MODEL, 42, { Start: [4, 5, 0], End: [4, 8, 0], Thickness: .2, Height: 3 });
+    assert.match(wall.notices?.join('\n') ?? '', /skipped.*join.*unreadable opening geometry/i);
+    assert.ok(view.getNewEntity(wall.expressId), 'the wall is added despite the refused implicit join');
+    assert.deepEqual(readWallJoinRels(dataStore, view), beforeJoins);
+    assert.deepEqual(readWallJoinTarget(dataStore, view, host.expressId, 1), beforeHost);
+    const beforeExplicit = view.getMutations();
+    assert.throws(() => adapter.joinWalls(MODEL, host.expressId, wall.expressId), /unreadable opening geometry/);
+    assert.deepEqual(view.getMutations(), beforeExplicit, 'explicit joining still refuses atomically');
+    await settleRemesh();
+  });
+
   it('#6232 joins through the SDK core, re-meshes both walls and restores forgotten profiles in one undo', async () => {
     const dataStore = await seed();
     const adapter = createStoreAdapter(useViewerStore);

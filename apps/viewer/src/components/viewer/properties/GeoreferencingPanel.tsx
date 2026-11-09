@@ -425,9 +425,8 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
               {/* The fingerprint matches on TRANSLATION, so when the file authors
                   a rotation of its own we are choosing the orientation, not
                   restating it. Say so rather than leaving it implicit. */}
-              {doubleGeoref.anchorUnitRatio !== null && <> {localizedSiteAnchorUnitNote(t, locale, doubleGeoref)}</>}
               {doubleGeoref.overridesAuthoredRotation && <> {t('properties.georef.rotationOverrideNote')}</>}
-              {' '}{localizedScaleOverride(t, locale, doubleGeoref)}
+              {' '}{localizedSiteAnchorUnitNote(t, locale, doubleGeoref)} {localizedScaleOverride(t, locale, doubleGeoref)}
               {' '}
               {/* Zeroing the offsets is NOT enough when Scale is being
                   overridden: a spec-strict consumer reading the exported file

@@ -157,6 +157,43 @@ describe('unload vs reload of the same room (PR #9489)', () => {
     expect(b.peerCount).toBe(1);
   });
 
+  it('PR #9489: unloadAll during a sweep waits for every compaction, including the one the sweep holds', async () => {
+    // Review thread on #9489: could shutdown resolve while a sweep-started
+    // compaction is still writing? Interleave exactly that.
+    const gates = new Map([['a', gate()]]);
+    const held = gates.get('a')!;
+    const compacted: string[] = [];
+    const persistence = new MemoryPersistence();
+    const realCompact = persistence.compact.bind(persistence);
+    persistence.compact = async (roomId, merged) => {
+      const g = gates.get(roomId);
+      if (g) {
+        gates.delete(roomId);
+        await g.enter();
+      }
+      await realCompact(roomId, merged);
+      compacted.push(roomId);
+    };
+    const mgr = new RoomManager({ persistence, idleUnloadMs: 20 });
+    for (const id of ['a', 'b', 'c']) await mgr.getOrCreate(id);
+    await new Promise((r) => setTimeout(r, 40)); // all idle
+
+    const sweep = mgr.sweepIdle();
+    await held.entered; // sweep holds 'a'; 'b' and 'c' are its next candidates
+    let shutDown = false;
+    const all = mgr.unloadAll().then(() => {
+      shutDown = true;
+    });
+    await new Promise((r) => setTimeout(r, 30));
+    expect(shutDown).toBe(false); // 'a' is still writing
+
+    held.release();
+    await all;
+    expect([...compacted].sort()).toEqual(['a', 'b', 'c']); // each exactly once
+    expect(await sweep).toEqual(['a']); // the sweep skipped what unloadAll took
+    expect(mgr.list()).toEqual([]);
+  });
+
   it('PR #9489: a destroyed room refuses new connections instead of registering a ghost', async () => {
     const mgr = new RoomManager({ persistence: new MemoryPersistence() });
     cleanups.push(() => mgr.unloadAll());

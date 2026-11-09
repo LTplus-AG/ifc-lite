@@ -605,7 +605,8 @@ export class RoomManager {
     this.idleTimer = null;
     await Promise.all(Array.from(this.rooms.keys()).map((id) => this.unload(id)));
     // Unloads the idle sweep already started: their compaction must land too.
-    await Promise.all(this.unloading.values());
+    // Drain until empty so an unload tracked after this snapshot still counts.
+    while (this.unloading.size > 0) await Promise.all(this.unloading.values());
   }
 
   /**

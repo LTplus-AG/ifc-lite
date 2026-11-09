@@ -20,7 +20,7 @@ import { getCommandRuntime } from '@/lib/commands/modeling/runtime';
 import type { CommandContext } from '@/lib/commands/modeling/types';
 import '@/lib/commands/modeling/builtin';
 import { ViewportHud } from '../../viewport-ui/hud';
-import { PlanWorkplaneHeight, WorkplaneHeightChip } from './WorkplaneHeightControl';
+import { PlanWorkplaneHeight } from './WorkplaneHeightControl';
 
 const state = () => useViewerStore.getState();
 const offset = () => {
@@ -32,12 +32,11 @@ function mount() {
   return render(
     <TooltipProvider>
       <ViewportHud />
-      <WorkplaneHeightChip />
       <PlanWorkplaneHeight />
     </TooltipProvider>,
   );
 }
-const chip = (ui: HTMLElement) => ui.querySelector('[data-workplane-height]') as HTMLButtonElement;
+const chip = (ui: HTMLElement) => ui.querySelector('[data-plan-height]') as HTMLButtonElement;
 const planButton = (ui: HTMLElement) => ui.querySelector('[data-plan-height]') as HTMLButtonElement;
 const picker = () => document.body.querySelector('[data-workplane-height-picker]') as HTMLElement | null;
 const open = (trigger: HTMLElement) => act(() => {
@@ -61,14 +60,12 @@ describe('the height control (#9202)', () => {
     assert.equal(chip(ui), null);
     act(() => { state().enterModelWorkspace(); });
     assert.match(chip(ui).textContent ?? '', /Plane ±0\.00 m/);
-    assert.match(planButton(ui).textContent ?? '', /Plane ±0\.00 m/);
   });
 
   it('3D and the plan read the same height, whichever side set it', () => {
     const ui = mount();
     act(() => { state().setWorkplane({ kind: 'storey', storeyId: STOREY, offset: 2.5 }); });
     assert.match(chip(ui).textContent ?? '', /Plane \+2\.50 m/);
-    assert.match(planButton(ui).textContent ?? '', /Plane \+2\.50 m/);
   });
 
   it('Top of walls takes the height the walls reach, and Floor goes back', () => {

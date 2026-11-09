@@ -51,6 +51,9 @@ function workspaceKeysLive(): boolean {
 export function bindModelWorkspaceKeys(): () => void {
   const active = workspaceKeysLive;
   const disposers = [
+    registerKeyboardCommand('model.layoutPlan', () => useViewerStore.getState().setModelLayout('plan'), { active }),
+    registerKeyboardCommand('model.layoutSplit', () => useViewerStore.getState().setModelLayout('split'), { active }),
+    registerKeyboardCommand('model.layout3d', () => useViewerStore.getState().setModelLayout('3d'), { active }),
     registerKeyboardCommand('model.wall', () => launchModelCommand('wall.place'), { active }),
     registerKeyboardCommand('model.slab', () => launchSlabTool('slab'), { active }),
     registerKeyboardCommand('model.roof', () => launchSlabTool('roof'), { active }),

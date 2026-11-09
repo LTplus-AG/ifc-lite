@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { createPortal } from 'react-dom';
+
 /**
  * The Model workspace's editable plan (charter #6232, M2 §1.5): the session
  * storey cut 1.2 m above its floor (`usePlanCut`), drawn in workplane-local
@@ -92,7 +94,7 @@ function usePlanFrame(): { plane: Workplane | null; axes: WallAxis[] } {
   return { plane, axes };
 }
 
-export function PlanView({ layout }: { layout: ModelLayout }) {
+export function PlanView({ layout, headerHost }: { layout: ModelLayout; headerHost?: HTMLElement | null }) {
   const { t } = useTranslation();
   const session = useViewerStore((s) => s.session);
   const selectedIds = useViewerStore((s) => s.selectedEntityIds);
@@ -260,9 +262,11 @@ export function PlanView({ layout }: { layout: ModelLayout }) {
   const Plan = command?.hud.Plan;
   const project = useCallback((p: Vec2) => (fit ? toScreen(fit, p) : ([0, 0] as const)), [fit]);
 
+  const header = <PlanHeader layout={layout} grid={grid} onToggleGrid={() => setGrid((g) => !g)} onFit={refit} loading={cut.loading} simplified={cut.simplified} failed={cut.failed} onRetry={cut.retry} />;
+
   return (
     <section data-plan-view data-plan-cut-ms={cut.ms === null ? undefined : Math.round(cut.ms)} aria-label={t('modelWorkspace.plan.title')} className="flex h-full w-full flex-col bg-background">
-      <PlanHeader layout={layout} grid={grid} onToggleGrid={() => setGrid((g) => !g)} onFit={refit} loading={cut.loading} simplified={cut.simplified} failed={cut.failed} onRetry={cut.retry} />
+      {headerHost ? createPortal(header, headerHost) : header}
       <div ref={hostRef} className="relative min-h-0 flex-1 overflow-hidden">
         <svg
           ref={svgRef}

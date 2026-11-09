@@ -31,6 +31,17 @@ afterEach(() => {
 });
 
 describe('Model workspace keys (#6232 M2.1)', () => {
+  it('1/2/3 choose Plan, Split and 3D only in Model (#9296)', () => {
+    useViewerStore.getState().enterModelWorkspace();
+    for (const [key, layout] of [['1', 'plan'], ['2', 'split'], ['3', '3d']] as const) {
+      press(document.body, key);
+      assert.equal(useViewerStore.getState().modelLayout, layout);
+    }
+    useViewerStore.getState().exitModelWorkspace();
+    press(document.body, '1');
+    assert.equal(useViewerStore.getState().modelLayout, '3d');
+  });
+
   it('W starts wall.place in the workspace, and does nothing outside it', () => {
     press(document.body, 'w');
     assert.equal(useViewerStore.getState().workspaceMode, 'view', 'W does not open the workspace');

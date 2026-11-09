@@ -11,13 +11,13 @@
  */
 
 import { useMemo } from 'react';
-import { ArrowUpToLine, ChevronDown } from 'lucide-react';
+import { ArrowUpToLine } from 'lucide-react';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { resolveRoofHeight } from '@/lib/commands/modeling/registry';
 import type { WorkplaneSpec } from '@/lib/commands/modeling/types';
 import { cn } from '@/lib/utils';
-import { HudChip, HudItem, HudPopover, HudPopoverContent, HudPopoverTrigger, HudValueField } from '../../viewport-ui/hud';
+import { HudPopover, HudPopoverContent, HudPopoverTrigger, HudValueField } from '../../viewport-ui/hud';
 import { METRE_SYMBOL } from '../model-inspector/inspector-fields';
 import { formatStoreyElevation } from './StoreyPicker';
 import { Button } from '@/components/ui/button';
@@ -66,34 +66,6 @@ function HeightPicker({ plane }: { plane: StoreyPlane }) {
         </Button>
       )}
     </div>
-  );
-}
-
-/** The chip on the 3D viewport's HUD, under the storey chip. */
-export function WorkplaneHeightChip() {
-  const { t } = useTranslation();
-  const plane = useStoreyPlane();
-  if (!plane) return null;
-  const label = t('modelWorkspace.height.value', { height: formatStoreyElevation(plane.offset) });
-  return (
-    <HudItem region="top-left" order={1}>
-      <HudPopover>
-        <HudChip active={plane.offset !== 0} icon={<ArrowUpToLine aria-hidden className="h-3.5 w-3.5 shrink-0" />}>
-          <HudPopoverTrigger asChild>
-            <button
-              type="button"
-              data-workplane-height={plane.offset}
-              title={t('modelWorkspace.height.title')}
-              className="inline-flex min-w-0 items-center gap-1 rounded-sm tabular-nums hover:text-foreground"
-            >
-              {label}
-              <ChevronDown aria-hidden className="h-3 w-3 shrink-0 opacity-70" />
-            </button>
-          </HudPopoverTrigger>
-        </HudChip>
-        <HudPopoverContent align="start"><HeightPicker plane={plane} /></HudPopoverContent>
-      </HudPopover>
-    </HudItem>
   );
 }
 

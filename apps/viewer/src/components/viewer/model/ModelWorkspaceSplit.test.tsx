@@ -45,7 +45,7 @@ describe('ModelWorkspaceSplit (#6232 M2.1)', () => {
       act(() => { useViewerStore.getState().enterModelWorkspace(); });
       const viewport = ui.querySelector('[data-viewport-stub]');
       assert.ok(viewport, 'the viewport renders in 3D');
-      assert.equal(ui.querySelector('[data-model-plan-pane]'), null, 'no plan pane in 3D');
+      assert.equal(ui.querySelector('[data-model-plan-pane]')?.getAttribute('aria-hidden'), 'true', 'the plan is hidden in 3D');
 
       act(() => { useViewerStore.getState().setModelLayout(layout); });
       await act(frame);
@@ -86,7 +86,7 @@ describe('ModelWorkspaceSplit (#6232 M2.1)', () => {
       await act(frame);
       assert.equal(ui.querySelectorAll('[data-workspace-bar]').length, 1);
       assert.equal(ui.querySelectorAll('[data-workspace-storey-chip]').length, 1);
-      assert.equal(ui.querySelectorAll('[role="radiogroup"][aria-label="Model workspace layout"]').length, 1);
+      assert.equal(ui.querySelectorAll('[role="radiogroup"][aria-label="Layout"]').length, 1);
       assert.equal(ui.querySelectorAll('[data-workspace-leave]').length, 1);
     });
   }

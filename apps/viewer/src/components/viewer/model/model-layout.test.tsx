@@ -92,9 +92,10 @@ describe('ModelWorkspaceSplit applies the rule (#6232 M2.4)', () => {
     // #9296: with the sidebar already folded nothing can make room.
     act(() => useViewerStore.getState().setSidebarMode('collapsed'));
     const ui = render(<><ModelToolRail /><ModelWorkspaceSplit><div data-probe-3d /></ModelWorkspaceSplit></>);
-    assert.equal(ui.querySelector('[data-plan-view]'), null);
-    const strip = ui.querySelector<HTMLButtonElement>('[data-rail-tool="plan"]')!;
-    assert.ok(strip.disabled, 'no room: the rail toggle is off and its tooltip says why');
+    assert.equal(ui.querySelector('[data-model-plan-pane]')?.getAttribute('aria-hidden'), 'true');
+    const split = [...ui.querySelectorAll<HTMLButtonElement>('[role="radio"]')].find(button => button.textContent?.startsWith('Split'));
+    assert.ok(split && !split.disabled, 'Split stays available and explains the fallback');
+    assert.ok(ui.querySelector('[role="status"]'));
     assert.equal(useViewerStore.getState().modelLayout, 'auto', 'nothing was persisted');
   });
 
@@ -113,7 +114,7 @@ describe('ModelWorkspaceSplit applies the rule (#6232 M2.4)', () => {
     act(() => useViewerStore.getState().setModelLayout('3d'));
     restore = splitWidth(1600);
     const ui = render(<><ModelToolRail /><ModelWorkspaceSplit><div data-probe-3d /></ModelWorkspaceSplit></>);
-    assert.equal(ui.querySelector('[data-plan-view]'), null);
-    assert.equal(ui.querySelector<HTMLButtonElement>('[data-rail-tool="plan"]')?.disabled, false);
+    assert.equal(ui.querySelector('[data-model-plan-pane]')?.getAttribute('aria-hidden'), 'true');
+    assert.equal(ui.querySelector('[data-rail-tool="plan"]'), null, 'the workspace bar owns layout');
   });
 });

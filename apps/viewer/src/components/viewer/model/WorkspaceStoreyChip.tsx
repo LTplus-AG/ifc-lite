@@ -55,7 +55,7 @@ export function useWorkspaceStoreyGroups(): StoreyPickerGroup[] {
   }, [open, models, mutationVersion]);
 }
 
-export function WorkspaceStoreyChip() {
+export function WorkspaceStoreyControl() {
   const { t } = useTranslation();
   const [copyOpen, setCopyOpen] = useState(false);
   const [open, setOpen] = useState(false);
@@ -88,13 +88,13 @@ export function WorkspaceStoreyChip() {
 
   return (
     <>
-      <HudItem region="top-left" order={0}>
+      <div data-workspace-storey-control className="min-w-0">
         <HudPopover open={open} onOpenChange={(next) => { setOpen(next); if (!next) setCopyOpen(false); }}>
           {/* Half a rem inside the 13rem chip cap, so even a long storey name
               (truncated, full name in its tooltip) keeps an 8px gap to the
               top-center lane that starts at 14rem (#6315). */}
           <HudChip
-            className="max-w-[12.5rem]"
+            className="h-6 max-w-64 border-0 bg-transparent px-1 shadow-none"
             icon={<Layers aria-hidden className="h-3.5 w-3.5 shrink-0 text-overlay-accent" />}
             toggle={current ? {
               onClick: toggleIsolation,
@@ -127,7 +127,7 @@ export function WorkspaceStoreyChip() {
             {!copyOpen && <StoreyPickerActions />}
           </HudPopoverContent>
         </HudPopover>
-      </HudItem>
+      </div>
       {!current && (
         <HudItem region="top-center" order={1}>
           <HudNotice

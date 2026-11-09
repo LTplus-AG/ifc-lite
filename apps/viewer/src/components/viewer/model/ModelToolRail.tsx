@@ -23,9 +23,8 @@ import { useTranslation, type TranslationKey } from '@/i18n';
 import { shortcutLabel, type KeyCommandId } from '@/lib/commands/shortcut-label';
 import { tourAnchor, toolAnchor } from '@/lib/tours/anchors';
 import { sessionWorkplaneBlock } from '@/lib/commands/modeling/workspace-storeys';
-import { GitBranch, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { GitBranch } from 'lucide-react';
 import { LEAVE_TOOL, RAIL_TOOLS, type RailTool } from './rail-tools';
-import { effectiveModelLayout, splitFits, useSplitWidth } from './model-layout';
 import { CompactRailGroup } from './CompactRailGroup';
 
 const TOOL_GROUPS = [...new Set(RAIL_TOOLS.map((tool) => tool.group))];
@@ -134,7 +133,6 @@ export function ModelToolRail() {
       </div>
       <div data-rail-footer className="flex w-full shrink-0 flex-col items-center gap-0.5 border-t border-border py-1.5">
         <ChangeSetsButton />
-        <PlanToggle />
         <RailButton
           id={LEAVE_TOOL.id}
           labelKey={LEAVE_TOOL.labelKey}
@@ -146,29 +144,6 @@ export function ModelToolRail() {
         />
       </div>
     </nav>
-  );
-}
-
-/**
- * Show / hide the plan beside 3D (M2.4). An expanded sidebar folds to make
- * room (#9296); off, with the reason, only when even that cannot help.
- */
-function PlanToggle() {
-  const { t } = useTranslation();
-  const pick = useViewerStore((s) => s.modelLayout);
-  const sidebarExpanded = useViewerStore((s) => s.sidebarMode === 'expanded');
-  const setModelLayout = useViewerStore((s) => s.setModelLayout);
-  const width = useSplitWidth();
-  const shown = effectiveModelLayout(pick, width) !== '3d';
-  return (
-    <RailButton
-      id="plan"
-      labelKey={shown ? 'modelWorkspace.plan.hide' : 'modelWorkspace.plan.show'}
-      Icon={shown ? PanelLeftClose : PanelLeftOpen}
-      active={shown}
-      disabledReason={shown || splitFits(width) || sidebarExpanded ? null : t('modelWorkspace.plan.noRoom')}
-      onClick={() => setModelLayout(shown ? '3d' : 'split')}
-    />
   );
 }
 

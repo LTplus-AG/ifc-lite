@@ -48,6 +48,7 @@ export function ModelWorkspaceSplit({ children }: { children: ReactNode }) {
   const pick = useViewerStore((s) => s.modelLayout);
   const picked = useViewerStore((s) => s.session?.layoutPicked === true);
   const inWorkspace = useViewerStore((s) => s.workspaceMode === 'model');
+  const [headerHost, setHeaderHost] = useState<HTMLDivElement | null>(null);
   const hostRef = useRef<HTMLDivElement>(null);
   const width = useWidth(hostRef);
   const layout = effectiveModelLayout(pick, width);
@@ -74,34 +75,27 @@ export function ModelWorkspaceSplit({ children }: { children: ReactNode }) {
   // group would otherwise restore the pane's last size, not this layout's),
   // and a plan <-> split switch (or a resize in Plan) on a mounted pane
   // resizes at once.
-  const shown = useRef<'plan' | 'split' | null>(null);
   useEffect(() => {
-    const next = showPlan ? layout : null;
-    const prev = shown.current;
-    shown.current = next;
-    // Plan is "the plan as large as the 3D minimum allows": it follows the
-    // width. Split keeps whatever the user dragged it to.
-    if (!next || (prev === next && next !== 'plan')) return;
-    const size = `${planPaneWidth(next, width)}px`;
-    if (prev) {
-      planRef.current?.resize(size);
-      return;
-    }
-    const frame = requestAnimationFrame(() => planRef.current?.resize(size));
+    if (!inWorkspace) return;
+    const frame = requestAnimationFrame(() => {
+      if (!showPlan) planRef.current?.collapse();
+      else planRef.current?.resize(`${planPaneWidth(layout as 'plan' | 'split', width)}px`);
+    });
     return () => cancelAnimationFrame(frame);
-  }, [showPlan, layout, width]);
+  }, [inWorkspace, showPlan, layout, width]);
 
   return (
     // A plain wrapper measured for `model-layout.ts`; the plan toggle is the rail's.
     <div ref={hostRef} data-model-split-width={width} className="flex h-full min-w-0 flex-1 flex-col">
+      {inWorkspace && <div ref={setHeaderHost} className="shrink-0 min-w-0" />}
       {inWorkspace && picked && pick !== '3d' && width > 0 && !splitFits(width) && (
         <output data-model-layout-notice className="shrink-0 border-b border-border px-2 py-1 text-xs text-muted-foreground">{t('modelWorkspace.plan.noRoom')}</output>
       )}
       <PanelGroup orientation="horizontal" className="h-full min-w-0 flex-1" data-model-layout={showPlan ? layout : '3d'}>
-        {showPlan && (
-          <Panel id="model-plan-panel" panelRef={planRef} defaultSize={`${planPaneWidth(layout, width)}px`} minSize={`${PLAN_MIN_PX}px`}>
-            <div data-model-plan-pane className="h-full w-full">
-              <PlanView layout={layout} />
+        {inWorkspace && (
+          <Panel id="model-plan-panel" collapsible collapsedSize="0px" panelRef={planRef} defaultSize={showPlan ? `${planPaneWidth(layout as 'plan' | 'split', width)}px` : '0px'} minSize={`${PLAN_MIN_PX}px`}>
+            <div data-model-plan-pane aria-hidden={!showPlan} inert={!showPlan} className="h-full w-full">
+              <PlanView layout={layout} headerHost={headerHost} />
             </div>
           </Panel>
         )}

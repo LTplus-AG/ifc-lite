@@ -9,15 +9,13 @@
  * toggle, Fit, the cut's state, and the Plan | Split | 3D layout.
  */
 
-import { ChevronDown, Grid3x3, Layers, Maximize } from 'lucide-react';
+import { Grid3x3, Maximize } from 'lucide-react';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { cn } from '@/lib/utils';
 import type { ModelLayout } from '@/store/slices/authoringSessionSidebar';
-import { HudPopover, HudPopoverContent, HudPopoverTrigger, HudSegmented } from '../../viewport-ui/hud';
-import { StoreyPickerActions } from '../model/storeys/StoreyPickerActions';
-import { StoreyPicker, formatStoreyElevation } from '../model/StoreyPicker';
-import { pickWorkspaceStorey, useWorkspaceStoreyGroups } from '../model/WorkspaceStoreyChip';
+import { HudSegmented } from '../../viewport-ui/hud';
+import { WorkspaceStoreyControl } from '../model/WorkspaceStoreyChip';
 import { PlanWorkplaneHeight } from '../model/WorkplaneHeightControl';
 
 export interface PlanHeaderProps {
@@ -39,40 +37,12 @@ const iconButton = 'inline-flex h-5 w-5 items-center justify-center rounded-sm t
 
 export function PlanHeader({ grid, onToggleGrid, onFit, loading, simplified, failed, onRetry, layout }: PlanHeaderProps) {
   const { t } = useTranslation();
-  const session = useViewerStore((s) => s.session);
   const setModelLayout = useViewerStore((s) => s.setModelLayout);
-  const groups = useWorkspaceStoreyGroups();
-  const current = groups.find((g) => g.modelId === session?.modelId)?.storeys.find((s) => s.expressId === session?.storeyId) ?? null;
+  const leave = useViewerStore((s) => s.exitModelWorkspace);
 
   return (
-    <div data-plan-header className="flex h-7 shrink-0 items-center gap-1 border-b border-border/60 bg-muted/20 px-1.5 text-xs">
-      <HudPopover>
-        <HudPopoverTrigger asChild>
-          <button
-            type="button"
-            data-plan-storey
-            title={t('modelWorkspace.storey.pick')}
-            className="inline-flex min-w-0 items-center gap-1.5 rounded-sm px-1 py-0.5 hover:bg-accent hover:text-accent-foreground"
-          >
-            <Layers aria-hidden className="h-3.5 w-3.5 shrink-0 text-overlay-accent" />
-            <span className="min-w-0 truncate">{current?.name ?? t('modelWorkspace.storey.none')}</span>
-            {current && (
-              <span className="shrink-0 tabular-nums text-muted-foreground">
-                {t('modelWorkspace.storey.elevation', { elevation: formatStoreyElevation(current.elevation) })}
-              </span>
-            )}
-            <ChevronDown aria-hidden className="h-3 w-3 shrink-0 opacity-70" />
-          </button>
-        </HudPopoverTrigger>
-        <HudPopoverContent align="start" className="p-1">
-          <StoreyPicker
-            groups={groups}
-            current={session ? { modelId: session.modelId, storeyId: session.storeyId } : null}
-            onPick={pickWorkspaceStorey}
-          />
-          <StoreyPickerActions />
-        </HudPopoverContent>
-      </HudPopover>
+    <div data-plan-header data-workspace-bar className="flex h-7 shrink-0 items-center gap-1 border-b border-border/60 bg-muted/20 px-1.5 text-xs">
+      <WorkspaceStoreyControl />
       <PlanWorkplaneHeight />
       {loading && <span data-plan-status="loading" className="shrink-0 text-2xs text-muted-foreground">{t('modelWorkspace.plan.cutting')}</span>}
       {simplified && (
@@ -114,11 +84,15 @@ export function PlanHeader({ grid, onToggleGrid, onFit, loading, simplified, fai
         value={layout}
         onChange={setModelLayout}
         options={[
-          { value: 'plan', label: t('modelWorkspace.layout.plan') },
-          { value: 'split', label: t('modelWorkspace.layout.split') },
-          { value: '3d', label: t('modelWorkspace.layout.3d') },
+          { value: 'plan', ariaLabel: t('modelWorkspace.layout.plan'), label: <>{t('modelWorkspace.layout.plan')} <kbd aria-hidden className="ml-1 rounded-sm border border-current/30 px-1 font-sans text-2xs">1</kbd></> },
+          { value: 'split', ariaLabel: t('modelWorkspace.layout.split'), label: <>{t('modelWorkspace.layout.split')} <kbd aria-hidden className="ml-1 rounded-sm border border-current/30 px-1 font-sans text-2xs">2</kbd></> },
+          { value: '3d', ariaLabel: t('modelWorkspace.layout.3d'), label: <>{t('modelWorkspace.layout.3d')} <kbd aria-hidden className="ml-1 rounded-sm border border-current/30 px-1 font-sans text-2xs">3</kbd></> },
         ]}
       />
+      <button type="button" data-workspace-leave onClick={leave}
+        className="shrink-0 rounded-sm px-2 py-0.5 text-muted-foreground hover:bg-accent hover:text-foreground">
+        {t('modelWorkspace.leave')}
+      </button>
     </div>
   );
 }

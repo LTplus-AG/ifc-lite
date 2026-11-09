@@ -265,18 +265,18 @@ describe('PlanView: a grabbed room corner (#6232 A4b review)', () => {
 });
 
 describe('ModelWorkspaceSplit layouts (#6232 M2.4)', () => {
-  it('Plan | Split | 3D switch from the plan header, the rail toggle brings the plan back, the 3D view never remounts', () => {
+  it('Plan | Split | 3D switch from the plan header, the workspace bar brings the plan back, the 3D view never remounts', () => {
     act(() => useViewerStore.getState().setModelLayout('split'));
     const ui = render(<><ModelToolRail /><ModelWorkspaceSplit><div data-probe-3d /></ModelWorkspaceSplit></>);
     const probe = ui.querySelector('[data-probe-3d]');
     assert.ok(ui.querySelector('[data-plan-view]'), 'split shows the plan');
-    const radio = (name: string) => [...ui.querySelectorAll('[role="radio"]')].find((b) => b.textContent === name)!;
+    const radio = (name: string) => [...ui.querySelectorAll('[role="radio"]')].find((b) => b.textContent?.startsWith(name))!;
 
     click(radio('3D'));
     assert.equal(useViewerStore.getState().modelLayout, '3d');
-    assert.equal(ui.querySelector('[data-plan-view]'), null, '3D alone');
-    click(ui.querySelector('[data-rail-tool="plan"]')!);
-    assert.equal(useViewerStore.getState().modelLayout, 'split', 'the rail toggle restores the split');
+    assert.equal(ui.querySelector('[data-model-plan-pane]')?.getAttribute('aria-hidden'), 'true', '3D alone');
+    click(radio('Split'));
+    assert.equal(useViewerStore.getState().modelLayout, 'split', 'the bar restores the split');
     click(radio('Plan'));
     assert.equal(useViewerStore.getState().modelLayout, 'plan');
     assert.ok(ui.querySelector('[data-plan-view]'));

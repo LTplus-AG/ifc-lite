@@ -75,7 +75,9 @@ renderer.onDeviceLost(async () => {
 scene in place, preserving the `Renderer`, camera, IFC geometry, model
 placements, visibility, selection and colour overrides. Concurrent calls share
 one attempt. A newer public `init()` supersedes a pending attempt with the
-`superseded` failure reason; public `destroy()` reports `renderer-destroyed`.
+existing `renderer-destroyed` reason plus optional `superseded: true` metadata.
+Public `destroy()` reports `renderer-destroyed` without that flag. The reason
+union remains unchanged, preserving existing exhaustive switches.
 Reinitializing a destroyed instance also reconnects its canvas-size observer.
 It returns a typed failure instead of presenting an incomplete
 scene when CPU geometry has been released, a finalizer or authoring transaction

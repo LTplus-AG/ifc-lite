@@ -14,7 +14,7 @@ import { roomChainInStore } from './room-store.js';
 import { polygonArea } from './room-footprint-offset.js';
 import { joinWallsInStore, resolveWallJoinAnchor } from './wall-join-edit.js';
 
-async function setup(custom = false) {
+async function setup(custom = false, snapTolerance?: number) {
   const c = new IfcCreator();
   const storey = c.addIfcBuildingStorey({ Name: 'Ground', Elevation: 0 });
   const { store } = await parseModel(new TextEncoder().encode(c.toIfc().content), { disableWorkerScan: true });
@@ -24,7 +24,8 @@ async function setup(custom = false) {
   const walls = corners.map((p, i) => addWallToStore(editor, anchor, { Start: [p[0] - (custom && i === 2 ? .26 : 0), p[1], 0], End: [...corners[(i + 1) % 4], 0], Thickness: .2, Height: 3 }).wallId);
   const partition = addWallToStore(editor, anchor, { Start: [5, 0, 0], End: [5, 6, 0], Thickness: .1, Height: 3 }).wallId;
   for (let i = 0; !custom && i < 4; i++) joinWallsInStore(editor, store, resolveWallJoinAnchor(store, view), walls[i], walls[(i + 1) % 4]);
-  const generated = generateSpacesFromWalls(editor, store, storey, custom ? { snapTolerance: .4 } : {}, view);
+  if (snapTolerance === 0) addWallToStore(editor, anchor, { Start: [5.05, 0, 0], End: [5.05, 6, 0], Thickness: .1, Height: 3 });
+  const generated = generateSpacesFromWalls(editor, store, storey, custom ? { snapTolerance: .4 } : { snapTolerance }, view);
   const areas = () => generated.emitted.map(({ result }) => {
     const chain = roomChainInStore(store, editor, result.spaceId);
     if (!chain.ok) throw new Error(chain.reason);
@@ -99,4 +100,14 @@ it('pairs gross and net perimeters with their own areas before and after movemen
     expect.objectContaining({ GrossFloorArea: 24, NetFloorArea: expect.closeTo(22.33), GrossPerimeter: 20, NetPerimeter: expect.closeTo(19.3) }),
     expect.objectContaining({ GrossFloorArea: 36, NetFloorArea: expect.closeTo(33.93), GrossPerimeter: 24, NetPerimeter: expect.closeTo(23.3) }),
   ]);
+});
+
+it('zero snap tolerance preserves exact room geometry on a no-op wall edit (#9423 round 2)', async () => {
+  // Two nearby divider axes must remain distinct: the default .1 m tolerance
+  // would merge them and alter the rooms' boundaries and quantities.
+  const s = await setup(false, 0);
+  expect(s.generated.emitted).toHaveLength(2);
+  const before = s.areas();
+  transformElementsInStore({ dataStore: s.store, view: s.view, editor: s.editor, selected: [s.partition], op: { kind: 'move', delta: [0, 0] } });
+  expect(s.areas()).toEqual(before);
 });

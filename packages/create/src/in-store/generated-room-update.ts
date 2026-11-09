@@ -46,7 +46,7 @@ export function prepareGeneratedRoomUpdate(store: IfcDataStore, editor: StoreEdi
     return generated.flatMap(space => {
       const snap = view.getPropertyValue(space.expressId, 'IfcLite_SpaceGeneration', 'SnapTolerance');
       const min = view.getPropertyValue(space.expressId, 'IfcLite_SpaceGeneration', 'MinArea');
-      const snapTolerance = typeof snap === 'number' && Number.isFinite(snap) && snap > 0 ? snap : .1;
+      const snapTolerance = typeof snap === 'number' && Number.isFinite(snap) && snap >= 0 ? snap : .1;
       const minArea = typeof min === 'number' && Number.isFinite(min) && min >= 0 ? min : .5;
       const regions = detect(storeyId, snapTolerance, minArea);
       const p = interiorPoint(space.footprint);

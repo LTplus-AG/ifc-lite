@@ -10,7 +10,7 @@
  */
 
 import '@/test/setup-dom.js';
-import { afterEach, it } from 'node:test';
+import { afterEach, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { IfcParser } from '@ifc-lite/parser';
 import { IfcAPI } from '@ifc-lite/wasm';
@@ -30,6 +30,10 @@ import { editedModelBytes } from '@/lib/export/edited-model-bytes';
 import { act } from 'react';
 import { cleanup, click, render, type } from '@/test/render.js';
 import { LayersSection } from '@/components/viewer/model-inspector/LayersSection';
+import { toast } from '@/components/ui/toast';
+import { parseModelAuthoringBatch } from '@/lib/actions/model-authoring';
+import { previewModelAuthoring } from '@/lib/actions/model-authoring-preview';
+import { commitModelAuthoring } from '@/lib/actions/model-authoring-commit';
 import { MODEL, requests, seedNativeSdkModel as seed, nativeSdkMeshes as meshes, nativeSdkUndoDepth as depth } from '@/test/native-sdk-model';
 
 afterEach(() => { cleanup(); setRemeshClientFactory(null); });
@@ -303,4 +307,28 @@ it('an occurrence whose body cannot follow its type keeps it and is named, while
   assert.match(notice.textContent ?? '', /1 element kept its previous body/);
   assert.match(notice.textContent ?? '', /Wall: .*IfcRectangleProfileDef/, 'named, with the reason');
   assert.equal(JSON.stringify(meshes().filter(mesh => mesh.expressId === NATIVE_WALL).map(mesh => [...mesh.positions])), nativeBefore, 'and it keeps the body it had');
+});
+
+it('a reviewed typing whose element cannot follow its layered type names it, as the inspector does (#9296)', async t => {
+  if (!ensureRoomWasm(t)) return;
+  const { adapter } = await seed();
+  const authored = adapter.addWall(MODEL, STOREY, { Start: [20, 20, 0], End: [24, 20, 0], Thickness: .2, Height: 3 }).expressId;
+  const layered = createElementType(MODEL, 'wall', 'WT-300', authored);
+  assert.ok(layered !== null);
+  assert.ok(applyMaterialLayers(MODEL, { kind: 'wall', target: 'type', elementId: authored, typeId: layered, layers: [{ thickness: .3, material: null }] }) !== null);
+  await landed();
+  const errors: string[] = [];
+  mock.method(toast, 'error', (message: string) => { errors.push(message); });
+  t.after(() => mock.restoreAll());
+  // Retype the sample's arbitrary-profile wall onto the 300 mm layered type through a reviewed proposal.
+  const batch = parseModelAuthoringBatch(JSON.stringify({ version: 1, kind: 'model.authoring', title: 'Retype', units: 'm', frame: 'storey-local',
+    operations: [{ op: 'type.assign', target: { globalId: '2JUHrTM_j3UxZiBnyBfByx', ifcClass: 'IfcWall', name: 'Wall' }, expected: 'WAL100',
+      type: { globalId: effectiveGuid(layered), name: 'WT-300' } }] }));
+  const preview = previewModelAuthoring(s(), batch);
+  assert.equal(preview.rows[0].status, 'ready', preview.rows[0].issue ?? '');
+  const outcome = commitModelAuthoring(useViewerStore, preview, new Set([0]), 'test');
+  assert.ok(outcome.ok, outcome.ok ? '' : outcome.detail ?? outcome.reason);
+  assert.equal(errors.length, 1, 'one notice for the row');
+  assert.match(errors[0], /1 element kept its previous body/);
+  assert.match(errors[0], /Wall: .*IfcRectangleProfileDef/, 'it names the wall and the reason');
 });

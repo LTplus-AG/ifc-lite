@@ -181,7 +181,8 @@ export function resizeLayeredInStore(target: EditTarget, plan: readonly LayerRes
   const all = attempt(plan);
   const sized: LayerResizeStep[] = all ? [...plan] : [];
   const changed = all ?? [];
-  if (!all) {
+  // A one-step plan that refused has already been tried alone (and its refusal noted).
+  if (!all && plan.length > 1) {
     for (const step of plan) {
       const alone = attempt([step]);
       if (alone) { sized.push(step); changed.push(...alone); }

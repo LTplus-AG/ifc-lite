@@ -23,7 +23,9 @@
 import { effectiveMetadataRecord, type IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { EditTarget } from './edit/target.js';
-import { liveEntityConforms, readRelatedLists } from './resolve-relations.js';
+import { liveEntityConforms, readRelatedLists, resolveAuthoringAnchor } from './resolve-relations.js';
+import { fromNativeLength } from './anchor.js';
+import { addMaterialLayerSetUsageToStore, assignMaterialInStore } from './material.js';
 import { typeOccurrencesInStore } from './type-layer-thickness.js';
 
 /** A model's data and its live overlay (null: the file as parsed). */
@@ -62,9 +64,12 @@ export function typeLayerSetInStore(target: Reader, typeId: number, own = ownMat
 /**
  * Before `typeId` is given `newLayerSetId`: point every inheriting
  * occurrence's usage at the new set, keeping a wall centred on its axis when it
- * was. A usage that also places the set on an element that does not inherit
- * from this type is left alone (that element differs, and keeps it). Returns
- * the occurrences re-pointed; the caller sizes them with the rest.
+ * was. A usage that also places the set on an element that does NOT inherit
+ * from this type is split: the inheriting occurrences get a usage of their own
+ * on the new set (same direction and sense), and the other element keeps the
+ * old one. So every occurrence `typeLayerScopeInStore` counts as inheriting,
+ * and the impact preview resizes, follows. Returns the occurrences re-pointed;
+ * the caller sizes them with the rest.
  */
 export function retargetInheritingLayerUsagesInStore(target: EditTarget, typeId: number, newLayerSetId: number): number[] {
   const scope = typeLayerScopeInStore(target, typeId);
@@ -76,18 +81,37 @@ export function retargetInheritingLayerUsagesInStore(target: EditTarget, typeId:
     if (rel.relatingId !== undefined) users.set(rel.relatingId, [...(users.get(rel.relatingId) ?? []), ...rel.relatedIds]);
   }
   const oldTotal = nativeTotal(target, scope.layerSetId), newTotal = nativeTotal(target, newLayerSetId);
+  /** The usage's offset on the new set: a wall's layers centred on its axis start half the total off it, and stay centred. */
+  const offsetFor = (attributes: unknown[] | null): number => {
+    const offset = real(attributes?.[3]);
+    const centred = String(attributes?.[1]).replace(/\./g, '') === 'AXIS2' && oldTotal !== null && newTotal !== null
+      && Math.abs(offset + oldTotal / 2) <= 1e-9 * Math.max(1, oldTotal);
+    return centred ? -newTotal! / 2 : offset;
+  };
   const retargeted: number[] = [];
   for (const usage of new Set(scope.inheriting.map(id => own.get(id)).filter((id): id is number => id !== undefined))) {
     const placed = users.get(usage) ?? [];
-    if (!placed.every(id => inheriting.has(id))) continue;
     const attributes = attributesOf(target, usage);
-    target.editor.setPositionalAttribute(usage, 0, `#${newLayerSetId}`);
-    const offset = real(attributes?.[3]);
-    // A wall's layers centred on its axis start half the total off it; keep them centred.
-    if (String(attributes?.[1]).replace(/\./g, '') === 'AXIS2' && oldTotal !== null && newTotal !== null && Math.abs(offset + oldTotal / 2) <= 1e-9 * Math.max(1, oldTotal)) {
-      target.editor.setPositionalAttribute(usage, 3, -newTotal / 2);
+    const offset = offsetFor(attributes);
+    if (placed.every(id => inheriting.has(id))) {
+      target.editor.setPositionalAttribute(usage, 0, `#${newLayerSetId}`);
+      if (offset !== real(attributes?.[3])) target.editor.setPositionalAttribute(usage, 3, offset);
+      retargeted.push(...placed);
+      continue;
     }
-    retargeted.push(...placed);
+    // Shared with an element that keeps the old set: the inheriting ones move to a usage of their own.
+    const followers = placed.filter(id => inheriting.has(id));
+    const anchor = resolveAuthoringAnchor(target.dataStore, target.view);
+    const token = (value: unknown) => String(value).replace(/\./g, '');
+    const direction = token(attributes?.[1]), sense = token(attributes?.[2]);
+    const split = addMaterialLayerSetUsageToStore(target.editor, anchor, {
+      ForLayerSet: newLayerSetId,
+      LayerSetDirection: direction === 'AXIS1' || direction === 'AXIS3' ? direction : 'AXIS2',
+      DirectionSense: sense === 'NEGATIVE' ? 'NEGATIVE' : 'POSITIVE',
+      OffsetFromReferenceLine: fromNativeLength(anchor, offset),
+    }).usageId;
+    assignMaterialInStore(target.editor, anchor, split, followers, readRelatedLists(target.dataStore, 'IfcRelAssociatesMaterial', target.view));
+    retargeted.push(...followers);
   }
   return retargeted;
 }

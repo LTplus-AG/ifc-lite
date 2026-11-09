@@ -3,7 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { describe, expect, it } from 'vitest';
 import { IfcCreator } from '../index.js';
-import { effectiveMetadataRecord, parseModel } from '@ifc-lite/parser';
+import { readFile } from 'node:fs/promises';
+import { IfcParser, effectiveMetadataRecord, parseModel } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import { resolveSpatialAnchor } from './resolve-anchor.js';
 import { resolveAuthoringAnchor, readRelatedLists } from './resolve-relations.js';
@@ -133,5 +134,42 @@ describe('a layered type drives its occurrences, and what they bound follows (#9
     expect(Number(usage[3]), 'and stays centred on the wall axis').toBeCloseTo(-.15, 9);
     expect(typeLayerScopeInStore(m.target, m.type).inheriting).toEqual([m.walls[0], m.walls[1]]);
     expect(takeLayerThicknessOutcome(m.editor).refused).toEqual([]);
+  });
+
+  it('a usage the type\'s wall shares with an untyped wall is split: the preview and the edit both move only the typed one (#9296)', async () => {
+    const m = await typedRoom();
+    m.layerType(.2);
+    const typeSet = typeLayerScopeInStore(m.target, m.type).layerSetId!;
+    // walls[1] (typed) and walls[2] (untyped) are placed by ONE usage of the type's set.
+    const shared = m.usageOn(m.walls[1], typeSet, .2);
+    assignMaterialInStore(m.editor, m.anchor, shared, [m.walls[1], m.walls[2]], readRelatedLists(m.store, 'IfcRelAssociatesMaterial', m.view));
+    expect(typeLayerScopeInStore(m.target, m.type).inheriting).toEqual([m.walls[0], m.walls[1]]);
+    const planned = previewTypeLayerImpact(m.target, m.type, .3).resized.map(r => r.id);
+    takeLayerThicknessOutcome(m.editor);
+    m.layerType(.3);
+    const applied = takeLayerThicknessOutcome(m.editor);
+    expect(applied.resized, 'what was planned is what is applied').toEqual(planned);
+    expect(applied.refused).toEqual([]);
+    expect(m.walls.map(id => readWallMetres(m.target, id)?.thickness)).toEqual([.3, .3, .2, .2]);
+    const newSet = typeLayerScopeInStore(m.target, m.type).layerSetId!;
+    const own = (wall: number) => readRelatedLists(m.store, 'IfcRelAssociatesMaterial', m.view).find(rel => rel.relatedIds.includes(wall))!.relatingId!;
+    expect(effectiveMetadataRecord(m.store, own(m.walls[1]), m.view)!.attributes[0], 'the typed wall has a usage of its own on the new set').toBe(newSet);
+    expect(own(m.walls[2]), 'the untyped wall keeps the shared usage').toBe(shared);
+    expect(effectiveMetadataRecord(m.store, shared, m.view)!.attributes[0], 'on the old set').toBe(typeSet);
+  });
+
+  it('a lone occurrence that cannot follow is reported once, in the preview and in the edit (#9296)', async () => {
+    const bytes = await readFile(new URL('../../../../apps/viewer/public/samples/hello-wall.ifc', import.meta.url));
+    const store = await new IfcParser().parseColumnar(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer, { disableWorkerScan: true });
+    const view = new MutablePropertyView(null, 'm'), editor = new StoreEditor(store, view);
+    const target = { dataStore: store, view, editor };
+    // The sample's WAL100 types one wall, #1222, whose body is an arbitrary outline it cannot resize.
+    expect(typeOccurrencesInStore(target, 388)).toEqual([1222]);
+    expect(previewTypeLayerImpact(target, 388, .25).refused.map(r => r.id)).toEqual([1222]);
+    const anchor = resolveAuthoringAnchor(store, view);
+    const set = addMaterialLayerSetToStore(editor, anchor, { MaterialLayers: [{ LayerThickness: .25 }] }).layerSetId;
+    assignMaterialInStore(editor, anchor, set, [388], readRelatedLists(store, 'IfcRelAssociatesMaterial', view));
+    applyLayerThicknessInStore(target, [1222]);
+    expect(takeLayerThicknessOutcome(editor).refused.map(r => r.id)).toEqual([1222]);
   });
 });

@@ -67,7 +67,7 @@ describe('useWebGpuOpenGuard pending-probe notice (G1)', () => {
     const settle = pendingAdapter();
     render(<OpenProbe />);
     let opened = 0;
-    const attempt = () => { if (guard(attempt)) opened += 1; };
+    const attempt = () => { if (guard(attempt, { resumeWhenSupported: true })) opened += 1; };
     act(attempt);
     assert.equal(opened, 0);
     assert.equal(useViewerStore.getState().error, viewportLightingEn[CHECKING], 'the drop explains the pending check');
@@ -75,6 +75,31 @@ describe('useWebGpuOpenGuard pending-probe notice (G1)', () => {
     await settleProbe(settle, {});
     assert.equal(useViewerStore.getState().error, null, '"still being checked" must not outlive the check');
     assert.equal(opened, 1, 'the dropped model opens once WebGPU turns out to be supported');
+  });
+
+  it('Retry pressed while the probe is pending opens the model once when the probe reports supported (#9493 review)', async () => {
+    const settle = pendingAdapter();
+    render(<OpenProbe />);
+    let opened = 0;
+    const attempt = () => { if (guard(attempt, { resumeWhenSupported: true })) opened += 1; };
+    act(attempt);
+    const retry = useViewerStore.getState().lastLoadRetry;
+    assert.ok(retry, 'the checking card offers Retry');
+    act(retry); // waits on the same pending probe
+
+    await settleProbe(settle, {});
+    assert.equal(opened, 1, `Retry and the settled check must not both open the model (opened ${opened} times)`);
+  });
+
+  it('an open that needs a user gesture is not replayed when the probe reports supported; the card just clears (#9493 review)', async () => {
+    const settle = pendingAdapter();
+    render(<OpenProbe />);
+    let opened = 0;
+    const attempt = () => { if (guard(attempt)) opened += 1; };
+    act(attempt);
+    await settleProbe(settle, {});
+    assert.equal(useViewerStore.getState().error, null);
+    assert.equal(opened, 0, 'a picker-style open must wait for the user to click again');
   });
 
   it('an open with no retry just clears the notice when the probe reports supported', async () => {

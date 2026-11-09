@@ -18,13 +18,24 @@ import { useViewerStore } from '@/store';
 import { showLoadError } from '@/lib/analytics';
 import { getWebGPUStatus, retryWebGPU, useWebGPU, type WebGPUStatus } from './useWebGPU';
 
+export interface WebGpuOpenGuardOptions {
+  /**
+   * Run `retry` by itself once a pending capability check reports WebGPU
+   * supported. Opt in only for an open that is safe to replay without a fresh
+   * user gesture (a dropped file, a `?model=` URL). A picker or other
+   * activation-gated action must not set it: replayed from an effect, it has no
+   * user activation. Without it, a passing check just clears the notice.
+   */
+  resumeWhenSupported?: boolean;
+}
+
 export interface WebGpuOpenGuard {
   webgpu: WebGPUStatus;
   /**
    * True when WebGPU is supported. Otherwise false and shows a reason in the
    * load-error card, including while the adapter check is still pending.
    */
-  guard: (retry?: () => void) => boolean;
+  guard: (retry?: () => void, options?: WebGpuOpenGuardOptions) => boolean;
 }
 
 const CHECKING_KEY = 'viewportLighting.container.loadErrorCard.webgpuChecking';
@@ -84,7 +95,7 @@ export function useWebGpuOpenGuard(): WebGpuOpenGuard {
     }
   }, [t, revision, webgpu]);
 
-  const guard = useCallback((retry?: () => void): boolean => {
+  const guard = useCallback((retry?: () => void, options?: WebGpuOpenGuardOptions): boolean => {
     const status = getWebGPUStatus();
     if (status.supported) return true;
     // Explains a drop/open even while the adapter check is still pending,
@@ -95,6 +106,8 @@ export function useWebGpuOpenGuard(): WebGpuOpenGuard {
       const current = useViewerStore.getState();
       if (retryPending || current.lastLoadRetry !== retryAfterProbe) return;
       retryPending = true;
+      // Retry now owns this open; the settled check must not run it as well.
+      if (pendingNotice?.retryHandle === retryAfterProbe) pendingNotice = null;
       if (getWebGPUStatus().supported) {
         retry();
         return;
@@ -112,7 +125,8 @@ export function useWebGpuOpenGuard(): WebGpuOpenGuard {
     } : null;
     const checking = probeOf(status).kind === 'checking';
     const message = t(checking ? CHECKING_KEY : UNSUPPORTED_KEY);
-    pendingNotice = checking ? { message, retryHandle: retryAfterProbe, open: retry ?? null } : null;
+    const open = options?.resumeWhenSupported ? retry ?? null : null;
+    pendingNotice = checking ? { message, retryHandle: retryAfterProbe, open } : null;
     showLoadError(setError, setLastLoadRetry, message, checking ? 'webgpu_checking' : 'webgpu_unsupported', retryAfterProbe);
     return false;
   }, [t]);

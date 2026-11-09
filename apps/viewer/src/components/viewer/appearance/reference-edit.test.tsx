@@ -163,7 +163,7 @@ test('joining a room during reference placement settles the applying status', as
   let release!: () => void;
   const held = new Promise<void>(resolve => { release = resolve; });
   let placing = false;
-  mock.method(renderer.getReferenceImages(), 'set', async item => {
+  mock.method(renderer.getReferenceImages(), 'set', async (item: Parameters<ReturnType<Renderer['getReferenceImages']>['set']>[0]) => {
     if (!item.id.startsWith('appearance-draft:')) { placing = true; await held; }
   });
   click(button(ui, 'Place reference'));

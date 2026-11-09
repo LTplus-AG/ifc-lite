@@ -37,7 +37,7 @@ function Harness({ initialEnabled = true, queryScope = false }: { initialEnabled
   const c = useAppearanceAssignments(base, enabled);
   return <><button onClick={() => setEnabled(true)}>Use image appearance</button><button onClick={() => { setModelId('b'); useViewerStore.getState().setActiveModel('b'); }}>Choose model b</button>
     <AppearanceAssignments controller={c} base={base} />
-    <p role="status" data-operation-status={c.status}>{resolveLocalizedMessage(c.notice, t)}</p>
+    <output data-operation-status={c.status}>{resolveLocalizedMessage(c.notice, t)}</output>
     <button disabled={c.status !== 'ready' || c.original} onClick={() => { void c.apply(); }}>Apply assignments</button>
     <button onClick={c.cancel}>Cancel assignments</button>
   </>;

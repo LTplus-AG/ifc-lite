@@ -117,6 +117,9 @@ for (const action of ['replace', 'stop', 'unmount', 'model-choice'] as const) it
   else if (action === 'unmount') cleanup();
   else { const stop = ui.querySelector<HTMLButtonElement>('button[aria-label="Stop generating"]'); assert.equal(Boolean(stop), true); act(() => stop!.click()); }
   assert.equal(signals.every(signal => signal.aborted), true, 'retiring the run cancels the API turn');
+  if (action === 'stop') assert.equal(ui.querySelectorAll('button[aria-label="Stop generating"]').length, 0, 'Stop restores the send control');
+  await advance(0);
+  assert.equal(ui.textContent?.toLowerCase().includes('aborted'), false, 'retired API failures do not populate the new context');
   cleanup(); clearApiKeys();
 });
 
@@ -169,6 +172,7 @@ it('playground an old API completion cannot clear a replacement run or show its 
   t.after(() => { cleanup(); clearApiKeys(); });
   updateApiKeys({ anthropicKey: 'sk-ant-test' });
   const replies: Array<(response: Response) => void> = [];
+  t.after(() => { for (const finish of replies) finish(jsonResponse({ id: 'disposed', type: 'message', role: 'assistant', content: [], stop_reason: 'end_turn', usage: { input_tokens: 0, output_tokens: 0 } })); });
   t.mock.method(globalThis, 'fetch', () => new Promise<Response>(resolve => replies.push(resolve)));
   const ui = render(<PlaygroundChat model={await oneWallModel()} />);
   await send(ui, 'first');

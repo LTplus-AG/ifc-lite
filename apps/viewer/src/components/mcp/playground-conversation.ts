@@ -224,7 +224,8 @@ export async function runConversation(opts: RunOpts): Promise<void> {
   const wantsVerbose = (() => {
     try {
       return typeof window !== 'undefined' && window.localStorage?.getItem('ifclite-playground-debug') === '1';
-    } catch {
+    } catch (error) {
+      console.warn('[playground-chat] Debug preference unavailable', error);
       return false;
     }
   })();

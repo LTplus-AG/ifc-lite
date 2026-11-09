@@ -5,6 +5,9 @@
 import type { Catalogue } from '../../registry';
 
 export const commandPaletteDe = {
+  "commandPalette.aliases.bulk": "Eigenschaften gesammelt bearbeiten Abfrage Attribut Bauphase",
+  "commandPalette.aliases.classes": "Klassen Sichtbarkeit Räume Öffnungen Anmerkungen Raster Ebenen zusammenführen schnelle exakte Geometrie",
+  "commandPalette.aliases.import": "CSV Tabelle Daten Zuordnung importieren",
   "commandPalette.availability.camera": "Warten, bis die Viewer-Kamera bereit ist",
   "commandPalette.availability.editor": "Bearbeitungsrechte erforderlich",
   "commandPalette.availability.entity": "Zuerst ein IFC-Element auswählen",
@@ -15,10 +18,12 @@ export const commandPaletteDe = {
   "commandPalette.availability.ifc": "Zuerst ein Modell mit IFC-Daten laden",
   "commandPalette.availability.loading": "Warten, bis das Modell vollständig geladen ist",
   "commandPalette.availability.model": "Zuerst ein Modell laden",
+  "commandPalette.availability.redo": "Keine Änderungen im Arbeitsbereich zum Wiederholen",
   "commandPalette.availability.refresh": "Modelle erneut mit Dateizugriff öffnen, um sie zu aktualisieren",
   "commandPalette.availability.reopen": "Datei erneut vom Datenträger öffnen; die gespeicherte Kopie ist nicht mehr verfügbar",
   "commandPalette.availability.schedule": "Zuerst einen Zeitplan erstellen oder importieren",
   "commandPalette.availability.selection": "Zuerst Elemente im Viewer auswählen",
+  "commandPalette.availability.undo": "Keine Änderungen im Arbeitsbereich zum Rückgängigmachen",
   "commandPalette.availability.workplane": "Zuerst eine gültige Arbeitsebene wählen",
   "commandPalette.state.off": "Aus",
   "commandPalette.state.on": "Ein",

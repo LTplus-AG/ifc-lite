@@ -113,4 +113,9 @@ export const commandPaletteIt = {
   "commandPalette.availability.gpuChecking": "Attendi il completamento della verifica WebGPU",
   "commandPalette.availability.gpu": "WebGPU non è disponibile — consulta la schermata iniziale per assistenza",
   "commandPalette.availability.reopen": "Riapri il file dal disco; la copia nella cache non è più disponibile",
+  "commandPalette.availability.undo": "Nessuna modifica dello spazio di lavoro da annullare (le cronologie IDS e della pianificazione sono separate)",
+  "commandPalette.availability.redo": "Nessuna modifica dello spazio di lavoro da ripristinare (le cronologie IDS e della pianificazione sono separate)",
+  "commandPalette.aliases.bulk": "modifica in blocco proprietà query imposta attributo fase di costruzione",
+  "commandPalette.aliases.import": "CSV foglio di calcolo dati mappatura importazione",
+  "commandPalette.aliases.classes": "classe visibilità spazi aperture annotazioni griglie unisci livelli geometria rapida esatta",
 } satisfies Catalogue;

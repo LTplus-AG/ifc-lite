@@ -79,6 +79,8 @@ export function planPaneWidth(layout: 'plan' | 'split', groupWidth: number): num
 let splitWidth = 0;
 const listeners = new Set<() => void>();
 
+export function getSplitWidth(): number { return splitWidth; }
+
 export function publishSplitWidth(width: number): void {
   if (width === splitWidth) return;
   splitWidth = width;

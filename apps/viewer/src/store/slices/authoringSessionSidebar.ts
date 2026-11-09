@@ -57,7 +57,7 @@ export function persistModelLayout(layout: ModelLayout): void {
 
 /** Show the Model inspector; returns what to restore on exit, or null when nothing was taken over. */
 export function showModelInspector(s: ViewerState): SidebarRestore | null {
-  if (s.isMobile || s.sidebarActivePanel === 'model') return null;
+  if (s.isMobile) return null;
   const restore: SidebarRestore = { panel: s.sidebarActivePanel, mode: s.sidebarMode };
   s.showWorkspacePanel('model');
   return restore;

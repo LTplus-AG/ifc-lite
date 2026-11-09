@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { getSplitWidth, splitFits } from '@/components/viewer/model/model-layout';
+
 /**
  * The authoring session (charter #6232, WP2): which workspace the viewer is
  * in, and — in the Model workspace — which model, storey and workplane new
@@ -188,6 +190,9 @@ export const createAuthoringSessionSlice: StateCreator<ViewerState, [], [], Auth
     session: null,
     modelLayout: loadModelLayout(),
     setModelLayout: (modelLayout) => {
+      const s = get();
+      if (modelLayout !== '3d' && s.workspaceMode === 'model' && s.sidebarMode === 'expanded'
+        && getSplitWidth() > 0 && !splitFits(getSplitWidth())) s.setSidebarMode('collapsed');
       persistModelLayout(modelLayout);
       set({ modelLayout });
     },

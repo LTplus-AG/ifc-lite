@@ -20,7 +20,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { useViewerStore } from '@/store';
 import { fixtureModel } from '@/test/store-fixture.js';
-import { __resetFederationLoadGate } from './federationLoadGate.js';
+import { __getFederationLoadGateStats, __resetFederationLoadGate, acquireFederationLoadSlot, releaseFederationLoadSlot } from './federationLoadGate.js';
 import { installModelLoadCanceller } from './modelLoadCanceller.js';
 import { useIfcFederation } from './useIfcFederation.js';
 import type { LoadTarget } from './useIfcLoader.js';
@@ -117,4 +117,17 @@ it('a newer federated add does not supersede a queued one', async () => {
   await loadsStarted(2);
   started[1].register();
   assert.equal(await queued, 'queued');
+});
+
+it('an add admitted just before a primary starts still stands down and frees its slot (L6)', async () => {
+  const blocker = await acquireFederationLoadSlot(1000);
+  const queued = hookApi!.addModel(large('queued.ifc'), { modelId: 'queued' });
+  await new Promise((r) => setTimeout(r, 0));
+  // Admission and the primary land in one turn, before the add resumes.
+  releaseFederationLoadSlot(blocker);
+  releases.push(installModelLoadCanceller('primary', () => {}));
+
+  assert.equal(await queued, null);
+  assert.equal(started.length, 0, 'the add never loaded');
+  assert.equal(__getFederationLoadGateStats().activeCount, 0, 'its admitted slot is released');
 });

@@ -112,6 +112,26 @@ describe('federationLoadGate', () => {
     releaseFederationLoadSlot(behindId);
   });
 
+  it('aborting the FIFO head admits a waiter behind it that already fits (L6)', async () => {
+    // 4000 + 2000 of the default 6144 MB budget are taken.
+    const blockerA = await acquireFederationLoadSlot(1000);
+    const blockerB = await acquireFederationLoadSlot(500);
+    const superseded = new AbortController();
+    const big = acquireFederationLoadSlot(1000, superseded.signal);
+    let smallAdmitted = false;
+    const small = acquireFederationLoadSlot(50).then((id) => { smallAdmitted = true; return id; });
+    releaseFederationLoadSlot(blockerB); // 2144 free: small fits, but waits behind big (FIFO)
+    await new Promise((r) => setTimeout(r, 10));
+    assert.strictEqual(smallAdmitted, false);
+
+    superseded.abort();
+    await assert.rejects(big, { name: 'AbortError' });
+    const smallId = await small;
+    assert.strictEqual(smallAdmitted, true, 'the waiter behind the aborted head is admitted at once');
+    releaseFederationLoadSlot(blockerA);
+    releaseFederationLoadSlot(smallId);
+  });
+
   it('a signal aborted before acquiring rejects without taking a slot (L6)', async () => {
     const superseded = new AbortController();
     superseded.abort();

@@ -112,6 +112,7 @@ for (const [when, at] of [['before', BEFORE_PARSE], ['during', IN_PARSE]] as con
     cleanups.push(installModelLoadCanceller('primary', () => {}));
     primaryCancel = useViewerStore.getState().activeLoadCanceller;
     useViewerStore.getState().addModel(fixtureModel('primary'));
+    useViewerStore.getState().setProgress({ phase: 'Opening tower.ifc', percent: 5 });
   }, at);
 
   await act(async () => hookApi!.loadFederatedIfcx([ifcxFile('base.ifcx')]));
@@ -121,6 +122,7 @@ for (const [when, at] of [['before', BEFORE_PARSE], ['during', IN_PARSE]] as con
   assert.deepEqual([...after.layerStack], [], 'the superseded composition publishes no layer stack');
   assert.equal(after.loading, true, 'the newer load keeps its spinner');
   assert.equal(after.activeLoadCanceller, primaryCancel, 'and its Cancel');
+  assert.deepEqual(after.progress, { phase: 'Opening tower.ifc', percent: 5 }, 'the superseded parse reports no more progress');
   assert.equal(compositionRow()?.outcome, 'cancelled');
 });
 
@@ -148,4 +150,18 @@ it('a composition cancelled before its parse fails reports no error over the vie
   assert.equal(useViewerStore.getState().error, null, 'a cancelled composition owns no error');
   assert.equal(useViewerStore.getState().lastLoadRetry, null);
   assert.equal(compositionRow()?.outcome, 'cancelled');
+});
+
+it('a composition that fails on its own reports the error and ends its load UI', async () => {
+  const bad = new File(['{ not json'], 'base.ifcx', { type: 'application/json' });
+
+  await act(async () => hookApi!.loadFederatedIfcx([bad]));
+
+  const after = useViewerStore.getState();
+  assert.match(after.error ?? '', /Federated IFCX loading failed/);
+  assert.ok(after.lastLoadRetry, 'with a Retry');
+  assert.equal(after.loading, false, 'no spinner is left behind');
+  assert.equal(after.activeLoadCanceller, null, 'and no Cancel');
+  assert.equal(after.loadingFileName, null);
+  assert.equal(compositionRow()?.outcome, 'failed');
 });

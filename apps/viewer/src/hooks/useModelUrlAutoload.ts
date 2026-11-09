@@ -88,7 +88,7 @@ export function useModelUrlAutoload(): void {
       // to see; the autoload then drops out quietly (L9).
       const supersession = watchLoadSupersession('any');
       try {
-        const res = await fetch(source.href);
+        const res = await fetch(source.href, { signal: supersession.signal });
         if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
         const blob = await res.blob();
         if (supersession.signal.aborted) return;

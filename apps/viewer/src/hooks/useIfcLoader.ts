@@ -1196,6 +1196,7 @@ export function useIfcLoader() {
                 void revalidateServedCacheHit({
                   file,
                   target,
+                  modelId,
                   identity: placementIdentity,
                   cacheKey,
                   expectedHash: revalidateAgainst,

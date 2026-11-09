@@ -183,8 +183,10 @@ describe('?model= autoload (#5851)', () => {
     setModelParam('model.ifc');
     let respond!: () => void;
     let fetched = false;
-    globalThis.fetch = (async () => {
+    let downloadSignal: AbortSignal | null | undefined;
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
       fetched = true;
+      downloadSignal = init?.signal;
       await new Promise<void>((resolve) => { respond = resolve; });
       return new Response(new Blob(['ISO-10303-21;']), { status: 200 });
     }) as typeof fetch;
@@ -203,6 +205,7 @@ describe('?model= autoload (#5851)', () => {
     } finally {
       stop();
     }
+    assert.equal(downloadSignal?.aborted, true, 'the superseded download is aborted');
     assert.deepEqual(loadingFiles, [], 'the autoload never starts its load');
     assert.equal(useViewerStore.getState().error, null, 'and reports nothing');
   });

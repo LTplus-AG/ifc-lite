@@ -169,3 +169,72 @@ it('a tray Cancel of a primary ends the federated add joining its scene and retu
     .map((job) => job.outcome);
   assert.deepEqual(outcomes, ['cancelled', 'cancelled'], 'both rows read as cancelled');
 });
+
+// Every format's own end (completed or failed), federated beside a running
+// load and alone, primary alone: contributed by the independent review of
+// #9544, which killed a reverted settle at the IFCX and LandXML end sites.
+function ifcxFile(name: string, broken = false): File {
+  const json = { header: { id: 'h', ifcxVersion: 'ifcx-alpha', dataVersion: '1', author: 't', timestamp: '' }, imports: [], schemas: {}, data: [] };
+  const text = JSON.stringify(json);
+  return new File([broken ? text.slice(0, -3) + '{{{' : text], name, { type: 'application/json' });
+}
+const landXml = `<?xml version="1.0"?>
+<LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2">
+  <Units><Metric areaUnit="squareMeter" linearUnit="meter" volumeUnit="cubicMeter" temperatureUnit="celsius" pressureUnit="milliBars" elevationUnit="meter"/></Units>
+  <Surfaces><Surface name="TIN"><Definition surfType="TIN"><Pnts><P id="1">0 0 0</P><P id="2">0 10 0</P><P id="3">10 0 2</P></Pnts><Faces><F>1 2 3</F></Faces></Definition></Surface></Surfaces>
+</LandXML>`;
+
+const formatEnds = [
+  { label: 'an IFCX that parses', file: () => ifcxFile('quick.ifcx') },
+  { label: 'an IFCX that fails', file: () => ifcxFile('quick.ifcx', true) },
+  { label: 'a LandXML that parses', file: () => new File([landXml], 'quick.xml', { type: 'application/xml' }) },
+  { label: 'a LandXML that fails', file: () => new File(['<?xml version="1.0"?><LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2"><Surfaces><Surface'], 'quick.xml', { type: 'application/xml' }) },
+] as const;
+
+for (const end of formatEnds) {
+  it(`a federated add of ${end.label} ending first leaves the running load its UI (L2)`, async () => {
+    const held = heldFile('held.glb', buildTriangleGlb(9));
+    let pending!: Promise<void>;
+    await act(async () => {
+      pending = loader!.loadFile(held.file, { kind: 'federated', modelId: 'held' });
+      await held.started;
+    });
+    const heldCancel = useViewerStore.getState().activeLoadCanceller;
+    assert.ok(heldCancel);
+    useViewerStore.getState().setGeometryStreamingActive(true);
+
+    await act(async () => { await loader!.loadFile(end.file(), { kind: 'federated', modelId: 'quick' }); });
+
+    const during = useViewerStore.getState();
+    assert.equal(during.loading, true, 'held.glb is still loading');
+    assert.equal(during.geometryStreamingActive, true);
+    assert.equal(during.activeLoadCanceller, heldCancel);
+    await act(async () => { held.release(); await pending; });
+    const after = useViewerStore.getState();
+    assert.equal(after.loading, false);
+    assert.equal(after.activeLoadCanceller, null);
+  });
+
+  for (const kind of ['federated', 'primary'] as const) {
+    it(`a ${kind} load of ${end.label} alone ends its spinner and Cancel`, async () => {
+      await act(async () => { await loader!.loadFile(end.file(), { kind, modelId: 'quick' }); });
+      const after = useViewerStore.getState();
+      assert.equal(after.loading, false, 'no spinner is left behind');
+      assert.equal(after.activeLoadCanceller, null);
+      assert.equal(after.loadingFileName, null);
+    });
+  }
+}
+
+it('a primary Cancel after a federated add failed beside it leaves no spinner (L5)', async () => {
+  const primary = heldFile('primary.glb', buildTriangleGlb(3));
+  let primaryLoad!: Promise<void>;
+  await act(async () => {
+    primaryLoad = loader!.loadFile(primary.file, { kind: 'primary', modelId: 'primary' });
+    await primary.started;
+  });
+  await act(async () => { await loader!.loadFile(new File(['0 0 0\n'], 'bad.xyz'), { kind: 'federated', modelId: 'bad' }); });
+  const job = loadJob('primary.glb');
+  await act(async () => { cancelActivity(job); primary.release(); await primaryLoad; });
+  assert.equal(useViewerStore.getState().loading, false);
+});

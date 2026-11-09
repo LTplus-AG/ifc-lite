@@ -121,6 +121,11 @@ export function useIfcFederation(
     } finally {
       supersession.stop(); // from here this add's own load is what a primary supersedes
     }
+    // Admitted, but a primary may have started before this add resumed.
+    if (supersession.signal.aborted) {
+      releaseFederationLoadSlot(gateSlot);
+      return null;
+    }
     try {
       // (Removed the legacy→Map migration: every model — including model #1 —
       // now registers in the FederationRegistry + models Map via loadFile's

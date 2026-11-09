@@ -4,7 +4,7 @@
 
 /** Keep generated rooms attached by their bounding wall identities, across edits. */
 import { polygonPerimeter } from './base-quantities-measure.js';
-import { IfcTypeEnum } from '@ifc-lite/data';
+import { iterateEffectiveEntities } from '@ifc-lite/data';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { StoreEditor } from '@ifc-lite/mutations';
 import { generateSpacesFromWalls, buildSpaceBoundaries, GENERATED_SPACE_OBJECTTYPE } from './generate-spaces.js';
@@ -18,8 +18,8 @@ import { interiorPoint } from './room-candidates.js';
 export function prepareGeneratedRoomUpdate(store: IfcDataStore, editor: StoreEditor, storeyIds: readonly number[]): () => number[] {
   if (!storeyIds.length) return () => [];
   const view = editor.getMutationView();
-  const hasGenerated = [...store.entities.getByType(IfcTypeEnum.IfcSpace), ...[...view.getNewEntitiesOfType('IFCSPACE')].map(e => e.expressId)]
-    .some(id => readAttributes(store, view, editor, id)?.[4] === GENERATED_SPACE_OBJECTTYPE);
+  const hasGenerated = [...iterateEffectiveEntities(store, view, ['IFCSPACE'])]
+    .some(({ expressId }) => readAttributes(store, view, editor, expressId)?.[4] === GENERATED_SPACE_OBJECTTYPE);
   if (!hasGenerated) return () => [];
   const spaces = existingSpaceFootprintEntriesByStorey(store, view);
   const detectUncached = (storeyId: number, snapTolerance: number, minArea: number) => {

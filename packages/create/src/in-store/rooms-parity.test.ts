@@ -111,3 +111,26 @@ it('zero snap tolerance preserves exact room geometry on a no-op wall edit (#942
   transformElementsInStore({ dataStore: s.store, view: s.view, editor: s.editor, selected: [s.partition], op: { kind: 'move', delta: [0, 0] } });
   expect(s.areas()).toEqual(before);
 });
+
+it('finds session-authored rooms reclassified as IfcSpace while excluding removed rooms (#9423 raw enumeration)', async () => {
+  const s = await setup();
+  for (const { result } of s.generated.emitted) {
+    const old = result.spaceId;
+    const attrs = s.view.getNewEntity(old)!.attributes;
+    // A native product authored in-session, then classified as a space. The
+    // authored type bucket stays Proxy; only the effective type is IfcSpace.
+    const room = s.editor.addEntity('IfcBuildingElementProxy', [...attrs.slice(0, 7), null, '.NOTDEFINED.']).expressId;
+    s.editor.setEntityType(room, 'IfcSpace');
+    for (let i = 7; i < attrs.length; i++) s.editor.setPositionalAttribute(room, i, attrs[i]);
+    s.editor.setPositionalAttribute(result.relAggregatesId, 5, [`#${room}`]);
+    for (const rel of s.view.getNewEntitiesOfType('IFCRELDEFINESBYPROPERTIES')) {
+      const owners = rel.attributes[4];
+      if (Array.isArray(owners) && owners.includes(`#${old}`)) s.editor.setPositionalAttribute(rel.expressId, 4, owners.map(ref => ref === `#${old}` ? `#${room}` : ref));
+    }
+    for (const id of result.spaceBoundaryIds) s.editor.setPositionalAttribute(id, 4, `#${room}`);
+    s.editor.removeEntity(old);
+    result.spaceId = room;
+  }
+  transformElementsInStore({ dataStore: s.store, view: s.view, editor: s.editor, selected: [s.partition], op: { kind: 'move', delta: [1, 0] } });
+  expect(s.areas()).toEqual([expect.closeTo(22.33, 5), expect.closeTo(33.93, 5)]);
+});

@@ -3,6 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { existsSync, readFileSync } from 'node:fs';
 import { beforeAll, it, expect, describe } from 'vitest';
+import { QuantityType } from '@ifc-lite/data';
+import { scaleWallQuantities, wallQuantitySetCount } from './storey/storey-level-write.js';
 import { recordCompoundMutation, StoreEditor, undoRecordedMutationOperations } from '@ifc-lite/mutations';
 import { IfcAPI, initSync } from '@ifc-lite/wasm';
 import { addWallToStore } from './wall.js';
@@ -83,4 +85,19 @@ it('roof cuts omit prism-only quantities rather than report the uncut envelope (
   const quantities = deriveBaseQuantitySet(s.store, s.view, wall)?.quantities ?? [];
   expect(quantities.find(q => q.name === 'Length')?.value).toBe(8);
   expect.soft(quantities.some(q => ['Height', 'GrossSideArea', 'NetSideArea', 'GrossVolume', 'NetVolume'].includes(q.name))).toBe(false);
+});
+
+it('roof-cut quantity sets keep a numeric count and never use prism scaling (#9296)', async () => {
+  const s = await newStorey();
+  const roof = addRoofToStore(s.editor, s.anchor, { Position: [0,0,4], Width: 10, Depth: 8, Thickness: .25, EdgeSlopes: [Math.PI / 6,0,Math.PI / 6,0], Overhang: .5 }).roofId;
+  const wall = addWallToStore(s.editor, s.anchor, { Start: [5,0,0], End: [5,8,0], Height: 3, Thickness: .2 }).wallId;
+  // Explicit quantities retain the existing source/user policy. A roof cut cannot
+  // infer their new values by multiplying the original rectangular prism.
+  s.view.setQuantity(wall, 'Qto_WallBaseQuantities', 'Height', 3, QuantityType.Length);
+  s.view.setQuantity(wall, 'Qto_WallBaseQuantities', 'NetVolume', 4.8, QuantityType.Volume);
+  setTopConstraintInStore(s.store, s.editor, wall, { kind: 'roof', roofId: roof });
+  expect.soft(wallQuantitySetCount(s.store, s.view, wall)).toBe(1);
+  const before = structuredClone(s.view.getQuantitiesForEntity(wall));
+  scaleWallQuantities(s.store, s.view, wall, 2);
+  expect.soft(s.view.getQuantitiesForEntity(wall)).toEqual(before);
 });

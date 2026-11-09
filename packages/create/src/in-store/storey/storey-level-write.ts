@@ -28,7 +28,6 @@ export const WALL_QTO = 'Qto_WallBaseQuantities';
 
 /** How many `Qto_WallBaseQuantities` instances a wall has, source ones included. Only the first is kept true by a resize. */
 export function wallQuantitySetCount(store: IfcDataStore, view: MutablePropertyView, wallId: number): number {
-  if (view.getPropertyValue(wallId, ROOF_ATTACHMENT, 'Clipped') === true) return;
   const base = view.hasQuantityBase() ? undefined : (id: number) => extractQuantitiesOnDemand(store, id);
   return view.getQuantitiesForEntity(wallId, base).filter((set) => set.name === WALL_QTO).length;
 }
@@ -95,6 +94,7 @@ export function writeStoreyLevelPlan(store: IfcDataStore, draft: StoreEditor, pl
 export function scaleWallQuantities(
   store: IfcDataStore, view: MutablePropertyView, wallId: number, k: number, geometry?: WallGeometry,
 ): void {
+  if (view.getPropertyValue(wallId, ROOF_ATTACHMENT, 'Clipped') === true) return;
   const base = view.hasQuantityBase() ? undefined : (id: number) => extractQuantitiesOnDemand(store, id);
   const qto = view.getQuantitiesForEntity(wallId, base).find((set) => set.name === WALL_QTO);
   if (!qto || !Number.isFinite(k)) return;

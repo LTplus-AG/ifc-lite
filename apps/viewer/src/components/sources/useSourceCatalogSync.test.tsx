@@ -29,7 +29,7 @@
  */
 
 import '@/test/setup-dom.js';
-import { beforeEach, describe, it } from 'node:test';
+import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -146,6 +146,14 @@ class FakeProvider implements FileSourceProvider {
 }
 
 const mounted: Array<{ root: Root; container: HTMLElement }> = [];
+
+beforeEach(() => localStorageMock.clear());
+afterEach(() => {
+  for (const { root, container } of mounted.splice(0)) {
+    act(() => root.unmount());
+    container.remove();
+  }
+});
 
 interface Harness {
   readonly hook: ReturnType<typeof useSourceCatalogSync>;
@@ -469,4 +477,48 @@ it('C-5 same-tick load-more presses request one page', async () => {
   const count = pages;
   await act(async () => finish());
   assert.equal(count, 1);
+});
+
+it('C-5 an old folder completion cannot release a replacement generation folder', async () => {
+  const provider = new FakeProvider({ containerListing: 'direct-children', listFilesIsRecursive: true });
+  const replies: Array<() => void> = [];
+  let opens = 0;
+  provider.listContainers = async (_ctx, _project, parent) => {
+    if (parent === 'X') { opens++; await new Promise<void>(resolve => replies.push(resolve)); }
+    return { items: [] };
+  };
+  const harness = renderCatalogSync(provider);
+  await act(async () => harness.get().openFileArea('p', 'area-1'));
+  act(() => harness.get().openContainer({ id: 'X', name: 'X' }));
+  await act(async () => harness.get().openFileArea('p', 'area-2'));
+  act(() => harness.get().openContainer({ id: 'X', name: 'X' }));
+  await act(async () => replies[0]());
+  act(() => harness.get().openContainer({ id: 'X', name: 'X' }));
+  const count = opens;
+  await act(async () => { for (const finish of replies.slice(1)) finish(); });
+  assert.equal(count, 2, 'the old finally must not remove the replacement folder lock');
+});
+
+for (const action of ['reset', 'replace'] as const) it(`C-5 ${action} releases the old pagination owner immediately`, async () => {
+  const provider = new FakeProvider();
+  const replies: Array<() => void> = [];
+  let pages = 0;
+  provider.listContainers = async (_ctx, _project, _parent, options) => {
+    if (options?.cursor) { pages++; await new Promise<void>(resolve => replies.push(resolve)); }
+    return { items: [], cursor: options?.cursor ? undefined : 'next' };
+  };
+  const harness = renderCatalogSync(provider);
+  await act(async () => harness.get().openFileArea('p', 'old'));
+  act(() => harness.get().loadMoreFolders(null));
+  assert.equal(harness.get().loadingMore, true);
+  if (action === 'reset') {
+    act(() => harness.get().resetCatalog());
+    assert.equal(harness.get().loadingMore, false, 'reset abandons the pagination lease');
+  }
+  await act(async () => harness.get().openFileArea('p', 'new'));
+  act(() => harness.get().loadMoreFolders(null));
+  const count = pages;
+  await act(async () => { for (const finish of replies) finish(); });
+  assert.equal(count, 2, 'replacement area can page while the retired provider promise is pending');
+  assert.equal(harness.get().loadingMore, false);
 });

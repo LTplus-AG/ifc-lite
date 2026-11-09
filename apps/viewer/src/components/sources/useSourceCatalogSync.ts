@@ -128,11 +128,6 @@ export function useSourceCatalogSync({ provider, ctx, setError, onSynced }: UseS
     [cacheable, providerName],
   );
 
-  useEffect(() => {
-    const area = areaRef.current;
-    if (area) maybePersist(area.projectId, area.fileAreaId, containersByParent, filesByContainer);
-  }, [containersByParent, filesByContainer, maybePersist]);
-
   const applyCachedCatalog = useCallback(
     (projectId: string, fileAreaId: string): boolean => {
       if (!cacheable) return false;
@@ -165,11 +160,11 @@ export function useSourceCatalogSync({ provider, ctx, setError, onSynced }: UseS
 
         const filePage = await fetchFiles(projectId, fileAreaId, signal);
         if (requestGenRef.current !== gen) return;
-
+        const nextContainers = new Map([[fileAreaId, containerPage]]);
         const nextFiles = new Map([[fileAreaId, filePage]]);
         setFilesByContainer(nextFiles);
         setCatalogUpdatedAt(null);
-
+        maybePersist(projectId, fileAreaId, nextContainers, nextFiles);
         onSynced?.();
         if (options.announce) {
           const folderCount = containerPage.items.length;
@@ -292,7 +287,9 @@ export function useSourceCatalogSync({ provider, ctx, setError, onSynced }: UseS
         try {
           const page = await fetchContainers(area.projectId, key, current.cursor, signal);
           if (requestGenRef.current !== gen) return;
+          const next = new Map(containersByParent).set(key, appendPage(current, page));
           setContainersByParent(previous => new Map(previous).set(key, appendPage(current, page)));
+          maybePersist(area.projectId, area.fileAreaId, next, filesByContainer);
         } catch (err) {
           if (requestGenRef.current === gen && !(err instanceof DOMException && err.name === 'AbortError')) {
             setError(err instanceof Error ? err.message : String(err));
@@ -300,7 +297,7 @@ export function useSourceCatalogSync({ provider, ctx, setError, onSynced }: UseS
         }
       });
     },
-    [containersByParent, fetchContainers, filesByContainer, folderKeyFor, loadingMore, paging.run, setError],
+    [containersByParent, fetchContainers, filesByContainer, folderKeyFor, loadingMore, maybePersist, paging.run, setError],
   );
 
   /** The map key holding files for the current selection. */
@@ -329,7 +326,9 @@ export function useSourceCatalogSync({ provider, ctx, setError, onSynced }: UseS
         try {
           const page = await fetchFilePage(provider, ctx, area.projectId, key, current.cursor, signal);
           if (requestGenRef.current !== gen) return;
+          const next = new Map(filesByContainer).set(key, appendPage(current, page));
           setFilesByContainer(previous => new Map(previous).set(key, appendPage(current, page)));
+          maybePersist(area.projectId, area.fileAreaId, containersByParent, next);
         } catch (err) {
           if (requestGenRef.current === gen && !(err instanceof DOMException && err.name === 'AbortError')) {
             setError(err instanceof Error ? err.message : String(err));
@@ -337,7 +336,7 @@ export function useSourceCatalogSync({ provider, ctx, setError, onSynced }: UseS
         }
       });
     },
-    [containersByParent, ctx, fileKeyFor, filesByContainer, loadingMore, paging.run, provider, setError],
+    [containersByParent, ctx, fileKeyFor, filesByContainer, loadingMore, maybePersist, paging.run, provider, setError],
   );
 
   const resetCatalog = useCallback(() => {

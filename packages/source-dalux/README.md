@@ -48,3 +48,32 @@ are not cached. `BIMCOLLAB_RELAY_ALLOWED_ORIGINS` overrides the comma-separated
 origin allowlist; defaults include `APP_URL` and registered BIMcollab callback
 origins. Configure a Vercel WAF rate-limit rule on `/api/bimcollab`: holders of
 valid tokens can otherwise consume deployment bandwidth through our egress IPs.
+
+## Saving back to Dalux
+
+`uploadFile` writes bytes back through Dalux's upload API (official spec, "File upload"):
+a slot (`POST /1.0/.../upload`), the bytes in parts with `Content-Range`, then `POST /2.0/.../upload/{guid}/finalize`. Nothing is
+overwritten. Parts are 4 MiB (`DALUX_DEFAULT_PART_BYTES`): the same-origin relay
+caps a relayed body there, below the function request-body limit, although
+Dalux itself accepts parts up to 100 MiB (`DALUX_MAX_PART_BYTES`).
+
+| Mode | Finalize body | Notes |
+| --- | --- | --- |
+| `new-version` | `fileId` | Keeps the file's name, type and existing properties. |
+| `new-file` | `folderId` | In the container the caller chooses. |
+| `new-location` | `folderId` | Same call; a separate mode because `shared` and `published` file areas refuse uploads. |
+
+Refusals are decided before any byte is sent: `stale-base` (the file's current
+revision is not the `baseRevisionId`), `name-exists` (case-insensitive, same
+folder; this sweeps the file area like `listFiles` does), a `shared` or
+`published` file area, and a folder whose file properties are required (ifc-lite
+cannot fill them in yet). Check-then-write is not atomic: Dalux has no
+conditional write, so a concurrent writer can still win the gap.
+
+Not verified against the live API: that the area root accepts its own file area
+id as `folderId`, which `fileType` Dalux files non-IFC extensions under, and
+which API-identity permissions allow uploads.
+
+**Relay.** In the browser, uploads go through the same-origin relay, which
+needs the upload routes from [#9524](https://github.com/LTplus-AG/ifc-lite/pull/9524).
+Without them the relay answers 405 to every upload step.

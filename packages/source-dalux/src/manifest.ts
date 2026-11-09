@@ -59,6 +59,11 @@ export const DALUX_MANIFEST: PluginManifest = {
     changeDetection: true,
     // No server-side file search endpoint.
     search: false,
+    // Upload is a three-step flow (slot, parts, finalize); `fileId` adds a
+    // revision, `folderId` creates a file. Shared and published file areas
+    // refuse uploads, hence `new-location` is its own mode: the host must not
+    // assume any folder is writable.
+    writeBack: ['new-version', 'new-file', 'new-location'],
   },
   contributes: {
     fileSources: ['./src/provider.ts'],

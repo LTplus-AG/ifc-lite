@@ -33,11 +33,21 @@ import type {
   SourceFile,
   SourceFileRef,
   SourceProject,
+  UploadOptions,
+  UploadResult,
+  UploadTarget,
 } from '@ifc-lite/plugin-api';
 
 import { DALUX_MANIFEST } from './manifest.js';
 import { parseDaluxNode } from './node-url.js';
-import { BrowserDaluxApiClient, DaluxHttpError, fetchPage, fetchAllPages } from './http-client.js';
+import {
+  BrowserDaluxApiClient,
+  DaluxHttpError,
+  fetchPage,
+  fetchAllPages,
+  type DaluxCredentials,
+} from './http-client.js';
+import { uploadToDalux } from './upload.js';
 import {
   LATEST_REVISION,
   convertListLenient,
@@ -236,6 +246,19 @@ export class DaluxBuildProvider implements FileSourceProvider {
     return client.getBinary(downloadLink, options, metadata.data.fileSize);
   }
 
+  /** Write bytes back to Dalux. The flow and its conflict rules live in `upload.ts`. */
+  async uploadFile(
+    ctx: PluginContext,
+    target: UploadTarget,
+    bytes: ArrayBuffer,
+    options?: UploadOptions,
+  ): Promise<UploadResult> {
+    if (!DALUX_MANIFEST.capabilities?.writeBack?.includes(target.mode)) {
+      throw new Error(`Dalux does not support write-back mode "${target.mode}"`);
+    }
+    return uploadToDalux(ctx, await this.credentials(ctx), target, bytes, options);
+  }
+
   /**
    * Dalux has no delta/change-feed endpoint, so watching means polling the
    * given refs. Grouped strictly by file area so a sweep covering many refs
@@ -392,7 +415,7 @@ export class DaluxBuildProvider implements FileSourceProvider {
     }
   }
 
-  private async createClient(ctx: PluginContext): Promise<BrowserDaluxApiClient> {
+  private async credentials(ctx: PluginContext): Promise<DaluxCredentials> {
     const apiKey = await ctx.getPreference('apiKey');
     if (!apiKey) throw new Error('Dalux API key not configured');
     const node = parseDaluxNode(await ctx.getPreference('baseUrl'));
@@ -401,6 +424,10 @@ export class DaluxBuildProvider implements FileSourceProvider {
     // manifest's declared upstream, and Dalux serves no CORS headers, so a
     // rewritten base would bypass the relay and fail in the browser. The node
     // travels as a parameter the relay resolves server-side (#2792).
-    return new BrowserDaluxApiClient({ baseUrl: DEFAULT_BASE_URL, apiKey, node }, ctx);
+    return { baseUrl: DEFAULT_BASE_URL, apiKey, node };
+  }
+
+  private async createClient(ctx: PluginContext): Promise<BrowserDaluxApiClient> {
+    return new BrowserDaluxApiClient(await this.credentials(ctx), ctx);
   }
 }

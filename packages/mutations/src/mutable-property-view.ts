@@ -1262,9 +1262,7 @@ export class MutablePropertyView extends MutableOverlayState {
   readNewEntity(id: number): NewEntity | null { const row = this.newEntities.peek(id); return row ? readEntitySnapshot(row) : null; }
   readNewEntities(): NewEntity[] { return Array.from(this.newEntities.peekValues(), readEntitySnapshot); }
   *readNewEntitiesOfType(type: string): IterableIterator<NewEntity> { for (const row of this.newEntities.peekOfType(type)) yield readEntitySnapshot(row); }
-  /** Ids and authored classes of created entities (of one class when `type`
-   * is given), in creation order. Reads no payload and copies no row, also
-   * inside a transaction, so enumeration costs no later comparison. */
+  /** Ids and authored classes of created entities (of `type`, when given), in creation order; reads no payload, copies no row. */
   *readNewEntityKinds(type?: string): IterableIterator<{ expressId: number; type: string }> {
     for (const row of type === undefined ? this.newEntities.peekValues() : this.newEntities.peekOfType(type)) yield { expressId: row.expressId, type: row.type };
   }

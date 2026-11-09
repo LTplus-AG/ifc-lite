@@ -115,6 +115,13 @@ impl Default for Georeferencing {
 }
 
 impl Georeferencing {
+    /// True when this came from a coordinate operation (`IfcMapConversion`,
+    /// a rigid operation, `ePSet_MapConversion`), not the legacy
+    /// `IfcSite.RefLatitude`/`RefLongitude` fallback.
+    pub fn is_map_conversion(&self) -> bool {
+        self.source.as_deref().is_some_and(|s| s != ifc_lite_core::GeoRefSource::SiteLocation.label())
+    }
+
     fn from_core(geo: &ifc_lite_core::GeoReference, details: &ifc_lite_core::GeoReferenceDetails) -> Self {
         Self {
             crs_name: geo.crs_name.clone(),

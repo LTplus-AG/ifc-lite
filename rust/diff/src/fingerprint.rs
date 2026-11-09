@@ -32,7 +32,7 @@ use crate::JsString;
 use crate::sparse_collection::SparseCollection;
 
 use crate::input::{DataFingerprintInput, PropertyEntryInput, PropertyValue, TypeAssignmentInput};
-use crate::js_json::{cmp_sorted, non_finite_token, stringify_sorted, JsonValue};
+use crate::js_json::{cmp_sorted, non_finite_token, JsonValue};
 
 #[path = "fingerprint_checked.rs"]
 mod checked;
@@ -98,27 +98,8 @@ pub fn canonical_value_string(value: &PropertyValue) -> Option<JsString> {
     match value {
         PropertyValue::String(text) => Some(text.clone()),
         PropertyValue::Number(number) if !number.is_finite() => Some(non_finite_token(*number).into()),
-        PropertyValue::Array(_) | PropertyValue::Object(_) => Some(stringify_sorted(&to_json_value(value)).into()),
+        PropertyValue::Array(_) | PropertyValue::Object(_) => Some(crate::property_json::stringify_property_sorted(value).into()),
         _ => None,
-    }
-}
-
-/// Lift a raw adapter value into the serializer's value type, unchanged.
-fn to_json_value(value: &PropertyValue) -> JsonValue {
-    match value {
-        PropertyValue::Null => JsonValue::Null,
-        PropertyValue::Bool(flag) => JsonValue::Bool(*flag),
-        PropertyValue::Number(number) => JsonValue::Number(*number),
-        PropertyValue::String(text) => JsonValue::String(text.clone()),
-        PropertyValue::Array(items) => {
-            JsonValue::Array(items.iter().map(to_json_value).collect())
-        }
-        PropertyValue::Object(entries) => JsonValue::Object(
-            entries
-                .iter()
-                .map(|(key, item)| (key.clone(), to_json_value(item)))
-                .collect(),
-        ),
     }
 }
 

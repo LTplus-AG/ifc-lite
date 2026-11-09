@@ -10,7 +10,7 @@ import { useViewerStore } from '@/store';
 import type { SurfaceCommandContext, SurfaceCommandDefinition, SurfaceCommandState } from './surface-commands';
 
 const mobileOnly = ['mobile'] as const;
-const mobileAndRibbon = ['mobile', 'ribbon'] as const;
+const mobileAndRibbon = ['palette', 'mobile', 'ribbon'] as const;
 const alwaysEnabled = (_state: SurfaceCommandState): boolean => true;
 
 export const MOBILE_SURFACE_COMMANDS = [
@@ -24,6 +24,7 @@ export const MOBILE_SURFACE_COMMANDS = [
     },
   },
   {
+    // Equivalent to opening the palette itself; no recursive palette row (#8947).
     id: 'ui:commands', labelKey: 'shellChrome.mobileToolbar.commands',
     keywords: 'search commands palette', category: 'Tools', icon: Search,
     surfaces: mobileOnly, enabled: alwaysEnabled,
@@ -46,6 +47,7 @@ export const MOBILE_SURFACE_COMMANDS = [
     },
   },
   {
+    // Same canonical toggle as pref:theme; that is the palette equivalent (#8947).
     id: 'view:theme', labelKey: 'shellChrome.mobileToolbar.darkMode',
     keywords: 'dark light theme appearance', category: 'View', icon: Moon,
     surfaces: mobileOnly, enabled: alwaysEnabled,

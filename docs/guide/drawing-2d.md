@@ -484,3 +484,7 @@ When using the Select / Pan tool (or after pressing Escape to exit a creation to
 ### Selective section cutting
 
 `SectionPlaneConfig.sectionExcludedIds` accepts a `ReadonlySet<number>` of mesh `expressId` values to keep whole. `SectionCutter`, `cutMeshesStreaming` and `GPUSectionCutter` omit those meshes before producing segments and polygons, so they contribute neither caps, hatch regions nor cut outlines. Pass the renderer's same full scene-ID set when producing its primary and extra-plane caps. An absent or empty set cuts every mesh as usual.
+
+### Material identity on section polygons
+
+`DrawingPolygon.materialId` carries the source mesh’s `IfcMaterial` ID when available. Layers with different material IDs remain separate polygons even when their colours match. The ID uses the same model/federation ID space as `entityId`; resolve both through the host’s model resolver. It is absent for meshes without material identity and for combined opaque base polygons spanning several layers. CPU and GPU section cutters carry it through to polygon reconstruction.

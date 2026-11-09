@@ -57,7 +57,7 @@ for (const timing of ['open', 'pending'] as const) test(`file imports preserve t
   const host = hostFixture(), preview = host.previewBundle.bind(host);
   let release!: () => void, calls = 0;
   const held = new Promise<void>(resolve => { release = resolve; });
-  t.mock.method(host, 'previewBundle', async bytes => { calls++; if (timing === 'pending') await held; return preview(bytes); });
+  t.mock.method(host, 'previewBundle', async (bytes: Uint8Array) => { calls++; if (timing === 'pending') await held; return preview(bytes); });
   const ui = render(<ExtensionHostContext.Provider value={host}><ExtensionsPanel /></ExtensionHostContext.Provider>);
   choose(ui, bundle('first'), 'first');
   await until(() => timing === 'open' ? reviewText().includes('first') : calls === 1);
@@ -71,7 +71,7 @@ test('a dropped file owns review ahead of a late authored preview', async t => {
   const host = hostFixture(), preview = host.previewBundle.bind(host), authored = bundle('authored');
   let release!: () => void, started = false;
   const held = new Promise<void>(resolve => { release = resolve; });
-  t.mock.method(host, 'previewBundle', async bytes => { if (bytes === authored) { started = true; await held; } return preview(bytes); });
+  t.mock.method(host, 'previewBundle', async (bytes: Uint8Array) => { if (bytes === authored) { started = true; await held; } return preview(bytes); });
   useViewerStore.getState().setPendingAuthoredBundle(authored);
   const ui = render(<ExtensionHostContext.Provider value={host}><ExtensionsPanel /></ExtensionHostContext.Provider>);
   await until(() => started);
@@ -86,7 +86,7 @@ test('closing promotion during packaging cannot open a late review', async t => 
   const host = hostFixture(), digest = crypto.subtle.digest.bind(crypto.subtle);
   let release!: () => void;
   const held = new Promise<void>(resolve => { release = resolve; });
-  t.mock.method(crypto.subtle, 'digest', async (...args) => { await held; return digest(...args); });
+  t.mock.method(crypto.subtle, 'digest', async (...args: Parameters<typeof digest>) => { await held; return digest(...args); });
   function Harness() {
     const [open, setOpen] = useState(true);
     return <><button onClick={() => setOpen(false)}>External close</button><button onClick={() => setOpen(true)}>Reopen</button><PromoteToolDialog open={open} initialName="Promoted" source="const x = 1;" onClose={() => setOpen(false)} /></>;

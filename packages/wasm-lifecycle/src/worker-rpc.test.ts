@@ -15,13 +15,18 @@ class FakeWorker {
   readonly posted: Array<{ message: Out; transfer: Transferable[] }> = [];
   terminateCalls = 0;
   refusePost: Error | null = null;
+  /** When set, terminate() throws it. */
+  refuseTerminate: Error | null = null;
   private readonly listeners = new Map<string, Set<(event: unknown) => void>>();
 
   postMessage(message: Out, transfer: Transferable[] = []): void {
     if (this.refusePost) throw this.refusePost;
     this.posted.push({ message, transfer });
   }
-  terminate(): void { this.terminateCalls += 1; }
+  terminate(): void {
+    this.terminateCalls += 1;
+    if (this.refuseTerminate) throw this.refuseTerminate;
+  }
   addEventListener(type: string, listener: (event: unknown) => void): void {
     if (!this.listeners.has(type)) this.listeners.set(type, new Set());
     this.listeners.get(type)?.add(listener);
@@ -228,6 +233,34 @@ describe('createWorkerRpc: deadlines', () => {
   });
 });
 
+describe('createWorkerRpc: death is settled even when cleanup throws', () => {
+  it('a throwing terminate still rejects everything pending and runs the death listeners', async () => {
+    const worker = new FakeWorker();
+    worker.refuseTerminate = new Error('terminate failed');
+    const rpc = rpcOver(worker);
+    const pending = rpc.request(call);
+    const died = vi.fn();
+    rpc.onDeath(died);
+    expect(() => rpc.dispose()).toThrow('terminate failed');
+    await expect(pending).rejects.toThrow('Test worker is disposed');
+    expect(died).toHaveBeenCalledTimes(1);
+    await expect(rpc.request(call)).rejects.toThrow('Test worker is disposed');
+  });
+
+  it('a throwing death listener does not stop pending rejections or later listeners', async () => {
+    const worker = new FakeWorker();
+    const rpc = rpcOver(worker);
+    const pending = rpc.request(call);
+    rpc.onDeath(() => { throw new Error('listener failed'); });
+    const later = vi.fn();
+    rpc.onDeath(later);
+    expect(() => rpc.fail(new Error('gone'))).toThrow('listener failed');
+    await expect(pending).rejects.toThrow('gone');
+    expect(later).toHaveBeenCalledTimes(1);
+    expect(worker.terminateCalls).toBe(1);
+  });
+});
+
 describe('createWorkerRpc: abort', () => {
   it('an aborted request rejects, drops its entry, runs onAbort, and its late answer is ignored', async () => {
     const worker = new FakeWorker();
@@ -243,6 +276,43 @@ describe('createWorkerRpc: abort', () => {
     await expect(pending).rejects.toThrow('cancelled');
     expect(aborted).toEqual([worker.lastId()]);
     expect(rpc.receive({ kind: 'ok', id: worker.lastId(), value: 'late' })).toBe(false);
+  });
+
+  it('a throwing onAbort (e.g. the cancel post) still rejects the call', async () => {
+    const rpc = rpcOver(new FakeWorker());
+    // A signal that hands back what its listener threw, where a real
+    // AbortSignal would report it as an uncaught error.
+    const thrown: unknown[] = [];
+    let listener: (() => void) | null = null;
+    const signal = {
+      aborted: false,
+      addEventListener: (_type: string, l: () => void) => { listener = l; },
+      removeEventListener: () => { listener = null; },
+    };
+    const pending = rpc.request(call, {
+      signal: signal as unknown as AbortSignal,
+      onAbort: () => { throw new Error('cancel post failed'); },
+      abortError: () => new Error('cancelled'),
+    });
+    signal.aborted = true;
+    try {
+      (listener as (() => void) | null)?.();
+    } catch (error) {
+      thrown.push(error);
+    }
+    await expect(pending).rejects.toThrow('cancelled');
+    expect(String(thrown[0])).toContain('cancel post failed');
+  });
+
+  it('a throwing close and a throwing listener: the first error reaches the caller, everything still runs', async () => {
+    const worker = new FakeWorker();
+    worker.refuseTerminate = new Error('terminate failed');
+    const rpc = rpcOver(worker);
+    rpc.onDeath(() => { throw new Error('listener failed'); });
+    const later = vi.fn();
+    rpc.onDeath(later);
+    expect(() => rpc.dispose()).toThrow('terminate failed');
+    expect(later).toHaveBeenCalledTimes(1);
   });
 
   it('an already-aborted signal posts nothing', async () => {

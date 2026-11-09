@@ -1,11 +1,6 @@
 ---
-"@ifc-lite/wasm-lifecycle": minor
-"@ifc-lite/ids-agent": minor
-"@ifc-lite/embed-sdk": patch
 "@ifc-lite/pointcloud": patch
-"@ifc-lite/geometry": patch
+"@ifc-lite/geometry": minor
 ---
 
-Add `createWorkerRpc` to `@ifc-lite/wasm-lifecycle`: one request/response client with a dead latch (the first worker `error`, `messageerror`, missed deadline, failed start or `dispose()` rejects everything pending and every later call), cleanup when a `postMessage` throws, clamped deadlines, abort support and an init handshake. The point-cloud decode worker, the re-mesh client, the IDS agent's worker model bridge and the embed SDK now use it instead of their own copies.
-
-`createWorkerModelBridge` no longer leaves a call made after `dispose()` waiting forever: it rejects at once. Its new `watchErrors` option makes a worker crash or an unreadable message reject every pending and later call. A model-bridge or embed command whose `postMessage` throws no longer leaves a timer and a pending entry behind.
+Worker RPC clients no longer hang when their worker dies. The point-cloud decode worker session now rejects every pending open/next/COPC request on a worker `error` or `messageerror`, terminates the worker, and is evicted from the shared cache so the next load spawns a fresh one; a throwing `postMessage` rejects only its own request. `RemeshClient.create()` now rejects (and terminates the worker) on a `messageerror` during start or when the engine does not report ready within the new `startTimeoutMs` option (default 120 s, separate from `requestTimeoutMs`), and a request whose post throws no longer leaves a deadline behind that later kills the client under unrelated requests. Both `startTimeoutMs` and `requestTimeoutMs` are clamped to 2^31-1 ms (a larger value or `Infinity` used to make `setTimeout` fire almost at once), and `0`, a negative number, `NaN` or `Infinity` now means no deadline.

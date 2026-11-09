@@ -129,6 +129,19 @@ function toError(value: unknown): Error {
   return value instanceof Error ? value : new Error(String(value));
 }
 
+/** Run every step even when one throws; rethrow the first error afterwards. */
+function runAll(steps: Array<() => void>): void {
+  let failure: { error: unknown } | null = null;
+  for (const step of steps) {
+    try {
+      step();
+    } catch (error) {
+      failure ??= { error };
+    }
+  }
+  if (failure) throw failure.error;
+}
+
 function sequentialIds(): () => number {
   let next = 1;
   return () => next++;
@@ -159,14 +172,16 @@ export function createWorkerRpc<Id>(options: WorkerRpcOptions<Id> | PortRpcOptio
     if (dead) return;
     dead = reason;
     starter = null;
-    detach?.();
-    close?.();
+    // Settle every caller first: nothing below (a throwing terminate, close or
+    // listener) may leave a promise pending. Then release the transport and
+    // tell every listener even if one step throws; the first error still
+    // reaches the caller of `fail` / `dispose`.
     const settled = [...pending.values()];
     pending.clear();
     for (const entry of settled) entry.reject(reason);
     const listeners = [...deathListeners];
     deathListeners.clear();
-    for (const listener of listeners) listener(reason);
+    runAll([() => detach?.(), () => close?.(), ...listeners.map((listener) => () => listener(reason))]);
   };
 
   const receive = (data: unknown): boolean => {
@@ -248,8 +263,9 @@ export function createWorkerRpc<Id>(options: WorkerRpcOptions<Id> | PortRpcOptio
       const onAbort = () => {
         pending.delete(id);
         cleanup();
-        requestOptions.onAbort?.(id);
+        // Settle before telling the other side, whose post may throw.
         reject(abortError());
+        requestOptions.onAbort?.(id);
       };
       const cancelDeadline = armDeadline(timeoutMs, () => {
         if (timeoutKills) {

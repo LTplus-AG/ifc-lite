@@ -37,6 +37,17 @@ describe('model load activity outcome (J1)', () => {
     assert.ok(job.detail || job.detailKey, 'the row says why');
   });
 
+  it('J1: a failure with an empty message (a bare `new Error()`) is still failed, even if something published', () => {
+    const activity = createModelLoadActivity('tower.ifc');
+    const release = installModelLoadCanceller('primary', () => {}, () => null, activity);
+    activity.published = true;
+    activity.fail('');
+    release();
+    const [job] = jobs();
+    assert.equal(job.outcome, 'failed');
+    assert.equal(job.detail, undefined, 'no empty detail line; the tray shows the Failed outcome alone');
+  });
+
   it('J1: a user Cancel still records cancelled', () => {
     const release = installModelLoadCanceller('primary', () => {}, () => null, createModelLoadActivity('tower.ifc'));
     store.getState().activeLoadCanceller?.();

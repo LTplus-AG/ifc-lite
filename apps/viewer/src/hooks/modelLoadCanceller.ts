@@ -56,7 +56,8 @@ export function createModelLoadActivity(subject: string) {
      */
     result(cancelRequested = false): LoadOutcome {
       if (this.cancelled) return { outcome: 'cancelled' };
-      if (this.error) return { outcome: 'failed', detail: this.error };
+      // Recorded, not truthy: a bare `new Error()` fails with an empty message, and the tray then shows Failed alone.
+      if (this.error !== undefined) return { outcome: 'failed', ...(this.error ? { detail: this.error } : {}) };
       if (this.published) return { outcome: 'completed' };
       if (cancelRequested) return { outcome: 'cancelled' };
       return { outcome: 'failed', detailKey: 'activityTray.load.noModel' };

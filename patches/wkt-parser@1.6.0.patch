@@ -1,8 +1,8 @@
 diff --git a/dist/wkt.cjs b/dist/wkt.cjs
-index 6b5903bc8f6b3d6d7c384112d9c01d92cd7bdae0..384185d05670ad88a7cfd3a5176a65502707f01c 100644
+index e91ef60..1dd9593 100644
 --- a/dist/wkt.cjs
 +++ b/dist/wkt.cjs
-@@ -942,6 +942,25 @@ function transformPROJJSON(projjson, result = {}) {
+@@ -947,6 +947,25 @@ function transformPROJJSON(projjson, result = {}) {
      result.rectified_grid_angle = result.angle_from_rectified_to_skew_grid;
    }
  
@@ -29,10 +29,10 @@ index 6b5903bc8f6b3d6d7c384112d9c01d92cd7bdae0..384185d05670ad88a7cfd3a5176a6550
    applyProjectionDefaults(result);
  
 diff --git a/transformPROJJSON.js b/transformPROJJSON.js
-index f6a7a0de1429215dcdf01af9f3d9606c7b474d27..848853bdd58953ef383c953cd1f8c0fe4f860584 100644
+index 9469bd9..70417d0 100644
 --- a/transformPROJJSON.js
 +++ b/transformPROJJSON.js
-@@ -271,6 +271,25 @@ export function transformPROJJSON(projjson, result = {}) {
+@@ -276,6 +276,25 @@ export function transformPROJJSON(projjson, result = {}) {
      result.rectified_grid_angle = result.angle_from_rectified_to_skew_grid;
    }
  

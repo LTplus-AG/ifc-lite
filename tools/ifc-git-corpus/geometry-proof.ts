@@ -82,6 +82,7 @@ export function proveSplit(beforeText: string, afterText: string, keys: readonly
   const source = requireRow(before, keys[0]), left = requireRow(after, keys[1]), right = requireRow(after, keys[2]);
   if (after.has(keys[0]) || before.has(keys[1]) || before.has(keys[2])) throw new Error('Split did not replace product identities');
   if (source.volume === null || left.volume === null || right.volume === null
+    || source.volume <= 0 || left.volume <= 0 || right.volume <= 0
     || Math.abs(source.volume - left.volume - right.volume) > 1e-6) throw new Error('Split lacks conserved closed-solid volume');
   const union = source.aabb.map((_, i) => i < 3 ? Math.min(left.aabb[i], right.aabb[i]) : Math.max(left.aabb[i], right.aabb[i]));
   if (union.some((value, i) => Math.abs(value - source.aabb[i]) > 1e-6)

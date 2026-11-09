@@ -39,6 +39,9 @@ function containment(index: Map<number, StepLine>): StepLine {
 
 export const addElement: Transform = text => {
   const lines = text.split('\n'), index = indexLines(lines);
+  if (!findByType(index, 'IFCSIUNIT').some(row => row.args.includes('.LENGTHUNIT.,.MILLI.,.METRE.'))) {
+    throw new Error('Corpus partition coordinates require the base millimetre length unit');
+  }
   const context = findByType(index, 'IFCGEOMETRICREPRESENTATIONSUBCONTEXT')[0];
   const source = findByType(index, 'IFCWALL')[0];
   if (!context || !source) throw new Error('Corpus base requires a wall and representation subcontext');

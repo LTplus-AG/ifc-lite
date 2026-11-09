@@ -18,7 +18,7 @@ import type { ViewerState } from '@/store';
 import { requestRemesh, type RemeshCause } from './remesh-service';
 
 type Get = () => ViewerState;
-interface Entry { modelId: string; expressIds: readonly number[]; cause: RemeshCause }
+interface Entry { modelId: string; expressIds: readonly number[]; cause: RemeshCause; afterReplay?: readonly (() => void)[] }
 
 /** Past this many remembered batches, the oldest is forgotten. */
 const MAX_ENTRIES = 1_000;
@@ -31,12 +31,14 @@ function entries(get: Get): Map<string, Entry> {
 }
 
 /** Remember that `batchId` re-shaped `expressIds` (model-local) of `modelId`. */
-export function rememberRemesh(get: Get, batchId: string, modelId: string, expressIds: readonly number[], cause: RemeshCause): void {
+export function rememberRemesh(get: Get, batchId: string, modelId: string, expressIds: readonly number[], cause: RemeshCause, afterReplay?: () => void): void {
   const map = entries(get);
   const previous = map.get(batchId);
   map.delete(batchId);
-  map.set(batchId, { modelId, expressIds: previous?.modelId === modelId
-    ? [...new Set([...previous.expressIds, ...expressIds])] : [...expressIds], cause });
+  const retained = previous?.modelId === modelId ? previous : undefined;
+  map.set(batchId, { modelId, expressIds: retained
+    ? [...new Set([...retained.expressIds, ...expressIds])] : [...expressIds], cause,
+    afterReplay: afterReplay ? [...(retained?.afterReplay ?? []), afterReplay] : retained?.afterReplay });
   if (map.size > MAX_ENTRIES) map.delete(map.keys().next().value!);
 }
 
@@ -57,5 +59,6 @@ export function remeshAfterCommit(
 export function remeshForBatch(get: Get, modelId: string, batchId: string | undefined): void {
   const entry = batchId === undefined ? undefined : entries(get).get(batchId);
   if (!entry || entry.modelId !== modelId) return;
+  for (const effect of entry.afterReplay ?? []) effect();
   void requestRemesh(get, entry.modelId, entry.expressIds, entry.cause);
 }

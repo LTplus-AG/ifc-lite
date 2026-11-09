@@ -16,6 +16,7 @@ import { roomPropertyApi } from '@/lib/collab/room-property-api.js';
 import { pathForEntity } from '@/lib/collab/entity-paths.js';
 import { roomSlotFor } from '@/lib/collab/room-model-target.js';
 import { mutationDenial } from '../mutation-permission.js';
+import { rememberRemesh } from '@/lib/remesh/remesh-registry.js';
 import { modelEditTarget, recordModellingEdit, type ModelEditTarget, type ModellingStore } from './mutation-modelling-records.js';
 
 export type RoofEditOutcome = { readonly ok: true; readonly remesh: number[] } | { readonly ok: false; readonly reason: string };
@@ -26,6 +27,7 @@ export function editRoofIn(store: ModellingStore, modelId: string, expressId: nu
   if (refusal) return { ok: false, reason: refusal };
   const target = modelEditTarget(store.getState(), modelId);
   if (!target) return { ok: false, reason: `No model loaded for id "${modelId}"` };
+  const depth = store.getState().undoStacks.get(modelId)?.length ?? 0;
   try {
     const remesh = withRoofDefinitionRollback(store, target, expressId, publish => recordModellingEdit(store, modelId, (_methods, draft) => {
       const definition = editFootprintRoofInStore(target.dataStore, draft, expressId, patch);
@@ -33,9 +35,31 @@ export function editRoofIn(store: ModellingStore, modelId: string, expressId: nu
       publish(definition);
       return [expressId, ...attached];
     }));
+    const state = store.getState(), stack = state.undoStacks.get(modelId) ?? [];
+    const last = stack.length > depth ? stack.at(-1) : undefined;
+    const batch = last ? state.mutationBatchTags.get(last.id) : undefined;
+    if (batch) rememberRemesh(store.getState, batch, modelId, [expressId], 'shape',
+      () => mirrorRoofHistoryDefinition(store, modelId, expressId));
     return { ok: true, remesh };
   } catch (error) {
     return { ok: false, reason: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+/** Replay uses the loaded property runtime, just like rollback, inside the history transaction. */
+function mirrorRoofHistoryDefinition(store: ModellingStore, modelId: string, id: number): void {
+  const state = store.getState(), session = state.collabSession;
+  const data = state.models.get(modelId)?.ifcDataStore, view = state.mutationViews.get(modelId);
+  if (!session || !data || !view || view.isDeleted(id) || !roomSlotFor(state, modelId) || !state.canCollabEdit()) return;
+  const definition = view.getForEntity(id).find(pset => pset.name === ROOF_FOOTPRINT_PSET), path = pathForEntity(data, id);
+  if (!definition || !path) return;
+  const api = roomPropertyApi();
+  for (const property of definition.properties) {
+    const value = property.value;
+    if (typeof value !== 'string' && typeof value !== 'number') continue;
+    const previous = api.getPropertyValue(session.doc, path, ROOF_FOOTPRINT_PSET, property.name);
+    api.setPropertyValue(session.doc, path, ROOF_FOOTPRINT_PSET, property.name,
+      { ...previous, type: previous?.type ?? (typeof value === 'string' ? 'IfcText' : 'IfcReal'), value });
   }
 }
 

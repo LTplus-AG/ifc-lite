@@ -121,7 +121,13 @@ export class IFCLiteEmbed {
     // Handshake: READY -> INIT -> INIT_ACK
     const handshakeTimeout = opts.timeout ?? 15_000;
     this.readyPromise = new Promise((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error('Embed viewer handshake timed out')), handshakeTimeout);
+      const timer = setTimeout(() => {
+        // create() never hands a timed-out instance to the caller, so nobody
+        // else can destroy it: tear it down here so a late READY cannot pull
+        // the token into an iframe the host gave up on, and retries don't stack.
+        this.destroy();
+        reject(new Error('Embed viewer handshake timed out'));
+      }, handshakeTimeout);
 
       const waitForReady = (msg: EmbedMessageEnvelope) => {
         if (msg.type === 'READY') {

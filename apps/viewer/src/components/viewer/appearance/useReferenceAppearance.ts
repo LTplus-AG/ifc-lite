@@ -50,7 +50,8 @@ export function useReferenceAppearance(base: AppearancePanelViewProps, enabled: 
 
   useEffect(() => {
     const renderer = getGlobalRenderer();
-    if (!enabled || !active || base.sourceBusy || roomId) {
+    if (!enabled || !active) return;
+    if (base.sourceBusy || roomId) {
       setStatus('idle'); setMessage(translatedMessage(roomId ? 'appearance.reference.leaveRoom' : 'appearance.reference.chooseSource'));
       return;
     }

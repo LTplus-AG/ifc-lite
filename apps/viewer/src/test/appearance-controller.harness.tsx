@@ -242,11 +242,12 @@ END-ISO-10303-21;`);
           let release!: () => void;
           const held = new Promise<void>(resolve => { release = resolve; });
           const prepare = editor.prepareEntityOperations.bind(editor);
-          let signal: AbortSignal | undefined;
+          let signal: AbortSignal | undefined, preparations = 0;
           editor.prepareEntityOperations = async (operations, options) => {
-            signal = options?.signal; await held; return prepare(operations, options);
+            preparations++; signal = options?.signal; await held; return prepare(operations, options);
           };
-          await click('Apply');
+          await act(async () => { button('Apply').click(); button('Apply').click(); });
+          check(preparations === 1, 'same-tick Apply presses started overlapping preparations');
           check(signal, 'Apply did not start detached preparation');
           await act(async () => { useViewerStore.getState().setSelectedEntityId(25); });
           const aborted = signal.aborted;

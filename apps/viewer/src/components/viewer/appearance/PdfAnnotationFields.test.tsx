@@ -170,6 +170,12 @@ test('PDF preparation locks the parent annotation metadata (C-13)', async t => {
     await until(() => !!mode.pending);
     const name = ui.querySelector<HTMLInputElement>('fieldset input')!;
     assert.equal(name.closest('fieldset')?.disabled, true, 'Name must stay fixed while PDF geometry is prepared');
+    await act(async () => { details.open = false; details.dispatchEvent(new Event('toggle')); });
+    assert.equal(name.closest('fieldset')?.disabled, false, 'collapsing the PDF editor releases its metadata lock');
+    await act(async () => { details.open = true; details.dispatchEvent(new Event('toggle')); });
+    mode.pending = undefined;
+    click(button('Prepare vector preview')!);
+    await until(() => !!mode.pending);
     click(button('Cancel')!);
     assert.equal(name.closest('fieldset')?.disabled, false);
     assert.match(ui.textContent ?? '', /cancelled/);

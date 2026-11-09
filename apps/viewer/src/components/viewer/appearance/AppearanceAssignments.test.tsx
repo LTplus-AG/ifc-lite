@@ -127,8 +127,11 @@ for (const scenario of ['apply', 'cancel', 'stale', 'room', 'query', 'room-pendi
       const prepare = editor.prepareEntityOperations.bind(editor);
       let release!: () => void;
       const held = new Promise<void>(resolve => { release = resolve; });
-      editor.prepareEntityOperations = async (operations, options) => { await held; return prepare(operations, options); };
-      click(button(ui, 'Apply assignments')); click(button(ui, 'Cancel assignments'));
+      let preparations = 0;
+      editor.prepareEntityOperations = async (operations, options) => { preparations++; await held; return prepare(operations, options); };
+      act(() => { button(ui, 'Apply assignments').click(); button(ui, 'Apply assignments').click(); });
+      assert.equal(preparations, 1, 'same-tick Apply presses share one preparation');
+      click(button(ui, 'Cancel assignments'));
       release(); await advance(50);
       assert.equal(ui.querySelector('[data-operation-status]')?.getAttribute('data-operation-status'), 'idle');
       assert.match(ui.textContent ?? '', /cancelled/i);

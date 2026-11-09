@@ -75,6 +75,7 @@ test('Edit restores removed PDF raster calibration and Save registration replace
   type(distance, '4'); await settle();
   assert.equal(useViewerStore.getState().appearanceReferences.get('drawing'), original, 'preview never repaints committed registration');
   const save = button(ui, 'Save registration'); assert.equal(save.disabled, false); click(save); await settle();
+  assert.match(ui.textContent ?? '', /Registration saved/, 'successful Save retains its completion notice');
   const state = useViewerStore.getState(), updated = state.appearanceReferences.get('drawing')!;
   assert.equal(state.appearanceReferences.size, 1); assert.equal(state.referenceUndo.length, 2);
   assert.equal(updated.assetId, original.assetId); assert.equal(updated.opacity, 0.6);

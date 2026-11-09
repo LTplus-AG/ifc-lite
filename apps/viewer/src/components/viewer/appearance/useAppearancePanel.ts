@@ -296,16 +296,16 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply', suspendPr
           signal: controller.signal,
           onProgress: phase => { if (isCurrent() && !controller.signal.aborted && mounted.current) setStatusMessage(translatedMessage(phase === 'preparing'
             ? 'appearance.controller.preparingChanges' : 'appearance.controller.saving')); },
-      });
-      if (!isCurrent() || controller.signal.aborted) return;
-      setPreviewEnabled(false); setConvertedObjects([]);
-      faceMasks.clearApplied((current.plan.conversions ?? []).map(conversion => conversion.productId));
-      appliedRevision.current = appearanceRevision(current.modelId);
-      draft.current = null;
-      appearanceAssets.releaseOwner(current.owner);
-      setStatus('idle'); setStatusMessage(translatedMessage('appearance.controller.applied'));
-    } catch (error) { if (isCurrent() && mounted.current && !controller.signal.aborted) { setStatus('error'); setStatusMessage(rawMessage(error)); } }
-    finally { if (applyAbort.current === controller) applyAbort.current = null; }
+        });
+        if (!isCurrent() || controller.signal.aborted) return;
+        setPreviewEnabled(false); setConvertedObjects([]);
+        faceMasks.clearApplied((current.plan.conversions ?? []).map(conversion => conversion.productId));
+        appliedRevision.current = appearanceRevision(current.modelId);
+        draft.current = null;
+        appearanceAssets.releaseOwner(current.owner);
+        setStatus('idle'); setStatusMessage(translatedMessage('appearance.controller.applied'));
+      } catch (error) { if (isCurrent() && mounted.current && !controller.signal.aborted) { setStatus('error'); setStatusMessage(rawMessage(error)); } }
+      finally { if (applyAbort.current === controller) applyAbort.current = null; }
     });
   }
   return {

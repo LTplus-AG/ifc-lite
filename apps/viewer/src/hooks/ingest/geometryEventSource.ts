@@ -52,7 +52,8 @@ export interface GeometryKernelLoad {
   cachePlan(plan: CachePlan): CachePlan;
   /**
    * Once the format and unwrapped size are known: true when this load must stop
-   * here. The refusal is reported and the model record marked; the caller returns.
+   * here. The refusal is reported and the model record marked; the caller ends
+   * its load UI and returns.
    */
   refuseSource(format: string, byteLength: number, request: Pick<GeometryEventRequest, 'modelId' | 'activity'>): boolean;
   /** The kernel's own event stream; absent for exact, which streams through `processAdaptive`. */

@@ -563,7 +563,7 @@ The planes come from a weighted straight skeleton of the footprint. Hip, gable, 
 Per-plane styles follow their footprint edges when edited. A flat plane's style is inherited by all new pitched planes. Flattening pitched planes preserves a shared uniform style; distinct or partly styled planes refuse atomically rather than losing or mixing their styles. Explicit `null` footprint fields are invalid; omit a field to use its default.
 
 
-`editFootprintRoofInStore(dataStore, editor, roofId, patch)` (`bim.store.editRoof(ref, patch)`) changes one edge's slope (`Edge: { Index, Slope }`), every slope (`EdgeSlopes`), `Overhang` or `Thickness`, and rebuilds the planes as one atomic edit. The roof keeps its identity, placement and containment. The replaced shape is removed and a refusal writes nothing. The viewer and the headless SDK record it as one Undo step.
+`editFootprintRoofInStore(dataStore, editor, roofId, patch)` (`bim.store.editRoof(ref, patch)`) changes one edge's slope (`Edge: { Index, Slope }`), every slope (`EdgeSlopes`), `Overhang` or `Thickness`, and rebuilds the planes as one atomic edit. The roof keeps its identity, placement and containment. The replaced shape is removed and a refusal writes nothing. The viewer and the headless SDK record it as one Undo step. The storey-free modelling factory, `createModellingStoreBackendWithoutStoreys`, also exposes this roof edit method.
 
 ```typescript
 import { StoreEditor } from '@ifc-lite/mutations';

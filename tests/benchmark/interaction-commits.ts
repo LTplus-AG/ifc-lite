@@ -42,7 +42,9 @@ export interface InteractionCommits {
   /**
    * Where Lens was clicked: its rail icon, or its row in the rail's More menu.
    * The two differ by the menu closing, so compare panelOpen counts only
-   * between runs that took the same route. Null when the step did not run.
+   * between runs that took the same route. Set before the click, so a failed
+   * click still says which route it tried (`errors` says why); null when the
+   * set-up itself failed or never ran.
    */
   panelOpenVia: 'rail' | 'more' | null;
   errors: Partial<Record<Interaction, string>>;

@@ -69,7 +69,11 @@ function stubPage({ viewportUnderPointer = true, lensOnRail = true } = {}) {
     first() { return this; },
     count: async () => (selector === 'rail:Lens' && !lensOnRail ? 0 : 1),
     boundingBox: async () => boxes[selector] ?? null,
-    click: async () => { clicks.push(selector); commits += 3; },
+    click: async () => {
+      if (selector === 'rail:Lens' && !lensOnRail) throw new Error('locator.click: Timeout 10000ms exceeded.');
+      clicks.push(selector);
+      commits += 3;
+    },
     waitFor: async () => { waited.push(selector); },
   });
   const page = {

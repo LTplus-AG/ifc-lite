@@ -235,7 +235,7 @@ export function ViewerLayout() {
       }
     }
   }, [leftPanelCollapsed, emptyFold]);
-  const modeling = useModelHierarchyWidth(leftPanelRef);
+  const modeling = useModelHierarchyWidth(leftPanelRef, emptyFold, LEFT_PANEL_DEFAULT_SIZE);
   const layoutResetEpoch = useViewerStore((s) => s.layoutResetEpoch); // "Reset layout" (#5854) restores the pane width
   useEffect(() => { if (layoutResetEpoch > 0) leftPanelRef.current?.resize(`${LEFT_PANEL_DEFAULT_SIZE}%`); }, [layoutResetEpoch]);
 

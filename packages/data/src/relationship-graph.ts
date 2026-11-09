@@ -192,29 +192,28 @@ export function buildCSR(
   if (n === 0) return emptyRelationshipEdges();
 
   // Step 1: count per key
-  const countMap = new Map<number, number>();
+  const counts = new Map<number, number>();
   for (let i = 0; i < n; i++) {
     const k = keys[i];
-    countMap.set(k, (countMap.get(k) ?? 0) + 1);
+    counts.set(k, (counts.get(k) ?? 0) + 1);
   }
 
-  // Step 2: prefix-sum offsets, sorted for deterministic order
+  // Reuse the count map, but publish its keys in the canonical ascending order.
+  const uniqueKeys = Array.from(counts.keys()).sort((a, b) => a - b);
+  const keyCounts = uniqueKeys.map((key) => counts.get(key)!);
+  counts.clear();
   const offsets = new Map<number, number>();
-  const counts = new Map<number, number>();
-  const uniqueKeys = Array.from(countMap.keys()).sort((a, b) => a - b);
   let offset = 0;
-  for (const k of uniqueKeys) {
-    offsets.set(k, offset);
-    counts.set(k, countMap.get(k)!);
-    offset += countMap.get(k)!;
+  for (let i = 0; i < uniqueKeys.length; i++) {
+    counts.set(uniqueKeys[i], keyCounts[i]);
+    offsets.set(uniqueKeys[i], offset);
+    offset += keyCounts[i];
   }
 
-  // Step 3: scatter edges into sorted positions
+  // Offsets serve as scatter cursors and are restored before publication.
   const edgeTargets = new Uint32Array(n);
   const edgeTypes = new Uint16Array(n);
   const edgeRelIds = new Uint32Array(n);
-  const writePos = new Map<number, number>();
-  for (const [k, o] of offsets) writePos.set(k, o);
 
   // Collected in scatter (final-position) order below, then sorted — cheap
   // since this list is expected to stay tiny (rare duplicates) regardless
@@ -223,14 +222,16 @@ export function buildCSR(
 
   for (let i = 0; i < n; i++) {
     const k = keys[i];
-    const pos = writePos.get(k)!;
+    const pos = offsets.get(k)!;
     edgeTargets[pos] = values[i];
     edgeTypes[pos] = types[i];
     edgeRelIds[pos] = relIds[i];
     const shadow = shadowedRelIds.get(i);
     if (shadow !== undefined) shadowedPairs.push([pos, shadow]);
-    writePos.set(k, pos + 1);
+    offsets.set(k, pos + 1);
   }
+
+  for (const key of uniqueKeys) offsets.set(key, offsets.get(key)! - counts.get(key)!);
 
   const columns: RelationshipEdgesColumns = { offsets, counts, edgeTargets, edgeTypes, edgeRelIds };
   const shadowed = buildShadowedColumns(shadowedPairs);
@@ -286,7 +287,14 @@ export function relationshipEdgesFromColumns(columns: RelationshipEdgesColumns):
     },
 
     getTargets(entityId: number, type?: RelationshipType): number[] {
-      return edges.getEdges(entityId, type).map(e => e.target);
+      const start = offsets.get(entityId);
+      if (start === undefined) return [];
+      const end = start + counts.get(entityId)!;
+      const out: number[] = [];
+      for (let i = start; i < end; i++) {
+        if (type === undefined || edgeTypes[i] === type) out.push(edgeTargets[i]);
+      }
+      return out;
     },
 
     hasAnyEdges(entityId: number): boolean {
@@ -311,10 +319,7 @@ export function relationshipGraphFromEdges(
     inverse,
 
     getRelated: (entityId, relType, direction) => {
-      const e = direction === 'forward'
-        ? forward.getEdges(entityId, relType)
-        : inverse.getEdges(entityId, relType);
-      return e.map((edge: Edge) => edge.target);
+      return (direction === 'forward' ? forward : inverse).getTargets(entityId, relType);
     },
 
     hasRelationship: (sourceId, targetId, relType) => {

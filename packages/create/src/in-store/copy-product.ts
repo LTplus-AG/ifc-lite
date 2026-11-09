@@ -29,7 +29,7 @@ import { iterateEffectiveEntityIds, type IfcAttributeValue, type StoreEditor } f
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { generateIfcGuid, type RandomSource } from '@ifc-lite/encoding';
 import { duplicateInStore, type SourceAttributes } from './duplicate.js';
-import { resolveDuplicateSource } from './resolve-source.js';
+import { resolveCopySource } from './copy-metadata.js';
 import { copyDependentSteps, copiedProductWork } from './copy-dependent-walk.js';
 import { follow, gridCopyRefusal, placeOnStorey, type Placed } from './copy-placement.js';
 import { asRef, createStyleEntityReader, indexExistingStyles, refList } from './style-entity-reader.js';
@@ -208,7 +208,7 @@ export function copyProductGraph(ctx: CopyContext, sourceId: number, transform: 
   const refusal = copyRefusal(ctx, sourceId);
   if (refusal) throw new Error(refusal);
   copiedProductWork(ctx, sourceId);
-  const source = resolveDuplicateSource(ctx.store, sourceId, ctx.editor);
+  const source = resolveCopySource(ctx, sourceId);
   const scale = source.lengthUnitScale && source.lengthUnitScale > 0 ? source.lengthUnitScale : 1;
   const native = (m: number) => m / scale;
   const [ox, oy, oz] = transform.offset ?? [0, 0, 0];
@@ -258,7 +258,7 @@ function copyDependents(ctx: CopyContext, sourceId: number, copyId: number, root
       continue;
     }
     const parentCopy = copies.get(step.parentId)!;
-    const source = resolveDuplicateSource(ctx.store, step.sourceId, ctx.editor);
+    const source = resolveCopySource(ctx, step.sourceId);
     const placed = follow(ctx, source, root, targetStoreyId, acc.placements, move);
     const copy = writeCopy(ctx, source, placed, step.kind === 'filling' ? targetStoreyId : null);
     noteGridOutcome(acc, placed, copy.id);

@@ -35,6 +35,7 @@ for (const edit of ['none', 'property', 'quantity'] as const) it(`#9296 copied p
   if (edit === 'property') view.setProperty(wall, 'Pset_WallCommon', 'Reference', 'edited');
   if (edit === 'quantity') view.setQuantity(wall, 'Qto_WallBaseQuantities', 'Length', 7);
   writeTopAttachment(view,wall,store.entities.getGlobalId(upper)!,'relative');
+  editor.addPropertySet(wall, 'Pset_CopyAudit', [{name:'Code',value:'retained',type:'LABEL'}]);
   const saved = new StepExporter(store,view).export({schema:'IFC4',applyMutations:true}).content;
   store=await parse(saved);view=new MutablePropertyView(null,'fresh');editor=new StoreEditor(store,view);
   view.setOnDemandExtractor(id=>extractPropertiesOnDemand(store,id));view.setQuantityExtractor(id=>extractQuantitiesOnDemand(store,id));
@@ -44,6 +45,10 @@ for (const edit of ['none', 'property', 'quantity'] as const) it(`#9296 copied p
   for (const result of second) for (const [copy,source] of result.copiedFrom) view.setEntityAlias(copy,source);
   const output = new StepExporter(store, view).export({ schema: 'IFC4', applyMutations: true }).content;
   const reopened = await parse(output), reader = new AnchorEntityReader(reopened, null);
+  expect([...reader.ids('IFCRELDEFINESBYPROPERTIES')].length).toBeGreaterThan(0);
+  for (const id of [wall, copies[0].copyId, second[0].copyId]) {
+    expect(extractPropertiesOnDemand(reopened,id).find(set=>set.name==='Pset_CopyAudit')?.properties[0].value).toBe('retained');
+  }
   for (const id of reader.ids('IFCRELDEFINESBYPROPERTIES')) {
     const rel = reader.entity(id)!;
     const definition = asRef(rel.attributes[5]);

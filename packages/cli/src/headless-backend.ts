@@ -133,11 +133,8 @@ export class HeadlessBackend implements BimBackend {
     const assertModel = (modelId: string) => this.assertKnownModelId(modelId);
     return {
       alignElements: (...args) => this.shared.store.alignElements!(...args),
-      addEntity(modelId: string, def: { type: string; attributes: unknown[] }): EntityRef {
-        assertModel(modelId);
-        const ref = get().addEntity(def.type, def.attributes as Parameters<StoreEditor['addEntity']>[1]);
-        return { modelId, expressId: ref.expressId };
-      },
+      // Share raw-append maintenance with the SDK, including wall endpoints.
+      addEntity: (modelId, def) => this.shared.store.addEntity(modelId, def),
       removeEntity(ref: EntityRef): boolean {
         return get().removeEntity(ref.expressId);
       },

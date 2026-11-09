@@ -28,7 +28,8 @@ for (const target of [1000, 10000]) {
   const setupStart = performance.now();
   while (count < target) addWallToStore(writer, anchor, params(count++));
   const setupMs = performance.now() - setupStart;
-  // Cold index construction is reported separately, never hidden in setup.
+  // Report the first ordinary add separately. Raw population maintains the
+  // session index; its complete cost remains visible in setupMs above.
   const coldStart = performance.now();
   S.addWall(M, L, params(count++));
   const coldMs = performance.now() - coldStart;

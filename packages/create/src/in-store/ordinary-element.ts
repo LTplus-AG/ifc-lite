@@ -4,7 +4,7 @@
 
 import type { StoreEditor } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
-import type { SpatialAnchor } from './anchor.js';
+import { toNativeLength, type SpatialAnchor } from './anchor.js';
 import { applyNewElementTop, type TopConstraint } from './storey/storey-top-constraint.js';
 import { addBeamToStore, type BeamInStoreParams, type ProfiledBeamInStoreParams } from './beam.js';
 import { addColumnToStore, type ColumnInStoreParams, type ProfiledColumnInStoreParams } from './column.js';
@@ -62,7 +62,11 @@ export function addOrdinaryElementInStore(
     if (options.top !== undefined && options.store && TOP_KINDS.has(element.kind)) applyNewElementTop(options.store, draft, id, options.top, resolved.storeyId);
     if (element.kind === 'wall' && options.store && options.wallIndex) {
       try {
-        notices.push(...autojoinWallInStore(options.store, draft, id, options.wallIndex, resolved));
+        notices.push(...autojoinWallInStore(options.store, draft, {
+          wallId: id, parentPlacementId: resolved.storeyPlacementId,
+          elevation: toNativeLength(resolved, element.params.Start[2]),
+          start: [element.params.Start[0], element.params.Start[1]], end: [element.params.End[0], element.params.End[1]],
+        }, options.wallIndex, resolved));
       } catch (error) {
         notices.push(`Skipped automatic wall joins for #${id}: ${error instanceof Error ? error.message : String(error)}`);
       }

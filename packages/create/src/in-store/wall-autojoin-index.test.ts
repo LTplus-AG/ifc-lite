@@ -53,16 +53,18 @@ it('#9406 a non-joining add reuses its resolved spatial anchor without another j
   const s = await newStorey();
   const anchor = vi.spyOn(joins, 'resolveWallJoinAnchor');
   const join = vi.spyOn(joins, 'joinWallsInStore');
+  const read = vi.spyOn(reads, 'readWallJoinTarget');
   const atomic = vi.spyOn(s.editor, 'runAtomic');
   addOrdinaryElementInStore(s.editor, s.anchor, { kind: 'wall', params: {
     Start: [0, 0, 0], End: [4, 0, 0], Height: 3, Thickness: .2,
   } }, { store: s.store });
   expect(anchor).not.toHaveBeenCalled();
   expect(join).not.toHaveBeenCalled();
+  expect(read).not.toHaveBeenCalled();
   expect(atomic).toHaveBeenCalledTimes(1);
 });
 
-for (const recorded of [false, true]) for (const count of [16, 64]) it(`#9296 / #9406 unrelated wall ${count + 1} reads only its own join target (recorded=${recorded})`, async () => {
+for (const recorded of [false, true]) for (const count of [16, 64]) it(`#9296 / #9406 unrelated wall ${count + 1} needs no join target reads (recorded=${recorded})`, async () => {
   const s = await newStorey();
   const add = (x: number) => {
     const element: OrdinaryInStoreElement = { kind: 'wall', params: {
@@ -75,8 +77,8 @@ for (const recorded of [false, true]) for (const count of [16, 64]) it(`#9296 / 
   for (let i = 0; i < count; i++) add(i * 10);
   const read = vi.spyOn(reads, 'readWallJoinTarget');
   const seed = vi.spyOn(reads, 'readWallJoinEndpoints');
-  const wall = add(count * 10);
-  expect(read.mock.calls.map(call => call[2])).toEqual([wall]);
+  add(count * 10);
+  expect(read).not.toHaveBeenCalled();
   expect(seed).not.toHaveBeenCalled();
   expect(reads.readWallJoinRels(s.store, s.view)).toEqual([]);
 });
@@ -126,8 +128,8 @@ it('#9296 discarded outer drafts do not leave ghost endpoint candidates', async 
   }))).toThrow('late publication refusal');
   expect(s.view.getNewEntities()).toEqual([]);
   const read = vi.spyOn(reads, 'readWallJoinTarget');
-  const wall = addOrdinaryElementInStore(s.editor, s.anchor, element, { store: s.store });
-  expect(read.mock.calls.map(call => call[2])).toEqual([wall]);
+  addOrdinaryElementInStore(s.editor, s.anchor, element, { store: s.store });
+  expect(read).not.toHaveBeenCalled();
 });
 
 it('#9296 excludes a forgotten wall from subsequent endpoint candidates', async () => {
@@ -136,6 +138,6 @@ it('#9296 excludes a forgotten wall from subsequent endpoint candidates', async 
   const a = addOrdinaryElementInStore(s.editor, s.anchor, element, { store: s.store });
   s.editor.removeEntity(a);
   const read = vi.spyOn(reads, 'readWallJoinTarget');
-  const b = addOrdinaryElementInStore(s.editor, s.anchor, element, { store: s.store });
-  expect(read.mock.calls.map(call => call[2])).toEqual([b]);
+  addOrdinaryElementInStore(s.editor, s.anchor, element, { store: s.store });
+  expect(read).not.toHaveBeenCalled();
 });

@@ -5,7 +5,7 @@ import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { createSchemaEntityNameSnapshot, type IfcDataStore } from '@ifc-lite/parser';
 import { AnchorEntityReader } from './resolve-anchor.js';
 import { safeLengthUnitScale } from './length-unit-scale.js';
-import { readWallJoinEndpoints, type WallEndpoints, type WallJoinRead } from './wall-join-read.js';
+import { readWallJoinEndpoints, type WallEndpoints } from './wall-join-read.js';
 import { schemaRegistry } from './schema-attributes.js';
 
 const TOLERANCE = 1e-6;
@@ -15,8 +15,8 @@ const key = (parent: number | null, z: number, x: number, y: number) => `${paren
 /** A transaction-local endpoint lookup. Updates publish only after its owning
  * ordinary-creation transaction (including host history/publication) commits. */
 export interface WallAutojoinIndex {
-  candidates(wall: WallJoinRead): readonly number[];
-  remember(wall: WallJoinRead): void;
+  candidates(wall: WallEndpoints): readonly number[];
+  remember(wall: WallEndpoints): void;
 }
 
 class Endpoints {
@@ -46,8 +46,6 @@ class Endpoints {
   }
 }
 
-const summary = (wall: WallJoinRead): WallEndpoints => ({ wallId: wall.wallId, parentPlacementId: wall.parentPlacementId,
-  elevation: wall.location[2], start: wall.wall.start, end: wall.wall.end });
 interface Session {
   store: IfcDataStore; source: IfcDataStore['source']; schema: IfcDataStore['schemaVersion'];
   sourceCount: number; revision: number; endpoints: Endpoints; scale: number; skipped: boolean;
@@ -140,8 +138,8 @@ export function withWallAutojoinIndex<T>(store: IfcDataStore, view: MutablePrope
   const staged = new Endpoints();
   try {
     const result = edit({
-      candidates: wall => [...new Set([...current.endpoints.candidates(summary(wall)), ...staged.candidates(summary(wall))])],
-      remember: wall => { const row = summary(wall); pending.set(wall.wallId, row); staged.add(row); },
+      candidates: wall => [...new Set([...current.endpoints.candidates(wall), ...staged.candidates(wall)])],
+      remember: wall => { pending.set(wall.wallId, wall); staged.add(wall); },
     });
     if (pending.size) {
       for (const row of pending.values()) current.endpoints.add(row);

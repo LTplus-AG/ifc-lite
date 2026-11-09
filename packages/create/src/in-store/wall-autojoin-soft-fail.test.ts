@@ -65,11 +65,14 @@ it('#9406 an endpoint index read failure is returned as a notice instead of just
 
 it('#9406 an initial join read failure keeps the wall and invalidates its incomplete endpoint cache', async () => {
   const s = await newStorey();
+  addOrdinaryElementInStore(s.editor, s.anchor, horizontal, { store: s.store });
   vi.spyOn(reads, 'readWallJoinTarget').mockImplementationOnce(() => { throw new Error('join target unreadable'); });
   const notices: string[] = [];
-  const a = addOrdinaryElementInStore(s.editor, s.anchor, horizontal, { store: s.store, notices });
+  const a = addOrdinaryElementInStore(s.editor, s.anchor, vertical, { store: s.store, notices });
   expect(s.view.getNewEntity(a)?.type).toBe('IfcWall');
   expect(notices.join('\n')).toMatch(/skipped.*automatic wall join.*join target unreadable/i);
-  const b = addOrdinaryElementInStore(s.editor, s.anchor, vertical, { store: s.store });
+  const b = addOrdinaryElementInStore(s.editor, s.anchor, { kind: 'wall', params: {
+    Start: [4, 3, 0], End: [8, 3, 0], Thickness: .2, Height: 3,
+  } }, { store: s.store });
   expect(reads.readWallJoinRels(s.store, s.view)).toMatchObject([{ relatingId: a, relatedId: b }]);
 });

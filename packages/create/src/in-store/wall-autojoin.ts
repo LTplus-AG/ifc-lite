@@ -4,18 +4,22 @@
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { StoreEditor } from '@ifc-lite/mutations';
 import type { WallAutojoinIndex } from './wall-autojoin-index.js';
-import { readWallJoinTarget } from './wall-join-read.js';
+import { readWallJoinTarget, type WallEndpoints, type WallJoinRead } from './wall-join-read.js';
 import { joinWallsInStore } from './wall-join-edit.js';
 import type { JoinAnchor } from './wall-join-apply.js';
 
 /** End-to-end chains join at coincident endpoints. Crossing/disconnected walls
  * remain explicit joins: proximity alone must never extend an unrelated wall. */
-export function autojoinWallInStore(store: IfcDataStore, editor: StoreEditor, wallId: number, index: WallAutojoinIndex, anchor: JoinAnchor): string[] {
+export function autojoinWallInStore(store: IfcDataStore, editor: StoreEditor, endpoints: WallEndpoints, index: WallAutojoinIndex, anchor: JoinAnchor): string[] {
   const notices: string[] = [];
+  const { wallId } = endpoints;
+  const candidates = index.candidates(endpoints).filter(id => id !== wallId);
+  // The canonical builder already knows these endpoints. Do not decode its
+  // body, schema or hosted geometry when no join can happen (#9406).
+  if (!candidates.length) { index.remember(endpoints); return notices; }
   const a = readWallJoinTarget(store, editor.getMutationView(), wallId, anchor.lengthUnitScale ?? 1);
   if (!a) throw new Error(`Wall #${wallId} has unreadable join geometry (schema ${store.schemaVersion ?? 'unspecified'})`);
-  for (const otherId of index.candidates(a)) {
-    if (otherId === wallId) continue;
+  for (const otherId of candidates) {
     try {
       const b = readWallJoinTarget(store, editor.getMutationView(), otherId, anchor.lengthUnitScale ?? 1);
       if (!a || !b || a.parentPlacementId !== b.parentPlacementId || Math.abs(a.location[2] - b.location[2]) > 1e-6) continue;
@@ -27,11 +31,14 @@ export function autojoinWallInStore(store: IfcDataStore, editor: StoreEditor, wa
       // undo wall creation or any other successful join (#9296 / #9406).
       const joined = joinWallsInStore(editor, store, anchor, otherId, wallId);
       a.wall = joined.b.wall;
-      index.remember({ ...b, wall: joined.a.wall });
+      index.remember(summary({ ...b, wall: joined.a.wall }));
     } catch (error) {
       notices.push(`Skipped automatic wall join between #${otherId} and #${wallId}: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
-  index.remember(a);
+  index.remember(summary(a));
   return notices;
 }
+
+const summary = (wall: WallJoinRead): WallEndpoints => ({ wallId: wall.wallId, parentPlacementId: wall.parentPlacementId,
+  elevation: wall.location[2], start: wall.wall.start, end: wall.wall.end });

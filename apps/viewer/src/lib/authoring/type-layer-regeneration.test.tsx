@@ -16,7 +16,7 @@ import { IfcParser } from '@ifc-lite/parser';
 import { IfcAPI } from '@ifc-lite/wasm';
 import { previewTypeLayerImpact, typeLayerScopeInStore } from '@ifc-lite/create';
 import { configureMutationView } from '@/utils/configureMutationView';
-import { setEditedQuantityRefresh } from '@/lib/quantities/edited-quantity-refresh';
+import { isEditedQuantityRefreshEnabled } from '@/lib/quantities/edited-quantity-refresh';
 import { applyAuthoredDefaults } from '@/lib/commands/modeling/authored-defaults';
 import type { MeshData } from '@ifc-lite/geometry';
 import { applyRemeshConfig, remeshOnApi, styleWireOnApi } from '../../../../../packages/geometry/src/remesh/remesh-core.js';
@@ -253,20 +253,30 @@ it('editing the shared type of five walls regenerates them, the door cut, the jo
   await seed(bytes);
   const reopened = s().models.get(MODEL)!.ifcDataStore!;
   configureMutationView(s().mutationViews.get(MODEL)!, reopened);
-  // A loaded wall's own Qto follows its edited body when "Update quantities of edited elements" is on (off by default).
-  setEditedQuantityRefresh(true);
-  t.after(() => setEditedQuantityRefresh(false));
+  // The reopened walls are LOADED and carry the Qto_WallBaseQuantities the export wrote. The type edit itself
+  // must refresh them, with "Update quantities of edited elements" left at its default (off).
+  assert.equal(isEditedQuantityRefreshEnabled(), false);
   const id = (guid: string) => reopened.entities.getExpressIdByGlobalId(guid);
   const [type2, walls2, rooms2] = [id(guids.type), guids.walls.map(id), guids.rooms.map(id)];
   oneRelationPerType(exported(), type2, walls2);
   const r2 = readings(walls2, rooms2);
   assert.deepEqual(r2.thickness(), walls2.map(() => .3), 'the reopened walls are 300 mm');
+  walls2.forEach(wall => near(r2.wallQto(wall).Width!, .3, 'the reopened walls carry the exported 300 mm Qto'));
   assert.deepEqual([...typeLayerScopeInStore(modelEditTarget(s(), MODEL)!, type2).inheriting].sort(), [...walls2].sort(), 'after reopen, all five still follow the type');
   assert.ok(applyMaterialLayers(MODEL, { kind: 'wall', target: 'type', elementId: walls2[2], typeId: type2,
     layers: [{ thickness: .25, material: { name: 'Brick' } }] }) !== null);
   await landed();
   assertBuilding(r2, walls2, .25, 'edited again after reopen');
+  walls2.forEach(wall => near(r2.wallQto(wall).Width!, .25, 'every reopened wall\'s stored Qto Width follows'));
   const reopenedEdit = exported();
+  s().undo(MODEL);
+  await landed();
+  assertBuilding(r2, walls2, .3, 'Undo after reopen');
+  walls2.forEach(wall => near(r2.wallQto(wall).Width!, .3, 'Undo restores the stored Qto'));
+  s().redo(MODEL);
+  await landed();
+  assertBuilding(r2, walls2, .25, 'Redo after reopen');
+  assert.deepEqual(comparable(exported()), comparable(reopenedEdit), 'Redo after reopen restores the edit exactly');
   oneRelationPerType(reopenedEdit, type2, walls2);
   assert.deepEqual(orphanRepresentations(reopenedEdit), [], 'editing the loaded walls replaces their file axes without leaving them unowned');
 });

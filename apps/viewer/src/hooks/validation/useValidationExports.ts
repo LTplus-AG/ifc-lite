@@ -22,7 +22,7 @@ import { recordActivity } from '@/lib/activity/activity-journal';
 import { useReplaceableTimeout } from '../useReplaceableTimeout';
 
 /** How long "Export complete!" stays before the progress bar clears. */
-const BCF_DONE_LINGER_MS = 2000;
+export const BCF_DONE_LINGER_MS = 2000;
 
 export interface ValidationExportsApi {
   exportReportJSON: () => void;
@@ -31,7 +31,9 @@ export interface ValidationExportsApi {
   bcfExportProgress: IDSExportProgress | null;
 }
 
-export function useValidationExports(report: ValidationReport | null, locale: SupportedLocale): ValidationExportsApi {
+export function useValidationExports(
+  report: ValidationReport | null, locale: SupportedLocale, bcfDoneLingerMs = BCF_DONE_LINGER_MS,
+): ValidationExportsApi {
   const models = useViewerStore((s) => s.models);
   const geometryResult = useViewerStore((s) => s.geometryResult);
   const bcfAuthor = useViewerStore((s) => s.bcfAuthor);
@@ -73,7 +75,7 @@ export function useValidationExports(report: ValidationReport | null, locale: Su
         toViewerGlobalId, bcfAuthor,
         setBcfExportProgress: setRunProgress, setBcfProject, setBcfPanelVisible,
       }));
-      if (bcfRunRef.current === run) clearBcfProgressLater.schedule(() => setRunProgress(null), BCF_DONE_LINGER_MS);
+      if (bcfRunRef.current === run) clearBcfProgressLater.schedule(() => setRunProgress(null), bcfDoneLingerMs);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'BCF export failed';
       setIdsError(message);
@@ -81,7 +83,7 @@ export function useValidationExports(report: ValidationReport | null, locale: Su
       setRunProgress(null);
     }
   }, [report, models, geometryResult, toViewerGlobalId, bcfAuthor, setIdsError, setBcfProject, setBcfPanelVisible, t,
-    clearBcfProgressLater]);
+    clearBcfProgressLater, bcfDoneLingerMs]);
 
   return { exportReportJSON, exportReportHTML, exportReportBCF, bcfExportProgress };
 }

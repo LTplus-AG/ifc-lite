@@ -43,37 +43,43 @@ function report(): ValidationReport {
   };
 }
 
-// No camera and no snapshots: the export needs no renderer, so it finishes in
-// well under the 2 s completion window.
+// No camera and no snapshots: the export needs no renderer, so it finishes
+// well inside the (shortened) completion window.
 const settings: IDSBCFExportSettings = {
   topicGrouping: 'per-entity', includePassingEntities: false,
   includeCamera: false, includeSnapshots: false, loadIntoBcfPanel: false,
 };
 
+/** The production 2 s window, shortened so the test spends little real time. */
+const LINGER_MS = 400;
+
 let owner: ReturnType<typeof useValidationExports>;
 function Owner({ value }: { value: ValidationReport }) {
-  owner = useValidationExports(value, 'en');
+  owner = useValidationExports(value, 'en', LINGER_MS);
   return null;
 }
 
-it('a second BCF export inside the completion window keeps its progress past the first run\'s clear (B1)', async () => {
+it('(#9487) a second BCF export inside the completion window keeps its progress past the first run\'s clear (B1)', async () => {
   const value = report();
   render(<Owner value={value} />);
 
   await act(async () => { await owner.exportReportBCF(settings); });
   assert.equal(owner.bcfExportProgress?.phase, 'done', 'the first run reports completion');
+  const firstDoneAt = Date.now();
 
-  // Start the second export 1.2 s into the first run's 2 s completion window.
-  await advance(1200);
+  // Start the second export 60% into the first run's completion window.
+  await advance(LINGER_MS * 0.6);
   await act(async () => { await owner.exportReportBCF(settings); });
   assert.equal(owner.bcfExportProgress?.phase, 'done', 'the second run reports completion');
+  const secondDoneAt = Date.now();
 
   // Past the first run's deadline, inside the second run's own window.
-  await advance(1200);
+  await advance(Math.max(0, firstDoneAt + LINGER_MS * 1.2 - Date.now()));
+  assert.ok(Date.now() < secondDoneAt + LINGER_MS, 'still inside the second run\'s window');
   assert.equal(owner.bcfExportProgress?.phase, 'done',
     'the first run\'s timer must not clear the second run\'s progress');
 
   // The second run's own clear still happens.
-  await advance(1200);
+  await advance(Math.max(0, secondDoneAt + LINGER_MS * 1.3 - Date.now()));
   assert.equal(owner.bcfExportProgress, null, 'the second run clears its own completion');
 });

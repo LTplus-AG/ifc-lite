@@ -62,6 +62,7 @@ ifc-lite ships its public npm packages under the `@ifc-lite/*` scope, plus the `
 | [`@ifc-lite/opencde-foundation`](https://www.npmjs.com/package/@ifc-lite/opencde-foundation) | buildingSMART OpenCDE Foundation API client: version discovery, auth discovery, OAuth2 flows and the shared HTTP client used by every OpenCDE service client |
 | [`@ifc-lite/plugin-api`](https://www.npmjs.com/package/@ifc-lite/plugin-api) | Dependency-free type surface for ifc-lite file-source plugins |
 | [`@ifc-lite/regex-guard`](https://www.npmjs.com/package/@ifc-lite/regex-guard) | A shared, dependency-free guard against catastrophic-backtracking (ReDoS) regex patterns compiled from untrusted input |
+| [`@ifc-lite/rhino3dm`](https://www.npmjs.com/package/@ifc-lite/rhino3dm) | Lazy Rhino 3dm writer for encoded ifc-lite RhinoScene data |
 | [`@ifc-lite/rules`](https://www.npmjs.com/package/@ifc-lite/rules) | Filter-rule vocabulary, evaluator and .rules.json information-validation engine for IFC-Lite |
 | [`@ifc-lite/semantic`](https://www.npmjs.com/package/@ifc-lite/semantic) | Portable semantic datasets, profiles, validation and IFC identity resolution |
 | [`@ifc-lite/source-autodesk`](https://www.npmjs.com/package/@ifc-lite/source-autodesk) | Autodesk Forma and Data Exchange cloud-source provider for ifc-lite |

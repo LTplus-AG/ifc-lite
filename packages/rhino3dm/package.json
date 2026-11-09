@@ -1,0 +1,52 @@
+{
+  "name": "@ifc-lite/rhino3dm",
+  "version": "0.1.0",
+  "description": "Lazy Rhino 3dm writer for encoded ifc-lite RhinoScene data",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "pnpm exec tsc",
+    "typecheck": "node ../../scripts/typecheck-tests.mjs",
+    "dev": "pnpm exec tsc --watch",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@mergifyio/vitest": "^2026.10.11",
+    "typescript": "^6.0.3",
+    "vitest": "^5.0.5",
+    "vite": "^8.3.5"
+  },
+  "license": "MPL-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/LTplus-AG/ifc-lite.git",
+    "directory": "packages/rhino3dm"
+  },
+  "files": [
+    "dist"
+  ],
+  "author": "Louis True",
+  "publishConfig": {
+    "access": "public"
+  },
+  "homepage": "https://ifclite.dev/docs/",
+  "bugs": "https://github.com/LTplus-AG/ifc-lite/issues",
+  "dependencies": {
+    "rhino3dm": "8.35.0"
+  },
+  "imports": {
+    "#rhino-factory": {
+      "node": "rhino3dm",
+      "browser": "rhino3dm/rhino3dm.module.js",
+      "default": "rhino3dm/rhino3dm.module.js"
+    }
+  }
+}

@@ -158,6 +158,41 @@ describe('#7955 M2-C retained scope', () => {
     assert.equal(loadFailure(new Error('out of memory')), null, 'a failure outside the host keeps the loader wording');
   });
 
+  // #7955 M2-C: `addModel` raises the load UI before `loadFile` asks for a
+  // kernel, and a refusal returns before any canceller exists. The refusal
+  // must end that UI itself, but never the UI of a load that is still running.
+  for (const owner of ['no other load', 'another running load'] as const) {
+    it(`a refused federated add with ${owner} leaves the load UI ${owner === 'no other load' ? 'idle' : 'to that load'}, with its message shown (#7955)`, async () => {
+      chooseGeometryKernel('retained');
+      const state = useViewerStore.getState();
+      const running = { phase: 'Processing geometry', percent: 40 };
+      if (owner !== 'no other load') state.setActiveLoadCanceller(() => {});
+      state.setLoading(true);
+      state.setLoadingFileName('second.ifc');
+      state.setProgress(owner === 'no other load' ? { phase: 'Loading file', percent: 0 } : running);
+      try {
+        const kernel = harness().begin(stepFile('second.ifc'), 'federated');
+        assert.ok(kernel?.refused);
+        await kernel.refused;
+        const after = useViewerStore.getState();
+        assert.match(after.error ?? '', /one model at a time/);
+        if (owner === 'no other load') {
+          assert.equal(after.loading, false, 'no spinner stuck at 0% without a Cancel');
+          assert.equal(after.progress, null);
+          assert.equal(after.loadingFileName, null);
+        } else {
+          assert.equal(after.loading, true, 'the running load keeps its spinner');
+          assert.deepEqual(after.progress, running);
+        }
+      } finally {
+        state.setActiveLoadCanceller(null);
+        state.setLoading(false);
+        state.setProgress(null);
+        state.setLoadingFileName(null);
+      }
+    });
+  }
+
   it('M11-Z keeps federation refused for an open final retained model, including an exact add', async () => {
     useViewerStore.getState().addModel({
       id: 'r', name: 'r.ifc', ifcDataStore: null, geometryResult: null, visible: true, collapsed: false,

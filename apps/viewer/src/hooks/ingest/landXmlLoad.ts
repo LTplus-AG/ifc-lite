@@ -23,6 +23,7 @@ import { LandXmlProvisionalUploadError } from './landXmlGpuTransactions.js';
 import { markLandXmlGpuUploaded } from './landXmlGpuOwnership.js';
 import { type FederatedLandXmlStreamingFinalization, FederatedLandXmlStreamingPlan } from './federatedLandXmlStreaming.js';
 import { GeoRasterBundle } from '@/lib/terrain-imagery/raster-bundle.js';
+import { settleUnownedLoadUi } from '../modelLoadCanceller.js';
 
 interface LandXmlLoadOptions {
   file: File;
@@ -392,9 +393,8 @@ export async function loadLandXmlModel(options: LandXmlLoadOptions): Promise<voi
  * returns the drape before `loadFile` bumps the load session or resets the
  * scene; `null` for anything else. The drape module loads only when used.
  */
-export function drapeIfGeoRaster(file: File, setLoading: (loading: boolean) => void): Promise<void> | null {
+export function drapeIfGeoRaster(file: File): Promise<void> | null {
   if (!(file instanceof GeoRasterBundle)) return null;
   return import('./terrainImageryDrape.js')
-    .then(({ drapeGeoRasterBundle }) => drapeGeoRasterBundle(file))
-    .finally(() => setLoading(false));
+    .then(({ drapeGeoRasterBundle }) => drapeGeoRasterBundle(file)).finally(settleUnownedLoadUi);
 }

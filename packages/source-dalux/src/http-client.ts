@@ -58,6 +58,12 @@ export class BrowserDaluxApiClient {
     private readonly ctx: PluginContext,
   ) {}
 
+  /** Reuse only while the current context's exact credentials still match. */
+  matchesCredentials(credentials: DaluxCredentials): boolean {
+    return this.credentials.baseUrl === credentials.baseUrl && this.credentials.apiKey === credentials.apiKey
+      && this.credentials.node === credentials.node;
+  }
+
   get baseUrl(): string {
     return this.credentials.baseUrl;
   }

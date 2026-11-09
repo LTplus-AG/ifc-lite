@@ -9,7 +9,6 @@ import {
   decodeFolder,
   decodeProject,
 } from './dalux-types.js';
-
 import type {
   DaluxFile,
   DaluxFileArea,
@@ -54,9 +53,9 @@ import { listVersionSetRevisions } from './revision-methods.js';
 
 const DEFAULT_BASE_URL = 'https://node1.field.dalux.com/service/api';
 
-
 export class DaluxBuildProvider implements FileSourceProvider {
   readonly manifest = DALUX_MANIFEST;
+  private readonly clients = new WeakMap<PluginContext, BrowserDaluxApiClient>();
 
   async listProjects(ctx: PluginContext, options?: ListProjectsOptions): Promise<Page<SourceProject>> {
     const client = await this.createClient(ctx);
@@ -413,11 +412,12 @@ export class DaluxBuildProvider implements FileSourceProvider {
     const apiKey = await ctx.getPreference('apiKey');
     if (!apiKey) throw new Error('Dalux API key not configured');
     const node = parseDaluxNode(await ctx.getPreference('baseUrl'));
-    // `baseUrl` stays the canonical default even for a non-default node: the
-    // host only rewrites to the same-origin relay while the URL matches the
-    // manifest's declared upstream, and Dalux serves no CORS headers, so a
-    // rewritten base would bypass the relay and fail in the browser. The node
-    // travels as a parameter the relay resolves server-side (#2792).
-    return new BrowserDaluxApiClient({ baseUrl: DEFAULT_BASE_URL, apiKey, node }, ctx);
+    // Keep the canonical relay origin; the node travels as a parameter (#2792).
+    const credentials = { baseUrl: DEFAULT_BASE_URL, apiKey, node };
+    const cached = this.clients.get(ctx);
+    if (cached?.matchesCredentials(credentials)) return cached;
+    const client = new BrowserDaluxApiClient(credentials, ctx);
+    this.clients.set(ctx, client);
+    return client;
   }
 }

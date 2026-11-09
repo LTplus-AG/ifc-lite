@@ -113,6 +113,27 @@ describe('DaluxBuildProvider.listRevisions', () => {
     expect(new TextDecoder().decode(a)).not.toBe(new TextDecoder().decode(b));
   });
 
+  it('starts a fresh history sweep when credentials rotate on the same context (#8648)', async () => {
+    let sweeps = 0;
+    const inner = createDaluxApiMock(WORLD);
+    const counting: typeof fetch = (input, init) => {
+      if (String(input).includes('/version_sets')) sweeps++;
+      return inner(input, init);
+    };
+    const provider = new DaluxBuildProvider();
+    const ctx = createDaluxMockContext(counting);
+    let apiKey = 'first-key';
+    ctx.getPreference = name => Promise.resolve(name === 'apiKey' ? apiKey : undefined);
+    const first = await provider.listRevisions!(ctx, REF);
+    const afterFirst = sweeps;
+    await provider.listRevisions!(ctx, REF);
+    expect(sweeps).toBe(afterFirst);
+    apiKey = 'rotated-key';
+    const rotated = await provider.listRevisions!(ctx, REF);
+    expect(sweeps).toBeGreaterThan(afterFirst);
+    expect(rotated.items.map(row => row.id)).toEqual(first.items.map(row => row.id));
+  });
+
   it('shares one sweep across repeated calls for the same project', async () => {
     let requests = 0;
     const inner = createDaluxApiMock(WORLD, { pageSize: 1 });

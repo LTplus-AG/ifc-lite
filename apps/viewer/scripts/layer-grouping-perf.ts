@@ -5,7 +5,7 @@
 // Manual probe, outside CI. Prepare dependencies through the root build first.
 // Under exclusive fleet benchmark admission, from the repository root:
 // TSX_TSCONFIG_PATH=apps/viewer/tsconfig.json node --expose-gc --import tsx --import ./apps/viewer/src/test/vite-module-hooks.mjs apps/viewer/scripts/layer-grouping-perf.ts MAIN_SHA
-// --check verifies variant shapes, reference decoding and row identity without timings.
+// --check verifies a small fixture without timings; --check-full checks the same 12k/50k workloads.
 import '../src/test/setup-dom.js';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
@@ -22,7 +22,8 @@ type Builder = typeof buildPresentationLayerTree;
 const beforeCache = '6fdd8c0f3f908a2387fdbcb2ec9ec49217225652';
 const main = process.argv[2];
 assert.match(main ?? '', /^[0-9a-f]{40}$/, 'pass an explicit fetched main SHA');
-const checkOnly = process.argv.includes('--check');
+const smallCheck = process.argv.includes('--check');
+const checkOnly = smallCheck || process.argv.includes('--check-full');
 const hierarchy = 'apps/viewer/src/components/viewer/hierarchy';
 const parserCopy = resolve('packages/parser/src/.layer-grouping-before-cache-resolver.ts');
 const beforeCopy = resolve(hierarchy, '.layer-grouping-before-cache-tree.ts');
@@ -114,7 +115,7 @@ try {
   const result: { beforeCache: string; main: string; head: string; sizes: unknown[] } = {
     beforeCache, main, head: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(), sizes: [],
   };
-  for (const count of checkOnly ? [12] : [12_000, 50_000]) {
+  for (const count of smallCheck ? [12] : [12_000, 50_000]) {
     const store = await new IfcParser().parseColumnar(fixture(count), { disableWorkerScan: true });
     const variants = [
       { name: 'main-none', build: mainTree, mode: 'none' },

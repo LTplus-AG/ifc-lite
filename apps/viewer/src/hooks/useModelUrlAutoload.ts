@@ -69,7 +69,7 @@ export function useModelUrlAutoload(): void {
       // Replay-safe (a fetch, no gesture): Retry on the unsupported card may
       // re-run it after the re-check. This effect never reaches the guard
       // while the check is still running; it waits for the check instead.
-      if (!guardWebGpu(() => { void attempt(); }, { resumeWhenSupported: true })) return;
+      if (!guardWebGpu(() => { void attempt(); }, { replay: 'free' })) return;
       // Resolve (supports relative paths) and enforce same-origin before fetching.
       let source: URL;
       try {

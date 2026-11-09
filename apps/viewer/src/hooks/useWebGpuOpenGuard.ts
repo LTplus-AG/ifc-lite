@@ -18,23 +18,31 @@ import { useViewerStore } from '@/store';
 import { clearLoadError, showLoadError } from '@/lib/analytics';
 import { getWebGPUStatus, retryWebGPU, useWebGPU, type WebGPUStatus } from './useWebGPU';
 
+/**
+ * How an open may be re-run without the click that started it:
+ * - `'free'`: needs no user gesture (a dropped or input-selected file, a
+ *   `?model=` fetch). It resumes by itself when a pending check passes, and
+ *   Retry replays it.
+ * - `'on-retry'`: needs no gesture either (Start blank), but only an explicit
+ *   Retry replays it; a passing check just clears the card.
+ * - `'activation'` (default): needs transient user activation (the file
+ *   picker). Retry replays it only while the click's activation is still
+ *   active (`navigator.userActivation.isActive`, about 5 s); otherwise the
+ *   card clears and the user opens again. It never auto-resumes.
+ */
+export type OpenReplay = 'free' | 'on-retry' | 'activation';
+
 export interface WebGpuOpenGuardOptions {
-  /**
-   * Run `retry` by itself once a pending capability check reports WebGPU
-   * supported. Opt in only for an open that is safe to replay without a fresh
-   * user gesture (a dropped or input-selected file). A picker or other
-   * activation-gated action must not set it: replayed from an effect, it has no
-   * user activation. Without it, a passing check (also one Retry waited on)
-   * just clears the notice and the user opens again.
-   */
-  resumeWhenSupported?: boolean;
+  replay?: OpenReplay;
 }
 
 export interface WebGpuOpenGuard {
   webgpu: WebGPUStatus;
   /**
    * True when WebGPU is supported. Otherwise false and shows a reason in the
-   * load-error card, including while the adapter check is still pending.
+   * load-error card, including while the adapter check is still pending. One
+   * card at a time: a second open during the same check replaces the first
+   * one's card and pending open.
    */
   guard: (retry?: () => void, options?: WebGpuOpenGuardOptions) => boolean;
 }
@@ -65,11 +73,20 @@ interface GuardCard { key: CardKey; message: string | null; retry: (() => void) 
 type GuardNotice =
   | { kind: 'none' }
   | { kind: 'pending'; card: GuardCard; open: (() => void) | null }
-  | { kind: 'retrying'; card: GuardCard; open: (() => void) | null };
+  | { kind: 'retrying'; card: GuardCard; open: () => void; needsActivation: boolean };
 
 let notice: GuardNotice = { kind: 'none' };
+let mountedGuards = 0;
 
-/** Still on screen as we left it: neither dismissed nor replaced by a newer error. */
+function hasUserActivation(): boolean {
+  return typeof navigator !== 'undefined' && navigator.userActivation?.isActive === true;
+}
+
+/**
+ * Still on screen as we left it: neither dismissed nor replaced by a newer
+ * error. The Retry identity tells a newer card with the same text (another
+ * open's, or a caller's own error) apart from ours.
+ */
 function owns(card: GuardCard): boolean {
   const { error, lastLoadRetry } = useViewerStore.getState();
   return error === card.message && lastLoadRetry === card.retry;
@@ -96,6 +113,8 @@ function settle(status: WebGPUStatus, t: Translate): void {
   }
   clearLoadError(state.setError, state.setLastLoadRetry);
   if (!current.open) return;
+  // A picker replayed after its click's activation expired is blocked silently.
+  if (current.kind === 'retrying' && current.needsActivation && !hasUserActivation()) return;
   try {
     current.open();
   } catch (err) {
@@ -111,6 +130,18 @@ export function useWebGpuOpenGuard(): WebGpuOpenGuard {
   const { t, revision } = useTranslation();
 
   useEffect(() => { settle(webgpu, t); }, [t, revision, webgpu]);
+  // With no guard left to settle it, drop the notice (and our card) rather than
+  // let a later mount replay an open captured by an unmounted component.
+  useEffect(() => {
+    mountedGuards += 1;
+    return () => {
+      mountedGuards -= 1;
+      if (mountedGuards > 0 || notice.kind === 'none') return;
+      const { card } = notice;
+      notice = { kind: 'none' };
+      if (owns(card)) clearLoadError(useViewerStore.getState().setError, useViewerStore.getState().setLastLoadRetry);
+    };
+  }, []);
 
   const guard = useCallback((retry?: () => void, options?: WebGpuOpenGuardOptions): boolean => {
     const status = getWebGPUStatus();
@@ -118,30 +149,30 @@ export function useWebGpuOpenGuard(): WebGpuOpenGuard {
     // Explains a drop/open even while the adapter check is still pending,
     // instead of a silent no-op — the caller has no separate "wait" path.
     const { setError, setLastLoadRetry } = useViewerStore.getState();
-    const resume = options?.resumeWhenSupported === true;
+    const replay = options?.replay ?? 'activation';
     const retryAfterProbe: (() => void) | null = retry ? () => {
       const { error, lastLoadRetry } = useViewerStore.getState();
-      if (lastLoadRetry !== retryAfterProbe) return; // stale card
+      if (lastLoadRetry !== retryAfterProbe) return; // a stale card's Retry starts no re-check
       // Our card is the pending checking one, or else the unsupported one.
       const key = notice.kind !== 'none' && notice.card.retry === retryAfterProbe ? notice.card.key : UNSUPPORTED_KEY;
       const card = { key, message: error, retry: retryAfterProbe };
       const now = getWebGPUStatus();
       if (now.supported) {
-        // Settles synchronously, inside the click: any open may run.
-        notice = { kind: 'retrying', card, open: retry };
+        // Settles synchronously, inside the click, so even the picker has its activation.
+        notice = { kind: 'retrying', card, open: retry, needsActivation: false };
         settle(now, t);
         return;
       }
       // The effect settles it when the (shared, or re-forced) probe reports;
       // a second click before then only re-arms the same notice.
-      notice = { kind: 'retrying', card, open: resume ? retry : null };
+      notice = { kind: 'retrying', card, open: retry, needsActivation: replay === 'activation' };
       void retryWebGPU();
     } : null;
     const checking = status.checking;
     const key = checking ? CHECKING_KEY : UNSUPPORTED_KEY;
     const message = t(key);
     notice = checking
-      ? { kind: 'pending', card: { key, message, retry: retryAfterProbe }, open: resume ? retry ?? null : null }
+      ? { kind: 'pending', card: { key, message, retry: retryAfterProbe }, open: replay === 'free' ? retry ?? null : null }
       : { kind: 'none' };
     showLoadError(setError, setLastLoadRetry, message, checking ? 'webgpu_checking' : 'webgpu_unsupported', retryAfterProbe);
     return false;

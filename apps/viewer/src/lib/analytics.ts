@@ -313,7 +313,12 @@ export function showLoadError(
   trackUiEvent('error_shown', { code, surface: 'load_error' });
 }
 
-/** Takes down the load-error card: its message and its Retry together, the pair `showLoadError` sets. */
+/**
+ * Takes down the load-error card: its message and its Retry together, the pair
+ * `showLoadError` sets. The loading slice's `setError(null)` already drops the
+ * Retry too; clearing it here as well keeps the pairing explicit at call sites
+ * rather than relying on that store detail.
+ */
 export function clearLoadError(
   setError: (message: string | null) => void,
   setLastLoadRetry: (retry: (() => void) | null) => void,

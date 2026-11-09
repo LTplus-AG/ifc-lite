@@ -27,6 +27,11 @@ registerLocale('g1-pseudo', { [CHECKING]: '⟦checking⟧', [UNSUPPORTED]: '⟦u
 
 const originalIsSecureContext = Object.getOwnPropertyDescriptor(window, 'isSecureContext');
 const originalGpu = Object.getOwnPropertyDescriptor(navigator, 'gpu');
+const originalActivation = Object.getOwnPropertyDescriptor(navigator, 'userActivation');
+
+function setActivation(isActive: boolean) {
+  Object.defineProperty(navigator, 'userActivation', { value: { isActive, hasBeenActive: true }, configurable: true });
+}
 
 /** A fresh `navigator.gpu` whose adapter request settles when the test says so. */
 function pendingAdapter(): (adapter: object | null) => void {
@@ -61,7 +66,23 @@ afterEach(() => {
   else Reflect.deleteProperty(window, 'isSecureContext');
   if (originalGpu) Object.defineProperty(navigator, 'gpu', originalGpu);
   else Reflect.deleteProperty(navigator, 'gpu');
+  if (originalActivation) Object.defineProperty(navigator, 'userActivation', originalActivation);
+  else Reflect.deleteProperty(navigator, 'userActivation');
 });
+
+/** Mounts the guard, shows the unsupported card for `attempt`, then makes the re-check Retry starts pass. */
+async function unsupportedCard(attempt: () => void) {
+  const settle = pendingAdapter();
+  render(<OpenProbe />);
+  act(attempt);
+  await settleProbe(settle, null);
+  assert.equal(useViewerStore.getState().error, viewportLightingEn[UNSUPPORTED]);
+  Object.defineProperty(navigator, 'gpu', { value: { requestAdapter: async () => ({}) }, configurable: true });
+}
+
+async function pressRetry() {
+  await act(async () => { useViewerStore.getState().lastLoadRetry?.(); await new Promise((resolve) => setTimeout(resolve, 0)); });
+}
 
 /** The load-error card as plain values: its text and whether it offers Retry. */
 function card() {
@@ -75,7 +96,7 @@ describe('useWebGpuOpenGuard pending-probe notice (G1)', () => {
     const settle = pendingAdapter();
     render(<OpenProbe />);
     let opened = 0;
-    const attempt = () => { if (guard(attempt, { resumeWhenSupported: true })) opened += 1; };
+    const attempt = () => { if (guard(attempt, { replay: 'free' })) opened += 1; };
     act(attempt);
     assert.equal(opened, 0);
     assert.deepEqual(card(), { error: viewportLightingEn[CHECKING], hasRetry: true }, 'the drop explains the pending check');
@@ -89,7 +110,7 @@ describe('useWebGpuOpenGuard pending-probe notice (G1)', () => {
     const settle = pendingAdapter();
     render(<OpenProbe />);
     let opened = 0;
-    const attempt = () => { if (guard(attempt, { resumeWhenSupported: true })) opened += 1; };
+    const attempt = () => { if (guard(attempt, { replay: 'free' })) opened += 1; };
     act(attempt);
     const retry = useViewerStore.getState().lastLoadRetry;
     assert.ok(retry, 'the checking card offers Retry');
@@ -100,7 +121,7 @@ describe('useWebGpuOpenGuard pending-probe notice (G1)', () => {
     assert.deepEqual(card(), NO_CARD, 'the checking card must not stay up after Retry\'s check passes');
   });
 
-  it('pending -> retrying -> supported, not opted in: Retry on a picker-style card clears it and never replays the open (#9493 review: activation)', async () => {
+  it('pending -> retrying -> supported, picker whose activation expired: Retry clears the card and never replays the open (#9493 review: activation)', async () => {
     const settle = pendingAdapter();
     render(<OpenProbe />);
     let calls = 0;
@@ -137,7 +158,7 @@ describe('useWebGpuOpenGuard pending-probe notice (G1)', () => {
     render(<OpenProbe />);
     const errors = mock.method(console, 'error', () => {});
     try {
-      act(() => { guard(() => { throw new Error('model routing failed'); }, { resumeWhenSupported: true }); });
+      act(() => { guard(() => { throw new Error('model routing failed'); }, { replay: 'free' }); });
       await settleProbe(settle, {});
       assert.deepEqual(card(), { error: 'model routing failed', hasRetry: false }, 'the failure is shown, not swallowed');
       assert.equal(errors.mock.callCount(), 1);
@@ -151,9 +172,9 @@ describe('useWebGpuOpenGuard pending-probe notice (G1)', () => {
     render(<OpenProbe />);
     let settleSecond: ((adapter: object | null) => void) | undefined;
     let secondOpened = 0;
-    const second = () => { if (guard(second, { resumeWhenSupported: true })) secondOpened += 1; };
+    const second = () => { if (guard(second, { replay: 'free' })) secondOpened += 1; };
     const first = () => {
-      if (!guard(first, { resumeWhenSupported: true })) return;
+      if (!guard(first, { replay: 'free' })) return;
       // While the first open runs, the GPU changes and a fresh check starts.
       settleSecond = pendingAdapter();
       void retryWebGPU();
@@ -184,7 +205,7 @@ describe('useWebGpuOpenGuard pending-probe notice (G1)', () => {
     const settle = pendingAdapter();
     render(<OpenProbe />);
     let opened = 0;
-    const attempt = () => { if (guard(attempt, { resumeWhenSupported: true })) opened += 1; };
+    const attempt = () => { if (guard(attempt, { replay: 'free' })) opened += 1; };
     act(attempt);
     act(() => useViewerStore.getState().lastLoadRetry?.());
     await settleProbe(settle, null);
@@ -200,7 +221,7 @@ describe('useWebGpuOpenGuard pending-probe notice (G1)', () => {
     const settle = pendingAdapter();
     render(<OpenProbe />);
     let opened = 0;
-    const attempt = () => { if (guard(attempt, { resumeWhenSupported: true })) opened += 1; };
+    const attempt = () => { if (guard(attempt, { replay: 'free' })) opened += 1; };
     act(attempt);
     act(() => useViewerStore.getState().lastLoadRetry?.());
     act(() => setLocale('g1-pseudo'));
@@ -225,10 +246,96 @@ describe('useWebGpuOpenGuard pending-probe notice (G1)', () => {
     assert.deepEqual(card(), { error: '⟦unsupported⟧', hasRetry: true });
   });
 
+  it('Start blank (on-retry): Retry on the unsupported card replays it after the re-check, no gesture needed (#9493 re-review)', async () => {
+    let opened = 0;
+    const attempt = () => { if (guard(attempt, { replay: 'on-retry' })) opened += 1; };
+    setActivation(false);
+    await unsupportedCard(attempt);
+    await pressRetry();
+    assert.equal(opened, 1, 'Start blank opens after Retry, as it did before');
+    assert.deepEqual(card(), NO_CARD);
+  });
+
+  it('Start blank (on-retry): a passing pending check clears the card without opening (#9493 re-review)', async () => {
+    const settle = pendingAdapter();
+    render(<OpenProbe />);
+    let opened = 0;
+    const attempt = () => { if (guard(attempt, { replay: 'on-retry' })) opened += 1; };
+    act(attempt);
+    await settleProbe(settle, {});
+    assert.equal(opened, 0);
+    assert.deepEqual(card(), NO_CARD);
+  });
+
+  it('picker (activation): Retry on the unsupported card replays it while the click is still active, and not once it expired (#9493 re-review)', async () => {
+    for (const isActive of [true, false]) {
+      useViewerStore.getState().resetViewerState();
+      let opened = 0;
+      const attempt = () => { if (guard(attempt)) opened += 1; };
+      await unsupportedCard(attempt);
+      setActivation(isActive);
+      await pressRetry();
+      assert.equal(opened, isActive ? 1 : 0, `activation active=${isActive}`);
+      assert.deepEqual(card(), NO_CARD, `activation active=${isActive}: the card clears either way`);
+      cleanup();
+    }
+  });
+
+  it('Retry clicked after the check already passed runs even a picker inside the click (#9493 re-review)', async () => {
+    let opened = 0;
+    const attempt = () => { if (guard(attempt)) opened += 1; };
+    await unsupportedCard(attempt);
+    // Something else re-checked first: WebGPU is supported, our card is still up.
+    await act(async () => { await retryWebGPU(); });
+    assert.deepEqual(card(), { error: viewportLightingEn[UNSUPPORTED], hasRetry: true });
+    setActivation(false); // only the synchronous path can open it now
+    act(() => useViewerStore.getState().lastLoadRetry?.());
+    assert.equal(opened, 1);
+    assert.deepEqual(card(), NO_CARD);
+  });
+
+  it('a dismissed card\'s Retry starts no re-check (#9493 re-review)', async () => {
+    let opened = 0;
+    const attempt = () => { if (guard(attempt, { replay: 'free' })) opened += 1; };
+    await unsupportedCard(attempt);
+    let requests = 0;
+    Object.defineProperty(navigator, 'gpu', { value: { requestAdapter: async () => { requests += 1; return {}; } }, configurable: true });
+    const retry = useViewerStore.getState().lastLoadRetry;
+    assert.ok(retry);
+    useViewerStore.getState().setError(null); // dismissed
+    await act(async () => { retry(); await new Promise((resolve) => setTimeout(resolve, 0)); });
+    assert.equal(requests, 0, 'no adapter re-check for a card that is gone');
+    assert.equal(opened, 0);
+  });
+
+  it('a newer card with the same text but another Retry is left alone (#9493 re-review)', async () => {
+    const settle = pendingAdapter();
+    render(<OpenProbe />);
+    let opened = 0;
+    const attempt = () => { if (guard(attempt, { replay: 'free' })) opened += 1; };
+    act(attempt);
+    useViewerStore.setState({ lastLoadRetry: () => {} });
+    await settleProbe(settle, {});
+    assert.equal(opened, 0);
+    assert.deepEqual(card(), { error: viewportLightingEn[CHECKING], hasRetry: true });
+  });
+
+  it('when the last guard unmounts mid-check, its card goes and a later mount does not replay the old open (#9493 re-review)', async () => {
+    const settle = pendingAdapter();
+    render(<OpenProbe />);
+    let opened = 0;
+    act(() => { guard(() => { opened += 1; }, { replay: 'free' }); });
+    cleanup();
+    assert.deepEqual(card(), NO_CARD);
+    render(<OpenProbe />);
+    await settleProbe(settle, {});
+    assert.equal(opened, 0);
+  });
+
   it('pending -> newer error: a settled check leaves the newer error alone', async () => {
     const settle = pendingAdapter();
     render(<OpenProbe />);
-    act(() => { guard(() => {}, { resumeWhenSupported: true }); });
+    act(() => { guard(() => {}, { replay: 'free' }); });
     useViewerStore.setState({ error: 'newer load failed', lastLoadRetry: null });
     await settleProbe(settle, {});
     assert.deepEqual(card(), { error: 'newer load failed', hasRetry: false });

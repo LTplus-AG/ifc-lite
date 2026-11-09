@@ -130,6 +130,20 @@ pub fn encode(bits: u128) -> String {
     out
 }
 
+/// The 128 bits a GlobalId encodes: the inverse of [`encode`], or `None` when
+/// `s` is not [`is_valid_global_id`] (a first character past `'3'` would need
+/// a 129th bit). A GlobalId is a compressed GUID, so these bits are the GUID a
+/// tool that expands GlobalIds (IfcOpenShell's `guid.expand`) prints.
+pub fn decode_bits(s: &str) -> Option<u128> {
+    if !is_valid_global_id(s) {
+        return None;
+    }
+    s.bytes().try_fold(0u128, |acc, b| {
+        let digit = ALPHABET.iter().position(|&a| a == b)?;
+        Some((acc << 6) | digit as u128)
+    })
+}
+
 /// Deterministic 22-char GlobalId-shaped placeholder derived from an express id
 /// (right-aligned base-64 of `id + 0x1000_0000`, zero-padded). Intentionally
 /// NOT the TypeScript mint: schema conversion pins this divergence

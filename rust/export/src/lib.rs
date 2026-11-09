@@ -49,12 +49,15 @@ mod obj;
 pub mod plan;
 mod relationships;
 mod rebar_attributes;
+/// IFC → Rhino `.3dm` scene (see `docs/architecture/rhino-3dm-export.md`).
+pub mod rhino;
 mod rebar_schedule;
 mod openings;
 #[cfg(feature = "parquet-bos")]
 mod parquet_bos;
 mod rooms;
 pub mod rooted_type;
+mod scene_input;
 mod schema_convert;
 mod schema_mep;
 mod schema_detect;
@@ -86,6 +89,7 @@ mod step_text;
 mod step_map_transform;
 pub use step_map_transform::{plan_map_conversion_normalization, MapConversionEntityPatch, MapConversionNormalizationPlan};
 mod usd;
+mod visibility;
 mod xml_text;
 
 /// The STEP string-literal escaper; `escape`'s docs say why it is public.
@@ -172,6 +176,7 @@ pub use step_log::{
     LogNewEntity, MutationKind, MutationLog, StepCounters,
 };
 pub use usd::{export_usd, UsdOptions};
+pub use rhino::{build_rhino_scene, RhinoScene, RhinoSceneOptions};
 
 use ifc_lite_geometry::extract_profiles;
 

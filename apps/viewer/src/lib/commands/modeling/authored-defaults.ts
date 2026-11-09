@@ -13,9 +13,15 @@
  * undone), is skipped. A layer set is attached through an
  * IfcMaterialLayerSetUsage per element: across a wall, centred on its axis;
  * along a slab's depth from its reference plane.
+ *
+ * With a type picked too, the element is drawn with the TYPE's build-up: its
+ * usage places the type's layer set, so a later change to the type's layers
+ * reaches it (`typeLayerScopeInStore`). A type with no layers yet takes the
+ * layer default as its own, when every element it already types was drawn
+ * with that same default (so nothing else changes size).
  */
 
-import { liveEntityConforms } from '@ifc-lite/create';
+import { liveEntityConforms, typeLayerScopeInStore, typeLayerSetInStore } from '@ifc-lite/create';
 import type { AuthoredElementKind } from '@/store/slices/authoringDefaultsSlice';
 import { modelEditTarget, recordModellingEdit, type ModellingStore } from '@/store/slices/mutation-modelling-records';
 import { layerSenseOf } from '@/lib/authoring/material-layers';
@@ -40,16 +46,23 @@ export function applyAuthoredDefaults(store: ModellingStore, modelId: string, id
   const plan = [...byKind].map(([kind, elements]) => {
     const info = AUTHORED_KINDS[kind];
     const typeId = live(typeIds[kind], info.type);
-    const layerSetId = info.layers ? live(layerSetIds[kind], 'IfcMaterialLayerSet') : null;
+    const defaultSet = info.layers ? live(layerSetIds[kind], 'IfcMaterialLayerSet') : null;
+    let layerSetId = defaultSet, adopt = false;
+    if (typeId !== null && info.layers) {
+      const scope = typeLayerScopeInStore(model, typeId);
+      if (scope.layerSetId !== null) layerSetId = scope.layerSetId;
+      else adopt = defaultSet !== null && scope.inheriting.length === 0 && scope.differing.every((id) => typeLayerSetInStore(model, id) === defaultSet);
+    }
     const total = layerSetId === null ? 0 : (readLayerSet(model, layerSetId) ?? []).reduce((sum, layer) => sum + layer.thickness, 0);
-    return { elements, typeId, layerSetId, direction: info.layers, offset: info.layers === 'AXIS2' ? -total / 2 : 0 };
+    return { elements, typeId, layerSetId, adopt, direction: info.layers, offset: info.layers === 'AXIS2' ? -total / 2 : 0 };
   }).filter((step) => step.typeId !== null || step.layerSetId !== null);
   if (plan.length === 0) return;
 
   recordModellingEdit(store, modelId, (methods) => {
-    for (const { elements, typeId, layerSetId, direction, offset } of plan) {
+    for (const { elements, typeId, layerSetId, adopt, direction, offset } of plan) {
       if (typeId !== null) methods.assignType(modelId, typeId, elements);
       if (layerSetId === null) continue;
+      if (adopt && typeId !== null) methods.assignMaterial(modelId, layerSetId, [typeId]);
       for (const element of elements) {
         const usage = methods.addMaterialLayerSetUsage(modelId, {
           ForLayerSet: layerSetId, LayerSetDirection: direction, OffsetFromReferenceLine: offset,

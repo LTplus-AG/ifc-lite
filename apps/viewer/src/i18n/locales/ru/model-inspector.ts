@@ -72,7 +72,7 @@ export const modelInspectorRu = {
   "modelInspector.layers.needName": "Назовите каждый новый материал",
   "modelInspector.layers.needLayer": "Присвойте каждому слою толщину больше нуля",
   "modelInspector.layers.typeScope": {"one": "Изменит {countDisplay} элемент этого типа вместе с примыканиями и созданными помещениями.", "few": "Изменит {countDisplay} элемента этого типа вместе с примыканиями и созданными помещениями.", "many": "Изменит {countDisplay} элементов этого типа вместе с примыканиями и созданными помещениями.", "other": "Изменит {countDisplay} элемента этого типа вместе с примыканиями и созданными помещениями."},
-  "modelInspector.layers.typeOwnLayers": {"one": "{countDisplay} сохраняет свой материал.", "few": "{countDisplay} сохраняют свой материал.", "many": "{countDisplay} сохраняют свой материал.", "other": "{countDisplay} сохраняют свой материал."},
+  "modelInspector.layers.typeOwnLayers": {"one": "{countDisplay} отличается от типа и сохраняет свои слои.", "few": "{countDisplay} отличаются от типа и сохраняют свои слои.", "many": "{countDisplay} отличаются от типа и сохраняют свои слои.", "other": "{countDisplay} отличаются от типа и сохраняют свои слои."},
   "modelInspector.layers.notFollowed": {"one": "{countDisplay} элемент сохранил прежнюю форму:", "few": "{countDisplay} элемента сохранили прежнюю форму:", "many": "{countDisplay} элементов сохранили прежнюю форму:", "other": "{countDisplay} элемента сохранили прежнюю форму:"},
   "modelInspector.layers.keptBody": "{name}: {reason}",
   "modelInspector.hosting.title": "Размещение в основе",

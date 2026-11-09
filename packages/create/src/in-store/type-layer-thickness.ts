@@ -55,7 +55,7 @@ export function effectiveLayerSetThickness(target: Pick<EditTarget, 'dataStore' 
 }
 
 /** Every live occurrence `typeId` types through IfcRelDefinesByType. */
-export function typeOccurrencesInStore(target: Pick<EditTarget, 'dataStore' | 'view'>, typeId: number): number[] {
+export function typeOccurrencesInStore(target: { readonly dataStore: EditTarget['dataStore']; readonly view: EditTarget['view'] | null | undefined }, typeId: number): number[] {
   const out = new Set<number>();
   for (const list of readRelatedLists(target.dataStore, 'IfcRelDefinesByType', target.view)) {
     if (list.relatingId === typeId) for (const id of list.relatedIds) out.add(id);

@@ -20,6 +20,7 @@ import { MODEL_ID, STOREY, seedModelingSession } from '@/test/modeling-session-f
 import '@/lib/commands/modeling/builtin';
 import { setRequestRemesh } from '@/lib/commands/modeling/transaction';
 import { modelEditTarget } from '@/store/slices/mutation-modelling-records';
+import { typeOf } from '@/lib/commands/modeling/authored-kinds';
 import { readWallMetres } from '@/store/slices/mutation-wall-resize';
 import { applyMaterialLayers, createElementType, setElementType } from './inspector-edits.js';
 import { ModelInspectorPanel } from './ModelInspectorPanel.js';
@@ -79,10 +80,18 @@ describe('editing a shared type from the inspector (#9296)', () => {
     assert.ok(applyMaterialLayers(MODEL_ID, { kind: 'wall', target: 'element', elementId: walls[1], typeId, layers: [{ thickness: .15, material: null }] }) !== null);
     const ui = render(<ModelInspectorPanel />);
     act(() => click(radio(ui, 'Type')));
-    assert.match(text(ui), /Changes 1 element of this type.*1 keeps its own material/);
+    assert.match(text(ui), /Changes 1 element of this type.*1 differs from the type and keeps its layers/);
     type(ui.querySelector<HTMLInputElement>('input[aria-label="Layer 1 thickness in metres"]')!, '0.3');
     act(() => click(ui.querySelector('[data-inspector-apply-layers]')!));
     assert.deepEqual(walls.map(thickness), [.3, .15]);
   });
 
+
+  it('a space can be given a new type: IfcSpaceType is a spatial type, not an element type (#9296)', () => {
+    const added = s().addSpace(MODEL_ID, STOREY, { Position: [10, 10, 0], Width: 4, Depth: 3, Height: 2.8, Name: 'R1' });
+    assert.ok('expressId' in added);
+    const space = createElementType(MODEL_ID, 'space', 'Office', added.expressId);
+    assert.ok(space !== null, 'New type… on a space is not refused');
+    assert.equal(typeOf(live(), added.expressId), space);
+  });
 });

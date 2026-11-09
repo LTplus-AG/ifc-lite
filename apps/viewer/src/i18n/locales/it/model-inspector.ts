@@ -71,7 +71,7 @@ export const modelInspectorIt = {
   "modelInspector.layers.needName": "Assegna un nome a ogni nuovo materiale",
   "modelInspector.layers.needLayer": "Assegna a ogni strato uno spessore maggiore di zero",
   "modelInspector.layers.typeScope": {"one": "Modifica {countDisplay} elemento di questo tipo, con i suoi giunti e locali generati.", "other": "Modifica {countDisplay} elementi di questo tipo, con i loro giunti e locali generati."},
-  "modelInspector.layers.typeOwnLayers": {"one": "{countDisplay} mantiene il proprio materiale.", "other": "{countDisplay} mantengono il proprio materiale."},
+  "modelInspector.layers.typeOwnLayers": {"one": "{countDisplay} differisce dal tipo e mantiene i suoi strati.", "other": "{countDisplay} differiscono dal tipo e mantengono i loro strati."},
   "modelInspector.layers.notFollowed": {"one": "{countDisplay} elemento ha mantenuto la forma precedente:", "other": "{countDisplay} elementi hanno mantenuto la forma precedente:"},
   "modelInspector.layers.keptBody": "{name}: {reason}",
   "modelInspector.hosting.title": "Elemento ospitante",

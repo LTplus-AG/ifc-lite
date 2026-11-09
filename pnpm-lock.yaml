@@ -1107,6 +1107,9 @@ importers:
       '@ifc-lite/wasm':
         specifier: workspace:^
         version: link:../wasm
+      '@ifc-lite/wasm-lifecycle':
+        specifier: workspace:^
+        version: link:../wasm-lifecycle
     devDependencies:
       '@ifc-lite/export':
         specifier: workspace:^

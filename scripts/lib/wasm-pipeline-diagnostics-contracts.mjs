@@ -238,7 +238,8 @@ ENDSEC;END-ISO-10303-21;`;
 #24=IFCPRODUCTDEFINITIONSHAPE($,$,(#23));
 #25=IFCFLOWTERMINAL('0000000000000000000001',$,'budget',$,$,$,#24,$);
 ENDSEC;END-ISO-10303-21;`;
-    const source = original.replace("SurfaceModel',(#1)", `SurfaceModel',(${Array(65538).fill('#1').join(',')})`)
+    const source = original.replace('#22=IFCMAPPEDITEM(#21,$);', '')
+      .replace("SurfaceModel',(#1)", `SurfaceModel',(${Array(65538).fill('#1').join(',')})`)
       .replace("#25=IFCFLOWTERMINAL('0000000000000000000001',$,'budget',$,$,$,#24,$);",
         "#60=IFCWALLTYPE('type-guid',$,'budget type',$,$,$,(#21),$,$,.NOTDEFINED.);");
     const api = new IfcAPI();

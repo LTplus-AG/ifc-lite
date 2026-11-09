@@ -116,8 +116,13 @@ export function ClashSavedReportsDialogContent({ open, onOpenChange }: { open: b
     } else toast.error(t('clashTools.savedReports.storageFailed'));
   };
 
+  const changeOpen = (next: boolean): void => {
+    if (!next) setConfirming(null);
+    onOpenChange(next);
+  };
+
   return (
-    <Dialog open={open} onOpenChange={(next) => { if (!next) setConfirming(null); onOpenChange(next); }}>
+    <Dialog open={open} onOpenChange={changeOpen}>
       <DialogContent className="sm:max-w-[520px]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -154,7 +159,7 @@ export function ClashSavedReportsDialogContent({ open, onOpenChange }: { open: b
             : <ul className="max-h-72 space-y-1.5 overflow-y-auto pr-1" aria-label={t('clashTools.savedReports.triggerTooltip')}>
               {visibleReports.map((report) => <ReportRow key={report.id} report={report}
                 confirming={confirming?.id === report.id ? confirming : null}
-                onConfirm={setConfirming} onCancel={() => setConfirming(null)} onDeleted={() => setConfirming(null)} onDocumentAdded={() => onOpenChange(false)} />)}
+                onConfirm={setConfirming} onCancel={() => setConfirming(null)} onDeleted={() => setConfirming(null)} onDocumentAdded={() => changeOpen(false)} />)}
             </ul>}
         </div>
       </DialogContent>

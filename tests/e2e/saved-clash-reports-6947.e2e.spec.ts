@@ -249,11 +249,20 @@ test('#9259 real IFC quality evidence survives threshold edits, documentation ca
     .find(report => report.name === 'Quality evidence 9259')?.qualityGates);
   expect(captured?.rows.map(({ rule, checked, affected }) => ({ rule, checked, affected }))).toEqual(expected);
   await page.keyboard.press('Escape');
+  await saveAs(page, 'Delete preview 9430');
+  await page.keyboard.press('Escape');
   await page.getByText('Configure quality gates', { exact: true }).click();
   for (const index of [1, 2, 3]) await page.getByLabel(`Clash checks Category name ${index}`, { exact: true }).fill(`Changed after capture ${index}`);
   await page.getByRole('button', { name: 'Save thresholds', exact: true }).click();
   await expect(gates.first()).toContainText('Changed after capture');
   await clickPanelAction(page, panelHeader(page, 'Clash detection'), 'Saved clash reports');
+  // #9430: exporting another report must close the dialog through the same
+  // deletion-state cleanup as Escape or its close button.
+  const deleteRow = page.getByRole('dialog').locator('li[data-clash-report]').filter({
+    has: page.getByLabel('Name of “Delete preview 9430”', { exact: true }),
+  });
+  await deleteRow.getByRole('button', { name: 'Delete', exact: true }).click();
+  await expect(deleteRow.getByRole('button', { name: 'Delete report', exact: true })).toBeVisible();
   const reportRow = page.getByRole('dialog').locator('li[data-clash-report]').filter({
     has: page.getByLabel('Name of “Quality evidence 9259”', { exact: true }),
   });
@@ -268,6 +277,10 @@ test('#9259 real IFC quality evidence survives threshold edits, documentation ca
   expect(documentCopy?.blocks.some(block => block.kind === 'image' && block.dataUrl.startsWith('data:image/png;base64,'))).toBe(true);
   expect(documentCopy?.blocks.filter(block => block.kind === 'text').map(block => block.text).join('\n')).not.toContain('Changed after capture');
   await page.screenshot({ path: info.outputPath('9259-quality-document.png') });
+  await clickPanelAction(page, panelHeader(page, 'Clash detection'), 'Saved clash reports');
+  await expect(page.getByRole('dialog').getByRole('button', { name: 'Delete report', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('dialog').getByLabel('Name of “Delete preview 9430”', { exact: true })).toBeVisible();
+  await page.keyboard.press('Escape');
   await loadModel(page, true);
   await page.evaluate(async () => {
     const state = globalThis.__ifc_lite_viewer_store__.getState();

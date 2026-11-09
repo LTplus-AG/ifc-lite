@@ -108,7 +108,7 @@ export function ErrorReportDialog({ context, onClose, client: injectedClient }: 
   }
   const receiptGeneration = useRef(0);
   async function deletePrivateReport() {
-    if (!receipt || deleting.current) return;
+    if (!receipt) return;
     receiptGeneration.current++;
     deleting.current = true; setDeleteState('deleting'); setError('');
     try {
@@ -123,7 +123,7 @@ export function ErrorReportDialog({ context, onClose, client: injectedClient }: 
     } finally { deleting.current = false; }
   }
   async function refreshReceipt() {
-    if (!receipt || deleting.current) return;
+    if (!receipt) return;
     const generation = receiptGeneration.current;
     try {
       const next = await client.request<ReportReceipt>(`/${encodeURIComponent(receipt.id)}`);
@@ -167,7 +167,7 @@ export function ErrorReportDialog({ context, onClose, client: injectedClient }: 
   }
   const cancellation = useSingleFlight();
   async function cancel() {
-    await cancellation.run(async () => {
+    await cancellation.run(async isCurrent => {
       if (deleting.current) return;
       if (receipt) { onClose(); return; }
       abort.current?.abort();
@@ -175,7 +175,7 @@ export function ErrorReportDialog({ context, onClose, client: injectedClient }: 
       try {
         if (submission.current) await submission.current.cancel();
         else if (context.resumeReportId) { await client.request(`/${encodeURIComponent(context.resumeReportId)}`, 'DELETE'); forgetReport(context.resumeReportId); }
-        onClose();
+        if (isCurrent()) onClose();
       }
       catch (reason) { setError(reason instanceof Error ? reason.message : 'Cancellation failed'); }
     });

@@ -16,7 +16,7 @@ export function useTableSuggestion({ isDraftCurrent, selectedModelId, headers, t
 }) {
   const { busy: suggesting, run, release } = useSingleFlight();
   const controller = useRef<AbortController | null>(null);
-  useEffect(() => () => { controller.current?.abort(); release(); }, [isDraftCurrent, release]);
+  useEffect(() => () => { controller.current?.abort(); release(); }, [isDraftCurrent, headers, tableRows, release]);
   const handleSuggest = useCallback(() => run(async isCurrent => {
     const abort = new AbortController(); controller.current = abort;
     setError(null);

@@ -10,7 +10,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { useSingleFlight } from '@/hooks/useSingleFlight';
+import { useAsyncRun } from '@/hooks/useAsyncRun';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/toast';
@@ -19,7 +19,7 @@ import { useViewerStore } from '@/store';
 import { bcfExportFilename } from '@/lib/export/download';
 import { publishBcfArchive } from '@/lib/bcf-drafts/archive-activity';
 import { DraftArchiveError, exportDraftArchive, importDraftArchive } from '@/lib/bcf-drafts/draft-archive';
-import { mergeDraftTopics, type DraftEditResult } from '@/lib/bcf-drafts/draft-edit';
+import { mergeDraftTopics } from '@/lib/bcf-drafts/draft-edit';
 import { adoptImportedBatches, bcfDraftLibrary, saveDraftBatch, useBcfDraftLibrary } from '@/lib/bcf-drafts/draft-library';
 import type { DraftBatch } from '@/lib/bcf-drafts/draft-types';
 import { sameTarget } from '@/lib/bcf-publication/outbox-dispatch';
@@ -29,9 +29,8 @@ import { BCFDraftReconcile } from './BCFDraftReconcile';
 import { BCFDraftTopicEditor } from './BCFDraftTopicEditor';
 import { BCFOutboxEntry } from './BCFOutboxEntry';
 import { BCFPublicationPanel, useBcfConnection } from './BCFPublicationPanel';
+import { useDraftEdits } from './useDraftEdits';
 
-const REFUSALS = { 'unknown-topic': 'bcfDrafts.edit.unknownTopic', 'empty-split': 'bcfDrafts.edit.emptySplit',
-  'merge-needs-two': 'bcfDrafts.edit.mergeNeedsTwo', invalid: 'bcfDrafts.edit.invalid' } as const;
 const ARCHIVE_REFUSALS = {
   import: { topic: 'bcfDrafts.archive.refused.topic', member: 'bcfDrafts.archive.refused.member',
     'source-finding': 'bcfDrafts.archive.refused.sourceFinding', unreadable: 'bcfDrafts.archive.refused.unreadable' },
@@ -83,27 +82,11 @@ export function BCFDraftsDialog({ open, onOpenChange }: { open: boolean; onOpenC
   const [recordId, setRecordId] = useState<string | null>(null);
   const record = useBcfOutbox(state => state.entries.find(item => item.id === recordId));
 
-  // C-2: an asynchronous edit (merge, split, remove member) is computed from
-  // the batch as it was when pressed, so it holds the editor until it lands;
-  // a second one in the same tick would overwrite it from the same stale batch.
-  const editFlight = useSingleFlight();
-  const exportFlight = useSingleFlight();
+  // C-2: one asynchronous edit at a time, owned by the batch on screen (`useDraftEdits`).
   const save = (next: DraftBatch) => { void saveDraftBatch(next); setMergeSet(new Set()); };
-  const land = (outcome: DraftEditResult) => {
-    if (outcome.ok) save(outcome.batch);
-    else toast.error(t(REFUSALS[outcome.reason]));
-  };
-  const onEdit = (result: DraftEditResult | Promise<DraftEditResult>) => {
-    if (!(result instanceof Promise)) { land(result); return; }
-    void editFlight.run(async () => {
-      try { land(await result); }
-      catch (error) { console.error('[BCF drafts] Edit failed', error); toast.error(t('bcfDrafts.edit.invalid')); }
-    }).then(outcome => {
-      // A refused edit was already computed; it never lands, but a failure in it is still logged.
-      if (outcome.status === 'refused') void result.catch(error => console.warn('[BCF drafts] Refused edit failed', error));
-    });
-  };
-  const exportArchive = () => exportFlight.run(async () => {
+  const { onEdit, busy: editing } = useDraftEdits(batch?.id ?? null, save);
+  const exportFlight = useAsyncRun();
+  const exportArchive = () => exportFlight.start(async () => {
     if (!batch) return;
     try {
       await publishBcfArchive(batch.name, bcfExportFilename(batch.name), () => exportDraftArchive(batch, author));
@@ -142,14 +125,14 @@ export function BCFDraftsDialog({ open, onOpenChange }: { open: boolean; onOpenC
             <label className="flex min-w-0 flex-1 items-center gap-2">
               {t('bcfDrafts.dialog.batch')}
               <select className="h-7 min-w-0 flex-1 rounded border border-border bg-background" value={batch?.id ?? ''}
-                disabled={!library.entries.length} onChange={event => { editFlight.release(); useBcfDraftLibrary.setState({ activeId: event.target.value }); setMergeSet(new Set()); }}>
+                disabled={!library.entries.length} onChange={event => { useBcfDraftLibrary.setState({ activeId: event.target.value }); setMergeSet(new Set()); }}>
                 {!library.entries.length && <option value="">{t('bcfDrafts.dialog.noBatches')}</option>}
                 {library.entries.map(entry => <option key={entry.id} value={entry.id}>{entry.name} · {entry.topics.length}</option>)}
               </select>
             </label>
             <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => fileInput.current?.click()}>{t('bcfDrafts.archive.import')}</Button>
             <Button size="sm" variant="outline" className="h-7 px-2 text-xs" disabled={!batch || exportFlight.busy} onClick={() => void exportArchive()}>{t('bcfDrafts.archive.export')}</Button>
-            <Button size="sm" variant="outline" className="h-7 px-2 text-xs" disabled={!batch || mergeSet.size < 2 || editFlight.busy}
+            <Button size="sm" variant="outline" className="h-7 px-2 text-xs" disabled={!batch || mergeSet.size < 2 || editing}
               onClick={() => batch && onEdit(mergeDraftTopics(batch, batch.topics.filter(topic => mergeSet.has(topic.guid)).map(topic => topic.guid)))}>
               {t('bcfDrafts.dialog.merge', { count: mergeSet.size })}
             </Button>
@@ -160,7 +143,7 @@ export function BCFDraftsDialog({ open, onOpenChange }: { open: boolean; onOpenC
           {!batch && <p className="text-xs text-muted-foreground">{t('bcfDrafts.dialog.empty')}</p>}
           {batch && batch.source.kind === 'clash' && <BCFDraftReconcile batch={batch} onChange={save} />}
           {/* A disabled fieldset disables every control in every editor while an edit lands. */}
-          <fieldset disabled={editFlight.busy} className="m-0 flex min-w-0 flex-col gap-2 border-0 p-0">
+          <fieldset disabled={editing} className="m-0 flex min-w-0 flex-col gap-2 border-0 p-0">
             {batch?.topics.map(topic => (
               <BCFDraftTopicEditor key={topic.guid} batch={batch} topic={topic} users={users} publication={publicationOf(topic.guid)}
                 mergeSelected={mergeSet.has(topic.guid)} onEdit={onEdit}

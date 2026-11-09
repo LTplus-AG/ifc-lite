@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { useSingleFlight } from '@/hooks/useSingleFlight';
+import { useAsyncRun } from '@/hooks/useAsyncRun';
 import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { reportChartDependencies, type ChartDependencyPreview, type ReportSource } from '@/lib/reports/chart-dependencies';
@@ -30,7 +30,7 @@ export function ReportDeletionPreview({ source, report, onCancel, onDeleted, sto
   const action = useRef(source.kind === 'compare' ? useViewerStore.getState().deleteSavedComparison : useViewerStore.getState().deleteSavedClashReport);
   const [acknowledged, setAcknowledged] = useState<ChartDependencyPreview | null>(null);
   // C-9: a synchronous lease, so a double-clicked Confirm runs one removal pass.
-  const flight = useSingleFlight();
+  const flight = useAsyncRun();
   const busy = flight.busy;
   const [pendingDeletion, setPendingDeletion] = useState(false);
   const ownGuard = useRef<(() => boolean | Promise<boolean>) | null>(null);
@@ -58,7 +58,7 @@ export function ReportDeletionPreview({ source, report, onCancel, onDeleted, sto
     });
     return () => { owner.alive = false; window.removeEventListener('storage', changedStorage); };
   }, [source.kind, source.id]);
-  const remove = () => flight.run(async () => {
+  const remove = () => flight.start(async () => {
     // #7252: another tab can commit a Document after this preview hydrated.
     // Refresh through the existing validated native library before approval.
     const durable = await readDurableDocuments();

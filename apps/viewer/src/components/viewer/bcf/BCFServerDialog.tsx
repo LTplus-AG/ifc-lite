@@ -13,7 +13,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { CheckCircle2, CloudDownload, LogOut, XCircle } from 'lucide-react';
-import { useSingleFlight } from '@/hooks/useSingleFlight';
+import { useAsyncRun } from '@/hooks/useAsyncRun';
 import { Spinner } from '@/components/ui/spinner';
 import {
   Dialog,
@@ -62,13 +62,13 @@ export function BCFServerDialog({ open, onOpenChange }: BCFServerDialogProps) {
   const [initialUsername, setInitialUsername] = useState('');
   const [projects, setProjects] = useState<BcfProjectDto[] | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState('');
-  // One topic pull at a time (C-2): a same-tick double press is refused; a
-  // disconnect or account switch releases it (the generation guard below
-  // still drops its late result).
-  const pullFlight = useSingleFlight();
+  // One topic pull at a time (C-2): a same-tick double press is refused; an
+  // account switch or a disconnect from another tab releases it
+  // (applySavedConnection; the generation guard below still drops its late result).
+  const pullFlight = useAsyncRun();
   const busy = pullFlight.busy;
-  const releasePull = pullFlight.release;
-  const runPull = pullFlight.run;
+  const releasePull = pullFlight.reset;
+  const runPull = pullFlight.start;
   const [progress, setProgress] = useState<BcfSyncProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
   // Number of local topics the next pull would replace; non-null means the
@@ -166,8 +166,9 @@ export function BCFServerDialog({ open, onOpenChange }: BCFServerDialogProps) {
     setProjects(null);
     setSelectedProjectId('');
     setError(null);
-    releasePull();
-  }, [releasePull]);
+    // No pull to release: Disconnect is disabled while one runs, and a
+    // disconnect from another tab reaches applySavedConnection, which does.
+  }, []);
 
   const handlePull = useCallback(async () => {
     const project = projects?.find((p) => p.project_id === selectedProjectId);

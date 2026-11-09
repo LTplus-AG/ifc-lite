@@ -52,7 +52,7 @@ export interface AsyncRunContext<P> {
 
 export type AsyncRunTask<R, P> = (run: AsyncRunContext<P>) => Promise<R>;
 
-export interface AsyncRun<R, P = never> {
+export interface AsyncRun<R = void, P = never> {
   state: AsyncRunState<R, P>;
   /** `state.kind === 'running'`, for disabling controls. */
   busy: boolean;

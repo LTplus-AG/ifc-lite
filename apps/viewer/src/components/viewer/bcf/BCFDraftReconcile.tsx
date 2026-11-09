@@ -9,7 +9,7 @@
  */
 
 import { useState } from 'react';
-import { useSingleFlight } from '@/hooks/useSingleFlight';
+import { useAsyncRun } from '@/hooks/useAsyncRun';
 import { Button } from '@/components/ui/button';
 import { useTranslation } from '@/i18n';
 import { useClashGroupLibrary } from '@/lib/clash/group-workspace';
@@ -32,15 +32,15 @@ export function BCFDraftReconcile({ batch, onChange }: { batch: DraftBatch; onCh
   const title = (guid: string) => batch.topics.find(topic => topic.guid === guid)?.title ?? guid;
   // C-2: each action rebuilds the batch from the one shown when pressed, so
   // only one runs at a time; a second would land over the first and lose it.
-  const flight = useSingleFlight();
-  const apply = (guid: string) => flight.run(async () => {
+  const flight = useAsyncRun({ label: 'BCF draft reconcile' });
+  const apply = (guid: string) => flight.start(async () => {
     const topic = proposal?.topics.find(item => item.topicGuid === guid);
     const next = topic ? await applyTopicReconciliation(batch, topic) : null;
     if (!next) { setMessage(t('bcfDrafts.reconcile.stale')); return; }
     onChange(next);
     setProposal(current => current ? { ...current, topics: current.topics.filter(item => item.topicGuid !== guid) } : current);
   });
-  const draftUnplaced = () => flight.run(async () => {
+  const draftUnplaced = () => flight.start(async () => {
     if (!proposal?.unplaced.length) return;
     const topic = await draftTopic(t('bcfDrafts.reconcile.unplacedTitle'), proposal.unplaced, { kind: 'selection' }, batch.source.worldOffset);
     onChange({ ...batch, modifiedAt: new Date().toISOString(), topics: [...batch.topics, topic] });
@@ -54,6 +54,9 @@ export function BCFDraftReconcile({ batch, onChange }: { batch: DraftBatch; onCh
         <Button size="sm" variant="outline" className="h-6 px-2 text-2xs" onClick={compare}>{t('bcfDrafts.reconcile.compare')}</Button>
       </div>
       {message && <output className="mt-1 block">{message}</output>}
+      {/* A throw from applying or drafting lands here; useAsyncRun does not rethrow it. */}
+      {flight.state.kind === 'failed' && <p role="alert" className="mt-1 text-danger">
+        {t('bcfDrafts.reconcile.failed', { message: flight.state.error instanceof Error ? flight.state.error.message : String(flight.state.error) })}</p>}
       {proposal && (
         <output className="mt-1 flex flex-col gap-1">
           <p>{proposal.sameRun ? t('bcfDrafts.reconcile.sameRun') : pending.length || proposal.unplaced.length

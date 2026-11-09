@@ -10,7 +10,7 @@
 
 import { useCallback, useMemo, useState } from 'react';
 import { XCircle } from 'lucide-react';
-import { useSingleFlight } from '@/hooks/useSingleFlight';
+import { useAsyncRun } from '@/hooks/useAsyncRun';
 import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -68,9 +68,9 @@ export function BCFServerConnectForm({
   const [clientSecret, setClientSecret] = useState('');
   // One sign-in at a time (C-2): a same-tick double press is refused before
   // it opens a second popup or registers a second client.
-  const connectFlight = useSingleFlight();
+  const connectFlight = useAsyncRun();
   const busy = connectFlight.busy;
-  const runConnect = connectFlight.run;
+  const runConnect = connectFlight.start;
   const [error, setError] = useState<string | null>(null);
 
   const preset = findBcfServerPreset(presetId);

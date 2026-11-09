@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Unloading a room must not race the next load of the same room (PR #PRNUM).
+ * Unloading a room must not race the next load of the same room (PR #9489).
  *
  * `Room.destroy()` ends with a final compaction that REPLACES the persisted
  * log with the old doc's state (FilePersistence: write tmp + rename; Redis:
@@ -89,8 +89,8 @@ function tmpDir(): string {
   return dir;
 }
 
-describe('unload vs reload of the same room (PR #PRNUM)', () => {
-  it('PR #PRNUM: an update made by the reloaded room survives the old instance\'s final compaction', async () => {
+describe('unload vs reload of the same room (PR #9489)', () => {
+  it('PR #9489: an update made by the reloaded room survives the old instance\'s final compaction', async () => {
     const dir = tmpDir();
     const gates = new Map([['r', gate()]]);
     const held = gates.get('r')!;
@@ -124,7 +124,7 @@ describe('unload vs reload of the same room (PR #PRNUM)', () => {
     expect(onDisk.getMap('m').toJSON()).toEqual({ before: 1, after: 2 });
   });
 
-  it('PR #PRNUM: sweepIdle re-checks each candidate: a room joined while an earlier one compacts stays loaded', async () => {
+  it('PR #9489: sweepIdle re-checks each candidate: a room joined while an earlier one compacts stays loaded', async () => {
     const gates = new Map([['a', gate()]]);
     const held = gates.get('a')!;
     const persistence = new MemoryPersistence();
@@ -157,7 +157,7 @@ describe('unload vs reload of the same room (PR #PRNUM)', () => {
     expect(b.peerCount).toBe(1);
   });
 
-  it('PR #PRNUM: a destroyed room refuses new connections instead of registering a ghost', async () => {
+  it('PR #9489: a destroyed room refuses new connections instead of registering a ghost', async () => {
     const mgr = new RoomManager({ persistence: new MemoryPersistence() });
     cleanups.push(() => mgr.unloadAll());
     const room = await mgr.getOrCreate('gone');
@@ -167,7 +167,7 @@ describe('unload vs reload of the same room (PR #PRNUM)', () => {
     expect(room.peerCount).toBe(0);
   });
 
-  it('PR #PRNUM: a peer whose room is unloaded mid-join lands in the live reloaded room', async () => {
+  it('PR #9489: a peer whose room is unloaded mid-join lands in the live reloaded room', async () => {
     // Slow load so the unload below lands while the peer's join is awaiting it.
     class SlowMemory extends MemoryPersistence {
       override async load(roomId: string): Promise<Uint8Array | null> {

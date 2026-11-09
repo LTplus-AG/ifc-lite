@@ -23,14 +23,13 @@ answers from **version sets** instead: a named, lockable snapshot that pins
 one revision of every file in a file area. Sweeping a project's version sets
 (`GET /2.1/projects/{p}/version_sets` then `GET /3.0/.../version_sets/{vs}/files`,
 `src/commit-index.ts`) reconstructs each covered file's revision history —
-which is also the only per-file history Dalux exposes at all, so a file in no
-version set has none to show. The sweep is cached per project for a few
+which is also the only per-file history Dalux exposes at all, so the current revision is included even when no version set pins it. The sweep is cached per project for a few
 minutes and shared across every call, so opening "Versions" on several files
 costs it once.
 
 Two sets pinning the same revision collapse into one entry (the model did not
-change between them); ordering prefers Dalux's own revision number over
-timestamps, because `lastModified` is date-only and every same-day revision
+change between them); ordering uses date, then Dalux's numeric revision number for ties, then
+sweep position and ID. `lastModified` is date-only, so every same-day revision
 would otherwise tie.
 
 ## CORS
@@ -65,3 +64,11 @@ are not cached. `BIMCOLLAB_RELAY_ALLOWED_ORIGINS` overrides the comma-separated
 origin allowlist; defaults include `APP_URL` and registered BIMcollab callback
 origins. Configure a Vercel WAF rate-limit rule on `/api/bimcollab`: holders of
 valid tokens can otherwise consume deployment bandwidth through our egress IPs.
+
+The current file revision is always included, even if no version set pins it.
+Dates stay blank when unavailable, and raw author IDs are not displayed as names.
+The project history is cached for five minutes; rebuilding reads fresh pins.
+A failed or undecodable set makes history unavailable with an explicit error and
+short retry window. Projects above 250 version sets are refused rather than
+silently showing an arbitrary older subset: the listing has no documented date
+or recency order from which to choose the newest sets safely.

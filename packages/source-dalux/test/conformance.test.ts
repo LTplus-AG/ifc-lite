@@ -108,7 +108,7 @@ const fixtures: ConformanceFixtures = {
   // work") to cross — that check requires `limit` to force more than one
   // request, and this provider always answers in one. The property it
   // WOULD have bought instead — a listed revision downloading different
-  // bytes than another — is asserted directly in `commit-index.test.ts`.
+  // bytes than another — is asserted directly in `revision-methods.test.ts`.
 };
 
 /**

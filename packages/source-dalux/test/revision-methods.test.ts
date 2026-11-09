@@ -15,7 +15,6 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import { DaluxBuildProvider } from '../src/provider.js';
 import { invalidateCommitIndex } from '../src/commit-index.js';
-import { invalidatePinnedModels } from '../src/version-set-browse.js';
 import { fileAreaContainerId } from '../src/mapping.js';
 import { createDaluxApiMock, createDaluxMockContext, type DaluxMockWorld } from './dalux-api-mock.js';
 
@@ -60,7 +59,6 @@ const WORLD: DaluxMockWorld = {
 
 function setup(world: DaluxMockWorld = WORLD) {
   invalidateCommitIndex();
-  invalidatePinnedModels();
   const provider = new DaluxBuildProvider();
   const ctx = createDaluxMockContext(createDaluxApiMock(world, { pageSize: 1 }));
   return { provider, ctx };
@@ -69,8 +67,7 @@ function setup(world: DaluxMockWorld = WORLD) {
 describe('DaluxBuildProvider.listRevisions', () => {
   beforeEach(() => {
     invalidateCommitIndex();
-    invalidatePinnedModels();
-  });
+    });
 
   it('declares the capability it now implements', () => {
     const provider = new DaluxBuildProvider();
@@ -94,14 +91,10 @@ describe('DaluxBuildProvider.listRevisions', () => {
     expect(shared.label).toContain('Issued for tender');
   });
 
-  it('returns an empty page, not an error, for a file no version set covers', async () => {
-    const { provider, ctx } = setup();
-    const page = await provider.listRevisions!(ctx, {
-      projectId: 'p-alpha',
-      containerId: fileAreaContainerId('fa-models'),
-      fileId: 'file-does-not-exist',
-    });
-    expect(page.items).toEqual([]);
+  it('includes the current revision when no version set covers the file (#8648)', async () => {
+    const { provider, ctx } = setup({ projects: [{ ...WORLD.projects[0], versionSets: [] }] });
+    const page = await provider.listRevisions!(ctx, REF);
+    expect(page.items.map((revision) => revision.id)).toEqual(['rev-3']);
   });
 
   it('honors revisionId on download — two listed revisions yield different bytes', async () => {
@@ -133,6 +126,40 @@ describe('DaluxBuildProvider.listRevisions', () => {
     await provider.listRevisions!(ctx, REF);
     const afterFirst = requests;
     await provider.listRevisions!(ctx, REF);
-    expect(requests).toBe(afterFirst);
+    expect(requests).toBe(afterFirst + 1); // fresh current metadata; project sweep stays cached
+  });
+});
+
+// Review regressions for #8648: current/unpinned files and honest failure states.
+describe('revision history completeness (#8648)', () => {
+  it('includes an unpinned current revision before older coordination pins', async () => {
+    const { provider, ctx } = setup({ projects: [{ ...WORLD.projects[0], versionSets: WORLD.projects[0].versionSets?.slice(0, 3) }] });
+    expect((await provider.listRevisions!(ctx, REF)).items.map((r) => r.id)).toEqual(['rev-3', 'rev-2', 'rev-1']);
+  });
+
+  it('shows an unavailable date instead of epoch and omits raw author IDs', async () => {
+    const base = WORLD.projects[0];
+    const world: DaluxMockWorld = { projects: [{ ...base, versionSets: [], fileAreas: [{ ...base.fileAreas[0], files: [{ ...base.fileAreas[0].files[0], lastModified: undefined, uploaded: undefined, uploadedByUserId: 'raw-user-id' }] }] }] };
+    const { provider, ctx } = setup(world);
+    const current = (await provider.listRevisions!(ctx, REF)).items[0];
+    expect(current.createdAt).toBe('');
+    expect(current.createdBy).toBeUndefined();
+  });
+
+  it('refuses an oversized history instead of implying arbitrary pins are newest', async () => {
+    const sets = Array.from({ length: 251 }, (_, i) => ({ versionSetId: `vs-${i}`, name: `Set ${i}`, fileAreaId: 'fa-models', files: {} }));
+    const { provider, ctx } = setup({ projects: [{ ...WORLD.projects[0], versionSets: sets }] });
+    await expect(provider.listRevisions!(ctx, REF)).rejects.toThrow(/more than 250 version sets/);
+  });
+
+  it('reports a failed set listing to the host rather than returning partial rows', async () => {
+    invalidateCommitIndex();
+    const inner = createDaluxApiMock(WORLD);
+    const ctx = createDaluxMockContext(async (input, init) => {
+      const url = typeof input === 'object' && 'url' in input ? input.url : String(input);
+      if (url.includes('/version_sets/vs-1/files')) return new Response('unavailable', { status: 503 });
+      return inner(input, init);
+    });
+    await expect(new DaluxBuildProvider().listRevisions!(ctx, REF)).rejects.toThrow(/incomplete/);
   });
 });

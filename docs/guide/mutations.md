@@ -849,12 +849,16 @@ A copy of an element on a grid (one whose placement reaches an `IfcGridPlacement
 
 The canonical `reshapeWallsInStore` writer uses this calculation too. Trim/Extend uses it for the ghost, so an unchanged joined or custom-cut face matches the body that is committed. Existing joins are then recomputed by the writer; callers group those writes in their atomic undo transaction.
 
-Moving one joined wall carries the connected endpoint of its neighbour while
-keeping the neighbour's other axis endpoint fixed. The neighbour can therefore
-turn, and both end profiles are resolved again. At an L corner the relating
-wall runs through and the related wall stops at its near face; an imported
-mitre can become this butt corner. Consequently, a body's bounding-box edge
-can move by a different distance from its placement. Both walls require remeshing.
+Moving one joined wall extends or trims a connected neighbour on the
+neighbour's existing axis, preserving its direction and opposite endpoint.
+The connected endpoint is solved at the intersection of the two axis lines;
+the body then stops at the moved wall's face for a T or butt join. The moved
+wall's connected ends can also extend or trim to retain their joins, while its
+placement follows the requested transform. An imported mitre can become a
+butt corner when the profiles are resolved. Both walls require remeshing.
+Parallel or near-parallel lines, non-finite intersections, and intersections
+that collapse or reverse a wall refuse the transaction with an explanatory
+error. The editor never silently rotates a neighbour as a fallback.
 
 ```typescript
 import { reshapeWallAxis, wallBodyOutline, type WallJoinWall } from '@ifc-lite/create';

@@ -30,6 +30,7 @@ import { applyWallJoinToStore, rewriteWall, type JoinAnchor, type WallJoinApplyO
 import { readWallJoinRels, readWallJoinTarget, type WallJoinRead, type WallJoinRel } from './wall-join-read.js';
 import { computeWallJoin, reshapeWallAxis, type PlanPoint, type WallJoinWall } from './wall-join.js';
 import { assertWallOpeningsFit } from './wall-opening-fit.js';
+import { wallAxisIntersection, wallAtIntersection } from './wall-join-intersection.js';
 
 /** What a join write needs from the model: the authoring anchor plus the context an `Axis` representation lives in. */
 export function resolveWallJoinAnchor(store: IfcDataStore, view?: Parameters<typeof resolveAuthoringAnchor>[1]): JoinAnchor {
@@ -104,6 +105,8 @@ export interface WallReshape {
 }
 
 export interface WallReshapeOptions {
+  /** Transform carry extends/trims known connected ends on their own axes. */
+  extendJoinedAxes?: boolean;
   /** A moved end takes the walls joined end to end with it (an L corner or a butt join) along. */
   moveJoinedEnds?: boolean;
   /** Tolerance of the recomputed joins, see `computeWallJoin`. */
@@ -207,9 +210,14 @@ export function reshapeWallsInStore(
   const relIds: number[] = [];
   const droppedRelIds: number[] = [];
   for (const rel of rels) {
-    const a = readOrNull(store, editor, targets, rel.relatingId, scale);
-    const b = readOrNull(store, editor, targets, rel.relatedId, scale);
+    let a = readOrNull(store, editor, targets, rel.relatingId, scale);
+    let b = readOrNull(store, editor, targets, rel.relatedId, scale);
     if (!a || !b) continue;
+    if (options.extendJoinedAxes) {
+      const point = wallAxisIntersection(a.wall, b.wall);
+      a = { ...a, wall: wallAtIntersection(a.wall, rel.relatingConnection, point) };
+      b = { ...b, wall: wallAtIntersection(b.wall, rel.relatedConnection, point) };
+    }
     const joinOptions = joinOptionsOf(rel, options.tolerance);
     try {
       computeWallJoin(a.wall, b.wall, joinOptions);

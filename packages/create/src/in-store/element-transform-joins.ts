@@ -7,6 +7,7 @@ import { reshapeWallsInStore, resolveWallJoinAnchor, type WallReshape } from './
 import { getModelLengthUnitScale } from './edit/length-unit-scale.js';
 import type { EditTarget } from './edit/target.js';
 import type { TransformPlan } from './element-transform-plan.js';
+import { wallAxisIntersection, wallAtIntersection } from './wall-join-intersection.js';
 
 type Vec2 = [number, number];
 
@@ -28,12 +29,11 @@ export function assertCarriedJoinsMoveTogether(target: EditTarget, plan: Transfo
   }
 }
 
-export function carryWallJoinsInStore(target: EditTarget, plan: TransformPlan, turn: number): readonly number[] {
+export function carryWallJoinsInStore(target: EditTarget, plan: TransformPlan): readonly number[] {
   if (String(target.dataStore.schemaVersion).toUpperCase() === 'IFC5' || !target.dataStore.source?.byteLength) return [];
   const { dataStore, view } = target;
   const scale = getModelLengthUnitScale(dataStore);
   const rigid = new Set([...plan.roots.map((r) => r.expressId), ...plan.carried]);
-  const [cos, sin] = [Math.cos(turn), Math.sin(turn)];
 
   const edits = new Map<number, WallReshape>();
   const refresh: number[] = [];
@@ -41,12 +41,6 @@ export function carryWallJoinsInStore(target: EditTarget, plan: TransformPlan, t
     if (!underStorey(root.parent)) continue;
     const moved = readWallJoinTarget(dataStore, view, root.expressId, scale);
     if (!moved) continue;
-    // Where a point of the wall went: the wall's placement turned by `turn` about its own origin, then moved.
-    const carried = (p: Vec2): Vec2 => {
-      const dx = p[0] - root.origin[0];
-      const dy = p[1] - root.origin[1];
-      return [moved.origin[0] + cos * dx - sin * dy, moved.origin[1] + sin * dx + cos * dy];
-    };
     const rels = readWallJoinRels(dataStore, view, new Set([root.expressId]));
     let checked = false;
     for (const rel of rels) {
@@ -62,14 +56,14 @@ export function carryWallJoinsInStore(target: EditTarget, plan: TransformPlan, t
       const other = readWallJoinTarget(dataStore, view, otherId, scale);
       if (!other) continue;
       const end = otherConnection === 'ATSTART' ? 'start' : 'end';
-      const joint: Vec2 = ownConnection === 'ATPATH'
-        ? carried(other.wall[end])
-        : ownConnection === 'ATSTART' ? moved.wall.start : moved.wall.end;
+      const joint = wallAxisIntersection(moved.wall, other.wall);
+      wallAtIntersection(other.wall, otherConnection, joint);
+      wallAtIntersection(moved.wall, ownConnection, joint);
       edits.set(otherId, { ...edits.get(otherId), wallId: otherId, [end]: joint });
     }
     if (checked) refresh.push(root.expressId);
   }
   if (refresh.length === 0) return [];
-  const outcome = reshapeWallsInStore(target.editor, dataStore, resolveWallJoinAnchor(dataStore, view), [...edits.values()], { refresh });
+  const outcome = reshapeWallsInStore(target.editor, dataStore, resolveWallJoinAnchor(dataStore, view), [...edits.values()], { refresh, extendJoinedAxes: true });
   return outcome.walls.filter((id) => !rigid.has(id));
 };

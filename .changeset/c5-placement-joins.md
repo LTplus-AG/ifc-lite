@@ -12,3 +12,5 @@ Keep implicit wall joins best-effort: refused joins leave the wall added and rep
 Share finite schema-name snapshots while indexing wall endpoints and reading a wall, and reuse the creation anchor for implicit joins to reduce cold overhead when no walls join.
 
 Discover implicit wall joins through a session endpoint index rather than rereading every wall for each addition. Commit index additions with their owning SDK/viewer transaction and invalidate on other model edits.
+
+When transforming a joined wall, extend or trim neighbours on their existing axes instead of rotating them. Recompute end cuts against the moved face; refuse parallel, non-finite, collapsed or reversed intersections atomically with an explanatory error.

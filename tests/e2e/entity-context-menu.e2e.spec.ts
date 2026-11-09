@@ -334,20 +334,32 @@ test('entity menu stays above the ribbon and inside a short window', async ({ pa
   await openWallMenu(page);
   const menu = page.getByRole('menu', { name: 'Entity actions' });
   await expect(menu).toBeVisible();
-  const fit = await menu.evaluate((element) => {
+  // Radix renders the content off-screen until it has measured the anchor, so
+  // poll the geometry instead of reading it once.
+  await expect.poll(() => menu.evaluate((element) => {
     const rect = element.getBoundingClientRect();
     const header = element.firstElementChild!.getBoundingClientRect();
     const hit = document.elementFromPoint(header.left + header.width / 2, header.top + header.height / 2);
     return {
       headerOnTop: hit != null && element.contains(hit),
-      top: rect.top, bottom: rect.bottom, innerHeight,
-      scrollable: element.scrollHeight <= element.clientHeight || getComputedStyle(element).overflowY === 'auto',
+      insideWindow: rect.top >= 0 && rect.bottom <= innerHeight,
+      overflows: element.scrollHeight > element.clientHeight,
     };
-  });
-  expect(fit.headerOnTop, 'nothing paints over the menu header').toBe(true);
-  expect(fit.top).toBeGreaterThanOrEqual(0);
-  expect(fit.bottom).toBeLessThanOrEqual(fit.innerHeight);
-  expect(fit.scrollable, 'rows that do not fit scroll instead of being cut off').toBe(true);
-  await menu.getByRole('menuitem', { name: 'Export anonymized…', exact: true }).scrollIntoViewIfNeeded();
-  await expect(menu.getByRole('menuitem', { name: 'Export anonymized…', exact: true })).toBeInViewport();
+  }), { message: 'header unobstructed, menu inside the window, extra rows scroll' })
+    .toEqual({ headerOnTop: true, insideWindow: true, overflows: true });
+
+  // A wheel over the menu scrolls it to the rows below the fold; it must not
+  // trip the scene-movement dismissal meant for wheels over the viewport.
+  const box = (await menu.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.wheel(0, 1000);
+  const lastRow = menu.getByRole('menuitem', { name: 'Export anonymized…', exact: true });
+  await expect(lastRow).toBeInViewport();
+  await expect(menu).toBeVisible();
+  expect(await menu.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+
+  // A wheel over the viewport still moves the camera and closes the menu.
+  await page.mouse.move(box.x + box.width + 150, box.y + box.height / 2);
+  await page.mouse.wheel(0, 100);
+  await expect(menu).toBeHidden();
 });

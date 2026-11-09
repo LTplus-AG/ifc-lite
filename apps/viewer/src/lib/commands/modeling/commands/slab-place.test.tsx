@@ -308,6 +308,8 @@ describe('slab.place: every class in both outline modes (#6232 A2)', () => {
         useViewerStore.getState().setAuthoringDims(cls, { Thickness: thickness });
         useViewerStore.getState().startCommand('slab.place'); flatRoofGesture();
         const before = undoDepth();
+        const view = useViewerStore.getState().mutationViews.get(MODEL_ID)!;
+        const recordsBefore = structuredClone(view.getNewEntities());
         for (const [x, y] of clicks) click(x, y);
         if (mode === 'polygon') press(document.body, 'Enter');
         const bodies = authoredBodies(MODEL_ID, [...SLAB_LIKE]);
@@ -315,10 +317,18 @@ describe('slab.place: every class in both outline modes (#6232 A2)', () => {
           cls: entity, identifier: 'Body', representationType: 'SweptSolid',
           solid: 'IFCEXTRUDEDAREASOLID', profile, depth: thickness,
         }]);
-        assert.equal(undoDepth(), before + 1, 'one transaction');
+        // A roof records its complete graph, not just its product row (#9356).
+        // Defined, equal tags certify one step even when it has many rows.
+        const state = useViewerStore.getState();
+        const edits = (state.undoStacks.get(MODEL_ID) ?? []).slice(before);
+        assert.ok(edits.length > 0);
+        const tags = edits.map(mutation => state.mutationBatchTags.get(mutation.id));
+        assert.ok(tags.every(tag => typeof tag === 'string' && tag.length > 0));
+        assert.equal(new Set(tags).size, 1, 'one transaction');
         useViewerStore.getState().undo(MODEL_ID);
         assert.deepEqual(authoredBodies(MODEL_ID, [...SLAB_LIKE]), [], `one undo removes the ${cls}`);
         assert.equal(undoDepth(), before);
+        if (cls === 'roof') assert.deepEqual(view.getNewEntities(), recordsBefore, 'one undo restores every previous geometry record');
       });
     }
   }

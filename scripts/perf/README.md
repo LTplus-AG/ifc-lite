@@ -84,6 +84,10 @@ Compound undo records successor IDs, preserving authored and STEP record order
 even across snapshots. An incremental successor index avoids scanning the
 authored prefix while capturing that inverse; only undo rebuilds the order.
 
+Mutation modules name their load-time encoder initializer explicitly so unused
+modules can be tree-shaken safely. Prepared-operation execution loads after the
+asynchronous action has copied its inputs and private checkpoints.
+
 Timing qualification and the F5 verdict are still pending; no measured scale
 acceptance is claimed by the structural guard alone.
 

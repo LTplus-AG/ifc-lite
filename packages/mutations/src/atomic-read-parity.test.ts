@@ -68,7 +68,7 @@ it('#9411 reference candidates include numeric references before and inside a sp
   view.runAtomic(draft => {
     check(draft);
     draft.setPositionalAttribute(rel.expressId, 4, [300]);
-    draft.setAttribute(rel.expressId, 'RelatingPropertyDefinition', 400);
+    draft.setAttribute(rel.expressId, 'RelatingPropertyDefinition', '#400');
     for (const id of [300, 400]) {
       expect(draft.getAttributeOverrideReferenceCandidates(id)).toEqual([rel.expressId]);
       expect(draft.getAttributeOverrideEntityIds(['IfcRelDefinesByProperties'], id)).toEqual([rel.expressId]);

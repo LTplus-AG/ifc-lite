@@ -394,6 +394,8 @@ Edits accumulate in the same overlay used by `setProperty` / `setAttribute`. The
 
 Use `StoreEditor.runAtomic` to create or modify a related set of IFC entities together. The callback receives a detached editor; a thrown error leaves the live overlay, mutation history and express-ID allocator unchanged. `MutablePropertyView.runAtomic` provides the same operation with a draft view for property and quantity edits.
 
+An untouched draft reads the same model revision and overlay contents as its live view. Initializing an editor's express-ID watermark does not change that model revision; transaction validation checks the allocator separately so an intervening watermark change cannot be overwritten by publication.
+
 ```typescript
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 
@@ -823,7 +825,7 @@ All paths route through the same `mutationSlice` actions that wrap `StoreEditor`
 | Remove an entity from an existing model | `removeEntity` / `bim.store.removeEntity` |
 | Build a brand-new IFC file from scratch | `IfcCreator` (see [API Reference](../api/typescript.md#ifc-litecreate)) |
 
-`copyProductInStore` returns `copiedFrom`, a map from each new product id to its source id, including openings, fillings and assembly parts. Its optional fourth argument, `{ Name }`, overrides the root product’s Name and preserves its parts’ names. The map lets consumers mirror source geometry and property reads without reconstructing the copied relationships. The viewer records the complete copied subgraph as one undo step and re-meshes the copies through wasm. A part or hosted filling cannot be copied alone, and a placement disconnected from its storey is refused.
+`copyProductInStore` returns `copiedFrom`, a map from each new product id to its source id, including openings, fillings and assembly parts. Its optional fourth argument, `{ Name, shape }`, overrides the root product’s Name and preserves its parts’ names. Set `shape: 'own'` to copy a file element’s representation records instead of sharing its shape. `copyBatchInStore` accepts the same `shape` option. Representation contexts and representation maps remain shared; the element, its openings and fillings receive their own copied shape records. This adds those records to the exported file, increasing its size. A shape exceeding 50,000 records is refused atomically rather than silently shared. The default `shape: 'shared'` preserves the existing behaviour for file shapes and keeps copying session-created shapes. The map lets consumers mirror source geometry and property reads without reconstructing the copied relationships. The viewer records the complete copied subgraph as one undo step and re-meshes the copies through wasm. A part or hosted filling cannot be copied alone, and a placement disconnected from its storey is refused.
 
 A copy of an element on a grid (one whose placement reaches an `IfcGridPlacement`) binds to the grid crossing it lands on, within a millimetre, among the crossings of the grids on its storey or its spatial ancestors. It gets a new `IfcGridPlacement` in the model's schema, with a local placement under it holding its height, heading and any offset. Landing on no crossing, it comes free as a plain storey-placed element. `CopyProductResult.boundToGrid` and `cameFree` list which is which, including a part on the grid in its own right. A part placed under a copied placement follows that copy and isn't listed. The viewer tells the person how many came free.
 
@@ -1139,3 +1141,39 @@ Elements whose shape depends on storey spacing follow the edit in the same trans
 **Authoring default.** `bim.store.addWall`, `addColumn`, `addColumnOnGrid`, `addBeam`, `addMember` and `addCurtainWall` take an optional `TopConstraint` (a `setTopConstraintInStore` constraint, or `'auto'`, the default). `auto` is the Model workspace's "To storey above": an element whose top lands on the storey above its own (within 1 mm) is recorded attached to it, relatively; anything else is fixed. The Model workspace's Wall, Column and Curtain Wall tools draw up to the storey above under that default and record the attachment in the same Undo step; the Beam tool records it when the beam's top lands on the storey above. A level beam or member lands with its top face, the way a storey edit lifts it whole. The viewer's `bim.store` applies the constraint the same way as headless, curtain walls and grid columns included.
 
 `bim.store` exposes the same operations in every host: the SDK's headless backend, the viewer (through the storey manager's undo-batched path) and its script sandbox, the MCP `storey_*` tools and `ifc-lite storey`. The methods are `listStoreyLevels`, `suggestStorey`, `addStorey`, `renameStorey`, `planStoreyEdit`, `editStorey`, `planStoreyDelete` and `deleteStorey`. `editStorey` and `deleteStorey` take the reviewed plan as an optional last argument. Headless backends record each write as one Undo step. `listStoreyLevels` counts every storey, however large; only a plan refuses a storey holding more than 50,000 products. The round-1A methods `planAddStorey`, `setTopConstraint` and `copyToStoreys` are on the SDK's headless backend (and so on `ifc-lite run` scripts); the viewer adapter, its sandbox, MCP and `ifc-lite storey` follow in #9352.
+
+Cyclic or unreadable session-created shape graphs are refused atomically in both copy modes. Valid shapes retain the default sharing policy.
+
+The `IfcAttributeValue` typed marker accepts `number[]` for IFC4 indexed segments:
+`{ typed: { type: 'IfcLineIndex', value: [1, 2] } }` writes `IFCLINEINDEX((1,2))`.
+`IfcArcIndex` requires exactly three indices; all indices must be positive integers.
+Other typed markers continue to accept scalar values.
+
+When migrating an attribute reader, narrow `value.typed.value` with
+`Array.isArray` before passing it to a scalar-only function. The typed payload
+can now contain segment indices as well as a string, number or boolean.
+
+For an entity-scoped diff, use `view.getEffectiveChanges(expressId)`. It returns
+that entity's current effective changes in the same order as filtering
+`view.getEffectiveChanges()`, while reading its indexed mutation rows.
+`view.getNewEntitiesReferencing(expressId)` enumerates created records whose
+**authored attributes** contain a `#expressId` reference. These are candidates:
+apply named and positional overrides and deletion checks before interpreting
+an effective relationship. Slot overrides that introduce a reference must also
+be considered through `view.getAttributeOverrideEntityIds()`. Pass a list of
+IFC classes to that method to narrow created candidates by their effective
+class; edited source records remain conservative candidates for the caller to
+check against its source store. The optional second argument narrows creations
+to overrides that could contain a reference to that ID. These remain
+candidates; verify their effective slots with the relevant schema and grammar.
+`view.getAttributeOverrideReferenceCandidates(id)` also indexes source edits
+that might introduce a reference. Combine these with the immutable source and
+authored reference indices; retained or removed references need those indices.
+
+The ordinary entity getters keep their mutable-array contract. Reference
+lookups conservatively recheck a record after its attribute array is exposed,
+including later edits through a retained alias. Pure readers can use
+`readNewEntity`, `readNewEntities`, and `readNewEntitiesOfType`; these borrow
+attributes for reading and must not mutate them. Reference-query results also
+borrow their arrays for reading. Use the ordinary getters or mutation methods
+for writes. `StoreEditor.readNewEntity` provides the same read-only borrow.

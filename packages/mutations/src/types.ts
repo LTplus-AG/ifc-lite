@@ -29,7 +29,7 @@ export type IfcAttributeValue =
   | boolean
   | null
   | { real: number }
-  | { typed: { type: string; value: string | number | boolean } }
+  | { typed: { type: string; value: string | number | boolean | number[] } }
   | IfcAttributeValue[];
 
 /**

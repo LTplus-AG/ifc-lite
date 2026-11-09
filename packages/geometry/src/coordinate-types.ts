@@ -48,6 +48,15 @@ export interface CoordinateInfo {
   /** Building rotation angle in radians, resolved from the IfcSite placement. */
   buildingRotation?: number;
   /**
+   * World translation of the IfcSite placement in IFC Z-up metres, before any
+   * RTC or origin shift, resolved by the WASM pre-pass from the same placement
+   * as {@link buildingRotation}. Lets georeferencing read an authored site
+   * anchor, height included, that the geometry bounds cannot separate from
+   * the building's own extent (#9480). Absent when no site placement resolves
+   * or the producer does not publish it.
+   */
+  siteOrigin?: Vec3;
+  /**
    * Length-unit scale (file units to metres) from IfcProject's unit assignment,
    * e.g. `0.001` for millimetre files. Lets consumers map externally-resolved
    * geometry into the render frame. See issue #945.

@@ -14,3 +14,11 @@ export {
   restashWasmPanicLocation,
   type WasmPanicStash,
 } from './wasm-panic-forward.js';
+
+export {
+  createLifetime,
+  type Lifetime,
+  type LifetimeAttempt,
+  type LifetimeOptions,
+  type LifetimeState,
+} from './lifetime.js';

@@ -17,6 +17,8 @@ import { clashGroupLibrary, decodeClashGroupWorkspace, DEFAULT_GROUP_WORKSPACE, 
 import { readContentRows } from '@/lib/storage/content-database';
 import { refuseContentWrites } from '@/test/content-fixture';
 import { waitFor } from '@/test/render';
+import type { Renderer } from '@ifc-lite/renderer';
+import { clearGlobalRefs, setGlobalRendererRef } from '@/hooks/useBCF.js';
 import { ClashPanel } from './ClashPanel.js';
 import { ClashManualGroupDialog } from './ClashManualGroupDialog.js';
 import { Toaster } from '@/components/ui/toast.js';
@@ -76,8 +78,17 @@ async function setDialogName(value: string): Promise<void> {
   });
 }
 
+// A mounted viewport: a group topic needs its viewpoint (C-2), which the camera supplies.
+const renderer = {
+  getCamera: () => ({
+    getPosition: () => ({ x: 30, y: 20, z: 25 }), getTarget: () => ({ x: 1, y: 2, z: 3 }), getUp: () => ({ x: 0, y: 1, z: 0 }),
+    getFOV: () => Math.PI / 4, getProjectionMode: () => 'perspective', getOrthoSize: () => 10, getAspect: () => 16 / 9, getDistance: () => 10,
+  }),
+} as unknown as Renderer;
+
 beforeEach(async () => {
   localStorage.removeItem(MANUAL_CLASH_GROUPS_KEY);
+  setGlobalRendererRef({ current: renderer });
   useViewerStore.setState({
     clashResult: result(),
     clashGroups: [],
@@ -106,6 +117,7 @@ afterEach(async () => {
   container?.remove();
   container = null;
   localStorage.removeItem(MANUAL_CLASH_GROUPS_KEY);
+  clearGlobalRefs();
   useViewerStore.setState({ clashResult: null, clashGroups: null, bcfProject: null });
 });
 
@@ -163,7 +175,10 @@ describe('ClashPanel manual groups (#4921, #5122)', () => {
     await act(async () => {
       useViewerStore.setState({
         ifcDataStore: {
-          entities: { getGlobalId: (id: number) => id === 99 ? 'HIDDEN0000000000000001' : undefined },
+          entities: {
+            getGlobalId: (id: number) => id === 99 ? 'HIDDEN0000000000000001' : undefined,
+            getExpressIdByGlobalId: (guid: string) => guid === 'HIDDEN0000000000000001' ? 99 : undefined,
+          },
         } as unknown as IfcDataStore,
         hiddenEntities: new Set([99]),
       });

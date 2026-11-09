@@ -63,7 +63,7 @@ export class BrowserDaluxApiClient {
   }
 
   /** Distinguish API keys and nodes without keeping the raw key in cache keys. */
-  get cacheIdentity(): string { return cacheIdentity(this.credentials); }
+  readonly cacheIdentity = cacheIdentity();
 
   /**
    * Add the caller's node selector, but ONLY to URLs that go through our relay.

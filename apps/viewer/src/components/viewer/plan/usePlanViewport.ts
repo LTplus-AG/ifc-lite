@@ -4,9 +4,9 @@
 
 /**
  * The plan's viewport (charter #6232, M2 §1.5): its measured size, the
- * `Fit` (screen ↔ workplane-local), wheel zoom about the cursor and drag
- * pan. Zoom goes through `zoomStep`, so the plan refuses an out-of-range zoom
- * instead of drifting.
+ * `Fit` (screen ↔ workplane-local), eased wheel zoom about the cursor
+ * (#9507) and drag pan. Each zoom step goes through `zoomByScale`, so the
+ * plan refuses an out-of-range zoom instead of drifting.
  *
  * The plan frames itself once per storey, as soon as its cut has settled
  * (it arrives after a debounce), and keeps the frame fitted while the pane
@@ -16,9 +16,10 @@
 
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
 import type { Fit } from '@/lib/rooms/plate-geometry';
-import { zoomStep } from './plan-zoom';
+import { zoomByScale } from './plan-zoom';
 import { useViewerStore } from '@/store/index.js';
-import { wheelDeltaPx, wheelZoomSensitivityFactor } from '@/lib/navigation/wheel-input.js';
+import { wheelZoomSensitivityFactor } from '@/lib/navigation/wheel-input.js';
+import { createTransformWheelZoom } from '../wheelZoom.js';
 
 export interface PlanViewport {
   size: { width: number; height: number };
@@ -87,21 +88,29 @@ export function usePlanViewport(
     setFit((f) => (f ? { ...f, offX: f.offX + dx, offY: f.offY + dy } : f));
   }, []);
 
-  // Wheel zoom about the cursor; non-passive so the page never scrolls instead.
+  // The live fit, ahead of the render, for the eased wheel zoom's steps (#9507).
+  const fitRef = useRef(fit);
+  fitRef.current = fit;
+
+  // Eased wheel zoom about the cursor; non-passive so the page never scrolls instead.
   useEffect(() => {
     const svg = svgRef.current;
     if (!svg) return;
+    const zoom = createTransformWheelZoom<Fit>({
+      get: () => fitRef.current,
+      set: (next) => { fitRef.current = next; setFit(next); },
+      zoomAbout: zoomByScale,
+      rect: () => svg.getBoundingClientRect(),
+      sensitivity: () => wheelZoomSensitivityFactor(useViewerStore.getState().wheelZoomSensitivity),
+      keyTarget: svg.ownerDocument.defaultView ?? undefined,
+    });
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
       moved.current = true;
-      const rect = svg.getBoundingClientRect();
-      const ax = e.clientX - rect.left, ay = e.clientY - rect.top;
-      const px = wheelDeltaPx(e.deltaY, e.deltaMode, rect.height);
-      const factor = wheelZoomSensitivityFactor(useViewerStore.getState().wheelZoomSensitivity);
-      setFit((f) => (f ? zoomStep(f, px, ax, ay, factor) ?? f : f));
+      zoom.zoom(e);
     };
     svg.addEventListener('wheel', onWheel, { passive: false });
-    return () => svg.removeEventListener('wheel', onWheel);
+    return () => { svg.removeEventListener('wheel', onWheel); zoom.dispose(); };
   }, [svgRef]);
 
   return { size, fit, refit, panBy };

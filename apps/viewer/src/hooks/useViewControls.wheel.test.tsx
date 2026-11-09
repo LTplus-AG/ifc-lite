@@ -3,13 +3,14 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import '@/test/setup-dom.js';
-import { afterEach, describe, it } from 'node:test';
+import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act, useRef } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { useViewControls } from './useViewControls.js';
 import { useViewerStore } from '@/store/index.js';
 import type { DrawingViewTransform } from '@/lib/drawing/wheel-navigation.js';
+import { installManualFrames, type ManualFrames } from '@/test/manual-frames.js';
 import type { CachedSheetTransform } from '@/lib/drawing/sheet-geometry-key.js';
 
 const rect = { left: 40, top: 30, width: 800, height: 600 };
@@ -40,7 +41,12 @@ async function mount(visible = true) {
 async function reset(value: DrawingViewTransform = initial) {
   await act(async () => latest.setViewTransform(value));
 }
-async function wheel(options: WheelEventInit = {}, target: HTMLElement = canvas) {
+let frames: ManualFrames;
+/**
+ * One wheel event, and with `settle` (the default) every frame its eased zoom
+ * queues (#9507), so the transform asserted is where the gesture lands.
+ */
+async function wheel(options: WheelEventInit = {}, target: HTMLElement = canvas, settle = true) {
   const event = new WheelEvent('wheel', { bubbles: true, cancelable: true, ...pointer, ...options });
   // happy-dom's WheelEvent incorrectly extends UIEvent, losing the inherited
   // MouseEvent coordinates/modifiers that every browser wheel event provides.
@@ -48,7 +54,7 @@ async function wheel(options: WheelEventInit = {}, target: HTMLElement = canvas)
     clientX: { value: options.clientX ?? pointer.clientX }, clientY: { value: options.clientY ?? pointer.clientY },
     ctrlKey: { value: options.ctrlKey ?? false }, metaKey: { value: options.metaKey ?? false },
   });
-  await act(async () => { target.dispatchEvent(event); });
+  await act(async () => { target.dispatchEvent(event); if (settle) frames.flush(); });
   return event;
 }
 function near(actual: number, expected: number) {
@@ -57,8 +63,10 @@ function near(actual: number, expected: number) {
 function landmark(t: DrawingViewTransform) {
   return { x: (pointer.clientX - rect.left - t.x) / t.scale, y: (pointer.clientY - rect.top - t.y) / t.scale };
 }
+beforeEach(() => { frames = installManualFrames(); });
 afterEach(async () => {
   if (root) await act(async () => root!.unmount());
+  frames.restore();
   root = null;
   containerRef.current = canvas;
   useViewerStore.setState({ navigationPreset: 'default' });
@@ -177,23 +185,69 @@ describe('drawing wheel navigation (#6614)', () => {
     frame.remove();
   });
 
-  it('rejects non-finite input/geometry and clamps step and minimum without losing the anchor', async () => {
+  it('eases a notch: a slice in the event, the rest over the next frames, landing on exactly one notch (#9507)', async () => {
+    await mount(); await reset();
+    await wheel({ deltaY: 100 }, canvas, false);
+    const first = latest.viewTransform.scale;
+    assert.ok(first < initial.scale && first > initial.scale / 1.1, `the event moves part of the notch: ${first}`);
+    assert.ok(frames.pending() > 0, 'the rest is queued for the next frame');
+    await act(async () => { frames.flush(); });
+    near(latest.viewTransform.scale, initial.scale / 1.1);
+    assert.equal(frames.pending(), 0, 'nothing keeps running once it lands');
+  });
+
+  it('a pan or +/- during an eased zoom drops the rest of it (#9507)', async () => {
+    await mount(); await reset();
+    await wheel({ deltaY: 100 }, canvas, false);
+    const mid = latest.viewTransform;
+    await act(async () => latest.setViewTransform({ ...mid, x: mid.x + 50 }));
+    await act(async () => { frames.flush(); });
+    assert.deepEqual(latest.viewTransform, { ...mid, x: mid.x + 50 }, 'the zoom did not resume over the pan');
+  });
+
+  it('a burst of notches queues at most three of them (#9507)', async () => {
+    await mount(); await reset();
+    // Twenty events and no frame between them: one fast spin.
+    for (let i = 0; i < 20; i++) await wheel({ deltaY: 100 }, canvas, false);
+    await act(async () => { frames.flush(); });
+    const notches = Math.log(initial.scale / latest.viewTransform.scale) / Math.log(1.1);
+    assert.ok(notches > 2.5 && notches < 4, `twenty notches zoomed ${notches} notches`);
+  });
+
+  it('zooms further at Fast and less at Slow sensitivity (#9507)', async () => {
+    await mount();
+    const scaleAt = async (wheelZoomSensitivity: 'slow' | 'normal' | 'fast') => {
+      await act(async () => useViewerStore.setState({ wheelZoomSensitivity }));
+      await reset(); await wheel({ deltaY: 100 });
+      return latest.viewTransform.scale;
+    };
+    try {
+      near(await scaleAt('slow'), initial.scale / Math.sqrt(1.1));
+      near(await scaleAt('normal'), initial.scale / 1.1);
+      near(await scaleAt('fast'), initial.scale / 1.21);
+    } finally {
+      useViewerStore.setState({ wheelZoomSensitivity: 'normal' });
+    }
+  });
+
+  it('rejects non-finite input and a collapsed canvas, and floors the zoom without losing the anchor', async () => {
     // The revert oracle removes newly added production modules. Keep that
     // absence an asserted regression instead of a file-level import failure;
     // the mounted tests above still exercise the existing hook after revert.
     const module = await import('@/lib/drawing/wheel-navigation.js').catch(() => null);
     assert.ok(module, 'drawing wheel normalization must be available');
-    const { drawingWheelTransform } = module;
+    const { drawingWheelNavigation, panDrawing, zoomDrawingAbout, MIN_DRAWING_SCALE } = module;
     const event = { deltaX: 0, deltaY: 0, deltaMode: 0, ctrlKey: false, metaKey: false, ...pointer };
     for (const deltaY of [NaN, Infinity, -Infinity]) {
-      assert.equal(drawingWheelTransform(initial, { ...event, deltaY }, rect, 'default', false), initial);
+      assert.equal(drawingWheelNavigation({ ...event, deltaY }, rect, 'default'), null);
     }
-    assert.equal(drawingWheelTransform(initial, event, { ...rect, width: 0 }, 'default', false), initial);
-    assert.equal(drawingWheelTransform({ ...initial, scale: Number.MAX_VALUE },
-      { ...event, deltaY: -1000 }, rect, 'default', false).scale, Number.MAX_VALUE);
-    near(drawingWheelTransform(initial, { ...event, deltaY: -10000 }, rect, 'default', false).scale, 12.5);
-    const minimum = drawingWheelTransform({ ...initial, scale: 0.011 }, { ...event, deltaY: 10000 }, rect, 'default', false);
-    near(minimum.scale, 0.01);
+    assert.equal(drawingWheelNavigation({ ...event, deltaY: 1 }, { ...rect, width: 0 }, 'default'), null);
+    assert.equal(panDrawing(initial, NaN, 0), initial);
+    assert.equal(zoomDrawingAbout({ ...initial, scale: Number.MAX_VALUE }, 1.1, 200, 150).scale, Number.MAX_VALUE);
+    assert.equal(zoomDrawingAbout(initial, NaN, 200, 150), initial);
+    const anchor = { x: pointer.clientX - rect.left, y: pointer.clientY - rect.top };
+    const minimum = zoomDrawingAbout({ ...initial, scale: 0.011 }, 0.5, anchor.x, anchor.y);
+    near(minimum.scale, MIN_DRAWING_SCALE);
     near(landmark(minimum).x, landmark({ ...initial, scale: 0.011 }).x);
   });
 });

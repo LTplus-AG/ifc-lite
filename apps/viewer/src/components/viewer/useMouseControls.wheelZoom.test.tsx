@@ -27,6 +27,7 @@ import { Camera, type Renderer } from '@ifc-lite/renderer';
 import { useViewerStore } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { useMouseControls, type UseMouseControlsParams, type MouseState } from './useMouseControls.js';
+import { installManualFrames, type ManualFrames } from '@/test/manual-frames.js';
 
 const NOTCH_DELTA_Y = 120;
 
@@ -181,14 +182,15 @@ function travelOf(canvas: HTMLCanvasElement, camera: Camera, e: WheelEvent): num
   return Math.hypot(after.x - before.x, after.y - before.y, after.z - before.z);
 }
 
-/** Real frames pass until the eased zoom (#9507, ~180 ms) has settled. */
-const settle = () => new Promise<void>((resolve) => setTimeout(resolve, 400));
+/** Frames run by hand, so an eased zoom (#9507) settles when the test says. */
+let frames: ManualFrames;
+const settle = () => { frames.flush(); };
 
 /** Camera travel once the zoom one dispatched wheel event started has settled. */
-async function settledTravelOf(canvas: HTMLCanvasElement, camera: Camera, e: WheelEvent): Promise<number> {
+function settledTravelOf(canvas: HTMLCanvasElement, camera: Camera, e: WheelEvent): number {
   const before = { ...camera.getPosition() };
   canvas.dispatchEvent(e);
-  await settle();
+  settle();
   const after = camera.getPosition();
   return Math.hypot(after.x - before.x, after.y - before.y, after.z - before.z);
 }
@@ -197,6 +199,7 @@ describe('useMouseControls wheel zoom - registration and wiring (#2683)', () => 
   beforeEach(() => {
     // No stray Control from a previous test: the tracker listens on window.
     window.dispatchEvent(new Event('blur'));
+    frames = installManualFrames();
   });
 
   afterEach(() => {
@@ -211,6 +214,7 @@ describe('useMouseControls wheel zoom - registration and wiring (#2683)', () => 
     }
     document.body.innerHTML = '';
     useViewerStore.setState({ navigationPreset: 'default' });
+    frames.restore();
   });
 
   it('cancels the browser default on a ctrl+wheel, so the page does not zoom', () => {
@@ -250,17 +254,17 @@ describe('useMouseControls wheel zoom - registration and wiring (#2683)', () => 
     assert.ok(fine < plain, `ctrl travel ${fine} should be smaller than plain travel ${plain}`);
   });
 
-  it('leaves a pinch (ctrlKey, no key pressed) at the normal step', async () => {
+  it('leaves a pinch (ctrlKey, no key pressed) at the normal step', () => {
     const pinchView = mountViewport();
-    const pinch = await settledTravelOf(pinchView.canvas, pinchView.camera, wheelEvent({ ctrlKey: true, deltaY: 30 }));
+    const pinch = settledTravelOf(pinchView.canvas, pinchView.camera, wheelEvent({ ctrlKey: true, deltaY: 30 }));
 
     const plainView = mountViewport();
-    const plain = await settledTravelOf(plainView.canvas, plainView.camera, wheelEvent({ deltaY: 30 }));
+    const plain = settledTravelOf(plainView.canvas, plainView.camera, wheelEvent({ deltaY: 30 }));
 
     assert.ok(Math.abs(pinch - plain) < 1e-9, `pinch-zoom must keep its usual speed: ${pinch} vs ${plain}`);
   });
 
-  it('eases a notch: a slice lands in the event and the rest over the next frames (#9507)', async () => {
+  it('eases a notch: a slice lands in the event and the rest over the next frames (#9507)', () => {
     const { canvas, camera } = mountViewport();
     const reference = new Camera();
     reference.zoom(NOTCH_DELTA_Y, false, 400, 300, 800, 600, false);
@@ -272,22 +276,32 @@ describe('useMouseControls wheel zoom - registration and wiring (#2683)', () => 
     assert.ok(first > 0, 'the zoom starts in the event itself');
     assert.ok(first < notch * 0.5, `the event moved ${first} of a ${notch} notch: that is a jump, not an ease`);
 
-    await settle();
+    assert.ok(frames.pending() > 0, 'the rest is queued for the next frame');
+    settle();
     const total = camera.getDistance() - startDistance;
     // Within 6 %: compounding the slices zooms exp(-0.1) where one step zooms 0.9.
     assert.ok(Math.abs(total - notch) / notch < 0.06, `the eased notch lands where one notch does: ${total} vs ${notch}`);
   });
 
-  it('zooms further with the Fast sensitivity and less with Slow (#9507)', async () => {
-    const travelAt = async (wheelZoomSensitivity: 'slow' | 'normal' | 'fast') => {
+  it('an orbit during an eased zoom drops the rest of it (#9507)', () => {
+    const { canvas, camera } = mountViewport();
+    canvas.dispatchEvent(wheelEvent());
+    camera.orbit(40, 0, false);
+    const afterOrbit = camera.getDistance();
+    settle();
+    assert.equal(camera.getDistance(), afterOrbit, 'the zoom did not resume after the orbit');
+  });
+
+  it('zooms further with the Fast sensitivity and less with Slow (#9507)', () => {
+    const travelAt = (wheelZoomSensitivity: 'slow' | 'normal' | 'fast') => {
       useViewerStore.setState({ wheelZoomSensitivity });
       const view = mountViewport();
       return settledTravelOf(view.canvas, view.camera, wheelEvent({ deltaY: 40 }));
     };
     try {
-      const slow = await travelAt('slow');
-      const normal = await travelAt('normal');
-      const fast = await travelAt('fast');
+      const slow = travelAt('slow');
+      const normal = travelAt('normal');
+      const fast = travelAt('fast');
       assert.ok(slow < normal && normal < fast, `slow ${slow} < normal ${normal} < fast ${fast}`);
     } finally {
       useViewerStore.setState({ wheelZoomSensitivity: 'normal' });

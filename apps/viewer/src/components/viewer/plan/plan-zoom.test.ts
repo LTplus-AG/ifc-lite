@@ -5,7 +5,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { wX, wY, type Fit } from '@/lib/rooms/plate-geometry.js';
-import { clampToCanvas, zoomStep, MIN_ZOOM_SCALE, MAX_ZOOM_SCALE } from './plan-zoom.js';
+import { clampToCanvas, zoomByScale, MIN_ZOOM_SCALE, MAX_ZOOM_SCALE } from './plan-zoom.js';
 
 const CANVAS_W = 420;
 const CANVAS_H = 340;
@@ -42,16 +42,16 @@ describe('clampToCanvas', () => {
   });
 });
 
-describe('zoomStep', () => {
-  it('zooms in on a scroll up and out on a scroll down', () => {
-    assert.ok(zoomStep(FIT, -100, 200, 170)!.scale > FIT.scale);
-    assert.ok(zoomStep(FIT, 100, 200, 170)!.scale < FIT.scale);
+describe('zoomByScale (one eased wheel step, #9507)', () => {
+  it('zooms in for a scale above 1 and out below it', () => {
+    assert.ok(zoomByScale(FIT, 1.1, 200, 170)!.scale > FIT.scale);
+    assert.ok(zoomByScale(FIT, 1 / 1.1, 200, 170)!.scale < FIT.scale);
   });
 
   it('keeps the point under the cursor fixed', () => {
     const ax = 200, ay = 170;
     const before = [wX(FIT, ax), wY(FIT, ay)];
-    const next = zoomStep(FIT, -240, ax, ay)!;
+    const next = zoomByScale(FIT, 1.25, ax, ay)!;
     const after = [wX(next, ax), wY(next, ay)];
     assert.ok(Math.abs(before[0] - after[0]) < 1e-9, 'x under the cursor is unchanged');
     assert.ok(Math.abs(before[1] - after[1]) < 1e-9, 'y under the cursor is unchanged');
@@ -62,53 +62,38 @@ describe('zoomStep', () => {
     // scale while still applying the offset shift would drift the plan sideways
     // under a wheel that no longer zooms.
     const tooFarIn: Fit = { scale: MAX_ZOOM_SCALE, offX: 10, offY: 20 };
-    assert.equal(zoomStep(tooFarIn, -400, 100, 100), null);
+    assert.equal(zoomByScale(tooFarIn, 1.5, 100, 100), null);
     const tooFarOut: Fit = { scale: MIN_ZOOM_SCALE, offX: 10, offY: 20 };
-    assert.equal(zoomStep(tooFarOut, 400, 100, 100), null);
+    assert.equal(zoomByScale(tooFarOut, 1 / 1.5, 100, 100), null);
   });
 
   it('accepts a step that lands exactly ON a bound', () => {
-    // deltaY 0 is a real event (a horizontal-only wheel gesture) and its zoom
-    // factor is exactly 1, so the resulting scale is bit-identical to the
-    // starting one. Sitting on the limit must not blank the transform.
+    // A scale of exactly 1 leaves the scale bit-identical; sitting on the limit
+    // must not blank the transform.
     for (const scale of [MIN_ZOOM_SCALE, MAX_ZOOM_SCALE]) {
-      const next = zoomStep({ scale, offX: 7, offY: 11 }, 0, 100, 100);
-      assert.ok(next, `a zero-delta wheel at scale ${scale} must not be refused`);
+      const next = zoomByScale({ scale, offX: 7, offY: 11 }, 1, 100, 100);
+      assert.ok(next, `a no-op step at scale ${scale} must not be refused`);
       assert.equal(next.scale, scale);
     }
   });
 
   it('refuses at the bounds themselves, not at some other scale', () => {
-    // Bisect for the wheel travel where accept flips to refuse, so the test
-    // pins WHERE the limit is without having to know the wheel sensitivity. A
-    // wrong bound constant, or a comparison against the wrong field, moves this
-    // threshold. One event zooms at most 25 % (#9507), so each run starts within
-    // one event of its bound.
-    const flipScale = (from: Fit, accepted: number, refused: number): number => {
+    // Bisect for the step where accept flips to refuse, so the test pins WHERE
+    // the limit is. A wrong bound constant, or a comparison against the wrong
+    // field, moves this threshold.
+    const from: Fit = { scale: 10, offX: 3, offY: 4 };
+    const flipScale = (accepted: number, refused: number): number => {
       for (let i = 0; i < 200; i++) {
-        const mid = (accepted + refused) / 2;
-        if (zoomStep(from, mid, 100, 100)) accepted = mid; else refused = mid;
+        const mid = Math.sqrt(accepted * refused);
+        if (zoomByScale(from, mid, 100, 100)) accepted = mid; else refused = mid;
       }
-      return zoomStep(from, accepted, 100, 100)!.scale;
+      return zoomByScale(from, accepted, 100, 100)!.scale;
     };
-    // Zooming out (positive travel) bottoms out at the minimum...
-    const nearMin: Fit = { scale: MIN_ZOOM_SCALE * 1.1, offX: 3, offY: 4 };
-    const outLimit = flipScale(nearMin, 0, 1e5);
+    const outLimit = flipScale(1, 1e-6);
     assert.ok(Math.abs(outLimit - MIN_ZOOM_SCALE) / MIN_ZOOM_SCALE < 1e-9,
       `zoom-out stops at ${outLimit}, expected ${MIN_ZOOM_SCALE}`);
-    assert.notEqual(outLimit, nearMin.scale, 'and it really did zoom on the way there');
-    // ...and zooming in (negative travel) tops out at the maximum.
-    const nearMax: Fit = { scale: MAX_ZOOM_SCALE / 1.1, offX: 3, offY: 4 };
-    const inLimit = flipScale(nearMax, 0, -1e5);
+    const inLimit = flipScale(1, 1e6);
     assert.ok(Math.abs(inLimit - MAX_ZOOM_SCALE) / MAX_ZOOM_SCALE < 1e-9,
       `zoom-in stops at ${inLimit}, expected ${MAX_ZOOM_SCALE}`);
-    assert.notEqual(inLimit, nearMax.scale);
-  });
-
-  it('zooms a notch by the shared 2D rate, scaled by the sensitivity factor (#9507)', () => {
-    const notch = zoomStep(FIT, -100, 200, 170)!.scale / FIT.scale;
-    assert.ok(Math.abs(notch - 1.1) < 1e-9, `a notch zooms 10 %, got ${notch}`);
-    const fast = zoomStep(FIT, -100, 200, 170, 2)!.scale / FIT.scale;
-    assert.ok(Math.abs(fast - 1.21) < 1e-9, `fast doubles the exponent, got ${fast}`);
   });
 });

@@ -4,8 +4,9 @@
 
 /**
  * Wheel zoom: how a wheel event becomes zoom input, the modifier that makes it
- * finer (#2683), and the camera step the smoother (`wheelZoomSmoother.ts`,
- * #9507) applies.
+ * finer (#2683), and the controller that feeds it through the smoother
+ * (`lib/navigation/wheel-zoom-smoother.ts`, #9507) into the 3D camera or a 2D
+ * view transform.
  *
  * QGIS is the reference the fine-zoom request cited. Its map canvas divides
  * the *excess over 1* of the wheel zoom factor by 20 while Ctrl is down, under
@@ -23,8 +24,8 @@
  */
 
 import { cameraPoseKey, SURFACE_PICK_IDLE_MS, type SurfacePoint, type SurfaceZoomCamera, type ZoomSurfacePicker } from './zoomSurface.js';
-import { WHEEL_NOTCH_MIN_PX, wheelDeltaPx } from '@/lib/navigation/wheel-input.js';
-import { createWheelZoomSmoother, MAX_STEP_PX, type WheelZoomAnchor } from './wheelZoomSmoother.js';
+import { WHEEL_NOTCH_MIN_PX, wheelDeltaPx, wheelZoomScale } from '@/lib/navigation/wheel-input.js';
+import { createWheelZoomSmoother, MAX_STEP_PX, type WheelZoomAnchor } from '@/lib/navigation/wheel-zoom-smoother.js';
 
 /** Fraction of the normal wheel step applied while the fine modifier is held. */
 export const FINE_ZOOM_STEP_FACTOR = 0.2;
@@ -134,8 +135,10 @@ export function wheelZoomInput(
   e: Pick<WheelZoomEvent, 'deltaY' | 'deltaMode' | 'ctrlKey' | 'metaKey'>,
   modifierKeyHeld: boolean,
   sensitivity: number,
+  /** CSS px per page for a page-mode delta: the view's height. */
+  pagePx?: number,
 ): { px: number; eased: boolean } {
-  const raw = wheelDeltaPx(e.deltaY, e.deltaMode);
+  const raw = wheelDeltaPx(e.deltaY, e.deltaMode, pagePx);
   const fine = isFineZoomWheel(e, modifierKeyHeld);
   const pinch = e.ctrlKey && !fine;
   const eased = !pinch && Math.abs(raw) >= WHEEL_NOTCH_MIN_PX;
@@ -232,38 +235,39 @@ function prefersReducedMotion(): boolean {
   return typeof window !== 'undefined' && (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false);
 }
 
-export interface ViewportWheelZoomOptions extends Omit<WheelZoomStepOptions, 'fastZoom'> {
+export interface WheelZoomControllerOptions {
+  /** Applies one eased step of `px` wheel px at `anchor` (client coordinates). */
+  step(px: number, anchor: WheelZoomAnchor, fastZoom: boolean): void;
+  /** The view's pose, so a move by any other control cancels a pending zoom. */
+  poseKey(): string;
   /** The sensitivity setting's factor, read per event (#9507). */
   sensitivity(): number;
-  /** After every camera step. */
-  onStep(): void;
+  /** The view's height in CSS px, the size of a page-mode wheel delta. */
+  pagePx?(): number;
   /** When a zoom has finished easing, or was cancelled. */
-  onSettle(): void;
+  onSettle?(): void;
   /** Where the fine-zoom modifier's key events are observed. */
   keyTarget?: Pick<Window, 'addEventListener' | 'removeEventListener'>;
   reducedMotion?(): boolean;
 }
 
-export interface ViewportWheelZoom {
-  zoom(e: WheelZoomEvent, fastZoom: boolean): void;
+export interface WheelZoomController {
+  zoom(e: WheelZoomEvent, fastZoom?: boolean): void;
   dispose(): void;
 }
 
-/** The 3D viewport's wheel zoom: event → input → eased camera steps (#9507). */
-export function createViewportWheelZoom(opts: ViewportWheelZoomOptions): ViewportWheelZoom {
+/** Every view's wheel zoom: event → input (fine step, sensitivity) → eased steps (#9507). */
+export function createWheelZoomController(opts: WheelZoomControllerOptions): WheelZoomController {
   const modifier = createFineZoomModifierTracker(opts.keyTarget);
   const smoother = createWheelZoomSmoother({
-    step: (px, anchor, fastZoom) => {
-      applyWheelZoomStep(px, anchor, { camera: opts.camera, canvas: opts.canvas, fastZoom, pickSurface: opts.pickSurface });
-      opts.onStep();
-    },
-    poseKey: () => cameraPoseKey(opts.camera),
-    onSettle: opts.onSettle,
+    step: opts.step,
+    poseKey: opts.poseKey,
+    onSettle: opts.onSettle ?? (() => {}),
     reducedMotion: opts.reducedMotion ?? prefersReducedMotion,
   });
   return {
-    zoom(e, fastZoom) {
-      const input = wheelZoomInput(e, modifier.isHeld(), opts.sensitivity());
+    zoom(e, fastZoom = false) {
+      const input = wheelZoomInput(e, modifier.isHeld(), opts.sensitivity(), opts.pagePx?.());
       smoother.push({ ...input, clientX: e.clientX, clientY: e.clientY, fastZoom });
     },
     dispose() {
@@ -271,4 +275,50 @@ export function createViewportWheelZoom(opts: ViewportWheelZoomOptions): Viewpor
       modifier.dispose();
     },
   };
+}
+
+export interface ViewportWheelZoomOptions extends Omit<WheelZoomStepOptions, 'fastZoom'>,
+  Pick<WheelZoomControllerOptions, 'sensitivity' | 'onSettle' | 'keyTarget' | 'reducedMotion'> {
+  /** After every camera step. */
+  onStep(): void;
+}
+
+/** The 3D viewport's wheel zoom: eased, cursor-anchored, surface-aware camera steps. */
+export function createViewportWheelZoom(opts: ViewportWheelZoomOptions): WheelZoomController {
+  return createWheelZoomController({
+    ...opts,
+    step: (px, anchor, fastZoom) => {
+      applyWheelZoomStep(px, anchor, { camera: opts.camera, canvas: opts.canvas, fastZoom, pickSurface: opts.pickSurface });
+      opts.onStep();
+    },
+    poseKey: () => cameraPoseKey(opts.camera),
+    pagePx: () => opts.canvas.getBoundingClientRect().height,
+  });
+}
+
+export interface TransformWheelZoomOptions<T> extends Pick<WheelZoomControllerOptions, 'sensitivity' | 'keyTarget' | 'reducedMotion'> {
+  /** The view's current transform; null while there is none to zoom. */
+  get(): T | null;
+  /** Writes the zoomed transform. */
+  set(next: T): void;
+  /** `t` zoomed by `scale` about canvas point `(x, y)`; null refuses the step. */
+  zoomAbout(t: T, scale: number, x: number, y: number): T | null;
+  /** The canvas box the anchor (and a page-mode delta) is measured in. */
+  rect(): Pick<DOMRect, 'left' | 'top' | 'height'>;
+}
+
+/** A 2D view's wheel zoom (drawing, plan): the same eased steps on a scale/offset transform. */
+export function createTransformWheelZoom<T>(opts: TransformWheelZoomOptions<T>): WheelZoomController {
+  return createWheelZoomController({
+    ...opts,
+    step: (px, anchor) => {
+      const current = opts.get();
+      if (!current) return;
+      const rect = opts.rect();
+      const next = opts.zoomAbout(current, wheelZoomScale(px), anchor.clientX - rect.left, anchor.clientY - rect.top);
+      if (next) opts.set(next);
+    },
+    poseKey: () => JSON.stringify(opts.get()),
+    pagePx: () => opts.rect().height,
+  });
 }

@@ -4,14 +4,13 @@
 
 /**
  * Pure viewport rules for the plan canvas: where a pointer event lands
- * and how far the wheel may zoom.
+ * and how far a wheel zoom step may go.
  *
  * Both exist because of a specific failure, and both were previously inline in
  * the overlay where nothing could pin them.
  */
 
 import { zoomFit, type Fit } from '@/lib/rooms/plate-geometry';
-import { wheelZoomScale } from '@/lib/navigation/wheel-input.js';
 
 /** Wheel-zoom range. Outside it the gesture is refused, not clamped. */
 export const MIN_ZOOM_SCALE = 0.5;
@@ -31,16 +30,14 @@ export function clampToCanvas(x: number, y: number, w: number, h: number): [numb
 }
 
 /**
- * The fit after `px` CSS px of wheel travel about canvas point `(ax, ay)`
- * (scroll up, negative `px`, zooms in), at the shared 2D wheel rate scaled by
- * `factor` (the sensitivity setting, #9507), or
- * `null` when the result would leave the usable zoom range.
+ * The fit zoomed by `scale` about canvas point `(ax, ay)` (one eased wheel
+ * step, #9507), or `null` when the result would leave the usable zoom range.
  *
  * Returning null rather than a clamped fit is deliberate: clamping the *scale*
  * while still applying the offset shift would drift the plan sideways under a
- * wheel that no longer zooms, so a refused gesture must move nothing at all.
+ * wheel that no longer zooms, so a refused step must move nothing at all.
  */
-export function zoomStep(f: Fit, px: number, ax: number, ay: number, factor = 1): Fit | null {
-  const next = zoomFit(f, wheelZoomScale(px, factor), ax, ay);
+export function zoomByScale(f: Fit, scale: number, ax: number, ay: number): Fit | null {
+  const next = zoomFit(f, scale, ax, ay);
   return next.scale >= MIN_ZOOM_SCALE && next.scale <= MAX_ZOOM_SCALE ? next : null;
 }

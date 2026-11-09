@@ -31,6 +31,7 @@ import { sX, sY, type Fit } from '@/lib/rooms/plate-geometry';
 import type { SnapResult, Vec2 } from '@/lib/snap/types';
 import { PLAN_CUT_DEBOUNCE_MS } from './usePlanCut';
 import { PlanView } from './PlanView';
+import { installManualFrames } from '@/test/manual-frames.js';
 
 const wait = (ms: number) => act(() => new Promise<void>((r) => setTimeout(r, ms)));
 const settle = () => wait(PLAN_CUT_DEBOUNCE_MS + 250);
@@ -168,11 +169,16 @@ describe('plan wall end handles (#6232 B3)', () => {
     const radius = () => ui.querySelector('[data-plan-handle="wall-end"] circle')!.getAttribute('r');
     const drawn = radius();
     const before = FIT.scale;
-    for (let i = 0; i < 4; i++) {
-      const wheel = new window.WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY: -120 });
-      // happy-dom's WheelEvent drops the pointer position from its init.
-      Object.defineProperties(wheel, { clientX: { value: 600 }, clientY: { value: 400 } });
-      act(() => { svg.dispatchEvent(wheel); });
+    const frames = installManualFrames();
+    try {
+      for (let i = 0; i < 4; i++) {
+        const wheel = new window.WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY: -120 });
+        // happy-dom's WheelEvent drops the pointer position from its init.
+        Object.defineProperties(wheel, { clientX: { value: 600 }, clientY: { value: 400 } });
+        act(() => { svg.dispatchEvent(wheel); frames.flush(); }); // the eased zoom lands (#9507)
+      }
+    } finally {
+      frames.restore();
     }
     FIT = readFit(ui);
     assert.ok(FIT.scale > before * 1.2, 'the plan zoomed in');

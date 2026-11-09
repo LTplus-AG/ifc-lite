@@ -49,18 +49,17 @@ export function parseWheelZoomSensitivity(value: string | null): WheelZoomSensit
   return WHEEL_ZOOM_SENSITIVITIES.find((s) => s === value) ?? 'normal';
 }
 
-/** Natural-log zoom per CSS px in the 2D views: a 100 px notch zooms 10 %. */
+/** Natural-log zoom per wheel px in the 2D views: a 100 px notch zooms 10 %. */
 const ZOOM_LOG_PER_PX = Math.log(1.1) / 100;
-/** One event zooms a 2D view at most 25 %, however large its delta. */
-const MAX_ZOOM_LOG_STEP = Math.log(1.25);
 
 /**
  * The 2D views' zoom for `px` of wheel travel, as a scale multiplier: above 1
- * zooms in (scroll up, negative `px`). `factor` combines the fine modifier and
- * the sensitivity setting.
+ * zooms in (scroll up, negative `px`). Exponential, so the eased slices of a
+ * notch compound to exactly the notch (#9507). The smoother bounds the travel
+ * per step and per gesture; the fine step and the sensitivity are already in
+ * `px`.
  */
-export function wheelZoomScale(px: number, factor: number): number {
-  const exponent = -px * ZOOM_LOG_PER_PX * factor;
-  if (!Number.isFinite(exponent)) return 1;
-  return Math.exp(Math.max(-MAX_ZOOM_LOG_STEP, Math.min(MAX_ZOOM_LOG_STEP, exponent)));
+export function wheelZoomScale(px: number): number {
+  const scale = Math.exp(-px * ZOOM_LOG_PER_PX);
+  return Number.isFinite(scale) && scale > 0 ? scale : 1;
 }

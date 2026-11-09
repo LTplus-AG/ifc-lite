@@ -96,7 +96,7 @@ function useViewControls({
     setRawViewTransform(next);
   }, []);
 
-  useDrawingWheelNavigation(containerRef, panelVisible, setViewTransform);
+  useDrawingWheelNavigation(containerRef, panelVisible, viewTransformRef, setViewTransform);
 
   // Zoom controls - unlimited zoom
   const zoomIn = useCallback(() => {

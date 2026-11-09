@@ -41,25 +41,27 @@ describe('wheel delta in CSS px (#9507)', () => {
 
 describe('2D wheel zoom scale (#9507)', () => {
   it('zooms 10 % per 100 px notch, in on scroll up and out on scroll down', () => {
-    near(wheelZoomScale(-100, 1), 1.1);
-    near(wheelZoomScale(100, 1), 1 / 1.1);
-    assert.equal(wheelZoomScale(0, 1), 1);
+    near(wheelZoomScale(-100), 1.1);
+    near(wheelZoomScale(100), 1 / 1.1);
+    assert.equal(wheelZoomScale(0), 1);
   });
 
-  it('scales the exponent by the factor, so fast doubles a notch and slow halves it', () => {
-    near(wheelZoomScale(-100, wheelZoomSensitivityFactor('fast')), 1.1 ** 2);
-    near(wheelZoomScale(-100, wheelZoomSensitivityFactor('slow')), Math.sqrt(1.1));
+  it('compounds: the eased slices of a notch land exactly on the notch', () => {
+    const slices = [-24, -18, -14, -11, -9, -24];
+    near(slices.reduce((scale, px) => scale * wheelZoomScale(px), 1), wheelZoomScale(-100));
   });
 
-  it('caps one event at 25 % either way', () => {
-    near(wheelZoomScale(-1e6, 1), 1.25);
-    near(wheelZoomScale(1e6, 1), 1 / 1.25);
-    assert.equal(wheelZoomScale(Number.NaN, 1), 1);
+  it('reads an unusable result as no zoom', () => {
+    assert.equal(wheelZoomScale(Number.NaN), 1);
+    assert.equal(wheelZoomScale(-1e9), 1);
+    assert.equal(wheelZoomScale(1e9), 1);
   });
 });
 
 describe('wheel zoom sensitivity setting (#9507)', () => {
-  it('orders the levels slow < normal < fast, with normal unchanged', () => {
+  it('orders the levels slow < normal < fast, each a doubling, with normal unchanged', () => {
+    assert.equal(wheelZoomSensitivityFactor('slow'), 0.5);
+    assert.equal(wheelZoomSensitivityFactor('fast'), 2);
     const factors = WHEEL_ZOOM_SENSITIVITIES.map(wheelZoomSensitivityFactor);
     assert.deepEqual([...factors].sort((a, b) => a - b), factors);
     assert.equal(wheelZoomSensitivityFactor('normal'), 1);

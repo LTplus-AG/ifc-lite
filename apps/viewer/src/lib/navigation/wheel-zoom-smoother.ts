@@ -3,7 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Delivers 3D wheel zoom over a few frames instead of in one jump (#9507).
+ * Delivers wheel zoom over a few frames instead of in one jump (#9507), for
+ * every view: the 3D viewport, the 2D drawing and the plan canvas.
  *
  * The step size was never the problem: a notch zooms about 10 %, like
  * MapLibre and Potree. Two things about how it landed were:
@@ -17,8 +18,8 @@
  *    compounded with no budget. MapLibre, deck.gl and Leaflet sum a frame's
  *    deltas and compress them; OpenLayers caps a gesture at one zoom level.
  *
- * So wheel travel goes into a backlog, in the camera's own unit (wheel px,
- * where 100 px is one 10 % notch). The backlog is capped, so no burst can
+ * So wheel travel goes into a backlog, in wheel px (100 px is one ~10 %
+ * notch, the 3D camera's own unit). The backlog is capped, so no burst can
  * queue more than {@link MAX_BACKLOG_PX} ahead, and drained exponentially
  * (time constant {@link EASE_TAU_MS}), at most one notch per frame. The first
  * slice lands in the event itself, so the response starts in the same frame.
@@ -28,9 +29,10 @@
  * input directly for the same reason). They apply at once, up to one notch per
  * event; anything above that drains like a notch.
  *
- * Reversing direction drops the backlog. Any other camera move (orbit, pan,
- * a preset view, fly) cancels it: the pose after each step is remembered and
- * a different pose at the next step means someone else moved the camera.
+ * Reversing direction drops the backlog. Any other move of the view (an
+ * orbit, a pan, a preset view, fly, Fit, the +/- buttons) cancels it: the pose
+ * after each step is remembered and a different pose at the next step means
+ * someone else moved the view.
  * `prefers-reduced-motion` applies every step at once.
  */
 
@@ -52,7 +54,7 @@ const MIN_FRAME_MS = 1000 / 240;
 export interface WheelZoomAnchor { clientX: number; clientY: number }
 
 export interface WheelZoomInput extends WheelZoomAnchor {
-  /** Signed wheel travel in camera units (positive zooms out). */
+  /** Signed wheel travel in wheel px (positive zooms out). */
   px: number;
   /** A discrete notch, eased; false for trackpad / pinch / smooth-wheel streams. */
   eased: boolean;
@@ -61,9 +63,9 @@ export interface WheelZoomInput extends WheelZoomAnchor {
 }
 
 export interface WheelZoomSmootherOptions {
-  /** Applies one step of `px` (|px| <= {@link MAX_STEP_PX}) to the camera at `anchor`. */
+  /** Applies one step of `px` (|px| <= {@link MAX_STEP_PX}) to the view at `anchor`. */
   step(px: number, anchor: WheelZoomAnchor, fastZoom: boolean): void;
-  /** The camera pose, compared between steps to notice another control moving it. */
+  /** The view's pose, compared between steps to notice another control moving it. */
   poseKey(): string;
   /** After the last step of a zoom, or when a pending zoom is cancelled. */
   onSettle(): void;
@@ -78,7 +80,7 @@ export interface WheelZoomSmoother {
   /** Drops any pending zoom. */
   cancel(): void;
   dispose(): void;
-  /** Pending travel, in camera units. */
+  /** Pending travel, in wheel px. */
   pending(): number;
 }
 

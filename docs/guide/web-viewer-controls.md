@@ -74,13 +74,14 @@ enabled. Shift + left drag pans in every preset and tool.
 
 ### Wheel zoom
 
-Wheel zoom follows the pointer and stops short of the surface under it. A
-wheel notch zooms about 10% and eases in over roughly 0.2 s instead of jumping;
-a trackpad scroll or pinch follows your fingers directly. A fast spin or
-trackpad momentum queues at most about three notches, so one flick cannot fly
-the camera through the model, and reversing the wheel stops the zoom. Hold
-Ctrl or Cmd for a finer step, or Shift to dolly straight ahead. With the
-system's reduced-motion setting on, each notch applies at once.
+Wheel zoom follows the pointer and, in 3D, stops short of the surface under
+it. In the 3D view, the Drawing panel and plans, a wheel notch zooms about 10%
+and eases in over roughly 0.2 s instead of jumping; a trackpad scroll or pinch
+follows your fingers directly. A fast spin or trackpad momentum queues at most
+about three notches, so one flick cannot fly the camera through the model.
+Reversing the wheel, orbiting or panning stops the zoom. Hold Ctrl or Cmd for a
+finer step, or Shift to dolly straight ahead. With the system's reduced-motion
+setting on, each notch applies at once.
 
 **Settings → Display → Navigation → Wheel zoom speed** sets how far a notch
 zooms: Slow (about 5%), Normal (about 10%) or Fast (about 20%). The choice is

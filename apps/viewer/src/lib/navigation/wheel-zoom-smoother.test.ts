@@ -18,7 +18,7 @@ import {
   MAX_BACKLOG_PX,
   MAX_STEP_PX,
   type WheelZoomInput,
-} from './wheelZoomSmoother.js';
+} from './wheel-zoom-smoother.js';
 
 const FRAME_MS = 1000 / 60;
 const NOTCH = 100;

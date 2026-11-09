@@ -7,6 +7,9 @@ import type { NewEntity } from './types.js';
 let internalReads = 0;
 const observers = new WeakMap<NewEntity, Set<() => void>>();
 const dataBarriers = new WeakMap<object, { getter: PropertyDescriptor['get']; read(): NewEntity['attributes'] }>();
+/** Rows whose mutable attribute arrays reached a caller; their borrows are never reused. */
+const escaped = new WeakSet<NewEntity>();
+const borrows = new WeakMap<NewEntity, NewEntity>();
 
 /** Cooperative cloning may unwrap our own data barrier, never a caller getter. */
 export function entityAttributeData(object: object, key: PropertyKey, descriptor: PropertyDescriptor | undefined): PropertyDescriptor | undefined {
@@ -27,12 +30,15 @@ export function observeEntityAttributes(entity: NewEntity, exposed: () => void):
   const previous = observers.get(entity);
   if (previous) { previous.add(exposed); return; }
   const descriptor = Object.getOwnPropertyDescriptor(entity, 'attributes');
-  if (descriptor && !descriptor.configurable) { exposed(); return; }
+  if (descriptor && !descriptor.configurable) { escaped.add(entity); exposed(); return; }
   const listeners = new Set([exposed]);
   observers.set(entity, listeners);
   let value = descriptor && 'value' in descriptor
     ? descriptor.value as NewEntity['attributes'] : withoutEntityExposure(() => entity.attributes);
-  const notify = () => { for (const listener of listeners) listener(); };
+  const notify = () => {
+    escaped.add(entity); borrows.delete(entity);
+    for (const listener of listeners) listener();
+  };
   Object.defineProperty(entity, 'attributes', {
     enumerable: descriptor?.enumerable ?? true, configurable: true,
     get() {
@@ -50,7 +56,36 @@ export function observeEntityAttributes(entity: NewEntity, exposed: () => void):
   }
 }
 
-/** A read-only borrow: mutation belongs on the ordinary getter or slot APIs. */
+function frozenCopy(value: unknown, copies: Map<object, unknown>): unknown {
+  if (!value || typeof value !== 'object') return value;
+  const known = copies.get(value);
+  if (known) return known;
+  if (Array.isArray(value)) {
+    const out: unknown[] = new Array(value.length);
+    copies.set(value, out);
+    for (let i = 0; i < value.length; i++) out[i] = frozenCopy(value[i], copies);
+    return Object.freeze(out);
+  }
+  const out: Record<string, unknown> = {};
+  copies.set(value, out);
+  const keys = Object.keys(value);
+  for (let i = 0; i < keys.length; i++) out[keys[i]!] = frozenCopy((value as Record<string, unknown>)[keys[i]!], copies);
+  return Object.freeze(out);
+}
+
+/** A read-only borrow: mutation belongs on the ordinary getter or slot APIs.
+ * The borrow is a frozen copy, so a write through it throws instead of
+ * silently editing a record that no index or transaction guard is watching.
+ * Borrowing marks nothing as exposed, and an unexposed row reuses its copy
+ * until the row escapes, so repeated scans cost no later transaction (#8452). */
 export function readEntitySnapshot(entity: NewEntity): NewEntity {
-  return withoutEntityExposure(() => ({ ...entity }));
+  const cached = borrows.get(entity);
+  if (cached) return cached;
+  const row = withoutEntityExposure(() => {
+    const copy = { ...entity };
+    copy.attributes = frozenCopy(copy.attributes, new Map()) as NewEntity['attributes'];
+    return Object.freeze(copy);
+  });
+  if (dataBarriers.has(entity) && !escaped.has(entity)) borrows.set(entity, row);
+  return row;
 }

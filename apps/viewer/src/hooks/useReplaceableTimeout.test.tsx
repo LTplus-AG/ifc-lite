@@ -34,8 +34,11 @@ it('cancel (a new run starting) and unmount both drop the pending callback (B1)'
   const fired: string[] = [];
   act(() => handle.schedule(() => fired.push('cancelled'), 20));
   act(() => handle.cancel());
+  await advance(50);
+  assert.deepEqual(fired, [], 'cancel alone drops the pending callback');
+
   act(() => handle.schedule(() => fired.push('unmounted'), 20));
   cleanup();
   await advance(50);
-  assert.deepEqual(fired, []);
+  assert.deepEqual(fired, [], 'unmount drops the pending callback');
 });

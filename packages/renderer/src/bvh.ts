@@ -6,7 +6,31 @@ import type { MeshData } from '@ifc-lite/geometry';
 import type { Ray } from './raycaster.js';
 
 const MAX_MESHES_PER_LEAF = 8;
-const PARALLEL_EPSILON = 0.0000001;
+
+const F32 = new Float32Array(1);
+const F32_BITS = new Uint32Array(F32.buffer);
+
+/** Largest float32 <= v, so a stored lower bound never moves inward. */
+function f32Floor(v: number): number {
+  const r = Math.fround(v);
+  if (!(r > v)) return r;
+  F32[0] = r;
+  if (r > 0) F32_BITS[0]--;
+  else if (r < 0) F32_BITS[0]++;
+  else F32_BITS[0] = 0x80000001; // v is a tiny negative: the smallest negative subnormal
+  return F32[0];
+}
+
+/** Smallest float32 >= v, so a stored upper bound never moves inward. */
+function f32Ceil(v: number): number {
+  const r = Math.fround(v);
+  if (!(r < v)) return r;
+  F32[0] = r;
+  if (r > 0) F32_BITS[0]++;
+  else if (r < 0) F32_BITS[0]--;
+  else F32_BITS[0] = 1; // v is a tiny positive: the smallest positive subnormal
+  return F32[0];
+}
 
 /**
  * Median-split BVH held in typed arrays and split in place, so a build over
@@ -14,10 +38,11 @@ const PARALLEL_EPSILON = 0.0000001;
  * and a sorted copy per level (#9504).
  */
 export class BVH {
-  // Per-mesh world AABB (minX,minY,minZ,maxX,maxY,maxZ). f32 is lossless for f32
-  // positions. An empty mesh keeps Infinity/-Infinity: it adds nothing to a
-  // union, its NaN centroid only picks a side, and a node holding only empty
-  // meshes is pruned.
+  // Per-mesh world AABB (minX,minY,minZ,maxX,maxY,maxZ). World = f64 origin +
+  // f32 position, so each bound is rounded OUTWARD to f32: round-to-nearest
+  // could shrink a narrow box at georeferenced coordinates and drop a real hit.
+  // An empty mesh keeps Infinity/-Infinity: it adds nothing to a union, its NaN
+  // centroid only picks a side, and a node holding only empty meshes is pruned.
   private meshAABBs: Float32Array | null = null;
   // Mesh indices, permuted so every leaf owns one contiguous range.
   private order: Int32Array | null = null;
@@ -57,12 +82,12 @@ export class BVH {
       const orig = meshes[m].origin;
       const ox = orig ? orig[0] : 0, oy = orig ? orig[1] : 0, oz = orig ? orig[2] : 0;
       const o = m * 6;
-      aabbs[o] = minX + ox;
-      aabbs[o + 1] = minY + oy;
-      aabbs[o + 2] = minZ + oz;
-      aabbs[o + 3] = maxX + ox;
-      aabbs[o + 4] = maxY + oy;
-      aabbs[o + 5] = maxZ + oz;
+      aabbs[o] = f32Floor(minX + ox);
+      aabbs[o + 1] = f32Floor(minY + oy);
+      aabbs[o + 2] = f32Floor(minZ + oz);
+      aabbs[o + 3] = f32Ceil(maxX + ox);
+      aabbs[o + 4] = f32Ceil(maxY + oy);
+      aabbs[o + 5] = f32Ceil(maxZ + oz);
     }
     this.meshAABBs = aabbs;
 
@@ -87,11 +112,9 @@ export class BVH {
     const { origin, direction } = ray;
     const o = [origin.x, origin.y, origin.z];
     const inv = [1 / direction.x, 1 / direction.y, 1 / direction.z];
-    const parallel = [
-      Math.abs(direction.x) < PARALLEL_EPSILON,
-      Math.abs(direction.y) < PARALLEL_EPSILON,
-      Math.abs(direction.z) < PARALLEL_EPSILON,
-    ];
+    // Only a component whose reciprocal overflows is parallel: any finite one,
+    // however small, still crosses slabs and must be slab-tested (#9504).
+    const parallel = [!Number.isFinite(inv[0]), !Number.isFinite(inv[1]), !Number.isFinite(inv[2])];
     const bounds = this.nodeBounds!, links = this.nodeLinks!, order = this.order!;
     let stack = this.stack;
     let top = 0;
@@ -103,6 +126,7 @@ export class BVH {
       let tmin = -Infinity, tmax = Infinity;
       for (let axis = 0; axis < 3; axis++) {
         const low = bounds[b + axis], high = bounds[b + 3 + axis];
+        if (!(low <= high)) continue traversal; // only empty meshes below
         if (parallel[axis]) {
           if (o[axis] < low || o[axis] > high) continue traversal;
           continue;

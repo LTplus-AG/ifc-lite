@@ -228,7 +228,7 @@ export class RaycastEngine {
             let intersection: Intersection | null = null;
             let magneticResult: MagneticSnapResult = { snapTarget: null, edgeLock: releasedEdgeLock() };
 
-            if (meshesToTest.length > 0 || this.flatIndex.anyVisible(this.visibilityFilter(options))) {
+            if (meshesToTest.length > 0) {
                 // Same clip policy as raycastScene: what the section removed cannot be hit (#8659).
                 intersection = this.raycaster.raycast(ray, meshesToTest,
                     hit => !pointClipped(entityClip(clip, hit.expressId), hit.point.x, hit.point.y, hit.point.z));

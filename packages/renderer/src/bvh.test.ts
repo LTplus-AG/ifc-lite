@@ -88,7 +88,7 @@ function rayHitsAabb(ray: Ray, b: AABBLike): boolean {
   let tmin = -Infinity;
   let tmax = Infinity;
   for (const ax of ['x', 'y', 'z'] as const) {
-    if (Math.abs(ray.direction[ax]) < 0.0000001) {
+    if (ray.direction[ax] === 0) {
       if (ray.origin[ax] < b.min[ax] || ray.origin[ax] > b.max[ax]) return false;
     } else {
       const inv = 1 / ray.direction[ax];
@@ -223,6 +223,9 @@ describe('BVH', () => {
     // Every node has an Infinity/-Infinity AABB, so all rays prune to nothing.
     const ray: Ray = { origin: { x: 0, y: 0, z: 10 }, direction: { x: 0, y: 0, z: -1 } };
     assert.strictEqual(bvh.getMeshesForRay(ray, meshes).length, 0);
+    // An oblique ray slab-tests every axis, where an inverted box swaps to (-Inf, Inf).
+    const oblique: Ray = { origin: { x: 0, y: 0, z: 10 }, direction: { x: 0.6, y: 0.1, z: -0.79 } };
+    assert.strictEqual(bvh.getMeshesForRay(oblique, meshes).length, 0);
   });
 
   // The typed-array tree splits in place (#9504): a permutation bug would drop
@@ -262,7 +265,37 @@ describe('BVH', () => {
     bvh.build(meshes);
     bvh.build([]);
     const ray: Ray = { origin: { x: 100, y: 100, z: 100 }, direction: { x: 0, y: 0, z: 1 } };
-    assert.strictEqual(bvh.getMeshesForRay(ray, meshes).length, meshes.length);
+    assert.deepStrictEqual(
+      bvh.getMeshesForRay(ray, meshes).slice().sort((a, b) => a - b),
+      meshes.map((_, i) => i),
+    );
+  });
+
+  // #9512 review: a component below the old 1e-7 "parallel" cut-off was treated
+  // as zero, so a ray starting just outside a slab that it crosses far along the
+  // ray was pruned. Ground truth is analytic, not the slab-test copy above:
+  // at x = 2e6 the ray is at y = 0.45 - 2e6 * 5e-8 = 0.35, inside [-0.4, 0.4].
+  it('keeps a box a near-parallel ray crosses far along the ray', () => {
+    const far = boxMesh(1, 0, 0, 0);
+    far.origin = [2_000_000, 0, 0];
+    const meshes = [far];
+    const bvh = new BVH();
+    bvh.build(meshes);
+    const ray: Ray = { origin: { x: 0, y: 0.45, z: 0 }, direction: { x: 1, y: -5e-8, z: 0 } };
+    assert.deepStrictEqual(bvh.getMeshesForRay(ray, meshes), [0], 'the crossed far box was pruned');
+  });
+
+  // #9512 review: f32 spacing at 5e5 is 1/32, so round-to-nearest collapsed this
+  // centimetre box ([500000.005, 500000.015]) onto x = 500000 and rejected a
+  // ray straight through its middle.
+  it('keeps a narrow box at georeferenced coordinates', () => {
+    const narrow = boxMesh(1, 0, 0, 0, 0.005);
+    narrow.origin = [500_000.01, 0, 0];
+    const meshes = [narrow];
+    const bvh = new BVH();
+    bvh.build(meshes);
+    const ray: Ray = { origin: { x: 500_000.01, y: 0, z: 10 }, direction: { x: 0, y: 0, z: -1 } };
+    assert.deepStrictEqual(bvh.getMeshesForRay(ray, meshes), [0]);
   });
 
   // `MeshData.positions` are in the element's LOCAL frame; `MeshData.origin`

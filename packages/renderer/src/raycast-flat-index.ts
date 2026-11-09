@@ -11,6 +11,8 @@ import type { SceneContents } from './scene-contents.js';
 export type RaycastScene = SceneContents & {
   getTexturedMeshes?(): readonly Pick<MeshData, 'expressId' | 'modelIndex'>[];
   getPickGeometryRevision?(): number;
+  /** Called after host-budget eviction drops CPU pieces without a revision bump. */
+  onHostEviction?(listener: () => void): void;
 };
 
 type DrawRef = Pick<MeshData, 'expressId' | 'modelIndex'>;
@@ -41,7 +43,11 @@ export class RaycastFlatIndex {
   private flat: FlatPieces | null = null;
   private bvhPieces: MeshData[] | null = null;
 
-  constructor(private readonly scene: RaycastScene, private readonly bvhThreshold: number) {}
+  constructor(private readonly scene: RaycastScene, private readonly bvhThreshold: number) {
+    // Cold eviction exists to free those typed arrays, so let go of them now
+    // rather than at the next ray.
+    scene.onHostEviction?.(() => this.invalidate());
+  }
 
   /** Identity and revision checks only. An adapter without a revision is never known fresh. */
   private isFresh(): boolean {
@@ -111,11 +117,6 @@ export class RaycastFlatIndex {
       if (!visible || visible(pieces[i])) candidates.push(pieces[i]);
     }
     return candidates;
-  }
-
-  anyVisible(visible?: (piece: MeshData) => boolean): boolean {
-    const pieces = this.collect();
-    return visible ? pieces.some(visible) : pieces.length > 0;
   }
 
   /** True when the next query rebuilds nothing. Cheap: revision and identity checks. */

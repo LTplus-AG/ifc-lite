@@ -27,6 +27,7 @@ import { BVH } from './bvh.js';
 import { Camera } from './camera.js';
 import { Scene, type TexturedMesh } from './scene.js';
 import type { Mesh, BatchedMesh, PickOptions } from './types.js';
+import type { RenderPipeline } from './pipeline.js';
 import type { DecodedInstancedShard, MeshData } from '@ifc-lite/geometry';
 import type { SourceSnapCurve } from './source-curve-snap.js';
 import { PointCloudSpatialIndex } from './pointcloud/point-cloud-spatial-index.js';
@@ -856,5 +857,35 @@ describe('RaycastEngine flat index (#9504)', () => {
     assert.equal(engine.isCacheWarm(), false, 'freshness is unknown without a revision');
     (scene as unknown as { meshDataMap: Map<number, MeshData[]> }).meshDataMap.set(7, []);
     assert.equal(aim(engine), undefined, 'the replaced pieces must be seen without a revision');
+  });
+
+  // #9512 review: cold eviction keeps the pick revision (#8998) and the draw
+  // lists, so nothing the index checks moves; it must still let go of the
+  // evicted typed arrays, which is the whole point of the host budget.
+  it('releases pieces the host budget evicts', () => {
+    const scene = new Scene();
+    const device = {
+      limits: { maxBufferSize: 1 << 28, maxStorageBufferBindingSize: 1 << 28 },
+      createBuffer: ({ size }: GPUBufferDescriptor) => ({ size, destroy() {} }),
+      createBindGroup: () => ({}),
+      queue: { writeBuffer() {} },
+    } as unknown as GPUDevice;
+    const pipeline = { getUniformBufferSize: () => 256, getBindGroupLayout: () => ({}) } as unknown as RenderPipeline;
+    const quad = makeQuad({ expressId: 7 });
+    scene.appendToBatches([quad], device, pipeline);
+    const engine = engineFor(scene, orthoCameraLookingDownZ([0, 0, 0], 50));
+    assert.equal(engine.raycastScene(400, 300)?.intersection.expressId, 7);
+    assert.equal(engine.isCacheWarm(), true);
+    const revision = scene.getPickGeometryRevision();
+
+    scene.setColdGeometryProvider({ loadMeshesInBounds: async () => [quad] });
+    scene.setGpuResidencyBudget(1); scene.setHostResidencyBudget(1);
+    for (let i = 0; i < 1000; i++) scene.beginResidencyFrame();
+    for (let i = 0; i < 240; i++) scene.enforceGpuBudget();
+    assert.equal(scene.getMeshDataPieces(7), undefined, 'setup: the bucket went cold');
+    assert.equal(scene.getPickGeometryRevision(), revision, 'setup: eviction keeps the pick revision');
+
+    assert.equal(engine.isCacheWarm(), false, 'the index still holds the evicted pieces');
+    assert.equal(engine.raycastScene(400, 300), null, 'evicted geometry is not pickable, as before #9504');
   });
 });

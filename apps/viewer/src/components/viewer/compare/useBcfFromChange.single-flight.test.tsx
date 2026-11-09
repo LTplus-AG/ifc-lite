@@ -16,6 +16,7 @@ import { act, useState } from 'react';
 import { render, cleanup, click, waitFor } from '@/test/render.js';
 import { installHeldCapture, type HeldCapture } from '@/test/bcf-held-capture.js';
 import { useViewerStore } from '@/store/index.js';
+import { toast } from '@/components/ui/toast';
 import { BCFCreateTopicForm } from '../bcf/BCFCreateTopicForm';
 import { useBcfFromChange } from './useBcfFromChange';
 
@@ -93,3 +94,23 @@ test('C-2 compare: a double submit captures one viewpoint, adds one topic and di
   assert.equal(capture.frames(), 2, 'one capture for the opening, one for the single accepted submit');
   assert.equal(topicCount(), 1);
 });
+
+for (const cancelled of [false, true]) {
+  test(`C-2 compare: a viewpoint that fails during Create ${cancelled ? 'after Cancel reports nothing' : 'toasts once and creates nothing'}`, async () => {
+    const errors = mock.method(toast, 'error', () => undefined);
+    const logged = mock.method(console, 'error', () => undefined);
+    render(<Probe />);
+    press('[data-open]');
+    const form = q('form'); assert.ok(form, 'form');
+    act(() => { form.dispatchEvent(submitEvent()); });
+    if (cancelled) { const cancel = buttonNamed('Cancel'); assert.ok(cancel, 'Cancel'); click(cancel); }
+    await capture.release(1);
+    capture.breakCamera();
+    await capture.fail(2);
+    await settle();
+    assert.equal(errors.mock.callCount(), cancelled ? 0 : 1);
+    assert.ok(logged.mock.calls.some(call => call.arguments.some(arg => String(arg).includes('camera unavailable'))), 'the failure is always logged');
+    assert.equal(useViewerStore.getState().bcfProject === null, true, 'a failed capture creates no topic and no project');
+    assert.equal(q('form') !== null, !cancelled, 'a current create keeps the form open to retry');
+  });
+}

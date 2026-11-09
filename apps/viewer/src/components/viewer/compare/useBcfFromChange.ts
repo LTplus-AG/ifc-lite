@@ -15,6 +15,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { useViewerStore } from '@/store';
 import { useBCF } from '@/hooks/useBCF';
 import { useSingleFlight } from '@/hooks/useSingleFlight';
+import { captureViewpointForCreate } from '@/hooks/bcf/capture-viewpoint-for-create';
+import { useTranslation } from '@/i18n';
 import { posthog } from '@/lib/analytics';
 import { createBCFProject, createBCFTopic, type BCFTopic, type BCFViewpoint } from '@ifc-lite/bcf';
 
@@ -39,6 +41,7 @@ export function useBcfFromChange(
   modelList: readonly { name?: string }[],
   selectedKey: string | null,
 ): BcfFromChangeController {
+  const { t } = useTranslation();
   const { createViewpointFromState, headerFilesForViewpoints } = useBCF();
 
   const [formOpen, setFormOpen] = useState(false);
@@ -99,11 +102,11 @@ export function useBcfFromChange(
           // derived from the models its selection references before it is stored.
           let vp = options?.includeSnapshot === false ? null : viewpoint;
           if (options?.includeSnapshot !== false && !vp) {
-            vp = await createViewpointFromState({
-              includeSnapshot: true,
-              includeSelection: true,
-              includeHidden: false,
-            });
+            const captured = await captureViewpointForCreate(
+              () => createViewpointFromState({ includeSnapshot: true, includeSelection: true, includeHidden: false }),
+              isCurrent, t('bcf.panel.captureViewpointFailed'), 'compare');
+            if (!captured.ok) return;
+            vp = captured.viewpoint;
           }
           // The form closed (Cancel, or another change focused) while the
           // viewpoint resolved: create nothing, not even the project.
@@ -142,7 +145,7 @@ export function useBcfFromChange(
         }
       });
     },
-    [runSubmit, modelList, viewpoint, createViewpointFromState, headerFilesForViewpoints],
+    [runSubmit, modelList, viewpoint, createViewpointFromState, headerFilesForViewpoints, t],
   );
 
   return {

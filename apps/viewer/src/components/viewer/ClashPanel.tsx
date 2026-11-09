@@ -30,6 +30,7 @@ import type { ClashExclusionKind } from '@/lib/clash/exclusions';
 import { formatClashSolidVolumeM3 } from '@/lib/clash/clash-solid-volume-format';
 import { useBCF } from '@/hooks/useBCF';
 import { useSingleFlight } from '@/hooks/useSingleFlight';
+import { captureViewpointForCreate } from '@/hooks/bcf/capture-viewpoint-for-create';
 import { rerunClashRequest, rerunTooltip, runRequestOf } from '@/lib/clash/run-request';
 import { releaseOwnedClashVisibility } from '@/lib/clash/visibility-ownership';
 import { useViewerStore } from '@/store';
@@ -612,7 +613,11 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
         // `focusClash` above paints the pair through the clash colour channel,
         // not the selection (#1277/#1339); `createViewpointFromState` turns that
         // into the viewpoint's found objects and colouring (#4806).
-        const vp = await createViewpointFromState({ includeSnapshot: true, includeSelection: true, includeHidden: true });
+        const captured = await captureViewpointForCreate(
+          () => createViewpointFromState({ includeSnapshot: true, includeSelection: true, includeHidden: true }),
+          isCurrent, t('bcf.panel.captureViewpointFailed'), 'clash');
+        if (!captured.ok) return;
+        const vp = captured.viewpoint;
         // The panel closed while the viewpoint was captured: create nothing, not even the project.
         if (!isCurrent()) return;
         if (!useViewerStore.getState().bcfProject) setBcfProject(createBCFProject({ name: 'Clash report' }));

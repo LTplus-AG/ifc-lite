@@ -182,3 +182,20 @@ test('C-2 clash: a group framing that lands after the panel closed reports nothi
   assert.equal(errors.mock.callCount(), 0, 'a closed panel raises no "models changed" toast');
   assert.equal(useViewerStore.getState().bcfProject === null, true);
 });
+
+for (const closed of [false, true]) {
+  test(`C-2 clash: a "BCF topic" viewpoint that fails ${closed ? 'after the panel closed reports nothing' : 'toasts once and creates nothing'}`, async () => {
+    const errors = mock.method(toast, 'error', () => undefined);
+    const logged = mock.method(console, 'error', () => undefined);
+    render(<ClashPanel />);
+    pressTogether(clashTopicButton());
+    await waitFor(() => capture.frames() === 1, 'the viewpoint is capturing');
+    if (closed) cleanup();
+    capture.breakCamera();
+    await capture.fail(1);
+    await settle();
+    assert.equal(errors.mock.callCount(), closed ? 0 : 1);
+    assert.ok(logged.mock.calls.some(call => call.arguments.some(arg => String(arg).includes('camera unavailable'))), 'the failure is always logged');
+    assert.equal(useViewerStore.getState().bcfProject === null, true, 'a failed capture creates no topic and no project');
+  });
+}

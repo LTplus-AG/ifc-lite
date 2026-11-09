@@ -47,6 +47,7 @@ import { publishBcfArchive } from '@/lib/bcf-drafts/archive-activity';
 import { readBCFWithDiagnostics, warnIfNoModelLoaded, warnIfImportTruncated, warnIfUnsupportedVersion } from './bcf/bcfImportGuidance';
 import { useSectionViewpointCapture } from '@/hooks/bcf/useSectionViewpointCapture';
 import { useSingleFlight } from '@/hooks/useSingleFlight';
+import { captureViewpointForCreate } from '@/hooks/bcf/capture-viewpoint-for-create';
 // ============================================================================
 // Main BCF Panel Component
 // ============================================================================
@@ -248,18 +249,11 @@ export function BCFPanel({ onClose }: BCFPanelProps) {
       // derived from the models its selection references before it is stored.
       let viewpoint = options?.includeSnapshot === false ? null : createViewpoint;
       if (options?.includeSnapshot !== false && !viewpoint) {
-        try {
-          viewpoint = await createViewpointFromState({
-            includeSnapshot: true,
-            includeSelection: true,
-            includeHidden: true,
-          });
-        } catch (err) {
-          console.error('[BCFPanel] failed to capture viewpoint for new topic', err);
-          // A create the person already cancelled reports nothing.
-          if (isCurrent()) toast.error(t('bcf.panel.captureViewpointFailed'));
-          return;
-        }
+        const captured = await captureViewpointForCreate(
+          () => createViewpointFromState({ includeSnapshot: true, includeSelection: true, includeHidden: true }),
+          isCurrent, t('bcf.panel.captureViewpointFailed'), 'BCFPanel');
+        if (!captured.ok) return;
+        viewpoint = captured.viewpoint;
       }
       // The form was closed while the viewpoint was resolving: create nothing,
       // not even the empty project.

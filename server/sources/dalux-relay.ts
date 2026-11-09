@@ -15,7 +15,14 @@
  *
  * This handler keeps the CORS fix and drops the proxy:
  *
- *   - GET/HEAD only, so no writes can be relayed.
+ *   - GET/HEAD for reads. The only write the relay carries is a file
+ *     upload (#9522), and only on the three exact upload path shapes in
+ *     {@link UPLOAD_ROUTES}: create a slot, send a part, finalize. Every other
+ *     path still answers 405 to anything but GET/HEAD, so no other write
+ *     endpoint (projects, users, tasks, deletions) is reachable.
+ *   - An uploaded part is capped at {@link MAX_RELAYED_BODY_BYTES}, under the
+ *     platform's function request-body limit, so the provider must send
+ *     smaller parts through the relay than Dalux itself allows.
  *   - A caller-supplied `X-API-KEY` is mandatory. The relay holds no
  *     credential of its own, so it can never be used to read data anonymously.
  *   - The upstream path must match one of the API versions the provider
@@ -32,6 +39,18 @@
  * stateless handler. Put a Vercel WAF rate-limit rule on `/api/dalux` — see
  * the README section this file is referenced from.
  */
+
+import {
+  FORWARDED_UPLOAD_HEADERS,
+  MAX_RELAYED_BODY_BYTES,
+  UPLOAD_ROUTES,
+  readBoundedBody,
+  sendUpload,
+  uploadRouteFor,
+  validateUpload,
+} from './dalux-relay-upload.js';
+
+export { MAX_RELAYED_BODY_BYTES, UPLOAD_ROUTES } from './dalux-relay-upload.js';
 
 export interface DaluxRelayConfig {
   /** Upstream origin, no trailing slash. */
@@ -104,6 +123,18 @@ export const DEFAULT_DALUX_RELAY_CONFIG: DaluxRelayConfig = {
   allowedOrigins: [],
 };
 
+/**
+ * Read endpoints outside the version allowlist, matched by exact shape. The
+ * upload flow needs the file-property mappings to know whether a target
+ * requires metadata, and those only exist under `1.1`. Adding `1.1` to
+ * {@link DaluxRelayConfig.allowedPathPrefixes} would open every 1.1 endpoint;
+ * these two patterns open only the two the provider calls.
+ */
+const EXTRA_READ_ROUTES: readonly RegExp[] = [
+  /^1\.1\/projects\/[^/]+\/file_areas\/[^/]+\/folders\/[^/]+\/files\/properties\/1\.0\/mappings$/,
+  /^1\.1\/projects\/[^/]+\/file_areas\/[^/]+\/files\/[^/]+\/properties\/1\.0\/mappings$/,
+];
+
 /** Request headers forwarded upstream. Notably absent: cookie, authorization. */
 const FORWARDED_REQUEST_HEADERS = ['x-api-key', 'accept', 'range', 'if-none-match'];
 
@@ -173,8 +204,9 @@ function corsHeaders(origin: string | null, config: DaluxRelayConfig): Record<st
   if (!origin || !config.allowedOrigins.includes(origin)) return {};
   return {
     'access-control-allow-origin': origin,
-    'access-control-allow-methods': 'GET, HEAD, OPTIONS',
-    'access-control-allow-headers': 'X-API-KEY, Accept, Range, If-None-Match',
+    'access-control-allow-methods': 'GET, HEAD, POST, OPTIONS',
+    'access-control-allow-headers':
+      'X-API-KEY, Accept, Range, If-None-Match, Content-Type, Content-Range, Content-Disposition',
     'access-control-max-age': '600',
     vary: 'Origin',
   };
@@ -205,9 +237,24 @@ export function resolveUpstreamPath(rawPath: string, config: DaluxRelayConfig): 
   if (segments.some((segment) => segment === '.' || segment === '..' || segment === '')) return null;
 
   const [version] = segments;
-  if (!config.allowedPathPrefixes.includes(version)) return null;
+  const joined = segments.join('/');
+  const allowed =
+    config.allowedPathPrefixes.includes(version) ||
+    EXTRA_READ_ROUTES.some((route) => route.test(joined)) ||
+    UPLOAD_ROUTES.some((route) => route.pattern.test(joined));
+  if (!allowed) return null;
 
   return segments.map((segment) => encodeURIComponent(segment)).join('/');
+}
+
+/** Whether a decoded, validated path is readable (GET/HEAD). */
+function isReadPath(upstreamPath: string, config: DaluxRelayConfig): boolean {
+  const decoded = upstreamPath.split('/').map((segment) => decodeURIComponent(segment)).join('/');
+  const [version] = decoded.split('/');
+  return (
+    config.allowedPathPrefixes.includes(version) ||
+    EXTRA_READ_ROUTES.some((route) => route.test(decoded))
+  );
 }
 
 export function createDaluxRelayHandler(
@@ -222,8 +269,9 @@ export function createDaluxRelayHandler(
       return new Response(null, { status: 204, headers: cors });
     }
 
-    if (request.method !== 'GET' && request.method !== 'HEAD') {
-      return jsonError(405, 'Only GET and HEAD are relayed', cors);
+    const isRead = request.method === 'GET' || request.method === 'HEAD';
+    if (!isRead && request.method !== 'POST') {
+      return jsonError(405, 'Only GET, HEAD and upload POSTs are relayed', cors);
     }
 
     // A browser always sends Origin on a cross-origin request. Same-origin
@@ -248,6 +296,32 @@ export function createDaluxRelayHandler(
       return jsonError(400, 'Path is not a relayable Dalux Build endpoint', cors);
     }
 
+    // Method and path are checked together: an upload path is POST-only, and
+    // every other path is read-only. A POST anywhere else is a 405, exactly as
+    // before uploads were relayed.
+    const uploadRoute = uploadRouteFor(upstreamPath);
+    if (isRead && !isReadPath(upstreamPath, config)) {
+      return jsonError(405, 'Upload endpoints accept POST only', cors);
+    }
+    if (!isRead && !uploadRoute) {
+      return jsonError(405, 'Only GET, HEAD and upload POSTs are relayed', cors);
+    }
+
+    let body: Uint8Array<ArrayBuffer> | undefined;
+    if (uploadRoute) {
+      const bounded = await readBoundedBody(request, MAX_RELAYED_BODY_BYTES);
+      if (bounded === null) {
+        return jsonError(
+          413,
+          `Upload parts through this relay are limited to ${MAX_RELAYED_BODY_BYTES} bytes`,
+          cors,
+        );
+      }
+      const invalid = validateUpload(uploadRoute, request, bounded);
+      if (invalid) return jsonError(400, invalid, cors);
+      body = bounded;
+    }
+
     // `path` and the node selector are OUR routing parameters, not Dalux query
     // params. Forwarding them would put them in the upstream query string.
     const forwardedParams = new URLSearchParams(url.search);
@@ -265,17 +339,21 @@ export function createDaluxRelayHandler(
     );
 
     const forwardedHeaders = new Headers();
-    for (const name of FORWARDED_REQUEST_HEADERS) {
+    for (const name of uploadRoute
+      ? [...FORWARDED_REQUEST_HEADERS, ...FORWARDED_UPLOAD_HEADERS]
+      : FORWARDED_REQUEST_HEADERS) {
       const value = request.headers.get(name);
       if (value) forwardedHeaders.set(name, value);
     }
 
     let response: Response;
     try {
-      response = await followSameHost(deps.fetchImpl, upstream, {
-        method: request.method,
-        headers: forwardedHeaders,
-      });
+      response = body
+        ? await sendUpload(deps.fetchImpl, upstream, forwardedHeaders, body)
+        : await followSameHost(deps.fetchImpl, upstream, {
+            method: request.method,
+            headers: forwardedHeaders,
+          });
     } catch (err) {
       if (err instanceof OffHostRedirectError) {
         // A 3xx pointing off the upstream host would, if followed, re-send the

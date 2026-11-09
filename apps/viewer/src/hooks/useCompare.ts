@@ -18,7 +18,7 @@
 
 import { useCallback, useEffect, useRef } from 'react';
 import { isNativeWorkflowBusy } from '@/lib/flow/run-session';
-import { cancelCompareRun } from './analysisRunCancellation';
+import { cancelCompareRun, invalidateAbortableRun, releaseAbortableRun, startAbortableRun } from './analysisRunCancellation';
 import { stampAnalysisReport } from './useAnalysisStaleness';
 import { useViewerStore } from '@/store';
 import { posthog } from '@/lib/analytics';
@@ -143,7 +143,9 @@ export function useCompare() {
    * earlier, so nothing can supersede between the check and the write.
    */
   const epochRef = useRef(0);
-  const builtRef = useComparePairCache(epochRef);
+  /** The in-flight extraction, aborted with every epoch bump (A2). */
+  const abortRef = useRef<AbortController | null>(null);
+  const builtRef = useComparePairCache(epochRef, abortRef);
 
   /** Bump the epoch and clear, so an in-flight run's `then`/`catch` cannot
    *  write the result the user just dismissed back into the store. Routes
@@ -151,7 +153,7 @@ export function useCompare() {
    *  file and in `ComparePanel`; the cache subscription also observes raw
    *  store clears and workspace teardown. */
   const clearCompare = useCallback(() => {
-    epochRef.current += 1;
+    invalidateAbortableRun(epochRef, abortRef);
     builtRef.current?.dispose();
     builtRef.current = null;
     useViewerStore.getState().clearCompare();
@@ -160,7 +162,7 @@ export function useCompare() {
   const cancelComparison = useCallback(() => {
     builtRef.current?.dispose();
     builtRef.current = null;
-    cancelCompareRun(epochRef);
+    cancelCompareRun(epochRef, abortRef);
     // Without cached handles, option changes cannot reconcile the old result.
     useViewerStore.getState().setCompareResult(null);
   }, [builtRef]);
@@ -204,7 +206,7 @@ export function useCompare() {
 
     // Supersedes any run already in flight (same pair or not) - see the epoch
     // doc comment above. Captured once; re-checked at every write below.
-    const myEpoch = ++epochRef.current;
+    const { runEpoch: myEpoch, controller } = startAbortableRun(epochRef, abortRef);
 
     /** Is THIS run still the one whose answer the user is waiting on? Both
      *  conjuncts matter and neither alone is enough: the epoch alone misses a
@@ -251,7 +253,7 @@ export function useCompare() {
         extract: async (contentVersion) => {
           return prepareComparison({ baseModel, headModel, contentVersion, keyProperty,
             mutationVersion: useViewerStore.getState().mutationVersion,
-            getMutationView: useViewerStore.getState().getMutationView });
+            getMutationView: useViewerStore.getState().getMutationView, signal: controller.signal });
         },
       });
       if (!built) {
@@ -294,6 +296,9 @@ export function useCompare() {
 
       posthog.capture('model_compare_run', compareRunPayload(payload, ranMatchByContent));
     } catch (err) {
+      // Aborted by an epoch bump: superseded, cleared or torn down, which is
+      // how such a run is meant to end — nothing to report.
+      if (controller.signal.aborted) return;
       console.error('[compare] comparison failed', err);
       // Same guard as above: a superseded run's own failure must set an error
       // state for a run nobody is waiting on, not clobber whatever a newer
@@ -303,6 +308,7 @@ export function useCompare() {
         store.setCompareResult(null);
       }
     } finally {
+      releaseAbortableRun(controller, abortRef);
       // A superseded run's `finally` must not flip `compareRunning` back to
       // false out from under a newer run that owns it now (or that
       // `clearCompare` already set it false for) - whichever run IS still

@@ -9,7 +9,7 @@
 import { useCallback, useContext } from 'react';
 import { ClassVisibility, CopyGuid, ElementTooltips, EntityActions, FocusSelected, HideSelected, IsolateSelected, Search, Select, DisplayAll, Spatial, Class, Type, Material, Group, Layer } from '@/icons';
 import { DropdownMenu, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { openSelectedEntityActions } from '../../selected-entity-actions';
+import { openSelectedEntityActions, selectedEntityActionTarget } from '../../selected-entity-actions';
 import { resolveGlobalId, useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { BimReactContext } from '@/sdk/BimProvider';
@@ -44,6 +44,7 @@ export function ElementsTab() {
     ? selectedEntityIds.size
     : (selectedEntityId !== null ? 1 : 0);
   const hasSelection = selectionCount > 0;
+  const hasEntityActionTarget = useViewerStore((state) => selectedEntityActionTarget(state) !== null);
 
   const handleCopyGuid = useCallback(() => {
     if (selectedEntityId === null) return;
@@ -107,7 +108,7 @@ export function ElementsTab() {
           <RibbonCommandSmallButton
             commandId="elements:entity-actions"
             icon={EntityActions}
-            disabled={!hasSelection}
+            disabled={!hasEntityActionTarget}
             commandContext={(event) => ({
               contextAction: () => {
                 const rect = event.currentTarget.getBoundingClientRect();

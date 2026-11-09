@@ -219,6 +219,7 @@ for (const surface of ['palette', 'ribbon'] as const) {
       const launcher = ui.querySelector<HTMLButtonElement>(surface === 'palette'
         ? 'button' : 'button[data-command-id="elements:entity-actions"]');
       assert.ok(launcher);
+      if (surface === 'ribbon') assert.equal(launcher.disabled, target === 'deleted');
       launcher.focus(); click(launcher);
       if (surface === 'palette') {
         const input = document.querySelector<HTMLInputElement>('input[role="combobox"]');
@@ -250,3 +251,37 @@ for (const surface of ['palette', 'ribbon'] as const) {
     });
   }
 }
+
+// #8947 / review4510162121: eligibility must react while the ribbon stays mounted.
+for (const legacy of [false, true]) test(`#8947 ribbon tracks unresolved, deleted and created targets (${legacy ? 'legacy' : 'model'})`, async () => {
+  const store = useViewerStore.getState().models.get(MODEL_ID)!.ifcDataStore!;
+  const key = legacy ? '__legacy__' : MODEL_ID;
+  const view = new MutablePropertyView(store.properties || null, key);
+  view.setExpressIdWatermark(Math.max(...store.entities.expressId));
+  useViewerStore.setState({ ...(legacy ? { models: new Map(), ifcDataStore: store } : {}),
+    mutationViews: new Map([[key, view]]), selectedEntityId: 987654321, selectedEntityIds: new Set() });
+  const ui = render(<Harness ribbon />);
+  const button = ui.querySelector<HTMLButtonElement>('button[data-command-id="elements:entity-actions"]');
+  assert.ok(button);
+  assert.equal(button.disabled, true, 'unresolvable renderer selection is disabled');
+  click(button);
+  assert.equal(useViewerStore.getState().contextMenu.isOpen, false);
+  async function selectType(target: number, expected: number[]) {
+    act(() => useViewerStore.setState({ selectedEntityId: target, selectedEntityIds: new Set() }));
+    assert.equal(button!.disabled, false);
+    button!.focus(); click(button!);
+    await waitFor(() => document.querySelector('[role="menu"]')?.contains(document.activeElement) === true,
+      'canonical menu receives focus');
+    const action = document.querySelector<HTMLElement>('[role="menu"] [data-command-id="context:select-all-type"]');
+    assert.ok(action); click(action);
+    assert.deepEqual(useViewerStore.getState().selectedEntityIds, new Set(expected));
+    await waitFor(() => document.activeElement === button, 'actual ribbon launcher regains focus');
+  }
+  await selectType(MESH_WALL, [MESH_WALL]);
+  act(() => { view.deleteEntity(MESH_WALL); useViewerStore.getState().bumpMutationVersion(); });
+  assert.equal(button.disabled, true, 'deletion invalidates the mounted control without changing selection');
+  click(button);
+  assert.equal(useViewerStore.getState().contextMenu.isOpen, false);
+  const created = view.createEntity('IfcWall', ['0000000000000000000998', null, 'Created wall', null, null, null, null, null]);
+  await selectType(created.expressId, [created.expressId]);
+});

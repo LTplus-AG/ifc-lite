@@ -1276,5 +1276,11 @@ index. Hosts wrapping creation in their own atomic transaction use
 index through `createOrdinaryStoreBackend` (or `options.wallIndex`); failed
 transactions do not publish candidate entries.
 Moving an `IfcGrid` with `transformElements` carries its grid-bound products.
+Products placed directly with `IfcGridPlacement` are included in the remesh
+result. Hosted openings and fillings placed independently on the storey move
+with a grid-bound host as separate roots. A move that would separate a carried
+wall from a stationary wall linked by `IfcRelConnectsPathElements` refuses
+atomically with a reason; include the other joined wall in the move or remove
+the join first. Joined walls carried together remain connected.
 The headless CLI supports `alignElements` using current native mesh bounds,
 including hosted cuts, rather than uncut parametric bounding boxes.

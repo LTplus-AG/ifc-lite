@@ -1,7 +1,7 @@
 ---
 "@ifc-lite/create": minor
 "@ifc-lite/cli": patch
-"@ifc-lite/sdk": patch
+"@ifc-lite/sdk": minor
 "@ifc-lite/sandbox": patch
 ---
 

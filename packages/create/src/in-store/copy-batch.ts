@@ -5,6 +5,7 @@
 /** Shared selection, preview and atomic write for paste, array and Duplicate (#6232 D5). */
 import type { StoreEditor } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
+import type { CopyShape } from './copy-shape.js';
 import { copyProductGraph, copyRefusal, createCopyContext, productStoreyOrigin, type CopyContext, type CopyProductResult, type CopyTransform } from './copy-product.js';
 import { openTypeRelationBatch, type DuplicateInStoreOptions } from './duplicate.js';
 import { copiedProductWork, COPY_PRODUCT_WORK_LIMIT } from './copy-dependent-walk.js';
@@ -60,6 +61,8 @@ export function copiedProductsInStore(ctx: CopyContext, ids: readonly number[]):
 }
 
 export interface CopyBatchOptions {
+  /** Deep-copy file shape records with 'own'; default 'shared' keeps current behaviour (#8447). */
+  readonly shape?: CopyShape;
   /** Duplicate's naming/randomness policy; displacement is supplied by transforms. */
   readonly duplicate?: Pick<DuplicateInStoreOptions, 'name' | 'guidRandom'>;
 }
@@ -98,10 +101,10 @@ export function copyBatchInStore(
     const flushTypeRelations = openTypeRelationBatch(draft); // one IfcRelDefinesByType write per type per batch
     const copies = transforms.flatMap((transform) => {
       const results = sources.ids.map((id) => {
-        if (!options.duplicate) return copyProductGraph(ctx, id, transform);
+        if (!options.duplicate) return copyProductGraph(ctx, id, transform, { shape: options.shape });
         const sourceName = ctx.read(id)?.attributes[2];
         const name = options.duplicate.name ?? (typeof sourceName === 'string' && sourceName.length > 0 ? `${sourceName} (copy)` : sourceName);
-        return copyProductGraph(ctx, id, transform, typeof name === 'string' ? { Name: name } : {});
+        return copyProductGraph(ctx, id, transform, { shape: options.shape, ...(typeof name === 'string' ? { Name: name } : {}) });
       });
       return withUnattachedTops(results, rebindCopiedAttachments(ctx, attachments, results).unattached);
     });

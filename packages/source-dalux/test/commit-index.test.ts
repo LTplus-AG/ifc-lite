@@ -314,8 +314,8 @@ describe('getCommitIndex', () => {
       return inner(input, init);
     };
     const ctx = createDaluxMockContext(counting);
-    const keyOne = new BrowserDaluxApiClient({ baseUrl: DALUX_MOCK_BASE_URL, apiKey: 'key-one' }, ctx);
-    const keyTwo = new BrowserDaluxApiClient({ baseUrl: DALUX_MOCK_BASE_URL, apiKey: 'key-two' }, ctx);
+    const keyOne = new BrowserDaluxApiClient({ baseUrl: DALUX_MOCK_BASE_URL, apiKey: 'key-00059bba' }, ctx);
+    const keyTwo = new BrowserDaluxApiClient({ baseUrl: DALUX_MOCK_BASE_URL, apiKey: 'key-00089818' }, ctx);
 
     await getCommitIndex(keyOne, 'p-alpha');
     const afterFirstKey = requests;

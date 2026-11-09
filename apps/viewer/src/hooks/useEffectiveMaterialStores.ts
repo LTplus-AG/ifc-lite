@@ -7,6 +7,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
+import { posthog } from '@/lib/analytics';
 import { useViewerStore, type FederatedModel } from '@/store';
 import type { SchemaVersion } from '@/store/types';
 import { materializeEffectiveIfcStore } from '@/lib/effective-ifc-store';
@@ -67,7 +68,7 @@ export function useEffectiveMaterialStores(
   models: ReadonlyMap<string, FederatedModel>,
   legacyStore: IfcDataStore | null | undefined,
   enabled: boolean,
-): { stores: ReadonlyMap<string, IfcDataStore>; ready: boolean } {
+): { stores: ReadonlyMap<string, IfcDataStore>; ready: boolean; pendingEditsMissing: boolean } {
   const views = useViewerStore((s) => s.mutationViews);
   const revision = useViewerStore((s) => s.mutationVersion);
   const sources = useMemo((): MaterialStoreSource[] => {
@@ -94,13 +95,19 @@ export function useEffectiveMaterialStores(
     let active = true;
     void loadEffectiveMaterialStores(sources, views, revision).then(
       (stores) => { if (active) setResolved({ token, stores }); },
-      (error: unknown) => { if (active) setResolved({ token, error }); },
+      (error: unknown) => {
+        console.error('[useEffectiveMaterialStores] Could not bake pending edits:', error);
+        posthog.captureException(error, { context: 'effective_material_stores' });
+        if (active) setResolved({ token, error });
+      },
     );
     return () => { active = false; };
   }, [hasPending, token, sources, views, revision]);
 
-  if (!hasPending) return { stores: sourceStores, ready: true };
-  if (resolved?.token !== token) return { stores: new Map(), ready: false };
-  if (resolved.error) throw resolved.error;
-  return { stores: resolved.stores ?? new Map(), ready: true };
+  if (!hasPending) return { stores: sourceStores, ready: true, pendingEditsMissing: false };
+  if (resolved?.token !== token) return { stores: new Map(), ready: false, pendingEditsMissing: false };
+  // An edit the exporter refuses (a NaN quantity, #8407) belongs to the export
+  // that writes it. Throwing here took the panel down for merely being opened.
+  if (resolved.error) return { stores: sourceStores, ready: true, pendingEditsMissing: true };
+  return { stores: resolved.stores ?? new Map(), ready: true, pendingEditsMissing: false };
 }

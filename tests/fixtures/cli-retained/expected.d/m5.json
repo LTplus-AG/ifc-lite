@@ -1,0 +1,140 @@
+{
+  "status": "HAND-DERIVED; Opus review round 2 and IFC4 EXPRESS validation passed; SDK qualification required",
+  "derivation": {
+    "a": "4*6*(2-.5)",
+    "b": "4*6*.5",
+    "c,d": "integrate widthX*widthY, widthX=min(2,3-z)-max(-2,z-2.5), widthY=min(3,4.5-z)+3, z=0..2; breaks .5,1,1.5; result 1825/48",
+    "f": "2*area(disk radius2)-2*integral_1^2 (x-1)*2*sqrt(4-x*x) dx = 32*pi/3-6*sqrt(3)",
+    "g": "4*6*1-1*1*1",
+    "h,h2": "4*6*2",
+    "m": "36-1*1*1.5",
+    "m opening cutter": "1*1*3",
+    "issue5314": "y*(x*z-x*x/2); x=.0600004196167, y=(38.9995574951+88.99974823)*.001, z=.30000067435, kept x+z<=zdepth",
+    "fzk": "Both profiles: y=-.3..0, width 12+2*y; kept height .375+(.216506350946-y)*.5/.866025403784. Integrate width*height: 3.51*h0+.522*(.5/.866025403784). Product placement preserves volume."
+  },
+  "synthetic": [
+    {
+      "case": "a agreement true",
+      "id": 22,
+      "code": "published",
+      "volume": 36.0
+    },
+    {
+      "case": "b agreement false",
+      "id": 33,
+      "code": "published",
+      "volume": 12.0
+    },
+    {
+      "case": "c three oblique clips",
+      "id": 58,
+      "code": "published",
+      "volume": 38.020833333333336
+    },
+    {
+      "case": "d rotated survey host chain",
+      "id": 89,
+      "code": "published",
+      "volume": 38.020833333333336
+    },
+    {
+      "case": "f curved two oblique clips",
+      "id": 111,
+      "code": "published",
+      "curved": true,
+      "clipped": true,
+      "volume": 23.11801679287786
+    },
+    {
+      "case": "g clip solid clip",
+      "id": 134,
+      "code": "published",
+      "mixed": true,
+      "volume": 23.0
+    },
+    {
+      "case": "h kept side skip",
+      "id": 145,
+      "code": "published",
+      "volume": 48.0
+    },
+    {
+      "case": "i consumed",
+      "id": 156,
+      "code": "empty_result",
+      "origin": {
+        "site": "halfspace_clip",
+        "entity": 151,
+        "cause": "consumed"
+      }
+    },
+    {
+      "case": "j union halfspace",
+      "id": 167,
+      "code": "operation_unsupported",
+      "origin": {
+        "site": "boolean_second_operand",
+        "entity": 162,
+        "cause": "halfspace_union"
+      }
+    },
+    {
+      "case": "k intersection halfspace",
+      "id": 178,
+      "code": "operation_unsupported",
+      "origin": {
+        "site": "boolean_second_operand",
+        "entity": 173,
+        "cause": "halfspace_intersection"
+      }
+    },
+    {
+      "case": "l nonplane source",
+      "id": 189,
+      "code": "source_invalid",
+      "origin": {
+        "site": "boolean_second_operand",
+        "entity": 184,
+        "cause": "opaque"
+      }
+    },
+    {
+      "case": "m opened clipped wall",
+      "id": 200,
+      "code": "published",
+      "volume": 34.5
+    },
+    {
+      "case": "m opening cutter",
+      "id": 204,
+      "code": "published",
+      "volume": 3.0,
+      "unclipped": true
+    },
+    {
+      "case": "h2 surface tangent contact",
+      "id": 216,
+      "code": "published",
+      "volume": 48.0
+    }
+  ],
+  "issue5314": [
+    {
+      "id": 30,
+      "code": "published",
+      "volume": 0.0020736068223065843
+    }
+  ],
+  "fzk": [
+    {
+      "id": 67536,
+      "code": "published",
+      "volume": 2.056376840517137
+    },
+    {
+      "id": 75347,
+      "code": "published",
+      "volume": 2.056376840517137
+    }
+  ]
+}

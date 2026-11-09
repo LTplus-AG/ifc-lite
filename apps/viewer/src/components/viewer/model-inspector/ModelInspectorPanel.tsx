@@ -13,7 +13,7 @@
  * Hosting (doors and windows). Every edit is one undo step.
  */
 
-import { useId, useMemo } from 'react';
+import { lazy, Suspense, useId, useMemo } from 'react';
 import { ChevronRight, X } from 'lucide-react';
 import { EditElement } from '@/icons';
 import { Button } from '@/components/ui/button';
@@ -32,6 +32,11 @@ import { LayersSection } from './LayersSection';
 import { TypeSection } from './TypeSection';
 import { renameElement } from './inspector-edits';
 import { useInspectorTarget, type InspectorSelection, type InspectorTarget } from './useInspectorTarget';
+import { ChunkErrorBoundary } from '@/components/ChunkErrorBoundary';
+import { Spinner } from '@/components/ui/spinner';
+
+// The storey manager (#9013) and its write path load when it is first opened, not at boot.
+const StoreyManager = lazy(() => import('../model/storeys/StoreyManager').then((m) => ({ default: m.StoreyManager })));
 
 const HOSTED: ReadonlySet<AuthoredElementKind> = new Set(['door', 'window']);
 
@@ -41,7 +46,9 @@ export function ModelInspectorPanel({ onClose }: { onClose?: () => void }) {
   const canEdit = useViewerStore((s) => s.canCollabEdit());
   const enter = useViewerStore((s) => s.enterModelWorkspace);
   const target = useInspectorTarget();
-  const { mode, selection, defaultsKind } = target;
+  const storeyManagerOpen = useViewerStore((s) => s.storeyManagerOpen);
+  const closeStoreyManager = useViewerStore((s) => s.setStoreyManagerOpen);
+  const { mode, selection, defaultsKind, kindlessCommand } = target;
 
   const title = mode === 'selection' && selection
     ? selection.storeyName
@@ -49,7 +56,20 @@ export function ModelInspectorPanel({ onClose }: { onClose?: () => void }) {
       : t('modelInspector.header.selection', { ifcClass: selection.ifcClass, id: selection.expressId })
     : mode === 'defaults' && defaultsKind
       ? t('modelInspector.header.defaults', { kind: t(KIND_LABEL[defaultsKind]) })
-      : t('modelInspector.panel.title');
+      : kindlessCommand
+        ? t(kindlessCommand)
+        : t('modelInspector.panel.title');
+
+  // The storey manager (#9013) takes the inspector's place until its Back button.
+  if (storeyManagerOpen && target.inSession) {
+    return (
+      <ChunkErrorBoundary label="Storey manager">
+        <Suspense fallback={<div className="flex h-full items-center justify-center"><Spinner label={t('storeyManager.title')} /></div>}>
+          <StoreyManager onBack={() => closeStoreyManager(false)} />
+        </Suspense>
+      </ChunkErrorBoundary>
+    );
+  }
 
   return (
     <div data-model-inspector data-inspector-mode={mode ?? undefined} className="flex h-full min-h-0 flex-col" aria-label={t('modelInspector.panel.title')}>
@@ -74,6 +94,8 @@ export function ModelInspectorPanel({ onClose }: { onClose?: () => void }) {
                 {t('modelInspector.empty.enter')}
               </Button>
             </>
+          ) : kindlessCommand ? (
+            <p data-model-inspector-command className="max-w-[16rem] text-xs text-muted-foreground">{t('modelInspector.empty.command')}</p>
           ) : (
             <p data-model-inspector-idle className="max-w-[16rem] text-xs text-muted-foreground">{t('modelInspector.empty.idle')}</p>
           )}

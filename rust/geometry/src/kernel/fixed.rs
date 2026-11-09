@@ -469,49 +469,10 @@ pub fn cmp_lex_from_lam(a: &Lam, b: &Lam) -> Option<Sign> {
     Some(Sign::Zero)
 }
 
-/// Materialize an implicit point to f64 via the FIXED-width (I1024) homogeneous
-/// lambda — the fast path for the BigRational `rational::point_of`. The lambda is
-/// computed in the `gi`-scaled domain (coords × 2^16), so the real coordinate is
-/// `lambda[k] / (d · 2^16)`. Returns `None` on off-grid coords / overflow, where
-/// the caller falls back to the exact BigRational materialization. Used for the
-/// classifier centroids AND the output verts (the dominant per-op cost).
-pub fn point_to_f64(p: &ImplicitPoint) -> Option<[f64; 3]> {
-    use num_traits::ToPrimitive;
-    // Coarse scale first (the common case), then the fine welded-seam scale —
-    // the real coordinate is λ/(d·scale) for whichever scale resolved.
-    let (lambda, d, scale) = w1024::lambda_of(p)
-        .map(|(l, d)| (l, d, COARSE))
-        .or_else(|| f1024::lambda_of(p).map(|(l, d)| (l, d, FINE)))?;
-    let denom = d.to_f64()? * scale;
-    if denom == 0.0 || !denom.is_finite() {
-        return None;
-    }
-    let x = lambda[0].to_f64()? / denom;
-    let y = lambda[1].to_f64()? / denom;
-    let z = lambda[2].to_f64()? / denom;
-    if x.is_finite() && y.is_finite() && z.is_finite() {
-        Some([x, y, z])
-    } else {
-        None
-    }
-}
-
-/// f64 coordinates from an ALREADY-CACHED [`Lam`] (the interner's per-Vid I512
-/// lambda), skipping the from-scratch I1024 recompute `point_to_f64` does. The
-/// cached lambda is stored in one homogeneous COARSE convention (fine-scale points
-/// fold their 2^20 scale ratio into `d`), so `real = λ/(d·COARSE)` for either grid
-/// and the result is bit-identical to `point_to_f64`. `None` only when the cached
-/// lambda was absent (overflow) — the caller then falls back to `point_to_f64`.
-pub fn point_to_f64_from_lam(lam: &Lam) -> Option<[f64; 3]> {
-    use num_traits::ToPrimitive;
-    let (l, d) = lam;
-    let denom = d.to_f64()? * COARSE;
-    if denom == 0.0 || !denom.is_finite() {
-        return None;
-    }
-    let (x, y, z) = (l[0].to_f64()? / denom, l[1].to_f64()? / denom, l[2].to_f64()? / denom);
-    (x.is_finite() && y.is_finite() && z.is_finite()).then_some([x, y, z])
-}
+// Materialisation (implicit point → f64), correctly rounded.
+#[path = "fixed_materialize.rs"]
+mod materialize;
+pub use materialize::{point_to_f64, point_to_f64_from_lam};
 
 #[cfg(test)]
 mod tests {

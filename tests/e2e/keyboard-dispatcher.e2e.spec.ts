@@ -33,15 +33,54 @@ test('#5841 shared dispatcher preserves 3D commands while a modal owns its keys'
   await page.keyboard.press('Escape');
   await expect.poll(() => page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().activeTool)).toBe('select');
 
+  const tweening = () => page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().cameraCallbacks.isCameraTweening?.());
+  // The preset loop below trusts isCameraTweening() to say a tween is over, so
+  // show the viewer's wiring is neither stuck false nor stuck true. The first two reads
+  // run in one task, before any frame can have applied the tween: a tween
+  // started through the viewer's own animated applyViewpoint must read true at
+  // once, and must read false again once the render loop has finished it.
+  const wiring = await page.evaluate(() => {
+    const callbacks = globalThis.__ifc_lite_viewer_store__.getState().cameraCallbacks;
+    const view = callbacks.getViewpoint?.();
+    if (!view || !callbacks.applyViewpoint || !callbacks.isCameraTweening) throw new Error('camera callbacks are missing');
+    const before = callbacks.isCameraTweening();
+    callbacks.applyViewpoint({ ...view, position: { ...view.position, y: view.position.y + 5 } }, true, 300);
+    return { before, started: callbacks.isCameraTweening() };
+  });
+  expect(wiring, 'idle camera is not tweening; an animated applyViewpoint starts a tween').toEqual({ before: false, started: true });
+  await expect.poll(tweening, { message: 'the viewer reports the tween finished once the render loop has applied it', timeout: 30_000 }).toBe(false);
+
   const viewpoints: string[] = [];
+  const initial = await page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().cameraCallbacks.getViewpoint?.());
+  // Poses a settled preset must differ from: the load framing, then each earlier preset.
+  const used = [JSON.stringify(initial?.position)];
   for (const key of ['1', '2', '3', '4', '5', '6']) {
     await page.keyboard.press(key);
-    // Camera.setPresetView animates its pose for 300 ms; inspect the settled
-    // renderer viewpoint, not the intentionally static store cameraRotation.
-    await page.waitForTimeout(400);
-    const viewpoint = await page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().cameraCallbacks.getViewpoint?.());
-    expect(viewpoint, `view preset ${key} has a live camera`).toBeTruthy();
-    viewpoints.push(JSON.stringify(viewpoint?.position));
+    // Camera.setPresetView tweens its pose over 300 ms of wall clock, but the
+    // tween is only applied by the render loop's update(). On a loaded hosted
+    // runner one SwiftShader frame can outlast a fixed sleep, and the pose read
+    // after it is still the previous preset's (CI run 40977269130 attempt 2:
+    // preset 6 read back exactly preset 5's position, Set size 5). Equal reads
+    // do not prove a tween finished either: with the render loop stalled they
+    // are equally what an intermediate pose looks like. So wait on the camera's
+    // own signal, which stays true until update() has applied the final pose,
+    // and take the pose only then. Inspect the renderer viewpoint, not the
+    // intentionally static store cameraRotation. A preset that never moves the
+    // camera still fails: its pose is one an earlier preset already used.
+    let settled: string | undefined;
+    await expect.poll(async () => {
+      const read = await page.evaluate(() => {
+        const callbacks = globalThis.__ifc_lite_viewer_store__.getState().cameraCallbacks;
+        return { tweening: callbacks.isCameraTweening?.(), viewpoint: callbacks.getViewpoint?.() };
+      });
+      expect(read.tweening, 'the viewer exposes the camera tween state').not.toBeUndefined();
+      expect(read.viewpoint, `view preset ${key} has a live camera`).toBeTruthy();
+      const position = JSON.stringify(read.viewpoint?.position);
+      settled = read.tweening === false && !used.includes(position) ? position : undefined;
+      return settled ?? null;
+    }, { message: `view preset ${key} finishes its tween on a pose no earlier preset used`, timeout: 30_000, intervals: [150] }).not.toBeNull();
+    viewpoints.push(settled!);
+    used.push(settled!);
   }
   expect(new Set(viewpoints).size, 'all six view presets drive distinct camera positions').toBe(6);
 

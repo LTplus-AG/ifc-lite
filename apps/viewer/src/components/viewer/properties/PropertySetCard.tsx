@@ -2,13 +2,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { storeyAttachmentDisplay } from '@/lib/actions/storey-attachment-display';
+import { useViewerStore } from '@/store';
 /**
  * Property set display component with edit support.
  */
 
-import { Sparkles, PenLine, Building2, ChevronDown } from 'lucide-react';
+import { Sparkles, PenLine, Building2 } from 'lucide-react';
 import { PropertyEditor, type PropertyEditScope } from '../PropertyEditor';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Collapsible, CollapsibleContent } from '@/components/ui/collapsible';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Badge } from '@/components/ui/badge';
 import type { PropertySet } from './encodingUtils';
@@ -19,7 +21,8 @@ import { useTranslation } from '@/i18n';
 import { usePersistentDisclosure } from './usePersistentDisclosure';
 import { PropertySearchHighlight } from './PropertySearchHighlight';
 import { propertyDisplayValue } from './propertyDisplayValue';
-import { CopyValueButton } from './CopyValueButton';
+import { cn } from '@/lib/utils';
+import { INSPECTOR_ROWS, INSPECTOR_SECTION, InspectorRow, InspectorSectionTrigger, isNumericDisplay } from './inspector-ui';
 
 export interface PropertySetCardProps {
   pset: PropertySet;
@@ -61,58 +64,53 @@ export function PropertySetCard({ pset, modelId, entityId, enableEditing, isType
   // the user's saved disclosure preference (#5899).
   const [open, setOpen] = usePersistentDisclosure(`pset:${sectionScope}:${pset.name}`);
 
-  // Dynamic styling based on mutation state and source
-  const borderClass = isNewPset
-    ? 'border-2 border-amber-400/50 dark:border-amber-500/30'
+  // Source and edit state stay semantic (#8802): a quiet left bar marks a new
+  // or edited set, and the header icon says why. The card itself is neutral.
+  const accentClass = isNewPset
+    ? 'border-l-2 border-l-status-warn'
     : hasMutations
-    ? 'border-2 border-overlay-accent/40'
-    : isTypeProperty
-    ? 'border-2 border-indigo-200/60 dark:border-indigo-800/40'
-    : 'border-2 border-zinc-200 dark:border-zinc-800';
-
-  const bgClass = isNewPset
-    ? 'bg-amber-50/30 dark:bg-amber-950/20'
-    : hasMutations
-    ? 'bg-overlay-accent/5'
-    : isTypeProperty
-    ? 'bg-indigo-50/20 dark:bg-indigo-950/10'
-    : 'bg-white dark:bg-zinc-950';
+    ? 'border-l-2 border-l-overlay-accent'
+    : '';
 
   return (
-    <Collapsible open={open || !!searchQuery || containsFocused} onOpenChange={searchQuery || containsFocused ? undefined : setOpen} className={`${borderClass} ${bgClass} group w-full max-w-full overflow-hidden`}>
-      <CollapsibleTrigger className="group/disclosure flex items-center gap-2 w-full p-2.5 hover:bg-zinc-50 dark:hover:bg-zinc-900 text-left transition-colors overflow-hidden">
-        {isNewPset && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Sparkles className="h-3.5 w-3.5 text-amber-500 shrink-0" />
-            </TooltipTrigger>
-            <TooltipContent>{t('properties.propertySetCard.newPsetTooltip')}</TooltipContent>
-          </Tooltip>
-        )}
-        {hasMutations && !isNewPset && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <PenLine className="h-3.5 w-3.5 text-overlay-accent shrink-0" />
-            </TooltipTrigger>
-            <TooltipContent>{t('properties.propertySetCard.hasMutationsTooltip')}</TooltipContent>
-          </Tooltip>
-        )}
-        {isTypeProperty && !isNewPset && !hasMutations && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Building2 className="h-3.5 w-3.5 text-indigo-400 shrink-0" />
-            </TooltipTrigger>
-            <TooltipContent>{t('properties.propertySetCard.inheritedFromTypeTooltip')}</TooltipContent>
-          </Tooltip>
-        )}
-        <span className="font-bold text-xs text-zinc-900 dark:text-zinc-100 truncate flex-1 min-w-0"><PropertySearchHighlight text={setDisplayName(pset.name, t('properties.propertySet.unnamed'))} query={searchQuery} /></span>
-        <span className="text-2xs font-mono bg-zinc-100 dark:bg-zinc-900 px-1.5 py-0.5 border border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-400 shrink-0">{pset.properties.length}</span>
-        <ChevronDown className="size-3 shrink-0 transition-transform group-data-[state=closed]/disclosure:-rotate-90" aria-hidden="true" />
-      </CollapsibleTrigger>
+    <Collapsible open={open || !!searchQuery || containsFocused} onOpenChange={searchQuery || containsFocused ? undefined : setOpen} className={cn(INSPECTOR_SECTION, accentClass, 'group')}>
+      <InspectorSectionTrigger
+        title={<PropertySearchHighlight text={setDisplayName(pset.name, t('properties.propertySet.unnamed'))} query={searchQuery} />}
+        count={pset.properties.length}
+        icon={<>
+          {isNewPset && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Sparkles className="h-3.5 w-3.5 text-status-warn shrink-0" />
+              </TooltipTrigger>
+              <TooltipContent>{t('properties.propertySetCard.newPsetTooltip')}</TooltipContent>
+            </Tooltip>
+          )}
+          {hasMutations && !isNewPset && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <PenLine className="h-3.5 w-3.5 text-overlay-accent shrink-0" />
+              </TooltipTrigger>
+              <TooltipContent>{t('properties.propertySetCard.hasMutationsTooltip')}</TooltipContent>
+            </Tooltip>
+          )}
+          {isTypeProperty && !isNewPset && !hasMutations && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Building2 className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+              </TooltipTrigger>
+              <TooltipContent>{t('properties.propertySetCard.inheritedFromTypeTooltip')}</TooltipContent>
+            </Tooltip>
+          )}
+        </>}
+      />
       <CollapsibleContent>
-        <div className="border-t-2 border-zinc-200 dark:border-zinc-800 divide-y divide-zinc-100 dark:divide-zinc-900">
+        <div className={INSPECTOR_ROWS}>
           {pset.properties.map((prop: { name: string; value: unknown; isMutated?: boolean; type?: number; dataType?: string }, index: number) => {
             const display = propertyDisplayValue(prop, projectUnits, unitDisplayOverrides ?? {}, projectUnitsAvailable);
+            const attachment = pset.name === 'IfcLite_StoreyAttachment' && modelId && entityId !== undefined
+              ? storeyAttachmentDisplay(useViewerStore.getState(), modelId, entityId, prop.value, t, prop.name) : null;
+            if (attachment) { display.value = attachment.text; display.full = attachment.text; }
             const { parsed, unit } = display;
             // Names render VERBATIM: the parse path already decoded them (see
             // the note on `parsePropertyValue`), and decoding a second time
@@ -120,77 +118,76 @@ export function PropertySetCard({ pset, modelId, entityId, enableEditing, isType
             const isMutated = prop.isMutated;
             const propKey = keyFor(prop.name);
             const isFocused = focusedPropKey != null && focusedPropKey === propKey;
+            const editing = Boolean(enableEditing && modelId && entityId && !searchQuery);
+            const nameClass = cn('min-w-0 truncate', isMutated ? 'text-foreground' : 'text-muted-foreground');
+            const nameText = <PropertySearchHighlight text={prop.name} query={searchQuery} />;
+            const nameTrigger = parsed.ifcType ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className={cn(nameClass, 'cursor-help')} title={prop.name}>{nameText}</span>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="text-2xs">
+                  {/* TooltipContent uses the neutral popover surface (#4767);
+                      secondary text uses its semantic muted token instead
+                      of a hardcoded primary-foreground opacity tier. */}
+                  <span className="text-muted-foreground">{parsed.ifcType}</span>
+                </TooltipContent>
+              </Tooltip>
+            ) : <span className={nameClass} title={prop.name}>{nameText}</span>;
+            // An edited row puts its badge before the name; the name stays the
+            // tooltip trigger itself.
+            const nameCell = isMutated ? (
+              <span className="flex min-w-0 items-center gap-1">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Badge variant="secondary" className="h-4 shrink-0 px-1 text-2xs bg-overlay-accent-soft text-foreground border-overlay-accent/40">
+                      {t('properties.propertySetCard.editedBadge')}
+                    </Badge>
+                  </TooltipTrigger>
+                  <TooltipContent>{t('properties.propertySetCard.propertyModifiedTooltip')}</TooltipContent>
+                </Tooltip>
+                {nameTrigger}
+              </span>
+            ) : nameTrigger;
             return (
-              <div
+              <InspectorRow
                 // A property set's own property list may repeat a name (the same
                 // slack the pset-name uniqueness comment above documents, one
                 // level down); index disambiguates the React key.
                 key={`${prop.name}-${index}`}
-                data-prop-key={propKey}
-                className={`flex items-start justify-between gap-2 px-3 py-2 text-xs group/prop group/copyrow transition-colors ${
+                label={prop.name}
+                labelCell={nameCell}
+                value={display.full}
+                mono={isNumericDisplay(display.value)}
+                rowProps={{ 'data-prop-key': propKey, ...(attachment ? { title: attachment.raw } : {}) }}
+                className={cn(
+                  'group/prop transition-colors',
+                  editing && 'items-start py-0.5',
                   isFocused
                     ? 'bg-amber-100/70 dark:bg-amber-900/40 ring-2 ring-inset ring-amber-400 dark:ring-amber-500 motion-safe:animate-pulse-subtle'
                     : isMutated
                     ? 'bg-overlay-accent-soft hover:bg-overlay-accent/20'
-                    : 'hover:bg-zinc-50/50 dark:hover:bg-zinc-900/50'
-                }`}
+                    : 'hover:bg-muted/50',
+                )}
+                valueClassName={cn(editing && 'overflow-visible whitespace-normal', isMutated && 'font-semibold')}
               >
-                <div className="flex flex-col gap-0.5 flex-1 min-w-0">
-                  {/* Property name with type tooltip and mutation indicator */}
-                  <div className="flex items-center gap-1.5">
-                    {isMutated && (
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Badge variant="secondary" className="h-4 px-1 text-2xs bg-overlay-accent-soft text-foreground border-overlay-accent/40">
-                            {t('properties.propertySetCard.editedBadge')}
-                          </Badge>
-                        </TooltipTrigger>
-                        <TooltipContent>{t('properties.propertySetCard.propertyModifiedTooltip')}</TooltipContent>
-                      </Tooltip>
-                    )}
-                    {parsed.ifcType ? (
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <span className={`font-medium cursor-help break-words ${isMutated ? 'text-foreground' : 'text-zinc-500 dark:text-zinc-400'}`}>
-                            <PropertySearchHighlight text={prop.name} query={searchQuery} />
-                          </span>
-                        </TooltipTrigger>
-                        <TooltipContent side="top" className="text-2xs">
-                          {/* TooltipContent uses the neutral popover surface (#4767);
-                              secondary text uses its semantic muted token instead
-                              of a hardcoded primary-foreground opacity tier. */}
-                          <span className="text-muted-foreground">{parsed.ifcType}</span>
-                        </TooltipContent>
-                      </Tooltip>
-                    ) : (
-                      <span className={`font-medium break-words ${isMutated ? 'text-foreground' : 'text-zinc-500 dark:text-zinc-400'}`}>
-                        <PropertySearchHighlight text={prop.name} query={searchQuery} />
-                      </span>
-                    )}
-                  </div>
-                  {/* Property value - use PropertyEditor if editing enabled */}
-                  {/* Search shows the converted display text so a value hit can be highlighted. */}
-                  {enableEditing && modelId && entityId && !searchQuery ? (
-                    <PropertyEditor
-                      modelId={modelId}
-                      entityId={entityId}
-                      psetName={pset.name}
-                      propName={prop.name}
-                      currentValue={prop.value}
-                      currentType={prop.type as PropertyValueType | undefined}
-                      editScope={typeEditScope}
-                    />
-                  ) : (
-                    <span className={`font-mono select-all break-words ${isMutated ? 'text-foreground font-semibold' : 'text-zinc-900 dark:text-zinc-100'}`}>
-                      {searchQuery ? <PropertySearchHighlight text={display.full} query={searchQuery} /> : <>
-                        {display.value}
-                        {unit && <span className="ml-1 text-zinc-400 dark:text-zinc-500">{unit}</span>}
-                      </>}
-                    </span>
-                  )}
-                </div>
-                <CopyValueButton name={prop.name} value={display.full} />
-              </div>
+                {/* Property value - use PropertyEditor if editing enabled */}
+                {/* Search shows the converted display text so a value hit can be highlighted. */}
+                {editing && modelId && entityId ? (
+                  <PropertyEditor
+                    modelId={modelId}
+                    entityId={entityId}
+                    psetName={pset.name}
+                    propName={prop.name}
+                    currentValue={prop.value}
+                    currentType={prop.type as PropertyValueType | undefined}
+                    editScope={typeEditScope}
+                  />
+                ) : searchQuery ? <PropertySearchHighlight text={display.full} query={searchQuery} /> : <>
+                  {display.value}
+                  {unit && <span className="ml-1 text-muted-foreground">{unit}</span>}
+                </>}
+              </InspectorRow>
             );
           })}
         </div>

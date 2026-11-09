@@ -6,9 +6,7 @@
  * #7537: the exported entity filters keep one candidate per entity and still
  * return any number of ids, as they did before. A `Set` has an engine limit
  * (V8 throws on the insert past 2^24 entries). A run past 2^24 real ids takes
- * seconds and over a gigabyte, so these tests stand a small limit in for V8's;
- * `docs/architecture/evidence/7537-entity-list-distinct-ids` has the full-size
- * run.
+ * seconds and over a gigabyte, so these tests stand a small limit in for V8's.
  */
 
 import { describe, it, expect, vi } from 'vitest';

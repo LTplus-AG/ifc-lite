@@ -1,0 +1,4 @@
+# SPDX-License-Identifier: MPL-2.0
+# Reviewed/schema-validated synthetic boxed and bounded halfspace cases; coverage
+# must be blessed by a passing run.
+tests/fixtures/synthetic-retained/f-f-halfspaces.ifc

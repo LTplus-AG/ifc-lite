@@ -7,6 +7,8 @@ import type { Renderer } from '@ifc-lite/renderer';
 import type { MeshData, CoordinateInfo } from '@ifc-lite/geometry';
 
 export interface UseGeometryStreamingParams {
+  /** Kernel of the loaded source, never the next-load settings choice. */
+  geometryKernel?: 'exact' | 'retained';
   rendererRef: MutableRefObject<Renderer | null>;
   isInitialized: boolean;
   /** Replacement-device publication; retries arrivals skipped during a loss. */

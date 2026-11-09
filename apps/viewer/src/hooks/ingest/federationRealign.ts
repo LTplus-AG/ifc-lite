@@ -34,9 +34,10 @@
  * here and cannot answer different questions.
  */
 
+import { ifcUnknownVerticalPolicy, ifcSharedVerticalDatumApplied } from './ifcGeorefAssumptions.js';
 import type { FederatedModel, PreAlignmentSnapshot } from '../../store/index.js';
 import type { ModelSpatialReference } from '@ifc-lite/geometry';
-import { alignGeometryToReference, type ModelSpatialPlacement } from './federationAlign.js';
+import { alignGeometryToReference, alignmentReferenceRecord, type ModelSpatialPlacement } from './federationAlign.js';
 import {
   capturePreAlignment,
   restorePreAlignment,
@@ -58,9 +59,11 @@ export interface RealignableModel {
   geometryResult?: AlignableGeometry | null;
   preAlignment?: PreAlignmentSnapshot;
   federationAlignmentStatus?: FederatedModel['federationAlignmentStatus'];
+  alignmentReference?: FederatedModel['alignmentReference'];
   spatialReference?: ModelSpatialReference;
   landXmlDocument?: LandXmlTinDocument;
   landXmlAssumptionsApplied?: FederatedModel['landXmlAssumptionsApplied'];
+  ifcSharedVerticalDatumAssumed?: FederatedModel['ifcSharedVerticalDatumAssumed'];
 }
 
 /** How each model fared, for the caller's summary toast. */
@@ -75,6 +78,8 @@ export interface RealignFederationParams<M extends RealignableModel> {
   models: ReadonlyArray<readonly [string, M]> | (() => ReadonlyArray<readonly [string, M]>);
   getModel?: (modelId: string) => M | undefined;
   anchorModelId: string;
+  /** Snapshot of the user's current IFC height-system choice. Off by default. */
+  assumeIfcSharedVerticalDatum?: boolean;
   /**
    * The anchor record selected when this request was queued. A queued pass
    * must never adopt a replacement record for the same ID as its destination.
@@ -220,6 +225,8 @@ async function realignFederationModelsTransaction<M extends RealignableModel>(
     geometry: model.geometryResult ? capturePreAlignment(model.geometryResult) : undefined,
     preAlignment: model.preAlignment,
     federationAlignmentStatus: model.federationAlignmentStatus,
+    alignmentReference: model.alignmentReference,
+    ifcSharedVerticalDatumAssumed: model.ifcSharedVerticalDatumAssumed,
   }]));
   const landXmlUpdates: LandXmlRenderedLineUpdate[][] = [];
   const rollback = () => {
@@ -243,6 +250,8 @@ async function realignFederationModelsTransaction<M extends RealignableModel>(
       updateModel(modelId, {
         preAlignment: saved.preAlignment,
         federationAlignmentStatus: saved.federationAlignmentStatus,
+        alignmentReference: saved.alignmentReference,
+        ifcSharedVerticalDatumAssumed: saved.ifcSharedVerticalDatumAssumed,
       });
     }
   };
@@ -278,6 +287,8 @@ async function realignFederationModelsTransaction<M extends RealignableModel>(
     if (!commit(anchorModelId, {
       preAlignment: undefined,
       federationAlignmentStatus: 'anchor',
+      alignmentReference: undefined,
+      ifcSharedVerticalDatumAssumed: undefined,
     })) return stale();
     if (anchorModel.landXmlDocument) landXmlUpdates.push(clearLandXmlRenderedLineUpdates(anchorModel.landXmlDocument));
 
@@ -300,7 +311,9 @@ async function realignFederationModelsTransaction<M extends RealignableModel>(
       // with no geometry cannot be aligned against anything, and a stale
       // `same-crs` here reads in the models panel and the basepoint overlay as
       // "aligned to the current anchor" — a claim nothing in this pass made.
-        if (!commit(modelId, { federationAlignmentStatus: 'none' })) return stale();
+        if (!commit(modelId, {
+          federationAlignmentStatus: 'none', alignmentReference: undefined, ifcSharedVerticalDatumAssumed: undefined,
+        })) return stale();
         counts.skipped += 1;
         continue;
       }
@@ -321,6 +334,8 @@ async function realignFederationModelsTransaction<M extends RealignableModel>(
         if (!commit(modelId, {
           preAlignment: snapshot,
           federationAlignmentStatus: 'none',
+          alignmentReference: undefined,
+          ifcSharedVerticalDatumAssumed: undefined,
         })) return stale();
       // Skipped by the ALIGNMENT, but the restore above still moved it out of
       // the previous anchor's frame.
@@ -333,7 +348,9 @@ async function realignFederationModelsTransaction<M extends RealignableModel>(
 
       // A LandXML placed under a user-chosen shared vertical datum keeps that
       // choice on its record; re-aligning it must not silently drop it.
-      const unknownVertical = model.landXmlAssumptionsApplied?.includes('sharedVerticalDatum') ? 'assume-compatible' : 'refuse';
+      const assumeIfc = !model.landXmlDocument && params.assumeIfcSharedVerticalDatum === true;
+      const unknownVertical = model.landXmlAssumptionsApplied?.includes('sharedVerticalDatum') ? 'assume-compatible'
+        : ifcUnknownVerticalPolicy(georef.spatialReference, anchorGeoref.spatialReference, assumeIfc);
       const status = await alignGeometryToReference(geometry, georef, anchorGeoref, {
         allowEmptyGeometry: model.landXmlDocument !== undefined,
         unknownVertical,
@@ -342,6 +359,9 @@ async function realignFederationModelsTransaction<M extends RealignableModel>(
       if (!commit(modelId, {
         preAlignment: snapshot,
         federationAlignmentStatus: status,
+        // What the selected centreline maps into until the next re-align (#9229).
+        alignmentReference: status === 'same-crs' || status === 'reprojected' ? alignmentReferenceRecord(anchorGeoref) : undefined,
+        ifcSharedVerticalDatumAssumed: ifcSharedVerticalDatumApplied(georef.spatialReference, anchorGeoref.spatialReference, status, assumeIfc),
       })) return stale();
       if (restoredFromSnapshot || status === 'same-crs' || status === 'reprojected') {
         movedModelIds.push(modelId);

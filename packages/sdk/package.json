@@ -1,8 +1,12 @@
 {
   "name": "@ifc-lite/sdk",
-  "version": "9.6.0",
-  "description": "Scripting SDK for ifc-lite \u2014 the bim.* API for BIM automation",
+  "version": "9.6.1",
+  "description": "Scripting SDK for ifc-lite — the bim.* API for BIM automation",
   "type": "module",
+  "sideEffects": [
+    "./src/index.ts",
+    "./dist/index.js"
+  ],
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -47,9 +51,10 @@
   },
   "devDependencies": {
     "@ifc-lite/export": "workspace:^",
+    "@ifc-lite/wasm": "workspace:^",
+    "@mergifyio/vitest": "^2026.10.11",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.3",
-    "@ifc-lite/wasm": "workspace:^"
+    "vitest": "^5.0.5"
   },
   "license": "MPL-2.0",
   "author": "Louis True",

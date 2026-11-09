@@ -93,6 +93,13 @@ export function resolveColumnValue(entity: any, col: string, bim: any): unknown 
     const qsets = bim.quantities(entity.ref);
     const qty = findQuantityInSets<any>(qsets, setName, valueName);
     if (qty?.value != null) return qty.value;
+    // Opening dimensions are native IFC attributes even when the authoring
+    // tool supplied no Qto set. Preserve an explicit quantity when present.
+    const opening = /^Qto_(Door|Window)BaseQuantities\.(Width|Height)$/.exec(col);
+    if (opening && [`Ifc${opening[1]}`, `Ifc${opening[1]}StandardCase`].includes(entity.type)) {
+      const attrs = bim.attributes(entity.ref) as Array<{ name: string; value: unknown }>;
+      return attrs.find(a => a.name === `Overall${opening[2]}`)?.value ?? null;
+    }
     return null;
   }
 
@@ -146,10 +153,14 @@ export function exportFilePath(args: string[]): string | undefined {
   return undefined;
 }
 
-export async function exportCommand(args: string[]): Promise<void> {
+export async function exportCommand(args: string[], internal?: { retainedChild: true }): Promise<void> {
   const filePath = exportFilePath(args);
   const format = getFlag(args, '--format') ?? 'csv';
   const retainedEngine = await exportKernel(args, format);
+  if (retainedEngine && !internal?.retainedChild) {
+    const { exportRetainedIsolated } = await import('../retained/process.js');
+    return exportRetainedIsolated(args);
+  }
   const outPath = getFlag(args, '--out');
   let type = getFlag(args, '--type');
   const columnsStr = getFlag(args, '--columns');
@@ -223,7 +234,7 @@ export async function exportCommand(args: string[]): Promise<void> {
 
   const refs = entities.map((e: any) => e.ref);
   if (retainedEngine) {
-    await exportRetained(args, retainedEngine, store, filePath, refs, filterRequested);
+    await exportRetained(args, retainedEngine, store, refs, filterRequested);
     return;
   }
 
@@ -333,7 +344,7 @@ export async function exportCommand(args: string[]): Promise<void> {
     case 'ifcx':
     case 'usd':
     case 'step': {
-      await exportRustFormat(format, args, store, filePath, refs, filterRequested, wholeModelFormat);
+      await exportRustFormat(format, args, store, refs, filterRequested, wholeModelFormat);
       break;
     }
     case 'hbjson': {

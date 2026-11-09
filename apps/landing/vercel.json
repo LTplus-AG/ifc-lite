@@ -1,5 +1,11 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "git": {
+    "deploymentEnabled": {
+      "**": false,
+      "production": true
+    }
+  },
   "buildCommand": "bash build-docs.sh",
   "outputDirectory": "dist",
   "headers": [

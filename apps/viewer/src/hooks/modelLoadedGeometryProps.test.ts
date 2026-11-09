@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import type { GeometryDiagnostics, StallPhaseHandle } from '@ifc-lite/geometry';
-import { buildModelLoadedGeometryProps, geometryProcessingStallPhase, reportRefusedLengthUnit, reportSkippedHungElements } from './modelLoadedGeometryProps.js';
+import { buildModelLoadedGeometryProps, geometryProcessingStallPhase, reportOmittedTypeRecords, reportRefusedLengthUnit, reportSkippedHungElements } from './modelLoadedGeometryProps.js';
 import { stripSource } from '@/test/strip-comments.js';
 
 function diag(over: Partial<GeometryDiagnostics> = {}): GeometryDiagnostics {
@@ -226,6 +226,24 @@ describe('reportRefusedLengthUnit (#7678)', () => {
   });
 });
 
+describe('reportOmittedTypeRecords (#8341)', () => {
+  function notices(count: number | undefined): string[] {
+    const out: string[] = [];
+    reportOmittedTypeRecords('haus.ifc', count, (message) => out.push(message));
+    return out;
+  }
+
+  it('tells the user how many type definitions could not be read and that their type geometry is missing', () => {
+    assert.deepEqual(notices(3), ['"haus.ifc": 3 type definitions could not be read, so their type geometry was left out.']);
+    assert.deepEqual(notices(1), ['"haus.ifc": 1 type definition could not be read, so its type geometry was left out.']);
+  });
+
+  it('says nothing for 0 or for an unknown count (older wasm, cache, server)', () => {
+    assert.deepEqual(notices(0), []);
+    assert.deepEqual(notices(undefined), []);
+  });
+});
+
 describe('geometryProcessingStallPhase (#4902)', () => {
   it('reads the phase a live handle reports', () => {
     const handle: StallPhaseHandle = { getStallPhase: () => 'shard-scan' };
@@ -383,6 +401,13 @@ describe('ifc_model_loaded wiring (#2388)', () => {
     assert.notEqual(cacheGate, -1, 'the cache write must be gated on skippedHungElements');
     const saveIdx = src.indexOf('saveToCache(cacheKey', cacheGate);
     assert.ok(saveIdx !== -1 && saveIdx - cacheGate < 3_000, 'the gate must guard the saveToCache call that follows it');
+  });
+
+  it('does not cache a load that omitted type records (#8341): a hit would drop the notice', () => {
+    const gate = src.indexOf('!omittedTypeRecords &&');
+    assert.notEqual(gate, -1, 'the cache write must be gated on omittedTypeRecords');
+    const saveIdx = src.indexOf('saveToCache(cacheKey', gate);
+    assert.ok(saveIdx !== -1 && saveIdx - gate < 3_000, 'the gate must guard the saveToCache call that follows it');
   });
 
   it('aborts the geometry stream when it is closed, so a stalled pool is terminated (#4884)', () => {

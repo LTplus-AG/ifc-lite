@@ -332,7 +332,11 @@ export type IDSSpecificationResult = Omit<SpecificationResult, 'specification' |
 export interface IDSFailureDetail {
   /** Failure type */
   type: FailureType;
-  /** Field that failed (e.g., "Name", "Pset_WallCommon.FireRating") */
+  /**
+   * Field that failed, as a bare name (e.g., "Name", "Pset_WallCommon.FireRating").
+   * When a missing-name facet names a pattern or enumeration rather than one
+   * value, this is the constraint's description and equals `expected`.
+   */
   field?: string;
   /** Actual value found */
   actual?: string;

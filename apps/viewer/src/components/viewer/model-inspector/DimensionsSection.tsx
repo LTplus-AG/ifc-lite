@@ -13,6 +13,10 @@
  * so a handle and a typed value cannot disagree.
  */
 
+import { WallTopRow, readWallTop, setWallHeightFixed } from './WallTopRow';
+import { resolveWallTop, typeWallHeight } from '@/lib/commands/modeling/wall-top';
+import { getCommandRuntime } from '@/lib/commands/modeling/runtime';
+import { planeZ } from '@/lib/commands/modeling/commands/placement-shared';
 import { useId, useMemo } from 'react';
 import { readHostedElementSize, readStairDimensions, type StairDimensions } from '@ifc-lite/create';
 import { useTranslation } from '@/i18n';
@@ -52,6 +56,14 @@ export function DefaultDimensions({ kind }: { kind: AuthoredElementKind }) {
   const { t } = useTranslation();
   const defaults = useViewerStore((s) => s.authoringDefaults);
   const setDims = useViewerStore((s) => s.setAuthoringDims);
+  // The height the Wall tool will place: the storey spacing while walls go to the storey above (#9013).
+  const nextWallHeight = useViewerStore((s) => {
+    const session = s.session;
+    if (kind !== 'wall' || !session) return authoringDim(s.authoringDefaults, 'wall', 'Height');
+    const ctx = getCommandRuntime().ctx;
+    const baseZ = ctx?.modelId === session.modelId ? planeZ(ctx.workplane) : 0;
+    return resolveWallTop(s, session.modelId, session.storeyId, baseZ).Height;
+  });
   // A picked section replaces the rectangle's own sides (Width x Height, Width x Depth): they are the Profile section's.
   const sectioned = (kind === 'beam' || kind === 'member' || kind === 'column') && defaults.profiles[kind].type !== 'Rectangle';
   const rectangleSides: readonly DimParam[] = ['Width', 'Depth', ...(kind === 'column' ? [] : ['Height' as const])];
@@ -63,8 +75,13 @@ export function DefaultDimensions({ kind }: { kind: AuthoredElementKind }) {
         <MetreRow
           key={param}
           param={param}
-          value={authoringDim(defaults, kind, param)}
-          onCommit={(metres) => { setDims(kind, { [param]: metres }); return true; }}
+          value={kind === 'wall' && param === 'Height' ? nextWallHeight : authoringDim(defaults, kind, param)}
+          onCommit={(metres) => {
+            // A typed wall height means that height, as in the Wall tool's own field.
+            if (kind === 'wall' && param === 'Height') typeWallHeight(useViewerStore.getState(), metres);
+            else setDims(kind, { [param]: metres });
+            return true;
+          }}
         />
       ))}
     </InspectorSection>
@@ -107,6 +124,8 @@ export function SelectionDimensions({ selection }: { selection: InspectorSelecti
   const mutationVersion = useViewerStore((s) => s.mutationVersion);
   const measured = useMemo(() => { void mutationVersion; return measure(selection); }, [selection, mutationVersion]);
   const { modelId, expressId } = selection;
+  const wallTop = measured.kind === 'wall' ? readWallTop(modelId, expressId) : null;
+  const heightFrom = wallTop?.top === 'storeyAbove' ? wallTop.target?.from : undefined;
 
   return (
     <InspectorSection title={t('modelInspector.dims.title')}>
@@ -114,7 +133,10 @@ export function SelectionDimensions({ selection }: { selection: InspectorSelecti
         <>
           <MetreRow param="Length" value={measured.length} />
           <MetreRow param="Thickness" value={measured.thickness} onCommit={(thickness) => setElementDimensions(modelId, expressId, { kind: 'wall', thickness })} />
-          <MetreRow param="Height" value={measured.height} onCommit={(height) => setElementDimensions(modelId, expressId, { kind: 'wall', height })} />
+          {/* A resolved storey drives this height; fixed fallback heights remain editable. */}
+          <MetreRow param="Height" value={measured.height} onCommit={heightFrom ? undefined : (height) => setWallHeightFixed(modelId, expressId, height)} />
+          {heightFrom && <InspectorCaption>{t('storeyManager.wallHeightFrom', { storey: heightFrom })}</InspectorCaption>}
+          <WallTopRow modelId={modelId} wallId={expressId} />
         </>
       )}
       {measured.kind === 'slab' && (

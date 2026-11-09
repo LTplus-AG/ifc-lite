@@ -11,26 +11,32 @@ use std::collections::HashMap;
 // ────────────────────────────────────────────────────────────────────────────
 
 pub(super) fn build_styled_item_index(content: &[u8], decoder: &mut EntityDecoder) -> HashMap<u32, Vec<u32>> {
-    // Pass 1: presentation-style-assignment wrapper map.
-    let mut wrappers: HashMap<u32, Vec<u32>> = HashMap::new();
+    // One scan finds both record kinds (PROCESSING-SYM-18). Decoding still
+    // runs every wrapper before any styled item, in file order, so the
+    // decoder cache sees the same sequence as the former two scans.
+    let mut assignments: Vec<(u32, usize, usize)> = Vec::new();
+    let mut styled_items: Vec<(u32, usize, usize)> = Vec::new();
     let mut scanner = EntityScanner::new(content);
     while let Some((id, type_name, start, end)) = scanner.next_entity() {
-        if !keyword_eq(type_name, "IFCPRESENTATIONSTYLEASSIGNMENT") {
-            continue;
+        if keyword_eq(type_name, "IFCPRESENTATIONSTYLEASSIGNMENT") {
+            assignments.push((id, start, end));
+        } else if keyword_eq(type_name, "IFCSTYLEDITEM") {
+            styled_items.push((id, start, end));
         }
+    }
+
+    // Presentation-style-assignment wrapper map.
+    let mut wrappers: HashMap<u32, Vec<u32>> = HashMap::new();
+    for (id, start, end) in assignments {
         let Ok(entity) = decoder.decode_at_with_id(id, start, end) else { continue };
         if let Some(inner_refs) = entity.get_refs(0) {
             wrappers.insert(id, inner_refs);
         }
     }
 
-    // Pass 2: item → style index, unwrapping wrappers transparently.
+    // Item → style index, unwrapping wrappers transparently.
     let mut out: HashMap<u32, Vec<u32>> = HashMap::new();
-    let mut scanner = EntityScanner::new(content);
-    while let Some((id, type_name, start, end)) = scanner.next_entity() {
-        if !keyword_eq(type_name, "IFCSTYLEDITEM") {
-            continue;
-        }
+    for (id, start, end) in styled_items {
         let Ok(entity) = decoder.decode_at_with_id(id, start, end) else { continue };
         let Some(item_ref) = entity.get_ref(0) else { continue };
         let Some(styles) = entity.get_refs(1) else { continue };
@@ -89,3 +95,7 @@ fn extract_color_from_text_style(
     let b = colour.get(3)?.as_float()? as f32;
     Some([r, g, b, 1.0])
 }
+
+#[cfg(test)]
+#[path = "color_tests.rs"]
+mod tests;

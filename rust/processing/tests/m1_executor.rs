@@ -39,6 +39,7 @@ fn layered_wall_refuses_before_execution() {
         "ENDSEC;END-ISO-10303-21;",
         &format!("{LAYERS}ENDSEC;END-ISO-10303-21;"),
     );
+    let text=unsupported_axis(text);
     assert_eq!(
         refusal(&text, 10),
         RetainedProductRefusal::MaterialLayerStrategy
@@ -51,16 +52,24 @@ fn layers_precede_openings_on_the_same_wall() {
         "ENDSEC;END-ISO-10303-21;",
         &format!("{LAYERS}{OPENING}ENDSEC;END-ISO-10303-21;"),
     );
+    let text=unsupported_axis(text);
     assert_eq!(refusal(&text, 10), RetainedProductRefusal::MaterialLayerStrategy);
 }
 #[test]
-fn curved_fixture_keeps_material_layer_strategy() {
+fn m4_unsupported_curved_axis_keeps_material_layer_strategy() {
     let text = include_str!("../../../tests/fixtures/synthetic-retained/f-a-curved.ifc");
-    assert_eq!(refusal(text, 55).code(), "material_layer_strategy");
+    let text=text.replace("IFCCIRCLE(#26,10.)","IFCELLIPSE(#26,10.,9.)");
+    assert_ne!(text,include_str!("../../../tests/fixtures/synthetic-retained/f-a-curved.ifc"));
+    assert_eq!(refusal(&text, 55).code(), "material_layer_strategy");
 }
 #[test]
 fn plain_extrusion_admits_without_a_numerical_worker() {
     let source = SourceBundle::new(SOURCE.as_bytes().to_vec());
     let mut decoder = source.decoder();
     assert!(admit_product(source.clone(), &mut decoder, 10).is_ok());
+}
+
+// #7955 M4: a three-point Axis is unsupported; straight layers now admit.
+fn unsupported_axis(text:String)->String {
+    text.replace("(#12));","(#12,#9001));").replace("ENDSEC;END-ISO","#9000=IFCPOLYLINE((#4,#8,#4));#9001=IFCSHAPEREPRESENTATION(#2,'Axis','Curve2D',(#9000));ENDSEC;END-ISO")
 }

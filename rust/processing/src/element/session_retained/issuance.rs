@@ -16,9 +16,20 @@ impl<R: NumericalReceipt> PendingRetainedOperation<R> {
     }
 }
 pub(super) enum IssuedRetainedOperation<R: NumericalReceipt> {
-    Boolean { inputs: Box<[BooleanInput<R>; 2]>, operation: ifc_lite_geometry::BoolOp, definition: LogicalRetainedDefinition },
+    /// `opening`: the opening element a cut subtracts (M11-F `via`), sealed with the definition.
+    Boolean { inputs: Box<[BooleanInput<R>; 2]>, operation: ifc_lite_geometry::BoolOp, definition: LogicalRetainedDefinition, opening: Option<u32> },
     Construction { request: RetainedRequest, definition: LogicalRetainedDefinition, backing: Arc<Storage> },
     Affine { input: Arc<RuntimeRealization<R>>, matrix: [f64; 16], definition: LogicalRetainedDefinition },
+}
+/// A face set no runtime could stitch never reaches one: its Boolean or copy refuses
+/// typed, before invocation, on native and browser alike, and spends no worker.
+fn refuse_unstitchable<R: NumericalReceipt>(input: &RuntimeRealization<R>) -> Result<(), RetainedExecutionError> {
+    match input.kind.evidence() {
+        runtime::ReceiptEvidence::Construction(completion) if matches!(completion.request().recipe(),
+            RetainedRecipe::FaceSet(set) if !set.admits_solid()) =>
+            Err(RetainedExecutionError::Unsupported(Unsupported::ConstructionRecipe)),
+        _ => Ok(()),
+    }
 }
 impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
     fn input(&self, value: ValueRef<'_>) -> Result<Arc<RuntimeRealization<R>>, RetainedExecutionError> {
@@ -48,6 +59,7 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
                         RetainedRecipe::Extrusion(recipe) => document.add_retained_extrusion(recipe.clone()),
                         RetainedRecipe::SweptDisk(recipe) => document.add_retained_swept_disk(recipe.clone()),
                         RetainedRecipe::Prism(recipe) => document.add_retained_prism(recipe.clone()),
+                        RetainedRecipe::FaceSet(recipe) => document.add_retained_face_set(recipe.clone()),
                         _ => return Err(RetainedExecutionError::Unsupported(Unsupported::ConstructionRecipe)),
                     }.map_err(protocol)?;
                     // Classify zero incarnation as retirement before recipe preparation.
@@ -64,6 +76,7 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
                     let left = BooleanInput::new(self.input(inputs[0])?, inputs[0])?;
                     let right = BooleanInput::new(self.input(inputs[1])?, inputs[1])?;
                     for input in [&left, &right] {
+                        refuse_unstitchable(&input.realization)?;
                         if !input.realization.owner().same_domain(&worker.domain()) {
                             return Err(protocol(ReceiptFailure::ForeignBooleanInputRuntime));
                         }
@@ -74,6 +87,7 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
                 }
                 RetainedOperationKind::Affine { input, matrix } => {
                     let input = self.input(input)?;
+                    refuse_unstitchable(&input)?;
                     if !input.owner().same_domain(&worker.domain()) { return Err(protocol(ReceiptFailure::ForeignAffineInputRuntime)); }
                     let matrix = *matrix;
                     PendingRetainedOperation::Affine { expected, input, matrix }
@@ -95,7 +109,8 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
             }
             issued.push(match operation {
                 PendingRetainedOperation::Boolean { expected, inputs, operation } => IssuedRetainedOperation::Boolean {
-                    inputs: inputs.clone(), operation: *operation, definition: expected.value().definition().clone() },
+                    inputs: inputs.clone(), operation: *operation, definition: expected.value().definition().clone(),
+                    opening: expected.opening().map(|(opening, ..)| opening) },
                 PendingRetainedOperation::Construction { expected, request, backing, .. } => IssuedRetainedOperation::Construction { request: request.clone(), definition: expected.value().definition().clone(), backing: backing.clone() },
                 PendingRetainedOperation::Affine { expected, input, matrix } => IssuedRetainedOperation::Affine { input: input.clone(), matrix: *matrix, definition: expected.value().definition().clone() },
             });

@@ -34,6 +34,11 @@ const BUILT_SIBLING = new RegExp(
 
 export default defineConfig({
   test: {
+    reporters: [
+      'default',
+      ...(process.env.GITHUB_ACTIONS === 'true' ? ['github-actions'] : []),
+      '@mergifyio/vitest',
+    ],
     environment: 'node',
     // Load sibling workspace packages as the built JS they already are,
     // instead of re-transforming them.

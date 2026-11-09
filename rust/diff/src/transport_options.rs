@@ -7,6 +7,7 @@ use crate::{engine::DiffOptions, model::{KeyDiffOptions,DiffScope}, geometry_com
 pub fn options_from_document(value: &Value) -> DiffOptions {
     DiffOptions {
         key: KeyDiffOptions {
+            strip_placement_geometry: value["stripPlacementGeometry"] == true,
             scope: match value["scope"].as_str() {Some("data")=>DiffScope::Data,Some("geometry")=>DiffScope::Geometry,_=>DiffScope::Both},
             exclude_types: value["excludeTypes"].as_array().into_iter().flatten().filter_map(Value::as_string).cloned().collect(),
             key_aliases: value["keyAliases"].as_array().map(|a|a.iter().filter_map(|p|Some((p[0].as_string()?.clone(),p[1].as_string()?.clone()))).collect()),

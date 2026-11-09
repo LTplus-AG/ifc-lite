@@ -9,6 +9,7 @@ import { scrubEvent } from './analytics-scrub.js';
 import { reportReplayPrivacy } from './analytics-report-privacy.js';
 import { scrubUiEvent, type UiEventName, type UiEventProperties } from './analytics-ui-events.js';
 import { scrubExportEvent, type ExportCompletedProperties } from './analytics-export-events.js';
+import { CAPTURE_DEVICE_EVENT, CAPTURE_LOAD_EVENT, scrubCaptureEvent, type CaptureDeviceProperties, type CaptureLoadProperties } from './analytics-capture-events.js';
 import { shouldSuppressWasmSkewNoise } from './wasm-version-skew.js';
 import { shouldSuppressChunkSkewNoise } from './chunk-version-skew.js';
 import { shouldSuppressForeignScriptNoise } from './foreign-script-noise.js';
@@ -51,8 +52,8 @@ export const beforeSend = <
   // an injected extension / user script throwing on our `window` is not ours to
   // fix (#4939). Lives in its own module for the same reason as the other two.
   if (shouldSuppressForeignScriptNoise(event)) return null;
-  // UI interaction events (#5618) keep only their declared id properties.
-  return scrubEvent(scrubExportEvent(scrubUiEvent(event)));
+  // UI interaction (#5618) and Gaussian capture (#8568) events keep only their declared properties.
+  return scrubEvent(scrubExportEvent(scrubCaptureEvent(scrubUiEvent(event))));
 };
 
 // PostHog's own `DOMExceptionCoercer` (posthog-js -> @posthog/core) does
@@ -315,4 +316,13 @@ export function showLoadError(
 /** The sole capture path for completed exports (#5844). */
 export function trackExportCompleted(properties: ExportCompletedProperties): void {
   posthog.capture('export_completed', properties);
+}
+
+/** The sole capture paths for Gaussian capture diagnostics (#8568); content-free, see ./analytics-capture-events.ts. */
+export function trackCaptureLoad(properties: CaptureLoadProperties): void {
+  posthog.capture(CAPTURE_LOAD_EVENT, { ...properties });
+}
+
+export function trackCaptureDevice(properties: CaptureDeviceProperties): void {
+  posthog.capture(CAPTURE_DEVICE_EVENT, { ...properties });
 }

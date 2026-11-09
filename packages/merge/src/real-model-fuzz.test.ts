@@ -12,7 +12,8 @@
  * cleanly when the bytes are not on disk.
  */
 
-import { describe, expect, it } from 'vitest';
+import { initDiff } from '@ifc-lite/diff';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
@@ -21,6 +22,9 @@ import { IFCLITE_ATTR } from '@ifc-lite/ifcx';
 import { planThreeWayMerge } from './three-way.js';
 import { opsToNodes } from './merge-layer.js';
 import { extractStackState } from './component-state.js';
+
+// #8042: these tests call synchronous hashing/merge APIs directly.
+beforeAll(async () => { await initDiff(); });
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 const MODELS = [

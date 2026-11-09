@@ -16,9 +16,10 @@
     "@ifc-lite/plugin-api": "workspace:^"
   },
   "devDependencies": {
+    "@mergifyio/vitest": "^2026.10.11",
     "@types/node": "^26.6.4",
+    "tsx": "^4.23.15",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.3",
-    "tsx": "^4.23.15"
+    "vitest": "^5.0.5"
   }
 }

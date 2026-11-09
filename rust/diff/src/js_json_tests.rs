@@ -206,3 +206,16 @@ fn empty_containers_match_json_stringify() {
     assert_eq!(stringify(&JsonValue::Object(Vec::new())), "{}");
     assert_eq!(stringify_sorted(&JsonValue::Object(Vec::new())), "{}");
 }
+
+#[test]
+fn issue_8042_streamed_hash_matches_text_for_every_code_unit() {
+    // Every BMP unit, including adjacent surrogate boundary cases; escape
+    // semantics are the contract, not the serializer implementation.
+    for start in (0..=u16::MAX as u32).step_by(256) {
+        let value = JsonValue::String(crate::JsString::from_units(
+            (start..start + 256).map(|n| n as u16).collect()));
+        assert_eq!(super::stable_hash_json(&value), crate::utf16::stable_hash(&stringify(&value)));
+    }
+    let value = JsonValue::String(crate::JsString::from_units(vec![0xd800, 0xdc00, 0xdfff, 0xd800, 34, 0]));
+    assert_eq!(super::stable_hash_json(&value), crate::utf16::stable_hash(&stringify(&value)));
+}

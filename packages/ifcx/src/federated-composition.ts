@@ -14,65 +14,20 @@
  * - Inheritance is resolved across layer boundaries
  */
 
-import type { IfcxFile, IfcxNode, ComposedNode } from './types.js';
 import type { IfcxLayer } from './layer-stack.js';
 import { LayerStack } from './layer-stack.js';
-import { PathIndex, parsePath } from './path-resolver.js';
+import { PathIndex } from './path-resolver.js';
 import { applyTombstones } from './tombstones.js';
+import { recordLayerOpinions } from './opinions.js';
 import { inheritsField } from './definitions.js';
+import type {
+  ComposeOptions,
+  ComposedNodeWithSources,
+  FederatedCompositionResult,
+  PreComposedNode,
+} from './federated-types.js';
 
-/**
- * Options for federated composition.
- */
-export interface ComposeOptions {
-  /** Progress callback */
-  onProgress?: (phase: string, percent: number) => void;
-  /** Maximum inheritance depth (default: 10) */
-  maxInheritDepth?: number;
-}
-
-/**
- * Pre-composed node before inheritance resolution.
- */
-interface PreComposedNode {
-  path: string;
-  children: Record<string, string | null>;
-  inherits: Record<string, string | null>;
-  attributes: Record<string, unknown>;
-  /** Track which layer contributed each attribute */
-  attributeSources: Map<string, string>;
-  /** Layers that define this path */
-  definedInLayers: Set<string>;
-}
-
-/**
- * Extended ComposedNode with source tracking.
- */
-export interface ComposedNodeWithSources extends ComposedNode {
-  /** Track which layer contributed each attribute */
-  attributeSources: Map<string, { layerId: string; layerName: string }>;
-  /** All layers that contributed to this node */
-  contributingLayers: Set<string>;
-}
-
-/**
- * Result of federated composition.
- */
-export interface FederatedCompositionResult {
-  /** Composed nodes by path */
-  composed: Map<string, ComposedNodeWithSources>;
-  /** Path index for lookups */
-  pathIndex: PathIndex;
-  /** Root nodes (no parent) */
-  roots: ComposedNodeWithSources[];
-  /** Statistics */
-  stats: {
-    totalNodes: number;
-    layersUsed: number;
-    inheritanceResolutions: number;
-    crossLayerReferences: number;
-  };
-}
+export type { ComposeOptions, ComposedNodeWithSources, FederatedCompositionResult } from './federated-types.js';
 
 /**
  * Compose multiple IFCX layers into a unified stage.
@@ -88,7 +43,7 @@ export function composeFederated(
   layerStack: LayerStack,
   options: ComposeOptions = {}
 ): FederatedCompositionResult {
-  const { onProgress, maxInheritDepth = 10 } = options;
+  const { onProgress, maxInheritDepth = 10, retainOpinions = false } = options;
 
   onProgress?.('indexing', 0);
 
@@ -125,7 +80,7 @@ export function composeFederated(
     // Skip hierarchical paths - they're references, not definitions
     if (path.includes('/')) continue;
 
-    const pre = mergeNodesForPath(path, layers);
+    const pre = mergeNodesForPath(path, layers, retainOpinions);
     preComposed.set(path, pre);
 
     pathCount++;
@@ -196,7 +151,7 @@ export function composeFederated(
  * Merge all nodes for a path across layers.
  * Layers are processed in strength order (strongest first).
  */
-function mergeNodesForPath(path: string, layers: IfcxLayer[]): PreComposedNode {
+function mergeNodesForPath(path: string, layers: IfcxLayer[], retainOpinions: boolean): PreComposedNode {
   const result: PreComposedNode = {
     path,
     children: {},
@@ -205,6 +160,7 @@ function mergeNodesForPath(path: string, layers: IfcxLayer[]): PreComposedNode {
     attributeSources: new Map(),
     definedInLayers: new Set(),
   };
+  if (retainOpinions) result.opinions = new Map();
 
   // Process layers in reverse order (weakest first) so stronger layers override
   for (let i = layers.length - 1; i >= 0; i--) {
@@ -213,6 +169,8 @@ function mergeNodesForPath(path: string, layers: IfcxLayer[]): PreComposedNode {
     if (!nodes) continue;
 
     result.definedInLayers.add(layer.id);
+    // This layer's own values: the last node for the path wins within it.
+    const layerValues = retainOpinions ? new Map<string, unknown>() : undefined;
 
     // Process all nodes for this path in this layer
     for (const node of nodes) {
@@ -246,9 +204,11 @@ function mergeNodesForPath(path: string, layers: IfcxLayer[]): PreComposedNode {
         for (const [key, value] of Object.entries(node.attributes)) {
           result.attributes[key] = value;
           result.attributeSources.set(key, layer.id);
+          layerValues?.set(key, value);
         }
       }
     }
+    if (layerValues && result.opinions) recordLayerOpinions(result.opinions, layer, layerValues);
   }
 
   return result;
@@ -397,6 +357,7 @@ function composeNode(
     children: new Map(),
     attributeSources: new Map(),
     contributingLayers: new Set(pre?.definedInLayers || []),
+    ...(pre?.opinions ? { opinions: pre.opinions } : {}),
     ...inheritsField(pre?.inherits, (p) => pathIndex.resolvePath(p)),
   };
 

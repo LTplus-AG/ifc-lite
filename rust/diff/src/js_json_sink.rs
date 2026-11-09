@@ -39,6 +39,34 @@ impl JsonSink for Utf16Length {
     }
 }
 impl JsonSink for StableHasher {
+    fn push_json_string(&mut self, value: &JsString) {
+        self.write([34]);
+        let units = value.units();
+        let mut index = 0;
+        while index < units.len() {
+            let unit = units[index];
+            match unit {
+                34 | 92 => self.write([92, unit]),
+                8 => self.write([92, 98]),
+                9 => self.write([92, 116]),
+                10 => self.write([92, 110]),
+                12 => self.write([92, 102]),
+                13 => self.write([92, 114]),
+                0xd800..=0xdbff if units.get(index + 1).is_some_and(|u| (0xdc00..=0xdfff).contains(u)) => {
+                    self.write([unit, units[index + 1]]);
+                    index += 1;
+                }
+                0..=31 | 0xd800..=0xdfff => {
+                    const HEX: &[u8] = b"0123456789abcdef";
+                    self.write([92, 117]);
+                    self.write([12, 8, 4, 0].map(|shift| u16::from(HEX[((unit >> shift) & 15) as usize])));
+                }
+                _ => self.write([unit]),
+            }
+            index += 1;
+        }
+        self.write([34]);
+    }
     fn push_str(&mut self, text: &str) { self.write(text.encode_utf16()); }
     fn push_repeat(&mut self, text: &str, count: u64) {
         for _ in 0..count { self.write(text.encode_utf16()); }

@@ -52,13 +52,47 @@ does not define the reported frame until its load settles.
 Two kinds of model stay outside the shared frame:
 
 - **Point clouds** (LAS/LAZ and the other scan formats) are never meshed
-  against an RTC anchor in any load order; they are placed by the point-cloud
-  georeference alignment instead, so the convergence leaves them alone.
+  against an RTC anchor in any load order. A compatible georeference aligns
+  them to the IFC; otherwise their native coordinates are displayed relative
+  to the shared render origin. Turning alignment off uses that same origin.
+  Their placement updates when an IFC changes the render frame, including
+  when a scan loads before the IFC or the anchor is removed.
 - **Models with GPU-instanced geometry** cannot be moved after load, because
   their instance transforms live in renderer-owned buffers. If such a model is
   not already on the anchor, the viewer leaves it where it is, names it in a
   warning toast, and still converges every other model. Load the
   georeferenced model first to avoid this.
+
+### IFC models with an unknown height system
+
+Geographic placement requires compatible horizontal and vertical references.
+Matching horizontal EPSG codes, map conversions, project IDs, or revision names
+alone do not establish that two files share a vertical datum. IFC files that
+omit `IfcProjectedCRS.VerticalDatum` therefore remain unaligned by default.
+This includes the bundled comparison revisions: their authored declarations
+are preserved.
+
+If you know the models and anchor use the same height system, open **Settings →
+General → IFC federation** and enable **Assume IFC models share a height system**
+before loading the second model. For an already loaded federation, use
+**Re-align federation** after changing the setting. This saved browser preference
+applies to IFC placements only; LandXML keeps its separate choices and scan
+placement is unchanged. Turning the setting off restores refusal on the next
+load or re-alignment; it does not move an existing placement immediately.
+
+The viewer still applies the complete map conversion, units, rotation, scale,
+and render-origin transform. Equal placements leave vertices unchanged;
+different placements move into the anchor's frame. An **Assumed height system**
+notice in the model's metadata identifies placements that needed this choice.
+No vertical CRS is added to the source or exported IFC. Different declared
+vertical datums, invalid transforms, and unavailable reprojections still fail.
+Unrecognized datum names remain authored identifiers, without an invented EPSG
+code. Two different explicit declarations that cannot be reconciled are refused
+even with the setting enabled; they may require corrected source metadata.
+Equal unresolved names still need your explicit choice, and the notice says an
+authored datum could not be resolved rather than claiming it is missing.
+A wrong assumption can place a model too high or too low by the difference
+between the height systems; verify survey control before enabling it.
 
 ### Global vs Local IDs
 

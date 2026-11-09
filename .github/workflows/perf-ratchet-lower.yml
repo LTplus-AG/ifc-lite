@@ -10,6 +10,12 @@
 # scripts/issue-queue.config.json exempts from the issue-queue gate. Each
 # ceiling's history is its `provenance` plus `git log -- tests/perf-ratchets`.
 #
+# A lowered ceiling holds for the main it measured, not for the main the PR
+# merges into, which may have grown since. The PR's own ratchet check runs on
+# its measured base and cannot see that; the merge queue can, so .mergify.yml
+# queues any ceiling PR in a batch of one: what lands is what was tested
+# (#8459 merged inside a five-PR batch whose tip passed, and main went red).
+#
 # It only ever LOWERS (scripts/perf-ratchet/lower.mjs refuses to raise).
 # Raising a ceiling is a human PR with a justification; see
 # docs/guide/performance.md, "Perf ratchet ceilings".
@@ -52,6 +58,8 @@ jobs:
     name: Measure main and lower ceilings
     runs-on: ubuntu-latest
     timeout-minutes: 75
+    outputs:
+      over_ceiling: ${{ steps.check.outputs.over_ceiling }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -114,7 +122,7 @@ jobs:
         run: rustup show
 
       - name: Cargo cache (native instructions)
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           prefix-key: perf-ratchet-native-ir
           shared-key: main
@@ -123,6 +131,15 @@ jobs:
       - name: Install valgrind
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends valgrind
 
+      # Restore-only: test.yml on main saves this exact tree. The fetch below
+      # then re-hashes every file and downloads only what is missing, so a
+      # release-CDN outage no longer fails the lane while the manifest is
+      # unchanged.
+      - name: Restore fixtures from the main-branch cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: tests/models
+          key: ci-fixtures-source-v2-${{ runner.os }}-${{ hashFiles('tests/models/manifest.json', 'tests/models/README.md', 'tests/models/.manifest-ignore') }}
       - name: Fetch the native-instructions fixtures
         run: node scripts/fixtures/fetch-fixtures.mjs ara3d/AC20-FZK-Haus.ifc ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc
 
@@ -168,7 +185,16 @@ jobs:
             --markdown "$RUNNER_TEMP/perf-ratchet-report.md"
           status=$?
           set -e
-          [ -f "$RUNNER_TEMP/perf-ratchet-report.md" ] && cat "$RUNNER_TEMP/perf-ratchet-report.md" >> "$GITHUB_STEP_SUMMARY"
+          if [ -f "$RUNNER_TEMP/perf-ratchet-report.md" ]; then
+            cat "$RUNNER_TEMP/perf-ratchet-report.md" >> "$GITHUB_STEP_SUMMARY"
+            # The issue names the metrics, so a real overage can't read as a CI fault (#9016).
+            {
+              echo 'over_ceiling<<PERF_RATCHET_EOF'
+              # Only an "above ceiling" row is an overage; "not measured" or "no committed ceiling" is usually a setup fault.
+              awk -F'|' '/\| FAIL/ { for (i = 2; i <= 8; i++) gsub(/^ +| +$/, "", $i); if ($8 ~ /^FAIL: above/) print "- " $2 " is " $7 " over its ceiling"; else print "- " $2 ": " $8 }' "$RUNNER_TEMP/perf-ratchet-report.md"
+              echo 'PERF_RATCHET_EOF'
+            } >> "$GITHUB_OUTPUT"
+          fi
           exit $status
 
       - name: Lower ceilings that dropped
@@ -177,6 +203,11 @@ jobs:
             --measured-dir "$RUNNER_TEMP/perf-ratchet" \
             --changelog "$RUNNER_TEMP/perf-ratchet-changelog.md"
           cat "$RUNNER_TEMP/perf-ratchet-changelog.md" >> "$GITHUB_STEP_SUMMARY"
+
+      # #7955: ceiling-only PRs skip Node guards' frontend/rust path filter.
+      # Exercise the post-lowering files before publishing the bot's proposal.
+      - name: Test lowered ceilings against evidence and ratchet mechanics
+        run: node --test scripts/perf-ratchet/*.test.mjs scripts/perf/frame-ratchet-evidence.test.mjs
 
       # The ceiling files as `lower` left them (lowered or not), so a run
       # without PERF_RATCHET_PAT still hands a maintainer the exact files to
@@ -251,7 +282,7 @@ jobs:
             echo
             echo "Measured on \`main\` at \`${sha}\` by ${RUN_URL}."
             echo
-            echo 'This PR only lowers ceilings in `tests/perf-ratchets/*.json`, each to the value measured above, so the `Perf ratchet ceilings` check on it passes by construction. It is regenerated daily from the current `main`; merging it locks the win in.'
+            echo 'This PR only lowers ceilings in `tests/perf-ratchets/*.json`, each to the value measured above. Its own `Perf ratchet ceilings` check passes by construction, because it runs on that same `main`; whether `main` still fits the lowered ceilings when this merges is decided in the merge queue, which tests a ceiling PR alone (`.mergify.yml`, queue `ceilings`, #8459). It is regenerated daily from the current `main`; merging it locks the win in.'
           } > "$body"
 
           export GH_TOKEN="$PUSH_TOKEN"
@@ -278,6 +309,8 @@ jobs:
       workflow_name: Perf ratchet lowering
       jobs: lower
       result: lower=${{ needs.lower.result }}
+      detail: ${{ needs.lower.outputs.over_ceiling }}
     permissions:
+      actions: read
       contents: read
       issues: write

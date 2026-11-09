@@ -58,6 +58,11 @@ on:
     - cron: "17 3 * * *"
   workflow_dispatch:
 
+# A new commit makes this PR's earlier run worthless; pushes, tags and manual runs are never cancelled.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   contents: read
   # dorny/paths-filter (quick, cost-quick) lists a pull_request's changed
@@ -88,12 +93,13 @@ jobs:
           filters: |
             surface:
               - "rust/geometry/tests/fixtures/issue_7292_sloped_coplanar_difference.ifc"
-              - "docs/architecture/evidence/issue-7292/**"
+              - "tools/ifcopenshell_reference/compare_surface.py"
+              - "tools/ifcopenshell_reference/finite_coverage.py"
               - "tools/ifcopenshell_reference/test_surface_coverage.py"
               - "tools/ifcopenshell_reference/reference_validation.py"
               - "tools/ifcopenshell_reference/reference_worker.py"
               - "tools/ifcopenshell_reference/test_reference_validation.py"
-              - "tools/ifcopenshell_reference/evidence/7723/**"
+              - "tools/ifcopenshell_reference/fixtures/7723/**"
               - "tools/ifcopenshell_reference/requirements.lock"
               - ".github/workflows/ifcopenshell-parity.yml"
             geometry:
@@ -104,7 +110,7 @@ jobs:
               - "tools/ifcopenshell_reference/**"
               - ".github/workflows/ifcopenshell-parity.yml"
       - if: steps.filter.outputs.surface == 'true'
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v5
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v5
         with:
           python-version: "3.12"
       - name: Finite surface coverage certificates
@@ -120,9 +126,9 @@ jobs:
         with:
           toolchain: stable
       - if: steps.filter.outputs.geometry == 'true'
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
       - if: steps.filter.outputs.geometry == 'true'
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v5
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v5
         with:
           python-version: "3.12"
       - name: Build + install ifclite_geom wheel
@@ -168,14 +174,23 @@ jobs:
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master 2026-05
         with:
           toolchain: stable
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v5
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v5
         with:
           python-version: "3.12"
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
+      # Restore-only: test.yml on main saves this exact tree. The fetch below
+      # then re-hashes every file and downloads only what is missing, so a
+      # release-CDN outage no longer fails the lane while the manifest is
+      # unchanged (#9329, #9342, #9351).
+      - name: Restore the fixture corpus from the main-branch cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: tests/models
+          key: ci-fixtures-source-v2-${{ runner.os }}-${{ hashFiles('tests/models/manifest.json', 'tests/models/README.md', 'tests/models/.manifest-ignore') }}
       - name: Fetch fixture corpus
         run: |
           pnpm install --frozen-lockfile --ignore-scripts
@@ -322,7 +337,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
         with:
           persist-credentials: false
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v5
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v5
         with:
           python-version: "3.12"
       - uses: ./.github/actions/setup-wasm-build
@@ -368,5 +383,6 @@ jobs:
       jobs: full, cost-full
       result: full=${{ needs.full.result }}, cost-full=${{ needs.cost-full.result }}
     permissions:
+      actions: read
       contents: read
       issues: write

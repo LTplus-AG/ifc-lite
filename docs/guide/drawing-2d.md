@@ -72,6 +72,12 @@ are marked stale after movement; remeasure them in the new arrangement.
 
 ## Projection Depth
 
+A plan (Down) cut opens with **Projection** on, so the floor, furniture and
+openings below the cut height are drawn under the cut walls. Front and Side
+sections open cut-only. Once you toggle **Projection**, your choice holds on
+every cut until you toggle it again, and a saved drawing keeps the setting it
+was saved with.
+
 Enable **Projection** to show geometry beyond the section cut, then open its
 settings button. **Auto** uses the existing model and floor/ceiling bands.
 Turn Auto off to enter a finite background depth in the selected display length
@@ -342,6 +348,14 @@ wheel movement to zoom; Trackpad pans with two-finger scrolling and zooms with a
 pinch or Ctrl/Cmd wheel. These controls also work in floating and popped-out
 Drawing panels.
 
+The drawing opens fitted to the building at the cut, and **Fit** frames the
+same extent: everything the plane cuts, plus content touching or near it.
+Small objects far from the building, such as a model's origin or
+geo-reference marker, stay drawn but do not shrink the view; zoom out to see
+them. Visible references (raster and DXF underlays) are always framed. A
+drawing that cuts nothing frames all of its content. Until you pan or
+zoom, the drawing refits when the panel is resized.
+
 ### DXF and PDF/Image Underlays
 
 Open **Underlays → Import DXF...** to import DXF. Choose **Site plan (horizontal)** for CAD coordinates in IFC
@@ -434,9 +448,6 @@ With a point cloud loaded, the **Scan** tab of the drawing inspector overlays th
 | Background edges remain at depth zero in Down | The plan's separate overhead band remains. Manual depth controls the background band. |
 | Zoom changes but the PDF scale does not | Canvas zoom is a viewing control. Choose the PDF scale, or change the active sheet scale. |
 | Raster reference is missing after importing registration JSON | Relink the exact original raster. Registration JSON contains placement and digests, not image bytes. |
-
-For source provenance, inspected downloads and the limits of the browser tests,
-see the [section validation evidence](../architecture/evidence/section-6614-6615/README.md).
 
 ### Annotation Tools
 

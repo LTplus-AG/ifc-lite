@@ -51,6 +51,7 @@ import {
   getAnalysisExtensionsSnapshot,
   subscribeAnalysisExtensions,
 } from '@/services/analysis-extensions';
+import { sidebarPaneContent } from '@/lib/panels/rendered-panels';
 
 /** Right-pane panels eligible to share the docked split (#1266). */
 const SIDE_PANELS = WORKSPACE_PANELS.filter((p) => p.region === 'side');
@@ -194,9 +195,10 @@ function SplitDivider({ onResizeStart }: { onResizeStart: (e: React.MouseEvent) 
       aria-valuemin={20}
       aria-valuemax={80}
       aria-valuenow={Math.round(ratio * 100)}
-      className="group relative h-2.5 shrink-0 cursor-row-resize flex items-center justify-center border-y border-border/60 bg-muted/30 hover:bg-primary/10 focus-visible:outline-2 focus-visible:outline-primary transition-colors"
+      className="shell-splitter-h group flex items-center justify-center"
     >
-      <GripHorizontal className="h-3 w-3 text-muted-foreground/50 group-hover:text-primary/70 transition-colors" />
+      {/* 1px divider at rest; the grip appears on hover / keyboard focus. */}
+      <GripHorizontal className="pointer-events-none absolute h-3 w-4 rounded-sm bg-panel text-primary opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" />
     </div>
   );
 }
@@ -288,19 +290,12 @@ export function SidebarPanelHost() {
     ? activeAnalysisExtension
     : null;
 
-  let shown: WorkspacePanelId | null = activePanel;
-  if (floatingIds.has(shown) || poppedIds.has(shown)) shown = 'properties';
-  if (shown === 'properties' && (floatingIds.has('properties') || poppedIds.has('properties'))) {
-    shown = null;
-  }
-
-  // A split only renders when the secondary still resolves to an inline panel
-  // (not floated / popped, not collapsed to the same id as the primary).
-  const secondaryActive =
-    secondaryPanel !== null &&
-    secondaryPanel !== shown &&
-    !floatingIds.has(secondaryPanel) &&
-    !poppedIds.has(secondaryPanel);
+  // What the pane shows: the active panel (Properties when it is detached) and
+  // the split's lower half when that still resolves to an inline panel beside
+  // it. One rule with the activity rail, which pins only drawn panels
+  // (`rendered-panels.ts`).
+  const { shown, secondary } = sidebarPaneContent(activePanel, secondaryPanel, (id) => floatingIds.has(id) || poppedIds.has(id));
+  const secondaryActive = secondary !== null;
 
   // Right-placed analysis extensions carry their own chrome and never split.
   if (rightExtension) {
@@ -337,7 +332,7 @@ export function SidebarPanelHost() {
             <div className="flex-1 min-h-0 overflow-hidden">{renderPanelBody('properties', () => {})}</div>
           </>
         }
-        secondaryId={secondaryPanel as WorkspacePanelId}
+        secondaryId={secondary as WorkspacePanelId}
       />
     );
   }
@@ -364,7 +359,7 @@ export function SidebarPanelHost() {
           <div className="flex-1 min-h-0 overflow-hidden">{renderPanelBody(shown, () => closePanel(shown))}</div>
         </>
       }
-      secondaryId={secondaryPanel as WorkspacePanelId}
+      secondaryId={secondary as WorkspacePanelId}
     />
   );
 }

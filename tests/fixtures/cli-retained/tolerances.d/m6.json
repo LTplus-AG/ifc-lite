@@ -1,0 +1,7 @@
+{
+  "boundedSectionVolumeRelative": { "linear": 1e-6, "curved": 2e-3 },
+  "boundedVolumeBoundsRelative": { "linear": 1e-6, "curved": 2e-3 },
+  "boundedOutsideMaterialMetres": { "absolute": 1e-5, "extentFactor": 2.4e-7 },
+  "boxedEqualsPlaneRelative": 1e-9,
+  "boundedExactComparison": "report"
+}

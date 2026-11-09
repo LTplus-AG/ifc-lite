@@ -11,7 +11,7 @@
  * fingerprints (on-demand property extraction per entity) is the expensive
  * part, so the built sides are cached per A/B pair - toggling the
  * data/geometry scope OR the ignored-classes blacklist re-runs only the cheap
- * `diffModels` pass.
+ * `DiffModelHandle.compare` pass.
  *
  * Mirrors `useClash`: the slice holds dumb state, the hook does the work.
  */
@@ -23,7 +23,7 @@ import { stampAnalysisReport } from './useAnalysisStaleness';
 import { useViewerStore } from '@/store';
 import { posthog } from '@/lib/analytics';
 import type { CompareResult } from '@/store/slices/compareSlice';
-import { useInvalidateCompareCacheOnEdit } from './compare/useInvalidateCompareCacheOnEdit';
+import { useComparePairCache } from './compare/useComparePairCache';
 import { contentMatchingRan } from '@/lib/compare/contentMatches';
 import { acceptedForPair } from '@/lib/compare/acceptedIdentity';
 import { compareRunPayload } from '@/lib/compare/runTelemetry';
@@ -123,10 +123,6 @@ export function useCompare() {
   const error = useViewerStore((s) => s.compareError);
   const geometryContentVersion = useViewerStore((s) => s.geometryContentVersion);
 
-  // Cache the built fingerprints for the current pair so a scope / blacklist
-  // change is a cheap re-diff rather than a full re-extraction.
-  const builtRef = useRef<BuiltPair | null>(null);
-
   /**
    * Supersession epoch for `runComparison()` itself (#2802 sweep).
    *
@@ -147,18 +143,27 @@ export function useCompare() {
    * earlier, so nothing can supersede between the check and the write.
    */
   const epochRef = useRef(0);
+  const builtRef = useComparePairCache(epochRef);
 
   /** Bump the epoch and clear, so an in-flight run's `then`/`catch` cannot
    *  write the result the user just dismissed back into the store. Routes
    *  through here rather than the raw store action for every caller in this
-   *  file and in `ComparePanel` - a `clearCompare()` invoked directly on the
-   *  store instead of through this wrapper would not be seen. */
+   *  file and in `ComparePanel`; the cache subscription also observes raw
+   *  store clears and workspace teardown. */
   const clearCompare = useCallback(() => {
     epochRef.current += 1;
+    builtRef.current?.dispose();
+    builtRef.current = null;
     useViewerStore.getState().clearCompare();
-  }, []);
+  }, [builtRef]);
 
-  const cancelComparison = useCallback(() => cancelCompareRun(epochRef), []);
+  const cancelComparison = useCallback(() => {
+    builtRef.current?.dispose();
+    builtRef.current = null;
+    cancelCompareRun(epochRef);
+    // Without cached handles, option changes cannot reconcile the old result.
+    useViewerStore.getState().setCompareResult(null);
+  }, [builtRef]);
 
   const runComparison = useCallback(async () => {
     const store = useViewerStore.getState();
@@ -223,16 +228,26 @@ export function useCompare() {
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     try {
+      if (!stillWanted()) return;
+      const current = (candidate: BuiltPair, version: number) =>
+        isCurrentFor(candidate, baseId, headId, version, keyProperty);
+      if (builtRef.current && !current(builtRef.current, readGeometryContentVersion())) {
+        builtRef.current.dispose();
+        builtRef.current = null;
+      }
       // Reuse-if-current, extract otherwise, and re-check after the awaits.
       // Federation re-alignment re-frames meshes IN PLACE under these very ids,
       // so a run that started before it must not publish what it read across
-      // it - the invalidation effect below would have cleared the panel, and
-      // this run would put the stale answer straight back. Re-extracting rather
+      // it - invalidation retires the cache while keeping the previous result
+      // visible with a stale banner. Re-extracting rather
       // than abandoning is deliberate: the user pressed Run.
-      const built = await buildAtCurrentVersion<BuiltPair>({
+      // Never borrow the cached native handles across an await: store changes
+      // can dispose them synchronously. Only new, locally owned builds await.
+      const built = builtRef.current ?? await buildAtCurrentVersion<BuiltPair>({
         readVersion: readGeometryContentVersion,
-        cached: builtRef.current,
-        isCurrent: (candidate, version) => isCurrentFor(candidate, baseId, headId, version, keyProperty),
+        cached: null,
+        isCurrent: current,
+        discard: (candidate) => candidate.dispose(),
         extract: async (contentVersion) => {
           return prepareComparison({ baseModel, headModel, contentVersion, keyProperty,
             mutationVersion: useViewerStore.getState().mutationVersion,
@@ -260,7 +275,16 @@ export function useCompare() {
       // since a stale cache entry for a pair that is no longer selected would
       // silently defeat the reconciliation effect's `isCurrentFor` check on
       // the NEXT option change (see that effect's comment).
-      if (!stillWanted()) return;
+      if (!stillWanted()) {
+        built.dispose();
+        return;
+      }
+      if (!current(built, readGeometryContentVersion())) {
+        built.dispose();
+        store.setCompareError('The model geometry kept changing while comparing. Run the comparison again.');
+        return;
+      }
+      if (builtRef.current !== built) builtRef.current?.dispose();
       builtRef.current = built;
 
       // The diff options are read inside `publishCompareResult`, AFTER every
@@ -287,27 +311,12 @@ export function useCompare() {
         store.setCompareRunning(false);
       }
     }
-  }, []);
+  }, [builtRef]);
 
-  // A geometry re-alignment invalidates cached fingerprints. Keep the result
-  // visible with a stale banner until the user re-runs; the option re-diff
-  // below refuses to reuse the retired cache.
-  //
-  // Declared BEFORE the re-diff effect so a commit that changes both the
-  // version and an option invalidates the cache first. Seeded with the mounted
-  // value so a remount is not mistaken for a bump; a re-align while unmounted
-  // leaves no cache to reuse, and `runComparison` re-extracts.
-  const lastContentVersionRef = useRef(geometryContentVersion);
   // The accepted list a published result was diffed with. `appliedKeyAliases`
   // cannot stand in for it: an accepted pair the engine ignored (key not in
   // the base) leaves no trace there, and the effect would re-publish forever.
   const lastAcceptedRef = useRef(acceptedIdentity);
-  useEffect(() => {
-    if (lastContentVersionRef.current === geometryContentVersion) return;
-    lastContentVersionRef.current = geometryContentVersion;
-    builtRef.current = null;
-  }, [geometryContentVersion]);
-  useInvalidateCompareCacheOnEdit(builtRef);
 
   // Scope, blacklist, content-matching OR accepted-identity change with an
   // existing result for the same pair -> re-diff from the cached fingerprints

@@ -80,6 +80,45 @@ Available on every command:
 | `--debug` | Verbose plus stack traces on error |
 | `--log-level <level>` | `error`, `warn`, `info`, or `debug` (explicit level wins over the shorthands) |
 
+### Models in OCI registries
+
+Commands that read an IFC model (all but `view` and the IFCX `layer`/`ref`
+store) accept `oci://host[:port]/repository[:tag][@sha256:<hex>]` in place of a
+path, and pull the model layer from the registry:
+
+```bash
+IFC_LITE_OCI_TOKEN=... ifc-lite info --json oci://ghcr.io/acme/tower-model:rev-b
+```
+
+Loopback hosts (`localhost`, `127.0.0.1`, `[::1]`) use plain `http`, all others
+`https`. Credentials come only from `IFC_LITE_OCI_USERNAME` +
+`IFC_LITE_OCI_PASSWORD` or `IFC_LITE_OCI_TOKEN`; the layer is capped at 1 GiB
+(`IFC_LITE_OCI_MAX_BYTES`). A multi-layer artifact must have exactly one layer
+typed `application/x-step` or titled `*.ifc` / `*.ifczip`. The
+[CLI README](https://github.com/LTplus-AG/ifc-lite/tree/main/packages/cli#opening-models-from-oci-registries)
+has the full rules and a GitHub Actions example.
+
+`ifc-lite oci push` publishes a model:
+
+```bash
+IFC_LITE_OCI_TOKEN=... ifc-lite oci push oci://ghcr.io/acme/tower-model:rev-c tower.ifc
+# Pushed oci://ghcr.io/acme/tower-model:rev-c → sha256:… (layer sha256:…, 225635 bytes)
+ifc-lite oci push oci://ghcr.io/acme/tower-model:rev-c tower.ifc --overwrite --json \
+  --annotation org.opencontainers.image.revision=abc123
+```
+
+The artifact has type `application/vnd.ifc-lite.ifc.v1`, the OCI empty config,
+and one `application/x-step` layer titled with the file name; the manifest
+carries `org.opencontainers.image.created` (from `SOURCE_DATE_EPOCH` when set,
+so equal files give equal digests), `org.opencontainers.image.title` (the file
+name without extension), and the provisional `org.buildingsmart.ifc.profile` and
+`org.buildingsmart.ifc.schema` keys (a convention shared with subsoil, not a
+buildingSMART standard). The file must pass the loader's IFC check before
+any request is made, and `.ifczip` is not supported yet. The reference needs a
+tag; an existing tag is refused unless `--overwrite` is given (exit 1). Same
+credentials and http/https rule as above. `--json` prints
+`{ reference, digest, layer: { digest, size, mediaType }, artifactType }`.
+
 ## Installation diagnostics
 
 ```bash
@@ -342,6 +381,9 @@ ifc-lite export model.ifc --format csv --type IfcWall \
 # IFC STEP re-export with schema conversion
 ifc-lite export model.ifc --format ifc --schema IFC4 --out filtered.ifc
 
+# GLB whose element nodes are named by GlobalId (for tools that look objects up by node name)
+ifc-lite export model.ifc --format glb --name-by-global-id --out model.glb
+
 # OpenUSD (.usda) — a real Z-up USD stage (whole model; opens in usdview/Blender/Omniverse)
 ifc-lite export model.ifc --format usd --out model.usda
 
@@ -366,11 +408,14 @@ ifc-lite export model.ifc --format csv --out walls.csv
 | `--name <str>` | Model name for geometry exports |
 | `--limit <N>` | Limit result count |
 | `--diagnostics` | Print a geometry summary after mesh-based exports |
+| `--name-by-global-id` | `gltf`/`glb`: make each element one node named by its `GlobalId`, with its mesh parts as children |
 | `--out <file>` | Write to file instead of stdout |
 
 ---
 
 ### `schedule` — Tabular Schedules
+
+Door and window presets (including `IfcDoorStandardCase` and `IfcWindowStandardCase`) include Mark (`Tag`), FireRating, IsExternal, Width and Height. CLI schedules and SDK CSV/JSON exports use base quantities when present and otherwise read `OverallWidth` and `OverallHeight` in the model’s length unit.
 
 Generate an AEC-style schedule (door schedule, window schedule, room schedule, material takeoff, …) for one IFC class: a filtered, columnar table with attribute/property/quantity columns, optional sort/group/subtotal rows, and CSV/JSON/Markdown/HTML output. Column values resolve through the same property/quantity resolver `export` uses and `--where` reuses `query`'s exact filter, so a schedule always agrees with the equivalent `query`/`export` invocation.
 
@@ -862,6 +907,38 @@ ifc-lite generate-spaces model.ifc --list-storeys
 | `--dry-run` | Detect and report only; write nothing |
 | `--force` | Re-derive even if the model already has generated spaces (may duplicate) |
 | `--list-storeys` | List storeys (ID, name, elevation) and exit |
+| `--json` | Machine-readable output |
+
+---
+
+### `storey` - Author Storeys
+
+List, add, rename, re-level and delete `IfcBuildingStorey` in an IFC file, through the same `bim.store` path as the viewer's storey manager and the MCP `storey_*` tools. Geometry follows storeys. A storey's contents move with it, walls attached to the storey above resize, and stairs that land on a moved storey are refit. Any refusal is reported before anything is written.
+
+```bash
+ifc-lite storey model.ifc list
+ifc-lite storey model.ifc add --from "Level 1" --out with-level-2.ifc
+ifc-lite storey model.ifc add --name "Basement" --elevation -3 --out basement.ifc
+ifc-lite storey model.ifc edit --storey "Level 1" --floor-height 3.5 --out raised.ifc
+ifc-lite storey model.ifc edit --storey "Level 2" --elevation 3.8 --dry-run
+ifc-lite storey model.ifc delete --storey "Level 2" --move-to "Level 1" --out merged.ifc
+```
+
+`--elevation` moves only that storey. `--floor-height` sets the gap to the storey above, and every storey above in the same building shifts by the same amount. A storey is named by its exact name (letter case is a fallback), or `#<express id>`; a bare number is read as the express ID unless a storey also has that name, which is refused as ambiguous. Lengths are metres.
+
+**Flags:**
+
+| Flag | Description |
+|------|-------------|
+| `--out <file>` | Output IFC (omit with `--dry-run`) |
+| `--name <n>` / `--elevation <m>` | Name and elevation of a storey to add; `--name` also renames |
+| `--building <id>` | The building a `--name`/`--elevation` storey joins, in a model with several (`--from` uses its storey's building) |
+| `--from <storey>` / `--below` | Add above (or below) a storey with its neighbours' naming and spacing |
+| `--storey <storey>` | The storey to rename, edit or delete |
+| `--floor-height <m>` | New floor-to-floor height of `--storey` |
+| `--move-to <storey>` | Delete, moving the contents to this storey (same identity and position) |
+| `--delete-contents` | Delete the storey and everything it holds |
+| `--dry-run` | Make the change in memory and report it, refused exactly as the real one; write nothing |
 | `--json` | Machine-readable output |
 
 ---
@@ -1760,6 +1837,7 @@ The `semantic` command reads JSON/SPARQL providers, generates shared profile art
 | `stats` | Auto-calculated model KPIs and health check |
 | `mutate` | Modify properties/attributes and save |
 | `generate-spaces` | Derive IfcSpace from walls (slab/roof-aware height) |
+| `storey` | Author storeys; geometry follows ("storey --help" for actions) |
 | `ask` | Natural language BIM queries |
 | `view` | Interactive 3D viewer in browser |
 | `analyze` | Query + visualize analysis results |
@@ -1769,6 +1847,7 @@ The `semantic` command reads JSON/SPARQL providers, generates shared profile art
 | `ext` | Manage IFClite extensions (Phase 0 — validate, init) |
 | `layer` | Layered change tracking over a local store (.ifc-lite/) |
 | `ref` | Manage named refs in the layer store |
+| `oci` | Publish an IFC file to an OCI registry (any model argument may also be oci://...) |
 | `gym` | reset/step/reward environment loop (JSONL over stdin/stdout) |
 | `delivery` | Repeatable delivery check (structural + IDS + rule sets) from a saved recipe |
 | `check` | Run a .rules.json information-validation rule set (same engine as the viewer) |
@@ -1802,28 +1881,81 @@ ifc-lite export model.ifc --format obj --kernel retained --retained-engine /path
 The CLI checks every staged asset against `engine-manifest.json` before loading it.
 Use only an engine you trust: these hashes detect changed assets, not build provenance.
 Existing `--type`, `--where`, `--storey`, and `--limit` filters apply.
+The retained export runs in a separate Node process. Its OBJ and optional report
+are staged privately and published only after that process exits successfully.
+A crash reports `RETAINED_PROCESS_FAILED` with its exit code or signal, leaves
+existing destination files unchanged, and publishes no stdout payload. The CLI
+does not retry the export or switch kernels. This contains process crashes; it
+does not make the two final file copies an atomic transaction against disk errors.
+Cancellation before publication leaves destinations unchanged. Once publication
+starts, cancellation is deferred until output and staging cleanup finish.
+The child inherits `NODE_OPTIONS` and selected explicit Node heap-limit and fatal-report
+flags. Parent eval programs, loaders, and debugger ports are not forwarded.
+On Node 24, the retained child disables V8 WASM code garbage collection to avoid
+the wrapper-code reclamation race tracked in [Node #66366](https://github.com/nodejs/node/issues/66366).
+Generated code remains allocated until the export child exits.
 Retained publishes complete products only, with no exact fallback. Orphan type products
 are included once per type, with all unreferenced maps placed at their MappingOrigin.
 One unsupported map refuses the entire type. Instanced type-library shapes and
-types with only curve maps that exact does not mesh are absent. OBJ headers carry
-`PresentationObligationsUnmet`: output is shape-only and does not meet the display contract.
+types with only curve maps that exact does not mesh are absent. OBJ headers state `retained final`
+when every published product has discharged its obligations. If any published product leaves
+obligations, the header lists their union and carries `PresentationObligationsUnmet`.
+The report records each product’s matching `final` or shape-only marker and obligation list.
 The optional `ifc-lite.retained-report/1` JSON contains engine identity, settings, coverage
 (as a fraction), refusal counts, and products sorted by id with GlobalId values,
 refusal code/origin or part metrics, opening cut counts (`cuts`), consumed-part counts (`consumedParts`), and unmet obligations. Volumes use unrounded f64
 world coordinates, before OBJ's six decimal places. No timings are emitted.
+Byte-identical eligible mapped products meeting the loaded engine’s minimum
+occurrence count carry
+`instanceGroup: { templateProductId, key }`. This describes sharing candidates;
+the viewer separately verifies each pairing in bounded batches. OBJ always
+bakes every occurrence, regardless of its instance group.
 The command succeeds if at least one product was published. Invalid arguments,
 missing/invalid engines, and zero publication fail without writing OBJ or report files.
+
+Retained mapped finals support mirrors and nonuniform scales. Their linear transform is baked into object-local vertices, with outward triangle winding preserved; translation stays in the rigid world frame. Curved finals currently permit contraction or isometry only (largest singular value ≤ 1); larger scales refuse with `incomplete` before any kernel work. Mapped results whose profile has a partial arc (for example an arched door), whose extrusion is oblique, or that are swept disks also refuse with `incomplete`, because the kernel cannot certify an affine copy of those swept surfaces (swept disks use another SDK constructor with no surface-class certificate). Other SDK construction and conversion refusals still apply. The retained comparison harness reports the transform condition number (`affine_kappa`); it does not certify an unchanged facet-angle bound after nonuniform scale.
 
 Retained opening subtraction runs each opening body value separately in relationship order.
 A consumed host part refuses the complete product with `empty_result`; partial or whole-product
 removal is not published. Unsupported opening geometry reports `opening_unsupported`, while
-material-layer hosts report `material_layer_strategy` before opening execution. Successful
-opening cuts and plan-proven unvoided products discharge `OpeningClosure`; their OBJ marker
-lists `IfcAppearance, MaterialLayers, PersistentFaces, SurfaceNormals`. Layer, appearance,
-face identity, and surface-normal obligations still prevent final display-contract publication.
-The report reserves additive, optional per-part color, material name, item/material IDs, corner
-normals, source-derived face keys with triangle counts/areas, and instance groups. These
-channels remain absent until their individual presentation proofs land. Retained OBJ
-accepts per-corner `vn` records when supplied; the scaffold continues to emit geometry
-without them. Textures and indexed palettes are proven absent from retained-eligible
-products; unsupported tessellated bodies continue to refuse explicitly.
+unsupported layer-axis families report `material_layer_strategy` before opening execution. Successful
+opening cuts and plan-proven unvoided products discharge `OpeningClosure`. Material-layer hosts
+publish planar or curved bands after opening cuts, with internal caps removed and a closed combined skin;
+source-proven layer skips also discharge `MaterialLayers`. Together with `SurfaceNormals`,
+`PersistentFaces` and `IfcAppearance`, this yields final products with an empty obligation list.
+Every part reports persistent source face keys (`#item[>#opening]:role`) with triangle counts
+and areas; unproven faces refuse `face_provenance_unproven`. Every published part also carries its
+resolved appearance (`color`, `materialName`, `geometryItemId`): the IFC source decides, through the same
+colour resolver the exact engine uses, so the retained and exact colours of a part are bitwise equal.
+A face set's `IfcIndexedColourMap` and `IfcIndexedTriangleTextureMap` publish per source row, also
+through a cut: the JSON report's `parts[].palette` lists one entry per triangle and `parts[].texture`
+six source UV values per triangle, not V-flipped. A new vertex's UV interpolates its row's authored
+triangle; reveals take the part colour and no UV. A map exact had to repair, an unreadable row, or a
+texture on an `IfcPolygonalFaceSet` refuses `appearance_unsupported` instead of publishing a plain
+colour. Retained OBJ carries neither palette nor UVs. An uncut `IfcTriangulatedFaceSet`
+or `IfcPolygonalFaceSet` publishes its authored triangles in full f64 without a kernel call,
+including an open shell, one persistent face key `row(k)` per authored row. A Boolean, opening
+or affine copy stitches the closed solid first; an open shell or a set over 8,192 triangles refuses
+`operation_unsupported` there, and so does a mirrored or non-uniform copy of one. A cut the kernel
+itself refuses is `kernel_failure` for that product and keeps the worker. Band parts carry their own
+material ID, colour and material name through exact’s resolver.
+Retained OBJ emits per-corner `vn` records. Planar kernel faces use one plane normal,
+verified against every face vertex. Other faces use an angle-weighted mean with a 10°
+guard (twice the run’s tessellation angle tolerance) relative to each oriented triangle; caps and sharp bends remain creased. Zero-area and sliver facets contribute no weight and take their vertex/face group normal. Mirrored mapped finals are baked (reflection into positions and winding) before normals are generated, so their normals follow the outward winding; a part still carrying an unbaked negative frame refuses `incomplete`. The native compare summary reports off-plane shortcut fallbacks as `normalPlanarFallbacks`. Positions and triangles are unchanged. Unsupported tessellated bodies continue to refuse explicitly.
+
+Retained material layers on supported straight and circular wall axes publish open
+bands whose combined outer skin is closed. OBJ identifies each band with
+`# layer <index> material #<id>` before its faces. Report parts include optional
+`layer: { index, materialId }` metadata; their `volumeM3` is measured before the
+internal interface caps are removed. The product's `volumeM3` measures the published
+assembled outer skin after seam conformity. The report includes `layeredProducts` and
+`bands` counts. Failed cap matching or seam validation refuses the whole product
+with `layer_caps_unresolved`.
+
+Each surviving material-band triangle keeps the host or opening source face key,
+qualified with `;band(<index>)`. Internal interface caps have no published key.
+Band-phase transport retirements use a separate four-replacement allowance;
+exhaustion refuses later layered products before kernel work while preserving
+non-layer recovery. Known synchronized band kernel refusals keep the live worker.
+
+The comparison `summary.json` contains band/cap timings and maximum seam displacement; the reproducible CLI product report omits these diagnostics. Timings measure their own phases without restarting the product deadline.

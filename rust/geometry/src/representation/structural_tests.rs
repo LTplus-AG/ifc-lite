@@ -121,3 +121,44 @@ fn routing_identity_does_not_admit_or_decode_a_shape_before_hashing() {
         assert_eq!(router.geometry_routing_key(&element, &mut decoder), None);
     }
 }
+
+// #7782 C4-8a: these are shallow reads, not strict representation admission.
+#[test]
+fn shallow_ids_preserve_dangling_and_non_list_policies() {
+    let source = "#1=IFCWALL('g',$,$,$,$,$,#999,$);\
+        #2=IFCPRODUCTDEFINITIONSHAPE($,$,(#999,$,#998));\
+        #3=IFCSHAPEREPRESENTATION($,$,$,#999);\
+        #4=IFCSHAPEREPRESENTATION($,$,$,(#999,$,#998));\
+        #5=IFCPRODUCTDEFINITIONSHAPE($,$,#999);";
+    let mut decoder = EntityDecoder::new(source);
+    assert_eq!(product_shape_id(&decoder.decode_by_id(1).unwrap()), Some(999));
+    assert_eq!(
+        pds_representation_ids(&decoder.decode_by_id(2).unwrap()).collect::<Vec<_>>(),
+        vec![999, 998]
+    );
+    assert_eq!(rep_item_ids(&decoder.decode_by_id(3).unwrap()).count(), 0);
+    assert_eq!(
+        rep_item_ids(&decoder.decode_by_id(4).unwrap()).collect::<Vec<_>>(),
+        vec![999, 998]
+    );
+    assert_eq!(
+        pds_representation_ids(&decoder.decode_by_id(5).unwrap()).collect::<Vec<_>>(),
+        vec![999]
+    );
+    assert_eq!(decoder.cache_size(), 5, "ID reads never decode list members");
+}
+
+// #7782: legacy probes do not require MappingSource to be a representation map.
+#[test]
+fn shallow_mapped_hop_preserves_wrong_type_source_leniency() {
+    let source = "#1=IFCMAPPEDITEM(#2,$);#2=IFCWALL($,#999);\
+        #3=IFCMAPPEDITEM(#998,$);#4=IFCMAPPEDITEM(#5,$);#5=IFCWALL($,42);";
+    let mut decoder = EntityDecoder::new(source);
+    let item = decoder.decode_by_id(1).unwrap();
+    assert_eq!(mapped_item_representation_id(&item, &mut decoder), Some(999));
+    assert_eq!(decoder.cache_size(), 2, "only the source is decoded");
+    for id in [3, 4] {
+        let item = decoder.decode_by_id(id).unwrap();
+        assert_eq!(mapped_item_representation_id(&item, &mut decoder), None);
+    }
+}

@@ -14,8 +14,9 @@
  * is simplified.
  */
 
-import { readFile, writeFile } from 'node:fs/promises';
+import { writeFile } from 'node:fs/promises';
 import { getFlag, hasFlag, fatal, printJson, routeConsoleDiagnosticsToStderr } from '../output.js';
+import { readModelInput } from '../model-input.js';
 import { DemeshSession } from '@ifc-lite/export';
 
 export async function simplifyCommand(args: string[]): Promise<void> {
@@ -37,7 +38,7 @@ export async function simplifyCommand(args: string[]): Promise<void> {
   }
   if (!outPath) fatal('--out is required. Specify output file path.');
 
-  const source = new Uint8Array(await readFile(filePath!));
+  const source = new Uint8Array((await readModelInput(filePath!)).bytes);
   const session = new DemeshSession(source);
   try {
     let ids: number[];

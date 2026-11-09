@@ -28,7 +28,7 @@ use serde_json::json;
 use zip::write::SimpleFileOptions;
 use zip::CompressionMethod;
 
-use ifc_lite_processing::{process_geometry, MeshData, MeshFrame};
+use ifc_lite_processing::{process, MeshData, MeshFrame, ProcessingRequest};
 
 use crate::error::ExportError;
 use crate::model::{build_export_model, fmt_num, ExportModel};
@@ -41,13 +41,18 @@ fn ser_err<E: std::fmt::Display>(stage: &'static str) -> impl FnOnce(E) -> Expor
 
 /// Options for BOS export.
 pub struct ParquetBosOptions {
+    /// Opt into material-layer wall slicing; default false.
+    pub layer_slicing: bool,
     /// Include the geometry tables (VertexBuffer / IndexBuffer / Meshes).
     pub include_geometry: bool,
 }
 
 impl Default for ParquetBosOptions {
     fn default() -> Self {
-        Self { include_geometry: true }
+        Self {
+            layer_slicing: false,
+            include_geometry: true,
+        }
     }
 }
 
@@ -159,8 +164,12 @@ type GeometryTables = (Vec<u8>, Vec<u8>, Vec<u8>, usize, usize);
 
 /// Returns the geometry parquet tables plus vertex/triangle totals, and the
 /// frame their vertices are in.
-fn geometry_tables(content: &[u8]) -> Result<(GeometryTables, MeshFrame), ExportError> {
-    let result = process_geometry(content);
+fn geometry_tables(content: &[u8], layer_slicing: bool) -> Result<(GeometryTables, MeshFrame), ExportError> {
+    let result = process(
+        content,
+        &ProcessingRequest::full_pass().layer_slicing(layer_slicing),
+        &mut (),
+    );
     Ok((geometry_tables_from_meshes(&result.meshes)?, result.frame))
 }
 
@@ -306,7 +315,7 @@ pub fn export_bos(content: &[u8], opts: &ParquetBosOptions) -> Result<Vec<u8>, E
 
     let (mut vcount, mut tricount, mut frame) = (0usize, 0usize, None);
     if opts.include_geometry {
-        let ((vb, ib, mb, vc, tc), baked_in) = geometry_tables(content)?;
+        let ((vb, ib, mb, vc, tc), baked_in) = geometry_tables(content, opts.layer_slicing)?;
         add(&mut zip, "VertexBuffer.parquet", &vb)?;
         add(&mut zip, "IndexBuffer.parquet", &ib)?;
         add(&mut zip, "Meshes.parquet", &mb)?;

@@ -10,12 +10,18 @@ use crate::{Error, Mesh, Point3, Result};
 use ifc_lite_core::{slot, AttributeValue, DecodedEntity, EntityDecoder, IfcType};
 
 type FaceLoops = (IfcType, Vec<u32>, Vec<Vec<u32>>);
+// The default engine meshes every face set through this: retained's per-face
+// bookkeeping stays in `face_positions`, behind its own gate (#8408).
+const _: () = assert!(size_of::<FaceLoops>() == size_of::<(IfcType, Vec<u32>, Vec<Vec<u32>>)>());
 #[derive(Debug, Clone)]
 pub(crate) enum PolygonalFaceSetPlan {
     Empty,
     Faces {
         positions: Vec<f32>,
         parsed: Vec<FaceLoops>,
+        /// Each parsed face's position in the authored `Faces`, for retained rows only.
+        #[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
+        face_positions: Vec<u32>,
         index_capacity: usize,
         orient_outward: bool,
         rtc_applied: bool,
@@ -101,7 +107,11 @@ pub(crate) fn lower(
     // Parse every face first: which corners are straight is a property of the
     // whole set (see `StraightCorners`), not of any one face.
     let mut parsed = Vec::with_capacity(face_refs.len());
+    #[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
+    let (mut face_positions, mut authored) = (Vec::with_capacity(face_refs.len()), 0u32..);
     for face_ref in face_refs {
+        #[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
+        let face_position = authored.next();
         let face_id = face_ref
             .as_entity_ref()
             .ok_or_else(|| Error::geometry("Expected entity reference for face".to_string()))?;
@@ -137,15 +147,91 @@ pub(crate) fn lower(
         // Parse optional inner loops for IfcIndexedPolygonalFaceWithVoids.
         let inner_indices = parse_face_inner_indices(&face_entity, pn_index.as_deref());
         parsed.push((face_entity.ifc_type.clone(), face_indices, inner_indices));
+        #[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
+        face_positions.extend(face_position);
     }
 
     Ok(PolygonalFaceSetPlan::Faces {
         positions,
         parsed,
+        #[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
+        face_positions,
         index_capacity,
         orient_outward: super::orients_outward(entity.attr(slot::IfcPolygonalFaceSet::CLOSED)),
         rtc_applied: rtc_file_units.is_some(),
     })
+}
+
+/// Triangulate every face into `$indices` under one global straight-corner
+/// agreement, in face order. `$corners => $after_face` runs after each face with
+/// how many corners it appended.
+///
+/// Statements in the caller's scope rather than a function: the default engine
+/// only ever calls this from [`PolygonalFaceSetPlan::evaluate`], and any function
+/// boundary here, even an inlined one, changes the code it ships for retained's
+/// second caller (+620 brotli bytes, #8408).
+macro_rules! triangulate_faces {
+    ($indices:ident, $positions:ident, $parsed:ident, $index_capacity:ident $(, $corners:ident => $after_face:block)?) => {
+        let mut $indices = Vec::with_capacity($index_capacity);
+        let ring_points = |loop_indices: &[u32]| -> Option<Vec<Point3<f64>>> {
+            loop_indices
+                .iter()
+                .map(|&idx| {
+                    let base = idx.checked_sub(1)?.checked_mul(3)? as usize;
+                    let p = $positions.get(base..base.checked_add(3)?)?;
+                    Some(Point3::new(p[0] as f64, p[1] as f64, p[2] as f64))
+                })
+                .collect()
+        };
+        // Positions this close may weld downstream; see `StraightCorners::weld`.
+        let extent =
+            $positions
+                .chunks_exact(3)
+                .fold([f32::INFINITY, f32::NEG_INFINITY], |[lo, hi], p| {
+                    [
+                        p.iter().fold(lo, |a, &v| a.min(v)),
+                        p.iter().fold(hi, |a, &v| a.max(v)),
+                    ]
+                });
+        let mut corners = StraightCorners::with_weld(1e-5 * f64::from(extent[1] - extent[0]));
+        for (_, outer, inner) in &$parsed {
+            let holed = inner.iter().any(|l| l.len() >= 3);
+            for (loop_indices, keep_all) in
+                std::iter::once((outer, holed)).chain(inner.iter().map(|l| (l, true)))
+            {
+                if let Some(ring) = ring_points(loop_indices) {
+                    corners.note_ring(&ring, keep_all);
+                }
+            }
+        }
+
+        let hole_free: Vec<Vec<Point3<f64>>> = $parsed
+            .iter()
+            .filter(|(_, _, inner)| inner.iter().all(|l| l.len() < 3))
+            .filter_map(|(_, outer, _)| ring_points(outer))
+            .collect();
+        corners.settle(&hole_free);
+
+        for (face_type, outer, inner) in &$parsed {
+            // Straight corners every face agrees on leave the face, so no
+            // ear-clipper can keep them on one side of an edge and cut them on
+            // the other.
+            let dissolved: Option<Vec<u32>> = ring_points(outer)
+                .filter(|_| inner.iter().all(|l| l.len() < 3))
+                .and_then(|ring| corners.kept_corners(&ring))
+                .map(|kept| kept.into_iter().map(|i| outer[i]).collect());
+            let outer = dissolved.as_ref().unwrap_or(outer);
+            $(let $corners = $indices.len();)?
+            PolygonalFaceSetProcessor::triangulate_polygon(
+                face_type,
+                outer,
+                inner,
+                &$positions,
+                &mut $indices,
+            );
+            $(let $corners = $indices.len() - $corners; $after_face)?
+        }
+    };
 }
 
 impl PolygonalFaceSetPlan {
@@ -157,67 +243,12 @@ impl PolygonalFaceSetPlan {
             index_capacity,
             orient_outward,
             rtc_applied,
+            ..
         } = self
         else {
             return Mesh::new();
         };
-        let mut indices = Vec::with_capacity(index_capacity);
-        let ring_points = |loop_indices: &[u32]| -> Option<Vec<Point3<f64>>> {
-            loop_indices
-                .iter()
-                .map(|&idx| {
-                    let base = idx.checked_sub(1)?.checked_mul(3)? as usize;
-                    let p = positions.get(base..base.checked_add(3)?)?;
-                    Some(Point3::new(p[0] as f64, p[1] as f64, p[2] as f64))
-                })
-                .collect()
-        };
-        // Positions this close may weld downstream; see `StraightCorners::weld`.
-        let extent =
-            positions
-                .chunks_exact(3)
-                .fold([f32::INFINITY, f32::NEG_INFINITY], |[lo, hi], p| {
-                    [
-                        p.iter().fold(lo, |a, &v| a.min(v)),
-                        p.iter().fold(hi, |a, &v| a.max(v)),
-                    ]
-                });
-        let mut corners = StraightCorners::with_weld(1e-5 * f64::from(extent[1] - extent[0]));
-        for (_, outer, inner) in &parsed {
-            let holed = inner.iter().any(|l| l.len() >= 3);
-            for (loop_indices, keep_all) in
-                std::iter::once((outer, holed)).chain(inner.iter().map(|l| (l, true)))
-            {
-                if let Some(ring) = ring_points(loop_indices) {
-                    corners.note_ring(&ring, keep_all);
-                }
-            }
-        }
-
-        let hole_free: Vec<Vec<Point3<f64>>> = parsed
-            .iter()
-            .filter(|(_, _, inner)| inner.iter().all(|l| l.len() < 3))
-            .filter_map(|(_, outer, _)| ring_points(outer))
-            .collect();
-        corners.settle(&hole_free);
-
-        for (face_type, outer, inner) in &parsed {
-            // Straight corners every face agrees on leave the face, so no
-            // ear-clipper can keep them on one side of an edge and cut them on
-            // the other.
-            let dissolved: Option<Vec<u32>> = ring_points(outer)
-                .filter(|_| inner.iter().all(|l| l.len() < 3))
-                .and_then(|ring| corners.kept_corners(&ring))
-                .map(|kept| kept.into_iter().map(|i| outer[i]).collect());
-            let outer = dissolved.as_ref().unwrap_or(outer);
-            PolygonalFaceSetProcessor::triangulate_polygon(
-                face_type,
-                outer,
-                inner,
-                &positions,
-                &mut indices,
-            );
-        }
+        triangulate_faces!(indices, positions, parsed, index_capacity);
 
         // Closed shells from some exporters may be consistently inward.
         // Flip globally to outward winding when needed, under the one
@@ -229,6 +260,46 @@ impl PolygonalFaceSetPlan {
         let mut mesh = PolygonalFaceSetProcessor::build_flat_shaded_mesh(&positions, &indices);
         mesh.rtc_applied = rtc_applied;
         mesh
+    }
+
+    /// The first point of the first face whose corners are all listed, as a 0-based
+    /// position: a face with an unlisted corner drops, so like an entry no face names
+    /// it says nothing about where the geometry is.
+    #[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
+    pub(crate) fn first_used_point(&self) -> Option<usize> {
+        let Self::Faces { positions, parsed, .. } = self else { return None };
+        let listed = |corner: &u32| (*corner as usize).checked_sub(1).is_some_and(|point| point.saturating_mul(3) < positions.len());
+        parsed.iter()
+            .find(|(_, outer, inner)| outer.iter().chain(inner.iter().flatten()).all(listed))
+            .and_then(|(_, outer, ..)| outer.first())
+            .map(|&corner| corner as usize - 1)
+    }
+
+    /// Re-read the point list relative to `frame`. The decoded faces stay as they are.
+    #[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
+    pub(crate) fn in_frame(mut self, decoder: &mut EntityDecoder, coordinates: u32, frame: (f64, f64, f64)) -> Result<Self> {
+        if let Self::Faces { positions, rtc_applied, .. } = &mut self {
+            *positions = super::read_point_list(decoder, coordinates, Some(frame))?;
+            *rtc_applied = true;
+        }
+        Ok(self)
+    }
+
+    /// The same triangles [`Self::evaluate`] meshes, with each one's `Faces` position.
+    #[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
+    pub(crate) fn source_triangles(self, face_count: u32) -> super::SourceTriangles {
+        let Self::Faces { positions, parsed, face_positions, index_capacity, orient_outward, .. } = self else {
+            return super::SourceTriangles { positions: Vec::new(), indices: Vec::new(), rows: Vec::new(), row_count: face_count, authored: Vec::new(), slots: Vec::new() };
+        };
+        let mut rows = Vec::new();
+        let mut faces = face_positions.into_iter();
+        triangulate_faces!(indices, positions, parsed, index_capacity, appended => {
+            rows.extend(faces.next().into_iter().flat_map(|face| std::iter::repeat_n(face, appended / 3)));
+        });
+        if orient_outward {
+            PolygonalFaceSetProcessor::orient_closed_shell_outward(&positions, &mut indices);
+        }
+        super::SourceTriangles { positions, indices, rows, row_count: face_count, authored: Vec::new(), slots: Vec::new() }.keep_emitted()
     }
 }
 

@@ -9,13 +9,15 @@ import { Spinner } from '@/components/ui/spinner';
  * left, regeneration progress and the markup facts on the right. It replaces
  * the tips that floated at the canvas' bottom-right and the floating
  * "Updating…" chip, so nothing but the text editor sits over the canvas.
+ * With the Select tool idle and nothing to count it is not drawn (#8802
+ * R3b): the pan/zoom hint is the Select tool's tooltip, and a permanent
+ * tutorial row cost the canvas its height.
  */
 
 
 import type { Annotation2DTool, SelectedAnnotation2D } from '@/store/slices/drawing2DSlice';
 import { useTranslation } from '@/i18n';
 import { cn } from '@/lib/utils';
-import { useViewerStore } from '@/store';
 
 export interface DrawingStatusLineProps {
   activeTool: Annotation2DTool;
@@ -33,7 +35,6 @@ export interface DrawingStatusLineProps {
 
 export function DrawingStatusLine(p: DrawingStatusLineProps) {
   const { t } = useTranslation();
-  const navigationPreset = useViewerStore((s) => s.navigationPreset);
 
   let hint: string;
   switch (p.activeTool) {
@@ -54,7 +55,7 @@ export function DrawingStatusLine(p: DrawingStatusLineProps) {
     default:
       hint = p.selection
         ? (p.selection.type === 'text' ? t('section2d.tip.selectionText') : t('section2d.tip.selectionOther'))
-        : t(navigationPreset === 'trackpad' ? 'section2d.tip.trackpad' : 'section2d.tip.pan');
+        : '';
   }
 
   const facts: string[] = [];
@@ -63,7 +64,10 @@ export function DrawingStatusLine(p: DrawingStatusLineProps) {
   if (p.counts.texts > 0) facts.push(t('section2d.status.texts', { count: p.counts.texts }));
   if (p.counts.clouds > 0) facts.push(t('section2d.status.clouds', { count: p.counts.clouds }));
   if (p.underlayCount > 0) facts.push(t('section2d.status.underlays', { count: p.underlayCount }));
-  if (facts.length === 0) facts.push(t('section2d.status.noMarkup'));
+  const markupTool = p.activeTool !== 'none';
+  if (!hint && facts.length === 0 && !p.updating && !p.snapped) return null;
+  // A markup tool keeps saying there is nothing yet; idle Select says nothing.
+  if (facts.length === 0 && markupTool) facts.push(t('section2d.status.noMarkup'));
 
   return (
     <output className="flex h-6 shrink-0 items-center gap-3 border-t px-3 text-2xs text-muted-foreground tabular-nums">
@@ -78,7 +82,8 @@ export function DrawingStatusLine(p: DrawingStatusLineProps) {
           {t('section2d.updating')}
         </span>
       )}
-      <span className="hidden shrink-0 sm:inline">{facts.join(' · ')}</span>
+      {/* Narrow hosts hide the facts beside a hint; with no hint they are the line. */}
+      <span className={cn('shrink-0', hint && 'hidden sm:inline')}>{facts.join(' · ')}</span>
     </output>
   );
 }

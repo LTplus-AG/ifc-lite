@@ -9,7 +9,11 @@
  *
  * Resolution, on the session workplane:
  *   1. the cursor: the geometry under it (mapped onto the plane), else the
- *      cursor ray ∩ the plane;
+ *      cursor ray ∩ the plane. A gesture that aims at a region of the plane
+ *      (`aimsAtRegion`) always takes the ray ∩ the plane, and does not snap.
+ *      So does any pointer with snapping suspended (Alt or the toggle), past
+ *      whatever stands in front (#9201), unless the command picks an element
+ *      from the point (`aimsAtElement`); see `pointerAim`;
  *   2. the shared solver (`snap-solve.ts`, also the plan's): the command's anchor, chain and typed
  *      locks, Shift (angle step) / Alt (suspend snapping), and — while
  *      snapping is on — the WP3 sources: the mesh source over the renderer's
@@ -24,31 +28,38 @@ import type { SnapResult, SnapSource, Vec2 } from '@/lib/snap/types';
 import {
   commandDoubleClick,
   commandPointerDown,
+  commandPointerMissed,
   commandPointerMove,
   commandPointerUp,
+  commandPressDrag,
+  commandPressGrabs,
   getCommandRuntime,
   type CommandRuntimeState,
 } from '@/lib/commands/modeling/runtime';
 import type { ModelingCommand, Vec3, Workplane } from '@/lib/commands/modeling/types';
 import { commandGhostId } from '@/lib/commands/modeling/ghost';
 import {
-  NO_MODIFIERS, modelSnapSources, solveCommandSnap, type PointerModifiers,
+  NO_MODIFIERS, modelSnapSources, pointerAim, solveCommandSnap, type PointerModifiers,
 } from '@/lib/commands/modeling/snap-solve';
+import { rememberCommandPointer } from '@/lib/commands/modeling/pointer-replay';
 import { useViewerStore } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { createMeshSource, type MeshPick } from '@/lib/snap/sources/mesh';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
+import { cancelMeasureRaycast } from './measureHandlers.js';
 
 /** Ghost ids a command preview may use (`ghost.ts` allocates from `commandGhostId`). */
 const GHOST_PICK_GUARD = 4;
 const latest = new WeakMap<MouseHandlerContext, { x: number; y: number; mods: PointerModifiers; runtime: CommandRuntimeState }>();
 
-/** Discard a coalesced preview before a press, release, cancellation or teardown. */
+/**
+ * Discard a coalesced preview before a press, release, cancellation or teardown.
+ * Only the shared frame cancel: Point mode's trailing hover (`cancelQueuedHover`)
+ * belongs to Measure and is not the command tool's to drop.
+ */
 export function cancelCommandPointer(ctx: MouseHandlerContext): void {
   latest.delete(ctx);
-  if (ctx.measureRaycastFrameRef.current !== null) cancelAnimationFrame(ctx.measureRaycastFrameRef.current);
-  ctx.measureRaycastFrameRef.current = null;
-  ctx.measureRaycastPendingRef.current = false;
+  cancelMeasureRaycast(ctx);
 }
 
 /** The cursor ray in render space, from CSS-pixel canvas coordinates. */
@@ -111,15 +122,16 @@ function resolveCommandSnap(
     if (!hit) return null;
     return { local: [hit.point.x, -hit.point.z], render: [hit.point.x, hit.point.y, hit.point.z], winner: null, guides: [], locked: false };
   }
-  const snapping = ctx.snapEnabledRef.current && !mods.altKey;
-  const pick = snapping ? magneticPick(ctx, command, x, y) : null;
-  if (!snapping) ctx.setSnapTarget(null);
-  const hit = pick ? pick.intersection : ctx.renderer.raycastScene(x, y, pickOptions(ctx, command))?.intersection;
+  const aim = pointerAim(command, runtime.gesture, plane, ctx.snapEnabledRef.current, mods.altKey);
+  const pick = aim === 'snap' ? magneticPick(ctx, command, x, y) : null;
+  if (!pick) ctx.setSnapTarget(null);
+  const section = plane.spec.kind === 'section';
+  const hit = pick ? pick.intersection : aim === 'surface' && !section ? ctx.renderer.raycastScene(x, y, pickOptions(ctx, command))?.intersection : null;
   const toLocal = (p: { x: number; y: number; z: number }) => {
     const l = plane.renderToLocal([p.x, p.y, p.z]);
     return { local: [l[0], l[1]] as Vec2, elevation: l[2] };
   };
-  const cursor = plane.spec.kind === 'section' ? onPlane(ctx, plane, x, y) : hit ? toLocal(hit.point).local : onPlane(ctx, plane, x, y);
+  const cursor = section || !hit ? onPlane(ctx, plane, x, y) : toLocal(hit.point).local;
   if (!cursor) return null;
   const beside = onPlane(ctx, plane, x + 1, y);
   const here = onPlane(ctx, plane, x, y);
@@ -133,7 +145,25 @@ function resolveCommandSnap(
     ...(plane.spec.kind === 'section' ? [] : modelSnapSources(commandCtx.modelId)),
   ] : [];
   ctx.setSnapTarget(pick?.snapTarget ?? null);
-  return solveCommandSnap(runtime, plane, { cursor, metresPerPixel, sources, mods });
+  return solveCommandSnap(runtime, plane, { cursor, metresPerPixel, sources, mods, aim });
+}
+
+/** A press or a release lands where it is: a preview still queued for this frame is dropped first. */
+function pressSnap(ctx: MouseHandlerContext, runtime: CommandRuntimeState, x: number, y: number, mods: PointerModifiers): SnapResult | null {
+  cancelCommandPointer(ctx);
+  return resolveCommandSnap(ctx, runtime, x, y, mods);
+}
+
+/**
+ * A touch press at the point it landed (#9092): `drag` presses there when the
+ * press grabs something (`commandPressDrag`), else only asks whether it would
+ * (`commandPressGrabs`). True when it grabs.
+ */
+export function routeCommandPressDrag(ctx: MouseHandlerContext, x: number, y: number, mods: PointerModifiers, drag: boolean): boolean {
+  const runtime = getCommandRuntime();
+  if (!runtime.command?.pressDrags || !runtime.ctx) return false;
+  const snap = pressSnap(ctx, runtime, x, y, mods);
+  return snap !== null && (drag ? commandPressDrag : commandPressGrabs)(snap);
 }
 
 /** True when a command is running and took the event. */
@@ -146,10 +176,11 @@ export function routeCommandPointer(
 ): boolean {
   const runtime = getCommandRuntime();
   if (!runtime.command || !runtime.ctx) return false;
+  rememberCommandPointer((keys) => { routeCommandPointer(ctx, 'move', x, y, keys); }, mods);
   if (kind !== 'move') {
-    cancelCommandPointer(ctx);
-    const snap = resolveCommandSnap(ctx, runtime, x, y, mods);
+    const snap = pressSnap(ctx, runtime, x, y, mods);
     if (snap) (kind === 'up' ? commandPointerUp : (mods.detail ?? 1) >= 2 ? commandDoubleClick : commandPointerDown)(snap);
+    else commandPointerMissed();
     return true;
   }
   latest.set(ctx, { x, y, mods, runtime });
@@ -165,6 +196,7 @@ export function routeCommandPointer(
     if (current.command !== at.runtime.command || current.ctx !== at.runtime.ctx) return;
     const snap = resolveCommandSnap(ctx, current, at.x, at.y, at.mods);
     if (snap) commandPointerMove(snap);
+    else commandPointerMissed();
   });
   return true;
 }

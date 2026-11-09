@@ -138,7 +138,8 @@ export interface EntityFingerprint<TRef = unknown> {
   volume?: number;
   /**
    * Opt-in per-componentKey sub-hashes (`attr:core`, `pset:<Name>`,
-   * `qset:<Name>`, `type-assignment`). Build with
+   * `qset:<Name>`, `type-assignment`; a repeated set name adds an ordinal,
+   * `pset#2:<Name>`). Build with
    * `buildComponentFingerprints`. When both sides of a diff carry them,
    * {@link DiffEntry.changedComponents} reports which components differ.
    */

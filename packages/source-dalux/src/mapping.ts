@@ -126,6 +126,24 @@ export function nonEmptyString(value: string | null | undefined): string | undef
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
+/**
+ * 32-bit FNV-1a hash, as a base-36 string.
+ *
+ * Exported for {@link BrowserDaluxApiClient.cacheIdentity} (`http-client.ts`):
+ * a cache key needs something that changes with the API key so two
+ * credentials never share a cached sweep, but the key itself must not sit in
+ * a long-lived `Map` key. Not a security boundary -- 32 bits is a
+ * distinguisher, not a secret -- so a fast, dependency-free hash is enough.
+ */
+export function fnv1a(input: string): string {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < input.length; i++) {
+    hash ^= input.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(36);
+}
+
 /** Unwraps a Dalux `{ data: {...} }` item envelope. Bare objects with no
  * `data` wrapper pass straight through — the API uses both shapes. Exported
  * for `commit-index.ts` and `version-set-browse.ts`, which decode version-set

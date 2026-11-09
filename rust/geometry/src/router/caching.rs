@@ -68,33 +68,73 @@ impl GeometryRouter {
         hasher.finish()
     }
 
-    /// FULL (non-sampling) **128-bit** content hash of a mesh's local geometry.
-    /// Used for the instancing `rep_identity`, which — unlike `get_or_cache_by_hash`
-    /// — has no downstream `meshes_equal` guard at the source AND must be consistent
-    /// across rayon workers (so a per-worker equality registry can't cover it). The
-    /// 64-bit SAMPLED `compute_mesh_hash` shipped a real wrong-geometry collision
-    /// (#833, mirrored slabs). This hashes EVERY position + index into two
-    /// independent FxHasher streams (different seeds) → a 128-bit key whose
-    /// collision probability (~2^-127, content-addressing grade) makes a
-    /// different-content collision effectively impossible. O(verts) once per item,
-    /// only on the opt-in instancing path.
+    /// FULL (non-sampling) **128-bit** content hash of a mesh's local geometry,
+    /// used for the instancing `rep_identity` of a direct solid. See
+    /// [`super::super::instancing`]'s correctness contract for what the key has
+    /// to cover and why: it has no equality guard behind it, so a buffer the
+    /// shard ships but the key omits is a guaranteed swap, not a rare collision.
+    /// That is how `normals` came to be served from the wrong template (#8287).
+    ///
+    /// Hashes EVERY position, normal and index into two independent FxHasher
+    /// streams (different seeds), giving a 128-bit key. BIT patterns, for the
+    /// reason [`meshes_equal`] gives for comparing them: a `-0.0` normal is not
+    /// the `+0.0` one, and these buffers ship to the consumer as bytes.
+    ///
+    /// All three lengths go in BEFORE the values, which is what keeps the buffer
+    /// boundaries in the key: positions and normals stream as one concatenated
+    /// run, so without the lengths a value moving from one into the other would
+    /// leave the digest unchanged.
+    ///
+    /// `ifc_lite_core::hash::ContentHash` (xxh3-128, length-framed per run) is
+    /// the better shape for this and is measurably faster even hashing the extra
+    /// buffer, but its streaming state heap-allocates once per construction,
+    /// which `router_construction_allocations` pins at zero for this path
+    /// (#3987). Switching is a change to that contract, so it is not made here.
+    ///
+    /// Mesh is DESTRUCTURED, as in [`meshes_equal`] and for the same reason: a
+    /// field added to `Mesh` fails to compile here until someone decides whether
+    /// the instancing key depends on it. A silently omitted field is the defect
+    /// (#8287 was exactly that). The excluded fields are excluded on purpose, and
+    /// differently from `meshes_equal`: this key is computed PRE-placement, on
+    /// the local item mesh, and every frame field is either still at its default
+    /// there or is the per-occurrence pose that occurrences of one template are
+    /// expected to differ in. Putting any of them in would split groups that must
+    /// share a template, which is a silent loss of instancing rather than a wrong
+    /// mesh, so they are verified behind the key instead: `group` reconstructs
+    /// each occurrence from (template, `rel`) and checks it against its own baked
+    /// vertices (#3666).
     #[inline]
     pub(super) fn compute_mesh_hash_full(mesh: &Mesh) -> u128 {
+        let Mesh {
+            positions,
+            normals,
+            indices,
+            // Per-occurrence pose and frame metadata, not local shape: see the doc.
+            rtc_applied: _,
+            origin: _,
+            instance_meta: _,
+            local_bounds: _,
+            local_to_world: _,
+            welded_in_object_frame: _,
+            // Per-TRIANGLE f64 planes, never shipped in a shard; they steer
+            // `consolidate_coplanar` upstream of this key, not the buffers it guards.
+            plane_tags: _,
+        } = mesh;
         use rustc_hash::FxHasher;
         let mut a = FxHasher::default();
         let mut b = FxHasher::default();
         // Decorrelate stream b with a salt prefix (portable; no with_seed dep).
         0x9e37_79b9_7f4a_7c15u64.hash(&mut b);
-        mesh.positions.len().hash(&mut a);
-        mesh.indices.len().hash(&mut a);
-        mesh.positions.len().hash(&mut b);
-        mesh.indices.len().hash(&mut b);
-        for pos in &mesh.positions {
-            let bits = pos.to_bits();
+        for len in [positions.len(), normals.len(), indices.len()] {
+            len.hash(&mut a);
+            len.hash(&mut b);
+        }
+        for value in positions.iter().chain(normals) {
+            let bits = value.to_bits();
             bits.hash(&mut a);
             bits.hash(&mut b);
         }
-        for idx in &mesh.indices {
+        for idx in indices {
             idx.hash(&mut a);
             idx.hash(&mut b);
         }
@@ -152,120 +192,84 @@ impl GeometryRouter {
     }
 }
 
-/// Byte-exact equality of two meshes for cache-collision disambiguation.
-/// Compares `positions` and `indices` — `normals` are derived from
-/// `positions` and follow lock-step — plus the frame metadata a rebased
-/// mesh carries (#5698): equal rebased positions under different RTC
-/// offsets are different geometry, and a rebased mesh must never be served
-/// for an unshifted one. Lengths are checked first so the slice compare is
-/// short-circuited cheaply when shapes differ.
+/// Content equality of two meshes for cache-collision disambiguation: every
+/// field of [`Mesh`] except the `instance_meta` side-channel, which carries no
+/// geometry (see its own doc). The per-vertex buffers compare BIT patterns, the
+/// rest by value.
+///
+/// Both meshes are DESTRUCTURED rather than field-accessed, so a field added to
+/// `Mesh` fails to compile here until someone decides whether cache identity
+/// depends on it. A field silently left out is the defect this guards against.
+/// `normals` were omitted on the premise that they follow from `positions`, and
+/// they do not: a processor derives them in f64 from the source coordinates and
+/// narrows the result independently, so a source difference below the f32
+/// position ULP disappears from `positions` while surviving in the near-zero
+/// components of a normalized direction. Two rectangular openings authored at
+/// the same size, one ring coordinate at `0.7` and the other at
+/// `0.699999999999999`, are that case: identical f32 positions and indices,
+/// side-wall normals differing in the last bits. Serving one for the other put
+/// a neighbour's normals on an element, and which neighbour won depended on the
+/// order the cache happened to be filled in, so the same file did not mesh to
+/// the same bytes twice (#8276).
+///
+/// Bit patterns for those buffers, because `f32::eq` holds for `0.0` and
+/// `-0.0`, whose bits differ, and the buffers ship to the consumer as bytes. A
+/// signed zero is the same difference one exponent further down: a normalized
+/// direction whose component underflows to zero takes the sign of the
+/// numerator. `compute_mesh_hash` reads positions and indices only, so such a
+/// pair collides on the key with nothing behind it. Bitwise also makes two
+/// identical NaN buffers equal where `f32::eq` called them different, which is
+/// the right answer for a cache keyed on content.
+///
+/// Value equality for the rest, on purpose: `rtc_applied`, `origin`,
+/// `local_bounds` and `local_to_world` are frame metadata, read as quantities
+/// rather than shipped as bytes, and `-0.0` is the same origin as `0.0`. They
+/// belong in the key for the reason #5698 gives: equal positions under
+/// different frames are different geometry, and a rebased mesh must never be
+/// served for an unshifted one. `plane_tags` hold f64 planes, so they carry a
+/// smaller source difference still, and they steer `consolidate_coplanar`'s
+/// plane buckets, where a swapped array changes a later cut (#5012).
+///
+/// Cheap fields and all three lengths go first, so a shape mismatch never
+/// reaches the buffer data. Each compare does check its own length, but only
+/// after the compares ahead of it have already walked their buffers.
 #[inline]
 fn meshes_equal(a: &Mesh, b: &Mesh) -> bool {
-    a.rtc_applied == b.rtc_applied
-        && a.local_bounds == b.local_bounds
-        && a.positions.len() == b.positions.len()
-        && a.indices.len() == b.indices.len()
-        && a.positions == b.positions
-        && a.indices == b.indices
+    let Mesh {
+        positions,
+        normals,
+        indices,
+        rtc_applied,
+        origin,
+        instance_meta: _,
+        local_bounds,
+        local_to_world,
+        welded_in_object_frame,
+        plane_tags,
+    } = a;
+    *rtc_applied == b.rtc_applied
+        && *welded_in_object_frame == b.welded_in_object_frame
+        && *origin == b.origin
+        && *local_bounds == b.local_bounds
+        && *local_to_world == b.local_to_world
+        && positions.len() == b.positions.len()
+        && normals.len() == b.normals.len()
+        && indices.len() == b.indices.len()
+        && f32_bits_eq(positions, &b.positions)
+        && f32_bits_eq(normals, &b.normals)
+        && *indices == b.indices
+        && *plane_tags == b.plane_tags
+}
+
+/// Bitwise equality of two f32 buffers. See [`meshes_equal`] for why the
+/// per-vertex buffers compare bits rather than values. The length is checked
+/// here and not left to the caller: `zip` stops at the shorter side, which
+/// would read a prefix match as equality.
+#[inline]
+fn f32_bits_eq(a: &[f32], b: &[f32]) -> bool {
+    a.len() == b.len() && a.iter().zip(b).all(|(x, y)| x.to_bits() == y.to_bits())
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::router::GeometryRouter;
-
-    /// Issue #833 regression. Two distinct meshes that happen to share
-    /// the same `compute_mesh_hash` output must not be deduped — the
-    /// previous hash-only-equality cache caused slab #783200 in
-    /// schependomlaan.ifc to inherit the local mesh of slab #605217
-    /// because both rectangular profiles hashed identically under
-    /// wasm32 codegen.
-    ///
-    /// We can't easily reproduce the wasm32 hash collision in a native
-    /// unit test, so we forge one: build a second `Mesh` that differs
-    /// from the first only in position data, manually insert it into
-    /// the cache under the *first* mesh's hash, and assert
-    /// `get_or_cache_by_hash` falls through to a fresh `Arc` instead of
-    /// silently returning the wrong cached mesh.
-    #[test]
-    fn collision_does_not_silently_swap_meshes() {
-        let router = GeometryRouter::new();
-        let mut mesh_a = Mesh::new();
-        mesh_a.positions = vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0];
-        mesh_a.indices = vec![0, 1, 2];
-        mesh_a.normals = vec![0.0; 9];
-        let mut mesh_b = Mesh::new();
-        // Mirror of mesh_a about the X axis — distinct geometry that
-        // *would* render at the wrong place if the cache returned A in
-        // place of B.
-        mesh_b.positions = vec![0.0, 0.0, 0.0, -1.0, 0.0, 0.0, 0.0, -1.0, 0.0];
-        mesh_b.indices = vec![0, 1, 2];
-        mesh_b.normals = vec![0.0; 9];
-
-        // Force a "collision" by inserting mesh_a under mesh_b's hash.
-        let collision_hash = GeometryRouter::compute_mesh_hash(&mesh_b);
-        let cached_a = Arc::new(mesh_a.clone());
-        router
-            .geometry_hash_cache
-            .borrow_mut()
-            .insert(collision_hash, Arc::clone(&cached_a));
-
-        let returned = router.get_or_cache_by_hash(mesh_b.clone());
-        // Pre-fix: returned would be `Arc::clone(&cached_a)` (wrong
-        // mesh!). Post-fix: returned is a fresh Arc wrapping mesh_b.
-        assert_eq!(
-            returned.positions, mesh_b.positions,
-            "cache returned mesh_a after hash collision — issue #833 regression",
-        );
-        assert!(
-            !Arc::ptr_eq(&returned, &cached_a),
-            "cache returned the same Arc as the collision-inserted entry",
-        );
-    }
-
-    /// Identical meshes should still dedupe — the fix must not regress
-    /// the cache's main job (sharing repeated geometry across N-storey
-    /// buildings, instanced doors, etc.).
-    #[test]
-    fn identical_meshes_still_dedupe() {
-        let router = GeometryRouter::new();
-        let mut mesh = Mesh::new();
-        mesh.positions = vec![0.0, 0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 2.0, 0.0];
-        mesh.indices = vec![0, 1, 2];
-        mesh.normals = vec![0.0; 9];
-
-        let first = router.get_or_cache_by_hash(mesh.clone());
-        let second = router.get_or_cache_by_hash(mesh.clone());
-        assert!(
-            Arc::ptr_eq(&first, &second),
-            "two identical meshes did not share the cached Arc",
-        );
-    }
-
-    /// The instancing rep_identity uses compute_mesh_hash_FULL precisely because
-    /// the sampled compute_mesh_hash has a blind spot (the #833 family). This forges
-    /// the blind spot: a 129-vertex mesh and a copy differing only at position index
-    /// 2 — which the sampled hash (step 3 + last 3) never reads — so the SAMPLED
-    /// hashes collide while the FULL hash distinguishes them.
-    #[test]
-    fn full_hash_sees_what_the_sampled_hash_misses() {
-        let n = 387usize; // 129 verts; sampled step = 387/128 = 3 → reads multiples of 3 + last 3
-        let mut a = Mesh::new();
-        a.positions = (0..n).map(|i| i as f32).collect();
-        a.indices = (0..(n / 3) as u32).collect();
-        a.normals = vec![0.0; n];
-        let mut b = a.clone();
-        b.positions[2] = 999.0; // index 2: not a sample point, not in the last 3
-
-        assert_eq!(
-            GeometryRouter::compute_mesh_hash(&a),
-            GeometryRouter::compute_mesh_hash(&b),
-            "sampled hash is intentionally blind to index 2 (this is the gap rep_identity must avoid)",
-        );
-        assert_ne!(
-            GeometryRouter::compute_mesh_hash_full(&a),
-            GeometryRouter::compute_mesh_hash_full(&b),
-            "FULL hash must distinguish meshes differing outside the sample stride",
-        );
-    }
-}
+#[path = "caching_tests.rs"]
+mod tests;

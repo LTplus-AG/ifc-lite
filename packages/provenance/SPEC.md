@@ -135,7 +135,8 @@ harness (`determinism.ts` in the same directory), not by the blob store itself.
 ### 1c. Diff engine geometry fingerprint — `rust/geometry/src/geom_hash.rs` + `packages/diff`
 
 This is the one the B0.1 brief calls "`packages/diff/src/fingerprint.ts` +
-`component-fingerprint.ts`" — that description undersells it. `packages/diff/src/fingerprint.ts`
+`component-fingerprint.ts`" — that description undersells it. The surveyed TS implementation
+(now retained only in `packages/diff/test/oracle/fingerprint.ts`; production uses Rust/WASM)
 (`fingerprint.ts:1-298`) is actually the **data** fingerprint: `buildDataFingerprint` (line 171)
 FNV-1a64-hashes (`stableHash`, `fingerprint.ts:95-101`, a textbook FNV-1a over UTF-16 code
 units) a `JSON.stringify` of the entity's attrs/psets/qsets/type-assignments, each level
@@ -193,7 +194,7 @@ for this reason. `apps/viewer/src/lib/compare/buildFingerprints.ts:82-136` is th
 consumer: it pulls `mesh.geometryHash` per entity (`buildFingerprints.ts:93`, falling back to
 `instancedGeometryHashes` for GPU-instanced-only entities that never hit the flat `meshes` array,
 lines 98-109) and pairs it with `buildDataFingerprint(...)` into one `EntityFingerprint` per
-entity (line 118-124). `packages/diff/src/diff.ts:25-29` (`geometryEqual`) does string-normalized
+entity (line 118-124). `packages/diff/test/oracle/geometry-compare.ts` (`geometryEqual`) does string-normalized
 comparison since a `bigint` and its `string` form must compare equal.
 
 Also worth flagging (not a candidate for unification, but adjacent and easy to confuse with 1c):
@@ -384,7 +385,7 @@ scheme, which is a different (and already shipping) answer to a similar question
 
 **`element`**: header, `key` (string — the entity's stable identity, typically `GlobalId`),
 `ifcType` (string), `componentCount` (u32), then components **sorted by componentKey** (using the
-existing `ComponentKey` vocabulary from `packages/diff/src/fingerprint.ts:162` /
+existing `ComponentKey` vocabulary from `packages/diff/src/fingerprint.ts` /
 `02-layer-format.md` §2.2: `attr:core`, `pset:<Name>`, `qset:<Name>`, `type-assignment`,
 `geometry-mesh`, `relationship:<RelType>`), each: `componentKey` (string), child-hash reference
 (string).

@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/merge",
-  "version": "0.4.8",
+  "version": "0.5.0",
   "description": "Three-way merge engine for IFCX layers — MergePlan with auto-merged ops and explicit conflict records, merge-layer emission, rebase, and revert.",
   "type": "module",
   "main": "./dist/index.js",
@@ -23,8 +23,9 @@
     "@ifc-lite/ifcx": "workspace:^"
   },
   "devDependencies": {
+    "@mergifyio/vitest": "^2026.10.11",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.3"
+    "vitest": "^5.0.5"
   },
   "license": "MPL-2.0",
   "author": "Louis True",

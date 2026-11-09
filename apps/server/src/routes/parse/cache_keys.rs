@@ -21,20 +21,20 @@ pub(super) fn quality_cache_suffix(quality: TessellationQuality) -> String {
     }
 }
 
-/// The seed every derived key is built on: file hash + opening-filter suffix +
-/// quality suffix. Endpoints that receive a bare hash (the cache-check and
-/// cached-geometry routes) rebuild it from the query rather than from bytes
-/// they do not have.
+/// Shared request identity: file hash, opening filter, quality and slicing.
+/// Bare-hash endpoints reconstruct the same seed without needing file bytes.
 pub(crate) fn cache_key_from_parts(
     hash: &str,
     opening_filter: OpeningFilterMode,
     quality: TessellationQuality,
+    layer_slicing: bool,
 ) -> String {
     format!(
-        "{}-{}{}",
+        "{}-{}{}{}",
         hash,
         opening_filter.cache_key_suffix(),
-        quality_cache_suffix(quality)
+        quality_cache_suffix(quality),
+        if layer_slicing { "-layers" } else { "" }
     )
 }
 
@@ -67,15 +67,15 @@ pub(crate) fn not_a_file_digest(value: &str) -> crate::error::ApiError {
     ))
 }
 
-/// Request-level cache key: file hash + opening-filter suffix + quality suffix.
+/// Request-level cache key: file hash plus opening-filter, quality and layer-slicing suffixes.
 pub(crate) fn request_cache_key(data: &[u8], query: &ParseQuery, quality: TessellationQuality) -> String {
     cache_key_from_parts(
         &DiskCache::generate_key(data),
         query.opening_filter,
         quality,
+        query.layer_slicing,
     )
 }
-
 /// Typed `ParseResponse` cache key for the JSON transport.
 ///
 /// Versioned SEPARATELY from [`request_cache_key`], which is the client-facing
@@ -163,8 +163,12 @@ pub(crate) fn parquet_cache_key(
     opening_filter: OpeningFilterMode,
     quality: TessellationQuality,
     layout: ParquetLayout,
+    layer_slicing: bool,
 ) -> String {
-    parquet_geometry_key(&cache_key_from_parts(hash, opening_filter, quality), layout)
+    parquet_geometry_key(
+        &cache_key_from_parts(hash, opening_filter, quality, layer_slicing),
+        layout,
+    )
 }
 
 /// Build the parquet metadata cache key for a given file hash and opening filter.
@@ -172,8 +176,9 @@ pub(crate) fn parquet_metadata_cache_key(
     hash: &str,
     opening_filter: OpeningFilterMode,
     quality: TessellationQuality,
+    layer_slicing: bool,
 ) -> String {
-    parquet_metadata_key(&cache_key_from_parts(hash, opening_filter, quality))
+    parquet_metadata_key(&cache_key_from_parts(hash, opening_filter, quality, layer_slicing))
 }
 
 /// Build the optimized-Parquet body cache key for a given file cache key.

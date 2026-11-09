@@ -82,6 +82,10 @@ describe('commitTimestamp', () => {
     expect(commitTimestamp({ lastModified: undefined, uploaded: '2026-01-01' })).toBe('2026-01-01');
   });
 
+  it('falls back to uploaded when lastModified is unreadable (#8647)', () => {
+    expect(commitTimestamp({ lastModified: 'not-a-date', uploaded: '2026-01-01' })).toBe('2026-01-01');
+  });
+
   it('is undefined when Dalux supplied neither', () => {
     expect(commitTimestamp({ lastModified: undefined, uploaded: undefined })).toBeUndefined();
   });

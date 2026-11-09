@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { influxEn } from './catalogues/influx.en';
 import { errorReportEn } from './catalogues/error-report.en';
 import { structuralReviewEn } from './catalogues/structural-review.en';
 import { groupReviewEn } from './catalogues/group-review.en';
@@ -68,6 +69,7 @@ import { assistantArtifactsEn } from './catalogues/assistant-artifacts.en';
 import type { TranslationValue } from './types';
 import type { semanticAssistEn } from './catalogues/semantic-assist.en';
 import type { landXmlGeorefAssumptionsEn } from './catalogues/landxml-georef-assumptions.en';
+import type { ifcFederationAssumptionsEn } from './catalogues/ifc-federation-assumptions.en';
 import { commandPaletteEn } from './catalogues/command-palette.en';
 import { commandsEn } from './catalogues/commands.en';
 import { compareKeyPropertyEn } from './catalogues/compare-key-property.en';
@@ -83,6 +85,7 @@ import { extensionsPanelsEn } from './catalogues/extensions-panels.en';
 import { ganttWorkCalendarEn } from './catalogues/gantt-work-calendar.en';
 import { geometryExportDialogsEn } from './catalogues/geometry-export-dialogs.en';
 import { filterGroupsEn } from './catalogues/filter-groups.en';
+import { customGroupingEn } from './catalogues/custom-grouping.en';
 import { filterOperatorsEn } from './catalogues/filter-operators.en';
 import { documentEn } from './catalogues/document.en';
 import { documentMenuEn } from './catalogues/document-menu.en';
@@ -113,6 +116,7 @@ import { mergeLayersBannerEn } from './catalogues/merge-layers-banner.en';
 import { miscPanelsBEn } from './catalogues/misc-panels-b.en';
 import { miscPanelsAEn } from './catalogues/misc-panels-a.en';
 import { propertiesEn } from './catalogues/properties.en';
+import { gaussianCaptureEn } from './catalogues/gaussian-capture.en';
 import { georeferencingEn } from './catalogues/georeferencing.en';
 import { propertiesPanelEn } from './catalogues/properties-panel.en';
 import { attributeEditorEn } from './catalogues/attribute-editor.en';
@@ -154,6 +158,7 @@ import { pushPullAlignEn } from './catalogues/push-pull-align.en';
 import { trimExtendEn } from './catalogues/trim-extend.en';
 import { remeshEn } from './catalogues/remesh.en';
 import { storeyContextEn } from './catalogues/storey-context.en';
+import { storeyManagerEn } from './catalogues/storey-manager.en';
 import { structuralPropertiesEn } from './catalogues/structural-properties.en';
 import { webgpuTroubleshootingEn } from './catalogues/webgpu-troubleshooting.en';
 import { scriptPanelEn } from './catalogues/script-panel.en';
@@ -161,6 +166,7 @@ import { zonesPanelEn } from './catalogues/zones-panel.en';
 
 /** English is assembled from feature catalogues so no locale becomes a monolith. */
 export const en = {
+  ...influxEn,
   ...zoneEmissionEn,
   ...newIfcEn,
   ...errorReportEn,
@@ -197,6 +203,7 @@ export const en = {
   ...commandsEn,
   ...ganttWorkCalendarEn,
   ...filterGroupsEn,
+  ...customGroupingEn,
   ...filterOperatorsEn,
   ...chartsEn,
   ...changesPanelEn,
@@ -230,6 +237,7 @@ export const en = {
   ...trimExtendEn,
   ...remeshEn,
   ...storeyContextEn,
+  ...storeyManagerEn,
   ...documentEn,
   ...documentMenuEn,
   ...drawingUnderlayEn,
@@ -237,6 +245,7 @@ export const en = {
   ...settingsEn,
   ...hierarchyEn,
   ...propertiesEn,
+  ...gaussianCaptureEn,
   ...georeferencingEn,
   ...propertiesPanelEn,
   ...attributeEditorEn,
@@ -314,7 +323,7 @@ export const en = {
 } as const;
 
 /** Strings that load with the panels that use them (see `registerEnglish`); their keys are typed here, their text is not in the eager bundle. */
-type LazyEnglish = typeof semanticAssistEn & typeof landXmlGeorefAssumptionsEn;
+type LazyEnglish = typeof semanticAssistEn & typeof landXmlGeorefAssumptionsEn & typeof ifcFederationAssumptionsEn;
 export type TranslationKey = keyof typeof en | keyof LazyEnglish | LazyTranslationKey | keyof typeof reviewWorkspaceEn;
 /** The live English catalogue: `en` plus whatever lazy catalogues have registered. */
 export const englishCatalogue: Partial<Record<TranslationKey, TranslationValue>> = en;

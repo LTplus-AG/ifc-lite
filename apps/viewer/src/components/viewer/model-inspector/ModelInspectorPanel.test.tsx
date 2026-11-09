@@ -17,6 +17,7 @@ import { useViewerStore } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { blur, cleanup, render, type } from '@/test/render.js';
 import { MODEL_ID, STOREY, seedModelingSession } from '@/test/modeling-session-fixture';
+import '@/lib/commands/modeling/builtin';
 import { setRequestRemesh } from '@/lib/commands/modeling/transaction';
 import { applyMaterialLayers } from './inspector-edits.js';
 import { entityName, layerSetOf } from '@/lib/commands/modeling/authored-kinds';
@@ -45,6 +46,75 @@ afterEach(() => {
   cleanup();
   s().exitModelWorkspace();
   restoreRemesh();
+});
+
+describe('the inspector while a tool that builds no kind runs (#9096)', () => {
+  const title = (ui: HTMLElement) => ui.querySelector('[data-inspector-title]')?.textContent;
+
+  for (const [command, label] of [['grid.place', 'Grid'], ['curtainwall.place', 'Curtain wall'], ['stair.place', 'Stair']] as const) {
+    it(`${command} started from the Wall tool does not keep showing wall defaults`, () => {
+      act(() => s().setSelectedEntityId(null));
+      const ui = render(<ModelInspectorPanel />);
+      act(() => s().startCommand('wall.place'));
+      assert.equal(title(ui), 'Defaults · Wall');
+      assert.ok(ui.querySelector('[data-inspector-mode="defaults"]'));
+
+      act(() => s().startCommand(command));
+      assert.equal(title(ui), label);
+      assert.equal(ui.querySelectorAll('[data-inspector-mode]').length, 0, 'no target to edit');
+      assert.equal(ui.querySelectorAll('input').length, 0, 'none of the wall fields');
+      assert.ok(ui.querySelector('[data-model-inspector-command]'));
+      assert.equal(ui.querySelectorAll('[data-model-inspector-idle]').length, 0, 'a tool is running: it does not ask to pick one');
+
+      act(() => s().endCommand('cancel'));
+      assert.equal(title(ui), 'Defaults · Wall', 'with nothing running, the kind built last is back');
+      assert.ok(ui.querySelector('[data-model-inspector-idle]'));
+    });
+  }
+
+  it('a wall height typed in the defaults makes the next wall fixed at that height (#9037 review)', () => {
+    act(() => s().setSelectedEntityId(null));
+    act(() => s().setAuthoringDefaults({ wallTop: 'storeyAbove' }));
+    const ui = render(<ModelInspectorPanel />);
+    act(() => s().startCommand('wall.place'));
+    const height = input(ui, 'Height in metres');
+    act(() => height.focus());
+    type(height, '2.4');
+    blur(height);
+    assert.equal(s().authoringDefaults.wallTop, 'fixed');
+    assert.equal(s().authoringDefaults.dims.wall.Height, 2.4);
+  });
+
+  it('the defaults show the height the Wall tool will place: the spacing to the storey above (#9037 review)', async () => {
+    const { commitStoreyOp } = await import('@/store/slices/mutation-storey');
+    assert.ok(commitStoreyOp(useViewerStore, MODEL_ID, { kind: 'level', edit: { kind: 'floorHeight', storeyId: STOREY, Height: 4 } }).ok);
+    act(() => s().setSelectedEntityId(null));
+    act(() => s().setAuthoringDefaults({ wallTop: 'storeyAbove' }));
+    const ui = render(<ModelInspectorPanel />);
+    act(() => s().startCommand('wall.place'));
+    act(() => s().setAuthoringDims('wall', { Height: 3 }));
+    assert.equal(input(ui, 'Height in metres').value, '4.00', 'not the stored 3.00 default');
+    act(() => s().setAuthoringDefaults({ wallTop: 'fixed' }));
+    assert.equal(input(ui, 'Height in metres').value, '3.00', 'a fixed wall uses the stored height');
+  });
+
+  it('leaving the Model workspace closes the storey manager: the next session opens on the inspector (#9037 review)', () => {
+    act(() => s().setStoreyManagerOpen(true));
+    act(() => s().exitModelWorkspace());
+    assert.equal(s().storeyManagerOpen, false);
+    act(() => { s().enterModelWorkspace(); });
+    const ui = render(<ModelInspectorPanel />);
+    assert.equal(ui.querySelector('[data-storey-manager]'), null, 'not the storey manager');
+    assert.ok(ui.querySelector('[data-model-inspector]'), 'the inspector');
+  });
+
+  it('a selection still shows while such a tool runs', () => {
+    const ui = render(<ModelInspectorPanel />);
+    act(() => s().startCommand('grid.place'));
+    assert.ok(s().selectedEntityId !== null, 'starting the tool kept the selection');
+    assert.match(title(ui) ?? '', /^IfcWall #/);
+    assert.equal(ui.querySelectorAll('[data-model-inspector-command]').length, 0);
+  });
 });
 
 describe('ModelInspectorPanel (#6232 M2.5)', () => {

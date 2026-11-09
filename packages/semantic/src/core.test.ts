@@ -8,7 +8,7 @@ import { LIMITS } from './types.js';
 import { parseResults, recordsFromResults } from './results.js';
 import { recordsFromGraph } from './graph.js';
 import { createSemanticProvider } from './provider.js';
-import { ResolverRegistry, resolveResource, createResourceLinkStrategy, createProfileMappingStrategy } from './resolver.js';
+import { IFC_GLOBAL_ID_STRATEGY, type IdentityRecord, ResolverRegistry, resolveResource, createResourceLinkStrategy, createProfileMappingStrategy } from './resolver.js';
 import { exportWorkspace, importWorkspace, type SemanticWorkspace } from './workspace.js';
 
 const iri = (value: string) => ({ type: 'uri', value });
@@ -121,4 +121,17 @@ describe('semantic core charter #6643', () => {
     expect(() => importWorkspace('{"version":2}')).toThrow('version');
     expect(() => exportWorkspace({ ...workspace, queries: [{ id: 'q', endpoint: 'https://example.org/query?token=secret', kind: 'json' }] })).toThrow('Portable');
   });
+});
+
+
+it('#8556 indexed lookup preserves all direct identity resolution outcomes', () => {
+  const GlobalId = '0000000000000000000001';
+  const entities = [{ GlobalId, modelId: 'a', expressId: 1 }, { GlobalId, modelId: 'b', expressId: 2 }];
+  const records: IdentityRecord[] = [{ GlobalId }, { GlobalId, modelRevision: 'known' }, { GlobalId, modelRevision: 'missing' },
+    { GlobalId: '0000000000000000000002' }, { GlobalId: 'invalid' }, {}, { GlobalId, modelRevision: '' }];
+  for (const modelScope of [undefined, 'a', 'b', 'absent']) {
+    const context = { entities, revisions: new Map([['known', 'a']]), modelScope };
+    const indexed = { ...context, entitiesByGlobalId: new Map([[GlobalId, entities]]) };
+    for (const record of records) expect(IFC_GLOBAL_ID_STRATEGY.resolve(record, indexed)).toEqual(IFC_GLOBAL_ID_STRATEGY.resolve(record, context));
+  }
 });

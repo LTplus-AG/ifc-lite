@@ -10,11 +10,13 @@
 //! Decoder-only: this module meshes nothing and owns no cache. The router,
 //! RTC-vote probes and the layer slicer are all callers of it.
 
+pub(crate) mod first_seen;
 pub(crate) mod mapped_transform;
 pub(crate) mod product_budget;
 mod refusal;
 mod select;
 pub(crate) mod structural;
+pub use structural::{mapped_item_representation_id, pds_representation_ids, product_shape_id, rep_item_ids};
 pub(crate) mod unwrap;
 mod walk;
 pub use select::{meshed_representations, Select};

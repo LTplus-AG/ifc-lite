@@ -54,31 +54,18 @@ export function liftTo3DLineList(
   y: number,
   out: number[],
   isHidden?: (ownerId: number) => boolean,
+  owners?: number[],
+  toGlobalId?: (ownerId: number) => number,
 ): void {
   for (const line of lines) {
     if (isHidden && line.ownerId !== undefined && isHidden(line.ownerId)) continue;
+    owners?.push(line.ownerId === undefined ? 0 : (toGlobalId?.(line.ownerId) ?? line.ownerId));
     out.push(line.line.start.x, y, line.line.start.y);
     out.push(line.line.end.x,   y, line.line.end.y);
   }
 }
 
-/**
- * Returns IFC annotation segments as a single Float32Array of pre-lifted 3D
- * line-list vertices in world space, ready to feed
- * `renderer.setLineOverlay('annotation', …)`.
- *
- * Each annotation is lifted to its containing storey's elevation. Annotations
- * with no resolvable storey fall back to `fallbackY` (typically the mid-Y of
- * the scene bounds) so the overlay stays visible even when the IFC file's
- * spatial hierarchy doesn't link annotations to a storey — common when the
- * authoring tool encodes the storey Z directly on the placement point
- * instead of on `IfcBuildingStorey.Elevation`.
- *
- * When `enabled` is false (toggle off, no models, etc.) the hook does no
- * parse work and returns a stable empty Float32Array. Parsing is lazy —
- * the WASM `parseSymbolicRepresentations` call only runs after the toggle
- * is turned on, and the result is cached per model source.
- */
+/** Source-cached annotation lines, lifted into the renderer’s anchored frame. */
 const EMPTY_F32 = new Float32Array(0);
 
 /** One active model's data store plus the identity needed to map a parsed
@@ -97,41 +84,41 @@ function useAnnotationParseTrigger(enabled: boolean, stores: SymbolicActiveStore
   return version;
 }
 
-/**
- * The per-entity hidden sets that gate the annotation overlay. An annotation's
- * curves/text/fills are dropped when the owning entity has been hidden through
- * the hierarchy panel, a lens, or a federated per-model hide — mirroring how
- * hiding a meshed element (e.g. the "Model Text" brep) removes it. Isolation
- * filters (storey solo, class filter) are intentionally NOT applied: annotation
- * buckets lift to every storey by design (see
- * `feedback_3d_annotation_overlay_no_section_filter`), and `byStorey` omits
- * annotations, so honouring storey isolation here would wrongly blank them.
- */
+/** Visibility follows meshes, including isolation (#8767). The old #1480
+ * exception assumed annotations were absent from the spatial hierarchy.
+ * The parser includes every contained element in byStorey, so storey solo
+ * keeps its annotations; uncontained annotations drop just like meshes.
+ * Grid references honour hides and lenses, but bypass isolation. */
+type SymbolicVisibility = { hidden?: ReadonlySet<number> | null; isolated?: ReadonlySet<number> | null };
+const EMPTY_OWNER_IDS: ReadonlySet<number> = new Set();
+const NO_HIDES = { global: EMPTY_OWNER_IDS, lens: EMPTY_OWNER_IDS };
+
 interface HiddenOwnerSets {
   global: ReadonlySet<number>;
   lens: ReadonlySet<number>;
 }
 
-function useHiddenOwnerSets(): HiddenOwnerSets {
+function useHiddenOwnerSets(visibility?: SymbolicVisibility): HiddenOwnerSets {
   return useViewerStore(
     useShallow((s) => ({
-      global: s.hiddenEntities,
+      global: visibility?.hidden === undefined ? s.hiddenEntities : visibility.hidden ?? EMPTY_OWNER_IDS,
       lens: s.lensHiddenIds,
     })),
   );
 }
 
 /** Build a per-store predicate: is this annotation owner (LOCAL express id)
- *  currently hidden? Cheap fast-path when nothing is hidden. */
+ *  currently hidden or outside isolation? Undefined when neither applies. */
 function makeHiddenOwnerPredicate(
   entry: SymbolicActiveStore,
   sets: HiddenOwnerSets,
+  isolated?: ReadonlySet<number> | null,
 ): ((ownerId: number) => boolean) | undefined {
-  if (sets.global.size === 0 && sets.lens.size === 0) return undefined;
+  if (sets.global.size === 0 && sets.lens.size === 0 && isolated == null) return undefined;
   const offset = entry.idOffset;
   return (ownerId: number): boolean => {
     const globalId = ownerId + offset;
-    return sets.global.has(globalId) || sets.lens.has(globalId);
+    return sets.global.has(globalId) || sets.lens.has(globalId) || (isolated != null && !isolated.has(globalId));
   };
 }
 
@@ -147,12 +134,9 @@ export function resolveBucketY(elevation: number | null, fallbackY: number): num
   return elevation === null ? fallbackY : elevation;
 }
 
-/** Section-clip parameters for grid lines (issue #862). Grids ARE clipped
- *  by the active section plane; IfcAnnotation overlays are NOT (per the
- *  feedback_3d_annotation_overlay_no_section_filter memory). When
- *  `enabled === false` no clipping happens — grids lift to every storey
- *  same as annotations.
- */
+/** CPU elevation band for grid lines/bubbles (#862). Annotation clipping
+ *  is handled by the renderer's section planes, not this grid-only band.
+ *  When disabled, grid buckets lift at every storey elevation. */
 export interface SectionClipForGrid {
   enabled: boolean;
   /** World coord on the cut axis (e.g. world-Y for axis='down'). */
@@ -179,6 +163,7 @@ export { type AnnotationFill3D, type AnnotationText3D, type SymbolicRichChannels
 export function useSymbolicAnnotations(params: {
   /** Enable IfcAnnotation lift (the existing default behaviour). */
   enabled: boolean;
+  visibility?: SymbolicVisibility;
   /**
    * Enable IfcGrid lift. Independent of `enabled` so a user can hide
    * annotations while keeping grids, or vice versa (issue #862).
@@ -191,11 +176,11 @@ export function useSymbolicAnnotations(params: {
   /** World Y to use for annotations with no resolvable storey. Defaults to 0. */
   fallbackY?: number;
 }): SymbolicLineChannels {
-  const { gridSectionClip, fallbackY = 0 } = params;
+  const { gridSectionClip, fallbackY = 0, visibility } = params;
   const { annotation: enabled, grid: effectiveGridEnabled } =
     useOverlayChannelGate(params.enabled, params.gridEnabled ?? params.enabled);
   const stores = useSymbolicActiveStores();
-  const hiddenSets = useHiddenOwnerSets();
+  const hiddenSets = useHiddenOwnerSets(visibility);
   // Trigger parse if EITHER subset is enabled — the parse pass is shared.
   const version = useAnnotationParseTrigger(enabled || effectiveGridEnabled, stores);
   const clipEnabled = !!gridSectionClip && gridSectionClip.enabled && gridSectionClip.axis === 'down';
@@ -212,7 +197,7 @@ export function useSymbolicAnnotations(params: {
     const entries: SymbolicLineChannelsEntry[] = [];
     for (const entry of stores) {
       const cached = placedSymbols(getParseFor({ store: entry.store, mutationView: entry.mutationView }), entry.translation, fallbackY);
-      if (cached) entries.push({ cached, isHidden: makeHiddenOwnerPredicate(entry, hiddenSets) });
+      if (cached) entries.push({ cached, toGlobalId: id => entry.idOffset === 0 ? id : useViewerStore.getState().toGlobalId(entry.modelId, id), isHidden: makeHiddenOwnerPredicate(entry, hiddenSets), isIsolatedOut: makeHiddenOwnerPredicate(entry, NO_HIDES, visibility?.isolated) });
       else if (debugEnabled()) console.log(`[annotations] store not yet ready: ${entry.modelId}`);
     }
 
@@ -224,7 +209,7 @@ export function useSymbolicAnnotations(params: {
       clipDepth,
       fallbackY,
     });
-  }, [enabled, effectiveGridEnabled, clipEnabled, clipPos, clipDepth, stores, hiddenSets, version, fallbackY]);
+  }, [enabled, effectiveGridEnabled, clipEnabled, clipPos, clipDepth, stores, hiddenSets, visibility, version, fallbackY]);
 }
 
 /**
@@ -413,6 +398,7 @@ export function useSymbolicAnnotationsForDrawing(params: {
  */
 export function useSymbolicAnnotationsRichData(params: {
   enabled: boolean;
+  visibility?: SymbolicVisibility;
   /** Lift grid-bubble texts + fills. Independent of `enabled` (issue #862).
    *  Defaults to `enabled` for legacy callers. */
   gridEnabled?: boolean;
@@ -421,11 +407,11 @@ export function useSymbolicAnnotationsRichData(params: {
   gridSectionClip?: SectionClipForGrid;
   fallbackY?: number;
 }): SymbolicRichChannels {
-  const { gridSectionClip, fallbackY = 0 } = params;
+  const { gridSectionClip, fallbackY = 0, visibility } = params;
   const { annotation: enabled, grid: effectiveGridEnabled } =
     useOverlayChannelGate(params.enabled, params.gridEnabled ?? params.enabled);
   const stores = useSymbolicActiveStores();
-  const hiddenSets = useHiddenOwnerSets();
+  const hiddenSets = useHiddenOwnerSets(visibility);
   const theme = useViewerStore((s) => s.theme); // label ink (#5388)
   const version = useAnnotationParseTrigger(enabled || effectiveGridEnabled, stores);
   const clipEnabled = !!gridSectionClip && gridSectionClip.enabled && gridSectionClip.axis === 'down';
@@ -441,7 +427,7 @@ export function useSymbolicAnnotationsRichData(params: {
     const entries: SymbolicRichChannelsEntry[] = [];
     for (const entry of stores) {
       const cached = placedSymbols(getParseFor({ store: entry.store, mutationView: entry.mutationView }), entry.translation, fallbackY);
-      if (cached) entries.push({ cached, isHidden: makeHiddenOwnerPredicate(entry, hiddenSets), isMeshedFill: meshedFillItems(entry.meshes, id => entry.idOffset === 0 ? id : useViewerStore.getState().toGlobalId(entry.modelId, id)) });
+      if (cached) entries.push({ cached, toGlobalId: id => entry.idOffset === 0 ? id : useViewerStore.getState().toGlobalId(entry.modelId, id), isHidden: makeHiddenOwnerPredicate(entry, hiddenSets), isIsolatedOut: makeHiddenOwnerPredicate(entry, NO_HIDES, visibility?.isolated), isMeshedFill: meshedFillItems(entry.meshes, id => entry.idOffset === 0 ? id : useViewerStore.getState().toGlobalId(entry.modelId, id)) });
     }
 
     return buildSymbolicRichChannels(entries, {
@@ -453,5 +439,5 @@ export function useSymbolicAnnotationsRichData(params: {
       fallbackY,
       theme,
     });
-  }, [enabled, effectiveGridEnabled, clipEnabled, clipPos, clipDepth, stores, hiddenSets, version, fallbackY, theme]);
+  }, [enabled, effectiveGridEnabled, clipEnabled, clipPos, clipDepth, stores, hiddenSets, visibility, version, fallbackY, theme]);
 }

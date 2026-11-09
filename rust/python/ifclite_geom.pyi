@@ -420,6 +420,7 @@ def geometry_data_buffers(
     ids: Optional[Set[int]] = None,
     *,
     include_directrices: Literal[True],
+    layer_slicing: bool = False,
 ) -> GeometryBuffersWithDirectrices: ...
 
 @overload
@@ -429,6 +430,7 @@ def geometry_data_buffers(
     ids: Optional[Set[int]] = None,
     *,
     include_directrices: bool = False,
+    layer_slicing: bool = False,
 ) -> GeometryBuffers:
     """Tessellate IFC bytes; return per-entity geometry with vertices/faces as
     raw little-endian byte buffers (f64 xyz triplets, u32 triangle indices) for
@@ -448,6 +450,9 @@ def geometry_data_buffers(
     preserves the unfiltered behaviour; an empty set returns no elements, and
     ids absent from the file are ignored. Relationship and representation
     dependencies needed by selected products are still resolved.
+
+    ``layer_slicing=True`` slices material-layer walls into per-layer meshes;
+    the default is False (unsliced).
 
     ``include_directrices=True`` adds ``swept_disks`` (keyed by occurrence STEP
     id) and ``directrix_diagnostics``. Each sweep preserves its IFC Radius,
@@ -470,6 +475,7 @@ def geometry_data_json(
     ids: Optional[Set[int]] = None,
     *,
     include_directrices: bool = False,
+    layer_slicing: bool = False,
 ) -> str:
     """Tessellate IFC bytes; return the ``ifc-lite-geometry-data`` JSON document
     as a string (call ``json.loads`` on it).
@@ -477,6 +483,8 @@ def geometry_data_json(
     Same geometry as :func:`geometry_data_buffers`, but vertices/faces are JSON
     arrays (no numpy needed) and each element also carries ``global_id`` and
     ``name`` when present. ``quality`` and ``ids`` are as documented there.
+    ``layer_slicing=True`` slices material-layer walls into per-layer meshes;
+    the default is False (unsliced).
     ``include_directrices=True`` adds the same swept-disk descriptions with
     JSON object keys for occurrence STEP ids.
 

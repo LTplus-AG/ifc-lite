@@ -1,0 +1,821 @@
+{
+  "extrusion_definitions": {
+    "coordinate_space": "absolute_ifc_world",
+    "diagnostics": [],
+    "instances": {
+      "72209": [
+        {
+          "mapping_path": [],
+          "ordinal": 0,
+          "product_id": 72209,
+          "solid_id": 9420,
+          "source": {
+            "context": {
+              "kind": "direct",
+              "representation_id": 9419
+            },
+            "length_unit_scale_bits": "3f50624dd2f1a9fc",
+            "model_sha256": "da39f6cb98f56a9f9235e5f752213a9d4b56bd419ed867ccf7439b7d3b7a4eeb",
+            "schema": "IFC4X3_ADD2",
+            "solid_id": 9420
+          },
+          "source_modified": false,
+          "status": {
+            "type": "complete"
+          },
+          "world_from_source": [
+            -0.0009614420779258716,
+            -0.0002750075104312289,
+            0.0,
+            0.0,
+            0.0002750075104312289,
+            -0.0009614420779258716,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.001,
+            0.0,
+            -110.94306182861378,
+            206.08972167968744,
+            -4.335299968719481,
+            1.0
+          ]
+        }
+      ],
+      "72216": [
+        {
+          "mapping_path": [],
+          "ordinal": 0,
+          "product_id": 72216,
+          "solid_id": 523,
+          "source": {
+            "context": {
+              "kind": "direct",
+              "representation_id": 72221
+            },
+            "length_unit_scale_bits": "3f50624dd2f1a9fc",
+            "model_sha256": "da39f6cb98f56a9f9235e5f752213a9d4b56bd419ed867ccf7439b7d3b7a4eeb",
+            "schema": "IFC4X3_ADD2",
+            "solid_id": 523
+          },
+          "source_modified": false,
+          "status": {
+            "type": "complete"
+          },
+          "world_from_source": [
+            0.0005367354154219602,
+            -0.0008437506111593735,
+            3.644825259999035e-15,
+            0.0,
+            -0.0008437506111593735,
+            -0.0005367354154219602,
+            1.0440242886297351e-12,
+            0.0,
+            -8.78939824796503e-13,
+            -5.634401338089904e-13,
+            -0.001,
+            0.0,
+            -111.88547744643753,
+            207.92878883489792,
+            -1.8752998287194806,
+            1.0
+          ]
+        }
+      ],
+      "72230": [
+        {
+          "mapping_path": [],
+          "ordinal": 0,
+          "product_id": 72230,
+          "solid_id": 61268,
+          "source": {
+            "context": {
+              "kind": "direct",
+              "representation_id": 72236
+            },
+            "length_unit_scale_bits": "3f50624dd2f1a9fc",
+            "model_sha256": "da39f6cb98f56a9f9235e5f752213a9d4b56bd419ed867ccf7439b7d3b7a4eeb",
+            "schema": "IFC4X3_ADD2",
+            "solid_id": 61268
+          },
+          "source_modified": false,
+          "status": {
+            "type": "complete"
+          },
+          "world_from_source": [
+            0.000274901473216704,
+            -0.0009610713657234649,
+            -0.000027767066998872952,
+            0.0,
+            7.636151967337185e-6,
+            -0.0000266964265933033,
+            0.0009996144206594261,
+            0.0,
+            -0.0009614420779258716,
+            -0.0002750075104312289,
+            0.0,
+            0.0,
+            -127.91811695925736,
+            200.55816881444952,
+            -5.950299968719481,
+            1.0
+          ]
+        }
+      ],
+      "72245": [
+        {
+          "mapping_path": [],
+          "ordinal": 0,
+          "product_id": 72245,
+          "solid_id": 61271,
+          "source": {
+            "context": {
+              "kind": "direct",
+              "representation_id": 72250
+            },
+            "length_unit_scale_bits": "3f50624dd2f1a9fc",
+            "model_sha256": "da39f6cb98f56a9f9235e5f752213a9d4b56bd419ed867ccf7439b7d3b7a4eeb",
+            "schema": "IFC4X3_ADD2",
+            "solid_id": 61271
+          },
+          "source_modified": false,
+          "status": {
+            "reason": "SweptArea #61272: loop 0, segments 0/4: profile boundaries touch, intersect, or cannot be separated at context Precision",
+            "type": "unsupported"
+          },
+          "world_from_source": [
+            8.250225312936868e-14,
+            -2.8843262337776146e-13,
+            -0.001,
+            0.0,
+            -0.0002750075104312289,
+            0.0009614420779258716,
+            -3e-13,
+            0.0,
+            0.0009614420779258716,
+            0.0002750075104312289,
+            0.0,
+            0.0,
+            -122.22230885217684,
+            202.86344552150157,
+            -2.0502999687194805,
+            1.0
+          ]
+        }
+      ]
+    },
+    "length_unit_scale": 0.001,
+    "model_sha256": "da39f6cb98f56a9f9235e5f752213a9d4b56bd419ed867ccf7439b7d3b7a4eeb",
+    "schema": "IFC4X3_ADD2",
+    "source_units": "ifc_file_length_units",
+    "sources": [
+      {
+        "key": {
+          "context": {
+            "kind": "direct",
+            "representation_id": 9419
+          },
+          "length_unit_scale_bits": "3f50624dd2f1a9fc",
+          "model_sha256": "da39f6cb98f56a9f9235e5f752213a9d4b56bd419ed867ccf7439b7d3b7a4eeb",
+          "schema": "IFC4X3_ADD2",
+          "solid_id": 9420
+        },
+        "nominal_quantities": {
+          "nominal_volume": 246007464171.4502,
+          "profile_area": 55532158.95518063,
+          "projected_height": 4430.0
+        },
+        "source": {
+          "Depth": 4430.0,
+          "DirectionRatios": [
+            1e-9,
+            3e-10,
+            -1.0
+          ],
+          "ExtrudedDirection": 529,
+          "Position": 9417,
+          "SweptArea": 9421,
+          "axis_unit_vector": [
+            1e-9,
+            3e-10,
+            -1.0
+          ],
+          "position_matrix": [
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            2215.0,
+            1.0
+          ],
+          "profile": {
+            "Position": null,
+            "ProfileType": "AREA",
+            "ifc_type_name": "IfcArbitraryClosedProfileDef",
+            "loops": [
+              {
+                "kind": "outer",
+                "perimeter": 53086.42129491371,
+                "segments": [
+                  {
+                    "end": [
+                      24144.44008,
+                      0.0,
+                      0.0
+                    ],
+                    "start": [
+                      0.0,
+                      0.0,
+                      0.0
+                    ],
+                    "type": "line"
+                  },
+                  {
+                    "end": [
+                      23463.18266,
+                      2299.99788,
+                      0.0
+                    ],
+                    "start": [
+                      24144.44008,
+                      0.0,
+                      0.0
+                    ],
+                    "type": "line"
+                  },
+                  {
+                    "end": [
+                      -681.25697,
+                      2299.99775,
+                      0.0
+                    ],
+                    "start": [
+                      23463.18266,
+                      2299.99788,
+                      0.0
+                    ],
+                    "type": "line"
+                  },
+                  {
+                    "end": [
+                      0.0,
+                      0.0,
+                      0.0
+                    ],
+                    "start": [
+                      -681.25697,
+                      2299.99775,
+                      0.0
+                    ],
+                    "type": "line"
+                  }
+                ],
+                "signed_area": 55532158.95518063
+              }
+            ],
+            "profile_id": 9421,
+            "profile_position": null,
+            "status": {
+              "type": "complete"
+            }
+          },
+          "solid_id": 9420,
+          "status": {
+            "type": "complete"
+          }
+        }
+      },
+      {
+        "key": {
+          "context": {
+            "kind": "direct",
+            "representation_id": 72221
+          },
+          "length_unit_scale_bits": "3f50624dd2f1a9fc",
+          "model_sha256": "da39f6cb98f56a9f9235e5f752213a9d4b56bd419ed867ccf7439b7d3b7a4eeb",
+          "schema": "IFC4X3_ADD2",
+          "solid_id": 523
+        },
+        "nominal_quantities": {
+          "nominal_volume": 10083709110.67022,
+          "profile_area": 3201177.78,
+          "projected_height": 3149.99972
+        },
+        "source": {
+          "Depth": 3149.99972,
+          "DirectionRatios": [
+            1e-9,
+            3e-10,
+            -1.0
+          ],
+          "ExtrudedDirection": 529,
+          "Position": 527,
+          "SweptArea": 524,
+          "axis_unit_vector": [
+            1e-9,
+            3e-10,
+            -1.0
+          ],
+          "position_matrix": [
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            1574.99986,
+            1.0
+          ],
+          "profile": {
+            "Position": null,
+            "ProfileType": "AREA",
+            "ifc_type_name": "IfcArbitraryClosedProfileDef",
+            "loops": [
+              {
+                "kind": "outer",
+                "perimeter": 8134.11852,
+                "segments": [
+                  {
+                    "end": [
+                      3000.0,
+                      0.0,
+                      0.0
+                    ],
+                    "start": [
+                      0.0,
+                      0.0,
+                      0.0
+                    ],
+                    "type": "line"
+                  },
+                  {
+                    "end": [
+                      3000.0,
+                      1067.05926,
+                      0.0
+                    ],
+                    "start": [
+                      3000.0,
+                      0.0,
+                      0.0
+                    ],
+                    "type": "line"
+                  },
+                  {
+                    "end": [
+                      0.0,
+                      1067.05926,
+                      0.0
+                    ],
+                    "start": [
+                      3000.0,
+                      1067.05926,
+                      0.0
+                    ],
+                    "type": "line"
+                  },
+                  {
+                    "end": [
+                      0.0,
+                      0.0,
+                      0.0
+                    ],
+                    "start": [
+                      0.0,
+                      1067.05926,
+                      0.0
+                    ],
+                    "type": "line"
+                  }
+                ],
+                "signed_area": 3201177.78
+              }
+            ],
+            "profile_id": 524,
+            "profile_position": null,
+            "status": {
+              "type": "complete"
+            }
+          },
+          "solid_id": 523,
+          "status": {
+            "type": "complete"
+          }
+        }
+      },
+      {
+        "key": {
+          "context": {
+            "kind": "direct",
+            "representation_id": 72236
+          },
+          "length_unit_scale_bits": "3f50624dd2f1a9fc",
+          "model_sha256": "da39f6cb98f56a9f9235e5f752213a9d4b56bd419ed867ccf7439b7d3b7a4eeb",
+          "schema": "IFC4X3_ADD2",
+          "solid_id": 61268
+        },
+        "nominal_quantities": {
+          "nominal_volume": 16832464.84099244,
+          "profile_area": 9347.763664001603,
+          "projected_height": 1800.69431
+        },
+        "source": {
+          "Depth": 1800.69431,
+          "DirectionRatios": [
+            1e-9,
+            3e-10,
+            -1.0
+          ],
+          "ExtrudedDirection": 529,
+          "Position": 539,
+          "SweptArea": 61269,
+          "axis_unit_vector": [
+            1e-9,
+            3e-10,
+            -1.0
+          ],
+          "position_matrix": [
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            1.0,
+            -0.0,
+            0.0,
+            -1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "profile": {
+            "Position": null,
+            "ProfileType": "AREA",
+            "ifc_type_name": "IfcArbitraryClosedProfileDef",
+            "loops": [
+              {
+                "kind": "outer",
+                "perimeter": 344.15581543352795,
+                "segments": [
+                  {
+                    "end": [
+                      52.30811,
+                      16.99593,
+                      0.0
+                    ],
+                    "start": [
+                      55.0,
+                      0.0,
+                      0.0
+                    ],
+                    "type": "line"
+                  },
+                  {
+                    "end": [
+                      44.49593,
+                      32.32819,
+                      0.0
+                    ],
+                    "start": [
+                      52.30811,
+                      16.99593,
+                      0.0
+                    ],
+                    "type": "line"
+                  },
+                  {
+                    "end": [
+                      32.32819,
+                      44.49593,
+                      0.0
+                    ],
+                    "start": [
+                      44.49593,
+                      32.32819,
+                      0.0
+                    ],
+                    "type": "line"
+                  },
+                  {
+                    "end": [
+                      16.99593,
+                      52.30811,
+                      0.0
+                    ],
+                    "start": [
+                      32.32819,
+                      44.49593,
+                      0.0
+                    ],
+                    "type": "line"
+                  },
+                  {
+                    "end": [
+                      0.0,
+                      55.0,
+                      0.0
+                    ],
+                    "start": [
+                      16.99593,
+                      52.30811,
+                      0.0
+                    ],
+                    "type": "line"
+                  },
+                  {
+                    "end": [
+                      -16.99593,
+                      52.30811,
+                      0.0
+                    ],
+                    "start": [
+                      0.0,
+                      55.0,
+                      0.0
+                    ],
+                    "type": "line"
+                  },
+                  {
+                    "end": [
+                      -32.32819,
+                      44.49593,
+                      0.0
+                    ],
+                    "start": [
+                      -16.99593,
+                      52.30811,
+                      0.0
+                    ],
+                    "type": "line"
+                  },
+                  {
+                    "end": [
+                      -44.49593,
+                      32.32819,
+                      0.0
+                    ],
+                    "start": [
+                      -32.32819,
+                      44.49593,
+                      0.0
+                    ],
+                    "type": "line"
+                  },
+                  {
+                    "end": [
+                      -52.30811,
+                      16.99593,
+                      0.0
+                    ],
+                    "start": [
+                      -44.49593,
+                      32.32819,
+                      0.0
+                    ],
+                    "type": "line"
+                  },
+                  {
+                    "end": [
+                      -55.0,
+                      0.0,
+                      0.0
+                    ],
+                    "start": [
+                      -52.30811,
+                      16.99593,
+                      0.0
+                    ],
+                    "type": "line"
+                  },
+                  {
+                    "end": [
+                      -52.30811,
+                      -16.99593,
+                      0.0
+                    ],
+                    "start": [
+                      -55.0,
+                      0.0,
+                      0.0
+                    ],
+                    "type": "line"
+                  },
+                  {
+                    "end": [
+                      -44.49593,
+                      -32.32819,
+                      0.0
+                    ],
+                    "start": [
+                      -52.30811,
+                      -16.99593,
+                      0.0
+                    ],
+                    "type": "line"
+                  },
+                  {
+                    "end": [
+                      -32.32819,
+                      -44.49593,
+                      0.0
+                    ],
+                    "start": [
+                      -44.49593,
+                      -32.32819,
+                      0.0
+                    ],
+                    "type": "line"
+                  },
+                  {
+                    "end": [
+                      -16.99593,
+                      -52.30811,
+                      0.0
+                    ],
+                    "start": [
+                      -32.32819,
+                      -44.49593,
+                      0.0
+                    ],
+                    "type": "line"
+                  },
+                  {
+                    "end": [
+                      0.0,
+                      -55.0,
+                      0.0
+                    ],
+                    "start": [
+                      -16.99593,
+                      -52.30811,
+                      0.0
+                    ],
+                    "type": "line"
+                  },
+                  {
+                    "end": [
+                      16.99593,
+                      -52.30811,
+                      0.0
+                    ],
+                    "start": [
+                      0.0,
+                      -55.0,
+                      0.0
+                    ],
+                    "type": "line"
+                  },
+                  {
+                    "end": [
+                      32.32819,
+                      -44.49593,
+                      0.0
+                    ],
+                    "start": [
+                      16.99593,
+                      -52.30811,
+                      0.0
+                    ],
+                    "type": "line"
+                  },
+                  {
+                    "end": [
+                      44.49593,
+                      -32.32819,
+                      0.0
+                    ],
+                    "start": [
+                      32.32819,
+                      -44.49593,
+                      0.0
+                    ],
+                    "type": "line"
+                  },
+                  {
+                    "end": [
+                      52.30811,
+                      -16.99593,
+                      0.0
+                    ],
+                    "start": [
+                      44.49593,
+                      -32.32819,
+                      0.0
+                    ],
+                    "type": "line"
+                  },
+                  {
+                    "end": [
+                      55.0,
+                      0.0,
+                      0.0
+                    ],
+                    "start": [
+                      52.30811,
+                      -16.99593,
+                      0.0
+                    ],
+                    "type": "line"
+                  }
+                ],
+                "signed_area": 9347.763664001603
+              }
+            ],
+            "profile_id": 61269,
+            "profile_position": null,
+            "status": {
+              "type": "complete"
+            }
+          },
+          "solid_id": 61268,
+          "status": {
+            "type": "complete"
+          }
+        }
+      },
+      {
+        "key": {
+          "context": {
+            "kind": "direct",
+            "representation_id": 72250
+          },
+          "length_unit_scale_bits": "3f50624dd2f1a9fc",
+          "model_sha256": "da39f6cb98f56a9f9235e5f752213a9d4b56bd419ed867ccf7439b7d3b7a4eeb",
+          "schema": "IFC4X3_ADD2",
+          "solid_id": 61271
+        },
+        "nominal_quantities": null,
+        "source": {
+          "Depth": null,
+          "DirectionRatios": null,
+          "ExtrudedDirection": 529,
+          "Position": 61275,
+          "SweptArea": 61272,
+          "axis_unit_vector": null,
+          "position_matrix": null,
+          "profile": {
+            "Position": null,
+            "ProfileType": "AREA",
+            "ifc_type_name": "IfcArbitraryClosedProfileDef",
+            "loops": [],
+            "profile_id": 61272,
+            "profile_position": null,
+            "status": {
+              "reason": "loop 0, segments 0/4: profile boundaries touch, intersect, or cannot be separated at context Precision",
+              "type": "unsupported"
+            }
+          },
+          "solid_id": 61271,
+          "status": {
+            "reason": "SweptArea #61272: loop 0, segments 0/4: profile boundaries touch, intersect, or cannot be separated at context Precision",
+            "type": "unsupported"
+          }
+        }
+      }
+    ],
+    "up_axis": "Z",
+    "world_units": "m"
+  },
+  "swept_disk_definitions": {
+    "coordinate_space": "absolute_ifc_world",
+    "diagnostics": [],
+    "instances": {},
+    "length_unit_scale": 0.001,
+    "model_sha256": "da39f6cb98f56a9f9235e5f752213a9d4b56bd419ed867ccf7439b7d3b7a4eeb",
+    "schema": "IFC4X3_ADD2",
+    "source_units": "ifc_file_length_units",
+    "sources": [],
+    "up_axis": "Z",
+    "world_units": "m"
+  },
+  "swept_disk_descriptions": {
+    "coordinate_space": "absolute_ifc_world",
+    "diagnostics": [],
+    "elements": {},
+    "units": "m",
+    "up_axis": "Z"
+  }
+}

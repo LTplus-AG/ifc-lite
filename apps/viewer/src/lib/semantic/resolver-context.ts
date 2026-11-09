@@ -2,18 +2,31 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { ResolverRegistry, IFC_GLOBAL_ID_STRATEGY, createResourceLinkStrategy, createProfileMappingStrategy, createResourceUriStrategy, DEFAULT_RESOURCE_URI_CONFIG,
-  type ResourceUriIdentityConfig, type IdentityRecord, type ResolverContext, type Resolution, type ResourceIdentityLink } from '@ifc-lite/semantic';
+import { IFC_GLOBAL_ID_STRATEGY, createResourceLinkStrategy, createProfileMappingStrategy, createResourceUriStrategy, DEFAULT_RESOURCE_URI_CONFIG,
+  type IdentityStrategy, type LiveEntity, type ResourceUriIdentityConfig, type IdentityRecord, type ResolverContext, type Resolution, type ResourceIdentityLink } from '@ifc-lite/semantic';
 export interface IdentityFields { GlobalId: string; modelRevision?: string }
 export interface ResolverSettings { strategy: string; links: readonly ResourceIdentityLink[]; identityFields?: IdentityFields; uriConfig?: ResourceUriIdentityConfig }
-export function resolveWithStrategy(resource: IdentityRecord, context: ResolverContext, settings?: ResolverSettings): Resolution {
-  if (!settings || settings.strategy === 'ifc-global-id') return IFC_GLOBAL_ID_STRATEGY.resolve(resource, context);
-  const strategy = settings.strategy === 'resource-links' ? createResourceLinkStrategy(settings.links)
+function strategyFor(settings?: ResolverSettings): IdentityStrategy | undefined {
+  if (!settings || settings.strategy === 'ifc-global-id') return IFC_GLOBAL_ID_STRATEGY;
+  return settings.strategy === 'resource-links' ? createResourceLinkStrategy(settings.links)
     : settings.strategy === 'profile-fields' ? createProfileMappingStrategy('profile-fields', settings.identityFields ?? { GlobalId: 'GlobalId', modelRevision: 'modelRevision' })
       : settings.strategy === 'resource-uri' ? createResourceUriStrategy(settings.uriConfig ?? DEFAULT_RESOURCE_URI_CONFIG)
       : undefined;
-  if (!strategy) return { status: 'invalid' };
-  return new ResolverRegistry([strategy]).resolve(strategy.id, resource, context);
+}
+export function resolveWithStrategy(resource: IdentityRecord, context: ResolverContext, settings?: ResolverSettings): Resolution {
+  return strategyFor(settings)?.resolve(resource, context) ?? { status: 'invalid' };
+}
+/** One immutable snapshot and one strategy for a table render or batch action. */
+export function createIndexedIdentityResolver(context: ResolverContext, settings?: ResolverSettings): (resource: IdentityRecord) => Resolution {
+  const entitiesByGlobalId = new Map<string, LiveEntity[]>();
+  for (const entity of context.entities) {
+    const GlobalId = entity.GlobalId;
+    const refs = entitiesByGlobalId.get(GlobalId);
+    if (refs) refs.push(entity); else entitiesByGlobalId.set(GlobalId, [entity]);
+  }
+  const indexed = { ...context, entitiesByGlobalId };
+  const strategy = strategyFor(settings);
+  return resource => strategy?.resolve(resource, indexed) ?? { status: 'invalid' };
 }
 /** Only lexical string identity terms can identify IFC objects; do not coerce typed numbers. */
 export function identityFromRow(row: Record<string, import('@ifc-lite/semantic').RdfBinding>, mapping: import('@ifc-lite/semantic').BindingMapping,

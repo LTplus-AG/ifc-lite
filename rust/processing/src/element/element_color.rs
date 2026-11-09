@@ -20,6 +20,7 @@ use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 // THIS module so that swapping to a private copy here fails the test. Importing
 // it straight from core in the test compares the constant with itself.
 pub(crate) use ifc_lite_core::MAX_MAPPED_ITEM_DEPTH;
+use ifc_lite_geometry::representation::{mapped_item_representation_id, pds_representation_ids, product_shape_id};
 use rustc_hash::FxHashMap;
 
 /// Resolve a geometry item's authored colour: direct style on the item, else
@@ -97,11 +98,7 @@ fn find_geometry_item_style_source_at(
     if geom.ifc_type != IfcType::IfcMappedItem {
         return None;
     }
-    // IfcMappedItem.MappingSource (attr 0) → IfcRepresentationMap.
-    let mapping_source_id = geom.get_ref(0)?;
-    // IfcRepresentationMap.MappedRepresentation (attr 1) → IfcShapeRepresentation.
-    let representation_map = decoder.decode_by_id(mapping_source_id).ok()?;
-    let mapped_representation_id = representation_map.get_ref(1)?;
+    let mapped_representation_id = mapped_item_representation_id(&geom, decoder)?;
     let mapped_representation = decoder.decode_by_id(mapped_representation_id).ok()?;
     // IfcShapeRepresentation.Items (attr 3).
     let items = mapped_representation.get_refs(3)?;
@@ -139,7 +136,7 @@ pub(crate) fn representation_map_style_source(
 ) -> Option<u32> {
     let rep_map = decoder.decode_by_id(rep_map_id).ok()?;
     // IfcRepresentationMap.MappedRepresentation = attr 1.
-    let mapped_rep_id = rep_map.get_ref(1)?;
+    let mapped_rep_id = rep_map.get_ref(ifc_lite_core::slot::IfcRepresentationMap::MAPPED_REPRESENTATION.index())?;
     let mapped_rep = decoder.decode_by_id(mapped_rep_id).ok()?;
     // IfcShapeRepresentation.Items = attr 3.
     let item_ids = mapped_rep.get_refs(3)?;
@@ -165,7 +162,7 @@ pub(crate) fn product_shape_style_source(
 ) -> Option<u32> {
     let shape = decoder.decode_by_id(product_definition_shape_id).ok()?;
     // IfcProductDefinitionShape.Representations = attr 2.
-    for shape_repr_id in shape.get_refs(2)? {
+    for shape_repr_id in pds_representation_ids(&shape) {
         let Ok(shape_repr) = decoder.decode_by_id(shape_repr_id) else {
             continue;
         };
@@ -193,9 +190,9 @@ pub(crate) fn find_indexed_colour_for_element<'a>(
     indexed_colour_full: &'a FxHashMap<u32, FullIndexedColourMap>,
     decoder: &mut EntityDecoder,
 ) -> Option<(u32, &'a FullIndexedColourMap)> {
-    let pds_id = entity.get_ref(6)?;
+    let pds_id = product_shape_id(entity)?;
     let pds = decoder.decode_by_id(pds_id).ok()?;
-    let repr_ids = pds.get_refs(2)?;
+    let repr_ids = pds_representation_ids(&pds);
     for repr_id in repr_ids {
         if let Ok(repr) = decoder.decode_by_id(repr_id) {
             if let Some(items) = repr.get_refs(3) {
@@ -223,9 +220,9 @@ pub(crate) fn element_reaches_indexed_colour(
     indexed_colour_full: &FxHashMap<u32, FullIndexedColourMap>,
     decoder: &mut EntityDecoder,
 ) -> bool {
-    let Some(pds_id) = entity.get_ref(6) else { return false };
+    let Some(pds_id) = product_shape_id(entity) else { return false };
     let Ok(pds) = decoder.decode_by_id(pds_id) else { return false };
-    let mut reps: Vec<u32> = pds.get_refs(2).unwrap_or_default();
+    let mut reps: Vec<u32> = pds_representation_ids(&pds).collect();
     let mut visited = rustc_hash::FxHashSet::default();
     while let Some(rep_id) = reps.pop() {
         if !visited.insert(rep_id) {
@@ -241,9 +238,7 @@ pub(crate) fn element_reaches_indexed_colour(
                 continue;
             }
             // IfcMappedItem.MappingSource -> IfcRepresentationMap.MappedRepresentation.
-            if let Some(map) = item.get_ref(0).and_then(|id| decoder.decode_by_id(id).ok()) {
-                reps.extend(map.get_ref(1));
-            }
+            reps.extend(mapped_item_representation_id(&item, decoder));
         }
     }
     false

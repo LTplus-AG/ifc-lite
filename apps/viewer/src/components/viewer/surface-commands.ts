@@ -9,7 +9,7 @@ import {
   Crosshair, FolderOpen, Home, Layers3, Maximize2, Orbit, Save,
   SquareStack, Sun, Tag,
 } from 'lucide-react';
-import { resolveEnglish } from '@/i18n/registry';
+import { resolve as t, resolveEnglish } from '@/i18n/registry';
 import { panelTitleKey } from '@/lib/panels/registry';
 import { useViewerStore } from '@/store';
 import { goHomeFromStore } from '@/store/homeView';
@@ -26,6 +26,7 @@ import { RIBBON_ELEMENTS_SURFACE_COMMANDS } from './surface-commands-elements-ri
 import { RIBBON_AUTHOR_SURFACE_COMMANDS } from './surface-commands-author-ribbon';
 import { MOBILE_SURFACE_COMMANDS } from './surface-commands-mobile';
 import { CONTEXT_SURFACE_COMMANDS, runContextOr } from './surface-commands-context';
+import { paletteAvailability, paletteToggleState } from './palette-availability';
 import { runSurfaceCommand } from './surface-command-run';
 export type { CommandSurface, SurfaceCommandContext, SurfaceCommandDefinition, SurfaceCommandState } from './surface-command-types';
 import type { CommandSurface, SurfaceCommandContext, SurfaceCommandDefinition, SurfaceCommandState } from './surface-command-types';
@@ -229,11 +230,17 @@ export function surfaceCommand(id: SurfaceCommandId, surface: CommandSurface): S
 export function paletteSurfaceCommands(
   state: SurfaceCommandState,
   execute: (code: string) => void,
-  context: Pick<SurfaceCommandContext, 'activateRightPanel' | 'activateBottomPanel'> = {},
+  context: Omit<SurfaceCommandContext, 'surface' | 'execute'> = {},
 ): Command[] {
   return SURFACE_COMMANDS
-    .filter((command) => command.surfaces.some((surface) => surface === 'palette') && command.enabled(state))
-    .map((command) => commandRowFromDefinition(command, { ...context, surface: 'palette', execute }));
+    .filter((command) => command.surfaces.some((surface) => surface === 'palette') && (command.enabled(state) || (!state.canEditInSession && command.enabled({ ...state, canEditInSession: true }))))
+    .map((command) => {
+      const fullContext: SurfaceCommandContext = { ...context, surface: 'palette', execute };
+      const checkAvailability = () => paletteAvailability(command, fullContext, undefined, state);
+      return { ...commandRowFromDefinition(command, fullContext),
+        availability: checkAvailability(), checkAvailability,
+        stateKey: paletteToggleState(command.id, useViewerStore.getState()) };
+    });
 }
 
 /** One row projection for the palette and mobile command menus. */
@@ -245,7 +252,7 @@ export function commandRowFromDefinition(
     id: command.id,
     label: command.searchLabel ?? resolveEnglish(command.labelKey),
     labelKey: command.labelKey,
-    keywords: command.keywords,
+    keywords: command.keywordsKey ? `${command.keywords} ${t(command.keywordsKey)}` : command.keywords,
     category: command.category,
     icon: command.icon,
     shortcut: command.shortcut,

@@ -23,6 +23,42 @@
 //! floating point; [`verify_recomposition`] bounds the residual and the unit
 //! tests assert it stays within a micrometre.
 //!
+//! A shard carries ONE positions pool, ONE normals pool and ONE index pool per
+//! template, so whatever the template holds is what every occurrence of its
+//! group receives. For a DIRECT solid the key is `compute_mesh_hash_full`, which
+//! has no equality guard behind it, so every per-vertex buffer the shard ships
+//! has to be IN that key: 128 bits bound collisions among the fields hashed and
+//! nothing else, and a buffer left out is not a rare collision but a certain one
+//! on every pair that differs only there. `normals` were left out, on the premise
+//! that they follow from `positions`; they do not, and the pair that proves it
+//! lost its normals to whichever member became the template (#8287). (A MAPPED
+//! occurrence's `rep_identity` is a RepresentationMap id, not that hash, and is
+//! safe for a different reason: every occurrence is a clone of one cached source
+//! mesh, so their pre-bake buffers are identical by construction.)
+//!
+//! #3716 established "verify, don't just re-key" for this key, and #8287 is the
+//! exception that proves the rule rather than a departure from it. There, two
+//! unrelated items COLLIDED: widening the hash would only have lowered the odds,
+//! while verification proves absence for the group in front of it. Here nothing
+//! collided. The key never read the field the two items differ in, so they are
+//! not an unlucky pair but every such pair, and reading the field is what fixes
+//! it. Verification cannot substitute, because the only normals the guard can see
+//! are BAKED: the baker runs the inverse-transpose of each occurrence's placement
+//! over them (`router::transforms::mesh_world`), so a group spanning two
+//! rotations has different baked normals by design and the renderer is right to
+//! rotate the template's pool by `rel`. A bitwise compare there would refuse that
+//! correct group, which
+//! `a_rotated_group_has_different_baked_normals_and_still_collates` runs and
+//! shows, and a tolerant compare would not separate #8287's pair at all, since
+//! the two openings share an `ObjectPlacement` and differ by ~1e-15. Hashing the
+//! normals while they are still LOCAL splits the pair into two correct templates
+//! instead of rejecting one group.
+//!
+//! What stays open, and is #3716's point: a genuine 128-bit collision between two
+//! same-shaped items whose normals differ still passes `verify_pairing`, because
+//! that check is positions-only and has to be. The key makes that the only
+//! remaining way, at content-addressing odds, rather than a certainty.
+//!
 //! `rep_identity` (a 128-bit geometry hash for direct items) is not proven
 //! collision-free, and a merged multi-model file has measured one (#3666):
 //! two unrelated occurrences shared a hash and one reconstructed up to 2m

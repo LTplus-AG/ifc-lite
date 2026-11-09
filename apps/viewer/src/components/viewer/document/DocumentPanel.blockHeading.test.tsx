@@ -92,7 +92,7 @@ describe('shared block heading controls (#6632)', () => {
       renderSvg: () => '', capture: null, theme: DEFAULT_THEME, now: () => new Date(0), imageSize: async () => ({ w: 2, h: 1 }),
     });
     const ui = render(<DocumentPanel pdfSeams={seams} />);
-    await settle();
+    await documentPreviewReady({ root: ui });
 
     for (const kind of KINDS) {
       const editor = ui.querySelector<HTMLElement>(`[data-block-kind="${kind}"]`);
@@ -150,7 +150,7 @@ describe('shared block heading controls (#6632)', () => {
 
   it('reset returns a heading to the default size, ink and strip on every kind', async () => {
     const ui = render(<DocumentPanel />);
-    await settle();
+    await documentPreviewReady({ root: ui });
     for (const kind of KINDS) {
       const editor = ui.querySelector<HTMLElement>(`[data-block-kind="${kind}"]`);
       assert.ok(editor);
@@ -176,7 +176,7 @@ describe('shared block heading controls (#6632)', () => {
     document.blocks.push({ kind: 'spacer', id: 'spacer', height: 10 }, { kind: 'page-break', id: 'break' });
     useViewerStore.setState({ documents: [document] });
     const ui = render(<DocumentPanel />);
-    await settle();
+    await documentPreviewReady({ root: ui });
     const editor = ui.querySelector<HTMLElement>('[data-block-kind="text"]');
     const input = editor?.querySelector<HTMLInputElement>('input[aria-label="Title text size"]');
     assert.ok(editor && input);

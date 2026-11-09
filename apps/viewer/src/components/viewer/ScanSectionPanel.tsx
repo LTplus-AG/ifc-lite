@@ -67,7 +67,7 @@ export function ScanSectionPanel({
             type="checkbox"
             checked={showScanSection}
             onChange={(e) => updateDisplayOptions({ showScanSection: e.target.checked })}
-            className="accent-teal-600"
+            className="accent-primary"
           />
         </label>
 
@@ -91,7 +91,7 @@ export function ScanSectionPanel({
             step={0.01}
             value={scanSectionThickness}
             onChange={(e) => updateDisplayOptions({ scanSectionThickness: Number(e.target.value) })}
-            className="h-1 accent-teal-600 cursor-pointer"
+            className="h-1 accent-primary cursor-pointer"
             title={t('scanSectionPanel.thicknessSliderTitle')}
           />
         </div>
@@ -108,7 +108,7 @@ export function ScanSectionPanel({
             step={0.05}
             value={scanSectionOpacity}
             onChange={(e) => updateDisplayOptions({ scanSectionOpacity: Number(e.target.value) })}
-            className="h-1 accent-teal-600 cursor-pointer"
+            className="h-1 accent-primary cursor-pointer"
           />
         </div>
 
@@ -118,7 +118,7 @@ export function ScanSectionPanel({
             type="checkbox"
             checked={scanSectionIncludeInExport}
             onChange={(e) => updateDisplayOptions({ scanSectionIncludeInExport: e.target.checked })}
-            className="accent-teal-600"
+            className="accent-primary"
           />
         </label>
 
@@ -131,7 +131,7 @@ export function ScanSectionPanel({
             type="checkbox"
             checked={scanSectionOutline}
             onChange={(e) => updateDisplayOptions({ scanSectionOutline: e.target.checked })}
-            className="accent-teal-600"
+            className="accent-primary"
           />
         </label>
 
@@ -148,7 +148,7 @@ export function ScanSectionPanel({
               step={0.01}
               value={scanSectionOutlineMaxGap}
               onChange={(e) => updateDisplayOptions({ scanSectionOutlineMaxGap: Number(e.target.value) })}
-              className="h-1 accent-teal-600 cursor-pointer"
+              className="h-1 accent-primary cursor-pointer"
               title={t('scanSectionPanel.outlineMaxGapTitle')}
             />
           </div>
@@ -165,7 +165,7 @@ export function ScanSectionPanel({
                   cell: formatLength(outline.diagnostics.cellSize),
                 })}
             {outline?.diagnostics.cellCapHit && (
-              <span className="block text-amber-600">{t('scanSectionPanel.outlineCapHitMessage')}</span>
+              <span className="block text-warn">{t('scanSectionPanel.outlineCapHitMessage')}</span>
             )}
           </output>
         )}

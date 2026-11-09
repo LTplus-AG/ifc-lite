@@ -40,6 +40,7 @@ const COLLAB_REL = 'apps/viewer/src/store/slices/collabSlice.ts';
 const MUTATION_REL = 'apps/viewer/src/store/slices/mutationSlice.ts';
 const WALL_RESIZE_REL = 'apps/viewer/src/store/slices/mutation-wall-resize.ts';
 const REMESH_REL = 'apps/viewer/src/lib/remesh/remesh-service.ts';
+const ROTATE_REL = 'apps/viewer/src/store/slices/mutation-rotate-entity.ts';
 // The recipient's reconstruct region moved here with #4444 (one model per slot).
 const RECONSTRUCT_REL = 'apps/viewer/src/lib/collab/room-reconstruct.ts';
 
@@ -47,6 +48,7 @@ const realCollab = readFileSync(join(ROOT, COLLAB_REL), 'utf8');
 const realMutation = readFileSync(join(ROOT, MUTATION_REL), 'utf8');
 const realWallResize = readFileSync(join(ROOT, WALL_RESIZE_REL), 'utf8');
 const realRemesh = readFileSync(join(ROOT, REMESH_REL), 'utf8');
+const realRotate = readFileSync(join(ROOT, ROTATE_REL), 'utf8');
 const realReconstruct = readFileSync(join(ROOT, RECONSTRUCT_REL), 'utf8');
 
 /**
@@ -54,10 +56,10 @@ const realReconstruct = readFileSync(join(ROOT, RECONSTRUCT_REL), 'utf8');
  * checker on it via `--root`. The checker only ever reads these files by
  * their fixed relative path, so nothing else needs to exist in the tree.
  */
-function runOn({ collab = realCollab, mutation = realMutation, wallResize = realWallResize, remesh = realRemesh, reconstruct = realReconstruct }) {
+function runOn({ collab = realCollab, mutation = realMutation, wallResize = realWallResize, remesh = realRemesh, rotate = realRotate, reconstruct = realReconstruct }) {
   const dir = mkdtempSync(join(tmpdir(), 'collab-room-model-target-'));
   try {
-    for (const [rel, content] of [[COLLAB_REL, collab], [MUTATION_REL, mutation], [WALL_RESIZE_REL, wallResize], [REMESH_REL, remesh], [RECONSTRUCT_REL, reconstruct]]) {
+    for (const [rel, content] of [[COLLAB_REL, collab], [MUTATION_REL, mutation], [WALL_RESIZE_REL, wallResize], [REMESH_REL, remesh], [ROTATE_REL, rotate], [RECONSTRUCT_REL, reconstruct]]) {
       const abs = join(dir, rel);
       mkdirSync(dirname(abs), { recursive: true });
       writeFileSync(abs, content);

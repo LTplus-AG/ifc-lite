@@ -145,3 +145,61 @@ export function quantizeInterleaved(
 
   return { vertexData: out, quantMin: [qminX, qminY, qminZ], step: QUANT_STEP };
 }
+
+/** Share of one entity's surface that may collapse on the lattice before its batch stays f32 (#9068). */
+export const MAX_COLLAPSED_AREA_FRACTION = 0.01;
+
+/**
+ * True when snapping a batch onto the lattice would visibly destroy shape:
+ * some entity loses more than `MAX_COLLAPSED_AREA_FRACTION` of its triangle
+ * area to triangles that become zero-area. Sub-millimetre slivers occur in
+ * most models and stay quantized; small round members (Ø≈2 mm rods, railing
+ * bars, thin pipes) collapse wholesale and must not (#9068).
+ *
+ * `quantMin` is lattice-aligned, so `round(p / QUANT_STEP)` is the node
+ * `quantizeInterleaved` writes; the integer cross product is exact.
+ */
+export function latticeCollapsesGeometry(
+  vertexData: Float32Array,
+  strideFloats: number,
+  indices: Uint32Array,
+): boolean {
+  const vertexCount = (vertexData.length / strideFloats) | 0;
+  const ids = new Uint32Array(vertexData.buffer, vertexData.byteOffset, vertexData.length);
+  const nodes = new Int32Array(vertexCount * 3);
+  for (let v = 0; v < vertexCount; v++) {
+    for (let axis = 0; axis < 3; axis++) nodes[v * 3 + axis] = Math.round(vertexData[v * strideFloats + axis] / QUANT_STEP);
+  }
+  // Merged batches keep each entity's triangles contiguous: accumulate a run,
+  // judge it when the entity changes (an entity split across runs is summed).
+  const totals = new Map<number, { area: number; collapsed: number }>();
+  let runId = -1, runArea = 0, runCollapsed = 0;
+  const flush = (): void => {
+    if (runId < 0) return;
+    const entry = totals.get(runId) ?? { area: 0, collapsed: 0 };
+    entry.area += runArea; entry.collapsed += runCollapsed;
+    totals.set(runId, entry);
+  };
+  for (let t = 0; t + 2 < indices.length; t += 3) {
+    const a = indices[t], b = indices[t + 1], c = indices[t + 2];
+    const pa = a * strideFloats, pb = b * strideFloats, pc = c * strideFloats;
+    const ux = vertexData[pb] - vertexData[pa], uy = vertexData[pb + 1] - vertexData[pa + 1], uz = vertexData[pb + 2] - vertexData[pa + 2];
+    const vx = vertexData[pc] - vertexData[pa], vy = vertexData[pc + 1] - vertexData[pa + 1], vz = vertexData[pc + 2] - vertexData[pa + 2];
+    const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+    const area = Math.sqrt(nx * nx + ny * ny + nz * nz);
+    if (!(area > 0)) continue;
+    const id = ids[pa + 6];
+    if (id !== runId) { flush(); runId = id; runArea = 0; runCollapsed = 0; }
+    runArea += area;
+    const na = a * 3, nb = b * 3, nc = c * 3;
+    const qux = nodes[nb] - nodes[na], quy = nodes[nb + 1] - nodes[na + 1], quz = nodes[nb + 2] - nodes[na + 2];
+    const qvx = nodes[nc] - nodes[na], qvy = nodes[nc + 1] - nodes[na + 1], qvz = nodes[nc + 2] - nodes[na + 2];
+    // Integer lattice offsets: every product is exact, so zero means collapsed.
+    if (quy * qvz - quz * qvy === 0 && quz * qvx - qux * qvz === 0 && qux * qvy - quy * qvx === 0) runCollapsed += area;
+  }
+  flush();
+  for (const { area, collapsed } of totals.values()) {
+    if (collapsed > area * MAX_COLLAPSED_AREA_FRACTION) return true;
+  }
+  return false;
+}

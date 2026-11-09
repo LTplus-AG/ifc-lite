@@ -27,7 +27,7 @@
  */
 
 import { readFile, writeFile } from 'node:fs/promises';
-import { parseLineageSidecar, rekeyByLineage, type RekeyPolicy } from '@ifc-lite/diff';
+import { initDiff, parseLineageSidecar, rekeyByLineage, type RekeyPolicy } from '@ifc-lite/diff';
 import { escapeCsvCell } from '@ifc-lite/export';
 import { fatal, getFlag, hasFlag, printJson } from '../output.js';
 
@@ -164,6 +164,7 @@ export async function rekeyCommand(args: string[]): Promise<void> {
   const policy = policyFlag as RekeyPolicy;
   const explicitOrphans = getFlag(args, '--orphans');
 
+  await initDiff();
   let lineage;
   try {
     lineage = parseLineageSidecar(await readFile(lineagePath, 'utf-8'));

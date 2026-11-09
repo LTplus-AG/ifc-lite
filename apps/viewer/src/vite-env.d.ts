@@ -6,10 +6,22 @@
 /// <reference types="unplugin-icons/types/react" />
 
 interface ImportMetaEnv {
+  /** Local OCI registry demo, using the development server's same-origin proxy. */
+  readonly VITE_REGISTRY_ENABLED?: string;
+  readonly VITE_REGISTRY_ADDRESS?: string;
   /** Enable reviewed model reports only after the report service is deployed and qualified. */
   readonly VITE_MODEL_REPORTS_ENABLED?: string;
+  /** Gaussian capture admission (#8568): unset = committed default, 'disabled' = kill switch, 'internal-unqualified' = presenter build. */
+  readonly VITE_GAUSSIAN_SPLATS?: string;
   /** Same-origin cookie-backed Dropbox and Microsoft cloud sign-in. */
   readonly VITE_CLOUD_HOSTED?: string;
+  /** 'false' removes the BIMcollab Documents source (it needs the /api/bimcollab relay). */
+  readonly VITE_SOURCE_BIMCOLLAB?: string;
+  /**
+   * buildagil OAuth client id. Set = the buildagil source is offered; the
+   * /api/buildagil relay needs the same id as server-only BUILDAGIL_CLIENT_ID.
+   */
+  readonly VITE_BUILDAGIL_CLIENT_ID?: string;
   readonly VITE_AUTODESK_CLIENT_ID?: string;
   readonly VITE_AUTODESK_HOSTED?: string;
   /** Server URL for IFC processing (also used by superset integration) */

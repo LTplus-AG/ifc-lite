@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "scripts/retained-compare/browser-pages.mjs",
+  "mutation": "tests/evidence/9375-corpus-fresh-pages/behaviour.oracle.patch",
+  "test": "scripts/retained-compare/browser-corpus-pages.test.mjs",
+  "why": "Reverse application keeps both exports the witness imports but drops the crash catch, the page close and the crashed-model filter, so one renderer crash aborts the whole browser corpus, a crashed page is never released, and corpus memory throws on a crashed model."
+}

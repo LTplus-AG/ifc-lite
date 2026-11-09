@@ -21,14 +21,19 @@ import type { ExtensionExporter } from '@/components/extensions/useExtensionExpo
 
 export type RightPanel =
   | 'bcf' | 'validation' | 'lens' | 'clash' | 'compare' | 'cost' | 'extensions' | 'layers'
-  | 'collab' | 'sources' | 'zones' | 'loadReport' | 'appearance' | 'pointclouds' | 'measurements' | 'changes' | 'model' | 'changeSets' | 'semantic' | 'review' | 'assistant' | 'idsStudio';
+  | 'collab' | 'sources' | 'zones' | 'loadReport' | 'appearance' | 'pointclouds' | 'measurements' | 'changes' | 'model' | 'changeSets' | 'semantic' | 'review' | 'assistant' | 'idsStudio' | 'influx';
+
+import type { SurfaceCommandContext } from './surface-command-types';
 
 export interface CommandPaletteBuildParams {
+  surfaceContext?: Omit<SurfaceCommandContext, 'surface'>;
   execute: (code: string) => void;
   recentFiles: RecentFileEntry[];
   cachedNames: React.MutableRefObject<Set<string>>;
   extensionCommands: SlotContribution<CommandContribution>[];
   extensionHost: ExtensionHostService | null;
+  /** A deferred row must not invoke a host replaced by its React provider. */
+  extensionHostIsCurrent?: () => boolean;
   canEditInSession: boolean;
   cesiumAvailable: boolean;
   activateRightPanel: (panel: RightPanel) => void;

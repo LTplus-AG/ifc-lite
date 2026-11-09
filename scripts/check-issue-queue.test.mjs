@@ -696,6 +696,15 @@ test('every unqueued issue is listed with ITS OWN reason, not one collapsed verd
 
 // ====================================================== identity spellings
 
+test('#8719: the release bot passes without an issue, but a similarly named contributor does not', () => {
+  const release = run(prPayload({ author: 'ifc-lite-release-bot', issues: [] }), ENFORCING);
+  assert.equal(release.code, 0, release.output);
+  assert.match(release.output, /EXEMPT_AUTHOR/);
+  const contributor = run(prPayload({ author: 'ifc-lite-release-bot-clone', issues: [] }), ENFORCING);
+  assert.equal(contributor.code, 1, contributor.output);
+  assert.match(contributor.output, /NO_LINKED_ISSUE/);
+});
+
 test('the three dependabot spellings all resolve to the same exemption', () => {
   // Measured on PR #3333: `gh pr list` says `app/dependabot`, GraphQL says
   // `dependabot`, REST says `dependabot[bot]`. A gate that only matched one
@@ -886,6 +895,6 @@ test('the workflow re-evaluates on edit and on (un)labelling', () => {
 
 test('the workflow runs THIS harness, so the gate is not the only thing checked', () => {
   const text = readFileSync(WORKFLOW, 'utf8');
-  assert.match(text, /node --test scripts\/check-issue-queue\.test\.mjs/);
+  assert.match(text, /node --test (?:--test-reporter[\w-]*=\S+ )*scripts\/check-issue-queue\.test\.mjs/);
   assert.match(text, /node scripts\/check-issue-queue\.mjs/);
 });

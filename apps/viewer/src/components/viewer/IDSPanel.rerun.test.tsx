@@ -27,6 +27,7 @@ import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import type { IDSDocument, IDSValidationReport } from '@ifc-lite/ids';
 import { IDSPanel } from './IDSPanel.js';
 import { captureAnalysisStamp, stampAnalysisReport } from '@/hooks/useAnalysisStaleness';
+import { findPanelAction, runPanelAction } from '@/test/panel-header.js';
 
 const initial = useViewerStore.getState();
 installLayout();
@@ -141,34 +142,32 @@ describe('IDSPanel re-run and split clear (#5816)', () => {
     assert.deepEqual(useViewerStore.getState().idsError, { labelKey: 'idsPanel.error.modelNoData' });
   });
 
-  it('clears results but keeps the IDS document loaded', () => {
+  it('clears results but keeps the IDS document loaded', async () => {
     useViewerStore.setState({ idsDocument: documentFixture, idsValidationReport: reportFor('model-a') });
     const ui = render(<IDSPanel />);
-    const clear = button(ui, 'Clear results');
-    assert.ok(clear, 'Clear results is offered once a report exists');
-    click(clear);
+    // A header action, inline or in More actions (#8802).
+    assert.ok(await findPanelAction(ui, 'Clear results'), 'Clear results is offered once a report exists');
+    await runPanelAction(ui, 'Clear results');
     const state = useViewerStore.getState();
     assert.equal(state.idsValidationReport, null);
     assert.equal(state.idsDocument, documentFixture, 'the document survives clearing results');
     assert.match(ui.textContent ?? '', /Run Validation/, 'back on the pre-run card');
   });
 
-  it('unloads the IDS document and its results together', () => {
+  it('unloads the IDS document and its results together', async () => {
     useViewerStore.setState({ idsDocument: documentFixture, idsValidationReport: reportFor('model-a') });
     const ui = render(<IDSPanel />);
-    const unload = button(ui, 'Unload IDS');
-    assert.ok(unload);
-    click(unload);
+    await runPanelAction(ui, 'Unload IDS');
     const state = useViewerStore.getState();
     assert.equal(state.idsValidationReport, null);
     assert.equal(state.idsDocument, null);
   });
 
-  it('offers neither Re-run nor Clear results before the first run', () => {
+  it('offers neither Re-run nor Clear results before the first run', async () => {
     useViewerStore.setState({ idsDocument: documentFixture, idsValidationReport: null });
     const ui = render(<IDSPanel />);
     assert.equal(button(ui, 'Re-run validation'), undefined);
-    assert.equal(button(ui, 'Clear results'), undefined);
-    assert.ok(button(ui, 'Unload IDS'));
+    assert.equal(await findPanelAction(ui, 'Clear results'), undefined);
+    assert.ok(await findPanelAction(ui, 'Unload IDS'));
   });
 });

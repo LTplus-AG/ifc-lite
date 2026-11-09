@@ -31,6 +31,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useViewerStore } from '@/store';
+import { hasRetainedShapeOnlyModel, RETAINED_SHAPE_ONLY_REASON } from '@/store/retainedGeometry';
 import { buildHiddenIfcTypes } from '@/store/typeVisibilityFilter';
 import { resolveExportVisibility } from '@/store/exportVisibility';
 import { posthog, trackExportCompleted } from '@/lib/analytics';
@@ -42,7 +43,8 @@ import { formatLoadError } from '@/lib/load-error-message';
 import { exportGlbFromGeometry } from '@/lib/export/glb';
 import { downloadBlob, modelExportFilename } from '@/lib/export/download';
 import { withInstancedMeshes } from '../../utils/instancedExport.js';
-import { displayedTranslation } from '@/lib/model-placement/state';
+import { resolveGlbSourceBytes } from './glb-export-source';
+import { exportableModels } from '@/lib/export/capture-export';
 import { useTranslation } from '@/i18n';
 import { ExportDialogShell, type ExportDialogShellResult } from './ExportDialogShell';
 type ColorSource = 'rendering' | 'shading';
@@ -88,10 +90,9 @@ export function GLBExportDialog({ surface, trigger }: GLBExportDialogProps) {
   // the flat apparent base colour. Default lit — most users expect shading.
   const [lit, setLit] = useState(true);
 
-  // Model list: federated models first, falling back to the legacy single
-  // model when nothing is registered. Mirrors ExportDialog.
+  // Federated models except captures (#8568), else the legacy single model. Mirrors ExportDialog.
   const modelList = useMemo(() => {
-    const list = Array.from(models.values()).map((m) => ({
+    const list = exportableModels(models).map((m) => ({
       id: m.id,
       name: m.name,
       geometryResult: m.geometryResult,
@@ -160,6 +161,11 @@ export function GLBExportDialog({ surface, trigger }: GLBExportDialogProps) {
   );
 
   const handleExport = useCallback(async (): Promise<ExportDialogShellResult> => {
+    // #8415: the dialog can stay open while the selected model changes kernels.
+    const live = useViewerStore.getState().models.get(selectedModelId);
+    if (live && hasRetainedShapeOnlyModel(new Map([[selectedModelId, live]]))) {
+      return { success: false, message: t(RETAINED_SHAPE_ONLY_REASON) };
+    }
     if (!selectedModel?.geometryResult) {
       return { success: false, message: t('geometryExport.glb.failedMessage', { reason: t('geometryExport.shared.unknownError') }) };
     }
@@ -176,41 +182,18 @@ export function GLBExportDialog({ surface, trigger }: GLBExportDialogProps) {
       // the Rust path emits exactly the meshes it is handed — this mirrors the
       // previous GLTFExporter `isMeshVisible` / `pickColor` semantics.
       //
-      // Fold in GPU-instanced occurrences (absent from geometryResult.meshes — they
-      // live in shards) for the primary model so the GLB isn't missing repeated
-      // geometry; the same visibility/colour filter below applies to them.
-      // Instancing is the PRIMARY model only (idOffset 0). Detect that by offset,
-      // not by the `__legacy__` id — a federated primary also has idOffset 0 but
-      // carries a real model id, and would otherwise lose its instanced
-      // occurrences from the export. Mirrors ExportDialog.tsx. (#1238 review)
+      // Include this model's GPU-instanced occurrences, which are absent from its flat mesh list.
       const federatedModel = models.get(selectedModelId);
       const idOffset = federatedModel?.idOffset ?? 0;
-      const sourceFile = federatedModel?.sourceFile;
 
-      // Prefer the FROM-BYTES exporter when it can express this export exactly:
-      // it re-meshes at full fidelity in Rust with rep-identity instancing
-      // (50-85% smaller on repetitive models) and bounded memory on large
-      // inputs. Requirements: rendering colours (shading substitution only
-      // exists on the viewer's MeshData), a plain .ifc source handle (cache
-      // restores have none; .ifcx/.ifczip go through different parsers), and
-      // the primary id space (idOffset 0) so node-extras expressIds stay
-      // consistent with the from-meshes output. Everything else keeps the
-      // from-meshes assembler over the meshes the viewer already holds.
-      // Re-meshing uses full fidelity; merged layers and manual workspace
-      // placement require the current meshes to preserve their content/frame.
-      const canUseSource =
-        !displayedTranslation(useViewerStore.getState().modelPlacement, selectedModelId).some((value) => value !== 0) &&
-        colorSource === 'rendering' &&
-        !mergeLayers &&
-        idOffset === 0 &&
-        !!sourceFile &&
-        /\.ifc$/i.test(sourceFile.name);
-
-      fromSourceBytes = canUseSource;
+      // Re-mesh the model's STEP bytes when that can express this export exactly,
+      // else assemble from the meshes the viewer already holds.
+      const readSourceBytes = resolveGlbSourceBytes(useViewerStore.getState(), selectedModelId, { colorSource, mergeLayers });
+      fromSourceBytes = readSourceBytes !== null;
 
       let glb: Uint8Array;
-      if (canUseSource) {
-        const bytes = new Uint8Array(await sourceFile.arrayBuffer());
+      if (readSourceBytes) {
+        const bytes = await readSourceBytes();
         // `null`/`undefined` (no filter) must stay distinct from an empty-but-active
         // filter all the way to the wasm boundary — collapsing them here silently
         // exported the whole model when isolation matched nothing (#4328 follow-up).

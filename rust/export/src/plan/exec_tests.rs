@@ -41,6 +41,34 @@ fn all_preserve_plan_changes_zero_records() {
 }
 
 #[test]
+fn ifc2x3_plan_output_places_one_product_per_placement() {
+    // #9209: IFC2X3 declares PlacesObject [1:1], so the second wall sharing #20 gets its own copy.
+    for schema in ["IFC2X3", "IFC4"] {
+        let shared = String::from_utf8(wall_with_own_pset(schema)).unwrap();
+        let wall = super::test_fixtures::wall(schema, 11, "Wall 2", 20);
+        // Before the DATA section's ENDSEC, not the header's.
+        let (head, tail) = shared.rsplit_once("ENDSEC;").unwrap();
+        let content = format!("{head}{wall}ENDSEC;{tail}").into_bytes();
+        let plan = ExportPlan { dispositions: vec![(ObjectRef::Id(10), Disposition::Preserve)], context: PlanContext::attributed() };
+        let mut out = Vec::new();
+        let report = execute(&content, &plan, &mut out).expect(schema);
+        let (before, after) = (entity_lines(&content), entity_lines(&out));
+        assert_eq!(report.written, after.len(), "{schema}");
+        let placement = |line: &str| line.split(',').nth(5).map(str::to_string);
+        if schema == "IFC4" {
+            assert_eq!(after, before, "{schema}: IFC4 allows a shared placement");
+            continue;
+        }
+        assert_eq!(after.len(), before.len() + 1, "{schema}: one copy");
+        assert_eq!(placement(&after[&10]).as_deref(), Some("#20"), "{schema}: the first wall keeps #20");
+        let copy: u32 = placement(&after[&11]).unwrap().trim_start_matches('#').parse().unwrap();
+        assert!(!before.contains_key(&copy), "{schema}: #11 names a new record");
+        let body = |line: &str| line.split_once('=').unwrap().1.to_string();
+        assert_eq!(body(&after[&copy]), body(&before[&20]), "{schema}: the copy says what #20 says");
+    }
+}
+
+#[test]
 fn same_plan_produces_byte_identical_output_twice() {
     let content = wall_with_own_pset("IFC4");
     let plan = ExportPlan {
@@ -1083,4 +1111,24 @@ fn two_overrides_of_one_property_write_one_member_8142() {
     let text = String::from_utf8(out).unwrap();
     assert_eq!(text.matches("'AAA'").count(), 0, "{text}");
     assert_eq!(text.matches("'BBB'").count(), 1, "{text}");
+}
+
+/// A built record is held until the export writes the file, so it must not
+/// carry `format!`'s doubling slack (1.98-2.00x the length on records of a
+/// few hundred bytes and up). Allows a few bytes over, since
+/// `String::with_capacity` only promises at least the requested capacity.
+#[test]
+fn built_records_carry_no_growth_slack() {
+    let tight = |record: &String| record.capacity() <= record.len() + 16;
+    let refs: Vec<String> = (0..5_000).map(|i| format!("#{i}")).collect();
+    let fields = [("GlobalId", "'g'".to_string()), ("Name", format!("({})", refs.join(",")))];
+    for id in [0, 7, 10, 99_999, u32::MAX] {
+        let record = super::attrs::build_record("IFC4", id, "IFCWALL", &fields);
+        assert!(record.starts_with(&format!("#{id}=IFCWALL('g',$,(#0,#1,")) && record.ends_with("#4999),$,$,$,$,$,$);"), "{record:.60}");
+        assert!(tight(&record), "#{id}: capacity {} for {} bytes", record.capacity(), record.len());
+    }
+    let long = "1.".repeat(10_000);
+    let value = super::props_synth::build_value_record("IFC4", 9, "IFCPROPERTYSINGLEVALUE", "P", "IFCLABEL", &long, None);
+    assert!(value.starts_with("#9=IFCPROPERTYSINGLEVALUE('P',$,IFCLABEL(1.1."), "{value:.60}");
+    assert!(tight(&value), "capacity {} for {} bytes", value.capacity(), value.len());
 }

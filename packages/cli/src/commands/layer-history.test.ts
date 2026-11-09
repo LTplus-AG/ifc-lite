@@ -4,7 +4,8 @@
 
 /** `layer bake|revert|log|diff` and `ref` command suites (split from layer.test.ts). */
 
-import { describe, expect, it } from 'vitest';
+import { initDiff } from '@ifc-lite/diff';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { IFCLITE_ATTR, computeStackHash } from '@ifc-lite/ifcx';
 import { extractStackState } from '@ifc-lite/merge';
 import { getRef, loadLayer, loadRefLayers } from './layer-store.js';
@@ -14,6 +15,9 @@ import { mergeIntoRef } from './layer-merge.js';
 import { bakeRef, logRef, rebaseLayerOnto, revertInRef } from './layer-history.js';
 import { createRef, listRefs, protectRef } from './ref.js';
 import { CLASS, FIRE, makeDelta, setupMain, tmpStore } from './layer-test-helpers.js';
+
+// #8042: these tests call synchronous hashing/merge APIs directly.
+beforeAll(async () => { await initDiff(); });
 
 describe('bake', () => {
   it('writes tombstone-free output', () => {

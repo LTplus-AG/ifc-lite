@@ -29,8 +29,8 @@ impl From<IfcClass> for ClassSpec {
 }
 
 impl NewPlacement {
-    /// At `matrix`, relative to the container's placement (or absolute
-    /// without one).
+    /// At `matrix`, relative to the placement of the product the object is
+    /// nested in, else its container's (or absolute with neither).
     pub fn new(matrix: [[f64; 4]; 4]) -> Self {
         Self { matrix, relative_to: None }
     }
@@ -160,6 +160,7 @@ impl NewObject {
             object_type: None,
             placement,
             container: None,
+            nest_in: None,
             type_link: None,
             representation: Representation::None,
             style: None,
@@ -193,6 +194,11 @@ impl NewObject {
 
     pub fn with_container(mut self, container: ObjectRef) -> Self {
         self.container = Some(container);
+        self
+    }
+
+    pub fn with_nest_in(mut self, host: ObjectRef) -> Self {
+        self.nest_in = Some(host);
         self
     }
 

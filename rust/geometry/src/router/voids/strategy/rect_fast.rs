@@ -1,0 +1,80 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+//! RectFast (stage B, after the facet weld): the analytic cellular cut of an
+//! axis-aligned box host whose openings are all axis-aligned rectangles.
+
+use super::super::{CutterKind, VoidContext};
+use crate::program::openings::execute::Execution;
+use crate::{Mesh, Point3};
+
+/// ANALYTIC FAST PATH: an axis-aligned box host whose openings are ALL
+/// axis-aligned rectangular through-cuts is subtracted analytically
+/// (`rect_fast`), skipping the exact mesh-arrangement kernel — the
+/// ~80 s memory-bandwidth-bound void-cut window's dominant cost. Pure
+/// optimization: any precondition miss (non-box host, mixed/non-rect
+/// openings, near-edge feature) returns `None` and the host falls through
+/// to the exact path unchanged. Fired BEFORE the dense-host subdivision
+/// (that workaround is only for the exact kernel).
+pub(in crate::router::voids) fn try_cut(
+    execution: &Execution,
+    host: &Mesh,
+    ctx: &VoidContext,
+    element_id: u32,
+    host_bounds: ((f32, f32, f32), (f32, f32, f32)),
+    tris_before: usize,
+) -> Option<Mesh> {
+    if !crate::rect_fast::enabled() {
+        return None;
+    }
+    let fast = execution.try_rect_fast(host, ctx)?;
+    // Same per-host cut-effect snapshot the exact path records, so
+    // fast-path hosts aren't missing from the diagnostics.
+    execution.record_host_cut_effect(
+        element_id,
+        tris_before,
+        fast.triangle_count(),
+        ctx.rect_opening_count(),
+        host_bounds,
+    );
+    Some(fast)
+}
+
+impl Execution {
+    /// Try the analytic rectangular-opening fast path. Returns the watertight
+    /// cut mesh iff EVERY merged opening is an axis-aligned `Rectangular`
+    /// through-cut and the host is a clean axis-aligned box; otherwise `None`
+    /// (→ the exact kernel handles it). A mixed opening set defers the whole
+    /// host rather than composing analytic + exact cuts.
+    fn try_rect_fast(&self, host: &Mesh, ctx: &VoidContext) -> Option<Mesh> {
+        let (wmn, wmx) = host.bounds();
+        let wall_min = Point3::new(wmn.x as f64, wmn.y as f64, wmn.z as f64);
+        let wall_max = Point3::new(wmx.x as f64, wmx.y as f64, wmx.z as f64);
+        let mut boxes: Vec<([f64; 3], [f64; 3])> =
+            Vec::with_capacity(ctx.merged_openings.len());
+        for op in &ctx.merged_openings {
+            match op {
+                CutterKind::Rectangular(omn, omx, dir) => {
+                    let (fmn, fmx) = match dir {
+                        Some(d) => self.extend_opening_along_direction(
+                            *omn, *omx, wall_min, wall_max, *d,
+                        ),
+                        None => (*omn, *omx),
+                    };
+                    boxes.push(([fmn.x, fmn.y, fmn.z], [fmx.x, fmx.y, fmx.z]));
+                }
+                _ => return None,
+            }
+        }
+        let mut stats = crate::rect_fast::RectFastStats::default();
+        let out = crate::rect_fast::subtract_rect_openings(host, &boxes, &mut stats);
+        self.record_rect_fast(&stats);
+        // The cellular cut conformingly splits EVERY face by ALL grid lines (so
+        // adjacent cells share edges → watertight), which over-fragments faces an
+        // opening doesn't reach. Run the result through the SAME coplanar merge
+        // the exact path uses (i_overlay union per plane) to collapse those back
+        // to minimal triangles; a merge that would tear a closed cut keeps the raw one.
+        out.map(crate::rect_fast::consolidate_keeping_closed)
+    }
+}

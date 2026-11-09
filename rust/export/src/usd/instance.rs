@@ -15,9 +15,7 @@
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 
-use ifc_lite_processing::{
-    process, process_geometry, InstanceRecord, MeshData, ProcessingRequest, ProcessingResult,
-};
+use ifc_lite_processing::{process, InstanceRecord, MeshData, ProcessingRequest, ProcessingResult};
 
 use super::emit::{write_display_material, write_geometry_body};
 use super::fmt::{fmt_matrix4d, indent_str};
@@ -30,8 +28,14 @@ pub(super) fn proto_name(template_express_id: u32) -> String {
 
 /// Run the geometry pipeline with #1623 don't-bake instancing enabled and collect the
 /// result (unbounded batches, default `retain_emitted_meshes` so templates survive).
-pub(super) fn run_instanced(content: &[u8]) -> ProcessingResult {
-    process(content, &ProcessingRequest::full_pass().instancing(true), &mut ())
+pub(super) fn run_instanced(content: &[u8], layer_slicing: bool) -> ProcessingResult {
+    process(
+        content,
+        &ProcessingRequest::full_pass()
+            .instancing(true)
+            .layer_slicing(layer_slicing),
+        &mut (),
+    )
 }
 
 /// Choose the geometry result. Returns `(result, use_instancing)`.
@@ -43,18 +47,18 @@ pub(super) fn run_instanced(content: &[u8]) -> ProcessingResult {
 /// an f32-overflowed transform, or one of the ambiguous multi-record / multi-submesh /
 /// mixed-geometry shapes the single-prototype-per-id emitter can't represent); the common
 /// case is a single pass.
-pub(super) fn gather(content: &[u8], instancing: bool) -> (ProcessingResult, bool) {
+pub(super) fn gather(content: &[u8], instancing: bool, layer_slicing: bool) -> (ProcessingResult, bool) {
     if !instancing {
-        return (process_geometry(content), false);
+        return (process(content, &ProcessingRequest::full_pass().layer_slicing(layer_slicing), &mut ()), false);
     }
-    let r = run_instanced(content);
+    let r = run_instanced(content, layer_slicing);
     if r.instances.is_empty() {
         return (r, false); // no repetition — the result is already complete
     }
     if all_instances_safe(&r) {
         (r, true)
     } else {
-        (process_geometry(content), false) // fallback: re-bake every occurrence
+        (process(content, &ProcessingRequest::full_pass().layer_slicing(layer_slicing), &mut ()), false) // fallback: re-bake every occurrence
     }
 }
 

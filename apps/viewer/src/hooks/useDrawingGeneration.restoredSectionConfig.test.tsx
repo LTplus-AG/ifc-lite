@@ -48,6 +48,7 @@ import { hasPersistedMarkupEntryFor, useDrawing2DPersistence } from './useDrawin
 import { useDrawingGeneration } from './useDrawingGeneration.js';
 import {
   saveDrawing2DEntry,
+  loadDrawing2DEntry,
   clearAllDrawing2DEntries,
 } from '@/store/slices/drawing2DSlice.persistence.js';
 import { placementSourceIdentity } from '@/lib/model-placement/source-identity';
@@ -291,4 +292,95 @@ describe('restore keeps an out-of-bounds saved cut (#8162)', () => {
       assert.ok(Math.abs(plane.position - expected) < 1e-9, `restored to ${plane.position} %, not ${expected} %`);
     });
   }
+});
+
+// A drawing generated for the untouched placeholder plane (the Section tool open
+// with no cut yet) saved that plane as the model's cut. The next restore, on a
+// reload or when the viewport remounted at a layout breakpoint, then turned it
+// into a real, cutting plane A that the user never made.
+describe('the placeholder plane is never saved as a cut', () => {
+  it('saves no cut for the placeholder, and a remount brings none back; a real cut is still saved', async () => {
+    const file = fileWithBytes(91, 'placeholder-cut.ifc');
+    const hash = (await placementSourceIdentity(file))!;
+    useViewerStore.setState({ models: new Map([['model-a', stubModel('model-a', file)]]) });
+    await mount();
+    await act(async () => { useViewerStore.getState().setActiveModel('model-a'); });
+    await restoreDecided('model-a');
+    assert.equal(useViewerStore.getState().sectionPlane.name, '', 'the fixture starts on the placeholder');
+
+    await act(async () => { await runGenerate!(); });
+    const saved = loadDrawing2DEntry(hash, useViewerStore.getState().drawing2DDisplayOptions);
+    assert.equal(saved !== undefined && saved !== null, true, 'the generation saved an entry, so the null below was written, not missing');
+    assert.equal(saved?.sectionConfig, null, 'no cut saved for a plane the user never made');
+
+    // The viewport remounting (a layout breakpoint) re-runs the restore.
+    const first = root!;
+    await act(async () => first.unmount());
+    container!.remove();
+    await mount();
+    await restoreDecided('model-a');
+    await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+    const plane = useViewerStore.getState().sectionPlane;
+    assert.equal(plane.name, '', 'no plane A appears');
+    assert.equal(plane.enabled, false, 'nothing starts cutting');
+
+    // Positive control: a cut the user made is still saved with the drawing.
+    await act(async () => { useViewerStore.getState().addSectionPlane('side'); });
+    await act(async () => { await runGenerate!(); });
+    const real = loadDrawing2DEntry(hash, useViewerStore.getState().drawing2DDisplayOptions);
+    assert.equal(real?.sectionConfig?.plane.axis, 'x', 'a real Side cut is saved');
+  });
+});
+
+// The placeholder is a Down plane at 50 %, so adding a Down cut there (or clearing
+// it) moves nothing and generates no new drawing; the saved cut must still follow.
+describe('a cut where the placeholder sat is saved without a new drawing', () => {
+  it('adding a Down cut at 50 % saves it; clearing it forgets it', async () => {
+    const file = fileWithBytes(92, 'down-at-50.ifc');
+    const hash = (await placementSourceIdentity(file))!;
+    useViewerStore.setState({ models: new Map([['model-a', stubModel('model-a', file)]]) });
+    await mount();
+    await act(async () => { useViewerStore.getState().setActiveModel('model-a'); });
+    await restoreDecided('model-a');
+    await act(async () => { await runGenerate!(); });
+    const entry = () => loadDrawing2DEntry(hash, useViewerStore.getState().drawing2DDisplayOptions);
+    const saved = () => entry()?.sectionConfig ?? null;
+    assert.equal(entry() !== undefined && entry() !== null, true, 'the generation saved an entry');
+    assert.equal(saved(), null, 'nothing saved for the placeholder');
+    // No drawing is generated below (the harness's drawing view is closed and nothing
+    // regenerates by hand), so every save after this is the placeholder-status path.
+    const drawn = lastDrawing;
+
+    const before = useViewerStore.getState().sectionPlane;
+    await act(async () => { useViewerStore.getState().addSectionPlane('down'); });
+    const after = useViewerStore.getState().sectionPlane;
+    assert.equal(`${after.axis} ${after.position}`, `${before.axis} ${before.position}`, 'the cut sits where the placeholder was');
+    assert.equal(saved()?.plane.axis ?? 'none', 'y', 'the Down cut is saved with the drawing already on screen');
+
+    await act(async () => { useViewerStore.getState().clearSectionPlanes(); });
+    assert.equal(saved(), null, 'clearing the cut forgets it');
+    assert.equal(lastDrawing === drawn, true, 'both saves came without generating a new drawing');
+  });
+});
+
+// Clearing a cut away from where the placeholder sits, with no drawing view open,
+// generates no drawing either; the saved cut must still be forgotten.
+describe('clearing any cut forgets it', () => {
+  it('a saved Side cut is forgotten when the planes are cleared, with no new drawing', async () => {
+    const file = fileWithBytes(93, 'side-cleared.ifc');
+    const hash = (await placementSourceIdentity(file))!;
+    useViewerStore.setState({ models: new Map([['model-a', stubModel('model-a', file)]]) });
+    await mount();
+    await act(async () => { useViewerStore.getState().setActiveModel('model-a'); });
+    await restoreDecided('model-a');
+    await act(async () => { useViewerStore.getState().addSectionPlane('side'); });
+    await act(async () => { await runGenerate!(); });
+    const saved = () => loadDrawing2DEntry(hash, useViewerStore.getState().drawing2DDisplayOptions)?.sectionConfig ?? null;
+    assert.equal(saved()?.plane.axis ?? 'none', 'x', 'the Side cut is saved');
+    const drawn = lastDrawing;
+
+    await act(async () => { useViewerStore.getState().clearSectionPlanes(); });
+    assert.equal(saved(), null, 'clearing the cut forgets it');
+    assert.equal(lastDrawing === drawn, true, 'no new drawing was generated');
+  });
 });

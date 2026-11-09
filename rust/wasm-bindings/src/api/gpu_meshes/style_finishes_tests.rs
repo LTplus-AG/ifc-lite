@@ -138,7 +138,7 @@ fn a_prepass_finish_reaches_the_mesh_built_from_its_item() {
     let api = IfcAPI::new();
     api.set_style_finishes(&ids, &wire);
     let installed = api.style_finishes_for(&ids).expect("installed for this style wire");
-    let colors = super::super::batch_partition::style_colors_from_wire(&ids, &colors);
+    let colors = ifc_lite_processing::prepass::style_colors_from_flat(&ids, &colors);
     let joined = BatchFinishes::new(Some(&installed), &colors)
         .for_meshes(&[mesh_from_item(Some(10)), mesh_from_item(Some(11))], &mut decoder);
 

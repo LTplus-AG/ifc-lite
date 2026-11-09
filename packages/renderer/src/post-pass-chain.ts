@@ -24,7 +24,8 @@
 import { AoPass } from './ao-pass.js';
 import type { WebGPUDevice } from './device.js';
 import { EdgePass } from './edge-pass.js';
-import { EdlPass, type EdlPassOptions } from './edl-pass.js';
+import type { EdlPass, EdlPassOptions } from './edl-pass.js';
+import { pointCloudSupport } from './point-cloud-support.js';
 import { SelectionMaskPass, type HoveredMesh, type SelectableMesh } from './selection-mask-pass.js';
 import type { InstancedMaskFrame } from './selection-mask-pipelines.js';
 import type { Mat4 } from './types.js';
@@ -66,12 +67,21 @@ export interface PostPassFrame {
 
 type PassName = 'ambient occlusion' | 'edges' | 'eye-dome lighting' | 'selection outline';
 
+/**
+ * Frames without any selection or hover before the outline's mask targets
+ * (three screen-sized textures, one 4x multisampled) are freed. Long enough
+ * that sweeping the pointer across gaps between elements does not reallocate
+ * them on every hover change.
+ */
+export const OUTLINE_IDLE_RELEASE_FRAMES = 120;
+
 export class PostPassChain {
   private ao: AoPass | null = null;
   private edges: EdgePass | null = null;
   private edl: EdlPass | null = null;
   private selectionMask: SelectionMaskPass | null = null;
   private readonly failed = new Set<PassName>();
+  private framesWithoutOutline = 0;
 
   constructor(
     private readonly device: WebGPUDevice,
@@ -127,6 +137,8 @@ export class PostPassChain {
       });
     }
 
+    this.framesWithoutOutline = needsOutline ? 0 : this.framesWithoutOutline + 1;
+    if (this.framesWithoutOutline === OUTLINE_IDLE_RELEASE_FRAMES) this.selectionMask?.releaseTargets();
     if (needsOutline && frame.selectionOutline) {
       this.selectionMask ??= this.build('selection outline', () =>
         new SelectionMaskPass(this.device, this.meshBindGroupLayout, this.sampleCount));
@@ -152,13 +164,21 @@ export class PostPassChain {
 
     // Eye-dome lighting runs last so it darkens every layer above uniformly.
     if (frame.edl) {
-      this.edl ??= this.build('eye-dome lighting', () => new EdlPass(this.device, this.sampleCount));
+      // EDL is requested only with point clouds loaded, so the support that
+      // created them is installed (`point-cloud-support.ts`).
+      const createEdl = pointCloudSupport()?.createEdlPass;
+      if (createEdl) this.edl ??= this.build('eye-dome lighting', () => createEdl(this.device, this.sampleCount));
       this.edl?.apply(
         frame.encoder,
         { targetView: frame.targetView, depthView: frame.depthView },
         { ...frame.edl, radiusPx: frame.edl.radiusPx * frame.pixelRatio },
       );
     }
+  }
+
+  /** Screen-sized post-pass targets currently allocated, for render-target telemetry. */
+  renderTargets(): (GPUTexture | null)[] {
+    return [...(this.ao?.renderTargets() ?? []), ...(this.selectionMask?.renderTargets() ?? [])];
   }
 
   private build<T>(name: PassName, create: () => T): T | null {

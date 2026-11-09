@@ -10,7 +10,7 @@
  */
 import { BlockHeading } from './BlockHeading';
 import { blockTitle } from '@/lib/document/block-title';
-import { idsBlockRequirementCheckRate, idsCheckBar, idsRequirementCheckRate, isUnmatchedIdsCheck, notCheckedIdsSpecifications, reportItemsCountKey } from '@/lib/document/ids-report-types';
+import { idsBlockRequirementCheckRate, idsCheckBar, idsRequirementCheckRate, isUnmatchedIdsCheck, notCheckedIdsSpecifications, reportItemsCountKey, idsRequirementRing } from '@/lib/document/ids-report-types';
 import { ValidationBenchmark } from '../validation/ValidationBenchmark';
 import { passRateBand } from '@ifc-lite/ids';
 import { reportStamp } from '@/lib/document/report-provenance';
@@ -90,11 +90,11 @@ function CompactRow({ name, passed, checked, rate, nested, error, warning, note 
   return (
     <li className={`flex items-center gap-2 ${nested ? 'text-2xs' : 'text-xs font-semibold'}`} data-ids-report-row>
       <span className="w-2/5 min-w-0 truncate" title={name}>
-        {warning && <span className="mr-1 rounded bg-amber-100 px-1 font-semibold text-amber-900" data-ids-report-warning>{t('document.preview.idsReportWarningTag')}</span>}
+        {warning && <span className="mr-1 rounded bg-amber-100 px-1 font-semibold text-warn" data-ids-report-warning>{t('document.preview.idsReportWarningTag')}</span>}
         {name}
       </span>
       {error !== undefined ? (
-        <span className="min-w-0 flex-1 truncate text-2xs text-red-700" title={error} data-ids-report-error>{t('document.preview.idsReportError', { error })}</span>
+        <span className="min-w-0 flex-1 truncate text-2xs text-danger" title={error} data-ids-report-error>{t('document.preview.idsReportError', { error })}</span>
       ) : note !== undefined ? (
         <span className="min-w-0 flex-1 truncate text-2xs text-neutral-500" data-ids-report-not-checked>{note}</span>
       ) : (
@@ -170,7 +170,7 @@ export function IdsReportPreview({ block, pointScale = 1 }: IdsReportPreviewProp
         </div>
         {stamp.models && <div className="text-2xs text-neutral-600" data-report-model-scope>{t('validationPanel.history.models', { models: stamp.models })}</div>}
       </>}
-      {block.benchmarks && <ValidationBenchmark summary={block.summary} name={block.sourceName} paper notCheckedSpecifications={notCheckedIdsSpecifications(block)} />}
+      {block.benchmarks && <ValidationBenchmark summary={block.summary} name={block.sourceName} paper notCheckedSpecifications={notCheckedIdsSpecifications(block)} requirementChecks={idsRequirementRing(block)} />}
       <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 rounded border border-neutral-200 bg-neutral-50 px-2 py-1.5">
         <Stat label={t('document.preview.idsReportChecked')} value={checked.toLocaleString(locale)} />
         <Stat label={t('document.preview.idsReportPassed')} value={passed.toLocaleString(locale)} />
@@ -199,13 +199,13 @@ export function IdsReportPreview({ block, pointScale = 1 }: IdsReportPreviewProp
                 <div className="flex items-baseline justify-between gap-2">
                   <span className={`min-w-0 ${cut} text-xs font-semibold`} title={check.shortDescription}>{check.shortDescription}</span>
                   {check.error !== undefined ? (
-                    <span className="min-w-0 truncate text-2xs text-red-700" title={check.error} data-ids-report-error>
+                    <span className="min-w-0 truncate text-2xs text-danger" title={check.error} data-ids-report-error>
                       {t('document.preview.idsReportError', { error: check.error })}
                     </span>
                   ) : (
                     <span className="shrink-0 text-2xs text-neutral-600">
                       {check.severity === 'warning' && (
-                        <span className="mr-1 rounded bg-amber-100 px-1 font-semibold text-amber-900" data-ids-report-warning>{t('document.preview.idsReportWarningTag')}</span>
+                        <span className="mr-1 rounded bg-amber-100 px-1 font-semibold text-warn" data-ids-report-warning>{t('document.preview.idsReportWarningTag')}</span>
                       )}
                       {unmatched ? t('manualValidation.verdict.unanswered') : <>
                         {check.checked.toLocaleString(locale)} · {check.passed.toLocaleString(locale)} / {check.failed.toLocaleString(locale)} · {checks

@@ -16,9 +16,9 @@
  * geometry). This pass instead:
  *  - also fires on a normal crease (a real angle, not a coplanar seam) and a
  *    depth silhouette, both in linear view-space units;
- *  - blends a coverage estimate over several tap directions (as the old pass
- *    already did for its id test, `edge4Count * 0.25`) instead of a single
- *    hard sample, so a line antialiases instead of dashing.
+ *  - tests every MSAA sample and darkens by the fraction of samples on a
+ *    line (any tap direction across an edge), so a line antialiases with
+ *    the geometry instead of dashing or stepping.
  */
 
 import { depthReconstructParams } from './depth-reconstruct.js';
@@ -51,15 +51,40 @@ export const EDGE_SILHOUETTE_REL_THRESHOLD = 0.01;
 /** Darkening never exceeds this, matching the old separation-line cap. */
 export const EDGE_MAX_DARKEN = 0.35;
 
+/**
+ * MSAA samples the pass tests per pixel on a multisampled target: the
+ * renderer's sample count (`pipeline.ts` caps it at 4, the only multisample
+ * count WebGPU guarantees). A single-sampled target tests its one sample.
+ */
+export const EDGE_SAMPLE_COUNT = 4;
+
+/**
+ * Darkening of a fully covered line pixel, per unit of intensity.
+ *
+ * The pass once darkened by the mean of its directions' 0/1 votes: 1 of 4 (or
+ * 3 of 8 at `high`) beside an axis-aligned edge, but on a sloped edge the
+ * stair-step pixels took a second vote and a one-sided normal fit misread
+ * pixels near the crease, so sloped lines, most lines in a perspective view,
+ * drew about four times darker than axis-aligned ones. Half the intensity
+ * (three quarters at `high`, the old 1.5 ratio) puts every line, at any
+ * angle, between the two: axis-aligned lines twice the old weight, sloped
+ * lines half their old average, and uniform along their length.
+ */
+export const EDGE_LINE_WEIGHT: Readonly<Record<EdgeQuality, number>> = {
+  low: 1 / 2,
+  high: 3 / 4,
+};
+
 /** Float offsets of the `EdgeParams` struct fields in `shaders/edges.wgsl.ts`. */
 export const EDGE_UNIFORM_LAYOUT = {
   depthParams: 0,
   xyParams: 4,
-  viewport: 8,
-  edge: 12,
+  shearParams: 8,
+  viewport: 12,
+  edge: 16,
 } as const;
 
-/** Byte size of `EdgeParams` (4 vec4s). */
+/** Byte size of `EdgeParams` (5 vec4s). */
 export const EDGE_UNIFORM_BYTES = (EDGE_UNIFORM_LAYOUT.edge + 4) * 4;
 
 export interface EdgeFrameParams {
@@ -81,6 +106,7 @@ export function packEdgeUniforms(out: Float32Array, frame: EdgeFrameParams): voi
   const L = EDGE_UNIFORM_LAYOUT;
   out.set(recon.depth, L.depthParams);
   out.set(recon.xy, L.xyParams);
+  out.set(recon.shear, L.shearParams);
   out[L.viewport] = frame.width;
   out[L.viewport + 1] = frame.height;
   out[L.viewport + 2] = 1 / frame.width;

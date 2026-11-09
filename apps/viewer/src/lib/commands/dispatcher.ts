@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /** One ordered keyboard listener for viewer commands (#5841). */
-import { eventKey, isTextEntryTarget } from '@/lib/keyboard-event';
+import { eventKey, isPressableTarget, isTextEntryTarget } from '@/lib/keyboard-event';
 import { chordOnPlatform, isApplePlatform, type KeyChord } from './chord';
 import { KEY_COMMANDS, type KeyCommandId, type KeyContext } from './keyboard-commands';
 
@@ -67,6 +67,10 @@ export function dispatchKeyboardDown(event: KeyboardEvent): string | null {
   if (event.defaultPrevented) return null;
   const key = eventKey(event);
   if (key === null) return null;
+  // Focused controls own their activation, including focus left by a mouse
+  // click. Apply this before every layer (and extension binding), not just
+  // individual tools, so a later fallback cannot steal the same key (#9233).
+  if ((key === 'enter' || key === ' ') && !event.ctrlKey && !event.metaKey && !event.altKey && isPressableTarget(event)) return null;
   const textEntry = isTextEntryTarget(event);
   const domLayer = openLayer();
   const overlay = domLayer === 'modal' || [...registrations].some((entry) => entry.layer === 'modal' && (entry.active?.() ?? true))

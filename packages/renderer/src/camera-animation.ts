@@ -98,6 +98,11 @@ export class CameraAnimator {
     this.presetViewRotation = 0;
   }
 
+  /** A timed pose tween has started and no update() has applied its final pose yet; needs no frame (inertia excluded). */
+  isTweening(): boolean {
+    return this.animationStartTime > 0 && this.animationDuration > 0;
+  }
+
   /**
    * Update camera animation and inertia
    * Returns true if camera is still animating
@@ -170,18 +175,7 @@ export class CameraAnimator {
           if (next !== null) this.state.orthoSize = next;
         }
         this.updateMatrices();
-
-        this.animationStartTime = 0;
-        this.animationDuration = 0;
-        this.animationStartPos = null;
-        this.animationEndPos = null;
-        this.animationStartTarget = null;
-        this.animationEndTarget = null;
-        this.animationStartUp = null;
-        this.animationEndUp = null;
-        this.animationStartOrthoSize = null;
-        this.animationEndOrthoSize = null;
-        this.animationEasing = null;
+        this.clearTween();
       }
     }
 
@@ -337,8 +331,8 @@ export class CameraAnimator {
   }
 
   /** Animate camera to position, target, and up vector (for orthogonal preset views). */
-  async animateToWithUp(endPos: Vec3, endTarget: Vec3, endUp: Vec3, duration = 500): Promise<void> {
-    if (duration <= 0) { this.reset(); applyImmediateCameraPose(this.state, endPos, endTarget, endUp, undefined, this.updateMatrices); return; }
+  async animateToWithUp(endPos: Vec3, endTarget: Vec3, endUp: Vec3, duration = 500, endOrthoSize?: number): Promise<void> {
+    if (duration <= 0) { this.reset(); applyImmediateCameraPose(this.state, endPos, endTarget, endUp, endOrthoSize, this.updateMatrices); return; }
     // Clear all velocities to prevent inertia from interfering with animation
     this.velocity.orbit.x = 0;
     this.velocity.orbit.y = 0;
@@ -352,8 +346,8 @@ export class CameraAnimator {
     this.animationEndPos = endPos;
     this.animationEndTarget = endTarget;
     this.animationEndUp = endUp;
-    this.animationStartOrthoSize = null;
-    this.animationEndOrthoSize = null;
+    this.animationStartOrthoSize = endOrthoSize !== undefined ? this.state.orthoSize : null;
+    this.animationEndOrthoSize = endOrthoSize ?? null;
     this.animationDuration = duration;
     this.animationStartTime = Date.now();
     this.animationEasing = this.easeOutCubic;
@@ -393,7 +387,14 @@ export class CameraAnimator {
    */
   reset(): void {
     this.stopInertia();
-    // Cancel any ongoing animations
+    this.clearTween();
+    // Reset preset view tracking
+    this.lastPresetView = null;
+    this.presetViewRotation = 0;
+  }
+
+  /** Drop the in-flight pose tween (finished, or cancelled by a reset). */
+  private clearTween(): void {
     this.animationStartTime = 0;
     this.animationDuration = 0;
     this.animationStartPos = null;
@@ -405,8 +406,5 @@ export class CameraAnimator {
     this.animationStartOrthoSize = null;
     this.animationEndOrthoSize = null;
     this.animationEasing = null;
-    // Reset preset view tracking
-    this.lastPresetView = null;
-    this.presetViewRotation = 0;
   }
 }

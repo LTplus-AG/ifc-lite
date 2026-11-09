@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { sectionExclusions, withSectionExclusions } from './section-exclusions.js';
+import { emptyBindGroup, sectionExclusions, withSectionExclusions } from './section-exclusions.js';
 /**
  * Selection/hover mask pass (#5390): draws the selected and hovered
  * meshes into two resolved targets the edge
@@ -41,16 +41,7 @@ import {
   type MaskPipelines,
 } from './selection-mask-pipelines.js';
 import { OPAQUE_VISIBILITY_GROUP } from './shaders/opaque-visibility.wgsl.js';
-
-/** The regular (non-instanced) mesh vertex layout `vs_main` reads. */
-const MESH_VERTEX_BUFFERS: GPUVertexBufferLayout[] = [{
-  arrayStride: 28,
-  attributes: [
-    { shaderLocation: 0, offset: 0, format: 'float32x3' },
-    { shaderLocation: 1, offset: 12, format: 'float32x3' },
-    { shaderLocation: 2, offset: 24, format: 'uint32' },
-  ],
-}];
+import { MESH_VERTEX_BUFFERS } from './instanced-vertex-layout.js';
 
 export interface SelectableMesh {
   vertexBuffer: GPUBuffer;
@@ -161,10 +152,12 @@ export class SelectionMaskPass {
         }],
         ...(visible ? { depthStencilAttachment: { view: frame.depthView, depthReadOnly: true, stencilReadOnly: true } } : {}),
       });
+      // Group 1 is padding in both mesh mask layouts; group 2 is padding unless geometric (#9060).
+      pass.setBindGroup(1, emptyBindGroup(this.device));
       if (visible && frame.geometricVisibility) {
         this.geometricPipelines ??= createGeometricMaskPipelines(this.device, this.meshBindGroupLayout, this.sampleCount);
         pass.setPipeline(this.geometricPipelines[kind]); pass.setBindGroup(OPAQUE_VISIBILITY_GROUP, frame.geometricVisibility);
-      } else pass.setPipeline(this.pipelines[kind]);
+      } else { pass.setPipeline(this.pipelines[kind]); pass.setBindGroup(OPAQUE_VISIBILITY_GROUP, emptyBindGroup(this.device)); }
       for (const mesh of meshes) {
         pass.setBindGroup(3, sectionExclusions(this.device).bindGroup);
         pass.setBindGroup(0, mesh.bindGroup);
@@ -236,7 +229,18 @@ export class SelectionMaskPass {
     return this.targets;
   }
 
-  private releaseTargets(): void {
+  /** The mask targets while allocated, for render-target telemetry. */
+  renderTargets(): (GPUTexture | null)[] {
+    const t = this.targets;
+    return [t?.visible ?? null, t?.all ?? null, t?.multisampledVisible ?? null];
+  }
+
+  /**
+   * Free the screen-sized mask targets (the next `encode` reallocates them).
+   * The post-pass chain calls this once nothing has been selected or hovered
+   * for a while, so an outline used once does not pin them for the session.
+   */
+  releaseTargets(): void {
     this.targets?.visible.destroy();
     this.targets?.all.destroy();
     this.targets?.multisampledVisible?.destroy();

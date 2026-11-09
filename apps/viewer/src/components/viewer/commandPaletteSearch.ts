@@ -45,6 +45,10 @@ interface CommandBase {
   /** Translated counterpart of `detail` — e.g. a tour's "{minutes} min". */
   detailKey?: TranslationKey;
   detailKeyParams?: TranslationParameters;
+  availability?: import('./palette-availability').PaletteAvailability;
+  /** Reads current prerequisites again at activation, including deferred frames. */
+  checkAvailability?: () => import('./palette-availability').PaletteAvailability;
+  stateKey?: TranslationKey;
   action: () => void;
   /**
    * Run the action synchronously in the click handler instead of deferring to the
@@ -58,11 +62,11 @@ interface CommandBase {
 /**
  * A static command has a registry id/name; runtime content declares its owner.
  * A registered row renders only its registry label (`RegisteredPaletteOption`),
- * so it cannot carry label parameters or a detail it would silently drop.
+ * while projected detail, toggle state and availability remain palette-owned.
  */
 export type Command = CommandBase & (
   | { registryOwned: true; labelKey: TranslationKey; runtimeSource?: never;
-      labelKeyParams?: never; detail?: never; detailKey?: never; detailKeyParams?: never }
+      labelKeyParams?: never }
   | { registryOwned?: never; runtimeSource: 'recent-file' | 'script-template' | 'tour' | 'extension-command' | 'extension-export';
       labelKey?: TranslationKey; labelKeyParams?: TranslationParameters }
 );
@@ -119,30 +123,25 @@ export function browseCommands(commands: readonly Command[], recentIds: readonly
 
 // ── Search scoring ─────────────────────────────────────────────────────
 
-/**
- * Score how well `query` matches `text`.
- *   0   = no match
- *   100 = exact substring
- *   50  = word-start initials
- *   1-25 = tight fuzzy (avg gap ≤ 5)
- */
+/** Semantic tiers leave recency to break ties, never to outrank a better match. */
 export function score(query: string, text: string): number {
-  const q = query.toLowerCase();
+  const q = query.trim().toLowerCase();
   const t = text.toLowerCase();
+  if (!q) return 0;
+  if (t === q) return 800;
+  if (t.startsWith(q)) return 700;
+  const words = t.split(/[\s_:,\u002F-]+/).filter(Boolean);
+  if (words.some(word => word.startsWith(q))) return 600;
 
-  // Exact substring
-  if (t.includes(q)) return 100;
-
-  // Word-start initials (e.g. "cs" → "Color Spaces")
-  const words = t.split(/[\s_:,\u002F-]+/);
-  let wi = 0, qi = 0;
-  while (wi < words.length && qi < q.length) {
-    if (words[wi].length > 0 && words[wi][0] === q[qi]) qi++;
-    wi++;
+  // Ordered word initials: "cs" finds "Color Spaces".
+  let qi = 0;
+  for (const word of words) {
+    if (word[0] === q[qi]) qi++;
+    if (qi === q.length) return 500;
   }
-  if (qi === q.length) return 50;
+  if (t.includes(q)) return 400;
 
-  // Tight fuzzy — reject if chars are scattered
+  // Tight subsequence fallback, below every direct metadata match.
   let lastIdx = -1, totalGap = 0;
   qi = 0;
   for (let i = 0; i < t.length && qi < q.length; i++) {
@@ -154,17 +153,35 @@ export function score(query: string, text: string): number {
   }
   if (qi < q.length) return 0;
   const avgGap = q.length > 1 ? totalGap / (q.length - 1) : 0;
-  if (avgGap > 5) return 0;
-  return Math.max(1, 25 - Math.round(avgGap * 3));
+  return avgGap > 5 ? 0 : Math.max(1, 25 - Math.round(avgGap * 3));
 }
 
-/** Rank a command against the search query. Label dominates. `displayLabel`
- *  is the rendered (translated) text, so a localized name matches too. */
-export function rankCommand(cmd: Command, query: string, displayLabel?: string): number {
-  const l = Math.max(score(query, cmd.label), displayLabel ? score(query, displayLabel) : 0);
-  const k = score(query, cmd.keywords) * 0.9;
-  const c = score(query, cmd.category) * 0.5;
-  return Math.max(l, k, c);
+/** Localized and English labels share tiers. Metadata cannot outrank a label. */
+export function rankCommand(cmd: Command, query: string, displayLabel?: string, displayCategory?: string): number {
+  const label = Math.max(score(query, cmd.label), score(query, displayLabel ?? ''));
+  const keywords = score(query, cmd.keywords);
+  const category = Math.max(score(query, cmd.category), score(query, displayCategory ?? ''));
+  return Math.max(label, keywords >= 400 ? 300 : keywords, category >= 400 ? 200 : category);
+}
+
+/** Equal matches use most-recent usage, then the original registry order. */
+export function searchCommands(
+  commands: readonly Command[], query: string, recentIds: readonly string[],
+  displayLabel: (command: Command) => string = command => command.label,
+  displayCategory: (command: Command) => string = command => command.category,
+): Command[] {
+  const recent = new Map(recentIds.map((id, index) => [id, index]));
+  const ranked = commands.map((cmd, index) => ({
+    cmd, index, rank: rankCommand(cmd, query, displayLabel(cmd), displayCategory(cmd)),
+  }));
+  // Direct label/metadata hits answer the query; loose subsequences only help
+  // recover a typo when there are no direct hits (#8946). Category hits start at 200.
+  const minimumRank = ranked.some(item => item.rank >= 200) ? 200 : 1;
+  return ranked.filter(item => item.rank >= minimumRank).sort((a, b) =>
+    b.rank - a.rank
+    || (recent.get(a.cmd.id) ?? Infinity) - (recent.get(b.cmd.id) ?? Infinity)
+    || a.index - b.index,
+  ).map(item => item.cmd);
 }
 
 // ── Recent usage ───────────────────────────────────────────────────────

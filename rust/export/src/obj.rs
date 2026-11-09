@@ -16,13 +16,15 @@
 
 use std::fmt::Write as _;
 
-use ifc_lite_processing::{process_geometry, MeshData, MeshFrame};
+use ifc_lite_processing::{process, MeshData, MeshFrame, ProcessingRequest};
 
 use crate::error::ExportError;
 use ifc_lite_geometry::math::frame::zup_to_yup;
 
 /// Options for OBJ export.
 pub struct ObjOptions {
+    /// Opt into material-layer wall slicing; default false.
+    pub layer_slicing: bool,
     /// Emit per-vertex normals (`vn` + `f a//na`). Most DCC tools expect them.
     pub include_normals: bool,
     /// Restrict to these express ids (isolation allowlist). `None` ⇒ no filter,
@@ -39,7 +41,12 @@ pub struct ObjOptions {
 
 impl Default for ObjOptions {
     fn default() -> Self {
-        Self { include_normals: true, isolated: None, hidden: Vec::new() }
+        Self {
+            layer_slicing: false,
+            include_normals: true,
+            isolated: None,
+            hidden: Vec::new(),
+        }
     }
 }
 
@@ -83,7 +90,11 @@ pub fn export_obj(content: &[u8], opts: &ObjOptions) -> Result<String, ExportErr
 
 /// Like [`export_obj`] but also returns coverage stats.
 pub fn export_obj_with_stats(content: &[u8], opts: &ObjOptions) -> Result<(String, ObjStats), ExportError> {
-    let result = process_geometry(content);
+    let result = process(
+        content,
+        &ProcessingRequest::full_pass().layer_slicing(opts.layer_slicing),
+        &mut (),
+    );
     let (obj, stats) = write_obj_in(&result.meshes, result.frame, opts);
     crate::error::require_render_geometry(stats.meshes)?;
     Ok((obj, stats))

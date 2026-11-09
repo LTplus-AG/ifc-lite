@@ -24,9 +24,10 @@ import {
   rebaseOriginByRtcDelta,
   rtcRebaseDeltaFor,
 } from '@ifc-lite/geometry/rtc-rebase';
-import { chooseSharedRtcOffset, federationFrameInfo } from '@ifc-lite/geometry/world-frame';
+import { chooseSharedRtcOffset } from '@ifc-lite/geometry/world-frame';
 import type { Vec3 } from '@ifc-lite/geometry';
 import { toast } from '@/components/ui/toast';
+import { sharedRenderFrame } from '@/lib/render-frame/sharedRenderFrame';
 import { useViewerStore, type FederatedModel } from '../../store/index.js';
 import type { PreAlignmentSnapshot } from '../../store/index.js';
 import { invalidateSpatialIndex } from '../../utils/loadingUtils.js';
@@ -40,7 +41,7 @@ import { isLandXmlSchema } from './landXmlSemantics.js';
  * far would split it; it is converged when its own load settles.
  */
 function hasSettledGeometry(model: FederatedModel): boolean {
-  return model.geometryResult != null
+  return !model.gaussianSplat && model.geometryResult != null
     && model.loadState !== 'pending'
     && model.loadState !== 'streaming-geometry'
     && model.loadState !== 'error';
@@ -74,7 +75,7 @@ function adoptMeshlessLandXmlFrame(
   settled: ReadonlyArray<readonly [string, FederatedModel]>,
 ): string[] {
   const meshBearing = settled.filter(([, model]) => (model.geometryResult?.meshes.length ?? 0) > 0);
-  const frame = federationFrameInfo(meshBearing.map(([, model]) => model));
+  const frame = sharedRenderFrame(meshBearing.map(([, model]) => model));
   if (!frame) return [];
   const adopted: string[] = [];
   for (const [modelId, model] of settled) {

@@ -6,6 +6,7 @@
  * Mutation slice - manages property/quantity mutations for IFC export
  */
 
+import { mirrorNewRoofDefinition } from './mutation-roof.js';
 import { type StateCreator } from 'zustand';
 import type { ViewerState } from '../index.js';
 import type { MutablePropertyView, NewEntity, IfcAttributeValue } from '@ifc-lite/mutations';
@@ -38,9 +39,9 @@ import {
 } from '@ifc-lite/create';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import type { MeshData } from '@ifc-lite/geometry';
-import { getEntityCenter, unionEntityBounds } from '@/utils/viewportUtils';
+import { unionEntityBounds } from '@/utils/viewportUtils';
 import { toGlobalIdFromModels } from '../globalId.js';
-import { geometryForOwningModel, meshesForOwningModel } from '../owningModelMeshes.js';
+import { geometryForOwningModel } from '../owningModelMeshes.js';
 import { modelRotationBaker } from '../../lib/model-placement/rotation-bake.js';
 import type { AuthoredElement } from './authoredElement.js';
 import { completeAuthoredGeometry, revealAddedGeometryInModelView } from './authoredGeometryCompletion.js';
@@ -51,6 +52,7 @@ import { copyElements, copySources, withHostedFillings } from '@/lib/commands/mo
 import { newMutationBatchId } from './mutation-batch-tags.js';
 import { remeshAfterCommit } from '@/lib/remesh/remesh-registry';
 import { remeshGridPlacementAfterCommit } from './mutation-grid-remesh';
+import { presentEntityRotation, rotateImplicitRefEntity } from './mutation-rotate-entity.js';
 
 export type { AuthoredElement };
 import { createCostUndoMutations, type CostUndoMethods } from './mutation-cost-undo.js';
@@ -61,6 +63,7 @@ import { invalidateHistoryPatch } from './mutation-redo-remote-guard.js';
 import {
   resolvePlacementChain,
   resolveRotationState,
+  verticalRefDirectionRefusal,
   resolveWallEditChain,
   projectOntoWallAxis,
 } from '@/lib/placement-edit.js';
@@ -664,7 +667,7 @@ export interface MutationSlice extends CostUndoMethods {
     storeyExpressId: number,
     params: SpaceInStoreParams,
   ) => { expressId: number } | { error: string };
-  /** Add an IfcRoof (flat roof) — slab-like rectangle or polygon. */
+  /** Add an IfcRoof: a flat slab-like rectangle or polygon, or a roof by footprint with EdgeSlopes. */
   addRoof: (
     modelId: string,
     storeyExpressId: number,
@@ -889,6 +892,7 @@ function recordAuthoredElementIn(
   options: { historyRecorded?: boolean } = {},
 ): void {
   const ifcType = authoredIfcType(element);
+  if (element.kind === 'roof') mirrorNewRoofDefinition(get(), modelId, entityId, view);
 
   // Make the authored element a first-class citizen immediately: register it in
   // the spatial hierarchy so it appears in the spatial tree under its storey and
@@ -1404,40 +1408,24 @@ export const createMutationSlice: StateCreator<
     const dataStore = get().models.get(modelId)?.ifcDataStore;
     if (view && dataStore) {
       const editor = getOrCreateStoreEditor(get, set, modelId);
-      // resolveRotationState gives the current angle + whether RefDirection is
-      // explicit. When implicit we refuse (materialising a fresh IfcDirection
-      // needs multi-mutation atomic undo). Every in-store builder emits an
-      // explicit RefDirection, so that only trips on hand-rolled entities.
+      // An implicit RefDirection (`$`) is materialised from the frame the
+      // renderer draws, then turned, as one undo step (#8446).
       const state = editor ? resolveRotationState(dataStore, view, editor, expressId) : null;
       if (state && state.refDirectionId === null) {
-        return {
-          ok: false,
-          reason:
-            'Entity has an implicit reference direction (no IfcDirection on its axis placement). Rotation would require materialising a new IfcDirection, which isn\'t undoable yet.',
-        };
+        return rotateImplicitRefEntity(api, get, modelId, expressId, deltaYaw);
       }
       if (state && state.refDirectionId !== null) {
+        const vertical = verticalRefDirectionRefusal(state);
+        if (vertical) return { ok: false, reason: vertical };
         const newYaw = state.yawZ + deltaYaw;
+        const inPlane = Math.hypot(state.refDirection[0], state.refDirection[1]);
         const newRatios: [number, number, number] = [
-          Math.cos(newYaw),
-          Math.sin(newYaw),
+          inPlane * Math.cos(newYaw),
+          inPlane * Math.sin(newYaw),
           state.refDirection[2],
         ];
         const mutation = get().setPositionalAttribute(modelId, state.refDirectionId, 0, newRatios);
-        if (!remeshGridPlacementAfterCommit(get, modelId, expressId, mutation)) {
-          // Live-rotate the rendered mesh about its bbox centre (IFC yaw about Z
-          // = renderer yaw about +Y, same angle).
-          const globalId = toGlobalIdFromModels(get().models, modelId, expressId);
-          const meshes = meshesForOwningModel(get(), modelId);
-          const c = getEntityCenter(meshes, globalId);
-          if (c) {
-            get().setPendingMeshRotations(
-              new Map([[globalId, { angle: deltaYaw, pivot: [c.x, c.y, c.z] as [number, number, number] }]]),
-            );
-          }
-        }
-        // Mirror to peers as the entity's placement (`usd::xformop` refDirection).
-        get().mirrorPlacementEdit(modelId, expressId, [0, 0, 0], deltaYaw);
+        presentEntityRotation(get, modelId, expressId, deltaYaw, mutation);
         return { ok: true, newYawZ: newYaw };
       }
     }

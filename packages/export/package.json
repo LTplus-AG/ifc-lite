@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/export",
-  "version": "4.13.0",
+  "version": "4.13.3",
   "description": "Export formats for IFC-Lite",
   "type": "module",
   "main": "./dist/index.js",
@@ -19,22 +19,23 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@ifc-lite/geometry": "workspace:^",
     "@ifc-lite/codegen": "workspace:^",
     "@ifc-lite/data": "workspace:^",
     "@ifc-lite/encoding": "workspace:^",
-    "@ifc-lite/parser": "workspace:^",
+    "@ifc-lite/geometry": "workspace:^",
+    "@ifc-lite/ifcx": "workspace:^",
     "@ifc-lite/mutations": "workspace:^",
-    "parquet-wasm": "^0.9.0",
+    "@ifc-lite/parser": "workspace:^",
     "apache-arrow": "^21.2.0",
     "fflate": "^0.8.3",
-    "@ifc-lite/ifcx": "workspace:^"
+    "parquet-wasm": "^0.9.0"
   },
   "devDependencies": {
     "@ifc-lite/wasm": "workspace:^",
+    "@mergifyio/vitest": "^2026.10.11",
     "jszip": "^3.10.2",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.3"
+    "vitest": "^5.0.5"
   },
   "license": "MPL-2.0",
   "author": "Louis True",

@@ -17,10 +17,12 @@
  * but healthy product.
  */
 
-import type { CoordinateInfo, MeshData, StreamingGeometryEvent } from '@ifc-lite/geometry';
+import type { CoordinateInfo, StreamingGeometryEvent } from '@ifc-lite/geometry';
 import { calculateMeshBounds, createCoordinateInfo } from '@/utils/localParsingUtils';
-import type { RetainedGeometrySummary, RetainedUnpublishedRow } from '@/store/retainedGeometry';
+import type { RetainedFaceRow, RetainedGeometrySummary, RetainedUnpublishedRow } from '@/store/retainedGeometry';
 import type { RetainedHostEvent, RetainedStart } from './retained-protocol';
+import { recordRetainedPublication } from './retainedPublication';
+export { faceRows } from './retainedFaces';
 
 /** The host client surface the source drives (`RetainedClient`, or a protocol fixture). */
 export interface RetainedRunner {
@@ -48,7 +50,7 @@ export interface RetainedSourceOptions {
 
 export const RETAINED_STARTUP_BUDGET_MS = 60_000;
 export const RETAINED_PRODUCT_BUDGET_MS = 30_000 + 5_000;
-const SUMMARY_INTERVAL_MS = 250;
+const SUMMARY_INTERVAL_MS = 1_000;
 
 /** The host went silent past its budget. Never a resource-limit kind: no tier retry, no exact fallback. */
 export class RetainedStallError extends Error {
@@ -68,11 +70,14 @@ interface Accumulator {
   bounds: ReturnType<typeof calculateMeshBounds>['bounds'] | null;
   frame: RetainedStart['frame'] | null;
   meshes: number;
+  faces: Map<number, RetainedFaceRow[]>;
 }
 
 function snapshot(acc: Accumulator): RetainedGeometrySummary {
-  return { ...acc.summary, refused: [...acc.summary.refused], obligationsUnmet: [...acc.obligations].sort() };
+  return { ...acc.summary, refused: [...acc.summary.refused], obligationsUnmet: [...acc.obligations].sort(),
+    ...(acc.faces.size > 0 ? { faces: Object.fromEntries(acc.faces) } : {}) };
 }
+
 
 function unpublished(acc: Accumulator, row: RetainedUnpublishedRow): void {
   acc.received.add(row.expressId);
@@ -102,16 +107,6 @@ function coordinateInfo(acc: Accumulator): CoordinateInfo {
     ...(frame.needsShift ? { wasmRtcOffset: { x, y, z } } : {}),
     wasmRtcFrame: { x, y, z, needsShift: frame.needsShift },
   };
-}
-
-function grow(acc: Accumulator, meshes: MeshData[]): void {
-  if (meshes.length === 0) return;
-  const { bounds } = calculateMeshBounds(meshes);
-  if (!acc.bounds) { acc.bounds = bounds; return; }
-  for (const axis of ['x', 'y', 'z'] as const) {
-    acc.bounds.min[axis] = Math.min(acc.bounds.min[axis], bounds.min[axis]);
-    acc.bounds.max[axis] = Math.max(acc.bounds.max[axis], bounds.max[axis]);
-  }
 }
 
 type Pulled = { event: RetainedHostEvent } | { done: true } | { idle: true };
@@ -148,23 +143,27 @@ export async function* retainedGeometryEvents(
 ): AsyncGenerator<StreamingGeometryEvent> {
   const acc: Accumulator = {
     summary: { kernel: 'retained', candidates: 0, published: 0, refused: [], cancelled: 0, obligationsUnmet: [], completeness: 'running' },
-    candidateIds: new Uint32Array(), received: new Set(), obligations: new Set(), bounds: null, frame: null, meshes: 0,
-  };
-  // Every product would otherwise copy the whole row list into the store: at
-  // most one mid-run summary per interval, and every boundary at once.
-  let lastReport = -Infinity;
-  let unreported = false;
-  const report = (throttled = false) => {
-    const now = performance.now();
-    if (throttled && now - lastReport < SUMMARY_INTERVAL_MS) { unreported = true; return; }
-    lastReport = now;
-    unreported = false;
-    options.onSummary(snapshot(acc));
+    candidateIds: new Uint32Array(), received: new Set(), obligations: new Set(), bounds: null, frame: null, meshes: 0, faces: new Map(),
   };
   const phase = () => options.onPhase?.({
     phase: 'products', done: acc.received.size, candidates: acc.summary.candidates,
     refused: acc.summary.refused.length - acc.summary.cancelled,
   });
+  // Each store write commits React on the main thread, and every product would otherwise
+  // copy the whole row list too: Holter's 61,201 products would spend the main thread on
+  // progress (#7955). At most one mid-run summary and phase per interval; every boundary at once.
+  let lastReport = -Infinity;
+  let unreported = false;
+  const report = () => {
+    lastReport = performance.now();
+    unreported = false;
+    options.onSummary(snapshot(acc));
+  };
+  const productReport = () => {
+    if (performance.now() - lastReport < SUMMARY_INTERVAL_MS) { unreported = true; return; }
+    report();
+    phase();
+  };
   const heartbeatMs = options.heartbeatMs ?? 1_000;
   const iterator = runner.run(bytes, { signal: options.signal });
   const pending: { next?: Promise<IteratorResult<RetainedHostEvent>>; since: number } = { since: performance.now() };
@@ -187,13 +186,16 @@ export async function* retainedGeometryEvents(
         throw error;
       }
       if ('idle' in pulled) {
-        if (unreported) report();
+        if (unreported) productReport();
         yield { type: 'progress', phase: 'workers' };
         continue;
       }
       if ('done' in pulled) break;
       const event = pulled.event;
       switch (event.kind) {
+        case 'progress':
+          yield { type: 'progress', phase: 'workers' };
+          break;
         case 'start': {
           started = true;
           acc.candidateIds = event.candidateIds;
@@ -206,14 +208,9 @@ export async function* retainedGeometryEvents(
           break;
         }
         case 'published': {
-          acc.received.add(event.expressId);
-          acc.summary.published++;
-          for (const obligation of event.obligationsUnmet) acc.obligations.add(obligation);
-          grow(acc, event.meshes);
-          acc.meshes += event.meshes.length;
-          report(true);
-          yield { type: 'batch', meshes: event.meshes, totalSoFar: acc.meshes, coordinateInfo: coordinateInfo(acc) };
-          phase();
+          recordRetainedPublication(acc, event);
+          productReport();
+          yield { type: 'batch', meshes: event.meshes, instancedShards: event.instancedShards, totalSoFar: acc.meshes, coordinateInfo: coordinateInfo(acc) };
           break;
         }
         case 'refused':
@@ -222,8 +219,7 @@ export async function* retainedGeometryEvents(
             ...(event.origin ? { origin: event.origin } : {}),
             ...(event.kernelStatus !== undefined ? { kernelStatus: event.kernelStatus } : {}),
           });
-          report(true);
-          phase();
+          productReport();
           break;
         case 'cancelled':
           unpublished(acc, { expressId: event.expressId, ifcType: '', code: 'cancelled' });
@@ -232,6 +228,7 @@ export async function* retainedGeometryEvents(
           options.onWorkerMemory?.(event.wasmHeapBytes);
           break;
         case 'complete':
+          phase();
           closeRun(acc);
           finished = true;
           report();

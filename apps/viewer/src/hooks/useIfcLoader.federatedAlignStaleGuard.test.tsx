@@ -79,6 +79,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { useViewerStore, type FederatedModel } from '@/store';
 import { createMinimalGlbDataStore } from './ingest/viewerModelIngest.js';
 import { createCoordinateInfo } from '../utils/localParsingUtils.js';
+import { findReferenceSpatialModel } from './ingest/federationAlign.js';
 import { useIfcLoader } from './useIfcLoader.js';
 
 // ─── A real, minimal GLB fixture (mirrors useIfcLoader.federatedIdOffset.test.tsx) ──
@@ -292,3 +293,36 @@ describe('useIfcLoader — a superseded federated add must not overwrite the sto
     assert.equal(useViewerStore.getState().geometryResult, geometryAfterB, "load B's geometry must be untouched by A's discarded finalize");
   });
 });
+
+describe('useIfcLoader — a model aligned at load records the reference it was aligned into (#9229)', () => {
+  it('hands the finalized alignment reference to the model it adds, so later rebuilds map into the meshes\' frame', async () => {
+    const anchor: FederatedModel = {
+      id: 'ref-model', name: 'anchor.glb', ifcDataStore: createMinimalGlbDataStore(new ArrayBuffer(0), 0),
+      geometryResult: { meshes: [], totalVertices: 0, totalTriangles: 0,
+        coordinateInfo: createCoordinateInfo({ min: { x: 0, y: 0, z: 0 }, max: { x: 0, y: 0, z: 0 } }) },
+      visible: true, collapsed: false, schemaVersion: 'IFC4', loadedAt: 1, fileSize: 0, idOffset: 0, maxExpressId: 0,
+    };
+    useViewerStore.getState().addModel(anchor);
+    // One shared CRS, so the load aligns synchronously ('same-crs'), 10 m apart.
+    const crs = { name: 'EPSG:2056', verticalDatum: 'EPSG:5729', mapUnit: 'METRE', mapUnitScale: 1 };
+    useViewerStore.setState({
+      georefMutations: new Map([
+        ['ref-model', { projectedCRS: crs, mapConversion: { eastings: 2_600_000, northings: 1_200_000, orthogonalHeight: 0,
+          xAxisAbscissa: 1, xAxisOrdinate: 0, scale: 1 } }],
+        ['model-a', { projectedCRS: crs, mapConversion: { eastings: 2_600_010, northings: 1_200_000, orthogonalHeight: 0,
+          xAxisAbscissa: 1, xAxisOrdinate: 0, scale: 1 } }],
+      ]),
+    } as Partial<ReturnType<typeof useViewerStore.getState>>);
+    const reference = findReferenceSpatialModel();
+    assert.equal(reference?.modelId, 'ref-model', 'fixture: the anchor the load aligns into');
+
+    await act(async () => {
+      await hookApi!.loadFile(glbFile('aligned.glb', 7), { kind: 'federated', modelId: 'model-a' });
+    });
+
+    const loaded = useViewerStore.getState().models.get('model-a');
+    assert.equal(loaded?.federationAlignmentStatus, 'same-crs', 'fixture: the load re-baked the model into the anchor frame');
+    assert.deepEqual(loaded?.alignmentReference, reference!.placement, 'the added model carries the reference its meshes are in');
+  });
+});
+

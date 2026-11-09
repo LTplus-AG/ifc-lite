@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { OpeningRelationshipBuilder } from './opening-relationship-builder.js';
 import type { EntityMetadata } from '../types.js';
@@ -121,5 +122,50 @@ describe('OpeningRelationshipBuilder', () => {
     const info = relationships.openingInfo.get(10);
     expect(info?.type).toBe('window');
     expect(info?.windowPartitioning).toBe('DOUBLE_PANEL_HORIZONTAL');
+  });
+});
+
+// #8232: the door's operation is the occurrence's unless that is NOTDEFINED/absent, then the type's.
+describe('OpeningRelationshipBuilder door operation source (#8232)', () => {
+  const opening = { ifcType: 'IfcOpeningElement', bounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 2 } } };
+  const operationOf = (door: EntityMetadata) =>
+    new OpeningRelationshipBuilder(new Map<number, EntityMetadata>([[10, opening], [20, door]]))
+      .addVoidRelationships([{ hostId: 1, openingId: 10 }])
+      .addFillRelationships([{ openingId: 10, elementId: 20 }])
+      .build(0)
+      .openingInfo.get(10)?.doorOperation;
+
+  it('takes the occurrence OperationType over the type', () => {
+    expect(operationOf({ ifcType: 'IfcDoor', properties: { OperationType: 'SINGLE_SWING_RIGHT' }, typeOperationType: 'SINGLE_SWING_LEFT' }))
+      .toBe('SINGLE_SWING_RIGHT');
+  });
+
+  it('falls back to the type when the occurrence is NOTDEFINED', () => {
+    expect(operationOf({ ifcType: 'IfcDoor', properties: { OperationType: '.NOTDEFINED.' }, typeOperationType: '.SINGLE_SWING_RIGHT.' }))
+      .toBe('SINGLE_SWING_RIGHT');
+  });
+
+  it('falls back to the type when the occurrence has no properties at all', () => {
+    expect(operationOf({ ifcType: 'IfcDoor', typeOperationType: 'SINGLE_SWING_RIGHT' })).toBe('SINGLE_SWING_RIGHT');
+  });
+
+  it('keeps the default when neither states a handedness', () => {
+    expect(operationOf({ ifcType: 'IfcDoor', properties: { OperationType: 'NOTDEFINED' }, typeOperationType: 'NOTDEFINED' }))
+      .toBe('SINGLE_SWING_LEFT');
+  });
+
+  // AC20-FZK-Haus.ifc: the occurrence states `$` and its IFCDOORTYPE states .SINGLE_SWING_RIGHT.
+  const fzk = new URL('../../../../tests/models/ara3d/AC20-FZK-Haus.ifc', import.meta.url);
+  it.skipIf(!existsSync(fzk))('draws the FZK door typed SINGLE_SWING_RIGHT as RIGHT (fixture; pnpm fixtures)', () => {
+    const text = readFileSync(fzk, 'latin1');
+    // Resolve the door's own type through IfcRelDefinesByType and pass that type's OperationType
+    // as the file spells it (dots included), so the builder normalises the raw enum of the type
+    // actually assigned rather than receiving the expected answer pre-cleaned.
+    expect(/#17468=\s*IFCDOOR\([^;]*?,2\.01,0\.885,\$,\$,\$\);/.test(text)).toBe(true);
+    const rel = /IFCRELDEFINESBYTYPE\([^;]*?\((?:[^)]*,)?#17468[,)][^;]*?,#(\d+)\);/.exec(text);
+    expect(rel, '#17468 has a type').not.toBeNull();
+    const type = new RegExp(`#${rel![1]}=\\s*IFCDOORTYPE\\([^;]*?,\\.NOTDEFINED\\.,(\\.[A-Z_]+\\.),`).exec(text);
+    expect(type?.[1], "#17468's type states SINGLE_SWING_RIGHT").toBe('.SINGLE_SWING_RIGHT.');
+    expect(operationOf({ ifcType: 'IfcDoor', typeOperationType: type![1] })).toBe('SINGLE_SWING_RIGHT');
   });
 });

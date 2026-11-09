@@ -91,7 +91,7 @@ export function LensEditor({
   const canSave = name.trim().length > 0 && rules.length > 0 && rules.every(isRuleValid);
 
   return (
-    <div className="border-2 border-primary bg-white dark:bg-zinc-900 rounded-sm">
+    <div className="border-2 border-primary bg-white rounded-sm">
       {/* Name input */}
       <div className="px-3 pt-3 pb-2">
         <input

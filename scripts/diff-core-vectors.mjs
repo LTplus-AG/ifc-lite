@@ -2,10 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-// #8042: generate field-by-field expectations from the built TS engine.
-// pnpm build --filter=@ifc-lite/diff && node scripts/diff-core-vectors.mjs
+// #8042: generate field-by-field expectations from the test-only TS oracle.
+// node scripts/diff-core-vectors.mjs
 import { readFileSync, writeFileSync } from 'node:fs';
-import { diffModels } from '../packages/diff/dist/index.js';
+import { loadDiffOracle } from './lib/diff-oracle.mjs';
+const { diffModels } = await loadDiffOracle();
 
 const entity = (key, ref, extra = {}) => ({ key, ref, ifcType: 'IfcWall', dataHash: 'd', ...extra });
 const cases = [
@@ -59,6 +60,6 @@ const vectors = cases.map(test => {
 const path = new URL('../rust/diff/tests/core_vectors.json', import.meta.url);
 const text = `[\n${vectors.map(vector => JSON.stringify(vector)).join(',\n')}\n]\n`;
 if (process.argv.includes('--check')) {
-  if (readFileSync(path, 'utf8') !== text) throw new Error('Core vectors differ from the built TypeScript engine');
+  if (readFileSync(path, 'utf8') !== text) throw new Error('Core vectors differ from the test-only TypeScript oracle');
 } else writeFileSync(path, text);
 console.log(`Core parity: ${vectors.length} cases`);

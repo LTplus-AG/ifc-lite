@@ -27,6 +27,10 @@ export const propertiesEn = {
   'properties.quantitySet.type.count': 'Count',
   'properties.quantitySet.type.weight': 'Weight',
   'properties.quantitySet.type.time': 'Time',
+  'properties.quantitySet.fromGeometry': 'Updated from geometry',
+  'properties.quantitySet.fromGeometryHint': 'This set was recomputed from the element’s edited geometry. The file’s own values for it are replaced on export.',
+  'properties.quantitySet.updateEdited': 'Update quantities of edited elements',
+  'properties.quantitySet.updateEditedHint': 'Off: base quantities stay as the file wrote them, even after a shape edit.',
   // AssemblyBadge
   'properties.assemblyBadge.tooltip': 'Select the parent assembly',
   'properties.assemblyBadge.label': 'Part of Assembly',
@@ -36,6 +40,9 @@ export const propertiesEn = {
   'properties.spatialLocation.heightDisplay': '{value}m',
   'properties.spatialLocation.elevationTooltip': 'Elevation: {sign}{value}m from ground',
   'properties.spatialLocation.heightTooltip': 'Height: {value}m to next storey',
+  'properties.spatialLocation.storeyLabel': 'Storey',
+  'properties.spatialLocation.elevationLabel': 'Storey elevation',
+  'properties.spatialLocation.heightLabel': 'Storey height',
 
   // Shared field-row labels, reused across ClassificationCard, DocumentCard
   // and any other card rendering the same generic "label / value" row.
@@ -141,6 +148,7 @@ export const propertiesEn = {
   'properties.materialTotals.byClassHeading': 'By Class',
   'properties.materialTotals.materialPropertiesHeading': 'Material Properties',
   'properties.materialTotals.noData': 'No data for this material',
+  'properties.materialTotals.pendingEditsMissing': 'Totals show the loaded file only: pending edits could not be included.',
 
   // RawStepRow
   'properties.rawStepRow.positionalIndexAriaLabel': 'positional index {index}',
@@ -180,6 +188,7 @@ export const propertiesEn = {
   'properties.bsdd.editedCount': '{countDisplay} added · Edit in Properties',
   'properties.bsdd.addAllTooltip': { one: 'Add all {countDisplay} property', other: 'Add all {countDisplay} properties' },
   'properties.bsdd.addToElementTooltip': 'Add to element',
+  'properties.bsdd.quantityValueAriaLabel': 'Value for {name}',
   'properties.bsdd.viewOnBsdd': 'View on bSDD',
 
   // ScheduleCard
@@ -226,6 +235,7 @@ export const propertiesEn = {
   'properties.modelMetadata.sourceModel': 'Source Model',
   'properties.modelMetadata.fileInformationHeading': 'File Information',
   'properties.modelMetadata.fileSize': 'File Size',
+  'properties.modelMetadata.fileSizeAsLoaded': 'File Size (as loaded)',
   'properties.modelMetadata.loadedAt': 'Loaded At',
   'properties.modelMetadata.parseTime': 'Parse Time',
   'properties.modelMetadata.parseTimeValue': '{ms} ms',

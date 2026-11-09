@@ -19,6 +19,11 @@ export default defineConfig({
     },
   },
   test: {
+    reporters: [
+      'default',
+      ...(process.env.GITHUB_ACTIONS === 'true' ? ['github-actions'] : []),
+      '@mergifyio/vitest',
+    ],
     include: ['test/**/*.test.ts'],
   },
 });

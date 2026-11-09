@@ -101,32 +101,39 @@ export function resolveDuplicateSource(
     throw new Error(`resolveDuplicateSource: could not read placement #${placementId}`);
   }
 
-  const parentPlacementId = asRef(placementEntity.attributes[0]);   // PlacementRelTo
-  const axisPlacementId = asRef(placementEntity.attributes[1]);     // RelativePlacement
-  if (axisPlacementId === null) {
-    throw new Error(
-      `resolveDuplicateSource: placement #${placementId} has no RelativePlacement`,
-    );
-  }
-
-  const axisEntity = read(axisPlacementId);
-  if (!axisEntity) {
-    throw new Error(`resolveDuplicateSource: could not read axis #${axisPlacementId}`);
-  }
-
-  const locationId = asRef(axisEntity.attributes[0]);  // Location → IfcCartesianPoint
-  const axisRef = refToken(axisEntity.attributes[1]);     // Axis (optional)
-  const refDirectionRef = refToken(axisEntity.attributes[2]); // RefDirection (optional)
-
+  // An IfcGridPlacement has no local point, parent or axes to read: a product
+  // pointing straight at one is placed by the grid (`copy-placement.ts`, #9199).
+  const onGrid = placementEntity.type.toUpperCase() === 'IFCGRIDPLACEMENT';
+  const parentPlacementId = onGrid ? null : asRef(placementEntity.attributes[0]);   // PlacementRelTo
+  let axisRef: string | null = null;
+  let refDirectionRef: string | null = null;
   let sourceLocation: Vec3 = [0, 0, 0];
-  if (locationId !== null) {
-    const coords = read(locationId)?.attributes[0];
-    if (Array.isArray(coords)) {
-      sourceLocation = [
-        asNumber(coords[0] as IfcAttributeValue) ?? 0,
-        asNumber(coords[1] as IfcAttributeValue) ?? 0,
-        asNumber(coords[2] as IfcAttributeValue) ?? 0,
-      ];
+  if (!onGrid) {
+    const axisPlacementId = asRef(placementEntity.attributes[1]);     // RelativePlacement
+    if (axisPlacementId === null) {
+      throw new Error(
+        `resolveDuplicateSource: placement #${placementId} has no RelativePlacement`,
+      );
+    }
+
+    const axisEntity = read(axisPlacementId);
+    if (!axisEntity) {
+      throw new Error(`resolveDuplicateSource: could not read axis #${axisPlacementId}`);
+    }
+
+    const locationId = asRef(axisEntity.attributes[0]);  // Location → IfcCartesianPoint
+    axisRef = refToken(axisEntity.attributes[1]);     // Axis (optional)
+    refDirectionRef = refToken(axisEntity.attributes[2]); // RefDirection (optional)
+
+    if (locationId !== null) {
+      const coords = read(locationId)?.attributes[0];
+      if (Array.isArray(coords)) {
+        sourceLocation = [
+          asNumber(coords[0] as IfcAttributeValue) ?? 0,
+          asNumber(coords[1] as IfcAttributeValue) ?? 0,
+          asNumber(coords[2] as IfcAttributeValue) ?? 0,
+        ];
+      }
     }
   }
 
@@ -174,6 +181,7 @@ export function resolveDuplicateSource(
     attributes: attrs,
     placementExpressId: placementId,
     parentPlacementId,
+    ...(onGrid ? { onGridPlacement: true } : {}),
     sourceLocation,
     representationId,
     ownerHistoryId,
@@ -242,6 +250,8 @@ function collectSourceAssociations(
       description,
       relatingExpressId,
       ...(relatingExpressIds.length > 1 ? { relatingExpressIds } : {}),
+      relId,
+      relatedIds: refList(entity.attributes[4]),
     });
   }
   return out;

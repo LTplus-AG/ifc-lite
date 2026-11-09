@@ -40,6 +40,7 @@ import { usePlanCut } from './usePlanCut';
 import { fitPlan, pickPlanEntity, planGrid, screenToLocal } from './plan-fit';
 import { createPlanCutSource, planCutLinework } from './plan-cut-source';
 import { ghostFootprints } from './plan-ghost';
+import { forgetCommandPointer } from '@/lib/commands/modeling/pointer-replay';
 import { beginPlanHandleDrag, routePlanPointer, selectFromPlan } from './PlanPointer';
 import { pickPlanHandle, type PlanHandle } from './plan-handles';
 import { HandleLayer, usePlanHandles } from './PlanHandles';
@@ -141,7 +142,7 @@ export function PlanView({ layout }: { layout: ModelLayout }) {
   const { command, ctx, gesture } = runtime;
   const commandOnPlane = command !== null && ctx?.workplane != null;
   const footprints = useMemo(
-    () => (command?.ghost && ctx?.workplane ? ghostFootprints(command.ghost(gesture, ctx), ctx.workplane) : []),
+    () => (command?.ghost && !command.hud.planReplacesFootprint && ctx?.workplane ? ghostFootprints(command.ghost(gesture, ctx), ctx.workplane) : []),
     [command, ctx, gesture],
   );
 
@@ -273,7 +274,7 @@ export function PlanView({ layout }: { layout: ModelLayout }) {
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
-          onPointerLeave={() => { setHovered(null); setHoveredHandle(null); }}
+          onPointerLeave={() => { setHovered(null); setHoveredHandle(null); forgetCommandPointer(); }}
           onPointerCancel={(e) => { press.current = null; endCommandPress(); releasePointer(e.currentTarget, e.pointerId); }}
           onLostPointerCapture={() => { press.current = null; endCommandPress(); }}
           onDoubleClick={onDoubleClick}

@@ -113,22 +113,16 @@ export function commitDigest(file: Pick<DaluxFile, 'contentHash' | 'fileRevision
   if (hash) return `${CONTENT_DIGEST_PREFIX}${hash}`;
   const revision = file.fileRevisionId?.trim();
   if (revision) return `${REVISION_DIGEST_PREFIX}${revision}`;
-  // Unreachable through `collectModelCommits`, which drops a row with no
-  // revision id before it gets here — a commit with no identity at all is
-  // not a commit. Kept as a total function rather than a throw so a future
-  // caller cannot get a silent `undefined`.
+  // Unreachable through `buildCommitIndex` (`commit-index.ts`), which drops
+  // a row with no revision id before it gets here — a commit with no
+  // identity at all is not a commit. Kept as a total function rather than a
+  // throw so a future caller cannot get a silent `undefined`.
   return `${REVISION_DIGEST_PREFIX}unknown`;
 }
 
-/**
- * When this revision of the file was last written.
- *
- * `lastModified` first, `uploaded` second. A row with neither still needs a
- * timestamp because `SourceCommit.createdAt` is required and the panel sorts
- * on it — {@link collectModelCommits} supplies the epoch for those and falls
- * back to version-set order, so an undated row sinks to the bottom of the
- * timeline instead of jumping to the top.
- */
+/** A usable revision date, preferring lastModified and falling back to uploaded.
+ * Missing/unparseable dates stay absent, rather than inventing an epoch. */
 export function commitTimestamp(file: Pick<DaluxFile, 'lastModified' | 'uploaded'>): string | undefined {
-  return file.lastModified?.trim() || file.uploaded?.trim() || undefined;
+  return [file.lastModified?.trim(), file.uploaded?.trim()]
+    .find((value) => value && Number.isFinite(Date.parse(value)));
 }

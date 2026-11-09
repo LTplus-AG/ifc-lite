@@ -12,7 +12,7 @@ use retained_model_refusal::RefusedProduct;
 #[test]
 fn m1_e2_retained_model_keeps_typed_refusal_at_host_boundary() {
     let source = SourceBundle::new(
-        include_bytes!("../../../tests/fixtures/synthetic-retained/f-a-curved.ifc").to_vec(),
+        include_str!("../../../tests/fixtures/synthetic-retained/f-a-curved.ifc").replace("IFCCIRCLE(#26,10.)","IFCELLIPSE(#26,10.,9.)").into_bytes(),
     );
     let mut decoder = source.decoder();
     let id = 55;

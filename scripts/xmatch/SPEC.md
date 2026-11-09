@@ -32,7 +32,7 @@ The shipped code, imported and not re-implemented:
 | assembly (attach the geometry pass onto the data fingerprints) | `attachGeometryFingerprints` — `packages/cli/dist/commands/diff-geometry.js` |
 | spatial container | `spatialContainerPath` — `@ifc-lite/parser`, the name path the successor stage's `position` profile keys on |
 | the matcher | `diffModels(..., { scope: 'both', matchUnpairedByContent: true, detectSplitMerge: true, detectSuccessors: true })` |
-| class families | `classFamilyResolver` — `packages/diff/dist/class-families.js`, the same table the two claim stages bucket by |
+| class families | `classFamilyResolver` — `packages/diff/test/oracle/class-families.ts`, the preserved TypeScript table used to author the independent fixture |
 
 `fingerprints.mjs` supplies only the file-level orchestration (parse, call the
 two adapters, resolve `spatialContainerPath`, optionally strip keys); the

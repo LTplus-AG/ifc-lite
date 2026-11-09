@@ -149,6 +149,36 @@ fi
 . "$(dirname "${BASH_SOURCE[0]}")/lib/vercel-node-heap.sh"
 configure_vercel_node_heap
 
+# ── Retained geometry engine (#7955, the opt-in Settings choice) ────────────
+# Vercel cannot build SMLib (it needs the pinned usd-brep SDK and emsdk), so the
+# engine is built by .github/workflows/retained-engine.yml from a release tag and
+# attached to that GitHub Release; apps/viewer/retained-engine.lock.json pins its
+# SHA-256. With a lock, fetch and verify it, build the viewer as
+# VITE_RETAINED_GEOMETRY=lazy (retained code only in lazy chunks) and install the
+# engine beside it after the build. A failed verification fails the deploy; an
+# engine whose API no longer matches this commit (exit 3) builds exact-only, which
+# is the viewer without the setting. No lock: today's exact-only build, unchanged.
+RETAINED_LOCK="$PWD/apps/viewer/retained-engine.lock.json"
+RETAINED_ENGINE_DIR=""
+if [ "$FILTER" = "@ifc-lite/viewer..." ] && [ -f "$RETAINED_LOCK" ]; then
+  retained_sha=$(node -p "require(process.argv[1]).archiveSha256" "$RETAINED_LOCK")
+  RETAINED_ENGINE_DIR="${TMPDIR:-/tmp}/ifc-lite-retained-engine-${retained_sha:0:12}"
+  rm -rf "$RETAINED_ENGINE_DIR"
+  node scripts/fetch-retained-engine.mjs --lock "$RETAINED_LOCK" --out "$RETAINED_ENGINE_DIR"
+  fetch_status=$?
+  if [ $fetch_status -eq 0 ]; then
+    export VITE_RETAINED_GEOMETRY=lazy
+    export IFCLITE_RETAINED_ENGINE="$RETAINED_ENGINE_DIR"
+    echo "🧩 Retained engine verified: building the viewer with the opt-in retained kernel"
+  elif [ $fetch_status -eq 3 ]; then
+    RETAINED_ENGINE_DIR=""
+    echo "⚠️  Pinned retained engine does not match this commit's engine API: building exact-only (no kernel setting)."
+  else
+    echo "❌ Pinned retained engine failed verification (exit $fetch_status); refusing to deploy"
+    exit 1
+  fi
+fi
+
 npx turbo build --filter="$FILTER"
 build_status=$?
 
@@ -163,7 +193,7 @@ build_status=$?
 # not silently publish them.
 OUT_DIR="apps/viewer/dist"
 if [ $build_status -eq 0 ] && [ "$SOURCEMAPS_ON" = 1 ] && [ -n "${POSTHOG_CLI_API_KEY:-}" ] && [ -n "${POSTHOG_CLI_ENV_ID:-}" ] && [ -d "$OUT_DIR" ]; then
-  # Every chunk vite-plugin-top-level-await wraps is re-printed by SWC after the
+  # Every worker chunk vite-plugin-top-level-await wraps is re-printed by SWC after the
   # bundler ran, which drops the trailing `//# sourceMappingURL=` comment (the
   # map itself is kept in step by our patch to that plugin). posthog-cli documents that it
   # locates maps via that comment (see its --public-path-prefix flag: "we need
@@ -193,6 +223,12 @@ if [ -d "$OUT_DIR" ]; then
     # the upload did not, since --delete-after already removes both).
     node scripts/add-sourcemap-refs.mjs "$OUT_DIR" --strip || true
   fi
+fi
+
+# Engine files go in last: after the source-map sweep, and only into a build
+# whose startup graph the installer has just proven retained-free.
+if [ $build_status -eq 0 ] && [ -n "$RETAINED_ENGINE_DIR" ]; then
+  node scripts/install-retained-engine.mjs --dist "$PWD/$OUT_DIR" --engine "$RETAINED_ENGINE_DIR" --lock "$RETAINED_LOCK" || build_status=1
 fi
 
 # Vercel Skew Protection is integrated by the repository-root middleware. It

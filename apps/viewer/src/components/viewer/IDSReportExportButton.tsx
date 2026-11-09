@@ -34,9 +34,9 @@ export function ReportExportButton({
   const { t } = useTranslation();
   const [bcfDialogOpen, setBcfDialogOpen] = useState(false);
   const formats = [
-    { id: 'html', label: t('idsPanel.reportExport.format.html'), menuLabel: t('idsPanel.reportExport.htmlReport'), icon: <FileCode className="text-orange-500" />, onExport: onExportHTML },
-    { id: 'json', label: t('idsPanel.reportExport.format.json'), menuLabel: t('idsPanel.reportExport.jsonReport'), icon: <FileJson className="text-blue-500" />, onExport: onExportJSON },
-    { id: 'bcf', label: t('idsPanel.reportExport.format.bcf'), menuLabel: t('idsPanel.reportExport.bcfReport'), icon: <FileBox className="text-green-500" />, onExport: () => setBcfDialogOpen(true) },
+    { id: 'html', label: t('idsPanel.reportExport.format.html'), menuLabel: t('idsPanel.reportExport.htmlReport'), icon: <FileCode className="text-muted-foreground" />, onExport: onExportHTML },
+    { id: 'json', label: t('idsPanel.reportExport.format.json'), menuLabel: t('idsPanel.reportExport.jsonReport'), icon: <FileJson className="text-muted-foreground" />, onExport: onExportJSON },
+    { id: 'bcf', label: t('idsPanel.reportExport.format.bcf'), menuLabel: t('idsPanel.reportExport.bcfReport'), icon: <FileBox className="text-muted-foreground" />, onExport: () => setBcfDialogOpen(true) },
   ].map((format) => ({ ...format, title: t('idsPanel.reportExport.tooltip', { format: format.label }) }));
 
   return (

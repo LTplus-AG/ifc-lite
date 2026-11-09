@@ -2,10 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { describe, expect, it } from 'vitest';
-import { diffModels } from '@ifc-lite/diff';
+import { beforeAll, describe, expect, it } from 'vitest';
+import { initDiff, diffModels } from '@ifc-lite/diff';
 import { loadIfcBytes } from '../loader.js';
 import { buildFileFingerprints } from './diff-engine.js';
+
+// #8042: these tests call synchronous hashing/merge APIs directly.
+beforeAll(async () => { await initDiff(); });
 
 const TYPE_GUID = '0aaaaaaaaaaaaaaaaaaaaa';
 const schemas = [

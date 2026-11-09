@@ -13,6 +13,7 @@ import type { BottomPanelId } from '@/lib/panels/bottom-panels';
 import { isBottomPanelDocked } from '@/lib/panels/bottom-panels';
 import { panelGroupFor, panelTitleKey } from '@/lib/panels/registry';
 import { useViewerStore } from '@/store';
+import { liftStartFold } from './welcome/useEmptyStartFold';
 import type { RightPanel } from './commandPaletteCommandsTypes';
 import type { Command } from './commandPaletteSearch';
 import type {
@@ -66,7 +67,10 @@ export const PANEL_SURFACE_COMMANDS = [
     labelKey: panelTitleKey('properties'),
     keywords: 'properties attributes material classification schedule task panel right inspector information',
     category: 'Panels', icon: Layout, surfaces: paletteOnly, enabled: alwaysEnabled,
-    run: () => { useViewerStore.getState().showWorkspacePanel('properties', 'palette'); },
+    run: () => {
+      liftStartFold('right'); // folded for the start screen, Properties must still appear
+      useViewerStore.getState().showWorkspacePanel('properties', 'palette');
+    },
   },
   {
     id: 'panel:tree', panelId: 'hierarchy', panelGroup: panelGroupFor('hierarchy'),
@@ -75,6 +79,8 @@ export const PANEL_SURFACE_COMMANDS = [
     surfaces: paletteOnly, enabled: alwaysEnabled,
     run: () => {
       const state = useViewerStore.getState();
+      // Folded for the start screen it LOOKS closed: reveal, don't flip.
+      if (liftStartFold('left')) { state.setLeftPanelCollapsed(false); return; }
       state.setLeftPanelCollapsed(!state.leftPanelCollapsed);
     },
   },
@@ -82,6 +88,7 @@ export const PANEL_SURFACE_COMMANDS = [
   rightCommand('panel:bcf', 'bcf', 'collaboration topics comments viewpoint', MessageSquare, true),
   rightCommand('panel:ids', 'validation', 'ids validation information delivery specification check', ClipboardCheck, true),
   rightCommand('panel:idsStudio', 'idsStudio', 'ids studio author edit write information delivery specification requirements facets', ClipboardPen),
+  rightCommand('panel:influx', 'influx', 'influxdb time series iot sensor telemetry monitoring digital twin experimental', BarChart3),
   rightCommand('panel:clash', 'clash', 'collision interference clearance coordination clash matrix mep', Crosshair, true),
   rightCommand('panel:compare', 'compare', 'diff revision version change added deleted modified geometry data', GitCompareArrows, true),
   rightCommand('panel:changes', 'changes', 'authored edits modifications properties history review', History),

@@ -102,7 +102,7 @@
             "lifecycle": "observed",
             "title": "Building element proxies declare an ObjectType",
             "detail": [
-              "Attribute \"\"ObjectType\"\" must exist · Attribute \"ObjectType\" is missing · expected attribute \"ObjectType\" to exist"
+              "Attribute \"ObjectType\" must exist · Attribute \"ObjectType\" is missing · expected attribute \"ObjectType\" to exist"
             ],
             "disciplineCandidates": [],
             "storeys": [

@@ -6,6 +6,10 @@
 //! within its module-size budget: `collate.rs` owns the collation TYPES and the
 //! small frame helpers, this file owns the pass that walks the groups, verifies
 //! each candidate pairing (#3666) and decides what falls back to the flat path.
+//!
+//! The same-shape guard below reads the position count and the index buffer and
+//! no per-vertex values; `super`'s correctness contract says why normals are not
+//! among them and where a normals-only difference is kept apart instead (#8287).
 
 use super::collate::{
     compose_world, mat4_to_row_major_f32, to_post_rtc, Collated, InstanceMeshRef,

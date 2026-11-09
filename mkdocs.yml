@@ -11,43 +11,12 @@ validation:
   nav:
     omitted_files: warn
 
-# architecture/evidence/** are the supporting artifacts (fixtures, screenshots,
-# method notes) behind the design docs above them, not pages in their own right.
-# They are absent from `nav` but reached from their parent design doc.
-#
-# research/** holds decision records: the measurements behind an experiment,
-# kept so nobody re-runs it. Same reason for skipping `nav` -- a dropped
-# experiment does not belong beside the user guides -- but NOT the same
-# reachability. These are built and search-indexed like any page, and today
-# nothing links to them, so they are findable only by search or a direct URL.
-# If you add one, link it from the design doc it informs; "kept" and "kept where
-# the next person finds it" are not the same thing.
-#
 # Declaring them here keeps `omitted_files: warn` meaningful for everything else.
-# The issue-scoped section implementation/acceptance record is linked from its
-# evidence README; keep it searchable without adding a temporary plan to site nav.
-# Autodesk's delivery plan records qualification work; public usage belongs in
-# the web viewer guide rather than the implementation checklist.
 not_in_nav: |
-  # IDS Studio campaign plan, tracker and handover; internal engineering docs, linked from the IDS guide once Studio ships.
-  architecture/ids-studio/**
-  # Issue-scoped viewer AI charter; linked from its user guide as layers ship.
-  architecture/viewer-ai-plan.md
-  architecture/viewer-ai-implementation.md
-  architecture/viewer-ai-adapters.md
-  architecture/viewer-ai-bcf-publication.md
-  architecture/viewer-ai-authoring-matrix.md
-  architecture/viewer-ai-evaluation.md
-  architecture/viewer-ai-semantic.md
-  architecture/section-6614-6615-spec.md
-  # Issue-scoped spec and UX/implementation plan for several cutting planes (#7545); evidence under architecture/evidence/**.
-  architecture/section-7545-cutting-planes-spec.md
-  architecture/section-7545-ux-and-implementation-plan.md
-  architecture/autodesk-cloud-sources-plan.md
-  architecture/evidence/**
-  # #8042 diff stack preparation/qualification checkpoints (local paths, parent-only handoff notes); not user documentation.
-  architecture/diff-8042/**
-  research/**
+  # Release-owner review inputs and draft opt-in deployment; not general installation guidance.
+  architecture/retained-licensing.md
+  guide/retained-release.md
+  guide/retained-installation.md
 
 theme:
   name: material
@@ -164,6 +133,8 @@ nav:
     - Developer Workflows: guide/developer-workflows.md
     - Web Viewer Controls: guide/web-viewer-controls.md
     - Cloud Sources: guide/cloud-sources.md
+    - Model Registry (Experimental): guide/local-registry.md
+    - InfluxDB Time Series (Experimental): guide/influxdb.md
     - Viewer Assistant: guide/viewer-assistant.md
     - CLI Toolkit: guide/cli.md
     - MCP for AI Agents: guide/mcp.md
@@ -182,6 +153,7 @@ nav:
     - Exporting Data: guide/exporting.md
     - Multi-Model Federation: guide/federation.md
     - LandXML: guide/landxml.md
+    - Gaussian Splat Captures: guide/gaussian-captures.md
     - BCF Collaboration: guide/bcf.md
     - IDS Validation: guide/ids.md
     - IDS Conformance Dashboard: guide/ids-conformance.md
@@ -264,14 +236,15 @@ nav:
     - Privacy: guide/privacy.md
   - Architecture:
     - Overview: architecture/overview.md
-    - Session Automation:
-        - Specification: architecture/session-automation-6612.md
-        - Implementation Plan: architecture/session-automation-6612-implementation.md
     - Data Flow: architecture/data-flow.md
     - Parsing Pipeline: architecture/parsing-pipeline.md
     - Geometry Pipeline: architecture/geometry-pipeline.md
     - Retained Cutters: architecture/retained-cutters.md
+    - Retained Chained Clips: architecture/retained-m5-clips.md
+    - Retained Bounded and Boxed Halfspaces: architecture/retained-halfspaces.md
+    - Retained Viewer Memory: architecture/retained-viewer-memory.md
     - Coverage Ledger: architecture/coverage-ledger.md
+    - Modelling Parity Ledger: architecture/modelling-parity-ledger.md
     - Schema Enum Reconciliation: architecture/schema-enum-reconciliation.md
     - LandXML Interoperability: architecture/landxml-coverage-ledger.md
     - LandXML → IFC Mapping: architecture/landxml-to-ifc-mapping.md
@@ -282,6 +255,7 @@ nav:
     - Federation: architecture/federation.md
     - Collaboration: architecture/collaboration.md
     - Clash Detection: architecture/clash-detection.md
+    - Diff Consumer Initialization: architecture/diff-consumer-initialization.md
     - Element Splitting: architecture/element-splitting.md
     - Spatial Zone Emission: architecture/spatial-zone-emission.md
     - Mesh Determinism: architecture/mesh-determinism.md
@@ -290,7 +264,6 @@ nav:
     - WASM Wide Arithmetic: architecture/wasm-wide-arithmetic.md
     - Plato Code Generation: architecture/plato-codegen.md
     - Appearance:
-        - Roadmap: architecture/appearance-roadmap.md
         - Coordinated Assignments: architecture/appearance-assignments.md
         - Cooperative Apply: architecture/appearance-cooperative-apply.md
         - Evaluated Occurrences: architecture/appearance-evaluated-occurrences.md

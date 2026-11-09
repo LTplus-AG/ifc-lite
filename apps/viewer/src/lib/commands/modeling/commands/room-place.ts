@@ -38,7 +38,7 @@ import { buildStoreyWorkplane, isWorkplane } from '../workplane.js';
 import { defaultsField, dimOf, planeZ } from './placement-shared.js';
 import { closesPolygon, rectangleCorner, rectangleExtent, type SlabPlaceGesture } from './slab-place-geometry.js';
 import { drawnOutline, initRoomGesture, rememberRoomGesture, roomSettings, sessionRoomGesture, spaceParams, type RoomPlaceGesture } from './room-place-gesture.js';
-import { afterLayoutCommit, commitLayoutEdit, editOp, editPointerDown, editPointerMove, editPointerUp, weldOf } from './room-place-edit.js';
+import { afterLayoutCommit, commitLayoutEdit, editOp, editPointerDown, editPointerMove, editPointerUp, editPressGrabs, weldOf } from './room-place-edit.js';
 
 const drawRect = (g: RoomPlaceGesture) => g.mode !== 'draw' || g.draw.mode !== 'rectangle';
 const withDraw = (g: RoomPlaceGesture, draw: Partial<SlabPlaceGesture>): RoomPlaceGesture => ({ ...g, draw: { ...g.draw, ...draw } });
@@ -172,6 +172,7 @@ export const ROOM_PLACE: ModelingCommand<RoomPlaceGesture> = {
     if (g.mode === 'edit') return { anchor: g.edit.drag?.from ?? g.edit.cut ?? null, chain: [], locks: {} };
     return { anchor: null, chain: [], locks: {} };
   },
+  aimsAtRegion: (g) => g.mode === 'pick',
   pointerMove(g, s, ctx) {
     rememberRoomGesture(ctx, g);
     if (g.mode === 'draw') return { ...withDraw(g, { cursor: s.local, square: s.modifiers?.shift ?? false }), action: 'place' };
@@ -188,6 +189,7 @@ export const ROOM_PLACE: ModelingCommand<RoomPlaceGesture> = {
     return withDraw(g, { points: [...draw.points, s.local] });
   },
   pointerDownOnPress: (g) => g.mode === 'edit',
+  pressDrags: (g) => g.mode === 'edit' && editPressGrabs(g),
   pointerUp: (g) => (g.mode === 'edit' ? editPointerUp(g) : g),
   pointerCancel: (g) => (g.edit.drag ? { ...g, edit: { ...g.edit, drag: null } } : g),
   doubleClick: (g) => (g.mode === 'draw' && g.draw.mode === 'polygon' && g.draw.points.length >= 3 ? { commit: true } : g),

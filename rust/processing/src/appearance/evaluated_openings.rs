@@ -2,6 +2,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 //! Bounded, conservative opening representation eligibility for appearance.
+use ifc_lite_geometry::representation::product_shape_id;
+
 use super::source::{refs, Source};
 use ifc_lite_core::IfcType;
 
@@ -51,7 +53,7 @@ pub(super) fn prepare(
         if !exclusive.contains(&id) { return Err("Opening affects another canonical host".into()); }
         let opening = source.entity(id)?;
         if !opening.ifc_type.is_subtype_of(IfcType::IfcOpeningElement) { return Err("Unsupported opening class".into()); }
-        let pds_id = opening.get_ref(6).ok_or("Opening has no representation")?;
+        let pds_id = product_shape_id(&opening).ok_or("Opening has no representation")?;
         if !source.single_parent(pds_id, id) { return Err("Opening ProductDefinitionShape is shared".into()); }
         let pds = source.entity(pds_id)?;
         if pds.ifc_type != IfcType::IfcProductDefinitionShape { return Err("Unsupported opening representation".into()); }
@@ -88,7 +90,7 @@ pub(super) fn removed_meshes(
     let mut result = Vec::new();
     for &owner in opening_ids {
         let opening = source.entity(owner)?;
-        let pds = source.entity(opening.get_ref(6).ok_or("Missing opening representation")?)?;
+        let pds = source.entity(product_shape_id(&opening).ok_or("Missing opening representation")?)?;
         if !refs(pds.get(2))?.iter().any(|id| edited.contains(id)) { continue; }
         for mesh in super::canonical::produce(source, owner, textures, Some(styles))? {
             if mesh.express_id != owner || mesh.geometry_item_id.is_none()

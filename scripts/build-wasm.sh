@@ -298,7 +298,12 @@ if [ "${BUILD_RETAINED:-}" = "1" ]; then
     --release \
     --features "$RETAINED_FEATURES"
   RETAINED_REL="$(echo "$RETAINED_OUT" | sed 's|^../../||')"
+  # wasm-pack overwrites .gitignore; retain the tracked declaration baseline.
+  printf '%s\n' '*' '# The committed declarations are the drift baseline CI diffs against.' \
+    '!.gitignore' '!ifc-lite.d.ts' > "$RETAINED_REL/.gitignore"
   printf '\n' > "$RETAINED_REL/.npmignore"
+  cp LICENSE "$RETAINED_REL/IFC_LITE_LICENSE.txt"
+  cp licenses/retained/THIRD_PARTY_NOTICES.txt "$RETAINED_REL/THIRD_PARTY_NOTICES.txt"
   RETAINED_DTS="$RETAINED_REL/ifc-lite.d.ts"
   if [ -f "$RETAINED_DTS" ]; then
     grep -v '__wasm_bindgen_func_elem_' "$RETAINED_DTS" > "$RETAINED_DTS.tmp" && mv "$RETAINED_DTS.tmp" "$RETAINED_DTS"

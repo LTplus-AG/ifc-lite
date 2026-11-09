@@ -62,7 +62,7 @@ describe('SourcesPanel with host-supplied providers (#5228)', () => {
     const builtInTitles = createRegisteredProviders().map((provider) => provider.manifest.title);
     // Pinned count: a built-in dropped from the factory list must fail here
     // too, not shrink both the expectation and the panel together.
-    assert.deepEqual(builtInTitles, ['Autodesk Forma / Data Exchange', 'Dalux Box', 'Dropbox', 'OneDrive / SharePoint']);
+    assert.deepEqual(builtInTitles, ['Autodesk Forma / Data Exchange', 'Dalux Box', 'Dropbox', 'OneDrive / SharePoint', 'BIMcollab']);
     for (const title of builtInTitles) {
       assert.ok(text.includes(title), `built-in "${title}" is still listed`);
     }

@@ -5,6 +5,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { bundleAgeHours, classifyLoadError, errorCaptureProps } from './load-errors.js';
+import { RetainedHostError } from './retained/retained-protocol.js';
+import { RetainedStallError } from './retained/retainedGeometrySource.js';
 import { formatLoadError } from './load-error-message.js';
 import { scrubEvent } from './analytics-scrub.js';
 
@@ -984,3 +986,114 @@ describe('invalid .ifcZIP contents (#8258)', () => {
     assert.equal(event?.properties.$exception_fingerprint, 'chosen-at-capture');
   });
 });
+
+// Invalid-input telemetry regression: synthetic bytes only, never field payloads.
+describe('invalid input content refusals', () => {
+  const messages = [
+    'E57: header truncated (need 48 bytes)',
+    'E57: bad magic "\u0000\ufffd\nTEST" (expected "ASTM-E57")',
+    'E57: bad magic "out of memory" (expected "ASTM-E57")',
+    'E57: pageSize too small', 'E57: invalid pageSize 0',
+    'E57: file contains no Data3D scans',
+    'E57: XML root is not <e57Root> (saw <other>)',
+    'LAS: header truncated', 'LAS: bad magic — expected "LASF"',
+    'LAS: invalid point count', 'LAS: invalid X scale (NaN)', 'LAS: invalid Z offset (Infinity)',
+    'LAS: header point-record length (1) smaller than format 0 baseline (20)',
+    'PLY: invalid vertex count NaN',
+    'PLY: vertex property "x" must not be declared more than once',
+    'PCD: missing DATA line in header (scanned first 4 bytes)',
+    'PCD: malformed DATA line', 'PCD: missing FIELDS',
+    'PCD: SIZE/FIELDS length mismatch', 'PCD: TYPE/FIELDS length mismatch',
+    'PCD: field stride overflow', 'PCD: invalid point count',
+    'PCD: x/y/z fields are required', 'PCD: invalid field SIZE or COUNT (size=0, count=1)',
+    'PLY: missing magic — file does not start with "ply"',
+    'PLY: missing end_header line in first 4 bytes',
+    'PLY: end_header line not terminated by newline',
+    'PLY: missing `format` line in header', 'PLY: missing `vertex` element',
+    'PLY: no vertex element', 'PLY: vertex element must define x, y, z properties',
+    'PLY: invalid element count "-1" for element "vertex"',
+    'PLY: property declared before any element: "property float x"',
+    'PLY: invalid list property declaration: "property list"',
+    'XYZ: file does not look like ASCII point data',
+    'PTS: file does not look like ASCII point data',
+    'CSV: file does not look like ASCII point data',
+    'Invalid IFCX file: JSON parse error - SyntaxError: unexpected token',
+    'Invalid IFCX file "synthetic": missing or invalid header.ifcxVersion',
+    'Unknown file format. Expected IFC (STEP) or IFCX (JSON).',
+  ];
+  for (const message of messages) {
+    it(`classifies and retains a warning: ${JSON.stringify(message)}`, () => {
+      assert.equal(classifyLoadError(new Error(message)), 'invalid_input');
+      const event = scrubEvent<{ event: string; properties: Record<string, unknown> }>({ event: '$exception', properties: {
+        ...errorCaptureProps(new Error(message), 'ifc_model_load'),
+        $exception_list: [{ type: 'Error', value: message }],
+        $exception_level: 'error',
+      } });
+      assert.ok(event);
+      assert.equal(event.properties.error_kind, 'invalid_input');
+      assert.equal(event.properties.$exception_fingerprint, 'ifc-lite:invalid_input');
+      assert.equal(event.properties.$exception_level, 'warning');
+      // Also exercise auto-capture without an explicitly supplied kind.
+      const automatic = scrubEvent<{ event: string; properties: Record<string, unknown> }>({
+        event: '$exception', properties: {
+          $exception_list: [{ type: 'Error', value: message }], $exception_level: 'error',
+        },
+      });
+      assert.equal(automatic?.properties.error_kind, 'invalid_input');
+      assert.equal(automatic?.properties.$exception_level, 'warning');
+      assert.equal(automatic?.properties.$exception_fingerprint, 'ifc-lite:invalid_input');
+      assert.match(formatLoadError(new Error(message)), /file is invalid/);
+    });
+  }
+  it('uses stable STEP error codes without matching arbitrary parser prose', () => {
+    for (const code of ['EMPTY_INPUT', 'INVALID_STEP', 'MISSING_DATA']) {
+      assert.equal(classifyLoadError(Object.assign(new Error('synthetic'), { name: 'IfcInputError', code })), 'invalid_input');
+    }
+    assert.equal(classifyLoadError(Object.assign(new Error('synthetic'), { name: 'IfcInputError', code: 'TRUNCATED_STEP' })), 'unknown');
+  });
+  it('keeps a memory failure during IFCX parsing out of invalid input', () => {
+    assert.equal(
+      classifyLoadError(new Error('Invalid IFCX file: JSON parse error - RangeError: Array buffer allocation failed')),
+      'out_of_memory',
+    );
+  });
+  it('keeps runtime, transport and unsupported-feature failures loud', () => {
+    for (const message of [
+      'Invalid packed parser index offsets', 'Cannot read properties of undefined',
+      'HTTP Range: body length 4 does not match the requested 64 bytes',
+      'E57: truncated DataPacket header', 'LAS: unsupported point data format 11',
+      'PLY: unsupported format "future"', 'XML: missing root element',
+      'Failed: LAS: header truncated', 'LAS: header truncated Internal bug',
+    ]) {
+      assert.equal(classifyLoadError(new Error(message)), 'unknown', message);
+      const event = scrubEvent<{ event: string; properties: Record<string, unknown> }>({
+        event: '$exception', properties: {
+          $exception_list: [{ type: 'Error', value: message }], $exception_level: 'error',
+        },
+      });
+      assert.equal(event?.properties.$exception_level, 'error');
+      assert.equal(event?.properties.$exception_fingerprint, undefined);
+    }
+  });
+});
+
+describe('#7955 retained host errors classify by their typed code', () => {
+  it('out_of_memory is out_of_memory even though the engine only says "unreachable"', () => {
+    const error = new RetainedHostError('out_of_memory', 'unreachable');
+    assert.equal(classifyLoadError(error, 'geometry_processing'), 'out_of_memory');
+    assert.equal(errorCaptureProps(error, 'geometry_processing').error_kind, 'out_of_memory');
+  });
+  it('a worker_crash is a worker crash, not memory, even when its trap says "memory access out of bounds"', () => {
+    const error = new RetainedHostError('worker_crash', 'memory access out of bounds');
+    assert.equal(classifyLoadError(error, 'geometry_processing'), 'geometry_worker_crash');
+    assert.equal(errorCaptureProps(error, 'geometry_processing').error_kind, 'geometry_worker_crash');
+  });
+  it('a retained stall, the one retained failure that is not a host error, is a stall at startup and mid-run', () => {
+    for (const stage of ['startup', 'product'] as const) {
+      const error = new RetainedStallError(35_000, stage);
+      assert.equal(classifyLoadError(error, 'geometry_processing'), 'geometry_stream_stalled', stage);
+      assert.match(formatLoadError(error, 'tower.ifc', 'geometry_processing'), /stalled and was stopped/, stage);
+    }
+  });
+});
+

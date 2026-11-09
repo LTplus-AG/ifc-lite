@@ -131,7 +131,7 @@ pub fn diff_lineage_of_diff(value: JsValue, accepted: JsValue, reasons: JsValue,
     let accepted: Vec<Accepted> = crate::diff_transport::from_value(accepted)?;
     let reasons: Vec<(JsString, JsString)> = crate::diff_transport::from_value(reasons)?;
     let relations: Vec<(JsString, AliasRelation)> = crate::diff_transport::from_value(relations)?;
-    let core = KeyDiff { scope: DiffScope::Both, excluded_types: vec![], entries: value.entries.iter().map(Row::native).collect(),
+    let core = KeyDiff { strip_placement_geometry: false, scope: DiffScope::Both, excluded_types: vec![], entries: value.entries.iter().map(Row::native).collect(),
         by_key: HashMap::new(), counts: Default::default(), applied_key_aliases: value.applied_key_aliases, use_geometry: true };
     let provenance = AliasProvenance { reasons: reasons.into_iter().collect(), relations: relations.into_iter().map(|(key, relation)|
         (key, match relation { AliasRelation::Identity => LineageRelation::Identity, AliasRelation::Replaced => LineageRelation::Replaced })).collect() };

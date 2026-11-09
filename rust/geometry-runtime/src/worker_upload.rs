@@ -20,7 +20,7 @@ impl SmlibWorker {
     ) -> Result<BrepHandle, WorkerError> {
         let length =
             u32::try_from(bytes.len()).map_err(|_| WorkerError::ResourceLimit("sweep size"))?;
-        if !(1..=2).contains(&format)
+        if !(1..=3).contains(&format)
             || bytes.len() > MAX_RECIPE_BYTES
             || segments == 0
             || segments > MAX_SEGMENTS
@@ -31,7 +31,7 @@ impl SmlibWorker {
             return Err(WorkerError::ResourceLimit("sweep declaration"));
         }
         let bits = self.capabilities()?;
-        if bits & (1 << (format - 1)) == 0 {
+        if bits & (if format == 3 { 64 } else { 1 << (format - 1) }) == 0 {
             return Err(WorkerError::Protocol("staged sweep extension unavailable"));
         }
         let response = self.call(KernelCommand::SweepBegin {

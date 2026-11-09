@@ -68,8 +68,8 @@ const KIND_TONES: Record<AuditEventKind, string> = {
   deactivate: 'text-muted-foreground',
   mutation_summary: 'text-sky-600 dark:text-sky-400',
   network_fetch: 'text-cyan-600 dark:text-cyan-400',
-  unhealthy: 'text-amber-600 dark:text-amber-400',
-  killed: 'text-rose-600 dark:text-rose-400',
+  unhealthy: 'text-warn',
+  killed: 'text-danger',
 };
 
 interface AuditLogPanelProps {
@@ -230,17 +230,9 @@ export function AuditLogPanel({ extensionId, onClose }: AuditLogPanelProps) {
 
 function FilterChip({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`shrink-0 rounded-full px-2 py-0.5 text-2xs font-medium ${
-        active
-          ? 'bg-primary text-primary-foreground'
-          : 'bg-muted text-muted-foreground hover:bg-muted/70'
-      }`}
-    >
+    <Button type="button" variant="toggle" size="segment" aria-pressed={active} onClick={onClick} className="shrink-0 rounded-full bg-muted">
       {label}
-    </button>
+    </Button>
   );
 }
 

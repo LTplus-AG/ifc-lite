@@ -2,12 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { applySkipVoids } from './skip-voids.js';
 import { attachCanonicalMeshMetadata } from './canonical-mesh-metadata.js';
 import { ownedWasmBuffer } from './wasm-owned-buffer.js';
 import { readSpecularMaterial } from './mesh-specular.js';
 import { publishPrepassFingerprint, runPrepassWithFingerprint } from './prepass-source-fingerprint.js';
 import { canReuseWorkerSource, type BytePrepassApi, type SourcePrepassApi, type FinalizeStyleArgs } from './worker-prepass-source.js';
-import { applyStyleFinishes } from './style-finishes.js';
+import { applyStyleFinishes, forgetAppliedFinishes } from './style-finishes.js';
 import init, { initSync, IfcAPI } from '@ifc-lite/wasm';
 import * as wasmBindings from '@ifc-lite/wasm';
 import { createInCallHeartbeat, installInCallHeartbeat, postWorkerHeartbeat } from './in-call-heartbeat.js';
@@ -37,6 +38,7 @@ import {
 import { takeWasmPanicStash } from './wasm-panic-forward.js';
 import { traceGeometryWorkerMessage, meterTypedArrayArgs, countCopy, postPrepassEvent } from './worker-trace.js'; // #6956 spans, #6957 counters
 import { isColumnLengthRefusal } from './wasm-column-refusal.js';
+import { annotatePrepassComplete } from './omitted-type-records.js'; // F2 #8341
 
 export interface GeometryWorkerInitMessage {
   type: 'init';
@@ -249,15 +251,11 @@ export interface GeometryWorkerSetTessellationQualityMessage {
   level: TessellationQuality | null;
 }
 
-/**
- * Forward the tier-independent small-cut skip (issue #1286) to this worker's
- * IfcAPI. Sent AFTER `init` and BEFORE the first `stream-start`, mirroring
- * `set-tessellation-quality`. `false` (the default) keeps every cut, so never
- * sending the message changes nothing.
- */
+/** Per-load cut policies, replayed on worker recovery. Defaults keep every cut. */
 export interface GeometryWorkerSetSkipSmallCutsMessage {
   type: 'set-skip-small-cuts';
   enabled: boolean;
+  skipVoids?: boolean;
 }
 
 export type GeometryWorkerRequest =
@@ -518,6 +516,7 @@ function installFreshApi(): IfcAPI {
   applyTessellationQualityToApi();
   skipSmallCutsApplied = false;
   applySkipSmallCutsToApi();
+  applySkipVoids(api, skipVoids);
   entityIndexApplied = false;
   applyEntityIndexToApi();
   prepassColumnsApplied = false;
@@ -640,6 +639,7 @@ function applyTessellationQualityToApi(): void {
  * every cut. Always re-sent per run, so a worker reused by a later export resets
  * to `false` and that export keeps full-fidelity geometry.
  */
+let skipVoids = false;
 let skipSmallCuts: boolean = false;
 let skipSmallCutsApplied: boolean = false;
 
@@ -662,6 +662,7 @@ let entityIndexApplied: boolean = false;
 function applyEntityIndexToApi(): void {
   const ifcApi = api;
   if (!ifcApi || entityIndexApplied || !cachedEntityIndex) return;
+  forgetAppliedFinishes(ifcApi); // Rust clears finishes even when the index is rejected.
   ifcApi.setEntityIndex(cachedEntityIndex.ids, cachedEntityIndex.starts, cachedEntityIndex.lengths);
   entityIndexApplied = true;
 }
@@ -1423,6 +1424,7 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       const disabledTypes = e.data.disabledTypes ?? undefined;
       const skipTypeGeometry = e.data.skipTypeGeometry === true;
       const onEvent = (event: unknown) => {
+        annotatePrepassComplete(ifcApi, event);
         publishPrepassFingerprint(sourceFingerprint, sharedBuffer.byteLength, event);
         postPrepassEvent(event);
       };
@@ -1504,6 +1506,7 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       // zero-copy view first, fall back to a materialised copy only if
       // wasm-bindgen rejects the view.
       const onEvent = (event: unknown) => {
+        annotatePrepassComplete(ifcApi, event);
         publishPrepassFingerprint(sourceFingerprint, sharedBuffer.byteLength, event);
         postPrepassEvent(event);
       };
@@ -1667,6 +1670,7 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       cachedEntityIndex = null;
       cachedPrepassColumns = null;
       prepassColumnsApplied = false;
+      forgetAppliedFinishes(ifcApi); // Rust clears finishes even when the index is rejected.
       ifcApi.setEntityIndex(e.data.ids, e.data.starts, e.data.lengths);
       cachedEntityIndex = { ids: e.data.ids, starts: e.data.starts, lengths: e.data.lengths };
       entityIndexApplied = true;
@@ -1725,6 +1729,8 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
     if (e.data.type === 'set-skip-small-cuts') {
       // Same cache-and-replay contract as set-merge-layers (issue #1286).
       skipSmallCuts = e.data.enabled === true;
+      skipVoids = e.data.skipVoids === true;
+      if (api) applySkipVoids(api, skipVoids);
       skipSmallCutsApplied = false;
       applySkipSmallCutsToApi();
       return;
@@ -1758,7 +1764,8 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       installedSourceSessionId = undefined;
       return;
     }
-  } catch (err) {
+  } catch (caught) {
+    const err = e.data.type === 'scan-shard' ? largeFilePrepassError(caught, e.data.sharedBuffer.byteLength) ?? caught : caught;
     // Same #2527 follow-up forward as the top-level catch above.
     const panic = takeWasmPanicStash(self);
     (self as unknown as Worker).postMessage(

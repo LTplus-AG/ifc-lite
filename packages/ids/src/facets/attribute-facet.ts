@@ -8,7 +8,7 @@
 
 import type { IDSAttributeFacet, IFCDataAccessor } from '../types.js';
 import type { FacetCheckResult } from './index.js';
-import { matchConstraint, formatConstraint, type MatchOptions } from '../constraints/index.js';
+import { matchConstraint, formatConstraint, constraintName, type MatchOptions } from '../constraints/index.js';
 import { literalCastsUnderAnyType } from '../constraints/xsd-cast.js';
 
 /** Attribute name matching is case-insensitive (IFC schema-defined names) */
@@ -58,7 +58,7 @@ export function checkAttributeFacet(
           : `attribute matching ${formatConstraint(attrNameConstraint)} to exist`,
         failure: {
           type: 'ATTRIBUTE_MISSING',
-          field: formatConstraint(attrNameConstraint),
+          field: constraintName(attrNameConstraint),
           expected: formatConstraint(attrNameConstraint),
         },
       };

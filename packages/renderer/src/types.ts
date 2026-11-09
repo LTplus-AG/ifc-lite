@@ -7,6 +7,7 @@
  */
 
 import type { ClipBox } from './clip-types.js';
+import type { MeshUniformSlot } from './mesh-uniform-arena.js';
 export type { ClipBox, ExtraClipPlane } from './clip-types.js';
 
 export interface Vec3 {
@@ -68,6 +69,8 @@ export interface Mesh {
    *  report the representation item it hit. See {@link PickResult.geometryItemId}
    *  for when it is absent. */
   geometryItemId?: number;
+  /** A highlight merging many pieces (#9192), and what it covers. */
+  mergedSelection?: import('./selection-hydration.js').MergedSelectionCoverage;
 }
 
 /**
@@ -98,7 +101,8 @@ export interface BatchedMesh {
    *  batches built before this field existed, or single-model scenes. */
   modelIndices?: (number | undefined)[];
   bindGroup?: GPUBindGroup;
-  uniformBuffer?: GPUBuffer;
+  /** This batch's mesh uniform block in the shared arena (mesh-uniform-arena.ts). */
+  uniformSlot?: MeshUniformSlot;
   // Bounding box for frustum culling (optional) — WORLD space.
   bounds?: { min: [number, number, number]; max: [number, number, number] };
   /** Per-batch local-frame origin: stored vertex positions are RELATIVE to it,

@@ -27,6 +27,7 @@ import {
 } from '@/components/ui/select';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useViewerStore } from '@/store';
+import { hasRetainedShapeOnlyModel, RETAINED_SHAPE_ONLY_REASON } from '@/store/retainedGeometry';
 import { trackExportCompleted } from '@/lib/analytics';
 import { toast } from '@/components/ui/toast';
 import { buildKmzForModel, kmzSuggestsAbsoluteAltitude, type KmzBuildError } from '@/lib/geo/kmz-export';
@@ -36,6 +37,7 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import type { KmzAltitudeMode } from '@/lib/geo/kmz-exporter';
 import { downloadBlob, modelExportFilename, sanitizeFilename, stripExtension } from '@/lib/export/download';
 import { useTranslation } from '@/i18n';
+import { exportableModels } from '@/lib/export/capture-export';
 import type { TranslationKey } from '@/i18n';
 import { ExportDialogShell, type ExportDialogShellResult } from './ExportDialogShell';
 
@@ -80,7 +82,7 @@ export function KmzExportDialog({ surface, trigger }: KmzExportDialogProps) {
       geometryResult: GeometryResult;
       dataStore: IfcDataStore;
       instancedModelRange: InstancedModelRange | null;
-    }[] = Array.from(models.values())
+    }[] = exportableModels(models)
       .filter((m) => m.geometryResult && m.ifcDataStore)
       .map((m) => ({
         id: m.id,
@@ -144,6 +146,11 @@ export function KmzExportDialog({ surface, trigger }: KmzExportDialogProps) {
   }, [open, selectedModel, georefMutations]);
 
   const handleExport = useCallback(async (): Promise<ExportDialogShellResult> => {
+    // #8415: the model can become incomplete while this dialog is already open.
+    const live = useViewerStore.getState().models.get(selectedModelId);
+    if (live && hasRetainedShapeOnlyModel(new Map([[selectedModelId, live]]))) {
+      return { success: false, message: t(RETAINED_SHAPE_ONLY_REASON) };
+    }
     if (!selectedModel) {
       return { success: false, message: t('geometryExport.kmz.noGeometryError') };
     }
@@ -267,7 +274,7 @@ export function KmzExportDialog({ surface, trigger }: KmzExportDialogProps) {
                 : t('geometryExport.kmz.placementAbsoluteHint')}
             </p>
             {altitudeMode === 'clampToGround' && suggestTrueElevation && (
-              <p className="text-xs text-amber-600 dark:text-amber-400">
+              <p className="text-xs text-warn">
                 {t('geometryExport.kmz.suggestTrueElevationHint')}
               </p>
             )}

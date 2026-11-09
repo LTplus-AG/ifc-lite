@@ -242,6 +242,28 @@ describe('extractGridAxesForStorey: an authored grid (#6232 D3)', () => {
     editor.removeEntity(grid.gridId);
     expect(extractGridAxesForStorey(store, 42, view).axes).toEqual([]);
   });
+
+  it('honours an overlay SameSense edit: a .F. axis returns its ends swapped, a .T. one is unchanged (#8159)', async () => {
+    const { store, view, editor, anchor } = await session();
+    const grid = addGridToStore(editor, anchor, {
+      Position: [2, 3, 0],
+      ...rectangularGridAxes({ UOffsets: [0, 6], VOffsets: [0, 4], Overhang: 1 }),
+    });
+    const ends = () => Object.fromEntries(
+      extractGridAxesForStorey(store, 42, view).axes.map((a) => [`${a.family}${a.AxisTag}`, [round(a.a), round(a.b)]]),
+    );
+    const before = ends();
+    expect(before.U2).toEqual([[8, 2], [8, 8]]);
+    editor.setPositionalAttribute(grid.uAxisIds[1], 2, false);
+    editor.setPositionalAttribute(grid.vAxisIds[0], 2, false);
+    const after = ends();
+    expect(after.U2).toEqual([before.U2[1], before.U2[0]]);
+    expect(after.VA).toEqual([before.VA[1], before.VA[0]]);
+    expect(after.U1).toEqual(before.U1);
+    expect(after.VB).toEqual(before.VB);
+    editor.setPositionalAttribute(grid.uAxisIds[1], 2, true);
+    expect(ends().U2).toEqual(before.U2);
+  });
 });
 
 
@@ -310,5 +332,29 @@ describe('grid placement orientation refuses unreadable frames (#6511 / #6232)',
     expect(extractGridAxesForStorey(store, 50, view).axes).toEqual([]);
     view.removeTypeMutation(63);
     expect(extractGridAxesForStorey(store, 50, view).axes).toEqual(before);
+  });
+});
+
+describe('extractGridAxesForStorey: IfcGridAxis.SameSense (#8159)', () => {
+  // Grid placed at (500,0) and turned 90 degrees, storey at (1000,2000) mm:
+  // axis '1' is (0.5,0)->(-7.5,0) and axis 'A' (-2.5,0)->(-2.5,6) as authored.
+  const ends = async (text: string) => {
+    const axes = extractGridAxesForStorey(await parse(text), 50).axes;
+    return Object.fromEntries(axes.map((axis) => [axis.AxisTag, [round(axis.a), round(axis.b)]]));
+  };
+  it('swaps the ends of a polyline axis whose SameSense is .F., and not its neighbour', async () => {
+    const result = await ends(FILE_GRID.replace("#73=IFCGRIDAXIS('1',#72,.T.);", "#73=IFCGRIDAXIS('1',#72,.F.);"));
+    expect(result['1']).toEqual([[-7.5, 0], [0.5, 0]]);
+    expect(result.A).toEqual([[-2.5, 0], [-2.5, 6]]);
+  });
+  it('leaves .T. axes unchanged', async () => {
+    const result = await ends(FILE_GRID);
+    expect(result['1']).toEqual([[0.5, 0], [-7.5, 0]]);
+    expect(result.A).toEqual([[-2.5, 0], [-2.5, 6]]);
+  });
+  it('swaps a trimmed-line axis whose SameSense is .F.', async () => {
+    const result = await ends(FILE_GRID.replace("#79=IFCGRIDAXIS('A',#78,.T.);", "#79=IFCGRIDAXIS('A',#78,.F.);"));
+    expect(result.A).toEqual([[-2.5, 6], [-2.5, 0]]);
+    expect(result['1']).toEqual([[0.5, 0], [-7.5, 0]]);
   });
 });

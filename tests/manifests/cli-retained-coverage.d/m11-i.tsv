@@ -1,0 +1,5 @@
+# SPDX-License-Identifier: MPL-2.0
+# M11-I adds no candidates or refusal codes and discharges no obligations.
+# mapped_instances_synthetic.ifc remains owned by cli-retained-coverage.tsv.
+# Its 64 existing publications are exercised by m11_i_native and the browser contract.
+model	id	status	code

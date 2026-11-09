@@ -6,7 +6,7 @@
  * `ViewerLayout`'s own top-level chrome reads the i18n catalogue (#4918
  * slice: shell/sidebar chrome, `shell-chrome.en.ts`'s `shellChrome.layout.*`
  * keys): the safe-mode banner (`styleInterpolatedValues` around a plain
- * `{flag}` param) and the mobile floating Hierarchy/Properties buttons.
+ * `{flag}` param) and the mobile Panels button.
  *
  * Same pseudo-locale oracle shape as `viewer-shell.i18n.test.tsx`: mark
  * every English string, switch locale live, assert the marked form
@@ -123,7 +123,7 @@ describe('ViewerLayout localization (#4918)', () => {
     );
   });
 
-  it('translates the mobile floating Hierarchy/Properties buttons', () => {
+  it('translates the mobile Panels button', () => {
     // ViewerLayout's own "Detect mobile viewport" effect recomputes
     // `isMobile` from `window.innerWidth`/touch capability on mount and would
     // otherwise overwrite a forced `isMobile: true` store value right back to
@@ -137,21 +137,15 @@ describe('ViewerLayout localization (#4918)', () => {
     });
     const container = renderViewerLayout();
     Object.defineProperty(window, 'innerWidth', { value: originalInnerWidth, configurable: true });
-    const hierarchyBtn = [...container.querySelectorAll('button')].find(
-      (b) => b.getAttribute('aria-label') === 'Open Hierarchy',
+    // Named by its visible label, which is the catalogue string.
+    const panelsBtn = [...container.querySelectorAll('button')].find(
+      (b) => b.textContent?.trim() === 'Panels',
     );
-    const propertiesBtn = [...container.querySelectorAll('button')].find(
-      (b) => b.getAttribute('aria-label') === 'Open Properties',
-    );
-    assert.ok(hierarchyBtn, 'expected the mobile "Open Hierarchy" button');
-    assert.ok(propertiesBtn, 'expected the mobile "Open Properties" button');
+    assert.ok(panelsBtn, 'expected the mobile "Panels" button');
 
     registerLocale('viewer-layout-mobile-pseudo', PSEUDO);
     act(() => setLocale('viewer-layout-mobile-pseudo'));
 
-    assert.equal(hierarchyBtn!.getAttribute('aria-label'), mark('shellChrome.layout.openHierarchyAriaLabel' as ShellChromeKey));
-    assert.equal(propertiesBtn!.getAttribute('aria-label'), mark('shellChrome.layout.openPropertiesAriaLabel' as ShellChromeKey));
-    assert.ok(bodyText().includes(mark('shellChrome.layout.hierarchyLabel' as ShellChromeKey)));
-    assert.ok(bodyText().includes(`⟦properties.panel.title|${propertiesPanelEn['properties.panel.title']}⟧`));
+    assert.equal(panelsBtn!.textContent?.trim(), mark('shellChrome.layout.panelsLabel' as ShellChromeKey));
   });
 });

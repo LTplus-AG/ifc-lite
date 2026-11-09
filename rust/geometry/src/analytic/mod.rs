@@ -188,3 +188,12 @@ pub(crate) fn composite_parent_parameter_span(
     let span: f64 = spans.iter().sum();
     Ok(span.is_finite().then_some(span))
 }
+
+// Append opt-in declarations to preserve default-build source locations.
+#[cfg(feature = "retained-runtime")]
+mod profile_retrace;
+#[cfg(all(feature = "retained-runtime", feature = "test-support"))]
+#[doc(hidden)]
+pub use profile_retrace::retrace_cancellations;
+#[cfg(feature = "retained-runtime")]
+pub(crate) use profile::analytic_boundary_loop;

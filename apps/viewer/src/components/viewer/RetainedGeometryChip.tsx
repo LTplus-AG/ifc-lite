@@ -29,13 +29,16 @@ function chipState(summary: RetainedGeometrySummary): 'running' | 'complete' | '
 }
 
 export function RetainedGeometryChip({ reload }: RetainedGeometryChipProps) {
-  // The model object itself: a stable reference until the model changes.
-  const model = useViewerStore((state) => {
-    for (const candidate of state.models.values()) if (candidate.retainedGeometry) return candidate;
+  // Only the summary and source, not the model: streaming geometry replaces the
+  // model record per batch, and the summary changes at most once per interval.
+  const modelId = useViewerStore((state) => {
+    for (const candidate of state.models.values()) if (candidate.retainedGeometry) return candidate.id;
     return null;
   });
-  if (!model?.retainedGeometry) return null;
-  return <RetainedGeometryChipBody modelId={model.id} summary={model.retainedGeometry} sourceFile={model.sourceFile} reload={reload} />;
+  const summary = useViewerStore((state) => (modelId ? state.models.get(modelId)?.retainedGeometry : undefined));
+  const sourceFile = useViewerStore((state) => (modelId ? state.models.get(modelId)?.sourceFile : undefined));
+  if (!modelId || !summary) return null;
+  return <RetainedGeometryChipBody modelId={modelId} summary={summary} sourceFile={sourceFile} reload={reload} />;
 }
 
 function RetainedGeometryChipBody({ modelId, summary, sourceFile, reload }: {
@@ -46,13 +49,16 @@ function RetainedGeometryChipBody({ modelId, summary, sourceFile, reload }: {
   const obligations = useObligationList(summary.obligationsUnmet);
   const state = chipState(summary);
   const refused = summary.refused.length - summary.cancelled;
-  const counts = { published: String(summary.published), candidates: String(summary.candidates), refused: String(refused), cancelled: String(summary.cancelled) };
+  const final = summary.published > 0 && summary.obligationsUnmet.length === 0;
+  const presentation = t(final ? 'retainedGeometry.final' : 'retainedGeometry.shapeOnly');
+  const counts = { presentation, published: String(summary.published), candidates: String(summary.candidates), refused: String(refused), cancelled: String(summary.cancelled) };
   const label = summary.completeness === 'running' && !summary.failure
     ? !summary.started
-      ? t('retainedGeometry.chip.starting')
-      : t('retainedGeometry.chip.running', { done: String(summary.published + summary.refused.length), candidates: counts.candidates })
+      ? t('retainedGeometry.chip.starting', { presentation })
+      : t('retainedGeometry.chip.running', { presentation, done: String(summary.published + summary.refused.length), candidates: counts.candidates })
     : summary.cancelled > 0 ? t('retainedGeometry.chip.labelCancelled', counts) : t('retainedGeometry.chip.label', counts);
-  const title = obligations ? t('retainedGeometry.chip.title', { obligations }) : t('retainedGeometry.chip.titleNone');
+  const title = obligations ? t('retainedGeometry.chip.title', { obligations })
+    : t(final ? 'retainedGeometry.chip.titleFinal' : 'retainedGeometry.chip.titleNone');
 
   // Order 4: after the edit-mode (0), level (1), section (2) and measurements (3) chips.
   return (
@@ -62,7 +68,7 @@ function RetainedGeometryChipBody({ modelId, summary, sourceFile, reload }: {
           data-retained-chip={state} className="flex min-w-0 items-center gap-1.5 rounded-sm px-1.5 py-0.5 text-left hover:bg-accent">
           <Shapes aria-hidden className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
           <span className="min-w-0 tabular-nums">{label}</span>
-          <span className={state === 'complete' ? 'shrink-0 text-muted-foreground' : 'shrink-0 font-medium text-amber-600 dark:text-amber-400'}>
+          <span className={state === 'complete' ? 'shrink-0 text-muted-foreground' : 'shrink-0 font-medium text-warn'}>
             {t(`retainedGeometry.chip.state.${state}`)}
           </span>
         </button>

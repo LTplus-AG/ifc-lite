@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Relationship bookkeeping for [`super::Disposition::Add`]: containment,
-//! aggregation, type assignment, and material and classification
+//! aggregation, nesting, type assignment, and material and classification
 //! association, gathered across every Add in a plan and written once at the
 //! end, and the declaration of a type added on its own to the project.
 //!
@@ -30,6 +30,7 @@ use super::props_synth::{ref_list, ref_or_unset};
 pub(crate) enum RelKind {
     Contained,
     Aggregates,
+    Nests,
     DefinesByType,
     AssociatesMaterial,
     AssociatesClassification,
@@ -42,6 +43,7 @@ impl RelKind {
         match self {
             RelKind::Contained => ("IFCRELCONTAINEDINSPATIALSTRUCTURE", "RelatingStructure", "RelatedElements"),
             RelKind::Aggregates => ("IFCRELAGGREGATES", "RelatingObject", "RelatedObjects"),
+            RelKind::Nests => ("IFCRELNESTS", "RelatingObject", "RelatedObjects"),
             RelKind::DefinesByType => ("IFCRELDEFINESBYTYPE", "RelatingType", "RelatedObjects"),
             RelKind::AssociatesMaterial => ("IFCRELASSOCIATESMATERIAL", "RelatingMaterial", "RelatedObjects"),
             RelKind::AssociatesClassification => ("IFCRELASSOCIATESCLASSIFICATION", "RelatingClassification", "RelatedObjects"),
@@ -53,6 +55,7 @@ impl RelKind {
         match self {
             RelKind::Contained => "rel/contained",
             RelKind::Aggregates => "rel/aggregates",
+            RelKind::Nests => "rel/nests",
             RelKind::DefinesByType => "rel/type",
             RelKind::AssociatesMaterial => "rel/material",
             RelKind::AssociatesClassification => "rel/classification",

@@ -11,6 +11,7 @@ import { useViewerStore, type FederatedModel } from '../../store/index.js';
 import { toast } from '../../components/ui/toast.js';
 import type { LandXmlTinDocument } from './landXmlSemantics.js';
 import { finalizeFederatedSpatialPlacement } from './federatedSpatialFinalize.js';
+import { findReferenceSpatialModel } from './federationAlign.js';
 import type { FederatedLandXmlStreamingFinalization } from './federatedLandXmlStreaming.js';
 
 function coordinateInfo(rtcX?: number): CoordinateInfo {
@@ -93,6 +94,30 @@ describe('federated LandXML spatial finalization (#5048)', () => {
       info: ['Reprojected "terrain.xml" from EPSG:2056 to EPSG:32632 for federation alignment.'],
       error: ['Could not align "terrain.xml" with the federation anchor — EPSG:2056 → EPSG:32632 reprojection failed. The model is shown in its own local frame and may appear at the wrong real-world position.'],
     });
+  });
+
+  it('does not claim a reprojection failed when both models share a CRS (#8042)', async () => {
+    const errors: string[] = [];
+    const originalError = toast.error;
+    toast.error = (message: string) => { errors.push(message); };
+    const reference = spatialReference(0);
+    try {
+      await finalizeFederatedSpatialPlacement({
+        dataStore: {} as IfcDataStore, modelId: 'rev-b', fileName: 'rev-b.ifc',
+        geometry: { meshes: [], totalVertices: 0, totalTriangles: 0, coordinateInfo: coordinateInfo() },
+        federatedLandXmlStreamingPlan: {
+          coordinateInfo: coordinateInfo(), federationAlignmentStatus: 'failed',
+          sourcePlacement: { spatialReference: reference, coordinateInfo: coordinateInfo() },
+          referencePlacement: { spatialReference: reference, coordinateInfo: coordinateInfo() },
+          preAlignment: { positions: [], normals: [], origins: [], geometryAabbs: [], coordinateInfo: coordinateInfo(), instancedGeometryAabbs: undefined },
+          verify: () => undefined,
+        },
+        isCurrent: () => true, setProgress: () => undefined,
+      });
+    } finally {
+      toast.error = originalError;
+    }
+    assert.deepEqual(errors, ['Could not align "rev-b.ifc" with the federation anchor — placement on EPSG:2056 could not be resolved. The model is shown in its own local frame and may appear at the wrong real-world position.']);
   });
 
   it('still rebuilds source-derived overlays after streamed component alignment (#5050)', async () => {
@@ -215,5 +240,51 @@ describe('federated LandXML spatial finalization (#5048)', () => {
     assert.deepEqual(geometry.coordinateInfo.shiftedBounds, sourceBounds);
     assert.deepEqual(Array.from(geometry.meshes[0].positions), [100, 0, 0, 101, 0, 0, 100, 1, 0]);
     assert.equal(geometry.coordinateInfo.wasmRtcOffset, undefined, 'destination frame metadata is adopted');
+  });
+
+  it('records the anchor placement a same-crs load re-baked into, and none for an identity load (#9229)', async () => {
+    const anchor = fixtureModel('anchor') as FederatedModel;
+    anchor.geometryResult = { meshes: [], totalVertices: 0, totalTriangles: 0, coordinateInfo: coordinateInfo() };
+    anchor.spatialReference = spatialReference(0);
+    useViewerStore.setState({ models: new Map([[anchor.id, anchor]]) });
+    const geometry = (): GeometryResult => ({ meshes: [{
+      expressId: 1, positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+      normals: new Float32Array([0, 1, 0, 0, 1, 0, 0, 1, 0]), indices: new Uint32Array([0, 1, 2]),
+      color: [1, 1, 1, 1], origin: [0, 0, 0],
+    }], totalVertices: 3, totalTriangles: 1, coordinateInfo: coordinateInfo() });
+    const load = (eastings: number) => finalizeFederatedSpatialPlacement({
+      dataStore: {} as IfcDataStore, geometry: geometry(), modelId: 'ifc', fileName: 'source.ifc',
+      spatialReference: spatialReference(eastings), isCurrent: () => true, setProgress: () => undefined,
+    });
+    const reference = structuredClone(findReferenceSpatialModel()!.placement);
+    const moved = await load(10);
+    assert.equal(moved?.federationAlignmentStatus, 'same-crs');
+    assert.deepEqual(moved?.alignmentReference, reference, 'the anchor placement the mesh now lies in');
+    const kept = await load(0);
+    assert.equal(kept?.federationAlignmentStatus, 'identity');
+    assert.equal(kept?.alignmentReference, undefined);
+    // A copy: editing the anchor's frame in place later must not rewrite the record.
+    anchor.geometryResult!.coordinateInfo.originShift.x = 99;
+    assert.equal(moved?.alignmentReference?.coordinateInfo?.originShift.x, 0, 'the record keeps the frame the mesh was aligned into');
+  });
+
+  it('records the reference a streamed LandXML document was re-baked into, and none for an identity one (#9229)', async () => {
+    const reference = { spatialReference: spatialReference(0), coordinateInfo: coordinateInfo() };
+    const plan = (status: FederatedLandXmlStreamingFinalization['federationAlignmentStatus']): FederatedLandXmlStreamingFinalization => ({
+      coordinateInfo: coordinateInfo(), federationAlignmentStatus: status,
+      sourcePlacement: { spatialReference: spatialReference(10), coordinateInfo: coordinateInfo() },
+      referencePlacement: reference,
+      preAlignment: { positions: [], normals: [], origins: [], geometryAabbs: [], coordinateInfo: coordinateInfo(), instancedGeometryAabbs: undefined },
+      verify: () => undefined,
+    });
+    const finalize = (status: FederatedLandXmlStreamingFinalization['federationAlignmentStatus']) => finalizeFederatedSpatialPlacement({
+      dataStore: {} as IfcDataStore, modelId: 'terrain', fileName: 'terrain.xml',
+      geometry: { meshes: [], totalVertices: 0, totalTriangles: 0, coordinateInfo: coordinateInfo() },
+      federatedLandXmlStreamingPlan: plan(status), isCurrent: () => true, setProgress: () => undefined,
+    });
+    const moved = await finalize('same-crs');
+    assert.deepEqual(moved?.alignmentReference, reference, 'the reference its components were aligned into');
+    assert.notEqual(moved?.alignmentReference?.coordinateInfo, reference.coordinateInfo, 'a copy, not the anchor\'s own frame object');
+    assert.equal((await finalize('identity'))?.alignmentReference, undefined);
   });
 });

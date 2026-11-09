@@ -17,7 +17,7 @@ export const MOBILE_SURFACE_COMMANDS = [
   {
     id: 'file:add-model', labelKey: 'shellChrome.mobileToolbar.addModelAriaLabel', ribbonLabelKey: 'ribbon.file.addModel', ribbonTooltipKey: 'ribbon.file.addModelTooltip',
     keywords: 'add load federated model', category: 'File', icon: Plus,
-    surfaces: mobileAndRibbon, enabled: alwaysEnabled,
+    surfaces: ['palette', 'mobile', 'ribbon'], enabled: alwaysEnabled, immediate: true,
     run: ({ addModel }: SurfaceCommandContext) => {
       if (!addModel) throw new Error('Add model requires the mobile file input');
       addModel();
@@ -39,7 +39,7 @@ export const MOBILE_SURFACE_COMMANDS = [
     // Phones have no status bar, so the activity tray opens from the overflow menu (#6925).
     id: 'ui:activity', labelKey: 'activityTray.button',
     keywords: 'activity jobs running exports publication', category: 'Tools', icon: Activity,
-    surfaces: mobileOnly, enabled: alwaysEnabled,
+    surfaces: ['palette', 'mobile'], enabled: alwaysEnabled,
     run: ({ openActivity }: SurfaceCommandContext) => {
       if (!openActivity) throw new Error('Activity requires the mobile tray dialog');
       openActivity();

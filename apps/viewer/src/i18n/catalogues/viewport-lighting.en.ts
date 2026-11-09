@@ -34,35 +34,41 @@ export const viewportLightingEn = {
   'viewportLighting.container.emptyState.webgpuBanner.heading': 'WebGPU Not Available',
   'viewportLighting.container.emptyState.webgpuBanner.checkBrowserSupport': 'Check Browser Support',
   'viewportLighting.container.emptyState.webgpuBanner.supportedBrowsers':
-    'Chrome 113+ / Edge 113+ / Firefox 141+ / Safari 18+',
+    'Chrome 113+ / Edge 113+ / Firefox 141+ / Safari 26+',
   'viewportLighting.container.emptyState.webgpuBanner.hideTroubleshooting': 'Hide Troubleshooting',
   'viewportLighting.container.emptyState.webgpuBanner.showTroubleshooting': 'Show Troubleshooting',
-  'viewportLighting.container.emptyState.logoAlt': 'IFClite Logo',
-  'viewportLighting.container.emptyState.title': 'IFClite',
-  'viewportLighting.container.emptyState.tagline': 'IFC toolkit for the open web',
+  'viewportLighting.container.emptyState.heading': 'Open a model',
+  'viewportLighting.container.emptyState.lead.returning': 'Pick a file from your computer, or continue where you left off.',
+  'viewportLighting.container.emptyState.lead.firstVisit': 'Pick a file from your computer, or start from one of the samples below.',
+  'viewportLighting.container.emptyState.recentFiles.reopen': 'Reopen',
+  'viewportLighting.container.emptyState.recentFiles.locate': 'Locate…',
+  'viewportLighting.container.emptyState.recentFiles.locateHint': 'Too large to keep in this browser. Choose the file again to open it.',
+  'viewportLighting.container.emptyState.noModel.heading': 'No model handy?',
+  'viewportLighting.container.emptyState.noModel.demoHint': 'A small sample building',
+  'viewportLighting.container.emptyState.noModel.layersHint': 'Stack .ifcx layers',
+  'viewportLighting.container.emptyState.noModel.llmHint': 'Connect an agent via MCP',
+  'viewportLighting.container.emptyState.scene.layerOf': 'Layer {index} of {count} · {file}',
+  'viewportLighting.container.emptyState.scene.metres': '{value} m',
   'viewportLighting.container.emptyState.openButton.checking': 'Checking WebGPU...',
   'viewportLighting.container.emptyState.openButton.open': 'Open model file',
   'viewportLighting.container.emptyState.openButton.required': 'WebGPU Required',
-  'viewportLighting.container.emptyState.dragDropHint': 'or drop files here',
-  'viewportLighting.container.emptyState.orDivider': 'or',
+  'viewportLighting.container.emptyState.dragDropHint': 'Or drop files anywhere in the viewport:',
   'viewportLighting.container.emptyState.startBlank': 'Start blank',
   'viewportLighting.container.emptyState.openFromCloud': 'Open from cloud',
   'viewportLighting.container.emptyState.driveWithLlm': 'Drive with any LLM',
-  'viewportLighting.container.emptyState.footerCaption': 'new untitled project · or LLM via MCP',
-  'viewportLighting.container.emptyState.recentFiles.heading': 'Recent Files',
+  'viewportLighting.container.emptyState.recentFiles.heading': 'Recent',
   // Privacy footnote (#5119): the visible line itself is the shared
   // `keyboardShortcuts.privacy.banner` key; this is only the tooltip on the
   // click-through to the About tab where the WASM/F12 detail lives.
   'viewportLighting.container.emptyState.privacyDetailsHint': 'How your data stays on your device',
-  // First-run primary action (#5840): the demo-kit sample, loaded through
-  // the same `loadFile` as any user file.
-  'viewportLighting.container.emptyState.loadDemo.button': 'Load demo project',
-  'viewportLighting.container.emptyState.loadDemo.caption': 'A small sample building. No account, nothing uploaded.',
+  // The demo-kit sample (#5840), loaded through the same `loadFile` as any
+  // user file. Listed under "No model handy?", after the user's own file.
+  'viewportLighting.container.emptyState.loadDemo.button': 'Demo project',
   'viewportLighting.container.emptyState.loadDemo.failed': 'The demo project could not be loaded. Check your connection and try again.',
-  'viewportLighting.container.emptyState.layersDemo': 'Try the Layers demo',
+  'viewportLighting.container.emptyState.layersDemo': 'Layers demo',
   'viewportLighting.container.emptyState.footer.discoverPrompt': 'New here?',
   'viewportLighting.container.emptyState.footer.discoverLink': 'ifclite.dev →',
-  'viewportLighting.container.emptyState.footer.shortcutsLabel': 'SHORTCUTS',
+  'viewportLighting.container.emptyState.footer.shortcutsLabel': 'Shortcuts',
   // ── ViewportContainer.tsx — loaded-model "Add Model" drop overlay ────
   // ── ViewportLoadingCard.tsx — in-viewport load progress + Cancel (#5849) ─
   'viewportLighting.container.loadingCard.title': 'Loading {name}',
@@ -70,6 +76,7 @@ export const viewportLightingEn = {
   'viewportLighting.container.loadingCard.cancel': 'Cancel',
   // ── ViewportLoadErrorCard.tsx — one load-error card for every load
   // path: the picker, drop, ?model= autoload and federated adds (#5851) ──
+  'viewportLighting.container.loadErrorCard.invalidInput': 'This file is invalid or is not in the expected format. Check the file type, or export a new copy and open it again.',
   'viewportLighting.container.loadErrorCard.title': 'Could not load the model',
   'viewportLighting.container.loadErrorCard.retry': 'Retry',
   'viewportLighting.container.loadErrorCard.dismiss': 'Dismiss',
@@ -110,7 +117,7 @@ export const viewportLightingEn = {
   // ── Viewport.tsx — renderer init failure fallback ────────────────────
   'viewportLighting.viewport.renderFailed.title': '3D Rendering Failed',
   'viewportLighting.viewport.renderFailed.browserHint':
-    'Try using Chrome 113+, Edge 113+, or Safari 18+ with WebGPU support.',
+    'Try using Chrome 113+, Edge 113+, or Safari 26+ with WebGPU support.',
 
   // ── FlySpeedIndicator.tsx — fly-mode speed HUD ───────────────────────
   'viewportLighting.flySpeed.label': 'Fly speed {level}/{total}',

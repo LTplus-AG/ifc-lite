@@ -5,8 +5,13 @@
 import type { TessellationQuality } from '@ifc-lite/geometry';
 import type { LandXmlGeorefAssumptions } from './ingest/landXmlGeorefAssumptions.js';
 
+/** Terminal Gaussian load result; publication alone is not completion. */
+export type GaussianLoadOutcome = 'completed' | 'cancelled' | 'failed';
+
 export interface ModelLoadOptions {
   sourceHandle?: FileSystemFileHandle;
+  /** Retry the owning operation (e.g. replacement), including its commit/cleanup. */
+  retryOperation?: () => void;
   workflowOwner?: string;
   // Auto-retry-at-lower-detail (resource-retry.ts): when a resource-limit
   // failure re-invokes loadFile, it forces this tier and marks the attempt
@@ -21,10 +26,22 @@ export interface ModelLoadOptions {
   // prompt's retry). Absent: the user's standing settings
   // (`landXmlGeorefAssumptionSettings`) apply. Never inferred.
   landXmlAssumptions?: LandXmlGeorefAssumptions;
+  // Caller placement after the chosen axis conversion, before automatic IFC
+  // origin subtraction. An explicit matrix without gaussianUpAxis retains its
+  // own axis mapping (Y-up). No units or survey registration are inferred.
+  gaussianUpAxis?: 'z' | 'y';
+  gaussianPlacement?: readonly number[];
+  gaussianAttribution?: string;
+  /** Internal reload: reserve against the scene excluding this source model. */
+  gaussianReplacingModelId?: string;
+  /** Transfer the reload hold to the swap transaction, including post-publication metadata. */
+  onGaussianBudgetReserved?: (release: () => void) => void;
+  /** Report settlement after awaited Gaussian source metadata, including cancellation. */
+  onGaussianLoadSettled?: (outcome: GaussianLoadOutcome) => void;
 }
 
 /** Federation placement/display options share loader ownership and source handles. */
-export interface FederationAddModelOptions extends Pick<ModelLoadOptions, 'sourceHandle' | 'workflowOwner'> {
+export interface FederationAddModelOptions extends Pick<ModelLoadOptions, 'sourceHandle' | 'retryOperation' | 'workflowOwner' | 'gaussianPlacement' | 'gaussianUpAxis' | 'gaussianAttribution' | 'gaussianReplacingModelId' | 'onGaussianBudgetReserved' | 'onGaussianLoadSettled'> {
   name?: string;
   modelId?: string;
   loadedAt?: number;

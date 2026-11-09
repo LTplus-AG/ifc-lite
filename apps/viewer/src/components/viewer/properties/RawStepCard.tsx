@@ -212,9 +212,9 @@ export function RawStepCard({
 
   if (!tokens || tokens.length === 0) {
     return (
-      <div className="rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 p-6 text-center">
-        <FileBox className="h-5 w-5 mx-auto mb-2 text-zinc-400" />
-        <p className="text-xs font-mono text-zinc-500 dark:text-zinc-500">
+      <div className="rounded-md border border-border bg-card p-6 text-center">
+        <FileBox className="h-5 w-5 mx-auto mb-2 text-muted-foreground" />
+        <p className="text-xs font-mono text-muted-foreground">
           {dataStore
             ? t('properties.rawStep.noPositionalArgs', { id: currentId })
             : t('properties.rawStep.unavailable')}
@@ -233,10 +233,10 @@ export function RawStepCard({
   }
 
   return (
-    <div className="rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 overflow-hidden">
+    <div className="rounded-md border border-border bg-card overflow-hidden">
       {/* Breadcrumb (only when drilled in) */}
       {!isAtRoot && (
-        <div className="flex items-center gap-1 px-2 py-1.5 border-b border-zinc-200 dark:border-zinc-800 bg-emerald-50/40 dark:bg-emerald-950/15 text-2xs font-mono">
+        <div className="flex items-center gap-1 px-2 py-1.5 border-b border-border bg-emerald-50/40 dark:bg-emerald-950/15 text-2xs font-mono">
           <button
             type="button"
             onClick={handleBack}
@@ -249,19 +249,19 @@ export function RawStepCard({
           <button
             type="button"
             onClick={handleResetToRoot}
-            className="px-1 py-0.5 rounded text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 truncate"
+            className="px-1 py-0.5 rounded text-muted-foreground hover:bg-muted truncate"
             title={t('properties.rawStep.backToSelectedTooltip', { type: entityType, id: entityId })}
           >
             {entityType} #{entityId}
           </button>
           {navStack.map((id, i) => (
             <span key={`${id}-${i}`} className="flex items-center gap-1 min-w-0">
-              <ChevronRight className="h-3 w-3 text-zinc-400 shrink-0" />
+              <ChevronRight className="h-3 w-3 text-muted-foreground shrink-0" />
               <button
                 type="button"
                 onClick={() => setNavStack(navStack.slice(0, i + 1))}
                 disabled={i === navStack.length - 1}
-                className="px-1 py-0.5 rounded text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:hover:bg-transparent disabled:text-emerald-700 dark:disabled:text-emerald-400 disabled:font-semibold truncate"
+                className="px-1 py-0.5 rounded text-muted-foreground hover:bg-muted disabled:hover:bg-transparent disabled:text-emerald-700 dark:disabled:text-emerald-400 disabled:font-semibold truncate"
               >
                 #{id}
               </button>
@@ -271,11 +271,11 @@ export function RawStepCard({
       )}
 
       {/* Header */}
-      <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50/80 dark:bg-zinc-900/40">
+      <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-border bg-zinc-50/80 dark:bg-zinc-900/40">
         <div className="flex items-center gap-2 min-w-0">
           <FileBox className="h-3.5 w-3.5 text-overlay-accent shrink-0" />
           <span
-            className="font-mono text-2xs font-semibold tracking-wide text-zinc-700 dark:text-zinc-200 truncate"
+            className="font-mono text-2xs font-semibold tracking-wide text-muted-foreground dark:text-foreground truncate"
             title={`${currentType} #${currentId}`}
           >
             {currentType} #{currentId}
@@ -315,9 +315,9 @@ export function RawStepCard({
       </div>
 
       {/* Help footer */}
-      <div className="flex items-start gap-2 px-3 py-2 border-t border-zinc-200 dark:border-zinc-800 bg-zinc-50/60 dark:bg-zinc-900/30">
-        <Info className="h-3 w-3 mt-0.5 text-zinc-400 dark:text-zinc-500 shrink-0" />
-        <p className="text-2xs font-mono leading-relaxed text-zinc-500 dark:text-zinc-500">
+      <div className="flex items-start gap-2 px-3 py-2 border-t border-border bg-zinc-50/60 dark:bg-zinc-900/30">
+        <Info className="h-3 w-3 mt-0.5 text-muted-foreground shrink-0" />
+        <p className="text-2xs font-mono leading-relaxed text-muted-foreground">
           {t('properties.rawStep.footerHelp')}
         </p>
       </div>

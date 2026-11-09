@@ -176,3 +176,57 @@ fn issue_7359_curve_only_type_map_with_a_2d_origin_is_wrapped() {
         assert!(output.contains(record), "{record}");
     }
 }
+
+/// `typed_model` with type #172's `RepresentationMaps` authored as `maps`.
+fn type_maps_as(maps: &str, extra: &str) -> String {
+    typed_model(extra).replace("$,(#171),$,$,.NOTDEFINED.)", &format!("$,{maps},$,$,.NOTDEFINED.)"))
+}
+
+/// #8341 F4: a bare `RepresentationMaps` reference is the one map geometry
+/// discovery and EntityRows render (#8300), so the scaled path wraps it
+/// exactly as the list form, instantiated or not. The writer never rewrites
+/// the type record, so the authored bare shape survives.
+#[test]
+fn issue_8341_bare_type_map_reference_plans_exactly_like_the_list_form() {
+    for extra in [String::new(), format!("\n{}", instance("#30"))] {
+        let list = type_maps_as("(#171)", &extra);
+        let bare = type_maps_as("#171", &extra);
+        let [list_plan, bare_plan] = [&list, &bare].map(|source| plan_map_conversion_normalization(source.as_bytes()).unwrap());
+        assert!(bare_plan.warnings.is_empty(), "{:?}", bare_plan.warnings);
+        let lines = |patches: &[MapConversionEntityPatch]| patches.iter().map(|patch| (patch.express_id, patch.line.clone())).collect::<Vec<_>>();
+        assert_eq!(lines(&bare_plan.replacements), lines(&list_plan.replacements));
+        assert_eq!(lines(&bare_plan.new_entities), lines(&list_plan.new_entities));
+        // Uninstantiated, #171 itself is wrapped at type level; instantiated,
+        // it is left to the product wrapper.
+        assert_eq!(bare_plan.replacements.iter().any(|patch| patch.express_id == 171), extra.is_empty());
+        let output = apply(&bare, &bare_plan);
+        assert!(output.contains("'Type',$,$,$,#171,$,$,.NOTDEFINED.);"), "the bare type record is preserved");
+        let (from_list, from_bare) = (world_mesh(&apply(&list, &list_plan)), world_mesh(&output));
+        assert!(from_bare.elements.keys().eq(from_list.elements.keys()));
+        for (id, mesh) in &from_list.elements {
+            assert_eq!(from_bare.elements[id].vertices, mesh.vertices, "#{id} renders differently");
+        }
+    }
+}
+
+/// #8341 F4: what the shared reader would skip is not a map reference, and
+/// the planner fails closed on it rather than guess. A refusal is atomic: no
+/// patch is produced, so the applied output is the untouched source.
+#[test]
+fn issue_8341_typed_wrapper_or_malformed_type_maps_refuse_atomically() {
+    for (maps, report) in [
+        ("IFCREPRESENTATIONMAP(#171)", "type RepresentationMaps is neither a list nor a reference"),
+        ("'x'", "type RepresentationMaps is neither a list nor a reference"),
+        ("(#171,'x')", "type RepresentationMaps holds a non-reference"),
+        ("(#171,$)", "type RepresentationMaps holds a non-reference"),
+        ("((#171))", "type RepresentationMaps holds a non-reference"),
+        ("(IFCREPRESENTATIONMAP(#171))", "type RepresentationMaps holds a non-reference"),
+        ("#170", "type RepresentationMaps entry #170 is not an IfcRepresentationMap"),
+    ] {
+        let source = type_maps_as(maps, "");
+        let plan = plan_map_conversion_normalization(source.as_bytes()).unwrap();
+        assert!(plan.warnings.iter().any(|warning| warning.contains(report)), "{maps}: {:?}", plan.warnings);
+        assert!(plan.replacements.is_empty() && plan.new_entities.is_empty(), "{maps}");
+        assert_eq!(apply(&source, &plan), apply(&source, &MapConversionNormalizationPlan::default()), "{maps}");
+    }
+}

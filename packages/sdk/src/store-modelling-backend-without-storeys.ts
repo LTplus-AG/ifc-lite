@@ -21,7 +21,7 @@
  */
 
 import {
-  copyBatchInStore, copyToStoreysInStore, arrayCopyTransforms, applyNewElementTop,
+  copyBatchInStore, copyToStoreysInStore, copiesOfSelection, arrayCopyTransforms, applyNewElementTop,
   editHostedElementInStore,
   addCurtainWallToStore,
   addGridToStore,
@@ -58,6 +58,7 @@ import {
 import type { CostStoreModelResolution } from './cost-store-backend.js';
 import type { ModellingStoreBackendMethodsWithoutStoreys } from './store-modelling-types.js';
 import type { EntityRef } from './types.js';
+import { copiedElementRefs } from './store-copy-refs.js';
 import { createPhysicalStoreBackend } from './store-physical-backend.js';
 
 /** Same per-call resolution the cost and structural factories take. */
@@ -93,13 +94,13 @@ export function createModellingStoreBackendWithoutStoreys(resolve: ModellingStor
     ...createPhysicalStoreBackend(resolve),
     copyElements(modelId, expressIds, transforms) {
       const model = resolve(modelId);
-      return copyBatchInStore(model.store, model.editor, expressIds, transforms)
-        .map(result => ref(model.modelId, result.copyId));
+      const results = copyBatchInStore(model.store, model.editor, expressIds, transforms);
+      return copiedElementRefs(model.modelId, copiesOfSelection(expressIds, results, transforms.length).flat());
     },
     copyToStoreys(modelId, expressIds, storeyIds) {
       const model = resolve(modelId);
       return copyToStoreysInStore(model.store, model.editor, expressIds, storeyIds)
-        .map(({ storeyId, results }) => ({ storeyId, refs: results.map(result => ref(model.modelId, result.copyId)) }));
+        .map(({ storeyId, copies }) => ({ storeyId, refs: copiedElementRefs(model.modelId, copies) }));
     },
     duplicateElement(entity, options) {
       const model = resolve(entity.modelId);
@@ -111,8 +112,8 @@ export function createModellingStoreBackendWithoutStoreys(resolve: ModellingStor
       const transforms = arrayCopyTransforms(params);
       if (!transforms) throw new Error('Array requires an anchor and a nonzero linear direction');
       const model = resolve(modelId);
-      return copyBatchInStore(model.store, model.editor, expressIds, transforms)
-        .map(result => ref(model.modelId, result.copyId));
+      const results = copyBatchInStore(model.store, model.editor, expressIds, transforms);
+      return copiedElementRefs(model.modelId, copiesOfSelection(expressIds, results, transforms.length).flat());
     },
     editHostedElement(entity, patch) {
       const model = resolve(entity.modelId);

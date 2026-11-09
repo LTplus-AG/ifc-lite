@@ -105,6 +105,33 @@ export function readAttachedTop(target: EditTarget, id: number, kind: AttachedKi
   return ends ? Math.max(ends.start[2], ends.end[2]) : null;
 }
 
+/**
+ * How far a level beam's or member's top face is above its `top` (its
+ * centreline), metres: half the section's vertical extent, the section
+ * being centred on the axis. 0 for every other element, whose `top` is its
+ * top face, and for a sloped or vertical one, whose top end is.
+ */
+export function levelTopFaceAbove(target: EditTarget, id: number, kind: AttachedKind): number {
+  if (kind !== 'linear') return 0;
+  const ends = linearEnds(target, id);
+  if (!ends || Math.abs(ends.chain.axisDirection[2]) >= 1e-9) return 0;
+  const reader = new AnchorEntityReader(target.dataStore, target.view);
+  const placementId = refId(reader.entity(id)?.attributes[5]);
+  const leaf = placementId === null ? null : readPlacementLeaf(reader, placementId);
+  const ref = leaf?.refDirection ? pointOf(reader, leaf.refDirection, 'IFCDIRECTION') : null;
+  const z = ends.chain.axisDirection;
+  // The section's X is the RefDirection made square to the axis; its Y is Axis × X.
+  const raw: Vec3 = ref ?? [1, 0, 0];
+  const along = raw[0] * z[0] + raw[1] * z[1] + raw[2] * z[2];
+  const xr: Vec3 = [raw[0] - along * z[0], raw[1] - along * z[1], raw[2] - along * z[2]];
+  const length = Math.hypot(...xr);
+  if (!(length > 1e-9)) return 0;
+  const x = xr.map((v) => v / length) as Vec3;
+  const yz = z[0] * x[1] - z[1] * x[0];
+  const half = (Math.abs(x[2]) * ends.chain.profileWidth + Math.abs(yz) * ends.chain.profileHeight) / 2;
+  return Number.isFinite(half) ? half : 0;
+}
+
 /** World Z of the element's base (walls, curtain walls: their placement; columns: where the solid starts) or its placement's parent origin (beams), metres. */
 export function attachedTopWorldOrigin(target: EditTarget, id: number, kind: AttachedKind): number | null {
   const reader = new AnchorEntityReader(target.dataStore, target.view);

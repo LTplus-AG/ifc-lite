@@ -19,9 +19,10 @@
  * and raises a notice: nothing can be drawn until it has one.
  */
 
-import { useMemo } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { ChevronDown, Eye, EyeOff, Layers, TriangleAlert } from 'lucide-react';
 import { useViewerStore } from '@/store';
+import { mutationDenial } from '@/store/mutation-permission';
 import { applyLevelDisplayMode } from '@/store/levelDisplay';
 import { activateStorey, isStoreyIsolated } from '@/lib/storeys/storey-session';
 import { useTranslation } from '@/i18n';
@@ -29,7 +30,12 @@ import { editableModels, modelStoreys, type WorkspaceStorey } from '@/lib/comman
 import { HudChip, HudItem, HudNotice, HudPopover, HudPopoverContent, HudPopoverTrigger } from '../../viewport-ui/hud';
 import { StoreyPickerActions } from './storeys/StoreyPickerActions';
 import { StoreyPicker, formatStoreyElevation, type StoreyPickerGroup } from './StoreyPicker';
+import { COPY_TO_STOREYS_EVENT } from '@/lib/actions/copy-to-storeys-open';
+import { Spinner } from '@/components/ui/spinner';
+import { Button } from '@/components/ui/button';
 import { StoreyContextControl } from './StoreyContextControl';
+
+const CopyToStoreys = lazy(() => import('./storeys/CopyToStoreys').then(module => ({ default: module.CopyToStoreys })));
 
 /** Move the session to `storey`, keeping the command and the isolation (the chip and the plan header). */
 export function pickWorkspaceStorey(storey: WorkspaceStorey): void {
@@ -51,9 +57,17 @@ export function useWorkspaceStoreyGroups(): StoreyPickerGroup[] {
 
 export function WorkspaceStoreyChip() {
   const { t } = useTranslation();
+  const [copyOpen, setCopyOpen] = useState(false);
+  const [open, setOpen] = useState(false);
   const session = useViewerStore((s) => s.session);
   const isolated = useViewerStore((s) => (s.session?.storeyId != null ? isStoreyIsolated(s, s.session.modelId, s.session.storeyId) : false));
   const groups = useWorkspaceStoreyGroups();
+  const copyDenial = useViewerStore((s) => s.session ? mutationDenial(s, s.session.modelId) : null);
+  useEffect(() => {
+    const show = () => { setCopyOpen(true); setOpen(true); };
+    window.addEventListener(COPY_TO_STOREYS_EVENT, show);
+    return () => window.removeEventListener(COPY_TO_STOREYS_EVENT, show);
+  }, []);
 
   if (!session) return null;
   const group = groups.find((g) => g.modelId === session.modelId);
@@ -75,7 +89,7 @@ export function WorkspaceStoreyChip() {
   return (
     <>
       <HudItem region="top-left" order={0}>
-        <HudPopover>
+        <HudPopover open={open} onOpenChange={(next) => { setOpen(next); if (!next) setCopyOpen(false); }}>
           {/* Half a rem inside the 13rem chip cap, so even a long storey name
               (truncated, full name in its tooltip) keeps an 8px gap to the
               top-center lane that starts at 14rem (#6315). */}
@@ -107,9 +121,10 @@ export function WorkspaceStoreyChip() {
               {current && <StoreyContextControl />}
             </span>
           </HudChip>
-          <HudPopoverContent align="start" className="p-1">
-            <StoreyPicker groups={groups} current={{ modelId: session.modelId, storeyId: session.storeyId }} onPick={pickWorkspaceStorey} />
-            <StoreyPickerActions />
+          <HudPopoverContent onCloseAutoFocus={(event) => { event.preventDefault(); document.querySelector<HTMLElement>('[data-testid="model-3d-panel"] canvas')?.focus(); }} align="start" className="p-1">
+            {copyOpen ? <Suspense fallback={<div className="flex h-64 w-64 items-center justify-center p-2"><Spinner label={t('storeyManager.copy.title')} /></div>}><CopyToStoreys onDone={() => { setOpen(false); setCopyOpen(false); }} /></Suspense> : <StoreyPicker groups={groups} current={{ modelId: session.modelId, storeyId: session.storeyId }} onPick={pickWorkspaceStorey} />}
+            {!copyOpen && <Button size="sm" variant="ghost" disabled={copyDenial !== null} title={copyDenial ? t('storeyManager.copy.readOnly', { reason: copyDenial }) : undefined} onClick={() => setCopyOpen(!copyOpen)}>{t('storeyManager.copy.title')}</Button>}
+            {!copyOpen && <StoreyPickerActions />}
           </HudPopoverContent>
         </HudPopover>
       </HudItem>

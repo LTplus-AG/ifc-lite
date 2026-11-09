@@ -16,6 +16,7 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { useViewerStore } from '@/store';
 import { advance, cleanup, click, press, render } from '@/test/render.js';
+import { activityListReady } from '@/test/activity-list';
 import type { BimContext } from '@ifc-lite/sdk';
 import { BimReactContext } from '@/sdk/BimProvider';
 import { MobileToolbar } from '../MobileToolbar';
@@ -28,11 +29,7 @@ import { ActivityTrayButton, ActivityTrayDialog } from './ActivityTray';
 
 async function openTray(button: HTMLButtonElement): Promise<void> {
   click(button);
-  for (let attempt = 0; attempt < 200; attempt++) {
-    if (document.querySelector('[aria-label="Jobs"]') || document.body.textContent?.includes('No jobs in this session yet.')) return;
-    await advance(20);
-  }
-  assert.fail('Activity contents did not appear');
+  await activityListReady();
 }
 
 const initial = useViewerStore.getState();
@@ -206,7 +203,7 @@ describe('activity tray on phones (U02, #6925)', async () => {
     assert.ok(item);
     assert.equal(text(item).trim(), 'Activity');
     click(item);
-    await advance(20);
+    await activityListReady();
     const dialog = document.querySelector('[role="dialog"]');
     assert.ok(dialog, 'the tray opens as a dialog');
     assert.equal(dialog.getAttribute('aria-labelledby') && document.getElementById(dialog.getAttribute('aria-labelledby')!)?.textContent, 'Activity');

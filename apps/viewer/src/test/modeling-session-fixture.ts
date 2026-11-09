@@ -59,7 +59,7 @@ export interface ModelingSessionOptions {
   step?: string;
 }
 
-function fixtureStep({ unit = 'metre', storeyOffset = [0, 0], roomGeometry = false, raisedStorey = false }: ModelingSessionOptions): string {
+export function fixtureStep({ unit = 'metre', storeyOffset = [0, 0], roomGeometry = false, raisedStorey = false }: ModelingSessionOptions): string {
   const prefix = unit === 'metre' ? '$' : '.MILLI.';
   const k = unit === 'metre' ? 1 : 1000;
   const [ox, oy] = storeyOffset.map((v) => v * k);

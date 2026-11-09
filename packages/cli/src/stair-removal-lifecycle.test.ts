@@ -130,7 +130,25 @@ describe.skipIf(!AVAILABLE)('#6232 canonical stair assembly lifecycle', () => {
     expect(nativeBefore.get(column.expressId)?.length).toBeGreaterThan(0);
     expect(m.bim.store.removeStair(m.ref)).toBe(true);
     const after = await data(m.bim.export.ifc());
-    const retained = before.filter(([id, e]) => id !== m.ref.expressId && id !== m.flightId
+    // #9423: removing a stair also removes its export-derived quantity graph.
+    // All unrelated source/authored records, including shared shape leaves,
+    // still retain their exact ids and attributes.
+    const owned = new Set<number>();
+    const quantityRel = before.filter(([, e]) => e.type === 'IFCRELDEFINESBYPROPERTIES'
+      && Array.isArray(e.attributes[4]) && e.attributes[4].includes(m.ref.expressId));
+    expect(quantityRel).toHaveLength(1);
+    const [relationId, relation] = quantityRel[0];
+    expect(relation.attributes[4]).toEqual([m.ref.expressId]);
+    const definition = before.find(([id]) => id === relation.attributes[5]);
+    expect(definition?.[1].type).toBe('IFCELEMENTQUANTITY');
+    expect(definition?.[1].attributes[2]).toBe('Qto_StairBaseQuantities');
+    const leaves = definition?.[1].attributes[5];
+    if (!definition || !Array.isArray(leaves)) throw new Error('Missing stair base quantities');
+    owned.add(relationId); owned.add(definition[0]);
+    for (const id of leaves) { if (typeof id !== 'number') throw new Error('Invalid quantity reference'); owned.add(id); }
+    expect(owned.size).toBe(5);
+    expect(after.some(([id]) => owned.has(id))).toBe(false);
+    const retained = before.filter(([id, e]) => !owned.has(id) && id !== m.ref.expressId && id !== m.flightId
       && e.type !== 'IFCRELAGGREGATES' && e.type !== 'IFCRELCONTAINEDINSPATIALSTRUCTURE');
     expect(after.filter(([id]) => retained.some(([old]) => old === id))).toEqual(retained);
     expect(after.some(([id]) => id === m.ref.expressId || id === m.flightId)).toBe(false);

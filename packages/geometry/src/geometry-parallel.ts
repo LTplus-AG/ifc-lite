@@ -264,6 +264,7 @@ export async function* processParallel(
   // round-robin so each worker owns ~1/N of the distinct geometries (the dominant
   // cost). Falls back to interleaving when the pre-pass sends no affinity array.
   const keyToWorker = new Map<number, number>();
+  const affinityState = { keyUses: new Map<number, number>(), workerJobs: [] as number[] };
   let nextAffinityWorker = 0;
 
   // Per-worker first-batch timestamps (filled lazily so we don't need
@@ -645,9 +646,9 @@ export async function* processParallel(
 
   /**
    * Group a chunk's jobs by the worker each job's affinity key maps to, then
-   * post one contiguous slice per worker. All jobs of a key reach the same
-   * worker across the whole stream (`keyToWorker` is sticky), so each unique
-   * geometry is meshed once; new keys round-robin for even spread.
+   * post one contiguous slice per worker. Small keys remain sticky across the stream; hot keys
+   * reconsider their owner after a bounded run so repeated geometry cannot
+   * monopolize one worker. New keys retain their round-robin assignment.
    */
   function dispatchByAffinity(jobs: Uint32Array, affinity: Uint32Array): void {
     const n = workers.length;
@@ -658,6 +659,7 @@ export async function* processParallel(
       n,
       keyToWorker,
       nextAffinityWorker,
+      affinityState,
     );
     nextAffinityWorker = nextWorker;
     for (let i = 0; i < n; i++) {

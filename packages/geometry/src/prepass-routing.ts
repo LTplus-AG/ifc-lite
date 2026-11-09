@@ -79,32 +79,46 @@ export function extractPrepassSpanLists(
   return spans;
 }
 
-/**
- * Plan content-affinity routing for one chunk: assign each job (by index) to a
- * worker bucket so that every job sharing an affinity key lands on the SAME
- * worker — across the whole stream, since `keyToWorker` is the caller's sticky
- * map. New keys are handed out round-robin from `startWorker`, so each worker
- * owns roughly `1/workerCount` of the distinct keys (≈ distinct geometries, the
- * dominant meshing cost). Pure: mutates only the passed `keyToWorker` and returns
- * the advanced round-robin cursor. (#1130 follow-up — see `affinity_key` in Rust.)
- */
+/** Persistent stream accounting for bounded affinity ownership (#8451). */
+export interface AffinityRoutingState {
+  readonly keyUses: Map<number, number>;
+  readonly workerJobs: number[];
+}
+
+/** Jobs of one key kept on its current worker before reconsidering ownership. */
+const MAX_STICKY_KEY_JOBS = 4096;
+
+/** Keep small keys sticky, but share a hot key with an underloaded worker.
+ * Pass one state across all chunks of a stream. The round-robin assignment of
+ * new keys and routing below the cap remain identical to the original planner. */
 export function planAffinityRouting(
   affinity: Uint32Array,
   totalJobs: number,
   workerCount: number,
   keyToWorker: Map<number, number>,
   startWorker: number,
+  state: AffinityRoutingState = { keyUses: new Map(), workerJobs: [] },
 ): { buckets: number[][]; nextWorker: number } {
   const buckets: number[][] = Array.from({ length: workerCount }, () => []);
+  for (let i = 0; i < workerCount; i++) state.workerJobs[i] ??= 0;
   let nextWorker = startWorker % workerCount;
   for (let j = 0; j < totalJobs; j++) {
     const key = affinity[j];
     let w = keyToWorker.get(key);
+    let uses = state.keyUses.get(key) ?? 0;
     if (w === undefined) {
       w = nextWorker;
       nextWorker = (nextWorker + 1) % workerCount;
-      keyToWorker.set(key, w);
+    } else if (uses >= MAX_STICKY_KEY_JOBS) {
+      w = 0;
+      for (let i = 1; i < workerCount; i++) {
+        if (state.workerJobs[i] < state.workerJobs[w]) w = i;
+      }
+      uses = 0;
     }
+    keyToWorker.set(key, w);
+    state.keyUses.set(key, uses + 1);
+    state.workerJobs[w]++;
     buckets[w].push(j);
   }
   return { buckets, nextWorker };

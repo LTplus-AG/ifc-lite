@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { clashObjectPairKey, matchedClashObjects, sameClashObject } from '../object-identity.js';
 import { clashMemberSet, inClashSet } from '../members.js';
 import { inferClashSeverity } from '../disciplines.js';
 import { isExcluded, qualifiedKey } from '../exclude.js';
@@ -92,6 +93,7 @@ export async function runClash(
   // silently keep whichever submesh's record happened to be produced first,
   // which can be the shallower — or entirely clean — one. See `mostSevere`.
   const seen = new Map<string, number>();
+  const pairKey = clashObjectPairKey(elements);
   let droppedPairs = 0;
   // A single GLOBAL candidate-pair budget across the whole run (not per rule),
   // so `maxCandidatePairs` is an honest end-to-end guardrail.
@@ -136,10 +138,12 @@ export async function runClash(
           matchedKeysB!.add(el.key);
         }
       }
+      const matchedElements = matchedClashObjects([...groupA, ...(groupB ?? [])].map(index => elements[index]));
       const coverageEntry: ClashRuleCoverage = {
         rule: rule.id,
         matchedA: groupA.length,
         matchedB: groupB ? groupB.length : null,
+        matchedElements,
         matchedKeysA: [...matchedKeysA].sort(),
         matchedKeysB: matchedKeysB ? [...matchedKeysB].sort() : null,
         ...(membersA ? { fromMembersA: true } : {}),
@@ -176,10 +180,9 @@ export async function runClash(
         }
         const elA = elements[rec.a];
         const elB = elements[rec.b];
-        // Same durable key + model = one entity split across geometry sub-prims
-        // (common in IFC5/USD), not a self-clash. Filter here so every kernel —
-        // TS or WASM, regardless of how its broad phase dedups — behaves alike.
-        if (elA.key === elB.key && elA.model === elB.model) continue;
+        // Sub-prims share the model/ref, even when occurrence keys differ.
+        // Repeated GlobalIds with distinct refs are distinct objects (#9259).
+        if (sameClashObject(elA, elB)) continue;
         if (
           exclusions &&
           isExcluded(exclusions, qualifiedKey(elA.model, elA.key), qualifiedKey(elB.model, elB.key))
@@ -187,7 +190,7 @@ export async function runClash(
           continue;
         }
 
-        const id = clashId(elA, elB, rule.id);
+        const id = clashId(pairKey(elA), pairKey(elB), rule.id);
         const existingIndex = seen.get(id);
         if (existingIndex !== undefined) {
           // A second record for an (A, B) entity pair already reported once
@@ -288,9 +291,7 @@ function mostSevere(
 }
 
 /** Stable, deterministic clash identity from the two durable keys + rule. */
-function clashId(a: ClashElement, b: ClashElement, ruleId: string): string {
-  const ka = `${a.model} ${a.key}`;
-  const kb = `${b.model} ${b.key}`;
+function clashId(ka: string, kb: string, ruleId: string): string {
   const [lo, hi] = ka < kb ? [ka, kb] : [kb, ka];
   return `${ruleId} ${lo} ${hi}`;
 }

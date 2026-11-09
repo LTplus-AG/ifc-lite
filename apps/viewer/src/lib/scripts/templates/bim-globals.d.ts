@@ -746,6 +746,9 @@ declare namespace BimClash {
      */
     matchedKeysA?: readonly string[];
     matchedKeysB?: readonly string[] | null;
+    /** Model-qualified union of both matched sides, for object-based quality gates (#9259).
+     * The per-load ref distinguishes objects even when GlobalIds are repeated. */
+    matchedElements?: readonly { model: string; key: string; ref: number }[];
     /**
      * Broad-phase candidate pairs the geometry kernel actually narrow-phase
      * tested for THIS rule (`RuleDetection.candidatesProcessed` in

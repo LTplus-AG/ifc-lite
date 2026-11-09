@@ -120,15 +120,9 @@ export function commitDigest(file: Pick<DaluxFile, 'contentHash' | 'fileRevision
   return `${REVISION_DIGEST_PREFIX}unknown`;
 }
 
-/**
- * When this revision of the file was last written.
- *
- * `lastModified` first, `uploaded` second. A row with neither still needs a
- * timestamp because `SourceCommit.createdAt` is required and the panel sorts
- * on it — `buildCommitIndex` (`commit-index.ts`) supplies the epoch for
- * those and falls back to version-set order, so an undated row sinks to the
- * bottom of the timeline instead of jumping to the top.
- */
+/** A usable revision date, preferring lastModified and falling back to uploaded.
+ * Missing/unparseable dates stay absent, rather than inventing an epoch. */
 export function commitTimestamp(file: Pick<DaluxFile, 'lastModified' | 'uploaded'>): string | undefined {
-  return file.lastModified?.trim() || file.uploaded?.trim() || undefined;
+  return [file.lastModified?.trim(), file.uploaded?.trim()]
+    .find((value) => value && Number.isFinite(Date.parse(value)));
 }

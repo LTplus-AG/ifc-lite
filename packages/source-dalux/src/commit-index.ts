@@ -2,45 +2,18 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-// ============================================================================
-// Turning a project's version sets into per-model commit histories.
-//
-// THE MAPPING, and why it is this one:
-//
-//   model  = a model FILE that appears in at least one version set.
-//            `modelId` is the `fileId`, which is what
-//            `capabilities.commits.modelIdsAreFileIds` promises a host.
-//   commit = one distinct REVISION of that file. `commitId` is the
-//            `fileRevisionId`.
-//
-// A commit is a revision, not a version set. Two sets that pin the SAME
-// revision of a file are not two versions of that model — the model did not
-// change between them — and rendering them as two rows would tell a
-// coordinator their model changed when it did not. The sets that pin a
-// revision are kept on the commit instead (its message, and `meta`), so the
-// coordination context a version set carries is not lost.
-//
-// THE COST: building this needs one request per version set, because Dalux
-// has no "revisions of this file" endpoint and no way to filter
-// `listVersionSetFiles` down to one file. The sweep is therefore bounded,
-// cached per project, and de-duplicated across concurrent callers.
-// ============================================================================
+/** Per-file revision histories from Dalux version-set pins (#8646).
+ * This index owns the only cache. Its internal commit records are revisions,
+ * not a generic source-control API: the consumer is listRevisions. */
 
 import type { DaluxFile } from './dalux-types.js';
 import { BrowserDaluxApiClient, fetchAllPages } from './http-client.js';
 import { enc, nonEmptyString, unwrapDaluxEnvelope } from './mapping.js';
-import { getPinnedModels, invalidatePinnedModels } from './version-set-browse.js';
+import { getPinnedModels } from './version-set-browse.js';
 import { commitTimestamp, decodeVersionSet, type DaluxVersionSet } from './version-sets.js';
 
-/**
- * Hard ceiling on version sets swept for one project.
- *
- * Each one costs a paged file listing, so an unbounded sweep against a
- * project with thousands of sets is a hang, not a slow load. Hitting it
- * marks the index `truncated`, which the provider reports on every model it
- * builds — a partial history that says it is partial, rather than one that
- * silently claims an old revision is the newest.
- */
+/** Maximum sets whose files we will sweep. An oversized undated listing is
+ * refused in full; choosing its first rows would silently hide newer pins. */
 const MAX_VERSION_SETS = 250;
 
 /** How long a built index is reused before the sweep runs again. */
@@ -83,7 +56,7 @@ export interface DaluxCommitIndex {
   /** Keyed by `fileId`. */
   readonly models: ReadonlyMap<string, DaluxModelHistory>;
   readonly versionSetCount: number;
-  /** `true` when {@link MAX_VERSION_SETS} cut the sweep short. */
+  /** `true` when the project is too large to select a complete history safely. */
   readonly truncated: boolean;
   /**
    * `true` when at least one version set's files could not be listed and was
@@ -98,48 +71,17 @@ export interface DaluxCommitIndex {
   readonly partial: boolean;
 }
 
-/**
- * Newest first.
- *
- * Three signals, in descending order of how much they can be trusted:
- *
- *  1. `File.version` — "for files in file areas of type shared or published,
- *     the version corresponds to the revision number" (Dalux's own schema).
- *     A real revision number is the only signal that is unambiguous by
- *     construction.
- *  2. `lastModified` / `uploaded`. Good when the version-set file rows carry
- *     the pinned revision's own timestamps; useless if Dalux ever answers
- *     with the file's current metadata instead, which is why it is not the
- *     only signal.
- *  3. Sweep position, later-is-newer. A guess about an undocumented list
- *     order, and deliberately last: it only decides a pair that the two real
- *     signals could not separate.
- *
- * `trustRevisionNumber` decides whether signal 1 applies, and is computed
- * ONCE for the whole array of one model's commits, not per pair compared
- * (review on #8647). A per-pair "use the number when both sides have one"
- * rule is not a total order: with A (rev 2, 3 Jan), B (no number, 2 Jan), C
- * (rev 3, 1 Jan), that rule gives C > A (by number), A > B (by date, no
- * number on B), and B > C (by date, no number on B) — a cycle, so
- * `Array.prototype.sort`'s result depends on input order and on which pairs
- * it happens to compare. Trusting the number only when EVERY commit of this
- * model has one keeps the comparator a fixed function of each commit alone,
- * which is what a total order requires; falling back to date for the whole
- * array otherwise is the same "most trustworthy signal that's actually
- * available" idea, just decided before sorting starts instead of mid-sort.
- */
-function newestFirst(a: DaluxModelCommit, b: DaluxModelCommit, trustRevisionNumber: boolean): number {
-  if (trustRevisionNumber && a.revisionNumber !== b.revisionNumber) {
-    return b.revisionNumber! - a.revisionNumber!;
-  }
+/** One total order for both the index and the Versions panel (#8647).
+ * Date first, then numeric revisions (missing last), sweep position and id. */
+export function newestFirst(a: DaluxModelCommit, b: DaluxModelCommit): number {
   const aTime = Date.parse(commitTimestamp(a.file) ?? '');
   const bTime = Date.parse(commitTimestamp(b.file) ?? '');
   const aValid = Number.isFinite(aTime);
   const bValid = Number.isFinite(bTime);
-  // An undated row sinks below every dated one rather than sorting as epoch 0
-  // at one end or NaN-poisoning the comparison.
   if (aValid !== bValid) return aValid ? -1 : 1;
   if (aValid && bValid && aTime !== bTime) return bTime - aTime;
+  if ((a.revisionNumber === undefined) !== (b.revisionNumber === undefined)) return a.revisionNumber === undefined ? 1 : -1;
+  if (a.revisionNumber !== undefined && b.revisionNumber !== undefined && a.revisionNumber !== b.revisionNumber) return b.revisionNumber - a.revisionNumber;
   if (a.sweepIndex !== b.sweepIndex) return b.sweepIndex - a.sweepIndex;
   return a.revisionId < b.revisionId ? 1 : a.revisionId > b.revisionId ? -1 : 0;
 }
@@ -179,31 +121,31 @@ interface Accumulator {
 async function buildCommitIndex(client: BrowserDaluxApiClient, projectId: string): Promise<DaluxCommitIndex> {
   const setRows = await fetchAllPages(client, `/2.1/projects/${enc(projectId)}/version_sets`, {});
   const sets: DaluxVersionSet[] = [];
+  let partial = false;
   for (const row of setRows) {
     try {
       // Every Dalux list row arrives as a `{ data: … }` envelope.
       sets.push(decodeVersionSet(unwrapDaluxEnvelope(row)));
     } catch (error) {
-      client.debug('skipping an undecodable version set', { error: String(error) });
+      partial = true;
+      client.warn('skipping an undecodable version set', { error: String(error) });
     }
   }
 
+  // The listing has no documented set date/order. Refuse an oversized history
+  // rather than choose 250 arbitrary sets and present an old revision as newest.
   const truncated = sets.length > MAX_VERSION_SETS;
-  const swept = truncated ? sets.slice(0, MAX_VERSION_SETS) : sets;
+  if (truncated) return { models: new Map(), versionSetCount: 0, truncated: true, partial };
+  const swept = sets;
   const accumulators = new Map<string, Accumulator>();
-  let partial = false;
 
   for (let sweepIndex = 0; sweepIndex < swept.length; sweepIndex++) {
     const versionSet = swept[sweepIndex];
     let rows: readonly DaluxFile[];
     try {
-      // Shared with the version-set BROWSE path (`version-set-browse.ts`),
-      // which reads the same endpoint and applies the same three filters —
-      // deleted, not a model, no revision id. One implementation because the
-      // two must never disagree about what a set pins, and one CACHE because
-      // a user who browses a version set and then opens its History would
-      // otherwise fetch every set's rows twice.
-      rows = await getPinnedModels(client, projectId, versionSet.versionSetId);
+      const pinned = await getPinnedModels(client, projectId, versionSet.versionSetId);
+      rows = pinned.models;
+      partial ||= pinned.partial;
     } catch (error) {
       partial = true;
       client.warn('skipping a version set whose files could not be listed', {
@@ -257,11 +199,7 @@ async function buildCommitIndex(client: BrowserDaluxApiClient, projectId: string
         ...(revisionNumber !== undefined ? { revisionNumber } : {}),
       };
     });
-    // Whether every commit of THIS model carries a revision number, decided
-    // once for the whole array rather than per pair compared — see
-    // `newestFirst`'s doc for why a per-pair decision is not a total order.
-    const trustRevisionNumber = commits.every((commit) => commit.revisionNumber !== undefined);
-    commits.sort((a, b) => newestFirst(a, b, trustRevisionNumber));
+    commits.sort(newestFirst);
     // The NEWEST row wins for the model's display name and location: a file
     // renamed or moved between version sets should read as where it is now,
     // not where it started.
@@ -275,9 +213,6 @@ async function buildCommitIndex(client: BrowserDaluxApiClient, projectId: string
     });
   }
 
-  if (truncated) {
-    client.debug('version-set sweep truncated', { swept: swept.length, total: sets.length });
-  }
   return { models, versionSetCount: swept.length, truncated, partial };
 }
 
@@ -299,18 +234,9 @@ function cacheKey(client: BrowserDaluxApiClient, projectId: string): string {
   return `${client.baseUrl}|${client.cacheIdentity}|${projectId}`;
 }
 
-/**
- * Drops the cache. Exported for tests and for a "refresh history" action.
- *
- * Clears the PINNED-ROW cache too, because the index is now derived from it
- * (`getPinnedModels`). Dropping only the index would rebuild it from exactly
- * the same rows it was built from — "refresh" that cannot see a new revision
- * is not a refresh, and a test that invalidated between phases would be
- * asserting against data it believed it had discarded.
- */
+/** Drop the one project-history cache, forcing fresh rows on the next sweep. */
 export function invalidateCommitIndex(): void {
   cache.clear();
-  invalidatePinnedModels();
 }
 
 /**

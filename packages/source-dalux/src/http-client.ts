@@ -4,7 +4,9 @@
 
 import { readWithProgress, type DownloadOptions, type PluginContext } from '@ifc-lite/plugin-api';
 import { canonicalFieldNodeUrl } from './node-url.js';
-import { fnv1a } from './mapping.js';
+import { cacheIdentity } from './cache-identity.js';
+import { DaluxHttpError, DaluxPaginationError } from './http-errors.js';
+export { DaluxHttpError, DaluxPaginationError } from './http-errors.js';
 
 export interface DaluxCredentials {
   readonly baseUrl: string;
@@ -50,35 +52,6 @@ function truncate(text: string, max = MAX_ERROR_BODY_CHARS): string {
   return text.length > max ? `${text.slice(0, max)}…` : text;
 }
 
-/** Thrown when Dalux's bookmark pagination looks broken in a way that can't
- * be reconciled with "the listing is simply done": a `nextPage` link with no
- * bookmark, or a bookmark that repeats while the page carrying it still has
- * items on it (see {@link fetchPage}). Callers must not treat this as "no
- * more data": it means the listing is truncated and the caller should say
- * so, not report a clean success with fewer rows than actually exist
- * upstream. */
-export class DaluxPaginationError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'DaluxPaginationError';
-  }
-}
-
-/** Thrown for a non-2xx Dalux API response. Carries the actual HTTP status
- * so callers that need to branch on it (auth-failure detection in
- * `testConnection`, for one) match on `status` rather than on substrings of
- * the interpolated error message — a truncated upstream body can contain
- * digits that happen to look like a status code without being one. */
-export class DaluxHttpError extends Error {
-  constructor(
-    message: string,
-    readonly status: number,
-  ) {
-    super(message);
-    this.name = 'DaluxHttpError';
-  }
-}
-
 export class BrowserDaluxApiClient {
   constructor(
     private readonly credentials: DaluxCredentials,
@@ -89,18 +62,8 @@ export class BrowserDaluxApiClient {
     return this.credentials.baseUrl;
   }
 
-  /**
-   * Opaque component for a cache key, distinguishing requests made under a
-   * different node or API key even though {@link baseUrl} alone cannot:
-   * `node` is sent as a query parameter rather than baked into `baseUrl`
-   * (see {@link DaluxCredentials.node}), so switching node or rotating the
-   * key within a cache's TTL would otherwise return the previous key's data.
-   * The key itself is hashed rather than embedded, so a credential never
-   * sits in a `Map` key that outlives the request that created it.
-   */
-  get cacheIdentity(): string {
-    return `${this.credentials.node ?? ''}:${fnv1a(this.credentials.apiKey)}`;
-  }
+  /** Distinguish API keys and nodes without keeping the raw key in cache keys. */
+  get cacheIdentity(): string { return cacheIdentity(this.credentials); }
 
   /**
    * Add the caller's node selector, but ONLY to URLs that go through our relay.

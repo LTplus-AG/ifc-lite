@@ -17,7 +17,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { getCommitIndex, invalidateCommitIndex } from '../src/commit-index.js';
-import { getPinnedModels, invalidatePinnedModels } from '../src/version-set-browse.js';
+import { getPinnedModels } from '../src/version-set-browse.js';
 import { BrowserDaluxApiClient } from '../src/http-client.js';
 import {
   createDaluxApiMock,
@@ -183,10 +183,11 @@ describe('getCommitIndex', () => {
     const client = clientFor(worldWithSets(sets), 50);
     const index = await getCommitIndex(client, 'p-alpha');
     expect(index.truncated).toBe(true);
-    expect(index.versionSetCount).toBe(250);
+    expect(index.versionSetCount).toBe(0);
+    expect(index.models.size).toBe(0);
   });
 
-  it('shares its per-set fetch with getPinnedModels, and both share one sweep per TTL window', async () => {
+  it('caches the project sweep, while direct pinned-row reads are always fresh (#8647)', async () => {
     const spec = worldWithSets([
       { versionSetId: 'vs-1', name: 'Initial delivery', fileAreaId: 'fa-models', files: { 'file-structural': 'rev-1' } },
     ]);
@@ -203,14 +204,14 @@ describe('getCommitIndex', () => {
 
     await getCommitIndex(client, 'p-alpha');
     const afterFirstSweep = requests;
-    // A caller browsing the same set directly reuses the fetch the sweep
-    // already made, rather than re-requesting its files.
+    // Direct reads are fresh: only the project index owns a cache.
     await getPinnedModels(client, 'p-alpha', 'vs-1');
-    expect(requests).toBe(afterFirstSweep);
+    expect(requests).toBeGreaterThan(afterFirstSweep);
+    const afterPinnedRead = requests;
 
     // A second call to the index itself, still within the TTL, is free too.
     await getCommitIndex(client, 'p-alpha');
-    expect(requests).toBe(afterFirstSweep);
+    expect(requests).toBe(afterPinnedRead);
   });
 
   // Review on #8647 (louistrue, 2 Nov): the old comparator compared revision
@@ -268,21 +269,16 @@ describe('getCommitIndex', () => {
       return out;
     };
 
-    let result: string[] | undefined;
     for (const order of permutationsOf(world.projects[0].versionSets!)) {
       invalidateCommitIndex();
       const client = clientFor({ projects: [{ ...world.projects[0], versionSets: order }] });
       const index = await getCommitIndex(client, 'p-alpha');
-      const ids = index.models.get('file-structural')!.commits.map((commit) => commit.revisionId);
-      if (result === undefined) {
-        result = ids;
-      } else {
-        expect(ids).toEqual(result);
-      }
+      expect(index.models.get('file-structural')!.commits.map((commit) => commit.revisionId))
+        .toEqual(['rev-A', 'rev-B', 'rev-C']);
     }
   });
 
-  it('invalidateCommitIndex also drops the pinned-models cache, so a refresh re-sweeps', async () => {
+  it('invalidateCommitIndex forces fresh pinned rows on a refresh (#8647)', async () => {
     const spec = worldWithSets([
       { versionSetId: 'vs-1', name: 'Initial delivery', fileAreaId: 'fa-models', files: { 'file-structural': 'rev-1' } },
     ]);
@@ -411,7 +407,6 @@ describe('getCommitIndex', () => {
 
 describe('getPinnedModels', () => {
   beforeEach(() => {
-    invalidatePinnedModels();
     invalidateCommitIndex();
   });
 
@@ -436,7 +431,64 @@ describe('getPinnedModels', () => {
         },
       ],
     });
-    const pinned = await getPinnedModels(client, 'p-alpha', 'vs-1');
+    const { models: pinned } = await getPinnedModels(client, 'p-alpha', 'vs-1');
     expect(pinned).toEqual([]);
+  });
+});
+
+// Additional behavioural witnesses for the 7 Nov review of #8647.
+describe('history sweep review regressions (#8647)', () => {
+  beforeEach(() => invalidateCommitIndex());
+
+  it('keeps numbered same-day revisions ordered beside a nonnumeric label', async () => {
+    const base = WORLD.projects[0];
+    const revisions = [revision('rev-4', '4', '2026-01-01', 'four'), revision('rev-5', '5', '2026-01-01', 'five'), revision('rev-A', 'A', '2026-01-01', 'letter')];
+    const sets = revisions.map((r) => ({ versionSetId: r.fileRevisionId, name: r.fileRevisionId, fileAreaId: 'fa-models', files: { 'file-structural': r.fileRevisionId } }));
+    for (const order of [sets, [...sets].reverse(), [sets[1], sets[0], sets[2]]]) {
+      invalidateCommitIndex();
+      const world: DaluxMockWorld = { projects: [{ ...base, versionSets: order, fileAreas: [{ ...base.fileAreas[0], files: [{ ...base.fileAreas[0].files[0], revisions }] }] }] };
+      const result = await getCommitIndex(clientFor(world), 'p-alpha');
+      expect(result.models.get('file-structural')?.commits.map((c) => c.revisionId)).toEqual(['rev-5', 'rev-4', 'rev-A']);
+    }
+  });
+
+  it('a project rebuild reads changed pins even without explicit cache invalidation', async () => {
+    const world = (id: string) => worldWithSets([{ versionSetId: 'vs-1', name: 'Unlocked', fileAreaId: 'fa-models', files: { 'file-structural': id } }]);
+    let active = world('rev-1');
+    const client = new BrowserDaluxApiClient({ baseUrl: DALUX_MOCK_BASE_URL, apiKey: 'test-key' },
+      createDaluxMockContext((input, init) => createDaluxApiMock(active)(input, init)));
+    expect((await getCommitIndex(client, 'p-alpha', undefined, 0)).models.get('file-structural')?.commits[0].revisionId).toBe('rev-1');
+    active = world('rev-2');
+    expect((await getCommitIndex(client, 'p-alpha', undefined, 6 * 60_000)).models.get('file-structural')?.commits[0].revisionId).toBe('rev-2');
+  });
+
+  it('keeps project caches separate for the same API key on different nodes', async () => {
+    const ctx = createDaluxMockContext(createDaluxApiMock(worldWithSets([{ versionSetId: 'vs-1', name: 'Set', fileAreaId: 'fa-models', files: { 'file-structural': 'rev-1' } }])));
+    const one = new BrowserDaluxApiClient({ baseUrl: DALUX_MOCK_BASE_URL, apiKey: 'same-key', node: 'node1' }, ctx);
+    const two = new BrowserDaluxApiClient({ baseUrl: DALUX_MOCK_BASE_URL, apiKey: 'same-key', node: 'node2' }, ctx);
+    const first = await getCommitIndex(one, 'p-alpha');
+    const second = await getCommitIndex(two, 'p-alpha');
+    expect(second).not.toBe(first);
+    expect(await getCommitIndex(one, 'p-alpha')).toBe(first);
+  });
+
+  it('reports a skipped undecodable version-set row as partial', async () => {
+    const client = new BrowserDaluxApiClient({ baseUrl: DALUX_MOCK_BASE_URL, apiKey: 'test-key' }, createDaluxMockContext(async () =>
+      new Response(JSON.stringify({ items: [{ data: { name: 'missing required ids' } }] }), { headers: { 'Content-Type': 'application/json' } })));
+    const index = await getCommitIndex(client, 'p-alpha');
+    expect(index.partial).toBe(true);
+    expect(index.truncated).toBe(false);
+  });
+
+  it('reports a skipped undecodable pinned-file row as partial', async () => {
+    const inner = createDaluxApiMock(worldWithSets([{ versionSetId: 'vs-1', name: 'Set', fileAreaId: 'fa-models', files: {} }]));
+    const client = new BrowserDaluxApiClient({ baseUrl: DALUX_MOCK_BASE_URL, apiKey: 'test-key' }, createDaluxMockContext(async (input, init) => {
+      const url = typeof input === 'object' && 'url' in input ? input.url : String(input);
+      if (url.includes('/version_sets/vs-1/files')) return new Response(JSON.stringify({ items: [{ data: { fileName: 'missing-id.ifc' } }] }), { headers: { 'Content-Type': 'application/json' } });
+      return inner(input, init);
+    }));
+    const index = await getCommitIndex(client, 'p-alpha');
+    expect(index.partial).toBe(true);
+    expect(index.models.size).toBe(0);
   });
 });

@@ -316,17 +316,23 @@ if [ "${BUILD_RETAINED:-}" = "1" ]; then
 fi
 
 echo ""
-# Diff is loaded explicitly by @ifc-lite/wasm/diff. Its exports never enter
-# either geometry engine, so adding comparison features cannot grow the
-# default geometry download (#8042).
-echo "Building independent diff engine"
-rustup run nightly-2025-11-15 "$WASM_PACK" build rust/diff-wasm \
-  --target web \
-  --out-dir ../../packages/wasm/pkg-diff \
-  --out-name ifc-lite-diff \
-  --release
-printf '\n' > packages/wasm/pkg-diff/.npmignore
-DIFF_DTS="packages/wasm/pkg-diff/ifc-lite-diff.d.ts"
-grep -v '__wasm_bindgen_func_elem_' "$DIFF_DTS" > "$DIFF_DTS.tmp" && mv "$DIFF_DTS.tmp" "$DIFF_DTS"
+# Independent payloads beside the engine: built from their own crates and
+# loaded explicitly by their own package export, so their exports never enter
+# either geometry engine and cannot grow the default geometry download.
+build_payload() { # <label> <crate dir> <package dir> <out name>
+  echo "Building independent $1 engine"
+  rustup run nightly-2025-11-15 "$WASM_PACK" build "$2" \
+    --target web \
+    --out-dir "../../packages/wasm/$3" \
+    --out-name "$4" \
+    --release
+  printf '\n' > "packages/wasm/$3/.npmignore"
+  local dts="packages/wasm/$3/$4.d.ts"
+  grep -v '__wasm_bindgen_func_elem_' "$dts" > "$dts.tmp" && mv "$dts.tmp" "$dts"
+}
+# @ifc-lite/wasm/diff: comparison features (#8042).
+build_payload diff rust/diff-wasm pkg-diff ifc-lite-diff
+# @ifc-lite/wasm/rhino: the .3dm scene builder, fetched only when a .3dm export runs.
+build_payload "Rhino scene" rust/rhino-wasm pkg-rhino ifc-lite-rhino
 
 echo "✨ Build complete!"

@@ -33,10 +33,11 @@ function fixture(t) {
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const put = (path, text) => { mkdirSync(dirname(join(root, path)), { recursive: true }); writeFileSync(join(root, path), text); };
   put('Cargo.toml', '[workspace]\n[workspace.package]\nversion="0.1.0"\n');
-  for (const [dir, name] of [['wasm', 'ifc-lite-wasm'], ['diff', 'ifc-lite-diff-wasm']]) {
+  const roots = [['wasm', 'ifc-lite-wasm'], ['diff', 'ifc-lite-diff-wasm'], ['rhino', 'ifc-lite-rhino-wasm']];
+  for (const [dir, name] of roots) {
     put(`rust/${dir}/Cargo.toml`, `[package]\nname="${name}"\nversion.workspace=true\n[dependencies]\nexternal="1"\n`);
   }
-  put('Cargo.lock', `version=4\n${['ifc-lite-wasm', 'ifc-lite-diff-wasm'].map(name =>
+  put('Cargo.lock', `version=4\n${roots.map(([, name]) =>
     `[[package]]\nname="${name}"\nversion="0.1.0"\ndependencies=["external"]\n`).join('')}
 [[package]]
 name="external"
@@ -95,12 +96,13 @@ test('Refs #7955 notice check rejects an external dependency version or checksum
   assert.throws(() => checkNotices(f.root), /inventory inputs changed/);
 });
 
-test('Refs #7955 diff-only dependency is bound to its own closure', t => {
+test('Refs #7955 diff-only and rhino-only dependencies are bound to their own closures', t => {
   const f = fixture(t);
   f.change('rust/wasm/Cargo.toml', text => text.replace('[dependencies]', '[dev-dependencies]'));
   const inputs = inventoryInputs(f.root);
   assert.deepEqual(inputs.cargoClosures['ifc-lite-wasm'], []);
   assert.equal(inputs.cargoClosures['ifc-lite-diff-wasm'][0].name, 'external');
+  assert.equal(inputs.cargoClosures['ifc-lite-rhino-wasm'][0].name, 'external');
   assert.throws(() => checkNotices(f.root), /inventory inputs changed/);
 });
 

@@ -26,7 +26,7 @@ export function useDrawingLayers(vm: DrawingViewModel) {
   const { ifcDataStore } = useIfc();
   const updateDxfUnderlayPlacement = useViewerStore((s) => s.updateDxfUnderlayPlacement);
   const {
-    geometryResult, runtime, sectionPlane, status, displayOptions, drawing, dxfUnderlays,
+    geometryResult, runtime, drawnPlane, status, displayOptions, drawing, dxfUnderlays,
     typeVisibility, models, pointCloudClassMask,
   } = vm;
 
@@ -36,15 +36,15 @@ export function useDrawingLayers(vm: DrawingViewModel) {
   // with the cut. Empty/missing bounds collapse to an inert range → hook
   // returns empty, the overlay simply does nothing.
   const ifcAnnotationsForDrawing = useMemo(() => drawingAnnotationFrame(
-    geometryResult?.coordinateInfo, runtime.sourceCoordinateInfo, sectionPlane,
-  ), [geometryResult, runtime.sourceCoordinateInfo, sectionPlane]);
+    geometryResult?.coordinateInfo, runtime.sourceCoordinateInfo, drawnPlane,
+  ), [geometryResult, runtime.sourceCoordinateInfo, drawnPlane]);
 
   const ifcAnnotationData = useSymbolicAnnotationsForDrawing({
     enabled: symbolicAnnotationsOverlayEnabled(displayOptions.showIfcAnnotations, status, typeVisibility.ifcAnnotations),
-    axis: sectionPlane.axis,
+    axis: drawnPlane.axis,
     sectionPosWorld: ifcAnnotationsForDrawing.sectionPosWorld,
     viewDepth: ifcAnnotationsForDrawing.viewDepth,
-    flipped: sectionPlane.flipped,
+    flipped: drawnPlane.flipped,
     fallbackY: ifcAnnotationsForDrawing.fallbackY,
   });
 
@@ -60,7 +60,7 @@ export function useDrawingLayers(vm: DrawingViewModel) {
     const entry = dxfUnderlays.find((u) => u.id === id);
     if (!entry || !drawing) return;
     const shift = dxfWorldShift(geometryResult?.coordinateInfo);
-    const mirrorX = sectionPlane.flipped && sectionPlane.custom === undefined;
+    const mirrorX = drawnPlane.flipped && drawnPlane.custom === undefined;
     const zeroOffsetEntry = {...entry,placement:{...entry.placement,offsetX:0,offsetY:0}};
     const state = useViewerStore.getState();
     const mapper = entry.referenceFrame ? dxfPlaneDrawingMapper(zeroOffsetEntry, state, drawing.config.plane) : undefined;
@@ -91,7 +91,7 @@ export function useDrawingLayers(vm: DrawingViewModel) {
       return;
     }
     updateDxfUnderlayPlacement(id, { offsetX, offsetY });
-  }, [dxfUnderlays, drawing, vm.sourceDrawing, geometryResult, sectionPlane.flipped, sectionPlane.custom, updateDxfUnderlayPlacement, dxfMapToWorld, dxfGeoreferenceAvailable, t]);
+  }, [dxfUnderlays, drawing, vm.sourceDrawing, geometryResult, drawnPlane.flipped, drawnPlane.custom, updateDxfUnderlayPlacement, dxfMapToWorld, dxfGeoreferenceAvailable, t]);
 
   // Point-cloud scan overlay (issue #1805): a thin band of the loaded
   // scan(s) around the active section plane, projected into the SAME
@@ -99,7 +99,7 @@ export function useDrawingLayers(vm: DrawingViewModel) {
   // the DXF underlay, this works on plan AND vertical (front/side) sections.
   const scanSectionLayer = useScanSectionLayer({
     enabled: displayOptions.showScanSection && status === 'ready',
-    sectionPlane,
+    sectionPlane: drawnPlane,
     coordinateInfo: geometryResult?.coordinateInfo,
     thickness: displayOptions.scanSectionThickness,
     classMask: pointCloudClassMask,
@@ -109,7 +109,7 @@ export function useDrawingLayers(vm: DrawingViewModel) {
   });
 
   const { handleExportSVG, handleExportDXF, handleExportPDF, handlePrint } = useDrawingExport({
-    drawing, displayOptions, sectionPlane, activePresetId: vm.activePresetId,
+    drawing, displayOptions, sectionPlane: drawnPlane, activePresetId: vm.activePresetId,
     entityColorMap: vm.entityColorMap, overridesEnabled: vm.overridesEnabled, overrideEngine: vm.overrideEngine,
     measure2DResults: vm.measure2DResults, polygonArea2DResults: vm.polygonArea2DResults,
     textAnnotations2D: vm.textAnnotations2D, cloudAnnotations2D: vm.cloudAnnotations2D,

@@ -60,7 +60,7 @@ async function replaceCapture(modelId: string, deps: GaussianReloadDeps): Promis
       ...(capture.placementOrigin === 'explicit' ? { gaussianPlacement: [...(capture.sourcePlacement ?? capture.placement)] } : {}),
     });
     const state = useViewerStore.getState();
-    // A superseded federation add can publish but return null. The explicit
+    // An add can publish yet not complete (cancelled metadata). The explicit
     // id lets finally release that losing asset without touching another load.
     // Removal/replacement of the source while awaiting also cancels this swap.
     if (!completed || next !== replacementId || !state.models.get(replacementId)?.gaussianSplat

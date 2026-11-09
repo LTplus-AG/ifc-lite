@@ -68,7 +68,7 @@ describe('ModelWorkspaceSplit (#6232 M2.1)', () => {
     act(() => { useViewerStore.getState().enterModelWorkspace(); });
     await act(frame);
     assert.equal(useViewerStore.getState().sidebarMode, 'collapsed');
-    assert.ok(ui.querySelector('[role="status"]'), 'the fallback explains why Split cannot fit');
+    assert.ok(ui.querySelector('[data-model-layout-notice]'), 'the fallback explains why Split cannot fit');
     act(() => { useViewerStore.getState().exitModelWorkspace(); });
     assert.equal(useViewerStore.getState().sidebarMode, 'expanded');
   });

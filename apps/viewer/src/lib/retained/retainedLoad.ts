@@ -52,7 +52,7 @@ function reportRefusal(message: string, retry: (() => void) | null): void {
 function refusedLoad(message: string, retry: (() => void) | null): GeometryKernelLoad {
   reportRefusal(message, retry);
   settleUnownedLoadUi();
-  return { ...RETAINED_POLICY, refused: Promise.resolve() };
+  return { ...RETAINED_POLICY, refused: Promise.resolve(message) };
 }
 
 function phaseText(phase: RetainedPhase): { phase: string; percent: number } {

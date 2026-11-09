@@ -34,6 +34,9 @@ export interface ModelSlice {
   models: Map<string, FederatedModel>;
   /** ID of the currently active model (for property panel focus) */
   activeModelId: string | null;
+  /** Bumped by every teardown that ends the model session an analysis run read
+   *  (`modelSlice.teardown.ts`); runs end themselves on it (`hooks/analysisRunGuard.ts`). */
+  analysisRunGeneration: number;
 
   // Actions
   /** Add a new model to the federation */
@@ -152,6 +155,7 @@ export const createModelSlice: StateCreator<ViewerState, [], [], ModelSlice> = (
   // Initial state
   models: new Map(),
   activeModelId: null,
+  analysisRunGeneration: 0,
 
   // Actions
   addModel: (model) => set((state) => {

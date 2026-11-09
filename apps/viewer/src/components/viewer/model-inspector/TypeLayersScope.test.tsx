@@ -80,7 +80,7 @@ describe('editing a shared type from the inspector (#9296)', () => {
     assert.ok(applyMaterialLayers(MODEL_ID, { kind: 'wall', target: 'element', elementId: walls[1], typeId, layers: [{ thickness: .15, material: null }] }) !== null);
     const ui = render(<ModelInspectorPanel />);
     act(() => click(radio(ui, 'Type')));
-    assert.match(text(ui), /Changes 1 element of this type.*1 differs from the type and keeps its layers/);
+    assert.match(text(ui), /Changes 1 element of this type.*1 uses a different layer set or material and keeps it/);
     type(ui.querySelector<HTMLInputElement>('input[aria-label="Layer 1 thickness in metres"]')!, '0.3');
     act(() => click(ui.querySelector('[data-inspector-apply-layers]')!));
     assert.deepEqual(walls.map(thickness), [.3, .15]);

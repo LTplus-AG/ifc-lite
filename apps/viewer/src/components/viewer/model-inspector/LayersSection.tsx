@@ -13,9 +13,12 @@
  * IfcRelAssociatesMaterial. A wall then takes the layers' total thickness.
  * In defaults mode "Element" means every element the command builds next.
  *
- * "Type" edits the shared type: every occurrence that has no layers of its
- * own takes the new total, as one undo step, and the section says how many
- * that is before Apply. An occurrence that could not follow is named after.
+ * "Type" edits the shared type: every occurrence that uses the type's layer
+ * set takes the new total, as one undo step. That includes one with no
+ * material of its own, and one whose own layer usage places the type's set (a
+ * wall drawn with a layer default). An occurrence with a different layer set
+ * or material keeps it. The section says how many follow and how many keep
+ * theirs before Apply, and names any occurrence that could not follow after.
  */
 
 import { useMemo, useState } from 'react';

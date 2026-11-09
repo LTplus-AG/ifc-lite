@@ -332,3 +332,22 @@ it('a reviewed typing whose element cannot follow its layered type names it, as 
   assert.match(errors[0], /1 element kept its previous body/);
   assert.match(errors[0], /Wall: .*IfcRectangleProfileDef/, 'it names the wall and the reason');
 });
+
+it('a scripted typing (bim.store.assignType) re-meshes the joined walls its layered type re-trims (#9296)', async t => {
+  if (!ensureRoomWasm(t)) return;
+  const { adapter } = await seed();
+  const a = adapter.addWall(MODEL, STOREY, { Start: [20, 20, 0], End: [24, 20, 0], Thickness: .2, Height: 3 }).expressId;
+  const b = adapter.addWall(MODEL, STOREY, { Start: [24, 20, 0], End: [24, 23, 0], Thickness: .2, Height: 3 }).expressId;
+  adapter.joinWalls!(MODEL, a, b, {});
+  const type = createElementType(MODEL, 'wall', 'WT-300');
+  assert.ok(type !== null);
+  assert.ok(applyMaterialLayers(MODEL, { kind: 'wall', target: 'type', typeId: type, layers: [{ thickness: .3, material: null }] }) !== null);
+  await landed();
+  requests.length = 0;
+  adapter.assignType!(MODEL, type, [a]);
+  await landed();
+  assert.equal(readWallMetres(modelEditTarget(s(), MODEL)!, a)?.thickness, .3, 'the script typed the wall to 300 mm');
+  const remeshed = new Set(requests.flatMap(request => [...request.targets]));
+  assert.ok(remeshed.has(a) && remeshed.has(b), 'the typed wall and the wall it re-trimmed are re-meshed');
+  near(planSize(meshes().filter(mesh => mesh.expressId === a)).thickness, .3, 'and drawn at 300 mm');
+});

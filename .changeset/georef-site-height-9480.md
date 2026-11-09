@@ -1,7 +1,7 @@
 ---
 "@ifc-lite/geometry": minor
 "@ifc-lite/cache": minor
-"@ifc-lite/wasm": patch
+"@ifc-lite/wasm": minor
 "@ifc-lite/viewer": patch
 ---
 

@@ -250,6 +250,7 @@ export function translateProduct(
   editor: StoreEditor,
   expressId: number,
   delta: [number, number, number],
+  options: { readonly refreshAttachedTops?: boolean } = {},
 ): TranslateResult {
   const chain = resolvePlacementChain(dataStore, view, editor, expressId);
   if (!chain) {
@@ -262,7 +263,8 @@ export function translateProduct(
   const next = translatedCoordinates(chain.coordinates, delta);
   if (!next) return { ok: false, reason: 'Placement translation overflow: derived coordinates must be finite' };
   const follows = /^(IFCROOF|IFCSLAB|IFCSLABSTANDARDCASE|IFCSLABELEMENTEDCASE|IFCWALL|IFCWALLSTANDARDCASE|IFCWALLELEMENTEDCASE)$/.test(editor.getEntityType?.(expressId)?.toUpperCase() ?? '');
-  if (!follows) {
+  // A transform batch refits once after every root has its final placement.
+  if (!follows || options.refreshAttachedTops === false) {
     editor.setPositionalAttribute(chain.cartesianPointId, 0, next);
     return { ok: true, oldCoordinates: chain.coordinates, newCoordinates: next };
   }

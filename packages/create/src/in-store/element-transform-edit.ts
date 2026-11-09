@@ -112,7 +112,7 @@ function transformElementsInDraft(input: ElementTransformInput): ElementTransfor
     if (Math.hypot(dx, dy) > 1e-9) {
       if (input.translate) input.translate(root.expressId, [dx, dy, 0], input.editor);
       else {
-        const result = translateProduct(input.dataStore, input.view, input.editor, root.expressId, nativeDelta);
+        const result = translateProduct(input.dataStore, input.view, input.editor, root.expressId, nativeDelta, { refreshAttachedTops: false });
         if (!result.ok) throw new Error(result.reason);
       }
     }

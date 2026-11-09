@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { useMemo, useRef } from 'react';
+import { useLayoutEffect, useMemo, useRef } from 'react';
 import type { TranslationKey } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { MAX_SECTION_PLANES } from '@/lib/section/section-plane-set';
@@ -18,7 +18,9 @@ export function useSectionPaletteHost() {
   const geometry = useViewerStore(s => s.geometryResult);
   const placement = useViewerStore(s => s.modelPlacement);
   const latest = useRef({ add, bounds: distance.bounds, models, geometry, placement });
-  latest.current = { add, bounds: distance.bounds, models, geometry, placement };
+  useLayoutEffect(() => {
+    latest.current = { add, bounds: distance.bounds, models, geometry, placement };
+  });
   return useMemo(() => ({
     sectionAddUnavailable: (kind: AddKind): TranslationKey | undefined => {
       const s = useViewerStore.getState();

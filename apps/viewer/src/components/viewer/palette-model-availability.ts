@@ -17,6 +17,38 @@ import { elementStoreyId } from '@/lib/commands/modeling/workplane';
 export const modelEditIds = new Set(['tool:array', 'tool:move', 'tool:rotate', 'model:copy',
   'model:paste', 'model:paste-in-place', 'model:storey-up', 'model:storey-down', 'model:exit']);
 
+type ReadTarget = NonNullable<ReturnType<typeof readModelEditTarget>>;
+interface CopyInspection {
+  liveView: ReadTarget['view'] | undefined;
+  liveEditor: ReadTarget['editor'] | undefined;
+  target: ReadTarget;
+  version: number;
+  revision: number;
+  typeRevision: number | undefined;
+  context: ReturnType<typeof createCopyContext>;
+}
+// Parsed stores are weak keys: inspecting a model never registers editing state
+// or keeps an unloaded store alive. Cache indexes, never an eligibility verdict.
+const copyInspections = new WeakMap<ReadTarget['dataStore'], Map<string, CopyInspection>>();
+function readCopyContext(s: ViewerState, modelId: string) {
+  const data = s.models.get(modelId)?.ifcDataStore;
+  if (!data) return null;
+  let models = copyInspections.get(data);
+  if (!models) { models = new Map(); copyInspections.set(data, models); }
+  const liveView = s.mutationViews.get(modelId), liveEditor = s.storeEditors.get(modelId);
+  const previous = models.get(modelId);
+  const sameTarget = previous && previous.liveView === liveView && previous.liveEditor === liveEditor;
+  const target = sameTarget ? previous.target : readModelEditTarget(s, modelId);
+  if (!target) return null;
+  const revision = target.editor.getMutationView().getMutationRevision();
+  if (sameTarget && previous.version === s.mutationVersion && previous.revision === revision
+    && previous.typeRevision === data.entities.typeRevision) return previous.context;
+  const context = createCopyContext(data, target.editor);
+  models.set(modelId, { liveView, liveEditor, target, version: s.mutationVersion,
+    revision, typeRevision: data.entities.typeRevision, context });
+  return context;
+}
+
 export function paletteModelBlock(id: string, s: ViewerState): TranslationKey | null {
   if (!modelEditIds.has(id)) return null;
   const inWorkspace = s.workspaceMode === 'model' && s.session !== null;
@@ -50,10 +82,8 @@ export function paletteModelBlock(id: string, s: ViewerState): TranslationKey | 
   const selected = paste ? clip : selectedElements(s);
   if (!selected || selected.ids.length === 0) return 'commandPalette.availability.selection';
   if (selected.modelId !== target.modelId) return paste ? 'copyArray.paste.otherModel' : 'commandPalette.availability.selection';
-  const readTarget = readModelEditTarget(s, selected.modelId);
-  if (!readTarget) return 'commandPalette.availability.ifc';
-  const { dataStore, editor } = readTarget;
-  const context = createCopyContext(dataStore, editor);
+  const context = readCopyContext(s, selected.modelId);
+  if (!context) return 'commandPalette.availability.ifc';
   const sources = copySourcesInStore(context, selected.ids);
   if ('refusal' in sources) return paste ? 'copyArray.paste.stale' : 'commandPalette.availability.copyTarget';
   if (id === 'tool:array') {

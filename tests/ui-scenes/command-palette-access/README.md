@@ -102,14 +102,14 @@ are observed access gaps, not failures of the already accepted general UX scope.
 Raw observation `theme: null` means the light theme's absent HTML class; the
 manifest explicitly identifies light/dark for every capture.
 
-![Unloaded selection action lacks a reason](https://github.com/LTplus-AG/ifc-lite/blob/9c279fc6b57ba52fbca00ba32dfbf472675ac6ec/tests/ui-scenes/command-palette-access/evidence/baseline-access-unloaded-hide.light.png)
-![Real selected wall and Hide command](https://github.com/LTplus-AG/ifc-lite/blob/9c279fc6b57ba52fbca00ba32dfbf472675ac6ec/tests/ui-scenes/command-palette-access/evidence/baseline-access-selected-hide.dark.png)
-![After canonical Hide execution](https://github.com/LTplus-AG/ifc-lite/blob/9c279fc6b57ba52fbca00ba32dfbf472675ac6ec/tests/ui-scenes/command-palette-access/evidence/baseline-access-selected-hide-run.dark.png)
-![Undo query has no Undo action](https://github.com/LTplus-AG/ifc-lite/blob/9c279fc6b57ba52fbca00ba32dfbf472675ac6ec/tests/ui-scenes/command-palette-access/evidence/baseline-access-history.light.png)
-![Privacy query misses Settings](https://github.com/LTplus-AG/ifc-lite/blob/9c279fc6b57ba52fbca00ba32dfbf472675ac6ec/tests/ui-scenes/command-palette-access/evidence/baseline-access-settings-privacy.light.png)
+![Unloaded selection action lacks a reason](https://github.com/LTplus-AG/ifc-lite/blob/7d13b99974c0ff323d407285320e3ff0ba7a4729/tests/ui-scenes/command-palette-access/evidence/baseline-access-unloaded-hide.light.png)
+![Real selected wall and Hide command](https://github.com/LTplus-AG/ifc-lite/blob/7d13b99974c0ff323d407285320e3ff0ba7a4729/tests/ui-scenes/command-palette-access/evidence/baseline-access-selected-hide.dark.png)
+![After canonical Hide execution](https://github.com/LTplus-AG/ifc-lite/blob/7d13b99974c0ff323d407285320e3ff0ba7a4729/tests/ui-scenes/command-palette-access/evidence/baseline-access-selected-hide-run.dark.png)
+![Undo query has no Undo action](https://github.com/LTplus-AG/ifc-lite/blob/7d13b99974c0ff323d407285320e3ff0ba7a4729/tests/ui-scenes/command-palette-access/evidence/baseline-access-history.light.png)
+![Privacy query misses Settings](https://github.com/LTplus-AG/ifc-lite/blob/7d13b99974c0ff323d407285320e3ff0ba7a4729/tests/ui-scenes/command-palette-access/evidence/baseline-access-settings-privacy.light.png)
 
-[Recorded contexts and outcomes](https://github.com/LTplus-AG/ifc-lite/blob/9c279fc6b57ba52fbca00ba32dfbf472675ac6ec/tests/ui-scenes/command-palette-access/evidence/baseline-context-observations.json) and
-[exact-artifact capture manifest](https://github.com/LTplus-AG/ifc-lite/blob/9c279fc6b57ba52fbca00ba32dfbf472675ac6ec/tests/ui-scenes/command-palette-access/evidence/baseline-manifest.json) retain the facts.
+[Recorded contexts and outcomes](https://github.com/LTplus-AG/ifc-lite/blob/7d13b99974c0ff323d407285320e3ff0ba7a4729/tests/ui-scenes/command-palette-access/evidence/baseline-context-observations.json) and
+[exact-artifact capture manifest](https://github.com/LTplus-AG/ifc-lite/blob/7d13b99974c0ff323d407285320e3ff0ba7a4729/tests/ui-scenes/command-palette-access/evidence/baseline-manifest.json) retain the facts.
 No candidate access verdict has been issued yet.
 
 ## Round 1 foundation checkpoint
@@ -215,3 +215,43 @@ feedback and toolbar/keyboard placement rules. Runtime assertions and typecheck
 remain unexecuted pending dependency builds; no coverage acceptance is claimed.
 The runtime implementer reclaimed 2,239,988 bytes of redundant dry-run output,
 retaining its compact receipt. Original queued validation requests are preserved.
+
+## Round 1 independent objections and remaining static tools
+
+Fresh Astra source review found no concrete extension identity/dispatch defects
+in a086c889..9f9d29a; this is not execution or lifecycle acceptance. The author
+review found four P2 issues and a P3 false-positive test: invisible class-trigger
+focus, cancelled CSV drafts losing retry, removed model targets surviving in the
+persistent host, pending work surviving target changes (preexisting race), and
+a host-retirement test that actually unmounted the palette too.
+
+The correction restores the actual ribbon trigger; the palette opens shared
+class controls in a dialog and passes its real launcher for focus restoration.
+Both editors reconcile removed targets. CSV operations belong to one open
+model/data/view lifetime; retired writes and result callbacks refuse, cancelled
+or failed drafts remain retryable, and already-applied batches retain undo. New
+regressions pause real imports at matching/apply yields, cover replacement and
+suggestion races, and retire only the host while keeping the palette mounted.
+These tests remain unexecuted. Syntax and cheap guards passed.
+
+The next serial batch adds 25 canonical entries/destinations: search and six
+hierarchies, selected-entity actions, isolate, camera and view controls, element
+array/move/rotate, clipboard, storey stepping and workspace exit. The selected
+entity destination opens the existing menu, preserving its mutation gates and
+child actions; it does not label a menu opener as a destructive action.
+ui:commands is the palette itself; view:theme is equivalent to pref:theme. These
+are explicit duplicate mappings, not hidden omissions. Parsed-IFC tests cover
+targets, live refusal and model sessions, but have not run. Deep child traversal,
+remaining destinations, full coverage reconciliation and UI acceptance are open.
+
+## Reproducible validation entry point
+
+From a clean committed root, admit `bash tests/ui-scenes/command-palette-access/validate-candidate.sh`
+through the fleet (4 CPU, 24 GiB). It installs pinned dependencies, runs plain
+root `pnpm typecheck`, builds the viewer, then runs all four viewer shards through
+root `pnpm test --filter=@ifc-lite/viewer`. TEST_PATTERN is explicitly removed.
+Each shard forwards TEST_SHARD/TEST_SHARDS through the committed Turbo config;
+all four receipts and skip counts are required. This recipe is not a passed run.
+Logs stay in the owning managed checkout until compact evidence is published
+and the task is closed. Browser correctness and feature-access review follow
+the build; they are not replaced by this script or the earlier UX acceptance.

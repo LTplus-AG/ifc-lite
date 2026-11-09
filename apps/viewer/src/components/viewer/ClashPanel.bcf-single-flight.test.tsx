@@ -199,3 +199,15 @@ for (const closed of [false, true]) {
     assert.equal(useViewerStore.getState().bcfProject === null, true, 'a failed capture creates no topic and no project');
   });
 }
+
+test('C-2 clash: a "BCF topic" viewpoint capture that resolves null toasts once and creates nothing', async () => {
+  const errors = mock.method(toast, 'error', () => undefined);
+  mock.method(console, 'error', () => undefined);
+  mock.method(console, 'warn', () => undefined);
+  render(<ClashPanel />);
+  capture.unplug();
+  pressTogether(clashTopicButton());
+  await settle();
+  assert.equal(errors.mock.callCount(), 1, 'a null capture is reported like a thrown one');
+  assert.equal(useViewerStore.getState().bcfProject === null, true);
+});

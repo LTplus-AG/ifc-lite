@@ -114,3 +114,18 @@ for (const cancelled of [false, true]) {
     assert.equal(q('form') !== null, !cancelled, 'a current create keeps the form open to retry');
   });
 }
+
+test('C-2 compare: a viewpoint capture that resolves null during Create toasts once and creates nothing', async () => {
+  const errors = mock.method(toast, 'error', () => undefined);
+  mock.method(console, 'error', () => undefined);
+  mock.method(console, 'warn', () => undefined);
+  render(<Probe />);
+  press('[data-open]');
+  capture.unplug();
+  const form = q('form'); assert.ok(form, 'form');
+  act(() => { form.dispatchEvent(submitEvent()); });
+  await settle();
+  assert.equal(errors.mock.callCount(), 1, 'a null capture is reported like a thrown one');
+  assert.equal(useViewerStore.getState().bcfProject === null, true, 'no topic without the requested viewpoint');
+  assert.equal(q('form') !== null, true, 'the form stays open to retry');
+});

@@ -13,6 +13,8 @@ interface BCFViewpointCaptureButtonsProps {
   onCapture2D: () => void;
   /** Why Capture 2D is unavailable, or null when it can run. */
   capture2DBlockReason: string | null;
+  /** True while a capture is appending a viewpoint; both buttons wait for it. */
+  capturing?: boolean;
 }
 
 /** The two canonical snapshot sources available to a BCF topic. */
@@ -20,6 +22,7 @@ export function BCFViewpointCaptureButtons({
   onCapture3D,
   onCapture2D,
   capture2DBlockReason,
+  capturing = false,
 }: BCFViewpointCaptureButtonsProps): React.ReactElement {
   const { t } = useTranslation();
   const blocked = capture2DBlockReason !== null;
@@ -28,7 +31,7 @@ export function BCFViewpointCaptureButtons({
     <div className="space-y-1">
       {/* flex-wrap: the row must never clip a button at a narrow sidebar width (#4802). */}
       <div className="flex flex-wrap items-center gap-1">
-        <Button variant="outline" size="sm" onClick={onCapture3D} {...tourAnchor(TOUR_ANCHORS.bcfCaptureViewpoint)}>
+        <Button variant="outline" size="sm" onClick={onCapture3D} disabled={capturing} {...tourAnchor(TOUR_ANCHORS.bcfCaptureViewpoint)}>
           <Camera className="h-3 w-3 mr-1" />
           {t('bcf.viewpointCapture.capture3d')}
         </Button>
@@ -38,7 +41,7 @@ export function BCFViewpointCaptureButtons({
             variant="outline"
             size="sm"
             onClick={onCapture2D}
-            disabled={blocked}
+            disabled={blocked || capturing}
             aria-label={t('bcf.viewpointCapture.capture2dAria')}
             aria-describedby={blocked ? reasonId : undefined}
           >

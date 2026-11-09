@@ -128,3 +128,24 @@ test('C-2 a viewpoint that fails after the create was cancelled reports nothing'
   assert.equal(errors.mock.callCount(), 0, 'a cancelled create raises no capture toast');
   assert.equal(topicCount(), 0);
 });
+
+test('C-2 a viewpoint capture that resolves null during Create is a failure: toast once, create nothing', async () => {
+  const errors = mock.method(toast, 'error', () => undefined);
+  mock.method(console, 'error', () => undefined);
+  mock.method(console, 'warn', () => undefined);
+  render(<BCFPanel onClose={() => {}} />);
+  openForm();
+  fillTitle();
+  await capture.release(1);
+  // The opening capture landed; drop it so Create must capture again, then lose the viewport.
+  capture.unplug();
+  const recapture = buttonNamed('Recapture'); assert.ok(recapture, 'Recapture');
+  click(recapture);
+  await settle();
+  assert.equal(q('img[alt="Viewpoint snapshot"]') !== null, false, 'the null recapture cleared the preview');
+  submitOnce();
+  await settle();
+  assert.equal(errors.mock.callCount(), 1, 'a null capture is reported like a thrown one');
+  assert.equal(topicCount(), 0, 'no topic without the requested viewpoint');
+  assert.equal(formOpen(), true);
+});

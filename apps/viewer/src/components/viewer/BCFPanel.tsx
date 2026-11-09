@@ -123,6 +123,13 @@ export function BCFPanel({ onClose }: BCFPanelProps) {
   // second submit is refused and an earlier opening's capture is discarded.
   const captureFlight = useSingleFlight();
   const createFlight = useSingleFlight();
+  // Add Viewpoint (3D) and Capture 2D append to the active topic: one capture
+  // at a time, so a double press cannot append two viewpoints.
+  const viewpointFlight = useSingleFlight();
+  // Import: the latest picked file wins (an earlier, slower read is discarded).
+  // Export: one archive per press burst.
+  const importFlight = useSingleFlight();
+  const exportFlight = useSingleFlight();
 
   // Get topics list
   const topics = useMemo(() => {
@@ -160,25 +167,30 @@ export function BCFPanel({ onClose }: BCFPanelProps) {
   }, [bcfProject, setBcfProject, getDefaultProjectName]);
 
   // Import BCF file
+  const releaseImport = importFlight.release;
+  const runImport = importFlight.run;
   const handleImportFile = useCallback(async (file: File | null | undefined) => {
     if (!file) return;
-
-    try {
-      setBcfLoading(true);
-      setBcfError(null);
-      const { project, readWarningCount, versionWarning } = await readBCFWithDiagnostics(file);
-      setBcfProject(project);
-      warnIfNoModelLoaded(useViewerStore.getState().models.size);
-      warnIfImportTruncated(readWarningCount);
-      warnIfUnsupportedVersion(versionWarning);
-    } catch (error) {
-      console.error('Failed to import BCF:', error);
-      setBcfError(error instanceof Error ? error.message : t('bcf.panel.importError'));
-    } finally {
-      setBcfLoading(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
-    }
-  }, [setBcfProject, setBcfLoading, setBcfError]);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+    releaseImport();
+    await runImport(async (isCurrent) => {
+      try {
+        setBcfLoading(true);
+        setBcfError(null);
+        const { project, readWarningCount, versionWarning } = await readBCFWithDiagnostics(file);
+        if (!isCurrent()) return;
+        setBcfProject(project);
+        warnIfNoModelLoaded(useViewerStore.getState().models.size);
+        warnIfImportTruncated(readWarningCount);
+        warnIfUnsupportedVersion(versionWarning);
+      } catch (error) {
+        console.error('Failed to import BCF:', error);
+        if (isCurrent()) setBcfError(error instanceof Error ? error.message : t('bcf.panel.importError'));
+      } finally {
+        if (isCurrent()) setBcfLoading(false);
+      }
+    });
+  }, [releaseImport, runImport, setBcfProject, setBcfLoading, setBcfError]);
 
   const handleImport = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     await handleImportFile(e.target.files?.[0]);
@@ -191,22 +203,25 @@ export function BCFPanel({ onClose }: BCFPanelProps) {
   }, []);
 
   // Export BCF file
+  const runExport = exportFlight.run;
   const handleExport = useCallback(async () => {
     if (!bcfProject) return;
-    try {
-      setBcfLoading(true);
-      setBcfError(null);
-      const fileName = sanitizeFilename(bcfProject.name || getDefaultProjectName(), { fallback: 'topics' });
-      await publishBcfArchive(bcfProject.name?.trim() || fileName, bcfExportFilename(fileName), () => writeBCF(bcfProject));
-      trackExportCompleted({ format: 'bcfzip', surface: 'bcf_panel', topic_count: bcfProject.topics.size });
-      posthog.capture('bcf_exported', { topic_count: bcfProject.topics.size });
-    } catch (error) {
-      console.error('Failed to export BCF:', error);
-      setBcfError(error instanceof Error ? error.message : t('bcf.panel.exportError'));
-    } finally {
-      setBcfLoading(false);
-    }
-  }, [bcfProject, setBcfLoading, setBcfError, getDefaultProjectName]);
+    await runExport(async () => {
+      try {
+        setBcfLoading(true);
+        setBcfError(null);
+        const fileName = sanitizeFilename(bcfProject.name || getDefaultProjectName(), { fallback: 'topics' });
+        await publishBcfArchive(bcfProject.name?.trim() || fileName, bcfExportFilename(fileName), () => writeBCF(bcfProject));
+        trackExportCompleted({ format: 'bcfzip', surface: 'bcf_panel', topic_count: bcfProject.topics.size });
+        posthog.capture('bcf_exported', { topic_count: bcfProject.topics.size });
+      } catch (error) {
+        console.error('Failed to export BCF:', error);
+        setBcfError(error instanceof Error ? error.message : t('bcf.panel.exportError'));
+      } finally {
+        setBcfLoading(false);
+      }
+    });
+  }, [runExport, bcfProject, setBcfLoading, setBcfError, getDefaultProjectName]);
 
   // Capture the current view (camera + snapshot + selection) for the create
   // form's preview and the new topic's attached viewpoint.
@@ -300,22 +315,29 @@ export function BCFPanel({ onClose }: BCFPanelProps) {
     [activeTopicId, bcfAuthor, addComment]
   );
 
+  const runViewpoint = viewpointFlight.run;
   const handleCaptureViewpoint = useCallback(async () => {
     if (!activeTopicId) return;
-
-    // Create viewpoint from current camera, section plane, and selection state
-    const viewpoint = await createViewpointFromState({
-      includeSnapshot: true,
-      includeSelection: true,
-      includeHidden: true,
+    await runViewpoint(async () => {
+      // Create viewpoint from current camera, section plane, and selection state
+      let viewpoint: BCFViewpoint | null = null;
+      try {
+        viewpoint = await createViewpointFromState({
+          includeSnapshot: true,
+          includeSelection: true,
+          includeHidden: true,
+        });
+      } catch (err) {
+        console.error('[BCFPanel] failed to capture viewpoint for topic', err);
+      }
+      // The capture belongs to the topic it was pressed on, even if another is open now.
+      if (viewpoint) {
+        addViewpoint(activeTopicId, viewpoint);
+      } else {
+        toast.error(t('bcf.panel.captureViewpointFailed'));
+      }
     });
-
-    if (viewpoint) {
-      addViewpoint(activeTopicId, viewpoint);
-    } else {
-      toast.error(t('bcf.panel.captureViewpointFailed'));
-    }
-  }, [activeTopicId, addViewpoint, createViewpointFromState, t]);
+  }, [runViewpoint, activeTopicId, addViewpoint, createViewpointFromState, t]);
 
   // Activate viewpoint - apply camera and state to viewer
   const handleActivateViewpoint = useCallback((viewpoint: BCFViewpoint) => {
@@ -399,7 +421,7 @@ export function BCFPanel({ onClose }: BCFPanelProps) {
         { id: 'bcf-import', label: t('bcf.panel.importTitle'), icon: <Upload className="h-4 w-4" />, onSelect: handleImportClick },
         {
           id: 'bcf-export', label: t('bcf.panel.exportTitle'), icon: <Download className="h-4 w-4" />,
-          disabled: !bcfProject || topics.length === 0, onSelect: () => { void handleExport(); }, data: tourAnchor(TOUR_ANCHORS.bcfExport),
+          disabled: !bcfProject || topics.length === 0 || exportFlight.busy, onSelect: () => { void handleExport(); }, data: tourAnchor(TOUR_ANCHORS.bcfExport),
         },
         bcfServer.server,
         bcfServer.drafts,
@@ -462,7 +484,8 @@ export function BCFPanel({ onClose }: BCFPanelProps) {
             onEditTopic={() => setShowEditForm(true)}
             onAddComment={handleAddComment}
             onAddViewpoint={handleCaptureViewpoint}
-            onAddSectionViewpoint={() => void sectionCapture.capture()}
+            onAddSectionViewpoint={() => void runViewpoint(sectionCapture.capture)}
+            capturingViewpoint={viewpointFlight.busy}
             sectionViewpointBlockReason={sectionCapture.disabledReason}
             onActivateViewpoint={handleActivateViewpoint}
             onDeleteViewpoint={handleDeleteViewpoint}

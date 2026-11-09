@@ -6,14 +6,17 @@ import type { BCFViewpoint } from '@ifc-lite/bcf';
 import { toast } from '@/components/ui/toast';
 
 export type CreateViewpointCapture =
-  | { ok: true; viewpoint: BCFViewpoint | null }
+  | { ok: true; viewpoint: BCFViewpoint }
   | { ok: false };
 
 /**
- * Capture the viewpoint for a BCF topic that is being created (C-2). A capture
- * that throws is always logged; the person is told only while the create is
- * still theirs (`isCurrent`, from its single-flight run), since a cancelled or
- * closed create has nothing left to report to. `ok: false` means: create nothing.
+ * Capture the viewpoint for a BCF topic that is being created (C-2). The
+ * person asked for one, so a capture that throws OR resolves `null` (no
+ * viewport, no camera, or a capture invalidated mid-flight — see
+ * `createViewpointFromState`) is a failure: always logged, and reported only
+ * while the create is still theirs (`isCurrent`, from its single-flight run),
+ * since a cancelled or closed create has nothing left to report to.
+ * `ok: false` means: create nothing.
  */
 export async function captureViewpointForCreate(
   capture: () => Promise<BCFViewpoint | null>,
@@ -21,11 +24,15 @@ export async function captureViewpointForCreate(
   failureMessage: string,
   logContext: string,
 ): Promise<CreateViewpointCapture> {
+  let failure: unknown;
   try {
-    return { ok: true, viewpoint: await capture() };
+    const viewpoint = await capture();
+    if (viewpoint) return { ok: true, viewpoint };
+    failure = 'the capture produced no viewpoint';
   } catch (error) {
-    console.error(`[${logContext}] failed to capture viewpoint for new topic`, error);
-    if (isCurrent()) toast.error(failureMessage);
-    return { ok: false };
+    failure = error;
   }
+  console.error(`[${logContext}] failed to capture viewpoint for new topic`, failure);
+  if (isCurrent()) toast.error(failureMessage);
+  return { ok: false };
 }

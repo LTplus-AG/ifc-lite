@@ -50,6 +50,8 @@ export interface BCFTopicDetailProps {
   onAddComment: (text: string, viewpointGuid?: string) => void;
   onAddViewpoint: () => void;
   onAddSectionViewpoint: () => void;
+  /** True while a 3D or 2D viewpoint capture is appending to this topic. */
+  capturingViewpoint?: boolean;
   sectionViewpointBlockReason: string | null;
   onActivateViewpoint: (viewpoint: BCFViewpoint) => void;
   onDeleteViewpoint: (viewpointGuid: string) => void;
@@ -74,6 +76,7 @@ export function BCFTopicDetail({
   onAddComment,
   onAddViewpoint,
   onAddSectionViewpoint,
+  capturingViewpoint = false,
   sectionViewpointBlockReason,
   onActivateViewpoint,
   onDeleteViewpoint,
@@ -198,7 +201,7 @@ export function BCFTopicDetail({
           <div>
             <div className="mb-2 space-y-1.5">
               <h4 className="text-sm font-medium">{t('bcf.topicDetail.viewpointsHeading')}</h4>
-              <BCFViewpointCaptureButtons onCapture3D={onAddViewpoint} onCapture2D={onAddSectionViewpoint} capture2DBlockReason={sectionViewpointBlockReason} />
+              <BCFViewpointCaptureButtons onCapture3D={onAddViewpoint} onCapture2D={onAddSectionViewpoint} capture2DBlockReason={sectionViewpointBlockReason} capturing={capturingViewpoint} />
             </div>
 
             {/* Capture info - what will be included */}

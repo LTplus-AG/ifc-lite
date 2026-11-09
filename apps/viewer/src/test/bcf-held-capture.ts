@@ -26,6 +26,8 @@ export interface HeldCapture {
   releaseAll(): void;
   /** After this, reading the camera throws, so a capture whose frame was lost rejects. */
   breakCamera(): void;
+  /** Unplug the viewport: later captures resolve `null` (no renderer, no camera). */
+  unplug(): void;
   dispose(): void;
 }
 
@@ -69,6 +71,7 @@ export function installHeldCapture(): HeldCapture {
     fail: n => settle(n, 'reject'),
     releaseAll: () => { hold = false; for (const gate of gates) gate.resolve(); },
     breakCamera: () => { cameraBroken = true; },
+    unplug: () => { unregister(); clearGlobalRefs(); },
     dispose: () => { unregister(); clearGlobalRefs(); canvas.remove(); },
   };
 }

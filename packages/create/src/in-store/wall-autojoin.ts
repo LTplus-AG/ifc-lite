@@ -5,18 +5,13 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import type { StoreEditor } from '@ifc-lite/mutations';
 import type { WallAutojoinIndex } from './wall-autojoin-index.js';
 import { readWallJoinTarget } from './wall-join-read.js';
-import { joinWallsInStore, resolveWallJoinAnchor } from './wall-join-edit.js';
+import { joinWallsInStore } from './wall-join-edit.js';
+import type { JoinAnchor } from './wall-join-apply.js';
 
 /** End-to-end chains join at coincident endpoints. Crossing/disconnected walls
  * remain explicit joins: proximity alone must never extend an unrelated wall. */
-export function autojoinWallInStore(store: IfcDataStore, editor: StoreEditor, wallId: number, index: WallAutojoinIndex): string[] {
+export function autojoinWallInStore(store: IfcDataStore, editor: StoreEditor, wallId: number, index: WallAutojoinIndex, anchor: JoinAnchor): string[] {
   const notices: string[] = [];
-  let anchor: ReturnType<typeof resolveWallJoinAnchor>;
-  try {
-    anchor = resolveWallJoinAnchor(store, editor.getMutationView());
-  } catch (error) {
-    return [`Skipped automatic wall joins for #${wallId}: ${error instanceof Error ? error.message : String(error)}`];
-  }
   const a = readWallJoinTarget(store, editor.getMutationView(), wallId, anchor.lengthUnitScale ?? 1);
   if (!a) return notices;
   for (const otherId of index.candidates(a)) {

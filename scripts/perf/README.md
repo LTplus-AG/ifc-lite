@@ -114,6 +114,15 @@ real session geometry/history through public raw creation, then times complete
 public `addWall` calls; it does not substitute a large parsed file for a large
 overlay. Reopened geometry agrees between the two versions.
 
+The non-touching wall fixture records no joins. Its extra cold cost came from
+repeated schema-name signatures while reading every wall's placement and axis
+references. A finite reader snapshot now shares that lookup across the cold
+index build, and across the references in one full wall read. Schema definitions
+remain live. Ordinary creation also passes its already-resolved spatial anchor
+to joining instead of resolving another authoring anchor. A non-joining add
+opens no join draft. Cold and warm public-operation costs must both be compared
+with main; re-qualify after the session-publication change before queuing.
+
 ## First selection reads typing relationships from the graph (#9192)
 
 **Shipped: the scan is gone, not made cheaper.** `readCurrentTypeQuantities` read every

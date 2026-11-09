@@ -7,8 +7,59 @@ import { addOrdinaryElementInStore, type OrdinaryInStoreElement } from './ordina
 import * as reads from './wall-join-read.js';
 import { recordCompoundMutation, StoreEditor } from '@ifc-lite/mutations';
 import { withWallAutojoinIndex } from './wall-autojoin-index.js';
+import { addWallToStore } from './wall.js';
+import { getSchemaRegistryForVersion } from '@ifc-lite/parser';
+import * as parser from '@ifc-lite/parser';
+import * as joins from './wall-join-edit.js';
 
 afterEach(() => vi.restoreAllMocks());
+
+it('#9406 reading the new wall captures schema names once for all of its geometry references', async () => {
+  const s = await newStorey();
+  const wall = addWallToStore(s.editor, s.anchor, { Start: [0, 0, 0], End: [4, 0, 0], Height: 3, Thickness: .2 });
+  const registry = getSchemaRegistryForVersion('IFC4');
+  const names = Object.keys(registry.entities);
+  const signature = vi.spyOn(JSON, 'stringify');
+  const snapshot = vi.spyOn(parser, 'createSchemaEntityNameSnapshot');
+  expect(reads.readWallJoinTarget(s.store, s.view, wall.wallId, 1)?.wall.end).toEqual([4, 0]);
+  expect(signature.mock.calls.filter(([keys]) => Array.isArray(keys) && keys.length === names.length && keys[0] === names[0])).toHaveLength(0);
+  expect(snapshot).toHaveBeenCalledTimes(1);
+});
+
+for (const count of [16, 64]) it(`#9406 cold index for ${count} unrelated walls captures schema names without per-reference signatures`, async () => {
+  const s = await newStorey();
+  for (let i = 0; i < count; i++) addWallToStore(s.editor, s.anchor,
+    { Start: [i * 10, 0, 0], End: [i * 10 + 4, 0, 0], Height: 3, Thickness: .2 });
+  const registry = getSchemaRegistryForVersion('IFC4');
+  const names = Object.keys(registry.entities);
+  const signature = vi.spyOn(JSON, 'stringify');
+  const snapshot = vi.spyOn(parser, 'createSchemaEntityNameSnapshot');
+  const { signatures, snapshots, wall } = withWallAutojoinIndex(s.store, s.view, wallIndex => {
+    const signatures = signature.mock.calls.filter(([keys]) => Array.isArray(keys) && keys.length === names.length && keys[0] === names[0]).length;
+    const snapshots = snapshot.mock.calls.length;
+    const wall = addOrdinaryElementInStore(s.editor, s.anchor, { kind: 'wall', params: {
+      Start: [count * 10, 0, 0], End: [count * 10 + 4, 0, 0], Height: 3, Thickness: .2,
+    } }, { store: s.store, wallIndex });
+    return { signatures, snapshots, wall };
+  });
+  expect(signatures).toBe(0);
+  expect(snapshots).toBe(1);
+  expect(reads.readWallJoinTarget(s.store, s.view, wall, 1)?.wall.start).toEqual([count * 10, 0]);
+  expect(reads.readWallJoinRels(s.store, s.view)).toEqual([]);
+});
+
+it('#9406 a non-joining add reuses its resolved spatial anchor without another join draft', async () => {
+  const s = await newStorey();
+  const anchor = vi.spyOn(joins, 'resolveWallJoinAnchor');
+  const join = vi.spyOn(joins, 'joinWallsInStore');
+  const atomic = vi.spyOn(s.editor, 'runAtomic');
+  addOrdinaryElementInStore(s.editor, s.anchor, { kind: 'wall', params: {
+    Start: [0, 0, 0], End: [4, 0, 0], Height: 3, Thickness: .2,
+  } }, { store: s.store });
+  expect(anchor).not.toHaveBeenCalled();
+  expect(join).not.toHaveBeenCalled();
+  expect(atomic).toHaveBeenCalledTimes(1);
+});
 
 for (const recorded of [false, true]) for (const count of [16, 64]) it(`#9296 / #9406 unrelated wall ${count + 1} reads only its own join target (recorded=${recorded})`, async () => {
   const s = await newStorey();

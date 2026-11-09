@@ -43,6 +43,8 @@ for (const target of [1000, 10000]) {
 }
 const wallCount = bim.query().byType('IfcWall').toArray().length;
 if (wallCount !== count) throw new Error(`Wall scaling fixture has ${wallCount} walls; expected ${count}`);
-const result = { rows, wallCount, expectedWallCount: count, joins: bim.query().byType('IfcRelConnectsPathElements').toArray().length };
+const joins = bim.query().byType('IfcRelConnectsPathElements').toArray().length;
+if (joins !== 0) throw new Error(`Non-touching wall fixture unexpectedly created ${joins} joins`);
+const result = { rows, wallCount, expectedWallCount: count, joins, fixture: { wallLength: 4, spacing: 10, gap: 6 } };
 console.log(`@@WALL_SCALE@@${JSON.stringify(result)}`);
 if (process.env.PARITY_WALL_SCALE_RESULT) writeFileSync(process.env.PARITY_WALL_SCALE_RESULT, JSON.stringify(result, null, 2));

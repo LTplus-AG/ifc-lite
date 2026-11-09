@@ -60,7 +60,7 @@ export function addOrdinaryElementInStore(
     const resolved = typeof anchor === 'function' ? anchor(draft) : anchor;
     const id = emitOrdinaryElement(draft, resolved, element);
     if (options.top !== undefined && options.store && TOP_KINDS.has(element.kind)) applyNewElementTop(options.store, draft, id, options.top, resolved.storeyId);
-    if (element.kind === 'wall' && options.store && options.wallIndex) notices.push(...autojoinWallInStore(options.store, draft, id, options.wallIndex));
+    if (element.kind === 'wall' && options.store && options.wallIndex) notices.push(...autojoinWallInStore(options.store, draft, id, options.wallIndex, resolved));
     return id;
   });
   if (options.notices) options.notices.push(...notices);

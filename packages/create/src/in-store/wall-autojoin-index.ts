@@ -2,10 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import type { MutablePropertyView } from '@ifc-lite/mutations';
-import type { IfcDataStore } from '@ifc-lite/parser';
+import { createSchemaEntityNameSnapshot, type IfcDataStore } from '@ifc-lite/parser';
 import { AnchorEntityReader } from './resolve-anchor.js';
 import { safeLengthUnitScale } from './length-unit-scale.js';
 import { readWallJoinEndpoints, type WallEndpoints, type WallJoinRead } from './wall-join-read.js';
+import { schemaRegistry } from './schema-attributes.js';
 
 const TOLERANCE = 1e-6;
 const cell = (n: number) => Math.round(n / TOLERANCE);
@@ -58,11 +59,14 @@ export function withWallAutojoinIndex<T>(store: IfcDataStore, view: MutablePrope
   if (!session || session.store !== store || session.source !== store.source || session.sourceCount !== store.entityIndex.byId.size
     || session.revision !== view.getMutationRevision()) {
     const endpoints = new Endpoints();
-    const reader = new AnchorEntityReader(store, view);
+    // One finite read: avoid enumerating/serializing the complete schema key
+    // list for every placement, representation and axis point of every wall.
+    const names = createSchemaEntityNameSnapshot(schemaRegistry(store.schemaVersion, 'wall-autojoin'));
+    const reader = new AnchorEntityReader(store, view, names);
     const scale = store.source.byteLength ? safeLengthUnitScale(store.source, store.entityIndex, 'wall-autojoin') ?? 1 : 1;
     for (const type of ['IFCWALL', 'IFCWALLSTANDARDCASE']) for (const id of reader.ids(type)) {
       try {
-        const wall = readWallJoinEndpoints(store, view, id, scale);
+        const wall = readWallJoinEndpoints(store, view, id, scale, reader);
         if (wall) endpoints.add(wall);
       } catch (error) {
         console.warn(`[wall-autojoin] Cannot index wall #${id}`, error);

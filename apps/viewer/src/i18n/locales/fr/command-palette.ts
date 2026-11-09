@@ -49,6 +49,7 @@ export const commandPaletteFr = {
   'commandPalette.tool.annotate.label': 'Annoter',
   'commandPalette.tool.wall.label': 'Dessiner des murs',
   'commandPalette.tool.slab.label': 'Dessiner des dalles',
+  'commandPalette.tool.roof.label': 'Dessiner des toitures',
   'commandPalette.tool.column.label': 'Placer des poteaux',
   'commandPalette.tool.beam.label': 'Dessiner des poutres',
   'commandPalette.tool.editMode.label': 'Activer/désactiver le mode édition',

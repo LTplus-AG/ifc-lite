@@ -22,6 +22,7 @@ export const BIM_DERIVED_TYPE_GROUPS = [
       'packages/create/src/in-store/storey/storey-validation.ts', 'packages/create/src/in-store/storey/storey-dependents.ts',
       'packages/create/src/in-store/storey/storey-delete.ts', 'packages/create/src/in-store/storey/storey-suggest.ts',
       'packages/create/src/in-store/host-geometry-frame.ts',
+      'packages/create/src/in-store/storey/storey-attached.ts', 'packages/create/src/in-store/railing-stair-refit.ts',
     ],
     roots: [
       'AlignMode', 'WallJoinApplyOptions', 'WallJoinOptions',

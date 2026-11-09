@@ -32,12 +32,15 @@ DialogOverlay.displayName = DialogPrimitive.Overlay.displayName;
 
 /**
  * `scrollBody` (#8802): a dialog whose content can outgrow the screen. The
- * dialog is capped at the viewport and becomes a column: header and footer
- * keep their height, and the one `DialogBody` takes the rest and scrolls.
+ * dialog is capped at the viewport, with a 1rem margin on every side, and
+ * becomes a column: header and footer keep their height, and the one
+ * `DialogBody` takes the rest and scrolls. As flex items its parts are as
+ * wide as the dialog; a grid track would grow to the widest unbreakable
+ * row and push content past the panel (the Info dialog's Learn tab).
  * The default layout is a grid whose rows are not height-limited, so a capped
  * grid dialog clips its body instead of scrolling it (Settings on a phone).
  */
-const DIALOG_SCROLL_BODY_LAYOUT = 'flex flex-col max-h-[calc(100dvh-2rem)] overflow-hidden';
+const DIALOG_SCROLL_BODY_LAYOUT = 'flex flex-col w-[calc(100%-2rem)] max-h-[calc(100dvh-2rem)] overflow-hidden';
 
 const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,

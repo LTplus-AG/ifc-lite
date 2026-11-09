@@ -202,6 +202,8 @@ declare namespace BimGroup {
 //   packages/create/src/in-store/storey/storey-delete.ts
 //   packages/create/src/in-store/storey/storey-suggest.ts
 //   packages/create/src/in-store/host-geometry-frame.ts
+//   packages/create/src/in-store/storey/storey-attached.ts
+//   packages/create/src/in-store/railing-stair-refit.ts
 
 declare namespace BimCreate {
   export type AlignMode = 'left' | 'centre' | 'right' | 'top' | 'middle' | 'bottom';
@@ -361,10 +363,14 @@ declare namespace BimCreate {
     /** Products another storey owns that hang from a moved placement and are held in place. */
     readonly held: readonly number[];
     readonly spacing: readonly SpacingChange[];
-    /** Walls attached to a storey above whose height follows it. */
+    /** Walls attached to a storey above (or a slab) whose height follows it. */
     readonly walls: readonly WallHeightChange[];
+    /** Columns, beams, members and curtain walls whose top follows their attachment (#9296). */
+    readonly attached: readonly AttachedHeightChange[];
     /** Stairs refit so the top tread still lands on their storey. */
     readonly stairs: readonly StairRefit[];
+    /** Railings that run up a refit stair, stretched with it. */
+    readonly railings: readonly RailingRefit[];
     /** Elements a person counts as moving: openings and aggregated parts excluded. */
     readonly movedElementCount: number;
     readonly refusals: readonly StoreyRefusal[];
@@ -443,6 +449,21 @@ declare namespace BimCreate {
     readonly to: number;
   }
 
+  /**
+   * A column, beam, member or curtain wall whose top follows its attachment
+   * (#9296). `from` and `to` are the kind's `top` measure (`storey-attached.ts`):
+   * the height above its base, or a beam's top end above its placement's parent.
+   */
+  export interface AttachedHeightChange {
+    readonly elementId: number;
+    readonly kind: Exclude<AttachedKind, 'wall'>;
+    readonly storeyId: number;
+    readonly targetStoreyId: number;
+    /** Metres. */
+    readonly from: number;
+    readonly to: number;
+  }
+
   export interface StairRefit {
     readonly stairId: number;
     readonly flightId: number;
@@ -450,6 +471,11 @@ declare namespace BimCreate {
     readonly landingStoreyId: number;
     readonly from: { readonly NumberOfRisers: number; readonly RiserHeight: number };
     readonly to: { readonly NumberOfRisers: number; readonly RiserHeight: number };
+  }
+
+  export interface RailingRefit {
+    readonly railingId: number;
+    readonly stairId: number;
   }
 
   export interface StoreyRefusal {
@@ -541,6 +567,8 @@ declare namespace BimCreate {
   }
 
   export type Vec3 = [number, number, number];
+
+  export type AttachedKind = 'wall' | 'column' | 'linear' | 'curtainWall';
 
   export type StoreyRefusalCode =
     | 'notFound'

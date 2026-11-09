@@ -462,3 +462,9 @@ Supplied-history binding leases the whole requested model catalog, but an unrela
 
 Portable `bounds` describe the supplied finding inventory, while cards and totals describe only the visible rows. A zero row limit retains the original records and reports hidden findings. Saved omissions, source gaps, truncated clash/IDS evaluation, or missing failed detail keep complete inventory and omission counts unknown and `presentationComplete` false; imported evidence never establishes complete native coverage.
 Non-IDS saved report kinds retain their original records but expose `unsupported-kind` binding and no projected findings; a matching model source alone does not certify manual element identity or evaluation.
+
+### Authored base quantities
+
+Headless SDK sessions (including CLI and MCP) derive wall, slab, roof, column and beam base quantities from live session-authored geometry. Read them with `bim.quantities(ref)`; `bim.export.ifc` includes the same values in IFC4, IFC2X3 and IFC4X3. Existing loaded quantity sets retain precedence and are not refreshed.
+
+Custom mutation-view hosts can call `configureAuthoredQuantityReader(dataStore, mutationView)` from `@ifc-lite/create` to install the same source-first reader. An optional third argument supplies the host's source quantity reader. User quantity edits and deletions apply above these derived values.

@@ -67,6 +67,16 @@ export class StoreModellingNamespace {
     return method.call(this.backend.store, modelId, expressIds, transforms);
   }
 
+  /**
+   * Copy a selection onto each of `storeyIds` at the same plan position and height above the floor, as one
+   * atomic, undoable operation; returns the copies per storey. Attachments re-bind on each storey (#9296).
+   */
+  copyToStoreys(modelId: string, expressIds: readonly number[], storeyIds: readonly number[]): Array<{ storeyId: number; refs: EntityRef[] }> {
+    const method = this.backend.store.copyToStoreys;
+    if (!method) throw new Error('bim.store.copyToStoreys: not available on this backend');
+    return method.call(this.backend.store, modelId, expressIds, storeyIds);
+  }
+
   /** Duplicate with its hosted graph and a new GlobalId; offset is storey-local IFC XYZ metres. */
   duplicateElement(ref: EntityRef, options: { offset: [number, number, number]; Name?: string }): EntityRef {
     const method = this.backend.store.duplicateElement;

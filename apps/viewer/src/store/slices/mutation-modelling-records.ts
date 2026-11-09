@@ -6,7 +6,7 @@
  * Type objects, materials and layer sets written as ordinary undo history
  * (charter #6232, M2.5).
  *
- * `bim.store`'s modelling methods (`createModellingStoreBackend`) validate
+ * `bim.store`'s modelling methods (`createModellingStoreBackendWithoutStoreys`) validate
  * and write through the `@ifc-lite/create` builders, but the script adapter
  * clears the undo history after a relationship write, because it has no
  * command to hang one undo step on. The Model workspace has one: a
@@ -24,13 +24,16 @@ import type { StoreApi } from 'zustand';
 import { MutablePropertyView, StoreEditor, type Mutation, type NewEntity } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { readRelatedLists } from '@ifc-lite/create';
-import { createModellingStoreBackend, resolveLiveOwnerHistoryId } from '@ifc-lite/sdk';
+import { createModellingStoreBackendWithoutStoreys, resolveLiveOwnerHistoryId } from '@ifc-lite/sdk';
 import { roomSlotFor } from '@/lib/collab/room-model-target';
 import { mirrorStoreOverlayDelta, snapshotOverlay } from '@/sdk/adapters/store-adapter-cost';
 import { configureMutationView } from '@/utils/configureMutationView';
 import type { ViewerState } from '../index.js';
 
-export type ModellingMethods = ReturnType<typeof createModellingStoreBackend>;
+// Without the storey methods (#9200): storey edits have their own history path
+// (`store-adapter-storey`), and leaving them out keeps the storey planners off
+// the boot path, since this module loads at startup.
+export type ModellingMethods = ReturnType<typeof createModellingStoreBackendWithoutStoreys>;
 export type ModellingStore = Pick<StoreApi<ViewerState>, 'getState' | 'setState' | 'subscribe'>;
 
 export interface ModelEditTarget {
@@ -82,7 +85,7 @@ export function recordModellingEdit<T>(
   batchId?: string,
 ): T {
   return recordModellingCommit(store, modelId, (editor, dataStore) =>
-    editor.runAtomic((draft) => edit(createModellingStoreBackend(() => ({
+    editor.runAtomic((draft) => edit(createModellingStoreBackendWithoutStoreys(() => ({
       modelId,
       store: dataStore,
       editor: draft,

@@ -66,6 +66,17 @@ async function planCutAtGroundStorey(page) {
   });
 }
 
+/** Opens the Info dialog on `tab` the way the Learn command does, and waits
+ *  for its open animation to finish. */
+async function openInfoDialog(page, tab) {
+  await page.evaluate((t) => window.dispatchEvent(new CustomEvent('ifc-lite:show-shortcuts', { detail: { tab: t } })), tab);
+  await page.waitForSelector(`[role="dialog"] [role="tabpanel"][data-state="active"]`);
+  await page.evaluate(async () => {
+    for (const animation of document.getAnimations()) animation.finish();
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+  });
+}
+
 /**
  * Open Settings the way every opener does (the `ifc-lite:open-settings`
  * window event, #5857), then wait for its dialog. `toEnd` scrolls every
@@ -221,12 +232,43 @@ export const SCENES = [
     async run({ page }) { await page.keyboard.press('Shift+?'); },
   },
   {
+    id: 'info-learn',
+    title: 'Info dialog, Learn tab, in a small desktop window',
+    model: ARCH,
+    viewport: { width: 1033, height: 676 },
+    async run({ page }) { await openInfoDialog(page, 'learn'); },
+  },
+  {
+    id: 'mobile-info-learn',
+    title: 'Phone, Info dialog on the Learn tab',
+    model: ARCH,
+    viewport: { width: 390, height: 844 },
+    async run({ page }) { await openInfoDialog(page, 'learn'); },
+  },
+  {
     id: 'mobile-loaded',
     title: 'Phone, model loaded',
     model: ARCH,
     viewport: { width: 390, height: 844 },
     async run() {},
   },
+  ...[[320, 640], [360, 740], [390, 844]].flatMap(([width, height]) =>
+    [true, false].map((cancel) => ({
+      id: `mobile-loading-${width}${cancel ? '' : '-no-cancel'}`,
+      title: `Phone (${width}px), second model loading${cancel ? ' with Cancel' : ''}`,
+      model: ARCH,
+      viewport: { width, height },
+      async run({ page }) {
+        await page.evaluate((cancel) => {
+          globalThis.__ifc_lite_viewer_store__.setState({
+            loading: true,
+            loadingFileName: 'building-architecture-rev-b.ifc',
+            geometryProgress: { phase: 'Processing geometry', percent: 42 },
+            activeLoadCanceller: cancel ? () => {} : null,
+          });
+        }, cancel);
+      },
+    }))),
   {
     id: 'mobile-settings',
     title: 'Phone, Settings open',

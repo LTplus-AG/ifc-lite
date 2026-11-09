@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import type { Mutation } from './types.js';
 import type { OverlaySnapshotHistory, OverlaySnapshotV1 } from './overlay-snapshot-types.js';
 
 export function record(value: unknown): Record<string, unknown> {
@@ -141,7 +142,14 @@ const replayableTypes = new Set(['CREATE_PROPERTY', 'UPDATE_PROPERTY', 'DELETE_P
 
 /** Host-only or unknown records drop the whole undo history; edits remain valid. */
 export function validateHistory(value: unknown, dto: OverlaySnapshotV1): OverlaySnapshotHistory {
-  const history = record(value), records = new Map(dto.journal.map(row => [row.id, row]));
+  const history = record(value), records = new Map<string, Mutation>();
+  const creations = new Map<number, number>();
+  const journals = [dto.journal, ...dto.state.forgotten.flatMap(row => row.rows ? [row.rows.journal] : [])];
+  for (const journal of journals) for (const row of journal) {
+    if (records.has(row.id)) throw new TypeError('Ambiguous duplicate mutation ID across snapshot journals.');
+    records.set(row.id, row);
+    if (row.type === 'CREATE_ENTITY') creations.set(row.entityId, (creations.get(row.entityId) ?? 0) + 1);
+  }
   const used = new Set<string>();
   for (const item of [...list(history.undo), ...list(history.redo)]) {
     text(item); const row = records.get(item);
@@ -154,11 +162,10 @@ export function validateHistory(value: unknown, dto: OverlaySnapshotV1): Overlay
     if (!records.has(row[0]) || groups.has(row[0])) throw new TypeError('Invalid snapshot history group.');
     groups.add(row[0]);
   }
-  const creations = new Set(dto.journal.filter(row => row.type === 'CREATE_ENTITY').map(row => row.entityId));
   const parked = new Set<number>();
   for (const item of list(history.parked)) {
     entity(item); const expressId = record(item).expressId as number;
-    if (!creations.has(expressId) || parked.has(expressId)) throw new TypeError('Parked history entity has no unique create record.');
+    if (creations.get(expressId) !== 1 || parked.has(expressId)) throw new TypeError('Parked history entity has no unique create record.');
     parked.add(expressId);
   }
   return value as OverlaySnapshotHistory;

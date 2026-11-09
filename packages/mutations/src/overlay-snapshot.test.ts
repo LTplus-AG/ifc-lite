@@ -58,6 +58,39 @@ describe('versioned overlay persistence (#8453)', () => {
     expect(copy.peekNextExpressId()).toBeGreaterThan(id);
   });
 
+  it('retains redo IDs, groups and parked creations after undoing a creation (#8453)', () => {
+    const { view, id } = fixture();
+    view.setProperty(id, 'Custom:A', 'Fire:B', 'yes');
+    const ids = view.getMutations().map(row => row.id);
+    const parked = structuredClone(view.getNewEntity(id)!);
+    view.deleteEntity(id);
+    const history = { undo: [], redo: ids, groups: ids.map(id => [id, 'creation'] as [string, string]), parked: [parked] };
+    const copy = new MutablePropertyView(null, 'm');
+    const result = restoreOverlay(copy, snapshotOverlay(view, { ...options, history }), options);
+    expect(result.historyDroppedReason).toBeUndefined();
+    expect(result.history).toEqual(history);
+    copy.restoreNewEntity(result.history!.parked[0]);
+    expect(copy.isDeleted(id)).toBe(false);
+    expect(copy.getNewEntity(id)).toEqual(parked);
+    expect(copy.getPropertyValue(id, 'Custom:A', 'Fire:B')).toBe('yes');
+    expect(copy.getMutations().some(row => row.id === ids[0] && row.type === 'CREATE_ENTITY')).toBe(true);
+  });
+
+  it.each(['mutation-id', 'creation-entity'])('drops ambiguous %s history across active and forgotten journals (#8453)', kind => {
+    const { view, id } = fixture(), creation = structuredClone(view.getMutations()[0]);
+    const parked = structuredClone(view.getNewEntity(id)!);
+    view.deleteEntity(id);
+    const history = { undo: [], redo: [creation.id], groups: [], parked: [parked] };
+    const snapshot = JSON.parse(snapshotOverlay(view, { ...options, history })) as OverlaySnapshotV1;
+    snapshot.journal.push({ ...creation, id: kind === 'mutation-id' ? creation.id : creation.id + '-second' });
+    const copy = new MutablePropertyView(null, 'm');
+    const result = restoreOverlay(copy, JSON.stringify(snapshot), options);
+    expect(result.history).toBeUndefined();
+    expect(result.historyDroppedReason).toMatch(/duplicate mutation ID|unique create record/);
+    expect(copy.isDeleted(id)).toBe(true);
+    expect(copy.getNewEntity(id)).toBeNull();
+  });
+
   it('keeps whole-set undo/redo usable after JSON restore', () => {
     const { view, id } = fixture();
     view.setProperty(id, 'Pset:A', 'First:B', 'before');

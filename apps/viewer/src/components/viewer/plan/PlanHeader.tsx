@@ -3,10 +3,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * The plan pane's header bar (charter #6232, M2 §1.5), in the sidebar
- * chrome bar's style: the storey (the shared `StoreyPicker`, so it moves
- * the session exactly like the HUD chip), the plane's height, the grid
- * toggle, Fit, the cut's state, and the Plan | Split | 3D layout.
+ * The shared Model workspace bar: one storey picker and workplane height,
+ * plan actions, layout control and Leave across both panes. PlanView portals
+ * it into the workspace host so plan state survives layout changes.
  */
 
 import { Grid3x3, Maximize } from 'lucide-react';

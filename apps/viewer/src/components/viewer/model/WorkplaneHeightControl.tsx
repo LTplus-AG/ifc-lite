@@ -5,8 +5,7 @@
 /**
  * The workplane's height (#9202): how far above the storey floor new elements
  * land. One number, the session plane's `offset`, read and set the same way
- * from the HUD chip and the plan header, so 3D and the plan cannot disagree on
- * it. It stands out while the plane is off the floor. Top of walls is one click
+ * from the shared workspace bar, so 3D and the plan cannot disagree on it. It stands out while the plane is off the floor. Top of walls is one click
  * away; the Roof tool takes it by itself.
  */
 
@@ -69,7 +68,7 @@ function HeightPicker({ plane }: { plane: StoreyPlane }) {
   );
 }
 
-/** The same control in the plan's header. */
+/** The workspace bar's workplane height control. */
 export function PlanWorkplaneHeight() {
   const { t } = useTranslation();
   const plane = useStoreyPlane();

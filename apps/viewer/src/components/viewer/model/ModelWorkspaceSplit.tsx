@@ -16,8 +16,7 @@
  *
  * The plan pane is `PlanView` (M2.4). Which layout shows, and the pane
  * sizes, follow `model-layout.ts`: the 3D pane never gets narrower than its
- * HUD needs. In 3D alone the rail's Plan toggle brings the plan back
- * (disabled while there is no room for it).
+ * HUD needs. The shared workspace bar remains visible in every layout.
  */
 
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
@@ -85,7 +84,7 @@ export function ModelWorkspaceSplit({ children }: { children: ReactNode }) {
   }, [inWorkspace, showPlan, layout, width]);
 
   return (
-    // A plain wrapper measured for `model-layout.ts`; the plan toggle is the rail's.
+    // The shared bar sits above the persistent pane group.
     <div ref={hostRef} data-model-split-width={width} className="flex h-full min-w-0 flex-1 flex-col">
       {inWorkspace && <div ref={setHeaderHost} className="shrink-0 min-w-0" />}
       {inWorkspace && picked && pick !== '3d' && width > 0 && !splitFits(width) && (

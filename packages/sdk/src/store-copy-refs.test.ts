@@ -13,11 +13,12 @@ import { IfcParser } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import { copiedProductsInStore, createCopyContext, readStoreyInventory, writeTopAttachment } from '@ifc-lite/create';
 import { createModellingStoreBackend } from './store-modelling-backend.js';
+import { createModellingStoreBackendWithoutStoreys } from './store-modelling-backend-without-storeys.js';
 
 const SAMPLE = new URL('../../../apps/viewer/public/samples/hello-wall.ifc', import.meta.url);
 const WALL = 1222;
 
-async function model() {
+async function model(factory: typeof createModellingStoreBackendWithoutStoreys) {
   const bytes = readFileSync(SAMPLE);
   const store = await new IfcParser().parseColumnar(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer, { disableWorkerScan: true });
   const view = new MutablePropertyView(null, 'm');
@@ -26,12 +27,13 @@ async function model() {
     if (modelId !== 'm') throw new Error('Unknown model');
     return { modelId, store, editor, mutationView: view, ownerHistoryId: null };
   };
-  return { store, view, editor, backend: createModellingStoreBackend(resolve) };
+  return { store, view, editor, backend: factory(resolve), addStorey: createModellingStoreBackend(resolve).addStorey! };
 }
 
-describe.skipIf(!existsSync(SAMPLE))('bim.store copies return the whole selection (#9352)', () => {
+for (const factory of [createModellingStoreBackend, createModellingStoreBackendWithoutStoreys]) {
+describe.skipIf(!existsSync(SAMPLE))(`bim.store copies return the whole selection (#9352/#9407) via ${factory.name}`, () => {
   it('a window selected with its wall comes back as its own copy for every transform', async () => {
-    const { store, editor, backend } = await model();
+    const { store, editor, backend } = await model(factory);
     const selection = copiedProductsInStore(createCopyContext(store, editor), [WALL]);
     expect(selection).toHaveLength(3);
     const refs = backend.copyElements!('m', selection, [{ offset: [0, 3, 0] }, { offset: [0, 6, 0] }]);
@@ -42,9 +44,9 @@ describe.skipIf(!existsSync(SAMPLE))('bim.store copies return the whole selectio
   });
 
   it('a copy left fixed is listed on its ref, per storey', async () => {
-    const { store, view, backend } = await model();
-    const upper = backend.addStorey!('m', { Name: 'Level 2', Elevation: 3 });
-    const top = backend.addStorey!('m', { Name: 'Level 3', Elevation: 7 });
+    const { store, view, backend, addStorey } = await model(factory);
+    const upper = addStorey('m', { Name: 'Level 2', Elevation: 3 });
+    const top = addStorey('m', { Name: 'Level 3', Elevation: 7 });
     const guid = readStoreyInventory(store, view).storeys.find((s) => s.expressId === upper.expressId)!.GlobalId;
     writeTopAttachment(view, WALL, guid, 'relative');
     // Level 2 to Level 3 is 4 m: the copy needs a new height, which the file wall's body cannot take.
@@ -55,3 +57,5 @@ describe.skipIf(!existsSync(SAMPLE))('bim.store copies return the whole selectio
     expect(copied.unattachedTops).toHaveLength(1);
   });
 });
+
+}

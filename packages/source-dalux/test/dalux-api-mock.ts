@@ -227,6 +227,14 @@ function toBytes(body: unknown): Uint8Array | undefined {
   return undefined;
 }
 
+/** A request body as text, whether the caller sent a string or bytes (a
+ *  relay forwards the bytes it read, not the provider's original string). */
+function bodyText(body: unknown): string | undefined {
+  if (typeof body === 'string') return body;
+  const bytes = toBytes(body);
+  return bytes ? new TextDecoder().decode(bytes) : undefined;
+}
+
 function isUnuploadableArea(area: DaluxMockFileArea): boolean {
   return ['shared', 'published'].includes(area.fileAreaType.toLowerCase());
 }
@@ -363,7 +371,7 @@ export function createDaluxApiMock(initialWorld: DaluxMockWorld, options: DaluxM
       if (slot.total === undefined || slot.received !== slot.total) {
         return Promise.resolve(mockResponse({ status: 400, body: 'upload incomplete' }));
       }
-      const meta = JSON.parse(String(init?.body ?? '{}')) as {
+      const meta = JSON.parse(bodyText(init?.body) ?? '{}') as {
         fileName?: string;
         fileType?: string;
         fileId?: string;

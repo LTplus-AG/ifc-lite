@@ -47,10 +47,11 @@ export function setSourceAttrsReader(reader: SourceAttrsReader | null): void {
 }
 
 type EntityAttrs = unknown[];
+type PlacementEditor = Pick<StoreEditor, 'getNewEntity'> & Partial<Pick<StoreEditor, 'readNewEntity'>>;
 
 /** Shared source callback baseline; effective placement reads add no decoder. */
-function baseAttributes(dataStore: IfcDataStore, editor: Pick<StoreEditor, 'getNewEntity'>, expressId: number): EntityAttrs | null {
-  const overlay = editor.getNewEntity(expressId);
+function baseAttributes(dataStore: IfcDataStore, editor: PlacementEditor, expressId: number): EntityAttrs | null {
+  const overlay = editor.readNewEntity ? editor.readNewEntity(expressId) : editor.getNewEntity(expressId);
   let attrs: EntityAttrs | null = null;
   if (overlay) {
     attrs = overlay.attributes.slice();
@@ -69,7 +70,7 @@ function baseAttributes(dataStore: IfcDataStore, editor: Pick<StoreEditor, 'getN
 
 /** #7315: only native placement owners use current named/retyped fields.
  * The general body/profile reader retains its existing positional contract. */
-export function readPlacementAttributes(dataStore: IfcDataStore, view: MutablePropertyView, editor: Pick<StoreEditor, 'getNewEntity'> & Partial<Pick<StoreEditor, 'getEntityType'>>, expressId: number): EntityAttrs | null {
+export function readPlacementAttributes(dataStore: IfcDataStore, view: MutablePropertyView, editor: PlacementEditor & Partial<Pick<StoreEditor, 'getEntityType'>>, expressId: number): EntityAttrs | null {
   if (view.isDeleted(expressId)) return null;
   const attributes = baseAttributes(dataStore, editor, expressId);
   if (!attributes) return null;

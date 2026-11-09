@@ -13,7 +13,7 @@
  */
 
 import type { MutablePropertyView } from '@ifc-lite/mutations';
-import type { IfcDataStore } from '@ifc-lite/parser';
+import { createSchemaEntityNameSnapshot, getSchemaRegistryForVersion, type IfcDataStore } from '@ifc-lite/parser';
 import { AnchorEntityReader } from '../resolve-anchor.js';
 import { refId } from '../host-geometry-frame.js';
 import { safeLengthUnitScale } from '../length-unit-scale.js';
@@ -108,7 +108,8 @@ function relationshipsOf(reader: AnchorEntityReader, deleted: ReadonlySet<number
 
 /** Read the live storeys and spatial relationships of one model. */
 export function readStoreyInventory(store: IfcDataStore, view: MutablePropertyView): StoreyInventory {
-  const reader = new CachedReader(store, view);
+  const names = createSchemaEntityNameSnapshot(getSchemaRegistryForVersion(store.schemaVersion === 'IFC2X3' ? 'IFC2X3' : store.schemaVersion === 'IFC4X3' || store.schemaVersion === 'IFC5' ? 'IFC4X3' : 'IFC4'));
+  const reader = new CachedReader(store, view, names);
   const scale = store.source.byteLength > 0
     ? safeLengthUnitScale(store.source, store.entityIndex, 'readStoreyInventory') ?? 1
     : store.lengthUnitScale ?? 1;

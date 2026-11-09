@@ -81,9 +81,13 @@ export function retargetInheritingLayerUsagesInStore(target: EditTarget, typeId:
     if (rel.relatingId !== undefined) users.set(rel.relatingId, [...(users.get(rel.relatingId) ?? []), ...rel.relatedIds]);
   }
   const oldTotal = nativeTotal(target, scope.layerSetId), newTotal = nativeTotal(target, newLayerSetId);
-  /** The usage's offset on the new set: a wall's layers centred on its axis start half the total off it, and stay centred. */
-  const offsetFor = (attributes: unknown[] | null): number => {
+  /**
+   * The usage's offset on the new set: a wall's layers centred on its axis start half the total off it, and stay centred.
+   * Null when the offset does not read as a finite number: the original attribute is then kept as it is.
+   */
+  const offsetFor = (attributes: unknown[] | null): number | null => {
     const offset = real(attributes?.[3]);
+    if (!Number.isFinite(offset)) return null;
     const centred = String(attributes?.[1]).replace(/\./g, '') === 'AXIS2' && oldTotal !== null && newTotal !== null
       && Math.abs(offset + oldTotal / 2) <= 1e-9 * Math.max(1, oldTotal);
     return centred ? -newTotal! / 2 : offset;
@@ -95,7 +99,7 @@ export function retargetInheritingLayerUsagesInStore(target: EditTarget, typeId:
     const offset = offsetFor(attributes);
     if (placed.every(id => inheriting.has(id))) {
       target.editor.setPositionalAttribute(usage, 0, `#${newLayerSetId}`);
-      if (offset !== real(attributes?.[3])) target.editor.setPositionalAttribute(usage, 3, offset);
+      if (offset !== null && offset !== real(attributes?.[3])) target.editor.setPositionalAttribute(usage, 3, offset);
       retargeted.push(...placed);
       continue;
     }
@@ -108,8 +112,10 @@ export function retargetInheritingLayerUsagesInStore(target: EditTarget, typeId:
       ForLayerSet: newLayerSetId,
       LayerSetDirection: direction === 'AXIS1' || direction === 'AXIS3' ? direction : 'AXIS2',
       DirectionSense: sense === 'NEGATIVE' ? 'NEGATIVE' : 'POSITIVE',
-      OffsetFromReferenceLine: fromNativeLength(anchor, offset),
+      OffsetFromReferenceLine: offset === null ? 0 : fromNativeLength(anchor, offset),
     }).usageId;
+    // An offset that does not read as a number is carried over exactly as the original usage has it.
+    if (offset === null && attributes?.[3] !== undefined) target.editor.setPositionalAttribute(split, 3, attributes[3] as Parameters<typeof target.editor.setPositionalAttribute>[2]);
     assignMaterialInStore(target.editor, anchor, split, followers, readRelatedLists(target.dataStore, 'IfcRelAssociatesMaterial', target.view));
     retargeted.push(...followers);
   }

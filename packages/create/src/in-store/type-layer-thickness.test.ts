@@ -172,4 +172,22 @@ describe('a layered type drives its occurrences, and what they bound follows (#9
     applyLayerThicknessInStore(target, [1222]);
     expect(takeLayerThicknessOutcome(editor).refused.map(r => r.id)).toEqual([1222]);
   });
+
+  it('a usage offset it cannot read as a number is kept as it is, re-pointed in place or split (#9296)', async () => {
+    const m = await typedRoom();
+    m.layerType(.2);
+    const typeSet = typeLayerScopeInStore(m.target, m.type).layerSetId!;
+    // walls[0]'s own usage, and one walls[1] shares with the untyped walls[2]; both offsets in a shape the reader does not parse as a number.
+    const alone = m.usageOn(m.walls[0], typeSet, .2);
+    const shared = m.usageOn(m.walls[1], typeSet, .2);
+    assignMaterialInStore(m.editor, m.anchor, shared, [m.walls[1], m.walls[2]], readRelatedLists(m.store, 'IfcRelAssociatesMaterial', m.view));
+    for (const usage of [alone, shared]) m.editor.setPositionalAttribute(usage, 3, 'IFCLENGTHMEASURE(-0.1)');
+    m.layerType(.3);
+    const offset = (usage: number) => effectiveMetadataRecord(m.store, usage, m.view)!.attributes[3];
+    expect(offset(alone), 'the re-pointed usage keeps its offset').toBe('IFCLENGTHMEASURE(-0.1)');
+    const own = readRelatedLists(m.store, 'IfcRelAssociatesMaterial', m.view).find(rel => rel.relatedIds.includes(m.walls[1]))!.relatingId!;
+    expect(own).not.toBe(shared);
+    expect(offset(own), 'the split usage carries the original offset').toBe('IFCLENGTHMEASURE(-0.1)');
+    expect(offset(shared), 'the shared usage keeps it too').toBe('IFCLENGTHMEASURE(-0.1)');
+  });
 });

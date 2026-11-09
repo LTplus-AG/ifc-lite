@@ -26,6 +26,7 @@ import { downloadCount, nextDownload, task } from './lib/driver.mjs';
 import {
   escape, hudText, oracleModel, openStoreyManager, readSession, readStoreyManager, switchStorey, tool, toasts, typeFields,
 } from './lib/model-ui.mjs';
+import { U4_PROBES } from './probes-u4.mjs';
 import { readStep } from './lib/step.mjs';
 
 const PLAN_CAM = { pos: [2.5, -2, 28], target: [2.5, 2, 0] };
@@ -111,6 +112,7 @@ const isDxf = (d) => !!d && /\bSECTION\b/.test(d.text) && /\bEOF\b/.test(d.text)
 const svgShapes = (d) => (d?.text.match(/<(path|polygon|polyline|line|rect)\b/g) ?? []).length;
 
 export const PROBES = [
+  ...U4_PROBES,
   {
     id: 'ui.storeys',
     capability: 'storeys',
@@ -385,10 +387,9 @@ export const PROBES = [
     title: 'Roof over a 5x4 m footprint (hip expected; #9214)',
     async run(s) {
       const tasks = [await setupRoom(s)];
-      const notes = ['There is no Roof tool in the rail: a roof is the Slab tool with its class switched to Roof, and it makes a flat slab.'];
-      tasks.push(await task(s, 'Slab tool, class Roof, typed 5.6 x 4.6 m', async () => {
-        await tool(s, 'slab.place');
-        await s.ui.click(s.page.locator('[data-command-id]').getByRole('radio', { name: 'Roof' }));
+      const notes = ['Roof tool (Shift+Y) is present on main after #9214; slope-per-edge geometry remains a separate oracle.'];
+      tasks.push(await task(s, 'Roof tool, typed 5.6 x 4.6 m', async () => {
+        await s.ui.key('Shift+Y', { settle: 300 });
         await s.ui.clickWorld([-0.3, -0.3, 3]);
         await typeFields(s, [5.6, 4.6]);
         await escape(s);
@@ -622,10 +623,9 @@ export const PROBES = [
         await s.ui.key('Escape');
       }));
       const shot = await s.shot('dimension');
-      const annotations = await s.state(() => {
-        const st = globalThis.__ifc_lite_viewer_store__.getState();
-        return Object.entries(st).filter(([k, v]) => /measure2D|annotation/i.test(k) && Array.isArray(v)).reduce((n, [, v]) => n + v.length, 0);
-      });
+      const dimensions = await s.state(() =>
+        (globalThis.__ifc_lite_viewer_store__.getState().measure2DResults ?? []).map((m) => m.distance));
+      const annotations = dimensions.length;
       let svg = null;
       tasks.push(await task(s, 'Drawing > Export > SVG', async () => { svg = await exportDrawing(s, 'svg'); }));
       const added = svg && plain ? svg.text.length - plain.text.length : 0;
@@ -635,8 +635,9 @@ export const PROBES = [
         tasks, notes: tagTool ? [] : [`The Drawing toolbar has no tag tool (${toolbar.join(', ')}).`], evidence: [shot], artifacts: { svg },
         checks: [
           { name: 'a dimension was placed in the drawing', ok: annotations > 0, detail: `${annotations} drawing markups in the store` },
+          { name: 'dimension measures the 5 m room span', ok: dimensions.length === 1 && near(dimensions[0], 5, 0.25), detail: JSON.stringify(dimensions) },
           { name: 'the exported SVG carries the dimension', ok: added > 0 && numbers > 0, detail: `${added} more SVG characters than before, ${numbers} numeric text labels` },
-          { name: 'a tag tool for elements (door, window, room tags)', ok: tagTool, detail: `toolbar: ${toolbar.join(', ')}` },
+          { name: 'a tag tool for elements (door, window, room tags)', ok: false, detail: tagTool ? 'tag control found, but no entity-bound tag placement/export oracle has passed' : `no tag control in toolbar: ${toolbar.join(', ')}` },
         ],
       };
     },
@@ -765,6 +766,19 @@ export const PROBES = [
     },
   },
 ];
+
+// The original combined probe only credited the structure row, leaving grids unscored.
+const gridProbe = PROBES.find((p) => p.id === 'ui.grid-columns');
+PROBES.push({
+  ...gridProbe, id: 'ui.grids', capability: 'grids',
+  async run(s) {
+    const out = await gridProbe.run(s);
+    return { ...out, checks: [...out.checks.slice(0, 2), {
+      name: 'moving a grid carries its columns', ok: false,
+      detail: 'not measured by placement/level-change probe: grid movement and bound column displacement require a separate gesture',
+    }] };
+  },
+});
 
 /** Run one probe in a fresh page. Returns a contract result plus the export text when the probe has one. */
 export async function runProbe(probe, openFresh, base, { saveArtifact } = {}) {

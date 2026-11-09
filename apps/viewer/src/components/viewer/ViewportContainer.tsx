@@ -427,7 +427,7 @@ export function ViewportContainer() {
     const handlesPromise = handlesFromDataTransfer(dataTransfer);
     const droppedFiles = Array.from(dataTransfer.files);
     const attempt = () => {
-      if (!guardWebGpu(attempt)) return;
+      if (!guardWebGpu(attempt, { replay: 'free' })) return;
       const { dxfFiles, modelFiles: allDropped } = splitDxfFiles(droppedFiles);
       if (dxfFiles.length > 0) void ingestDxfFiles(dxfFiles);
       if (allDropped.length === 0) return;
@@ -464,7 +464,7 @@ export function ViewportContainer() {
     // Reset while the event still owns this input; Retry uses the captured Files.
     e.target.value = '';
     const attempt = () => {
-      if (!guardWebGpu(attempt)) return;
+      if (!guardWebGpu(attempt, { replay: 'free' })) return;
 
       // DXF reference underlays split off before model routing (issue #1782).
       const { dxfFiles, modelFiles } = splitDxfFiles(files);
@@ -508,7 +508,7 @@ export function ViewportContainer() {
   useReloadResume(webgpu.supported && !webgpu.checking, routeLoad, () => { void handleOpenClick(); });
 
   const handleStartBlank = useCallback(async () => {
-    if (!guardWebGpu(() => { void handleStartBlank(); })) return;
+    if (!guardWebGpu(() => { void handleStartBlank(); }, { replay: 'on-retry' })) return;
     const file = createBlankIfcFile();
     const modelId = crypto.randomUUID();
     // Must await: loadFile() calls resetViewerState() internally, which

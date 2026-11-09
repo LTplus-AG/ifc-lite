@@ -8,6 +8,9 @@ import { afterEach, beforeEach, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { act, useState } from 'react';
 import type { BimContext } from '@ifc-lite/sdk';
+import { MutablePropertyView } from '@ifc-lite/mutations';
+import { TooltipProvider } from '@/components/ui/tooltip';
+import { ElementsTab } from './ribbon/tabs/ElementsTab';
 import { BimReactContext } from '@/sdk/BimProvider';
 import { useViewerStore } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
@@ -34,13 +37,14 @@ beforeEach(async () => {
 });
 afterEach(() => { cleanup(); useViewerStore.setState(original); localStorage.clear(); });
 
-function Harness() {
+function Harness({ ribbon = false }: { ribbon?: boolean }) {
   const [open, setOpen] = useState(false);
-  return <BimReactContext.Provider value={{} as BimContext}>
+  return <TooltipProvider><BimReactContext.Provider value={{} as BimContext}>
     <button onClick={() => setOpen(true)}>Commands</button>
     <CommandPalette open={open} onOpenChange={setOpen} />
+    {ribbon && <ElementsTab />}
     <EntityContextMenu />
-  </BimReactContext.Provider>;
+  </BimReactContext.Provider></TooltipProvider>;
 }
 function mount() {
   const ui = render(<Harness />);
@@ -194,3 +198,55 @@ test('#8947 unavailable entity reason updates live from property-only to rendere
   act(() => select(MESH_WALL));
   assert.notEqual(option('elements:entity-actions').getAttribute('aria-disabled'), 'true');
 });
+
+// #8947 / review4510011624: renderer refs use "legacy", while the live edit view
+// uses "__legacy__". Exercise real palette/ribbon entry and effective menu actions.
+for (const surface of ['palette', 'ribbon'] as const) {
+  for (const target of ['existing', 'deleted', 'created'] as const) {
+    test(`#8947 ${surface} legacy ${target} target uses the live mutation view`, async () => {
+      const store = useViewerStore.getState().models.get(MODEL_ID)!.ifcDataStore!;
+      const view = new MutablePropertyView(store.properties || null, '__legacy__');
+      view.setExpressIdWatermark(Math.max(...store.entities.expressId));
+      const created = view.createEntity('IfcWall', [
+        '0000000000000000000999', null, 'Legacy new wall', null, null, null, null, null,
+      ]);
+      if (target !== 'existing') view.deleteEntity(MESH_WALL);
+      const targetId = target === 'created' ? created.expressId : MESH_WALL;
+      useViewerStore.setState({ models: new Map(), ifcDataStore: store,
+        mutationViews: new Map([['__legacy__', view]]),
+        selectedEntityId: targetId, selectedEntityIds: new Set(), selectedEntity: null });
+      const ui = render(<Harness ribbon={surface === 'ribbon'} />);
+      const launcher = ui.querySelector<HTMLButtonElement>(surface === 'palette'
+        ? 'button' : 'button[data-command-id="elements:entity-actions"]');
+      assert.ok(launcher);
+      launcher.focus(); click(launcher);
+      if (surface === 'palette') {
+        const input = document.querySelector<HTMLInputElement>('input[role="combobox"]');
+        assert.ok(input); typeInto(input, 'Selected entity actions');
+        const row = option('elements:entity-actions');
+        assert.equal(row.getAttribute('aria-disabled') === 'true', target === 'deleted');
+        press(input, 'Enter');
+      }
+      if (target === 'deleted') {
+        await advance(80);
+        assert.equal(document.querySelector('[role="menu"]'), null, 'deleted target cannot open a menu');
+        assert.equal(useViewerStore.getState().contextMenu.isOpen, false);
+        assert.equal(localStorage.getItem(RECENT_KEY), null, 'refusal records no palette use');
+        return;
+      }
+      await waitFor(() => document.querySelector('[role="menu"]')?.contains(document.activeElement) === true,
+        'live legacy menu mounts and receives focus');
+      const menu = document.querySelector<HTMLElement>('[role="menu"]');
+      assert.ok(menu);
+      assert.equal(useViewerStore.getState().contextMenu.entityId, targetId);
+      const selectType = menu.querySelector<HTMLElement>('[data-command-id="context:select-all-type"]');
+      assert.ok(selectType);
+      assert.match(selectType.textContent ?? '', /IfcWall/);
+      click(selectType);
+      assert.deepEqual(useViewerStore.getState().selectedEntityIds,
+        new Set(target === 'existing' ? [MESH_WALL, created.expressId] : [created.expressId]),
+        'actual menu action includes overlay walls and excludes deleted source walls');
+      await waitFor(() => document.activeElement === launcher, 'legacy menu restores its actual launcher');
+    });
+  }
+}

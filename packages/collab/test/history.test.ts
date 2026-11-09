@@ -5,8 +5,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createCollabSession } from '../src/session.js';
 import { createEntity, setAttribute } from '../src/doc/entity.js';
-import { MemoryHistorySidecar } from '../src/branch/history.js';
-import { attachHistorySidecar, HistoryDriverDetachedError } from '../src/branch/history-driver.js';
+// Through the branch barrel, so these tests still load against a tree without
+// history-driver.ts and fail on their assertions instead.
+import { attachHistorySidecar, MemoryHistorySidecar } from '../src/branch/index.js';
 
 describe('MemoryHistorySidecar', () => {
   it('records, lists, and time-traces entries', async () => {
@@ -169,7 +170,7 @@ describe('attachHistorySidecar lifecycle', () => {
     driver.detach();
     gates[0].resolve();
     await first;
-    await expect(queued).rejects.toBeInstanceOf(HistoryDriverDetachedError);
+    await expect(queued).rejects.toMatchObject({ name: 'HistoryDriverDetachedError' });
     expect([...recorded]).toEqual(['first']);
     session.dispose();
   });
@@ -179,7 +180,7 @@ describe('attachHistorySidecar lifecycle', () => {
     const sidecar = new MemoryHistorySidecar();
     const driver = attachHistorySidecar(session, sidecar, { intervalMs: 999_999 });
     session.dispose();
-    await expect(driver.capture('late')).rejects.toBeInstanceOf(HistoryDriverDetachedError);
+    await expect(driver.capture('late')).rejects.toMatchObject({ name: 'HistoryDriverDetachedError' });
     expect((await sidecar.entries()).length).toBe(0);
   });
 

@@ -14,7 +14,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
 import { createWebSocketProvider } from '../src/providers/websocket.js';
-import { CollabSessionDisposedError, createCollabSession } from '../src/session.js';
+import { createCollabSession } from '../src/session.js';
 
 class FakeWebSocket {
   static instances: FakeWebSocket[] = [];
@@ -105,7 +105,7 @@ describe('CollabSession dispose', () => {
     const session = await wsSession();
     session.dispose();
     expect(await settlement(session.whenSynced)).toBe('rejected');
-    await expect(session.whenSynced).rejects.toBeInstanceOf(CollabSessionDisposedError);
+    await expect(session.whenSynced).rejects.toMatchObject({ name: 'CollabSessionDisposedError' });
   });
 
   it('stops notifying status listeners once disposed', async () => {
@@ -126,7 +126,7 @@ describe('CollabSession dispose', () => {
     session.dispose();
     expect(session.disposed).toBe(true);
     expect(() => session.transact(() => session.doc.getMap('entities').set('x', 1))).toThrow(
-      CollabSessionDisposedError,
+      /is disposed \(transact\)/,
     );
     expect(session.doc.getMap('entities').has('x')).toBe(false);
     const file = {
@@ -135,13 +135,14 @@ describe('CollabSession dispose', () => {
       schemas: {},
       data: [],
     };
-    expect(() => session.seed(file)).toThrow(
-      CollabSessionDisposedError,
-    );
+    expect(() => session.seed(file)).toThrow(/is disposed \(seed\)/);
   });
 
   it('runs dispose listeners exactly once, and at once when already disposed', async () => {
     const session = await createCollabSession({ roomId: 'r', user: { id: 'u', name: 'U' }, provider: 'memory' });
+    // Asserted first, so a session without the hook fails here rather than
+    // with a TypeError further down.
+    expect(typeof session.onDispose).toBe('function');
     let calls = 0;
     session.onDispose(() => calls++);
     const unsubscribed = session.onDispose(() => {

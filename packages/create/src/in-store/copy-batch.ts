@@ -5,6 +5,7 @@
 /** Shared selection, preview and atomic write for paste, array and Duplicate (#6232 D5). */
 import type { StoreEditor } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
+import type { CopyShape } from './copy-shape.js';
 import { copyProductGraph, copyRefusal, createCopyContext, productStoreyOrigin, type CopyContext, type CopyProductResult, type CopyTransform } from './copy-product.js';
 import { openTypeRelationBatch, type DuplicateInStoreOptions } from './duplicate.js';
 import { copiedProductWork, COPY_PRODUCT_WORK_LIMIT } from './copy-dependent-walk.js';

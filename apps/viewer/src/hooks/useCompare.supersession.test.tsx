@@ -341,3 +341,54 @@ describe('useCompare - supersession (#2802)', () => {
     );
   });
 });
+
+// ─── A2: an invalidated run stops extracting, not only publishing ───────────
+
+/**
+ * Wrap a seeded model's `entities` table so the test sees (a) the moment the
+ * run starts fingerprinting it and (b) whether it is ever read afterwards.
+ * The navigation lease pins each table once up front
+ * (`comparison-navigation-lease.ts`); every later read is fingerprinting.
+ */
+function watchEntities(modelId: string, onFingerprinting?: () => void): { reads: () => number } {
+  const store = useViewerStore.getState().models.get(modelId)!.ifcDataStore!;
+  const table = store.entities;
+  let reads = 0;
+  Object.defineProperty(store, 'entities', {
+    configurable: true,
+    get() {
+      reads += 1;
+      if (reads === 2) onFingerprinting?.();
+      return table;
+    },
+  });
+  return { reads: () => reads };
+}
+
+describe('useCompare - teardown aborts the extraction (A2)', () => {
+  for (const [name, invalidate] of [
+    ['cancelComparison()', () => hook!.cancelComparison()],
+    ['clearCompare()', () => hook!.clearCompare()],
+    // "Open file": the A/B ids are not owned by the reset, so only the cache
+    // subscription's view of the reset can end this run.
+    ['a session reset', () => useViewerStore.getState().resetViewerState()],
+  ] as const) {
+    it(`${name} while version A is being fingerprinted: version B is never fingerprinted and nothing is published`, async () => {
+      let headReadsAtInvalidation = -1;
+      const head = watchEntities(SLOW.headId);
+      watchEntities(SLOW.baseId, () => {
+        headReadsAtInvalidation = head.reads();
+        invalidate();
+      });
+      let pending: Promise<void> | undefined;
+      act(() => { pending = hook!.runComparison(); });
+      await act(async () => { await pending; });
+      assert.notEqual(headReadsAtInvalidation, -1, 'setup: the run reached version A\'s fingerprints');
+      assert.equal(head.reads(), headReadsAtInvalidation, 'an invalidated comparison must stop before fingerprinting version B');
+      const state = useViewerStore.getState();
+      assert.equal(state.compareResult, null);
+      assert.equal(state.compareError, null);
+      assert.equal(state.compareRunning, false);
+    });
+  }
+});

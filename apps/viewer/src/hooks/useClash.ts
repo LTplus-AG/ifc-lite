@@ -452,7 +452,10 @@ export function useClash() {
       // already in flight (`runAll` again, a duplicate scan, a preset) makes
       // every write below — including this call's own error/finally, once
       // superseded — a no-op instead of clobbering the newer call (#2802).
-      const { runEpoch: myEpoch, controller: abortController } = prepared ?? beginAbortableRun(runEpochRef, runAbortRef);
+      const { runEpoch: myEpoch, controller: abortController, guard } = prepared ?? beginAbortableRun(runEpochRef, runAbortRef);
+      // Still this call's run AND still the model session it read (A2): a
+      // teardown turns the guard off synchronously, before its cancel lands.
+      const owns = (): boolean => stillWanted(myEpoch) && guard.isCurrent();
       const stamp = captureAnalysisStamp(true);
       const state = useViewerStore.getState();
       discardSolidPresentation();
@@ -465,10 +468,11 @@ export function useClash() {
         // a hidden tab never delivers a frame, and the whole run sits after this
         // await, so an unbounded wait means the run simply never starts. (#2385)
         await nextFrameOrTimeout(PAINT_FRAME_WAIT_MS);
-        if (!stillWanted(myEpoch)) return;
+        if (!owns()) return;
         const { elements, exclusions, federationIdentity } = gatherElements();
+        guard.track(federationIdentity);
         if (elements.length === 0) {
-          if (stillWanted(myEpoch)) state.setClashError('No model geometry is loaded. Load an IFC model first.');
+          state.setClashError('No model geometry is loaded. Load an IFC model first.');
           return;
         }
         // Keep per-occurrence geometry so focusClash can build the contact interface.
@@ -479,10 +483,9 @@ export function useClash() {
           tolerance: state.clashTolerance,
           signal: abortController.signal,
           // The TS engine yields between chunks, so these updates actually paint.
-          // A superseded run keeps reporting progress harmlessly — `clashProgress`
-          // is re-armed by the call that superseded it and this write loses any
-          // race against that the same way every other write here does.
-          onProgress: (p) => { if (stillWanted(myEpoch)) useViewerStore.getState().setClashProgress(p); },
+          // A superseded or torn-down run writes nothing: a teardown already
+          // reset `clashProgress`, and the guard refuses in the same tick.
+          onProgress: (p) => { if (owns()) useViewerStore.getState().setClashProgress(p); },
         });
         // Publishes the raw run, the user's exclusion-filtered view of it, and
         // the spatial clusters (the BCF unit) in one commit; the panel list
@@ -597,7 +600,8 @@ export function useClash() {
    */
   const runDuplicates = useCallback(async (): Promise<void> => {
     // Owned cancellation also bounds the frame wait before the synchronous scan (#2802).
-    const { runEpoch: myEpoch, controller: abortController } = beginAbortableRun(runEpochRef, runAbortRef);
+    const { runEpoch: myEpoch, controller: abortController, guard } = beginAbortableRun(runEpochRef, runAbortRef);
+    const owns = (): boolean => stillWanted(myEpoch) && guard.isCurrent(); // see `run()`
     const stamp = captureAnalysisStamp(true);
     const state = useViewerStore.getState();
     discardSolidPresentation();
@@ -608,10 +612,11 @@ export function useClash() {
       // Paint the running state before the (synchronous) scan blocks the thread.
       // Bounded for the same reason as the clash run above (#2385).
       await nextFrameOrTimeout(PAINT_FRAME_WAIT_MS);
-      if (!stillWanted(myEpoch)) return;
+      if (!owns()) return;
       const { elements, exclusions, federationIdentity } = gatherElements();
+      guard.track(federationIdentity);
       if (elements.length === 0) {
-        if (stillWanted(myEpoch)) state.setClashError('No model geometry is loaded. Load an IFC model first.');
+        state.setClashError('No model geometry is loaded. Load an IFC model first.');
         return;
       }
       // The duplicate scan has its own tolerance ("how far apart may two

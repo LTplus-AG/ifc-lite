@@ -138,6 +138,30 @@ describe('mounted workflow run ownership (#6612)', () => {
     assert.equal(isNativeWorkflowBusy(), false);
   });
 
+  it('A2 a session reset cancels the run; Run stays disabled until the lease drains, and the drained run writes nothing into the new session', async () => {
+    let pending!: Promise<void>;
+    await act(async () => { pending = api!.run(selections()); await entered.promise; });
+    // "Open file": the graph is workspace state and survives, so `stillOpen()` alone cannot see it.
+    await act(async () => { useViewerStore.getState().resetViewerState(); });
+    assert.equal(nodeSignal?.aborted, true, 'the session reset must abort the run, not only reset its flag');
+    assert.equal(isNativeWorkflowBusy(), true, 'setup: the non-abortable node still holds the lease');
+    assert.equal(useViewerStore.getState().flowRunning, true, 'the running flag mirrors the lease while it drains');
+    assert.equal(api?.canRun, false, 'Run must not be offered while the old lease drains');
+    // A run started anyway (a retained handler) must not surface "already running".
+    await act(async () => { await api!.run(selections()); });
+    assert.equal(useViewerStore.getState().flowLastError, null);
+    await act(async () => { settle.resolve(); await pending; });
+    const state = useViewerStore.getState();
+    assert.equal(state.flowLastError, null, 'the drained run\'s AbortError must not land in the new session');
+    assert.equal(state.flowLastRun, null);
+    assert.equal(state.flowLastRunWindow, null);
+    assert.equal(state.flowArtifacts.length, 0);
+    assert.equal(state.flowProgress, null);
+    assert.equal(state.flowRunning, false);
+    assert.equal(isNativeWorkflowBusy(), false);
+    assert.equal(api?.canRun, true, 'Run is offered again once the lease is released');
+  });
+
   it('graph close and component unmount still cancel and drain the session-owned run', async () => {
     let pending!: Promise<void>;
     await act(async () => { pending = api!.run(selections()); await entered.promise; });

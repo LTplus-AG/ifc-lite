@@ -23,6 +23,7 @@ import type { WebSocket } from 'ws';
 import type { Persistence } from './persistence.js';
 import type { Principal } from './auth.js';
 import { closeExpiredConnections, sweepExpiredAcrossRooms } from './principal-expiry.js';
+import { writeFrameRejection } from './write-frame-gate.js';
 import type { VerifyDecision, VerifyMessageFn, RoomOptions, PeerConnection } from './room-types.js';
 import {
   noopAuditSink,
@@ -31,7 +32,6 @@ import {
   type AuditSink,
 } from './audit-log.js';
 import { createRateLimiter, type RateLimitOptions } from './rate-limit.js';
-import { writeFrameRejection } from './write-frame-gate.js';
 
 const MESSAGE_SYNC = 0;
 const MESSAGE_AWARENESS = 1;
@@ -454,10 +454,10 @@ export class RoomManager {
   /** Wall-clock ms when a room last had >0 peers, or 0 if never observed. */
   private readonly lastActiveAt = new Map<string, number>();
   private readonly options: RoomManagerOptions;
-  private idleTimer: ReturnType<typeof setInterval> | null = null;
-  private counters: RoomCounters = {};
   /** In-flight unloads by id; a reload waits for the final compaction. */
   private readonly unloading = new Map<string, Promise<void>>();
+  private idleTimer: ReturnType<typeof setInterval> | null = null;
+  private counters: RoomCounters = {};
 
   constructor(options: RoomManagerOptions) {
     this.options = options;

@@ -363,6 +363,7 @@ export async function fetchAllPages(
   endpoint: string,
   params: Record<string, unknown> = {},
   signal?: AbortSignal,
+  stopAfterPage?: (items: readonly unknown[]) => boolean,
 ): Promise<unknown[]> {
   const items: unknown[] = [];
   const seenBookmarks = new Set<string>();
@@ -379,6 +380,7 @@ export async function fetchAllPages(
 
     const page = await fetchPage(client, endpoint, params, cursor, signal);
     items.push(...page.items);
+    if (stopAfterPage?.(page.items)) break;
 
     if (!page.cursor) break;
     if (seenBookmarks.has(page.cursor)) {

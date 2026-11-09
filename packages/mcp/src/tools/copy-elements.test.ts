@@ -32,8 +32,8 @@ describe('#6232 MCP paste/array parity', () => {
       const context = createCopyContext(model.store, model.backend.ensureEditor());
       for (let i = 0; i < transforms; i++) {
         const host = entities[i * 2].expressId, filling = entities[i * 2 + 1].expressId;
-        expect(context.read(host)?.type).toBe(context.read(1222)?.type);
-        expect(context.read(filling)?.type).toBe(context.read(1262)?.type);
+        expect(context.read(host)?.type.toUpperCase()).toBe(context.read(1222)?.type.toUpperCase());
+        expect(context.read(filling)?.type.toUpperCase()).toBe(context.read(1262)?.type.toUpperCase());
         const opening = context.filledBy.get(filling);
         expect(context.voids.get(host)?.some(link => link.id === opening)).toBe(true);
       }

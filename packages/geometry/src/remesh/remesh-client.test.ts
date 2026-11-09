@@ -205,6 +205,14 @@ describe('RemeshClient (#6232)', () => {
       const client = await pending;
       expect(client.alive).toBe(true);
       expect(worker.terminated).toBe(false);
+      // `ready` must disarm the start deadline: a healthy client is not
+      // killed once the default 120 s start window has passed.
+      vi.advanceTimersByTime(120_000);
+      expect(client.alive).toBe(true);
+      expect(worker.terminated).toBe(false);
+      const inFlight = client.remesh(request());
+      worker.reply({ type: 'result', requestId: worker.requestIds().at(-1)!, result: result(2) });
+      await expect(inFlight).resolves.toMatchObject({ csgFailures: 2 });
     } finally {
       vi.useRealTimers();
     }
@@ -234,6 +242,47 @@ describe('RemeshClient (#6232)', () => {
       expect(worker.terminated).toBe(false);
       worker.reply({ type: 'result', requestId: id, result: result(0) });
       await expect(later).resolves.toMatchObject({ csgFailures: 0 });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('P5: a late reply for a request whose post threw is ignored and does not disturb the client', async () => {
+    const { client, worker } = await started();
+    worker.refusePost = new Error('DataCloneError: remesh');
+    const refused = client.remesh(request());
+    await expect(refused).rejects.toThrow(/DataCloneError/);
+    worker.refusePost = null;
+    const refusedId = 1; // first request id; the refused post consumed it
+    // A reply for an id with no pending entry (the refused one, or any stray id) is dropped.
+    worker.reply({ type: 'result', requestId: refusedId, result: result(9) });
+    worker.reply({ type: 'error', requestId: 999, message: 'stray' });
+    expect(client.alive).toBe(true);
+    const next = client.remesh(request());
+    const [nextId] = worker.requestIds();
+    expect(nextId).not.toBe(refusedId);
+    worker.reply({ type: 'result', requestId: nextId, result: result(4) });
+    await expect(next).resolves.toMatchObject({ csgFailures: 4 });
+  });
+
+  it.each([
+    ['Infinity', Number.POSITIVE_INFINITY],
+    ['0', 0],
+  ])('P5: a %s timeout means no deadline, not an immediate one', async (_label, ms) => {
+    vi.useFakeTimers();
+    try {
+      const worker = new ScriptedWorker();
+      const pending = RemeshClient.create(CONFIG, {
+        createWorker: () => worker as unknown as Worker, startTimeoutMs: ms, requestTimeoutMs: ms,
+      });
+      vi.advanceTimersByTime(10 * 60_000);
+      worker.reply({ type: 'ready' });
+      const client = await pending;
+      const inFlight = client.remesh(request());
+      vi.advanceTimersByTime(10 * 60_000);
+      expect(client.alive).toBe(true);
+      worker.reply({ type: 'result', requestId: worker.requestIds()[0], result: result(1) });
+      await expect(inFlight).resolves.toMatchObject({ csgFailures: 1 });
     } finally {
       vi.useRealTimers();
     }

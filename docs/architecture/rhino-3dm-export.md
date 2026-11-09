@@ -468,9 +468,19 @@ only downloads on a 3dm export.
 
 ```ts
 export interface EncodedRhinoScene { manifest: string; blob: Uint8Array }
-export interface Write3dmOptions { version?: 7 | 8; onProgress?: (done: number, total: number) => void }
-export function writeRhino3dm(scene: EncodedRhinoScene, opts?: Write3dmOptions): Promise<Uint8Array>;
+export const RHINO_3DM_VERSIONS = [8, 7] as const;
+export type Rhino3dmVersion = (typeof RHINO_3DM_VERSIONS)[number];
+export interface Write3dmOptions {
+  version?: Rhino3dmVersion; // default 8
+  onProgress?: (done: number, total: number) => void;
+  locateFile?: (path: string, prefix: string) => string; // first initialization only
+}
+export interface Write3dmResult { bytes: Uint8Array; warnings: string[]; objectCount: number }
+export function writeRhino3dm(scene: EncodedRhinoScene, opts?: Write3dmOptions): Promise<Write3dmResult>;
 ```
+
+The encoded scene comes from the Rust producer: `build_rhino_scene(content, &opts)`
+then `RhinoScene::encode()`, which returns the `(manifest, blob)` pair.
 
 Contract:
 

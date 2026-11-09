@@ -233,6 +233,43 @@ describe('createWorkerRpc: deadlines', () => {
   });
 });
 
+describe('createWorkerRpc: a throwing decode or accept trips the dead latch', () => {
+  it('a reply decode cannot read rejects every pending call with the decode error', async () => {
+    const worker = new FakeWorker();
+    // Reads a field off the reply, as the real decoders do, so a non-object throws.
+    const rpc = createWorkerRpc({
+      worker: worker as unknown as Worker,
+      label: 'Test worker',
+      decode: (data) => decode({ ...(data as object), kind: (data as In).kind }),
+    });
+    const a = rpc.request(call);
+    const b = rpc.request(call);
+    // `null` is a value structured clone can deliver; reading `.kind` off it throws.
+    worker.reply(null as unknown as In);
+    await expect(a).rejects.toThrow(TypeError);
+    await expect(b).rejects.toThrow(TypeError);
+    expect(rpc.alive).toBe(false);
+    expect(worker.terminateCalls).toBe(1);
+  });
+
+  it('a throwing accept rejects start at once, not at its deadline', async () => {
+    vi.useFakeTimers();
+    const worker = new FakeWorker();
+    const rpc = rpcOver(worker);
+    const started = rpc.start({
+      post: () => worker.postMessage({ kind: 'init' }),
+      accept: () => { throw new Error('accept failed'); },
+      timeoutMs: 120_000,
+    });
+    const settled = expect(started).rejects.toThrow('accept failed');
+    worker.reply({ kind: 'ready' });
+    await vi.advanceTimersByTimeAsync(0);
+    await settled;
+    expect(worker.terminateCalls).toBe(1);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+});
+
 describe('createWorkerRpc: death is settled even when cleanup throws', () => {
   it('a throwing terminate still rejects everything pending and runs the death listeners', async () => {
     const worker = new FakeWorker();

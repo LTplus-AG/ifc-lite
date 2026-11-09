@@ -185,8 +185,17 @@ export function createWorkerRpc<Id>(options: WorkerRpcOptions<Id> | PortRpcOptio
   };
 
   const receive = (data: unknown): boolean => {
-    if (starter?.(data)) return true;
-    const reply = decode(data);
+    let reply: RpcReply<Id | number> | undefined;
+    try {
+      if (starter?.(data)) return true;
+      reply = decode(data);
+    } catch (error) {
+      // A message the protocol cannot read (a throwing `decode` or start
+      // `accept`) is fatal, as `messageerror` is: escaping the listener
+      // instead would leave its request, or the start, waiting forever.
+      fail(toError(error));
+      return false;
+    }
     if (!reply) return false;
     const entry = pending.get(reply.id);
     // A late answer to an abandoned, timed-out or never-posted request.

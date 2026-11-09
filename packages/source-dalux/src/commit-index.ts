@@ -245,7 +245,7 @@ function cacheKey(client: BrowserDaluxApiClient, projectId: string): string {
 /** Drop expired settled entries, then the oldest settled ones past the bound. */
 function evictStaleEntries(now: number): void {
   for (const [key, entry] of cache) {
-    if (entry.settled && now - entry.builtAt >= entry.ttl) cache.delete(key);
+    if (entry.settled && (now < entry.builtAt || now - entry.builtAt >= entry.ttl)) cache.delete(key);
   }
   for (const [key, entry] of cache) {
     if (cache.size < MAX_CACHED_INDEXES) break;
@@ -278,7 +278,7 @@ export async function getCommitIndex(
 ): Promise<DaluxCommitIndex> {
   const key = cacheKey(client, projectId);
   const cached = cache.get(key);
-  if (cached && now - cached.builtAt < cached.ttl) return cached.index;
+  if (cached && now >= cached.builtAt && now - cached.builtAt < cached.ttl) return cached.index;
 
   // NOT given the caller's `signal`: the result is shared, so one caller
   // aborting (a panel unmounting) must not cancel the sweep every other

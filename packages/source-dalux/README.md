@@ -72,3 +72,5 @@ A failed or undecodable set makes history unavailable with an explicit error and
 short retry window. Projects above 250 version sets are refused rather than
 silently showing an arbitrary older subset: the listing has no documented date
 or recency order from which to choose the newest sets safely.
+
+Revision history supports model files. Requests for document history report that it is unavailable rather than presenting a current-only list as complete.

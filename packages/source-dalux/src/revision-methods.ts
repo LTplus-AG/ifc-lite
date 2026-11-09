@@ -9,6 +9,7 @@ import { decodeFileResponse } from './dalux-types.js';
 import type { BrowserDaluxApiClient } from './http-client.js';
 import { decodeContainerId, enc, nonEmptyString } from './mapping.js';
 import { toSourceRevision } from './revision-mapping.js';
+import { isModelFileName } from './version-sets.js';
 
 /** Histories share one project sweep; current metadata is read afresh each time.
  * Incomplete sweeps reject so the host displays an error, never a partial success. */
@@ -18,13 +19,14 @@ export async function listVersionSetRevisions(
   options?: ListOptions,
 ): Promise<Page<SourceRevision>> {
   const { fileAreaId } = decodeContainerId(ref.containerId);
-  const [index, response] = await Promise.all([
-    getCommitIndex(client, ref.projectId, options?.signal),
-    client.get(`/5.0/projects/${enc(ref.projectId)}/file_areas/${enc(fileAreaId)}/files/${enc(ref.fileId)}`, {}, options?.signal),
-  ]);
+  // Read current metadata after the sweep, so an upload during that sweep
+  // cannot leave the old unnumbered current revision ahead of its newer pin.
+  const index = await getCommitIndex(client, ref.projectId, options?.signal);
+  const response = await client.get(`/5.0/projects/${enc(ref.projectId)}/file_areas/${enc(fileAreaId)}/files/${enc(ref.fileId)}`, {}, options?.signal);
   if (index.truncated) throw new Error('Revision history is unavailable for projects with more than 250 version sets; no partial history is shown.');
   if (index.partial) throw new Error('Revision history is incomplete because some version sets could not be read. Please retry.');
   const file = decodeFileResponse(response).data;
+  if (!isModelFileName(file.fileName)) throw new Error('Dalux revision history currently supports model files only; document history is unavailable.');
   const revisionId = nonEmptyString(file.fileRevisionId);
   if (!revisionId) throw new Error('Dalux did not supply an ID for the current file revision.');
   const commits = index.models.get(ref.fileId)?.commits ?? [];

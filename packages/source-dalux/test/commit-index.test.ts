@@ -384,6 +384,20 @@ describe('getCommitIndex', () => {
     expect(second.partial).toBe(false);
   });
 
+  it('refreshes a partial index after the wall clock moves backward (#8648)', async () => {
+    const world = worldWithSets([{ versionSetId: 'vs-1', name: 'Set', fileAreaId: 'fa-models', files: {} }]);
+    const inner = createDaluxApiMock(world);
+    let broken = true;
+    const fetcher: typeof fetch = (input, init) => {
+      if (broken && String(input).includes('/version_sets/vs-1/files')) return Promise.resolve(new Response('unavailable', { status: 500 }));
+      return inner(input, init);
+    };
+    const client = new BrowserDaluxApiClient({ baseUrl: DALUX_MOCK_BASE_URL, apiKey: 'test-key' }, createDaluxMockContext(fetcher));
+    expect((await getCommitIndex(client, 'p-alpha', undefined, 3_600_000)).partial).toBe(true);
+    broken = false;
+    expect((await getCommitIndex(client, 'p-alpha', undefined, 0)).partial).toBe(false);
+  });
+
   // Review on #8647: `index.catch(() => cache.delete(key))` deleted
   // whatever entry was under the key, so a build that outlives the TTL could
   // delete a SECOND, already-started build's entry out from under it when

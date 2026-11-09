@@ -69,6 +69,29 @@ describe('DaluxBuildProvider.listRevisions', () => {
     invalidateCommitIndex();
     });
 
+  it('reads current metadata after all pinned rows (#8648)', async () => {
+    const paths: string[] = [];
+    const inner = createDaluxApiMock(WORLD);
+    const fetcher: typeof fetch = (input, init) => {
+      paths.push(new URL(String(input)).pathname);
+      return inner(input, init);
+    };
+    const provider = new DaluxBuildProvider();
+    await provider.listRevisions!(createDaluxMockContext(fetcher), REF);
+    const current = paths.findIndex(path => path.endsWith('/files/file-structural'));
+    const lastPin = paths.reduce((last, path, i) => path.includes('/version_sets/') && path.endsWith('/files') ? i : last, -1);
+    expect(lastPin).toBeGreaterThanOrEqual(0);
+    expect(current).toBeGreaterThan(lastPin);
+  });
+
+  it('reports unsupported document history rather than silently omitting pins (#8648)', async () => {
+    const project = WORLD.projects[0];
+    const area = project.fileAreas[0];
+    const world: DaluxMockWorld = { projects: [{ ...project, fileAreas: [{ ...area, files: area.files.map(file => ({ ...file, fileName: 'notes.pdf' })) }] }] };
+    const { provider, ctx } = setup(world);
+    await expect(provider.listRevisions!(ctx, REF)).rejects.toThrow(/model files only/);
+  });
+
   it('declares the capability it now implements', () => {
     const provider = new DaluxBuildProvider();
     expect(provider.manifest.capabilities.revisionHistory).toBe(true);

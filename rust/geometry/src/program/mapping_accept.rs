@@ -118,21 +118,7 @@ impl<'a> MappingControl<'a> {
         MappingValue::Placeholder(meshes)
     }
 
-    pub(in crate::program) fn accept(
-        &mut self,
-        reply: super::MappingReply,
-        router: &GeometryRouter,
-    ) {
-        if let MappingValue::Refused {
-            item_id,
-            refusal,
-            budget,
-        } = &reply
-        {
-            self.budget = budget.clone();
-            self.stop_logical(*item_id, refusal, router);
-            return;
-        }
+    pub(super) fn accept_progress(&mut self, reply: super::MappingReply, router: &GeometryRouter) {
         if self.accept_retained_reply(&reply) { self.accept_retained(reply, router); return; }
         // A child step drives its control in place: the action, which holds
         // the child's whole state, moves only once the child completes.

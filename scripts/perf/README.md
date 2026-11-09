@@ -60,6 +60,8 @@ Type-product attribution fits inside the existing owned type-map root slot,
 with size/alignment assertions, rather than adding an owner field to every
 mapping controller. A persistent dedup set and capped details run only on
 refusal; retained transactions return their refusal without a second unread log.
+Occurrence attribution asks the owning product for its identity only when a
+mapping reply is refused; successful replies and controls carry no new field.
 
 ## Presentation-layer membership follows the selected shape (#9273)
 

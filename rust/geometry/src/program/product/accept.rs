@@ -33,7 +33,7 @@ impl<'a> ProductControl<'a> {
             }
             ProductReply::Mapping(reply) => {
                 let Child::Mapping(control) = &mut self.child else { return };
-                control.accept(reply, router);
+                control.accept_with_product(reply, router, || Some(self.element));
                 let Some(next) = self.mapping_next() else { return };
                 next
             }

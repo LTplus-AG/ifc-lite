@@ -122,15 +122,25 @@ describe('ModelInspectorPanel (#6232 M2.5)', () => {
     act(() => { s().setSelectedEntityId(null); s().startCommand('wall.place'); s().setStoreyManagerOpen(true); });
     const ui = render(<ModelInspectorPanel />);
     await act(async () => { await import('../model/storeys/StoreyManager'); });
+    const visible = (selector: string) => {
+      const pane = ui.querySelector(selector);
+      assert.ok(pane, `${selector} remains mounted`);
+      return pane.closest('[hidden]') === null;
+    };
+    assert.equal(visible('[data-storey-manager]'), true, 'Storeys starts visible');
+    assert.equal(visible('[data-model-inspector]'), false, 'Defaults starts hidden');
     const defaults = ui.querySelector<HTMLInputElement>('input[value=defaults]');
     assert.ok(defaults);
     click(defaults);
+    assert.equal(visible('[data-model-inspector]'), true, 'Defaults is visible after its tab is picked');
+    assert.equal(visible('[data-storey-manager]'), false, 'Storeys is hidden while Defaults is picked');
     assert.equal(input(ui, 'Thickness in metres').value, '0.20');
     act(() => { s().endCommand('cancel'); s().setSelectedEntityId(toGlobalIdFromModels(s().models, MODEL_ID, wall)); });
     assert.match(ui.querySelector('[data-inspector-title]')?.textContent ?? '', /^Defaults/);
     assert.equal(s().storeyManagerOpen, true);
     click(ui.querySelector<HTMLInputElement>('input[value=storeys]')!);
-    assert.ok(ui.querySelector('[data-storey-manager]'));
+    assert.equal(visible('[data-storey-manager]'), true, 'Storeys is visible after its tab is picked');
+    assert.equal(visible('[data-model-inspector]'), false, 'Defaults is hidden after returning to Storeys');
   });
 
   it('shows the selected wall: header, name, size and its sections', () => {

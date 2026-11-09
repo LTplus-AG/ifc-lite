@@ -50,6 +50,7 @@ import { roomSlotFor } from '@/lib/collab/room-model-target.js';
 import { mutationDenialMessage, mutationPermission } from '../../store/mutation-permission.js';
 import { recordResolvedModellingCommit } from '@/store/slices/mutation-modelling-records';
 import { mirrorNewRoofDefinition } from '@/store/slices/mutation-roof';
+import { toast } from '@/components/ui/toast';
 
 export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
   // One StoreEditor per (modelId, MutablePropertyView) pair. Editors are
@@ -177,6 +178,7 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
       // is in the export and nowhere else: a flow or script "adds" columns the
       // user never sees.
       store.getState().recordAuthoredElement?.(normalizedModelId, storeyExpressId, ref.expressId, element, { historyRecorded: true });
+      if ('notices' in ref && ref.notices?.length) toast.info(ref.notices.join('\n'));
       return ref;
     };
     return element.kind === 'wall' ? withWallAutojoinIndex(dataStore, editor.getMutationView(), commit) : commit();

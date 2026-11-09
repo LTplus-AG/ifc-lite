@@ -23,6 +23,7 @@ import { pathForGuid, registerEntityPath, registerStoreSlot } from '@/lib/collab
 import { installScriptedMesher, settleRemesh } from '@/test/scripted-mesher';
 import { createStoreAdapter } from './store-adapter.js';
 import { readWallJoinRels, readWallJoinTarget } from '@ifc-lite/create';
+import { toast } from '@/components/ui/toast';
 
 const SAMPLE = new URL('../../../public/samples/hello-wall.ifc', import.meta.url);
 const WALL = 1222;
@@ -149,9 +150,12 @@ describe('#6232 bim.store hosted openings, doors and windows', () => {
     assert.equal(useViewerStore.getState().canUndo(MODEL), false);
   });
 
-  it('#9406 returns skipped implicit-join notices to a viewer script and preserves the added wall', async () => {
+  it('#9406 returns and surfaces skipped implicit-join notices while preserving the added wall', async (t) => {
+    // Observe the existing notice channel while still calling the real toast.
+    const notices = t.mock.method(toast, 'info');
     const dataStore = await seed(), adapter = createStoreAdapter(useViewerStore);
     const host = adapter.addWall(MODEL, 42, { Start: [0, 5, 0], End: [4, 5, 0], Thickness: .2, Height: 3 });
+    assert.equal(notices.mock.callCount(), 0, 'ordinary creation has no notice');
     adapter.addHostedDoor(MODEL, host.expressId, { Offset: 1, Width: .9, Height: 2.1 });
     const view = useViewerStore.getState().mutationViews.get(MODEL)!;
     const opening = view.getNewEntities().find(entity => entity.type.toUpperCase() === 'IFCOPENINGELEMENT');
@@ -161,6 +165,8 @@ describe('#6232 bim.store hosted openings, doors and windows', () => {
     const beforeJoins = readWallJoinRels(dataStore, view);
     const wall = adapter.addWall(MODEL, 42, { Start: [4, 5, 0], End: [4, 8, 0], Thickness: .2, Height: 3 });
     assert.match(wall.notices?.join('\n') ?? '', /skipped.*join.*unreadable opening geometry/i);
+    assert.deepEqual(notices.mock.calls.map(call => call.arguments), [[wall.notices!.join('\n')]],
+      'the viewer surfaces the returned notice through its real toast channel');
     assert.ok(view.getNewEntity(wall.expressId), 'the wall is added despite the refused implicit join');
     assert.deepEqual(readWallJoinRels(dataStore, view), beforeJoins);
     assert.deepEqual(readWallJoinTarget(dataStore, view, host.expressId, 1), beforeHost);

@@ -32,6 +32,7 @@ export class StdioTransport {
   private stdout: Writable;
   private stderr: Writable;
   private buffer = '';
+  private inputChain: Promise<void> = Promise.resolve();
   private server: MCPServer | null = null;
   private closed = false;
 
@@ -50,7 +51,7 @@ export class StdioTransport {
     // UTF-8 — MCP spec mandates it.
     this.stdin.setEncoding('utf8');
     this.stdin.on('data', (chunk: string) => this.onData(chunk));
-    this.stdin.on('end', () => this.close());
+    this.stdin.on('end', () => { void this.inputChain.then(() => this.close()); });
     this.stdin.on('error', (err: Error) => {
       this.stderr.write(`[ifc-lite-mcp] stdin error: ${err.message}\n`);
       this.close();
@@ -78,22 +79,30 @@ export class StdioTransport {
     };
   }
 
-  private async onData(chunk: string): Promise<void> {
+  private onData(chunk: string): void {
     this.buffer += chunk;
     let newline = this.buffer.indexOf('\n');
     while (newline !== -1) {
       const line = this.buffer.slice(0, newline).trim();
       this.buffer = this.buffer.slice(newline + 1);
       if (line.length > 0) {
-        await this.handleLine(line);
+        const parsed = parseMessage(line);
+        // Cancellation must reach a running request; queuing it behind that
+        // request would prevent its AbortSignal from ever being delivered.
+        if (parsed && 'method' in parsed && parsed.method === 'notifications/cancelled' && !('id' in parsed)) {
+          void Promise.resolve().then(() => this.handleLine(parsed));
+        } else {
+          this.inputChain = this.inputChain.then(() => this.handleLine(parsed)).catch((error: unknown) => {
+            this.stderr.write(`[ifc-lite-mcp] input error: ${String(error)}\n`);
+          });
+        }
       }
       newline = this.buffer.indexOf('\n');
     }
   }
 
-  private async handleLine(line: string): Promise<void> {
+  private async handleLine(parsed: JsonRpcMessage | null): Promise<void> {
     if (!this.server) return;
-    const parsed = parseMessage(line);
     if (!parsed) {
       // Send a Parse Error with id=null per JSON-RPC 2.0 spec.
       const sink = this.makeSink();

@@ -24,15 +24,22 @@
 import { liveEntityConforms, typeLayerScopeInStore, typeLayerSetInStore } from '@ifc-lite/create';
 import type { AuthoredElementKind } from '@/store/slices/authoringDefaultsSlice';
 import { modelEditTarget, recordModellingEdit, type ModellingStore } from '@/store/slices/mutation-modelling-records';
-import { layerSenseOf } from '@/lib/authoring/material-layers';
+import { layerSenseOf, takeLayerFollow, type LayerFollow } from '@/lib/authoring/material-layers';
 import { AUTHORED_KINDS, authoredKindOf, readLayerSet } from './authored-kinds.js';
 
-export function applyAuthoredDefaults(store: ModellingStore, modelId: string, ids: readonly number[]): void {
+/**
+ * Apply the defaults to `ids`. A layered type or layer set sizes what it types
+ * through the backend, which can re-trim joined walls and refit generated
+ * rooms: the elements that changed come back for the caller's re-mesh, with
+ * any element that could not follow, to report once the edit commits. Null
+ * when nothing applied.
+ */
+export function applyAuthoredDefaults(store: ModellingStore, modelId: string, ids: readonly number[]): { remesh: number[]; follow: LayerFollow } | null {
   const state = store.getState();
   const { typeIds, layerSetIds } = state.authoringDefaults;
-  if (ids.length === 0 || (Object.keys(typeIds).length === 0 && Object.keys(layerSetIds).length === 0)) return;
+  if (ids.length === 0 || (Object.keys(typeIds).length === 0 && Object.keys(layerSetIds).length === 0)) return null;
   const target = modelEditTarget(state, modelId);
-  if (!target) return;
+  if (!target) return null;
   const model = { dataStore: target.dataStore, view: target.view };
 
   const byKind = new Map<AuthoredElementKind, number[]>();
@@ -56,9 +63,9 @@ export function applyAuthoredDefaults(store: ModellingStore, modelId: string, id
     const total = layerSetId === null ? 0 : (readLayerSet(model, layerSetId) ?? []).reduce((sum, layer) => sum + layer.thickness, 0);
     return { elements, typeId, layerSetId, adopt, direction: info.layers, offset: info.layers === 'AXIS2' ? -total / 2 : 0 };
   }).filter((step) => step.typeId !== null || step.layerSetId !== null);
-  if (plan.length === 0) return;
+  if (plan.length === 0) return null;
 
-  recordModellingEdit(store, modelId, (methods) => {
+  return recordModellingEdit(store, modelId, (methods, draft) => {
     for (const { elements, typeId, layerSetId, adopt, direction, offset } of plan) {
       if (typeId !== null) methods.assignType(modelId, typeId, elements);
       if (layerSetId === null) continue;
@@ -71,5 +78,6 @@ export function applyAuthoredDefaults(store: ModellingStore, modelId: string, id
         methods.assignMaterial(modelId, usage.expressId, [element]);
       }
     }
+    return takeLayerFollow(draft, []);
   });
 }

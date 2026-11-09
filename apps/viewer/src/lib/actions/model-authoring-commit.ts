@@ -37,7 +37,8 @@ import { commitElementAlignment, commitElementTransform, planSelectionTransform 
 import { writeReviewedStoreyReassignment } from './model-authoring-storey-reassignment';
 import { writeNativeSplit } from './model-authoring-split';
 import { recordModellingEdit, recordModellingCommit } from '@/store/slices/mutation-modelling-records';
-import { takeLayerFollow } from '@/lib/authoring/material-layers';
+import { takeLayerFollow, type LayerFollow } from '@/lib/authoring/material-layers';
+import { reportLayerFollow } from '@/lib/authoring/layer-follow-report';
 import { toMetres, type AuthoringOp, type ModelAuthoringBatch } from './model-authoring';
 import { authoredElementOf, hostedSpecOf, idOf, writeRelation, writeNativeTypeDetach } from './model-authoring-native';
 import { previewModelAuthoring, type AuthoringRow, type ModelAuthoringPreview } from './model-authoring-preview';
@@ -67,7 +68,11 @@ export function writableRows(preview: ModelAuthoringPreview, approved: ReadonlyS
   return preview.rows.filter((row) => chosen.has(row.index));
 }
 
-interface Written { created: number[]; deleted: number[]; remesh: number[]; moved: boolean }
+interface Written {
+  created: number[]; deleted: number[]; remesh: number[]; moved: boolean;
+  /** Typing and layer rows: who could not follow the type, reported once the batch has committed. */
+  follow: LayerFollow[];
+}
 
 const fmt = (batch: ModelAuthoringBatch, values: readonly number[]) =>
   `(${values.map((v) => Number((batch.units === 'mm' ? v * 1000 : v).toFixed(batch.units === 'mm' ? 1 : 4))).join(', ')}) ${batch.units}`;
@@ -224,7 +229,8 @@ function writeRow(tx: AuthoringTransaction, batch: ModelAuthoringBatch, row: Aut
       if (!dataStore) throw new Error('The native model source is unavailable');
       const changed = recordModellingEdit(tx.api, modelId, (methods, draft) => writeReviewedLayers(
         { modelId, dataStore, view: draft.getMutationView(), editor: draft }, draft, methods, resolved.layers!, op, batch.units, tx.store), tx.batchId);
-      written.remesh.push(...changed);
+      written.remesh.push(...changed.remesh);
+      written.follow.push(changed.follow);
       return [{ ...base, globalId: op.target.globalId, field: 'MaterialLayers', before: JSON.stringify(op.expected),
         after: JSON.stringify({ scope: op.scope, MaterialLayers: op.MaterialLayers }) }];
     }
@@ -278,8 +284,9 @@ function writeRow(tx: AuthoringTransaction, batch: ModelAuthoringBatch, row: Aut
     }
     default: {
       // A typing re-sizes through the backend: re-mesh the joined walls and generated rooms that followed, too.
-      const changed = recordModellingEdit(tx.api, modelId, (methods, draft) => takeLayerFollow(draft, writeRelation(methods, modelId, op, resolved, ids)).remesh, tx.batchId);
-      written.remesh.push(...changed);
+      const changed = recordModellingEdit(tx.api, modelId, (methods, draft) => takeLayerFollow(draft, writeRelation(methods, modelId, op, resolved, ids)), tx.batchId);
+      written.remesh.push(...changed.remesh);
+      written.follow.push(changed.follow);
       return [relationReceipt(base, op, row, refs, targetGid)];
     }
   }
@@ -314,16 +321,18 @@ export function commitModelAuthoring(
 
   const batches: ModelChangeReceipt['batches'] = [];
   const applied: AppliedChange[] = [];
+  const follows: Array<{ modelId: string; follow: LayerFollow }> = [];
   for (const [modelId, rows] of byModel) {
     const done: AppliedChange[] = [];
     const command: ModelingCommand = {
       id: 'assistant.modelAuthoring', labelKey: 'modelAuthoring.commandLabel', hud: {}, snap: 'modeling',
       init: () => null, pointerMove: (g) => g, pointerDown: (g) => g,
       commit: (_g, tx): CommitResult => {
-        const written: Written = { created: [], deleted: [], remesh: [], moved: false };
+        const written: Written = { created: [], deleted: [], remesh: [], moved: false, follow: [] };
         const refs = new Map<string, string | number>();
         const ids = new Map<string, number>();
         for (const row of rows) done.push(...writeRow(tx, preview.batch, row, refs, ids, written));
+        follows.push(...written.follow.map(follow => ({ modelId, follow })));
         const remesh = [...new Set(written.remesh)].filter((id) => !written.deleted.includes(id));
         return { created: written.created, deleted: written.deleted, remesh,
           ...(written.created.length === 0 && written.moved ? { remeshCause: 'hostsChanged' as const } : {}) };
@@ -338,6 +347,8 @@ export function commitModelAuthoring(
     batches.push({ modelId, batchId: outcome.batchId });
     applied.push(...done);
   }
+  // Only a committed batch reports: a rolled-back one changed nothing to report on.
+  for (const { modelId, follow } of follows) reportLayerFollow(store.getState(), modelId, follow);
   const written = new Set(chosen.map((row) => row.index));
   const skipped = fresh.rows.filter((row) => !written.has(row.index))
     .map((row) => ({ index: row.index, status: row.status === 'ready' ? 'not-approved' as const : row.status }));

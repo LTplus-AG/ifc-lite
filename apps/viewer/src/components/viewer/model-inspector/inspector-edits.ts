@@ -29,9 +29,7 @@ import type { ElementSizePatch } from '@/store/slices/mutation-element-size';
 import type { WallSection } from '@/store/slices/mutation-wall-section';
 import { takeLayerFollow, writeMaterialLayersInDraft, type ApplyLayersSpec, type LayerFollow } from '@/lib/authoring/material-layers';
 export type { LayerInput, ApplyLayersSpec, LayerFollow } from '@/lib/authoring/material-layers';
-import { entityName } from '@/lib/commands/modeling/authored-kinds';
-import { modelEditTarget } from '@/store/slices/mutation-modelling-records';
-import { resolve as translate } from '@/i18n/registry';
+import { reportLayerFollow } from '@/lib/authoring/layer-follow-report';
 import { editHostedFillIn, moveHostedFillIn, type HostedFillPosition } from '@/store/slices/mutation-hosted-fill';
 import { setElementProfile } from '@/store/slices/mutation-element-profile';
 import { editStairDimensionsInStore, type HostedElementSize, type ProfileSection, type StairDimensionEdit } from '@ifc-lite/create';
@@ -81,21 +79,8 @@ export function setElementType(modelId: string, elementId: number, typeId: numbe
       return sized.remesh;
     });
   });
-  if (ok && follow) reportLayerFollow(modelId, follow);
+  if (ok && follow) reportLayerFollow(useViewerStore.getState(), modelId, follow);
   return ok;
-}
-
-/**
- * Say which elements kept their previous body after a type or layer edit, and
- * why, so a dependent that could not regenerate is never silently stale. One
- * message naming each element; it stays until dismissed.
- */
-export function reportLayerFollow(modelId: string, follow: LayerFollow): void {
-  const target = modelEditTarget(useViewerStore.getState(), modelId);
-  const name = (id: number) => (target && entityName(target, id)) || `#${id}`;
-  const lines = follow.refused.map(({ id, reason }) => translate('modelInspector.layers.keptBody', { name: name(id), reason }));
-  if (lines.length > 0) toast.error([translate('modelInspector.layers.notFollowed', { count: lines.length, countDisplay: String(lines.length) }), ...lines].join('\n'));
-  for (const notice of follow.notices) toast.info(notice);
 }
 
 /** A new type object of the kind's class, typing `elementId` when given. The new type's id, or null when refused. */
@@ -198,6 +183,6 @@ export function applyMaterialLayers(modelId: string, spec: ApplyLayersSpec, onFo
       return result.remesh;
     }, tx.batchId);
   });
-  if (ok && follow) { reportLayerFollow(modelId, follow); onFollow?.(follow); }
+  if (ok && follow) { reportLayerFollow(useViewerStore.getState(), modelId, follow); onFollow?.(follow); }
   return ok ? layerSetId : null;
 }

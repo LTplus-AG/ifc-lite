@@ -11,14 +11,18 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { MCPServer } from './server.js';
-import { PROTOCOL_VERSION } from './protocol/index.js';
-import { ToolRegistry, type Tool } from './tools/types.js';
-import { ResourceRegistry } from './resources/types.js';
-import { PromptRegistry } from './prompts/types.js';
-import { fullScope, readOnlyScope } from './auth/scope.js';
-import { InMemoryModelRegistry } from './context.js';
-import { InProcessTransport } from './transport/in-process.js';
+import {
+  MCPServer,
+  PROTOCOL_VERSION,
+  ToolRegistry,
+  ResourceRegistry,
+  PromptRegistry,
+  fullScope,
+  readOnlyScope,
+  InMemoryModelRegistry,
+  type Tool,
+  InProcessTransport,
+} from './index.js';
 
 function build({ readOnly = false, scope = fullScope() } = {}): { server: MCPServer; transport: InProcessTransport; messages: unknown[] } {
   const tools = new ToolRegistry();

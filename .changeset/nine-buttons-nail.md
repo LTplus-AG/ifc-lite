@@ -2,4 +2,4 @@
 "@ifc-lite/mcp": patch
 ---
 
-Process newline-delimited stdio messages in arrival order across asynchronous chunk handlers, while preserving cancellation of a running request.
+Order requests only until the initialize response is written; keep later requests concurrent, preserve cancellation before dispatch, and detach immediately at stdin EOF.

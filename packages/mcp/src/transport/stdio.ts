@@ -15,8 +15,8 @@
  */
 
 import { Readable, Writable } from 'node:stream';
-import { JsonRpcMessage } from '../protocol/index.js';
-import { errorResponse, parseMessage } from '../protocol/jsonrpc.js';
+import { JsonRpcMessage, JsonRpcId } from '../protocol/index.js';
+import { errorResponse, parseMessage, isJsonRpcRequest, isJsonRpcNotification } from '../protocol/jsonrpc.js';
 import { JsonRpcErrorCode } from '../protocol/index.js';
 import { MCPServer, OutgoingMessageSink } from '../server.js';
 import { routeConsoleToStderr } from './stdio-console.js';
@@ -32,7 +32,8 @@ export class StdioTransport {
   private stdout: Writable;
   private stderr: Writable;
   private buffer = '';
-  private inputChain: Promise<void> = Promise.resolve();
+  private initializeResponse: Promise<void> | null = null;
+  private waitingRequests = new Map<JsonRpcId, { cancelled: boolean }>();
   private server: MCPServer | null = null;
   private closed = false;
 
@@ -51,7 +52,7 @@ export class StdioTransport {
     // UTF-8 — MCP spec mandates it.
     this.stdin.setEncoding('utf8');
     this.stdin.on('data', (chunk: string) => this.onData(chunk));
-    this.stdin.on('end', () => { void this.inputChain.then(() => this.close()); });
+    this.stdin.on('end', () => this.close());
     this.stdin.on('error', (err: Error) => {
       this.stderr.write(`[ifc-lite-mcp] stdin error: ${err.message}\n`);
       this.close();
@@ -61,6 +62,7 @@ export class StdioTransport {
   close(): void {
     if (this.closed) return;
     this.closed = true;
+    this.waitingRequests.clear();
     this.server?.detach();
     this.server = null;
   }
@@ -86,18 +88,40 @@ export class StdioTransport {
       const line = this.buffer.slice(0, newline).trim();
       this.buffer = this.buffer.slice(newline + 1);
       if (line.length > 0) {
-        const parsed = parseMessage(line);
-        // Cancellation must reach a running request; queuing it behind that
-        // request would prevent its AbortSignal from ever being delivered.
-        if (parsed && 'method' in parsed && parsed.method === 'notifications/cancelled' && !('id' in parsed)) {
-          void Promise.resolve().then(() => this.handleLine(parsed));
-        } else {
-          this.inputChain = this.inputChain.then(() => this.handleLine(parsed)).catch((error: unknown) => {
-            this.stderr.write(`[ifc-lite-mcp] input error: ${String(error)}\n`);
-          });
-        }
+        this.dispatch(parseMessage(line));
       }
       newline = this.buffer.indexOf('\n');
+    }
+  }
+
+  private dispatch(message: JsonRpcMessage | null): void {
+    if (this.closed) return;
+    if (message && isJsonRpcNotification(message) && message.method === 'notifications/cancelled') {
+      const id = (message.params as { requestId?: JsonRpcId } | undefined)?.requestId;
+      const waiting = id === undefined ? undefined : this.waitingRequests.get(id);
+      if (waiting) {
+        waiting.cancelled = true;
+        return;
+      }
+      void this.handleLine(message);
+      return;
+    }
+    const barrier = this.initializeResponse;
+    if (message && isJsonRpcRequest(message) && message.method === 'initialize') {
+      const run = barrier ? barrier.then(() => this.handleLine(message)) : this.handleLine(message);
+      this.initializeResponse = run;
+      void run.then(() => { if (this.initializeResponse === run) this.initializeResponse = null; });
+    } else if (barrier) {
+      const id = message && isJsonRpcRequest(message) ? message.id : undefined;
+      const waiting = { cancelled: false };
+      if (id !== undefined) this.waitingRequests.set(id, waiting);
+      void barrier.then(() => {
+        if (id !== undefined && this.waitingRequests.get(id) === waiting) this.waitingRequests.delete(id);
+        if (waiting.cancelled) return;
+        return this.handleLine(message);
+      });
+    } else {
+      void this.handleLine(message);
     }
   }
 

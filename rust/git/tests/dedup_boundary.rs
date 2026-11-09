@@ -95,6 +95,7 @@ fn voids(target: Address) -> Node {
         roles: vec![Role {
             name: "RelatedOpeningElement".to_owned(),
             targets: vec![target],
+            ordered: false, // RelatedOpeningElement is a scalar role, not an ordered aggregate.
         }],
     }
 }

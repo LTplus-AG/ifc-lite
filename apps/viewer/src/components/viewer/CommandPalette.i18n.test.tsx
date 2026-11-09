@@ -91,6 +91,14 @@ const NOT_RENDERED_IN_THIS_STATE: PaletteKey[] = [
   'commandPalette.aliases.bulk',
   'commandPalette.aliases.import',
   'commandPalette.aliases.classes',
+  // Search-only metadata; the entity destination label renders separately.
+  'commandPalette.aliases.entityActions',
+  // No model workspace, copyable renderer selection, or selected browser text.
+  'commandPalette.availability.storeyBoundary',
+  'commandPalette.availability.copyTarget',
+  'commandPalette.availability.textSelection',
+  // Catalogue reservation: no production consumer currently requests this key.
+  'commandPalette.availability.world',
   // #8947: requires a pending extension export; exercised by runtime-refusal and exporter Activity cases.
   'commandPalette.extension.busy',
   // #8947: modified-IFC's disabled reason is now visible in the unloaded palette.

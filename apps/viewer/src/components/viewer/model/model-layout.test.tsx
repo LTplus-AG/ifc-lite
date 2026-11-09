@@ -95,7 +95,7 @@ describe('ModelWorkspaceSplit applies the rule (#6232 M2.4)', () => {
     assert.equal(ui.querySelector('[data-model-plan-pane]')?.getAttribute('aria-hidden'), 'true');
     const split = [...ui.querySelectorAll<HTMLButtonElement>('[role="radio"]')].find(button => button.textContent?.startsWith('Split'));
     assert.ok(split && !split.disabled, 'Split stays available and explains the fallback');
-    assert.ok(ui.querySelector('[role="status"]'));
+    assert.ok(ui.querySelector('[data-model-layout-notice]'));
     assert.equal(useViewerStore.getState().modelLayout, 'auto', 'nothing was persisted');
   });
 

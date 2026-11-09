@@ -32,7 +32,12 @@ function paletteOptionTypeContract(runtime: Extract<Command, { runtimeSource: st
   // @ts-expect-error A registered id whose definition does not declare the palette surface.
   const contextOnly: RegisteredPaletteOptionProps = { commandId: 'context:select-all-type', ...placement };
   // The Model workspace rail commands (#6232) are registered palette ids too.
-  const railIds: RegisteredPaletteOptionProps['commandId'][] = ['tool:wall', 'tool:slab', 'tool:roof', 'tool:column', 'tool:beam'];
+  const railIds: RegisteredPaletteOptionProps['commandId'][] = ['tool:wall', 'tool:slab', 'tool:roof', 'tool:column', 'tool:beam',
+    'tool:array', 'tool:move', 'tool:rotate', 'model:copy', 'model:paste', 'model:paste-in-place',
+    'model:exit', 'model:storey-up', 'model:storey-down', 'elements:entity-actions',
+    'elements:search', 'elements:spatial', 'elements:class', 'elements:type', 'elements:materials',
+    'elements:groups', 'elements:presentation-layers', 'vis:isolate', 'view:centreline',
+    'view:zoom-in', 'view:zoom-out', 'view:rotate-left', 'view:rotate-right', 'view:move-georef', 'view:follow-work'];
   // @ts-expect-error A runtime row cannot be rendered without its runtime owner.
   const unowned: DynamicPaletteOptionProps = { command: { ...runtime, runtimeSource: undefined }, ...placement };
   const registered = { id: 'view:frame', label: 'Frame', labelKey: 'commandPalette.tool.wall.label', keywords: '',

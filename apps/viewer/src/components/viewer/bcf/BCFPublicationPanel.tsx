@@ -12,6 +12,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSingleFlight } from '@/hooks/useSingleFlight';
 import { Button } from '@/components/ui/button';
 import { useTranslation } from '@/i18n';
 import type { BcfProjectDto } from '@ifc-lite/bcf-api';
@@ -50,7 +51,10 @@ export function BCFPublicationPanel({ batch, onUsers, onRecordId }: BCFPublicati
   const { config, connect } = useBcfConnection();
   const [projects, setProjects] = useState<BcfProjectDto[] | null>(null);
   const [projectId, setProjectId] = useState('');
-  const [busy, setBusy] = useState(false);
+  // One server action (preflight or publish) at a time (C-2): a same-tick
+  // double press is refused before it publishes twice.
+  const flight = useSingleFlight();
+  const busy = flight.busy;
   const [error, setError] = useState<string | null>(null);
   const [preflight, setPreflight] = useState<PreflightReport | null>(null);
   const [report, setReport] = useState<DispatchReport | null>(null);
@@ -86,14 +90,14 @@ export function BCFPublicationPanel({ batch, onUsers, onRecordId }: BCFPublicati
   const live = record && connection && sameTarget(record, connection) ? connection : null;
   const counts = record ? publicationCounts(record) : null;
 
-  const act = async (work: () => Promise<void>) => {
-    setBusy(true); setError(null);
+  const act = (work: () => Promise<void>) => flight.run(async () => {
+    setError(null);
     try { await work(); }
     catch (cause) {
       console.warn('[BCF publication] Action failed', cause);
       setError(cause instanceof Error ? cause.message : String(cause));
-    } finally { setBusy(false); }
-  };
+    }
+  });
   const adopt = (result: PreflightReport) => {
     setPreflight(result);
     setTopicTypes(current => preselectTopicTypes(result, current));

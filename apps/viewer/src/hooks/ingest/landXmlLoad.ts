@@ -22,7 +22,6 @@ import { LandXmlProvisionalTransaction } from './landXmlProvisionalTransaction.j
 import { LandXmlProvisionalUploadError } from './landXmlGpuTransactions.js';
 import { markLandXmlGpuUploaded } from './landXmlGpuOwnership.js';
 import { type FederatedLandXmlStreamingFinalization, FederatedLandXmlStreamingPlan } from './federatedLandXmlStreaming.js';
-import { GeoRasterBundle } from '@/lib/terrain-imagery/raster-bundle.js';
 
 interface LandXmlLoadOptions {
   file: File;
@@ -384,17 +383,4 @@ export async function loadLandXmlModel(options: LandXmlLoadOptions): Promise<voi
     options.onError(message, error);
     options.setLoading(false);
   }
-}
-
-/**
- * #5942: a georeferenced raster bundle is imagery for the loaded terrain, not
- * a model. It enters `useIfcLoader.loadFile` like every source, and this
- * returns the drape before `loadFile` bumps the load session or resets the
- * scene; `null` for anything else. The drape module loads only when used.
- */
-export function drapeIfGeoRaster(file: File, setLoading: (loading: boolean) => void): Promise<void> | null {
-  if (!(file instanceof GeoRasterBundle)) return null;
-  return import('./terrainImageryDrape.js')
-    .then(({ drapeGeoRasterBundle }) => drapeGeoRasterBundle(file))
-    .finally(() => setLoading(false));
 }

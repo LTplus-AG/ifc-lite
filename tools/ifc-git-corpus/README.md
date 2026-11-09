@@ -44,7 +44,7 @@ own revision so the later shared-set edit cannot hide a second change.
 | r07 | Regenerate GlobalIds | Keyed churn; content matching absorbs all semantic churn |
 | r08 | Identical re-save | Identical bytes and empty diff |
 | r09 | Type property | One type object's pset component |
-| r10 | Split element | One product becomes two adjacent half-solids; data matching abstains on the ambiguous 1-to-2 group |
+| r10 | Split element | One product becomes two adjacent half-solids; data matching reports the unresolved `duplicated` group and emits no identity claim |
 | r11a | Share pset | One definition, exactly two consumers, unique set names |
 | r11 | Edit shared pset | Both consumers change the same pset component |
 

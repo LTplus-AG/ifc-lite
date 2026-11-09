@@ -137,7 +137,7 @@ const { indexLines, splitArgs, findByType, requireOne, rewriteRecord, globalIdOf
 const { addElement, addClassification, splitAddedElement } = await import('./remaining-transforms.js');
 const { proveMove, proveSplit } = await import('./geometry-proof.js');
 const { IfcParser } = await import('../../packages/parser/dist/index.js');
-const { diffModels, initDiff } = await import('../../packages/diff/dist/index.js');
+const { diffModels, initDiff, identityMapFromContentMatches } = await import('../../packages/diff/dist/index.js');
 // #8042/#8111: data-only consumers also initialize the independent diff engine.
 await initDiff();
 const { uuidFromSeed, uuidToIfcGuid, isValidIfcGuid } = await import(
@@ -675,6 +675,8 @@ interface MeasuredDiff {
   readonly addedKeys: readonly string[];
   /** Content-match claims, when the pass ran. `null` when it abstained. */
   readonly contentMatchKinds: Readonly<Record<string, number>> | null;
+  readonly identityClaims: readonly { base: string; here: string; reason: string }[];
+  readonly componentPresence: readonly { key: string; before: string[]; after: string[] }[];
 }
 
 /**
@@ -692,7 +694,7 @@ interface MeasuredPair {
   readonly contentMatched: MeasuredDiff;
 }
 
-function summarize(diff: any): MeasuredDiff {
+function summarize(diff: import('../../packages/diff/dist/index.js').ModelDiff<number>): MeasuredDiff {
   const components = new Set<string>();
   const modifiedKeys: string[] = [];
   const deletedKeys: string[] = [];
@@ -724,6 +726,10 @@ function summarize(diff: any): MeasuredDiff {
     deletedKeys: deletedKeys.sort(),
     addedKeys: addedKeys.sort(),
     contentMatchKinds: kinds,
+    identityClaims: identityMapFromContentMatches(diff.contentMatches),
+    componentPresence: diff.entries.filter(entry => entry.state === 'modified').map(entry => ({
+      key: entry.key, before: Object.keys(entry.base?.components ?? {}).sort(), after: Object.keys(entry.head?.components ?? {}).sort(),
+    })),
   };
 }
 
@@ -861,6 +867,10 @@ function checkExpectation(
         ? null
         : `expected no data-scope change, measured +${k.added} ~${k.modified} -${k.deleted}`;
     case 'modified':
+      if (spec.changeClass === 'classification-added' && (k.componentPresence.length !== 1
+        || k.componentPresence[0].before.includes('classification') || !k.componentPresence[0].after.includes('classification'))) {
+        return 'classification addition must introduce the previously absent component key';
+      }
       return k.modified === spec.expect.count && k.added === 0 && k.deleted === 0
         ? checkClaims(applied, k)
         : `expected exactly ${spec.expect.count} modified, measured +${k.added} ~${k.modified} -${k.deleted}`;
@@ -879,8 +889,8 @@ function checkExpectation(
       return k.added === 2 && k.deleted === 1 && k.modified === 0
         && sameSet(k.deletedKeys, applied.touched.slice(0, 1)) && sameSet(k.addedKeys, applied.touched.slice(1))
         && c.added === 2 && c.deleted === 1 && c.modified === 0
-        && (c.contentMatchKinds?.ambiguous ?? 0) === 1
-        ? null : `split must remain an ambiguous 1-to-2 group: ${JSON.stringify(m)}`;
+        && (c.contentMatchKinds?.duplicated ?? 0) === 1 && c.identityClaims.length === 0
+        ? null : `split must remain an unresolved 1-to-2 group without identity claims: ${JSON.stringify(m)}`;
     }
     case 'reguid-noop': {
       // The whole point of the corpus. A re-GUID must be total churn when

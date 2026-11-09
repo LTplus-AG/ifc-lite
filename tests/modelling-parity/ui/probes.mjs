@@ -555,7 +555,7 @@ export const PROBES = [
       const notes = [];
       tasks.push(await task(s, 'Show the plan (rail); close the inspector first if there is no room', async () => {
         const show = s.page.getByRole('button', { name: 'Show the plan' });
-        if (await show.isDisabled()) {
+        if ((await show.isVisible()) && (await show.isDisabled())) {
           notes.push('At 1600x900 "Show the plan" is disabled ("No room for the plan beside 3D"): the modeller has to close a side panel before the plan can open.');
           for (const name of ['Close the Model inspector', 'Collapse sidebar to icons']) {
             if (!(await show.isVisible().catch(() => false)) || !(await show.isDisabled())) break;

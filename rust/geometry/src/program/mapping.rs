@@ -33,6 +33,10 @@ use nalgebra::Matrix4;
 use rustc_hash::FxHashMap;
 use std::sync::Arc;
 
+#[path = "mapping_type_root.rs"]
+mod type_root;
+use type_root::TypeMapRoot;
+
 type Textures<'a> = Option<&'a FxHashMap<u32, ResolvedTextureMap>>;
 
 /// The walk a control drives, fixed at construction.
@@ -266,7 +270,7 @@ pub(super) struct MappingControl<'a> {
     walk: Walk,
     textures: Textures<'a>,
     /// The type map's `IfcRepresentationMap`.
-    rep_map: Option<Reached<'a>>,
+    rep_map: Option<TypeMapRoot<'a>>,
     /// Styled only: whether the top-level occurrence may don't-bake.
     allow_instancing: bool,
     /// The styled walk's sub-meshes, and the type map's textured parts.

@@ -38,6 +38,31 @@ not only the byte total, and measure boot with each build in both A/B positions:
 shared host, position alone moved the result by about 15 ms. A group that claimed every
 QuickJS module also failed, because the one eager module in it made the whole group eager.
 
+## Work-budget refusal diagnostics (#9268)
+
+**Retained: detailed refusals behind cold error carriers.** Adding demand and
+budget identity enlarged the errors returned by per-attempt admission helpers.
+Boxing the logical refusal and the walk's demand payload keeps that detail out
+of successful Results; allocation occurs only when work is refused. The walk
+keeps its existing Result types, with a compile-time bound against the decoder
+error carrier on both native and wasm32. Empty routers hold only a nullable
+pointer to the refusal log; the buffer, identity strings and refusal constructors
+are cold work. The public diagnostics remain complete and the work allowances
+stay unchanged. RTC geometry probing is outlined so its refusal handling cannot
+enlarge the loop that filters every model record. The native instruction comparison and output counts are recorded in
+PR #9386; this is cost containment, not an end-to-end worker-pool speedup claim.
+
+Lesson: refusal-only reporting can still affect successful work through error
+layout. Shrinking an entire Result can also change its optimized callers;
+contain the cold payload while preserving the common carrier, then check the
+compiled pipeline. The logical attempt Result has a pointer-size invariant.
+Type-product attribution fits inside the existing owned type-map root slot,
+with size/alignment assertions, rather than adding an owner field to every
+mapping controller. A persistent dedup set and capped details run only on
+refusal; retained transactions return their refusal without a second unread log.
+Occurrence attribution asks the owning product for its identity only when a
+mapping reply is refused; successful replies and controls carry no new field.
+
 ## Presentation-layer membership follows the selected shape (#9273)
 
 **Selection query verdict: remove the model-wide ownership scan.** The hierarchy's

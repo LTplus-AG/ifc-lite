@@ -36,7 +36,7 @@ import { runRtcPrecisionContracts } from './lib/wasm-rtc-precision-contracts.mjs
 import { finishContractRun } from './lib/wasm-landxml-contracts.mjs';
 import { runEarlyContracts } from './lib/wasm-early-contracts.mjs';
 import { runScanOutlineContracts } from './lib/wasm-scan-outline-contracts.mjs';
-import { runPipelineDiagnosticsContracts } from './lib/wasm-pipeline-diagnostics-contracts.mjs';
+import * as pipelineContracts from './lib/wasm-pipeline-diagnostics-contracts.mjs';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = join(__dirname, '..');
 const FIXTURES_DIR = join(ROOT_DIR, 'tests/models');
@@ -81,13 +81,13 @@ const ownershipWasmExports = initSync(wasmBuffer);
 console.log('✅ WASM initialized\n');
 
 const columnContent = COLUMN_AVAILABLE ? readFileSync(COLUMN_IFC, 'utf-8') : '';
-
 const api = new IfcAPI();
-
 let passed = 0;
 let failed = 0;
 let skipped = 0;
 runSkipVoidsContracts({ test, skip, IfcAPI });
+assert.equal(typeof pipelineContracts.runBudgetRefusalContract, 'function', '#9268 budget WASM contract exists');
+pipelineContracts.runBudgetRefusalContract({ IfcAPI, test });
 
 /**
  * A test (or a whole fixture-gated block of them) that did NOT run.
@@ -1469,7 +1469,7 @@ if (existsSync(HELLO_WALL)) {
     `apps/landing/samples/hello-wall.ifc missing — ${FIXTURES_HINT}`);
 }
 
-await runPipelineDiagnosticsContracts({ IfcAPI, test, root: ROOT_DIR, columnContent });
+await pipelineContracts.runPipelineDiagnosticsContracts({ IfcAPI, test, root: ROOT_DIR, columnContent });
 
 // ===== setEntityIndex (production load-start reset path, #1551) =====
 // The `getPipelineDiagnostics` test above only exercises the buildPrePassOnce

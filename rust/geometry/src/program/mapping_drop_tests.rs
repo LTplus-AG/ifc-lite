@@ -310,10 +310,10 @@ mod diagnostics {
                 assert_eq!(meshes.sub_meshes[0].mesh.indices.len(), 36);
                 assert!(cache.lock().unwrap().is_empty(), "no partial publication");
                 let drops = router.take_unsupported_items();
-                assert_eq!(drops.len(), usize::from(body));
+                assert!(drops.is_empty());
                 assert_eq!(
                     drops.get("IfcMappedItem").copied().unwrap_or(0),
-                    u64::from(body)
+                    0
                 );
                 assert_eq!(router.unsupported_scope_depth(), outer_depth);
                 assert_eq!(

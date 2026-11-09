@@ -35,6 +35,8 @@ pub(super) struct DiagnosticCollectors {
     /// rect_fast engagement, drained per-job router so this pass's `rectFast`
     /// is isolated from any concurrent geometry pass.
     pub(super) rect_fast: std::sync::Mutex<ifc_lite_geometry::RectFastStats>,
+    /// Safety-policy refusals, independent of unsupported/failed geometry.
+    pub(super) budget_refusals: std::sync::Mutex<(u64, Vec<ifc_lite_geometry::BudgetRefusal>)>,
     /// Dropped representation items by IFC type: no processor for the type, or
     /// the processor errored. Non-empty means the model has elements whose
     /// geometry the router refused to build.
@@ -66,6 +68,7 @@ impl DiagnosticCollectors {
             classification: std::sync::Mutex::new(ifc_lite_geometry::ClassificationStats::default()),
             host_diags: std::sync::Mutex::new(FxHashMap::default()),
             rect_fast: std::sync::Mutex::new(ifc_lite_geometry::RectFastStats::default()),
+            budget_refusals: std::sync::Mutex::new((0, Vec::new())),
             unsupported_items: std::sync::Mutex::new(FxHashMap::default()),
             backstop: std::sync::atomic::AtomicU64::new(0),
             oversized_ref_drops: std::sync::atomic::AtomicU64::new(0),
@@ -148,6 +151,13 @@ impl DiagnosticCollectors {
     /// across jobs mirrors the wasm batch router's accumulate-then-drain, giving
     /// the same GeometryDiagnostics counts.
     pub(super) fn drain_router(&self, router: &ifc_lite_geometry::GeometryRouter) {
+        let (total, refusals) = router.take_budget_refusal_report();
+        if total > 0 {
+            let mut log = self.budget_refusals.lock().unwrap_or_else(|p| p.into_inner());
+            log.0 += total;
+            let available = 16usize.saturating_sub(log.1.len());
+            log.1.extend(refusals.into_iter().take(available));
+        }
         let drain = crate::execution::RouterDrain::take(router);
         let cls = drain.classification;
         if cls.rectangular != 0 || cls.diagonal != 0 || cls.non_rectangular != 0 {
@@ -270,6 +280,7 @@ pub(super) fn distinct_refusals(
 /// consumer see identical diagnostics. `None` when nothing diagnostic-worthy
 /// happened (mirrors the wasm `is_empty` skip).
 pub(super) fn collate(
+    budget_refusals: std::sync::Mutex<(u64, Vec<ifc_lite_geometry::BudgetRefusal>)>,
     classification_collector: std::sync::Mutex<ifc_lite_geometry::ClassificationStats>,
     host_diag_collector: std::sync::Mutex<FxHashMap<u32, ifc_lite_geometry::HostOpeningDiagnostic>>,
     rect_fast_collector: std::sync::Mutex<ifc_lite_geometry::RectFastStats>,
@@ -292,7 +303,7 @@ pub(super) fn collate(
         .into_inner()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     warn_if_dropped(&unsupported_items);
-    let diag = ifc_lite_geometry::aggregate_diagnostics(
+    let mut diag = ifc_lite_geometry::aggregate_diagnostics(
         classification,
         csg_failures,
         &host_diags,
@@ -301,6 +312,7 @@ pub(super) fn collate(
         oversized_ref_drops,
         &unsupported_items,
     );
+    (diag.total_budget_refusals, diag.budget_refusals) = budget_refusals.into_inner().unwrap_or_else(|p| p.into_inner());
     (!diag.is_empty()).then_some(diag)
 }
 

@@ -21,12 +21,34 @@ pub enum WalkRefusal {
     /// The mapped representation has no `Items` attribute.
     MissingItems,
     /// The mapped-level or total Items-member allowance was exhausted.
-    Budget { max_levels: u32 },
+    #[non_exhaustive]
+    Budget { max_levels: u32, details: WalkBudgetRefusal },
     /// The decoder failed on one of the references.
     Decode(ifc_lite_core::Error),
 }
 
+/// Opaque, cold-allocated work-budget evidence. Its representation is private
+/// so future diagnostic fields do not change visitor matches or common Results.
+#[derive(Debug)]
+pub struct WalkBudgetRefusal(Box<(&'static str, u64)>);
+
+impl WalkBudgetRefusal {
+    pub fn budget(&self) -> &'static str { self.0.0 }
+    pub fn reached(&self) -> u64 { self.0.1 }
+}
+
+// Refusal details must fit within the decoder error this carrier already held.
+const _: () = assert!(
+    std::mem::size_of::<WalkRefusal>() <= std::mem::size_of::<ifc_lite_core::Error>()
+);
+
 impl WalkRefusal {
+    #[cold]
+    #[inline(never)]
+    pub(crate) fn work_budget(max_levels: u32, budget: &'static str, reached: u64) -> Self {
+        Self::Budget { max_levels, details: WalkBudgetRefusal(Box::new((budget, reached))) }
+    }
+
     /// Convert to a geometry error, preserving historical strict messages for
     /// existing refusals. `item` is the refused mapped item's id, or the holding
     /// representation's id for a root-list budget refusal.
@@ -36,7 +58,7 @@ impl WalkRefusal {
             WalkRefusal::TooDeep { max_depth } => format!(
                 "MappedItem nesting exceeded maximum depth of {max_depth} at #{item}"
             ),
-            WalkRefusal::Budget { max_levels } => format!(
+            WalkRefusal::Budget { max_levels, .. } => format!(
                 "Representation expansion exceeded the work budget of {max_levels} levels or item references at #{item}"
             ),
             WalkRefusal::MissingSource => "MappedItem missing MappingSource".to_string(),

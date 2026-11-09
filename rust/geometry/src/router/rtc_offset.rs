@@ -49,6 +49,9 @@ impl GeometryRouter {
     /// geometry vertex — infrastructure models (12d Model, Civil 3D) embed
     /// large world coordinates directly in Brep/tessellated geometry with an
     /// identity placement.
+    // Keep geometry probing out of the RTC record scan: refusal diagnostics in
+    // the probe must not enlarge the loop that filters every model record.
+    #[inline(never)]
     fn sample_element_translation(
         &self,
         entity: &DecodedEntity,

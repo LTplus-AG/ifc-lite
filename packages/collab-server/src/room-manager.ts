@@ -24,6 +24,7 @@ import type { Persistence } from './persistence.js';
 import type { Principal } from './auth.js';
 import { closeExpiredConnections, sweepExpiredAcrossRooms } from './principal-expiry.js';
 import { writeFrameRejection } from './write-frame-gate.js';
+import { RoomWriter } from './room-writer.js';
 import type { VerifyDecision, VerifyMessageFn, RoomOptions, PeerConnection } from './room-types.js';
 import {
   noopAuditSink,
@@ -60,11 +61,7 @@ export class Room {
   readonly awareness: Awareness;
   private readonly conns = new Set<PeerConnection>();
   private readonly persistence: Persistence;
-  private updatesSinceCompact = 0;
-  /** Appends and periodic compactions, one at a time: compaction REPLACES the
-   *  log, so two in flight (or one racing destroy()'s) can drop updates. */
-  private persisting: Promise<void> = Promise.resolve();
-  private readonly compactEvery: number;
+  private readonly writer: RoomWriter; // one write in flight; see room-writer.ts
   private readonly auditSink: AuditSink;
   private readonly rateLimitFor: (principal: Principal) => RateLimitOptions;
   private readonly verifyMessage?: VerifyMessageFn;
@@ -87,7 +84,12 @@ export class Room {
     // clearing it cannot broadcast a removal for a peer no client ever saw.
     this.awareness.setLocalState(null);
     this.persistence = opts.persistence;
-    this.compactEvery = opts.compactEvery ?? 1000;
+    this.writer = new RoomWriter({
+      roomId: id,
+      persistence: opts.persistence,
+      compactEvery: opts.compactEvery ?? 1000,
+      snapshot: () => Y.encodeStateAsUpdate(this.doc),
+    });
     this.auditSink = opts.auditSink ?? noopAuditSink;
     const rl = opts.rateLimit;
     this.rateLimitFor = typeof rl === 'function' ? rl : () => rl ?? {};
@@ -356,26 +358,8 @@ export class Room {
       if (conn === origin) continue;
       safeSend(conn.ws, message);
     }
-    this.persisting = this.persisting.then(() => this.persistAndMaybeCompact(update));
+    this.writer.enqueue(update);
   };
-
-  private async persistAndMaybeCompact(update: Uint8Array): Promise<void> {
-    try {
-      await this.persistence.append(this.id, update);
-      this.updatesSinceCompact++;
-      if (this.updatesSinceCompact >= this.compactEvery) {
-        const merged = Y.encodeStateAsUpdate(this.doc);
-        await this.persistence.compact(this.id, merged);
-        this.updatesSinceCompact = 0;
-      }
-    } catch (err) {
-      // Persistence failures are logged but never block sync — the
-      // in-memory state is still consistent across peers, and the next
-      // successful append/compact catches up.
-      // eslint-disable-next-line no-console
-      console.error(`[collab-server] persistence error for room ${this.id}:`, err);
-    }
-  }
 
   /**
    * Forward an awareness update to every other peer. Tracks which client
@@ -430,16 +414,9 @@ export class Room {
 
   async destroy(): Promise<void> {
     this.closeConnsAndListeners();
-    // Let queued writes finish first: an older periodic compaction landing
-    // after ours (or after a reload appended) would roll the log back.
-    await this.persisting;
-    // Final compaction so the next load picks up the freshest state.
-    try {
-      await this.persistence.compact(this.id, Y.encodeStateAsUpdate(this.doc));
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.error(`[collab-server] compact-on-destroy error for ${this.id}:`, err);
-    }
+    // Final compaction so the next load picks up the freshest state, after
+    // the write in flight (an older compaction landing last would roll back).
+    await this.writer.closeAndCompact();
     this.awareness.destroy();
     this.doc.destroy();
   }

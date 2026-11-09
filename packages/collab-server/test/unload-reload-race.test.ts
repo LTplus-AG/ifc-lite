@@ -270,7 +270,7 @@ describe('unload vs reload of the same room (PR #9489)', () => {
     expect(room.peerCount).toBe(0);
   });
 
-  it('PR #9489: a peer whose room is unloaded mid-join ends up in the live reloaded room and loses no update', async () => {
+  it('PR #9489: a peer whose room is unloaded mid-join reaches the live reloaded room (directly or by reconnecting) and loses no update; the join-path retry only saves that reconnect', async () => {
     // Order-independent: the peer may be registered into the reloaded room
     // directly, or be closed and reconnect into it. Either way it must not
     // stay a ghost in the destroyed instance, and its edit must persist.

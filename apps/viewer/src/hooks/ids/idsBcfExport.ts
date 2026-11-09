@@ -148,8 +148,7 @@ export async function runIdsBcfExport({
     setBcfPanelVisible(true);
   }
 
+  // The caller owns clearing this after a delay: it knows whether a newer
+  // export has started since.
   setBcfExportProgress({ phase: 'done', current: 1, total: 1, message: 'Export complete!' });
-
-  // Clear progress after a delay
-  setTimeout(() => setBcfExportProgress(null), 2000);
 }

@@ -114,12 +114,14 @@ export function PresenceBroadcaster() {
       if (!collabSession || !cameraCallbacks.getViewpoint) return;
       const vp = cameraCallbacks.getViewpoint();
       if (!vp) return;
+      // `up` is part of the key: rotating a plan view (#9501) changes only up.
       const key =
         `${vp.position.x | 0},${vp.position.y | 0},${vp.position.z | 0}|` +
-        `${vp.target.x | 0},${vp.target.y | 0},${vp.target.z | 0}`;
+        `${vp.target.x | 0},${vp.target.y | 0},${vp.target.z | 0}|` +
+        `${vp.up.x.toFixed(2)},${vp.up.y.toFixed(2)},${vp.up.z.toFixed(2)}`;
       if (key === lastKey) return;
       lastKey = key;
-      collabSession.presence.setCamera({ position: vp.position, target: vp.target, fov: vp.fov });
+      collabSession.presence.setCamera({ position: vp.position, target: vp.target, fov: vp.fov, up: vp.up });
     }, 250);
     return () => window.clearInterval(id);
   }, [sessionActive]);

@@ -4,12 +4,19 @@
 
 import { waitFor } from './render';
 
+interface DocumentPreviewReadyOptions {
+  root?: ParentNode;
+  timeoutMs?: number;
+}
+
 /** Wait for preparation, never for the page count/content an assertion checks.
  * Happy DOM leaves image decoding to each image fixture's load event; the
  * initial composed page is sufficient for tests unrelated to intrinsic size. */
-export function documentPreviewReady(timeoutMs = 15_000): Promise<void> {
+export function documentPreviewReady(
+  { root = document, timeoutMs = 15_000 }: DocumentPreviewReadyOptions = {},
+): Promise<void> {
   return waitFor(() => {
-    const previews = [...document.querySelectorAll('[data-document-preview]')];
+    const previews = [...root.querySelectorAll('[data-document-preview]')];
     return previews.length > 0 && previews.every(preview => preview.querySelector('[data-preview-section]') !== null
       && preview.getAttribute('data-layout-pending') !== 'true');
   },

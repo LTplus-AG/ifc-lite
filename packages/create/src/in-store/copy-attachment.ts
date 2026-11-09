@@ -24,7 +24,8 @@
  * listed in the result's `unattachedTops` with the reason. (Deep-copying
  * file shapes is #8447.) A level beam or member is not affected: it follows
  * by moving its own placement. A copy whose body cannot be read is listed
- * the same way, unless its re-bound record needs no new height.
+ * the same way, unless its re-bound record needs no new height, and so is
+ * one whose placement cannot be read where its height must be fitted.
  *
  * Elements with no record are fixed and are copied as they are.
  */
@@ -73,6 +74,7 @@ export interface CopyUnattachedTop {
 }
 
 const UNREADABLE_BODY = 'its body cannot be read, so its top cannot follow; it keeps its height and is no longer attached';
+const UNREADABLE_PLACEMENT = 'its placement cannot be read, so its top cannot follow; it keeps its height and is no longer attached';
 const SHARED_BODY = "it shares the source's shape from the file, which a copy cannot resize; it keeps the source's height and is no longer attached";
 
 const fail = (copyId: number, reason: string) => new Error(`The copy #${copyId} cannot keep its top attachment on its new storey: ${reason}`);
@@ -149,7 +151,12 @@ export function rebindCopiedAttachments(
         // Drawn unbound: the copy reaches the storey above its new one.
         const origin = attachedTopWorldOrigin(target, copyId, kind);
         const floor = here.placementId === null ? null : placementInAncestor(inventory.reader, here.placementId, null);
-        if (origin === null || !Number.isFinite(origin)) continue;
+        if (origin === null || !Number.isFinite(origin)) {
+          // Re-bound above, but its height cannot be fitted: never leave it attached at the wrong one.
+          clearTopAttachment(view, copyId);
+          unattached.push({ copyId, reason: UNREADABLE_PLACEMENT });
+          continue;
+        }
         to = from + (next.elevation - here.elevation) - (origin + from - (floor ? floor.o[2] * inventory.scale : here.elevation));
       }
       if (Math.abs(to - from) < 1e-9) continue;

@@ -27,7 +27,7 @@ import { placementInAncestor, refId } from '../host-geometry-frame.js';
 import { getModelLengthUnitScale } from '../edit/length-unit-scale.js';
 import { AnchorEntityReader } from '../resolve-anchor.js';
 import { effectiveStoreyElevation } from '../room-storey-elevation.js';
-import { attachedKind, attachedTopWorldOrigin, readAttachedTop, writeAttachedTop, MIN_ATTACHED_EXTENT } from './storey-attached.js';
+import { attachedKind, attachedTopWorldOrigin, levelTopFaceAbove, readAttachedTop, writeAttachedTop, MIN_ATTACHED_EXTENT } from './storey-attached.js';
 import { clearTopAttachment, homeStoreyOf, writeTopAttachment, NEXT_STOREY_ABOVE } from './storey-attachment.js';
 import { slabUndersideWorld } from './storey-attachment-target.js';
 import { scaleWallQuantities, wallGeometry } from './storey-level-write.js';
@@ -164,7 +164,8 @@ export function applyNewElementTop(
   const target = { dataStore: store, view: draft.getMutationView(), editor: draft };
   const from = readAttachedTop(target, elementId, kind);
   const origin = from === null ? null : attachedTopWorldOrigin(target, elementId, kind);
-  if (from !== null && origin !== null && Math.abs(origin + from - above.floor) <= LANDS) {
+  // A level beam reaches the floor above with its top face, and is lifted whole to stay there.
+  if (from !== null && origin !== null && Math.abs(origin + from + levelTopFaceAbove(target, elementId, kind) - above.floor) <= LANDS) {
     writeTopAttachment(draft.getMutationView(), elementId, above.GlobalId, 'relative');
   }
   return [];

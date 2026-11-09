@@ -606,7 +606,10 @@ one `mutation_undo` restores the previous graph.
 ### Physical command edits
 
 `copy_elements` and `array_elements` copy selections with their hosted
-dependants, fresh GlobalIds and the viewer array policy. `duplicate_element`
+dependants, fresh GlobalIds and the viewer array policy. They return one entity
+per selected element per transform (a door selected with its wall included),
+and `unattachedTops` lists the copies whose top could not follow their new
+storey, with the reason; the message names them too. `duplicate_element`
 accepts an `express_id`, explicit IFC `offset` and optional `Name`; it preserves
 the viewer Duplicate naming policy and copies the complete hosted graph.
 `edit_element_geometry` accepts a discriminated `operation`: `transform`

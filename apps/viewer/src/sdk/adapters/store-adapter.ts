@@ -29,7 +29,7 @@ import type {
   EntityRef,
   StoreBackendMethods,
 } from '@ifc-lite/sdk';
-import { createCostStoreBackend, createModellingStoreBackend, createOrdinaryStoreBackend, createStructuralStoreBackend, resolveLiveOwnerHistoryId } from '@ifc-lite/sdk';
+import { createCostStoreBackend, createModellingStoreBackendWithoutStoreys, createOrdinaryStoreBackend, createStructuralStoreBackend, resolveLiveOwnerHistoryId } from '@ifc-lite/sdk';
 import type { StoreApi } from './types.js';
 import { getModelForRef, LEGACY_MODEL_ID } from './model-compat.js';
 import { createCostAdapter } from './cost-adapter.js';
@@ -353,7 +353,8 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
     ...withStructuralMutationTracking(createStructuralStoreBackend(resolveStoreModel), store, resolveEditorAndStore),
     // Openings and hosted doors/windows (#6232): same resolver, gate and room
     // mirroring; see `store-adapter-modelling.ts` for the undo policy.
-    ...withModellingMutationTracking(createModellingStoreBackend(resolveStoreModel), store, resolveEditorAndStore),
+    // Storey methods come from `storeyMutationTracking`, loaded on first use (#9200).
+    ...withModellingMutationTracking(createModellingStoreBackendWithoutStoreys(resolveStoreModel), store, resolveEditorAndStore),
     ...createTrackedGroupBackend(store, resolveStoreModel),
   };
 }

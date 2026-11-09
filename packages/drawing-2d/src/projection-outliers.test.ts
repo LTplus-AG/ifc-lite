@@ -37,7 +37,9 @@ describe('generate() on a plane that cuts only a sliver (issue #8448)', () => {
     // past it. The elevation plane at z = 9.8 cuts the post only, so the cut
     // area's diagonal is about 1 m; the facade edges (40 m, 12 m) used to be
     // dropped as outliers against it.
-    const facade = boxMesh(1, [0, 0, 0], [40, 12, 9.5]);
+    const facade = flipped
+      ? boxMesh(1, [0, 0, 10.1], [40, 12, 19.6])
+      : boxMesh(1, [0, 0, 0], [40, 12, 9.5]);
     const post = boxMesh(2, [5, 3, 9.6], [5.1, 4, 10]);
     const config: SectionConfig = {
       plane: { axis: 'z', position: 9.8, flipped },

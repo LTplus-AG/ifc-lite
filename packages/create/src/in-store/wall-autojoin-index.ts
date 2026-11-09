@@ -56,7 +56,9 @@ const sessions = new WeakMap<MutablePropertyView, { store: IfcDataStore; source:
  * Do not wrap arbitrary geometry edits: those must invalidate this cache. */
 export function withWallAutojoinIndex<T>(store: IfcDataStore, view: MutablePropertyView, edit: (index: WallAutojoinIndex) => T): T {
   let session = sessions.get(view);
-  if (!session || session.store !== store || session.source !== store.source || session.sourceCount !== store.entityIndex.byId.size
+  // @raw-entity-enumeration-ok Source count only invalidates the cache; reader.ids merges source/overlay membership, and view revision tracks session edits and tombstones.
+  const sourceCount = store.entityIndex.byId.size;
+  if (!session || session.store !== store || session.source !== store.source || session.sourceCount !== sourceCount
     || session.revision !== view.getMutationRevision()) {
     const endpoints = new Endpoints();
     // One finite read: avoid enumerating/serializing the complete schema key
@@ -72,7 +74,7 @@ export function withWallAutojoinIndex<T>(store: IfcDataStore, view: MutablePrope
         console.warn(`[wall-autojoin] Cannot index wall #${id}`, error);
       }
     }
-    session = { store, source: store.source, sourceCount: store.entityIndex.byId.size, revision: view.getMutationRevision(), endpoints };
+    session = { store, source: store.source, sourceCount, revision: view.getMutationRevision(), endpoints };
     sessions.set(view, session);
   }
   const pending = new Map<number, WallEndpoints>();

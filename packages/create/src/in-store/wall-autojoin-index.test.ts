@@ -80,6 +80,22 @@ for (const recorded of [false, true]) for (const count of [16, 64]) it(`#9296 / 
   expect(reads.readWallJoinRels(s.store, s.view)).toEqual([]);
 });
 
+for (const cold of [false, true]) it(`#9406 joins two session-created touching walls (cold index=${cold})`, async () => {
+  const s = await newStorey();
+  const first = { Start: [0, 0, 0] as [number, number, number], End: [4, 0, 0] as [number, number, number], Height: 3, Thickness: .2 };
+  // A raw session-authored wall forces the cold index to discover the overlay;
+  // ordinary creation instead exercises its incremental endpoint publication.
+  const a = cold ? addWallToStore(s.editor, s.anchor, first).wallId
+    : addOrdinaryElementInStore(s.editor, s.anchor, { kind: 'wall', params: first }, { store: s.store });
+  const b = addOrdinaryElementInStore(s.editor, s.anchor, { kind: 'wall', params: {
+    Start: [4, 0, 0], End: [4, 3, 0], Height: 3, Thickness: .2,
+  } }, { store: s.store });
+  expect(s.store.entityIndex.byId.has(a) || s.store.entityIndex.byId.has(b)).toBe(false);
+  expect(reads.readWallJoinRels(s.store, s.view)).toMatchObject([{ relatingId: a, relatedId: b }]);
+  expect(reads.readWallJoinTarget(s.store, s.view, a, 1)?.plain).toBe(false);
+  expect(reads.readWallJoinTarget(s.store, s.view, b, 1)?.plain).toBe(false);
+});
+
 it('#9296 indexes both sides of rounded endpoint/elevation boundaries', async () => {
   const s = await newStorey();
   const add = (Start: [number, number, number], End: [number, number, number]) => addOrdinaryElementInStore(s.editor, s.anchor,

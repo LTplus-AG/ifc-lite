@@ -4,7 +4,7 @@
 "@ifc-lite/viewer": patch
 ---
 
-Editing a shared wall type's layers now regenerates the whole building it describes, as one undo step (Part of #9296). When a layered type sizes its occurrences (`applyLayerThicknessInStore`, behind `assignType` and `assignMaterial`), the generated rooms those walls bound take their new outline and net area in the same edit.
+Editing a shared wall type's layers now regenerates the whole building it describes, as one undo step (Part of #9296). When a layered type sizes its occurrences (`applyLayerThicknessInStore`, behind `assignType` and `assignMaterial`), the generated rooms those walls bound take their new outline and net area in the same edit. A loaded wall or slab whose body changes also has its file's base quantity set updated in the same edit: Width, the volumes and whatever else the new body changes, while a value the edit did not change keeps the file's own measure. That holds for an imported model and for one exported and reopened.
 
 New functions:
 

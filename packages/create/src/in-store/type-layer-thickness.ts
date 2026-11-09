@@ -27,7 +27,7 @@
  * changed, not only the occurrences.
  */
 
-import { extractMaterialsOnDemand } from '@ifc-lite/parser';
+import { extractMaterialsOnDemand, extractQuantitiesOnDemand } from '@ifc-lite/parser';
 import type { StoreEditor } from '@ifc-lite/mutations';
 import type { EditTarget } from './edit/target.js';
 import { readElementSizeInStore, setElementSizeInStore, type ElementSize } from './element-size-edit.js';
@@ -35,6 +35,8 @@ import { readWallMetres } from './wall-size-edit.js';
 import { liveEntityConforms, readRelatedLists } from './resolve-relations.js';
 import { effectiveStoreyId } from './edit/effective-storey.js';
 import { prepareGeneratedRoomUpdate } from './generated-room-update.js';
+import { refreshedBaseQuantitySet } from './base-quantities-refresh.js';
+import { baseQuantitySetName, effectiveElementType } from './base-quantities-kinds.js';
 
 /** Thicknesses closer than a micrometre are the same thickness. */
 const SAME_THICKNESS_M = 1e-6;
@@ -186,7 +188,37 @@ export function resizeLayeredInStore(target: EditTarget, plan: readonly LayerRes
     }
   }
   const remesh = [...new Set([...changed, ...(sized.length > 0 ? updateRooms() : [])])];
+  refreshFileQuantities(target, changed);
   return { remesh, resized: sized.map(step => step.id), refused, notices };
+}
+
+/**
+ * A LOADED wall or slab keeps the base quantity set its file gave it
+ * (Qto_WallBaseQuantities, Qto_SlabBaseQuantities, or an IFC2X3
+ * `BaseQuantities`). One whose body the resize changed takes its values from
+ * the new body (`refreshedBaseQuantitySet`: only what the edit changed, the
+ * file's own measure kept for the rest), written as quantity edits in the same
+ * record, so they undo and redo with the body and export with it. A body back
+ * at its file geometry takes the file's values back. A session-built element
+ * derives its quantities live and needs none of this.
+ */
+function refreshFileQuantities(target: EditTarget, ids: Iterable<number>): void {
+  const { dataStore, view } = target;
+  const stored = (id: number) => view.getQuantitiesForEntity(id, base => extractQuantitiesOnDemand(dataStore, base, view));
+  for (const id of new Set(ids)) {
+    if (!layeredKind(target, id) || view.getNewEntity(id)) continue;
+    const file = extractQuantitiesOnDemand(dataStore, id, view);
+    const name = baseQuantitySetName(effectiveElementType(dataStore, view, id));
+    const fileSet = file.find(set => set.name === name) ?? file.find(set => set.name === 'BaseQuantities');
+    if (!fileSet) continue;
+    const wanted = refreshedBaseQuantitySet(dataStore, view, id) ?? fileSet;
+    const now = new Map(stored(id).find(set => set.name === wanted.name)?.quantities.map(q => [q.name, q.value]));
+    for (const q of wanted.quantities) {
+      const current = now.get(q.name);
+      if (typeof q.value !== 'number' || (typeof current === 'number' && Math.abs(current - q.value) <= 1e-9)) continue;
+      view.setQuantity(id, wanted.name, q.name, q.value, q.type, 'unit' in q ? q.unit : undefined);
+    }
+  }
 }
 
 /** Ready the generated rooms on the walls' storeys to follow them (read before any wall changes). */

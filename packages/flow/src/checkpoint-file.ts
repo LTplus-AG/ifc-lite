@@ -7,14 +7,14 @@
  *
  * The file is the same portable record the viewer stores (`FlowCheckpoint`
  * from `@ifc-lite/flow`) plus a revision. Writes are compare-and-swap under
- * an exclusive lock file (`<file>.lock`, created with `wx`), so two
+ * an exclusive non-empty lock directory (`<file>.lock`), so two
  * processes resuming the same reviewed checkpoint cannot both claim it: the
- * loser re-reads `applying` and is refused. Existing locks are never
- * reclaimed by age: an old lock can still belong to a live writer.
+ * loser re-reads `applying` and is refused. Locks older than a minute are reclaimed only when their PID is dead.
+ * Legacy empty lock files have no owner identity and require manual removal.
  */
 
-import { createHash } from 'node:crypto';
-import { open, readFile, rename, unlink, writeFile } from 'node:fs/promises';
+import { createHash, randomUUID } from 'node:crypto';
+import { mkdir, readFile, readdir, rename, rmdir, stat, unlink, writeFile } from 'node:fs/promises';
 import { parseCheckpoint, type CheckpointStore, type FlowCheckpoint, type StoredCheckpoint } from './checkpoint.js';
 
 export class FileCheckpointStore implements CheckpointStore {
@@ -45,7 +45,8 @@ export class FileCheckpointStore implements CheckpointStore {
 
   async write(checkpoint: FlowCheckpoint, expected: number | null): Promise<boolean> {
     const lock = `${this.path}.lock`;
-    if (!(await this.acquire(lock))) return false;
+    const owner = await this.acquire(lock);
+    if (!owner) return false;
     try {
       const current = await this.load().catch((error: unknown) => {
         if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
@@ -58,20 +59,73 @@ export class FileCheckpointStore implements CheckpointStore {
       await rename(temp, this.path);
       return true;
     } finally {
-      await unlink(lock).catch((error: unknown) => {
-        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-      });
+      await this.release(lock, owner);
     }
   }
 
-  private async acquire(lock: string): Promise<boolean> {
+  private async release(lock: string, owner: string): Promise<void> {
+    // Remove only OUR owner entry. A late competing reaper cannot unlink a
+    // replacement's distinct owner entry, and rmdir cannot remove a nonempty dir.
+    await unlink(`${lock}/${owner}`).catch((error: unknown) => {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    });
+    await rmdir(lock).catch((error: unknown) => {
+      if (!['ENOENT', 'ENOTEMPTY', 'EEXIST'].includes((error as NodeJS.ErrnoException).code ?? '')) throw error;
+    });
+  }
+
+  private async acquire(lock: string): Promise<string | null> {
+    const owner = `${process.pid}-${randomUUID()}`;
+    const candidate = `${lock}.${owner}`;
+    await mkdir(candidate);
     try {
-      await (await open(lock, 'wx')).close();
-      return true;
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
-      return false;
+      await writeFile(`${candidate}/${owner}`, '');
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          // Publish a fully populated directory atomically. rename cannot
+          // replace another writer's nonempty directory (including on Windows).
+          await rename(candidate, lock);
+          return owner;
+        } catch (error) {
+          if (!['EEXIST', 'ENOTEMPTY', 'ENOTDIR', 'EISDIR', 'EPERM'].includes((error as NodeJS.ErrnoException).code ?? '')) throw error;
+          if (attempt || !(await this.reclaim(lock))) return null;
+        }
+      }
+      return null;
+    } finally {
+      await this.release(candidate, owner);
     }
+  }
+
+  private async reclaim(lock: string): Promise<boolean> {
+    let owners: string[];
+    try { owners = await readdir(lock); }
+    catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return true;
+      if ((error as NodeJS.ErrnoException).code === 'ENOTDIR') {
+        throw new Error(`Legacy checkpoint lock ${lock} has no PID; verify no writer is active before removing it`);
+      }
+      throw error;
+    }
+    if (owners.length === 0) {
+      await this.release(lock, 'retired');
+      return true;
+    }
+    if (owners.length !== 1 || !/^[1-9]\d*-/.test(owners[0])) return false;
+    const owner = owners[0];
+    try {
+      if (Date.now() - (await stat(`${lock}/${owner}`)).mtimeMs < 60_000) return false;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return true;
+      throw error;
+    }
+    try { process.kill(Number(owner.split('-')[0]), 0); return false; }
+    catch (error) {
+      // EPERM and all unknown liveness errors preserve the lock.
+      if ((error as NodeJS.ErrnoException).code !== 'ESRCH') return false;
+    }
+    await this.release(lock, owner);
+    return true;
   }
 }
 

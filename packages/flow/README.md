@@ -94,3 +94,10 @@ and `sourceDigestOf`, shared by CLI and MCP review continuations. Disk updates
 use an exclusive lock, revision CAS and atomic rename; locks are never reclaimed
 by age. Browser consumers continue to use the portable checkpoint entry and
 their native IndexedDB store.
+
+File checkpoint writes use a PID-tagged lock directory. A lock is reclaimable
+only after one minute and only when the owning PID is confirmed absent; a live
+or inaccessible PID is preserved. Competing reapers cannot remove a replacement
+writer's owner entry. Older ownerless `.lock` files cannot be checked for
+liveness: writes report an error asking you to verify no writer is active before
+removing that legacy file. Keep one version of the writer on a shared checkpoint.

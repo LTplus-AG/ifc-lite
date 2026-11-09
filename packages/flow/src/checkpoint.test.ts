@@ -413,3 +413,60 @@ it('#7039 refuses removal or inflation of the approved root budget', async () =>
   }
   expect(parseCheckpoint(JSON.parse(JSON.stringify(approved))).budget).toEqual({ maxRequests: 2, requests: 1 });
 });
+
+it('recovers old locks only for dead writers, keeping live and recent locks (lifecycle audit)', async () => {
+  const { mkdtemp, mkdir, writeFile, utimes, rm } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { spawnSync } = await import('node:child_process');
+  const { FileCheckpointStore } = await import('./checkpoint-file.js');
+  const dead = spawnSync(process.execPath, ['-e', '']).pid;
+  const root = await mkdtemp(join(tmpdir(), 'checkpoint-lock-'));
+  try {
+    const path = join(root, 'review.json'), lock = `${path}.lock`;
+    const checkpoint = await paused();
+    const store = new FileCheckpointStore(path);
+    await mkdir(lock);
+    const owner = join(lock, `${dead}-dead`);
+    await writeFile(owner, '');
+    expect(await store.write(checkpoint, null)).toBe(false);
+    const old = new Date(Date.now() - 120_000);
+    await utimes(owner, old, old);
+    expect(await store.write(checkpoint, null)).toBe(true);
+    await mkdir(lock);
+    const live = join(lock, `${process.pid}-live`);
+    await writeFile(live, ''); await utimes(live, old, old);
+    expect(await store.write(checkpoint, 1)).toBe(false);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+it('concurrent stale-lock reapers admit only one compare-and-swap (lifecycle audit)', async () => {
+  const { mkdtemp, mkdir, writeFile, utimes, rm } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { spawnSync } = await import('node:child_process');
+  const { FileCheckpointStore } = await import('./checkpoint-file.js');
+  const dead = spawnSync(process.execPath, ['-e', '']).pid;
+  const root = await mkdtemp(join(tmpdir(), 'checkpoint-reap-'));
+  try {
+    const path = join(root, 'review.json'), lock = `${path}.lock`;
+    await mkdir(lock); const owner = join(lock, `${dead}-dead`);
+    await writeFile(owner, ''); const old = new Date(Date.now() - 120_000); await utimes(owner, old, old);
+    const checkpoint = await paused();
+    const results = await Promise.all(Array.from({ length: 8 }, () => new FileCheckpointStore(path).write(checkpoint, null)));
+    expect(results.filter(Boolean)).toHaveLength(1);
+    expect((await new FileCheckpointStore(path).load()).revision).toBe(1);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+it('reports ownerless legacy checkpoint locks instead of guessing liveness (lifecycle audit)', async () => {
+  const { mkdtemp, writeFile, rm } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { FileCheckpointStore } = await import('./checkpoint-file.js');
+  const root = await mkdtemp(join(tmpdir(), 'checkpoint-legacy-'));
+  try {
+    const path = join(root, 'review.json'); await writeFile(`${path}.lock`, '');
+    await expect(new FileCheckpointStore(path).write(await paused(), null)).rejects.toThrow('has no PID');
+  } finally { await rm(root, { recursive: true, force: true }); }
+});

@@ -134,6 +134,8 @@ export function solveCommandSnap(runtime: CommandRuntimeState, plane: Workplane,
     [...input.sources, {
       id: 'grid',
       collect(q, _radius, out) {
+        // Hosted tools use offsets along their host, never world increments.
+        if (!command.id.endsWith('.place') || command.aimsAtElement?.(runtime.gesture) === true) return;
         if (input.aim && input.aim !== 'snap') return;
         // A decimal increment around 1–10px, down to micrometre precision.
         const spacing = Math.max(1e-6, 10 ** Math.floor(Math.log10(q.metresPerPixel * 10) + 1e-9));

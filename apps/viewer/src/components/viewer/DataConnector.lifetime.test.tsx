@@ -269,3 +269,27 @@ test('#8962 replacing CSV retires an AI mapping for the same model', async t => 
   assert.equal(replies.length, 2); replies[1](response()); await advance(100);
   assert.ok(document.querySelector('section[aria-label="Suggested table mapping"]'));
 });
+
+// C-12: a replacement file with no data rows cannot reuse the prior mapping.
+test('C-12 header-only replacement clears the prior CSV import mapping', async () => {
+  render(<Harness />); await advance(0); await upload();
+  chooseCsv('empty.csv', 'OtherId,OtherValue\n');
+  await advance(50);
+  assert.equal(importButton().disabled, true, 'empty replacement cannot import old rows');
+  assert.equal(document.querySelectorAll('input[aria-label="Target Property"]').length, 0, 'old mapping is removed');
+});
+
+test('C-12 replacing the CSV aborts an in-flight mapping suggestion', async t => {
+  useViewerStore.setState({ chatActiveModel: 'openai/gpt-free' });
+  let signal: AbortSignal | undefined;
+  let finish!: (response: Response) => void;
+  t.mock.method(globalThis, 'fetch', (_input: RequestInfo | URL, init?: RequestInit) => { signal = init?.signal ?? undefined; return new Promise<Response>(resolve => { finish = resolve; }); });
+  render(<Harness />); await advance(0); await upload();
+  click(button('Suggest mapping'));
+  for (let i = 0; i < 20 && !signal; i++) await advance(10);
+  chooseCsv('b.csv', `GlobalId,FireRating\n${guid(1)},B\n`); await advance(50);
+  const aborted = signal?.aborted;
+  finish(new Response('data: [DONE]\n\n')); await advance(50);
+  assert.equal(aborted, true, 'mapping transport belongs to the retired CSV draft');
+  assert.equal(button('Suggest mapping').disabled, false);
+});

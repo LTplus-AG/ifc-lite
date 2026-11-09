@@ -26,7 +26,7 @@
  * dialog on a live room shows what was shared.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, Check, Copy, Link2, Users } from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -37,9 +37,10 @@ import { useViewerStore } from '@/store';
 import { toast } from '@/components/ui/toast';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import type { CollabRole } from '@/store/slices/collabSlice';
-import { buildShareUrl, mintRoomId, mintRoomToken, parseRoleFromToken, releaseRoomClaim } from '@/lib/collab/share-link';
+import { buildShareUrl, mintRoomToken, parseRoleFromToken } from '@/lib/collab/share-link';
 import { describeSeedPhase, isCollabSeedInFlight } from '@/lib/collab/seed-phase';
-import { buildShareSeed, modelsInShareScope, prepareShareSeed, shareScopeIsChoice, type ShareScope } from '@/lib/collab/share-scope';
+import { modelsInShareScope, shareScopeIsChoice, type ShareScope } from '@/lib/collab/share-scope';
+import { useShareRoomCreation } from './useShareRoomCreation';
 import { ShareScopeField } from './ShareScopeField';
 
 interface ShareDialogProps {
@@ -62,7 +63,6 @@ export function ShareDialog({ open, onOpenChange }: ShareDialogProps) {
   const collabRole = useViewerStore((s) => s.collabRole);
   const collabPeers = useViewerStore((s) => s.collabPeers);
   const collabIdentity = useViewerStore((s) => s.collabIdentity);
-  const startCollab = useViewerStore((s) => s.startCollab);
   // Set when the room did not get the model's geometry. A link to a room the
   // viewer KNOWS is missing its geometry must not be presented as a plain
   // success: the recipient would open it and see an empty scene.
@@ -77,14 +77,12 @@ export function ShareDialog({ open, onOpenChange }: ShareDialogProps) {
   const [scopeConfirmed, setScopeConfirmed] = useState(false);
   const [link, setLink] = useState<string>('');
   // Room creation in flight (no room yet) / invite mint in flight.
-  const [creating, setCreating] = useState(false);
   const [minting, setMinting] = useState(false);
   const [copied, setCopied] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   // One room-creation attempt per opening. A join whose session never comes up
   // resets `collabRoomId` to null, which would otherwise re-trigger creation
   // in a loop; the notice tells the user, and re-opening the dialog retries.
-  const roomAttemptRef = useRef<Promise<void> | null>(null);
 
   /**
    * Non-admins cannot mint role-scoped tokens (no escalation by design),
@@ -132,63 +130,18 @@ export function ShareDialog({ open, onOpenChange }: ShareDialogProps) {
   const sharedModelCount = collabRoomId ? collabRoomModels.size : scope === 'all' ? seedableCount : 1;
   const title = scopeIsChoice && sharedModelCount > 1 ? t('shareDialog.titleMulti', { count: sharedModelCount }) : t('shareDialog.titleSingle', { model: modelName });
 
-  // 1. Ensure a room: the creator mints an admin token (first-touch) and joins
-  // with it, seeding the model, so it's authorized to mint role-scoped share
-  // links thereafter. Deliberately NOT re-run by `collabRoomId` flipping to
-  // the new room — the attempt ref carries this promise across re-renders.
   useEffect(() => {
-    if (!open) {
-      roomAttemptRef.current = null;
-      setScopeConfirmed(false);
-      return;
-    }
-    if (!hasModel || collabRoomId || roomAttemptRef.current || awaitingConsent) return;
-    const roomId = mintRoomId();
-    setCreating(true);
-    setLink('');
-    setCopied(false);
-    setNotice(null);
-    roomAttemptRef.current = (async () => {
-      let adminToken: string | undefined;
-      try {
-        // Reject known-invalid metadata before claiming a room (#6565).
-        const preflight = useViewerStore.getState();
-        buildShareSeed(preflight.models, preflight.activeModelId, scope, preflight.georefMutations);
-        adminToken = await mintRoomToken({ roomId, role: 'admin' });
-        // Models can change during minting. Read fresh and always pass a seed,
-        // even empty, so startCollab retains the owner path (#4444).
-        const st = useViewerStore.getState();
-        const seed = await prepareShareSeed(st.models, st.mutationViews, st.activeModelId, scope, st.georefMutations);
-        await startCollab({
-          roomId,
-          role: 'admin',
-          token: adminToken,
-          seed,
-        });
-        // `startCollab` resolves without a live room when the session never
-        // came up (it logs why) or the user left mid-join (RoomPanel's Leave).
-        // Neither is a connection failure this dialog can tell apart, and the
-        // attempt ref blocks a retry until it is re-opened — so say exactly
-        // that instead of sitting on "Creating room…" forever.
-        if (useViewerStore.getState().collabRoomId !== roomId) {
-          setNotice(t('shareDialog.roomCreationFailed'));
-        }
-      } catch (err) {
-        // eslint-disable-next-line no-console
-        console.error('[collab] room creation failed:', err);
-        setNotice(t('shareDialog.linkCreationFailed'));
-      } finally {
-        // No live room after the mint: hand the claim back (#6581). The server keeps any room someone joined.
-        if (adminToken && useViewerStore.getState().collabRoomId !== roomId) void releaseRoomClaim(roomId, adminToken);
-        setCreating(false);
-      }
-    })();
-  }, [open, hasModel, collabRoomId, startCollab, awaitingConsent, scope]);
+    setNotice(null); setMinting(false);
+    if (!open) setScopeConfirmed(false);
+  }, [open]);
+
+  const creating = useShareRoomCreation({ open, hasModel, collabRoomId, awaitingConsent, scope, setNotice });
 
   // 2. Mint the invite — re-minted when the dialog opens or the role changes,
   // and only once the seed has settled (`seedInFlight` false). Until then the
   // progress row below stands in for the link.
   useEffect(() => {
+    setMinting(false);
     if (!open || !hasModel || !collabRoomId) return;
     setCopied(false);
     // A joined non-admin can't mint: don't fire a doomed request, reuse the

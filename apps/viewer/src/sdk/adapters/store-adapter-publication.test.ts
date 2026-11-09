@@ -103,8 +103,10 @@ async function roofRoom() {
   registerStoreSlot(data, slot);
   useViewerStore.setState({ collabRoomId: session.roomId, collabSession: session, collabRoomModels: new Map([[MODEL, slot]]),
     mirrorEntityCreate: (_model, id, type, guid) => {
-      assert.ok(guid);
-      const path = pathForGuid(data, guid);
+      // Undo restores geometry records without IFC GlobalIds through their
+      // existing room paths, just as the production mirror does.
+      const path = pathForEntity(data, id) ?? (guid ? pathForGuid(data, guid) : null);
+      assert.ok(path, 'a restored geometry record retains its room identity');
       session.transact(() => createEntity(session.doc, path, { ifcClass: type }));
       registerEntityPath(data, id, path);
     },
@@ -115,6 +117,7 @@ async function roofRoom() {
     mirrorEntityRemove: (_model, id) => {
       const path = pathForEntity(data, id);
       if (path) session.transact(() => deleteEntity(session.doc, path));
+      // The production mirror retains the identity so undo can restore it.
     },
     mirrorPropertyEdit: (_model, id, pset, prop, value) => {
       const path = pathForEntity(data, id); assert.ok(path);

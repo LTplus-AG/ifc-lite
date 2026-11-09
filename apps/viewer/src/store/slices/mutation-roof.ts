@@ -66,6 +66,10 @@ function withRoofDefinitionRollback<T>(store: ModellingStore, target: ModelEditT
         if (value === undefined) api.deletePropertyValue(room.session.doc, room.path, ROOF_FOOTPRINT_PSET, name);
         else api.setPropertyValue(room.session.doc, room.path, ROOF_FOOTPRINT_PSET, name, value);
       }
+      // A refused draft is unchanged locally and in the room. Surface the
+      // publication failure through the layout's existing notice channel.
+      if (before.size > 0) store.setState({ collabGeometryNotice:
+        `Roof #${id} was not changed because it could not be shared with room "${room.session.roomId}". The previous shared roof was restored.` });
       throw error;
     }
   });

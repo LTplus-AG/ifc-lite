@@ -19,7 +19,7 @@
 import '@/test/setup-dom.js';
 import { describe, it, beforeEach, afterEach, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
-import { act } from 'react';
+import { act, useState } from 'react';
 import { render, click, cleanup } from '@/test/render.js';
 import { createSyntheticDataStore } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store/index.js';
@@ -392,4 +392,71 @@ describe('ShareDialog: explicit federation scope (#4444, #4620)', () => {
     assert.match(document.body.textContent ?? '', /This session carries 2 models/);
     assert.equal(starts.length, 0, 'an existing room is never re-seeded from the dialog');
   });
+});
+
+it('C-8 closing during admin mint prevents the later model upload', async t => {
+  useViewerStore.setState({ models: new Map([['a', makeModel('a', 'fixture.ifc', 0)]]), activeModelId: 'a', collabSeedPhase: 'none' });
+  window.localStorage.setItem('ifc-lite:collab:server-url', 'wss://relay.example');
+  let finish!: () => void;
+  t.mock.method(globalThis, 'fetch', async (_url: RequestInfo | URL, init?: RequestInit) => {
+    if (init?.method === 'POST') await new Promise<void>(resolve => { finish = resolve; });
+    return Response.json({ token: 'admin-token' });
+  });
+  let close!: () => void;
+  function Host() { const [open, setOpen] = useState(true); close = () => setOpen(false); return <ShareDialog open={open} onOpenChange={setOpen} />; }
+  render(<Host />);
+  click(createLinkButton()!);
+  act(() => close());
+  await act(async () => finish()); await settle();
+  assert.equal(starts.length, 0, 'retired mint must not upload the model');
+});
+
+it('C-8 retired room failure cannot clear the next attempt or show its notice', async t => {
+  useViewerStore.setState({ models: new Map([['a', makeModel('a', 'fixture.ifc', 0)]]), activeModelId: 'a', collabSeedPhase: 'none' });
+  window.localStorage.setItem('ifc-lite:collab:server-url', 'wss://relay.example');
+  t.mock.method(console, 'error', () => {});
+  const replies: Array<(response: Response) => void> = [];
+  t.mock.method(globalThis, 'fetch', () => new Promise<Response>(resolve => replies.push(resolve)));
+  let change!: (open: boolean) => void;
+  function Host() { const [open, setOpen] = useState(true); change = setOpen; return <ShareDialog open={open} onOpenChange={setOpen} />; }
+  render(<Host />); click(createLinkButton()!);
+  act(() => change(false)); act(() => change(true)); click(createLinkButton()!);
+  assert.equal(replies.length, 2);
+  const nextStatus = linkField().value;
+  await act(async () => replies[0](new Response('', { status: 500 }))); await settle();
+  const statusAfterOldFailure = linkField().value;
+  const staleNotice = document.body.textContent?.includes('Link creation failed');
+  await act(async () => replies[1](Response.json({ token: 'next-token' }))); await settle();
+  assert.equal(statusAfterOldFailure, nextStatus, 'old finally cannot clear creating for the next attempt');
+  assert.equal(staleNotice, false);
+});
+
+it('C-8 changing into a joiner during mint clears minting before the early return', async t => {
+  useViewerStore.setState({ models: new Map([['a', makeModel('a', 'fixture.ifc', 0)]]), activeModelId: 'a',
+    collabRoomId: 'existing', collabRole: 'admin', collabSeedPhase: 'none', collabLastShareToken: 'held-invite' });
+  window.localStorage.setItem('ifc-lite:collab:server-url', 'wss://relay.example');
+  let finish!: (response: Response) => void;
+  t.mock.method(globalThis, 'fetch', () => new Promise<Response>(resolve => { finish = resolve; }));
+  render(<ShareDialog open onOpenChange={() => {}} />);
+  act(() => useViewerStore.setState({ collabRole: 'viewer' }));
+  const shown = linkField().value;
+  await act(async () => finish(Response.json({ token: 'obsolete' }))); await settle();
+  assert.equal(shown.includes('t=held-invite'), true, 'the fallback invite is no longer hidden by stale minting');
+});
+
+it('C-8 closing during a pending owner join retires that room', async () => {
+  useViewerStore.setState({ models: new Map([['a', makeModel('a', 'fixture.ifc', 0)]]), activeModelId: 'a', collabSeedPhase: 'none', collabSession: null,
+    startCollab: async opts => {
+      useViewerStore.setState({ collabRoomId: opts.roomId, collabRole: 'admin', collabSeedPhase: 'geometry' });
+      await new Promise<void>(resolve => { finish = resolve; });
+    } });
+  let finish!: () => void;
+  let close!: () => void;
+  function Host() { const [open, setOpen] = useState(true); close = () => setOpen(false); return <ShareDialog open={open} onOpenChange={setOpen} />; }
+  render(<Host />); click(createLinkButton()!); await settle();
+  assert.equal(typeof useViewerStore.getState().collabRoomId, 'string');
+  act(() => close());
+  const remaining = useViewerStore.getState().collabRoomId;
+  await act(async () => finish()); await settle();
+  assert.equal(remaining, null, 'a pending join must lose the room identity used by its seed ownership check');
 });

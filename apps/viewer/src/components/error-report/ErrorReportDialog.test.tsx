@@ -504,3 +504,45 @@ test('#7495 unavailable issue lookup requires an explicit new-issue choice', asy
   assert.ok(separate); click(separate);
   assert.equal(button('Review report').disabled, false);
 });
+
+// Async ownership audit: an explicit refresh may still be in flight at deletion.
+test('late manual GET cannot restore submitted after private report deletion', async () => {
+  let reads = 0;
+  let finish!: () => void;
+  const transport: typeof fetch = async (value, options) => {
+    if (String(value).endsWith('/session')) return Response.json(session);
+    if (options?.method === 'DELETE') return Response.json({ id: 'late-get', status: 'deleted' });
+    if (++reads > 1) await new Promise<void>(resolve => { finish = resolve; });
+    return Response.json({ id: 'late-get', status: 'submitted', publicationHold: true });
+  };
+  render(<ErrorReportDialog context={{ errorCode: 'report_resume', resumeReportId: 'late-get' }} onClose={() => {}} client={new ReportClient(transport)} />);
+  await settle();
+  click(button('Check review status'));
+  click(button('Delete private report and model')); click(button('Confirm deletion of private data'));
+  await settle();
+  assert.equal(document.body.textContent?.includes('Private data deletion confirmed'), true);
+  await act(async () => finish()); await settle();
+  assert.equal(document.body.textContent?.includes('Private data deletion confirmed'), true, 'late refresh cannot undo deletion');
+});
+
+test('cancelling a resumed draft twice issues one DELETE', async () => {
+  let deletions = 0, closes = 0;
+  let finish!: () => void;
+  const transport: typeof fetch = async (value, options) => {
+    if (String(value).endsWith('/session')) return Response.json(session);
+    if (options?.method === 'DELETE') {
+      deletions++; await new Promise<void>(resolve => { finish = resolve; });
+      return Response.json({ id: 'cancel-twice', status: 'deleted' });
+    }
+    return Response.json({ id: 'cancel-twice', status: 'draft', draft: { clientRequestId: 'request', title: 'Report', description: '',
+      diagnostics: { errorCode: 'load_failed', appVersion: 'test', buildSha: 'test' }, visibility: 'private' } });
+  };
+  render(<ErrorReportDialog context={{ errorCode: 'report_resume', resumeReportId: 'cancel-twice' }} onClose={() => { closes++; }} client={new ReportClient(transport)} />);
+  await settle();
+  const cancel = button('Cancel and delete draft');
+  act(() => { cancel.click(); cancel.click(); });
+  await settle();
+  const count = deletions;
+  await act(async () => finish()); await settle();
+  assert.equal(count, 1); assert.equal(closes, 1);
+});

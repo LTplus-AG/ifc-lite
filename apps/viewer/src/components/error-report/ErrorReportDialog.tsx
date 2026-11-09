@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { useSingleFlight } from '@/hooks/useSingleFlight';
 import { completeReport, forgetReport, rememberReport } from '@/lib/error-reports/pending';
 import { useEffect, useRef, useState } from 'react';
 import { isPublicSharingConsent } from '@ifc-lite/report-contract';
@@ -105,8 +106,10 @@ export function ErrorReportDialog({ context, onClose, client: injectedClient }: 
       publicPrivacyConfirmed: isPublicSharingConsent(restored.uploadSource?.publicSharingConsent),
       publicCopiesConfirmed: isPublicSharingConsent(restored.uploadSource?.publicSharingConsent) });
   }
+  const receiptGeneration = useRef(0);
   async function deletePrivateReport() {
     if (!receipt || deleting.current) return;
+    receiptGeneration.current++;
     deleting.current = true; setDeleteState('deleting'); setError('');
     try {
       const deleted = await client.request<ReportReceipt>(`/${encodeURIComponent(receipt.id)}`, 'DELETE');
@@ -120,9 +123,13 @@ export function ErrorReportDialog({ context, onClose, client: injectedClient }: 
     } finally { deleting.current = false; }
   }
   async function refreshReceipt() {
-    if (!receipt) return;
-    try { restoreReceipt(await client.request<ReportReceipt>(`/${encodeURIComponent(receipt.id)}`)); }
-    catch (reason) { setError(reason instanceof Error ? reason.message : 'Request failed'); }
+    if (!receipt || deleting.current) return;
+    const generation = receiptGeneration.current;
+    try {
+      const next = await client.request<ReportReceipt>(`/${encodeURIComponent(receipt.id)}`);
+      if (generation === receiptGeneration.current) restoreReceipt(next);
+    }
+    catch (reason) { if (generation === receiptGeneration.current) setError(reason instanceof Error ? reason.message : 'Request failed'); }
   }
   const customApproved = existing?.customNdaStatus === 'approved' && !existing.uploadSource;
   const resumeFileValid = !existing?.uploadSource || existing.upload?.status === 'ready' || (!!attachment.file && attachment.file.name === existing.uploadSource.name && attachment.file.size === existing.uploadSource.size);
@@ -158,18 +165,22 @@ export function ErrorReportDialog({ context, onClose, client: injectedClient }: 
     await inFlight.current;
     onClose();
   }
+  const cancellation = useSingleFlight();
   async function cancel() {
-    if (deleting.current) return;
-    if (receipt) { onClose(); return; }
-    abort.current?.abort();
-    await inFlight.current;
-    try {
-      if (submission.current) await submission.current.cancel();
-      else if (context.resumeReportId) { await client.request(`/${encodeURIComponent(context.resumeReportId)}`, 'DELETE'); forgetReport(context.resumeReportId); }
-      onClose();
-    }
-    catch (reason) { setError(reason instanceof Error ? reason.message : 'Cancellation failed'); }
+    await cancellation.run(async () => {
+      if (deleting.current) return;
+      if (receipt) { onClose(); return; }
+      abort.current?.abort();
+      await inFlight.current;
+      try {
+        if (submission.current) await submission.current.cancel();
+        else if (context.resumeReportId) { await client.request(`/${encodeURIComponent(context.resumeReportId)}`, 'DELETE'); forgetReport(context.resumeReportId); }
+        onClose();
+      }
+      catch (reason) { setError(reason instanceof Error ? reason.message : 'Cancellation failed'); }
+    });
   }
+
   const issueUrl = safeIssueUrl(receipt?.issueUrl);
   const agreementUrl = safeAgreementUrl(submission.current?.agreementReceipt?.pdfUrl ?? (receipt?.agreementAccepted ? `/api/reports/${receipt.id}/agreement.pdf` : undefined));
   return <Dialog open onOpenChange={open => { if (!open) void closeDialog(); }}>

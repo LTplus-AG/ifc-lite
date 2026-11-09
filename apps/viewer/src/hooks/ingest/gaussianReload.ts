@@ -53,6 +53,7 @@ async function replaceCapture(modelId: string, deps: GaussianReloadDeps): Promis
     const next = await deps.addModel(sourceFile, {
       modelId: replacementId,
       gaussianReplacingModelId: modelId,
+      failIfSuperseded: true, // an unrelated add that starts meanwhile cancels the swap (#8566)
       onGaussianBudgetReserved: release => { releaseBudget = release; },
       onGaussianLoadSettled: (outcome) => { completed = outcome === 'completed'; },
       name, visible, collapsed, sourceHandle, gaussianAttribution: capture.attribution, gaussianUpAxis: capture.upAxis,
@@ -60,8 +61,8 @@ async function replaceCapture(modelId: string, deps: GaussianReloadDeps): Promis
       ...(capture.placementOrigin === 'explicit' ? { gaussianPlacement: [...(capture.sourcePlacement ?? capture.placement)] } : {}),
     });
     const state = useViewerStore.getState();
-    // An add can publish yet not complete (cancelled metadata). The explicit
-    // id lets finally release that losing asset without touching another load.
+    // An add can publish yet not complete (cancelled metadata) or be superseded.
+    // The explicit id lets finally release that losing asset without touching another load.
     // Removal/replacement of the source while awaiting also cancels this swap.
     if (!completed || next !== replacementId || !state.models.get(replacementId)?.gaussianSplat
       || state.models.get(modelId)?.gaussianSplat?.handle !== capture.handle) {

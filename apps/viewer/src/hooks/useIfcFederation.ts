@@ -168,6 +168,7 @@ export function useIfcFederation(
       // explicit id), and it must still be there (a primary load clears it).
       if (!thisAdd.registered || !useViewerStore.getState().models.has(modelId)) return null;
       convergeFederationRtcFrame();
+      if (options?.failIfSuperseded && loadSessionRef.current !== currentSession) return null; // its caller cleans up (#8566)
       console.log(`[ifc-lite] Added model ${file.name} (${fileSizeForGateMB.toFixed(1)}MB) in ${(performance.now() - addStart).toFixed(0)}ms`);
       return modelId;
 

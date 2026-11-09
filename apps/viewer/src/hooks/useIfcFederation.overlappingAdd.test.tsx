@@ -114,6 +114,19 @@ describe('addModel under overlapping federated adds (federation-addmodel-race)',
     assert.equal(await a, null);
   });
 
+  it('a replacement transaction (failIfSuperseded, #8566) still reports a newer add as cancelling it', async () => {
+    const replacement = hookApi!.addModel(ifc('a.ifc'), { modelId: 'replacement', failIfSuperseded: true });
+    await loadsStarted(1);
+    const other = hookApi!.addModel(ifc('b.ifc'), { modelId: 'other' });
+    await loadsStarted(2);
+
+    pending[0].register();
+    assert.equal(await replacement, null, 'superseded: the caller cleans its registered model up');
+    assert.equal(useViewerStore.getState().models.has('replacement'), true);
+    pending[1].register();
+    assert.equal(await other, 'other');
+  });
+
   it('does not claim a model another overlapping add registered under the same explicit id', async () => {
     const first = hookApi!.addModel(ifc('a.ifc'), { modelId: 'same' });
     const second = hookApi!.addModel(ifc('a.ifc'), { modelId: 'same' });

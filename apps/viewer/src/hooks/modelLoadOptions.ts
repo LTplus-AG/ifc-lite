@@ -53,4 +53,10 @@ export interface FederationAddModelOptions extends Pick<ModelLoadOptions, 'sourc
   collapsed?: boolean;
   /** Why THIS add failed (load or federation error); never another overlapping load's. Not called on cancel. */
   onError?: (message: string) => void;
+  /**
+   * A replacement transaction (Gaussian reload, #8566): a newer add that starts
+   * before this one settles cancels it, so it resolves `null` even if its model
+   * registered. The caller owns cleanup of that model by its explicit id.
+   */
+  failIfSuperseded?: boolean;
 }

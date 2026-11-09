@@ -39,14 +39,16 @@
 export interface GeometryDiagnostics {
   /**
    * Contract version handshake (mirrors Rust
-   * `GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION`, currently 4). Bumped on field
+   * `GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION`, currently 5). Bumped on field
    * renames/removals and count-semantics changes; also on an additive field
-   * whose absence a consumer must tell apart from a real zero, which is why 3
-   * (added `totalUnsupportedItems`) and 4 (`totalUnsupportedItems` also counts
-   * unmeshable openings) bumped. A purely additive optional field
-   * that no consumer gates on does not bump. Kept worded the same as the
-   * canonical copy in `@ifc-lite/geometry`: the structural contract test cannot
-   * see comments, so a rule stated two ways here is drift nothing catches.
+   * whose absence a consumer must tell apart from a real zero. A purely
+   * additive optional field that no consumer gates on does not bump.
+   *
+   * - 2: removed the permanently dead `guardSaved` signal.
+   * - 3: added `totalUnsupportedItems` / `unsupportedItemsByType`.
+   * - 4: unsupported counts also include unmeshable openings.
+   * - 5: work-budget refusals carry budget, demand and product/source identity
+   *   separately from unsupported items.
    *
    * REQUIRED, not optional: the Rust field is a plain `u32` serialized
    * unconditionally, so every producer since #1514 writes the key. A value of

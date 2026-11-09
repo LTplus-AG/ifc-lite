@@ -30,6 +30,8 @@ use super::item::{ItemControl, ItemStep};
 use super::retained::{RetainedSelection, LogicalRetainedValue};
 mod merged;
 mod run;
+#[cfg(test)]
+mod mapping_budget_tests;
 use merged::{Merged, Prepared};
 
 type Textures<'a> = Option<&'a FxHashMap<u32, ResolvedTextureMap>>;

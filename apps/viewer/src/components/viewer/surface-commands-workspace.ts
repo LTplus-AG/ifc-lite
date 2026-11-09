@@ -19,6 +19,13 @@ const alwaysEnabled = (_state: SurfaceCommandState): boolean => true;
 
 export const WORKSPACE_SURFACE_COMMANDS = [
   {
+    id: 'model:copy-to-storeys', labelKey: 'storeyManager.copy.title',
+    keywords: 'copy levels storeys floors repeat selection',
+    category: 'Tools', icon: LayoutTemplate, surfaces: paletteOnly,
+    enabled: (state: SurfaceCommandState) => state.canEditInSession,
+    run: () => { void import('@/lib/actions/copy-to-storeys-open').then(m => m.openCopyToStoreys()); },
+  },
+  {
     id: 'extensions:author', labelKey: 'commandPalette.tool.extensionsAuthor.label',
     keywords: 'create new build plan chat ai extension generate',
     category: 'Tools', icon: Sparkles, surfaces: paletteOnly, enabled: alwaysEnabled,

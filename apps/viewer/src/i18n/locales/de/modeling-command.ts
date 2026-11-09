@@ -24,7 +24,7 @@ export const modelingCommandDe = {
   "modelingCommand.wall.alignLeft": "Links",
   "modelingCommand.wall.alignCentre": "Mitte",
   "modelingCommand.wall.alignRight": "Rechts",
-  "modelingCommand.wall.top": "Wo die Oberkante der Wand liegt",
+  "modelingCommand.wall.top": "Wandoberkante",
   "modelingCommand.wall.topStoreyAbove": "Bis Geschoss darüber",
   "modelingCommand.wall.topFixed": "Feste Höhe",
   "modelingCommand.field.width": "Breite",

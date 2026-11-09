@@ -56,7 +56,7 @@ export function buildPaletteExtensionCommands(
         }
         if (host) {
           // Canonical run owns activation; a pre-fire here activates twice.
-          void host.runCommand(payload.id, extensionId).catch((error: unknown) => {
+          void host.runCommand(payload.id, extensionId, () => checkAvailability().status === 'available').catch((error: unknown) => {
             toast.error(describeRunCommandError(`${payload.id} (${extensionId})`, error));
           });
         }

@@ -19,6 +19,8 @@ export class PaletteCommandTestHost extends ExtensionHostService {
   readonly records: InstalledExtensionRecord[] = [];
   readonly bundles = new Map<string, Bundle>();
   failure: Error | null = null;
+  activationWait: Promise<void> | null = null;
+  readonly deactivations: string[] = [];
 
   constructor() {
     super({ sdk: createBimContext({ transport: {
@@ -53,17 +55,19 @@ export class PaletteCommandTestHost extends ExtensionHostService {
     this.slotRegistry.register(owner, manifestToContributions(owner, bundle.manifest.contributes));
   }
 
-  override runCommand(command: string, owner: string): Promise<RuntimeRunResult | undefined> {
+  override runCommand(command: string, owner: string, isCurrent?: () => boolean): Promise<RuntimeRunResult | undefined> {
     let ctx: unknown;
     const deps: RunCommandDeps = {
       sdk: { record: () => { this.executions.push(owner); } },
       storage: { listExtensions: async () => this.records },
       loader: { getBundle: id => this.bundles.get(id) },
       dispatcher: this.dispatcher,
+      isCurrent,
       runtime: {
-        deactivate: async () => {},
+        deactivate: async id => { this.deactivations.push(id); },
         activate: async id => {
           this.activations.push(id);
+          await this.activationWait;
           if (this.failure) throw this.failure;
           return { extensionId: id, activatedAt: '', permissions: {}, grants: [], sandbox: {
             setGlobal: async (_name, value) => { ctx = value; },

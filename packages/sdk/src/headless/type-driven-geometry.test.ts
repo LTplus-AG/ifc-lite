@@ -32,7 +32,7 @@ async function session(bytes: Uint8Array = readFileSync(sample)) {
   // MCP's mutation_undo path, one operation: it reverts one compound record (whose writes it counts);
   // reaching a raw revert would mean the store call split into separate undo steps.
   const undo = () => undoRecordedMutationOperations(backend.getMutationView()!, 1, () => { throw new Error('not one compound record'); });
-  return { bim, S: bim.store, storey, thickness, exported, undo };
+  return { bim, S: bim.store, storey, thickness, exported, undo, backend };
 }
 
 type Store = Awaited<ReturnType<typeof session>>['S'];
@@ -74,6 +74,8 @@ describe('a layered type drives the thickness of what it types', () => {
     S.assignType('m', type.expressId, walls.map((w) => w.expressId));
     const own = S.addMaterialLayerSet('m', { LayerSetName: 'Own', MaterialLayers: [{ Material: S.addMaterial('m', { Name: 'Stone' }).expressId, LayerThickness: 0.4 }] });
     S.assignMaterial('m', S.addMaterialLayerSetUsage('m', { ForLayerSet: own.expressId, OffsetFromReferenceLine: -0.2 }).expressId, [walls[2].expressId]);
+    // Its own layer set usage sizes the occurrence as soon as it is assigned.
+    expect(thickness(walls[2])).toBeCloseTo(0.4, 6);
 
     const thicker = S.addMaterialLayerSet('m', { LayerSetName: 'WT 250', MaterialLayers: [{ Material: S.addMaterial('m', { Name: 'Block' }).expressId, LayerThickness: 0.25 }] });
     S.assignMaterial('m', thicker.expressId, [type.expressId]);
@@ -160,6 +162,23 @@ describe('placed doors and windows are typed occurrences', () => {
     const rels = exported().match(new RegExp(`IFCRELDEFINESBYTYPE\\([^;]*,#${type.expressId}\\);`, 'g')) ?? [];
     expect(rels).toHaveLength(1);
     for (const id of [wall.expressId, ...copies.map((c) => c.expressId)]) expect(rels[0]).toMatch(new RegExp(`#${id}\\b`));
+  });
+
+  it('an array of copies writes each type relationship once per batch, as one undo step', async () => {
+    const { S, storey, backend, undo } = await session();
+    const type = S.addElementType('m', { Type: 'IfcWallType', Name: 'WT', PredefinedType: 'STANDARD' });
+    const wall = S.addWall('m', storey, { Start: [0, 0, 0], End: [5, 0, 0], Thickness: 0.2, Height: 3 });
+    const rel = S.assignType('m', type.expressId, [wall.expressId]);
+    const view = backend.getMutationView()!;
+    const relWrites = () => view.getMutations().filter((m) => m.entityId === rel.expressId).length;
+    const before = relWrites();
+    const copies = S.copyElements('m', [wall.expressId], Array.from({ length: 25 }, (_, i) => ({ offset: [0, 2 * (i + 1), 0] as [number, number, number] })));
+    // One write carrying all 26 objects, not 25 ever-longer rewrites.
+    expect(relWrites() - before).toBe(1);
+    const related = view.getPositionalMutationsForEntity(rel.expressId)?.get(4) as string[];
+    expect(related).toEqual([wall, ...copies].map((r) => `#${r.expressId}`));
+    expect(undo()).toBeGreaterThan(0);
+    expect(relWrites()).toBe(before);
   });
 
   it('IFC2X3 has no door type, so the door stays untyped', async () => {

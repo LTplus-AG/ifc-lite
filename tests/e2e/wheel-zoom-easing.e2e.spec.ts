@@ -7,7 +7,9 @@
  *
  * Zooms OUT throughout: zoom-out never picks a surface (#5393), so each ratio
  * depends only on the wheel path, not on what geometry sits under the cursor.
- * A 100 px notch moves the camera by ~10 % of its distance.
+ * A 100 px notch moves the camera by ~10 % of its distance; half of that moves
+ * the orbit target too (the anti-Zeno dolly), so the camera-to-target distance
+ * this measures grows ~5 % per notch.
  */
 
 import { test, expect } from '@playwright/test';
@@ -78,16 +80,16 @@ test('wheel zoom eases a notch, bounds a burst and reads line-mode wheels like p
   console.log(`[#9507 evidence] ${JSON.stringify(result)}`);
   // The response starts in the event, but it is a slice, not the whole jump.
   expect(result.inEvent).toBeGreaterThan(1);
-  expect(result.inEvent).toBeLessThan(1.05);
+  expect(result.inEvent).toBeLessThan(1.025);
   // It keeps moving over later frames.
   const moving = result.frames.filter((r, i) => r > (i === 0 ? result.inEvent : result.frames[i - 1]) + 1e-9);
   expect(moving.length).toBeGreaterThanOrEqual(5);
   // And lands at about one notch.
-  expect(result.notch).toBeGreaterThan(1.09);
-  expect(result.notch).toBeLessThan(1.12);
-  // Twenty notches at once queue at most about three; the old per-event cap gave 1.1^20 ≈ 6.7.
-  expect(result.burst).toBeLessThan(1.5);
-  expect(result.burst).toBeGreaterThan(1.2);
+  expect(result.notch).toBeGreaterThan(1.045);
+  expect(result.notch).toBeLessThan(1.06);
+  // Twenty notches at once queue at most about three; the old per-event cap gave 1.05^20 ≈ 2.65.
+  expect(result.burst).toBeLessThan(1.25);
+  expect(result.burst).toBeGreaterThan(1.12);
   // A line-mode notch zooms like a pixel-mode one.
   expect(result.line).toBeCloseTo(result.notch, 2);
 });

@@ -56,6 +56,23 @@ describe('ModelWorkspaceSplit (#6232 M2.1)', () => {
     });
   }
 
+  it('collapses only for a narrow Split and restores the sidebar on leave (#9296)', async (t) => {
+    const original = HTMLElement.prototype.getBoundingClientRect;
+    t.mock.method(HTMLElement.prototype, 'getBoundingClientRect', function(this: HTMLElement) {
+      const box = original.call(this);
+      return this.hasAttribute('data-model-split-width') ? { ...box, width: 700 } : box;
+    });
+    useViewerStore.getState().setSidebarMode('expanded');
+    useViewerStore.getState().setModelLayout('split');
+    const ui = mount();
+    act(() => { useViewerStore.getState().enterModelWorkspace(); });
+    await act(frame);
+    assert.equal(useViewerStore.getState().sidebarMode, 'collapsed');
+    assert.ok(ui.querySelector('[role="status"]'), 'the fallback explains why Split cannot fit');
+    act(() => { useViewerStore.getState().exitModelWorkspace(); });
+    assert.equal(useViewerStore.getState().sidebarMode, 'expanded');
+  });
+
   it('enters the workspace with a saved Split layout without throwing', async () => {
     useViewerStore.getState().setModelLayout('split');
     const ui = mount();

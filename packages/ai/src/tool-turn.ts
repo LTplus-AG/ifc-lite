@@ -106,6 +106,9 @@ export interface ToolTurnRequest<Route extends string = string> {
   readonly routeCeiling: number;
   readonly budget: RootBudget;
   readonly signal?: AbortSignal;
+  /** Deadline in ms: finite values in [1, 2^31 - 1] truncate to integers.
+   * Invalid, sub-millisecond, or >= 2^31 values (including Infinity) become
+   * 1 ms, an effectively immediate timeout rather than an unlimited wait. */
   readonly timeoutMs: number;
   readonly onText?: (delta: string) => void;
   readonly onThinking?: (delta: string) => void;

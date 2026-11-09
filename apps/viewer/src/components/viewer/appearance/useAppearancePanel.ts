@@ -288,11 +288,12 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply', suspendPr
     const current = draft.current;
     const renderer = getGlobalRenderer();
     if (!current?.session || !renderer || status !== 'ready') return;
+    const session = current.session;
     await runApply(async isCurrent => {
       const controller = new AbortController(); applyAbort.current = controller;
       setStatus('applying');
       try {
-        await commitAppearance(current.modelId, current.assetIds, current.plan, renderer, current.session, current.groups, current.source, {
+        await commitAppearance(current.modelId, current.assetIds, current.plan, renderer, session, current.groups, current.source, {
           signal: controller.signal,
           onProgress: phase => { if (isCurrent() && !controller.signal.aborted && mounted.current) setStatusMessage(translatedMessage(phase === 'preparing'
             ? 'appearance.controller.preparingChanges' : 'appearance.controller.saving')); },

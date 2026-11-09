@@ -3,9 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Artifact-line filtering against the cut area ∪ the meshes' projected
- * footprint: an elevation whose plane cuts almost nothing keeps its real
- * facade lines, while a line longer than the whole model is still dropped.
+ * A small cut footprint must not discard longer projected facade edges.
+ * Projection follows the configured depth and visibility, with no length heuristic.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -57,7 +56,7 @@ describe('generate() on a plane that cuts only a sliver (issue #8448)', () => {
       useGPU: false, mergeLines: false, includeProjection: true, includeEdges: true, includeHiddenLines: false,
     });
 
-    // The post is cut, so the cut-area reference is in play.
+    // Verify the small cut and the much longer projected facade coexist.
     expect(drawing.lines.some((l) => l.category === 'cut' && l.entityId === 2)).toBe(true);
     const facadeLengths = drawing.lines
       .filter((l) => l.category === 'projection' && l.entityId === 1)

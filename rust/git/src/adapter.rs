@@ -134,12 +134,32 @@ fn optional_text(
 /// infinities have no JSON literal, and leaving them as bits would let a
 /// signalling and a quiet `NaN` differ while comparing equal.
 fn value_of(value: &PropertyValue, field: &'static str) -> Result<FieldValue, AdapterError> {
+    if matches!(value, PropertyValue::Array(_) | PropertyValue::Object(_)) { validate_value_strings(value, field)?; }
     Ok(match value {
         PropertyValue::Null => FieldValue::Absent,
         PropertyValue::Bool(flag) => FieldValue::Bool(*flag),
         PropertyValue::Number(number) if number.is_finite() => FieldValue::Number(*number),
         _ => FieldValue::Text(text(&canonical_value_string(value).expect("text-normalized value"), field)?),
     })
+}
+
+/// Validate source strings before JSON escaping hides malformed UTF-16.
+fn validate_value_strings(value: &PropertyValue, field: &'static str) -> Result<(), AdapterError> {
+    let mut pending = vec![value];
+    while let Some(next) = pending.pop() {
+        match next {
+            PropertyValue::String(value) if value.as_str().is_none() => return Err(AdapterError::NotWellFormed { field }),
+            PropertyValue::Array(values) => pending.extend(values),
+            PropertyValue::Object(entries) => {
+                for (key, value) in entries {
+                    if key.as_str().is_none() { return Err(AdapterError::NotWellFormed { field }); }
+                    pending.push(value);
+                }
+            }
+            _ => {}
+        }
+    }
+    Ok(())
 }
 
 /// A hole is content (see [`AdapterError::Hole`]); refuse rather than skip.

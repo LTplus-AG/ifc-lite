@@ -333,4 +333,3 @@ export function footprintDefinition(footprint: Array<[number, number]>, fields: 
   if (typeof overhang !== 'number') throw new Error('Overhang must be a length in metres');
   return { Footprint: points, EdgeSlopes: [...slopes], Overhang: overhang, Thickness: thickness };
 }
-

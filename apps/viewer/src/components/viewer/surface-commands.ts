@@ -9,7 +9,7 @@ import {
   Crosshair, FolderOpen, Home, Layers3, Maximize2, Orbit, Save,
   SquareStack, Sun, Tag,
 } from 'lucide-react';
-import { resolveEnglish } from '@/i18n/registry';
+import { resolve as t, resolveEnglish } from '@/i18n/registry';
 import { panelTitleKey } from '@/lib/panels/registry';
 import { useViewerStore } from '@/store';
 import { goHomeFromStore } from '@/store/homeView';
@@ -252,7 +252,7 @@ export function commandRowFromDefinition(
     id: command.id,
     label: command.searchLabel ?? resolveEnglish(command.labelKey),
     labelKey: command.labelKey,
-    keywords: command.keywords,
+    keywords: command.keywordsKey ? `${command.keywords} ${t(command.keywordsKey)}` : command.keywords,
     category: command.category,
     icon: command.icon,
     shortcut: command.shortcut,

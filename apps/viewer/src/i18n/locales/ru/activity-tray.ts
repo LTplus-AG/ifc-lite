@@ -96,4 +96,5 @@ export const activityTrayRu = {
   },
   "activityTray.ai.timeout": "Время истекло",
   "activityTray.ai.truncated": "Остановлено при достижении лимита вывода",
+  "activityTray.load.noModel": "Завершено без загрузки модели",
 } satisfies Catalogue;

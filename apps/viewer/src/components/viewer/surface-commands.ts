@@ -16,6 +16,7 @@ import { goHomeFromStore } from '@/store/homeView';
 import { applyLevelDisplayMode } from '@/store/levelDisplay';
 import { openSettings } from '@/lib/settings/open-settings';
 import type { Command } from './commandPaletteSearch';
+import { MODEL_EDIT_SURFACE_COMMANDS } from './surface-commands-model-edit';
 import { TOOL_SURFACE_COMMANDS } from './surface-commands-tools';
 import { PANEL_SURFACE_COMMANDS } from './surface-commands-panels';
 import { WORKSPACE_SURFACE_COMMANDS } from './surface-commands-workspace';
@@ -186,6 +187,7 @@ const FILE_AND_VIEW_SURFACE_COMMANDS = [
 ] as const satisfies readonly SurfaceCommandDefinition[];
 type SurfaceCommandEntry =
   | (typeof FILE_AND_VIEW_SURFACE_COMMANDS)[number]
+  | (typeof MODEL_EDIT_SURFACE_COMMANDS)[number]
   | (typeof TOOL_SURFACE_COMMANDS)[number]
   | (typeof PANEL_SURFACE_COMMANDS)[number]
   | (typeof WORKSPACE_SURFACE_COMMANDS)[number]
@@ -205,6 +207,7 @@ export type SurfaceCommandIdFor<Surface extends CommandSurface> = SurfaceCommand
 export const SURFACE_COMMANDS: readonly (SurfaceCommandDefinition & { id: SurfaceCommandId })[] = [
   ...FILE_AND_VIEW_SURFACE_COMMANDS,
   ...TOOL_SURFACE_COMMANDS,
+  ...MODEL_EDIT_SURFACE_COMMANDS,
   ...PANEL_SURFACE_COMMANDS,
   ...WORKSPACE_SURFACE_COMMANDS,
   ...RIBBON_VIEW_SURFACE_COMMANDS,

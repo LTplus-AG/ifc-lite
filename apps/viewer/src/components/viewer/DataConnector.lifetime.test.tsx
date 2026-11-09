@@ -214,7 +214,7 @@ test('#8947 a suggestion for an old target cannot populate the current target dr
   assert.ok(document.querySelector('section[aria-label="Suggested table mapping"]'), 'a fresh request still works');
 });
 
-for (const partial of [false, true]) test(`#8962 replacing CSV during ${partial ? 'apply' : 'matching'} retires A and keeps B importable`, async t => {
+for (const partial of [false, true]) test(`#8962 replacing CSV during ${partial ? 'apply' : 'matching'} retires A and keeps B importable`, { timeout: 5_000 }, async t => {
   if (partial) useViewerStore.setState({ ...fixtureModels(await parsedModel('a', 201)) });
   render(<Harness />); await advance(0); await upload(partial ? 201 : 2);
   const view = useViewerStore.getState().getMutationView('a'); assert.ok(view);
@@ -224,7 +224,17 @@ for (const partial of [false, true]) test(`#8962 replacing CSV during ${partial 
     for (let i = 0; i < 10 && view.getModifiedEntityCount() === 0; i++) await ticks(t, 1);
     assert.equal(view.getModifiedEntityCount(), 200);
   }
+  // Mocked import timers do not drive FileReader's real window tasks. Wait for
+  // the real CSV read before draining the retired import's remaining callbacks.
+  const read = FileReader.prototype.readAsText;
+  const loaded = new Promise<void>((resolve, reject) => {
+    t.mock.method(FileReader.prototype, 'readAsText', function (this: FileReader, ...args: Parameters<FileReader['readAsText']>) {
+      this.addEventListener('loadend', () => this.error ? reject(this.error) : resolve(), { once: true });
+      return read.apply(this, args);
+    });
+  });
   chooseCsv('b.csv', `GlobalId,FireRating\n${guid(1)},CSV-B\n`);
+  await act(async () => { await loaded; });
   await ticks(t, 80);
   assert.match(document.body.textContent ?? '', /b\.csv/);
   assert.equal(view.getModifiedEntityCount(), partial ? 200 : 0, 'A cannot apply its remaining batch');

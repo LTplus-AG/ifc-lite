@@ -10,10 +10,19 @@ import { useViewerStore } from '@/store';
 export function useModelHierarchyWidth(ref: RefObject<PanelImperativeHandle | null>, folded: boolean, defaultWidth: number): boolean {
   const modeling = useViewerStore((s) => s.workspaceMode === 'model');
   const collapsed = useViewerStore((s) => s.leftPanelCollapsed);
+  const resetEpoch = useViewerStore((s) => s.layoutResetEpoch);
+  const appliedReset = useRef(0);
   const restore = useRef<number | null>(null);
   const pending = useRef<number | null>(null);
   useEffect(() => {
     const panel = ref.current;
+    const reset = resetEpoch !== appliedReset.current;
+    appliedReset.current = resetEpoch;
+    if (reset) {
+      // Reset supersedes both a live session snapshot and a deferred restore.
+      restore.current = null;
+      pending.current = defaultWidth;
+    }
     if (!modeling) {
       const width = restore.current ?? pending.current;
       restore.current = null;
@@ -31,7 +40,7 @@ export function useModelHierarchyWidth(ref: RefObject<PanelImperativeHandle | nu
     const width = panel.getSize().asPercentage;
     restore.current ??= pending.current ?? (Number.isFinite(width) && width > 0 ? width : defaultWidth);
     pending.current = null;
-    if (!Number.isFinite(width) || width > 18) panel.resize('18%');
-  }, [modeling, collapsed, folded, defaultWidth, ref]);
+    if (reset || !Number.isFinite(width) || width > 18) panel.resize(`${reset ? Math.min(defaultWidth, 18) : 18}%`);
+  }, [modeling, collapsed, folded, defaultWidth, ref, resetEpoch]);
   return modeling;
 }

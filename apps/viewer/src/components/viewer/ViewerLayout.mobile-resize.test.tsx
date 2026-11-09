@@ -20,6 +20,7 @@ import { act } from 'react';
 import { activate, cleanup } from '@/test/render.js';
 import { renderViewerLayout } from '@/test/viewer-layout-harness.js';
 import { useViewerStore } from '@/store';
+import { resetLayout } from '@/store/layoutReset';
 import { clearRetiredToolbarStylePreference, TOOLBAR_STYLE_STORAGE_KEY } from '@/store/constants';
 
 const ORIGINAL = { width: window.innerWidth, height: window.innerHeight };
@@ -44,7 +45,7 @@ const isMobile = () => useViewerStore.getState().isMobile;
 // A phone: rotation to 844px landscape stays mobile only because it has touch.
 Object.defineProperty(navigator, 'maxTouchPoints', { configurable: true, value: 5 });
 
-const RESET = { isMobile: false, leftPanelCollapsed: true, rightPanelCollapsed: true };
+const RESET = { isMobile: false, leftPanelCollapsed: true, rightPanelCollapsed: true, layoutResetEpoch: 0 };
 
 beforeEach(() => useViewerStore.setState(RESET));
 
@@ -114,6 +115,10 @@ describe('ViewerLayout desktop split (#5873)', () => {
       const viewportSize = Number.parseFloat(viewport.style.flexGrow);
       assert.ok(hierarchySize <= 18, `hierarchy received ${hierarchySize}%`);
       assert.ok(Math.abs(hierarchySize + viewportSize - 100) < 0.01, 'the initial split must total 100%');
+      act(() => resetLayout());
+      assert.ok(Number.parseFloat(hierarchy.style.flexGrow) <= 18, '#9296 Reset layout must preserve plan + 3D room');
+      act(() => useViewerStore.getState().exitModelWorkspace());
+      assert.equal(Number.parseFloat(hierarchy.style.flexGrow), 22.5, '#9296 leaving Model must keep the reset width');
     } finally {
       cleanup();
       act(() => { useViewerStore.getState().exitModelWorkspace(); useViewerStore.getState().clearAllModels(); useViewerStore.setState({ sidebarActivePanel: previousPanel }); });

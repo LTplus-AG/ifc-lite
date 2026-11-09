@@ -10,7 +10,7 @@ import { render, cleanup } from '@/test/render';
 import { useViewerStore } from '@/store';
 import { useModelHierarchyWidth } from './useModelHierarchyWidth';
 
-afterEach(() => { cleanup(); useViewerStore.setState({ workspaceMode: 'view', leftPanelCollapsed: false }); });
+afterEach(() => { cleanup(); useViewerStore.setState({ workspaceMode: 'view', leftPanelCollapsed: false, layoutResetEpoch: 0 }); });
 
 /** The panel's public percentage-size port; resize remains observable across mode changes. */
 function panelAt(initial: number) {
@@ -23,7 +23,7 @@ function panelAt(initial: number) {
   };
   const ref = { current: panel };
   function Probe() { useModelHierarchyWidth(ref, false, 22.5); return null; }
-  useViewerStore.setState({ workspaceMode: 'view', leftPanelCollapsed: false });
+  useViewerStore.setState({ workspaceMode: 'view', leftPanelCollapsed: false, layoutResetEpoch: 0 });
   render(<Probe />);
   return {
     panel, width: () => width,
@@ -49,4 +49,20 @@ it('#9296 exiting while collapsed forgets the previous session width', () => {
   h.panel.resize('30%');
   h.mode('model'); h.mode('view');
   assert.equal(h.width(), 30, 'restore the width chosen since the last Model session');
+});
+
+it('#9296 Reset layout replaces the saved width while modelling', () => {
+  const h = panelAt(30);
+  h.mode('model');
+  act(() => useViewerStore.getState().bumpLayoutResetEpoch());
+  assert.equal(h.width(), 18, 'reset keeps room for plan + 3D');
+  h.mode('view');
+  assert.equal(h.width(), 22.5, 'reset supersedes the old width');
+});
+it('#9296 Reset layout discards a deferred restore while collapsed', () => {
+  const h = panelAt(30);
+  h.mode('model'); h.collapse(); h.mode('view');
+  act(() => useViewerStore.getState().bumpLayoutResetEpoch());
+  h.expand();
+  assert.equal(h.width(), 22.5, 'expansion restores the reset default');
 });

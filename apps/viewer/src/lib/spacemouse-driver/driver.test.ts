@@ -206,3 +206,91 @@ test('the Fit key reaches onFit through the whole stack', async () => {
   sdk.state.instances[0].client.setKeyPress(0x1f);
   assert.equal(fits, 1);
 });
+
+/** A loader whose SDK load is held until `release()` (or failed with `fail()`), to race connect() against disconnect(). */
+function deferredLoader(sdk: ReturnType<typeof fakeSdk>) {
+  const pending: Array<{ resolve: () => void; reject: (e: Error) => void }> = [];
+  const loadSdk = () =>
+    new Promise<{ default: SdkConstructor }>((resolve, reject) => {
+      pending.push({ resolve: () => void sdk.loadSdk().then(resolve), reject });
+    });
+  return { loadSdk, pending };
+}
+
+const tick = () => new Promise((r) => setTimeout(r, 5));
+
+test('disconnect() during the SDK load cancels the start: no SDK connection, listeners or late status', async () => {
+  const sdk = fakeSdk((client) => queueMicrotask(() => client.onConnect()));
+  const loader = deferredLoader(sdk);
+  const { cam, canvas } = makeCam();
+  const d = new SpaceMouseDriver(cam, { appName: 'T', loadSdk: loader.loadSdk });
+  let status = 0;
+  d.onStatus = () => status++;
+  const result = d.connect(500);
+  d.disconnect();
+  assert.equal(await result, false, 'the pending connect() settles false at disconnect');
+  loader.pending[0].resolve();
+  await tick();
+  assert.equal(sdk.state.instances.length, 0, 'no SDK client was constructed');
+  assert.equal(canvas.count(), 0, 'no view listeners were installed');
+  assert.equal(d.connected, false);
+  assert.equal(status, 0);
+});
+
+test('a cancelled SDK load that fails later does not report its error', async () => {
+  const sdk = fakeSdk(() => {});
+  const loader = deferredLoader(sdk);
+  const d = new SpaceMouseDriver(makeCam().cam, { appName: 'T', loadSdk: loader.loadSdk });
+  const result = d.connect(500);
+  d.disconnect();
+  assert.equal(await result, false);
+  loader.pending[0].reject(new Error('stale failure'));
+  await tick();
+  assert.equal(d.lastError, undefined);
+});
+
+test('a new connect() before the old load completes: the old load cannot overwrite the new session', async () => {
+  const sdk = fakeSdk((client) => queueMicrotask(() => client.onConnect()));
+  const loader = deferredLoader(sdk);
+  const { cam, canvas } = makeCam();
+  const d = new SpaceMouseDriver(cam, { appName: 'T', loadSdk: loader.loadSdk });
+  const first = d.connect(500);
+  d.disconnect();
+  assert.equal(await first, false);
+  const second = d.connect(500);
+  assert.equal(loader.pending.length, 2, 'the new connect() starts its own load');
+
+  loader.pending[1].resolve(); // the new session's load finishes first
+  assert.equal(await second, true);
+  const listeners = canvas.count();
+  loader.pending[0].resolve(); // then the stale one
+  await tick();
+
+  assert.equal(sdk.state.instances.length, 1, 'only the new session constructed an SDK client');
+  assert.equal(canvas.count(), listeners, 'the stale session added no listeners');
+  assert.equal(d.connected, true);
+  d.disconnect();
+  assert.equal(sdk.state.instances[0].deleted, 1, 'disconnect() releases the live session');
+  assert.equal(canvas.count(), 0);
+});
+
+test('callbacks from a disconnected session are ignored after reconnecting', async () => {
+  const sdk = fakeSdk((client) => queueMicrotask(() => client.onConnect()));
+  const d = new SpaceMouseDriver(makeCam().cam, { appName: 'T', loadSdk: sdk.loadSdk });
+  await d.connect(500);
+  d.disconnect();
+  assert.equal(await d.connect(500), true);
+  const [old, current] = sdk.state.instances;
+  old.created = null;
+  current.created = null;
+  let status = 0;
+  d.onStatus = () => status++;
+  old.client.onDisconnect('old session');
+  assert.equal(d.connected, true, 'the old session cannot mark the live one disconnected');
+  assert.equal(d.lastError, undefined);
+  old.client.onConnect();
+  await tick();
+  assert.equal(old.created, null, 'the old session cannot re-attach the device');
+  assert.equal(current.created, null, 'nor attach it through the live session');
+  assert.equal(status, 0);
+});

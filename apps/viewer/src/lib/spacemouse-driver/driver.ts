@@ -41,6 +41,11 @@ export class SpaceMouseDriver {
   private pointer: [number, number] = [0, 0];
   private detach: Array<() => void> = [];
   private waiters = new Set<(ok: boolean) => void>();
+  /**
+   * Bumped by every start and every `disconnect()`. A start that resumes (after the asynchronous SDK load) or an SDK
+   * callback that fires under an older generation belongs to a cancelled session and must do nothing.
+   */
+  private generation = 0;
 
   constructor(
     private readonly cam: DriverCamera,
@@ -85,6 +90,7 @@ export class SpaceMouseDriver {
       // The connection may already be gone; nothing to recover, but never hide it (no silent catch).
       console.warn('[spacemouse-driver] disconnect:', e);
     }
+    this.generation++; // cancels a start still awaiting the SDK and silences the old session's callbacks
     this.detach.splice(0).forEach((f) => f());
     this.lib = undefined;
     this.starting = undefined;
@@ -95,18 +101,23 @@ export class SpaceMouseDriver {
   }
 
   private start(): Promise<void> {
-    this.starting ??= this.doStart().catch((e: unknown) => {
-      this.starting = undefined; // allow a retry
+    if (this.starting) return this.starting;
+    const gen = ++this.generation;
+    const starting: Promise<void> = this.doStart(gen).catch((e: unknown) => {
+      if (this.starting === starting) this.starting = undefined; // allow a retry
+      if (gen !== this.generation) return; // a cancelled start fails silently
       throw e;
     });
-    return this.starting;
+    this.starting = starting;
+    return starting;
   }
 
-  private async doStart(): Promise<void> {
+  private async doStart(gen: number): Promise<void> {
     this.lastError = undefined;
-    // The SDK reads this flag when its client object is constructed.
-    (globalThis as Record<string, unknown>)._3DCONNEXION_DEBUG = !!this.opts.debug;
     const { default: Sdk } = await (this.opts.loadSdk ?? defaultLoader)();
+    // disconnect() (or a newer start) ran while the SDK was loading: this session is cancelled.
+    if (gen !== this.generation) return;
+    const live = () => gen === this.generation;
 
     const canvas = this.cam.canvas;
     if (!(canvas.tabIndex >= 0)) canvas.tabIndex = 0; // the library needs a focusable view
@@ -123,14 +134,18 @@ export class SpaceMouseDriver {
     );
 
     const model = createNavigationModel(this.cam, { onFit: () => this.onFit?.(), pointer: () => this.pointer }) as Record<string, unknown>;
-    model.onConnect = () => this.lib?.create3dmouse(canvas, this.opts.appName);
+    model.onConnect = () => {
+      if (live()) lib.create3dmouse(canvas, this.opts.appName);
+    };
     model.on3dmouseCreated = () => {
+      if (!live()) return;
       this.connected = true;
       this.lastError = undefined;
       this.resolveWaiters(true);
       this.onStatus?.();
     };
     model.onDisconnect = (reason: unknown) => {
+      if (!live()) return;
       const was = this.connected;
       this.connected = false;
       this.lastError = `3Dconnexion driver disconnected (${String(reason ?? '')})`;
@@ -138,8 +153,11 @@ export class SpaceMouseDriver {
       if (was) this.onStatus?.();
     };
 
-    this.lib = new Sdk(model);
-    this.lib.connect();
+    // The SDK reads this flag when its client object is constructed.
+    (globalThis as Record<string, unknown>)._3DCONNEXION_DEBUG = !!this.opts.debug;
+    const lib = new Sdk(model);
+    this.lib = lib;
+    lib.connect();
   }
 
   private resolveWaiters(ok: boolean): void {

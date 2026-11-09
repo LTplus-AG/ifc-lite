@@ -195,6 +195,7 @@ test('#8947 first open initializes the target from the current active model, not
 test('#8947 a suggestion for an old target cannot populate the current target draft', async t => {
   useViewerStore.setState({ chatActiveModel: 'openai/gpt-free' });
   const replies: Array<(response: Response) => void> = [];
+  t.after(() => { for (const finish of replies) finish(new Response('data: [DONE]\n\n')); });
   t.mock.method(globalThis, 'fetch', () => new Promise<Response>(resolve => { replies.push(resolve); }));
   render(<Harness />); await advance(0); await upload();
   const mapping = { version: 1, kind: 'table.mapping', title: 'Fire ratings', identity: { column: 'GlobalId', key: 'GlobalId' },
@@ -207,6 +208,7 @@ test('#8947 a suggestion for an old target cannot populate the current target dr
   replies[0](response()); await advance(100);
   assert.equal(document.querySelector('section[aria-label="Suggested table mapping"]'), null);
   assert.equal(button('Suggest mapping').disabled, false);
+  assert.equal(document.body.textContent?.includes('The suggestion was cancelled.'), false, 'retired suggestion errors do not populate the replacement draft');
   click(button('Suggest mapping'));
   for (let i = 0; i < 20 && replies.length < 2; i++) await advance(10);
   assert.equal(replies.length, 2);
@@ -251,6 +253,7 @@ for (const partial of [false, true]) test(`#8962 replacing CSV during ${partial 
 test('#8962 replacing CSV retires an AI mapping for the same model', async t => {
   useViewerStore.setState({ chatActiveModel: 'openai/gpt-free' });
   const replies: Array<(response: Response) => void> = [];
+  t.after(() => { for (const finish of replies) finish(new Response('data: [DONE]\n\n')); });
   t.mock.method(globalThis, 'fetch', () => new Promise<Response>(resolve => replies.push(resolve)));
   render(<Harness />); await advance(0); await upload();
   const response = () => new Response(`data: ${JSON.stringify({ choices: [{ delta: { content: JSON.stringify({
@@ -264,6 +267,7 @@ test('#8962 replacing CSV retires an AI mapping for the same model', async t => 
   replies[0](response()); await advance(100);
   assert.equal(document.querySelector('section[aria-label="Suggested table mapping"]'), null);
   assert.equal(button('Suggest mapping').disabled, false);
+  assert.equal(document.body.textContent?.includes('The suggestion was cancelled.'), false, 'retired suggestion errors do not populate the replacement draft');
   click(button('Suggest mapping'));
   for (let i = 0; i < 20 && replies.length < 2; i++) await advance(10);
   assert.equal(replies.length, 2); replies[1](response()); await advance(100);
@@ -271,9 +275,9 @@ test('#8962 replacing CSV retires an AI mapping for the same model', async t => 
 });
 
 // C-12: a replacement file with no data rows cannot reuse the prior mapping.
-test('C-12 header-only replacement clears the prior CSV import mapping', async () => {
+for (const replacement of ['', 'OtherId,OtherValue\n']) test(`C-12 replacement ${JSON.stringify(replacement)} clears the prior CSV import mapping`, async () => {
   render(<Harness />); await advance(0); await upload();
-  chooseCsv('empty.csv', 'OtherId,OtherValue\n');
+  chooseCsv('empty.csv', replacement);
   await advance(50);
   assert.equal(importButton().disabled, true, 'empty replacement cannot import old rows');
   assert.equal(document.querySelectorAll('input[aria-label="Target Property"]').length, 0, 'old mapping is removed');
@@ -291,5 +295,72 @@ test('C-12 replacing the CSV aborts an in-flight mapping suggestion', async t =>
   const aborted = signal?.aborted;
   finish(new Response('data: [DONE]\n\n')); await advance(50);
   assert.equal(aborted, true, 'mapping transport belongs to the retired CSV draft');
+  assert.equal(button('Suggest mapping').disabled, false);
+});
+
+test('C-12 an older suggestion finally cannot lose the replacement suggestion controller', async t => {
+  useViewerStore.setState({ chatActiveModel: 'openai/gpt-free' });
+  const replies: Array<(response: Response) => void> = [];
+  t.after(() => { for (const finish of replies) finish(new Response('data: [DONE]\n\n')); });
+  const signals: AbortSignal[] = [];
+  t.mock.method(globalThis, 'fetch', (_input: RequestInfo | URL, init?: RequestInit) => {
+    if (init?.signal) signals.push(init.signal);
+    return new Promise<Response>(resolve => replies.push(resolve));
+  });
+  render(<Harness />); await advance(0); await upload();
+  click(button('Suggest mapping'));
+  for (let i = 0; i < 30 && replies.length < 1; i++) await advance(10);
+  chooseCsv('replacement.csv', `GlobalId,FireRating\n${guid(1)},B\n`); await advance(50);
+  click(button('Suggest mapping'));
+  for (let i = 0; i < 30 && replies.length < 2; i++) await advance(10);
+  assert.equal(replies.length, 2);
+  replies[0](new Response('data: [DONE]\n\n')); await advance(30);
+  cleanup();
+  const aborted = signals[1]?.aborted;
+  replies[1](new Response('data: [DONE]\n\n')); await advance(30);
+  assert.equal(aborted, true, 'cleanup still owns the replacement controller after the old finally');
+});
+
+test('C-12 an unexpected suggestion failure releases the busy state and reports its error', async t => {
+  useViewerStore.setState({ chatActiveModel: 'openai/gpt-free' });
+  render(<Harness />); await advance(0); await upload();
+  const model = useViewerStore.getState().models.get('a'); assert.ok(model?.ifcDataStore);
+  t.mock.method(model.ifcDataStore.entities, 'getExpressIdByGlobalId', () => { throw new Error('fixture property unavailable'); });
+  click(button('Suggest mapping')); await advance(0);
+  assert.equal(button('Suggest mapping').disabled, false);
+  assert.equal(document.body.textContent?.includes('fixture property unavailable'), true);
+});
+
+
+test('C-12 a replacement CSV parse failure removes the previous mapping and displays the error', async t => {
+  render(<Harness />); await advance(0); await upload();
+  const { CsvConnector } = await import('@ifc-lite/mutations');
+  t.mock.method(CsvConnector.prototype, 'parse', () => { throw new Error('fixture CSV parse failure'); });
+  chooseCsv('broken.csv', 'Broken,Column\nvalue,value\n'); await advance(50);
+  assert.equal(importButton().disabled, true);
+  assert.equal(document.querySelectorAll('input[aria-label="Target Property"]').length, 0);
+  assert.equal(document.body.textContent?.includes('fixture CSV parse failure'), true);
+});
+
+test('C-12 accepting a pending file retires a suggestion for the previously displayed rows', async t => {
+  useViewerStore.setState({ chatActiveModel: 'openai/gpt-free' });
+  const replies: Array<(response: Response) => void> = [];
+  t.after(() => { for (const finish of replies) finish(new Response('data: [DONE]\n\n')); });
+  const signals: AbortSignal[] = [];
+  t.mock.method(globalThis, 'fetch', (_input: RequestInfo | URL, init?: RequestInit) => {
+    if (init?.signal) signals.push(init.signal);
+    return new Promise<Response>(resolve => replies.push(resolve));
+  });
+  render(<Harness />); await advance(0); await upload();
+  const reads = holdFileReads(t);
+  chooseCsv('pending.csv', `GlobalId,FireRating\n${guid(1)},NEW\n`);
+  click(button('Suggest mapping'));
+  for (let i = 0; i < 30 && replies.length === 0; i++) await advance(10);
+  assert.equal(replies.length, 1);
+  act(() => reads[0]()); await advance(50);
+  const aborted = signals[0]?.aborted;
+  replies[0](new Response('data: [DONE]\n\n')); await advance(50);
+  assert.equal(aborted, true, 'new table rows replace the suggestion context even within one file-read generation');
+  assert.equal(document.body.textContent?.includes('The suggestion was cancelled.'), false);
   assert.equal(button('Suggest mapping').disabled, false);
 });

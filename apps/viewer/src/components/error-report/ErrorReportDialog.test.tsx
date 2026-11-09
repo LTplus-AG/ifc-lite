@@ -546,3 +546,36 @@ test('cancelling a resumed draft twice issues one DELETE', async () => {
   await act(async () => finish()); await settle();
   assert.equal(count, 1); assert.equal(closes, 1);
 });
+
+test('a retired manual refresh failure cannot show an error after confirmed deletion', async () => {
+  let reads = 0;
+  let finish!: () => void;
+  const transport: typeof fetch = async (value, options) => {
+    if (String(value).endsWith('/session')) return Response.json(session);
+    if (options?.method === 'DELETE') return Response.json({ id: 'failed-refresh', status: 'deleted' });
+    if (++reads > 1) { await new Promise<void>(resolve => { finish = resolve; }); throw new Error('retired refresh failure'); }
+    return Response.json({ id: 'failed-refresh', status: 'submitted', publicationHold: true });
+  };
+  render(<ErrorReportDialog context={{ errorCode: 'report_resume', resumeReportId: 'failed-refresh' }} onClose={() => {}} client={new ReportClient(transport)} />);
+  await settle(); click(button('Check review status'));
+  click(button('Delete private report and model')); click(button('Confirm deletion of private data')); await settle();
+  await act(async () => finish()); await settle();
+  assert.equal(document.body.textContent?.includes('retired refresh failure'), false);
+  assert.equal(document.body.textContent?.includes('Private data deletion confirmed'), true);
+});
+
+test('a draft cancellation settling after unmount cannot close a replacement dialog', async () => {
+  let closeCalls = 0;
+  let finish!: () => void;
+  const transport: typeof fetch = async (value, options) => {
+    if (String(value).endsWith('/session')) return Response.json(session);
+    if (options?.method === 'DELETE') { await new Promise<void>(resolve => { finish = resolve; }); return Response.json({ id: 'retired-cancel', status: 'deleted' }); }
+    return Response.json({ id: 'retired-cancel', status: 'draft', draft: { clientRequestId: 'request', title: 'Report', description: '',
+      diagnostics: { errorCode: 'load_failed', appVersion: 'test', buildSha: 'test' }, visibility: 'private' } });
+  };
+  render(<ErrorReportDialog context={{ errorCode: 'report_resume', resumeReportId: 'retired-cancel' }} onClose={() => { closeCalls++; }} client={new ReportClient(transport)} />);
+  await settle(); click(button('Cancel and delete draft')); await settle();
+  cleanup();
+  await act(async () => finish()); await settle();
+  assert.equal(closeCalls, 0, 'the deletion may finish, but its retired UI owner cannot close a new dialog');
+});

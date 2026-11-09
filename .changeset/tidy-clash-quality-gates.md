@@ -1,5 +1,5 @@
 ---
-"@ifc-lite/clash": patch
+"@ifc-lite/clash": minor
 "@ifc-lite/cli": patch
 ---
 

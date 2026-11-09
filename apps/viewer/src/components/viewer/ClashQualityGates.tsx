@@ -5,8 +5,10 @@ import { useEffect, useMemo, useState } from 'react';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { toast } from '@/components/ui/toast';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { analysisStampOf, useAnalysisStaleness } from '@/hooks/useAnalysisStaleness';
-import { displayQualityPercent, evaluateQualityGates, isQualityGateConfig, qualityBand, type QualityGateConfig, type QualityGateRow, type QualityGateSnapshot } from '@/lib/clash/quality-gate';
+import { newQualityBand, displayQualityPercent, evaluateQualityGates, isQualityGateConfig, qualityBand, type QualityGateConfig, type QualityGateRow, type QualityGateSnapshot } from '@/lib/clash/quality-gate';
 import { runRequestOf } from '@/lib/clash/run-request';
 import { useQualityGatePreferences } from '@/lib/clash/quality-gate-preferences';
 
@@ -51,22 +53,22 @@ function QualityGateEditor() {
       {(['clash', 'duplicates'] as const).map(kind => <fieldset key={kind} className="space-y-1">
         <legend className="font-medium">{t(`clashQuality.${kind}`)}</legend>
         {draft[kind].map((band, index) => <div key={index} className="flex items-center gap-1">
-          <input type="number" min="0" max="100" step="any" disabled={index === 0} className="w-16 rounded border bg-transparent p-1"
+          <Input type="number" min="0" max="100" step="any" disabled={index === 0} className="h-7 w-16 p-1 text-xs"
             aria-label={`${t(`clashQuality.${kind}`)} ${t('clashQuality.minimum')} ${index + 1}`} value={Number.isNaN(band.minimum) ? '' : band.minimum}
             onChange={event => setDraft({ ...draft, [kind]: draft[kind].map((entry, i) => i === index ? { ...entry, minimum: event.target.valueAsNumber } : entry) })} />
-          <input className="min-w-0 flex-1 rounded border bg-transparent p-1" aria-label={`${t(`clashQuality.${kind}`)} ${t('clashQuality.label')} ${index + 1}`}
+          <Input className="h-7 min-w-0 flex-1 p-1 text-xs" aria-label={`${t(`clashQuality.${kind}`)} ${t('clashQuality.label')} ${index + 1}`}
             maxLength={100} value={band.label} onChange={event => setDraft({ ...draft, [kind]: draft[kind].map((entry, i) => i === index ? { ...entry, label: event.target.value } : entry) })} />
-          <input type="color" className="h-7 w-8" aria-label={`${t(`clashQuality.${kind}`)} ${t('clashQuality.color')} ${index + 1}`} value={band.color}
+          <Input type="color" className="h-7 w-8 p-0" aria-label={`${t(`clashQuality.${kind}`)} ${t('clashQuality.color')} ${index + 1}`} value={band.color}
             onChange={event => setDraft({ ...draft, [kind]: draft[kind].map((entry, i) => i === index ? { ...entry, color: event.target.value } : entry) })} />
-          {index > 0 && <button type="button" aria-label={`${t('clashQuality.remove')} ${index + 1}`} onClick={() => setDraft({ ...draft, [kind]: draft[kind].filter((_, i) => i !== index) })}>×</button>}
+          {index > 0 && <Button type="button" variant="ghost" size="icon-xs" aria-label={`${t('clashQuality.remove')} ${index + 1}`} onClick={() => setDraft({ ...draft, [kind]: draft[kind].filter((_, i) => i !== index) })}>×</Button>}
         </div>)}
-        <button type="button" className="underline" disabled={draft[kind].length >= 12 || draft[kind].at(-1)!.minimum >= 100}
-          onClick={() => setDraft({ ...draft, [kind]: [...draft[kind], { minimum: Math.min(100, draft[kind].at(-1)!.minimum + 1), label: t('clashQuality.newCategory'), color: '#64748b' }] })}>{t('clashQuality.add')}</button>
+        <Button type="button" variant="ghost" size="sm" disabled={draft[kind].length >= 12 || draft[kind].at(-1)!.minimum >= 100}
+          onClick={() => setDraft({ ...draft, [kind]: [...draft[kind], newQualityBand(Math.min(100, draft[kind].at(-1)!.minimum + 1), t('clashQuality.newCategory'))] })}>{t('clashQuality.add')}</Button>
       </fieldset>)}
       {!valid && <p role="alert">{t('clashQuality.invalid')}</p>}
-      <button type="button" className="rounded border px-2 py-1" disabled={!valid} onClick={() => {
+      <Button type="button" variant="outline" size="sm" disabled={!valid} onClick={() => {
         if (save(draft)) toast.success(t('clashQuality.saved')); else toast.error(t('clashQuality.failed'));
-      }}>{t('clashQuality.save')}</button>
+      }}>{t('clashQuality.save')}</Button>
     </div>
   </details>;
 }

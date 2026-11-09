@@ -91,13 +91,14 @@ export function snapshotClashReport(state: ClashReportCaptureState, name: string
     };
   });
   const stale = isAnalysisStale(stamp, state);
+  const kind = runRequestOf(raw)?.kind === 'duplicates' ? 'duplicates' : 'clash';
   const id = newClashReportId();
   return {
-    qualityGates: state.clashRawResult ? captureQualityGates(raw, qualityConfig, stale, runRequestOf(raw)?.kind === 'duplicates' ? 'duplicates' : 'clash')
-      : { version: 1, config: structuredClone(qualityConfig), rows: captureQualityGates(result, qualityConfig, stale).rows.map(row => ({ ...row, status: 'unavailable', affected: null, percent: null })) },
+    qualityGates: state.clashRawResult ? captureQualityGates(raw, qualityConfig, stale, kind)
+      : { version: 1, config: structuredClone(qualityConfig), rows: captureQualityGates(result, qualityConfig, stale, kind).rows.map(row => ({ ...row, status: 'unavailable', affected: null, percent: null })) },
     version: 1, id, name: name.trim() || defaultClashReportName(result, now), savedAt: now.toISOString(),
     run: {
-      kind: runRequestOf(raw)?.kind === 'duplicates' ? 'duplicates' : 'clash',
+      kind,
       settings: { tolerance: result.settings.tolerance, excludeVoidsAndHosts: result.settings.excludeVoidsAndHosts },
       rules: savedRules(result),
       ...(stamp ? { mutationRevision: stamp.mutationVersion } : {}),

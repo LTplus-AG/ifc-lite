@@ -6,6 +6,12 @@ import { qualifiedKey } from './exclude.js';
 import type { ClashElement } from './types.js';
 
 type ObjectRef = Pick<ClashElement, 'model' | 'ref'>;
+/** One coverage entry per source object, regardless of matched sides or mesh parts. */
+export function matchedClashObjects(elements: Iterable<Pick<ClashElement, 'model' | 'key' | 'ref'>>): Array<Pick<ClashElement, 'model' | 'key' | 'ref'>> {
+  const objects = new Map<string, Pick<ClashElement, 'model' | 'key' | 'ref'>>();
+  for (const { model, key, ref } of elements) objects.set(JSON.stringify([model, ref]), { model, key, ref });
+  return [...objects.values()];
+}
 /** Mesh/material/instance parts share a reference; repeated GlobalIds do not (#9259). */
 export function sameClashObject(a: ObjectRef, b: ObjectRef): boolean {
   return a.model === b.model && a.ref === b.ref;

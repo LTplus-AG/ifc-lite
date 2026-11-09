@@ -28,13 +28,13 @@ describe('Quality gate interaction (#9259)', () => {
       assert.match(card.textContent ?? '', /3 checked · 3 affected/);
       assert.match(card.textContent ?? '', /0.0%/);
       assert.match(card.textContent ?? '', /Failed/);
+      const configAtCapture = useQualityGatePreferences.getState().config;
       const saved = await saveCurrentResultAs(`Gate ${count}`);
       assert.equal(saved.qualityGates?.rows[0].checked, 3);
       assert.equal(saved.qualityGates?.rows[0].affected, 3);
       act(() => {
-        const config = defaultQualityGateConfig();
-        config.clash[0].label = 'New label';
-        useQualityGatePreferences.setState({ config });
+        configAtCapture.clash[0].label = 'New label';
+        useQualityGatePreferences.setState({ config: structuredClone(configAtCapture) });
       });
       assert.equal(saved.qualityGates?.config.clash[0].label, 'Failed');
       cleanup();

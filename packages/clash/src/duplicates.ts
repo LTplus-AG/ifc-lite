@@ -35,7 +35,7 @@
 import { center, overlapBounds } from './math/aabb.js';
 import { boxDistance, boxesTouch, minExtent, similarity } from './duplicate-metric.js';
 import { sameShape, shapeSignature, type ShapeSignature } from './shape-signature.js';
-import { clashObjectPairKey, sameClashObject } from './object-identity.js';
+import { clashObjectPairKey, matchedClashObjects, sameClashObject } from './object-identity.js';
 import { isExcluded, qualifiedKey } from './exclude.js';
 import { summarizeClashes } from './analysis.js';
 import type {
@@ -415,7 +415,7 @@ export function findDuplicates(elements: ClashElement[], options: DuplicateOptio
     clashes,
     summary: summarizeClashes(clashes),
     rulesRun: [DUPLICATES_RULE],
-    ruleCoverage: [{ rule: DUPLICATES_RULE.id, matchedA: elements.length, matchedB: null, matchedKeysA: [...new Set(elements.map((el) => el.key))].sort(), matchedKeysB: null, matchedElements: [...new Map(elements.map(({ model, key, ref }) => [JSON.stringify([model, ref]), { model, key, ref }])).values()] }],
+    ruleCoverage: [{ rule: DUPLICATES_RULE.id, matchedA: elements.length, matchedB: null, matchedKeysA: [...new Set(elements.map((el) => el.key))].sort(), matchedKeysB: null, matchedElements: matchedClashObjects(elements) }],
     settings: { tolerance: positionTolerance, excludeVoidsAndHosts: exclusions != null },
   };
 }

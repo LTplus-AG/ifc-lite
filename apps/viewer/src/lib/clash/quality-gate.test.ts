@@ -8,6 +8,7 @@ import assert from 'node:assert/strict';
 import { createClashEngine, findDuplicates, type ClashElement } from '@ifc-lite/clash';
 import { captureQualityGates, defaultQualityGateConfig, evaluateQualityGates, isQualityGateConfig, isQualityGateSnapshot, qualityBand, displayQualityPercent } from './quality-gate';
 import { snapshotClashReport, isSavedClashReport } from './saved-report';
+import { rememberRunRequest } from './run-request';
 import { useViewerStore } from '@/store';
 import { qualityGateDocument } from '../document/clash-quality-report';
 import { parseDocumentFile } from '../document/persistence';
@@ -24,6 +25,21 @@ const rule = { id: 'walls', name: 'Walls {Model.Name}', a: 'IfcWall', mode: 'har
 const run = (elements: ClashElement[]) => engine().run(elements, [rule]);
 
 describe('Object quality gate invariants (#9259)', () => {
+  it('keeps a duplicate report readable when raw coverage is unavailable (#9430)', () => {
+    const result = findDuplicates([box('a', 'A', 1), box('b', 'A', 2)]);
+    rememberRunRequest(result, { kind: 'duplicates' });
+    const config = defaultQualityGateConfig();
+    config.duplicates[0].label = 'Duplicate policy';
+    const report = snapshotClashReport({ ...useViewerStore.getState(), clashResult: result, clashRawResult: null },
+      'Duplicates without raw evidence', new Date(), config);
+    assert.ok(report);
+    assert.equal(report.run.kind, 'duplicates');
+    assert.equal(report.qualityGates?.rows[0].kind, 'duplicates');
+    assert.equal(report.qualityGates?.rows[0].status, 'unavailable');
+    assert.equal(report.qualityGates?.rows[0].percent, null);
+    assert.equal(report.qualityGates?.config.duplicates[0].label, 'Duplicate policy');
+    assert.ok(isSavedClashReport(JSON.parse(JSON.stringify(report))), 'saved fallback survives a storage round trip');
+  });
   it('counts unique objects instead of pairs, including equal keys in federated models', async () => {
     const result = await run([box('same', 'A', 1), box('same', 'B', 2), box('third', 'B', 3), box('clean', 'B', 4, 10)]);
     assert.equal(result.clashes.length, 3);

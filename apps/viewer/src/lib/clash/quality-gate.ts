@@ -5,6 +5,8 @@
 import type { ClashResult } from '@ifc-lite/clash';
 
 export interface QualityBand { minimum: number; label: string; color: string }
+/** Default colour for a newly configured category; saved policies retain their chosen colour. */
+export const newQualityBand = (minimum: number, label: string): QualityBand => ({ minimum, label, color: '#64748b' });
 export interface QualityGateConfig { clash: QualityBand[]; duplicates: QualityBand[] }
 export type QualityGateStatus = 'evaluated' | 'not-evaluated' | 'unavailable' | 'incomplete' | 'outdated';
 export interface QualityGateRow {

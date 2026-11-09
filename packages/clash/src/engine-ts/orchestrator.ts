@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { clashObjectPairKey, sameClashObject } from '../object-identity.js';
+import { clashObjectPairKey, matchedClashObjects, sameClashObject } from '../object-identity.js';
 import { clashMemberSet, inClashSet } from '../members.js';
 import { inferClashSeverity } from '../disciplines.js';
 import { isExcluded, qualifiedKey } from '../exclude.js';
@@ -138,16 +138,12 @@ export async function runClash(
           matchedKeysB!.add(el.key);
         }
       }
-      const matchedElements = new Map<string, { model: string; key: string; ref: number }>();
-      for (const index of [...groupA, ...(groupB ?? [])]) {
-        const { model, key, ref } = elements[index];
-        matchedElements.set(qualifiedKey(model, String(ref)), { model, key, ref });
-      }
+      const matchedElements = matchedClashObjects([...groupA, ...(groupB ?? [])].map(index => elements[index]));
       const coverageEntry: ClashRuleCoverage = {
         rule: rule.id,
         matchedA: groupA.length,
         matchedB: groupB ? groupB.length : null,
-        matchedElements: [...matchedElements.values()],
+        matchedElements,
         matchedKeysA: [...matchedKeysA].sort(),
         matchedKeysB: matchedKeysB ? [...matchedKeysB].sort() : null,
         ...(membersA ? { fromMembersA: true } : {}),

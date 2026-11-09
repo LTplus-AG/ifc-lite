@@ -67,7 +67,11 @@ export function cloneShape(ctx: ShapeCopyContext, shapeId: number | null, mode: 
     if (!expanded.has(id)) {
       expanded.add(id);
       if (expanded.size > MAX_CLONED_SHAPE_RECORDS) throw new Error(`The shape of this element is too large to copy (over ${MAX_CLONED_SHAPE_RECORDS} records)`);
-      for (const child of childRefs(rec.attributes)) if (copied(child) && !expanded.has(child)) stack.push(child);
+      for (const child of childRefs(rec.attributes)) {
+        if (!copied(child)) continue;
+        if (expanded.has(child) && !copies.has(child)) throw new Error(`Cannot copy cyclic shape at #${child}`);
+        if (!expanded.has(child)) stack.push(child);
+      }
       continue;
     }
     stack.pop();

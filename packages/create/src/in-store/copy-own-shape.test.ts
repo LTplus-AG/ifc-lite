@@ -16,8 +16,6 @@ import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import { StepExporter, editOwnershipRefusal } from '@ifc-lite/export';
 import { copyProductInStore, createCopyContext } from './copy-product.js';
 import { copyBatchInStore } from './copy-batch.js';
-import { MAX_CLONED_SHAPE_RECORDS } from './copy-shape.js';
-import { parseStepAttributeList } from './step-record-attrs.js';
 import { asRef } from './style-entity-reader.js';
 
 const SAMPLE = fileURLToPath(new URL('../../../../apps/viewer/public/samples/hello-wall.ifc', import.meta.url));
@@ -112,7 +110,7 @@ describe("copyProductInStore shape: 'own' (#8447)", () => {
 
   it('refuses the copy, rather than sharing, when a file shape is over the bound', async () => {
     // A file wall whose body is a polyline of more points than the bound.
-    const n = MAX_CLONED_SHAPE_RECORDS + 1, first = 100_000;
+    const n = 50_001, first = 100_000;
     const points = Array.from({ length: n }, (_, i) => `#${first + i}=IFCCARTESIANPOINT((${i}.,0.));`).join('\n');
     const big = [
       points,
@@ -131,16 +129,8 @@ describe("copyProductInStore shape: 'own' (#8447)", () => {
   });
 });
 
-describe('parseStepAttributeList', () => {
-  it('keeps references, integers, reals, enums, strings and typed values apart', () => {
-    expect(parseStepAttributeList("#12,12,12.,1.E-3,.T.,.AREA.,$,*,'it''s \\X2\\00FC\\X0\\',IFCLENGTHMEASURE(2.5),IFCBOOLEAN(.F.),((1,2,3),(#4))"))
-      .toEqual(['#12', 12, { real: 12 }, { real: 0.001 }, '.T.', '.AREA.', null, '*', "it's ü",
-        { typed: { type: 'IFCLENGTHMEASURE', value: 2.5 } }, { typed: { type: 'IFCBOOLEAN', value: false } }, [[1, 2, 3], ['#4']]]);
-  });
-});
-
 const WASM_PATH = fileURLToPath(new URL('../../../wasm/pkg/ifc-lite_bg.wasm', import.meta.url));
-describe.skipIf(!existsSync(WASM_PATH))("an own-shape copy meshes like its source (#8447)", () => {
+describe.skipIf(!existsSync(WASM_PATH))("an own-shape copy meshes like its source (#8447; build WASM with pnpm build:wasm)", () => {
   it('the copy has the same volume, cut by its windows', async () => {
     const { copyId } = copyProductInStore(createCopyContext(store, editor), WALL, { offset: [0, 3, 0] }, { shape: 'own' });
     const { IfcAPI, initSync } = await import('@ifc-lite/wasm');

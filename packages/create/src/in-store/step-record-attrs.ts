@@ -35,8 +35,8 @@ export function readFileRecord(store: IfcDataStore, view: MutablePropertyView, i
   let attributes: IfcAttributeValue[];
   try {
     attributes = parseStepAttributeList(text.slice(open + 1, close));
-  } catch {
-    return null;
+  } catch (cause) {
+    throw new Error(`Cannot copy STEP record #${id}`, { cause });
   }
   for (const [index, value] of view.getPositionalMutationsForEntity(id) ?? []) attributes[index] = value as IfcAttributeValue;
   return { type: view.getEntityTypeMutation(id)?.newType ?? ref.type, attributes };

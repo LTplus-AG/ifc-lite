@@ -59,6 +59,7 @@ import type { CostStoreModelResolution } from './cost-store-backend.js';
 import type { ModellingStoreBackendMethodsWithoutStoreys } from './store-modelling-types.js';
 import type { EntityRef } from './types.js';
 import { createPhysicalStoreBackend } from './store-physical-backend.js';
+import { createRoofStoreBackend } from './store-roof-backend.js';
 
 /** Same per-call resolution the cost and structural factories take. */
 export type ModellingStoreModelResolver = (modelId?: string) => CostStoreModelResolution;
@@ -91,6 +92,7 @@ export function createModellingStoreBackendWithoutStoreys(resolve: ModellingStor
 
   return {
     ...createPhysicalStoreBackend(resolve),
+    ...createRoofStoreBackend(resolve),
     copyElements(modelId, expressIds, transforms) {
       const model = resolve(modelId);
       return copyBatchInStore(model.store, model.editor, expressIds, transforms)

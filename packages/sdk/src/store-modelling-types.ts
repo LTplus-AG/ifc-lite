@@ -34,8 +34,9 @@ import type { EntityRef } from './types.js';
 import type { PhysicalStoreBackendMethods } from './store-physical-types.js';
 import type { StoreyStoreBackendMethods } from './store-storey-types.js';
 import type { TopConstraintParams } from './store-top-types.js';
+import type { RoofStoreBackendMethods } from './store-roof-types.js';
 
-export interface ModellingStoreBackendMethods extends PhysicalStoreBackendMethods, StoreyStoreBackendMethods {
+export interface ModellingStoreBackendMethods extends PhysicalStoreBackendMethods, StoreyStoreBackendMethods, RoofStoreBackendMethods {
   /** Native mesh/DCEL Room operations with atomic history-aware layout edits. */
   roomCommand?(modelId: string, storeyId: number, command: RoomCommand): Promise<RoomCommandResult>;
   /**

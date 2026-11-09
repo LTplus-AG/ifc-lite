@@ -20,7 +20,7 @@
 
 import { defineSliceTeardown } from '../teardown.js';
 
-export const modelTeardown = defineSliceTeardown('modelSlice', ['models', 'activeModelId'], {
+export const modelTeardown = defineSliceTeardown('modelSlice', ['models', 'activeModelId', 'analysisRunGeneration'], {
   // `resetViewerState` deliberately does NOT clear `models` — "use
   // clearAllModels() for that" (store/index.ts). A file load swaps the
   // ACTIVE model; the federation itself survives it.
@@ -39,8 +39,16 @@ export const modelTeardown = defineSliceTeardown('modelSlice', ['models', 'activ
   // by the user" and persists the wipe over that model's saved data. Nulling
   // it here closes that window instead of asking every subscriber to guess
   // whether a field change was a reset.
-  'session-reset': () => ({ activeModelId: null }),
-  'all-models-cleared': () => ({ models: new Map(), activeModelId: null }),
+  //
+  // `analysisRunGeneration` ends every in-flight analysis run (IDS, rule sets,
+  // clash, flow) that read the outgoing session (A1/A2,
+  // `hooks/analysisRunGuard.ts`). Resetting a run's `*Running` flag alone
+  // left the run computing, writing progress, and (flow) holding its lease.
+  // The session reset keeps `models`, so no federation identity can see it;
+  // `clearAllModels` empties them, but a run that has not recorded what it
+  // read yet (clash before its gather, flow) can only see the bump.
+  'session-reset': (_scope, state) => ({ activeModelId: null, analysisRunGeneration: (state.analysisRunGeneration ?? 0) + 1 }),
+  'all-models-cleared': (_scope, state) => ({ models: new Map(), activeModelId: null, analysisRunGeneration: (state.analysisRunGeneration ?? 0) + 1 }),
   'model-removed': (scope, state) => {
     const models = state.models;
     // A removal that removes nothing must do nothing. `syncSourceModel` and the

@@ -169,7 +169,7 @@ export function PlaygroundChat({
       }
       if (activeRun.current) return;
       const controller = new AbortController(); activeRun.current = controller;
-      const isCurrent = () => activeRun.current === controller && !controller.signal.aborted;
+      const isCurrent = () => activeRun.current === controller;
       setError(null);
       setStreaming(true);
 

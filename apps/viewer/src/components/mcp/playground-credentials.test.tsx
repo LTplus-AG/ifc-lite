@@ -17,7 +17,7 @@ import '@/test/setup-dom.js';
 import { act, useState } from 'react';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { render, cleanup, type as typeInto } from '@/test/render.js';
+import { render, cleanup, waitFor, advance, type as typeInto } from '@/test/render.js';
 import { captureFetch, jsonResponse } from '@/test/fetch-stub.js';
 import { clearApiKeys, updateApiKeys } from '@/services/api-keys';
 import { parsePlaygroundModel, type LoadedPlaygroundModel } from './playground-dispatcher.js';
@@ -91,22 +91,95 @@ describe('MCP playground BYOK credential', () => {
   });
 });
 
-for (const action of ['replace', 'stop', 'unmount'] as const) it(`playground ${action} aborts the current API turn`, async t => {
+for (const action of ['replace', 'stop', 'unmount', 'model-choice'] as const) it(`playground ${action} aborts the current API turn`, async t => {
   t.after(() => { cleanup(); clearApiKeys(); });
   updateApiKeys({ anthropicKey: 'sk-ant-test' });
   const model = await oneWallModel();
   const signals: AbortSignal[] = [];
+  const pending: Array<() => void> = [];
+  t.after(() => { for (const finish of pending) finish(); });
   t.mock.method(globalThis, 'fetch', (_input: RequestInfo | URL, init?: RequestInit) => {
     if (init?.signal) signals.push(init.signal);
-    return new Promise<Response>((_resolve, reject) => init?.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError'))));
+    return new Promise<Response>((resolve, reject) => { pending.push(() => resolve(jsonResponse({ id: 'disposed', type: 'message', role: 'assistant', content: [], stop_reason: 'end_turn', usage: { input_tokens: 0, output_tokens: 0 } }))); init?.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError'))); });
   });
   let swap!: () => void;
   function Host() { const [current, setCurrent] = useState(model); swap = () => setCurrent({ ...model }); return <PlaygroundChat model={current} />; }
   const ui = render(<Host />); await send(ui, 'hello');
   assert.equal(signals.length > 0, true);
-  if (action === 'replace') act(() => swap());
+  if (action === 'model-choice') {
+    const { getPlaygroundModel, setPlaygroundModel } = await import('@/services/playground-model');
+    const { getByokModelsForSource } = await import('@/lib/llm/models');
+    const prior = getPlaygroundModel();
+    t.after(() => setPlaygroundModel(prior));
+    const other = getByokModelsForSource('anthropic').find(candidate => candidate.id !== prior)!;
+    act(() => setPlaygroundModel(other.id));
+  } else if (action === 'replace') act(() => swap());
   else if (action === 'unmount') cleanup();
   else { const stop = ui.querySelector<HTMLButtonElement>('button[aria-label="Stop generating"]'); assert.equal(Boolean(stop), true); act(() => stop!.click()); }
   assert.equal(signals.every(signal => signal.aborted), true, 'retiring the run cancels the API turn');
   cleanup(); clearApiKeys();
+});
+
+for (const phase of ['response', 'tool'] as const) it(`playground Stop during ${phase} prevents subsequent tool mutations`, async t => {
+  t.after(() => { cleanup(); clearApiKeys(); });
+  updateApiKeys({ anthropicKey: 'sk-ant-test' });
+  const model = await oneWallModel();
+  let release!: () => void, calls = 0, mutations = 0;
+  const message = { id: 'msg_stop', type: 'message', role: 'assistant', model: 'claude-opus-5',
+    content: [
+      ...(phase === 'tool' ? [{ type: 'tool_use', id: 'viewer', name: 'viewer_open', input: {} }] : []),
+      { type: 'tool_use', id: 'mutation', name: 'entity_set_property', input: { express_id: 1, pset: 'Pset_Test', name: 'AfterStop', value: 'forbidden' } },
+    ], stop_reason: 'tool_use', stop_sequence: null, usage: { input_tokens: 1, output_tokens: 1 } };
+  t.mock.method(globalThis, 'fetch', async () => {
+    calls++;
+    if (calls > 1) return jsonResponse({ ...message, content: [{ type: 'text', text: 'done' }], stop_reason: 'end_turn' });
+    if (phase === 'response') await new Promise<void>(resolve => { release = resolve; });
+    return jsonResponse(message);
+  });
+  let ui!: HTMLElement;
+  const stop = () => { const button = ui.querySelector<HTMLButtonElement>('button[aria-label="Stop generating"]'); assert.equal(Boolean(button), true); act(() => button!.click()); };
+  ui = render(<PlaygroundChat model={model} dispatchContext={() => ({ onModelChanged: () => { mutations++; }, openViewerPanel: stop })} />);
+  await send(ui, 'Change the property');
+  if (phase === 'response') { stop(); await act(async () => release()); }
+  await new Promise(resolve => setTimeout(resolve, 50));
+  assert.equal(mutations, 0, 'stopping before or during tool processing prevents subsequent edits');
+  assert.equal(calls, 1, 'the aborted conversation makes no further API turns');
+});
+
+it('playground same-tick submissions start one API turn', async t => {
+  t.after(() => { cleanup(); clearApiKeys(); });
+  updateApiKeys({ anthropicKey: 'sk-ant-test' });
+  const releases: Array<() => void> = [];
+  let calls = 0;
+  t.mock.method(globalThis, 'fetch', async () => {
+    calls++; await new Promise<void>(resolve => releases.push(resolve));
+    return jsonResponse({ id: 'msg', type: 'message', role: 'assistant', content: [{ type: 'text', text: 'done' }], stop_reason: 'end_turn', usage: { input_tokens: 1, output_tokens: 1 } });
+  });
+  const ui = render(<PlaygroundChat model={await oneWallModel()} />);
+  const input = ui.querySelector('textarea')!; typeInto(input, 'hello');
+  const submit = () => input.closest('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+  act(() => { submit(); submit(); });
+  await waitFor(() => calls > 0, 'API turn started');
+  const count = calls;
+  await act(async () => { for (const finish of releases) finish(); });
+  assert.equal(count, 1);
+});
+
+it('playground an old API completion cannot clear a replacement run or show its error', async t => {
+  t.after(() => { cleanup(); clearApiKeys(); });
+  updateApiKeys({ anthropicKey: 'sk-ant-test' });
+  const replies: Array<(response: Response) => void> = [];
+  t.mock.method(globalThis, 'fetch', () => new Promise<Response>(resolve => replies.push(resolve)));
+  const ui = render(<PlaygroundChat model={await oneWallModel()} />);
+  await send(ui, 'first');
+  act(() => ui.querySelector<HTMLButtonElement>('button[aria-label="Stop generating"]')!.click());
+  await send(ui, 'replacement');
+  assert.equal(replies.length, 2);
+  await act(async () => replies[0](jsonResponse({ type: 'error', error: { type: 'invalid_request_error', message: 'retired request error' } }, 400)));
+  await advance(0);
+  const stillRunning = ui.querySelectorAll('button[aria-label="Stop generating"]').length;
+  const staleError = ui.textContent?.includes('retired request error');
+  await act(async () => replies[1](jsonResponse({ id: 'replacement', type: 'message', role: 'assistant', content: [{ type: 'text', text: 'replacement complete' }], stop_reason: 'end_turn', usage: { input_tokens: 1, output_tokens: 1 } })));
+  assert.equal(stillRunning, 1, 'old finally cannot clear the replacement streaming flag');
+  assert.equal(staleError, false);
 });

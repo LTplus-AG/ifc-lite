@@ -253,7 +253,6 @@ export async function runConversation(opts: RunOpts): Promise<void> {
   // Loop: each iteration is a single Anthropic round-trip. Stops when the
   // assistant finishes without requesting more tools, or when we hit the cap.
   while (true) {
-    opts.signal.throwIfAborted();
     const res = await client.messages.create({
       model: opts.modelId,
       max_tokens: MAX_TOKENS,
@@ -320,7 +319,6 @@ export async function runConversation(opts: RunOpts): Promise<void> {
     // mounts/unmounts the panel mid-conversation.
     const results: AnthropicToolResultBlock[] = [];
     for (const tc of newToolCalls) {
-      opts.signal.throwIfAborted();
       const ctx = opts.getDispatchContext();
       const dispatched = await dispatch(opts.model, tc.name, tc.args, ctx);
       opts.signal.throwIfAborted();

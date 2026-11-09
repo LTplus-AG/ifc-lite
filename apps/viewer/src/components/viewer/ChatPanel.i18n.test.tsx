@@ -185,3 +185,17 @@ it('C-6 overlapping file batches never exceed six attachments', async () => {
   for (let i = 0; i < 12; i++) await act(async () => { for (const finish of reads.splice(0)) finish(); });
   assert.equal(useViewerStore.getState().chatAttachments.length, 6, 'admission uses the live attachment count');
 });
+
+it('C-6 a text extraction completing after unmount cannot attach to the next composer', async () => {
+  useViewerStore.setState({ chatActiveModel: 'openai/gpt-free', chatAttachments: [] });
+  const ui = renderPanel();
+  const input = ui.querySelector<HTMLInputElement>('input[type="file"]'); assert.ok(input);
+  let finish!: () => void;
+  const file = new File(['text'], 'retired.txt', { type: 'text/plain' });
+  Object.defineProperty(file, 'text', { value: () => new Promise<string>(resolve => { finish = () => resolve('text'); }) });
+  Object.defineProperty(input, 'files', { configurable: true, value: [file] });
+  act(() => input.dispatchEvent(new window.Event('change', { bubbles: true })));
+  cleanup();
+  await act(async () => finish());
+  assert.equal(useViewerStore.getState().chatAttachments.length, 0);
+});

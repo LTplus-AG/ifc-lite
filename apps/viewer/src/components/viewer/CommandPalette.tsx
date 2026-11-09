@@ -7,7 +7,7 @@ import { usePersistentToolHosts } from './PersistentToolHosts';
  *  (icons, labels, actions) lives in `commandPaletteCommands.ts` and its two
  *  halves (#4918 slice 3) — this file is search/keyboard/rendering only. */
 
-import { useContext, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useContext, useCallback, useEffect, useLayoutEffect, useId, useMemo, useRef, useState } from 'react';
 import { Dialog, DialogClose, DialogContent } from '@/components/ui/dialog';
 import { toast } from '@/components/ui/toast';
 import { Search, X } from 'lucide-react';
@@ -110,8 +110,11 @@ export function CommandPalette({ open, onOpenChange, surfaceContext, initialQuer
   const extensionCommands = useSlotContributions<CommandContribution>('commandPalette');
   const extensionHost = useOptionalExtensionHost();
   const paletteLauncher = useRef<HTMLElement | null>(null);
-  const currentExtensionHost = useRef(extensionHost);
-  currentExtensionHost.current = extensionHost;
+  const currentExtensionHost = useMemo(() => ({ current: extensionHost }), [extensionHost]);
+  useLayoutEffect(() => {
+    currentExtensionHost.current = extensionHost;
+    return () => { currentExtensionHost.current = null; };
+  }, [currentExtensionHost, extensionHost]);
 
   useEffect(() => {
     if (open) {
@@ -156,7 +159,7 @@ export function CommandPalette({ open, onOpenChange, surfaceContext, initialQuer
     activateBottomPanel,
     runExport,
     extensionExporters,
-  }), [open, execute, recentFiles, extensionCommands, extensionHost, canEditInSession, cesiumAvailable, runExport, extensionExporters, prerequisites, fileHost, gpuStatus, surfaceContext, toolHosts, locale, revision]);
+  }), [open, execute, recentFiles, extensionCommands, extensionHost, currentExtensionHost, canEditInSession, cesiumAvailable, runExport, extensionExporters, prerequisites, fileHost, gpuStatus, surfaceContext, toolHosts, locale, revision]);
 
 
   // ── Search: score, filter, sort ──

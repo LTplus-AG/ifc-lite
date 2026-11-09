@@ -541,7 +541,7 @@ describe('Renderer.recoverDevice (#4885)', () => {
     assert.strictEqual(calls, 1, 'init must wait for recovery to release lifecycle ownership');
 
     gate.resolve();
-    assert.deepStrictEqual(await recovery, { ok: false, reason: 'renderer-destroyed' });
+    assert.deepStrictEqual(await recovery, { ok: false, reason: 'superseded' });
     await initialization;
     assert.strictEqual(renderer['pipeline'], replacementPipeline);
     assert.strictEqual(renderer.isReady(), true);

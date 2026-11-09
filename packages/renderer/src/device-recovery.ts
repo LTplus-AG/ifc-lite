@@ -20,6 +20,7 @@ export type DeviceRecoveryOmission =
 
 /** Stable failure categories returned by {@link Renderer.recoverDevice}. */
 export type DeviceRecoveryFailureReason =
+  | 'superseded'
   | 'not-lost'
   | 'cpu-geometry-released'
   | 'scene-not-settled'
@@ -141,7 +142,7 @@ async function recoverRendererDeviceOnce(
   const lossSequence = host.deviceLossSequence;
   host.recovery.replacementLostInfo = null;
   if (generation !== host.initGeneration || host.destroyed) {
-    return { ok: false, reason: 'renderer-destroyed' };
+    return { ok: false, reason: host.destroyed ? 'renderer-destroyed' : 'superseded' };
   }
   let prepared: ReturnType<Scene['prepareDeviceRecovery']>;
   try {
@@ -152,7 +153,7 @@ async function recoverRendererDeviceOnce(
   }
   if (!prepared.ok) return prepared;
   if (generation !== host.initGeneration || host.destroyed) {
-    return { ok: false, reason: 'renderer-destroyed' };
+    return { ok: false, reason: host.destroyed ? 'renderer-destroyed' : 'superseded' };
   }
   const scene = host.scene;
   const sceneHost = scene as unknown as SceneRecoveryHost;
@@ -202,7 +203,7 @@ async function recoverRendererDeviceOnce(
       // superseding ordinary lifecycle the same empty-scene starting point it
       // gets when it replaces any completed init.
       host.teardown(true);
-      return { ok: false, reason: 'renderer-destroyed' };
+      return { ok: false, reason: host.destroyed ? 'renderer-destroyed' : 'superseded' };
     }
     if (host.deviceLossSequence !== lossSequence) {
       throw replacementLostError(host, 'initialization');
@@ -222,7 +223,7 @@ async function recoverRendererDeviceOnce(
       // Recheck before admitting a layout OR allocating restored scene buffers.
       if (generation !== host.initGeneration || host.destroyed || host.pipeline !== pipeline) {
         host.teardown(true);
-        return { ok: false, reason: 'renderer-destroyed' };
+        return { ok: false, reason: host.destroyed ? 'renderer-destroyed' : 'superseded' };
       }
       if (host.deviceLossSequence !== lossSequence) {
         throw replacementLostError(host, 'quantized pipeline validation');
@@ -243,7 +244,7 @@ async function recoverRendererDeviceOnce(
     await Promise.resolve();
     if (generation !== host.initGeneration || host.destroyed) {
       host.teardown(true);
-      return { ok: false, reason: 'renderer-destroyed' };
+      return { ok: false, reason: host.destroyed ? 'renderer-destroyed' : 'superseded' };
     }
     if (host.deviceLossSequence !== lossSequence) {
       throw replacementLostError(host, 'scene restore');

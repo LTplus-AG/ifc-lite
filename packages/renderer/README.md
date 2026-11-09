@@ -74,7 +74,10 @@ renderer.onDeviceLost(async () => {
 `recoverDevice()` requests a replacement adapter/device and rebuilds the GPU
 scene in place, preserving the `Renderer`, camera, IFC geometry, model
 placements, visibility, selection and colour overrides. Concurrent calls share
-one attempt. It returns a typed failure instead of presenting an incomplete
+one attempt. A newer public `init()` supersedes a pending attempt with the
+`superseded` failure reason; public `destroy()` reports `renderer-destroyed`.
+Reinitializing a destroyed instance also reconnects its canvas-size observer.
+It returns a typed failure instead of presenting an incomplete
 scene when CPU geometry has been released, a finalizer or authoring transaction
 is active, cold geometry cannot be restored, or public `addMesh()` content has
 no CPU source. Retained streaming fragments are rebuilt from their CPU owners;

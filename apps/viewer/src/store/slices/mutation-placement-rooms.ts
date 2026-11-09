@@ -13,6 +13,20 @@ import { effectiveStoreyId } from '@/lib/effective-storey';
 import { remeshAfterCommit } from '@/lib/remesh/remesh-registry';
 import { modelEditTarget, recordModellingCommit, type ModellingStore } from './mutation-modelling-records';
 import { newMutationBatchId } from './mutation-batch-tags';
+import { toast } from '@/components/ui/toast';
+import { resolve } from '@/i18n/registry';
+
+function generatedRoomTarget(store: ModellingStore, modelId: string, expressId: number) {
+  const target = modelEditTarget(store.getState(), modelId);
+  if (!target || !/^IFC(WALL|WALLSTANDARDCASE|CURTAINWALL)$/.test(target.editor.getEntityType(expressId)?.toUpperCase() ?? '')) return null;
+  return [...iterateEffectiveEntities(target.dataStore, target.view, ['IFCSPACE'])].some(({ expressId: id }) =>
+    readAttributes(target.dataStore, target.view, target.editor, id)?.[4] === GENERATED_SPACE_OBJECTTYPE) ? target : null;
+}
+
+/** Only a successful collaboration fallback reports that room updates were skipped. */
+export function notifySkippedRoomRotation(store: ModellingStore, modelId: string, expressId: number): void {
+  if (generatedRoomTarget(store, modelId, expressId)) toast.info(resolve('roomTool.update.unresolvedPlacement'));
+}
 
 /** Read room dependencies before a placement edit, then publish both together. */
 function withGeneratedRooms<T>(
@@ -20,10 +34,8 @@ function withGeneratedRooms<T>(
   edit: (editor: StoreEditor, data: IfcDataStore) => T,
   continuingBatch?: string, remeshProduct = false,
 ): { result: T; mutation: Mutation | null; batch: string } | null {
-  const target = modelEditTarget(store.getState(), modelId);
-  if (!target || !/^IFC(WALL|WALLSTANDARDCASE|CURTAINWALL)$/.test(target.editor.getEntityType(expressId)?.toUpperCase() ?? '')) return null;
-  if (![...iterateEffectiveEntities(target.dataStore, target.view, ['IFCSPACE'])].some(({ expressId: id }) =>
-    readAttributes(target.dataStore, target.view, target.editor, id)?.[4] === GENERATED_SPACE_OBJECTTYPE)) return null;
+  const target = generatedRoomTarget(store, modelId, expressId);
+  if (!target) return null;
   const storeyId = effectiveStoreyId(target.dataStore, target.view, expressId);
   if (storeyId === undefined) return null;
   const batch = continuingBatch ?? newMutationBatchId();

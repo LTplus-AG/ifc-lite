@@ -6,7 +6,7 @@
  * Mutation slice - manages property/quantity mutations for IFC export
  */
 
-import { moveWithGeneratedRooms, rotateWithGeneratedRooms } from './mutation-placement-rooms.js';
+import { moveWithGeneratedRooms, notifySkippedRoomRotation, rotateWithGeneratedRooms } from './mutation-placement-rooms.js';
 import { mirrorNewRoofDefinition } from './mutation-roof.js';
 import { type StateCreator } from 'zustand';
 import type { ViewerState } from '../index.js';
@@ -1443,6 +1443,7 @@ export const createMutationSlice: StateCreator<
     // No STEP rotation chain (recipient's IFCX-reconstructed store): rotate via
     // the collab doc, which syncs + live-rotates the local mesh.
     if (get().collabRotateEntity(modelId, expressId, deltaYaw)) {
+      notifySkippedRoomRotation(api, modelId, expressId);
       return { ok: true, newYawZ: deltaYaw };
     }
     return {

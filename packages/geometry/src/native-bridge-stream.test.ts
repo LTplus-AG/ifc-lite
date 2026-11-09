@@ -17,6 +17,8 @@ const tauri = vi.hoisted(() => ({
   handlers: new Map<string, Set<(event: { payload: unknown }) => void>>(),
   /** Event names whose next listen() rejects. */
   refuse: new Set<string>(),
+  /** Event names whose unlisten throws (after detaching). */
+  throwOnUnlisten: new Set<string>(),
   unlistened: [] as string[],
 }));
 
@@ -28,6 +30,7 @@ vi.mock('@tauri-apps/api/event', () => ({
     return () => {
       tauri.unlistened.push(name);
       tauri.handlers.get(name)?.delete(handler);
+      if (tauri.throwOnUnlisten.has(name)) throw new Error(`unlisten ${name} failed`);
     };
   },
 }));
@@ -77,6 +80,7 @@ function collect(): { options: StreamingOptions; seen: string[] } {
 beforeEach(() => {
   tauri.handlers.clear();
   tauri.refuse.clear();
+  tauri.throwOnUnlisten.clear();
   tauri.unlistened = [];
 });
 
@@ -129,5 +133,41 @@ describe('NativeBridge streaming events (P7)', () => {
     expect(tauri.unlistened).toEqual(['geometry-batch']);
     expect(shell.invoke).not.toHaveBeenCalled();
     expect(onError).toHaveBeenCalledTimes(1);
+  });
+
+  it('delivers a tagged colour update only to its own stream', async () => {
+    const shell = installShell({ echoJobId: true });
+    const bridge = new NativeBridge();
+    await bridge.init();
+    const coloursA: number[][] = [];
+    const coloursB: number[][] = [];
+    const streamA = bridge.processGeometryStreaming(new Uint8Array([1]), { onColorUpdate: (u) => coloursA.push([...u.keys()]) });
+    const streamB = bridge.processGeometryStreaming(new Uint8Array([2]), { onColorUpdate: (u) => coloursB.push([...u.keys()]) });
+    await vi.waitFor(() => expect(shell.calls).toHaveLength(2));
+    const [jobA, jobB] = shell.calls.map((call) => String(call.args.jobId));
+    emit('geometry-color-update', { jobId: jobB, updates: [{ expressId: 7, color: [1, 0, 0, 1] }] });
+    emit('geometry-color-update', { jobId: jobA, updates: [{ expressId: 3, color: [0, 1, 0, 1] }] });
+    shell.calls[0].finish();
+    shell.calls[1].finish();
+    await Promise.all([streamA, streamB]);
+    expect(coloursA).toEqual([[3]]);
+    expect(coloursB).toEqual([[7]]);
+  });
+
+  it('a throwing unlisten neither skips the other releases nor masks the stream result', async () => {
+    const shell = installShell({ echoJobId: true });
+    tauri.throwOnUnlisten.add('geometry-batch');
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const bridge = new NativeBridge();
+    const onError = vi.fn();
+    const stream = bridge.processGeometryStreaming(new Uint8Array([1]), { onError });
+    await vi.waitFor(() => expect(shell.calls).toHaveLength(1));
+    shell.calls[0].finish();
+    await expect(stream).resolves.toMatchObject({ totalMeshes: 0 });
+    expect(tauri.unlistened).toEqual(['geometry-batch', 'geometry-packed-batch', 'geometry-color-update']);
+    expect(listenerCount()).toBe(0);
+    expect(onError).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('unlisten'), expect.any(Error));
+    warn.mockRestore();
   });
 });

@@ -398,7 +398,15 @@ export class NativeBridge implements IPlatformBridge {
       options.onError?.(error instanceof Error ? error : new Error(String(error)));
       throw error;
     } finally {
-      for (const unlisten of unlisteners) unlisten();
+      // Each release on its own: a throwing unlisten must neither skip the
+      // rest nor replace the stream's own outcome.
+      for (const unlisten of unlisteners) {
+        try {
+          unlisten();
+        } catch (error) {
+          console.warn('[NativeBridge] Failed to unlisten a geometry stream event:', error);
+        }
+      }
     }
   }
 

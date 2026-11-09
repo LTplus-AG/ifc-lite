@@ -94,8 +94,8 @@ it('ordinary creation records only its appended journal rows as existing authori
   t.diagnostic(`Actual ordinary journal recording: ${JSON.stringify(measured)}`);
 });
 
-it('a peer receives a new SDK roof footprint definition with its body (#9356 review)', async () => {
-  const { data, adapter } = await seed();
+async function roofRoom() {
+  const { data, view, adapter } = await seed();
   const session = await createCollabSession({ roomId: 'roof-publication', user: { id: 'test', name: 'Test' }, provider: 'memory' });
   const slot = { slotId: 'm0', pathPrefix: '/m0' };
   registerStoreSlot(data, slot);
@@ -116,6 +116,11 @@ it('a peer receives a new SDK roof footprint definition with its body (#9356 rev
       session.transact(() => setPropertyValue(session.doc, path, pset, prop, { type: typeof value === 'number' ? 'IfcReal' : 'IfcText', value }));
     },
   });
+  return { data, view, adapter, session };
+}
+
+it('a peer receives a new SDK roof footprint definition with its body (#9356 review)', async () => {
+  const { data, adapter, session } = await roofRoom();
   try {
     const slopes = [Math.PI / 6, 0, Math.PI / 6, 0];
     const roof = adapter.addRoof(MODEL, 42, { Position: [0,0,4], Width: 10, Depth: 8, Thickness: .25, EdgeSlopes: slopes, Overhang: .5 });
@@ -128,4 +133,31 @@ it('a peer receives a new SDK roof footprint definition with its body (#9356 rev
     assert.deepEqual(JSON.parse(String(view.getPropertyValue(id, 'IfcLite_RoofFootprint', 'EdgeSlopes'))), slopes);
     assert.equal(view.getPropertyValue(id, 'IfcLite_RoofFootprint', 'Overhang'), .5);
   } finally { session.dispose(); }
+});
+
+for (const failAt of [1, 3]) it(`roof edit property publication failure after ${failAt} real writes preserves local and peer state (#9356 review)`, async () => {
+  const { view, adapter, session } = await roofRoom();
+  const roof = adapter.addRoof(MODEL, 42, { Position: [0,0,4], Width: 10, Depth: 8, Thickness: .25, EdgeSlopes: Array(4).fill(Math.PI / 6) });
+  const snapshot = () => {
+    const state = useViewerStore.getState();
+    return structuredClone({ records: view.getNewEntities(), journal: view.getMutations(), changes: view.getEffectiveChanges(),
+      next: view.peekNextExpressId(), undo: state.undoStacks, redo: state.redoStacks, tags: state.mutationBatchTags,
+      stash: state.removedNewEntities, dirty: state.dirtyModels, version: state.mutationVersion });
+  };
+  const before = snapshot(), peerBefore = session.snapshot().data;
+  const observations: unknown[] = [];
+  session.doc.on('afterTransaction', () => observations.push(session.snapshot().data));
+  const original = useViewerStore.getState().mirrorPropertyEdit;
+  let writes = 0;
+  useViewerStore.setState({ mirrorPropertyEdit: (...args) => {
+    original(...args);
+    if (++writes === failAt) throw new Error('Injected roof property publication failure');
+  } });
+  try {
+    assert.throws(() => adapter.editRoof(roof, { Edge: { Index: 1, Slope: 0 }, Overhang: .5 }), /Injected roof property publication failure/);
+    assert.deepEqual(snapshot(), before, 'a refused edit leaves graph, allocator and history untouched');
+    assert.deepEqual(session.snapshot().data, peerBefore);
+    assert.ok(observations.length > 0, 'real publication was attempted');
+    assert.ok(observations.every(graph => JSON.stringify(graph) === JSON.stringify(peerBefore)), 'no peer observer sees partial roof metadata');
+  } finally { useViewerStore.setState({ mirrorPropertyEdit: original }); session.dispose(); }
 });

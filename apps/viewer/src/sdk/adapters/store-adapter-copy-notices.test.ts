@@ -14,13 +14,21 @@ import { readStoreyInventory, readTopAttachment, rectangularGridAxes, writeTopAt
 import { toast } from '@/components/ui/toast';
 import { resolve as translate } from '@/i18n/registry';
 import { useViewerStore } from '@/store';
-import { MESH_WALL, MODEL_ID, STOREY, UPPER_STOREY, seedModelingSession } from '@/test/modeling-session-fixture';
+import { MESH_WALL, MODEL_ID, STOREY, UPPER_STOREY, fixtureStep, seedModelingSession } from '@/test/modeling-session-fixture';
 import { createStoreAdapter } from './store-adapter';
+import { loadStoreyAdapter } from './store-adapter-storey';
 
 const realInfo = toast.info;
 let notes: string[] = [];
-beforeEach(() => { notes = []; (toast as { info: (m: string) => void }).info = (m) => notes.push(m); });
+beforeEach(async () => { await loadStoreyAdapter(); notes = []; (toast as { info: (m: string) => void }).info = (m) => notes.push(m); });
 afterEach(() => { Object.assign(toast, { info: realInfo }); });
+
+// Attachment defaults use the actual placement floor, not just Elevation.
+// The generic gesture fixture shares both storeys' placement; give L1 its 3 m frame.
+const seedAttachmentSession = () => seedModelingSession({ step: fixtureStep({}).replace(
+  '#51=IFCLOCALPLACEMENT($,#42);',
+  '#51=IFCLOCALPLACEMENT($,#52);\n#52=IFCAXIS2PLACEMENT3D(#53,$,$);\n#53=IFCCARTESIANPOINT((0.,0.,3.));',
+) });
 
 const model = () => {
   const state = useViewerStore.getState();
@@ -29,7 +37,7 @@ const model = () => {
 const attachment = (id: number) => { const { dataStore, view } = model(); return readTopAttachment(readStoreyInventory(dataStore, view), id); };
 
 it('copyElements returns a window selected with its wall as its own copy', async () => {
-  await seedModelingSession();
+  await seedAttachmentSession();
   const adapter = createStoreAdapter(useViewerStore);
   const wall = adapter.addWall(MODEL_ID, STOREY, { Start: [0, 0, 0], End: [6, 0, 0], Thickness: 0.2, Height: 2.5 });
   const window = adapter.addHostedWindow(MODEL_ID, wall.expressId, { Offset: 1, Sill: 0.9, Width: 1.2, Height: 1.2 });
@@ -40,7 +48,7 @@ it('copyElements returns a window selected with its wall as its own copy', async
 });
 
 it('a copy whose top cannot follow its new storey is listed on its ref and told once', async () => {
-  await seedModelingSession();
+  await seedAttachmentSession();
   const adapter = createStoreAdapter(useViewerStore);
   adapter.addStorey!(MODEL_ID, { Name: 'L2', Elevation: 7 });
   const { dataStore, view } = model();
@@ -55,7 +63,7 @@ it('a copy whose top cannot follow its new storey is listed on its ref and told 
 });
 
 it('addCurtainWall and addColumnOnGrid apply TopConstraint, auto by default', async () => {
-  await seedModelingSession();
+  await seedAttachmentSession();
   const adapter = createStoreAdapter(useViewerStore);
   const reaches = adapter.addCurtainWall!(MODEL_ID, STOREY, { Start: [0, 8, 0], End: [4, 8, 0], Height: 3, UGrid: 2, VGrid: 2 });
   assert.equal(attachment(reaches.expressId)?.targetStoreyId, UPPER_STOREY, 'auto: drawn up to the storey above');

@@ -9,11 +9,14 @@
  * shared room the recorded definition is published with the body.
  */
 
-import { editFootprintRoofInStore, footprintDefinitionProperties, ROOF_FOOTPRINT_PSET, type RoofFootprintEdit } from '@ifc-lite/create';
+import { editFootprintRoofInStore, footprintDefinitionProperties, ROOF_FOOTPRINT_PSET, type RoofFootprintEdit, type FootprintRoofDefinition } from '@ifc-lite/create';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { ViewerState } from '../index.js';
+import { getPropertyValue as roomProperty, setPropertyValue, deletePropertyValue } from '@ifc-lite/collab';
+import { pathForEntity } from '@/lib/collab/entity-paths.js';
+import { roomSlotFor } from '@/lib/collab/room-model-target.js';
 import { mutationDenial } from '../mutation-permission.js';
-import { modelEditTarget, recordModellingEdit, type ModellingStore } from './mutation-modelling-records.js';
+import { modelEditTarget, recordModellingEdit, type ModelEditTarget, type ModellingStore } from './mutation-modelling-records.js';
 
 export type RoofEditOutcome = { readonly ok: true } | { readonly ok: false; readonly reason: string };
 
@@ -23,17 +26,44 @@ export function editRoofIn(store: ModellingStore, modelId: string, expressId: nu
   const target = modelEditTarget(store.getState(), modelId);
   if (!target) return { ok: false, reason: `No model loaded for id "${modelId}"` };
   try {
-    const definition = recordModellingEdit(store, modelId, (_methods, draft) => editFootprintRoofInStore(target.dataStore, draft, expressId, patch));
-    // The room carries the rebuilt body as entity edits; the definition is a
-    // property set, so publish it too, or a peer's next edit would start from the old one.
-    const state = store.getState();
-    for (const [name, value, type] of footprintDefinitionProperties(definition)) {
-      state.mirrorPropertyEdit(modelId, expressId, ROOF_FOOTPRINT_PSET, name, value, type);
-    }
+    withRoofDefinitionRollback(store, target, expressId, publish => recordModellingEdit(store, modelId, (_methods, draft) => {
+      const definition = editFootprintRoofInStore(target.dataStore, draft, expressId, patch);
+      // Publish while the local edit is still a draft. A publication failure
+      // must not commit the planes or record an undo step.
+      publish(definition);
+    }));
     return { ok: true };
   } catch (error) {
     return { ok: false, reason: error instanceof Error ? error.message : String(error) };
   }
+}
+
+/** Yjs does not roll back on throw: restore definition values before peers observe the transaction. */
+function withRoofDefinitionRollback<T>(store: ModellingStore, target: ModelEditTarget, id: number,
+  edit: (publish: (definition: FootprintRoofDefinition) => void) => T): T {
+  const state = store.getState();
+  const session = roomSlotFor(state, target.modelId) ? state.collabSession : null;
+  const path = session ? pathForEntity(target.dataStore, id) : null;
+  if (session && !path) throw new Error(`Roof #${id} has no collaboration room identity`);
+  const room = session && path ? { session, path } : null;
+  const before = new Map<string, ReturnType<typeof roomProperty>>();
+  const publish = (definition: FootprintRoofDefinition) => {
+    for (const [name, value, type] of footprintDefinitionProperties(definition)) {
+      if (room && !before.has(name)) before.set(name, structuredClone(roomProperty(room.session.doc, room.path, ROOF_FOOTPRINT_PSET, name)));
+      store.getState().mirrorPropertyEdit(target.modelId, id, ROOF_FOOTPRINT_PSET, name, value, type);
+    }
+  };
+  if (!room) return edit(publish);
+  return room.session.transact(() => {
+    try { return edit(publish); }
+    catch (error) {
+      for (const [name, value] of before) {
+        if (value === undefined) deletePropertyValue(room.session.doc, room.path, ROOF_FOOTPRINT_PSET, name);
+        else setPropertyValue(room.session.doc, room.path, ROOF_FOOTPRINT_PSET, name, value);
+      }
+      throw error;
+    }
+  });
 }
 
 /** New roofs use the same definition as edits, on both the SDK and Model tool paths. */

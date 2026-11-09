@@ -56,6 +56,7 @@ describe('roof by footprint in the viewer (#9296 round 3)', () => {
     assert.notEqual(body(roofId).shape, hip.shape, 'the planes were rebuilt');
     const stack = useViewerStore.getState().undoStacks.get(MODEL_ID) ?? [];
     const tags = new Set(stack.slice(depth).map((m) => useViewerStore.getState().mutationBatchTags.get(m.id)));
+    assert.ok([...tags].every(tag => typeof tag === 'string' && tag.length > 0), 'every edit mutation has a real batch tag (#9356 review)');
     assert.equal(tags.size, 1, 'one undo step');
 
     useViewerStore.getState().undo(MODEL_ID);

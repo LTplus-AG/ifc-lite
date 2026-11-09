@@ -11,9 +11,13 @@ function list(value: unknown): unknown[] { if (!Array.isArray(value)) throw new 
 function text(value: unknown): asserts value is string { if (typeof value !== 'string') throw new TypeError('Expected a snapshot string.'); }
 function id(value: unknown, minimum = 1): void { if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < minimum) throw new TypeError('Invalid snapshot EXPRESS ID or index.'); }
 function tuple(value: unknown, length: number): unknown[] { const row = list(value); if (row.length !== length) throw new TypeError('Invalid snapshot row length.'); return row; }
+function optionalText(value: unknown): void { if (value !== undefined) text(value); }
+function optionalEnum(value: unknown): void { if (value !== undefined) id(value, 0); }
 function edit(value: unknown): void {
   const row = record(value);
   if (row.operation !== 'SET' && row.operation !== 'DELETE') throw new TypeError('Invalid snapshot mutation operation.');
+  optionalText(row.unit); optionalText(row.dataType); optionalEnum(row.valueType); optionalEnum(row.quantityType);
+  if (row.unitRemoved !== undefined && typeof row.unitRemoved !== 'boolean') throw new TypeError('Invalid snapshot unit flag.');
 }
 function propertyValue(value: unknown): void {
   const pending = [value];
@@ -39,13 +43,17 @@ function attributeValue(value: unknown): void {
 }
 function entity(value: unknown): void { const row = record(value); id(row.expressId); text(row.type); for (const item of list(row.attributes)) attributeValue(item); }
 function sets(value: unknown, kind: 'property' | 'quantity'): void {
-  const row = record(value); text(row.name);
-  for (const item of list(row[kind === 'property' ? 'properties' : 'quantities'])) text(record(item).name);
+  const row = record(value); text(row.name); optionalText(row.globalId);
+  for (const item of list(row[kind === 'property' ? 'properties' : 'quantities'])) {
+    const member = record(item); text(member.name); optionalEnum(member.type); optionalText(member.unit);
+    if (kind === 'quantity' && typeof member.value !== 'number') throw new TypeError('Invalid snapshot quantity member.');
+    propertyValue(member.value);
+  }
 }
 function attributes(value: unknown, entityId?: number): void {
   for (const item of list(value)) {
     const row = tuple(item, 3); id(row[0]); text(row[1]);
-    const edit = record(row[2]); text(edit.attribute); text(edit.value);
+    const edit = record(row[2]); text(edit.attribute); text(edit.value); optionalText(edit.oldValue);
     if (edit.attribute !== row[1] || (entityId !== undefined && row[0] !== entityId)) throw new TypeError('Mismatched snapshot attribute target.');
   }
 }

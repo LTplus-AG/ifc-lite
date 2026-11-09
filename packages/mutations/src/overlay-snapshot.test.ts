@@ -7,7 +7,7 @@ import { PropertyValueType, QuantityType } from '@ifc-lite/data';
 import { MutablePropertyView } from './mutable-property-view.js';
 import { StoreEditor } from './store-editor.js';
 import { snapshotOverlay, restoreOverlay, OverlaySourceMismatchError } from './overlay-snapshot.js';
-import type { OverlaySnapshotV1 } from './overlay-snapshot-types.js';
+import type { OverlaySnapshotV1, OverlayRestoreOptions } from './overlay-snapshot-types.js';
 
 const HASH = 'sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
 const options = { sourceContentHash: HASH };
@@ -86,19 +86,22 @@ describe('versioned overlay persistence (#8453)', () => {
     const { view } = fixture(); view.setExpressIdWatermark(500);
     const pending = view.prepareAtomic(draft => draft.createEntity('IFCWALL', []));
     expect(() => restoreOverlay(view, compatibility, options)).toThrow(/replace/);
+    expect(() => restoreOverlay(view, compatibility, { ...options, replace: 'true' } as unknown as OverlayRestoreOptions)).toThrow(/replace/);
     restoreOverlay(view, compatibility, { ...options, replace: true });
     expect(view.peekNextExpressId()).toBe(501);
     expect(() => pending.validate()).toThrow(/changed/);
     expect(Array.from(view.getNewEntitiesOfType('IFCWALL'), row => row.expressId)).toEqual([42]);
   });
 
-  it.each(['version', 'oversize', 'malformed', 'duplicate'])('refuses %s before any publication', kind => {
+  it.each(['version', 'oversize', 'malformed', 'duplicate', 'unit', 'set-member'])('refuses %s before any publication', kind => {
     const { view } = fixture(), before = dto(view), revision = view.getMutationRevision();
     const bad = JSON.parse(compatibility) as OverlaySnapshotV1;
     let json = compatibility, maxBytes = 64 * 1024 * 1024;
     if (kind === 'version') { json = compatibility.replace('"version": 1', '"version": 2'); }
     if (kind === 'oversize') maxBytes = 2;
     if (kind === 'malformed') { bad.state.properties[0][0] = -1; json = JSON.stringify(bad); }
+    if (kind === 'unit') { Object.assign(bad.state.properties[0][3], { unit: [] }); json = JSON.stringify(bad); }
+    if (kind === 'set-member') { Object.assign(bad.state.createdSets.property[0][1].properties[0], { value: {} }); json = JSON.stringify(bad); }
     if (kind === 'duplicate') { bad.state.createdEntities.push(bad.state.createdEntities[0]); json = JSON.stringify(bad); }
     expect(() => restoreOverlay(view, json, { ...options, maxBytes, replace: true })).toThrow();
     expect(dto(view).state).toEqual(before.state);

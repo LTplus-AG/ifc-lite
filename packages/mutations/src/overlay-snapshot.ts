@@ -66,7 +66,7 @@ export function restoreOverlay(view: MutablePropertyView, json: string, options:
   if (parsed.source.contentHash !== options.sourceContentHash) throw new OverlaySourceMismatchError();
   const access = cooperativeOverlay(view), original = access.capture();
   const occupied = original.mutationHistory.length > 0 || Object.values(original).some(value => value instanceof Map || value instanceof Set ? value.size > 0 : false);
-  if (occupied && !options.replace) throw new Error('Restore requires an empty overlay; pass replace: true to replace its edits.');
+  if (occupied && options.replace !== true) throw new Error('Restore requires an empty overlay; pass replace: true to replace its edits.');
   const result: OverlayRestoreResult = {};
   if (parsed.history !== undefined) {
     try { result.history = validateHistory(parsed.history, parsed); }

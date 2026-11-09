@@ -67,7 +67,9 @@ impl From<ProgramError> for RetainedProgramError {
             ProgramError::WrongPayload => Self::WrongPayload,
             ProgramError::WrongOwner => Self::WrongOwner,
             ProgramError::Outstanding => Self::Outstanding,
-            ProgramError::StaleRequest => Self::StaleRequest,
+            // Mapping execution consumes its cold marker before this adapter.
+            // An unrecovered marker denotes an invalid protocol state.
+            ProgramError::StaleRequest | ProgramError::LogicalRefused => Self::StaleRequest,
             ProgramError::AlreadyExecuted => Self::AlreadyExecuted,
             ProgramError::NotExecuted => Self::NotExecuted,
         }

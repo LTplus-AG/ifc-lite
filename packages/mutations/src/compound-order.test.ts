@@ -48,6 +48,7 @@ it('#9411 captures deletion order without enumerating the authored prefix', () =
   const keys = NewEntityMap.prototype.keys;
   const spy = vi.spyOn(NewEntityMap.prototype, 'keys').mockImplementation(function* (this: NewEntityMap) {
     for (const key of keys.call(this)) { visits++; yield key; }
+    return undefined;
   });
   try {
     recordCompoundMutation(view, draft => draft.deleteEntity(1000));
@@ -55,4 +56,16 @@ it('#9411 captures deletion order without enumerating the authored prefix', () =
   } finally { spy.mockRestore(); }
   undoRecordedMutationOperations(view, 1, () => { throw new Error('Expected compound inverse'); });
   expect(view.getNewEntities().map(row => row.expressId)).toEqual(Array.from({ length: 2000 }, (_, i) => i + 1));
+});
+
+it('#9411 reorders undo indices without rereading unrelated geometry payloads', () => {
+  const view = new MutablePropertyView(null, 'order-payloads');
+  const first = view.createEntity('IfcCartesianPoint', [[1, 0, 0]]).expressId;
+  const coordinates = [2, 0, 0], second = view.createEntity('IfcCartesianPoint', [coordinates]).expressId;
+  recordCompoundMutation(view, draft => draft.deleteEntity(first));
+  let visits = 0;
+  Object.defineProperty(coordinates, 0, { enumerable: true, get() { visits++; return 2; } });
+  undoRecordedMutationOperations(view, 1, () => { throw new Error('Expected compound inverse'); });
+  expect(visits).toBe(0);
+  expect(view.getNewEntities().map(row => row.expressId)).toEqual([first, second]);
 });

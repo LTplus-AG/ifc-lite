@@ -15,10 +15,15 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
+import { IfcParser, extractQuantitiesOnDemand, extractPropertiesOnDemand, propertyDefinitionRefsOfValue, type IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import { resolveDuplicateSource } from './resolve-source.js';
 import { duplicateInStore } from './duplicate.js';
+import { StepExporter } from '@ifc-lite/export';
+import { QuantityType } from '@ifc-lite/data';
+import { copyBatchInStore } from './copy-batch.js';
+import { AnchorEntityReader } from './resolve-anchor.js';
+import { asRef, refList } from './style-entity-reader.js';
 import { cloneElementMetadata } from './edit/metadata-clone.js';
 
 const IFC = `ISO-10303-21;
@@ -80,8 +85,8 @@ ENDSEC;
 END-ISO-10303-21;
 `;
 
-async function session() {
-  const store: IfcDataStore = await new IfcParser().parseColumnar(new TextEncoder().encode(IFC).buffer, { disableWorkerScan: true });
+async function session(source = IFC) {
+  const store: IfcDataStore = await new IfcParser().parseColumnar(new TextEncoder().encode(source).buffer, { disableWorkerScan: true });
   const view = new MutablePropertyView(store.properties ?? null, 'm');
   const editor = new StoreEditor(store, view);
   return { store, view, editor };
@@ -160,4 +165,29 @@ describe('Metadata clone over RelatingPropertyDefinition spellings (#7681)', () 
     const { store, view, editor } = await pieceHasOwnPsetA();
     expect(cloneElementMetadata(store, view, editor, 51, [54]).relationshipsTouched).toBe(1);
   });
+});
+
+
+for (const quantity of [false, true]) it(`#9296 a copied edited ${quantity ? 'quantity' : 'property'} in the second definition keeps its current value`, async () => {
+  let source = IFC.replace("'Pset_A',$,());", "'Pset_A',$,(#96));")
+    .replace("'Qto_B',$,$,());", "'Qto_B',$,$,(#97));")
+    .replace('ENDSEC;\nEND-ISO', "#96=IFCPROPERTYSINGLEVALUE('Code',$,IFCLABEL('kept'),$);\n#97=IFCQUANTITYLENGTH('Length',$,$,5.,$);\nENDSEC;\nEND-ISO");
+  if (!quantity) source = source.replace(/^#83=.*$/m, "#83=IFCPROPERTYSET('0PSET00000000000000083',$,'Pset_B',$,(#97));")
+    .replace("#97=IFCQUANTITYLENGTH('Length',$,$,5.,$);", "#97=IFCPROPERTYSINGLEVALUE('Code',$,IFCLABEL('old'),$);");
+  const { store, view, editor } = await session(source);
+  view.setOnDemandExtractor(id => extractPropertiesOnDemand(store, id));
+  view.setQuantityExtractor(id => extractQuantitiesOnDemand(store, id));
+  if (quantity) view.setQuantity(51, 'Qto_B', 'Length', 23, QuantityType.Length);
+  else view.setProperty(51, 'Pset_B', 'Code', 'effective');
+  const copy = copyBatchInStore(store, editor, [51], [{ offset: [0, 2, 0] }])[0].copyId;
+  const bytes = new StepExporter(store, view).export({ schema: 'IFC4', applyMutations: true }).content;
+  const reopened = await new IfcParser().parseColumnar(bytes.slice().buffer, { disableWorkerScan: true });
+  const reader = new AnchorEntityReader(reopened, null);
+  const definitions = [...reader.ids('IFCRELDEFINESBYPROPERTIES')].flatMap(id => {
+    const rel = reader.entity(id)!;
+    return refList(rel.attributes[4]).includes(copy) ? propertyDefinitionRefsOfValue(rel.attributes[5], asRef).map(id => reader.entity(id)?.attributes[2]) : [];
+  });
+  expect(definitions.filter(name => name === (quantity ? 'Qto_B' : 'Pset_B'))).toHaveLength(1);
+  if (quantity) expect(extractQuantitiesOnDemand(reopened, copy).find(set => set.name === 'Qto_B')?.quantities[0].value).toBe(23);
+  else expect(extractPropertiesOnDemand(reopened, copy).find(set => set.name === 'Pset_B')?.properties[0].value).toBe('effective');
 });

@@ -14,6 +14,17 @@ import { configureMutationView } from '@/utils/configureMutationView';
 import { createStoreAdapter } from './store-adapter';
 import { loadStoreyAdapter } from './store-adapter-storey';
 
+function assertRelationshipReferences(output: Uint8Array): string {
+  const text = new TextDecoder().decode(output);
+  const ids = new Set([...text.matchAll(/^#(\d+)=/gm)].map(match => Number(match[1])));
+  const relationships = text.split('\n').filter(line => line.includes('=IFCRELDEFINESBYPROPERTIES('));
+  assert.ok(relationships.length > 0);
+  for (const line of relationships) for (const match of line.matchAll(/#(\d+)/g)) {
+    assert.ok(ids.has(Number(match[1])), `Missing relationship reference: ${line}`);
+  }
+  return text;
+}
+
 it('#9296 reopened typed floor can be copied twice without dangling property definitions',async t=>{
   if (!ensureRoomWasm(t)) return;
   const c=new IfcCreator(), ground=c.addIfcBuildingStorey({Name:'Level 1',Elevation:0}), upper=c.addIfcBuildingStorey({Name:'Level 2',Elevation:3});
@@ -33,15 +44,14 @@ it('#9296 reopened typed floor can be copied twice without dangling property def
   const save=()=>{const s=useViewerStore.getState();return new StepExporter(s.models.get(M)!.ifcDataStore!,s.mutationViews.get(M)!).export({schema:'IFC4',applyMutations:true}).content;};
   const saved=save();await seedModelingSession({step:new TextDecoder().decode(saved)});
   const source=useViewerStore.getState().models.get(M)!.ifcDataStore!,view=useViewerStore.getState().mutationViews.get(M)!;configureMutationView(view,source);
-  assert.ok(useViewerStore.getState().setEntityPosition(M,walls[4].expressId,[6,0,0]).ok);save();
+  assert.ok(useViewerStore.getState().setEntityPosition(M,walls[4].expressId,[6,0,0]).ok);assertRelationshipReferences(save());
   const fresh=createStoreAdapter(useViewerStore);
   const third=fresh.addStorey!(M,{Name:'Level 3',Elevation:6});
   const copied=fresh.copyElements!(M,walls.slice(0,4).map(w=>w.expressId),[{targetStoreyId:upper}]);
+  assertRelationshipReferences(save());
   fresh.copyElements!(M,copied.map(r=>r.expressId),[{targetStoreyId:third.expressId}]);
   const output=save();
-  const text=new TextDecoder().decode(output),ids=new Set([...text.matchAll(/^#(\d+)=/gm)].map(m=>Number(m[1])));
+  const text=assertRelationshipReferences(output);
   for(const [type,count] of [['IFCWALL',13],['IFCDOOR',3],['IFCWINDOW',3],['IFCOPENINGELEMENT',6],['IFCSLAB',1],['IFCSPACE',2]] as const) assert.equal(text.split('='+type+'(').length-1,count);
-  for(const line of text.split('\n').filter(l=>l.includes('=IFCRELDEFINESBYPROPERTIES('))){
-    const ref=/#(\d+)\);\s*$/.exec(line);assert.ok(ref,line);assert.ok(ids.has(Number(ref[1])),`Missing definition: ${line}`);
-  }
+
 });

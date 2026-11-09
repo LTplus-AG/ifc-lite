@@ -25,7 +25,7 @@ pub const BUDGET_REFUSAL_DETAILS_LIMIT: usize = 16;
 #[derive(Default)]
 pub(super) struct BudgetRefusalLog {
     entries: Vec<BudgetRefusal>,
-    seen: rustc_hash::FxHashSet<(Option<u32>, u32, String, u64)>,
+    seen: rustc_hash::FxHashSet<(Option<u32>, u32, String, u32, u64)>,
 }
 
 impl GeometryRouter {
@@ -35,7 +35,7 @@ impl GeometryRouter {
         reached: u64, product: Option<&DecodedEntity>) {
         let mut state = self.unsupported.borrow_mut();
         let log = state.budget_refusals.get_or_insert_with(Box::default);
-        if !log.seen.insert((product.map(|p| p.id), source_id, budget.into(), reached)) {
+        if !log.seen.insert((product.map(|p| p.id), source_id, budget.into(), limit, reached)) {
             return;
         }
         if log.entries.len() < BUDGET_REFUSAL_DETAILS_LIMIT {

@@ -11,6 +11,19 @@ use crate::diagnostics::{BoolFailure, BoolFailureReason, BoolOp};
 use crate::rect_fast::RectFastStats;
 
 #[test]
+fn issue_9268_budget_dedup_keeps_distinct_limits() {
+    let router = GeometryRouter::new();
+    router.record_budget_refusal(8, "logical mapped attempts", 3, 5, None);
+    router.record_budget_refusal(8, "logical mapped attempts", 4, 5, None);
+    router.record_budget_refusal(8, "logical mapped attempts", 3, 5, None);
+
+    let (total, refusals) = router.take_budget_refusal_report();
+    assert_eq!(total, 2);
+    assert_eq!(refusals.len(), 2);
+    assert_eq!(refusals.iter().map(|r| r.limit).collect::<Vec<_>>(), vec![3, 4]);
+}
+
+#[test]
 fn aggregate_empty_is_all_zero() {
     let d = aggregate_diagnostics(
         ClassificationStats::default(),

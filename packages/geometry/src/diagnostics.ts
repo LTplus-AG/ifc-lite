@@ -240,7 +240,8 @@ export function mergeGeometryDiagnostics(
     oversizedRefDrops: (a.oversizedRefDrops ?? 0) + (b.oversizedRefDrops ?? 0),
     worstHosts,
     ...unsupportedFields,
-    ...(a.totalBudgetRefusals || b.totalBudgetRefusals || a.budgetRefusals || b.budgetRefusals
+    ...(a.totalBudgetRefusals !== undefined || b.totalBudgetRefusals !== undefined
+      || a.budgetRefusals !== undefined || b.budgetRefusals !== undefined
       ? {
         totalBudgetRefusals: (a.totalBudgetRefusals ?? a.budgetRefusals?.length ?? 0)
           + (b.totalBudgetRefusals ?? b.budgetRefusals?.length ?? 0),

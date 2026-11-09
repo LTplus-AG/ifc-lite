@@ -269,3 +269,23 @@ it('issue 9268 merge caps budget detail while preserving the complete count', ()
   expect(merged?.totalBudgetRefusals).toBe(41);
   expect(merged?.budgetRefusals).toHaveLength(16);
 });
+
+it('issue 9268 merge preserves counted zero budget refusals and absent fields', () => {
+  const counted = mergeGeometryDiagnostics(
+    make({ totalBudgetRefusals: 0, budgetRefusals: [] }),
+    make({ totalBudgetRefusals: 0, budgetRefusals: [] }),
+  );
+  expect(counted).toHaveProperty('totalBudgetRefusals', 0);
+  expect(counted).toHaveProperty('budgetRefusals', []);
+
+  // A scalar zero must also survive without a truthy detail array.
+  const scalarOnly = mergeGeometryDiagnostics(
+    make({ totalBudgetRefusals: 0 }), make({ totalBudgetRefusals: 0 }),
+  );
+  expect(scalarOnly).toHaveProperty('totalBudgetRefusals', 0);
+  expect(scalarOnly).toHaveProperty('budgetRefusals', []);
+
+  const absent = mergeGeometryDiagnostics(make(), make());
+  expect(absent).not.toHaveProperty('totalBudgetRefusals');
+  expect(absent).not.toHaveProperty('budgetRefusals');
+});

@@ -6,7 +6,8 @@ blob) into Rhino `.3dm` bytes. This adapter performs no IFC interpretation.
 ```ts
 import { writeRhino3dm } from '@ifc-lite/rhino3dm';
 
-// The encoded scene, e.g. from `GeometryProcessor.exportRhinoScene` in @ifc-lite/geometry.
+// Today the encoded scene comes from Rust: `build_rhino_scene` then `RhinoScene::encode`
+// in the ifc-lite-export crate (manifest JSON + blob). The JS binding is not released yet.
 declare const manifestJson: string;
 declare const binaryBlob: Uint8Array;
 const scene = { manifest: manifestJson, blob: binaryBlob };

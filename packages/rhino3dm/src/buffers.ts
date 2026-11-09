@@ -4,9 +4,12 @@
 
 import type { RhinoBufferRef } from './types.js';
 
-/** Sections are aligned relative to the blob; a caller's backing-store view may not be. */
+/**
+ * Sections are aligned relative to the blob; a caller's backing-store view may not be.
+ * `new Uint8Array` always copies; a Node Buffer's `slice()` would return an unaligned view.
+ */
 export function alignedRhinoBlob(blob: Uint8Array): Uint8Array {
-  return blob.byteOffset % 8 === 0 ? blob : blob.slice();
+  return blob.byteOffset % 8 === 0 ? blob : new Uint8Array(blob);
 }
 
 /** View a validated section of an aligned scene blob without copying it. */

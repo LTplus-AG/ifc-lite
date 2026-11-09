@@ -5,7 +5,7 @@
 import { expect, test, vi } from 'vitest';
 import { writeRhino3dm, parseRhinoScene, RhinoSceneError } from './index.js';
 import type { RhinoSceneManifest, EncodedRhinoScene } from './index.js';
-import { dispose, loadRhino } from './runtime.js';
+import { dispose, loadRhino, type Rhino } from './runtime.js';
 
 // Small encoder independent of the Rust producer. Counts are scalar elements.
 function fixture(): { manifest: RhinoSceneManifest; scene: EncodedRhinoScene } {
@@ -15,7 +15,7 @@ function fixture(): { manifest: RhinoSceneManifest; scene: EncodedRhinoScene } {
   [0, 1, 2].forEach((x, i) => d.setUint32(112 + i * 4, x, true));
   const manifest: RhinoSceneManifest = {
     format: 'ifc-lite.rhino-scene', version: 1,
-    settings: { unitSystem: 'Meters', metersPerUnit: 1, absoluteTolerance: 0.001, angleToleranceDegrees: 1,
+    settings: { unitSystem: 'Meters', metersPerUnit: 1, absoluteTolerance: 0.0002, angleToleranceDegrees: 5,
       earthAnchor: { latitude: 47.3769, longitude: 8.5417, elevation: 408, modelBasePoint: [1, 2, 3], modelNorth: [0, 1, 0], modelEast: [1, 0, 0], name: 'Site' } },
     warnings: [], documentStrings: [['IFC::Schema', 'IFC4']],
     layers: ['Project', 'Site', 'Building', 'Level 1', 'IfcWall'].map((name, i) => ({ name, parent: i === 0 ? null : i - 1, color: [128, 128, 128, 255], visible: true, locked: false })),
@@ -28,6 +28,12 @@ function fixture(): { manifest: RhinoSceneManifest; scene: EncodedRhinoScene } {
   return { manifest, scene: { manifest: JSON.stringify(manifest), blob } };
 }
 function encoded(m: RhinoSceneManifest, blob = fixture().scene.blob) { return { manifest: JSON.stringify(m), blob }; }
+function objectNamed(f: InstanceType<Rhino['File3dm']>, name: string) {
+  const objects = f.objects();
+  const found = Array.from({ length: objects.count }, (_, i) => objects.get(i)).find(o => o.attributes().name === name);
+  if (!found) throw new Error(`no object named ${name}`);
+  return found;
+}
 
 test.each([7, 8] as const)('round-trips archive %i and the v1 manifest semantics', async version => {
   const { manifest: m, scene } = fixture();
@@ -81,7 +87,8 @@ test.each([7, 8] as const)('round-trips archive %i and the v1 manifest semantics
     }
     expect([walls, instances]).toEqual([1, 1]);
     const s = file.settings(); expect(s.modelUnitSystem).toBe(r.UnitSystem.Meters);
-    expect(s.modelAbsoluteTolerance).toBeCloseTo(0.001); expect(s.modelAngleToleranceDegrees).toBeCloseTo(1);
+    // Non-default values (openNURBS defaults are 0.001 and 1 degree), so an unassigned setting fails.
+    expect(s.modelAbsoluteTolerance).toBeCloseTo(0.0002, 9); expect(s.modelAngleToleranceDegrees).toBeCloseTo(5, 9);
     const e = s.earthAnchorPoint;
     try {
       expect(e.earthBasepointLatitude).toBeCloseTo(47.3769); expect(e.earthBasepointLongitude).toBeCloseTo(8.5417);
@@ -103,12 +110,22 @@ const invalidCases: [string, (m: RhinoSceneManifest) => void, RegExp][] = [
   ['buffer bounds', (m: RhinoSceneManifest) => m.meshes[0].positions.count = 999, /out of range/],
   ['mesh index', (m: RhinoSceneManifest) => m.blocks[0].meshes[0] = 7, /out of range/],
   ['parent ordering', (m: RhinoSceneManifest) => m.layers[0].parent = 1, /precede child/],
-  ['nonfinite transform', (m: RhinoSceneManifest) => { if (m.objects[1].kind === 'instance') m.objects[1].xform[0] = Infinity; }, /xform/],
+  ['zero-vertex mesh with indices', (m: RhinoSceneManifest) => Object.assign(m.meshes[0], { positions: { offset: 0, count: 0 }, normals: null }), /triangle vertex/],
 ];
 test.each(invalidCases)('rejects %s with a typed error', (_name, mutate, message) => {
   const { manifest } = fixture(); mutate(manifest);
   expect(() => parseRhinoScene(encoded(manifest))).toThrow(RhinoSceneError);
   expect(() => parseRhinoScene(encoded(manifest))).toThrow(message);
+});
+
+test('rejects a non-finite transform value from the manifest text', () => {
+  // #9416: JSON.stringify would turn Infinity into null; 1e999 is how JSON.parse produces it.
+  const { manifest, scene } = fixture();
+  if (manifest.objects[1].kind === 'instance') manifest.objects[1].xform[0] = 7777;
+  const text = JSON.stringify(manifest).replace('"xform":[7777,', '"xform":[1e999,');
+  expect(text).toContain('1e999');
+  expect(() => parseRhinoScene({ ...scene, manifest: text })).toThrow(RhinoSceneError);
+  expect(() => parseRhinoScene({ ...scene, manifest: text })).toThrow(/xform/);
 });
 
 test('rejects bad triangle indices, JSON, and archive 9', async () => {
@@ -119,11 +136,30 @@ test('rejects bad triangle indices, JSON, and archive 9', async () => {
   await expect(writeRhino3dm(fixture().scene, { version: 9 })).rejects.toThrow(/7 or 8/);
 });
 
-test('supports a blob view with an unaligned backing-store offset', async () => {
+test.each([
+  ['Uint8Array', (b: ArrayBuffer, n: number) => new Uint8Array(b, 1, n)],
+  // #9416: Buffer.prototype.slice returns a view, so this fails unless realignment copies.
+  ['Node Buffer', (b: ArrayBuffer, n: number) => Buffer.from(b, 1, n)],
+] as const)('supports a %s blob view with an unaligned backing-store offset', async (_name, view) => {
   const { scene } = fixture(), storage = new Uint8Array(scene.blob.length + 1);
   storage.set(scene.blob, 1);
-  const r = await loadRhino(), f = r.File3dm.fromByteArray((await writeRhino3dm({ ...scene, blob: storage.subarray(1) })).bytes);
+  const blob = view(storage.buffer, scene.blob.length);
+  expect(parseRhinoScene({ ...scene, blob }).meshes).toHaveLength(1);
+  const r = await loadRhino(), f = r.File3dm.fromByteArray((await writeRhino3dm({ ...scene, blob })).bytes);
   try { expect(f.objects().count).toBe(3); } finally { dispose(f); }
+});
+
+// #9416: validated bytes must be the written bytes, whatever the caller does meanwhile.
+test.each(['during the runtime await', 'from onProgress'] as const)('writes the validated blob when the caller changes it %s', async when => {
+  const { scene } = fixture();
+  const corrupt = () => new DataView(scene.blob.buffer).setUint32(112, 3, true);
+  const pending = writeRhino3dm(scene, { onProgress: when === 'from onProgress' ? corrupt : undefined });
+  if (when === 'during the runtime await') corrupt();
+  const r = await loadRhino(), f = r.File3dm.fromByteArray((await pending).bytes);
+  try {
+    const mesh = objectNamed(f, 'Wall').geometry() as InstanceType<typeof r.Mesh>;
+    expect(mesh.faces().get(0).slice(0, 3)).toEqual([0, 1, 2]);
+  } finally { dispose(f); }
 });
 
 test('cleans up after progress throws and permits subsequent writes', async () => {
@@ -150,7 +186,7 @@ test('writes absent normals and earth anchor with the default archive version', 
   const r = await loadRhino(), f = r.File3dm.fromByteArray((await writeRhino3dm(encoded(manifest))).bytes);
   try {
     expect(f.archiveVersion).toBe(80);
-    const obj = Array.from({ length: f.objects().count }, (_, i) => f.objects().get(i)).find(o => o.attributes().name === 'Wall')!;
+    const obj = objectNamed(f, 'Wall');
     expect((obj.geometry() as InstanceType<typeof r.Mesh>).normals().count).toBe(0);
     const anchor = f.settings().earthAnchorPoint;
     try { expect(anchor.earthLocationIsSet()).toBe(false); } finally { dispose(anchor); }

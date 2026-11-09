@@ -27,7 +27,10 @@ const rgba = ([r, g, b, a]: RhinoColor) => ({ r, g, b, a });
 export async function writeRhino3dm(scene: EncodedRhinoScene, opts: Write3dmOptions = {}): Promise<Write3dmResult> {
   const version = opts.version ?? RHINO_3DM_VERSIONS[0];
   if (!RHINO_3DM_VERSIONS.includes(version)) throw new RhinoSceneError('3dm version must be 7 or 8');
-  const { manifest, blob } = readRhinoScene(scene);
+  // Validate and write a private copy: the caller can change its buffer during the runtime
+  // await, from onProgress, or from another thread. A fresh copy is aligned, so it is the only one.
+  const source = scene.blob;
+  const { manifest, blob } = readRhinoScene({ manifest: scene.manifest, blob: source instanceof Uint8Array ? new Uint8Array(source) : source });
   const rhino = await loadRhino(opts.locateFile);
   // Upstream omits these two constructor signatures from its declarations.
   const Transform = rhino.Transform as unknown as new (diagonal: number) => InstanceType<Rhino['Transform']>;

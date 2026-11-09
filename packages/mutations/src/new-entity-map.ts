@@ -4,6 +4,7 @@
 
 import type { NewEntity } from './types.js';
 import { observeEntityAttributes, withoutEntityExposure } from './entity-read-barrier.js';
+import { restoreEntityOrder } from './restore-entity-order.js';
 
 /**
  * The overlay's created entities, still an ordinary `Map` by express id, plus
@@ -20,7 +21,8 @@ export class NewEntityMap extends Map<number, NewEntity> {
   // Lazy, and `declare`d so no runtime field is emitted: `Map`'s constructor
   // calls `set` before subclass fields initialise, and an emitted field would
   // then reset whatever `super(entries)` had indexed.
-  declare private positions?: Map<number, number>;
+  declare private positions?: Map<number, { position: number; previous: number | null; next: number | null }>;
+  declare private tailId?: number;
   declare private nextPosition?: number;
   declare private byReference?: Map<number, Set<number>>;
   declare private referencesById?: Map<number, Set<number>>;
@@ -32,7 +34,11 @@ export class NewEntityMap extends Map<number, NewEntity> {
 
   override set(expressId: number, entity: NewEntity): this {
     this.positions ??= new Map();
-    if (!this.positions.has(expressId)) this.positions.set(expressId, this.nextPosition = (this.nextPosition ?? 0) + 1);
+    if (!this.positions.has(expressId)) {
+      this.positions.set(expressId, { position: this.nextPosition = (this.nextPosition ?? 0) + 1, previous: this.tailId ?? null, next: null });
+      if (this.tailId !== undefined) this.positions.get(this.tailId)!.next = expressId;
+      this.tailId = expressId;
+    }
     this.unindexReferences(expressId);
     const previous = super.get(expressId);
     if (previous && previous.type.toUpperCase() !== entity.type.toUpperCase()) this.unindex(previous);
@@ -75,6 +81,12 @@ export class NewEntityMap extends Map<number, NewEntity> {
   }
 
   override delete(expressId: number): boolean {
+    const position = this.positions?.get(expressId);
+    if (position) {
+      if (position.previous !== null) this.positions!.get(position.previous)!.next = position.next;
+      if (position.next !== null) this.positions!.get(position.next)!.previous = position.previous;
+      else this.tailId = position.previous ?? undefined;
+    }
     this.positions?.delete(expressId);
     this.exposed?.delete(expressId);
     this.unindexReferences(expressId);
@@ -85,6 +97,7 @@ export class NewEntityMap extends Map<number, NewEntity> {
 
   override clear(): void {
     this.positions?.clear();
+    this.tailId = undefined;
     this.byType?.clear();
     this.byReference?.clear();
     this.referencesById?.clear();
@@ -106,7 +119,20 @@ export class NewEntityMap extends Map<number, NewEntity> {
   }
 
   /** Insertion order for sparse inverse capture; new keys sort after old keys. */
-  positionOf(id: number): number { return this.positions?.get(id) ?? Infinity; }
+  positionOf(id: number): number { return this.positions?.get(id)?.position ?? Infinity; }
+  successorOf(id: number): number | null { return this.positions?.get(id)?.next ?? null; }
+
+  /** Undo may restore a forgotten record before survivors. Only that explicit
+   * operation rebuilds ordering; ordinary authoring remains incremental. */
+  restoreBefore(before: ReadonlyMap<number, number | null>): void {
+    if (before.size) this.restoreOrder(restoreEntityOrder(this.keys(), before));
+  }
+  restoreOrder(ids: readonly number[]): void {
+    const rows = ids.map(id => [id, this.get(id)!] as const);
+    super.clear(); this.positions?.clear(); this.tailId = undefined; this.nextPosition = 0;
+    this.byType?.clear(); this.byReference?.clear(); this.referencesById?.clear();
+    for (const [id, row] of rows) this.set(id, row);
+  }
 
   referencesId(entityId: number, targetId: number): boolean { return this.referencesById?.get(entityId)?.has(targetId) ?? false; }
 

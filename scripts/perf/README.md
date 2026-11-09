@@ -80,6 +80,10 @@ and reference lookups recheck those rows. Internal readers borrow attributes
 without exposing mutable aliases, so an earlier model inventory does not turn
 every subsequent reference lookup into another inventory scan.
 
+Compound undo records successor IDs, preserving authored and STEP record order
+even across snapshots. An incremental successor index avoids scanning the
+authored prefix while capturing that inverse; only undo rebuilds the order.
+
 Timing qualification and the F5 verdict are still pending; no measured scale
 acceptance is claimed by the structural guard alone.
 

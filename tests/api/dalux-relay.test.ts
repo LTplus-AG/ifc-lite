@@ -59,7 +59,7 @@ test('forwards an allowed path to the upstream base path', async () => {
   assert.equal(captured[0].headers.get('x-api-key'), 'caller-key');
 });
 
-test('rejects every method except GET, HEAD and OPTIONS', async () => {
+test('a read path rejects every method except GET, HEAD and OPTIONS', async () => {
   const { handler, captured } = createHandler();
   for (const method of ['POST', 'PUT', 'PATCH', 'DELETE']) {
     const response = await handler(
@@ -116,7 +116,7 @@ test('echoes CORS headers only for an allowed origin', async () => {
   const response = await handler(get('/api/dalux/5.1/projects', { origin: APP_ORIGIN }));
 
   assert.equal(response.headers.get('access-control-allow-origin'), APP_ORIGIN);
-  assert.equal(response.headers.get('access-control-allow-methods'), 'GET, HEAD, OPTIONS');
+  assert.equal(response.headers.get('access-control-allow-methods'), 'GET, HEAD, POST, OPTIONS');
 });
 
 test('rejects paths outside the allowed API versions', async () => {

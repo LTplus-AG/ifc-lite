@@ -20,12 +20,18 @@ Targets the Dalux **API Identities** auth model (legacy API keys expired
 
 The Dalux API does not send CORS headers, so direct browser fetches to it
 will fail. The viewer routes Dalux requests through a fixed same-origin path
-(`/api/dalux/*`) that the app's own server forwards upstream — a plain
-reverse-proxy rewrite (see `vercel.json` in production, and the Vite dev
-proxy in `apps/viewer/vite.config.ts`), the same pattern already used for
-bSDD/EPSG. The user's own API key is attached client-side and never leaves
-the browser except as part of the proxied request; there is no shared
-server-side secret and no separate relay service to deploy.
+(`/api/dalux/*`) served by `server/sources/dalux-relay.ts`, the same handler in
+production (`api/dalux.ts`) and in Vite dev (`apps/viewer/vite-plugins/dalux-relay.ts`).
+The user's own API key is attached client-side and never leaves the browser
+except as part of the relayed request; there is no shared server-side secret.
+
+The relay is read-only (GET/HEAD) on the API versions the provider calls, plus
+the two `1.1` file-property mapping reads. Its only write is the file upload
+(`server/sources/dalux-relay-upload.ts`): POST on exactly the slot, part and
+finalize paths, with the media type, `Content-Range` and `Content-Disposition`
+each step requires. A relayed part is capped at 4 MiB (the function request-body
+limit), below the 100 MiB Dalux itself accepts, so uploads through the relay
+must use parts of at most `MAX_RELAYED_BODY_BYTES`.
 
 ## API key storage
 

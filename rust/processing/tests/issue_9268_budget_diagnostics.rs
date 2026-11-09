@@ -81,6 +81,8 @@ fn issue_9268_real_unsupported_item_stays_unsupported() {
 fn issue_9268_type_map_refusal_names_the_type_product() {
     let members = vec!["#1000"; 65_538].join(",");
     let content = source(1)
+        // Native intentionally suppresses maps already used by mapped items.
+        .replace("#22=IFCMAPPEDITEM(#21,#9);", "")
         .replace("SurfaceModel',(#1000)", &format!("SurfaceModel',({members})"))
         .replace("#25=IFCFLOWTERMINAL('0000000000000000000001',$,'synthetic mapped surface',$,$,$,#24,$);",
             "#60=IFCWALLTYPE('type-guid',$,'budget type',$,$,$,(#21),$,$,.NOTDEFINED.);");

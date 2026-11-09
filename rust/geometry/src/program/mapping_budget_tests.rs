@@ -720,15 +720,16 @@ fn assert_attempt_refusal(router: &GeometryRouter) {
 
 #[test]
 fn issue_9268_type_map_identity_dedup_and_bounded_details() {
-    let source = format!("{}#60=IFCWALLTYPE('type-guid',$,$,$,$,$,(#6),$,$,.NOTDEFINED.);",
-        SOURCE.replace("(#4)", "(#4,#4,#4,#4,#4,#4)"));
+    let types: String = (60..80).map(|id| format!(
+        "#{id}=IFCWALLTYPE('type-{id}',$,$,$,$,$,(#6),$,$,.NOTDEFINED.);"
+    )).collect();
+    let source = format!("{}{types}", SOURCE.replace("(#4)", "(#4,#4,#4,#4,#4,#4)"));
     let mut decoder = EntityDecoder::new(&source);
     let map = decoder.decode_by_id(6).unwrap();
-    let mut product = decoder.decode_by_id(60).unwrap();
     let textures = FxHashMap::default();
     let router = GeometryRouter::new();
     for id in 60..80 {
-        product.id = id;
+        let product = decoder.decode_by_id(id).unwrap();
         for _ in 0..2 {
             assert!(limited(GeometryProgram::type_map_for_product(&map, &textures, &product), 4)
                 .drain_type_parts(&router, &mut decoder).unwrap_err().to_string().contains("work budget"));
@@ -740,11 +741,12 @@ fn issue_9268_type_map_identity_dedup_and_bounded_details() {
     for (index, refusal) in refusals.iter().enumerate() {
         assert_eq!(refusal.product_id, Some(60 + index as u32));
         assert_eq!(refusal.product_type.as_deref(), Some("IfcWallType"));
-        assert_eq!(refusal.global_id.as_deref(), Some("type-guid"));
+        assert_eq!(refusal.global_id, Some(format!("type-{}", 60 + index)));
         assert_eq!((refusal.budget.as_str(), refusal.limit, refusal.reached, refusal.source_id),
             ("logical Items members", 4, 5, 6));
     }
     assert_eq!(router.take_budget_refusal_report(), (0, Vec::new()));
+    let product = decoder.decode_by_id(79).unwrap();
     assert!(limited(GeometryProgram::type_map_for_product(&map, &textures, &product), 4)
         .drain_type_parts(&router, &mut decoder).is_err());
     assert_eq!(router.take_budget_refusal_report().0, 1, "drain resets dedup scope");

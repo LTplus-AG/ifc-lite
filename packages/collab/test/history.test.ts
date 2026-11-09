@@ -2,10 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createCollabSession } from '../src/session.js';
 import { createEntity, setAttribute } from '../src/doc/entity.js';
-import { attachHistorySidecar, MemoryHistorySidecar } from '../src/branch/history.js';
+import { MemoryHistorySidecar } from '../src/branch/history.js';
+import { attachHistorySidecar, HistoryDriverDetachedError } from '../src/branch/history-driver.js';
 
 describe('MemoryHistorySidecar', () => {
   it('records, lists, and time-traces entries', async () => {
@@ -102,5 +103,105 @@ describe('attachHistorySidecar', () => {
 
     driver.detach();
     session.dispose();
+  });
+});
+
+describe('attachHistorySidecar lifecycle', () => {
+  interface Deferred {
+    resolve: () => void;
+    reject: (err: Error) => void;
+  }
+  /** A sidecar whose every record() parks until the test settles it. */
+  function gatedSidecar() {
+    const inner = new MemoryHistorySidecar();
+    const gates: Deferred[] = [];
+    const recorded: (string | undefined)[] = [];
+    const sidecar = Object.create(inner) as MemoryHistorySidecar;
+    sidecar.record = (input) => {
+      recorded.push(input.label);
+      return new Promise((resolve, reject) => {
+        gates.push({
+          resolve: () => resolve(inner.record(input)),
+          reject,
+        });
+      });
+    };
+    return { sidecar, gates, recorded };
+  }
+  const flush = () => new Promise((r) => setTimeout(r, 0));
+  const memorySession = () =>
+    createCollabSession({ roomId: 'r', user: { id: 'u', name: 'U' }, provider: 'memory' });
+
+  it('runs overlapping captures one at a time, diffing each against the one before', async () => {
+    const session = await memorySession();
+    const { sidecar, gates, recorded } = gatedSidecar();
+    const driver = attachHistorySidecar(session, sidecar, { intervalMs: 999_999 });
+
+    session.transact(() => createEntity(session.doc, 'a', { ifcClass: 'IfcWall' }));
+    const first = driver.capture('first');
+    session.transact(() => createEntity(session.doc, 'b', { ifcClass: 'IfcWall' }));
+    const second = driver.capture('second');
+    await flush();
+    // The second capture must not snapshot/diff while the first is unrecorded.
+    expect([...recorded]).toEqual(['first']);
+    gates[0].resolve();
+    await first;
+    await flush();
+    expect([...recorded]).toEqual(['first', 'second']);
+    gates[1].resolve();
+    const e2 = await second;
+    const diffPaths = e2.diff?.data.map((n) => n.path) ?? [];
+    expect(diffPaths).toContain('b');
+    expect(diffPaths).not.toContain('a');
+
+    driver.detach();
+    session.dispose();
+  });
+
+  it('never records a queued capture once detached', async () => {
+    const session = await memorySession();
+    const { sidecar, gates, recorded } = gatedSidecar();
+    const driver = attachHistorySidecar(session, sidecar, { intervalMs: 999_999 });
+
+    const first = driver.capture('first');
+    const queued = driver.capture('queued');
+    await flush();
+    driver.detach();
+    gates[0].resolve();
+    await first;
+    await expect(queued).rejects.toBeInstanceOf(HistoryDriverDetachedError);
+    expect([...recorded]).toEqual(['first']);
+    session.dispose();
+  });
+
+  it('detaches when the session is disposed', async () => {
+    const session = await memorySession();
+    const sidecar = new MemoryHistorySidecar();
+    const driver = attachHistorySidecar(session, sidecar, { intervalMs: 999_999 });
+    session.dispose();
+    await expect(driver.capture('late')).rejects.toBeInstanceOf(HistoryDriverDetachedError);
+    expect((await sidecar.entries()).length).toBe(0);
+  });
+
+  it('skips timer ticks while a capture is still in flight', async () => {
+    vi.useFakeTimers();
+    try {
+      const session = await memorySession();
+      const { sidecar, gates, recorded } = gatedSidecar();
+      const driver = attachHistorySidecar(session, sidecar, { intervalMs: 10 });
+      await vi.advanceTimersByTimeAsync(55);
+      expect(recorded.length).toBe(1);
+      // Settling the in-flight capture must not release a backlog of ticks
+      // queued behind it: nothing more records until the next tick fires.
+      gates[0].resolve();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(recorded.length).toBe(1);
+      await vi.advanceTimersByTimeAsync(10);
+      expect(recorded.length).toBe(2);
+      driver.detach();
+      session.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

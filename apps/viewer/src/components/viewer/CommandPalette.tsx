@@ -113,6 +113,7 @@ export function CommandPalette({ open, onOpenChange, surfaceContext, initialQuer
   const extensionCommands = useSlotContributions<CommandContribution>('commandPalette');
   const extensionHost = useOptionalExtensionHost();
   const paletteLauncher = useRef<HTMLElement | null>(null);
+  const closeFocusAction = useRef<(() => boolean) | null>(null);
   const currentExtensionHost = useMemo(() => ({ current: extensionHost }), [extensionHost]);
   useLayoutEffect(() => {
     currentExtensionHost.current = extensionHost;
@@ -218,14 +219,19 @@ export function CommandPalette({ open, onOpenChange, surfaceContext, initialQuer
 
   const runCommand = useCallback((cmd: Command) => {
     if (!canRunPaletteCommand(cmd)) return;
-    onOpenChange(false);
     const activate = () => {
-      if (!mounted.current) return;
-      if (!canRunPaletteCommand(cmd, reason => toast.info(t(reason)))) return;
+      if (!mounted.current) return false;
+      if (!canRunPaletteCommand(cmd, reason => toast.info(t(reason)))) return false;
       recordUsage(cmd.id);
       if (!cmd.registryOwned) trackCommandExecution(cmd.id, 'palette');
       cmd.action();
+      return true;
     };
+    // The destination takes focus only after Radix releases its closing scope.
+    // A frame callback alone does not order its delayed close-focus timer.
+    closeFocusAction.current = cmd.id === 'elements:entity-actions' ? activate : null;
+    onOpenChange(false);
+    if (closeFocusAction.current) return;
     // File picker activation stays in the trusted event stack.
     if (cmd.immediate) activate();
     else requestAnimationFrame(activate);
@@ -264,6 +270,8 @@ export function CommandPalette({ open, onOpenChange, surfaceContext, initialQuer
           }}
           onCloseAutoFocus={event => {
             event.preventDefault();
+            const handoff = closeFocusAction.current; closeFocusAction.current = null;
+            if (handoff?.()) return;
             if (paletteLauncher.current?.isConnected) paletteLauncher.current.focus();
           }}
           onEscapeKeyDown={event => {

@@ -125,6 +125,7 @@ export function useIfcFederation(
     // before mutating shared loading/error/progress state. It guards shared
     // state only; the result below reports this add's own outcome.
     const currentSession = ++loadSessionRef.current;
+    const thisAdd = { registered: false }; // set by loadFile when THIS load registers the model
     // Memory-aware load gate: if a previous federation load is still in
     // flight on this tab and admitting this one would exceed the device
     // memory budget, wait until headroom frees. Single-file loads never
@@ -159,11 +160,13 @@ export function useIfcFederation(
         collapsed: options?.collapsed,
         loadedAt,
         sharedRtcOffset,
-      }, { sourceHandle: options?.sourceHandle, retryOperation: options?.retryOperation, workflowOwner: options?.workflowOwner, gaussianPlacement: options?.gaussianPlacement, gaussianUpAxis: options?.gaussianUpAxis, gaussianAttribution: options?.gaussianAttribution, gaussianReplacingModelId: options?.gaussianReplacingModelId, onGaussianBudgetReserved: options?.onGaussianBudgetReserved, onGaussianLoadSettled: options?.onGaussianLoadSettled, onLoadError: options?.onError });
+      }, { sourceHandle: options?.sourceHandle, retryOperation: options?.retryOperation, workflowOwner: options?.workflowOwner, gaussianPlacement: options?.gaussianPlacement, gaussianUpAxis: options?.gaussianUpAxis, gaussianAttribution: options?.gaussianAttribution, gaussianReplacingModelId: options?.gaussianReplacingModelId, onGaussianBudgetReserved: options?.onGaussianBudgetReserved, onGaussianLoadSettled: options?.onGaussianLoadSettled, onLoadError: options?.onError, onModelRegistered: () => { thisAdd.registered = true; } });
 
       // Registration is the outcome, also when a newer add overlapped this one:
       // a superseded load still settled a model (#4897, `federationRtcRebase.ts`).
-      if (!useViewerStore.getState().models.has(modelId)) return null;
+      // THIS load must have registered it (overlapping reloads can share an
+      // explicit id), and it must still be there (a primary load clears it).
+      if (!thisAdd.registered || !useViewerStore.getState().models.has(modelId)) return null;
       convergeFederationRtcFrame();
       console.log(`[ifc-lite] Added model ${file.name} (${fileSizeForGateMB.toFixed(1)}MB) in ${(performance.now() - addStart).toFixed(0)}ms`);
       return modelId;

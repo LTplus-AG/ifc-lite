@@ -39,17 +39,19 @@ let pending: PendingLoad[] = [];
 const loadFileStub = (_file: File, target?: LoadTarget, options?: ModelLoadOptions): Promise<void> =>
   new Promise<void>((resolve) => {
     const modelId = target?.kind === 'federated' ? target.modelId : assert.fail('addModel loads a federated target');
+    const idOffset = pending.length * 1_000_000;
     pending.push({
       modelId,
       options,
+      // loadFile's contract (useIfcLoader.onLoadError.test.tsx covers the real side):
+      // register, then report the registration; or report the failure and return.
       register: () => {
-        useViewerStore.getState().addModel(fixtureModel(modelId, { idOffset: pending.findIndex((p) => p.modelId === modelId) * 1_000_000 }));
+        useViewerStore.getState().addModel(fixtureModel(modelId, { idOffset }));
+        options?.onModelRegistered?.();
         resolve();
       },
       fail: (message) => {
-        // loadFile never rethrows: it reports through its single error funnel and returns.
         options?.onLoadError?.(message);
-        useViewerStore.getState().setError(message);
         resolve();
       },
     });
@@ -104,13 +106,23 @@ describe('addModel under overlapping federated adds (federation-addmodel-race)',
     assert.deepEqual([...useViewerStore.getState().models.keys()].sort(), ['a', 'b']);
   });
 
-  it('returns null for a superseded add whose model is no longer registered', async () => {
+  it('returns null when the model it registered was cleared before it returned (a primary load)', async () => {
     const a = hookApi!.addModel(ifc('a.ifc'), { modelId: 'a' });
     await loadsStarted(1);
     pending[0].register();
-    // A primary load (or a remove) dropped the model before the caller saw the result.
     useViewerStore.getState().clearAllModels();
     assert.equal(await a, null);
+  });
+
+  it('does not claim a model another overlapping add registered under the same explicit id', async () => {
+    const first = hookApi!.addModel(ifc('a.ifc'), { modelId: 'same' });
+    const second = hookApi!.addModel(ifc('a.ifc'), { modelId: 'same' });
+    await loadsStarted(2);
+
+    pending[1].register();
+    assert.equal(await second, 'same');
+    pending[0].fail('a.ifc: IFC parsing failed');
+    assert.equal(await first, null, 'the first add failed; the registered model is the second add\'s');
   });
 
   it("reports this add's own failure reason, not the global error a later load wrote", async () => {

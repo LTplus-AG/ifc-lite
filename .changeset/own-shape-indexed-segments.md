@@ -1,5 +1,6 @@
 ---
 "@ifc-lite/data": major
+"@ifc-lite/parser": major
 "@ifc-lite/mutations": major
 "@ifc-lite/export": minor
 ---

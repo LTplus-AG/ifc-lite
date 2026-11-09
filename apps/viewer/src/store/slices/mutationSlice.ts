@@ -6,7 +6,7 @@
  * Mutation slice - manages property/quantity mutations for IFC export
  */
 
-import { moveWithGeneratedRooms } from './mutation-placement-rooms.js';
+import { moveWithGeneratedRooms, rotateWithGeneratedRooms } from './mutation-placement-rooms.js';
 import { mirrorNewRoofDefinition } from './mutation-roof.js';
 import { type StateCreator } from 'zustand';
 import type { ViewerState } from '../index.js';
@@ -1407,6 +1407,11 @@ export const createMutationSlice: StateCreator<
   rotateEntity: (modelId, expressId, deltaYaw) => {
     const denial = mutationDenial(get(), modelId);
     if (denial) return { ok: false, reason: denial };
+    const updated = rotateWithGeneratedRooms(api, modelId, expressId, deltaYaw);
+    if (updated) {
+      if (updated.result.ok) presentEntityRotation(get, modelId, expressId, deltaYaw, updated.mutation, updated.batch);
+      return updated.result;
+    }
     const view = get().mutationViews.get(modelId);
     const dataStore = get().models.get(modelId)?.ifcDataStore;
     if (view && dataStore) {

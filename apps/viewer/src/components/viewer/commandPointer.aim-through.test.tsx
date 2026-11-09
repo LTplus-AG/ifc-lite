@@ -94,6 +94,30 @@ describe('aiming through to the workplane (#9201)', () => {
     assert.deepEqual(landed().local, [1.7, 2.3]);
     assert.equal(landed().winner, 'grid');
   });
+  it('#9296 a wall vertex from another storey projects its reference onto the active plane', () => {
+    const s = useViewerStore.getState();
+    const wall = s.addWall(MODEL_ID, STOREY, { Start: [0,0,0], End: [4,0,0], Thickness: 0.2, Height: 3 });
+    assert.ok('expressId' in wall);
+    s.setSessionStorey(50);
+    s.startCommand('wall.place');
+    const ctx = pointer(undefined, true, false, () => ({
+      intersection: { point: { x: 4, y: 3, z: 0.1 }, expressId: wall.expressId },
+      snapTarget: { type: 'vertex', position: { x: 4, y: 3, z: 0.1 }, expressId: wall.expressId, confidence: 1 }, edgeLock: NO_LOCK,
+    }));
+    click(ctx, 400, 10);
+    assert.deepEqual(landed().local, [4, 0]);
+  });
+  it('#9296 construction picks through space volumes to physical geometry', () => {
+    const space = useViewerStore.getState().addSpace(MODEL_ID, STOREY, { Profile: 'polygon', OuterCurve: [[0,0],[4,0],[4,3],[0,3]], Position: [0,0,0], Height: 3 });
+    assert.ok('expressId' in space);
+    const ctx = pointer();
+    ctx.renderer.raycastSceneMagnetic = (_x, _y, _lock, options) => ({
+      intersection: null, edgeLock: NO_LOCK,
+      snapTarget: options?.hiddenIds?.has(space.expressId) ? null : { type: 'vertex', position: { x: 1.237, y: 3, z: -2.347 }, expressId: space.expressId, confidence: 1 },
+    });
+    click(ctx, 123.7, -234.7);
+    assert.deepEqual(landed(), { local: [1.2, 2.3], winner: 'grid' });
+  });
   it('#9296 the increment follows zoom from 100mm to 10mm', () => {
     const runtime = getCommandRuntime();
     for (const [metresPerPixel, step, expected] of [[0.01, 0.1, [1.2,2.3]], [0.001, 0.01, [1.24,2.35]]] as const) {

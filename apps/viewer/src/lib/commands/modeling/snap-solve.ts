@@ -145,7 +145,7 @@ export function solveCommandSnap(runtime: CommandRuntimeState, plane: Workplane,
     runtime.snap ?? undefined,
   );
   if (command.id === 'wall.place' && runtime.ctx && !input.mods.altKey && !suspended) {
-    solved = remapWallBodySnap(solved, runtime.ctx.modelId, query, input);
+    solved = remapWallBodySnap(solved, plane, query, input);
   }
   return {
     ...solved,

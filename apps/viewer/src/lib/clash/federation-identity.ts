@@ -53,7 +53,8 @@
  * wrapper. What the refs in a `ClashResult` depend on is the express id space —
  * `elementsFromStep` derives every `ref` from an express id via
  * `toGlobalId(modelId, expressId)` — and the entity table is that id space,
- * while the wrapper is merely the object holding it. `identityToken` carries
+ * while the wrapper is merely the object holding it. `identityToken`
+ * (`lib/federation/federation-identity.ts`) carries
  * the full argument for why the table is the load-bearing grain; the short
  * version is that the wrapper is replaced by writes that move no id (the
  * background spatial-index publish clones it on every load), so keying on it
@@ -81,87 +82,20 @@
  *    live runs on benign geometry churn.
  */
 
-/** The per-model fields the identity is read from. Structural, not the store's
- *  `FederatedModel`, so this module stays testable without the viewer store. */
-export interface FederationModelIdentity {
-  ifcDataStore?: { entities?: unknown } | null;
-}
+import {
+  identityToken,
+  type FederationIdentity,
+  type FederationModelIdentity,
+} from '@/lib/federation/federation-identity';
 
 /**
- * Model id → the entity table the run read its express ids from.
- * Compared by REFERENCE — see {@link identityToken} for why that is exactly
- * "the ids this run computed still mean what it thought".
+ * The generic half of this module — the token, its capture and the
+ * whole-federation `federationIsCurrent` check — lives in
+ * `lib/federation/federation-identity.ts`, shared with IDS and rule-set
+ * validation. What stays here is clash-only: the identity bound to a
+ * published result and the per-ref check.
  */
-export type ClashFederationIdentity = ReadonlyMap<string, unknown>;
-
-/**
- * The one definition of the token, used by BOTH the capture and the check so
- * they cannot drift apart.
- *
- * `store.entities` — the columnar entity table (`IfcDataStore.entities`) — and
- * NOT the `ifcDataStore` wrapper around it. The wrapper is the wrong grain: it
- * is replaced by writes that move no express id at all: callers can publish
- * a shallow clone through `setIfcDataStore`, preserving this very table.
- * Keyed on the wrapper, an in-flight run would be discarded though every
- * one of its rows still resolves.
- *
- * The table is the right grain in both directions:
- *
- *  - it is never assigned or mutated in place on a live store. No `store.entities =`
- *    exists outside a store's own construction, and nothing appends to the
- *    table after `EntityTableBuilder.build()`. So a token that holds means the
- *    express ids genuinely have not moved.
- *  - every path that DOES move express ids builds a whole new store, and with
- *    it a new table: a re-parse (`IfcParser.parseColumnar`), a worker handoff
- *    (`fromTransport` rebuilds the columns), and the collab peer edit — which
- *    re-derives the model from the CRDT through `parseIfcxViewerModel` before
- *    calling `setIfcDataStore` (`collabSlice`). So a token that breaks really
- *    is a run whose refs no longer hold.
- *
- * A store without an entity table falls back to the store object itself, so
- * such a model is compared exactly as it was before — never silently equal.
- */
-function identityToken(model: FederationModelIdentity): unknown {
-  return model.ifcDataStore?.entities ?? model.ifcDataStore;
-}
-
-/**
- * Record the identity of one model the run took elements from. Called from
- * inside `gatherElements`' own loop, against the same state snapshot it
- * iterates, so the identity cannot describe a federation different from the one
- * the elements came from.
- */
-export function recordGatheredModel(
-  into: Map<string, unknown>,
-  modelId: string,
-  model: FederationModelIdentity,
-): void {
-  into.set(modelId, identityToken(model));
-}
-
-/**
- * Is every model this run examined still loaded, with the same entity table?
- *
- * `false` means the run described a world that no longer exists and its result
- * must be dropped: `clearAllModels` / `resetViewerState` empty the map,
- * `removeModel` drops one key, and a collab peer edit
- * (`setIfcDataStore` with a re-derived store) swaps one value.
- *
- * An EMPTY captured identity returns `true` — vacuously current. It cannot
- * arise from a real run (`run()` and `runDuplicates()` both bail with "No model
- * geometry is loaded" before publishing when no elements were gathered), and
- * answering `false` would make a would-be publish look like a teardown.
- */
-export function clashFederationIsCurrent(
-  captured: ClashFederationIdentity,
-  models: ReadonlyMap<string, FederationModelIdentity>,
-): boolean {
-  for (const [modelId, token] of captured) {
-    const current = models.get(modelId);
-    if (!current || identityToken(current) !== token) return false;
-  }
-  return true;
-}
+export type ClashFederationIdentity = FederationIdentity;
 
 /**
  * The identity a published result was computed on, bound to the RESULT OBJECT.
@@ -201,7 +135,7 @@ export function rememberFederationIdentity(
  * computed against?
  *
  * Deliberately per-model rather than the whole-federation
- * {@link clashFederationIsCurrent}. The two answer different questions.
+ * `federationIsCurrent` (`lib/federation/federation-identity.ts`). The two answer different questions.
  * Whole-federation is the right question at PUBLISH time — a result is written
  * once, as a unit, and one missing model makes the write as a whole wrong. Per
  * REF, the question is only ever "does this one number still mean what it meant

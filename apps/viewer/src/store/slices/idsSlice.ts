@@ -101,6 +101,10 @@ export interface IDSSliceState {
   idsPanelVisible: boolean;
   /** Loading state */
   idsLoading: boolean;
+  /** Bumped by the session reset, which keeps `models` and so is invisible to
+   *  the federation identity; an in-flight IDS/rule-set run observes it and
+   *  ends itself (A1, `hooks/validation/validationRunGuard.ts`). */
+  validationRunGeneration: number;
   /** Validation progress */
   idsProgress: ValidationProgress | null;
   /** Error message: a caught-exception string, or a catalogued resolver error. */
@@ -232,6 +236,7 @@ export const createIdsSlice: StateCreator<IDSSlice, [], [], IDSSlice> = (set, ge
   idsActiveEntityId: null,
   idsPanelVisible: false,
   idsLoading: false,
+  validationRunGeneration: 0,
   idsProgress: null,
   idsError: null,
   idsLocale: 'en',

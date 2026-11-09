@@ -97,6 +97,7 @@ const PINNED_SESSION_RESET_KEYS: readonly string[] = [
   'textAnnotation2DEditing', 'textAnnotations2D', 'titleBlockEditorVisible', 'typeViewMode',
   'typeVisibility', 'undoStacks', 'visualEnhancementsEnabled', 'zoneApportionment',
   'zoneAssignmentTiming', 'zoneAssignments',
+  'validationRunGeneration', // A1: a session reset ends an in-flight IDS/rule-set run
 ];
 
 /** The same, for `all-models-cleared`. */
@@ -301,6 +302,7 @@ const PINNED_OWNED_KEYS: readonly string[] = [
   'typeVisibility', 'undoStacks', 'visibilityRevision', 'visualEnhancementsEnabled', 'zoneApportionment',
   'zoneAssignmentTiming', 'zoneAssignments',
   'validationRuleSetDraft', 'validationRuleSetEditing', // #5825 owned by the draft slice
+  'validationRunGeneration', // A1
 ];
 
 

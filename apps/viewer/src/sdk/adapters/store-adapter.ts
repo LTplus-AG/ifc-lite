@@ -47,6 +47,7 @@ import { ensureSourceRoomEntities, initialRoomAttributes } from './store-adapter
 import { roomSlotFor } from '@/lib/collab/room-model-target.js';
 import { mutationDenialMessage, mutationPermission } from '../../store/mutation-permission.js';
 import { recordResolvedModellingCommit } from '@/store/slices/mutation-modelling-records';
+import { mirrorNewRoofDefinition } from '@/store/slices/mutation-roof';
 
 export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
   // One StoreEditor per (modelId, MutablePropertyView) pair. Editors are
@@ -163,7 +164,9 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
       modelId: normalizedModelId, editor, dataStore, view: editor.getMutationView(),
     }, (draft, data) => build(draft, data, createOrdinaryStoreBackend(() => ({
       ...resolveModel(modelId), store: data, editor: draft, mutationView: draft.getMutationView(),
-    }))), undefined, true);
+    }))), undefined, true, element.kind === 'roof'
+      ? (id, view) => mirrorNewRoofDefinition(store.getState(), normalizedModelId, id, view)
+      : undefined);
     // The builder only wrote the overlay. Book it the way the UI's add actions
     // do — mesh, spatial tree, undo entry, `mutationVersion` — or the element
     // is in the export and nowhere else: a flow or script "adds" columns the

@@ -12,7 +12,7 @@ import {
   effectiveReferencers, editOwnershipRefusal, remeshContextRoots,
   captureAppearanceDependencies, planAuthoredResourceCleanup,
 } from '@ifc-lite/export';
-import { resolveSpatialAnchor, resolveDuplicateSource, effectiveStoreyElevation, deriveAuthoredBaseQuantities } from '@ifc-lite/create';
+import { addWallToStore, resolveSpatialAnchor, resolveDuplicateSource, effectiveStoreyElevation, deriveAuthoredBaseQuantities } from '@ifc-lite/create';
 import { tableFromIPC } from 'apache-arrow';
 import { readParquet } from 'parquet-wasm';
 import { overlayFromView } from './headless/overlay.js';
@@ -62,8 +62,12 @@ async function fixture() {
 type Fixture = Awaited<ReturnType<typeof fixture>>;
 type Entry = readonly [string, (f: Fixture) => void | Promise<void>];
 const entries: Entry[] = [
-  ['export.effectiveReferencers', ({ store, legacy, wall, shared }) => {
+  ['export.effectiveReferencers', ({ store, legacy, wall, shared, color }) => {
     expect(effectiveReferencers(store, legacy)(1235)).toEqual(expect.arrayContaining([1222, wall, shared]));
+    // A source-only edit introduces a reference absent from both immutable
+    // source and authored indices, including when it skips journal history.
+    legacy.setPositionalAttribute(361, 0, `#${color}`, true);
+    expect(effectiveReferencers(store, legacy)(color)).toContain(361);
   }],
   ['export.editOwnershipRefusal', ({ store, legacy, wall, shared }) => {
     expect(editOwnershipRefusal(store, legacy, [1235], new Set([1222, wall]))).toContain(`#${shared}`);
@@ -129,8 +133,11 @@ const entries: Entry[] = [
     legacy.setPositionalAttribute(storey, 9, 12);
     expect(effectiveStoreyElevation(store, legacy, storey)).toBe(12 * (store.lengthUnitScale ?? 1));
   }],
-  ['create.deriveAuthoredBaseQuantities', ({ store, legacy, wall }) => {
-    expect(deriveAuthoredBaseQuantities(store, legacy, wall).length).toBeGreaterThan(0);
+  ['create.deriveAuthoredBaseQuantities', ({ store, legacy, editor, storey }) => {
+    const anchor = resolveSpatialAnchor(store, storey, legacy);
+    const authored = addWallToStore(editor, anchor, { Start: [0, 0, 0], End: [4, 0, 0], Height: 3, Thickness: 0.2 }).wallId;
+    const quantities = deriveAuthoredBaseQuantities(store, legacy, authored).flatMap(set => set.quantities);
+    expect(quantities.find(quantity => quantity.name === 'GrossVolume')?.value).toBeCloseTo(2.4);
   }],
 ];
 

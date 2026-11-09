@@ -1,10 +1,10 @@
 diff --git a/packages/source-dalux/src/commit-index.ts b/packages/source-dalux/src/commit-index.ts
 --- a/packages/source-dalux/src/commit-index.ts
 +++ b/packages/source-dalux/src/commit-index.ts
-@@ -278,7 +278,7 @@ async function buildCommitIndex(client: BrowserDaluxApiClient, projectId: string
-   if (truncated) {
-     client.debug('version-set sweep truncated', { swept: swept.length, total: sets.length });
+@@ -213,7 +213,7 @@
+     });
    }
+ 
 -  return { models, versionSetCount: swept.length, truncated, partial: false };
 +  return { models, versionSetCount: swept.length, truncated, partial };
  }

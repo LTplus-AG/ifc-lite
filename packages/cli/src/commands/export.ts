@@ -93,6 +93,13 @@ export function resolveColumnValue(entity: any, col: string, bim: any): unknown 
     const qsets = bim.quantities(entity.ref);
     const qty = findQuantityInSets<any>(qsets, setName, valueName);
     if (qty?.value != null) return qty.value;
+    // Opening dimensions are native IFC attributes even when the authoring
+    // tool supplied no Qto set. Preserve an explicit quantity when present.
+    const opening = /^Qto_(Door|Window)BaseQuantities\.(Width|Height)$/.exec(col);
+    if (opening && entity.type === `Ifc${opening[1]}`) {
+      const attrs = bim.attributes(entity.ref) as Array<{ name: string; value: unknown }>;
+      return attrs.find(a => a.name === `Overall${opening[2]}`)?.value ?? null;
+    }
     return null;
   }
 

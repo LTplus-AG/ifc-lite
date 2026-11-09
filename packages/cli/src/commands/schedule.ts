@@ -135,13 +135,7 @@ export function resolveScheduleValue(entity: any, path: string, bim: any): unkno
 
   const viaColumn = resolveColumnValue(entity, path, bim);
   if (viaColumn != null) return viaColumn;
-  // Opening dimensions are native IFC attributes even when the authoring
-  // tool supplied no Qto set. Preserve an explicit quantity when present.
-  const opening = /^Qto_(Door|Window)BaseQuantities\.(Width|Height)$/.exec(path);
-  if (opening && entity.type === `Ifc${opening[1]}`) {
-    const attrs = bim.attributes(entity.ref) as Array<{ name: string; value: unknown }>;
-    return attrs.find(a => a.name === `Overall${opening[2]}`)?.value ?? null;
-  }
+
 
   return null;
 }

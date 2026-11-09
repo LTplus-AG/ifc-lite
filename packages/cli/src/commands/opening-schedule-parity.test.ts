@@ -6,6 +6,7 @@ import { parseModel } from '@ifc-lite/parser';
 import { createBimContext } from '@ifc-lite/sdk';
 import { IfcCreator } from '@ifc-lite/create';
 import { HeadlessBackend } from '../headless-backend.js';
+import { resolveColumnValue } from './export.js';
 import { resolveScheduleValue } from './schedule.js';
 
 it.each(['Door', 'Window'])('schedules %s dimensions, mark and common properties without a quantity set (#9354)', async type => {
@@ -17,6 +18,8 @@ it.each(['Door', 'Window'])('schedules %s dimensions, mark and common properties
   expect(entity).toBeDefined();
   bim.mutate.setProperty(entity.ref, `Pset_${type}Common`, 'FireRating', 'EI60');
   bim.mutate.setProperty(entity.ref, `Pset_${type}Common`, 'IsExternal', true);
+  expect(resolveColumnValue(entity, `Qto_${type}BaseQuantities.Width`, bim)).toBe(.9);
+  expect(resolveColumnValue(entity, `Qto_${type}BaseQuantities.Height`, bim)).toBe(2.1);
   expect(resolveScheduleValue(entity, `Qto_${type}BaseQuantities.Width`, bim)).toBe(.9);
   expect(resolveScheduleValue(entity, `Qto_${type}BaseQuantities.Height`, bim)).toBe(2.1);
   expect(resolveScheduleValue(entity, 'Tag', bim)).toBe('D-01');

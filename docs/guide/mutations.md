@@ -680,7 +680,9 @@ const result = generateSpacesFromWalls(editor, dataStore, storeyExpressId, {
 // → { wallsConsidered, wallsContributing, detected: DetectedSpace[], emitted: [...] }
 ```
 
-By default, generated spaces use the inner wall faces, including joined wall thickness, and store `NetFloorArea`, `GrossFloorArea` and perimeter in `Qto_SpaceBaseQuantities`. Moving a bounding wall through `transformElementsInStore` updates generated space outlines and quantities in the same edit; the SDK records that edit as one undo operation.
+By default, generated spaces use the inner wall faces, including joined wall thickness, and store paired `NetFloorArea`/`NetPerimeter` (inner faces) and `GrossFloorArea`/`GrossPerimeter` (centrelines) in `Qto_SpaceBaseQuantities`. Moving a bounding wall through `transformElementsInStore` updates generated space outlines and quantities in the same edit; the SDK records that edit as one undo operation.
+
+Generated spaces retain their snap tolerance and minimum area in `IfcLite_SpaceGeneration`, so boundary edits use the same detection settings after export and reopen. If a legacy generated space cannot be re-detected, the edit emits a warning identifying the space rather than silently keeping stale quantities.
 
 The detector also picks up overlay walls (placed via `addWallToStore` since the model was parsed) when you pass an `OverlayWallReader` — the viewer's Room tool (**Auto**) does the same for freshly-drawn walls without a re-parse. `detectEnclosedAreas(segments, options)` is exported as the pure pipeline step if you want detection without IFC emission.
 

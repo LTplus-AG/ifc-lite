@@ -32,6 +32,7 @@ import {
   type Vec2,
 } from './auto-space-detect.js';
 import { addSpaceToStore, type SpaceBuildResult, type SpaceBoundaryInput } from './space.js';
+import { polygonPerimeter } from './base-quantities-measure.js';
 import { offsetRoomFootprint, pointInPolygon, polygonArea, type BoundaryMode } from './room-footprint-offset.js';
 
 export { offsetRoomFootprint, type BoundaryMode } from './room-footprint-offset.js';
@@ -217,7 +218,14 @@ export function generateSpacesFromWalls(
       ),
       grossFloorArea: region.area,
       netFloorArea: polygonArea(netFootprint),
+      grossPerimeter: polygonPerimeter(region.outline),
+      netPerimeter: polygonPerimeter(netFootprint),
     });
+    editor.addPropertySet(result.spaceId, 'IfcLite_SpaceGeneration', [
+      { name: 'SnapTolerance', value: options.snapTolerance ?? .1, type: 'REAL' },
+      { name: 'MinArea', value: options.minArea ?? .5, type: 'REAL' },
+      { name: 'BoundaryMode', value: boundaryMode, type: 'LABEL' },
+    ]);
     emitted.push({ region, result, name });
   });
 

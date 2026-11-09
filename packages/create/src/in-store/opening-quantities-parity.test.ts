@@ -58,3 +58,17 @@ it('measures authored stair and curtain wall assemblies (#9354)', async () => {
   expect(values(curtain.curtainWallId)).toMatchObject({ Height: 3, GrossSideArea: 18 });
   expect(values(curtain.curtainWallId).NetVolume).toBeGreaterThan(0);
 });
+
+it.each(['IfcDoor', 'IfcWindow', 'IfcStair', 'IfcCurtainWall'])('does not invent beam quantities when %s measurement is unsupported (#9423 review)', async type => {
+  const { addColumnToStore } = await import('./column.js');
+  const { resolveSpatialAnchor } = await import('./resolve-anchor.js');
+  const c = new IfcCreator();
+  const storey = c.addIfcBuildingStorey({ Name: 'Ground', Elevation: 0 });
+  const { store } = await parseModel(new TextEncoder().encode(c.toIfc().content), { disableWorkerScan: true });
+  const view = new MutablePropertyView(null, 'm'), editor = new StoreEditor(store, view);
+  const col = addColumnToStore(editor, resolveSpatialAnchor(store, storey, view), { Position: [0, 0, 0], Width: .3, Depth: .4, Height: 3 });
+  // A rectangular occurrence reclassified without the target's dimensional or
+  // assembly contract must not acquire Qto_BeamBaseQuantities.
+  editor.setEntityType(col.columnId, type);
+  expect(deriveAuthoredBaseQuantities(store, view, col.columnId)).toEqual([]);
+});

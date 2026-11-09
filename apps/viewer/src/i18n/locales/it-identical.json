@@ -1,0 +1,1690 @@
+{
+  "activityTray.announce": {
+    "value": "{title}: {status}",
+    "reason": "activityTray.announce: Announcement joins the supplied title, optional subject and already resolved status; punctuation adds no English wording."
+  },
+  "activityTray.announceSubject": {
+    "value": "{title} ({subject}): {status}",
+    "reason": "activityTray.announceSubject: Announcement joins the supplied title, optional subject and already resolved status; punctuation adds no English wording."
+  },
+  "alignmentSection.axisFallback": {
+    "value": "IfcAlignment #{id}",
+    "reason": "alignmentSection.axisFallback: IfcAlignment is the exact IFC entity name; the hash introduces the supplied entity identifier."
+  },
+  "anonymizedExport.dialog.ifcExtensionSuffix": {
+    "value": ".ifc",
+    "reason": "anonymizedExport.dialog.ifcExtensionSuffix: This is the literal file-extension choice used by the export/import control, not a translatable description."
+  },
+  "anonymizedExport.relatedList.groupLabel": {
+    "value": "{relationship} ({role})",
+    "reason": "anonymizedExport.relatedList.groupLabel: Relationship and role are supplied values; parentheses only group the role."
+  },
+  "appearance.annotationFields.containerFallbackName": {
+    "value": "#{expressId}",
+    "reason": "appearance.annotationFields.containerFallbackName: Fallback entity reference consists solely of a hash and the supplied numeric identifier."
+  },
+  "appearance.assignments.reviewRowSummaryClass": {
+    "value": "{modelName} · {ifcClass}",
+    "reason": "appearance.assignments.reviewRowSummaryClass: Model name and IFC class are runtime identifiers separated by a middle dot and must remain exact."
+  },
+  "appearance.calibration.letterA": {
+    "value": "A",
+    "reason": "appearance.calibration.letterA: Calibration endpoint letter; A and B identify the same endpoints in both languages."
+  },
+  "appearance.calibration.letterB": {
+    "value": "B",
+    "reason": "appearance.calibration.letterB: Calibration endpoint letter; A and B identify the same endpoints in both languages."
+  },
+  "appearance.capture.containerFallbackName": {
+    "value": "#{expressId}",
+    "reason": "appearance.capture.containerFallbackName: Fallback entity reference consists solely of a hash and the supplied numeric identifier."
+  },
+  "appearance.pdfFidelity.omissionRowSimple": {
+    "value": "{itemCount} × {label}",
+    "reason": "appearance.pdfFidelity.omissionRowSimple: Multiplication notation combines the item count with the supplied label or kind; no English sentence is embedded."
+  },
+  "appearance.pdfFidelity.regionExtent": {
+    "value": "x {x0}–{x1}, y {y0}–{y1} pt",
+    "reason": "appearance.pdfFidelity.regionExtent: PDF rectangle coordinates use x/y axis notation and the typographic point unit pt."
+  },
+  "appearance.pdfFidelity.row.unknown": {
+    "value": "{itemCount} × {kind}",
+    "reason": "appearance.pdfFidelity.row.unknown: Multiplication notation combines the item count with the supplied label or kind; no English sentence is embedded."
+  },
+  "appearance.pdfFields.qualityCustomDpi": {
+    "value": "{dpi} dpi",
+    "reason": "appearance.pdfFields.qualityCustomDpi: Print resolution combines the supplied numeric value with the conventional dots-per-inch abbreviation dpi."
+  },
+  "appearance.pdfFields.qualityStandard": {
+    "value": "Standard · 144 dpi",
+    "reason": "appearance.pdfFields.qualityStandard: Standard is also the Italian quality adjective here; 144 dpi is the fixed image-resolution specification."
+  },
+  "appearance.pdfFields.rotation180": {
+    "value": "180°",
+    "reason": "appearance.pdfFields.rotation180: The rotation choice is the numeric angle 180 degrees, expressed using the degree symbol."
+  },
+  "appearance.scan.metresEmpty": {
+    "value": "—",
+    "reason": "appearance.scan.metresEmpty: Em dash marks an unavailable measurement; it is not an English word."
+  },
+  "appearance.scan.metresValue": {
+    "value": "{value} m",
+    "reason": "appearance.scan.metresValue: A numeric measurement with the exact SI unit abbreviation shown in the pinned value; unit symbols are language independent."
+  },
+  "appearance.scanTransfer.exclusionRow": {
+    "value": "#{productId}: {reason}",
+    "reason": "appearance.scanTransfer.exclusionRow: Scan exclusion identifies the product number and appends the supplied reason; the reason is not authored by this wrapper."
+  },
+  "appearance.sourceFields.dimensionsPx": {
+    "value": "{width} × {height} px",
+    "reason": "appearance.sourceFields.dimensionsPx: Image dimensions retain the supplied width/height and the pixel abbreviation px."
+  },
+  "appearanceAssignmentList.summary": {
+    "value": "{products} · {excluded} · {overridden}",
+    "reason": "appearanceAssignmentList.summary: Joins the resolved product, exclusion and override summaries with middle dots; their own messages supply the words."
+  },
+  "bcf.createForm.assigneePlaceholder": {
+    "value": "name@example.com",
+    "reason": "bcf.createForm.assigneePlaceholder: Literal sample email address demonstrates email syntax; it is not a sentence or an actual recipient."
+  },
+  "bcf.serverConnect.emailLabel": {
+    "value": "Email",
+    "reason": "bcf.serverConnect.emailLabel: Email is the established Italian label for an email address."
+  },
+  "bcf.serverConnect.emailPlaceholder": {
+    "value": "you@example.com",
+    "reason": "bcf.serverConnect.emailPlaceholder: Literal sample email address demonstrates email syntax; it is not a sentence or an actual recipient."
+  },
+  "bcf.serverConnect.passwordLabel": {
+    "value": "Password",
+    "reason": "bcf.serverConnect.passwordLabel: Password is the established Italian UI noun for a secret credential."
+  },
+  "bcf.serverConnect.serverLabel": {
+    "value": "Server",
+    "reason": "bcf.serverConnect.serverLabel: Server is an established Italian computing noun for the BCF connection endpoint."
+  },
+  "bcf.serverConnect.serverUrlPlaceholder": {
+    "value": "https://example.com/bcf",
+    "reason": "bcf.serverConnect.serverUrlPlaceholder: Literal example URL or tile URL template; path segments and coordinate placeholders are executable address syntax."
+  },
+  "bcf.shared.emailPlaceholder": {
+    "value": "your@email.com",
+    "reason": "bcf.shared.emailPlaceholder: Literal sample email address demonstrates email syntax; it is not a sentence or an actual recipient."
+  },
+  "bulkPropertyEditor.type.proxy": {
+    "value": "Proxy",
+    "reason": "bulkPropertyEditor.type.proxy: Proxy labels the generic IfcBuildingElementProxy type; proxy is also used as the technical Italian noun here."
+  },
+  "cesiumGeo.axisHelper.labelX": {
+    "value": "X",
+    "reason": "cesiumGeo.axisHelper.labelX: Cartesian axis letter must identify the same coordinate axis in every locale."
+  },
+  "cesiumGeo.axisHelper.labelY": {
+    "value": "Y",
+    "reason": "cesiumGeo.axisHelper.labelY: Cartesian axis letter must identify the same coordinate axis in every locale."
+  },
+  "cesiumGeo.axisHelper.labelZ": {
+    "value": "Z",
+    "reason": "cesiumGeo.axisHelper.labelZ: Cartesian axis letter must identify the same coordinate axis in every locale."
+  },
+  "cesiumGeo.basemap.attributionLinkPlaceholder": {
+    "value": "https://…/licence",
+    "reason": "cesiumGeo.basemap.attributionLinkPlaceholder: Literal example URL or tile URL template; path segments and coordinate placeholders are executable address syntax."
+  },
+  "cesiumGeo.basemap.urlPlaceholder": {
+    "value": "https://example.org/tiles/{z}/{x}/{y}.png",
+    "reason": "cesiumGeo.basemap.urlPlaceholder: Literal example URL or tile URL template; path segments and coordinate placeholders are executable address syntax."
+  },
+  "cesiumGeo.placement.deltaELabel": {
+    "value": "Delta E",
+    "reason": "cesiumGeo.placement.deltaELabel: Delta is also the Italian mathematical term for a change; the following letter is the coordinate or rotation axis identifier."
+  },
+  "cesiumGeo.placement.deltaNLabel": {
+    "value": "Delta N",
+    "reason": "cesiumGeo.placement.deltaNLabel: Delta is also the Italian mathematical term for a change; the following letter is the coordinate or rotation axis identifier."
+  },
+  "cesiumGeo.placement.deltaRLabel": {
+    "value": "Delta R",
+    "reason": "cesiumGeo.placement.deltaRLabel: Delta is also the Italian mathematical term for a change; the following letter is the coordinate or rotation axis identifier."
+  },
+  "cesiumGeo.placement.deltaZLabel": {
+    "value": "Delta Z",
+    "reason": "cesiumGeo.placement.deltaZLabel: Delta is also the Italian mathematical term for a change; the following letter is the coordinate or rotation axis identifier."
+  },
+  "cesiumGeo.placement.nudgeEastLabel": {
+    "value": "E+",
+    "reason": "cesiumGeo.placement.nudgeEastLabel: Signed axis button notation: E/N/Z denote coordinate directions and R rotation; plus/minus specify direction, not English prose."
+  },
+  "cesiumGeo.placement.nudgeHeightDownLabel": {
+    "value": "Z-",
+    "reason": "cesiumGeo.placement.nudgeHeightDownLabel: Signed axis button notation: E/N/Z denote coordinate directions and R rotation; plus/minus specify direction, not English prose."
+  },
+  "cesiumGeo.placement.nudgeHeightUpLabel": {
+    "value": "Z+",
+    "reason": "cesiumGeo.placement.nudgeHeightUpLabel: Signed axis button notation: E/N/Z denote coordinate directions and R rotation; plus/minus specify direction, not English prose."
+  },
+  "cesiumGeo.placement.nudgeNorthLabel": {
+    "value": "N+",
+    "reason": "cesiumGeo.placement.nudgeNorthLabel: Signed axis button notation: E/N/Z denote coordinate directions and R rotation; plus/minus specify direction, not English prose."
+  },
+  "cesiumGeo.placement.nudgeSouthLabel": {
+    "value": "N-",
+    "reason": "cesiumGeo.placement.nudgeSouthLabel: Signed axis button notation: E/N/Z denote coordinate directions and R rotation; plus/minus specify direction, not English prose."
+  },
+  "cesiumGeo.placement.nudgeWestLabel": {
+    "value": "E-",
+    "reason": "cesiumGeo.placement.nudgeWestLabel: Signed axis button notation: E/N/Z denote coordinate directions and R rotation; plus/minus specify direction, not English prose."
+  },
+  "cesiumGeo.placement.rotateNegLabel": {
+    "value": "R-",
+    "reason": "cesiumGeo.placement.rotateNegLabel: Signed axis button notation: E/N/Z denote coordinate directions and R rotation; plus/minus specify direction, not English prose."
+  },
+  "cesiumGeo.placement.rotatePosLabel": {
+    "value": "R+",
+    "reason": "cesiumGeo.placement.rotatePosLabel: Signed axis button notation: E/N/Z denote coordinate directions and R rotation; plus/minus specify direction, not English prose."
+  },
+  "cesiumGeo.tileset.urlPlaceholder": {
+    "value": "https://example.org/tileset.json",
+    "reason": "cesiumGeo.tileset.urlPlaceholder: Literal example URL or tile URL template; path segments and coordinate placeholders are executable address syntax."
+  },
+  "changeSets.contents.entity": {
+    "value": "{type} #{id}",
+    "reason": "changeSets.contents.entity: The supplied IFC type and entity number form an identity reference; no natural-language label is added."
+  },
+  "changesPanel.entity": {
+    "value": "{type} #{id}",
+    "reason": "changesPanel.entity: The supplied IFC type and entity number form an identity reference; no natural-language label is added."
+  },
+  "chat.codeBlock.console": {
+    "value": "Console",
+    "reason": "chat.codeBlock.console: Console is the established Italian computing noun for the script output console."
+  },
+  "chat.codeBlock.languageFallback": {
+    "value": "js",
+    "reason": "chat.codeBlock.languageFallback: js is the code-language identifier used as the syntax-highlighting fallback."
+  },
+  "chat.modelSelector.anthropic": {
+    "value": "Anthropic",
+    "reason": "chat.modelSelector.anthropic: Anthropic and OpenAI are provider proper names, not descriptive English labels."
+  },
+  "chat.modelSelector.openai": {
+    "value": "OpenAI",
+    "reason": "chat.modelSelector.openai: Anthropic and OpenAI are provider proper names, not descriptive English labels."
+  },
+  "chat.panel.providerAnthropic": {
+    "value": "Anthropic",
+    "reason": "chat.panel.providerAnthropic: Anthropic and OpenAI are provider proper names, not descriptive English labels."
+  },
+  "chat.panel.providerOpenai": {
+    "value": "OpenAI",
+    "reason": "chat.panel.providerOpenai: Anthropic and OpenAI are provider proper names, not descriptive English labels."
+  },
+  "chatByok.credentialForm.workspacePlaceholder": {
+    "value": "wrkspc_...",
+    "reason": "chatByok.credentialForm.workspacePlaceholder: Literal workspace credential prefix wrkspc_ demonstrates the service identifier syntax."
+  },
+  "chatByok.keyModal.trustBulletLocalStorage": {
+    "value": "localStorage",
+    "reason": "chatByok.keyModal.trustBulletLocalStorage: localStorage is the exact browser API identifier named by the credential-storage explanation."
+  },
+  "chatByok.keyModal.walkthroughStep2CodeName": {
+    "value": "ifc-lite",
+    "reason": "chatByok.keyModal.walkthroughStep2CodeName: ifc-lite is the application/product name and keeps its spelling."
+  },
+  "chatByok.keyModal.walkthroughStep2CreateKey": {
+    "value": "Create Key",
+    "reason": "chatByok.keyModal.walkthroughStep2CreateKey: Quoted Create Key names the provider console action in the English walkthrough; this catalogue does not translate the external console."
+  },
+  "chatByok.provider.anthropic": {
+    "value": "Anthropic",
+    "reason": "chatByok.provider.anthropic: Anthropic and OpenAI are provider proper names, not descriptive English labels."
+  },
+  "chatByok.provider.openai": {
+    "value": "OpenAI",
+    "reason": "chatByok.provider.openai: Anthropic and OpenAI are provider proper names, not descriptive English labels."
+  },
+  "checkAuthoring.auditIssue": {
+    "value": "{path}: {message}",
+    "reason": "checkAuthoring.auditIssue: Audit path and diagnostic message are supplied independently; this wrapper adds only a colon."
+  },
+  "checkAuthoring.cardinalityModel": {
+    "value": "{model}: {message}",
+    "reason": "checkAuthoring.cardinalityModel: Associates a supplied model name with its resolved cardinality message using a colon."
+  },
+  "checkAuthoring.unitPair": {
+    "value": "{authored} {unit} → {si} {siUnit}",
+    "reason": "checkAuthoring.unitPair: Formats authored and SI-converted values with their unit symbols and an arrow; no language-bearing text."
+  },
+  "checkAuthoring.unsupportedReason": {
+    "value": "({reason})",
+    "reason": "checkAuthoring.unsupportedReason: Parenthesized diagnostic reason and optional supplied name; neither value is rewritten here."
+  },
+  "checkAuthoring.unsupportedReasonFor": {
+    "value": "({reason}; {name})",
+    "reason": "checkAuthoring.unsupportedReasonFor: Parenthesized diagnostic reason and optional supplied name; neither value is rewritten here."
+  },
+  "clashGroups.clashSummary": {
+    "value": "{clashes}",
+    "reason": "clashGroups.clashSummary: Combines already resolved issue, pair, group or clash summaries; middle dots only separate those supplied phrases."
+  },
+  "clashGroups.clashSummaryIssues": {
+    "value": "{clashes} · {issues}",
+    "reason": "clashGroups.clashSummaryIssues: Combines already resolved issue, pair, group or clash summaries; middle dots only separate those supplied phrases."
+  },
+  "clashGroups.groupPairs": {
+    "value": "{groups} · {pairs}",
+    "reason": "clashGroups.groupPairs: Combines already resolved issue, pair, group or clash summaries; middle dots only separate those supplied phrases."
+  },
+  "clashGroups.issuePairs": {
+    "value": "{issues} · {pairs}",
+    "reason": "clashGroups.issuePairs: Combines already resolved issue, pair, group or clash summaries; middle dots only separate those supplied phrases."
+  },
+  "clashTools.export.formatBcf": {
+    "value": "BCF",
+    "reason": "clashTools.export.formatBcf: Canonical file-format abbreviation on the export choice; translating it would rename the interoperable format."
+  },
+  "clashTools.export.formatCsv": {
+    "value": "CSV",
+    "reason": "clashTools.export.formatCsv: Canonical file-format abbreviation on the export choice; translating it would rename the interoperable format."
+  },
+  "clashTools.ruleEditor.selectorAPlaceholder": {
+    "value": "IfcDuct*|IfcPipe*",
+    "reason": "clashTools.ruleEditor.selectorAPlaceholder: Literal IFC selector example: class spelling, wildcard, alternation, negation and property-regex syntax must remain executable."
+  },
+  "clashTools.ruleEditor.selectorBPlaceholder": {
+    "value": "IfcWall*|IfcSlab",
+    "reason": "clashTools.ruleEditor.selectorBPlaceholder: Literal IFC selector example: class spelling, wildcard, alternation, negation and property-regex syntax must remain executable."
+  },
+  "clashTools.ruleEditor.selectorExampleNotSpace": {
+    "value": "!IfcSpace",
+    "reason": "clashTools.ruleEditor.selectorExampleNotSpace: Literal IFC selector example: class spelling, wildcard, alternation, negation and property-regex syntax must remain executable."
+  },
+  "clashTools.ruleEditor.selectorExamplePipe": {
+    "value": "IfcPipe*",
+    "reason": "clashTools.ruleEditor.selectorExamplePipe: Literal IFC selector example: class spelling, wildcard, alternation, negation and property-regex syntax must remain executable."
+  },
+  "clashTools.ruleEditor.selectorExampleWallSlab": {
+    "value": "IfcWall|IfcSlab",
+    "reason": "clashTools.ruleEditor.selectorExampleWallSlab: Literal IFC selector example: class spelling, wildcard, alternation, negation and property-regex syntax must remain executable."
+  },
+  "commandPalette.category.file": {
+    "value": "File",
+    "reason": "commandPalette.category.file: File is the established Italian computing noun used for the file menu or file-name column."
+  },
+  "commandPalette.escKey": {
+    "value": "Esc",
+    "reason": "commandPalette.escKey: Esc/ESC is the keyboard key legend for dismissing the panel."
+  },
+  "commandPalette.tour.minutes": {
+    "value": "{minutes} min",
+    "reason": "commandPalette.tour.minutes: Duration uses the supplied count and the Italian-compatible minute abbreviation min."
+  },
+  "commandPalette.view.spacemouse.label": {
+    "value": "SpaceMouse",
+    "reason": "commandPalette.view.spacemouse.label: SpaceMouse is the device product name, shared across the palette, ribbon, settings and panel."
+  },
+  "compareAnalysis.reconcile.runLabel": {
+    "value": "{time} · {models}",
+    "reason": "compareAnalysis.reconcile.runLabel: Run label joins a supplied time and model summary with a middle dot."
+  },
+  "compareAnalysis.side.base": {
+    "value": "A",
+    "reason": "compareAnalysis.side.base: A and B designate the comparison sides, not natural-language revision names."
+  },
+  "compareAnalysis.side.head": {
+    "value": "B",
+    "reason": "compareAnalysis.side.head: A and B designate the comparison sides, not natural-language revision names."
+  },
+  "compareKeyProperty.globalId": {
+    "value": "GlobalId",
+    "reason": "compareKeyProperty.globalId: GlobalId is the exact IFC EXPRESS attribute used as the identity key."
+  },
+  "comparePanel.changeDetail.movedLine": {
+    "value": "{distance} m (Δx {dx}, Δy {dy}, Δz {dz})",
+    "reason": "comparePanel.changeDetail.movedLine: Displacement readout preserves metres and signed delta-axis mathematical notation."
+  },
+  "comparePanel.exportBar.formatCsv": {
+    "value": "CSV",
+    "reason": "comparePanel.exportBar.formatCsv: Canonical file-format abbreviation on the export choice; translating it would rename the interoperable format."
+  },
+  "comparePanel.exportBar.formatJson": {
+    "value": "JSON",
+    "reason": "comparePanel.exportBar.formatJson: Canonical file-format abbreviation on the export choice; translating it would rename the interoperable format."
+  },
+  "comparePanel.runControls.baseLabel": {
+    "value": "A",
+    "reason": "comparePanel.runControls.baseLabel: A and B designate the comparison sides, not natural-language revision names."
+  },
+  "comparePanel.runControls.headLabel": {
+    "value": "B",
+    "reason": "comparePanel.runControls.headLabel: A and B designate the comparison sides, not natural-language revision names."
+  },
+  "costPanel.identification": {
+    "value": "ID {value}",
+    "reason": "costPanel.identification: ID is the conventional identifier abbreviation in Italian; punctuation and runtime value remain exact."
+  },
+  "curtainWall.field.baseOffset": {
+    "value": "Base",
+    "reason": "curtainWall.field.baseOffset: Base is also the Italian noun for the base position or comparison baseline; any axis notation is unchanged."
+  },
+  "dataConnector.matchTypeExpressId": {
+    "value": "EXPRESS ID",
+    "reason": "dataConnector.matchTypeExpressId: EXPRESS names the schema language; ID is the standard identifier abbreviation."
+  },
+  "dataConnector.matchTypeGlobalId": {
+    "value": "GlobalId",
+    "reason": "dataConnector.matchTypeGlobalId: GlobalId is the exact IFC EXPRESS attribute used as the identity key."
+  },
+  "deviationStats.assetGlobalId": {
+    "value": "GlobalId",
+    "reason": "deviationStats.assetGlobalId: GlobalId is the exact IFC EXPRESS attribute used as the identity key."
+  },
+  "deviationStats.maxAbs": {
+    "value": "Max |d|",
+    "reason": "deviationStats.maxAbs: Max is the conventional maximum abbreviation in Italian too; |d| denotes absolute distance."
+  },
+  "deviationStats.notAvailable": {
+    "value": "—",
+    "reason": "deviationStats.notAvailable: Em dash marks an unavailable measurement; it is not an English word."
+  },
+  "deviationStats.p50Abs": {
+    "value": "P50 |d|",
+    "reason": "deviationStats.p50Abs: P50/P95/P99 and |d| are percentile and absolute-distance mathematical notation."
+  },
+  "deviationStats.p95Abs": {
+    "value": "P95 |d|",
+    "reason": "deviationStats.p95Abs: P50/P95/P99 and |d| are percentile and absolute-distance mathematical notation."
+  },
+  "deviationStats.p99Abs": {
+    "value": "P99 |d|",
+    "reason": "deviationStats.p99Abs: P50/P95/P99 and |d| are percentile and absolute-distance mathematical notation."
+  },
+  "deviationStats.rms": {
+    "value": "RMS",
+    "reason": "deviationStats.rms: RMS is the conventional root-mean-square statistic abbreviation."
+  },
+  "deviationStats.unitMm": {
+    "value": "mm",
+    "reason": "deviationStats.unitMm: mm is the SI millimetre symbol and is unchanged in Italian."
+  },
+  "deviationStats.valueMm": {
+    "value": "{value} mm",
+    "reason": "deviationStats.valueMm: A numeric measurement with the exact SI unit abbreviation shown in the pinned value; unit symbols are language independent."
+  },
+  "document.block.fontCourier": {
+    "value": "Courier",
+    "reason": "document.block.fontCourier: Helvetica, Times and Courier are the selectable font-family names."
+  },
+  "document.block.fontHelvetica": {
+    "value": "Helvetica",
+    "reason": "document.block.fontHelvetica: Helvetica, Times and Courier are the selectable font-family names."
+  },
+  "document.block.fontTimes": {
+    "value": "Times",
+    "reason": "document.block.fontTimes: Helvetica, Times and Courier are the selectable font-family names."
+  },
+  "document.block.idsReportVariantLabel": {
+    "value": "Layout",
+    "reason": "document.block.idsReportVariantLabel: Layout is an established Italian computing/design noun; any supplied diagnostic value is preserved."
+  },
+  "document.block.topicSourceLabel": {
+    "value": "Topic",
+    "reason": "document.block.topicSourceLabel: Topic is the BCF domain noun, used consistently as an invariable Italian technical borrowing in this catalogue."
+  },
+  "document.panel.pageSizeA3": {
+    "value": "A3",
+    "reason": "document.panel.pageSizeA3: ISO paper size designation A3 or A4, which remains the same in Italian."
+  },
+  "document.panel.pageSizeA4": {
+    "value": "A4",
+    "reason": "document.panel.pageSizeA4: ISO paper size designation A3 or A4, which remains the same in Italian."
+  },
+  "document.table.column.globalId": {
+    "value": "GlobalId",
+    "reason": "document.table.column.globalId: GlobalId is the exact IFC EXPRESS attribute used as the identity key."
+  },
+  "drawingUnderlay.dxf.badge2D": {
+    "value": "2D",
+    "reason": "drawingUnderlay.dxf.badge2D: 2D/3D is dimensional notation, not an English descriptive phrase."
+  },
+  "drawingUnderlay.dxf.georefAutoSuffix": {
+    "value": " (auto)",
+    "reason": "drawingUnderlay.dxf.georefAutoSuffix: Auto is a shared abbreviation for automatic operation; any supplied count is preserved."
+  },
+  "drawingUnderlay.settings.millimetersUnit": {
+    "value": "mm",
+    "reason": "drawingUnderlay.settings.millimetersUnit: mm is the SI millimetre symbol and is unchanged in Italian."
+  },
+  "exportChangesReviewDialog.entityIdLabel": {
+    "value": "#{id}",
+    "reason": "exportChangesReviewDialog.entityIdLabel: Fallback entity reference consists solely of a hash and the supplied numeric identifier."
+  },
+  "exportChangesReviewDialog.entityTypeIdLabel": {
+    "value": "{type} #{id}",
+    "reason": "exportChangesReviewDialog.entityTypeIdLabel: The supplied IFC type and entity number form an identity reference; no natural-language label is added."
+  },
+  "exportChangesReviewDialog.entityTypeIdNameLabel": {
+    "value": "{type} #{id} — {name}",
+    "reason": "exportChangesReviewDialog.entityTypeIdNameLabel: Type, numeric identifier and model-authored name are combined as a stable entity reference."
+  },
+  "exportCommands.csv.label": {
+    "value": "CSV",
+    "reason": "exportCommands.csv.label: Canonical file-format abbreviation on the export choice; translating it would rename the interoperable format."
+  },
+  "exportCommands.glb.label": {
+    "value": "GLB",
+    "reason": "exportCommands.glb.label: Canonical file-format abbreviation on the export choice; translating it would rename the interoperable format."
+  },
+  "exportCommands.ifc.label": {
+    "value": "IFC",
+    "reason": "exportCommands.ifc.label: Canonical file-format abbreviation on the export choice; translating it would rename the interoperable format."
+  },
+  "exportCommands.ion.label": {
+    "value": "Cesium ion",
+    "reason": "exportCommands.ion.label: Cesium ion is the hosting product proper name."
+  },
+  "exportCommands.json.label": {
+    "value": "JSON",
+    "reason": "exportCommands.json.label: Canonical file-format abbreviation on the export choice; translating it would rename the interoperable format."
+  },
+  "exportCommands.kmz.label": {
+    "value": "KMZ",
+    "reason": "exportCommands.kmz.label: Canonical file-format abbreviation on the export choice; translating it would rename the interoperable format."
+  },
+  "exportCommands.pdf.label": {
+    "value": "PDF",
+    "reason": "exportCommands.pdf.label: Canonical file-format abbreviation on the export choice; translating it would rename the interoperable format."
+  },
+  "exportCommands.usd.label": {
+    "value": "USD",
+    "reason": "exportCommands.usd.label: Canonical file-format abbreviation on the export choice; translating it would rename the interoperable format."
+  },
+  "exportDialog.outputLabel": {
+    "value": "Output",
+    "reason": "exportDialog.outputLabel: Output is an established Italian computing term for generated results or the output destination."
+  },
+  "exportDialog.schemaLabel": {
+    "value": "Schema",
+    "reason": "exportDialog.schemaLabel: Schema is an Italian noun with the same spelling in this schema control."
+  },
+  "exportDialog.schemaOption.ifc5Alpha": {
+    "value": "IFC5 (Alpha)",
+    "reason": "exportDialog.schemaOption.ifc5Alpha: IFC5 is the format name and Alpha the conventional prerelease designation."
+  },
+  "extensionsFlavors.extensionsPanel.tab.audit": {
+    "value": "Audit",
+    "reason": "extensionsFlavors.extensionsPanel.tab.audit: Audit is the established technical borrowing for the extension audit log."
+  },
+  "extensionsFlavors.flavorImportPreview.idLabel": {
+    "value": "ID:",
+    "reason": "extensionsFlavors.flavorImportPreview.idLabel: ID is the conventional identifier abbreviation in Italian; punctuation and runtime value remain exact."
+  },
+  "extensionsFlavors.flavorMergeDialog.baseLabel": {
+    "value": "Base",
+    "reason": "extensionsFlavors.flavorMergeDialog.baseLabel: Base is also the Italian noun for the base position or comparison baseline; any axis notation is unchanged."
+  },
+  "extensionsPanels.auditLogPanel.metadataDate": {
+    "value": "{date}",
+    "reason": "extensionsPanels.auditLogPanel.metadataDate: Audit metadata interpolates date/version/detail/reason without translating stored values; v is a conventional version prefix."
+  },
+  "extensionsPanels.auditLogPanel.metadataDetail": {
+    "value": "{date} · {detail}",
+    "reason": "extensionsPanels.auditLogPanel.metadataDetail: Audit metadata interpolates date/version/detail/reason without translating stored values; v is a conventional version prefix."
+  },
+  "extensionsPanels.auditLogPanel.metadataVersion": {
+    "value": "{date} · v{version}",
+    "reason": "extensionsPanels.auditLogPanel.metadataVersion: Audit metadata interpolates date/version/detail/reason without translating stored values; v is a conventional version prefix."
+  },
+  "extensionsPanels.auditLogPanel.metadataVersionDetail": {
+    "value": "{date} · v{version} · {detail}",
+    "reason": "extensionsPanels.auditLogPanel.metadataVersionDetail: Audit metadata interpolates date/version/detail/reason without translating stored values; v is a conventional version prefix."
+  },
+  "extensionsPanels.auditLogPanel.reasonSuffix": {
+    "value": "{reason}",
+    "reason": "extensionsPanels.auditLogPanel.reasonSuffix: Audit metadata interpolates date/version/detail/reason without translating stored values; v is a conventional version prefix."
+  },
+  "extensionsPanels.planCard.fixtureLabel": {
+    "value": "Fixture:",
+    "reason": "extensionsPanels.planCard.fixtureLabel: Fixture names a developer test fixture in PlanCard beside test.fixture; it is not ordinary project/model prose."
+  },
+  "extensionsPanels.privacyPanel.helpLabel": {
+    "value": "Privacy",
+    "reason": "extensionsPanels.privacyPanel.helpLabel: Privacy is the established Italian noun used for data-privacy controls."
+  },
+  "extensionsPanels.privacyPanel.title": {
+    "value": "Privacy",
+    "reason": "extensionsPanels.privacyPanel.title: Privacy is the established Italian noun used for data-privacy controls."
+  },
+  "extensionsPanels.promoteToolDialog.hotkeyPlaceholder": {
+    "value": "Ctrl+Alt+F",
+    "reason": "extensionsPanels.promoteToolDialog.hotkeyPlaceholder: Literal keyboard shortcut notation; modifier names and the shortcut key identify physical commands."
+  },
+  "federationSetupControls.result.failedSlot": {
+    "value": "{name} ({reason})",
+    "reason": "federationSetupControls.result.failedSlot: Failure row combines the supplied slot name and resolved reason in parentheses."
+  },
+  "filterOperators.eq": {
+    "value": "=",
+    "reason": "filterOperators.eq: Mathematical comparison operator symbol; preserves the filter operation without linguistic wording."
+  },
+  "filterOperators.gt": {
+    "value": ">",
+    "reason": "filterOperators.gt: Mathematical comparison operator symbol; preserves the filter operation without linguistic wording."
+  },
+  "filterOperators.gte": {
+    "value": "≥",
+    "reason": "filterOperators.gte: Mathematical comparison operator symbol; preserves the filter operation without linguistic wording."
+  },
+  "filterOperators.lt": {
+    "value": "<",
+    "reason": "filterOperators.lt: Mathematical comparison operator symbol; preserves the filter operation without linguistic wording."
+  },
+  "filterOperators.lte": {
+    "value": "≤",
+    "reason": "filterOperators.lte: Mathematical comparison operator symbol; preserves the filter operation without linguistic wording."
+  },
+  "filterOperators.ne": {
+    "value": "≠",
+    "reason": "filterOperators.ne: Mathematical comparison operator symbol; preserves the filter operation without linguistic wording."
+  },
+  "flowAssistant.codeParam": {
+    "value": "{node} · {param} ({language})",
+    "reason": "flowAssistant.codeParam: Code-parameter identity joins runtime node, parameter and language names with punctuation."
+  },
+  "flowAssistant.preflightNative": {
+    "value": "{message}",
+    "reason": "flowAssistant.preflightNative: Passes through the supplied native preflight message; contains no authored English wrapper."
+  },
+  "flowPanel.contributed.optionLabel": {
+    "value": "{name} — {extension}",
+    "reason": "flowPanel.contributed.optionLabel: Contributed option combines the runtime option name and extension name."
+  },
+  "flowPanel.player.tablePlaceholder": {
+    "value": "{\"columns\":[…],\"rows\":[…],\"key\":\"GlobalId\"}",
+    "reason": "flowPanel.player.tablePlaceholder: Literal JSON table input shape; columns, rows, key and GlobalId are parser/schema keys and must remain exact."
+  },
+  "flowPanel.status.ok": {
+    "value": "ok",
+    "reason": "flowPanel.status.ok: ok is a conventional acknowledgement/status marker also used in Italian."
+  },
+  "flowPanel.view.editor": {
+    "value": "Editor",
+    "reason": "flowPanel.view.editor: Editor is an established Italian computing noun for the editing view or editing role."
+  },
+  "flowReview.node": {
+    "value": "{node} ({type})",
+    "reason": "flowReview.node: Flow node and type are supplied identifiers, grouped with parentheses."
+  },
+  "gaussianCapture.format.splat": {
+    "value": ".splat",
+    "reason": "gaussianCapture.format.splat: This is the literal file-extension choice used by the export/import control, not a translatable description."
+  },
+  "geometryExport.editCard.axisX": {
+    "value": "X",
+    "reason": "geometryExport.editCard.axisX: Cartesian axis letter must identify the same coordinate axis in every locale."
+  },
+  "geometryExport.editCard.axisY": {
+    "value": "Y",
+    "reason": "geometryExport.editCard.axisY: Cartesian axis letter must identify the same coordinate axis in every locale."
+  },
+  "geometryExport.editCard.axisZ": {
+    "value": "Z",
+    "reason": "geometryExport.editCard.axisZ: Cartesian axis letter must identify the same coordinate axis in every locale."
+  },
+  "geometryExport.editCard.nudgeStepOption": {
+    "value": "±{step} m",
+    "reason": "geometryExport.editCard.nudgeStepOption: Signed step amount uses plus/minus and metres; no natural-language content."
+  },
+  "geometryExport.energy.outputLabel": {
+    "value": "Output",
+    "reason": "geometryExport.energy.outputLabel: Output is an established Italian computing term for generated results or the output destination."
+  },
+  "geometryExport.glb.fileExtension": {
+    "value": ".glb",
+    "reason": "geometryExport.glb.fileExtension: This is the literal file-extension choice used by the export/import control, not a translatable description."
+  },
+  "geometryExport.glb.outputLabel": {
+    "value": "Output",
+    "reason": "geometryExport.glb.outputLabel: Output is an established Italian computing term for generated results or the output destination."
+  },
+  "geometryExport.kmz.fileExtension": {
+    "value": ".kmz",
+    "reason": "geometryExport.kmz.fileExtension: This is the literal file-extension choice used by the export/import control, not a translatable description."
+  },
+  "geometryExport.kmz.outputFormat": {
+    "value": "Google Earth",
+    "reason": "geometryExport.kmz.outputFormat: Google Earth, Google Maps and OpenStreetMap are mapping product proper names."
+  },
+  "geometryExport.kmz.outputLabel": {
+    "value": "Output",
+    "reason": "geometryExport.kmz.outputLabel: Output is an established Italian computing term for generated results or the output destination."
+  },
+  "geometryExport.usd.fileExtension": {
+    "value": ".usda",
+    "reason": "geometryExport.usd.fileExtension: This is the literal file-extension choice used by the export/import control, not a translatable description."
+  },
+  "geometryExport.usd.outputLabel": {
+    "value": "Output",
+    "reason": "geometryExport.usd.outputLabel: Output is an established Italian computing term for generated results or the output destination."
+  },
+  "grid.tags.letters": {
+    "value": "A, B, C",
+    "reason": "grid.tags.letters: Sample grid-tag sequences demonstrate numeric or alphabetic identifiers, not prose."
+  },
+  "grid.tags.numbers": {
+    "value": "1, 2, 3",
+    "reason": "grid.tags.numbers: Sample grid-tag sequences demonstrate numeric or alphabetic identifiers, not prose."
+  },
+  "hierarchy.node.actionAriaLabel": {
+    "value": "{action} {name}",
+    "reason": "hierarchy.node.actionAriaLabel: Joins the independently resolved action and target name; no English verb is hardcoded here."
+  },
+  "hierarchy.node.nameAndSecondaryTitle": {
+    "value": "{name} - {secondaryName}",
+    "reason": "hierarchy.node.nameAndSecondaryTitle: Combines supplied primary and secondary model names with a separator."
+  },
+  "hierarchy.panel.escHint": {
+    "value": "ESC",
+    "reason": "hierarchy.panel.escHint: Esc/ESC is the keyboard key legend for dismissing the panel."
+  },
+  "hierarchy.storeyControls.solo": {
+    "value": "Solo",
+    "reason": "hierarchy.storeyControls.solo: Solo is also Italian and denotes the single-storey viewing mode."
+  },
+  "idsAgent.answer": {
+    "value": "{question} → {answer}",
+    "reason": "idsAgent.answer: Supplied question and answer are separated by an arrow, with no extra prose."
+  },
+  "idsAgent.unresolvedItem": {
+    "value": "{statement} ({category}: {reason})",
+    "reason": "idsAgent.unresolvedItem: Formats a supplied unresolved statement, category and reason without rewriting their contents."
+  },
+  "idsPanel.audit.facet": {
+    "value": "facet",
+    "reason": "idsPanel.audit.facet: facet is the IDS technical category name; Italian IDS Studio consistently uses il facet and Aggiungi facet for this same concept."
+  },
+  "idsPanel.reportExport.format.bcf": {
+    "value": "BCF",
+    "reason": "idsPanel.reportExport.format.bcf: Canonical file-format abbreviation on the export choice; translating it would rename the interoperable format."
+  },
+  "idsPanel.reportExport.format.html": {
+    "value": "HTML",
+    "reason": "idsPanel.reportExport.format.html: Canonical file-format abbreviation on the export choice; translating it would rename the interoperable format."
+  },
+  "idsPanel.reportExport.format.json": {
+    "value": "JSON",
+    "reason": "idsPanel.reportExport.format.json: Canonical file-format abbreviation on the export choice; translating it would rename the interoperable format."
+  },
+  "idsPanel.version": {
+    "value": "v{version}",
+    "reason": "idsPanel.version: v is the conventional version prefix before the supplied release number."
+  },
+  "idsStudio.header.xml": {
+    "value": "XML",
+    "reason": "idsStudio.header.xml: Canonical file-format abbreviation on the export choice; translating it would rename the interoperable format."
+  },
+  "idsStudio.info.copyright": {
+    "value": "Copyright",
+    "reason": "idsStudio.info.copyright: Copyright is an established Italian legal/UI borrowing for the IDS header copyright field."
+  },
+  "idsStudio.title": {
+    "value": "IDS Studio",
+    "reason": "idsStudio.title: IDS Studio is the named IDS authoring tool."
+  },
+  "idsStudio.value.unitSi": {
+    "value": "SI",
+    "reason": "idsStudio.value.unitSi: SI names the International System of Units, also abbreviated SI in Italian."
+  },
+  "influx.bucket": {
+    "value": "Bucket",
+    "reason": "influx.bucket: Bucket and Measurement name InfluxDB database concepts used by this connector, rather than building quantities."
+  },
+  "influx.measurement": {
+    "value": "Measurement",
+    "reason": "influx.measurement: Bucket and Measurement name InfluxDB database concepts used by this connector, rather than building quantities."
+  },
+  "influx.title": {
+    "value": "InfluxDB 2",
+    "reason": "influx.title: InfluxDB 2 is the database product and version name."
+  },
+  "keyboardShortcuts.about.appName": {
+    "value": "ifc-lite",
+    "reason": "keyboardShortcuts.about.appName: ifc-lite is the application/product name and keeps its spelling."
+  },
+  "keyboardShortcuts.about.githubLink": {
+    "value": "GitHub",
+    "reason": "keyboardShortcuts.about.githubLink: Exact project/service link label; domain and GitHub/npm service names are not localized."
+  },
+  "keyboardShortcuts.about.homepageLink": {
+    "value": "ifclite.dev",
+    "reason": "keyboardShortcuts.about.homepageLink: Exact project/service link label; domain and GitHub/npm service names are not localized."
+  },
+  "keyboardShortcuts.about.license": {
+    "value": "MPL-2.0",
+    "reason": "keyboardShortcuts.about.license: MPL-2.0 is the exact licence identifier."
+  },
+  "keyboardShortcuts.about.versionLabel": {
+    "value": "v{version}",
+    "reason": "keyboardShortcuts.about.versionLabel: v is the conventional version prefix before the supplied release number."
+  },
+  "keyboardShortcuts.privacy.verifyKey": {
+    "value": "F12",
+    "reason": "keyboardShortcuts.privacy.verifyKey: F12 is the physical developer-tools shortcut key."
+  },
+  "keyboardShortcuts.privacy.wasmLink": {
+    "value": "WebAssembly (WASM)",
+    "reason": "keyboardShortcuts.privacy.wasmLink: WebAssembly and WASM name the browser execution technology and its standard abbreviation."
+  },
+  "keyboardShortcuts.shortcuts.homepageLink": {
+    "value": "ifclite.dev",
+    "reason": "keyboardShortcuts.shortcuts.homepageLink: Exact project/service link label; domain and GitHub/npm service names are not localized."
+  },
+  "keyboardShortcuts.whatsNew.releaseVersionLabel": {
+    "value": "v{version}",
+    "reason": "keyboardShortcuts.whatsNew.releaseVersionLabel: v is the conventional version prefix before the supplied release number."
+  },
+  "landXmlTerrainExport.fileExtension": {
+    "value": ".xml",
+    "reason": "landXmlTerrainExport.fileExtension: This is the literal file-extension choice used by the export/import control, not a translatable description."
+  },
+  "landXmlTerrainExport.outputFormat": {
+    "value": "LandXML 1.2",
+    "reason": "landXmlTerrainExport.outputFormat: LandXML 1.2 is the export interchange format and version."
+  },
+  "landXmlTerrainExport.outputLabel": {
+    "value": "Output",
+    "reason": "landXmlTerrainExport.outputLabel: Output is an established Italian computing term for generated results or the output destination."
+  },
+  "layersPanel.merge.bulkCount": {
+    "value": "×{count}:",
+    "reason": "layersPanel.merge.bulkCount: Multiplication sign, count and colon form a bulk-operation count marker."
+  },
+  "layersPanel.merge.toastPolicyError": {
+    "value": "Policy: {reason}",
+    "reason": "layersPanel.merge.toastPolicyError: Policy is the Italian technical borrowing for the layer merge policy; the supplied failure reason remains separate."
+  },
+  "layersPanel.provenance.authorLine": {
+    "value": "{kind} · {principal}",
+    "reason": "layersPanel.provenance.authorLine: Provenance author kind, principal and tool are supplied data values; middle-dot separators add no prose."
+  },
+  "layersPanel.provenance.authorToolSuffix": {
+    "value": " · {tool}",
+    "reason": "layersPanel.provenance.authorToolSuffix: Provenance author kind, principal and tool are supplied data values; middle-dot separators add no prose."
+  },
+  "layersPanel.provenance.baseField": {
+    "value": "Base",
+    "reason": "layersPanel.provenance.baseField: Base is also the Italian noun for the base position or comparison baseline; any axis notation is unchanged."
+  },
+  "layersPanel.review.exportButtonLabel": {
+    "value": ".bcf",
+    "reason": "layersPanel.review.exportButtonLabel: This is the literal file-extension choice used by the export/import control, not a translatable description."
+  },
+  "layersPanel.review.topicMeta": {
+    "value": "{tail} · {author} · {date}",
+    "reason": "layersPanel.review.topicMeta: BCF topic metadata combines supplied tail, component key, author and date without translating stored data."
+  },
+  "layersPanel.review.topicMetaComponent": {
+    "value": "{tail} · {componentKey} · {author} · {date}",
+    "reason": "layersPanel.review.topicMetaComponent: BCF topic metadata combines supplied tail, component key, author and date without translating stored data."
+  },
+  "lensPanel.autoColor.psetLabel": {
+    "value": "Pset",
+    "reason": "lensPanel.autoColor.psetLabel: Pset/Qset are the IFC property-set and quantity-set technical abbreviations in the auto-colour controls."
+  },
+  "lensPanel.autoColor.qsetLabel": {
+    "value": "Qset",
+    "reason": "lensPanel.autoColor.qsetLabel: Pset/Qset are the IFC property-set and quantity-set technical abbreviations in the auto-colour controls."
+  },
+  "lensPanel.card.sortNameAsc": {
+    "value": "A→Z",
+    "reason": "lensPanel.card.sortNameAsc: A-to-Z and Z-to-A arrows express alphabetical ordering without words."
+  },
+  "lensPanel.card.sortNameDesc": {
+    "value": "Z→A",
+    "reason": "lensPanel.card.sortNameDesc: A-to-Z and Z-to-A arrows express alphabetical ordering without words."
+  },
+  "lists.builder.propertyNamePlaceholder": {
+    "value": "FireRating",
+    "reason": "lists.builder.propertyNamePlaceholder: Literal IFC quantity/property/set identifier example; must match the model schema rather than be translated."
+  },
+  "lists.builder.psetPlaceholder": {
+    "value": "Pset_…",
+    "reason": "lists.builder.psetPlaceholder: Literal IFC quantity/property/set identifier example; must match the model schema rather than be translated."
+  },
+  "lists.builder.qtoPlaceholder": {
+    "value": "Qto_…",
+    "reason": "lists.builder.qtoPlaceholder: Literal IFC quantity/property/set identifier example; must match the model schema rather than be translated."
+  },
+  "lists.builder.quantityNamePlaceholder": {
+    "value": "NetVolume",
+    "reason": "lists.builder.quantityNamePlaceholder: Literal IFC quantity/property/set identifier example; must match the model schema rather than be translated."
+  },
+  "lists.builder.regexBadge": {
+    "value": "regex",
+    "reason": "lists.builder.regexBadge: regex is the established computing abbreviation for regular-expression syntax."
+  },
+  "lists.builder.sumIcon": {
+    "value": "Σ",
+    "reason": "lists.builder.sumIcon: Greek capital sigma is the mathematical summation icon."
+  },
+  "lists.builder.valuePlaceholder.boolean": {
+    "value": "true / false",
+    "reason": "lists.builder.valuePlaceholder.boolean: true and false are literal Boolean input syntax, not localized yes/no answers."
+  },
+  "lists.builder.valuePlaceholder.volume": {
+    "value": "volume",
+    "reason": "lists.builder.valuePlaceholder.volume: volume is the Italian noun with the same spelling for this value placeholder."
+  },
+  "lists.builder.zoneVolumeOption": {
+    "value": "Volume (mesh)",
+    "reason": "lists.builder.zoneVolumeOption: Volume is Italian; mesh is the established Italian technical term for the geometry representation."
+  },
+  "lists.resultsTable.sumIcon": {
+    "value": "Σ",
+    "reason": "lists.resultsTable.sumIcon: Greek capital sigma is the mathematical summation icon."
+  },
+  "lists.rowActions.actionAriaLabel": {
+    "value": "{action}: {name}",
+    "reason": "lists.rowActions.actionAriaLabel: Supplied action label and row name are separated by a colon for accessibility."
+  },
+  "lists.scheduleTable.sumIcon": {
+    "value": "Σ",
+    "reason": "lists.scheduleTable.sumIcon: Greek capital sigma is the mathematical summation icon."
+  },
+  "manualValidation.report.sourceLabel": {
+    "value": "Checklist",
+    "reason": "manualValidation.report.sourceLabel: Checklist is an established Italian borrowing for the manual check report source."
+  },
+  "mcp.mcpLanding.brand": {
+    "value": "ifc-lite",
+    "reason": "mcp.mcpLanding.brand: ifc-lite is the application/product name and keeps its spelling."
+  },
+  "mcp.mcpLanding.bsddWallBadge": {
+    "value": "bSDD · IfcWall",
+    "reason": "mcp.mcpLanding.bsddWallBadge: Ifc type construction and bSDD/IfcWall identify schema and dictionary concepts exactly."
+  },
+  "mcp.mcpLanding.footerBrand": {
+    "value": "ifc-lite/mcp · v{version} · MPL-2.0",
+    "reason": "mcp.mcpLanding.footerBrand: Footer contains the product path, supplied version and exact licence identifier."
+  },
+  "mcp.mcpLanding.ifcTypeLabel": {
+    "value": "Ifc{type}",
+    "reason": "mcp.mcpLanding.ifcTypeLabel: Ifc type construction and bSDD/IfcWall identify schema and dictionary concepts exactly."
+  },
+  "mcp.mcpLanding.navBadge": {
+    "value": "/ mcp · {version}",
+    "reason": "mcp.mcpLanding.navBadge: MCP route/protocol badge combines its fixed abbreviation with the supplied version."
+  },
+  "mcp.mcpLanding.navPlayground": {
+    "value": "Playground",
+    "reason": "mcp.mcpLanding.navPlayground: Playground names the MCP interactive developer page, consistent with its /mcp/playground route."
+  },
+  "mcp.mcpLanding.statTransportsSublabel": {
+    "value": "stdio · http",
+    "reason": "mcp.mcpLanding.statTransportsSublabel: stdio and http are the protocol transport identifiers."
+  },
+  "mcp.mcpPlayground.file": {
+    "value": "file",
+    "reason": "mcp.mcpPlayground.file: file is the established Italian computing noun used by this playground control."
+  },
+  "mcp.mcpPlayground.footerGithub": {
+    "value": "github",
+    "reason": "mcp.mcpPlayground.footerGithub: Exact project/service link label; domain and GitHub/npm service names are not localized."
+  },
+  "mcp.mcpPlayground.footerNpm": {
+    "value": "npm",
+    "reason": "mcp.mcpPlayground.footerNpm: Exact project/service link label; domain and GitHub/npm service names are not localized."
+  },
+  "mcp.mcpPlayground.playgroundPath": {
+    "value": "/mcp/playground",
+    "reason": "mcp.mcpPlayground.playgroundPath: Literal application route /mcp/playground must remain navigable."
+  },
+  "mcp.mcpPlayground.schema": {
+    "value": "schema",
+    "reason": "mcp.mcpPlayground.schema: Schema is an Italian noun with the same spelling in this schema control."
+  },
+  "mcp.playgroundChat.msSuffix": {
+    "value": "{ms} ms",
+    "reason": "mcp.playgroundChat.msSuffix: A numeric measurement with the exact SI unit abbreviation shown in the pinned value; unit symbols are language independent."
+  },
+  "mcp.playgroundChat.statusOk": {
+    "value": "ok",
+    "reason": "mcp.playgroundChat.statusOk: ok is a conventional acknowledgement/status marker also used in Italian."
+  },
+  "measure.geo.easting": {
+    "value": "E",
+    "reason": "measure.geo.easting: E/N/H are conventional surveying coordinate symbols for easting, northing and height."
+  },
+  "measure.geo.height": {
+    "value": "H",
+    "reason": "measure.geo.height: E/N/H are conventional surveying coordinate symbols for easting, northing and height."
+  },
+  "measure.geo.northing": {
+    "value": "N",
+    "reason": "measure.geo.northing: E/N/H are conventional surveying coordinate symbols for easting, northing and height."
+  },
+  "measure.geo.unitMeters": {
+    "value": "m",
+    "reason": "measure.geo.unitMeters: A numeric measurement with the exact SI unit abbreviation shown in the pinned value; unit symbols are language independent."
+  },
+  "measure.point.rowDatum": {
+    "value": "Datum",
+    "reason": "measure.point.rowDatum: Datum is the geodetic reference-system technical term used in Italian surveying."
+  },
+  "measure.point.rowLatLon": {
+    "value": "Lat / Lon",
+    "reason": "measure.point.rowLatLon: Lat/Lon are shared abbreviations for Italian latitudine/longitudine; supplied coordinates are retained."
+  },
+  "measure.qty.area": {
+    "value": "Area",
+    "reason": "measure.qty.area: Area and Volume are Italian nouns with the same spelling for these measured quantities."
+  },
+  "measure.qty.volume": {
+    "value": "Volume",
+    "reason": "measure.qty.volume: Area and Volume are Italian nouns with the same spelling for these measured quantities."
+  },
+  "measure.readout.latLon": {
+    "value": "Lat {lat} / Lon {lon}",
+    "reason": "measure.readout.latLon: Lat/Lon are shared abbreviations for Italian latitudine/longitudine; supplied coordinates are retained."
+  },
+  "measure.source.extrusionSolid": {
+    "value": "{modelId} · #{productId} · IfcExtrudedAreaSolid #{solidId}",
+    "reason": "measure.source.extrusionSolid: Exact IFC solid class plus runtime model/product/solid identifiers; schema names cannot be translated."
+  },
+  "measure.source.product": {
+    "value": "{modelId} · #{productId}",
+    "reason": "measure.source.product: Runtime model and product identifiers form a source reference, with no prose."
+  },
+  "measure.source.sweptDiskSolid": {
+    "value": "{modelId} · #{productId} · IfcSweptDiskSolid #{solidId}",
+    "reason": "measure.source.sweptDiskSolid: Exact IFC solid class plus runtime model/product/solid identifiers; schema names cannot be translated."
+  },
+  "modelInspector.header.selection": {
+    "value": "{ifcClass} #{id}",
+    "reason": "modelInspector.header.selection: The supplied IFC type and entity number form an identity reference; no natural-language label is added."
+  },
+  "modelInspector.header.selectionOnStorey": {
+    "value": "{ifcClass} #{id} · {storey}",
+    "reason": "modelInspector.header.selectionOnStorey: Selection identity combines IFC class, entity number and model-authored storey name."
+  },
+  "modelWorkspace.layout.3d": {
+    "value": "3D",
+    "reason": "modelWorkspace.layout.3d: 2D/3D is dimensional notation, not an English descriptive phrase."
+  },
+  "modelWorkspace.storey.elevation": {
+    "value": "{elevation} m",
+    "reason": "modelWorkspace.storey.elevation: A numeric measurement with the exact SI unit abbreviation shown in the pinned value; unit symbols are language independent."
+  },
+  "modelWorkspace.storey.withModel": {
+    "value": "{model} · {storey}",
+    "reason": "modelWorkspace.storey.withModel: Model and storey names are runtime content, separated by a middle dot."
+  },
+  "modelWorkspace.tool.shortcutHint": {
+    "value": "· {key}",
+    "reason": "modelWorkspace.tool.shortcutHint: Shortcut hint is only a separator and the supplied key legend."
+  },
+  "modelingCommand.unit.count": {
+    "value": "",
+    "reason": "modelingCommand.unit.count: Count is dimensionless: this deliberately empty unit suffix matches English and must not add a fabricated unit."
+  },
+  "modelingCommand.unit.deg": {
+    "value": "°",
+    "reason": "modelingCommand.unit.deg: Degree symbol is the angular unit, independent of language."
+  },
+  "modelingCommand.unit.m": {
+    "value": "m",
+    "reason": "modelingCommand.unit.m: A numeric measurement with the exact SI unit abbreviation shown in the pinned value; unit symbols are language independent."
+  },
+  "peerPresenceLayer.nameWithTool": {
+    "value": "{name} — {tool}",
+    "reason": "peerPresenceLayer.nameWithTool: Participant name and active tool label are runtime values joined by a dash."
+  },
+  "pointCloudPanel.colorMode.rgb.label": {
+    "value": "RGB",
+    "reason": "pointCloudPanel.colorMode.rgb.label: RGB is the standard colour-channel abbreviation."
+  },
+  "profileSection.kind.I": {
+    "value": "I / H",
+    "reason": "profileSection.kind.I: I and H name the engineering cross-section shapes by their letter form."
+  },
+  "properties.epsgLookup.triggerButton": {
+    "value": "EPSG",
+    "reason": "properties.epsgLookup.triggerButton: EPSG is the coordinate reference registry identifier used on its lookup button."
+  },
+  "properties.extrusion.no": {
+    "value": "No",
+    "reason": "properties.extrusion.no: No is the Italian negative answer as well as the English spelling."
+  },
+  "properties.extrusion.profile": {
+    "value": "SweptArea",
+    "reason": "properties.extrusion.profile: Exact IFC EXPRESS attribute name used by this field, not an English prose description."
+  },
+  "properties.extrusion.profileType": {
+    "value": "ProfileType",
+    "reason": "properties.extrusion.profileType: Exact IFC EXPRESS attribute name used by this field, not an English prose description."
+  },
+  "properties.extrusion.solid": {
+    "value": "IfcExtrudedAreaSolid #{id}",
+    "reason": "properties.extrusion.solid: Exact IFC solid class plus runtime model/product/solid identifiers; schema names cannot be translated."
+  },
+  "properties.georef.eastingNorthingSummary": {
+    "value": "E {easting} N {northing}",
+    "reason": "properties.georef.eastingNorthingSummary: E/N mean Est/Nord in Italian; supplied map coordinates are unchanged."
+  },
+  "properties.georef.epsgButton": {
+    "value": "EPSG",
+    "reason": "properties.georef.epsgButton: EPSG is the coordinate reference registry identifier used on its lookup button."
+  },
+  "properties.georef.heightMeters": {
+    "value": "{value} m",
+    "reason": "properties.georef.heightMeters: A numeric measurement with the exact SI unit abbreviation shown in the pinned value; unit symbols are language independent."
+  },
+  "properties.landXmlSource.geometryName": {
+    "value": "{kind} {ordinal}",
+    "reason": "properties.landXmlSource.geometryName: LandXML geometry kind and ordinal are supplied values, joined without English prose."
+  },
+  "properties.locationMap.elevationMeters": {
+    "value": "{value} m",
+    "reason": "properties.locationMap.elevationMeters: A numeric measurement with the exact SI unit abbreviation shown in the pinned value; unit symbols are language independent."
+  },
+  "properties.locationMap.googleEarth": {
+    "value": "Google Earth",
+    "reason": "properties.locationMap.googleEarth: Google Earth, Google Maps and OpenStreetMap are mapping product proper names."
+  },
+  "properties.locationMap.googleMaps": {
+    "value": "Google Maps",
+    "reason": "properties.locationMap.googleMaps: Google Earth, Google Maps and OpenStreetMap are mapping product proper names."
+  },
+  "properties.locationMap.openStreetMap": {
+    "value": "OpenStreetMap",
+    "reason": "properties.locationMap.openStreetMap: Google Earth, Google Maps and OpenStreetMap are mapping product proper names."
+  },
+  "properties.materialTotals.area": {
+    "value": "Area",
+    "reason": "properties.materialTotals.area: Area and Volume are Italian nouns with the same spelling for these measured quantities."
+  },
+  "properties.materialTotals.volume": {
+    "value": "Volume",
+    "reason": "properties.materialTotals.volume: Area and Volume are Italian nouns with the same spelling for these measured quantities."
+  },
+  "properties.modelMetadata.globalIdLabel": {
+    "value": "GlobalId",
+    "reason": "properties.modelMetadata.globalIdLabel: GlobalId is the exact IFC EXPRESS attribute used as the identity key."
+  },
+  "properties.modelMetadata.lengthUnitValue": {
+    "value": "{unitName} ({scale})",
+    "reason": "properties.modelMetadata.lengthUnitValue: Runtime unit name and scale are displayed verbatim; this wrapper adds parentheses only."
+  },
+  "properties.modelMetadata.parseTimeValue": {
+    "value": "{ms} ms",
+    "reason": "properties.modelMetadata.parseTimeValue: A numeric measurement with the exact SI unit abbreviation shown in the pinned value; unit symbols are language independent."
+  },
+  "properties.panel.crsLabel": {
+    "value": "CRS",
+    "reason": "Standard coordinate reference system abbreviation."
+  },
+  "properties.panel.sizeDisplay": {
+    "value": "{x} x {y} x {z}",
+    "reason": "properties.panel.sizeDisplay: Dimension readout joins supplied x/y/z sizes with multiplication-style x separators."
+  },
+  "properties.panel.tab.bsdd": {
+    "value": "bSDD",
+    "reason": "properties.panel.tab.bsdd: bSDD is the buildingSMART Data Dictionary product abbreviation."
+  },
+  "properties.quantitySet.type.area": {
+    "value": "Area",
+    "reason": "properties.quantitySet.type.area: Area and Volume are Italian nouns with the same spelling for these measured quantities."
+  },
+  "properties.quantitySet.type.volume": {
+    "value": "Volume",
+    "reason": "properties.quantitySet.type.volume: Area and Volume are Italian nouns with the same spelling for these measured quantities."
+  },
+  "properties.structural.componentValue": {
+    "value": "{name}: {value}",
+    "reason": "properties.structural.componentValue: Structural component name and its value are supplied independently, separated by a colon."
+  },
+  "properties.structural.configurationAt": {
+    "value": "{components} @ {location}",
+    "reason": "properties.structural.configurationAt: Structural component and location data are joined by the @ position marker."
+  },
+  "properties.sweptDisk.innerRadius": {
+    "value": "InnerRadius",
+    "reason": "properties.sweptDisk.innerRadius: Exact IFC EXPRESS attribute name used by this field, not an English prose description."
+  },
+  "properties.sweptDisk.no": {
+    "value": "No",
+    "reason": "properties.sweptDisk.no: No is the Italian negative answer as well as the English spelling."
+  },
+  "properties.sweptDisk.solid": {
+    "value": "IfcSweptDiskSolid #{id}",
+    "reason": "properties.sweptDisk.solid: Exact IFC solid class plus runtime model/product/solid identifiers; schema names cannot be translated."
+  },
+  "properties.taskEdit.globalIdLabel": {
+    "value": "Global ID",
+    "reason": "properties.taskEdit.globalIdLabel: Global ID is the existing spaced identifier label; ID is an Italian-compatible abbreviation, not model content to translate."
+  },
+  "properties.unitDisplay.kind.area": {
+    "value": "Area",
+    "reason": "properties.unitDisplay.kind.area: Area and Volume are Italian nouns with the same spelling for these measured quantities."
+  },
+  "properties.unitDisplay.kind.volume": {
+    "value": "Volume",
+    "reason": "properties.unitDisplay.kind.volume: Area and Volume are Italian nouns with the same spelling for these measured quantities."
+  },
+  "propertyEditor.valueType.booleanShort": {
+    "value": "Bool",
+    "reason": "propertyEditor.valueType.booleanShort: Int/Bool are conventional compact integer/Boolean type markers in the property editor."
+  },
+  "propertyEditor.valueType.identifierShort": {
+    "value": "ID",
+    "reason": "propertyEditor.valueType.identifierShort: ID is the conventional identifier abbreviation in Italian; punctuation and runtime value remain exact."
+  },
+  "propertyEditor.valueType.integerShort": {
+    "value": "Int",
+    "reason": "propertyEditor.valueType.integerShort: Int/Bool are conventional compact integer/Boolean type markers in the property editor."
+  },
+  "pushPull.bar.readout": {
+    "value": "{face} {delta} m",
+    "reason": "pushPull.bar.readout: Resolved face name and signed delta in metres form the push/pull readout."
+  },
+  "reportExportDialog.pageSizeA3": {
+    "value": "A3",
+    "reason": "reportExportDialog.pageSizeA3: ISO paper size designation A3 or A4, which remains the same in Italian."
+  },
+  "reportExportDialog.pageSizeA4": {
+    "value": "A4",
+    "reason": "reportExportDialog.pageSizeA4: ISO paper size designation A3 or A4, which remains the same in Italian."
+  },
+  "repositionPanel.axisFieldDeltaAriaLabel": {
+    "value": "Delta {axis}",
+    "reason": "repositionPanel.axisFieldDeltaAriaLabel: Delta is also the Italian mathematical term for a change; the following letter is the coordinate or rotation axis identifier."
+  },
+  "repositionPanel.deltaPrefix": {
+    "value": "Δ",
+    "reason": "repositionPanel.deltaPrefix: Greek delta symbol denotes displacement."
+  },
+  "repositionPanel.gizmo.deltaLabel": {
+    "value": "{distance} m",
+    "reason": "repositionPanel.gizmo.deltaLabel: A numeric measurement with the exact SI unit abbreviation shown in the pinned value; unit symbols are language independent."
+  },
+  "repositionPanel.hoverDetail": {
+    "value": "{kind} · {name}",
+    "reason": "repositionPanel.hoverDetail: Supplied hovered object kind and name are joined by a middle dot."
+  },
+  "repositionPanel.inputLabel": {
+    "value": "Input",
+    "reason": "repositionPanel.inputLabel: Input is an established Italian computing noun for entered coordinates."
+  },
+  "repositionPanel.modelPositionRow": {
+    "value": "{name}: {values} m",
+    "reason": "repositionPanel.modelPositionRow: Supplied model name and position values use a colon and metre symbol."
+  },
+  "repositionPanel.toggleLockAriaLabel": {
+    "value": "{action} {name}",
+    "reason": "repositionPanel.toggleLockAriaLabel: Joins the independently resolved action and target name; no English verb is hardcoded here."
+  },
+  "retainedGeometry.faces.column.area": {
+    "value": "Area (m²)",
+    "reason": "retainedGeometry.faces.column.area: Area is Italian; m² is the square-metre unit symbol."
+  },
+  "retainedGeometry.panel.column.id": {
+    "value": "ID",
+    "reason": "retainedGeometry.panel.column.id: ID is the conventional identifier abbreviation in Italian; punctuation and runtime value remain exact."
+  },
+  "retainedGeometry.panel.filterCode": {
+    "value": "{code} ({count})",
+    "reason": "retainedGeometry.panel.filterCode: Diagnostic code and count are runtime values, with parentheses only."
+  },
+  "retainedGeometry.panel.rowId": {
+    "value": "#{id}",
+    "reason": "retainedGeometry.panel.rowId: Fallback entity reference consists solely of a hash and the supplied numeric identifier."
+  },
+  "reviewWorkspace.card.element": {
+    "value": "{type} {name} · {globalId} · {model}",
+    "reason": "reviewWorkspace.card.element: Review card displays type, authored name, GlobalId and model name as runtime identity data."
+  },
+  "reviewWorkspace.facetOption": {
+    "value": "{label} ({cards})",
+    "reason": "reviewWorkspace.facetOption: Resolved facet label and card count are combined without authored English text."
+  },
+  "reviewWorkspace.lifecycle.record": {
+    "value": "Record",
+    "reason": "reviewWorkspace.lifecycle.record: Record is the established Italian computing noun for a stored data record."
+  },
+  "reviewWorkspace.runIncomplete": {
+    "value": "{run}: {reasons}",
+    "reason": "reviewWorkspace.runIncomplete: Run label and supplied reasons are separated by a colon."
+  },
+  "ribbon.commandsShortcut": {
+    "value": "Ctrl+K",
+    "reason": "ribbon.commandsShortcut: Literal keyboard shortcut notation; modifier names and the shortcut key identify physical commands."
+  },
+  "ribbon.tab.file": {
+    "value": "File",
+    "reason": "ribbon.tab.file: File is the established Italian computing noun used for the file menu or file-name column."
+  },
+  "ribbon.tab.home": {
+    "value": "Home",
+    "reason": "ribbon.tab.home: Home is the established Italian UI navigation label; the H shortcut, when present, remains the physical key."
+  },
+  "ribbon.view.spaceMouse": {
+    "value": "SpaceMouse",
+    "reason": "ribbon.view.spaceMouse: SpaceMouse is the device product name, shared across the palette, ribbon, settings and panel."
+  },
+  "roomReview.ObjectType": {
+    "value": "ObjectType",
+    "reason": "roomReview.ObjectType: Exact IFC EXPRESS attribute name used by this field, not an English prose description."
+  },
+  "roomReview.PredefinedType": {
+    "value": "PredefinedType",
+    "reason": "roomReview.PredefinedType: Exact IFC EXPRESS attribute name used by this field, not an English prose description."
+  },
+  "roomTool.auto.label": {
+    "value": "Auto · {countDisplay}",
+    "reason": "roomTool.auto.label: Auto is a shared abbreviation for automatic operation; any supplied count is preserved."
+  },
+  "roomTool.options.classification": {
+    "value": "IfcSpace.{attribute}",
+    "reason": "roomTool.options.classification: IfcSpace and its interpolated attribute form an exact schema-qualified field name."
+  },
+  "roomTool.options.objectType": {
+    "value": "IfcSpace.ObjectType",
+    "reason": "roomTool.options.objectType: Exact IFC EXPRESS attribute name used by this field, not an English prose description."
+  },
+  "scanToBim.confidence": {
+    "value": "{value} %",
+    "reason": "scanToBim.confidence: Confidence is expressed as a supplied numeric percentage with the percent symbol."
+  },
+  "scanToBim.filter.class": {
+    "value": "{label} ({count})",
+    "reason": "scanToBim.filter.class: Resolved class label and count are joined with parentheses."
+  },
+  "scanToBim.filter.minConfidenceValue": {
+    "value": "{value} %",
+    "reason": "scanToBim.filter.minConfidenceValue: Confidence is expressed as a supplied numeric percentage with the percent symbol."
+  },
+  "sceneActions.appliedCount": {
+    "value": "{action}: {count}",
+    "reason": "sceneActions.appliedCount: Resolved scene action and applied count are separated by a colon."
+  },
+  "schedule.generateAdvanced.predefinedTypeLabel": {
+    "value": "PredefinedType",
+    "reason": "schedule.generateAdvanced.predefinedTypeLabel: Exact IFC EXPRESS attribute name used by this field, not an English prose description."
+  },
+  "schedule.generateDialog.strategyBuildingDescription": {
+    "value": "Per IfcBuilding",
+    "reason": "schedule.generateDialog.strategyBuildingDescription: Per is an Italian preposition too; IfcBuildingStorey/IfcBuilding remain exact schema entity names."
+  },
+  "schedule.generateDialog.strategyStoreyDescription": {
+    "value": "Per IfcBuildingStorey",
+    "reason": "schedule.generateDialog.strategyStoreyDescription: Per is an Italian preposition too; IfcBuildingStorey/IfcBuilding remain exact schema entity names."
+  },
+  "schedule.heightStrategy.sliceHeightValue": {
+    "value": "{value} m",
+    "reason": "schedule.heightStrategy.sliceHeightValue: A numeric measurement with the exact SI unit abbreviation shown in the pinned value; unit symbols are language independent."
+  },
+  "schedule.workPlanSummary.planTitle": {
+    "value": "IfcWorkPlan {globalId}",
+    "reason": "schedule.workPlanSummary.planTitle: IfcWorkPlan is the exact IFC class, followed by its model-authored GlobalId."
+  },
+  "scriptPanel.output.bimCode": {
+    "value": "bim.*",
+    "reason": "scriptPanel.output.bimCode: fetch and bim.* are exact callable API identifiers in the sandbox explanation."
+  },
+  "scriptPanel.output.fetchCode": {
+    "value": "fetch",
+    "reason": "scriptPanel.output.fetchCode: fetch and bim.* are exact callable API identifiers in the sandbox explanation."
+  },
+  "scriptPanel.output.header": {
+    "value": "Output",
+    "reason": "scriptPanel.output.header: Output is an established Italian computing term for generated results or the output destination."
+  },
+  "searchModal.filterEditors.attributeNamePlaceholder": {
+    "value": "Description, ObjectType, Tag, …",
+    "reason": "searchModal.filterEditors.attributeNamePlaceholder: Description, ObjectType and Tag are exact IFC attribute names offered as input examples."
+  },
+  "searchModal.filterEditors.siUnits": {
+    "value": "SI",
+    "reason": "searchModal.filterEditors.siUnits: SI names the International System of Units, also abbreviated SI in Italian."
+  },
+  "searchModal.filterSelector.placeholder": {
+    "value": "IfcWall, Pset_WallCommon.FireRating=/REI.*/",
+    "reason": "searchModal.filterSelector.placeholder: Literal IFC selector example: class spelling, wildcard, alternation, negation and property-regex syntax must remain executable."
+  },
+  "searchModal.inline.cycleNextKey": {
+    "value": "n",
+    "reason": "searchModal.inline.cycleNextKey: Case-sensitive n/N keyboard shortcut legends must match the actual commands."
+  },
+  "searchModal.inline.cyclePrevKey": {
+    "value": "N",
+    "reason": "searchModal.inline.cyclePrevKey: Case-sensitive n/N keyboard shortcut legends must match the actual commands."
+  },
+  "searchModal.shell.escKey": {
+    "value": "Esc",
+    "reason": "searchModal.shell.escKey: Esc/ESC is the keyboard key legend for dismissing the panel."
+  },
+  "searchModal.text.fieldGuid": {
+    "value": "GUID",
+    "reason": "searchModal.text.fieldGuid: GUID is the conventional globally unique identifier abbreviation."
+  },
+  "searchModal.text.fieldObjectType": {
+    "value": "ObjectType",
+    "reason": "searchModal.text.fieldObjectType: Exact IFC EXPRESS attribute name used by this field, not an English prose description."
+  },
+  "section2d.cutNamed": {
+    "value": "{name} · {cut}",
+    "reason": "section2d.cutNamed: Saved section name and cut label are runtime values joined with a middle dot."
+  },
+  "section2d.tools.area": {
+    "value": "Area",
+    "reason": "section2d.tools.area: Area and Volume are Italian nouns with the same spelling for these measured quantities."
+  },
+  "section2d.zoom.level": {
+    "value": "Zoom {percent}%",
+    "reason": "section2d.zoom.level: Zoom is an established Italian UI term; any supplied percent is preserved."
+  },
+  "sectionPlanes.addBox": {
+    "value": "Box",
+    "reason": "sectionPlanes.addBox: Box is the established Italian technical borrowing for the six-sided section box control."
+  },
+  "sectionPlanes.zoom.apply": {
+    "value": "Zoom",
+    "reason": "sectionPlanes.zoom.apply: Zoom is an established Italian UI term; any supplied percent is preserved."
+  },
+  "sectionPlanes.zoom.label": {
+    "value": "Zoom",
+    "reason": "sectionPlanes.zoom.label: Zoom is an established Italian UI term; any supplied percent is preserved."
+  },
+  "sectionTool.box.size": {
+    "value": "{x} × {y} × {z} m",
+    "reason": "sectionTool.box.size: Section box dimensions use multiplication symbols and metres."
+  },
+  "sectionTool.distance.percentUnit": {
+    "value": "%",
+    "reason": "sectionTool.distance.percentUnit: Percent symbol is a language-independent unit suffix."
+  },
+  "sectionTool.distance.unit": {
+    "value": "m",
+    "reason": "sectionTool.distance.unit: A numeric measurement with the exact SI unit abbreviation shown in the pinned value; unit symbols are language independent."
+  },
+  "sectionTool.header.axis": {
+    "value": "{axis} {position}%",
+    "reason": "sectionTool.header.axis: Axis and supplied percentage position form a mathematical section-position readout."
+  },
+  "sectionTool.parked.label": {
+    "value": "{axis} · {distance} m",
+    "reason": "sectionTool.parked.label: Section axis and distance in metres are supplied numeric/axis data."
+  },
+  "sectionTool.parked.labelPercent": {
+    "value": "{axis} · {position}%",
+    "reason": "sectionTool.parked.labelPercent: Axis and supplied percentage position form a mathematical section-position readout."
+  },
+  "sectionTool.storeys.elevation": {
+    "value": "{elevation} m",
+    "reason": "sectionTool.storeys.elevation: A numeric measurement with the exact SI unit abbreviation shown in the pinned value; unit symbols are language independent."
+  },
+  "semantic.label": {
+    "value": "Record",
+    "reason": "semantic.label: Record is the established Italian computing noun for a stored data record."
+  },
+  "semantic.validationEngines": {
+    "value": "JSON Schema / SHACL",
+    "reason": "semantic.validationEngines: JSON Schema and SHACL are exact validation-language names."
+  },
+  "semanticAssist.grantEndpoint": {
+    "value": "Endpoint",
+    "reason": "semanticAssist.grantEndpoint: Endpoint is the established Italian technical term for the remote service address."
+  },
+  "semanticAssist.no": {
+    "value": "No",
+    "reason": "semanticAssist.no: No is the Italian negative answer as well as the English spelling."
+  },
+  "semanticAssist.projectionValues": {
+    "value": "{previous} → {value} {unit}",
+    "reason": "semanticAssist.projectionValues: Projection change joins previous/current values and unit with an arrow."
+  },
+  "semanticAssist.spanAt": {
+    "value": "{source} [{start}–{end}]",
+    "reason": "semanticAssist.spanAt: Source identifier and start/end span offsets are reference data, not prose."
+  },
+  "settings.display.preset.trackpad": {
+    "value": "Trackpad",
+    "reason": "settings.display.preset.trackpad: Trackpad is an established Italian device noun for the input preset."
+  },
+  "settings.display.spaceMouseTitle": {
+    "value": "SpaceMouse",
+    "reason": "settings.display.spaceMouseTitle: SpaceMouse is the device product name, shared across the palette, ribbon, settings and panel."
+  },
+  "settings.sections.privacy": {
+    "value": "Privacy",
+    "reason": "settings.sections.privacy: Privacy is the established Italian noun used for data-privacy controls."
+  },
+  "shareDialog.linkLabel": {
+    "value": "Link",
+    "reason": "shareDialog.linkLabel: Link is the established Italian computing noun for a shared URL."
+  },
+  "sheetsPdf.sheetSetup.drawingAreaValue": {
+    "value": "{width} × {height} mm",
+    "reason": "sheetsPdf.sheetSetup.drawingAreaValue: Paper/drawing dimensions use supplied width and height with the millimetre unit and multiplication sign."
+  },
+  "sheetsPdf.sheetSetup.layoutLabel": {
+    "value": "Layout",
+    "reason": "sheetsPdf.sheetSetup.layoutLabel: Layout is an established Italian computing/design noun; any supplied diagnostic value is preserved."
+  },
+  "sheetsPdf.sheetSetup.paperDimensions": {
+    "value": "{width} × {height} mm",
+    "reason": "sheetsPdf.sheetSetup.paperDimensions: Paper/drawing dimensions use supplied width and height with the millimetre unit and multiplication sign."
+  },
+  "sheetsPdf.titleBlock.datePlaceholder": {
+    "value": "2024-01-15",
+    "reason": "sheetsPdf.titleBlock.datePlaceholder: ISO-style sample calendar date demonstrates input syntax, not localized date formatting."
+  },
+  "sheetsPdf.titleBlock.logoAlt": {
+    "value": "Logo",
+    "reason": "sheetsPdf.titleBlock.logoAlt: Logo is also the Italian noun for the title-block image."
+  },
+  "sheetsPdf.titleBlock.revisionNumberPlaceholder": {
+    "value": "A, B, 01...",
+    "reason": "sheetsPdf.titleBlock.revisionNumberPlaceholder: Revision identifier examples remain literal letters and digits."
+  },
+  "shellChrome.activityBar.altShortcutHint": {
+    "value": "Alt+{key}",
+    "reason": "shellChrome.activityBar.altShortcutHint: Literal keyboard shortcut notation; modifier names and the shortcut key identify physical commands."
+  },
+  "shellChrome.mobileToolbar.homeAriaLabel": {
+    "value": "Home",
+    "reason": "shellChrome.mobileToolbar.homeAriaLabel: Home is the established Italian UI navigation label; the H shortcut, when present, remains the physical key."
+  },
+  "shellChrome.panelWindowHost.kindPip": {
+    "value": "Picture-in-picture",
+    "reason": "shellChrome.panelWindowHost.kindPip: Picture-in-picture is the browser window-mode name used as a technical borrowing in Italian UI."
+  },
+  "shellChrome.statusBar.appVersion": {
+    "value": "v{version}",
+    "reason": "shellChrome.statusBar.appVersion: v is the conventional version prefix before the supplied release number."
+  },
+  "shellChrome.statusBar.fpsUnit": {
+    "value": "FPS",
+    "reason": "shellChrome.statusBar.fpsUnit: FPS is the conventional frames-per-second performance abbreviation."
+  },
+  "shellChrome.statusBar.ifcliteLinkLabel": {
+    "value": "ifclite.dev →",
+    "reason": "shellChrome.statusBar.ifcliteLinkLabel: Exact project/service link label; domain and GitHub/npm service names are not localized."
+  },
+  "shellChrome.statusBar.webgpuLabel": {
+    "value": "WebGPU",
+    "reason": "shellChrome.statusBar.webgpuLabel: WebGPU is the exact browser graphics API name."
+  },
+  "sources.sourcesPanel.downloadFailedWithMessage": {
+    "value": "{name}: {message}",
+    "reason": "sources.sourcesPanel.downloadFailedWithMessage: Download diagnostic joins supplied file name and failure message; no English wrapper."
+  },
+  "sources.workspace.fileName": {
+    "value": "File",
+    "reason": "sources.workspace.fileName: File is the established Italian computing noun used for the file menu or file-name column."
+  },
+  "sources.workspace.kilobytes": {
+    "value": "{size} KB",
+    "reason": "sources.workspace.kilobytes: KB is the conventional kilobyte unit suffix for source size."
+  },
+  "spaceMousePanel.deviceNameFallback": {
+    "value": "SpaceMouse",
+    "reason": "spaceMousePanel.deviceNameFallback: SpaceMouse is the device product name, shared across the palette, ribbon, settings and panel."
+  },
+  "spaceMousePanel.layoutLine": {
+    "value": "layout: {value}",
+    "reason": "spaceMousePanel.layoutLine: Layout is an established Italian computing/design noun; any supplied diagnostic value is preserved."
+  },
+  "spaceMousePanel.sensitivityValue": {
+    "value": "{value}x",
+    "reason": "spaceMousePanel.sensitivityValue: Sensitivity multiplier is a numeric value followed by the conventional x multiplier notation."
+  },
+  "splitTool.unitMetres": {
+    "value": "m",
+    "reason": "splitTool.unitMetres: A numeric measurement with the exact SI unit abbreviation shown in the pinned value; unit symbols are language independent."
+  },
+  "tableChanges.matchTypeTag": {
+    "value": "Tag",
+    "reason": "tableChanges.matchTypeTag: Exact IFC EXPRESS attribute name used by this field, not an English prose description."
+  },
+  "tableMapping.set": {
+    "value": "Set",
+    "reason": "tableMapping.set: Set is an established Italian mathematical/computing term for a grouping in the mapping control."
+  },
+  "terrainImagery.tiles.kindWms": {
+    "value": "WMS",
+    "reason": "terrainImagery.tiles.kindWms: WMS is the Web Map Service protocol abbreviation."
+  },
+  "terrainImagery.tiles.templatePlaceholder": {
+    "value": "https://tile.example.org/{z}/{x}/{y}.png",
+    "reason": "terrainImagery.tiles.templatePlaceholder: Literal example URL or tile URL template; path segments and coordinate placeholders are executable address syntax."
+  },
+  "terrainImagery.tiles.wmsPlaceholder": {
+    "value": "https://wms.example.org/service",
+    "reason": "terrainImagery.tiles.wmsPlaceholder: Literal example URL or tile URL template; path segments and coordinate placeholders are executable address syntax."
+  },
+  "terrainImagery.tiles.zoom": {
+    "value": "Zoom",
+    "reason": "terrainImagery.tiles.zoom: Zoom is an established Italian UI term; any supplied percent is preserved."
+  },
+  "tours.learnTab.minutes": {
+    "value": "{count} min",
+    "reason": "tours.learnTab.minutes: Duration uses the supplied count and the Italian-compatible minute abbreviation min."
+  },
+  "validationEditor.unit.unitPlaceholder": {
+    "value": "mm",
+    "reason": "validationEditor.unit.unitPlaceholder: mm is the SI millimetre symbol and is unchanged in Italian."
+  },
+  "validationPanel.history.globalId": {
+    "value": "GlobalId: {value}",
+    "reason": "validationPanel.history.globalId: GlobalId is the exact IFC EXPRESS attribute; its value and separator punctuation remain unchanged."
+  },
+  "viewportLighting.container.emptyState.footer.discoverLink": {
+    "value": "ifclite.dev →",
+    "reason": "viewportLighting.container.emptyState.footer.discoverLink: Exact project/service link label; domain and GitHub/npm service names are not localized."
+  },
+  "viewportLighting.container.emptyState.scene.metres": {
+    "value": "{value} m",
+    "reason": "viewportLighting.container.emptyState.scene.metres: A numeric measurement with the exact SI unit abbreviation shown in the pinned value; unit symbols are language independent."
+  },
+  "viewportLighting.container.emptyState.webgpuBanner.supportedBrowsers": {
+    "value": "Chrome 113+ / Edge 113+ / Firefox 141+ / Safari 26+",
+    "reason": "viewportLighting.container.emptyState.webgpuBanner.supportedBrowsers: Browser product names and minimum version numbers identify supported products; no descriptive English text."
+  },
+  "viewportLighting.overlays.mobileNav.homeTooltip": {
+    "value": "Home (H)",
+    "reason": "viewportLighting.overlays.mobileNav.homeTooltip: Home is the established Italian UI navigation label; the H shortcut, when present, remains the physical key."
+  },
+  "viewportLighting.sunSkyPanel.sunStudy.timezone.utc": {
+    "value": "UTC",
+    "reason": "viewportLighting.sunSkyPanel.sunStudy.timezone.utc: UTC is the international time standard abbreviation."
+  },
+  "webgpuTroubleshooting.disabledCaption.cliLink": {
+    "value": "CLI",
+    "reason": "webgpuTroubleshooting.disabledCaption.cliLink: CLI is the command-line interface abbreviation used as the toolkit link label."
+  },
+  "webgpuTroubleshooting.firefox.aboutConfig": {
+    "value": "about:config",
+    "reason": "webgpuTroubleshooting.firefox.aboutConfig: Exact browser URL, host, API/property or Boolean configuration token needed to follow the troubleshooting action; translating it would break the instruction."
+  },
+  "webgpuTroubleshooting.firefox.arrowTrue": {
+    "value": "→ true",
+    "reason": "webgpuTroubleshooting.firefox.arrowTrue: Exact browser URL, host, API/property or Boolean configuration token needed to follow the troubleshooting action; translating it would break the instruction."
+  },
+  "webgpuTroubleshooting.firefox.domWebgpuEnabled": {
+    "value": "dom.webgpu.enabled",
+    "reason": "webgpuTroubleshooting.firefox.domWebgpuEnabled: Exact browser URL, host, API/property or Boolean configuration token needed to follow the troubleshooting action; translating it would break the instruction."
+  },
+  "webgpuTroubleshooting.firefox.heading": {
+    "value": "Firefox",
+    "reason": "webgpuTroubleshooting.firefox.heading: Firefox, Safari, Chrome and Edge are browser proper names; separator punctuation is not translatable prose."
+  },
+  "webgpuTroubleshooting.insecureOrigin.httpLocalhost": {
+    "value": "http://localhost",
+    "reason": "webgpuTroubleshooting.insecureOrigin.httpLocalhost: Exact browser URL, host, API/property or Boolean configuration token needed to follow the troubleshooting action; translating it would break the instruction."
+  },
+  "webgpuTroubleshooting.insecureOrigin.httpsScheme": {
+    "value": "https://",
+    "reason": "webgpuTroubleshooting.insecureOrigin.httpsScheme: Exact browser URL, host, API/property or Boolean configuration token needed to follow the troubleshooting action; translating it would break the instruction."
+  },
+  "webgpuTroubleshooting.insecureOrigin.localhostWord": {
+    "value": "localhost",
+    "reason": "webgpuTroubleshooting.insecureOrigin.localhostWord: Exact browser URL, host, API/property or Boolean configuration token needed to follow the troubleshooting action; translating it would break the instruction."
+  },
+  "webgpuTroubleshooting.noApi.chromePolicyPath": {
+    "value": "chrome://policy",
+    "reason": "webgpuTroubleshooting.noApi.chromePolicyPath: Exact browser URL, host, API/property or Boolean configuration token needed to follow the troubleshooting action; translating it would break the instruction."
+  },
+  "webgpuTroubleshooting.noApi.defaultWebGpuAccess": {
+    "value": "DefaultWebGPUAccess",
+    "reason": "webgpuTroubleshooting.noApi.defaultWebGpuAccess: Exact browser URL, host, API/property or Boolean configuration token needed to follow the troubleshooting action; translating it would break the instruction."
+  },
+  "webgpuTroubleshooting.noApi.navigatorGpu": {
+    "value": "navigator.gpu",
+    "reason": "webgpuTroubleshooting.noApi.navigatorGpu: Exact browser URL, host, API/property or Boolean configuration token needed to follow the troubleshooting action; translating it would break the instruction."
+  },
+  "webgpuTroubleshooting.noGpu.flagIgnoreBlocklist": {
+    "value": "chrome://flags/#ignore-gpu-blocklist",
+    "reason": "webgpuTroubleshooting.noGpu.flagIgnoreBlocklist: Exact browser URL, host, API/property or Boolean configuration token needed to follow the troubleshooting action; translating it would break the instruction."
+  },
+  "webgpuTroubleshooting.noGpu.flagUnsafeWebgpu": {
+    "value": "chrome://flags/#enable-unsafe-webgpu",
+    "reason": "webgpuTroubleshooting.noGpu.flagUnsafeWebgpu: Exact browser URL, host, API/property or Boolean configuration token needed to follow the troubleshooting action; translating it would break the instruction."
+  },
+  "webgpuTroubleshooting.restOfToolkit.cliCommand": {
+    "value": "npx @ifc-lite/cli query model.ifc --type IfcWall",
+    "reason": "webgpuTroubleshooting.restOfToolkit.cliCommand: Executable CLI example retains package, command, filename, flag and IFC type syntax verbatim."
+  },
+  "webgpuTroubleshooting.safari.heading": {
+    "value": "Safari",
+    "reason": "webgpuTroubleshooting.safari.heading: Firefox, Safari, Chrome and Edge are browser proper names; separator punctuation is not translatable prose."
+  },
+  "webgpuTroubleshooting.verifyStatus.aboutSupportPath": {
+    "value": "about:support",
+    "reason": "webgpuTroubleshooting.verifyStatus.aboutSupportPath: Exact browser URL, host, API/property or Boolean configuration token needed to follow the troubleshooting action; translating it would break the instruction."
+  },
+  "webgpuTroubleshooting.verifyStatus.chromeEdgeLabel": {
+    "value": "Chrome/Edge:",
+    "reason": "webgpuTroubleshooting.verifyStatus.chromeEdgeLabel: Firefox, Safari, Chrome and Edge are browser proper names; separator punctuation is not translatable prose."
+  },
+  "webgpuTroubleshooting.verifyStatus.chromeGpuPath": {
+    "value": "chrome://gpu",
+    "reason": "webgpuTroubleshooting.verifyStatus.chromeGpuPath: Exact browser URL, host, API/property or Boolean configuration token needed to follow the troubleshooting action; translating it would break the instruction."
+  },
+  "webgpuTroubleshooting.verifyStatus.firefoxLabel": {
+    "value": "Firefox:",
+    "reason": "webgpuTroubleshooting.verifyStatus.firefoxLabel: Firefox, Safari, Chrome and Edge are browser proper names; separator punctuation is not translatable prose."
+  },
+  "zonesPanel.apportionSummary.globalId": {
+    "value": " · GlobalId: {value}",
+    "reason": "zonesPanel.apportionSummary.globalId: GlobalId is the exact IFC EXPRESS attribute; its value and separator punctuation remain unchanged."
+  },
+  "zonesPanel.roomPanel.role.editor": {
+    "value": "Editor",
+    "reason": "zonesPanel.roomPanel.role.editor: Editor is an established Italian computing noun for the editing view or editing role."
+  },
+  "zonesPanel.zoneRow.baseYLabel": {
+    "value": "Base (Y)",
+    "reason": "zonesPanel.zoneRow.baseYLabel: Base is also the Italian noun for the base position or comparison baseline; any axis notation is unchanged."
+  }
+}

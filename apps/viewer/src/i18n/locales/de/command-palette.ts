@@ -71,6 +71,7 @@ export const commandPaletteDe = {
   'commandPalette.tool.annotate.label': 'Beschriften',
   'commandPalette.tool.wall.label': 'Wände zeichnen',
   'commandPalette.tool.slab.label': 'Decken zeichnen',
+  'commandPalette.tool.roof.label': 'Dächer zeichnen',
   'commandPalette.tool.column.label': 'Stützen platzieren',
   'commandPalette.tool.beam.label': 'Balken zeichnen',
   'commandPalette.tool.editMode.label': 'Bearbeitungsmodus umschalten',

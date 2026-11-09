@@ -72,6 +72,7 @@ export const commandPaletteRu = {
   "commandPalette.tool.annotate.label": "Аннотировать",
   "commandPalette.tool.wall.label": "Нарисовать стены",
   "commandPalette.tool.slab.label": "Построить плиты",
+  "commandPalette.tool.roof.label": "Построить крыши",
   "commandPalette.tool.column.label": "Разместить колонны",
   "commandPalette.tool.beam.label": "Построить балки",
   "commandPalette.tool.editMode.label": "Переключить режим редактирования",

@@ -9,7 +9,10 @@ import { describe, expect, it } from 'vitest';
 import { IfcParser } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor, undoRecordedMutationOperations } from '@ifc-lite/mutations';
 import { StepExporter } from '@ifc-lite/export';
+// Through the package index: with the split reverted the name is undefined (an assertion fails), not an import error.
+import * as sdkIndex from './index.js';
 import { createModellingStoreBackend } from './store-modelling-backend.js';
+import { createStoreyStoreBackend } from './store-storey-backend.js';
 import { createRecordedModellingBackend } from './headless/headless-backend-modelling.js';
 
 /** #9013: the storey API through the package boundary. A revert of production fails this assertion, not a module load. */
@@ -100,5 +103,24 @@ describe.skipIf(!existsSync(SAMPLE))('bim.store storey authoring (#9013)', () =>
     undoRecordedMutationOperations(view, 1, () => { throw new Error('one compound storey edit expected'); });
     expect(recorded.listStoreyLevels('m')[0].elevation).toBe(3);
     expect(view.getNewEntities()).toEqual(afterAdd);
+  });
+
+  // #9200: the viewer builds its modelling methods at startup and brings its
+  // own storey methods. A factory without the storey spread lets that bundle
+  // leave the storey planners out, so it must be exactly the full factory
+  // minus the storey methods, and the full factory must keep them.
+  it('the factory without storeys is the full factory minus exactly the storey methods (#9200)', async () => {
+    const { resolve } = await model();
+    const slim = (sdkIndex as Record<string, unknown>).createModellingStoreBackendWithoutStoreys;
+    expect(slim, 'createModellingStoreBackendWithoutStoreys is exported').toBeTypeOf('function');
+    const without = (slim as typeof createModellingStoreBackend)(resolve);
+    const full = createModellingStoreBackend(resolve);
+    const storeyKeys = Object.keys(createStoreyStoreBackend(resolve));
+    expect(storeyKeys).toContain('addStorey');
+    for (const key of storeyKeys) {
+      expect(full[key as keyof typeof full], `the full factory keeps ${key}`).toBeTypeOf('function');
+      expect(key in without, `${key} is left out`).toBe(false);
+    }
+    expect(Object.keys(without).sort()).toEqual(Object.keys(full).filter((key) => !storeyKeys.includes(key)).sort());
   });
 });

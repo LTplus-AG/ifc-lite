@@ -8,6 +8,36 @@ Citations to `evidence/`, `tests/evidence/` and `docs/architecture/evidence/` pa
 at commit [`f98785c722`](https://github.com/LTplus-AG/ifc-lite/tree/f98785c722); the retained
 bundles left the tree in #9054.
 
+## Storey planners and the QuickJS runtime leave the boot path (#9200)
+
+**Shipped: an eager-bytes cut, no boot-time change.** Three changes, each one
+synchronous with no behaviour change:
+
+- The viewer's startup modules reference `createModellingStoreBackend` statically and
+  call it only when an edit runs. That factory spread `createStoreyStoreBackend`, so it
+  linked every storey planner, although the viewer's `bim.store` storey methods come from
+  its own storey adapter, which loads on first use. The viewer now uses
+  `createModellingStoreBackendWithoutStoreys`, and the full factory is that plus the
+  storey methods, unchanged for the CLI and headless backends.
+- The `sandbox` manual chunk is eager (eager code imports `SandboxAbortError` and the
+  bridge schema). As a recursive group it also took the QuickJS runtime core, which only
+  a script run needs. A non-recursive, higher-priority group now claims that core, except
+  `quickjs-emscripten-core`'s index, which eager code does reach.
+- `@ifc-lite/create` declares `sideEffects: false`. `@ifc-lite/sdk` lists only its index,
+  which registers the schema normalizer at load.
+
+Lessons. The bundler splits by module, not by function. The storey-free factory first
+lived in the same module as the full one. The lazy headless backend still used the full
+factory, so the shared module stayed eager and kept its import of the storey backend:
+zero bytes saved until the factory moved to its own module. Storey code that
+`ordinary-element` and `copy-attachment` really use at boot (the storey model, top
+constraints, attachments) stays eager. Making the whole `sandbox` group non-recursive
+saved fewer bytes and broke the old chunk into 19 more small eager files, and boot to
+the welcome card measured about 20 ms slower unthrottled. So check the eager file count,
+not only the byte total, and measure boot with each build in both A/B positions: on a
+shared host, position alone moved the result by about 15 ms. A group that claimed every
+QuickJS module also failed, because the one eager module in it made the whole group eager.
+
 ## First selection reads typing relationships from the graph (#9192)
 
 **Shipped: the scan is gone, not made cheaper.** `readCurrentTypeQuantities` read every
@@ -5967,3 +5997,41 @@ Allocation checks and finish equality checks support removing the duplicate inde
 are finish-join attribution, not end-to-end worker-pool throughput. No speedup or performance-neutrality
 claim is established. The exact default path does not call the new join. Preserve the shared scan
 rather than rebuilding a whole-file entity index to resolve a small styled subset.
+
+## Modelling session scale (`modelling-session.mjs`, #9296)
+
+Build the CLI and dependencies first (`pnpm install --frozen-lockfile`,
+`pnpm build:wasm:fetch`, `pnpm turbo build --filter=@ifc-lite/cli...`) through
+fleet admission. Run `nice -n 10 node scripts/perf/modelling-session.mjs` under local ordinary admission
+for **diagnostic timings**, recording the shared host load rather than claiming
+benchmark evidence. No product code is changed. Each target (1K, 10K, 50K) starts
+with a new CLI headless context and uses public `bim.store` authoring throughout.
+The default hard budget is nine minutes per target, at most 27 minutes overall;
+`--budget-ms` can reduce it. The first 75% is available to fill with columns.
+The remainder samples at the reached size, reported as failure if below target.
+A parent deadline also stops synchronous SDK calls and preserves checkpoints.
+
+The session has ten storeys, a 50-element typical floor (40 columns, nine walls, one slab) and a host wall. Fill
+columns span the ten storeys. Each of five interleaved sample rounds adds a wall,
+column, slab and hosted window; joins a fresh wall pair; copies the typical floor
+to one storey; plans and applies alternating floor-height edits; and exports IFC4.
+Counts mean authored architectural elements, excluding storeys, opening voids
+and representation records. Sampling grows the session: each raw sample records
+its before/after counts. Export includes the whole current session. There is no
+warm-up subtraction or private overlay injection. Quantiles use nearest rank;
+with five samples p95 is the maximum. Missing/unfinished operations stay absent.
+Heap/RSS peaks are sampled between operations (lower bounds, not V8 allocation
+high-water marks). Node version, CPU, host, load before/after, command, source
+commit and dirty state are retained with results.
+
+`PARITY_OUT` defaults to `tests/modelling-parity/.out/l3`; the runner writes a
+contract JSON array and Markdown table there. The committed baseline and
+round-1 targets live in `tests/perf-ratchets/modelling-session.json`. These noisy
+diagnostics deliberately do not join daily automatic ceiling lowering.
+`node scripts/perf/modelling-session.mjs --check --input <results.json> --f5-result <F5.json>` checks the
+round-1 goals without re-running: complete sizes, both latency quantiles growing
+strictly less than 2× from 1K to 50K, and a passing F5 exercise result whose
+`metrics.ms` is strictly below 60 seconds. The F5 time comes from the exercise
+lane, not a substitute tower here. Missing sizes or F5 evidence fail the check.
+The baseline is a description of current main, not an accepted round-1 result
+or a speedup claim.

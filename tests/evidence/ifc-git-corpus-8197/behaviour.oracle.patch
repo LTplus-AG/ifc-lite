@@ -1,0 +1,12 @@
+diff --git a/tools/ifc-git-corpus/geometry-proof.ts b/tools/ifc-git-corpus/geometry-proof.ts
+--- a/tools/ifc-git-corpus/geometry-proof.ts
++++ b/tools/ifc-git-corpus/geometry-proof.ts
+@@ -68,7 +68,7 @@
+   const a = requireRow(before, key), b = requireRow(after, key);
+   if (a.hash === b.hash) throw new Error('Moved wall retained its world geometry hash');
+   const displacement = b.aabb.map((value, i) => value - a.aabb[i]);
+-  const expected = [0.251, 0, 0, 0.251, 0, 0];
++  const expected = [0.25, 0, 0, 0.25, 0, 0];
+   if (displacement.some((value, i) => Math.abs(value - expected[i]) > 1e-6)) {
+     throw new Error(`Move oracle expected 250 mm along X: ${JSON.stringify(displacement)}`);
+   }

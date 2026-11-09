@@ -51,6 +51,7 @@ import { mutationDenialMessage, mutationPermission } from '../../store/mutation-
 import { recordResolvedModellingCommit } from '@/store/slices/mutation-modelling-records';
 import { mirrorNewRoofDefinition } from '@/store/slices/mutation-roof';
 import { toast } from '@/components/ui/toast';
+import { trackImplicitWallJoins } from './store-adapter-wall-autojoin.js';
 
 export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
   // One StoreEditor per (modelId, MutablePropertyView) pair. Editors are
@@ -164,20 +165,22 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
     const setState = store.setState;
     if (!setState) throw new Error(`bim.store.${operation}: creation requires a writable viewer store`);
     const commit = (wallIndex?: WallAutojoinIndex): ReturnType<StoreBackendMethods['addWall']> => {
+      const joins = wallIndex ? trackImplicitWallJoins(editor, wallIndex) : null;
       const created = recordResolvedModellingCommit({ ...store, setState }, {
         modelId: normalizedModelId, editor, dataStore, view: editor.getMutationView(),
       }, (draft, data) => build(draft, data, createOrdinaryStoreBackend(() => ({
         ...resolveModel(modelId), store: data, editor: draft, mutationView: draft.getMutationView(),
-      }), wallIndex)), undefined, true, element.kind === 'roof'
+      }), joins?.index)), undefined, true, element.kind === 'roof'
         ? (id, view) => mirrorNewRoofDefinition({ ...store, setState }, normalizedModelId, typeof id === 'number' ? id : id.expressId, view)
-        : undefined);
+        : undefined, joins?.prepareHistory);
       const ref = typeof created === 'number' ? { modelId: normalizedModelId, expressId: created }
         : { ...created, modelId: normalizedModelId };
       // The builder only wrote the overlay. Book it the way the UI's add actions
       // do — mesh, spatial tree, undo entry, `mutationVersion` — or the element
       // is in the export and nowhere else: a flow or script "adds" columns the
       // user never sees.
-      store.getState().recordAuthoredElement?.(normalizedModelId, storeyExpressId, ref.expressId, element, { historyRecorded: true });
+      if (joins) joins.complete(store, normalizedModelId, dataStore, storeyExpressId, ref.expressId, element);
+      else store.getState().recordAuthoredElement?.(normalizedModelId, storeyExpressId, ref.expressId, element, { historyRecorded: true });
       if ('notices' in ref && ref.notices?.length) toast.info(ref.notices.join('\n'));
       return ref;
     };

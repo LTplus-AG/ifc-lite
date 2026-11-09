@@ -176,6 +176,62 @@ describe('#6232 bim.store hosted openings, doors and windows', () => {
     await settleRemesh();
   });
 
+  for (const shared of [false, true]) it(`#9406 implicit joins book and remesh both walls in one undo step (shared=${shared})`, async (t) => {
+    const dataStore = await seed(), adapter = createStoreAdapter(useViewerStore);
+    if (!shared) useViewerStore.setState({ collabRoomId: null, collabRoomModels: new Map() });
+    const a = adapter.addWall(MODEL, 42, { Start: [0, 5, 0], End: [4, 5, 0], Thickness: .2, Height: 3 }).expressId;
+    await settleRemesh();
+    const view = useViewerStore.getState().mutationViews.get(MODEL)!;
+    const before = readWallJoinTarget(dataStore, view, a, 1)!;
+    const record = useViewerStore.getState().recordAuthoredElement;
+    const booked = t.mock.fn(record);
+    useViewerStore.setState({ recordAuthoredElement: booked });
+    t.after(() => useViewerStore.setState({ recordAuthoredElement: record }));
+    const from = mesher.requests.length;
+    const b = adapter.addWall(MODEL, 42, { Start: [4, 5, 0], End: [4, 8, 0], Thickness: .2, Height: 3 }).expressId;
+    await settleRemesh();
+    assert.equal(readWallJoinRels(dataStore, view).length, 1);
+    const targets = new Set(mesher.requests.slice(from).flatMap(r => [...r.targets]));
+    for (const id of [a, b]) assert.ok(targets.has(id), `changed wall #${id} is re-meshed by the addWall commit`);
+    assert.deepEqual(new Set(booked.mock.calls.map(c => c.arguments[2])), new Set([a, b]), 'both walls reach authored bookkeeping');
+    const joinedProfile = readWallJoinTarget(dataStore, view, a, 1)!.profileId;
+    assert.notEqual(joinedProfile, before.profileId);
+    const undoFrom = mesher.requests.length;
+    useViewerStore.getState().undo(MODEL);
+    await settleRemesh();
+    assert.equal(view.getNewEntity(b), null, 'one undo removes the new wall');
+    assert.ok(view.getNewEntity(a), 'the earlier wall remains');
+    assert.equal(readWallJoinTarget(dataStore, view, a, 1)?.profileId, before.profileId);
+    assert.ok(view.getNewEntity(before.profileId), 'undo restores the neighbour profile forgotten by the join');
+    assert.equal(readWallJoinRels(dataStore, view).length, 0);
+    assert.ok(mesher.requests.slice(undoFrom).some(r => [...r.targets].includes(a)), 'undo re-meshes the restored neighbour');
+    const redoFrom = mesher.requests.length;
+    useViewerStore.getState().redo(MODEL);
+    await settleRemesh();
+    assert.equal(readWallJoinRels(dataStore, view).length, 1);
+    assert.equal(readWallJoinTarget(dataStore, view, a, 1)?.profileId, joinedProfile);
+    const redone = new Set(mesher.requests.slice(redoFrom).flatMap(r => [...r.targets]));
+    for (const id of [a, b]) assert.ok(redone.has(id), `redo re-meshes changed wall #${id}`);
+  });
+
+  it('#9406 an implicit join at each end books and remeshes every changed neighbour', async (t) => {
+    const dataStore = await seed(), adapter = createStoreAdapter(useViewerStore);
+    const wall = (Start: [number, number, number], End: [number, number, number]) =>
+      adapter.addWall(MODEL, 42, { Start, End, Thickness: .2, Height: 3 }).expressId;
+    const a = wall([0, 5, 0], [4, 5, 0]), b = wall([4, 8, 0], [0, 8, 0]);
+    await settleRemesh();
+    const record = useViewerStore.getState().recordAuthoredElement, booked = t.mock.fn(record);
+    useViewerStore.setState({ recordAuthoredElement: booked });
+    t.after(() => useViewerStore.setState({ recordAuthoredElement: record }));
+    const from = mesher.requests.length, c = wall([4, 5, 0], [4, 8, 0]);
+    await settleRemesh();
+    const view = useViewerStore.getState().mutationViews.get(MODEL)!;
+    assert.equal(readWallJoinRels(dataStore, view).length, 2);
+    const targets = new Set(mesher.requests.slice(from).flatMap(r => [...r.targets]));
+    assert.deepEqual(targets, new Set([a, b, c]));
+    assert.deepEqual(new Set(booked.mock.calls.map(call => call.arguments[2])), targets);
+  });
+
   it('#6232 joins through the SDK core, re-meshes both walls and restores forgotten profiles in one undo', async () => {
     const dataStore = await seed();
     const adapter = createStoreAdapter(useViewerStore);

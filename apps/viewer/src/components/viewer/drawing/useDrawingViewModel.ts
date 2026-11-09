@@ -25,6 +25,7 @@ import { useDrawingRuntime } from '@/lib/drawing/drawing-runtime';
 import type { CachedSheetTransform } from '@/lib/drawing/sheet-geometry-key';
 import { resolveDrawingPaperTheme } from './paper-theme';
 import { toggledConstructionProjection } from '@/lib/drawing/construction-projection';
+import { drawnSectionPlane } from '@/lib/drawing/drawn-section-plane';
 
 /** The settings panels beside the canvas, as inspector tabs (#5495); they
  *  share one slot. Re-exported for the drawing/ subtree's existing imports. */
@@ -103,9 +104,11 @@ export function useDrawingViewModel() {
   const clearAllAnnotations2D = useViewerStore((s) => s.clearAllAnnotations2D);
 
   const sectionPlane = useViewerStore((s) => s.sectionPlane);
+  // Everything drawn with or exported from the drawing follows the cut it was generated at.
+  const drawnPlane = useViewerStore(drawnSectionPlane);
   const models = useViewerStore((s) => s.models);
   const dxfUnderlayData = useDxfUnderlaysForDrawing({enabled:status==='ready', plane:sourceDrawing?.config.plane,
-    sectionAxis:sectionPlane.axis,isCustomPlane:sectionPlane.custom!==undefined,flipped:sectionPlane.flipped,coordinateInfo:geometryResult?.coordinateInfo});
+    sectionAxis:drawnPlane.axis,isCustomPlane:drawnPlane.custom!==undefined,flipped:drawnPlane.flipped,coordinateInfo:geometryResult?.coordinateInfo});
   const drawing = useMemo(()=>drawingWithDxfBounds(rasterDrawing,dxfUnderlayData,hasRasterReferences),[rasterDrawing,dxfUnderlayData,hasRasterReferences]);
   const hasReferences = hasRasterReferences || dxfUnderlayData.some(r=>r.lines.length>0 || r.fills.length>0 || r.texts.length>0);
   // The references' own extent, which Fit always frames (#8802).
@@ -149,14 +152,14 @@ export function useDrawingViewModel() {
   }, [geometryResult]);
 
   const { viewTransform, setViewTransform, zoomIn, zoomOut, fitToView } = useViewControls({
-    drawing, sectionPlane, containerRef,
+    drawing, sectionPlane: drawnPlane, containerRef,
     // Mounted means on screen: the host only renders this view while it shows.
     panelVisible: true, status, sheetEnabled, activeSheet,
     isPinned, cachedSheetTransformRef, referenceBounds,
   });
 
   const measureHandlers = useMeasure2D({
-    drawing, viewTransform, setViewTransform, sectionAxis: sectionPlane.axis, containerRef,
+    drawing, viewTransform, setViewTransform, sectionAxis: drawnPlane.axis, containerRef,
     measure2DMode, measure2DStart, measure2DCurrent,
     measure2DShiftLocked, measure2DLockedAxis,
     setMeasure2DStart, setMeasure2DCurrent, setMeasure2DShiftLocked,
@@ -164,7 +167,7 @@ export function useDrawingViewModel() {
   });
 
   const annotationHandlers = useAnnotation2D({
-    drawing, viewTransform, sectionAxis: sectionPlane.axis, containerRef,
+    drawing, viewTransform, sectionAxis: drawnPlane.axis, containerRef,
     activeTool: annotation2DActiveTool, setActiveTool: setAnnotation2DActiveTool,
     polygonArea2DPoints, addPolygonArea2DPoint, completePolygonArea2D, cancelPolygonArea2D,
     textAnnotations2D, addTextAnnotation2D, setTextAnnotation2DEditing,
@@ -298,7 +301,10 @@ export function useDrawingViewModel() {
     activePresetId, overridesEnabled, overrideEngine, entityColorMap,
     dxfUnderlays, pointCloudClassMask,
     activeSheet, sheetEnabled, titleBlockEditorVisible, setTitleBlockEditorVisible,
-    sectionPlane,
+    sectionPlane, drawnPlane,
+    // Only a drawing the canvas shows can be exported: hidden behind a progress
+    // overlay or an error, the previous drawing is no longer the user's drawing.
+    exportableDrawing: status === 'ready' ? drawing : null,
     isPinned, togglePinned, containerRef, cachedSheetTransformRef,
     openDrawer, toggleDrawer, closeDrawer,
     viewTransform, zoomIn, zoomOut, fitToView,

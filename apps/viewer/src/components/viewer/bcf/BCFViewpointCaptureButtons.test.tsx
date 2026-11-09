@@ -72,6 +72,32 @@ describe('Capture 2D disabled reason (#4802)', () => {
     assert.equal(visibleReason(container), 'Custom section planes cannot be captured in 2D yet.');
   });
 
+  // Implicit-state-machines D2: moving between a custom and a cardinal plane
+  // keeps the previous drawing on screen until the new cut lands; the
+  // custom-plane rule follows the drawing shown, not the live plane.
+  const custom = { normal: [1, 0, 0] as [number, number, number], distance: 0, pickedAt: [0, 0, 0] as [number, number, number],
+    tangent: [0, 1, 0] as [number, number, number], bitangent: [0, 0, 1] as [number, number, number] };
+  const shownDrawing = (plane: Pick<ReturnType<typeof useViewerStore.getState>['sectionPlane'], 'axis' | 'position' | 'flipped' | 'custom'>) => {
+    const state = useViewerStore.getState();
+    useViewerStore.setState({ drawing2DPanelVisible: true });
+    state.setDrawing2D({} as Drawing2D, plane);
+  };
+
+  it('blocks a drawing cut at a custom plane while the live plane has moved to a cardinal one', () => {
+    const live = useViewerStore.getState().sectionPlane;
+    shownDrawing({ axis: live.axis, position: live.position, flipped: live.flipped, custom });
+    useViewerStore.setState({ sectionPlane: { ...useViewerStore.getState().sectionPlane, custom: undefined } });
+    assert.equal(visibleReason(render(<ConnectedButtons />)), 'Custom section planes cannot be captured in 2D yet.');
+  });
+
+  it('does not block a cardinal drawing while the live plane has moved to a custom one', () => {
+    const live = useViewerStore.getState().sectionPlane;
+    shownDrawing({ axis: live.axis, position: live.position, flipped: live.flipped, custom: undefined });
+    useViewerStore.setState({ sectionPlane: { ...useViewerStore.getState().sectionPlane, custom } });
+    // No canvas is mounted here, so the reason left is the canvas one, not the custom-plane rule.
+    assert.equal(visibleReason(render(<ConnectedButtons />)), 'The 2D section is still generating.');
+  });
+
   it('puts the hover reason on a wrapper, since a disabled button gets no pointer events', () => {
     const container = render(
       <BCFViewpointCaptureButtons onCapture3D={() => {}} onCapture2D={() => {}} capture2DBlockReason="The 2D section is still generating." />,

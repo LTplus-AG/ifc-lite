@@ -72,16 +72,16 @@ export interface DaluxCommitIndex {
 }
 
 /** One total order for both the index and the Versions panel (#8647).
- * Date first, then numeric revisions (missing last), sweep position and id. */
+ * Numeric revisions first (missing last), then date, sweep position and id. */
 export function newestFirst(a: DaluxModelCommit, b: DaluxModelCommit): number {
+  if ((a.revisionNumber === undefined) !== (b.revisionNumber === undefined)) return a.revisionNumber === undefined ? 1 : -1;
+  if (a.revisionNumber !== undefined && b.revisionNumber !== undefined && a.revisionNumber !== b.revisionNumber) return b.revisionNumber - a.revisionNumber;
   const aTime = Date.parse(commitTimestamp(a.file) ?? '');
   const bTime = Date.parse(commitTimestamp(b.file) ?? '');
   const aValid = Number.isFinite(aTime);
   const bValid = Number.isFinite(bTime);
   if (aValid !== bValid) return aValid ? -1 : 1;
   if (aValid && bValid && aTime !== bTime) return bTime - aTime;
-  if ((a.revisionNumber === undefined) !== (b.revisionNumber === undefined)) return a.revisionNumber === undefined ? 1 : -1;
-  if (a.revisionNumber !== undefined && b.revisionNumber !== undefined && a.revisionNumber !== b.revisionNumber) return b.revisionNumber - a.revisionNumber;
   if (a.sweepIndex !== b.sweepIndex) return b.sweepIndex - a.sweepIndex;
   return a.revisionId < b.revisionId ? 1 : a.revisionId > b.revisionId ? -1 : 0;
 }
@@ -119,18 +119,21 @@ interface Accumulator {
  * and could not.
  */
 async function buildCommitIndex(client: BrowserDaluxApiClient, projectId: string): Promise<DaluxCommitIndex> {
-  const setRows = await fetchAllPages(client, `/2.1/projects/${enc(projectId)}/version_sets`, {});
   const sets: DaluxVersionSet[] = [];
   let partial = false;
-  for (const row of setRows) {
-    try {
-      // Every Dalux list row arrives as a `{ data: … }` envelope.
-      sets.push(decodeVersionSet(unwrapDaluxEnvelope(row)));
-    } catch (error) {
-      partial = true;
-      client.warn('skipping an undecodable version set', { error: String(error) });
+  await fetchAllPages(client, `/2.1/projects/${enc(projectId)}/version_sets`, {}, undefined, (rows) => {
+    for (const row of rows) {
+      try {
+        sets.push(decodeVersionSet(unwrapDaluxEnvelope(row)));
+      } catch (error) {
+        partial = true;
+        client.warn('skipping an undecodable version set', { error: String(error) });
+      }
+      // No later page can make an already oversized project safe to sweep.
+      if (sets.length > MAX_VERSION_SETS) return true;
     }
-  }
+    return false;
+  });
 
   // The listing has no documented set date/order. Refuse an oversized history
   // rather than choose 250 arbitrary sets and present an old revision as newest.

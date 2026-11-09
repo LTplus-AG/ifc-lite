@@ -187,6 +187,25 @@ describe('getCommitIndex', () => {
     expect(index.models.size).toBe(0);
   });
 
+  it('stops requesting pages after 251 valid sets establish oversize (#8647)', async () => {
+    const sets = Array.from({ length: 1100 }, (_, i) => ({
+      versionSetId: `vs-${i}`, name: `Set ${i}`, fileAreaId: 'fa-models', files: {},
+    }));
+    let requests = 0;
+    const inner = createDaluxApiMock(worldWithSets(sets), { pageSize: 1 });
+    const counting: typeof fetch = (input, init) => {
+      requests += 1;
+      return inner(input, init);
+    };
+    const client = new BrowserDaluxApiClient(
+      { baseUrl: DALUX_MOCK_BASE_URL, apiKey: 'test-key' }, createDaluxMockContext(counting),
+    );
+    const index = await getCommitIndex(client, 'p-alpha');
+    expect(index.truncated).toBe(true);
+    expect(index.models.size).toBe(0);
+    expect(requests).toBe(251);
+  });
+
   it('caches the project sweep, while direct pinned-row reads are always fresh (#8647)', async () => {
     const spec = worldWithSets([
       { versionSetId: 'vs-1', name: 'Initial delivery', fileAreaId: 'fa-models', files: { 'file-structural': 'rev-1' } },
@@ -274,7 +293,7 @@ describe('getCommitIndex', () => {
       const client = clientFor({ projects: [{ ...world.projects[0], versionSets: order }] });
       const index = await getCommitIndex(client, 'p-alpha');
       expect(index.models.get('file-structural')!.commits.map((commit) => commit.revisionId))
-        .toEqual(['rev-A', 'rev-B', 'rev-C']);
+        .toEqual(['rev-C', 'rev-A', 'rev-B']);
     }
   });
 

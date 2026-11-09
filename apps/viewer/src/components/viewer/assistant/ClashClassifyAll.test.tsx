@@ -111,3 +111,41 @@ test('C-10 same-tick classification presses start one request', async () => {
   await act(async () => { for (const release of releases) release(); });
   assert.equal(count, 1);
 });
+
+test('C-10 replacing a completed review clears its progress, merged summary and normalization consent', async () => {
+  const clashes = clashFindings(250);
+  const result = { clashes, summary: summarizeClashes(clashes), rulesRun: [], settings: { tolerance: 0.002, excludeVoidsAndHosts: true } };
+  useViewerStore.setState({ clashResult: result, chatActiveModel: 'test/free-model' });
+  serveClassifier();
+  let replace!: () => void, completed = 0;
+  function Host() {
+    const [current, setCurrent] = useState(result);
+    replace = () => { const next = { ...result }; useViewerStore.setState({ clashResult: next }); setCurrent(next); };
+    return <ClashClassifyAll result={current} enabled onResult={() => { completed++; }} />;
+  }
+  const ui = render(<Host />);
+  click(ui.querySelector('input[type="checkbox"]')!);
+  click([...ui.querySelectorAll('button')].find(button => button.textContent === 'Classify all findings')!);
+  await waitFor(() => completed === 1, 'all real classification chunks completed');
+  assert.equal(ui.querySelectorAll('progress').length, 1);
+  assert.equal(ui.textContent?.includes('merged across chunks'), true);
+  assert.equal(ui.querySelector<HTMLInputElement>('input[type="checkbox"]')?.checked, true);
+  act(() => replace());
+  assert.equal(ui.querySelectorAll('progress').length, 0, 'old chunk progress is absent');
+  assert.equal(ui.textContent?.includes('merged across chunks'), false, 'old completed-run summary is absent');
+  assert.equal(ui.querySelector<HTMLInputElement>('input[type="checkbox"]')?.checked, false, 'normalization permission belongs to the new review');
+});
+
+test('C-10 replacing a review clears the previous classification error', async () => {
+  const { UNCONFIGURED_MODEL_ID } = await import('@/lib/llm/models');
+  const clashes = clashFindings(10);
+  const result = { clashes, summary: summarizeClashes(clashes), rulesRun: [], settings: { tolerance: 0.002, excludeVoidsAndHosts: true } };
+  useViewerStore.setState({ clashResult: result, chatActiveModel: UNCONFIGURED_MODEL_ID });
+  let replace!: () => void;
+  function Host() { const [current, setCurrent] = useState(result); replace = () => setCurrent({ ...result }); return <ClashClassifyAll result={current} enabled onResult={() => {}} />; }
+  const ui = render(<Host />);
+  click([...ui.querySelectorAll('button')].find(button => button.textContent === 'Classify all findings')!);
+  assert.equal(ui.querySelectorAll('[role="alert"]').length, 1);
+  act(() => replace());
+  assert.equal(ui.querySelectorAll('[role="alert"]').length, 0);
+});

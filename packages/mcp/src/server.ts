@@ -281,7 +281,6 @@ export class MCPServer {
       case 'notifications/initialized':
         // Some clients send this AFTER `initialize`. Already initialized in the
         // success path; this notification is just a confirmation.
-        this.initialized = true;
         return;
       case 'notifications/cancelled': {
         const params = note.params as { requestId?: string | number; reason?: string } | undefined;

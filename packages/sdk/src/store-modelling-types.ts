@@ -33,12 +33,22 @@ import type { RoomCommand, RoomCommandResult } from './store-room-command.js';
 import type { EntityRef } from './types.js';
 import type { PhysicalStoreBackendMethods } from './store-physical-types.js';
 import type { StoreyStoreBackendMethods } from './store-storey-types.js';
+import type { TopConstraintParams } from './store-top-types.js';
 
 export interface ModellingStoreBackendMethods extends PhysicalStoreBackendMethods, StoreyStoreBackendMethods {
   /** Native mesh/DCEL Room operations with atomic history-aware layout edits. */
   roomCommand?(modelId: string, storeyId: number, command: RoomCommand): Promise<RoomCommandResult>;
-  /** Copy a dependency-pruned selection once per storey-local transform, atomically. */
+  /**
+   * Copy a dependency-pruned selection once per storey-local transform, atomically. A copy on another
+   * storey re-resolves its top attachment there: one attached to the storey above its own attaches to
+   * the storey above its new one (#9296).
+   */
   copyElements?(modelId: string, expressIds: readonly number[], transforms: readonly CopyTransform[]): EntityRef[];
+  /**
+   * Copy a selection onto each of `storeyIds` (same plan position and height above the floor) in one
+   * atomic, undoable operation; the copies come back per storey, in the order given.
+   */
+  copyToStoreys?(modelId: string, expressIds: readonly number[], storeyIds: readonly number[]): Array<{ storeyId: number; refs: EntityRef[] }>;
   /** Duplicate with the viewer naming policy; explicit storey-local IFC XYZ displacement. */
   duplicateElement?(ref: EntityRef, options: { offset: [number, number, number]; Name?: string }): EntityRef;
   /** Array count includes the original; full circles exclude a coincident final copy. */
@@ -47,11 +57,11 @@ export interface ModellingStoreBackendMethods extends PhysicalStoreBackendMethod
   /** Edit the physical hosted cut/filling together, preserving identity and relationships. Metres, host-local. */
   editHostedElement?(ref: EntityRef, patch: HostedElementEdit): EntityRef;
   /** Complete IfcCurtainWall aggregate, including its member and panel bodies. */
-  addCurtainWall?(modelId: string, storeyExpressId: number, params: CurtainWallInStoreParams): EntityRef;
+  addCurtainWall?(modelId: string, storeyExpressId: number, params: CurtainWallInStoreParams & TopConstraintParams): EntityRef;
   /** IfcGrid with straight, tagged axes and its FootPrint representation. */
   addGrid?(modelId: string, storeyExpressId: number, params: GridInStoreParams): EntityRef;
   /** Persist a column on a live grid crossing; stale or foreign bindings are refused. */
-  addColumnOnGrid?(modelId: string, storeyExpressId: number, params: ColumnInStoreParams | ProfiledColumnInStoreParams, binding: GridColumnBinding): EntityRef;
+  addColumnOnGrid?(modelId: string, storeyExpressId: number, params: (ColumnInStoreParams | ProfiledColumnInStoreParams) & TopConstraintParams, binding: GridColumnBinding): EntityRef;
   /** Optional capability: replace a live product and its uniquely owned stair flight atomically. */
   replaceElement?(ref: EntityRef, storeyExpressId: number, element: InStoreReplacementElement): EntityRef;
   /** Optional host capability: a storey-local IfcStair aggregating one IfcStairFlight. Returns the stair. */
@@ -81,3 +91,6 @@ export interface ModellingStoreBackendMethods extends PhysicalStoreBackendMethod
   /** Associate a material (any IfcMaterialSelect) with objects via `IfcRelAssociatesMaterial`, replacing their previous association. Returns the relationship. */
   assignMaterial(modelId: string, materialExpressId: number, objectExpressIds: number[]): EntityRef;
 }
+
+/** What `createModellingStoreBackendWithoutStoreys` builds: everything but the storey methods. */
+export type ModellingStoreBackendMethodsWithoutStoreys = Omit<ModellingStoreBackendMethods, keyof StoreyStoreBackendMethods>;

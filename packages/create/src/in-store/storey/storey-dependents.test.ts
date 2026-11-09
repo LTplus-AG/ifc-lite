@@ -64,7 +64,7 @@ describe('adding the storey above binds walls drawn attached', () => {
   it('records the new storey GlobalId; the fixed wall stays fixed', async () => {
     const h = await house();
     const inventory = api('readStoreyInventory')(h.store, h.view);
-    expect(api('readTopAttachment')(inventory, h.attached)).toEqual({ targetStoreyId: h.level2, source: 'ifclite' });
+    expect(api('readTopAttachment')(inventory, h.attached)).toEqual({ targetStoreyId: h.level2, kind: 'storey', binding: 'relative', source: 'ifclite' });
     expect(api('readTopAttachment')(inventory, h.fixed)).toBeNull();
     expect(height(h, h.attached)).toBeCloseTo(3, 9);
   });
@@ -120,7 +120,7 @@ describe('wall attachments are followed exactly as recorded (#9036 review)', () 
     const { s, level1, wall } = await oneWall();
     const level2 = api('addStoreyInStore')(s.store, s.editor, { Name: 'Level 2', Elevation: 3 }).storeyId;
     s.view.setProperty(wall, 'Constraints', 'Top Constraint', 'Up to level: Level 2', PropertyValueType.Label);
-    expect(api('readTopAttachment')(api('readStoreyInventory')(s.store, s.view), wall)).toEqual({ targetStoreyId: level2, source: 'revit' });
+    expect(api('readTopAttachment')(api('readStoreyInventory')(s.store, s.view), wall)).toEqual({ targetStoreyId: level2, kind: 'storey', binding: 'explicit', source: 'revit' });
     api('clearTopAttachment')(s.view, wall);
     expect(api('readTopAttachment')(api('readStoreyInventory')(s.store, s.view), wall)).toBeNull();
 
@@ -240,7 +240,7 @@ END-ISO`);
     const added = api('addStoreyInStore')(s.store, s.editor, { Name: 'Level 2', Elevation: 3 });
     expect(added.unresizedWalls).toEqual([wall]);
     expect(added.boundWalls).toEqual([]);
-    expect(api('readTopAttachment')(api('readStoreyInventory')(s.store, s.view), wall)).toEqual({ targetStoreyId: added.storeyId, source: 'ifclite' });
+    expect(api('readTopAttachment')(api('readStoreyInventory')(s.store, s.view), wall)).toEqual({ targetStoreyId: added.storeyId, kind: 'storey', binding: 'relative', source: 'ifclite' });
   });
 
   it('an imported stair whose recorded flight sits above it is reported when its landing moves', async () => {

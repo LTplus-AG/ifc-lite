@@ -29,6 +29,7 @@ import { resolveSlabEditChain } from '@/lib/slab-edit';
 import { readPushPullTarget } from '@/lib/push-pull/push-pull-target';
 import { applyMaterialLayers, setElementDimensions } from '@/components/viewer/model-inspector/inspector-edits';
 import { authoredElementMeshPayload } from '@/store/slices/authoredFallbackMesh';
+import { planeHeightField, planeZ } from './placement-shared.js';
 import { SLAB_PLACE } from './slab-place.js';
 import type { SlabPlaceGesture } from './slab-place-geometry.js';
 
@@ -91,6 +92,25 @@ afterEach(() => {
   restoreRemesh();
   useViewerStore.getState().exitModelWorkspace();
   cleanup();
+});
+
+describe('slab.place: the bar names the class being drawn (#9202)', () => {
+  it('Roof and Plate title the bar; a slab keeps the command label', () => {
+    for (const [slabClass, title] of [['slab', undefined], ['roof', 'modelWorkspace.tool.roof'], ['plate', 'modelingCommand.class.plate']] as const) {
+      act(() => { useViewerStore.getState().setAuthoringDefaults({ slabClass }); });
+      assert.equal(SLAB_PLACE.hud.title?.(useViewerStore.getState()), title, slabClass);
+    }
+  });
+});
+
+describe('the plane height field (#9202)', () => {
+  it('shows on a storey plane and hides on any other, where it could set nothing', () => {
+    const field = planeHeightField<null>();
+    const on = (spec: unknown) => ({ get: useViewerStore.getState, workplane: spec === null ? undefined : { spec } }) as unknown as CommandContext;
+    assert.equal(field.hidden?.(null, on({ kind: 'storey', storeyId: STOREY, offset: 0 })), false);
+    assert.equal(field.hidden?.(null, on({ kind: 'section' })), true);
+    assert.equal(field.hidden?.(null, on(null)), true);
+  });
 });
 
 describe('slab.place: rectangle (#6232 M2.2)', () => {
@@ -358,7 +378,9 @@ describe('slab.place: a floor slab hangs from the plane (#9198)', () => {
       for (let i = 0; i < ghost.positions.length; i += 3) zs.push(plane.renderToLocal([ghost.positions[i], ghost.positions[i + 1], ghost.positions[i + 2]])[2]);
       assert.deepEqual([Math.min(...zs), Math.max(...zs)].map(round), [0, thickness]);
       click(2, 2);
-      assert.deepEqual(bodyOf(drawn()), { bottom: 0, top: thickness });
+      // The plane itself rises for a roof (#9202); the body starts on it either way.
+      const lift = planeZ(ctx().workplane);
+      assert.deepEqual(bodyOf(drawn()), { bottom: lift, top: round(lift + thickness) });
     });
   }
 

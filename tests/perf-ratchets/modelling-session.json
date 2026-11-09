@@ -1,0 +1,611 @@
+{
+  "family": "modelling-session",
+  "description": "Shared-host diagnostic authoring timings for #9296, not benchmark evidence or a speedup claim. Entries are measured 1K reference values only; stopped sizes below are not ceilings at their requested targets. Not wired into daily automatic lowering: node scripts/perf/modelling-session.mjs --check enforces the separate round-1 targets, requiring complete size results and F5 evidence. No timing regression tolerance is asserted for this noisy baseline.",
+  "entries": [
+    {
+      "id": "session-1000.addwall.p50",
+      "metric": "p50-ms",
+      "unit": "ms",
+      "description": "addWall, five samples starting at 1000 authored elements; diagnostic reference only",
+      "ceiling": 386.0692139999883,
+      "tolerance": {
+        "kind": "exact",
+        "value": 0
+      },
+      "provenance": {
+        "commit": "044156324507027b45cb1c215070af757af45d4d",
+        "measuredAt": "2026-11-08T07:35:31.039Z"
+      }
+    },
+    {
+      "id": "session-1000.addwall.p95",
+      "metric": "p95-ms",
+      "unit": "ms",
+      "description": "addWall, five samples starting at 1000 authored elements; diagnostic reference only",
+      "ceiling": 435.66159899998456,
+      "tolerance": {
+        "kind": "exact",
+        "value": 0
+      },
+      "provenance": {
+        "commit": "044156324507027b45cb1c215070af757af45d4d",
+        "measuredAt": "2026-11-08T07:35:31.039Z"
+      }
+    },
+    {
+      "id": "session-1000.addcolumn.p50",
+      "metric": "p50-ms",
+      "unit": "ms",
+      "description": "addColumn, five samples starting at 1000 authored elements; diagnostic reference only",
+      "ceiling": 341.8408379999746,
+      "tolerance": {
+        "kind": "exact",
+        "value": 0
+      },
+      "provenance": {
+        "commit": "044156324507027b45cb1c215070af757af45d4d",
+        "measuredAt": "2026-11-08T07:35:31.039Z"
+      }
+    },
+    {
+      "id": "session-1000.addcolumn.p95",
+      "metric": "p95-ms",
+      "unit": "ms",
+      "description": "addColumn, five samples starting at 1000 authored elements; diagnostic reference only",
+      "ceiling": 387.8772009999957,
+      "tolerance": {
+        "kind": "exact",
+        "value": 0
+      },
+      "provenance": {
+        "commit": "044156324507027b45cb1c215070af757af45d4d",
+        "measuredAt": "2026-11-08T07:35:31.039Z"
+      }
+    },
+    {
+      "id": "session-1000.addslab.p50",
+      "metric": "p50-ms",
+      "unit": "ms",
+      "description": "addSlab, five samples starting at 1000 authored elements; diagnostic reference only",
+      "ceiling": 346.7552640000067,
+      "tolerance": {
+        "kind": "exact",
+        "value": 0
+      },
+      "provenance": {
+        "commit": "044156324507027b45cb1c215070af757af45d4d",
+        "measuredAt": "2026-11-08T07:35:31.039Z"
+      }
+    },
+    {
+      "id": "session-1000.addslab.p95",
+      "metric": "p95-ms",
+      "unit": "ms",
+      "description": "addSlab, five samples starting at 1000 authored elements; diagnostic reference only",
+      "ceiling": 357.87521900000866,
+      "tolerance": {
+        "kind": "exact",
+        "value": 0
+      },
+      "provenance": {
+        "commit": "044156324507027b45cb1c215070af757af45d4d",
+        "measuredAt": "2026-11-08T07:35:31.039Z"
+      }
+    },
+    {
+      "id": "session-1000.addhostedwindow.p50",
+      "metric": "p50-ms",
+      "unit": "ms",
+      "description": "addHostedWindow, five samples starting at 1000 authored elements; diagnostic reference only",
+      "ceiling": 319.9378699999943,
+      "tolerance": {
+        "kind": "exact",
+        "value": 0
+      },
+      "provenance": {
+        "commit": "044156324507027b45cb1c215070af757af45d4d",
+        "measuredAt": "2026-11-08T07:35:31.039Z"
+      }
+    },
+    {
+      "id": "session-1000.addhostedwindow.p95",
+      "metric": "p95-ms",
+      "unit": "ms",
+      "description": "addHostedWindow, five samples starting at 1000 authored elements; diagnostic reference only",
+      "ceiling": 374.59404999998515,
+      "tolerance": {
+        "kind": "exact",
+        "value": 0
+      },
+      "provenance": {
+        "commit": "044156324507027b45cb1c215070af757af45d4d",
+        "measuredAt": "2026-11-08T07:35:31.039Z"
+      }
+    },
+    {
+      "id": "session-1000.joinwalls.p50",
+      "metric": "p50-ms",
+      "unit": "ms",
+      "description": "joinWalls, five samples starting at 1000 authored elements; diagnostic reference only",
+      "ceiling": 656.2595610000135,
+      "tolerance": {
+        "kind": "exact",
+        "value": 0
+      },
+      "provenance": {
+        "commit": "044156324507027b45cb1c215070af757af45d4d",
+        "measuredAt": "2026-11-08T07:35:31.039Z"
+      }
+    },
+    {
+      "id": "session-1000.joinwalls.p95",
+      "metric": "p95-ms",
+      "unit": "ms",
+      "description": "joinWalls, five samples starting at 1000 authored elements; diagnostic reference only",
+      "ceiling": 850.0648030000157,
+      "tolerance": {
+        "kind": "exact",
+        "value": 0
+      },
+      "provenance": {
+        "commit": "044156324507027b45cb1c215070af757af45d4d",
+        "measuredAt": "2026-11-08T07:35:31.039Z"
+      }
+    },
+    {
+      "id": "session-1000.copyelements.p50",
+      "metric": "p50-ms",
+      "unit": "ms",
+      "description": "copyElements, five samples starting at 1000 authored elements; diagnostic reference only",
+      "ceiling": 4999.555159999989,
+      "tolerance": {
+        "kind": "exact",
+        "value": 0
+      },
+      "provenance": {
+        "commit": "044156324507027b45cb1c215070af757af45d4d",
+        "measuredAt": "2026-11-08T07:35:31.039Z"
+      }
+    },
+    {
+      "id": "session-1000.copyelements.p95",
+      "metric": "p95-ms",
+      "unit": "ms",
+      "description": "copyElements, five samples starting at 1000 authored elements; diagnostic reference only",
+      "ceiling": 5495.723200000008,
+      "tolerance": {
+        "kind": "exact",
+        "value": 0
+      },
+      "provenance": {
+        "commit": "044156324507027b45cb1c215070af757af45d4d",
+        "measuredAt": "2026-11-08T07:35:31.039Z"
+      }
+    },
+    {
+      "id": "session-1000.planstoreyedit.p50",
+      "metric": "p50-ms",
+      "unit": "ms",
+      "description": "planStoreyEdit, five samples starting at 1000 authored elements; diagnostic reference only",
+      "ceiling": 476.33599300001515,
+      "tolerance": {
+        "kind": "exact",
+        "value": 0
+      },
+      "provenance": {
+        "commit": "044156324507027b45cb1c215070af757af45d4d",
+        "measuredAt": "2026-11-08T07:35:31.039Z"
+      }
+    },
+    {
+      "id": "session-1000.planstoreyedit.p95",
+      "metric": "p95-ms",
+      "unit": "ms",
+      "description": "planStoreyEdit, five samples starting at 1000 authored elements; diagnostic reference only",
+      "ceiling": 494.337062000006,
+      "tolerance": {
+        "kind": "exact",
+        "value": 0
+      },
+      "provenance": {
+        "commit": "044156324507027b45cb1c215070af757af45d4d",
+        "measuredAt": "2026-11-08T07:35:31.039Z"
+      }
+    },
+    {
+      "id": "session-1000.editstorey.p50",
+      "metric": "p50-ms",
+      "unit": "ms",
+      "description": "editStorey, five samples starting at 1000 authored elements; diagnostic reference only",
+      "ceiling": 861.1585759999871,
+      "tolerance": {
+        "kind": "exact",
+        "value": 0
+      },
+      "provenance": {
+        "commit": "044156324507027b45cb1c215070af757af45d4d",
+        "measuredAt": "2026-11-08T07:35:31.039Z"
+      }
+    },
+    {
+      "id": "session-1000.editstorey.p95",
+      "metric": "p95-ms",
+      "unit": "ms",
+      "description": "editStorey, five samples starting at 1000 authored elements; diagnostic reference only",
+      "ceiling": 1107.3395460000029,
+      "tolerance": {
+        "kind": "exact",
+        "value": 0
+      },
+      "provenance": {
+        "commit": "044156324507027b45cb1c215070af757af45d4d",
+        "measuredAt": "2026-11-08T07:35:31.039Z"
+      }
+    },
+    {
+      "id": "session-1000.exportifc.p50",
+      "metric": "p50-ms",
+      "unit": "ms",
+      "description": "exportIfc, five samples starting at 1000 authored elements; diagnostic reference only",
+      "ceiling": 94.66236400001799,
+      "tolerance": {
+        "kind": "exact",
+        "value": 0
+      },
+      "provenance": {
+        "commit": "044156324507027b45cb1c215070af757af45d4d",
+        "measuredAt": "2026-11-08T07:35:31.039Z"
+      }
+    },
+    {
+      "id": "session-1000.exportifc.p95",
+      "metric": "p95-ms",
+      "unit": "ms",
+      "description": "exportIfc, five samples starting at 1000 authored elements; diagnostic reference only",
+      "ceiling": 142.95986000000266,
+      "tolerance": {
+        "kind": "exact",
+        "value": 0
+      },
+      "provenance": {
+        "commit": "044156324507027b45cb1c215070af757af45d4d",
+        "measuredAt": "2026-11-08T07:35:31.039Z"
+      }
+    }
+  ],
+  "targets": {
+    "issue": 9296,
+    "round": 1,
+    "requiredSizes": [
+      1000,
+      10000,
+      50000
+    ],
+    "quantiles": [
+      "p50",
+      "p95"
+    ],
+    "maxGrowthExclusive": 2,
+    "f5MsExclusive": 60000,
+    "f5Baseline": null,
+    "f5BaselineReason": "F5 belongs to the exercise lane; this session measurement does not certify it."
+  },
+  "baseline": {
+    "productBase": "a6e0a577f834f9eea51cce0a75d6c5fbb3e0b6ff",
+    "admission": {
+      "kind": "ordinary",
+      "cpu": 1,
+      "memoryGiB": 4,
+      "nice": 10,
+      "jobId": "c007869a-0de1-4a9e-92bb-46aba1d35cd6"
+    },
+    "limitations": [
+      "One diagnostic run on a busy shared host; no speedup or benchmark qualification.",
+      "Nearest-rank quantiles from five samples; p95 is the maximum.",
+      "Samples add elements; full raw results retain each before/after count.",
+      "Peak heap/RSS sampled between synchronous operations, therefore lower bounds.",
+      "No growth factor can be measured across incomplete sizes."
+    ],
+    "totalMs": 1136841.2468160002,
+    "peakHeapBytes": 812511488,
+    "growthFactors": {
+      "1K-to-10K": null,
+      "10K-to-50K": null,
+      "1K-to-50K": null
+    },
+    "results": [
+      {
+        "schema": "ifclite-parity-result/1",
+        "capability": "large-tall-model-performance",
+        "probe": "perf",
+        "id": "session.1000",
+        "status": "pass",
+        "metrics": {
+          "target": 1000,
+          "reached": 1000,
+          "after": 1280,
+          "phase": "done",
+          "operations": {
+            "addWall": {
+              "count": 5,
+              "p50": 386.0692139999883,
+              "p95": 435.66159899998456
+            },
+            "addColumn": {
+              "count": 5,
+              "p50": 341.8408379999746,
+              "p95": 387.8772009999957
+            },
+            "addSlab": {
+              "count": 5,
+              "p50": 346.7552640000067,
+              "p95": 357.87521900000866
+            },
+            "addHostedWindow": {
+              "count": 5,
+              "p50": 319.9378699999943,
+              "p95": 374.59404999998515
+            },
+            "joinWalls": {
+              "count": 5,
+              "p50": 656.2595610000135,
+              "p95": 850.0648030000157
+            },
+            "copyElements": {
+              "count": 5,
+              "p50": 4999.555159999989,
+              "p95": 5495.723200000008
+            },
+            "planStoreyEdit": {
+              "count": 5,
+              "p50": 476.33599300001515,
+              "p95": 494.337062000006
+            },
+            "editStorey": {
+              "count": 5,
+              "p50": 861.1585759999871,
+              "p95": 1107.3395460000029
+            },
+            "exportIfc": {
+              "count": 5,
+              "p50": 94.66236400001799,
+              "p95": 142.95986000000266
+            }
+          },
+          "totalMs": 168728.905368,
+          "peakHeapBytes": 564339336,
+          "peakRssBytes": 935153664,
+          "host": {
+            "hostname": "louistrue-pc",
+            "node": "v24.21.0",
+            "cpu": "AMD Ryzen 9 9900X3D 12-Core Processor",
+            "loadStart": [
+              30.96,
+              28.34,
+              27.31
+            ],
+            "diagnostic": true,
+            "loadEnd": [
+              22.84,
+              26.14,
+              26.66
+            ]
+          },
+          "exportBytes": 974867,
+          "complete": true,
+          "checkpointMs": 168560.430818,
+          "budgetMs": 540000,
+          "requestedSamples": 5,
+          "measuredAt": "2026-11-08T07:35:31.039Z",
+          "protocolHashes": {
+            "scripts/perf/modelling-session.mjs": "f89fa2c46f731fcfef425ecfbccba75f3ba4a6eed628cd4109e4a4a90ceae3c3",
+            "scripts/perf/modelling-session-worker.mjs": "88269766a69cb82e01c57d2323dbf53baf5d5cef056d4e5a9afc1b75a1303890",
+            "packages/wasm/pkg/ifc-lite_bg.wasm": "e216e3acf967edbb04d588138c41c279610c52661e8c55c4b6f1839bd2c8d845"
+          }
+        },
+        "evidence": [],
+        "source": {
+          "commit": "044156324507027b45cb1c215070af757af45d4d",
+          "dirty": false
+        },
+        "runner": "/home/louistrue/.nvm/versions/node/v24.21.0/bin/node /home/louistrue/.t3/worktrees/ifc-lite/t3-fc9ae4b5/scripts/perf/modelling-session.mjs"
+      },
+      {
+        "schema": "ifclite-parity-result/1",
+        "capability": "large-tall-model-performance",
+        "probe": "perf",
+        "id": "session.10000",
+        "status": "fail",
+        "reason": "Fill allowance exhausted at 1745/10000 elements",
+        "metrics": {
+          "target": 10000,
+          "reached": 1745,
+          "after": 2025,
+          "phase": "done",
+          "operations": {
+            "addWall": {
+              "count": 5,
+              "p50": 515.037798000034,
+              "p95": 603.556734999991
+            },
+            "addColumn": {
+              "count": 5,
+              "p50": 521.1417709999951,
+              "p95": 616.3178880000487
+            },
+            "addSlab": {
+              "count": 5,
+              "p50": 552.0982580000418,
+              "p95": 608.8760959999636
+            },
+            "addHostedWindow": {
+              "count": 5,
+              "p50": 542.2839270000113,
+              "p95": 702.9894799999893
+            },
+            "joinWalls": {
+              "count": 5,
+              "p50": 1262.1171740000136,
+              "p95": 1284.5483299999614
+            },
+            "copyElements": {
+              "count": 5,
+              "p50": 7637.073513999989,
+              "p95": 7924.819837999996
+            },
+            "planStoreyEdit": {
+              "count": 5,
+              "p50": 784.5518910000101,
+              "p95": 820.4316559999716
+            },
+            "editStorey": {
+              "count": 5,
+              "p50": 1335.0685190000222,
+              "p95": 1474.6276879999787
+            },
+            "exportIfc": {
+              "count": 5,
+              "p50": 135.1123099999968,
+              "p95": 149.9491589999525
+            }
+          },
+          "totalMs": 478076.89357,
+          "peakHeapBytes": 812511488,
+          "peakRssBytes": 1244467200,
+          "host": {
+            "hostname": "louistrue-pc",
+            "node": "v24.21.0",
+            "cpu": "AMD Ryzen 9 9900X3D 12-Core Processor",
+            "loadStart": [
+              22.84,
+              26.14,
+              26.66
+            ],
+            "diagnostic": true,
+            "loadEnd": [
+              25.41,
+              25.79,
+              26.29
+            ]
+          },
+          "exportBytes": 1551417,
+          "complete": false,
+          "reason": "Fill allowance exhausted at 1745/10000 elements",
+          "checkpointMs": 477915.15545300004,
+          "budgetMs": 540000,
+          "requestedSamples": 5,
+          "measuredAt": "2026-11-08T07:43:29.090Z",
+          "protocolHashes": {
+            "scripts/perf/modelling-session.mjs": "f89fa2c46f731fcfef425ecfbccba75f3ba4a6eed628cd4109e4a4a90ceae3c3",
+            "scripts/perf/modelling-session-worker.mjs": "88269766a69cb82e01c57d2323dbf53baf5d5cef056d4e5a9afc1b75a1303890",
+            "packages/wasm/pkg/ifc-lite_bg.wasm": "e216e3acf967edbb04d588138c41c279610c52661e8c55c4b6f1839bd2c8d845"
+          }
+        },
+        "evidence": [],
+        "source": {
+          "commit": "044156324507027b45cb1c215070af757af45d4d",
+          "dirty": false
+        },
+        "runner": "/home/louistrue/.nvm/versions/node/v24.21.0/bin/node /home/louistrue/.t3/worktrees/ifc-lite/t3-fc9ae4b5/scripts/perf/modelling-session.mjs"
+      },
+      {
+        "schema": "ifclite-parity-result/1",
+        "capability": "large-tall-model-performance",
+        "probe": "perf",
+        "id": "session.50000",
+        "status": "fail",
+        "reason": "Fill allowance exhausted at 1748/50000 elements",
+        "metrics": {
+          "target": 50000,
+          "reached": 1748,
+          "after": 2028,
+          "phase": "done",
+          "operations": {
+            "addWall": {
+              "count": 5,
+              "p50": 544.4210680000251,
+              "p95": 3359.1023389999755
+            },
+            "addColumn": {
+              "count": 5,
+              "p50": 532.9079269999638,
+              "p95": 3387.3819730000105
+            },
+            "addSlab": {
+              "count": 5,
+              "p50": 528.1961139999912,
+              "p95": 1047.2575219999999
+            },
+            "addHostedWindow": {
+              "count": 5,
+              "p50": 577.4516220000223,
+              "p95": 957.7449759999872
+            },
+            "joinWalls": {
+              "count": 5,
+              "p50": 1150.9753430000274,
+              "p95": 1449.0567940000328
+            },
+            "copyElements": {
+              "count": 5,
+              "p50": 7656.8700870000175,
+              "p95": 11695.458089000022
+            },
+            "planStoreyEdit": {
+              "count": 5,
+              "p50": 747.8069559999858,
+              "p95": 1260.9830730000394
+            },
+            "editStorey": {
+              "count": 5,
+              "p50": 1292.1601739999605,
+              "p95": 3013.6916179999826
+            },
+            "exportIfc": {
+              "count": 5,
+              "p50": 132.8897430000361,
+              "p95": 928.4526489999844
+            }
+          },
+          "totalMs": 490035.4478780001,
+          "peakHeapBytes": 692828272,
+          "peakRssBytes": 1152098304,
+          "host": {
+            "hostname": "louistrue-pc",
+            "node": "v24.21.0",
+            "cpu": "AMD Ryzen 9 9900X3D 12-Core Processor",
+            "loadStart": [
+              25.41,
+              25.79,
+              26.29
+            ],
+            "diagnostic": true,
+            "loadEnd": [
+              27.36,
+              24.71,
+              25.34
+            ]
+          },
+          "exportBytes": 1553739,
+          "complete": false,
+          "reason": "Fill allowance exhausted at 1748/50000 elements",
+          "checkpointMs": 489862.294464,
+          "budgetMs": 540000,
+          "requestedSamples": 5,
+          "measuredAt": "2026-11-08T07:51:39.101Z",
+          "protocolHashes": {
+            "scripts/perf/modelling-session.mjs": "f89fa2c46f731fcfef425ecfbccba75f3ba4a6eed628cd4109e4a4a90ceae3c3",
+            "scripts/perf/modelling-session-worker.mjs": "88269766a69cb82e01c57d2323dbf53baf5d5cef056d4e5a9afc1b75a1303890",
+            "packages/wasm/pkg/ifc-lite_bg.wasm": "e216e3acf967edbb04d588138c41c279610c52661e8c55c4b6f1839bd2c8d845"
+          }
+        },
+        "evidence": [],
+        "source": {
+          "commit": "044156324507027b45cb1c215070af757af45d4d",
+          "dirty": false
+        },
+        "runner": "/home/louistrue/.nvm/versions/node/v24.21.0/bin/node /home/louistrue/.t3/worktrees/ifc-lite/t3-fc9ae4b5/scripts/perf/modelling-session.mjs"
+      }
+    ]
+  }
+}

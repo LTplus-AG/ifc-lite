@@ -338,3 +338,234 @@ describe('a streaming fragment splits per entity like a finalized batch (#9254)'
     assert.ok(scene.getBatchedMeshes().every((batch) => batch.gpuResident !== false), 'no batch was evicted before it was published');
   });
 });
+
+/**
+ * A finalized batch keeps drawing while streaming continues into its bucket:
+ * after a sync finalize mid-stream (a placement edit) or across the async
+ * finalize window. Its partial batch must draw only the pieces it holds, not
+ * the bucket's newer pieces a streaming fragment already draws (#9270).
+ */
+describe('a finalized batch partial draws only the pieces it holds (#9270)', () => {
+  const RED: [number, number, number, number] = [1, 0, 0, 1];
+
+  it('stream, sync finalize, stream on: isolating an entity spread over the batch and a fragment draws it once', () => {
+    const scene = new Scene();
+    const A = 1, B = 2, C = 3;
+    const meshes = [mesh(A, 0), mesh(B, 2, { triangles: 2 }), mesh(A, 4, { triangles: 4 }), mesh(C, 6, { triangles: 8 })];
+    stream(scene, meshes.slice(0, 2));
+    scene.finalizeStreaming(device, pipeline);
+    stream(scene, meshes.slice(2));
+    assertSpread(scene, A);
+    assert.strictEqual(drawnIndices(scene, new Set([A])), 15, 'isolate A: A1 + A2, once each');
+    assertDrawnOnce(scene, meshes, { 'isolate A': [A], 'hide B': [A, C], 'hide C': [A, B], 'hide A': [B, C] });
+    // X-Ray on B splits the finalized batch per entity: its A subset must not take the fragment's A2.
+    assertRoutes(scene, meshes, { 'all visible, B faded': null, 'hide C, B faded': [A, B] }, null, { transparencyOverrides: new Map([[B, 0.2]]) });
+  });
+
+  it('a translucent finalized batch split by a lens promotes only its own pieces', () => {
+    const scene = new Scene();
+    const T = 1, U = 2, V = 3;
+    const glass = (id: number, x: number, triangles: number) => mesh(id, x, { triangles, color: GLASS });
+    const meshes = [glass(T, 0, 1), glass(U, 2, 2), glass(T, 4, 4), glass(V, 6, 8)];
+    stream(scene, meshes.slice(0, 2));
+    scene.finalizeStreaming(device, pipeline);
+    stream(scene, meshes.slice(2));
+    assertSpread(scene, T);
+    assertRoutes(scene, meshes, { 'all visible, T promoted': null, 'hide V, T promoted': [T, U] }, new Map([[T, RED]]));
+  });
+
+  it('appends during the async finalize window: each piece drawn once, before and after the swap', async () => {
+    const scene = new Scene();
+    const A = 1, B = 2, C = 3, D = 4;
+    const meshes = [
+      mesh(A, 0), mesh(B, 2, { triangles: 2 }), mesh(A, 4, { triangles: 4 }), mesh(C, 6, { triangles: 8 }),
+      mesh(A, 8, { triangles: 16 }), mesh(D, 10, { triangles: 32 }),
+    ];
+    stream(scene, meshes.slice(0, 2));
+    scene.finalizeStreaming(device, pipeline);
+    stream(scene, meshes.slice(2, 4));
+    // A zero budget yields after the bucket's replacement batch is built; the
+    // old finalized batch and both fragments draw until the swap.
+    const finalized = scene.finalizeStreamingAsync(device, pipeline, 0);
+    assert.strictEqual(scene.isFinalizeInProgress(), true, 'inside the finalize window');
+    stream(scene, meshes.slice(4));
+    const cases = { 'isolate A': [A], 'hide B': [A, C, D], 'hide D': [A, B, C], 'isolate D': [D] };
+    assert.strictEqual(drawnIndices(scene, new Set([A])), 63, 'isolate A in the window: A1 + A2 + A3, once each');
+    assertDrawnOnce(scene, meshes, cases);
+    // The old batch is no longer its bucket's live batch, but it knows its pieces: X-Ray splits it per entity.
+    assertRoutes(scene, meshes, { 'all visible, B faded': null }, null, { transparencyOverrides: new Map([[B, 0.2]]) });
+    await finalized;
+    assert.strictEqual(scene.hasStreamingFragments(), true, 'the window append is still a fragment after the swap');
+    assert.strictEqual(drawnIndices(scene, new Set([A])), 63, 'isolate A after the swap: A1 + A2 + A3, once each');
+    assertDrawnOnce(scene, meshes, cases);
+  });
+
+  it('appends during the async finalize window into a bucket before and after its rebuild: each drawn once, through the next finalize', async () => {
+    const scene = new Scene();
+    const A = 1, B = 2, R = 3, C = 4, S = 5;
+    // Two streamed buckets; each gets a window append, so one lands before its
+    // bucket's rebuild (the zero budget yields after the first) and one after.
+    const meshes = [mesh(A, 0), mesh(B, 2, { triangles: 2 }), mesh(R, 4, { triangles: 4, color: RED }),
+      mesh(C, 6, { triangles: 8 }), mesh(S, 8, { triangles: 16, color: RED })];
+    stream(scene, meshes.slice(0, 3));
+    const finalized = scene.finalizeStreamingAsync(device, pipeline, 0);
+    assert.strictEqual(scene.isFinalizeInProgress(), true, 'inside the finalize window');
+    stream(scene, meshes.slice(3));
+    const all = [A, B, R, C, S];
+    const cases = { 'all visible': all, 'isolate C': [C], 'isolate S': [S], 'hide A': [B, R, C, S], 'hide C and S': [A, B, R] };
+    assert.strictEqual(drawnIndices(scene, new Set(all)), 93, 'all visible in the window: every mesh once');
+    assertDrawnOnce(scene, meshes, cases);
+    await finalized;
+    assert.strictEqual(drawnIndices(scene, new Set(all)), 93, 'all visible after the swap: every mesh once');
+    assertDrawnOnce(scene, meshes, cases);
+    // The rebuilt batches left the window appends to their fragments, so they split per entity on their own pieces.
+    assertRoutes(scene, meshes, { 'all visible, B and R faded': null }, null, { transparencyOverrides: new Map([[B, 0.2], [R, 0.2]]) });
+    scene.finalizeStreaming(device, pipeline);
+    assert.strictEqual(scene.hasStreamingFragments(), false, 'the next finalize takes the window appends in');
+    assertDrawnOnce(scene, meshes, cases);
+  });
+
+  it('a colour-merged mesh streamed beside a finalized batch leaves that batch partitionable', () => {
+    const scene = new Scene();
+    const A = 1, B = 2;
+    const meshes = [mesh(A, 0), mesh(B, 2, { triangles: 2 })];
+    stream(scene, meshes);
+    scene.finalizeStreaming(device, pipeline);
+    // One grey mesh carrying entities 7 and 8 per vertex joins the bucket through a fragment.
+    const merged: MeshData = {
+      ...mesh(7, 4),
+      positions: new Float32Array([4, 0, 0, 5, 0, 0, 4, 1, 0, 6, 0, 0, 7, 0, 0, 6, 1, 0]),
+      normals: new Float32Array(18).map((_, i) => (i % 3 === 2 ? 1 : 0)),
+      indices: new Uint32Array([0, 1, 2, 3, 4, 5]),
+      entityIds: new Uint32Array([7, 7, 7, 8, 8, 8]),
+    };
+    stream(scene, [merged]);
+    const finalized = scene.getBatchedMeshes().find((batch) => batch.expressIds.includes(A));
+    assert.ok(finalized && !finalized.expressIds.includes(7), 'the finalized batch holds A and B only');
+    assert.strictEqual(scene.canPartitionBatch(finalized), true, 'neither piece it holds is colour-merged');
+    assertRoutes(scene, meshes, { 'hide the merged mesh, B faded': [A, B] }, null, { transparencyOverrides: new Map([[B, 0.2]]) });
+  });
+
+  /**
+   * A cache-first load spends its fragment budget before the finalize, so a
+   * window append joins the bucket the zero-budget finalize already rebuilt
+   * without a fragment: the new batch gets a record, and no fragment is left.
+   */
+  async function outgrownPastFragmentBudget(scene: Scene, meshes: MeshData[]): Promise<BatchedMesh> {
+    scene.limitStreamingFragments(0);
+    stream(scene, meshes.slice(0, 2));
+    const finalized = scene.finalizeStreamingAsync(device, pipeline, 0);
+    assert.strictEqual(scene.isFinalizeInProgress(), true, 'inside the finalize window');
+    stream(scene, meshes.slice(2));
+    await finalized;
+    assert.strictEqual(scene.getBatchedMeshes().length, 1, 'no fragment: the window append joined its bucket only');
+    const [batch] = scene.getBatchedMeshes();
+    assert.ok(scene['fragmentPieces'].forBatch(batch), 'the rebuilt batch has a record');
+    return batch;
+  }
+
+  it('releasing geometry drops a record taken past the fragment budget', async () => {
+    const scene = new Scene();
+    const batch = await outgrownPastFragmentBudget(scene, [mesh(1, 0), mesh(2, 2, { triangles: 2 }), mesh(3, 4, { triangles: 4 })]);
+    scene.releaseGeometryData();
+    assert.strictEqual(scene['fragmentPieces'].forBatch(batch) !== undefined, false, 'no record keeps the released mesh arrays alive');
+  });
+
+  it('a bucket that outgrew its batch past the fragment budget is not demoted cold', async () => {
+    const scene = new Scene();
+    const A = 1, B = 2, C = 3;
+    const meshes = [mesh(A, 0), mesh(B, 2, { triangles: 2 }), mesh(C, 4, { triangles: 4 })];
+    // A cold restore loads only the batch's own entities: C would never come back.
+    scene.setColdGeometryProvider({ loadMeshesInBounds: async () => meshes.slice(0, 2).map((m) => ({ ...m })) });
+    const batch = await outgrownPastFragmentBudget(scene, meshes);
+    scene.setGpuResidencyBudget(1);
+    scene.setHostResidencyBudget(1);
+    for (let i = 0; i < 200; i++) {
+      scene.beginResidencyFrame();
+      scene.enforceGpuBudget();
+    }
+    assert.strictEqual(batch.gpuResident, false, 'the budget evicted the batch from the GPU');
+    assert.strictEqual(scene['coldBuckets'].has(batch.colorKey), false, 'its bucket stayed warm');
+    assert.ok(scene['meshDataMap'].get(C), 'C is still registered');
+    scene.finalizeStreaming(device, pipeline);
+    assertDrawnOnce(scene, meshes, { 'all visible': [A, B, C], 'isolate C': [C], 'hide C': [A, B] });
+  });
+
+  it('a placement edit inside the async finalize window: sync finalize mid-window, then the async swap', async () => {
+    const scene = new Scene();
+    const A = 1, B = 2, C = 3, D = 4;
+    const meshes = [mesh(A, 0), mesh(B, 2, { triangles: 2 }), mesh(A, 4, { triangles: 4 }), mesh(C, 6, { triangles: 8 }),
+      mesh(A, 8, { triangles: 16 }), mesh(D, 10, { triangles: 32 })];
+    stream(scene, meshes.slice(0, 2));
+    scene.finalizeStreaming(device, pipeline);
+    stream(scene, meshes.slice(2, 4));
+    const finalized = scene.finalizeStreamingAsync(device, pipeline, 0);
+    stream(scene, meshes.slice(4));
+    const cases = { 'all visible': [A, B, C, D], 'isolate A': [A], 'hide B': [A, C, D], 'isolate D': [D] };
+    assertDrawnOnce(scene, meshes, cases);
+    // The viewer's placement drain: translate, rebuild what is pending, finalize synchronously.
+    scene.translateMeshesForEntities(new Map([[B, [0, 0, 1]]]));
+    if (scene.hasPendingBatches()) scene.rebuildPendingBatches(device, pipeline);
+    assertDrawnOnce(scene, meshes, cases);
+    scene.finalizeStreaming(device, pipeline);
+    assertDrawnOnce(scene, meshes, cases);
+    await finalized;
+    assertDrawnOnce(scene, meshes, cases);
+  });
+
+  it('deleting an entity a recorded finalized batch holds, mid-stream', () => {
+    const scene = new Scene();
+    const A = 1, B = 2, C = 3;
+    const meshes = [mesh(A, 0), mesh(B, 2, { triangles: 2 }), mesh(A, 4, { triangles: 4 }), mesh(C, 6, { triangles: 8 })];
+    stream(scene, meshes.slice(0, 2));
+    scene.finalizeStreaming(device, pipeline);
+    stream(scene, meshes.slice(2));
+    scene.removeMeshesForEntity(B);
+    assert.strictEqual(drawnIndices(scene, new Set([A])), 15, 'isolate A before the rebuild: A1 + A2, once each');
+    scene.rebuildPendingBatches(device, pipeline);
+    const left = meshes.filter((m) => m.expressId !== B);
+    assertDrawnOnce(scene, left, { 'all visible': [A, C], 'isolate A': [A], 'isolate C': [C] });
+  });
+
+  it('a piece the finalize regroup re-homes is still drawn by the batch holding it until the swap', async () => {
+    const scene = new Scene();
+    const A = 1, B = 2, C = 3;
+    const meshes = [mesh(A, 0), mesh(B, 2, { triangles: 2 }), mesh(A, 4, { triangles: 4 }), mesh(C, 6, { triangles: 8 })];
+    stream(scene, meshes.slice(0, 2));
+    scene.finalizeStreaming(device, pipeline);
+    stream(scene, meshes.slice(2));
+    // A deferred style colour lands in place on the registered A1: the regroup routes it
+    // to another bucket, while the old finalized batch, which holds A1, draws until the swap.
+    const registeredA1 = scene['meshDataMap'].get(A)?.[0];
+    assert.ok(registeredA1 && registeredA1.indices.length === 3, 'A1 is registered first');
+    registeredA1.color = RED;
+    const finalized = scene.finalizeStreamingAsync(device, pipeline, 0);
+    assert.strictEqual(scene.isFinalizeInProgress(), true, 'inside the finalize window');
+    const cases = { 'isolate A': [A], 'hide B': [A, C], 'hide A': [B, C] };
+    assertDrawnOnce(scene, meshes, cases);
+    await finalized;
+    assertDrawnOnce(scene, meshes, cases);
+  });
+
+  it('a piece the finalize regroup moves into an existing bucket stays out of that bucket\'s old batch until the swap', async () => {
+    const scene = new Scene();
+    const A = 1, B = 2, C = 3, R = 4;
+    // A0 is red from the start, so the red bucket's finalized batch holds a piece of A, beside R.
+    const meshes = [mesh(A, 0), mesh(B, 2, { triangles: 2 }), mesh(A, 4, { triangles: 4, color: RED }), mesh(R, 6, { triangles: 32, color: RED }),
+      mesh(A, 8, { triangles: 8 }), mesh(C, 10, { triangles: 16 })];
+    stream(scene, meshes.slice(0, 4));
+    scene.finalizeStreaming(device, pipeline);
+    stream(scene, meshes.slice(4));
+    // The streamed A2 turns red in place: the regroup moves it into the red bucket, whose
+    // finalized batch did not hold it and draws until the swap, beside A2's fragment.
+    const registeredA2 = scene['meshDataMap'].get(A)?.find((piece) => piece.indices.length === 24);
+    assert.ok(registeredA2, 'A2 is registered');
+    registeredA2.color = RED;
+    const finalized = scene.finalizeStreamingAsync(device, pipeline, 0);
+    assert.strictEqual(scene.isFinalizeInProgress(), true, 'inside the finalize window');
+    const cases = { 'isolate A': [A], 'hide R': [A, B, C], 'hide A': [B, C, R] };
+    assertDrawnOnce(scene, meshes, cases);
+    await finalized;
+    assertDrawnOnce(scene, meshes, cases);
+  });
+});

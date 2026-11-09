@@ -102,14 +102,23 @@ describe('Settings dialog (#5857)', () => {
   });
   // #8802: on a phone the sections are a horizontal strip, so Left/Right move
   // between them; the desktop side list keeps Up/Down. Both stay real tabs.
-  for (const { width, orientation, next } of [
-    { width: 390, orientation: 'horizontal', next: 'ArrowRight' },
-    { width: 1024, orientation: 'vertical', next: 'ArrowDown' },
+  // `rootPx` is the browser's default font size, which a `rem` media query
+  // follows: at a 20 px default, 700 px is below `sm` (40rem = 800 px), and the
+  // CSS shows the strip, so the arrows must be Left/Right (#8802 review).
+  for (const { width, rootPx, orientation, next } of [
+    { width: 390, rootPx: 16, orientation: 'horizontal', next: 'ArrowRight' },
+    { width: 1024, rootPx: 16, orientation: 'vertical', next: 'ArrowDown' },
+    { width: 700, rootPx: 20, orientation: 'horizontal', next: 'ArrowRight' },
   ] as const) {
-    it(`section tabs follow the ${orientation} layout at ${width}px with ${next} (#8802)`, async () => {
+    it(`section tabs follow the ${orientation} layout at ${width}px with a ${rootPx}px default font, with ${next} (#8802)`, async () => {
       const original = window.matchMedia;
+      const minWidthPx = (query: string): number | null => {
+        const match = /min-width:\s*([\d.]+)(px|rem|em)/.exec(query);
+        if (!match) return null;
+        return Number(match[1]) * (match[2] === 'px' ? 1 : rootPx);
+      };
       window.matchMedia = ((query: string) => ({
-        matches: /min-width:\s*(\d+)px/.test(query) ? width >= Number(/min-width:\s*(\d+)px/.exec(query)![1]) : false,
+        matches: width >= (minWidthPx(query) ?? Infinity),
         media: query,
         addEventListener: () => {},
         removeEventListener: () => {},

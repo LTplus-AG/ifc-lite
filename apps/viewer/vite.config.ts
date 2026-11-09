@@ -5,7 +5,7 @@
 import { registryProxy } from './registry-proxy.ts';
 import { viewerAliases } from './vite-aliases';
 import { collectPackageVersions } from './vite-package-versions';
-import { legacyManualChunk, tslibChunkGroup } from './vite-chunks';
+import { legacyManualChunk, quickjsRuntimeChunkGroup, tslibChunkGroup } from './vite-chunks';
 import { defineConfig, loadEnv } from 'vite';
 import { retainedEngine } from './vite-plugins/retained-engine';
 import react from '@vitejs/plugin-react';
@@ -328,7 +328,9 @@ export default defineConfig(({ mode }) => {
         // without recursion, so they stay a lazy chunk reached only through the
         // dynamic imports of '@ifc-lite/ifcx' (eager code uses the lightweight
         // ifcx modules: types, composition, provenance, appearance-wire,
-        // detect-format). All other chunks keep the previous recursive behaviour.
+        // detect-format). The QuickJS runtime group does the same for the
+        // 'sandbox' chunk (#9200). All other chunks keep the previous recursive
+        // behaviour.
         codeSplitting: {
           groups: [
             {
@@ -338,6 +340,7 @@ export default defineConfig(({ mode }) => {
               test: /\/packages\/ifcx\/src\/(index|imported-[^/]*|geometry-extractor|pointcloud-extractor|generated\/[^/]*)\.(ts|js)$/,
             },
             tslibChunkGroup,
+            quickjsRuntimeChunkGroup,
             {
               name: legacyManualChunk,
               priority: 0,

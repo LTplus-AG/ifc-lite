@@ -38,6 +38,8 @@ import {
   type CopyVec3, type LiveRead, type RigidFrame,
 } from './copy-frame.js';
 
+import { readCopyAttachments, rebindCopiedAttachments, withUnattachedTops, type CopyUnattachedTop } from './copy-attachment.js';
+
 export { productStoreyOrigin } from './copy-placement.js';
 
 export interface CopyTransform {
@@ -72,6 +74,12 @@ export interface CopyProductResult {
   readonly boundToGrid: readonly number[];
   /** Copies that found their own place on the grid and landed on no crossing, now free of it. Listed as {@link boundToGrid}. */
   readonly cameFree: readonly number[];
+  /**
+   * Copies whose top attachment could not follow their new storey, left fixed
+   * at the source's height, with the reason (`copy-attachment.ts`). Absent
+   * when every attached copy followed.
+   */
+  readonly unattachedTops?: readonly CopyUnattachedTop[];
 }
 
 /** Classes that are copied with their host, never on their own. */
@@ -161,8 +169,36 @@ export function copyRefusal(ctx: CopyContext, sourceId: number): string | null {
   return gridCopyRefusal(ctx, sourceId);
 }
 
-/** Copy the complete product graph. `options.Name` overrides only the root product’s Name. */
+/**
+ * Copy the complete product graph. `options.Name` overrides only the root
+ * product’s Name. A copy on another storey re-resolves its top attachment
+ * there (`copy-attachment.ts`), as the batch does.
+ */
 export function copyProductInStore(ctx: CopyContext, sourceId: number, transform: CopyTransform = {}, options: { Name?: string } = {}): CopyProductResult {
+  const attachments = readCopyAttachments(ctx, carriedParts(ctx, sourceId));
+  const result = copyProductGraph(ctx, sourceId, transform, options);
+  return withUnattachedTops([result], rebindCopiedAttachments(ctx, attachments, [result]).unattached)[0];
+}
+
+/** The product and every assembly part it carries, at every depth (iterative, visited set). */
+function carriedParts(ctx: CopyContext, sourceId: number): number[] {
+  const seen = new Set<number>();
+  const pending = [sourceId];
+  while (pending.length > 0) {
+    const id = pending.pop()!;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    for (const link of ctx.parts.get(id) ?? []) pending.push(...link.parts);
+  }
+  return [...seen];
+}
+
+/**
+ * `copyProductInStore` without the attachment step: for a batch, which reads
+ * every source's attachment once before its first copy and re-binds each
+ * transform's copies together (so a slab copied alongside is found).
+ */
+export function copyProductGraph(ctx: CopyContext, sourceId: number, transform: CopyTransform = {}, options: { Name?: string } = {}): CopyProductResult {
   const refusal = copyRefusal(ctx, sourceId);
   if (refusal) throw new Error(refusal);
   copiedProductWork(ctx, sourceId);

@@ -13,7 +13,8 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { QuantityType } from '@ifc-lite/data';
 import { StepExporter } from '@ifc-lite/export';
-import { MutablePropertyView } from '@ifc-lite/mutations';
+import { addOrdinaryElementInStore, resolveSpatialAnchor } from '@ifc-lite/create';
+import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import { IfcParser, extractQuantitiesOnDemand, type IfcDataStore } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
@@ -53,6 +54,20 @@ beforeEach(async () => {
   assert.equal(s().enterModelWorkspace(), true);
 });
 afterEach(() => { cleanup(); s().exitModelWorkspace(); restoreRemesh(); });
+
+it('#9355 source-backed views derive authored wall quantities without an on-demand source map', () => {
+  const source = { ...dataStore(), onDemandQuantityMap: undefined };
+  const fresh = new MutablePropertyView(source.properties ?? null, MODEL_ID);
+  configureMutationView(fresh, source);
+  const editor = new StoreEditor(source, fresh);
+  const id = addOrdinaryElementInStore(editor,
+    draft => resolveSpatialAnchor(source, STOREY, draft.getMutationView()),
+    { kind: 'wall', params: { Start: [0,6,0], End: [8,6,0], Thickness: .2, Height: 3 } });
+  const values = Object.fromEntries(fresh.getQuantitiesForEntity(id)
+    .find(set => set.name === WALL)?.quantities.map(q => [q.name,q.value]) ?? []);
+  assert.equal(values.Length, 8);
+  assert.equal(values.NetVolume, 4.8);
+});
 
 describe('the Quantities tab on an authored element', () => {
   for (const [kind, author, set] of [

@@ -255,14 +255,8 @@ export async function* processParallel(
     indexColumns?: { ids: Uint32Array; starts: Uint32Array; lengths: Uint32Array; classes: Uint8Array },
   ) => void = () => {};
 
-  // Content-affinity routing (#1130 follow-up): the pre-pass tags every job with
-  // an affinity key (ObjectType hash, see `affinity_key` in Rust). Sending all
-  // jobs of one key to the SAME worker means each unique geometry is meshed ONCE
-  // per model — the per-worker content-dedup cache then turns the rest into cheap
-  // hits — instead of every worker re-meshing the full unique set (the cap of
-  // PR #1130 on its own). `keyToWorker` is sticky for the whole stream; new keys
-  // round-robin so each worker owns ~1/N of the distinct geometries (the dominant
-  // cost). Falls back to interleaving when the pre-pass sends no affinity array.
+  // Small affinity keys reuse worker-local geometry. Hot keys hand off after
+  // bounded runs (#8451); missing affinity still uses the existing id routing.
   const keyToWorker = new Map<number, number>();
   const affinityState = { keyUses: new Map<number, number>(), workerJobs: [] as number[] };
   let nextAffinityWorker = 0;

@@ -2,10 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { EntityExtractor, IfcParser } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { readOwnPlacementFrame } from './placement-frame.js';
+import { buildRelatingChildrenIndex, createOverlayLookup } from './spatial-children.js';
 
 const IFC = `ISO-10303-21;
 HEADER;
@@ -39,4 +40,22 @@ describe('placement frames through a live overlay (#5249)', () => {
     view.deleteEntity(10);
     expect(readOwnPlacementFrame(store, extractor, view, 10)).toBeNull();
   });
+});
+
+it('placement and spatial reads avoid enumerating unrelated creations #8452', async () => {
+  const store = await new IfcParser().parseColumnar(new TextEncoder().encode(IFC).buffer);
+  const extractor = new EntityExtractor(store.source), view = new MutablePropertyView(null, 'scale');
+  view.setExpressIdWatermark(100);
+  for (let i = 0; i < 5000; i++) view.createEntity('IfcCartesianPoint', [[i, 0, 0]]);
+  const point = view.createEntity('IfcCartesianPoint', [[8, 9, 0]]);
+  const axis = view.createEntity('IfcAxis2Placement3D', [`#${point.expressId}`, null, null]);
+  const placement = view.createEntity('IfcLocalPlacement', [null, `#${axis.expressId}`]);
+  view.createEntity('IfcRelAggregates', ['guid', null, null, null, '#1', [`#${placement.expressId}`]]);
+  const enumerations = vi.spyOn(view, 'getNewEntities');
+  try {
+    expect(readOwnPlacementFrame(store, extractor, view, placement.expressId)?.origin).toEqual([8, 9]);
+    const lookup = createOverlayLookup(view);
+    expect(buildRelatingChildrenIndex(store, extractor, lookup, 'IFCRELAGGREGATES', 4, 5).get(1)).toEqual([placement.expressId]);
+    expect(enumerations).not.toHaveBeenCalled();
+  } finally { enumerations.mockRestore(); }
 });

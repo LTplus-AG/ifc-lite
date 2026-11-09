@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { iterateEffectiveEntityIds, type StoreEditor } from '@ifc-lite/mutations';
-import { EntityExtractor, resolveEffectiveEntityRecord, type IfcDataStore } from '@ifc-lite/parser';
+import { EntityExtractor, resolveEffectiveEntityRecord, createSchemaEntityNameSnapshot, getSchemaRegistryForVersion, type IfcDataStore } from '@ifc-lite/parser';
 
 export interface StyleEntity {
   type: string;
@@ -33,10 +33,11 @@ export function refList(value: unknown): number[] {
 /** Read one live entity as the next export will write it (#5249). */
 export function createStyleEntityReader(store: IfcDataStore, editor: StoreEditor): (id: number) => StyleEntity | null {
   const view = editor.getMutationView();
+  const snapshot = createSchemaEntityNameSnapshot(getSchemaRegistryForVersion(store.schemaVersion === 'IFC2X3' ? 'IFC2X3' : store.schemaVersion === 'IFC4X3' || store.schemaVersion === 'IFC5' ? 'IFC4X3' : 'IFC4'));
   const extractor = store.source.byteLength > 0 ? new EntityExtractor(store.source) : null;
   return (id) => {
     if (!editor.hasEntity(id)) return null;
-    const created = view.getNewEntity(id);
+    const created = view.readNewEntity?.(id) ?? view.getNewEntity(id);
     // @raw-entity-enumeration-ok point lookup for one effective candidate's source attributes
     const ref = created ? undefined : (
       store.entityIndex.byId.get(id) ?? store.deferredEntityIndex?.get(id)
@@ -48,7 +49,7 @@ export function createStyleEntityReader(store: IfcDataStore, editor: StoreEditor
       retype: view.getEntityTypeMutation(id)?.newType,
       named: view.getAttributeMutationsForEntity(id).map(({ name, value }) => [name, value] as const),
       positional: view.getPositionalMutationsForEntity(id) ?? [],
-    }, store.schemaVersion);
+    }, store.schemaVersion, snapshot);
   };
 }
 

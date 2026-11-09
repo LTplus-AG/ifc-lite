@@ -19,6 +19,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@ifc-lite/wasm-lifecycle": "workspace:^",
     "laz-perf": "^0.0.7"
   },
   "devDependencies": {

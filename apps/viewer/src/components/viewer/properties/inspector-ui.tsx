@@ -125,3 +125,7 @@ export function InspectorRow({ label, labelNode, labelCell, value, children, mon
     </div>
   );
 }
+
+export const DISCLOSURE_CHEVRON_CLASSES = 'size-3 transition-transform group-data-[state=closed]/disclosure:-rotate-90';
+export const MULTI_SELECTION_TRIGGER_CLASSES = 'group/disclosure flex items-center gap-2 w-full p-2 hover:bg-muted text-left text-xs';
+export const MULTI_SELECTION_SECTION_CLASSES = 'border-b border-border';

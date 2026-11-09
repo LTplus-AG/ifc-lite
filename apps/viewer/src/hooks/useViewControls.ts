@@ -82,10 +82,18 @@ function useViewControls({
   const [needsFit, setNeedsFit] = useState(true); // Force fit on first open and on a new plane
   const planeKey = sectionPlaneKey(sectionPlane);
   const prevPlaneKeyRef = useRef(planeKey);
-  // Latest transform for the off-view check, read without re-running the
-  // auto-fit effect on every pan (a deliberate pan must never snap back).
+  // The live transform: the off-view check reads it without re-running the
+  // auto-fit effect on every pan (a deliberate pan must never snap back), and
+  // the eased wheel zoom steps from it (#9507). Every write goes through
+  // `writeTransform`, which updates it before the state, so a functional
+  // update (a drag pan) and a zoom step in the same frame compose instead of
+  // the later one overwriting the earlier.
   const viewTransformRef = useRef(viewTransform);
-  viewTransformRef.current = viewTransform;
+  const writeTransform = useCallback((next: React.SetStateAction<{ x: number; y: number; scale: number }>) => {
+    const value = typeof next === 'function' ? next(viewTransformRef.current) : next;
+    viewTransformRef.current = value;
+    setRawViewTransform(value);
+  }, []);
   // Has the user framed the view themselves (pan, wheel/pinch, +/-) since the
   // last fit? Until they have, a resize of the panel refits (#8802 R3b), so a
   // dock that opens or grows shows the whole drawing; after it, a resize only
@@ -93,8 +101,8 @@ function useViewControls({
   const userFramedRef = useRef(false);
   const setViewTransform = useCallback<React.Dispatch<React.SetStateAction<{ x: number; y: number; scale: number }>>>((next) => {
     userFramedRef.current = true;
-    setRawViewTransform(next);
-  }, []);
+    writeTransform(next);
+  }, [writeTransform]);
 
   useDrawingWheelNavigation(containerRef, panelVisible, viewTransformRef, setViewTransform);
 
@@ -128,7 +136,7 @@ function useViewControls({
 
       // Center the paper in the view
       userFramedRef.current = false;
-      setRawViewTransform({
+      writeTransform({
         scale,
         x: (rect.width - paperWidth * scale) / 2,
         y: (rect.height - paperHeight * scale) / 2,
@@ -170,7 +178,7 @@ function useViewControls({
     const adjustedCenterY = flipY ? -centerY : centerY;
 
     userFramedRef.current = false;
-    setRawViewTransform({
+    writeTransform({
       scale,
       x: rect.width / 2 - adjustedCenterX * scale,
       y: rect.height / 2 - adjustedCenterY * scale,
@@ -214,7 +222,7 @@ function useViewControls({
         } else {
           const dx = (width - prev.width) / 2;
           const dy = (height - prev.height) / 2;
-          setRawViewTransform((t) => ({ ...t, x: t.x + dx, y: t.y + dy }));
+          writeTransform((t) => ({ ...t, x: t.x + dx, y: t.y + dy }));
         }
       }
       prev = { width, height };

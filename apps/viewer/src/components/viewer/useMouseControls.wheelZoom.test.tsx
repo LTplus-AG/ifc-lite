@@ -283,6 +283,37 @@ describe('useMouseControls wheel zoom - registration and wiring (#2683)', () => 
     assert.ok(Math.abs(total - notch) / notch < 0.06, `the eased notch lands where one notch does: ${total} vs ${notch}`);
   });
 
+  it('applies a large pinch in the event itself, without easing it (#9507)', () => {
+    const { canvas, camera } = mountViewport();
+    const reference = new Camera();
+    reference.zoom(NOTCH_DELTA_Y, false, 400, 300, 800, 600, false);
+    canvas.dispatchEvent(wheelEvent({ ctrlKey: true, deltaY: NOTCH_DELTA_Y })); // above the notch threshold
+    assert.equal(frames.pending(), 0, 'nothing is left to ease');
+    assert.ok(Math.abs(camera.getDistance() - reference.getDistance()) < 1e-9,
+      `the pinch moved one capped step at once: ${camera.getDistance()} vs ${reference.getDistance()}`);
+  });
+
+  it('a zoom still easing keeps the gesture open: an earlier settle does not end it mid-zoom (#9507)', async () => {
+    const isInteracting = { current: false };
+    const canvas = document.createElement('canvas');
+    canvas.width = 800; canvas.height = 600;
+    document.body.appendChild(canvas);
+    const params = { ...makeParams(canvas, new Camera()), isInteractingRef: isInteracting };
+    function Probe() { useMouseControls(params); return null; }
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    act(() => { root.render(<Probe />); });
+    mounted.push({ root, host });
+
+    canvas.dispatchEvent(wheelEvent());
+    settle(); // notch A settles and arms the 150 ms gesture end
+    canvas.dispatchEvent(wheelEvent()); // notch B starts easing before that lands
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    assert.equal(isInteracting.current, true, 'the gesture ended while notch B was still easing');
+    settle();
+  });
+
   it('an orbit during an eased zoom drops the rest of it (#9507)', () => {
     const { canvas, camera } = mountViewport();
     canvas.dispatchEvent(wheelEvent());

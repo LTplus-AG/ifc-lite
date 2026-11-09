@@ -224,10 +224,14 @@ describe('wheel zoom - the fine-step modifier (#2683)', () => {
       wheelZoomInput({ deltaY: NOTCH_DELTA_Y, deltaMode: 0, ctrlKey: false, metaKey: false }, false, 1).px,
       100,
     );
-    // Continuous input is not clamped per event: the smoother bounds it.
+    // Continuous input passes through, up to the same one-notch cap per event.
     assert.strictEqual(
       wheelZoomInput({ deltaY: 30, deltaMode: 0, ctrlKey: false, metaKey: false }, false, 1).px,
       30,
+    );
+    assert.strictEqual(
+      wheelZoomInput({ deltaY: 300, deltaMode: 0, ctrlKey: true, metaKey: false }, false, 1).px,
+      100,
     );
     assert.ok(FINE_ZOOM_STEP_FACTOR > 0 && FINE_ZOOM_STEP_FACTOR < 1, 'finer, not faster and not dead');
   });

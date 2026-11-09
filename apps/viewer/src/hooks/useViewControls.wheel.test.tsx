@@ -205,6 +205,20 @@ describe('drawing wheel navigation (#6614)', () => {
     assert.deepEqual(latest.viewTransform, { ...mid, x: mid.x + 50 }, 'the zoom did not resume over the pan');
   });
 
+  it('a drag pan queued in the same frame as a zoom step is kept, and stops the zoom (#9507)', async () => {
+    await mount(); await reset();
+    await wheel({ deltaY: 100 }, canvas, false);
+    let panned: DrawingViewTransform | null = null;
+    await act(async () => {
+      // A pointermove lands just before the frame, as in a browser: a
+      // functional update, with no render between it and the zoom step.
+      latest.setViewTransform((t) => (panned = { ...t, x: t.x + 50 }));
+      frames.flush();
+    });
+    assert.ok(panned, 'the pan ran');
+    assert.deepEqual(latest.viewTransform, panned, 'the pan survived and the zoom did not resume over it');
+  });
+
   it('a burst of notches queues at most three of them (#9507)', async () => {
     await mount(); await reset();
     // Twenty events and no frame between them: one fast spin.

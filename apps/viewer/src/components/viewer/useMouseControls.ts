@@ -777,6 +777,8 @@ export function useMouseControls(params: UseMouseControlsParams): void {
       wheelIdleTimer = setTimeout(() => { isInteractingRef.current = false; renderer.requestRender(); emitCameraInteracted(kind); }, 150);
     };
     const afterWheelMove = () => {
+      // Still moving: a gesture end armed by an earlier settled zoom must not land mid-zoom.
+      if (wheelIdleTimer) { clearTimeout(wheelIdleTimer); wheelIdleTimer = null; }
       isInteractingRef.current = true;
       renderer.requestRender();
       // Only when the camera moved: a clamped or refused wheel step must not end a Live reading (#8828).

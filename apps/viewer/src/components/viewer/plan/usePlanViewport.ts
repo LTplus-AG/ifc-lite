@@ -14,7 +14,7 @@
  * an empty storey must not make the plan jump); Fit and a storey change do.
  */
 
-import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
+import { useCallback, useEffect, useRef, useState, type RefObject, type SetStateAction } from 'react';
 import type { Fit } from '@/lib/rooms/plate-geometry';
 import { zoomByScale } from './plan-zoom';
 import { useViewerStore } from '@/store/index.js';
@@ -42,7 +42,16 @@ export function usePlanViewport(
   ready: boolean,
 ): PlanViewport {
   const [size, setSize] = useState({ width: 0, height: 0 });
-  const [fit, setFit] = useState<Fit | null>(null);
+  const [fit, setFitState] = useState<Fit | null>(null);
+  // The live fit. Every write goes through `setFit`, which updates it before
+  // the state, so the eased wheel zoom (#9507) steps from what a pan or a
+  // refit wrote this frame instead of overwriting it with a stale value.
+  const fitRef = useRef(fit);
+  const setFit = useCallback((next: SetStateAction<Fit | null>) => {
+    const value = typeof next === 'function' ? next(fitRef.current) : next;
+    fitRef.current = value;
+    setFitState(value);
+  }, []);
   const framed = useRef<string | null>(null);
   /** The user panned or zoomed since the last fit: resizes stop refitting. */
   const moved = useRef(false);
@@ -88,17 +97,13 @@ export function usePlanViewport(
     setFit((f) => (f ? { ...f, offX: f.offX + dx, offY: f.offY + dy } : f));
   }, []);
 
-  // The live fit, ahead of the render, for the eased wheel zoom's steps (#9507).
-  const fitRef = useRef(fit);
-  fitRef.current = fit;
-
   // Eased wheel zoom about the cursor; non-passive so the page never scrolls instead.
   useEffect(() => {
     const svg = svgRef.current;
     if (!svg) return;
     const zoom = createTransformWheelZoom<Fit>({
       get: () => fitRef.current,
-      set: (next) => { fitRef.current = next; setFit(next); },
+      set: setFit,
       zoomAbout: zoomByScale,
       rect: () => svg.getBoundingClientRect(),
       sensitivity: () => wheelZoomSensitivityFactor(useViewerStore.getState().wheelZoomSensitivity),
@@ -111,7 +116,7 @@ export function usePlanViewport(
     };
     svg.addEventListener('wheel', onWheel, { passive: false });
     return () => { svg.removeEventListener('wheel', onWheel); zoom.dispose(); };
-  }, [svgRef]);
+  }, [svgRef, setFit]);
 
   return { size, fit, refit, panBy };
 }

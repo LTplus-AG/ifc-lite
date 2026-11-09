@@ -142,10 +142,10 @@ export function wheelZoomInput(
   const fine = isFineZoomWheel(e, modifierKeyHeld);
   const pinch = e.ctrlKey && !fine;
   const eased = !pinch && Math.abs(raw) >= WHEEL_NOTCH_MIN_PX;
-  // A notch is at most one camera notch (~10 %), as the camera's per-call cap
-  // made it before the smoother split notches into smaller steps: Chromium
-  // reports 120 or, on a HiDPI screen, 150 px for the same notch.
-  const travel = eased ? Math.max(-MAX_STEP_PX, Math.min(MAX_STEP_PX, raw)) : raw;
+  // One event is at most one camera notch (~10 %), as the camera's per-call
+  // cap made it before the smoother split notches into smaller steps:
+  // Chromium reports 120 or, on a HiDPI screen, 150 px for the same notch.
+  const travel = Math.max(-MAX_STEP_PX, Math.min(MAX_STEP_PX, raw));
   return { px: travel * (fine ? FINE_ZOOM_STEP_FACTOR : 1) * sensitivity, eased };
 }
 
@@ -291,7 +291,8 @@ export function createViewportWheelZoom(opts: ViewportWheelZoomOptions): WheelZo
       applyWheelZoomStep(px, anchor, { camera: opts.camera, canvas: opts.canvas, fastZoom, pickSurface: opts.pickSurface });
       opts.onStep();
     },
-    poseKey: () => cameraPoseKey(opts.camera),
+    // An orthographic zoom by another control changes only the view size.
+    poseKey: () => `${cameraPoseKey(opts.camera)}|${opts.camera.getOrthoSize?.() ?? ''}`,
     pagePx: () => opts.canvas.getBoundingClientRect().height,
   });
 }

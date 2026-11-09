@@ -190,3 +190,15 @@ fn repeated_content_under_distinct_keys_is_chunked() {
     assert!(chunks.len() > 1 && chunks.len() < 1024, "not a single run or singleton chunks: {}", chunks.len());
     assert_eq!(chunks.iter().map(|c| c.entries.len()).sum::<usize>(), 2048);
 }
+
+// #9331: a zero low word must not become a boundary for every large target.
+#[test]
+fn large_targets_use_high_probe_bits_without_changing_default_boundaries() {
+    let mut bytes = [0u8; 32];
+    bytes[2] = 1; // 65,536: divisible by 256, not by 1,000,000.
+    assert!(super::boundary_probe(&bytes, 256));
+    assert!(!super::boundary_probe(&bytes, 1_000_000));
+    bytes[..8].copy_from_slice(&1_000_000u64.to_le_bytes());
+    assert!(super::boundary_probe(&bytes, 1_000_000));
+    assert_eq!(super::boundary_probe(&bytes, 256), (1_000_000usize & 0xffff).is_multiple_of(256));
+}

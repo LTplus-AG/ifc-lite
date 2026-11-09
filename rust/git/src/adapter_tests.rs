@@ -375,3 +375,19 @@ fn whitespace_only_bags_are_absent_but_duplicate_names_are_content() {
     blank.materials.push(js("steel"));
     assert_ne!(one.entry.node, entity_nodes("K", &blank).unwrap().entry.node);
 }
+
+// #9331: JSON escaping must not bypass the adapter's malformed-string refusal.
+#[test]
+fn nested_composite_strings_and_object_keys_are_refused() {
+    let malformed = || JsString::from_units(vec![0xd800]);
+    let values = [
+        PropertyValue::Array(vec![PropertyValue::String(malformed())]),
+        PropertyValue::Object(vec![(malformed(), PropertyValue::Number(1.0))]),
+        PropertyValue::Object(vec![("valid".into(), PropertyValue::Array(vec![PropertyValue::String(malformed())]))]),
+    ];
+    for value in values {
+        let mut input = wall();
+        input.property_sets = vec![PropertySetInput { name: "Pset".into(), properties: vec![PropertyEntryInput { name: "Value".into(), value }].into() }].into();
+        assert!(matches!(entity_nodes("key", &input), Err(AdapterError::NotWellFormed { .. })));
+    }
+}

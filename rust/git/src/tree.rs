@@ -115,8 +115,17 @@ fn is_boundary(entry: &TreeEntry, target: usize) -> bool {
     w.string(&entry.key).address(&entry.node);
     let digest = w.finish().0;
     let bytes = digest.as_bytes();
-    let probe = u16::from_le_bytes([bytes[0], bytes[1]]);
-    (probe as usize).is_multiple_of(target)
+    boundary_probe(bytes, target)
+}
+
+/// Retain the v0/default 16-bit boundaries; larger targets use all 64 probe bits.
+fn boundary_probe(bytes: &[u8; 32], target: usize) -> bool {
+    if target <= 65_536 {
+        usize::from(u16::from_le_bytes([bytes[0], bytes[1]])).is_multiple_of(target)
+    } else {
+        let probe = u64::from_le_bytes(bytes[..8].try_into().expect("eight digest bytes"));
+        probe.is_multiple_of(target as u64)
+    }
 }
 
 /// Build a tree from entries, chunking on content-derived boundaries.

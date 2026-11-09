@@ -35,6 +35,7 @@
 import { center, overlapBounds } from './math/aabb.js';
 import { boxDistance, boxesTouch, minExtent, similarity } from './duplicate-metric.js';
 import { sameShape, shapeSignature, type ShapeSignature } from './shape-signature.js';
+import { clashObjectPairKey, matchedClashObjects, sameClashObject } from './object-identity.js';
 import { isExcluded, qualifiedKey } from './exclude.js';
 import { summarizeClashes } from './analysis.js';
 import type {
@@ -248,26 +249,13 @@ export function findDuplicates(elements: ClashElement[], options: DuplicateOptio
   // they are still skipped as self-pairs. Only keys carried by two *distinct*
   // refs are ambiguous, and only those get the ref folded into the clash id, so
   // every id a well-formed file produced before is unchanged.
-  const ambiguousKeys = new Set<string>();
-  {
-    const refOfKey = new Map<string, number>();
-    for (const el of elements) {
-      const k = `${el.model} ${el.key}`;
-      const first = refOfKey.get(k);
-      if (first === undefined) refOfKey.set(k, el.ref);
-      else if (first !== el.ref) ambiguousKeys.add(k);
-    }
-  }
-  const pairKey = (el: ClashElement): string => {
-    const k = `${el.model} ${el.key}`;
-    return ambiguousKeys.has(k) ? `${k}#${el.ref}` : k;
-  };
+  const pairKey = clashObjectPairKey(elements);
 
   const consider = (i: number, j: number): void => {
     if (i >= j) return; // unordered pairs once
     const elA = elements[i];
     const elB = elements[j];
-    if (elA.ref === elB.ref && elA.model === elB.model) return;
+    if (sameClashObject(elA, elB)) return;
     if (
       exclusions &&
       isExcluded(exclusions, qualifiedKey(elA.model, elA.key), qualifiedKey(elB.model, elB.key))
@@ -427,7 +415,7 @@ export function findDuplicates(elements: ClashElement[], options: DuplicateOptio
     clashes,
     summary: summarizeClashes(clashes),
     rulesRun: [DUPLICATES_RULE],
-    ruleCoverage: [{ rule: DUPLICATES_RULE.id, matchedA: elements.length, matchedB: null, matchedKeysA: [...new Set(elements.map((el) => el.key))].sort(), matchedKeysB: null }],
+    ruleCoverage: [{ rule: DUPLICATES_RULE.id, matchedA: elements.length, matchedB: null, matchedKeysA: [...new Set(elements.map((el) => el.key))].sort(), matchedKeysB: null, matchedElements: matchedClashObjects(elements) }],
     settings: { tolerance: positionTolerance, excludeVoidsAndHosts: exclusions != null },
   };
 }

@@ -19,6 +19,8 @@
  * historical run there without a schema change.
  */
 
+import { isQualityGateSnapshot, type QualityGateSnapshot } from './quality-gate';
+
 import type { ClashDistanceKind, ClashMode, ClashReviewStatus, ClashSeverity, ClashStatus } from '@ifc-lite/clash';
 
 /** One model the run drew elements from. `id` is the per-load id the rows refer to; it is a join key inside this report, never a live model id. */
@@ -90,10 +92,13 @@ export interface SavedClashCompleteness {
 
 export interface SavedClashReport {
   version: 1;
+  /** Immutable raw-run object quality, including the threshold policy used (#9259). */
+  qualityGates?: QualityGateSnapshot;
   id: string;
   name: string;
   savedAt: string;
   run: {
+    kind?: 'clash' | 'duplicates';
     settings: { tolerance: number; excludeVoidsAndHosts: boolean };
     rules: SavedClashRule[];
     /** Viewer edit counter when the run finished; above zero the models differed from their source files. */
@@ -150,9 +155,11 @@ function isClash(v: unknown, models: ReadonlySet<string>): v is SavedClash {
 
 /** Strict: one invalid row refuses the whole report rather than charting a subset of a run as if it were the run. */
 export function isSavedClashReport(v: unknown): v is SavedClashReport {
+  if (record(v) && !optional(v.qualityGates, isQualityGateSnapshot)) return false;
   if (!record(v) || v.version !== 1 || !text(v.id) || !text(v.name, false, CLASH_REPORT_LIMITS.name) || !v.name.trim()) return false;
   if (typeof v.savedAt !== 'string' || !Number.isFinite(Date.parse(v.savedAt))) return false;
   const run = v.run;
+  if (record(run) && run.kind !== undefined && run.kind !== 'clash' && run.kind !== 'duplicates') return false;
   if (!record(run) || !record(run.settings) || !finite(run.settings.tolerance) || typeof run.settings.excludeVoidsAndHosts !== 'boolean') return false;
   if (!Array.isArray(run.rules) || run.rules.length > CLASH_REPORT_LIMITS.rules || !run.rules.every(isRule) || !optional(run.mutationRevision, count)) return false;
   if (!Array.isArray(v.models) || v.models.length > CLASH_REPORT_LIMITS.models || !v.models.every(isModel)) return false;
@@ -161,6 +168,20 @@ export function isSavedClashReport(v: unknown): v is SavedClashReport {
   const completeness = v.completeness;
   if (!record(completeness) || typeof completeness.stale !== 'boolean' || !count(completeness.excluded)) return false;
   if (completeness.truncated !== undefined && (!record(completeness.truncated) || !text(completeness.truncated.reason, true) || !finite(completeness.truncated.droppedPairs) || completeness.truncated.droppedPairs < 0)) return false;
+  if (v.qualityGates !== undefined) {
+    if (!isQualityGateSnapshot(v.qualityGates)) return false;
+    const rules = run.rules as SavedClashRule[];
+    const gates = v.qualityGates.rows;
+    if (gates.length !== rules.length || new Set(gates.map(gate => gate.rule)).size !== gates.length) return false;
+    for (const gate of gates) {
+      const rule = rules.find(rule => rule.id === gate.rule);
+      if (!rule || rule.name !== gate.name || !gate.models.every(model => models.has(model))
+        || (run.kind !== undefined && gate.kind !== run.kind)
+        || gate.tolerance !== (rule.tolerance ?? run.settings.tolerance)
+        || gate.clearance !== rule.clearance || gate.excludeVoidsAndHosts !== run.settings.excludeVoidsAndHosts
+        || (gate.status === 'evaluated' && (completeness.stale || completeness.truncated !== undefined))) return false;
+    }
+  }
   if (v.grouping !== null && v.grouping !== 'derived' && v.grouping !== 'manual') return false;
   return Array.isArray(v.clashes) && v.clashes.length <= CLASH_REPORT_LIMITS.clashes && v.clashes.every((clash) => isClash(clash, models));
 }

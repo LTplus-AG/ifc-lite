@@ -21,7 +21,7 @@
  */
 
 import { getViewerStoreApi } from '@/store';
-import { selectActiveLoadProgress } from '@/store/slices/loadingSlice';
+import { selectActiveLoadProgress, selectLoadCanceller } from '@/store/slices/loadingSlice';
 import { beginActivity, finishActivity, updateActivity } from '@/lib/activity/activity-journal';
 
 interface LoadActivity {
@@ -45,6 +45,26 @@ export function createModelLoadActivity(subject: string) {
         ...(this.error ? { detail: this.error } : {}) };
     },
   };
+}
+
+/**
+ * End the shared load UI for a path that holds no canceller of its own: a
+ * raster drape or a retained refusal (both return before a canceller is
+ * installed, after `addModel` raised the spinner for them), and the last
+ * federated Cancel. While a model load or point-cloud stream still holds the
+ * Cancel (`selectLoadCanceller`), the spinner and progress are that load's to
+ * end. `error` and its Retry are never cleared here: none of these paths
+ * reported one, so whatever is shown belongs to another load.
+ */
+export function settleUnownedLoadUi(): void {
+  const state = getViewerStoreApi().getState();
+  if (selectLoadCanceller(state) !== null) return;
+  state.setLoading(false);
+  state.setGeometryStreamingActive(false);
+  state.setProgress(null);
+  state.setGeometryProgress(null);
+  state.setMetadataProgress(null);
+  state.setLoadingFileName(null);
 }
 
 // Hook instances are independent; a replacement primary invalidates every
@@ -121,13 +141,7 @@ export function installModelLoadCanceller(
     } else {
       // A federated add has not registered its model yet. Clear only load UI;
       // the prior scene, selection and model map belong to the user.
-      state.setLoading(false);
-      state.setGeometryStreamingActive(false);
-      state.setProgress(null);
-      state.setGeometryProgress(null);
-      state.setMetadataProgress(null);
-      state.setLoadingFileName(null);
-      state.setError(null);
+      settleUnownedLoadUi();
     }
   };
   if (activity) {

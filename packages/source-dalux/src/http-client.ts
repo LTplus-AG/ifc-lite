@@ -354,15 +354,9 @@ export async function fetchPage(
  * this — they call {@link fetchPage} once and return that page to the host,
  * so a large tenant or file area is never loaded eagerly.
  *
- * Bounded by `MAX_SWEEP_PAGES` (a server minting endlessly fresh bookmarks
- * can't loop forever) and tracks every bookmark seen across the whole sweep,
- * throwing if one reappears — a longer cycle than the immediate, empty-page
- * echo `fetchPage` already treats as end-of-listing on its own. Unlike that
- * immediate echo, a bookmark resurfacing several pages later means the
- * server is about to hand back content already read under an earlier
- * bookmark instead of making forward progress, which is a stuck listing, not
- * a finished one — regardless of whether the page that reveals the cycle
- * happens to have items on it.
+ * Bounded by `MAX_SWEEP_PAGES`, with visited bookmarks to reject cycles.
+ * Unlike fetchPage's immediate empty echo, revisiting any earlier bookmark
+ * is a stuck listing, even if the page contains items.
  */
 export async function fetchAllPages(
   client: BrowserDaluxApiClient,

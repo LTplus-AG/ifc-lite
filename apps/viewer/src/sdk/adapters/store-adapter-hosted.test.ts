@@ -153,8 +153,11 @@ describe('#6232 bim.store hosted openings, doors and windows', () => {
     const dataStore = await seed();
     const adapter = createStoreAdapter(useViewerStore);
     const a = adapter.addWall(MODEL, 42, { Start: [0, 5, 0], End: [4, 5, 0], Thickness: 0.2, Height: 3 }).expressId;
-    const b = adapter.addWall(MODEL, 42, { Start: [4, 5, 0], End: [4, 8, 0], Thickness: 0.2, Height: 3 }).expressId;
+    // #9296: keep a small gap so creation does not auto-join. This test owns
+    // the explicit join and must be able to undo it back to separate walls.
+    const b = adapter.addWall(MODEL, 42, { Start: [4, 5.2, 0], End: [4, 8, 0], Thickness: 0.2, Height: 3 }).expressId;
     const view = useViewerStore.getState().mutationViews.get(MODEL)!;
+    assert.equal(readWallJoinRels(dataStore, view).length, 0, 'the explicit join starts with separate walls');
     const before = readWallJoinTarget(dataStore, view, a, 1)!;
     adapter.joinWalls(MODEL, a, b, { Name: 'SDK corner' });
     assert.equal(readWallJoinRels(dataStore, view).length, 1);
@@ -171,9 +174,12 @@ describe('#6232 bim.store hosted openings, doors and windows', () => {
   it('#6232 refuses near-face cuts and unknown opening references through the shared join guard', async () => {
     const dataStore = await seed(), adapter = createStoreAdapter(useViewerStore);
     const a = adapter.addWall(MODEL, 42, { Start: [0, 5, 0], End: [4, 5, 0], Thickness: 0.2, Height: 3 }).expressId;
-    const b = adapter.addWall(MODEL, 42, { Start: [4, 5, 0], End: [5, 6, 0], Thickness: 0.4, Height: 3 }).expressId;
+    // #9296: the explicit near-face refusal needs an opening in an unjoined
+    // host. The axes still meet within join tolerance, but endpoints differ.
+    const b = adapter.addWall(MODEL, 42, { Start: [4.05, 5.05, 0], End: [5, 6, 0], Thickness: 0.4, Height: 3 }).expressId;
     adapter.addHostedWindow(MODEL, a, { Offset: 3.9, Sill: 1, Width: 0.1, Height: 1 });
     const view = useViewerStore.getState().mutationViews.get(MODEL)!;
+    assert.equal(readWallJoinRels(dataStore, view).length, 0, 'opening placement precedes the explicit join');
     const before = view.getMutations(), undo = useViewerStore.getState().undoStacks.get(MODEL);
     assert.throws(() => adapter.joinWalls(MODEL, a, b, { priority: 'b' }), /would not fit between the joined end faces/);
     assert.deepEqual(view.getMutations(), before);

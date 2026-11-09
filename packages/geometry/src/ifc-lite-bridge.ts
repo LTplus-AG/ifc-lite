@@ -18,6 +18,7 @@ import { callExportLandXmlTerrain, type LandXmlTerrainExport, type LandXmlTerrai
 import type { GeometryDiagnostics } from './diagnostics.js';
 import type { ExtrusionDefinitions, SweptDiskDescriptions } from './analytic-descriptions.js';
 import { initMainThreadEngine } from './main-engine-init.js';
+import { BridgeInitGate } from './bridge-init-gate.js';
 import {
   isWasmRuntimeTrap,
   notifyWasmRuntimeUnrecoverable,
@@ -59,7 +60,8 @@ type IfcAPIWithMerge = IfcAPI & {
 
 export class IfcLiteBridge {
   private ifcApi: IfcAPI | null = null;
-  private initialized: boolean = false;
+  /** Single-flight, generation-checked init (audit P6). */
+  private readonly gate = new BridgeInitGate();
   /**
    * When true, the WASM mesh emitters drop `IfcBuildingElementPart`
    * meshes whose parent wall is sliceable (Revit-style multilayer
@@ -122,13 +124,9 @@ export class IfcLiteBridge {
     try {
       this.dispose();
     } catch (error) {
-      // `free()` runs Rust code. If the allocator is what trapped, freeing can
-      // trap again — drop the reference anyway. A secondary failure here must
-      // never replace the original error on its way to the caller, so it's
-      // reported the same way every other catch site in this file reports a
-      // recovered failure: `log.error`. The logger call itself is guarded —
-      // a throwing logger would defeat the entire point of this method,
-      // which callers rely on to never throw.
+      // Freeing can trap again if the allocator is what trapped: drop the
+      // reference anyway and report via `log.error` (guarded, since a
+      // throwing logger would break this method's never-throw contract).
       try {
         log.error('Secondary failure while disposing WASM handle', error, {
           operation: 'disposeBestEffort',
@@ -144,9 +142,12 @@ export class IfcLiteBridge {
    * Initialize IFC-Lite WASM
    * The WASM binary is automatically resolved from the same location as the JS module
    */
-  async init(): Promise<void> {
-    if (this.initialized) return;
+  init(): Promise<void> {
+    // Concurrent callers share one attempt; one overtaken by dispose() rejects.
+    return this.gate.run((generation) => this.startEngine(generation));
+  }
 
+  private async startEngine(generation: number): Promise<void> {
     try {
       // Initialize WASM module. In the browser/worker, wasm-bindgen resolves the
       // .wasm URL from import.meta.url and fetch()es it. Node's fetch() cannot load
@@ -186,6 +187,9 @@ export class IfcLiteBridge {
       // the N-worker pool in `geometry-parallel.ts`.
       log.debug('Geometry processing: single-threaded WASM (N-worker pool handles parallelism)');
 
+      // dispose() landed while the engine loaded: build no handle; the gate
+      // rejects this attempt as superseded instead of resurrecting the bridge.
+      if (!this.gate.isCurrent(generation)) return;
       this.ifcApi = new IfcAPI();
       // Re-apply the cached merge-layers flag so callers can call
       // `setMergeLayers(true)` BEFORE `init()` and still get the
@@ -195,34 +199,26 @@ export class IfcLiteBridge {
       this.applyTessellationQuality();
       this.applySkipSmallCuts();
       applySkipVoids(this.ifcApi, this.skipVoids);
-      this.initialized = true;
       log.info('WASM geometry engine initialized');
     } catch (error) {
       log.error('Failed to initialize WASM geometry engine', error, {
         operation: 'init',
       });
-      // `init()` can throw after `this.ifcApi = new IfcAPI()` (line ~189) —
-      // any of the four `apply*` replay calls below it can throw or trap.
-      // A handle built here and then abandoned on this catch path must be
-      // freed, not just have its reference dropped, or it leaks for the
-      // life of the document (it's a `null` handle no `dispose()` can ever
-      // reach again). Best-effort: freeing itself can re-trap (see
-      // `disposeBestEffort`), and either way this never throws, so it can't
-      // mask the real error below — including on the fatal
-      // `isWasmRuntimeError` branch, where the written recovery contract in
-      // `wasm-runtime-trap.ts` is the same "drop (and free) the handle,
-      // propagate the trap unchanged" rule every other call site already
-      // follows via `recordWasmRuntimeTrap`.
+      // A stale attempt (overtaken by dispose()) never built a handle; its
+      // cleanup must not free or supersede the attempt that replaced it.
+      if (!this.gate.isCurrent(generation)) throw error;
+      // An `apply*` replay after `new IfcAPI()` can throw or trap: free the
+      // handle built here (a nulled one no `dispose()` can reach would leak
+      // for the life of the document). Best-effort and never throws, so it
+      // cannot mask the error below, including the fatal trap branch, which
+      // follows the same "free the handle, propagate the trap" contract as
+      // `recordWasmRuntimeTrap`.
       this.disposeBestEffort();
       if (this.isWasmRuntimeError(error)) {
-        // The one genuinely unrecoverable case: the engine trapped while
-        // standing itself up. Any `IfcAPI` handle that did exist was just
-        // best-effort freed above; either way this realm has no working
-        // engine to fall back on. Report it as such — freshly constructed so
-        // the stack is this throw site, carrying the trap as `cause` — and
-        // tell the host, which offers the user a reload. The verdict is
-        // advisory, not a latch: a later `init()` still tries, so no
-        // unrelated consumer is disabled by it. (#1898)
+        // The engine trapped while standing itself up: report it freshly
+        // constructed (stack = this throw site, trap as `cause`) and tell the
+        // host, which offers a reload. Advisory, not a latch: a later `init()`
+        // still tries, so no unrelated consumer is disabled by it. (#1898)
         const fatal = wasmRuntimeUnrecoverableError(error, 'init');
         notifyWasmRuntimeUnrecoverable(fatal);
         throw fatal;
@@ -236,7 +232,7 @@ export class IfcLiteBridge {
    * This does not reload wasm-bindgen's module singleton after a fatal WASM panic.
    */
   reset(): void {
-    this.initialized = false;
+    this.gate.release();
     this.ifcApi = null;
   }
 
@@ -248,15 +244,15 @@ export class IfcLiteBridge {
    * note in `IfcAPI`) is only released here, via wasm-bindgen's generated
    * `free()`, when the whole bridge is being torn down.
    *
-   * Idempotent and safe to call more than once, before `init()`, or after
-   * a fatal WASM runtime error already nulled the handle: a missing handle
-   * is a no-op. The reference is nulled immediately after freeing (via
-   * `reset()`), so a repeat call can never double-free the same
-   * wasm-bindgen pointer.
+   * Idempotent (the reference is nulled right after freeing, so no
+   * double-free) and safe before `init()` or after a trap nulled the handle.
+   * An `init()` still in flight rejects instead of resurrecting the bridge;
+   * a later `init()` builds a fresh handle (audit P6).
    */
   dispose(): void {
-    this.ifcApi?.free();
-    this.reset();
+    this.gate.invalidate();
+    // reset() even if free() throws, so the next init() rebuilds.
+    try { this.ifcApi?.free(); } finally { this.reset(); }
   }
 
   /**
@@ -747,7 +743,7 @@ export class IfcLiteBridge {
    * Check if initialized
    */
   isInitialized(): boolean {
-    return this.initialized;
+    return this.gate.isReady();
   }
 
   /**

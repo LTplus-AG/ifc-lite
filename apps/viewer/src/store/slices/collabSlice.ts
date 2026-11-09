@@ -50,7 +50,7 @@ import {
   mirrorProperty,
   mirrorPropertyDelete,
 } from '@/lib/collab/mutation-bridge';
-import { pathForEntity, pathForGuid, registerEntityPath } from '@/lib/collab/entity-paths';
+import { pathForEntity, pathForGuid, registerEntityPath, unregisterEntityPath } from '@/lib/collab/entity-paths';
 import { createRemoteOverlayEntity, deleteRemoteOverlayEntity } from '@/lib/collab/remote-entity-create';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MeshData } from '@ifc-lite/geometry';
@@ -1095,8 +1095,9 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
     const apis = attempt?.apis;
     if (!session || !store || !attempt || !apis) return;
     if (!get().canCollabEdit()) return;
-    // Overlay entities aren't in the GUID maps; derive their room path and
-    // register it only after CRDT creation succeeds so failed writes can retry.
+    // Overlay entities aren't in the GUID maps. Register before publication so
+    // transaction observers can resolve the restored entity identity; undo the
+    // registration if CRDT creation itself fails.
     let path = pathForEntity(store, entityId);
     let generatedPath = false;
     if (!path && guid) {
@@ -1106,14 +1107,19 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
     if (!path) return;
     const ifcClass = normalizeIfcClass(ifcType);
     const api = apis.doc;
-    session.transact(() => {
-      api.createEntity(session.doc, path, {
-        ifcClass,
-        attributes: { 'bsi::ifc::class': { code: ifcClass }, ...initialAttributes },
-        ...(sourceExpressId === undefined ? {} : { meta: { 'ifc-lite::sourceExpressId': sourceExpressId } }),
-      });
-    });
     if (generatedPath) registerEntityPath(store, entityId, path);
+    try {
+      session.transact(() => {
+        api.createEntity(session.doc, path, {
+          ifcClass,
+          attributes: { 'bsi::ifc::class': { code: ifcClass }, ...initialAttributes },
+          ...(sourceExpressId === undefined ? {} : { meta: { 'ifc-lite::sourceExpressId': sourceExpressId } }),
+        });
+      });
+    } catch (error) {
+      if (generatedPath) unregisterEntityPath(store, entityId);
+      throw error;
+    }
     // The mesh blob is baked at the element's world position → identity baseline
     // (so a later move composes correctly; see reconcilePlacementMesh).
     apis.placement.setPlacementBaseline(session.doc, path, { location: [0, 0, 0] });

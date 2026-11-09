@@ -43,8 +43,11 @@ for (const failure of ['shell', 'create-throw', 'attribute']) it(`failed ${failu
       if (++shells === 3 && failure === 'shell') return; // Genuine absent registration after two real Yjs shell writes.
       assert.ok(guid);
       const path = pathForGuid(data, guid);
-      session.transact(() => createEntity(session.doc, path, { ifcClass: type }));
       registerEntityPath(data, id, path);
+      session.transact(() => {
+        assert.equal(pathForEntity(data, id), path, 'the restored entity path is registered before transaction observers run (#9453 review)');
+        createEntity(session.doc, path, { ifcClass: type });
+      });
       if (shells === 3 && failure === 'create-throw') throw new Error('Injected failure after registered shell');
     },
     mirrorAttributeEdit: (_model, id, name, value) => {
@@ -107,8 +110,11 @@ async function roofRoom() {
       // existing room paths, just as the production mirror does.
       const path = pathForEntity(data, id) ?? (guid ? pathForGuid(data, guid) : null);
       assert.ok(path, 'a restored geometry record retains its room identity');
-      session.transact(() => createEntity(session.doc, path, { ifcClass: type }));
       registerEntityPath(data, id, path);
+      session.transact(() => {
+        assert.equal(pathForEntity(data, id), path, 'the restored entity path is registered before transaction observers run (#9453 review)');
+        createEntity(session.doc, path, { ifcClass: type });
+      });
     },
     mirrorAttributeEdit: (_model, id, name, value) => {
       const path = pathForEntity(data, id); assert.ok(path);

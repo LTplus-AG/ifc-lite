@@ -39,7 +39,11 @@ export function editRoofIn(store: ModellingStore, modelId: string, expressId: nu
     const last = stack.length > depth ? stack.at(-1) : undefined;
     const batch = last ? state.mutationBatchTags.get(last.id) : undefined;
     if (batch) rememberRemesh(store.getState, batch, modelId, [expressId], 'shape',
-      () => mirrorRoofHistoryDefinition(store, modelId, expressId));
+      () => mirrorRoofHistoryDefinition(store, modelId, expressId), error => {
+        const roomId = store.getState().collabSession?.roomId ?? 'the active room';
+        const detail = error instanceof Error ? ` (${error.message})` : '';
+        store.setState({ collabGeometryNotice: `Roof #${expressId} history was restored and remeshed locally, but its shared definition could not be updated in room "${roomId}"${detail}.` });
+      });
     return { ok: true, remesh };
   } catch (error) {
     return { ok: false, reason: error instanceof Error ? error.message : String(error) };
@@ -54,12 +58,28 @@ function mirrorRoofHistoryDefinition(store: ModellingStore, modelId: string, id:
   const definition = view.getForEntity(id).find(pset => pset.name === ROOF_FOOTPRINT_PSET), path = pathForEntity(data, id);
   if (!definition || !path) return;
   const api = roomPropertyApi();
-  for (const property of definition.properties) {
-    const value = property.value;
-    if (typeof value !== 'string' && typeof value !== 'number') continue;
-    const previous = api.getPropertyValue(session.doc, path, ROOF_FOOTPRINT_PSET, property.name);
-    api.setPropertyValue(session.doc, path, ROOF_FOOTPRINT_PSET, property.name,
-      { ...previous, type: previous?.type ?? (typeof value === 'string' ? 'IfcText' : 'IfcReal'), value });
+  const properties = definition.properties.filter(property => typeof property.value === 'string' || typeof property.value === 'number');
+  const before = new Map(properties.map(property => [property.name, structuredClone(
+    api.getPropertyValue(session.doc, path, ROOF_FOOTPRINT_PSET, property.name))]));
+  try {
+    for (const property of properties) {
+      const value = property.value;
+      const previous = before.get(property.name);
+      api.setPropertyValue(session.doc, path, ROOF_FOOTPRINT_PSET, property.name,
+        { ...previous, type: previous?.type ?? (typeof value === 'string' ? 'IfcText' : 'IfcReal'), value });
+    }
+  } catch (error) {
+    // History has already restored the local view. Restore every shared field
+    // touched so a partial Yjs publication cannot leave stale roof metadata.
+    for (const [name, value] of before) {
+      try {
+        if (value === undefined) api.deletePropertyValue(session.doc, path, ROOF_FOOTPRINT_PSET, name);
+        else api.setPropertyValue(session.doc, path, ROOF_FOOTPRINT_PSET, name, value);
+      } catch (rollbackError) {
+        console.warn(`[roof-history] could not restore shared definition for room "${session.roomId}"`, rollbackError);
+      }
+    }
+    throw error;
   }
 }
 

@@ -23,6 +23,7 @@ for (const failAt of [1, 3]) it(`roof room failure after ${failAt} writes preser
   const { store, view, adapter } = await seedNativeSdkModel();
   t.after(() => { disposeRemeshClient(); setRemeshClientFactory(null); });
   bindRoomPropertyApi({ getPropertyValue, setPropertyValue, deletePropertyValue });
+  t.after(() => bindRoomPropertyApi({ getPropertyValue, setPropertyValue, deletePropertyValue }));
   const session = await createCollabSession({ roomId: 'Roof review room', user: { id: 'owner', name: 'Owner' }, provider: 'memory' });
   t.after(() => session.dispose());
   const slot = { slotId: 'm0', pathPrefix: '/m0' };
@@ -86,7 +87,12 @@ for (const failAt of [1, 3]) it(`roof room failure after ${failAt} writes preser
   await settle();
   const editedProperties = properties(), editedRoofMesh = mesh(roof.expressId);
   const edited = bytes(), peerBefore = session.snapshot().data;
-  const historyDepth = useViewerStore.getState().undoStacks.get(MODEL)?.length;
+  const historyState = useViewerStore.getState();
+  const historyStack = historyState.undoStacks.get(MODEL) ?? [];
+  const historyDepth = historyStack.length;
+  const redoDepth = historyState.redoStacks.get(MODEL)?.length ?? 0;
+  const historyBatchId = historyState.mutationBatchTags.get(historyStack.at(-1)?.id ?? '');
+  const historyBatchCount = historyBatchId === undefined ? 1 : historyStack.filter(mutation => historyState.mutationBatchTags.get(mutation.id) === historyBatchId).length;
   const original = useViewerStore.getState().mirrorPropertyEdit;
   let writes = 0;
   useViewerStore.setState({ mirrorPropertyEdit: (...args) => { original(...args); if (++writes === failAt) throw new Error('Injected roof room publication failure'); } });
@@ -106,25 +112,50 @@ for (const failAt of [1, 3]) it(`roof room failure after ${failAt} writes preser
   let transactions = 0;
   const observe = () => { transactions++; };
   session.doc.on('afterTransaction', observe);
-  useViewerStore.getState().undo(MODEL);
+  const historyWrites: Array<'undo' | 'redo'> = [];
+  const failNextHistoryPublication = (direction: 'undo' | 'redo') => {
+    let fail = true;
+    bindRoomPropertyApi({ getPropertyValue, deletePropertyValue,
+      setPropertyValue: (...args) => {
+        setPropertyValue(...args);
+        if (fail) { fail = false; historyWrites.push(direction); throw new Error(`Injected ${direction} roof history publication failure`); }
+      } });
+  };
+  failNextHistoryPublication('undo');
+  assert.doesNotThrow(() => useViewerStore.getState().undo(MODEL), 'Undo completes when its follow-up roof definition publish fails');
+  bindRoomPropertyApi({ getPropertyValue, setPropertyValue, deletePropertyValue });
   session.doc.off('afterTransaction', observe);
+  assert.deepEqual(historyWrites, ['undo'], 'the injected failure occurred during Undo publication');
   assert.equal(transactions, 1, 'Undo publishes its body and definition atomically');
+  assert.equal(useViewerStore.getState().undoStacks.get(MODEL)?.length, historyDepth - historyBatchCount, 'failed follow-up publication remains one Undo step');
+  assert.equal(useViewerStore.getState().redoStacks.get(MODEL)?.length, redoDepth + historyBatchCount, 'Undo remains available for Redo');
+  const undoNotice = useViewerStore.getState().consumeCollabGeometryNotice();
+  assert.match(undoNotice ?? '', /Roof review room/);
+  assert.match(undoNotice ?? '', /Undo|history|shared/i);
   await settle();
   assert.deepEqual(await nativeGraph(bytes()), await nativeGraph(before), 'Undo restores the complete persisted roof and room IFC graph');
   assert.deepEqual(properties(), beforeProperties, 'Undo restores the recorded roof definition');
   const path = pathForEntity(store, roof.expressId); assert.ok(path);
   const definition = beforeProperties.find(set => set.name === 'IfcLite_RoofFootprint'); assert.ok(definition);
   for (const property of definition.properties) assert.deepEqual(getPropertyValue(session.doc, path, definition.name, property.name)?.value,
-    property.value, `Undo restores shared roof property ${property.name}`);
+    property.value, `failed Undo restores shared roof property ${property.name}`);
   assert.deepEqual(mesh(roof.expressId), roofMesh, 'Undo restores actual native roof meshes');
   assert.deepEqual(mesh(space.expressId), spaceMesh, 'Undo preserves actual native room meshes');
   assert.deepEqual(await roomQuantities(), spaceQuantities, 'Undo preserves exported room quantities');
   assert.ok(restoredWithoutGuid.length > 0, 'Undo exercised restored geometry identities without GUIDs');
   transactions = 0;
   session.doc.on('afterTransaction', observe);
-  useViewerStore.getState().redo(MODEL);
+  failNextHistoryPublication('redo');
+  assert.doesNotThrow(() => useViewerStore.getState().redo(MODEL), 'Redo completes when its follow-up roof definition publish fails');
+  bindRoomPropertyApi({ getPropertyValue, setPropertyValue, deletePropertyValue });
   session.doc.off('afterTransaction', observe);
+  assert.deepEqual(historyWrites, ['undo', 'redo'], 'the second injected failure occurred during Redo publication');
   assert.equal(transactions, 1, 'Redo publishes its body and definition atomically');
+  assert.equal(useViewerStore.getState().undoStacks.get(MODEL)?.length, historyDepth, 'failed follow-up publication adds no extra Undo step');
+  assert.equal(useViewerStore.getState().redoStacks.get(MODEL)?.length, redoDepth, 'Redo leaves no extra replay step');
+  const redoNotice = useViewerStore.getState().consumeCollabGeometryNotice();
+  assert.match(redoNotice ?? '', /Roof review room/);
+  assert.match(redoNotice ?? '', /Redo|history|shared/i);
   await settle();
   assert.deepEqual(await nativeGraph(bytes()), await nativeGraph(edited), 'Redo restores the complete edited IFC graph');
   assert.deepEqual(properties(), editedProperties, 'Redo restores the edited roof definition');

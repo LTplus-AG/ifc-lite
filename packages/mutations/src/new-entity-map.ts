@@ -52,10 +52,10 @@ export class NewEntityMap extends Map<number, NewEntity> {
     while (pending.length) {
       const value = pending.pop();
       if (Array.isArray(value) && !visited.has(value)) { visited.add(value); for (const child of value) pending.push(child); }
-      // Native/structural readers also accept parsed numeric references. The
-      // index is conservative: readers check the effective attribute grammar
-      // before treating a numeric measure candidate as a reference.
-      else if (typeof value === 'number' && Number.isSafeInteger(value) && value > 0) references.add(value);
+      // Native relationship readers also accept parsed numeric endpoints.
+      // Keep coordinates/measures out of these buckets; relationship readers
+      // verify the effective endpoint grammar after this conservative lookup.
+      else if (key.startsWith('IFCREL') && typeof value === 'number' && Number.isSafeInteger(value) && value > 0) references.add(value);
       else if (typeof value === 'string') {
         const token = value.trim();
         if (/^#[0-9]+$/.test(token)) references.add(Number(token.slice(1)));

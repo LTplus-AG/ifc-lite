@@ -57,6 +57,7 @@ it('#9411 constructing an editor preserves a reviewed model revision but still s
 
 it('#9411 reference candidates include numeric references before and inside a sparse draft', () => {
   const view = new MutablePropertyView(null, 'numeric-ref');
+  view.createEntity('IfcCartesianPoint', [[100, 200, 300]]);
   const rel = view.createEntity('IfcRelDefinesByProperties', ['rel', null, null, null, [100], 200]);
   const check = (draft: MutablePropertyView) => {
     expect([...draft.getNewEntitiesReferencing(100)].map(row => row.expressId)).toEqual([rel.expressId]);
@@ -64,5 +65,14 @@ it('#9411 reference candidates include numeric references before and inside a sp
     expect([...draft.getNewEntitiesReferencing(300)]).toEqual([]);
   };
   check(view);
-  view.runAtomic(check);
+  view.runAtomic(draft => {
+    check(draft);
+    draft.setPositionalAttribute(rel.expressId, 4, [300]);
+    draft.setAttribute(rel.expressId, 'RelatingPropertyDefinition', 400);
+    for (const id of [300, 400]) {
+      expect(draft.getAttributeOverrideReferenceCandidates(id)).toEqual([rel.expressId]);
+      expect(draft.getAttributeOverrideEntityIds(['IfcRelDefinesByProperties'], id)).toEqual([rel.expressId]);
+    }
+  });
+  for (const id of [300, 400]) expect(view.getAttributeOverrideReferenceCandidates(id)).toEqual([rel.expressId]);
 });

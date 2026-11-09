@@ -169,9 +169,9 @@ export class MutableOverlayState {
     const created = this.newEntities.get(entityId);
     const values: unknown[] = [...(this.positionalAttrMutations.get(entityId)?.values() ?? [])];
     for (const key of this.attributeKeysByEntity.get(entityId) ?? []) values.push(this.attributeMutations.get(key)?.value);
-    const attributes = overlayReferenceCandidates(values);
+    const type = this.typeMutations.get(entityId)?.newType ?? created?.type ?? '';
+    const attributes = overlayReferenceCandidates(values, type.toUpperCase().startsWith('IFCREL'));
     if (created) {
-      const type = this.typeMutations.get(entityId)?.newType ?? created.type;
       this.overriddenEntities.set(entityId, { expressId: entityId, type, attributes });
       this.overriddenSourceIds.delete(entityId);
     } else {

@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "why": "PR #9331 adds the adapter module; a whole-module revert deletes its test registration. This surgical mutation preserves compilation and makes the real sparse-hole refusal assertions fail.",
+  "key": "rust/git/src/adapter.rs",
+  "mutation": "tests/evidence/rust-git-adapter-9331/behaviour.oracle.patch",
+  "test": "rust/git/src/adapter_tests.rs"
+}

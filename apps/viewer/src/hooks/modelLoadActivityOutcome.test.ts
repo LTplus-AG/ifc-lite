@@ -14,7 +14,7 @@ import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { getViewerStoreApi } from '@/store';
 import { useActivityJournal } from '@/lib/activity/activity-journal';
-import { createModelLoadActivity, installModelLoadCanceller } from './modelLoadCanceller.js';
+import { createModelLoadActivity, handOffToRetry, installModelLoadCanceller } from './modelLoadCanceller.js';
 
 const store = getViewerStoreApi();
 const jobs = () => useActivityJournal.getState().jobs;
@@ -83,5 +83,28 @@ describe('model load activity outcome (J1)', () => {
     releaseFirst();
     assert.deepEqual(jobs().map((job) => [job.subject, job.outcome]), [['a.ifc', 'cancelled'], ['b.ifc', 'running']]);
     releaseSecond();
+  });
+
+  it('J1: the loader\'s resource retry leaves only the retry\'s row, settled by the retry', async () => {
+    const first = createModelLoadActivity('tower.ifc');
+    const releaseFirst = installModelLoadCanceller('primary', () => {}, () => null, first);
+    // What useIfcLoader's tryResourceRetry runs: the retry is a new primary load of the same file.
+    await handOffToRetry(first, async () => {
+      const retry = createModelLoadActivity('tower.ifc');
+      const releaseRetry = installModelLoadCanceller('primary', () => {}, () => null, retry);
+      assert.deepEqual(jobs().map((job) => [job.subject, job.outcome]), [['tower.ifc', 'running']], 'the attempt\'s row is gone once the retry runs');
+      retry.published = true;
+      releaseRetry();
+    });
+    releaseFirst(); // the attempt's own finally
+    assert.deepEqual(jobs().map((job) => [job.subject, job.outcome]), [['tower.ifc', 'completed']]);
+  });
+
+  it('J1: with no retry to run, the attempt keeps and settles its own row', async () => {
+    const first = createModelLoadActivity('tower.ifc');
+    const releaseFirst = installModelLoadCanceller('primary', () => {}, () => null, first);
+    await handOffToRetry(first, undefined);
+    releaseFirst();
+    assert.deepEqual(jobs().map((job) => job.outcome), ['failed']);
   });
 });

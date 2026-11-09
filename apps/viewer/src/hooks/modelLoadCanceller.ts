@@ -65,6 +65,21 @@ export function createModelLoadActivity(subject: string) {
 }
 
 /**
+ * Hand a failed attempt's file to its resource retry (J1). The retry's own job
+ * reports how the file ends; the attempt's row is dropped when the retry
+ * supersedes it, never read as a cancel. With no retry to run there is no
+ * hand-off, so the attempt still settles its own row.
+ */
+export async function handOffToRetry(
+  activity: { handOff(): void },
+  retry: (() => Promise<void>) | undefined,
+): Promise<void> {
+  if (!retry) return;
+  activity.handOff();
+  await retry();
+}
+
+/**
  * End the shared load UI for a path that holds no canceller of its own: a
  * raster drape or a retained refusal (both return before a canceller is
  * installed, after `addModel` raised the spinner for them), and the last

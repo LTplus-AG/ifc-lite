@@ -849,6 +849,13 @@ A copy of an element on a grid (one whose placement reaches an `IfcGridPlacement
 
 The canonical `reshapeWallsInStore` writer uses this calculation too. Trim/Extend uses it for the ghost, so an unchanged joined or custom-cut face matches the body that is committed. Existing joins are then recomputed by the writer; callers group those writes in their atomic undo transaction.
 
+Moving one joined wall carries the connected endpoint of its neighbour while
+keeping the neighbour's other axis endpoint fixed. The neighbour can therefore
+turn, and both end profiles are resolved again. At an L corner the relating
+wall runs through and the related wall stops at its near face; an imported
+mitre can become this butt corner. Consequently, a body's bounding-box edge
+can move by a different distance from its placement. Both walls require remeshing.
+
 ```typescript
 import { reshapeWallAxis, wallBodyOutline, type WallJoinWall } from '@ifc-lite/create';
 

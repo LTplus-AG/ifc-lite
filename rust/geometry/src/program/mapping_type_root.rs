@@ -11,6 +11,8 @@ pub(super) enum TypeMapRoot<'a> {
 
 const _: () = assert!(std::mem::size_of::<TypeMapRoot<'_>>()
     == std::mem::size_of::<super::Reached<'_>>());
+const _: () = assert!(std::mem::size_of::<Option<TypeMapRoot<'_>>>()
+    == std::mem::size_of::<Option<super::Reached<'_>>>());
 const _: () = assert!(std::mem::align_of::<TypeMapRoot<'_>>()
     == std::mem::align_of::<super::Reached<'_>>());
 

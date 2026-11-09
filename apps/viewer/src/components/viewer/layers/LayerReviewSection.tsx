@@ -20,6 +20,7 @@ import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { useBCF } from '@/hooks/useBCF';
 import { useSingleFlight } from '@/hooks/useSingleFlight';
+import { captureViewpointForCreate } from '@/hooks/bcf/capture-viewpoint-for-create';
 import {
   addTopicToProject,
   addViewpointToTopic,
@@ -139,11 +140,12 @@ export function LayerReviewSection({
       try {
         let viewpoint: Record<string, unknown> | undefined;
         if (withViewpoint) {
-          const vp = await createViewpointFromState({
-            includeSnapshot: true,
-            includeSelection: true,
-            includeHidden: false,
-          });
+          // A capture that fails or resolves null posts nothing (C-2, shared with the BCF creates).
+          const captured = await captureViewpointForCreate(
+            () => createViewpointFromState({ includeSnapshot: true, includeSelection: true, includeHidden: false }),
+            isCurrent, t('bcf.panel.captureViewpointFailed'), 'layer review');
+          if (!captured.ok) return;
+          const vp = captured.viewpoint;
           // snapshotData is a Uint8Array (not JSON); the data-URL `snapshot`
           // field carries the image across the wire instead.
           const { snapshotData: _drop, ...serializable } = vp as BCFViewpoint & { snapshotData?: Uint8Array };
@@ -167,7 +169,7 @@ export function LayerReviewSection({
         if (isCurrent()) toast.error(err instanceof Error ? err.message : String(err));
       }
     });
-  }, [runAction, review, selectedPath, title, description, withViewpoint, createViewpointFromState, client, refresh]);
+  }, [runAction, review, selectedPath, title, description, withViewpoint, createViewpointFromState, client, refresh, t]);
 
   const selectEntity = useCallback(
     (entity: string) => {

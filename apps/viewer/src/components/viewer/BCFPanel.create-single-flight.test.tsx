@@ -129,23 +129,34 @@ test('C-2 a viewpoint that fails after the create was cancelled reports nothing'
   assert.equal(topicCount(), 0);
 });
 
-test('C-2 a viewpoint capture that resolves null during Create is a failure: toast once, create nothing', async () => {
+test('C-2 a viewport lost while Create captures (capture resolves null) toasts once and creates nothing', async () => {
   const errors = mock.method(toast, 'error', () => undefined);
   mock.method(console, 'error', () => undefined);
   mock.method(console, 'warn', () => undefined);
   render(<BCFPanel onClose={() => {}} />);
   openForm();
   fillTitle();
-  await capture.release(1);
-  // The opening capture landed; drop it so Create must capture again, then lose the viewport.
+  // The snapshot was offered (a viewport existed); it goes away before Create captures.
   capture.unplug();
-  const recapture = buttonNamed('Recapture'); assert.ok(recapture, 'Recapture');
-  click(recapture);
-  await settle();
-  assert.equal(q('img[alt="Viewpoint snapshot"]') !== null, false, 'the null recapture cleared the preview');
   submitOnce();
   await settle();
   assert.equal(errors.mock.callCount(), 1, 'a null capture is reported like a thrown one');
   assert.equal(topicCount(), 0, 'no topic without the requested viewpoint');
   assert.equal(formOpen(), true);
+});
+
+test('C-2 with no model loaded (no viewport), Create offers no snapshot and adds the topic without a viewpoint', async () => {
+  const errors = mock.method(toast, 'error', () => undefined);
+  capture.unplug();
+  render(<BCFPanel onClose={() => {}} />);
+  openForm();
+  assert.equal(buttonNamed('Recapture') !== undefined, false, 'no snapshot is offered without a viewport');
+  fillTitle();
+  submitOnce();
+  await settle();
+  assert.equal(errors.mock.callCount(), 0);
+  assert.equal(topicCount(), 1, 'the topic is created');
+  const topic = [...(useViewerStore.getState().bcfProject?.topics.values() ?? [])][0];
+  assert.equal(topic?.viewpoints.length, 0, 'without a viewpoint');
+  assert.equal(formOpen(), false);
 });

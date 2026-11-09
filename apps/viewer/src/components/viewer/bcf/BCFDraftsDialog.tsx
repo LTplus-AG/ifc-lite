@@ -98,6 +98,9 @@ export function BCFDraftsDialog({ open, onOpenChange }: { open: boolean; onOpenC
     void editFlight.run(async () => {
       try { land(await result); }
       catch (error) { console.error('[BCF drafts] Edit failed', error); toast.error(t('bcfDrafts.edit.invalid')); }
+    }).then(outcome => {
+      // A refused edit was already computed; it never lands, but a failure in it is still logged.
+      if (outcome.status === 'refused') void result.catch(error => console.warn('[BCF drafts] Refused edit failed', error));
     });
   };
   const exportArchive = () => exportFlight.run(async () => {
@@ -139,7 +142,7 @@ export function BCFDraftsDialog({ open, onOpenChange }: { open: boolean; onOpenC
             <label className="flex min-w-0 flex-1 items-center gap-2">
               {t('bcfDrafts.dialog.batch')}
               <select className="h-7 min-w-0 flex-1 rounded border border-border bg-background" value={batch?.id ?? ''}
-                disabled={!library.entries.length} onChange={event => { useBcfDraftLibrary.setState({ activeId: event.target.value }); setMergeSet(new Set()); }}>
+                disabled={!library.entries.length} onChange={event => { editFlight.release(); useBcfDraftLibrary.setState({ activeId: event.target.value }); setMergeSet(new Set()); }}>
                 {!library.entries.length && <option value="">{t('bcfDrafts.dialog.noBatches')}</option>}
                 {library.entries.map(entry => <option key={entry.id} value={entry.id}>{entry.name} · {entry.topics.length}</option>)}
               </select>

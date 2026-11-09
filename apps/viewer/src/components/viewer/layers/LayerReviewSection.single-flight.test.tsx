@@ -72,3 +72,17 @@ test('C-2 layer review: a capture that settles after the section unmounted posts
   await settle();
   assert.equal(posts, 0);
 });
+
+test('C-2 layer review: a viewpoint capture that resolves null toasts once and posts nothing', async () => {
+  const { toast } = await import('@/components/ui/toast');
+  const errors = mock.method(toast, 'error', () => undefined);
+  mock.method(console, 'error', () => undefined);
+  mock.method(console, 'warn', () => undefined);
+  const comment = await readyToComment();
+  capture.unplug();
+  act(() => { comment.dispatchEvent(new window.MouseEvent('click', { bubbles: true })); });
+  await settle();
+  assert.equal(errors.mock.callCount(), 1, 'reported once, not as a raw destructuring error');
+  assert.equal(String(errors.mock.calls[0]?.arguments[0]).includes('destructure'), false);
+  assert.equal(posts, 0);
+});

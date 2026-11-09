@@ -211,3 +211,16 @@ test('C-2 clash: a "BCF topic" viewpoint capture that resolves null toasts once 
   assert.equal(errors.mock.callCount(), 1, 'a null capture is reported like a thrown one');
   assert.equal(useViewerStore.getState().bcfProject === null, true);
 });
+
+test('C-2 clash: a group viewpoint capture that resolves null toasts once and creates nothing', async () => {
+  const errors = mock.method(toast, 'error', () => undefined);
+  mock.method(console, 'error', () => undefined);
+  mock.method(console, 'warn', () => undefined);
+  render(<ClashPanel />);
+  const bcf = await groupBothClashes();
+  capture.unplug();
+  pressTogether(bcf);
+  await settle();
+  assert.equal(errors.mock.callCount(), 1, 'a null capture is reported, not silently dropped from the topic');
+  assert.equal(useViewerStore.getState().bcfProject === null, true);
+});

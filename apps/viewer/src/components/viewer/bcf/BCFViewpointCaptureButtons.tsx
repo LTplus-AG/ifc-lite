@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { useId } from 'react';
-import { Camera, ScanLine } from 'lucide-react';
+import { Camera, EyeOff, Focus, MousePointer2, ScanLine } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
 import { useTranslation } from '@/i18n';
@@ -55,6 +55,41 @@ export function BCFViewpointCaptureButtons({
           {capture2DBlockReason}
         </p>
       )}
+    </div>
+  );
+}
+
+/** What the next capture will carry beyond the camera: selection, isolation, hidden objects. */
+export function BCFCaptureWillInclude({ selectionCount, hasIsolation, hasHiddenEntities }: {
+  selectionCount: number;
+  hasIsolation: boolean;
+  hasHiddenEntities: boolean;
+}): React.ReactElement | null {
+  const { t } = useTranslation();
+  if (!(selectionCount > 0 || hasIsolation || hasHiddenEntities)) return null;
+  return (
+    <div className="mb-2 p-2 bg-muted/50 rounded-md text-xs text-muted-foreground">
+      <p className="font-medium mb-1">{t('bcf.topicDetail.captureWillInclude')}</p>
+      <ul className="space-y-0.5">
+        {selectionCount > 0 && (
+          <li className="flex items-center gap-1">
+            <MousePointer2 className="h-3 w-3" />
+            {t('bcf.topicDetail.selectedObjects', { count: selectionCount })}
+          </li>
+        )}
+        {hasIsolation && (
+          <li className="flex items-center gap-1">
+            <Focus className="h-3 w-3" />
+            {t('bcf.topicDetail.isolatedObjects')}
+          </li>
+        )}
+        {hasHiddenEntities && !hasIsolation && (
+          <li className="flex items-center gap-1">
+            <EyeOff className="h-3 w-3" />
+            {t('bcf.topicDetail.hiddenObjects')}
+          </li>
+        )}
+      </ul>
     </div>
   );
 }

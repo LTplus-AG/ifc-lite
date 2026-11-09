@@ -262,17 +262,24 @@ export function useManualClashGroups({
           toast.error('The loaded models changed while the BCF viewpoint was being captured. Try again.');
           return;
         }
+        // The scene held but no viewpoint came back (no viewport or camera): a
+        // failure, as for every other create-with-viewpoint (C-2).
+        if (!viewpoint) {
+          console.error('[clash] failed to capture viewpoint for group topic');
+          toast.error(t('bcf.panel.captureViewpointFailed'));
+          return;
+        }
         if (!useViewerStore.getState().bcfProject) {
           setBcfProject(createBCFProject({ name: 'Clash report' }));
         }
         const header = headerFilesForViewpoints(
-          viewpoint ? [viewpoint] : [],
+          [viewpoint],
           topic.creationDate,
           [...focused.modelIds, ...visibilityModelIds],
         );
         if (header.length > 0) topic.header = header;
         addTopic(topic);
-        if (viewpoint) addViewpoint(topic.guid, viewpoint);
+        addViewpoint(topic.guid, viewpoint);
         toast.success(t('clashTools.bcfTopic.created'), { label: t('clashTools.bcfTopic.open'), onClick: () => setBcfPanelVisible(true) });
       } catch (error) {
         console.error('[clash] Manual-group BCF topic creation failed:', error);

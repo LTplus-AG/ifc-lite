@@ -15,15 +15,12 @@ import {
   Send,
   Trash2,
   User,
-  MousePointer2,
-  Focus,
-  EyeOff,
   Crosshair,
   Pencil,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
-import { BCFViewpointCaptureButtons } from './BCFViewpointCaptureButtons';
+import { BCFCaptureWillInclude, BCFViewpointCaptureButtons } from './BCFViewpointCaptureButtons';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -204,32 +201,7 @@ export function BCFTopicDetail({
               <BCFViewpointCaptureButtons onCapture3D={onAddViewpoint} onCapture2D={onAddSectionViewpoint} capture2DBlockReason={sectionViewpointBlockReason} capturing={capturingViewpoint} />
             </div>
 
-            {/* Capture info - what will be included */}
-            {(selectionCount > 0 || hasIsolation || hasHiddenEntities) && (
-              <div className="mb-2 p-2 bg-muted/50 rounded-md text-xs text-muted-foreground">
-                <p className="font-medium mb-1">{t('bcf.topicDetail.captureWillInclude')}</p>
-                <ul className="space-y-0.5">
-                  {selectionCount > 0 && (
-                    <li className="flex items-center gap-1">
-                      <MousePointer2 className="h-3 w-3" />
-                      {t('bcf.topicDetail.selectedObjects', { count: selectionCount })}
-                    </li>
-                  )}
-                  {hasIsolation && (
-                    <li className="flex items-center gap-1">
-                      <Focus className="h-3 w-3" />
-                      {t('bcf.topicDetail.isolatedObjects')}
-                    </li>
-                  )}
-                  {hasHiddenEntities && !hasIsolation && (
-                    <li className="flex items-center gap-1">
-                      <EyeOff className="h-3 w-3" />
-                      {t('bcf.topicDetail.hiddenObjects')}
-                    </li>
-                  )}
-                </ul>
-              </div>
-            )}
+            <BCFCaptureWillInclude selectionCount={selectionCount} hasIsolation={hasIsolation} hasHiddenEntities={hasHiddenEntities} />
 
             {topic.viewpoints.length === 0 ? (
               <p className="text-xs text-muted-foreground">{t('bcf.topicDetail.noViewpoints')}</p>

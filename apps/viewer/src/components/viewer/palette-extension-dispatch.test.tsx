@@ -160,3 +160,58 @@ test('#8947 toolbar and keyboard preserve placement when, chord, owner and canon
   press(true); await settle();
   assert.deepEqual(host.events, ['onCommand:paint', 'onCommand:paint']);
 });
+
+// #8947 / review4509148564: retirement after the canonical runner starts
+// activation must be checked after that await, before events or handler code.
+for (const surface of ['palette', 'toolbar', 'keyboard'] as const) {
+  for (const retirement of ['provider', 'contribution', 'none'] as const) {
+    test(`#8947 ${surface} rechecks ${retirement} identity after held canonical activation`, async () => {
+      const first = new PaletteCommandTestHost(); first.add('alpha');
+      const second = new PaletteCommandTestHost(); second.add('alpha');
+      let release!: () => void;
+      first.activationWait = new Promise<void>(resolve => { release = resolve; });
+      let changeHost!: (host: PaletteCommandTestHost) => void;
+      function Harness() {
+        const [host, setHost] = useState(first); changeHost = setHost;
+        return <BimReactContext.Provider value={first.sdk}><ExtensionHostContext.Provider value={host}>
+          {surface === 'palette' ? <CommandPalette open onOpenChange={() => {}} />
+            : surface === 'toolbar' ? <ExtensionToolbarSlot slot="toolbar.right" /> : <ExtensionKeyboardBindings />}
+          <Toaster />
+        </ExtensionHostContext.Provider></BimReactContext.Provider>;
+      }
+      useViewerStore.setState({ selectedEntityIds: new Set([42]) });
+      const ui = render(<Harness />);
+      const previous = globalThis.requestAnimationFrame;
+      globalThis.requestAnimationFrame = cb => { cb(0); return 1; };
+      try {
+        if (surface === 'palette') {
+          typeInto(document.querySelector<HTMLInputElement>('[role="combobox"]')!, 'Check model');
+          click(row('alpha'));
+        } else if (surface === 'toolbar') {
+          const button = ui.querySelector('button'); assert.ok(button); click(button);
+        } else {
+          act(() => { window.dispatchEvent(new KeyboardEvent('keydown', {
+            key: 'G', shiftKey: true, bubbles: true, cancelable: true,
+          })); });
+        }
+        await settle();
+        assert.deepEqual(first.activations, ['alpha'], 'real canonical runner is held inside activate');
+        assert.deepEqual(first.events, []);
+        assert.deepEqual(first.executions, []);
+        if (retirement === 'provider') act(() => changeHost(second));
+        if (retirement === 'contribution') act(() => {
+          first.slotRegistry.unregister('alpha'); first.add('alpha');
+        });
+        release(); await settle();
+        assert.deepEqual(first.activations, ['alpha'], 'retirement never retries activation');
+        assert.deepEqual(first.deactivations, []);
+        assert.deepEqual(first.executions, retirement === 'none' ? ['alpha'] : []);
+        assert.deepEqual(first.events, retirement === 'none' ? ['onCommand:paint'] : []);
+        assert.deepEqual(second.executions, []);
+        if (retirement !== 'none') assert.match(document.body.textContent ?? '', /provider or contribution changed/);
+      } finally {
+        release(); await settle(); globalThis.requestAnimationFrame = previous;
+      }
+    });
+  }
+}

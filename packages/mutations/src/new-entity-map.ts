@@ -52,6 +52,10 @@ export class NewEntityMap extends Map<number, NewEntity> {
     while (pending.length) {
       const value = pending.pop();
       if (Array.isArray(value) && !visited.has(value)) { visited.add(value); for (const child of value) pending.push(child); }
+      // Native/structural readers also accept parsed numeric references. The
+      // index is conservative: readers check the effective attribute grammar
+      // before treating a numeric measure candidate as a reference.
+      else if (typeof value === 'number' && Number.isSafeInteger(value) && value > 0) references.add(value);
       else if (typeof value === 'string') {
         const token = value.trim();
         if (/^#[0-9]+$/.test(token)) references.add(Number(token.slice(1)));

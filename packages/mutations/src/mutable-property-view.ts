@@ -70,7 +70,7 @@ export class MutablePropertyView extends MutableOverlayState {
         draft.quantityExtractor = this.quantityExtractor;
         draft.quantityBaseRevisions = this.quantityBaseRevisions;
         draft.attributeExtractor = this.attributeExtractor;
-        draft.restoreOverlayState(snapshot);
+        draft.restoreOverlayState(snapshot, this.getMutationRevision());
         return draft;
       },
     });
@@ -101,7 +101,7 @@ export class MutablePropertyView extends MutableOverlayState {
     draft.quantityExtractor = this.quantityExtractor;
     draft.quantityBaseRevisions = this.quantityBaseRevisions;
     draft.attributeExtractor = this.attributeExtractor;
-    draft.restoreOverlayState(structuredClone(original));
+    draft.restoreOverlayState(structuredClone(original), this.getMutationRevision());
     const result = edit(draft);
     if (result !== null && (typeof result === 'object' || typeof result === 'function')
       && 'then' in result && typeof result.then === 'function') {

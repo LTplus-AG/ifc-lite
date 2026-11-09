@@ -111,12 +111,11 @@ export class MutableOverlayState {
   protected entityAliases: Map<number, number> = new Map();
   protected nextAllocatedId: number = 0;
 
-  /** Seed the express-ID allocator above the parsed source. Advancing it is
-   * a live state change; reseeding the same or a lower value is a no-op. */
+  /** Seed the express-ID allocator above the parsed source. This changes no
+   * IFC content; transactions validate the allocator separately from revision. */
   setExpressIdWatermark(maxExistingId: number): void {
     if (maxExistingId > this.nextAllocatedId) {
       this.nextAllocatedId = maxExistingId;
-      this.markOverlayChanged();
     }
   }
 
@@ -361,9 +360,12 @@ export class MutableOverlayState {
     return withoutEntityExposure(() => structuredClone(materializeOverlay(this.overlayState())));
   }
 
-  protected restoreOverlayState(state: ReturnType<MutableOverlayState['copyOverlayState']>): void {
+  protected restoreOverlayState(state: ReturnType<MutableOverlayState['copyOverlayState']>, revision?: number): void {
     Object.assign(this, state);
-    this.markOverlayChanged();
+    // Detached initialization preserves read fingerprints. Live publications
+    // still advance the token, including rollback and Undo/Redo.
+    if (revision === undefined) this.markOverlayChanged();
+    else this.mutationRevision = revision;
     // A cloned snapshot carries a plain Map: rebuild the class index (#5413).
     this.newEntities = NewEntityMap.from(this.newEntities);
     this.overriddenEntities = NewEntityMap.from(this.overriddenEntities);

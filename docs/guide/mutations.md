@@ -394,6 +394,8 @@ Edits accumulate in the same overlay used by `setProperty` / `setAttribute`. The
 
 Use `StoreEditor.runAtomic` to create or modify a related set of IFC entities together. The callback receives a detached editor; a thrown error leaves the live overlay, mutation history and express-ID allocator unchanged. `MutablePropertyView.runAtomic` provides the same operation with a draft view for property and quantity edits.
 
+An untouched draft reads the same model revision and overlay contents as its live view. Initializing an editor's express-ID watermark does not change that model revision; transaction validation checks the allocator separately so an intervening watermark change cannot be overwritten by publication.
+
 ```typescript
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 

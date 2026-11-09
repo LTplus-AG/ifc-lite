@@ -394,6 +394,7 @@ export class GeometryProcessor {
       prePass.unitScale,
       frame.needsShift ? { x: frame.x, y: frame.y, z: frame.z } : null,
       frame,
+      prePass.siteOrigin,
     );
     return frame;
   }

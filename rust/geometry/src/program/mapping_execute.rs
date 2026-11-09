@@ -119,7 +119,7 @@ impl MappingControl<'_> {
                 let rep_map = self
                     .rep_map
                     .as_ref()
-                    .map(Reached::item)
+                    .map(TypeMapRoot::item)
                     .ok_or(ProgramError::StaleRequest)?;
                 if let Some(state) = &self.retained {
                     return Ok(source_reply(
@@ -148,7 +148,7 @@ impl MappingControl<'_> {
                 let rep_map = self
                     .rep_map
                     .as_ref()
-                    .map(Reached::item)
+                    .map(TypeMapRoot::item)
                     .ok_or(ProgramError::StaleRequest)?;
                 MappingValue::Origin(router.type_map_origin(rep_map, decoder))
             }

@@ -38,7 +38,7 @@ impl MappingControl<'_> {
         // Keep the source's reporting policy, including CATIA's blank-type
         // FootPrint suppression. Product admission reports independently.
         if self.levels.last().is_none_or(|parent| parent.policy) {
-            router.record_budget_refusal(item_id, budget, limit, reached, self.budget_product);
+            router.record_budget_refusal(item_id, budget, limit, reached, self.rep_map.as_ref().and_then(super::TypeMapRoot::product));
         }
         self.logical_stopped = true;
         let Some(parent) = self.levels.last() else {

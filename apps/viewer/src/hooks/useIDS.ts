@@ -40,6 +40,7 @@ import { posthog } from '../lib/analytics';
 import { errorCaptureProps } from '../lib/load-errors';
 import { useValidationResults, type UseValidationResults } from './validation/useValidationResults';
 import { useValidationEpoch } from './validation/useValidationEpoch';
+import { guardValidationRun } from './validation/validationRunGuard';
 
 export interface UseIDSOptions {
   /** Automatically apply color overrides after validation */
@@ -194,8 +195,12 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
     const abortController = new AbortController();
     workerAbortRef.current = abortController;
     const stamp = captureAnalysisStamp();
+    const cancelThisRun = () => { abortController.abort(); if (workerAbortRef.current === abortController) cancelValidation(); };
+    // A teardown that changes the model set ends this run instead of only
+    // resetting its flags (A1).
+    const federation = guardValidationRun(useViewerStore, cancelThisRun);
     const job = beginActivity({ kind: 'check', title: 'activityTray.job.validation', panel: 'validation', subject: document.info.title,
-      cancel: () => { abortController.abort(); if (workerAbortRef.current === abortController) cancelValidation(); } });
+      cancel: cancelThisRun });
     let outcome: 'completed' | 'failed' | 'cancelled' = 'cancelled';
     let detail: string | undefined;
 
@@ -237,8 +242,9 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
       });
 
       // A newer call may have started (and even published) while this one
-      // awaited the worker/main-thread validation above (#2802).
-      if (!stillWanted(myEpoch)) return null;
+      // awaited the worker/main-thread validation above (#2802), and the
+      // model set it read must still be loaded (A1).
+      if (!stillWanted(myEpoch) || !federation.isCurrent()) return null;
       setIdsValidationReport(stampAnalysisReport(validationReport, stamp), snapshot);
       outcome = 'completed';
 
@@ -264,6 +270,7 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
       console.error('[IDS] Validation error:', err);
       return null;
     } finally {
+      federation.dispose();
       finishActivity(job, outcome, detail ? { detail } : {});
       if (workerAbortRef.current === abortController) workerAbortRef.current = null;
       // A superseded call must not report itself as no-longer-loading — the

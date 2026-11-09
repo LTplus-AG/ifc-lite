@@ -39,8 +39,11 @@ export function createValidationReportActions(set: StoreApi<IDSSlice>['setState'
     clearIdsValidationReport: () => {
       // Clear ends the epoch, so an in-flight run will skip its own finally.
       // This action must reset loading/progress and release focus first (#2837).
+      // `removeModel`/`clearAllModels` reach here WITHOUT going through the
+      // hook's cancel, so bumping the generation is what ends their run (A1).
       endRowFocus();
       set({
+        validationRunGeneration: get().validationRunGeneration + 1,
         idsValidationReport: null, currentValidationReport: null, validationSource: null,
         idsActiveSpecificationId: null, idsActiveEntityId: null,
         idsIsolationScope: 'ids', idsIsolateMode: null, idsFocusVisibilityOwned: null,

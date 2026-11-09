@@ -32,6 +32,7 @@ import {
   addRecentRuleSet, loadRecentRuleSets, removeRecentRuleSet, type RecentRuleSet,
 } from '@/lib/validation/recent-rule-sets';
 import { useValidationEpoch } from './useValidationEpoch';
+import { guardValidationRun } from './validationRunGuard';
 import { activeDefinition } from '@/lib/validation/definition-library';
 import { beginDefinitionImport } from '@/lib/validation/definition-import-owner';
 
@@ -231,8 +232,12 @@ export function useInformationValidation(): UseInformationValidationResult {
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
+    const cancelThisRun = () => { controller.abort(); if (abortRef.current === controller) cancel(); };
+    // Captured with the same state the engine input is read from below: a
+    // teardown that changes the model set ends this run (A1).
+    const federation = guardValidationRun(useViewerStore, cancelThisRun);
     const job = beginActivity({ kind: 'check', title: 'activityTray.job.validation', panel: 'validation', subject: file.name,
-      cancel: () => { controller.abort(); if (abortRef.current === controller) cancel(); } });
+      cancel: cancelThisRun });
     let outcome: 'completed' | 'failed' | 'cancelled' = 'cancelled';
     let detail: string | undefined;
 
@@ -264,7 +269,7 @@ export function useInformationValidation(): UseInformationValidationResult {
       // A cancelled/superseded run must never publish a report — checked
       // AFTER the (possibly long) engine run completes, mirroring
       // `useIDS.runValidation`'s `stillWantedValidation` guard (#2802).
-      if (!stillWanted(myEpoch)) return;
+      if (!stillWanted(myEpoch) || !federation.isCurrent()) return;
       setIdsValidationReport(stampAnalysisReport(report, stamp), snapshot);
       setEditing(false);
       outcome = 'completed';
@@ -280,6 +285,7 @@ export function useInformationValidation(): UseInformationValidationResult {
       setError(detail);
       outcome = 'failed';
     } finally {
+      federation.dispose();
       finishActivity(job, outcome, detail ? { detail } : {});
       if (abortRef.current === controller) abortRef.current = null;
       if (stillWanted(myEpoch)) {

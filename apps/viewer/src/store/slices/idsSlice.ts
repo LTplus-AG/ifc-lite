@@ -101,6 +101,10 @@ export interface IDSSliceState {
   idsPanelVisible: boolean;
   /** Loading state */
   idsLoading: boolean;
+  /** Bumped by every store path that resets `idsLoading` behind a run's back
+   *  (session reset, report clear); an in-flight IDS/rule-set run observes it
+   *  and ends itself (A1, `hooks/validation/validationRunGuard.ts`). */
+  validationRunGeneration: number;
   /** Validation progress */
   idsProgress: ValidationProgress | null;
   /** Error message: a caught-exception string, or a catalogued resolver error. */
@@ -232,6 +236,7 @@ export const createIdsSlice: StateCreator<IDSSlice, [], [], IDSSlice> = (set, ge
   idsActiveEntityId: null,
   idsPanelVisible: false,
   idsLoading: false,
+  validationRunGeneration: 0,
   idsProgress: null,
   idsError: null,
   idsLocale: 'en',
@@ -302,6 +307,7 @@ export const createIdsSlice: StateCreator<IDSSlice, [], [], IDSSlice> = (set, ge
       idsFailedEntityIds: new Set(),
       idsPassedEntityIds: new Set(),
       idsLoading: false,
+      validationRunGeneration: get().validationRunGeneration + 1,
       idsProgress: null,
       idsIsolationScope: 'ids',
       idsIsolateMode: null,

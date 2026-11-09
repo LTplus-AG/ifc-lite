@@ -14,7 +14,6 @@ export const modelingCommandIt = {
   "modelingCommand.roof.overhang": "Sporto",
   "modelingCommand.roof.edge": "Bordo",
   "modelingCommand.roof.edgeSlope": "Pendenza del bordo",
-  "modelingCommand.wall.top": "Posizione della sommità del muro",
   "modelingCommand.wall.top": "Sommità muro",
   "modelingCommand.wall.topStoreyAbove": "Fino al piano superiore",
   "modelingCommand.wall.topFixed": "Altezza fissa",

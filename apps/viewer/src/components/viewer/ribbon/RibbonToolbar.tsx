@@ -59,6 +59,8 @@ export function RibbonToolbar({ onShowShortcuts }: RibbonToolbarProps = {} as Ri
   // The active tab lives in the store so the contextual driver and the
   // walkthrough can open one; it starts on Home and is never persisted.
   const { t } = useTranslation();
+  const inModel = useViewerStore((s) => s.workspaceMode === 'model');
+  const canEdit = useViewerStore((s) => s.canCollabEdit());
   const activeTab = useViewerStore((s) => s.ribbonTab);
   const setActiveTab = useViewerStore((s) => s.setRibbonTab);
   const ribbonCollapsed = useViewerStore((s) => s.ribbonCollapsed);
@@ -172,6 +174,10 @@ export function RibbonToolbar({ onShowShortcuts }: RibbonToolbarProps = {} as Ri
         <ExportChangesButton surface="ribbon" />
 
         <div className="ml-1 flex shrink-0 items-center gap-0.5 border-l border-divider pl-2">
+          <RibbonCommandSmallButton commandId="tool:edit-mode"
+            active={inModel} aria-pressed={inModel} disabled={!canEdit}
+            activeClassName="bg-overlay-accent-soft text-foreground ring-1 ring-inset ring-overlay-accent/50"
+            className="h-7 w-auto shrink-0 whitespace-nowrap border border-divider px-2 text-xs" />
           <Button
             variant="ghost"
             size="sm"

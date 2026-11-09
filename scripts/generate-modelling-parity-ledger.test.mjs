@@ -399,3 +399,13 @@ test('roof oracle: a full-height prism and a flat slab fail every shape; a real 
   assert.ok(Math.abs(v.mass - (20 + Math.tan(30 * DEG) * 64 * 22 / 12)) < 0.5, `hip mass volume ${v.mass}`);
   assert.ok(Math.abs(v.plate - 20 / Math.cos(30 * DEG)) < 0.1, `hip plate volume ${v.plate}`);
 });
+
+// #9296 U4: progress must remain visible before every level of a row can pass.
+test('per-level totals exclude extras, skip, partial and non-applicable passes', () => {
+  const s = score(CATALOGUE, [...RESULTS, result('b', 'sdk', 'pass')]);
+  assert.deepEqual(s.levelTotals, {
+    sdk: { passed: 1, total: 4, applicable: 3 },
+    ui: { passed: 2, total: 4, applicable: 4 },
+    output: { passed: 1, total: 4, applicable: 3 },
+  });
+});

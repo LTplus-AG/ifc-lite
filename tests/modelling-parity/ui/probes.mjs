@@ -26,6 +26,7 @@ import { downloadCount, nextDownload, task } from './lib/driver.mjs';
 import {
   escape, hudText, oracleModel, openStoreyManager, readSession, readStoreyManager, switchStorey, tool, toasts, typeFields,
 } from './lib/model-ui.mjs';
+import { U4_PROBES } from './probes-u4.mjs';
 import { readStep } from './lib/step.mjs';
 
 const PLAN_CAM = { pos: [2.5, -2, 28], target: [2.5, 2, 0] };
@@ -111,6 +112,7 @@ const isDxf = (d) => !!d && /\bSECTION\b/.test(d.text) && /\bEOF\b/.test(d.text)
 const svgShapes = (d) => (d?.text.match(/<(path|polygon|polyline|line|rect)\b/g) ?? []).length;
 
 export const PROBES = [
+  ...U4_PROBES,
   {
     id: 'ui.storeys',
     capability: 'storeys',
@@ -636,7 +638,7 @@ export const PROBES = [
         checks: [
           { name: 'a dimension was placed in the drawing', ok: annotations > 0, detail: `${annotations} drawing markups in the store` },
           { name: 'the exported SVG carries the dimension', ok: added > 0 && numbers > 0, detail: `${added} more SVG characters than before, ${numbers} numeric text labels` },
-          { name: 'a tag tool for elements (door, window, room tags)', ok: tagTool, detail: `toolbar: ${toolbar.join(', ')}` },
+          { name: 'a tag tool for elements (door, window, room tags)', ok: false, detail: tagTool ? 'tag control found, but no entity-bound tag placement/export oracle has passed' : `no tag control in toolbar: ${toolbar.join(', ')}` },
         ],
       };
     },
@@ -765,6 +767,19 @@ export const PROBES = [
     },
   },
 ];
+
+// The original combined probe only credited the structure row, leaving grids unscored.
+const gridProbe = PROBES.find((p) => p.id === 'ui.grid-columns');
+PROBES.push({
+  ...gridProbe, id: 'ui.grids', capability: 'grids',
+  async run(s) {
+    const out = await gridProbe.run(s);
+    return { ...out, checks: [...out.checks.slice(0, 2), {
+      name: 'moving a grid carries its columns', ok: false,
+      detail: 'not measured by placement/level-change probe: grid movement and bound column displacement require a separate gesture',
+    }] };
+  },
+});
 
 /** Run one probe in a fresh page. Returns a contract result plus the export text when the probe has one. */
 export async function runProbe(probe, openFresh, base, { saveArtifact } = {}) {

@@ -6,6 +6,8 @@ The scorecard of the modelling parity hill climb ([#9296](https://github.com/LTp
 
 **Table-stakes score: 7.5 / 25** (met 0, partial 15, missing 10). A met row counts 1, a partial row 0.5. The score may only go up: `node tests/modelling-parity/score.mjs <dirs> --check tests/modelling-parity/baseline/r0-sdk-output.json` fails when it or any row drops.
 
+**Per-level passes: SDK 2/25 · UI 0/25 · OUTPUT 15/25.** Non-applicable levels earn no pass.
+
 Summary: `tests/modelling-parity/baseline/r0-sdk-output.json`, generated 2026-11-08T08:15:10.253Z from 48 results on `b629cd669c`; inputs `tests/modelling-parity/.out/L1`.
 
 Levels:

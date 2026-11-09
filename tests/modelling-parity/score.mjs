@@ -114,9 +114,20 @@ export function score(catalogue, results, meta = {}) {
     maxScore: stakes.length,
     tableStakesIds: stakes.map((r) => r.capability),
     counts,
+    levelTotals: levelTotals(rows),
     ...(unknown.length ? { unknownCapabilities: unknown } : {}),
     rows,
   };
+}
+
+/** Counts are over table-stakes rows only; n/a and unrun levels never earn a pass. */
+export function levelTotals(rows) {
+  const stakes = rows.filter((r) => r.tableStakes);
+  return Object.fromEntries(LEVELS.map((level) => [level, {
+    passed: stakes.filter((r) => r.levels[level]?.applicable !== false && r.levels[level]?.status === 'pass').length,
+    total: stakes.length,
+    applicable: stakes.filter((r) => r.levels[level]?.applicable !== false).length,
+  }]));
 }
 
 /** Ratchet: every way `current` is worse than `baseline`. Empty means the check passes. */
@@ -166,6 +177,7 @@ function print(summary) {
   }
   const c = summary.counts;
   console.log(`\nTable-stakes score: ${summary.score} / ${summary.maxScore} (met ${c.met}, partial ${c.partial}, missing ${c.missing}) from ${summary.results} results`);
+  console.log(LEVELS.map((l) => `${l.toUpperCase()} ${summary.levelTotals[l].passed}/${summary.levelTotals[l].total}`).join(' · '));
   if (summary.unknownCapabilities) console.warn(`warning: results name capabilities missing from the catalogue: ${summary.unknownCapabilities.join(', ')}`);
 }
 

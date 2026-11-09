@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { createHash } from 'node:crypto';
-import { isValidIfcGuid } from '@ifc-lite/encoding';
+import { isValidIfcGuid } from '../../packages/encoding/dist/index.js';
 
 const STEP_LINE_RE = /^#(\d+)=([A-Z0-9_]+)\((.*)\);\s*$/;
 /** The 64-character IFC GUID alphabet, 22 characters wide. */

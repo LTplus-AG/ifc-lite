@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { readFileSync } from 'node:fs';
-import { IfcAPI, initSync } from '@ifc-lite/wasm';
+import { IfcAPI, initSync } from '../../packages/wasm/pkg/ifc-lite.js';
 import { indexLines, globalIdOf } from './step-text.js';
 
 interface GeometryRow { hash: string; aabb: number[]; volume: number | null }

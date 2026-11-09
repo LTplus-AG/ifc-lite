@@ -141,3 +141,15 @@ it('#8453 refuses a sampled 64-bit cache fingerprint as source identity', () => 
   const view = new MutablePropertyView(null, 'm');
   expect(() => snapshotOverlay(view, { sourceContentHash: '0123456789abcdef' })).toThrow(/full source/);
 });
+
+it.each([
+  { __nonFiniteNumber: 'NaN' },
+  { __nonFiniteNumber: 'Infinity', label: 'literal extension data' },
+  { __overlayLiteral: ['a', 'b'] },
+])('#8453 preserves marker-shaped JSON in additive journal metadata', portableNote => {
+  const { view } = fixture();
+  const annotated = Object.assign(view.getMutations()[0], { portableNote });
+  const copy = new MutablePropertyView(null, 'm');
+  restoreOverlay(copy, snapshotOverlay(view, options), options);
+  expect((dto(copy).journal[0] as typeof annotated).portableNote).toEqual(portableNote);
+});

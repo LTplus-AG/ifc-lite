@@ -32,6 +32,12 @@ export function snapshotOverlay(view: MutablePropertyView, options: OverlaySnaps
     validateJsonGraph(dto);
     return JSON.stringify(dto, function(this: unknown, _key: string, value: unknown): unknown {
       if (Array.isArray(this) && value === undefined) throw new TypeError('Undefined array entries cannot be snapshotted.');
+      if (value && typeof value === 'object' && !Array.isArray(value)) {
+        const keys = Object.keys(value);
+        if (keys.length === 1 && (keys[0] === '__nonFiniteNumber' || keys[0] === '__overlayLiteral')) {
+          return { __overlayLiteral: [keys[0], record(value)[keys[0]]] };
+        }
+      }
       if (typeof value === 'number' && Object.is(value, -0)) return { __nonFiniteNumber: '-0' };
       return encodeNonFiniteNumbers('value', value);
     });
@@ -47,7 +53,12 @@ export function restoreOverlay(view: MutablePropertyView, json: string, options:
   if (typeof json !== 'string') throw new TypeError('Overlay restore expects serialized JSON.');
   if (json.length > maxBytes || new TextEncoder().encode(json).byteLength > maxBytes) throw new RangeError('Overlay snapshot exceeds the byte limit.');
   const parsed: unknown = JSON.parse(json, (_key: string, value: unknown): unknown => {
-    if (value && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length === 1 && record(value).__nonFiniteNumber === '-0') return -0;
+    if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).length !== 1) return value;
+    const row = record(value), literal = row.__overlayLiteral;
+    if (Array.isArray(literal) && literal.length === 2 && (literal[0] === '__nonFiniteNumber' || literal[0] === '__overlayLiteral')) {
+      return { [literal[0]]: literal[1] };
+    }
+    if (row.__nonFiniteNumber === '-0') return -0;
     return decodeNonFiniteNumbers('value', value);
   });
   validateSnapshot(parsed);

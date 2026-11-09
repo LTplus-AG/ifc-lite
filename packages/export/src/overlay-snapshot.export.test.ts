@@ -18,7 +18,11 @@ function liveView(store: IfcDataStore) {
   return view;
 }
 function exported(store: IfcDataStore, view: MutablePropertyView): string {
-  return new TextDecoder().decode(new StepExporter(store, view).export({ schema: 'IFC4', applyMutations: true, timeStamp: '2026-11-09T00:00:00' }).content);
+  // Synthesized pset/qset GlobalIds are normally random. Reset the supported
+  // deterministic source on every export so byte equality measures persistence.
+  let seed = 8453;
+  const guidRandom = () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 0x100000000; };
+  return new TextDecoder().decode(new StepExporter(store, view).export({ schema: 'IFC4', applyMutations: true, guidRandom, timeStamp: '2026-11-09T00:00:00' }).content);
 }
 
 it('#8453 restores the real parsed sample to byte-identical STEP, then supports new edits and class/reference queries', async () => {
@@ -33,6 +37,7 @@ it('#8453 restores the real parsed sample to byte-identical STEP, then supports 
   const point = editor.addEntity('IfcCartesianPoint', [[1, 2, 3]]).expressId;
   const placement = editor.addEntity('IfcAxis2Placement3D', ['#' + point, null, null]).expressId;
   const before = exported(store, view);
+  expect(exported(store, view)).toBe(before);
   const copy = liveView(store);
   restoreOverlay(copy, snapshotOverlay(view, identity), identity);
   expect(exported(store, copy)).toBe(before);

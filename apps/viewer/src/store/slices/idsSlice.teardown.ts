@@ -42,6 +42,7 @@ export const idsTeardown = defineSliceTeardown(
   [
     'idsPanelVisible',
     'idsLoading',
+    'validationRunGeneration',
     'idsProgress',
     'idsError',
     'idsActiveSpecificationId',
@@ -50,9 +51,14 @@ export const idsTeardown = defineSliceTeardown(
     'idsColorRevision',
   ],
   {
-    'session-reset': () => ({
+    'session-reset': (_scope, state) => ({
       idsPanelVisible: false,
       idsLoading: false,
+      // Resetting the flag alone left the run going: it kept writing
+      // `idsProgress` under `idsLoading: false` and then published its report
+      // into the new session. The bump is what an in-flight IDS/rule-set run
+      // observes to end itself (A1, `hooks/validation/validationRunGuard.ts`).
+      validationRunGeneration: (state.validationRunGeneration ?? 0) + 1,
       idsProgress: null,
       idsError: null,
       idsActiveSpecificationId: null,

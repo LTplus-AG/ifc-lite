@@ -73,6 +73,8 @@ fn issue_7781_retained_product_admission_precedes_member_decode_and_dangling_ref
         let mut program = product(&entity, limit);
         let operations = drive(&mut program, &router, &mut decoder);
         let result = program.finish();
+        assert_eq!(router.take_budget_refusal_report(), (0, Vec::new()),
+            "#9268 retained product reports through its transaction");
         if refused {
             assert!(operations.is_empty());
             assert!(result.unwrap_err().to_string().contains("work budget"));
@@ -113,6 +115,8 @@ fn issue_7781_retained_skipped_representations_pay_before_strict_validation() {
         let mut program = product(&entity, limit);
         let operations = drive(&mut program, &router, &mut decoder);
         let result = program.finish();
+        assert_eq!(router.take_budget_refusal_report(), (0, Vec::new()),
+            "#9268 retained product reports through its transaction");
         if refused {
             assert!(operations.is_empty());
             assert!(result.unwrap_err().to_string().contains("work budget"));
@@ -302,6 +306,8 @@ fn issue_7781_retained_product_shares_root_and_nested_items_allowance() {
         let mut program = product(&entity, limit);
         let operations = drive(&mut program, &router, &mut decoder);
         let result = program.finish();
+        assert_eq!(router.take_budget_refusal_report(), (0, Vec::new()),
+            "#9268 retained product reports through its transaction");
         if refused {
             assert!(operations.is_empty());
             assert!(result.unwrap_err().to_string().contains("work budget"));

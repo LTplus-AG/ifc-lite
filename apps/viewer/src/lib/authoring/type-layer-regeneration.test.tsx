@@ -14,7 +14,6 @@ import { afterEach, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { IfcParser } from '@ifc-lite/parser';
 import { IfcAPI } from '@ifc-lite/wasm';
-import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import { previewTypeLayerImpact, typeLayerScopeInStore } from '@ifc-lite/create';
 import { configureMutationView } from '@/utils/configureMutationView';
 import { setEditedQuantityRefresh } from '@/lib/quantities/edited-quantity-refresh';

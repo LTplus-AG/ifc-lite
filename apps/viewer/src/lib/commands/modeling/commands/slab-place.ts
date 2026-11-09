@@ -10,18 +10,20 @@
  * Backspace drops the last). The bar's class segment picks the builder
  * (`addSlab` / `addRoof` / `addPlate`); Thickness is that class's default.
  * A floor slab hangs from the workplane, so its top is the level and stays
- * there when its thickness changes (#9198); a roof or plate sits on the plane.
+ * there when its thickness changes (#9198); a roof or plate sits on the plane,
+ * which the session raises to the top of the walls for a roof (#9202).
  * Each outline is one transaction, one undo step.
  */
 
 import { SlabPlaceBar } from '@/components/viewer/tools/command/PlacementBars';
 import { SlabPlaceScene } from '@/components/viewer/tools/command/SlabPlaceScene';
 import type { SlabClass } from '@/store/slices/authoringDefaultsSlice';
+import type { TranslationKey } from '@/i18n';
 import type { ViewerState } from '@/store';
 import { commandGhostId } from '../ghost.js';
 import { prismGhostMesh } from '../ghost-shapes.js';
 import type { CommandContext, CommandField, ModelingCommand } from '../types.js';
-import { defaultsField, dimOf, planeZ } from './placement-shared.js';
+import { defaultsField, dimOf, planeHeightField, planeZ } from './placement-shared.js';
 import {
   closesPolygon,
   initSlabGesture,
@@ -50,6 +52,7 @@ const FIELDS: readonly CommandField<SlabPlaceGesture>[] = [
     hidden: (g) => g.mode !== 'rectangle', read: rectSide(1), write: (g, v) => ({ ...g, depth: Math.abs(v) }),
   },
   defaultsField('thickness', slabClassOf, 'Thickness', 'modelingCommand.field.thickness'),
+  planeHeightField(),
 ];
 
 /** The builder for each class; slab, roof and plate take the same params. */
@@ -69,10 +72,19 @@ function slabParams(g: SlabPlaceGesture, cls: SlabClass, z: number, thickness: n
   return { Position: [rect.min[0], rect.min[1], z], Width: rect.width, Depth: rect.depth, Thickness: thickness, ...extrusion };
 }
 
+const SLAB_CLASS_TITLES: Record<SlabClass, TranslationKey | undefined> = {
+  slab: undefined,
+  roof: 'modelWorkspace.tool.roof',
+  plate: 'modelingCommand.class.plate',
+};
+
 export const SLAB_PLACE: ModelingCommand<SlabPlaceGesture> = {
   id: 'slab.place',
   labelKey: 'modelingCommand.slab.label',
   hud: {
+    // The rail's Roof entry is this command: the bar says what is being drawn,
+    // roof or plate, and a slab keeps the command's own label.
+    title: (s) => SLAB_CLASS_TITLES[s.authoringDefaults.slabClass],
     Bar: SlabPlaceBar,
     Scene: SlabPlaceScene,
     hint: (g) => {

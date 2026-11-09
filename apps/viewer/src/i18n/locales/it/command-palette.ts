@@ -46,6 +46,7 @@ export const commandPaletteIt = {
   'commandPalette.tool.annotate.label': 'Annota',
   'commandPalette.tool.wall.label': 'Disegna muri',
   'commandPalette.tool.slab.label': 'Disegna solette',
+  'commandPalette.tool.roof.label': 'Disegna tetti',
   'commandPalette.tool.column.label': 'Posiziona pilastri',
   'commandPalette.tool.beam.label': 'Disegna travi',
   'commandPalette.tool.editMode.label': 'Attiva/disattiva la modalità di modifica',

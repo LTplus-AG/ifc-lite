@@ -402,6 +402,7 @@ fn deeply_nested_properties_convert_without_recursive_intermediates() {
         value = if index % 2 == 0 { PropertyValue::Array(vec![value]) }
             else { PropertyValue::Object(vec![("x".into(), value)]) };
     }
+    let canonical = ifc_lite_diff::fingerprint::canonical_value_string(&value);
     let mut input = wall();
     input.property_sets = vec![PropertySetInput { name: "Pset".into(), properties: vec![PropertyEntryInput { name: "Deep".into(), value }].into() }].into();
     let actual = entity_nodes("deep", &input);
@@ -420,4 +421,6 @@ fn deeply_nested_properties_convert_without_recursive_intermediates() {
         });
     });
     assert!(actual.is_ok(), "deep composite was refused: {actual:?}");
+    let expected = format!("{}true{}", "{\"x\":[".repeat(depth / 2), "]}".repeat(depth / 2));
+    assert_eq!(canonical.unwrap().as_str(), Some(expected.as_str()));
 }

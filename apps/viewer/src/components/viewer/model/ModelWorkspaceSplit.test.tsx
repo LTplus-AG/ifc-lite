@@ -78,6 +78,19 @@ describe('ModelWorkspaceSplit (#6232 M2.1)', () => {
     assert.equal(useViewerStore.getState().sidebarMode, 'expanded');
   });
 
+  for (const layout of ['plan', 'split', '3d'] as const) {
+    it(`has one workspace bar and storey picker in ${layout} (#9296)`, async () => {
+      useViewerStore.getState().setModelLayout(layout);
+      const ui = mount();
+      act(() => { useViewerStore.getState().enterModelWorkspace(); });
+      await act(frame);
+      assert.equal(ui.querySelectorAll('[data-workspace-bar]').length, 1);
+      assert.equal(ui.querySelectorAll('[data-workspace-storey-chip]').length, 1);
+      assert.equal(ui.querySelectorAll('[role="radiogroup"][aria-label="Model workspace layout"]').length, 1);
+      assert.equal(ui.querySelectorAll('[data-workspace-leave]').length, 1);
+    });
+  }
+
   it('enters the workspace with a saved Split layout without throwing', async () => {
     useViewerStore.getState().setModelLayout('split');
     const ui = mount();

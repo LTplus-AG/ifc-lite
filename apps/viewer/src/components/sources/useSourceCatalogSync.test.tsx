@@ -410,3 +410,63 @@ describe('useSourceCatalogSync -- eagerFileSweep gate (#2613)', () => {
     assert.equal(harness.get().hasMoreFiles(null), true);
   });
 });
+
+// C-5: paging X must merge into the live catalog after Y has opened.
+for (const kind of ['folders', 'files'] as const) {
+  it(`C-5 load more ${kind} preserves a folder opened while the page was pending`, async () => {
+    const provider = new FakeProvider({ containerListing: 'direct-children', listFilesIsRecursive: false });
+    let finish!: () => void;
+    provider.listContainers = async (_ctx, _project, parent, options) => {
+      if (options?.cursor) await new Promise<void>(resolve => { finish = resolve; });
+      return { items: [{ id: `${parent}-child${options?.cursor ? '-2' : ''}`, name: 'child', parentId: parent }],
+        cursor: parent === 'area-1' && !options?.cursor ? 'next' : undefined };
+    };
+    provider.listFiles = async (_ctx, _project, parent, _filter, options) => {
+      if (options?.cursor) await new Promise<void>(resolve => { finish = resolve; });
+      return { items: [{ ...fileOf(`${parent}-file${options?.cursor ? '-2' : ''}`), containerId: parent }],
+        cursor: parent === 'area-1' && !options?.cursor ? 'next' : undefined };
+    };
+    const harness = renderCatalogSync(provider);
+    await act(async () => { harness.get().openFileArea('project-1', 'area-1'); });
+    act(() => { if (kind === 'folders') harness.get().loadMoreFolders(null); else harness.get().loadMoreFiles(null); });
+    await act(async () => { harness.get().openContainer({ id: 'Y', name: 'Y', parentId: 'area-1' }); });
+    await act(async () => finish());
+    const ids = kind === 'folders' ? harness.get().folders.map(f => f.id) : harness.get().allFiles.map(f => f.id);
+    assert.equal(ids.includes(kind === 'folders' ? 'Y-child' : 'Y-file'), true, 'Y survives the late page');
+  });
+}
+
+it('C-5 concurrent folder opens keep loading until both settle', async () => {
+  const provider = new FakeProvider({ containerListing: 'direct-children', listFilesIsRecursive: true });
+  const replies = new Map<string, () => void>();
+  provider.listContainers = async (_ctx, _project, parent) => {
+    if (parent !== 'area-1') await new Promise<void>(resolve => replies.set(parent, resolve));
+    return { items: [] };
+  };
+  const harness = renderCatalogSync(provider);
+  await act(async () => harness.get().openFileArea('p', 'area-1'));
+  act(() => {
+    harness.get().openContainer({ id: 'X', name: 'X' });
+    harness.get().openContainer({ id: 'Y', name: 'Y' });
+  });
+  await act(async () => replies.get('X')!());
+  assert.equal(harness.get().loadingFolders, true, 'Y still owns a pending folder request');
+  await act(async () => replies.get('Y')!());
+  assert.equal(harness.get().loadingFolders, false);
+});
+
+it('C-5 same-tick load-more presses request one page', async () => {
+  const provider = new FakeProvider();
+  let pages = 0;
+  let finish!: () => void;
+  provider.listContainers = async (_ctx, _project, _parent, options) => {
+    if (options?.cursor) { pages++; await new Promise<void>(resolve => { finish = resolve; }); }
+    return { items: [], cursor: options?.cursor ? undefined : 'next' };
+  };
+  const harness = renderCatalogSync(provider);
+  await act(async () => harness.get().openFileArea('p', 'area-1'));
+  act(() => { harness.get().loadMoreFolders(null); harness.get().loadMoreFolders(null); });
+  const count = pages;
+  await act(async () => finish());
+  assert.equal(count, 1);
+});

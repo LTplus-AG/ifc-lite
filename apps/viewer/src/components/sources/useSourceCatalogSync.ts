@@ -4,6 +4,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { FileSourceProvider, PluginContext, SourceContainer, SourceFile } from '@ifc-lite/plugin-api';
+import { useSingleFlight } from '@/hooks/useSingleFlight';
 import { toast } from '@/components/ui/toast';
 import { isCatalogCacheable, persistCompleteCatalog, readCachedCatalog } from './sourceCatalogCache';
 import { appendPage, fetchAllFilePages, fetchContainerPage, fetchFilePage, type PagedItems } from './sourceCatalogPaging';
@@ -75,7 +76,8 @@ export function useSourceCatalogSync({ provider, ctx, setError, onSynced }: UseS
 
   const [loadingFolders, setLoadingFolders] = useState(false);
   const [loadingFiles, setLoadingFiles] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
+  const paging = useSingleFlight();
+  const loadingMore = paging.busy;
   const [syncing, setSyncing] = useState(false);
   const [catalogUpdatedAt, setCatalogUpdatedAt] = useState<number | null>(null);
 
@@ -126,6 +128,11 @@ export function useSourceCatalogSync({ provider, ctx, setError, onSynced }: UseS
     [cacheable, providerName],
   );
 
+  useEffect(() => {
+    const area = areaRef.current;
+    if (area) maybePersist(area.projectId, area.fileAreaId, containersByParent, filesByContainer);
+  }, [containersByParent, filesByContainer, maybePersist]);
+
   const applyCachedCatalog = useCallback(
     (projectId: string, fileAreaId: string): boolean => {
       if (!cacheable) return false;
@@ -158,11 +165,11 @@ export function useSourceCatalogSync({ provider, ctx, setError, onSynced }: UseS
 
         const filePage = await fetchFiles(projectId, fileAreaId, signal);
         if (requestGenRef.current !== gen) return;
-        const nextContainers = new Map([[fileAreaId, containerPage]]);
+
         const nextFiles = new Map([[fileAreaId, filePage]]);
         setFilesByContainer(nextFiles);
         setCatalogUpdatedAt(null);
-        maybePersist(projectId, fileAreaId, nextContainers, nextFiles);
+
         onSynced?.();
         if (options.announce) {
           const folderCount = containerPage.items.length;
@@ -191,17 +198,6 @@ export function useSourceCatalogSync({ provider, ctx, setError, onSynced }: UseS
    *  flat catalogs only), else a fresh first-page sync. */
   const openFileArea = useCallback(
     (projectId: string, fileAreaId: string) => {
-      // Invalidate any in-flight request; its finally block can no longer
-      // clear these flags once invalidated, so reset them here.
-      //
-      // Null the ref as well as aborting it. `beginGeneration()` replaces the
-      // controller, but the cached-catalog path below returns early WITHOUT
-      // calling it — so a stale, already-aborted controller would stay in the
-      // ref, and every later `abortRef.current?.signal` read (openContainer,
-      // loadMore) would hand out a pre-aborted signal. Opening a cached file
-      // area and then expanding a folder would silently do nothing. Clearing it
-      // makes those reads fall through to their `?? new AbortController()`
-      // default, which is live.
       abortRef.current?.abort();
       abortRef.current = null;
       requestGenRef.current += 1;
@@ -212,13 +208,13 @@ export function useSourceCatalogSync({ provider, ctx, setError, onSynced }: UseS
       setCatalogUpdatedAt(null);
       setLoadingFolders(false);
       setLoadingFiles(false);
-      setLoadingMore(false);
+      paging.release();
       setSyncing(false);
 
       if (applyCachedCatalog(projectId, fileAreaId)) return;
       void syncFileArea(projectId, fileAreaId);
     },
-    [applyCachedCatalog, syncFileArea],
+    [applyCachedCatalog, syncFileArea, paging.release],
   );
 
   /**
@@ -248,24 +244,21 @@ export function useSourceCatalogSync({ provider, ctx, setError, onSynced }: UseS
             const page = await fetchContainers(area.projectId, container.id, undefined, signal);
             if (requestGenRef.current !== gen) return;
             setContainersByParent((previous) => new Map(previous).set(container.id, page));
-            setLoadingFolders(false);
           }
           if (needFiles) {
             setLoadingFiles(true);
             const page = await fetchFiles(area.projectId, container.id, signal);
             if (requestGenRef.current !== gen) return;
             setFilesByContainer((previous) => new Map(previous).set(container.id, page));
-            setLoadingFiles(false);
           }
         } catch (err) {
           if (requestGenRef.current === gen && !(err instanceof DOMException && err.name === 'AbortError')) {
             setError(err instanceof Error ? err.message : String(err));
           }
         } finally {
-          openingContainersRef.current.delete(container.id);
           if (requestGenRef.current === gen) {
-            setLoadingFolders(false);
-            setLoadingFiles(false);
+            openingContainersRef.current.delete(container.id);
+            if (openingContainersRef.current.size === 0) { setLoadingFolders(false); setLoadingFiles(false); }
           }
         }
       })();
@@ -295,24 +288,19 @@ export function useSourceCatalogSync({ provider, ctx, setError, onSynced }: UseS
 
       const gen = requestGenRef.current;
       const signal = abortRef.current?.signal ?? new AbortController().signal;
-      setLoadingMore(true);
-      void (async () => {
+      void paging.run(async () => {
         try {
           const page = await fetchContainers(area.projectId, key, current.cursor, signal);
           if (requestGenRef.current !== gen) return;
-          const next = new Map(containersByParent).set(key, appendPage(current, page));
-          setContainersByParent(next);
-          maybePersist(area.projectId, area.fileAreaId, next, filesByContainer);
+          setContainersByParent(previous => new Map(previous).set(key, appendPage(current, page)));
         } catch (err) {
           if (requestGenRef.current === gen && !(err instanceof DOMException && err.name === 'AbortError')) {
             setError(err instanceof Error ? err.message : String(err));
           }
-        } finally {
-          if (requestGenRef.current === gen) setLoadingMore(false);
         }
-      })();
+      });
     },
-    [containersByParent, fetchContainers, filesByContainer, folderKeyFor, loadingMore, maybePersist, setError],
+    [containersByParent, fetchContainers, filesByContainer, folderKeyFor, loadingMore, paging.run, setError],
   );
 
   /** The map key holding files for the current selection. */
@@ -337,24 +325,19 @@ export function useSourceCatalogSync({ provider, ctx, setError, onSynced }: UseS
 
       const gen = requestGenRef.current;
       const signal = abortRef.current?.signal ?? new AbortController().signal;
-      setLoadingMore(true);
-      void (async () => {
+      void paging.run(async () => {
         try {
           const page = await fetchFilePage(provider, ctx, area.projectId, key, current.cursor, signal);
           if (requestGenRef.current !== gen) return;
-          const next = new Map(filesByContainer).set(key, appendPage(current, page));
-          setFilesByContainer(next);
-          maybePersist(area.projectId, area.fileAreaId, containersByParent, next);
+          setFilesByContainer(previous => new Map(previous).set(key, appendPage(current, page)));
         } catch (err) {
           if (requestGenRef.current === gen && !(err instanceof DOMException && err.name === 'AbortError')) {
             setError(err instanceof Error ? err.message : String(err));
           }
-        } finally {
-          if (requestGenRef.current === gen) setLoadingMore(false);
         }
-      })();
+      });
     },
-    [containersByParent, ctx, fileKeyFor, filesByContainer, loadingMore, maybePersist, provider, setError],
+    [containersByParent, ctx, fileKeyFor, filesByContainer, loadingMore, paging.run, provider, setError],
   );
 
   const resetCatalog = useCallback(() => {
@@ -371,9 +354,9 @@ export function useSourceCatalogSync({ provider, ctx, setError, onSynced }: UseS
     setCatalogUpdatedAt(null);
     setLoadingFolders(false);
     setLoadingFiles(false);
-    setLoadingMore(false);
+    paging.release();
     setSyncing(false);
-  }, []);
+  }, [paging.release]);
 
   return {
     folders,

@@ -10,7 +10,7 @@
  */
 
 import { matchConstraint, type IDSConstraint } from '@ifc-lite/ids';
-import type { ConstraintDraft, ValueInput, XsdBase } from '@ifc-lite/ids-authoring';
+import { rebaseRestriction, type ConstraintDraft, type ValueInput, type XsdBase } from '@ifc-lite/ids-authoring';
 import { splitQuantity } from './units';
 
 export type ValueKind = 'any' | 'equals' | 'oneOf' | 'pattern' | 'range' | 'length' | 'digits' | 'raw';
@@ -120,6 +120,17 @@ export function inputFromForm(form: ValueForm, base?: string): { input: ValueInp
       return { input: { kind: 'digits', ...(total === undefined ? {} : { total }), ...(fraction === undefined ? {} : { fraction }) } };
     }
   }
+}
+
+/**
+ * The stored value re-based on a newly chosen data type's XSD base, or null
+ * when it needs no change. The form writes the data type's base only when the
+ * value is applied, so a list typed before the data type was picked would
+ * otherwise keep no base and be written as `xs:string`.
+ */
+export function rebasedValue(constraint: IDSConstraint | undefined, base: string | undefined): ValueInput | null {
+  const rebased = constraint && base ? rebaseRestriction(constraint, base) : undefined;
+  return rebased ? { kind: 'raw', constraint: rebased } : null;
 }
 
 /**

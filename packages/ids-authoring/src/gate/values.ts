@@ -132,3 +132,23 @@ export function checkConstraint(c: IDSConstraint, base?: string): ValueProblem[]
 function siblings(and: readonly IDSConstraint[] | undefined, base: string | undefined): ValueProblem[] {
   return (and ?? []).flatMap((s) => checkConstraint(s, base));
 }
+
+/**
+ * `c` moved onto restriction base `base` (the XSD type behind a newly chosen
+ * property dataType), or `undefined` when it already has that base, is not a
+ * single restriction, or would not hold under it: an enumeration value that
+ * is not a `base` literal, bounds under a non-numeric base, a fractional
+ * bound under `xs:integer`, or a length facet (XSD allows those on strings
+ * only).
+ */
+export function rebaseRestriction(c: IDSConstraint, base: string): IDSConstraint | undefined {
+  if (c.type === 'simpleValue' || c.base === base || c.and?.length) return undefined;
+  if (c.type === 'bounds') {
+    if (!NUMERIC_BASES.has(base) || c.temporalBounds || c.unparseableFacets?.length) return undefined;
+    if (c.length !== undefined || c.minLength !== undefined || c.maxLength !== undefined) return undefined;
+    const limits = [c.minInclusive, c.minExclusive, c.maxInclusive, c.maxExclusive];
+    if (limits.some((v) => v !== undefined && !literalOk(base, String(v)))) return undefined;
+  }
+  const next = { ...c, base };
+  return checkConstraint(next).length === 0 ? next : undefined;
+}

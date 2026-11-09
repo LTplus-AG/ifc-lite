@@ -313,6 +313,15 @@ export function showLoadError(
   trackUiEvent('error_shown', { code, surface: 'load_error' });
 }
 
+/** Takes down the load-error card: its message and its Retry together, the pair `showLoadError` sets. */
+export function clearLoadError(
+  setError: (message: string | null) => void,
+  setLastLoadRetry: (retry: (() => void) | null) => void,
+): void {
+  setError(null);
+  setLastLoadRetry(null);
+}
+
 /** The sole capture path for completed exports (#5844). */
 export function trackExportCompleted(properties: ExportCompletedProperties): void {
   posthog.capture('export_completed', properties);

@@ -15,7 +15,7 @@
 import { useCallback, useEffect } from 'react';
 import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
-import { showLoadError } from '@/lib/analytics';
+import { clearLoadError, showLoadError } from '@/lib/analytics';
 import { getWebGPUStatus, retryWebGPU, useWebGPU, type WebGPUStatus } from './useWebGPU';
 
 export interface WebGpuOpenGuardOptions {
@@ -43,8 +43,10 @@ const UNSUPPORTED_KEY = 'viewportLighting.container.loadErrorCard.webgpuUnsuppor
 
 type Translate = ReturnType<typeof useTranslation>['t'];
 
-/** The load-error card the guard put up: its exact text and Retry, never re-translated. */
-interface GuardCard { message: string | null; retry: (() => void) | null }
+type CardKey = typeof CHECKING_KEY | typeof UNSUPPORTED_KEY;
+
+/** The load-error card the guard put up: which text, exactly as shown, and its Retry. */
+interface GuardCard { key: CardKey; message: string | null; retry: (() => void) | null }
 
 /**
  * The guard's one piece of state: the card it is responsible for, if any.
@@ -77,9 +79,9 @@ function settle(status: WebGPUStatus, t: Translate): void {
   if (!owns(current.card)) { notice = { kind: 'none' }; return; }
   const state = useViewerStore.getState();
   if (status.checking) {
-    // Still waiting: only the text follows the locale (Retry keeps its card as is).
-    const message = t(CHECKING_KEY);
-    if (current.kind !== 'pending' || message === current.card.message) return;
+    // Still waiting: only the text follows the locale, whichever card is shown.
+    const message = t(current.card.key);
+    if (message === current.card.message) return;
     notice = { ...current, card: { ...current.card, message } };
     state.setError(message);
     return;
@@ -89,7 +91,7 @@ function settle(status: WebGPUStatus, t: Translate): void {
     showLoadError(state.setError, state.setLastLoadRetry, t(UNSUPPORTED_KEY), 'webgpu_unsupported', current.card.retry);
     return;
   }
-  state.setError(null); // clears the card and its Retry together
+  clearLoadError(state.setError, state.setLastLoadRetry);
   if (!current.open) return;
   try {
     current.open();
@@ -116,7 +118,9 @@ export function useWebGpuOpenGuard(): WebGpuOpenGuard {
     const retryAfterProbe: (() => void) | null = retry ? () => {
       const { error, lastLoadRetry } = useViewerStore.getState();
       if (lastLoadRetry !== retryAfterProbe) return; // stale card
-      notice = { kind: 'retrying', card: { message: error, retry: retryAfterProbe }, open: retry };
+      // Our card is the pending checking one, or else the unsupported one.
+      const key = notice.kind !== 'none' && notice.card.retry === retryAfterProbe ? notice.card.key : UNSUPPORTED_KEY;
+      notice = { kind: 'retrying', card: { key, message: error, retry: retryAfterProbe }, open: retry };
       // The effect settles it when the (shared, or re-forced) probe reports;
       // a second click before then only re-arms the same notice.
       const now = getWebGPUStatus();
@@ -124,9 +128,10 @@ export function useWebGpuOpenGuard(): WebGpuOpenGuard {
       else void retryWebGPU();
     } : null;
     const checking = status.checking;
-    const message = t(checking ? CHECKING_KEY : UNSUPPORTED_KEY);
+    const key = checking ? CHECKING_KEY : UNSUPPORTED_KEY;
+    const message = t(key);
     notice = checking
-      ? { kind: 'pending', card: { message, retry: retryAfterProbe }, open: options?.resumeWhenSupported ? retry ?? null : null }
+      ? { kind: 'pending', card: { key, message, retry: retryAfterProbe }, open: options?.resumeWhenSupported ? retry ?? null : null }
       : { kind: 'none' };
     showLoadError(setError, setLastLoadRetry, message, checking ? 'webgpu_checking' : 'webgpu_unsupported', retryAfterProbe);
     return false;

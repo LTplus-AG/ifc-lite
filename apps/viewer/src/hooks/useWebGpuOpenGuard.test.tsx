@@ -187,6 +187,35 @@ describe('useWebGpuOpenGuard pending-probe notice (G1)', () => {
     assert.deepEqual(card(), NO_CARD);
   });
 
+  it('retrying, still checking: a locale switch re-renders the card it shows, then a passing check clears it (#9493 review)', async () => {
+    const settle = pendingAdapter();
+    render(<OpenProbe />);
+    let opened = 0;
+    const attempt = () => { if (guard(attempt)) opened += 1; };
+    act(attempt);
+    act(() => useViewerStore.getState().lastLoadRetry?.());
+    act(() => setLocale('g1-pseudo'));
+    assert.deepEqual(card(), { error: '⟦checking⟧', hasRetry: true }, 'the Retry-owned checking card follows the locale');
+    await settleProbe(settle, {});
+    assert.equal(opened, 1);
+    assert.deepEqual(card(), NO_CARD);
+  });
+
+  it('retrying from the unsupported card: a locale switch during the re-check keeps it the unsupported text, in the new locale (#9493 review)', async () => {
+    const settle = pendingAdapter();
+    render(<OpenProbe />);
+    act(() => { guard(() => {}); });
+    await settleProbe(settle, null);
+    assert.equal(card().error, viewportLightingEn[UNSUPPORTED]);
+
+    const settleRecheck = pendingAdapter();
+    act(() => useViewerStore.getState().lastLoadRetry?.());
+    act(() => setLocale('g1-pseudo'));
+    assert.deepEqual(card(), { error: '⟦unsupported⟧', hasRetry: true });
+    await settleProbe(settleRecheck, null);
+    assert.deepEqual(card(), { error: '⟦unsupported⟧', hasRetry: true });
+  });
+
   it('pending -> newer error: a settled check leaves the newer error alone', async () => {
     const settle = pendingAdapter();
     render(<OpenProbe />);

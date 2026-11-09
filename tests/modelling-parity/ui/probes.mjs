@@ -624,10 +624,9 @@ export const PROBES = [
         await s.ui.key('Escape');
       }));
       const shot = await s.shot('dimension');
-      const annotations = await s.state(() => {
-        const st = globalThis.__ifc_lite_viewer_store__.getState();
-        return Object.entries(st).filter(([k, v]) => /measure2D|annotation/i.test(k) && Array.isArray(v)).reduce((n, [, v]) => n + v.length, 0);
-      });
+      const dimensions = await s.state(() =>
+        (globalThis.__ifc_lite_viewer_store__.getState().measure2DResults ?? []).map((m) => m.distance));
+      const annotations = dimensions.length;
       let svg = null;
       tasks.push(await task(s, 'Drawing > Export > SVG', async () => { svg = await exportDrawing(s, 'svg'); }));
       const added = svg && plain ? svg.text.length - plain.text.length : 0;
@@ -637,6 +636,7 @@ export const PROBES = [
         tasks, notes: tagTool ? [] : [`The Drawing toolbar has no tag tool (${toolbar.join(', ')}).`], evidence: [shot], artifacts: { svg },
         checks: [
           { name: 'a dimension was placed in the drawing', ok: annotations > 0, detail: `${annotations} drawing markups in the store` },
+          { name: 'dimension measures the 5 m room span', ok: dimensions.length === 1 && near(dimensions[0], 5, 0.25), detail: JSON.stringify(dimensions) },
           { name: 'the exported SVG carries the dimension', ok: added > 0 && numbers > 0, detail: `${added} more SVG characters than before, ${numbers} numeric text labels` },
           { name: 'a tag tool for elements (door, window, room tags)', ok: false, detail: tagTool ? 'tag control found, but no entity-bound tag placement/export oracle has passed' : `no tag control in toolbar: ${toolbar.join(', ')}` },
         ],

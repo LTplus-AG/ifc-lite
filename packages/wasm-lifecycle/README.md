@@ -32,6 +32,25 @@ the shared key used by the Rust panic hook and viewer error handling.
 Only the source location and timestamp belong in the stash. Panic messages can
 contain model-derived text and are not part of this forwarding contract.
 
+## Single-flight init
+
+`createLifetime({ start, release?, supersededError? })` owns the init of one
+long-lived resource (an engine handle, a platform bridge, a wasm module). Its
+`state` is `idle`, `initializing`, `ready`, `failed` or `disposed`, each
+carrying a generation.
+
+- Concurrent `init(...args)` calls join one attempt; `start(attempt, ...args)`
+  receives the arguments of the call that started it. Once `ready`, `init`
+  resolves with the cached `value`.
+- A failed attempt is forgotten, so the next `init()` retries.
+- `dispose()` bumps the generation and releases a ready value. An attempt
+  started before it is stale: its success rejects as superseded and its value
+  is released rather than cached, and its failure changes nothing, so it can
+  never clear or fail the attempt that replaced it. `attempt.isCurrent()` lets
+  `start` skip building once it is stale. The next `init()` rebuilds.
+- `reset()` releases a ready value (or forgets a failure) without touching an
+  attempt in flight.
+
 ## License
 
 MPL-2.0.

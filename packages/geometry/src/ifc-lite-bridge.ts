@@ -18,7 +18,7 @@ import { callExportLandXmlTerrain, type LandXmlTerrainExport, type LandXmlTerrai
 import type { GeometryDiagnostics } from './diagnostics.js';
 import type { ExtrusionDefinitions, SweptDiskDescriptions } from './analytic-descriptions.js';
 import { initMainThreadEngine } from './main-engine-init.js';
-import { BridgeInitGate } from './bridge-init-gate.js';
+import { createLifetime, type LifetimeAttempt } from '@ifc-lite/wasm-lifecycle';
 import {
   isWasmRuntimeTrap,
   notifyWasmRuntimeUnrecoverable,
@@ -60,8 +60,11 @@ type IfcAPIWithMerge = IfcAPI & {
 
 export class IfcLiteBridge {
   private ifcApi: IfcAPI | null = null;
-  /** Single-flight, generation-checked init (audit P6). */
-  private readonly gate = new BridgeInitGate();
+  /** Single-flight, generation-checked init (audit P6; contract on `createLifetime`). */
+  private readonly lifetime = createLifetime<void>({
+    start: (attempt) => this.startEngine(attempt),
+    supersededError: () => new Error('IfcLiteBridge.init() was superseded by dispose() before it finished'),
+  });
   /**
    * When true, the WASM mesh emitters drop `IfcBuildingElementPart`
    * meshes whose parent wall is sliceable (Revit-style multilayer
@@ -144,10 +147,10 @@ export class IfcLiteBridge {
    */
   init(): Promise<void> {
     // Concurrent callers share one attempt; one overtaken by dispose() rejects.
-    return this.gate.run((generation) => this.startEngine(generation));
+    return this.lifetime.init();
   }
 
-  private async startEngine(generation: number): Promise<void> {
+  private async startEngine(attempt: LifetimeAttempt): Promise<void> {
     try {
       // Initialize WASM module. In the browser/worker, wasm-bindgen resolves the
       // .wasm URL from import.meta.url and fetch()es it. Node's fetch() cannot load
@@ -187,9 +190,9 @@ export class IfcLiteBridge {
       // the N-worker pool in `geometry-parallel.ts`.
       log.debug('Geometry processing: single-threaded WASM (N-worker pool handles parallelism)');
 
-      // dispose() landed while the engine loaded: build no handle; the gate
+      // dispose() landed while the engine loaded: build no handle; the lifetime
       // rejects this attempt as superseded instead of resurrecting the bridge.
-      if (!this.gate.isCurrent(generation)) return;
+      if (!attempt.isCurrent()) return;
       this.ifcApi = new IfcAPI();
       // Re-apply the cached merge-layers flag so callers can call
       // `setMergeLayers(true)` BEFORE `init()` and still get the
@@ -206,7 +209,7 @@ export class IfcLiteBridge {
       });
       // A stale attempt (overtaken by dispose()) never built a handle; its
       // cleanup must not free or supersede the attempt that replaced it.
-      if (!this.gate.isCurrent(generation)) throw error;
+      if (!attempt.isCurrent()) throw error;
       // An `apply*` replay after `new IfcAPI()` can throw or trap: free the
       // handle built here (a nulled one no `dispose()` can reach would leak
       // for the life of the document). Best-effort and never throws, so it
@@ -232,7 +235,7 @@ export class IfcLiteBridge {
    * This does not reload wasm-bindgen's module singleton after a fatal WASM panic.
    */
   reset(): void {
-    this.gate.release();
+    this.lifetime.reset();
     this.ifcApi = null;
   }
 
@@ -250,7 +253,7 @@ export class IfcLiteBridge {
    * a later `init()` builds a fresh handle (audit P6).
    */
   dispose(): void {
-    this.gate.invalidate();
+    this.lifetime.dispose();
     // reset() even if free() throws, so the next init() rebuilds.
     try { this.ifcApi?.free(); } finally { this.reset(); }
   }
@@ -743,7 +746,7 @@ export class IfcLiteBridge {
    * Check if initialized
    */
   isInitialized(): boolean {
-    return this.gate.isReady();
+    return this.lifetime.state.kind === 'ready';
   }
 
   /**

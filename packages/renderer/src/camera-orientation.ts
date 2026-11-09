@@ -80,8 +80,10 @@ export class CameraOrientation {
       // Use up vector projection for azimuth (smooth and consistent)
       azimuth = (Math.atan2(-upX, -upZ) * 180 / Math.PI + 360) % 360;
 
-      // For bottom view, flip azimuth
-      if (elevation < -80 && upY < 0) {
+      // For bottom view, flip azimuth: looking up, screen-up points the
+      // same way the camera's horizontal offset does. `<= 0` takes the
+      // exact bottom preset too, whose `up` is horizontal (#9501).
+      if (elevation < -80 && upY <= 0) {
         azimuth = (azimuth + 180) % 360;
       }
     } else {
@@ -111,9 +113,10 @@ export class CameraOrientation {
    * position-based branch.
    *
    * @param azimuth Horizontal angle in degrees; normalised into [0, 360).
-   * @param elevation Vertical angle in degrees, 0 = horizon. Clamped to just
-   *   inside ±90° (the same `MIN_PHI` margin `orbit` uses) — the exact poles
-   *   collapse `cross(forward, up)` and flip the model.
+   * @param elevation Vertical angle in degrees, 0 = horizon. ±90° and beyond
+   *   is exactly straight down/up with the azimuth carried by a horizontal
+   *   `up` (#9501); anything short of that is clamped to the `MIN_PHI`
+   *   margin `orbit` uses.
    */
   setRotation(azimuth: number, elevation: number): void {
     // Angles are an input class of their own, and both of them reach the
@@ -150,6 +153,19 @@ export class CameraOrientation {
     this.animator.reset();
 
     const theta = ((((azimuth % 360) + 360) % 360) * Math.PI) / 180;
+
+    // Straight down or up (#9501): exactly on the pole, the way the top and
+    // bottom presets now sit, with the azimuth carried by a horizontal `up`.
+    // Clamping to `MIN_PHI` instead tilted an orthographic plan 0.6 degrees
+    // and drew the walls of every vertical member beside its section.
+    if (elevation >= 90 || elevation <= -90) {
+      const sign = elevation > 0 ? 1 : -1;
+      this.state.camera.position = { x: target.x, y: target.y + sign * distance, z: target.z };
+      this.state.camera.up = { x: -sign * Math.sin(theta), y: 0, z: -sign * Math.cos(theta) };
+      this.updateMatrices();
+      return;
+    }
+
     const poleMargin = CAMERA_CONSTANTS.MIN_PHI;
     const phi = Math.max(
       poleMargin,

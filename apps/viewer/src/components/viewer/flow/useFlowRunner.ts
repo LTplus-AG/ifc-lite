@@ -140,7 +140,7 @@ export function useFlowRunner(): { run: (inputs?: Record<string, unknown>, optio
       });
       const result = await runFlowInViewer({
         doc, bim, pin, cache, inputs: preparedInputs, signal: session.controller.signal, automation, tables: viewerTableAccess(useViewerStore),
-        openModel: createViewerOpenModel(ownedAddModel, (id) => useViewerStore.getState().models.has(id)),
+        openModel: createViewerOpenModel(ownedAddModel),
         ...(ai ? { ai: ai.service } : {}),
         ...(claimed ? { resume: resumeOutputs(claimed) } : {}),
       });

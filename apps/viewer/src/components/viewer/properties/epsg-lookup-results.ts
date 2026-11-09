@@ -104,7 +104,8 @@ function readRecentCodes(): string[] {
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
     return parsed.filter((value): value is string => typeof value === 'string').slice(0, MAX_RECENT_CODES);
-  } catch {
+  } catch (error) {
+    console.warn('[EPSG Lookup] Recent codes unavailable', error);
     return [];
   }
 }
@@ -114,8 +115,8 @@ export function writeRecentCode(code: string): void {
   try {
     const deduped = [code, ...readRecentCodes().filter(existing => existing !== code)].slice(0, MAX_RECENT_CODES);
     window.localStorage.setItem(RECENT_EPSG_STORAGE_KEY, JSON.stringify(deduped));
-  } catch {
-    // Ignore storage failures.
+  } catch (error) {
+    console.warn('[EPSG Lookup] Recent code could not be saved', error);
   }
 }
 

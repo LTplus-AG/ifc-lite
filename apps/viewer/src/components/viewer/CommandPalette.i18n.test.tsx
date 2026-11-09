@@ -87,6 +87,10 @@ const RESET = {
  */
 const NOT_RENDERED_IN_THIS_STATE: PaletteKey[] = [
   'commandPalette.category.recent',
+  // #8962: localized search-only aliases; command labels render separately.
+  'commandPalette.aliases.bulk',
+  'commandPalette.aliases.import',
+  'commandPalette.aliases.classes',
   // #8947: requires a pending extension export; exercised by runtime-refusal and exporter Activity cases.
   'commandPalette.extension.busy',
   // #8947: modified-IFC's disabled reason is now visible in the unloaded palette.

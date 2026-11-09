@@ -7,7 +7,7 @@ import type { StoreEditor } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { CopyShape } from './copy-shape.js';
 import { copyProductGraph, copyRefusal, createCopyContext, productStoreyOrigin, type CopyContext, type CopyProductResult, type CopyTransform } from './copy-product.js';
-import { openAssociationRelationBatch, type DuplicateInStoreOptions } from './duplicate.js';
+import { openTypeRelationBatch, type DuplicateInStoreOptions } from './duplicate.js';
 import { copiedProductWork, COPY_PRODUCT_WORK_LIMIT } from './copy-dependent-walk.js';
 import { readCopyAttachments, rebindCopiedAttachments, withUnattachedTops, type CopyUnattachedTop } from './copy-attachment.js';
 import { duplicateSourceStoreyId, type DuplicateSourceScope } from './resolve-source.js';
@@ -106,7 +106,7 @@ export function copyBatchInStore(
       try { duplicateSourceStoreyId(store, id, draft, sourceScope); } catch { /* reported by the copy */ }
     }
     const attachments = readCopyAttachments(ctx, copiedProductsInStore(ctx, sources.ids));
-    const flushAssociations = openAssociationRelationBatch(draft); // one write per shared relationship per batch
+    const flushTypeRelations = openTypeRelationBatch(draft); // one IfcRelDefinesByType write per type per batch
     const copies = transforms.flatMap((transform) => {
       const results = sources.ids.map((id) => {
         if (!options.duplicate) return copyProductGraph(ctx, id, transform, { shape: options.shape });
@@ -116,7 +116,7 @@ export function copyBatchInStore(
       });
       return withUnattachedTops(results, rebindCopiedAttachments(ctx, attachments, results).unattached);
     });
-    flushAssociations();
+    flushTypeRelations();
     return copies;
   });
 }

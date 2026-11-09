@@ -72,9 +72,7 @@ export interface SourceAssociation {
   relatingExpressIds?: readonly number[];
   /**
    * The existing rel's own id and its RelatedObjects when collected. An
-   * Property relationships extend RelatedObjects so copied occurrences can
-   * detach from a shared definition when edited. Type relationships also
-   * extend the original rather than being replayed:
+   * `IfcRelDefinesByType` is extended with the duplicate rather than replayed:
    * IFC gives a type at most one (`IfcTypeObject.Types SET [0:1]`), so a second
    * rel to the same type makes the file schema-invalid.
    */
@@ -266,14 +264,12 @@ export function duplicateInStore(
   //    references the source. Emits one fresh rel per association so
   //    the duplicate carries identical psets, qsets, material,
   //    classifications, documents, and type binding in the exported
-  //    STEP. Property and type relationships extend their RelatedObjects;
-  //    other associations get a fresh relationship for the duplicate.
+  //    STEP. Modifies no existing rel — each new rel has just the
+  //    duplicate in its RelatedObjects list.
   const associationRelIds: number[] = [];
   if (source.associations && source.associations.length > 0) {
     for (const assoc of source.associations) {
-      // Keep shared property definitions on one relationship. Rebinding a
-      // copied occurrence can then detach just that member on export (#9296).
-      if (assoc.relId !== undefined && ['IFCRELDEFINESBYTYPE', 'IFCRELDEFINESBYPROPERTIES'].includes(assoc.relType.toUpperCase())) {
+      if (assoc.relId !== undefined && assoc.relType.toUpperCase() === 'IFCRELDEFINESBYTYPE') {
         extendRelatedObjects(editor, assoc.relId, assoc.relatedIds ?? [], duplicate.expressId);
         associationRelIds.push(assoc.relId);
         continue;
@@ -303,17 +299,17 @@ export function duplicateInStore(
 /** RelatedObjects, IfcRelDefines* / IfcRelAssociates* slot 4. */
 const RELATED_OBJECTS = 4;
 
-/** Property and type relationships extended by the copies of one open batch, keyed by the batch's draft view. */
+/** Type relationships extended by the copies of one open batch, keyed by the batch's draft view. */
 const openBatches = new WeakMap<object, Map<number, { collected: readonly number[]; added: number[] }>>();
 
 /**
- * Batch the shared relationship extensions of many duplicates written through
+ * Batch the type-relationship extensions of many duplicates written through
  * `editor`'s view: each copy only records its id, and the returned flush writes
- * every affected `IfcRelDefinesByType` / `IfcRelDefinesByProperties` once. Without it, copy N rewrites the
+ * every affected `IfcRelDefinesByType` once. Without it, copy N rewrites the
  * whole RelatedObjects list again, so an array of N copies journals O(N²)
  * references. Call the flush before the atomic edit that opened it returns.
  */
-export function openAssociationRelationBatch(editor: StoreEditor): () => void {
+export function openTypeRelationBatch(editor: StoreEditor): () => void {
   const view = editor.getMutationView();
   const pending = new Map<number, { collected: readonly number[]; added: number[] }>();
   openBatches.set(view, pending);

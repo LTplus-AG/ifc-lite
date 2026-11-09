@@ -1,4 +1,5 @@
 ---
+"@ifc-lite/export": patch
 "@ifc-lite/create": patch
 ---
 

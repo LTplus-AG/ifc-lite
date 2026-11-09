@@ -24,7 +24,7 @@ it('a newer schedule supersedes the pending one, so an earlier run cannot reset 
   await advance(20);
   act(() => handle.schedule(() => fired.push('second'), 40));
   await advance(30);
-  assert.deepEqual(fired, [], 'the first run\'s timer was dropped at its own deadline');
+  assert.deepEqual([...fired], [], 'the first run\'s timer was dropped at its own deadline');
   await advance(30);
   assert.deepEqual(fired, ['second']);
 });
@@ -35,10 +35,10 @@ it('cancel (a new run starting) and unmount both drop the pending callback (B1)'
   act(() => handle.schedule(() => fired.push('cancelled'), 20));
   act(() => handle.cancel());
   await advance(50);
-  assert.deepEqual(fired, [], 'cancel alone drops the pending callback');
+  assert.deepEqual([...fired], [], 'cancel alone drops the pending callback');
 
   act(() => handle.schedule(() => fired.push('unmounted'), 20));
   cleanup();
   await advance(50);
-  assert.deepEqual(fired, [], 'unmount drops the pending callback');
+  assert.deepEqual([...fired], [], 'unmount drops the pending callback');
 });

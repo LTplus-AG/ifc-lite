@@ -67,11 +67,17 @@ for (const timing of ['open', 'pending'] as const) test(`file imports preserve t
   assert.equal(reviewText().includes('second'), false);
   assert.equal(calls, 1);
 });
-test('a dropped file owns review ahead of a late authored preview', async t => {
+for (const stage of ['preview', 'installed'] as const) test(`a dropped file owns review ahead of late authored ${stage}`, async t => {
   const host = hostFixture(), preview = host.previewBundle.bind(host), authored = bundle('authored');
-  let release!: () => void, started = false;
+  let release!: () => void, started = false, holdInstalled = false;
   const held = new Promise<void>(resolve => { release = resolve; });
-  t.mock.method(host, 'previewBundle', async (bytes: Uint8Array) => { if (bytes === authored) { started = true; await held; } return preview(bytes); });
+  t.mock.method(host, 'previewBundle', async (bytes: Uint8Array) => {
+    if (bytes === authored && stage === 'preview') { started = true; await held; }
+    const result = await preview(bytes);
+    if (bytes === authored && stage === 'installed') holdInstalled = true;
+    return result;
+  });
+  t.mock.method(host, 'listInstalled', async () => { if (holdInstalled) { holdInstalled = false; started = true; await held; } return []; });
   useViewerStore.getState().setPendingAuthoredBundle(authored);
   const ui = render(<ExtensionHostContext.Provider value={host}><ExtensionsPanel /></ExtensionHostContext.Provider>);
   await until(() => started);
@@ -99,4 +105,45 @@ test('closing promotion during packaging cannot open a late review', async t => 
   assert.equal(!!document.querySelector('[role=dialog]'), false);
   click(button('Reopen'));
   assert.ok(reviewText().includes('Review & install'), 'reopening retains the promotion form rather than a stale capability review');
+});
+
+test('replacing a queued authored source preserves the new bundle while the old preview settles', async t => {
+  const host = hostFixture(), preview = host.previewBundle.bind(host), first = bundle('old'), second = bundle('new');
+  let release!: () => void, started = false, oldSettled = false;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  t.mock.method(host, 'previewBundle', async (bytes: Uint8Array) => { if (bytes === first) { started = true; await held; } const result = await preview(bytes); if (bytes === first) oldSettled = true; return result; });
+  useViewerStore.getState().setPendingAuthoredBundle(first);
+  render(<ExtensionHostContext.Provider value={host}><ExtensionsPanel /></ExtensionHostContext.Provider>);
+  await until(() => started);
+  act(() => useViewerStore.getState().setPendingAuthoredBundle(second));
+  release(); await until(() => oldSettled); await advance(20); await until(() => reviewText().includes('com.example.new'));
+  assert.equal(reviewText().includes('com.example.old'), false);
+});
+
+test('a late install result cannot close a reopened promotion form', async t => {
+  const host = hostFixture();
+  let release!: () => void, started = false, finished = false, closes = 0;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  t.mock.method(host, 'installFromBytes', async (bytes: Uint8Array, grants: string[]): Promise<Awaited<ReturnType<ExtensionHostService['installFromBytes']>>> => {
+    started = true; await held;
+    try {
+      const preview = await host.previewBundle(bytes);
+      if (!preview.ok) throw new Error('Invalid test bundle');
+      const { id, version, bundleHash } = preview.value;
+      return { id, version, ok: true, errors: [], bundle: preview.value.bundle,
+        record: { id, version, bundleHash, enabled: true, grantedCapabilities: grants, installedAt: '2026-11-09T00:00:00Z', source: 'local' } };
+    } finally { finished = true; }
+  });
+  function Harness() {
+    const [open, setOpen] = useState(true);
+    return <><button onClick={() => setOpen(false)}>External close</button><button onClick={() => setOpen(true)}>Reopen</button>
+      <PromoteToolDialog open={open} initialName="Install owner" source="const x = 1;" onClose={() => { closes++; setOpen(false); }} /></>;
+  }
+  render(<ExtensionHostContext.Provider value={host}><Harness /></ExtensionHostContext.Provider>);
+  click(button('Review & install')); await until(() => !!document.querySelector('[role=dialog]') && reviewText().includes('Install com.local.tools'));
+  click(button('Install')); await until(() => started);
+  click(button('External close')); click(button('Reopen'));
+  release(); await until(() => finished); await advance(20);
+  assert.equal(closes, 0);
+  assert.ok(reviewText().includes('Review & install'));
 });

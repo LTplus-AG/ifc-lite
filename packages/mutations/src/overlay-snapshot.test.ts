@@ -154,5 +154,6 @@ it.each([
   const annotated = Object.assign(view.getMutations()[0], { portableNote });
   const copy = new MutablePropertyView(null, 'm');
   restoreOverlay(copy, snapshotOverlay(view, options), options);
-  expect((dto(copy).journal[0] as typeof annotated).portableNote).toEqual(portableNote);
+  expect((copy.getMutations()[0] as typeof annotated).portableNote).toEqual(portableNote);
+  expect(dto(copy).journal).toEqual(dto(view).journal);
 });

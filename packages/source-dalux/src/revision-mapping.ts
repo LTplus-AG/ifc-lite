@@ -16,7 +16,7 @@ export function commitMessage(commit: DaluxModelCommit): string {
 
 export function toSourceRevision(commit: DaluxModelCommit): SourceRevision {
   const message = commitMessage(commit);
-  const version = nonEmptyString(commit.file.version);
+  const version = nonEmptyString(commit.file.version) ?? (commit.revisionNumber !== undefined ? String(commit.revisionNumber) : undefined);
   const number = version ? `Rev ${version}` : undefined;
   return {
     id: commit.revisionId,

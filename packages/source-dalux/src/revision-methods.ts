@@ -29,7 +29,7 @@ export async function listVersionSetRevisions(
   if (!revisionId) throw new Error('Dalux did not supply an ID for the current file revision.');
   const commits = index.models.get(ref.fileId)?.commits ?? [];
   const pinnedCurrent = commits.find((commit) => commit.revisionId === revisionId);
-  const current: DaluxModelCommit = { revisionId, file, fileAreaId, versionSets: pinnedCurrent?.versionSets ?? [], sweepIndex: pinnedCurrent?.sweepIndex ?? -1 };
+  const current: DaluxModelCommit = { ...pinnedCurrent, revisionId, file, fileAreaId, versionSets: pinnedCurrent?.versionSets ?? [], sweepIndex: pinnedCurrent?.sweepIndex ?? -1 };
   // The current file is authoritative even when no coordination set pins it.
   return { items: [current, ...commits.filter((commit) => commit.revisionId !== revisionId)].map(toSourceRevision) };
 }

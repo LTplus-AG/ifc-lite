@@ -138,9 +138,16 @@ describe('revision history completeness (#8648)', () => {
   });
 
   it('shows an unavailable date instead of epoch and omits raw author IDs', async () => {
-    const base = WORLD.projects[0];
-    const world: DaluxMockWorld = { projects: [{ ...base, versionSets: [], fileAreas: [{ ...base.fileAreas[0], files: [{ ...base.fileAreas[0].files[0], lastModified: undefined, uploaded: undefined, uploadedByUserId: 'raw-user-id' }] }] }] };
-    const { provider, ctx } = setup(world);
+    invalidateCommitIndex();
+    const inner = createDaluxApiMock({ projects: [{ ...WORLD.projects[0], versionSets: [] }] });
+    const provider = new DaluxBuildProvider();
+    const ctx = createDaluxMockContext(async (input, init) => {
+      const url = typeof input === 'object' && 'url' in input ? input.url : String(input);
+      if (url.includes('/5.0/projects/') && url.endsWith('/files/file-structural')) {
+        return new Response(JSON.stringify({ data: { fileId: 'file-structural', fileName: 'structural.ifc', fileAreaId: 'fa-models', fileRevisionId: 'rev-3', uploadedByUserId: 'raw-user-id' } }), { headers: { 'Content-Type': 'application/json' } });
+      }
+      return inner(input, init);
+    });
     const current = (await provider.listRevisions!(ctx, REF)).items[0];
     expect(current.createdAt).toBe('');
     expect(current.createdBy).toBeUndefined();

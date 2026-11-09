@@ -319,3 +319,35 @@ test('Revit assembly Duplicate carries both beams and removes the full subgraph 
     finally { await rm(cacheDir, { recursive: true, force: true }); }
   }
 });
+
+// The menu used to render inline at z-50 ahead of the z-50 ribbon in DOM order,
+// so a menu shifted up against the top edge had its header painted over by the
+// ribbon, and a menu taller than the window ran past the bottom with no scroll.
+test('entity menu stays above the ribbon and inside a short window', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 420 });
+  await page.goto('/?model=/samples/building-architecture.ifc');
+  await page.waitForFunction(() => {
+    const state = globalThis.__ifc_lite_viewer_store__?.getState();
+    return state?.models.size === 1 && !state.loading &&
+      [...state.models.values()].every((model) => model.ifcDataStore && (model.geometryResult?.meshes.length ?? 0) > 0);
+  }, undefined, { timeout: 180_000 });
+  await openWallMenu(page);
+  const menu = page.getByRole('menu', { name: 'Entity actions' });
+  await expect(menu).toBeVisible();
+  const fit = await menu.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    const header = element.firstElementChild!.getBoundingClientRect();
+    const hit = document.elementFromPoint(header.left + header.width / 2, header.top + header.height / 2);
+    return {
+      headerOnTop: hit != null && element.contains(hit),
+      top: rect.top, bottom: rect.bottom, innerHeight,
+      scrollable: element.scrollHeight <= element.clientHeight || getComputedStyle(element).overflowY === 'auto',
+    };
+  });
+  expect(fit.headerOnTop, 'nothing paints over the menu header').toBe(true);
+  expect(fit.top).toBeGreaterThanOrEqual(0);
+  expect(fit.bottom).toBeLessThanOrEqual(fit.innerHeight);
+  expect(fit.scrollable, 'rows that do not fit scroll instead of being cut off').toBe(true);
+  await menu.getByRole('menuitem', { name: 'Export anonymized…', exact: true }).scrollIntoViewIfNeeded();
+  await expect(menu.getByRole('menuitem', { name: 'Export anonymized…', exact: true })).toBeInViewport();
+});

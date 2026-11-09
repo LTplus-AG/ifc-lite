@@ -65,9 +65,17 @@ function unmountAll(): void {
 }
 after(unmountAll);
 
+/** The Radix menu portals to `document.body` (and its submenu to a sibling
+ *  portal), so menu rows live outside the render container. Scope lookups to
+ *  the open menus so a ribbon button with the same label never matches. */
+function menuButtons(): HTMLButtonElement[] {
+  return [...document.querySelectorAll<HTMLElement>('[role="menu"]')]
+    .flatMap((menu) => [...menu.querySelectorAll<HTMLButtonElement>('button')]);
+}
+
 /** The item whose label span reads `label` (the shortcut hint is a sibling span). */
-function menuItem(container: HTMLElement, label: string): HTMLButtonElement {
-  const btn = [...container.querySelectorAll('button')].find(
+function menuItem(label: string): HTMLButtonElement {
+  const btn = menuButtons().find(
     (b) => b.querySelector('span')?.textContent?.trim() === label,
   );
   assert.ok(btn, `no menu item labelled "${label}"`);
@@ -97,9 +105,9 @@ afterEach(() => mock.timers.reset());
 describe('EntityContextMenu — Frame selection (#5597)', () => {
   it('frames the right-clicked entity via frameSelection, not fitAll', () => {
     act(() => { useViewerStore.getState().openContextMenu(globalId(FIXTURE_WALL_A), 10, 10); });
-    const container = render();
+    render();
 
-    act(() => { menuItem(container, 'Frame selection').click(); });
+    act(() => { menuItem('Frame selection').click(); });
     mock.timers.tick(50);
 
     assert.equal(frameSelection.mock.callCount(), 1, 'frameSelection must run once');
@@ -112,7 +120,7 @@ describe('EntityContextMenu — Frame selection (#5597)', () => {
 
   it('shows only the keyboard hints of actions with matching shortcuts (#5855)', () => {
     act(() => { useViewerStore.getState().openContextMenu(globalId(FIXTURE_WALL_A), 10, 10); });
-    const container = render();
+    render();
     const hints: Array<[string, string]> = [
       ['Frame selection', 'F'],
       // Every chord that hides, from the keyboard command table (#5836).
@@ -122,11 +130,11 @@ describe('EntityContextMenu — Frame selection (#5597)', () => {
       ['Save Collection View', 'B'],
     ];
     for (const [label, key] of hints) {
-      const hint = menuItem(container, label).querySelectorAll('span')[1];
+      const hint = menuItem(label).querySelectorAll('span')[1];
       assert.equal(hint?.textContent, key, `"${label}" shortcut hint`);
     }
     assert.equal(
-      menuItem(container, 'Set Collection').querySelectorAll('span')[1],
+      menuItem('Set Collection').querySelectorAll('span')[1],
       undefined,
       'Set Collection has no key binding, so its menu row does not claim one',
     );
@@ -134,8 +142,8 @@ describe('EntityContextMenu — Frame selection (#5597)', () => {
 
   it('shows the A hint on the canvas menu\'s "Show all"', () => {
     act(() => { useViewerStore.getState().openContextMenu(null, 10, 10); });
-    const container = render();
-    assert.equal(menuItem(container, 'Show all').querySelectorAll('span')[1]?.textContent, 'A');
+    render();
+    assert.equal(menuItem('Show all').querySelectorAll('span')[1]?.textContent, 'A');
   });
 });
 
@@ -150,8 +158,8 @@ describe('EntityContextMenu — Duplicate key hint follows the platform (#5836)'
     // Duplicate needs an editable model: a mutation view makes `canEdit` true.
     useViewerStore.getState().registerMutationView('m1', new MutablePropertyView(null, 'm1'));
     act(() => { useViewerStore.getState().openContextMenu(globalId(FIXTURE_WALL_A), 10, 10); });
-    const container = render();
-    const row = [...container.querySelectorAll('button')].find((b) => b.querySelector('span')?.textContent === 'Duplicate');
+    render();
+    const row = menuButtons().find((b) => b.querySelector('span')?.textContent === 'Duplicate');
     assert.ok(row, 'the Duplicate row rendered');
     return row.querySelectorAll('span')[1]?.textContent;
   }
@@ -167,19 +175,18 @@ describe('EntityContextMenu — Duplicate key hint follows the platform (#5836)'
 
 it('exposes menu and menuitem roles when the entity menu opens (#5819)', () => {
   act(() => { useViewerStore.getState().openContextMenu(globalId(FIXTURE_WALL_A), 10, 10); });
-  const container = render();
-  const menu = container.querySelector('[role="menu"]');
+  render();
+  const menu = document.querySelector('[role="menu"]');
   assert.ok(menu, 'the open context menu has a menu role');
-  assert.equal(menuItem(container, 'Frame selection').getAttribute('role'), 'menuitem');
+  assert.equal(menuItem('Frame selection').getAttribute('role'), 'menuitem');
 });
 
 /** #5878: inspect every actual menu action, including rows without a registry marker. */
 function assertContextActionsRegistered(
-  container: HTMLElement,
   type = 'IfcWall',
   contributedIds: ReadonlySet<string> = new Set(),
 ): void {
-  const menu = container.querySelector<HTMLElement>('[role="menu"]');
+  const menu = document.querySelector<HTMLElement>('[role="menu"]');
   assert.ok(menu, 'the context menu is mounted');
   const actions = [...menu.querySelectorAll<HTMLElement>('[role="menuitem"], [role="menuitemcheckbox"]')];
   assert.ok(actions.length > 0, 'the guard examines visible menu actions');
@@ -218,27 +225,27 @@ describe('context command ownership guard (#5878)', () => {
     useViewerStore.setState({ editEnabled: true });
     useViewerStore.getState().registerMutationView('m1', new MutablePropertyView(null, 'm1'));
     act(() => { useViewerStore.getState().openContextMenu(globalId(FIXTURE_WALL_A), 10, 10); });
-    const container = render();
-    assertContextActionsRegistered(container);
-    assert.ok(container.querySelector('[data-command-id="context:duplicate"]'));
-    assert.equal(container.querySelectorAll('[data-command-disclosure="context:duplicate-direction"]').length, 1);
-    const disclosure = container.querySelector<HTMLElement>('[data-command-disclosure="context:duplicate-direction"]');
+    render();
+    assertContextActionsRegistered();
+    assert.ok(document.querySelector('[data-command-id="context:duplicate"]'));
+    assert.equal(document.querySelectorAll('[data-command-disclosure="context:duplicate-direction"]').length, 1);
+    const disclosure = document.querySelector<HTMLElement>('[data-command-disclosure="context:duplicate-direction"]');
     assert.ok(disclosure);
     act(() => disclosure.focus());
     press(disclosure, 'ArrowRight');
     act(() => mock.timers.tick(5));
-    const firstDirection = container.querySelector<HTMLElement>('[data-command-id="context:duplicate-x-plus"]');
+    const firstDirection = document.querySelector<HTMLElement>('[data-command-id="context:duplicate-x-plus"]');
     assert.ok(firstDirection, 'keyboard navigation reveals the first registered duplicate direction');
     assert.equal(firstDirection.getAttribute('aria-label'), resolveEnglish('entityContextMenu.duplicateXPlus'));
-    assertContextActionsRegistered(container);
+    assertContextActionsRegistered();
   });
 
   it('covers the Edit-off entity menu and its disabled mutation controls', () => {
     useViewerStore.setState({ editEnabled: false, mutationViews: new Map() });
     act(() => { useViewerStore.getState().openContextMenu(globalId(FIXTURE_WALL_A), 10, 10); });
-    const container = render();
-    assertContextActionsRegistered(container);
-    const duplicate = container.querySelector<HTMLButtonElement>('[data-command-id="context:duplicate"]');
+    render();
+    assertContextActionsRegistered();
+    const duplicate = document.querySelector<HTMLButtonElement>('[data-command-id="context:duplicate"]');
     assert.ok(duplicate?.disabled, 'the registered Duplicate action explains its Edit-off denial');
   });
 
@@ -254,9 +261,9 @@ describe('context command ownership guard (#5878)', () => {
       payload: { slot: 'contextMenu.canvas', command: 'inspect', title: 'Inspect scene' },
     }]);
     act(() => { useViewerStore.getState().openContextMenu(null, 10, 10); });
-    const container = render(host);
-    assertContextActionsRegistered(container, 'IfcWall', new Set(['ext.guard:inspect']));
-    assert.equal(container.querySelector('[data-command-id="vis:show"]')?.getAttribute('aria-label'), 'Show all');
-    assert.equal(container.querySelector('[data-extension-command-id="ext.guard:inspect"]')?.getAttribute('aria-label'), 'Inspect scene');
+    render(host);
+    assertContextActionsRegistered('IfcWall', new Set(['ext.guard:inspect']));
+    assert.equal(document.querySelector('[data-command-id="vis:show"]')?.getAttribute('aria-label'), 'Show all');
+    assert.equal(document.querySelector('[data-extension-command-id="ext.guard:inspect"]')?.getAttribute('aria-label'), 'Inspect scene');
   });
 });

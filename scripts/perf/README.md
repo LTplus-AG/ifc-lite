@@ -37,6 +37,7 @@ the welcome card measured about 20 ms slower unthrottled. So check the eager fil
 not only the byte total, and measure boot with each build in both A/B positions: on a
 shared host, position alone moved the result by about 15 ms. A group that claimed every
 QuickJS module also failed, because the one eager module in it made the whole group eager.
+
 ## Work-budget refusal diagnostics (#9268)
 
 **Retained: detailed refusals behind cold error carriers.** Adding demand and
@@ -55,6 +56,10 @@ Lesson: refusal-only reporting can still affect successful work through error
 layout. Shrinking an entire Result can also change its optimized callers;
 contain the cold payload while preserving the common carrier, then check the
 compiled pipeline. The logical attempt Result has a pointer-size invariant.
+Type-product attribution fits inside the existing owned type-map root slot,
+with size/alignment assertions, rather than adding an owner field to every
+mapping controller. A persistent dedup set and capped details run only on
+refusal; retained transactions return their refusal without a second unread log.
 
 ## Presentation-layer membership follows the selected shape (#9273)
 

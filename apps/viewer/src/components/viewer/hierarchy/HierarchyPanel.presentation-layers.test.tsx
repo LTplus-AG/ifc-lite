@@ -11,7 +11,7 @@ import { afterEach, describe, it } from 'node:test';
 import { act } from 'react';
 import { IfcParser } from '@ifc-lite/parser';
 import type { GeometryResult } from '@ifc-lite/geometry';
-import { cleanup, click, render, type, waitFor } from '@/test/render.js';
+import { cleanup, click, press, render, type, waitFor } from '@/test/render.js';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { SourceHostProvider } from '@/services/sources/SourceHostProvider.js';
 import { useViewerStore, type FederatedModel } from '@/store';
@@ -86,6 +86,18 @@ function button(scope: ParentNode, label: string): HTMLButtonElement {
   const found = [...scope.querySelectorAll('button')].find(b => b.getAttribute('aria-label') === label);
   assert.ok(found, `button ${label} exists`);
   return found;
+}
+
+async function chooseLayerGrouping(container: HTMLElement, mode: 'none' | 'class' | 'classification') {
+  const trigger = button(container, 'Group layer elements');
+  press(trigger, 'Enter');
+  const label = { none: 'None', class: 'Class', classification: 'Classification' }[mode];
+  await waitFor(() => [...document.querySelectorAll('[role="option"]')]
+    .some(option => option.textContent === label), 'the grouping options are accessible');
+  const option = [...document.querySelectorAll('[role="option"]')].find(option => option.textContent === label);
+  assert.ok(option);
+  press(option, 'Enter');
+  await waitFor(() => trigger.getAttribute('aria-expanded') === 'false', 'grouping selection closes the list');
 }
 
 function layerRows(container: HTMLElement) {
@@ -331,10 +343,8 @@ ENDSEC;\nEND-ISO`);
     mixed.ifcDataStore = await new IfcParser().parseColumnar(new TextEncoder().encode(content).buffer);
     mixed.geometryResult = geometry([7, 8, 9]);
     const container = await mount(mixed);
-    const control = container.querySelector<HTMLSelectElement>('select[aria-label="Group layer elements"]');
-    assert.ok(control);
-    assert.equal(control.value, 'none', 'every new panel starts with the unchanged flat mode');
-    act(() => { control.value = mode; control.dispatchEvent(new Event('change', { bubbles: true })); });
+    assert.match(button(container, 'Group layer elements').textContent ?? '', /^None/, 'new panels start flat');
+    await chooseLayerGrouping(container, mode);
     click(button(layerRows(container)[0], 'Expand Walls'));
     const name = mode === 'class' ? 'IfcWall' : mode === 'classification' ? 'Uniclass: EF_25' : 'Layer wall';
     const row = [...container.querySelectorAll<HTMLElement>('[role="treeitem"]')]
@@ -364,9 +374,8 @@ for (const mode of ['class', 'classification'] as const) {
       ...useViewerStore.getState().typeVisibility, spaces: false,
     } }));
     const container = await mount(await model(`layer-space-${mode}`, false, true));
-    const control = container.querySelector<HTMLSelectElement>('select[aria-label="Group layer elements"]');
-    assert.ok(control);
-    act(() => { control.value = mode; control.dispatchEvent(new Event('change', { bubbles: true })); });
+    assert.match(button(container, 'Group layer elements').textContent ?? '', /^None/, 'new panels start flat');
+    await chooseLayerGrouping(container, mode);
     click(button(layerRows(container)[0], 'Expand Walls'));
     const name = mode === 'class' ? 'IfcSpace' : 'Unclassified';
     const row = [...container.querySelectorAll<HTMLElement>('[role="treeitem"]')]
@@ -385,9 +394,8 @@ for (const [ifcType, visibilityKey] of [['IfcSpace', 'spaces'], ['IfcSpatialZone
         ...useViewerStore.getState().typeVisibility, [visibilityKey]: false,
       } }));
       const container = await mount(await model(`layer-space-show-${mode}`, false, ifcType === 'IfcSpace' ? true : 'IfcSpatialZone'));
-      const control = container.querySelector<HTMLSelectElement>('select[aria-label="Group layer elements"]');
-      assert.ok(control);
-      act(() => { control.value = mode; control.dispatchEvent(new Event('change', { bubbles: true })); });
+      assert.match(button(container, 'Group layer elements').textContent ?? '', /^None/, 'new panels start flat');
+      await chooseLayerGrouping(container, mode);
       if (mode !== 'none') click(button(layerRows(container)[0], 'Expand Walls'));
       const name = mode === 'class' ? ifcType : mode === 'classification' ? 'Unclassified' : 'Walls';
       const row = [...container.querySelectorAll<HTMLElement>('[role="treeitem"]')]
@@ -410,9 +418,8 @@ for (const mode of ['class', 'classification'] as const) {
       ...useViewerStore.getState().typeVisibility, spatialZones: false,
     } }));
     const container = await mount(await model(`layer-zone-${mode}`, false, 'IfcSpatialZone'));
-    const control = container.querySelector<HTMLSelectElement>('select[aria-label="Group layer elements"]');
-    assert.ok(control);
-    act(() => { control.value = mode; control.dispatchEvent(new Event('change', { bubbles: true })); });
+    assert.match(button(container, 'Group layer elements').textContent ?? '', /^None/, 'new panels start flat');
+    await chooseLayerGrouping(container, mode);
     click(button(layerRows(container)[0], 'Expand Walls'));
     const name = mode === 'class' ? 'IfcSpatialZone' : 'Unclassified';
     const row = [...container.querySelectorAll<HTMLElement>('[role="treeitem"]')].find(row => row.textContent?.includes(name));
@@ -442,9 +449,8 @@ it('#9383 default layer Show keeps unrelated spaces behind the disabled class ga
 for (const mode of ['none', 'class', 'classification'] as const) {
   it(`#9383 ${mode} product Isolate does not enable the global space gate`, async () => {
     const container = await mount(await model(`product-isolate-${mode}`, false, true));
-    const control = container.querySelector<HTMLSelectElement>('select[aria-label="Group layer elements"]');
-    assert.ok(control);
-    act(() => { control.value = mode; control.dispatchEvent(new Event('change', { bubbles: true })); });
+    assert.match(button(container, 'Group layer elements').textContent ?? '', /^None/, 'new panels start flat');
+    await chooseLayerGrouping(container, mode);
     click(button(layerRows(container)[0], 'Expand Walls'));
     if (mode !== 'none') {
       const name = mode === 'class' ? 'IfcSpace' : 'Unclassified';

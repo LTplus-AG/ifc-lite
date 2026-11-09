@@ -3,20 +3,25 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { useTranslation } from '@/i18n';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import type { LayerGrouping } from './presentationLayerGroups';
 
 export function LayerGroupingControl({ value, onChange }: {
   value: LayerGrouping; onChange: (value: LayerGrouping) => void;
 }) {
   const { t } = useTranslation();
-  return <select aria-label={t('hierarchy.layerGrouping.label')} value={value}
-    className="h-6 max-w-36 bg-background text-xs"
-    onChange={event => {
-      const next = event.target.value;
+  return <Select value={value}
+    onValueChange={next => {
       if (next === 'none' || next === 'class' || next === 'classification') onChange(next);
     }}>
-    <option value="none">{t('hierarchy.layerGrouping.none')}</option>
-    <option value="class">{t('hierarchy.layerGrouping.class')}</option>
-    <option value="classification">{t('hierarchy.layerGrouping.classification')}</option>
-  </select>;
+    <SelectTrigger aria-label={t('hierarchy.layerGrouping.label')}
+      className="h-6 w-auto max-w-36 gap-1 bg-background px-1.5 py-0 text-xs">
+      <SelectValue />
+    </SelectTrigger>
+    <SelectContent>
+      <SelectItem value="none">{t('hierarchy.layerGrouping.none')}</SelectItem>
+      <SelectItem value="class">{t('hierarchy.layerGrouping.class')}</SelectItem>
+      <SelectItem value="classification">{t('hierarchy.layerGrouping.classification')}</SelectItem>
+    </SelectContent>
+  </Select>;
 }

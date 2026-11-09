@@ -42,6 +42,7 @@ import { useDuplicateShortcut } from './useDuplicateShortcut';
 import { HoverTooltip } from './HoverTooltip';
 import { BottomStrip } from './BottomStrip';
 import { loadBottomStripOrientation, persistBottomStripOrientation } from '@/lib/panels/bottom-strip-persistence';
+import { useModelHierarchyWidth } from './model/useModelHierarchyWidth';
 import { LEFT_PANEL_DEFAULT_SIZE } from '@/store/layoutReset';
 
 /** Hierarchy's minimum width, % of the main row. */
@@ -234,6 +235,7 @@ export function ViewerLayout() {
       }
     }
   }, [leftPanelCollapsed, emptyFold]);
+  const modeling = useModelHierarchyWidth(leftPanelRef);
   const layoutResetEpoch = useViewerStore((s) => s.layoutResetEpoch); // "Reset layout" (#5854) restores the pane width
   useEffect(() => { if (layoutResetEpoch > 0) leftPanelRef.current?.resize(`${LEFT_PANEL_DEFAULT_SIZE}%`); }, [layoutResetEpoch]);
 
@@ -303,7 +305,7 @@ export function ViewerLayout() {
                   {/* Left Panel - Hierarchy */}
                   <Panel
                     id="left-panel"
-                    defaultSize={LEFT_PANEL_DEFAULT_SIZE}
+                    defaultSize={modeling ? 18 : LEFT_PANEL_DEFAULT_SIZE}
                     minSize={LEFT_PANEL_MIN_SIZE}
                     collapsible
                     collapsedSize={0}
@@ -327,7 +329,7 @@ export function ViewerLayout() {
                   <PanelResizeHandle className="shell-splitter-v" />
 
                   {/* Center - Viewport */}
-                  <Panel id="viewport-panel" defaultSize={100 - LEFT_PANEL_DEFAULT_SIZE} minSize={30}>
+                  <Panel id="viewport-panel" defaultSize={100 - (modeling ? 18 : LEFT_PANEL_DEFAULT_SIZE)} minSize={30}>
                     {/* data-floating-snap-bounds: edge-docked floating panels
                         (#1201) snap to THIS region, not the whole window, so a
                         dock never hides under the toolbar (its own close control

@@ -91,12 +91,12 @@ describe('SnapHud in the command scene (#6232 WP3)', () => {
     assert.equal(g.getAttribute('transform'), 'translate(400 0)');
   });
 
-  it('shows nothing when the cursor snapped to nothing', () => {
+  it('shows the increment when no geometric target is nearby', () => {
     routeCommandPointer(fakeCtx(), 'down', 1000, -1000);
-    assert.equal(getCommandRuntime().snap?.winner, null);
+    assert.equal(getCommandRuntime().snap?.winner?.kind, 'grid');
     const { container, flush } = renderScene(<CommandScene />);
     flush();
-    assert.equal(glyphKind(container), null);
+    assert.equal(glyphKind(container), 'grid');
   });
 
   it('marks a point aimed through to the workplane with its own glyph and a tag (#9201)', () => {

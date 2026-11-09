@@ -72,6 +72,13 @@ describe("copyProductInStore shape: 'own' (#8447)", () => {
     expect(editOwnershipRefusal(store, view, [ownSolid], new Set([own.copyId]))).toBeNull();
   });
 
+  it('refuses a cyclic shape atomically instead of keeping a reference to the original (#8447)', () => {
+    editor.setPositionalAttribute(1260, 0, '#1260');
+    const before = exported();
+    expect(() => copyProductInStore(createCopyContext(store, editor), WALL, {}, { shape: 'own' })).toThrow(/cyclic shape/);
+    expect(exported()).toBe(before);
+  });
+
   it('keeps sharing by default', () => {
     const { copyId } = copyProductInStore(createCopyContext(store, editor), WALL, { offset: [0, 3, 0] });
     expect(asRef(attr(copyId, 6))).toBe(WALL_SHAPE);
@@ -124,35 +131,49 @@ describe("copyProductInStore shape: 'own' (#8447)", () => {
     editor = new StoreEditor(store, view);
     editor.setPositionalAttribute(WALL, 6, `#${first + n + 2}`);
     const ctx = createCopyContext(store, editor);
+    const before = exported();
     expect(() => copyProductInStore(ctx, WALL, { offset: [0, 3, 0] }, { shape: 'own' })).toThrow(/too large to copy/);
+    expect(exported()).toBe(before);
     expect(asRef(attr(copyProductInStore(ctx, WALL, { offset: [0, 3, 0] }).copyId, 6))).toBe(first + n + 2);
   });
 });
 
 const WASM_PATH = fileURLToPath(new URL('../../../wasm/pkg/ifc-lite_bg.wasm', import.meta.url));
 describe.skipIf(!existsSync(WASM_PATH))("an own-shape copy meshes like its source (#8447; build WASM with pnpm build:wasm)", () => {
-  it('the copy has the same volume, cut by its windows', async () => {
+  it('resizing the own copy changes its mesh and leaves the source mesh unchanged', async () => {
     const { copyId } = copyProductInStore(createCopyContext(store, editor), WALL, { offset: [0, 3, 0] }, { shape: 'own' });
     const { IfcAPI, initSync } = await import('@ifc-lite/wasm');
     initSync({ module: readFileSync(WASM_PATH) });
-    const api = new IfcAPI();
-    const bytes = new TextEncoder().encode(exported());
-    api.setComputeGeometryHashes(1e-3);
-    const pre = api.buildPrePassOnce(bytes);
-    try {
-      const [x, y, z] = pre.rtcOffset ? Array.from(pre.rtcOffset as ArrayLike<number>) : [0, 0, 0];
-      const collection = api.processGeometryBatch(bytes, pre.jobs, pre.unitScale, x, y, z, pre.needsShift,
-        pre.voidKeys, pre.voidCounts, pre.voidValues, pre.styleIds, pre.styleColors);
+    const measure = () => {
+      const api = new IfcAPI();
       try {
-        const volumes = new Map<number, number>();
-        for (let i = 0; i < collection.geometryHashIds.length; i++) volumes.set(collection.geometryHashIds[i], collection.geometryVolumeValues[i]);
-        expect(volumes.get(WALL)!).toBeGreaterThan(0);
-        expect(volumes.get(copyId)).toBeCloseTo(volumes.get(WALL)!, 6);
+        const bytes = new TextEncoder().encode(exported());
+        api.setComputeGeometryHashes(1e-3);
+        const pre = api.buildPrePassOnce(bytes);
+        const [x, y, z] = pre.rtcOffset ? Array.from(pre.rtcOffset as ArrayLike<number>) : [0, 0, 0];
+        const collection = api.processGeometryBatch(bytes, pre.jobs, pre.unitScale, x, y, z, pre.needsShift,
+          pre.voidKeys, pre.voidCounts, pre.voidValues, pre.styleIds, pre.styleColors);
+        try {
+          const ids = collection.geometryHashIds;
+          const values = collection.geometryVolumeValues;
+          return new Map(Array.from(ids, (id, i) => [id, values[i]] as const));
+        } finally {
+          collection.free();
+        }
       } finally {
-        collection.free();
+        api.clearPrePassCache();
+        api.free();
       }
-    } finally {
-      api.clearPrePassCache();
-    }
+    };
+    const before = measure();
+    expect(before.get(WALL)!).toBeGreaterThan(0);
+    expect(before.get(copyId)).toBeCloseTo(before.get(WALL)!, 6);
+    const body = refs(attr(asRef(attr(copyId, 6))!, 2))[1]!;
+    const solid = asRef((attr(body, 3) as unknown[])[0])!;
+    editor.setPositionalAttribute(solid, 3, { real: 2.5 });
+    const after = measure();
+    expect(after.get(WALL)).toBeCloseTo(before.get(WALL)!, 6);
+    expect(after.get(copyId)!).toBeGreaterThan(0);
+    expect(after.get(copyId)!).toBeLessThan(before.get(copyId)!);
   });
 });

@@ -14,6 +14,7 @@
 
 import '@/test/setup-dom.js';
 
+import { act, useState } from 'react';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { render, cleanup, type as typeInto } from '@/test/render.js';
@@ -88,4 +89,24 @@ describe('MCP playground BYOK credential', () => {
       stub.restore();
     }
   });
+});
+
+for (const action of ['replace', 'stop', 'unmount'] as const) it(`playground ${action} aborts the current API turn`, async t => {
+  t.after(() => { cleanup(); clearApiKeys(); });
+  updateApiKeys({ anthropicKey: 'sk-ant-test' });
+  const model = await oneWallModel();
+  const signals: AbortSignal[] = [];
+  t.mock.method(globalThis, 'fetch', (_input: RequestInfo | URL, init?: RequestInit) => {
+    if (init?.signal) signals.push(init.signal);
+    return new Promise<Response>((_resolve, reject) => init?.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError'))));
+  });
+  let swap!: () => void;
+  function Host() { const [current, setCurrent] = useState(model); swap = () => setCurrent({ ...model }); return <PlaygroundChat model={current} />; }
+  const ui = render(<Host />); await send(ui, 'hello');
+  assert.equal(signals.length > 0, true);
+  if (action === 'replace') act(() => swap());
+  else if (action === 'unmount') cleanup();
+  else { const stop = ui.querySelector<HTMLButtonElement>('button[aria-label="Stop generating"]'); assert.equal(Boolean(stop), true); act(() => stop!.click()); }
+  assert.equal(signals.every(signal => signal.aborted), true, 'retiring the run cancels the API turn');
+  cleanup(); clearApiKeys();
 });

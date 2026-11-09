@@ -49,6 +49,7 @@ import { buildStreamMessagesForModel, filterAttachmentsForModel } from '@/lib/ll
 import { buildSystemPrompt } from '@/lib/llm/system-prompt';
 import { getModelContext, parseCSV } from '@/lib/llm/context-builder';
 import { collectActiveFileAttachments } from '@/lib/attachments';
+import { attachmentAdmission } from './chat/attachment-admission';
 import { MAX_PDF_ATTACHMENT_BYTES } from '@/lib/llm/document-text';
 import { attachPdfDocument, createDocumentUploadGate, shouldContinueDocumentUploadBatch } from '@/lib/llm/document-upload';
 import { getPrimaryRootCause, type RepairScope, type ScriptDiagnostic } from '@/lib/llm/script-diagnostics';
@@ -186,7 +187,6 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
   const setAutoExecute = useViewerStore((s) => s.setChatAutoExecute);
   const addAttachment = useViewerStore((s) => s.addChatAttachment);
   const removeAttachment = useViewerStore((s) => s.removeChatAttachment);
-  const clearAttachments = useViewerStore((s) => s.clearChatAttachments);
   const clearMessages = useViewerStore((s) => s.clearChatMessages);
   const resetScriptEditorForNewChat = useViewerStore((s) => s.resetScriptEditorForNewChat);
   const pendingPrompt = useViewerStore((s) => s.chatPendingPrompt);
@@ -649,7 +649,7 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
 
     const clearPendingAttachmentsOnce = () => {
       if (pendingAttachmentsCleared) return;
-      clearAttachments();
+      for (const attachment of attachments) useViewerStore.getState().removeChatAttachment(attachment.id);
       pendingAttachmentsCleared = true;
     };
 
@@ -704,7 +704,7 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
   }, [
     status, activeModel, attachments,
     addMessage, setChatStatus, finalizeAssistant,
-    setChatError, setChatAbortController, clearAttachments, setChatUsage, resizeInput,
+    setChatError, setChatAbortController, setChatUsage, resizeInput,
     buildRepairPromptFromLiveState, triggerAutoRepair, execute, extensionHost,
     setChatToolReady, handleAuthoringResponse, setScriptPanelVisible,
     t,
@@ -830,12 +830,12 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
     const model = getModelById(activeModel);
     const supportsImages = model?.supportsImages ?? false;
     const supportsFileAttachments = model?.supportsFileAttachments ?? true;
-    let remainingSlots = Math.max(0, MAX_ATTACHMENTS_PER_MESSAGE - attachments.length);
     const documentBatch = documentUploads.begin();
+    const acceptAttachment = attachmentAdmission(documentBatch.current, addAttachment, setChatError);
 
     for (const file of Array.from(files)) {
       if (!documentBatch.current()) break;
-      if (remainingSlots <= 0) {
+      if (useViewerStore.getState().chatAttachments.length >= MAX_ATTACHMENTS_PER_MESSAGE) {
         setChatError(`You can attach up to ${MAX_ATTACHMENTS_PER_MESSAGE} files per message.`);
         break;
       }
@@ -863,8 +863,7 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
             imageBase64: base64,
             isImage: true,
           };
-          addAttachment(attachment);
-          remainingSlots -= 1;
+          acceptAttachment(attachment);
           continue;
         }
         // Extract PDF text locally so the same bounded document context works
@@ -878,8 +877,7 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
             setChatError(`PDF attachments must be smaller than ${Math.round(MAX_PDF_ATTACHMENT_BYTES / 1_000_000)} MB.`);
             continue;
           }
-          await attachPdfDocument(file, documentBatch, addAttachment);
-          remainingSlots -= 1;
+          await attachPdfDocument(file, documentBatch, acceptAttachment);
           continue;
         }
         // Excel / ODS binaries — we can't parse them yet, but we don't want
@@ -899,8 +897,7 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
             isSpreadsheetBinary: true,
             textContent: `[Binary spreadsheet ${file.name} (${Math.round(file.size / 1024)} KB). Export to CSV for full content access.]`,
           };
-          addAttachment(attachment);
-          remainingSlots -= 1;
+          acceptAttachment(attachment);
           continue;
         }
         // Text-based files — CSV, TSV, JSON, TXT and Markdown.
@@ -926,14 +923,13 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
           attachment.csvColumns = columns;
           attachment.csvData = rows;
         }
-        addAttachment(attachment);
-        remainingSlots -= 1;
+        acceptAttachment(attachment);
       } catch (error) {
         if (!shouldContinueDocumentUploadBatch(error)) break;
         setChatError(`Could not read ${file.name}: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
-  }, [activeModel, addAttachment, attachments.length, setChatError, documentUploads]);
+  }, [activeModel, addAttachment, setChatError, documentUploads]);
 
   const handleFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;

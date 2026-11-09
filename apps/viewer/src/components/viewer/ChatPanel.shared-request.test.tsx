@@ -38,3 +38,16 @@ for (const provider of ['proxy', 'openai', 'anthropic'] as const) test(`#7093 mo
   assert.ok(result.logs.some(log => log.args[0] === '7093 native walls' && log.args[1] === expected), 'QuickJS calls the real model-backed query adapter');
   assert.equal(useRequestReceipts.getState().inFlight.length, 0);
 });
+
+// C-6: attachments belong to the turn that sent them, not the first reply chunk.
+test('C-6 first streamed chunk preserves attachments added after Send', async t => {
+  const { sent, release } = serveGated(chatFrames('Received.'));
+  const native = await mountNative(t); if (!native) return;
+  act(() => { useViewerStore.getState().addChatAttachment({ id: 'sent', name: 'sent.txt', type: 'text/plain', size: 1, textContent: 'old' }); });
+  send(native.ui);
+  await waitFor(() => sent.length === 1, 'request sent');
+  act(() => { useViewerStore.getState().addChatAttachment({ id: 'next', name: 'next.txt', type: 'text/plain', size: 1, textContent: 'new' }); });
+  await act(async () => release());
+  await waitFor(() => useViewerStore.getState().chatStatus === 'idle', 'reply complete');
+  assert.deepEqual(useViewerStore.getState().chatAttachments.map(a => a.id), ['next']);
+});

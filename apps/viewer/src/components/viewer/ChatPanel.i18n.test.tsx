@@ -166,3 +166,22 @@ describe('chat panel localization (#4918)', () => {
     );
   });
 });
+
+it('C-6 overlapping file batches never exceed six attachments', async () => {
+  useViewerStore.setState({ chatActiveModel: 'openai/gpt-free', chatAttachments: [] });
+  const ui = renderPanel();
+  const input = ui.querySelector<HTMLInputElement>('input[type="file"]'); assert.ok(input);
+  const reads: Array<() => void> = [];
+  const files = Array.from({ length: 12 }, (_, i) => {
+    const file = new File(['text'], `${i}.txt`, { type: 'text/plain' });
+    Object.defineProperty(file, 'text', { value: () => new Promise<string>(resolve => reads.push(() => resolve('text'))) });
+    return file;
+  });
+  const select = (batch: File[]) => {
+    Object.defineProperty(input, 'files', { configurable: true, value: batch });
+    act(() => input.dispatchEvent(new window.Event('change', { bubbles: true })));
+  };
+  select(files.slice(0, 6)); select(files.slice(6));
+  for (let i = 0; i < 12; i++) await act(async () => { for (const finish of reads.splice(0)) finish(); });
+  assert.equal(useViewerStore.getState().chatAttachments.length, 6, 'admission uses the live attachment count');
+});

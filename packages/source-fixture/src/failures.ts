@@ -15,6 +15,7 @@ export type FixtureMethodName =
   | 'listRevisions'
   | 'watchRevisions'
   | 'searchFiles'
+  | 'uploadFile'
   | 'testConnection';
 
 /**

@@ -22,6 +22,10 @@ import type {
   SourceIdentity,
   SourceProject,
   SourceRevision,
+  UploadOptions,
+  UploadResult,
+  UploadTarget,
+  WriteBackMode,
 } from '@ifc-lite/plugin-api';
 
 import { createFixtureAuth, DEFAULT_FIXTURE_IDENTITY, requireSignedIn } from './auth.js';
@@ -41,6 +45,8 @@ export interface FixtureCapabilityOptions {
   /** Default `true` — controls whether `searchFiles` is present. */
   readonly search?: boolean;
   readonly projectsAreDiscoverableOnly?: boolean;
+  /** Default none (read-only) — controls whether `uploadFile` is present. */
+  readonly writeBack?: readonly WriteBackMode[];
 }
 
 export interface FixtureManifestOverrides {
@@ -99,6 +105,7 @@ export function createFixtureSourceProvider(options: FixtureProviderOptions): Fi
     ...(options.capabilities?.projectsAreDiscoverableOnly !== undefined
       ? { projectsAreDiscoverableOnly: options.capabilities.projectsAreDiscoverableOnly }
       : {}),
+    ...(options.capabilities?.writeBack?.length ? { writeBack: options.capabilities.writeBack } : {}),
     ...(options.eagerFileSweep !== undefined ? { eagerFileSweep: options.eagerFileSweep } : {}),
   };
 
@@ -254,6 +261,43 @@ export function createFixtureSourceProvider(options: FixtureProviderOptions): Fi
     return applyTruncate(page, failureMap.get('searchFiles'));
   }
 
+  async function uploadFile(
+    ctx: PluginContext,
+    target: UploadTarget,
+    bytes: ArrayBuffer,
+    uploadOptions?: UploadOptions,
+  ): Promise<UploadResult> {
+    await guard('uploadFile', ctx, uploadOptions?.signal);
+    // Honour the declared capability, for the same reason `download` does:
+    // the fixture is the oracle, so it must refuse what it does not declare.
+    if (!capabilities.writeBack?.includes(target.mode)) {
+      throw new Error(
+        `fixture provider "${manifest.name}" does not declare writeBack mode "${target.mode}"`,
+      );
+    }
+    const content = new Uint8Array(bytes.slice(0));
+    uploadOptions?.onProgress?.(content.byteLength, content.byteLength);
+
+    if (target.mode === 'new-version') {
+      const { ref } = target;
+      const file = world.getFile(ref.projectId, ref.containerId, ref.fileId);
+      const current = world.currentRevision(file);
+      if (target.baseRevisionId !== undefined && target.baseRevisionId !== current.id) {
+        return { ok: false, conflict: { kind: 'stale-base', currentRevisionId: current.id } };
+      }
+      const revision = world.addRevision(file, content);
+      return { ok: true, file: toSourceFile(file), revision: toSourceRevision(revision) };
+    }
+
+    if (!world.hasContainer(target.projectId, target.containerId)) {
+      throw new FixtureApiError(`Unknown container ${target.containerId} in project ${target.projectId}`, 404);
+    }
+    const existing = world.findFileByName(target.projectId, target.containerId, target.fileName);
+    if (existing) return { ok: false, conflict: { kind: 'name-exists', existingFileId: existing.id } };
+    const file = world.addFile(target.projectId, target.containerId, target.fileName, content, uploadOptions?.mimeType);
+    return { ok: true, file: toSourceFile(file), revision: toSourceRevision(world.currentRevision(file)) };
+  }
+
   async function testConnection(ctx: PluginContext): Promise<ConnectionTestResult> {
     try {
       await guard('testConnection', ctx, undefined);
@@ -275,6 +319,7 @@ export function createFixtureSourceProvider(options: FixtureProviderOptions): Fi
     ...(capabilities.revisionHistory ? { listRevisions } : {}),
     ...(capabilities.changeDetection ? { watchRevisions } : {}),
     ...(capabilities.search ? { searchFiles } : {}),
+    ...(capabilities.writeBack?.length ? { uploadFile } : {}),
     testConnection,
   };
 

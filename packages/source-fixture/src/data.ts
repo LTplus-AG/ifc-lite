@@ -71,8 +71,8 @@ interface RuntimeFile {
   readonly mimeType?: string;
   readonly modifiedBy?: string;
   readonly meta?: Record<string, unknown>;
-  /** Newest first. */
-  readonly revisions: readonly RuntimeRevision[];
+  /** Newest first. Mutable: `addRevision` prepends. */
+  revisions: readonly RuntimeRevision[];
 }
 
 interface RuntimeContainer {
@@ -107,6 +107,7 @@ export class FixtureWorld {
   private readonly containerById = new Map<string, RuntimeContainer>();
   private readonly filesByProject = new Map<string, RuntimeFile[]>();
   private readonly fileById = new Map<string, { projectId: string; file: RuntimeFile }>();
+  private writeCount = 0;
 
   constructor(spec: FixtureWorldSpec) {
     for (const projectSpec of spec.projects) {
@@ -264,6 +265,43 @@ export class FixtureWorld {
   tryGetFile(projectId: string, fileId: string): RuntimeFile | undefined {
     const entry = this.fileById.get(fileId);
     return entry && entry.projectId === projectId ? entry.file : undefined;
+  }
+
+  /** The file named `name` directly in `containerId`, if any (case-sensitive, like most CDEs' exact-name check). */
+  findFileByName(projectId: string, containerId: string, name: string): RuntimeFile | undefined {
+    return (this.filesByProject.get(projectId) ?? []).find((f) => f.containerId === containerId && f.name === name);
+  }
+
+  hasContainer(projectId: string, containerId: string): boolean {
+    return this.containerById.get(containerId)?.projectId === projectId;
+  }
+
+  /** Prepends a revision with deterministic, strictly increasing ids (`rev<N+1>`). */
+  addRevision(file: RuntimeFile, content: Uint8Array, createdBy?: string): RuntimeRevision {
+    const revision: RuntimeRevision = {
+      id: `rev${file.revisions.length + 1}`,
+      label: `Revision ${file.revisions.length + 1}`,
+      createdAt: new Date(1700000000000 + this.writeCount++ * 1000).toISOString(),
+      ...(createdBy !== undefined ? { createdBy } : {}),
+      content,
+    };
+    file.revisions = [revision, ...file.revisions];
+    return revision;
+  }
+
+  addFile(projectId: string, containerId: string, name: string, content: Uint8Array, mimeType?: string): RuntimeFile {
+    const file: RuntimeFile = {
+      id: `uploaded-${++this.writeCount}`,
+      name,
+      projectId,
+      containerId,
+      ...(mimeType !== undefined ? { mimeType } : {}),
+      revisions: [],
+    };
+    this.filesByProject.get(projectId)!.push(file);
+    this.fileById.set(file.id, { projectId, file });
+    this.addRevision(file, content);
+    return file;
   }
 
   currentRevision(file: RuntimeFile): RuntimeRevision {

@@ -165,7 +165,23 @@ export interface ProviderCapabilities {
    * `apps/viewer/src/components/sources/sourceCatalogPaging.ts`).
    */
   readonly eagerFileSweep?: boolean;
+  /**
+   * The write-back modes `uploadFile` supports. Omit (or leave empty) for a
+   * read-only provider; the host then hides every "save back to the source"
+   * affordance. A provider lists only modes its API genuinely supports, and
+   * `uploadFile` must reject a target whose `mode` is not listed.
+   *
+   * - `new-version`: a new revision of an existing file.
+   * - `new-file`: a new file, named by the caller, in the container the caller
+   *   chooses (typically the original file's own).
+   * - `new-location`: a new file in a different container than the original.
+   *   Separate from `new-file` because some stores cannot create into
+   *   arbitrary folders (Dalux refuses published and shared file areas).
+   */
+  readonly writeBack?: readonly WriteBackMode[];
 }
+
+export type WriteBackMode = 'new-version' | 'new-file' | 'new-location';
 
 // ---------------------------------------------------------------------------
 // Preferences schema (host-rendered settings modal)
@@ -369,6 +385,57 @@ export interface SourceFileRef {
   readonly revisionId?: string;
 }
 
+/** Where `uploadFile` puts the bytes. `mode` is checked against `capabilities.writeBack`. */
+export type UploadTarget =
+  | {
+      readonly mode: 'new-version';
+      /** The file to add a revision to; `ref.revisionId` is ignored. */
+      readonly ref: SourceFileRef;
+      /**
+       * The revision the bytes were derived from. When set and the file's
+       * current revision differs, the provider returns a `stale-base`
+       * conflict instead of silently making the user's edit the newest
+       * revision over someone else's. Omit to skip the check.
+       */
+      readonly baseRevisionId?: string;
+    }
+  | {
+      readonly mode: 'new-file' | 'new-location';
+      readonly projectId: string;
+      /** Destination container. */
+      readonly containerId: string;
+      /** Name of the file to create. */
+      readonly fileName: string;
+    };
+
+export interface UploadOptions {
+  readonly signal?: AbortSignal;
+  /** Called with bytes sent and the total. */
+  readonly onProgress?: (sent: number, total: number) => void;
+  readonly mimeType?: string;
+}
+
+/**
+ * Why an upload was refused without writing anything. A conflict is an
+ * expected outcome, not an error: the host offers the user a way out (save as
+ * a new file, or reload) instead of showing a failure.
+ */
+export type UploadConflict =
+  | {
+      readonly kind: 'stale-base';
+      /** The file's current revision, which is not the one the edit was based on. */
+      readonly currentRevisionId: string;
+    }
+  | {
+      readonly kind: 'name-exists';
+      /** The existing file that already has the requested name in that container. */
+      readonly existingFileId: string;
+    };
+
+export type UploadResult =
+  | { readonly ok: true; readonly file: SourceFile; readonly revision: SourceRevision }
+  | { readonly ok: false; readonly conflict: UploadConflict };
+
 export interface DownloadOptions {
   readonly signal?: AbortSignal;
   /** Called with bytes received and, when the provider knows it, the total. */
@@ -435,6 +502,20 @@ export interface FileSourceProvider {
 
   /** Download file content. */
   download(ctx: PluginContext, ref: SourceFileRef, options?: DownloadOptions): Promise<ArrayBuffer>;
+
+  /**
+   * Optional: write bytes back to the source. Present only when
+   * `capabilities.writeBack` is non-empty. Never overwrites existing bytes:
+   * `new-version` appends a revision, the other modes create a file. A refused
+   * write resolves to `{ ok: false, conflict }`; anything else that goes wrong
+   * rejects like every other method.
+   */
+  uploadFile?(
+    ctx: PluginContext,
+    target: UploadTarget,
+    bytes: ArrayBuffer,
+    options?: UploadOptions,
+  ): Promise<UploadResult>;
 
   /** Optional: revision history for one file, newest first. */
   listRevisions?(

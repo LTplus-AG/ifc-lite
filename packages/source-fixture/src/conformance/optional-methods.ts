@@ -19,5 +19,10 @@ export function describeOptionalMethodConformance(provider: FileSourceProvider):
     it('searchFiles is present iff capabilities.search', () => {
       expect(typeof provider.searchFiles === 'function').toBe(provider.manifest.capabilities.search);
     });
+
+    it('uploadFile is present iff capabilities.writeBack lists at least one mode', () => {
+      const modes = provider.manifest.capabilities.writeBack ?? [];
+      expect(typeof provider.uploadFile === 'function').toBe(modes.length > 0);
+    });
   });
 }

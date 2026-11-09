@@ -28,3 +28,13 @@ Self-hosted deployments without `VITE_CLOUD_HOSTED=true` retain the direct SDK s
 
 For a local sign-in, pull, edit and publish walkthrough, see the
 [local registry guide](local-registry.md).
+
+## Saving back to a source
+
+No source can be written to from the viewer yet, and the access IFClite requests stays read-only. The provider contract (`@ifc-lite/plugin-api`) now lets a provider declare `capabilities.writeBack` with the modes it supports and implement `uploadFile`:
+
+- `new-version` adds a revision to an existing file.
+- `new-file` creates a file with a new name, typically in the original's folder.
+- `new-location` creates a file in a different folder.
+
+`uploadFile` never overwrites. When the file has changed since it was loaded (`stale-base`), or the name is taken (`name-exists`), it returns a conflict instead of writing, so the host can offer a new name or a reload. Providers that omit `writeBack` stay read-only. `@ifc-lite/source-fixture` implements it for tests. Dalux support and the viewer's save action are tracked in [#9522](https://github.com/LTplus-AG/ifc-lite/issues/9522).

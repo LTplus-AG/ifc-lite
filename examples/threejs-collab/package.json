@@ -12,13 +12,13 @@
   },
   "dependencies": {
     "@ifc-lite/collab": "workspace:*",
-    "three": "^0.186.1",
+    "three": "^0.187.0",
     "yjs": "^13.6.33"
   },
   "devDependencies": {
-    "@types/three": "^0.186.0",
+    "@types/three": "^0.187.0",
     "typescript": "^6.0.3",
-    "vite": "^8.3.5",
+    "vite": "^8.3.6",
     "vite-plugin-top-level-await": "^1.5.0",
     "vite-plugin-wasm": "^3.6.0"
   }

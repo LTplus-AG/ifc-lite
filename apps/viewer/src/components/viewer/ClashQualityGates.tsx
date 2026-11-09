@@ -6,6 +6,7 @@ import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { toast } from '@/components/ui/toast';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Input } from '@/components/ui/input';
 import { analysisStampOf, useAnalysisStaleness } from '@/hooks/useAnalysisStaleness';
 import { newQualityBand, displayQualityPercent, evaluateQualityGates, isQualityGateConfig, qualityBand, type QualityGateConfig, type QualityGateRow, type QualityGateSnapshot } from '@/lib/clash/quality-gate';
@@ -60,7 +61,7 @@ function QualityGateEditor() {
             maxLength={100} value={band.label} onChange={event => setDraft({ ...draft, [kind]: draft[kind].map((entry, i) => i === index ? { ...entry, label: event.target.value } : entry) })} />
           <Input type="color" className="h-7 w-8 p-0" aria-label={`${t(`clashQuality.${kind}`)} ${t('clashQuality.color')} ${index + 1}`} value={band.color}
             onChange={event => setDraft({ ...draft, [kind]: draft[kind].map((entry, i) => i === index ? { ...entry, color: event.target.value } : entry) })} />
-          {index > 0 && <Button type="button" variant="ghost" size="icon-xs" aria-label={`${t('clashQuality.remove')} ${index + 1}`} onClick={() => setDraft({ ...draft, [kind]: draft[kind].filter((_, i) => i !== index) })}>×</Button>}
+          {index > 0 && <IconButton type="button" variant="ghost" size="icon-xs" label={`${t('clashQuality.remove')} ${index + 1}`} onClick={() => setDraft({ ...draft, [kind]: draft[kind].filter((_, i) => i !== index) })}>×</IconButton>}
         </div>)}
         <Button type="button" variant="ghost" size="sm" disabled={draft[kind].length >= 12 || draft[kind].at(-1)!.minimum >= 100}
           onClick={() => setDraft({ ...draft, [kind]: [...draft[kind], newQualityBand(Math.min(100, draft[kind].at(-1)!.minimum + 1), t('clashQuality.newCategory'))] })}>{t('clashQuality.add')}</Button>

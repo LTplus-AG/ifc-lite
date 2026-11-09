@@ -5,13 +5,14 @@ import '@/test/setup-dom.js';
 import 'fake-indexeddb/auto';
 import { afterEach, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { act, useState } from 'react';
+import { act, useLayoutEffect, useState } from 'react';
 import { createBimContext } from '@ifc-lite/sdk';
 import { packBundle, unpackBundle, type ExtensionManifest } from '@ifc-lite/extensions';
 import { render, cleanup, click, advance } from '@/test/render';
 import { ExtensionHostContext } from '@/sdk/ExtensionHostProvider';
 import { ExtensionHostService } from '@/services/extensions/host';
 import { useViewerStore } from '@/store';
+import { toast } from '@/components/ui/toast';
 import { ExtensionsPanel } from './ExtensionsPanel';
 import { PromoteToolDialog } from './PromoteToolDialog';
 const hosts: ExtensionHostService[] = [];
@@ -100,8 +101,11 @@ test('closing promotion during packaging cannot open a late review', async t => 
   render(<ExtensionHostContext.Provider value={host}><Harness /></ExtensionHostContext.Provider>);
   click(button('Review & install'));
   const cancelDisabled = button('Cancel').disabled;
+  click(button('Close'));
+  const refusedDismissal = !!document.querySelector('[role=dialog]');
   click(button('External close')); release(); await advance(100);
   assert.equal(cancelDisabled, true);
+  assert.equal(refusedDismissal, true, 'busy packaging refuses the dialog dismiss button');
   assert.equal(!!document.querySelector('[role=dialog]'), false);
   click(button('Reopen'));
   assert.ok(reviewText().includes('Review & install'), 'reopening retains the promotion form rather than a stale capability review');
@@ -146,4 +150,131 @@ test('a late install result cannot close a reopened promotion form', async t => 
   release(); await until(() => finished); await advance(20);
   assert.equal(closes, 0);
   assert.ok(reviewText().includes('Review & install'));
+});
+
+
+test('an abandoned file read cannot publish a late error toast', async t => {
+  const host = hostFixture(), errors: string[] = [];
+  t.mock.method(toast, 'error', (message: string) => { errors.push(message); });
+  let release!: () => void, started = false, finished = false;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  class BrokenFile extends File {
+    override async arrayBuffer(): Promise<ArrayBuffer> { started = true; await held; finished = true; throw new Error('late read failure'); }
+  }
+  const ui = render(<ExtensionHostContext.Provider value={host}><ExtensionsPanel /></ExtensionHostContext.Provider>);
+  const input = ui.querySelector<HTMLInputElement>('input[type=file]')!;
+  const transfer = new DataTransfer(); transfer.items.add(new BrokenFile([], 'broken.iflx'));
+  Object.defineProperty(input, 'files', { configurable: true, value: transfer.files });
+  act(() => input.dispatchEvent(new Event('change', { bubbles: true })));
+  await until(() => started); cleanup(); release(); await until(() => finished); await advance(20);
+  assert.equal(errors.length, 0);
+});
+
+test('a failed obsolete authored preview preserves its replacement and suppresses its toast', async t => {
+  const host = hostFixture(), preview = host.previewBundle.bind(host), first = bundle('obsolete'), second = bundle('replacement');
+  const errors: string[] = [];
+  t.mock.method(toast, 'error', (message: string) => { errors.push(message); });
+  let release!: () => void, started = false;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  t.mock.method(host, 'previewBundle', async (bytes: Uint8Array) => {
+    if (bytes === first) { started = true; await held; throw new Error('obsolete preview failed'); }
+    return preview(bytes);
+  });
+  useViewerStore.getState().setPendingAuthoredBundle(first);
+  render(<ExtensionHostContext.Provider value={host}><ExtensionsPanel /></ExtensionHostContext.Provider>);
+  await until(() => started); act(() => useViewerStore.getState().setPendingAuthoredBundle(second)); release();
+  await until(() => reviewText().includes('com.example.replacement'));
+  assert.equal(errors.length, 0);
+});
+
+test('a closed promotion form suppresses a late packaging error', async t => {
+  const host = hostFixture(), errors: string[] = [];
+  t.mock.method(toast, 'error', (message: string) => { errors.push(message); });
+  let release!: () => void, finished = false;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  t.mock.method(crypto.subtle, 'digest', async () => { await held; finished = true; throw new Error('late packaging failure'); });
+  function Harness() {
+    const [open, setOpen] = useState(true);
+    return <><button onClick={() => setOpen(false)}>External close</button><PromoteToolDialog open={open} source="const x = 1;" onClose={() => setOpen(false)} /></>;
+  }
+  render(<ExtensionHostContext.Provider value={host}><Harness /></ExtensionHostContext.Provider>);
+  click(button('Review & install')); click(button('External close')); release();
+  await until(() => finished); await advance(20);
+  assert.equal(errors.length, 0);
+});
+
+test('a reopened promotion form suppresses the abandoned install error', async t => {
+  const host = hostFixture(), errors: string[] = [];
+  t.mock.method(toast, 'error', (message: string) => { errors.push(message); });
+  let release!: () => void, started = false, finished = false;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  t.mock.method(host, 'installFromBytes', async () => { started = true; await held; finished = true; throw new Error('late install failure'); });
+  function Harness() {
+    const [open, setOpen] = useState(true);
+    return <><button onClick={() => setOpen(false)}>External close</button><button onClick={() => setOpen(true)}>Reopen</button>
+      <PromoteToolDialog open={open} initialName="Abandoned install" source="const x = 1;" onClose={() => setOpen(false)} /></>;
+  }
+  render(<ExtensionHostContext.Provider value={host}><Harness /></ExtensionHostContext.Provider>);
+  click(button('Review & install')); await until(() => reviewText().includes('Install com.local.tools'));
+  click(button('Install')); await until(() => started); click(button('External close')); click(button('Reopen')); release();
+  await until(() => finished); await advance(20);
+  assert.equal(errors.length, 0);
+  assert.ok(reviewText().includes('Review & install'));
+});
+
+
+test('an abandoned successful file read never starts bundle preview', async t => {
+  const host = hostFixture(), preview = host.previewBundle.bind(host);
+  let release!: () => void, started = false, finished = false, previews = 0;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  t.mock.method(host, 'previewBundle', async (bytes: Uint8Array) => { previews++; return preview(bytes); });
+  class HeldFile extends File {
+    override async arrayBuffer(): Promise<ArrayBuffer> { started = true; await held; const result = await super.arrayBuffer(); finished = true; return result; }
+  }
+  const ui = render(<ExtensionHostContext.Provider value={host}><ExtensionsPanel /></ExtensionHostContext.Provider>);
+  const input = ui.querySelector<HTMLInputElement>('input[type=file]')!, transfer = new DataTransfer();
+  transfer.items.add(new HeldFile([new Uint8Array(bundle('abandoned'))], 'abandoned.iflx'));
+  Object.defineProperty(input, 'files', { configurable: true, value: transfer.files });
+  act(() => input.dispatchEvent(new Event('change', { bubbles: true })));
+  await until(() => started); cleanup(); release(); await until(() => finished); await advance(20);
+  assert.equal(previews, 0);
+});
+
+test('an older authored finally cannot remove priority from its replacement run', async t => {
+  const host = hostFixture(), preview = host.previewBundle.bind(host), authored = bundle('authoredfinally');
+  let releaseOld!: () => void, releaseNew!: () => void, attempts = 0, oldFinished = false;
+  const oldHeld = new Promise<void>(resolve => { releaseOld = resolve; }), newHeld = new Promise<void>(resolve => { releaseNew = resolve; });
+  const errors: string[] = [];
+  t.mock.method(toast, 'error', (message: string) => { errors.push(message); });
+  t.mock.method(host, 'previewBundle', async (bytes: Uint8Array) => {
+    let attempt = 0;
+    if (bytes === authored) { attempt = ++attempts; await (attempt === 1 ? oldHeld : newHeld); }
+    const result = await preview(bytes);
+    if (result.ok && result.value.id === 'com.example.failedfile') throw new Error('file preview failed');
+    if (attempt === 1) oldFinished = true;
+    return result;
+  });
+  useViewerStore.getState().setPendingAuthoredBundle(authored);
+  const ui = render(<ExtensionHostContext.Provider value={host}><ExtensionsPanel /></ExtensionHostContext.Provider>);
+  try {
+    await until(() => attempts === 1); choose(ui, bundle('failedfile'), 'failedfile'); await until(() => attempts === 2);
+    releaseOld(); await until(() => oldFinished); await advance(20);
+    choose(ui, bundle('priority'), 'priority'); await until(() => reviewText().includes('com.example.priority'));
+    assert.equal(errors.length, 1);
+  } finally { releaseOld(); releaseNew(); await advance(20); }
+});
+
+test('closing an existing promotion review removes it in the closing commit', async () => {
+  const host = hostFixture();
+  let visibleAtClose: boolean | undefined;
+  function Harness() {
+    const [open, setOpen] = useState(true);
+    useLayoutEffect(() => { if (!open) visibleAtClose = !!document.querySelector('[role=dialog]'); }, [open]);
+    return <><button onClick={() => setOpen(false)}>External close</button>
+      <PromoteToolDialog open={open} initialName="Render owner" source="const x = 1;" onClose={() => setOpen(false)} /></>;
+  }
+  render(<ExtensionHostContext.Provider value={host}><Harness /></ExtensionHostContext.Provider>);
+  click(button('Review & install')); await until(() => reviewText().includes('Install com.local.tools'));
+  click(button('External close'));
+  assert.equal(visibleAtClose, false);
 });

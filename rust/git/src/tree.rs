@@ -107,18 +107,14 @@ impl Tree {
 
 /// Should a chunk end after this entry?
 ///
-/// Derived from the entry's **node address**, which is content, rather than
-/// from its position. The probe is the low bits of the first digest byte pair:
-/// a boundary falls roughly every [`TARGET_CHUNK_ENTRIES`] entries, and which
-/// entries are boundaries depends only on content — so inserting an entity
-/// shifts no boundary except possibly the one in its own chunk.
-///
-/// Deliberately not a rolling hash over a sliding window: the entries are
-/// already content-addressed, so their digests are a usable uniform random
-/// source and a second hash would buy nothing.
+/// Hash the canonical key and node address together, so repeated content under
+/// different entity keys does not force either one huge chunk or singleton chunks.
+/// An entry's boundary still depends only on that entry, never its position.
 fn is_boundary(entry: &TreeEntry, target: usize) -> bool {
-    debug_assert!(target > 0, "chunk target must be positive");
-    let bytes = entry.node.as_bytes();
+    let mut w = CanonicalWriter::new(b"IGB1", 0, TREE_FORMAT_VERSION);
+    w.string(&entry.key).address(&entry.node);
+    let digest = w.finish().0;
+    let bytes = digest.as_bytes();
     let probe = u16::from_le_bytes([bytes[0], bytes[1]]);
     (probe as usize).is_multiple_of(target)
 }
@@ -138,13 +134,8 @@ pub fn build_tree_with_target(
     mut entries: Vec<TreeEntry>,
     target: usize,
 ) -> (Tree, Vec<TreeChunk>) {
-    entries.sort_by(|a, b| {
-        sort_key(&a.key)
-            .cmp(&sort_key(&b.key))
-            // A duplicate key is a defect upstream, but the tree must still be
-            // deterministic if one arrives, so tie-break on content.
-            .then_with(|| a.node.cmp(&b.node))
-    });
+    assert!(target > 0, "chunk target must be positive");
+    entries.sort_by_cached_key(|entry| (sort_key(&entry.key), entry.node, sort_key(&entry.ifc_type)));
 
     let entry_count = entries.len() as u32;
     let mut chunks: Vec<TreeChunk> = Vec::new();

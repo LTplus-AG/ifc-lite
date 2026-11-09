@@ -107,8 +107,8 @@ fn an_insertion_disturbs_few_chunks() {
 ///
 /// That the tree address changes is **not** a contradiction of "reads as
 /// unchanged": tree-address inequality is not the emptiness test. The diff is.
-/// A re-GUID produces a different tree and an empty diff, so no commit is
-/// written. `crate::commit` enforces that, and `commit_tests` pins it.
+/// Only tree-level behaviour is checked here. Commit suppression and the
+/// coincident-duplicate equivalence policy are deferred.
 #[test]
 fn a_reguid_preserves_every_node_address_and_moves_the_tree() {
     let original = entries(60);
@@ -169,4 +169,24 @@ fn duplicate_keys_still_produce_a_deterministic_tree() {
     let (forward, _) = build_tree(vec![a.clone(), b.clone()]);
     let (reverse, _) = build_tree(vec![b, a]);
     assert_eq!(forward.address(), reverse.address());
+}
+
+// Regression for #9331: callers may construct entries outside the entity adapter.
+#[test]
+fn duplicate_key_and_node_tie_breaks_by_class() {
+    let wall = entry("SAME", b"same-content");
+    let mut slab = wall.clone();
+    slab.ifc_type = "IfcSlab".to_owned();
+    let (forward, _) = build_tree(vec![wall.clone(), slab.clone()]);
+    let (reverse, _) = build_tree(vec![slab, wall]);
+    assert_eq!(forward.address(), reverse.address());
+}
+
+// Regression for #9331: a large repeated-content run must still get boundaries.
+#[test]
+fn repeated_content_under_distinct_keys_is_chunked() {
+    let repeated: Vec<_> = (0..2048).map(|i| entry(&format!("GUID{i:05}"), b"same-content")).collect();
+    let (_, chunks) = build_tree_with_target(repeated, 16);
+    assert!(chunks.len() > 1 && chunks.len() < 1024, "not a single run or singleton chunks: {}", chunks.len());
+    assert_eq!(chunks.iter().map(|c| c.entries.len()).sum::<usize>(), 2048);
 }

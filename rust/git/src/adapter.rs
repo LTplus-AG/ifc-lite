@@ -34,6 +34,7 @@
 //! spec set holds that equivalence policy open (`02-graph-object-model.md`
 //! §2.8).
 
+use ifc_lite_diff::fingerprint::canonical_value_string;
 use ifc_lite_diff::input::{DataFingerprintInput, PropertyEntryInput, PropertyValue};
 use ifc_lite_diff::sparse_collection::SparseCollection;
 use ifc_lite_diff::JsString;
@@ -57,10 +58,6 @@ pub enum AdapterError {
         /// Where in the projection, e.g. `pset name` or `property value`.
         field: &'static str,
     },
-    /// A structured composite value arrived where the diff engine normally
-    /// hands over an already-collapsed string. Refused rather than given a
-    /// second canonical form invented here.
-    Composite { field: &'static str },
     /// The projection carries an array hole — an absent index — and the node
     /// encoding has no form for one.
     ///
@@ -89,12 +86,6 @@ impl std::fmt::Display for AdapterError {
                 f,
                 "{field} holds an unpaired surrogate, so it has no well-formed \
                  Unicode form; refusing rather than collapsing it"
-            ),
-            AdapterError::Composite { field } => write!(
-                f,
-                "{field} holds a structured composite; the diff engine collapses \
-                 these to a canonical string, and inventing a second form here \
-                 would fork the contract"
             ),
             AdapterError::Hole { field, count } => write!(
                 f,
@@ -147,24 +138,8 @@ fn value_of(value: &PropertyValue, field: &'static str) -> Result<FieldValue, Ad
         PropertyValue::Null => FieldValue::Absent,
         PropertyValue::Bool(flag) => FieldValue::Bool(*flag),
         PropertyValue::Number(number) if number.is_finite() => FieldValue::Number(*number),
-        PropertyValue::Number(number) => FieldValue::Text(non_finite_token(*number).to_owned()),
-        PropertyValue::String(text_value) => FieldValue::Text(text(text_value, field)?),
-        // A composite reaches the diff engine already collapsed to a canonical
-        // string. If one arrives structured, refuse rather than invent a
-        // second serialization: a wrong canonical form is worse than a stop.
-        _ => return Err(AdapterError::Composite { field }),
+        _ => FieldValue::Text(text(&canonical_value_string(value).expect("text-normalized value"), field)?),
     })
-}
-
-/// ECMAScript `String(n)` for the three non-finite values.
-fn non_finite_token(value: f64) -> &'static str {
-    if value.is_nan() {
-        "NaN"
-    } else if value.is_sign_positive() {
-        "Infinity"
-    } else {
-        "-Infinity"
-    }
 }
 
 /// A hole is content (see [`AdapterError::Hole`]); refuse rather than skip.
@@ -226,14 +201,10 @@ fn attributes_node(input: &DataFingerprintInput) -> Result<Node, AdapterError> {
     })
 }
 
-fn name_bag(kind: &str, names: &[JsString], field: &'static str) -> Result<Node, AdapterError> {
-    Ok(Node::NameBag {
-        kind: kind.to_owned(),
-        names: names
-            .iter()
-            .map(|name| text(name, field))
-            .collect::<Result<Vec<String>, AdapterError>>()?,
-    })
+fn name_bag(kind: &str, names: &[JsString], field: &'static str) -> Result<Option<Node>, AdapterError> {
+    let names = names.iter().filter(|name| !name.is_blank())
+        .map(|name| text(name, field)).collect::<Result<Vec<_>, _>>()?;
+    Ok((!names.is_empty()).then(|| Node::NameBag { kind: kind.to_owned(), names }))
 }
 
 /// Convert one entity.
@@ -313,16 +284,14 @@ pub fn entity_nodes(key: &str, input: &DataFingerprintInput) -> Result<EntityNod
     // diff engine makes the same choice, for the same reason: an
     // unconditional key would have moved the fingerprint of every
     // material-less entity the day the field shipped.
-    if !input.materials.is_empty() {
-        let node = name_bag("material", &input.materials, "material name")?;
+    if let Some(node) = name_bag("material", &input.materials, "material name")? {
         components.push(Component {
             key: "material".to_owned(),
             node: node.address(),
         });
         nodes.push(node);
     }
-    if !input.classifications.is_empty() {
-        let node = name_bag("classification", &input.classifications, "classification")?;
+    if let Some(node) = name_bag("classification", &input.classifications, "classification")? {
         components.push(Component {
             key: "classification".to_owned(),
             node: node.address(),

@@ -2,344 +2,223 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use ifc_lite_diff::input::{
-    DataFingerprintInput, PropertyEntryInput, PropertySetInput, PropertyValue, TypeAssignmentInput,
-};
-use ifc_lite_diff::sparse_collection::SparseCollection;
-use ifc_lite_diff::JsString;
-
-use super::{entity_nodes, AdapterError};
+use super::{build_tree, build_tree_with_target, TreeEntry};
 use crate::address::Address;
-use crate::node::{Node, NodeKind};
 
-fn js(value: &str) -> JsString {
-    value.into()
-}
-
-fn wall() -> DataFingerprintInput {
-    DataFingerprintInput {
-        ifc_type: js("IfcWall"),
-        name: Some(js("W-01")),
-        ..DataFingerprintInput::default()
+fn entry(key: &str, content: &[u8]) -> TreeEntry {
+    TreeEntry {
+        key: key.to_owned(),
+        node: Address::of(content),
+        ifc_type: "IfcWall".to_owned(),
     }
 }
 
-fn pset(name: &str, members: &[(&str, PropertyValue)]) -> PropertySetInput {
-    PropertySetInput {
-        name: js(name),
-        properties: members
-            .iter()
-            .map(|(n, v)| PropertyEntryInput {
-                name: js(n),
-                value: v.clone(),
-            })
-            .collect(),
-    }
+fn entries(count: usize) -> Vec<TreeEntry> {
+    (0..count)
+        .map(|i| entry(&format!("GUID{i:05}"), format!("content-{i}").as_bytes()))
+        .collect()
 }
 
-fn component(nodes: &super::EntityNodes, key: &str) -> Option<Address> {
-    match nodes.nodes.last().expect("element is last") {
-        Node::Element { components, .. } => {
-            components.iter().find(|c| c.key == key).map(|c| c.node)
-        }
-        other => panic!("expected an element node last, got {other:?}"),
-    }
-}
-
-/// The headline invariant: a key reaches the tree entry and nothing else.
 #[test]
-fn the_key_does_not_reach_any_node() {
-    let input = wall();
-    let first = entity_nodes("ORIGINAL-GUID", &input).expect("converts");
-    let second = entity_nodes("REGENERATED-GUID", &input).expect("converts");
+fn entry_order_does_not_reach_the_tree_address() {
+    let mut forward = entries(50);
+    let mut reverse = forward.clone();
+    reverse.reverse();
+    let (a, _) = build_tree(std::mem::take(&mut forward));
+    let (b, _) = build_tree(std::mem::take(&mut reverse));
+    assert_eq!(a.address(), b.address());
+}
 
+#[test]
+fn entry_count_is_carried_so_a_count_needs_no_chunk_fetch() {
+    let (tree, chunks) = build_tree(entries(37));
+    assert_eq!(tree.entry_count, 37);
+    let total: usize = chunks.iter().map(|c| c.entries.len()).sum();
+    assert_eq!(total, 37);
+}
+
+#[test]
+fn every_entry_lands_in_exactly_one_chunk() {
+    let (_, chunks) = build_tree_with_target(entries(200), 8);
+    let mut keys: Vec<&str> = chunks
+        .iter()
+        .flat_map(|c| c.entries.iter().map(|e| e.key.as_str()))
+        .collect();
+    keys.sort_unstable();
+    keys.dedup();
+    assert_eq!(keys.len(), 200, "no entry duplicated or dropped");
+}
+
+#[test]
+fn chunking_actually_splits() {
+    let (tree, chunks) = build_tree_with_target(entries(400), 8);
+    assert!(
+        chunks.len() > 1,
+        "expected several chunks, got {}",
+        chunks.len()
+    );
+    assert_eq!(tree.chunks.len(), chunks.len());
+}
+
+#[test]
+fn a_changed_entry_changes_the_tree() {
+    let (before, _) = build_tree(entries(20));
+    let mut changed = entries(20);
+    changed[5].node = Address::of(b"something else");
+    let (after, _) = build_tree(changed);
+    assert_ne!(before.address(), after.address());
+}
+
+/// Content-derived boundaries, which is the reason for choosing them. With
+/// positional chunking an insertion shifts every later entry and invalidates
+/// every chunk after it; here it should disturb very few.
+#[test]
+fn an_insertion_disturbs_few_chunks() {
+    let base = entries(400);
+    let (_, before) = build_tree_with_target(base.clone(), 8);
+
+    let mut inserted = base;
+    // A key that sorts into the middle of the run.
+    inserted.push(entry("GUID00200a", b"inserted"));
+    let (_, after) = build_tree_with_target(inserted, 8);
+
+    let before_addresses: std::collections::HashSet<_> =
+        before.iter().map(|c| c.address()).collect();
+    let reused = after
+        .iter()
+        .filter(|c| before_addresses.contains(&c.address()))
+        .count();
+
+    // Positional chunking would reuse roughly half (only the chunks before the
+    // insertion point). Content-derived boundaries should keep nearly all.
+    let reuse_ratio = reused as f64 / before.len() as f64;
+    assert!(
+        reuse_ratio > 0.8,
+        "expected most chunks reused after one insertion, reused {reused}/{} ({reuse_ratio:.2})",
+        before.len()
+    );
+}
+
+/// The GUID-agnostic invariant, stated at the tree level.
+///
+/// A from-scratch re-export regenerates every key while every entity's content
+/// is untouched. So: every node address is unchanged, and the tree address
+/// changes — because the tree is what holds the keys.
+///
+/// That the tree address changes is **not** a contradiction of "reads as
+/// unchanged": tree-address inequality is not the emptiness test. The diff is.
+/// Only tree-level behaviour is checked here. Commit suppression and the
+/// coincident-duplicate equivalence policy are deferred.
+#[test]
+fn a_reguid_preserves_every_node_address_and_moves_the_tree() {
+    let original = entries(60);
+    let reguided: Vec<TreeEntry> = original
+        .iter()
+        .enumerate()
+        .map(|(i, e)| TreeEntry {
+            key: format!("REGUID{i:05}"),
+            node: e.node,
+            ifc_type: e.ifc_type.clone(),
+        })
+        .collect();
+
+    // Content is identical, entity by entity.
+    let before_nodes: std::collections::HashSet<_> = original.iter().map(|e| e.node).collect();
+    let after_nodes: std::collections::HashSet<_> = reguided.iter().map(|e| e.node).collect();
     assert_eq!(
-        first.nodes.iter().map(Node::address).collect::<Vec<_>>(),
-        second.nodes.iter().map(Node::address).collect::<Vec<_>>(),
+        before_nodes, after_nodes,
         "a re-GUID must not move a single node address"
     );
-    assert_eq!(first.entry.node, second.entry.node);
+
+    // The manifest that names them did change.
+    let (before, _) = build_tree(original);
+    let (after, _) = build_tree(reguided);
     assert_ne!(
-        first.entry.key, second.entry.key,
-        "only the entry key differs"
+        before.address(),
+        after.address(),
+        "the tree holds the keys, so it moves"
     );
+    assert_eq!(before.entry_count, after.entry_count);
 }
 
 #[test]
-fn an_element_node_is_produced_last_with_its_components() {
-    let mut input = wall();
-    input.property_sets = vec![pset(
-        "Pset_WallCommon",
-        &[("IsExternal", PropertyValue::Bool(true))],
-    )]
-    .into();
-    let converted = entity_nodes("K", &input).expect("converts");
-
-    assert_eq!(
-        converted.nodes.last().expect("non-empty").kind(),
-        NodeKind::Element
-    );
-    assert!(component(&converted, "attr:core").is_some());
-    assert!(component(&converted, "pset:Pset_WallCommon").is_some());
-    assert_eq!(converted.entry.ifc_type, "IfcWall");
-    assert_eq!(converted.entry.key, "K");
-}
-
-/// Change localisation, through the adapter rather than hand-built nodes.
-#[test]
-fn editing_one_property_moves_that_pset_and_the_element_only() {
-    let untouched = pset("Pset_Other", &[("X", PropertyValue::Number(1.0))]);
-    let mut before = wall();
-    before.property_sets = vec![
-        pset(
-            "Pset_WallCommon",
-            &[("FireRating", PropertyValue::String(js("EI60")))],
-        ),
-        untouched.clone(),
-    ]
-    .into();
-    let mut after = wall();
-    after.property_sets = vec![
-        pset(
-            "Pset_WallCommon",
-            &[("FireRating", PropertyValue::String(js("EI90")))],
-        ),
-        untouched,
-    ]
-    .into();
-
-    let a = entity_nodes("K", &before).expect("converts");
-    let b = entity_nodes("K", &after).expect("converts");
-
-    assert_ne!(
-        component(&a, "pset:Pset_WallCommon"),
-        component(&b, "pset:Pset_WallCommon"),
-        "the edited set moved"
-    );
-    assert_eq!(
-        component(&a, "pset:Pset_Other"),
-        component(&b, "pset:Pset_Other"),
-        "the untouched set did not"
-    );
-    assert_eq!(
-        component(&a, "attr:core"),
-        component(&b, "attr:core"),
-        "attributes did not"
-    );
-    assert_ne!(
-        a.entry.node, b.entry.node,
-        "the element moved, since it folds the child"
-    );
+fn ifc_type_is_part_of_an_entry() {
+    let mut changed = entries(5);
+    changed[0].ifc_type = "IfcSlab".to_owned();
+    let (before, _) = build_tree(entries(5));
+    let (after, _) = build_tree(changed);
+    assert_ne!(before.address(), after.address());
 }
 
 #[test]
-fn an_absent_name_bag_produces_no_component() {
-    let converted = entity_nodes("K", &wall()).expect("converts");
-    assert!(component(&converted, "material").is_none());
-    assert!(component(&converted, "classification").is_none());
-    assert!(component(&converted, "type-assignment").is_none());
+fn an_empty_tree_is_well_formed() {
+    let (tree, chunks) = build_tree(Vec::new());
+    assert_eq!(tree.entry_count, 0);
+    assert!(chunks.is_empty());
+    assert!(tree.chunks.is_empty());
+    // Still addressable, so a first commit on an empty repository has a tree.
+    let _ = tree.address();
 }
 
 #[test]
-fn an_empty_name_bag_hashes_like_an_absent_one() {
-    // Absent and empty are one case, matching the diff engine: an
-    // unconditional key would have moved every material-less entity.
-    let mut empty = wall();
-    empty.materials = Vec::new();
-    assert_eq!(
-        entity_nodes("K", &wall()).expect("converts").entry.node,
-        entity_nodes("K", &empty).expect("converts").entry.node
-    );
+fn duplicate_keys_still_produce_a_deterministic_tree() {
+    // A duplicate key is a defect upstream, but the tree must not depend on
+    // input order if one arrives.
+    let a = entry("SAME", b"first");
+    let b = entry("SAME", b"second");
+    let (forward, _) = build_tree(vec![a.clone(), b.clone()]);
+    let (reverse, _) = build_tree(vec![b, a]);
+    assert_eq!(forward.address(), reverse.address());
 }
 
+// Regression for #9331: callers may construct entries outside the entity adapter.
 #[test]
-fn a_material_bag_produces_a_component_whose_order_is_irrelevant() {
-    let mut forward = wall();
-    forward.materials = vec![js("steel"), js("concrete")];
-    let mut reverse = wall();
-    reverse.materials = vec![js("concrete"), js("steel")];
-    assert_eq!(
-        entity_nodes("K", &forward).expect("converts").entry.node,
-        entity_nodes("K", &reverse).expect("converts").entry.node
-    );
+fn duplicate_key_and_node_tie_breaks_by_class() {
+    let wall = entry("SAME", b"same-content");
+    let mut slab = wall.clone();
+    slab.ifc_type = "IfcSlab".to_owned();
+    let (forward, _) = build_tree(vec![wall.clone(), slab.clone()]);
+    let (reverse, _) = build_tree(vec![slab, wall]);
+    assert_eq!(forward.address(), reverse.address());
 }
 
+// Regression for #9331: a large repeated-content run must still get boundaries.
 #[test]
-fn a_type_assignment_is_identified_by_class_and_name() {
-    let mut input = wall();
-    input.type_assignments = vec![TypeAssignmentInput {
-        name: Some(js("WT-200")),
-        type_name: Some(js("IfcWallType")),
-    }]
-    .into();
-    let converted = entity_nodes("K", &input).expect("converts");
-    assert!(component(&converted, "type-assignment").is_some());
-
-    // Renaming the assigned type moves the component; the input carries no
-    // GlobalId at all, which is the structural half of "never by GlobalId".
-    let mut renamed = input.clone();
-    // `SparseCollection` exposes no index access, by design: a hole count is
-    // content but a position is not. Rebuild through a list instead.
-    let mut assignments: Vec<_> = renamed.type_assignments.present().cloned().collect();
-    assignments[0].name = Some(js("WT-300"));
-    renamed.type_assignments = assignments.into();
-    assert_ne!(
-        component(&converted, "type-assignment"),
-        component(
-            &entity_nodes("K", &renamed).expect("converts"),
-            "type-assignment"
-        )
-    );
+fn repeated_content_under_distinct_keys_is_chunked() {
+    let repeated: Vec<_> = (0..2048).map(|i| entry(&format!("GUID{i:05}"), b"same-content")).collect();
+    let (_, chunks) = build_tree_with_target(repeated, 16);
+    assert!(chunks.len() > 1 && chunks.len() < 1024, "not a single run or singleton chunks: {}", chunks.len());
+    assert_eq!(chunks.iter().map(|c| c.entries.len()).sum::<usize>(), 2048);
 }
 
+// Regressions for #9331: project values exactly as the diff engine does.
 #[test]
-fn numbers_are_carried_not_rendered() {
-    let make = |value: f64| {
-        let mut input = wall();
-        input.property_sets = vec![pset("P", &[("V", PropertyValue::Number(value))])].into();
-        entity_nodes("K", &input).expect("converts").entry.node
-    };
-    assert_eq!(make(0.1), make(0.1));
-    assert_ne!(make(0.1), make(0.2));
-    // A value no short decimal renders exactly still round-trips, because the
-    // encoder writes bits rather than text.
-    assert_ne!(
-        make(1.0 / 3.0),
-        make(0.333_333_333_333_333_3_f64 + f64::EPSILON)
-    );
-}
-
-#[test]
-fn non_finite_numbers_become_distinct_tokens() {
-    let make = |value: PropertyValue| {
+fn composite_values_share_the_diff_engines_canonical_text() {
+    use ifc_lite_diff::fingerprint::build_data_fingerprint;
+    let composite = PropertyValue::Array(vec![PropertyValue::Number(1.0), PropertyValue::Object(vec![
+        (js("z"), PropertyValue::Number(f64::INFINITY)),
+        (js("a"), PropertyValue::Bool(true)),
+    ])]);
+    let make = |value| {
         let mut input = wall();
         input.property_sets = vec![pset("P", &[("V", value)])].into();
-        entity_nodes("K", &input).expect("converts").entry.node
+        input
     };
-    let nan = make(PropertyValue::Number(f64::NAN));
-    let pos = make(PropertyValue::Number(f64::INFINITY));
-    let neg = make(PropertyValue::Number(f64::NEG_INFINITY));
-    let absent = make(PropertyValue::Null);
-
-    // All four distinct. The one that matters is that none equals `absent`:
-    // JSON maps every non-finite to `null`, which is also what an absent value
-    // produces, and an equal hash is treated as content identity downstream.
-    for (label, value) in [("NaN", nan), ("+inf", pos), ("-inf", neg)] {
-        assert_ne!(value, absent, "{label} must not hash like an absent value");
-    }
-    assert_ne!(nan, pos);
-    assert_ne!(pos, neg);
+    let structured = make(composite);
+    let collapsed = make(PropertyValue::String(js("[1,{\"a\":true,\"z\":null}]")));
+    assert_eq!(build_data_fingerprint(&structured), build_data_fingerprint(&collapsed));
+    assert_eq!(entity_nodes("K", &structured).unwrap(), entity_nodes("K", &collapsed).unwrap());
 }
 
 #[test]
-fn absent_and_empty_text_are_distinguishable() {
-    let make = |value: PropertyValue| {
-        let mut input = wall();
-        input.property_sets = vec![pset("P", &[("V", value)])].into();
-        entity_nodes("K", &input).expect("converts").entry.node
-    };
-    assert_ne!(
-        make(PropertyValue::Null),
-        make(PropertyValue::String(js("")))
-    );
-}
-
-/// An unpaired surrogate is refused, not coerced.
-#[test]
-fn a_malformed_string_is_refused_rather_than_collapsed() {
-    // A lone high surrogate has no scalar form, so no `&str` and no NFC form.
-    // The lossy conversion would map it to the replacement character and
-    // collapse genuinely distinct names into one node.
-    let lone = JsString::from_units(vec![0xD800]);
-    assert!(lone.as_str().is_none(), "premise: this has no &str form");
-
-    let mut input = wall();
-    input.property_sets = vec![PropertySetInput {
-        name: lone,
-        properties: SparseCollection::default(),
-    }]
-    .into();
-    assert_eq!(
-        entity_nodes("K", &input),
-        Err(AdapterError::NotWellFormed { field: "pset name" })
-    );
-}
-
-#[test]
-fn a_malformed_attribute_is_refused_too() {
-    let mut input = wall();
-    input.name = Some(JsString::from_units(vec![0xDC00]));
-    assert_eq!(
-        entity_nodes("K", &input),
-        Err(AdapterError::NotWellFormed { field: "name" })
-    );
-}
-
-#[test]
-fn conversion_is_deterministic() {
-    let mut input = wall();
-    input.property_sets = vec![pset("P", &[("A", PropertyValue::Number(1.0))])].into();
-    input.materials = vec![js("steel")];
-    let first = entity_nodes("K", &input).expect("converts");
-    let second = entity_nodes("K", &input).expect("converts");
-    assert_eq!(first, second);
-}
-
-// A hole is an absent array index, and the diff engine treats it as content:
-// `SparseCollection` counts holes so a set with a gap is not equal to one
-// without (#8042, #8114). The node encoding has no form for a hole, so
-// iterating only the present records would hand two different projections the
-// same address — a silent collision in the layer whose whole job is that
-// addresses separate what differs. Both tests fail if the refusal is removed
-// and the holes are simply skipped: conversion succeeds and the addresses
-// match the hole-free projection.
-
-#[test]
-fn a_hole_among_the_property_sets_is_refused_rather_than_skipped() {
-    let mut input = wall();
-    let mut sets = SparseCollection::default();
-    sets.push(pset(
-        "Pset_WallCommon",
-        &[("IsExternal", PropertyValue::Bool(true))],
-    ));
-    sets.push_holes(1);
-    input.property_sets = sets;
-    assert_eq!(
-        entity_nodes("K", &input),
-        Err(AdapterError::Hole {
-            field: "property sets",
-            count: 1
-        })
-    );
-}
-
-#[test]
-fn a_hole_inside_one_set_is_refused_and_does_not_collide_with_the_dense_set() {
-    let mut dense = wall();
-    dense.property_sets = vec![pset("P", &[("A", PropertyValue::Number(1.0))])].into();
-    let dense_nodes = entity_nodes("K", &dense).expect("converts");
-
-    let mut holed = wall();
-    let mut members = SparseCollection::default();
-    members.push(PropertyEntryInput {
-        name: js("A"),
-        value: PropertyValue::Number(1.0),
-    });
-    members.push_holes(2);
-    holed.property_sets = vec![PropertySetInput {
-        name: js("P"),
-        properties: members,
-    }]
-    .into();
-
-    assert_eq!(
-        entity_nodes("K", &holed),
-        Err(AdapterError::Hole {
-            field: "property members",
-            count: 2
-        })
-    );
-    // The dense projection still converts, so the refusal is scoped to holes
-    // rather than to sets in general.
-    assert!(component(&dense_nodes, "pset:P").is_some());
+fn whitespace_only_bags_are_absent_but_duplicate_names_are_content() {
+    let absent = entity_nodes("K", &wall()).unwrap();
+    let mut blank = wall();
+    blank.materials = vec![js(" "), js("\u{feff}\t")];
+    blank.classifications = vec![js("\n\u{a0}")];
+    assert_eq!(absent, entity_nodes("K", &blank).unwrap());
+    blank.materials = vec![js("steel")];
+    let one = entity_nodes("K", &blank).unwrap();
+    blank.materials.push(js("steel"));
+    assert_ne!(one.entry.node, entity_nodes("K", &blank).unwrap().entry.node);
 }

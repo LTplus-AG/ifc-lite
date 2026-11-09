@@ -83,15 +83,23 @@ fn normalize_value(value: &PropertyValue) -> NormalizedValue {
     match value {
         PropertyValue::Null => NormalizedValue::Null,
         PropertyValue::Bool(flag) => NormalizedValue::Bool(*flag),
-        PropertyValue::Number(number) => {
-            if number.is_finite() {
-                NormalizedValue::Number(*number)
-            } else {
-                NormalizedValue::String(non_finite_token(*number).into())
-            }
-        }
-        PropertyValue::String(text) => NormalizedValue::String(text.clone()),
-        composite => NormalizedValue::String(stringify_sorted(&to_json_value(composite)).into()),
+        PropertyValue::Number(number) if number.is_finite() => NormalizedValue::Number(*number),
+        _ => NormalizedValue::String(canonical_value_string(value).expect("text-normalized value")),
+    }
+}
+
+/// The text produced when fingerprint normalization collapses a value to a string.
+///
+/// Strings are kept verbatim, non-finite scalars become their ECMAScript token,
+/// and composites use the diff engine's sorted-key JSON serializer. Null,
+/// booleans and finite numbers retain their scalar type and return `None`.
+/// Other adapters should use this function rather than choose another JSON form.
+pub fn canonical_value_string(value: &PropertyValue) -> Option<JsString> {
+    match value {
+        PropertyValue::String(text) => Some(text.clone()),
+        PropertyValue::Number(number) if !number.is_finite() => Some(non_finite_token(*number).into()),
+        PropertyValue::Array(_) | PropertyValue::Object(_) => Some(stringify_sorted(&to_json_value(value)).into()),
+        _ => None,
     }
 }
 

@@ -106,8 +106,6 @@ export function beginRetainedLoad(
       const text = activity.fail(message(key, byteLength));
       const state = useViewerStore.getState();
       state.updateModel(modelId, { loadState: 'error', loadError: text });
-      state.setProgress(null);
-      state.setLoading(false);
       reportRefusal(text, exactRetry);
       return true;
     },

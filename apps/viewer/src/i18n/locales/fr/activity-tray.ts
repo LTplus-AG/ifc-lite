@@ -29,6 +29,7 @@ export const activityTrayFr = {
   "activityTray.sourceDownload.partialFailed": { one: "{count} fichier transmis au chargement ; certains téléchargements ont échoué. Les fichiers transmis restent disponibles.", other: "{count} fichiers transmis au chargement ; certains téléchargements ont échoué. Les fichiers transmis restent disponibles.", many: "{count} de fichiers transmis au chargement ; certains téléchargements ont échoué. Les fichiers transmis restent disponibles." },
   "activityTray.sourceDownload.failed": { one: "{count} téléchargement a échoué ; aucun fichier n'a été transmis au chargement.", other: "{count} téléchargements ont échoué ; aucun fichier n'a été transmis au chargement.", many: "{count} de téléchargements ont échoué ; aucun fichier n'a été transmis au chargement." },
   "activityTray.job.clash": "Détection des collisions",
+  "activityTray.job.scanDetection": "Détection d'éléments dans le relevé",
   "activityTray.job.validation": "Validation des données",
   "activityTray.job.list": "Exécution de la liste",
   "activityTray.job.bulk": "Mise à jour groupée des propriétés",

@@ -13,7 +13,7 @@ import { attachCapturedLoad } from '@/lib/error-reports/correlation';
 import { useShallow } from 'zustand/react/shallow';
 import { type FederatedModel, useViewerStore } from '@/store';
 import { resolveLoadTessellationTier, isMeshOnlyCacheEnabled } from '../store/constants.js';
-import { createModelLoadActivity, installModelLoadCanceller } from './modelLoadCanceller.js';
+import { createModelLoadActivity, handOffToRetry, installModelLoadCanceller } from './modelLoadCanceller.js';
 import type { ModelLoadOptions } from './modelLoadOptions.js';
 import { assertWorkflowOwner } from '@/lib/flow/run-session';
 import { buildModelLoadedGeometryProps, reportOmittedTypeRecords, reportRefusedLengthUnit, reportSkippedHungElements, warnGeometryDiagnostics } from './modelLoadedGeometryProps.js';
@@ -439,11 +439,13 @@ export function useIfcLoader() {
       // finished, so the original promise must stay pending until the
       // replacement load settles. loadFile never rethrows (both its catches
       // return), so this cannot throw back into the caller.
-      await loadFileRef.current?.(file, target, {
+      // J1: the retry's own job reports how this file ends, not a cancel of this attempt.
+      const retryLoad = loadFileRef.current;
+      await handOffToRetry(activity, retryLoad ? () => retryLoad(file, target, {
         ...options,
         tierOverride: retryTier,
         isResourceRetry: true,
-      });
+      }) : undefined);
       return true;
     };
 

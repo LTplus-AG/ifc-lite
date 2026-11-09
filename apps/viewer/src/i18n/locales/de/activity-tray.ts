@@ -79,5 +79,6 @@ export const activityTrayDe = {
     "other": "{count} Aktionen fehlgeschlagen"
   },
   "activityTray.ai.timeout": "Zeitüberschreitung",
-  "activityTray.ai.truncated": "Am Ausgabelimit angehalten"
+  "activityTray.ai.truncated": "Am Ausgabelimit angehalten",
+  "activityTray.load.noModel": "Ohne geladenes Modell beendet"
 } satisfies Catalogue;

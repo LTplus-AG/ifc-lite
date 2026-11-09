@@ -54,6 +54,19 @@ describe('canonical viewer mutation permission (#5901)', () => {
     });
   }
 
+  it('edits a pset in View without entering Model, with one undo step (#9296)', () => {
+    const s = useViewerStore.getState();
+    s.setEditEnabled(true);
+    assert.equal(useViewerStore.getState().workspaceMode, 'view');
+    const mutation = useViewerStore.getState().setProperty(first.id, 11, 'Pset_Test', 'FireRating', 'EI60');
+    assert.ok(mutation);
+    assert.equal(useViewerStore.getState().workspaceMode, 'view');
+    assert.equal(useViewerStore.getState().undoStacks.get(first.id)?.length, 1);
+    assert.equal(useViewerStore.getState().mutationViews.get(first.id)?.getPropertyValue(11, 'Pset_Test', 'FireRating'), 'EI60');
+    useViewerStore.getState().undo(first.id);
+    assert.equal(useViewerStore.getState().mutationViews.get(first.id)?.getPropertyValue(11, 'Pset_Test', 'FireRating'), null);
+  });
+
   it('rejects a non-IFC model and a collaboration viewer before creating an undo entry', () => {
     const unavailable = { ...second, ifcDataStore: null };
     useViewerStore.setState({

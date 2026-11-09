@@ -115,6 +115,34 @@ async function exportSvg(ui: HTMLElement): Promise<{ name: string; svg: string }
   return { name: saved[0].name, svg: await blob.text() };
 }
 
+/**
+ * Opens the PDF dialog with the drawing on screen, runs `meanwhile` (the cut
+ * failing, or nothing), then clicks the dialog's Export and returns the names
+ * of the files saved within the same, fixed settle window.
+ */
+async function pdfExportFromOpenDialog(ui: HTMLElement, meanwhile: () => void): Promise<string[]> {
+  const saved: string[] = [];
+  const proto = window.HTMLAnchorElement.prototype;
+  const originalClick = proto.click;
+  proto.click = function (this: HTMLAnchorElement) { saved.push(this.download); };
+  try {
+    openExport(ui);
+    const pdfItem = exportItems().find((i) => /PDF/.test(i.label));
+    assert.ok(pdfItem && !pdfItem.disabled, 'Download PDF is enabled while the drawing is shown');
+    click(pdfItem.el);
+    const dialog = document.querySelector('[role="dialog"]');
+    assert.ok(dialog, 'the PDF dialog is open');
+    act(meanwhile);
+    const exportButton = [...dialog.querySelectorAll('button')].find((b) => b.textContent === 'Export');
+    assert.ok(exportButton, 'the dialog has an Export button');
+    click(exportButton);
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 1500)); });
+  } finally {
+    proto.click = originalClick;
+  }
+  return saved;
+}
+
 installLayout();
 
 /** Records every painted `moveTo`/`lineTo` segment and the context transform
@@ -194,4 +222,20 @@ it('D2: moving the cut while the plan is still shown keeps painting the plan unf
   assert.ok(expected.length > 0, 'the plan was painted');
   seed({ axis: 'front', position: 20 }, shown);
   assert.deepEqual(await paintedSegments(), expected, 'the canvas keeps the plan\'s axis until the new cut lands');
+});
+
+it('D3: a cut that fails while the PDF dialog is open exports nothing', async () => {
+  const { drawing, plane } = await generatePlan();
+  const shown = { drawing2D: drawing, drawing2DPlane: plane, drawing2DStatus: 'ready' as const };
+
+  // Control: the same steps with the drawing still shown write the PDF.
+  seed({ axis: 'down', position: 50 }, shown);
+  assert.deepEqual(await pdfExportFromOpenDialog(render(<DrawingPanel />), () => {}), ['section-down-50-1-100.pdf']);
+  cleanup();
+
+  seed({ axis: 'down', position: 50 }, shown);
+  const saved = await pdfExportFromOpenDialog(render(<DrawingPanel />), () => {
+    useViewerStore.getState().setDrawing2DError('Generation failed');
+  });
+  assert.deepEqual(saved, [], 'the hidden previous drawing is not exported');
 });

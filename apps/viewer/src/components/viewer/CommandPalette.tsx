@@ -112,11 +112,11 @@ export function CommandPalette({ open, onOpenChange, surfaceContext, initialQuer
   const extensionCommands = useSlotContributions<CommandContribution>('commandPalette');
   const extensionHost = useOptionalExtensionHost();
   const paletteLauncher = useRef<HTMLElement | null>(null);
-  const currentExtensionHost = useRef(extensionHost);
+  const currentExtensionHost = useMemo(() => ({ current: extensionHost }), [extensionHost]);
   useLayoutEffect(() => {
     currentExtensionHost.current = extensionHost;
     return () => { currentExtensionHost.current = null; };
-  }, [extensionHost]);
+  }, [currentExtensionHost, extensionHost]);
 
   useEffect(() => {
     if (open) {
@@ -163,7 +163,7 @@ export function CommandPalette({ open, onOpenChange, surfaceContext, initialQuer
     activateBottomPanel,
     runExport,
     extensionExporters,
-  }), [open, execute, recentFiles, extensionCommands, extensionHost, canEditInSession, cesiumAvailable, runExport, extensionExporters, prerequisites, copyClipboard, fileHost, gpuStatus, retainedReportHost, splitWidth, placementGeoref, surfaceContext, toolHosts, locale, revision]);
+  }), [open, execute, recentFiles, extensionCommands, extensionHost, currentExtensionHost, canEditInSession, cesiumAvailable, runExport, extensionExporters, prerequisites, copyClipboard, fileHost, gpuStatus, retainedReportHost, splitWidth, placementGeoref, surfaceContext, toolHosts, locale, revision]);
 
 
   // ── Search: score, filter, sort ──

@@ -44,9 +44,9 @@ function withGeneratedRooms<T>(
 export function moveWithGeneratedRooms(
   store: ModellingStore, modelId: string, expressId: number,
   pointId: number, coordinates: [number, number, number], continuingBatch?: string,
-): Mutation | null {
+) {
   return withGeneratedRooms(store, modelId, expressId,
-    editor => editor.getMutationView().setPositionalAttribute(pointId, 0, coordinates), continuingBatch)?.result ?? null;
+    editor => editor.getMutationView().setPositionalAttribute(pointId, 0, coordinates), continuingBatch);
 }
 
 /** Explicit and implicit RefDirection rotations use the same room/history path. */

@@ -1306,10 +1306,12 @@ export const createMutationSlice: StateCreator<
     const nativeNext: [number, number, number] = [x + nx, y + ny, z + nz];
     // Go through the slice's own `setPositionalAttribute` action so
     // the mutation lands on the undo stack with the standard envelope.
-    const mutation = moveWithGeneratedRooms(api, modelId, expressId, chain.cartesianPointId, nativeNext, batchId)
+    const updated = moveWithGeneratedRooms(api, modelId, expressId, chain.cartesianPointId, nativeNext, batchId);
+    const mutation = updated?.mutation
       ?? get().setPositionalAttribute(modelId, chain.cartesianPointId, 0, nativeNext);
+    const moveBatch = updated?.batch ?? batchId;
 
-    if (!remeshGridPlacementAfterCommit(get, modelId, expressId, mutation, batchId)) {
+    if (!remeshGridPlacementAfterCommit(get, modelId, expressId, mutation, moveBatch)) {
 
       // Push the renderer-frame delta so the visible mesh follows
       // the IFC mutation. IFC is Z-up; renderer is Y-up. Conversion:
@@ -1328,9 +1330,9 @@ export const createMutationSlice: StateCreator<
       if (mutation) {
         const meshTags = new Map(get().mutationMeshTranslations);
         meshTags.set(mutation.id, { globalId, rendererDelta });
-        if (batchId) {
+        if (moveBatch) {
           const batchTags = new Map(get().mutationBatchTags);
-          batchTags.set(mutation.id, batchId);
+          batchTags.set(mutation.id, moveBatch);
           set({ mutationMeshTranslations: meshTags, mutationBatchTags: batchTags });
         } else {
           set({ mutationMeshTranslations: meshTags });
@@ -1383,10 +1385,11 @@ export const createMutationSlice: StateCreator<
     const dx = position[0] - oldX;
     const dy = position[1] - oldY;
     const dz = position[2] - oldZ;
-    const mutation = moveWithGeneratedRooms(api, modelId, expressId, chain.cartesianPointId, pointToNative(dataStore, position))
+    const updated = moveWithGeneratedRooms(api, modelId, expressId, chain.cartesianPointId, pointToNative(dataStore, position));
+    const mutation = updated?.mutation
       ?? get().setPositionalAttribute(modelId, chain.cartesianPointId, 0, pointToNative(dataStore, position));
     if (dx !== 0 || dy !== 0 || dz !== 0) {
-      if (!remeshGridPlacementAfterCommit(get, modelId, expressId, mutation)) {
+      if (!remeshGridPlacementAfterCommit(get, modelId, expressId, mutation, updated?.batch)) {
         const globalId = toGlobalIdFromModels(get().models, modelId, expressId);
         const rendererDelta: [number, number, number] = [dx, dz, -dy];
         get().setPendingMeshTranslations(new Map([[globalId, rendererDelta]]));

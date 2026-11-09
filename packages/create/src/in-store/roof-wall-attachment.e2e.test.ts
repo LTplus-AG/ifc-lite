@@ -13,6 +13,7 @@ import { addSlabToStore } from './slab.js';
 import { deriveBaseQuantitySet } from './base-quantities.js';
 import { setTopConstraintInStore } from './storey/storey-top-constraint.js';
 import { translateProduct } from './edit/placement-core.js';
+import { transformElementsInStore } from './element-transform-edit.js';
 import { exportText, newStorey, meshWalls, insideMesh } from './wall-join-mesh.oracle.js';
 const wasm = new URL('../../../wasm/pkg/ifc-lite_bg.wasm', import.meta.url);
 describe.skipIf(!existsSync(wasm))('roof attachments through the mesh kernel (build WASM to run)', () => {
@@ -45,6 +46,24 @@ it('a slab attachment follows a direct target lift, not only a storey edit (#929
   const meshes = meshWalls(api, exportText(s)).get(wall) ?? [];
   expect(insideMesh(meshes, [5, 4.68, -2])).toBe(true);
   expect(insideMesh(meshes, [5, 4.72, -2])).toBe(false);
+});
+
+it.each(['roof-first', 'wall-first'] as const)('moving a roof and attached wall together is independent of %s selection order (#9296)', async (order) => {
+  const s = await newStorey();
+  const roof = addRoofToStore(s.editor, s.anchor, { Position: [0,0,4], Width: 10, Depth: 8, Thickness: .25, EdgeSlopes: [Math.PI / 6,0,Math.PI / 6,0], Overhang: .5 }).roofId;
+  const wall = addWallToStore(s.editor, s.anchor, { Start: [5,0,0], End: [5,8,0], Height: 3, Thickness: .2 }).wallId;
+  setTopConstraintInStore(s.store, s.editor, wall, { kind: 'roof', roofId: roof });
+  const moved = transformElementsInStore({ dataStore: s.store, view: s.view, editor: s.editor,
+    selected: order === 'roof-first' ? [roof,wall] : [wall,roof], op: {kind: 'move',delta: [20,0]},
+  });
+  expect(moved.remesh).toEqual(expect.arrayContaining([roof,wall]));
+  const parts = meshWalls(api, exportText(s)).get(wall) ?? [];
+  for (const y of [1,4,7]) {
+    const z = 4 + Math.min(y,8-y) * Math.tan(Math.PI / 6);
+    expect(insideMesh(parts,[25,z-.03,-y])).toBe(true);
+    expect(insideMesh(parts,[25,z+.03,-y])).toBe(false);
+  }
+  expect(insideMesh(parts,[5,1,-4])).toBe(false);
 });
 
 it('a roof lift and every attached cut undo as one operation (#9296)', async () => {

@@ -224,6 +224,11 @@ fn issue_7873_armed_nested_map_stays_flat_and_does_not_eligibility_decode_its_ch
     assert!(decoder.get_cached(26).is_none());
     assert!(decoder.get_cached(4).is_none());
     assert!(router.take_unsupported_items().is_empty(), "#9268 budget is not unsupported");
+    let refusals = router.take_budget_refusals();
+    assert_eq!(refusals.len(), 1);
+    assert_eq!((refusals[0].budget.as_str(), refusals[0].limit, refusals[0].reached, refusals[0].source_id),
+        ("logical mapped attempts", 1, 2, 18));
+
     let parts = GeometryProgram::styled_item(
         &root,
         crate::SubMeshCollection::new(),

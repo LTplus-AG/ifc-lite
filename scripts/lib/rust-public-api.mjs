@@ -247,6 +247,7 @@ function listRsFiles(dir) {
  * Extract one crate's root-reachable public API surface.
  *
  * @param {string} crateDir absolute path to the crate root (containing `src/lib.rs`)
+ * @param {string} [entry] selected public module entry relative to the crate
  * @returns {{ surface: Record<string,string>, warnings: string[], pubUseCount: number }}
  */
 export function extractCrateSurface(crateDir, entry = 'src/lib.rs') {

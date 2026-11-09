@@ -233,6 +233,25 @@ interface CacheEntry {
   settled: boolean;
 }
 
+/**
+ * Milliseconds on a clock that only moves forward. TTLs are elapsed time, so a
+ * wall clock adjusted backwards must not keep a (partial) index alive past its
+ * TTL (review on #8648).
+ */
+function monotonicNow(): number {
+  return typeof performance !== 'undefined' ? performance.now() : Date.now();
+}
+
+/**
+ * Whether an entry is within its TTL. Elapsed time below zero can only come
+ * from a clock that went backwards (an injected wall clock); the age is then
+ * unknown, so the entry is treated as expired rather than kept indefinitely.
+ */
+function isFresh(entry: CacheEntry, now: number): boolean {
+  const elapsed = now - entry.builtAt;
+  return elapsed >= 0 && elapsed < entry.ttl;
+}
+
 /** Upper bound on retained project indexes; in-flight builds are never evicted. */
 const MAX_CACHED_INDEXES = 8;
 
@@ -245,7 +264,7 @@ function cacheKey(client: BrowserDaluxApiClient, projectId: string): string {
 /** Drop expired settled entries, then the oldest settled ones past the bound. */
 function evictStaleEntries(now: number): void {
   for (const [key, entry] of cache) {
-    if (entry.settled && now - entry.builtAt >= entry.ttl) cache.delete(key);
+    if (entry.settled && !isFresh(entry, now)) cache.delete(key);
   }
   for (const [key, entry] of cache) {
     if (cache.size < MAX_CACHED_INDEXES) break;
@@ -274,11 +293,11 @@ export async function getCommitIndex(
   client: BrowserDaluxApiClient,
   projectId: string,
   signal?: AbortSignal,
-  now: number = Date.now(),
+  now: number = monotonicNow(),
 ): Promise<DaluxCommitIndex> {
   const key = cacheKey(client, projectId);
   const cached = cache.get(key);
-  if (cached && now - cached.builtAt < cached.ttl) return cached.index;
+  if (cached && isFresh(cached, now)) return cached.index;
 
   // NOT given the caller's `signal`: the result is shared, so one caller
   // aborting (a panel unmounting) must not cancel the sweep every other

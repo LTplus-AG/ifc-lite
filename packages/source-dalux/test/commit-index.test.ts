@@ -510,4 +510,24 @@ describe('history sweep review regressions (#8647)', () => {
     expect(index.partial).toBe(true);
     expect(index.models.size).toBe(0);
   });
+
+  it('expires an index when the clock reads earlier than its build time (#8648)', async () => {
+    let calls = 0;
+    const inner = createDaluxApiMock(worldWithSets([]), { pageSize: 1 });
+    const client = new BrowserDaluxApiClient(
+      { baseUrl: DALUX_MOCK_BASE_URL, apiKey: 'test-key' },
+      createDaluxMockContext((input, init) => {
+        calls += 1;
+        return inner(input, init);
+      }),
+    );
+    await getCommitIndex(client, 'p-alpha', undefined, 10 * 60_000);
+    const afterFirst = calls;
+    // Same instant: served from cache.
+    await getCommitIndex(client, 'p-alpha', undefined, 10 * 60_000);
+    expect(calls).toBe(afterFirst);
+    // A clock that went backwards gives no usable age; rebuild, don't keep it.
+    await getCommitIndex(client, 'p-alpha', undefined, 0);
+    expect(calls).toBeGreaterThan(afterFirst);
+  });
 });

@@ -91,38 +91,6 @@ asynchronous action has copied its inputs and private checkpoints.
 Timing qualification and the F5 verdict are still pending; no measured scale
 acceptance is claimed by the structural guard alone.
 
-## Implicit wall joins need a session endpoint index (#9406)
-
-**Measured, held: bounded join lookup does not make whole-session authoring
-constant-time.** Implicit joins previously decoded every wall for each added
-wall, including repeatedly decoding the new wall. Candidate discovery now
-uses rounded endpoints partitioned by parent placement and elevation. The
-index belongs to the committed mutation view, not a fresh atomic draft;
-ordinary additions stage index entries until the owning history/publication
-transaction succeeds. Other edits invalidate it. An operation-count regression
-covers both direct and compound-recorded additions, plus rollback and edits
-that do not append history.
-
-The exclusive main/branch SDK measurements still grow with the session on
-both versions. The old recorder copies and diffs the whole overlay, independently
-of join candidate discovery; touched-entry publication (#9411) is still needed.
-Both versions also fail the unchanged column-scaling and F5 tower oracle.
-Do not claim the lookup counter as an end-to-end authoring win or queue the
-change on that evidence alone. Cold index construction is reported separately.
-The companion `tests/modelling-parity/probes/sdk/lib/perf-wall-scale.js` seeds
-real session geometry/history through public raw creation, then times complete
-public `addWall` calls; it does not substitute a large parsed file for a large
-overlay. Reopened geometry agrees between the two versions.
-
-The non-touching wall fixture records no joins. Its extra cold cost came from
-repeated schema-name signatures while reading every wall's placement and axis
-references. A finite reader snapshot now shares that lookup across the cold
-index build, and across the references in one full wall read. Schema definitions
-remain live. Ordinary creation also passes its already-resolved spatial anchor
-to joining instead of resolving another authoring anchor. A non-joining add
-opens no join draft. Cold and warm public-operation costs must both be compared
-with main; re-qualify after the session-publication change before queuing.
-
 ## First selection reads typing relationships from the graph (#9192)
 
 **Shipped: the scan is gone, not made cheaper.** `readCurrentTypeQuantities` read every
@@ -6139,3 +6107,35 @@ strictly less than 2× from 1K to 50K, and a passing F5 exercise result whose
 lane, not a substitute tower here. Missing sizes or F5 evidence fail the check.
 The baseline is a description of current main, not an accepted round-1 result
 or a speedup claim.
+
+## Implicit wall joins need a session endpoint index (#9406)
+
+**Measured, held: bounded join lookup does not make whole-session authoring
+constant-time.** Implicit joins previously decoded every wall for each added
+wall, including repeatedly decoding the new wall. Candidate discovery now
+uses rounded endpoints partitioned by parent placement and elevation. The
+index belongs to the committed mutation view, not a fresh atomic draft;
+ordinary additions stage index entries until the owning history/publication
+transaction succeeds. Other edits invalidate it. An operation-count regression
+covers both direct and compound-recorded additions, plus rollback and edits
+that do not append history.
+
+The exclusive main/branch SDK measurements still grow with the session on
+both versions. The old recorder copies and diffs the whole overlay, independently
+of join candidate discovery; touched-entry publication (#9411) is still needed.
+Both versions also fail the unchanged column-scaling and F5 tower oracle.
+Do not claim the lookup counter as an end-to-end authoring win or queue the
+change on that evidence alone. Cold index construction is reported separately.
+The companion `tests/modelling-parity/probes/sdk/lib/perf-wall-scale.js` seeds
+real session geometry/history through public raw creation, then times complete
+public `addWall` calls; it does not substitute a large parsed file for a large
+overlay. Reopened geometry agrees between the two versions.
+
+The non-touching wall fixture records no joins. Its extra cold cost came from
+repeated schema-name signatures while reading every wall's placement and axis
+references. A finite reader snapshot now shares that lookup across the cold
+index build, and across the references in one full wall read. Schema definitions
+remain live. Ordinary creation also passes its already-resolved spatial anchor
+to joining instead of resolving another authoring anchor. A non-joining add
+opens no join draft. Cold and warm public-operation costs must both be compared
+with main; re-qualify after the session-publication change before queuing.

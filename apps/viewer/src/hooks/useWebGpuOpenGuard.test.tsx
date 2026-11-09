@@ -85,22 +85,31 @@ describe('useWebGpuOpenGuard pending-probe notice (G1)', () => {
     assert.equal(opened, 1, 'the dropped model opens once WebGPU turns out to be supported');
   });
 
-  it('pending -> retrying -> supported: Retry opens once and clears the card (#9493 review: double open, stuck card)', async () => {
-    for (const resumeWhenSupported of [true, false]) {
-      const settle = pendingAdapter();
-      render(<OpenProbe />);
-      let opened = 0;
-      const attempt = () => { if (guard(attempt, { resumeWhenSupported })) opened += 1; };
-      act(attempt);
-      const retry = useViewerStore.getState().lastLoadRetry;
-      assert.ok(retry, 'the checking card offers Retry');
-      act(() => { retry(); retry(); }); // waits on the same pending probe; a second click coalesces
+  it('pending -> retrying -> supported, opted in: Retry opens a drop once and clears the card (#9493 review: double open, stuck card)', async () => {
+    const settle = pendingAdapter();
+    render(<OpenProbe />);
+    let opened = 0;
+    const attempt = () => { if (guard(attempt, { resumeWhenSupported: true })) opened += 1; };
+    act(attempt);
+    const retry = useViewerStore.getState().lastLoadRetry;
+    assert.ok(retry, 'the checking card offers Retry');
+    act(() => { retry(); retry(); }); // waits on the same pending probe; a second click coalesces
 
-      await settleProbe(settle, {});
-      assert.equal(opened, 1, `resume=${resumeWhenSupported}: Retry and the settled check must not both open the model (opened ${opened} times)`);
-      assert.deepEqual(card(), NO_CARD, `resume=${resumeWhenSupported}: the checking card must not stay up after Retry's check passes`);
-      cleanup();
-    }
+    await settleProbe(settle, {});
+    assert.equal(opened, 1, `Retry and the settled check must not both open the model (opened ${opened} times)`);
+    assert.deepEqual(card(), NO_CARD, 'the checking card must not stay up after Retry\'s check passes');
+  });
+
+  it('pending -> retrying -> supported, not opted in: Retry on a picker-style card clears it and never replays the open (#9493 review: activation)', async () => {
+    const settle = pendingAdapter();
+    render(<OpenProbe />);
+    let calls = 0;
+    const attempt = () => { calls += 1; guard(attempt); };
+    act(attempt);
+    act(() => useViewerStore.getState().lastLoadRetry?.());
+    await settleProbe(settle, {});
+    assert.equal(calls, 1, 'the open must not run again once the click\'s activation is gone');
+    assert.deepEqual(card(), NO_CARD, 'the user clicks Open again on a clean viewport');
   });
 
   it('pending -> supported without opt-in: an open that needs a user gesture is not replayed; the card just clears', async () => {
@@ -175,7 +184,7 @@ describe('useWebGpuOpenGuard pending-probe notice (G1)', () => {
     const settle = pendingAdapter();
     render(<OpenProbe />);
     let opened = 0;
-    const attempt = () => { if (guard(attempt)) opened += 1; };
+    const attempt = () => { if (guard(attempt, { resumeWhenSupported: true })) opened += 1; };
     act(attempt);
     act(() => useViewerStore.getState().lastLoadRetry?.());
     await settleProbe(settle, null);
@@ -191,7 +200,7 @@ describe('useWebGpuOpenGuard pending-probe notice (G1)', () => {
     const settle = pendingAdapter();
     render(<OpenProbe />);
     let opened = 0;
-    const attempt = () => { if (guard(attempt)) opened += 1; };
+    const attempt = () => { if (guard(attempt, { resumeWhenSupported: true })) opened += 1; };
     act(attempt);
     act(() => useViewerStore.getState().lastLoadRetry?.());
     act(() => setLocale('g1-pseudo'));

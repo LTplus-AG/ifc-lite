@@ -98,7 +98,7 @@ describe('useWebGPU category detection', () => {
     const root = createRoot(container);
     let guard!: WebGpuOpenGuard['guard'];
     let opened = 0;
-    const attempt = () => { if (guard(attempt)) opened += 1; };
+    const attempt = () => { if (guard(attempt, { resumeWhenSupported: true })) opened += 1; };
     try {
       await act(async () => {
         root.render(<OpenProbe onGuard={(next) => { guard = next; }} />);
@@ -135,7 +135,7 @@ describe('useWebGPU category detection', () => {
     const root = createRoot(container);
     let guard!: WebGpuOpenGuard['guard'];
     let opened = 0;
-    const attempt = () => { if (guard(attempt)) opened += 1; };
+    const attempt = () => { if (guard(attempt, { resumeWhenSupported: true })) opened += 1; };
     try {
       await act(async () => {
         root.render(<OpenProbe onGuard={(next) => { guard = next; }} />);
@@ -171,7 +171,7 @@ describe('useWebGPU category detection', () => {
       const root = createRoot(container);
       let guard!: WebGpuOpenGuard['guard'];
       let opened = 0;
-      const attempt = () => { if (guard(attempt)) opened += 1; };
+      const attempt = () => { if (guard(attempt, { resumeWhenSupported: true })) opened += 1; };
       try {
         await act(async () => {
           root.render(<OpenProbe onGuard={(next) => { guard = next; }} />);

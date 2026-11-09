@@ -17,8 +17,9 @@
 
 import { describe, expect, it } from 'vitest';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
-import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
+import { MutablePropertyView, StoreEditor, recordCompoundMutation, undoRecordedMutationOperations } from '@ifc-lite/mutations';
 import { getEffectiveEntityIndex, authoredEntityRefs } from './effective-index.js';
+import { StepExporter } from './step-exporter.js';
 
 function guid(tag: string): string {
   return (tag + '0'.repeat(22)).slice(0, 22);
@@ -48,6 +49,40 @@ function newView(store: IfcDataStore): { view: MutablePropertyView; editor: Stor
   const view = new MutablePropertyView(null, 'test-model');
   return { view, editor: new StoreEditor(store, view) };
 }
+
+// An older structural view has the original mutable getters, without the new borrow.
+function withoutBorrow(view: MutablePropertyView): MutablePropertyView {
+  return new Proxy(view, { get(target, key, receiver) {
+    return key === 'readNewEntities' || key === 'readNewEntity' ? undefined : Reflect.get(target, key, receiver);
+  } });
+}
+
+it('#9411 effective index and STEP export support structural views without readNewEntities', async () => {
+  const store = await parseBase(), { view, editor } = newView(store);
+  const id = editor.addEntity('IfcCartesianPoint', [[1, 2, 3]]).expressId;
+  const legacy = withoutBorrow(view);
+  expect(getEffectiveEntityIndex(store, legacy, true).has(id)).toBe(true);
+  const exported = new StepExporter(store, legacy).export({ schema: 'IFC4', applyMutations: true });
+  expect(new TextDecoder().decode(exported.content)).toContain(`#${id}=IFCCARTESIANPOINT((1.,2.,3.));`);
+});
+
+it('#9411 structural views still refuse created IDs that collide with source records', async () => {
+  const store = await parseBase(), view = new MutablePropertyView(null, 'collision');
+  view.createEntity('IfcCartesianPoint', [[1, 2, 3]]);
+  expect(() => new StepExporter(store, withoutBorrow(view)).export({ schema: 'IFC4', applyMutations: true }))
+    .toThrow('created entity #1 reuses source id #1');
+});
+
+it('#9411 compound undo preserves the authored STEP record order', async () => {
+  const store = await parseBase(), { view, editor } = newView(store);
+  const ids = [1, 2, 3].map(i => editor.addEntity('IfcCartesianPoint', [[i, 0, 0]]).expressId);
+  const exportedIds = () => [...new TextDecoder().decode(new StepExporter(store, view)
+    .export({ schema: 'IFC4', applyMutations: true }).content).matchAll(/#(\d+)=IFCCARTESIANPOINT/g)].map(match => Number(match[1]));
+  expect(exportedIds()).toEqual(ids);
+  recordCompoundMutation(view, draft => { draft.deleteEntity(ids[1]); draft.deleteEntity(ids[0]); });
+  undoRecordedMutationOperations(view, 1, () => { throw new Error('Expected compound inverse'); });
+  expect(exportedIds()).toEqual(ids);
+});
 
 describe('EffectiveEntityIndex agrees with itself', () => {
   it('answers has / get / iteration / size the same way about every id', async () => {

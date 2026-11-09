@@ -155,6 +155,7 @@ import type { Drawing2DState } from './drawing2DSlice.js';
  */
 const FIELD_CLASSIFICATION = {
   drawing2D: 'preserved',
+  drawing2DPlane: 'preserved',
   drawing2DStatus: 'preserved',
   drawing2DProgress: 'preserved',
   drawing2DPhase: 'preserved',

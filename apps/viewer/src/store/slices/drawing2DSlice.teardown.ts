@@ -40,6 +40,7 @@ export const drawing2DTeardown = defineSliceTeardown(
   'drawing2DSlice',
   [
     'drawing2D',
+    'drawing2DPlane',
     'drawing2DStatus',
     'drawing2DProgress',
     'drawing2DPhase',
@@ -74,6 +75,7 @@ export const drawing2DTeardown = defineSliceTeardown(
       return {
         // Drawing 2D
         drawing2D: defaults.drawing2D,
+        drawing2DPlane: defaults.drawing2DPlane,
         drawing2DStatus: defaults.drawing2DStatus,
         drawing2DProgress: defaults.drawing2DProgress,
         drawing2DPhase: defaults.drawing2DPhase,

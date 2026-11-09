@@ -127,7 +127,7 @@ interface UseDrawingGenerationParams {
   activeTool: string;
   drawing: Drawing2D | null;
   // Store actions
-  setDrawing: (d: Drawing2D | null) => void;
+  setDrawing: (d: Drawing2D | null, generatedAt?: UseDrawingGenerationParams['sectionPlane']) => void;
   setDrawingStatus: (s: 'idle' | 'generating' | 'ready' | 'error') => void;
   setDrawingProgress: (p: number, phase: string) => void;
   setDrawingError: (e: string | null) => void;
@@ -874,7 +874,7 @@ export function useDrawingGeneration({
 
         completedDrawing = hybridDrawing;
       }
-      setDrawing(completedDrawing); markActiveDrawingGenerationCompleted(completedDrawing);
+      setDrawing(completedDrawing, sectionPlane); markActiveDrawingGenerationCompleted(completedDrawing);
 
       // Remember the SectionConfig that produced this view so the markup
       // persistence bridge (issue #4153) can save it alongside the results —

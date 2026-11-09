@@ -17,7 +17,8 @@ export function* sourceAssociationCandidates(store: IfcDataStore, view: MutableP
     if (!view?.isDeleted(entity.expressId) && types.includes(type.toUpperCase())) yield { expressId: entity.expressId, type };
   }
   if (!view) return;
-  const candidates = new Set([...view.getNewEntitiesReferencing(id)].map(e => e.expressId));
+  const candidates = new Set(Array.from(view.getNewEntitiesReferencing?.(id)
+    ?? view.readNewEntities?.() ?? view.getNewEntities(), e => e.expressId));
   for (const entityId of view.getAttributeOverrideEntityIds(types, id)) candidates.add(entityId);
   for (const expressId of candidates) {
     if (seen.has(expressId) || view.isDeleted(expressId)) continue;
@@ -41,14 +42,19 @@ export function sourceSpatialContext(store: IfcDataStore, view: MutablePropertyV
     isDeleted: (id: number) => view.isDeleted(id),
   };
   // Edited creations are also candidates even if their original refs differ.
-  for (const id of edited) { const row = view.readNewEntity(id); if (row) created.set(id, row); }
+  for (const id of edited) { const row = view.readNewEntity?.(id) ?? view.getNewEntity(id); if (row) created.set(id, row); }
+  // Older views have no reference index. Resolve their complete authored graph
+  // once; indexed views keep the narrow ancestor discovery below.
+  if (!view.getNewEntitiesReferencing) {
+    for (const row of view.readNewEntities?.() ?? view.getNewEntities()) created.set(row.expressId, row);
+  }
   const typeName = (id: number) => view.getEntityTypeMutation(id)?.newType ?? view.getNewEntity(id)?.type ?? store.entities.getTypeName(id);
   const queue = [sourceId], visited = new Set(queue);
   let relationships = resolveEffectiveRelationshipOverlay(store, reader);
   for (let cursor = 0; cursor < queue.length; cursor++) {
     const id = queue[cursor];
     let added = false;
-    for (const row of view.getNewEntitiesReferencing(id)) {
+    for (const row of view.getNewEntitiesReferencing?.(id) ?? []) {
       if (!row.type.toUpperCase().startsWith('IFCREL') || created.has(row.expressId)) continue;
       created.set(row.expressId, row); added = true;
     }

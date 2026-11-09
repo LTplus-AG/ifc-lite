@@ -46,13 +46,17 @@ export function effectiveReferencers(store: IfcDataStore, view: MutablePropertyV
   const baseline = sourceInverse(store);
   const encoder = new TextEncoder();
   const cached = new Map<number, readonly number[]>();
+  let legacyEdited: number[] | undefined;
+  let legacyCreated: ReturnType<MutablePropertyView['getNewEntities']> | undefined;
   return (id) => {
     const found = cached.get(id);
     if (found) return found;
     const parents: number[] = [], original = new Set(baseline.get(id));
     const candidates = new Set([
-      ...original, ...view.getAttributeOverrideReferenceCandidates(id),
-      ...Array.from(view.getNewEntitiesReferencing(id), entity => entity.expressId),
+      ...original, ...(view.getAttributeOverrideReferenceCandidates?.(id)
+        ?? (legacyEdited ??= view.getEffectiveChanges().map(change => change.entityId))),
+      ...Array.from(view.getNewEntitiesReferencing?.(id)
+        ?? (legacyCreated ??= view.readNewEntities?.() ?? view.getNewEntities()), entity => entity.expressId),
     ]);
     // Candidate indices may over-count. Only the exact exporter grammar decides
     // whether a queued slot edit actually writes a reference (including REAL

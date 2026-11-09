@@ -139,7 +139,7 @@ export class AnchorEntityReader {
 
   entity(id: number): EffectiveEntityRecord | null {
     if (this.view?.isDeleted(id)) return null;
-    const created = this.view?.readNewEntity(id);
+    const created = this.view?.readNewEntity?.(id) ?? this.view?.getNewEntity(id);
     // @raw-entity-enumeration-ok point lookup after effective enumeration; source bytes are needed only for this candidate's attributes
     const ref = created ? undefined : this.store?.entityIndex.byId.get(id);
     const source = ref && this.extractor ? this.extractor.extractEntity(ref) : null;

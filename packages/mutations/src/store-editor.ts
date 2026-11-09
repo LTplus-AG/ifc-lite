@@ -286,7 +286,7 @@ export class StoreEditor {
   getNewEntity(expressId: number): NewEntity | null {
     return this.view.getNewEntity(expressId);
   }
-  readNewEntity(expressId: number): NewEntity | null { return this.view.readNewEntity(expressId); }
+  readNewEntity(expressId: number): NewEntity | null { return this.view.readNewEntity?.(expressId) ?? this.view.getNewEntity(expressId); }
 
   /** Whether an id resolves to a live source or overlay entity. */
   hasEntity(expressId: number): boolean {

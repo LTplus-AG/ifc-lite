@@ -1,7 +1,7 @@
 {
   "name": "@ifc-lite/wasm-lifecycle",
   "version": "0.2.0",
-  "description": "Shared WASM engine load-retry classification and cross-realm panic-forwarding, used by @ifc-lite/geometry and @ifc-lite/parser",
+  "description": "Shared WASM engine load-retry classification, cross-realm panic-forwarding and single-flight init lifetime used by the ifc-lite engine clients",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

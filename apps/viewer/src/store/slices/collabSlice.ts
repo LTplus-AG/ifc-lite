@@ -719,6 +719,9 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
         reconstructor.attachLive();
         attempt.onRetire(reconstructor.teardown);
       } catch (err) {
+        // A Leave before the room synced disposes the session, so its
+        // `whenSynced` rejects here; the join is over, not failed.
+        if (!current()) return;
         // eslint-disable-next-line no-console
         console.error('[collab] model reconstruction failed:', err);
       }
@@ -1121,13 +1124,20 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
       void (async () => {
         try {
           const blobStore = await attempt.blobStore();
+          // A Leave or rejoin during the upload: this room is not the user's
+          // any more, so neither its result nor its failure is theirs to see.
+          if (!attempt.live) return;
           const report = await seedGeometryToRoom(geom, session, blobStore, [mesh], () => path);
+          if (!attempt.live) return;
           if (report.seeded === 0) {
             // eslint-disable-next-line no-console
             console.error('[collab] mirror create geometry failed:', report);
             set({ collabGeometryNotice: 'The new element could not be shared with the room.' });
           }
         } catch (err) {
+          // Retiring the attempt disposes its session and blob store, which is
+          // usually what threw here; that is the user leaving, not a failure.
+          if (!attempt.live) return;
           // eslint-disable-next-line no-console
           console.error('[collab] mirror create geometry failed:', err);
           set({ collabGeometryNotice: 'The new element could not be shared with the room.' });
@@ -1156,15 +1166,18 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
     void (async () => {
       try {
         const blobStore = await attempt.blobStore();
+        if (!attempt.live) return; // see mirrorEntityCreate
         const report = await seedGeometryToRoom(geom, session, blobStore, meshes, () => path, {
           replace: true,
         });
+        if (!attempt.live) return;
         if (report.seeded === 0) {
           // eslint-disable-next-line no-console
           console.error('[collab] mirror resize geometry failed:', report);
           set({ collabGeometryNotice: 'The updated geometry could not be shared with the room.' });
         }
       } catch (err) {
+        if (!attempt.live) return; // see mirrorEntityCreate
         // eslint-disable-next-line no-console
         console.error('[collab] mirror resize geometry failed:', err);
         set({ collabGeometryNotice: 'The updated geometry could not be shared with the room.' });

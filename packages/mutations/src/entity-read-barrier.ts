@@ -6,6 +6,13 @@ import type { NewEntity } from './types.js';
 
 let internalReads = 0;
 const observers = new WeakMap<NewEntity, Set<() => void>>();
+const dataBarriers = new WeakMap<object, { getter: PropertyDescriptor['get']; read(): NewEntity['attributes'] }>();
+
+/** Cooperative cloning may unwrap our own data barrier, never a caller getter. */
+export function entityAttributeData(object: object, key: PropertyKey, descriptor: PropertyDescriptor | undefined): PropertyDescriptor | undefined {
+  const barrier = key === 'attributes' ? dataBarriers.get(object) : undefined;
+  return barrier && descriptor?.get === barrier.getter ? { value: barrier.read() } : undefined;
+}
 
 /** Internal snapshots/readers do not hand mutable arrays to a caller. */
 export function withoutEntityExposure<T>(read: () => T): T {
@@ -38,6 +45,9 @@ export function observeEntityAttributes(entity: NewEntity, exposed: () => void):
       else value = next;
     },
   });
+  if (descriptor && 'value' in descriptor) {
+    dataBarriers.set(entity, { getter: Object.getOwnPropertyDescriptor(entity, 'attributes')!.get, read: () => value });
+  }
 }
 
 /** A read-only borrow: mutation belongs on the ordinary getter or slot APIs. */

@@ -6,6 +6,7 @@ import type { CompoundInverse } from './compound-inverse.js';
 import type { MutableOverlayState } from './mutable-overlay-state.js';
 
 export type OverlaySnapshot = ReturnType<MutableOverlayState['copyOverlayState']>;
+/** @internal Capability registered by MutablePropertyView; absent from package exports. */
 interface OverlayAccess {
   readonly modelId: string;
   transact<T>(edit: (draft: MutablePropertyView) => T, record: boolean): { result: T; inverse?: CompoundInverse; written: string[] };

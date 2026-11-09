@@ -10,6 +10,7 @@ import { sameOverlayValue } from './overlay-value-equality.js';
 import { captureCompoundInverse, type CompoundInverse } from './compound-inverse.js';
 import type { OverlaySnapshot } from './cooperative-overlay-access.js';
 import type { NewEntity } from './types.js';
+import { restoreEntityOrder } from './restore-entity-order.js';
 
 type Change = { before: unknown; after: unknown; apply(): void };
 const materializers = new WeakMap<object, () => object>();
@@ -23,6 +24,8 @@ export function materializeOverlay(state: OverlaySnapshot): OverlaySnapshot {
 function sparseMap<K, V, T extends Map<K, V>>(base: T): { value: T; changes(): Change } {
   const reads = new Map<K, V>(), removed = new Set<K>(), inserted = new Set<K>();
   const localEntities = base instanceof NewEntityMap ? new NewEntityMap() : null;
+  let ordering: Map<number, number> | undefined;
+  const positionOf = (id: number): number => ordering?.get(id) ?? (base instanceof NewEntityMap ? base.positionOf(id) : Infinity);
   let size = base.size;
   const has = (key: K) => inserted.has(key) || (!removed.has(key) && base.has(key));
   const get = (key: K): V | undefined => {
@@ -34,16 +37,37 @@ function sparseMap<K, V, T extends Map<K, V>>(base: T): { value: T; changes(): C
     }
     return reads.get(key);
   };
-  function* keys(): MapIterator<K> {
+  function* rawKeys(): MapIterator<K> {
     for (const key of base.keys()) if (!removed.has(key)) yield key;
     yield* inserted;
   }
+  function* keys(): MapIterator<K> {
+    if (!ordering) { yield* rawKeys(); return; }
+    for (const id of ordering.keys()) if (has(id as K)) yield id as K;
+    for (const key of rawKeys()) if (!ordering.has(key as number)) yield key;
+  }
+  const restoreOrder = (ids: readonly number[]) => { ordering = new Map(ids.map((id, i) => [id, i])); };
   function* entries(): MapIterator<[K, V]> { for (const key of keys()) yield [key, get(key)!]; }
   function* values(): MapIterator<V> { for (const key of keys()) yield get(key)!; }
   const target = base instanceof NewEntityMap ? new NewEntityMap() : new Map<K, V>();
   const value = new Proxy(target, { get(_target, name) {
     if (name === 'size') return size;
-    if (name === 'positionOf' && base instanceof NewEntityMap) return (id: number) => base.positionOf(id);
+    if (name === 'positionOf' && localEntities) return positionOf;
+    if (name === 'restoreOrder' && localEntities) return restoreOrder;
+    if (name === 'restoreBefore' && localEntities) return (before: ReadonlyMap<number, number | null>) => {
+      if (before.size) restoreOrder(restoreEntityOrder(keys() as Iterable<number>, before));
+    };
+    if (name === 'successorOf' && base instanceof NewEntityMap) return (id: number): number | null => {
+      if (ordering) { const ids = [...keys()]; return ids[ids.indexOf(id as K) + 1] as number ?? null; }
+      if (inserted.has(id as K)) {
+        let found = false;
+        for (const key of inserted) { if (found) return key as number; if (key === id) found = true; }
+        return null;
+      }
+      let next = base.successorOf(id);
+      while (next !== null && !has(next as K)) next = base.successorOf(next);
+      return next ?? (inserted.values().next().value as number | undefined) ?? null;
+    };
     if (name === 'watchAttributeExposure' && localEntities) return (listener: (id: number) => void) => localEntities.watchAttributeExposure(listener);
     if (name === 'get') return get;
     if (name === 'has') return has;
@@ -63,20 +87,23 @@ function sparseMap<K, V, T extends Map<K, V>>(base: T): { value: T; changes(): C
       for (const [k, v] of entries()) fn.call(self, v, k, value);
     };
     if ((name === 'ofType' || name === 'referencing') && base instanceof NewEntityMap) return function* (query: string | number): IterableIterator<NewEntity> {
-      if (name === 'referencing') localEntities!.refreshReferences();
-      const seen = new Set<number>();
-      const candidates = name === 'ofType' ? base.ofType(String(query)) : base.referencing(Number(query));
-      for (const entity of candidates) {
-        const key = entity.expressId as K;
-        if (removed.has(key)) continue;
-        const next = get(key) as NewEntity;
-        // A replaced entry is checked in the private draft bucket below.
-        if (name === 'ofType' ? next.type.toUpperCase() !== String(query).toUpperCase()
-          : !localEntities!.referencesId(next.expressId, Number(query))) continue;
-        seen.add(next.expressId); yield next;
-      }
-      const local = name === 'ofType' ? localEntities!.ofType(String(query)) : localEntities!.referencing(Number(query));
-      for (const entity of local) if (!seen.has(entity.expressId) && has(entity.expressId as K)) yield entity;
+      const matches = function* () {
+        if (name === 'referencing') localEntities!.refreshReferences();
+        const seen = new Set<number>();
+        const candidates = name === 'ofType' ? base.ofType(String(query)) : base.referencing(Number(query));
+        for (const entity of candidates) {
+          const key = entity.expressId as K;
+          if (removed.has(key)) continue;
+          const next = get(key) as NewEntity;
+          // A replaced entry is checked in the private draft bucket below.
+          if (name === 'ofType' ? next.type.toUpperCase() !== String(query).toUpperCase()
+            : !localEntities!.referencesId(next.expressId, Number(query))) continue;
+          seen.add(next.expressId); yield next;
+        }
+        const local = name === 'ofType' ? localEntities!.ofType(String(query)) : localEntities!.referencing(Number(query));
+        for (const entity of local) if (!seen.has(entity.expressId) && has(entity.expressId as K)) yield entity;
+      };
+      yield* ordering ? [...matches()].sort((a, b) => positionOf(a.expressId) - positionOf(b.expressId)) : matches();
     };
     return Reflect.get(_target, name, _target);
   } }) as T;
@@ -93,9 +120,11 @@ function sparseMap<K, V, T extends Map<K, V>>(base: T): { value: T; changes(): C
       if (base.has(key)) before.set(key, structuredClone(old!));
       if (has(key)) after.set(key, structuredClone(next!));
     }
+    const order = ordering ? [...keys()] as number[] : undefined;
     return { before, after, apply() {
       for (const key of removed) base.delete(key);
       for (const [key, next] of after) base.set(key, structuredClone(next));
+      if (base instanceof NewEntityMap && order) base.restoreOrder(order);
     } };
   } };
 }
@@ -186,6 +215,13 @@ export function sparseOverlay(original: OverlaySnapshot) {
       Object.assign(afterSmall, { [change.key]: after[change.key] });
     }
     const inverse: CompoundInverse | undefined = record ? captureCompoundInverse(beforeSmall, afterSmall) : undefined;
+    if (inverse) for (const { field, entries } of inverse.maps) {
+      const base = original[field];
+      const next = after[field];
+      if (base instanceof NewEntityMap && next instanceof Map) for (const entry of entries) {
+        if (entry.present && !(next as Map<unknown, unknown>).has(entry.key)) entry.orderBefore = base.successorOf(entry.key as number);
+      }
+    }
     const nextHistory = after.mutationHistory;
     const appendOnly = nextHistory === history.value && nextHistory.length >= original.mutationHistory.length
       && [...history.rows].every(([i, row]) => i >= original.mutationHistory.length || sameOverlayValue(row, original.mutationHistory[i]));

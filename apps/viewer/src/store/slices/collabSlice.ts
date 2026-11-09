@@ -1088,34 +1088,26 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
     attempt.placementAppliedYaw.delete(globalId);
   },
   mirrorEntityCreate: (modelId, entityId, ifcType, guid, mesh, initialAttributes, sourceExpressId) => {
-    // Room model only — see `mirrorPlacementEdit`.
     const session = get().collabSession;
     const store = roomStoreFor(get(), modelId);
     const attempt = liveCollabAttempt();
     const apis = attempt?.apis;
     if (!session || !store || !attempt || !apis) return;
     if (!get().canCollabEdit()) return;
-    // Overlay entities aren't in the GUID maps. Register before publication so
-    // transaction observers can resolve the restored entity identity; undo the
-    // registration if CRDT creation itself fails.
-    let path = pathForEntity(store, entityId);
-    let generatedPath = false;
-    if (!path && guid) {
-      path = pathForGuid(store, guid);
-      generatedPath = true;
-    }
+    // Register the overlay identity before publication; roll it back if create fails.
+    const existingPath = pathForEntity(store, entityId);
+    const path = existingPath ?? (guid ? pathForGuid(store, guid) : null);
     if (!path) return;
+    const generatedPath = !existingPath;
     const ifcClass = normalizeIfcClass(ifcType);
     const api = apis.doc;
     if (generatedPath) registerEntityPath(store, entityId, path);
     try {
-      session.transact(() => {
-        api.createEntity(session.doc, path, {
-          ifcClass,
-          attributes: { 'bsi::ifc::class': { code: ifcClass }, ...initialAttributes },
-          ...(sourceExpressId === undefined ? {} : { meta: { 'ifc-lite::sourceExpressId': sourceExpressId } }),
-        });
-      });
+      session.transact(() => api.createEntity(session.doc, path, {
+        ifcClass,
+        attributes: { 'bsi::ifc::class': { code: ifcClass }, ...initialAttributes },
+        ...(sourceExpressId === undefined ? {} : { meta: { 'ifc-lite::sourceExpressId': sourceExpressId } }),
+      }));
     } catch (error) {
       if (generatedPath) unregisterEntityPath(store, entityId);
       throw error;

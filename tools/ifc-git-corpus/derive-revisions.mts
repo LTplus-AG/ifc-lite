@@ -39,12 +39,9 @@
  * still holds. `--check` closes that gap: same derivation, compared
  * byte-for-byte against the committed file, nothing written.
  *
- * Verification scope is `data`, deliberately: only the independent diff WASM
- * engine is initialized; the geometry pipeline is not run. It needs an installed
- * and CURRENT workspace build, including `@ifc-lite/wasm/diff`.
- * Revisions whose change is geometric are marked `geometryScopeRequired` in the
- * manifest — their bytes are correct, but proving the change needs the geometry
- * lane.
+ * Data comparison uses the independent diff WASM. Move and split revisions
+ * additionally run source-built geometry WASM and refuse missing mesh evidence.
+ * An installed, current workspace build with both WASM engines is required.
  *
  * Run from the repo root:
  *   pnpm install # links @ifc-lite/wasm into packages/diff
@@ -72,7 +69,7 @@
  */
 
 import { spawnSync } from 'node:child_process';
-import { createHash } from 'node:crypto';
+import type { StepLine } from './step-text.js';
 import { existsSync, mkdirSync } from 'node:fs';
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -112,6 +109,8 @@ if (!process.env.IFC_LITE_CORPUS_BOOTSTRAPPED) {
 const PREREQUISITES_ABSENT = 3;
 
 const REQUIRED_PATHS = [
+  'packages/wasm/pkg/ifc-lite.js',
+  'packages/wasm/pkg/ifc-lite_bg.wasm',
   'packages/parser/dist/index.js',
   'packages/diff/dist/index.js',
   'packages/wasm/pkg-diff/ifc-lite-diff.js',
@@ -134,6 +133,9 @@ if (missing.length > 0) {
   process.exit(PREREQUISITES_ABSENT);
 }
 
+const { indexLines, splitArgs, findByType, requireOne, rewriteRecord, globalIdOf, rootedLines, sha256, referenceCount, stepReal } = await import('./step-text.js');
+const { addElement, addClassification, splitAddedElement } = await import('./remaining-transforms.js');
+const { proveMove, proveSplit } = await import('./geometry-proof.js');
 const { IfcParser } = await import('../../packages/parser/dist/index.js');
 const { diffModels, initDiff } = await import('../../packages/diff/dist/index.js');
 // #8042/#8111: data-only consumers also initialize the independent diff engine.
@@ -157,104 +159,6 @@ const CHECK_ONLY = process.argv.slice(2).includes('--check');
 // the header and regenerate GlobalIds, neither of which survives a
 // parse/re-serialize round trip unchanged.
 // ---------------------------------------------------------------------------
-
-const STEP_LINE_RE = /^#(\d+)=([A-Z0-9_]+)\((.*)\);\s*$/;
-/** The 64-character IFC GUID alphabet, 22 characters wide. */
-const IFC_GUID_RE = /^[0-9A-Za-z_$]{22}$/;
-
-interface StepLine {
-  readonly index: number;
-  readonly id: number;
-  readonly type: string;
-  readonly args: string;
-}
-
-function indexLines(lines: readonly string[]): Map<number, StepLine> {
-  const out = new Map<number, StepLine>();
-  lines.forEach((line, index) => {
-    const m = STEP_LINE_RE.exec(line);
-    if (m) out.set(Number(m[1]), { index, id: Number(m[1]), type: m[2], args: m[3] });
-  });
-  return out;
-}
-
-/** Split top-level STEP arguments, respecting quotes and nesting. */
-function splitArgs(args: string): string[] {
-  const out: string[] = [];
-  let depth = 0;
-  let quoted = false;
-  let start = 0;
-  for (let i = 0; i < args.length; i++) {
-    const ch = args[i];
-    if (quoted) {
-      if (ch === "'") quoted = args[i + 1] === "'" ? (i++, true) : false;
-      continue;
-    }
-    if (ch === "'") quoted = true;
-    else if (ch === '(') depth++;
-    else if (ch === ')') depth--;
-    else if (ch === ',' && depth === 0) {
-      out.push(args.slice(start, i));
-      start = i + 1;
-    }
-  }
-  out.push(args.slice(start));
-  return out;
-}
-
-function findByType(index: Map<number, StepLine>, type: string): StepLine[] {
-  return [...index.values()].filter((l) => l.type === type).sort((a, b) => a.id - b.id);
-}
-
-function requireOne(lines: StepLine[], what: string): StepLine {
-  if (lines.length === 0) throw new Error(`base model has no ${what}`);
-  return lines[0];
-}
-
-/** Replace one whole record, keeping its position. */
-function rewriteRecord(lines: string[], line: StepLine, args: readonly string[]): void {
-  lines[line.index] = `#${line.id}=${line.type}(${args.join(',')});`;
-}
-
-function globalIdOf(line: StepLine): string | null {
-  const first = splitArgs(line.args)[0] ?? '';
-  const m = /^'(.*)'$/.exec(first);
-  if (!m) return null;
-  return IFC_GUID_RE.test(m[1]) && isValidIfcGuid(m[1]) ? m[1] : null;
-}
-
-/** Every record whose arg[0] is a GlobalId — i.e. every `IfcRoot`. */
-function rootedLines(index: Map<number, StepLine>): StepLine[] {
-  return [...index.values()].filter((l) => globalIdOf(l) !== null).sort((a, b) => a.id - b.id);
-}
-
-function sha256(text: string): string {
-  return createHash('sha256').update(text, 'utf8').digest('hex');
-}
-
-/**
- * How many OTHER records reference `#id`. The record's own declaration is not a
- * reference, so it is discounted.
- */
-function referenceCount(lines: readonly string[], target: StepLine): number {
-  const re = new RegExp(`#${target.id}(?![0-9])`, 'g');
-  let count = 0;
-  lines.forEach((line, i) => {
-    const hits = line.match(re)?.length ?? 0;
-    count += i === target.index ? hits - 1 : hits;
-  });
-  return count;
-}
-
-/**
- * STEP serialisation of a REAL. `IfcLengthMeasure` is a REAL, and ISO 10303-21
- * requires the decimal point even on an integral value: `250` is an INTEGER
- * literal and not schema-valid where a REAL is expected.
- */
-function stepReal(value: number): string {
-  const text = String(value);
-  return /[.eE]/.test(text) ? text : `${text}.`;
-}
 
 // ---------------------------------------------------------------------------
 // Revision transforms. Each takes the previous revision's text and returns the
@@ -280,7 +184,7 @@ interface SharedDefinition {
   readonly consumers: readonly string[];
 }
 
-interface Applied {
+export interface Applied {
   readonly text: string;
   /** GlobalIds the change is expected to touch. Empty for a no-op revision. */
   readonly touched: readonly string[];
@@ -291,7 +195,7 @@ interface Applied {
   readonly note?: string;
 }
 
-type Transform = (text: string) => Applied;
+export type Transform = (text: string) => Applied;
 
 /** The wall whose own property set is edited, and the type whose set is edited. */
 function pickWall(index: Map<number, StepLine>): StepLine {
@@ -727,20 +631,25 @@ interface RevisionSpec {
     | { readonly kind: 'unchanged' }
     | { readonly kind: 'modified'; readonly count: number }
     | { readonly kind: 'deleted'; readonly count: number }
+    | { readonly kind: 'added'; readonly count: number }
+    | { readonly kind: 'split' }
     | { readonly kind: 'reguid-noop' };
 }
 
 const REVISIONS: readonly RevisionSpec[] = [
   { id: 'r00', changeClass: 'base', exercises: 'first commit, parents: []', apply: null, expect: { kind: 'base' } },
-  { id: 'r01', changeClass: 'property-value-edit', exercises: 'change localises to one pset on one element', apply: editOwnPropertySet, expect: { kind: 'modified', count: 1 } },
-  { id: 'r02', changeClass: 'element-moved', exercises: 'placement change with data unchanged', apply: moveElement, expect: { kind: 'unchanged' } },
-  { id: 'r03', changeClass: 'element-renamed', exercises: 'attr:core only', apply: renameElement, expect: { kind: 'modified', count: 1 } },
+  { id: 'r01', changeClass: 'property-value-edit', exercises: 'one pset on one element', apply: editOwnPropertySet, expect: { kind: 'modified', count: 1 } },
+  { id: 'r02', changeClass: 'element-moved', exercises: 'placement changes with data unchanged', apply: moveElement, expect: { kind: 'unchanged' } },
+  { id: 'r03', changeClass: 'element-added', exercises: 'one new product with real geometry', apply: addElement, expect: { kind: 'added', count: 1 } },
   { id: 'r04', changeClass: 'element-deleted', exercises: 'deleted', apply: deleteElement, expect: { kind: 'deleted', count: 1 } },
-  { id: 'r05', changeClass: 'type-object-property-edit', exercises: 'types tracked, not only occurrences (#8040)', apply: editTypeObjectPropertySet, expect: { kind: 'modified', count: 1 } },
-  { id: 'r06', changeClass: 'property-set-shared', exercises: 'one definition, two consumers: the second wall swaps its own same-named set for the first wall\'s', apply: sharePropertySet, expect: { kind: 'modified', count: 1 } },
-  { id: 'r07', changeClass: 'shared-property-set-edit', exercises: 'one node change, two element markers', apply: editSharedPropertySet, expect: { kind: 'modified', count: 2 } },
-  { id: 'r08', changeClass: 'reexport-reguid', exercises: 'GUID-AGNOSTIC: total churn when keyed by GlobalId, unchanged under content matching', apply: reExportRegeneratingGuids, expect: { kind: 'reguid-noop' } },
-  { id: 'r09', changeClass: 'byte-identical-resave', exercises: 'empty diff: must produce no commit', apply: byteIdenticalResave, expect: { kind: 'unchanged' } },
+  { id: 'r05', changeClass: 'element-renamed', exercises: 'attr:core only', apply: renameElement, expect: { kind: 'modified', count: 1 } },
+  { id: 'r06', changeClass: 'classification-added', exercises: 'classification association changes one component', apply: addClassification, expect: { kind: 'modified', count: 1 } },
+  { id: 'r07', changeClass: 'reexport-reguid', exercises: 'GUID-agnostic matching absorbs total key churn', apply: reExportRegeneratingGuids, expect: { kind: 'reguid-noop' } },
+  { id: 'r08', changeClass: 'byte-identical-resave', exercises: 'empty diff: no commit', apply: byteIdenticalResave, expect: { kind: 'unchanged' } },
+  { id: 'r09', changeClass: 'type-object-property-edit', exercises: 'types tracked as well as occurrences', apply: editTypeObjectPropertySet, expect: { kind: 'modified', count: 1 } },
+  { id: 'r10', changeClass: 'element-split', exercises: 'one source becomes two; content matching abstains', apply: splitAddedElement, expect: { kind: 'split' } },
+  { id: 'r11a', changeClass: 'property-set-shared', exercises: 'prepare one definition with two consumers', apply: sharePropertySet, expect: { kind: 'modified', count: 1 } },
+  { id: 'r11', changeClass: 'shared-property-set-edit', exercises: 'one node change, two element markers', apply: editSharedPropertySet, expect: { kind: 'modified', count: 2 } },
 ];
 
 // ---------------------------------------------------------------------------
@@ -763,6 +672,7 @@ interface MeasuredDiff {
   readonly changedComponents: readonly string[];
   readonly modifiedKeys: readonly string[];
   readonly deletedKeys: readonly string[];
+  readonly addedKeys: readonly string[];
   /** Content-match claims, when the pass ran. `null` when it abstained. */
   readonly contentMatchKinds: Readonly<Record<string, number>> | null;
 }
@@ -786,10 +696,13 @@ function summarize(diff: any): MeasuredDiff {
   const components = new Set<string>();
   const modifiedKeys: string[] = [];
   const deletedKeys: string[] = [];
+  const addedKeys: string[] = [];
   for (const entry of diff.entries) {
     if (entry.state === 'modified') {
       modifiedKeys.push(entry.key);
       for (const c of entry.changedComponents ?? []) components.add(c);
+    } else if (entry.state === 'added') {
+      addedKeys.push(entry.key);
     } else if (entry.state === 'deleted') {
       deletedKeys.push(entry.key);
     }
@@ -809,6 +722,7 @@ function summarize(diff: any): MeasuredDiff {
     changedComponents: [...components].sort(),
     modifiedKeys: modifiedKeys.sort(),
     deletedKeys: deletedKeys.sort(),
+    addedKeys: addedKeys.sort(),
     contentMatchKinds: kinds,
   };
 }
@@ -957,6 +871,17 @@ function checkExpectation(
       return sameSet(k.deletedKeys, applied.touched)
         ? null
         : `declared deletion of [${applied.touched.join(' ')}], measured [${k.deletedKeys.join(' ')}]`;
+    case 'added':
+      return k.added === spec.expect.count && k.deleted === 0 && k.modified === 0 && sameSet(k.addedKeys, applied.touched)
+        ? null : `addition mismatch: +${k.added} ~${k.modified} -${k.deleted}`;
+    case 'split': {
+      const c = m.contentMatched;
+      return k.added === 2 && k.deleted === 1 && k.modified === 0
+        && sameSet(k.deletedKeys, applied.touched.slice(0, 1)) && sameSet(k.addedKeys, applied.touched.slice(1))
+        && c.added === 2 && c.deleted === 1 && c.modified === 0
+        && (c.contentMatchKinds?.ambiguous ?? 0) === 1
+        ? null : `split must remain an ambiguous 1-to-2 group: ${JSON.stringify(m)}`;
+    }
     case 'reguid-noop': {
       // The whole point of the corpus. A re-GUID must be total churn when
       // paired by GlobalId, and nothing at all once content matching runs.
@@ -1005,6 +930,10 @@ for (const spec of REVISIONS) {
     if (problem) failures.push(`${spec.id} (${spec.changeClass}): ${problem}`);
   }
 
+  const geometryProof = spec.changeClass === 'element-moved'
+    ? proveMove(previousText, applied.text, applied.touched[0])
+    : spec.changeClass === 'element-split' ? proveSplit(previousText, applied.text, applied.touched) : null;
+
   entries.push({
     id: spec.id,
     file,
@@ -1016,7 +945,8 @@ for (const spec of REVISIONS) {
     identicalToParentBytes: previousId !== null && applied.text === previousText,
     touchedGlobalIds: applied.touched,
     sharedDefinition: applied.shared ?? null,
-    geometryScopeRequired: spec.changeClass === 'element-moved',
+    geometryScopeRequired: spec.changeClass === 'element-moved' || spec.changeClass === 'element-split',
+    geometryProof,
     note: applied.note ?? null,
     measuredDataDiff: measured,
   });
@@ -1027,15 +957,12 @@ for (const spec of REVISIONS) {
 
 const manifest = {
   '//': 'GENERATED by tools/ifc-git-corpus/derive-revisions.mts - do not hand-edit.',
-  version: 1,
-  issue: 8128,
+  version: 2,
+  issue: 8197,
   base: 'apps/viewer/public/samples/building-architecture.ifc',
   baseSha256: sha256(baseText),
-  verificationScope: 'data',
-  // Preserve the version-1 TS-reference provenance note and manifest bytes.
-  // Current-engine execution is described above and checked independently.
-  verificationNote:
-    'Measured with @ifc-lite/diff at scope "data", which needs no geometry pipeline and so no WASM. Revisions flagged geometryScopeRequired carry a real change that data scope cannot see.',
+  verificationScope: 'data plus non-skipped geometry for move and split',
+  verificationNote: 'Data differences use the independent diff WASM. Move and split proofs use source-built geometry WASM world hashes, bounds and closed-solid volumes; unrelated meshed products must stay unchanged.',
   revisions: entries,
 };
 

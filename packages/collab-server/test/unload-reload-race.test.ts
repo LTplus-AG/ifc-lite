@@ -21,6 +21,7 @@ import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
 import { WebSocket } from 'ws';
+import { WebsocketProvider } from 'y-websocket';
 import { FilePersistence, MemoryPersistence, startCollabServer } from '../src/server.js';
 import { RoomManager, type PeerConnection } from '../src/room-manager.js';
 
@@ -48,6 +49,7 @@ function gate(): Gate & { enter(): Promise<void> } {
 /** File persistence whose compaction of one room waits on a gate. */
 class GatedFilePersistence extends FilePersistence {
   readonly appends: Promise<void>[] = [];
+  readonly compactions: Promise<void>[] = [];
   constructor(dataDir: string, private readonly gates: Map<string, ReturnType<typeof gate>>) {
     super({ dataDir });
   }
@@ -56,13 +58,15 @@ class GatedFilePersistence extends FilePersistence {
     this.appends.push(p);
     return p;
   }
-  override async compact(roomId: string, merged: Uint8Array): Promise<void> {
+  override compact(roomId: string, merged: Uint8Array): Promise<void> {
     const g = this.gates.get(roomId);
-    if (g) {
-      this.gates.delete(roomId);
-      await g.enter();
-    }
-    await super.compact(roomId, merged);
+    if (g) this.gates.delete(roomId);
+    const p = (async () => {
+      if (g) await g.enter();
+      await super.compact(roomId, merged);
+    })();
+    this.compactions.push(p);
+    return p;
   }
 }
 
@@ -146,7 +150,8 @@ describe('unload vs reload of the same room (PR #9489)', () => {
     const sweep = mgr.sweepIdle();
     await held.entered; // 'a' is compacting; 'b' is next in line
 
-    const b = await mgr.getOrCreate('b');
+    // peek(): no lastActiveAt bump, so only the peer-count re-check can save b.
+    const b = await mgr.peek('b')!;
     const peer = stubPeer();
     b.addConnection(peer.conn);
 
@@ -194,6 +199,67 @@ describe('unload vs reload of the same room (PR #9489)', () => {
     expect(mgr.list()).toEqual([]);
   });
 
+  it('PR #9489: an in-flight periodic compaction cannot wipe an update the reloaded room appended', async () => {
+    // Review on #9489: unload waited for destroy()'s final compaction but not
+    // for a `compactEvery` compaction started earlier from an older snapshot.
+    const dir = tmpDir();
+    const gates = new Map([['p', gate()]]);
+    const held = gates.get('p')!;
+    const persistence = new GatedFilePersistence(dir, gates);
+    const mgr = new RoomManager({ persistence, compactEvery: 2 });
+    cleanups.push(() => mgr.unloadAll());
+
+    const first = await mgr.getOrCreate('p');
+    first.doc.getMap('m').set('x', 1);
+    first.doc.getMap('m').set('before', 1); // 2nd append: periodic compaction
+    await held.entered; // ...which is now held with a {x, before} snapshot
+
+    const unloading = mgr.unload('p');
+    const reloaded = mgr.getOrCreate('p').then((room) => {
+      room.doc.getMap('m').set('after', 2);
+      return room;
+    });
+    await new Promise((r) => setTimeout(r, 50));
+    held.release();
+    await unloading;
+    await reloaded;
+    // Every write issued so far has landed; nothing re-compacts the reloaded
+    // room (that would rewrite the log and hide a loss).
+    await Promise.all([...persistence.appends, ...persistence.compactions]);
+
+    const onDisk = new Y.Doc();
+    const saved = await new FilePersistence({ dataDir: dir }).load('p');
+    if (saved) Y.applyUpdate(onDisk, saved);
+    expect(onDisk.getMap('m').toJSON()).toEqual({ x: 1, before: 1, after: 2 });
+  });
+
+  it('PR #9489: sweepIdle keeps a candidate that was fetched (lastActiveAt bumped) while an earlier one compacted', async () => {
+    const gates = new Map([['a', gate()]]);
+    const held = gates.get('a')!;
+    const persistence = new MemoryPersistence();
+    const realCompact = persistence.compact.bind(persistence);
+    persistence.compact = async (roomId, merged) => {
+      const g = gates.get(roomId);
+      if (g) {
+        gates.delete(roomId);
+        await g.enter();
+      }
+      await realCompact(roomId, merged);
+    };
+    const mgr = new RoomManager({ persistence, idleUnloadMs: 20 });
+    cleanups.push(() => mgr.unloadAll());
+    await mgr.getOrCreate('a');
+    await mgr.getOrCreate('b');
+    await new Promise((r) => setTimeout(r, 40)); // both idle
+
+    const sweep = mgr.sweepIdle();
+    await held.entered;
+    await mgr.getOrCreate('b'); // a join is on its way: no peer yet, but active
+    held.release();
+    expect(await sweep).toEqual(['a']);
+    expect(mgr.list()).toEqual(['b']);
+  });
+
   it('PR #9489: a destroyed room refuses new connections instead of registering a ghost', async () => {
     const mgr = new RoomManager({ persistence: new MemoryPersistence() });
     cleanups.push(() => mgr.unloadAll());
@@ -204,33 +270,53 @@ describe('unload vs reload of the same room (PR #9489)', () => {
     expect(room.peerCount).toBe(0);
   });
 
-  it('PR #9489: a peer whose room is unloaded mid-join lands in the live reloaded room', async () => {
-    // Slow load so the unload below lands while the peer's join is awaiting it.
+  it('PR #9489: a peer whose room is unloaded mid-join ends up in the live reloaded room and loses no update', async () => {
+    // Order-independent: the peer may be registered into the reloaded room
+    // directly, or be closed and reconnect into it. Either way it must not
+    // stay a ghost in the destroyed instance, and its edit must persist.
     class SlowMemory extends MemoryPersistence {
       override async load(roomId: string): Promise<Uint8Array | null> {
         await new Promise((r) => setTimeout(r, 150));
         return super.load(roomId);
       }
     }
-    const handle = await startCollabServer({ port: 0, host: '127.0.0.1', persistence: new SlowMemory() });
+    const persistence = new SlowMemory();
+    const handle = await startCollabServer({ port: 0, host: '127.0.0.1', persistence });
     cleanups.push(() => handle.stop());
-    const ws = new WebSocket(`${handle.url}/mid-join`);
-    cleanups.push(() => ws.terminate());
-    await new Promise<void>((resolve, reject) => {
-      ws.once('open', () => resolve());
-      ws.once('error', reject);
+    const doc = new Y.Doc();
+    const provider = new WebsocketProvider(handle.url, 'mid-join', doc, {
+      WebSocketPolyfill: WebSocket as never,
+      disableBc: true,
     });
+    cleanups.push(() => provider.destroy());
     // Wait until the join has started loading the room, then unload it.
     while (!handle.roomManager.list().includes('mid-join')) await new Promise((r) => setTimeout(r, 5));
     const stale = handle.roomManager.peek('mid-join')!;
     await handle.roomManager.unload('mid-join');
 
-    // The peer gets its sync step 1 from whichever room it was registered in.
-    await new Promise<void>((resolve) => ws.once('message', () => resolve()));
-    const live = handle.roomManager.peek('mid-join');
-    expect(live).toBeDefined();
-    expect(live).not.toBe(stale);
-    expect((await live!).peerCount).toBe(1);
-    expect(ws.readyState).toBe(ws.OPEN);
-  });
+    const deadline = Date.now() + 8_000;
+    let live: Awaited<typeof stale> | undefined;
+    for (;;) {
+      const pending = handle.roomManager.peek('mid-join');
+      if (pending && pending !== stale) {
+        const room = await pending;
+        if (room.peerCount === 1 && provider.synced) {
+          live = room;
+          break;
+        }
+      }
+      if (Date.now() > deadline) throw new Error('peer never reached the live reloaded room');
+      await new Promise((r) => setTimeout(r, 20));
+    }
+    doc.getMap('m').set('edit', 1);
+    while (live.doc.getMap('m').get('edit') !== 1) {
+      if (Date.now() > deadline) throw new Error('edit never reached the live room');
+      await new Promise((r) => setTimeout(r, 20));
+    }
+    await handle.roomManager.unload('mid-join');
+    const onDisk = new Y.Doc();
+    const saved = await persistence.load('mid-join');
+    if (saved) Y.applyUpdate(onDisk, saved);
+    expect(onDisk.getMap('m').get('edit')).toBe(1);
+  }, 15_000);
 });

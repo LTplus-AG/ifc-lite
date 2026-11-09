@@ -61,6 +61,9 @@ export class Room {
   private readonly conns = new Set<PeerConnection>();
   private readonly persistence: Persistence;
   private updatesSinceCompact = 0;
+  /** Appends and periodic compactions, one at a time: compaction REPLACES the
+   *  log, so two in flight (or one racing destroy()'s) can drop updates. */
+  private persisting: Promise<void> = Promise.resolve();
   private readonly compactEvery: number;
   private readonly auditSink: AuditSink;
   private readonly rateLimitFor: (principal: Principal) => RateLimitOptions;
@@ -353,7 +356,7 @@ export class Room {
       if (conn === origin) continue;
       safeSend(conn.ws, message);
     }
-    void this.persistAndMaybeCompact(update);
+    this.persisting = this.persisting.then(() => this.persistAndMaybeCompact(update));
   };
 
   private async persistAndMaybeCompact(update: Uint8Array): Promise<void> {
@@ -427,6 +430,9 @@ export class Room {
 
   async destroy(): Promise<void> {
     this.closeConnsAndListeners();
+    // Let queued writes finish first: an older periodic compaction landing
+    // after ours (or after a reload appended) would roll the log back.
+    await this.persisting;
     // Final compaction so the next load picks up the freshest state.
     try {
       await this.persistence.compact(this.id, Y.encodeStateAsUpdate(this.doc));

@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { Button } from '@/components/ui/button';
 import { useTranslation } from '@/i18n';
 import { useViewerStore, type EntityRef } from '@/store';
 import { presentationLayerOwner } from './presentationLayerOwner';
@@ -23,9 +24,10 @@ export function PresentationLayersSection({ entityRef, loadLookup }: { entityRef
     <div className="text-muted-foreground">{t('properties.panel.presentationLayersHeading')}</div>
     {error && <div role="alert" className="py-1">
       {t('properties.panel.presentationLayersLoadError')}{' '}
-      <button type="button" className="text-primary underline" onClick={retry}>{t('properties.panel.presentationLayersRetry')}</button>
+      <Button type="button" variant="link" size="sm" className="h-auto p-0 font-normal underline" onClick={retry}>{t('properties.panel.presentationLayersRetry')}</Button>
     </div>}
-    {layers?.map(layer => <button key={layer.expressId} type="button" className="block w-full py-1 text-left text-primary hover:bg-muted/50"
+    {layers?.map(layer => <Button key={layer.expressId} type="button" variant="ghost" size="sm"
+      className="h-auto w-full justify-start px-0 py-1 text-left font-normal text-primary hover:bg-muted/50 hover:text-primary"
       onClick={() => {
         const state = useViewerStore.getState();
         state.setHierarchyMode('presentation-layers');
@@ -38,6 +40,6 @@ export function PresentationLayersSection({ entityRef, loadLookup }: { entityRef
         } });
       }}>
       {layer.Name}{layer.Identifier ? ` (${layer.Identifier})` : ''}
-    </button>)}
+    </Button>)}
   </section>;
 }

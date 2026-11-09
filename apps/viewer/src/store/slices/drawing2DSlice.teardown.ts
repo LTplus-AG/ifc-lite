@@ -32,9 +32,9 @@
  * authored), and collapsing the two is the mistake #2802 records.
  */
 
-import { defineSliceTeardown } from '../teardown.js';
+import { defineSliceTeardown, notApplicable } from '../teardown.js';
 import { getDefaultDrawing2DState } from './drawing2DSlice.js';
-import { forgetLiveMarkup, markupTransitionPatch } from './drawing2DSlice.markupTransition.js';
+import { markupTransitionPatch } from './drawing2DSlice.markupTransition.js';
 
 export const drawing2DTeardown = defineSliceTeardown(
   'drawing2DSlice',
@@ -70,7 +70,6 @@ export const drawing2DTeardown = defineSliceTeardown(
   ],
   {
     'session-reset': () => {
-      forgetLiveMarkup();
       const defaults = getDefaultDrawing2DState();
       return {
         // Drawing 2D
@@ -114,8 +113,9 @@ export const drawing2DTeardown = defineSliceTeardown(
     // to the file that was loaded. Clearing every model leaves the 2D view
     // to be regenerated on demand and must not throw away the user's markup,
     // so that scope leaves the store alone — same reasoning as `'model-removed'`
-    // below when the removed model was NOT the active one. Only the per-model
-    // markup snapshots go, with the models they belong to.
+    // below when the removed model was NOT the active one. The per-model
+    // markup snapshots go with their models, evicted by the entry points
+    // (`forgetLiveMarkup`): a teardown is a pure patch.
     //
     // #4159 bug 5: when the removed model WAS the active one,
     // `modelSlice.teardown.ts`'s own arm moves `activeModelId` to
@@ -132,7 +132,7 @@ export const drawing2DTeardown = defineSliceTeardown(
     // active" case this arm used to hard-code as `notApplicable`.
     'model-removed': (scope, state) => {
       const defaults = getDefaultDrawing2DState();
-      const patch = markupTransitionPatch(
+      return markupTransitionPatch(
         {
           activeModelId: state.activeModelId ?? null,
           measure2DResults: state.measure2DResults ?? defaults.measure2DResults,
@@ -143,13 +143,7 @@ export const drawing2DTeardown = defineSliceTeardown(
         },
         scope.nextActiveModelId,
       );
-      // After the transition, which snapshots the removed model when it was active.
-      forgetLiveMarkup(scope.modelId);
-      return patch;
     },
-    'all-models-cleared': () => {
-      forgetLiveMarkup();
-      return {};
-    },
+    'all-models-cleared': notApplicable,
   },
 );

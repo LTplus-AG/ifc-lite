@@ -83,13 +83,15 @@ describe('flowSlice', () => {
     assert.deepEqual(loadPlayerValues(id), {});
   });
 
-  it('a session reset closes the panel and drops the run, but keeps the saved graphs and the working copy', () => {
+  it('a session reset closes the panel and drops the last run, but keeps the saved graphs and the working copy', () => {
     useViewerStore.getState().createFlow('Kept');
     useViewerStore.setState({ flowPanelVisible: true, flowRunning: true, flowLastError: 'x', flowLastRunWindow: { start: 1, end: 2, doc: newFlowDocument('x'), mutationIds: new Set() } });
     useViewerStore.setState(viewerTeardown({ kind: 'session-reset' }, useViewerStore.getState()));
     const s = useViewerStore.getState();
     assert.equal(s.flowPanelVisible, false);
-    assert.equal(s.flowRunning, false);
+    // A2: the running flag mirrors the execution lease, which only the run
+    // can release once it drains (`useFlowRunner.session.test.tsx`).
+    assert.equal(s.flowRunning, true, 'the teardown must not offer Run while the lease is held');
     assert.equal(s.flowLastError, null);
     assert.equal(s.flowLastRunWindow, null);
     assert.equal(s.savedFlows.length, 1);

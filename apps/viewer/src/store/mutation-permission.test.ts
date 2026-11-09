@@ -35,21 +35,16 @@ describe('canonical viewer mutation permission (#5901)', () => {
   beforeEach(() => seed(false));
 
   for (const twoModels of [false, true]) {
-    it(`keeps ${twoModels ? 'federated' : 'single-model'} writes and undo state unchanged until Edit mode is on`, () => {
+    it(`keeps ${twoModels ? 'federated' : 'single-model'} data edits work in View while geometry stays gated (#9296)`, () => {
       seed(twoModels);
       const modelId = twoModels ? second.id : first.id;
       const expressId = twoModels ? 22 : 11;
       const state = useViewerStore.getState();
       assert.deepEqual(mutationPermission(state, modelId), { allowed: false, reason: 'edit-mode' });
-      assert.equal(state.setAttribute(modelId, expressId, 'Name', 'Edited'), null);
-      assert.equal(useViewerStore.getState().undoStacks.get(modelId)?.length ?? 0, 0);
-      assert.equal(useViewerStore.getState().dirtyModels.has(modelId), false);
-
-      useViewerStore.setState({ editEnabled: true });
-      assert.equal(canMutate(useViewerStore.getState(), modelId), true);
-      assert.ok(useViewerStore.getState().setAttribute(modelId, expressId, 'Name', 'Edited'));
+      assert.ok(state.setAttribute(modelId, expressId, 'Name', 'Edited'));
       assert.equal(useViewerStore.getState().undoStacks.get(modelId)?.length, 1);
       assert.equal(useViewerStore.getState().dirtyModels.has(modelId), true);
+      assert.equal(canMutate(useViewerStore.getState(), modelId), false, 'geometry still needs Model');
       if (twoModels) assert.equal(useViewerStore.getState().undoStacks.get(first.id), undefined);
     });
   }

@@ -82,7 +82,7 @@ import { splitSlab } from './mutation-split-slab.js';
 import type { Point2D } from '@/lib/polygon-clip.js';
 import { registerAuthoredElement } from '@/utils/spatialHierarchy.js';
 import { withMutationBatchTags } from './mutation-batch-tags.js';
-import { canMutate, mutationDenial, mutationDenialKey, mutationPermission } from '../mutation-permission.js';
+import { canMutateData, canMutate, mutationDenial, mutationDenialKey, mutationPermission } from '../mutation-permission.js';
 import { syncTypeOverride } from './mutation-history-apply.js';
 import { recordMutationBatch, replayHistory } from './mutation-history-replay.js';
 import { dropFromChangeSets, newChangeSet, parseChangeSetFile, recordHistory } from './mutation-history-record.js';
@@ -1069,7 +1069,7 @@ export const createMutationSlice: StateCreator<
   setProperty: (modelId, entityId, psetName, propName, value, valueType = PropertyValueType.String, dataType) => {
     // Apply the shared edit-mode, role, and model gate before touching the
     // overlay, undo/redo, dirty state, or collaboration mirror (#5901).
-    if (!canMutate(get(), modelId)) return null;
+    if (!canMutateData(get(), modelId)) return null;
     const view = get().mutationViews.get(modelId);
     if (!view) return null;
 
@@ -1094,7 +1094,7 @@ export const createMutationSlice: StateCreator<
 
   deleteProperty: (modelId, entityId, psetName, propName) => {
     // Shared mutation gate before the local commit — see setProperty.
-    if (!canMutate(get(), modelId)) return null;
+    if (!canMutateData(get(), modelId)) return null;
     const view = get().mutationViews.get(modelId);
     if (!view) return null;
 
@@ -1114,7 +1114,7 @@ export const createMutationSlice: StateCreator<
     // Shared mutation gate before the local commit — see setProperty. (Pset
     // creation isn't mirrored yet, which is all the more reason a read-only
     // role must not accumulate local-only psets in a shared session.)
-    if (!canMutate(get(), modelId)) return null;
+    if (!canMutateData(get(), modelId)) return null;
     const view = get().mutationViews.get(modelId);
     if (!view) return null;
 
@@ -1130,7 +1130,7 @@ export const createMutationSlice: StateCreator<
     // pset is no less of a write than creating one, and this arm was the one
     // `createPropertySet` and `deleteProperty` were both given the gate and
     // this one was not.
-    if (!canMutate(get(), modelId)) return null;
+    if (!canMutateData(get(), modelId)) return null;
     const view = get().mutationViews.get(modelId);
     if (!view) return null;
 
@@ -1155,7 +1155,7 @@ export const createMutationSlice: StateCreator<
     // is a separate, larger gap — see the tests below and the PR discussion.
     // Gating here at least stops an unauthorised writer, and stops the local
     // state diverging further than it already does.
-    if (!canMutate(get(), modelId)) return null;
+    if (!canMutateData(get(), modelId)) return null;
     const view = get().mutationViews.get(modelId);
     if (!view) return null;
 
@@ -1168,7 +1168,7 @@ export const createMutationSlice: StateCreator<
 
   createQuantitySet: (modelId, entityId, qsetName, quantities) => {
     // See setQuantity above — same omission, same reason.
-    if (!canMutate(get(), modelId)) return null;
+    if (!canMutateData(get(), modelId)) return null;
     const view = get().mutationViews.get(modelId);
     if (!view) return null;
 
@@ -1182,7 +1182,7 @@ export const createMutationSlice: StateCreator<
   // Attribute Mutations
   setAttribute: (modelId, entityId, attrName, value, oldValue) => {
     // Shared mutation gate before the local commit — see setProperty.
-    if (!canMutate(get(), modelId)) return null;
+    if (!canMutateData(get(), modelId)) return null;
     const view = get().mutationViews.get(modelId);
     if (!view) return null;
 
@@ -1201,7 +1201,7 @@ export const createMutationSlice: StateCreator<
   setEntityType: (modelId, entityId, newType, predefinedType) => {
     // Shared mutation gate before the local commit — see setProperty. Reclassing an
     // entity is an attribute write like any other, and `setAttribute` is gated.
-    if (!canMutate(get(), modelId)) return null;
+    if (!canMutateData(get(), modelId)) return null;
     const view = get().mutationViews.get(modelId);
     if (!view) return null;
 

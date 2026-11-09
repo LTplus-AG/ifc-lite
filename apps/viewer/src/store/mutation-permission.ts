@@ -24,13 +24,22 @@ export function mutationPermission(
   state: MutationPermissionState,
   modelId?: string,
 ): { allowed: true } | { allowed: false; reason: MutationDenialReason } {
-  if (areWorkflowModelsReadLocked()) return { allowed: false, reason: 'workflow-running' };
   if (!state.editEnabled) return { allowed: false, reason: 'edit-mode' };
+  return dataMutationPermission(state, modelId);
+}
+
+/** In-place data edits keep the current workspace; all write locks still apply. */
+export function dataMutationPermission(state: MutationPermissionState, modelId?: string): ReturnType<typeof mutationPermission> {
+  if (areWorkflowModelsReadLocked()) return { allowed: false, reason: 'workflow-running' };
   if (!state.canCollabEdit()) return { allowed: false, reason: 'collab-role' };
   if (modelId !== undefined && !getModelForRef(state, modelId)?.ifcDataStore) {
     return { allowed: false, reason: 'model-unavailable' };
   }
   return { allowed: true };
+}
+
+export function canMutateData(state: MutationPermissionState, modelId?: string): boolean {
+  return dataMutationPermission(state, modelId).allowed;
 }
 
 export function canMutate(state: MutationPermissionState, modelId?: string): boolean {

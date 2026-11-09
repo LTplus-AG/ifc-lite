@@ -108,7 +108,7 @@ export function BsddCard({
   const createQuantitySet = useViewerStore((s) => s.createQuantitySet);
   const storeSetAttribute = useViewerStore((s) => s.setAttribute);
   const bumpMutationVersion = useViewerStore((s) => s.bumpMutationVersion);
-  const setEditEnabled = useViewerStore((s) => s.setEditEnabled);
+  const canEdit = useViewerStore((s) => s.canCollabEdit());
   const setPropertiesActiveTab = useViewerStore((s) => s.setPropertiesActiveTab);
   const setPendingPropertyFocus = useViewerStore((s) => s.setPendingPropertyFocus);
 
@@ -295,8 +295,7 @@ export function BsddCard({
   // pendingPropertyFocus to scroll to and highlight the exact row.
   const goToProperties = useCallback(() => {
     setPropertiesActiveTab('properties');
-    setEditEnabled(true);
-  }, [setPropertiesActiveTab, setEditEnabled]);
+  }, [setPropertiesActiveTab]);
 
   // The "Edit in Properties" bar only makes sense for things that ARE editable
   // on the Properties tab: Pset_* properties and entity attributes. Qto_*
@@ -405,7 +404,7 @@ export function BsddCard({
                 {formatLocaleNumber(locale, props.length)}
               </span>
               {/* A quantity needs its own value, so a Qto_* set has no bulk add (#8407). */}
-              {addableCount > 0 && !isQto && (
+              {canEdit && addableCount > 0 && !isQto && (
                 <IconButton
                   label={t('properties.bsdd.addAllTooltip', localeCount(locale, addableCount))}
                   className="h-5 w-5 p-0 shrink-0 hover:bg-sky-200 dark:hover:bg-sky-800"
@@ -459,7 +458,7 @@ export function BsddCard({
                           edited afterwards in the Properties tab (issue #1107). */}
                       {alreadyExists ? (
                         <Check className="h-3.5 w-3.5 text-ok shrink-0" />
-                      ) : isQto ? (
+                      ) : !canEdit ? null : isQto ? (
                         <BsddQuantityAdd name={prop.name} onAdd={(value) => handleAddProperty(psetName, prop, value)} />
                       ) : (
                         <IconButton

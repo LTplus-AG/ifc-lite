@@ -15,11 +15,12 @@
  * a file that happens to expose it.
  */
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor, recordCompoundMutation, undoRecordedMutationOperations } from '@ifc-lite/mutations';
 import { getEffectiveEntityIndex, authoredEntityRefs } from './effective-index.js';
 import { StepExporter } from './step-exporter.js';
+import { remeshContextRoots } from './remesh-context-roots.js';
 
 function guid(tag: string): string {
   return (tag + '0'.repeat(22)).slice(0, 22);
@@ -251,4 +252,35 @@ describe('authoredEntityRefs tells a reference from text', () => {
     // arbitrary entities into an export closure.
     expect(authoredEntityRefs(42)).toEqual([]);
   });
+});
+
+it('remesh context roots and the effective index read only the created rows they ask about #8452', async () => {
+  const store = await parseBase();
+  const { view, editor } = newView(store);
+  for (let i = 0; i < 2000; i++) editor.addEntity('IfcCartesianPoint', [[i, 0, 0]]);
+  const opening = editor.addEntity('IfcOpeningElement', [guid('open'), null, 'O', null, null, null, null, null, null]).expressId;
+  const window = editor.addEntity('IfcWindow', [guid('win'), null, 'W', null, null, null, null, null, null, null, null, null, null]).expressId;
+  const voids = editor.addEntity('IfcRelVoidsElement', [guid('void'), null, null, null, '#2', `#${opening}`]).expressId;
+  const fills = editor.addEntity('IfcRelFillsElement', [guid('fill'), null, null, null, `#${opening}`, `#${window}`]).expressId;
+  const material = editor.addEntity('IfcMaterial', ['M', null, null]).expressId;
+  const assoc = editor.addEntity('IfcRelAssociatesMaterial', [guid('mat'), null, null, null, ['#2'], `#${material}`]).expressId;
+  const scans = vi.spyOn(view, 'readNewEntities'), exposes = vi.spyOn(view, 'getNewEntities');
+  // Each storey or size edit asks this once per affected element; it used to
+  // copy every created row of the session for each of them.
+  const roots = remeshContextRoots(store, view, new Set([2]));
+  expect(scans).not.toHaveBeenCalled();
+  expect(exposes).not.toHaveBeenCalled();
+  expect([...roots].sort((a, b) => a - b)).toEqual([1, 2, opening, window, voids, fills, assoc].sort((a, b) => a - b));
+  const index = getEffectiveEntityIndex(store, view, true);
+  expect(index.size).toBe(3 + 2006);
+  expect(index.typeOf(voids)).toBe('IFCRELVOIDSELEMENT');
+  expect(scans).not.toHaveBeenCalled();
+  // A queued override moves the void to wall #3; the effective endpoint decides.
+  view.setPositionalAttribute(voids, 4, '#3');
+  expect(remeshContextRoots(store, view, new Set([3]))).toContain(voids);
+  expect(remeshContextRoots(store, view, new Set([2]))).not.toContain(voids);
+  // An older view without reference buckets still scans and agrees.
+  const unindexed = new Proxy(view, { get: (target, key, receiver) => key === 'getNewEntitiesReferencing' ? undefined : Reflect.get(target, key, receiver) });
+  expect([...remeshContextRoots(store, unindexed, new Set([3]))].sort((a, b) => a - b))
+    .toEqual([...remeshContextRoots(store, view, new Set([3]))].sort((a, b) => a - b));
 });

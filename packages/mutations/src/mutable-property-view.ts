@@ -1254,11 +1254,24 @@ export class MutablePropertyView extends MutableOverlayState {
   /** Created entities authored as `type`, in creation order, from an index (#5413). */
   getNewEntitiesOfType(type: string): IterableIterator<NewEntity> { return this.newEntities.ofType(type); }
   /** Authored reference candidates, before named/positional overrides. */
-  *getNewEntitiesReferencing(id: number): IterableIterator<NewEntity> { for (const row of this.newEntities.referencing(id)) yield readEntitySnapshot(row); }
-  /** Read-only borrows; use the ordinary getters when retaining mutable arrays. */
-  readNewEntity(id: number): NewEntity | null { const row = this.newEntities.get(id); return row ? readEntitySnapshot(row) : null; }
-  readNewEntities(): NewEntity[] { return Array.from(this.newEntities.values(), readEntitySnapshot); }
-  *readNewEntitiesOfType(type: string): IterableIterator<NewEntity> { for (const row of this.newEntities.ofType(type)) yield readEntitySnapshot(row); }
+  *getNewEntitiesReferencing(id: number): IterableIterator<NewEntity> { for (const row of this.newEntities.peekReferencing(id)) yield readEntitySnapshot(row); }
+  /** Read-only borrows; use the ordinary getters when retaining mutable arrays.
+   * Borrowed rows are frozen copies. Inside a transaction they read unmodified
+   * rows without copying them into the draft, so a scan of the session adds
+   * nothing to the commit's comparison (#8452). */
+  readNewEntity(id: number): NewEntity | null { const row = this.newEntities.peek(id); return row ? readEntitySnapshot(row) : null; }
+  readNewEntities(): NewEntity[] { return Array.from(this.newEntities.peekValues(), readEntitySnapshot); }
+  *readNewEntitiesOfType(type: string): IterableIterator<NewEntity> { for (const row of this.newEntities.peekOfType(type)) yield readEntitySnapshot(row); }
+  /** Ids and authored classes of created entities (of one class when `type`
+   * is given), in creation order. Reads no payload and copies no row, also
+   * inside a transaction, so enumeration costs no later comparison. */
+  *readNewEntityKinds(type?: string): IterableIterator<{ expressId: number; type: string }> {
+    for (const row of type === undefined ? this.newEntities.peekValues() : this.newEntities.peekOfType(type)) yield { expressId: row.expressId, type: row.type };
+  }
+  /** Whether the overlay created `id` and still holds it; reads no payload. */
+  hasNewEntity(id: number): boolean { return this.newEntities.has(id); }
+  /** Number of overlay-created entities; reads no payload. */
+  getNewEntityCount(): number { return this.newEntities.size; }
 
   getNewEntity(expressId: number): NewEntity | null {
     return this.newEntities.get(expressId) ?? null;

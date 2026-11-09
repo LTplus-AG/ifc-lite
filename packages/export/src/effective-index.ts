@@ -184,9 +184,9 @@ export function getEffectiveEntityIndex(
   const base = getCompleteEntityIndex(dataStore);
   const view = applyMutations ? (mutationView ?? null) : null;
 
-  const created = new Map<number, NewEntity>();
+  let created: CreatedRows = EMPTY_CREATED;
   if (view && typeof view.getNewEntities === 'function') {
-    for (const entity of view.readNewEntities?.() ?? view.getNewEntities()) created.set(entity.expressId, entity);
+    created = borrowedCreatedRows(view) ?? new Map(Array.from(view.readNewEntities?.() ?? view.getNewEntities(), entity => [entity.expressId, entity]));
   }
   const tombstones: ReadonlySet<number> =
     view && typeof view.getTombstones === 'function' ? view.getTombstones() : EMPTY_IDS;
@@ -198,6 +198,43 @@ export function getEffectiveEntityIndex(
   }
   // @raw-entity-enumeration-ok canonical overlay index copies these source buckets, then applies creates, tombstones and retypes
   return new OverlayIndex(base, dataStore.entityIndex.byType, view!, created, tombstones, retypes);
+}
+
+/** The created-row questions the overlay index asks. */
+interface CreatedRows {
+  get(id: number): NewEntity | undefined;
+  has(id: number): boolean;
+  readonly size: number;
+  keys(): Iterable<number>;
+  [Symbol.iterator](): Iterator<[number, NewEntity]>;
+}
+const EMPTY_CREATED: CreatedRows = new Map<number, NewEntity>();
+
+/**
+ * Created rows read through the view on demand (#8452). Building an index no
+ * longer copies every created row: a point lookup borrows one row, keeps it
+ * for the index's lifetime, and only iteration visits the whole overlay. The
+ * index answers from the overlay as it stands when asked; like every caller
+ * today, build it after the writes it should describe.
+ */
+function borrowedCreatedRows(view: MutablePropertyView): CreatedRows | null {
+  if (typeof view.readNewEntity !== 'function' || typeof view.readNewEntities !== 'function'
+    || typeof view.hasNewEntity !== 'function' || typeof view.getNewEntityCount !== 'function') return null;
+  const rows = new Map<number, NewEntity | null>();
+  const get = (id: number): NewEntity | undefined => {
+    let row = rows.get(id);
+    if (row === undefined) rows.set(id, row = view.readNewEntity(id));
+    return row ?? undefined;
+  };
+  return {
+    get,
+    has: id => rows.has(id) ? rows.get(id) !== null : view.hasNewEntity(id),
+    get size() { return view.getNewEntityCount(); },
+    *keys() { for (const row of view.readNewEntities()) yield row.expressId; },
+    *[Symbol.iterator]() {
+      for (const row of view.readNewEntities()) { rows.set(row.expressId, row); yield [row.expressId, row] as [number, NewEntity]; }
+    },
+  };
 }
 
 const EMPTY_IDS: ReadonlySet<number> = new Set<number>();
@@ -253,7 +290,7 @@ class OverlayIndex implements EffectiveEntityIndex {
   private readonly base: CompleteEntityIndex;
   private readonly sourceByType: Map<string, number[]>;
   private readonly view: MutablePropertyView;
-  private readonly created: Map<number, NewEntity>;
+  private readonly created: CreatedRows;
   private readonly tombstones: ReadonlySet<number>;
   private readonly retypes: ReadonlyMap<number, { newType: string }>;
   private cachedByType: Map<string, number[]> | null = null;
@@ -263,7 +300,7 @@ class OverlayIndex implements EffectiveEntityIndex {
     base: CompleteEntityIndex,
     sourceByType: Map<string, number[]>,
     view: MutablePropertyView,
-    created: Map<number, NewEntity>,
+    created: CreatedRows,
     tombstones: ReadonlySet<number>,
     retypes: ReadonlyMap<number, { newType: string }>,
   ) {

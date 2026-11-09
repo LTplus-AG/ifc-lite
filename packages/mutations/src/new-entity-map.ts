@@ -117,6 +117,13 @@ export class NewEntityMap extends Map<number, NewEntity> {
     return entities instanceof NewEntityMap ? entities : new NewEntityMap(entities);
   }
 
+  /** Read-only access for borrowers. A transaction draft overrides these to
+   * read unmodified rows from its base instead of copying them privately. */
+  peek(id: number): NewEntity | undefined { return super.get(id); }
+  peekValues(): IterableIterator<NewEntity> { return super.values(); }
+  peekOfType(type: string): IterableIterator<NewEntity> { return this.ofType(type); }
+  peekReferencing(id: number): IterableIterator<NewEntity> { return this.referencing(id); }
+
   /** Created entities authored as `type` (case-insensitive), in creation order. */
   ofType(type: string): IterableIterator<NewEntity> {
     return (this.byType?.get(type.toUpperCase()) ?? new Map<number, NewEntity>()).values();

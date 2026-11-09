@@ -5,7 +5,7 @@
 import { it, expect } from 'vitest';
 import { IfcParser, extractPropertiesOnDemand, extractQuantitiesOnDemand } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
-import { StepExporter } from '../../../export/src/step-exporter.js';
+import { StepExporter } from '@ifc-lite/export';
 import { IfcCreator } from '../index.js';
 import { AnchorEntityReader, resolveSpatialAnchor } from './resolve-anchor.js';
 import { addOrdinaryElementInStore } from './ordinary-element.js';

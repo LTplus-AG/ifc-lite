@@ -66,7 +66,7 @@ export function useModelUrlAutoload(): void {
 
     let resolvedUrl: URL | null = null;
     const attempt = async () => {
-      if (!guardWebGpu(() => { void attempt(); }, { resumeWhenSupported: true })) return;
+      if (!guardWebGpu(() => { void attempt(); })) return;
       // Resolve (supports relative paths) and enforce same-origin before fetching.
       let source: URL;
       try {

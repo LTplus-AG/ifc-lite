@@ -11,7 +11,7 @@
  */
 
 import '@/test/setup-dom.js';
-import { afterEach, beforeEach, describe, it } from 'node:test';
+import { afterEach, beforeEach, describe, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { cleanup, render } from '@/test/render.js';
@@ -19,6 +19,7 @@ import { registerLocale, setLocale } from '@/i18n';
 import { viewportLightingEn } from '@/i18n/catalogues/viewport-lighting.en';
 import { useViewerStore } from '@/store';
 import { useWebGpuOpenGuard, type WebGpuOpenGuard } from './useWebGpuOpenGuard.js';
+import { retryWebGPU } from './useWebGPU.js';
 
 const CHECKING = 'viewportLighting.container.loadErrorCard.webgpuChecking';
 const UNSUPPORTED = 'viewportLighting.container.loadErrorCard.webgpuUnsupported';
@@ -62,74 +63,136 @@ afterEach(() => {
   else Reflect.deleteProperty(navigator, 'gpu');
 });
 
+/** The load-error card as plain values: its text and whether it offers Retry. */
+function card() {
+  const { error, lastLoadRetry } = useViewerStore.getState();
+  return { error, hasRetry: lastLoadRetry !== null };
+}
+const NO_CARD = { error: null, hasRetry: false };
+
 describe('useWebGpuOpenGuard pending-probe notice (G1)', () => {
-  it('a drop during the probe opens once the probe reports WebGPU supported, and the notice goes away', async () => {
+  it('pending -> supported: a drop opens once, and the card and its Retry clear together (#9493 review: partial clear)', async () => {
     const settle = pendingAdapter();
     render(<OpenProbe />);
     let opened = 0;
     const attempt = () => { if (guard(attempt, { resumeWhenSupported: true })) opened += 1; };
     act(attempt);
     assert.equal(opened, 0);
-    assert.equal(useViewerStore.getState().error, viewportLightingEn[CHECKING], 'the drop explains the pending check');
+    assert.deepEqual(card(), { error: viewportLightingEn[CHECKING], hasRetry: true }, 'the drop explains the pending check');
 
     await settleProbe(settle, {});
-    assert.equal(useViewerStore.getState().error, null, '"still being checked" must not outlive the check');
+    assert.deepEqual(card(), NO_CARD, '"still being checked" and its Retry must not outlive the check');
     assert.equal(opened, 1, 'the dropped model opens once WebGPU turns out to be supported');
   });
 
-  it('Retry pressed while the probe is pending opens the model once when the probe reports supported (#9493 review)', async () => {
-    const settle = pendingAdapter();
-    render(<OpenProbe />);
-    let opened = 0;
-    const attempt = () => { if (guard(attempt, { resumeWhenSupported: true })) opened += 1; };
-    act(attempt);
-    const retry = useViewerStore.getState().lastLoadRetry;
-    assert.ok(retry, 'the checking card offers Retry');
-    act(retry); // waits on the same pending probe
+  it('pending -> retrying -> supported: Retry opens once and clears the card (#9493 review: double open, stuck card)', async () => {
+    for (const resumeWhenSupported of [true, false]) {
+      const settle = pendingAdapter();
+      render(<OpenProbe />);
+      let opened = 0;
+      const attempt = () => { if (guard(attempt, { resumeWhenSupported })) opened += 1; };
+      act(attempt);
+      const retry = useViewerStore.getState().lastLoadRetry;
+      assert.ok(retry, 'the checking card offers Retry');
+      act(() => { retry(); retry(); }); // waits on the same pending probe; a second click coalesces
 
-    await settleProbe(settle, {});
-    assert.equal(opened, 1, `Retry and the settled check must not both open the model (opened ${opened} times)`);
+      await settleProbe(settle, {});
+      assert.equal(opened, 1, `resume=${resumeWhenSupported}: Retry and the settled check must not both open the model (opened ${opened} times)`);
+      assert.deepEqual(card(), NO_CARD, `resume=${resumeWhenSupported}: the checking card must not stay up after Retry's check passes`);
+      cleanup();
+    }
   });
 
-  it('an open that needs a user gesture is not replayed when the probe reports supported; the card just clears (#9493 review)', async () => {
+  it('pending -> supported without opt-in: an open that needs a user gesture is not replayed; the card just clears', async () => {
     const settle = pendingAdapter();
     render(<OpenProbe />);
     let opened = 0;
     const attempt = () => { if (guard(attempt)) opened += 1; };
     act(attempt);
     await settleProbe(settle, {});
-    assert.equal(useViewerStore.getState().error, null);
+    assert.deepEqual(card(), NO_CARD);
     assert.equal(opened, 0, 'a picker-style open must wait for the user to click again');
   });
 
-  it('an open with no retry just clears the notice when the probe reports supported', async () => {
+  it('pending -> supported with no retry: the notice clears', async () => {
     const settle = pendingAdapter();
     render(<OpenProbe />);
     act(() => { guard(); });
-    assert.equal(useViewerStore.getState().error, viewportLightingEn[CHECKING]);
+    assert.deepEqual(card(), { error: viewportLightingEn[CHECKING], hasRetry: false });
     await settleProbe(settle, {});
-    assert.equal(useViewerStore.getState().error, null);
+    assert.deepEqual(card(), NO_CARD);
   });
 
-  it('a locale switch while the probe is pending still hands over to "unsupported", in the new locale', async () => {
+  it('a resumed open that throws reports its error on the load-error card (#9493 review: lost notice)', async () => {
+    const settle = pendingAdapter();
+    render(<OpenProbe />);
+    const errors = mock.method(console, 'error', () => {});
+    try {
+      act(() => { guard(() => { throw new Error('model routing failed'); }, { resumeWhenSupported: true }); });
+      await settleProbe(settle, {});
+      assert.deepEqual(card(), { error: 'model routing failed', hasRetry: false }, 'the failure is shown, not swallowed');
+      assert.equal(errors.mock.callCount(), 1);
+    } finally {
+      errors.mock.restore();
+    }
+  });
+
+  it('a resumed open that re-enters guard() during a new check keeps the new notice (#9493 review: recursive guard)', async () => {
+    const settleFirst = pendingAdapter();
+    render(<OpenProbe />);
+    let settleSecond: ((adapter: object | null) => void) | undefined;
+    let secondOpened = 0;
+    const second = () => { if (guard(second, { resumeWhenSupported: true })) secondOpened += 1; };
+    const first = () => {
+      if (!guard(first, { resumeWhenSupported: true })) return;
+      // While the first open runs, the GPU changes and a fresh check starts.
+      settleSecond = pendingAdapter();
+      void retryWebGPU();
+      second();
+    };
+    act(first);
+    await settleProbe(settleFirst, {});
+    assert.deepEqual(card(), { error: viewportLightingEn[CHECKING], hasRetry: true }, 'the re-entered open shows its own pending card');
+    assert.ok(settleSecond);
+    await settleProbe(settleSecond, {});
+    assert.equal(secondOpened, 1, 'the re-entered open resumes when its own check passes');
+    assert.deepEqual(card(), NO_CARD);
+  });
+
+  it('pending -> unsupported after a locale switch: the card follows the locale and keeps Retry', async () => {
     const settle = pendingAdapter();
     render(<OpenProbe />);
     act(() => { guard(() => {}); });
-    assert.equal(useViewerStore.getState().error, viewportLightingEn[CHECKING]);
+    assert.equal(card().error, viewportLightingEn[CHECKING]);
 
     act(() => setLocale('g1-pseudo'));
-    assert.equal(useViewerStore.getState().error, '⟦checking⟧', 'the pending notice follows the locale');
+    assert.equal(card().error, '⟦checking⟧', 'the pending notice follows the locale');
     await settleProbe(settle, null);
-    assert.equal(useViewerStore.getState().error, '⟦unsupported⟧');
-    assert.equal(typeof useViewerStore.getState().lastLoadRetry, 'function', 'Retry survives the hand-over');
+    assert.deepEqual(card(), { error: '⟦unsupported⟧', hasRetry: true }, 'Retry survives the hand-over');
   });
 
-  it('leaves a newer load error alone when the probe settles', async () => {
+  it('retrying -> unsupported: the card hands over to "unsupported" and Retry works again', async () => {
     const settle = pendingAdapter();
     render(<OpenProbe />);
-    act(() => { guard(() => {}); });
+    let opened = 0;
+    const attempt = () => { if (guard(attempt)) opened += 1; };
+    act(attempt);
+    act(() => useViewerStore.getState().lastLoadRetry?.());
+    await settleProbe(settle, null);
+    assert.deepEqual(card(), { error: viewportLightingEn[UNSUPPORTED], hasRetry: true });
+
+    Object.defineProperty(navigator, 'gpu', { value: { requestAdapter: async () => ({}) }, configurable: true });
+    await act(async () => { useViewerStore.getState().lastLoadRetry?.(); await new Promise((resolve) => setTimeout(resolve, 0)); });
+    assert.equal(opened, 1, 'the second Retry rechecks and opens');
+    assert.deepEqual(card(), NO_CARD);
+  });
+
+  it('pending -> newer error: a settled check leaves the newer error alone', async () => {
+    const settle = pendingAdapter();
+    render(<OpenProbe />);
+    act(() => { guard(() => {}, { resumeWhenSupported: true }); });
     useViewerStore.setState({ error: 'newer load failed', lastLoadRetry: null });
     await settleProbe(settle, {});
-    assert.equal(useViewerStore.getState().error, 'newer load failed');
+    assert.deepEqual(card(), { error: 'newer load failed', hasRetry: false });
   });
 });

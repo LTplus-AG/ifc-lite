@@ -1142,6 +1142,8 @@ Elements whose shape depends on storey spacing follow the edit in the same trans
 
 `bim.store` exposes the same operations in every host: the SDK's headless backend, the viewer (through the storey manager's undo-batched path) and its script sandbox, the MCP `storey_*` tools and `ifc-lite storey`. The methods are `listStoreyLevels`, `suggestStorey`, `addStorey`, `renameStorey`, `planStoreyEdit`, `editStorey`, `planStoreyDelete` and `deleteStorey`. `editStorey` and `deleteStorey` take the reviewed plan as an optional last argument. Headless backends record each write as one Undo step. `listStoreyLevels` counts every storey, however large; only a plan refuses a storey holding more than 50,000 products. The round-1A methods `planAddStorey`, `setTopConstraint` and `copyToStoreys` are on the SDK's headless backend (and so on `ifc-lite run` scripts); the viewer adapter, its sandbox, MCP and `ifc-lite storey` follow in #9352.
 
+Cyclic or unreadable session-created shape graphs are refused atomically in both copy modes. Valid shapes retain the default sharing policy.
+
 The `IfcAttributeValue` typed marker accepts `number[]` for IFC4 indexed segments:
 `{ typed: { type: 'IfcLineIndex', value: [1, 2] } }` writes `IFCLINEINDEX((1,2))`.
 `IfcArcIndex` requires exactly three indices; all indices must be positive integers.

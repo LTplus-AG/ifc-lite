@@ -12,6 +12,8 @@
  * for optimal performance with large models.
  */
 
+import { runSparseAtomic } from './sparse-atomic.js';
+import { readEntitySnapshot } from './entity-read-barrier.js';
 import { registerCooperativeOverlay } from './cooperative-overlay-access.js';
 import type { PropertyTable, PropertySet, Property, QuantitySet, Quantity } from '@ifc-lite/data';
 import { quantityHistoryBefore } from './quantity-history-before.js';
@@ -20,6 +22,7 @@ import { encodeNonFiniteNumbers, decodeNonFiniteNumbers } from './nonfinite-json
 import { PropertyValueType, QuantityType } from '@ifc-lite/data';
 import type { IfcAttributeValue, PropertyValue, PropertyMutation, QuantityMutation, EntityTypeMutation, Mutation, NewEntity, EffectiveChange } from './types.js';
 import { propertyKey, quantityKey, attributeKey, generateMutationId } from './types.js';
+import { changesForEntity } from './effective-entity-changes.js';
 import { collectEffectiveChanges, type AttributeExtractor } from './effective-changes.js';
 import { applyMutationsBatch } from './apply-mutations.js';
 import { MutableOverlayState, type ForgottenEntityOverlay } from './mutable-overlay-state.js';
@@ -57,6 +60,7 @@ export class MutablePropertyView extends MutableOverlayState {
     this.baseTable = baseTable;
     this.modelId = modelId;
     registerCooperativeOverlay(this, { modelId,
+      transact: (edit, record) => runSparseAtomic(this, edit, record),
       capture: () => this.overlayState(),
       matches: snapshot => this.matchesOverlayState(snapshot),
       publish: snapshot => this.restoreOverlayState(snapshot),
@@ -80,10 +84,9 @@ export class MutablePropertyView extends MutableOverlayState {
    * External effects (files, renderer or network) belong outside this callback.
    */
   runAtomic<T>(edit: (draft: MutablePropertyView) => T): T {
-    const prepared = this.prepareAtomic(edit);
-    prepared.commit();
-    return prepared.result;
+    return runSparseAtomic(this, edit, false).result;
   }
+
 
   /**
    * Prepare an overlay publication without changing live IFC state (#4243).
@@ -127,17 +130,6 @@ export class MutablePropertyView extends MutableOverlayState {
       this.restoreOverlayState(original);
       rolledBack = true;
     } };
-  }
-
-  /**
-   * Seed the express-ID allocator. Should be called once after parsing with
-   * the highest existing expressId in the store; subsequent `createEntity`
-   * calls allocate IDs strictly above this watermark.
-   */
-  setExpressIdWatermark(maxExistingId: number): void {
-    if (maxExistingId > this.nextAllocatedId) {
-      this.nextAllocatedId = maxExistingId;
-    }
   }
 
   /** The next expressId that `createEntity` would allocate. */
@@ -1005,6 +997,7 @@ export class MutablePropertyView extends MutableOverlayState {
     }
     const oldValue = entityMap.has(index) ? entityMap.get(index)! : null;
     entityMap.set(index, value);
+    this.indexAttributeOverride(entityId);
     this.markOverlayChanged();
 
     const mutation: Mutation = {
@@ -1041,6 +1034,7 @@ export class MutablePropertyView extends MutableOverlayState {
     if (entityMap.size === 0) {
       this.positionalAttrMutations.delete(entityId);
     }
+    this.indexAttributeOverride(entityId);
   }
 
   // ---------------------------------------------------------------------------
@@ -1109,6 +1103,7 @@ export class MutablePropertyView extends MutableOverlayState {
       oldType: baseType,
       predefinedType: predefinedType ?? null,
     });
+    this.indexAttributeOverride(entityId);
 
     const mutation: Mutation = {
       id: generateMutationId(),
@@ -1146,6 +1141,7 @@ export class MutablePropertyView extends MutableOverlayState {
    */
   removeTypeMutation(entityId: number): void {
     if (this.typeMutations.delete(entityId)) this.markOverlayChanged();
+    this.indexAttributeOverride(entityId);
   }
 
   // ---------------------------------------------------------------------------
@@ -1174,6 +1170,7 @@ export class MutablePropertyView extends MutableOverlayState {
       creationId,
     };
     this.newEntities.set(expressId, entity);
+    this.indexAttributeOverride(expressId);
     this.markOverlayChanged();
 
     this.mutationHistory.push({
@@ -1256,6 +1253,12 @@ export class MutablePropertyView extends MutableOverlayState {
   /** Look up a single overlay-created entity. */
   /** Created entities authored as `type`, in creation order, from an index (#5413). */
   getNewEntitiesOfType(type: string): IterableIterator<NewEntity> { return this.newEntities.ofType(type); }
+  /** Authored reference candidates, before named/positional overrides. */
+  *getNewEntitiesReferencing(id: number): IterableIterator<NewEntity> { for (const row of this.newEntities.referencing(id)) yield readEntitySnapshot(row); }
+  /** Read-only borrows; use the ordinary getters when retaining mutable arrays. */
+  readNewEntity(id: number): NewEntity | null { const row = this.newEntities.get(id); return row ? readEntitySnapshot(row) : null; }
+  readNewEntities(): NewEntity[] { return Array.from(this.newEntities.values(), readEntitySnapshot); }
+  *readNewEntitiesOfType(type: string): IterableIterator<NewEntity> { for (const row of this.newEntities.ofType(type)) yield readEntitySnapshot(row); }
 
   getNewEntity(expressId: number): NewEntity | null {
     return this.newEntities.get(expressId) ?? null;
@@ -1338,6 +1341,7 @@ export class MutablePropertyView extends MutableOverlayState {
     // mutations, newPsets/newQsets, history) — a no-op if this entity was
     // never forgotten (e.g. a plain create with nothing purged).
     this.unstashEntityOverlay(entity.expressId);
+    this.indexAttributeOverride(entity.expressId);
   }
 
   /**
@@ -1439,6 +1443,7 @@ export class MutablePropertyView extends MutableOverlayState {
     if (hasStashedData) {
       this.forgottenEntityOverlay.set(expressId, stash);
     }
+    this.indexAttributeOverride(expressId);
   }
 
   /**
@@ -1759,31 +1764,15 @@ export class MutablePropertyView extends MutableOverlayState {
    *
    * Deterministic ordering: entityId, then kind, then name, then setName.
    */
-  getEffectiveChanges(): EffectiveChange[] {
-    return collectEffectiveChanges(
-      {
-        attributeMutations: this.attributeMutations,
-        positionalAttrMutations: this.positionalAttrMutations,
-        typeMutations: this.typeMutations,
-        newPsets: this.newPsets,
-        deletedPsets: this.deletedPsets,
-        newQsets: this.newQsets,
-        deletedQsets: this.deletedQsets,
-        propertyKeysByEntity: this.propertyKeysByEntity,
-        propertyMutations: this.propertyMutations,
-        quantityKeysByEntity: this.quantityKeysByEntity,
-        quantityMutations: this.quantityMutations,
-        newEntities: this.newEntities,
-        tombstones: this.tombstones,
-        forgottenCreatedEntities: this.forgottenCreatedEntities,
-      },
-      {
-        attributeExtractor: this.attributeExtractor,
-        resolveBaseEntityId: (entityId: number) => this.resolveBaseEntityId(entityId),
-        getBasePropertiesForEntity: (entityId: number) => this.getBasePropertiesForEntity(entityId),
-        getBaseQuantitiesForEntity: (entityId: number) => this.getBaseQuantitiesForEntity(entityId),
-      },
-    );
+  /** With an entity ID, visit only that entity's indexed mutation rows. */
+  getEffectiveChanges(entityId?: number): EffectiveChange[] {
+    const state = this.overlayState();
+    return collectEffectiveChanges(entityId === undefined ? state : changesForEntity(state, entityId, this.attributeKeysByEntity.get(entityId) ?? []), {
+      attributeExtractor: this.attributeExtractor,
+      resolveBaseEntityId: id => this.resolveBaseEntityId(id),
+      getBasePropertiesForEntity: id => this.getBasePropertiesForEntity(id),
+      getBaseQuantitiesForEntity: id => this.getBaseQuantitiesForEntity(id),
+    });
   }
 
   /**
@@ -1804,6 +1793,8 @@ export class MutablePropertyView extends MutableOverlayState {
     this.positionalAttrMutations.clear();
     this.typeMutations.clear();
     this.newEntities.clear();
+    this.overriddenEntities.clear();
+    this.overriddenSourceIds.clear();
     this.tombstones.clear();
     this.forgottenCreatedEntities.clear();
     this.forgottenEntityOverlay.clear();

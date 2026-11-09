@@ -2,8 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { materializeOverlay } from './sparse-overlay.js';
+import { withoutEntityExposure } from './entity-read-barrier.js';
 import { sameOverlayValue } from './overlay-value-equality.js';
 import { NewEntityMap } from './new-entity-map.js';
+import { overlayReferenceCandidates } from './overlay-reference-candidates.js';
 import type { PropertySet, QuantitySet } from '@ifc-lite/data';
 import type { IfcAttributeValue, PropertyMutation, QuantityMutation, AttributeMutation,
   EntityTypeMutation, Mutation, SetOverlaySnapshot } from './types.js';
@@ -51,6 +54,9 @@ export class MutableOverlayState {
   protected positionalAttrMutations: Map<number, Map<number, IfcAttributeValue>> = new Map(); // entityId -> argIndex -> value
   protected typeMutations: Map<number, EntityTypeMutation> = new Map(); // entityId -> retype intent
   protected newEntities: NewEntityMap = new NewEntityMap();
+  // Class and possible-reference rows; no geometry payload is copied here.
+  protected overriddenEntities: NewEntityMap = new NewEntityMap();
+  protected overriddenSourceIds: Set<number> = new Set();
   protected tombstones: Set<number> = new Set();
   /**
    * Ids `createEntity` allocated and `deleteEntity` then forgot (removed from
@@ -105,15 +111,36 @@ export class MutableOverlayState {
   protected entityAliases: Map<number, number> = new Map();
   protected nextAllocatedId: number = 0;
 
+  /** Seed the express-ID allocator above the parsed source. Advancing it is
+   * a live state change; reseeding the same or a lower value is a no-op. */
+  setExpressIdWatermark(maxExistingId: number): void {
+    if (maxExistingId > this.nextAllocatedId) {
+      this.nextAllocatedId = maxExistingId;
+      this.markOverlayChanged();
+    }
+  }
+
   /** Snapshot candidate ids for effective attribute reads. Includes named,
    * positional and type overrides even when written without journal records;
    * callers apply their normal live-entity and attribute-layout checks. */
-  getAttributeOverrideEntityIds(): number[] {
+  getAttributeOverrideEntityIds(createdTypes?: readonly string[], referencedId?: number): number[] {
+    if (createdTypes || referencedId !== undefined) {
+      const rows = referencedId === undefined
+        ? createdTypes!.flatMap(type => [...this.overriddenEntities.ofType(type)])
+        : [...this.overriddenEntities.referencing(referencedId)].filter(row => !createdTypes || createdTypes.some(type => type.toUpperCase() === row.type.toUpperCase()));
+      return [...new Set([...rows.map(row => row.expressId), ...this.overriddenSourceIds])];
+    }
     return [...new Set([
       ...this.attributeKeysByEntity.keys(),
       ...this.positionalAttrMutations.keys(),
       ...this.typeMutations.keys(),
     ])];
+  }
+
+  /** Possible references introduced by overrides. Combine with authored/source
+   * reference candidates and verify through the effective record grammar. */
+  getAttributeOverrideReferenceCandidates(id: number): number[] {
+    return Array.from(this.overriddenEntities.referencing(id), row => row.expressId);
   }
   protected mutationHistory: Mutation[] = [];
 
@@ -134,6 +161,26 @@ export class MutableOverlayState {
 
   protected markOverlayChanged(): void { this.mutationRevision++; }
 
+  /** Narrow creations by effective class; source rows remain conservative
+   * candidates because this overlay does not own the immutable source index. */
+  protected indexAttributeOverride(entityId: number): void {
+    if (!this.attributeKeysByEntity.has(entityId) && !this.positionalAttrMutations.has(entityId) && !this.typeMutations.has(entityId)) {
+      this.overriddenEntities.delete(entityId); this.overriddenSourceIds.delete(entityId); return;
+    }
+    const created = this.newEntities.get(entityId);
+    const values: unknown[] = [...(this.positionalAttrMutations.get(entityId)?.values() ?? [])];
+    for (const key of this.attributeKeysByEntity.get(entityId) ?? []) values.push(this.attributeMutations.get(key)?.value);
+    const attributes = overlayReferenceCandidates(values);
+    if (created) {
+      const type = this.typeMutations.get(entityId)?.newType ?? created.type;
+      this.overriddenEntities.set(entityId, { expressId: entityId, type, attributes });
+      this.overriddenSourceIds.delete(entityId);
+    } else {
+      this.overriddenEntities.set(entityId, { expressId: entityId, type: '', attributes });
+      this.overriddenSourceIds.add(entityId);
+    }
+  }
+
   protected setAttributeMutation(entityId: number, key: string, mutation: AttributeMutation): void {
     this.attributeMutations.set(key, mutation);
     this.markOverlayChanged();
@@ -143,6 +190,7 @@ export class MutableOverlayState {
       this.attributeKeysByEntity.set(entityId, bucket);
     }
     bucket.add(key);
+    this.indexAttributeOverride(entityId);
   }
 
   protected deleteAttributeMutation(entityId: number, key: string): boolean {
@@ -154,6 +202,7 @@ export class MutableOverlayState {
         bucket.delete(key);
         if (bucket.size === 0) this.attributeKeysByEntity.delete(entityId);
       }
+      this.indexAttributeOverride(entityId);
     }
     return removed;
   }
@@ -297,6 +346,8 @@ export class MutableOverlayState {
       positionalAttrMutations: this.positionalAttrMutations,
       typeMutations: this.typeMutations,
       newEntities: this.newEntities,
+      overriddenEntities: this.overriddenEntities,
+      overriddenSourceIds: this.overriddenSourceIds,
       tombstones: this.tombstones,
       forgottenCreatedEntities: this.forgottenCreatedEntities,
       forgottenEntityOverlay: this.forgottenEntityOverlay,
@@ -306,8 +357,8 @@ export class MutableOverlayState {
     };
   }
 
-  protected copyOverlayState() {
-    return structuredClone(this.overlayState());
+  protected copyOverlayState(): ReturnType<MutableOverlayState['overlayState']> {
+    return withoutEntityExposure(() => structuredClone(materializeOverlay(this.overlayState())));
   }
 
   protected restoreOverlayState(state: ReturnType<MutableOverlayState['copyOverlayState']>): void {
@@ -315,9 +366,10 @@ export class MutableOverlayState {
     this.markOverlayChanged();
     // A cloned snapshot carries a plain Map: rebuild the class index (#5413).
     this.newEntities = NewEntityMap.from(this.newEntities);
+    this.overriddenEntities = NewEntityMap.from(this.overriddenEntities);
   }
 
   protected matchesOverlayState(state: ReturnType<MutableOverlayState['copyOverlayState']>): boolean {
-    return sameOverlayValue(this.overlayState(), state);
+    return withoutEntityExposure(() => sameOverlayValue(this.overlayState(), state));
   }
 }

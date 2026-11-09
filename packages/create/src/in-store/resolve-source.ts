@@ -13,11 +13,12 @@
  * backend layer can call it without needing parser internals.
  */
 
-import { EntityExtractor, effectiveStoreyId, propertyDefinitionsInModel, resolveEffectiveRelationshipOverlay, type IfcDataStore } from '@ifc-lite/parser';
-import { iterateEffectiveEntityIds, type IfcAttributeValue, type StoreEditor } from '@ifc-lite/mutations';
+import { EntityExtractor, effectiveStoreyId, propertyDefinitionsInModel, type IfcDataStore } from '@ifc-lite/parser';
+import { type IfcAttributeValue, type StoreEditor } from '@ifc-lite/mutations';
 import { resolvedTypeName } from '@ifc-lite/data';
 import { asRef, createStyleEntityReader, refList } from './style-entity-reader.js';
 import type { SourceAttributes, SourceAssociation, Vec3 } from './duplicate.js';
+import { sourceAssociationCandidates, sourceSpatialContext } from './source-relationships.js';
 import { safeLengthUnitScale } from './length-unit-scale.js';
 
 /**
@@ -140,21 +141,7 @@ export function resolveDuplicateSource(
   // The duplicate must inherit the storey that saving this session would
   // produce, including edited/deleted containment and aggregate ancestors.
   const view = editor?.getMutationView();
-  const createdTypes = new Map(view?.getNewEntities().map((e) => [e.expressId, e.type]) ?? []);
-  const spatialContext = view?.hasPendingChanges() ? {
-    relationships: resolveEffectiveRelationshipOverlay(store, {
-      createdEntities: () => view.getNewEntities(),
-      mutatedEntityIds: () => view.getEffectiveChanges().map((change) => change.entityId),
-      namedAttributes: (id: number) => view.getAttributeMutationsForEntity(id)
-        .map(({ name, value }) => [name, value] as const),
-      positionalAttributes: (id: number) => view.getPositionalMutationsForEntity(id) ?? [],
-      entityType: (id: number) => view.getEntityTypeMutation(id)?.newType,
-      isDeleted: (id: number) => view.isDeleted(id),
-    }),
-    isDeleted: (id: number) => view.isDeleted(id),
-    typeName: (id: number) => view.getEntityTypeMutation(id)?.newType
-      ?? createdTypes.get(id) ?? store.entities.getTypeName(id),
-  } : null;
+  const spatialContext = view?.hasPendingChanges() ? sourceSpatialContext(store, view, sourceExpressId) : null;
   const storeyId = effectiveStoreyId(store, sourceExpressId, spatialContext) ?? null;
 
   // Association rels that reference the source — replayed against
@@ -217,7 +204,7 @@ function collectSourceAssociations(
       const ref = store.entityIndex.byId.get(id);
       return ref ? extractor.extractEntity(ref) : null;
     };
-  for (const { expressId: relId, type } of iterateEffectiveEntityIds(store, view, ASSOCIATION_REL_TYPES)) {
+  for (const { expressId: relId, type } of sourceAssociationCandidates(store, view, sourceId, ASSOCIATION_REL_TYPES)) {
     const entity = read(relId);
     if (!entity) continue;
     // RelatedObjects: a parsed `#N` is a number, an authored one a `#N` string.

@@ -117,7 +117,7 @@ function addOverlayRelationships(
   out: Set<number>,
 ): void {
   const byType = new Map<string, number[]>();
-  for (const entity of view.readNewEntities()) {
+  for (const entity of view.readNewEntities?.() ?? view.getNewEntities()) {
     const type = index.typeOf(entity.expressId);
     if (type === undefined) continue;
     if (type === 'IFCPROJECT') out.add(entity.expressId);

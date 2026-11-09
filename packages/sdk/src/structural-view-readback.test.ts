@@ -40,7 +40,7 @@ it('#9411 structural headless views retain authored relationship edges', async (
 
 it('#9411 cost records and deletion guards support structural views', async () => {
   const { store, legacy, wall, relation } = await fixture();
-  const records = createEffectiveRecordOverlay(legacy, store).created();
-  expect(records.find(record => record.expressId === wall)).toMatchObject({ type: 'IfcWall' });
+  const records = createEffectiveRecordOverlay(legacy, store).created?.() ?? [];
+  expect(records.find(record => record.expressId === wall)).toMatchObject({ type: 'IFCWALL' });
   expect(effectiveCostReferenceOccurrences(store, legacy, new Set([wall])).get(wall)).toEqual(new Map([[relation, 1]]));
 });

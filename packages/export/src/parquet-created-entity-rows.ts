@@ -34,7 +34,7 @@ export function appendCreatedParquetEntityRows(
   effective: EffectiveEntityIndex | null,
 ): void {
   if (!view || !effective) return;
-  for (const created of view.readNewEntities()) {
+  for (const created of view.readNewEntities?.() ?? view.getNewEntities()) {
     if (!effective.isOverlayCreated(created.expressId) || effective.isDeleted(created.expressId)) continue;
     const record = resolveEffectiveEntityRecord(
       { type: created.type, attributes: created.attributes },

@@ -53,7 +53,7 @@ function newView(store: IfcDataStore): { view: MutablePropertyView; editor: Stor
 // An older structural view has the original mutable getters, without the new borrow.
 function withoutBorrow(view: MutablePropertyView): MutablePropertyView {
   return new Proxy(view, { get(target, key, receiver) {
-    return key === 'readNewEntities' ? undefined : Reflect.get(target, key, receiver);
+    return key === 'readNewEntities' || key === 'readNewEntity' ? undefined : Reflect.get(target, key, receiver);
   } });
 }
 

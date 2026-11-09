@@ -238,7 +238,8 @@ export function getTypeOwnedHasPropertySetIds(ctx: PropertySetContext, entityId:
     return ids.filter((id): id is number => typeof id === 'number');
   }
   if (effective.isOverlayCreated(entityId)) {
-    const authored = ctx.mutationView?.readNewEntity(entityId)?.attributes?.[HAS_PROPERTY_SETS_SLOT];
+    const created = ctx.mutationView?.readNewEntity?.(entityId) ?? ctx.mutationView?.getNewEntity(entityId);
+    const authored = created?.attributes?.[HAS_PROPERTY_SETS_SLOT];
     return authoredEntityRefs(overlaySlotValue(ctx, entityId, HAS_PROPERTY_SETS_SLOT, authored));
   }
   if (!ctx.entityExtractor) return [];
@@ -293,7 +294,7 @@ function getOwnerHistoryRefOfEntity(ctx: PropertySetContext, entityId: number): 
   // authored OwnerHistory in slot 1 — reading only the buffer sent every
   // generated pset on a created entity to the file's first owner history
   // instead of the one the caller named (#2012).
-  const overlay = ctx.mutationView?.readNewEntity(entityId);
+  const overlay = ctx.mutationView?.readNewEntity?.(entityId) ?? ctx.mutationView?.getNewEntity(entityId);
   if (overlay) {
     const refs = authoredEntityRefs(
       overlaySlotValue(ctx, entityId, OWNER_HISTORY_SLOT, overlay.attributes[OWNER_HISTORY_SLOT]),

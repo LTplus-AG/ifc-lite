@@ -77,7 +77,7 @@ export function effectiveCostReferenceOccurrences(
   // @raw-entity-enumeration-ok visitSource applies tombstones and effective source records; authored records are appended below
   for (const [id, ref] of store.entityIndex.byId) visitSource(id, ref);
   for (const [id, ref] of store.deferredEntityIndex ?? []) visitSource(id, ref);
-  for (const entity of view.readNewEntities()) {
+  for (const entity of view.readNewEntities?.() ?? view.getNewEntities()) {
     if (seen.has(entity.expressId)) continue;
     const record = effectiveCreatedRecord(view, entity.expressId, store.schemaVersion);
     if (!record) continue;

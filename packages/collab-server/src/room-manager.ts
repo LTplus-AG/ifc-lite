@@ -19,7 +19,6 @@ import * as syncProtocol from 'y-protocols/sync';
 import * as encoding from 'lib0/encoding';
 import * as decoding from 'lib0/decoding';
 import * as Y from 'yjs';
-import type { WebSocket } from 'ws';
 import type { Persistence } from './persistence.js';
 import type { Principal } from './auth.js';
 import { closeExpiredConnections, sweepExpiredAcrossRooms } from './principal-expiry.js';
@@ -33,6 +32,7 @@ import {
   type AuditSink,
 } from './audit-log.js';
 import { createRateLimiter, type RateLimitOptions } from './rate-limit.js';
+import { safeSend } from './safe-send.js';
 
 const MESSAGE_SYNC = 0;
 const MESSAGE_AWARENESS = 1;
@@ -100,9 +100,7 @@ export class Room {
     this.awareness.on('update', this.onAwarenessUpdate);
   }
 
-  setCounters(counters: { update?: () => void; reject?: (reason: string) => void }): void {
-    this.counters = counters;
-  }
+  setCounters(counters: { update?: () => void; reject?: (reason: string) => void }): void { this.counters = counters; }
 
   /**
    * Append an audit-log entry for this room.
@@ -441,6 +439,7 @@ export class RoomManager {
   private readonly unloading = new Map<string, Promise<void>>();
   private idleTimer: ReturnType<typeof setInterval> | null = null;
   private counters: RoomCounters = {};
+  private closed = false; // set by shutdown(): a join mid-setup must not load a room it missed
 
   constructor(options: RoomManagerOptions) {
     this.options = options;
@@ -456,6 +455,7 @@ export class RoomManager {
   }
 
   async getOrCreate(roomId: string): Promise<Room> {
+    if (this.closed) throw new Error('@ifc-lite/collab-server: room manager is shut down');
     let pending = this.rooms.get(roomId);
     if (pending) {
       this.lastActiveAt.set(roomId, Date.now());
@@ -530,6 +530,13 @@ export class RoomManager {
     }
   }
 
+  /** Server stop only: refuse loads for good (from this call on), then unloadAll(). */
+  async shutdown(): Promise<void> {
+    if (this.idleTimer) clearInterval(this.idleTimer); // the manager never serves again
+    this.closed = true;
+    await this.unloadAll();
+  }
+
   list(): string[] {
     return Array.from(this.rooms.keys());
   }
@@ -583,13 +590,15 @@ export class RoomManager {
     return task;
   }
 
+  /** Evict every room; manager and idle sweep keep serving. All settle, each failure is logged, the first rethrown. */
   async unloadAll(): Promise<void> {
-    if (this.idleTimer) clearInterval(this.idleTimer);
-    this.idleTimer = null;
-    await Promise.all(Array.from(this.rooms.keys()).map((id) => this.unload(id)));
+    const settled = await Promise.allSettled(Array.from(this.rooms.keys(), (id) => this.unload(id)));
     // Unloads the idle sweep already started: their compaction must land too.
     // Drain until empty so an unload tracked after this snapshot still counts.
     while (this.unloading.size > 0) await Promise.all(this.unloading.values());
+    const failed = settled.flatMap((r) => (r.status === 'rejected' ? [r.reason] : []));
+    for (const err of failed) console.error('[collab-server] room unload failed:', err);
+    if (failed.length > 0) throw failed[0];
   }
 
   /**
@@ -639,14 +648,5 @@ export class RoomManager {
   /** Across every loaded room; see principal-expiry.ts. Timer: server.ts. */
   sweepExpiredPrincipals(now: number = Date.now()): Promise<number> {
     return sweepExpiredAcrossRooms(this.rooms.values(), now);
-  }
-}
-
-function safeSend(ws: WebSocket, data: Uint8Array): void {
-  try {
-    if (ws.readyState === ws.OPEN) ws.send(data);
-  } catch (err) {
-    // eslint-disable-next-line no-console
-    console.error('[collab-server] ws send error:', err);
   }
 }

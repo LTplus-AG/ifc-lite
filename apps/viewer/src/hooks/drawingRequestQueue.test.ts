@@ -73,3 +73,21 @@ it('is busy from the request until the cut has finished (#9026 item 19)', async 
   await running;
   assert.equal(queue.busy(), false);
 });
+
+it('hands a cancel to the running request only, once, and never to a superseded or finished one (D1, #3921)', async () => {
+  const queue = createDrawingRequestQueue();
+  const cancelled: string[] = [];
+  let release!: () => void;
+  const blocked = new Promise<void>(resolve => { release = resolve; });
+  const running = queue.request(async () => { await blocked; }, () => cancelled.push('running'));
+  const queued = queue.request(async () => {}, () => cancelled.push('queued'));
+  assert.deepEqual(cancelled, [], 'superseding is not a cancel');
+  queue.cancel();
+  queue.cancel();
+  assert.deepEqual(cancelled, ['running'], 'the in-flight request owns the terminal transition, once');
+  release();
+  await Promise.all([running, queued]);
+  await queue.request(async () => {}, () => cancelled.push('finished'));
+  queue.cancel();
+  assert.deepEqual(cancelled, ['running'], 'a finished request has already reached its terminal state');
+});

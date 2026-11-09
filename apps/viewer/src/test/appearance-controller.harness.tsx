@@ -87,7 +87,7 @@ class ControlledWorker implements AppearanceWorker {
 
 /** Shared by Node/HappyDOM and an isolated real-browser lab; never run in a user's model session. */
 export async function runAppearanceControllerScenario(
-  scenario: 'strict-source' | 'discard-debounce' | 'discard-worker' | 'stale-version' | 'upload-failure' | 'partial-exclusion',
+  scenario: 'strict-source' | 'discard-debounce' | 'discard-worker' | 'stale-version' | 'upload-failure' | 'partial-exclusion' | 'apply-selection',
   imageBytes = controllerPng,
 ): Promise<{ scenario: string; requests: number; terminations: number; stages: number; nativeBitmaps: number }> {
   const initial = useViewerStore.getState();
@@ -238,7 +238,26 @@ END-ISO-10303-21;`);
         await act(async () => { workers[0].complete(); });
         await until(() => !button('Apply').disabled, `preview never became ready: ${container.textContent}`);
         check(parts[0].textureBitmap?.width, 'real inventory decode did not reach the preview');
-        if (scenario === 'stale-version') {
+        if (scenario === 'apply-selection') {
+          let release!: () => void;
+          const held = new Promise<void>(resolve => { release = resolve; });
+          const prepare = editor.prepareEntityOperations.bind(editor);
+          let signal: AbortSignal | undefined;
+          editor.prepareEntityOperations = async (operations, options) => {
+            signal = options?.signal; await held; return prepare(operations, options);
+          };
+          await click('Apply');
+          check(signal, 'Apply did not start detached preparation');
+          await act(async () => { useViewerStore.getState().setSelectedEntityId(25); });
+          const aborted = signal.aborted;
+          const preparingChanges = container.textContent?.includes('Preparing IFC changes') ?? false;
+          release();
+          check(!aborted, '3D selection aborted an owned Apply');
+          check(preparingChanges, 'selection replaced the owned Apply status with preview preparation');
+          await until(() => (useViewerStore.getState().undoStacks.get(MODEL)?.length ?? 0) === 2,
+            'Apply did not publish after changing selection');
+          await act(async () => { useViewerStore.getState().undo(MODEL); });
+        } else if (scenario === 'stale-version') {
           await act(async () => { useViewerStore.getState().bumpMutationVersion(); });
           check(button('Apply').disabled, 'stale revision left Apply enabled');
           await click('Apply');
@@ -259,12 +278,13 @@ END-ISO-10303-21;`);
         }
       }
     }
-    check(graph() === originalGraph, 'preview/cancellation changed exported IFC');
-    check(JSON.stringify(view.getMutations()) === originalHistory, 'preview/cancellation recorded IFC edits');
+    check(scenario === 'apply-selection' || graph() === originalGraph, 'preview/cancellation changed exported IFC');
+    check(scenario === 'apply-selection' || JSON.stringify(view.getMutations()) === originalHistory, 'preview/cancellation recorded IFC edits');
     check(parts[0].textureBitmap === undefined, 'cancelled preview still owns renderer appearance');
     await unmount();
     const retained = appearanceAssets.encoded(sourceId);
     check(retained.length === imageBytes.length && retained.every((byte, index) => byte === imageBytes[index]), 'panel close lost original image bytes');
+    if (scenario === 'apply-selection') useViewerStore.getState().clearAllMutations();
     useViewerStore.getState().removeAppearanceSource(sourceId);
     check(appearanceAssets.get(sourceId) === undefined, 'removing the final source leaked a draft lease');
     check(allWorkers.every(worker => worker.terminations === 1), 'catalog or preview worker leaked after unmount');

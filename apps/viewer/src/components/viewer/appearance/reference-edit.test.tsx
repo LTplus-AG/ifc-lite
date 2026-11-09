@@ -60,7 +60,7 @@ async function fixture() {
   mock.method(appearanceAssets, 'decode', async () => ({ width: 1, height: 1, close() {} }));
   setGlobalRendererRef({ current: renderer });
   const original = useViewerStore.getState().appearanceReferences.get('drawing')!;
-  return { ui: render(<AppearancePanel />), original };
+  return { ui: render(<AppearancePanel />), original, renderer };
 }
 
 test('Edit restores removed PDF raster calibration and Save registration replaces once with real native corners and Undo (#4308)', async t => {
@@ -151,4 +151,25 @@ test('foreign-frame Edit previews explicit registration and Discard preserves th
   assert.equal(updated.assetId, original.assetId);
   act(() => useViewerStore.getState().replayAppearanceReference('undo'));
   assert.deepEqual(useViewerStore.getState().appearanceReferences.get('drawing'), original);
+});
+
+test('joining a room during reference placement settles the applying status', async t => {
+  if (!await nativeAvailable(t)) return;
+  const { ui, renderer } = await fixture();
+  click(button(ui, 'Edit Drawing 1')); await settle();
+  click(button(ui, 'Discard')); await settle();
+  const span = ui.querySelector<HTMLInputElement>('input[aria-label="Distance A–B (m)"]')!;
+  type(span, '3'); await settle();
+  let release!: () => void;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  let placing = false;
+  mock.method(renderer.getReferenceImages(), 'set', async item => {
+    if (!item.id.startsWith('appearance-draft:')) { placing = true; await held; }
+  });
+  click(button(ui, 'Place reference'));
+  assert.equal(placing, true);
+  act(() => useViewerStore.setState({ collabRoomId: 'joined-during-placement' }));
+  release(); await settle();
+  assert.equal(ui.querySelector('[aria-busy]')?.getAttribute('aria-busy'), 'false');
+  assert.equal(useViewerStore.getState().appearanceReferences.size, 1);
 });

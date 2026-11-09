@@ -15,6 +15,7 @@ import { render, cleanup, click } from '@/test/render';
 import type { AppearanceWorkerRequest, AppearanceWorkerResponse } from '@/lib/appearance/planner-types';
 import type { PdfFillAnnotationPlan } from '@/lib/appearance/pdf/fill-plan-types';
 import type { PreparedPdfVectorPage } from '@/lib/appearance/pdf/vector-types';
+import { AppearanceAnnotationFields } from './AppearanceAnnotationFields';
 import { PdfAnnotationFields } from './PdfAnnotationFields';
 import { registerLocale, setLocale } from '@/i18n';
 
@@ -151,4 +152,26 @@ test('partial pages show the report, need explicit acceptance and record their o
     assert.equal(button('Create annotation'), undefined);
     assert.equal(raster.view.getNewEntities().length, 0);
   } finally { cleanup(); restoreRaster(); raster.dispose(); api.free(); }
+});
+
+test('PDF preparation locks the parent annotation metadata (C-13)', async t => {
+  const api = await nativeApi(t); if (!api) return;
+  const fixture = await pdfReferenceAnnotationFixture();
+  const mode: WorkerMode = { deferFill: true, terminations: 0 }, restore = installWorker(api, mode);
+  try {
+    const ui = render(<AppearanceAnnotationFields referenceId={fixture.reference.id} name="Drawing" disabled={false} />);
+    const details = ui.querySelector('details')!;
+    await act(async () => { details.open = true; details.dispatchEvent(new Event('toggle')); });
+    const representation = ui.querySelector<HTMLSelectElement>('select[aria-label="Annotation representation"]')!;
+    assert.ok(!!representation, 'parent representation control renders');
+    act(() => { representation.value = 'fills'; representation.dispatchEvent(new Event('change', { bubbles: true })); });
+    const button = buttons(ui);
+    click(button('Prepare vector preview')!);
+    await until(() => !!mode.pending);
+    const name = ui.querySelector<HTMLInputElement>('fieldset input')!;
+    assert.equal(name.closest('fieldset')?.disabled, true, 'Name must stay fixed while PDF geometry is prepared');
+    click(button('Cancel')!);
+    assert.equal(name.closest('fieldset')?.disabled, false);
+    assert.match(ui.textContent ?? '', /cancelled/);
+  } finally { cleanup(); restore(); fixture.dispose(); api.free(); }
 });

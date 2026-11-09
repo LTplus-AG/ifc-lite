@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { useSingleFlight } from '@/hooks/useSingleFlight';
 import { resolveAppearanceScope } from '@/lib/appearance/query-scope.js';
 import { modelDisplayLabels } from '@/lib/model-labels.js';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -76,6 +77,7 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply', suspendPr
     if (previousIntent.current !== intent) { previousIntent.current = intent; setPreviewEnabled(true); }
   }, [intent]);
   const pendingAbort = useRef<AbortController | null>(null);
+  const { run: runApply, release: releaseApply } = useSingleFlight();
   const applyAbort = useRef<AbortController | null>(null);
   const appliedRevision = useRef<string | null>(null);
   const draft = useRef<Draft | null>(null);
@@ -114,16 +116,17 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply', suspendPr
     planner.current = ownedPlanner;
     return () => {
       mounted.current = false;
-      applyAbort.current?.abort();
+      applyAbort.current?.abort(); releaseApply();
       ownedPlanner.dispose();
       snapshot.current = null;
       if (planner.current === ownedPlanner) planner.current = null;
       const previous = draft.current; draft.current = null;
       discardDraft(previous);
     };
-  }, []);
+  }, [releaseApply]);
 
   useEffect(() => {
+    if (applyAbort.current) return;
     if (intent !== 'apply' || !modelId || unavailableReason) {
       const previous = draft.current; draft.current = null;
       discardDraft(previous);
@@ -220,7 +223,7 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply', suspendPr
         if (!controller.signal.aborted && mounted.current) { setStatus('error'); setStatusMessage(appearanceErrorMessage(error)); }
       } finally { if (!adopted) appearanceAssets.releaseOwner(owner); }
     })(); }, 250);
-    return () => { clearTimeout(timer); controller.abort(); applyAbort.current?.abort(); if (!adopted) appearanceAssets.releaseOwner(owner); };
+    return () => { clearTimeout(timer); controller.abort(); if (!adopted) appearanceAssets.releaseOwner(owner); };
   }, [intent, modelId, sourceId, selectedSource, settings, owners, scope, unavailableReason, mutationVersion, previewEnabled, suspendPreview, faceMasks.masks]);
 
   async function upload(file: File): Promise<void> {
@@ -261,7 +264,7 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply', suspendPr
   }
   function discard(): void {
     pdfSource.cancel();
-    applyAbort.current?.abort();
+    applyAbort.current?.abort(); releaseApply();
     appliedRevision.current = null;
     pendingAbort.current?.abort();
     planner.current?.cancel();
@@ -285,22 +288,25 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply', suspendPr
     const current = draft.current;
     const renderer = getGlobalRenderer();
     if (!current?.session || !renderer || status !== 'ready') return;
-    const controller = new AbortController(); applyAbort.current = controller;
-    setStatus('applying');
-    try {
-      await commitAppearance(current.modelId, current.assetIds, current.plan, renderer, current.session, current.groups, current.source, {
-        signal: controller.signal,
-        onProgress: phase => { if (mounted.current) setStatusMessage(translatedMessage(phase === 'preparing'
-          ? 'appearance.controller.preparingChanges' : 'appearance.controller.saving')); },
+    await runApply(async isCurrent => {
+      const controller = new AbortController(); applyAbort.current = controller;
+      setStatus('applying');
+      try {
+        await commitAppearance(current.modelId, current.assetIds, current.plan, renderer, current.session, current.groups, current.source, {
+          signal: controller.signal,
+          onProgress: phase => { if (isCurrent() && !controller.signal.aborted && mounted.current) setStatusMessage(translatedMessage(phase === 'preparing'
+            ? 'appearance.controller.preparingChanges' : 'appearance.controller.saving')); },
       });
+      if (!isCurrent() || controller.signal.aborted) return;
       setPreviewEnabled(false); setConvertedObjects([]);
       faceMasks.clearApplied((current.plan.conversions ?? []).map(conversion => conversion.productId));
       appliedRevision.current = appearanceRevision(current.modelId);
       draft.current = null;
       appearanceAssets.releaseOwner(current.owner);
       setStatus('idle'); setStatusMessage(translatedMessage('appearance.controller.applied'));
-    } catch (error) { if (mounted.current && !controller.signal.aborted) { setStatus('error'); setStatusMessage(rawMessage(error)); } }
+    } catch (error) { if (isCurrent() && mounted.current && !controller.signal.aborted) { setStatus('error'); setStatusMessage(rawMessage(error)); } }
     finally { if (applyAbort.current === controller) applyAbort.current = null; }
+    });
   }
   return {
     allowPdf: true, pdf: pdfSource.controls, pdfPassword: pdfSource.passwordPrompt,

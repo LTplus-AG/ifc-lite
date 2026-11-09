@@ -66,7 +66,7 @@ test('assignment controller messages follow live locale changes (#4918)', () => 
   }
 });
 
-for (const scenario of ['apply', 'cancel', 'stale', 'room', 'query'] as const) test(`mounted native multi-model assignments ${scenario} preserve complete transaction scope #4420`, {
+for (const scenario of ['apply', 'cancel', 'stale', 'room', 'query', 'room-pending', 'apply-cancel'] as const) test(`mounted native multi-model assignments ${scenario} preserve complete transaction scope #4420`, {
   skip: !existsSync(wasm) && 'Run pnpm build:wasm for native assignment tests',
 }, async t => {
   const initial = useViewerStore.getState(), previousRenderer = getGlobalRenderer();
@@ -90,8 +90,16 @@ for (const scenario of ['apply', 'cancel', 'stale', 'room', 'query'] as const) t
       await until(() => !button(ui, 'Preview all assignments').disabled);
       assert.ok(!ui.textContent?.includes('Review current scope'), 'unchanged in-session scopes resume without confirmation');
     }
-    if (scenario === 'cancel' || scenario === 'stale') worker.hold();
+    if (scenario === 'cancel' || scenario === 'stale' || scenario === 'room-pending') worker.hold();
     click(button(ui, 'Preview all assignments'));
+    if (scenario === 'room-pending') {
+      await until(() => worker.waiting() === 1);
+      act(() => useViewerStore.setState({ collabRoomId: 'joined-while-preparing' }));
+      worker.release(); await advance(50);
+      assert.equal(ui.querySelector('[data-operation-status]')?.getAttribute('data-operation-status'), 'stale');
+      assert.equal(button(ui, 'Apply assignments').disabled, true);
+      return;
+    }
     if (scenario === 'cancel' || scenario === 'stale') {
       await until(() => worker.waiting() === 1);
       if (scenario === 'cancel') click(button(ui, 'Cancel assignments'));
@@ -112,6 +120,19 @@ for (const scenario of ['apply', 'cancel', 'stale', 'room', 'query'] as const) t
         assert.equal(f.scene.get(entry.globalId)?.parts[0].texture,undefined);
         assert.equal(useViewerStore.getState().undoStacks.get(entry.modelId)?.length ?? 0,0);
       }
+      return;
+    }
+    if (scenario === 'apply-cancel') {
+      const editor = useViewerStore.getState().storeEditors.get('a')!;
+      const prepare = editor.prepareEntityOperations.bind(editor);
+      let release!: () => void;
+      const held = new Promise<void>(resolve => { release = resolve; });
+      editor.prepareEntityOperations = async (operations, options) => { await held; return prepare(operations, options); };
+      click(button(ui, 'Apply assignments')); click(button(ui, 'Cancel assignments'));
+      release(); await advance(50);
+      assert.equal(ui.querySelector('[data-operation-status]')?.getAttribute('data-operation-status'), 'idle');
+      assert.match(ui.textContent ?? '', /cancelled/i);
+      assert.equal(useViewerStore.getState().undoStacks.size, 0);
       return;
     }
     const atlasUvs = f.entries.map(entry => Array.from(f.scene.get(entry.globalId)!.parts[0].uvs!));

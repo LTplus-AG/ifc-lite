@@ -51,7 +51,7 @@ const PINNED_SESSION_RESET_KEYS: readonly string[] = [
   'compareReconciliation', 'compareRunCaptures', // #6921 captured runs name the outgoing federation's model ids
   'compareRunning', 'compareSelectedKey', 'contactShadingIntensity', 'contactShadingQuality',
   'contactShadingRadius', 'contextMenu', 'customOverrideRules', 'dirtyModels', 'discoveredLensData', 'draft',
-  'drawing2D', 'drawing2DDisplayOptions', 'drawing2DError', 'drawing2DPanelVisible',
+  'drawing2D', 'drawing2DDisplayOptions', 'drawing2DError', 'drawing2DPanelVisible', 'drawing2DPlane',
   'drawing2DPhase', 'drawing2DProgress', 'drawing2DStatus', 'drawing2DSvgContent',
   'editEnabled', 'editingZone', 'error',
   'expandedTaskGlobalIds', 'ganttPanelVisible', 'generateScheduleDialogOpen',
@@ -254,7 +254,7 @@ const PINNED_OWNED_KEYS: readonly string[] = [
   'compareReconciliation', 'compareRunCaptures', // #6921
   'compareSelectedKey', 'contactShadingIntensity', 'contactShadingQuality',
   'contactShadingRadius', 'contextMenu', 'customOverrideRules', 'dirtyModels', 'discoveredLensData', 'draft',
-  'drawing2D', 'drawing2DDisplayOptions', 'drawing2DError', 'drawing2DPanelVisible',
+  'drawing2D', 'drawing2DDisplayOptions', 'drawing2DError', 'drawing2DPanelVisible', 'drawing2DPlane',
   'drawing2DPhase', 'drawing2DProgress', 'drawing2DStatus', 'drawing2DSvgContent',
   'editEnabled', 'editingZone', 'error',
   'expandedTaskGlobalIds', 'ganttPanelVisible', 'generateScheduleDialogOpen',

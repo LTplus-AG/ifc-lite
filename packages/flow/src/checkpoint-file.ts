@@ -9,12 +9,14 @@
  * from `@ifc-lite/flow`) plus a revision. Writes are compare-and-swap under
  * an exclusive non-empty lock directory (`<file>.lock`), so two
  * processes resuming the same reviewed checkpoint cannot both claim it: the
- * loser re-reads `applying` and is refused. Locks older than a minute are reclaimed only when their PID is dead.
+ * loser re-reads `applying` and is refused. Old locks are reclaimed only after their local process identity is retired.
  * Legacy empty lock files have no owner identity and require manual removal.
  */
 
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import { mkdir, readFile, readdir, rename, rmdir, stat, unlink, writeFile } from 'node:fs/promises';
+import { basename, dirname } from 'node:path';
+import { lockOwnerName, parseLockOwner, readLockIdentity, retiredLockOwner } from './checkpoint-lock-owner.js';
 import { parseCheckpoint, type CheckpointStore, type FlowCheckpoint, type StoredCheckpoint } from './checkpoint.js';
 
 export class FileCheckpointStore implements CheckpointStore {
@@ -75,7 +77,8 @@ export class FileCheckpointStore implements CheckpointStore {
   }
 
   private async acquire(lock: string): Promise<string | null> {
-    const owner = `${process.pid}-${randomUUID()}`;
+    await this.reapCandidates(lock);
+    const owner = lockOwnerName(await readLockIdentity());
     const candidate = `${lock}.${owner}`;
     await mkdir(candidate);
     try {
@@ -111,22 +114,55 @@ export class FileCheckpointStore implements CheckpointStore {
       await this.release(lock, 'retired');
       return true;
     }
-    if (owners.length !== 1 || !/^[1-9]\d*-/.test(owners[0])) return false;
+    if (owners.length !== 1) return false;
     const owner = owners[0];
-    try {
-      if (Date.now() - (await stat(`${lock}/${owner}`)).mtimeMs < 60_000) return false;
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return true;
-      throw error;
-    }
-    try { process.kill(Number(owner.split('-')[0]), 0); return false; }
-    catch (error) {
-      // EPERM and all unknown liveness errors preserve the lock.
-      if ((error as NodeJS.ErrnoException).code !== 'ESRCH') return false;
-    }
+    if (!(await this.oldEnough(`${lock}/${owner}`))) return false;
+    const identity = parseLockOwner(owner);
+    if (!identity) throw new Error(`Legacy checkpoint lock ${lock} has no process identity; verify its writer before removing it`);
+    if (!(await retiredLockOwner(identity))) return false;
     await this.release(lock, owner);
     return true;
   }
+  private async oldEnough(path: string): Promise<boolean> {
+    try { return Date.now() - (await stat(path)).mtimeMs >= 60_000; }
+    catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
+      throw error;
+    }
+  }
+
+  /** Reap only protocol-owned orphan candidates, never recursively. */
+  private async reapCandidates(lock: string): Promise<void> {
+    const prefix = `${basename(lock)}.`, parent = dirname(lock);
+    const local = await readLockIdentity();
+    let entries: import('node:fs').Dirent[];
+    try { entries = await readdir(parent, { withFileTypes: true }); }
+    catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
+      if (['EACCES', 'EPERM'].includes((error as NodeJS.ErrnoException).code ?? '')) {
+        console.warn('[FileCheckpointStore] Cannot inspect orphan lock candidates:', error);
+        return;
+      }
+      throw error;
+    }
+    for (const entry of entries) {
+      if (!entry.isDirectory() || !entry.name.startsWith(prefix)) continue;
+      const owner = entry.name.slice(prefix.length), identity = parseLockOwner(owner);
+      if (!identity || identity.host !== local.host) continue;
+      const candidate = `${parent}/${entry.name}`;
+      try {
+        if (!(await this.oldEnough(candidate))) continue;
+        if (await retiredLockOwner(identity)) await this.release(candidate, owner);
+      } catch (error) {
+        if (['ENOENT', 'EACCES', 'EPERM'].includes((error as NodeJS.ErrnoException).code ?? '')) {
+          console.warn('[FileCheckpointStore] Retaining inaccessible orphan candidate:', error);
+          continue;
+        }
+        throw error;
+      }
+    }
+  }
+
 }
 
 /** What a resume must start from: the model bytes and effective tracking state the paused run left behind. */

@@ -91,13 +91,34 @@ MPL-2.0
 
 The Node-only `@ifc-lite/flow/checkpoint-file` entry exports `FileCheckpointStore`
 and `sourceDigestOf`, shared by CLI and MCP review continuations. Disk updates
-use an exclusive lock, revision CAS and atomic rename; locks are never reclaimed
-by age. Browser consumers continue to use the portable checkpoint entry and
-their native IndexedDB store.
+use an exclusive lock directory, revision CAS and atomic rename. A one-minute
+age grace is necessary but never sufficient for recovery: the recorded local
+process identity must also be retired. Browser consumers continue to use the
+portable checkpoint entry and their native IndexedDB store.
 
-File checkpoint writes use a PID-tagged lock directory. A lock is reclaimable
-only after one minute and only when the owning PID is confirmed absent; a live
-or inaccessible PID is preserved. Competing reapers cannot remove a replacement
-writer's owner entry. Older ownerless `.lock` files cannot be checked for
-liveness: writes report an error asking you to verify no writer is active before
-removing that legacy file. Keep one version of the writer on a shared checkpoint.
+The owner name records a hostname fingerprint, PID, Linux boot identity and
+process start ticks (when procfs is available), plus a unique token. A reused
+PID from another boot or process birth can therefore be reclaimed even while
+the new process is alive. A matching live PID, or a live PID whose identity
+cannot be verified, is retained with an explicit diagnostic. Without procfs,
+recovery can prove an absent PID but cannot automatically distinguish a reused
+live PID; verify the writer before manual removal.
+
+This is local coordination within one host and PID namespace, **not a
+cross-host/NFS lock service**. A PID has no liveness meaning on another host;
+foreign-host owners are refused with a diagnostic, and hostnames must not be
+aliased across independent PID namespaces. Verify a remote owner separately.
+`mtime` is only a grace-period hint: clock skew (especially future timestamps)
+can delay recovery; it never authorizes deleting a live owner.
+
+Prepared candidate directories left by a crash between mkdir and publication
+are inspected opportunistically. Only old candidates with a verified retired
+local identity are removed, using owner-scoped unlink plus nonrecursive rmdir.
+Recent/future-dated, live, foreign, unrecognized, non-directory and unrelated
+entries are preserved. Concurrent reapers cannot remove a replacement writer's
+unique owner entry. Windows EPERM when renaming over an occupied destination is
+treated as a lock conflict; native Windows execution has not been validated.
+
+Legacy empty `.lock` files have no provable owner identity: writes report an
+actionable error instead of guessing. Verify no writer is active before
+removing such a legacy file. Keep one writer version on a shared checkpoint.

@@ -5,6 +5,9 @@
 import type { Catalogue } from '../../registry';
 
 export const propertiesPanelFr = {
+  'properties.panel.presentationLayersHeading': 'Calques de présentation',
+  'properties.panel.presentationLayersLoadError': 'Impossible de charger les calques de présentation.',
+  'properties.panel.presentationLayersRetry': 'Réessayer',
   "properties.panel.positionLabel": "Position",
   "properties.panel.crsLabel": "SCR",
   "properties.panel.localCoordinates": "Locales",

@@ -1543,6 +1543,10 @@
     "value": "m",
     "reason": "splitTool.unitMetres: A numeric measurement with the exact SI unit abbreviation shown in the pinned value; unit symbols are language independent."
   },
+  "storeyManager.copy.level": {
+    "value": "{storey} ({elevation} m)",
+    "reason": "Runtime storey names and formatted elevations use the same metre symbol and punctuation in Italian."
+  },
   "tableChanges.matchTypeTag": {
     "value": "Tag",
     "reason": "tableChanges.matchTypeTag: Exact IFC EXPRESS attribute name used by this field, not an English prose description."

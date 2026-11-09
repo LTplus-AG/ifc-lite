@@ -10,6 +10,7 @@ import { isCollabEnabled } from '@/lib/collab/config';
 import type { TranslationKey } from '@/i18n';
 import { getPlacementGeorefContext } from '@/lib/geo/placement-georef-runtime';
 import { useViewerStore, type ViewerState } from '@/store';
+import { canMutate } from '@/store/mutation-permission';
 import { hasRetainedShapeOnlyModel, RETAINED_SHAPE_ONLY_REASON } from '@/store/retainedGeometry';
 import { getWebGPUStatus } from '@/hooks/useWebGPU';
 import { selectCanRefreshModels, selectHasModelsLoaded } from '@/hooks/model-presence';
@@ -48,6 +49,11 @@ export function paletteAvailability(command: SurfaceCommandDefinition, context: 
   }
   if (!command.enabled(state)) return blocked('commandPalette.availability.feature');
   const id = command.id;
+  if (id === 'model:copy-to-storeys') {
+    if (!s.session) return blocked('commandPalette.availability.ifc');
+    if (!canMutate(s, s.session.modelId)) return blocked('commandPalette.availability.editor');
+    if (s.selectedEntityId === null && s.selectedEntityIds.size === 0) return blocked('commandPalette.availability.selection');
+  }
   const modelBlock = paletteModelBlock(id, s);
   if (modelBlock) return blocked(modelBlock);
   if (id === 'elements:entity-actions' && selectedEntityActionTarget(s) === null) {

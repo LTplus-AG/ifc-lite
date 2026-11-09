@@ -49,6 +49,7 @@ Options:
 - `--themes light` captures one theme only.
 - `--out <dir>` sets the output directory.
 - `--baseline <file>` also writes the combined result file to commit.
+- `--round 1` stamps the baseline round (default 0).
 
 Output goes to `$PARITY_OUT`, or `tests/modelling-parity/.out/ui/` if that is
 unset. Nothing there is committed.
@@ -65,7 +66,7 @@ unset. Nothing there is committed.
 - `frames/` holds the council checkpoints with a `manifest.json` in the
   `tests/ui-scenes/capture.mjs` format.
 
-A full run (16 probes, F1 and F2 in both themes) takes about seven minutes on one GPU.
+A full run (25 probes, F1 and F2 in both themes) takes about seven minutes on one GPU.
 
 ## How actions and time are counted
 
@@ -106,3 +107,19 @@ cp tests/modelling-parity/ui/COUNCIL-MODELLING.md <packet>/
 
 Frames are not committed (#9054: evidence lives in the PR, not the tree).
 `baseline/r0.json` records each frame's sha256 and layout metrics.
+
+## Round 1 coverage (U4)
+
+Every table-stakes row now has a UI probe. Unsupported requirements and
+requirements without an oracle remain explicit failed checks, so a narrow
+success cannot award the whole row. The grid result also has its own capability
+id; the original grid/column result only credited structure.
+
+The session-scale probe uses 20 walls and checks a height edit and Undo through
+exported IFC. Under `ifc-gpu-check`, its task durations are diagnostic only.
+It cannot pass the large-model timing requirement: qualify that separately with
+exclusive benchmark admission on Pop. PC benchmarks are disabled.
+
+Use a fresh output directory per cohort when scoring: the scorer keeps the best
+result per level, so mixing old and new runs can conceal a regression. Pass the
+SDK result directory and UI directory explicitly to the output runner and scorer.

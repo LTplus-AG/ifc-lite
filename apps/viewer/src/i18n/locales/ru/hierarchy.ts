@@ -5,6 +5,14 @@
 import type { Catalogue } from '../../registry';
 
 export const hierarchyRu = {
+  "hierarchy.layerGrouping.label": "Группировать элементы слоя",
+  "hierarchy.layerGrouping.noCode": "{source} (без кода)",
+  "hierarchy.layerGrouping.none": "Без группировки",
+  "hierarchy.layerGrouping.class": "Класс",
+  "hierarchy.layerGrouping.classification": "Классификация",
+  "hierarchy.layerGrouping.unclassified": "Без классификации",
+  "hierarchy.layerGrouping.unavailable": "Классификация недоступна",
+
   "hierarchy.node.repositionAriaLabel": "Изменить положение модели {name}",
   "hierarchy.node.repositionTooltip": "Изменить положение модели",
   "hierarchy.node.hideModelAriaLabel": "Скрыть модель {name}",

@@ -11,6 +11,7 @@ import { BimReactContext } from '@/sdk/BimProvider';
 import { useViewerStore } from '@/store';
 import { setLocale } from '@/i18n';
 import { posthog } from '@/lib/analytics';
+import { activityListReady } from '@/test/activity-list';
 import { advance, cleanup, click, press, render, type as typeInto } from '@/test/render';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { CommandPalette } from './CommandPalette';
@@ -278,11 +279,12 @@ test('Share disabled when collaboration is off; Activity opens real empty list w
   assert.match(row('file:open').textContent ?? '', /WebGPU/);
   assert.notEqual(row('ui:activity').getAttribute('aria-disabled'), 'true');
   click(row('ui:activity'));
-  await settle();
+  // #8947: the shell opens before React.lazy finishes loading the real list.
+  const list = await activityListReady();
+  const dialog = list.closest('[role="dialog"]');
+  assert.ok(dialog, 'Activity list is hosted in its dialog');
+  assert.equal(dialog.querySelector('h2')?.textContent, 'Activity', 'Activity dialog renders its visible title');
   assert.equal(document.querySelector('input[role="combobox"]'), null);
-  const dialog = document.querySelector('[role="dialog"]');
-  assert.ok(dialog);
-  assert.match(dialog.textContent ?? '', /Activity/);
   assert.match(dialog.textContent ?? '', /No jobs in this session yet/);
 });
 

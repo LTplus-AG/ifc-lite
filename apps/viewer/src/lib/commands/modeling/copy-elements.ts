@@ -10,10 +10,11 @@
  * host), written through `recordModellingEdit`, which runs the batch
  * atomically, puts every record on the undo stack and, in a shared room,
  * publishes it. Copies of a grid-bound element that land on no crossing come
- * free of the grid (#9199), and this is where the person is told, once a write.
+ * free of the grid (#9199), and copies whose top could not follow their new
+ * storey keep their height (#9352): this is where the person is told, once a write.
  */
 
-import { copyBatchInStore, copySourcesInStore, copiedProductsInStore, createCopyContext, type CopyContext, type CopyTransform, type DuplicateInStoreOptions } from '@ifc-lite/create';
+import { copyBatchInStore, copySourcesInStore, copiedProductsInStore, copiesOfSelection, createCopyContext, type CopyContext, type CopyTransform, type DuplicateInStoreOptions, type SelectedCopy } from '@ifc-lite/create';
 import { toast } from '@/components/ui/toast';
 import { resolve as translate } from '@/i18n/registry';
 import type { ViewerState } from '@/store';
@@ -29,6 +30,8 @@ export interface CopyOutcome {
   readonly meshed: readonly number[];
   /** Source id for each copied product, for immediate rendering and property lookup. */
   readonly copiedFrom: ReadonlyMap<number, number>;
+  /** The copy of every selected element, a door selected with its wall included, transform-major (`bim.store`'s result, #9352). */
+  readonly selected: readonly SelectedCopy[];
 }
 
 /** A read-only copy context over the model as it is now. */
@@ -81,7 +84,12 @@ export function copyElements(
   }
   const cameFree = results.reduce((count, r) => count + r.cameFree.length, 0);
   if (cameFree > 0) toast.info(translate('copyArray.cameFree', { count: cameFree, countDisplay: String(cameFree) }));
+  const unattached = results.reduce((count, r) => count + (r.unattachedTops?.length ?? 0), 0);
+  if (unattached > 0) toast.info(translate('copyArray.unattachedTops', { count: unattached, countDisplay: String(unattached) }));
   const copiedFrom = new Map(results.flatMap((r) => [...r.copiedFrom]));
   for (const [copy, source] of copiedFrom) target.view.setEntityAlias(copy, source);
-  return { copies: results.map((r) => r.copyId), meshed: results.flatMap((r) => r.meshed), copiedFrom };
+  return {
+    copies: results.map((r) => r.copyId), meshed: results.flatMap((r) => r.meshed), copiedFrom,
+    selected: copiesOfSelection(ids, results, transforms.length).flat(),
+  };
 }

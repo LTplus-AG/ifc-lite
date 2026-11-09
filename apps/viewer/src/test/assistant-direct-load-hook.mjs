@@ -51,8 +51,13 @@ export async function resolve(specifier, context, nextResolve) {
 
 export async function load(url, context, nextLoad) {
   if (transformOnly) {
-    const loaded = await nextLoad(url, context);
-    if (!/\.ts(?:\?.*)?$/.test(url)) return loaded;
+    // Path, not URL: a query ending in `.ts` must not mark a JS/JSON module as TypeScript.
+    const isTs = url.startsWith('file:') && /\.ts$/.test(new URL(url).pathname);
+    // This hook transforms TS itself. Node <22.18 resolves `.ts` with no format and its
+    // default loader then rejects it, so supply plain module source only in that case;
+    // a format the resolver chose (e.g. module-typescript) is kept.
+    const loaded = await nextLoad(url, isTs && !context.format ? { ...context, format: 'module' } : context);
+    if (!isTs) return loaded;
     if (loaded.source == null) throw new Error('native TypeScript probe requires genuine module source');
     const source = typeof loaded.source === 'string' ? loaded.source : new TextDecoder().decode(loaded.source);
     return { ...loaded, format: 'module', source: stripTypeScriptTypes(source, { mode: 'transform', sourceUrl: url }) };

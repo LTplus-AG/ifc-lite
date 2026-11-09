@@ -65,7 +65,7 @@ describe('Document block size (#6548)', () => {
 
   it('offers the control on a chart and a text block, not on a spacer', async () => {
     const ui = render(<DocumentPanel />);
-    await settle();
+    await documentPreviewReady({ root: ui });
     assert.ok(ui.querySelector(`[data-block-editor="c1"] ${SIZE}`));
     assert.ok(ui.querySelector(`[data-block-editor="t1"] ${SIZE}`));
     assert.equal(ui.querySelector(`[data-block-editor="s1"] ${SIZE}`), null);
@@ -73,7 +73,7 @@ describe('Document block size (#6548)', () => {
 
   it('zooms a chart block as a whole: the plot is laid out at the authored size in a narrower column, then drawn larger', async () => {
     const ui = render(<DocumentPanel />);
-    await settle(); await documentPreviewReady();
+    await documentPreviewReady({ root: ui });
     const block = () => ui.querySelector('[data-preview-block="c1"]')!;
     const svg = () => block().querySelector('svg')!;
     const frame = () => block().querySelector<HTMLElement>('[data-chart-svg]')!;
@@ -91,7 +91,7 @@ describe('Document block size (#6548)', () => {
 
   it('zooms a text block, clamps the entry to 50-200 and clears the override at 100', async () => {
     const ui = render(<DocumentPanel />);
-    await settle(); await documentPreviewReady();
+    await documentPreviewReady({ root: ui });
     const text = () => Array.from(ui.querySelectorAll<HTMLElement>('[data-preview-block="t1"] [data-block-text] span')).find(node => node.textContent?.trim() === 'Body text')!;
     const authoredSize = parseFloat(text().style.fontSize);
     const input = () => ui.querySelector<HTMLInputElement>(`[data-block-editor="t1"] ${SIZE}`)!;

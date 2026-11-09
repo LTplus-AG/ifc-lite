@@ -415,7 +415,8 @@ model (properties + spatial hierarchy) with `fetchDataModel`:
 const result = await client.parseParquet(file);
 
 // Data model (properties + hierarchy) for a known cache key:
-const dataModelBuffer = await client.fetchDataModel(result.cache_key);
+const controller = new AbortController();
+const dataModelBuffer = await client.fetchDataModel(result.cache_key, { signal: controller.signal });
 ```
 
 `getCached(key)` is the lower-level lookup for the JSON `parse()` cache: pass
@@ -435,7 +436,14 @@ fills it in the background after its `complete` event, which is the one case
 `GET /api/v1/parse/data-model/{key}` answers `202` for (a fill genuinely
 running for that key — keep polling). Everything else is `404`: no data model
 was ever written for that key and none is in flight, so a client should stop
-polling rather than retry forever. `fetchDataModel` treats `404` as terminal:
+polling rather than retry forever. Both `fetchDataModel` and `fetchSymbolic` return
+`null` for a missing cache entry (404) or when all attempts report pending (202).
+HTTP errors, exhausted network/timeout retries, decoding errors, and caller
+cancellation reject the promise. Pass `{ maxRetries, signal }` as the second
+argument to cancel an in-flight request or retry delay; the numeric retry-count
+form remains supported. Catch failures when properties or symbols are optional.
+
+`fetchDataModel` treats `404` as terminal:
 
 ```typescript
 import { decodeDataModel } from '@ifc-lite/server-client';

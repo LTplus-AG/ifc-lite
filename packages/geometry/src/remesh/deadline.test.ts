@@ -48,11 +48,14 @@ describe('armDeadline (P5)', () => {
     expect(fired).not.toHaveBeenCalled();
   });
 
-  it('arms no timer for "no deadline"', () => {
+  it.each([0, -1, Number.NaN, Number.POSITIVE_INFINITY])('arms no timer for "no deadline" (%s)', (ms) => {
     vi.useFakeTimers();
     const fired = vi.fn();
-    armDeadline(Number.POSITIVE_INFINITY, fired)();
-    armDeadline(0, fired);
+    // Count before cancelling: a cancelled timer would hide one wrongly armed.
+    const cancel = armDeadline(ms, fired);
     expect(vi.getTimerCount()).toBe(0);
+    vi.advanceTimersByTime(MAX_TIMER_DELAY_MS);
+    expect(fired).not.toHaveBeenCalled();
+    cancel();
   });
 });

@@ -29,8 +29,10 @@ class ScriptedWorker {
     if (this.refusePost) throw this.refusePost;
     this.posted.push({ message, transfer });
   }
+  terminateCalls = 0;
   terminate(): void {
     this.terminated = true;
+    this.terminateCalls += 1;
   }
   reply(message: RemeshWorkerOutbound): void {
     this.onmessage?.({ data: message } as MessageEvent<RemeshWorkerOutbound>);
@@ -283,6 +285,28 @@ describe('RemeshClient (#6232)', () => {
       expect(client.alive).toBe(true);
       worker.reply({ type: 'result', requestId: worker.requestIds()[0], result: result(1) });
       await expect(inFlight).resolves.toMatchObject({ csgFailures: 1 });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('P5: a worker error after the start deadline fired does not terminate or reject twice', async () => {
+    vi.useFakeTimers();
+    try {
+      const worker = new ScriptedWorker();
+      const settled = vi.fn();
+      const pending = RemeshClient.create(CONFIG, { createWorker: () => worker as unknown as Worker, startTimeoutMs: 1_000 });
+      const outcome = pending.then(() => settled('resolved'), (error: Error) => { settled(error.message); });
+      vi.advanceTimersByTime(1_000);
+      // The start handlers stay attached after the deadline: a late error,
+      // unreadable message or init-error must hit the dead latch, not re-run it.
+      worker.onerror?.({ message: 'late crash' } as ErrorEvent);
+      worker.onmessageerror?.();
+      worker.reply({ type: 'init-error', message: 'late init-error' });
+      await outcome;
+      expect(settled).toHaveBeenCalledTimes(1);
+      expect(settled).toHaveBeenCalledWith('Re-mesh worker did not start within 1000 ms');
+      expect(worker.terminateCalls).toBe(1);
     } finally {
       vi.useRealTimers();
     }

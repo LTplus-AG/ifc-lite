@@ -87,7 +87,7 @@ class ControlledWorker implements AppearanceWorker {
 
 /** Shared by Node/HappyDOM and an isolated real-browser lab; never run in a user's model session. */
 export async function runAppearanceControllerScenario(
-  scenario: 'strict-source' | 'discard-debounce' | 'discard-worker' | 'stale-version' | 'upload-failure' | 'partial-exclusion' | 'apply-selection',
+  scenario: 'strict-source' | 'discard-debounce' | 'discard-worker' | 'stale-version' | 'upload-failure' | 'partial-exclusion' | 'apply-selection' | 'apply-cancel-late',
   imageBytes = controllerPng,
 ): Promise<{ scenario: string; requests: number; terminations: number; stages: number; nativeBitmaps: number }> {
   const initial = useViewerStore.getState();
@@ -238,7 +238,19 @@ END-ISO-10303-21;`);
         await act(async () => { workers[0].complete(); });
         await until(() => !button('Apply').disabled, `preview never became ready: ${container.textContent}`);
         check(parts[0].textureBitmap?.width, 'real inventory decode did not reach the preview');
-        if (scenario === 'apply-selection') {
+        if (scenario === 'apply-cancel-late') {
+          const prepare = editor.prepareEntityOperations.bind(editor);
+          let cancelled!: () => void;
+          const cancellation = new Promise<void>(resolve => { cancelled = resolve; });
+          editor.prepareEntityOperations = async (operations, options) => {
+            const result = await prepare(operations, options);
+            queueMicrotask(() => { button('Discard').click(); cancelled(); });
+            return result;
+          };
+          await act(async () => { button('Apply').click(); await cancellation; });
+          await advance(20);
+          check(container.textContent?.toLowerCase().includes('discarded'), 'late commit progress replaced the discard notice');
+        } else if (scenario === 'apply-selection') {
           let release!: () => void;
           const held = new Promise<void>(resolve => { release = resolve; });
           const prepare = editor.prepareEntityOperations.bind(editor);

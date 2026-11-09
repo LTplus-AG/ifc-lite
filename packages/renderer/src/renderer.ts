@@ -3231,12 +3231,10 @@ export class Renderer {
         this.raycastEngine.setSourceSnapCurves(curves); this.pickSources.noteCurves(curves);
     }
 
-    /**
-     * Invalidate BVH cache (call when geometry changes)
-     */
-    invalidateBVHCache(): void {
-        this.raycastEngine.invalidateBVHCache();
-    }
+    /** Invalidate BVH cache (call when geometry changes). */
+    invalidateBVHCache(): void { this.raycastEngine.invalidateBVHCache(); }
+    /** True when the next raycastScene() rebuilds nothing, so a caller can warm it off the gesture path. */
+    isRaycastCacheWarm(): boolean { return this.raycastEngine.isCacheWarm(); }
 
     /**
      * Clear all caches (call when geometry changes)

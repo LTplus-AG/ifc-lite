@@ -225,6 +225,46 @@ describe('BVH', () => {
     assert.strictEqual(bvh.getMeshesForRay(ray, meshes).length, 0);
   });
 
+  // The typed-array tree splits in place (#9504): a permutation bug would drop
+  // or repeat a mesh only on inputs large enough to recurse several levels.
+  it('returns each crossed mesh exactly once on a large random scene', () => {
+    let seed = 7;
+    const random = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    const meshes = Array.from({ length: 5000 }, (_, i) => {
+      const mesh = boxMesh(i, random() * 400, random() * 40, random() * 400, random() * 3);
+      if (i % 3 === 0) mesh.origin = [random() * 50, 0, random() * 50];
+      return mesh;
+    });
+    const world = (m: MeshData): AABBLike => {
+      const b = meshAabb(m), [x, y, z] = m.origin ?? [0, 0, 0];
+      return { min: { x: b.min.x + x, y: b.min.y + y, z: b.min.z + z }, max: { x: b.max.x + x, y: b.max.y + y, z: b.max.z + z } };
+    };
+    const boxes = meshes.map(world);
+    const bvh = new BVH();
+    bvh.build(meshes);
+    for (let r = 0; r < 200; r++) {
+      const v = { x: random() - 0.5, y: random() - 0.5, z: random() - 0.5 };
+      const length = Math.hypot(v.x, v.y, v.z);
+      const direction = r % 10 === 0 ? { x: 0, y: -1, z: 0 } : { x: v.x / length, y: v.y / length, z: v.z / length };
+      const ray: Ray = { origin: { x: random() * 400, y: 60, z: random() * 400 }, direction };
+      const candidates = bvh.getMeshesForRay(ray, meshes);
+      const unique = new Set(candidates);
+      assert.strictEqual(unique.size, candidates.length, `ray ${r} repeated a candidate`);
+      boxes.forEach((box, i) => {
+        if (rayHitsAabb(ray, box)) assert.ok(unique.has(i), `ray ${r} dropped mesh ${i}`);
+      });
+    }
+  });
+
+  it('rebuilds to empty, then returns every index again', () => {
+    const meshes = gridScene();
+    const bvh = new BVH();
+    bvh.build(meshes);
+    bvh.build([]);
+    const ray: Ray = { origin: { x: 100, y: 100, z: 100 }, direction: { x: 0, y: 0, z: 1 } };
+    assert.strictEqual(bvh.getMeshesForRay(ray, meshes).length, meshes.length);
+  });
+
   // `MeshData.positions` are in the element's LOCAL frame; `MeshData.origin`
   // (present on chunked/large-coordinate models, e.g. federated or RTC'd
   // scenes) is a per-mesh world-space translation the BVH must fold in when

@@ -975,6 +975,9 @@ The renderer uses a Bounding Volume Hierarchy for fast raycasting:
 
 // Clear BVH cache when geometry changes significantly
 renderer.invalidateBVHCache();
+
+// True when the next raycastScene() rebuilds nothing
+const raycastReady = renderer.isRaycastCacheWarm();
 renderer.clearCaches();
 ```
 

@@ -13,7 +13,7 @@ import { attachCapturedLoad } from '@/lib/error-reports/correlation';
 import { useShallow } from 'zustand/react/shallow';
 import { type FederatedModel, useViewerStore } from '@/store';
 import { resolveLoadTessellationTier, isMeshOnlyCacheEnabled } from '../store/constants.js';
-import { createModelLoadActivity, installModelLoadCanceller } from './modelLoadCanceller.js';
+import { createModelLoadActivity, handOffToRetry, installModelLoadCanceller } from './modelLoadCanceller.js';
 import type { ModelLoadOptions } from './modelLoadOptions.js';
 import { assertWorkflowOwner } from '@/lib/flow/run-session';
 import { buildModelLoadedGeometryProps, reportOmittedTypeRecords, reportRefusedLengthUnit, reportSkippedHungElements, warnGeometryDiagnostics } from './modelLoadedGeometryProps.js';
@@ -70,7 +70,8 @@ import { useIfcServer } from './useIfcServer.js';
 import { prepareGlbViewerModel } from './ingest/glbTextureValidation.js';
 import { getMaxExpressId, getViewerSchemaVersion, parseIfcxViewerModel } from './ingest/viewerModelIngest.js';
 import { isLandXmlFileName } from './ingest/landXmlSniff.js';
-import { drapeIfGeoRaster, loadLandXmlModel } from './ingest/landXmlLoad.js';
+import { loadLandXmlModel } from './ingest/landXmlLoad.js';
+import { drapeIfGeoRaster } from './ingest/drapeIfGeoRaster.js';
 import { clearLandXmlRefusalPrompts, publishLandXmlRefusalPrompts } from './ingest/landXmlRefusalPrompts.js';
 import { applyFederationOffsetToMesh } from './ingest/federationOffset.js';
 import { boundedIteratorReturn } from './ingest/streamCleanup.js';
@@ -283,7 +284,7 @@ export function useIfcLoader() {
     options?: ModelLoadOptions,
   ) => {
     assertWorkflowOwner(options?.workflowOwner);
-    const draping = drapeIfGeoRaster(file, setLoading); if (draping) return draping; // #5942: imagery, never a model
+    const draping = drapeIfGeoRaster(file); if (draping) return draping; // #5942: imagery, never a model
     const geometryKernel = beginGeometryKernel(file, target, () => void loadFileRef.current?.(file, target, options)); if (geometryKernel.refused) return geometryKernel.refused; // #7955 M2: out-of-scope retained requests stop before any work
     const { resetViewerState, clearAllModels } = useViewerStore.getState();
     // A primary supersedes every outstanding hook owner via the shared canceller.
@@ -438,11 +439,13 @@ export function useIfcLoader() {
       // finished, so the original promise must stay pending until the
       // replacement load settles. loadFile never rethrows (both its catches
       // return), so this cannot throw back into the caller.
-      await loadFileRef.current?.(file, target, {
+      // J1: the retry's own job reports how this file ends, not a cancel of this attempt.
+      const retryLoad = loadFileRef.current;
+      await handOffToRetry(activity, retryLoad ? () => retryLoad(file, target, {
         ...options,
         tierOverride: retryTier,
         isResourceRetry: true,
-      });
+      }) : undefined);
       return true;
     };
 

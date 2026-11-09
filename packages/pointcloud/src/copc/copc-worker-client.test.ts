@@ -58,8 +58,9 @@ async function inProcessWorker(): Promise<Worker> {
       sentToWorker.push(copy as { kind: string });
       queueMicrotask(() => scope.onmessage?.({ data: copy }));
     },
-    addEventListener(_type: string, l: Listener) { listeners.add(l); },
-    removeEventListener(_type: string, l: Listener) { listeners.delete(l); },
+    // Only `message` listeners hear replies, as on a real Worker.
+    addEventListener(type: string, l: Listener) { if (type === 'message') listeners.add(l); },
+    removeEventListener(type: string, l: Listener) { if (type === 'message') listeners.delete(l); },
   };
   return worker as unknown as Worker;
 }

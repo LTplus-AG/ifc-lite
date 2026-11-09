@@ -51,4 +51,5 @@ export const roomToolIt = {
   "roomTool.pick.none": "Nessun muro racchiude questo punto: fai clic all'interno di un locale oppure passa a Disegna",
   "roomTool.pick.taken": "Quest'area ha già un locale",
   "roomTool.draw.needThree": "Un locale richiede almeno tre angoli",
+  "roomTool.update.unresolvedPlacement": "Parete ruotata. I locali non sono stati aggiornati perché non è stato possibile leggere il posizionamento della parete.",
 } satisfies Catalogue;

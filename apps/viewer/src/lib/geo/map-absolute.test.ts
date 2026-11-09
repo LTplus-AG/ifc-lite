@@ -22,7 +22,7 @@ import assert from 'node:assert/strict';
 import { NORMAL_COORD_THRESHOLD_M, type CoordinateInfo } from '@ifc-lite/geometry';
 import type { MapConversion } from '@ifc-lite/parser';
 
-import { computeModelCenterInIfcMeters, effectiveMapConversionForGeometry } from './map-absolute.js';
+import { computeModelCenterInIfcMeters, effectiveMapConversionForGeometry, isMapAbsoluteGeometry, matchMapAbsoluteGeometry } from './map-absolute.js';
 import { getEffectiveAxisScales, getEffectiveHorizontalScale } from './geo-scale.js';
 
 /**
@@ -223,5 +223,58 @@ describe('effectiveMapConversionForGeometry — centre radius is the RTC thresho
     );
     const effective = effectiveMapConversionForGeometry(conversion, 1, coordinateInfo);
     assert.strictEqual(effective, conversion);
+  });
+});
+
+describe('effectiveMapConversionForGeometry — site anchor in map units (#9480)', () => {
+  // Vectorworks 2026 Update 7: IfcSite at (311988.18054, 5996148.56499) in a
+  // millimetre file, i.e. 311.988 m / 5996.149 m, with the conversion
+  // repeating the anchor in metres.
+  const conversion = makeConversion({ eastings: 311988.181, northings: 5996148.565, xAxisAbscissa: 0, xAxisOrdinate: 1, scale: undefined });
+  const mm = (info: CoordinateInfo): CoordinateInfo => ({ ...info, lengthUnitScale: 0.001 });
+  const siteE = 311988.18054 * 0.001;
+  const siteN = 5996148.56499 * 0.001;
+
+  it('moves the geometry by the anchor it does not carry, with no rotation or scale', () => {
+    const effective = effectiveMapConversionForGeometry(conversion, 1, mm(coordinateInfoNearAnchor(siteE, siteN, 30)));
+    assert.notStrictEqual(effective, conversion);
+    assert.ok(Math.abs(effective.eastings - 311988.181 * 0.999) < 1e-6, `eastings ${effective.eastings}`);
+    assert.ok(Math.abs(effective.northings - 5996148.565 * 0.999) < 1e-6, `northings ${effective.northings}`);
+    assert.strictEqual(effective.xAxisAbscissa, 1);
+    assert.strictEqual(effective.xAxisOrdinate, 0);
+    assert.strictEqual(effective.scale, 1);
+    // The site origin lands on the declared anchor.
+    assert.ok(Math.abs(siteE + effective.eastings - 311988.181) < 1e-3);
+    assert.ok(Math.abs(siteN + effective.northings - 5996148.565) < 1e-3);
+    assert.deepEqual(
+      matchMapAbsoluteGeometry(conversion, 1, mm(coordinateInfoNearAnchor(siteE, siteN, 30))),
+      { kind: 'unitMismatchedAnchor', anchorUnitRatio: 0.001 },
+    );
+  });
+
+  it('needs the project length unit to say the units differ', () => {
+    assert.strictEqual(effectiveMapConversionForGeometry(conversion, 1, coordinateInfoNearAnchor(siteE, siteN, 30)), conversion);
+  });
+
+  it('does not fire when the file and map units agree', () => {
+    const metres: CoordinateInfo = { ...coordinateInfoNearAnchor(siteE, siteN, 30), lengthUnitScale: 1 };
+    assert.strictEqual(effectiveMapConversionForGeometry(conversion, 1, metres), conversion);
+  });
+
+  it('leaves a compliant millimetre model near its local origin alone', () => {
+    assert.strictEqual(effectiveMapConversionForGeometry(conversion, 1, mm(coordinateInfoAtAnchor(20, -15))), conversion);
+    assert.strictEqual(isMapAbsoluteGeometry(conversion, 1, mm(coordinateInfoAtAnchor(20, -15))), false);
+  });
+
+  it('takes a centre within a tenth of the mis-scaled anchor distance, not beyond', () => {
+    const radius = 0.1 * Math.hypot(siteE, siteN);
+    assert.notStrictEqual(effectiveMapConversionForGeometry(conversion, 1, mm(coordinateInfoNearAnchor(siteE, siteN, radius * 0.99))), conversion);
+    assert.strictEqual(effectiveMapConversionForGeometry(conversion, 1, mm(coordinateInfoNearAnchor(siteE, siteN, radius * 1.01))), conversion);
+  });
+
+  it('keeps the #2526 reading when the site already sits at the anchor in project units', () => {
+    const effective = effectiveMapConversionForGeometry(conversion, 1, mm(coordinateInfoAtAnchor(311988.18054, 5996148.56499)));
+    assert.strictEqual(effective.eastings, 0);
+    assert.strictEqual(effective.northings, 0);
   });
 });

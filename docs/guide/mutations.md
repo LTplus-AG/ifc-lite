@@ -394,6 +394,8 @@ Edits accumulate in the same overlay used by `setProperty` / `setAttribute`. The
 
 Use `StoreEditor.runAtomic` to create or modify a related set of IFC entities together. The callback receives a detached editor; a thrown error leaves the live overlay, mutation history and express-ID allocator unchanged. `MutablePropertyView.runAtomic` provides the same operation with a draft view for property and quantity edits.
 
+An untouched draft reads the same model revision and overlay contents as its live view. Initializing an editor's express-ID watermark does not change that model revision; transaction validation checks the allocator separately so an intervening watermark change cannot be overwritten by publication.
+
 ```typescript
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 
@@ -1148,3 +1150,28 @@ Other typed markers continue to accept scalar values.
 When migrating an attribute reader, narrow `value.typed.value` with
 `Array.isArray` before passing it to a scalar-only function. The typed payload
 can now contain segment indices as well as a string, number or boolean.
+
+For an entity-scoped diff, use `view.getEffectiveChanges(expressId)`. It returns
+that entity's current effective changes in the same order as filtering
+`view.getEffectiveChanges()`, while reading its indexed mutation rows.
+`view.getNewEntitiesReferencing(expressId)` enumerates created records whose
+**authored attributes** contain a `#expressId` reference. These are candidates:
+apply named and positional overrides and deletion checks before interpreting
+an effective relationship. Slot overrides that introduce a reference must also
+be considered through `view.getAttributeOverrideEntityIds()`. Pass a list of
+IFC classes to that method to narrow created candidates by their effective
+class; edited source records remain conservative candidates for the caller to
+check against its source store. The optional second argument narrows creations
+to overrides that could contain a reference to that ID. These remain
+candidates; verify their effective slots with the relevant schema and grammar.
+`view.getAttributeOverrideReferenceCandidates(id)` also indexes source edits
+that might introduce a reference. Combine these with the immutable source and
+authored reference indices; retained or removed references need those indices.
+
+The ordinary entity getters keep their mutable-array contract. Reference
+lookups conservatively recheck a record after its attribute array is exposed,
+including later edits through a retained alias. Pure readers can use
+`readNewEntity`, `readNewEntities`, and `readNewEntitiesOfType`; these borrow
+attributes for reading and must not mutate them. Reference-query results also
+borrow their arrays for reading. Use the ordinary getters or mutation methods
+for writes. `StoreEditor.readNewEntity` provides the same read-only borrow.

@@ -77,4 +77,5 @@ export const activityTrayIt = {
   "activityTray.publication.failed": { one: "{count} effetto non riuscito", other: "{count} effetti non riusciti", many: "{count} effetti non riusciti" },
   "activityTray.ai.timeout": "Tempo scaduto",
   "activityTray.ai.truncated": "Interrotto al limite di output",
+  "activityTray.load.noModel": "Terminato senza caricare un modello",
 } satisfies Catalogue;

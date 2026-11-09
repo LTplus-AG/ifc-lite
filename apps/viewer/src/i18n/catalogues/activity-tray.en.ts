@@ -62,4 +62,5 @@ export const activityTrayEn = {
   'activityTray.publication.failed': { one: '{count} effect failed', other: '{count} effects failed' },
   'activityTray.ai.timeout': 'Timed out',
   'activityTray.ai.truncated': 'Stopped at the output limit',
+  'activityTray.load.noModel': 'Ended without loading a model',
 } as const satisfies Record<string, TranslationValue>;

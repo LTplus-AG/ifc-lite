@@ -51,6 +51,17 @@ export function markActiveDrawingGenerationStarted(): void {
   notifyListeners();
 }
 
+/**
+ * The generation ended without publishing (cancelled, failed, or nothing to
+ * draw). The bitmap already on screen stays uncapturable — it was not proven
+ * current — but a canvas mounted from now on is no longer held back.
+ */
+export function markActiveDrawingGenerationSettled(): void {
+  if (!generationPending) return;
+  generationPending = false;
+  notifyListeners();
+}
+
 /** Identify the replacement drawing that a completed generation produced. */
 export function markActiveDrawingGenerationCompleted(drawing: Drawing2D): void {
   generationPending = false;

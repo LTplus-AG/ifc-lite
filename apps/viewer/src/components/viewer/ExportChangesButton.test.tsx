@@ -14,7 +14,7 @@ import type { FederatedModel } from '@/store/types.js';
 import { toast } from '@/components/ui/toast';
 import { posthog } from '@/lib/analytics';
 import { downloadedNames, clearDownloads } from '@/test/download-capture';
-import { waitFor } from '@/test/render';
+import { advance, waitFor } from '@/test/render';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { ExportChangesButton } from './ExportChangesButton.js';
 import { FIXTURE_WALL_A, parseFixtureModel } from './anonymized-export/anonymized-export-fixture.test-support';
@@ -356,4 +356,54 @@ describe('ExportChangesButton — review/export divergence (issue: detect-and-re
     }
   });
 
+});
+
+/** Which result the toolbar button shows: its success tick, its error mark, or neither. */
+function toolbarIndicator(container: HTMLElement): 'success' | 'error' | 'idle' {
+  const icon = findToolbarButton(container).querySelector('svg');
+  if (icon?.classList.contains('text-ok')) return 'success';
+  if (icon?.classList.contains('text-danger')) return 'error';
+  return 'idle';
+}
+
+describe('ExportChangesButton — result indicator belongs to the latest export (#9487)', () => {
+  beforeEach(() => { clearDownloads(); unmountAll(); });
+
+  it('an export that fails 1 s after a success keeps its error mark past the success\'s 2 s reset, then clears ~3 s after the error', async () => {
+    const ifcDataStore = await parseFixtureModel();
+    const model = { ...makeModel(), ifcDataStore };
+    const view = new MutablePropertyView(null, model.id);
+    view.setAttribute(FIXTURE_WALL_A, 'Name', 'Reviewed edit');
+    useViewerStore.setState({ models: new Map([[model.id, model]]), mutationViews: new Map([[model.id, view]]), mutationVersion: 1 });
+    const toasts = [mock.method(toast, 'error', () => {}), mock.method(toast, 'success', () => {}), mock.method(toast, 'info', () => {})];
+    const analytics = mock.method(posthog, 'capture', () => {});
+    try {
+      const container = renderButton();
+      const exportOnce = async () => {
+        await act(async () => { findToolbarButton(container).click(); });
+        await act(async () => { findDialogExportButton().click(); });
+        await waitFor(() => toolbarIndicator(container) !== 'idle', 'the export never reported a result');
+      };
+
+      await exportOnce();
+      assert.equal(toolbarIndicator(container), 'success', 'the first export succeeds');
+      const succeededAt = Date.now();
+
+      // The model's data goes away, so the next export of the same edit is skipped: an error.
+      await advance(1000);
+      act(() => useViewerStore.setState({ models: new Map([[model.id, { ...model, ifcDataStore: null }]]) }));
+      await exportOnce();
+      assert.equal(toolbarIndicator(container), 'error', 'the second export fails');
+      const failedAt = Date.now();
+
+      await advance(Math.max(0, succeededAt + 2400 - Date.now()));
+      assert.equal(toolbarIndicator(container), 'error', 'the first export\'s 2 s reset must not clear the newer error');
+
+      await advance(Math.max(0, failedAt + 3400 - Date.now()));
+      assert.equal(toolbarIndicator(container), 'idle', 'the error clears on its own 3 s reset');
+    } finally {
+      for (const m of toasts) m.mock.restore();
+      analytics.mock.restore();
+    }
+  });
 });

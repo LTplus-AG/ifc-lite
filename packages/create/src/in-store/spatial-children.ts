@@ -19,16 +19,16 @@
  * overlay-created payload) with queued positional edits applied, and a deleted
  * child is dropped.
  *
- * {@link OverlayLookup} snapshots the overlay ONCE per walk: the view copies
- * `getNewEntities()` / `getTypeMutations()` on every call, so resolving each
- * member through them would be O(members x created entities) per index build.
+ * {@link OverlayLookup} uses indexed live reads when available, or snapshots a
+ * structural overlay once per walk. Resolving each member through full created
+ * arrays would cost O(members x created entities) per index build.
  */
 
 import { iterateEffectiveEntities, type EffectiveEntityOverlay } from '@ifc-lite/data';
 import type { EntityExtractor, IfcAttributeValue, IfcDataStore } from '@ifc-lite/parser';
 import { numericAttr, readEntity, type OverlayWallReader } from './placement-frame.js';
 
-/** The overlay, snapshotted once for one walk. */
+/** The overlay's read boundary for one synchronous walk. */
 export interface OverlayLookup {
   readonly overlay: OverlayWallReader | undefined;
   readonly iteratorOverlay: EffectiveEntityOverlay | null;
@@ -50,6 +50,23 @@ export function createOverlayLookup(overlay: OverlayWallReader | undefined): Ove
       createdType: () => undefined,
       retypeOf: () => undefined,
       createdAttributes: () => undefined,
+    };
+  }
+  if (overlay.getNewEntity && overlay.getNewEntitiesOfType) {
+    const created = (overlay.readNewEntity ?? overlay.getNewEntity).bind(overlay);
+    const isDeleted = (id: number) => overlay.isDeleted?.(id) ?? false;
+    return {
+      overlay, isDeleted,
+      iteratorOverlay: {
+        isDeleted, getNewEntity: created,
+        getNewEntities: () => Array.from(overlay.readNewEntities?.() ?? overlay.getNewEntities()),
+        getNewEntitiesOfType: overlay.getNewEntitiesOfType.bind(overlay),
+        getTypeMutations: () => overlay.getTypeMutations?.() ?? new Map(),
+      },
+      createdType: id => created(id)?.type,
+      createdAttributes: id => created(id)?.attributes,
+      retypeOf: id => overlay.getEntityTypeMutation
+        ? overlay.getEntityTypeMutation(id)?.newType : overlay.getTypeMutations?.().get(id)?.newType,
     };
   }
   const created = Array.from(overlay.getNewEntities());

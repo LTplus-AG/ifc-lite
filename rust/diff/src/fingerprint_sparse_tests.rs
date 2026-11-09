@@ -2,6 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 use super::*;
+use crate::js_json::stringify_sorted;
 use crate::input::{PropertySetInput, QuantitySetInput, TypeAssignmentInput};
 use crate::js_json::stringify;
 use crate::sparse_collection::{Slot, SparseCollection};

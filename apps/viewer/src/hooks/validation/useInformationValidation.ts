@@ -32,6 +32,7 @@ import {
   addRecentRuleSet, loadRecentRuleSets, removeRecentRuleSet, type RecentRuleSet,
 } from '@/lib/validation/recent-rule-sets';
 import { useValidationEpoch } from './useValidationEpoch';
+import { guardValidationRun } from './validationRunGuard';
 import { activeDefinition } from '@/lib/validation/definition-library';
 import { beginDefinitionImport } from '@/lib/validation/definition-import-owner';
 
@@ -231,8 +232,13 @@ export function useInformationValidation(): UseInformationValidationResult {
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
+    const cancelThisRun = () => { controller.abort(); if (abortRef.current === controller) cancel(); };
+    // The same state the engine input is read from below: a teardown that
+    // changes this model set ends the run (A1).
+    const state = useViewerStore.getState();
+    const federation = guardValidationRun(useViewerStore, state, cancelThisRun);
     const job = beginActivity({ kind: 'check', title: 'activityTray.job.validation', panel: 'validation', subject: file.name,
-      cancel: () => { controller.abort(); if (abortRef.current === controller) cancel(); } });
+      cancel: cancelThisRun });
     let outcome: 'completed' | 'failed' | 'cancelled' = 'cancelled';
     let detail: string | undefined;
 
@@ -244,7 +250,6 @@ export function useInformationValidation(): UseInformationValidationResult {
       // `definedModelTagIds` now (no viewer-shaped `ModelTagState`) — the
       // live store state is turned into that shape here, the one place the
       // adapter (`lib/model-tags/evaluator-models.ts`) is called from.
-      const state = useViewerStore.getState();
       // The run's model versions, taken before the engine reads them: an edit
       // during or after the run marks this report stale, like IDS (#6833).
       const stamp = captureAnalysisStamp();
@@ -264,7 +269,7 @@ export function useInformationValidation(): UseInformationValidationResult {
       // A cancelled/superseded run must never publish a report — checked
       // AFTER the (possibly long) engine run completes, mirroring
       // `useIDS.runValidation`'s `stillWantedValidation` guard (#2802).
-      if (!stillWanted(myEpoch)) return;
+      if (!stillWanted(myEpoch) || !federation.isCurrent()) return;
       setIdsValidationReport(stampAnalysisReport(report, stamp), snapshot);
       setEditing(false);
       outcome = 'completed';
@@ -280,6 +285,7 @@ export function useInformationValidation(): UseInformationValidationResult {
       setError(detail);
       outcome = 'failed';
     } finally {
+      federation.dispose();
       finishActivity(job, outcome, detail ? { detail } : {});
       if (abortRef.current === controller) abortRef.current = null;
       if (stillWanted(myEpoch)) {

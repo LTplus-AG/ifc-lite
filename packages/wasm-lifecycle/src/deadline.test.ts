@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-/** Timeout option semantics for the re-mesh client (P5, PR #9483 review). */
+/** Timeout option semantics shared by every worker RPC client (P5, PR #9483 review). */
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { armDeadline, deadlineDelay, MAX_TIMER_DELAY_MS } from './deadline.js';

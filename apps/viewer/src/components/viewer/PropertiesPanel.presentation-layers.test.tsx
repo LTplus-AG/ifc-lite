@@ -332,8 +332,8 @@ it('#9273 changing selection retries a failed layer download without retaining t
 });
 
 
-for (const modelCount of [1, 2]) for (const via of ['viewport', 'SDK'] as const) {
-  it(`#9273 a newer ${via} selection replaces a layer reveal while metadata is loading (${modelCount} models)`, async () => {
+for (const modelCount of [1, 2]) for (const via of ['viewport', 'SDK'] as const) for (const supersedeArmed of [false, true]) {
+  it(`#9273 a newer ${via} selection ${supersedeArmed ? 'supersedes armed focus' : 'replaces a layer reveal'} while metadata is loading (${modelCount} models)`, async () => {
     const restoreScroll = installTreeScroll();
     try {
       await setup('new-intent');
@@ -378,18 +378,36 @@ for (const modelCount of [1, 2]) for (const via of ['viewport', 'SDK'] as const)
           // to it while this mounted hierarchy is waiting for its next render.
           useViewerStore.setState({ models: loadedModels });
           createSelectionAdapter(useViewerStore).set([{ modelId: model.id, expressId: 8 }]);
+          if (supersedeArmed) useViewerStore.setState({ models: loadingModels });
         } else {
           state.setSelectedEntityId(state.toGlobalId(model.id, 8));
           state.setSelectedEntity({ modelId: model.id, expressId: 8 });
         }
       });
       assert.equal(useViewerStore.getState().pendingPresentationLayerReveal, null, 'the newer selection cancels the old layer intent');
+      if (supersedeArmed) {
+        // #9273: the first replacement arms deferred focus while rows are absent.
+        // A second real pick must inherit that focus intent, never the old row.
+        await advance(20);
+        assert.ok(!hierarchy.querySelector('[data-node-id$="-product-8"]'));
+        act(() => {
+          if (via === 'SDK') {
+            useViewerStore.setState({ models: loadedModels });
+            createSelectionAdapter(useViewerStore).set([{ modelId: model.id, expressId: 7 }]);
+            useViewerStore.setState({ models: loadingModels });
+          } else {
+            state.setSelectedEntityId(state.toGlobalId(model.id, 7));
+            state.setSelectedEntity({ modelId: model.id, expressId: 7 });
+          }
+        });
+      }
       act(() => useViewerStore.setState({ models: loadedModels, ifcDataStore: store }));
-      const target = 'presentation-layer-new-intent-51-product-8';
+      const target = `presentation-layer-new-intent-51-product-${supersedeArmed ? 7 : 8}`;
       await waitFor(() => !!hierarchy.querySelector(`[data-node-id="${target}"]`), 'the newer product is expanded and revealed after metadata arrives');
       await waitFor(() => document.activeElement?.getAttribute('data-node-id') === target, 'focus follows the newer product rather than the stale layer header');
       await advance(50);
       assert.equal(document.activeElement?.getAttribute('data-node-id'), target);
+      if (supersedeArmed) assert.ok(!focused.includes('presentation-layer-new-intent-51-product-8'), 'superseded armed focus never lands on the older product');
       assert.ok(!focused.includes('presentation-layer-new-intent-50'), 'the stale layer must never take focus after the newer selection');
     } finally { cleanup(); restoreScroll(); }
   });

@@ -114,10 +114,14 @@ export function useRevealSelection({
   const focusSelectionRef = useRef<{ id: number; revision: number; expiresAt: number } | null>(null);
   const rendered = virtualizer.getVirtualItems?.().map(item => item.index).join(',');
   useEffect(() => {
-    if (groupingMode !== 'presentation-layers' || layerRequest
-      || focusSelectionRef.current?.revision !== selectionRevision) focusSelectionRef.current = null;
-    if (requestedLayer && !layerRequest && selectedEntityId !== null) {
-      focusSelectionRef.current = { id: selectedEntityId, revision: selectionRevision, expiresAt: Date.now() + 30_000 };
+    const previous = focusSelectionRef.current;
+    focusSelectionRef.current = null;
+    if (groupingMode !== 'presentation-layers' || layerRequest || selectedEntityId === null) return;
+    // An armed, unresolved focus transfer follows subsequent selection intents
+    // while metadata loads, even after the original layer request was retired.
+    if ((requestedLayer && !layerRequest) || (previous && Date.now() <= previous.expiresAt)) {
+      focusSelectionRef.current = { id: selectedEntityId, revision: selectionRevision,
+        expiresAt: previous?.expiresAt ?? Date.now() + 30_000 };
     }
   }, [requestedLayer, layerRequest, selectedEntityId, selectionRevision, groupingMode]);
 
@@ -197,7 +201,12 @@ export function useRevealSelection({
     if (!focus) return;
     const latest = useViewerStore.getState();
     if (latest.selectionRevision !== focus.revision || Date.now() > focus.expiresAt) { focusSelectionRef.current = null; return; }
-    if (latest.pendingPresentationLayerReveal) return;
+    // A raw stored request may outlive its revision until the layer effect clears it.
+    // Only a current layer intent can suppress this selection's focus.
+    if (latest.pendingPresentationLayerReveal?.selectionRevision === latest.selectionRevision) {
+      focusSelectionRef.current = null;
+      return;
+    }
     const target = findAlreadyVisibleTargetId(isMultiModel, storeysNodes, modelsNodes, filteredNodes, focus.id);
     const row = [...(container?.current?.querySelectorAll<HTMLElement>('[data-node-id]') ?? [])]
       .find(element => element.dataset.nodeId === target);

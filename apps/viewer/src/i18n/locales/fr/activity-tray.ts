@@ -53,4 +53,5 @@ export const activityTrayFr = {
   "activityTray.publication.failed": { one: "{count} effet a échoué", other: "{count} effets ont échoué", many: "{count} d'effets ont échoué" },
   "activityTray.ai.timeout": "Délai dépassé",
   "activityTray.ai.truncated": "Arrêté à la limite de sortie",
+  "activityTray.load.noModel": "Terminé sans charger de modèle",
 } satisfies Catalogue;

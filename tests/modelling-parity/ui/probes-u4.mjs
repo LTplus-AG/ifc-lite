@@ -57,6 +57,23 @@ export function wallSize(step, e) {
 export function layerThicknesses(step) {
   return step.of('IFCMATERIALLAYERSET').map((set) => (set.args[0] ?? []).map((r) => step.get(r)?.args[1]));
 }
+// RFC4180 cell walk: commas inside quoted names must not shift the Length column.
+export function scheduleLengths(text) {
+  const rows = [[]]; let cell = ''; let quoted = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === '"') {
+      if (quoted && text[i+1] === '"') { cell += '"'; i++; }
+      else quoted = !quoted;
+    } else if (!quoted && (ch === ',' || ch === '\n')) {
+      rows.at(-1).push(cell.replace(/\r$/, '')); cell = '';
+      if (ch === '\n') rows.push([]);
+    } else cell += ch;
+  }
+  rows.at(-1).push(cell.replace(/\r$/, ''));
+  const index = rows[0].findIndex((v) => /^Length(?:\s|$)/.test(v));
+  return index < 0 ? [] : rows.slice(1).filter((r) => r.length > 1).map((r) => Number(r[index]));
+}
 const near = (a, b) => typeof a === 'number' && Math.abs(a - b) < 0.001;
 const finish = async (s, tasks, checks, notes = []) => ({ tasks, checks, notes, evidence: [await s.shot('result')] });
 
@@ -253,7 +270,7 @@ export const U4_PROBES = [
       return finish(s,tasks,[
         check('two walls have 5 m Length and positive NetVolume',q.length === 2 && q.every((v) => near(v.Length,5) && v.NetVolume > 0),JSON.stringify(q)),
         check('schedule contains the two authored walls',rows.length === 2,`${rows.length} schedule rows`),
-        check('CSV contains wall lengths',!!csv && csv.text.split('\n').filter((l) => /5(?:[.,]0+)?/.test(l)).length >= 2,csv?.text.slice(0,600) ?? 'no schedule CSV download'),
+        check('CSV contains wall lengths',!!csv && scheduleLengths(csv.text).length === 2 && scheduleLengths(csv.text).every((v) => near(v,5)),csv?.text.slice(0,600) ?? 'no schedule CSV download'),
         check('grouped schedule totals',false,'not yet measured: grouping and numeric total in the schedule'),
       ]);
     },

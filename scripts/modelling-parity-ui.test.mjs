@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { PROBES } from '../tests/modelling-parity/ui/probes.mjs';
 import { readStep } from '../tests/modelling-parity/ui/lib/step.mjs';
-import { wallSize, layerThicknesses } from '../tests/modelling-parity/ui/probes-u4.mjs';
+import { wallSize, layerThicknesses, scheduleLengths } from '../tests/modelling-parity/ui/probes-u4.mjs';
 
 // #9296 U4: a table-stakes UI level cannot pass if its probe never exists.
 test('every table-stakes capability has a real UI probe', () => {
@@ -37,4 +37,10 @@ END-ISO-10303-21;`);
     assert.deepEqual(wallSize(step,step.of('IFCWALL')[0]),{height:h,thickness:t});
     assert.deepEqual(layerThicknesses(step),[[.115,.1,.015]]);
   }
+});
+
+test('#9296 schedule oracle reads Length, not a 5 in a name or another quantity', () => {
+  assert.deepEqual(scheduleLengths('Name,Length,Height\r\n"Wall, south",5,3\r\nWall north,5,3'), [5,5]);
+  assert.deepEqual(scheduleLengths('Name,Length,Height\nWall 5,2,5\nWall 5,3,5'), [2,3]);
+  assert.deepEqual(scheduleLengths('Name,Height\nWall 5,5'), []);
 });

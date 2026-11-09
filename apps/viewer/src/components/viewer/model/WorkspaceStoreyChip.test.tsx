@@ -18,7 +18,8 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { useViewerStore } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
-import { cleanup, click, render } from '@/test/render.js';
+import { advance, cleanup, click, render, waitFor } from '@/test/render.js';
+import { requiredModule } from '@/i18n/__tests__/required-module';
 import { MODEL_ID, STOREY, UPPER_STOREY, seedModelingSession } from '@/test/modeling-session-fixture';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { fixtureModels } from '@/test/store-fixture';
@@ -27,8 +28,10 @@ import '@/lib/commands/modeling/builtin';
 import { commandPointerDown, commandPointerMove, getCommandRuntime } from '@/lib/commands/modeling/runtime';
 import { setRequestRemesh } from '@/lib/commands/modeling/transaction';
 import { modelStoreys } from '@/lib/commands/modeling/workspace-storeys';
-import { ViewportHud } from '../../viewport-ui/hud';
+import { StoreyPicker } from './StoreyPicker';
+import { ViewportHud, HudPopover, HudPopoverTrigger, HudPopoverContent } from '../../viewport-ui/hud';
 import { WorkspaceStoreyChip } from './WorkspaceStoreyChip';
+import { Toaster } from '@/components/ui/toast';
 
 const topLeft = () => document.querySelector('[data-hud-region="top-left"]');
 const chipButton = () => document.querySelector('[data-workspace-storey-chip]') as HTMLButtonElement | null;
@@ -53,6 +56,26 @@ afterEach(() => {
 });
 
 describe('Workspace storey chip (#6232 M2.1)', () => {
+  it('#9334 the picker add toast cannot draw on a storey whose creation was undone', async () => {
+    act(() => useViewerStore.getState().enterModelWorkspace({ storeyId: STOREY }));
+    const notices = render(<Toaster />);
+    for (const dismiss of notices.querySelectorAll('[aria-label="Dismiss notification"]')) click(dismiss);
+    openList();
+    click([...document.body.querySelectorAll('[data-storey-picker-actions] button')].find(button => button.textContent?.includes('Add storey above'))!);
+    await import('./storeys/add-storey');
+    await waitFor(() => modelStoreys(useViewerStore.getState(), MODEL_ID).length === 3 && [...notices.querySelectorAll('button')].some(button => button.textContent === 'Draw on'), 'the picker adds a storey and shows its action');
+    const draw = [...notices.querySelectorAll('button')].find(button => button.textContent === 'Draw on')!;
+    assert.ok(draw);
+    act(() => useViewerStore.getState().undo(MODEL_ID));
+    const plane = useViewerStore.getState().session!.workplane;
+    click(draw);
+    await requiredModule(() => import('./storeys/storey-toast-actions'), 'the clicked toast action loads (#9334)');
+    await advance(0);
+    assert.equal(useViewerStore.getState().session?.storeyId, STOREY);
+    assert.equal(useViewerStore.getState().session?.workplane, plane);
+    assert.equal(draw.isConnected, false);
+  });
+
   it('names the session storey and its elevation, only while the workspace is open', () => {
     assert.equal(chipButton(), null);
     act(() => { useViewerStore.getState().enterModelWorkspace({ storeyId: UPPER_STOREY }); });
@@ -85,7 +108,7 @@ describe('Workspace storey chip (#6232 M2.1)', () => {
       useViewerStore.getState().exitModelWorkspace();
       useViewerStore.getState().enterModelWorkspace({ modelId: second.id, storeyId: STOREY });
     });
-    await import('@/lib/storeys/storey-actions');
+    await import('./storeys/add-storey');
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
     assert.equal(added(firstView), 0, 'no storey was written to the model left behind');
     assert.equal(useViewerStore.getState().session?.modelId, second.id, 'the session stays on the model now open');
@@ -102,25 +125,25 @@ describe('Workspace storey chip (#6232 M2.1)', () => {
       useViewerStore.getState().exitModelWorkspace();
       useViewerStore.getState().enterModelWorkspace({ storeyId: STOREY });
     });
-    await import('@/lib/storeys/storey-actions');
+    await import('./storeys/add-storey');
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
     assert.equal(modelStoreys(useViewerStore.getState(), MODEL_ID).length, before, 'the abandoned click added nothing');
     assert.equal(useViewerStore.getState().session?.storeyId, STOREY, 'and the new session stays where it opened');
   });
 
-  it('Add storey above goes above the storey drawn on when the click resolves (#9037 review)', async () => {
+  it('Add storey above goes above the topmost storey when the click resolves (#9037 review)', async () => {
     act(() => { useViewerStore.getState().enterModelWorkspace({ storeyId: STOREY }); });
     openList();
     const add = [...document.body.querySelectorAll<HTMLButtonElement>('[data-storey-picker-actions] button')]
       .find((b) => b.textContent?.includes('Add storey above'))!;
     // Clicked on L0; the session moves to L1 before the module load resolves.
     act(() => { click(add); useViewerStore.getState().setSessionStorey(UPPER_STOREY); });
-    await import('@/lib/storeys/storey-actions');
+    await import('./storeys/add-storey');
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
     const created = useViewerStore.getState().session!.storeyId!;
-    assert.ok(created !== STOREY && created !== UPPER_STOREY, 'the new storey is drawn on');
+    assert.equal(created, UPPER_STOREY, '#9296 adding keeps the active drawing storey');
     const elevations = new Map(modelStoreys(useViewerStore.getState(), MODEL_ID).map((st) => [st.expressId, st.elevation]));
-    assert.ok(elevations.get(created)! > elevations.get(UPPER_STOREY)!, 'it sits above L1, the storey drawn on, not between L0 and L1');
+    assert.ok(Math.max(...elevations.values()) > elevations.get(UPPER_STOREY)!, 'the new level sits above the reference');
   });
 
   it('lists the storeys highest first, marks the current one, and a pick relaunches the command on that plane', () => {
@@ -130,6 +153,8 @@ describe('Workspace storey chip (#6232 M2.1)', () => {
     assert.equal(rows[1].getAttribute('aria-current'), 'true');
     act(() => click(rows[0]));
     const s = useViewerStore.getState();
+    // #9334: do not format a live happy-dom tree when the production revert leaves it open.
+    assert.equal(document.querySelector('[data-storey-picker]') === null, true, '#9296 a pick dismisses the shortcut-blocking list');
     assert.equal(s.session?.storeyId, UPPER_STOREY);
     assert.equal(getCommandRuntime().command?.id, 'wall.place', 'the command keeps running');
     assert.equal(getCommandRuntime().ctx?.storeyId, UPPER_STOREY, '…on the new storey');
@@ -229,4 +254,47 @@ describe('Workspace storey chip (#6232 M2.1)', () => {
     assert.match(chipButton()?.textContent ?? '', /No storey/);
     assert.match(document.querySelector('[data-hud-region="top-center"]')?.textContent ?? '', /No storey to draw on/);
   });
+});
+
+it('#9334 the chip disables copy to storeys in a read-only model session', () => {
+  act(() => { useViewerStore.getState().enterModelWorkspace({ modelId: MODEL_ID, storeyId: STOREY }); });
+  openList();
+  const copy = [...document.body.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === 'Copy to storeys…')!;
+  assert.ok(copy);
+  assert.equal(copy.disabled, false);
+  act(() => { useViewerStore.setState({ editEnabled: false }); });
+  assert.equal(copy.disabled, true);
+  assert.match(copy.title, /Copying is unavailable/);
+});
+
+it('#9296 the shared picker dismisses an uncontrolled popover, as used by the plan header', () => {
+  const groups = [{ modelId: MODEL_ID, modelName: 'Model', storeys: modelStoreys(useViewerStore.getState(), MODEL_ID) }];
+  render(<HudPopover defaultOpen>
+    <HudPopoverTrigger>Storeys</HudPopoverTrigger>
+    <HudPopoverContent><StoreyPicker groups={groups} current={null} onPick={() => {}} /></HudPopoverContent>
+  </HudPopover>);
+  const option = document.querySelector('[data-storey-picker] button');
+  assert.ok(option);
+  click(option);
+  assert.equal(document.querySelector('[data-storey-picker]') === null, true, 'the picker closes its own popover without caller state');
+});
+
+it('#9334 completing a copy closes the flow and reopens the chip on its storey list', async () => {
+  const restore = setRequestRemesh(() => {});
+  try {
+    act(() => { useViewerStore.getState().enterModelWorkspace({ modelId: MODEL_ID, storeyId: STOREY }); });
+    const s = useViewerStore.getState();
+    const wall = s.addWall(MODEL_ID, STOREY, { Start: [0, 0, 0], End: [4, 0, 0], Height: 3, Thickness: 0.2 });
+    assert.ok('expressId' in wall);
+    act(() => s.setSelectedEntityId(toGlobalIdFromModels(s.models, MODEL_ID, wall.expressId)));
+    openList();
+    const button = (name: string) => [...document.body.querySelectorAll('button')].find(b => b.textContent === name)!;
+    click(button('Copy to storeys…'));
+    await waitFor(() => !!document.querySelector('[data-copy-to-storeys]'), 'the first-open copy UI loads');
+    click(button('Select all storeys')); click(button('Prepare copies'));
+    await waitFor(() => !!button('Copy now'), 'copy prepared');
+    click(button('Copy now'));
+    await waitFor(() => !document.querySelector('[data-copy-to-storeys]'), 'copy flow closed');
+    assert.equal(openList().length, 2, 'the next chip opening shows its normal storey list');
+  } finally { restore(); }
 });

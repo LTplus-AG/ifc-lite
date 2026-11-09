@@ -1991,6 +1991,10 @@
     "value": "m",
     "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
   },
+  "storeyManager.copy.level": {
+    "value": "{storey} ({elevation} m)",
+    "reason": "Storey names and signed elevations are runtime data; the metre symbol and punctuation contain no English prose."
+  },
   "tableChanges.matchTypeTag": {
     "value": "Tag",
     "reason": "French uses the same spelling « Tag » for this contextual label; reviewed against its feature meaning."

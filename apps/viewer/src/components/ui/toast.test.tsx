@@ -138,4 +138,18 @@ describe('Toaster (#5603)', () => {
     assert.equal(texts.length, 1);
     assert.match(texts[0]!, /Export failed/);
   });
+  it('#9334 Show keeps the completion toast and its Undo action available', () => {
+    const clicked: string[] = [];
+    act(() => toast.success('Copied 8 elements to 2 storeys', [
+      { label: 'Show', dismiss: false, onClick: () => clicked.push('show') },
+      { label: 'Undo', onClick: () => clicked.push('undo') },
+    ]));
+    const action = (name: string) => [...host.querySelectorAll('button')].find(b => b.textContent === name)!;
+    act(() => action('Show').click());
+    assert.equal(toastItems().length, 1);
+    act(() => action('Undo').click());
+    assert.equal(toastItems().length, 0);
+    assert.deepEqual(clicked, ['show', 'undo']);
+  });
+
 });

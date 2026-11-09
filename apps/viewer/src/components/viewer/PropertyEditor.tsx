@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { storeyAttachmentDisplay } from '@/lib/actions/storey-attachment-display';
 /**
  * Property Editor component for editing IFC property values inline.
  * Includes schema-aware property addition with IFC4 standard validation.
@@ -157,7 +158,9 @@ export function PropertyEditor({
     }
   }, [handleSave, handleCancel, showScopeConfirm]);
 
-  const displayValue = formatDisplayValue(currentValue, t);
+  const attachment = psetName === 'IfcLite_StoreyAttachment'
+    ? storeyAttachmentDisplay(useViewerStore.getState(), modelId, entityId, currentValue, t, propName) : null;
+  const displayValue = attachment?.text ?? formatDisplayValue(currentValue, t);
 
   // Non-editing view: value with pen icon on right (always visible)
   if (!isEditing) {

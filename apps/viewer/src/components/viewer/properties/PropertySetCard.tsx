@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { storeyAttachmentDisplay } from '@/lib/actions/storey-attachment-display';
+import { useViewerStore } from '@/store';
 /**
  * Property set display component with edit support.
  */
@@ -106,6 +108,9 @@ export function PropertySetCard({ pset, modelId, entityId, enableEditing, isType
         <div className={INSPECTOR_ROWS}>
           {pset.properties.map((prop: { name: string; value: unknown; isMutated?: boolean; type?: number; dataType?: string }, index: number) => {
             const display = propertyDisplayValue(prop, projectUnits, unitDisplayOverrides ?? {}, projectUnitsAvailable);
+            const attachment = pset.name === 'IfcLite_StoreyAttachment' && modelId && entityId !== undefined
+              ? storeyAttachmentDisplay(useViewerStore.getState(), modelId, entityId, prop.value, t, prop.name) : null;
+            if (attachment) { display.value = attachment.text; display.full = attachment.text; }
             const { parsed, unit } = display;
             // Names render VERBATIM: the parse path already decoded them (see
             // the note on `parsePropertyValue`), and decoding a second time
@@ -154,7 +159,7 @@ export function PropertySetCard({ pset, modelId, entityId, enableEditing, isType
                 labelCell={nameCell}
                 value={display.full}
                 mono={isNumericDisplay(display.value)}
-                rowProps={{ 'data-prop-key': propKey }}
+                rowProps={{ 'data-prop-key': propKey, ...(attachment ? { title: attachment.raw } : {}) }}
                 className={cn(
                   'group/prop transition-colors',
                   editing && 'items-start py-0.5',

@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { prepareGeneratedRoomUpdate } from './generated-room-update.js';
 import { editOwnershipRefusal } from '@ifc-lite/export';
 import { planElementTransform, type TransformPlan, type TransformRefusal } from './element-transform-plan.js';
 import { rotateBy, unrotateBy } from './element-transform-frames.js';
@@ -11,6 +12,7 @@ import { getModelLengthUnitScale } from './edit/length-unit-scale.js';
 import { toNativeLength } from './anchor.js';
 import { effectiveStoreyId } from './edit/effective-storey.js';
 import { carryWallJoinsInStore } from './element-transform-joins.js';
+import type { StoreEditor } from '@ifc-lite/mutations';
 import type { EditTarget } from './edit/target.js';
 
 type Vec2 = [number, number];
@@ -18,7 +20,7 @@ export type StoreyTransformOp =
   | { readonly kind: 'move'; readonly delta: Vec2 }
   | { readonly kind: 'rotate'; readonly pivot: Vec2; readonly angle: number };
 
-/** Storey-local IFC XY metres. Caller owns the atomic transaction. */
+/** Storey-local IFC XY metres. The operation owns its atomic transaction. */
 export interface ElementTransformInput extends EditTarget {
   readonly selected: readonly number[];
   readonly op: StoreyTransformOp;
@@ -27,10 +29,10 @@ export interface ElementTransformInput extends EditTarget {
   /** Different Align targets translate by different storey-local metre deltas. */
   translationForElement?(expressId: number, storeyId: number, delta: Vec2): Vec2;
   storeyOf?(expressId: number): number | null;
-  /** Host hooks preserve its live mesh preview and undo bookkeeping. Deltas are parent-local metres. */
-  translate?(expressId: number, delta: [number, number, number]): void;
-  rotate?(expressId: number, angle: number): void;
-  carryJoins?(plan: TransformPlan): readonly number[];
+  /** Host hooks preserve its live mesh preview and undo bookkeeping. Deltas are parent-local metres. Hooks must write through the supplied atomic draft editor. */
+  translate?(expressId: number, delta: [number, number, number], editor: StoreEditor): void;
+  rotate?(expressId: number, angle: number, editor: StoreEditor): void;
+  carryJoins?(plan: TransformPlan, editor: StoreEditor): readonly number[];
 }
 
 export function describeTransformRefusal(refusal: TransformRefusal): string {
@@ -44,9 +46,14 @@ export function describeTransformRefusal(refusal: TransformRefusal): string {
 export interface ElementTransformResult {
   readonly remesh: number[];
   readonly hostsChanged: boolean;
+  readonly notices: string[];
 }
 
 export function transformElementsInStore(input: ElementTransformInput): ElementTransformResult {
+  return input.editor.runAtomic(editor => transformElementsInDraft({ ...input, editor, view: editor.getMutationView() }));
+}
+
+function transformElementsInDraft(input: ElementTransformInput): ElementTransformResult {
   const opFor = (storeyId: number) => input.operationForStorey?.(storeyId) ?? input.op;
   const plan = planElementTransform({ ...input, storeyOf: input.storeyOf ?? (id => effectiveStoreyId(input.dataStore, input.view, id) ?? null) });
   if (plan.refused.length > 0) throw new Error(`Can't move ${plan.refused.map(describeTransformRefusal).join(', ')}.`);
@@ -92,25 +99,34 @@ export function transformElementsInStore(input: ElementTransformInput): ElementT
   if (new Set(writtenIds).size !== writtenIds.length) throw new Error('The selection shares writable placement leaves; shared occurrences cannot be transformed in place');
   const ownership = editOwnershipRefusal(input.dataStore, input.view, writtenIds, new Set([...plan.roots.map(root => root.expressId), ...plan.carried]));
   if (ownership) throw new Error(ownership);
+  const notices: string[] = [];
+  let updateRooms: () => number[] = () => [];
+  try {
+    updateRooms = prepareGeneratedRoomUpdate(input.dataStore, input.editor, plan.roots.filter(root => /^(IFCWALL|IFCWALLSTANDARDCASE|IFCCURTAINWALL)$/.test(input.editor.getEntityType(root.expressId)?.toUpperCase() ?? '')).map(root => root.storeyId), notices);
+  } catch (error) {
+    const notice = `Generated room updates unavailable (${error instanceof Error ? error.message : String(error)}); retained existing rooms.`;
+    notices.push(notice); console.warn(`[auto-spaces] ${notice}`);
+  }
   for (const { root, turn, parentDelta: [dx, dy], nativeDelta } of prepared) {
     if (Math.hypot(dx, dy) > 1e-9) {
-      if (input.translate) input.translate(root.expressId, [dx, dy, 0]);
+      if (input.translate) input.translate(root.expressId, [dx, dy, 0], input.editor);
       else {
         const result = translateProduct(input.dataStore, input.view, input.editor, root.expressId, nativeDelta);
         if (!result.ok) throw new Error(result.reason);
       }
     }
     if (turn !== 0) {
-      if (input.rotate) input.rotate(root.expressId, turn);
+      if (input.rotate) input.rotate(root.expressId, turn, input.editor);
       else {
         const result = rotateProductYaw(input.dataStore, input.view, input.editor, root.expressId, turn);
         if (!result.ok) throw new Error(result.reason);
       }
     }
   }
-  const joined = input.carryJoins ? input.carryJoins(plan) : carryWallJoinsInStore(input, plan, input.op.kind === 'rotate' ? input.op.angle : 0);
+  const joined = input.carryJoins ? input.carryJoins(plan, input.editor) : carryWallJoinsInStore(input, plan, input.op.kind === 'rotate' ? input.op.angle : 0);
   return {
-    remesh: [...new Set([...plan.roots.map(root => root.expressId), ...plan.carried, ...joined])],
+    remesh: [...new Set([...plan.roots.map(root => root.expressId), ...plan.carried, ...joined, ...updateRooms()])],
     hostsChanged: joined.length > 0,
+    notices,
   };
 }

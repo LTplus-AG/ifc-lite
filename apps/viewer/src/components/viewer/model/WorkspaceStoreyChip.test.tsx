@@ -153,7 +153,8 @@ describe('Workspace storey chip (#6232 M2.1)', () => {
     assert.equal(rows[1].getAttribute('aria-current'), 'true');
     act(() => click(rows[0]));
     const s = useViewerStore.getState();
-    assert.equal(document.querySelector('[data-storey-picker]'), null, '#9296 a pick dismisses the shortcut-blocking list');
+    // #9334: do not format a live happy-dom tree when the production revert leaves it open.
+    assert.equal(document.querySelector('[data-storey-picker]') === null, true, '#9296 a pick dismisses the shortcut-blocking list');
     assert.equal(s.session?.storeyId, UPPER_STOREY);
     assert.equal(getCommandRuntime().command?.id, 'wall.place', 'the command keeps running');
     assert.equal(getCommandRuntime().ctx?.storeyId, UPPER_STOREY, '…on the new storey');
@@ -275,7 +276,7 @@ it('#9296 the shared picker dismisses an uncontrolled popover, as used by the pl
   const option = document.querySelector('[data-storey-picker] button');
   assert.ok(option);
   click(option);
-  assert.equal(document.querySelector('[data-storey-picker]'), null, 'the picker closes its own popover without caller state');
+  assert.equal(document.querySelector('[data-storey-picker]') === null, true, 'the picker closes its own popover without caller state');
 });
 
 it('#9334 completing a copy closes the flow and reopens the chip on its storey list', async () => {

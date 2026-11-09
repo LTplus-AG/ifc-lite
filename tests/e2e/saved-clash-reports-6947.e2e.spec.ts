@@ -254,7 +254,9 @@ test('#9259 real IFC quality evidence survives threshold edits, documentation ca
   await page.getByRole('button', { name: 'Save thresholds', exact: true }).click();
   await expect(gates.first()).toContainText('Changed after capture');
   await clickPanelAction(page, panelHeader(page, 'Clash detection'), 'Saved clash reports');
-  const reportRow = page.getByRole('dialog').locator('li[data-clash-report]', { hasText: 'Quality evidence 9259' });
+  const reportRow = page.getByRole('dialog').locator('li[data-clash-report]').filter({
+    has: page.getByLabel('Name of “Quality evidence 9259”', { exact: true }),
+  });
   await reportRow.getByText('Quality gates', { exact: true }).click();
   await reportRow.getByRole('button', { name: 'Add quality gates to Documentation', exact: true }).click();
   await expect(page.locator('[data-document-panel]').first()).toBeVisible();

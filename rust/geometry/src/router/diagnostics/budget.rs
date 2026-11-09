@@ -29,7 +29,7 @@ pub(crate) struct BudgetProductIdentity {
 impl BudgetProductIdentity {
     #[cold]
     pub(crate) fn from_product(product: &DecodedEntity) -> Self {
-        Self { id: product.id, ifc_type: product.ifc_type,
+        Self { id: product.id, ifc_type: product.ifc_type.clone(),
             global_id: product.get(IfcRoot::GLOBAL_ID.index())
                 .and_then(|a| a.as_string()).map(str::to_owned) }
     }

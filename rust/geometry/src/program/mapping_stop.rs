@@ -41,7 +41,7 @@ impl MappingControl<'_> {
         // FootPrint suppression. Product admission reports independently.
         if self.levels.last().is_none_or(|parent| parent.policy) {
             let root = self.rep_map.as_ref().and_then(super::TypeMapRoot::product)
-                .map(crate::router::diagnostics::BudgetProductIdentity::from_product);
+                .map(crate::router::BudgetProductIdentity::from_product);
             router.record_budget_refusal_identity(item_id, budget, limit, reached, refusal.product().or(root.as_ref()));
         }
         self.logical_stopped = true;

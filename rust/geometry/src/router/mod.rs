@@ -14,6 +14,7 @@ mod brep_signatures;
 mod config;
 mod content_hash;
 mod diagnostics;
+pub(crate) use diagnostics::BudgetProductIdentity;
 mod diagnostics_recording;
 mod diagnostics_checked;
 pub(crate) mod frame_parts;

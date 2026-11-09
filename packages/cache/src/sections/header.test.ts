@@ -82,7 +82,7 @@ describe('writeHeader', () => {
     // v24 preserves optional unit scale and recovery-count metadata (#7239);
     // v25 appends optional per-mesh shading/local metadata (#7350).
     // v26 invalidates graphs that may hold misread relationship edges (#9192).
-    expect(view.getUint16(4, true)).toBe(26);
+    expect(view.getUint16(4, true)).toBe(27);
   });
 
   it('writes each section-table entry field at its documented byte offset within the 16-byte entry', () => {

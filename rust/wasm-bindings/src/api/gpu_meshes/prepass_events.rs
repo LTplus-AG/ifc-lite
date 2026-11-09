@@ -9,10 +9,11 @@ use wasm_bindgen::prelude::*;
 pub(super) fn emit_meta(
     on_event: &Function,
     meta_res: &ifc_lite_processing::stream_meta::StreamMeta,
+    site_origin: Option<[f64; 3]>,
 ) -> Result<(), JsValue> {
     let meta = js_sys::Object::new();
     crate::api::set_js_prop(&meta, "type", &"meta".into());
-    super::prepass_sharded::set_stream_meta_props(&meta, meta_res);
+    super::prepass_sharded::set_stream_meta_props(&meta, meta_res, site_origin);
     on_event.call1(&JsValue::NULL, &meta.into())?;
     Ok(())
 }

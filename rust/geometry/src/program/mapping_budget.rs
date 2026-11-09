@@ -24,7 +24,7 @@ struct LogicalRefusalDetail {
     limit: u32,
     reached: u64,
     budget: &'static str,
-    product: Option<crate::router::BudgetProductIdentity>,
+    product: Option<crate::router::diagnostics::BudgetProductIdentity>,
 }
 impl LogicalRefusal {
     #[cold]
@@ -37,9 +37,9 @@ impl LogicalRefusal {
 
     #[cold]
     pub(super) fn attach_product(&mut self, product: &ifc_lite_core::DecodedEntity) {
-        self.0.product = Some(crate::router::BudgetProductIdentity::from_product(product));
+        self.0.product = Some(crate::router::diagnostics::BudgetProductIdentity::from_product(product));
     }
-    pub(super) fn product(&self) -> Option<&crate::router::BudgetProductIdentity> {
+    pub(super) fn product(&self) -> Option<&crate::router::diagnostics::BudgetProductIdentity> {
         self.0.product.as_ref()
     }
     pub(super) fn details(&self) -> (&'static str, u32, u64) { (self.0.budget, self.0.limit, self.0.reached) }

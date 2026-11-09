@@ -4,27 +4,20 @@
 
 /** Wall placement resolves mesh and plan body targets to the design reference (#9296). */
 import { useViewerStore } from '@/store';
-import { storeyWallAxes } from '@/lib/snap/sources/semantic-walls';
-import type { WallAxis } from '@/lib/snap/sources/semantic';
+import { modelWallAxes } from './model-wall-axes';
 import { buildLocus, projectCandidate } from '@/lib/snap/constraints';
 import { closestOnSegment } from '@/lib/snap/sources/linework';
 import type { SnapQuery, SnapResult, Vec2 } from '@/lib/snap/types';
 import { MODELING_SNAP_PROFILE } from '@/lib/snap/rank';
 import type { CommandSnapInput } from './snap-solve';
 
-let cache: { modelId: string; version: number; storeyId: number; store: WeakRef<object>; view: WeakRef<object>; axes: Map<number, WallAxis> } | null = null;
 export function remapWallBodySnap(snap: SnapResult, modelId: string, query: Pick<SnapQuery, 'anchor' | 'chain' | 'locks'>, input: CommandSnapInput): SnapResult {
   const winner = snap.winner;
   if (!winner || !['mesh', 'linework'].includes(winner.source) || !winner.entity || !['endpoint', 'vertex', 'midpoint'].includes(winner.kind)) return snap;
   const s = useViewerStore.getState();
   const storeyId = s.session?.storeyId;
   if (storeyId == null || winner.entity.modelId !== modelId) return snap;
-  const store = s.models.get(modelId)?.ifcDataStore, view = s.mutationViews.get(modelId);
-  if (!store || !view) return snap;
-  if (!cache || cache.modelId !== modelId || cache.version !== s.mutationVersion || cache.storeyId !== storeyId || cache.store.deref() !== store || cache.view.deref() !== view) {
-    cache = { modelId, version: s.mutationVersion, storeyId, store: new WeakRef(store), view: new WeakRef(view), axes: new Map(storeyWallAxes(store, view, storeyId).map((axis) => [axis.expressId, axis])) };
-  }
-  const axis = cache.axes.get(winner.entity.expressId);
+  const axis = modelWallAxes(modelId, storeyId).get(winner.entity.expressId);
   if (!axis) return snap;
   const points: Vec2[] = [axis.a, axis.b];
   if (winner.kind === 'midpoint') points.push([(axis.a[0] + axis.b[0]) / 2, (axis.a[1] + axis.b[1]) / 2]);

@@ -23,7 +23,7 @@ import { MODELING_SNAP_PROFILE } from '@/lib/snap/rank';
 import { solveSnap } from '@/lib/snap/solve';
 import type { SnapProfile, SnapResult, SnapSource, Vec2 } from '@/lib/snap/types';
 import { createSemanticSource, type SemanticSource } from '@/lib/snap/sources/semantic';
-import { storeyWallAxes } from '@/lib/snap/sources/semantic-walls';
+import { modelWallAxes } from './model-wall-axes';
 import { createIfcGridSource, type IfcGridSource } from '@/lib/snap/sources/ifc-grid';
 import { storeyGridAxes } from '@/lib/snap/sources/ifc-grid-store';
 import { useViewerStore } from '@/store';
@@ -73,12 +73,7 @@ function semanticSource(modelId: string): SemanticSource {
     extensions: true,
     version: () => useViewerStore.getState().mutationVersion,
     storeyId: () => useViewerStore.getState().session?.storeyId ?? null,
-    loadAxes: (storeyId) => {
-      const s = useViewerStore.getState();
-      const store = s.models.get(modelId)?.ifcDataStore;
-      const view = s.mutationViews.get(modelId);
-      return store && view ? storeyWallAxes(store, view, storeyId) : [];
-    },
+    loadAxes: (storeyId) => [...modelWallAxes(modelId, storeyId).values()],
   });
   semantic = { modelId, source };
   return source;

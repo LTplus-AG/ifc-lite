@@ -228,7 +228,7 @@ export function extractWallSegmentsForStorey(
     // authoring path writes one. Taking all of getNewEntities() made a wall
     // authored on one storey a room boundary on every storey (#5642).
     const onStorey = new Set(dividerIds);
-    for (const ent of overlay.getNewEntities()) {
+    for (const ent of overlay.readNewEntities?.() ?? overlay.getNewEntities()) {
       if (!onStorey.has(ent.expressId)) continue;
       // Effective class: a created wall retyped away is not a divider (#5249).
       if (!dividerTypes.has((lookup.retypeOf(ent.expressId) ?? ent.type).toLowerCase())) continue;

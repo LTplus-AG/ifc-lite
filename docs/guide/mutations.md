@@ -1139,3 +1139,28 @@ Elements whose shape depends on storey spacing follow the edit in the same trans
 **Authoring default.** `bim.store.addWall`, `addColumn`, `addColumnOnGrid`, `addBeam`, `addMember` and `addCurtainWall` take an optional `TopConstraint` (a `setTopConstraintInStore` constraint, or `'auto'`, the default). `auto` is the Model workspace's "To storey above": an element whose top lands on the storey above its own (within 1 mm) is recorded attached to it, relatively; anything else is fixed. The Model workspace's Wall, Column and Curtain Wall tools draw up to the storey above under that default and record the attachment in the same Undo step; the Beam tool records it when the beam's top lands on the storey above. A level beam or member lands with its top face, the way a storey edit lifts it whole. The viewer's `bim.store` applies the constraint the same way as headless, curtain walls and grid columns included.
 
 `bim.store` exposes the same operations in every host: the SDK's headless backend, the viewer (through the storey manager's undo-batched path) and its script sandbox, the MCP `storey_*` tools and `ifc-lite storey`. The methods are `listStoreyLevels`, `suggestStorey`, `addStorey`, `renameStorey`, `planStoreyEdit`, `editStorey`, `planStoreyDelete` and `deleteStorey`. `editStorey` and `deleteStorey` take the reviewed plan as an optional last argument. Headless backends record each write as one Undo step. `listStoreyLevels` counts every storey, however large; only a plan refuses a storey holding more than 50,000 products. The round-1A methods `planAddStorey`, `setTopConstraint` and `copyToStoreys` are on the SDK's headless backend (and so on `ifc-lite run` scripts); the viewer adapter, its sandbox, MCP and `ifc-lite storey` follow in #9352.
+
+For an entity-scoped diff, use `view.getEffectiveChanges(expressId)`. It returns
+that entity's current effective changes in the same order as filtering
+`view.getEffectiveChanges()`, while reading its indexed mutation rows.
+`view.getNewEntitiesReferencing(expressId)` enumerates created records whose
+**authored attributes** contain a `#expressId` reference. These are candidates:
+apply named and positional overrides and deletion checks before interpreting
+an effective relationship. Slot overrides that introduce a reference must also
+be considered through `view.getAttributeOverrideEntityIds()`. Pass a list of
+IFC classes to that method to narrow created candidates by their effective
+class; edited source records remain conservative candidates for the caller to
+check against its source store. The optional second argument narrows creations
+to overrides that could contain a reference to that ID. These remain
+candidates; verify their effective slots with the relevant schema and grammar.
+`view.getAttributeOverrideReferenceCandidates(id)` also indexes source edits
+that might introduce a reference. Combine these with the immutable source and
+authored reference indices; retained or removed references need those indices.
+
+The ordinary entity getters keep their mutable-array contract. Reference
+lookups conservatively recheck a record after its attribute array is exposed,
+including later edits through a retained alias. Pure readers can use
+`readNewEntity`, `readNewEntities`, and `readNewEntitiesOfType`; these borrow
+attributes for reading and must not mutate them. Reference-query results also
+borrow their arrays for reading. Use the ordinary getters or mutation methods
+for writes. `StoreEditor.readNewEntity` provides the same read-only borrow.

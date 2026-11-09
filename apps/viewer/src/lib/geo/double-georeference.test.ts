@@ -612,3 +612,37 @@ describe('formatApproxDistance', () => {
     assert.strictEqual(formatApproxDistance(Number.POSITIVE_INFINITY), 'an unknown distance');
   });
 });
+
+describe('detectDoubleGeoreference — site anchor in map units (#9480)', () => {
+  // IfcSite #49 = (311988.18054, 5996148.56499) in the millimetre file.
+  const site = { x: 311988.18054 * 0.001, y: 5996148.56499 * 0.001 };
+  const mm = (info: CoordinateInfo): CoordinateInfo => ({ ...info, lengthUnitScale: 0.001 });
+
+  it('reports the corrected map position, the unit ratio and the export offsets', () => {
+    const found = detectDoubleGeoreference(ISSUE_2526_CONVERSION, METRE_CRS, mm(coordInfoAt(site.x, site.y)), 0.001);
+    assert.ok(found, 'expected a double georeference report');
+    assert.strictEqual(found!.anchorUnitRatio, 0.001);
+    assert.ok(Math.abs(found!.worldCenter.x - ISSUE_2526_CENTER.x) < 1e-3, `x ${found!.worldCenter.x}`);
+    assert.ok(Math.abs(found!.worldCenter.y - ISSUE_2526_CENTER.y) < 1e-3, `y ${found!.worldCenter.y}`);
+    assert.ok(found!.residual < 1, `residual ${found!.residual}`);
+    assert.ok(Math.abs(found!.offsetForExport.eastings - 311988.181 * 0.999) < 1e-6);
+    // A literal tool turns (311.988, 5996.149) by 90° onto the anchor: about
+    // hypot(5996, 312) ≈ 6 km from where the model belongs.
+    const expected = Math.hypot(-site.y - (ISSUE_2526_CENTER.x - 311988.181), site.x - (ISSUE_2526_CENTER.y - 5996148.565));
+    assert.ok(Math.abs(found!.displacement - expected) < 1, `displacement ${found!.displacement} vs ${expected}`);
+    assert.ok(found!.overridesAuthoredRotation);
+  });
+
+  it('tells an export to keep the anchor the geometry does not carry', () => {
+    const found = detectDoubleGeoreference(ISSUE_2526_CONVERSION, METRE_CRS, mm(coordInfoAt(site.x, site.y)), 0.001);
+    assert.ok(found);
+    assert.match(exportCorrectionInstruction(found!), /^set Eastings to 311676\.193, Northings to 5990152\.416, and Model rotation/);
+  });
+
+  it('keeps the #2526 report unchanged', () => {
+    const found = detectDoubleGeoreference(ISSUE_2526_CONVERSION, METRE_CRS, mm(coordInfoAt(ISSUE_2526_CENTER.x, ISSUE_2526_CENTER.y)), 0.001);
+    assert.ok(found);
+    assert.strictEqual(found!.anchorUnitRatio, null);
+    assert.deepEqual(found!.offsetForExport, { eastings: 0, northings: 0 });
+  });
+});

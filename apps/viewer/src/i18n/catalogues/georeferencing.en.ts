@@ -66,6 +66,9 @@ export const georeferencingEn = {
     other: 'Its {fields} are not applied either: on map-sized coordinates they would re-scale the model about the map origin.',
   },
   'properties.georef.correctionOffsets': 'set Eastings and Northings to 0',
+  'properties.georef.correctionOffsetsTo': 'set Eastings to {eastings} and Northings to {northings}',
+  'properties.georef.siteAnchorUnitNote':
+    "Its IfcSite placement writes these coordinates in the map unit instead of the file's length unit (a factor of {ratio}), so ifc-lite scales the site anchor to match. The height in that placement is not corrected; check the elevation.",
   'properties.georef.correctionAngle': 'set Model rotation in map coordinates to 0',
   'properties.georef.correctionScale': 'set Scale to {value}',
   'properties.georef.rawValuesCorrection':

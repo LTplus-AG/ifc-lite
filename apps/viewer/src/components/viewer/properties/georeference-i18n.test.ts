@@ -24,12 +24,12 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { registerLocale, resolve, setLocale } from '@/i18n/registry';
-import { localizedRawValuesNote, localizedScaleOverride } from './georeference-i18n.js';
+import { localizedRawValuesNote, localizedSiteAnchorUnitNote, localizedScaleOverride } from './georeference-i18n.js';
 import type { DoubleGeoreference } from '@/lib/geo/double-georeference';
 
 const LOCALE = 'ar-SA-x-georef-plural-test';
 
-function found(overrides: Partial<Pick<DoubleGeoreference, 'scaleForExport' | 'factorsForExport'>>): DoubleGeoreference {
+function found(overrides: Partial<Pick<DoubleGeoreference, 'scaleForExport' | 'factorsForExport' | 'anchorUnitRatio' | 'offsetForExport'>>): DoubleGeoreference {
   return {
     worldCenter: { x: 0, y: 0 },
     offset: { easting: 0, northing: 0 },
@@ -38,6 +38,8 @@ function found(overrides: Partial<Pick<DoubleGeoreference, 'scaleForExport' | 'f
     overridesAuthoredRotation: false,
     scaleForExport: null,
     factorsForExport: [],
+    anchorUnitRatio: null,
+    offsetForExport: { eastings: 0, northings: 0 },
     ...overrides,
   };
 }
@@ -98,5 +100,16 @@ describe('georeference-i18n plural cardinality (#4918)', () => {
     assert.match(localizedRawValuesNote(resolve, LOCALE, one), /^\[factor-one /);
 
     setLocale('en');
+  });
+});
+
+describe('georeference-i18n site anchor in map units (#9480)', () => {
+  it('quotes the export offsets and the unit factor', () => {
+    const slipped = found({ anchorUnitRatio: 0.001, offsetForExport: { eastings: 311676.1928, northings: 5990152.4164 } });
+    const raw = localizedRawValuesNote(resolve, 'en', slipped);
+    assert.match(raw, /set Eastings to 311,676\.193 and Northings to 5,990,152\.416/);
+    assert.match(localizedSiteAnchorUnitNote(resolve, 'en', slipped) ?? '', /a factor of 1,000\)/);
+    assert.strictEqual(localizedSiteAnchorUnitNote(resolve, 'en', found({})), null);
+    assert.match(localizedRawValuesNote(resolve, 'en', found({})), /set Eastings and Northings to 0/);
   });
 });

@@ -66,6 +66,9 @@ export const georeferencingDe = {
     other: 'Auch {fields} werden nicht angewendet: Bei Koordinaten in Kartengröße würden sie das Modell um den Kartenursprung skalieren.',
   },
   'properties.georef.correctionOffsets': 'Eastings und Northings auf 0 setzen',
+  'properties.georef.correctionOffsetsTo': 'Eastings auf {eastings} und Northings auf {northings} setzen',
+  'properties.georef.siteAnchorUnitNote':
+    'Die Platzierung des IfcSite schreibt diese Koordinaten in der Karteneinheit statt in der Längeneinheit der Datei (Faktor {ratio}), daher skaliert ifc-lite den Standortanker passend. Die Höhe in dieser Platzierung wird nicht korrigiert; prüfen Sie die Höhenlage.',
   'properties.georef.correctionAngle': 'Modelldrehung in Kartenkoordinaten auf 0 setzen',
   'properties.georef.correctionScale': 'Scale auf {value} setzen',
   'properties.georef.rawValuesCorrection':

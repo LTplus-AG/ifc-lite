@@ -70,6 +70,7 @@ function modelRow(s: ViewerState, modelId: string) {
     doubleGeoreference: !conversion || !coordinateInfo ? null : double ? {
       detected: true, residualMetres: double.residual, offsetMetres: double.offset,
       overridesAuthoredRotation: double.overridesAuthoredRotation,
+      siteAnchorUnitRatio: double.anchorUnitRatio,
       displacementMetres: Number.isFinite(double.displacement) ? double.displacement : null,
     } : { detected: false },
   });

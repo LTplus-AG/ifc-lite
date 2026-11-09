@@ -68,6 +68,9 @@ export const georeferencingFr = {
     other: 'Ses attributs {fields} ne sont pas non plus appliqués : sur des coordonnées à l’échelle de la carte, ils remettraient le modèle à l’échelle autour de l’origine de la carte.',
   },
   'properties.georef.correctionOffsets': 'réglez Eastings et Northings sur 0',
+  'properties.georef.correctionOffsetsTo': 'réglez Eastings sur {eastings} et Northings sur {northings}',
+  'properties.georef.siteAnchorUnitNote':
+    'Le placement de son IfcSite écrit ces coordonnées dans l’unité de la carte au lieu de l’unité de longueur du fichier (facteur {ratio}) ; ifc-lite met donc l’ancrage du site à l’échelle. La hauteur de ce placement n’est pas corrigée ; vérifiez l’altitude.',
   'properties.georef.correctionAngle': 'réglez la rotation du modèle en coordonnées cartographiques sur 0',
   'properties.georef.correctionScale': 'réglez Scale sur {value}',
   'properties.georef.rawValuesCorrection':

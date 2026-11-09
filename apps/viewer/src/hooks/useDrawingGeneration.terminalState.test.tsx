@@ -89,25 +89,28 @@ function Harness({ value }: { value: Inputs }): null {
   return null;
 }
 
-/** Hold every cut at the cutter's async boundary until `release()`. */
+/** Hold every cut at the cutter's async boundary until `releaseHeld()` or `release()`. */
 function holdCutter() {
   const original = Drawing2DGenerator.prototype.generate;
-  let open!: () => void;
-  const gate = new Promise<void>((resolve) => { open = resolve; });
+  let open = false;
+  const held: Array<() => void> = [];
   const started: Array<() => void> = [];
   let calls = 0;
   Drawing2DGenerator.prototype.generate = async function (...args) {
     calls++;
     for (const notify of started.splice(0)) notify();
-    await gate;
+    if (!open) await new Promise<void>((resolve) => held.push(resolve));
     return original.call(this, ...args);
   };
+  const releaseHeld = () => { for (const resume of held.splice(0)) resume(); };
   return {
     get calls() { return calls; },
     nextStart() { return new Promise<void>((resolve) => started.push(resolve)); },
-    /** Open the gate for this cut and every later one. */
-    release() { open(); },
-    restore() { open(); Drawing2DGenerator.prototype.generate = original; },
+    /** Let only the cuts already waiting continue; later cuts are held again. */
+    releaseHeld,
+    /** Let this cut and every later one run. */
+    release() { open = true; releaseHeld(); },
+    restore() { open = true; releaseHeld(); Drawing2DGenerator.prototype.generate = original; },
   };
 }
 
@@ -213,6 +216,42 @@ describe('useDrawingGeneration terminal state on cancel (D1, #3921 queue)', () =
     } finally { cutter.restore(); }
   });
 
+  it('a first cut superseded by a plane-only regenerate still ends idle when the panel closes (#9488 review)', async () => {
+    const cutter = holdCutter();
+    try {
+      const firstStarted = cutter.nextStart();
+      await render({ geometryResult: geometry(), panelVisible: true });
+      await act(async () => { await firstStarted; });
+      assert.equal(useViewerStore.getState().drawing2DStatus, 'generating', 'the first cut raised the overlay');
+      // Plane-only move: queued behind the first cut as a regenerate, which never raises the overlay itself.
+      await render({ sectionPlane: { axis: 'down', position: 40, flipped: false } });
+      const regenerateStarted = cutter.nextStart();
+      await act(async () => { cutter.releaseHeld(); await regenerateStarted; });
+      assert.equal(cutter.calls, 2, 'the superseded first cut ended and the regenerate is now running');
+      assert.equal(useViewerStore.getState().drawing2DStatus, 'generating', 'the overlay passed to the regenerate');
+
+      await render({ panelVisible: false });
+      assert.equal(useViewerStore.getState().drawing2DStatus, 'idle',
+        'cancelling the regenerate must take down the overlay the cut it superseded raised');
+      cutter.release();
+      await settle();
+      assert.equal(useViewerStore.getState().drawing2DStatus, 'idle');
+      assert.equal(useViewerStore.getState().drawing2D, null);
+    } finally { cutter.restore(); }
+  });
+
+  it('a first cut that fails ends in error, not generating (#9488 review)', async () => {
+    const original = Drawing2DGenerator.prototype.generate;
+    Drawing2DGenerator.prototype.generate = async () => { throw new Error('cutter failed'); };
+    try {
+      await render({ geometryResult: geometry(), panelVisible: true });
+      await settle();
+    } finally { Drawing2DGenerator.prototype.generate = original; }
+    assert.ok(statuses.includes('generating'), `the first cut raised the overlay: ${statuses.join(' -> ')}`);
+    assert.equal(useViewerStore.getState().drawing2DStatus, 'error');
+    assert.equal(useViewerStore.getState().drawing2DError, 'cutter failed');
+  });
+
   it('a superseding input keeps the overlay up until the newest cut publishes, with no idle flash', async () => {
     const cutter = holdCutter();
     try {
@@ -248,6 +287,27 @@ describe('BCF capture pending flag ends with its generation (D4, #4802)', () => 
     } finally { cutter.restore(); }
     mountCanvasFor(kept);
     assert.equal(hasActiveDrawingCanvas(), true, 'no generation owns the canvas any more');
+  });
+
+  it('a cut requested and dropped while a cancelled cut still runs does not leave capture pending (#9488 review)', async () => {
+    await render({ geometryResult: geometry(), panelVisible: true });
+    await settle();
+    const kept = useViewerStore.getState().drawing2D;
+    assert.ok(kept);
+    const cutter = holdCutter();
+    try {
+      const started = cutter.nextStart();
+      await render({ sectionPlane: { axis: 'down', position: 40, flipped: false } });
+      await act(async () => { await started; });
+      await render({ panelVisible: false }); // cancels the running cut
+      await render({ panelVisible: true }); // queues a new cut behind the abandoned one
+      await render({ panelVisible: false }); // drops that queued cut before it ever starts
+      cutter.release();
+      await settle();
+      assert.equal(cutter.calls, 1, 'the dropped cut never ran');
+    } finally { cutter.restore(); }
+    mountCanvasFor(kept);
+    assert.equal(hasActiveDrawingCanvas(), true, 'the dropped request released the pending flag');
   });
 
   it('a canvas mounted after a failed cut is capturable', async () => {

@@ -74,20 +74,45 @@ it('is busy from the request until the cut has finished (#9026 item 19)', async 
   assert.equal(queue.busy(), false);
 });
 
-it('hands a cancel to the running request only, once, and never to a superseded or finished one (D1, #3921)', async () => {
+it('ends each chain of requests exactly once, through its newest request (D1/D4, #9488)', async () => {
   const queue = createDrawingRequestQueue();
-  const cancelled: string[] = [];
+  const ended: string[] = [];
   let release!: () => void;
   const blocked = new Promise<void>(resolve => { release = resolve; });
-  const running = queue.request(async () => { await blocked; }, () => cancelled.push('running'));
-  const queued = queue.request(async () => {}, () => cancelled.push('queued'));
-  assert.deepEqual(cancelled, [], 'superseding is not a cancel');
+  const running = queue.request(async () => { await blocked; }, cancelled => ended.push(`a:${cancelled}`));
+  const queued = queue.request(async () => {}, cancelled => ended.push(`b:${cancelled}`));
+  assert.deepEqual(ended, [], 'superseding hands the ending on; it is not an ending');
   queue.cancel();
   queue.cancel();
-  assert.deepEqual(cancelled, ['running'], 'the in-flight request owns the terminal transition, once');
+  assert.deepEqual(ended, ['b:true'], 'the newest request owns the cancel, once');
   release();
   await Promise.all([running, queued]);
-  await queue.request(async () => {}, () => cancelled.push('finished'));
+  assert.deepEqual(ended, ['b:true'], 'the abandoned run finishing is not a second ending');
+  await queue.request(async () => {}, cancelled => ended.push(`c:${cancelled}`));
   queue.cancel();
-  assert.deepEqual(cancelled, ['running'], 'a finished request has already reached its terminal state');
+  assert.deepEqual(ended, ['b:true', 'c:false'], 'a current run ends its own chain; a later cancel has nothing to end');
+});
+
+it('ends a request dropped behind an already-cancelled run (#9488 review)', async () => {
+  const queue = createDrawingRequestQueue();
+  const ended: string[] = [];
+  let release!: () => void;
+  const blocked = new Promise<void>(resolve => { release = resolve; });
+  const abandoned = queue.request(async () => { await blocked; }, cancelled => ended.push(`a:${cancelled}`));
+  queue.cancel();
+  let droppedRan = false;
+  const dropped = queue.request(async () => { droppedRan = true; }, cancelled => ended.push(`b:${cancelled}`));
+  queue.cancel();
+  release();
+  await Promise.all([abandoned, dropped]);
+  assert.equal(droppedRan, false, 'the dropped request never ran');
+  assert.deepEqual(ended, ['a:true', 'b:true'], 'every chain ended exactly once, including the dropped one');
+});
+
+it('ends a failing current run as finished, and still rejects its callers (#9488)', async () => {
+  const queue = createDrawingRequestQueue();
+  const ended: boolean[] = [];
+  const failure = new Error('cut failed');
+  await assert.rejects(queue.request(async () => { throw failure; }, cancelled => ended.push(cancelled)), failure);
+  assert.deepEqual(ended, [false]);
 });

@@ -21,16 +21,18 @@ interface DrawingRequestsParams {
 }
 
 /**
- * Every drawing request through one queue, each ending in a terminal state.
+ * Every drawing request through one queue, each chain ending in a terminal state.
  *
- * The current request ends its own generation: `computeDrawing` publishes the
- * result, error or empty state, and the BCF capture pending flag is released
- * here. A cancel (last model removed, panel closed, unmount) leaves no current
- * request, so the queue hands the abandoned cut's ending to `onCancel` at
- * once: it releases the pending flag and, if that cut raised the "generating"
- * overlay (a non-regenerate cut), restores `ready` over the kept drawing or
- * `idle`. A superseded cut is ended by its successor, so the overlay never
- * flashes idle between them.
+ * The queue ends a chain of superseding requests exactly once (see
+ * `createDrawingRequestQueue`), and that one ending is where the BCF capture
+ * pending flag every request raised is released. When the chain's current
+ * run finishes, `computeDrawing` has already published its result, error or
+ * empty state. When a cancel (last model removed, panel closed, unmount)
+ * abandons it instead, nothing will publish, so the ending restores the status
+ * here: `ready` over the kept drawing, or `idle`. That only applies if a cut
+ * in the chain raised the "generating" overlay. A regenerate never raises it,
+ * but it can inherit one from a first cut it superseded, so the overlay is
+ * tracked for the chain, not per request (#9488).
  */
 export function useDrawingRequests({ computeDrawing, drawing, setDrawingStatus }: DrawingRequestsParams) {
   const queueRef = useRef<ReturnType<typeof createDrawingRequestQueue> | null>(null);
@@ -39,22 +41,27 @@ export function useDrawingRequests({ computeDrawing, drawing, setDrawingStatus }
   // Updated before the caller's effects run, so a cancel in them sees this commit's drawing.
   const drawingRef = useRef(drawing);
   useEffect(() => { drawingRef.current = drawing; });
+  /** A cut in the unended chain set 'generating'; only its ending lowers it. */
+  const overlayRaised = useRef(false);
   const [isRegenerating, setIsRegenerating] = useState(false);
 
   const generateDrawing = useCallback((isRegenerate = false) => {
     markActiveDrawingGenerationStarted();
     return queue.request(async (isCurrent) => {
       setIsRegenerating(isRegenerate);
+      if (!isRegenerate) overlayRaised.current = true;
       try {
         await computeDrawing(isRegenerate, isCurrent);
       } finally {
         setIsRegenerating(false);
-        if (isCurrent()) markActiveDrawingGenerationSettled();
       }
-    }, () => {
+    }, (cancelled) => {
       markActiveDrawingGenerationSettled();
-      setIsRegenerating(false);
-      if (!isRegenerate) setDrawingStatus(drawingRef.current ? 'ready' : 'idle');
+      if (cancelled) {
+        setIsRegenerating(false);
+        if (overlayRaised.current) setDrawingStatus(drawingRef.current ? 'ready' : 'idle');
+      }
+      overlayRaised.current = false;
     });
   }, [computeDrawing, queue, setDrawingStatus]);
   const doRegenerate = useCallback(() => generateDrawing(true), [generateDrawing]);

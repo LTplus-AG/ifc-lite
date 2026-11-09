@@ -499,7 +499,7 @@ for (const phase of ['mint', 'serialization'] as const) it(`C-8 closing during $
   t.after(() => useViewerStore.setState({ mutationViews: new Map() }));
   const original = StepExporter.prototype.exportAsync;
   let finish!: () => Promise<void>, serializing = false;
-  t.mock.method(StepExporter.prototype, 'exportAsync', function (this: StepExporter, ...args: Parameters<typeof original>) {
+  t.mock.method(StepExporter.prototype, 'exportAsync', function (this: InstanceType<typeof StepExporter>, ...args: Parameters<typeof original>) {
     serializing = true;
     return new Promise<Awaited<ReturnType<typeof original>>>((resolve, reject) => {
       finish = async () => { try { resolve(await original.apply(this, args)); } catch (error) { reject(error); } };

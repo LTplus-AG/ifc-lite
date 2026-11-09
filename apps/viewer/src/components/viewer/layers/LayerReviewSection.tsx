@@ -178,11 +178,12 @@ export function LayerReviewSection({
   );
 
   const exportBcf = useCallback(async () => {
-    if (!review || !(review.topics?.length)) return;
+    const topics = review?.topics;
+    if (!review || !topics?.length) return;
     await runAction(async () => {
       try {
         const project = createBCFProject({ name: `review-${review.id.slice(0, 8)}` });
-        for (const t of review.topics) {
+        for (const t of topics) {
           const topic = createBCFTopic({
             title: t.title,
             ...(t.description !== undefined ? { description: t.description } : {}),

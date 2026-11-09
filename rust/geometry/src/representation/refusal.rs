@@ -21,11 +21,20 @@ pub enum WalkRefusal {
     /// The mapped representation has no `Items` attribute.
     MissingItems,
     /// The mapped-level or total Items-member allowance was exhausted.
-    // Keep u64 alignment out of the common carrier on wasm32. Allocate the
-    // demand only after refusing work, preserving the existing Result layout.
-    Budget { max_levels: u32, budget: &'static str, reached: Box<u64> },
+    #[non_exhaustive]
+    Budget { max_levels: u32, details: WalkBudgetRefusal },
     /// The decoder failed on one of the references.
     Decode(ifc_lite_core::Error),
+}
+
+/// Opaque, cold-allocated work-budget evidence. Its representation is private
+/// so future diagnostic fields do not change visitor matches or common Results.
+#[derive(Debug)]
+pub struct WalkBudgetRefusal(Box<(&'static str, u64)>);
+
+impl WalkBudgetRefusal {
+    pub fn budget(&self) -> &'static str { self.0.0 }
+    pub fn reached(&self) -> u64 { self.0.1 }
 }
 
 // Refusal details must fit within the decoder error this carrier already held.
@@ -37,7 +46,7 @@ impl WalkRefusal {
     #[cold]
     #[inline(never)]
     pub(crate) fn work_budget(max_levels: u32, budget: &'static str, reached: u64) -> Self {
-        Self::Budget { max_levels, budget, reached: Box::new(reached) }
+        Self::Budget { max_levels, details: WalkBudgetRefusal(Box::new((budget, reached))) }
     }
 
     /// Convert to a geometry error, preserving historical strict messages for

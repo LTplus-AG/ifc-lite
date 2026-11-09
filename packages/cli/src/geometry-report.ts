@@ -53,9 +53,14 @@ export function formatGeometryReport(d: GeometryDiagnostics): string {
       `too-many ${rf.deferTooManyOpenings ?? 0})`,
   );
 
-  for (const refusal of d.budgetRefusals ?? []) {
+  for (const refusal of (d.budgetRefusals ?? []).slice(0, 16)) {
     lines.push(`Work budget refusal: ${refusal.budget} limit=${refusal.limit} reached=${refusal.reached} ` +
-      `product=#${refusal.productId} ${refusal.productType} GlobalId=${refusal.GlobalId ?? 'unavailable'} source=#${refusal.sourceId}`);
+      `product=#${refusal.productId ?? 'unknown'} ${refusal.productType ?? 'unknown'} GlobalId=${refusal.GlobalId ?? 'unavailable'} source=#${refusal.sourceId}`);
+  }
+  const moreRefusals = (d.totalBudgetRefusals ?? d.budgetRefusals?.length ?? 0)
+    - Math.min(16, d.budgetRefusals?.length ?? 0);
+  if (moreRefusals > 0) {
+    lines.push(`Work budget refusals: and ${moreRefusals} more`);
   }
   if ((d.totalUnsupportedItems ?? 0) > 0) {
     lines.push('');

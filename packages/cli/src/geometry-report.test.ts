@@ -183,3 +183,12 @@ it('#9268 prints budget refusal identity and demand separately from dropped item
   expect(report).toContain('Work budget refusal: walk mapped attempts limit=65536 reached=65537 product=#25 IfcFlowTerminal GlobalId=test source=#22');
   expect(report).not.toContain('Dropped representation items');
 });
+
+it('issue 9268 caps budget detail and renders missing identity consistently', () => {
+  const refusal = { budget: 'logical mapped attempts', limit: 3, reached: 4,
+    sourceId: 8, productId: null, productType: null, GlobalId: null };
+  const report = formatGeometryReport(makeDiagnostics({ totalBudgetRefusals: 40,
+    budgetRefusals: Array.from({ length: 20 }, () => refusal) }));
+  expect((report.match(/product=#unknown unknown GlobalId=unavailable/g) ?? []).length).toBe(16);
+  expect(report).toContain('and 24 more');
+});

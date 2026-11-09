@@ -118,7 +118,19 @@ fn check(
 }
 
 fn check_report(router: &GeometryRouter, refusal_type: Option<&str>) {
-    assert!(router.take_unsupported_items().is_empty(), "#9268 budget is not unsupported: {refusal_type:?}");
+    assert!(router.take_unsupported_items().is_empty(), "#9268 budget is not unsupported");
+    let refusals = router.take_budget_refusals();
+    assert_eq!(refusals.len(), usize::from(refusal_type.is_some()));
+    if let Some(refusal) = refusals.first() {
+        assert_eq!(refusal.product_id, Some(100));
+        assert_eq!(refusal.product_type.as_deref(), Some("IfcWall"));
+        let expected = if refusal_type == Some("IfcMappedItem") {
+            ("walk mapped attempts", 3, 4, 3000)
+        } else {
+            ("walk Items members", 4, 5, 170)
+        };
+        assert_eq!((refusal.budget.as_str(), refusal.limit, refusal.reached, refusal.source_id), expected);
+    }
 }
 
 #[test]

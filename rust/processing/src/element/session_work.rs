@@ -44,7 +44,7 @@ pub(super) fn execute(
     }
     let payload = match kind {
         WorkKind::Primary { strategy, .. } => WorkPayload::Primary(primary(strategy, job, ctx, decoder, router)),
-        WorkKind::TypeMap { map_id, .. } => WorkPayload::TypeMap(type_map(map_id, ctx, decoder, router)),
+        WorkKind::TypeMap { map_id, .. } => WorkPayload::TypeMap(type_map(map_id, job.entity, ctx, decoder, router)),
         WorkKind::VoidedParts => match voided_parts(job, ctx, decoder, router) {
             Ok(parts) => WorkPayload::VoidedParts(parts),
             Err(stop) => return stopped(stop),
@@ -123,13 +123,14 @@ fn voided_parts(
 /// untextured items merged into one part. `None` when nothing executed.
 fn type_map(
     map_id: u32,
+    product: &ifc_lite_core::DecodedEntity,
     ctx: &MeshProductionContext<'_>,
     decoder: &mut EntityDecoder,
     router: &GeometryRouter,
 ) -> Option<Vec<TypePart>> {
     let rep_map = decoder.decode_by_id(map_id).ok()?;
     router
-        .process_representation_map_with_texture(&rep_map, decoder, ctx.texture_index)
+        .process_representation_map_for_product(&rep_map, product, decoder, ctx.texture_index)
         .ok()
         .filter(|parts| !parts.is_empty())
 }

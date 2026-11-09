@@ -276,6 +276,7 @@ pub(super) struct MappingControl<'a> {
     action: Action<'a>,
     budget: super::mapping_budget::LogicalBudget,
     logical_stopped: bool,
+    pub(in crate::program) budget_product: Option<&'a DecodedEntity>,
 }
 
 impl<'a> MappingControl<'a> {

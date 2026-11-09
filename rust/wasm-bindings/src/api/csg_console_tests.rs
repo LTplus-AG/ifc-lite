@@ -192,3 +192,18 @@ fn issue_9268_budget_refusal_prints_its_own_class_and_identity() {
     assert_eq!(console_summary(&diag), vec![(Level::Warn,
         "[IFC-LITE] Work budget refusal: walk mapped attempts limit=65536 reached=65537 product=#25 IfcFlowTerminal GlobalId=0000000000000000000001 source=#22".into())]);
 }
+
+#[test]
+fn issue_9268_console_caps_details_and_handles_unknown_identity() {
+    let mut json = serde_json::to_value(GeometryDiagnostics::default()).unwrap();
+    json["totalBudgetRefusals"] = serde_json::json!(40);
+    json["budgetRefusals"] = serde_json::json!((0..20).map(|source| serde_json::json!({
+        "budget": "logical mapped attempts", "limit": 3, "reached": 4,
+        "productId": null, "productType": null, "GlobalId": null, "sourceId": source
+    })).collect::<Vec<_>>());
+    let diag = serde_json::from_value(json).unwrap();
+    let lines = console_summary(&diag);
+    assert_eq!(lines.len(), 17);
+    assert!(lines[0].1.contains("product=#unknown unknown GlobalId=unavailable"));
+    assert_eq!(lines[16].1, "[IFC-LITE] Work budget refusals: and 24 more");
+}

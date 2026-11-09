@@ -65,6 +65,6 @@ fn drain_diagnostics(
         drain.oversized_refs,
         &router.take_unsupported_items(),
     );
-    diagnostics.budget_refusals = router.take_budget_refusals();
+    (diagnostics.total_budget_refusals, diagnostics.budget_refusals) = router.take_budget_refusal_report();
     diagnostics
 }

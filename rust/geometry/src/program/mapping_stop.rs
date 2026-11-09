@@ -29,13 +29,16 @@ impl MappingControl<'_> {
                 return;
             }
         };
-        // Product walks already undergo cache-independent admission with the
-        // same allowance, which reports their product identity before meshing.
-        // Standalone mapping/type-map callers have no owning product.
-        router.record_budget_refusal(item_id, budget, limit, reached);
         if self.retained.is_some() {
+            // Retained transactions return this refusal to their caller; their
+            // model-lifetime router must not accumulate an unread duplicate log.
             self.action = Action::Complete(Err(error));
             return;
+        }
+        // Keep the source's reporting policy, including CATIA's blank-type
+        // FootPrint suppression. Product admission reports independently.
+        if self.levels.last().is_none_or(|parent| parent.policy) {
+            router.record_budget_refusal(item_id, budget, limit, reached, self.budget_product);
         }
         self.logical_stopped = true;
         let Some(parent) = self.levels.last() else {

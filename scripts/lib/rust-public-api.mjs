@@ -38,7 +38,11 @@
  *         `src/lib.rs` (e.g. `ifc-lite-geometry`'s
  *         `LARGE_COORD_THRESHOLD_METERS`).
  *
- *   NOT tracked: an item reachable only through a `pub mod`'s own path
+ *   The geometry representation module is additionally snapshotted by the
+ *   caller using its public module entry (issue #9268). Other module-only
+ *   paths remain outside this extractor's selected entry points.
+ *
+ *   NOT tracked: other items reachable only through a `pub mod`'s own path
  *   (`crate::modname::Item`) that is not ALSO re-exported from the crate
  *   root. Several of this repo's `pub mod`s exist for exactly that direct
  *   path (see the module-visibility comment in `rust/geometry/src/lib.rs`),
@@ -245,8 +249,8 @@ function listRsFiles(dir) {
  * @param {string} crateDir absolute path to the crate root (containing `src/lib.rs`)
  * @returns {{ surface: Record<string,string>, warnings: string[], pubUseCount: number }}
  */
-export function extractCrateSurface(crateDir) {
-  const libPath = join(crateDir, 'src', 'lib.rs');
+export function extractCrateSurface(crateDir, entry = 'src/lib.rs') {
+  const libPath = join(crateDir, entry);
   if (!existsSync(libPath)) {
     throw new Error(`NO_LIB_RS: ${libPath} does not exist`);
   }

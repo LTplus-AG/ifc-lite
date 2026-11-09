@@ -57,7 +57,7 @@ pub enum Flow {
     Stop,
 }
 
-pub use super::refusal::WalkRefusal;
+pub use super::refusal::{WalkBudgetRefusal, WalkRefusal};
 
 /// Recommended default for both independent Expand work meters.
 pub const MAX_WALK_LEVELS: u32 = 1 << 16;

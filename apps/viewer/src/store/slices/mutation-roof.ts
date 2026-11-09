@@ -58,7 +58,10 @@ function mirrorRoofHistoryDefinition(store: ModellingStore, modelId: string, id:
   const definition = view.getForEntity(id).find(pset => pset.name === ROOF_FOOTPRINT_PSET), path = pathForEntity(data, id);
   if (!definition || !path) return;
   const api = roomPropertyApi();
-  const properties = definition.properties.filter(property => typeof property.value === 'string' || typeof property.value === 'number');
+  const properties = definition.properties.flatMap(property => {
+    const value = property.value;
+    return typeof value === 'string' || typeof value === 'number' ? [{ ...property, value }] : [];
+  });
   const before = new Map(properties.map(property => [property.name, structuredClone(
     api.getPropertyValue(session.doc, path, ROOF_FOOTPRINT_PSET, property.name))]));
   try {

@@ -28,8 +28,8 @@ minutes and shared across every call, so opening "Versions" on several files
 costs it once.
 
 Two sets pinning the same revision collapse into one entry (the model did not
-change between them); ordering uses date, then Dalux's numeric revision number for ties, then
-sweep position and ID. `lastModified` is date-only, so every same-day revision
+change between them); ordering puts numbered revisions first (highest number first), then date,
+sweep position and ID. `lastModified` is date-only, so same-day revisions
 would otherwise tie.
 
 ## CORS

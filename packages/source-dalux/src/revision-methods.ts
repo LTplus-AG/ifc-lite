@@ -29,7 +29,16 @@ export async function listVersionSetRevisions(
   if (!revisionId) throw new Error('Dalux did not supply an ID for the current file revision.');
   const commits = index.models.get(ref.fileId)?.commits ?? [];
   const pinnedCurrent = commits.find((commit) => commit.revisionId === revisionId);
-  const current: DaluxModelCommit = { ...pinnedCurrent, revisionId, file, fileAreaId, versionSets: pinnedCurrent?.versionSets ?? [], sweepIndex: pinnedCurrent?.sweepIndex ?? -1 };
+  // Keep the pinned label when the current-file response omits `version`.
+  const pinnedVersion = pinnedCurrent ? nonEmptyString(pinnedCurrent.file.version) : undefined;
+  const currentFile = nonEmptyString(file.version) === undefined && pinnedVersion !== undefined ? { ...file, version: pinnedVersion } : file;
+  const current: DaluxModelCommit = { ...pinnedCurrent, revisionId, file: currentFile, fileAreaId, versionSets: pinnedCurrent?.versionSets ?? [], sweepIndex: pinnedCurrent?.sweepIndex ?? -1 };
+  const others = commits.filter((commit) => commit.revisionId !== revisionId);
   // The current file is authoritative even when no coordination set pins it.
-  return { items: [current, ...commits.filter((commit) => commit.revisionId !== revisionId)].map(toSourceRevision) };
+  // A pin with a higher revision number than the metadata we read means the
+  // file was re-uploaded between the two reads; those rows are newer.
+  const currentNumber = current.revisionNumber ?? Number(nonEmptyString(currentFile.version));
+  const newer = Number.isFinite(currentNumber) ? others.filter((commit) => commit.revisionNumber !== undefined && commit.revisionNumber > currentNumber) : [];
+  const older = others.filter((commit) => !newer.includes(commit));
+  return { items: [...newer, current, ...older].map(toSourceRevision) };
 }

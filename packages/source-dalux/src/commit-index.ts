@@ -229,12 +229,28 @@ interface CacheEntry {
   /** Mutated in place once `index` resolves, to {@link PARTIAL_COMMIT_INDEX_TTL_MS}
    * if the result came back `partial` (review on #8647). */
   ttl: number;
+  /** True once the build has resolved or rejected (so it may be evicted). */
+  settled: boolean;
 }
+
+/** Upper bound on retained project indexes; in-flight builds are never evicted. */
+const MAX_CACHED_INDEXES = 8;
 
 const cache = new Map<string, CacheEntry>();
 
 function cacheKey(client: BrowserDaluxApiClient, projectId: string): string {
   return `${client.baseUrl}|${client.cacheIdentity}|${projectId}`;
+}
+
+/** Drop expired settled entries, then the oldest settled ones past the bound. */
+function evictStaleEntries(now: number): void {
+  for (const [key, entry] of cache) {
+    if (entry.settled && now - entry.builtAt >= entry.ttl) cache.delete(key);
+  }
+  for (const [key, entry] of cache) {
+    if (cache.size < MAX_CACHED_INDEXES) break;
+    if (entry.settled) cache.delete(key);
+  }
 }
 
 /** Drop the one project-history cache, forcing fresh rows on the next sweep. */
@@ -269,13 +285,16 @@ export async function getCommitIndex(
   // caller is awaiting. The sweep is bounded by `MAX_VERSION_SETS` instead.
   void signal;
   const index = buildCommitIndex(client, projectId);
-  const entry: CacheEntry = { index, builtAt: now, ttl: COMMIT_INDEX_TTL_MS };
+  const entry: CacheEntry = { index, builtAt: now, ttl: COMMIT_INDEX_TTL_MS, settled: false };
+  evictStaleEntries(now);
   cache.set(key, entry);
   index.then(
     (result) => {
+      entry.settled = true;
       if (result.partial) entry.ttl = PARTIAL_COMMIT_INDEX_TTL_MS;
     },
     () => {
+      entry.settled = true;
       // Only this build's own entry, and only if nothing has replaced it: a
       // build that outlives the TTL can have a second one already running
       // under the same key by the time this rejects, and deleting

@@ -191,3 +191,32 @@ describe('revision history completeness (#8648)', () => {
     await expect(new DaluxBuildProvider().listRevisions!(ctx, REF)).rejects.toThrow(/incomplete/);
   });
 });
+
+describe('current-file metadata races (#8648)', () => {
+  function withCurrent(revisionId: string, extra: Record<string, unknown>) {
+    invalidateCommitIndex();
+    const inner = createDaluxApiMock(WORLD, { pageSize: 1 });
+    const provider = new DaluxBuildProvider();
+    const ctx = createDaluxMockContext(async (input, init) => {
+      const url = typeof input === 'object' && 'url' in input ? input.url : String(input);
+      if (url.includes('/5.0/projects/') && url.endsWith('/files/file-structural')) {
+        return new Response(JSON.stringify({ data: { fileId: 'file-structural', fileName: 'structural.ifc', fileAreaId: 'fa-models', fileRevisionId: revisionId, ...extra } }), { headers: { 'Content-Type': 'application/json' } });
+      }
+      return inner(input, init);
+    });
+    return { provider, ctx };
+  }
+
+  it('keeps the pinned version label when the current metadata omits version', async () => {
+    const { provider, ctx } = withCurrent('rev-3', {});
+    const page = await provider.listRevisions!(ctx, REF);
+    expect(page.items[0].id).toBe('rev-3');
+    expect(page.items[0].label).toContain('Rev 3');
+  });
+
+  it('lists a newer pinned revision before stale current metadata', async () => {
+    const { provider, ctx } = withCurrent('rev-2', { version: '2' });
+    const page = await provider.listRevisions!(ctx, REF);
+    expect(page.items.map((r) => r.id)).toEqual(['rev-3', 'rev-2', 'rev-1']);
+  });
+});

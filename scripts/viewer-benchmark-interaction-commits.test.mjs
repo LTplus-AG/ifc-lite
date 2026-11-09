@@ -49,28 +49,32 @@ test('a page that never goes quiet is unmeasurable, not a number', async () => {
   assert.equal(await waitForQuietCommits(fakeProbe({ available: false }), OPTS.before), null);
 });
 
-const { measureInteractionCommits, VIEWPORT_CANVAS } = await tsImport('../tests/benchmark/interaction-commits.ts', import.meta.url);
+const { measureInteractionCommits, VIEWPORT_CANVAS, RAIL_OVERFLOW, LENS_MENU_ROW } = await tsImport('../tests/benchmark/interaction-commits.ts', import.meta.url);
 
 /**
  * A page stub: a minimap canvas precedes the viewport in document order, as on
  * FZK (#6993 review). `evaluate` runs the probe in this realm, against a fake
  * `document` and the viewer's trace global.
  */
-function stubPage({ viewportUnderPointer = true } = {}) {
+function stubPage({ viewportUnderPointer = true, lensOnRail = true } = {}) {
   let commits = 0;
   let clock = 0;
   const moves = [];
+  const clicks = [];
+  const waited = [];
   const viewport = { tagName: 'CANVAS', className: 'w-full' };
   const minimap = { tagName: 'CANVAS', className: 'maplibregl-canvas' };
   const boxes = { [VIEWPORT_CANVAS]: { x: 200, y: 100, width: 600, height: 400 }, canvas: { x: 900, y: 500, width: 100, height: 100 } };
   const locator = (selector) => ({
     first() { return this; },
+    count: async () => (selector === 'rail:Lens' && !lensOnRail ? 0 : 1),
     boundingBox: async () => boxes[selector] ?? null,
-    click: async () => { commits += 3; },
+    click: async () => { clicks.push(selector); commits += 3; },
+    waitFor: async () => { waited.push(selector); },
   });
   const page = {
     locator,
-    getByRole: () => locator('button'),
+    getByRole: (role, { name }) => locator(role === 'button' && name === 'Lens' ? 'rail:Lens' : role),
     mouse: { move: async (x, y) => { moves.push([x, y]); commits += 1; } },
     waitForTimeout: async (ms) => { clock += ms; },
     evaluate: async (fn, arg) => fn(arg),
@@ -81,7 +85,7 @@ function stubPage({ viewportUnderPointer = true } = {}) {
     querySelector: (selector) => (selector === VIEWPORT_CANVAS ? viewport : minimap),
     elementFromPoint: () => (viewportUnderPointer ? viewport : minimap),
   };
-  return { page, moves, now: () => clock };
+  return { page, moves, clicks, waited, now: () => clock };
 }
 
 function cleanupStub() {
@@ -99,6 +103,7 @@ test('#6993 review: hover moves to the centre of the VIEWPORT canvas, not the fi
     assert.deepEqual(moves.slice(1), [[1, 1]], 'the pointer leaves the viewport before the panel step');
     // The rest move's own commit lands before panelOpen's quiet start, not in it.
     assert.deepEqual(result.commits, { select: 3, hover: 1, panelOpen: 3 });
+    assert.equal(result.panelOpenVia, 'rail');
   } finally {
     cleanupStub();
   }
@@ -111,6 +116,21 @@ test('#6993 review: hover refuses to measure when something else covers the view
     assert.equal(result.commits.hover, null);
     assert.match(result.errors.hover, /covered by CANVAS\.maplibregl-canvas/);
     assert.deepEqual(moves, [], 'no pointer move may be charged as a viewport hover');
+  } finally {
+    cleanupStub();
+  }
+});
+
+test('#8802 R1: a rail too short for Lens opens More unmeasured and charges only the menu row click', async () => {
+  const { page, clicks, waited, now } = stubPage({ lensOnRail: false });
+  try {
+    const result = await measureInteractionCommits(page, now);
+    assert.deepEqual(result.errors, {});
+    assert.equal(result.panelOpenVia, 'more');
+    assert.deepEqual(clicks.slice(-2), [RAIL_OVERFLOW, LENS_MENU_ROW], 'More is opened, then Lens is picked from its menu');
+    assert.deepEqual(waited, [LENS_MENU_ROW], 'the menu row is waited for before the step');
+    // More's own 3 commits settle in the quiet wait before the step.
+    assert.equal(result.commits.panelOpen, 3);
   } finally {
     cleanupStub();
   }

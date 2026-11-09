@@ -1,0 +1,12 @@
+diff --git a/packages/source-dalux/src/commit-index.ts b/packages/source-dalux/src/commit-index.ts
+--- a/packages/source-dalux/src/commit-index.ts
++++ b/packages/source-dalux/src/commit-index.ts
+@@ -213,7 +213,7 @@
+     });
+   }
+ 
+-  return { models, versionSetCount: swept.length, truncated, partial: false };
++  return { models, versionSetCount: swept.length, truncated, partial };
+ }
+ 
+ // ---------------------------------------------------------------------------

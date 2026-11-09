@@ -6,6 +6,7 @@
 // Under exclusive fleet benchmark admission, from the repository root:
 // TSX_TSCONFIG_PATH=apps/viewer/tsconfig.json node --expose-gc --import tsx --import ./apps/viewer/src/test/vite-module-hooks.mjs apps/viewer/scripts/layer-grouping-perf.ts MAIN_SHA
 // --check verifies a small fixture without timings; --check-full checks the same 12k/50k workloads.
+// Verification skips CPU sampling; timing mode requires Linux (/proc/stat and getconf).
 import '../src/test/setup-dom.js';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
@@ -31,8 +32,11 @@ const mainCopy = resolve(hierarchy, '.layer-grouping-main-tree.ts');
 const temporary = [parserCopy, beforeCopy, mainCopy];
 const show = (sha: string, path: string) => execFileSync('git', ['show', `${sha}:${path}`], { encoding: 'utf8' });
 const all = { has: () => true };
-const cores = cpus().length;
-const ticks = Number(execFileSync('getconf', ['CLK_TCK'], { encoding: 'utf8' }).trim());
+if (!checkOnly && process.platform !== 'linux') {
+  throw new Error('Timing mode requires Linux (/proc/stat and getconf); use --check or --check-full for verification.');
+}
+const cores = checkOnly ? 0 : cpus().length;
+const ticks = checkOnly ? 0 : Number(execFileSync('getconf', ['CLK_TCK'], { encoding: 'utf8' }).trim());
 
 /** Same overlapping-layer STEP setup as #9272's generated stress test. */
 function fixture(count: number): ArrayBuffer {

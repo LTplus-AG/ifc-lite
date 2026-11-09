@@ -111,7 +111,7 @@ export function ElementsTab() {
             commandContext={(event) => ({
               contextAction: () => {
                 const rect = event.currentTarget.getBoundingClientRect();
-                openSelectedEntityActions({ x: Math.max(1, rect.left + rect.width / 2), y: Math.max(1, rect.bottom) });
+                openSelectedEntityActions({ x: Math.max(1, rect.left + rect.width / 2), y: Math.max(1, rect.bottom) }, event.currentTarget);
               },
             })}
           />

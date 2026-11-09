@@ -72,7 +72,7 @@ export function authoredScalar(value: IfcAttributeValue | undefined): string | n
   if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return value;
   if (value && typeof value === 'object' && !Array.isArray(value)) {
     if ('real' in value) return value.real;
-    if ('typed' in value) return value.typed.value;
+    if ('typed' in value && !Array.isArray(value.typed.value)) return value.typed.value;
   }
   return undefined;
 }

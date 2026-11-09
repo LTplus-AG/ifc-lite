@@ -66,6 +66,15 @@ function parseStepToken(token: string): IfcAttributeValue {
     const inner = parseStepToken(typed[2]);
     const value = inner !== null && typeof inner === 'object' && 'real' in inner ? inner.real
       : inner === '.T.' ? true : inner === '.F.' ? false : inner;
+    if (Array.isArray(value)) {
+      const name = typed[1].toUpperCase();
+      if ((name !== 'IFCLINEINDEX' && name !== 'IFCARCINDEX')
+        || !value.every((index): index is number => typeof index === 'number' && Number.isSafeInteger(index) && index > 0)
+        || (name === 'IFCLINEINDEX' ? value.length < 2 : value.length !== 3)) {
+        throw new Error(`Unsupported STEP typed aggregate ${t}`);
+      }
+      return { typed: { type: name, value } };
+    }
     if (typeof value !== 'string' && typeof value !== 'number' && typeof value !== 'boolean') {
       throw new Error(`Unsupported STEP typed value ${t}`);
     }

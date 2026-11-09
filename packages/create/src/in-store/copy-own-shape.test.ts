@@ -79,6 +79,39 @@ describe("copyProductInStore shape: 'own' (#8447)", () => {
     expect(exported()).toBe(before);
   });
 
+  it.each([WALL_SHAPE, 1252])('refuses a missing root or descendant #%s atomically (#8447)', async (missing) => {
+    // Parse a genuinely dangling STEP reference; the parser index is read-only.
+    const text = readFileSync(SAMPLE, 'utf8').split('\n').filter(line => !line.startsWith(`#${missing}=`)).join('\n');
+    store = await parse(text);
+    view = new MutablePropertyView(null, 'm');
+    editor = new StoreEditor(store, view);
+    const before = exported();
+    expect(() => copyProductInStore(createCopyContext(store, editor), WALL, {}, { shape: 'own' })).toThrow(/unreadable shape record/);
+    expect(exported()).toBe(before);
+  });
+
+  it('preserves IFC4 line and arc segment indices through own-copy export (#8447)', async () => {
+    const source = readFileSync(SAMPLE, 'utf8')
+      .replace('#1253=IFCINDEXEDPOLYCURVE(#1252,$,.F.);', '#1253=IFCINDEXEDPOLYCURVE(#1252,(IFCLINEINDEX((1,2)),IFCARCINDEX((2,3,4)),IFCLINEINDEX((4,5))),.F.);');
+    store = await parse(source);
+    view = new MutablePropertyView(null, 'm');
+    editor = new StoreEditor(store, view);
+    const { copyId } = copyProductInStore(createCopyContext(store, editor), WALL, {}, { shape: 'own' });
+    const body = refs(attr(asRef(attr(copyId, 6))!, 2))[1]!;
+    const solid = asRef((attr(body, 3) as unknown[])[0])!;
+    const curve = asRef(attr(asRef(attr(solid, 0))!, 2))!;
+    expect(attr(curve, 1)).toEqual([
+      { typed: { type: 'IFCLINEINDEX', value: [1, 2] } },
+      { typed: { type: 'IFCARCINDEX', value: [2, 3, 4] } },
+      { typed: { type: 'IFCLINEINDEX', value: [4, 5] } },
+    ]);
+    const text = exported();
+    expect(text).toContain(`#${curve}=IFCINDEXEDPOLYCURVE(`);
+    expect(text).toContain('(IFCLINEINDEX((1,2)),IFCARCINDEX((2,3,4)),IFCLINEINDEX((4,5)))');
+    const reparsed = await parse(text);
+    expect(reparsed.entityIndex.byType.get('IFCWALL')).toHaveLength(2);
+  });
+
   it('keeps sharing by default', () => {
     const { copyId } = copyProductInStore(createCopyContext(store, editor), WALL, { offset: [0, 3, 0] });
     expect(asRef(attr(copyId, 6))).toBe(WALL_SHAPE);

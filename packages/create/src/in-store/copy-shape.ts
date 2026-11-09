@@ -52,8 +52,9 @@ export function cloneShape(ctx: ShapeCopyContext, shapeId: number | null, mode: 
   };
   // `'shared'` keeps copying exactly what it always has: the session's own records.
   const copied = mode === 'shared' ? created : (id: number) => {
-    const type = record(id)?.type.toUpperCase();
-    return !!type && !SHARED_SHAPE_RECORDS.has(type);
+    const rec = record(id);
+    if (!rec) throw new Error(`Cannot copy unreadable shape record #${id}`);
+    return !SHARED_SHAPE_RECORDS.has(rec.type.toUpperCase());
   };
   if (shapeId === null || !copied(shapeId)) return null;
   const copies = new Map<number, number>();

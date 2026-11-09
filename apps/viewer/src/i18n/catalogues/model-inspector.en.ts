@@ -72,5 +72,9 @@ export const modelInspectorEn = {
   'modelInspector.layers.defaultsHint': 'New elements get these layers.',
   'modelInspector.layers.needName': 'Name each new material',
   'modelInspector.layers.needLayer': 'Give every layer a thickness greater than zero',
+  'modelInspector.layers.typeScope': { one: 'Changes {countDisplay} element of this type, with its joins and generated rooms.', other: 'Changes {countDisplay} elements of this type, with their joins and generated rooms.' },
+  'modelInspector.layers.typeOwnLayers': { one: '{countDisplay} keeps its own material.', other: '{countDisplay} keep their own material.' },
+  'modelInspector.layers.notFollowed': { one: '{countDisplay} element kept its previous body:', other: '{countDisplay} elements kept their previous body:' },
+  'modelInspector.layers.keptBody': '{name}: {reason}',
   'modelInspector.hosting.title': 'Hosting',
 } as const satisfies Record<string, TranslationValue>;

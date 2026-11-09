@@ -114,8 +114,11 @@ export function retargetInheritingLayerUsagesInStore(target: EditTarget, typeId:
       DirectionSense: sense === 'NEGATIVE' ? 'NEGATIVE' : 'POSITIVE',
       OffsetFromReferenceLine: offset === null ? 0 : fromNativeLength(anchor, offset),
     }).usageId;
+    type Raw = Parameters<typeof target.editor.setPositionalAttribute>[2];
     // An offset that does not read as a number is carried over exactly as the original usage has it.
-    if (offset === null && attributes?.[3] !== undefined) target.editor.setPositionalAttribute(split, 3, attributes[3] as Parameters<typeof target.editor.setPositionalAttribute>[2]);
+    if (offset === null && attributes?.[3] !== undefined) target.editor.setPositionalAttribute(split, 3, attributes[3] as Raw);
+    // ReferenceExtent (IFC4 and later; IFC2X3's usage has no such slot) is carried over unchanged, in native units.
+    if (attributes?.[4] !== undefined && attributes[4] !== null) target.editor.setPositionalAttribute(split, 4, attributes[4] as Raw);
     assignMaterialInStore(target.editor, anchor, split, followers, readRelatedLists(target.dataStore, 'IfcRelAssociatesMaterial', target.view));
     retargeted.push(...followers);
   }

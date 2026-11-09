@@ -22,8 +22,8 @@ import { retargetInheritingLayerUsagesInStore, typeLayerScopeInStore } from './t
 import { addHostedElementInStore } from './hosted-element.js';
 
 /** A 6 x 4 m room of four joined 0.2 m walls, two of them typed by one wall type, and its generated room. */
-async function typedRoom() {
-  const c = new IfcCreator();
+async function typedRoom(schema: 'IFC4' | 'IFC2X3' = 'IFC4') {
+  const c = new IfcCreator({ Schema: schema });
   const storey = c.addIfcBuildingStorey({ Name: 'Ground', Elevation: 0 });
   const { store } = await parseModel(new TextEncoder().encode(c.toIfc().content), { disableWorkerScan: true });
   const view = new MutablePropertyView(null, 'm'), editor = new StoreEditor(store, view);
@@ -190,4 +190,24 @@ describe('a layered type drives its occurrences, and what they bound follows (#9
     expect(offset(own), 'the split usage carries the original offset').toBe('IFCLENGTHMEASURE(-0.1)');
     expect(offset(shared), 'the shared usage keeps it too').toBe('IFCLENGTHMEASURE(-0.1)');
   });
+
+  for (const schema of ['IFC4', 'IFC2X3'] as const) {
+    it(`a split usage carries the original ReferenceExtent where ${schema} has one (#9296)`, async () => {
+      const m = await typedRoom(schema);
+      m.layerType(.2);
+      const typeSet = typeLayerScopeInStore(m.target, m.type).layerSetId!;
+      const shared = addMaterialLayerSetUsageToStore(m.editor, m.anchor, {
+        ForLayerSet: typeSet, LayerSetDirection: 'AXIS2', OffsetFromReferenceLine: -.1,
+        ...(schema === 'IFC4' ? { ReferenceExtent: 2.5 } : {}),
+      }).usageId;
+      assignMaterialInStore(m.editor, m.anchor, shared, [m.walls[1], m.walls[2]], readRelatedLists(m.store, 'IfcRelAssociatesMaterial', m.view));
+      m.layerType(.3);
+      const own = readRelatedLists(m.store, 'IfcRelAssociatesMaterial', m.view).find(rel => rel.relatedIds.includes(m.walls[1]))!.relatingId!;
+      expect(own).not.toBe(shared);
+      const attrs = (id: number) => effectiveMetadataRecord(m.store, id, m.view)!.attributes;
+      expect(attrs(own).length, 'the schema\'s own IfcMaterialLayerSetUsage layout').toBe(attrs(shared).length);
+      if (schema === 'IFC4') expect(attrs(own)[4], 'the split usage keeps ReferenceExtent').toBe(attrs(shared)[4]);
+      else expect(attrs(own)[4], 'IFC2X3 has no ReferenceExtent slot').toBeUndefined();
+    });
+  }
 });

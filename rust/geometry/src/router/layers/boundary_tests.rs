@@ -204,5 +204,10 @@ fn issue_7887_layer_gateway_admits_raw_items_before_probe_or_member_decode() {
         "only the first, free read of the body renders"
     );
     assert!(router.take_unsupported_items().is_empty(), "#9268 budget is not unsupported");
+    let refusals = router.take_budget_refusals();
+    assert_eq!(refusals.len(), 1, "#9268 ordinary fallback must report its refusal");
+    assert_eq!(refusals[0].product_id, Some(element.id));
+    assert_eq!(refusals[0].budget, "walk Items members");
+
     assert_eq!(decoder.refused_records(), 0);
 }

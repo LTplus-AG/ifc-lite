@@ -81,7 +81,7 @@ fn check(
                 .sum::<usize>(),
             12 * expected_depths.len()
         );
-        check_report(&router, refusal_type);
+        check_report(&router, refusal_type, allowance);
         let parts = router
             .process_element_parts_with_budget(
                 &element,
@@ -95,7 +95,7 @@ fn check(
             12 * expected_depths.len(),
             "merged source/cache path"
         );
-        check_report(&router, refusal_type);
+        check_report(&router, refusal_type, allowance);
     }
     if refusal_type.is_some() && warm {
         let full = router
@@ -117,17 +117,19 @@ fn check(
     }
 }
 
-fn check_report(router: &GeometryRouter, refusal_type: Option<&str>) {
+fn check_report(router: &GeometryRouter, refusal_type: Option<&str>, allowance: u32) {
     assert!(router.take_unsupported_items().is_empty(), "#9268 budget is not unsupported");
     let refusals = router.take_budget_refusals();
     assert_eq!(refusals.len(), usize::from(refusal_type.is_some()));
     if let Some(refusal) = refusals.first() {
         assert_eq!(refusal.product_id, Some(100));
         assert_eq!(refusal.product_type.as_deref(), Some("IfcWall"));
-        let expected = if refusal_type == Some("IfcMappedItem") {
-            ("walk mapped attempts", 3, 4, 3000)
-        } else {
-            ("walk Items members", 4, 5, 170)
+        let expected = match (refusal_type, allowance) {
+            (Some("IfcMappedItem"), 3) => ("walk mapped attempts", 3, 4, 3000),
+            (Some("IfcMappedItem"), 1) => ("walk mapped attempts", 1, 2, 1000),
+            (Some("IfcShapeRepresentation"), 3) => ("walk Items members", 3, 4, 160),
+            (Some("IfcShapeRepresentation"), 4) => ("walk Items members", 4, 5, 170),
+            other => panic!("missing expected refusal for {other:?}"),
         };
         assert_eq!((refusal.budget.as_str(), refusal.limit, refusal.reached, refusal.source_id), expected);
     }

@@ -165,11 +165,15 @@ describe('#7955 M2-C retained scope', () => {
     it(`a refused federated add with ${owner} leaves the load UI ${owner === 'no other load' ? 'idle' : 'to that load'}, with its message shown (#7955)`, async () => {
       chooseGeometryKernel('retained');
       const state = useViewerStore.getState();
-      const running = { phase: 'Processing geometry', percent: 40 };
+      // Distinct values on both sides: a non-zero one that only a settle can
+      // clear, and a running load at exactly 0% that must survive unchanged.
+      const seeded = owner === 'no other load'
+        ? { phase: 'Reading second.ifc', percent: 12 }
+        : { phase: 'Loading file', percent: 0 };
       if (owner !== 'no other load') state.setActiveLoadCanceller(() => {});
       state.setLoading(true);
-      state.setLoadingFileName('second.ifc');
-      state.setProgress(owner === 'no other load' ? { phase: 'Loading file', percent: 0 } : running);
+      state.setLoadingFileName('first.ifc');
+      state.setProgress(seeded);
       try {
         const kernel = harness().begin(stepFile('second.ifc'), 'federated');
         assert.ok(kernel?.refused);
@@ -177,12 +181,14 @@ describe('#7955 M2-C retained scope', () => {
         const after = useViewerStore.getState();
         assert.match(after.error ?? '', /one model at a time/);
         if (owner === 'no other load') {
-          assert.equal(after.loading, false, 'no spinner stuck at 0% without a Cancel');
-          assert.equal(after.progress, null);
+          assert.equal(after.progress, null, 'no progress left without a Cancel');
+          assert.equal(after.loading, false, 'and no spinner');
           assert.equal(after.loadingFileName, null);
         } else {
           assert.equal(after.loading, true, 'the running load keeps its spinner');
-          assert.deepEqual(after.progress, running);
+          assert.equal(after.progress?.phase, 'Loading file', 'and its 0% progress, unchanged');
+          assert.equal(after.progress?.percent, 0);
+          assert.equal(after.loadingFileName, 'first.ifc');
         }
       } finally {
         state.setActiveLoadCanceller(null);

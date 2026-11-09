@@ -24,7 +24,7 @@ export function createRoofIn(store: ModellingStore, modelId: string, storeyExpre
         ensureStoreyPlacement(target.dataStore, editor, storeyExpressId);
         return resolveSpatialAnchor(target.dataStore, storeyExpressId, editor.getMutationView());
       }, element), undefined, true,
-    (id, view) => mirrorNewRoofDefinition(store.getState(), modelId, id, view));
+    (id, view) => mirrorNewRoofDefinition(store, modelId, id, view));
   } catch (error) {
     return { error: error instanceof Error ? error.message : 'Failed to add roof' };
   }

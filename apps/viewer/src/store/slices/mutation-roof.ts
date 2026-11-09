@@ -11,7 +11,6 @@
 
 import { editFootprintRoofInStore, footprintDefinitionProperties, ROOF_FOOTPRINT_PSET, type RoofFootprintEdit, type FootprintRoofDefinition } from '@ifc-lite/create';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
-import type { ViewerState } from '../index.js';
 import type { PropertyValue } from '@ifc-lite/collab';
 import { roomPropertyApi } from '@/lib/collab/room-property-api.js';
 import { pathForEntity } from '@/lib/collab/entity-paths.js';
@@ -20,6 +19,7 @@ import { mutationDenial } from '../mutation-permission.js';
 import { modelEditTarget, recordModellingEdit, type ModelEditTarget, type ModellingStore } from './mutation-modelling-records.js';
 
 export type RoofEditOutcome = { readonly ok: true } | { readonly ok: false; readonly reason: string };
+type RoofDefinition = FootprintRoofDefinition | ReturnType<MutablePropertyView['getForEntity']>[number]['properties'];
 
 export function editRoofIn(store: ModellingStore, modelId: string, expressId: number, patch: RoofFootprintEdit): RoofEditOutcome {
   const refusal = mutationDenial(store.getState(), modelId);
@@ -41,7 +41,7 @@ export function editRoofIn(store: ModellingStore, modelId: string, expressId: nu
 
 /** Yjs does not roll back on throw: restore definition values before peers observe the transaction. */
 function withRoofDefinitionRollback<T>(store: ModellingStore, target: ModelEditTarget, id: number,
-  edit: (publish: (definition: FootprintRoofDefinition) => void) => T): T {
+  edit: (publish: (definition: RoofDefinition) => void) => T): T {
   const state = store.getState();
   const session = roomSlotFor(state, target.modelId) ? state.collabSession : null;
   const path = session ? pathForEntity(target.dataStore, id) : null;
@@ -49,8 +49,11 @@ function withRoofDefinitionRollback<T>(store: ModellingStore, target: ModelEditT
   const room = session && path ? { session, path } : null;
   const api = room ? roomPropertyApi() : null;
   const before = new Map<string, PropertyValue | undefined>();
-  const publish = (definition: FootprintRoofDefinition) => {
-    for (const [name, value, type] of footprintDefinitionProperties(definition)) {
+  const publish = (definition: RoofDefinition) => {
+    // Edits return the definition; creation already recorded it in its draft.
+    const properties = 'Footprint' in definition ? footprintDefinitionProperties(definition)
+      : definition.map(property => [property.name, property.value, property.type] as const);
+    for (const [name, value, type] of properties) {
       if (room && api && !before.has(name)) before.set(name, structuredClone(api.getPropertyValue(room.session.doc, room.path, ROOF_FOOTPRINT_PSET, name)));
       store.getState().mirrorPropertyEdit(target.modelId, id, ROOF_FOOTPRINT_PSET, name, value, type);
     }
@@ -69,9 +72,10 @@ function withRoofDefinitionRollback<T>(store: ModellingStore, target: ModelEditT
 }
 
 /** New roofs use the same definition as edits, on both the SDK and Model tool paths. */
-export function mirrorNewRoofDefinition(state: Pick<ViewerState, 'mirrorPropertyEdit'>, modelId: string, id: number, view: MutablePropertyView): void {
+export function mirrorNewRoofDefinition(store: ModellingStore, modelId: string, id: number, view: MutablePropertyView): void {
   const definition = view.getForEntity(id).find(pset => pset.name === ROOF_FOOTPRINT_PSET);
-  for (const property of definition?.properties ?? []) {
-    state.mirrorPropertyEdit(modelId, id, ROOF_FOOTPRINT_PSET, property.name, property.value, property.type);
-  }
+  if (!definition) return;
+  const target = modelEditTarget(store.getState(), modelId);
+  if (!target) throw new Error(`No model loaded for id "${modelId}"`);
+  withRoofDefinitionRollback(store, target, id, publish => publish(definition.properties));
 }

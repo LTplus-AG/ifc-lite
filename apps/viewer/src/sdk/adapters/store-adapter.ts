@@ -165,7 +165,7 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
     }, (draft, data) => build(draft, data, createOrdinaryStoreBackend(() => ({
       ...resolveModel(modelId), store: data, editor: draft, mutationView: draft.getMutationView(),
     }))), undefined, true, element.kind === 'roof'
-      ? (id, view) => mirrorNewRoofDefinition(store.getState(), normalizedModelId, id, view)
+      ? (id, view) => mirrorNewRoofDefinition({ ...store, setState }, normalizedModelId, id, view)
       : undefined);
     // The builder only wrote the overlay. Book it the way the UI's add actions
     // do — mesh, spatial tree, undo entry, `mutationVersion` — or the element

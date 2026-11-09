@@ -6,12 +6,9 @@
  * Mutation slice - manages property/quantity mutations for IFC export
  */
 
-<<<<<<< HEAD
 import { moveWithGeneratedRooms, notifySkippedRoomRotation, rotateWithGeneratedRooms } from './mutation-placement-rooms.js';
 import { mirrorNewRoofDefinition } from './mutation-roof.js';
-=======
 import { createRoofIn } from './mutation-roof-create.js';
->>>>>>> b5281b3719 (fix(viewer): publish new roof definitions before committing creation (Part of #9296))
 import { type StateCreator } from 'zustand';
 import type { ViewerState } from '../index.js';
 import type { MutablePropertyView, NewEntity, IfcAttributeValue } from '@ifc-lite/mutations';

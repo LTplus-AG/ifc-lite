@@ -1144,3 +1144,7 @@ The `IfcAttributeValue` typed marker accepts `number[]` for IFC4 indexed segment
 `{ typed: { type: 'IfcLineIndex', value: [1, 2] } }` writes `IFCLINEINDEX((1,2))`.
 `IfcArcIndex` requires exactly three indices; all indices must be positive integers.
 Other typed markers continue to accept scalar values.
+
+When migrating an attribute reader, narrow `value.typed.value` with
+`Array.isArray` before passing it to a scalar-only function. The typed payload
+can now contain segment indices as well as a string, number or boolean.

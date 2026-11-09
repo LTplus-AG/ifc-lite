@@ -8,7 +8,7 @@ import { iterateEffectiveEntities } from '@ifc-lite/data';
 import { prepareGeneratedRoomUpdate } from '../../../../../packages/create/src/in-store/generated-room-update.js';
 import { readAttributes } from '../../../../../packages/create/src/in-store/edit/placement-core.js';
 import { GENERATED_SPACE_OBJECTTYPE } from '../../../../../packages/create/src/in-store/generate-spaces.js';
-import { rotateProductYaw } from '@/lib/placement-edit';
+import { resolveRotationState, rotateProductYaw } from '@/lib/placement-edit';
 import { effectiveStoreyId } from '@/lib/effective-storey';
 import { remeshAfterCommit } from '@/lib/remesh/remesh-registry';
 import { modelEditTarget, recordModellingCommit, type ModellingStore } from './mutation-modelling-records';
@@ -51,6 +51,9 @@ export function moveWithGeneratedRooms(
 
 /** Explicit and implicit RefDirection rotations use the same room/history path. */
 export function rotateWithGeneratedRooms(store: ModellingStore, modelId: string, expressId: number, angle: number) {
+  const target = modelEditTarget(store.getState(), modelId);
+  // An unresolved STEP placement still belongs to the existing collab path.
+  if (!target || !resolveRotationState(target.dataStore, target.view, target.editor, expressId)) return null;
   return withGeneratedRooms(store, modelId, expressId,
     (editor, data) => rotateProductYaw(data, editor.getMutationView(), editor, expressId, angle), undefined, true);
 }

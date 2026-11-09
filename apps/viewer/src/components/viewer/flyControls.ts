@@ -26,6 +26,7 @@
  * the browser's pointer-lock negotiation.
  */
 
+import type { Camera } from '@ifc-lite/renderer';
 import { isTextEntryTarget } from '@/lib/keyboard-event';
 import {
   baseFlySpeed,
@@ -43,18 +44,9 @@ import {
 import { flySpeedStore, setFlySpeedState } from './flySpeedStore.js';
 import { createFlyPointerLock } from './flyPointerLock.js';
 
-/** The part of `Camera` fly mode drives. */
-export interface FlyCamera {
-  getPosition(): Vec3;
-  getTarget(): Vec3;
-  setPosition(x: number, y: number, z: number): void;
-  setTarget(x: number, y: number, z: number): void;
-  stopInertia(): void;
-  getSceneBounds(): { min: Vec3; max: Vec3 } | null;
-  /** Read and level the up vector: a look off a plan view (#9501). */
-  getUp?(): Vec3;
-  setUp?(x: number, y: number, z: number): void;
-}
+/** The part of `Camera` fly mode drives; `up` levels a look off a plan view (#9501). */
+export type FlyCamera = Pick<Camera,
+  'getPosition' | 'getTarget' | 'setPosition' | 'setTarget' | 'getUp' | 'setUp' | 'stopInertia' | 'getSceneBounds'>;
 
 type KeyTarget = Pick<Window, 'addEventListener' | 'removeEventListener'>;
 
@@ -193,12 +185,12 @@ export function createFlyController(opts: FlyControllerOptions): FlyController {
   let suppressMenuUntil = -Infinity;
   let velocity: Vec3 = { x: 0, y: 0, z: 0 };
 
-  const pose = (): FlyPose => ({ position: camera.getPosition(), target: camera.getTarget(), up: camera.getUp?.() });
+  const pose = (): FlyPose => ({ position: camera.getPosition(), target: camera.getTarget(), up: camera.getUp() });
   const apply = (next: FlyPose | null): void => {
     if (!next) return;
     camera.setPosition(next.position.x, next.position.y, next.position.z);
     camera.setTarget(next.target.x, next.target.y, next.target.z);
-    if (next.up) camera.setUp?.(next.up.x, next.up.y, next.up.z);
+    if (next.up) camera.setUp(next.up.x, next.up.y, next.up.z);
     onChange();
   };
 

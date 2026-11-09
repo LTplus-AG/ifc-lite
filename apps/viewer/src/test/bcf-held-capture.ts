@@ -36,7 +36,7 @@ export function installHeldCapture(): HeldCapture {
   let cameraBroken = false;
   const camera = {
     getPosition: () => ({ x: 10, y: 5, z: 20 }), getTarget: () => ({ x: 1, y: 2, z: 3 }), getUp: () => ({ x: 0, y: 1, z: 0 }),
-    getFOV: () => Math.PI / 4, getProjectionMode: () => 'perspective', getOrthoSize: () => 10, getAspect: () => 16 / 9,
+    getFOV: () => Math.PI / 4, getProjectionMode: () => 'perspective', getOrthoSize: () => 10, getAspect: () => 16 / 9, getDistance: () => 10,
   };
   const renderer = {
     renderWithResult: () => true,

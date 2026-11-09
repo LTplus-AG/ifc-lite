@@ -2,9 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { useCallback, useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ClashFocusMode } from '@/hooks/useClash';
 import { useBCF } from '@/hooks/useBCF';
+import type { SingleFlight } from '@/hooks/useSingleFlight';
 import { useViewerStore } from '@/store';
 import { toast } from '@/components/ui/toast';
 import {
@@ -55,8 +56,8 @@ interface UseManualClashGroupsOptions {
   sortBy: ClashSortBy;
   focusMode: ClashFocusMode;
   focusClashes: (clashes: readonly Clash[], mode: ClashFocusMode) => FocusedClashGroup | null;
-  creatingTopic: boolean;
-  setCreatingTopic: Dispatch<SetStateAction<boolean>>;
+  /** The panel's shared BCF-topic flight: one capture at a time, stale after the panel closes. */
+  runTopic: SingleFlight['run'];
   showGroups: () => void;
 }
 
@@ -74,8 +75,7 @@ export function useManualClashGroups({
   sortBy,
   focusMode,
   focusClashes,
-  creatingTopic,
-  setCreatingTopic,
+  runTopic,
   showGroups,
 }: UseManualClashGroupsOptions) {
   const definitions = useClashGroupLibrary(state => state.entries.find(entry => entry.id === state.activeId)?.groups ?? EMPTY_MANUAL_GROUPS);
@@ -214,72 +214,72 @@ export function useManualClashGroups({
   }, [definitions, resolved, commit]);
 
   const createBcfTopic = useCallback(async (groupId: string): Promise<void> => {
-    if (creatingTopic) return;
     const group = resolved.find((item) => item.definition.id === groupId);
     if (!group || group.members.length === 0) return;
-    setCreatingTopic(true);
-    try {
-      // Ghosting is a viewer-only presentation channel that BCF cannot replay.
-      // Capture the same A/B colors without the non-serializable context fade.
-      const captureMode = focusMode === 'ghost' ? 'highlight' : focusMode;
-      const focused = focusClashes(group.members, captureMode);
-      if (!focused) {
-        toast.error('None of this group’s objects are available in the loaded models.');
-        return;
+    await runTopic(async (isCurrent) => {
+      try {
+        // Ghosting is a viewer-only presentation channel that BCF cannot replay.
+        // Capture the same A/B colors without the non-serializable context fade.
+        const captureMode = focusMode === 'ghost' ? 'highlight' : focusMode;
+        const focused = focusClashes(group.members, captureMode);
+        if (!focused) {
+          toast.error('None of this group’s objects are available in the loaded models.');
+          return;
+        }
+        const topic = createBCFTopic({
+          title: group.definition.name,
+          description: `${group.members.length} manually grouped clash${group.members.length === 1 ? '' : 'es'}.`,
+          author: bcfAuthor,
+          topicType: 'Clash',
+          topicStatus: 'Open',
+        });
+        const framedCamera = await focused.frameReady;
+        // FRAME-WAIT-ALLOW(#2385): paint the final animated camera pose before capture.
+        await new Promise((resolve) => requestAnimationFrame(resolve));
+        const captureIsCurrent = (): boolean => focusedSceneRevisionIsCurrent(focused)
+          && focusedCameraViewpointIsCurrent(framedCamera);
+        if (!captureIsCurrent()) {
+          if (isCurrent()) toast.error('The loaded models changed while the BCF viewpoint was being captured. Try again.');
+          return;
+        }
+        let visibilityModelIds: readonly string[] = [];
+        const viewpoint = await createViewpointFromState({
+          includeSnapshot: true,
+          includeSelection: false,
+          includeHidden: true,
+          isCaptureStillValid: captureIsCurrent,
+          onVisibilityModelIdsCaptured: (modelIds) => { visibilityModelIds = modelIds; },
+          additionalSelectedGuids: focused.selectedGuids,
+          additionalColoredGuids: [
+            { color: clashColorToBcfArgb(CLASH_COLOR_A), guids: focused.aGuids },
+            { color: clashColorToBcfArgb(CLASH_COLOR_B), guids: focused.bGuids },
+          ].filter((entry) => entry.guids.length > 0),
+          additionalVisibleGuids: focusMode === 'isolate' ? focused.visibleGuids : undefined,
+        });
+        // The panel closed while the viewpoint was captured: report and create nothing.
+        if (!isCurrent()) return;
+        if (!captureIsCurrent()) {
+          toast.error('The loaded models changed while the BCF viewpoint was being captured. Try again.');
+          return;
+        }
+        if (!useViewerStore.getState().bcfProject) {
+          setBcfProject(createBCFProject({ name: 'Clash report' }));
+        }
+        const header = headerFilesForViewpoints(
+          viewpoint ? [viewpoint] : [],
+          topic.creationDate,
+          [...focused.modelIds, ...visibilityModelIds],
+        );
+        if (header.length > 0) topic.header = header;
+        addTopic(topic);
+        if (viewpoint) addViewpoint(topic.guid, viewpoint);
+        toast.success(t('clashTools.bcfTopic.created'), { label: t('clashTools.bcfTopic.open'), onClick: () => setBcfPanelVisible(true) });
+      } catch (error) {
+        console.error('[clash] Manual-group BCF topic creation failed:', error);
+        if (isCurrent()) toast.error('Could not create a BCF topic for this clash group.');
       }
-      const topic = createBCFTopic({
-        title: group.definition.name,
-        description: `${group.members.length} manually grouped clash${group.members.length === 1 ? '' : 'es'}.`,
-        author: bcfAuthor,
-        topicType: 'Clash',
-        topicStatus: 'Open',
-      });
-      const framedCamera = await focused.frameReady;
-      // FRAME-WAIT-ALLOW(#2385): paint the final animated camera pose before capture.
-      await new Promise((resolve) => requestAnimationFrame(resolve));
-      const captureIsCurrent = (): boolean => focusedSceneRevisionIsCurrent(focused)
-        && focusedCameraViewpointIsCurrent(framedCamera);
-      if (!captureIsCurrent()) {
-        toast.error('The loaded models changed while the BCF viewpoint was being captured. Try again.');
-        return;
-      }
-      let visibilityModelIds: readonly string[] = [];
-      const viewpoint = await createViewpointFromState({
-        includeSnapshot: true,
-        includeSelection: false,
-        includeHidden: true,
-        isCaptureStillValid: captureIsCurrent,
-        onVisibilityModelIdsCaptured: (modelIds) => { visibilityModelIds = modelIds; },
-        additionalSelectedGuids: focused.selectedGuids,
-        additionalColoredGuids: [
-          { color: clashColorToBcfArgb(CLASH_COLOR_A), guids: focused.aGuids },
-          { color: clashColorToBcfArgb(CLASH_COLOR_B), guids: focused.bGuids },
-        ].filter((entry) => entry.guids.length > 0),
-        additionalVisibleGuids: focusMode === 'isolate' ? focused.visibleGuids : undefined,
-      });
-      if (!captureIsCurrent()) {
-        toast.error('The loaded models changed while the BCF viewpoint was being captured. Try again.');
-        return;
-      }
-      if (!useViewerStore.getState().bcfProject) {
-        setBcfProject(createBCFProject({ name: 'Clash report' }));
-      }
-      const header = headerFilesForViewpoints(
-        viewpoint ? [viewpoint] : [],
-        topic.creationDate,
-        [...focused.modelIds, ...visibilityModelIds],
-      );
-      if (header.length > 0) topic.header = header;
-      addTopic(topic);
-      if (viewpoint) addViewpoint(topic.guid, viewpoint);
-      toast.success(t('clashTools.bcfTopic.created'), { label: t('clashTools.bcfTopic.open'), onClick: () => setBcfPanelVisible(true) });
-    } catch (error) {
-      console.error('[clash] Manual-group BCF topic creation failed:', error);
-      toast.error('Could not create a BCF topic for this clash group.');
-    } finally {
-      setCreatingTopic(false);
-    }
-  }, [creatingTopic, resolved, setCreatingTopic, focusClashes, focusMode, setBcfProject,
+    });
+  }, [runTopic, resolved, focusClashes, focusMode, setBcfProject,
     bcfAuthor, createViewpointFromState, headerFilesForViewpoints, addTopic, addViewpoint, setBcfPanelVisible, t]);
 
   const dialogProps = useMemo(

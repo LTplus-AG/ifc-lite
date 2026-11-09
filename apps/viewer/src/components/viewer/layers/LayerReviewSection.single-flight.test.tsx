@@ -1,0 +1,74 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/**
+ * C-2 (layer review sibling): "Comment" captures a viewpoint, then posts a
+ * topic to the registry. A same-tick double press posts once, and a capture
+ * that settles after the section unmounted posts nothing. The real viewport
+ * capture runs; only GPU completion is held. Plain-value assertions only.
+ */
+
+import '@/test/setup-dom.js';
+import { afterEach, beforeEach, mock, test } from 'node:test';
+import assert from 'node:assert/strict';
+import { act } from 'react';
+import { useViewerStore } from '@/store';
+import { cleanup, render, type, waitFor } from '@/test/render.js';
+import { installHeldCapture, type HeldCapture } from '@/test/bcf-held-capture.js';
+import type { LayerRegistryClient, RegistryReviewSummary } from '@/lib/layers/registry-client';
+import { LayerReviewSection } from './LayerReviewSection.js';
+
+const REVIEW: RegistryReviewSummary = {
+  id: 'review-1', layerId: 'candidate-1', into: 'main', reviewers: [], status: 'open', openedAt: '2026-01-01T00:00:00.000Z', topics: [],
+};
+
+let capture: HeldCapture;
+let posts = 0;
+const client = {
+  listReviews: async () => ({ reviews: [REVIEW] }),
+  postTopic: async () => { posts += 1; return {}; },
+} as unknown as LayerRegistryClient;
+
+beforeEach(() => {
+  posts = 0;
+  capture = installHeldCapture();
+  useViewerStore.setState({ layerStackPathToId: new Map([['2O2Fr$t4X7Zf8NOew3FLOH', 7]]), selectedEntityId: 7, selectedEntityIds: new Set([7]) });
+});
+afterEach(() => { cleanup(); capture.dispose(); mock.restoreAll(); document.body.innerHTML = ''; });
+
+async function readyToComment(): Promise<HTMLButtonElement> {
+  render(<LayerReviewSection client={client} candidateId="candidate-1" refName="main" />);
+  await waitFor(() => document.body.querySelector('input[aria-label="Review comment title"]') !== null, 'the review loaded');
+  const title = document.body.querySelector<HTMLInputElement>('input[aria-label="Review comment title"]');
+  assert.ok(title, 'title input');
+  type(title, 'Check this wall');
+  const comment = [...document.body.querySelectorAll('button')].find(b => b.textContent?.trim() === 'Comment');
+  assert.ok(comment, 'Comment button');
+  assert.equal(comment.disabled, false);
+  return comment;
+}
+const settle = () => act(async () => { await new Promise(resolve => setTimeout(resolve, 100)); });
+
+test('C-2 layer review: a double-pressed Comment captures one viewpoint and posts one topic', async () => {
+  const comment = await readyToComment();
+  act(() => {
+    comment.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+    comment.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+  });
+  capture.releaseAll();
+  await waitFor(() => posts > 0, 'the topic is posted');
+  await settle();
+  assert.equal(capture.frames(), 1, 'the refused second press never captured a viewpoint');
+  assert.equal(posts, 1);
+});
+
+test('C-2 layer review: a capture that settles after the section unmounted posts nothing', async () => {
+  const comment = await readyToComment();
+  act(() => { comment.dispatchEvent(new window.MouseEvent('click', { bubbles: true })); });
+  await waitFor(() => capture.frames() === 1, 'the viewpoint is capturing');
+  cleanup();
+  capture.releaseAll();
+  await settle();
+  assert.equal(posts, 0);
+});

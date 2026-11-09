@@ -40,6 +40,8 @@ export interface ModelLoadOptions {
   onGaussianLoadSettled?: (outcome: GaussianLoadOutcome) => void;
   /** THIS load's user-visible failure message; the store's `error` may belong to another load by the time the caller reads it. */
   onLoadError?: (message: string) => void;
+  /** A federated target: THIS load registered its model (another load may reuse an explicit id). */
+  onModelRegistered?: () => void;
 }
 
 /** Federation placement/display options share loader ownership and source handles. */

@@ -285,7 +285,9 @@ export function useIfcLoader() {
   ) => {
     assertWorkflowOwner(options?.workflowOwner);
     const draping = drapeIfGeoRaster(file); if (draping) return draping; // #5942: imagery, never a model
-    const geometryKernel = beginGeometryKernel(file, target, () => void loadFileRef.current?.(file, target, options)); if (geometryKernel.refused) return geometryKernel.refused; // #7955 M2: out-of-scope retained requests stop before any work
+    const geometryKernel = beginGeometryKernel(file, target, () => void loadFileRef.current?.(file, target, options)); if (geometryKernel.refused) { // #7955 M2: out-of-scope retained requests stop before any work
+      const refusal = await geometryKernel.refused; if (refusal) options?.onLoadError?.(refusal); return; // the refusal reports itself, not through showLoadError
+    }
     const { resetViewerState, clearAllModels } = useViewerStore.getState();
     // A primary supersedes every outstanding hook owner via the shared canceller.
     // Federated additions capture this hook's session and remain independent.
@@ -646,6 +648,7 @@ export function useIfcLoader() {
           };
           useViewerStore.getState().addModel(federatedModel);
           activity.published = true;
+          options?.onModelRegistered?.();
           // The registry also holds scans that arrived before any compatible
           // anchor. Once this model is visible to `findReferenceSpatialModel`,
           // recompute all scan matrices atomically against the live anchor.

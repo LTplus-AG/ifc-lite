@@ -25,7 +25,13 @@
 #      2026-03-25) fixed it; wasm-bindgen >=0.2.115 is the floor that depends on
 #      it. The bump was taken in its own PR, as this workflow always intended —
 #      a green run here is proof the pin moved, never a workaround for it.
-#   2. Engine-support gate: STILL BLOCKING. Measured on V8 (Chrome/Edge);
+#   2. Engine-support gate: STILL BLOCKING for users, now STAGED in V8.
+#      Measured 2026-11-04 on Node 27.0.0-alpha / V8 15.6.75: the opcodes are
+#      accepted under `--wasm-staging` only (no dedicated flag, not on by
+#      default), and correct in both Liftoff and TurboFan against a BigInt
+#      reference. Browsers do not run staged features by default, so this is
+#      still blocked for users; it does make the determinism step below a
+#      real check every week. Earlier measurements: V8 (Chrome/Edge);
 #      SpiderMonkey and JavaScriptCore were not tested, so treat Firefox/Safari
 #      as unverified rather than assumed.
 #      Measured 2026-07-31 on V8 (Node 22 / V8 12.4 locally, Node 26.5.1 /
@@ -43,11 +49,21 @@
 # means the state moved and someone should look:
 #
 #   * build step red      -> toolchain regression (gate 1 came back)
-#   * tripwire step red   -> the engine now ACCEPTS wide-arithmetic. Good news,
-#                            and the signal this workflow exists to deliver.
+#   * tripwire step red   -> the engine now accepts wide-arithmetic WITHOUT a
+#                            flag. Good news, and the signal this workflow exists
+#                            to deliver. Accepted only behind `--wasm-staging`
+#                            (V8 15.6, Node 27) is the recorded state: green.
 #   * determinism red     -> wide-arithmetic changed the kernel's exact-predicate
-#                            output. Must not ship. Only reachable once the
-#                            engine runs the module at all.
+#                            output. Must not ship. Runs whenever the engine
+#                            accepts the module, flag or not.
+#
+# 3. Compiler gate: LLVM < 23 miscompiles wide-arithmetic. WebAssemblyRegStackify
+#    stackified the first of i64.mul_wide_s's two results, so `i64::checked_mul`
+#    compared a stale operand instead of the high word and reported overflow for
+#    5 * 7 (first seen here 2026-11-04 as an i_float "attempt to multiply with
+#    overflow" panic). Fixed by llvm/llvm-project#200429, LLVM 23 only. The repo
+#    pin (nightly-2025-11-15) is LLVM 21, so the wide bundle and its test build
+#    on WIDE_TOOLCHAIN below; scripts/build-wasm.sh refuses LLVM < 23.
 #
 # Cost: weekly + on-demand only, same profile as determinism.yml, and
 # deliberately NOT a `pull_request` trigger — this must never become a
@@ -78,6 +94,9 @@ env:
     -C link-arg=--max-memory=4294967296
     -C link-arg=-zstack-size=8388608
     -C target-feature=+simd128,+wide-arithmetic
+  # Must match WIDE_TOOLCHAIN's default in scripts/build-wasm.sh. Newer than the
+  # repo pin because LLVM < 23 miscompiles wide-arithmetic (gate 3 above).
+  WIDE_TOOLCHAIN: nightly-2026-10-15
 
 jobs:
   wide-arithmetic-tripwire:
@@ -115,6 +134,14 @@ jobs:
 
       - name: Install wasm-tools
         run: command -v wasm-tools || cargo install wasm-tools --version 1.254.0 --locked
+
+      # Gate 3: the wide bundle needs LLVM >= 23 (see the header). The repo pin
+      # stays on its own nightly; only the wide build and its test use this one.
+      - name: Install wide-arithmetic toolchain (${{ env.WIDE_TOOLCHAIN }})
+        run: |
+          rustup toolchain install "$WIDE_TOOLCHAIN" --profile minimal \
+            --target wasm32-unknown-unknown --component rust-src
+          rustup run "$WIDE_TOOLCHAIN" rustc -vV | grep -E '^(release|LLVM version):'
 
       # --- Gate 1: build-toolchain -----------------------------------------
       # Runs the repo's OWN BUILD_WIDE=1 path exactly as scripts/build-wasm.sh
@@ -334,6 +361,9 @@ jobs:
           || steps.engine_probe.outputs.support == 'flag')
         env:
           RUSTFLAGS: ${{ env.WIDE_ARITH_RUSTFLAGS }}
+          # Same toolchain as the bundle: on the repo pin (LLVM 21) this step
+          # fails on the miscompile, not on anything wide-arithmetic does.
+          RUSTUP_TOOLCHAIN: ${{ env.WIDE_TOOLCHAIN }}
           # NODE_ARGS (honored by wasm-bindgen-test-runner) passes V8 flags as
           # direct node argv: they are NOT allowed inside NODE_OPTIONS (node
           # exits with "not allowed in NODE_OPTIONS"). Empty when the feature
@@ -362,6 +392,12 @@ jobs:
           echo "A walrus / \"wide arithmetic support is not enabled\" parse error should not appear"
           echo "either, since pkg-wide built. If one does, this compile of the TEST crate differs"
           echo "from the bundle build -> compare their features/flags, not the kernel."
+          echo ""
+          echo "An \"attempt to multiply with overflow\" (or add/subtract) panic on ordinary inputs"
+          echo "points at the COMPILER first: LLVM < 23 miscompiles i64 overflow checks under"
+          echo "+wide-arithmetic (llvm/llvm-project#200429). Check this step ran on"
+          echo "\$WIDE_TOOLCHAIN (${WIDE_TOOLCHAIN}) and that its LLVM is >= 23 before suspecting"
+          echo "the kernel or the engine."
 
       # The actual tripwire. Blocked-on-V8 is the known state, so it is GREEN:
       # a lane that is permanently red teaches everyone to ignore it, which is
@@ -371,20 +407,45 @@ jobs:
       # Accepted trade-off: once an engine does ship the feature, every run here
       # is red until someone flips BUILD_WIDE or updates this lane. That is
       # deliberate — it is a standing demand for a decision, not a status light.
+      #
+      # Flag-only support is not this signal. Users' browsers do not run staged
+      # wasm features, so `--wasm-staging` acceptance (V8 15.6, first seen
+      # 2026-11-04) is recorded as the known state below and stays green as long
+      # as the determinism step passes under it.
       - name: Tripwire — engine support changed
-        if: always() && !cancelled() && (steps.engine_probe.outputs.support == 'default'
-          || steps.engine_probe.outputs.support == 'flag')
+        if: always() && !cancelled() && steps.engine_probe.outputs.support == 'default'
         env:
           ENGINE_SUPPORT: ${{ steps.engine_probe.outputs.support }}
           ENGINE: ${{ steps.engine_probe.outputs.engine }}
         run: |
-          echo "::error::wide-arithmetic is now ENGINE-SUPPORTED on ${ENGINE} (${ENGINE_SUPPORT}) — this lane is red on purpose."
+          echo "::error::wide-arithmetic is now ENGINE-SUPPORTED WITHOUT A FLAG on ${ENGINE} (${ENGINE_SUPPORT}) — this lane is red on purpose."
           echo ""
           echo "This is the signal the tripwire exists to give, not a regression."
           echo "Next steps: confirm the determinism step above passed, then re-evaluate"
           echo "flipping BUILD_WIDE and update docs/architecture/wasm-wide-arithmetic.md"
           echo "(blocker 2) plus the expected state encoded in this workflow."
           exit 1
+
+      - name: Record staged-behind-flag state (expected)
+        if: always() && !cancelled() && steps.engine_probe.outputs.support == 'flag'
+        env:
+          ENGINE: ${{ steps.engine_probe.outputs.engine }}
+          NODE_FLAG: ${{ steps.engine_probe.outputs.node_args }}
+          DETERMINISM: ${{ steps.determinism_check.outcome }}
+        run: |
+          {
+            echo "### Gate 2: engine support — staged behind a flag (expected)"
+            echo ""
+            echo "Measured on **${ENGINE}**: the wide-arithmetic opcodes validate only under"
+            echo "\`${NODE_FLAG}\`. Browsers do not enable staged wasm features by default, so"
+            echo "this is still blocked for users (blocker 2 in"
+            echo "docs/architecture/wasm-wide-arithmetic.md)."
+            echo ""
+            echo "wasm32 mesh determinism under that flag, built on \`${WIDE_TOOLCHAIN}\`: **${DETERMINISM}**."
+            echo ""
+            echo "The lane turns red when an engine accepts the opcodes with no flag, or when"
+            echo "the determinism check above fails."
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Record blocked-on-engine state (expected)
         if: always() && !cancelled() && steps.engine_probe.outputs.support == 'unsupported'

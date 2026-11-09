@@ -243,12 +243,32 @@ fi
 # engines without the proposal load the `pkg` bundle and are unaffected.
 if [ "${BUILD_WIDE:-}" = "1" ]; then
   WIDE_OUT="../../packages/wasm/pkg-wide"
+  # Its own toolchain, newer than the repo pin (rust-toolchain.toml), because
+  # LLVM < 23 miscompiles wide-arithmetic: WebAssemblyRegStackify stackified the
+  # first result of the two-result i64.mul_wide_s, so `i64::checked_mul` compared
+  # a stale operand instead of the high word and reported overflow for 5 * 7.
+  # Fixed upstream by llvm/llvm-project#200429 (LLVM 23 only; LLVM 22.1.8 is
+  # still affected). The default bundles never emit these ops, so they stay on
+  # the repo pin. Override with WIDE_TOOLCHAIN=... to try another nightly; the
+  # LLVM check below still applies. See docs/architecture/wasm-wide-arithmetic.md.
+  WIDE_TOOLCHAIN="${WIDE_TOOLCHAIN:-nightly-2026-10-15}"
+  WIDE_LLVM_MAJOR="$(rustup run "$WIDE_TOOLCHAIN" rustc -vV 2>/dev/null | sed -n 's/^LLVM version: \([0-9]*\).*/\1/p')"
+  if [ -z "$WIDE_LLVM_MAJOR" ]; then
+    echo "🔢 ❌ cannot read the LLVM version of $WIDE_TOOLCHAIN — install it with:"
+    echo "      rustup toolchain install $WIDE_TOOLCHAIN --profile minimal --target wasm32-unknown-unknown --component rust-src"
+    exit 1
+  fi
+  if [ "$WIDE_LLVM_MAJOR" -lt 23 ]; then
+    echo "🔢 ❌ $WIDE_TOOLCHAIN uses LLVM $WIDE_LLVM_MAJOR, which miscompiles i64 overflow checks under"
+    echo "      +wide-arithmetic (llvm/llvm-project#200429, fixed in LLVM 23). Refusing to build a wrong bundle."
+    exit 1
+  fi
   echo ""
-  echo "🔢 Building wide-arithmetic bundle → $WIDE_OUT (+wide-arithmetic)"
+  echo "🔢 Building wide-arithmetic bundle → $WIDE_OUT (+wide-arithmetic, $WIDE_TOOLCHAIN / LLVM $WIDE_LLVM_MAJOR)"
   # RUSTFLAGS fully replaces .cargo/config.toml's target rustflags, so repeat the
   # base flags (max-memory, stack-size, simd128) and add +wide-arithmetic.
   RUSTFLAGS="-C link-arg=--max-memory=4294967296 -C link-arg=-zstack-size=8388608 -C target-feature=+simd128,+wide-arithmetic" \
-  rustup run nightly-2025-11-15 "$WASM_PACK" build rust/wasm-bindings \
+  rustup run "$WIDE_TOOLCHAIN" "$WASM_PACK" build rust/wasm-bindings \
     --target web \
     --out-dir "$WIDE_OUT" \
     --out-name ifc-lite \

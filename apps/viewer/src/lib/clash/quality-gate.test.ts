@@ -5,7 +5,8 @@
 import '@/test/setup-dom.js';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { createClashEngine, findDuplicates, type ClashElement } from '@ifc-lite/clash';
+import { createClashEngine, findDuplicates, clashReviewKey, clashTableRows, type ClashElement } from '@ifc-lite/clash';
+import { elementPairExclusion, applyClashExclusions } from './exclusions';
 import { captureQualityGates, defaultQualityGateConfig, evaluateQualityGates, isQualityGateConfig, isQualityGateSnapshot, qualityBand, displayQualityPercent } from './quality-gate';
 import { snapshotClashReport, isSavedClashReport } from './saved-report';
 import { rememberRunRequest } from './run-request';
@@ -25,6 +26,29 @@ const rule = { id: 'walls', name: 'Walls {Model.Name}', a: 'IfcWall', mode: 'har
 const run = (elements: ClashElement[]) => engine().run(elements, [rule]);
 
 describe('Object quality gate invariants (#9259)', () => {
+  it('keeps review and pair exclusions local to a repeated-GUID finding (#9430)', async () => {
+    const result = await run([box('K', 'A', 101), box('K', 'A', 102), box('T', 'A', 103)]);
+    assert.equal(result.clashes.length, 3);
+    const pair = (a: number, b: number) => result.clashes.find(clash =>
+      new Set([clash.a.ref, clash.b.ref]).has(a) && new Set([clash.a.ref, clash.b.ref]).has(b));
+    const chosen = pair(101, 103);
+    assert.ok(chosen);
+    const sibling = pair(102, 103);
+    assert.ok(sibling);
+    assert.notEqual(clashReviewKey(chosen), clashReviewKey(sibling));
+    const reviews = new Map([[clashReviewKey(chosen), { status: 'accepted' as const }]]);
+    const rows = clashTableRows(result.clashes, { reviews });
+    assert.equal(rows.find(row => row.ClashId === chosen.id)?.Review, 'accepted');
+    assert.equal(rows.find(row => row.ClashId === sibling.id)?.Review, 'open');
+    const exclusion = elementPairExclusion(chosen.a, chosen.b);
+    const filtered = applyClashExclusions(result, [exclusion]);
+    assert.equal(filtered.result?.clashes.length, 2);
+    assert.ok(filtered.result?.clashes.some(clash => clash.id === sibling.id));
+    assert.equal(evaluateQualityGates(result)[0].affected, 3, 'raw scoring is unchanged by user decisions');
+    const renumbered = { ...chosen,
+      ...(chosen.a.keyAmbiguous ? { a: { ...chosen.a, ref: 201 } } : { b: { ...chosen.b, ref: 201 } }) };
+    assert.notEqual(clashReviewKey(chosen), clashReviewKey(renumbered), 'ambiguous lineage fails closed after renumbering');
+  });
   it('keeps a duplicate report readable when raw coverage is unavailable (#9430)', () => {
     const result = findDuplicates([box('a', 'A', 1), box('b', 'A', 2)]);
     rememberRunRequest(result, { kind: 'duplicates' });

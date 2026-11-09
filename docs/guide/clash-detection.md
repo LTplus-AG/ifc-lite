@@ -237,7 +237,17 @@ IFC entity in the file.
 For files containing repeated GlobalIds, clash IDs now include entity references
 to distinguish the affected objects. Comparing a new run against an older saved
 run can therefore show resolved and added findings. Establish a new baseline
-after upgrading. Clash IDs for objects with unique GlobalIds are unchanged.
+after upgrading. Ordinary identifiers retain their previous IDs. Keys, model
+IDs and rule IDs containing whitespace or a reserved encoding prefix are now
+escaped to prevent identity collisions.
+Review decisions and element-pair exclusions also distinguish repeated-key
+objects by entity reference. They do not carry over if those ambiguous objects
+are renumbered: review them again rather than applying a decision to the wrong
+object. Detection-time exclusions remain key-based and cover every occurrence
+of a key, as requested by the caller.
+Integrations should use `clashElementIdentity(ref)` for element-pair decisions;
+the engine marks repeated-key endpoints with `keyAmbiguous` while retaining
+their original `key` for model lookups and exports.
 
 **Saved clash reports** captures the gate, the current category policy and model
 identities with the run's rule and tolerances. Later preference edits leave that

@@ -121,6 +121,7 @@ export function portableAnalysisRun(run: CapturedRun, state: BindingState, now =
       const model = state.models.get(element.model);
       if (!model) return null;
       return { key: rekey(element.key, id => keyOf.get(id)), model: key(element.model), tag: element.tag, ...(element.name !== undefined ? { name: element.name } : {}),
+        ...(element.keyAmbiguous ? { keyAmbiguous: true as const } : {}),
         expressId: element.ref - model.idOffset };
     };
     const clashes: SavedRunClash[] = [];

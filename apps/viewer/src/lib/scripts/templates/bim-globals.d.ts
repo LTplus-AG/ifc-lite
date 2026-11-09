@@ -798,6 +798,9 @@ declare namespace BimClash {
   export interface ClashElementRef {
     key: string;
     ref: number;
+    /** This run found distinct source objects with this key in the same model.
+     * Review/exclusion identity must include ref rather than trust the repeated key. */
+    keyAmbiguous?: true;
     model: string;
     tag: string;
     name?: string;

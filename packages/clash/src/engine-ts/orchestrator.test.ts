@@ -136,6 +136,16 @@ describe('runClash: exclusions', () => {
 });
 
 describe('runClash: identity / dedup', () => {
+  it('never merges a repeated GlobalId with a literal suffix or encoded-looking key (#9430)', async () => {
+    const first = { ...element('K', 'IfcWall'), ref: 101 };
+    const elements = [first, { ...first, ref: 102 },
+      { ...first, key: 'K#101', ref: 103 }, { ...first, key: '@["m","K",101]', ref: 104 },
+      { ...element('T', 'IfcDuct'), ref: 105 }];
+    const result = await run(elements, [hard('r')], [[rec(0, 4), rec(1, 4), rec(2, 4), rec(3, 4)]]);
+    expect(result.clashes).toHaveLength(4);
+    expect(new Set(result.clashes.map(clash => clash.id)).size).toBe(4);
+    expect(result.clashes.filter(clash => clash.a.keyAmbiguous)).toHaveLength(2);
+  });
   it('keeps separate findings for repeated GlobalIds with distinct refs (#9430)', async () => {
     const first = { ...element('K', 'IfcWall'), ref: 101 };
     const elements = [first, { ...first, ref: 102 }, { ...element('T', 'IfcDuct'), ref: 103 }];

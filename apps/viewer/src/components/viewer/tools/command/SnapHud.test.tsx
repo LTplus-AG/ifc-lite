@@ -59,6 +59,14 @@ function withCamera(): void {
 const glyphKind = (root: ParentNode) =>
   root.querySelector('[data-scene-primitive="snap-glyph"]')?.getAttribute('data-snap-kind') ?? null;
 
+it('#9296 blank-space increment has a visible glyph and suspension hint', () => {
+  routeCommandPointer(fakeCtx(), 'down', 820.7, 820.7);
+  const { container: ui, flush } = renderScene(<CommandScene />);
+  flush();
+  assert.equal(glyphKind(ui), 'grid');
+  assert.match(ui.querySelector('[data-snap-increment]')?.textContent ?? '', /Increment 100\s*mm.*Alt/);
+});
+
 beforeEach(async () => {
   await seedModelingSession();
   withCamera();

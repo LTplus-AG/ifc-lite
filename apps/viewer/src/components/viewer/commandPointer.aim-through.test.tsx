@@ -13,6 +13,7 @@ import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { useViewerStore } from '@/store';
+import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { MODEL_ID, STOREY, seedModelingSession } from '@/test/modeling-session-fixture';
 import { cleanup, render } from '@/test/render.js';
 import '@/lib/commands/modeling/builtin';
@@ -20,7 +21,7 @@ import { aimHint } from '@/lib/commands/modeling/aim-hint';
 import { forgetCommandPointer, replayCommandPointer } from '@/lib/commands/modeling/pointer-replay';
 import { getModelingCommand } from '@/lib/commands/modeling/registry';
 import { getCommandRuntime, useCommandRuntime } from '@/lib/commands/modeling/runtime';
-import { pointerAim } from '@/lib/commands/modeling/snap-solve';
+import { pointerAim, solveCommandSnap } from '@/lib/commands/modeling/snap-solve';
 import { resolve as translate } from '@/i18n/registry';
 import { routeCommandPointer } from './commandPointer.js';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
@@ -39,7 +40,7 @@ type Surface = (x: number, y: number) => { x: number; y: number; z: number };
 /** By default a slab top: 0.3 m up and 0.5 m off the floor point the ray reaches. */
 const SLAB_TOP: Surface = (x, y) => ({ x: x / 100 + 0.5, y: 0.3, z: y / 100 });
 
-function pointer(surface: Surface = SLAB_TOP, snapEnabled = true, up = false) {
+function pointer(surface: Surface = SLAB_TOP, snapEnabled = true, up = false, magnetic?: (x: number, y: number) => unknown) {
   const canvas = { width: 1000, height: 1000, getBoundingClientRect: () => ({ left: 0, top: 0, width: 1000, height: 1000 }) };
   const intersection = (x: number, y: number) => ({ point: surface(x, y), expressId: 1 });
   return {
@@ -48,7 +49,7 @@ function pointer(surface: Surface = SLAB_TOP, snapEnabled = true, up = false) {
       getCamera: () => ({ unprojectToRay: (sx: number, sy: number) => ({ origin: { x: sx / 100, y: 20, z: sy / 100 }, direction: { x: 0, y: up ? 1 : -1, z: 0 } }) }),
       getCanvas: () => canvas,
       raycastScene: (x: number, y: number) => ({ intersection: intersection(x, y) }),
-      raycastSceneMagnetic: (x: number, y: number) => ({ snapTarget: null, intersection: intersection(x, y), edgeLock: NO_LOCK }),
+      raycastSceneMagnetic: magnetic ?? ((x: number, y: number) => ({ snapTarget: null, intersection: intersection(x, y), edgeLock: NO_LOCK })),
     },
     getPickOptions: () => ({ isStreaming: false, hiddenIds: new Set<number>(), isolatedIds: null }),
     edgeLockStateRef: { current: { edge: null, meshExpressId: null, lockStrength: 0 } },
@@ -80,6 +81,39 @@ afterEach(() => {
 });
 
 describe('aiming through to the workplane (#9201)', () => {
+  it('#9296 snaps blank-model clicks to a zoom-scaled increment and Alt suspends it', () => {
+    const ctx = pointer(SLAB_TOP, true, false, () => null);
+    click(ctx, 123.7, -234.7);
+    assert.equal(landed().winner, 'grid');
+    assert.deepEqual(landed().local, [1.2, 2.3]);
+    click(ctx, 123.7, -234.7, true);
+    assert.deepEqual(landed().local, [1.237, 2.347]);
+  });
+  it('#9296 the increment follows zoom from 100mm to 10mm', () => {
+    const runtime = getCommandRuntime();
+    for (const [metresPerPixel, step, expected] of [[0.01, 0.1, [1.2,2.3]], [0.001, 0.01, [1.24,2.35]]] as const) {
+      const snap = solveCommandSnap(runtime, runtime.ctx!.workplane!, { cursor: [1.237,2.347], metresPerPixel, sources: [], mods: { shiftKey: false, altKey: false } });
+      assert.equal(snap?.winner?.increment, step);
+      assert.deepEqual(snap?.local.map((v) => +v.toFixed(3)), expected);
+    }
+  });
+  for (const modelCount of [1, 2]) for (const [x, expected] of [[400, [4, 0]], [200, [2, 0]]] as const) {
+    it(`#9296 wall body snap at ${x} continues on its reference axis with ${modelCount} model(s)`, () => {
+      const result = useViewerStore.getState().addWall(MODEL_ID, STOREY, { Start: [0,0,0], End: [4,0,0], Thickness: 0.2, Height: 3 });
+      assert.ok('expressId' in result);
+      if (modelCount === 2) {
+        const current = useViewerStore.getState().models.get(MODEL_ID)!;
+        useViewerStore.setState(fixtureModels(current, fixtureModel('other', { idOffset: 1_000_000 })));
+      }
+      const ctx = pointer((sx, sy) => ({ x: sx / 100, y: 0, z: sy / 100 }), true, false, () => ({
+        intersection: { point: { x: x / 100, y: 0, z: 0.1 }, expressId: result.expressId },
+        snapTarget: { type: x === 200 ? 'edge' : 'vertex', position: { x: x / 100, y: 0, z: 0.1 }, expressId: result.expressId, confidence: 1, metadata: { vertices: [{ x: 0, y: 0, z: 0.1 }, { x: 4, y: 0, z: 0.1 }] } }, edgeLock: NO_LOCK,
+      }));
+      click(ctx, x, 10);
+      assert.deepEqual(landed().local, expected);
+    });
+  }
+
   it('a plain click lands under what you see, so drawing on top of a slab keeps working', () => {
     click(pointer(), 300, -300);
     assert.deepEqual(landed().local, [3.5, 3]);

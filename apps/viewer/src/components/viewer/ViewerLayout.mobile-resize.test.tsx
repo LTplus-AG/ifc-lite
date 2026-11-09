@@ -85,6 +85,41 @@ describe('ViewerLayout desktop split (#5873)', () => {
       if (originalOffsetWidth) Object.defineProperty(HTMLElement.prototype, 'offsetWidth', originalOffsetWidth);
       else delete (HTMLElement.prototype as { offsetWidth?: number }).offsetWidth;
     }
+  });  it('#9296 reserves the plan and 3D beside Defaults at 1600×900', async () => {
+    const { seedModelingSession } = await import('@/test/modeling-session-fixture');
+    const previousPanel = useViewerStore.getState().sidebarActivePanel;
+    setViewport(1600, 900);
+    // A model in flight: the empty start screen folds Hierarchy away, and this
+    // pins the split it gets once there is something to show.
+    useViewerStore.setState({ leftPanelCollapsed: false, loading: false, sidebarActivePanel: 'model' });
+    const originalOffsetWidth = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetWidth');
+    // Happy DOM reports zero layout width. Give the real panel group a desktop
+    // measurement so its own sizing algorithm applies the configured split.
+    Object.defineProperty(HTMLElement.prototype, 'offsetWidth', {
+      configurable: true,
+      get(this: HTMLElement) {
+        if (this.id === 'left-panel') return 350;
+        if (this.id === 'viewport-panel') return 1200;
+        return originalOffsetWidth?.get?.call(this) ?? 0;
+      },
+    });
+    try {
+      const ui = renderViewerLayout();
+      await act(async () => { await seedModelingSession(); useViewerStore.getState().enterModelWorkspace(); });
+      const hierarchy = ui.querySelector<HTMLElement>('#left-panel');
+      const viewport = ui.querySelector<HTMLElement>('#viewport-panel');
+      assert.ok(hierarchy && viewport, 'the desktop hierarchy and viewport are both mounted');
+
+      const hierarchySize = Number.parseFloat(hierarchy.style.flexGrow);
+      const viewportSize = Number.parseFloat(viewport.style.flexGrow);
+      assert.ok(hierarchySize <= 18, `hierarchy received ${hierarchySize}%`);
+      assert.ok(Math.abs(hierarchySize + viewportSize - 100) < 0.01, 'the initial split must total 100%');
+    } finally {
+      cleanup();
+      act(() => { useViewerStore.getState().exitModelWorkspace(); useViewerStore.getState().clearAllModels(); useViewerStore.setState({ sidebarActivePanel: previousPanel }); });
+      if (originalOffsetWidth) Object.defineProperty(HTMLElement.prototype, 'offsetWidth', originalOffsetWidth);
+      else delete (HTMLElement.prototype as { offsetWidth?: number }).offsetWidth;
+    }
   });
 });
 

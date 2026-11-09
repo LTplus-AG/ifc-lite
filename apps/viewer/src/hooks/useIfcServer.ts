@@ -123,6 +123,7 @@ export function useIfcServer() {
      * post-stream/post-parse result) writes nothing.
      */
     isStale?: () => boolean,
+    signal?: AbortSignal,
   ): Promise<boolean> => {
     const { setProgress, setIfcDataStore, setGeometryResult } = useViewerStore.getState();
     try {
@@ -377,8 +378,8 @@ export function useIfcServer() {
       // Data model is processed on server in background, fetch via separate endpoint
       const cacheKey = result.cache_key;
 
-      // Start data model fetch in background - don't block rendering
-      (async () => {
+      // Geometry is displayed; keep this load cancellable until properties settle.
+      await (async () => {
         if (isStale?.()) return;
         setProgress({ phase: 'Fetching data model', percent: 85 });
         try {
@@ -390,7 +391,7 @@ export function useIfcServer() {
           }
 
           if (!dataModelBuffer || dataModelBuffer.byteLength === 0) {
-            dataModelBuffer = await client.fetchDataModel(cacheKey);
+            dataModelBuffer = await client.fetchDataModel(cacheKey, { signal });
           }
 
           if (!dataModelBuffer) {
@@ -415,9 +416,10 @@ export function useIfcServer() {
             console.warn('[useIfc] Server data model fetch/decode failed; geometry shown without properties:', err);
           }
         }
-      })(); // End of async data model fetch block - runs in background, doesn't block
+      })();
 
-      // Geometry is ready - mark complete immediately (data model loads in background)
+      if (isStale?.() || signal?.aborted) return false;
+      // Geometry and the optional property request have settled.
       setProgress({ phase: 'Complete', percent: 100 });
       return true;
     } catch (err) {

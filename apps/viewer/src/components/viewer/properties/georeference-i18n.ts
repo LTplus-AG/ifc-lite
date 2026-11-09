@@ -28,6 +28,8 @@ export function localizedScaleOverride(t: Translate, locale: string, found: Doub
 }
 
 export function localizedRawValuesNote(t: Translate, locale: string, found: DoubleGeoreference): string {
+  // #9480: no conversion edit bakes this in; see exportCorrectionInstruction.
+  if (found.anchorUnitRatio !== null) return t('properties.georef.rawValuesSiteAnchorFix');
   const edits = [
     t('properties.georef.correctionOffsets'),
     t('properties.georef.correctionAngle'),
@@ -42,4 +44,17 @@ export function localizedRawValuesNote(t: Translate, locale: string, found: Doub
   };
   if (found.factorsForExport.length === 0) return t('properties.georef.rawValuesCorrection', params);
   return t('properties.georef.rawValuesCorrectionFactor', params);
+}
+
+/**
+ * The #9480 note: the IfcSite placement wrote the anchor in the map unit, so
+ * the factor is quoted as the larger-than-one ratio between the two units.
+ */
+export function localizedSiteAnchorUnitNote(t: Translate, locale: string, found: DoubleGeoreference): string | null {
+  const ratio = found.anchorUnitRatio;
+  if (ratio === null) return null;
+  const factor = ratio < 1 ? 1 / ratio : ratio;
+  return t('properties.georef.siteAnchorUnitNote', {
+    ratio: formatLocaleNumber(locale, factor, { maximumFractionDigits: 4 }),
+  });
 }

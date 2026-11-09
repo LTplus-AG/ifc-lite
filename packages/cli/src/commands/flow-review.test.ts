@@ -23,6 +23,7 @@ import { fileURLToPath } from 'node:url';
 import { TRACKING_SIDECAR_VERSION, FLOW_VERSION, NodeRegistry, runFlow, type FlowDocument } from '@ifc-lite/flow';
 import { createCheckpoint } from '@ifc-lite/flow/checkpoint';
 import { flowCommand } from './flow.js';
+import { savePause } from './flow-review.js';
 import { FileCheckpointStore } from '@ifc-lite/flow/checkpoint-file';
 import { createHeadlessContext } from '../loader.js';
 import { createRootBudget } from '@ifc-lite/ai';
@@ -84,6 +85,23 @@ beforeEach(() => {
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); });
 
 describe('ifc-lite flow: reviewed AI pause and resume', () => {
+  it('#9540 a legacy lock prints safe upgrade/removal instructions and stays on disk', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'ifc-flow-legacy-'));
+    const checkpoint = join(dir, 'cp.json');
+    await writeFile(`${checkpoint}.lock`, '');
+    provider();
+    const c = capture();
+    exits();
+    await expect(flowCommand(['run', AI_FLOW, SAMPLE_IFC, '--checkpoint', checkpoint, '--no-tracking'])).rejects.toThrow('exit 1');
+    const diagnostic = c.err.join('');
+    expect(diagnostic).toContain(`${checkpoint}.lock`);
+    expect(diagnostic).toContain('older writer');
+    expect(diagnostic).toContain('Upgrade all writers sharing this checkpoint directory together');
+    expect(diagnostic).toContain('Stop all writers and verify none is active before manually removing only this lock file');
+    expect(await readFile(`${checkpoint}.lock`, 'utf-8')).toBe('');
+    await expect(readFile(checkpoint)).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
   it('#7039 a read-only pause exported with --out resumes from those exact bytes', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'ifc-flow-exported-pause-'));
     const checkpoint = join(dir, 'cp.json');
@@ -180,9 +198,15 @@ describe('ifc-lite flow: reviewed AI pause and resume', () => {
     const stalePath = join(dir, 'stale.json');
     await writeFile(`${stalePath}.lock`, '');
     await utimes(`${stalePath}.lock`, new Date(0), new Date(0));
-    const contenders = await Promise.all(candidates.map(candidate => new FileCheckpointStore(stalePath).write(candidate, null)));
-    expect(contenders).toEqual([false, false]);
+    // #9540 legacy files have no recoverable identity and must be diagnosed.
+    await Promise.all(candidates.map(candidate =>
+      expect(new FileCheckpointStore(stalePath).write(candidate, null)).rejects.toThrow('has no PID')));
     expect(await readFile(`${stalePath}.lock`, 'utf-8')).toBe('');
+    // #9540 unrelated persistence failures must not become legacy-lock advice.
+    for (const failure of [new Error('checkpoint disk failure'), 'non-Error disk failure']) {
+      vi.spyOn(FileCheckpointStore.prototype, 'write').mockRejectedValueOnce(failure);
+      await expect(savePause(join(dir, 'failed.json'), stored.checkpoint)).rejects.toBe(failure);
+    }
 
 
     vi.restoreAllMocks();

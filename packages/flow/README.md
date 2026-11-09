@@ -121,4 +121,8 @@ treated as a lock conflict; native Windows execution has not been validated.
 
 Legacy empty `.lock` files have no provable owner identity: writes report an
 actionable error instead of guessing. Verify no writer is active before
-removing such a legacy file. Keep one writer version on a shared checkpoint.
+removing such a legacy file. **All writers sharing a checkpoint directory must
+be upgraded together.** Do not mix old and new writers: the lock protocol changes
+from an exclusive file to an owner-tagged directory, and old writers do not
+understand the new ownership/recovery protocol. Stop all writers, upgrade them
+together, and verify none remains active before manually removing an old lock.

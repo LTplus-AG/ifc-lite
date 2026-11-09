@@ -37,6 +37,7 @@ import { commitElementAlignment, commitElementTransform, planSelectionTransform 
 import { writeReviewedStoreyReassignment } from './model-authoring-storey-reassignment';
 import { writeNativeSplit } from './model-authoring-split';
 import { recordModellingEdit, recordModellingCommit } from '@/store/slices/mutation-modelling-records';
+import { takeLayerFollow } from '@/lib/authoring/material-layers';
 import { toMetres, type AuthoringOp, type ModelAuthoringBatch } from './model-authoring';
 import { authoredElementOf, hostedSpecOf, idOf, writeRelation, writeNativeTypeDetach } from './model-authoring-native';
 import { previewModelAuthoring, type AuthoringRow, type ModelAuthoringPreview } from './model-authoring-preview';
@@ -276,7 +277,8 @@ function writeRow(tx: AuthoringTransaction, batch: ModelAuthoringBatch, row: Aut
         after: fmt(batch, [origin[0] + m(op.delta[0]), origin[1] + m(op.delta[1])]) }];
     }
     default: {
-      const changed = recordModellingEdit(tx.api, modelId, (methods) => writeRelation(methods, modelId, op, resolved, ids), tx.batchId);
+      // A typing re-sizes through the backend: re-mesh the joined walls and generated rooms that followed, too.
+      const changed = recordModellingEdit(tx.api, modelId, (methods, draft) => takeLayerFollow(draft, writeRelation(methods, modelId, op, resolved, ids)).remesh, tx.batchId);
       written.remesh.push(...changed);
       return [relationReceipt(base, op, row, refs, targetGid)];
     }

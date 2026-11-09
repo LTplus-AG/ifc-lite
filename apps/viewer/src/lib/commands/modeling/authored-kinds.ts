@@ -136,6 +136,11 @@ function relatingOf(model: LiveModel, relType: 'IfcRelDefinesByType' | 'IfcRelAs
   return readRelatedLists(model.dataStore, relType, model.view).find((rel) => rel.relatedIds.includes(expressId))?.relatingId ?? null;
 }
 
+/** The element's own material association (any IfcMaterialSelect), which overrides its type's; null when it has none. */
+export function ownMaterialOf(model: LiveModel, expressId: number): number | null {
+  return relatingOf(model, 'IfcRelAssociatesMaterial', expressId);
+}
+
 export function typeOf(model: LiveModel, expressId: number): number | null {
   return relatingOf(model, 'IfcRelDefinesByType', expressId);
 }

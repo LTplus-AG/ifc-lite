@@ -71,5 +71,9 @@ export const modelInspectorDe = {
   "modelInspector.layers.defaultsHint": "Neue Bauteile erhalten diese Schichten.",
   "modelInspector.layers.needName": "Benennen Sie jedes neue Material",
   "modelInspector.layers.needLayer": "Geben Sie jeder Schicht eine Dicke größer als Null",
+  "modelInspector.layers.typeScope": {"one": "Ändert {countDisplay} Element dieses Typs, mit seinen Anschlüssen und erzeugten Räumen.", "other": "Ändert {countDisplay} Elemente dieses Typs, mit ihren Anschlüssen und erzeugten Räumen."},
+  "modelInspector.layers.typeOwnLayers": {"one": "{countDisplay} behält sein eigenes Material.", "other": "{countDisplay} behalten ihr eigenes Material."},
+  "modelInspector.layers.notFollowed": {"one": "{countDisplay} Element hat seinen bisherigen Körper behalten:", "other": "{countDisplay} Elemente haben ihren bisherigen Körper behalten:"},
+  "modelInspector.layers.keptBody": "{name}: {reason}",
   "modelInspector.hosting.title": "Einbau",
 } satisfies Catalogue;

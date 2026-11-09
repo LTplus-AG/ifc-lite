@@ -134,8 +134,30 @@ export function extractClassificationsOnDemand(
     });
 }
 
+interface ReferenceMemo {
+    source: IfcDataStore['source'];
+    revision: number | undefined;
+    rows: Map<number, ClassificationInfo | null>;
+}
+const referenceMemos = new WeakMap<IfcDataStore, { plain?: ReferenceMemo; views: WeakMap<ClassificationReadView, ReferenceMemo> }>();
+
+/** Shared references decode once, invalidating on source replacement or any edit. */
+function classificationInfoForRef(store: IfcDataStore, id: number, view?: ClassificationReadView): ClassificationInfo | null {
+    let model = referenceMemos.get(store);
+    if (!model) { model = { views: new WeakMap() }; referenceMemos.set(store, model); }
+    const revision = view?.getMutationRevision();
+    let memo = view ? model.views.get(view) : model.plain;
+    if (!memo || memo.source !== store.source || memo.revision !== revision) {
+        memo = { source: store.source, revision, rows: new Map() };
+        if (view) model.views.set(view, memo); else model.plain = memo;
+    }
+    if (!memo.rows.has(id)) memo.rows.set(id, decodeClassificationInfo(store, id, view));
+    const info = memo.rows.get(id);
+    return info ? { ...info, ...(info.path ? { path: [...info.path] } : {}) } : null;
+}
+
 /** One source/authored reference, through the same effective record and bounded chain reader. */
-function classificationInfoForRef(store: IfcDataStore, classRefId: number, view?: ClassificationReadView): ClassificationInfo | null {
+function decodeClassificationInfo(store: IfcDataStore, classRefId: number, view?: ClassificationReadView): ClassificationInfo | null {
     const entity = classificationRecord(store, classRefId, view);
     // The association proves membership even when its root target is missing.
     // Losing that evidence would assert an authoritative unclassified result.

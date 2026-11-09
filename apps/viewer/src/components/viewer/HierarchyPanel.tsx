@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { LayerGroupingControl } from './hierarchy/LayerGroupingControl';
+
 import { useState, useCallback, useRef, useMemo } from 'react';
 import { useTranslation } from '@/i18n';
 import { useVirtualizer } from '@tanstack/react-virtual';
@@ -24,7 +26,7 @@ import { HIERARCHY_ROW_HEIGHT, type TreeNode } from './hierarchy/types';
 import { useHierarchyTree } from './hierarchy/useHierarchyTree';
 import { useRevealSelection } from './hierarchy/useRevealSelection';
 import { useHierarchySplit } from './hierarchy/useHierarchySplit';
-import { effectiveRowType, overlayViewFor } from './hierarchy/treeOverlay';
+import { revealMembershipSpatialTypes } from './hierarchy/nodeVisibility';
 import { computeTypeIsolationLabel } from './hierarchy/typeIsolationLabel';
 import { HierarchyNode } from './hierarchy/HierarchyNode';
 import { CaptureModelPanel } from './hierarchy/CaptureModelPanel';
@@ -43,7 +45,7 @@ import { StoreyDisplayControls, StoreyFloorplanButton } from './hierarchy/Storey
 import { HierarchySortControl } from './hierarchy/HierarchySortControl';
 import { hierarchyRowSelection } from './hierarchy/rowSelection';
 import { createSpatialSubtreeResolver, hierarchyNodeAppearance, hierarchyNodeVisibility } from './hierarchy/nodeVisibility';
-import type { HierarchyRowAction } from './hierarchy/HierarchyRowActions';
+import { hierarchyRowActions, type HierarchyRowAction } from './hierarchy/HierarchyRowActions';
 import { applyLevelDisplayMode } from '@/store/levelDisplay';
 import { createHierarchyModelsSelector, selectLegacyHierarchyGeometry } from './hierarchy/hierarchy-models-selector';
 import { TOUR_ANCHORS, tourAnchor } from '@/lib/tours/anchors';
@@ -91,8 +93,6 @@ export function HierarchyPanel() {
   const sourceTags = useViewerStore((s) => s.sourceTags);
 
   // Explicit group isolation reveals hidden-by-default spaces and zones.
-  const typeVisibility = useViewerStore((s) => s.typeVisibility);
-  const toggleTypeVisibility = useViewerStore((s) => s.toggleTypeVisibility);
 
   const hiddenEntities = useViewerStore((s) => s.hiddenEntities);
   const hideEntities = useViewerStore((s) => s.hideEntities);
@@ -136,6 +136,7 @@ export function HierarchyPanel() {
     setSearchQuery,
     groupingMode,
     setGroupingMode,
+    layerGrouping, setLayerGrouping,
     sortMode,
     setSortMode,
     groupFilter,
@@ -337,24 +338,7 @@ export function HierarchyPanel() {
     if (action === 'isolate') {
       const elements = getNodeElements(node);
       if (elements.length === 0) return;
-      if (node.type === 'group' || node.type === 'presentation-layer') {
-        // Explicit membership isolation also reveals hidden-by-default spatial
-        // products. Include resolved descendants for nested groups (#7870),
-        // alongside direct members whose geometry may be substituted by parts.
-        const state = useViewerStore.getState();
-        const memberIds = new Set([...(node.memberGlobalIds ?? []), ...elements]);
-        const memberTypes = new Set([...memberIds].flatMap((globalId) => {
-          const ref = resolveEntityRef(globalId);
-          if (!ref) return [];
-          const dataStore = models.get(ref.modelId)?.ifcDataStore ?? ifcDataStore;
-          if (!dataStore) return [];
-          const view = overlayViewFor((id) => state.mutationViews.get(id), ref.modelId);
-          const type = effectiveRowType(dataStore, view, ref.expressId);
-          return type ? [type] : [];
-        }));
-        if (!typeVisibility.spaces && memberTypes.has('IfcSpace')) toggleTypeVisibility('spaces');
-        if (!typeVisibility.spatialZones && memberTypes.has('IfcSpatialZone')) toggleTypeVisibility('spatialZones');
-      }
+      revealMembershipSpatialTypes(node, elements, useViewerStore.getState(), resolveEntityRef);
       isolateEntities(elements);
       return;
     }
@@ -373,18 +357,10 @@ export function HierarchyPanel() {
     } else if (isStorey) {
       upsertSearchRule((rule) => rule.kind === 'storey', Rule.storey([node.name], 'in', storeyRefs));
     }
-  }, [getNodeElements, models, ifcDataStore, typeVisibility, toggleTypeVisibility, isolateEntities, setClassFilter, upsertSearchRule]);
+  }, [getNodeElements, isolateEntities, setClassFilter, upsertSearchRule]);
 
   const rowActions = useCallback((node: TreeNode): HierarchyRowAction[] => {
-    if (node.type === 'model-header' || node.type === 'model-tag-group') return [];
-    if (node.type === 'unified-storey' || node.type === 'IfcBuildingStorey') {
-      return ['solo', 'filter'];
-    }
-    const actions: HierarchyRowAction[] = [];
-    if (getNodeElements(node).length > 0) actions.push('isolate');
-    if (node.type === 'type-group' || node.type === 'ifc-type' ||
-        node.type === 'material-group' || node.type === 'group') actions.push('filter');
-    return actions;
+    return hierarchyRowActions(node, getNodeElements(node).length > 0);
   }, [getNodeElements]);
 
   // ARIA tree semantics + roving-tabIndex keyboard nav (#5883), see `useHierarchyTreeKeyboard.ts`.
@@ -667,7 +643,9 @@ export function HierarchyPanel() {
         icon={groupingMode === 'spatial' ? Building2 : groupingMode === 'type' ? Shapes : groupingMode === 'material' ? Palette : groupingMode === 'groups' ? Network : groupingMode === 'presentation-layers' ? Layers3 : FileBox}
         title={singleTreeSectionTitle}
         count={filteredNodes.length}
-        actions={groupingMode === 'spatial'
+        actions={groupingMode === 'presentation-layers'
+          ? <LayerGroupingControl value={layerGrouping} onChange={setLayerGrouping} />
+          : groupingMode === 'spatial'
           ? <><HierarchySortControl value={sortMode} onChange={setSortMode} /><StoreyFloorplanButton /></>
           : undefined}
       />

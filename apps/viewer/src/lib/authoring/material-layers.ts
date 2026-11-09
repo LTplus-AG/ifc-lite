@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { StoreEditor } from '@ifc-lite/mutations';
-import { liveEntityConforms, takeLayerThicknessOutcome, type LayerThicknessOutcome } from '@ifc-lite/create';
+import { liveEntityConforms, retargetInheritingLayerUsagesInStore, takeLayerThicknessOutcome, type LayerThicknessOutcome } from '@ifc-lite/create';
 import { getModelLengthUnitScale } from '@/lib/length-unit-scale';
 import { resolveSlabEditChain } from '@/lib/slab-edit';
 import { setWallSectionInStore } from '../../../../../packages/create/src/in-store/wall-section-edit.js';
@@ -71,7 +71,9 @@ export function writeMaterialLayersInDraft(target: ModelEditTarget, draft: Store
   const layerSetId = methods.addMaterialLayerSet(target.modelId, { MaterialLayers }).expressId;
   if (spec.target === 'type') {
     if (typeId === null) throw new Error('This element has no type to layer');
-    // The backend sizes every occurrence the type types (one keeping its own layers keeps its body).
+    // Elements drawn with the type place its set through their own usage: they follow it to the new one.
+    retargetInheritingLayerUsagesInStore(live, typeId, layerSetId);
+    // The backend sizes every occurrence the type types (one whose layers differ keeps its body).
     methods.assignMaterial(target.modelId, layerSetId, [typeId]);
     return { layerSetId, ...takeLayerFollow(draft, occurrencesOf(live, typeId)) };
   }

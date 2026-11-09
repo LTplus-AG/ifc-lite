@@ -28,7 +28,8 @@ import { Select, SelectContent, SelectItem, SelectSeparator, SelectTrigger, Sele
 import { toast } from '@/components/ui/toast';
 import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
-import { entityName, materialsOf, occurrencesOf, ownMaterialOf, type LayerRow, type LiveModel } from '@/lib/commands/modeling/authored-kinds';
+import { typeLayerScopeInStore } from '@ifc-lite/create';
+import { entityName, materialsOf, type LayerRow, type LiveModel } from '@/lib/commands/modeling/authored-kinds';
 import type { AuthoredElementKind } from '@/store/slices/authoringDefaultsSlice';
 import { InspectorCaption, InspectorSection } from './InspectorControls';
 import { METRE_SYMBOL, formatMetres, parseMetres } from './inspector-fields';
@@ -67,11 +68,10 @@ let nextKey = 0;
 const row = (thickness: number, material: number | null): DraftRow =>
   ({ key: nextKey++, thickness: formatMetres(thickness), material: material === null ? NONE : String(material), newName: '' });
 
-/** Before Apply to Type: the occurrences that take the new layers, and those that keep their own material. */
+/** Before Apply to Type: the elements that follow the type's layers, and those whose layers differ. */
 export function typeScopeOf(live: LiveModel, typeId: number): { follow: number; own: number } {
-  const occurrences = [...new Set(occurrencesOf(live, typeId))];
-  const own = occurrences.filter((id) => ownMaterialOf(live, id) !== null).length;
-  return { follow: occurrences.length - own, own };
+  const scope = typeLayerScopeInStore(live, typeId);
+  return { follow: scope.inheriting.length, own: scope.differing.length };
 }
 
 export function LayersSection({ modelId, live, kind, initial, inheritedFromType, elementId, typeId, defaultThickness }: LayersSectionProps) {

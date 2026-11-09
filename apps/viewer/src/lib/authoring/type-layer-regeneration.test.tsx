@@ -15,7 +15,8 @@ import assert from 'node:assert/strict';
 import { IfcParser } from '@ifc-lite/parser';
 import { IfcAPI } from '@ifc-lite/wasm';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
-import { deriveAuthoredBaseQuantities, previewTypeLayerImpact } from '@ifc-lite/create';
+import { deriveAuthoredBaseQuantities, previewTypeLayerImpact, typeLayerScopeInStore } from '@ifc-lite/create';
+import { applyAuthoredDefaults } from '@/lib/commands/modeling/authored-defaults';
 import type { MeshData } from '@ifc-lite/geometry';
 import { applyRemeshConfig, remeshOnApi, styleWireOnApi } from '../../../../../packages/geometry/src/remesh/remesh-core.js';
 import { useViewerStore } from '@/store';
@@ -77,20 +78,33 @@ const SYNTHESISED = /^#\d+=(IFCPROPERTYSINGLEVALUE|IFCPROPERTYSET|IFCRELDEFINESB
 const comparable = (step: string) => step.split('\n').filter(line => !line.startsWith('FILE_NAME'))
   .map(line => SYNTHESISED.test(line) ? line.replace(/#\d+/g, '#').replace(/'[0-9A-Za-z_$]{22}'/g, "'GlobalId'") : line).sort();
 
-/** Two walls of one 230 mm layered type (one hosting a door), two plain walls joined round them, and the generated room they enclose. */
+/**
+ * Two walls of one 230 mm layered type (one hosting a door), two plain walls
+ * joined round them, and the generated room they enclose. The second typed wall
+ * is drawn the way the Wall tool draws with the inspector's defaults: a type
+ * picked and a layer default active, so it carries its own layer set usage.
+ */
 async function acceptanceModel() {
   const { adapter, store } = await seed();
   const corners: [number, number, number][] = [[20, 20, 0], [26, 20, 0], [26, 24, 0], [20, 24, 0]];
-  const walls = corners.map((Start, i) => adapter.addWall(MODEL, STOREY, { Start, End: corners[(i + 1) % 4], Thickness: .2, Height: 3 }).expressId);
+  const walls = corners.map((Start, i) => adapter.addWall(MODEL, STOREY, { Start, End: corners[(i + 1) % 4], Thickness: i === 1 ? .23 : .2, Height: 3 }).expressId);
   for (let i = 0; i < 4; i++) adapter.joinWalls!(MODEL, walls[i], walls[(i + 1) % 4], {});
   const door = adapter.addHostedDoor!(MODEL, walls[0], { Offset: 3, Width: .9, Height: 2.1 }).expressId;
   const generated = s().generateSpacesFromWalls(MODEL, STOREY, {});
   assert.ok(!('error' in generated) && generated.emitted.length === 1, 'one generated room');
   const room = generated.emitted[0].result.spaceId;
-  const type = createElementType(MODEL, 'wall', 'WT-230', walls[0]);
+  // Defaults: type WT-230 picked, and 230 mm Brick layers applied to "Element" (the next walls).
+  const type = createElementType(MODEL, 'wall', 'WT-230');
   assert.ok(type !== null);
-  assert.equal(setElementType(MODEL, walls[1], type), true);
-  assert.ok(applyMaterialLayers(MODEL, { kind: 'wall', target: 'type', elementId: walls[0], typeId: type, layers: [{ thickness: .23, material: { name: 'Brick' } }] }) !== null);
+  const layerDefault = applyMaterialLayers(MODEL, { kind: 'wall', target: 'element', typeId: null, layers: [{ thickness: .23, material: { name: 'Brick' } }] });
+  assert.ok(layerDefault !== null);
+  s().setAuthoringDefaults({ typeIds: { wall: { modelId: MODEL, expressId: type } }, layerSetIds: { wall: { modelId: MODEL, expressId: layerDefault } } });
+  // The hook every modelling command runs on what it just drew, in the same undo step.
+  applyAuthoredDefaults(useViewerStore, MODEL, [walls[1]]);
+  s().setAuthoringDefaults({ typeIds: {}, layerSetIds: {} });
+  assert.equal(setElementType(MODEL, walls[0], type), true);
+  const scope = typeLayerScopeInStore(modelEditTarget(s(), MODEL)!, type);
+  assert.deepEqual([...scope.inheriting].sort(), [walls[0], walls[1]].sort(), 'both walls, the one drawn with its own usage too, follow the type');
   await landed();
   return { store, walls, door, room, type };
 }
@@ -121,7 +135,7 @@ it('editing a shared wall type to 300 mm regenerates both walls, the cut, the jo
   // The impact preview the type UI can show before Apply: computed, never applied.
   const impact = previewTypeLayerImpact(target(), type, .3);
   assert.deepEqual(comparable(exported()), comparable(before), 'the preview applies nothing');
-  assert.deepEqual(impact.resized.map(r => [r.id, r.from, r.to]), [[walls[0], .23, .3], [walls[1], .23, .3]]);
+  assert.deepEqual([...impact.resized].sort((x, y) => x.id - y.id).map(r => [r.id, r.from, r.to]), [[walls[0], .23, .3], [walls[1], .23, .3]]);
   assert.deepEqual(new Set(impact.joined), new Set([walls[2], walls[3]]));
   assert.deepEqual(impact.rooms.map(r => r.id), [room]);
   near(impact.rooms[0].netFloorArea.after!, 5.75 * 3.75, 'the preview predicts the room\'s new net area');

@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { describe, expect, it } from 'vitest';
 import { IfcCreator } from '../index.js';
-import { parseModel } from '@ifc-lite/parser';
+import { effectiveMetadataRecord, parseModel } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import { resolveSpatialAnchor } from './resolve-anchor.js';
 import { resolveAuthoringAnchor, readRelatedLists } from './resolve-relations.js';
@@ -13,10 +13,11 @@ import { generateSpacesFromWalls } from './generate-spaces.js';
 import { roomChainInStore } from './room-store.js';
 import { polygonArea } from './room-footprint-offset.js';
 import { addElementTypeToStore, assignTypeInStore } from './element-type.js';
-import { addMaterialLayerSetToStore, assignMaterialInStore } from './material.js';
+import { addMaterialLayerSetToStore, addMaterialLayerSetUsageToStore, assignMaterialInStore } from './material.js';
 import { readWallMetres } from './wall-size-edit.js';
 import { applyLayerThicknessInStore, takeLayerThicknessOutcome, typeOccurrencesInStore } from './type-layer-thickness.js';
 import { previewTypeLayerImpact } from './type-layer-impact.js';
+import { retargetInheritingLayerUsagesInStore, typeLayerScopeInStore } from './type-layer-inheritance.js';
 import { addHostedElementInStore } from './hosted-element.js';
 
 /** A 6 x 4 m room of four joined 0.2 m walls, two of them typed by one wall type, and its generated room. */
@@ -35,9 +36,10 @@ async function typedRoom() {
   const type = addElementTypeToStore(editor, anchor, { Type: 'IfcWallType', Name: 'WT' }).typeId;
   assignTypeInStore(editor, anchor, type, [walls[0], walls[1]], readRelatedLists(store, 'IfcRelDefinesByType', view));
   const target = { dataStore: store, view, editor };
-  /** Give the type a fresh layer set of `thickness` and let its occurrences follow, as the modelling backend does. */
+  /** Give the type a fresh layer set of `thickness` and let its occurrences follow, as an Apply to Type does. */
   const layerType = (thickness: number) => {
     const set = addMaterialLayerSetToStore(editor, anchor, { MaterialLayers: [{ LayerThickness: thickness }] }).layerSetId;
+    retargetInheritingLayerUsagesInStore(target, type, set);
     assignMaterialInStore(editor, anchor, set, [type], readRelatedLists(store, 'IfcRelAssociatesMaterial', view));
     return applyLayerThicknessInStore(target, typeOccurrencesInStore(target, type));
   };
@@ -47,7 +49,13 @@ async function typedRoom() {
     return polygonArea(chain.chain.footprint);
   };
   const net = () => view.getQuantitiesForEntity(room).find(q => q.name === 'Qto_SpaceBaseQuantities')?.quantities.find(q => q.name === 'NetFloorArea')?.value;
-  return { store, view, editor, walls, room, type, target, layerType, area, net };
+  /** Place `layerSet` on a wall through its own usage, centred on its axis, as drawing with a layer default does. */
+  const usageOn = (wall: number, layerSet: number, total: number) => {
+    const usage = addMaterialLayerSetUsageToStore(editor, anchor, { ForLayerSet: layerSet, LayerSetDirection: 'AXIS2', OffsetFromReferenceLine: -total / 2 }).usageId;
+    assignMaterialInStore(editor, anchor, usage, [wall], readRelatedLists(store, 'IfcRelAssociatesMaterial', view));
+    return usage;
+  };
+  return { store, view, editor, anchor, walls, room, type, target, layerType, usageOn, area, net };
 }
 
 describe('a layered type drives its occurrences, and what they bound follows (#9296 lane U3)', () => {
@@ -79,7 +87,7 @@ describe('a layered type drives its occurrences, and what they bound follows (#9
     expect(m.walls.map(id => readWallMetres(m.target, id)?.thickness)).toEqual([.2, .2, .2, .2]);
     expect(impact.occurrences.length).toBe(2);
     expect(impact.resized).toEqual([{ id: m.walls[0], from: .2, to: .36 }, { id: m.walls[1], from: .2, to: .36 }]);
-    expect(impact.keepOwn).toEqual([]);
+    expect(impact.differing).toEqual([]);
     expect(impact.refused).toEqual([]);
     expect(new Set(impact.joined)).toEqual(new Set([m.walls[2], m.walls[3]]));
     expect(impact.openings.length, 'the door opening (cut 0.3 m deep) is re-cut through 0.36 m').toBe(1);
@@ -98,8 +106,32 @@ describe('a layered type drives its occurrences, and what they bound follows (#9
     const own = addMaterialLayerSetToStore(m.editor, anchor, { MaterialLayers: [{ LayerThickness: .2 }] }).layerSetId;
     assignMaterialInStore(m.editor, anchor, own, [m.walls[1]], readRelatedLists(m.store, 'IfcRelAssociatesMaterial', m.view));
     const impact = previewTypeLayerImpact(m.target, m.type, .3);
-    expect(impact.keepOwn).toEqual([m.walls[1]]);
+    expect(impact.differing).toEqual([m.walls[1]]);
     expect(impact.resized.map(r => r.id)).toEqual([m.walls[0]]);
     expect(() => previewTypeLayerImpact(m.target, m.type, 0)).toThrow(/positive/);
+  });
+
+  it('reaches a wall whose own usage places the type\'s set, and leaves one whose layers differ (#9296)', async () => {
+    const m = await typedRoom();
+    m.layerType(.2);
+    const typeSet = typeLayerScopeInStore(m.target, m.type).layerSetId!;
+    // walls[1] was drawn with the type while a layer default was active: its usage places the type's own set.
+    const inherited = m.usageOn(m.walls[1], typeSet, .2);
+    // walls[2] is typed too, but its usage places a set of its own.
+    assignTypeInStore(m.editor, m.anchor, m.type, [m.walls[2]], readRelatedLists(m.store, 'IfcRelDefinesByType', m.view));
+    const ownSet = addMaterialLayerSetToStore(m.editor, m.anchor, { MaterialLayers: [{ LayerThickness: .2 }] }).layerSetId;
+    m.usageOn(m.walls[2], ownSet, .2);
+    expect(typeLayerScopeInStore(m.target, m.type)).toEqual({ layerSetId: typeSet, inheriting: [m.walls[0], m.walls[1]], differing: [m.walls[2]] });
+    const impact = previewTypeLayerImpact(m.target, m.type, .3);
+    expect(impact.resized.map(r => r.id)).toEqual([m.walls[0], m.walls[1]]);
+    expect(impact.differing).toEqual([m.walls[2]]);
+    takeLayerThicknessOutcome(m.editor);
+    m.layerType(.3);
+    expect(m.walls.map(id => readWallMetres(m.target, id)?.thickness)).toEqual([.3, .3, .2, .2]);
+    const usage = effectiveMetadataRecord(m.store, inherited, m.view)!.attributes;
+    expect(usage[0], 'the usage now places the type\'s new set').toBe(typeLayerScopeInStore(m.target, m.type).layerSetId);
+    expect(Number(usage[3]), 'and stays centred on the wall axis').toBeCloseTo(-.15, 9);
+    expect(typeLayerScopeInStore(m.target, m.type).inheriting).toEqual([m.walls[0], m.walls[1]]);
+    expect(takeLayerThicknessOutcome(m.editor).refused).toEqual([]);
   });
 });

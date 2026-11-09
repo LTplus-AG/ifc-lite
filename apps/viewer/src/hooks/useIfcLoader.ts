@@ -94,7 +94,8 @@ import { finalizeFederatedSpatialPlacement } from './ingest/federatedSpatialFina
 import { computePointCloudAlignment, unregisterPointCloudAlignment, hasRegisteredPointCloudAlignment, type PointCloudSourceUnit } from './ingest/pointCloudAlignment.js';
 import { realignPointCloudsToAnchor } from './ingest/pointCloudAlignmentRealign.js';
 import { toast } from '../components/ui/toast.js';
-import { posthog, showLoadError as reportLoadError } from '../lib/analytics.js';
+import { posthog } from '../lib/analytics.js';
+import { loadFailureReporter, settleKernelRefusal } from './ingest/loadFailureReport.js';
 import { reportRenderStats } from '../utils/renderStatsReport.js';
 import { nextFrameOrTimeout } from '../utils/frameWait.js';
 import { visibilityWitness } from '../utils/visibilityWitness.js';
@@ -285,9 +286,7 @@ export function useIfcLoader() {
   ) => {
     assertWorkflowOwner(options?.workflowOwner);
     const draping = drapeIfGeoRaster(file); if (draping) return draping; // #5942: imagery, never a model
-    const geometryKernel = beginGeometryKernel(file, target, () => void loadFileRef.current?.(file, target, options)); if (geometryKernel.refused) { // #7955 M2: out-of-scope retained requests stop before any work
-      const refusal = await geometryKernel.refused; if (refusal) options?.onLoadError?.(refusal); return; // the refusal reports itself, not through showLoadError
-    }
+    const geometryKernel = beginGeometryKernel(file, target, () => void loadFileRef.current?.(file, target, options)); if (geometryKernel.refused) return settleKernelRefusal(geometryKernel.refused, options?.onLoadError); // #7955 M2: out-of-scope retained requests stop before any work
     const { resetViewerState, clearAllModels } = useViewerStore.getState();
     // A primary supersedes every outstanding hook owner via the shared canceller.
     // Federated additions capture this hook's session and remain independent.
@@ -452,11 +451,7 @@ export function useIfcLoader() {
     // Every load failure the user sees goes through here (#5618); `retry`
     // is fixed to THIS call so no call site below can omit or go stale.
     const retryThisLoad = options?.retryOperation ?? (() => { void loadFile(file, target, options); });
-    const showLoadError = (message: string, code: string, retry = retryThisLoad) => {
-      const shown = activity.fail(message);
-      options?.onLoadError?.(shown);
-      reportLoadError(setError, useViewerStore.getState().setLastLoadRetry, shown, code, retry, file);
-    };
+    const showLoadError = loadFailureReporter(file, activity, retryThisLoad, options?.onLoadError);
     const settleResumable = beginResumableLoad(file); // carried across a stale-deployment reload
     try {
       // Reset all viewer state before loading new file — PRIMARY ONLY. A

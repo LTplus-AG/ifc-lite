@@ -17,7 +17,7 @@ import { useViewerStore } from '@/store';
 import { chooseGeometryKernel } from '@/store/geometryKernel';
 import { render, cleanup } from '@/test/render.js';
 import { stepFile } from '@/test/retained-host-fixture';
-import type { FederationSetupFile, FederationSetupSlotMatch } from '@/lib/federation/federationSetupFile.js';
+import { FEDERATION_SETUP_FORMAT_VERSION, type FederationSetupFile, type FederationSetupSlotMatch } from '@/lib/federation/federationSetupFile.js';
 import { useFederationSetup } from './useFederationSetup.js';
 
 let setup: ReturnType<typeof useFederationSetup>;
@@ -26,7 +26,7 @@ function Probe() { setup = useFederationSetup(); return null; }
 function oneSlot(file: File): { saved: FederationSetupFile; matches: FederationSetupSlotMatch[] } {
   const slot = { name: file.name, fileSize: file.size, fingerprintHex: null, visible: true, collapsed: false, anchor: false, tagIds: [] };
   return {
-    saved: { formatVersion: 1, tags: [], slots: [slot] },
+    saved: { formatVersion: FEDERATION_SETUP_FORMAT_VERSION, tags: [], slots: [slot] },
     matches: [{ slot, slotIndex: 0, file, confidence: 'name-size' }],
   };
 }

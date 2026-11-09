@@ -105,7 +105,7 @@ function mount(opts: { selectedEntityId?: number | null; outlierAnchor?: boolean
     sectionPlaneRef: ref(state.sectionPlane), sectionRangeRef: ref(null), geometryRef: ref(null),
     measureRaycastPendingRef: ref(false), measureRaycastFrameRef: ref(null),
     lastMeasureRaycastDurationRef: ref(0), lastHoverSnapTimeRef: ref(0), lastHoverCheckRef: ref(0),
-    hoverTooltipsEnabledRef: ref(false), lastRenderTimeRef: ref(0), renderPendingRef: ref(false),
+    hoverTooltipsEnabledRef: ref(false),
     isInteractingRef: ref(false), lastClickTimeRef: ref(0), lastClickPosRef: ref(null), lastCameraStateRef: ref(null),
     handlePickForSelection: noop, setHoverState: noop, clearHover: noop, openContextMenu: noop,
     startMeasurement: noop, updateMeasurement: noop, finalizeMeasurement: noop,
@@ -116,7 +116,6 @@ function mount(opts: { selectedEntityId?: number | null; outlierAnchor?: boolean
     getPickOptions: () => ({ isStreaming: false, hiddenIds: new Set<number>(), isolatedIds: null }),
     hasPendingMeasurements: () => false, setSectionPlaneFromFace: noop, setSectionPickMode: noop, setSectionPickPreview: noop,
     HOVER_SNAP_THROTTLE_MS: 50, SLOW_RAYCAST_THRESHOLD_MS: 50, hoverThrottleMs: 50,
-    RENDER_THROTTLE_MS_SMALL: 16, RENDER_THROTTLE_MS_LARGE: 33, RENDER_THROTTLE_MS_HUGE: 66,
     fastZoomRef: ref(false),
   } satisfies UseMouseControlsParams;
 
@@ -203,7 +202,11 @@ describe('useMouseControls orbit pivot while a clash is focused (#4806)', () => 
     assert.match(marker.className, /opacity-0/);
 
     act(() => { canvas.dispatchEvent(pointer('pointerdown', 200, 150)); });
+    assert.match(marker.className, /opacity-0/, 'a press is still a click: no orbit marker yet');
+    assert.notEqual(canvas.style.cursor, 'grabbing', 'a press is still a click: no grab cursor yet');
+    act(() => { canvas.dispatchEvent(pointer('pointermove', 240, 150)); });
     assert.match(marker.className, /opacity-100/);
+    assert.equal(canvas.style.cursor, 'grabbing');
     const projected = projectToCssScreen(camera, canvas, HIT);
     assert.ok(projected);
     assert.ok(Math.abs(parseFloat(marker.style.left) - projected.x) < 0.001,
@@ -218,9 +221,23 @@ describe('useMouseControls orbit pivot while a clash is focused (#4806)', () => 
     act(() => { canvas.dispatchEvent(pointer('pointerup', 200, 150, 1)); });
 
     act(() => { canvas.dispatchEvent(pointer('pointerdown', 200, 150)); });
+    act(() => { canvas.dispatchEvent(pointer('pointermove', 240, 150)); });
     assert.match(marker.className, /opacity-100/);
-    act(() => { canvas.dispatchEvent(pointer('pointercancel', 200, 150)); });
+    act(() => { canvas.dispatchEvent(pointer('pointercancel', 240, 150)); });
     assert.match(marker.className, /opacity-0/, 'cancelled gestures release the marker');
+  });
+
+  it('leaves the camera untouched while a press jitters within the click threshold', () => {
+    const { canvas, camera } = mount();
+    const before = Array.from(camera.getViewProjMatrix().m);
+    act(() => { canvas.dispatchEvent(pointer('pointerdown', 200, 150)); });
+    act(() => { canvas.dispatchEvent(pointer('pointermove', 202, 152)); });
+    act(() => { canvas.dispatchEvent(pointer('pointermove', 203, 147)); });
+    assert.deepEqual(Array.from(camera.getViewProjMatrix().m), before,
+      'BUG: a sub-threshold jitter moved the camera, which invalidates the click\'s pick');
+    act(() => { canvas.dispatchEvent(pointer('pointermove', 204, 150)); });
+    assert.notDeepEqual(Array.from(camera.getViewProjMatrix().m), before, 'past the threshold the drag orbits');
+    act(() => { canvas.dispatchEvent(pointer('pointerup', 204, 150)); });
   });
 
   it('keeps pick-to-pivot once the user selects something while the clash stays focused', () => {

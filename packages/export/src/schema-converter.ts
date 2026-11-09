@@ -15,7 +15,7 @@
 import { generateIfcGuid, type RandomSource } from '@ifc-lite/encoding';
 import { deterministicGlobalId, getSchemaRegistryForVersion } from '@ifc-lite/parser';
 import { resolveUnrepresentedEntity } from './schema-untranslatable.js';
-import { BY_NAME_ATTR_REMAP_TYPES, remapRenamedAttributesByName } from './schema-converter-attr-remap.js';
+import { BY_NAME_ATTR_REMAP_TYPES, isGridPlacementInSourceLayout, remapRenamedAttributesByName } from './schema-converter-attr-remap.js';
 import { splitTopLevelStepArguments } from './step-argument-parser.js';
 import { Ifc2x3SlotFill } from './schema-converter-ifc2x3-slots.js';
 import type { Ifc4SlotCheck } from './schema-converter-ifc4-slots.js';
@@ -412,8 +412,8 @@ function convertRecord(
       if (currentCount > 0 && currentCount < tgtAttrs.length) {
         finalAttrs = `${finalAttrs}${',$'.repeat(tgtAttrs.length - currentCount)}`;
       }
-    } else if (entityType !== newType && (BY_NAME_ATTR_REMAP_TYPES.has(entityType)
-      || (toSchema === 'IFC2X3' && MEP_IFC2X3_TYPES.has(entityType)))) {
+    } else if (isGridPlacementInSourceLayout(entityType, args.length, tgtAttrs.length) || (entityType !== newType
+      && (BY_NAME_ATTR_REMAP_TYPES.has(entityType) || (toSchema === 'IFC2X3' && MEP_IFC2X3_TYPES.has(entityType))))) {
       // MEP controls need ControlElementId, never the source PredefinedType (#8019).
       const remapped = remapRenamedAttributesByName(attrsRaw, srcAttrs, tgtAttrs);
       if (remapped === null) throw new Error('Schema conversion refused an invalid STEP argument list.');

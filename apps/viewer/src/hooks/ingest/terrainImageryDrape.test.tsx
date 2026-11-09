@@ -24,6 +24,9 @@ import type { MeshData } from '@ifc-lite/geometry';
 import type { Renderer } from '@ifc-lite/renderer';
 import { toast } from '@/components/ui/toast';
 import { useViewerStore } from '@/store';
+import { fixtureModel, fixtureModels } from '@/test/store-fixture';
+import { georeferencedPlacementFrameKey } from '@/lib/model-placement/persistence';
+import { spatialReferenceFromIfc } from '@/lib/geo/ifc-spatial-reference';
 import { setGlobalRendererRef } from '../useBCF.js';
 import { useIfcLoader } from '../useIfcLoader.js';
 import { GeoRasterBundle } from '@/lib/terrain-imagery/raster-bundle.js';
@@ -126,6 +129,93 @@ describe('draping imagery through the load path (#5942)', () => {
     assert.equal(state.loading, false);
     assert.equal(errors.length, 1);
     assert.match(errors[0], /viewport is not ready/);
+  });
+
+  // #5942: the drape never owns the shared load UI. A raster added while an
+  // IFC streams must not end that load's spinner (it gates picking), yet the
+  // spinner `addModel` raised for the raster itself must still come down.
+  for (const owner of ['another streaming load', 'a point-cloud stream', 'no load'] as const) {
+    it(`a drape leaves the load UI ${owner === 'no load' ? 'idle when no load owns it' : `to ${owner}`} (#5942)`, async () => {
+      await loadTerrain();
+      const streaming = { phase: 'Processing geometry', percent: 40 };
+      act(() => {
+        const s = useViewerStore.getState();
+        // A point-cloud stream holds only the stream slot, yet still owns the card.
+        if (owner === 'another streaming load') s.setActiveLoadCanceller(() => {});
+        if (owner === 'a point-cloud stream') s.setActiveStreamCanceller(() => {});
+        s.setLoading(true);
+        s.setProgress(streaming);
+      });
+      const original = toast.error;
+      toast.error = () => {};
+      try {
+        await act(async () => hookApi!.loadFile(orthoBundle(), { kind: 'federated', modelId: 'raster-model' }));
+      } finally {
+        toast.error = original;
+        useViewerStore.getState().setActiveLoadCanceller(null);
+        useViewerStore.getState().setActiveStreamCanceller(null);
+      }
+      const state = useViewerStore.getState();
+      if (owner === 'no load') {
+        assert.equal(state.loading, false, 'the raster add ends its own spinner');
+        assert.equal(state.progress, null);
+      } else {
+        assert.equal(state.loading, true, 'the streaming load keeps its spinner');
+        assert.equal(state.progress?.phase, streaming.phase, 'and its progress');
+        assert.equal(state.progress?.percent, streaming.percent);
+      }
+    });
+  }
+
+  it('routes IFC orthophotos through loadFile and refuses unfinished geometry with retry guidance (#8552)', async () => {
+    const model = { ...fixtureModel('streaming-ifc'), loadState: 'streaming-geometry' as const, geometryResult: null };
+    const spatialReference = spatialReferenceFromIfc({
+      mapConversion: { id: 1, sourceCRS: 1, targetCRS: 2, eastings: 2600000, northings: 1200000, orthogonalHeight: 500, scale: 1 },
+      projectedCRS: { id: 2, name: 'EPSG:2056', mapUnitScale: 1 }, lengthUnitScale: 1,
+    });
+    useViewerStore.setState({ ...fixtureModels(model), geometryStreamingActive: true,
+      modelPlacement: { ...useViewerStore.getState().modelPlacement,
+        realignedFrameKey: georeferencedPlacementFrameKey({ spatialReference }) },
+    });
+    const before = useViewerStore.getState();
+    const errors: string[] = [];
+    const original = toast.error;
+    toast.error = message => { errors.push(message); };
+    try {
+      // The actual PNG/world-file/PRJ reader and canonical file loader run.
+      // Import no new orthophoto module: this entrypoint survives a feature revert.
+      await act(async () => hookApi!.loadFile(orthoBundle(), { kind: 'primary' }));
+    } finally { toast.error = original; }
+    assert.equal(errors.length, 1);
+    assert.match(errors[0], /Wait for all models to finish loading, then open the orthophoto again/);
+    const after = useViewerStore.getState();
+    assert.equal(after.models, before.models, 'refusal preserves the loading IFC');
+    assert.equal(after.appearanceReferences.size, before.appearanceReferences.size, 'no guessed background is registered');
+    assert.equal(after.appearanceSources.length, before.appearanceSources.length, 'no image source is retained after refusal');
+  });
+
+  it('keeps incomplete LandXML on the terrain path rather than placing an IFC background (#8552)', async () => {
+    const id = await loadTerrain();
+    const terrain = useViewerStore.getState().models.get(id)!;
+    for (const incomplete of [
+      { ...terrain, geometryResult: null },
+      { ...terrain, landXmlDocument: undefined },
+      { ...terrain, loadState: 'streaming-geometry' as const },
+    ]) {
+      useViewerStore.setState({ models: new Map([[id, incomplete]]) });
+      const before = useViewerStore.getState();
+      const errors: string[] = [];
+      const original = toast.error;
+      toast.error = message => { errors.push(message); };
+      try {
+        await act(async () => hookApi!.loadFile(orthoBundle(), { kind: 'primary' }));
+      } finally { toast.error = original; }
+      assert.equal(errors.length, 1);
+      assert.match(errors[0], /Terrain data is not ready/);
+      assert.equal(useViewerStore.getState().models, before.models);
+      assert.equal(useViewerStore.getState().appearanceReferences.size, before.appearanceReferences.size);
+      assert.equal(useViewerStore.getState().appearanceSources.length, before.appearanceSources.length);
+    }
   });
 
   it('refuses a raster when no terrain is loaded, naming what to do', async () => {

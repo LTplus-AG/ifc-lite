@@ -2,7 +2,10 @@
 //! M10 decoder-only affine oracle. No retained program, receipt or bake helpers.
 use super::math::*;
 use ifc_lite_core::{slot, EntityDecoder, IfcType, SourceBundle};
-type Frame = [f64;16];
+pub(super) type Frame = [f64;16];
+pub use super::affine_classify::{winding_positive, Classification};
+use super::affine_classify::mapped_items;
+use super::affine_operator::stretches;
 #[derive(Debug, Clone)]
 pub struct AffineExpectation {
     pub volume: f64,
@@ -31,13 +34,13 @@ impl AffineExpectation {
         self.chord_admitted() && (!self.affine_final || self.surface_certified)
     }
 }
-fn direction(d:&mut EntityDecoder<'_>, id:Option<u32>, default:[f64;3]) -> Option<[f64;3]> {
+pub(super) fn direction(d:&mut EntityDecoder<'_>, id:Option<u32>, default:[f64;3]) -> Option<[f64;3]> {
     id.map_or(Some(default), |id| unit(d.direction3(id).ok()?))
 }
-fn columns(x:[f64;3], y:[f64;3], z:[f64;3], p:[f64;3]) -> Frame {
+pub(super) fn columns(x:[f64;3], y:[f64;3], z:[f64;3], p:[f64;3]) -> Frame {
     [x[0],x[1],x[2],0., y[0],y[1],y[2],0., z[0],z[1],z[2],0., p[0],p[1],p[2],1.]
 }
-fn axes(d:&mut EntityDecoder<'_>, id:Option<u32>) -> Option<Frame> {
+pub(super) fn axes(d:&mut EntityDecoder<'_>, id:Option<u32>) -> Option<Frame> {
     let Some(id)=id else {return Some(IDENTITY)};
     let e=d.decode_by_id(id).ok()?;
     let p=d.point3(e.ref_at(slot::IfcPlacement::LOCATION)?).ok()?;
@@ -49,11 +52,6 @@ fn axes(d:&mut EntityDecoder<'_>, id:Option<u32>) -> Option<Frame> {
     let y=unit(cross(z,x))?;
     Some(columns(cross(y,z),y,z,p))
 }
-fn inverse_rigid(m:&Frame) -> Frame {
-    let mut inv=IDENTITY;
-    for i in 0..3 {for j in 0..3 {inv[i+4*j]=m[j+4*i];}}
-    let p=vector(&inv,[-m[12],-m[13],-m[14]]);inv[12..15].copy_from_slice(&p);inv
-}
 fn placement(d:&mut EntityDecoder<'_>,mut id:Option<u32>) -> Option<Frame> {
     let mut m=IDENTITY;let mut seen=std::collections::BTreeSet::new();
     while let Some(next)=id {
@@ -63,45 +61,6 @@ fn placement(d:&mut EntityDecoder<'_>,mut id:Option<u32>) -> Option<Frame> {
         id=e.ref_at(slot::IfcLocalPlacement::PLACEMENT_REL_TO);
     }
     Some(m)
-}
-/// IfcBaseAxis: project Axis1 against D3 and Axis2 against both, preserving its sign.
-fn mapping(d:&mut EntityDecoder<'_>, source:u32,target:u32) -> Option<(Frame,Vec<u32>)> {
-    let map=d.decode_by_id(source).ok()?;
-    let origin=axes(d,map.ref_at(slot::IfcRepresentationMap::MAPPING_ORIGIN))?;
-    let rep=d.decode_by_id(map.ref_at(slot::IfcRepresentationMap::MAPPED_REPRESENTATION)?).ok()?;
-    let items=rep.ref_list_at(slot::IfcRepresentation::ITEMS)?;
-    let op=d.decode_by_id(target).ok()?;
-    use slot::IfcCartesianTransformationOperator3D as O;
-    let z=direction(d,op.ref_at(O::AXIS3),[0.,0.,1.])?;
-    let default=if z[0].abs()>0.999999 {[0.,1.,0.]} else {[1.,0.,0.]};
-    let x=direction(d,op.ref_at(O::AXIS1),default)?;
-    let x=unit(sub(x,z.map(|v|v*dot(x,z))))?;
-    let y=direction(d,op.ref_at(O::AXIS2),[0.,1.,0.])?;
-    let y=unit(sub(sub(y,z.map(|v|v*dot(y,z))),x.map(|v|v*dot(y,x))))?;
-    let s=op.real_at(O::SCALE).unwrap_or(1.);
-    let (s2,s3)=if op.ifc_type==IfcType::IfcCartesianTransformationOperator3DnonUniform {
-        (op.real_at(slot::IfcCartesianTransformationOperator3DnonUniform::SCALE2).unwrap_or(s),
-         op.real_at(slot::IfcCartesianTransformationOperator3DnonUniform::SCALE3).unwrap_or(s))
-    } else if op.ifc_type==IfcType::IfcCartesianTransformationOperator3D {(s,s)} else {return None};
-    let matrix=columns(x.map(|v|v*s),y.map(|v|v*s2),z.map(|v|v*s3),d.point3(op.ref_at(O::LOCAL_ORIGIN)?).ok()?);
-    Some((multiply(&matrix,&inverse_rigid(&origin)),items))
-}
-// Independent symmetric Jacobi eigensolve for singular values; no production SVD.
-fn stretches(m:&Frame) -> Option<(f64,f64)> {
-    let mut a=[[0.;3];3];
-    for i in 0..3 {for j in 0..3 {a[i][j]=(0..3).map(|k|m[4*i+k]*m[4*j+k]).sum();}}
-    for _ in 0..32 {
-        let (p,q)=[(0,1),(0,2),(1,2)].into_iter().max_by(|&(p,q),&(r,s)|a[p][q].abs().total_cmp(&a[r][s].abs()))?;
-        if a[p][q].abs()<=1e-15*a[p][p].abs().max(a[q][q].abs()) {break}
-        let theta=0.5*(2.*a[p][q]).atan2(a[q][q]-a[p][p]);let (s,c)=theta.sin_cos();
-        let (app,aqq,apq)=(a[p][p],a[q][q],a[p][q]);
-        let k=3-p-q; // the third axis of this 3x3 Jacobi rotation
-        let (kp,kq)=(a[k][p],a[k][q]);a[k][p]=c*kp-s*kq;a[p][k]=a[k][p];a[k][q]=s*kp+c*kq;a[q][k]=a[k][q];
-        a[p][p]=c*c*app-2.*s*c*apq+s*s*aqq;a[q][q]=s*s*app+2.*s*c*apq+c*c*aqq;a[p][q]=0.;a[q][p]=0.;
-    }
-    let min=(0..3).map(|i|a[i][i]).fold(f64::INFINITY,f64::min).sqrt();
-    let max=(0..3).map(|i|a[i][i]).fold(0.,f64::max).sqrt();
-    (min>0.&&max.is_finite()).then_some((min,max))
 }
 struct Solid { volume:f64, centroid:[f64;3], points:Vec<[f64;3]>, radius:f64, certified:bool }
 type ProfileMoments = (f64, [f64;3], Vec<[f64;3]>, f64, bool);
@@ -288,47 +247,16 @@ impl<'a> AffineOracle<'a> {
     }
     /// Mapping classification does not depend on an analytic solid oracle.
     pub fn is_affine_final(&mut self,id:u32) -> bool {
-        final_items(&mut self.decoder,id).is_some_and(|items| items.iter().any(|(_,_,_,affine)|*affine))
+        matches!(self.classify(id),Classification::Affine)
+    }
+    /// Classification needs neither the world placement nor an analytic solid.
+    /// A mapped body that cannot be classified is `Unmodelled`, never `Rigid`.
+    pub fn classify(&mut self,id:u32) -> Classification {
+        super::affine_classify::classify(&mut self.decoder,id)
     }
     pub fn expected(&mut self,id:u32) -> Option<Vec<AffineExpectation>> {
         expected_decoded(&mut self.decoder,self.units?,id,self.openings.contains(&id))
     }
-}
-fn nonrigid(m:&Frame) -> bool {
-    let Some((min,max))=stretches(m) else {return false};
-    dot([m[0],m[1],m[2]],cross([m[4],m[5],m[6]],[m[8],m[9],m[10]]))<0.
-        || (min-1.).abs()>1e-12 || (max-1.).abs()>1e-12
-}
-fn final_items(d:&mut EntityDecoder<'_>,id:u32) -> Option<Vec<(u32,Frame,Frame,bool)>> {
-    let p=d.decode_by_id(id).ok()?;
-    let (reps,world)=if p.ifc_type.is_subtype_of(IfcType::IfcTypeProduct) {
-        let mut reps=Vec::new();
-        for id in p.ref_list_at(slot::IfcTypeProduct::REPRESENTATION_MAPS)? {
-            let map=d.decode_by_id(id).ok()?;
-            reps.push(d.decode_by_id(map.ref_at(slot::IfcRepresentationMap::MAPPED_REPRESENTATION)?).ok()?);
-        }
-        (reps,IDENTITY)
-    } else {
-        let world=placement(d,p.ref_at(slot::IfcProduct::OBJECT_PLACEMENT))?;
-        let shape=ifc_lite_geometry::representation::product_shape(&p,d).ok()??;
-        (shape.representations().to_vec(),world)
-    };
-    let mut stack=Vec::new();
-    // Use the retained selector's predicate: RepresentationType selects body
-    // geometry even without an identifier, and direct geometry suppresses maps.
-    for rep in ifc_lite_geometry::representation::meshed_representations(&p,&reps) {
-        for id in rep.ref_list_at(slot::IfcRepresentation::ITEMS)?.into_iter().rev() {stack.push((id,world,IDENTITY,0,false));}
-    }
-    let mut result=Vec::new();let mut work=0;
-    while let Some((id,world,mapping_matrix,depth,affine))=stack.pop() {
-        work+=1;if work>8192||depth>128 {return None}
-        let e=d.decode_by_id(id).ok()?;
-        if e.ifc_type==IfcType::IfcMappedItem {
-            let (map,items)=mapping(d,e.ref_at(slot::IfcMappedItem::MAPPING_SOURCE)?,e.ref_at(slot::IfcMappedItem::MAPPING_TARGET)?)?;
-            for item in items.into_iter().rev() {stack.push((item,world,multiply(&mapping_matrix,&map),depth+1,affine||nonrigid(&map)));}
-        } else {result.push((id,world,mapping_matrix,affine));}
-    }
-    Some(result)
 }
 /// Convenience for single-product witnesses; model comparisons use AffineOracle.
 pub fn expected(bytes:&[u8],id:u32) -> Option<Vec<AffineExpectation>> {
@@ -339,9 +267,11 @@ pub fn expected(bytes:&[u8],id:u32) -> Option<Vec<AffineExpectation>> {
 fn expected_decoded(d:&mut EntityDecoder<'_>,units:f64,id:u32,has_openings:bool) -> Option<Vec<AffineExpectation>> {
     // M9 owns type-map placement/quantities. Classification still gates winding.
     if d.decode_by_id(id).ok()?.ifc_type.is_subtype_of(IfcType::IfcTypeProduct) {return None}
-    let items=final_items(d,id)?;
+    let items=mapped_items(d,id).ok()?;
+    let product=d.decode_by_id(id).ok()?;
+    let world=placement(d,product.ref_at(slot::IfcProduct::OBJECT_PLACEMENT))?;
     let mut result=Vec::new();
-    for (id,world,mapping_matrix,affine_final) in items {
+    for (id,mapping_matrix,affine_final) in items {
         let s=solid(d,id,0,&mut 8192)?;let mut matrix=multiply(&world,&mapping_matrix);
         for col in 0..4 {for row in 0..3 {matrix[col*4+row]*=units;}}
         let det=dot([matrix[0],matrix[1],matrix[2]],cross([matrix[4],matrix[5],matrix[6]],[matrix[8],matrix[9],matrix[10]]));

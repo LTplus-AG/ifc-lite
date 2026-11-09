@@ -64,6 +64,24 @@ describe('immutable worker index publication (#3985)', () => {
     expect(rebuilt.getEntity(1)).toEqual(store.getEntity(1));
   });
 
+  it('marks only the spatial-ready store as pending relationships, through the worker hand-off too (#9192)', async () => {
+    for (const enabled of [false, true]) {
+      let early: IfcDataStore | undefined;
+      const full = await new IfcParser().parseColumnar(source(), { disableWorkerScan: true, onSpatialReady: value => { early = value; } });
+      expect(early?.relationshipsPending).toBe(true);
+      expect(full.relationshipsPending).toBeUndefined();
+      const publisher = new WorkerIndexPublisher(enabled);
+      const receiver = new WorkerIndexReceiver();
+      const partialPayload = structuredClone(publisher.serialize(early!, false).payload);
+      receiver.capturePartial(partialPayload);
+      publisher.publishedPartial(early!);
+      expect(receiver.hydrate(partialPayload, early!.source).relationshipsPending).toBe(true);
+      const completed = receiver.hydrate(structuredClone(publisher.serialize(full, true).payload), full.source);
+      expect(completed.relationshipsPending).toBeUndefined();
+      expect('relationshipsPending' in completed).toBe(false);
+    }
+  });
+
   it('keeps overlapping model IDs and source accessors isolated across receiver sessions', async () => {
     const other = await new IfcParser().parseColumnar(source('Wall-B'), { disableWorkerScan: true });
     const results = [store, other].map(model => {

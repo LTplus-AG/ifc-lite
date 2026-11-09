@@ -3,8 +3,9 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 //! The routing rules `batch.rs` applies to a produced batch: which meshes may
-//! ride the instanced shard, how per-batch repetition is tallied, and the
-//! prepass style-colour wire decode.
+//! ride the instanced shard and how per-batch repetition is tallied. (The
+//! prepass style-colour wire decode lives beside its encoder,
+//! `ifc_lite_processing::prepass::style_colors_from_flat`.)
 //!
 //! Split out of `batch.rs` because these are the parts of it that are decidable
 //! without a file, a decoder or a JS clock — everything else there needs the
@@ -194,36 +195,6 @@ pub(super) fn tallyable_rep(mesh: &MeshData) -> Option<u128> {
 pub(super) fn meets_instance_threshold(mesh: &MeshData, counts: &FxHashMap<u128, u32>) -> bool {
     tallyable_rep(mesh)
         .is_some_and(|rep| counts.get(&rep).copied().unwrap_or(0) >= INSTANCE_MIN_OCCURRENCES)
-}
-
-/// Decode the prepass's parallel style wire — `style_ids[i]` paired with the
-/// four bytes at `style_colors[i * 4 ..]` — into a 0..1 RGBA map.
-///
-/// The wire pair is authored by a separate prepass and can arrive short (an
-/// older or truncated producer); a style whose four bytes are not all present
-/// is dropped rather than read past the end or filled with garbage, so a short
-/// tail costs those styles their colour and nothing else.
-pub(super) fn style_colors_from_wire(
-    style_ids: &[u32],
-    style_colors: &[u8],
-) -> FxHashMap<u32, [f32; 4]> {
-    let mut colors: FxHashMap<u32, [f32; 4]> =
-        FxHashMap::with_capacity_and_hasher(style_ids.len(), Default::default());
-    for (i, &style_id) in style_ids.iter().enumerate() {
-        let base = i * 4;
-        if base + 3 < style_colors.len() {
-            colors.insert(
-                style_id,
-                [
-                    style_colors[base] as f32 / 255.0,
-                    style_colors[base + 1] as f32 / 255.0,
-                    style_colors[base + 2] as f32 / 255.0,
-                    style_colors[base + 3] as f32 / 255.0,
-                ],
-            );
-        }
-    }
-    colors
 }
 
 #[cfg(test)]

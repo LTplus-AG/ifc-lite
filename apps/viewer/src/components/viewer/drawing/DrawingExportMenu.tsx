@@ -74,11 +74,11 @@ export function DrawingExportMenu({
           <TooltipTrigger asChild>
             <DropdownMenuTrigger asChild>
               {compact ? (
-                <Button variant="ghost" size="icon-sm" aria-label={label}>
+                <Button variant="ghost" size="icon-xs" aria-label={label}>
                   <Download className="h-3.5 w-3.5" />
                 </Button>
               ) : (
-                <Button variant="ghost" size="sm" className="h-8 gap-1 px-2 text-xs" aria-label={label}>
+                <Button variant="ghost" size="sm" className="h-7 gap-1 px-2 text-xs" aria-label={label}>
                   <Download className="h-3.5 w-3.5" />
                   {label}
                   <ChevronDown className="h-3 w-3 opacity-60" />

@@ -17,6 +17,7 @@ interface RegistryWorkspace {
   releases: RegistryRelease[];
   transport: RegistryTransport | null;
   session: RegistrySession | null;
+  signOutPending: boolean;
   repository: string;
   release: string;
   version: string;
@@ -28,7 +29,7 @@ interface RegistryWorkspace {
 const initial: RegistryWorkspace = {
   launchModelId: undefined,
   address: localRegistryAddress, catalogNext: undefined, models: [], modelTitles: {}, releases: [], transport: null, session: null, repository: '', release: '',
-  version: 'revision-2', tags: [], fingerprint: '', published: '',
+  version: 'revision-2', tags: [], fingerprint: '', published: '', signOutPending: false,
 };
 
 /** Tab memory only: closing Cloud Sources must not sign out before editing. */
@@ -42,7 +43,8 @@ export function registryTransport(origin: string): RegistryTransport {
   const transport = new RegistryTransport(origin, localRegistryAddress, session => {
     const current = useRegistryWorkspace.getState();
     if (current.transport !== transport) return;
-    updateRegistryWorkspace(session ? { session } : { ...initial, transport, address: current.address });
+    updateRegistryWorkspace(session ? { session, signOutPending: false }
+      : { ...initial, transport, address: current.address, signOutPending: transport.hasPendingSignOut });
   });
   updateRegistryWorkspace({ ...initial, transport });
   return transport;
@@ -51,5 +53,5 @@ export function registryTransport(origin: string): RegistryTransport {
 export function clearRegistrySession(): void {
   const { transport, address } = useRegistryWorkspace.getState();
   transport?.logout();
-  updateRegistryWorkspace({ ...initial, transport, address });
+  updateRegistryWorkspace({ ...initial, transport, address, signOutPending: transport?.hasPendingSignOut ?? false });
 }

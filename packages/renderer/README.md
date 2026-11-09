@@ -30,6 +30,13 @@ renderer.requestRender();
 
 Camera zoom refuses a step that would move the eye or target outside the renderer's supported source-coordinate envelope (±1,000,000,000 metres per axis). The previous pose, cursor anchor and orbit pivot remain intact, so reversing the gesture works. If another control has already moved outside the envelope, zoom may recover incrementally: each accepted step must strictly reduce the largest absolute eye/target coordinate until the pose is supported again. This applies to ordinary, cursor-anchored, fast, surface and inertial zoom. Orthographic zoom keeps its existing scale behavior while its cursor translation observes the same coordinate boundary.
 
+### Mesh-only pages
+
+`import { Renderer } from '@ifc-lite/renderer/core'` is the same renderer
+without point-cloud rendering and scan deviation, so those pipelines and
+shaders stay out of the bundle. Its point-cloud and deviation methods throw.
+See [Rendering](https://ifclite.dev/docs/guide/rendering/#mesh-only-pages-ifc-literenderercore).
+
 ## Inspect GPU pass timing
 
 Timestamp queries are opt-in. Enable them before rendering, then read resolved
@@ -168,3 +175,31 @@ section, terrain or box clipping. It reads the retained render snapshot, so
 mutating a previous options object does not change the answer.
 `raycastScene()` applies that same clip state while walking triangles, so a
 clipped front face cannot hide a visible face behind it.
+
+For a change to the entire Gaussian scene's render origin, the internal
+`renderer.gaussianSplats.translateFrame([dx, dy, dz])` translates all capture
+placements, bounds and the float64 anchor together. Packed local rows remain
+unchanged, preserving the precision envelope even for survey-scale offsets.
+Use `setPlacement` for an individual capture's placement or orientation edit.
+
+### Positioned Gaussian data
+
+`positionedGaussianChunks(source, matrix)` is an async iterator of bounded PLY
+attribute batches for CPU export. `source` uses `GaussianAttributeSource` columns;
+`matrix` is a column-major similarity transform into the chosen output frame.
+Positions are returned as `Float64Array`; other columns retain Gaussian PLY
+log-scale, logit-opacity and channel-major SH encoding. The viewer consumes this
+API for positioned capture downloads. It shares covariance/SH math with rendering
+and does not read GPU buffers. It does not apply an implicit axis conversion.
+
+### Picking symbolic annotations
+
+`Renderer.pick(x, y, options)` includes owned annotation overlays on both mesh
+picking routes. Coordinates and the four-pixel line tolerance are in CSS pixels.
+For `setLineOverlay('annotation', vertices, options)`, anchored partitions may
+supply `ownerIds: Uint32Array`, one scene entity ID per segment (two vertices).
+`SymbolicFillInput` and `SymbolicTextInput` accept an optional `ownerId` in the
+same scene ID space. Omit ownership for reference layers. Clear or replace using
+the existing upload methods; `sectionClipped` and pick visibility filters apply.
+Labels use their laid-out glyph quads and clip with their anchor; fills retain
+holes. This ownership applies to single-point picks, not rectangle selection.

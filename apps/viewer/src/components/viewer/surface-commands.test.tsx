@@ -30,6 +30,7 @@ const EXPECTED_IDS = [
   'vis:toggle-iso', 'vis:reset-colors', 'elements:entity-actions',
 ] as const;
 const VISIBILITY_IDS = [
+  'vis:isolate',
   'vis:hide', 'vis:show', 'vis:set-iso', 'vis:add-iso', 'vis:remove-iso',
   'vis:toggle-iso', 'vis:save-view', 'vis:toggle-presentation', 'vis:clear-iso',
   'vis:spaces', 'vis:spatialZones', 'vis:openings', 'vis:site',
@@ -274,8 +275,8 @@ describe('shared palette and ribbon commands (#5870)', () => {
         assert.ok(command);
         assert.equal(row.getAttribute('aria-label'), resolve(command.labelKey),
           `${command.id} exposes its registry name to assistive technology`);
-        assert.equal(row.querySelector('span.flex-1')?.textContent, resolve(command.labelKey),
-          `${command.id} renders only its registry label`);
+        assert.equal(row.querySelector('[data-command-label]')?.textContent, resolve(command.labelKey),
+          `${command.id} retains its registry label alongside palette availability (#8947)`);
       }
     } finally {
       useViewerStore.setState({ collabRole: previous.collabRole, cesiumAvailable: previous.cesiumAvailable });

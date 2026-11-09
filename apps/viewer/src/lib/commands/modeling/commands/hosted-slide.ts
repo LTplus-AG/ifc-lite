@@ -101,6 +101,7 @@ export const HOSTED_SLIDE: ModelingCommand<HostedSlideGesture> = {
   hud: { hint: () => 'planHandles.slide.hint' },
   snap: 'modeling',
   init,
+  aimsAtElement: () => true,
   snapQuery: () => ({ anchor: null, chain: [], locks: {} }),
   pointerMove: (g, s) => (g.target ? { ...g, offset: slideOffset(g.target, s.local) } : g),
   pointerDown: (g) => g,

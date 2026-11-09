@@ -5,8 +5,17 @@
 
 import { isMainEntry } from '../lib/is-main-entry.mjs';
 
-const RELEASE_BRANCH = 'changeset-release/main';
-const RELEASE_TITLE = 'chore: version packages';
+export const RELEASE_BRANCH = 'changeset-release/main';
+export const RELEASE_TITLE = 'chore: version packages';
+
+/**
+ * The generated release PR as `claude-review.yml`'s `if:` names it. Its `==` is
+ * case-insensitive, so this is too: a draft that differs only by case still ran the lane.
+ */
+export function isGeneratedReleasePr({ headRef, title }) {
+  const same = (a, b) => typeof a === 'string' && a.toLowerCase() === b.toLowerCase();
+  return same(headRef, RELEASE_BRANCH) && same(title, RELEASE_TITLE);
+}
 
 /**
  * Decide whether a PR contains authored code for the probabilistic reviewer.

@@ -104,6 +104,37 @@ pub fn indexed_colour_split_guard_ids(
     (!ids.is_empty()).then(|| std::sync::Arc::new(ids))
 }
 
+/// Every `IfcIndexedColourMap` in `content`, resolved to its full palette and
+/// keyed by face-set id. The first map per face set in file order wins, the
+/// same rule [`crate::prepass::resolve_prepass`] applies.
+///
+/// Only the browser batch runs this. The native orchestrator collects the
+/// same maps from the spans its single model-wide scan already stashed, so it
+/// never pays a second scan. The browser prepass does not ship full palettes
+/// over the JS boundary, so each batch worker rebuilds them from the source
+/// once, here (EDGE-WASM-7, #8341). A file with no map pays one substring
+/// search and no entity scan.
+pub fn collect_full_indexed_colour_maps(
+    content: &[u8],
+    decoder: &mut EntityDecoder,
+) -> rustc_hash::FxHashMap<u32, FullIndexedColourMap> {
+    let mut maps = rustc_hash::FxHashMap::default();
+    if ifc_lite_core::find_keyword(content, b"IFCINDEXEDCOLOURMAP").is_none() {
+        return maps;
+    }
+    let mut scanner = ifc_lite_core::EntityScanner::new(content);
+    while let Some((_id, type_name, start, end)) = scanner.next_entity() {
+        if !ifc_lite_core::keyword_eq(type_name, "IFCINDEXEDCOLOURMAP") {
+            continue;
+        }
+        let Ok(icm) = decoder.decode_at(start, end) else { continue };
+        if let Some(full) = resolve_indexed_colour_map_full(&icm, decoder) {
+            maps.entry(full.geometry_id).or_insert(full);
+        }
+    }
+    maps
+}
+
 /// Resolve an `IfcIndexedColourMap` to its palette + per-triangle indices.
 ///
 /// Schema (IFC4):

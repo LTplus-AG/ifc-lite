@@ -18,7 +18,8 @@ import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
 import { cn } from '@/lib/utils';
 import { useViewportStatusSummary } from '@/hooks/useViewportStatusSummary';
 import { ViewCube, type ViewCubeRef } from './ViewCube';
-import { VIEW_CUBE_INSET_PX } from './viewcube-box';
+import { VIEW_CUBE_INSET_PX, VIEW_CUBE_RIGHT_INSET_PX } from './viewcube-box';
+import { MOBILE_NAV_BOTTOM } from './mobile-overlay-layout';
 import { AxisHelper, type AxisHelperRef } from './AxisHelper';
 import { FlySpeedIndicator } from './FlySpeedIndicator';
 import { WalkIndicator } from './walk/WalkIndicator';
@@ -27,12 +28,27 @@ import { Crosshair } from 'lucide-react';
 import { useTranslation } from '@/i18n';
 // Mounted here, not in `ViewportContainer.tsx` (at its module budget): a
 // zero-net addition since this already lives inside the same viewport panel.
+import { GitHubStarPrompt } from './GitHubStarPrompt';
 import { ViewportHud } from '../viewport-ui/hud/ViewportHud';
 import { WorkspaceStoreyChip } from './model/WorkspaceStoreyChip';
+import { WorkplaneHeightChip } from './model/WorkplaneHeightControl';
 import { ViewportLoadingCard } from './ViewportLoadingCard';
 import { ViewportLoadErrorCard } from './ViewportLoadErrorCard';
 import { SectionParkedChip } from './tools/SectionParkedChip';
 import { MeasurementsVisibilityChip } from './tools/MeasurementsVisibilityChip';
+
+/** The scale-bar readout for a 96 px bar spanning `worldSize` metres. */
+function formatScale(worldSize: number): string {
+  if (worldSize >= 1000) {
+    return `${(worldSize / 1000).toFixed(1)}km`;
+  } else if (worldSize >= 1) {
+    return `${worldSize.toFixed(1)}m`;
+  } else if (worldSize >= 0.1) {
+    return `${(worldSize * 100).toFixed(0)}cm`;
+  } else {
+    return `${(worldSize * 1000).toFixed(0)}mm`;
+  }
+}
 
 /**
  * Overlay chrome drawn on top of the 3D viewport.
@@ -63,7 +79,6 @@ export function ViewportOverlays({
   const cameraCallbacks = useViewerStore((s) => s.cameraCallbacks);
   const isMobile = useViewerStore((s) => s.isMobile);
   const setOnCameraRotationChange = useViewerStore((s) => s.setOnCameraRotationChange);
-  const setOnScaleChange = useViewerStore((s) => s.setOnScaleChange);
   const { t } = useTranslation();
 
   // The storey pill and the hidden/ghosted count moved into `StatusBar` for
@@ -81,9 +96,7 @@ export function ViewportOverlays({
   const axisHelperRef = useRef<AxisHelperRef | null>(null);
   const lastCubeGestureEmitRef = useRef(0);
 
-  // Local state for scale - updated via callback, no global re-renders
-  const [scale, setScale] = useState(10);
-  const lastScaleRef = useRef(10);
+  // Local state for the scale readout - updated via callback, no global re-renders
 
   // Register callback for real-time rotation updates - updates ViewCube directly
   useEffect(() => {
@@ -115,21 +128,6 @@ export function ViewportOverlays({
       pointCloudPanelIntroducedRef.current = false;
     }
   }, [pointCloudAssetCount]);
-
-  // Register callback for real-time scale updates
-  // Only update state if scale changed significantly (>1%) to avoid unnecessary re-renders
-  useEffect(() => {
-    const handleScaleChange = (newScale: number) => {
-      const lastScale = lastScaleRef.current;
-      // Only update if scale changed by more than 1%
-      if (Math.abs(newScale - lastScale) / lastScale > 0.01) {
-        lastScaleRef.current = newScale;
-        setScale(newScale);
-      }
-    };
-    setOnScaleChange(handleScaleChange);
-    return () => setOnScaleChange(null);
-  }, [setOnScaleChange]);
 
   // Initial rotation values (ViewCube will update itself via ref)
   const initialRotationX = -cameraRotationRef.current.elevation;
@@ -170,25 +168,14 @@ export function ViewportOverlays({
     cameraCallbacks.zoomOut?.();
   }, [cameraCallbacks]);
 
-  // Format scale value for display
-  const formatScale = (worldSize: number): string => {
-    if (worldSize >= 1000) {
-      return `${(worldSize / 1000).toFixed(1)}km`;
-    } else if (worldSize >= 1) {
-      return `${worldSize.toFixed(1)}m`;
-    } else if (worldSize >= 0.1) {
-      return `${(worldSize * 100).toFixed(0)}cm`;
-    } else {
-      return `${(worldSize * 1000).toFixed(0)}mm`;
-    }
-  };
-
   return (
     <>
       {/* HUD kernel (#5485); mounted first so its regions exist before
           anything below portals in. */}
       <ViewportHud />
+      {!hideViewCube && <GitHubStarPrompt />}
       <WorkspaceStoreyChip />
+      <WorkplaneHeightChip />
       {hasLoadError ? <ViewportLoadErrorCard /> : <ViewportLoadingCard />}
       <SectionParkedChip />
       <MeasurementsVisibilityChip />
@@ -200,7 +187,8 @@ export function ViewportOverlays({
           (`toolbar/CameraCommands`). */}
       {isMobile && !cesiumEnabled && (
         <div
-          className="absolute left-4 bottom-[15%] flex flex-col gap-1 rounded-md border bg-background/90 p-1 backdrop-blur-sm"
+          className="absolute left-4 flex flex-col gap-1 rounded-md border bg-background/90 p-1 backdrop-blur-sm"
+          style={{ bottom: MOBILE_NAV_BOTTOM }}
         >
           <Tooltip>
             <TooltipTrigger asChild>
@@ -274,7 +262,7 @@ export function ViewportOverlays({
 
       {/* ViewCube (top-right) */}
       {!hideViewCube && (
-        <div className="absolute" style={{ top: VIEW_CUBE_INSET_PX, right: VIEW_CUBE_INSET_PX }} {...tourAnchor(TOUR_ANCHORS.viewcube)}>
+        <div className="absolute" style={{ top: VIEW_CUBE_INSET_PX, right: VIEW_CUBE_RIGHT_INSET_PX }} {...tourAnchor(TOUR_ANCHORS.viewcube)}>
           <ViewCube
             ref={viewCubeRef}
             onViewChange={handleViewChange}
@@ -300,10 +288,7 @@ export function ViewportOverlays({
       {!isMobile && (
         <div className="absolute bottom-4 left-4 flex flex-col-reverse items-start gap-3">
           {!hideScale && (
-            <div className="flex flex-col items-start gap-1" data-testid="viewport-scale-readout">
-              <div className="h-1 w-24 bg-foreground/80 rounded-full" />
-              <span className="text-xs text-foreground/80">{formatScale(scale)}</span>
-            </div>
+            <ScaleReadout />
           )}
           {!hideAxis && (
             <div data-testid="viewport-axis-helper">
@@ -331,6 +316,36 @@ export function ViewportOverlays({
  * Toggle for the per-model IFC-origin overlay. Sits next to the AxisHelper so
  * it's discoverable in the same "scene reference" cluster.
  */
+/**
+ * The scale label owns its state, so a zoom re-renders this readout and not the
+ * overlay tree, and a hidden readout leaves the camera's scale callback unset.
+ * React bails out unless the formatted text changes.
+ */
+function ScaleReadout() {
+  const { t } = useTranslation();
+  // #8566: placement is not calibration. A visible capture never establishes
+  // metres, even when its source coordinates happen to resemble IFC units.
+  const hasCapture = useViewerStore((s) => [...s.models.values()].some((m) => m.visible && !!m.gaussianSplat));
+  const hasIfc = useViewerStore((s) => [...s.models.values()].some((m) => m.visible && !m.gaussianSplat && m.pointCloudHandleId === undefined && !!m.ifcDataStore?.schemaVersion?.startsWith('IFC')));
+  const setOnScaleChange = useViewerStore((s) => s.setOnScaleChange);
+  const [scaleLabel, setScaleLabel] = useState(() => formatScale(10));
+  useEffect(() => {
+    setOnScaleChange((newScale: number) => setScaleLabel(formatScale(newScale)));
+    return () => setOnScaleChange(null);
+  }, [setOnScaleChange]);
+  return (
+    <div className="flex flex-col items-start gap-1" data-testid="viewport-scale-readout">
+      {(!hasCapture || hasIfc) && <>
+        <div className="h-1 w-24 bg-foreground/80 rounded-full" />
+        <span className="text-xs text-foreground/80" data-testid="viewport-metric-scale">{scaleLabel}</span>
+      </>}
+      {hasCapture && <span className="max-w-64 text-xs text-foreground/80" data-testid="viewport-capture-scale-note">
+        {t(hasIfc ? 'gaussianCapture.scale.mixed' : 'gaussianCapture.scale.captureOnly')}
+      </span>}
+    </div>
+  );
+}
+
 function BasepointToggleButton() {
   const showModelBasepoints = useViewerStore((s) => s.showModelBasepoints);
   const toggleShowModelBasepoints = useViewerStore((s) => s.toggleShowModelBasepoints);
@@ -348,7 +363,7 @@ function BasepointToggleButton() {
             'h-6 w-6 inline-flex items-center justify-center border transition-colors',
             showModelBasepoints
               ? 'border-amber-500 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300'
-              : 'border-zinc-300 dark:border-zinc-700 bg-white/80 dark:bg-zinc-900/80 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800',
+              : 'border-zinc-300 dark:border-zinc-700 bg-popover/80 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800',
           )}
           aria-pressed={showModelBasepoints}
         >

@@ -180,20 +180,9 @@ where
     part_to_parent
 }
 
-/// Compute the set of aggregated `IfcBuildingElementPart` ids to skip when the
-/// "merge multilayer wall as a single solid" toggle is on (issue #540): a part
-/// is skipped when its parent's layered build-up is *sliceable*, so the parent's
-/// merged-layer geometry is drawn instead of the individual parts.
-///
-/// This is the layer/void **driver** — it composes the two shared geometry
-/// kernels ([`propagate_voids_to_parts`] for part→parent + void propagation, and
-/// [`MaterialLayerIndex::is_sliceable`]) so the driver lives in the geometry
-/// crate next to its kernels rather than inline in a consumer (#913 Phase 4 /
-/// §2.6). The browser's `merge_layers` path calls it. The `void_index` it hands
-/// to [`propagate_voids_to_parts`] is EMPTY and stays empty: propagation is a
-/// no-op on an empty index, and only the part → parent map is wanted here.
-/// Callers that also need the propagated voids call
-/// [`propagate_voids_to_parts`] directly with their own seeded `void_index`.
+/// [`compute_parts_to_skip_with_index`](crate::compute_parts_to_skip_with_index)
+/// with a material-layer index built from `content`. Callers that already hold
+/// the index should pass it instead, which avoids this extra full-file scan.
 #[must_use]
 pub fn compute_parts_to_skip<T>(
     content: &T,
@@ -204,13 +193,7 @@ where
 {
     let content = content.as_ref();
     let material_layer_index = crate::MaterialLayerIndex::from_content(content, decoder);
-    let mut void_index_scratch: FxHashMap<u32, Vec<u32>> = FxHashMap::default();
-    let part_to_parent = propagate_voids_to_parts(&mut void_index_scratch, content, decoder);
-    part_to_parent
-        .into_iter()
-        .filter(|(_, parent_id)| material_layer_index.is_sliceable(*parent_id))
-        .map(|(part_id, _)| part_id)
-        .collect()
+    crate::compute_parts_to_skip_with_index(content, decoder, &material_layer_index)
 }
 
 /// Index mapping host elements to their voids

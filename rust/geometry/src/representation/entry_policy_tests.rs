@@ -184,19 +184,31 @@ fn issue_7781_skip_saves_items_allowance_but_stop_ends_siblings() {
 
 #[test]
 fn issue_7781_nested_overbudget_items_report_once_before_decode_and_unwind() {
+    // Three attempts (#10 and both #20s) fit. #12 repeats #20 once (one
+    // member). The first #30 read reaches four distinct points for free
+    // (#9102); the second #20 repeats all four, which a three-member
+    // allowance refuses inside the entered scope, before resolving them.
     let model = "#10=IFCMAPPEDITEM(#11,$);#11=IFCREPRESENTATIONMAP($,#12);\
-        #12=IFCSHAPEREPRESENTATION($,'Body','Brep',(#20,#1));\
+        #12=IFCSHAPEREPRESENTATION($,'Body','Brep',(#20,#20,#1));\
         #20=IFCMAPPEDITEM(#21,$);#21=IFCREPRESENTATIONMAP($,#30);\
-        #30=IFCSHAPEREPRESENTATION($,'Body','Brep',(#999));\
-        #1=IFCCARTESIANPOINT((0.,0.,0.));";
+        #30=IFCSHAPEREPRESENTATION($,'Body','Brep',(#2,#3,#4,#5));\
+        #1=IFCCARTESIANPOINT((0.,0.,0.));#2=IFCCARTESIANPOINT((1.,0.,0.));\
+        #3=IFCCARTESIANPOINT((2.,0.,0.));#4=IFCCARTESIANPOINT((3.,0.,0.));\
+        #5=IFCCARTESIANPOINT((4.,0.,0.));";
     let mut d = EntityDecoder::new(model);
     let root = d.decode_by_id(10).unwrap();
     let mut trace = Trace::default();
-    walk(2).mapped_item(&root, &mut d, &mut trace);
+    walk(3).mapped_item(&root, &mut d, &mut trace);
     assert_eq!(
         trace.events,
         [
             "enter 10 depth 0",
+            "enter 20 depth 1",
+            "item 2 IfcCartesianPoint depth 2",
+            "item 3 IfcCartesianPoint depth 2",
+            "item 4 IfcCartesianPoint depth 2",
+            "item 5 IfcCartesianPoint depth 2",
+            "leave 20",
             "enter 20 depth 1",
             "refuse 20 depth 1 shape None",
             "leave 20",
@@ -206,7 +218,7 @@ fn issue_7781_nested_overbudget_items_report_once_before_decode_and_unwind() {
     assert_eq!(trace.refusals.len(), 1);
     assert!(matches!(
         trace.refusals[0],
-        (20, WalkRefusal::Budget { max_levels: 2 })
+        (20, WalkRefusal::Budget { max_levels: 3 })
     ));
     // Root list was already fully decoded; #1 is cached but never visited.
     assert!(d.get_cached(1).is_some());
@@ -398,11 +410,13 @@ fn issue_8020_wrong_class_root_map_and_representation_keep_shape_errors() {
 
 #[test]
 fn issue_7781_root_budget_error_names_expansion_without_claiming_a_mapped_item() {
-    let model = "#10=IFCREPRESENTATIONMAP($,#20);\
+    // A first root read is free (#9102); the repeated #20 is refused.
+    let model = "#5=IFCWALL('g',$,$,$,$,$,#6,$);\
+        #6=IFCPRODUCTDEFINITIONSHAPE($,$,(#20,#20));\
         #20=IFCSHAPEREPRESENTATION($,'Body','Brep',(#1));\
         #1=IFCCARTESIANPOINT((0.,0.,0.));";
     let mut decoder = EntityDecoder::new(model);
-    let root = decoder.decode_by_id(10).unwrap();
+    let root = decoder.decode_by_id(5).unwrap();
     let mut trace = Trace::default();
     RepresentationWalk {
         select: Select::Any,
@@ -411,7 +425,7 @@ fn issue_7781_root_budget_error_names_expansion_without_claiming_a_mapped_item()
             max_levels: 0,
         },
     }
-    .map(&root, &mut decoder, &mut trace)
+    .product(&root, &mut decoder, &mut trace)
     .unwrap();
     let (id, why) = trace
         .refusals
@@ -420,5 +434,11 @@ fn issue_7781_root_budget_error_names_expansion_without_claiming_a_mapped_item()
     assert_eq!(id, 20);
     assert_eq!(why.into_error(id).to_string(),
         "Geometry processing error: Representation expansion exceeded the work budget of 0 levels or item references at #20");
-    assert!(decoder.get_cached(1).is_none());
+    assert_eq!(
+        trace.events,
+        [
+            "item 1 IfcCartesianPoint depth 0",
+            "refuse 20 depth 0 shape Some(20)"
+        ]
+    );
 }

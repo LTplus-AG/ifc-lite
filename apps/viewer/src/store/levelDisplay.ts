@@ -19,6 +19,7 @@ import { useViewerStore } from './index.js';
 import { toGlobalIdFromModels } from './globalId.js';
 import type { EntityRef } from './types.js';
 import type { LevelDisplayMode } from './slices/levelDisplaySlice.js';
+import { effectiveStoreyElevation, effectiveStoreyIds } from '@/lib/commands/modeling/effective-storeys';
 
 type ElevationCarrier = { spatialHierarchy?: { storeyElevations?: Map<number, number> } | null } | null | undefined;
 
@@ -31,8 +32,16 @@ export function pickTopStorey(): EntityRef | null {
   let bestElev = -Infinity;
   const consider = (modelId: string, ds: ElevationCarrier) => {
     const elevs = ds?.spatialHierarchy?.storeyElevations;
-    if (!elevs) return;
-    for (const [id, elev] of elevs) {
+    const store = modelId === 'legacy' ? null : s.models.get(modelId)?.ifcDataStore;
+    const view = s.mutationViews.get(modelId);
+    // Live levels (#9013): parsed ones (IFC4.3 facility parts included) minus
+    // deletions, plus storeys added this session, at their edited elevation.
+    const live = new Map<number, number>();
+    for (const [id, elev] of elevs ?? []) if (!view?.isDeleted(id)) live.set(id, elev);
+    if (store && view) {
+      for (const id of effectiveStoreyIds(store, view)) live.set(id, effectiveStoreyElevation(store, view, id));
+    }
+    for (const [id, elev] of live) {
       if (elev > bestElev) {
         bestElev = elev;
         bestRef = { modelId, expressId: id };
@@ -54,7 +63,13 @@ function storeyExists(ref: EntityRef): boolean {
   const s = useViewerStore.getState();
   const ds = (ref.modelId === 'legacy' ? s.ifcDataStore : s.models.get(ref.modelId)?.ifcDataStore) as ElevationCarrier;
   const elevs = ds?.spatialHierarchy?.storeyElevations;
-  return !!elevs && elevs.has(ref.expressId);
+  const store = s.models.get(ref.modelId)?.ifcDataStore;
+  const view = s.mutationViews.get(ref.modelId);
+  // A storey deleted this session (#9013) is still in the parsed map.
+  if (view?.isDeleted(ref.expressId)) return false;
+  // Parsed levels include IFC4.3 facility parts; a storey added this session is only in the overlay.
+  if (elevs?.has(ref.expressId)) return true;
+  return !!store && !!view && effectiveStoreyIds(store, view).includes(ref.expressId);
 }
 
 /**

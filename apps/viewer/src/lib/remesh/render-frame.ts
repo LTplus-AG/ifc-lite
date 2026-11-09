@@ -15,8 +15,13 @@
  *     (`CoordinateHandler.shiftPositions`, same outlier rule);
  *  3. for a model the federation re-aligned onto another model's CRS
  *     ('same-crs' / 'reprojected'), the same `alignGeometryToReference` the
- *     load ran, from the model's pre-alignment frame. The pre-alignment
- *     copies are returned so the model's snapshot stays restorable.
+ *     load ran, from the model's pre-alignment frame, into the reference the
+ *     model's meshes were re-baked into (`alignmentReference`). Pinning
+ *     another anchor moves no mesh until a re-align, so a re-meshed element
+ *     must land where the meshes it replaces are, not in the anchor the
+ *     federation would pick now (#9229). A model with no record falls back
+ *     to that pick. The pre-alignment copies are returned so the model's
+ *     snapshot stays restorable.
  *
  * A model-placement rotation is NOT applied here: the rotation baker bakes
  * appended meshes on its next reconcile, exactly as for a streamed batch.
@@ -84,7 +89,7 @@ export async function toRenderFrame(
     await import('@/hooks/ingest/federationAlign');
   const info = sourceCoordinateInfo(model);
   const source = info ? extractModelSpatialPlacement(store, info, georefMutations) : null;
-  const reference = findReferenceSpatialModel()?.placement ?? null;
+  const reference = model.alignmentReference ?? findReferenceSpatialModel()?.placement ?? null;
   if (!model.preAlignment || !info || !source || !reference) return { ok: false, reason: 'alignment' };
   const preAligned = meshes.map(baselineOf);
   const staged = { meshes, coordinateInfo: structuredClone(info), totalTriangles: 0, totalVertices: 0 };

@@ -14,8 +14,9 @@ use crate::admission::ResidentBytes;
 use crate::error::ApiError;
 use crate::services::axis::mesh_to_yup_in_place;
 use crate::services::process_streaming;
-use crate::types::{finish_meshes, MetadataResponse, ParseResponse, SymbolicParseResponse, StreamEvent};
-use ifc_lite_processing::style::ModelFinishes;
+use crate::types::{
+    with_finishes, CollectedFinishes, MetadataResponse, ParseResponse, SymbolicParseResponse, StreamEvent,
+};
 use crate::AppState;
 use axum::{
     extract::{Multipart, Query, State},
@@ -116,10 +117,12 @@ pub async fn parse_full(
     // detached blocking work keeps running - and keeps its admission slot -
     // until it actually exits, so a replacement cannot be admitted on top.
     let (body, symbolic_data, admission) = tokio::task::spawn_blocking(move || {
+        // #5984: each mesh's IFC-authored finish, joined by the pass itself.
+        let mut finishes = CollectedFinishes::default();
         let result = process(
             &content,
-            &ProcessingRequest::full_pass().opening_filter(opening_filter).quality(tessellation_quality).layer_slicing(query.layer_slicing),
-            &mut (),
+            &with_finishes(ProcessingRequest::full_pass().opening_filter(opening_filter).quality(tessellation_quality).layer_slicing(query.layer_slicing)),
+            &mut finishes,
         );
         // In the frame the meshes above were baked in, not one this re-derives
         // for itself: the two travel in one response, so a site-local model's
@@ -129,8 +132,7 @@ pub async fn parse_full(
             &content,
             result.frame,
         )?;
-        // #5984: each mesh's IFC-authored finish, joined before the bytes go.
-        let mut meshes = finish_meshes(&mut ModelFinishes::from_content(&content), result.meshes);
+        let mut meshes = finishes.attach(result.meshes);
         drop(content);
 
         // Emit the SAME Y-up wire frame as the parquet transports (issue #1841).
@@ -142,17 +144,12 @@ pub async fn parse_full(
             mesh_to_yup_in_place(mesh);
         }
 
-        let response = SymbolicParseResponse::new(ParseResponse {
-            cache_key: response_key,
-            meshes: Vec::new(),
-            mesh_coordinate_space: Some(result.mesh_coordinate_space),
-            site_transform: result.site_transform,
-            building_transform: result.building_transform,
-            metadata: result.metadata,
-            stats: result.stats,
-            symbolic_data: Default::default(),
-        }, symbolic)
-        .with_meshes(meshes);
+        // The native mapping the FFI shares (#8341 C4-13b), with this route's
+        // additions explicit: the Y-up meshes carrying their finish above
+        // replace the result's, and the symbolic stream keeps its provenance.
+        let rest = ifc_lite_processing::ProcessingResult { meshes: Vec::new(), ..result };
+        let response = SymbolicParseResponse::new(ParseResponse::from_result(response_key, rest), symbolic)
+            .with_meshes(meshes);
         let body = encode_response(&response)?;
         Ok::<_, ApiError>((body, response.symbolic_data, admission_guard))
     })

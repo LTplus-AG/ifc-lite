@@ -14,6 +14,11 @@ const BUILT_SIBLING = new RegExp(
 
 export default defineConfig({
   test: {
+    reporters: [
+      'default',
+      ...(process.env.GITHUB_ACTIONS === 'true' ? ['github-actions'] : []),
+      '@mergifyio/vitest',
+    ],
     environment: 'node',
     server: { deps: { external: [BUILT_SIBLING] } },
   },

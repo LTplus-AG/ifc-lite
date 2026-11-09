@@ -63,7 +63,7 @@ export type {
   EntityKey,
 } from './types.js';
 
-export { DEFAULT_SECTION_CONFIG, makeEntityKey, parseEntityKey } from './types.js';
+export { DEFAULT_SECTION_CONFIG, isPolygonCutLine, makeEntityKey, parseEntityKey } from './types.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // SECTION CUTTING

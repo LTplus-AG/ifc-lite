@@ -63,7 +63,8 @@ bake before the clip, typed outcome and native/browser agreement only. It has
 no analytic qualification expectation. Schema validation must reject it.
 
 The schema-valid outer mapping bakes after clipping; its affine final output
-is deferred to M10. All other candidate qualification cases stay in
+is published by M10 (mirrors and nonuniform scales are baked into the clipped
+mesh, with winding reversed for reflections). All other candidate qualification cases stay in
 `f-e-clips.ifc`, with hand expectations in `expected.d/m5.json` (the task's
 slice-name convention also replaces the spec's `m5-clips.json` here).
 The survey case places the rotation and offset on the extrusion itself, so
@@ -122,10 +123,10 @@ plane, verifies the adjacent events, and compares with its hand integral.
 ## CI scope of the real-corpus witness
 
 CI runs the synthetic three-chain witness (`m5_three_chain`), the committed
-FZK/issue_5314 corpus products and the lineage boundary. The BURKWIL beam
+FZK/issue_5314 corpus products and the lineage boundary. The beam
 #4548 witness needs a model that is not in the repository and CI does not
-download it. It runs locally with `IFCLITE_BURKWIL=<ifc>`; set
-`IFCLITE_REQUIRE_BURKWIL=1` to make an absent model fail instead of skip. It is
+download it. It runs locally with `IFCLITE_M5_BEAM_MODEL=<ifc>`; set
+`IFCLITE_REQUIRE_M5_BEAM_MODEL=1` to make an absent model fail instead of skip. It is
 therefore not in `tests/evidence/m5/witnesses.txt`.
 
 The native lane writes the M5 browser parity references to

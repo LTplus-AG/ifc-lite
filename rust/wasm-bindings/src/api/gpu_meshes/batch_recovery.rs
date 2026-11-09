@@ -19,25 +19,13 @@ pub(super) fn recover(
     if all_occurrences.is_empty() {
         Vec::new()
     } else {
-        let mut template_by_rep: rustc_hash::FxHashMap<u128, super::instancing::TemplateInfo> =
-            rustc_hash::FxHashMap::default();
-        for out in outputs.iter() {
-            for m in &out.meshes {
-                if m.positions.is_empty() {
-                    continue;
-                }
-                if let Some(im) = m.instance.as_ref() {
-                    if im.instanceable {
-                        // Use the partition's same opaque, untextured class-0
-                        // candidate gate so recovery and output cannot drift.
-                        let eligible = is_instancing_candidate(m);
-                        template_by_rep
-                            .entry(im.rep_identity)
-                            .or_insert(super::instancing::TemplateInfo { eligible });
-                    }
-                }
-            }
-        }
+        // The native finalize's template selection over this batch's meshes
+        // only. Eligibility is the partition's same opaque, untextured class-0
+        // candidate gate, so recovery and output cannot drift.
+        let template_by_rep = ifc_lite_processing::index_templates_by_rep(
+            outputs.iter().flat_map(|out| out.meshes.iter()),
+            |_, m| super::instancing::TemplateInfo { eligible: is_instancing_candidate(m) },
+        );
         let mut recovered_flats: Vec<ifc_lite_processing::MeshData> = Vec::new();
         let mut shard = super::instancing::resolve_batch_occurrences(
             all_occurrences,

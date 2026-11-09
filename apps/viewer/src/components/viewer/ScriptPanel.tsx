@@ -261,10 +261,10 @@ export function ScriptPanel() {
           {/* AI Chat toggle */}
           <IconButton
             label={chatPanelVisible ? t('scriptPanel.header.hideAiChat') : t('scriptPanel.header.showAiChat')}
-            variant={chatPanelVisible ? 'default' : 'ghost'}
+            variant="toggle"
             size="icon-xs"
+            aria-pressed={chatPanelVisible}
             onClick={toggleChat}
-            className={cn(chatPanelVisible && 'bg-blue-500 hover:bg-blue-600 text-white')}
             {...tourAnchor(TOUR_ANCHORS.scriptChatToggle)}
           >
             <Bot className="h-3.5 w-3.5" />
@@ -421,7 +421,7 @@ export function ScriptPanel() {
             </span>
           )}
           {executionState === 'success' && lastResult && (
-            <span className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1">
+            <span className="text-xs text-ok flex items-center gap-1">
               <CheckCircle2 className="h-3 w-3" />
               {formatDuration(lastResult.durationMs)}
             </span>
@@ -589,14 +589,14 @@ const MemoizedLogLine = memo(function LogLine({ log }: { log: LogEntry }) {
       );
     case 'warn':
       return (
-        <div className="flex items-start gap-1.5 text-yellow-600 dark:text-yellow-400">
+        <div className="flex items-start gap-1.5 text-warn">
           <AlertTriangle className="h-3 w-3 mt-0.5 shrink-0" />
           <span className="whitespace-pre-wrap break-all">{formatted}</span>
         </div>
       );
     case 'info':
       return (
-        <div className="flex items-start gap-1.5 text-blue-600 dark:text-blue-400">
+        <div className="flex items-start gap-1.5 text-info">
           <Info className="h-3 w-3 mt-0.5 shrink-0" />
           <span className="whitespace-pre-wrap break-all">{formatted}</span>
         </div>

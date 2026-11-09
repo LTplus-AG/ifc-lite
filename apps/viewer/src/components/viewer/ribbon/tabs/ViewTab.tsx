@@ -133,14 +133,12 @@ export function ViewTab() {
             icon={World}
             tooltip={cesiumEnabled ? t('ribbon.view.worldHideTooltip') : t('ribbon.view.worldShowTooltip')}
             active={cesiumEnabled}
-            activeClassName="bg-teal-600/20 text-foreground ring-1 ring-inset ring-teal-600/50"
           />
         )}
         <RibbonCommandLargeButton
           commandId="view:lighting"
           icon={Lighting}
           active={activeWorkspacePanels.has('environment') || solarEnabled || envSkyEnabled || envPreset !== 'default'}
-          activeClassName="bg-amber-500/20 text-foreground ring-1 ring-inset ring-amber-500/50"
         />
         <RibbonSmallStack>
           {cesiumAvailable && cesiumEnabled && (
@@ -156,7 +154,6 @@ export function ViewTab() {
             commandId="view:spacemouse"
             icon={SpaceMouse}
             active={spaceMouseConnected}
-            activeClassName="bg-primary/20 text-foreground ring-1 ring-inset ring-primary/50"
           />
         </RibbonSmallStack>
       </RibbonGroup>
@@ -172,7 +169,7 @@ export function ViewTab() {
           disabled={!hasModels}
           commandContext={{ activateBottomPanel: handleToggleBottomPanel }}
           badge={(basketViewCount > 0 || pinboardEntities.size > 0) ? (
-            <span className="absolute -top-0.5 right-0.5 flex h-[14px] min-w-[14px] items-center justify-center rounded-full border border-background bg-primary px-0.5 text-2xs font-bold text-primary-foreground">
+            <span className="absolute -top-0.5 right-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full border border-background bg-primary px-0.5 text-2xs font-bold text-primary-foreground">
               {basketViewCount > 0 ? `${basketViewCount}/${pinboardEntities.size}` : pinboardEntities.size}
             </span>
           ) : undefined}

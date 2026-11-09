@@ -28,7 +28,7 @@ const BADGE: Record<'required' | 'optional' | 'prohibited', { short: Translation
   optional: { short: 'idsStudio.badge.optional', long: 'idsStudio.cardinality.optional', tone: 'border-border text-muted-foreground' },
   prohibited: { short: 'idsStudio.badge.prohibited', long: 'idsStudio.cardinality.prohibited', tone: 'border-destructive/40 text-destructive' },
 };
-const DOT: Record<LintSeverity | 'ok', string> = { error: 'bg-destructive', warning: 'bg-amber-500', info: 'bg-sky-500', ok: 'bg-emerald-500' };
+const DOT: Record<LintSeverity | 'ok', string> = { error: 'bg-danger-solid', warning: 'bg-warn-solid', info: 'bg-info-solid', ok: 'bg-ok-solid' };
 
 function Badge({ value }: { value: 'required' | 'optional' | 'prohibited' }) {
   const { t } = useTranslation();

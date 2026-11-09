@@ -95,7 +95,8 @@ for (const count of [1, 2] as const) describe(`#6232 persisted grid placement wi
     const restore = setRequestRemesh(() => {});
     try {
       clickCrossing(ui, true);
-      assert.equal(getCommandRuntime().snap?.winner, null);
+      // Alt aims at the workplane itself (#9201), so no crossing is the target.
+      assert.equal(getCommandRuntime().snap?.winner?.kind, 'workplane');
       const column = useViewerStore.getState().mutationViews.get(MODEL)!.getNewEntities().find((e) => e.type.toUpperCase() === 'IFCCOLUMN')!;
       assert.ok(column);
       assert.ok(placementAncestors(column.expressId).records.every((p) => p.type !== 'IfcGridPlacement'));

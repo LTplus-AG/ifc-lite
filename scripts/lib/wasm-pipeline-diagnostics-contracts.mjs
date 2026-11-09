@@ -3,10 +3,11 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 /** getPipelineDiagnostics on the real WASM boundary, incl. C4-10a #7782 S6a refusal counters and F2 #8341 omitted type records. */
 import assert from 'node:assert/strict';
-import { readFileSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
+import { pathToFileURL } from 'url';
 
-export function runPipelineDiagnosticsContracts({ IfcAPI, test, root: ROOT_DIR, columnContent }) {
+export async function runPipelineDiagnosticsContracts({ IfcAPI, test, root: ROOT_DIR, columnContent }) {
   // ===== Pipeline diagnostics channel (wasm boundary) =====
   // This replaces the orphaned rust/wasm-bindings/tests/pipeline_diagnostics.rs
   // (a #![cfg(target_arch="wasm32")] test no CI lane ran) with an assertion in
@@ -150,5 +151,40 @@ export function runPipelineDiagnosticsContracts({ IfcAPI, test, root: ROOT_DIR, 
       assert.equal(diag.refusedInputElements, 0);
       assert.equal(diag.refusedPrepassRecords, 1, 'only the refused unit record #801');
     } finally { diagApi.clearPrePassCache(); diagApi.free(); }
+  });
+
+  // F2 #8341 viewer relay: the BUILT helpers the prepass worker and the
+  // main-thread paths run (the package exports map does not expose them).
+  const relayPath = join(ROOT_DIR, 'packages/geometry/dist/omitted-type-records.js');
+  const relay = existsSync(relayPath) ? await import(pathToFileURL(relayPath).href) : null;
+  if (!relay) {
+    console.log('  ⚠️  packages/geometry/dist missing — run `pnpm build`. F2 relay case skipped.');
+    return;
+  }
+  test('F2 #8341 relay: the prepass instance count rides the real complete event and is read before a reset', () => {
+    const bytes = new TextEncoder().encode(readFileSync(
+      join(ROOT_DIR, 'rust/processing/tests/fixtures/f2_omitted_type_record_8341.ifc'), 'utf8'));
+    const relayApi = new IfcAPI();
+    try {
+      const events = [];
+      relayApi.buildPrePassStreaming(bytes, (event) => {
+        relay.annotatePrepassComplete(relayApi, event);
+        events.push(event);
+      }, 1024, null, false);
+      const complete = events.find((event) => event.type === 'complete');
+      assert.equal(complete?.omittedTypeRecords, 1, 'read inside the real callback, from the instance that ran it');
+      assert.ok(events.every((event) => event === complete || !('omittedTypeRecords' in event)));
+      relayApi.buildPrePassOnce(bytes);
+      assert.equal(relay.readOmittedTypeRecords(relayApi), 1, 'one-shot path');
+      relayApi.setSourceBytes(bytes);
+      assert.equal(relay.readOmittedTypeRecords(relayApi), undefined, 'an install resets it: unknown, not 0');
+      const skipped = [];
+      relayApi.buildPrePassStreaming(bytes, (event) => {
+        relay.annotatePrepassComplete(relayApi, event);
+        skipped.push(event);
+      }, 1024, null, true);
+      assert.ok(!('omittedTypeRecords' in skipped.find((event) => event.type === 'complete')),
+        'no type plan, no report: the key stays absent');
+    } finally { relayApi.clearPrePassCache(); relayApi.free(); }
   });
 }

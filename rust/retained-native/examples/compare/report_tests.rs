@@ -31,6 +31,7 @@ fn nonfinite_mesh_measurements_fail_the_comparison_gate() {
     for curved in [false, true] {
         let mut report = Report::default();
         report.check_measurements(
+            false,
             "overflow:1",
             curved,
             false,
@@ -86,6 +87,7 @@ fn nonfinite_deviations_are_violations_in_every_comparison_channel() {
                 }
                 let mut report = Report::default();
                 report.check_measurements(
+                    false,
                     "invalid:1",
                     curved,
                     false,
@@ -111,6 +113,7 @@ fn nonfinite_deviations_are_violations_in_every_comparison_channel() {
     }
     let mut report = Report::default();
     report.check_measurements(
+        false,
         "valid:1",
         false,
         false,
@@ -131,7 +134,7 @@ fn exact_defect_when_retained_matches_source_but_exact_does_not() {
     let actual = tetrahedron(1.);
     let exact = tetrahedron(1.01);
     let mut report = Report::default();
-    report.check_measurements("fixture:1", false, false, &actual, Some(&actual), Some(&exact),
+    report.check_measurements(false, "fixture:1", false, false, &actual, Some(&actual), Some(&exact),
         Some((1. / 6., Some([0., 0., 0., 1., 1., 1.]))), &tolerances(), false);
     assert!(report.violations.is_empty(), "{:?}", report.violations);
     let summary = report.summary();
@@ -153,7 +156,7 @@ fn exact_report_only_waiver_is_listed_in_the_summary() {
     let exact = tetrahedron(1.2);
     let mut report = Report::default();
     // No source oracle: the exact gate would violate, but the waiver defers it.
-    report.check_measurements("fixture:w", false, false, &actual, Some(&actual), Some(&exact),
+    report.check_measurements(false, "fixture:w", false, false, &actual, Some(&actual), Some(&exact),
         None, &tolerances(), true);
     assert!(report.violations.is_empty(), "{:?}", report.violations);
     let summary = report.summary();
@@ -165,7 +168,7 @@ fn exact_report_only_waiver_is_listed_in_the_summary() {
     assert!(summary["exact_defect"].as_array().unwrap().is_empty());
     // Without the waiver nothing is listed and the gate violates.
     let mut gated = Report::default();
-    gated.check_measurements("fixture:g", false, false, &actual, Some(&actual), Some(&exact),
+    gated.check_measurements(false, "fixture:g", false, false, &actual, Some(&actual), Some(&exact),
         None, &tolerances(), false);
     assert!(gated.summary()["exact_report_only"].as_array().unwrap().is_empty());
     assert!(!gated.violations.is_empty());
@@ -176,7 +179,7 @@ fn exact_gate_still_violates_when_retained_fails_source_7955() {
     let actual = tetrahedron(1.02);
     let exact = tetrahedron(1.01);
     let mut report = Report::default();
-    report.check_measurements("fixture:2", false, false, &actual, Some(&actual), Some(&exact),
+    report.check_measurements(false, "fixture:2", false, false, &actual, Some(&actual), Some(&exact),
         Some((1. / 6., None)), &tolerances(), false);
     assert!(report.exact_defects.is_empty());
     assert!(report.violations.iter().any(|v| v.contains("source volume deviation")));
@@ -190,7 +193,7 @@ fn exact_gate_still_violates_without_a_source_oracle_7955() {
     let actual = tetrahedron(1.);
     let exact = tetrahedron(1.01);
     let mut report = Report::default();
-    report.check_measurements("fixture:3", false, false, &actual, Some(&actual), Some(&exact), None, &tolerances(), false);
+    report.check_measurements(false, "fixture:3", false, false, &actual, Some(&actual), Some(&exact), None, &tolerances(), false);
     assert!(report.exact_defects.is_empty());
     for key in ["volumeRelative", "areaRelative", "bboxMetres"] {
         assert!(report.violations.iter().any(|v| v.contains(&format!("exact {key} deviation"))));
@@ -206,7 +209,7 @@ fn exact_agrees_with_source_so_area_disagreement_still_violates_7955() {
     exact.add_mesh(&[[0.,0.,0.], [2.,0.,0.], [0.,0.5,0.], [0.,0.,1.]],
         &[0,2,1, 0,1,3, 1,2,3, 2,0,3]).unwrap();
     let mut report = Report::default();
-    report.check_measurements("fixture:4", false, false, &actual, Some(&actual), Some(&exact),
+    report.check_measurements(false, "fixture:4", false, false, &actual, Some(&actual), Some(&exact),
         Some((1. / 6., None)), &tolerances(), false);
     assert!(report.exact_defects.is_empty());
     assert!(report.violations.iter().any(|v| v.contains("exact areaRelative deviation")));
@@ -221,7 +224,7 @@ fn exact_defect_does_not_relax_source_bounds_or_closure_7955() {
         let mut bounds = valid.bbox;
         if channel == 0 { bounds[3] = 2.; } else { actual.defects = 1; }
         let mut report = Report::default();
-        report.check_measurements("fixture:5", false, false, &actual, Some(&valid), Some(&exact),
+        report.check_measurements(false, "fixture:5", false, false, &actual, Some(&valid), Some(&exact),
             Some((1. / 6., Some(bounds))), &tolerances(), false);
         let reason = if channel == 0 { "source bbox deviation" } else { "closure defects" };
         assert!(report.violations.iter().any(|v| v.contains(reason)));
@@ -234,10 +237,10 @@ fn type_product_source_gate_rejects_wrong_volume_without_gating_exact_deviation(
     let valid = tetrahedron(1.);
     let exact = tetrahedron(2.);
     let mut report = Report::default();
-    report.check_measurements("type:1", false, true, &valid, Some(&valid), Some(&exact),
+    report.check_measurements(false, "type:1", false, true, &valid, Some(&valid), Some(&exact),
         Some((valid.volume, Some(valid.bbox))), &tolerances(), false);
     assert!(report.violations.is_empty(), "{:?}", report.violations);
-    report.check_measurements("type:1", false, true, &valid, Some(&valid), Some(&exact),
+    report.check_measurements(false, "type:1", false, true, &valid, Some(&valid), Some(&exact),
         Some((2.*valid.volume, Some(valid.bbox))), &tolerances(), false);
     assert!(report.violations.iter().any(|v| v.contains("source volume deviation")));
 }
@@ -258,13 +261,13 @@ fn m8_report_only_exact_still_gates_source_volume_bounds_and_closure() {
             _ => {},
         }
         let mut report = Report::default();
-        report.check_measurements("m8:72245", false, false, &measured, Some(&measured), Some(&exact),
+        report.check_measurements(false, "m8:72245", false, false, &measured, Some(&measured), Some(&exact),
             Some(source), &tolerances(), true);
         assert_eq!(report.violations.is_empty(), defect == 0, "defect={defect}");
     }
     let mut report = Report::default();
     // An unflagged product with no source that disproves exact keeps the exact gate.
-    report.check_measurements("ordinary:1", false, false, &actual, Some(&actual), Some(&exact),
+    report.check_measurements(false, "ordinary:1", false, false, &actual, Some(&actual), Some(&exact),
         None, &tolerances(), false);
     assert!(report.violations.iter().any(|message| message.contains("exact")));
 }
@@ -290,5 +293,52 @@ fn m8_convex_opening_expectation_rejects_wrong_volume_and_escaped_bbox() {
         let mut violations = Vec::new();
         crate::openings::check_opened("M8 slab", &actual, Some(&expected), &t, &mut violations);
         assert_eq!(violations.is_empty(), defect == 0, "defect={defect}: {violations:?}");
+    }
+}
+
+/// #7955: an oracle with no expectation is counted, by family and reason, and stays gated.
+#[test]
+fn unverified_rows_are_counted_and_never_leave_the_violations() {
+    let mut report = Report::default();
+    report.unverified.push(json!({"product": "m:1", "family": "layerSourceAvailable", "gated": true, "reason": "l_opening_cuts"}));
+    report.unverified.push(json!({"product": "m:2", "family": "layerSourceAvailable", "gated": true, "reason": "l_opening_cuts"}));
+    report.unverified.push(json!({"product": "m:3", "family": "clipSectionMixedSubtree", "gated": false, "reason": null}));
+    let summary = report.summary();
+    assert_eq!(summary["unverified"]["count"], 3);
+    assert_eq!(summary["unverified"]["gated"], 2);
+    assert_eq!(summary["unverified"]["byFamily"]["layerSourceAvailable"]["l_opening_cuts"], 2);
+    assert_eq!(summary["unverified"]["byFamily"]["clipSectionMixedSubtree"]["unnamed"], 1);
+    use super::super::checks::OracleResult;
+    let gap = |family| OracleResult { family, ..Default::default() };
+    assert!(says_unverified("layerSourceAvailable", &[]));
+    assert!(says_unverified("bounded_curved_volume_unavailable", &[]));
+    assert!(says_unverified("clipSectionMixedSubtree", &[gap("clipPart")]));
+    assert!(!says_unverified("clipSectionMixedSubtree", &[gap("bounded_section_volume")]), "M6 has the section M5 lacks");
+    assert!(says_unverified("clipSectionMixedSubtree", &[gap("clipSectionVolumeRelative")]), "another part's section is not this part's");
+    assert!(!says_unverified("faceKeys", &[]));
+}
+
+/// A face-set closure row whose source was never read claims neither rows open nor closed.
+#[test]
+fn an_unread_face_set_source_is_its_own_bucket() {
+    let mut report = Report::default();
+    report.closure_on_open_source.push(json!({"product": "m:1", "meshDefects": 3, "sourceOpenEdges": 0., "closed": ""}));
+    report.closure_on_open_source.push(json!({"product": "m:2", "meshDefects": 3, "sourceOpenEdges": 0., "closed": "TRUE"}));
+    let counts = &report.summary()["closureDefectsOnFaceSets"]["byDeclaredClosed"];
+    assert_eq!(counts[" sourceRowsUnread"], 1, "{counts}");
+    assert_eq!(counts["TRUE sourceRowsClosed"], 1, "{counts}");
+}
+
+/// Each named closure outcome lists only its own products, so count and products agree.
+#[test]
+fn closure_outcomes_list_only_their_own_products_7955() {
+    let mut report = Report::default();
+    for (classification, product) in [("zero_area_row_closure", "m:1"), ("dropped_triangle_closure", "m:2"), ("dropped_triangle_closure", "m:3")] {
+        report.zero_area_row_closure.push(json!({"classification": classification, "product": product, "edges": 3}));
+    }
+    let summary = report.summary();
+    for (key, count) in [("zeroAreaRowClosure", 1), ("droppedTriangleClosure", 2)] {
+        assert_eq!(summary[key]["count"], count, "{key}");
+        assert_eq!(summary[key]["products"].as_array().map(Vec::len), Some(count), "{key}");
     }
 }

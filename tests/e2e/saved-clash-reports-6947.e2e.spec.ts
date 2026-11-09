@@ -18,6 +18,7 @@ import { createRequire } from 'node:module';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
+import { clickPanelAction, panelHeader } from './panel-header.helpers';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '../..');
 
@@ -75,8 +76,11 @@ async function run(page: Page, settings: RunSettings): Promise<number> {
     return state.clashRunSeq;
   }, settings);
   const start = page.getByRole('button', { name: button, exact: true }).first();
+  const detection = page.getByRole('button', { name: /^Detection/i }).first();
+  // #8520: wait for the lazy panel before deciding whether Detection is collapsed.
+  await expect(start.or(detection).first()).toBeVisible();
   // With a result on screen the Detection section is collapsed; open it to reach the run buttons.
-  if (!(await start.isVisible())) await page.getByRole('button', { name: /^Detection/i }).first().click();
+  if (!(await start.isVisible())) await detection.click();
   await start.click();
   await page.waitForFunction((seq) => {
     const state = globalThis.__ifc_lite_viewer_store__.getState();
@@ -88,7 +92,8 @@ async function run(page: Page, settings: RunSettings): Promise<number> {
 }
 
 async function saveAs(page: Page, name: string): Promise<void> {
-  await page.getByRole('button', { name: 'Saved clash reports', exact: true }).click();
+  // A Clash panel header action, inline or in its More actions menu (#8802).
+  await clickPanelAction(page, panelHeader(page, 'Clash detection'), 'Saved clash reports');
   const dialog = page.getByRole('dialog');
   await dialog.getByLabel('Report name').fill(name);
   await dialog.getByRole('button', { name: 'Save current result', exact: true }).click();

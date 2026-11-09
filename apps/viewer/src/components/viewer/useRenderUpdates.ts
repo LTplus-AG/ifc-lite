@@ -10,15 +10,16 @@
  * picks up the new state on the next frame.
  */
 
-import { useEffect, useRef, type MutableRefObject } from 'react';
+import { useEffect, useMemo, useRef, type MutableRefObject } from 'react';
 import type { Renderer, VisualEnhancementOptions } from '@ifc-lite/renderer';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
 import type { Drawing2D } from '@ifc-lite/drawing-2d';
 import type { SectionPlane } from '@/store';
 import { useViewerStore } from '@/store';
-import { capOverlayBasis, capOverlayInput } from '@/lib/section/cap-overlay';
+import { capOverlayBasis, capOverlayHasContent, capOverlayInput } from '@/lib/section/cap-overlay';
 import { capSignature } from '@/lib/section/section-cut-config';
-import { planeRange, type RangeBounds } from '@/lib/section/section-render-clip';
+import { cuttingSectionBoxCapPlanes } from '@/lib/section/section-box-caps';
+import { boxHoldingPlane, planeRange, type RangeBounds } from '@/lib/section/section-render-clip';
 import { getThemeClearColor } from '../../utils/viewportUtils.js';
 import { rendererOverlayTheme } from '@/lib/viewport-ui/overlay-theme-renderer';
 import { setClashColorsFromTheme } from '@/lib/clash/clash-colors';
@@ -90,6 +91,16 @@ export function useRenderUpdates(params: UseRenderUpdatesParams): void {
     showHiddenLines,
   } = params;
   const fillMode = sectionPlane.capStyle?.fillMode;
+  // Only the box (and whether it cuts) moves the face caps: dragging the active PLANE must not re-upload them.
+  // The face caps fill like the plane that holds the box, which need not be the active one.
+  const { boxCapPlanes, boxFillMode } = useMemo(
+    () => ({
+      boxCapPlanes: cuttingSectionBoxCapPlanes(sectionPlane, inactiveSectionPlanes),
+      boxFillMode: boxHoldingPlane(sectionPlane, inactiveSectionPlanes)?.capStyle?.fillMode,
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [sectionPlane.box, sectionPlane.enabled, sectionPlane.capStyle, inactiveSectionPlanes],
+  );
 
   // Theme-aware clear color update, and the renderer's overlay theme (#5484):
   // selection, section-plane preview, every overlay line channel (annotation /
@@ -120,7 +131,7 @@ export function useRenderUpdates(params: UseRenderUpdatesParams): void {
     const renderer = rendererRef.current;
     if (!renderer || !isInitialized) return;
 
-    if (activeTool === 'section' && drawing2D && drawingIsThisPlanes && drawing2D.cutPolygons.length > 0 && show3DOverlay) {
+    if (activeTool === 'section' && drawing2D && drawingIsThisPlanes && capOverlayHasContent(drawing2D) && show3DOverlay) {
       const { polygons, lines } = capOverlayInput(drawing2D, showHiddenLines, fillMode);
       const customPlane = capOverlayBasis(sectionPlane.custom);
 
@@ -140,26 +151,30 @@ export function useRenderUpdates(params: UseRenderUpdatesParams): void {
     renderer.requestRender();
   }, [drawing2D, drawingIsThisPlanes, activeTool, sectionPlane, isInitialized, coordinateInfo, show3DOverlay, showHiddenLines]);
 
-  // The other cutting planes' caps (#7545). A cap is uploaded only while it was cut for the plane's
-  // CURRENT geometry; while a drag outruns the cutter the previous cap stays up, still on its own
-  // plane, instead of being lifted onto the new one.
+  // The other cutting planes' caps (#7545), and the section box's face caps (#8696), which ride the
+  // same path as face-picked planes. A cap is uploaded only while it was cut for the plane's CURRENT
+  // geometry; while a drag outruns the cutter the previous cap stays up, still on its own plane,
+  // instead of being lifted onto the new one. A boxed plane caps through its faces, not its plane.
   useEffect(() => {
     const renderer = rendererRef.current;
     if (!renderer || !isInitialized) return;
-    const shown = activeTool === 'section' && show3DOverlay ? inactiveSectionPlanes.filter((p) => p.enabled) : [];
+    const shown = activeTool === 'section' && show3DOverlay
+      ? [...inactiveSectionPlanes.filter((p) => p.enabled && !p.box), ...boxCapPlanes]
+      : [];
     renderer.clearSection2DExtraOverlays(shown.map((p) => p.id));
     for (const plane of shown) {
       const cap = extraCaps[plane.id];
       if (!cap || !cap.signature.endsWith(`:${capSignature(plane)}`)) continue;
-      if (cap.cutPolygons.length === 0) { renderer.clearSection2DOverlay(plane.id); continue; }
-      const { polygons, lines } = capOverlayInput(cap, showHiddenLines, fillMode);
+      if (!capOverlayHasContent(cap)) { renderer.clearSection2DOverlay(plane.id); continue; }
+      const isBoxFace = boxCapPlanes.includes(plane);
+      const { polygons, lines } = capOverlayInput(cap, showHiddenLines, isBoxFace ? boxFillMode : fillMode);
       renderer.uploadSection2DOverlay(
         polygons, lines, plane.axis, plane.position, planeRange(plane, sectionBoundsRef?.current) ?? undefined,
         plane.flipped, capOverlayBasis(plane.custom), plane.id,
       );
     }
     renderer.requestRender();
-  }, [extraCaps, inactiveSectionPlanes, activeTool, isInitialized, coordinateInfo, show3DOverlay, showHiddenLines, fillMode]);
+  }, [extraCaps, inactiveSectionPlanes, boxCapPlanes, boxFillMode, activeTool, isInitialized, coordinateInfo, show3DOverlay, showHiddenLines, fillMode]);
 
   // Re-render when visibility, selection, or section plane changes
   useEffect(() => {

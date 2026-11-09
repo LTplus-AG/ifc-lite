@@ -16,7 +16,7 @@ import type { IfcSourceBytes } from '@ifc-lite/parser';
  * - Section plane change detection with overlap protection
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import {
   Drawing2DGenerator,
   createSectionConfig,
@@ -27,7 +27,7 @@ import {
   type SectionConfig,
   type ProfileEntry,
 } from '@ifc-lite/drawing-2d';
-import { createDrawingRequestQueue } from './drawingRequestQueue.js';
+import { useDrawingRequests } from './useDrawingRequests.js';
 import { createMeshOutlineProvider, type MeshOutline2dFn } from './meshOutlineProvider.js';
 import { type GeometryResult } from '@ifc-lite/geometry';
 import { getWholeSourceForWorker, parseProfilesFlat } from '@/lib/overlay-parse/index.js';
@@ -37,7 +37,7 @@ import { type SymbolicDrawingLine } from '@/lib/overlay-parse/symbolic-drawing-l
 import type { SpatialHierarchy } from '@ifc-lite/data';
 import * as IfcWasm from '@ifc-lite/wasm';
 import { customPlaneCenter, useViewerStore } from '@/store';
-import { notifyDrawing2DSectionConfig, consumeRestoredSectionConfig } from './useDrawing2DPersistence.js';
+import { saveGeneratedSectionConfig, consumeRestoredSectionConfig } from './useDrawing2DPersistence.js';
 import { buildModelViewIdFilter, selectModelMeshes } from '@/lib/type-view-visibility';
 import { isTypeVisible, type TypeVisibilityGate } from '@/store/typeVisibilityFilter';
 import { roomDrawingSymbolic } from '@/lib/collab/room-drawing-symbolic';
@@ -45,7 +45,8 @@ import { ifcToViewerAxes } from '@/lib/geo/coordinate-frame';
 import { useDrawingRtcContext } from './useDrawingRtcContext.js';
 import { FIRST_SECTION_PLANE_NAME } from '@/lib/section/section-plane-set';
 import { restoredCutPosition } from '@/lib/section/section-distance';
-import { markActiveDrawingGenerationCompleted, markActiveDrawingGenerationStarted } from '@/lib/drawing/active-canvas-snapshot';
+import { markActiveDrawingGenerationCompleted } from '@/lib/drawing/active-canvas-snapshot';
+import { constructionProjectionEnabled } from '@/lib/drawing/construction-projection';
 // The winding-robust Rust `meshOutline2d` binding (issue #979) is gitignored →
 // CI-built, so reference it defensively: against an older wasm bundle it's
 // undefined and projection falls back to the TS mesh silhouette. The wasm
@@ -111,7 +112,7 @@ interface UseDrawingGenerationParams {
       bitangent: [number, number, number];
     };
   };
-  displayOptions: { showHiddenLines: boolean; useSymbolicRepresentations: boolean; show3DOverlay: boolean; scale: number; showConstructionProjection: boolean; constructionProjectionDepth?: number | null };
+  displayOptions: { showHiddenLines: boolean; useSymbolicRepresentations: boolean; show3DOverlay: boolean; scale: number; showConstructionProjection: boolean | null; constructionProjectionDepth?: number | null };
   /**
    * Class-level Visibility toggles (Spaces, Openings, Site, Virtual Elements,
    * Spatial Zones, Annotations). Global, not 3D-only — see the filter in
@@ -193,7 +194,6 @@ export function useDrawingGeneration({
     elementToStorey: ReadonlyMap<number, number>;
   }>());
 
-  // Generate drawing when panel opens
   const computeDrawing = useCallback(async (isRegenerate = false, isCurrent: () => boolean = () => true) => {
     if (!geometryResult?.meshes || geometryResult.meshes.length === 0) {
       // Clear the drawing when no geometry is available (e.g., all models hidden)
@@ -303,7 +303,8 @@ export function useDrawingGeneration({
     const projectionSupported = !sectionPlane.custom;
     const manualDepth = displayOptions.constructionProjectionDepth;
     const boundedProjection = typeof manualDepth === 'number' && Number.isFinite(manualDepth) && manualDepth >= 0;
-    const projectionOn = projectionSupported && displayOptions.showConstructionProjection && (!boundedProjection || manualDepth > 0);
+    const projectionOn = projectionSupported && constructionProjectionEnabled(displayOptions.showConstructionProjection, sectionPlane)
+      && (!boundedProjection || manualDepth > 0);
 
     // ── Construction projection profiles (issue #979) ────────────────────────
     // Extract extruded-area-solid profiles for the clean projection path. Only
@@ -879,7 +880,8 @@ export function useDrawingGeneration({
       // persistence bridge (issue #4153) can save it alongside the results —
       // `drawing2D` itself is derived output and is never persisted.
       const generatedForModelId = useViewerStore.getState().activeModelId;
-      if (generatedForModelId) notifyDrawing2DSectionConfig(generatedForModelId, config);
+      // Never the untouched placeholder plane (see `saveGeneratedSectionConfig`).
+      if (generatedForModelId) saveGeneratedSectionConfig(generatedForModelId, config);
 
       // Always set status to ready (whether initial generation or regeneration)
       setDrawingStatus('ready');
@@ -909,17 +911,8 @@ export function useDrawingGeneration({
   ]);
 
   // All entry points share one queue; superseded cuts cannot publish over newer inputs (#3921).
-  const queueRef = useRef<ReturnType<typeof createDrawingRequestQueue> | null>(null);
-  if (!queueRef.current) queueRef.current = createDrawingRequestQueue();
-  const queue = queueRef.current;
-  const [isRegenerating, setIsRegenerating] = useState(false);
-  const generateDrawing = useCallback((isRegenerate = false) => {
-    markActiveDrawingGenerationStarted(); return queue.request(async isCurrent => {
-      setIsRegenerating(isRegenerate);
-      try { await computeDrawing(isRegenerate, isCurrent); }
-      finally { setIsRegenerating(false); }
-    }); }, [computeDrawing, queue]);
-  const doRegenerate = useCallback(() => generateDrawing(true), [generateDrawing]);
+  const { queue, generateDrawing, doRegenerate, isRegenerating } =
+    useDrawingRequests({ computeDrawing, drawing, setDrawingStatus, setDrawingError });
 
   // Restore the persisted section cut on reload (issue #4153 gap):
   // `useDrawing2DPersistence.ts`'s restore path loaded a saved model's
@@ -993,10 +986,11 @@ export function useDrawingGeneration({
   const drawingActive = panelVisible || (activeTool === 'section' && displayOptions.show3DOverlay);
   const previousInputs = useRef<unknown[]>([]);
   const wasActive = useRef(false);
+  const wasPanelVisible = useRef(false);
   const previousPlane = useRef('');
   useEffect(() => () => {
     queue.cancel();
-    wasActive.current = false;
+    wasActive.current = false; wasPanelVisible.current = false;
     previousInputs.current = [];
   }, [queue]);
   useEffect(() => {
@@ -1009,20 +1003,21 @@ export function useDrawingGeneration({
     const planeChanged = plane !== previousPlane.current;
     const activated = drawingActive && !wasActive.current;
     const deactivated = !drawingActive && wasActive.current;
+    const openedEmpty = panelVisible && !wasPanelVisible.current && !drawing && !queue.busy(); // #9026: the 2D button clears then opens; no input moved.
     previousInputs.current = inputs;
     previousPlane.current = plane;
-    wasActive.current = drawingActive;
+    wasActive.current = drawingActive; wasPanelVisible.current = panelVisible;
     if (!drawingActive) { if (deactivated) queue.cancel(); return; }
     if (!geometryResult?.meshes.length) {
       queue.cancel();
       if (drawing) { setDrawing(null); setDrawingStatus('idle'); }
       return;
     }
-    if (activated || changed || planeChanged) {
-      const regenerate = !activated && !changed && planeChanged;
+    if (activated || changed || planeChanged || openedEmpty) {
+      const regenerate = !activated && !changed && !openedEmpty && planeChanged;
+      // useDrawingRequests reports a current failure; a stale one must not overwrite the status.
       void generateDrawing(regenerate).catch(error => {
         console.error('Automatic drawing request failed:', error);
-        setDrawingError(error instanceof Error ? error.message : 'Generation failed');
       });
     }
   });

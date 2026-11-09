@@ -553,7 +553,7 @@ Columns:
 | IfcShellBasedSurfaceModel | ✅ | ✅ | — | ✅ | ❌ | ❌ | IFC4:✅ | — |
 | IfcSite | ✅ | ✅ | — | ❌ | ✅ | ✅ | IFC4:✅ | rust/geometry/tests/fixtures/issue_098_wall_V5C.ifc |
 | IfcSIUnit | ✅ | ✅ | — | ❌ | ✅ | ✅ | IFC4:✅ | rust/geometry/tests/fixtures/issue_098_wall_V5C.ifc |
-| IfcSlab | ✅ | ✅ | — | ❌ | ✅ | ✅ | IFC4:✅ | — |
+| IfcSlab | ✅ | ✅ | — | ❌ | ✅ | ✅ | IFC4:✅ | rust/processing/tests/fixtures/issue_8190_slab_12381.ifc |
 | IfcSlabType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcSlippageConnectionCondition | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcSolidAngleMeasure | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
@@ -610,7 +610,7 @@ Columns:
 | IfcSurfaceStyle | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC4:✅ | — |
 | IfcSurfaceStyleLighting | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcSurfaceStyleRefraction | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcSurfaceStyleRendering | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
+| IfcSurfaceStyleRendering | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC4:✅ | — |
 | IfcSurfaceStyleShading | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC4:✅ | — |
 | IfcSurfaceStyleWithTextures | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcSweptDiskSolid | ✅ | ✅ | — | ✅ | ✅ | ❌ | IFC4:✅ | rust/geometry/tests/fixtures/swept_disk_composite_arc_crankbar.ifc |
@@ -739,7 +739,7 @@ Columns:
 | IfcApproval | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcApprovalRelationship | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcArbitraryClosedProfileDef | ✅ | ✅ | — | ❌ | ✅ | ✅ | IFC2X3:✅ IFC4X3:✅ | apps/landing/samples/hello-wall.ifc |
-| IfcArbitraryOpenProfileDef | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
+| IfcArbitraryOpenProfileDef | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | rust/geometry/tests/fixtures/surface_curve_reference_roll.ifc |
 | IfcArbitraryProfileDefWithVoids | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcArcIndex | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:✅ | — |
 | IfcAreaDensityMeasure | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:✅ | — |
@@ -1388,15 +1388,15 @@ Columns:
 | IfcSubContractResourceType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:✅ | — |
 | IfcSubedge | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcSurfaceCurve | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:✅ | — |
-| IfcSurfaceCurveSweptAreaSolid | ✅ | ✅ | — | ✅ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
+| IfcSurfaceCurveSweptAreaSolid | ✅ | ✅ | — | ✅ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | rust/geometry/tests/fixtures/surface_curve_reference_roll.ifc |
 | IfcSurfaceFeature | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:✅ | — |
-| IfcSurfaceOfLinearExtrusion | ✅ | ✅ | — | ✅ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
+| IfcSurfaceOfLinearExtrusion | ✅ | ✅ | — | ✅ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | rust/geometry/tests/fixtures/surface_curve_reference_roll.ifc |
 | IfcSurfaceOfRevolution | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcSurfaceReinforcementArea | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:✅ | — |
 | IfcSurfaceStyle | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC2X3:✅ IFC4X3:✅ | apps/landing/samples/hello-wall.ifc |
 | IfcSurfaceStyleLighting | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcSurfaceStyleRefraction | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
-| IfcSurfaceStyleRendering | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | apps/viewer/public/samples/building-architecture-rev-b.ifc |
+| IfcSurfaceStyleRendering | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC2X3:✅ IFC4X3:✅ | apps/viewer/public/samples/building-architecture-rev-b.ifc |
 | IfcSurfaceStyleShading | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC2X3:✅ IFC4X3:✅ | apps/landing/samples/hello-wall.ifc |
 | IfcSurfaceStyleWithTextures | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | rust/processing/tests/fixtures/issue_1781_image_textures.ifc |
 | IfcSweptDiskSolid | ✅ | ✅ | — | ✅ | ✅ | ❌ | IFC2X3:✅ IFC4X3:✅ | rust/geometry/tests/fixtures/issue_1985_scaled_kinds.ifc |
@@ -2269,7 +2269,7 @@ Columns:
 | IfcSurfaceStyle | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC4:✅ | rust/geometry/tests/fixtures/issue_4560_wall_roof_polygonal_cutters.ifc |
 | IfcSurfaceStyleLighting | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcSurfaceStyleRefraction | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcSurfaceStyleRendering | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
+| IfcSurfaceStyleRendering | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC4:✅ | — |
 | IfcSurfaceStyleShading | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC4:✅ | rust/geometry/tests/fixtures/issue_4560_wall_roof_polygonal_cutters.ifc |
 | IfcSurfaceStyleWithTextures | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcSweptDiskSolid | ✅ | ✅ | — | ✅ | ✅ | ❌ | IFC4:✅ | — |

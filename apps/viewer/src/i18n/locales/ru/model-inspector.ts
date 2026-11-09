@@ -11,6 +11,7 @@ export const modelInspectorRu = {
   "modelInspector.empty.enter": "Модель",
   "modelInspector.empty.noModel": "Сначала загрузите или запустите модель",
   "modelInspector.empty.idle": "Выберите инструмент на панели инструментов или выберите элемент",
+  "modelInspector.empty.command": "У этого инструмента здесь нет значений по умолчанию. Его параметры находятся на панели над областью просмотра.",
   "modelInspector.header.defaults": "По умолчанию · {kind}",
   "modelInspector.header.selection": "{ifcClass} #{id}",
   "modelInspector.header.selectionOnStorey": "{ifcClass} #{id} · {storey}",

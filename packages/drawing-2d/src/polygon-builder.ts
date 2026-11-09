@@ -13,7 +13,10 @@
  */
 
 import type { Point2D, Polygon2D, CutSegment, DrawingPolygon, EntityKey } from './types.js';
-import { makeEntityKey, colorKey } from './types.js';
+import { makeEntityKey } from './types.js';
+import type { OpenSurfaceIndex } from './open-surface.js';
+import { findOpenChainSegments } from './open-chains.js';
+import { layerKey, layerStamp } from './cut-layer.js';
 import {
   EPSILON,
   point2DDistance,
@@ -22,6 +25,8 @@ import {
   ensureCCW,
   ensureCW,
 } from './math.js';
+
+export { simplifyPolygon, polygonBounds } from './polygon-helpers.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPES
@@ -106,8 +111,16 @@ export class PolygonBuilder {
   /**
    * Build polygons from cut segments
    * Groups segments by entity and reconstructs closed loops
+   *
+   * `openSurfaces` names the entities whose mesh has free edges (#8664). Their open
+   * chains bound no area, so they are routed into `openSurfaceSegments`, to be drawn
+   * as lines, and everything else builds as usual.
    */
-  buildPolygons(segments: CutSegment[]): DrawingPolygon[] {
+  buildPolygons(
+    segments: CutSegment[],
+    openSurfaces?: OpenSurfaceIndex,
+    openSurfaceSegments: Set<CutSegment> = new Set(),
+  ): DrawingPolygon[] {
     // Group segments by entity
     const byEntity = new Map<EntityKey, CutSegment[]>();
 
@@ -124,7 +137,7 @@ export class PolygonBuilder {
 
     for (const [key, entitySegments] of byEntity) {
       const entityPolygons = this.withScaleAwareTolerance(entitySegments, () =>
-        this.buildEntityPolygons(entitySegments),
+        this.buildEntityPolygons(this.routeOpenChains(key, entitySegments, openSurfaces, openSurfaceSegments)),
       );
       polygonArrays.push(entityPolygons);
     }
@@ -145,7 +158,7 @@ export class PolygonBuilder {
    * hollow even where the per-layer reconstruction has to fall back. Single-
    * material entities are skipped — their normal `cutPolygons` already fill solid.
    */
-  buildBasePolygons(segments: CutSegment[]): DrawingPolygon[] {
+  buildBasePolygons(segments: CutSegment[], openSurfaces?: OpenSurfaceIndex): DrawingPolygon[] {
     const byEntity = new Map<EntityKey, CutSegment[]>();
     for (const seg of segments) {
       const key = makeEntityKey(seg.modelIndex, seg.entityId);
@@ -155,12 +168,15 @@ export class PolygonBuilder {
     }
 
     const out: DrawingPolygon[][] = [];
-    for (const entitySegments of byEntity.values()) {
+    for (const [key, allSegments] of byEntity) {
+      const entitySegments = this.withScaleAwareTolerance(allSegments, () =>
+        this.routeOpenChains(key, allSegments, openSurfaces, new Set()),
+      );
       // Only entities that cut into >1 material get per-layer fills (hence a base).
-      const colors = new Set(entitySegments.map((s) => colorKey(s.color)));
+      const colors = new Set(entitySegments.map(layerKey));
       if (colors.size < 2) continue;
       // Colourless build ⇒ closed-loop path (the combined section is closed).
-      const base = this.withScaleAwareTolerance(entitySegments, () =>
+      const base = this.withScaleAwareTolerance(allSegments, () =>
         this.buildColorGroupPolygons(entitySegments, undefined),
       ).map((p) => ({ ...p, isLayerBase: true }));
       if (base.length > 0) out.push(base);
@@ -168,22 +184,34 @@ export class PolygonBuilder {
     return out.flat();
   }
 
+  /** An entity's segments without those on chains through an open surface (#8664). */
+  private routeOpenChains(
+    key: EntityKey,
+    segments: CutSegment[],
+    openSurfaces: OpenSurfaceIndex | undefined,
+    openOut: Set<CutSegment>,
+  ): CutSegment[] {
+    if (!openSurfaces?.cutsOpen(key, segments)) return segments;
+    const open = findOpenChainSegments(segments, this.tolerance);
+    for (const seg of open) openOut.add(seg);
+    return segments.filter((seg) => !open.has(seg));
+  }
+
   /**
    * Build polygons for a single entity.
    *
-   * Sub-groups the entity's segments by material colour so an
-   * `IfcMaterialLayerSet` wall/slab — sliced into one sub-mesh (hence one
-   * colour) per layer — reconstructs as one polygon set per layer, each
-   * carrying that layer's colour. A single-material entity yields exactly one
-   * colour group and is built identically to before, with no colour stamped
-   * (so renderers keep their per-`ifcType` / per-entity fill for it).
+   * Sub-groups the entity's segments by layer (colour and `IfcMaterial`), so an
+   * `IfcMaterialLayerSet` wall/slab (one sub-mesh per layer) reconstructs as one
+   * polygon set per layer carrying its colour and material, even when two layers
+   * share a colour. A single-material entity yields exactly one group and is built
+   * as before, with no fill colour stamped (renderers keep their per-`ifcType` / per-entity fill).
    */
   private buildEntityPolygons(segments: CutSegment[]): DrawingPolygon[] {
     if (segments.length === 0) return [];
 
     const byColor = new Map<string, CutSegment[]>();
     for (const seg of segments) {
-      const key = colorKey(seg.color);
+      const key = layerKey(seg);
       let bucket = byColor.get(key);
       if (!bucket) {
         bucket = [];
@@ -192,14 +220,14 @@ export class PolygonBuilder {
       bucket.push(seg);
     }
 
-    // Only a genuinely multi-material cut (≥2 colours) gets per-layer fills;
+    // Only a genuinely multi-layer cut (≥2 colour/material keys) gets per-layer fills;
     // ordinary elements stay colourless so existing fill rules apply.
     const multiMaterial = byColor.size > 1;
 
     const out: DrawingPolygon[] = [];
     for (const groupSegments of byColor.values()) {
-      const groupColor = multiMaterial ? groupSegments[0].color : undefined;
-      for (const p of this.buildColorGroupPolygons(groupSegments, groupColor)) out.push(groupSegments[0].color ? { ...p, sourceColor: groupSegments[0].color } : p);
+      const layer = groupSegments[0];
+      for (const p of this.buildColorGroupPolygons(groupSegments, multiMaterial ? layer.color : undefined)) out.push({ ...p, ...layerStamp(layer) });
     }
     return out;
   }
@@ -691,63 +719,4 @@ export class PolygonBuilder {
 
     return inside;
   }
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// HELPER FUNCTIONS
-// ═══════════════════════════════════════════════════════════════════════════
-
-/**
- * Simplify polygon by removing collinear points
- */
-export function simplifyPolygon(points: Point2D[], tolerance: number = 0.001): Point2D[] {
-  if (points.length < 3) return points;
-
-  const result: Point2D[] = [];
-
-  for (let i = 0; i < points.length; i++) {
-    const prev = points[(i - 1 + points.length) % points.length];
-    const curr = points[i];
-    const next = points[(i + 1) % points.length];
-
-    // Check if current point is on the line between prev and next
-    if (!isCollinear(prev, curr, next, tolerance)) {
-      result.push(curr);
-    }
-  }
-
-  return result.length >= 3 ? result : points;
-}
-
-/**
- * Check if three points are collinear
- */
-function isCollinear(a: Point2D, b: Point2D, c: Point2D, tolerance: number): boolean {
-  // Area of triangle formed by the three points
-  const area = Math.abs((b.x - a.x) * (c.y - a.y) - (c.x - a.x) * (b.y - a.y));
-  return area < tolerance;
-}
-
-/**
- * Compute polygon bounds
- */
-export function polygonBounds(
-  points: Point2D[]
-): { min: Point2D; max: Point2D } {
-  let minX = Infinity,
-    minY = Infinity;
-  let maxX = -Infinity,
-    maxY = -Infinity;
-
-  for (const p of points) {
-    minX = Math.min(minX, p.x);
-    minY = Math.min(minY, p.y);
-    maxX = Math.max(maxX, p.x);
-    maxY = Math.max(maxY, p.y);
-  }
-
-  return {
-    min: { x: minX, y: minY },
-    max: { x: maxX, y: maxY },
-  };
 }

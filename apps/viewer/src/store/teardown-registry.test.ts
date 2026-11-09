@@ -74,7 +74,7 @@ const PINNED_SESSION_RESET_KEYS: readonly string[] = [
   'metadataProgress', 'mutationVersion', 'mutationViews', 'overridesEnabled',
   'overridesPanelVisible', 'pendingCameraRotation', 'pendingColorUpdates',
   'pendingInstancedShards', 'pendingInteractionMode', 'pendingMeshColorUpdates',
-  'pendingPropertyFocus', 'pinboardEntities', 'playbackIsPlaying',
+  'pendingPropertyFocus', 'pendingPresentationLayerReveal', 'pinboardEntities', 'playbackIsPlaying',
   'playbackTime', 'pointCloudAlignmentAvailable', 'pointCloudAlignmentEnabled',
   'pointCloudAssetCount', 'pointCloudClassCounts', 'pointCloudClassMask',
   'pointCloudColorMode', 'pointCloudDeviationCenterOffset', 'pointCloudDeviationComputed',
@@ -97,10 +97,12 @@ const PINNED_SESSION_RESET_KEYS: readonly string[] = [
   'textAnnotation2DEditing', 'textAnnotations2D', 'titleBlockEditorVisible', 'typeViewMode',
   'typeVisibility', 'undoStacks', 'visualEnhancementsEnabled', 'zoneApportionment',
   'zoneAssignmentTiming', 'zoneAssignments',
+  'validationRunGeneration', // A1: a session reset ends an in-flight IDS/rule-set run
 ];
 
 /** The same, for `all-models-cleared`. */
 const PINNED_ALL_MODELS_CLEARED_KEYS: readonly string[] = [
+  'pendingPresentationLayerReveal', // #9273 one-shot layer reveal belongs to the outgoing model
   'appearanceReferenceEntry', // #6615 unopened section requests cannot outlive their live model session
   'workspaceMode', 'session', // #6232 authoring session: it names one model and storey
   'flowLastRun', 'flowLastError', 'flowLastRunWindow', // #5167 flow: the last run's outputs hold handles into the cleared models
@@ -276,7 +278,7 @@ const PINNED_OWNED_KEYS: readonly string[] = [
   'metadataProgress', 'models', 'mutationVersion', 'mutationViews', 'overridesEnabled',
   'overridesPanelVisible', 'pendingCameraRotation', 'pendingColorUpdates',
   'pendingInstancedShards', 'pendingInteractionMode', 'pendingMeshColorUpdates',
-  'pendingPropertyFocus', 'pinboardEntities', 'playbackIsPlaying',
+  'pendingPropertyFocus', 'pendingPresentationLayerReveal', 'pinboardEntities', 'playbackIsPlaying',
   'playbackTime', 'pointCloudAlignmentAvailable', 'pointCloudAlignmentEnabled',
   'pointCloudAssetCount', 'pointCloudClassCounts', 'pointCloudClassMask',
   'pointCloudColorMode', 'pointCloudDeviationCenterOffset', 'pointCloudDeviationComputed',
@@ -300,6 +302,7 @@ const PINNED_OWNED_KEYS: readonly string[] = [
   'typeVisibility', 'undoStacks', 'visibilityRevision', 'visualEnhancementsEnabled', 'zoneApportionment',
   'zoneAssignmentTiming', 'zoneAssignments',
   'validationRuleSetDraft', 'validationRuleSetEditing', // #5825 owned by the draft slice
+  'validationRunGeneration', // A1
 ];
 
 

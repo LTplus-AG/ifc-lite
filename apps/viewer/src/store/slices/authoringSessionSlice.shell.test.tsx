@@ -92,19 +92,27 @@ describe('Model workspace layout (#6232 M2.1)', () => {
 });
 
 describe('Model workspace scene layer (#6232 M2.1)', () => {
-  it('draws the workplane outline and origin ticks only while the workspace is open', () => {
-    const { container, flush } = renderScene(<ToolOverlays />);
+  it('#9334 draws the workplane outline and screen-sized origin crosshair only while the workspace is open', () => {
+    const { container, source, flush } = renderScene(<ToolOverlays />);
+    source.camera.projectToScreen = point => ({ x: 400 + point.x * 10, y: 300 + point.z * 10 });
     flush();
     assert.equal(outlines(container).length, 0, 'nothing while viewing');
     act(() => { useViewerStore.getState().enterModelWorkspace(); });
     flush();
     const drawn = outlines(container);
-    assert.equal(drawn.length, 3, 'the outline and two origin ticks');
+    assert.equal(drawn.length, 1, 'one dashed workplane outline');
     assert.ok(drawn.every((p) => p.style.display !== 'none' && (p.getAttribute('points') ?? '').length > 0));
     assert.match(drawn[0].getAttribute('class') ?? '', /stroke-dasharray/, 'the outline is dashed');
+    const crosshair = container.querySelector<SVGGElement>('[data-snap-kind="workplane"]');
+    assert.ok(crosshair, 'the origin uses the shared screen-sized crosshair');
+    assert.notEqual(crosshair.style.display, 'none');
+    assert.equal(crosshair.style.transform, 'translate(400px, 300px)', 'the crosshair marks the projected storey origin');
+    assert.equal(crosshair.querySelectorAll('circle').length, 2, 'the ring has a halo and an accent stroke');
+    assert.equal(crosshair.querySelectorAll('path').length, 2, 'the cross ticks have a halo and an accent stroke');
     act(() => { useViewerStore.getState().exitModelWorkspace(); });
     flush();
     assert.equal(outlines(container).length, 0, 'leaving clears it');
+    assert.equal(container.querySelector('[data-snap-kind="workplane"]'), null, 'leaving also clears the crosshair');
   });
 
   it('the onboarding hint shows in Select until the first edit, then never again', () => {
@@ -126,6 +134,8 @@ describe('Model workspace scene layer (#6232 M2.1)', () => {
 describe('Workspace defaults (#6232 M2.1)', () => {
   it('wall.place builds with the wall defaults', () => {
     useViewerStore.getState().setAuthoringDims('wall', { Thickness: 0.35, Height: 2.5 });
+    // A fixed-height wall builds at the stored height; "To storey above" would reach the next storey (#9013).
+    useViewerStore.getState().setAuthoringDefaults({ wallTop: 'fixed' });
     useViewerStore.getState().enterModelWorkspace({ command: 'wall.place' });
     commandPointerMove(at(0, 0)); commandPointerDown(at(0, 0));
     commandPointerMove(at(3, 0)); commandPointerDown(at(3, 0));

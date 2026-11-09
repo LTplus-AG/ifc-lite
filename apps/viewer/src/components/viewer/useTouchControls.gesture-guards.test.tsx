@@ -1,0 +1,564 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/**
+ * The guards between a touch gesture and the mouse side's events:
+ * - #9091: a tap may drift by the tap slop, so its compatibility click,
+ *   which lands where the finger lifted, is dropped within that same slop.
+ * - #9087: a mouse or trackpad press near a touch long press means the
+ *   context menu after it is genuine, as it closes a Pencil lift's click
+ *   window (#9043).
+ * - #9122: only the fingers on the canvas make a canvas gesture; a thumb
+ *   resting on a side panel neither keeps it multi-touch nor keeps its drag.
+ * - #9223: a menu press next to a finger stops its hold, in either order, and
+ *   a touch's own menu at the lift is suppressed however long the hold.
+ *
+ * Mounts the real `useMouseControls` and `useTouchControls` on one canvas.
+ */
+
+import '@/test/setup-dom.js';
+import { afterEach, describe, it, mock } from 'node:test';
+import assert from 'node:assert/strict';
+import { act } from 'react';
+import type { Camera } from '@ifc-lite/renderer';
+import { cleanup } from '@/test/render.js';
+import { useViewerStore } from '@/store';
+import {
+  mountViewportControls as rig, pointer, touchEvent, tap, pointerDrag, pos, settle, click,
+} from '@/test/touch-controls-fixture.js';
+
+afterEach(() => {
+  mock.timers.reset();
+  cleanup();
+  for (const canvas of document.querySelectorAll('canvas')) canvas.remove();
+  useViewerStore.setState({ pointerInput: 'mouse' });
+});
+
+const viewDirection = (camera: Camera) => {
+  const p = camera.getPosition(), t = camera.getTarget();
+  const d = Math.hypot(t.x - p.x, t.y - p.y, t.z - p.z);
+  return [(t.x - p.x) / d, (t.y - p.y) / d, (t.z - p.z) / d].map((v) => v.toFixed(9)).join(',');
+};
+
+const mouseEvent = (type: string, x: number, y: number, button = 0, pointerType?: string) => {
+  const e = new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y, button });
+  if (pointerType) Object.defineProperty(e, 'pointerType', { value: pointerType });
+  return e;
+};
+
+/** A one-finger tap at (x, y) that drifts by (dx, dy) before it lifts, as a finger does. */
+async function driftTap(canvas: HTMLCanvasElement, x: number, y: number, dx: number, dy: number) {
+  await act(async () => {
+    canvas.dispatchEvent(touchEvent('touchstart', canvas, [[x, y]]));
+    canvas.dispatchEvent(touchEvent('touchmove', canvas, [[x + dx, y + dy]]));
+    canvas.dispatchEvent(touchEvent('touchend', canvas, []));
+    await settle();
+  });
+}
+
+/**
+ * Whether a context menu got past the canvas. The mouse side prevents the
+ * default of any menu it handles, so `dispatchEvent`'s return value cannot
+ * tell a suppressed menu from a handled one; the long press stops its
+ * propagation.
+ */
+function reachesPage(canvas: HTMLCanvasElement, event: MouseEvent): boolean {
+  let reached = false;
+  const seen = () => { reached = true; };
+  window.addEventListener('contextmenu', seen);
+  canvas.dispatchEvent(event);
+  window.removeEventListener('contextmenu', seen);
+  return reached;
+}
+
+/** Microtasks only: the menu's one pick resolves in them, and a `setTimeout` would hang under mock timers. */
+const flushPick = async () => { for (let i = 0; i < 5; i++) await Promise.resolve(); };
+
+/** A trackpad right-click: the browser's contextmenu has no pointerType (Safari, iPadOS). */
+async function trackpadRightClick(canvas: HTMLCanvasElement, x: number, y: number) {
+  await act(async () => {
+    canvas.dispatchEvent(pointer('pointerdown', 'mouse', x, y, 2, 2));
+    canvas.dispatchEvent(mouseEvent('contextmenu', x, y, 2));
+    canvas.dispatchEvent(pointer('pointerup', 'mouse', x, y, 0, 2));
+    await flushPick();
+  });
+}
+
+describe('a tap\'s compatibility click is dropped within the tap slop (#9091)', () => {
+  function sectionRig() {
+    const planes: string[] = [];
+    const sectionPickModeRef = { current: true };
+    const hit = { intersection: { point: { x: 1, y: 2, z: -2 }, normal: { x: 0, y: 0, z: -1 }, expressId: 7, meshIndex: 0, triangleIndex: 0 } };
+    const controls = rig('section', 42, {
+      renderer: { raycastScene: () => hit },
+      mouse: {
+        sectionPickModeRef,
+        setSectionPlaneFromFace: (normal, point) => { planes.push(JSON.stringify({ normal, point })); },
+        setSectionPickMode: (enabled) => { sectionPickModeRef.current = enabled; },
+      },
+    });
+    return { ...controls, planes };
+  }
+
+  it('Section face-pick: a tap that drifts 8 px places the cut once, not again from its click at the lift', async () => {
+    const { canvas, planes } = sectionRig();
+    await driftTap(canvas, 300, 200, 8, 0);
+    assert.equal(planes.length, 1, 'the drifting tap did not place the cut');
+    await act(async () => { canvas.dispatchEvent(click(308, 200, null)); await settle(); });
+    assert.equal(planes.length, 1, `BUG: the tap's compatibility click placed the cut a second time (${planes.length} cuts)`);
+  });
+
+  it('Select: a tap that drifts diagonally to the slop selects once', async () => {
+    const { canvas, selectionCount } = rig('select', 42);
+    await driftTap(canvas, 200, 300, 10, -10);
+    assert.equal(selectionCount(), 1, 'the drifting tap did not select');
+    await act(async () => { canvas.dispatchEvent(click(210, 290, null)); await settle(); });
+    assert.equal(selectionCount(), 1, `BUG: the tap's compatibility click selected again (${selectionCount()} selections)`);
+  });
+
+  // Guard (passes on main, which drops nothing at 8 px): fails if only the drop widened and not the forget path.
+  it('a trackpad press where a drifting tap lifted closes its window: that click selects', async () => {
+    const { canvas, selectionCount } = rig('select', 42);
+    await driftTap(canvas, 200, 300, 8, 0);
+    await act(async () => {
+      canvas.dispatchEvent(pointer('pointerdown', 'mouse', 208, 300));
+      canvas.dispatchEvent(pointer('pointerup', 'mouse', 208, 300));
+      canvas.dispatchEvent(click(208, 300, null));
+      await settle();
+    });
+    assert.equal(selectionCount(), 2, `BUG: the trackpad click at the tap's lift was dropped (${selectionCount()} selections)`);
+  });
+
+  it('an untyped click beyond the slop after a tap is not the tap\'s (control)', async () => {
+    const { canvas, selectionCount } = rig('select', 42);
+    await tap(canvas, 200, 300);
+    await act(settle);
+    await act(async () => { canvas.dispatchEvent(click(212, 300, null)); await settle(); });
+    assert.equal(selectionCount(), 2);
+  });
+});
+
+describe('a mouse or trackpad press near a touch long press keeps its context menu (#9087)', () => {
+  it('a trackpad right-click next to a finger still held opens the viewer menu', async () => {
+    const { canvas, menus } = rig('select', 42);
+    act(() => canvas.dispatchEvent(touchEvent('touchstart', canvas, [[200, 300]])));
+    await trackpadRightClick(canvas, 210, 300);
+    assert.equal(menus.length, 1, `BUG: the trackpad right-click next to a held finger opened ${menus.length} menus`);
+    act(() => canvas.dispatchEvent(touchEvent('touchend', canvas, [])));
+  });
+
+  it('a trackpad right-click within a second of a long press, at its spot, opens the viewer menu', async () => {
+    mock.timers.enable({ apis: ['setTimeout'] });
+    const { canvas, menus } = rig('select', 42);
+    act(() => canvas.dispatchEvent(touchEvent('touchstart', canvas, [[200, 300]])));
+    await act(async () => { mock.timers.tick(500); await Promise.resolve(); });
+    act(() => canvas.dispatchEvent(touchEvent('touchend', canvas, [])));
+    assert.equal(menus.length, 1, 'the long press opened its menu');
+    mock.timers.reset();
+    await trackpadRightClick(canvas, 205, 300);
+    assert.equal(menus.length, 2, `BUG: the trackpad right-click after a long press opened ${menus.length - 1} menus`);
+  });
+
+  it('a Pencil long press, then a trackpad right-click at its spot, opens the viewer menu again', async () => {
+    mock.timers.enable({ apis: ['setTimeout'] });
+    const { canvas, menus } = rig('select', 42);
+    act(() => {
+      canvas.dispatchEvent(pointer('pointerdown', 'pen', 200, 300));
+      canvas.dispatchEvent(touchEvent('touchstart', canvas, [[200, 300]], 'stylus'));
+      mock.timers.tick(1);
+    });
+    await act(async () => { mock.timers.tick(600); await Promise.resolve(); });
+    act(() => {
+      canvas.dispatchEvent(pointer('pointerup', 'pen', 200, 300));
+      canvas.dispatchEvent(touchEvent('touchend', canvas, []));
+    });
+    mock.timers.reset();
+    await trackpadRightClick(canvas, 200, 300);
+    assert.equal(menus.length, 2, `BUG: a Pencil long press then a trackpad right-click opened ${menus.length} menus`);
+  });
+
+  // The guards below pass on main, which suppresses every menu near a long press: each fails an over-permissive fix.
+  it('the native menu of the touch itself stays suppressed, before and after a trackpad press', async () => {
+    mock.timers.enable({ apis: ['setTimeout'] });
+    const { canvas, menus } = rig('select', 42);
+    act(() => canvas.dispatchEvent(touchEvent('touchstart', canvas, [[200, 300]])));
+    assert.equal(reachesPage(canvas, mouseEvent('contextmenu', 200, 300)), false, 'an untyped native menu during the hold was shown');
+    await act(async () => { mock.timers.tick(500); await Promise.resolve(); });
+    act(() => {
+      canvas.dispatchEvent(pointer('pointerdown', 'mouse', 205, 300, 2, 2));
+      canvas.dispatchEvent(pointer('pointerup', 'mouse', 205, 300, 0, 2));
+    });
+    // Chrome's own long-press menu is a PointerEvent from the touch; an engine may mark it firesTouchEvents instead
+    assert.equal(reachesPage(canvas, mouseEvent('contextmenu', 200, 300, 0, 'touch')), false, 'the touch\'s native menu was shown');
+    const marked = mouseEvent('contextmenu', 200, 300);
+    Object.defineProperty(marked, 'sourceCapabilities', { value: { firesTouchEvents: true } });
+    assert.equal(reachesPage(canvas, marked), false, 'the touch\'s native menu, marked as from touch, was shown');
+    const markedMouse = mouseEvent('contextmenu', 200, 300, 0, 'mouse');
+    Object.defineProperty(markedMouse, 'sourceCapabilities', { value: { firesTouchEvents: true } });
+    assert.equal(reachesPage(canvas, markedMouse), false, 'BUG: a menu typed mouse but marked as from touch was shown');
+    act(() => canvas.dispatchEvent(touchEvent('touchend', canvas, [])));
+    assert.equal(reachesPage(canvas, mouseEvent('contextmenu', 200, 300, 0, 'touch')), false, 'the touch\'s trailing native menu was shown');
+    mock.timers.reset();
+    await act(settle);
+    assert.equal(menus.length, 1, `the long press opened ${menus.length} viewer menus`);
+  });
+
+  it('a trackpad right-click lets one menu through and stops the held finger\'s hold: no long-press menu replaces it (#9223)', async () => {
+    mock.timers.enable({ apis: ['setTimeout'] });
+    const { canvas, menus } = rig('select', 42);
+    act(() => canvas.dispatchEvent(touchEvent('touchstart', canvas, [[200, 300]])));
+    await trackpadRightClick(canvas, 210, 300);
+    assert.equal(menus.length, 1, 'the trackpad right-click opened no menu');
+    await act(async () => { mock.timers.tick(600); await flushPick(); });
+    assert.equal(menus.length, 1, 'BUG (#9223): the finger still held opened its long-press menu over the trackpad\'s');
+    assert.equal(reachesPage(canvas, mouseEvent('contextmenu', 200, 300)), false, 'BUG: the touch\'s untyped native menu passed after the trackpad\'s');
+    act(() => canvas.dispatchEvent(touchEvent('touchend', canvas, [])));
+    assert.equal(reachesPage(canvas, mouseEvent('contextmenu', 200, 300)), false, 'BUG: the trailing untyped native menu passed');
+    // Windows sends the held touch's own menu at the lift, typed `touch`
+    assert.equal(reachesPage(canvas, mouseEvent('contextmenu', 200, 300, 0, 'touch')), false, 'BUG (#9223): the touch\'s menu at the lift passed');
+    mock.timers.reset();
+    await act(settle);
+    assert.equal(menus.length, 1);
+  });
+
+  it('a trackpad left click near a held finger does not let its native menu through', async () => {
+    mock.timers.enable({ apis: ['setTimeout'] });
+    const { canvas, menus } = rig('select', 42);
+    act(() => {
+      canvas.dispatchEvent(touchEvent('touchstart', canvas, [[200, 300]]));
+      canvas.dispatchEvent(pointer('pointerdown', 'mouse', 205, 300, 1, 0));
+      canvas.dispatchEvent(pointer('pointerup', 'mouse', 205, 300));
+    });
+    await act(async () => { mock.timers.tick(500); await Promise.resolve(); });
+    assert.equal(reachesPage(canvas, mouseEvent('contextmenu', 200, 300)), false, 'the native menu passed after a left click');
+    act(() => canvas.dispatchEvent(touchEvent('touchend', canvas, [])));
+    mock.timers.reset();
+    await act(settle);
+    assert.equal(menus.length, 1);
+  });
+
+  it('macOS ctrl+click next to a held finger opens the viewer menu', async () => {
+    const { canvas, menus } = rig('select', 42);
+    act(() => canvas.dispatchEvent(touchEvent('touchstart', canvas, [[200, 300]])));
+    const down = pointer('pointerdown', 'mouse', 205, 300, 1, 0);
+    Object.defineProperty(down, 'ctrlKey', { value: true });
+    await act(async () => {
+      canvas.dispatchEvent(down);
+      canvas.dispatchEvent(mouseEvent('contextmenu', 205, 300));
+      canvas.dispatchEvent(pointer('pointerup', 'mouse', 205, 300));
+      await flushPick();
+    });
+    assert.equal(menus.length, 1, `BUG: a ctrl+click next to a held finger opened ${menus.length} menus`);
+    act(() => canvas.dispatchEvent(touchEvent('touchend', canvas, [])));
+  });
+
+  it('Windows order: a mouse right press before the finger lands, its menu at the release, opens the viewer menu', async () => {
+    const { canvas, menus } = rig('select', 42);
+    await act(async () => {
+      canvas.dispatchEvent(pointer('pointerdown', 'mouse', 205, 300, 2, 2));
+      canvas.dispatchEvent(touchEvent('touchstart', canvas, [[200, 300]]));
+      canvas.dispatchEvent(pointer('pointerup', 'mouse', 205, 300, 0, 2));
+      canvas.dispatchEvent(mouseEvent('contextmenu', 205, 300, 2, 'mouse'));
+      await settle();
+    });
+    assert.equal(menus.length, 1, `BUG: the mouse's own menu next to a finger that landed after its press opened ${menus.length} menus`);
+    act(() => canvas.dispatchEvent(touchEvent('touchend', canvas, [])));
+  });
+
+  it('a trackpad press far from the long press does not open its window', async () => {
+    mock.timers.enable({ apis: ['setTimeout'] });
+    const { canvas, menus } = rig('select', 42);
+    act(() => canvas.dispatchEvent(touchEvent('touchstart', canvas, [[200, 300]])));
+    await act(async () => { mock.timers.tick(500); await Promise.resolve(); });
+    act(() => {
+      canvas.dispatchEvent(touchEvent('touchend', canvas, []));
+      canvas.dispatchEvent(pointer('pointerdown', 'mouse', 600, 100, 2, 2));
+      canvas.dispatchEvent(pointer('pointerup', 'mouse', 600, 100, 0, 2));
+    });
+    assert.equal(reachesPage(canvas, mouseEvent('contextmenu', 200, 300)), false, 'the long press\'s trailing native menu was shown');
+    mock.timers.reset();
+    await act(settle);
+    assert.equal(menus.length, 1);
+  });
+
+  it('a trackpad press near one long press does not open the window of the next', async () => {
+    mock.timers.enable({ apis: ['setTimeout'] });
+    const { canvas, menus } = rig('select', 42);
+    act(() => canvas.dispatchEvent(touchEvent('touchstart', canvas, [[200, 300]])));
+    act(() => {
+      canvas.dispatchEvent(pointer('pointerdown', 'mouse', 205, 300, 2, 2));
+      canvas.dispatchEvent(pointer('pointerup', 'mouse', 205, 300, 0, 2));
+      canvas.dispatchEvent(touchEvent('touchend', canvas, []));
+    });
+    act(() => canvas.dispatchEvent(touchEvent('touchstart', canvas, [[200, 300]])));
+    await act(async () => { mock.timers.tick(500); await Promise.resolve(); });
+    assert.equal(reachesPage(canvas, mouseEvent('contextmenu', 200, 300)), false, 'the second long press\'s native menu was shown');
+    act(() => canvas.dispatchEvent(touchEvent('touchend', canvas, [])));
+    mock.timers.reset();
+    await act(settle);
+    assert.equal(menus.length, 1);
+  });
+});
+
+describe('a long press and a mouse or trackpad menu press, in every engine\'s order (#9223)', () => {
+  it('Windows order, untyped menu: a right press, a finger landing next to it, the menu at the release opens one viewer menu', async () => {
+    mock.timers.enable({ apis: ['setTimeout'] });
+    const { canvas, menus } = rig('select', 42);
+    act(() => {
+      canvas.dispatchEvent(pointer('pointerdown', 'mouse', 205, 300, 2, 2));
+      canvas.dispatchEvent(touchEvent('touchstart', canvas, [[200, 300]]));
+      canvas.dispatchEvent(pointer('pointerup', 'mouse', 205, 300, 0, 2));
+    });
+    // An engine whose contextmenu is no PointerEvent: the menu after the release carries no pointerType
+    await act(async () => { canvas.dispatchEvent(mouseEvent('contextmenu', 205, 300, 2)); await flushPick(); });
+    assert.equal(menus.length, 1, `BUG: the mouse's own untyped menu next to a finger that landed after its press opened ${menus.length} menus`);
+    await act(async () => { mock.timers.tick(600); await flushPick(); });
+    assert.equal(menus.length, 1, 'BUG: the finger held on opened its long-press menu over the mouse\'s');
+    act(() => canvas.dispatchEvent(touchEvent('touchend', canvas, [])));
+  });
+
+  for (const [after, label] of [[300, 'within a second'], [1_500, 'over a second ago']] as const) {
+    it(`Windows order at a spot long-pressed ${label}: the earlier long press's window does not swallow the press's untyped menu`, async () => {
+      mock.timers.enable({ apis: ['setTimeout', 'Date'], now: Date.now() });
+      const { canvas, menus } = rig('select', 42);
+      act(() => canvas.dispatchEvent(touchEvent('touchstart', canvas, [[200, 300]])));
+      await act(async () => { mock.timers.tick(500); await flushPick(); });
+      act(() => canvas.dispatchEvent(touchEvent('touchend', canvas, [])));
+      assert.equal(menus.length, 1, 'the first long press opened its menu');
+      mock.timers.tick(after);
+      act(() => {
+        canvas.dispatchEvent(pointer('pointerdown', 'mouse', 205, 300, 2, 2));
+        canvas.dispatchEvent(touchEvent('touchstart', canvas, [[200, 300]]));
+        canvas.dispatchEvent(pointer('pointerup', 'mouse', 205, 300, 0, 2));
+      });
+      await act(async () => { canvas.dispatchEvent(mouseEvent('contextmenu', 205, 300, 2)); await flushPick(); });
+      assert.equal(menus.length, 2, 'BUG: the earlier long press\'s window swallowed the right press\'s untyped menu');
+      await act(async () => { mock.timers.tick(600); await flushPick(); });
+      assert.equal(menus.length, 2, 'BUG: the finger held on opened its long-press menu over the mouse\'s');
+      act(() => canvas.dispatchEvent(touchEvent('touchend', canvas, [])));
+    });
+  }
+
+  for (const [x, where] of [[210, 'next to the finger'], [400, 'far from it']] as const) {
+    it(`a finger held past its menu window, a trackpad right-click ${where}, then the lift: the touch's lift menu opens no third menu`, async () => {
+      mock.timers.enable({ apis: ['setTimeout', 'Date'], now: Date.now() });
+      const { canvas, menus } = rig('select', 42);
+      act(() => canvas.dispatchEvent(touchEvent('touchstart', canvas, [[200, 300]])));
+      await act(async () => { mock.timers.tick(500); await flushPick(); });
+      assert.equal(menus.length, 1, 'the long press opened its menu');
+      await act(async () => { mock.timers.tick(1_100); await flushPick(); });
+      await trackpadRightClick(canvas, x, 300);
+      assert.equal(menus.length, 2, 'the trackpad right-click opened its menu');
+      await act(async () => { mock.timers.tick(100); await flushPick(); });
+      act(() => canvas.dispatchEvent(touchEvent('touchend', canvas, [])));
+      await act(async () => {
+        assert.equal(reachesPage(canvas, mouseEvent('contextmenu', 200, 300, 0, 'touch')), false, 'BUG: the held finger\'s lift menu was shown after a right press dropped its window');
+        await flushPick();
+      });
+      assert.equal(menus.length, 2, `BUG: the held finger's lift menu opened a third viewer menu (${menus.length} menus)`);
+    });
+  }
+
+  // Guard: fails if a press whose menu already came at the press still mutes the next finger near it.
+  it('macOS order: a right press whose menu came at the press leaves a finger landing after it free to long-press', async () => {
+    mock.timers.enable({ apis: ['setTimeout'] });
+    const { canvas, menus } = rig('select', 42);
+    await act(async () => {
+      canvas.dispatchEvent(pointer('pointerdown', 'mouse', 205, 300, 2, 2));
+      canvas.dispatchEvent(mouseEvent('contextmenu', 205, 300, 2));
+      canvas.dispatchEvent(pointer('pointerup', 'mouse', 205, 300, 0, 2));
+      await flushPick();
+    });
+    assert.equal(menus.length, 1, 'the right-click opened its menu');
+    act(() => canvas.dispatchEvent(touchEvent('touchstart', canvas, [[200, 300]])));
+    await act(async () => { mock.timers.tick(500); await flushPick(); });
+    assert.equal(menus.length, 2, 'the long press after a finished right-click opened no menu');
+    act(() => canvas.dispatchEvent(touchEvent('touchend', canvas, [])));
+  });
+
+  it('a Windows touch hold of 1.6 s: the touch\'s own menu at the lift opens no second viewer menu', async () => {
+    mock.timers.enable({ apis: ['setTimeout', 'Date'], now: Date.now() });
+    const { canvas, menus } = rig('select', 42);
+    act(() => canvas.dispatchEvent(touchEvent('touchstart', canvas, [[200, 300]])));
+    await act(async () => { mock.timers.tick(500); await flushPick(); });
+    assert.equal(menus.length, 1, 'the long press opened its menu');
+    // Android sends the touch's own menu during the hold, typed `touch`, with no mouse press involved
+    assert.equal(reachesPage(canvas, mouseEvent('contextmenu', 200, 300, 0, 'touch')), false, 'the touch\'s menu during the hold was shown');
+    await act(async () => { mock.timers.tick(1_100); await flushPick(); });
+    act(() => canvas.dispatchEvent(touchEvent('touchend', canvas, [])));
+    // Windows sends it at the lift, however long the hold
+    await act(async () => {
+      assert.equal(reachesPage(canvas, mouseEvent('contextmenu', 200, 300, 0, 'touch')), false, 'BUG (#9223): the touch\'s menu at the lift of a long hold was shown');
+      await flushPick();
+    });
+    assert.equal(menus.length, 1, `BUG (#9223): a long hold opened ${menus.length} viewer menus`);
+  });
+
+  // Guard: the Pencil lift window widened from 5 to 10 px in #9218. A slow press is no tap, so the
+  // selection-mark guard does not cover it and only the pen gate drops its click.
+  it('a slow Pencil press: its untyped click 8 px from the lift is dropped', async () => {
+    mock.timers.enable({ apis: ['Date'], now: Date.now() });
+    const { canvas, selectionCount } = rig('select', 42);
+    act(() => {
+      canvas.dispatchEvent(pointer('pointerdown', 'pen', 200, 300));
+      canvas.dispatchEvent(touchEvent('touchstart', canvas, [[200, 300]], 'stylus'));
+    });
+    mock.timers.tick(350);
+    await act(async () => {
+      canvas.dispatchEvent(pointer('pointerup', 'pen', 200, 300));
+      canvas.dispatchEvent(touchEvent('touchend', canvas, []));
+      await settle();
+    });
+    assert.equal(selectionCount(), 0, 'the slow press selected as a tap');
+    await act(async () => { canvas.dispatchEvent(click(208, 300, null)); await settle(); });
+    assert.equal(selectionCount(), 0, 'BUG: the Pencil\'s compatibility click 8 px from its lift selected');
+    await act(async () => { canvas.dispatchEvent(click(212, 300, null)); await settle(); });
+    assert.equal(selectionCount(), 1, 'an untyped click past the slop of the lift is not the Pencil\'s (control)');
+  });
+});
+
+describe('a finger muted by a trackpad right-click in a tool that places on a tap (#9223, #9092)', () => {
+  const HIT = { intersection: { point: { x: 1, y: 2, z: -2 }, normal: { x: 0, y: 0, z: -1 }, expressId: 7, meshIndex: 0, triangleIndex: 0 } };
+  const annotateRig = () => rig('annotate', 42, { renderer: { raycastScene: () => HIT } });
+  const draft = () => useViewerStore.getState().draft;
+  afterEach(() => { useViewerStore.getState().cancelDraft(); });
+
+  async function mutedHold(canvas: HTMLCanvasElement, ms: number) {
+    act(() => canvas.dispatchEvent(touchEvent('touchstart', canvas, [[300, 200]])));
+    await trackpadRightClick(canvas, 310, 200);
+    await act(async () => { mock.timers.tick(ms); await flushPick(); });
+    await act(async () => { canvas.dispatchEvent(touchEvent('touchend', canvas, [])); await flushPick(); });
+  }
+
+  it('Annotate: a finger held 600 ms after a trackpad right-click muted it drops no pin at the lift', async () => {
+    mock.timers.enable({ apis: ['setTimeout', 'Date'], now: Date.now() });
+    const { canvas, menus } = annotateRig();
+    await mutedHold(canvas, 600);
+    assert.equal(menus.length, 1, 'the trackpad right-click opened its menu');
+    assert.equal(draft(), null, 'BUG: the muted hold dropped a pin under the finger while the trackpad\'s menu was open');
+  });
+
+  // Guard: a muted finger lifted before the long-press threshold is still a tap, as without the press.
+  it('Annotate: a muted quick tap still drops its pin', async () => {
+    mock.timers.enable({ apis: ['setTimeout', 'Date'], now: Date.now() });
+    const { canvas } = annotateRig();
+    await mutedHold(canvas, 200);
+    assert.deepEqual(draft()?.position, { x: 1, y: 2, z: -2 }, 'a muted quick tap dropped no pin');
+  });
+});
+
+describe('a finger resting off the canvas is not part of a canvas gesture (#9122)', () => {
+  /** The fixture's touch event, with a thumb resting on a side panel in its `touches`: a browser lists every finger on the screen. */
+  function touch(kind: string, canvas: HTMLCanvasElement, points: Array<[number, number]>, touchType?: 'direct' | 'stylus'): Event {
+    const onCanvas = touchEvent(kind, canvas, points, touchType) as unknown as TouchEvent;
+    const event = new window.Event(kind, { bubbles: true, cancelable: true });
+    const thumb = { identifier: 99, target: document.body, clientX: 20, clientY: 400 };
+    Object.defineProperty(event, 'touches', { value: [thumb, ...Array.from(onCanvas.touches)] });
+    Object.defineProperty(event, 'changedTouches', { value: onCanvas.changedTouches });
+    return event;
+  }
+
+  it('a canvas tap selects while a thumb rests on a panel', async () => {
+    const { canvas, selectionCount } = rig('select', 42);
+    await act(async () => {
+      canvas.dispatchEvent(touch('touchstart', canvas, [[200, 300]]));
+      canvas.dispatchEvent(touch('touchend', canvas, []));
+      await settle();
+    });
+    assert.equal(selectionCount(), 1, 'BUG: the thumb on the panel kept the canvas tap multi-touch');
+    await act(async () => {
+      canvas.dispatchEvent(touch('touchstart', canvas, [[300, 300]]));
+      canvas.dispatchEvent(touch('touchend', canvas, []));
+      await settle();
+    });
+    assert.equal(selectionCount(), 2, 'BUG: a second tap with the thumb still resting selected nothing');
+  });
+
+  it('after a Pan drag and a switch to Select, a one-finger drag orbits while the thumb still rests', () => {
+    const { canvas, camera, activeToolRef } = rig('pan');
+    const direction = viewDirection(camera);
+    act(() => {
+      canvas.dispatchEvent(touch('touchstart', canvas, [[400, 300]]));
+      for (let i = 1; i <= 5; i++) canvas.dispatchEvent(touch('touchmove', canvas, [[400 + 20 * i, 300]]));
+      canvas.dispatchEvent(touch('touchend', canvas, []));
+    });
+    assert.equal(viewDirection(camera), direction, 'the Pan drag did not pan');
+    const panned = pos(camera);
+    assert.notEqual(panned, JSON.stringify({ x: 0, y: 0, z: 10 }), 'BUG: the one-finger Pan drag was read as two fingers and did not pan');
+    activeToolRef.current = 'select';
+    act(() => {
+      canvas.dispatchEvent(touch('touchstart', canvas, [[400, 300]]));
+      for (let i = 1; i <= 5; i++) canvas.dispatchEvent(touch('touchmove', canvas, [[400 + 20 * i, 300]]));
+      canvas.dispatchEvent(touch('touchend', canvas, []));
+    });
+    assert.notEqual(viewDirection(camera), direction, 'BUG: the drag in Select still panned, the drag type kept from Pan');
+  });
+
+  it('a second canvas finger landing late still pinches, with the thumb resting', () => {
+    const { canvas, camera } = rig('select');
+    act(() => {
+      canvas.dispatchEvent(touch('touchstart', canvas, [[400, 300]]));
+      canvas.dispatchEvent(touch('touchstart', canvas, [[400, 300], [480, 300]]));
+      for (let i = 1; i <= 4; i++) canvas.dispatchEvent(touch('touchmove', canvas, [[400 - 10 * i, 300], [480 + 10 * i, 300]]));
+    });
+    const eye = camera.getPosition();
+    assert.ok(eye.z < 10, `the pinch did not zoom in (z ${eye.z})`);
+    const direction = viewDirection(camera);
+    act(() => canvas.dispatchEvent(touch('touchend', canvas, [[360, 300]])));
+    act(() => {
+      for (let i = 1; i <= 4; i++) canvas.dispatchEvent(touch('touchmove', canvas, [[360 + 20 * i, 300]]));
+      canvas.dispatchEvent(touch('touchend', canvas, []));
+    });
+    assert.notEqual(viewDirection(camera), direction, 'the finger left after the pinch did not orbit');
+  });
+
+  it('a tap after a two-finger pinch selects again once both canvas fingers lift, with the thumb resting', async () => {
+    const { canvas, selectionCount } = rig('select', 42);
+    await act(async () => {
+      canvas.dispatchEvent(touch('touchstart', canvas, [[400, 300], [480, 300]]));
+      canvas.dispatchEvent(touch('touchend', canvas, [[400, 300]]));
+      canvas.dispatchEvent(touch('touchend', canvas, []));
+      await settle();
+    });
+    assert.equal(selectionCount(), 0, 'a pinch selected');
+    await act(async () => {
+      canvas.dispatchEvent(touch('touchstart', canvas, [[200, 300]]));
+      canvas.dispatchEvent(touch('touchend', canvas, []));
+      await settle();
+    });
+    assert.equal(selectionCount(), 1, 'BUG: the tap after the pinch was still read as multi-touch');
+  });
+
+  it('a canvas finger that slides off the canvas still drives its gesture (control)', () => {
+    const { canvas, camera } = rig('select');
+    const before = pos(camera);
+    act(() => {
+      canvas.dispatchEvent(touch('touchstart', canvas, [[760, 300]]));
+      for (let i = 1; i <= 5; i++) canvas.dispatchEvent(touch('touchmove', canvas, [[760 + 20 * i, 300]]));
+    });
+    const moved = pos(camera);
+    assert.notEqual(moved, before, 'the drag did not orbit');
+    act(() => canvas.dispatchEvent(touch('touchmove', canvas, [[900, 340]])));
+    assert.notEqual(pos(camera), moved, 'the finger past the canvas edge stopped driving the orbit');
+    act(() => canvas.dispatchEvent(touch('touchend', canvas, [])));
+  });
+
+  // Control: a new pen press clears a stale touch-owned one anyway, so this guards the pen gate's filter, not a bug on main.
+  it('a pointer-only Pencil drag after a press whose pointerup never came still orbits like a mouse, with the thumb resting (control)', () => {
+    const mouse = rig('select');
+    pointerDrag(mouse.canvas, 'mouse');
+    const expected = pos(mouse.camera);
+    cleanup(); mouse.canvas.remove();
+    const pen = rig('select');
+    act(() => {
+      pen.canvas.dispatchEvent(pointer('pointerdown', 'pen', 100, 100));
+      pen.canvas.dispatchEvent(touch('touchstart', pen.canvas, [[100, 100]], 'stylus'));
+      // a capture-phase listener stopped this pointerup before the mouse controls saw it
+      pen.canvas.dispatchEvent(touch('touchend', pen.canvas, []));
+      pen.canvas.dispatchEvent(pointer('pointermove', 'pen', 400, 300));
+    });
+    pointerDrag(pen.canvas, 'pen');
+    assert.equal(pos(pen.camera), expected, 'BUG: the thumb on the panel kept the pen press touch-owned');
+  });
+});

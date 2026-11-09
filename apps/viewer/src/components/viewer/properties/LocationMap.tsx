@@ -16,10 +16,9 @@
 
 import { trackExportCompleted } from '@/lib/analytics';
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
-import { Map as MapIcon, ExternalLink, MapPinOff, Globe2, Search, Mountain, MapPin, X, Check } from 'lucide-react';
+import { Map as MapIcon, MapPinOff, Search, Mountain, MapPin, X, Check } from 'lucide-react';
 import { IconButton } from '@/components/ui/icon-button';
 import { Spinner } from '@/components/ui/spinner';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { toast } from '@/components/ui/toast';
 import type { IfcDataStore, MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import type { CoordinateInfo, GeometryResult } from '@ifc-lite/geometry';
@@ -38,7 +37,10 @@ import { posthog } from '@/lib/analytics';
 import { addFootprintToMap, removeFootprintFromMap } from './location-map-footprint';
 import { geocodeSearch, type GeocodeResult } from './location-map-geocode';
 import { loadMaplibre, disposeMap, purgeMapContainer, updateOriginMarker } from './location-map-lifecycle';
+import { mapInkClass, mapInkStyle, pickedPinElement } from './location-map-ink';
 import { LocationMapSearchBar } from './location-map-search';
+import { LocationMapLinks } from './location-map-links';
+import { useViewerStore } from '@/store';
 import { LocationGeoreferenceNotices } from './location-georeference-notices';
 import { readSiteLocationReference } from '@/lib/geo/site-location-disagreement';
 import { useLocationGeoreference } from './use-location-georeference';
@@ -100,6 +102,12 @@ export interface LocationMapProps {
  * fetch is transient in a way a missing GPU capability is not.
  */
 type MapUnavailableReason = MapWebglFailureReason | 'map_load_failed';
+
+function basemapStyleUrl(dark: boolean): string {
+  return dark
+    ? 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json'
+    : 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json';
+}
 
 export function LocationMap({
   mapConversion, projectedCRS, coordinateInfo, geometryResult, dataStore,
@@ -196,6 +204,15 @@ export function LocationMap({
   // Building footprint state (bounding box polygon in WGS84)
   const [footprint, setFootprint] = useState<[number, number][] | null>(null);
   const [styleVersion, setStyleVersion] = useState(0);
+  // Tiles follow the app theme (#8802 R4); "Toggle style" flips them. The ref feeds the async map
+  // construction and is synced in an effect (not during render) that runs before the construction and style effects.
+  const theme = useViewerStore((s) => s.theme);
+  const [styleFlipped, setStyleFlipped] = useState(false);
+  const darkBasemap = (theme === 'dark') !== styleFlipped;
+  const darkBasemapRef = useRef(darkBasemap);
+  useEffect(() => { darkBasemapRef.current = darkBasemap; }, [darkBasemap]);
+  /** The tile style the live map was last given; null before it exists. */
+  const appliedDarkRef = useRef<boolean | null>(null);
   const footprintRef = useRef<[number, number][] | null>(null);
 
   // Compute building footprint from bounding box
@@ -269,10 +286,7 @@ export function LocationMap({
     if (pickedMarkerRef.current) {
       pickedMarkerRef.current.setLngLat([pos.lon, pos.lat]);
     } else {
-      const el = document.createElement('div');
-      el.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="#7c3aed" stroke="white" stroke-width="2"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>`;
-      el.style.cursor = 'grab';
-      const marker = new maplibregl.Marker({ element: el, draggable: true })
+      const marker = new maplibregl.Marker({ element: pickedPinElement(), draggable: true })
         .setLngLat([pos.lon, pos.lat])
         .addTo(mapRef.current);
       marker.on('dragend', () => {
@@ -378,10 +392,11 @@ export function LocationMap({
       // arrives as a DOM event on it. See `watchContextCreationStatus`.
       const contextStatus = watchContextCreationStatus(container);
       let map: InstanceType<typeof maplibregl.Map>;
+      appliedDarkRef.current = darkBasemapRef.current;
       try {
         map = new maplibregl.Map({
           container,
-          style: 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json',
+          style: basemapStyleUrl(appliedDarkRef.current),
           center: [latLon.lon, latLon.lat],
           zoom: 15,
           attributionControl: false,
@@ -491,7 +506,8 @@ export function LocationMap({
     };
   }, [latLon, locationKind, handleMapClick, mapUnavailable, degradeMap]);
 
-  // Add/update building footprint GeoJSON layer when footprint or style changes
+  // Add/update the footprint when it or the style changes, and repaint it when the theme
+  // changes the container ink without a style reload (light <-> colorful keep the tiles).
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -505,7 +521,7 @@ export function LocationMap({
     } else {
       map.once('style.load', () => addFootprintToMap(map, footprint));
     }
-  }, [footprint, styleVersion]);
+  }, [footprint, styleVersion, theme]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -571,29 +587,21 @@ export function LocationMap({
       toast.error(t('properties.locationMap.kmzExportFailedUnknown', { message: err instanceof Error ? err.message : t('properties.locationMap.unknownError') }));
     }
   }, [latLon, geometryResult, mapConversion, projectedCRS, coordinateInfo, lengthUnitScale, createKmzProcessor, instancedModelRange, modelName, t]);
-  const isDarkRef = useRef(false);
-  const handleStyleToggle = useCallback(() => {
-    if (!mapRef.current) return;
-    isDarkRef.current = !isDarkRef.current;
-    mapRef.current.setStyle(
-      isDarkRef.current
-        ? 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json'
-        : 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json',
-    );
+  const handleStyleToggle = useCallback(() => setStyleFlipped(f => !f), []);
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || appliedDarkRef.current === darkBasemap) return;
+    appliedDarkRef.current = darkBasemap;
+    map.setStyle(basemapStyleUrl(darkBasemap));
     // Re-add markers and layers after style fully loads
-    if (mapRef.current) {
-      mapRef.current.once('style.load', () => {
-        if (markerRef.current && mapRef.current) {
-          markerRef.current.addTo(mapRef.current);
-        }
-        if (pickedMarkerRef.current && mapRef.current) {
-          pickedMarkerRef.current.addTo(mapRef.current);
-        }
-        // Trigger footprint layer re-add
-        setStyleVersion(v => v + 1);
-      });
-    }
-  }, []);
+    map.once('style.load', () => {
+      if (mapRef.current !== map) return;
+      markerRef.current?.addTo(map);
+      pickedMarkerRef.current?.addTo(map);
+      // Trigger footprint layer re-add
+      setStyleVersion(v => v + 1);
+    });
+  }, [darkBasemap]);
 
   // Nothing to show if no georeferencing data
   if (!mapConversion || !projectedCRS) {
@@ -601,15 +609,15 @@ export function LocationMap({
   }
 
   return (
-    <div className="border-t border-zinc-100 dark:border-zinc-900">
+    <div className="border-t border-border">
       {/* Header with search */}
       <div className="flex items-center gap-2 px-3 py-1.5">
-        <MapIcon className="h-3 w-3 text-teal-500 shrink-0" />
-        <span className="font-bold text-xs text-zinc-700 dark:text-zinc-300 uppercase tracking-wide flex-1">
+        <MapIcon className="h-3 w-3 text-muted-foreground shrink-0" />
+        <span className="text-xs font-semibold text-foreground flex-1">
           {t('properties.locationMap.heading')}
         </span>
         {latLon && !searchOpen && (
-          <span className="text-xs font-mono text-teal-600/70 dark:text-teal-500/60" title={t(locationKind === 'geometry' ? 'properties.locationMap.geometryLatLon' : 'properties.locationMap.latLon')}>
+          <span className="text-xs font-mono text-muted-foreground" title={t(locationKind === 'geometry' ? 'properties.locationMap.geometryLatLon' : 'properties.locationMap.latLon')}>
             {formatLocaleNumber(locale, latLon.lat, { minimumFractionDigits: 5, maximumFractionDigits: 5 })}, {formatLocaleNumber(locale, latLon.lon, { minimumFractionDigits: 5, maximumFractionDigits: 5 })}
           </span>
         )}
@@ -617,7 +625,7 @@ export function LocationMap({
           <IconButton
             label={t('properties.locationMap.searchTooltip')} size="icon-xs"
             onClick={() => { setSearchOpen(!searchOpen); setSearchQuery(''); setSearchResults([]); }}
-            className="text-zinc-400 hover:text-teal-600 dark:hover:text-teal-400"
+            className="text-muted-foreground hover:text-foreground"
           >
             <Search className="h-3 w-3" />
           </IconButton>
@@ -643,16 +651,16 @@ export function LocationMap({
 
       {/* Map container */}
       {mapState === 'loading' && (
-        <div className="flex items-center justify-center h-[180px] bg-zinc-50 dark:bg-zinc-900/50">
-          <Spinner size="md" className="text-teal-500" />
-          <span className="text-xs text-zinc-400 ml-2">{t('properties.locationMap.resolvingCoordinates')}</span>
+        <div className="flex items-center justify-center h-[180px] bg-muted">
+          <Spinner size="md" className="text-muted-foreground" />
+          <span className="text-xs text-muted-foreground ml-2">{t('properties.locationMap.resolvingCoordinates')}</span>
         </div>
       )}
 
       {mapState === 'error' && (
-        <div className="flex items-center justify-center h-[60px] bg-zinc-50 dark:bg-zinc-900/50 gap-2 px-3">
-          <MapPinOff className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
-          <span className="text-xs text-zinc-400">{errorKey && t(errorKey)}</span>
+        <div className="flex items-center justify-center h-[60px] bg-muted gap-2 px-3">
+          <MapPinOff className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+          <span className="text-xs text-muted-foreground">{errorKey && t(errorKey)}</span>
         </div>
       )}
 
@@ -663,12 +671,12 @@ export function LocationMap({
                GPU stays: the coordinate readout above, the external map links
                and the KMZ export below, and — in edit mode — place search,
                which still drives the reverse projection and the Apply button. */
-            <div className="flex flex-col items-center justify-center h-[180px] bg-zinc-50 dark:bg-zinc-900/50 gap-1.5 px-4 text-center">
-              <MapPinOff className="h-4 w-4 text-zinc-400" />
-              <span className="text-xs text-zinc-500 dark:text-zinc-400">
+            <div className="flex flex-col items-center justify-center h-[180px] bg-muted gap-1.5 px-4 text-center">
+              <MapPinOff className="h-4 w-4 text-muted-foreground" />
+              <span className="text-xs text-muted-foreground">
                 {t('properties.locationMap.unavailableOnDevice')}
               </span>
-              <span className="text-xs text-zinc-400 dark:text-zinc-500 max-w-[240px]">
+              <span className="text-xs text-muted-foreground max-w-[240px]">
                 {mapUnavailable === 'map_load_failed' ? t('properties.locationMap.mapLoadFailed') : t('properties.locationMap.graphicsUnavailable')}
               </span>
             </div>
@@ -676,12 +684,12 @@ export function LocationMap({
             <div className="relative">
               <div
                 ref={containerRef}
-                className="h-[180px] w-full [&_.maplibregl-ctrl-attrib]:!text-2xs [&_.maplibregl-ctrl-attrib]:!bg-white/40 [&_.maplibregl-ctrl-attrib]:dark:!bg-black/30 [&_.maplibregl-ctrl-attrib]:!py-0 [&_.maplibregl-ctrl-attrib]:!px-1 [&_.maplibregl-ctrl-attrib]:!shadow-none [&_.maplibregl-ctrl-attrib]:!text-zinc-400/70 [&_.maplibregl-ctrl-attrib_a]:!text-zinc-400/70 [&_.maplibregl-ctrl-attrib]:!leading-normal"
-                style={{ minHeight: 180 }}
+                className={`h-[180px] w-full ${mapInkClass(darkBasemap)} [&_.maplibregl-ctrl-attrib]:!text-2xs [&_.maplibregl-ctrl-attrib]:!bg-popover/40 [&_.maplibregl-ctrl-attrib]:!py-0 [&_.maplibregl-ctrl-attrib]:!px-1 [&_.maplibregl-ctrl-attrib]:!shadow-none [&_.maplibregl-ctrl-attrib]:!text-zinc-400/70 [&_.maplibregl-ctrl-attrib_a]:!text-zinc-400/70 [&_.maplibregl-ctrl-attrib]:!leading-normal`}
+                style={{ minHeight: 180, ...mapInkStyle(darkBasemap) }}
               />
               {/* Edit mode hint overlay */}
               {editable && !pickedLatLon && (
-                <div className="absolute top-2 left-2 bg-white/90 dark:bg-zinc-900/90 backdrop-blur-sm px-2 py-1 text-xs text-zinc-500 dark:text-zinc-400 pointer-events-none shadow-sm border border-zinc-200/50 dark:border-zinc-700/50">
+                <div className="absolute top-2 left-2 bg-popover/90 backdrop-blur-sm px-2 py-1 text-xs text-muted-foreground pointer-events-none shadow-sm border border-border/50">
                   {t('properties.locationMap.clickToPlacePin')}
                 </div>
               )}
@@ -706,25 +714,25 @@ export function LocationMap({
               </div>
 
               <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-xs font-mono mb-2">
-                <div className="text-zinc-500 dark:text-zinc-400">{t('properties.locationMap.latLon')}</div>
+                <div className="text-muted-foreground">{t('properties.locationMap.latLon')}</div>
                 <div className="text-foreground text-right">
                   {formatLocaleNumber(locale, pickedLatLon.lat, { minimumFractionDigits: 6, maximumFractionDigits: 6 })}, {formatLocaleNumber(locale, pickedLatLon.lon, { minimumFractionDigits: 6, maximumFractionDigits: 6 })}
                 </div>
 
                 {projectedCoords && (
                   <>
-                    <div className="text-zinc-500 dark:text-zinc-400">{t('properties.locationMap.easting')}</div>
+                    <div className="text-muted-foreground">{t('properties.locationMap.easting')}</div>
                     <div className="text-foreground text-right tabular-nums">
                       {formatLocaleNumber(locale, projectedCoords.easting, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
                     </div>
-                    <div className="text-zinc-500 dark:text-zinc-400">{t('properties.locationMap.northing')}</div>
+                    <div className="text-muted-foreground">{t('properties.locationMap.northing')}</div>
                     <div className="text-foreground text-right tabular-nums">
                       {formatLocaleNumber(locale, projectedCoords.northing, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
                     </div>
                   </>
                 )}
 
-                <div title={t('properties.locationMap.terrainHeightHelp')} className="text-zinc-500 dark:text-zinc-400 flex items-center gap-1">
+                <div title={t('properties.locationMap.terrainHeightHelp')} className="text-muted-foreground flex items-center gap-1">
                   <Mountain className="h-2.5 w-2.5" />
                   {t('properties.locationMap.elevation')}
                 </div>
@@ -734,7 +742,7 @@ export function LocationMap({
                   ) : pickedElevation !== null ? (
                     t('properties.locationMap.elevationMeters', { value: formatLocaleNumber(locale, pickedElevation, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) })
                   ) : (
-                    <span className="text-zinc-400">—</span>
+                    <span className="text-muted-foreground">—</span>
                   )}
                 </div>
               </div>
@@ -755,64 +763,13 @@ export function LocationMap({
             </div>
           )}
 
-          {/* Action links */}
-          <div className="flex items-center gap-3 px-3 py-1.5 border-t border-zinc-100 dark:border-zinc-900">
-            {googleMapsUrl && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <a
-                    href={googleMapsUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-1 text-xs text-teal-600 dark:text-teal-400 hover:text-teal-800 dark:hover:text-teal-300 transition-colors"
-                  >
-                    <ExternalLink className="h-2.5 w-2.5" />
-                    {t('properties.locationMap.googleMaps')}
-                  </a>
-                </TooltipTrigger>
-                <TooltipContent>{t(locationKind === 'geometry' ? 'properties.locationMap.geometryGoogleMapsTooltip' : 'properties.locationMap.googleMapsTooltip')}</TooltipContent>
-              </Tooltip>
-            )}
-            {openStreetMapUrl && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <a
-                    href={openStreetMapUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-1 text-xs text-teal-600 dark:text-teal-400 hover:text-teal-800 dark:hover:text-teal-300 transition-colors"
-                  >
-                    <ExternalLink className="h-2.5 w-2.5" />
-                    {t('properties.locationMap.openStreetMap')}
-                  </a>
-                </TooltipTrigger>
-                <TooltipContent>{t(locationKind === 'geometry' ? 'properties.locationMap.geometryOpenStreetMapTooltip' : 'properties.locationMap.openStreetMapTooltip')}</TooltipContent>
-              </Tooltip>
-            )}
-            {geometryResult && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    onClick={handleExportKmz}
-                    className="flex items-center gap-1 text-xs text-teal-600 dark:text-teal-400 hover:text-teal-800 dark:hover:text-teal-300 transition-colors"
-                  >
-                    <Globe2 className="h-2.5 w-2.5" />
-                    {t('properties.locationMap.googleEarth')}
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent>{t('properties.locationMap.googleEarthTooltip')}</TooltipContent>
-              </Tooltip>
-            )}
-            {/* Hidden without a map: it would be a permanent no-op. */}
-            {!mapUnavailable && (
-              <button
-                onClick={handleStyleToggle}
-                className="ml-auto text-xs text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-300 transition-colors"
-              >
-                {t('properties.locationMap.toggleStyle')}
-              </button>
-            )}
-          </div>
+          <LocationMapLinks
+            googleMapsUrl={googleMapsUrl}
+            openStreetMapUrl={openStreetMapUrl}
+            geometryLocation={locationKind === 'geometry'}
+            onExportKmz={geometryResult ? handleExportKmz : undefined}
+            onToggleStyle={mapUnavailable ? undefined : handleStyleToggle}
+          />
         </>
       )}
     </div>

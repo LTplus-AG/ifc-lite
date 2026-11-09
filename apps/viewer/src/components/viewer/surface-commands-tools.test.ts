@@ -15,9 +15,9 @@ import '@/lib/commands/modeling/builtin';
 
 const TOOL_IDS = [
   'tool:select', 'tool:walk', 'model:reposition', 'tool:measure',
-  'tool:section', 'tool:annotate', 'tool:wall', 'tool:slab', 'tool:column', 'tool:beam', 'tool:room',
+  'tool:section', 'tool:annotate', 'tool:wall', 'tool:slab', 'tool:roof', 'tool:column', 'tool:beam', 'tool:room',
   'tool:space-envelope', 'tool:curtain-wall', 'tool:grid', 'tool:opening', 'tool:door', 'tool:window',
-  'tool:edit-mode', 'tool:split', 'tool:stair', 'tool:railing', 'tool:split-multi', 'tool:push-pull', 'tool:align', 'tool:trim-extend',
+  'tool:edit-mode', 'tool:split', 'tool:stair', 'tool:railing', 'tool:split-multi', 'tool:push-pull', 'tool:align', 'tool:trim-extend', 'tool:array', 'tool:move', 'tool:rotate',
 ] as const;
 const isCoreTool = (id: string) => id.startsWith('tool:') || id === 'model:reposition';
 const originalTool = useViewerStore.getState().activeTool;
@@ -47,7 +47,7 @@ describe('shared Tools palette commands (#5870)', () => {
     }
   });
 
-  it('keeps browse order and hides authoring commands in a read-only session', () => {
+  it('keeps browse order and discoverable authoring commands in a read-only session (#8947)', () => {
     assert.deepEqual(SURFACE_COMMANDS.filter((command) => isCoreTool(command.id)).map((command) => command.id),
       [...TOOL_IDS]);
     const split = SURFACE_COMMANDS.find((command) => command.id === 'tool:split');
@@ -57,7 +57,7 @@ describe('shared Tools palette commands (#5870)', () => {
       .filter((command) => isCoreTool(command.id));
     const editableRows = paletteSurfaceCommands({ canEditInSession: true }, () => {})
       .filter((command) => isCoreTool(command.id));
-    assert.deepEqual(readonlyRows.map((command) => command.id), TOOL_IDS.slice(0, 6));
+    assert.deepEqual(readonlyRows.map((command) => command.id), [...TOOL_IDS]);
     assert.deepEqual(editableRows.map((command) => command.id), [...TOOL_IDS]);
     for (const row of editableRows) {
       const definition = SURFACE_COMMANDS.find((command) => command.id === row.id);

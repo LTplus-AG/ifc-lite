@@ -28,6 +28,7 @@ const NODE_SPEC = `import { test } from 'node:test';\nimport assert from 'node:a
 
 test('a spec is a browser spec exactly when it imports @playwright/test', () => {
   assert.equal(isBrowserSpecSource(PLAYWRIGHT), true);
+  assert.equal(isBrowserSpecSource(PLAYWRIGHT.replace('@playwright/test', '@mergifyio/playwright')), true, 'the Mergify test wrapper is still a browser spec');
   assert.equal(isBrowserSpecSource(NODE_SPEC), false);
   assert.equal(isBrowserSpecSource(`// mentions '@playwright/test' in a comment only\nimport { test } from 'node:test';`), false);
   assert.equal(isBrowserSpecSource(undefined), false);

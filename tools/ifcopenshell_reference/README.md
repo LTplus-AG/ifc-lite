@@ -47,7 +47,7 @@ inconsistent winding yields `volume: null` and a `volume-unverifiable` advisory.
 Global winding reversal preserves absolute volume. Open meshes still have no
 volume evidence, and the bbox and 1% usable-volume gates are unchanged.
 
-The [survey-volume evidence](evidence/survey-volume-6533.json) records the actual
+The [survey-volume evidence](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/tools/ifcopenshell_reference/evidence/survey-volume-6533.json) records the actual
 Revit `rvt01.ifc` host #10191 replay using pinned IfcOpenShell 0.8.5, fixture and
 geometry hashes, four quick-lane fixture checks, and independent negative
 controls. The existing unittest entry point runs all new known-answer tests.
@@ -156,4 +156,4 @@ these final retained bytes, with initial observed hashes kept separately.
 The absence of terminal engine diagnostics is necessary, not sufficient, for
 a trustworthy reference. The tool does not prove IFC intent or Boolean success
 from mesh counts, reference/base equality, or silence. The captured failure
-and positive control are documented in [evidence/7723](evidence/7723/README.md).
+and positive control are documented in [fixtures/7723](fixtures/7723/README.md).

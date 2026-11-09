@@ -5,6 +5,7 @@ import { guardedMeshShader, unbiasedMeshShader, OPAQUE_VISIBILITY_GROUP } from '
 import { mainShaderSource } from './shaders/main.wgsl.js';
 import { setOpaqueVisibilityCommands } from './opaque-visibility-commands.js';
 import { opaqueVisibilityTimestampWrites } from './renderer-frame-timing.js';
+import { emptyBindGroup } from './section-exclusions.js';
 
 const layouts = new WeakMap<GPUDevice, Map<number, GPUBindGroupLayout>>();
 
@@ -25,6 +26,9 @@ interface Variants { colour: GPURenderPipeline; depth: GPURenderPipeline | null 
 class PendingVisibility extends Error {
   constructor(readonly ready: Promise<void>, readonly alive: () => boolean) { super('Orthographic pipelines are compiling'); }
 }
+
+/** A frame whose orthographic variants are still compiling; callers must let it propagate (#8564). */
+export const isPendingVisibility = (error: unknown): boolean => error instanceof PendingVisibility;
 
 /** A compiling frame is discarded before submit; completion requests its replacement. */
 export function deferOpaqueVisibilityFrame(error: unknown, requestRender: () => void): boolean {
@@ -67,6 +71,40 @@ export class OpaqueVisibilityPass {
   }
 
   getBinding(): GPUBindGroup | undefined { return this.active ? this.binding ?? undefined : undefined; }
+
+  /** The registered descriptor and WGSL of a base pipeline, for derived variants (#8564). */
+  describe(pipeline: GPURenderPipeline): Readonly<Registration> | undefined { return this.registrations.get(pipeline); }
+
+  /**
+   * A later pass of the frame `begin` opened (#8564 glass split): orthographic
+   * frames draw the same colour variants against the same geometric depth; no
+   * second prepass. A variant that is still compiling defers the frame as in `begin`.
+   */
+  resume(encoder: GPUCommandEncoder, descriptor: GPURenderPassDescriptor): GPURenderPassEncoder {
+    const pass = encoder.beginRenderPass(descriptor);
+    this.bindPadding(pass);
+    if (!this.active) return pass;
+    let variant: Variants | undefined;
+    const setPipeline = (base: GPURenderPipeline) => {
+      variant = this.forPipeline(base);
+      pass.setPipeline(variant?.colour ?? base);
+    };
+    // A replayed draw may carry its own padding bind for slot 2 after its
+    // pipeline (#9065 review); decide slot 2 at draw time, as `begin` does.
+    const draw = (name: PropertyKey) => (...args: unknown[]) => {
+      pass.setBindGroup(OPAQUE_VISIBILITY_GROUP, variant ? this.binding! : emptyBindGroup(this.device));
+      return Reflect.apply(Reflect.get(pass, name), pass, args);
+    };
+    return new Proxy(pass, { get: (target, key) => {
+      if (key === 'setPipeline') return setPipeline;
+      if (key === 'draw' || key === 'drawIndexed' || key === 'drawIndirect' || key === 'drawIndexedIndirect') return draw(key);
+      const member: unknown = Reflect.get(target, key);
+      return typeof member === 'function' ? member.bind(target) : member;
+    } });
+  }
+
+  /** The orthographic geometric-depth target while allocated, for render-target telemetry. */
+  renderTarget(): GPUTexture | null { return this.texture; }
 
   private ensureSize(width: number, height: number): void {
     if (this.texture && width === this.width && height === this.height) return;
@@ -121,8 +159,7 @@ export class OpaqueVisibilityPass {
   begin(encoder: GPUCommandEncoder, descriptor: GPURenderPassDescriptor, orthographic: boolean, width: number, height: number): GPURenderPassEncoder {
     this.active = orthographic;
     const main = encoder.beginRenderPass(descriptor);
-    const section = this.sectionBinding?.();
-    if (section) main.setBindGroup(3, section);
+    const section = this.bindPadding(main);
     if (!orthographic) { this.releaseTexture(); return main; }
     this.ensureSize(width, height);
     const before = this.device.createCommandEncoder({ label: 'opaque-visibility-before-main' });
@@ -142,12 +179,14 @@ export class OpaqueVisibilityPass {
       if (variant?.depth) {
         depthPass.setPipeline(variant.depth);
         for (const [group, args] of groups) if (group !== OPAQUE_VISIBILITY_GROUP) invoke(depthPass, 'setBindGroup', args);
+        // The depth variant keeps the base layout, whose visibility slot is padding.
+        depthPass.setBindGroup(OPAQUE_VISIBILITY_GROUP, emptyBindGroup(this.device));
         for (const args of vertices.values()) invoke(depthPass, 'setVertexBuffer', args);
         if (indices) invoke(depthPass, 'setIndexBuffer', indices);
         for (const [method, args] of raster) invoke(depthPass, method, args);
         invoke(depthPass, name, args);
       }
-      if (variant) main.setBindGroup(OPAQUE_VISIBILITY_GROUP, this.binding!);
+      main.setBindGroup(OPAQUE_VISIBILITY_GROUP, variant ? this.binding! : emptyBindGroup(this.device));
       invoke(main, name, args);
     };
     // Proxy retains the actual pass API for existing mesh/overlay helpers. Only
@@ -172,6 +211,14 @@ export class OpaqueVisibilityPass {
       };
       methods.set(key, method); return method;
     } });
+  }
+
+  /** Base mesh layouts pad the visibility slot; every pass binds it before any draw (#9060). */
+  private bindPadding(pass: GPURenderPassEncoder): GPUBindGroup | undefined {
+    pass.setBindGroup(OPAQUE_VISIBILITY_GROUP, emptyBindGroup(this.device));
+    const section = this.sectionBinding?.();
+    if (section) pass.setBindGroup(3, section);
+    return section;
   }
 
   private releaseTexture(): void {

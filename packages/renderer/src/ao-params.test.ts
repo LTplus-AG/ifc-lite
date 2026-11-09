@@ -21,7 +21,9 @@ import {
   viewZFromDepth,
 } from './depth-reconstruct.js';
 import { MathUtils } from './math.js';
+import { Camera } from './camera.js';
 import { aoShaderSource } from './shaders/ao.wgsl.js';
+import { depthReconstructWgsl } from './shaders/depth-reconstruct.wgsl.js';
 import type { Mat4 } from './types.js';
 
 /**
@@ -49,6 +51,14 @@ function project(proj: Mat4, v: [number, number, number]): { ndcX: number; ndcY:
 const PERSPECTIVE = MathUtils.perspectiveReverseZ(Math.PI / 4, 1.6, 0.03, 300);
 const ORTHO = MathUtils.orthographicReverseZ(-16, 16, -10, 10, 2, 90);
 
+/** The off-axis projection the camera builds with a lens shift (#8688). */
+function lensShifted(): Mat4 {
+  const camera = new Camera();
+  camera.setAspect(1.6);
+  camera.setLensShift(-0.3, 0.6);
+  return camera.getProjMatrix();
+}
+
 const POINTS: [number, number, number][] = [
   [0, 0, -5],
   [1.5, -0.8, -12.25],
@@ -57,7 +67,7 @@ const POINTS: [number, number, number][] = [
 ];
 
 describe('depth reconstruction (#5384)', () => {
-  for (const [name, proj] of [['perspective', PERSPECTIVE], ['orthographic', ORTHO]] as const) {
+  for (const [name, proj] of [['perspective', PERSPECTIVE], ['orthographic', ORTHO], ['lens-shifted perspective', lensShifted()]] as const) {
     it(`recovers the view-space position from reverse-Z depth (${name})`, () => {
       const params = depthReconstructParams(proj);
       for (const v of POINTS) {
@@ -70,6 +80,12 @@ describe('depth reconstruction (#5384)', () => {
       }
     });
   }
+
+  it('keeps the WGSL twin on the same x/y formula (#8688)', () => {
+    // Only the TS side is round-tripped, so pin the shader's expression to it.
+    assert.ok(depthReconstructWgsl.includes('(ndc.x * w - shear.x * z - xy.z) / xy.x'));
+    assert.ok(depthReconstructWgsl.includes('(ndc.y * w - shear.y * z - xy.w) / xy.y'));
+  });
 
   it('reads nearer geometry from larger depth, as reverse-Z stores it', () => {
     const params = depthReconstructParams(PERSPECTIVE);
@@ -152,10 +168,10 @@ describe('ambient occlusion targets and uniforms (#5384)', () => {
     const fields = [...struct[1].matchAll(/^\s*(\w+):/gm)].map((m) => m[1]);
     const byOffset = Object.entries(AO_UNIFORM_LAYOUT).sort((a, b) => a[1] - b[1]).map(([k]) => k);
     assert.deepEqual(fields, byOffset);
-    // Five vec4s of parameters, then the kernel as vec4 pairs.
-    assert.equal(AO_UNIFORM_LAYOUT.kernel, 20);
+    // Six vec4s of parameters, then the kernel as vec4 pairs.
+    assert.equal(AO_UNIFORM_LAYOUT.kernel, 24);
     assert.match(struct[1], new RegExp(`kernel: array<vec4<f32>, ${AO_MAX_SAMPLES / 2}>`));
-    assert.equal(AO_UNIFORM_BYTES, (20 + AO_MAX_SAMPLES * 2) * 4);
+    assert.equal(AO_UNIFORM_BYTES, (24 + AO_MAX_SAMPLES * 2) * 4);
   });
 
   it('packs the world radius, its pixel scale and the preset for the frame', () => {
@@ -173,5 +189,14 @@ describe('ambient occlusion targets and uniforms (#5384)', () => {
     assert.equal(out[L.misc + 1], AO_QUALITY_PRESETS.low.samples);
     const kernel = spiralKernel(AO_QUALITY_PRESETS.low.samples, AO_QUALITY_PRESETS.low.spiralTurns);
     assert.deepEqual([...out.subarray(L.kernel)], [...kernel]);
+  });
+
+  it('packs the lens-shift shear the shader reconstructs with (#8688)', () => {
+    const out = new Float32Array(AO_UNIFORM_BYTES / 4);
+    const projection = lensShifted();
+    packAoUniforms(out, { projection, width: 1000, height: 800, quality: 'low', radius: 0.75, intensity: 0.6 });
+    const L = AO_UNIFORM_LAYOUT;
+    assert.deepEqual([...out.subarray(L.shearParams, L.shearParams + 4)], [projection.m[8], projection.m[9], 0, 0]);
+    assert.notEqual(projection.m[9], 0);
   });
 });

@@ -13,7 +13,11 @@ import {
   packEdgeUniforms,
   type EdgeFrameParams,
 } from './edge-params.js';
+// Constants added with per-sample coverage are read through the namespace, so
+// this file still loads against the code before them (the revert oracle).
+import * as edgeParams from './edge-params.js';
 import { MathUtils } from './math.js';
+import { edgeShaderSource } from './shaders/edges.wgsl.js';
 import type { Mat4 } from './types.js';
 
 /**
@@ -28,6 +32,14 @@ function perspective(): Mat4 {
 
 function orthographic(): Mat4 {
   return MathUtils.orthographicReverseZ(-10, 10, -6, 6, 0.1, 1000);
+}
+
+/** Perspective with a lens shift (#8688): non-zero m8/m9. */
+function lensShifted(): Mat4 {
+  const p = perspective();
+  p.m[8] = 0.2;
+  p.m[9] = -0.45;
+  return p;
 }
 
 describe('EDGE_QUALITY_PRESETS (#5385)', () => {
@@ -65,7 +77,7 @@ describe('packEdgeUniforms (#5385)', () => {
   }
 
   it('writes the projection depth/xy params the shader reconstructs from, for both camera modes', () => {
-    for (const projection of [perspective(), orthographic()]) {
+    for (const projection of [perspective(), orthographic(), lensShifted()]) {
       const out = packed(projection);
       const m = projection.m;
       assert.deepEqual(
@@ -75,6 +87,10 @@ describe('packEdgeUniforms (#5385)', () => {
       assert.deepEqual(
         Array.from(out.subarray(EDGE_UNIFORM_LAYOUT.xyParams, EDGE_UNIFORM_LAYOUT.xyParams + 4)),
         [m[0], m[5], m[12], m[13]],
+      );
+      assert.deepEqual(
+        Array.from(out.subarray(EDGE_UNIFORM_LAYOUT.shearParams, EDGE_UNIFORM_LAYOUT.shearParams + 4)),
+        [m[8], m[9], 0, 0],
       );
     }
   });
@@ -98,5 +114,123 @@ describe('packEdgeUniforms (#5385)', () => {
     const e = EDGE_UNIFORM_LAYOUT.edge;
     assert.equal(packed(perspective(), { quality: 'low' })[e + 2], 0);
     assert.equal(packed(perspective(), { quality: 'high' })[e + 2], 1);
+  });
+});
+
+describe('EDGE_UNIFORM_LAYOUT matches the WGSL struct', () => {
+  it('lists the EdgeParams fields in offset order, one vec4 each', () => {
+    const struct = /struct EdgeParams \{([\s\S]*?)\}/.exec(edgeShaderSource(false));
+    assert.ok(struct, 'expected `struct EdgeParams` in the edge shader');
+    const fields = [...struct[1].matchAll(/^\s*(\w+):/gm)].map((m) => m[1]);
+    const byOffset = Object.entries(EDGE_UNIFORM_LAYOUT).sort((a, b) => a[1] - b[1]).map(([k]) => k);
+    assert.deepEqual(fields, byOffset);
+    assert.deepEqual(Object.values(EDGE_UNIFORM_LAYOUT).sort((a, b) => a - b), fields.map((_, i) => i * 4));
+    assert.equal(EDGE_UNIFORM_BYTES, fields.length * 16);
+  });
+});
+
+/** Body of WGSL function `name` in `src`, braces matched. */
+function wgslFnBody(src: string, name: string): string {
+  const start = src.indexOf(`fn ${name}(`);
+  assert.ok(start >= 0, `fn ${name} not found`);
+  const open = src.indexOf('{', start);
+  let depth = 0;
+  for (let end = open; end < src.length; end++) {
+    if (src[end] === '{') depth++;
+    else if (src[end] === '}' && --depth === 0) return src.slice(open, end + 1);
+  }
+  throw new Error(`fn ${name} is unbalanced`);
+}
+
+/**
+ * Line coverage. The pass used to darken by the mean of its directions' 0/1
+ * votes from MSAA sample 0 alone: on a sloped crease the pixel at each stair
+ * step had two directions across the edge where its neighbours had one, so
+ * the line drew as a row of dark ticks, aliased over antialiased geometry.
+ * WGSL does not run under `tsx --test`, so these read the generated source.
+ */
+describe('edge pass line coverage', () => {
+  const ms = edgeShaderSource(true);
+  const ss = edgeShaderSource(false);
+
+  it('darkens a covered pixel by half the intensity at low and three quarters at high (the old 1.5 ratio)', () => {
+    assert.equal(edgeParams.EDGE_LINE_WEIGHT.low, 0.5);
+    assert.equal(edgeParams.EDGE_LINE_WEIGHT.high, 0.75);
+    for (const src of [ms, ss]) {
+      assert.match(src, new RegExp(`EDGE_LINE_WEIGHT_LOW: f32 = ${edgeParams.EDGE_LINE_WEIGHT.low.toFixed(6)}`));
+      assert.match(src, new RegExp(`EDGE_LINE_WEIGHT_HIGH: f32 = ${edgeParams.EDGE_LINE_WEIGHT.high.toFixed(6)}`));
+    }
+  });
+
+  it('puts a sample on a line when ANY tap crosses an edge, not by the mean of the directions', () => {
+    for (const src of [ms, ss]) {
+      const sample = wgslFnBody(src, 'sampleOnEdge');
+      assert.match(sample, /for \(var i = 0; i < count; [^)]*\) \{\s*if \(tapCrosses\([^;]*\)\) \{\s*return 1\.0;/);
+      assert.doesNotMatch(src, /votes \/ directions/);
+      const fs = wgslFnBody(src, 'fs_edges');
+      assert.match(fs, /onEdge = onEdge \+ sampleOnEdge\(p, s, dims, r, count, d, centre\)/);
+      assert.match(fs, /let coverage = onEdge \/ f32\(EDGE_SAMPLES\);/);
+      assert.match(fs, /coverage \* weight \* params\.edge\.y/);
+    }
+  });
+
+  it('tests every MSAA sample against the same sample of its neighbours on a multisampled target', () => {
+    assert.equal(edgeParams.EDGE_SAMPLE_COUNT, 4);
+    assert.match(ms, new RegExp(`const EDGE_SAMPLES: i32 = ${edgeParams.EDGE_SAMPLE_COUNT};`));
+    assert.match(wgslFnBody(ms, 'fs_edges'), /for \(var s = 0; s < EDGE_SAMPLES; s = s \+ 1\)/);
+    // Every depth/id read of the line test takes the sample index; none uses
+    // the sample-0-only `loadDepth`.
+    for (const name of ['axisStep', 'tapCrosses', 'fs_edges']) {
+      const body = wgslFnBody(ms, name);
+      assert.doesNotMatch(body, /loadDepth\(/, `${name} reads sample 0 only`);
+      const calls = [...body.matchAll(/loadDepthSample\(([^()]*)\)/g)];
+      assert.ok(calls.length > 0, `${name} reads depth`);
+      // Every call is matched (none hides its arguments in nested parentheses).
+      assert.equal(calls.length, body.split('loadDepthSample(').length - 1, `${name}: unparsed loadDepthSample call`);
+      for (const call of calls) {
+        assert.match(call[1], /,\s*s$/, `${name}: ${call[0]} must read sample s`);
+      }
+    }
+    assert.match(wgslFnBody(ms, 'loadId'), /textureLoad\(idTex, c, s\)/);
+  });
+
+  it('outlines geometry against the background: a background tap is a crossing', () => {
+    for (const src of [ms, ss]) {
+      assert.match(wgslFnBody(src, 'tapCrosses'), /if \(dq <= BACKGROUND_DEPTH\) \{\s*return true;/);
+      // The background itself draws nothing: its samples are skipped.
+      assert.match(wgslFnBody(src, 'fs_edges'), /if \(d <= BACKGROUND_DEPTH\) \{\s*continue;/);
+    }
+  });
+
+  it('never fits a tangent through a texel outside the viewport, and an unknown normal is no crease', () => {
+    for (const src of [ms, ss]) {
+      const axis = wgslFnBody(src, 'axisStep');
+      // A clamped load at the border returns the texel itself: a zero step
+      // that fits perfectly and would face the normal at the camera.
+      assert.match(axis, /let okPlus = inViewport\(ip \+ e\) && d1p > BACKGROUND_DEPTH;/);
+      assert.match(axis, /let okMinus = inViewport\(ip - e\) && d1m > BACKGROUND_DEPTH;/);
+      assert.match(axis, /inViewport\(ip \+ e \* 2\) && d2p > BACKGROUND_DEPTH/);
+      assert.match(axis, /inViewport\(ip - e \* 2\) && d2m > BACKGROUND_DEPTH/);
+      assert.match(wgslFnBody(src, 'planeAt'), /plane\.n = select\(vec3<f32>\(0\.0\), /);
+      assert.match(wgslFnBody(src, 'tapCrosses'), /dot\(centre\.n, centre\.n\) > 0\.5 && dot\(nq, nq\) > 0\.5 && dot\(centre\.n, nq\) < EDGE_CREASE_COS/);
+    }
+  });
+
+  it('places samples at the standard 4x positions, where a plane\'s depth is extrapolated', () => {
+    assert.match(ms, /vec2<f32>\(0\.375, 0\.125\), vec2<f32>\(0\.875, 0\.375\), vec2<f32>\(0\.125, 0\.625\), vec2<f32>\(0\.625, 0\.875\)/);
+    assert.match(ss, /const SAMPLE_POS = array<vec2<f32>, 1>\(\s*vec2<f32>\(0\.5, 0\.5\),/);
+    // A tap on the centre's plane skips its normal; only one off it fits one.
+    const tap = wgslFnBody(ms, 'tapCrosses');
+    const onPlane = tap.indexOf('if (onPlane(centre, qc, s, dq)) {');
+    const fit = tap.indexOf('planeAt(qc, s, dq)');
+    assert.ok(onPlane >= 0, 'tapCrosses tests the centre plane');
+    assert.ok(fit >= 0, 'tapCrosses fits a plane for an off-plane tap');
+    assert.ok(onPlane < fit, 'the on-plane test comes before the fit');
+    assert.match(tap.slice(onPlane, fit), /^if \(onPlane\(centre, qc, s, dq\)\) \{\s*return false;\s*\}/);
+  });
+
+  it('reads only sample 0 on a single-sampled target', () => {
+    assert.match(ss, /const EDGE_SAMPLES: i32 = 1;/);
+    assert.match(ss, /var idTex: texture_2d<f32>;/);
   });
 });

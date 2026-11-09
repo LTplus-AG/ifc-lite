@@ -15,11 +15,12 @@
  * the tool is closed because finished measurements outlive the gesture.
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Boxes, Crosshair, List, Ruler, Trash2, X } from 'lucide-react';
 import { IconButton } from '@/components/ui/icon-button';
 import { useDialogs } from '@/components/ui/confirm-dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { ACTIVE_TAB_CLASS } from '@/components/ui/active-state';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n/useTranslation';
 import type { TranslationKey } from '@/i18n/en';
@@ -41,7 +42,16 @@ const TABS: ReadonlyArray<{ id: PanelTab; labelKey: TranslationKey; titleKey: Tr
 export function MeasurementsPanel({ onClose }: { onClose?: () => void }) {
   const { t } = useTranslation();
   const { confirmDialog } = useDialogs();
-  const [tab, setTab] = useState<PanelTab>('list');
+  const pointMode = useViewerStore((s) => s.activeTool === 'measure' && s.measureMode === 'point');
+  const [tab, setTab] = useState<PanelTab>(pointMode ? 'point' : 'list');
+  // Choosing Point mode (#8770) brings its readout forward; the user can
+  // still switch tabs afterwards.
+  useEffect(() => { if (pointMode) setTab('point'); }, [pointMode]);
+  // On touch, an open Polyline or Radius brings List forward: its live row
+  // holds the only Finish a finger has (#8991). A mouse user has Enter and
+  // double-click, so their chosen tab is left alone.
+  const sequenceOpen = useViewerStore((s) => s.pointerInput === 'touch' && (s.activePolyline !== null || s.activeRadius !== null));
+  useEffect(() => { if (sequenceOpen) setTab('list'); }, [sequenceOpen]);
   const clearMeasurements = useViewerStore((s) => s.clearMeasurements);
   const count = useViewerStore(
     (s) =>
@@ -86,7 +96,7 @@ export function MeasurementsPanel({ onClose }: { onClose?: () => void }) {
             key={id}
             value={id}
             title={t(titleKey)}
-            className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs transition-colors data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-none"
+            className={`inline-flex items-center gap-1 rounded px-2 py-1 text-xs transition-colors ${ACTIVE_TAB_CLASS}`}
           >
             <Icon className="h-3 w-3" />
             {t(labelKey)}

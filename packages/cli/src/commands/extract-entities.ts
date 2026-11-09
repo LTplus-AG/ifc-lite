@@ -29,12 +29,12 @@
  * legitimate for thin or large elements and must be eyeballed, not trusted.
  */
 import { constants as bufferConstants } from 'node:buffer';
-import { readFile, writeFile } from 'node:fs/promises';
-import { basename } from 'node:path';
+import { writeFile } from 'node:fs/promises';
 import { stepStringLiteralEnd } from '@ifc-lite/encoding';
 import { expandTypes } from '@ifc-lite/parser';
 import { fatal, getFlag, getAllFlags, hasFlag, routeConsoleDiagnosticsToStderr } from '../output.js';
 import { logger } from '../logger.js';
+import { readModelInput } from '../model-input.js';
 import { planSpatialRelations, refsOutsideStrings, type StepRecord, type Subset } from './subset-relations.js';
 import { spatialAncestors } from './spatial-ancestors.js';
 import { productsUnderPlacement, resolveStoreyPlacement } from './storey-selection.js';
@@ -353,7 +353,8 @@ export async function extractEntitiesCommand(args: string[]): Promise<void> {
     return;
   }
 
-  const buf = await readFile(filePath);
+  const input = await readModelInput(filePath);
+  const buf = Buffer.from(input.bytes.buffer, input.bytes.byteOffset, input.bytes.byteLength);
   if (buf.length >= bufferConstants.MAX_STRING_LENGTH) {
     fatal(
       `File is too large to extract from (${buf.length} bytes >= V8 string cap); ` +
@@ -367,7 +368,7 @@ export async function extractEntitiesCommand(args: string[]): Promise<void> {
   // them to U+FFFD.
   const text = buf.toString('latin1');
   const parsed = parseStep(text);
-  logger.info(`Parsed ${parsed.instances.size} STEP instances from ${basename(filePath)}`);
+  logger.info(`Parsed ${parsed.instances.size} STEP instances from ${input.name}`);
 
   const detect = hasFlag(args, '--detect');
   const report = hasFlag(args, '--report');

@@ -9,13 +9,14 @@ import {
   Crosshair, FolderOpen, Home, Layers3, Maximize2, Orbit, Save,
   SquareStack, Sun, Tag,
 } from 'lucide-react';
-import { resolveEnglish } from '@/i18n/registry';
+import { resolve as t, resolveEnglish } from '@/i18n/registry';
 import { panelTitleKey } from '@/lib/panels/registry';
 import { useViewerStore } from '@/store';
 import { goHomeFromStore } from '@/store/homeView';
 import { applyLevelDisplayMode } from '@/store/levelDisplay';
 import { openSettings } from '@/lib/settings/open-settings';
 import type { Command } from './commandPaletteSearch';
+import { MODEL_EDIT_SURFACE_COMMANDS } from './surface-commands-model-edit';
 import { TOOL_SURFACE_COMMANDS } from './surface-commands-tools';
 import { PANEL_SURFACE_COMMANDS } from './surface-commands-panels';
 import { WORKSPACE_SURFACE_COMMANDS } from './surface-commands-workspace';
@@ -26,6 +27,7 @@ import { RIBBON_ELEMENTS_SURFACE_COMMANDS } from './surface-commands-elements-ri
 import { RIBBON_AUTHOR_SURFACE_COMMANDS } from './surface-commands-author-ribbon';
 import { MOBILE_SURFACE_COMMANDS } from './surface-commands-mobile';
 import { CONTEXT_SURFACE_COMMANDS, runContextOr } from './surface-commands-context';
+import { paletteAvailability, paletteToggleState } from './palette-availability';
 import { runSurfaceCommand } from './surface-command-run';
 export type { CommandSurface, SurfaceCommandContext, SurfaceCommandDefinition, SurfaceCommandState } from './surface-command-types';
 import type { CommandSurface, SurfaceCommandContext, SurfaceCommandDefinition, SurfaceCommandState } from './surface-command-types';
@@ -185,6 +187,7 @@ const FILE_AND_VIEW_SURFACE_COMMANDS = [
 ] as const satisfies readonly SurfaceCommandDefinition[];
 type SurfaceCommandEntry =
   | (typeof FILE_AND_VIEW_SURFACE_COMMANDS)[number]
+  | (typeof MODEL_EDIT_SURFACE_COMMANDS)[number]
   | (typeof TOOL_SURFACE_COMMANDS)[number]
   | (typeof PANEL_SURFACE_COMMANDS)[number]
   | (typeof WORKSPACE_SURFACE_COMMANDS)[number]
@@ -204,6 +207,7 @@ export type SurfaceCommandIdFor<Surface extends CommandSurface> = SurfaceCommand
 export const SURFACE_COMMANDS: readonly (SurfaceCommandDefinition & { id: SurfaceCommandId })[] = [
   ...FILE_AND_VIEW_SURFACE_COMMANDS,
   ...TOOL_SURFACE_COMMANDS,
+  ...MODEL_EDIT_SURFACE_COMMANDS,
   ...PANEL_SURFACE_COMMANDS,
   ...WORKSPACE_SURFACE_COMMANDS,
   ...RIBBON_VIEW_SURFACE_COMMANDS,
@@ -229,11 +233,17 @@ export function surfaceCommand(id: SurfaceCommandId, surface: CommandSurface): S
 export function paletteSurfaceCommands(
   state: SurfaceCommandState,
   execute: (code: string) => void,
-  context: Pick<SurfaceCommandContext, 'activateRightPanel' | 'activateBottomPanel'> = {},
+  context: Omit<SurfaceCommandContext, 'surface' | 'execute'> = {},
 ): Command[] {
   return SURFACE_COMMANDS
-    .filter((command) => command.surfaces.some((surface) => surface === 'palette') && command.enabled(state))
-    .map((command) => commandRowFromDefinition(command, { ...context, surface: 'palette', execute }));
+    .filter((command) => command.surfaces.some((surface) => surface === 'palette') && (command.enabled(state) || (!state.canEditInSession && command.enabled({ ...state, canEditInSession: true }))))
+    .map((command) => {
+      const fullContext: SurfaceCommandContext = { ...context, surface: 'palette', execute };
+      const checkAvailability = () => paletteAvailability(command, fullContext, undefined, state);
+      return { ...commandRowFromDefinition(command, fullContext),
+        availability: checkAvailability(), checkAvailability,
+        stateKey: paletteToggleState(command.id, useViewerStore.getState()) };
+    });
 }
 
 /** One row projection for the palette and mobile command menus. */
@@ -245,7 +255,7 @@ export function commandRowFromDefinition(
     id: command.id,
     label: command.searchLabel ?? resolveEnglish(command.labelKey),
     labelKey: command.labelKey,
-    keywords: command.keywords,
+    keywords: command.keywordsKey ? `${command.keywords} ${t(command.keywordsKey)}` : command.keywords,
     category: command.category,
     icon: command.icon,
     shortcut: command.shortcut,

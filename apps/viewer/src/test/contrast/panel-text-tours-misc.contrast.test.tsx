@@ -8,7 +8,7 @@
  * state where its text shows (TourStepCard with a gated, redocked step; the
  * Info dialog's Learn tab; ClashPanel with a result; a chunk-load failure;
  * RoomPanel and LayersPanel empty states; CustomizeSidebar with a hidden
- * panel; RibbonToolbar's File tab; the Visibility dropdown), located by the
+ * panel; RibbonToolbar's File tab command labels; the Visibility dropdown), located by the
  * text it paints, and measured against the backgrounds its ancestors paint.
  */
 
@@ -29,6 +29,7 @@ import { ChunkErrorBoundary } from '@/components/ChunkErrorBoundary.js';
 import { RoomPanel } from '@/components/viewer/RoomPanel.js';
 import { CustomizeSidebar } from '@/components/viewer/sidebar/CustomizeSidebar.js';
 import { RibbonToolbar } from '@/components/viewer/ribbon/RibbonToolbar.js';
+import { surfaceCommand } from '@/components/viewer/surface-commands';
 import { LayersPanel } from '@/components/viewer/layers/LayersPanel.js';
 import { DropdownMenu, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { ClassVisibilityMenuContent } from '@/components/viewer/toolbar/ClassVisibilityMenu.js';
@@ -170,13 +171,21 @@ function mountCustomizeSidebar(): string {
   return snapshotRenderedDom(VIEWER_SHELL_SURFACE);
 }
 
-// ── RibbonGroup ──────────────────────────────────────────────────────────
-// Mounted through RibbonToolbar, whose root carries the real
-// `border-b bg-white dark:bg-black` surface (colorful's `.border-b.bg-white`
-// violet glass included). With no model loaded the contextual-tab hook shows
-// the File tab, expanded.
+// ── Ribbon command labels ────────────────────────────────────────────────
+// Mounted through RibbonToolbar, whose root carries the real `bg-panel`
+// shell surface. With no model loaded the contextual-tab hook shows the File
+// tab, expanded. This case used to measure the RibbonGroup caption row
+// ("Model", "Export"); #8802 R1 removed that row, so group names survive only
+// as the ARIA group name and in tooltips, and the ribbon's visible text is
+// each command's one-line label under its icon. The guarantee moves to those
+// labels: the File tab's enabled headline commands, resolved through the same
+// surface-command definitions the buttons render (Add model and Refresh are
+// disabled with no model, and disabled text is outside AA's scope).
 
-const RIBBON_GROUP_LABELS = [resolve('ribbon.file.modelGroup'), resolve('ribbon.file.exportGroup')];
+const RIBBON_COMMAND_LABELS = (['file:open', 'panel:sources'] as const).map((id) => {
+  const command = surfaceCommand(id, 'ribbon');
+  return resolve(command.ribbonLabelKey ?? command.labelKey);
+});
 
 function mountRibbon(): string {
   useViewerStore.setState({ ribbonTab: 'file', ribbonCollapsed: false });
@@ -230,8 +239,8 @@ describe('tour and misc panel secondary text clears AA as rendered (#6205, #4792
       await assertRenderedTextClears(theme, mountCustomizeSidebar(), [resolve('shellChrome.customizeSidebar.hiddenSectionHeader')], WCAG_AA_NORMAL_TEXT);
     });
 
-    it(`RibbonGroup labels on the ribbon toolbar clear AA in ${theme}`, async () => {
-      await assertRenderedTextClears(theme, mountRibbon(), RIBBON_GROUP_LABELS, WCAG_AA_NORMAL_TEXT);
+    it(`ribbon command labels on the toolbar band clear AA in ${theme} (#8802: no group caption row)`, async () => {
+      await assertRenderedTextClears(theme, mountRibbon(), RIBBON_COMMAND_LABELS, WCAG_AA_NORMAL_TEXT);
     });
 
     it(`LayersPanel "drop .ifcx files anywhere" hint clears AA in ${theme}`, async () => {

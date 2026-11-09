@@ -29,6 +29,48 @@ export function viewportCaptureOwnsFrame(renderer: Renderer): boolean {
   return sessions.get(renderer)?.owned ?? false;
 }
 
+/**
+ * Renderers a capture has drawn for since the live loop last submitted a
+ * frame (#9031), each with the capture that drew last: the loop's retries of
+ * that frame are per capture (#9153).
+ */
+const awaitingLiveFrame = new WeakMap<object, number>();
+let captures = 0;
+
+/**
+ * A pick now, or the Measure pass that compares what a pick reads (#8886),
+ * would read a capture's frame rather than the live view (#9031): the
+ * capture's camera while it owns the frame, then its clip, which the pickers
+ * mirror until the live loop draws again. A tick that renders nothing (no
+ * texture, a lost device, a GPU backlog, a replaced session) keeps it.
+ */
+export function viewportPicksAwaitLiveFrame(renderer: object): boolean {
+  return awaitingLiveFrame.has(renderer);
+}
+
+/** The capture the pickers wait on a live frame for, or 0 when they mirror the live view. */
+export function captureAwaitingLiveFrame(renderer: object): number {
+  return awaitingLiveFrame.get(renderer) ?? 0;
+}
+
+/**
+ * A click or tap that picks now would place a point, or select, on the
+ * capture's frame rather than the view the user clicked on (#9137). It is
+ * refused, not held for later: by then the camera, the mode or the gesture may
+ * have moved on, and the point it placed would be one the user never saw.
+ * True when refused; the live frame is asked for, so the next click picks.
+ */
+export function refuseCaptureHeldPick(renderer: Renderer): boolean {
+  if (!awaitingLiveFrame.has(renderer)) return false;
+  renderer.requestRender();
+  return true;
+}
+
+/** The live loop submitted a frame: the pickers mirror the live view again. */
+export function noteLiveFrameSubmitted(renderer: Renderer): void {
+  awaitingLiveFrame.delete(renderer);
+}
+
 interface CaptureRequest<T> {
   canvas?: HTMLCanvasElement;
   options?: RenderOptions;
@@ -106,6 +148,7 @@ export function captureViewportFrame<T>(renderer: Renderer, request: Synchronous
     const signal = session.controller.signal;
     if (signal.aborted || sessions.get(renderer) !== session) return null;
     session.owned = true;
+    awaitingLiveFrame.set(renderer, ++captures);
     let restore: void | (() => void) = undefined;
     try {
       restore = request.prepare?.();
@@ -134,7 +177,9 @@ export function captureViewportFrame<T>(renderer: Renderer, request: Synchronous
       try { if (!signal.aborted) restore?.(); }
       finally {
         session.owned = false;
-        if (sessions.get(renderer) === session) renderer.requestRender();
+        // The live loop, this session's or the one that replaced it, draws the
+        // frame the pickers wait on; an idle loop would otherwise never ask (#9153).
+        if (sessions.has(renderer)) renderer.requestRender();
       }
     }
   };

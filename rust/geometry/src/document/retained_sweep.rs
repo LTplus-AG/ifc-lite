@@ -44,6 +44,8 @@ pub enum RegionQualification {
     OrderedRegion,
     /// One solid disk swept along one open rational B-spline (wire format 2).
     RationalDisk,
+    /// Authored face-set triangles (wire format 3): source-exact, no kernel call.
+    SourceFaceSet,
 }
 
 /// One encoded retained request.

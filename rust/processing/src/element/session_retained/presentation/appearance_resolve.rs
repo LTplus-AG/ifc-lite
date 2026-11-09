@@ -89,14 +89,9 @@ pub(super) fn resolve_parts(
     // Frames of one item under one occurrence chain are ONE sub-mesh in exact: one resolution, one cursor step.
     let mut last: Option<Shared> = None;
     for Bound { source, fact, occurrences } in parts {
-        // Texture refusal relies on the walker's texture_pending flag: run_model does not populate
-        // texture_index. Indexed palettes also have the snapshot map check under the same item id.
-        if fact.texture_pending || ctx.texture_index.contains_key(&fact.geometry_id) {
-            return Err(unsupported(fact.geometry_id, "texture_pending"));
-        }
-        if fact.indexed_palette_pending || ctx.indexed_colour_full.contains_key(&fact.geometry_id) {
-            return Err(unsupported(fact.geometry_id, "indexed_palette_pending"));
-        }
+        // The walker flags a texture from the model's texture index; palettes also have the snapshot map check.
+        let texture_pending = fact.texture_pending || ctx.texture_index.contains_key(&fact.geometry_id);
+        let palette_pending = fact.indexed_palette_pending || ctx.indexed_colour_full.contains_key(&fact.geometry_id);
         let mut part = match (fact.type_product, source) {
             (Some((_, class)), _) => {
                 let map = fact.representation_map.ok_or_else(|| unsupported(fact.geometry_id, "binding"))?;
@@ -104,7 +99,7 @@ pub(super) fn resolve_parts(
                 let rgba = resolve_color_for_representation_map(map, ctx.geometry_style_index, decoder)
                     .unwrap_or(fact.fallback_color.unwrap_or(element_color));
                 PartAppearance { rgba, geometry_class: class, style_id: None, material_name: None,
-                    geometry_item_id: None, material_id: None }
+                    geometry_item_id: None, material_id: None, texture_pending, palette_pending }
             }
             (None, PartSource::Material(id)) => {
                 // The model prepass joins material styles under their own ids, as
@@ -113,11 +108,11 @@ pub(super) fn resolve_parts(
                 let (rgba, material_name) = color(job, *id, element_color, materials, &mut next_material, ctx, decoder, true);
                 PartAppearance { rgba, geometry_class: crate::element::GEOM_CLASS_LAYER_SLICE,
                     style_id: ctx.geometry_style_index.contains_key(id).then_some(*id),
-                    material_name, geometry_item_id: None, material_id: Some(*id) }
+                    material_name, geometry_item_id: None, material_id: Some(*id), texture_pending, palette_pending }
             },
             // `presentation_source::fallback`: the element colour, no item, no name.
             (None, PartSource::Unbound) => PartAppearance { rgba: element_color, geometry_class: 0, style_id: None,
-                material_name: None, geometry_item_id: None, material_id: None },
+                material_name: None, geometry_item_id: None, material_id: None, texture_pending, palette_pending },
             (None, PartSource::Item(id)) => {
                 let shared = match last.take() {
                     Some(shared) if shared.key.0 == *source && shared.key.1 == *occurrences => shared,
@@ -128,7 +123,7 @@ pub(super) fn resolve_parts(
                     }
                 };
                 let part = PartAppearance { rgba: shared.rgba, geometry_class: 0, style_id: shared.style_id,
-                    material_name: shared.material_name.clone(), geometry_item_id: Some(*id), material_id: None };
+                    material_name: shared.material_name.clone(), geometry_item_id: Some(*id), material_id: None, texture_pending, palette_pending };
                 last = Some(shared);
                 part
             }

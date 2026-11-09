@@ -101,6 +101,8 @@ function fakeSandbox(recordRanSource: (source: string) => void) {
       g.__ifclite_ctx__ = ctx;
       g.bim = (ctx as { bim?: unknown } | undefined)?.bim;
       try {
+        // Execute only this trusted fixture through the real command wrapper.
+        // eslint-disable-next-line no-eval
         const value = await (0, eval)(source);
         return { value, logs: [], durationMs: 1 };
       } finally {
@@ -333,4 +335,65 @@ describe('runExtensionCommand', () => {
       /missing from bundle demo/,
     );
   });
+});
+
+// #8947: each awaited boundary can retire an invocation. Keep these tests on
+// the existing canonical entry so production reversion fails behaviorally.
+for (const boundary of ['storage', 'activation', 'event', 'context'] as const) {
+  it(`#8947 canonical command refuses retirement during ${boundary} without retry`, async () => {
+    const f = fixture();
+    let current = true;
+    let release!: () => void;
+    let entered!: () => void;
+    const held = new Promise<void>(resolve => { release = resolve; });
+    const started = new Promise<void>(resolve => { entered = resolve; });
+    const pause = async () => { entered(); await held; };
+    let runs = 0, activations = 0, deactivations = 0, contexts = 0;
+    const storage = f.deps.storage.listExtensions;
+    f.deps.storage.listExtensions = async () => {
+      if (boundary === 'storage') await pause();
+      return storage();
+    };
+    f.deps.runtime.activate = async () => {
+      activations++;
+      if (boundary === 'activation') await pause();
+      const sandbox = fakeSandbox(() => { runs++; });
+      const setGlobal = sandbox.setGlobal;
+      sandbox.setGlobal = async (name, value) => {
+        contexts++;
+        if (boundary === 'context') await pause();
+        await setGlobal(name, value);
+      };
+      return activationRecord('demo', sandbox);
+    };
+    f.deps.runtime.deactivate = async () => { deactivations++; };
+    const fire = f.deps.dispatcher.fire;
+    f.deps.dispatcher.fire = async event => {
+      if (boundary === 'event') await pause();
+      return fire(event);
+    };
+    f.deps.isCurrent = () => current;
+    const pending = runExtensionCommand(f.deps, COMMAND_ID, 'demo');
+    const refused = assert.rejects(pending, { name: 'CommandInvocationRetiredError' });
+    try {
+      await started; current = false; release(); await refused;
+      assert.equal(runs, 0);
+      assert.equal(deactivations, 0);
+      assert.equal(activations, boundary === 'storage' ? 0 : 1);
+      assert.equal(contexts, boundary === 'context' ? 1 : 0);
+      assert.equal(f.fired.length, boundary === 'storage' || boundary === 'activation' ? 0 : 1);
+    } finally { release(); await refused; }
+  });
+}
+
+it('#8947 retirement supersedes a dead-sandbox activation error without retry', async () => {
+  const f = fixture();
+  let current = true, deactivations = 0, activations = 0;
+  f.deps.isCurrent = () => current;
+  f.deps.runtime.activate = async () => {
+    activations++; current = false; throw new Error('Sandbox disposed');
+  };
+  f.deps.runtime.deactivate = async () => { deactivations++; };
+  await assert.rejects(runExtensionCommand(f.deps, COMMAND_ID, 'demo'), { name: 'CommandInvocationRetiredError' });
+  assert.equal(activations, 1); assert.equal(deactivations, 0); assert.deepEqual(f.fired, []);
 });

@@ -14,6 +14,7 @@
 import type { RemeshConfig, RemeshRequest, RemeshResult, StyleWire } from './remesh-core.js';
 import type { RemeshWorkerInbound, RemeshWorkerOutbound } from './remesh-protocol.js';
 import { restashWasmPanicLocation } from '../wasm-panic-forward.js';
+import { armDeadline } from './deadline.js';
 
 export interface RemeshClientOptions {
   /** A compiled engine module to instantiate instead of fetching one. */
@@ -26,11 +27,21 @@ export interface RemeshClientOptions {
    * How long one request may take before the client gives up on the worker.
    * A wasm call cannot be interrupted, so a request past this deadline kills
    * the worker and the client; the caller creates a new one. Default 30 s.
+   * Clamped to 2^31-1 ms; `0`, negative, `NaN` or `Infinity` means no deadline.
    */
   requestTimeoutMs?: number;
+  /**
+   * How long `create` waits for the worker to report its engine ready (wasm
+   * fetch + compile + instantiate) before it terminates the worker and
+   * rejects. Separate from `requestTimeoutMs` so a fail-fast request deadline
+   * does not also cut off a slow engine start. Default 120 s. Clamped to
+   * 2^31-1 ms; `0`, negative, `NaN` or `Infinity` means no deadline.
+   */
+  startTimeoutMs?: number;
 }
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
+const DEFAULT_START_TIMEOUT_MS = 120_000;
 
 type Pending = { resolve: (value: RemeshResult | StyleWire) => void; reject: (error: Error) => void };
 
@@ -61,25 +72,43 @@ export class RemeshClient {
     return client;
   }
 
+  /**
+   * Every way init can fail (init-error, worker error, unreadable message, a
+   * throwing post, no answer within `startTimeoutMs`) settles this
+   * promise; the dead latch makes the first one win and kills the worker.
+   */
   private start(config: RemeshConfig, options: RemeshClientOptions): Promise<void> {
+    const startTimeoutMs = options.startTimeoutMs ?? DEFAULT_START_TIMEOUT_MS;
     return new Promise((resolve, reject) => {
+      const fail = (error: Error) => {
+        cancelDeadline();
+        reject(error);
+        this.kill(error);
+      };
+      const cancelDeadline = armDeadline(
+        startTimeoutMs,
+        () => fail(new Error(`Re-mesh worker did not start within ${startTimeoutMs} ms`)),
+      );
       this.worker.onmessage = (event: MessageEvent<RemeshWorkerOutbound>) => {
         const message = event.data;
         if (message.type === 'ready') {
+          cancelDeadline();
           this.worker.onmessage = (next: MessageEvent<RemeshWorkerOutbound>) => this.settle(next.data);
           resolve();
         } else if (message.type === 'init-error') {
           restashWasmPanicLocation(globalThis, message.wasmPanicLocation, message.wasmPanicAt, message.message);
-          reject(new Error(`Re-mesh engine failed to start: ${message.message}`));
+          fail(new Error(`Re-mesh engine failed to start: ${message.message}`));
         }
       };
-      this.worker.onerror = (event: ErrorEvent) => {
-        const error = new Error(`Re-mesh worker failed: ${event.message}`);
-        reject(error);
-        this.kill(error);
-      };
-      this.worker.onmessageerror = () => this.kill(new Error('Re-mesh worker sent a message that could not be read'));
-      this.post({ type: 'init', config, wasmModule: options.wasmModule, wasmUrl: options.wasmUrl });
+      this.worker.onerror = (event: ErrorEvent) => fail(new Error(`Re-mesh worker failed: ${event.message}`));
+      // After start, kill() rejects whatever is pending; during start that is
+      // nothing, so `fail` (which also rejects init) stays the handler.
+      this.worker.onmessageerror = () => fail(new Error('Re-mesh worker sent a message that could not be read'));
+      try {
+        this.post({ type: 'init', config, wasmModule: options.wasmModule, wasmUrl: options.wasmUrl });
+      } catch (error) {
+        fail(error instanceof Error ? error : new Error(String(error)));
+      }
     });
   }
 
@@ -113,16 +142,25 @@ export class RemeshClient {
     if (this.dead) return Promise.reject(this.dead);
     const requestId = this.nextRequestId++;
     return new Promise<T>((resolve, reject) => {
-      const timer = setTimeout(
-        () => this.kill(new Error(`Re-mesh worker did not answer within ${this.timeoutMs} ms`)),
+      const cancelDeadline = armDeadline(
         this.timeoutMs,
+        () => this.kill(new Error(`Re-mesh worker did not answer within ${this.timeoutMs} ms`)),
       );
-      const settle = <V>(fn: (value: V) => void) => (value: V) => { clearTimeout(timer); fn(value); };
+      const settle = <V>(fn: (value: V) => void) => (value: V) => { cancelDeadline(); fn(value); };
       this.pending.set(requestId, {
         resolve: settle(resolve as (value: RemeshResult | StyleWire) => void),
         reject: settle(reject),
       });
-      this.post(message(requestId), transfer);
+      try {
+        this.post(message(requestId), transfer);
+      } catch (error) {
+        // The message never left (e.g. DataCloneError): the worker is fine, so
+        // fail only this request, and drop its entry and deadline so they
+        // cannot later kill the client under unrelated requests.
+        this.pending.delete(requestId);
+        cancelDeadline();
+        reject(error);
+      }
     });
   }
 

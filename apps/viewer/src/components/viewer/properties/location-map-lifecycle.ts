@@ -114,6 +114,7 @@ export function updateOriginMarker(
     return null;
   }
   if (marker) return marker.setLngLat([position.lon, position.lat]);
-  return new library.Marker({ color: '#14b8a6' })
+  // `currentColor`: the pin paints the map container's basemap ink (location-map-ink.ts).
+  return new library.Marker({ color: 'currentColor' })
     .setLngLat([position.lon, position.lat]).addTo(map);
 }

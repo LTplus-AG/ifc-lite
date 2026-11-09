@@ -163,3 +163,42 @@ fn affine_inverse_composes_to_identity_for_a_rigid_placement() {
         assert!((got - want).abs() < 1e-12);
     }
 }
+
+// #7955: dental_clinic #831, opening #3350's Boolean operand, as the runtime
+// received it: world_from_source and the request's source_from_evaluation.
+const WORLD_FROM_SOURCE_831: M4 = [0.0, 1.0, 0.0, 0.0, -1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0,
+    -14.320000000000592, 35.59174889681129, 8.340333333335114, 1.0];
+const SOURCE_FROM_EVALUATION_831: M4 = [-0.3921551342271669, 0.0, -0.9198990981076526, 0.0,
+    0.9198990981076526, 0.0, -0.3921551342271669, 0.0, 0.0, -1.0, 0.0, 0.0,
+    0.1721550932759597, 0.0, 0.807666666668968, 1.0];
+
+#[test]
+fn issue_7955_831_operand_frame_has_one_construction() {
+    let (a, b) = (WORLD_FROM_SOURCE_831, SOURCE_FROM_EVALUATION_831);
+    let frame = compose_frame(&a, &b);
+    // Entry 0 sums 0*-0.392, -1*0, 0*-0.920, -14.32*0: four signed zeros.
+    assert_eq!(frame[0].to_bits(), 0.0f64.to_bits(), "+0.0");
+    // The runtimes' former route, seeded with -0.0 by Iterator::sum.
+    let seeded: M4 = std::array::from_fn(|i| (0..4).map(|k| a[k * 4 + i % 4] * b[i / 4 * 4 + k]).sum());
+    assert_eq!(seeded[0].to_bits(), (-0.0f64).to_bits());
+    // Only the sign of a zero differs; the controller's frame is unchanged.
+    assert!(bits_eq(&frame, &mul(&b, &a)));
+    assert!(frame.iter().zip(seeded).all(|(f, s)| *f == s));
+    println!("witness: #831 operand frame {frame:?}, seeded route {seeded:?}");
+}
+
+#[test]
+fn compose_frame_never_returns_a_negative_zero() {
+    let mut rng = Rng(0x7955_0831);
+    for _ in 0..5_000 {
+        // Sparse frames with signed zeros, so products cancel to zero.
+        let mut a = m4(&mut rng);
+        let mut b = m4(&mut rng);
+        for (i, v) in a.iter_mut().chain(b.iter_mut()).enumerate() {
+            if i % 3 != 1 { *v = if i % 2 == 0 { -0.0 } else { 0.0 }; }
+        }
+        let frame = compose_frame(&a, &b);
+        assert!(frame.iter().all(|v| *v != 0.0 || v.is_sign_positive()), "{frame:?}");
+        assert!(frame.iter().zip(mul(&b, &a)).all(|(f, m)| *f == m));
+    }
+}

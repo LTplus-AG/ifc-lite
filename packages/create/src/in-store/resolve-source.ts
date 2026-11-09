@@ -13,11 +13,12 @@
  * backend layer can call it without needing parser internals.
  */
 
-import { EntityExtractor, effectiveStoreyId, propertyDefinitionsInModel, resolveEffectiveRelationshipOverlay, type IfcDataStore } from '@ifc-lite/parser';
-import { iterateEffectiveEntityIds, type IfcAttributeValue, type StoreEditor } from '@ifc-lite/mutations';
+import { EntityExtractor, effectiveStoreyId, propertyDefinitionsInModel, type IfcDataStore } from '@ifc-lite/parser';
+import { type IfcAttributeValue, type StoreEditor } from '@ifc-lite/mutations';
 import { resolvedTypeName } from '@ifc-lite/data';
 import { asRef, createStyleEntityReader, refList } from './style-entity-reader.js';
 import type { SourceAttributes, SourceAssociation, Vec3 } from './duplicate.js';
+import { sourceAssociationCandidates, sourceSpatialContext } from './source-relationships.js';
 import { safeLengthUnitScale } from './length-unit-scale.js';
 
 /**
@@ -101,53 +102,46 @@ export function resolveDuplicateSource(
     throw new Error(`resolveDuplicateSource: could not read placement #${placementId}`);
   }
 
-  const parentPlacementId = asRef(placementEntity.attributes[0]);   // PlacementRelTo
-  const axisPlacementId = asRef(placementEntity.attributes[1]);     // RelativePlacement
-  if (axisPlacementId === null) {
-    throw new Error(
-      `resolveDuplicateSource: placement #${placementId} has no RelativePlacement`,
-    );
-  }
-
-  const axisEntity = read(axisPlacementId);
-  if (!axisEntity) {
-    throw new Error(`resolveDuplicateSource: could not read axis #${axisPlacementId}`);
-  }
-
-  const locationId = asRef(axisEntity.attributes[0]);  // Location → IfcCartesianPoint
-  const axisRef = refToken(axisEntity.attributes[1]);     // Axis (optional)
-  const refDirectionRef = refToken(axisEntity.attributes[2]); // RefDirection (optional)
-
+  // An IfcGridPlacement has no local point, parent or axes to read: a product
+  // pointing straight at one is placed by the grid (`copy-placement.ts`, #9199).
+  const onGrid = placementEntity.type.toUpperCase() === 'IFCGRIDPLACEMENT';
+  const parentPlacementId = onGrid ? null : asRef(placementEntity.attributes[0]);   // PlacementRelTo
+  let axisRef: string | null = null;
+  let refDirectionRef: string | null = null;
   let sourceLocation: Vec3 = [0, 0, 0];
-  if (locationId !== null) {
-    const coords = read(locationId)?.attributes[0];
-    if (Array.isArray(coords)) {
-      sourceLocation = [
-        asNumber(coords[0] as IfcAttributeValue) ?? 0,
-        asNumber(coords[1] as IfcAttributeValue) ?? 0,
-        asNumber(coords[2] as IfcAttributeValue) ?? 0,
-      ];
+  if (!onGrid) {
+    const axisPlacementId = asRef(placementEntity.attributes[1]);     // RelativePlacement
+    if (axisPlacementId === null) {
+      throw new Error(
+        `resolveDuplicateSource: placement #${placementId} has no RelativePlacement`,
+      );
+    }
+
+    const axisEntity = read(axisPlacementId);
+    if (!axisEntity) {
+      throw new Error(`resolveDuplicateSource: could not read axis #${axisPlacementId}`);
+    }
+
+    const locationId = asRef(axisEntity.attributes[0]);  // Location → IfcCartesianPoint
+    axisRef = refToken(axisEntity.attributes[1]);     // Axis (optional)
+    refDirectionRef = refToken(axisEntity.attributes[2]); // RefDirection (optional)
+
+    if (locationId !== null) {
+      const coords = read(locationId)?.attributes[0];
+      if (Array.isArray(coords)) {
+        sourceLocation = [
+          asNumber(coords[0] as IfcAttributeValue) ?? 0,
+          asNumber(coords[1] as IfcAttributeValue) ?? 0,
+          asNumber(coords[2] as IfcAttributeValue) ?? 0,
+        ];
+      }
     }
   }
 
   // The duplicate must inherit the storey that saving this session would
   // produce, including edited/deleted containment and aggregate ancestors.
   const view = editor?.getMutationView();
-  const createdTypes = new Map(view?.getNewEntities().map((e) => [e.expressId, e.type]) ?? []);
-  const spatialContext = view?.hasPendingChanges() ? {
-    relationships: resolveEffectiveRelationshipOverlay(store, {
-      createdEntities: () => view.getNewEntities(),
-      mutatedEntityIds: () => view.getEffectiveChanges().map((change) => change.entityId),
-      namedAttributes: (id: number) => view.getAttributeMutationsForEntity(id)
-        .map(({ name, value }) => [name, value] as const),
-      positionalAttributes: (id: number) => view.getPositionalMutationsForEntity(id) ?? [],
-      entityType: (id: number) => view.getEntityTypeMutation(id)?.newType,
-      isDeleted: (id: number) => view.isDeleted(id),
-    }),
-    isDeleted: (id: number) => view.isDeleted(id),
-    typeName: (id: number) => view.getEntityTypeMutation(id)?.newType
-      ?? createdTypes.get(id) ?? store.entities.getTypeName(id),
-  } : null;
+  const spatialContext = view?.hasPendingChanges() ? sourceSpatialContext(store, view, sourceExpressId) : null;
   const storeyId = effectiveStoreyId(store, sourceExpressId, spatialContext) ?? null;
 
   // Association rels that reference the source — replayed against
@@ -174,6 +168,7 @@ export function resolveDuplicateSource(
     attributes: attrs,
     placementExpressId: placementId,
     parentPlacementId,
+    ...(onGrid ? { onGridPlacement: true } : {}),
     sourceLocation,
     representationId,
     ownerHistoryId,
@@ -209,7 +204,7 @@ function collectSourceAssociations(
       const ref = store.entityIndex.byId.get(id);
       return ref ? extractor.extractEntity(ref) : null;
     };
-  for (const { expressId: relId, type } of iterateEffectiveEntityIds(store, view, ASSOCIATION_REL_TYPES)) {
+  for (const { expressId: relId, type } of sourceAssociationCandidates(store, view, sourceId, ASSOCIATION_REL_TYPES)) {
     const entity = read(relId);
     if (!entity) continue;
     // RelatedObjects: a parsed `#N` is a number, an authored one a `#N` string.
@@ -242,6 +237,8 @@ function collectSourceAssociations(
       description,
       relatingExpressId,
       ...(relatingExpressIds.length > 1 ? { relatingExpressIds } : {}),
+      relId,
+      relatedIds: refList(entity.attributes[4]),
     });
   }
   return out;

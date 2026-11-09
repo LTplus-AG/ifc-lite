@@ -11,8 +11,14 @@
  *
  * Row 1 says WHICH planes exist (chips, in creation order, the active one
  * filled, plus the one menu that adds a plane); row 2 edits the ACTIVE plane,
- * so no control has to say which plane it means. With no plane yet there is no
- * row 2 and row 1 offers the four ways to add one.
+ * so no control has to say which plane it means. With no plane yet, row 2
+ * offers the ways to start a cut instead (#8672):
+ *
+ *   ✂ SECTION │ Views ▾ ✕
+ *   New cut: Down (Z)  Front (Y)  Side (X) │ Face…  Box
+ *
+ * Row 1 is then short enough to always keep the heading and the Views label,
+ * so a first-time user sees which tool is open and what it can do.
  *
  * Registered as the `section` row's `Bar` in `TOOL_HUD`, so `ToolOverlays`
  * places it (top-center, order 0); this component never positions itself.
@@ -63,12 +69,15 @@ export function SectionToolbar() {
       {t('sectionTool.heading')}
     </span>
   );
-  const planes = count === 0 ? <SectionEmptyAdd /> : (
+  const empty = count === 0;
+  const planes = empty ? null : (
     <>
       <SectionPlaneChips />
       <SectionAddMenu atLimit={atLimit} />
     </>
   );
+  // Row 2: the active plane's controls, or with no plane yet the ways to start a cut.
+  const row2 = (compact: boolean) => (empty ? <SectionEmptyAdd /> : <SectionActivePlaneRow compact={compact} />);
   const close = (compact: boolean) => (
     <>
       <HudDivider />
@@ -79,16 +88,13 @@ export function SectionToolbar() {
     </>
   );
 
+  // With no plane, row 1 holds only the heading, Views and close, so it never needs to step down.
   const row1 = (withCaption: boolean, compact: boolean) => (
     <span className={GROUP}>
-      {withCaption && (
-        <>
-          {caption}
-          <HudDivider />
-        </>
-      )}
+      {(withCaption || empty) && caption}
+      {withCaption && !empty && <HudDivider />}
       {planes}
-      {close(compact)}
+      {close(compact && !empty)}
     </span>
   );
   /** One offscreen copy of the whole bar in a given form, to measure how wide that form is. */
@@ -97,7 +103,7 @@ export function SectionToolbar() {
       <div ref={measureRef(form)} aria-hidden="true" inert style={OFFSCREEN} className="flex w-max flex-col gap-1 px-1.5">
         <SectionBarMeasureContext.Provider value>
           <div className="flex flex-nowrap items-center justify-center gap-1">{row1(withCaption, false)}</div>
-          {count > 0 && <div className="flex flex-nowrap items-center justify-center gap-1"><SectionActivePlaneRow /></div>}
+          <div className="flex flex-nowrap items-center justify-center gap-1">{row2(false)}</div>
         </SectionBarMeasureContext.Provider>
       </div>
     </HudPopover>
@@ -121,11 +127,9 @@ export function SectionToolbar() {
             {...tourAnchor(TOUR_ANCHORS.sectionPanel)}
           >
             <div className={ROW}>{row1(tier === TIER_CAPTION, tier === TIER_COMPACT)}</div>
-            {count > 0 && (
-              <div className={ROW} data-testid="section-active-row">
-                <SectionActivePlaneRow compact={tier === TIER_COMPACT} />
-              </div>
-            )}
+            <div className={ROW} data-testid={empty ? 'section-start-row' : 'section-active-row'}>
+              {row2(tier === TIER_COMPACT)}
+            </div>
           </HudToolbar>
         </HudPopoverAnchor>
       </HudPopover>

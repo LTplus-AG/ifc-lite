@@ -59,6 +59,14 @@ function withCamera(): void {
 const glyphKind = (root: ParentNode) =>
   root.querySelector('[data-scene-primitive="snap-glyph"]')?.getAttribute('data-snap-kind') ?? null;
 
+it('#9296 blank-space increment has a visible glyph and suspension hint', () => {
+  routeCommandPointer(fakeCtx(), 'down', 820.7, 820.7);
+  const { container: ui, flush } = renderScene(<CommandScene />);
+  flush();
+  assert.equal(glyphKind(ui), 'grid');
+  assert.match(ui.querySelector('[data-snap-increment]')?.textContent ?? '', /Increment 100\s*mm.*Alt/);
+});
+
 beforeEach(async () => {
   await seedModelingSession();
   withCamera();
@@ -83,12 +91,30 @@ describe('SnapHud in the command scene (#6232 WP3)', () => {
     assert.equal(g.getAttribute('transform'), 'translate(400 0)');
   });
 
-  it('shows nothing when the cursor snapped to nothing', () => {
+  it('shows the increment when no geometric target is nearby', () => {
     routeCommandPointer(fakeCtx(), 'down', 1000, -1000);
-    assert.equal(getCommandRuntime().snap?.winner, null);
+    assert.equal(getCommandRuntime().snap?.winner?.kind, 'grid');
     const { container, flush } = renderScene(<CommandScene />);
     flush();
-    assert.equal(glyphKind(container), null);
+    assert.equal(glyphKind(container), 'grid');
+  });
+
+  it('marks a point aimed through to the workplane with its own glyph and a tag (#9201)', () => {
+    routeCommandPointer(fakeCtx(), 'down', 1000, -1000, { shiftKey: false, altKey: true });
+    const { container, flush } = renderScene(<CommandScene />);
+    flush();
+    assert.equal(glyphKind(container), 'workplane');
+    const g = container.querySelector('[data-scene-primitive="snap-glyph"]') as SVGGElement;
+    // On the point itself: render (10, 0, -10) → the fake camera's (1000, -1000).
+    assert.equal(g.getAttribute('transform'), 'translate(1000 -1000)');
+    assert.equal(g.querySelector('[data-snap-tag]')?.textContent, 'On workplane');
+  });
+
+  it('a snapped point carries no workplane tag (#9201)', () => {
+    routeCommandPointer(fakeCtx(), 'down', 404, -3);
+    const { container, flush } = renderScene(<CommandScene />);
+    flush();
+    assert.equal(container.querySelector('[data-snap-tag]'), null);
   });
 
   it('draws an extension as a dashed guide from the nearer wall end through the point', () => {

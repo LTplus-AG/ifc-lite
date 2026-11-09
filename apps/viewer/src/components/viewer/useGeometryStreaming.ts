@@ -19,6 +19,7 @@ import { flushPlacementGeometry } from '@/lib/model-placement/bounds-revision';
  */
 
 import { useEffect, useRef } from 'react';
+import { useViewerStore } from '@/store';
 import { decodeInstancedShard } from '@ifc-lite/geometry';
 import type { MeshData } from '@ifc-lite/geometry';
 import { NOOP_LOAD_TRACE } from '@ifc-lite/load-trace';
@@ -31,6 +32,7 @@ import { liftNewInstancedOccurrences, placeNewMeshesAtCurrentLevel } from '@/lib
 import { useColorOverlaySync } from './useColorOverlaySync.js';
 import { useMeshEditDrain } from './useMeshEditDrain.js';
 import { invalidateLandXmlGpuOwnershipAfterSceneClear, takeLandXmlGpuUploaded } from '../../hooks/ingest/landXmlGpuOwnership.js';
+import { adoptedSceneOutlivesEmptyGeometry, noteFinalFitBounds, takeSceneSnapshotGeometry, takeSnapshotModelArrival } from './sceneSnapshotOwnership.js';
 import { computeBounds, type Bounds } from './streamingBounds.js';
 import { activeLoadTrace, tracePhaseOnce } from '@/lib/perf/activeLoadTrace';
 
@@ -244,7 +246,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
     // and never mid-stream (the streaming first-fit + finalize refit handle
     // the active model). The combined bounds come from the merged
     // coordinateInfo (union of all visible models).
-    if (modelCount > prevModelCountRef.current && !isStreaming) {
+    if (modelCount > prevModelCountRef.current && !isStreaming && !takeSnapshotModelArrival()) {
       traceGeometrySync(`model added (${prevModelCountRef.current}→${modelCount}) — refitting camera to combined bounds`);
       cameraFittedRef.current = false;
       finalBoundsRefittedRef.current = false;
@@ -263,6 +265,10 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
     const isIncremental = !isReplacement && currentLength > lastLength && lastLength > 0;
     const isNewFile = currentLength > 0 && lastLength === 0;
     const isCleared = currentLength === 0;
+
+    // Adopted snapshot batches own the scene until their meshes arrive.
+    if (isCleared && adoptedSceneOutlivesEmptyGeometry(scene)) return;
+    if (isNewFile && takeSceneSnapshotGeometry(geometry, modelCount, renderer, { lastGeometryLengthRef, lastGeometryRef, cameraFittedRef, finalBoundsRefittedRef, geometryBoundsRef, cameraSnapshotRef })) return;
 
     if (isCleared) {
       reshapeSceneKeepingPresentInstanced(scene, presentInstancedModelIndices, geometry, appearanceSourceGeometry);
@@ -329,8 +335,11 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
     }
     const unchangedLength = !isReplacement && currentLength === lastLength;
 
-    // Visibility toggle while NOT streaming — array rebuilt from scratch
-    if (isIncremental && !isStreaming && !prevIsStreamingRef.current) {
+    // Visibility toggle while NOT streaming — array rebuilt from scratch. A
+    // federated add appends to the SAME merged array (useFederatedGeometry),
+    // so earlier models' meshes are already uploaded; only a new array is
+    // rebuilt. Re-uploading everything on each add made N files O(N^2).
+    if (isIncremental && !isStreaming && !prevIsStreamingRef.current && geometry !== lastGeometryRef.current) {
       reshapeSceneKeepingPresentInstanced(scene, presentInstancedModelIndices, geometry, appearanceSourceGeometry);
       invalidateLandXmlGpuOwnershipAfterSceneClear();
       processedMeshIdsRef.current.clear();
@@ -421,8 +430,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
       lastGeometryLengthRef.current = currentLength;
     }
 
-    // ── Fit camera ──
-    //
+    // Fit a loaded source once; authoring keeps the user camera.
     // Pre-#871 the branching here was structured as
     //   if (coordinateInfo?.shiftedBounds) { try to fit }
     //   else if (geometry.length > 0) { fall back }
@@ -436,7 +444,8 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
     // to the user. Compute the size first so the branch reflects
     // whether the data is actually usable, not just whether the
     // property exists.
-    if (!cameraFittedRef.current) {
+    if (useViewerStore.getState().session) cameraFittedRef.current = true;
+    else if (!cameraFittedRef.current) {
       const fitStart = performance.now();
       // The adaptive fit picks an SE-isometric pose for compact models
       // (today's behaviour) but switches to a side-on-along-the-alignment
@@ -500,6 +509,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
         }
       }
       if (fitted) {
+        noteFinalFitBounds(geometryBoundsRef.current);
         cameraFittedRef.current = true;
         tracePhaseOnce(activeLoadTrace(), 'camera.fit').record('camera.fit', fitStart, performance.now(), { policy: lastFitPolicyKindRef.current ?? 'none', robust: robustEarly !== null });
         // Populate the camera's cached scene bounds. The viewer streams meshes

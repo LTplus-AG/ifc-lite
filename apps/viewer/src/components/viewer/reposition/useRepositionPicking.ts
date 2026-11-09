@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { refuseCaptureHeldPick } from '@/lib/viewport-capture';
 import type { EdgeLockInput } from '@ifc-lite/renderer';
 import { EDGE_LOCK_DEFAULTS } from '@/store/constants';
 import { useEffect, useState } from 'react';
@@ -80,6 +81,7 @@ export function useRepositionPicking(role: PickRole, finish: (role: PickRole) =>
     };
     const move = (event: PointerEvent) => {
       if (event.buttons !== 0) return;
+      if (refuseCaptureHeldPick(renderer)) return;
       const hit = pick(event);
       setHover(hit);
       if (hit && role === 'target') {
@@ -91,6 +93,7 @@ export function useRepositionPicking(role: PickRole, finish: (role: PickRole) =>
     const down = (event: PointerEvent) => {
       if (event.button !== 0) return;
       event.preventDefault(); event.stopImmediatePropagation(); nextRole = undefined;
+      if (refuseCaptureHeldPick(renderer)) return;
       const hit = pick(event);
       if (!hit) { onError('No eligible point found. Zoom closer, choose another point, or enter coordinates.'); return; }
       try {

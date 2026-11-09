@@ -22,7 +22,7 @@ import { IconButton } from '@/components/ui/icon-button';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import type { TranslationKey } from '@/i18n';
-import { buildLoadReports, downloadLoadReportJSON, type LoadReportAffectedEntity, type LoadReportSummary } from '@/lib/loadReport';
+import { buildLoadReports, downloadLoadReportJSON, hasOmittedTypeRecords, type LoadReportAffectedEntity, type LoadReportSummary } from '@/lib/loadReport';
 import { cn } from '@/lib/utils';
 import { AssistantAction } from './assistant/AssistantAction';
 
@@ -31,13 +31,14 @@ interface LoadReportPanelProps {
 }
 
 function statusLabel(report: LoadReportSummary): { labelKey: TranslationKey; className: string } {
-  if (!report.diagnosticsAvailable) {
+  // A known type-geometry omission (#8341) is an issue even without CSG diagnostics.
+  if (!report.diagnosticsAvailable && !hasOmittedTypeRecords(report)) {
     return { labelKey: 'loadReportPanel.status.unavailable', className: 'text-muted-foreground' };
   }
   if (report.isClean) {
-    return { labelKey: 'loadReportPanel.status.clean', className: 'text-emerald-600 dark:text-emerald-400' };
+    return { labelKey: 'loadReportPanel.status.clean', className: 'text-ok' };
   }
-  return { labelKey: 'loadReportPanel.status.issuesFound', className: 'text-amber-600 dark:text-amber-400' };
+  return { labelKey: 'loadReportPanel.status.issuesFound', className: 'text-warn' };
 }
 
 function AffectedEntityRow({
@@ -94,8 +95,11 @@ function ModelReportCard({
         {report.tessellationTier ? t('loadReportPanel.tierSuffix', { tier: report.tessellationTier }) : ''}
         {report.skipSmallCuts ? t('loadReportPanel.fastModeSuffix') : ''}
       </div>
-      {report.actions.length > 0 && (
+      {(report.actions.length > 0 || hasOmittedTypeRecords(report)) && (
         <ul className="mt-2 list-disc space-y-1 pl-4 text-2xs">
+          {hasOmittedTypeRecords(report) && (
+            <li>{t('loadReportPanel.omittedTypeRecords', { name: report.name, count: report.omittedTypeRecords ?? 0 })}</li>
+          )}
           {report.actions.map((action, i) => (
             // Actions are a fixed, stable-order list built from this report's
             // own counters — no reorderable/keyed identity beyond position.
@@ -149,7 +153,7 @@ export function LoadReportPanel({ onClose }: LoadReportPanelProps) {
   return (
     <section aria-label={t('loadReportPanel.title')} className="flex h-full flex-col">
       <div className="flex items-center gap-2 border-b p-3">
-        <FileWarning className="h-4 w-4 text-amber-600" />
+        <FileWarning className="h-4 w-4 text-warn" />
         <span className="flex-1 text-sm font-medium">{t('loadReportPanel.title')}</span>
         <AssistantAction />
         <IconButton

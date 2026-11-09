@@ -19,6 +19,7 @@
  */
 
 import type { DecodedPointChunk, PointCloudBBox, PointNormalState } from '../types.js';
+import { plyClassification, findPlyClassification } from './ply-scalar.js';
 import { normalizePlyColors } from './ply-color.js';
 import { parseAsciiVariableRow, parseBinaryVariableRow, writeVariablePlyRow } from './ply-variable-row.js';
 import { decodeFixedBinaryPlyBody } from './ply-fixed-binary.js';
@@ -253,6 +254,7 @@ export function decodePly(
         `but only ${availableBytes} are available`,
     );
   }
+  const classifications = findPlyClassification(vertex) ? new Uint8Array(count) : undefined;
   const positions = new Float32Array(count * 3);
   const colors = hasRgb ? new Float32Array(count * 3) : undefined;
   const normals = nxProp && nyProp && nzProp ? new Float32Array(count * 3) : undefined;
@@ -263,8 +265,8 @@ export function decodePly(
       const lines = TEXT_DECODER.decode(buffer.subarray(header.bodyOffset)).split(/\r?\n/).filter(line => line.trim());
       if (lines.length < count) throw new Error(`PLY ascii: expected ${count} vertex lines, got ${lines.length}`);
       for (let row = 0; row < count; row++) writeVariablePlyRow(parseAsciiVariableRow(lines[row].trim().split(/\s+/), vertex.propertyOrder, row), row,
-        { positions, colors, normals, intensities, originOffset });
-    } else decodeAsciiBody(buffer, header, vertex, positions, colors, normals, intensities, originOffset);
+        { positions, colors, normals, intensities, classifications, originOffset });
+    } else decodeAsciiBody(buffer, header, vertex, positions, colors, normals, intensities, originOffset, classifications);
   } else {
     const littleEndian = header.format === 'binary_little_endian';
     if (vertex.hasListProperty) {
@@ -272,12 +274,12 @@ export function decodePly(
       let cursor = 0;
       for (let row = 0; row < count; row++) {
         const parsed = parseBinaryVariableRow(view, cursor, vertex.propertyOrder, littleEndian, row);
-        writeVariablePlyRow(parsed.values, row, { positions, colors, normals, intensities, originOffset });
+        writeVariablePlyRow(parsed.values, row, { positions, colors, normals, intensities, classifications, originOffset });
         cursor = parsed.end;
       }
     } else {
       const view = new DataView(buffer.buffer, buffer.byteOffset + header.bodyOffset, count * vertex.recordSize);
-      decodeFixedBinaryPlyBody(view, vertex, positions, colors, normals, intensities, littleEndian, originOffset);
+      decodeFixedBinaryPlyBody(view, vertex, positions, colors, normals, intensities, littleEndian, originOffset, classifications);
     }
   }
 
@@ -290,7 +292,7 @@ export function decodePly(
     colors,
     normals,
     normalState: normals && normals.every(Number.isFinite) && everyNormalNonzero(normals) ? 'supplied' : layout.normalState === 'supplied' ? 'invalid' : layout.normalState,
-    intensities,
+    intensities, classifications,
     pointCount: count,
     bbox: computeBBox(positions),
   };
@@ -310,6 +312,7 @@ function decodeAsciiBody(
   normals: Float32Array | undefined,
   intensities: Uint16Array | undefined,
   originOffset?: readonly [number, number, number],
+  classifications?: Uint8Array,
 ): void {
   // Decode just the vertex part of the body (other elements come after).
   // For ascii, each line = one vertex (in the order properties were
@@ -331,6 +334,7 @@ function decodeAsciiBody(
     (p) => p.name === 'intensity' || p.name === 'scalar_Intensity',
   );
 
+  const classCol = vertex.properties.findIndex(p => p.name === 'classification');
   let lineStart = 0;
   let written = 0;
   while (written < vertex.count && lineStart < text.length) {
@@ -356,6 +360,7 @@ function decodeAsciiBody(
     if (intensities && iCol >= 0) {
       intensities[written] = Math.min(65535, Math.max(0, Number(parts[iCol]) | 0));
     }
+    if (classifications) classifications[written] = plyClassification(Number(parts[classCol]));
     written++;
   }
   if (written !== vertex.count) {

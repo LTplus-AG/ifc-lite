@@ -42,6 +42,9 @@ impl RestartBudget {
             self.replacement = false;
         }
     }
+    /// The worker reported a typed kernel refusal and was replaced for safety. One per
+    /// product at most, so the candidates bound it; it never spends a fault restart.
+    pub(super) fn kernel_refusal(&mut self) { self.replacement = false; }
     pub(super) fn layer_allowance_spent(&self) -> bool { self.layer >= LAYER_RETIREMENTS }
     pub(super) fn restarts(&self) -> u8 { self.restarts }
 }
@@ -86,6 +89,21 @@ mod tests {
         assert_eq!(budget.restarts(), 0);
         budget.layer_retirement();
         assert!(budget.acquire::<()>(|| panic!("a spent allowance charges max")).is_err());
+    }
+
+    // #7955: typed kernel refusals are never charged, however many; real faults still are.
+    #[test]
+    fn kernel_refusals_spend_no_fault_restart() {
+        let mut budget = RestartBudget::new(1, false);
+        budget.acquire(|| Ok(())).unwrap();
+        for _ in 0..1000 {
+            budget.kernel_refusal();
+            budget.acquire(|| Ok(())).unwrap();
+        }
+        assert_eq!(budget.restarts(), 0);
+        budget.acquire(|| Ok(())).unwrap();
+        assert_eq!(budget.restarts(), 1);
+        assert!(budget.acquire::<()>(|| panic!("the fault cap still stops acquisition")).is_err());
     }
 
     // #7955: even genuine in-flight cancellation cannot respawn indefinitely.

@@ -160,6 +160,11 @@ const FIXTURES: &[Fixture] = &[
         path: OMITTED_TYPE,
         anchor: 100,
     },
+    // #8308: mirroring and collapsing operators with Axis2 omitted.
+    Fixture {
+        path: "../processing/tests/fixtures/issue_8308_omitted_axis2_mirror.ifc",
+        anchor: 100,
+    },
 ];
 
 // Every exception binds the complete measured payloads and requires a reason.

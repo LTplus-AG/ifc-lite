@@ -52,4 +52,4 @@ before running it. This mode binds to a free loopback port and uses temporary
 Bolt, engine and SQLite paths. Both modes use the same fixed-upstream loopback
 gateway, stop their owned services, and remove database storage after the run.
 The viewer witness and binary provenance are recorded in
-[the validation manifest](../architecture/evidence/influxdb-8090/viewer/validation.json).
+[the validation manifest](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/docs/architecture/evidence/influxdb-8090/viewer/validation.json).

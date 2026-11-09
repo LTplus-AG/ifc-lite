@@ -134,11 +134,19 @@ export async function runSweepContract(transport, incarnation) {
         }
       }));
     }
+    // A stitched closed shell from authored triangles (format 3): a unit corner tetrahedron.
+    const tetra = new ArrayBuffer(16 + 96 + 64), tetraView = new DataView(tetra);
+    [3, 4, 4, 4].forEach((value, i) => tetraView.setUint32(i * 4, value, true));
+    [0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1].forEach((value, i) => tetraView.setFloat64(16 + i * 8, value, true));
+    [0, 2, 1, 0, 1, 3, 1, 2, 3, 2, 0, 3, 0, 1, 2, 3].forEach((value, i) => tetraView.setUint32(112 + i * 4, value, true));
+    const faceSet = await witness({ bytes: new Uint8Array(tetra), loops: 1, segments: 4 }, 3, async (volume) => {
+      assert(Math.abs(volume - 1 / 6) <= 1e-6, 'face-set volume witness');
+    });
     // Actual ABI cleanup: an invalid chunk discards, a later commit refuses it.
     const token = await call(13, session, u32(1), u32(472), u32(1), u32(4));
     response((await batch([request(14, session, token, u32(0xffffffff), u32(1), new Uint8Array([1]))]))[0], 1);
     response((await batch([request(15, session, token)]))[0], 3);
-    return { regions, disks, evidence: 'derived numerical recipes; not source IFC qualification' };
+    return { regions, disks, faceSet, evidence: 'derived numerical recipes; not source IFC qualification' };
   } catch (error) {
     primaryFailed = true;
     throw error;

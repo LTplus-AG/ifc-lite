@@ -29,6 +29,7 @@ import type {
 import { DEFAULT_SECTION_CONFIG, makeEntityKey } from './types.js';
 import { SectionCutter } from './section-cutter.js';
 import { PolygonBuilder } from './polygon-builder.js';
+import { OpenSurfaceIndex } from './open-surface.js';
 import { EdgeExtractor } from './edge-extractor.js';
 import { HiddenLineClassifier } from './hidden-line.js';
 import { mergeDrawingLines } from './line-merger.js';
@@ -48,7 +49,6 @@ import { removeCoveredOverhead } from './projection-overlap.js';
 import {
   boundsEmpty,
   boundsExtendLine,
-  lineLength,
 } from './math.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -185,11 +185,12 @@ export class Drawing2DGenerator {
     // ─────────────────────────────────────────────────────────────────────────
     report('polygons', 0);
 
-    const cutPolygons = this.polygonBuilder.buildPolygons(cutSegments);
+    const openSurfaces = new OpenSurfaceIndex(meshes), openSurfaceSegments = new Set<CutSegment>();
+    const cutPolygons = this.polygonBuilder.buildPolygons(cutSegments, openSurfaces, openSurfaceSegments);
     // Opaque base cross-section per multi-material entity, for the 3D overlay to
     // draw behind the per-layer fills (never see-through). Kept out of
     // `cutPolygons` so the flat 2D drawing / export / measure paths are untouched.
-    const layerBaseCutPolygons = this.polygonBuilder.buildBasePolygons(cutSegments);
+    const layerBaseCutPolygons = this.polygonBuilder.buildBasePolygons(cutSegments, openSurfaces);
 
     report('polygons', 1);
 
@@ -199,6 +200,7 @@ export class Drawing2DGenerator {
     const cutLines: DrawingLine[] = cutSegments.map((seg) => ({
       line: { start: seg.p0_2d, end: seg.p1_2d },
       category: 'cut' as LineCategory,
+      ...(openSurfaceSegments.has(seg) ? { openSurfaceCut: true as const } : {}),
       visibility: 'visible' as const,
       entityId: seg.entityId,
       ifcType: seg.ifcType,
@@ -309,16 +311,8 @@ export class Drawing2DGenerator {
         }
       }
 
-      // Drop outlier lines abnormally longer than the cut area (artifacts).
-      const cutBounds = this.computeBounds(cutLines);
-      if (cutBounds.min.x < cutBounds.max.x && cutBounds.min.y < cutBounds.max.y) {
-        const boundsWidth = cutBounds.max.x - cutBounds.min.x;
-        const boundsHeight = cutBounds.max.y - cutBounds.min.y;
-        const boundsDiagonal = Math.sqrt(boundsWidth * boundsWidth + boundsHeight * boundsHeight);
-        // Allow lines up to 1.5x the diagonal of the cut area
-        const maxLineLength = boundsDiagonal * 1.5;
-        projectionLines = projectionLines.filter((line) => lineLength(line.line) <= maxLineLength);
-      }
+      // Projection edges are bounded by the configured depth and visibility,
+      // not by the cut extent: an elevation can legitimately cut only a post.
 
       if (config.clipProjectionBands && config.plane.axis === 'y' && !config.plane.customPlane) {
         projectionLines = removeCoveredOverhead(projectionLines);

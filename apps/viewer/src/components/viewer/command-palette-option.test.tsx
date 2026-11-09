@@ -21,7 +21,7 @@ async function loadOptions() {
   return options;
 }
 
-const placement = { index: 0, selected: true, onActivate: () => {}, onHover: () => {} };
+const placement = { index: 0, selected: true, query: '', onActivate: () => {}, onHover: () => {} };
 
 // #5878: a registered palette option cannot acquire a second name or invented id.
 function paletteOptionTypeContract(runtime: Extract<Command, { runtimeSource: string }>): void {
@@ -32,14 +32,19 @@ function paletteOptionTypeContract(runtime: Extract<Command, { runtimeSource: st
   // @ts-expect-error A registered id whose definition does not declare the palette surface.
   const contextOnly: RegisteredPaletteOptionProps = { commandId: 'context:select-all-type', ...placement };
   // The Model workspace rail commands (#6232) are registered palette ids too.
-  const railIds: RegisteredPaletteOptionProps['commandId'][] = ['tool:wall', 'tool:slab', 'tool:column', 'tool:beam'];
+  const railIds: RegisteredPaletteOptionProps['commandId'][] = ['tool:wall', 'tool:slab', 'tool:roof', 'tool:column', 'tool:beam',
+    'tool:array', 'tool:move', 'tool:rotate', 'model:copy', 'model:paste', 'model:paste-in-place',
+    'model:exit', 'model:storey-up', 'model:storey-down', 'elements:entity-actions',
+    'elements:search', 'elements:spatial', 'elements:class', 'elements:type', 'elements:materials',
+    'elements:groups', 'elements:presentation-layers', 'vis:isolate', 'view:centreline',
+    'view:zoom-in', 'view:zoom-out', 'view:rotate-left', 'view:rotate-right', 'view:move-georef', 'view:follow-work'];
   // @ts-expect-error A runtime row cannot be rendered without its runtime owner.
   const unowned: DynamicPaletteOptionProps = { command: { ...runtime, runtimeSource: undefined }, ...placement };
   const registered = { id: 'view:frame', label: 'Frame', labelKey: 'commandPalette.tool.wall.label', keywords: '',
     category: 'View', icon: FolderOpen, registryOwned: true, action: () => {} } as const;
   // @ts-expect-error A registered row renders only its registry label, so it takes no label parameters.
   const withParams: Command = { ...registered, labelKeyParams: { count: 1 } };
-  // @ts-expect-error A registered row has no runtime detail to drop.
+  // #8947: registered projection now preserves secondary detail.
   const withDetail: Command = { ...registered, detail: '1.4 MB' };
   void manualLabel; void unknownId; void contextOnly; void railIds; void unowned; void withParams; void withDetail;
 }
@@ -97,7 +102,7 @@ it('renders a registered palette action by id and keeps runtime rows separate (#
 
 it('resolves the Model workspace rail commands through the registry (#5878, #6232)', async () => {
   const { RegisteredPaletteOption } = await loadOptions();
-  for (const id of ['tool:wall', 'tool:slab', 'tool:column', 'tool:beam'] as const) {
+  for (const id of ['tool:wall', 'tool:slab', 'tool:roof', 'tool:column', 'tool:beam'] as const) {
     const definition = surfaceCommand(id, 'palette');
     const shortcut = definition.shortcut;
     assert.ok(shortcut && shortcut.startsWith('model.'), `${id} shows its workspace key`);
@@ -122,4 +127,48 @@ it('rejects fabricated and unowned palette ids (#5878)', async () => {
       /must render as a registered palette option/, id);
     cleanup();
   }
+});
+
+it('keeps runtime detail alongside a category without renaming registered commands (#8946)', async () => {
+  const { RegisteredPaletteOption, DynamicPaletteOption } = await loadOptions();
+  render(<>
+    <DynamicPaletteOption command={runtime} {...placement} categoryLabel="Datei" />
+    <RegisteredPaletteOption commandId="view:frame" {...placement} categoryLabel="Ansicht" />
+  </>);
+  const file = document.querySelector('[data-runtime-source="recent-file"]');
+  assert.ok(file?.textContent?.includes(runtime.label));
+  assert.ok(file?.textContent?.includes('Datei'));
+  assert.equal(file?.querySelector('[title="1.4 MB"]')?.textContent, '1.4 MB');
+  const frame = document.querySelector('[data-command-id="view:frame"]');
+  assert.equal(frame?.getAttribute('aria-label'), resolveEnglish(surfaceCommand('view:frame', 'palette').labelKey));
+  assert.ok(frame?.textContent?.includes('Ansicht'));
+});
+
+
+it('registered options preserve projected detail, toggle state and disabled description (#8947)', async () => {
+  const { RegisteredPaletteOption } = await loadOptions();
+  let calls = 0;
+  const label = resolveEnglish(surfaceCommand('pref:tooltips', 'palette').labelKey);
+  render(<RegisteredPaletteOption commandId="pref:tooltips" {...placement} query={label}
+    projection={{ detail: 'Projected detail', stateKey: 'commandPalette.state.off',
+      availability: { status: 'disabled', reasonKey: 'commandPalette.availability.editor' } }}
+    onActivate={() => { calls++; }} />);
+  const row = document.querySelector<HTMLButtonElement>('[role="option"]')!;
+  assert.match(row.textContent ?? '', /Projected detail/);
+  assert.match(row.textContent ?? '', /Off/);
+  assert.equal(row.getAttribute('aria-disabled'), 'true');
+  assert.match(document.getElementById(row.getAttribute('aria-describedby')!)?.textContent ?? '', /Requires editor access/);
+  click(row);
+  assert.equal(calls, 0);
+  assert.equal(row.querySelector('[data-command-label]')?.textContent, label);
+  assert.equal(row.querySelector('mark[data-match]'), null, 'unavailable names stay muted even for an exact query');
+  assert.ok(row.classList.contains('bg-accent'), 'unavailable selection uses the neutral surface');
+  assert.equal(row.classList.contains('bg-active-surface'), false);
+
+  cleanup();
+  render(<RegisteredPaletteOption commandId="pref:tooltips" {...placement} query={label} />);
+  const enabled = document.querySelector<HTMLButtonElement>('[role="option"]')!;
+  assert.equal(enabled.querySelector('mark[data-match]')?.textContent, label,
+    'runnable commands retain the shared query highlight');
+  assert.ok(enabled.classList.contains('bg-active-surface'));
 });

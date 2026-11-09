@@ -412,29 +412,25 @@ export function buildRenderOptionsWithSelection(
 }
 
 // ============================================================================
-// Throttling Utilities
+// Theme Utilities
 // ============================================================================
 
 /**
- * Get render throttle interval based on mesh count
- * Adaptive throttling: faster for small models, slower for large models
- *
- * @param meshCount - Number of meshes in the scene
- * @returns Throttle interval in milliseconds
+ * The viewport canvas colour per theme, as sRGB hex. These mirror the
+ * `--surface-canvas` shell tokens in `index.css` (#8802 R1; keep the two in
+ * step by hand: nothing reads the CSS value at runtime). The canvas sits
+ * one neutral step from the panel surface toward mid-grey, so the model area
+ * reads as the workspace and white walls keep an edge against it.
  */
-export function getRenderThrottleMs(meshCount: number): number {
-  if (meshCount < 10000) {
-    return 16; // ~60fps for small models
-  } else if (meshCount < 50000) {
-    return 25; // ~40fps for medium models
-  } else {
-    return 33; // ~30fps for large models
-  }
-}
+export const VIEWPORT_CANVAS_HEX = {
+  light: '#e6e7ea',
+  dark: '#222326',
+} as const;
 
-// ============================================================================
-// Theme Utilities
-// ============================================================================
+function hexToClearColor(hex: string): [number, number, number, number] {
+  const n = Number.parseInt(hex.slice(1), 16);
+  return [((n >> 16) & 0xff) / 255, ((n >> 8) & 0xff) / 255, (n & 0xff) / 255, 1];
+}
 
 /**
  * Get clear color based on theme
@@ -442,15 +438,12 @@ export function getRenderThrottleMs(meshCount: number): number {
  * @returns RGBA clear color tuple
  */
 export function getThemeClearColor(theme: 'light' | 'dark' | 'colorful'): [number, number, number, number] {
-  if (theme === 'light') {
-    return [0.96, 0.96, 0.97, 1]; // Light gray
-  }
   if (theme === 'colorful') {
     // Transparent — the CSS gradient on the canvas element shows through.
     // alphaMode:'premultiplied' + fragment alpha=1 keeps models fully opaque.
     return [0, 0, 0, 0];
   }
-  return [0.102, 0.106, 0.149, 1]; // Tokyo Night storm (#1a1b26)
+  return hexToClearColor(VIEWPORT_CANVAS_HEX[theme]);
 }
 
 // ============================================================================

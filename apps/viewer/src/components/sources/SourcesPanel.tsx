@@ -2,13 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
+import { lazy, Suspense, useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import type { ConnectionTestResult } from '@ifc-lite/plugin-api';
 import { useSourceHost } from '@/services/sources/SourceHostProvider';
 import { SourceSettingsDialog } from './SourceSettingsDialog';
 import { SourceBrowser } from './SourceBrowser';
 import { SourceProviderRow } from './SourceProviderRow';
-import { RegistrySource } from './RegistrySource';
 import { useRegistryWorkspace } from '@/lib/registry/workspace';
 import { SourceFavouritesList } from './SourceFavouritesList';
 import { useSourceDownloadBatch } from './useSourceDownloadBatch';
@@ -16,9 +15,8 @@ import type { SourceFavourite } from '@/lib/sources/favourites';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/toast';
 import { AlertCircle, Cloud, X } from 'lucide-react';
-import { useTranslation } from '@/i18n';
+import { useTranslation, type TranslationKey } from '@/i18n';
 import { formatLocaleNumber } from '@/i18n/intlFormat';
-import type { TranslationKey } from '@/i18n';
 import { getLocale, hasActiveTranslation, resolveEnglish, selectPluralCategory } from '@/i18n/registry';
 import { useViewerStore } from '@/store';
 import { loadResolvedSourcePrefs, saveSourcePrefs } from '@/lib/sources/preferences';
@@ -29,6 +27,8 @@ import {
   watchSourceRevisions,
   type SourceRevisionUpdate,
 } from '@/lib/sources/revisionWatch';
+
+const RegistrySource = lazy(() => import('./RegistrySource').then(module => ({ default: module.RegistrySource })));
 
 interface SourcesPanelProps {
   onClose: () => void;
@@ -322,8 +322,10 @@ export function SourcesPanel({ onClose, registryEnabled = import.meta.env?.VITE_
         />
 
         <ul className="space-y-2">
-          {registryEnabled && <RegistrySource expanded={browsing === 'oci-registry'} navigationDisabled={downloading} onBusyChange={setRegistryBusy}
-            onToggle={() => { if (navigationLock.current.busy) return; didAutoOpen.current = true; setBrowseTarget(null); setBrowsing(previous => previous === 'oci-registry' ? null : 'oci-registry'); }} />}
+          {registryEnabled && <Suspense fallback={null}>
+            <RegistrySource expanded={browsing === 'oci-registry'} navigationDisabled={downloading} onBusyChange={setRegistryBusy}
+              onToggle={() => { if (navigationLock.current.busy) return; didAutoOpen.current = true; setBrowseTarget(null); setBrowsing(previous => previous === 'oci-registry' ? null : 'oci-registry'); }} />
+          </Suspense>}
           {[...providers].sort((a, b) => Number(pins.ids.includes(b.manifest.name)) - Number(pins.ids.includes(a.manifest.name))).map((p) => (
             <SourceProviderRow
               key={p.manifest.name}
@@ -367,7 +369,7 @@ export function SourcesPanel({ onClose, registryEnabled = import.meta.env?.VITE_
               {registrationFailures.map((failure) => (
                 <li
                   key={failure.provider}
-                  className="flex items-start gap-2 text-xs text-red-600 dark:text-red-400"
+                  className="flex items-start gap-2 text-xs text-danger"
                 >
                   <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
                   <span>

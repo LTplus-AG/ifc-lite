@@ -22,6 +22,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useViewerStore } from '@/store';
 import { useChangedModels } from '@/hooks/useUnexportedChanges';
+import { useReplaceableTimeout } from '@/hooks/useReplaceableTimeout';
 import { useTranslation } from '@/i18n';
 import { toast } from '@/components/ui/toast';
 import { buildExportFilename, downloadFile } from '@/lib/export/download';
@@ -190,6 +191,12 @@ export function ExportChangesButton({ surface, className, trigger }: ExportChang
   const { t } = useTranslation();
   const [isExporting, setIsExporting] = useState(false);
   const [exportStatus, setExportStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  // The success/error tick reverts to idle on a timer owned by the latest export.
+  const statusReset = useReplaceableTimeout();
+  const flashStatus = useCallback((status: 'success' | 'error', ms: number) => {
+    setExportStatus(status);
+    statusReset.schedule(() => setExportStatus('idle'), ms);
+  }, [statusReset]);
   // Two-step export (issue #1915): the toolbar button opens a review dialog
   // listing the pending changes; the dialog's own Export button is the
   // confirm step that actually runs `handleExport` below.
@@ -212,6 +219,7 @@ export function ExportChangesButton({ surface, className, trigger }: ExportChang
 
   const handleExport = useCallback(async (reviewedGroups: ModelReviewGroup[]) => {
     setIsExporting(true);
+    statusReset.cancel();
     setExportStatus('idle');
 
     try {
@@ -234,8 +242,7 @@ export function ExportChangesButton({ surface, className, trigger }: ExportChang
       const postState = useViewerStore.getState();
       const postGroups = buildReviewGroups(postState.mutationViews, collectChangedModels(postState));
       if (!reviewGroupsEqual(reviewedGroups, postGroups)) {
-        setExportStatus('error');
-        setTimeout(() => setExportStatus('idle'), 3000);
+        flashStatus('error', 3000);
         toast.error('Changes were made while exporting — check the updated list and confirm again.');
         setGroups(postGroups);
         setReviewOpen(true);
@@ -244,8 +251,7 @@ export function ExportChangesButton({ surface, className, trigger }: ExportChang
 
       if (files.length === 0) {
         if (skipped.length > 0) {
-          setExportStatus('error');
-          setTimeout(() => setExportStatus('idle'), 3000);
+          flashStatus('error', 3000);
           toast.error(`Export failed: ${skipped[0].reason}`);
         } else {
           toast.info('No changes to export');
@@ -262,8 +268,7 @@ export function ExportChangesButton({ surface, className, trigger }: ExportChang
         downloadFile(zipped, `ifc-lite-changes_${date}.zip`, 'application/zip');
       }
 
-      setExportStatus('success');
-      setTimeout(() => setExportStatus('idle'), 2000);
+      flashStatus('success', 2000);
 
       const exportedChanges = files.reduce((n, f) => n + f.changeCount, 0);
       trackExportCompleted({
@@ -288,13 +293,12 @@ export function ExportChangesButton({ surface, className, trigger }: ExportChang
       }
     } catch (error) {
       console.error('[ExportChangesButton] Export failed:', error);
-      setExportStatus('error');
-      setTimeout(() => setExportStatus('idle'), 3000);
+      flashStatus('error', 3000);
       toast.error(`Export failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsExporting(false);
     }
-  }, [surface]);
+  }, [surface, statusReset, flashStatus]);
 
   const handleConfirm = useCallback(() => {
     // Re-derive fresh, synchronously, at click time — comparing against
@@ -375,14 +379,14 @@ export function ExportChangesButton({ surface, className, trigger }: ExportChang
             {isExporting ? (
               <Spinner size="md" className="mr-2" />
             ) : exportStatus === 'success' ? (
-              <Check className="h-4 w-4 mr-2 text-green-500" />
+              <Check className="h-4 w-4 mr-2 text-ok" />
             ) : exportStatus === 'error' ? (
-              <AlertCircle className="h-4 w-4 mr-2 text-red-500" />
+              <AlertCircle className="h-4 w-4 mr-2 text-danger" />
             ) : (
               <Download className="h-4 w-4 mr-2" />
             )}
             {t('exportChangesButton.buttonLabel')}
-            <Badge className="ml-2 text-xs bg-amber-500 text-white border-transparent hover:bg-amber-500">
+            <Badge className="ml-2 text-xs bg-warn-solid text-solid-foreground border-transparent hover:bg-warn-solid">
               {totalCount}
             </Badge>
           </Button>

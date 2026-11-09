@@ -1,6 +1,8 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { useViewerStore } from '@/store';
+import { noteFinalFitBounds } from './sceneSnapshotOwnership.js';
 import type { MutableRefObject } from 'react';
 import type { MeshData } from '@ifc-lite/geometry';
 import type { Renderer } from '@ifc-lite/renderer';
@@ -62,7 +64,7 @@ export function refitCompletedStreamBounds(params: Params): void {
     renderer.getCamera().setOrbitAnchorBounds(robust ? exactBounds : null);
     console.log(`[GeomStream] computeBounds: ${(performance.now() - t0).toFixed(0)}ms`);
     if (exactBounds) {
-      if (!userMovedCamera(renderer, cameraSnapshotRef.current)) {
+      if (!useViewerStore.getState().session && !userMovedCamera(renderer, cameraSnapshotRef.current)) {
         const canvas = renderer.getCanvas();
         const canvasShort = Math.min(canvas?.clientHeight ?? 0, canvas?.clientWidth ?? 0); // CSS px (#5383)
         const policy = renderer.getCamera().fitBoundsAdaptive(
@@ -78,6 +80,7 @@ export function refitCompletedStreamBounds(params: Params): void {
         if (policy.kind === 'linear') notifyLinearFit();
       }
       geometryBoundsRef.current = exactBounds;
+      noteFinalFitBounds(exactBounds);
       // Refresh the camera's cached scene bounds with the FULL extent so
       // near/far clipping + section ranges still cover the far meshes;
       // the trimmed robust box only drives framing + the orbit anchor

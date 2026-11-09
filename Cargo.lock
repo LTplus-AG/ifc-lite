@@ -77,6 +77,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "arrayvec"
+version = "0.7.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d3fb67a6e08acf24fdeccbac2cb6ac4305825bd1f117462e0e6f2f193345ad56"
+
+[[package]]
 name = "arrow"
 version = "60.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -570,6 +576,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c4512299f36f043ab09a583e57bceb5a5aab7a73db1805848e8fef3c9e8c78b3"
 
 [[package]]
+name = "blake3"
+version = "1.8.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6d9e454fc11f76977dc803893aff6304ed33d6a26efae8696573bea74baa27ae"
+dependencies = [
+ "arrayvec",
+ "cc",
+ "cfg-if",
+ "constant_time_eq",
+ "cpufeatures 0.3.1",
+]
+
+[[package]]
 name = "block-buffer"
 version = "0.10.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -834,6 +853,12 @@ dependencies = [
  "once_cell",
  "tiny-keccak",
 ]
+
+[[package]]
+name = "constant_time_eq"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3d52eff69cd5e647efe296129160853a42795992097e8af39800e1060caeea9b"
 
 [[package]]
 name = "core-foundation-sys"
@@ -1540,11 +1565,11 @@ checksum = "3d3067d79b975e8844ca9eb072e16b31c3c1c36928edf9c6789548c524d0d954"
 
 [[package]]
 name = "ifc-lite-clash"
-version = "27.1.0"
+version = "28.2.0"
 
 [[package]]
 name = "ifc-lite-cloud-import"
-version = "27.1.0"
+version = "28.2.0"
 dependencies = [
  "gltf",
  "nalgebra",
@@ -1554,7 +1579,7 @@ dependencies = [
 
 [[package]]
 name = "ifc-lite-core"
-version = "27.1.0"
+version = "28.2.0"
 dependencies = [
  "bytemuck",
  "fast-float2",
@@ -1572,7 +1597,7 @@ dependencies = [
 
 [[package]]
 name = "ifc-lite-diff"
-version = "27.1.0"
+version = "28.2.0"
 dependencies = [
  "ryu-js",
  "serde",
@@ -1581,7 +1606,7 @@ dependencies = [
 
 [[package]]
 name = "ifc-lite-diff-wasm"
-version = "27.1.0"
+version = "28.2.0"
 dependencies = [
  "ifc-lite-diff",
  "js-sys",
@@ -1592,7 +1617,7 @@ dependencies = [
 
 [[package]]
 name = "ifc-lite-export"
-version = "27.1.0"
+version = "28.2.0"
 dependencies = [
  "arrow",
  "bytemuck",
@@ -1614,17 +1639,19 @@ dependencies = [
 
 [[package]]
 name = "ifc-lite-ffi"
-version = "27.1.0"
+version = "28.2.0"
 dependencies = [
  "ifc-lite-processing",
+ "ifc-lite-testkit",
  "mimalloc",
  "rayon",
+ "serde",
  "serde_json",
 ]
 
 [[package]]
 name = "ifc-lite-geometry"
-version = "27.1.0"
+version = "28.2.0"
 dependencies = [
  "approx",
  "bnum",
@@ -1655,10 +1682,19 @@ dependencies = [
 
 [[package]]
 name = "ifc-lite-geometry-runtime"
-version = "27.1.0"
+version = "28.2.0"
 dependencies = [
  "ifc-lite-core",
  "ifc-lite-geometry",
+]
+
+[[package]]
+name = "ifc-lite-git"
+version = "28.2.0"
+dependencies = [
+ "blake3",
+ "ifc-lite-diff",
+ "unicode-normalization",
 ]
 
 [[package]]
@@ -1667,7 +1703,7 @@ version = "0.1.0"
 
 [[package]]
 name = "ifc-lite-landxml"
-version = "27.1.0"
+version = "28.2.0"
 dependencies = [
  "geometry-predicates",
  "ifc-lite-geometry",
@@ -1680,7 +1716,7 @@ dependencies = [
 
 [[package]]
 name = "ifc-lite-processing"
-version = "27.1.0"
+version = "28.2.0"
 dependencies = [
  "ifc-lite-core",
  "ifc-lite-geometry",
@@ -1698,7 +1734,7 @@ dependencies = [
 
 [[package]]
 name = "ifc-lite-retained-native"
-version = "27.1.0"
+version = "28.2.0"
 dependencies = [
  "ifc-lite-core",
  "ifc-lite-geometry",
@@ -1712,7 +1748,7 @@ dependencies = [
 
 [[package]]
 name = "ifc-lite-server"
-version = "27.1.0"
+version = "28.2.0"
 dependencies = [
  "anyhow",
  "arrow",
@@ -1748,14 +1784,14 @@ dependencies = [
 
 [[package]]
 name = "ifc-lite-testkit"
-version = "27.1.0"
+version = "28.2.0"
 dependencies = [
  "ifc-lite-geometry",
 ]
 
 [[package]]
 name = "ifc-lite-wasm"
-version = "27.1.0"
+version = "28.2.0"
 dependencies = [
  "console_error_panic_hook",
  "ifc-lite-clash",
@@ -3028,6 +3064,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "tinyvec"
+version = "1.13.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fd3ca314f692efd6c868f8408f53fe444634a845f96c028b97d35f6a1f79f0ee"
+
+[[package]]
 name = "tokio"
 version = "1.53.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3253,6 +3295,15 @@ name = "unicode-ident"
 version = "1.0.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e6e4313cd5fcd3dad5cafa179702e2b244f760991f45397d14d4ebf38247da75"
+
+[[package]]
+name = "unicode-normalization"
+version = "0.1.26"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "75cd3fb03d5288b3ba9a1ee103ac7e9cbb59f0b03d64f8ddfcc04dd42758a85d"
+dependencies = [
+ "tinyvec",
+]
 
 [[package]]
 name = "unicode-width"
@@ -3779,9 +3830,9 @@ dependencies = [
 
 [[package]]
 name = "zip"
-version = "9.0.4"
+version = "9.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a954114b47a54df49f83d2722814e86b23d4bb1b54a1b90fb7d92b41619ddc22"
+checksum = "6e04976da629d3b04204ba8105b396a193af8ad2583b2c79bfb3ab8af580a11e"
 dependencies = [
  "crc32fast",
  "flate2",

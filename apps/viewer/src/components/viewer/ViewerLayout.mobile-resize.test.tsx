@@ -20,6 +20,7 @@ import { act } from 'react';
 import { activate, cleanup } from '@/test/render.js';
 import { renderViewerLayout } from '@/test/viewer-layout-harness.js';
 import { useViewerStore } from '@/store';
+import { resetLayout } from '@/store/layoutReset';
 import { clearRetiredToolbarStylePreference, TOOLBAR_STYLE_STORAGE_KEY } from '@/store/constants';
 
 const ORIGINAL = { width: window.innerWidth, height: window.innerHeight };
@@ -44,7 +45,7 @@ const isMobile = () => useViewerStore.getState().isMobile;
 // A phone: rotation to 844px landscape stays mobile only because it has touch.
 Object.defineProperty(navigator, 'maxTouchPoints', { configurable: true, value: 5 });
 
-const RESET = { isMobile: false, leftPanelCollapsed: true, rightPanelCollapsed: true };
+const RESET = { isMobile: false, leftPanelCollapsed: true, rightPanelCollapsed: true, layoutResetEpoch: 0 };
 
 beforeEach(() => useViewerStore.setState(RESET));
 
@@ -57,7 +58,9 @@ afterEach(() => {
 describe('ViewerLayout desktop split (#5873)', () => {
   it('#5873 reserves enough default desktop split for hierarchy names beside the grouped rail', () => {
     setViewport(1600, 1000);
-    useViewerStore.setState({ leftPanelCollapsed: false });
+    // A model in flight: the empty start screen folds Hierarchy away, and this
+    // pins the split it gets once there is something to show.
+    useViewerStore.setState({ leftPanelCollapsed: false, loading: true });
     const originalOffsetWidth = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetWidth');
     // Happy DOM reports zero layout width. Give the real panel group a desktop
     // measurement so its own sizing algorithm applies the configured split.
@@ -79,6 +82,73 @@ describe('ViewerLayout desktop split (#5873)', () => {
       const viewportSize = Number.parseFloat(viewport.style.flexGrow);
       assert.ok(hierarchySize >= 22.5, `hierarchy received only ${hierarchySize}%`);
       assert.ok(Math.abs(hierarchySize + viewportSize - 100) < 0.01, 'the initial split must total 100%');
+    } finally {
+      if (originalOffsetWidth) Object.defineProperty(HTMLElement.prototype, 'offsetWidth', originalOffsetWidth);
+      else delete (HTMLElement.prototype as { offsetWidth?: number }).offsetWidth;
+    }
+  });  it('#9296 reserves the plan and 3D beside Defaults at 1600×900', async () => {
+    const { seedModelingSession } = await import('@/test/modeling-session-fixture');
+    const previousPanel = useViewerStore.getState().sidebarActivePanel;
+    setViewport(1600, 900);
+    // A model in flight: the empty start screen folds Hierarchy away, and this
+    // pins the split it gets once there is something to show.
+    useViewerStore.setState({ leftPanelCollapsed: false, loading: false, sidebarActivePanel: 'model' });
+    const originalOffsetWidth = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetWidth');
+    // Happy DOM reports zero layout width. Give the real panel group a desktop
+    // measurement so its own sizing algorithm applies the configured split.
+    Object.defineProperty(HTMLElement.prototype, 'offsetWidth', {
+      configurable: true,
+      get(this: HTMLElement) {
+        if (this.id === 'left-panel') return 350;
+        if (this.id === 'viewport-panel') return 1200;
+        return originalOffsetWidth?.get?.call(this) ?? 0;
+      },
+    });
+    try {
+      const ui = renderViewerLayout();
+      await act(async () => { await seedModelingSession(); useViewerStore.getState().enterModelWorkspace(); });
+      const hierarchy = ui.querySelector<HTMLElement>('#left-panel');
+      const viewport = ui.querySelector<HTMLElement>('#viewport-panel');
+      assert.ok(hierarchy && viewport, 'the desktop hierarchy and viewport are both mounted');
+
+      const hierarchySize = Number.parseFloat(hierarchy.style.flexGrow);
+      const viewportSize = Number.parseFloat(viewport.style.flexGrow);
+      assert.ok(hierarchySize <= 18, `hierarchy received ${hierarchySize}%`);
+      assert.ok(Math.abs(hierarchySize + viewportSize - 100) < 0.01, 'the initial split must total 100%');
+      act(() => resetLayout());
+      assert.ok(Number.parseFloat(hierarchy.style.flexGrow) <= 18, '#9296 Reset layout must preserve plan + 3D room');
+      act(() => useViewerStore.getState().exitModelWorkspace());
+      assert.equal(Number.parseFloat(hierarchy.style.flexGrow), 22.5, '#9296 leaving Model must keep the reset width');
+    } finally {
+      cleanup();
+      act(() => { useViewerStore.getState().exitModelWorkspace(); useViewerStore.getState().clearAllModels(); useViewerStore.setState({ sidebarActivePanel: previousPanel }); });
+      if (originalOffsetWidth) Object.defineProperty(HTMLElement.prototype, 'offsetWidth', originalOffsetWidth);
+      else delete (HTMLElement.prototype as { offsetWidth?: number }).offsetWidth;
+    }
+  });
+});
+
+describe('ViewerLayout empty start-screen fold', () => {
+  it('folds Hierarchy on an empty viewer without touching the stored collapse state', () => {
+    setViewport(1600, 1000);
+    useViewerStore.setState({ leftPanelCollapsed: false, loading: false });
+    // Same desktop measurement as the split test: the panel group only
+    // collapses a panel it can measure.
+    const originalOffsetWidth = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetWidth');
+    Object.defineProperty(HTMLElement.prototype, 'offsetWidth', {
+      configurable: true,
+      get(this: HTMLElement) {
+        if (this.id === 'left-panel') return 350;
+        if (this.id === 'viewport-panel') return 1200;
+        return originalOffsetWidth?.get?.call(this) ?? 0;
+      },
+    });
+    try {
+      const ui = renderViewerLayout();
+      const hierarchy = ui.querySelector<HTMLElement>('#left-panel');
+      assert.ok(hierarchy, 'the desktop hierarchy panel stays mounted');
+      assert.equal(Number.parseFloat(hierarchy.style.flexGrow), 0, 'Hierarchy is folded while nothing is loaded');
+      assert.equal(useViewerStore.getState().leftPanelCollapsed, false, 'the fold must not write the user\'s collapse preference');
     } finally {
       if (originalOffsetWidth) Object.defineProperty(HTMLElement.prototype, 'offsetWidth', originalOffsetWidth);
       else delete (HTMLElement.prototype as { offsetWidth?: number }).offsetWidth;

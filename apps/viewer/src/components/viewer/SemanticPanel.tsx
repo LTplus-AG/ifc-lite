@@ -121,8 +121,12 @@ export function SemanticPanel({ validationExecutor }: { validationExecutor?: Val
           <p className="text-sm text-muted-foreground">{t('semantic.loopbackHelp')}</p></>}
       </>}
     {(mode === 'sparql' || mode === 'construct') && <><label className="block text-sm">{t('semantic.query')}<textarea className={control} rows={7} value={query} onChange={e => setQuery(e.target.value)} /></label>
-      <details><summary>{t('semantic.mapping')}</summary>{Object.entries(mapping).map(([key, value]) => <label key={key} className="block text-sm">{key}
-        <input className={control} value={value} onChange={e => setMapping({ ...mapping, [key]: e.target.value })} /></label>)}</details></>}
+      <label className="block text-sm">{t('semantic.resourceBinding')}<input className={control} value={mapping.id ?? 'id'} onChange={e => setMapping({ ...mapping, id: e.target.value })} /></label>
+      <p className="text-xs text-muted-foreground">{t('semantic.resourceBindingHelp')}</p>
+      <details><summary>{t('semantic.advancedBindings')}</summary><p className="text-xs text-muted-foreground">{t('semantic.optionalBindings')}</p>
+        {Object.entries(mapping).filter(([key]) => key !== 'id').map(([key, value]) => <label key={key} className="block text-sm">{key}
+          <input className={control} value={value} onChange={e => setMapping({ ...mapping, [key]: e.target.value })} /></label>)}
+      </details></>}
     <div className="flex gap-2"><button className={button} disabled={pilot.busy} onClick={() => { void pilot.load(sourceInput, exercise); }}>{t('semantic.run')}</button>
       {pilot.busy && <button className={button} onClick={pilot.cancel}>{t('semantic.cancel')}</button>}</div>
     {['json', 'sparql', 'construct'].includes(mode) && <details><summary>{t('semantic.authentication')}</summary>
@@ -152,7 +156,7 @@ export function SemanticPanel({ validationExecutor }: { validationExecutor?: Val
     <label className="block text-sm">{t('semantic.scope')}<select className={control} value={scope} onChange={e => setScope(e.target.value)}>
       <option value="">{t('semantic.allModels')}</option>{[...models].map(([id, loaded]) => <option key={id} value={id}>{loaded.name}</option>)}
     </select></label>
-    <details><summary>{t('semantic.associate')}</summary>
+    <details><summary>{t('semantic.advancedRevision')}</summary>
       <label className="block text-sm">{t('semantic.revision')}<input className={control} type="url" value={revision} onChange={e => setRevision(e.target.value)} /></label>
       <label className="block text-sm">{t('semantic.model')}<select className={control} value={model} onChange={e => setModel(e.target.value)}>
         <option value="">{t('semantic.model')}</option>{[...models].map(([id, loaded]) => <option key={id} value={id}>{loaded.name}</option>)}

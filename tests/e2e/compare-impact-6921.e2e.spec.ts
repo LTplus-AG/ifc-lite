@@ -8,6 +8,7 @@ import AxeBuilder from '@axe-core/playwright';
 import { ViewerBenchmarkPage } from '../benchmark/viewer-benchmark-page';
 import { GPU_STRICT, watchGpuDeviceLoss } from './gpu-device-loss';
 import { classifyViewportWitness } from './viewport-witness';
+import { clickPanelAction, panelHeader } from './panel-header.helpers';
 
 // #6921: the committed demo revision pair (SketchUp base + derived rev B)
 // loaded through "Try with demo data", compared, clash-checked natively, and
@@ -32,9 +33,8 @@ async function runClash(page: Page) {
   await state(page, s => s.openPanelInHome('clash'));
   await state(page, s => { (globalThis as unknown as { previousClash: unknown }).previousClash = s.clashResult; });
   // Re-run replays the previous request; clear first so the run uses the current tolerance.
-  // Only the Clash panel is open in the Home slot here, so its Clear results is the one on screen.
-  const clear = page.getByRole('button', { name: 'Clear results', exact: true });
-  if (await clear.count()) await clear.click();
+  // Clear results lives in the Clash panel header, inline or in its More actions menu (#8802).
+  if (await state(page, s => s.clashResult !== null)) await clickPanelAction(page, panelHeader(page, 'Clash detection'), 'Clear results');
   await page.getByRole('button', { name: 'Detect all clashes', exact: true }).click();
   await expect.poll(() => state(page, s => s.clashResult !== null && !s.clashRunning
     && s.clashResult !== (globalThis as unknown as { previousClash: unknown }).previousClash), { timeout: 120_000 }).toBe(true);
@@ -103,7 +103,7 @@ test('comparison impact and run reconciliation on the demo revision pair', async
   expect(axe.violations.map(v => `${v.id}: ${v.nodes.length}`)).toEqual([]);
 
   // The assistant's comparison evidence carries both sections.
-  await page.getByRole('button', { name: 'Discuss with AI', exact: true }).click();
+  await clickPanelAction(page, panelHeader(page, 'Compare models'), 'Discuss with AI');
   const assistant = page.getByRole('region', { name: 'Assistant', exact: true });
   await assistant.getByText('Evidence details', { exact: true }).click();
   await assistant.getByText('Inspect evidence sent to the model', { exact: true }).click();

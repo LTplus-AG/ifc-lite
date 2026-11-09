@@ -1,18 +1,29 @@
 // SPDX-License-Identifier: MPL-2.0
 import { afterEach, expect, it, vi } from 'vitest';
-import { mkdtemp, readFile, rm, writeFile, mkdir, readdir } from 'node:fs/promises';
+import { mkdtemp, open, readFile, realpath, rm, stat, writeFile, mkdir, readdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { pathToFileURL } from 'node:url';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { exportCommand, exportFilePath } from './export.js';
-import { exportKernel, retainedArtifacts } from './export-retained.js';
+import { exportKernel, retainedArtifacts as artifacts, writeArtifact } from './export-retained.js';
 import { requireRetainedNode, validateEngine, type RetainedEngine } from '../retained/engine.js';
 import { runRetained } from '../retained/run.js';
 import { retainedReport, reportJson } from '../retained/report.js';
+import { ARTIFACT_CHUNK_CHARS } from '../retained/obj.js';
 import { buildHelp, buildCommandHelp } from '../help.js';
 import type { RetainedShapeProduct } from '../../../wasm/pkg-retained/ifc-lite.js';
 
+const text = (chunks: Buffer[]) => Buffer.concat(chunks).toString();
+const retainedArtifacts = (...args: Parameters<typeof artifacts>) => {
+  const { obj, report, json } = artifacts(...args);
+  return { obj: text(obj), report, json: text(json) };
+};
+const readSlice = async (path: string, from: number) => {
+  const file = await open(path, 'r');
+  try { return (await file.read({ position: from, length: 4096, buffer: Buffer.alloc(4096) })); } finally { await file.close(); }
+};
+const sliceText = ({ buffer, bytesRead }: { buffer: Buffer; bytesRead: number }) => buffer.subarray(0, bytesRead).toString();
 const dirs: string[] = [];
 afterEach(async () => { vi.unstubAllEnvs(); for (const dir of dirs.splice(0)) await rm(dir, { recursive: true, force: true }); });
 const engine: RetainedEngine = { directory: '/unused', url: new URL('file:///unused/'), sdk: 'protocol-test', capabilities: null, manifestSha256: '0'.repeat(64) };
@@ -77,13 +88,15 @@ it('#7955 shape-only OBJ transforms world f64 points to Y-up and keeps refusal o
   expect(report.products.map(p => p.id)).toEqual([27, 80]);
   expect(report.products[1]).toMatchObject({ globalId: 'guid-80', code: refusal.code, origin: refusal.origin });
   expect(report.products[1]).not.toHaveProperty('parts');
-  expect(json).toBe(reportJson(retainedReport(engine, 8, [shape, refusal], id => `guid-${id}`)));
+  expect(json).toBe(text(reportJson(retainedReport(engine, 8, [shape, refusal], id => `guid-${id}`))));
   expect(buildHelp('test')).not.toContain('--kernel');
   expect(buildCommandHelp('test', 'export')).toContain('--retained-engine');
 });
 
 it('#7955 bad manifest hashes are fatal before engine imports or output writes', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'retained-digest-')); dirs.push(dir);
+  // validateEngine canonicalises; macOS tmpdir() sits under the /var -> /private/var symlink.
+  const canonicalDir = await realpath(dir);
   const paths = ['pkg-retained/ifc-lite.js', 'pkg-retained/ifc-lite_bg.wasm', 'pkg-retained/package.json',
     'smlib/node/client.mjs', 'smlib/node/worker.mjs', 'smlib/node/hooks.mjs', 'smlib/worker.mjs', 'smlib/module.mjs',
     'smlib/sweep.mjs', 'smlib/sweep-contract.mjs', 'smlib/contract.mjs',
@@ -101,7 +114,7 @@ it('#7955 bad manifest hashes are fatal before engine imports or output writes',
   }
   await writeFile(join(dir, 'engine-manifest.json'), JSON.stringify({ format: 'ifc-lite.retained-engine/1', sdk: { revision: '0'.repeat(40) }, capabilities: null, assets }));
   // PR #8299: dev/preview servers validate inert assets without executing engine code.
-  expect((await validateEngine(dir)).directory).toBe(dir);
+  expect((await validateEngine(dir)).directory).toBe(canonicalDir);
   // Refs #7955: an internally consistent inventory still requires the root notice.
   const manifestBytes = await readFile(join(dir, 'engine-manifest.json'));
   const withoutNotice = JSON.parse(manifestBytes.toString());
@@ -112,7 +125,7 @@ it('#7955 bad manifest hashes are fatal before engine imports or output writes',
   await writeFile(join(dir, 'THIRD_PARTY_NOTICES.txt'), content);
   await writeFile(join(dir, 'engine-manifest.json'), manifestBytes);
   vi.stubEnv('IFCLITE_RETAINED_ENGINE', dir);
-  expect((await exportKernel(['--kernel', 'retained'], 'obj'))?.directory).toBe(dir);
+  expect((await exportKernel(['--kernel', 'retained'], 'obj'))?.directory).toBe(canonicalDir);
   await writeFile(join(dir, paths[0]), 'tampered');
   await expect(exportCommand(['missing.ifc', '--format', 'obj', '--kernel', 'retained', '--retained-engine', dir,
     '--out', join(dir, 'out.obj'), '--retained-report', join(dir, 'report.json')])).rejects.toThrow(/hash mismatch/);
@@ -202,7 +215,7 @@ it('#7955 M4 open parts measure the closed assembly with a common origin', () =>
 it('#7955 M4 phase samples do not change the reproducible CLI report', () => {
   const first = retainedReport(engine, 8, [{ ...shape, bandMs: 1, capMs: 2, maxSnapMetres: 1e-7 }], () => null);
   const second = retainedReport(engine, 8, [{ ...shape, bandMs: 5, capMs: 9, maxSnapMetres: 2e-7 }], () => null);
-  expect(reportJson(first)).toBe(reportJson(second));
+  expect(text(reportJson(first))).toBe(text(reportJson(second)));
   expect(first.products[0]).not.toHaveProperty('bandMs');
   expect(first.products[0]).not.toHaveProperty('capMs');
   expect(first.products[0]).not.toHaveProperty('maxSnapMetres');
@@ -220,4 +233,45 @@ it('M11-Z accepts final products in OBJ and the stable report, retaining shape-o
   expect(mixed.report.products[1]).toMatchObject({ marker: 'PresentationObligationsUnmet', obligationsUnmet: ['IfcAppearance'] });
   expect(() => retainedArtifacts(engine, 8, [{ ...final, marker: 'PresentationObligationsUnmet' }], () => null)).toThrow(/Invalid retained publication/);
   expect(() => retainedArtifacts(engine, 8, [{ ...shape, marker: 'final' }], () => null)).toThrow(/Invalid retained publication/);
+});
+
+// #7955 Holter: 54,536 published products make a >1 GB OBJ and report. Each exceeded V8's
+// string limit in one join/stringify, so the export failed after its whole run. The long
+// IFC type name reaches that size cheaply; nothing else here depends on it.
+it('#7955 writes artifacts larger than the maximum string length byte for byte', async () => {
+  const limit = (await import('node:buffer')).constants.MAX_STRING_LENGTH;
+  const typeChars = 4 << 20, count = Math.ceil(limit / typeChars) + 1;
+  const ifcType = `Ifc${'A'.repeat(typeChars)}`;
+  const products = Array.from({ length: count }, (_, expressId) => ({ ...shape, expressId, ifcType }));
+  const { obj, json } = artifacts(engine, 8, products, () => null);
+  const size = (chunks: Buffer[]) => chunks.reduce((sum, chunk) => sum + chunk.byteLength, 0);
+  expect(size(obj)).toBeGreaterThan(limit);
+  expect(size(json)).toBeGreaterThan(limit);
+  const dir = await mkdtemp(join(tmpdir(), 'retained-artifact-'));
+  dirs.push(dir);
+  await writeArtifact(json, join(dir, 'report.json'));
+  await writeArtifact(obj, join(dir, 'model.obj'));
+  expect((await stat(join(dir, 'report.json'))).size).toBe(size(json));
+  expect((await stat(join(dir, 'model.obj'))).size).toBe(size(obj));
+  const objTail = sliceText(await readSlice(join(dir, 'model.obj'), size(obj) - 64));
+  expect(objTail.endsWith(`f ${count * 3 - 2} ${count * 3 - 1} ${count * 3}\n`)).toBe(true);
+  const reportTail = sliceText(await readSlice(join(dir, 'report.json'), size(json) - 2));
+  expect(reportTail).toBe('}\n');
+}, 120_000);
+
+it('#7955 the chunked report equals one JSON.stringify, split or not', () => {
+  const products = [{ ...shape, expressId: 27 }, { ...shape, expressId: 28 }];
+  const report = retainedReport(engine, 8, products, () => null);
+  const whole = text(reportJson(report));
+  expect(JSON.parse(whole).products).toHaveLength(2);
+  const sortedStringify = JSON.stringify(report, (_key, value: unknown) => value && typeof value === 'object' && !Array.isArray(value)
+    ? Object.fromEntries(Object.entries(value).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)) : value, 2);
+  expect(whole).toBe(`${sortedStringify}\n`);
+  const empty = retainedReport(engine, 8, [], () => null);
+  expect(JSON.parse(text(reportJson(empty))).products).toEqual([]);
+  // A chunk boundary falls between lines and never reorders them.
+  const large = Array.from({ length: 3 }, (_, expressId) => ({ ...shape, expressId, ifcType: `Ifc${'B'.repeat(ARTIFACT_CHUNK_CHARS)}` }));
+  const { obj } = artifacts(engine, 8, large, () => null);
+  expect(obj.length).toBeGreaterThan(1);
+  expect(text(obj).split('\n').filter(line => line.startsWith('o ')).map(line => line.slice(line.lastIndexOf('_') + 1))).toEqual(['0', '1', '2']);
 });

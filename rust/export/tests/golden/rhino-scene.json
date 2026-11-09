@@ -1,0 +1,78 @@
+{
+  "about": "FNV-1a 64 and byte length of each rhino-scene output, keyed by case. Written by ifc-lite-export, never by hand.",
+  "repin": "IFC_LITE_REPIN_GOLDEN=1 cargo test -p ifc-lite-export --test rhino_scene -- --exact rhino_scene_golden",
+  "cases": {
+    "bath_csg_solid/blob": {
+      "fnv1a64": "8296aadc95be277e",
+      "bytes": 9312
+    },
+    "bath_csg_solid/manifest": {
+      "fnv1a64": "90f996c12ef3fa1f",
+      "bytes": 1480
+    },
+    "c6_data_model_synthetic/blob": {
+      "fnv1a64": "a8724980b83294a5",
+      "bytes": 3024
+    },
+    "c6_data_model_synthetic/manifest": {
+      "fnv1a64": "3df49e6d7fe65408",
+      "bytes": 4479
+    },
+    "duplex/blob": {
+      "fnv1a64": "cfc0e0027a835651",
+      "bytes": 1524880
+    },
+    "duplex/manifest": {
+      "fnv1a64": "3ee350b00dda74fd",
+      "bytes": 1102965
+    },
+    "mapped_instances_multi_item/blob": {
+      "fnv1a64": "1431123ada97c451",
+      "bytes": 8064
+    },
+    "mapped_instances_multi_item/manifest": {
+      "fnv1a64": "1c70ad65fdf424b1",
+      "bytes": 3073
+    },
+    "mapped_instances_nested/blob": {
+      "fnv1a64": "6fbc5c14f2ae6f05",
+      "bytes": 3024
+    },
+    "mapped_instances_nested/manifest": {
+      "fnv1a64": "66528cd0743472db",
+      "bytes": 2569
+    },
+    "mapped_instances_site_rotated/blob": {
+      "fnv1a64": "becfcbea102e9339",
+      "bytes": 4032
+    },
+    "mapped_instances_site_rotated/manifest": {
+      "fnv1a64": "ccb2cfa456c99452",
+      "bytes": 3170
+    },
+    "mapped_instances_synthetic/blob": {
+      "fnv1a64": "ef49cc95ac766605",
+      "bytes": 1008
+    },
+    "mapped_instances_synthetic/manifest": {
+      "fnv1a64": "c8b803d157e5465f",
+      "bytes": 31107
+    },
+    "multicolor_element/blob": {
+      "fnv1a64": "9f218475d7763325",
+      "bytes": 2016
+    },
+    "multicolor_element/manifest": {
+      "fnv1a64": "559308d64068a337",
+      "bytes": 1813
+    },
+    "wall_two_openings/blob": {
+      "fnv1a64": "664d47eb5c006168",
+      "bytes": 8224
+    },
+    "wall_two_openings/manifest": {
+      "fnv1a64": "3047a21d09493c90",
+      "bytes": 1148
+    }
+  }
+}

@@ -10,6 +10,11 @@ import { render, click, cleanup } from '@/test/render';
 import { installRegistryPopup, registryCallback, registryOAuthConfig, registryTokenReply } from '@/test/registry-oauth-fixture';
 import { RegistryTransport } from '@/lib/registry/transport';
 import { RegistryShares } from './RegistryShares';
+import { registerEnglish } from '@/i18n';
+import { registryEn } from '@/i18n/catalogues/registry.en';
+
+// The lazy RegistrySource parent registers these strings in the application.
+registerEnglish(registryEn);
 
 const originalFetch = globalThis.fetch; const cleanups: (() => void)[] = [];
 afterEach(async () => { await act(async () => cleanup()); cleanups.splice(0).reverse().forEach(f => f()); globalThis.fetch = originalFetch; });
@@ -32,7 +37,7 @@ test('share controls default to a version snapshot with explicit expiry and revo
   let pending = Promise.resolve(); let ui!: HTMLElement;
   await act(async () => { ui = render(<RegistryShares transport={transport} repository="project/model" tag="issued" busy={false} run={op => { pending = op(); }} />); });
   await act(async () => { click(button(ui, 'Manage shares')); await pending; });
-  const mode = ui.querySelector('select'); assert(mode); assert.equal(mode.value, 'snapshot');
+  const mode = ui.querySelector('[role="combobox"]'); assert(mode); assert.equal(mode.textContent, 'This version, read only');
   await act(async () => { click(button(ui, 'Create share link')); await pending; });
   assert.deepEqual(requests, [{ version: 1, registry: '127.0.0.1:5000', grants: [{ repositories: ['project/model'], tags: ['issued'], actions: ['pull'] }], ttl: 86400, binding: 'snapshot' }]);
   const link = [...ui.querySelectorAll('input')].find(input => input.readOnly); assert(link?.value.includes('#secret='));

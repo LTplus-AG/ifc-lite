@@ -50,8 +50,11 @@ std::unique_ptr<AdapterMesh> tessellate_mesh(SmBrep* solid, double chord, double
     mesh->info.source_face_count = source_faces.GetSize();
     mesh->info.boundary_edges = poly->GetNumberLaminaPolyEdges();
     mesh->info.spine_edges = poly->GetNumberSpinePolyEdges();
-    ensure(!report.inputManifold || (!mesh->info.boundary_edges && !mesh->info.spine_edges),
-        "manifold solid tessellation has boundary or spine edges");
+    // Every consumer requires a closed 2-manifold mesh, whatever the input BRep
+    // topology. A non-manifold Boolean result is a typed kernel refusal, never
+    // a success carrying lamina/spine edges (#7955).
+    ensure(!mesh->info.boundary_edges && !mesh->info.spine_edges,
+        "solid tessellation has boundary or spine edges");
     std::unordered_map<SmPolyVertex*,uint32_t> vertex_ids;
     for (auto* triangle : polygons) {
         ensure(triangle->IsTriangle(),"upstream triangulator left non-triangle polygon");

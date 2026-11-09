@@ -5,9 +5,12 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { ChevronDown, ChevronRight, Database } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { useDialogs } from '@/components/ui/confirm-dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { useTranslation } from '@/i18n';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { registerEnglish, useTranslation } from '@/i18n';
+import { registryEn } from '@/i18n/catalogues/registry.en';
 import { useViewerStore } from '@/store';
 import { useIfcLoader } from '@/hooks/useIfcLoader';
 import { sanitizeFilename } from '@/lib/export/download';
@@ -19,6 +22,8 @@ import { RegistryArtifacts, type RegistryRelease } from '@/lib/registry/artifact
 import { exportRegistryModel } from '@/lib/registry/export-model';
 import { RegistryShares } from './RegistryShares';
 import { RegistryPublication, RegistryReleaseDetails } from './RegistryReleaseDetails';
+
+registerEnglish(registryEn);
 
 interface RegistrySourceProps {
   expanded: boolean; navigationDisabled: boolean;
@@ -35,10 +40,11 @@ function nextVersion(releases: RegistryRelease[]): string {
 /** OCI-specific browsing and publishing inside the common Cloud Sources layout. */
 export function RegistrySource({ expanded, navigationDisabled, onToggle, onBusyChange }: RegistrySourceProps) {
   const { t } = useTranslation();
+  const { confirmDialog } = useDialogs();
   const id = useId();
   const [transport] = useState(() => registryTransport(window.location.origin));
   const [artifacts] = useState(() => new RegistryArtifacts(transport));
-  const { address, session, models, modelTitles, catalogNext, releases, repository, release, version, fingerprint, published } = useRegistryWorkspace();
+  const { address, session, signOutPending, models, modelTitles, catalogNext, releases, repository, release, version, fingerprint, published } = useRegistryWorkspace();
   const selected = releases.find(item => item.tag === release);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -79,12 +85,27 @@ export function RegistrySource({ expanded, navigationDisabled, onToggle, onBusyC
     if (requested && !available.some(item => item.tag === requested)) setError(t('registry.releaseMissing'));
   };
   const pull = async (reference: string, signal: AbortSignal) => {
+    const before = useViewerStore.getState();
+    if (before.models.size && !await confirmDialog({
+      description: t('registry.replaceWarning'), confirmLabel: t('registry.replaceSession'), destructive: true,
+    })) return;
+    signal.throwIfAborted();
     const received = await artifacts.pull(repository, reference, signal);
     signal.throwIfAborted();
-    await loadFile(new File([received.bytes], sanitizeFilename(received.filename, { fallback: 'model.ifc' }), { type: 'application/x-step' }));
+    const current = useViewerStore.getState();
+    if (current.models !== before.models || current.mutationVersion !== before.mutationVersion) {
+      throw new RegistryError(t('registry.sessionChanged'));
+    }
+    const modelId = crypto.randomUUID();
+    await loadFile(new File([received.bytes], sanitizeFilename(received.filename, { fallback: 'model.ifc' }), { type: 'application/x-step' }), { kind: 'primary', modelId });
     signal.throwIfAborted();
-    const loadError = useViewerStore.getState().error;
+    const state = useViewerStore.getState();
+    const loaded = state.models.get(modelId);
+    const loadError = loaded?.loadError ?? state.error;
     if (loadError) throw new RegistryError(loadError);
+    if (state.activeModelId !== modelId || loaded?.loadState !== 'complete' || !loaded.ifcDataStore) {
+      throw new RegistryError(t('registry.notOpened'));
+    }
     update({ fingerprint: received.digest });
     setMessage(t('registry.opened', { name: selected?.title ?? displayModel(repository), version: selected ? releaseLabel(selected) : t('registry.savedRelease') }));
   };
@@ -93,6 +114,7 @@ export function RegistrySource({ expanded, navigationDisabled, onToggle, onBusyC
     const current = useRegistryWorkspace.getState();
     if (current.session?.openArtifact || (current.session && current.models.length)) return;
     const controller = new AbortController();
+    pending.current = controller;
     void (async () => {
       try {
         const session = await transport.restore(controller.signal);
@@ -107,6 +129,8 @@ export function RegistrySource({ expanded, navigationDisabled, onToggle, onBusyC
         if (!controller.signal.aborted && !(error instanceof DOMException && error.name === 'AbortError')) {
           console.warn('[registry] Could not restore the browser session', error instanceof Error ? error.message : 'unknown error');
         }
+      } finally {
+        if (pending.current === controller) pending.current = null;
       }
     })();
     return () => controller.abort();
@@ -114,16 +138,19 @@ export function RegistrySource({ expanded, navigationDisabled, onToggle, onBusyC
 
   return <li className={`rounded-lg border bg-background ${expanded ? 'border-primary/40' : ''}`}>
     <div className="flex items-center gap-1 p-2">
-      <button type="button" disabled={navigationDisabled || busy} onClick={onToggle} aria-expanded={expanded} aria-controls={`${id}-content`}
-        className="flex min-w-0 flex-1 items-center gap-2 rounded-md p-1.5 text-left hover:bg-accent disabled:cursor-default">
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-muted"><Database className="h-5 w-5 text-muted-foreground" aria-hidden="true" /></span>
+      <Button type="button" variant="ghost" disabled={navigationDisabled || busy} onClick={onToggle} aria-expanded={expanded} aria-controls={`${id}-content`}
+        className="h-auto min-w-0 flex-1 justify-start whitespace-normal p-1.5 text-left font-normal disabled:pointer-events-auto disabled:cursor-default disabled:opacity-100">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-muted"><Database className="!size-5 text-muted-foreground" aria-hidden="true" /></span>
         <span className="min-w-0 flex-1"><span className="block text-sm font-medium">{t('registry.title')}</span>
           <span className="block truncate text-xs text-muted-foreground">{session ? t('registry.connected') : t('sources.workspace.notConnected')}</span></span>
         {expanded ? <ChevronDown className="h-4 w-4 shrink-0" aria-hidden="true" /> : <ChevronRight className="h-4 w-4 shrink-0" aria-hidden="true" />}
-      </button>
+      </Button>
     </div>
     <fieldset id={`${id}-content`} hidden={!expanded} disabled={navigationDisabled} aria-label={t('registry.title')} className="min-w-0 space-y-3 border-t p-3">
-      {!session ? <form className="grid gap-2" onSubmit={event => {
+      {signOutPending ? <div className="grid gap-2">
+        <p className="text-sm">{t('registry.signOutPending')}</p>
+        <Button disabled={busy} onClick={logout}>{t('registry.retrySignOut')}</Button>
+      </div> : !session ? <form className="grid gap-2" onSubmit={event => {
         event.preventDefault();
         void run(async signal => {
           const connection = parseRegistryAddress(address);
@@ -149,19 +176,21 @@ export function RegistrySource({ expanded, navigationDisabled, onToggle, onBusyC
           <Button size="sm" variant="ghost" disabled={busy} onClick={logout}>{t('registry.signOut')}</Button>
         </div>
         {session.openArtifact ? <RegistryLaunchControls transport={transport} busy={busy} run={operation => void run(operation)} /> : models.length ? <>
-          <Label htmlFor={`${id}-model`}>{t('registry.model')}</Label>
-          <select id={`${id}-model`} value={repository} disabled={busy} className="h-9 w-full min-w-0 rounded-md border bg-background px-2 text-sm" onChange={event => void run(signal => browseModel(event.target.value, signal))}>
-            {models.map(model => <option key={model} value={model}>{modelTitles[model] || displayModel(model)}</option>)}
-          </select>
+          <Label id={`${id}-model-label`} htmlFor={`${id}-model`}>{t('registry.model')}</Label>
+          <Select value={repository} disabled={busy} onValueChange={value => void run(signal => browseModel(value, signal))}>
+            <SelectTrigger id={`${id}-model`} aria-labelledby={`${id}-model-label`} className="min-w-0"><SelectValue /></SelectTrigger>
+            <SelectContent>{models.map(model => <SelectItem key={model} value={model}>{modelTitles[model] || displayModel(model)}</SelectItem>)}</SelectContent>
+          </Select>
           <div className="flex items-center justify-between gap-2">
             <p className="text-xs text-muted-foreground">{t(transport.can('push', repository) ? 'registry.writable' : 'registry.readOnly')}</p>
             <Button size="sm" variant="ghost" disabled={busy} onClick={() => void run(signal => browseModel(repository, signal))}>{t('registry.refresh')}</Button>
           </div>
           {releases.length ? <>
-            <Label htmlFor={`${id}-release`}>{t('registry.release')}</Label>
-            <select id={`${id}-release`} value={release} disabled={busy} className="h-9 w-full min-w-0 rounded-md border bg-background px-2 text-sm" onChange={event => update({ release: event.target.value, fingerprint: '' })}>
-              {releases.map(item => <option key={item.tag} value={item.tag}>{releaseLabel(item)}</option>)}
-            </select>
+            <Label id={`${id}-release-label`} htmlFor={`${id}-release`}>{t('registry.release')}</Label>
+            <Select value={release} disabled={busy} onValueChange={value => update({ release: value, fingerprint: '' })}>
+              <SelectTrigger id={`${id}-release`} aria-labelledby={`${id}-release-label`} className="min-w-0"><SelectValue /></SelectTrigger>
+              <SelectContent>{releases.map(item => <SelectItem key={item.tag} value={item.tag}>{releaseLabel(item)}</SelectItem>)}</SelectContent>
+            </Select>
             {selected && <RegistryPublication release={selected} />}
             <Button disabled={busy || !release} onClick={() => void run(signal => pull(release, signal))}>{t('registry.open')}</Button>
           </> : <p className="text-sm text-muted-foreground">{t('registry.noReleases')}</p>}
@@ -169,11 +198,13 @@ export function RegistrySource({ expanded, navigationDisabled, onToggle, onBusyC
             <p className="text-xs text-muted-foreground">{modelName ? t('registry.activeModel', { name: modelName }) : t('registry.noModel')}</p>
             <Label htmlFor={`${id}-version`}>{t('registry.newVersion')}</Label>
             <Input id={`${id}-version`} value={version} onChange={event => update({ version: event.target.value })} disabled={busy || !transport.can('push', repository)} />
-            <Button disabled={busy || !modelName || !version || !transport.can('push', repository, version)} onClick={() => void run(async signal => {
+            {transport.can('push', repository, version) && !transport.can('pull', repository, version) && <p className="text-xs text-muted-foreground">{t('registry.publishNeedsRead')}</p>}
+            <Button disabled={busy || !modelName || !version || !transport.can('push', repository, version) || !transport.can('pull', repository, version)} onClick={() => void run(async signal => {
               const source = await exportRegistryModel(); signal.throwIfAborted();
               const digest = await artifacts.publish(repository, version, source.bytes, source.filename, signal);
-              const info = await artifacts.describe(repository, version, signal);
-              signal.throwIfAborted();
+              // The manifest PUT commits publication. Metadata is optional and
+              // can be fetched by Refresh versions without turning success into failure.
+              const info: RegistryRelease = { tag: version, digest, title: source.filename.replace(/\.ifc$/i, '') };
               update({ fingerprint: digest, published: digest, release: version, releases: [info, ...releases.filter(item => item.tag !== version)], tags: [...new Set([...releases.map(item => item.tag), version])] });
               setMessage(t('registry.published', { version }));
             })}>{t('registry.publish')}</Button>

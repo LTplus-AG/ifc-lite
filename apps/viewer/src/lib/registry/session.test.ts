@@ -251,3 +251,25 @@ test('only blob GETs follow object-storage redirects; metadata and writes reject
   await client.request(blob, { method: 'PUT', redirect: 'follow', body: 'content' });
   assert.deepEqual(policies.map(item => item.redirect), ['follow', 'error', 'error', 'error', 'error', 'error']);
 });
+
+test('session renewal does not treat the first push-only grant as an open request (#8310)', async context => {
+  let now = Date.now(); context.mock.method(Date, 'now', () => now);
+  popup(); const client = transport(); let renewals = 0;
+  globalThis.fetch = async (input, init) => {
+    const path = urlOf(input).pathname;
+    if (path === '/oauth/config') return Response.json(registryOAuthConfig(registry));
+    if (path === '/oauth/token') {
+      if (new URLSearchParams(String(init?.body)).get('grant_type') === 'refresh_token') renewals++;
+      return Response.json({ ...registryTokenReply(), authorization_type: 'session',
+        access: [{ type: 'registry', name: 'catalog', actions: ['read'] }],
+        permissions: [{ repositories: ['uploads/model'], actions: ['push'] }, { repositories: ['readable/**'], actions: ['pull'] }] });
+    }
+    assert.equal(path, '/v2/_catalog');
+    return Response.json({ repositories: ['readable/model'] });
+  };
+  await client.login(null); const deadline = client.session?.sessionExpiresAt;
+  now += 901000;
+  assert.deepEqual(await (await client.request('/v2/_catalog')).json(), { repositories: ['readable/model'] });
+  assert.equal(renewals, 1); assert.equal(client.session?.sessionExpiresAt, deadline);
+  assert(client.can('pull', 'readable/model')); assert(client.can('push', 'uploads/model'));
+});

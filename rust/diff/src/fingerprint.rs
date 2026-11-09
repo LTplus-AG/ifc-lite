@@ -32,7 +32,7 @@ use crate::JsString;
 use crate::sparse_collection::SparseCollection;
 
 use crate::input::{DataFingerprintInput, PropertyEntryInput, PropertyValue, TypeAssignmentInput};
-use crate::js_json::{cmp_sorted, non_finite_token, stringify_sorted, JsonValue};
+use crate::js_json::{cmp_sorted, non_finite_token, JsonValue};
 
 #[path = "fingerprint_checked.rs"]
 mod checked;
@@ -83,34 +83,23 @@ fn normalize_value(value: &PropertyValue) -> NormalizedValue {
     match value {
         PropertyValue::Null => NormalizedValue::Null,
         PropertyValue::Bool(flag) => NormalizedValue::Bool(*flag),
-        PropertyValue::Number(number) => {
-            if number.is_finite() {
-                NormalizedValue::Number(*number)
-            } else {
-                NormalizedValue::String(non_finite_token(*number).into())
-            }
-        }
-        PropertyValue::String(text) => NormalizedValue::String(text.clone()),
-        composite => NormalizedValue::String(stringify_sorted(&to_json_value(composite)).into()),
+        PropertyValue::Number(number) if number.is_finite() => NormalizedValue::Number(*number),
+        _ => NormalizedValue::String(canonical_value_string(value).expect("text-normalized value")),
     }
 }
 
-/// Lift a raw adapter value into the serializer's value type, unchanged.
-fn to_json_value(value: &PropertyValue) -> JsonValue {
+/// The text produced when fingerprint normalization collapses a value to a string.
+///
+/// Strings are kept verbatim, non-finite scalars become their ECMAScript token,
+/// and composites use the diff engine's sorted-key JSON serializer. Null,
+/// booleans and finite numbers retain their scalar type and return `None`.
+/// Other adapters should use this function rather than choose another JSON form.
+pub fn canonical_value_string(value: &PropertyValue) -> Option<JsString> {
     match value {
-        PropertyValue::Null => JsonValue::Null,
-        PropertyValue::Bool(flag) => JsonValue::Bool(*flag),
-        PropertyValue::Number(number) => JsonValue::Number(*number),
-        PropertyValue::String(text) => JsonValue::String(text.clone()),
-        PropertyValue::Array(items) => {
-            JsonValue::Array(items.iter().map(to_json_value).collect())
-        }
-        PropertyValue::Object(entries) => JsonValue::Object(
-            entries
-                .iter()
-                .map(|(key, item)| (key.clone(), to_json_value(item)))
-                .collect(),
-        ),
+        PropertyValue::String(text) => Some(text.clone()),
+        PropertyValue::Number(number) if !number.is_finite() => Some(non_finite_token(*number).into()),
+        PropertyValue::Array(_) | PropertyValue::Object(_) => Some(crate::property_json::stringify_property_sorted(value).into()),
+        _ => None,
     }
 }
 
@@ -264,3 +253,7 @@ mod sparse_tests;
 #[cfg(test)]
 #[path = "fingerprint_counted_tests.rs"]
 mod counted_tests;
+
+#[cfg(test)]
+#[path = "fingerprint_set_ordinal_tests.rs"]
+mod set_ordinal_tests;

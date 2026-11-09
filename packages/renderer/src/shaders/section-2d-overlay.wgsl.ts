@@ -19,7 +19,10 @@
  */
 
 import { overlayDepthLiftWgsl } from './depth-nudge.wgsl.js';
-import { extraClipWgsl } from '../extra-clip-planes.js';
+import { MAX_CAP_CLIP_PLANES, extraClipWgslFor } from '../extra-clip-planes.js';
+
+/** The cap shaders' clip block: every other cutting plane and the section-box faces (#8696). */
+const capClipWgsl = extraClipWgslFor(MAX_CAP_CLIP_PLANES);
 
 /**
  * Float32 indices of each field in the shared uniform buffer.
@@ -103,8 +106,8 @@ export const SECTION_2D_UNIFORM_SLOT_INDEX = {
   extraCap: 1 + SECTION_2D_MAX_LINE_PARTITIONS * 7,
 } as const;
 
-/** Caps of the planes beyond the first (`MAX_EXTRA_CLIP_PLANES`). */
-export const SECTION_2D_MAX_EXTRA_CAPS = 7;
+/** Caps beyond the first: one per extra plane (`MAX_EXTRA_CLIP_PLANES`) and one per section-box face (#8696). */
+export const SECTION_2D_MAX_EXTRA_CAPS = 7 + 6;
 
 /** One cap record, a partition range for every line family, and a cap record per extra plane. */
 export const SECTION_2D_UNIFORM_SLOT_COUNT = 1 + SECTION_2D_MAX_LINE_PARTITIONS * 7 + SECTION_2D_MAX_EXTRA_CAPS;
@@ -132,10 +135,12 @@ export function sectionUniformSlotStride(device: GPUDevice): number {
  * wall/slab fills each layer with its own IfcMaterial colour, matching the 3D
  * build-up. Polygons that pass the sentinel alpha -1 fall back to the uniform
  * cap style, so single-material cuts read as one architectural section exactly
- * as before. Hatch + stroke apply over either base.
+ * as before. Hatch + stroke apply over either base; a polygon's own hatch
+ * fields (`CutPolygon2D.hatch`, flagged per field in the override mask) replace
+ * the uniform ones, so each material layer can carry its own cut pattern.
  */
 export const SECTION_2D_CAP_FILL_WGSL = /* wgsl */ `
-        ${extraClipWgsl}
+        ${capClipWgsl}
         struct Uniforms {
           viewProj:       mat4x4<f32>,
           planeOffset:    vec4<f32>,    // Small offset to render slightly in front of section plane
@@ -155,15 +160,24 @@ export const SECTION_2D_CAP_FILL_WGSL = /* wgsl */ `
         // in the frame clipPos is expressed in. Count 0 = nothing to clip against.
         @binding(0) @group(1) var<uniform> extraClip: ExtraClip;
 
+        // Mirrors CAP_FILL_VERTEX_ATTRIBUTES (section-2d-lift.ts).
         struct VertexInput {
-          @location(0) position: vec3<f32>,
-          @location(1) color:    vec4<f32>,
+          @location(0) position:    vec3<f32>,
+          @location(1) color:       vec4<f32>,
+          // Per-polygon hatch: x=patternId, y=spacingPx, z=angleRad, w=widthPx
+          @location(2) hatchA:      vec4<f32>,
+          // x=secondaryAngleRad, y=override mask (CAP_HATCH_OVERRIDE), z,w unused
+          @location(3) hatchB:      vec4<f32>,
+          @location(4) hatchStroke: vec4<f32>,
         }
 
         struct VertexOutput {
           @builtin(position) position: vec4<f32>,
           @location(0)       color:    vec4<f32>,
           @location(1)       clipPos:  vec3<f32>,
+          @location(2) @interpolate(flat) hatchA:      vec4<f32>,
+          @location(3) @interpolate(flat) hatchB:      vec4<f32>,
+          @location(4) @interpolate(flat) hatchStroke: vec4<f32>,
         }
 
         @vertex
@@ -175,6 +189,9 @@ export const SECTION_2D_CAP_FILL_WGSL = /* wgsl */ `
           output.position = select(global, uniforms.rteViewProj * vec4<f32>(relative, 1.0), uniforms.originDeltaHigh.w == 1.0);
           output.color = input.color;
           output.clipPos = relative;
+          output.hatchA = input.hatchA;
+          output.hatchB = input.hatchB;
+          output.hatchStroke = input.hatchStroke;
           return output;
         }
 
@@ -245,11 +262,17 @@ export const SECTION_2D_CAP_FILL_WGSL = /* wgsl */ `
         @fragment
         fn fs_main(input: VertexOutput) -> FragOut {
           if (extraClipClipped(extraClip, input.clipPos)) { discard; }
-          let patternId = u32(uniforms.params.x + 0.5);
-          let spacing   = max(2.0, uniforms.params.y);
-          let angle     = uniforms.params.z;
-          let width     = max(1.0, uniforms.params.w);
-          let angle2    = uniforms.params2.x;
+          // Per-polygon hatch (CutPolygon2D.hatch): each field whose override
+          // bit is set replaces the uniform cap style; mask 0 (no hatch) keeps
+          // the uniform values exactly.
+          let mask      = u32(input.hatchB.y + 0.5);
+          let params    = select(uniforms.params, input.hatchA, (vec4<u32>(mask) & vec4<u32>(1u, 2u, 4u, 8u)) != vec4<u32>(0u));
+          let stroke    = select(uniforms.capStrokeColor, input.hatchStroke, (mask & 32u) != 0u);
+          let patternId = u32(params.x + 0.5);
+          let spacing   = max(2.0, params.y);
+          let angle     = params.z;
+          let width     = max(1.0, params.w);
+          let angle2    = select(uniforms.params2.x, input.hatchB.x, (mask & 16u) != 0u);
 
           let h = hatchIntensity(input.position.xy, patternId, spacing, angle, width, angle2);
           // Per-polygon colour (a material-layer slab fills with its own
@@ -259,8 +282,8 @@ export const SECTION_2D_CAP_FILL_WGSL = /* wgsl */ `
           // whichever base is chosen, so the architectural hatch still works.
           let useVertex = input.color.a >= 0.0;
           let baseFill = select(uniforms.capFillColor, input.color, useVertex);
-          let rgb = mix(baseFill.rgb, uniforms.capStrokeColor.rgb, h * uniforms.capStrokeColor.a);
-          let a   = max(baseFill.a, h * uniforms.capStrokeColor.a);
+          let rgb = mix(baseFill.rgb, stroke.rgb, h * stroke.a);
+          let a   = max(baseFill.a, h * stroke.a);
 
           var out: FragOut;
           out.color    = vec4<f32>(rgb, a);
@@ -292,7 +315,7 @@ function lineShaderWgsl(clipped: boolean): string {
           originDeltaLow: vec4<f32>,
         }
         @binding(0) @group(0) var<uniform> uniforms: Uniforms;
-        ${clipped ? `${extraClipWgsl}
+        ${clipped ? `${capClipWgsl}
         @binding(0) @group(1) var<uniform> extraClip: ExtraClip;` : ''}
         ${overlayDepthLiftWgsl}
 

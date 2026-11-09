@@ -69,6 +69,12 @@ pub enum RetainedExecutionError {
     Unsupported(Unsupported),
     /// #7955 M11-F: a published triangle has no unique source face (`unattributed`/`ambiguous`).
     FaceProvenance { cause: &'static str, entity: Option<u32> },
+    /// #7955: a curved construction's own tessellation is outside the curved
+    /// volume tolerance of its exact sweep (`chordal.rs`). Settled after
+    /// every invocation returned; the worker stays healthy.
+    ChordalVolume { entity: Option<u32> },
+    /// #7955: material the kernel left beyond a plane clip, past the volume limit (`clip_sliver.rs`).
+    ClipSliver { entity: Option<u32> },
     Stopped(ProgramStop),
     /// A presentation slice (M11) declined to attest the product: explicit
     /// absence with its typed origin, never a fabricated value.
@@ -159,7 +165,7 @@ impl RetainedExecutionError {
             return true;
         }
         matches!(self, Self::Stopped(_) | Self::Source(_) | Self::Core(_)
-            | Self::DeadlineExceeded
+            | Self::DeadlineExceeded | Self::ChordalVolume { .. } | Self::ClipSliver { .. }
             | Self::Unsupported(_) | Self::InvalidTypeSource
             | Self::Owner(WorkError::StaleSource | WorkError::Aborted)
             | Self::Recipe(RetainedRefusal::InvalidSource(_)
@@ -186,6 +192,8 @@ impl RetainedExecutionError {
                 | Self::Geometry(_)
                 | Self::DeadlineExceeded
                 | Self::Unsupported(_)
+                | Self::ChordalVolume { .. }
+                | Self::ClipSliver { .. }
                 | Self::InvalidTypeSource
                 | Self::Receipt(ReceiptFailure::ConflictingRetainedNumericalOutcome)
                 | Self::Transition(CANCELLED)

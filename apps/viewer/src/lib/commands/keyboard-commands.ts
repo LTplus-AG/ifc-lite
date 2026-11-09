@@ -123,6 +123,7 @@ export const KEY_COMMANDS = [
   { id: 'command.column.rotate', labelKey: 'commands.command.columnRotate', category: 'tools', when: 'command.column.place', keys: [k('r')] },
   { id: 'model.wall', labelKey: 'commands.model.wall', category: 'tools', when: 'workspace.model', keys: [k('w')] },
   { id: 'model.slab', labelKey: 'commands.model.slab', category: 'tools', when: 'workspace.model', keys: [k('s', { shift: true })] },
+  { id: 'model.roof', labelKey: 'commands.model.roof', category: 'tools', when: 'workspace.model', keys: [k('y', { shift: true })] },
   { id: 'model.column', labelKey: 'commands.model.column', category: 'tools', when: 'workspace.model', keys: [k('c', { shift: true })] },
   { id: 'model.beam', labelKey: 'commands.model.beam', category: 'tools', when: 'workspace.model', keys: [k('b', { shift: true })] },
   { id: 'model.room', labelKey: 'commands.model.room', category: 'tools', when: 'workspace.model', keys: [k('o', { shift: true })] },

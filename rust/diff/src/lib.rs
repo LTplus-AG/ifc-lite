@@ -70,6 +70,7 @@ pub mod sidecar_document;
 // one thing outside callers need is `stable_hash`, re-exported below because
 // `@ifc-lite/merge` hashes component snapshots with it.
 mod js_json;
+mod property_json;
 mod projections;
 mod utf16;
 
@@ -96,7 +97,7 @@ mod sidecar_parse;
 
 mod sidecar_value;
 
-pub use sidecar_value::{JsString, DocumentValue};
+pub use sidecar_value::{JsString, DocumentValue, JsHash};
 pub mod document_serde;
 mod document_ser;
 mod document_key_ser;

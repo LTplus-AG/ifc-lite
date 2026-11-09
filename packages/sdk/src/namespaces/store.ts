@@ -200,9 +200,13 @@ export class StoreNamespace extends StoreGroupNamespace {
   }
 
   /**
-   * Add an IfcRoof — flat-roof slab variant. Same rectangle/polygon
-   * profile shapes as `addSlab` but emits an IfcRoof entity with
-   * `.FLAT_ROOF.` PredefinedType.
+   * Add an IfcRoof. Without `EdgeSlopes`/`Overhang` it is a flat roof slab
+   * (the rectangle/polygon shapes of `addSlab`, `.FLAT_ROOF.`). With them it
+   * is a roof by footprint: `EdgeSlopes[i]` (radians, 0 = gable end) slopes
+   * the edge from point i to point i+1, the underside passes through every
+   * sloped edge at `Position`'s height, and `Overhang` (metres) carries every
+   * edge out. Hip, gable, mono-pitch and L-shaped roofs; change one later with
+   * `editRoof`.
    */
   addRoof(modelId: string, storeyExpressId: number, params: AddRoofInStoreParams): EntityRef {
     return this.backend.store.addRoof(modelId, storeyExpressId, params);

@@ -101,11 +101,14 @@ pub async fn run_model_with_worker<W: AsyncRetainedExecutor>(
     }
     let mut resolved = crate::prepass::resolve_prepass(&spans, &mut decoder, Default::default());
     super::presentation::material_styles::join(&mut resolved, &mut decoder);
-    let snapshot = ProductionModel::from_source(source.clone()).snapshot(OwnedMeshProductionData {
+    let (texture_index, vertex_lists) = ifc_lite_geometry::build_texture_index_with_vertex_lists(source.bytes(), &mut decoder);
+    let model = ProductionModel::from_source(source.clone()).with_texture_vertex_lists(vertex_lists);
+    let snapshot = model.snapshot(OwnedMeshProductionData {
         void_index: Arc::new(resolved.void_index),
         geometry_style_index: Arc::new(resolved.geometry_style_index),
         indexed_colour_full: Arc::new(resolved.indexed_colour_full),
         element_material_colors: Arc::new(resolved.element_material_colors),
+        texture_index: Arc::new(texture_index),
         ..Default::default()
     });
     let mut router = GeometryRouter::with_units(source.bytes(), &mut decoder);
@@ -174,6 +177,8 @@ pub async fn run_model_with_worker<W: AsyncRetainedExecutor>(
                 // A band-phase fault spends only the layer allowance, never the
                 // restarts later non-layer products need (#7955).
                 restart_budget.layer_retirement();
+            } else if outcome.as_ref().err().is_some_and(super::kernel_refusal::is_typed_refusal) {
+                restart_budget.kernel_refusal();
             }
             *worker = None;
         }

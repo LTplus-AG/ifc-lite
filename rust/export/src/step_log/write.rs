@@ -153,6 +153,14 @@ fn write_line<W: Write>(
     out.write_all(b"\n").map(|()| true)
 }
 
+/// The header, naming the source's schema token unless this export converts,
+/// with how many records the log modified.
+fn write_header<W: Write>(out: &mut W, opts: &StepOptions, content: &[u8], converting: bool, target: &str, modifications: usize) -> io::Result<()> {
+    let source_header = crate::source_header::parse_source_header(content);
+    let header_schema = crate::file_schema::declared_token(source_header.as_ref(), converting, target);
+    crate::step_header::write_header_counted(out, opts, source_header.as_ref(), header_schema, modifications)
+}
+
 fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &mut W) -> io::Result<LogExportStats> {
     if opts.included.is_some() {
         return Err(invalid("export_step_with_log: `included` is not supported with a mutation log"));
@@ -245,15 +253,15 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
     generate(&mut pass, collected).map_err(unwritable)?;
     write_created(&mut pass).map_err(unwritable)?;
 
-    let modifications = pass.new_entity_count + pass.ledger.modified_count();
-    let source_header = crate::source_header::parse_source_header(content);
-    let header_schema = crate::file_schema::declared_token(source_header.as_ref(), converting, &target);
-    crate::step_header::write_header_counted(out, opts, source_header.as_ref(), header_schema, modifications)?;
+    write_header(out, opts, content, converting, &target, pass.new_entity_count + pass.ledger.modified_count())?;
+    // IFC2X3 places one product per placement (#9209): its records are held to adapt them.
+    let mut body = crate::schema_ifc2x3_placements::Body::new(&mut *out, target_is_ifc2x3);
 
     let mut slot_fill = crate::schema_ifc2x3_slots::Ifc2x3SlotFill::new(pass.fallback_owner_history());
     let mut checks = crate::schema_enum::ConversionChecks::new();
     let mut flatten = crate::schema_style_flatten::StyleFlatten::for_export(content, &source_label, &target); flatten.note_all(content, pass.mutated_lines.iter().filter_map(|(id, (t, _))| Some((*id, t.as_deref()?)))
         .chain(pass.generated.iter().chain(&pass.rewritten_lines).chain(&pass.georef_lines).chain(&pass.created_lines).map(|(id, l)| (*id, l.as_str()))));
+    flatten.retain_grids(|id| !pass.skip.contains(&id) && !pass.is_deleted(id));
     let mut written = 0usize;
     for &id in &src.order {
         if pass.skip.contains(&id) || pass.rewritten.contains(&id) || pass.is_deleted(id) || flatten.drops(id) {
@@ -289,7 +297,7 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
                 &owned
             }
         };
-        written += usize::from(write_line(out, text, id, converting, &source_label, &target, &mut slot_fill, &mut checks, &flatten)?);
+        written += usize::from(write_line(&mut body, text, id, converting, &source_label, &target, &mut slot_fill, &mut checks, &flatten)?);
     }
     // Every appended record goes out through the same `write_line` as a
     // source one, in the TypeScript exporter's order: generated sets, the
@@ -304,8 +312,9 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
         .chain(&pass.georef_lines)
         .chain(&pass.created_lines);
     for (id, line) in appended.filter(|(id, _)| !flatten.drops(*id)) {
-        written += usize::from(write_line(out, line, *id, converting, &source_label, &target, &mut slot_fill, &mut checks, &flatten)?);
+        written += usize::from(write_line(&mut body, line, *id, converting, &source_label, &target, &mut slot_fill, &mut checks, &flatten)?);
     }
+    written = written.checked_add_signed(body.finish()?).unwrap_or(written);
     out.write_all(b"ENDSEC;\nEND-ISO-10303-21;\n")?;
 
     let mut warnings = std::mem::take(&mut pass.warnings);

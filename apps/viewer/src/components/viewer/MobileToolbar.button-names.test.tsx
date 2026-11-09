@@ -7,14 +7,14 @@ import { afterEach, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { BimContext } from '@ifc-lite/sdk';
 import { BimReactContext } from '@/sdk/BimProvider';
-import { render, cleanup } from '@/test/render';
+import { render, cleanup, press, advance } from '@/test/render';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { useViewerStore } from '@/store';
 import { MobileToolbar } from './MobileToolbar';
 
 afterEach(cleanup);
 
-it('names Open file, Add model, and More actions buttons with a model loaded (#5839)', () => {
+it('names Open file, Add model, and More actions buttons with a model loaded (#5839)', async () => {
   useViewerStore.setState({ ...fixtureModels(fixtureModel('model', { idOffset: 0 })), loading: false });
   const toolbar = render(
     <BimReactContext.Provider value={{} as BimContext}>
@@ -31,6 +31,12 @@ it('names Open file, Add model, and More actions buttons with a model loaded (#5
   };
 
   assert.ok(getByRole('button', { name: 'Open file' }));
-  assert.ok(getByRole('button', { name: 'Add model' }));
-  assert.ok(getByRole('button', { name: 'More actions' }));
+  const more = getByRole('button', { name: 'More actions' });
+
+  // Add model lives in More since the 44px phone targets (#8802); it keeps its name there.
+  press(more, 'ArrowDown');
+  await advance(10);
+  const addModel = [...document.querySelectorAll('[role="menuitem"]')]
+    .filter((item) => item.textContent?.trim() === 'Add model');
+  assert.equal(addModel.length, 1, 'More actions holds one item named "Add model"');
 });

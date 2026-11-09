@@ -37,6 +37,11 @@ pub(super) fn apply_plane(part: &mut super::super::publication::ShapePart, from_
     mesh::plane::apply(part,from_part,origin,normal,triangles,resources)
 }
 
+pub(super) fn apply_row_facets(part: &mut super::super::publication::ShapePart, row_normal: [f64;3],
+    triangles: &[usize], resources: &super::OwnedResourceContext) -> Result<(),RetainedExecutionError> {
+    mesh::plane::apply_row_facets(part,row_normal,triangles,resources)
+}
+
 fn require_frame(part: &super::super::publication::ShapePart) -> Result<(), RetainedExecutionError> {
     // M10 bakes reflections into positions and winding before generating normals.
     // An unbaked negative frame still violates the publication contract.
@@ -56,7 +61,7 @@ mod tests {
             layer: None, capped_volume_m3: None,
             positions: vec![], indices: vec![], revision_local_faces: vec![],
             world_from_object: [-2.,0.,0.,0., 0.,3.,0.,0., 0.,0.,4.,0., 0.,0.,0.,1.],
-            curved: false, halfspace_clipped: false, normals: None, appearance: None, faces: None, instance_key: None,
+            curved: false, halfspace_clipped: false, normals: None, appearance: None, faces: None, instance_key: None, source_exact: false, surface: None,
         };
         assert_eq!(require_frame(&part).unwrap_err().refusal().0.code(), "incomplete");
         part.world_from_object[0] = 2.;

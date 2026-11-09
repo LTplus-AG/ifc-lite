@@ -118,3 +118,88 @@ fn disk(sources: &AnalyticQuantitySources, instance: &ExtrusionInstance, areas: 
     for role in ["disk(start)", "disk(end)"] { add(areas, key(instance.solid_id, 0, role), std::f64::consts::PI * r * r, true); }
     Some(())
 }
+
+/// A maximal run of consecutive line sides of one profile loop whose segments lie
+/// on one straight line, in loop order (#7955 ruling 3). The kernel may fold a
+/// short side of such a run into its neighbour; nothing here decides whether it did.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CollinearRun {
+    pub keys: Vec<String>,
+    /// #7955 ruling 19: a run of arc sides on one circle, not of collinear lines.
+    pub arcs: bool,
+    /// The whole loop, linked all round: its last side's neighbour is its first.
+    pub closed: bool,
+    /// World width of each side (its swept segment length), metres.
+    pub widths_m: Vec<f64>,
+}
+/// Endpoint offset (profile units, relative to the longer segment) below which two
+/// consecutive line segments count as collinear. Authored collinear runs repeat
+/// one coordinate exactly (dental_clinic #40805→#40806 on y = 1.507365711283794).
+const COLLINEAR_OFFSET_RELATIVE: f64 = 1e-12;
+
+/// Two arc sides on one circle: the same centre and radius, to rounding of the radius.
+fn cocircular(a: &Edge, b: &Edge) -> bool {
+    let (Edge::Arc { c: ca, u: ua, .. }, Edge::Arc { c: cb, u: ub, .. }) = (a, b) else { return false };
+    let (ra, rb) = (ua[0].hypot(ua[1]), ub[0].hypot(ub[1]));
+    let tolerance = COLLINEAR_OFFSET_RELATIVE * ra.max(rb);
+    ra > 0. && (ra - rb).abs() <= tolerance && (ca[0] - cb[0]).hypot(ca[1] - cb[1]) <= tolerance
+}
+fn collinear(a: &Edge, b: &Edge) -> bool {
+    if cocircular(a, b) { return true; }
+    let (Edge::Line(a0, a1), Edge::Line(b0, b1)) = (a, b) else { return false };
+    let length = |p: &[f64; 2], q: &[f64; 2]| ((q[0] - p[0]).powi(2) + (q[1] - p[1]).powi(2)).sqrt();
+    let (reference, other) = if length(a0, a1) >= length(b0, b1) { ((a0, a1), [b0, b1]) } else { ((b0, b1), [a0, a1]) };
+    let span = length(reference.0, reference.1);
+    let d = [reference.1[0] - reference.0[0], reference.1[1] - reference.0[1]];
+    span > 0. && other.iter().all(|p| {
+        ((p[0] - reference.0[0]) * d[1] - (p[1] - reference.0[1]) * d[0]).abs() / span <= COLLINEAR_OFFSET_RELATIVE * span
+    })
+}
+
+/// Every run of two or more collinear line sides of an uncut product's complete
+/// authored extrusions. `None` exactly when [`uncut`] has no prediction.
+pub fn collinear_runs(sources: &AnalyticQuantitySources, product: u32) -> Option<Vec<CollinearRun>> {
+    uncut(sources, product)?;
+    let mut runs = Vec::new();
+    for instance in sources.extrusion_definitions.instances.get(&product).map_or(&[][..], Vec::as_slice) {
+        let source = &sources.extrusion_definitions.sources.iter().find(|s| s.key == instance.source)?.source;
+        let profile = source.profile.as_ref()?;
+        let solid = multiply(&instance.world_from_source?, source.position_matrix.as_ref().unwrap_or(&IDENTITY));
+        let s = scale(&multiply(&solid, profile.profile_position.as_ref().unwrap_or(&IDENTITY)))?;
+        for (index, boundary) in profile.loops.iter().enumerate() {
+            let edges = boundary.segments.iter().map(profile_edge).collect::<Option<Vec<_>>>()?;
+            let n = edges.len();
+            // A loop with no sides has no runs, and no break to start after.
+            if n == 0 { continue; }
+            let linked: Vec<bool> = (0..n).map(|i| n > 1 && collinear(&edges[i], &edges[(i + 1) % n])).collect();
+            // Start after a break so a run crossing the loop's closing vertex stays whole. A loop
+            // linked all round is one circle in arcs (964 #7374): the whole loop is the run.
+            let closed = linked.iter().all(|&l| l);
+            let start = (0..n).find(|&i| !linked[i]).unwrap_or(n - 1);
+            let mut linked = linked;
+            linked[start] = false;
+            let mut run: Vec<usize> = Vec::new();
+            for step in 1..=n {
+                let i = (start + step) % n;
+                run.push(i);
+                if !linked[i] {
+                    if run.len() > 1 {
+                        runs.push(CollinearRun {
+                            keys: run.iter().map(|&i| key(source.solid_id, 0, &format!("side({index},{i})"))).collect(),
+                            arcs: matches!(edges[run[0]], Edge::Arc { .. }),
+                            closed,
+                            widths_m: run.iter().map(|&i| match edges[i] {
+                                Edge::Line(a, b) => ((b[0] - a[0]).powi(2) + (b[1] - a[1]).powi(2)).sqrt() * s,
+                                Edge::Arc { u, sweep, .. } => u[0].hypot(u[1]) * sweep.abs() * s,
+                            }).collect(),
+                        });
+                    }
+                    run.clear();
+                }
+            }
+        }
+    }
+    runs.sort_by(|a, b| a.keys.cmp(&b.keys));
+    runs.dedup();
+    Some(runs)
+}

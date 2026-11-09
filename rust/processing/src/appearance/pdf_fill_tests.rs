@@ -381,9 +381,9 @@ fn issue_4406_curved_fill_refuses_unresolved_concavity_contacts_and_tiny_precisi
 fn issue_4406_actual_decoded_ellipse_hole_and_shear_controls_produce_complete_plans() {
     let (source, _)=fixture();
     for data in [
-        include_str!("../../../../docs/architecture/evidence/pdf-curved-fill-annotations/page-1-request.json"),
-        include_str!("../../../../docs/architecture/evidence/pdf-curved-fill-annotations/page-2-request.json"),
-        include_str!("../../../../docs/architecture/evidence/pdf-curved-fill-annotations/page-3-request.json"),
+        include_str!("../../../../tests/fixtures/appearance/pdf-curved-fill-annotations/page-1-request.json"),
+        include_str!("../../../../tests/fixtures/appearance/pdf-curved-fill-annotations/page-2-request.json"),
+        include_str!("../../../../tests/fixtures/appearance/pdf-curved-fill-annotations/page-3-request.json"),
     ] {
         let request:PdfFillAnnotationRequest=serde_json::from_str(data).unwrap();
         let plan=plan_pdf_fill_annotation(source.as_bytes(),&request).unwrap();
@@ -400,7 +400,7 @@ mod stroke_tests;
 #[test]
 fn issue_4458_registered_cropbox_contacts_survive_classify_clip_and_paint_order() {
     let (source,_) = fixture();
-    let request:PdfFillAnnotationRequest=serde_json::from_str(include_str!("../../../../docs/architecture/evidence/pdf-composition-lattice/registered-request.json")).unwrap();
+    let request:PdfFillAnnotationRequest=serde_json::from_str(include_str!("../../../../tests/fixtures/appearance/pdf-composition-lattice/registered-request.json")).unwrap();
     for tolerance in [0.001,0.0001,0.00001,0.000001,0.0000001] {
         let mut request=request.clone();request.page.tolerance_metres=tolerance;
         let result=plan_pdf_fill_annotation(source.as_bytes(),&request).unwrap();

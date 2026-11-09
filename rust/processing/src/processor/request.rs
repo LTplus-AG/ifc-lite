@@ -49,7 +49,8 @@ impl Batching {
     }
 }
 
-/// The optional phases of a pass. All on except the bootstrap, as before.
+/// The optional phases of a pass. All on except the bootstrap and the
+/// finishes, as before.
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Features {
@@ -60,6 +61,10 @@ pub struct Features {
     /// Emit [`ProcessingSink::on_bootstrap`](super::ProcessingSink::on_bootstrap)
     /// once the scan is done.
     pub quick_metadata_bootstrap: bool,
+    /// Emit [`ProcessingSink::on_finishes`](super::ProcessingSink::on_finishes)
+    /// before every batch: each mesh's IFC-authored finish (#5984), joined from
+    /// the pass's own scan instead of a second read of the file. Off by default.
+    pub finishes: bool,
 }
 
 impl Features {
@@ -77,11 +82,16 @@ impl Features {
         self.quick_metadata_bootstrap = on;
         self
     }
+
+    pub fn finishes(mut self, on: bool) -> Self {
+        self.finishes = on;
+        self
+    }
 }
 
 impl Default for Features {
     fn default() -> Self {
-        Self { properties: true, presentation_layers: true, quick_metadata_bootstrap: false }
+        Self { properties: true, presentation_layers: true, quick_metadata_bootstrap: false, finishes: false }
     }
 }
 
@@ -96,6 +106,8 @@ impl Default for Features {
 pub struct ProcessingRequest {
     /// Which window / door openings are cut and drawn.
     pub opening_filter: OpeningFilterMode,
+    /// Leave hosts uncut by IfcRelVoidsElement; authored booleans and fillings remain.
+    pub skip_voids: bool,
     /// Tessellation detail (#976). `Medium` is the historical output.
     pub quality: TessellationQuality,
     /// Slice material-layer walls into per-layer submeshes. Default false.
@@ -132,6 +144,12 @@ impl ProcessingRequest {
 
     pub fn opening_filter(mut self, mode: OpeningFilterMode) -> Self {
         self.opening_filter = mode;
+        self
+    }
+
+    /// Generate gross host geometry without changing emitted filling elements.
+    pub fn skip_voids(mut self, on: bool) -> Self {
+        self.skip_voids = on;
         self
     }
 
@@ -188,6 +206,7 @@ impl ProcessingRequest {
     pub fn from_streaming(opening_filter: OpeningFilterMode, options: StreamingOptions) -> Self {
         Self {
             opening_filter,
+            skip_voids: false,
             quality: options.tessellation_quality,
             layer_slicing: false,
             batching: Batching {
@@ -199,6 +218,7 @@ impl ProcessingRequest {
                 properties: options.include_properties,
                 presentation_layers: options.include_presentation_layers,
                 quick_metadata_bootstrap: options.emit_quick_metadata_bootstrap,
+                finishes: false,
             },
             retain_meshes: options.retain_emitted_meshes,
             instancing: options.enable_instancing,

@@ -1,0 +1,8 @@
+{
+  "name": "@ifc-lite-tools/ifc-history",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test *.test.mjs"
+  }
+}

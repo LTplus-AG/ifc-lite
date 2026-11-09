@@ -4,6 +4,7 @@
 
 import { effectiveRowType, effectiveTreeType, overlayViewFor, type TreeOverlay } from './treeOverlay.js';
 import { effectiveTreeEntityName, effectiveTypeAssignments, effectiveTypeEntities, effectiveTypeInstanceIds } from './effectiveTypeEntities.js';
+import { effectiveSpatialProject, liveStoreyRows } from './effectiveStoreyNodes.js';
 export { buildGroupTree, resolveMemberGeometry, type ResolvedMemberGeometry } from './groupTreeBuilder.js';
 // Re-exported so the Groups tab's callers and tests keep importing these
 // from here; the tables themselves live in ./groupEntityTypes.ts.
@@ -21,6 +22,7 @@ import { buildMaterialUsageIndex } from '@ifc-lite/parser';
 import type { FederatedModel } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { entityOwnership } from '@/utils/entity-ownership';
+import { effectiveEntityCount } from '@/lib/effective-entity-count';
 import { mergeObjectCounts, summarizeObjects } from './objectCountSummary';
 import { appendOtherGroupNodes, type OtherBucketEntry } from './otherBucket';
 import { elementRowType, emitElementsWithOtherBucket, makeShapeTest, type ElementRowView } from './elementSubtree';
@@ -61,7 +63,6 @@ function storeyDisplayElevationFor(
 
 /** Two contributors show the same badge when they round to the same centimetre. */
 const DISPLAY_ELEVATION_AGREEMENT_M = 0.005;
-
 /** Helper to create elevation key (with 0.5m tolerance for matching) */
 export function elevationKey(elevation: number): string {
   return (Math.round(elevation * 2) / 2).toFixed(2);
@@ -88,7 +89,6 @@ function isLevelLikeSpatialType(type: IfcTypeEnum): boolean {
 
 /** Natural, case-insensitive name collation so "Level 2" sorts before "Level 10". */
 const storeyNameCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
-
 /** Order two storey-like entries (unified storeys or spatial nodes) by the
  *  browser sort mode chosen in the hierarchy panel (issue #1296). */
 export function compareStoreyEntries(
@@ -151,19 +151,15 @@ export function buildUnifiedStoreys(
     if (!dataStore?.spatialHierarchy) continue;
 
     const hierarchy = dataStore.spatialHierarchy;
-    const { byStorey, storeyElevations } = hierarchy;
     // Partial/native metadata stores can expose the lookup maps before (or
     // without) a project tree. Keep their previous byStorey-only behaviour.
-    const spatialNodes = hierarchy.project
-      ? indexSpatialNodes(hierarchy.project)
-      : new Map<number, SpatialNode>();
+    const view = overlayViewFor(overlay, modelId);
+    const project = effectiveSpatialProject(dataStore, view); // this session's storey edits (#9013)
+    const spatialNodes = project ? indexSpatialNodes(project) : new Map<number, SpatialNode>();
     const descendantSpaceCache = new Map<number, Set<number>>();
     const displayElevationOf = storeyDisplayElevationFor(modelId, dataStore, model, georefMutations);
-    const view = overlayViewFor(overlay, modelId);
 
-    for (const [storeyId, elements] of byStorey.entries()) {
-      const elevation = storeyElevations.get(storeyId) ?? 0;
-      const name = dataStore.entities.getName(storeyId) || `Storey #${storeyId}`;
+    for (const { storeyId, elements, name, elevation } of liveStoreyRows(dataStore, view, hierarchy, project, spatialNodes)) {
       const key = elevationKey(elevation);
       const storeyNode = spatialNodes.get(storeyId);
       const directElements = storeyNode
@@ -524,7 +520,7 @@ export function buildTreeData(
         hasChildren: hasSpatialHierarchy,
         isExpanded: isModelExpanded,
         isVisible: model.visible,
-        elementCount: model.ifcDataStore?.entityCount,
+        elementCount: effectiveEntityCount(model.ifcDataStore, overlayViewFor(overlay, modelId)),
       });
 
       // If expanded, show Project -> Site -> Building (stop at building, no storeys)
@@ -532,7 +528,7 @@ export function buildTreeData(
         const descendantSpaceCache = new Map<number, Set<number>>();
         const view = overlayViewFor(overlay, modelId);
         buildSpatialNodes(
-          model.ifcDataStore.spatialHierarchy.project,
+          effectiveSpatialProject(model.ifcDataStore, view) ?? model.ifcDataStore.spatialHierarchy.project,
           modelId,
           models,
           model.ifcDataStore,
@@ -564,7 +560,7 @@ export function buildTreeData(
       const descendantSpaceCache = new Map<number, Set<number>>();
       const view = overlayViewFor(overlay, modelId);
       buildSpatialNodes(
-        model.ifcDataStore.spatialHierarchy.project,
+        effectiveSpatialProject(model.ifcDataStore, view) ?? model.ifcDataStore.spatialHierarchy.project,
         modelId,
         models,
         model.ifcDataStore,
@@ -593,7 +589,7 @@ export function buildTreeData(
     const descendantSpaceCache = new Map<number, Set<number>>();
     const view = overlayViewFor(overlay, 'legacy');
     buildSpatialNodes(
-      ifcDataStore.spatialHierarchy.project,
+      effectiveSpatialProject(ifcDataStore, view) ?? ifcDataStore.spatialHierarchy.project,
       'legacy',
       models,
       ifcDataStore,
@@ -629,6 +625,7 @@ export interface AuthoredProduct {
   globalId: number;
   name: string;
   ifcType: string;
+  parts?: number[];
 }
 
 /** Build tree data grouped by IFC class instead of spatial hierarchy.
@@ -710,7 +707,7 @@ export function buildTypeTree(
     let list = typeGroups.get(p.ifcType);
     if (!list) { list = []; typeGroups.set(p.ifcType, list); }
     if (!list.some((e) => e.globalId === p.globalId)) {
-      list.push({ expressId: p.expressId, globalId: p.globalId, name: p.name, modelId: p.modelId });
+      list.push({ expressId: p.expressId, globalId: p.globalId, name: p.name, modelId: p.modelId, parts: p.parts });
     }
   }
 

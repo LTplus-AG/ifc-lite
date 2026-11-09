@@ -15,8 +15,12 @@ are under `licenses/retained/texts/`; they are not paraphrased licence templates
 CI compares semantic inputs: external locked package identities/checksums in each
 production dependency closure, the SMLib and emsdk pins, Emscripten version, Rust
 toolchain channel and supplemental notice records. Workspace versions and unrelated
-workflow text are excluded. Preserved notice hashes and generated outputs are checked.
-The Apache-2.0 election for `wasm_sync` below closes the missing-text gap.
+workflow text are excluded. Preserved notice hashes and generated outputs are checked,
+and `manifest.json` carries a `manifestSha256` digest of its inputs and components that
+`--check` and `--write` verify. It catches accidental damage (a text dropped by a merge
+resolution, hand-edited inputs); it is not a signature, because `--refresh` recomputes it.
+The maintainer's explicit elections and checked MIT default are recorded in `supplemental.json`;
+the `wasm_sync` Apache-2.0 election below also closes its missing-text gap.
 
 This is a **conservative source/build inventory**, not proof of the exact code
 remaining after link-time dead stripping. The roots are `ifc-lite-wasm` (default
@@ -57,8 +61,8 @@ OpenUSD licence text must never substitute for its complete licence if OpenUSD
 is added to a future artifact. `proposals/NOTICE` belongs to unshipped proposals.
 
 `ifc-lite-geometry-runtime` now has an explicit source-only Cargo include list.
-It remains outside the automatic `CRATES` release list until manual bootstrap;
-explicit package qualification still includes it.
+It is in the automatic `CRATES` release list (last, after wasm) since its manual
+27.1.0 bootstrap; package qualification covers it as a listed crate.
 Its retained feature forwards to `ifc-lite-geometry/retained-runtime`. Processing's
 current retained feature also forwards directly to geometry; it does **not** have
 an optional runtime dependency. The unpublished `ifc-lite-retained-native` harness
@@ -103,13 +107,16 @@ These are review prompts grounded in the preserved texts, not compatibility ruli
 
 ## Distribution scope for this release
 
-* **crates.io:** the eight crates in `scripts/lib/crates-io.mjs` (core, clash,
-  geometry, processing, landxml, export, ffi, wasm) and the separately qualified
-  geometry-runtime bootstrap candidate are source packages. `cargo package
+* **crates.io:** the nine crates in `scripts/lib/crates-io.mjs` (core, clash,
+  geometry, processing, landxml, export, ffi, wasm, geometry-runtime) are
+  source packages. `cargo package
   --list` is the archive selection check, not a build or publication. Their
   lists contain source, tests/fixtures, documentation and Cargo metadata, no SDK
-  or third-party binaries. Each inherits `license-file = "LICENSE"` from the
-  workspace, so Cargo includes the repository MPL-2.0 text. Runtime also has an
+  or third-party binaries. Each inherits `license = "MPL-2.0"` from the
+  workspace (the SPDX expression crates.io displays; setting `license-file` too
+  makes `cargo publish` warn) and carries a byte-identical copy of the
+  repository `LICENSE` in its own directory, which Cargo includes by default.
+  `scripts/release-crates-order.test.mjs` fails if a copy drifts. Runtime also has an
   explicit source-only `include` list. Even ffi's `cdylib` declaration does not
   put a compiled library in a source archive.
 * **npm:** `packages/wasm/package.json#files` includes the retained loader/types,
@@ -123,7 +130,11 @@ These are review prompts grounded in the preserved texts, not compatibility ruli
   described above. `stage-retained-browser-assets.mjs` and
   `stage-cli-retained-engine.mjs` hash-inventory those copies. The viewer Vite
   integration does not copy these into build output and rejects retained Vercel
-  builds; this scope does not claim the production viewer currently serves them.
+  builds (except the verified `lazy` production build). Production on ifclite.com
+  serves exactly this set, with the same notices served as text beside it, only
+  to browsers that choose the retained kernel; the archive is a release asset of
+  the root tag its notices name. See
+  [Production on ifclite.com](../guide/retained-installation.md#production-on-ifclitecom-opt-in-setting).
 * **Native retained worker binaries are not distributed in this release.** Users
   build from the pinned SDK. CMake install support and native CI evidence are not
   a release channel. `.github/workflows/release.yml` publishes npm and source
@@ -134,12 +145,12 @@ These are review prompts grounded in the preserved texts, not compatibility ruli
 ## Review record
 
 This records evidence and fulfilment mechanisms for the scope above, not a
-signature or a blanket conclusion about every possible linked artifact.
+blanket conclusion about every possible linked artifact.
 
 | Component | Licence and obligation | How addressed in this scope |
 |---|---|---|
 | SMLib / SM_API | Apache-2.0 section 4: copy LICENSE, retain applicable notices; identify modified upstream files | Original SDK LICENSE and THIRD_PARTY_NOTICES.md preserved in `/smlib/` and `LICENSES/SMLib/`. Verified local SDK HEAD is `c9c5979f04cea8c38213004d4f04df0dcfb40d05` and `git status --porcelain --untracked-files=all --ignored -- source/SMLib source/SM_API LICENSE THIRD_PARTY_NOTICES.md` is empty. No modifications to those pinned paths; IFC-Lite adapter is separate. CMake and stagers enforce cleanliness, not binary provenance. |
-| Emscripten runtime | MIT OR NCSA, including Node MIT attribution: retain permission/copyright/disclaimer texts | Installed 4.0.15 LICENSE preserved whole in generated bundle, including both alternatives and subordinate notices. Compiler tools are not shipped. |
+| Emscripten runtime | MIT OR NCSA, including Node MIT attribution: retain permission/copyright/disclaimer texts | MIT selected by the maintainer default (2026-11-01), conditional on verified preserved MIT text. Installed 4.0.15 LICENSE and AUTHORS preserved whole in generated bundle, including both alternatives and subordinate notices. Compiler tools are not shipped. |
 | dlmalloc | Public domain / CC0-1.0 dedication in source | Actual 2.8.6 licence/version header preserved, full source hash recorded; Emscripten modifications covered by its separate licence. |
 | musl | MIT and BSD-style portions: retain applicable notices/disclaimers | Complete installed COPYRIGHT preserved in bundle, including individual holders/portions. |
 | LLVM runtimes | Apache-2.0 WITH LLVM-exception plus legacy terms: retain texts and applicable attribution | libc++, libc++abi, libunwind, compiler-rt and llvm-libc LICENSE.TXT files preserved; conservative superset avoids discarding legacy notices without link evidence. |
@@ -165,13 +176,13 @@ source available at that URL. The repository's template remains reproducible;
 [hosting guide](../guide/retained-installation.md) for delivery paths.
 
 Remaining for the maintainer: verify the final tag/source and deployed notice
-copies, review this record against the actual release scope, and sign below.
+copies, review this record against the actual release scope, and retain the scoped approval below.
 No final release archive, deployed host, or future native binary was audited here.
-Registry bootstrap/Trusted Publisher settings and actual OIDC publication are
-also unverified; they are operational release prerequisites, not inferred from
-this licence record.
+The crates.io Trusted Publisher route and actual OIDC publication are verified:
+`ifc-lite-geometry-runtime` 28.2.0 was published by [Release run 41430668478](https://github.com/LTplus-AG/ifc-lite/actions/runs/41430668478)
+at commit `c748326ee0`, as confirmed by the [crates.io publication metadata](https://crates.io/api/v1/crates/ifc-lite-geometry-runtime/28.2.0).
 
-Approved for the scope above by: ____ (date: ____)
+Approved for the scope above by: Louis Trümpler (date: 2026-11-01)
 
 ## Why the default npm package includes the notice file
 
@@ -203,15 +214,23 @@ notice content changes; a runtime byte comparison does not imply tarball identit
 
 ## Open release decisions and evidence gaps
 
-1. **Review record prepared; maintainer signature remains.** See [Review
+1. **Review record approved by the maintainer (2026-11-01).** See [Review
    record](#review-record) for component obligations and evidence. Final scope,
    release copies and source identity still require the maintainer's check; no
-   approval is asserted by this document.
-2. **Resolved: wasm_sync text/election.** Apache-2.0 election, exact attribution
-   and SPDX text are recorded in `supplemental.json` and generated bundles.
-   Its archive and upstream tree `cc027b3b27c2e24e3cd5c7a6cc63306eff724af5`
-   have no LICENSE/NOTICE files. Existing VCS-pinned supplements for i_key_sort,
-   i_overlay, flatbuffers and valuable remain; r-efi's AUTHORS is preserved.
+   approval beyond the scope above is asserted by this document.
+2. **Resolved by the maintainer (stated 2026-10-30): wasm_sync, r-efi and wide
+   elections.** Each is recorded in `supplemental.json` with its exact attribution
+   and carried into the generated bundles:
+   * wasm_sync 0.1.2: Apache-2.0 from `MIT OR Apache-2.0` (maintainer-approved;
+     the canonical SPDX text is preserved by hash). Its archive and upstream tree
+     `cc027b3b27c2e24e3cd5c7a6cc63306eff724af5` have no LICENSE/NOTICE files.
+   * r-efi 5.3.0: MIT from `MIT OR Apache-2.0 OR LGPL-2.1-or-later`. The preserved
+     `AUTHORS` carries the full MIT permission notice and copyright holders.
+   * wide 1.4.0: Zlib from `Zlib OR Apache-2.0 OR MIT`. The preserved
+     `LICENSE-ZLIB.md` is the complete Zlib text.
+
+   No new text was needed for r-efi or wide. Existing VCS-pinned supplements for
+   i_key_sort, i_overlay, flatbuffers and valuable remain.
 3. **Out of scope: native link map.** No native retained worker binaries ship
    in this release; users build from the pinned SDK. Before any future native
    binary distribution, collect actual link maps/import tables, compiler and
@@ -227,9 +246,29 @@ notice content changes; a runtime byte comparison does not imply tarball identit
    `https://github.com/LTplus-AG/ifc-lite/tree/<tag>` source URL. Owner must fill
    and verify the matching `v<version>` tag before distribution, as above.
 6. **Outside this licence closure: registry operations.** Bootstrap and per-crate
-   Trusted Publisher configuration remain manual and unverified; follow the
-   [release runbook](../guide/retained-release.md). Its recorded registry/dry-run
-   failures remain visible; this record does not waive publication prerequisites.
+   Trusted Publisher configuration are set up by hand; follow the
+   [release runbook](../guide/retained-release.md). They are verified for the 28.2.0
+   release: all nine workspace crates (`ifc-lite-core`, `-geometry`, `-geometry-runtime`,
+   `-processing`, `-export`, `-clash`, `-landxml`, `-ffi`, `-wasm`) were published by
+   Trusted Publishing (see above). A crate added later needs its own configuration
+   before its first publish; this record does not waive publication prerequisites.
+
+7. **Resolved by the maintainer (2026-11-01): OR-licence elections and
+   Emscripten attribution.** Every OR-licensed component offering MIT elects MIT
+   only when its MIT text is preserved and verified. This checked default is
+   recorded once in `supplemental.json`; explicit elections take precedence.
+   Mandatory conjunctive and bundled-component terms remain applicable.
+   chrono 0.4.44 and Emscripten runtime resolve to MIT under this policy.
+   The pinned Emscripten `AUTHORS` file is preserved alongside its complete
+   `LICENSE`. The maintainer explicitly elected Apache-2.0 for ryu 1.0.23 and
+   ryu-js 1.0.3 from `Apache-2.0 OR BSL-1.0`; each record preserves the canonical
+   Apache-2.0 text and uses the same attribution format as wasm_sync.
+   Existing wasm_sync, r-efi and wide elections remain unchanged.
+   The guard passes on the real manifest: every OR-licensed component resolves
+   through an explicit election or the checked MIT default.
+   dlmalloc's public-domain/CC0 dedication is not an alternative-licence declaration.
+
+Revit fixture rights: maintainer confirmed 2026-11-01 for test and evidence use.
 
 ## Regeneration
 
@@ -242,6 +281,15 @@ node scripts/retained-notices.mjs --refresh --sdk /absolute/pinned-usd-brep \
   --emscripten /absolute/emsdk/upstream/emscripten
 node scripts/retained-notices.mjs --check
 ```
+
+When only Cargo closures changed, `--refresh --cargo-only` reuses the committed SDK
+and toolchain components instead (see the
+[release runbook](../guide/retained-release.md#refreshing-retained-notices-after-a-dependency-change)):
+it fails closed if the manifest digest, the SDK/emsdk/Emscripten/Rust pins or the
+component layout do not match, or if a reused entry is not the one a pin names
+(SMLib revision, Emscripten version, and the Rust standard library against the
+installed pinned toolchain's `rustc --version`). The emsdk commit is bound only through
+the unchanged `inputs` pin, since no component records it. `--write` cannot bypass the digest.
 
 Refresh reads actual installed licence files and preserves byte hashes, including
 line endings. Review changed pins, missing texts and supplemental sources before

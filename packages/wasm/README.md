@@ -444,9 +444,18 @@ Every published part carries `faces`: a string table of persistent source keys
 `disk(wall|start|end)`) and one table index per triangle, derived from its authored recipes
 and cross-checked against the kernel's faces; `PersistentFaces` is discharged.
 Unproven faces refuse `face_provenance_unproven` (cause `unattributed` or `ambiguous`).
-`appearance_unsupported` is the typed refusal for a binding that carries a texture or an
-indexed colour palette (origin `{site: 'appearance', entity, cause}`). Textures and indexed
-palettes are proven absent for retained-eligible products; tessellated bodies still refuse.
+A face set's `IfcIndexedColourMap` publishes as `parts[].palette` (`colors`, four floats each;
+`triangles`, one entry per triangle, `0xFFFFFFFF` on a reveal) and its
+`IfcIndexedTriangleTextureMap` as `parts[].texture` (`uvs`, six source values per triangle, not
+V-flipped; `textured`, one flag per triangle), also through a cut, where a new vertex interpolates
+its source row. `appearance_unsupported` (origin `{site: 'appearance', entity, cause}`) refuses a
+map exact had to repair, an unreadable row, or a texture on an `IfcPolygonalFaceSet`. An uncut
+`IfcTriangulatedFaceSet` or `IfcPolygonalFaceSet` publishes its authored triangles in full f64
+with no Worker call, including an open shell, with one face key `row(k)` per authored row. No kernel is involved: its `revisionLocalFaces` are
+those rows and nothing cross-checks its keys. A
+Boolean, opening or affine copy stitches the closed solid first; an open shell or a set over
+8,192 triangles refuses `operation_unsupported` there. A cut the kernel itself refuses is
+`kernel_failure` for that product and keeps the worker.
 A fully presented product carries `marker: 'final'` and an empty `obligationsUnmet` list.
 A product with remaining obligations carries `marker: 'PresentationObligationsUnmet'`
 and its nonempty list; consumers show shape-only for those products. Final describes published

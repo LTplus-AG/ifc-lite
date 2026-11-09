@@ -46,10 +46,12 @@ export default {
 ```
 
 No viewer code changes. `locales.boot.ts` discovers the file as a lazy chunk,
-and the viewer picks a locale from `?lang=<tag>` (remembered in
-`localStorage` under `ifc-lite:locale`; `?lang=en` switches back), then the
-remembered choice, then the browser's languages (`de-CH` matches `de`), then
-English. `<html lang>` follows the active locale.
+and it appears in Settings → General → Language under its own name. The viewer
+uses the choice made there (remembered in `localStorage` under
+`ifc-lite:locale`; "Auto" forgets it), then the browser's languages (`de-CH`
+matches `de`), then English. Switching applies without a reload, and
+`<html lang>` follows the active locale. There is no URL parameter for the
+language.
 
 `catalogue-problems.test.ts` loads every file in `locales/` and fails on keys
 that no longer exist, dropped or renamed placeholders, and plural messages
@@ -852,3 +854,21 @@ short symbol/unit clusters (`⌘Z`, `m²`) — and ratchets a per-file count in
 `scripts/i18n-literals-baseline.json` (wired into `pnpm lint` and CI's
 node-tests job): a file's count may never rise above its baseline row,
 and a fall also fails until `node scripts/check-i18n-literals.mjs --update` re-records it (a ratchet in both directions).
+
+## Italian glossary and maintenance
+
+Use piano for storey, elemento for model product, proprietà, quantità,
+interferenza, sezione / piano di sezione and misura. Livello denotes a generic
+level. Preserve exact IFC EXPRESS names, technical tokens and model content.
+Warnings retain the action, condition, negation and consequence; Annulla reverses
+edits already applied. Italian Intl cardinal categories are one, other and many;
+decimals select other, and million multiples select many. Keep exact placeholders
+in each branch, using the corresponding English branch or other as the contract.
+
+`italian-catalogue.test.ts` checks every eager/lazy key, placeholder branches and
+value-pinned identical exceptions in `locales/it-identical.json`.
+`italian-startup.test.ts` checks ownership before lazy English registration;
+`italian-ids.test.tsx` checks IDS synchronization. The Settings language choice persists;
+browser `it-CH` negotiates to Italian and updates HTML lang.
+The acceptance checklist, bounded round ledger and actual validation evidence
+live in `tools/localization-italian/`. Runtime model names remain unmodified.

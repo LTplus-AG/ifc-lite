@@ -18,6 +18,7 @@ import type {
   SectionPlane,
 } from '@/store';
 import type { MeasurementConstraintEdge, OrthogonalAxis, Vec3 } from '@/store/types.js';
+import type { MeasureCameraState } from './measureCameraState.js';
 
 export interface MouseState {
   isDragging: boolean;
@@ -38,6 +39,10 @@ export interface Camera {
   getPosition(): { x: number; y: number; z: number };
   getRotation(): { azimuth: number; elevation: number };
   getDistance(): number;
+  getProjectionMode(): string;
+  getOrthoSize(): number;
+  getFOV(): number;
+  getUp(): { x: number; y: number; z: number };
 }
 
 /**
@@ -75,13 +80,7 @@ export interface MouseHandlerContext {
   lastHoverSnapTimeRef: MutableRefObject<number>;
 
   // Camera tracking
-  lastCameraStateRef: MutableRefObject<{
-    position: { x: number; y: number; z: number };
-    rotation: { azimuth: number; elevation: number };
-    distance: number;
-    canvasWidth: number;
-    canvasHeight: number;
-  } | null>;
+  lastCameraStateRef: MutableRefObject<MeasureCameraState | null>;
 
   // Click detection refs
   lastClickTimeRef: MutableRefObject<number>;
@@ -99,7 +98,7 @@ export interface MouseHandlerContext {
   incrementEdgeLockStrength: () => void;
   setMeasurementConstraintEdge: (edge: MeasurementConstraintEdge) => void;
   updateConstraintActiveAxis: (axis: OrthogonalAxis | null) => void;
-  updateMeasurementScreenCoords: (projector: (worldPos: { x: number; y: number; z: number }) => { x: number; y: number } | null) => void;
+  updateMeasurementScreenCoords: (projector: (worldPos: { x: number; y: number; z: number }) => { x: number; y: number } | null, viewMoved?: boolean) => void;
   handlePickForSelection: (pickResult: PickResult | null) => void;
   toggleSelection: (entityId: number) => void;
   openContextMenu: (entityId: number | null, screenX: number, screenY: number) => void;

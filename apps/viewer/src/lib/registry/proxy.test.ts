@@ -60,3 +60,32 @@ test('registry proxy isolates cookies and never serves the credential page on th
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test('the viewer Vite config reads registry dotenv flags and keeps the default proxy disabled (#8310)', async () => {
+  const { writeFile } = await import('node:fs/promises');
+  const { randomUUID } = await import('node:crypto');
+  const { fileURLToPath } = await import('node:url');
+  const { loadConfigFromFile } = await import('vite');
+  const mode = `registry-test-${randomUUID()}`;
+  const envFile = new URL(`../../../.env.${mode}`, import.meta.url);
+  const configFile = fileURLToPath(new URL('../../../vite.config.ts', import.meta.url));
+  const previous = { enabled: process.env.VITE_REGISTRY_ENABLED, target: process.env.IFC_REGISTRY_TARGET };
+  delete process.env.VITE_REGISTRY_ENABLED; delete process.env.IFC_REGISTRY_TARGET;
+  try {
+    await writeFile(envFile, 'VITE_REGISTRY_ENABLED=true\nIFC_REGISTRY_TARGET=http://127.0.0.1:5123\n');
+    const enabled = await loadConfigFromFile({ command: 'serve', mode }, configFile, undefined, 'silent');
+    assert(enabled);
+    assert.equal(enabled.config.define?.['import.meta.env.VITE_REGISTRY_ADDRESS'], JSON.stringify('http://127.0.0.1:5123'));
+    const proxy = enabled.config.server?.proxy?.['^/v2(?:/|$)'];
+    assert(proxy && typeof proxy === 'object'); assert.equal(proxy.target, 'http://127.0.0.1:5123');
+    await rm(envFile);
+    const disabled = await loadConfigFromFile({ command: 'serve', mode }, configFile, undefined, 'silent');
+    assert(disabled);
+    assert.equal(disabled.config.define?.['import.meta.env.VITE_REGISTRY_ADDRESS'], undefined);
+    assert.equal(disabled.config.server?.proxy?.['^/v2(?:/|$)'], undefined);
+  } finally {
+    await rm(envFile, { force: true });
+    if (previous.enabled === undefined) delete process.env.VITE_REGISTRY_ENABLED; else process.env.VITE_REGISTRY_ENABLED = previous.enabled;
+    if (previous.target === undefined) delete process.env.IFC_REGISTRY_TARGET; else process.env.IFC_REGISTRY_TARGET = previous.target;
+  }
+});

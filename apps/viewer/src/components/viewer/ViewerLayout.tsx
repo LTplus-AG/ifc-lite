@@ -1,7 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-
+import { PersistentToolHosts } from './PersistentToolHosts';
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels';
 import type { PanelImperativeHandle } from 'react-resizable-panels';
@@ -42,13 +42,19 @@ import { useDuplicateShortcut } from './useDuplicateShortcut';
 import { HoverTooltip } from './HoverTooltip';
 import { BottomStrip } from './BottomStrip';
 import { loadBottomStripOrientation, persistBottomStripOrientation } from '@/lib/panels/bottom-strip-persistence';
+import { useModelHierarchyWidth } from './model/useModelHierarchyWidth';
 import { LEFT_PANEL_DEFAULT_SIZE } from '@/store/layoutReset';
+
+/** Hierarchy's minimum width, % of the main row. */
+const LEFT_PANEL_MIN_SIZE = 10;
 import { useOverlayCompositor } from './schedule/useOverlayCompositor';
-import { CommandPalette } from './CommandPalette';
+import { ActivityTrayDialog } from './activity/ActivityTray';
+import { CommandPaletteHost as CommandPalette } from './CommandPaletteHost';
 import { SearchModal } from './SearchModal';
 import { FlowStartupPrompt } from './flow/FlowStartupPrompt';
 import { TourHost } from '@/components/tours/TourHost';
 import { SidebarDock } from './sidebar/SidebarDock';
+import { useEmptyStartFold, useIsEmptyStart } from './welcome/useEmptyStartFold';
 import { WorkspaceMigrationNotice } from './WorkspaceMigrationNotice';
 import { FloatingPanelHost } from './dock/FloatingPanelHost';
 import { PanelWindowHost } from './dock/PanelWindowHost';
@@ -57,7 +63,7 @@ import {
   getAnalysisExtensionsSnapshot,
   subscribeAnalysisExtensions,
 } from '@/services/analysis-extensions';
-import { activeBottomPanel } from '@/lib/panels/bottom-panels';
+import { dockedBottomPanel as dockedBottomPanelOf } from '@/lib/panels/rendered-panels';
 import { useBottomPanelFlags } from '@/hooks/useBottomPanelFlags';
 import { usePanelControls } from '@/hooks/usePanelControls';
 import { useMobileLayoutMode } from '@/hooks/useMobileLayoutMode';
@@ -124,6 +130,7 @@ export function ViewerLayout() {
   }, [collabGeometryNotice]);
 
   // Command palette state
+  const [activityOpen, setActivityOpen] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
 
   // The shared dispatcher owns the Ctrl+K chord and text-entry exception.
@@ -158,7 +165,7 @@ export function ViewerLayout() {
   const setRightPanelCollapsed = useViewerStore((s) => s.setRightPanelCollapsed);
   // Which bottom panel the flags say is open (table precedence), and whether
   // it is actually docked here rather than floating / popped out.
-  const bottomPanel = activeBottomPanel(useBottomPanelFlags());
+  const bottomFlags = useBottomPanelFlags();
   // The right pane is owned by the sidebar (#1208); here we only need to know which
   // BOTTOM panel (Script / Schedule / Lists) is docked vs detached, so the bottom strip skips a floating (#1201) or popped-out one.
   const floatingPanels = useViewerStore((s) => s.floatingPanels);
@@ -167,7 +174,7 @@ export function ViewerLayout() {
     () => new Set<string>([...floatingPanels.map((p) => p.id), ...poppedOutIds]),
     [floatingPanels, poppedOutIds],
   );
-  const dockedBottomPanel = bottomPanel && !detachedIds.has(bottomPanel) ? bottomPanel : null;
+  const dockedBottomPanel = dockedBottomPanelOf(bottomFlags, (id) => detachedIds.has(id));
 
   // Side-by-side 2D/3D layout preset (#5515): a persisted dock-side choice
   // ("does Drawing go beside the viewport or below it") that only takes
@@ -202,20 +209,37 @@ export function ViewerLayout() {
   // own collapse/hide state in `sidebarSlice`; only the left hierarchy pane is a react-resizable Panel here.
   const leftPanelRef = useRef<PanelImperativeHandle>(null);
 
-  // Sync store state → left Panel collapse/expand on desktop
+  // Sync store state → left Panel collapse/expand on desktop. The empty
+  // start screen folds Hierarchy on top of the stored state, never into it.
+  const emptyFold = useEmptyStartFold();
+  const emptyStart = useIsEmptyStart();
+  // A lift lasts one empty session: the next time the viewer is empty, fold again.
+  useEffect(() => { if (!emptyStart) useViewerStore.getState().setStartFoldLifted({ left: false, right: false }); }, [emptyStart]);
+  const foldRestorePct = useRef<number | null>(null);
   useEffect(() => {
     const panel = leftPanelRef.current;
     if (!panel) return;
-    if (leftPanelCollapsed && !panel.isCollapsed()) panel.collapse();
-    else if (!leftPanelCollapsed && panel.isCollapsed()) panel.expand();
-  }, [leftPanelCollapsed]);
-  const layoutResetEpoch = useViewerStore((s) => s.layoutResetEpoch); // "Reset layout" (#5854) restores the pane width
-  useEffect(() => { if (layoutResetEpoch > 0) leftPanelRef.current?.resize(`${LEFT_PANEL_DEFAULT_SIZE}%`); }, [layoutResetEpoch]);
+    const collapse = leftPanelCollapsed || emptyFold;
+    if (collapse && !panel.isCollapsed()) {
+      if (!leftPanelCollapsed) foldRestorePct.current = panel.getSize().asPercentage;
+      panel.collapse();
+    } else if (!collapse && panel.isCollapsed()) {
+      const restore = foldRestorePct.current;
+      foldRestorePct.current = null;
+      panel.expand();
+      // Folded before its first layout, the panel has no real width to go
+      // back to and `expand()` lands near 0 — give it its width back.
+      // `!(x >= min)` rather than `x < min`: an unmeasured group reports NaN.
+      if (!(panel.getSize().asPercentage >= LEFT_PANEL_MIN_SIZE)) {
+        panel.resize(`${restore !== null && restore >= LEFT_PANEL_MIN_SIZE ? restore : LEFT_PANEL_DEFAULT_SIZE}%`);
+      }
+    }
+  }, [leftPanelCollapsed, emptyFold]);
+  const modeling = useModelHierarchyWidth(leftPanelRef, emptyFold, LEFT_PANEL_DEFAULT_SIZE);
 
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Track the gap between the layout viewport (innerHeight) and the visual
-  // viewport. On iOS Safari with bottom URL bar, dvh/innerHeight INCLUDES the
+  // Keep overlays inside the visible viewport. On iOS Safari with bottom URL bar, dvh/innerHeight INCLUDES the
   // URL bar area, so `bottom: 0` lands behind it; visualViewport.height excludes it.
   const bottomViewportInset = useVisualViewportBottomInset();
 
@@ -230,12 +254,12 @@ export function ViewerLayout() {
   useThemeDocumentClass();
   const safeMode = isSafeMode();
   return (
-    <TooltipProvider delayDuration={300}>
+    <TooltipProvider delayDuration={300}><PersistentToolHosts>
       <div className="flex flex-col h-screen h-[100dvh] w-screen overflow-hidden bg-background text-foreground">
         <ExtensionKeyboardBindings />
         <ShellStoreEffects />
         {safeMode && (
-          <div className="flex items-center gap-2 border-b border-amber-500/40 bg-amber-500/10 px-3 py-1 text-2xs text-amber-700 dark:text-amber-300">
+          <div className="flex items-center gap-2 border-b border-warn-border bg-warn-surface px-3 py-1 text-2xs text-warn">
             <ShieldAlert className="h-3.5 w-3.5 shrink-0" />
             <span>
               {styleInterpolatedValues(t, 'shellChrome.layout.safeModeNotice', [
@@ -250,7 +274,9 @@ export function ViewerLayout() {
         {/* Global dialogs above, overlays below */}
         <EntityContextMenu />
         <HoverTooltip />
-        <CommandPalette open={commandPaletteOpen} onOpenChange={setCommandPaletteOpen} />
+        <CommandPalette open={commandPaletteOpen} onOpenChange={setCommandPaletteOpen}
+          surfaceContext={{ openActivity: () => setActivityOpen(true) }} />
+        <ActivityTrayDialog open={activityOpen} onOpenChange={setActivityOpen} announce={false} />
         <SearchModal />
         <TourHost />
         <FlowStartupPrompt />
@@ -277,17 +303,18 @@ export function ViewerLayout() {
                   {/* Left Panel - Hierarchy */}
                   <Panel
                     id="left-panel"
-                    defaultSize={LEFT_PANEL_DEFAULT_SIZE}
-                    minSize={10}
+                    defaultSize={modeling ? 18 : LEFT_PANEL_DEFAULT_SIZE}
+                    minSize={LEFT_PANEL_MIN_SIZE}
                     collapsible
                     collapsedSize={0}
                     panelRef={leftPanelRef}
                     onResize={() => {
+                      if (emptyFold) return; // the start-screen fold is not the user's choice
                       const collapsed = leftPanelRef.current?.isCollapsed() ?? false;
                       if (collapsed !== leftPanelCollapsed) setLeftPanelCollapsed(collapsed);
                     }}
                   >
-                    <div className="h-full w-full overflow-hidden panel-container flex flex-col">
+                    <div className="shell-dock-left h-full w-full overflow-hidden panel-container flex flex-col">
                       <div className="flex-1 min-h-0 overflow-hidden">
                         <HierarchyPanel />
                       </div>
@@ -297,10 +324,10 @@ export function ViewerLayout() {
                     </div>
                   </Panel>
 
-                  <PanelResizeHandle className="w-1.5 bg-border hover:bg-primary/50 active:bg-primary/70 transition-colors cursor-col-resize" />
+                  <PanelResizeHandle className="shell-splitter-v" />
 
                   {/* Center - Viewport */}
-                  <Panel id="viewport-panel" defaultSize={100 - LEFT_PANEL_DEFAULT_SIZE} minSize={30}>
+                  <Panel id="viewport-panel" defaultSize={100 - (modeling ? 18 : LEFT_PANEL_DEFAULT_SIZE)} minSize={30}>
                     {/* data-floating-snap-bounds: edge-docked floating panels
                         (#1201) snap to THIS region, not the whole window, so a
                         dock never hides under the toolbar (its own close control
@@ -319,7 +346,7 @@ export function ViewerLayout() {
                           <Panel id="viewport-3d-panel" defaultSize="60%" minSize="20%">
                             <ViewportContainer />
                           </Panel>
-                          <PanelResizeHandle className="w-1.5 bg-border hover:bg-primary/50 active:bg-primary/70 transition-colors cursor-col-resize" />
+                          <PanelResizeHandle className="shell-splitter-v" />
                           <Panel id="drawing-side-panel" defaultSize="40%" minSize="20%">
                             <BottomStrip
                               dockedPanel={dockedBottomPanel}
@@ -372,7 +399,7 @@ export function ViewerLayout() {
             {/* Backdrop overlay when sheet is open */}
             {(!leftPanelCollapsed || !rightPanelCollapsed) && (
               <button type="button" aria-label={t('shellChrome.layout.closePanelsAriaLabel')}
-                className="absolute inset-0 z-30 border-0 bg-black/40 p-0 animate-in fade-in duration-200"
+                className="absolute inset-0 z-30 border-0 bg-scrim/40 p-0 animate-in fade-in duration-200"
                 onClick={() => {
                   setLeftPanelCollapsed(true);
                   setRightPanelCollapsed(true);
@@ -394,8 +421,9 @@ export function ViewerLayout() {
             {/* Mobile Bottom Sheet — whichever single panel is open (`MobilePanelSheet`). */}
             <MobilePanelSheet bottomInset={bottomViewportInset} analysisExtension={activeAnalysisExtension ?? null} />
 
-            {/* Mobile Floating Buttons: Hierarchy, Properties and the Panels list
-                (#5853). Hidden in the empty state so the "Load IFC" card stays unobstructed. */}
+            {/* Mobile Panels button: one entry point to every panel, Hierarchy and
+                Properties included (#5853, #8802 R6). Hidden in the empty state so the
+                "Load IFC" card stays unobstructed. */}
             {leftPanelCollapsed && rightPanelCollapsed && hasModelsLoaded && (
               <MobilePanelLauncher bottomInset={bottomViewportInset} />
             )}
@@ -417,6 +445,6 @@ export function ViewerLayout() {
             child documents; live-synced via the shared store. */}
         <PanelWindowHost />
       </div>
-    </TooltipProvider>
+    </PersistentToolHosts></TooltipProvider>
   );
 }

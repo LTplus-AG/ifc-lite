@@ -29,7 +29,7 @@ pub fn mirrored() -> String {
 }
 pub fn unsupported_second() -> String {
     insert(&SOURCE.replace("(#10),$,$,.NOTDEFINED.", "(#10,#32),$,$,.NOTDEFINED."),
-        "#30=IFCPOLYGONALFACESET($,$,$,$);#31=IFCSHAPEREPRESENTATION(#5,'Body','Tessellation',(#30));#32=IFCREPRESENTATIONMAP(#2,#31);")
+        "#30=IFCFACETEDBREP($);#31=IFCSHAPEREPRESENTATION(#5,'Body','Brep',(#30));#32=IFCREPRESENTATIONMAP(#2,#31);")
 }
 pub fn curves() -> String {
     insert(&SOURCE.replace("'Body','SweptSolid',(#8)", "'Annotation','Annotation2D',(#31)"),

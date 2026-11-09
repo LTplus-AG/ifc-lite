@@ -23,6 +23,13 @@ fn signed_area(mesh: &Mesh) -> f64 {
         .sum()
 }
 
+/// The default engine parses every face set into this tuple, so a retained
+/// field on it costs default bytes in every build (#8408).
+#[test]
+fn issue_7955_face_loops_carry_no_retained_bookkeeping() {
+    assert_eq!(size_of::<FaceLoops>(), size_of::<(IfcType, Vec<u32>, Vec<Vec<u32>>)>());
+}
+
 #[test]
 fn owned_holed_polygon_replays_pn_mapping_without_filling_the_hole() {
     let plan = decoded("#1=IFCCARTESIANPOINTLIST3D(((0.,0.,0.),(4.,0.,0.),(4.,4.,0.),(0.,4.,0.),(1.,1.,0.),(3.,1.,0.),(3.,3.,0.),(1.,3.,0.)));#2=IFCINDEXEDPOLYGONALFACEWITHVOIDS((8,7,6,5),((4,3,2,1)));#20=IFCPOLYGONALFACESET(#1,.F.,(#2),(8,7,6,5,4,3,2,1));".into(), None);

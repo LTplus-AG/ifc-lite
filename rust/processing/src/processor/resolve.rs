@@ -54,8 +54,9 @@ pub(super) struct Facts {
     pub(super) georeferencing_candidates: Vec<(u32, IfcType)>,
     pub(super) times: Times,
     /// Kept alive to the end of the pass, like the router: freeing them is not
-    /// part of any timed phase.
-    pub(super) _prepass_spans: crate::prepass::PrepassSpans,
+    /// part of any timed phase. The pass reads the styled-item spans for
+    /// `Features::finishes`.
+    pub(super) prepass_spans: crate::prepass::PrepassSpans,
     pub(super) _prepass_rest: ResolvedPrepass,
     pub(super) _rel_defines_spans: Vec<(usize, usize)>,
     pub(super) router: GeometryRouter,
@@ -212,7 +213,7 @@ pub(super) fn resolve<'c>(
                 preprocess: preprocess_time,
                 parse: parse_time,
             },
-            _prepass_spans: spans,
+            prepass_spans: spans,
             _prepass_rest: prepass,
             _rel_defines_spans: rel_defines_spans,
             router,
@@ -342,7 +343,7 @@ fn filter_phase(
         &mut s.prepass.geometry_style_index,
         &s.prepass.indexed_colour_index,
     );
-    let (skipped_entity_ids, filtered_void_index) = apply_opening_filter(
+    let (skipped_entity_ids, mut filtered_void_index) = apply_opening_filter(
         &s.jobs,
         &s.prepass.void_index,
         &s.prepass.filling_by_opening,
@@ -359,6 +360,9 @@ fn filter_phase(
     // `Some(empty)` is part of the public filtering contract.
     if let Some(ids) = req.entity_ids.as_deref() {
         s.jobs.retain(|job| ids.contains(&job.id));
+    }
+    if req.skip_voids {
+        filtered_void_index.clear();
     }
     (skipped_entity_ids, filtered_void_index)
 }

@@ -59,6 +59,8 @@ export interface TreeNode {
    * `globalIds` instead holds resolved geometry for isolation.
    */
   memberGlobalIds?: number[];
+  /** Selection owners aligned with expressIds; modelIds retains all shared-store owners. */
+  memberModelIds?: string[];
   /** Structured entity expressId for selectable non-element nodes (for example IFC type entities) */
   entityExpressId?: number;
   /** Model IDs this node belongs to */
@@ -203,3 +205,6 @@ export const isSpatialContainer = (type: NodeType): boolean => SPATIAL_CONTAINER
 /** Rows muted because they represent known geometry-less physical objects. */
 export const isNoGeometryNode = (node: TreeNode): boolean =>
   node.noGeometry === true || node.type === 'other-group';
+
+/** Height of an ordinary tree row (#8802): 28 px, the inspector's data-row size. */
+export const HIERARCHY_ROW_HEIGHT = 28;

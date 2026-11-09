@@ -768,6 +768,8 @@ Transitive dependencies, by declared license:
 Licence declaration: MIT OR NCSA
 Source: https://github.com/emscripten-core/emscripten/tree/4.0.15
 Scope: SMLib wasm/JS, CLI engine; compiler tools are not shipped
+Licence election: MIT
+Attribution: Emscripten runtime (including Node path portions) 4.0.15, licensed under MIT by maintainer default from MIT OR NCSA
 
 --- LICENSE (sha256 620a78084fc7ca97c0b5dea9abf891f3ffcadfdbf305276f099c9c4e12fc1d86) ---
 Emscripten is available under 2 licenses, the MIT license and the
@@ -872,6 +874,612 @@ The third_party/ subdirectory contains code with other licenses. None of it is
 used by default, but certain options use it (e.g., the optional closure compiler
 flag will run closure compiler from third_party/).
 
+
+
+--- AUTHORS (sha256 56f7df65203d4858dac19cafe3a84a8c49abaff56b67d32d2d463d5fef6e440b) ---
+Contributors to Emscripten may optionally add themselves to this list of
+authors if they choose to do so. This is optional because the git history is
+good enough for that purpose, and in fact most projects do not maintain such a
+manual list.
+
+While the file is not necessary, to preserve the history of the project we are
+not removing it.
+
+(Authors keep copyright of their contributions, of course; they just grant
+a license to everyone to use it as detailed in LICENSE.)
+
+* Alon Zakai <alonzakai@gmail.com> (copyright owned by Mozilla Foundation)
+* Tim Dawborn <tim.dawborn@gmail.com>
+* Max Shawabkeh <max99x@gmail.com>
+* Sigmund Vik <sigmund_vik@yahoo.com>
+* Jeff Terrace <jterrace@gmail.com>
+* Benoit Tremblay <trembl.ben@gmail.com>
+* Andreas Bergmeier <abergmeier@gmx.net>
+* Ben Schwartz <bens@alum.mit.edu>
+* David Claughton <dave@eclecticdave.com>
+* David Yip <yipdw@member.fsf.org>
+* Julien Hamaide <julien.hamaide@gmail.com>
+* Ehsan Akhgari <ehsan.akhgari@gmail.com> (copyright owned by Mozilla Foundation)
+* Adrian Taylor <adrian@macrobug.com>
+* Richard Assar <richard.assar@gmail.com>
+* Nathan Hammond <emscripten@nathanhammond.com>
+* Behdad Esfahbod <behdad@behdad.org>
+* David Benjamin <davidben@mit.edu>
+* Pierre Renaux <pierre@talansoft.com>
+* Brian Anderson <banderson@mozilla.com>
+* Jon Bardin <diclophis@gmail.com>
+* Jukka Jylänki <jujjyl@gmail.com>
+* Aleksander Guryanov <caiiiycuk@gmail.com>
+* Chad Austin <chad@chadaustin.me> (copyright owned by IMVU)
+* nandhp <nandhp@gmail.com>
+* YeZhongWen <linghuye2.0@gmail.com>
+* Xingxing Pan <forandom@gmail.com>
+* Justin Kerk <dopefishjustin@gmail.com>
+* Andrea Bedini <andrea.bedini@gmail.com>
+* James Pike <totoro.friend@chilon.net>
+* Mokhtar Naamani <mokhtar.naamani@gmail.com>
+* Benjamin Stover <benjamin.stover@gmail.com>
+* Riccardo Magliocchetti <riccardo.magliocchetti@gmail.com>
+* Janus Troelsen <janus.troelsen@stud.tu-darmstadt.de>
+* Lars Schneider <lars.schneider@autodesk.com> (copyright owned by Autodesk, Inc.)
+* Joel Martin <github@martintribe.org>
+* Manuel Wellmann <manuel.wellmann@autodesk.com> (copyright owned by Autodesk, Inc.)
+* Xuejie Xiao <xxuejie@gmail.com>
+* Dominic Wong <dom@slowbunyip.org>
+* Alan Kligman <alan.kligman@gmail.com> (copyright owned by Mozilla Foundation)
+* Anthony Liot <wolfviking0@yahoo.com>
+* Michael Riss <Michael.Riss@gmx.de>
+* Jasper St. Pierre <jstpierre@mecheye.net>
+* Manuel Schölling <manuel.schoelling@gmx.de>
+* Bruce Mitchener, Jr. <bruce.mitchener@gmail.com>
+* Michael Bishop <mbtyke@gmail.com>
+* Roger Braun <roger@rogerbraun.net>
+* Vladimir Vukicevic <vladimir@pobox.com> (copyright owned by Mozilla Foundation)
+* Lorant Pinter <lorant.pinter@prezi.com>
+* Tobias Doerffel <tobias.doerffel@gmail.com>
+* Martin von Gagern <martin@von-gagern.net>
+* Ting-Yuan Huang <thuang@mozilla.com>
+* Joshua Granick <jgranick@blackberry.com>
+* Felix H. Dahlke <fhd@ubercode.de>
+* Éloi Rivard <azmeuk@gmail.com>
+* Alexander Gladysh <ag@logiceditor.com>
+* Arlo Breault <arlolra@gmail.com>
+* Jacob Lee <artdent@gmail.com> (copyright owned by Google, Inc.)
+* Joe Lee <jlee@imvu.com> (copyright owned by IMVU)
+* Andy Friesen <andy@imvu.com> (copyright owned by IMVU)
+* Bill Welden <bwelden@imvu.com> (copyright owned by IMVU)
+* Michael Ey <mey@imvu.com> (copyright owned by IMVU)
+* Llorens Marti Garcia <lgarcia@imvu.com> (copyright owned by IMVU)
+* Jinsuck Kim <jkim@imvu.com> (copyright owned by IMVU)
+* Todd Lee <tlee@imvu.com> (copyright owned by IMVU)
+* Anthony Pesch <inolen@gmail.com>
+* Robert Bragg <robert.bragg@intel.com> (copyright owned by Intel Corporation)
+* Sylvestre Ledru <sylvestre@debian.org>
+* Tom Fairfield <fairfield@cs.xu.edu>
+* Anthony J. Thibault <ajt@hyperlogic.org>
+* John Allwine <jallwine86@gmail.com>
+* Martin Gerhardy <martin.gerhardy@gmail.com>
+* James Gregory <jgregory@zynga.com> (copyright owned by Zynga, Inc.)
+* Dan Gohman <sunfish@google.com> (copyright owned by Google, Inc.)
+* Jeff Gilbert <jgilbert@mozilla.com> (copyright owned by Mozilla Foundation)
+* Frits Talbot <frits@metapathy.com>
+* Onno Jongbloed <hey@onnoj.net>
+* Jez Ng <me@jezng.com>
+* Marc Feeley <mfeeley@mozilla.com> (copyright owned by Mozilla Foundation)
+* Ludovic Perrine <jazzzz@gmail.com>
+* David Barksdale <david.barksdale@adcedosolutions.com>
+* Manfred Manik Nerurkar <nerurkar*at*made-apps.biz> (copyright owned by MADE, GmbH)
+* Joseph Gentle <me@josephg.com>
+* Douglas T. Crosher <dtc-moz@scieneer.com> (copyright owned by Mozilla Foundation)
+* Douglas T. Crosher <info@jsstats.com> (copyright owned by Scieneer Pty Ltd.)
+* Soeren Balko <soeren.balko@gmail.com> (copyright owned by Clipchamp Pty Ltd.)
+* Ryan Kelly (ryan@rfk.id.au)
+* Michael Lelli <toadking@toadking.com>
+* Yu Kobayashi <yukoba@accelart.jp>
+* Pin Zhang <zhangpin04@gmail.com>
+* Nick Bray <ncbray@chromium.org> (copyright owned by Google, Inc.)
+* Aidan Hobson Sayers <aidanhs@cantab.net>
+* Charlie Birks <admin@daftgames.net>
+* Ranger Harke <ranger.harke@autodesk.com> (copyright owned by Autodesk, Inc.)
+* Tobias Vrinssen <tobias@vrinssen.de>
+* Patrick R. Martin <patrick.martin.r@gmail.com>
+* Richard Quirk <richard.quirk@gmail.com>
+* Marcos Scriven <marcos@scriven.org>
+* Antoine Lambert <antoine.lambert33@gmail.com>
+* Daniel Aquino <mr.danielaquino@gmail.com>
+* Remi Papillie <remi.papillie@gmail.com>
+* Fraser Adams <fraser.adams@blueyonder.co.uk>
+* Michael Tirado <icetooth333@gmail.com>
+* Ben Noordhuis <info@bnoordhuis.nl>
+* Bob Roberts <bobroberts177@gmail.com>
+* John Vilk <jvilk@cs.umass.edu>
+* Daniel Baulig <dbaulig@fb.com> (copyright owned by Facebook, Inc.)
+* Lu Wang <coolwanglu@gmail.com>
+* Heidi Pan <heidi.pan@intel.com> (copyright owned by Intel)
+* Vasilis Kalintiris <ehostunreach@gmail.com>
+* Adam C. Clifton <adam@hulkamaniac.com>
+* Volo Zyko <volo.zyko@gmail.com>
+* Andre Weissflog <floooh@gmail.com>
+* Alexandre Perrot <alexandre.perrot@gmail.com>
+* Emerson José Silveira da Costa <emerson.costa@gmail.com>
+* Jari Vetoniemi <mailroxas@gmail.com>
+* Sindre Sorhus <sindresorhus@gmail.com>
+* James S Urquhart <jamesu@gmail.com>
+* Boris Gjenero <boris.gjenero@gmail.com>
+* jonas echterhoff <jonas@unity3d.com>
+* Sami Vaarala <sami.vaarala@iki.fi>
+* Jack A. Arrington <jack@epicpineapple.com>
+* Richard Janicek <r@janicek.co>
+* Joel Croteau <jcroteau@gmail.com>
+* Haneef Mubarak <haneef503@gmail.com>
+* Nicolas Peri <nicox@shivaengine.com> (copyright owned by ShiVa Technologies, SAS)
+* Bernhard Fey <e-male@web.de>
+* Dave Nicponski <dave.nicponski@gmail.com>
+* Jonathan Jarri <noxalus@gmail.com>
+* Daniele Di Proietto <daniele.di.proietto@gmail.com>
+* Dan Dascalescu <dNOSPAMdascalescu@gmail.com>
+* Thomas Borsos <thomasborsos@gmail.com>
+* Ori Avtalion <ori@avtalion.name>
+* Guillaume Blanc <guillaumeblanc.sc@gmail.com>
+* Usagi Ito <usagi@WonderRabbitProject.net>
+* Camilo Polymeris <cpolymeris@gmail.com>
+* Markus Henschel <markus.henschel@yager.de>
+* Ophir Lojkine <ophir.lojkine@eleves.ec-nantes.fr>
+* Ryan Sturgell <ryan.sturgell@gmail.com> (copyright owned by Google, Inc.)
+* Jason Green <jason@transgaming.com> (copyright owned by TransGaming, Inc.)
+* Ningxin Hu <ningxin.hu@intel.com> (copyright owned by Intel)
+* Nicolas Guillemot <nlguillemot@gmail.com>
+* Sathyanarayanan Gunasekaran <gsathya.ceg@gmail.com> (copyright owned by Mozilla Foundation)
+* Nikolay Vorobyov <nik.vorobyov@gmail.com>
+* Jonas Platte <mail@jonasplatte.de>
+* Sebastien Ronsse <sronsse@gmail.com>
+* Glenn R. Wichman <gwichman@zynga.com>
+* Hamish Willee <hamishwillee@gmail.com> (copyright owned by Mozilla Foundation)
+* Sylvain Chevalier <sylvain.chevalier@gmail.com>
+* Nathan Ross <nross.se@gmail.com>
+* Zachary Pomerantz <zmp@umich.edu>
+* Boris Tsarev <boristsarev@gmail.com>
+* Mark Logan <mark@artillery.com> (copyright owned by Artillery Games, Inc.)
+* Коренберг Марк <socketpair@gmail.com>
+* Gauthier Billot <gogoprog@gmail.com>
+* Árpád Goretity <h2co3@h2co3.org>
+* Nicholas Wilson <nicholas@nicholaswilson.me.uk>
+* Aaron Mandle <aaronmandle@gmail.com>
+* Bailey Hayes <Bailey.Hayes@sas.com> (copyright owned by SAS Institute Inc.)
+* Paul Holland <pholland@adobe.com>
+* James Long <longster@gmail.com>
+* David Anderson <danderson@mozilla.com> (copyright owned by Mozilla Foundation)
+* Eric Rannaud <e@nanocritical.com> (copyright owned by Nanocritical Corp.)
+* William Furr <wfurr@google.com> (copyright owned by Google, Inc.)
+* Dan Glastonbury <dglastonbury@mozilla.com> (copyright owned by Mozilla Foundation)
+* Warren Seine <warren.seine@aerys.in> (copyright owned by Aerys SAS)
+* Petr Babicka <babcca@gmail.com>
+* Akira Takahashi <faithandbrave@gmail.com>
+* Victor Costan <costan@gmail.com>
+* Pepijn Van Eeckhoudt <pepijn.vaneeckhoudt@luciad.com> (copyright owned by Luciad NV)
+* Stevie Trujillo <stevie.trujillo@gmail.com>
+* Edward Rudd <urkle@outoforder.cc>
+* Rene Eichhorn <rene.eichhorn1@gmail.com>
+* Nick Desaulniers <nick@mozilla.com> (copyright owned by Mozilla Foundation)
+* Luke Wagner <luke@mozilla.com> (copyright owned by Mozilla Foundation)
+* Matt McCormick <matt.mccormick@kitware.com>
+* Thaddée Tyl <thaddee.tyl@gmail.com>
+* Philipp Wiesemann <philipp.wiesemann@arcor.de>
+* Jan Jongboom <janjongboom@gmail.com> (copyright owned by Telenor Digital AS)
+* Tiago Quelhas <tiagoq@gmail.com>
+* Reinier de Blois <rddeblois@gmail.com>
+* Yuichi Nishiwaki <yuichi.nishiwaki@gmail.com>
+* Jérôme Bernard <jerome.bernard@ercom.fr> (copyright owned by Ercom)
+* Chanhwi Choi <ccwpc@hanmail.net>
+* Fábio Santos <fabiosantosart@gmail.com>
+* Thibaut Despoulain <thibaut@artillery.com> (copyright owned by Artillery Games, Inc.)
+* Wei Tjong Yao <weitjong@gmail.com>
+* Tim Guan-tin Chien <timdream@gmail.com>
+* Krzysztof Jakubowski <nadult@fastmail.fm>
+* Vladimír Vondruš <mosra@centrum.cz>
+* Brion Vibber <brion@pobox.com>
+* Philip Lafleur <sendsbeak@gmail.com>
+* Javier Meseguer de Paz <j.meseguer@gmail.com>
+* Michael A. Balazs <michael.balazs@gmail.com>
+* Andreas Blixt <me@blixt.nyc>
+* Haofeng Zhang <h.z@duke.edu>
+* Cody Welsh <codyw@protonmail.com>
+* Hoong Ern Ng <hoongern@gmail.com>
+* Kagami Hiiragi <kagami@genshiken.org>
+* Jan Bölsche <jan@lagomorph.de>
+* Sebastian Matthes <sebastianmatthes@outlook.com> (copyright owned by Volkswagen AG)
+* Robert Goulet <robert.goulet@autodesk.com> (copyright owned by Autodesk, Inc.)
+* Juha Järvi <befunge@gmail.com>
+* Louis Lagrange <lagrange.louis@gmail.com>
+* Ying-Ruei Liang <thumbd03803@gmail.com>
+* Stuart Geipel <lapimlu@gmail.com>
+* Yeonjun Lim <yjroot@gmail.com>
+* Andrew Karpushin <reven86@gmail.com>
+* Felix Zimmermann <fzimmermann89@gmail.com>
+* Sven-Hendrik Haase <svenstaro@gmail.com>
+* Simon Sandström <simon@nikanor.nu>
+* Khaled Sami <k.sami.mohammed@gmail.com>
+* Omar El-Mohandes <omar.elmohandes90@gmail.com>
+* Florian Rival <florian.rival@gmail.com>
+* Mark Achée <mark@achee.com>
+* Piotr Paczkowski <kontakt@trzeci.eu>
+* Braden MacDonald <braden@bradenmacdonald.com>
+* Kevin Cheung <kevin.cheung@autodesk.com> (copyright owned by Autodesk, Inc.)
+* Josh Peterson <petersonjm1@gmail.com>
+* eska <eska@eska.me>
+* Nate Burr <nate.oo@gmail.com>
+* Paul "TBBle" Hampson <Paul.Hampson@Pobox.com>
+* Andreas Plesch <andreasplesch@gmail.com>
+* Brian Armstrong <brian.armstrong.ece+github@gmail.com>
+* Vincenzo Chianese <vincenz.chianese@icloud.com>
+* Noam T.Cohen <noam@ecb.co.il>
+* Nick Shin <nick.shin@gmail.com>
+* Gregg Tavares <github@greggman.com>
+* Tanner Rogalsky <tanner@tannerrogalsky.com>
+* Richard Cook <rcook@tableau.com> (copyright owned by Tableau Software, Inc.)
+* Arnab Choudhury <achoudhury@tableau.com> (copyright owned by Tableau Software, Inc.)
+* Charles Vaughn <cvaughn@tableau.com> (copyright owned by Tableau Software, Inc.)
+* Pierre Krieger <pierre.krieger1708@gmail.com>
+* Jakob Stoklund Olesen <stoklund@2pi.dk>
+* Jérémy Anger <angerj.dev@gmail.com>
+* Derek Schuff <dschuff@chromium.org> (copyright owned by Google, Inc.)
+* Ashley Sommer <flubba86@gmail.com>
+* Dave Fletcher <graveyhead@gmail.com>
+* Lars-Magnus Skog <ralphtheninja@riseup.net>
+* Pieter Vantorre <pietervantorre@gmail.com>
+* Maher Sallam <maher@sallam.me>
+* Andrey Burov <burik666@gmail.com>
+* Holland Schutte <hgschutte1@gmail.com>
+* Kerby Geffrard <kerby.geffrard@gmail.com>
+* cynecx <me@cynecx.net>
+* Chris Gibson <cgibson@mrvoxel.com>
+* Harald Reingruber <code*at*h-reingruber.at>
+* Aiden Koss <madd0131@umn.edu>
+* Dustin VanLerberghe <good_ol_dv@hotmail.com>
+* Philip Bielby <pmb45-github@srcf.ucam.org> (copyright owned by Jagex Ltd.)
+* Régis Fénéon <regis.feneon@gmail.com>
+* Dominic Chen <d.c.ddcc@gmail.com> (copyright owned by Google, Inc.)
+* Junji Hashimoto <junji.hashimoto@gmail.com>
+* Heejin Ahn <aheejin@gmail.com> (copyright owned by Google, Inc.)
+* Andras Kucsma <andras.kucsma@gmail.com>
+* Mateusz Borycki <mateuszborycki@gmail.com>
+* Franklin Ta <fta2012@gmail.com>
+* Jacob Gravelle <jgravelle@google.com> (copyright owned by Google, Inc.)
+* Kagami Sascha Rosylight <saschanaz@outlook.com>
+* Benny Jacobs <benny@gmx.it>
+* Ray Brown <code@liquibits.com>
+* Christopher Serr <christopher.serr@gmail.com>
+* Aaron Ruß <aaron.russ@dfki.de> (copyright owned by DFKI GmbH)
+* Vilibald Wanča <vilibald@wvi.cz>
+* Alex Hixon <alex@alexhixon.com>
+* Vladimir Davidovich <thy.ringo@gmail.com>
+* Yuriy Levchenko <irov13@mail.ru>
+* Dmitry Tolmachov <dmitolm@gmail.com>
+* Dylan McKay <me@dylanmckay.io>
+* Christophe Gragnic <cgragnic@netc.fr>
+* Murphy McCauley <murphy.mccauley@gmail.com>
+* Anatoly Trosinenko <anatoly.trosinenko@gmail.com>
+* Brad Grantham <grantham@plunk.org>
+* Sam Clegg <sbc@chromium.org> (copyright owned by Google, Inc.)
+* Joshua Lind <joshualind007@hotmail.com>
+* Hiroaki GOTO as "GORRY" <gorry@hauN.org>
+* Mikhail Kremnyov <mkremnyov@gmail.com> (copyright owned by XCDS International)
+* Tasuku SUENAGA a.k.a. gunyarakun <tasuku-s-github@titech.ac>
+* Vitorio Miguel Prieto Cilia <vdrbandeiras@gmail.com>
+* Evan Wallace <evan.exe@gmail.com>
+* Henning Pohl <henning@still-hidden.de>
+* Tim Neumann <mail@timnn.me>
+* Ondrej Stava <ondrej.stava@gmail.com> (copyright owned by Google, Inc.)
+* Jakub Jirutka <jakub@jirutka.cz>
+* Loo Rong Jie <loorongjie@gmail.com>
+* Jean-François Geyelin <jfgeyelin@gmail.com>
+* Matthew Collins <thethinkofdeath@gmail.com>
+* Satoshi N. M <snmatsutake@yahoo.co.jp>
+* Ryan Speets <ryan@speets.ca>
+* Fumiya Chiba <fumiya.chiba@nifty.com>
+* Ryan C. Gordon <icculus@icculus.org>
+* Inseok Lee <dlunch@gmail.com>
+* Yair Levinson (copyright owned by Autodesk, Inc.)
+* Matjaž Drolc <mdrolc@gmail.com>
+* James Swift <james@3dengineer.com> (copyright owned by PSPDFKit GmbH)
+* Ryan Lester <ryan@cyph.com> (copyright owned by Cyph, Inc.)
+* Nikolay Zapolnov <zapolnov@gmail.com>
+* Nazar Mokrynskyi <nazar@mokrynskyi.com>
+* Yury Delendik <ydelendik@mozilla.com> (copyright owned by Mozilla Foundation)
+* Kenneth Perry <thothonegan@gmail.com>
+* Jim Mussared <jim.mussared@gmail.com>
+* Dirk Vanden Boer <dirk.vdb@gmail.com>
+* Mitchell Foley <mitchfoley@google.com> (copyright owned by Google, Inc.)
+* Oleksandr Chekhovskyi <oleksandr.chekhovskyi@gmail.com>
+* Michael Siebert <michael.siebert2k@gmail.com>
+* Jonathan Hale <squareys@googlemail.com>
+* Etienne Brateau <etienne.brateau@gmail.com>
+* Zhiming Wang <zmwangx@gmail.com>
+* Jameson Ernst <jameson@jpernst.com>
+* Yoan Lecoq <yoanlecoq.io@gmail.com>
+* Jiajie Hu <jiajie.hu@intel.com> (copyright owned by Intel Corporation)
+* Kamil Klimek <naresh@tlen.pl>
+* José Carlos Pujol <josecpujol(at)gmail.com>
+* Dannii Willis <curiousdannii@gmail.com>
+* Erik Dubbelboer <erik@dubbelboer.com>
+* Sergey Tsatsulin <tsatsulin@gmail.com>
+* varkor <github@varkor.com>
+* Stuart Knightley <website@stuartk.com>
+* Amadeus Guo <gliheng@foxmail.com>
+* Nathan Froyd <froydnj@gmail.com> (copyright owned by Mozilla Foundation)
+* Daniel Wirtz <dcode@dcode.io>
+* Kibeom Kim <kk1674@nyu.edu>
+* Marcel Klammer <m.klammer@tastenkunst.com>
+* Axel Forsman <axelsfor@gmail.com>
+* Ebrahim Byagowi <ebrahim@gnu.org>
+* Thorsten Möller <thorsten.moeller@sbi.ch>
+* Michael Droettboom <mdroettboom@mozilla.com>
+* Nicolas Bouquet <hgy01@hieroglyphe.net>
+* Miguel Saldivar <miguel.saldivar22@hotmail.com>
+* Gert Van Hoey <gert.vanhoey@gmail.com>
+* Valtteri Heikkilä <rnd@nic.fi>
+* Daniel McNab <daniel.mcnab6+emcc(at)gmail.com>
+* Tyler Limkemann <tslimkemann42 gmail.com>
+* Ben Smith <binji@google.com> (copyright owned by Google, Inc.)
+* Sylvain Beucler <beuc@beuc.net>
+* Patrik Weiskircher <patrik@weiskircher.name>
+* Tobias Widlund <widlundtobias(at)gmail.com>
+* Rob Fors <mail@robfors.com>
+* Mike Frysinger <vapier@chromium.org> (copyright owned by Google, Inc.)
+* Sébasiten Crozet <developer@crozet.re>
+* Andrey Nagikh <andrey@nagih.ru>
+* Dzmitry Malyshau <dmalyshau@mozilla.com> (copyright owned by Mozilla Foundation)
+* Bjorn Swenson <tie.372@gmail.com>
+* Ryhor Spivak <grisha@rusteddreams.net>
+* Jan Schär <jscissr@gmail.com>
+* Ryhor Spivak <grisha@rusteddreams.net>
+* Alexander Bich <quyse0@gmail.com>
+* Ashleigh Thomas <ashleighbcthomas@gmail.com>
+* Veniamin Petrenko <bjpbjpbjp10@gmail.com>
+* Ian Henderson <ian@ianhenderson.org>
+* Siim Kallas <siimkallas@gmail.com>
+* Carl Woffenden <cwoffenden@gmail.com> (copyright owned by Numfum GmbH)
+* Patrick Berger <patrick.berger@xmail.net> (copyright owned by Compusoft Group)
+* Alexander Frank Lehmann <alexander.frank.lehmann@compusoftgroup.com> (copyright owned by Compusoft Group)
+* Tommy Nguyen <tn0502@gmail.com>
+* Thomas Schander <info@thomasschander.com> (copyright owned by Enscape GmbH)
+* Benjamin S. Rodgers <acdimalev@gmail.com>
+* Paul Shapiro <paul@mymonero.com>
+* Elmo Todurov <elmo.todurov@eesti.ee>
+* Zoltán Žarkov <zeko@freecivweb.org>
+* Roman Yurchak <rth.yurchak@pm.me>
+* Hampton Maxwell <me@hamptonmaxwell.com>
+* Eric Fiselier <ericwf@google.com> (copyright owned by Google, Inc.)
+* Sirapop Wongstapornpat <sirapop.wongstapornpat@student.oulu.fi>
+* Matt Kane <m@mk.gg>
+* Altan Özlü <altanozlu7@gmail.com>
+* Mary S <ipadlover8322@gmail.com>
+* Martin Birks <mbirks@gmail.com>
+* Kirill Smelkov <kirr@nexedi.com> (copyright owned by Nexedi)
+* Lutz Hören <laitch383@gmail.com>
+* Pedro K Custodio <git@pedrokcustodio.com>
+* Nicolas Allemand <contact@nicolasallemand.com>
+* Gabriel Cuvillier <contact@gabrielcuvillier.pro>
+* Thomas Lively <tlively@google.com> (copyright owned by Google, Inc.)
+* Brandon Surmanski <b.surmanski@gmail.com>
+* Rian Hunter <rian@alum.mit.edu>
+* Kai Ninomiya <kainino@chromium.org> (copyright owned by Google, Inc.)
+* Mickaël Schoentgen <contact@tiger-222.fr>
+* Renaud Leroy <capitnflam@gmail.com>
+* Florian Stellbrink <florian@stellbr.ink>
+* Shane Peelar <lookatyouhacker@gmail.com>
+* Alessandro Pignotti <alessandro@leaningtech.com>
+* Zheng Tao Lee <zhengtao.lee@autodesk.com> (copyright owned by Autodesk, Inc.)
+* Martina Kraus <kraus.martina.m@googlemail.com>
+* Jacob Adelgren <jake@eevo.com>
+* Ingvar Stepanyan <me@rreverser.com>
+* Ben Trapani <ben.trapani1995@gmail.com> (copyright owned by Microsoft, Inc.)
+* Tim Lander <tim57282＠hotmail.com>
+* Jacob Greenfield <jacob@jacobgreenfield.me>
+* Joseph Kogut <joseph.kogut@gmail.com>
+* Yi Zhang <milizhang@gmail.com>
+* Marc Abramowitz <msabramo@gmail.com>
+* Daniel Ruf <daniel@daniel-ruf.de>
+* Timothy Trindle <titrindl@microsoft.com> (copyright owned by Microsoft, Inc.)
+* Matthew Andres Moreno <m.more500@gmail.com>
+* Eric Mandel <eric@cfa.harvard.edu>
+* Anthony Catel <paraboul@gmail.com>
+* Simon Cooper <simon.d.cooper@hotmail.co.uk>
+* Amir Rasouli <arasouli91@gmail.com>
+* Nico Weber <thakis@chromium.org>
+* Bas Doorn <code@keyn.app> (copyright owned by Keyn B.V.)
+* Adam Bujalski <a.bujalski@samsung.com> (copyright owned by Samsung Electronics)
+* Guanzhong Chen <gzchen@google.com> (copyright owned by Google, Inc.)
+* Denis Serebro <densilver3000@gmail.com>
+* Lucas Ramage <ramage.lucas@protonmail.com>
+* Andy Wingo <wingo@igalia.com> (copyright owned by Igalia)
+* Philipp Gloor <philipp.gloor@pdf-tools.com> (copyright owned by PDF Tools AG)
+* Jasmine Minter <jasmine@minteronline.com> (copyright owned by Clipchamp Pty Ltd.)
+* Ferris Kwaijtaal <ferrispc@hotmail.com>
+* Konstantin Podsvirov <konstantin@podsvirov.pro>
+* Eduardo Bart <edub4rt@gmail.com>
+* Zoltan Varga <vargaz@gmail.com> (copyright owned by Microsoft, Inc.)
+* Fernando Serboncini <fserb@google.com>
+* Christian Clauss <cclauss@me.com> (copyright owned by IBM)
+* Henry Kleynhans <hkleynhans@bloomberg.net> (copyright owned by Bloomberg L.P.)
+* FUJI Goro <g.psy.va@gmail.com>
+* Egor Suvorov <esuvorov@think-cell.com> (copyright owned by think-cell Software GmbH)
+* James Kuszmaul <jabukuszmaul@gmail.com>
+* Wei Mingzhi <whistler_wmz@users.sourceforge.net>
+* Sergey karchevsky <sergey.ext@gmail.com>
+* Ajay Patel <patel.ajay285@gmail.com>
+* Adrien Devresse <adev@adev.name>
+* Petr Penzin <petr.penzin@intel.com> (copyright owned by Intel Corporation)
+* Tayeb Al Karim <tay@google.com> (copyright owned by Google, Inc.)
+* Andrei Alexeyev <akari@taisei-project.org>
+* Cesar Guirao Robles <cesar@no2.es>
+* Ricky Claven <ricksterhd123@gmail.com>
+* Mehdi Sabwat <mehdisabwat@gmail.com>
+* MinganMuon <mingan-muon@outlook.com>
+* Jonathan Feinberg <feinberg@google.com>
+* Osman Turan <osman@osmanturan.com>
+* Jaikanth J <jaikanthjay46@gmail.com>
+* Gernot Lassnig <gernot.lassnig@gmail.com>
+* Christian Boos <cboos@bct-technology.com>
+* Erik Scholz <greenNO@SPAMg-s.xyz>
+* Michael de Lang <kingoipo@gmail.com>
+* Gergely Nagy <ngg@tresorit.com>
+* Jan Habermann <jan@habermann.io>
+* John Granström <granstrom.john@gmail.com>
+* Clemens Backes <clemensb@google.com> (copyright owned by Google, Inc.)
+* Tibor Klajnscek <tiborkl@numfum.com>
+* Benjamin Golinvaux <benjamin@golinvaux.com>
+* Peter Salomonsen <pjsalomonsen@gmail.com>
+* Niklas Fiekas <niklas.fiekas@backscattering.de>
+* Martín Lucas Golini <spartanj@gmail.com>
+* Bumsik Kim <k.bumsik@gmail.com>
+* Corentin Wallez <cwallez@chromium.org> (copyright owned by Google, Inc.)
+* Austin Eng <enga@chromium.org> (copyright owned by Google, Inc.)
+* Hugo Amiard <hugo.amiard@laposte.net>
+* Diego Casorran <dcasorran@gmail.com>
+* sssooonnnggg <sssooonnnggg111@gmail.com>
+* Guillaume Racicot <gufideg@gmail.com>
+* SK Min <oranke@gmail.com>
+* Fabio Alessandrelli <fabio.alessandrelli@gmail.com>
+* Kirill Gavrilov <kirill@sview.ru>
+* Karl Semich <0xloem@gmail.com>
+* Louis DeScioli <descioli@google.com> (copyright owned by Google, LLC)
+* Kleis Auke Wolthuizen <info@kleisauke.nl>
+* Michael Potthoff <michael@potthoff.eu>
+* Abigail Bunyan <abigail@bold.claims> (copyright owned by Microsoft Corporation)
+* David García Paredes <davidgparedes@gmail.com>
+* Dan Field <dfield@gmail.com> (copyright owned by Google, Inc.)
+* Mike Swierczek <mike@swierczek.io>
+* Vasily <just.one.man@yandex.ru>
+* Jānis Rūcis <parasti@gmail.com>
+* rssqian <rssqian@gmail.com>
+* Shachar Langbeheim <nihohit@gmail.com>
+* Laurin Agostini <thevolut@gmail.com>
+* David Carlier <devnexen@gmail.com>
+* Paul Du <du.paul136@gmail.com> (copyright owned by ARSKAN)
+* Piotr Doan <doanpiotr@gmail.com>
+* Stuart Schechter <stuart.schechter@gmail.com>
+* Brett Paterson <brett@fmod.com>
+* Robert Aboukhalil <robert.aboukhalil@gmail.com>
+* Jonathan Poelen <jonathan.poelen@gmail.com>
+* Ashley Hauck <github@khyperia.com>
+* Junyue Cao <junyuecao@gmail.com>
+* Elías Serrano <feserr3@gmail.com>
+* Philip Pfaffe <pfaffe@google.com> (copyright owned by Google, LLC)
+* Troy Tae <tjy970721@gmail.com>
+* Sky Wang <sky-wang@qq.com>
+* popomen <nz_nuaa@163.com>
+* Artyom Lebedev <vagran.ast@gmail.com>
+* Sebastián Gurin (cancerberoSgx) <sebastigurin@gmail.com>
+* Benedikt Meurer <bmeurer@google.com> (copyright owned by Google, LLC)
+* Jiulong Wang <jiulongw@gmail.com>
+* pudinha <rogi@skylittlesystem.org>
+* Nicholas Phillips <nwp2@illinois.edu>
+* Colin Guyon <colin.guyon@insimo.fr> (copyright owned by InSimo, SAS)
+* Mathias Westerdahl <mwesterdahl76@gmail.com>
+* Philip Rideout <prideout@google.com> (copyright owned by Google, LLC)
+* Shrek Shao (shrekshao@google.com) (copyright owned by Google, LLC)
+* Arran Ireland <ion92@protonmail.com>
+* Jia Yuan Lo <jylo06g@gmail.com>
+* Philip Lassen <philiplassen@gmail.com>
+* Antoine du Hamel <duhamelantoine1995@gmail.com>
+* Alexander Köplinger <alex.koeplinger@outlook.com> (copyright owned by Microsoft, Inc.)
+* Kenneth Pouncey <kepounce@microsoft.com> (copyright owned by Microsoft, Inc.)
+* Mitchell Hwang <mihw@microsoft.com> (copyright owned by Microsoft, Inc.)
+* Sean Maher <seanptmaher@gmail.com> (copyright owned by Google, LLC)
+* Paul Peny <pmpp.pub@gmail.com>
+* Prashanth Nethi <prashant@adobe.com>
+* Max Weisel <max@maxweisel.com>
+* Georg Rottensteiner <georg@georg-rottensteiner.de>
+* Tristan Griffin <tristan.griffin@hcl.com> (Copyright owned by HCL)
+* Julien Jorge <julien.jorge@gmx.fr>
+* Benjamin Lee <bnllee@ucdavis.edu>
+* Attila Oláh <atl@google.com> (copyright owned by Google, LLC)
+* Marat Dukhan <maratek@google.com> (copyright owned by Google, LLC)
+* Raphael Siegel <siegel.raphael@gmail.com>
+* Stephan Reiter <reste@google.com> (copyright owned by Google, LLC)
+* kamenokonyokonyoko <kamenokonokotan@gmail.com>
+* Lectem <lectem@gmail.com>
+* Henrik Algestam <henrik@algestam.se>
+* Rocco Musolino <roccomusolino92@gmail.com>
+* Pawel Czarnecki <pawel@8thwall.com> (copyright owned by 8th Wall, Inc.)
+* Dhairya Bahl < dhairyabahl5@gmail.com >
+* Sam Gao <gaoshan274@gmail.com>
+* Sebastian Mayr <me@sam.st>
+* Vladimir Gamalyan <vladimir.gamalyan@gmail.com>
+* Jean-Sébastien Nadeau <mundusnine@gmail.com> (copyright owned by Foundry Interactive Inc.)
+* Wouter van Oortmerssen <wvo@google.com> (copyright owned by Google, LLC)
+* Alexey Sokolov <sokolov@google.com> (copyright owned by Google, LLC)
+* Lukas Rieger <rieger@progress-psd.com>
+* Ivan Romanovski <ivan.romanovski@gmail.com>
+* Max Brunsfeld <maxbrunsfeld@gmail.com>
+* Basil Fierz <basil.fierz@hotmail.com>
+* Rod Hyde <rod@badlydrawngames.com>
+* Aleksey Kliger <aleksey@lambdageek.org> (copyright owned by Microsoft, Inc.)
+* Nicolas Ollinger <nopid@free.fr>
+* Michael R. Crusoe <crusoe@debian.org>
+* Dexter Chua <dec41@srcf.net>
+* Thomas Ballinger <thomasballinger@gmail.com>
+* Mehdi Sadeghi <mehdi@mehdix.org>
+* Amin Yahyaabadi <aminyahyaabadi74@gmail.com>
+* Adam Leskis <leskis@gmail.com>
+* Raffaele Pertile <raffarti@zoho.com>
+* Patric Stout <github@truebrain.nl>
+* Jinoh Kang <jinoh.kang.kr@gmail.com>
+* Jorge Prendes <jorge.prendes@gmail.com>
+* Alexey Shamrin <shamrin@gmail.com>
+* Wirtos <wirtos.new@gmail.com>
+* Ben den Hollander <bdenhollander@dynascape.com> (copyright owned by DynaScape Software Inc.)
+* Akul Penugonda <akulvp@gmail.com>
+* Jan Wolff <contact@jancc.de>
+* Pawel Czarnecki <pawel@8thwall.com> (copyright owned by 8th Wall, Inc.)
+* Camil Staps <info@camilstaps.nl>
+* Michael Kircher <michael.kircher.github@gmail.com>
+* Sharad Saxena <sharad.saxena@autodesk.com> (copyright owned by Autodesk, Inc.)
+* Vasili Skurydzin <vasili.skurydzin@ibm.com>
+* Jakub Nowakowski <jn925+emcc@o2.pl>
+* Michael Taylor <mitaylor@adobe.com>
+* Andrew Brown <andrew.brown@intel.com> (copyright owned by Intel Corporation)
+* Benjamin Puzycki <bpuzycki@umich.edu>
+* Marco Buono <marcobuono@invisionapp.com> (copyright owned by InVisionApp, Inc.)
+* Philip Gossweiler <philip.gossweiler@outlook.com>
+* Rafael Brune <mail@rbrune.de>
+* Aleksi Sapon <aleksi.sapon@faro.com> (copyright owned by FARO Technologies, Inc.)
+* Radek Doulik <radek.doulik@gmail.com> (copyright owned by Microsoft, Inc.)
+* Érico Porto <ericoporto2008@gmail.com>
+* Albert Vaca Cintora <albertvaka@gmail.com>
+* Zhi An Ng <zhin@google.com> (copyright owned by Google, Inc.)
+* Ian Jackson <ijackson@chiark.greenend.org.uk>
+* Brian Gontowski <brian@gontowski.com>
+* Bobbie Chen <bobbie.chen75@gmail.com>
+* Nicholas Hollander <nhollander98@gmail.com>
+* Camillo Lugaresi <camillol@google.com> (copyright owned by Google LLC)
+* Chris Craig <emscripten@goldwave.com>
+* Le Yao <le.yao@intel.com> (copyright owned by Intel Corporation)
+* José Cadete <crudelios@gmail.com>
+* Cynthia K. Rey <cynthia@cynthia.dev>
+* Andrew Shaitorov <andrew.shaitorov@gmail.com>
+* on-keyday <rokenboo47803@gmail.com>
+* Matthew Balch <matt5sean3@gmail.com>
+* James Price <jrprice@google.com> (copyright owned by Google, Inc.)
+* Nathan Rugg <nmrugg@gmail.com> (copyright owned by Chess.com, LLC)
+* Alexander O'Mara <me@alexomara.com>
+* Kamaron Peterson <kamaron.peterson@gmail.com>
+* Márton Marczell <mmarczell.graphisoft@gmail.com> (copyright owned by GRAPHISOFT SE)
+* Alexander Vestin <alex.vestin@gmail.com>
+* Xiaobing Yang <yangxiaobing@jwzg.com>
+* Alexandra Cherdantseva <neluhus.vagus@gmail.com>
+* Michael Schmuki <michael@schmuki.io>
+* Skye Gibney <skyejgibney@gmail.com>
+* Piotr Wierciński <laminowany@gmail.com>
+* 郑苏波 (Super Zheng) <superzheng@tencent.com>
+* James Hu <jameshu2022@gmail.com>
+* Jerry Zhuang <jerry.zhuang@jwzg.com>
+* Taisei Kon <kinsei0916@gmail.com>
+* YAMAMOTO Takashi <yamamoto@midokura.com>
+* Artur Gatin <agatin@teladochealth.com> (copyright owned by Teladoc Health, Inc.)
+* Christian Lloyd <clloyd@teladochealth.com> (copyright owned by Teladoc Health, Inc.)
+* Sean Morris <sean@seanmorr.is>
 
 
 === musl bundled with Emscripten 4.0.15 ===
@@ -2659,6 +3267,8 @@ Scope: Default SMLib WASM allocator; Emscripten modifications covered by Emscrip
 Licence declaration: 0BSD OR MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: adler2 2.0.1, licensed under MIT by maintainer default from 0BSD OR MIT OR Apache-2.0
 
 --- LICENSE-0BSD (sha256 861399f8c21c042b110517e76dc6b63a2b334276c8cf17412fc3c8908ca8dc17) ---
 Copyright (C) Jonas Schievink <jonasschievink@gmail.com>
@@ -2909,6 +3519,8 @@ DEALINGS IN THE SOFTWARE.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: ahash 0.8.12, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2) ---
                               Apache License
@@ -3146,6 +3758,8 @@ DEALINGS IN THE SOFTWARE.
 Licence declaration: Unlicense OR MIT
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: aho-corasick 1.1.4, licensed under MIT by maintainer default from Unlicense OR MIT
 
 --- COPYING (sha256 01c266bced4a434da0051174d6bee16a4c82cf634e2679b6155d40d75012390f) ---
 This project is dual-licensed under the Unlicense and MIT licenses.
@@ -3846,6 +4460,8 @@ SOFTWARE.
 Licence declaration: Apache-2.0 OR MIT
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: autocfg 1.5.0, licensed under MIT by maintainer default from Apache-2.0 OR MIT
 
 --- LICENSE-APACHE (sha256 a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2) ---
 Full text reproduced above under this SHA-256.
@@ -3882,6 +4498,8 @@ DEALINGS IN THE SOFTWARE.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: base64 0.23.1, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2) ---
 Full text reproduced above under this SHA-256.
@@ -3914,6 +4532,8 @@ THE SOFTWARE.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: bitflags 2.11.1, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2) ---
 Full text reproduced above under this SHA-256.
@@ -3950,6 +4570,8 @@ DEALINGS IN THE SOFTWARE.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: block-buffer 0.10.4, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5) ---
                               Apache License
@@ -4187,6 +4809,8 @@ DEALINGS IN THE SOFTWARE.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: bnum 0.14.4, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- COPYRIGHT (sha256 e6d44adfb5731e0c855b3814b877cd3c37eee58cf8b7a0658b37a44770a15bc3) ---
 Copyright (c) 2022 Isaac Holt
@@ -4452,6 +5076,8 @@ DEALINGS IN THE SOFTWARE.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained; pkg-diff (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: bumpalo 3.20.2, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2) ---
 Full text reproduced above under this SHA-256.
@@ -4488,6 +5114,8 @@ DEALINGS IN THE SOFTWARE.
 Licence declaration: Zlib OR Apache-2.0 OR MIT
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: bytemuck 1.25.2, licensed under MIT by maintainer default from Zlib OR Apache-2.0 OR MIT
 
 --- LICENSE-APACHE (sha256 e3ba223bb1423f0aad8c3dfce0fe3148db48926d41e6fbc3afbbf5ff9e1c89cb) ---
 Apache License
@@ -4616,6 +5244,8 @@ DEALINGS IN THE SOFTWARE.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: cc 1.2.62, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2) ---
 Full text reproduced above under this SHA-256.
@@ -4698,6 +5328,8 @@ The `cfg_aliases!` macro uses a lot of the code from [`tectonic_cfg_support::tar
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained; pkg-diff (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: cfg-if 1.0.4, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2) ---
 Full text reproduced above under this SHA-256.
@@ -4709,6 +5341,8 @@ Full text reproduced above under this SHA-256.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: chrono 0.4.44, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE.txt (sha256 946c9835d8034d24404f8cfec5f4654cee5dad17e944afc3d06d742cf2882831) ---
 Rust-chrono is dual-licensed under The MIT License [1] and
@@ -5194,6 +5828,8 @@ DEALINGS IN THE SOFTWARE.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: const-random-macro 0.1.16, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2) ---
 Full text reproduced above under this SHA-256.
@@ -5230,6 +5866,8 @@ DEALINGS IN THE SOFTWARE.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: const-random 0.1.18, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2) ---
 Full text reproduced above under this SHA-256.
@@ -5241,6 +5879,8 @@ Full text reproduced above under this SHA-256.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: core-foundation-sys 0.8.7, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2) ---
 Full text reproduced above under this SHA-256.
@@ -5277,6 +5917,8 @@ DEALINGS IN THE SOFTWARE.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: cpufeatures 0.2.17, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5) ---
 Full text reproduced above under this SHA-256.
@@ -5313,6 +5955,8 @@ DEALINGS IN THE SOFTWARE.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: crc32fast 1.5.0, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 c6596eb7be8581c18be736c846fb9173b69eccf6ef94c5135893ec56bd92ba08) ---
                                  Apache License
@@ -5547,6 +6191,8 @@ SOFTWARE.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: crossbeam-channel 0.5.15, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2) ---
 Full text reproduced above under this SHA-256.
@@ -6181,6 +6827,8 @@ limitations under the License.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: crossbeam-deque 0.8.6, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2) ---
 Full text reproduced above under this SHA-256.
@@ -6192,6 +6840,8 @@ Full text reproduced above under this SHA-256.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: crossbeam-epoch 0.9.18, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2) ---
 Full text reproduced above under this SHA-256.
@@ -6203,6 +6853,8 @@ Full text reproduced above under this SHA-256.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: crossbeam-utils 0.8.21, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2) ---
 Full text reproduced above under this SHA-256.
@@ -6243,6 +6895,8 @@ SOFTWARE.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: crypto-common 0.1.7, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5) ---
 Full text reproduced above under this SHA-256.
@@ -6279,6 +6933,8 @@ DEALINGS IN THE SOFTWARE.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: digest 0.10.7, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5) ---
 Full text reproduced above under this SHA-256.
@@ -6315,6 +6971,8 @@ DEALINGS IN THE SOFTWARE.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: earcut 0.4.11, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 39445b459f86621683f9731fb6a7d070819dc379840e8ef52f62bb1c68942291) ---
 
@@ -6570,6 +7228,8 @@ THIS SOFTWARE.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: either 1.15.0, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2) ---
 Full text reproduced above under this SHA-256.
@@ -6606,6 +7266,8 @@ DEALINGS IN THE SOFTWARE.
 Licence declaration: Apache-2.0 OR MIT
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: equivalent 1.0.2, licensed under MIT by maintainer default from Apache-2.0 OR MIT
 
 --- LICENSE-APACHE (sha256 a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2) ---
 Full text reproduced above under this SHA-256.
@@ -6642,6 +7304,8 @@ DEALINGS IN THE SOFTWARE.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: fast-float2 0.2.4, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 2aec41511a0274b6841a1d197ca5f8eecefa5f93faeb6dca48f8f9137398fd93) ---
                               Apache License
@@ -6854,6 +7518,8 @@ Full text reproduced above under this SHA-256.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: fdeflate 0.3.7, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594) ---
 
@@ -7067,6 +7733,8 @@ DEALINGS IN THE SOFTWARE.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: find-msvc-tools 0.1.9, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2) ---
 Full text reproduced above under this SHA-256.
@@ -7086,6 +7754,8 @@ Full text reproduced above under this SHA-256.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: flate2 1.1.10, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2) ---
 Full text reproduced above under this SHA-256.
@@ -7122,6 +7792,8 @@ DEALINGS IN THE SOFTWARE.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained; pkg-diff (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: futures-channel 0.3.34, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 275c491d6d1160553c32fd6127061d7f9606c3ea25abfad6ca3f6ed088785427) ---
                               Apache License
@@ -7361,6 +8033,8 @@ DEALINGS IN THE SOFTWARE.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained; pkg-diff (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: futures-core 0.3.34, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 275c491d6d1160553c32fd6127061d7f9606c3ea25abfad6ca3f6ed088785427) ---
 Full text reproduced above under this SHA-256.
@@ -7372,6 +8046,8 @@ Full text reproduced above under this SHA-256.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained; pkg-diff (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: futures-io 0.3.34, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 275c491d6d1160553c32fd6127061d7f9606c3ea25abfad6ca3f6ed088785427) ---
 Full text reproduced above under this SHA-256.
@@ -7383,6 +8059,8 @@ Full text reproduced above under this SHA-256.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained; pkg-diff (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: futures-macro 0.3.34, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 275c491d6d1160553c32fd6127061d7f9606c3ea25abfad6ca3f6ed088785427) ---
 Full text reproduced above under this SHA-256.
@@ -7394,6 +8072,8 @@ Full text reproduced above under this SHA-256.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained; pkg-diff (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: futures-sink 0.3.34, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 275c491d6d1160553c32fd6127061d7f9606c3ea25abfad6ca3f6ed088785427) ---
 Full text reproduced above under this SHA-256.
@@ -7405,6 +8085,8 @@ Full text reproduced above under this SHA-256.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained; pkg-diff (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: futures-task 0.3.34, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 275c491d6d1160553c32fd6127061d7f9606c3ea25abfad6ca3f6ed088785427) ---
 Full text reproduced above under this SHA-256.
@@ -7416,6 +8098,8 @@ Full text reproduced above under this SHA-256.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained; pkg-diff (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: futures-util 0.3.34, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 275c491d6d1160553c32fd6127061d7f9606c3ea25abfad6ca3f6ed088785427) ---
 Full text reproduced above under this SHA-256.
@@ -7484,6 +8168,8 @@ SOFTWARE.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: getrandom 0.2.17, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 aaff376532ea30a0cd5330b9502ad4a4c8bf769c539c87ffe78819d188a18ebf) ---
                               Apache License
@@ -7722,6 +8408,8 @@ DEALINGS IN THE SOFTWARE.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: getrandom 0.3.4, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 aaff376532ea30a0cd5330b9502ad4a4c8bf769c539c87ffe78819d188a18ebf) ---
 Full text reproduced above under this SHA-256.
@@ -7759,6 +8447,8 @@ DEALINGS IN THE SOFTWARE.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: glam 0.30.10, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 be33ddb87a30fd321ab100e2d922cba512e50ec7a63d8e62e5bfc0798dd4b585) ---
                               Apache License
@@ -7971,6 +8661,8 @@ Full text reproduced above under this SHA-256.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: glam 0.31.1, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 be33ddb87a30fd321ab100e2d922cba512e50ec7a63d8e62e5bfc0798dd4b585) ---
 Full text reproduced above under this SHA-256.
@@ -7982,6 +8674,8 @@ Full text reproduced above under this SHA-256.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: glam 0.32.1, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 be33ddb87a30fd321ab100e2d922cba512e50ec7a63d8e62e5bfc0798dd4b585) ---
 Full text reproduced above under this SHA-256.
@@ -7993,6 +8687,8 @@ Full text reproduced above under this SHA-256.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: glam 0.33.0, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 be33ddb87a30fd321ab100e2d922cba512e50ec7a63d8e62e5bfc0798dd4b585) ---
 Full text reproduced above under this SHA-256.
@@ -8004,6 +8700,8 @@ Full text reproduced above under this SHA-256.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: half 2.7.1, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 a6cba85bc92e0cff7a450b1d873c0eaa2e9fc96bf472df0247a26bec77bf3ff9) ---
                                  Apache License
@@ -8210,6 +8908,8 @@ SOFTWARE.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: hashbrown 0.17.1, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2) ---
 Full text reproduced above under this SHA-256.
@@ -8279,6 +8979,8 @@ SOFTWARE.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: i_overlay 8.1.2, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- https://raw.githubusercontent.com/iShape-Rust/iOverlay/340bd5d1eaa21692fd2048574554ed95b781af63/LICENSE-APACHE (sha256 59899c6091b540582ed617e8eeaac4919dc985ccfc35459ee9752b699be5205b) ---
                                  Apache License
@@ -8481,6 +9183,8 @@ Full text reproduced above under this SHA-256.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: iana-time-zone-haiku 0.1.2, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 696759d65dfe558ff7d9f031c76db19ec5c0767470fb67c4e8d990820d1e99c9) ---
                               Apache License
@@ -8718,6 +9422,8 @@ DEALINGS IN THE SOFTWARE.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: iana-time-zone 0.1.65, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 696759d65dfe558ff7d9f031c76db19ec5c0767470fb67c4e8d990820d1e99c9) ---
 Full text reproduced above under this SHA-256.
@@ -8729,6 +9435,8 @@ Full text reproduced above under this SHA-256.
 Licence declaration: Apache-2.0 OR MIT
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: indexmap 2.14.0, licensed under MIT by maintainer default from Apache-2.0 OR MIT
 
 --- LICENSE-APACHE (sha256 a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2) ---
 Full text reproduced above under this SHA-256.
@@ -8765,6 +9473,8 @@ DEALINGS IN THE SOFTWARE.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: itertools 0.14.0, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2) ---
 Full text reproduced above under this SHA-256.
@@ -8776,6 +9486,8 @@ Full text reproduced above under this SHA-256.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained; pkg-diff (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: itoa 1.0.18, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a) ---
                               Apache License
@@ -8963,6 +9675,8 @@ Full text reproduced above under this SHA-256.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: jobserver 0.1.34, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2) ---
 Full text reproduced above under this SHA-256.
@@ -8974,6 +9688,8 @@ Full text reproduced above under this SHA-256.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: jpeg-decoder 0.3.2, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2) ---
 Full text reproduced above under this SHA-256.
@@ -9006,6 +9722,8 @@ SOFTWARE.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained; pkg-diff (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: js-sys 0.3.103, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2) ---
 Full text reproduced above under this SHA-256.
@@ -9636,6 +10354,8 @@ Full text reproduced above under this SHA-256.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: libc 0.2.186, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a) ---
 Full text reproduced above under this SHA-256.
@@ -9938,6 +10658,8 @@ Copyright notices are retained in src/* files where relevant.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: log 0.4.29, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2) ---
 Full text reproduced above under this SHA-256.
@@ -10015,6 +10737,8 @@ DEALINGS IN THE SOFTWARE.
 Licence declaration: Unlicense OR MIT
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained; pkg-diff (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: memchr 2.8.3, licensed under MIT by maintainer default from Unlicense OR MIT
 
 --- COPYING (sha256 01c266bced4a434da0051174d6bee16a4c82cf634e2679b6155d40d75012390f) ---
 Full text reproduced above under this SHA-256.
@@ -10077,6 +10801,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 Licence declaration: MIT OR Zlib OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: miniz_oxide 0.8.9, licensed under MIT by maintainer default from MIT OR Zlib OR Apache-2.0
 
 --- LICENSE (sha256 4108245a1f2df9d4e94df8abed5b4ba0759bb2f9b40a6b939f1be141077ae50b) ---
 MIT License
@@ -10157,6 +10883,8 @@ Permission is granted to anyone to use this software for any purpose, including 
 Licence declaration: MIT OR Zlib OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: miniz_oxide 0.9.1, licensed under MIT by maintainer default from MIT OR Zlib OR Apache-2.0
 
 --- LICENSE (sha256 4108245a1f2df9d4e94df8abed5b4ba0759bb2f9b40a6b939f1be141077ae50b) ---
 Full text reproduced above under this SHA-256.
@@ -10440,6 +11168,8 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: num-bigint 0.4.6, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2) ---
 Full text reproduced above under this SHA-256.
@@ -10451,6 +11181,8 @@ Full text reproduced above under this SHA-256.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: num-bigint 0.5.1, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2) ---
 Full text reproduced above under this SHA-256.
@@ -10462,6 +11194,8 @@ Full text reproduced above under this SHA-256.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: num-complex 0.4.6, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2) ---
 Full text reproduced above under this SHA-256.
@@ -10473,6 +11207,8 @@ Full text reproduced above under this SHA-256.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: num-integer 0.1.46, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2) ---
 Full text reproduced above under this SHA-256.
@@ -10484,6 +11220,8 @@ Full text reproduced above under this SHA-256.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: num-rational 0.4.2, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2) ---
 Full text reproduced above under this SHA-256.
@@ -10495,6 +11233,8 @@ Full text reproduced above under this SHA-256.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: num-traits 0.2.19, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2) ---
 Full text reproduced above under this SHA-256.
@@ -10506,6 +11246,8 @@ Full text reproduced above under this SHA-256.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained; pkg-diff (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: once_cell 1.21.4, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2) ---
 Full text reproduced above under this SHA-256.
@@ -10528,6 +11270,8 @@ Full text reproduced above under this SHA-256.
 Licence declaration: Apache-2.0 OR MIT
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained; pkg-diff (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: pin-project-lite 0.2.17, licensed under MIT by maintainer default from Apache-2.0 OR MIT
 
 --- LICENSE-APACHE (sha256 0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594) ---
 Full text reproduced above under this SHA-256.
@@ -10539,6 +11283,8 @@ Full text reproduced above under this SHA-256.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: pkg-config 0.3.33, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2) ---
 Full text reproduced above under this SHA-256.
@@ -10550,6 +11296,8 @@ Full text reproduced above under this SHA-256.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: png 0.18.1, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2) ---
 Full text reproduced above under this SHA-256.
@@ -10586,6 +11334,8 @@ DEALINGS IN THE SOFTWARE.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained; pkg-diff (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: proc-macro2 1.0.106, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a) ---
 Full text reproduced above under this SHA-256.
@@ -10628,6 +11378,8 @@ THE SOFTWARE.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained; pkg-diff (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: quote 1.0.45, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a) ---
 Full text reproduced above under this SHA-256.
@@ -10639,6 +11391,8 @@ Full text reproduced above under this SHA-256.
 Licence declaration: MIT OR Apache-2.0 OR LGPL-2.1-or-later
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: r-efi 5.3.0 (crates.io), licensed under MIT by election from MIT OR Apache-2.0 OR LGPL-2.1-or-later
 
 --- AUTHORS (sha256 ff92bed461f50338dd703a9ba9aee496a425957873df1d91192776e4bdf5dda7) ---
 LICENSE:
@@ -10732,6 +11486,8 @@ Full text reproduced above under this SHA-256.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: rayon-core 1.13.0, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2) ---
 Full text reproduced above under this SHA-256.
@@ -10768,6 +11524,8 @@ DEALINGS IN THE SOFTWARE.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: rayon 1.12.0, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2) ---
 Full text reproduced above under this SHA-256.
@@ -10779,6 +11537,8 @@ Full text reproduced above under this SHA-256.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: regex-automata 0.4.14, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2) ---
 Full text reproduced above under this SHA-256.
@@ -10790,6 +11550,8 @@ Full text reproduced above under this SHA-256.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: regex-syntax 0.8.10, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2) ---
 Full text reproduced above under this SHA-256.
@@ -10861,6 +11623,8 @@ written authorization of the copyright holder.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: regex 1.12.3, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2) ---
 Full text reproduced above under this SHA-256.
@@ -10872,6 +11636,8 @@ Full text reproduced above under this SHA-256.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: rustc_version 0.4.1, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2) ---
 Full text reproduced above under this SHA-256.
@@ -10908,6 +11674,8 @@ DEALINGS IN THE SOFTWARE.
 Licence declaration: Apache-2.0 OR MIT
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: rustc-hash 2.1.3, licensed under MIT by maintainer default from Apache-2.0 OR MIT
 
 --- LICENSE-APACHE (sha256 95bd3988beee069fa2848f648dab43cc6e0b2add2ad6bcb17360caf749802bcc) ---
                               Apache License
@@ -11116,6 +11884,8 @@ DEALINGS IN THE SOFTWARE.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained; pkg-diff (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: rustversion 1.0.22, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a) ---
 Full text reproduced above under this SHA-256.
@@ -11127,6 +11897,8 @@ Full text reproduced above under this SHA-256.
 Licence declaration: Apache-2.0 OR BSL-1.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: pkg-diff (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: Apache-2.0
+Attribution: ryu-js 1.0.3 (crates.io), licensed under Apache-2.0 by election from Apache-2.0 OR BSL-1.0
 
 --- LICENSE-APACHE (sha256 62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a) ---
 Full text reproduced above under this SHA-256.
@@ -11157,10 +11929,88 @@ ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 
+--- https://raw.githubusercontent.com/spdx/license-list-data/v3.27.0/text/Apache-2.0.txt (sha256 074e6e32c86a4c0ef8b3ed25b721ca23aca83df277cd88106ef7177c354615ff) ---
+Apache License
+Version 2.0, January 2004
+http://www.apache.org/licenses/
+
+TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
+
+1. Definitions.
+
+"License" shall mean the terms and conditions for use, reproduction, and distribution as defined by Sections 1 through 9 of this document.
+
+"Licensor" shall mean the copyright owner or entity authorized by the copyright owner that is granting the License.
+
+"Legal Entity" shall mean the union of the acting entity and all other entities that control, are controlled by, or are under common control with that entity. For the purposes of this definition, "control" means (i) the power, direct or indirect, to cause the direction or management of such entity, whether by contract or otherwise, or (ii) ownership of fifty percent (50%) or more of the outstanding shares, or (iii) beneficial ownership of such entity.
+
+"You" (or "Your") shall mean an individual or Legal Entity exercising permissions granted by this License.
+
+"Source" form shall mean the preferred form for making modifications, including but not limited to software source code, documentation source, and configuration files.
+
+"Object" form shall mean any form resulting from mechanical transformation or translation of a Source form, including but not limited to compiled object code, generated documentation, and conversions to other media types.
+
+"Work" shall mean the work of authorship, whether in Source or Object form, made available under the License, as indicated by a copyright notice that is included in or attached to the work (an example is provided in the Appendix below).
+
+"Derivative Works" shall mean any work, whether in Source or Object form, that is based on (or derived from) the Work and for which the editorial revisions, annotations, elaborations, or other modifications represent, as a whole, an original work of authorship. For the purposes of this License, Derivative Works shall not include works that remain separable from, or merely link (or bind by name) to the interfaces of, the Work and Derivative Works thereof.
+
+"Contribution" shall mean any work of authorship, including the original version of the Work and any modifications or additions to that Work or Derivative Works thereof, that is intentionally submitted to Licensor for inclusion in the Work by the copyright owner or by an individual or Legal Entity authorized to submit on behalf of the copyright owner. For the purposes of this definition, "submitted" means any form of electronic, verbal, or written communication sent to the Licensor or its representatives, including but not limited to communication on electronic mailing lists, source code control systems, and issue tracking systems that are managed by, or on behalf of, the Licensor for the purpose of discussing and improving the Work, but excluding communication that is conspicuously marked or otherwise designated in writing by the copyright owner as "Not a Contribution."
+
+"Contributor" shall mean Licensor and any individual or Legal Entity on behalf of whom a Contribution has been received by Licensor and subsequently incorporated within the Work.
+
+2. Grant of Copyright License. Subject to the terms and conditions of this License, each Contributor hereby grants to You a perpetual, worldwide, non-exclusive, no-charge, royalty-free, irrevocable copyright license to reproduce, prepare Derivative Works of, publicly display, publicly perform, sublicense, and distribute the Work and such Derivative Works in Source or Object form.
+
+3. Grant of Patent License. Subject to the terms and conditions of this License, each Contributor hereby grants to You a perpetual, worldwide, non-exclusive, no-charge, royalty-free, irrevocable (except as stated in this section) patent license to make, have made, use, offer to sell, sell, import, and otherwise transfer the Work, where such license applies only to those patent claims licensable by such Contributor that are necessarily infringed by their Contribution(s) alone or by combination of their Contribution(s) with the Work to which such Contribution(s) was submitted. If You institute patent litigation against any entity (including a cross-claim or counterclaim in a lawsuit) alleging that the Work or a Contribution incorporated within the Work constitutes direct or contributory patent infringement, then any patent licenses granted to You under this License for that Work shall terminate as of the date such litigation is filed.
+
+4. Redistribution. You may reproduce and distribute copies of the Work or Derivative Works thereof in any medium, with or without modifications, and in Source or Object form, provided that You meet the following conditions:
+
+     (a) You must give any other recipients of the Work or Derivative Works a copy of this License; and
+
+     (b) You must cause any modified files to carry prominent notices stating that You changed the files; and
+
+     (c) You must retain, in the Source form of any Derivative Works that You distribute, all copyright, patent, trademark, and attribution notices from the Source form of the Work, excluding those notices that do not pertain to any part of the Derivative Works; and
+
+     (d) If the Work includes a "NOTICE" text file as part of its distribution, then any Derivative Works that You distribute must include a readable copy of the attribution notices contained within such NOTICE file, excluding those notices that do not pertain to any part of the Derivative Works, in at least one of the following places: within a NOTICE text file distributed as part of the Derivative Works; within the Source form or documentation, if provided along with the Derivative Works; or, within a display generated by the Derivative Works, if and wherever such third-party notices normally appear. The contents of the NOTICE file are for informational purposes only and do not modify the License. You may add Your own attribution notices within Derivative Works that You distribute, alongside or as an addendum to the NOTICE text from the Work, provided that such additional attribution notices cannot be construed as modifying the License.
+
+     You may add Your own copyright statement to Your modifications and may provide additional or different license terms and conditions for use, reproduction, or distribution of Your modifications, or for any such Derivative Works as a whole, provided Your use, reproduction, and distribution of the Work otherwise complies with the conditions stated in this License.
+
+5. Submission of Contributions. Unless You explicitly state otherwise, any Contribution intentionally submitted for inclusion in the Work by You to the Licensor shall be under the terms and conditions of this License, without any additional terms or conditions. Notwithstanding the above, nothing herein shall supersede or modify the terms of any separate license agreement you may have executed with Licensor regarding such Contributions.
+
+6. Trademarks. This License does not grant permission to use the trade names, trademarks, service marks, or product names of the Licensor, except as required for reasonable and customary use in describing the origin of the Work and reproducing the content of the NOTICE file.
+
+7. Disclaimer of Warranty. Unless required by applicable law or agreed to in writing, Licensor provides the Work (and each Contributor provides its Contributions) on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied, including, without limitation, any warranties or conditions of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A PARTICULAR PURPOSE. You are solely responsible for determining the appropriateness of using or redistributing the Work and assume any risks associated with Your exercise of permissions under this License.
+
+8. Limitation of Liability. In no event and under no legal theory, whether in tort (including negligence), contract, or otherwise, unless required by applicable law (such as deliberate and grossly negligent acts) or agreed to in writing, shall any Contributor be liable to You for damages, including any direct, indirect, special, incidental, or consequential damages of any character arising as a result of this License or out of the use or inability to use the Work (including but not limited to damages for loss of goodwill, work stoppage, computer failure or malfunction, or any and all other commercial damages or losses), even if such Contributor has been advised of the possibility of such damages.
+
+9. Accepting Warranty or Additional Liability. While redistributing the Work or Derivative Works thereof, You may choose to offer, and charge a fee for, acceptance of support, warranty, indemnity, or other liability obligations and/or rights consistent with this License. However, in accepting such obligations, You may act only on Your own behalf and on Your sole responsibility, not on behalf of any other Contributor, and only if You agree to indemnify, defend, and hold each Contributor harmless for any liability incurred by, or claims asserted against, such Contributor by reason of your accepting any such warranty or additional liability.
+
+END OF TERMS AND CONDITIONS
+
+APPENDIX: How to apply the Apache License to your work.
+
+To apply the Apache License to your work, attach the following boilerplate notice, with the fields enclosed by brackets "[]" replaced with your own identifying information. (Don't include the brackets!)  The text should be enclosed in the appropriate comment syntax for the file format. We also recommend that a file or class name and description of purpose be included on the same "printed page" as the copyright notice for easier identification within third-party archives.
+
+Copyright [yyyy] [name of copyright owner]
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+
 === ryu 1.0.23 ===
 Licence declaration: Apache-2.0 OR BSL-1.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: Apache-2.0
+Attribution: ryu 1.0.23 (crates.io), licensed under Apache-2.0 by election from Apache-2.0 OR BSL-1.0
 
 --- LICENSE-APACHE (sha256 62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a) ---
 Full text reproduced above under this SHA-256.
@@ -11168,10 +12018,15 @@ Full text reproduced above under this SHA-256.
 --- LICENSE-BOOST (sha256 c9bff75738922193e67fa726fa225535870d2aa1059f91452c411736284ad566) ---
 Full text reproduced above under this SHA-256.
 
+--- https://raw.githubusercontent.com/spdx/license-list-data/v3.27.0/text/Apache-2.0.txt (sha256 074e6e32c86a4c0ef8b3ed25b721ca23aca83df277cd88106ef7177c354615ff) ---
+Full text reproduced above under this SHA-256.
+
 === safe_arch 1.0.0 ===
 Licence declaration: Zlib OR Apache-2.0 OR MIT
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: safe_arch 1.0.0, licensed under MIT by maintainer default from Zlib OR Apache-2.0 OR MIT
 
 --- LICENSE-APACHE.md (sha256 e3ba223bb1423f0aad8c3dfce0fe3148db48926d41e6fbc3afbbf5ff9e1c89cb) ---
 Full text reproduced above under this SHA-256.
@@ -11206,6 +12061,8 @@ Permission is granted to anyone to use this software for any purpose, including 
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: semver 1.0.28, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a) ---
 Full text reproduced above under this SHA-256.
@@ -11217,6 +12074,8 @@ Full text reproduced above under this SHA-256.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: seq-macro 0.3.6, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a) ---
 Full text reproduced above under this SHA-256.
@@ -11228,6 +12087,8 @@ Full text reproduced above under this SHA-256.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained; pkg-diff (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: serde_core 1.0.229, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a) ---
 Full text reproduced above under this SHA-256.
@@ -11239,6 +12100,8 @@ Full text reproduced above under this SHA-256.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained; pkg-diff (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: serde_derive 1.0.229, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a) ---
 Full text reproduced above under this SHA-256.
@@ -11250,6 +12113,8 @@ Full text reproduced above under this SHA-256.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained; pkg-diff (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: serde_json 1.0.154, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a) ---
 Full text reproduced above under this SHA-256.
@@ -11290,6 +12155,8 @@ SOFTWARE.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained; pkg-diff (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: serde 1.0.229, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a) ---
 Full text reproduced above under this SHA-256.
@@ -11301,6 +12168,8 @@ Full text reproduced above under this SHA-256.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: sha2 0.10.9, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5) ---
 Full text reproduced above under this SHA-256.
@@ -11339,6 +12208,8 @@ DEALINGS IN THE SOFTWARE.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: shlex 1.3.0, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 553fffcd9b1cb158bc3e9edc35da85ca5c3b3d7d2e61c883ebcfa8a65814b583) ---
 Copyright 2015 Nicholas Allegra (comex).
@@ -11454,6 +12325,8 @@ DEALINGS IN THE SOFTWARE.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: smallvec 1.16.3, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2) ---
 Full text reproduced above under this SHA-256.
@@ -11525,6 +12398,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained; pkg-diff (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: syn 2.0.117, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a) ---
 Full text reproduced above under this SHA-256.
@@ -11536,6 +12411,8 @@ Full text reproduced above under this SHA-256.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained; pkg-diff (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: syn 3.0.2, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a) ---
 Full text reproduced above under this SHA-256.
@@ -11547,6 +12424,8 @@ Full text reproduced above under this SHA-256.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: thiserror-impl 2.0.21, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a) ---
 Full text reproduced above under this SHA-256.
@@ -11558,6 +12437,8 @@ Full text reproduced above under this SHA-256.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: thiserror 2.0.21, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a) ---
 Full text reproduced above under this SHA-256.
@@ -11800,6 +12681,8 @@ SOFTWARE.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: typed-path 0.12.3, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a) ---
 Full text reproduced above under this SHA-256.
@@ -11811,6 +12694,8 @@ Full text reproduced above under this SHA-256.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: typenum 1.20.0, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE (sha256 db11fec9946737df39ca3898d9cd8c10ec6f6c3a884a6802b0ad0b81b4e8f23a) ---
 MIT OR Apache-2.0
@@ -12046,6 +12931,8 @@ SOFTWARE.
 Licence declaration: (MIT OR Apache-2.0) AND Unicode-3.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained; pkg-diff (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT AND Unicode-3.0
+Attribution: unicode-ident 1.0.24, licensed under MIT AND Unicode-3.0 by maintainer default from (MIT OR Apache-2.0) AND Unicode-3.0
 
 --- LICENSE-APACHE (sha256 62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a) ---
 Full text reproduced above under this SHA-256.
@@ -12132,6 +13019,8 @@ DEALINGS IN THE SOFTWARE.
 Licence declaration: Apache-2.0 OR MIT
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: value-bag 1.12.0, licensed under MIT by maintainer default from Apache-2.0 OR MIT
 
 --- LICENSE-APACHE (sha256 a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2) ---
 Full text reproduced above under this SHA-256.
@@ -12194,6 +13083,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 Licence declaration: Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: wasi 0.11.1+wasi-snapshot-preview1, licensed under MIT by maintainer default from Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT
 
 --- LICENSE-APACHE (sha256 a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2) ---
 Full text reproduced above under this SHA-256.
@@ -12428,6 +13319,8 @@ Full text reproduced above under this SHA-256.
 Licence declaration: Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: wasip2 1.0.3+wasi-0.2.9, licensed under MIT by maintainer default from Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT
 
 --- LICENSE-APACHE (sha256 a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2) ---
 Full text reproduced above under this SHA-256.
@@ -12446,85 +13339,14 @@ Licence election: Apache-2.0
 Attribution: wasm_sync 0.1.2 (crates.io), licensed under Apache-2.0 by election from MIT OR Apache-2.0
 
 --- https://raw.githubusercontent.com/spdx/license-list-data/v3.27.0/text/Apache-2.0.txt (sha256 074e6e32c86a4c0ef8b3ed25b721ca23aca83df277cd88106ef7177c354615ff) ---
-Apache License
-Version 2.0, January 2004
-http://www.apache.org/licenses/
-
-TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
-
-1. Definitions.
-
-"License" shall mean the terms and conditions for use, reproduction, and distribution as defined by Sections 1 through 9 of this document.
-
-"Licensor" shall mean the copyright owner or entity authorized by the copyright owner that is granting the License.
-
-"Legal Entity" shall mean the union of the acting entity and all other entities that control, are controlled by, or are under common control with that entity. For the purposes of this definition, "control" means (i) the power, direct or indirect, to cause the direction or management of such entity, whether by contract or otherwise, or (ii) ownership of fifty percent (50%) or more of the outstanding shares, or (iii) beneficial ownership of such entity.
-
-"You" (or "Your") shall mean an individual or Legal Entity exercising permissions granted by this License.
-
-"Source" form shall mean the preferred form for making modifications, including but not limited to software source code, documentation source, and configuration files.
-
-"Object" form shall mean any form resulting from mechanical transformation or translation of a Source form, including but not limited to compiled object code, generated documentation, and conversions to other media types.
-
-"Work" shall mean the work of authorship, whether in Source or Object form, made available under the License, as indicated by a copyright notice that is included in or attached to the work (an example is provided in the Appendix below).
-
-"Derivative Works" shall mean any work, whether in Source or Object form, that is based on (or derived from) the Work and for which the editorial revisions, annotations, elaborations, or other modifications represent, as a whole, an original work of authorship. For the purposes of this License, Derivative Works shall not include works that remain separable from, or merely link (or bind by name) to the interfaces of, the Work and Derivative Works thereof.
-
-"Contribution" shall mean any work of authorship, including the original version of the Work and any modifications or additions to that Work or Derivative Works thereof, that is intentionally submitted to Licensor for inclusion in the Work by the copyright owner or by an individual or Legal Entity authorized to submit on behalf of the copyright owner. For the purposes of this definition, "submitted" means any form of electronic, verbal, or written communication sent to the Licensor or its representatives, including but not limited to communication on electronic mailing lists, source code control systems, and issue tracking systems that are managed by, or on behalf of, the Licensor for the purpose of discussing and improving the Work, but excluding communication that is conspicuously marked or otherwise designated in writing by the copyright owner as "Not a Contribution."
-
-"Contributor" shall mean Licensor and any individual or Legal Entity on behalf of whom a Contribution has been received by Licensor and subsequently incorporated within the Work.
-
-2. Grant of Copyright License. Subject to the terms and conditions of this License, each Contributor hereby grants to You a perpetual, worldwide, non-exclusive, no-charge, royalty-free, irrevocable copyright license to reproduce, prepare Derivative Works of, publicly display, publicly perform, sublicense, and distribute the Work and such Derivative Works in Source or Object form.
-
-3. Grant of Patent License. Subject to the terms and conditions of this License, each Contributor hereby grants to You a perpetual, worldwide, non-exclusive, no-charge, royalty-free, irrevocable (except as stated in this section) patent license to make, have made, use, offer to sell, sell, import, and otherwise transfer the Work, where such license applies only to those patent claims licensable by such Contributor that are necessarily infringed by their Contribution(s) alone or by combination of their Contribution(s) with the Work to which such Contribution(s) was submitted. If You institute patent litigation against any entity (including a cross-claim or counterclaim in a lawsuit) alleging that the Work or a Contribution incorporated within the Work constitutes direct or contributory patent infringement, then any patent licenses granted to You under this License for that Work shall terminate as of the date such litigation is filed.
-
-4. Redistribution. You may reproduce and distribute copies of the Work or Derivative Works thereof in any medium, with or without modifications, and in Source or Object form, provided that You meet the following conditions:
-
-     (a) You must give any other recipients of the Work or Derivative Works a copy of this License; and
-
-     (b) You must cause any modified files to carry prominent notices stating that You changed the files; and
-
-     (c) You must retain, in the Source form of any Derivative Works that You distribute, all copyright, patent, trademark, and attribution notices from the Source form of the Work, excluding those notices that do not pertain to any part of the Derivative Works; and
-
-     (d) If the Work includes a "NOTICE" text file as part of its distribution, then any Derivative Works that You distribute must include a readable copy of the attribution notices contained within such NOTICE file, excluding those notices that do not pertain to any part of the Derivative Works, in at least one of the following places: within a NOTICE text file distributed as part of the Derivative Works; within the Source form or documentation, if provided along with the Derivative Works; or, within a display generated by the Derivative Works, if and wherever such third-party notices normally appear. The contents of the NOTICE file are for informational purposes only and do not modify the License. You may add Your own attribution notices within Derivative Works that You distribute, alongside or as an addendum to the NOTICE text from the Work, provided that such additional attribution notices cannot be construed as modifying the License.
-
-     You may add Your own copyright statement to Your modifications and may provide additional or different license terms and conditions for use, reproduction, or distribution of Your modifications, or for any such Derivative Works as a whole, provided Your use, reproduction, and distribution of the Work otherwise complies with the conditions stated in this License.
-
-5. Submission of Contributions. Unless You explicitly state otherwise, any Contribution intentionally submitted for inclusion in the Work by You to the Licensor shall be under the terms and conditions of this License, without any additional terms or conditions. Notwithstanding the above, nothing herein shall supersede or modify the terms of any separate license agreement you may have executed with Licensor regarding such Contributions.
-
-6. Trademarks. This License does not grant permission to use the trade names, trademarks, service marks, or product names of the Licensor, except as required for reasonable and customary use in describing the origin of the Work and reproducing the content of the NOTICE file.
-
-7. Disclaimer of Warranty. Unless required by applicable law or agreed to in writing, Licensor provides the Work (and each Contributor provides its Contributions) on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied, including, without limitation, any warranties or conditions of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A PARTICULAR PURPOSE. You are solely responsible for determining the appropriateness of using or redistributing the Work and assume any risks associated with Your exercise of permissions under this License.
-
-8. Limitation of Liability. In no event and under no legal theory, whether in tort (including negligence), contract, or otherwise, unless required by applicable law (such as deliberate and grossly negligent acts) or agreed to in writing, shall any Contributor be liable to You for damages, including any direct, indirect, special, incidental, or consequential damages of any character arising as a result of this License or out of the use or inability to use the Work (including but not limited to damages for loss of goodwill, work stoppage, computer failure or malfunction, or any and all other commercial damages or losses), even if such Contributor has been advised of the possibility of such damages.
-
-9. Accepting Warranty or Additional Liability. While redistributing the Work or Derivative Works thereof, You may choose to offer, and charge a fee for, acceptance of support, warranty, indemnity, or other liability obligations and/or rights consistent with this License. However, in accepting such obligations, You may act only on Your own behalf and on Your sole responsibility, not on behalf of any other Contributor, and only if You agree to indemnify, defend, and hold each Contributor harmless for any liability incurred by, or claims asserted against, such Contributor by reason of your accepting any such warranty or additional liability.
-
-END OF TERMS AND CONDITIONS
-
-APPENDIX: How to apply the Apache License to your work.
-
-To apply the Apache License to your work, attach the following boilerplate notice, with the fields enclosed by brackets "[]" replaced with your own identifying information. (Don't include the brackets!)  The text should be enclosed in the appropriate comment syntax for the file format. We also recommend that a file or class name and description of purpose be included on the same "printed page" as the copyright notice for easier identification within third-party archives.
-
-Copyright [yyyy] [name of copyright owner]
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-
+Full text reproduced above under this SHA-256.
 
 === wasm-bindgen-futures 0.4.76 ===
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: wasm-bindgen-futures 0.4.76, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2) ---
 Full text reproduced above under this SHA-256.
@@ -12536,6 +13358,8 @@ Full text reproduced above under this SHA-256.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained; pkg-diff (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: wasm-bindgen-macro-support 0.2.126, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2) ---
 Full text reproduced above under this SHA-256.
@@ -12547,6 +13371,8 @@ Full text reproduced above under this SHA-256.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained; pkg-diff (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: wasm-bindgen-macro 0.2.126, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2) ---
 Full text reproduced above under this SHA-256.
@@ -12566,6 +13392,8 @@ Full text reproduced above under this SHA-256.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained; pkg-diff (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: wasm-bindgen-shared 0.2.126, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2) ---
 Full text reproduced above under this SHA-256.
@@ -12577,6 +13405,8 @@ Full text reproduced above under this SHA-256.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained; pkg-diff (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: wasm-bindgen 0.2.126, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2) ---
 Full text reproduced above under this SHA-256.
@@ -12588,6 +13418,8 @@ Full text reproduced above under this SHA-256.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: web-sys 0.3.103, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2) ---
 Full text reproduced above under this SHA-256.
@@ -12599,6 +13431,8 @@ Full text reproduced above under this SHA-256.
 Licence declaration: Zlib OR Apache-2.0 OR MIT
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: Zlib
+Attribution: wide 1.4.0 (crates.io), licensed under Zlib by election from Zlib OR Apache-2.0 OR MIT
 
 --- LICENSE-ZLIB.md (sha256 c43b9a9b1387ed53d2c49263838261129a010e280e3a174a792242c3e2c98db9) ---
 Full text reproduced above under this SHA-256.
@@ -12607,6 +13441,8 @@ Full text reproduced above under this SHA-256.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: windows-core 0.62.2, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- license-apache-2.0 (sha256 c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b) ---
                                  Apache License
@@ -12840,6 +13676,8 @@ Scope: default pkg + pkg-retained (locked production closure, includes optional/
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: windows-implement 0.60.2, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- license-apache-2.0 (sha256 c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b) ---
 Full text reproduced above under this SHA-256.
@@ -12851,6 +13689,8 @@ Full text reproduced above under this SHA-256.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: windows-interface 0.59.3, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- license-apache-2.0 (sha256 c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b) ---
 Full text reproduced above under this SHA-256.
@@ -12862,6 +13702,8 @@ Full text reproduced above under this SHA-256.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: windows-link 0.2.1, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- license-apache-2.0 (sha256 c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b) ---
 Full text reproduced above under this SHA-256.
@@ -12873,6 +13715,8 @@ Full text reproduced above under this SHA-256.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: windows-result 0.4.1, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- license-apache-2.0 (sha256 c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b) ---
 Full text reproduced above under this SHA-256.
@@ -12884,6 +13728,8 @@ Full text reproduced above under this SHA-256.
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: windows-strings 0.5.1, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- license-apache-2.0 (sha256 c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b) ---
 Full text reproduced above under this SHA-256.
@@ -12895,6 +13741,8 @@ Full text reproduced above under this SHA-256.
 Licence declaration: Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: wit-bindgen 0.57.1, licensed under MIT by maintainer default from Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT
 
 --- LICENSE-APACHE (sha256 a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2) ---
 Full text reproduced above under this SHA-256.
@@ -12909,6 +13757,8 @@ Full text reproduced above under this SHA-256.
 Licence declaration: BSD-2-Clause OR Apache-2.0 OR MIT
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: zerocopy-derive 0.8.48, licensed under MIT by maintainer default from BSD-2-Clause OR Apache-2.0 OR MIT
 
 --- LICENSE-APACHE (sha256 9d185ac6703c4b0453974c0d85e9eee43e6941009296bb1f5eb0b54e2329e9f3) ---
                                  Apache License
@@ -13175,6 +14025,8 @@ DEALINGS IN THE SOFTWARE.
 Licence declaration: BSD-2-Clause OR Apache-2.0 OR MIT
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
+Licence election: MIT
+Attribution: zerocopy 0.8.48, licensed under MIT by maintainer default from BSD-2-Clause OR Apache-2.0 OR MIT
 
 --- LICENSE-APACHE (sha256 9d185ac6703c4b0453974c0d85e9eee43e6941009296bb1f5eb0b54e2329e9f3) ---
 Full text reproduced above under this SHA-256.
@@ -13185,7 +14037,7 @@ Full text reproduced above under this SHA-256.
 --- LICENSE-MIT (sha256 1a2f5c12ddc934d58956aa5dbdd3255fe55fd957633ab7d0d39e4f0daa73f7df) ---
 Full text reproduced above under this SHA-256.
 
-=== zip 9.0.4 ===
+=== zip 9.0.5 ===
 Licence declaration: MIT
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)
@@ -13902,6 +14754,8 @@ Full text reproduced above under this SHA-256.
 Licence declaration: MIT OR Apache-2.0 plus bundled components
 Source: https://github.com/rust-lang/rust
 Scope: default pkg, pkg-retained and pkg-diff wasm; COPYRIGHT-library.html enumerates bundled library components
+Licence election: MIT
+Attribution: Rust standard library rustc 1.93.0-nightly (b6d7ff3aa 2025-11-14), licensed under MIT by maintainer default from MIT OR Apache-2.0 plus bundled components
 
 --- COPYRIGHT-library.html (sha256 c90d52b09be83ce6e930d00f4b26559611eadcee806b2307184e04f2c78ad522) ---
 <!DOCTYPE html>

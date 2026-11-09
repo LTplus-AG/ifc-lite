@@ -20,9 +20,10 @@
     "test": "vitest run"
   },
   "devDependencies": {
+    "@mergifyio/vitest": "^2026.10.11",
     "@types/node": "^26.6.4",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.3"
+    "vitest": "^5.0.5"
   },
   "license": "MPL-2.0",
   "author": "Louis True",

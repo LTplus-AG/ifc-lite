@@ -131,6 +131,7 @@ function makeHostedPlace(kind: HostedFillKind): ModelingCommand<HostedPlaceGestu
     fields: fieldsOf(kind),
     snap: 'modeling',
     init,
+    aimsAtElement: () => true,
     snapQuery: () => ({ anchor: null, chain: [], locks: {} }),
     pointerMove(g, s, ctx) {
       const host = hostUnderCursor(ctx, s);

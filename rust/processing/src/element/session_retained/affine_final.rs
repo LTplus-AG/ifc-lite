@@ -45,10 +45,14 @@ fn partial(sweep_angle: f64) -> bool {
 }
 /// Format-1 recipes lowered exactly as `retained_sweep`/`retained_prism` do.
 /// Swept disks use another SDK constructor without a surface-class certificate.
+/// Anything this function cannot positively classify is uncertifiable. The
+/// `add_retained_*` lowering refuses a recipe without profile or axis before an
+/// operation can carry it, so the unknown cases are unreachable on admitted
+/// output today and a future variant must opt in explicitly.
 fn recipe_certifiable(recipe: &RetainedRecipe) -> bool {
     match recipe {
         RetainedRecipe::Extrusion(e) => {
-            let (Some(profile), Some(axis)) = (&e.source.profile, e.source.axis_unit_vector) else { return true };
+            let (Some(profile), Some(axis)) = (&e.source.profile, e.source.axis_unit_vector) else { return false };
             let arc = profile.loops.iter().flat_map(|l| &l.segments)
                 .any(|s| matches!(s, AnalyticCurveSegment::Arc { sweep_angle, .. } if partial(*sweep_angle)));
             // Rigid profile Position: its inverse rotation is the transpose.
@@ -57,8 +61,10 @@ fn recipe_certifiable(recipe: &RetainedRecipe) -> bool {
         }
         RetainedRecipe::Prism(p) => affine_sweep_surfaces_certifiable(
             p.loops.iter().flat_map(|l| &l.segments).any(|s| matches!(s, PrismSegment::Arc { .. })), p.direction),
-        RetainedRecipe::SweptDisk(_) => false,
-        _ => true,
+        // Lines bounding planes, the SDK's certified copy classes.
+        RetainedRecipe::FaceSet(_) => true,
+        // Swept disks, and any variant added later, carry no certificate.
+        _ => false,
     }
 }
 fn charge_scan(len: usize) -> Result<(), RetainedExecutionError> {
@@ -125,7 +131,7 @@ pub fn bake_mesh(m: [f64; 16], positions: &[f64], indices: &[u32]) -> (Vec<f64>,
     transform(m, &mut p, &mut i);
     (p, i, [m[12],m[13],m[14]])
 }
-fn chain<R: NumericalReceipt>(mut node: &RuntimeRealization<R>, bound: usize)
+pub(super) fn chain<R: NumericalReceipt>(mut node: &RuntimeRealization<R>, bound: usize)
     -> Result<(&RuntimeRealization<R>, [f64; 16]), RetainedExecutionError> {
     let mut matrix = IDENTITY;
     for _ in 0..=bound {
@@ -156,6 +162,7 @@ fn recipe_radius(recipe: &RetainedRecipe) -> f64 {
         RetainedRecipe::Prism(p) => p.loops.iter().flat_map(|l| &l.segments).map(|s| match s {
             PrismSegment::Line { .. } => 0., PrismSegment::Arc { radius, .. } | PrismSegment::Circle { radius, .. } => *radius,
         }).fold(0., f64::max),
+        RetainedRecipe::FaceSet(_) => 0.,
         _ => f64::INFINITY,
     }
 }
@@ -237,6 +244,18 @@ pub(super) fn bake<R: NumericalReceipt>(ledger: &[(LogicalRetainedValue, Arc<Run
 #[cfg(test)]
 mod tests {
     use super::*;
+    // #7955: an extrusion with no captured profile or axis certifies nothing.
+    #[test]
+    fn recipe_without_profile_or_axis_is_not_certifiable() {
+        use ifc_lite_geometry::analytic::{AnalyticExtrusion, AnalyticStatus};
+        use ifc_lite_geometry::document::RetainedExtrusion;
+        let source = AnalyticExtrusion {
+            solid_id: 1, source: None, swept_area_id: None, profile: None, position_id: None,
+            position_matrix: None, extruded_direction_id: None, direction_ratios: None,
+            axis_unit_vector: Some([0., 0., 1.]), depth: None, status: AnalyticStatus::Complete,
+        };
+        assert!(!recipe_certifiable(&RetainedRecipe::Extrusion(RetainedExtrusion { source, length_unit_scale: 1. })));
+    }
     #[test]
     fn issue_7955_rotated_mirror_uses_preregistered_roundoff_factor() {
         let limits=NumericalLimits {chord_metres:0.001,angle_degrees:5.,max_bytes:16*1024*1024};

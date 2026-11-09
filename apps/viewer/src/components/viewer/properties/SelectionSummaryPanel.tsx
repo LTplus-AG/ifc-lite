@@ -95,10 +95,10 @@ export function SelectionSummaryPanel({ models, ifcDataStore }: { models: Map<st
   );
 
   return (
-    <div {...tourAnchor(TOUR_ANCHORS.propertiesPanel)} className="h-full flex flex-col border-l-2 border-zinc-200 dark:border-zinc-800 bg-white dark:bg-black">
-      <div className="p-3 border-b-2 border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-black flex items-center gap-2">
-        <Boxes className="h-4 w-4 text-emerald-600" aria-hidden="true" />
-        <h2 className="font-bold uppercase tracking-wider text-xs text-zinc-900 dark:text-zinc-100">
+    <div {...tourAnchor(TOUR_ANCHORS.propertiesPanel)} className="h-full flex flex-col border-l-2 border-border bg-card">
+      <div className="p-3 border-b-2 border-border bg-muted flex items-center gap-2">
+        <Boxes className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+        <h2 className="font-bold uppercase tracking-wider text-xs text-foreground">
           {t('properties.summary.elementCount', localeCount(locale, summary.total))}
         </h2>
         <div className="ml-auto flex items-center gap-1"><AssistantAction /><UnitDisplayControl /></div>

@@ -90,7 +90,6 @@ beforeEach(() => {
     activeTool: 'measure',
     measurements: [],
     activeMeasurement: null,
-    pendingMeasurePoint: null,
     measureReferencePoint: null,
     selectedEntity: null,
     selectedEntitiesSet: new Set<string>(),

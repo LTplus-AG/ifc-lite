@@ -1,5 +1,6 @@
 {
   "format": 2,
+  "manifestSha256": "28c8d6f3df4f4d90731f406ae2894147f4cce39bc6df2fbd9f96e51d56986a62",
   "inputs": {
     "cargoClosures": {
       "ifc-lite-wasm": [
@@ -1061,9 +1062,9 @@
         },
         {
           "name": "zip",
-          "version": "9.0.4",
+          "version": "9.0.5",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
-          "checksum": "a954114b47a54df49f83d2722814e86b23d4bb1b54a1b90fb7d92b41619ddc22"
+          "checksum": "6e04976da629d3b04204ba8105b396a193af8ad2583b2c79bfb3ab8af580a11e"
         },
         {
           "name": "zlib-rs",
@@ -1352,10 +1353,67 @@
         ]
       },
       {
+        "name": "r-efi",
+        "version": "5.3.0",
+        "election": "MIT",
+        "attribution": "r-efi 5.3.0 (crates.io), licensed under MIT by election from MIT OR Apache-2.0 OR LGPL-2.1-or-later",
+        "notices": [
+          {
+            "origin": "AUTHORS",
+            "file": "texts/ff92bed461f50338dd703a9ba9aee496a425957873df1d91192776e4bdf5dda7.txt",
+            "sha256": "ff92bed461f50338dd703a9ba9aee496a425957873df1d91192776e4bdf5dda7"
+          }
+        ]
+      },
+      {
+        "name": "wide",
+        "version": "1.4.0",
+        "election": "Zlib",
+        "attribution": "wide 1.4.0 (crates.io), licensed under Zlib by election from Zlib OR Apache-2.0 OR MIT",
+        "notices": [
+          {
+            "origin": "LICENSE-ZLIB.md",
+            "file": "texts/c43b9a9b1387ed53d2c49263838261129a010e280e3a174a792242c3e2c98db9.txt",
+            "sha256": "c43b9a9b1387ed53d2c49263838261129a010e280e3a174a792242c3e2c98db9"
+          }
+        ]
+      },
+      {
         "name": "wasm_sync",
         "version": "0.1.2",
         "election": "Apache-2.0",
         "attribution": "wasm_sync 0.1.2 (crates.io), licensed under Apache-2.0 by election from MIT OR Apache-2.0",
+        "notices": [
+          {
+            "origin": "https://raw.githubusercontent.com/spdx/license-list-data/v3.27.0/text/Apache-2.0.txt",
+            "file": "texts/074e6e32c86a4c0ef8b3ed25b721ca23aca83df277cd88106ef7177c354615ff.txt",
+            "sha256": "074e6e32c86a4c0ef8b3ed25b721ca23aca83df277cd88106ef7177c354615ff"
+          }
+        ]
+      },
+      {
+        "policy": "MIT-when-offered",
+        "election": "MIT",
+        "attribution": "Maintainer approved 2026-11-01: elect MIT for every OR-licensed component offering MIT only when its MIT text is preserved and verified; explicit elections take precedence; mandatory conjunctive and bundled-component terms remain applicable."
+      },
+      {
+        "name": "ryu",
+        "version": "1.0.23",
+        "election": "Apache-2.0",
+        "attribution": "ryu 1.0.23 (crates.io), licensed under Apache-2.0 by election from Apache-2.0 OR BSL-1.0",
+        "notices": [
+          {
+            "origin": "https://raw.githubusercontent.com/spdx/license-list-data/v3.27.0/text/Apache-2.0.txt",
+            "file": "texts/074e6e32c86a4c0ef8b3ed25b721ca23aca83df277cd88106ef7177c354615ff.txt",
+            "sha256": "074e6e32c86a4c0ef8b3ed25b721ca23aca83df277cd88106ef7177c354615ff"
+          }
+        ]
+      },
+      {
+        "name": "ryu-js",
+        "version": "1.0.3",
+        "election": "Apache-2.0",
+        "attribution": "ryu-js 1.0.3 (crates.io), licensed under Apache-2.0 by election from Apache-2.0 OR BSL-1.0",
         "notices": [
           {
             "origin": "https://raw.githubusercontent.com/spdx/license-list-data/v3.27.0/text/Apache-2.0.txt",
@@ -1397,6 +1455,11 @@
           "origin": "LICENSE",
           "file": "texts/620a78084fc7ca97c0b5dea9abf891f3ffcadfdbf305276f099c9c4e12fc1d86.txt",
           "sha256": "620a78084fc7ca97c0b5dea9abf891f3ffcadfdbf305276f099c9c4e12fc1d86"
+        },
+        {
+          "origin": "AUTHORS",
+          "file": "texts/56f7df65203d4858dac19cafe3a84a8c49abaff56b67d32d2d463d5fef6e440b.txt",
+          "sha256": "56f7df65203d4858dac19cafe3a84a8c49abaff56b67d32d2d463d5fef6e440b"
         }
       ]
     },
@@ -3686,7 +3749,9 @@
           "file": "texts/ff92bed461f50338dd703a9ba9aee496a425957873df1d91192776e4bdf5dda7.txt",
           "sha256": "ff92bed461f50338dd703a9ba9aee496a425957873df1d91192776e4bdf5dda7"
         }
-      ]
+      ],
+      "election": "MIT",
+      "attribution": "r-efi 5.3.0 (crates.io), licensed under MIT by election from MIT OR Apache-2.0 OR LGPL-2.1-or-later"
     },
     {
       "name": "rawpointer",
@@ -3880,8 +3945,15 @@
           "origin": "LICENSE-BOOST",
           "file": "texts/c9bff75738922193e67fa726fa225535870d2aa1059f91452c411736284ad566.txt",
           "sha256": "c9bff75738922193e67fa726fa225535870d2aa1059f91452c411736284ad566"
+        },
+        {
+          "origin": "https://raw.githubusercontent.com/spdx/license-list-data/v3.27.0/text/Apache-2.0.txt",
+          "file": "texts/074e6e32c86a4c0ef8b3ed25b721ca23aca83df277cd88106ef7177c354615ff.txt",
+          "sha256": "074e6e32c86a4c0ef8b3ed25b721ca23aca83df277cd88106ef7177c354615ff"
         }
-      ]
+      ],
+      "election": "Apache-2.0",
+      "attribution": "ryu-js 1.0.3 (crates.io), licensed under Apache-2.0 by election from Apache-2.0 OR BSL-1.0"
     },
     {
       "name": "ryu",
@@ -3899,8 +3971,15 @@
           "origin": "LICENSE-BOOST",
           "file": "texts/c9bff75738922193e67fa726fa225535870d2aa1059f91452c411736284ad566.txt",
           "sha256": "c9bff75738922193e67fa726fa225535870d2aa1059f91452c411736284ad566"
+        },
+        {
+          "origin": "https://raw.githubusercontent.com/spdx/license-list-data/v3.27.0/text/Apache-2.0.txt",
+          "file": "texts/074e6e32c86a4c0ef8b3ed25b721ca23aca83df277cd88106ef7177c354615ff.txt",
+          "sha256": "074e6e32c86a4c0ef8b3ed25b721ca23aca83df277cd88106ef7177c354615ff"
         }
-      ]
+      ],
+      "election": "Apache-2.0",
+      "attribution": "ryu 1.0.23 (crates.io), licensed under Apache-2.0 by election from Apache-2.0 OR BSL-1.0"
     },
     {
       "name": "safe_arch",
@@ -4641,7 +4720,9 @@
           "file": "texts/c43b9a9b1387ed53d2c49263838261129a010e280e3a174a792242c3e2c98db9.txt",
           "sha256": "c43b9a9b1387ed53d2c49263838261129a010e280e3a174a792242c3e2c98db9"
         }
-      ]
+      ],
+      "election": "Zlib",
+      "attribution": "wide 1.4.0 (crates.io), licensed under Zlib by election from Zlib OR Apache-2.0 OR MIT"
     },
     {
       "name": "windows-core",
@@ -4831,7 +4912,7 @@
     },
     {
       "name": "zip",
-      "version": "9.0.4",
+      "version": "9.0.5",
       "license": "MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
       "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",

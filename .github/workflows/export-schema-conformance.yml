@@ -104,6 +104,11 @@ on:
     - cron: "23 4 * * 1"
   workflow_dispatch:
 
+# A new commit makes this PR's earlier run worthless; pushes, tags and manual runs are never cancelled.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   contents: read
 
@@ -123,7 +128,7 @@ jobs:
         with:
           node-version: 22
 
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v5
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v5
         with:
           python-version: "3.12"
 
@@ -137,6 +142,15 @@ jobs:
       - name: Install workspace dependencies
         run: pnpm install --frozen-lockfile --ignore-scripts
 
+      # Restore-only: test.yml on main saves this exact tree. The fetch below
+      # then re-hashes every file and downloads only what is missing, so a
+      # release-CDN outage no longer fails the lane while the manifest is
+      # unchanged.
+      - name: Restore fixtures from the main-branch cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: tests/models
+          key: ci-fixtures-source-v2-${{ runner.os }}-${{ hashFiles('tests/models/manifest.json', 'tests/models/README.md', 'tests/models/.manifest-ignore') }}
       # The IFC4 pair, then the IFC4X3 set (#5351): two IFC4 fixtures the
       # test converts to IFC4X3 and two IFC4X3_ADD2 fixtures it round-trips.
       # Hello_Wall carries a `$` FILE_NAME author/organization (#5470).
@@ -152,6 +166,9 @@ jobs:
           tests/models/ifc5/Hello_Wall_hello-wall.ifc
 
       - name: Re-export the fixtures and validate against IfcOpenShell
+        env:
+          MERGIFY_TOKEN: ${{ secrets.MERGIFY_TOKEN }}
+          MERGIFY_TEST_JOB_NAME: validate (export)
         run: pnpm --filter @ifc-lite/export exec vitest run src/ifcopenshell-schema-conformance.test.ts
 
       # The LandXML→IFC4X3 converter's output. ifc-lite's own parser cannot
@@ -166,9 +183,15 @@ jobs:
         run: pnpm exec turbo run build --filter='@ifc-lite/create^...'
 
       - name: Grade LandXML→IFC4X3 output (schema + alignment geometry) with IfcOpenShell
+        env:
+          MERGIFY_TOKEN: ${{ secrets.MERGIFY_TOKEN }}
+          MERGIFY_TEST_JOB_NAME: validate (landxml)
         run: pnpm --filter @ifc-lite/create exec vitest run src/landxml/ifcopenshell-conformance.test.ts
 
       - name: Grade IfcCreator IFC4X3 output with IfcOpenShell
+        env:
+          MERGIFY_TOKEN: ${{ secrets.MERGIFY_TOKEN }}
+          MERGIFY_TEST_JOB_NAME: validate (ifc4x3)
         run: pnpm --filter @ifc-lite/create exec vitest run src/ifcopenshell-ifc4x3-conformance.test.ts
 
   terrain-imagery:
@@ -181,6 +204,8 @@ jobs:
     name: LandXML terrain imagery .ifcZIP vs IfcOpenShell
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      HAS_MERGIFY_TOKEN: ${{ secrets.MERGIFY_TOKEN != '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -192,7 +217,7 @@ jobs:
         with:
           node-version: 22
 
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v5
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v5
         with:
           python-version: "3.12"
 
@@ -213,14 +238,24 @@ jobs:
         run: pnpm exec turbo run build --filter='@ifc-lite/viewer^...'
 
       - name: Export a draped terrain and grade the .ifcZIP with IfcOpenShell
+        id: terrain_tests
         working-directory: apps/viewer
         env:
           IFCOPENSHELL_PYTHON: python
+          NODE_OPTIONS: --test-reporter=tap --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=mergify-junit.xml
           # Here a missing wasm or ifcopenshell is a broken lane, not a skip.
           REQUIRE_TERRAIN_IMAGERY_CHECK: "1"
         run: >-
           pnpm exec tsx --import ./src/test/vite-module-hooks.mjs --test
           src/lib/export/landXmlIfcImagery.test.ts
+      - name: Mergify CI Upload
+        if: (success() || failure()) && env.HAS_MERGIFY_TOKEN == 'true' && hashFiles('apps/viewer/mergify-junit.xml') != ''
+        continue-on-error: true
+        uses: ./.github/actions/mergify-upload
+        with:
+          token: ${{ secrets.MERGIFY_TOKEN }}
+          report_path: apps/viewer/mergify-junit.xml
+          test_step_outcome: ${{ steps.terrain_tests.outcome }}
 
   report-scheduled-failure:
     needs: [validate, terrain-imagery]
@@ -231,5 +266,6 @@ jobs:
       jobs: validate, terrain-imagery
       result: validate=${{ needs.validate.result }}, terrain-imagery=${{ needs.terrain-imagery.result }}
     permissions:
+      actions: read
       contents: read
       issues: write

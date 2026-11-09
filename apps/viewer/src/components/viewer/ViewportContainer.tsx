@@ -15,10 +15,9 @@ import { Viewport } from './Viewport';
 import { useWindowFileDrop } from './useWindowFileDrop';
 import { ViewportOverlays } from './ViewportOverlays';
 import { WebGpuTroubleshootingDetails, webGpuBannerBlurb } from './WebGpuTroubleshooting';
-import { ViewportWelcomeCard } from './ViewportWelcomeCard';
+import { ViewportWelcome } from './welcome/ViewportWelcome';
 import { useReloadResume } from '@/hooks/useReloadResume';
 import { ViewportLoadErrorCard } from './ViewportLoadErrorCard';
-import { WelcomeFooterChips } from './WelcomeFooterChips';
 import { useTranslation } from '@/i18n';
 import { MergeLayersBanner } from './MergeLayersBanner';
 import { GeometryModeBanner } from './GeometryModeBanner';
@@ -47,7 +46,7 @@ import { useVisibilityIsolation } from '@/hooks/useVisibilityIsolation';
 import { EmptyVisibilityNotice } from './EmptyVisibilityNotice';
 import { useIfc } from '@/hooks/useIfc';
 import { useWebGpuOpenGuard } from '@/hooks/useWebGpuOpenGuard';
-import type { RecentFileEntry } from '@/lib/recent-files';
+import { getRecentFiles, type RecentFileEntry } from '@/lib/recent-files';
 import {
   supportsFileSystemAccess,
   openIfcFilesWithHandles,
@@ -117,7 +116,7 @@ export function ViewportContainer() {
   const mutationVersion = useViewerStore((s) => s.mutationVersion);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showTroubleshooting, setShowTroubleshooting] = useState(false);
-  const [recentFiles, setRecentFiles] = useState<RecentFileEntry[]>([]);
+  const [recentFiles, setRecentFiles] = useState<RecentFileEntry[]>(getRecentFiles); // seeded: a fresh visit lists past opens
   const { webgpu, guard: guardWebGpu } = useWebGpuOpenGuard();
   // `webGpuBannerBlurb` is a plain function, not a component — pass this
   // component's own `t` so the banner headline re-renders on a live locale
@@ -437,7 +436,7 @@ export function ViewportContainer() {
     const handlesPromise = handlesFromDataTransfer(dataTransfer);
     const droppedFiles = Array.from(dataTransfer.files);
     const attempt = () => {
-      if (!guardWebGpu(attempt)) return;
+      if (!guardWebGpu(attempt, { replay: 'free' })) return;
       const { dxfFiles, modelFiles: allDropped } = splitDxfFiles(droppedFiles);
       if (dxfFiles.length > 0) void ingestDxfFiles(dxfFiles);
       if (allDropped.length === 0) return;
@@ -474,7 +473,7 @@ export function ViewportContainer() {
     // Reset while the event still owns this input; Retry uses the captured Files.
     e.target.value = '';
     const attempt = () => {
-      if (!guardWebGpu(attempt)) return;
+      if (!guardWebGpu(attempt, { replay: 'free' })) return;
 
       // DXF reference underlays split off before model routing (issue #1782).
       const { dxfFiles, modelFiles } = splitDxfFiles(files);
@@ -518,7 +517,7 @@ export function ViewportContainer() {
   useReloadResume(webgpu.supported && !webgpu.checking, routeLoad, () => { void handleOpenClick(); });
 
   const handleStartBlank = useCallback(async () => {
-    if (!guardWebGpu(() => { void handleStartBlank(); })) return;
+    if (!guardWebGpu(() => { void handleStartBlank(); }, { replay: 'on-retry' })) return;
     const file = createBlankIfcFile();
     const modelId = crypto.randomUUID();
     // Must await: loadFile() calls resetViewerState() internally, which
@@ -630,39 +629,14 @@ export function ViewportContainer() {
   }), [storeModels, geometryResult, filteredGeometry, geometryVersion, mergedPointClouds,
     computedIsolatedIds, hiddenEntities]);
 
-  // Grid Pattern
-  const GridPattern = () => (
-    <>
-      {/* Light mode grid - subtle gray */}
-      <div 
-        className="absolute inset-0 z-0 pointer-events-none opacity-[0.06] dark:hidden"
-        style={{
-          backgroundImage: `linear-gradient(#3b4261 1px, transparent 1px), linear-gradient(90deg, #3b4261 1px, transparent 1px)`,
-          backgroundSize: '32px 32px',
-          backgroundPosition: '-1px -1px'
-        }}
-      />
-      {/* Dark mode grid - subtle blue/cyan tint */}
-      <div 
-        className="absolute inset-0 z-0 pointer-events-none opacity-[0.12] hidden dark:block"
-        style={{
-          backgroundImage: `linear-gradient(#3b4261 1px, transparent 1px), linear-gradient(90deg, #3b4261 1px, transparent 1px)`,
-          backgroundSize: '32px 32px',
-          backgroundPosition: '-1px -1px'
-        }}
-      />
-    </>
-  );
-
   // Empty state when no file is loaded at all (show starting UI)
   // But NOT when models are loaded but just hidden - in that case show empty 3D canvas
   if (!hasLoadedModels && !loading) {
     return (
       <div
-        className="relative h-full w-full bg-white dark:bg-black text-zinc-900 dark:text-zinc-50 overflow-hidden"
+        className="relative h-full w-full bg-zinc-50 dark:bg-[#111219] text-zinc-900 dark:text-zinc-50 overflow-hidden"
         data-viewport
       >
-        <GridPattern />
 
         <input
           ref={fileInputRef}
@@ -676,7 +650,7 @@ export function ViewportContainer() {
         {/* Drop overlay — full window, since the whole window is the drop target (#5845) */}
         {isDragging && createPortal(
           <div className="pointer-events-none fixed inset-0 z-50 bg-primary/10 backdrop-blur-[2px] flex items-center justify-center p-8">
-            <div className="border-4 border-dashed border-primary bg-white/90 dark:bg-black/90 p-12 max-w-2xl w-full text-center shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] dark:shadow-[8px_8px_0px_0px_rgba(255,255,255,1)] transition-all">
+            <div className="border-4 border-dashed border-primary bg-popover/90 p-12 max-w-2xl w-full text-center shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] dark:shadow-[8px_8px_0px_0px_rgba(255,255,255,1)] transition-all">
               <Upload className="h-20 w-20 mx-auto text-primary mb-6" />
               <p className="text-3xl font-black uppercase tracking-tight text-primary">{t('viewportLighting.container.emptyState.dropOverlay.title')}</p>
             </div>
@@ -757,24 +731,18 @@ export function ViewportContainer() {
             beyond scroll reach (the logo used to vanish under the toolbar
             on short viewports). Instead an inner min-h-full column centers
             when there is room and grows scrollably from the top when not. */}
-        <div className="absolute inset-0 z-10 overflow-auto p-4 md:p-8">
+        <div className={`absolute inset-0 z-10 overflow-auto p-4 md:p-8 ${!webgpu.checking && !webgpu.supported ? 'pt-[min(40vh,14rem)] md:pt-[min(40vh,14rem)]' : ''}`}>
           <div className="min-h-full w-full flex flex-col items-center justify-center">
 
-          {/* Main Card — extracted to its own module (#5119) so the privacy
-              footnote had somewhere to land without growing this file. */}
-          <ViewportWelcomeCard
+          {/* The start screen — its own modules (#5119) so this file's
+              frozen size budget never has to grow for it. */}
+          <ViewportWelcome
             webgpu={webgpu}
             onOpenClick={() => { void handleOpenClick(); }}
             onStartBlank={() => { void handleStartBlank(); }}
             recentFiles={recentFiles}
             loadFile={loadFile}
           />
-
-          {/* The old Select / Filter / Analyze feature-card grid was
-              dropped: it repeated toolbar affordances without offering an
-              action, and its height pushed the welcome card off-screen. */}
-
-          <WelcomeFooterChips />
 
           </div>
         </div>
@@ -785,7 +753,7 @@ export function ViewportContainer() {
 
   return (
     <div
-      className="relative h-full w-full bg-zinc-50 dark:bg-black overflow-hidden"
+      className="relative h-full w-full bg-zinc-50 overflow-hidden"
       data-viewport
     >
       {scanRunActive && <Suspense fallback={null}><ScanDetectionOverlay /></Suspense>}

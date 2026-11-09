@@ -105,7 +105,8 @@ export function registryTokenSession(reply: unknown, repository: string | null, 
   const now = Date.now();
   const sessionExpiresAt = Math.min(reply.session_expires_at * 1000, now + reply.session_expires_in * 1000);
   if (sessionExpiresAt <= now) throw new RegistryError('Your registry session has expired. Please sign in again.', 401);
-  const approvedRepository = permissions ? repository ?? permissions.flatMap(g => g.repositories).find(r => !r.includes('*')) ?? '' : selected?.repository ?? '';
+  // A browsing session covers all grants; it has no implicitly selected model.
+  const approvedRepository = permissions ? repository ?? '' : selected?.repository ?? '';
   const actions = permissions ? (['pull', 'push'] as const).filter(a => grantAllows(permissions, approvedRepository, a)) : selected?.actions ?? [];
   return { token: reply.access_token, clientId, refreshToken: 'refresh_token' in reply && typeof reply.refresh_token === 'string' ? reply.refresh_token : undefined,
     session: { subject: reply.subject, permissions, authorizationType, publicationHeaders, repositories, repository: approvedRepository, actions,

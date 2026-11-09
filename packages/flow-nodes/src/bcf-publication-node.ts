@@ -31,7 +31,8 @@ export function createNativeBcfWriteGateway(options: NativeBcfPublicationOptions
   const root = resolve(configured ?? join(homedir(), '.ifc-lite', 'bcf-outbox'));
   const store = new BcfPublicationStore(join(root, hash(options.namespace ?? 'local')));
   const secrets = options.secrets ?? [];
-  const key = (id: string) => `${store.directory}/${id}`;
+  // Keyed on the resolved outbox so two configured aliases of one outbox share in-process guards.
+  const key = (id: string) => `${store.identity}/${id}`;
   function publicEntry(item: LoadedAttempt) {
     if (item.outcome || item.reconciled) finished.delete(key(item.attempt.id));
     return entryOf(item, finished.has(key(item.attempt.id)));

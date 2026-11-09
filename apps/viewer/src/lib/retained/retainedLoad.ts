@@ -5,9 +5,12 @@
 /**
  * The retained kernel's load policy (#7955 M2-C, spec §2.1–§2.3, §3.4):
  *
- * - scope: primary loads of IFC STEP up to `RETAINED_MAX_SOURCE_BYTES`. A
- *   federated add, any other format or an oversize source stops before any
- *   work, with a message and a Retry that switches the next load to exact;
+ * - scope: primary loads of IFC STEP below `RETAINED_MAX_SOURCE_BYTES`, the
+ *   largest source wasm32 can hold at all. A federated add, any other format or
+ *   a source past it stops before any work, with a message and a Retry that
+ *   switches the next load to exact;
+ * - memory: there is no tuned size cap. A run that runs out of memory ends as
+ *   an `out_of_memory` load error whose Retry also switches to exact;
  * - while a retained model is open, nothing is federated onto it — exact
  *   geometry never enters a retained view;
  * - no exact geometry cache read or write, no geometry server;
@@ -24,8 +27,9 @@ import { retainedGeometryEn } from '@/i18n/catalogues/retained-geometry.en';
 import { chooseGeometryKernel, requestedGeometryKernel } from '@/store/geometryKernel';
 import { hasRetainedGeometryModel } from '@/store/retainedGeometry';
 import { memoryAccounting } from '@/lib/perf/memoryAccounting';
+import { settleUnownedLoadUi } from '@/hooks/modelLoadCanceller';
 import type { GeometryEventRequest, GeometryKernelLoad } from '@/hooks/ingest/geometryEventSource';
-import { RETAINED_MAX_SOURCE_BYTES } from './retained-protocol';
+import { RETAINED_MAX_SOURCE_BYTES, RetainedHostError } from './retained-protocol';
 import { retainedGeometryEvents, type RetainedPhase, type RetainedRunner } from './retainedGeometrySource';
 
 registerEnglish(retainedGeometryEn);
@@ -44,8 +48,10 @@ function reportRefusal(message: string, retry: (() => void) | null): void {
   state.setLastLoadRetry(retry);
 }
 
+/** Stops before any work and before a canceller exists, so it ends the load UI `addModel` raised. */
 function refusedLoad(message: string, retry: (() => void) | null): GeometryKernelLoad {
   reportRefusal(message, retry);
+  settleUnownedLoadUi();
   return { ...RETAINED_POLICY, refused: Promise.resolve() };
 }
 
@@ -62,7 +68,7 @@ function phaseText(phase: RetainedPhase): { phase: string; percent: number } {
 const RETAINED_POLICY: GeometryKernelLoad = {
   kind: 'retained',
   serverEnabled: false,
-  cachePlan: (plan) => ({ ...plan, tier: 'none', shouldCache: false, persistSource: false }),
+  cachePlan: (plan) => ({ ...plan, tier: 'none', shouldCache: false }),
   refuseSource: () => true,
 };
 
@@ -89,7 +95,7 @@ export function beginRetainedLoad(
       : format !== 'ifc' ? 'retainedGeometry.scope.format' : null;
   const early = outOfScope(STEP_FILE_NAME.test(file.name) ? 'ifc' : 'other', file.size);
   const message = (key: TranslationKey, byteLength: number) =>
-    translate(key, { ...name, size: mib(byteLength), limit: mib(RETAINED_MAX_SOURCE_BYTES) });
+    translate(key, { ...name, size: mib(byteLength), limit: mib(RETAINED_MAX_SOURCE_BYTES + 1) });
   if (early) return refusedLoad(message(early, file.size), exactRetry);
 
   return {
@@ -106,6 +112,16 @@ export function beginRetainedLoad(
       return true;
     },
     events: (request) => interruptible(runner, request),
+    loadFailure(error) {
+      if (!(error instanceof RetainedHostError)) return null;
+      if (error.code === 'out_of_memory') return { message: translate('retainedGeometry.memory', name), retry: exactRetry };
+      // The engine itself did not load (missing deployment files, network): running retained again
+      // cannot help, so Retry falls back to exact for this tab.
+      if (error.code === 'engine_missing') return { message: translate('retainedGeometry.engineMissing', { ...name, reason: error.reason }), retry: exactRetry };
+      // The host knows what failed; the exact path's wording would guess (it reads any trap as memory).
+      // Retry runs retained again (a crash can be transient); the exact reload is the panel's, never implied.
+      return { message: translate('retainedGeometry.hostFailure', { ...name, reason: error.reason }) };
+    },
   };
 }
 

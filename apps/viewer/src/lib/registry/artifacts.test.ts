@@ -16,7 +16,7 @@ const browserWindow = new Window({ url: 'http://localhost/' });
 Object.defineProperty(globalThis, 'window', { configurable: true, value: browserWindow });
 Object.defineProperty(globalThis, 'DOMParser', { configurable: true, value: browserWindow.DOMParser });
 
-async function registryFixture(context: TestContext) {
+async function registryFixture(context: TestContext, actions = ['pull', 'push']) {
   const replies = new Map<string, { body: string | Uint8Array<ArrayBuffer>; status?: number; headers?: Record<string, string> }>();
   const requests: string[] = [];
   const server = createServer((request, response) => {
@@ -27,7 +27,7 @@ async function registryFixture(context: TestContext) {
       response.end(JSON.stringify(registryOAuthConfig(`http://${request.headers.host}`)));
     } else if (path === '/oauth/token') {
       response.setHeader('Content-Type', 'application/json');
-      response.end(JSON.stringify(registryTokenReply()));
+      response.end(JSON.stringify(registryTokenReply('writer', actions)));
     } else {
       const reply = replies.get(path);
       response.writeHead(reply?.status ?? (reply ? 200 : 404), reply?.headers);
@@ -42,7 +42,7 @@ async function registryFixture(context: TestContext) {
   const origin = `http://127.0.0.1:${address.port}`;
   const transport = new RegistryTransport(origin, origin);
   context.after(() => transport.logout());
-  await transport.login('project/model');
+  await transport.login(null);
   const source = new TextEncoder().encode('ISO-10303-21; editable IFC source');
   const layer = { mediaType: 'application/x-step', digest: await sha256(source), size: source.length };
   const configBytes = new TextEncoder().encode('{}');
@@ -107,4 +107,22 @@ test('release listing preserves authorization, server, and cancellation failures
     return originalFetch(input, init);
   });
   await assert.rejects(artifacts.releases('project/model', controller.signal), { name: 'AbortError' });
+});
+
+test('push-only publication is refused before any blob or manifest write (#8310)', async context => {
+  const { artifacts, requests, source } = await registryFixture(context, ['push']);
+  requests.length = 0;
+  await assert.rejects(artifacts.publish('project/model', 'issued', source, 'model.ifc'), /read access.*existing version/i);
+  assert.deepEqual(requests, [], 'missing read access cannot bypass the existing-tag check');
+});
+
+test('tag-list responses enforce the 1 MiB boundary before browsing manifests (#8310)', async context => {
+  const { artifacts, replies, requests } = await registryFixture(context);
+  const json = JSON.stringify({ tags: ['issued', 42] });
+  const atLimit = json.padEnd(1024 * 1024, ' ');
+  replies.set('/v2/project/model/tags/list', { body: atLimit });
+  assert.deepEqual(await artifacts.tags('project/model'), ['issued']);
+  replies.set('/v2/project/model/tags/list', { body: `${atLimit} ` });
+  await assert.rejects(artifacts.releases('project/model'), /response exceeds the supported size/);
+  assert.equal(requests.some(path => path.includes('/manifests/')), false, 'oversized metadata must stop browsing');
 });

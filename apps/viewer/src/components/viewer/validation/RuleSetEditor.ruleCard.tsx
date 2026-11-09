@@ -13,6 +13,7 @@
 
 import { useState } from 'react';
 import { ArrowUp, ArrowDown, ChevronDown, Trash2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
@@ -51,7 +52,7 @@ export function RuleCard({ rule, onChange, onRemove, models, schemaVersion, reor
   const [advancedOpen, setAdvancedOpen] = useState(false);
 
   return (
-    <div className="flex flex-col gap-3 rounded border border-zinc-200 p-3 dark:border-zinc-800">
+    <div className="flex flex-col gap-3 rounded border border-border p-3">
       {reorder && (
         <div className="flex justify-end gap-1">
           <IconButton
@@ -97,7 +98,7 @@ export function RuleCard({ rule, onChange, onRemove, models, schemaVersion, reor
           type="button"
           onClick={onRemove}
           aria-label={t('validationEditor.ruleCard.removeAriaLabel', { name: rule.name })}
-          className="rounded p-1 text-muted-foreground hover:bg-zinc-100 hover:text-destructive dark:hover:bg-zinc-800"
+          className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-destructive"
         >
           <Trash2 className="h-4 w-4" />
         </button>
@@ -207,18 +208,18 @@ function cleanCardinality(
 function SeverityToggle({ value, onChange }: { value: 'error' | 'warning'; onChange: (v: 'error' | 'warning') => void }) {
   const { t } = useTranslation();
   return (
-    <div className="inline-flex rounded border border-zinc-200 bg-white p-0.5 text-2xs dark:border-zinc-800 dark:bg-zinc-950">
+    <div className="inline-flex rounded border border-border bg-card p-0.5">
       {(['error', 'warning'] as const).map((s) => (
-        <button
+        <Button
           key={s}
           type="button"
+          variant="toggle"
+          size="segment"
+          aria-pressed={value === s}
           onClick={() => onChange(s)}
-          className={`rounded px-2 py-0.5 font-medium transition-colors ${
-            value === s ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'
-          }`}
         >
           {t(`validationEditor.severity.${s}`)}
-        </button>
+        </Button>
       ))}
     </div>
   );

@@ -891,7 +891,7 @@ const { meshes, csgFailures } = await client.remesh({
 client.dispose(); // terminates the worker; in-flight requests reject
 ```
 
-`client.styleWire(sourceBytes)` runs one whole-file pre-pass in the worker and returns that style wire, for a model whose load did not keep one; the viewer captures it once per model. A client whose worker fails or does not answer within `requestTimeoutMs` (default 30 s) is dead: `alive` turns false, requests still in flight and any later ones reject at once, and the caller creates a new client.
+`client.styleWire(sourceBytes)` runs one whole-file pre-pass in the worker and returns that style wire, for a model whose load did not keep one; the viewer captures it once per model. A client whose worker fails or does not answer within `requestTimeoutMs` (default 30 s) is dead: `alive` turns false, requests still in flight and any later ones reject at once, and the caller creates a new client. `RemeshClient.create` has its own deadline, `startTimeoutMs` (default 120 s, covering the wasm fetch and compile): a worker that does not report its engine ready in time, or fails while starting, rejects `create` and is terminated. Both timeouts are clamped to 2^31-1 ms (the most `setTimeout` honours), and `0`, a negative number, `NaN` or `Infinity` means no deadline. A request whose message cannot be posted (for example a `DataCloneError`) rejects on its own and leaves the client alive.
 
 The meshes come back in the same frame and units as the load, so they can replace the element's load-time meshes directly. `scripts/lib/wasm-remesh-contracts.mjs` pins this. For each wall of several fixtures, including one with an RTC shift, it re-meshes the wall from its subgraph and checks the positions, indices, colours and origins against meshing the whole file.
 
@@ -987,3 +987,36 @@ Tessellation, scheduling, template selection and instancing policy still use
 the existing batch decisions. Native material-layer index construction remains
 gated by the explicit `ProcessingRequest.layer_slicing` opt-in; the default
 native pass does not build the index or slice layers.
+
+## Gross host geometry
+
+To mesh hosts without subtracting their `IfcRelVoidsElement` openings, set
+`skipVoids` when constructing the processor (discussion #8586):
+
+```typescript
+import { GeometryProcessor } from '@ifc-lite/geometry';
+
+const geometry = new GeometryProcessor({
+  skipVoids: true,
+  preferNative: false,
+  enableInstancing: false, // Deliver all geometry through event.meshes.
+});
+await geometry.init();
+for await (const event of geometry.processAdaptive(new Uint8Array(buffer))) {
+  if (event.type === 'batch') console.log(event.meshes);
+}
+```
+
+The default is `false` (net geometry). This setting applies to `process`,
+`processStreaming`, and `processAdaptive`, including worker pools and recovered
+workers. It preserves door/window meshes, styles, and booleans authored inside
+the host representation. It cannot fill holes already authored into a profile,
+BRep or tessellation. It changes geometry generation, not previously emitted
+meshes; switching an existing scene requires generating and replacing meshes.
+
+Direct WASM consumers can call `IfcAPI.setSkipVoids(true)` before batching.
+An older WASM bundle without this method rejects an enabled option explicitly.
+Third-party Tauri bridges do not expose this contract; select WASM with
+`preferNative: false`. Native Rust consumers use
+`ProcessingRequest::full_pass().skip_voids(true)` with the shared `process` API.
+This is independent of `OpeningFilterMode`, which also controls filling visibility.

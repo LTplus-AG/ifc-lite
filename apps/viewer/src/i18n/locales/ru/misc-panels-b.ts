@@ -5,6 +5,16 @@
 import type { Catalogue } from '../../registry';
 
 export const miscPanelsBRu = {
+  "federationSetupControls.saved": "Настройки федерации сохранены.",
+  "federationSetupControls.invalid": "Некорректный файл настроек федерации: {reason}",
+  "federationSetupControls.pickSources": "Загружены настройки со слотами моделей: {count}. Выберите соответствующие исходные файлы.",
+  "federationSetupControls.result.restored": "Восстановлено моделей: {restored}/{total}",
+  "federationSetupControls.result.missing": "исходные файлы не найдены: {names}",
+  "federationSetupControls.result.mismatched": "то же имя, другое содержимое: {names}",
+  "federationSetupControls.result.anchorMissing": "не удалось восстановить опорную модель выравнивания",
+  "federationSetupControls.result.tagsMissing": "теги не восстановлены для отсутствующих источников: {names}",
+  "federationSetupControls.result.failed": "исходные файлы найдены, но не загружены: {slots}",
+  "federationSetupControls.result.failedSlot": "{name} ({reason})",
   "pointCloudPanel.title": "Облако точек",
   "pointCloudPanel.close": "Закрыть панель облака точек",
   "pointCloudPanel.assetCount": {

@@ -57,7 +57,7 @@ export function ManualValidationTab({ manual }: { manual: UseManualValidationRes
     return (
       <div className="flex-1 min-h-0 overflow-auto p-4">
         <ManualChecklistLibrary model={activeModel} active={false} onNew={() => { manual.newChecklist(); setEditing(true); }} onSelected={setEditing} />
-        {saveError && <p role="alert" className="text-xs text-red-600">{saveErrorMessage}</p>}
+        {saveError && <p role="alert" className="text-xs text-danger">{saveErrorMessage}</p>}
         <ManualValidationEntry
           onNew={() => { manual.newChecklist(); setEditing(true); }}
           onOpenFile={async (file) => { await manual.openFromFile(file); setEditing(false); }}
@@ -85,8 +85,8 @@ export function ManualValidationTab({ manual }: { manual: UseManualValidationRes
         <Button
           type="button"
           size="sm"
-          variant={editing ? 'default' : 'outline'}
-          className="h-7 shrink-0 gap-1 text-xs"
+          variant="toggle"
+          className="h-7 shrink-0 gap-1 border border-input text-xs"
           aria-pressed={editing}
           onClick={() => setEditing(!editing)}
         >
@@ -121,7 +121,7 @@ export function ManualValidationTab({ manual }: { manual: UseManualValidationRes
       )}
       {!editing && !activeModel && <p className="text-xs text-muted-foreground">{t(preferredFingerprint ? 'manualValidation.reuse.modelNotLoaded' : 'manualValidation.model.none')}</p>}
       {!editing && activeModel && !fingerprint && <p className="text-xs text-muted-foreground">{t('manualValidation.model.noIdentity')}</p>}
-      {saveError && <p role="alert" className="text-xs text-red-600">{saveErrorMessage}</p>}
+      {saveError && <p role="alert" className="text-xs text-danger">{saveErrorMessage}</p>}
 
       <Button type="button" variant="outline" size="sm" className="h-7 w-fit text-xs" onClick={async () => {
         const scope = activeModel ? reportModelScope(activeModel.name, activeModel.id, fingerprint) : null;

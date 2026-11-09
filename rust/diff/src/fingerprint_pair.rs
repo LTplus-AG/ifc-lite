@@ -3,7 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 //! Batch snapshots can reuse one canonical projection for both hashes (#8042).
 use crate::{JsString, input::DataFingerprintInput, js_json::{JsonValue, stable_hash_json, utf16_length}};
-use super::checked::{project_data, has_holes, OrderedComponents,
+use super::checked::{project_data, has_holes, OrderedComponents, SetOrdinals,
     check_property_sets, check_quantity_sets, check_type_assignments};
 
 /// Equivalent to the data builder followed by the component builder, including
@@ -25,10 +25,10 @@ pub fn build_fingerprint_pair_checked<E>(input: &DataFingerprintInput,
     components.insert("attr:core".into(), stable_hash_json(&core));
     check_property_sets(&input.property_sets, true, &mut check)?;
     assert_eq!(input.property_sets.holes(), 0, "component property sets require present records");
-    sets(&fields, "PropertySets", "pset:", &mut components);
+    sets(&fields, "PropertySets", "pset", &mut components);
     check_quantity_sets(&input.quantity_sets, true, &mut check)?;
     assert_eq!(input.quantity_sets.holes(), 0, "component quantity sets require present records");
-    sets(&fields, "QuantitySets", "qset:", &mut components);
+    sets(&fields, "QuantitySets", "qset", &mut components);
     check_type_assignments(&input.type_assignments, true, &mut check)?;
     for (field, key) in [("TypeAssignments", "type-assignment"), ("Materials", "material"), ("Classifications", "classification")] {
         if let Some((_, value @ JsonValue::Array(items))) = fields.iter().find(|(name, _)| name == field) {
@@ -38,13 +38,14 @@ pub fn build_fingerprint_pair_checked<E>(input: &DataFingerprintInput,
     Ok((data, components.0))
 }
 
-fn sets(fields: &[(JsString, JsonValue)], field: &str, prefix: &str, components: &mut OrderedComponents) {
+fn sets(fields: &[(JsString, JsonValue)], field: &str, kind: &str, components: &mut OrderedComponents) {
     let Some((_, JsonValue::Array(sets))) = fields.iter().find(|(name, _)| name == field) else {
         unreachable!("canonical data always has set collections")
     };
+    let mut ordinals = SetOrdinals::default();
     for set in sets {
         let JsonValue::Object(entries) = set else { unreachable!("outer holes were rejected") };
         let JsonValue::String(name) = &entries[0].1 else { unreachable!("canonical set name") };
-        components.insert(JsString::surround(prefix, name, ""), stable_hash_json(&entries[1].1));
+        components.insert(ordinals.key(kind, name), stable_hash_json(&entries[1].1));
     }
 }

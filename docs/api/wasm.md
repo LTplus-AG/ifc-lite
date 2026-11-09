@@ -224,7 +224,9 @@ instance for another model. JavaScript input arrays remain usable after
 Each exporter takes the raw IFC bytes (or already-produced meshes) and returns a `Uint8Array`.
 
 ```typescript
-exportGlb(content, includeMetadata, hidden, isolated, hiddenTypesCsv, lit?): Uint8Array;
+exportGlb(content, includeMetadata, hidden, isolated, hiddenTypesCsv, lit?, emissive?): Uint8Array;
+// Same parameters; each element one node named by its GlobalId (#9011).
+exportGlbNamedByGlobalId(content, includeMetadata, hidden, isolated, hiddenTypesCsv, lit?, emissive?): Uint8Array;
 exportGlbFromMeshes(/* flattened MeshData buffers */, worldMatrix?: Float64Array): Uint8Array;
 exportObj(content, includeNormals, hidden, isolated): Uint8Array;
 exportKmzFromMeshes(
@@ -1200,7 +1202,7 @@ A successful solve is not an accuracy verdict. F4 acceptance requires at least
 four fitting and four independently selected, spatially distributed held-out
 features at different heights, uncertainty review, a tolerance chosen from the
 held-out residuals, and explicit assessment of unknown areas and thin-wall
-transfer. The [CRAS real-pair evidence](../architecture/evidence/scan-registration-cras/README.md)
+transfer. The [CRAS real-pair evidence](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/docs/architecture/evidence/scan-registration-cras/README.md)
 does this for one licensed pair (8 fit, 8 held-out, tolerance 7 cm).
 
 ### Registered textured-mesh appearance transfer
@@ -1342,7 +1344,7 @@ termination discards the pending result, and any exhausted budget returns an
 error rather than partial success. Input caps are maxima, not guaranteed capacity
 at every combination of density, overlap and geometry complexity.
 
-[Independent transfer evidence](../architecture/evidence/mesh-transfer/README.md)
+[Independent transfer evidence](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/docs/architecture/evidence/mesh-transfer/README.md)
 checks a controlled IFC/PNG roundtrip. No real scan-to-BIM accuracy is claimed
 without valid spatially distributed held-out correspondences.
 

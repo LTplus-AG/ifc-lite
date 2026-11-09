@@ -23,6 +23,7 @@ export const RULE_KIND_LABEL: Record<FilterRule['kind'], string> = {
   group: 'Group',
   modelFact: 'Model fact',
   listCondition: 'List value',
+  customGrouping: 'Custom grouping',
 };
 
 /** Kinds only a host with its own reader can evaluate (#6190: `listCondition`

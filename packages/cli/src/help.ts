@@ -65,6 +65,11 @@ export function buildHelp(version: string): string {
     stats     <file.ifc>                          Auto-calculated model KPIs and health check
     mutate    <file.ifc> --id N --set P=V --out F  Modify properties/attributes and save
     generate-spaces <file.ifc> --out F           Derive IfcSpace from walls (slab/roof-aware height)
+    storey    <file.ifc> list|add|rename|edit|delete  Author storeys; geometry follows ("storey --help" for actions)
+              list [--json]                       Storeys with elevation, floor-to-floor height and element count
+              add --from S [--below] | --name N --elevation M  Add a storey (from a neighbour: its naming and spacing)
+              rename --storey S --name N | edit --storey S --elevation M | --floor-height M
+              delete --storey S [--move-to S | --delete-contents]  Each writes --out F; --dry-run writes nothing
     ask       <file.ifc> "<question>"            Natural language BIM queries
     view      <file.ifc> [--port N]              Interactive 3D viewer in browser
     analyze   <file.ifc> --viewer <port>        Query + visualize analysis results
@@ -74,6 +79,8 @@ export function buildHelp(version: string): string {
     ext       validate <path>|init <dir>          Manage IFClite extensions (Phase 0 — validate, init)
     layer     <publish|diff|merge|log|bake|...>    Layered change tracking over a local store (.ifc-lite/)
     ref       <list|create|move|protect>           Manage named refs in the layer store
+    oci       push <oci://host/repo:tag> <model.ifc>  Publish an IFC file to an OCI registry (any model argument may also be oci://...)
+              [--overwrite] [--annotation key=value]... [--json]  replace an existing tag; extra manifest annotations
     gym       --model <file.ifc> | --seed <n>      reset/step/reward environment loop (JSONL over stdin/stdout)
     delivery  <recipe.json> [--json] [--out F] [--html F]  Repeatable delivery check (structural + IDS + rule sets) from a saved recipe
               recipe: {"models":["m.ifc"],"structural":true,"ids":["rules.ids"],"rules":["checks.rules.json"]}, paths relative to the recipe file
@@ -110,6 +117,7 @@ export function buildHelp(version: string): string {
     ifc-lite props model.ifc --id 42
     ifc-lite export model.ifc --format csv --type IfcWall --columns Name,Type,GlobalId
     ifc-lite export model.ifc --format json --type IfcWall,IfcDoor
+    ifc-lite export model.ifc --format glb --name-by-global-id --out model.glb
     ifc-lite schedule model.ifc --type IfcDoor --columns "Name=Name, Mark=Pset_DoorCommon.Reference"
     ifc-lite schedule model.ifc --type IfcWall --columns "Name,Qto_WallBaseQuantities.NetVolume" --where Pset_WallCommon.IsExternal=true --format json
     ifc-lite schedule model.ifc --type IfcDoor --columns "Name=Name, Fire=Pset_DoorCommon.FireRating, Area=Qto_DoorBaseQuantities.Area" --group-by Fire --sort "Area:desc" --subtotals "count, sum:Area"
@@ -169,6 +177,7 @@ export function buildHelp(version: string): string {
     ifc-lite mcp model.ifc --read-only
     ifc-lite mcp arch.ifc struct.ifc --federate
     ifc-lite mcp model.ifc --transport http --port 8765 --token abc
+    ifc-lite oci push oci://ghcr.io/acme/tower-model:rev-c tower.ifc
     ifc-lite ref create main
     ifc-lite layer publish delta.ifcx --base main --intent "Set fire ratings" --scope "model.mutate:Pset_FireSafety*@IfcWall"
     ifc-lite layer merge blake3:abc123 --into main --preview

@@ -92,6 +92,33 @@ describe('federationLoadGate', () => {
     releaseFederationLoadSlot(id2);
   });
 
+  it('an aborted waiter leaves the queue and never takes a slot (L6)', async () => {
+    // 1000 MB costs 4000 of the default 6144 MB budget, so a second one queues.
+    const blocker = await acquireFederationLoadSlot(1000);
+    const superseded = new AbortController();
+    const waiter = acquireFederationLoadSlot(1000, superseded.signal);
+    const behind = acquireFederationLoadSlot(1000);
+    await new Promise((r) => setTimeout(r, 10));
+    assert.strictEqual(__getFederationLoadGateStats().queuedCount, 2);
+
+    superseded.abort();
+    await assert.rejects(waiter, (error: unknown) => error instanceof DOMException && error.name === 'AbortError');
+    assert.strictEqual(__getFederationLoadGateStats().queuedCount, 1, 'the aborted waiter is dequeued');
+
+    releaseFederationLoadSlot(blocker);
+    const behindId = await behind;
+    assert.deepStrictEqual(__getFederationLoadGateStats(), { activeCount: 1, queuedCount: 0, activeCostMB: 4000 },
+      'only the live waiter is admitted');
+    releaseFederationLoadSlot(behindId);
+  });
+
+  it('a signal aborted before acquiring rejects without taking a slot (L6)', async () => {
+    const superseded = new AbortController();
+    superseded.abort();
+    await assert.rejects(acquireFederationLoadSlot(10, superseded.signal), { name: 'AbortError' });
+    assert.strictEqual(__getFederationLoadGateStats().activeCount, 0);
+  });
+
   it('treats negative file size as zero', async () => {
     const id = await acquireFederationLoadSlot(-100);
     assert.strictEqual(__getFederationLoadGateStats().activeCount, 1);

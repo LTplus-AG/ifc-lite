@@ -29,6 +29,7 @@ import { withModelRotationsUnbaked } from '../components/viewer/useModelRotation
 import { convergeFederationRtcFrame } from './ingest/federationRtcRebase.js';
 import { toast } from '../components/ui/toast.js';
 import { acquireFederationLoadSlot, releaseFederationLoadSlot } from './federationLoadGate.js';
+import { createModelLoadActivity, installModelLoadCanceller, LOAD_COMPLETE, settleOwnedLoadUi, watchLoadSupersession } from './modelLoadCanceller.js';
 import { realignFederatedPointClouds } from './ingest/pointCloudFederationLifecycle.js';
 import { showLoadError } from '@/lib/analytics';
 
@@ -131,7 +132,18 @@ export function useIfcFederation(
     // memory budget, wait until headroom frees. Single-file loads never
     // wait. See `federationLoadGate.ts` for the budget formula. (#600)
     const fileSizeForGateMB = (typeof (file as File).size === 'number' ? (file as File).size : 0) / (1024 * 1024);
-    const gateSlot = await acquireFederationLoadSlot(fileSizeForGateMB);
+    // A primary that starts while this add waits replaces the scene it was
+    // asked for: the add leaves the queue and touches nothing (L6).
+    const supersession = watchLoadSupersession('primary');
+    let gateSlot: number;
+    try {
+      gateSlot = await acquireFederationLoadSlot(fileSizeForGateMB, supersession.signal);
+    } catch (error) {
+      if (supersession.signal.aborted) return null;
+      throw error;
+    } finally {
+      supersession.stop(); // from here this add's own load is what a primary supersedes
+    }
     try {
       // (Removed the legacy→Map migration: every model — including model #1 —
       // now registers in the FederationRegistry + models Map via loadFile's
@@ -359,6 +371,12 @@ export function useIfcFederation(
     buffers: Array<{ buffer: ArrayBuffer; name: string }>,
   ): Promise<void> => {
     const { resetViewerState, clearAllModels } = useViewerStore.getState();
+    // The composition replaces the scene, so it holds a primary load's
+    // contract (L7): a Cancel and activity row, superseded by any newer
+    // primary, and the shared load UI settled as its owner.
+    let superseded = false;
+    const activity = createModelLoadActivity(buffers.map((b) => b.name).join(', '));
+    const release = installModelLoadCanceller('primary', () => { superseded = true; }, () => null, activity);
 
     try {
       // Reset viewer state on EVERY federated (re-)composition, including
@@ -385,6 +403,7 @@ export function useIfcFederation(
       clearAllModels();
 
       setLoading(true);
+      useViewerStore.getState().setLoadingFileName(buffers[0]?.name ?? null);
       setError(null);
       setProgress({ phase: 'Parsing federated IFCX', percent: 0 });
 
@@ -393,9 +412,10 @@ export function useIfcFederation(
       const { parseFederatedIfcx } = await import('@ifc-lite/ifcx');
       const result = await parseFederatedIfcx(buffers, {
         onProgress: (prog: { phase: string; percent: number }) => {
-          setProgress({ phase: `IFCX ${prog.phase}`, percent: prog.percent });
+          if (!superseded) setProgress({ phase: `IFCX ${prog.phase}`, percent: prog.percent });
         },
       });
+      if (superseded) return;
 
       // Convert IFCX meshes to viewer format
       const meshes: MeshData[] = convertIfcxMeshes(result.meshes);
@@ -517,15 +537,17 @@ export function useIfcFederation(
 
         storeAddModel(layerModel);
       }
-
-      setProgress({ phase: 'Complete', percent: 100 });
-      setLoading(false);
+      activity.published = true;
+      settleOwnedLoadUi(release, LOAD_COMPLETE);
     } catch (err: unknown) {
       console.error('[useIfc] Federated IFCX loading failed:', err);
+      if (superseded) return; // the newer load or the Cancel owns the viewer now
       const message = err instanceof Error ? err.message : String(err);
-      reportError(`Federated IFCX loading failed: ${message}`, 'ifcx_federated_load_failed',
+      reportError(activity.fail(`Federated IFCX loading failed: ${message}`), 'ifcx_federated_load_failed',
         () => { void loadFederatedIfcxFromBuffers(buffers); }); // retry re-composes the same buffers
-      setLoading(false);
+      settleOwnedLoadUi(release);
+    } finally {
+      release();
     }
   }, [setLoading, setProgress, setGeometryResult, setIfcDataStore, storeAddModel, clearAllModels]);
 

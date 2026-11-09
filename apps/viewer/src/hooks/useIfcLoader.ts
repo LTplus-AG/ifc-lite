@@ -434,6 +434,7 @@ export function useIfcLoader() {
         ...failureProps, // the first attempt carries what the terminal capture does
       });
       notifyResourceRetry(file.name);
+      activity.handOff(); // J1: the retry's own job reports how this file ends, not a cancel of this attempt
       setGeometryStreamingActive(false);
       // Awaited, not fire-and-forget: callers await loadFile to know the load
       // finished, so the original promise must stay pending until the

@@ -118,24 +118,16 @@ describe('BulkPropertyEditor — collab role gate on bulk mutation execute', () 
     );
   });
 
-  it('keeps Bulk Execute disabled and leaves the overlay unchanged when Edit mode is off (#5901)', async () => {
+  it('edits data in View without enabling Model (#9296)', async () => {
     seedStore('editor');
-    useViewerStore.setState({ editEnabled: false });
+    useViewerStore.setState({ editEnabled: false, workspaceMode: 'view', session: null });
     const container = render(<BulkPropertyEditor trigger={<button>Open</button>} />);
     openDialog(container);
     await fillAndExecute();
-    const executeBtn = [...document.body.querySelectorAll('button')].find((b) =>
-      b.textContent?.includes('Apply to')) as HTMLButtonElement | undefined;
-    assert.ok(executeBtn);
-    assert.equal(executeBtn.disabled, true);
-    const denial = document.body.querySelector('output');
-    assert.ok(denial);
-    assert.equal(denial.textContent, 'Turn on Edit mode to change this model');
-    assert.equal(executeBtn.getAttribute('aria-describedby'), denial.id);
-    assert.equal(useViewerStore.getState().mutationViews.get(MODEL_ID)?.getPropertyValue(42, 'Pset_Test', 'Foo'), null);
-    act(() => useViewerStore.setState({ editEnabled: true }));
-    assert.equal(document.body.querySelector('output'), null, 'the denial clears when Edit mode is on');
-    assert.equal(executeBtn.disabled, false);
+    assert.equal(document.body.querySelector('output'), null);
+    assert.equal(useViewerStore.getState().workspaceMode, 'view');
+    assert.equal(useViewerStore.getState().editEnabled, false);
+    assert.equal(useViewerStore.getState().mutationViews.get(MODEL_ID)?.getPropertyValue(42, 'Pset_Test', 'Foo'), 'Bar');
   });
 
   it('refreshes the mutation denial when the selected model gains IFC data (#5901)', async () => {

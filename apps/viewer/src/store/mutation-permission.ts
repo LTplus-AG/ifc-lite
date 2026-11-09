@@ -58,6 +58,17 @@ export function mutationPermissionForModels(state: MutationPermissionState, mode
   return hasTarget ? { allowed: true } as const : { allowed: false, reason: 'model-unavailable' } as const;
 }
 
+export function dataMutationPermissionForModels(state: MutationPermissionState, modelIds: Iterable<string>) {
+  let hasTarget = false;
+  for (const modelId of modelIds) {
+    if (!modelId) return { allowed: false, reason: 'model-unavailable' } as const;
+    hasTarget = true;
+    const permission = dataMutationPermission(state, modelId);
+    if (!permission.allowed) return permission;
+  }
+  return hasTarget ? { allowed: true } as const : { allowed: false, reason: 'model-unavailable' } as const;
+}
+
 export function mutationDenialMessage(reason: MutationDenialReason): string {
   switch (reason) {
     case 'workflow-running': return 'Wait for the workflow check or PDF capture to finish, or cancel the workflow';

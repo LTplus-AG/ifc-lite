@@ -27,6 +27,7 @@ impl<'a> MappingControl<'a> {
             action,
             budget: super::super::mapping_budget::LogicalBudget::default(),
             logical_stopped: false,
+            budget_product: None,
         }
     }
 

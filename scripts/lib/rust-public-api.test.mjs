@@ -372,3 +372,15 @@ test('splitTopLevel respects nested <>()[]{} — a field type with tuple-of-tupl
   const parts = splitTopLevel('a: Option<((f32, f32, f32), (f32, f32, f32))>, b: u32');
   assert.deepEqual(parts, ['a: Option<((f32, f32, f32), (f32, f32, f32))>', 'b: u32']);
 });
+
+// #9268: visitor refusal enums are public through representation, not lib.rs.
+test('selected public module entry tracks refusal variant fields', () => {
+  withCrate({ 'src/lib.rs': 'pub mod representation;',
+    'src/representation/mod.rs': 'mod refusal; pub use refusal::WalkRefusal;',
+    'src/representation/refusal.rs': 'pub enum WalkRefusal { #[non_exhaustive] Budget { max_levels: u32, details: Detail } }',
+  }, (dir) => {
+    const { surface } = extractCrateSurface(dir, 'src/representation/mod.rs');
+    assert.match(surface.WalkRefusal, /max_levels/);
+    assert.match(surface.WalkRefusal, /details/);
+  });
+});

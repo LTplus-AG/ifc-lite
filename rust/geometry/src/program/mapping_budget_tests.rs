@@ -166,6 +166,12 @@ fn issue_7873_each_list_boundary_has_exact_small_threshold_and_ignored_members_p
             indices
         );
         assert!(router.take_unsupported_items().is_empty(), "#9268 budget is not unsupported");
+        let refusals = router.take_budget_refusals();
+        assert_eq!(refusals.len(), usize::from(limit == 5));
+        if let Some(refusal) = refusals.first() {
+            assert_eq!((refusal.budget.as_str(), refusal.limit, refusal.reached, refusal.source_id),
+                ("logical Items members", 5, 6, 8));
+        }
     }
 }
 
@@ -210,14 +216,6 @@ fn issue_9268_shared_router_keeps_standalone_refusal_unattributed() {
     assert_eq!(refusals[1]["GlobalId"], "0000000000000000000001");
 }
 
-// Keep the #9268 revert oracle executable before the diagnostic API existed:
-// the old router reports no budget records, so the real processing test fails.
-#[allow(dead_code)]
-trait PreBudgetDiagnostics {
-    fn take_budget_refusals(&self) -> Vec<serde_json::Value> { Vec::new() }
-}
-impl PreBudgetDiagnostics for GeometryRouter {}
-
 #[test]
 fn issue_7873_repeated_dag_occurrences_pay_and_prefix_never_publishes() {
     let source = nested("#8,#8,#8");
@@ -261,6 +259,7 @@ fn issue_7873_repeated_dag_occurrences_pay_and_prefix_never_publishes() {
             // Both keep the two completed occurrences and stop the rest.
             assert_eq!(indices, 6);
             assert!(router.take_unsupported_items().is_empty(), "#9268 budget is not unsupported");
+            assert_attempt_refusal(&router);
             assert!(!cache.lock().unwrap().contains_key(&16));
             // Same router, same source: a fresh invocation has fresh counters,
             // and cannot hit a previously published partial local/shared root.
@@ -299,6 +298,7 @@ fn issue_7873_attempt_meter_counts_warm_cache_hits_independently_of_members() {
             6
         );
         assert!(router.take_unsupported_items().is_empty(), "#9268 budget is not unsupported");
+        assert_attempt_refusal(&router);
         let parts = limited(GeometryProgram::mapped_item(&item), 4)
             .drain_parts(&router, &mut decoder)
             .unwrap();
@@ -333,6 +333,12 @@ fn issue_9102_distinct_mapped_items_over_one_source_each_pay_an_attempt() {
             .unwrap();
         assert_eq!(parts.iter().map(|part| part.0.indices.len()).sum::<usize>(), indices, "limit {limit}");
         assert!(router.take_unsupported_items().is_empty(), "#9268 budget is not unsupported at limit {limit}");
+        let refusals = router.take_budget_refusals();
+        assert_eq!(refusals.len(), usize::from(limit == 5));
+        if let Some(refusal) = refusals.first() {
+            assert_eq!((refusal.budget.as_str(), refusal.limit, refusal.reached, refusal.source_id),
+                ("logical mapped attempts", 5, 6, 45));
+        }
     }
 }
 
@@ -423,6 +429,7 @@ fn issue_7873_default_nested_budget_keeps_prefix_and_stops_siblings_in_both_rend
         // reads no Items; the styled walk re-reads them and is refused.
         assert_eq!(indices, if styled { 6 } else { 12 });
         assert!(router.take_unsupported_items().is_empty(), "#9268 budget is not unsupported");
+        assert_eq!(router.take_budget_refusals().len(), usize::from(styled));
         assert_eq!(router.unsupported_scope_depth(), 0);
     }
 }
@@ -697,7 +704,48 @@ fn issue_7781_logical_drop_keeps_parent_attribution_and_prefix_without_cache_pub
         assert!(cache.lock().unwrap().is_empty());
         let drops = router.take_unsupported_items();
         assert!(drops.is_empty(), "#9268 budget is not unsupported (Body={body})");
+        assert_eq!(router.take_budget_refusals().len(), usize::from(body));
         assert_eq!(router.unsupported_scope_depth(), 0);
     }
 }
 
+
+fn assert_attempt_refusal(router: &GeometryRouter) {
+    let refusals = router.take_budget_refusals();
+    assert_eq!(refusals.len(), 1, "#9268 refusal must be reported exactly once");
+    let refusal = &refusals[0];
+    assert_eq!((refusal.budget.as_str(), refusal.limit, refusal.reached, refusal.source_id),
+        ("logical mapped attempts", 3, 4, 8));
+}
+
+#[test]
+fn issue_9268_type_map_identity_dedup_and_bounded_details() {
+    let source = format!("{}#60=IFCWALLTYPE('type-guid',$,$,$,$,$,(#6),$,$,.NOTDEFINED.);",
+        SOURCE.replace("(#4)", "(#4,#4,#4,#4,#4,#4)"));
+    let mut decoder = EntityDecoder::new(&source);
+    let map = decoder.decode_by_id(6).unwrap();
+    let mut product = decoder.decode_by_id(60).unwrap();
+    let textures = FxHashMap::default();
+    let router = GeometryRouter::new();
+    for id in 60..80 {
+        product.id = id;
+        for _ in 0..2 {
+            assert!(limited(GeometryProgram::type_map_for_product(&map, &textures, &product), 4)
+                .drain_type_parts(&router, &mut decoder).unwrap_err().to_string().contains("work budget"));
+        }
+    }
+    let (total, refusals) = router.take_budget_refusal_report();
+    assert_eq!(total, 20, "repeating a walk must not report again until drain");
+    assert_eq!(refusals.len(), 16, "bounded details, complete count");
+    for (index, refusal) in refusals.iter().enumerate() {
+        assert_eq!(refusal.product_id, Some(60 + index as u32));
+        assert_eq!(refusal.product_type.as_deref(), Some("IfcWallType"));
+        assert_eq!(refusal.global_id.as_deref(), Some("type-guid"));
+        assert_eq!((refusal.budget.as_str(), refusal.limit, refusal.reached, refusal.source_id),
+            ("logical Items members", 4, 5, 6));
+    }
+    assert_eq!(router.take_budget_refusal_report(), (0, Vec::new()));
+    assert!(limited(GeometryProgram::type_map_for_product(&map, &textures, &product), 4)
+        .drain_type_parts(&router, &mut decoder).is_err());
+    assert_eq!(router.take_budget_refusal_report().0, 1, "drain resets dedup scope");
+}

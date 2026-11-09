@@ -448,7 +448,7 @@ mod structural_allowance_diagnostics {
             )
             .replace("(#2100,#3000,#4000)", "(#2100,#3000,#3000,#4000)");
             let router = shared_rtc_router();
-            for _ in [expected_count, 0] {
+            for iteration in 0..2 {
                 let mut decoder = EntityDecoder::new(&content);
                 let log = Refusals::default();
                 let parts = tracing::subscriber::with_default(log.clone(), || {
@@ -479,6 +479,10 @@ mod structural_allowance_diagnostics {
                     drops.get("IfcMappedItem").copied().unwrap_or(0),
                     0
                 );
+                if iteration == 1 {
+                    assert_eq!(router.take_budget_refusals().len(), expected_count,
+                        "#9268 parent policy and once-per-router reporting");
+                }
                 let expected_error = format!("Geometry processing error: Representation expansion exceeded the work budget of {} levels or item references at #3000", crate::representation::MAX_WALK_LEVELS);
                 assert_eq!(
                     *log.0.lock().unwrap(),

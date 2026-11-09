@@ -120,10 +120,15 @@ export function warnGeometryDiagnostics(
       diagnostics,
     );
   }
-  for (const refusal of diagnostics.budgetRefusals ?? []) {
+  for (const refusal of (diagnostics.budgetRefusals ?? []).slice(0, 16)) {
     console.warn(`[useIfc] ${fileName}: work budget refusal: ${refusal.budget} ` +
-      `limit=${refusal.limit} reached=${refusal.reached} product=#${refusal.productId} ` +
-      `${refusal.productType} GlobalId=${refusal.GlobalId ?? 'unavailable'} source=#${refusal.sourceId}`);
+      `limit=${refusal.limit} reached=${refusal.reached} product=#${refusal.productId ?? 'unknown'} ` +
+      `${refusal.productType ?? 'unknown'} GlobalId=${refusal.GlobalId ?? 'unavailable'} source=#${refusal.sourceId}`);
+  }
+  const moreRefusals = (diagnostics.totalBudgetRefusals ?? diagnostics.budgetRefusals?.length ?? 0)
+    - Math.min(16, diagnostics.budgetRefusals?.length ?? 0);
+  if (moreRefusals > 0) {
+    console.warn(`[useIfc] ${fileName}: work budget refusals: and ${moreRefusals} more`);
   }
   if ((diagnostics.totalUnsupportedItems ?? 0) > 0) {
     console.warn(

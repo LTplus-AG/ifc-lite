@@ -259,3 +259,13 @@ it('#9268 preserves budget refusals through worker/batch merging', () => {
   expect(merged?.budgetRefusals).toEqual([refusal]);
   expect(merged?.totalUnsupportedItems).toBeUndefined();
 });
+
+it('issue 9268 merge caps budget detail while preserving the complete count', () => {
+  const refusal = { budget: 'logical mapped attempts', limit: 3, reached: 4,
+    sourceId: 8, productId: null, productType: null, GlobalId: null };
+  const merged = mergeGeometryDiagnostics(make({ totalBudgetRefusals: 40,
+    budgetRefusals: Array.from({ length: 16 }, () => refusal) }),
+  make({ budgetRefusals: [refusal] }));
+  expect(merged?.totalBudgetRefusals).toBe(41);
+  expect(merged?.budgetRefusals).toHaveLength(16);
+});

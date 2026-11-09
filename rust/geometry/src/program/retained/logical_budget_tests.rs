@@ -80,6 +80,7 @@ fn issue_7781_retained_product_admission_precedes_member_decode_and_dangling_ref
             assert_eq!(result.unwrap().values.len(), 4);
         }
         assert!(router.take_unsupported_items().is_empty());
+        assert_eq!(router.take_budget_refusal_report(), (0, Vec::new()), "#9268 retained refusal is returned, never logged twice");
     }
     // A malformed member of a first read is the file's fault, not the budget's.
     for members in ["#999999,#13", "17,#13"] {
@@ -137,6 +138,7 @@ fn issue_7781_retained_type_map_admission_precedes_member_decode_and_dangling_re
             .contains("work budget"));
         assert!(decoder.get_cached(13).is_none());
         assert!(router.take_unsupported_items().is_empty());
+        assert_eq!(router.take_budget_refusal_report(), (0, Vec::new()), "#9268 retained refusal is returned, never logged twice");
     }
 }
 
@@ -193,6 +195,7 @@ fn issue_7781_retained_warm_mapping_pays_items_once_per_attempt() {
         // Both occurrences pay an attempt, cached or not. The root and the
         // cold source are first reads (#9102); the warm occurrence pays one member.
         let result = program.finish_type_map(60, 1, [1.; 4]);
+        assert_eq!(router.take_budget_refusal_report(), (0, Vec::new()), "#9268 retained mapping reports through its transaction");
         if limit == 1 {
             assert!(result.unwrap_err().to_string().contains("work budget"));
         } else {
@@ -244,6 +247,7 @@ fn issue_7781_retained_cached_mapping_guards_members_even_with_a_populated_sourc
         assert!(error.to_string().contains("work budget"));
         assert!(decoder.get_cached(113).is_none());
         assert!(router.take_unsupported_items().is_empty());
+        assert_eq!(router.take_budget_refusal_report(), (0, Vec::new()), "#9268 retained refusal is returned, never logged twice");
     }
 }
 

@@ -19,38 +19,45 @@ pub struct BudgetRefusal {
     pub global_id: Option<String>,
 }
 
+/// Maximum retained detail records per diagnostic drain. Counts remain complete.
+pub const BUDGET_REFUSAL_DETAILS_LIMIT: usize = 16;
+
 #[derive(Default)]
 pub(super) struct BudgetRefusalLog {
     entries: Vec<BudgetRefusal>,
+    seen: rustc_hash::FxHashSet<(Option<u32>, u32, String, u64)>,
 }
 
 impl GeometryRouter {
     #[cold]
     #[inline(never)]
-    pub(crate) fn record_budget_refusal(&self, source_id: u32, budget: &str, limit: u32, reached: u64) {
-        self.unsupported.borrow_mut().budget_refusals.get_or_insert_with(Box::default).entries.push(BudgetRefusal {
-            budget: budget.into(), limit, reached, source_id,
-            product_id: None, product_type: None, global_id: None,
-        });
-    }
-    #[cold]
-    #[inline(never)]
-    pub(crate) fn attribute_budget_refusals(&self, product: &DecodedEntity) {
+    pub(crate) fn record_budget_refusal(&self, source_id: u32, budget: &str, limit: u32,
+        reached: u64, product: Option<&DecodedEntity>) {
         let mut state = self.unsupported.borrow_mut();
-        let Some(log) = state.budget_refusals.as_deref_mut() else { return };
-        // Every caller has just recorded this product's refusal. Earlier
-        // standalone/type-map refusals on a shared router have no product.
-        if let Some(refusal) = log.entries.last_mut() {
-            refusal.product_id = Some(product.id);
-            refusal.product_type = Some(product.ifc_type.to_string());
-            refusal.global_id = product.get(IfcRoot::GLOBAL_ID.index()).and_then(|a| a.as_string()).map(str::to_owned);
+        let log = state.budget_refusals.get_or_insert_with(Box::default);
+        if !log.seen.insert((product.map(|p| p.id), source_id, budget.into(), reached)) {
+            return;
         }
-        // Native empty-geometry retries must not report the same refusal three
-        // times. This work is reached only after a refusal, never per item.
-        let mut seen = rustc_hash::FxHashSet::default();
-        log.entries.retain(|refusal| seen.insert(refusal.clone()));
+        if log.entries.len() < BUDGET_REFUSAL_DETAILS_LIMIT {
+            log.entries.push(BudgetRefusal {
+                budget: budget.into(), limit, reached, source_id,
+                product_id: product.map(|p| p.id),
+                product_type: product.map(|p| p.ifc_type.to_string()),
+                global_id: product.and_then(|p| p.get(IfcRoot::GLOBAL_ID.index()))
+                    .and_then(|a| a.as_string()).map(str::to_owned),
+            });
+        }
     }
+
+    /// Drain bounded details and the complete distinct-refusal count together.
+    /// The dedup set lives until this drain, including across repeated walks.
+    pub fn take_budget_refusal_report(&self) -> (u64, Vec<BudgetRefusal>) {
+        self.unsupported.borrow_mut().budget_refusals.take()
+            .map_or_else(|| (0, Vec::new()), |log| (log.seen.len() as u64, log.entries))
+    }
+
+    /// Drain the bounded detail list. Use `take_budget_refusal_report` for totals.
     pub fn take_budget_refusals(&self) -> Vec<BudgetRefusal> {
-        self.unsupported.borrow_mut().budget_refusals.take().map_or_else(Vec::new, |log| log.entries)
+        self.take_budget_refusal_report().1
     }
 }

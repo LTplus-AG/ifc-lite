@@ -121,7 +121,8 @@ export interface GeometryDiagnostics {
   totalUnsupportedItems?: number;
   /** `totalUnsupportedItems` broken down by IFC type, sorted desc by count. */
   unsupportedItemsByType?: Array<{ reason: string; count: number }>;
-  /** Safety-policy refusals, separate from unsupported/failed geometry (v5). */
+  /** Complete safety-policy refusal count (v5); details are capped at sixteen. */
+  totalBudgetRefusals?: number;
   budgetRefusals?: Array<{
     budget: string;
     limit: number;

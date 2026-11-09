@@ -72,5 +72,26 @@ fn issue_9268_real_unsupported_item_stays_unsupported() {
     assert_eq!(diag.total_unsupported_items, 1);
     assert_eq!(diag.unsupported_items_by_type[0].reason, "IfcCartesianPoint");
     let json = serde_json::to_value(diag).unwrap();
+    assert_eq!(json["budgetRefusals"].as_array().unwrap().len(), 1);
+    assert_eq!(json["totalBudgetRefusals"], 1);
     assert_eq!(json["budgetRefusals"][0]["productId"], 125);
+}
+
+#[test]
+fn issue_9268_type_map_refusal_names_the_type_product() {
+    let members = vec!["#1000"; 65_538].join(",");
+    let content = source(1)
+        .replace("SurfaceModel',(#1000)", &format!("SurfaceModel',({members})"))
+        .replace("#25=IFCFLOWTERMINAL('0000000000000000000001',$,'synthetic mapped surface',$,$,$,#24,$);",
+            "#60=IFCWALLTYPE('type-guid',$,'budget type',$,$,$,(#21),$,$,.NOTDEFINED.);");
+    let result = process(content.as_bytes(), &ProcessingRequest::default(), &mut ());
+    let diag = result.stats.geometry_diagnostics.expect("type budget refusal is diagnostic-worthy");
+    assert_eq!(diag.total_unsupported_items, 0);
+    assert_eq!(diag.total_budget_refusals, 1);
+    assert_eq!(diag.budget_refusals.len(), 1);
+    let refusal = &diag.budget_refusals[0];
+    assert_eq!(refusal.product_id, Some(60));
+    assert_eq!(refusal.product_type.as_deref(), Some("IfcWallType"));
+    assert_eq!(refusal.global_id.as_deref(), Some("type-guid"));
+    assert_eq!((refusal.source_id, refusal.limit, refusal.reached), (21, 65_536, 65_537));
 }

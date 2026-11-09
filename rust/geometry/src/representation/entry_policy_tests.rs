@@ -337,6 +337,7 @@ fn issue_7781_typed_refusals_preserve_missing_unresolved_and_decode_distinctions
         assert_eq!(why.into_error(id).to_string(), expected);
     }
     for (why, text) in [
+        (WalkRefusal::work_budget(3, "walk mapped attempts", 4), "Representation expansion exceeded the work budget of 3 levels or item references at #42"),
         (WalkRefusal::Cyclic, "Detected cyclic IfcMappedItem reference at #42"),
         (WalkRefusal::TooDeep { max_depth: 3 }, "MappedItem nesting exceeded maximum depth of 3 at #42"),
     ] {

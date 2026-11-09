@@ -84,7 +84,7 @@ pub(super) fn console_summary(d: &GeometryDiagnostics) -> Vec<(Level, String)> {
     if d.total_unsupported_items > 0 {
         lines.push((Level::Warn, unsupported_line(d)));
     }
-    for refusal in &d.budget_refusals {
+    for refusal in d.budget_refusals.iter().take(16) {
         lines.push((Level::Warn, format!(
             "[IFC-LITE] Work budget refusal: {} limit={} reached={} product=#{} {} GlobalId={} source=#{}",
             refusal.budget, refusal.limit, refusal.reached,
@@ -92,6 +92,11 @@ pub(super) fn console_summary(d: &GeometryDiagnostics) -> Vec<(Level, String)> {
             refusal.product_type.as_deref().unwrap_or("unknown"),
             refusal.global_id.as_deref().unwrap_or("unavailable"), refusal.source_id,
         )));
+    }
+    let more = d.total_budget_refusals.max(d.budget_refusals.len() as u64)
+        .saturating_sub(d.budget_refusals.len().min(16) as u64);
+    if more > 0 {
+        lines.push((Level::Warn, format!("[IFC-LITE] Work budget refusals: and {more} more")));
     }
     lines
 }

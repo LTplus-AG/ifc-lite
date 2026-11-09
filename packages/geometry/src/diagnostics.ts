@@ -115,7 +115,8 @@ export interface GeometryDiagnostics {
   totalUnsupportedItems?: number;
   /** `totalUnsupportedItems` broken down by IFC type, sorted desc by count. */
   unsupportedItemsByType?: Array<{ reason: string; count: number }>;
-  /** Safety-policy refusals, separate from unsupported/failed geometry (v5). */
+  /** Complete safety-policy refusal count (v5); details are capped at sixteen. */
+  totalBudgetRefusals?: number;
   budgetRefusals?: Array<{
     budget: string;
     limit: number;
@@ -239,8 +240,12 @@ export function mergeGeometryDiagnostics(
     oversizedRefDrops: (a.oversizedRefDrops ?? 0) + (b.oversizedRefDrops ?? 0),
     worstHosts,
     ...unsupportedFields,
-    ...(a.budgetRefusals || b.budgetRefusals
-      ? { budgetRefusals: [...(a.budgetRefusals ?? []), ...(b.budgetRefusals ?? [])] }
+    ...(a.totalBudgetRefusals || b.totalBudgetRefusals || a.budgetRefusals || b.budgetRefusals
+      ? {
+        totalBudgetRefusals: (a.totalBudgetRefusals ?? a.budgetRefusals?.length ?? 0)
+          + (b.totalBudgetRefusals ?? b.budgetRefusals?.length ?? 0),
+        budgetRefusals: [...(a.budgetRefusals ?? []), ...(b.budgetRefusals ?? [])].slice(0, 16),
+      }
       : {}),
   };
 }

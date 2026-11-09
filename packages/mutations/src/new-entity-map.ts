@@ -128,10 +128,29 @@ export class NewEntityMap extends Map<number, NewEntity> {
     if (before.size) this.restoreOrder(restoreEntityOrder(this.keys(), before));
   }
   restoreOrder(ids: readonly number[]): void {
-    const rows = ids.map(id => [id, this.get(id)!] as const);
-    super.clear(); this.positions?.clear(); this.tailId = undefined; this.nextPosition = 0;
-    this.byType?.clear(); this.byReference?.clear(); this.referencesById?.clear();
-    for (const [id, row] of rows) this.set(id, row);
+    const types = new Map<number, string>();
+    for (const [type, bucket] of this.byType ?? []) for (const id of bucket.keys()) types.set(id, type);
+    const byType = new Map<string, Map<number, NewEntity>>(), byReference = new Map<number, Set<number>>();
+    const positions: NonNullable<typeof this.positions> = new Map(), rows: Array<[number, NewEntity]> = [];
+    for (const [i, id] of ids.entries()) {
+      const row = this.get(id), type = types.get(id);
+      if (!row || type === undefined) throw new Error('Created entity order changed before undo');
+      rows.push([id, row]);
+      positions.set(id, { position: i + 1, previous: ids[i - 1] ?? null, next: ids[i + 1] ?? null });
+      let bucket = byType.get(type);
+      if (!bucket) byType.set(type, bucket = new Map());
+      bucket.set(id, row);
+      for (const target of this.referencesById?.get(id) ?? []) {
+        let references = byReference.get(target);
+        if (!references) byReference.set(target, references = new Set());
+        references.add(id);
+      }
+    }
+    // Prepare metadata before publication; never reparse unrelated attributes.
+    super.clear();
+    for (const [id, row] of rows) super.set(id, row);
+    this.positions = positions; this.tailId = ids.at(-1); this.nextPosition = ids.length;
+    this.byType = byType; this.byReference = byReference;
   }
 
   referencesId(entityId: number, targetId: number): boolean { return this.referencesById?.get(entityId)?.has(targetId) ?? false; }

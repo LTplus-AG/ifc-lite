@@ -12,6 +12,7 @@ import { createHeadlessAlignBackend } from './align-backend.js';
 import { resolvedGeometryOptions, type HeadlessBackendOptions } from './options.js';
 import { createHeadlessRoomBackend } from './headless-backend-room.js';
 import { createRecordedModellingBackend } from './headless-backend-modelling.js';
+import { createRecordedRoofBackend } from './headless-backend-roof.js';
 
 export function createHeadlessStoreAdapter(
   dataStore: IfcDataStore, modelId: string, get: () => StoreEditor, assertKnownModelId: (id: string) => void,
@@ -43,6 +44,7 @@ export function createHeadlessStoreAdapter(
     addWindow: unsupportedOperation('store.addWindow', 'addWindow not supported in MCP v0.1; use entity_create'),
     ...unsupportedStoreAuthoring(),
     ...createRecordedModellingBackend(resolveModel),
+    ...createRecordedRoofBackend(resolveModel),
     ...createHeadlessRoomBackend(resolveModel, geometry.roomGeometry),
     ...createHeadlessAlignBackend(resolveModel, geometry.alignGeometry),
   };

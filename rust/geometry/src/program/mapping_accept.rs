@@ -304,7 +304,7 @@ impl<'a> MappingControl<'a> {
         )>,
         router: &GeometryRouter,
     ) -> Option<Event> {
-        match (value, self.rep_map.as_ref().map(Reached::item)) {
+        match (value, self.rep_map.as_ref().map(TypeMapRoot::item)) {
             (Ok((representation, items)), Some(rep_map)) => {
                 // Type maps select by reference, not 3D membership. Keep the
                 // canonical source diagnostic policy, including 2D sources.

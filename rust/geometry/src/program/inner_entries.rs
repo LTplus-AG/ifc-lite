@@ -54,9 +54,7 @@ impl<'a> GeometryProgram<'a> {
     pub(crate) fn type_map_for_product(rep_map: &'a DecodedEntity,
         textures: &'a rustc_hash::FxHashMap<u32, crate::ResolvedTextureMap>,
         product: &'a DecodedEntity) -> Self {
-        let mut control = MappingControl::type_map(rep_map, textures);
-        control.budget_product = Some(product);
-        Self::with_control(Control::Mapping(control))
+        Self::with_control(Control::Mapping(MappingControl::type_map_for_product(rep_map, textures, product)))
     }
 
     /// One product's walk merged into placed frame parts (#6349).

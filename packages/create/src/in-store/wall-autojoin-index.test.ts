@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { afterEach, expect, it, vi } from 'vitest';
 import { newStorey } from './wall-join-mesh.oracle.js';
-import { addOrdinaryElementInStore } from './ordinary-element.js';
+import { addOrdinaryElementInStore, type OrdinaryInStoreElement } from './ordinary-element.js';
 import * as reads from './wall-join-read.js';
 import { recordCompoundMutation, StoreEditor } from '@ifc-lite/mutations';
 import { withWallAutojoinIndex } from './wall-autojoin-index.js';
@@ -13,7 +13,7 @@ afterEach(() => vi.restoreAllMocks());
 for (const recorded of [false, true]) for (const count of [16, 64]) it(`#9296 / #9406 unrelated wall ${count + 1} reads only its own join target (recorded=${recorded})`, async () => {
   const s = await newStorey();
   const add = (x: number) => {
-    const element = { kind: 'wall' as const, params: {
+    const element: OrdinaryInStoreElement = { kind: 'wall', params: {
     Start: [x, 0, 0], End: [x + 4, 0, 0], Height: 3, Thickness: .2,
     } };
     return recorded ? withWallAutojoinIndex(s.store, s.view, wallIndex => recordCompoundMutation(s.view, draft =>

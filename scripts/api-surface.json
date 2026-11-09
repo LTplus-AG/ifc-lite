@@ -5049,6 +5049,7 @@
     "collectLeafRepresentationItems: function",
     "collectRefusals: function",
     "computeWallJoin: function",
+    "configureAuthoredQuantityReader: function",
     "connectStructuralActivityToItemInStore: function",
     "connectStructuralMemberToConnectionInStore: function",
     "copiedProductsInStore: function",

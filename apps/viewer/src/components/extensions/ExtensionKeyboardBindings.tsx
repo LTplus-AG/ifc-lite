@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /** Install contributed shortcuts after reserving the built-in command chords (#5841). */
-import { useEffect } from 'react';
+import { useEffect, useLayoutEffect, useRef } from 'react';
 import { evaluateWhen, parseWhen, type KeybindingContribution, type WhenContext } from '@ifc-lite/extensions';
 import { useSlotContributions } from '@/hooks/useSlotContributions';
 import { useOptionalExtensionHost } from '@/sdk/ExtensionHostProvider';
@@ -27,12 +27,18 @@ function liveWhenContext(): WhenContext {
 
 export function ExtensionKeyboardBindings(): null {
   const host = useOptionalExtensionHost();
+  const currentHost = useRef(host);
+  useLayoutEffect(() => {
+    currentHost.current = host;
+    return () => { currentHost.current = null; };
+  }, [host]);
   const contributions = useSlotContributions<KeybindingContribution>('keybindings');
 
   useEffect(() => {
     if (!host) return;
     const removers: Array<() => void> = [];
-    for (const { extensionId, payload } of contributions) {
+    for (const contribution of contributions) {
+      const { extensionId, payload } = contribution;
       const chord = parseExtensionKey(payload.key);
       if (!chord) {
         console.warn(`[keyboard] Ignoring invalid extension shortcut ${extensionId}:${payload.command}: ${payload.key}`);
@@ -53,7 +59,8 @@ export function ExtensionKeyboardBindings(): null {
         when: 'global', layer: 'global', keys: [chord],
         active: () => !when || (when.ok && evaluateWhen(when.value, liveWhenContext())),
         run: () => {
-          void host.runCommand(payload.command, extensionId)
+          void host.runCommand(payload.command, extensionId, () =>
+            currentHost.current === host && host.slotRegistry.getAll('keybindings').includes(contribution))
             .catch((error: unknown) => toast.error(describeRunCommandError(payload.command, error)));
         },
       }));

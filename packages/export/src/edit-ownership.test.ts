@@ -125,3 +125,30 @@ it('#8452 ownership lookup does not serialize unrelated authored records', async
   editor.setAttribute(other, 'Name', '#999');
   expect(effectiveReferencers(store, view)(999), 'a quoted Name is not a STEP reference').not.toContain(other);
 });
+
+it('#9411 whitespace-normalized authored references still protect shared placement ownership', async () => {
+  const bytes = new Uint8Array(await readFile(new URL('../../../apps/viewer/public/samples/hello-wall.ifc', import.meta.url)));
+  const store = await new IfcParser().parseColumnar(bytes.buffer as ArrayBuffer, { disableWorkerScan: true });
+  const view = new MutablePropertyView(null, 'm'), editor = new StoreEditor(store, view);
+  const child = editor.addEntity('IfcLocalPlacement', [' \n#1235\t ', '#1234']).expressId;
+  const other = editor.addEntity('IfcWall', ['guid', null, 'Other', null, null, `#${child}`, null, null, null]).expressId;
+  expect(effectiveReferencers(store, view)(1235)).toContain(child);
+  expect(editOwnershipRefusal(store, view, [1235], expandAffectedSet(store, view, [1222], 'hostsChanged'))).toContain(`#${other}`);
+});
+
+it('#9411 stored mutable placement arrays keep ownership buckets current (outdated review)', async () => {
+  const bytes = new Uint8Array(await readFile(new URL('../../../apps/viewer/public/samples/hello-wall.ifc', import.meta.url)));
+  const store = await new IfcParser().parseColumnar(bytes.buffer as ArrayBuffer, { disableWorkerScan: true });
+  const view = new MutablePropertyView(null, 'm'), editor = new StoreEditor(store, view);
+  const child = view.createEntity('IfcLocalPlacement', ['#65', '#1234']);
+  const other = editor.addEntity('IfcWall', ['guid', null, 'Other', null, null, `#${child.expressId}`, null, null, null]).expressId;
+  const allowed = expandAffectedSet(store, view, [1222], 'hostsChanged');
+  expect(editOwnershipRefusal(store, view, [1235], allowed)).toBeNull();
+  const fromCreate = child.attributes;
+  fromCreate[0] = '#1235';
+  expect(effectiveReferencers(store, view)(1235)).toContain(child.expressId);
+  expect(editOwnershipRefusal(store, view, [1235], allowed)).toContain(`#${other}`);
+  const fromGetter = view.getNewEntity(child.expressId)!.attributes;
+  fromGetter[0] = '#65';
+  expect(editOwnershipRefusal(store, view, [1235], allowed)).toBeNull();
+});

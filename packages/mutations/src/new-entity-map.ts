@@ -28,6 +28,7 @@ export class NewEntityMap extends Map<number, NewEntity> {
   declare private exposed?: Set<number>;
   declare private callbacks?: WeakMap<NewEntity, () => void>;
   declare private weakSelf?: WeakRef<NewEntityMap>;
+  declare private exposureListeners?: Set<(id: number) => void>;
 
   override set(expressId: number, entity: NewEntity): this {
     this.positions ??= new Map();
@@ -45,7 +46,10 @@ export class NewEntityMap extends Map<number, NewEntity> {
     while (pending.length) {
       const value = pending.pop();
       if (Array.isArray(value) && !visited.has(value)) { visited.add(value); for (const child of value) pending.push(child); }
-      else if (typeof value === 'string' && /^#[0-9]+$/.test(value)) references.add(Number(value.slice(1)));
+      else if (typeof value === 'string') {
+        const token = value.trim();
+        if (/^#[0-9]+$/.test(token)) references.add(Number(token.slice(1)));
+      }
     }
     this.referencesById ??= new Map();
     this.byReference ??= new Map();
@@ -58,7 +62,12 @@ export class NewEntityMap extends Map<number, NewEntity> {
     this.callbacks ??= new WeakMap();
     if (!this.callbacks.has(entity)) {
       const owner = this.weakSelf ??= new WeakRef(this);
-      const exposed = () => { const map = owner.deref(); if (map?.has(expressId)) (map.exposed ??= new Set()).add(expressId); };
+      const exposed = () => {
+        const map = owner.deref();
+        if (!map?.has(expressId)) return;
+        (map.exposed ??= new Set()).add(expressId);
+        for (const listener of map.exposureListeners ?? []) listener(expressId);
+      };
       this.callbacks.set(entity, exposed);
       observeEntityAttributes(entity, exposed);
     }
@@ -106,6 +115,14 @@ export class NewEntityMap extends Map<number, NewEntity> {
     withoutEntityExposure(() => {
       for (const id of this.exposed ?? []) { const row = super.get(id); if (row) this.set(id, row); }
     });
+  }
+
+  /** Observe existing mutable aliases and arrays exposed during a transaction. */
+  watchAttributeExposure(listener: (id: number) => void): () => void {
+    (this.exposureListeners ??= new Set()).add(listener);
+    try { for (const id of this.exposed ?? []) listener(id); }
+    catch (error) { this.exposureListeners.delete(listener); throw error; }
+    return () => { this.exposureListeners?.delete(listener); };
   }
 
   /** Authored reference candidates; effective readers apply queued slot edits. */

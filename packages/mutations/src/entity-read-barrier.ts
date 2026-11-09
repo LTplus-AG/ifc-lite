@@ -33,9 +33,9 @@ export function observeEntityAttributes(entity: NewEntity, exposed: () => void):
       return descriptor?.get ? descriptor.get.call(entity) as NewEntity['attributes'] : value;
     },
     set: descriptor?.get && !descriptor.set || descriptor?.writable === false ? undefined : (next: NewEntity['attributes']) => {
+      notify();
       if (descriptor?.set) descriptor.set.call(entity, next);
       else value = next;
-      notify();
     },
   });
 }

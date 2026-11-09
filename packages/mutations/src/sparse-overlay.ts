@@ -44,6 +44,7 @@ function sparseMap<K, V, T extends Map<K, V>>(base: T): { value: T; changes(): C
   const value = new Proxy(target, { get(_target, name) {
     if (name === 'size') return size;
     if (name === 'positionOf' && base instanceof NewEntityMap) return (id: number) => base.positionOf(id);
+    if (name === 'watchAttributeExposure' && localEntities) return (listener: (id: number) => void) => localEntities.watchAttributeExposure(listener);
     if (name === 'get') return get;
     if (name === 'has') return has;
     if (name === 'set') return (key: K, next: V) => {

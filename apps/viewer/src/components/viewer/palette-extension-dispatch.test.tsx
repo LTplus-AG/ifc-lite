@@ -164,18 +164,20 @@ test('#8947 toolbar and keyboard preserve placement when, chord, owner and canon
 // #8947 / review4509148564: retirement after the canonical runner starts
 // activation must be checked after that await, before events or handler code.
 for (const surface of ['palette', 'toolbar', 'keyboard'] as const) {
-  for (const retirement of ['provider', 'contribution', 'none'] as const) {
+  for (const retirement of ['provider', 'contribution', 'unmount', 'none'] as const) {
     test(`#8947 ${surface} rechecks ${retirement} identity after held canonical activation`, async () => {
       const first = new PaletteCommandTestHost(); first.add('alpha');
       const second = new PaletteCommandTestHost(); second.add('alpha');
       let release!: () => void;
       first.activationWait = new Promise<void>(resolve => { release = resolve; });
       let changeHost!: (host: PaletteCommandTestHost) => void;
+      let hide!: () => void;
       function Harness() {
         const [host, setHost] = useState(first); changeHost = setHost;
+        const [shown, setShown] = useState(true); hide = () => setShown(false);
         return <BimReactContext.Provider value={first.sdk}><ExtensionHostContext.Provider value={host}>
-          {surface === 'palette' ? <CommandPalette open onOpenChange={() => {}} />
-            : surface === 'toolbar' ? <ExtensionToolbarSlot slot="toolbar.right" /> : <ExtensionKeyboardBindings />}
+          {shown && (surface === 'palette' ? <CommandPalette open onOpenChange={() => {}} />
+            : surface === 'toolbar' ? <ExtensionToolbarSlot slot="toolbar.right" /> : <ExtensionKeyboardBindings />)}
           <Toaster />
         </ExtensionHostContext.Provider></BimReactContext.Provider>;
       }
@@ -198,6 +200,7 @@ for (const surface of ['palette', 'toolbar', 'keyboard'] as const) {
         assert.deepEqual(first.activations, ['alpha'], 'real canonical runner is held inside activate');
         assert.deepEqual(first.events, []);
         assert.deepEqual(first.executions, []);
+        if (retirement === 'unmount') act(() => hide());
         if (retirement === 'provider') act(() => changeHost(second));
         if (retirement === 'contribution') act(() => {
           first.slotRegistry.unregister('alpha'); first.add('alpha');

@@ -326,3 +326,59 @@ describe('BCF capture pending flag ends with its generation (D4, #4802)', () => 
     assert.equal(hasActiveDrawingCanvas(), true, 'the failed generation released the pending flag');
   });
 });
+
+// Independent review probes for #9488, kept verbatim in substance: each held its
+// cutter differently from the tests above, so they pin the same two defects
+// through a second route (per-cut gates; a geometry-change first cut).
+describe('#9488 independent review probes', () => {
+  it('cancelling a running regenerate that superseded a first cut leaves no generating (#9488 probe P1)', async () => {
+    const original = Drawing2DGenerator.prototype.generate;
+    const gates: Array<() => void> = [];
+    const starts: Array<() => void> = [];
+    Drawing2DGenerator.prototype.generate = async function (...args) {
+      for (const notify of starts.splice(0)) notify();
+      await new Promise<void>((resolve) => gates.push(resolve));
+      return original.call(this, ...args);
+    };
+    const nextStart = () => new Promise<void>((resolve) => starts.push(resolve));
+    try {
+      let started = nextStart();
+      await render({ geometryResult: geometry(), panelVisible: true });
+      await act(async () => { await started; });
+      assert.equal(useViewerStore.getState().drawing2DStatus, 'generating');
+      started = nextStart();
+      await render({ sectionPlane: { axis: 'down', position: 40, flipped: false } });
+      // The first cut finishes superseded; the regenerate is now held.
+      await act(async () => { gates.shift()?.(); await started; });
+      assert.equal(useViewerStore.getState().drawing2DStatus, 'generating', 'the first cut raised it; the regenerate does not touch it');
+      await render({ panelVisible: false });
+      for (const resume of gates.splice(0)) resume();
+      await settle();
+      assert.notEqual(useViewerStore.getState().drawing2DStatus, 'generating', `statuses ${statuses.join(' -> ')}`);
+    } finally {
+      for (const resume of gates.splice(0)) resume();
+      Drawing2DGenerator.prototype.generate = original;
+    }
+  });
+
+  it('a request queued behind an abandoned cut, then cancelled, releases the BCF pending flag (#9488 probe P2)', async () => {
+    await render({ geometryResult: geometry(), panelVisible: true });
+    await settle();
+    const kept = useViewerStore.getState().drawing2D;
+    assert.ok(kept);
+    const cutter = holdCutter();
+    try {
+      const started = cutter.nextStart();
+      await render({ geometryResult: geometry(300) });
+      await act(async () => { await started; });
+      await render({ panelVisible: false });
+      await render({ panelVisible: true });
+      await render({ panelVisible: false });
+      cutter.release();
+      await settle();
+    } finally { cutter.restore(); }
+    assert.notEqual(useViewerStore.getState().drawing2DStatus, 'generating');
+    mountCanvasFor(kept);
+    assert.equal(hasActiveDrawingCanvas(), true, 'pending flag leaked');
+  });
+});

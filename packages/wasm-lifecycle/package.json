@@ -1,8 +1,9 @@
 {
   "name": "@ifc-lite/wasm-lifecycle",
   "version": "0.2.0",
-  "description": "Shared WASM engine load-retry classification, cross-realm panic-forwarding and single-flight init lifetime used by the ifc-lite engine clients",
+  "description": "Shared WASM engine load-retry classification, cross-realm panic-forwarding, single-flight init lifetime and worker RPC dead latch used by the ifc-lite engine and worker clients",
   "type": "module",
+  "sideEffects": false,
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -38,7 +39,8 @@
     "bim",
     "wasm",
     "retry",
-    "panic"
+    "panic",
+    "worker"
   ],
   "publishConfig": {
     "access": "public"

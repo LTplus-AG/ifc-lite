@@ -275,6 +275,21 @@ function followPlaceholderStatus(): void {
   });
 }
 
+/**
+ * Counts `activeModelId` moves as the save subscription sees them, one per
+ * `set()`. The restore effect keys on this, not on the id: switches that leave
+ * and return to a model before React renders (A -> X -> A) commit as no id
+ * change, yet each one armed `restoringModelId`, and only the effect's
+ * `endRestore` disarms it.
+ */
+let activationEpoch = 0;
+const activationListeners = new Set<() => void>();
+export function subscribeModelActivations(listener: () => void): () => void {
+  activationListeners.add(listener);
+  return () => { activationListeners.delete(listener); };
+}
+export const modelActivationEpoch = (): number => activationEpoch;
+
 /** Registers the raw store subscription that saves on every persisted-field change. Idempotent — module-level, subscribed once regardless of how many components mount `useDrawing2DPersistence`. */
 let saveSubscriptionStarted = false;
 export function ensureSaveSubscription(): void {
@@ -295,7 +310,11 @@ export function ensureSaveSubscription(): void {
     // the PREVIOUS model and persist unchecked. Subscribing here instead
     // means the mark is live before any other code can observe the new
     // `activeModelId` at all.
-    if (modelId !== prev.activeModelId) restoringModelId = modelId;
+    if (modelId !== prev.activeModelId) {
+      restoringModelId = modelId;
+      activationEpoch++;
+      for (const listener of activationListeners) listener();
+    }
     const changed =
       state.measure2DResults !== prev.measure2DResults ||
       state.polygonArea2DResults !== prev.polygonArea2DResults ||

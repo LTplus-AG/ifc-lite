@@ -21,10 +21,14 @@ import { readSessionCounters } from './gpu-health.js';
  *              (`canvas[data-viewport="main"]`, checked to be what is under
  *              the pointer there; `hoverHit` says
  *              whether the GPU pick found an entity there)
- *   panelOpen  open the Lens panel from the sidebar strip. Not Lists: that
+ *   panelOpen  open the Lens panel from the activity rail. Not Lists: that
  *              docks below the viewport and resizes it, and on FZK the resize
  *              re-lays the WebGL minimap, which committed 5 or 6 times
- *              between identical runs; Lens replaces the sidebar content only
+ *              between identical runs; Lens replaces the sidebar content only.
+ *              A rail too short for every icon folds the rest into its More
+ *              menu (#8802 R1), and at the benchmark's 1280x720 Lens is among
+ *              them: More is then opened before the quiet wait, unmeasured,
+ *              and the click on Lens's menu row is the step (`panelOpenVia`)
  * A step that cannot run, or never goes quiet, is null with its reason, never 0.
  */
 
@@ -35,6 +39,14 @@ export interface InteractionCommits {
   commits: Record<Interaction, number | null>;
   /** Whether the hover landed on an entity; null when hover did not run. */
   hoverHit: boolean | null;
+  /**
+   * Where Lens was clicked: its rail icon, or its row in the rail's More menu.
+   * The two differ by the menu closing, so compare panelOpen counts only
+   * between runs that took the same route. Set before the click, so a failed
+   * click still says which route it tried (`errors` says why); null when the
+   * set-up itself failed or never ran.
+   */
+  panelOpenVia: 'rail' | 'more' | null;
   errors: Partial<Record<Interaction, string>>;
 }
 
@@ -87,6 +99,10 @@ export async function commitsFor(
 /** The 3D viewport canvas (`Viewport.tsx`), never the minimap or a 2D drawing canvas. */
 export const VIEWPORT_CANVAS = 'canvas[data-viewport="main"]';
 
+/** The rail's More button and Lens's row in its menu (`ActivityBarOverflow`). */
+export const RAIL_OVERFLOW = '[data-rail-overflow]';
+export const LENS_MENU_ROW = '[role="menuitem"][data-panel-id="lens"]';
+
 /** Where the pointer rests between steps: the page's top-left corner, off the viewport. */
 const POINTER_REST = { x: 1, y: 1 };
 
@@ -103,7 +119,21 @@ export async function measureInteractionCommits(page: Page, now: () => number = 
     pause: (ms) => page.waitForTimeout(ms),
     now,
   };
-  const result: InteractionCommits = { commits: { select: null, hover: null, panelOpen: null }, hoverHit: null, errors: {} };
+  const result: InteractionCommits = { commits: { select: null, hover: null, panelOpen: null }, hoverHit: null, panelOpenVia: null, errors: {} };
+  const lensOnRail = () => page.getByRole('button', { name: 'Lens', exact: true }).first();
+  // Unmeasured set-up: it runs before the step's quiet wait, so its commits
+  // settle there and are not charged to the step.
+  const prepare: Partial<Record<Interaction, () => Promise<void>>> = {
+    panelOpen: async () => {
+      if (await lensOnRail().count() > 0) {
+        result.panelOpenVia = 'rail';
+        return;
+      }
+      await page.locator(RAIL_OVERFLOW).click({ timeout: 10_000 });
+      await page.locator(LENS_MENU_ROW).waitFor({ state: 'visible', timeout: 10_000 });
+      result.panelOpenVia = 'more';
+    },
+  };
   const steps: Record<Interaction, () => Promise<void>> = {
     select: () => page.locator('[data-hierarchy-node-type="IfcBuilding"]').first().click({ timeout: 10_000 }),
     hover: async () => {
@@ -120,10 +150,11 @@ export async function measureInteractionCommits(page: Page, now: () => number = 
       if (target !== null) throw new Error(`the viewport centre is covered by ${target}, so the pointer would not hover the viewport`);
       await page.mouse.move(x, y);
     },
-    panelOpen: () => page.getByRole('button', { name: 'Lens', exact: true }).first().click({ timeout: 10_000 }),
+    panelOpen: () => (result.panelOpenVia === 'more' ? page.locator(LENS_MENU_ROW) : lensOnRail()).click({ timeout: 10_000 }),
   };
   for (const name of INTERACTIONS) {
     try {
+      await prepare[name]?.();
       result.commits[name] = await commitsFor(probe, steps[name], { before: BEFORE, after: AFTER });
       if (name === 'hover') {
         result.hoverHit = await page.evaluate(() => {

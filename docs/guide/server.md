@@ -453,13 +453,18 @@ const result = await client.parseParquet(file);
 // After parseParquet/parseParquetOptimized this is already cached; after the
 // streaming route it may still be 202 for a moment, so fetchDataModel polls
 // on 202 and gives up on 404.
-const dataModel = await client.fetchDataModel(result.cache_key);
+try {
+  const dataModel = await client.fetchDataModel(result.cache_key);
 
-if (dataModel) {
-  const decoded = await decodeDataModel(dataModel);
-  console.log(`Entities: ${decoded.entities.size}`);
-  console.log(`Property sets: ${decoded.propertySets.size}`);
+  if (dataModel) {
+    const decoded = await decodeDataModel(dataModel);
+    console.log(`Entities: ${decoded.entities.size}`);
+    console.log(`Property sets: ${decoded.propertySets.size}`);
+  }
+} catch (error) {
+  console.warn('Optional model properties are unavailable; keep the geometry:', error);
 }
+
 ```
 
 #### Rooted-only entities table (opt-in)

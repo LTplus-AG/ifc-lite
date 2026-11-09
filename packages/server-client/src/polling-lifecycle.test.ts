@@ -18,6 +18,14 @@ for (const method of ['fetchDataModel', 'fetchSymbolic'] as const) {
     vi.stubGlobal('fetch', vi.fn(async () => { throw failure; }));
     await expect(client()[method]('key', 1)).rejects.toBe(failure);
   });
+  it(`${method} does not retry a ready response whose body fails (#9538)`, async () => {
+    const error = new Error('body interrupted'); const response = new Response(null, { status: 200 });
+    if (method === 'fetchDataModel') vi.spyOn(response, 'arrayBuffer').mockRejectedValue(error);
+    else vi.spyOn(response, 'json').mockRejectedValue(error);
+    const fetcher = vi.fn(async () => response); vi.stubGlobal('fetch', fetcher);
+    await expect(client()[method]('key', 3)).rejects.toBe(error);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
   it.each([404, 202])(`${method} reserves null for absence or pending data: %s (lifecycle audit)`, async status => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response(null, { status })));
     expect(await client()[method]('key', 1)).toBeNull();

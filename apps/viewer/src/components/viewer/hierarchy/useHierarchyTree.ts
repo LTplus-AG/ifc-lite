@@ -2,6 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { useTranslation } from '@/i18n';
+import type { LayerGrouping } from './presentationLayerGroups';
+
 import { useMemo, useState, useCallback, useEffect } from 'react';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { GeometryResult } from '@ifc-lite/geometry';
@@ -45,6 +48,8 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
   const [hasInitializedExpansion, setHasInitializedExpansion] = useState(false);
   const groupingMode = useViewerStore((state) => state.hierarchyMode);
   const setGroupingMode = useViewerStore((state) => state.setHierarchyMode);
+  const { t, revision: localeRevision } = useTranslation();
+  const [layerGrouping, setLayerGrouping] = useState<LayerGrouping>('none');
   const [sortMode, setSortMode] = useState<HierarchySortMode>(readStoredSortMode);
   // Groups-tab sub-filter (All / Systems / Zones / Other) — session-only state,
   // deliberately not persisted (#1622).
@@ -231,11 +236,11 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
     (): TreeNode[] => !builderReady ? [] : buildTreeForGrouping(
       groupingMode, models, ifcDataStore, EXPAND_ALL, isMultiModel, unifiedStoreys, sortMode,
       geometricIds, classTreeIds, authoredProducts, groupFilter, geometryReadyModelIds,
-      georefMutations, mutationViews, materialSourceStores, presentationLayers.builder,
+      georefMutations, mutationViews, materialSourceStores, presentationLayers.builder, layerGrouping, t('hierarchy.layerGrouping.unclassified'), t('hierarchy.layerGrouping.unavailable'), source => t('hierarchy.layerGrouping.noCode', { source: source || t('hierarchy.layerGrouping.classification') }),
     ),
     [groupingMode, models, ifcDataStore, isMultiModel, unifiedStoreys, sortMode,
       geometricIds, classTreeIds, authoredProducts, groupFilter, geometryReadyModelIds,
-      georefMutations, mutationViews, mutationVersion, materialSourceStores, builderReady, presentationLayers.builder],
+      georefMutations, mutationViews, mutationVersion, materialSourceStores, builderReady, presentationLayers.builder, layerGrouping, localeRevision, t],
   );
   const treeIndex = useMemo(() => indexHierarchyTree(structuralTree), [structuralTree]);
   const getExpandedTreeForReveal = useCallback(() => structuralTree, [structuralTree]);
@@ -344,6 +349,7 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
     setSearchQuery,
     groupingMode,
     setGroupingMode,
+    layerGrouping, setLayerGrouping,
     sortMode,
     setSortMode: handleSetSortMode,
     groupFilter,

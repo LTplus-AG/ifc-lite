@@ -24,7 +24,7 @@ export const modelingCommandRu = {
   "modelingCommand.wall.alignLeft": "Слева",
   "modelingCommand.wall.alignCentre": "Центр",
   "modelingCommand.wall.alignRight": "Справа",
-  "modelingCommand.wall.top": "Где находится верх стены",
+  "modelingCommand.wall.top": "Верх стены",
   "modelingCommand.wall.topStoreyAbove": "До этажа выше",
   "modelingCommand.wall.topFixed": "Фиксированная высота",
   "modelingCommand.field.width": "Ширина",

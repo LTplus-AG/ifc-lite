@@ -31,7 +31,7 @@ interface LoadActivity {
   subject: string;
   result: (cancelRequested: boolean) => LoadOutcome;
   /** Set once a retry owns this file's outcome; the attempt's own row is then dropped. */
-  handedOff: boolean;
+  handedOff?: boolean;
   /** While set, Cancel calls this instead of discarding the load. */
   interrupt?: () => void;
 }

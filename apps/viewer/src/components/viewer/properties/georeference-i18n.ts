@@ -28,15 +28,10 @@ export function localizedScaleOverride(t: Translate, locale: string, found: Doub
 }
 
 export function localizedRawValuesNote(t: Translate, locale: string, found: DoubleGeoreference): string {
-  const { eastings, northings } = found.offsetForExport;
-  const offsetDigits = { maximumFractionDigits: 3 };
+  // #9480: no conversion edit bakes this in; see exportCorrectionInstruction.
+  if (found.anchorUnitRatio !== null) return t('properties.georef.rawValuesSiteAnchorFix');
   const edits = [
-    eastings === 0 && northings === 0
-      ? t('properties.georef.correctionOffsets')
-      : t('properties.georef.correctionOffsetsTo', {
-        eastings: formatLocaleNumber(locale, eastings, offsetDigits),
-        northings: formatLocaleNumber(locale, northings, offsetDigits),
-      }),
+    t('properties.georef.correctionOffsets'),
     t('properties.georef.correctionAngle'),
     ...(found.scaleForExport === null
       ? []

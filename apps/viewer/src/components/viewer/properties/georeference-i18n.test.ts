@@ -29,7 +29,7 @@ import type { DoubleGeoreference } from '@/lib/geo/double-georeference';
 
 const LOCALE = 'ar-SA-x-georef-plural-test';
 
-function found(overrides: Partial<Pick<DoubleGeoreference, 'scaleForExport' | 'factorsForExport' | 'anchorUnitRatio' | 'offsetForExport'>>): DoubleGeoreference {
+function found(overrides: Partial<Pick<DoubleGeoreference, 'scaleForExport' | 'factorsForExport' | 'anchorUnitRatio'>>): DoubleGeoreference {
   return {
     worldCenter: { x: 0, y: 0 },
     offset: { easting: 0, northing: 0 },
@@ -39,7 +39,6 @@ function found(overrides: Partial<Pick<DoubleGeoreference, 'scaleForExport' | 'f
     scaleForExport: null,
     factorsForExport: [],
     anchorUnitRatio: null,
-    offsetForExport: { eastings: 0, northings: 0 },
     ...overrides,
   };
 }
@@ -104,10 +103,11 @@ describe('georeference-i18n plural cardinality (#4918)', () => {
 });
 
 describe('georeference-i18n site anchor in map units (#9480)', () => {
-  it('quotes the export offsets and the unit factor', () => {
-    const slipped = found({ anchorUnitRatio: 0.001, offsetForExport: { eastings: 311676.1928, northings: 5990152.4164 } });
+  it('sends the fix to the site placement and quotes the unit factor', () => {
+    const slipped = found({ anchorUnitRatio: 0.001 });
     const raw = localizedRawValuesNote(resolve, 'en', slipped);
-    assert.match(raw, /set Eastings to 311,676\.193 and Northings to 5,990,152\.416/);
+    assert.match(raw, /Fix the IfcSite placement in the authoring tool/);
+    assert.doesNotMatch(raw, /set Eastings/);
     assert.match(localizedSiteAnchorUnitNote(resolve, 'en', slipped) ?? '', /a factor of 1,000\)/);
     assert.strictEqual(localizedSiteAnchorUnitNote(resolve, 'en', found({})), null);
     assert.match(localizedRawValuesNote(resolve, 'en', found({})), /set Eastings and Northings to 0/);

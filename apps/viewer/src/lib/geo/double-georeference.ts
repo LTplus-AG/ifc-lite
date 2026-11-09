@@ -126,11 +126,6 @@ export interface DoubleGeoreference {
    * 0.001 for a millimetre file in a metre CRS. Null for the #2526 signature.
    */
   anchorUnitRatio: number | null;
-  /**
-   * Eastings/Northings (map units) that bake the correction into an export:
-   * 0 for #2526, the part of the anchor the geometry does not carry for #9480.
-   */
-  offsetForExport: { eastings: number; northings: number };
 }
 
 /**
@@ -214,7 +209,6 @@ export function detectDoubleGeoreference(
     scaleForExport: scaleIsUnit ? null : lengthScale / mapUnitScale,
     factorsForExport,
     anchorUnitRatio,
-    offsetForExport: { eastings: neutralised.eastings, northings: neutralised.northings },
   };
 }
 
@@ -225,7 +219,7 @@ function joinSerial(items: string[]): string {
 }
 
 type ExportScaleFields = Pick<DoubleGeoreference, 'scaleForExport' | 'factorsForExport'>
-  & Partial<Pick<DoubleGeoreference, 'offsetForExport'>>;
+  & Partial<Pick<DoubleGeoreference, 'anchorUnitRatio'>>;
 
 /**
  * The sentence saying the file's Scale and factors from
@@ -250,11 +244,12 @@ export function overriddenScaleNote(found: ExportScaleFields): string | null {
  * {@link DoubleGeoreference.factorsForExport} are sent to the authoring tool.
  */
 export function exportCorrectionInstruction(found: ExportScaleFields): string {
-  const offset = found.offsetForExport;
-  const offsets = offset && (offset.eastings !== 0 || offset.northings !== 0)
-    ? [`Eastings to ${trimOffset(offset.eastings)}`, `Northings to ${trimOffset(offset.northings)}`]
-    : ['Eastings and Northings to 0'];
-  const fields = [...offsets, 'Model rotation in map coordinates to 0'];
+  // #9480: no IfcMapConversion edit is a fixed point. Offsets that put the
+  // site on the anchor (`Eastings x (1 - ratio)`) still leave the geometry at
+  // `anchor x ratio`, so the guard reads them as the same slip and shrinks
+  // them again (~6 km for the reporter's file). Only the placement can be fixed.
+  if (found.anchorUnitRatio != null) return SITE_ANCHOR_SOURCE_FIX;
+  const fields = ['Eastings and Northings to 0', 'Model rotation in map coordinates to 0'];
   if (found.scaleForExport !== null) fields.push(`Scale to ${trimFloat(found.scaleForExport)}`);
   const inApp = `set ${joinSerial(fields)}, then use Export IFC (with changes).`;
   const factors = found.factorsForExport;
@@ -291,10 +286,7 @@ export function trimFloat(value: number): string {
   return String(Number(value.toPrecision(6)));
 }
 
-/** A map offset to the millimetre, as typed into a field. */
-function trimOffset(value: number): string {
-  return Number.isFinite(value) ? String(Math.round(value * 1000) / 1000) : String(value);
-}
+const SITE_ANCHOR_SOURCE_FIX = "fix the IfcSite placement in the authoring tool so it uses the file's length unit; no IfcMapConversion edit here can express this correction.";
 
 export function formatApproxDistance(metres: number): string {
   if (!Number.isFinite(metres)) return 'an unknown distance';

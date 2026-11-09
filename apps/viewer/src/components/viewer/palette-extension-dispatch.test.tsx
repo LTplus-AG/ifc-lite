@@ -18,8 +18,7 @@ import { cleanup, click, render, type as typeInto } from '@/test/render';
 import { fixtureModels } from '@/test/store-fixture';
 import { CommandPalette } from './CommandPalette';
 import { RECENT_KEY } from './commandPaletteSearch';
-import { paletteExtensionCommandId } from './palette-extension-commands';
-import { PaletteCommandTestHost } from './palette-extension-command.test-support';
+import { PaletteCommandTestHost } from './__fixtures__/palette-extension-command';
 
 const original = useViewerStore.getState();
 beforeEach(() => {
@@ -31,10 +30,10 @@ afterEach(() => {
 });
 const settle = async () => { await act(async () => { await new Promise(resolve => setImmediate(resolve)); }); };
 function row(owner: string) {
-  const id = paletteExtensionCommandId(owner, 'paint');
-  const option = [...document.querySelectorAll<HTMLButtonElement>('[data-runtime-command-id]')].find(el => el.dataset.runtimeCommandId === id);
-  assert.ok(option, owner);
-  return option;
+  const options = [...document.querySelectorAll<HTMLButtonElement>('[data-runtime-command-id]')]
+    .filter(el => el.textContent?.includes('Check model') && el.textContent.includes(owner));
+  assert.equal(options.length, 1, `one discoverable same-title command for owner ${owner}`);
+  return options[0];
 }
 function palette(host: PaletteCommandTestHost) {
   render(<BimReactContext.Provider value={host.sdk}><ExtensionHostContext.Provider value={host}>
@@ -53,13 +52,17 @@ test('#8947 mounted palette chooses the second same-title owner and runs once', 
   const frames: FrameRequestCallback[] = [];
   globalThis.requestAnimationFrame = cb => { frames.push(cb); return frames.length; };
   try {
-    click(row('beta'));
+    const selected = row('beta');
+    const selectedId = selected.dataset.runtimeCommandId;
+    assert.ok(selectedId);
+    assert.notEqual(selectedId, row('alpha').dataset.runtimeCommandId);
+    click(selected);
     act(() => { for (const cb of frames.splice(0)) cb(0); });
     await settle();
     assert.deepEqual(host.executions, ['beta']);
     assert.deepEqual(host.activations, ['beta']);
     assert.deepEqual(host.events, ['onCommand:paint']);
-    assert.equal(JSON.parse(localStorage.getItem(RECENT_KEY) ?? '[]')[0], paletteExtensionCommandId('beta', 'paint'));
+    assert.equal(JSON.parse(localStorage.getItem(RECENT_KEY) ?? '[]')[0], selectedId);
   } finally { globalThis.requestAnimationFrame = previous; }
 });
 

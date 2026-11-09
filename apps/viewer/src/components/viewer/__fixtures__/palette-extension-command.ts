@@ -6,7 +6,7 @@ import { createBimContext } from '@ifc-lite/sdk';
 import type { Bundle, InstalledExtensionRecord, RuntimeRunResult } from '@ifc-lite/extensions';
 import { ExtensionHostService } from '@/services/extensions/host';
 import { runExtensionCommand, type RunCommandDeps } from '@/services/extensions/host-commands';
-import { manifestToContributions } from '../../../../../packages/extensions/src/host/loader';
+import { manifestToContributions } from '../../../../../../packages/extensions/src/host/loader';
 
 /** Real registry + manifest projection + canonical command runner. Only the
  * storage and sandbox boundary are fixtures; activation events share the real

@@ -185,11 +185,26 @@ describe('RemeshClient (#6232)', () => {
     vi.useFakeTimers();
     try {
       const worker = new ScriptedWorker();
-      const pending = RemeshClient.create(CONFIG, { createWorker: () => worker as unknown as Worker, requestTimeoutMs: 1_000 });
+      const pending = RemeshClient.create(CONFIG, { createWorker: () => worker as unknown as Worker, startTimeoutMs: 1_000 });
       const failed = expect(pending).rejects.toThrow(/did not start within 1000 ms/);
       vi.advanceTimersByTime(1_000);
       await failed;
       expect(worker.terminated).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('P5: a short request deadline does not cut off a slow engine start', async () => {
+    vi.useFakeTimers();
+    try {
+      const worker = new ScriptedWorker();
+      const pending = RemeshClient.create(CONFIG, { createWorker: () => worker as unknown as Worker, requestTimeoutMs: 1_000 });
+      vi.advanceTimersByTime(5_000);
+      worker.reply({ type: 'ready' });
+      const client = await pending;
+      expect(client.alive).toBe(true);
+      expect(worker.terminated).toBe(false);
     } finally {
       vi.useRealTimers();
     }

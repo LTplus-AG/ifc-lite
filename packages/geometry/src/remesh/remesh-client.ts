@@ -23,15 +23,22 @@ export interface RemeshClientOptions {
   /** Worker factory; defaults to the package's own `remesh.worker`. */
   createWorker?: () => Worker;
   /**
-   * How long one request (and the engine start in `create`) may take before
-   * the client gives up on the worker. A wasm call cannot be interrupted, so a
-   * request past this deadline kills the worker and the client; the caller
-   * creates a new one. Default 30 s.
+   * How long one request may take before the client gives up on the worker.
+   * A wasm call cannot be interrupted, so a request past this deadline kills
+   * the worker and the client; the caller creates a new one. Default 30 s.
    */
   requestTimeoutMs?: number;
+  /**
+   * How long `create` waits for the worker to report its engine ready (wasm
+   * fetch + compile + instantiate) before it terminates the worker and
+   * rejects. Separate from `requestTimeoutMs` so a fail-fast request deadline
+   * does not also cut off a slow engine start. Default 120 s.
+   */
+  startTimeoutMs?: number;
 }
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
+const DEFAULT_START_TIMEOUT_MS = 120_000;
 
 type Pending = { resolve: (value: RemeshResult | StyleWire) => void; reject: (error: Error) => void };
 
@@ -64,10 +71,11 @@ export class RemeshClient {
 
   /**
    * Every way init can fail (init-error, worker error, unreadable message, a
-   * throwing post, no answer within the request deadline) settles this
+   * throwing post, no answer within `startTimeoutMs`) settles this
    * promise; the dead latch makes the first one win and kills the worker.
    */
   private start(config: RemeshConfig, options: RemeshClientOptions): Promise<void> {
+    const startTimeoutMs = options.startTimeoutMs ?? DEFAULT_START_TIMEOUT_MS;
     return new Promise((resolve, reject) => {
       const fail = (error: Error) => {
         clearTimeout(timer);
@@ -75,8 +83,8 @@ export class RemeshClient {
         this.kill(error);
       };
       const timer = setTimeout(
-        () => fail(new Error(`Re-mesh worker did not start within ${this.timeoutMs} ms`)),
-        this.timeoutMs,
+        () => fail(new Error(`Re-mesh worker did not start within ${startTimeoutMs} ms`)),
+        startTimeoutMs,
       );
       this.worker.onmessage = (event: MessageEvent<RemeshWorkerOutbound>) => {
         const message = event.data;

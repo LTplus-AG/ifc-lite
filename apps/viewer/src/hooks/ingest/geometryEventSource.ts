@@ -44,8 +44,8 @@ export interface GeometryEventRequest {
 /** The kernel one load runs on, decided before any work. */
 export interface GeometryKernelLoad {
   readonly kind: 'exact' | 'retained';
-  /** Set when the request is out of the kernel's scope; the refusal is already reported. */
-  readonly refused?: Promise<void>;
+  /** Set when the request is out of the kernel's scope; resolves to the refusal message it reported, `null` for a quiet stop. */
+  readonly refused?: Promise<string | null>;
   /** Whether the exact geometry server may serve this load. */
   readonly serverEnabled: boolean;
   /** The cache plan this load may use: retained loads never read or write exact geometry. */

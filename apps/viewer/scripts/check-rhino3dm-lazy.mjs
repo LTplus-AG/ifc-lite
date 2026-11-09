@@ -4,14 +4,15 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Guard: the rhino3dm runtime (75 KB of JS plus a 2.67 MB wasm) loads only when
- * someone exports a .3dm, never at viewer startup (spec:
- * docs/architecture/rhino-3dm-export.md, "Performance and limits").
+ * Guard: the rhino3dm runtime (75 KB of JS plus a 2.67 MB wasm) and the Rhino
+ * scene builder wasm (`@ifc-lite/wasm/rhino`) load only when someone exports a
+ * .3dm, never at viewer startup (spec: docs/architecture/rhino-3dm-export.md,
+ * "Performance and limits").
  *
  * The startup graph is index.html's module entry and modulepreloads plus every
  * chunk they import statically, the same walk `check-viewer-retained-free.mjs
  * --lazy` does. No file in it may carry rhino3dm code, and index.html may not
- * preload the wasm. Some other chunk must carry it, or the export is not in
+ * preload either wasm. Some other chunk must carry each, or the export is not in
  * this build and the check would pass vacuously.
  *
  * Runs at the tail of the viewer's `build` script, like check-tla-chunk-await.
@@ -29,8 +30,18 @@ import { staticImports } from '../../../scripts/check-viewer-retained-free.mjs';
  *  bundle's package-version list names as plain data. */
 export const RHINO3DM_SIGNATURES = ['rhino3dm.wasm', 'File3dmWriteOptions', 'toByteArrayOptions'];
 
-const REMEDY = 'Keep rhino3dm behind the Rhino export worker (src/workers/rhinoExport.worker.ts): '
-  + 'find the static import that pulls @ifc-lite/rhino3dm or rhino3dm into the startup graph.';
+/** Strings only the `@ifc-lite/wasm/rhino` glue carries: its wasm asset name
+ *  and a wasm-bindgen export of its scene handle. */
+const RHINO_SCENE_SIGNATURES = ['ifc-lite-rhino_bg', 'rhinoscenejs_free'];
+
+const GROUPS = [
+  { name: 'the rhino3dm wasm', signatures: RHINO3DM_SIGNATURES, wasm: /rhino3dm[^"'\s]*\.wasm/ },
+  { name: 'the Rhino scene wasm', signatures: RHINO_SCENE_SIGNATURES, wasm: /ifc-lite-rhino_bg[^"'\s]*\.wasm/ },
+];
+const ALL_SIGNATURES = GROUPS.flatMap((group) => group.signatures);
+
+const REMEDY = 'Keep rhino3dm and the Rhino scene wasm behind the Rhino export worker (src/workers/rhinoExport.worker.ts): '
+  + 'find the static import that pulls @ifc-lite/rhino3dm, rhino3dm or @ifc-lite/wasm/rhino into the startup graph.';
 
 export async function checkRhino3dmLazy(directory) {
   const index = join(directory, 'index.html');
@@ -38,7 +49,9 @@ export async function checkRhino3dmLazy(directory) {
     throw new Error(`Viewer dist has no index.html in ${directory}. Build the viewer first or pass the dist directory.`);
   }
   const html = await readFile(index, 'utf8');
-  if (/rhino3dm[^"'\s]*\.wasm/.test(html)) throw new Error(`index.html preloads the rhino3dm wasm. ${REMEDY}`);
+  for (const { name, wasm } of GROUPS) {
+    if (wasm.test(html)) throw new Error(`index.html preloads ${name}. ${REMEDY}`);
+  }
   const eager = new Set();
   const queue = eagerScripts(html).eager.map((url) => resolveAsset(directory, url));
   while (queue.length) {
@@ -46,7 +59,7 @@ export async function checkRhino3dmLazy(directory) {
     if (eager.has(file)) continue;
     eager.add(file);
     const code = await readFile(file, 'utf8');
-    for (const signature of RHINO3DM_SIGNATURES) {
+    for (const signature of ALL_SIGNATURES) {
       if (code.includes(signature)) throw new Error(`Startup chunk ${relative(directory, file)} contains ${signature}. ${REMEDY}`);
     }
     for (const specifier of staticImports(code)) {
@@ -57,19 +70,24 @@ export async function checkRhino3dmLazy(directory) {
     }
   }
   const lazy = [];
+  const found = new Set();
   async function walk(dir) {
     for (const entry of await readdir(dir, { withFileTypes: true })) {
       const file = join(dir, entry.name);
       if (entry.isDirectory()) { await walk(file); continue; }
       if (!/\.m?js$/.test(entry.name) || eager.has(file)) continue;
       const code = await readFile(file, 'utf8');
-      if (RHINO3DM_SIGNATURES.some((signature) => code.includes(signature))) lazy.push(relative(directory, file));
+      const groups = GROUPS.filter((group) => group.signatures.some((signature) => code.includes(signature)));
+      for (const group of groups) found.add(group.name);
+      if (groups.length) lazy.push(relative(directory, file));
     }
   }
   await walk(directory);
-  if (!lazy.length) {
-    throw new Error(`No chunk in ${directory} carries rhino3dm code, so this check proves nothing. `
-      + 'Was the Rhino export removed, or did the signatures change with a rhino3dm upgrade?');
+  for (const { name } of GROUPS) {
+    if (!found.has(name)) {
+      throw new Error(`No chunk in ${directory} carries ${name} code, so this check proves nothing. `
+        + 'Was the Rhino export removed, or did the signatures change with an upgrade?');
+    }
   }
   return { eager: [...eager].map((file) => relative(directory, file)).sort(), lazy: lazy.sort() };
 }
@@ -77,5 +95,5 @@ export async function checkRhino3dmLazy(directory) {
 if (isMainEntry(import.meta.url)) {
   const directory = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', 'dist'));
   const { eager, lazy } = await checkRhino3dmLazy(directory);
-  console.log(`rhino3dm lazy: ${eager.length} startup chunks free of rhino3dm; rhino3dm only in ${lazy.join(', ')}`);
+  console.log(`rhino3dm lazy: ${eager.length} startup chunks free of rhino3dm and the Rhino scene wasm; lazy chunks carrying either: ${lazy.join(', ')}`);
 }

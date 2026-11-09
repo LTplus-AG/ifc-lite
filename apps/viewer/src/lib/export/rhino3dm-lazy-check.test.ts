@@ -29,17 +29,19 @@ function dist(files: Record<string, string>, head = ''): string {
 }
 
 const LAZY_RUNTIME = 'var w=new URL("rhino3dm.wasm",import.meta.url);';
+const LAZY_SCENE = 'var s=new URL("assets/ifc-lite-rhino_bg-abc.wasm",import.meta.url);';
 
 describe('checkRhino3dmLazy', () => {
   it('passes when rhino3dm is only reachable through a dynamic import', async () => {
     const dir = dist({
-      'main.js': 'import "./ui.js"; const versions=[{name:"@ifc-lite/rhino3dm"}]; import("./rhino.js");',
+      'main.js': 'import "./ui.js"; const versions=[{name:"@ifc-lite/rhino3dm"}]; import("./rhino.js"); import("./scene.js");',
       'ui.js': 'export const x=1;',
       'rhino.js': LAZY_RUNTIME,
+      'scene.js': LAZY_SCENE,
     });
     const { eager, lazy } = await checkRhino3dmLazy(dir);
     assert.deepEqual(eager.sort(), ['assets/main.js', 'assets/ui.js']);
-    assert.deepEqual(lazy, ['assets/rhino.js']);
+    assert.deepEqual(lazy, ['assets/rhino.js', 'assets/scene.js']);
   });
 
   it('refuses rhino3dm code reached by a static import from the entry', async () => {
@@ -51,10 +53,23 @@ describe('checkRhino3dmLazy', () => {
     await assert.rejects(checkRhino3dmLazy(dir), /Startup chunk assets\/rhino\.js contains File3dmWriteOptions/);
   });
 
+  it('refuses the Rhino scene wasm reached by a static import, or preloaded', async () => {
+    const eager = dist({ 'main.js': 'import "./scene.js"; import("./rhino.js");', 'scene.js': 'w.__wbg_rhinoscenejs_free(1);', 'rhino.js': LAZY_RUNTIME });
+    await assert.rejects(checkRhino3dmLazy(eager), /Startup chunk assets\/scene\.js contains rhinoscenejs_free/);
+    const preloaded = dist({ 'main.js': 'import("./rhino.js"); import("./scene.js");', 'rhino.js': LAZY_RUNTIME, 'scene.js': LAZY_SCENE },
+      '<link rel="preload" href="/assets/ifc-lite-rhino_bg-abc.wasm">');
+    await assert.rejects(checkRhino3dmLazy(preloaded), /preloads the Rhino scene wasm/);
+  });
+
+  it('refuses a build that lost either payload, which would pass vacuously', async () => {
+    await assert.rejects(checkRhino3dmLazy(dist({ 'main.js': 'import("./rhino.js")', 'rhino.js': LAZY_RUNTIME })), /carries the Rhino scene wasm code/);
+    await assert.rejects(checkRhino3dmLazy(dist({ 'main.js': 'import("./scene.js")', 'scene.js': LAZY_SCENE })), /carries the rhino3dm wasm code/);
+  });
+
   it('refuses a modulepreloaded rhino3dm chunk and a preloaded wasm', async () => {
-    const preloaded = dist({ 'main.js': '', 'rhino.js': LAZY_RUNTIME }, '<link rel="modulepreload" href="/assets/rhino.js">');
+    const preloaded = dist({ 'main.js': 'import("./scene.js")', 'rhino.js': LAZY_RUNTIME, 'scene.js': LAZY_SCENE }, '<link rel="modulepreload" href="/assets/rhino.js">');
     await assert.rejects(checkRhino3dmLazy(preloaded), /Startup chunk assets\/rhino\.js/);
-    const wasm = dist({ 'main.js': 'import("./rhino.js")', 'rhino.js': LAZY_RUNTIME }, '<link rel="preload" href="/assets/rhino3dm-abc.wasm">');
+    const wasm = dist({ 'main.js': 'import("./rhino.js"); import("./scene.js");', 'rhino.js': LAZY_RUNTIME, 'scene.js': LAZY_SCENE }, '<link rel="preload" href="/assets/rhino3dm-abc.wasm">');
     await assert.rejects(checkRhino3dmLazy(wasm), /preloads the rhino3dm wasm/);
   });
 

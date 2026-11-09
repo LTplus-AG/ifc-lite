@@ -58,12 +58,11 @@ import { restoreOverridesForGhosting } from '@/lib/clash/ghost-color-overrides';
 import { focusClashGroup } from '@/lib/clash/group-focus';
 import { releaseOwnedClashVisibility } from '@/lib/clash/visibility-ownership';
 import {
-  clashFederationIsCurrent,
   clashRefModelIsCurrent,
-  recordGatheredModel,
   rememberFederationIdentity,
   type ClashFederationIdentity,
 } from '@/lib/clash/federation-identity';
+import { federationIsCurrent, recordGatheredModel } from '@/lib/federation/federation-identity';
 import { definedModelTagIdsOf, evaluatorModelsFromState } from '@/lib/model-tags/evaluator-models';
 import { captureModelTagInputs, rememberModelTagInputs, type ClashModelTagInputs } from '@/lib/clash/model-tag-inputs';
 import { allElementsRule, rememberRunRequest, type ClashRunRequest } from '@/lib/clash/run-request';
@@ -209,7 +208,7 @@ export function useClash() {
   /**
    * Per-call supersession guard for `run()` / `runDuplicates()` (#2802).
    *
-   * `publishClashResult`'s `clashFederationIsCurrent` check is keyed on the
+   * `publishClashResult`'s `federationIsCurrent` check is keyed on the
    * MODEL SET, not on which call started it — two detection jobs issued while
    * the federation is untouched (a slow "All elements" run, then a quick
    * duplicate scan started while it is still going) carry the identical
@@ -403,7 +402,7 @@ export function useClash() {
     (federationIdentity: ClashFederationIdentity, res: ClashResult, epoch: number, stamp: AnalysisStamp): boolean => {
       if (!stillWanted(epoch)) return false;
       const state = useViewerStore.getState();
-      if (!clashFederationIsCurrent(federationIdentity, state.models) || !jobPlacementIsCurrent(federationIdentity, state)) return false;
+      if (!federationIsCurrent(federationIdentity, state.models) || !jobPlacementIsCurrent(federationIdentity, state)) return false;
       // The identity travels WITH the result object. Publish-time currency is
       // not the end of the question: the federation can be superseded while the
       // result is on screen, and only a result that remembers what it was

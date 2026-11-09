@@ -6,7 +6,6 @@ import { toast } from '@/components/ui/toast';
 import { resolve as translate } from '@/i18n/registry';
 import type { ViewerState } from '@/store';
 import { entityName } from '@/lib/commands/modeling/authored-kinds';
-import { modelEditTarget } from '@/store/slices/mutation-modelling-records';
 import type { LayerFollow } from './material-layers';
 
 /**
@@ -18,8 +17,11 @@ import type { LayerFollow } from './material-layers';
  * inspector, reviewed authoring rows and the drawing defaults.
  */
 export function reportLayerFollow(state: ViewerState, modelId: string, follow: LayerFollow): void {
-  const target = modelEditTarget(state, modelId);
-  const name = (id: number) => (target && entityName(target, id)) || `#${id}`;
+  if (follow.refused.length === 0 && follow.notices.length === 0) return;
+  // Names read from the model as it now is; reporting never creates an edit target.
+  const dataStore = state.models.get(modelId)?.ifcDataStore;
+  const view = state.mutationViews?.get(modelId) ?? null;
+  const name = (id: number) => (dataStore && entityName({ dataStore, view }, id)) || `#${id}`;
   const lines = follow.refused.map(({ id, reason }) => translate('modelInspector.layers.keptBody', { name: name(id), reason }));
   if (lines.length > 0) toast.error([translate('modelInspector.layers.notFollowed', { count: lines.length, countDisplay: String(lines.length) }), ...lines].join('\n'));
   for (const notice of follow.notices) toast.info(notice);

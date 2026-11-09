@@ -4,13 +4,15 @@
 import type { FileAttachment } from '@/lib/llm/types';
 import { useViewerStore } from '@/store';
 
+export const MAX_ATTACHMENTS_PER_MESSAGE = 6;
+
 /** Check at commit time: concurrent extraction batches share the same six slots. */
 export function attachmentAdmission(current: () => boolean, add: (attachment: FileAttachment) => void,
   setError: (message: string) => void) {
   return (attachment: FileAttachment) => {
     if (!current()) return;
-    if (useViewerStore.getState().chatAttachments.length >= 6) {
-      setError('You can attach up to 6 files per message.');
+    if (useViewerStore.getState().chatAttachments.length >= MAX_ATTACHMENTS_PER_MESSAGE) {
+      setError(`You can attach up to ${MAX_ATTACHMENTS_PER_MESSAGE} files per message.`);
       return;
     }
     add(attachment);

@@ -49,7 +49,7 @@ import { buildStreamMessagesForModel, filterAttachmentsForModel } from '@/lib/ll
 import { buildSystemPrompt } from '@/lib/llm/system-prompt';
 import { getModelContext, parseCSV } from '@/lib/llm/context-builder';
 import { collectActiveFileAttachments } from '@/lib/attachments';
-import { attachmentAdmission } from './chat/attachment-admission';
+import { attachmentAdmission, MAX_ATTACHMENTS_PER_MESSAGE } from './chat/attachment-admission';
 import { MAX_PDF_ATTACHMENT_BYTES } from '@/lib/llm/document-text';
 import { attachPdfDocument, createDocumentUploadGate, shouldContinueDocumentUploadBatch } from '@/lib/llm/document-upload';
 import { getPrimaryRootCause, type RepairScope, type ScriptDiagnostic } from '@/lib/llm/script-diagnostics';
@@ -91,7 +91,6 @@ const OUTPUT_TOKEN_RESERVE = 9_000;
 const MIN_INPUT_BUDGET = 8_000;
 const MAX_RECENT_MESSAGES = 48;
 const MAX_INLINE_IMAGE_DATA_URL_CHARS = 1_200_000;
-const MAX_ATTACHMENTS_PER_MESSAGE = 6;
 const MAX_TEXT_ATTACHMENT_BYTES = 512_000;
 const MAX_IMAGE_ATTACHMENT_BYTES = 8_000_000;
 

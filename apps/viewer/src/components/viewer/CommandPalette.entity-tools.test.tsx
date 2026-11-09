@@ -12,7 +12,7 @@ import { BimReactContext } from '@/sdk/BimProvider';
 import { useViewerStore } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { MODEL_ID, STOREY, MESH_WALL, seedModelingSession } from '@/test/modeling-session-fixture';
-import { advance, cleanup, click, press, render, type as typeInto } from '@/test/render';
+import { advance, cleanup, click, press, render, type as typeInto, waitFor } from '@/test/render';
 import { CommandPalette } from './CommandPalette';
 import { EntityContextMenu } from './EntityContextMenu';
 import { selectedEntityActionTarget } from './selected-entity-actions';
@@ -85,8 +85,27 @@ for (const federated of [false, true]) test(`#8947 selected entity destination o
   typeInto(input, 'Copy GlobalId');
   const destination = option('elements:entity-actions');
   assert.match(destination.textContent ?? '', /Selected entity actions/);
+  assert.equal(destination.getAttribute('aria-selected'), 'true');
+  assert.notEqual(destination.getAttribute('aria-disabled'), 'true');
+  const transitions: { open: boolean; entityId: number | null }[] = [];
+  const unsubscribe = useViewerStore.subscribe((state, previous) => {
+    if (state.contextMenu !== previous.contextMenu && transitions.length < 12) {
+      transitions.push({ open: state.contextMenu.isOpen, entityId: state.contextMenu.entityId });
+    }
+  });
   press(input, 'Enter');
-  await advance(100);
+  // Activation hands focus off at palette close; Radix then mounts and focuses its menu.
+  try {
+    await waitFor(() => document.querySelector('[role="menu"]') !== null, 'real entity menu mounts after palette close');
+  } catch (cause) {
+    const state = useViewerStore.getState();
+    throw new Error(`Entity menu did not mount: ${JSON.stringify({ transitions,
+      currentTarget: selectedEntityActionTarget(), contextMenu: state.contextMenu,
+      recent: localStorage.getItem(RECENT_KEY), focusedRole: document.activeElement?.getAttribute('role'),
+      paletteOpen: Boolean(document.querySelector('input[role="combobox"]')) })}`, { cause });
+  } finally { unsubscribe(); }
+  await waitFor(() => document.querySelector('[role="menu"]')?.contains(document.activeElement) === true,
+    'focus enters the real entity menu');
   const menu = document.querySelector<HTMLElement>('[role="menu"]');
   assert.ok(menu, 'real mounted menu opens after palette closes');
   assert.equal(useViewerStore.getState().contextMenu.entityId, expected);
@@ -97,8 +116,8 @@ for (const federated of [false, true]) test(`#8947 selected entity destination o
   const sameType = menu.querySelector<HTMLElement>('[data-command-id="context:select-all-type"]')!;
   click(sameType);
   assert.ok(useViewerStore.getState().selectedEntityIds.has(expected!));
-  await advance(30);
-  assert.equal(document.activeElement, launcher, 'menu restores the real palette launcher');
+  await waitFor(() => document.activeElement === launcher, 'menu restores the real palette launcher');
+  assert.equal(document.activeElement === launcher, true, 'menu restores the real palette launcher');
 });
 
 test('#8947 overlay-created target opens the same menu and Escape recovers focus', async () => {
@@ -110,12 +129,14 @@ test('#8947 overlay-created target opens the same menu and Escape recovers focus
   const { input, launcher } = mount();
   typeInto(input, 'Selected entity actions');
   press(input, 'Enter');
-  await advance(100);
+  await waitFor(() => document.querySelector('[role="menu"]')?.contains(document.activeElement) === true,
+    'overlay entity menu mounts and receives focus');
   assert.ok(document.querySelector('[role="menu"]'));
   press(document.activeElement!, 'Escape');
-  await advance(30);
+  await waitFor(() => !useViewerStore.getState().contextMenu.isOpen && document.activeElement === launcher,
+    'Escape closes overlay menu and returns focus');
   assert.equal(useViewerStore.getState().contextMenu.isOpen, false);
-  assert.equal(document.activeElement, launcher);
+  assert.equal(document.activeElement === launcher, true);
 });
 
 test('#8947 entity destination rechecks a lost selection before deferred activation', async () => {

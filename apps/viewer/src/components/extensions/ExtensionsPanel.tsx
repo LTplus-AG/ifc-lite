@@ -18,6 +18,7 @@
  * separate components landing later.
  */
 
+import { useBundleReview } from './useBundleReview';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Beaker, FilePlus, FileText, GitFork, Lightbulb, Puzzle, Sparkles, Trash2, Upload, Wrench, X } from 'lucide-react';
 import { toast } from '@/components/ui/toast';
@@ -34,7 +35,6 @@ import { CapabilityReview } from './CapabilityReview';
 import { AuditLogPanel } from './AuditLogPanel';
 import { IdeasPanel } from './IdeasPanel';
 import { RepairQueuePanel } from './RepairQueuePanel';
-import type { ExtensionInstallSummary } from '@/services/extensions/host';
 import { ExtensionInstallError } from '@/services/extensions/host';
 import { ExtensionStorageQuotaError } from '@/services/extensions/idb-storage';
 import { useViewerStore } from '@/store';
@@ -56,8 +56,6 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
   const installed = useInstalledExtensions();
   const handleFork = useForkExtension();
   const { runTests, isRunning } = useRunExtensionTests();
-  const pendingAuthoredBundle = useViewerStore((s) => s.pendingAuthoredBundle);
-  const setPendingAuthoredBundle = useViewerStore((s) => s.setPendingAuthoredBundle);
   /** Empty-state "describe in chat" CTA + Sparkles button. */
   const queueChatPrompt = useViewerStore((s) => s.queueChatPrompt);
   const setChatPanelVisible = useViewerStore((s) => s.setChatPanelVisible);
@@ -66,12 +64,7 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
   const activeFlavor = useActiveFlavor(host);
   const activeFlavorName = activeFlavor ? localizedFlavorName(activeFlavor, t) : undefined;
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [pending, setPending] = useState<{
-    bytes: Uint8Array;
-    summary: ExtensionInstallSummary;
-    previousGrants?: readonly string[];
-    previousVersion?: string;
-  } | null>(null);
+  const { pending, setPending, handleFiles } = useBundleReview(host);
   const [busy, setBusy] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [view, setView] = useState<'installed' | 'ideas' | 'audit' | 'repair'>('installed');
@@ -85,73 +78,6 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
       setExtensionsRequestedView(null);
     }
   }, [extensionsRequestedView, setExtensionsRequestedView]);
-
-  const handleFiles = useCallback(
-    async (files: FileList | null) => {
-      if (!files || files.length === 0) return;
-      const file = files[0];
-      if (!file.name.toLowerCase().endsWith('.iflx')) {
-        toast.error(t('extensionsFlavors.extensionsPanel.toast.expectedBundle', { filename: file.name }));
-        return;
-      }
-      try {
-        const bytes = new Uint8Array(await file.arrayBuffer());
-        const preview = await host.previewBundle(bytes);
-        if (!preview.ok) {
-          toast.error(t('extensionsFlavors.extensionsPanel.toast.bundleUnpackFailed', { error: preview.errors[0]?.message ?? t('extensionsFlavors.extensionsPanel.unknownError') }));
-          return;
-        }
-        // Detect upgrade: same id already installed → pass the previous
-        // grants into the review screen so it can surface a diff.
-        const records = await host.listInstalled();
-        const existing = records.find((r) => r.id === preview.value.id);
-        setPending({
-          bytes,
-          summary: preview.value,
-          previousGrants: existing?.grantedCapabilities,
-          previousVersion: existing ? `v${existing.version}` : undefined,
-        });
-      } catch (err) {
-        toast.error(t('extensionsFlavors.extensionsPanel.toast.readFileFailed', { error: err instanceof Error ? err.message : String(err) }));
-      }
-    },
-    [host, t],
-  );
-
-  // Authoring loop hand-off: when the chat panel produces a clean
-  // bundle, it stashes the bytes in `pendingAuthoredBundle` and opens
-  // the Extensions panel. Pick them up on mount, route through the
-  // standard preview → Capability Review flow.
-  useEffect(() => {
-    if (!pendingAuthoredBundle) return;
-    // Don't clobber a capability review already on screen (e.g. from a
-    // file import). Leave the authored bundle queued — the effect
-    // re-runs once `pending` clears.
-    if (pending) return;
-    const bytes = pendingAuthoredBundle;
-    void (async () => {
-      try {
-        const preview = await host.previewBundle(bytes);
-        if (!preview.ok) {
-          toast.error(t('extensionsFlavors.extensionsPanel.toast.authoredBundleUnpackFailed', { error: preview.errors[0]?.message ?? t('extensionsFlavors.extensionsPanel.unknownError') }));
-          setPendingAuthoredBundle(null);
-          return;
-        }
-        const records = await host.listInstalled();
-        const existing = records.find((r) => r.id === preview.value.id);
-        setPending({
-          bytes,
-          summary: preview.value,
-          previousGrants: existing?.grantedCapabilities,
-          previousVersion: existing ? `v${existing.version}` : undefined,
-        });
-        setPendingAuthoredBundle(null);
-      } catch (err) {
-        toast.error(t('extensionsFlavors.extensionsPanel.toast.authoredBundlePreviewFailed', { error: err instanceof Error ? err.message : String(err) }));
-        setPendingAuthoredBundle(null);
-      }
-    })();
-  }, [pendingAuthoredBundle, pending, host, setPendingAuthoredBundle, t]);
 
   const handleApprove = useCallback(
     async (grants: string[]) => {

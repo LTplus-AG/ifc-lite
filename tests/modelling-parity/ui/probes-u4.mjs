@@ -221,7 +221,7 @@ export const U4_PROBES = [
       const { step } = await oracleModel(s);
       const trimmed = step.wallAxes().find((w) => Math.abs(w.start[1]-3) < .03 && Math.abs(w.end[1]-3) < .03);
       return finish(s,tasks,[
-        check('split makes 2 m and 3 m pieces',lengths.length === 2 && near(lengths[0],2) && near(lengths[1],3),JSON.stringify(lengths)),
+        check('clicked split makes 2 m and 3 m pieces within 30 mm',lengths.length === 2 && Math.abs(lengths[0]-2) < .03 && Math.abs(lengths[1]-3) < .03,JSON.stringify(lengths)),
         check('align puts both left edges at the reference x',aligned.length === 2 && Math.abs(aligned[0].start[0]-aligned[1].start[0]) < .03,JSON.stringify(aligned)),
         check('trim removes the segment beyond x=3',!!trimmed && Math.abs(trimmed.end[0]-3) < .03,JSON.stringify(trimmed)),
         check('parallel offset command',false,'Edit rail has Align and Trim/Extend but no parallel Offset command; typed move is measured separately'),
@@ -235,7 +235,12 @@ export const U4_PROBES = [
       let csv = null;
       tasks.push(await task(s,'Analyze > Lists > Wall Schedule > Export CSV',async () => {
         await s.ui.click(s.page.getByRole('tab',{name:'Analyze',exact:true}));
-        await s.ui.click(s.page.getByRole('button',{name:'Entity lists',exact:true}));
+        const lists = s.page.getByRole('button',{name:'Lists',exact:true}).first();
+        if (await lists.isVisible()) await s.ui.click(lists);
+        else {
+          await s.ui.click(s.page.getByRole('button',{name:/^More panels/}));
+          await s.ui.click(s.page.locator('[role=menuitem][data-panel-id=lists]'));
+        }
         await s.ui.click(s.page.getByRole('button',{name:/Wall Schedule/}).first(),{settle:1000});
         const before = await downloadCount(s.page);
         await s.ui.click(s.page.getByRole('button',{name:'Export',exact:true}).last());

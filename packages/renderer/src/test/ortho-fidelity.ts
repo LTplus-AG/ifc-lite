@@ -297,8 +297,9 @@ function tweenCase(from: Vec3, view: 'top' | 'bottom'): FidelityCase {
   Date.now = () => now;
   Reflect.set(globalThis, 'requestAnimationFrame', () => 0);
   try {
+    // From the pose before the tween, so a jump on its first frame counts.
+    let last: number | null = camera.getRotation().azimuth;
     camera.setPresetView(view, sceneBounds());
-    let last: number | null = null;
     for (let i = 0; i <= 60; i++) {
       now += 6;
       camera.update(0);
@@ -311,10 +312,11 @@ function tweenCase(from: Vec3, view: 'top' | 'bottom'): FidelityCase {
     if (hadRaf) Reflect.set(globalThis, 'requestAnimationFrame', originalRaf);
     else Reflect.deleteProperty(globalThis, 'requestAnimationFrame');
   }
-  // A smooth approach turns by at most ~26 degrees per 6 ms frame (an
+  // A smooth approach turns by at most 26.2 degrees per 6 ms frame (an
   // isometric start re-orients by 135 degrees near the pole; main's camera
-  // measured 24). A jump to the end azimuth or a flip is 90-180.
-  c.angleErrorDeg = Math.max(0, c.angleErrorDeg - 30);
+  // measured 24.1); every other start stays under 11. A jump to the end
+  // azimuth reads 65 or more here, a flip 150-180.
+  c.angleErrorDeg = Math.max(0, c.angleErrorDeg - 28);
   return c;
 }
 

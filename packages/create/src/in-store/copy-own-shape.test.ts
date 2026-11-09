@@ -173,7 +173,15 @@ describe("copyProductInStore shape: 'own' (#8447)", () => {
 
 const WASM_PATH = fileURLToPath(new URL('../../../wasm/pkg/ifc-lite_bg.wasm', import.meta.url));
 describe.skipIf(!existsSync(WASM_PATH))("an own-shape copy meshes like its source (#8447; build WASM with pnpm build:wasm)", () => {
-  it('resizing the own copy changes its mesh and leaves the source mesh unchanged', async () => {
+  it.each([false, true])('resizing the own copy leaves source geometry unchanged (indexed segments: %s)', async (indexed) => {
+    if (indexed) {
+      const text = readFileSync(SAMPLE, 'utf8')
+        .replace('#1250=IFCINDEXEDPOLYCURVE(#1249,$,.F.);', '#1250=IFCINDEXEDPOLYCURVE(#1249,(IFCLINEINDEX((1,2))),.F.);')
+        .replace('#1253=IFCINDEXEDPOLYCURVE(#1252,$,.F.);', '#1253=IFCINDEXEDPOLYCURVE(#1252,(IFCLINEINDEX((1,2,3,4,5))),.F.);');
+      store = await parse(text);
+      view = new MutablePropertyView(null, 'm');
+      editor = new StoreEditor(store, view);
+    }
     const { copyId } = copyProductInStore(createCopyContext(store, editor), WALL, { offset: [0, 3, 0] }, { shape: 'own' });
     const { IfcAPI, initSync } = await import('@ifc-lite/wasm');
     initSync({ module: readFileSync(WASM_PATH) });

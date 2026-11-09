@@ -168,7 +168,7 @@ describe("copyProductInStore shape: 'own' (#8447)", () => {
     expect(() => copyProductInStore(ctx, WALL, { offset: [0, 3, 0] }, { shape: 'own' })).toThrow(/too large to copy/);
     expect(exported()).toBe(before);
     expect(asRef(attr(copyProductInStore(ctx, WALL, { offset: [0, 3, 0] }).copyId, 6))).toBe(first + n + 2);
-  });
+  }, 30_000); // Parse and export 50,001 real IFC points; this is a bound/atomicity assertion, not a timing ratchet.
 });
 
 const WASM_PATH = fileURLToPath(new URL('../../../wasm/pkg/ifc-lite_bg.wasm', import.meta.url));

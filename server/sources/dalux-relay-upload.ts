@@ -10,13 +10,19 @@
  * part may be, and how the request is sent upstream.
  */
 
+/**
+ * What an upload step's body is, per the Dalux Build API spec:
+ * - `empty`: create slot. The spec defines no request body, so none is relayed.
+ * - `bytes`: a file part, `application/octet-stream`, with `Content-Range` and
+ *   `Content-Disposition`.
+ * - `json`: finalize, an `application/json` file-metadata object.
+ */
+export type UploadBody = 'empty' | 'bytes' | 'json';
+
 /** What an upload step must carry, beyond the API key. */
 export interface UploadRoute {
   readonly pattern: RegExp;
-  /** Exact media type the request body must declare. */
-  readonly contentType: 'application/json' | 'application/octet-stream';
-  /** A part upload must declare its byte range and file name (Dalux spec). */
-  readonly isPart: boolean;
+  readonly body: UploadBody;
 }
 
 /**
@@ -25,20 +31,11 @@ export interface UploadRoute {
  * path, anchored at both ends.
  */
 export const UPLOAD_ROUTES: readonly UploadRoute[] = [
-  {
-    pattern: /^1\.0\/projects\/[^/]+\/file_areas\/[^/]+\/upload$/,
-    contentType: 'application/json',
-    isPart: false,
-  },
-  {
-    pattern: /^1\.0\/projects\/[^/]+\/file_areas\/[^/]+\/upload\/[^/]+$/,
-    contentType: 'application/octet-stream',
-    isPart: true,
-  },
+  { pattern: /^1\.0\/projects\/[^/]+\/file_areas\/[^/]+\/upload$/, body: 'empty' },
+  { pattern: /^1\.0\/projects\/[^/]+\/file_areas\/[^/]+\/upload\/[^/]+$/, body: 'bytes' },
   {
     pattern: /^2\.0\/projects\/[^/]+\/file_areas\/[^/]+\/upload\/[^/]+\/finalize$/,
-    contentType: 'application/json',
-    isPart: false,
+    body: 'json',
   },
 ];
 
@@ -98,32 +95,92 @@ export async function readBoundedBody(request: Request, limit: number): Promise<
   return body;
 }
 
+/** A part's declared byte range, parsed. */
+interface PartRange {
+  readonly start: number;
+  readonly end: number;
+  readonly total: number;
+}
+
+function parsePartRange(value: string | null): PartRange | null {
+  const range = CONTENT_RANGE_PATTERN.exec(value ?? '');
+  if (!range) return null;
+  const start = Number(range[1]);
+  const end = Number(range[2]);
+  const total = Number(range[3]);
+  if (end < start || end >= total) return null;
+  return { start, end, total };
+}
+
+/** A refusal decided from headers alone. */
+export interface UploadRefusal {
+  readonly status: 400 | 413;
+  readonly message: string;
+}
+
 /**
- * Checks an upload request's headers and body against its route. Returns an
- * error message, or null when the request may be forwarded.
+ * Header-only checks, run BEFORE the body is read so a malformed or oversized
+ * request costs no buffering. Returns the refusal, or null.
  */
-export function validateUpload(route: UploadRoute, request: Request, body: Uint8Array): string | null {
-  if (mediaType(request.headers.get('content-type')) !== route.contentType) {
-    return `This upload step requires Content-Type ${route.contentType}`;
+export function validateUploadHeaders(route: UploadRoute, request: Request): UploadRefusal | null {
+  const bad = (message: string): UploadRefusal => ({ status: 400, message });
+  const type = mediaType(request.headers.get('content-type'));
+  const declared = request.headers.get('content-length');
+
+  if (route.body === 'empty') {
+    if (declared !== null && Number(declared) !== 0) {
+      return bad('Creating an upload slot takes no request body');
+    }
+    return null;
   }
-  if (!route.isPart) {
-    try {
-      JSON.parse(new TextDecoder().decode(body));
-    } catch {
-      return 'This upload step requires a JSON body';
+  if (route.body === 'json') {
+    if (type !== 'application/json') {
+      return bad('Finalizing an upload requires Content-Type application/json');
+    }
+    if (declared !== null && Number(declared) > MAX_RELAYED_BODY_BYTES) {
+      return { status: 413, message: `Upload requests through this relay are limited to ${MAX_RELAYED_BODY_BYTES} bytes` };
     }
     return null;
   }
 
-  if (!request.headers.get('content-disposition')?.trim()) {
-    return 'A file part requires Content-Disposition with the file name';
+  if (type !== 'application/octet-stream') {
+    return bad('A file part requires Content-Type application/octet-stream');
   }
-  const range = CONTENT_RANGE_PATTERN.exec(request.headers.get('content-range') ?? '');
-  if (!range) return 'A file part requires Content-Range: bytes <start>-<end>/<total>';
-  const start = Number(range[1]);
-  const end = Number(range[2]);
-  const total = Number(range[3]);
-  if (end < start || end >= total || end - start + 1 !== body.byteLength) {
+  if (!request.headers.get('content-disposition')?.trim()) {
+    return bad('A file part requires Content-Disposition with the file name');
+  }
+  const range = parsePartRange(request.headers.get('content-range'));
+  if (!range) return bad('A file part requires Content-Range: bytes <start>-<end>/<total>');
+  if (range.end - range.start + 1 > MAX_RELAYED_BODY_BYTES) {
+    return { status: 413, message: `Upload parts through this relay are limited to ${MAX_RELAYED_BODY_BYTES} bytes` };
+  }
+  if (declared !== null && Number(declared) !== range.end - range.start + 1) {
+    return bad('Content-Range does not match Content-Length');
+  }
+  return null;
+}
+
+/**
+ * Body checks, once the bounded body has been read. Returns an error message,
+ * or null when the request may be forwarded.
+ */
+export function validateUploadBody(route: UploadRoute, request: Request, body: Uint8Array): string | null {
+  if (route.body === 'empty') {
+    return body.byteLength === 0 ? null : 'Creating an upload slot takes no request body';
+  }
+  if (route.body === 'json') {
+    try {
+      const parsed: unknown = JSON.parse(new TextDecoder().decode(body));
+      if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        return 'Finalizing an upload requires a JSON object body';
+      }
+    } catch {
+      return 'Finalizing an upload requires a JSON object body';
+    }
+    return null;
+  }
+  const range = parsePartRange(request.headers.get('content-range'));
+  if (!range || range.end - range.start + 1 !== body.byteLength) {
     return 'Content-Range does not match the part body';
   }
   return null;
@@ -144,7 +201,8 @@ export async function sendUpload(
   const response = await fetchImpl(target.toString(), {
     method: 'POST',
     headers,
-    body,
+    // An empty slot request is sent without a body, as the spec defines it.
+    body: body.byteLength > 0 ? body : undefined,
     redirect: 'manual',
   });
   if (response.status >= 300 && response.status < 400) {

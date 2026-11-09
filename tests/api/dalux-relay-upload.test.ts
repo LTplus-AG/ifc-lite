@@ -55,6 +55,14 @@ function post(path: string, body: BodyInit, headers: Record<string, string>): Re
   });
 }
 
+/** Create-slot, exactly as the Dalux spec defines it: a POST with no body. */
+function slotRequest(headers: Record<string, string> = {}, query = ''): Request {
+  return new Request(`${APP_ORIGIN}/api/dalux/${SLOT}${query}`, {
+    method: 'POST',
+    headers: { 'x-api-key': 'caller-key', ...headers },
+  });
+}
+
 function part(bytes: Uint8Array, range = `bytes 0-${bytes.byteLength - 1}/${bytes.byteLength}`) {
   return post(PART, bytes, {
     'content-type': 'application/octet-stream',
@@ -66,7 +74,7 @@ function part(bytes: Uint8Array, range = `bytes 0-${bytes.byteLength - 1}/${byte
 test('relays slot creation, a part and finalize to the upstream', async () => {
   const { handler, captured } = createHandler();
 
-  const slot = await handler(post(SLOT, '{}', { 'content-type': 'application/json' }));
+  const slot = await handler(slotRequest());
   assert.equal(slot.status, 201);
 
   const bytes = new Uint8Array([1, 2, 3, 4]);
@@ -87,6 +95,7 @@ test('relays slot creation, a part and finalize to the upstream', async () => {
       ['POST', `https://node1.field.dalux.com/service/api/${FINALIZE}`],
     ],
   );
+  assert.equal(captured[0].body, null, 'the slot request is relayed without a body');
   assert.deepEqual(captured[1].body, bytes);
   assert.equal(captured[1].headers.get('content-range'), 'bytes 0-3/4');
   assert.match(captured[1].headers.get('content-disposition') ?? '', /model\.ifc/);
@@ -108,12 +117,19 @@ test('POST stays a 405 on every non-upload path', async () => {
   assert.equal(captured.length, 0);
 });
 
-test('upload paths cannot be read with GET', async () => {
+test('no upload path can be read with GET or HEAD, including the 2.0 finalize path', async () => {
   const { handler, captured } = createHandler();
-  const response = await handler(
-    new Request(`${APP_ORIGIN}/api/dalux/${SLOT}`, { headers: { 'x-api-key': 'caller-key' } }),
-  );
-  assert.equal(response.status, 405);
+  for (const path of [SLOT, PART, FINALIZE]) {
+    for (const method of ['GET', 'HEAD']) {
+      const response = await handler(
+        new Request(`${APP_ORIGIN}/api/dalux/${path}`, {
+          method,
+          headers: { 'x-api-key': 'caller-key' },
+        }),
+      );
+      assert.equal(response.status, 405, `${method} ${path}`);
+    }
+  }
   assert.equal(captured.length, 0);
 });
 
@@ -134,11 +150,7 @@ test('PUT, PATCH and DELETE on upload paths are still refused', async () => {
 test('an upload needs the caller API key', async () => {
   const { handler, captured } = createHandler();
   const response = await handler(
-    new Request(`${APP_ORIGIN}/api/dalux/${SLOT}`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: '{}',
-    }),
+    new Request(`${APP_ORIGIN}/api/dalux/${SLOT}`, { method: 'POST' }),
   );
   assert.equal(response.status, 401);
   assert.equal(captured.length, 0);
@@ -190,12 +202,66 @@ test('a part needs Content-Disposition and the octet-stream type', async () => {
   assert.equal(captured.length, 0);
 });
 
-test('slot and finalize require a JSON body', async () => {
+test('the slot request must have no body', async () => {
+  const { handler, captured } = createHandler();
+  const withBody = await handler(post(SLOT, '{}', { 'content-type': 'application/json' }));
+  assert.equal(withBody.status, 400);
+  assert.equal(captured.length, 0);
+});
+
+test('finalize requires a JSON object body', async () => {
   const { handler, captured } = createHandler();
   const notJson = await handler(post(FINALIZE, 'nope', { 'content-type': 'application/json' }));
   assert.equal(notJson.status, 400);
-  const wrongType = await handler(post(SLOT, '{}', { 'content-type': 'text/plain' }));
+  const notObject = await handler(post(FINALIZE, '[1]', { 'content-type': 'application/json' }));
+  assert.equal(notObject.status, 400);
+  const wrongType = await handler(post(FINALIZE, '{}', { 'content-type': 'text/plain' }));
   assert.equal(wrongType.status, 400);
+  assert.equal(captured.length, 0);
+});
+
+test('a request refused on its URL or headers is refused before its body is read', async () => {
+  const { handler, captured } = createHandler();
+  const big = new Uint8Array(1024);
+  const cases: Array<[string, Request, number]> = [
+    [
+      'invalid node',
+      new Request(`${APP_ORIGIN}/api/dalux/${PART}?daluxNode=evil.example`, {
+        method: 'POST',
+        headers: {
+          'x-api-key': 'caller-key',
+          'content-type': 'application/octet-stream',
+          'content-range': 'bytes 0-1023/1024',
+          'content-disposition': 'form-data; filename="a.ifc"',
+        },
+        body: big,
+      }),
+      400,
+    ],
+    ['wrong content type', post(PART, big, { 'content-type': 'text/plain' }), 400],
+    [
+      'missing Content-Range',
+      post(PART, big, {
+        'content-type': 'application/octet-stream',
+        'content-disposition': 'form-data; filename="a.ifc"',
+      }),
+      400,
+    ],
+    [
+      'declared range over the cap',
+      post(PART, big, {
+        'content-type': 'application/octet-stream',
+        'content-range': `bytes 0-${MAX_RELAYED_BODY_BYTES}/${MAX_RELAYED_BODY_BYTES + 1}`,
+        'content-disposition': 'form-data; filename="a.ifc"',
+      }),
+      413,
+    ],
+  ];
+  for (const [label, request, status] of cases) {
+    const response = await handler(request);
+    assert.equal(response.status, status, label);
+    assert.equal(request.bodyUsed, false, `${label}: body must not be read`);
+  }
   assert.equal(captured.length, 0);
 });
 
@@ -203,7 +269,7 @@ test('an upload is never redirected', async () => {
   const { handler, captured } = createHandler(
     () => new Response(null, { status: 307, headers: { location: '/elsewhere' } }),
   );
-  const response = await handler(post(SLOT, '{}', { 'content-type': 'application/json' }));
+  const response = await handler(slotRequest());
   assert.equal(response.status, 502);
   assert.equal(captured.length, 1);
 });

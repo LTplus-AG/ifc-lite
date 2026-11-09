@@ -47,7 +47,8 @@ import {
   readBoundedBody,
   sendUpload,
   uploadRouteFor,
-  validateUpload,
+  validateUploadBody,
+  validateUploadHeaders,
 } from './dalux-relay-upload.js';
 
 export { MAX_RELAYED_BODY_BYTES, UPLOAD_ROUTES } from './dalux-relay-upload.js';
@@ -296,15 +297,28 @@ export function createDaluxRelayHandler(
       return jsonError(400, 'Path is not a relayable Dalux Build endpoint', cors);
     }
 
-    // Method and path are checked together: an upload path is POST-only, and
-    // every other path is read-only. A POST anywhere else is a 405, exactly as
+    // Method and path are checked together: an upload path is POST-only (even
+    // the finalize path, whose `2.0` prefix is otherwise readable), and every
+    // other path is read-only. A POST anywhere else is a 405, exactly as
     // before uploads were relayed.
     const uploadRoute = uploadRouteFor(upstreamPath);
-    if (isRead && !isReadPath(upstreamPath, config)) {
+    if (isRead && (uploadRoute || !isReadPath(upstreamPath, config))) {
       return jsonError(405, 'Upload endpoints accept POST only', cors);
     }
     if (!isRead && !uploadRoute) {
       return jsonError(405, 'Only GET, HEAD and upload POSTs are relayed', cors);
+    }
+
+    // Everything that can be decided from the URL and headers is decided
+    // before an upload body is read, so a request that will be refused anyway
+    // costs no buffering.
+    const upstreamOrigin = resolveUpstreamOrigin(url.searchParams.get(DALUX_NODE_PARAM), config);
+    if (upstreamOrigin === null) {
+      return jsonError(400, 'Unknown Dalux node', cors);
+    }
+    if (uploadRoute) {
+      const refusal = validateUploadHeaders(uploadRoute, request);
+      if (refusal) return jsonError(refusal.status, refusal.message, cors);
     }
 
     let body: Uint8Array<ArrayBuffer> | undefined;
@@ -317,8 +331,8 @@ export function createDaluxRelayHandler(
           cors,
         );
       }
-      const invalid = validateUpload(uploadRoute, request, bounded);
-      if (invalid) return jsonError(400, invalid, cors);
+      const invalidBody = validateUploadBody(uploadRoute, request, bounded);
+      if (invalidBody) return jsonError(400, invalidBody, cors);
       body = bounded;
     }
 
@@ -328,11 +342,6 @@ export function createDaluxRelayHandler(
     forwardedParams.delete('path');
     forwardedParams.delete(DALUX_NODE_PARAM);
     const query = forwardedParams.toString();
-
-    const upstreamOrigin = resolveUpstreamOrigin(url.searchParams.get(DALUX_NODE_PARAM), config);
-    if (upstreamOrigin === null) {
-      return jsonError(400, 'Unknown Dalux node', cors);
-    }
 
     const upstream = new URL(
       `${upstreamOrigin}${config.upstreamBasePath}/${upstreamPath}${query ? `?${query}` : ''}`,
@@ -348,7 +357,7 @@ export function createDaluxRelayHandler(
 
     let response: Response;
     try {
-      response = body
+      response = body !== undefined
         ? await sendUpload(deps.fetchImpl, upstream, forwardedHeaders, body)
         : await followSameHost(deps.fetchImpl, upstream, {
             method: request.method,

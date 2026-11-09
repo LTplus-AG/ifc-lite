@@ -13,19 +13,22 @@ import {
 } from '../../../server/sources/dalux-relay';
 
 /**
- * Reads a request body, stopping once `limit` bytes have arrived. The handler
- * answers 413 for anything over its cap, so reading one byte past it is enough
- * to let it see the overflow without buffering a whole oversized upload.
+ * Reads a request body, keeping at most `limit` bytes. The handler answers 413
+ * for anything over its cap, so keeping one byte past it is enough to let it
+ * see the overflow. The rest is drained and dropped rather than abandoned:
+ * leaving the loop early would destroy the request and its socket, and the
+ * client would see a connection error instead of the 413.
  */
 async function readBody(req: IncomingMessage, limit: number): Promise<Uint8Array<ArrayBuffer>> {
   const chunks: Buffer[] = [];
-  let total = 0;
+  let kept = 0;
   for await (const chunk of req) {
+    if (kept >= limit) continue;
     const buffer = chunk as Buffer;
-    const room = limit - total;
-    chunks.push(buffer.byteLength > room ? buffer.subarray(0, room) : buffer);
-    total += Math.min(buffer.byteLength, room);
-    if (total >= limit) break;
+    const room = limit - kept;
+    const slice = buffer.byteLength > room ? buffer.subarray(0, room) : buffer;
+    chunks.push(slice);
+    kept += slice.byteLength;
   }
   return new Uint8Array(Buffer.concat(chunks));
 }

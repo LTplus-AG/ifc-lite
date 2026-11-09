@@ -228,4 +228,19 @@ describe('IfcLiteBridge init lifecycle (audit P6)', () => {
     await expect(initializing).rejects.toThrow(/superseded by dispose/);
     expect(wasm.constructedCount()).toBe(0);
   });
+
+  it('P6: reset() drops a ready bridge, so the next init() builds a fresh handle', async () => {
+    const { IfcLiteBridge } = await load();
+    const bridge = new IfcLiteBridge();
+    const first = bridge.init();
+    await vi.waitFor(() => expect(wasm.init).toHaveBeenCalled());
+    wasm.finish();
+    await first;
+    bridge.reset();
+    expect(bridge.isInitialized()).toBe(false);
+    wasm.init.mockImplementationOnce(async () => undefined);
+    await bridge.init();
+    expect(wasm.constructedCount()).toBe(2);
+    bridge.dispose();
+  });
 });

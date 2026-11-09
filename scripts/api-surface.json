@@ -10901,8 +10901,13 @@
   ],
   "@ifc-lite/wasm-lifecycle": [
     "InitWasmRetryOptions: interface",
+    "Lifetime: interface",
+    "LifetimeAttempt: interface",
+    "LifetimeOptions: interface",
+    "LifetimeState: type",
     "WASM_PANIC_STASH_KEY: const",
     "WasmPanicStash: interface",
+    "createLifetime: function",
     "initWasmWithRetry: function",
     "isTransientWasmLoadError: function",
     "restashWasmPanicLocation: function",

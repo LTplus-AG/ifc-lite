@@ -1693,6 +1693,7 @@ name = "ifc-lite-git"
 version = "29.2.0"
 dependencies = [
  "blake3",
+ "ifc-lite-diff",
  "unicode-normalization",
 ]
 

@@ -36,6 +36,7 @@ import { createCostAdapter } from './cost-adapter.js';
 import { withCostMutationTracking } from './store-adapter-cost.js';
 import { withStructuralMutationTracking } from './store-adapter-structural.js';
 import { withModellingMutationTracking } from './store-adapter-modelling.js';
+import { roofMutationTracking } from './store-adapter-roof.js';
 import { createTrackedGroupBackend } from './store-adapter-group.js';
 import { getMutationViewForModel, getOrCreateMutationView, isLegacyMutationRef, normalizeMutationModelId } from './mutation-view.js';
 import { attributeNamesForStore, referenceAttributeSlotsForStore } from '@/lib/collab/schema-attribute-names.js';
@@ -355,6 +356,7 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
     // mirroring; see `store-adapter-modelling.ts` for the undo policy.
     // Storey methods come from `storeyMutationTracking`, loaded on first use (#9200).
     ...withModellingMutationTracking(createModellingStoreBackendWithoutStoreys(resolveStoreModel), store, resolveEditorAndStore),
+    ...roofMutationTracking(store),
     ...createTrackedGroupBackend(store, resolveStoreModel),
   };
 }

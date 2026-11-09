@@ -64,6 +64,8 @@ export function withModellingMutationTracking(
       if ('error' in outcome) throw new Error(`bim.store.${op}: ${outcome.error}`);
       return { modelId: normalized, expressId: outcome.expressId };
     };
+  const addPlainMaterial = create('IFCMATERIAL', methods.addMaterial);
+  const addStyledMaterial = compound(methods.addMaterial);
   return {
     ...physicalMutationTracking(store),
     ...storeyMutationTracking(store),
@@ -174,7 +176,12 @@ export function withModellingMutationTracking(
       store.getState().pushCreateEntityUndo(ref.modelId, ref.expressId, params.Type.toUpperCase());
       return ref;
     }),
-    addMaterial: create('IFCMATERIAL', methods.addMaterial),
+    // A plain material is one record; a coloured one also writes its appearance
+    // chain (IfcMaterialDefinitionRepresentation and the style records), which a
+    // single CREATE_ENTITY undo would leave behind pointing at nothing. That one
+    // takes the compound fence the layer set already takes.
+    addMaterial: (modelId: string, params: Parameters<ModellingMethods['addMaterial']>[1]) =>
+      (params.Color === undefined ? addPlainMaterial : addStyledMaterial)(modelId, params),
     addMaterialLayerSetUsage: create('IFCMATERIALLAYERSETUSAGE', methods.addMaterialLayerSetUsage),
     // A layer set is several records; the assignments rewrite or remove
     // existing IfcRel* rows the objects move out of.

@@ -77,6 +77,12 @@ export function resolveSpatialAnchor(
  * Shared with `resolve-host.ts`, whose host-geometry walk needs the same
  * overlay-aware point lookups.
  */
+/** The live Body subcontext (or root 3D context) a style or shape is drawn in, or null when the model has none. */
+export function resolveBodyContextId(store: IfcDataStore, view?: MutablePropertyView | null): number | null {
+  const reader = new AnchorEntityReader(store, view);
+  return reader.contextId('body', reader.rootContextId());
+}
+
 export class AnchorEntityReader {
   private readonly extractor: EntityExtractor | null;
 

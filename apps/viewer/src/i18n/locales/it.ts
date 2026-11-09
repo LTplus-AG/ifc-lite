@@ -43,6 +43,7 @@ import { checkAuthoringIt } from './it/check-authoring';
 import { clashGroupApplyIt } from './it/clash-group-apply';
 import { clashGroupsIt } from './it/clash-groups';
 import { clashPanelIt } from './it/clash-panel';
+import { clashQualityIt } from './it/clash-quality';
 import { clashToolsIt } from './it/clash-tools';
 import { commandPaletteIt } from './it/command-palette';
 import { commandsIt } from './it/commands';
@@ -203,6 +204,7 @@ export default {
   ...clashGroupApplyIt,
   ...clashGroupsIt,
   ...clashPanelIt,
+  ...clashQualityIt,
   ...clashToolsIt,
   ...commandPaletteIt,
   ...commandsIt,

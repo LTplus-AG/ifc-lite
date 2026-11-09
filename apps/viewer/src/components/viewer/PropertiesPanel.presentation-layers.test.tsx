@@ -404,7 +404,9 @@ for (const modelCount of [1, 2]) for (const via of ['viewport', 'SDK'] as const)
       act(() => useViewerStore.setState({ models: loadedModels, ifcDataStore: store }));
       const target = `presentation-layer-new-intent-51-product-${supersedeArmed ? 7 : 8}`;
       await waitFor(() => !!hierarchy.querySelector(`[data-node-id="${target}"]`), 'the newer product is expanded and revealed after metadata arrives');
-      await waitFor(() => document.activeElement?.getAttribute('data-node-id') === target, 'focus follows the newer product rather than the stale layer header');
+      await assert.doesNotReject(
+        waitFor(() => document.activeElement?.getAttribute('data-node-id') === target, 'focus follows the newer product rather than the stale layer header'),
+        'the latest selection must receive deferred focus after metadata arrives');
       await advance(50);
       assert.equal(document.activeElement?.getAttribute('data-node-id'), target);
       if (supersedeArmed) assert.ok(!focused.includes('presentation-layer-new-intent-51-product-8'), 'superseded armed focus never lands on the older product');

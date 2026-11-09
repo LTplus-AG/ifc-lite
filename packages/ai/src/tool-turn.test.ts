@@ -109,16 +109,18 @@ describe('runToolTurn', () => {
 });
 
 
-it.each([NaN, 0.5, Infinity, 2_147_483_648])('normalizes tool-turn deadlines before scheduling: %s (lifecycle audit)', async timeoutMs => {
+it.each([NaN, 0.5, Infinity, 2_147_483_648])('normalizes tool-turn deadlines before scheduling: %s (#9541)', async timeoutMs => {
   vi.useFakeTimers();
+  const schedule = vi.spyOn(globalThis, 'setTimeout');
   try {
     let aborted = false;
     const pending = runToolTurn(request(async call => new Promise((_resolve, reject) => {
       call.signal.addEventListener('abort', () => { aborted = true; reject(call.signal.reason); }, { once: true });
     }), { timeoutMs }));
+    expect(schedule).toHaveBeenCalledExactlyOnceWith(expect.any(Function), 1);
     await vi.advanceTimersByTimeAsync(0);
     expect(aborted).toBe(false);
     await vi.advanceTimersByTimeAsync(1);
     expect((await pending).kind).toBe('timeout');
-  } finally { vi.useRealTimers(); }
+  } finally { schedule.mockRestore(); vi.useRealTimers(); }
 });

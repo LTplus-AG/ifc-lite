@@ -250,6 +250,19 @@ describe('createCesiumBridge with a unit-slipped map-absolute site anchor (#9480
     assert.ok(Math.abs(geo.longitude - lon) < 1e-6, `lon ${geo.longitude} should be ${lon}`);
   });
 
+  it('lifts the height by the slipped site Z once the pre-pass publishes the site origin', async () => {
+    const withSite: CoordinateInfo = {
+      ...coordinateInfo,
+      siteOrigin: { x: siteAnchorMm.x * 0.001, y: siteAnchorMm.y * 0.001, z: siteAnchorMm.z * 0.001 },
+    };
+    const lifted = await createCesiumBridge(conversion, crs, withSite, 0.001);
+    const flat = await createCesiumBridge(conversion, crs, coordinateInfo, 0.001);
+    assert.ok(lifted && flat);
+    // Viewer origin = the RTC offset, at the site's own Z: 14 m like the #2526 file, not 0.014 m.
+    assert.ok(Math.abs(lifted.viewerToGeodetic(0, 0, 0)!.height - 14) < 1e-9, `height ${lifted.viewerToGeodetic(0, 0, 0)!.height}`);
+    assert.ok(Math.abs(flat.viewerToGeodetic(0, 0, 0)!.height - 0.014) < 1e-9);
+  });
+
   it('reads the geometry as grid coordinates, like the #2526 file', async () => {
     const origin = await computeCesiumModelOrigin(conversion, crs, coordinateInfo, 0.001);
     assert.ok(origin);

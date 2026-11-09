@@ -650,3 +650,14 @@ describe('detectDoubleGeoreference — site anchor in map units (#9480)', () => 
     assert.match(exportCorrectionInstruction(found!), /^set Eastings and Northings to 0/);
   });
 });
+
+describe('detectDoubleGeoreference — #9480 site height', () => {
+  const site = { x: 311988.18054 * 0.001, y: 5996148.56499 * 0.001 };
+  it('reports the recovered height shift, and null without a site origin', () => {
+    const base = { ...coordInfoAt(site.x, site.y), lengthUnitScale: 0.001 };
+    const found = detectDoubleGeoreference(ISSUE_2526_CONVERSION, METRE_CRS, { ...base, siteOrigin: { ...site, z: 0.014 } }, 0.001);
+    assert.ok(found);
+    assert.ok(Math.abs(found!.siteHeightShiftMetres! - 13.986) < 1e-9, `shift ${found!.siteHeightShiftMetres}`);
+    assert.strictEqual(detectDoubleGeoreference(ISSUE_2526_CONVERSION, METRE_CRS, base, 0.001)!.siteHeightShiftMetres, null);
+  });
+});

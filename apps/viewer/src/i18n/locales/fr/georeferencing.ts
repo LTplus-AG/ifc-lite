@@ -70,7 +70,9 @@ export const georeferencingFr = {
   'properties.georef.rawValuesSiteAnchorFix': 'Les valeurs du fichier sont affichées ci-dessous telles quelles. Corrigez le placement de l’IfcSite dans l’outil auteur pour qu’il utilise l’unité de longueur du fichier ; aucune modification de l’IfcMapConversion ici ne peut exprimer cette correction.',
   'properties.georef.correctionOffsets': 'réglez Eastings et Northings sur 0',
   'properties.georef.siteAnchorUnitNote':
-    'Le placement de son IfcSite écrit ces coordonnées dans l’unité de la carte au lieu de l’unité de longueur du fichier (facteur {ratio}) ; ifc-lite met donc l’ancrage du site à l’échelle. La hauteur de ce placement n’est pas corrigée ; vérifiez l’altitude.',
+    'Le placement de son IfcSite écrit ces coordonnées dans l’unité de la carte au lieu de l’unité de longueur du fichier (facteur {ratio}) ; ifc-lite met donc l’ancrage du site à l’échelle.',
+  'properties.georef.siteAnchorHeightCorrected': 'Sa hauteur est corrigée de la même manière.',
+  'properties.georef.siteAnchorHeightUncorrected': 'La hauteur de ce placement n’est pas corrigée ; vérifiez l’altitude.',
   'properties.georef.correctionAngle': 'réglez la rotation du modèle en coordonnées cartographiques sur 0',
   'properties.georef.correctionScale': 'réglez Scale sur {value}',
   'properties.georef.rawValuesCorrection':

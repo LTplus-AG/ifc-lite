@@ -22,6 +22,10 @@ export const copyArrayEn = {
     one: "{countDisplay} copy didn't land on a grid crossing, so it's no longer tied to the grid",
     other: "{countDisplay} copies didn't land on a grid crossing, so they're no longer tied to the grid",
   },
+  'copyArray.unattachedTops': {
+    one: "{countDisplay} copy kept its height: its top can't follow its new storey, so it's no longer attached",
+    other: "{countDisplay} copies kept their height: their tops can't follow their new storey, so they're no longer attached",
+  },
   'copyArray.paste.label': 'Paste',
   'copyArray.paste.hint': 'Click where the copy goes. To paste on another storey, switch storey first',
   'copyArray.paste.empty': 'Nothing is copied yet: select elements and copy them first',

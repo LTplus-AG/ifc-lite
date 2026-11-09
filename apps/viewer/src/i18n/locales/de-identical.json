@@ -1886,5 +1886,9 @@
   "zonesPanel.roomPanel.status.offline": {
     "value": "Offline",
     "reason": "Same-spelling German label or established UI term (Offline); placeholders retain runtime content."
+  },
+  "settings.display.wheelZoomSpeed.normal": {
+    "value": "Normal",
+    "reason": "Same-spelling German label (Normal) for the default wheel-zoom speed."
   }
 }

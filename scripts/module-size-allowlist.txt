@@ -112,7 +112,7 @@
    764 apps/viewer/src/hooks/useBCF.ts
   1334 apps/viewer/src/hooks/useClash.ts
   1234 apps/viewer/src/hooks/useDrawingExport.ts
-  1041 apps/viewer/src/hooks/useDrawingGeneration.ts
+  1032 apps/viewer/src/hooks/useDrawingGeneration.ts
    667 apps/viewer/src/hooks/useIfcFederation.ts
   2211 apps/viewer/src/hooks/useIfcLoader.ts
    436 apps/viewer/src/hooks/useIfcServer.ts
@@ -185,7 +185,7 @@
    432 packages/data/src/property-table.ts
    457 packages/data/src/step-serializers.ts
    508 packages/data/src/types.ts
-   550 packages/drawing-2d/src/drawing-generator.ts
+   541 packages/drawing-2d/src/drawing-generator.ts
    507 packages/drawing-2d/src/dxf/convert.ts
    898 packages/drawing-2d/src/dxf/parser.ts
    413 packages/drawing-2d/src/dxf/writer.ts

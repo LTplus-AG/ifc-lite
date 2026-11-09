@@ -21,6 +21,8 @@ pub(super) struct PrepassOnceData {
     pub simple_jobs: Vec<Job>,
     pub complex_jobs: Vec<Job>,
     pub meta: StreamMeta,
+    /// `IfcSite` world origin in metres (#9480), beside the meta it was resolved with.
+    pub site_origin: Option<[f64; 3]>,
     pub void_keys: Vec<u32>,
     pub void_counts: Vec<u32>,
     pub void_values: Vec<u32>,
@@ -78,6 +80,11 @@ impl IfcAPI {
             pre_pass.site_position,
             &mut decoder,
         );
+        let site_origin = ifc_lite_processing::stream_meta::resolve_site_origin(
+            &meta,
+            pre_pass.site_position,
+            &mut decoder,
+        );
 
         // Flat wire encodings from the shared resolver: styles (layered
         // precedence), voids, and the #407 material colour lists.
@@ -124,6 +131,7 @@ impl IfcAPI {
             simple_jobs: pre_pass.simple_jobs,
             complex_jobs: pre_pass.complex_jobs,
             meta,
+            site_origin,
             void_keys,
             void_counts,
             void_values,
@@ -176,7 +184,7 @@ impl PrepassOnceData {
         crate::api::set_js_prop(&result, "totalJobs", &(total_jobs as f64).into());
         // unitScale / planeAngleToRadians / rtcOffset / needsShift / buildingRotation
         // from the shared resolver.
-        super::prepass_sharded::set_stream_meta_props(&result, &self.meta);
+        super::prepass_sharded::set_stream_meta_props(&result, &self.meta, self.site_origin);
 
         crate::api::set_js_prop(&result, "voidKeys", &void_keys);
         crate::api::set_js_prop(&result, "voidCounts", &void_counts);

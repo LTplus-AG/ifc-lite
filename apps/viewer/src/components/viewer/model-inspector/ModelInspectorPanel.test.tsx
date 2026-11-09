@@ -15,7 +15,7 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { useViewerStore } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
-import { blur, cleanup, render, type } from '@/test/render.js';
+import { blur, cleanup, click, render, type } from '@/test/render.js';
 import { MODEL_ID, STOREY, seedModelingSession } from '@/test/modeling-session-fixture';
 import '@/lib/commands/modeling/builtin';
 import { setRequestRemesh } from '@/lib/commands/modeling/transaction';
@@ -118,6 +118,31 @@ describe('the inspector while a tool that builds no kind runs (#9096)', () => {
 });
 
 describe('ModelInspectorPanel (#6232 M2.5)', () => {
+  it('#9296 keeps Defaults reachable while the storey manager stays open', async () => {
+    act(() => { s().setSelectedEntityId(null); s().startCommand('wall.place'); s().setStoreyManagerOpen(true); });
+    const ui = render(<ModelInspectorPanel />);
+    await act(async () => { await import('../model/storeys/StoreyManager'); });
+    const visible = (selector: string) => {
+      const pane = ui.querySelector(selector);
+      assert.ok(pane, `${selector} remains mounted`);
+      return pane.closest('[hidden]') === null;
+    };
+    assert.equal(visible('[data-storey-manager]'), true, 'Storeys starts visible');
+    assert.equal(visible('[data-model-inspector]'), false, 'Defaults starts hidden');
+    const defaults = ui.querySelector<HTMLInputElement>('input[value=defaults]');
+    assert.ok(defaults);
+    click(defaults);
+    assert.equal(visible('[data-model-inspector]'), true, 'Defaults is visible after its tab is picked');
+    assert.equal(visible('[data-storey-manager]'), false, 'Storeys is hidden while Defaults is picked');
+    assert.equal(input(ui, 'Thickness in metres').value, '0.20');
+    act(() => { s().endCommand('cancel'); s().setSelectedEntityId(toGlobalIdFromModels(s().models, MODEL_ID, wall)); });
+    assert.match(ui.querySelector('[data-inspector-title]')?.textContent ?? '', /^Defaults/);
+    assert.equal(s().storeyManagerOpen, true);
+    click(ui.querySelector<HTMLInputElement>('input[value=storeys]')!);
+    assert.equal(visible('[data-storey-manager]'), true, 'Storeys is visible after its tab is picked');
+    assert.equal(visible('[data-model-inspector]'), false, 'Defaults is hidden after returning to Storeys');
+  });
+
   it('shows the selected wall: header, name, size and its sections', () => {
     const root = render(<ModelInspectorPanel />);
     assert.equal(root.querySelector('[data-inspector-title]')?.textContent, `IfcWall #${wall} · L0`);

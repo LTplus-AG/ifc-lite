@@ -51,13 +51,17 @@ jobs:
   # OTHER four legs and the two together are the full matrix.
   build:
     name: wheel ${{ matrix.os }} / ${{ matrix.target }}
-    runs-on: ${{ matrix.os }}
+    # `runner` pins the image while `os` stays the job and artifact label
+    # (`ci-prepare-wheel-matrix.mjs` reads `wheels-ubuntu-latest-*`): the
+    # ubuntu-latest move to 26.04 has no Python 3.9 for setup-python, and
+    # 3.9 is the abi3 floor this wheel is built and tested against.
+    runs-on: ${{ matrix.runner || matrix.os }}
     timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
         include:
-          - { os: ubuntu-latest, target: x86_64 }
+          - { os: ubuntu-latest, runner: ubuntu-24.04, target: x86_64 }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v5
@@ -124,13 +128,14 @@ jobs:
   build-cross:
     name: wheel ${{ matrix.os }} / ${{ matrix.target }}
     if: github.event_name != 'pull_request'
-    runs-on: ${{ matrix.os }}
+    # Same `runner` pin as `build`.
+    runs-on: ${{ matrix.runner || matrix.os }}
     timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
         include:
-          - { os: ubuntu-latest, target: aarch64 }
+          - { os: ubuntu-latest, runner: ubuntu-24.04, target: aarch64 }
           - { os: macos-15, target: aarch64 }
           # Cross-compile the Intel-mac wheel on the Apple-silicon runner: the
           # macos-13 (Intel) runners are being deprecated and queue indefinitely.

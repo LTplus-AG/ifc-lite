@@ -41,7 +41,7 @@ const AXIS_PLACEMENT_LOCATION_INDEX: usize = 0;
 /// read `Elevation`, and when it is null (common in Revit / ArchiCAD exports,
 /// #1289) fall back to the Z of the storey's own `ObjectPlacement`. Both results
 /// are raw IFC lengths, so the unit scale applies either way.
-pub(super) fn extract_elevation_if_storey(
+pub fn extract_elevation_if_storey(
     type_name: &str,
     entity_id: u32,
     decoder: &mut EntityDecoder,

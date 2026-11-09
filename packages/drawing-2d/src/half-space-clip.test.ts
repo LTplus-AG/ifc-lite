@@ -298,6 +298,13 @@ describe('clipMeshToHalfSpace — untouched and fully-removed geometry', () => {
     expect(clipped.color).toEqual([1, 1, 1, 1]);
   });
 
+  it('keeps the layer materialId on the clipped mesh (#8449)', () => {
+    const mesh = { ...twoBoxMesh(), materialId: 42 };
+    const clipped = clipMeshToHalfSpace(mesh, vec3(1, 0, 0), 2).mesh as MeshData;
+    expect(clipped).not.toBe(mesh);
+    expect(clipped.materialId).toBe(42);
+  });
+
   it('rejects a degenerate plane instead of silently keeping everything', () => {
     const cube = boxMesh([0, 0, 0], [1, 1, 1]);
     expect(() => clipMeshToHalfSpace(cube, vec3(0, 0, 0), 1)).toThrow(/zero-length|non-finite/i);

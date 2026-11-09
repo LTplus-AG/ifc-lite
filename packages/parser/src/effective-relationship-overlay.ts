@@ -6,6 +6,8 @@ import type { IfcAttributeValue, IfcEntity } from '@ifc-lite/data';
 import type { IfcDataStore } from './columnar-parser.js';
 import { getAttributeNamesForSchema, normalizeIfcTypeName } from './ifc-schema.js';
 import { getRelationshipSlotPlan } from './relationship-schema-slots.js';
+import { createSchemaEntityNameSnapshot, type SchemaEntityNameSnapshot } from './schema-entity-name.js';
+import { getSchemaRegistryForVersion } from './generated/schema-registry-by-version.js';
 import { retypedAttributes } from './effective-entity-record.js';
 
 export interface EffectiveRelationship {
@@ -46,12 +48,13 @@ function resolveRelationship(
   store: IfcDataStore,
   entity: IfcEntity,
   overlay: RelationshipOverlayReader,
+  snapshot: SchemaEntityNameSnapshot,
 ): EffectiveRelationship | null {
   const effectiveType = overlay.entityType?.(entity.expressId) ?? entity.type;
   if (!effectiveType.toUpperCase().startsWith('IFCREL') || overlay.isDeleted(entity.expressId)) return null;
-  const names = getAttributeNamesForSchema(effectiveType, store.schemaVersion);
+  const names = getAttributeNamesForSchema(effectiveType, store.schemaVersion, snapshot);
   if (names.length === 0) return null;
-  const attributes = retypedAttributes(entity.type, entity.attributes, effectiveType, names, store.schemaVersion);
+  const attributes = retypedAttributes(entity.type, entity.attributes, effectiveType, names, store.schemaVersion, snapshot);
   const named = new Map(overlay.namedAttributes(entity.expressId));
   const positional = new Map(overlay.positionalAttributes(entity.expressId));
   // Match both STEP export pipelines: named edits resolve first, then a
@@ -81,12 +84,13 @@ export function resolveEffectiveRelationshipOverlay(
   store: IfcDataStore,
   overlay: RelationshipOverlayReader,
 ): EffectiveRelationshipOverlay {
+  const snapshot = createSchemaEntityNameSnapshot(getSchemaRegistryForVersion(store.schemaVersion === 'IFC2X3' ? 'IFC2X3' : store.schemaVersion === 'IFC4X3' || store.schemaVersion === 'IFC5' ? 'IFC4X3' : 'IFC4'));
   const relationships: EffectiveRelationship[] = [];
   const supersededSourceIds = new Set<number>();
   const createdIds = new Set<number>();
   for (const entity of overlay.createdEntities()) {
     createdIds.add(entity.expressId);
-    const relation = resolveRelationship(store, entity, overlay);
+    const relation = resolveRelationship(store, entity, overlay, snapshot);
     if (relation) relationships.push(relation);
   }
   for (const expressId of new Set(overlay.mutatedEntityIds())) {
@@ -97,7 +101,7 @@ export function resolveEffectiveRelationshipOverlay(
     const effectiveType = overlay.entityType?.(expressId) ?? entity.type;
     if (!authoredRelationship && !effectiveType.toUpperCase().startsWith('IFCREL')) continue;
     if (authoredRelationship) supersededSourceIds.add(expressId);
-    const relation = resolveRelationship(store, entity, overlay);
+    const relation = resolveRelationship(store, entity, overlay, snapshot);
     if (relation) relationships.push(relation);
   }
   return { relationships, supersededSourceIds };

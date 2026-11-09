@@ -26,6 +26,12 @@ export interface CopyClipboard {
 }
 
 let clipboard: CopyClipboard | null = null;
+const listeners = new Set<() => void>();
+export function subscribeCopyClipboard(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => { listeners.delete(listener); };
+}
+function notifyClipboard(): void { for (const listener of listeners) listener(); }
 
 export function readCopyClipboard(): CopyClipboard | null {
   return clipboard;
@@ -34,6 +40,7 @@ export function readCopyClipboard(): CopyClipboard | null {
 /** Forget the copy buffer (a model unload, tests). */
 export function clearCopyClipboard(): void {
   clipboard = null;
+  notifyClipboard();
 }
 
 /**
@@ -74,5 +81,6 @@ export function copySelectionToClipboard(s: ViewerState, modelId: string): CopyV
   }
   if (!origin) return { ok: false, reason: 'The selected element has no placement to copy from' };
   clipboard = { modelId, ids: sources.ids, base: origin.origin };
+  notifyClipboard();
   return { ok: true, count: sources.ids.length };
 }

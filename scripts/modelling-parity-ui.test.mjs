@@ -7,6 +7,29 @@ import { readFileSync } from 'node:fs';
 import { PROBES } from '../tests/modelling-parity/ui/probes.mjs';
 import { readStep } from '../tests/modelling-parity/ui/lib/step.mjs';
 import { wallSize, layerThicknesses, scheduleLengths } from '../tests/modelling-parity/ui/probes-u4.mjs';
+import { EXERCISES } from '../tests/modelling-parity/ui/exercises.mjs';
+
+test('#9296 F2 room volumes stop below the next storey occupancy band', async () => {
+  let height = 3, field;
+  const firstPick = new Error('first room pick');
+  const session = {
+    page: { getByLabel: (label) => ({ label }) },
+    state: async () => ({ command: 'room.place' }),
+    ui: {
+      click: async (locator) => { field = locator.label; },
+      key: async () => {},
+      type: async (value) => { if (field === 'Height in metres') height = Number(value); },
+      clickWorld: async () => {
+        // Ground-floor rooms taller than 2.7m occupy the loft height band,
+        // so the loft Pick would be refused even with a perfectly closed loop.
+        assert.ok(height > 0 && height <= 2.7, `room height ${height} crosses the next floor`);
+        throw firstPick;
+      },
+    },
+  };
+  const step = EXERCISES.F2.steps.find((s) => s.name.startsWith('EG spaces:'));
+  await assert.rejects(() => step.run(session), (error) => error === firstPick);
+});
 
 // #9296 U4: a table-stakes UI level cannot pass if its probe never exists.
 test('every table-stakes capability has a real UI probe', () => {

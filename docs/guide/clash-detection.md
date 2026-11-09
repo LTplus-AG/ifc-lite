@@ -247,7 +247,7 @@ object. Detection-time exclusions remain key-based and cover every occurrence
 of a key, as requested by the caller.
 Integrations should use `clashElementIdentity(ref)` for element-pair decisions;
 the engine marks repeated-key endpoints with `keyAmbiguous` while retaining
-their original `key` for model lookups and exports.
+their original `key` for model lookups and exports. This migration also applies to SDK review findings: their lineages and revision comparison use the changed clash keys.
 
 **Saved clash reports** captures the gate, the current category policy and model
 identities with the run's rule and tolerances. Later preference edits leave that

@@ -142,6 +142,7 @@ function resolveCommandSnap(
       lock: { get: () => ctx.edgeLockStateRef.current, set: ctx.setEdgeLock, clear: ctx.clearEdgeLock },
       toLocal,
       entityOf: (id) => useViewerStore.getState().resolveGlobalIdFromModels(id),
+      suppressSurfacePoints: command.id.endsWith('.place') && command.aimsAtElement?.(runtime.gesture) !== true,
     }),
   ] : [];
   if (aim === 'snap' && plane.spec.kind !== 'section') sources.push(...modelSnapSources(commandCtx.modelId));

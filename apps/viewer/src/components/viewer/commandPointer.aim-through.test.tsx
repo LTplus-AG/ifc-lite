@@ -89,6 +89,11 @@ describe('aiming through to the workplane (#9201)', () => {
     click(ctx, 123.7, -234.7, true);
     assert.deepEqual(landed().local, [1.237, 2.347]);
   });
+  it('#9296 a placement on a broad slab face keeps the same increment as blank space', () => {
+    click(pointer(), 123.7, -234.7);
+    assert.deepEqual(landed().local, [1.7, 2.3]);
+    assert.equal(landed().winner, 'grid');
+  });
   it('#9296 the increment follows zoom from 100mm to 10mm', () => {
     const runtime = getCommandRuntime();
     for (const [metresPerPixel, step, expected] of [[0.01, 0.1, [1.2,2.3]], [0.001, 0.01, [1.24,2.35]]] as const) {
@@ -192,13 +197,13 @@ describe('the Alt key while a command runs (#9201)', () => {
     render(<Key />);
     routeCommandPointer(pointer(), 'move', 300, -300, { shiftKey: false, altKey: false });
     await nextFrame();
-    assert.deepEqual(landed(), { local: [3.5, 3], winner: 'face' });
+    assert.deepEqual(landed(), { local: [3.5, 3], winner: 'grid' });
     fire('keydown', 'Alt');
     await nextFrame();
     assert.deepEqual(landed(), { local: [3, 3], winner: 'workplane' });
     fire('keyup', 'Alt');
     await nextFrame();
-    assert.deepEqual(landed(), { local: [3.5, 3], winner: 'face' });
+    assert.deepEqual(landed(), { local: [3.5, 3], winner: 'grid' });
   });
 
   it('lets go when the window loses focus, since Alt+Tab never sends the release', async () => {
@@ -208,7 +213,7 @@ describe('the Alt key while a command runs (#9201)', () => {
     assert.equal(landed().winner, 'workplane');
     window.dispatchEvent(new Event('blur'));
     await nextFrame();
-    assert.equal(landed().winner, 'face');
+    assert.equal(landed().winner, 'grid');
   });
 
   it('keeps Alt from reaching the browser, and leaves AltGr and other keys alone', () => {
@@ -226,7 +231,7 @@ describe('the Alt key while a command runs (#9201)', () => {
     render(<Viewport />);
     routeCommandPointer(ctx, 'move', 300, -300, { shiftKey: false, altKey: false });
     await nextFrame();
-    assert.equal(landed().winner, 'face');
+    assert.equal(landed().winner, 'grid');
     // Only the store changes, as when S is pressed.
     useViewerStore.setState({ snapEnabled: false });
     await nextFrame();
@@ -302,7 +307,7 @@ describe('the Alt key while a command runs (#9201)', () => {
     forgetCommandPointer();
     replayCommandPointer({ altKey: true, shiftKey: false });
     await nextFrame();
-    assert.equal(landed().winner, 'face');
+    assert.equal(landed().winner, 'grid');
   });
 });
 

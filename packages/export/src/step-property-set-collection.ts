@@ -28,6 +28,7 @@ import {
   unmodifiedSourceMembers,
 } from './step-pset-copy-on-write.js';
 import type { ExportPass, StepExportOptions } from './step-exporter.js';
+import { overlayPropertyBase } from './step-overlay-property-base.js';
 import { collectTypeQuantitySources, projectTypeQuantityEdits } from './step-type-owned-quantities.js';
 
 /** The mutation groupings `export()` builds before the collection phase runs. */
@@ -120,7 +121,10 @@ export function collectPropertyAndQuantitySetMutations(
     }
 
     // Get the FULL mutated property sets for this entity (merged base + mutations)
-    const allPsets = mutationView.getForEntity(entityId);
+    const overlayBase = pass.isOverlayCreated(entityId)
+      ? overlayPropertyBase(ctx, entityId, relDefinesByEntity.get(entityId)) : undefined;
+    const allPsets = mutationView.getForEntity(entityId,
+      overlayBase?.properties.length ? () => overlayBase.properties : undefined);
     const relevantPsets = allPsets.filter((pset: PropertySet) => psetNames.has(pset.name));
     const relDefinedPsetNames = new Set<string>();
     // The regenerated copy references the source member of every property
@@ -284,7 +288,10 @@ export function collectPropertyAndQuantitySetMutations(
     const typeOwned = isTypeClass(pass.effective.typeOf(entityId));
     const typeProjection = typeOwned
       ? projectTypeQuantityEdits(pass, ctx, entityId, qsetNames, relDefinesByEntity.get(entityId) ?? []) : undefined;
-    const allQsets = typeProjection?.qsets ?? mutationView.getQuantitiesForEntity(entityId);
+    const overlayBase = pass.isOverlayCreated(entityId)
+      ? overlayPropertyBase(ctx, entityId, relDefinesByEntity.get(entityId)) : undefined;
+    const allQsets = typeProjection?.qsets ?? mutationView.getQuantitiesForEntity(entityId,
+      overlayBase?.quantities.length ? () => overlayBase.quantities : undefined);
     let relevantQsets = allQsets.filter((qset: QuantitySet) => qsetNames.has(qset.name));
 
     const typeCopy = typeOwned

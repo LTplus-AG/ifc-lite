@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { it } from 'node:test';
 import { IfcCreator } from '@ifc-lite/create';
 import { StepExporter } from '@ifc-lite/export';
-import { IfcParser } from '@ifc-lite/parser';
+import { IfcParser, extractQuantitiesOnDemand } from '@ifc-lite/parser';
 import { AnchorEntityReader } from '../../../../../packages/create/src/in-store/resolve-anchor.js';
 import { asRef, refList } from '../../../../../packages/create/src/in-store/style-entity-reader.js';
 import { useViewerStore } from '@/store';
@@ -44,6 +44,14 @@ it('#9296 reopened typed floor keeps property definitions and one relationship p
   adapter.addHostedWindow(M,walls[2].expressId,{Offset:2.5,Width:1.2,Height:1.2,Sill:.9});
   adapter.addSlab(M,ground,{Position:[0,0,0],Width:10,Depth:8,Thickness:.2});
   const generated=useViewerStore.getState().generateSpacesFromWalls(M,ground);assert.ok(!('error' in generated));assert.equal(generated.emitted.length,2);
+  const authoredView=useViewerStore.getState().mutationViews.get(M)!;
+  configureMutationView(authoredView,useViewerStore.getState().models.get(M)!.ifcDataStore!);
+  for (const wall of walls) {
+    const quantities=authoredView.getQuantitiesForEntity(wall.expressId).find(set=>set.name==='Qto_WallBaseQuantities');
+    assert.ok(quantities && quantities.quantities.length>0);
+    useViewerStore.getState().createQuantitySet(M,wall.expressId,quantities.name,
+      quantities.quantities.map(quantity=>({name:quantity.name,value:quantity.value,quantityType:quantity.type,unit:quantity.unit})));
+  }
   const save=()=>{const s=useViewerStore.getState();return new StepExporter(s.models.get(M)!.ifcDataStore!,s.mutationViews.get(M)!).export({schema:'IFC4',applyMutations:true}).content;};
   const saved=save();await seedModelingSession({step:new TextDecoder().decode(saved)});
   const source=useViewerStore.getState().models.get(M)!.ifcDataStore!,view=useViewerStore.getState().mutationViews.get(M)!;configureMutationView(view,source);
@@ -52,12 +60,25 @@ it('#9296 reopened typed floor keeps property definitions and one relationship p
   const third=fresh.addStorey!(M,{Name:'Level 3',Elevation:6});
   const copied=fresh.copyElements!(M,walls.slice(0,4).map(w=>w.expressId),[{targetStoreyId:upper}]);
   assertRelationshipReferences(save());
-  fresh.copyElements!(M,copied.map(r=>r.expressId),[{targetStoreyId:third.expressId}]);
+  const second=fresh.copyElements!(M,copied.map(r=>r.expressId),[{targetStoreyId:third.expressId}]);
   const output=save();
   const text=assertRelationshipReferences(output);
   // Check type cardinality separately from property-definition reachability.
   const reopened=await new IfcParser().parseColumnar(output.slice().buffer as ArrayBuffer,{disableWorkerScan:true});
   const reader=new AnchorEntityReader(reopened,null);
+  const quantities=(id:number)=>{
+    const sets=extractQuantitiesOnDemand(reopened,id).filter(set=>set.name==='Qto_WallBaseQuantities');
+    assert.equal(sets.length,1,'one saved quantity set per wall');
+    return Object.fromEntries(sets[0].quantities.map(quantity=>[quantity.name,quantity.value]));
+  };
+  for (let i=0;i<copied.length;i++) {
+    assert.deepEqual(quantities(copied[i].expressId),quantities(walls[i].expressId));
+    assert.deepEqual(quantities(second[i].expressId),quantities(walls[i].expressId));
+  }
+  for (const recordType of ['IFCELEMENTQUANTITY','IFCRELDEFINESBYPROPERTIES']) {
+    const guids=[...reader.ids(recordType)].map(id=>reader.entity(id)!.attributes[0]);
+    assert.equal(new Set(guids).size,guids.length,`${recordType} GlobalIds are unique`);
+  }
   const relationships=[...reader.ids('IFCRELDEFINESBYTYPE')].map(id=>reader.entity(id)!);
   for (const [typeClass,productClass] of [['IFCWALLTYPE','IFCWALL'],['IFCDOORTYPE','IFCDOOR'],['IFCWINDOWTYPE','IFCWINDOW']] as const) {
     const types=[...reader.ids(typeClass)];assert.equal(types.length,1,`${typeClass} is present`);

@@ -391,4 +391,40 @@ describe('useCompare - teardown aborts the extraction (A2)', () => {
       assert.equal(state.compareRunning, false);
     });
   }
+
+  it('unmounting the panel while version A is being fingerprinted aborts the extraction', async () => {
+    let headReadsAtUnmount = -1;
+    const head = watchEntities(SLOW.headId);
+    watchEntities(SLOW.baseId, () => {
+      headReadsAtUnmount = head.reads();
+      const mounted = root;
+      root = null; // afterEach must not unmount it twice
+      mounted?.unmount();
+    });
+    let pending: Promise<void> | undefined;
+    act(() => { pending = hook!.runComparison(); });
+    await act(async () => { await pending; });
+    assert.notEqual(headReadsAtUnmount, -1, 'setup: the run reached version A\'s fingerprints');
+    assert.equal(head.reads(), headReadsAtUnmount, 'an unmounted panel\'s comparison must stop before fingerprinting version B');
+    assert.equal(useViewerStore.getState().compareRunning, false);
+  });
+
+  it('a second Run while version A is being fingerprinted aborts the first extraction', async () => {
+    // One undisturbed comparison of the same pair: how often it reads B.
+    const solo = watchEntities(SLOW.headId);
+    await act(async () => { await hook!.runComparison(); });
+    const onePass = solo.reads();
+    act(() => { hook!.clearCompare(); });
+
+    const head = watchEntities(SLOW.headId);
+    let second: Promise<void> | undefined;
+    watchEntities(SLOW.baseId, () => { second = hook!.runComparison(); });
+    let first: Promise<void> | undefined;
+    act(() => { first = hook!.runComparison(); });
+    await act(async () => { await first; await second; });
+    assert.ok(second, 'setup: the second run started while the first fingerprinted version A');
+    assert.ok(useViewerStore.getState().compareResult, 'the second run publishes');
+    // Only the second run fingerprints B: the first pinned it once, then stopped.
+    assert.equal(head.reads(), onePass + 1, 'the superseded run must stop, not fingerprint version B as well');
+  });
 });

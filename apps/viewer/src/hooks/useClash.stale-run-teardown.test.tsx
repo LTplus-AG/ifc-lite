@@ -496,6 +496,43 @@ describe('a teardown mid-run aborts the clash engine and stops its writes (A2)',
     assert.equal(s.clashProgress, null);
   });
 
+  /**
+   * The duplicate scan is synchronous from the gather to the publish, so the
+   * guard's deferred cancel cannot have bumped the epoch by then, and a
+   * session reset keeps `models`, so the federation identity passes too. Only
+   * the guard, checked AT the publish, refuses it (review of #9545).
+   */
+  it('a session reset while runDuplicates gathers: the scan publishes nothing into the new session', async () => {
+    await seed(['A']);
+    const seqBefore = useViewerStore.getState().clashRunSeq;
+    useViewerStore.setState((s) => {
+      const models = new Map(s.models);
+      const a = models.get('A')!;
+      const aStore = a.ifcDataStore!;
+      let fired = false;
+      models.set('A', {
+        ...a,
+        get ifcDataStore() {
+          if (!fired) {
+            fired = true;
+            useViewerStore.getState().resetViewerState();
+          }
+          return aStore;
+        },
+      } as FederatedModel);
+      return { models };
+    });
+
+    await act(async () => { await api!.runDuplicates(); });
+
+    const s = useViewerStore.getState();
+    assert.ok(s.models.has('A'), 'setup sanity: the session reset keeps the models');
+    assert.equal(s.clashResult, null, 'the outgoing session\'s scan must not publish into the new one');
+    assert.equal(s.clashGroups, null);
+    assert.equal(s.clashRunSeq, seqBefore);
+    assert.ok(!captured.includes('clash_duplicate_scan'));
+  });
+
   it('a model ADDED mid-run neither aborts nor silences the run', async () => {
     await seed(['A']);
     const extra = await parse(TWO_WALLS);

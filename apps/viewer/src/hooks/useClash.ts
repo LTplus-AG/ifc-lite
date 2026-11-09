@@ -388,19 +388,21 @@ export function useClash() {
    * completion signal bumped AFTER a successful write, not a cancellation
    * guard (see its field doc in `clashSlice`).
    *
-   * `epoch` is the calling `run()` / `runDuplicates()` invocation's own token
-   * from `runEpochRef` (see its doc above `elementsByRef`): a SECOND call
-   * issued while the federation is untouched carries the same
-   * `federationIdentity`, so that check alone cannot refuse an older call
-   * that is merely finishing after a newer one. `stillWanted(epoch)` is what
-   * catches that case immediately before the write.
+   * `owns` is the calling `run()` / `runDuplicates()` invocation's own check:
+   * its epoch from `runEpochRef` (see its doc above `elementsByRef`) AND its
+   * analysis-run guard. A SECOND call issued while the federation is untouched
+   * carries the same `federationIdentity`, so that check alone cannot refuse
+   * an older call that is merely finishing after a newer one; the epoch does.
+   * A session reset keeps `models`, so the identity passes it too, and its
+   * epoch bump is deferred to a microtask; the guard refuses it in the same
+   * tick (A2). Both are checked immediately before the write.
    *
    * @returns whether the result was published. A discarded run must not go on
    *   to write its dependent state (groups, selection, telemetry) either.
    */
   const publishClashResult = useCallback(
-    (federationIdentity: ClashFederationIdentity, res: ClashResult, epoch: number, stamp: AnalysisStamp): boolean => {
-      if (!stillWanted(epoch)) return false;
+    (federationIdentity: ClashFederationIdentity, res: ClashResult, owns: () => boolean, stamp: AnalysisStamp): boolean => {
+      if (!owns()) return false;
       const state = useViewerStore.getState();
       if (!federationIsCurrent(federationIdentity, state.models) || !jobPlacementIsCurrent(federationIdentity, state)) return false;
       // The identity travels WITH the result object. Publish-time currency is
@@ -413,7 +415,7 @@ export function useClash() {
       state.bumpClashRunSeq();
       return true;
     },
-    [stillWanted],
+    [],
   );
 
   /**
@@ -492,7 +494,7 @@ export function useClash() {
         // groups by its own dimension separately. Discarded outright if the
         // federation it examined is gone, or if a newer call has started —
         // see `publishClashResult`.
-        if (!publishClashResult(federationIdentity, res, myEpoch, stamp)) return;
+        if (!publishClashResult(federationIdentity, res, owns, stamp)) return;
         rememberModelTagInputs(res, tagInputs);
         rememberRunRequest(res, request);
         state.setClashSelectedId(null);
@@ -613,8 +615,9 @@ export function useClash() {
       // Bounded for the same reason as the clash run above (#2385).
       await nextFrameOrTimeout(PAINT_FRAME_WAIT_MS);
       if (!owns()) return;
+      // No `guard.track`: the scan is synchronous up to the publish, so there is
+      // nothing to abort early; the publish checks the identity and the guard.
       const { elements, exclusions, federationIdentity } = gatherElements();
-      guard.track(federationIdentity);
       if (elements.length === 0) {
         state.setClashError('No model geometry is loaded. Load an IFC model first.');
         return;
@@ -634,7 +637,7 @@ export function useClash() {
       // must not be one line apart in correctness: adding a yield to the
       // duplicate scan tomorrow would otherwise reopen the defect on this path
       // alone, silently.
-      if (!publishClashResult(federationIdentity, res, myEpoch, stamp)) return;
+      if (!publishClashResult(federationIdentity, res, owns, stamp)) return;
       rememberRunRequest(res, { kind: 'duplicates' });
       // Coincident SETS, not spatial clusters: three copies of one column are one
       // finding, and two unrelated duplicate pairs a metre apart stay two. The

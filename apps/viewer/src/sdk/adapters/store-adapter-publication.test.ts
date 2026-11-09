@@ -145,6 +145,8 @@ for (const failAt of [1, 3]) it(`roof edit property publication failure after ${
       stash: state.removedNewEntities, dirty: state.dirtyModels, version: state.mutationVersion });
   };
   const before = snapshot(), peerBefore = session.snapshot().data;
+  const editRoof = adapter.editRoof;
+  assert.ok(editRoof, 'the viewer implements roof edits');
   const observations: unknown[] = [];
   session.doc.on('afterTransaction', () => observations.push(session.snapshot().data));
   const original = useViewerStore.getState().mirrorPropertyEdit;
@@ -154,7 +156,7 @@ for (const failAt of [1, 3]) it(`roof edit property publication failure after ${
     if (++writes === failAt) throw new Error('Injected roof property publication failure');
   } });
   try {
-    assert.throws(() => adapter.editRoof(roof, { Edge: { Index: 1, Slope: 0 }, Overhang: .5 }), /Injected roof property publication failure/);
+    assert.throws(() => editRoof(roof, { Edge: { Index: 1, Slope: 0 }, Overhang: .5 }), /Injected roof property publication failure/);
     assert.deepEqual(snapshot(), before, 'a refused edit leaves graph, allocator and history untouched');
     assert.deepEqual(session.snapshot().data, peerBefore);
     assert.ok(observations.length > 0, 'real publication was attempted');

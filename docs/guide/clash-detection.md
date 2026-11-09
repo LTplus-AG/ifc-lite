@@ -234,6 +234,11 @@ live result **Outdated run**. These states never receive a passing category.
 The checked population is the geometry objects eligible for the check, not every
 IFC entity in the file.
 
+For files containing repeated GlobalIds, clash IDs now include entity references
+to distinguish the affected objects. Comparing a new run against an older saved
+run can therefore show resolved and added findings. Establish a new baseline
+after upgrading. Clash IDs for objects with unique GlobalIds are unchanged.
+
 **Saved clash reports** captures the gate, the current category policy and model
 identities with the run's rule and tolerances. Later preference edits leave that
 evidence unchanged. Expand a saved report's **Quality gates**, then choose

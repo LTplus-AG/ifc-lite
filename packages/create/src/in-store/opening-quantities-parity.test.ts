@@ -11,7 +11,7 @@ it.each(['IFC4', 'IFC2X3'] as const)('derives door and window dimensions from li
   const c = new IfcCreator({ Schema });
   const { store } = await parseModel(new TextEncoder().encode(c.toIfc().content), { disableWorkerScan: true });
   const view = new MutablePropertyView(null, 'm'), editor = new StoreEditor(store, view);
-  for (const type of ['IfcDoor', 'IfcWindow']) {
+  for (const type of (Schema === 'IFC4' ? ['IfcDoor', 'IfcWindow', 'IfcDoorStandardCase', 'IfcWindowStandardCase'] : ['IfcDoor', 'IfcWindow'])) {
     const id = editor.addEntity(type, ['0Door_A_00000000000001', null, 'D1', null, null, null, null, 'D-01', 2.1, .9]).expressId;
     const values = () => Object.fromEntries(deriveAuthoredBaseQuantities(store, view, id)[0]?.quantities.map(q => [q.name, q.value]) ?? []);
     expect(values()).toMatchObject({ Width: .9, Height: 2.1, Area: 1.89 });
@@ -71,4 +71,11 @@ it.each(['IfcDoor', 'IfcWindow', 'IfcStair', 'IfcCurtainWall'])('does not invent
   // assembly contract must not acquire Qto_BeamBaseQuantities.
   editor.setEntityType(col.columnId, type);
   expect(deriveAuthoredBaseQuantities(store, view, col.columnId)).toEqual([]);
+});
+
+it('intentionally derives no quantity set for a zero-width door (#9423 round 3)', async () => {
+  const { store } = await parseModel(new TextEncoder().encode(new IfcCreator().toIfc().content), { disableWorkerScan: true });
+  const view = new MutablePropertyView(null, 'm'), editor = new StoreEditor(store, view);
+  const id = editor.addEntity('IfcDoor', ['0Door_A_00000000000001', null, 'Degenerate door', null, null, null, null, 'D-0', 2.1, 0]).expressId;
+  expect(deriveAuthoredBaseQuantities(store, view, id)).toEqual([]);
 });

@@ -15,8 +15,9 @@ import { roomChainInStore, rewriteRoomOutlineInStore } from './room-store.js';
 import { readAttributes } from './edit/placement-core.js';
 import { interiorPoint } from './room-candidates.js';
 
-export function prepareGeneratedRoomUpdate(store: IfcDataStore, editor: StoreEditor, storeyIds: readonly number[]): () => number[] {
+export function prepareGeneratedRoomUpdate(store: IfcDataStore, editor: StoreEditor, storeyIds: readonly number[], notices: string[] = []): () => number[] {
   if (!storeyIds.length) return () => [];
+  const report = (message: string) => { notices.push(message); console.warn(`[auto-spaces] ${message}`); };
   const view = editor.getMutationView();
   const hasGenerated = [...iterateEffectiveEntities(store, view, ['IFCSPACE'])]
     .some(({ expressId }) => readAttributes(store, view, editor, expressId)?.[4] === GENERATED_SPACE_OBJECTTYPE);
@@ -52,7 +53,7 @@ export function prepareGeneratedRoomUpdate(store: IfcDataStore, editor: StoreEdi
       const p = interiorPoint(space.footprint);
       const region = regions.find(r => pointInPolygon(p[0], p[1], r.region.outline));
       if (!region) {
-        console.warn(`[auto-spaces] Generated room #${space.expressId} cannot be re-detected with snap tolerance ${snapTolerance} m; its boundary and quantities will remain unchanged.`);
+        report(`Generated room #${space.expressId} cannot be re-detected with snap tolerance ${snapTolerance} m; its boundary and quantities will remain unchanged.`);
         return [];
       }
       const mode = (['inner', 'center', 'outer'] as const).reduce((best, m) =>
@@ -61,17 +62,24 @@ export function prepareGeneratedRoomUpdate(store: IfcDataStore, editor: StoreEdi
     });
   });
   return () => {
-    cache.clear(); // The wall edit has committed to the draft; re-read its geometry once per settings group.
-    return plans.map(plan => {
-      const region = detect(plan.storeyId, plan.snapTolerance, plan.minArea).find(r => r.walls === plan.walls);
-      if (!region) throw new Error(`Cannot retain generated room #${plan.id}: bounding walls no longer enclose its region`);
-      const target = roomChainInStore(store, editor, plan.id);
-      if (!target.ok) throw new Error(`Cannot update generated room #${plan.id}: ${target.reason}`);
-      rewriteRoomOutlineInStore(store, editor, plan.id, target.chain, region.outline(plan.mode), {
-        grossArea: region.region.area, netArea: polygonArea(region.outline('inner')),
-        grossPerimeter: polygonPerimeter(region.region.outline), netPerimeter: polygonPerimeter(region.outline('inner')),
-      });
-      return plan.id;
-    });
+    cache.clear(); // Re-read the changed walls once per settings group.
+    try {
+      // One checkpoint for the room batch, not one whole-graph copy per room.
+      // Failure retains every existing room while the enclosing move continues.
+      return editor.runAtomic(draft => plans.flatMap(plan => {
+        const region = detect(plan.storeyId, plan.snapTolerance, plan.minArea).find(r => r.walls === plan.walls);
+        if (!region) { report(`Generated room #${plan.id}: boundary topology changed; retained its outline and quantities.`); return []; }
+        const target = roomChainInStore(store, draft, plan.id);
+        if (!target.ok) throw new Error(`Cannot update generated room #${plan.id}: ${target.reason}`);
+        rewriteRoomOutlineInStore(store, draft, plan.id, target.chain, region.outline(plan.mode), {
+          grossArea: region.region.area, netArea: polygonArea(region.outline('inner')),
+          grossPerimeter: polygonPerimeter(region.region.outline), netPerimeter: polygonPerimeter(region.outline('inner')),
+        });
+        return [plan.id];
+      }));
+    } catch (error) {
+      report(`Generated room updates unavailable (${error instanceof Error ? error.message : String(error)}); retained existing outlines and quantities.`);
+      return [];
+    }
   };
 }

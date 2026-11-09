@@ -17,7 +17,7 @@ type Row = readonly [string, QuantityType.Length | QuantityType.Area | QuantityT
 /** SI measures from the canonical occurrence readers, without bounding-box volumes. */
 export function additionalQuantityRows(target: EditTarget, id: number, type: string): Row[] | null {
   const { dataStore: store, view, editor } = target, scale = getModelLengthUnitScale(store);
-  if (type === 'IFCDOOR' || type === 'IFCWINDOW') {
+  if (['IFCDOOR', 'IFCDOORSTANDARDCASE', 'IFCWINDOW', 'IFCWINDOWSTANDARDCASE'].includes(type)) {
     const attrs = readAttributes(store, view, editor, id), h = attrs?.[8], w = attrs?.[9];
     if (typeof w !== 'number' || typeof h !== 'number' || !Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return null;
     return [['Width', QuantityType.Length, w * scale], ['Height', QuantityType.Length, h * scale], ['Area', QuantityType.Area, w * h * scale ** 2]];

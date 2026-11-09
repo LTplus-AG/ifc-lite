@@ -8,6 +8,8 @@ import { parseModel, extractPropertiesOnDemand } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor, recordCompoundMutation, undoRecordedMutationOperations } from '@ifc-lite/mutations';
 import { resolveSpatialAnchor } from './resolve-anchor.js';
 import { addWallToStore } from './wall.js';
+import * as roomGeneration from './generate-spaces.js';
+import { resolvePlacementChain } from './edit/placement-core.js';
 import { generateSpacesFromWalls } from './generate-spaces.js';
 import { transformElementsInStore } from './element-transform-edit.js';
 import { roomChainInStore } from './room-store.js';
@@ -133,4 +135,29 @@ it('finds session-authored rooms reclassified as IfcSpace while excluding remove
   }
   transformElementsInStore({ dataStore: s.store, view: s.view, editor: s.editor, selected: [s.partition], op: { kind: 'move', delta: [1, 0] } });
   expect(s.areas()).toEqual([expect.closeTo(22.33, 5), expect.closeTo(33.93, 5)]);
+});
+
+it('moving a partition outside the enclosure succeeds and retains rooms with notices (#9423 round 3)', async () => {
+  const s = await setup();
+  const before = s.areas();
+  const result = transformElementsInStore({ dataStore: s.store, view: s.view, editor: s.editor, selected: [s.partition], op: { kind: 'move', delta: [6, 0] } });
+  expect(result.remesh).toContain(s.partition);
+  expect(result.notices.length).toBeGreaterThan(0);
+  expect(s.areas()).toEqual(before);
+  expect(resolvePlacementChain(s.store, s.view, s.editor, s.partition)?.coordinates[0]).toBe(11);
+});
+it('a direct transform rolls back placement writes when a later graph step fails (#9423 round 3)', async () => {
+  const s = await setup();
+  const before = s.view.getMutations();
+  expect(() => transformElementsInStore({ dataStore: s.store, view: s.view, editor: s.editor, selected: [s.partition], op: { kind: 'move', delta: [1, 0] }, carryJoins: () => { throw new Error('Injected join failure'); } })).toThrow('Injected join failure');
+  expect(resolvePlacementChain(s.store, s.view, s.editor, s.partition)?.coordinates[0]).toBe(5);
+  expect(s.view.getMutations()).toEqual(before);
+});
+it('detects once per settings group before and after a multi-room move (#9423 round 3)', async () => {
+  const s = await setup();
+  const detect = vi.spyOn(roomGeneration, 'generateSpacesFromWalls');
+  try {
+    transformElementsInStore({ dataStore: s.store, view: s.view, editor: s.editor, selected: [s.partition], op: { kind: 'move', delta: [1, 0] } });
+    expect(detect.mock.calls.filter(call => call[3]?.dryRun)).toHaveLength(2);
+  } finally { detect.mockRestore(); }
 });

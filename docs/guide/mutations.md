@@ -680,7 +680,7 @@ const result = generateSpacesFromWalls(editor, dataStore, storeyExpressId, {
 // → { wallsConsidered, wallsContributing, detected: DetectedSpace[], emitted: [...] }
 ```
 
-By default, generated spaces use the inner wall faces, including joined wall thickness, and store paired `NetFloorArea`/`NetPerimeter` (inner faces) and `GrossFloorArea`/`GrossPerimeter` (centrelines) in `Qto_SpaceBaseQuantities`. Moving a bounding wall through `transformElementsInStore` updates generated space outlines and quantities in the same edit; the SDK records that edit as one undo operation.
+By default, generated spaces use the inner wall faces, including joined wall thickness, and store paired `NetFloorArea`/`NetPerimeter` (inner faces) and `GrossFloorArea`/`GrossPerimeter` (centrelines) in `Qto_SpaceBaseQuantities`. Moving a bounding wall through `transformElementsInStore` updates generated space outlines and quantities in the same atomic edit; the SDK records it as one undo operation. If the move changes room topology or a room cannot be updated, the room is retained and the result returns a notice (also logged), while the wall move still succeeds. Transform hooks receive the draft editor and must write through it.
 
 Generated spaces retain their snap tolerance and minimum area in `IfcLite_SpaceGeneration`, so boundary edits use the same detection settings after export and reopen. If a legacy generated space cannot be re-detected, the edit emits a warning identifying the space rather than silently keeping stale quantities.
 

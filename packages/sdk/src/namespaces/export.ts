@@ -262,7 +262,7 @@ export class ExportNamespace {
   /** Match CLI resolveColumnValue: supplied quantities win over native opening dimensions. */
   private openingDimension(data: EntityData, column: string, attributes: () => EntityAttributeData[]): unknown {
     const opening = /^Qto_(Door|Window)BaseQuantities\.(Width|Height)$/.exec(column);
-    if (!opening || data.type !== `Ifc${opening[1]}`) return null;
+    if (!opening || ![`Ifc${opening[1]}`, `Ifc${opening[1]}StandardCase`].includes(data.type)) return null;
     return attributes().find(attr => attr.name === `Overall${opening[2]}`)?.value ?? null;
   }
 

@@ -27,11 +27,11 @@ const elements = [
 
 /** Node's `MessagePort` speaks `on`/`off`; adapt it to the DOM-style port the bridge uses. */
 function port(p: import('node:worker_threads').MessagePort): BridgePort {
-  const map = new Map<(e: { data: unknown }) => void, (data: unknown) => void>();
+  const map = new Map<(e: { data?: unknown }) => void, (data: unknown) => void>();
   return {
     postMessage: (m) => p.postMessage(m),
-    addEventListener: (_t, l) => { const h = (data: unknown) => l({ data }); map.set(l, h); p.on('message', h); },
-    removeEventListener: (_t, l) => { const h = map.get(l); if (h) p.off('message', h); },
+    addEventListener: (t, l) => { if (t !== 'message') return; const h = (data: unknown) => l({ data }); map.set(l, h); p.on('message', h); },
+    removeEventListener: (t, l) => { const h = map.get(l); if (t === 'message' && h) p.off('message', h); },
   };
 }
 

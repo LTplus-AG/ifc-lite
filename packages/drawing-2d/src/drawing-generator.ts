@@ -46,7 +46,6 @@ import {
 import { isFeatureElementType } from './feature-elements.js';
 import { projectionBandMeshes, clipMeshToProjectionWindow } from './projection-clip.js';
 import { removeCoveredOverhead } from './projection-overlap.js';
-import { dropOutlierProjectionLines } from './projection-outliers.js';
 import {
   boundsEmpty,
   boundsExtendLine,
@@ -312,11 +311,8 @@ export class Drawing2DGenerator {
         }
       }
 
-      // Drop artifact lines abnormally longer than the drawing: the cut area
-      // together with the meshes' footprint on the drawing plane.
-      projectionLines = dropOutlierProjectionLines(
-        projectionLines, this.computeBounds(cutLines), meshes, config.plane,
-      );
+      // Projection edges are bounded by the configured depth and visibility,
+      // not by the cut extent: an elevation can legitimately cut only a post.
 
       if (config.clipProjectionBands && config.plane.axis === 'y' && !config.plane.customPlane) {
         projectionLines = removeCoveredOverhead(projectionLines);

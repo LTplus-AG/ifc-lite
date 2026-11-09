@@ -16,7 +16,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { IfcParser, extractQuantitiesOnDemand, extractPropertiesOnDemand, propertyDefinitionRefsOfValue, type IfcDataStore } from '@ifc-lite/parser';
-import { MutablePropertyView, StoreEditor, recordCompoundMutation, undoRecordedMutationOperations } from '@ifc-lite/mutations';
+import { MutablePropertyView, StoreEditor, recordCompoundMutation, undoRecordedMutationOperations, iterateEffectiveEntityIds } from '@ifc-lite/mutations';
 import { resolveDuplicateSource } from './resolve-source.js';
 import { duplicateInStore } from './duplicate.js';
 import { StepExporter } from '@ifc-lite/export';
@@ -168,12 +168,17 @@ describe('Metadata clone over RelatingPropertyDefinition spellings (#7681)', () 
 });
 
 
-for (const quantity of [false, true]) it(`#9296 a copied edited ${quantity ? 'quantity' : 'property'} in the second definition keeps its current value`, async () => {
+function populatedSecondDefinition(quantity: boolean): string {
   let source = IFC.replace("'Pset_A',$,());", "'Pset_A',$,(#96));")
     .replace("'Qto_B',$,$,());", "'Qto_B',$,$,(#97));")
     .replace('ENDSEC;\nEND-ISO', "#96=IFCPROPERTYSINGLEVALUE('Code',$,IFCLABEL('kept'),$);\n#97=IFCQUANTITYLENGTH('Length',$,$,5.,$);\nENDSEC;\nEND-ISO");
   if (!quantity) source = source.replace(/^#83=.*$/m, "#83=IFCPROPERTYSET('0PSET00000000000000083',$,'Pset_B',$,(#97));")
     .replace("#97=IFCQUANTITYLENGTH('Length',$,$,5.,$);", "#97=IFCPROPERTYSINGLEVALUE('Code',$,IFCLABEL('old'),$);");
+  return source;
+}
+
+for (const quantity of [false, true]) it(`#9296 a copied edited ${quantity ? 'quantity' : 'property'} in the second definition keeps its current value`, async () => {
+  const source = populatedSecondDefinition(quantity);
   const { store, view, editor } = await session(source);
   view.setOnDemandExtractor(id => extractPropertiesOnDemand(store, id));
   view.setQuantityExtractor(id => extractQuantitiesOnDemand(store, id));
@@ -190,6 +195,33 @@ for (const quantity of [false, true]) it(`#9296 a copied edited ${quantity ? 'qu
   expect(definitions.filter(name => name === (quantity ? 'Qto_B' : 'Pset_B'))).toHaveLength(1);
   if (quantity) expect(extractQuantitiesOnDemand(reopened, copy).find(set => set.name === 'Qto_B')?.quantities[0].value).toBe(23);
   else expect(extractPropertiesOnDemand(reopened, copy).find(set => set.name === 'Pset_B')?.properties[0].value).toBe('effective');
+});
+
+for (const directSavedOwner of [false, true]) it(`#9296 editing Pset_B on #51 then copying keeps every IfcRoot GlobalId unique (direct saved owner: ${directSavedOwner})`, async () => {
+  let source = populatedSecondDefinition(false);
+  if (directSavedOwner) source = source.replace('(#52),IFCPROPERTYSETDEFINITIONSET((#82,#83))', '(#52),#83');
+  const { store, view, editor } = await session(source);
+  view.setOnDemandExtractor(id => extractPropertiesOnDemand(store, id));
+  view.setProperty(51, 'Pset_B', 'Code', 'effective');
+  const copy = copyBatchInStore(store, editor, [51], [{ offset: [0, 2, 0] }])[0].copyId;
+  const exported = new StepExporter(store, view).export({ schema: 'IFC4', applyMutations: true }).content;
+  const reopened = await new IfcParser().parseColumnar(exported.slice().buffer as ArrayBuffer, { disableWorkerScan: true });
+  const reader = new AnchorEntityReader(reopened, null);
+  // Also exercise #83 retained by an untouched direct owner. Regenerated
+  // source and copy sets need distinct identities whether #83 survives or not.
+  const savedGlobalId = '0PSET00000000000000083';
+  if (directSavedOwner) expect(reader.entity(83)?.attributes[0]).toBe(savedGlobalId);
+  const copied = extractPropertiesOnDemand(reopened, copy).find(set => set.name === 'Pset_B');
+  expect(copied?.properties.find(member => member.name === 'Code')?.value).toBe('effective');
+  expect(copied?.globalId).not.toBe(savedGlobalId);
+  const roots = [...iterateEffectiveEntityIds(reopened, null)].flatMap(({ expressId }) => {
+    const entity = reader.entity(expressId)!;
+    const index = entity.names.indexOf('GlobalId');
+    return index < 0 ? [] : [{ expressId, globalId: entity.attributes[index] }];
+  });
+  expect(roots.map(root => root.expressId)).toEqual(expect.arrayContaining(directSavedOwner ? [51, 83, copy] : [51, copy]));
+  expect(roots.every(root => typeof root.globalId === 'string' && root.globalId.length > 0)).toBe(true);
+  expect(new Set(roots.map(root => root.globalId)).size).toBe(roots.length);
 });
 
 for (const quantity of [false, true]) for (const operation of ['shared', 'second', 'delete', 'delete-last'] as const) it(`#9296 same-named ${quantity ? 'quantity' : 'property'} definitions retain ${operation} edits on copy and undo`, async () => {

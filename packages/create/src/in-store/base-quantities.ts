@@ -337,9 +337,8 @@ function deriveSet(dataStore: IfcDataStore, view: MutablePropertyView, expressId
     const { editor } = revision;
     const reading: Reading = { dataStore, view, editor, scale: getModelLengthUnitScale(dataStore), openingsOf: (hostId) => openingsOf({ editor }, hostId) };
     const extra = additionalQuantityRows({ dataStore, view, editor }, expressId, type);
-    const isRoof = type === 'IFCROOF';
     const set = extra ? toQuantitySet(dataStore, reading.scale, baseQuantitySetName(type)!, extra) : WALL_TYPES.has(type) ? wallSet(reading, expressId)
-      : SLAB_TYPES.has(type) ? slabLikeSet(reading, expressId, isRoof) ?? (isRoof ? pitchedRoofSet(reading, expressId) : null)
+      : SLAB_TYPES.has(type) ? slabLikeSet(reading, expressId, type === 'IFCROOF') ?? (type === 'IFCROOF' ? pitchedRoofSet(reading, expressId) : null)
         : LINEAR_TYPES.has(type) ? linearSet(reading, expressId, type) : null;
     return set ? { set, reading } : null;
   } catch (error) {

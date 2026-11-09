@@ -434,7 +434,7 @@ with the engine-support tripwire firing:
       `js-sys` / `web-sys` moved in lockstep as required.
 - [x] Blocker 3 worked around (2026-11-09): `pkg-wide` and its determinism
       test build on `WIDE_TOOLCHAIN` (LLVM >= 23, llvm/llvm-project#200429),
-      and `scripts/build-wasm.sh` refuses an older LLVM. If the repo pin ever
+      and `scripts/lib/build-wasm-wide.sh` refuses an older LLVM. If the repo pin ever
       moves to LLVM >= 23, `WIDE_TOOLCHAIN` can fold back into it.
 - [ ] Blocker 2 cleared: `WebAssembly.validate()` of the probe in
       `packages/geometry/src/wasm-features.ts` (see the Delivery plan above)

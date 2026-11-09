@@ -233,69 +233,13 @@ if [ "${BUILD_THREADED:-}" = "1" ]; then
 fi
 
 # --- Optional third bundle: wide-arithmetic ---------------------------------
-# Off by default. Enable with `BUILD_WIDE=1 ./scripts/build-wasm.sh`.
-# Same single-thread bundle as `pkg`, plus the wasm wide-arithmetic proposal
-# (+wide-arithmetic), which maps the exact-CSG kernel's bnum 64x64->128 limb
-# products to i64.mul_wide / i64.add128 instead of __multi3 libcalls. Measured
-# ~1.7x on a real void cut (docs/architecture/wasm-wide-arithmetic.md). Selected
-# at runtime via a WebAssembly.validate() probe (packages/geometry/src/wasm-features.ts,
-# NOT yet created — see docs/architecture/wasm-wide-arithmetic.md delivery plan);
-# engines without the proposal load the `pkg` bundle and are unaffected.
+# Off by default. Enable with `BUILD_WIDE=1 ./scripts/build-wasm.sh`. Builds on
+# its own LLVM >= 23 toolchain (WIDE_TOOLCHAIN); the why, and the refusal rules,
+# live with the function in scripts/lib/build-wasm-wide.sh.
 if [ "${BUILD_WIDE:-}" = "1" ]; then
-  WIDE_OUT="../../packages/wasm/pkg-wide"
-  # Its own toolchain, newer than the repo pin (rust-toolchain.toml), because
-  # LLVM < 23 miscompiles wide-arithmetic: WebAssemblyRegStackify stackified the
-  # first result of the two-result i64.mul_wide_s, so `i64::checked_mul` compared
-  # a stale operand instead of the high word and reported overflow for 5 * 7.
-  # Fixed upstream by llvm/llvm-project#200429 (LLVM 23 only; LLVM 22.1.8 is
-  # still affected). The default bundles never emit these ops, so they stay on
-  # the repo pin. Override with WIDE_TOOLCHAIN=... to try another nightly; the
-  # LLVM check below still applies. See docs/architecture/wasm-wide-arithmetic.md.
-  WIDE_TOOLCHAIN="${WIDE_TOOLCHAIN:-nightly-2026-10-15}"
-  WIDE_LLVM_MAJOR="$(rustup run "$WIDE_TOOLCHAIN" rustc -vV 2>/dev/null | sed -n 's/^LLVM version: \([0-9]*\).*/\1/p')"
-  if [ -z "$WIDE_LLVM_MAJOR" ]; then
-    echo "🔢 ❌ cannot read the LLVM version of $WIDE_TOOLCHAIN — install it with:"
-    echo "      rustup toolchain install $WIDE_TOOLCHAIN --profile minimal --target wasm32-unknown-unknown --component rust-src"
-    exit 1
-  fi
-  if [ "$WIDE_LLVM_MAJOR" -lt 23 ]; then
-    echo "🔢 ❌ $WIDE_TOOLCHAIN uses LLVM $WIDE_LLVM_MAJOR, which miscompiles i64 overflow checks under"
-    echo "      +wide-arithmetic (llvm/llvm-project#200429, fixed in LLVM 23). Refusing to build a wrong bundle."
-    exit 1
-  fi
-  echo ""
-  echo "🔢 Building wide-arithmetic bundle → $WIDE_OUT (+wide-arithmetic, $WIDE_TOOLCHAIN / LLVM $WIDE_LLVM_MAJOR)"
-  # RUSTFLAGS fully replaces .cargo/config.toml's target rustflags, so repeat the
-  # base flags (max-memory, stack-size, simd128) and add +wide-arithmetic.
-  RUSTFLAGS="-C link-arg=--max-memory=4294967296 -C link-arg=-zstack-size=8388608 -C target-feature=+simd128,+wide-arithmetic" \
-  rustup run "$WIDE_TOOLCHAIN" "$WASM_PACK" build rust/wasm-bindings \
-    --target web \
-    --out-dir "$WIDE_OUT" \
-    --out-name ifc-lite \
-    --release \
-    -- $FEATURES
-
-  WIDE_REL="$(echo "$WIDE_OUT" | sed 's|^../../||')"
-  WIDE_DTS="$WIDE_REL/ifc-lite.d.ts"
-  if [ -f "$WIDE_DTS" ]; then
-    grep -v '__wasm_bindgen_func_elem_' "$WIDE_DTS" > "$WIDE_DTS.tmp" && mv "$WIDE_DTS.tmp" "$WIDE_DTS"
-  fi
-  # Litmus test: the bundle must actually contain wide-arithmetic ops.
-  # wasm-tools is REQUIRED for BUILD_WIDE=1 — without it we cannot verify the
-  # bundle isn't silently baseline wasm, so refuse to proceed rather than ship
-  # an unverified bundle.
-  if ! command -v wasm-tools >/dev/null 2>&1; then
-    echo "🔢 ❌ wasm-tools not found — required for BUILD_WIDE=1 to verify wide ops; refusing to ship an unverified bundle"
-    echo "      Install it with: cargo install wasm-tools"
-    exit 1
-  fi
-  if [ "$(wasm-tools print "$WIDE_REL/ifc-lite_bg.wasm" 2>/dev/null | grep -cE 'mul_wide|add128|sub128')" -gt 0 ]; then
-    echo "🔢 ✅ wide-arithmetic bundle emits wide ops"
-  else
-    echo "🔢 ❌ wide-arithmetic bundle has NO wide ops — flags wrong; refusing to ship"
-    exit 1
-  fi
-  ls -lh "$WIDE_REL/ifc-lite_bg.wasm" | awk '{print "   Wide WASM: " $5 " (no budget — not the default bundle)"}'
+  # shellcheck source=lib/build-wasm-wide.sh
+  . "$SCRIPT_DIR/lib/build-wasm-wide.sh"
+  build_wide_bundle || exit 1
 fi
 
 # --- Optional bundle: retained browser executor ------------------------------

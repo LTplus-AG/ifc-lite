@@ -63,7 +63,7 @@
 #    5 * 7 (first seen here 2026-11-04 as an i_float "attempt to multiply with
 #    overflow" panic). Fixed by llvm/llvm-project#200429, LLVM 23 only. The repo
 #    pin (nightly-2025-11-15) is LLVM 21, so the wide bundle and its test build
-#    on WIDE_TOOLCHAIN below; scripts/build-wasm.sh refuses LLVM < 23.
+#    on WIDE_TOOLCHAIN below; scripts/lib/build-wasm-wide.sh refuses LLVM < 23.
 #
 # Cost: weekly + on-demand only, same profile as determinism.yml, and
 # deliberately NOT a `pull_request` trigger — this must never become a
@@ -94,7 +94,8 @@ env:
     -C link-arg=--max-memory=4294967296
     -C link-arg=-zstack-size=8388608
     -C target-feature=+simd128,+wide-arithmetic
-  # Must match WIDE_TOOLCHAIN's default in scripts/build-wasm.sh. Newer than the
+  # Must match WIDE_TOOLCHAIN_DEFAULT in scripts/lib/build-wasm-wide.sh (a test
+  # checks it). Newer than the
   # repo pin because LLVM < 23 miscompiles wide-arithmetic (gate 3 above).
   WIDE_TOOLCHAIN: nightly-2026-10-15
 

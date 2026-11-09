@@ -7,6 +7,9 @@ import assert from 'node:assert/strict';
 import { it } from 'node:test';
 import { IfcCreator } from '@ifc-lite/create';
 import { StepExporter } from '@ifc-lite/export';
+import { IfcParser } from '@ifc-lite/parser';
+import { AnchorEntityReader } from '../../../../../packages/create/src/in-store/resolve-anchor.js';
+import { asRef, refList } from '../../../../../packages/create/src/in-store/style-entity-reader.js';
 import { useViewerStore } from '@/store';
 import { seedModelingSession, MODEL_ID } from '@/test/modeling-session-fixture';
 import { ensureRoomWasm } from '@/test/room-walls-fixture';
@@ -25,7 +28,7 @@ function assertRelationshipReferences(output: Uint8Array): string {
   return text;
 }
 
-it('#9296 reopened typed floor can be copied twice without dangling property definitions',async t=>{
+it('#9296 reopened typed floor keeps property definitions and one relationship per type',async t=>{
   if (!ensureRoomWasm(t)) return;
   const c=new IfcCreator(), ground=c.addIfcBuildingStorey({Name:'Level 1',Elevation:0}), upper=c.addIfcBuildingStorey({Name:'Level 2',Elevation:3});
   await seedModelingSession({step:c.toIfc().content});await loadStoreyAdapter();
@@ -52,6 +55,17 @@ it('#9296 reopened typed floor can be copied twice without dangling property def
   fresh.copyElements!(M,copied.map(r=>r.expressId),[{targetStoreyId:third.expressId}]);
   const output=save();
   const text=assertRelationshipReferences(output);
+  // Check type cardinality separately from property-definition reachability.
+  const reopened=await new IfcParser().parseColumnar(output.slice().buffer as ArrayBuffer,{disableWorkerScan:true});
+  const reader=new AnchorEntityReader(reopened,null);
+  const relationships=[...reader.ids('IFCRELDEFINESBYTYPE')].map(id=>reader.entity(id)!);
+  for (const [typeClass,productClass] of [['IFCWALLTYPE','IFCWALL'],['IFCDOORTYPE','IFCDOOR'],['IFCWINDOWTYPE','IFCWINDOW']] as const) {
+    const types=[...reader.ids(typeClass)];assert.equal(types.length,1,`${typeClass} is present`);
+    const own=relationships.filter(rel=>asRef(rel.attributes[5])===types[0]);
+    assert.equal(own.length,1,`${typeClass} has one relationship`);
+    assert.deepEqual(refList(own[0].attributes[4]).sort((a,b)=>a-b),[...reader.ids(productClass)].sort((a,b)=>a-b),
+      `${typeClass} covers original and copied occurrences`);
+  }
   for(const [type,count] of [['IFCWALL',13],['IFCDOOR',3],['IFCWINDOW',3],['IFCOPENINGELEMENT',6],['IFCSLAB',1],['IFCSPACE',2]] as const) assert.equal(text.split('='+type+'(').length-1,count);
 
 });

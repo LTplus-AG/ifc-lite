@@ -1932,3 +1932,7 @@ browser source-keyword recovery. `RouterDrain::take` drains router-wide counters
 at the corresponding job or batch boundary. Both schedulers still plan and
 produce through `produce_element_meshes_owned` and its immutable context/session.
 Native worker caches and browser wire/source ownership stay scheduler-owned.
+
+## Diff value projection
+
+`ifc_lite_diff::fingerprint::canonical_value_string` exposes the text portion of property-value normalization for adapters. Strings remain verbatim; non-finite scalar numbers use their ECMAScript tokens; arrays and objects use the diff engine’s sorted-key JSON form. Null, booleans and finite numbers return `None` because they retain their scalar type. This shares serialization with fingerprint generation instead of introducing an adapter-specific JSON encoding.

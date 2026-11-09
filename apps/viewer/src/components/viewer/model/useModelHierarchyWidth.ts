@@ -40,7 +40,7 @@ export function useModelHierarchyWidth(ref: RefObject<PanelImperativeHandle | nu
     const width = panel.getSize().asPercentage;
     restore.current ??= pending.current ?? (Number.isFinite(width) && width > 0 ? width : defaultWidth);
     pending.current = null;
-    if (reset || !Number.isFinite(width) || width > 18) panel.resize(`${reset ? Math.min(defaultWidth, 18) : 18}%`);
+    if (reset || !(width > 0) || width > 18) panel.resize(`${reset ? Math.min(defaultWidth, 18) : 18}%`);
   }, [modeling, collapsed, folded, defaultWidth, ref, resetEpoch]);
   return modeling;
 }

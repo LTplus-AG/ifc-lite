@@ -43,6 +43,13 @@ it('#9296 an unmeasured hierarchy gets a finite cap and restore width', () => {
   h.mode('model'); assert.equal(h.width(), 18);
   h.mode('view'); assert.equal(h.width(), 22.5);
 });
+it('#9296 an expanded hierarchy measured at zero stays visible on entering Model', () => {
+  const h = panelAt(0);
+  h.mode('model');
+  assert.equal(h.width(), 18, 'the expanded hierarchy receives a usable width');
+  h.mode('view');
+  assert.equal(h.width(), 22.5, 'restore a usable default rather than zero');
+});
 it('#9296 exiting while collapsed forgets the previous session width', () => {
   const h = panelAt(25);
   h.mode('model'); h.collapse(); h.mode('view'); h.expand();

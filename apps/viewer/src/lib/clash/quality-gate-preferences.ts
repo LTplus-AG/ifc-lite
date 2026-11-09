@@ -11,7 +11,10 @@ export function loadQualityGateConfig(): QualityGateConfig {
   const storage = optionalLocalStorage();
   try {
     const raw = storage?.getItem(KEY);
-    if (!raw) return defaultQualityGateConfig();
+    if (raw === null || raw === undefined) {
+      writable = true;
+      return defaultQualityGateConfig();
+    }
     const parsed: unknown = JSON.parse(raw);
     if (!isQualityGateConfig(parsed)) throw new Error('Invalid quality gate thresholds');
     writable = true;

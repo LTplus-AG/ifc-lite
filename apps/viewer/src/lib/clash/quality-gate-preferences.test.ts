@@ -25,6 +25,10 @@ it('preserves corrupt quality preferences and refuses a quota failure without ch
     entries.set('ifc-lite-clash-quality-gates', '{broken');
     assert.deepEqual(loadQualityGateConfig(), defaultQualityGateConfig());
     assert.equal(entries.get('ifc-lite-clash-quality-gates:unreadable'), '{broken');
+    entries.set('ifc-lite-clash-quality-gates', '');
+    assert.deepEqual(loadQualityGateConfig(), defaultQualityGateConfig());
+    assert.equal(entries.get('ifc-lite-clash-quality-gates:unreadable:2'), '', 'empty corrupt bytes survive quarantine (#9430)');
+    assert.equal(entries.get('ifc-lite-clash-quality-gates:unreadable'), '{broken', 'an empty backup does not replace earlier evidence');
     const previous = useQualityGatePreferences.getState().config;
     const next = defaultQualityGateConfig(); next.clash[0].label = 'Custom threshold';
     failWrites = true;

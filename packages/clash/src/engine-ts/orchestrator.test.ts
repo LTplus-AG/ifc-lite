@@ -136,6 +136,14 @@ describe('runClash: exclusions', () => {
 });
 
 describe('runClash: identity / dedup', () => {
+  it('keeps separate findings for repeated GlobalIds with distinct refs (#9430)', async () => {
+    const first = { ...element('K', 'IfcWall'), ref: 101 };
+    const elements = [first, { ...first, ref: 102 }, { ...element('T', 'IfcDuct'), ref: 103 }];
+    const result = await run(elements, [hard('r')], [[rec(0, 2), rec(1, 2)]]);
+    expect(result.clashes).toHaveLength(2);
+    expect(new Set(result.clashes.map(clash => clash.id)).size).toBe(2);
+    expect(new Set(result.clashes.map(clash => clash.a.ref))).toEqual(new Set([101, 102]));
+  });
   it('collapses two kernel records for the same rule and pair into one clash', async () => {
     // A real kernel should not emit the same pair twice for one rule, but the
     // orchestrator's `seen` set is the last line of defence against a kernel

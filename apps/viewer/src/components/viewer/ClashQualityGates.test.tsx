@@ -9,16 +9,55 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { createClashEngine, type ClashElement } from '@ifc-lite/clash';
 import { captureAnalysisStamp, stampAnalysisReport } from '@/hooks/useAnalysisStaleness';
-import { cleanup, click, render, type } from '@/test/render';
+import { cleanup, click, render, type, waitFor } from '@/test/render';
 import { mountClashPanel, detectCoincidentWalls, saveCurrentResultAs } from '@/test/clash-report-fixture';
 import { useViewerStore } from '@/store';
 import { defaultQualityGateConfig } from '@/lib/clash/quality-gate';
+import { runRequestOf } from '@/lib/clash/run-request';
 import { useQualityGatePreferences, loadQualityGateConfig } from '@/lib/clash/quality-gate-preferences';
 import { ClashQualityGates } from './ClashQualityGates';
 
 afterEach(() => { cleanup(); useQualityGatePreferences.setState({ config: defaultQualityGateConfig() }); });
 
 describe('Quality gate interaction (#9259)', () => {
+  it('publishes duplicate run metadata before subscribers and saves the duplicate policy (#9430)', async () => {
+    const config = defaultQualityGateConfig();
+    config.clash[0].label = 'Clash benchmark';
+    config.duplicates[0].label = 'Duplicate benchmark';
+    useQualityGatePreferences.setState({ config });
+    const ui = mountClashPanel();
+    await detectCoincidentWalls(3);
+    const button = (name: RegExp) => [...ui.querySelectorAll('button')].find(item => name.test(item.textContent?.trim() ?? ''));
+    if (!button(/^Find duplicates$/)) {
+      const detection = button(/^Detection/);
+      assert.ok(detection);
+      click(detection);
+    }
+    const duplicates = button(/^Find duplicates$/);
+    assert.ok(duplicates, 'the panel offers the real duplicate scan');
+    const publications: Array<string | undefined> = [];
+    const unsubscribe = useViewerStore.subscribe((state, previous) => {
+      if (state.clashRawResult && state.clashRawResult !== previous.clashRawResult) {
+        publications.push(runRequestOf(state.clashRawResult)?.kind);
+      }
+    });
+    const before = useViewerStore.getState().clashRunSeq;
+    try {
+      await act(async () => {
+        duplicates.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+        await new Promise(resolve => setTimeout(resolve, 300));
+      });
+      await waitFor(() => !useViewerStore.getState().clashRunning && useViewerStore.getState().clashRunSeq > before, 'duplicate detection completes');
+    } finally {
+      unsubscribe();
+    }
+    assert.deepEqual(publications, ['duplicates']);
+    assert.match(ui.querySelector('[data-quality-rule]')?.textContent ?? '', /Duplicate benchmark/);
+    const saved = await saveCurrentResultAs('Duplicate policy #9430');
+    assert.equal(saved.run.kind, 'duplicates');
+    assert.equal(saved.qualityGates?.rows[0].kind, 'duplicates');
+    assert.equal(saved.qualityGates?.config.duplicates[0].label, 'Duplicate benchmark');
+  });
   it('shows actual detection object counts and saves frozen categories, for one and multiple models', async () => {
     for (const count of [1, 2] as const) {
       const ui = mountClashPanel();

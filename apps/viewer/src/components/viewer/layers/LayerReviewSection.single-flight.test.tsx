@@ -12,7 +12,7 @@
 import '@/test/setup-dom.js';
 import { afterEach, beforeEach, mock, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { act } from 'react';
+import { act, useState } from 'react';
 import { useViewerStore } from '@/store';
 import { cleanup, render, type, waitFor } from '@/test/render.js';
 import { installHeldCapture, type HeldCapture } from '@/test/bcf-held-capture.js';
@@ -85,4 +85,29 @@ test('C-2 layer review: a viewpoint capture that resolves null toasts once and p
   assert.equal(errors.mock.callCount(), 1, 'reported once, not as a raw destructuring error');
   assert.equal(String(errors.mock.calls[0]?.arguments[0]).includes('destructure'), false);
   assert.equal(posts, 0);
+});
+
+// C-1: the parent reuses this section when the selected candidate changes.
+test('C-1 candidate replacement hides the old review and ignores its late refresh', async () => {
+  let select!: (id: string) => void;
+  let finish!: (value: { reviews: RegistryReviewSummary[] }) => void;
+  let calls = 0;
+  const switchingClient = { ...client, listReviews: () => {
+    calls++;
+    if (calls === 2) return new Promise<{ reviews: RegistryReviewSummary[] }>(resolve => { finish = resolve; });
+    return Promise.resolve({ reviews: [REVIEW] });
+  } } as unknown as LayerRegistryClient;
+  function Host() {
+    const [id, setId] = useState('candidate-1'); select = setId;
+    return <LayerReviewSection client={switchingClient} candidateId={id} refName="main" />;
+  }
+  render(<Host />);
+  await waitFor(() => document.body.querySelector('input[aria-label="Review comment title"]') !== null, 'A review loaded');
+  const refresh = document.body.querySelector<HTMLButtonElement>('button[aria-label="Refresh review"]');
+  assert.equal(Boolean(refresh), true);
+  act(() => refresh!.click());
+  act(() => select('candidate-2'));
+  assert.equal(document.body.querySelectorAll('input[aria-label="Review comment title"]').length, 0, 'B cannot post to A while loading');
+  await act(async () => { finish({ reviews: [REVIEW] }); });
+  assert.equal(document.body.querySelectorAll('input[aria-label="Review comment title"]').length, 0, 'late A refresh cannot restore A');
 });

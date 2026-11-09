@@ -65,7 +65,11 @@ function TopicRow({ topic, onSelect }: { topic: RegistryReviewTopic; onSelect: (
   );
 }
 
-export function LayerReviewSection({
+export function LayerReviewSection(props: { client: LayerRegistryClient; candidateId: string; refName: string }) {
+  return <CandidateReview key={JSON.stringify([props.candidateId, props.refName])} {...props} />;
+}
+
+function CandidateReview({
   client,
   candidateId,
   refName,
@@ -112,7 +116,8 @@ export function LayerReviewSection({
           null,
         );
       setReview(latest);
-    } catch {
+    } catch (error) {
+      console.warn('[layer review] Refresh failed', error);
       setReview(null);
     }
   }, [client, candidateId, refName]);
@@ -121,14 +126,15 @@ export function LayerReviewSection({
     void refresh();
   }, [refresh]);
 
-  const openReview = useCallback(() => runAction(async () => {
+  const openReview = useCallback(() => runAction(async (isCurrent) => {
     try {
       // A freshly published local candidate is not on the registry yet;
       // the reviews route 404s unknown layer ids. Same push-first step
       // the preview/merge paths take (idempotent re-push).
       await ensureCandidateOnRegistry(client, await getBrowserLayerStore(), candidateId);
+      if (!isCurrent()) return;
       await client.openReview({ layer_id: candidateId, into: refName });
-      await refresh();
+      if (isCurrent()) await refresh();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err));
     }
@@ -159,10 +165,11 @@ export function LayerReviewSection({
           entity: selectedPath,
           ...(viewpoint !== undefined ? { viewpoint } : {}),
         });
+        if (!isCurrent()) return;
         setTitle('');
         setDescription('');
         await refresh();
-        toast.success(t('layersPanel.review.postedToast'));
+        if (isCurrent()) toast.success(t('layersPanel.review.postedToast'));
       } catch (err) {
         console.warn('[layer review] Posting the comment failed', err);
         // A section that unmounted mid-post has nowhere to report it.

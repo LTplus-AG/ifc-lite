@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import '@/test/setup-dom.js';
+import { act, useState } from 'react';
 import test, { afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { summarizeClashes } from '@ifc-lite/clash';
@@ -37,4 +38,30 @@ test('unmounting during a full-run classification aborts the in-flight request a
   await new Promise(resolve => setTimeout(resolve, 50));
   assert.equal(requests.length, 1, 'no further chunks are requested after unmount');
   assert.deepEqual(results, [], 'an unmounted review receives no result');
+});
+
+// C-10: ClashGroupReview keeps the component mounted while switching results.
+test('C-10 replacing the result aborts the old classification and resets its controls', async () => {
+  const clashes = clashFindings(250);
+  const result = { clashes, summary: summarizeClashes(clashes), rulesRun: [], settings: { tolerance: 0.002, excludeVoidsAndHosts: true } };
+  useViewerStore.setState({ clashResult: result, chatActiveModel: 'test/free-model' });
+  const requests = serveClassifier({ hangOnChunk: 1 });
+  const stubbed = globalThis.fetch;
+  let signal: AbortSignal | undefined;
+  globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => { signal = init?.signal ?? undefined; return stubbed(input, init); }) as typeof fetch;
+  const results: ClassifyRunResult[] = [];
+  let replace!: () => void;
+  function Host() {
+    const [current, setCurrent] = useState(result);
+    replace = () => setCurrent({ ...result });
+    return <ClashClassifyAll result={current} enabled onResult={run => results.push(run)} />;
+  }
+  const ui = render(<Host />);
+  click([...ui.querySelectorAll('button')].find(b => b.textContent === 'Classify all findings')!);
+  await waitFor(() => requests.length === 1, 'classification started');
+  act(() => replace());
+  assert.equal(signal?.aborted, true, 'old request aborted on result replacement');
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 30)); });
+  assert.equal(results.length, 0, 'old result never reaches the new review');
+  assert.equal([...ui.querySelectorAll('button')].some(b => b.textContent === 'Classify all findings'), true);
 });

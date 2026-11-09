@@ -8,8 +8,9 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { IfcParser } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
-import { createCollabSession, createEntity, deleteEntity, setAttribute, setPropertyValue } from '@ifc-lite/collab';
+import { createCollabSession, createEntity, deleteEntity, setAttribute, setPropertyValue, getPropertyValue, deletePropertyValue } from '@ifc-lite/collab';
 import { useViewerStore } from '@/store';
+import { bindRoomPropertyApi } from '@/lib/collab/room-property-api';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { registerStoreSlot, registerEntityPath, unregisterEntityPath, pathForGuid, pathForEntity } from '@/lib/collab/entity-paths';
 import { parseIfcxViewerModel } from '@/hooks/ingest/viewerModelIngest';
@@ -95,6 +96,7 @@ it('ordinary creation records only its appended journal rows as existing authori
 });
 
 async function roofRoom() {
+  bindRoomPropertyApi({ getPropertyValue, setPropertyValue, deletePropertyValue });
   const { data, view, adapter } = await seed();
   const session = await createCollabSession({ roomId: 'roof-publication', user: { id: 'test', name: 'Test' }, provider: 'memory' });
   const slot = { slotId: 'm0', pathPrefix: '/m0' };

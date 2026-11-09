@@ -18,6 +18,7 @@
  */
 
 import type { StateCreator } from 'zustand';
+import { bindRoomPropertyApi } from '@/lib/collab/room-property-api';
 import { attachRoomSpatialContextMirror } from '@/lib/collab/room-spatial-context-mirror';
 // IMPORTANT: only *type* imports from '@ifc-lite/collab' at module scope. The
 // collab runtime (yjs, automerge, providers) is heavy and must stay out of the
@@ -587,9 +588,8 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
     let collabMod: typeof import('@ifc-lite/collab');
     try {
       // Lazy-load the collab runtime (code-split) — see the import note above.
-      const collab = await import('@ifc-lite/collab');
+      const collab = bindRoomPropertyApi(await import('@ifc-lite/collab'));
       collabMod = collab;
-      // Capture the doc helpers the synchronous mutation mirror needs.
       docApi = {
         hasEntity: collab.hasEntity,
         setPropertyValue: collab.setPropertyValue,

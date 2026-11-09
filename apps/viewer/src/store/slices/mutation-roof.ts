@@ -12,7 +12,8 @@
 import { editFootprintRoofInStore, footprintDefinitionProperties, ROOF_FOOTPRINT_PSET, type RoofFootprintEdit, type FootprintRoofDefinition } from '@ifc-lite/create';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { ViewerState } from '../index.js';
-import { getPropertyValue as roomProperty, setPropertyValue, deletePropertyValue } from '@ifc-lite/collab';
+import type { PropertyValue } from '@ifc-lite/collab';
+import { roomPropertyApi } from '@/lib/collab/room-property-api.js';
 import { pathForEntity } from '@/lib/collab/entity-paths.js';
 import { roomSlotFor } from '@/lib/collab/room-model-target.js';
 import { mutationDenial } from '../mutation-permission.js';
@@ -46,20 +47,21 @@ function withRoofDefinitionRollback<T>(store: ModellingStore, target: ModelEditT
   const path = session ? pathForEntity(target.dataStore, id) : null;
   if (session && !path) throw new Error(`Roof #${id} has no collaboration room identity`);
   const room = session && path ? { session, path } : null;
-  const before = new Map<string, ReturnType<typeof roomProperty>>();
+  const api = room ? roomPropertyApi() : null;
+  const before = new Map<string, PropertyValue | undefined>();
   const publish = (definition: FootprintRoofDefinition) => {
     for (const [name, value, type] of footprintDefinitionProperties(definition)) {
-      if (room && !before.has(name)) before.set(name, structuredClone(roomProperty(room.session.doc, room.path, ROOF_FOOTPRINT_PSET, name)));
+      if (room && api && !before.has(name)) before.set(name, structuredClone(api.getPropertyValue(room.session.doc, room.path, ROOF_FOOTPRINT_PSET, name)));
       store.getState().mirrorPropertyEdit(target.modelId, id, ROOF_FOOTPRINT_PSET, name, value, type);
     }
   };
-  if (!room) return edit(publish);
+  if (!room || !api) return edit(publish);
   return room.session.transact(() => {
     try { return edit(publish); }
     catch (error) {
       for (const [name, value] of before) {
-        if (value === undefined) deletePropertyValue(room.session.doc, room.path, ROOF_FOOTPRINT_PSET, name);
-        else setPropertyValue(room.session.doc, room.path, ROOF_FOOTPRINT_PSET, name, value);
+        if (value === undefined) api.deletePropertyValue(room.session.doc, room.path, ROOF_FOOTPRINT_PSET, name);
+        else api.setPropertyValue(room.session.doc, room.path, ROOF_FOOTPRINT_PSET, name, value);
       }
       throw error;
     }

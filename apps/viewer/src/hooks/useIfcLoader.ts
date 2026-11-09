@@ -94,7 +94,9 @@ import { finalizeFederatedSpatialPlacement } from './ingest/federatedSpatialFina
 import { computePointCloudAlignment, unregisterPointCloudAlignment, hasRegisteredPointCloudAlignment, type PointCloudSourceUnit } from './ingest/pointCloudAlignment.js';
 import { realignPointCloudsToAnchor } from './ingest/pointCloudAlignmentRealign.js';
 import { toast } from '../components/ui/toast.js';
-import { posthog, showLoadError as reportLoadError } from '../lib/analytics.js';
+import { posthog } from '../lib/analytics.js';
+import { loadFailureReporter, settleKernelRefusal } from './ingest/loadFailureReport.js';
+import { revalidateServedCache, type ServedCacheHit } from './ingest/cacheRevalidation.js';
 import { reportRenderStats } from '../utils/renderStatsReport.js';
 import { nextFrameOrTimeout } from '../utils/frameWait.js';
 import { visibilityWitness } from '../utils/visibilityWitness.js';
@@ -240,43 +242,11 @@ export function useIfcLoader() {
     | null
   >(null);
 
-  /**
-   * Background revalidation for a SERVED cache hit (either tier, #4269):
-   * confirm the full-content hash of the FRESH source (the load's own identity
-   * pass, #7022, not a second hash) matches what was stored at write. The mtime
-   * guard already rejected any normal on-disk edit before serving; this closes
-   * the deliberate mtime-PRESERVED in-place edit (a GUID or same-width
-   * coordinate patch the O(1) spread key can't see) that the mtime guard alone
-   * would miss. On mismatch: purge the stale entry and auto-reload
-   * (a full reparse) with a notice. It only awaits that identity, so it never
-   * blocks the instant hit it follows.
-   */
-  const revalidateServedCacheHit = useCallback(async (args: {
-    file: File;
-    target: LoadTarget;
-    identity: Promise<string | undefined>;
-    cacheKey: string;
-    expectedHash: string;
-    session: number;
-  }): Promise<void> => {
-    try {
-      const freshHash = await args.identity;
-      // Web Crypto unavailable (or a newer load cancelled the pass) → can't
-      // revalidate; the mtime guard already vetted this hit, so leave it served.
-      if (!freshHash) return;
-      if (freshHash === args.expectedHash) return; // validated: byte-identical source
-
-      console.warn(`[useIfc] source-decoupled cache was stale (full-hash mismatch) — reloading "${args.file.name}"`);
-      await deleteCached(args.cacheKey);
-      // A newer load superseded this one: the entry is purged; don't yank the
-      // user off whatever they loaded next.
-      if (loadSessionRef.current !== args.session) return;
-      toast.info(`"${args.file.name}" changed since it was cached — reloading with the current file.`);
-      await loadFileRef.current?.(args.file, args.target);
-    } catch (err) {
-      console.warn('[useIfc] background cache revalidation failed', err);
-    }
-  }, []);
+  // Background revalidation of a SERVED cache hit (#4269): `ingest/cacheRevalidation.ts`.
+  const revalidateServedCacheHit = useCallback((hit: ServedCacheHit) => revalidateServedCache(hit, {
+    isCurrent: (session) => loadSessionRef.current === session,
+    reload: (file, target) => loadFileRef.current?.(file, target),
+  }), []);
 
   const loadFile = useCallback(async (
     file: File,
@@ -285,7 +255,7 @@ export function useIfcLoader() {
   ) => {
     assertWorkflowOwner(options?.workflowOwner);
     const draping = drapeIfGeoRaster(file); if (draping) return draping; // #5942: imagery, never a model
-    const geometryKernel = beginGeometryKernel(file, target, () => void loadFileRef.current?.(file, target, options)); if (geometryKernel.refused) return geometryKernel.refused; // #7955 M2: out-of-scope retained requests stop before any work
+    const geometryKernel = beginGeometryKernel(file, target, () => void loadFileRef.current?.(file, target, options)); if (geometryKernel.refused) return settleKernelRefusal(geometryKernel.refused, options?.onLoadError); // #7955 M2: out-of-scope retained requests stop before any work
     const { resetViewerState, clearAllModels } = useViewerStore.getState();
     // A primary supersedes every outstanding hook owner via the shared canceller.
     // Federated additions capture this hook's session and remain independent.
@@ -452,8 +422,7 @@ export function useIfcLoader() {
     // Every load failure the user sees goes through here (#5618); `retry`
     // is fixed to THIS call so no call site below can omit or go stale.
     const retryThisLoad = options?.retryOperation ?? (() => { void loadFile(file, target, options); });
-    const showLoadError = (message: string, code: string, retry = retryThisLoad) =>
-      reportLoadError(setError, useViewerStore.getState().setLastLoadRetry, activity.fail(message), code, retry, file);
+    const showLoadError = loadFailureReporter(file, activity, retryThisLoad, options?.onLoadError);
     const settleResumable = beginResumableLoad(file); // carried across a stale-deployment reload
     try {
       // Reset all viewer state before loading new file — PRIMARY ONLY. A
@@ -645,6 +614,7 @@ export function useIfcLoader() {
           };
           useViewerStore.getState().addModel(federatedModel);
           activity.published = true;
+          options?.onModelRegistered?.();
           // The registry also holds scans that arrived before any compatible
           // anchor. Once this model is visible to `findReferenceSpatialModel`,
           // recompute all scan matrices atomically against the live anchor.

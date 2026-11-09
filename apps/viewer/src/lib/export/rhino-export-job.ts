@@ -7,8 +7,8 @@
  * the message protocol between it and `rhino-export-client.ts`.
  *
  * Both halves of the export run in the worker: the Rust scene build
- * (`GeometryProcessor.exportRhinoScene`, synchronous wasm that re-meshes the
- * whole model) and the rhino3dm write (synchronous embind calls, then
+ * (`exportRhinoScene` on the separate `@ifc-lite/wasm/rhino` engine,
+ * synchronous wasm that re-meshes the whole model) and the rhino3dm write (synchronous embind calls, then
  * `toByteArray`, measured at about 10 MB/s of output). Either one on the main
  * thread freezes the viewport for seconds to minutes. The worker is spawned
  * per export and terminated after, so the two wasm heaps it grows go back to

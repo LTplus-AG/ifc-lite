@@ -7,9 +7,13 @@
  * whole export runs here and for the message protocol.
  *
  * The rhino3dm wasm (2.67 MB) is a Vite asset of this worker chunk only, and
- * the adapter imports its runtime lazily, so neither reaches the viewer's
- * startup graph. `locateFile` points the emscripten loader at that asset,
- * because the adapter's dynamic import does not carry it into the build.
+ * the adapter imports its runtime lazily. `locateFile` points the emscripten
+ * loader at that asset, because the adapter's dynamic import does not carry it
+ * into the build.
+ *
+ * The Rhino scene builder is a separate wasm (`@ifc-lite/wasm/rhino`) that
+ * `exportRhinoScene` imports on first use. Neither wasm reaches the viewer's
+ * startup graph (`scripts/check-rhino3dm-lazy.mjs`).
  */
 
 import rhinoWasmUrl from 'rhino3dm/rhino3dm.wasm?url';
@@ -18,14 +22,10 @@ import { installRhinoExportWorker } from '@/lib/export/rhino-export-worker-scope
 
 const deps: RhinoExportJobDeps = {
   async buildScene(content, options) {
-    const { GeometryProcessor } = await import('@ifc-lite/geometry');
-    const processor = new GeometryProcessor();
-    try {
-      await processor.init();
-      return processor.exportRhinoScene(content, options);
-    } finally {
-      processor.dispose();
-    }
+    // The subpath, not the package root: loads only the Rhino scene wasm and
+    // its loader, not the default engine or the IFC schema tables.
+    const { exportRhinoScene } = await import('@ifc-lite/geometry/rhino-export');
+    return exportRhinoScene(content, options);
   },
   async writeScene(scene, { version, onProgress }) {
     const { writeRhino3dm } = await import('@ifc-lite/rhino3dm');

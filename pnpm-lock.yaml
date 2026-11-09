@@ -326,6 +326,9 @@ importers:
       '@ifc-lite/mutations':
         specifier: workspace:^
         version: link:../../packages/mutations
+      '@ifc-lite/oci':
+        specifier: workspace:^
+        version: link:../../packages/oci
       '@ifc-lite/oauth-pkce':
         specifier: workspace:^
         version: link:../../packages/oauth-pkce

@@ -9,6 +9,8 @@ interface ImportMetaEnv {
   /** Local OCI registry demo, using the development server's same-origin proxy. */
   readonly VITE_REGISTRY_ENABLED?: string;
   readonly VITE_REGISTRY_ADDRESS?: string;
+  /** Explicit registry, authorization_server and client_id connections for OCI handoff. */
+  readonly VITE_REGISTRY_CONNECTIONS?: string;
   /** Enable reviewed model reports only after the report service is deployed and qualified. */
   readonly VITE_MODEL_REPORTS_ENABLED?: string;
   /** Gaussian capture admission (#8568): unset = committed default, 'disabled' = kill switch, 'internal-unqualified' = presenter build. */

@@ -8,7 +8,7 @@ import { useSourceHost } from '@/services/sources/SourceHostProvider';
 import { SourceSettingsDialog } from './SourceSettingsDialog';
 import { SourceBrowser } from './SourceBrowser';
 import { SourceProviderRow } from './SourceProviderRow';
-import { useRegistryWorkspace } from '@/lib/registry/workspace';
+import { useHandoffWorkspace } from '@/lib/registry/handoff-workspace';
 import { SourceFavouritesList } from './SourceFavouritesList';
 import { useSourceDownloadBatch } from './useSourceDownloadBatch';
 import type { SourceFavourite } from '@/lib/sources/favourites';
@@ -113,7 +113,7 @@ export function SourcesPanel({ onClose, registryEnabled = import.meta.env?.VITE_
   const [readyProviders, setReadyProviders] = useState<ReadonlySet<string>>(() => new Set());
   const [downloadContext, setDownloadContext] = useState<{ providerId: string; projectId: string } | null>(null);
   const downloadOwner = downloadContext?.providerId ?? null;
-  const [browsing, setBrowsing] = useState<string | null>(() => useRegistryWorkspace.getState().session?.openArtifact ? 'oci-registry' : null);
+  const [browsing, setBrowsing] = useState<string | null>(() => useHandoffWorkspace.getState().handoff ? 'oci-registry' : null);
   const [registryBusy, setRegistryBusy] = useState(false);
   const [settingsFor, setSettingsFor] = useState<string | null>(null);
   // Bumped when saved prefs change so rows/contexts re-derive configured state.

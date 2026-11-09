@@ -1,0 +1,16 @@
+**/node_modules
+**/dist
+**/target
+.git
+.turbo
+build
+**/.turbo
+tests/models
+**/.env*
+**/output
+**/*.tsbuildinfo
+.aws
+.codex
+.agents
+**/*.key
+**/*.pem

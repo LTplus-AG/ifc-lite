@@ -1,0 +1,18 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+FROM node:24.15.0-bookworm-slim AS build
+RUN npm install --global --force pnpm@10.8.1
+WORKDIR /workspace
+COPY . .
+ENV VITE_REGISTRY_ENABLED=true
+ENV VITE_REGISTRY_CONNECTIONS='[{"name":"Demo files","registry":"http://localhost:5001","authorization_server":"http://localhost:8080/realms/subsoil","client_id":"ifc-lite"}]'
+RUN pnpm install --frozen-lockfile --ignore-scripts --store-dir /pnpm/store \
+    && pnpm build:wasm:fetch \
+    && pnpm build --filter=@ifc-lite/viewer \
+    && cp -R apps/viewer/dist /viewer-dist \
+    && rm -rf /pnpm/store node_modules packages/*/node_modules apps/*/node_modules
+FROM nginx:1.29-alpine
+COPY --from=build /viewer-dist /usr/share/nginx/html
+COPY apps/viewer/nginx.registry.conf /etc/nginx/conf.d/default.conf
+EXPOSE 3000

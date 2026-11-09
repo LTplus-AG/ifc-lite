@@ -2,7 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { registryProxy } from './registry-proxy.ts';
 import { viewerAliases } from './vite-aliases';
 import { collectPackageVersions } from './vite-package-versions';
 import { legacyManualChunk, quickjsRuntimeChunkGroup, tslibChunkGroup } from './vite-chunks';
@@ -193,7 +192,7 @@ const appVersion = viewerPkg.version || rootPkg.version;
 const buildSha = (process.env.VERCEL_GIT_COMMIT_SHA || process.env.GITHUB_SHA || 'dev').slice(0, 12);
 
 export default defineConfig(({ mode }) => {
-  const env = { ...loadEnv(mode, __dirname, ['VITE_RETAINED_GEOMETRY', 'IFCLITE_RETAINED_ENGINE', 'VERCEL', 'VITE_REGISTRY_ENABLED', 'IFC_REGISTRY_TARGET']), ...process.env };
+  const env = { ...loadEnv(mode, __dirname, ['VITE_RETAINED_GEOMETRY', 'IFCLITE_RETAINED_ENGINE', 'VERCEL', 'VITE_REGISTRY_ENABLED', 'VITE_REGISTRY_CONNECTIONS', 'VITE_REGISTRY_ADDRESS']), ...process.env };
   // #7955: `on` (retained preview: the retained module is eager), `lazy`
   // (production opt-in: only a choice and dynamic imports are eager) or off.
   const retainedMode = env.VITE_RETAINED_GEOMETRY === 'on' || env.VITE_RETAINED_GEOMETRY === 'lazy' ? env.VITE_RETAINED_GEOMETRY : 'off';
@@ -251,7 +250,7 @@ export default defineConfig(({ mode }) => {
   ],
   define: {
     ...(env.VITE_REGISTRY_ENABLED === 'true' ? {
-      'import.meta.env.VITE_REGISTRY_ADDRESS': JSON.stringify(env.IFC_REGISTRY_TARGET || 'http://127.0.0.1:5000'),
+      'import.meta.env.VITE_REGISTRY_ADDRESS': JSON.stringify(env.VITE_REGISTRY_ADDRESS || 'http://localhost:5001'),
     } : {}),
     __APP_VERSION__: JSON.stringify(appVersion),
     __BUILD_SHA__: JSON.stringify(buildSha),
@@ -275,7 +274,6 @@ export default defineConfig(({ mode }) => {
       allow: ['../..'],
     },
     proxy: {
-      ...(env.VITE_REGISTRY_ENABLED === 'true' ? registryProxy(env.IFC_REGISTRY_TARGET || 'http://127.0.0.1:5000') : {}),
       '/api/autodesk': { target: 'http://127.0.0.1:3002', changeOrigin: false },
       '/api/chat': {
         // Single API source of truth lives at repo-root `api/chat.ts`.

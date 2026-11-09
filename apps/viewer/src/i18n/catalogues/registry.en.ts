@@ -72,4 +72,10 @@ export const registryEn = {
   'registry.launch.naming': 'Allowed version names: {patterns}',
   'registry.launch.destinationDenied': 'This folder is outside the approved saving permissions.',
   'registry.launch.saved': 'Your new version was saved to the registry.',
+  'registry.push.action': 'Push to…',
+  'registry.push.store': 'File store',
+  'registry.push.folder': 'Folder',
+  'registry.push.explain': 'Choose where to save a new version. Sign in to approve access to that destination.',
+  'registry.push.saved': 'Your new version was saved.',
+  'registry.handoff.explain': 'Opening the sign-in page to authorize access to the selected folder.',
 } as const;

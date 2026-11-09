@@ -22,11 +22,12 @@ it('#9406 reading the new wall captures schema names once for all of its geometr
   const signature = vi.spyOn(JSON, 'stringify');
   const snapshot = vi.spyOn(parser, 'createSchemaEntityNameSnapshot');
   expect(reads.readWallJoinTarget(s.store, s.view, wall.wallId, 1)?.wall.end).toEqual([4, 0]);
-  expect(signature.mock.calls.filter(([keys]) => Array.isArray(keys) && keys.length === names.length && keys[0] === names[0])).toHaveLength(0);
+  // #9411 validates registry key order once when a finite snapshot begins.
+  expect(signature.mock.calls.filter(([keys]) => Array.isArray(keys) && keys.length === names.length && keys[0] === names[0])).toHaveLength(1);
   expect(snapshot).toHaveBeenCalledTimes(1);
 });
 
-for (const count of [16, 64]) it(`#9406 cold index for ${count} unrelated walls captures schema names without per-reference signatures`, async () => {
+for (const count of [16, 64]) it(`#9406 cold index for ${count} unrelated walls captures one schema-key signature for the entire index`, async () => {
   const s = await newStorey();
   for (let i = 0; i < count; i++) addWallToStore(s.editor, s.anchor,
     { Start: [i * 10, 0, 0], End: [i * 10 + 4, 0, 0], Height: 3, Thickness: .2 });
@@ -42,7 +43,7 @@ for (const count of [16, 64]) it(`#9406 cold index for ${count} unrelated walls 
     } }, { store: s.store, wallIndex });
     return { signatures, snapshots, wall };
   });
-  expect(signatures).toBe(0);
+  expect(signatures).toBe(1);
   expect(snapshots).toBe(1);
   expect(reads.readWallJoinTarget(s.store, s.view, wall, 1)?.wall.start).toEqual([count * 10, 0]);
   expect(reads.readWallJoinRels(s.store, s.view)).toEqual([]);

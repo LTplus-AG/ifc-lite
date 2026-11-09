@@ -4,7 +4,7 @@
 use super::super::inner::ProgramError;
 use super::{
     Action, ChildControl, Event, MappingControl, MappingOutput, MappingValue, Merged, Merging,
-    Place, Placeholder, Placing, Reached, Sink, Walk,
+    Place, Placeholder, Placing, Reached, Sink, TypeMapRoot, Walk,
 };
 use crate::router::mapped_item::MappedOccurrence;
 use crate::{Error, GeometryRouter, Result};

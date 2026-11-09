@@ -387,10 +387,9 @@ export const PROBES = [
     title: 'Roof over a 5x4 m footprint (hip expected; #9214)',
     async run(s) {
       const tasks = [await setupRoom(s)];
-      const notes = ['There is no Roof tool in the rail: a roof is the Slab tool with its class switched to Roof, and it makes a flat slab.'];
-      tasks.push(await task(s, 'Slab tool, class Roof, typed 5.6 x 4.6 m', async () => {
-        await tool(s, 'slab.place');
-        await s.ui.click(s.page.locator('[data-command-id]').getByRole('radio', { name: 'Roof' }));
+      const notes = ['Roof tool (Shift+Y) is present on main after #9214; slope-per-edge geometry remains a separate oracle.'];
+      tasks.push(await task(s, 'Roof tool, typed 5.6 x 4.6 m', async () => {
+        await s.ui.key('Shift+Y', { settle: 300 });
         await s.ui.clickWorld([-0.3, -0.3, 3]);
         await typeFields(s, [5.6, 4.6]);
         await escape(s);

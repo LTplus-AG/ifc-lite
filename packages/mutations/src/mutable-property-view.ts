@@ -132,17 +132,6 @@ export class MutablePropertyView extends MutableOverlayState {
     } };
   }
 
-  /**
-   * Seed the express-ID allocator. Should be called once after parsing with
-   * the highest existing expressId in the store; subsequent `createEntity`
-   * calls allocate IDs strictly above this watermark.
-   */
-  setExpressIdWatermark(maxExistingId: number): void {
-    if (maxExistingId > this.nextAllocatedId) {
-      this.nextAllocatedId = maxExistingId;
-    }
-  }
-
   /** The next expressId that `createEntity` would allocate. */
   peekNextExpressId(): number {
     return this.nextAllocatedId + 1;

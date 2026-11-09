@@ -111,6 +111,15 @@ export class MutableOverlayState {
   protected entityAliases: Map<number, number> = new Map();
   protected nextAllocatedId: number = 0;
 
+  /** Seed the express-ID allocator above the parsed source. Advancing it is
+   * a live state change; reseeding the same or a lower value is a no-op. */
+  setExpressIdWatermark(maxExistingId: number): void {
+    if (maxExistingId > this.nextAllocatedId) {
+      this.nextAllocatedId = maxExistingId;
+      this.markOverlayChanged();
+    }
+  }
+
   /** Snapshot candidate ids for effective attribute reads. Includes named,
    * positional and type overrides even when written without journal records;
    * callers apply their normal live-entity and attribute-layout checks. */

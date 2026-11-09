@@ -5151,6 +5151,7 @@
     "reassignElementsToStoreyInStore: function",
     "reassignHostedOpeningsInStore: function",
     "rectangularGridAxes: function",
+    "refreshTopAttachmentsInStore: function",
     "refreshedBaseQuantitySet: function",
     "refreshedBaseQuantitySets: function",
     "refusalReason: function",

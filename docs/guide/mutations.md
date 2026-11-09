@@ -1150,7 +1150,10 @@ the original model unchanged. Fixed detaches the top and keeps its last shape;
 attaching to a storey or slab restores a planar top.
 
 The shared placement and transform operations refit attached tops inside their
-transaction and return every product that needs remeshing.
+transaction and return every product that needs remeshing. Custom hosts that write
+placements directly can call
+`refreshTopAttachmentsInStore({ dataStore, view, editor }, movedElementIds)`
+inside their transaction and remesh the returned product ids.
 
 Walls fitted to pitched roofs retain their editable base extrusion beneath the roof cuts. Their derived quantities retain length, width and floor footprint; prism height, side area and volume are omitted until the quantity reader can measure the finished CSG body. Loaded files retain their original quantity sets under the normal opt-in refresh policy.
 

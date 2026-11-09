@@ -16,6 +16,7 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { useViewerStore } from '@/store';
 import { advance, cleanup, click, press, render } from '@/test/render.js';
+import { activityListReady } from '@/test/activity-list';
 import type { BimContext } from '@ifc-lite/sdk';
 import { BimReactContext } from '@/sdk/BimProvider';
 import { MobileToolbar } from '../MobileToolbar';
@@ -24,15 +25,11 @@ import { isCataloguedKey } from '@/lib/activity/activity-recorders';
 import { useBcfOutbox } from '@/lib/bcf-publication/outbox-store';
 import type { BcfPublication, OutboxState } from '@/lib/bcf-publication/outbox-types';
 import { publicationActivity } from '@/lib/activity/publication-activity';
-import { ActivityTrayButton } from './ActivityTray';
+import { ActivityTrayButton, ActivityTrayDialog } from './ActivityTray';
 
 async function openTray(button: HTMLButtonElement): Promise<void> {
   click(button);
-  for (let attempt = 0; attempt < 200; attempt++) {
-    if (document.querySelector('[aria-label="Jobs"]') || document.body.textContent?.includes('No jobs in this session yet.')) return;
-    await advance(20);
-  }
-  assert.fail('Activity contents did not appear');
+  await activityListReady();
 }
 
 const initial = useViewerStore.getState();
@@ -142,6 +139,22 @@ describe('activity tray (U02, #6925)', async () => {
 });
 
 describe('activity tray announcements (U02, #6925)', async () => {
+  for (const layout of ['desktop', 'mobile'] as const) {
+    it(`palette dialog keeps one completion announcer in the ${layout} shell (#8947)`, async () => {
+      render(<BimReactContext.Provider value={{} as BimContext}>
+        {layout === 'desktop' ? <ActivityTrayButton /> : <MobileToolbar />}
+        <ActivityTrayDialog open={false} onOpenChange={() => {}} announce={false} />
+      </BimReactContext.Provider>);
+      let job = '';
+      await act(async () => { job = beginActivity({ kind: 'export', title: 'activityTray.job.export' }); });
+      await act(async () => { finishActivity(job, 'completed'); });
+      const regions = document.querySelectorAll('[data-activity-announcer][aria-live="polite"]');
+      assert.equal(regions.length, 1, 'additional closed entry point does not duplicate announcements');
+      assert.equal(text(regions[0]).trim(), 'Export: Complete');
+      assert.equal(document.querySelector('[role="dialog"]'), null, 'completion does not open a tray');
+    });
+  }
+
   it('announces a job that finishes while the viewer is open, without opening the tray', async () => {
     const done = beginActivity({ kind: 'export', title: 'activityTray.job.export', subject: 'Export IFC' }, T0);
     finishActivity(done, 'completed', {}, T0 + 1); // finished before mount (e.g. restored): not news
@@ -190,7 +203,7 @@ describe('activity tray on phones (U02, #6925)', async () => {
     assert.ok(item);
     assert.equal(text(item).trim(), 'Activity');
     click(item);
-    await advance(20);
+    await activityListReady();
     const dialog = document.querySelector('[role="dialog"]');
     assert.ok(dialog, 'the tray opens as a dialog');
     assert.equal(dialog.getAttribute('aria-labelledby') && document.getElementById(dialog.getAttribute('aria-labelledby')!)?.textContent, 'Activity');

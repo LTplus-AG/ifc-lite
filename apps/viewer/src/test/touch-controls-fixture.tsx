@@ -113,7 +113,7 @@ export function mountViewportControls(tool: string, pickedId: number | null = nu
     return null;
   }
   render(<Probe />);
-  return { canvas, camera, menus, activeToolRef, selectionCount: () => selections };
+  return { canvas, camera, renderer, menus, activeToolRef, selectionCount: () => selections };
 }
 
 export function pointer(type: string, pointerType: 'touch' | 'mouse' | 'pen', x: number, y: number, buttons = 0, button = 0): PointerEvent {
@@ -126,18 +126,24 @@ export function pointer(type: string, pointerType: 'touch' | 'mouse' | 'pen', x:
   return e;
 }
 
-export function touchEvent(kind: string, canvas: HTMLCanvasElement, points: Array<[number, number]>, touchType?: 'direct' | 'stylus'): Event {
+/** `keys`: the modifiers a hardware keyboard holds, which a `TouchEvent` carries (an iPad keyboard, #9092). */
+export function touchEvent(
+  kind: string, canvas: HTMLCanvasElement, points: Array<[number, number]>, touchType?: 'direct' | 'stylus',
+  keys: { shiftKey?: boolean; altKey?: boolean } = {},
+): Event {
   const event = new window.Event(kind, { bubbles: true, cancelable: true });
   const touches = points.map(([x, y], i) => ({ identifier: i + 1, target: canvas, clientX: x, clientY: y, touchType }));
   Object.defineProperty(event, 'touches', { value: touches });
   Object.defineProperty(event, 'changedTouches', { value: touches });
+  Object.defineProperty(event, 'shiftKey', { value: keys.shiftKey === true });
+  Object.defineProperty(event, 'altKey', { value: keys.altKey === true });
   return event;
 }
 
-export async function tap(canvas: HTMLCanvasElement, x: number, y: number): Promise<void> {
+export async function tap(canvas: HTMLCanvasElement, x: number, y: number, keys: { shiftKey?: boolean; altKey?: boolean } = {}): Promise<void> {
   await act(async () => {
-    canvas.dispatchEvent(touchEvent('touchstart', canvas, [[x, y]]));
-    canvas.dispatchEvent(touchEvent('touchend', canvas, []));
+    canvas.dispatchEvent(touchEvent('touchstart', canvas, [[x, y]], undefined, keys));
+    canvas.dispatchEvent(touchEvent('touchend', canvas, [], undefined, keys));
   });
 }
 

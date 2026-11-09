@@ -22,6 +22,8 @@ export interface SurfaceCommandContext {
   activateRightPanel?: (panel: RightPanel) => void;
   activateBottomPanel?: (panel: BottomPanelId) => void;
   runExport?: (request: ExportRequest) => void;
+  /** Reject a row captured before the mounted file owner was replaced/unmounted. */
+  fileHostIsCurrent?: () => boolean;
   openFiles?: () => void;
   addModel?: () => void;
   /** The phone's activity tray dialog (#6925); the status bar hosts it elsewhere. */
@@ -30,6 +32,10 @@ export interface SurfaceCommandContext {
   openShareDialog?: () => void;
   /** The context menu owns the current entity and supplies its target-specific action. */
   contextAction?: () => void;
+  toolHostIsCurrent?: () => boolean;
+  openBulkProperties?: (launcher?: HTMLElement | null) => void;
+  openImportData?: (launcher?: HTMLElement | null) => void;
+  openClassFilter?: (launcher?: HTMLElement | null) => void;
 }
 
 export interface SurfaceCommandState {
@@ -50,6 +56,7 @@ export interface SurfaceCommandDefinition {
   /** Legacy English search text; display always uses labelKey. */
   searchLabel?: string;
   keywords: string;
+  keywordsKey?: TranslationKey;
   category: Command['category'];
   icon: Command['icon'];
   /** State-dependent mobile text/icon live here, alongside the action. */

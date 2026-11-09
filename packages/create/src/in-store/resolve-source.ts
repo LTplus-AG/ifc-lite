@@ -250,6 +250,8 @@ function collectSourceAssociations(
       description,
       relatingExpressId,
       ...(relatingExpressIds.length > 1 ? { relatingExpressIds } : {}),
+      relId,
+      relatedIds: refList(entity.attributes[4]),
     });
   }
   return out;

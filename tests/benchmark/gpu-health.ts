@@ -69,7 +69,7 @@ export interface GpuHealth {
 export const DEVICE_LOSS_LOG_FORMATS: ReadonlyArray<{ site: string; pattern: RegExp }> = [
   // packages/renderer/src/device.ts: the `device.lost` promise (Chromium).
   { site: 'WebGPUDevice.lost', pattern: /\[WebGPU\] Device lost:.*\(reason: [\w-]+\)/ },
-  // packages/renderer/src/index.ts `handleDeviceLost`: also synchronous losses
+  // packages/renderer/src/renderer.ts `handleDeviceLost`: also synchronous losses
   // (Safari throws, upload exceptions) that never settle `device.lost`.
   { site: 'Renderer.handleDeviceLost', pattern: /\[Renderer\] GPU device lost — halting rendering until re-init:/ },
   // apps/viewer/src/components/viewer/device-loss-report.ts: once per episode.

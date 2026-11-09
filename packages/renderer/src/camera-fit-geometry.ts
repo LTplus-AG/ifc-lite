@@ -75,3 +75,18 @@ export function cornerOffsets(bounds: FramingBounds): Vec3[] {
   return offsets;
 }
 
+/**
+ * Smallest orthographic half-height, in model units, that shows every corner
+ * of the box from a view with these axes: each corner's vertical offset, and
+ * its horizontal offset over `aspect`, since the frame is `aspect` times as
+ * wide as it is tall. Shared by `frameBounds` and the fit policy.
+ */
+export function orthoHalfHeightFor(bounds: FramingBounds, axes: ViewAxes, aspect: number): number {
+  let half = 0;
+  for (const c of cornerOffsets(bounds)) {
+    const h = Math.abs(c.x * axes.right.x + c.y * axes.right.y + c.z * axes.right.z);
+    const v = Math.abs(c.x * axes.up.x + c.y * axes.up.y + c.z * axes.up.z);
+    half = Math.max(half, v, h / aspect);
+  }
+  return half;
+}

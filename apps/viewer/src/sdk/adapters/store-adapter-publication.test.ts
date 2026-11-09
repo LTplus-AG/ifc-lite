@@ -8,10 +8,12 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { IfcParser } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
-import { createCollabSession, createEntity, deleteEntity, setAttribute } from '@ifc-lite/collab';
+import { createCollabSession, createEntity, deleteEntity, setAttribute, setPropertyValue, getPropertyValue, deletePropertyValue } from '@ifc-lite/collab';
 import { useViewerStore } from '@/store';
+import { bindRoomPropertyApi } from '@/lib/collab/room-property-api';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { registerStoreSlot, registerEntityPath, unregisterEntityPath, pathForGuid, pathForEntity } from '@/lib/collab/entity-paths';
+import { parseIfcxViewerModel } from '@/hooks/ingest/viewerModelIngest';
 import { createStoreAdapter } from './store-adapter.js';
 
 const MODEL = 'publication';
@@ -91,4 +93,75 @@ it('ordinary creation records only its appended journal rows as existing authori
     measured.push({ existing: before, read: reads[0].rows });
   }
   t.diagnostic(`Actual ordinary journal recording: ${JSON.stringify(measured)}`);
+});
+
+async function roofRoom() {
+  bindRoomPropertyApi({ getPropertyValue, setPropertyValue, deletePropertyValue });
+  const { data, view, adapter } = await seed();
+  const session = await createCollabSession({ roomId: 'roof-publication', user: { id: 'test', name: 'Test' }, provider: 'memory' });
+  const slot = { slotId: 'm0', pathPrefix: '/m0' };
+  registerStoreSlot(data, slot);
+  useViewerStore.setState({ collabRoomId: session.roomId, collabSession: session, collabRoomModels: new Map([[MODEL, slot]]),
+    mirrorEntityCreate: (_model, id, type, guid) => {
+      assert.ok(guid);
+      const path = pathForGuid(data, guid);
+      session.transact(() => createEntity(session.doc, path, { ifcClass: type }));
+      registerEntityPath(data, id, path);
+    },
+    mirrorAttributeEdit: (_model, id, name, value) => {
+      const path = pathForEntity(data, id); assert.ok(path);
+      session.transact(() => setAttribute(session.doc, path, name, value));
+    },
+    mirrorPropertyEdit: (_model, id, pset, prop, value) => {
+      const path = pathForEntity(data, id); assert.ok(path);
+      assert.ok(typeof value === 'string' || typeof value === 'number');
+      session.transact(() => setPropertyValue(session.doc, path, pset, prop, { type: typeof value === 'number' ? 'IfcReal' : 'IfcText', value }));
+    },
+  });
+  return { data, view, adapter, session };
+}
+
+it('a peer receives a new SDK roof footprint definition with its body (#9356 review)', async () => {
+  const { data, adapter, session } = await roofRoom();
+  try {
+    const slopes = [Math.PI / 6, 0, Math.PI / 6, 0];
+    const roof = adapter.addRoof(MODEL, 42, { Position: [0,0,4], Width: 10, Depth: 8, Thickness: .25, EdgeSlopes: slopes, Overhang: .5 });
+    const path = pathForEntity(data, roof.expressId); assert.ok(path);
+    const bytes = new TextEncoder().encode(JSON.stringify(session.snapshot()));
+    const peer = await parseIfcxViewerModel(bytes.buffer, undefined, { allowEmptyGeometry: true });
+    const id = peer.pathToId?.get(path); assert.ok(id);
+    const view = new MutablePropertyView(peer.dataStore.properties, 'peer');
+    assert.ok(view.getPropertyValue(id, 'IfcLite_RoofFootprint', 'Footprint'), 'a peer must retain the footprint so its next edit can rebuild the planes');
+    assert.deepEqual(JSON.parse(String(view.getPropertyValue(id, 'IfcLite_RoofFootprint', 'EdgeSlopes'))), slopes);
+    assert.equal(view.getPropertyValue(id, 'IfcLite_RoofFootprint', 'Overhang'), .5);
+  } finally { session.dispose(); }
+});
+
+for (const failAt of [1, 3]) it(`roof edit property publication failure after ${failAt} real writes preserves local and peer state (#9356 review)`, async () => {
+  const { view, adapter, session } = await roofRoom();
+  const roof = adapter.addRoof(MODEL, 42, { Position: [0,0,4], Width: 10, Depth: 8, Thickness: .25, EdgeSlopes: Array(4).fill(Math.PI / 6) });
+  const snapshot = () => {
+    const state = useViewerStore.getState();
+    return structuredClone({ records: view.getNewEntities(), journal: view.getMutations(), changes: view.getEffectiveChanges(),
+      next: view.peekNextExpressId(), undo: state.undoStacks, redo: state.redoStacks, tags: state.mutationBatchTags,
+      stash: state.removedNewEntities, dirty: state.dirtyModels, version: state.mutationVersion });
+  };
+  const before = snapshot(), peerBefore = session.snapshot().data;
+  const editRoof = adapter.editRoof;
+  assert.ok(editRoof, 'the viewer implements roof edits');
+  const observations: unknown[] = [];
+  session.doc.on('afterTransaction', () => observations.push(session.snapshot().data));
+  const original = useViewerStore.getState().mirrorPropertyEdit;
+  let writes = 0;
+  useViewerStore.setState({ mirrorPropertyEdit: (...args) => {
+    original(...args);
+    if (++writes === failAt) throw new Error('Injected roof property publication failure');
+  } });
+  try {
+    assert.throws(() => editRoof(roof, { Edge: { Index: 1, Slope: 0 }, Overhang: .5 }), /Injected roof property publication failure/);
+    assert.deepEqual(snapshot(), before, 'a refused edit leaves graph, allocator and history untouched');
+    assert.deepEqual(session.snapshot().data, peerBefore);
+    assert.ok(observations.length > 0, 'real publication was attempted');
+    assert.ok(observations.every(graph => JSON.stringify(graph) === JSON.stringify(peerBefore)), 'no peer observer sees partial roof metadata');
+  } finally { useViewerStore.setState({ mirrorPropertyEdit: original }); session.dispose(); }
 });

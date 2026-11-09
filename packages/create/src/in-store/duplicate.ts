@@ -70,6 +70,14 @@ export interface SourceAssociation {
    * `(#a,#b)` for several.
    */
   relatingExpressIds?: readonly number[];
+  /**
+   * The existing rel's own id and its RelatedObjects when collected. An
+   * `IfcRelDefinesByType` is extended with the duplicate rather than replayed:
+   * IFC gives a type at most one (`IfcTypeObject.Types SET [0:1]`), so a second
+   * rel to the same type makes the file schema-invalid.
+   */
+  relId?: number;
+  relatedIds?: readonly number[];
 }
 
 /** `#N` for one relating entity, `['#a','#b']` for an IfcPropertySetDefinitionSet. */
@@ -261,6 +269,11 @@ export function duplicateInStore(
   const associationRelIds: number[] = [];
   if (source.associations && source.associations.length > 0) {
     for (const assoc of source.associations) {
+      if (assoc.relId !== undefined && assoc.relType.toUpperCase() === 'IFCRELDEFINESBYTYPE') {
+        extendRelatedObjects(editor, assoc.relId, assoc.relatedIds ?? [], duplicate.expressId);
+        associationRelIds.push(assoc.relId);
+        continue;
+      }
       const rel = editor.addEntity(assoc.relType, [
         generateIfcGuid(options.guidRandom),                                // GlobalId
         assoc.ownerHistoryId !== null ? `#${assoc.ownerHistoryId}` : null,  // OwnerHistory
@@ -281,4 +294,53 @@ export function duplicateInStore(
     relContainedId,
     associationRelIds,
   };
+}
+
+/** RelatedObjects, IfcRelDefines* / IfcRelAssociates* slot 4. */
+const RELATED_OBJECTS = 4;
+
+/** Type relationships extended by the copies of one open batch, keyed by the batch's draft view. */
+const openBatches = new WeakMap<object, Map<number, { collected: readonly number[]; added: number[] }>>();
+
+/**
+ * Batch the type-relationship extensions of many duplicates written through
+ * `editor`'s view: each copy only records its id, and the returned flush writes
+ * every affected `IfcRelDefinesByType` once. Without it, copy N rewrites the
+ * whole RelatedObjects list again, so an array of N copies journals O(N²)
+ * references. Call the flush before the atomic edit that opened it returns.
+ */
+export function openTypeRelationBatch(editor: StoreEditor): () => void {
+  const view = editor.getMutationView();
+  const pending = new Map<number, { collected: readonly number[]; added: number[] }>();
+  openBatches.set(view, pending);
+  return () => {
+    if (openBatches.get(view) === pending) openBatches.delete(view);
+    for (const [relId, { collected, added }] of pending) writeRelatedObjects(editor, relId, collected, added);
+  };
+}
+
+/** Append `objectId` to a live rel's RelatedObjects: now, or at the flush of an open batch. */
+function extendRelatedObjects(editor: StoreEditor, relId: number, collected: readonly number[], objectId: number): void {
+  const pending = openBatches.get(editor.getMutationView());
+  if (!pending) return writeRelatedObjects(editor, relId, collected, [objectId]);
+  const entry = pending.get(relId) ?? { collected, added: [] };
+  entry.added.push(objectId);
+  pending.set(relId, entry);
+}
+
+/**
+ * Write a rel's RelatedObjects with `added` appended, reading the list as the
+ * session has it now (an earlier edit may already have extended it), so the
+ * collected list is only the fallback.
+ */
+function writeRelatedObjects(editor: StoreEditor, relId: number, collected: readonly number[], added: readonly number[]): void {
+  const view = editor.getMutationView();
+  const live = view.getPositionalMutationsForEntity(relId)?.get(RELATED_OBJECTS) ?? view.getNewEntity(relId)?.attributes[RELATED_OBJECTS];
+  const ids = Array.isArray(live)
+    ? live.map(ref => typeof ref === 'number' ? ref : typeof ref === 'string' && /^#\d+$/.test(ref.trim()) ? Number(ref.trim().slice(1)) : null)
+      .filter((id): id is number => id !== null)
+    : [...collected];
+  const present = new Set(ids);
+  for (const id of added) if (!present.has(id)) { present.add(id); ids.push(id); }
+  editor.setPositionalAttribute(relId, RELATED_OBJECTS, ids.map(id => `#${id}`));
 }

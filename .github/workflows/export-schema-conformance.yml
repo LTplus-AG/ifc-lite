@@ -142,6 +142,15 @@ jobs:
       - name: Install workspace dependencies
         run: pnpm install --frozen-lockfile --ignore-scripts
 
+      # Restore-only: test.yml on main saves this exact tree. The fetch below
+      # then re-hashes every file and downloads only what is missing, so a
+      # release-CDN outage no longer fails the lane while the manifest is
+      # unchanged.
+      - name: Restore fixtures from the main-branch cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: tests/models
+          key: ci-fixtures-source-v2-${{ runner.os }}-${{ hashFiles('tests/models/manifest.json', 'tests/models/README.md', 'tests/models/.manifest-ignore') }}
       # The IFC4 pair, then the IFC4X3 set (#5351): two IFC4 fixtures the
       # test converts to IFC4X3 and two IFC4X3_ADD2 fixtures it round-trips.
       # Hello_Wall carries a `$` FILE_NAME author/organization (#5470).
@@ -257,5 +266,6 @@ jobs:
       jobs: validate, terrain-imagery
       result: validate=${{ needs.validate.result }}, terrain-imagery=${{ needs.terrain-imagery.result }}
     permissions:
+      actions: read
       contents: read
       issues: write

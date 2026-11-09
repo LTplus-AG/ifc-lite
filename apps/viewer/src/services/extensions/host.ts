@@ -310,7 +310,7 @@ export class ExtensionHostService {
    * back to "first enabled extension that declares the id" and could run
    * the wrong handler.
    */
-  runCommand(commandId: string, extensionId: string): Promise<RuntimeRunResult | undefined> {
+  runCommand(commandId: string, extensionId: string, isCurrent?: () => boolean): Promise<RuntimeRunResult | undefined> {
     return runExtensionCommand(
       {
         storage: this.storage,
@@ -318,6 +318,7 @@ export class ExtensionHostService {
         runtime: this.runtime,
         dispatcher: this.dispatcher,
         sdk: this.sdk,
+        isCurrent,
       },
       commandId,
       extensionId,

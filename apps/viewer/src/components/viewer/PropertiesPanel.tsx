@@ -36,7 +36,7 @@ import { getEffectiveGeoreference } from '@/lib/geo/effective-georef';
 import { displayStoreyElevationMeters } from '@/lib/geo/storey-elevation';
 import { useRenderFrameOffsets } from '@/hooks/useRenderFrameOffsets';
 import { PropertySetCard } from './properties/PropertySetCard';
-import { QuantitySetCard } from './properties/QuantitySetCard';
+import { EditedQuantitiesSwitch, QuantitySetCard } from './properties/QuantitySetCard';
 import { SweptDiskInspection } from './properties/SweptDiskInspection';
 import { ExtrusionInspection } from './properties/ExtrusionInspection';
 import { ModelMetadataPanel } from './properties/ModelMetadataPanel';
@@ -52,6 +52,7 @@ import { DocumentCard } from './properties/DocumentCard';
 import { effectiveDocuments } from './properties/effectiveDocuments';
 import { RelationshipsCard } from './properties/RelationshipsCard';
 import { SpatialLocationBadge } from './properties/SpatialLocationBadge';
+import { PresentationLayersSection } from './properties/PresentationLayersSection';
 import { AssemblyBadge } from './properties/AssemblyBadge';
 import type { PropertySet, QuantitySet } from './properties/encodingUtils';
 import { BsddCard } from './properties/BsddCard';
@@ -74,15 +75,12 @@ import { PropertyFindBox } from './properties/PropertyFindBox';
 import { AssociationAttributeSearchCard, findAssociationAttributes } from './properties/associationAttributeSearch';
 import { associationDisclosureId } from './properties/associationDisclosureId';
 import { PersistentCollapsible } from './properties/PersistentCollapsible';
-import { INSPECTOR_ROWS, INSPECTOR_SECTION, InspectorGroupLabel, InspectorRow, InspectorSectionTrigger, isNumericDisplay } from './properties/inspector-ui';
+import { DISCLOSURE_CHEVRON_CLASSES, MULTI_SELECTION_TRIGGER_CLASSES, MULTI_SELECTION_SECTION_CLASSES, INSPECTOR_ROWS, INSPECTOR_SECTION, InspectorGroupLabel, InspectorRow, InspectorSectionTrigger, isNumericDisplay } from './properties/inspector-ui';
 import { AttributeEditorField } from './properties/AttributeEditorField';
 import { CopyValueButton } from './properties/CopyValueButton';
 import { SelectionSummaryPanel } from './properties/SelectionSummaryPanel';
 import { AssistantAction } from './assistant/AssistantAction';
 
-const DISCLOSURE_CHEVRON_CLASSES = 'size-3 transition-transform group-data-[state=closed]/disclosure:-rotate-90';
-const MULTI_SELECTION_TRIGGER_CLASSES = 'group/disclosure flex items-center gap-2 w-full p-2 hover:bg-muted text-left text-xs';
-const MULTI_SELECTION_SECTION_CLASSES = 'border-b border-border';
 export function PropertiesPanel() {
   const { t, locale } = useTranslation();
   // Display-unit converter overrides (issue #1573 proposal 2) — read once
@@ -1140,12 +1138,12 @@ export function PropertiesPanel() {
     }
     // Multi-model or no model loaded: show empty state
     return (
-      <div className="h-full flex flex-col border-l-2 border-border bg-zinc-50 dark:bg-black">
-        <div className="p-3 border-b-2 border-border bg-white">
+      <div className="h-full flex flex-col border-l-2 border-border bg-zinc-50">
+        <div className="p-3 border-b-2 border-border bg-card">
           <h2 className="font-bold uppercase tracking-wider text-xs text-foreground">{t('properties.panel.title')}</h2>
         </div>
         <EmptyState
-          className="flex-1 bg-white"
+          className="flex-1 bg-card"
           icon={<MousePointer2 className="size-8" />}
           title={t('properties.panel.emptyTitle')}
           description={models.size > 1 ? t('properties.panel.emptyHintMultiModel') : t('properties.panel.emptyHintSingleModel')}
@@ -1169,6 +1167,7 @@ export function PropertiesPanel() {
         globalId={entityGlobalId}
       >
         <SpatialLocationBadge spatialInfo={renderedSpatialInfo} />
+        {selectedEntity && <PresentationLayersSection entityRef={selectedEntity} />}
         {/* Part of Assembly (#3620) */}
         <AssemblyBadge assembly={assemblyParent} onSelect={handleSelectAssembly} />
         {/* World coordinates + Georeferencing: one Position row with a disclosure */}
@@ -1517,6 +1516,7 @@ export function PropertiesPanel() {
           <TabsContent value="quantities" className="m-0 p-0 overflow-hidden">
             {occurrenceQuantities.status === 'unavailable' ? <output className="block px-3 py-2 text-xs text-muted-foreground">{t('properties.panel.occurrenceUnavailable', { reason: occurrenceQuantities.reason ?? '' })}</output> : null}
             <div className="p-2 empty:hidden"><SweptDiskInspection enabled={propertiesActiveTab === 'quantities'} /></div>
+            <EditedQuantitiesSwitch entity={selectedEntity} />
             <div className="p-2 empty:hidden"><ExtrusionInspection enabled={propertiesActiveTab === 'quantities'} /></div>
             {quantityUnitContext.status === 'unavailable' ? (
               <output className="block px-3 py-2 text-xs text-muted-foreground">{t('zonesPanel.volumeBreakdown.quantityUnitsUnavailable', { reason: quantityUnitContext.reason ?? 'unverified current data' })}</output>
@@ -1533,7 +1533,7 @@ export function PropertiesPanel() {
                   <section key={scope} aria-label={t(heading)}>
                     <InspectorGroupLabel as="h3">{t(heading)}</InspectorGroupLabel>
                     {sets.map((qset: QuantitySet, index: number) => (
-                      <QuantitySetCard key={`${scope}-${qset.name}-${index}`} qset={qset} projectUnits={renderedProjectUnits} projectUnitsAvailable={quantityUnitContext.status !== 'unavailable'} unitDisplayOverrides={unitDisplayOverrides} searchQuery={findQuery} />
+                      <QuantitySetCard key={`${scope}-${qset.name}-${index}`} qset={qset} projectUnits={renderedProjectUnits} projectUnitsAvailable={quantityUnitContext.status !== 'unavailable'} unitDisplayOverrides={unitDisplayOverrides} searchQuery={findQuery} entity={scope === 'occurrence' ? selectedEntity : null} />
                     ))}
                   </section>
                 ) : null)}
@@ -1728,14 +1728,14 @@ function EntityDataSection({
   }
 
   return (
-    <div className="bg-white">
+    <div className="bg-card">
       {/* Entity Header with model name */}
       <div className="p-3 bg-zinc-50 dark:bg-zinc-900/50 space-y-2">
         {showModelName && model && (
           <ModelBadge modelId={model.id} className="gap-2 text-2xs max-w-full" />
         )}
         <div className="flex items-center gap-2">
-          <Layers className="h-4 w-4 text-emerald-600" />
+          <Layers className="h-4 w-4 text-muted-foreground" />
           <div className="flex-1 min-w-0">
             <h3 className="font-bold text-sm truncate text-foreground">
               {entityNode.name || `${displayType} #${entityRef.expressId}`}
@@ -1743,7 +1743,7 @@ function EntityDataSection({
             <p className="text-xs font-mono text-muted-foreground">{displayType}</p>
           </div>
           {elevationInfo !== null && (
-            <span className="text-2xs font-mono bg-emerald-100 dark:bg-emerald-950 px-1.5 py-0.5 border border-emerald-200 dark:border-emerald-800 text-emerald-600 dark:text-emerald-400">
+            <span className="text-2xs font-mono bg-muted px-1.5 py-0.5 border border-border text-foreground">
               {t('properties.panel.multiEntity.elevationMeters', { sign: elevationInfo >= 0 ? '+' : '', value: elevationInfo.toFixed(2) })}
             </span>
           )}

@@ -91,6 +91,8 @@
         "VITE_POSTHOG_HOST",
         "VITE_SOURCEMAP",
         "VITE_GAUSSIAN_SPLATS",
+        "VITE_REGISTRY_ENABLED",
+        "IFC_REGISTRY_TARGET",
         "VERCEL_GIT_COMMIT_SHA",
         "VERCEL_DEPLOYMENT_ID",
         "VERCEL_SKEW_PROTECTION_ENABLED",
@@ -107,7 +109,7 @@
     },
     "test": {
       "dependsOn": ["build"],
-      "passThroughEnv": ["IFC_LITE_CURRENT_MAIN_DIFF_ORACLE", "GITHUB_*", "RUNNER_*", "MERGIFY_*"],
+      "passThroughEnv": ["IFC_LITE_CURRENT_MAIN_DIFF_ORACLE", "IFCLITE_TEST_CHROME_EXECUTABLE", "GITHUB_*", "RUNNER_*", "MERGIFY_*", "OCI_REGISTRY_BINARY", "ORAS_BINARY"],
       "cache": false,
       "env": [
         "TEST_PATTERN",

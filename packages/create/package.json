@@ -3,6 +3,7 @@
   "version": "5.1.3",
   "description": "IFC creation from scratch — walls, slabs, beams, columns, stairs, roofs with geometry, properties and quantities",
   "type": "module",
+  "sideEffects": false,
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {

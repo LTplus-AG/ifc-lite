@@ -7,14 +7,14 @@
       "metric": "brotli-bytes",
       "unit": "bytes",
       "description": "packages/wasm/pkg/ifc-lite_bg.wasm, the single-thread engine bundle",
-      "ceiling": 2424348,
+      "ceiling": 2437977,
       "tolerance": {
         "kind": "relative",
         "value": 0.005
       },
       "provenance": {
-        "commit": "cc0ec0f32a6be468e67e3451ec70a91bea59304d",
-        "measuredAt": "2026-11-01T15:30:46.869Z"
+        "commit": "d7f3e7bbe726e1311736e035f9c986602450c8db",
+        "measuredAt": "2026-11-07T14:32:56.000Z"
       }
     },
     {
@@ -37,14 +37,14 @@
       "metric": "raw-bytes",
       "unit": "bytes",
       "description": "summed raw size of every JS file dist/index.html loads eagerly: the module <script src> plus <link rel=modulepreload>",
-      "ceiling": 18010960,
+      "ceiling": 18058823,
       "tolerance": {
         "kind": "relative",
         "value": 0.001
       },
       "provenance": {
-        "commit": "3d6206e84e0047df6f14f8e7d22679f653a6c4b4",
-        "measuredAt": "2026-11-07T00:59:36.451Z"
+        "commit": "8dd475fd6017d5b5378ebe5fd2db87bb2ff20f9d",
+        "measuredAt": "2026-11-08T22:21:16.836Z"
       }
     }
   ]

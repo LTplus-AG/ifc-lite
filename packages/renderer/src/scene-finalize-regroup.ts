@@ -28,6 +28,8 @@ export interface RegroupHost<Bucket extends RegroupBucket> {
   resolveActiveBucket(baseKey: string, meshData: MeshData): string;
   /** Creates a bucket for a key the router left unpublished. */
   createBucket(key: string): Bucket;
+  /** Called before a moved mesh joins a bucket that existed before the re-group. */
+  beforeJoin?(bucket: Bucket): void;
 }
 
 export interface FinalizeRegroup {
@@ -133,7 +135,7 @@ export function regroupStreamedBuckets<Bucket extends RegroupBucket>(host: Regro
       if (!bucket) {
         bucket = host.createBucket(key);
         host.buckets.set(key, bucket);
-      }
+      } else host.beforeJoin?.(bucket);
       if (!touched.has(key)) {
         touched.set(key, { bucket, bytesBefore: preexisting.get(key) ?? 0, bytesAfter: 0, created: !preexisting.has(key) });
       }

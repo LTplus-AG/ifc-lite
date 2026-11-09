@@ -131,7 +131,7 @@ export function FileTab({ fileCommands }: { fileCommands: FileCommands }) {
               active={collabPanelVisible}
               commandContext={{ activateRightPanel: () => useViewerStore.getState().toggleWorkspacePanel('collab', 'ribbon') }}
               badge={collabPeerCount > 0 ? (
-                <span className="absolute right-1 top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-emerald-500 px-1 text-2xs font-medium text-white">
+                <span className="absolute right-1 top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-ok-solid px-1 text-2xs font-medium text-solid-foreground">
                   {collabPeerCount + 1}
                 </span>
               ) : undefined}

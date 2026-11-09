@@ -3,14 +3,16 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Settings → General (#5857): theme, UI language (#9061), hover tooltips, and
- * IFC/LandXML georeferencing assumptions (off by default).
+ * Settings → General (#5857): theme, UI language (#9061), hover tooltips,
+ * refreshing edited elements' quantities, and IFC/LandXML georeferencing
+ * assumptions (off by default).
  */
 
 import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
 import type { ThemeMode } from '@/store/slices/uiSlice';
 import { Switch } from '@/components/ui/switch';
+import { useEditedQuantityRefresh } from '@/hooks/useEditedQuantityRefresh';
 import { SettingsChoice, SettingsGroup, SettingsRow } from './SettingsGroup';
 import { LanguageSetting } from './LanguageSetting';
 import { IfcFederationSettingsSlot } from '../IfcFederationAssumptionsLazy';
@@ -22,6 +24,7 @@ export function GeneralSection() {
   const setTheme = useViewerStore((s) => s.setTheme);
   const hoverTooltipsEnabled = useViewerStore((s) => s.hoverTooltipsEnabled);
   const toggleHoverTooltips = useViewerStore((s) => s.toggleHoverTooltips);
+  const [updateEditedQuantities, setUpdateEditedQuantities] = useEditedQuantityRefresh();
 
   return (
     <div className="space-y-4">
@@ -50,6 +53,19 @@ export function GeneralSection() {
             id="settings-hover-tooltips"
             checked={hoverTooltipsEnabled}
             onCheckedChange={() => toggleHoverTooltips()}
+          />
+        </SettingsRow>
+      </SettingsGroup>
+      <SettingsGroup title={t('settings.general.quantitiesTitle')}>
+        <SettingsRow
+          label={t('settings.general.updateEditedQuantities')}
+          hint={t('settings.general.updateEditedQuantitiesHint')}
+          htmlFor="settings-update-edited-quantities"
+        >
+          <Switch
+            id="settings-update-edited-quantities"
+            checked={updateEditedQuantities}
+            onCheckedChange={setUpdateEditedQuantities}
           />
         </SettingsRow>
       </SettingsGroup>

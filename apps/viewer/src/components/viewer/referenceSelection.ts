@@ -1,11 +1,13 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { refuseCaptureHeldPick } from '@/lib/viewport-capture';
 import type { PickOptions, PickResult, Renderer } from '@ifc-lite/renderer';
 import { useViewerStore } from '@/store';
 import { referenceFrameStatus } from '@/lib/appearance/reference-runtime/frame.js';
 import { pickLandXmlOverlayLine } from './landXmlOverlayPick.js';
 import { captureViewportPick, invalidateViewportPick } from './viewportPickOwnership.js';
+import { TAP_CLICK_MS, withinTapSlop } from './tapSlop.js';
 
 const touchClicks = new WeakMap<HTMLCanvasElement, { time: number; x: number; y: number }>();
 export function invalidateSelectionPick(canvas: HTMLCanvasElement): void {
@@ -20,15 +22,18 @@ export function markTouchSelection(canvas: HTMLCanvasElement, x: number, y: numb
  */
 export function forgetTouchSelection(canvas: HTMLCanvasElement, x: number, y: number): void {
   const touch = touchClicks.get(canvas);
-  if (touch && Math.abs(touch.x - x) <= 5 && Math.abs(touch.y - y) <= 5) touchClicks.delete(canvas);
+  if (touch && withinTapSlop(x, y, touch)) touchClicks.delete(canvas);
 }
-/** Touchend owns a tap. Ignore its compatibility click rather than selecting twice. */
+/**
+ * Touchend owns a tap. Ignore its compatibility click rather than selecting
+ * twice: it lands where the finger lifted, within the tap slop of the press (#9091).
+ */
 export function isTouchSelectionClick(canvas: HTMLCanvasElement, event: MouseEvent, x: number, y: number): boolean {
   const pointer = event as MouseEvent & { pointerType?: string; sourceCapabilities?: { firesTouchEvents?: boolean } };
   if (pointer.pointerType === 'touch' || pointer.sourceCapabilities?.firesTouchEvents) return true;
   if (pointer.pointerType === 'mouse' || pointer.pointerType === 'pen') return false;
   const touch = touchClicks.get(canvas);
-  if (!touch || Date.now() - touch.time > 700 || Math.abs(touch.x - x) > 5 || Math.abs(touch.y - y) > 5) return false;
+  if (!touch || Date.now() - touch.time > TAP_CLICK_MS || !withinTapSlop(x, y, touch)) return false;
   touchClicks.delete(canvas);
   return pointer.sourceCapabilities?.firesTouchEvents !== false;
 }
@@ -42,6 +47,7 @@ export async function selectViewportTarget(options: {
   getPickOptions: () => PickOptions;
   onIfc: (pick: PickResult | null) => void;
   onReference?: () => void;
+  onRefused?: () => void;
 }): Promise<void> {
   const { renderer, x, y } = options;
   const { before, pickOptions, rect, camera, current } = captureViewportPick({
@@ -60,6 +66,7 @@ export async function selectViewportTarget(options: {
       }
     }
   }
+  if (refuseCaptureHeldPick(renderer)) { options.onRefused?.(); return; }
   const pick = await renderer.pick(x, y, pickOptions);
   if (!current()) return;
   useViewerStore.getState().selectAppearanceReference(null);

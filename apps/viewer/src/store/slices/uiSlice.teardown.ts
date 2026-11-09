@@ -20,7 +20,7 @@
  * state is built from, so the reset value and the initial value are one fact.
  */
 
-import { defineSliceTeardown, notApplicable } from '../teardown.js';
+import { defineSliceTeardown } from '../teardown.js';
 import { UI_DEFAULTS } from '../constants.js';
 
 export const uiTeardown = defineSliceTeardown(
@@ -29,6 +29,7 @@ export const uiTeardown = defineSliceTeardown(
     'activeTool',
     'editEnabled',
     'pendingPropertyFocus',
+    'pendingPresentationLayerReveal',
     'visualEnhancementsEnabled',
     'contactShadingQuality',
     'contactShadingIntensity',
@@ -46,6 +47,7 @@ export const uiTeardown = defineSliceTeardown(
       // load — a new file reuses ids ('legacy' + reassigned expressIds) so
       // a stale focus could otherwise match an unrelated entity (#1107).
       pendingPropertyFocus: null,
+      pendingPresentationLayerReveal: null,
       visualEnhancementsEnabled: UI_DEFAULTS.VISUAL_ENHANCEMENTS_ENABLED,
       contactShadingQuality: UI_DEFAULTS.CONTACT_SHADING_QUALITY,
       contactShadingIntensity: UI_DEFAULTS.CONTACT_SHADING_INTENSITY,
@@ -58,7 +60,8 @@ export const uiTeardown = defineSliceTeardown(
     // Removing one model from a federation, or clearing them all, leaves the
     // chrome alone: the active tool and the render-quality toggles describe
     // the session, not the file. Only a file swap resets them.
-    'model-removed': notApplicable,
-    'all-models-cleared': notApplicable,
+    'model-removed': (scope, state) => state.pendingPresentationLayerReveal?.modelId === scope.modelId
+      ? { pendingPresentationLayerReveal: null } : {},
+    'all-models-cleared': () => ({ pendingPresentationLayerReveal: null }),
   },
 );

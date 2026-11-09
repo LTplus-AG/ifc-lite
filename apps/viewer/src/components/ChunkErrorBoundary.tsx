@@ -47,6 +47,8 @@ const NIGHT_TONE = { fg: '#ede4d3', dim: '#9c9486' } as const;
 
 const CHUNK_LABEL_KEYS = {
   'Command palette': 'commandPalette.ariaLabel',
+  'Bulk Property Editor': 'bulkPropertyEditor.title',
+  'Data Connector': 'dataConnector.dialogTitle',
   'Compare models': 'comparePanel.panel.title',
   'Clash panel': 'clashPanel.title',
   'Linked records panel': 'semantic.title',
@@ -68,6 +70,7 @@ const CHUNK_LABEL_KEYS = {
   'MCP playground': 'viewerShell.chunkLabel.mcpPlayground',
   'RTE GPU witness': 'viewerShell.chunkLabel.rteGpuWitness',
   'Saved runs': 'compareAnalysis.reconcile.savedTitle',
+  'Storey manager': 'storeyManager.title',
   "What's New tab": 'keyboardShortcuts.tabs.whatsNew',
 } as const satisfies Record<string, TranslationKey>;
 

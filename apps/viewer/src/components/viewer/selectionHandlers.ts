@@ -12,7 +12,6 @@ import type { PickResult } from '@ifc-lite/renderer';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
 import { openContextMenuAt } from './contextMenuSelection.js';
 import { useViewerStore } from '@/store';
-import { fromGlobalIdFromModels } from '@/store/globalId';
 import { toast } from '@/components/ui/toast';
 import { routeCommandPointer } from './commandPointer.js';
 import { runToolAt } from './toolTap.js';
@@ -25,6 +24,7 @@ import { pressOutlivedReset } from './distanceClick.js';
 import { rememberVertexPress, unsnapFromPrevious } from './measurePress.js';
 import { pickViewportAppearanceFace, viewportFacePickError } from './appearance/face-mask/viewport-face-picker.js';
 import { resolve as translate } from '@/i18n/registry';
+import { refuseCaptureHeldPick } from '@/lib/viewport-capture';
 
 /** The click-driven Measure modes' point placement; also a touch tap's (#5856). */
 export function handleMeasureClickAt(ctx: MouseHandlerContext, x: number, y: number): void {
@@ -52,6 +52,11 @@ export async function handleSelectionClick(ctx: MouseHandlerContext, e: MouseEve
   if (tool === 'pan' || tool === 'walk') {
     return;
   }
+  // Every tool below picks: not through a capture's frame (#9137).
+  if (refuseCaptureHeldPick(renderer)) {
+    ctx.lastClickTimeRef.current = 0; ctx.lastClickPosRef.current = null;
+    return;
+  }
 
   if (tool === 'appearance-face') {
     const message = viewportFacePickError(pickViewportAppearanceFace(renderer.raycastScene(x, y, ctx.getPickOptions())?.intersection ?? null));
@@ -67,35 +72,10 @@ export async function handleSelectionClick(ctx: MouseHandlerContext, e: MouseEve
   // A press from before Esc or a mode or tool switch belongs to the gesture that was reset (#8786).
   if (tool === 'measure') return pressOutlivedReset(mouseState) ? undefined : handleMeasureClickAt(ctx, x, y);
 
-  // Section face-pick (#243) and a running modeling command (#6232) take the
-  // click BEFORE the generic select path, so it doesn't also flip the selection.
+  // Section face-pick (#243), a running modeling command (#6232) and an
+  // Annotate pin take the click BEFORE the generic select path, so it doesn't
+  // also flip the selection.
   if (runToolAt(ctx, tool, x, y, () => routeCommandPointer(ctx, 'down', x, y, e))) return;
-
-  // Annotate tool — drop a pin at the cursor's world point.
-  // Raycasts the scene; if the click misses geometry the draft is
-  // not opened (annotations are anchored to surface points by
-  // design, not floating in space).
-  if (tool === 'annotate') {
-    const store = useViewerStore.getState();
-    // In a shared room, only commenter/editor/admin may drop pins (solo allowed).
-    if (!store.canCollabComment()) return;
-    const result = renderer.raycastScene(x, y, ctx.getPickOptions());
-    if (!result?.intersection) return;
-    const { intersection } = result;
-    // Federated models — resolve which model the hit globalId belongs
-    // to so the annotation carries enough context to render its
-    // popover header. Falls back to (null, expressId) when there's
-    // only the legacy single-model state.
-    const modelLookup = fromGlobalIdFromModels(store.models, intersection.expressId);
-    const modelId = modelLookup?.modelId ?? null;
-    const localExpressId = modelLookup?.expressId ?? intersection.expressId;
-    store.beginDraft(
-      { x: intersection.point.x, y: intersection.point.y, z: intersection.point.z },
-      localExpressId ?? null,
-      modelId,
-    );
-    return;
-  }
 
   fieldTelemetry?.noteInspectClick(e.timeStamp); // #6961 ifc_inspect: sampled click -> properties shown
   const now = Date.now();
@@ -117,6 +97,7 @@ export async function handleSelectionClick(ctx: MouseHandlerContext, e: MouseEve
   if (tool === 'select') {
     await selectViewportTarget({ canvas, renderer, x, y, getTool: () => ctx.activeToolRef.current,
       getPickOptions: ctx.getPickOptions, onIfc: applyIfc,
+      onRefused: () => { ctx.lastClickTimeRef.current = 0; ctx.lastClickPosRef.current = null; },
       onReference: () => { ctx.lastClickTimeRef.current = 0; ctx.lastClickPosRef.current = null; } });
   } else {
     applyIfc(await renderer.pick(x, y, ctx.getPickOptions()));

@@ -106,7 +106,7 @@ export function BottomStripHeader({
                   onCloseTab(id);
                 }}
                 aria-label={t('bottomStrip.closeTabAriaLabel', { name: label })}
-                className="shrink-0 rounded p-0.5 opacity-60 hover:bg-black/10 hover:opacity-100 dark:hover:bg-white/10"
+                className="shrink-0 rounded p-0.5 opacity-60 hover:bg-accent hover:opacity-100"
               >
                 <X className="h-3 w-3" />
               </button>

@@ -11,6 +11,7 @@
 import { lazy, Suspense } from 'react';
 import { Mountain } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
+import { TEXT_LINK_CLASS } from '@/components/ui/text-link';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { formatLocaleNumber } from '@/i18n/intlFormat';
@@ -35,10 +36,10 @@ export function WorldViewSettings({ onSetOrthogonalHeight }: {
   return (
     <div className="px-3 py-1.5 border-t border-border space-y-1">
       <div className="flex items-center gap-2">
-        <Mountain className="h-3 w-3 text-teal-500 shrink-0" />
+        <Mountain className="h-3 w-3 text-muted-foreground shrink-0" />
         <span className="text-xs text-muted-foreground flex-1">{t('properties.georef.visibleSurfaceHeight')}</span>
         {terrainHeight !== null ? (
-          <span className="text-xs font-mono text-teal-500" title={cesiumTerrainSource ?? undefined}>
+          <span className="text-xs font-mono text-foreground" title={cesiumTerrainSource ?? undefined}>
             {t('properties.georef.heightMeters', { value: terrainHeight })}
           </span>
         ) : (
@@ -54,7 +55,7 @@ export function WorldViewSettings({ onSetOrthogonalHeight }: {
         <div className="flex items-center gap-1 ml-5">
           <button
             onClick={() => onSetOrthogonalHeight(cesiumTerrainSaveHeight)}
-            className="text-xs text-teal-500 hover:text-teal-700 dark:hover:text-teal-300 transition-colors flex items-center gap-0.5"
+            className={`flex items-center gap-0.5 text-xs ${TEXT_LINK_CLASS}`}
           >
             <Mountain className="h-2.5 w-2.5" />
             {t('properties.georef.setOrthogonalHeightButton', { value: terrainHeight })}

@@ -131,6 +131,8 @@ export interface ModelingCommand<G = unknown> {
   readonly id: CommandId;
   readonly labelKey: TranslationKey;
   readonly hud: {
+    /** What the bar calls the command when that depends on the session; `labelKey` otherwise. */
+    title?: (s: ViewerState) => TranslationKey | undefined;
     Bar?: ComponentType<CommandHudProps<G>>;
     Scene?: ComponentType<CommandHudProps<G>>;
     /** Drawn inside the plan's SVG, above the footprint of the `ghost` meshes the plan draws for every command. */
@@ -156,10 +158,23 @@ export interface ModelingCommand<G = unknown> {
    * and no target nearby moves it, and a click reads what the hover read.
    */
   aimsAtRegion?(g: G): boolean;
+  /**
+   * This gesture picks an element from the point under the pointer, so with
+   * snapping suspended it keeps reading the surface instead of aiming through
+   * to the workplane (#9201): a wall seen at eye height has to stay under it.
+   */
+  aimsAtElement?(g: G): boolean;
   pointerMove(g: G, s: SnapResult, ctx: CommandContext): G;
   pointerDown(g: G, s: SnapResult, ctx: CommandContext): G | CommandSignal;
   /** Handle this gesture on the actual press/release instead of a browser click. */
   pointerDownOnPress?(g: G): boolean;
+  /**
+   * With `pointerDownOnPress`: a press here, its point hovered, grabs
+   * something a drag moves (a room corner). A touch drag from it is the
+   * command's; from anywhere else a finger orbits and presses nothing (#9092),
+   * since touch has no other one-finger orbit. Absent = a finger always orbits.
+   */
+  pressDrags?(g: G): boolean;
   /**
    * The button's release, where the pointer source reports one (plan or 3D):
    * e.g. drop a dragged corner. Absent = releases are ignored.

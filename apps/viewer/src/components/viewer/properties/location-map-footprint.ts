@@ -26,6 +26,19 @@ export interface FootprintMap {
   getLayer(id: string): unknown;
   removeLayer(id: string): void;
   removeSource(id: string): void;
+  setPaintProperty(layerId: string, name: string, value: unknown): void;
+  getContainer?(): HTMLElement;
+}
+
+/** The footprint is drawn in the map container's ink, which LocationMap sets
+ *  against the basemap (#8802 R5): dark on light tiles, light on dark ones,
+ *  with no decorative hue. The ink is read on every call: a style flip
+ *  re-adds the layers, and a theme switch that keeps the tiles (light <->
+ *  colorful) repaints the existing ones, so the footprint never keeps a stale
+ *  ink. */
+function footprintInk(map: FootprintMap): string {
+  const container = map.getContainer?.();
+  return (container && getComputedStyle(container).color) || 'rgb(0, 0, 0)';
 }
 
 export const FOOTPRINT_SOURCE = 'building-footprint';
@@ -34,6 +47,7 @@ export const FOOTPRINT_OUTLINE_LAYER = 'building-footprint-outline';
 
 /** Add or update the building footprint GeoJSON polygon on a MapLibre map */
 export function addFootprintToMap(map: FootprintMap, ring: [number, number][]) {
+  const ink = footprintInk(map);
   const geojson: Feature = {
     type: 'Feature',
     properties: {},
@@ -46,6 +60,8 @@ export function addFootprintToMap(map: FootprintMap, ring: [number, number][]) {
   const existing = map.getSource(FOOTPRINT_SOURCE) as { setData(data: Feature): void } | undefined;
   if (existing) {
     existing.setData(geojson);
+    if (map.getLayer(FOOTPRINT_FILL_LAYER)) map.setPaintProperty(FOOTPRINT_FILL_LAYER, 'fill-color', ink);
+    if (map.getLayer(FOOTPRINT_OUTLINE_LAYER)) map.setPaintProperty(FOOTPRINT_OUTLINE_LAYER, 'line-color', ink);
     return;
   }
 
@@ -56,7 +72,7 @@ export function addFootprintToMap(map: FootprintMap, ring: [number, number][]) {
     type: 'fill',
     source: FOOTPRINT_SOURCE,
     paint: {
-      'fill-color': '#14b8a6',
+      'fill-color': ink,
       'fill-opacity': ['interpolate', ['linear'], ['zoom'], 15, 0, 16, 0.15, 18, 0.25],
     },
   });
@@ -66,7 +82,7 @@ export function addFootprintToMap(map: FootprintMap, ring: [number, number][]) {
     type: 'line',
     source: FOOTPRINT_SOURCE,
     paint: {
-      'line-color': '#0d9488',
+      'line-color': ink,
       'line-width': ['interpolate', ['linear'], ['zoom'], 15, 0.5, 18, 2.5],
       'line-opacity': ['interpolate', ['linear'], ['zoom'], 15, 0, 16, 0.7, 18, 1],
     },

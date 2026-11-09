@@ -13,6 +13,7 @@ import type { NamespaceSchema } from './bridge-schema.js';
 import { toRef } from './bridge-helpers.js';
 import { buildStoreCostMethods } from './bridge-store-cost.js';
 import { buildStoreModellingMethods } from './bridge-store-modelling.js';
+import { buildStoreStoreyMethods } from './bridge-store-storey.js';
 import { buildStoreGroupMethods } from './bridge-store-group.js';
 
 export function buildStoreNamespace(): NamespaceSchema {
@@ -244,13 +245,13 @@ export function buildStoreNamespace(): NamespaceSchema {
       },
       {
         name: 'addRoof',
-        doc: 'Add an IfcRoof (flat-roof slab variant). Two modes: rectangle or polygon.',
+        doc: 'Add an IfcRoof. Rectangle or polygon; flat unless EdgeSlopes/Overhang are given, then a roof by footprint: EdgeSlopes[i] (radians, 0 = gable end) slopes the edge from point i to point i+1, Overhang (metres) carries every edge out. Hip, gable, mono-pitch and L-shaped roofs.',
         args: ['string', 'number', 'dump'],
         paramNames: ['modelId', 'storeyExpressId', 'params'],
         tsParamTypes: [
           'string',
           'number',
-          '{ Position: [number, number, number]; Width: number; Depth: number; Thickness: number; Profile?: "rectangle"; Name?: string; Description?: string; ObjectType?: string; Tag?: string } | { Profile: "polygon"; OuterCurve: Array<[number, number]>; Position?: [number, number, number]; Thickness: number; Name?: string; Description?: string; ObjectType?: string; Tag?: string }',
+          '{ Position: [number, number, number]; Width: number; Depth: number; Thickness: number; Profile?: "rectangle"; EdgeSlopes?: number[]; Overhang?: number; Name?: string; Description?: string; ObjectType?: string; Tag?: string } | { Profile: "polygon"; OuterCurve: Array<[number, number]>; Position?: [number, number, number]; Thickness: number; EdgeSlopes?: number[]; Overhang?: number; Name?: string; Description?: string; ObjectType?: string; Tag?: string }',
         ],
         tsReturn: '{ modelId: string; expressId: number }',
         call: (sdk, args) => {
@@ -306,6 +307,7 @@ export function buildStoreNamespace(): NamespaceSchema {
         returns: 'value',
       },
       ...buildStoreModellingMethods(),
+      ...buildStoreStoreyMethods(),
       ...buildStoreCostMethods(),
       ...buildStoreGroupMethods(),
     ],

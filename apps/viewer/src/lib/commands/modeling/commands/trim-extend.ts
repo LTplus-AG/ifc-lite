@@ -122,6 +122,7 @@ export const ELEMENT_TRIM_EXTEND: ModelingCommand<TrimExtendGesture> = {
   },
   snap: TRIM_EXTEND_SNAP,
   init,
+  aimsAtElement: () => true,
   pointerMove,
   pointerDown(g) {
     if (!g.boundary) return g.hover ? { ...g, boundary: g.hover, hover: null, preview: null } : g;

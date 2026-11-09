@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
+import { lazy, Suspense, useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import type { ConnectionTestResult } from '@ifc-lite/plugin-api';
 import { useSourceHost } from '@/services/sources/SourceHostProvider';
 import { SourceSettingsDialog } from './SourceSettingsDialog';
@@ -28,8 +28,11 @@ import {
   type SourceRevisionUpdate,
 } from '@/lib/sources/revisionWatch';
 
+const RegistrySource = lazy(() => import('./RegistrySource').then(module => ({ default: module.RegistrySource })));
+
 interface SourcesPanelProps {
   onClose: () => void;
+  registryEnabled?: boolean;
 }
 
 type Translate = ReturnType<typeof useTranslation>['t'];
@@ -95,7 +98,7 @@ export function RegistrationFailureMessage({ provider, reason }: { provider: str
     : [segment, <span key={index} className="font-medium">{provider}</span>]);
 }
 
-export function SourcesPanel({ onClose }: SourcesPanelProps) {
+export function SourcesPanel({ onClose, registryEnabled = import.meta.env?.VITE_REGISTRY_ENABLED === 'true' }: SourcesPanelProps) {
   const { t } = useTranslation();
   const sourceHost = useSourceHost();
   const providers = useMemo(() => sourceHost.list(), [sourceHost]);
@@ -111,6 +114,7 @@ export function SourcesPanel({ onClose }: SourcesPanelProps) {
   const [downloadContext, setDownloadContext] = useState<{ providerId: string; projectId: string } | null>(null);
   const downloadOwner = downloadContext?.providerId ?? null;
   const [browsing, setBrowsing] = useState<string | null>(null);
+  const [registryBusy, setRegistryBusy] = useState(false);
   const [settingsFor, setSettingsFor] = useState<string | null>(null);
   // Bumped when saved prefs change so rows/contexts re-derive configured state.
   const [prefsVersion, setPrefsVersion] = useState(0);
@@ -243,7 +247,7 @@ export function SourcesPanel({ onClose }: SourcesPanelProps) {
   // A sign-in started before a download may resolve afterward. Async browse
   // callbacks must consult the current lock rather than their captured render.
   const navigationLock = useRef<{ busy: boolean; providerId: string | null }>({ busy: false, providerId: null });
-  navigationLock.current = { busy: downloading, providerId: downloadOwner };
+  navigationLock.current = { busy: downloading || registryBusy, providerId: registryBusy ? 'oci-registry' : downloadOwner };
 
   const openFavourite = useCallback((favourite: SourceFavourite) => {
     if (navigationLock.current.busy) return;
@@ -313,11 +317,15 @@ export function SourcesPanel({ onClose }: SourcesPanelProps) {
           favouritesVersion={favouritesVersion}
           liveIdentities={liveIdentities}
           onOpen={openFavourite}
-          navigationDisabled={downloading}
+          navigationDisabled={downloading || registryBusy}
           onChanged={bumpFavourites}
         />
 
         <ul className="space-y-2">
+          {registryEnabled && <Suspense fallback={null}>
+            <RegistrySource expanded={browsing === 'oci-registry'} navigationDisabled={downloading} onBusyChange={setRegistryBusy}
+              onToggle={() => { if (navigationLock.current.busy) return; didAutoOpen.current = true; setBrowseTarget(null); setBrowsing(previous => previous === 'oci-registry' ? null : 'oci-registry'); }} />
+          </Suspense>}
           {[...providers].sort((a, b) => Number(pins.ids.includes(b.manifest.name)) - Number(pins.ids.includes(a.manifest.name))).map((p) => (
             <SourceProviderRow
               key={p.manifest.name}
@@ -331,7 +339,7 @@ export function SourcesPanel({ onClose }: SourcesPanelProps) {
                 setBrowseTarget(null);
                 setBrowsing((previous) => previous === p.manifest.name ? null : p.manifest.name);
               }}
-              browseDisabled={downloading && downloadOwner !== p.manifest.name}
+              browseDisabled={registryBusy || (downloading && downloadOwner !== p.manifest.name)}
               expanded={browsing === p.manifest.name}
               pinned={pins.ids.includes(p.manifest.name)}
               onTogglePin={() => pins.toggle(p.manifest.name)}

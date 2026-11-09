@@ -69,10 +69,14 @@ export const RIBBON_ELEMENTS_SURFACE_COMMANDS = [
     surfaces: ribbonOnly, enabled: alwaysEnabled, run: () => showHierarchy('presentation-layers'),
   },
   {
-    id: 'elements:class-filter', labelKey: 'ribbon.elements.filter',
-    keywords: 'class visibility filter', category: 'Visibility', icon: Filter,
-    surfaces: ribbonOnly, enabled: alwaysEnabled,
-    run: runContextAction,
+    id: 'elements:class-filter', keywordsKey: 'commandPalette.aliases.classes', labelKey: 'ribbon.elements.filter',
+    keywords: 'class visibility filter spaces openings annotations grids merge layers fast exact geometry', category: 'Visibility', icon: Filter,
+    surfaces: ['ribbon', 'palette'], enabled: alwaysEnabled,
+    run: (context) => {
+      // The real ribbon trigger owns Radix focus; the palette owns its dialog.
+      if (context.contextAction) context.contextAction();
+      else context.openClassFilter?.();
+    },
   },
   {
     id: 'elements:entity-actions', labelKey: 'entityContextMenu.entityActions',

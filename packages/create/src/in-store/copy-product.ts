@@ -38,6 +38,8 @@ import {
   type CopyVec3, type LiveRead, type RigidFrame,
 } from './copy-frame.js';
 
+import { readCopyAttachments, rebindCopiedAttachments, withUnattachedTops, type CopyUnattachedTop } from './copy-attachment.js';
+
 export { productStoreyOrigin } from './copy-placement.js';
 
 export interface CopyTransform {
@@ -60,6 +62,8 @@ export interface CopyProductResult {
   readonly partIds: readonly number[];
   /** Source product id for every copied product, including openings, fillings and assembly parts. */
   readonly copiedFrom: ReadonlyMap<number, number>;
+  /** Copied child → copied parent, including nested assemblies and hosted dependents. */
+  readonly carriedBy?: ReadonlyMap<number, number>;
   /** The storey the copy (and its doors and windows) is contained in. */
   readonly storeyId: number | null;
   /** Every element the copy wrote with a shape to mesh: the copy and its doors and windows. */
@@ -72,6 +76,12 @@ export interface CopyProductResult {
   readonly boundToGrid: readonly number[];
   /** Copies that found their own place on the grid and landed on no crossing, now free of it. Listed as {@link boundToGrid}. */
   readonly cameFree: readonly number[];
+  /**
+   * Copies whose top attachment could not follow their new storey, left fixed
+   * at the source's height, with the reason (`copy-attachment.ts`). Absent
+   * when every attached copy followed.
+   */
+  readonly unattachedTops?: readonly CopyUnattachedTop[];
 }
 
 /** Classes that are copied with their host, never on their own. */
@@ -161,8 +171,40 @@ export function copyRefusal(ctx: CopyContext, sourceId: number): string | null {
   return gridCopyRefusal(ctx, sourceId);
 }
 
-/** Copy the complete product graph. `options.Name` overrides only the root product’s Name. */
+/**
+ * Copy the complete product graph. `options.Name` overrides only the root
+ * product’s Name. A copy on another storey re-resolves its top attachment
+ * there (`copy-attachment.ts`), as the batch does. The copy and the re-bind
+ * are one atomic write: when either refuses, nothing is left behind (#9352).
+ */
 export function copyProductInStore(ctx: CopyContext, sourceId: number, transform: CopyTransform = {}, options: { Name?: string } = {}): CopyProductResult {
+  return ctx.editor.runAtomic((draft) => {
+    const inner: CopyContext = { ...ctx, editor: draft, read: createStyleEntityReader(ctx.store, draft) };
+    const attachments = readCopyAttachments(inner, carriedParts(inner, sourceId));
+    const result = copyProductGraph(inner, sourceId, transform, options);
+    return withUnattachedTops([result], rebindCopiedAttachments(inner, attachments, [result]).unattached)[0];
+  });
+}
+
+/** The product and every assembly part it carries, at every depth (iterative, visited set). */
+function carriedParts(ctx: CopyContext, sourceId: number): number[] {
+  const seen = new Set<number>();
+  const pending = [sourceId];
+  while (pending.length > 0) {
+    const id = pending.pop()!;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    for (const link of ctx.parts.get(id) ?? []) pending.push(...link.parts);
+  }
+  return [...seen];
+}
+
+/**
+ * `copyProductInStore` without the attachment step: for a batch, which reads
+ * every source's attachment once before its first copy and re-binds each
+ * transform's copies together (so a slab copied alongside is found).
+ */
+export function copyProductGraph(ctx: CopyContext, sourceId: number, transform: CopyTransform = {}, options: { Name?: string } = {}): CopyProductResult {
   const refusal = copyRefusal(ctx, sourceId);
   if (refusal) throw new Error(refusal);
   copiedProductWork(ctx, sourceId);
@@ -178,13 +220,13 @@ export function copyProductInStore(ctx: CopyContext, sourceId: number, transform
   const copy = writeCopy(ctx, source, placed, targetStoreyId, options.Name);
 
   // Openings, their doors and windows, and the parts of an assembly follow it.
-  const acc: Dependents = { placements: new Map([[source.placementExpressId, copy.placementId]]), openingIds: [], fillingIds: [], partIds: [], copiedFrom: new Map([[copy.id, sourceId]]), boundToGrid: [], cameFree: [] };
+  const acc: Dependents = { placements: new Map([[source.placementExpressId, copy.placementId]]), openingIds: [], fillingIds: [], partIds: [], copiedFrom: new Map([[copy.id, sourceId]]), carriedBy: new Map(), boundToGrid: [], cameFree: [] };
   noteGridOutcome(acc, placed, copy.id);
   copyDependents(ctx, sourceId, copy.id, source, targetStoreyId, move, acc);
   for (const [copiedId, originalId] of acc.copiedFrom) cloneEffectiveMetadata(ctx.editor.getMutationView(), ctx.editor, originalId, [copiedId]);
   return {
     copyId: copy.id, openingIds: acc.openingIds, fillingIds: acc.fillingIds, partIds: acc.partIds, storeyId: targetStoreyId,
-    meshed: [copy.id, ...acc.partIds, ...acc.fillingIds], copiedFrom: acc.copiedFrom,
+    meshed: [copy.id, ...acc.partIds, ...acc.fillingIds], copiedFrom: acc.copiedFrom, carriedBy: acc.carriedBy,
     boundToGrid: acc.boundToGrid, cameFree: acc.cameFree,
   };
 }
@@ -196,6 +238,7 @@ interface Dependents {
   readonly fillingIds: number[];
   readonly partIds: number[];
   readonly copiedFrom: Map<number, number>;
+  readonly carriedBy: Map<number, number>;
   readonly boundToGrid: number[];
   readonly cameFree: number[];
 }
@@ -220,6 +263,7 @@ function copyDependents(ctx: CopyContext, sourceId: number, copyId: number, root
     const copy = writeCopy(ctx, source, placed, step.kind === 'filling' ? targetStoreyId : null);
     noteGridOutcome(acc, placed, copy.id);
     acc.placements.set(source.placementExpressId, copy.placementId);
+    acc.carriedBy.set(copy.id, parentCopy);
     acc.copiedFrom.set(copy.id, step.sourceId); copies.set(step.sourceId, copy.id);
     if (step.kind === 'part') acc.partIds.push(copy.id);
     else if (step.kind === 'opening') {

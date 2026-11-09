@@ -186,21 +186,41 @@ it('a render that throws after a capture keeps its single retry, not one per fra
   } finally { warn.mock.restore(); }
 });
 
-it('a capture whose session is replaced keeps a resting Live reading until the loop draws again (#9031)', async (t) => {
+it('a capture whose session is replaced asks for the live frame, and a resting Live reading holds (#9031, #9153)', async (t) => {
   const { h, passes, clip } = await restingReading(t);
   let unregister = () => {};
   try {
     const shot = await startCapture(h, clip);
-    // A new canonical session (the loop re-registering) aborts this capture,
-    // whose `finally` then requests no render.
+    // A new canonical session (the loop re-registering) aborts this capture.
     unregister = registerViewportCapture(h.renderer, h.canvas, () => ({}));
     await h.flush();
     assert.equal(await shot.shot, null, 'fixture: the replaced capture must abort');
     assert.equal(viewportCaptureOwnsFrame(h.renderer), false);
     const submissions = h.gpu.stats.submissions;
-    h.step(); h.step();
-    assert.equal(h.gpu.stats.submissions, submissions, 'fixture: nothing must request a frame');
-    assert.deepEqual(passes, [], 'an idle tick read the capture\'s clip and ended Live');
+    h.step(); // nothing else asks for a frame: an idle viewer
+    assert.ok(h.gpu.stats.submissions > submissions, 'the replaced capture left an idle loop with no live frame to draw');
+    assert.equal(h.renderer.getPickClipRevision(), clip, 'the live frame did not restore the cut\'s revision');
+    assert.deepEqual(passes, [], 'the live frame after a replaced capture ended Live');
     assertLiveFrameResumes(h, passes, clip, 'replaced session');
   } finally { unregister(); await h.dispose(); }
+});
+
+it('a second capture during a live frame that keeps failing gets retries of its own (#9153)', async (t) => {
+  const { h, passes, clip } = await restingReading(t);
+  const warn = mock.method(console, 'warn', () => {});
+  try {
+    const shot = await startCapture(h, clip);
+    const restore = h.gpu.refuse('texture');
+    assert.ok(await finishCapture(h, shot));
+    for (let i = 0; i < 10; i++) h.step(); // the first capture's retries, spent
+    // The second capture's frame fails too, after it gave the pickers its clip.
+    assert.equal(await captureViewportFrame(h.renderer, { options: { sectionPlane: undefined }, read: canvas => canvas.toDataURL() }), null);
+    const attempts = h.frames.length;
+    for (let i = 0; i < 10; i++) h.step();
+    // Its release request, then three retries: none were left from the first capture.
+    assert.equal(h.frames.length - attempts, 4, 'the second capture got no live-frame retries of its own');
+    assert.deepEqual(passes, [], 'a failing frame ended Live');
+    restore();
+    assertLiveFrameResumes(h, passes, clip, 'after the second capture');
+  } finally { warn.mock.restore(); }
 });

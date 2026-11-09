@@ -3,10 +3,14 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /** Palette-only prerequisites. Shared ribbon/context enabled predicates stay intact (#8947). */
+import { hasWorkspaceHistory } from '@/lib/model-placement/history';
+import { isCollabEnabled } from '@/lib/collab/config';
 import type { TranslationKey } from '@/i18n';
 import { useViewerStore, type ViewerState } from '@/store';
+import { canMutate } from '@/store/mutation-permission';
 import { hasRetainedShapeOnlyModel, RETAINED_SHAPE_ONLY_REASON } from '@/store/retainedGeometry';
-import { selectHasModelsLoaded } from '@/hooks/model-presence';
+import { getWebGPUStatus } from '@/hooks/useWebGPU';
+import { selectCanRefreshModels, selectHasModelsLoaded } from '@/hooks/model-presence';
 import { modelWorkspaceTarget } from '@/lib/commands/modeling/workspace-target';
 import { sessionWorkplaneBlock } from '@/lib/commands/modeling/workspace-storeys';
 import { resolveWorkplane } from '@/lib/commands/modeling/registry';
@@ -40,8 +44,47 @@ export function paletteAvailability(command: SurfaceCommandDefinition, context: 
   }
   if (!command.enabled(state)) return blocked('commandPalette.availability.feature');
   const id = command.id;
+  if (id === 'model:copy-to-storeys') {
+    if (!s.session) return blocked('commandPalette.availability.ifc');
+    if (!canMutate(s, s.session.modelId)) return blocked('commandPalette.availability.editor');
+    if (s.selectedEntityId === null && s.selectedEntityIds.size === 0) return blocked('commandPalette.availability.selection');
+  }
   const loaded = selectHasModelsLoaded(s);
   const hasData = s.ifcDataStore !== null || [...s.models.values()].some(m => m.ifcDataStore != null);
+  if (id === 'author:bulk-properties' || id === 'author:import-data') {
+    if (s.loading) return blocked('commandPalette.availability.loading');
+    if (!hasData) return blocked('commandPalette.availability.ifc');
+    const callback = id === 'author:bulk-properties' ? context.openBulkProperties : context.openImportData;
+    if (!callback || context.toolHostIsCurrent?.() === false) return blocked('commandPalette.availability.host');
+  }
+  if (id === 'elements:class-filter' && (!context.openClassFilter || context.toolHostIsCurrent?.() === false)) {
+    return blocked('commandPalette.availability.host');
+  }
+  if (id === 'author:undo' || id === 'author:redo') {
+    if (!hasWorkspaceHistory(s, id === 'author:undo' ? 'undo' : 'redo')) {
+      return blocked(id === 'author:undo' ? 'commandPalette.availability.undo' : 'commandPalette.availability.redo');
+    }
+  }
+  if (id === 'file:share' && !isCollabEnabled()) return blocked('commandPalette.availability.feature');
+  if (['file:open', 'file:add-model', 'file:refresh', 'file:share'].includes(id)) {
+    const callback = id === 'file:open' ? context.openFiles : id === 'file:add-model' ? context.addModel
+      : id === 'file:refresh' ? context.refreshModels : context.openShareDialog;
+    if (!callback || context.fileHostIsCurrent?.() === false) return blocked('commandPalette.availability.host');
+    if (id === 'file:share') {
+      if (!loaded) return blocked('commandPalette.availability.model');
+    } else {
+      if (s.loading) return blocked('commandPalette.availability.loading');
+      if (id === 'file:refresh') {
+        if (!loaded) return blocked('commandPalette.availability.model');
+        if (!selectCanRefreshModels(s)) return blocked('commandPalette.availability.refresh');
+      } else {
+        const gpu = getWebGPUStatus();
+        if (gpu.checking) return blocked('commandPalette.availability.gpuChecking');
+        if (!gpu.supported) return blocked('commandPalette.availability.gpu');
+      }
+    }
+  }
+  if (id === 'ui:activity' && !context.openActivity) return blocked('commandPalette.availability.host');
   if (id === 'tool:edit-mode' && !s.editEnabled && !modelWorkspaceTarget(s)) {
     return blocked('commandPalette.availability.ifc');
   }
@@ -117,7 +160,7 @@ export function canRunPaletteCommand(command: Command, onRefused?: (reason: Tran
 
 /** Narrow snapshot: unrelated viewport/store updates do not rebuild the table. */
 export function palettePrerequisites(s: ViewerState) {
-  return { models: s.models, data: s.ifcDataStore, geometry: s.geometryResult, loading: s.loading,
+  return { workspaceUndo: hasWorkspaceHistory(s, 'undo'), workspaceRedo: hasWorkspaceHistory(s, 'redo'), models: s.models, data: s.ifcDataStore, geometry: s.geometryResult, loading: s.loading,
     selected: s.selectedEntity, selectedId: s.selectedEntityId, selectedIds: s.selectedEntityIds,
     activeModel: s.activeModelId, role: s.collabRole, camera: s.cameraCallbacks, cesiumAvailable: s.cesiumAvailable,
     highlight: s.hoverHighlightEnabled, mutationVersion: s.mutationVersion, georef: s.georefMutations,

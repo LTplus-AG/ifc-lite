@@ -29,11 +29,13 @@ import { useViewerStore } from '@/store';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
 import { pickMeasurePoint } from './measurePick.js';
 import { beginDistance, finishDistance, pressOutlivedReset, resetMeasurePress } from './distanceClick.js';
-import { measureSnapToggle } from './measureSnapToggle.js';
-import { noteMeasureCursor, noteMeasureShift } from './measureCursor.js';
+import { measureShiftChange, measureSnapToggle } from './measureSnapToggle.js';
+import { noteMeasureCursor } from './measureCursor.js';
 import { pressPastClickSlop } from './pointerGesture.js';
 import { handleMeasureClickAt } from './selectionHandlers.js';
 import { forgetTouchSelection } from './referenceSelection.js';
+import { forgetTouchLongPress } from './touchLongPress.js';
+import { TAP_CLICK_MS, withinTapSlop } from './tapSlop.js';
 
 /** The touch controls note each touch press so a tap can tell it outlived a Measure gesture reset (#8786). */
 export { beginMeasurePress } from './distanceClick.js';
@@ -60,10 +62,8 @@ interface PenGate {
 const penGates = new WeakMap<HTMLCanvasElement, PenGate>();
 /** A touch this close (CSS px) to a held pen pointerdown is the same press. */
 const PEN_TOUCH_SLOP = 8;
-/** The same window and slop `isTouchSelectionClick` uses for a tap's compatibility click. */
-const PEN_CLICK_MS = 700, PEN_CLICK_SLOP = 5;
-const atLift = (e: MouseEvent, lift: { x: number; y: number }) =>
-  Math.abs(e.clientX - lift.x) <= PEN_CLICK_SLOP && Math.abs(e.clientY - lift.y) <= PEN_CLICK_SLOP;
+/** The window and slop of a tap's compatibility click (#9091). */
+const atLift = (e: MouseEvent, lift: { x: number; y: number }) => withinTapSlop(e.clientX, e.clientY, lift);
 
 export interface MousePointerRoute {
   down: (e: PointerEvent) => void;
@@ -111,6 +111,7 @@ export function routeMousePointers(
         if (gate.lift && atLift(e, gate.lift)) gate.lift = null;
         const rect = canvas.getBoundingClientRect();
         forgetTouchSelection(canvas, e.clientX - rect.left, e.clientY - rect.top); // nor a tap's, in Select
+        forgetTouchLongPress(canvas, e); // nor its context menu a long press's (#9087)
         void handlers.down(e);
         return;
       }
@@ -152,7 +153,7 @@ export function routeMousePointers(
     after: (handler) => (e) => {
       const pointerType = (e as MouseEvent & { pointerType?: string }).pointerType;
       const lift = gate.lift;
-      if (lift && (pointerType === 'pen' || !pointerType) && Date.now() - lift.time <= PEN_CLICK_MS && atLift(e, lift)) {
+      if (lift && (pointerType === 'pen' || !pointerType) && Date.now() - lift.time <= TAP_CLICK_MS && atLift(e, lift)) {
         if (e.type === 'contextmenu') e.preventDefault(); // as handleContextMenu would have
         return;
       }
@@ -186,7 +187,7 @@ export function notePenTouches(canvas: HTMLCanvasElement, e: TouchEvent): void {
   const gate = penGates.get(canvas);
   if (!gate) return;
   // Kept as of each touch's touchstart: an earlier touch keeps its entry, a new one is added
-  const down = Array.from(e.touches ?? []);
+  const down = canvasTouches(canvas, e);
   gate.touches = down.map((t) => gate.touches.find((k) => k.identifier === t.identifier) ?? t);
   const held = gate.held;
   if (e.type !== 'touchstart' || !held) return;
@@ -194,6 +195,16 @@ export function notePenTouches(canvas: HTMLCanvasElement, e: TouchEvent): void {
   clearTimeout(held.timer);
   gate.held = null;
   gate.owned.add(held.e.pointerId);
+}
+
+/**
+ * The touches on `canvas`. A touch event lists every finger on the screen, so
+ * a thumb resting on a side panel or the toolbar would keep a canvas gesture
+ * multi-touch and its drag type stuck until it lifts (#9122). A finger that
+ * began on the canvas stays its own when it slides off.
+ */
+export function canvasTouches(canvas: HTMLCanvasElement, e: TouchEvent): Touch[] {
+  return Array.from(e.touches ?? []).filter((t) => t.target === canvas);
 }
 
 /**
@@ -213,7 +224,7 @@ const measureContexts = new WeakMap<HTMLCanvasElement, { ctx: MouseHandlerContex
  * `resetMeasureGesture` epoch: Esc, a mode or tool switch, a model
  * reposition) reaches the context's press state and queued frame (#8786),
  * a Snap toggle drops the queued frame and re-picks the live preview under
- * the new setting (#8881, #8992, #9022), and Shift is noted for that re-pick.
+ * the new setting (#8881, #8992, #9022), and a Shift change re-picks the Distance rubber band (#9161).
  */
 export function setMeasureContext(canvas: HTMLCanvasElement, ctx: MouseHandlerContext | null): void {
   measureContexts.get(canvas)?.stop();
@@ -225,8 +236,8 @@ export function setMeasureContext(canvas: HTMLCanvasElement, ctx: MouseHandlerCo
     else if (prev.snapEnabled !== state.snapEnabled && ctx.activeToolRef.current === 'measure') measureSnapToggle(ctx, state.snapEnabled);
   });
   // The event's modifier state, so releasing one Shift key with the other held keeps the axis
-  const onShift = (e: KeyboardEvent) => { if (e.key === 'Shift') noteMeasureShift(ctx, e.shiftKey); };
-  const onBlur = () => noteMeasureShift(ctx, false); // a release while the window is away sends no keyup
+  const onShift = (e: KeyboardEvent) => { if (e.key === 'Shift') measureShiftChange(ctx, e.shiftKey); };
+  const onBlur = () => measureShiftChange(ctx, false); // a release while the window is away sends no keyup
   window.addEventListener('keydown', onShift);
   window.addEventListener('keyup', onShift);
   window.addEventListener('blur', onBlur);

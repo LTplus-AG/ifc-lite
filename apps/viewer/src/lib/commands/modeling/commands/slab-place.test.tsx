@@ -25,6 +25,11 @@ import '../builtin.js';
 import { commandDoubleClick, commandPointerDown, commandPointerMove, getCommandRuntime } from '../runtime.js';
 import { setRequestRemesh, type RemeshRequest } from '../transaction.js';
 import type { CommandContext } from '../types.js';
+import { resolveSlabEditChain } from '@/lib/slab-edit';
+import { readPushPullTarget } from '@/lib/push-pull/push-pull-target';
+import { applyMaterialLayers, setElementDimensions } from '@/components/viewer/model-inspector/inspector-edits';
+import { authoredElementMeshPayload } from '@/store/slices/authoredFallbackMesh';
+import { planeHeightField, planeZ } from './placement-shared.js';
 import { SLAB_PLACE } from './slab-place.js';
 import type { SlabPlaceGesture } from './slab-place-geometry.js';
 
@@ -87,6 +92,25 @@ afterEach(() => {
   restoreRemesh();
   useViewerStore.getState().exitModelWorkspace();
   cleanup();
+});
+
+describe('slab.place: the bar names the class being drawn (#9202)', () => {
+  it('Roof and Plate title the bar; a slab keeps the command label', () => {
+    for (const [slabClass, title] of [['slab', undefined], ['roof', 'modelWorkspace.tool.roof'], ['plate', 'modelingCommand.class.plate']] as const) {
+      act(() => { useViewerStore.getState().setAuthoringDefaults({ slabClass }); });
+      assert.equal(SLAB_PLACE.hud.title?.(useViewerStore.getState()), title, slabClass);
+    }
+  });
+});
+
+describe('the plane height field (#9202)', () => {
+  it('shows on a storey plane and hides on any other, where it could set nothing', () => {
+    const field = planeHeightField<null>();
+    const on = (spec: unknown) => ({ get: useViewerStore.getState, workplane: spec === null ? undefined : { spec } }) as unknown as CommandContext;
+    assert.equal(field.hidden?.(null, on({ kind: 'storey', storeyId: STOREY, offset: 0 })), false);
+    assert.equal(field.hidden?.(null, on({ kind: 'section' })), true);
+    assert.equal(field.hidden?.(null, on(null)), true);
+  });
 });
 
 describe('slab.place: rectangle (#6232 M2.2)', () => {
@@ -308,9 +332,117 @@ describe('slab.place ghost (#6232 M2.2)', () => {
     const xs = local.map((p) => p[0]), ys = local.map((p) => p[1]), zs = local.map((p) => p[2]);
     assert.deepEqual([Math.min(...xs), Math.max(...xs)].map(round), [1, 4]);
     assert.deepEqual([Math.min(...ys), Math.max(...ys)].map(round), [1, 3]);
-    assert.deepEqual([Math.min(...zs), Math.max(...zs)].map(round), [0, 0.3]);
+    assert.deepEqual([Math.min(...zs), Math.max(...zs)].map(round), [-0.3, 0], 'a floor slab hangs from the plane (#9198)');
     click(4, 3);
     const [slab] = slabs();
     assert.deepEqual(slab.outline, [[1, 1], [4, 1], [4, 3], [1, 3]], 'the commit lands where the ghost was');
+  });
+});
+
+// #9198: a floor slab's top is the level, so what is drawn at the level stands on it.
+describe('slab.place: a floor slab hangs from the plane (#9198)', () => {
+  const bodyOf = (id: number) => {
+    const s = useViewerStore.getState();
+    const dataStore = s.models.get(MODEL_ID)!.ifcDataStore!;
+    const chain = resolveSlabEditChain(dataStore, s.mutationViews.get(MODEL_ID)!, s.storeEditors.get(MODEL_ID)!, id, 1)!;
+    assert.notEqual(chain.baseElevation, null, 'a flat extrusion of its outline');
+    return { bottom: round(chain.baseElevation!), top: round(chain.baseElevation! + chain.thickness) };
+  };
+  const drawn = () => {
+    const view = useViewerStore.getState().mutationViews.get(MODEL_ID)!;
+    return view.getNewEntities().find((e) => SLAB_LIKE.has(e.type.toUpperCase()) && !view.isDeleted(e.expressId))!.expressId;
+  };
+
+  for (const mode of ['rectangle', 'polygon'] as const) {
+    it(`a ${mode} slab's top is at the level, its underside a thickness below`, () => {
+      useViewerStore.getState().setAuthoringDefaults({ slabMode: mode, slabClass: 'slab' });
+      useViewerStore.getState().setAuthoringDims('slab', { Thickness: 0.3 });
+      useViewerStore.getState().startCommand('slab.place');
+      click(0, 0);
+      click(2, 3);
+      if (mode === 'polygon') { click(0, 3); press(document.body, 'Enter'); }
+      assert.deepEqual(bodyOf(drawn()), { bottom: -0.3, top: 0 });
+    });
+  }
+
+  for (const [cls, thickness] of [['roof', 0.3], ['plate', 0.02]] as const) {
+    it(`a ${cls} still sits on the plane`, () => {
+      useViewerStore.getState().setAuthoringDefaults({ slabClass: cls });
+      useViewerStore.getState().setAuthoringDims(cls, { Thickness: thickness });
+      useViewerStore.getState().startCommand('slab.place');
+      click(1, 1);
+      act(() => { commandPointerMove(at(2, 2)); });
+      const [ghost] = SLAB_PLACE.ghost!(gesture(), ctx());
+      const plane = ctx().workplane!;
+      const zs: number[] = [];
+      for (let i = 0; i < ghost.positions.length; i += 3) zs.push(plane.renderToLocal([ghost.positions[i], ghost.positions[i + 1], ghost.positions[i + 2]])[2]);
+      assert.deepEqual([Math.min(...zs), Math.max(...zs)].map(round), [0, thickness]);
+      click(2, 2);
+      // The plane itself rises for a roof (#9202); the body starts on it either way.
+      const lift = planeZ(ctx().workplane);
+      assert.deepEqual(bodyOf(drawn()), { bottom: lift, top: round(lift + thickness) });
+    });
+  }
+
+  it('a thickness edit keeps the top at the level', () => {
+    useViewerStore.getState().setAuthoringDims('slab', { Thickness: 0.3 });
+    useViewerStore.getState().startCommand('slab.place');
+    click(0, 0);
+    click(2, 3);
+    const id = drawn();
+    assert.ok(setElementDimensions(MODEL_ID, id, { kind: 'slab', thickness: 0.5 }));
+    assert.deepEqual(bodyOf(id), { bottom: -0.5, top: 0 });
+  });
+
+  it('push / pull takes the underside: the ghost and the write both keep the top', () => {
+    useViewerStore.getState().setAuthoringDims('slab', { Thickness: 0.3 });
+    useViewerStore.getState().startCommand('slab.place');
+    click(0, 0);
+    click(2, 3);
+    const id = drawn();
+    const target = readPushPullTarget(useViewerStore.getState(), MODEL_ID, id)!;
+    const [face] = target.faces;
+    assert.deepEqual(face.origin.map(round), [1, 1.5, -0.3], 'the handle sits on the underside');
+    assert.deepEqual(face.normal, [0, 0, -1]);
+    const prism = target.prism(face, 0.45)!;
+    assert.deepEqual([prism.z0, prism.z1].map(round), [-0.45, 0]);
+    assert.ok(setElementDimensions(MODEL_ID, id, face.patch(0.45)));
+    assert.deepEqual(bodyOf(id), { bottom: -0.45, top: 0 });
+  });
+
+  it('a split keeps both pieces hanging, so a later thickness edit keeps their tops', () => {
+    useViewerStore.getState().setAuthoringDims('slab', { Thickness: 0.3 });
+    useViewerStore.getState().startCommand('slab.place');
+    click(0, 0);
+    click(4, 3);
+    const split = useViewerStore.getState().splitSlabByLine(MODEL_ID, drawn(), [1, -1], [1, 4]);
+    assert.ok(split.ok, split.ok ? '' : split.reason);
+    if (!split.ok) return;
+    for (const { expressId } of [split.left, split.right]) {
+      assert.deepEqual(bodyOf(expressId), { bottom: -0.3, top: 0 }, 'the split itself moves nothing');
+      assert.ok(setElementDimensions(MODEL_ID, expressId, { kind: 'slab', thickness: 0.5 }));
+      assert.deepEqual(bodyOf(expressId), { bottom: -0.5, top: 0 });
+    }
+  });
+
+  it('the fallback mesh drawn when the re-mesh declines hangs too', () => {
+    const payload = authoredElementMeshPayload({
+      kind: 'slab', params: { Position: [1, 2, 3], Width: 2, Depth: 2, Thickness: 0.3, ExtrudedDirection: [0, 0, -1] },
+    });
+    assert.ok(payload.type === 'slab');
+    if (payload.type !== 'slab') return;
+    assert.deepEqual(payload.corners.map((c) => round(c[2])), [2.7, 2.7, 2.7, 2.7], 'the mesh grows up from the underside');
+  });
+
+  it('a layered slab builds its layers down from the level', () => {
+    const s = useViewerStore.getState();
+    useViewerStore.getState().setAuthoringDims('slab', { Thickness: 0.3 });
+    s.startCommand('slab.place');
+    click(0, 0);
+    click(2, 3);
+    const id = drawn();
+    assert.equal(applyMaterialLayers(MODEL_ID, { kind: 'slab', layers: [{ thickness: 0.3, material: { name: 'Concrete' } }], target: 'element', elementId: id, typeId: null }) !== null, true);
+    const usage = useViewerStore.getState().mutationViews.get(MODEL_ID)!.getNewEntities().find((e) => e.type.toUpperCase() === 'IFCMATERIALLAYERSETUSAGE')!;
+    assert.equal(usage.attributes[2], '.NEGATIVE.');
   });
 });

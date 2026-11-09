@@ -10,7 +10,7 @@ import { usePersistentToolHosts } from './PersistentToolHosts';
  *  (icons, labels, actions) lives in `commandPaletteCommands.ts` and its two
  *  halves (#4918 slice 3) — this file is search/keyboard/rendering only. */
 
-import { useContext, useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { useContext, useCallback, useEffect, useLayoutEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { Dialog, DialogClose, DialogContent } from '@/components/ui/dialog';
 import { toast } from '@/components/ui/toast';
 import { Search, X } from 'lucide-react';
@@ -113,7 +113,10 @@ export function CommandPalette({ open, onOpenChange, surfaceContext, initialQuer
   const extensionHost = useOptionalExtensionHost();
   const paletteLauncher = useRef<HTMLElement | null>(null);
   const currentExtensionHost = useRef(extensionHost);
-  currentExtensionHost.current = extensionHost;
+  useLayoutEffect(() => {
+    currentExtensionHost.current = extensionHost;
+    return () => { currentExtensionHost.current = null; };
+  }, [extensionHost]);
 
   useEffect(() => {
     if (open) {

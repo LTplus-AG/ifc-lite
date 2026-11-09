@@ -6,6 +6,11 @@ import type { Catalogue } from '../../registry';
 
 export const commandPaletteRu = {
   'commandPalette.extension.busy': 'Дождитесь завершения экспорта расширения',
+  'commandPalette.availability.undo': 'Нет изменений рабочего пространства для отмены (история IDS и календарного плана ведётся отдельно)',
+  'commandPalette.availability.redo': 'Нет изменений рабочего пространства для повтора (история IDS и календарного плана ведётся отдельно)',
+  'commandPalette.aliases.bulk': 'массовое редактирование свойства запрос атрибут этап строительства',
+  'commandPalette.aliases.import': 'CSV таблица импорт данных сопоставление столбцов',
+  'commandPalette.aliases.classes': 'видимость классов пространства проёмы аннотации сетки объединение слоёв быстрая точная геометрия',
   'commandPalette.availability.refresh': 'Для обновления откройте все модели с доступом к файлам на диске',
   'commandPalette.availability.gpuChecking': 'Дождитесь завершения проверки WebGPU',
   'commandPalette.availability.gpu': 'WebGPU недоступен — справка на начальном экране',
@@ -51,6 +56,7 @@ export const commandPaletteRu = {
   "commandPalette.tool.annotate.label": "Аннотировать",
   "commandPalette.tool.wall.label": "Нарисовать стены",
   "commandPalette.tool.slab.label": "Построить плиты",
+  "commandPalette.tool.roof.label": "Построить крыши",
   "commandPalette.tool.column.label": "Разместить колонны",
   "commandPalette.tool.beam.label": "Построить балки",
   "commandPalette.tool.editMode.label": "Переключить режим редактирования",

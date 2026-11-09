@@ -24,7 +24,7 @@ export const modelingCommandFr = {
   "modelingCommand.wall.alignLeft": "Gauche",
   "modelingCommand.wall.alignCentre": "Centre",
   "modelingCommand.wall.alignRight": "Droite",
-  "modelingCommand.wall.top": "Position du sommet du mur",
+  "modelingCommand.wall.top": "Sommet du mur",
   "modelingCommand.wall.topStoreyAbove": "Jusqu’à l’étage supérieur",
   "modelingCommand.wall.topFixed": "Hauteur fixe",
   "modelingCommand.field.width": "Largeur",

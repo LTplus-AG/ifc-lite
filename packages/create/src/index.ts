@@ -177,11 +177,13 @@ export type {
   SIUnitParams,
 } from './types-cost.js';
 
-export { copyBatchInStore, copySourcesInStore, copiedProductsInStore, copyToStoreysInStore, type StoreyCopies } from './in-store/copy-batch.js';
+export { copyBatchInStore, copySourcesInStore, copiedProductsInStore, copyToStoreysInStore, copiesOfSelection, type StoreyCopies, type SelectedCopy } from './in-store/copy-batch.js';
 export { arrayCopyTransforms, type CopyArrayParams } from './in-store/copy-array.js';
 export type { CopyTransform } from './in-store/copy-product.js';
+export type { CopyUnattachedTop } from './in-store/copy-attachment.js';
 
 export { setElementSizeInStore } from './in-store/element-size-edit.js';
+export { configureAuthoredQuantityReader } from './in-store/configure-authored-quantities.js';
 export { deriveAuthoredBaseQuantities } from './in-store/base-quantities.js';
 export {
   hasRefreshableBaseQuantities,

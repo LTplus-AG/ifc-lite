@@ -6,9 +6,9 @@
 import type { StoreEditor } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { copyProductGraph, copyRefusal, createCopyContext, productStoreyOrigin, type CopyContext, type CopyProductResult, type CopyTransform } from './copy-product.js';
-import type { DuplicateInStoreOptions } from './duplicate.js';
+import { openTypeRelationBatch, type DuplicateInStoreOptions } from './duplicate.js';
 import { copiedProductWork, COPY_PRODUCT_WORK_LIMIT } from './copy-dependent-walk.js';
-import { readCopyAttachments, rebindCopiedAttachments, withUnattachedTops } from './copy-attachment.js';
+import { readCopyAttachments, rebindCopiedAttachments, withUnattachedTops, type CopyUnattachedTop } from './copy-attachment.js';
 
 /** Bound pruned root fan-out before allocating products/transforms. */
 export const COPY_BATCH_LIMIT = 10_000;
@@ -95,7 +95,8 @@ export function copyBatchInStore(
     const sources = copySourcesInStore(ctx, ids, transforms.length);
     if ('refusal' in sources) throw new Error(sources.refusal);
     const attachments = readCopyAttachments(ctx, copiedProductsInStore(ctx, sources.ids));
-    return transforms.flatMap((transform) => {
+    const flushTypeRelations = openTypeRelationBatch(draft); // one IfcRelDefinesByType write per type per batch
+    const copies = transforms.flatMap((transform) => {
       const results = sources.ids.map((id) => {
         if (!options.duplicate) return copyProductGraph(ctx, id, transform);
         const sourceName = ctx.read(id)?.attributes[2];
@@ -104,6 +105,67 @@ export function copyBatchInStore(
       });
       return withUnattachedTops(results, rebindCopiedAttachments(ctx, attachments, results).unattached);
     });
+    flushTypeRelations();
+    return copies;
+  });
+}
+
+/** The copy of one selected element (#9352). */
+export interface SelectedCopy {
+  /** The selected element. */
+  readonly sourceId: number;
+  /** Its copy: a door or window selected with its wall is its copy in the wall's copy. */
+  readonly copyId: number;
+  /**
+   * Includes notices for this selected element and its carried descendants:
+   * the copies of it or of what it carries whose top could not follow their
+   * new storey, left fixed with the reason. Absent when there are none.
+   */
+  readonly unattachedTops?: readonly CopyUnattachedTop[];
+}
+
+/**
+ * The copy of every selected element, per transform, in selection order
+ * (each element once). `copySourcesInStore` copies a door or window selected
+ * with its wall, or a part selected with its assembly, through its host's
+ * copy: this finds that copy, so a caller gets one copy back for each element
+ * it selected. A selected element that no copy carries throws rather than
+ * being dropped.
+ */
+export function copiesOfSelection(ids: readonly number[], results: readonly CopyProductResult[], transformCount: number): SelectedCopy[][] {
+  if (!Number.isSafeInteger(transformCount) || transformCount < 1 || results.length % transformCount !== 0) {
+    throw new Error(`${results.length} copies cannot be split into ${transformCount} transforms`);
+  }
+  const per = results.length / transformCount;
+  const selection = [...new Set(ids)];
+  return Array.from({ length: transformCount }, (_, i) => {
+    const group = results.slice(i * per, (i + 1) * per);
+    const copyOf = new Map<number, number>();
+    const rootOf = new Map<number, CopyProductResult>();
+    const noticeOf = new Map<number, CopyUnattachedTop[]>();
+    for (const result of group) {
+      for (const [copy, source] of result.copiedFrom) if (!copyOf.has(source)) copyOf.set(source, copy);
+      const root = result.copiedFrom.get(result.copyId);
+      if (root !== undefined) rootOf.set(root, result);
+    }
+    const selectedIds = new Set(selection.map(id => copyOf.get(id)));
+    for (const result of group) for (const notice of result.unattachedTops ?? []) {
+      const seen = new Set<number>();
+      for (let id: number | undefined = notice.copyId; id !== undefined && !seen.has(id); id = result.carriedBy?.get(id)) {
+        seen.add(id);
+        if (selectedIds.has(id)) {
+          const notices = noticeOf.get(id) ?? [];
+          notices.push(notice);
+          noticeOf.set(id, notices);
+        }
+      }
+    }
+    return selection.map((sourceId) => {
+      const copyId = copyOf.get(sourceId);
+      if (copyId === undefined) throw new Error(`#${sourceId} was not copied: nothing in the copy carries it`);
+      const unattachedTops = rootOf.get(sourceId)?.unattachedTops ?? noticeOf.get(copyId);
+      return unattachedTops?.length ? { sourceId, copyId, unattachedTops } : { sourceId, copyId };
+    });
   });
 }
 
@@ -111,6 +173,10 @@ export function copyBatchInStore(
 export interface StoreyCopies {
   readonly storeyId: number;
   readonly results: readonly CopyProductResult[];
+  /** The copy of each selected element on this storey, in selection order. */
+  readonly copies: readonly SelectedCopy[];
+  /** Copies on this storey whose top could not follow it, left fixed with the reason (empty when every one followed). */
+  readonly unattachedTops: readonly CopyUnattachedTop[];
 }
 
 /**
@@ -125,5 +191,9 @@ export function copyToStoreysInStore(
   const results = copyBatchInStore(store, editor, ids, storeyIds.map((targetStoreyId) => ({ targetStoreyId })));
   // Transform-major: each storey's copies are one contiguous run.
   const per = results.length / Math.max(1, storeyIds.length);
-  return storeyIds.map((storeyId, i) => ({ storeyId, results: results.slice(i * per, (i + 1) * per) }));
+  const selected = copiesOfSelection(ids, results, storeyIds.length);
+  return storeyIds.map((storeyId, i) => {
+    const own = results.slice(i * per, (i + 1) * per);
+    return { storeyId, results: own, copies: selected[i], unattachedTops: own.flatMap((result) => result.unattachedTops ?? []) };
+  });
 }

@@ -118,6 +118,23 @@ beforeEach(async () => {
   });
 });
 
+
+/**
+ * The newest undo step: the top mutation and every older one sharing its batch
+ * tag, which undo replays together. A duplicate is one such batch; inside it the
+ * created entities come first and a typed source's IfcRelDefinesByType
+ * extension is written once at the end, so assert on the batch, not its last entry.
+ */
+function lastUndoBatch(modelId: string) {
+  const state = useViewerStore.getState();
+  const stack = state.undoStacks.get(modelId) ?? [];
+  const tag = stack.length > 0 ? state.mutationBatchTags.get(stack[stack.length - 1].id) : undefined;
+  if (tag === undefined) return stack.slice(-1);
+  let start = stack.length;
+  while (start > 0 && state.mutationBatchTags.get(stack[start - 1].id) === tag) start--;
+  return stack.slice(start);
+}
+
 describe('EntityContextMenu — federation-space selection', () => {
   for (const twoModels of [false, true]) {
     it(`opens context-only selection commands from the ribbon in ${twoModels ? 'two-model' : 'one-model'} mode (#5870)`, async () => {
@@ -169,7 +186,7 @@ describe('EntityContextMenu — federation-space selection', () => {
       act(() => { useViewerStore.setState({ editEnabled: true }); });
       assert.equal(menuItem(container, 'Duplicate').disabled, false);
       act(() => { menuItem(container, 'Duplicate').click(); });
-      assert.equal(useViewerStore.getState().undoStacks.get('m1')?.at(-1)?.type, 'CREATE_ENTITY');
+      assert.ok(lastUndoBatch('m1').some((m) => m.type === 'CREATE_ENTITY'));
       if (twoModels) assert.equal(useViewerStore.getState().undoStacks.has('m0'), false);
 
       act(() => { useViewerStore.setState({ selectedEntityId: selectedId, selectedEntityIds: new Set([selectedId]) }); });
@@ -269,9 +286,9 @@ describe('EntityContextMenu — federation-space selection', () => {
       act(() => { useViewerStore.setState({ editEnabled: true }); });
       assert.equal(menuItem(container, 'Duplicate').disabled, false);
       act(() => { menuItem(container, 'Duplicate').click(); });
-      const duplicate = useViewerStore.getState().undoStacks.get('m1')?.at(-1);
-      assert.equal(duplicate?.type, 'CREATE_ENTITY', 'Duplicate must record a new entity through the menu');
-      assert.notEqual(duplicate?.entityId, 1222);
+      const created = lastUndoBatch('m1').filter((m) => m.type === 'CREATE_ENTITY');
+      assert.ok(created.length > 0, 'Duplicate must record a new entity through the menu');
+      assert.ok(created.every((m) => m.entityId !== 1222));
       assert.equal(useViewerStore.getState().dirtyModels.has('m1'), true);
       if (twoModels) assert.equal(useViewerStore.getState().undoStacks.has('m0'), false);
     });

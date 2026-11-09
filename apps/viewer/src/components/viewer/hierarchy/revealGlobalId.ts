@@ -23,6 +23,7 @@ import {
   type GroupSubFilter,
   type GeorefMutationsByModel,
 } from './treeDataBuilder';
+import type { LayerGrouping } from './presentationLayerGroups';
 import type { PresentationLayerBuilder } from './usePresentationLayerBuilder';
 import { findNodePath } from './findNodePath';
 
@@ -55,6 +56,10 @@ export function buildTreeForGrouping(
   mutationViews: Map<string, MutablePropertyView>,
   materialSourceStores?: ReadonlyMap<string, IfcDataStore>,
   presentationLayerBuilder?: PresentationLayerBuilder,
+  layerGrouping: LayerGrouping = 'none',
+  unclassified?: string,
+  unavailable?: string,
+  noCode?: (source: string) => string,
 ): TreeNode[] {
   const treeOverlay = (modelId: string) => mutationViews.get(modelId); // deletes/retypes, re-run per mutationVersion (#5249)
   if (groupingMode === 'type') {
@@ -69,7 +74,7 @@ export function buildTreeForGrouping(
   if (groupingMode === 'presentation-layers') {
     // Curve-only annotations render in the symbolic overlay rather than meshes.
     // Their owner IDs obey the same hide/show contract as meshed products.
-    return presentationLayerBuilder?.(models, ifcDataStore, expansion, classTreeIds, geometryReadyModelIds, treeOverlay) ?? [];
+    return presentationLayerBuilder?.(models, ifcDataStore, expansion, classTreeIds, geometryReadyModelIds, treeOverlay, layerGrouping, unclassified, unavailable, noCode) ?? [];
   }
   if (groupingMode === 'groups') {
     return buildGroupTree(models, ifcDataStore, expansion, isMultiModel, geometricIds, groupFilter, treeOverlay);

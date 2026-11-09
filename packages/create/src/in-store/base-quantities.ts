@@ -23,6 +23,7 @@
  * (`base-quantities-refresh.ts`, behind the viewer's opt-in setting).
  */
 
+import { additionalQuantityRows } from './base-quantities-additional.js';
 import { QuantityType, type QuantitySet } from '@ifc-lite/data';
 import { uuidToIfcGuid, uuidV5 } from '@ifc-lite/encoding';
 import { StoreEditor, type MutablePropertyView } from '@ifc-lite/mutations';
@@ -37,12 +38,13 @@ import {
 } from './base-quantities-measure.js';
 import { asExpressIdRef, readAttributes, resolvePlacementChain } from './edit/placement-core.js';
 import { getModelLengthUnitScale } from './edit/length-unit-scale.js';
-import { resolveLinearElementChain } from './edit/linear-element-edit.js';
+import { readLinearBodyMeasures } from './edit/linear-element-edit.js';
 import { resolveSlabEditChain } from './edit/slab-edit.js';
 import { slabExtrusionFrame } from './edit/slab-edit-frame.js';
 import { localBodyExtent, placedBodyExtent } from './resolve-host.js';
 import { fileOpeningsOf } from './base-quantities-openings.js';
-import { BASE_QUANTITY_TYPES, SLAB_TYPES, WALL_TYPES, effectiveElementType } from './base-quantities-kinds.js';
+import { baseQuantitySetName, BASE_QUANTITY_TYPES, LINEAR_TYPES, SLAB_TYPES, WALL_TYPES, effectiveElementType } from './base-quantities-kinds.js';
+import { roofPlaneAreas } from './base-quantities-roof.js';
 import { wallBodyOutline } from './wall-join.js';
 import { readWallJoinTarget } from './wall-join-read.js';
 
@@ -279,6 +281,16 @@ function slabLikeSet(reading: Reading, id: number, isRoof: boolean): QuantitySet
   return toQuantitySet(dataStore, scale, 'Qto_SlabBaseQuantities', rows);
 }
 
+/** A pitched roof (`roof-footprint.ts`): its planes' sloped and plan areas. It has no openings of its own to net. */
+function pitchedRoofSet(reading: Reading, id: number): QuantitySet | null {
+  const areas = roofPlaneAreas(reading.dataStore, reading.view, reading.editor, id, reading.scale);
+  const openings = reading.openingsOf(id);
+  if (!areas || openings === null || openings.length > 0) return null;
+  return toQuantitySet(reading.dataStore, reading.scale, 'Qto_RoofBaseQuantities', [
+    ['GrossArea', QuantityType.Area, areas.sloped], ['NetArea', QuantityType.Area, areas.sloped], ['ProjectedArea', QuantityType.Area, areas.projected],
+  ]);
+}
+
 /** Whether a slab the plan readers refuse for its turn about the vertical is otherwise upright. */
 function uprightAfterTurn(reading: Reading, id: number, solidId: number): boolean {
   const { dataStore, view, editor } = reading;
@@ -291,7 +303,7 @@ function uprightAfterTurn(reading: Reading, id: number, solidId: number): boolea
 
 function linearSet(reading: Reading, id: number, type: string): QuantitySet | null {
   const { dataStore, view, editor, scale } = reading;
-  const chain = resolveLinearElementChain(dataStore, view, editor, id, scale);
+  const chain = readLinearBodyMeasures(dataStore, view, editor, id, scale);
   if (!chain) return null;
   const section = sectionMeasures(chain.profile, chain.profileWidth, chain.profileHeight);
   if (!section) return null;
@@ -324,8 +336,10 @@ function deriveSet(dataStore: IfcDataStore, view: MutablePropertyView, expressId
   try {
     const { editor } = revision;
     const reading: Reading = { dataStore, view, editor, scale: getModelLengthUnitScale(dataStore), openingsOf: (hostId) => openingsOf({ editor }, hostId) };
-    const set = WALL_TYPES.has(type) ? wallSet(reading, expressId)
-      : SLAB_TYPES.has(type) ? slabLikeSet(reading, expressId, type === 'IFCROOF') : linearSet(reading, expressId, type);
+    const extra = additionalQuantityRows({ dataStore, view, editor }, expressId, type);
+    const set = extra ? toQuantitySet(dataStore, reading.scale, baseQuantitySetName(type)!, extra) : WALL_TYPES.has(type) ? wallSet(reading, expressId)
+      : SLAB_TYPES.has(type) ? slabLikeSet(reading, expressId, type === 'IFCROOF') ?? (type === 'IFCROOF' ? pitchedRoofSet(reading, expressId) : null)
+        : LINEAR_TYPES.has(type) ? linearSet(reading, expressId, type) : null;
     return set ? { set, reading } : null;
   } catch (error) {
     console.warn(`[quantities] #${expressId} has no base quantities: its geometry could not be read`, error);

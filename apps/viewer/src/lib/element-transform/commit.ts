@@ -10,8 +10,9 @@
  *
  * The op is given in RENDER space (what the user picked); each root is
  * written in its own storey's frame through that storey's workplane, then in
- * its parent placement's frame (`plan.ts`), with the existing store actions:
- * `translateEntity` for the origin, `rotateEntity` for the RefDirection. A
+ * its parent placement's frame (`plan.ts`), through the core draft editor.
+ * Placement writes and join changes publish together before viewer history,
+ * mirroring and remeshing are recorded. A
  * turn about a pivot is the two together: the placement turns about its own
  * origin, and the origin swings about the pivot.
  *
@@ -26,7 +27,8 @@ import type { AuthoringTransaction, CommitResult, Vec3 } from '@/lib/commands/mo
 import { buildStoreyWorkplane, elementStoreyId, isWorkplane } from '@/lib/commands/modeling/workplane';
 import { planElementTransform, type TransformPlan } from './plan.js';
 import { transformElementsInStore, describeTransformRefusal } from '../../../../../packages/create/src/in-store/element-transform-edit.js';
-import { modelEditTarget } from '@/store/slices/mutation-modelling-records';
+import type { StoreEditor } from '@ifc-lite/mutations';
+import { modelEditTarget, recordModellingCommit } from '@/store/slices/mutation-modelling-records';
 import { alignElementsInStore, type ElementAlignParams, type PlanBox } from '@ifc-lite/create';
 import type { Workplane } from '@/lib/commands/modeling/types';
 import { carryWallJoins } from './wall-join-carrier.js';
@@ -43,6 +45,7 @@ export interface JoinCarryContext {
   readonly modelId: string;
   readonly plan: TransformPlan;
   readonly op: ElementTransformOp;
+  readonly editor: StoreEditor;
 }
 
 /** Makes joined elements follow a move or turn; returns the ids it reshaped (to re-mesh). */
@@ -92,8 +95,8 @@ export function commitElementTransform(
   const target = modelEditTarget(tx.store, modelId);
   if (!target) throw new Error('The model has no editable IFC data.');
   const planes = new Map<number, (p: Vec3) => Vec2>();
-  const result = transformElementsInStore({
-    ...target, selected,
+  const result = recordModellingCommit(tx.api, modelId, editor => transformElementsInStore({
+    ...target, editor, view: editor.getMutationView(), selected,
     op: op.kind === 'move' ? { kind: 'move', delta: [0, 0] } : { kind: 'rotate', pivot: [0, 0], angle: op.angle },
     storeyOf: id => elementStoreyId(tx.store, modelId, id),
     operationForStorey: storeyId => {
@@ -101,24 +104,10 @@ export function commitElementTransform(
       return op.kind === 'move' ? { kind: 'move', delta: sub2(toLocal(op.to), toLocal(op.from)) }
         : { kind: 'rotate', pivot: toLocal(op.pivot), angle: op.angle };
     },
-    ...placementHooks(tx, modelId),
-    carryJoins: plan => joinCarrier?.({ tx, modelId, plan, op }) ?? [],
-  });
+    carryJoins: (plan, draft) => joinCarrier?.({ tx, modelId, plan, op, editor: draft }) ?? [],
+  }), tx.batchId);
   return { modelId, created: [], deleted: [], remesh: result.remesh,
     ...(result.hostsChanged ? { remeshCause: 'hostsChanged' as const } : {}), select: [...selected] };
-}
-
-function placementHooks(tx: AuthoringTransaction, modelId: string) {
-  return {
-    translate: (id: number, delta: [number, number, number]) => {
-      const moved = tx.store.translateEntity(modelId, id, delta, tx.batchId);
-      if (!moved.ok) throw new Error(moved.reason);
-    },
-    rotate: (id: number, angle: number) => {
-      const turned = tx.store.rotateEntity(modelId, id, angle);
-      if (!turned.ok) throw new Error(turned.reason);
-    },
-  };
 }
 
 /** One planned batch: hosted roots travel once even when several targets are picked. */
@@ -128,13 +117,13 @@ export function commitElementAlignment(tx: AuthoringTransaction, modelId: string
   const planes = new Map<number, (p: Vec3) => Vec2>();
   const origin = plane.localToRender([0, 0, 0]);
   const op: ElementTransformOp = { kind: 'move', from: origin, to: origin };
-  const result = alignElementsInStore({ ...target, ...placementHooks(tx, modelId),
+  const result = recordModellingCommit(tx.api, modelId, editor => alignElementsInStore({ ...target, editor, view: editor.getMutationView(),
     storeyOf: id => elementStoreyId(tx.store, modelId, id),
-    carryJoins: plan => joinCarrier?.({ tx, modelId, plan, op }) ?? [],
+    carryJoins: (plan, draft) => joinCarrier?.({ tx, modelId, plan, op, editor: draft }) ?? [],
   }, params, boxes, (_id, storey, shift) => {
     const local = storeyLocal(tx.store, modelId, storey, planes);
     return sub2(local(plane.localToRender([shift[0], shift[1], 0])), local(origin));
-  });
+  }), tx.batchId);
   return { modelId, created: [], deleted: [], remesh: result.remesh,
     ...(result.hostsChanged ? { remeshCause: 'hostsChanged' as const } : {}), select: [params.reference, ...params.targets] };
 }

@@ -46,6 +46,7 @@ export const commandPaletteIt = {
   'commandPalette.tool.annotate.label': 'Annota',
   'commandPalette.tool.wall.label': 'Disegna muri',
   'commandPalette.tool.slab.label': 'Disegna solette',
+  'commandPalette.tool.roof.label': 'Disegna tetti',
   'commandPalette.tool.column.label': 'Posiziona pilastri',
   'commandPalette.tool.beam.label': 'Disegna travi',
   'commandPalette.tool.editMode.label': 'Attiva/disattiva la modalità di modifica',
@@ -112,4 +113,9 @@ export const commandPaletteIt = {
   "commandPalette.availability.gpuChecking": "Attendi il completamento della verifica WebGPU",
   "commandPalette.availability.gpu": "WebGPU non è disponibile — consulta la schermata iniziale per assistenza",
   "commandPalette.availability.reopen": "Riapri il file dal disco; la copia nella cache non è più disponibile",
+  "commandPalette.availability.undo": "Nessuna modifica dello spazio di lavoro da annullare (le cronologie IDS e della pianificazione sono separate)",
+  "commandPalette.availability.redo": "Nessuna modifica dello spazio di lavoro da ripristinare (le cronologie IDS e della pianificazione sono separate)",
+  "commandPalette.aliases.bulk": "modifica in blocco proprietà query imposta attributo fase di costruzione",
+  "commandPalette.aliases.import": "CSV foglio di calcolo dati mappatura importazione",
+  "commandPalette.aliases.classes": "classe visibilità spazi aperture annotazioni griglie unisci livelli geometria rapida esatta",
 } satisfies Catalogue;

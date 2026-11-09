@@ -178,13 +178,13 @@ export interface DrawingPolygon {
   modelIndex: number;
   /** True if from section cut, false if projection */
   isCut: boolean;
-  /** Per-sub-mesh RGBA fill (0–1), present only when the source entity cut
-   *  into >1 distinct material — i.e. an `IfcMaterialLayerSet` wall/slab whose
-   *  layers each carry their `IfcMaterial`'s surface-style colour, or a
-   *  frame+glass window. Renderers showing IFC materials use this so each
-   *  layer fills with its own colour instead of one colour for the whole
-   *  element; absent for single-material elements (keep the existing per-`ifcType` / per-entity fill). */
+  /** Per-layer fill and identity. `color` (RGBA 0–1) is present only when the entity cut into
+   *  >1 layer (an `IfcMaterialLayerSet` wall/slab, a frame+glass window), so each layer fills
+   *  with its own colour; absent for single-material elements (keep the per-`ifcType` / per-entity
+   *  fill). `materialId` is the layer's `IfcMaterial` (`MeshData.materialId`) when the mesh has one:
+   *  same id space as `entityId`, so a federated session re-homes both and they resolve alike. */
   color?: [number, number, number, number];
+  materialId?: number;
   sourceColor?: [number, number, number, number]; // source sub-mesh RGBA (absent when it has none); unlike `color`, set on single-material cuts too — the 3D cap's element-colour fill reads it
   /** Set on the OPAQUE BASE polygon emitted for a multi-material entity: the
    *  entity's full closed cross-section (built from the watertight union of all
@@ -218,10 +218,10 @@ export interface CutSegment {
   ifcType: string;
   /** Model index */
   modelIndex: number;
-  /** Source sub-mesh RGBA colour (0–1) — the cut triangle's `MeshData.color`.
-   *  Carried so the polygon builder can split one entity's cut into per-material
-   *  loops (material-layer walls/slabs). Absent when the cutter has no colour. */
+  /** Source sub-mesh RGBA colour (0–1) and `IfcMaterial` id (`MeshData.color` / `.materialId`): the
+   *  polygon builder splits one entity's cut into per-layer loops on both. Absent when the mesh has none. */
   color?: [number, number, number, number];
+  materialId?: number;
   /** Max |coordinate| of the source triangle's LOCAL vertex positions —
    *  i.e. the `Float32Array` values BEFORE the per-mesh RTC `origin` was
    *  added. This is the quantity that actually bounds float32 rounding

@@ -52,6 +52,7 @@ import '@/test/setup-dom.js';
 import { beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { MeshData, DecodedInstance } from '@ifc-lite/geometry';
+import { Drawing2DGenerator } from '@ifc-lite/drawing-2d';
 import { useViewerStore, type FederatedModel } from '@/store';
 import { fixtureModel } from '@/test/store-fixture.js';
 import { applyFederationOffsetToMesh } from './ingest/federationOffset.js';
@@ -205,6 +206,46 @@ describe('federation id-offset — the source item id is re-homed with the expre
     const m = mesh({ materialId: LOCAL_ITEM_ID });
     applyFederationOffsetToMesh(m, 0);
     assert.equal(m.materialId, LOCAL_ITEM_ID, 'a zero offset (primary model) must leave materialId untouched');
+  });
+
+  it('a section cut carries the re-homed materialId, which resolves like its entityId (#8449)', async () => {
+    // One layer of a layered wall in the SECONDARY model: a 0.2 × 3 × 4 m box,
+    // re-homed by the production helper, then cut in plan by the real generator.
+    const positions = new Float32Array([
+      0, 0, 0, 0.2, 0, 0, 0.2, 3, 0, 0, 3, 0,
+      0, 0, 4, 0.2, 0, 4, 0.2, 3, 4, 0, 3, 4,
+    ]);
+    const layer = mesh({
+      materialId: LOCAL_ITEM_ID,
+      positions,
+      normals: new Float32Array(positions.length),
+      indices: new Uint32Array([
+        0, 2, 1, 0, 3, 2, 4, 5, 6, 4, 6, 7, 0, 1, 5, 0, 5, 4,
+        3, 7, 6, 3, 6, 2, 0, 4, 7, 0, 7, 3, 1, 2, 6, 1, 6, 5,
+      ]),
+    });
+    applyFederationOffsetToMesh(layer, secondaryOffset);
+
+    const generator = new Drawing2DGenerator();
+    await generator.initialize();
+    const drawing = await generator.generate(
+      [layer],
+      { plane: { axis: 'y', position: 1.5, flipped: false }, projectionDepth: 3, includeHiddenLines: false, creaseAngle: 30, scale: 100 },
+      { useGPU: false, includeProjection: false, includeEdges: false, includeHiddenLines: false },
+    );
+
+    assert.equal(drawing.cutPolygons.length, 1, 'sanity: the plane must cut the layer');
+    const [polygon] = drawing.cutPolygons;
+    assert.deepEqual(
+      useViewerStore.getState().resolveGlobalIdFromModels(polygon!.materialId!),
+      { modelId: 'secondary', expressId: LOCAL_ITEM_ID },
+      'the cut polygon\'s materialId must resolve to the secondary model and its local material',
+    );
+    assert.equal(
+      resolve(polygon!.materialId!)?.modelId,
+      resolve(polygon!.entityId)?.modelId,
+      'materialId and entityId on one cut polygon must resolve to the same model',
+    );
   });
 
   it('flat path: the shifted geometryItemId resolves back to its OWN model, not the primary', () => {

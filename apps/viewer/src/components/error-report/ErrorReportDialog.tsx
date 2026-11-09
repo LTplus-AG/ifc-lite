@@ -108,7 +108,7 @@ export function ErrorReportDialog({ context, onClose, client: injectedClient }: 
   }
   const receiptGeneration = useRef(0);
   async function deletePrivateReport() {
-    if (!receipt) return;
+    if (!receipt || deleting.current) return;
     receiptGeneration.current++;
     deleting.current = true; setDeleteState('deleting'); setError('');
     try {

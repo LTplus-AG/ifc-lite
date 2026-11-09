@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /** Palette-only prerequisites. Shared ribbon/context enabled predicates stay intact (#8947). */
+import { hasWorkspaceHistory } from '@/lib/model-placement/history';
 import { isCollabEnabled } from '@/lib/collab/config';
 import type { TranslationKey } from '@/i18n';
 import { useViewerStore, type ViewerState } from '@/store';
@@ -44,6 +45,20 @@ export function paletteAvailability(command: SurfaceCommandDefinition, context: 
   const id = command.id;
   const loaded = selectHasModelsLoaded(s);
   const hasData = s.ifcDataStore !== null || [...s.models.values()].some(m => m.ifcDataStore != null);
+  if (id === 'author:bulk-properties' || id === 'author:import-data') {
+    if (s.loading) return blocked('commandPalette.availability.loading');
+    if (!hasData) return blocked('commandPalette.availability.ifc');
+    const callback = id === 'author:bulk-properties' ? context.openBulkProperties : context.openImportData;
+    if (!callback || context.toolHostIsCurrent?.() === false) return blocked('commandPalette.availability.host');
+  }
+  if (id === 'elements:class-filter' && (!context.openClassFilter || context.toolHostIsCurrent?.() === false)) {
+    return blocked('commandPalette.availability.host');
+  }
+  if (id === 'author:undo' || id === 'author:redo') {
+    if (!hasWorkspaceHistory(s, id === 'author:undo' ? 'undo' : 'redo')) {
+      return blocked(id === 'author:undo' ? 'commandPalette.availability.undo' : 'commandPalette.availability.redo');
+    }
+  }
   if (id === 'file:share' && !isCollabEnabled()) return blocked('commandPalette.availability.feature');
   if (['file:open', 'file:add-model', 'file:refresh', 'file:share'].includes(id)) {
     const callback = id === 'file:open' ? context.openFiles : id === 'file:add-model' ? context.addModel
@@ -139,7 +154,7 @@ export function canRunPaletteCommand(command: Command, onRefused?: (reason: Tran
 
 /** Narrow snapshot: unrelated viewport/store updates do not rebuild the table. */
 export function palettePrerequisites(s: ViewerState) {
-  return { models: s.models, data: s.ifcDataStore, geometry: s.geometryResult, loading: s.loading,
+  return { workspaceUndo: hasWorkspaceHistory(s, 'undo'), workspaceRedo: hasWorkspaceHistory(s, 'redo'), models: s.models, data: s.ifcDataStore, geometry: s.geometryResult, loading: s.loading,
     selected: s.selectedEntity, selectedId: s.selectedEntityId, selectedIds: s.selectedEntityIds,
     activeModel: s.activeModelId, role: s.collabRole, camera: s.cameraCallbacks, cesiumAvailable: s.cesiumAvailable,
     highlight: s.hoverHighlightEnabled, mutationVersion: s.mutationVersion, georef: s.georefMutations,

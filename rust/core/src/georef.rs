@@ -15,7 +15,6 @@ use crate::slot;
 
 #[path = "georef_parse.rs"]
 mod georef_parse;
-use georef_parse::{compound_angle_has_literal_negative_zero, compound_plane_angle_to_degrees};
 
 #[path = "georef_pset.rs"]
 mod georef_pset;
@@ -30,6 +29,10 @@ use georef_operation::{
 #[path = "georef_details.rs"]
 mod georef_details;
 pub use georef_details::{CoordinateOperationKind, GeoReferenceDetails};
+
+#[path = "georef_site.rs"]
+mod georef_site;
+pub use georef_site::{model_true_north, site_ref_location, unit_xy, SiteRefLocation};
 
 /// Where the georeferencing data was authored in the file.
 ///
@@ -689,37 +692,9 @@ impl GeoRefExtractor {
             if *ifc_type != IfcType::IfcSite {
                 continue;
             }
-            let site = decoder.decode_by_id(*id)?;
-            // IfcSite: RefLatitude (9), RefLongitude (10), RefElevation (11).
-            let latitude = compound_plane_angle_to_degrees(&site, slot::IfcSite::REF_LATITUDE.index());
-            let longitude = compound_plane_angle_to_degrees(&site, slot::IfcSite::REF_LONGITUDE.index());
-            let (Some(mut latitude), Some(mut longitude)) = (latitude, longitude) else {
+            let Some(site) = site_ref_location(decoder, *id)? else {
                 continue;
             };
-
-            // The `-0` leniency (TS parity, see `compoundPlaneAngleToDecimalDegrees`
-            // in `georef-extractor.ts`): a writer that signs a zero-magnitude
-            // component of the compound angle (e.g. `(-0, 30, 0)` for 0°30'S)
-            // survives here only via the entity's RAW record bytes.
-            // `compound_plane_angle_to_degrees` above already lost that sign —
-            // its components come from `AttributeValue::Integer(i64)`, and the
-            // shared tokenizer's `integer()` parses `-0` through
-            // `lexical_core::parse::<i64>`, which has no negative-zero
-            // representation, so the sign never reaches `AttributeValue` at
-            // all. Re-scanning the raw bytes for this one legacy-site
-            // attribute pair (RefLatitude/RefLongitude only, not the hot
-            // tokenizer) recovers it without touching the shared integer path.
-            if let Some(bytes) = decoder.get_raw_bytes(*id) {
-                if latitude >= 0.0 && compound_angle_has_literal_negative_zero(bytes, slot::IfcSite::REF_LATITUDE.index()) {
-                    latitude = -latitude;
-                }
-                if longitude >= 0.0 && compound_angle_has_literal_negative_zero(bytes, slot::IfcSite::REF_LONGITUDE.index()) {
-                    longitude = -longitude;
-                }
-            }
-
-            let elevation = site.real_at(slot::IfcSite::REF_ELEVATION).unwrap_or(0.0);
-
             let mut georef = GeoReference::new();
             georef.source = Some(GeoRefSource::SiteLocation);
             georef.crs_name = Some("EPSG:4326".to_string());
@@ -727,9 +702,9 @@ impl GeoRefExtractor {
             georef.geodetic_datum = Some("WGS84".to_string());
             georef.map_projection = Some("Geographic".to_string());
             georef.map_unit = Some("DEGREE".to_string());
-            georef.eastings = longitude;
-            georef.northings = latitude;
-            georef.orthogonal_height = elevation;
+            georef.eastings = site.longitude;
+            georef.northings = site.latitude;
+            georef.orthogonal_height = site.elevation;
             return Ok(Some(georef));
         }
         Ok(None)

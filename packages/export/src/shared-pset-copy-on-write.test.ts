@@ -400,3 +400,17 @@ describe('shared IfcPropertySet copy-on-write export (#5794)', () => {
     expect(customBSets(text, WALL_B)).toEqual([{ guid: SHARED_GUID, kinds: SOURCE_KINDS }]);
   });
 });
+
+it('#9296 editing a copied owner retains a definition named by separate surviving relationships', async () => {
+  const source = SHARED_PSET_IFC.replace('(#20,#21,#22),#40', '(#20),#40')
+    .replace('ENDSEC;\nEND-ISO', `#42=IFCRELDEFINESBYPROPERTIES('0x8Q_7Can5hOwBoiPhy1M2',$,$,$,(#21),#40);
+#43=IFCRELDEFINESBYPROPERTIES('0x8Q_7Can5hOwBoiPhy1M3',$,$,$,(#22),#40);
+ENDSEC;\nEND-ISO`);
+  const { text, store } = await exportEdited(view => {
+    view.setProperty(WALL_B, 'Custom_B', 'B1', 'copy override', PropertyValueType.Label);
+  }, source);
+  expect(customBValues(store, WALL_A)).toMatchObject({ B1: 'b1' });
+  expect(customBValues(store, WALL_B)).toMatchObject({ B1: 'copy override' });
+  expect(customBValues(store, WALL_C)).toMatchObject({ B1: 'b1' });
+  for (const id of [WALL_A, WALL_C]) expect(customBSets(text, id)).toEqual([{ guid: SHARED_GUID, kinds: SOURCE_KINDS }]);
+});

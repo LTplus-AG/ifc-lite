@@ -912,7 +912,7 @@ export function useDrawingGeneration({
 
   // All entry points share one queue; superseded cuts cannot publish over newer inputs (#3921).
   const { queue, generateDrawing, doRegenerate, isRegenerating } =
-    useDrawingRequests({ computeDrawing, drawing, setDrawingStatus });
+    useDrawingRequests({ computeDrawing, drawing, setDrawingStatus, setDrawingError });
 
   // Restore the persisted section cut on reload (issue #4153 gap):
   // `useDrawing2DPersistence.ts`'s restore path loaded a saved model's
@@ -1015,9 +1015,9 @@ export function useDrawingGeneration({
     }
     if (activated || changed || planeChanged || openedEmpty) {
       const regenerate = !activated && !changed && !openedEmpty && planeChanged;
+      // useDrawingRequests reports a current failure; a stale one must not overwrite the status.
       void generateDrawing(regenerate).catch(error => {
         console.error('Automatic drawing request failed:', error);
-        setDrawingError(error instanceof Error ? error.message : 'Generation failed');
       });
     }
   });

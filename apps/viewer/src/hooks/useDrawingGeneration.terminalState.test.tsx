@@ -76,16 +76,24 @@ const BASE: Inputs = {
   activeTool: 'select',
 };
 
+/** The mounted hook's `generateDrawing`, as the Regenerate / Retry buttons call it. */
+let generateDrawing: ((isRegenerate?: boolean) => Promise<void>) | null = null;
+/** Make the first progress write throw: before `computeDrawing`'s own try/catch. */
+let throwOnInitializing = false;
+
 function Harness({ value }: { value: Inputs }): null {
   const drawing = useViewerStore((s) => s.drawing2D);
   const store = useViewerStore.getState();
-  useDrawingGeneration({
+  ({ generateDrawing } = useDrawingGeneration({
     ...value, drawing,
     setDrawing: store.setDrawing2D,
     setDrawingStatus: store.setDrawing2DStatus,
-    setDrawingProgress: store.setDrawing2DProgress,
+    setDrawingProgress: (progress, phase) => {
+      if (throwOnInitializing && phase === 'Initializing...') throw new Error('failed before the cut began');
+      store.setDrawing2DProgress(progress, phase);
+    },
     setDrawingError: store.setDrawing2DError,
-  });
+  }));
   return null;
 }
 
@@ -132,6 +140,7 @@ async function settle(): Promise<void> {
 }
 
 beforeEach(() => {
+  throwOnInitializing = false;
   useViewerStore.getState().clearDrawing2D();
   inputs = BASE;
   statuses = [];
@@ -380,5 +389,47 @@ describe('#9488 independent review probes', () => {
     assert.notEqual(useViewerStore.getState().drawing2DStatus, 'generating');
     mountCanvasFor(kept);
     assert.equal(hasActiveDrawingCanvas(), true, 'pending flag leaked');
+  });
+});
+
+describe('#9488 re-review: failures outside computeDrawing\'s try, and kept errors', () => {
+  it('a Regenerate/Retry first cut that throws before its cut began ends in error, not generating (#9488 probe P-A)', async () => {
+    await render({ geometryResult: geometry(), panelVisible: true });
+    await settle();
+    assert.equal(useViewerStore.getState().drawing2DStatus, 'ready');
+    throwOnInitializing = true;
+    let rejected: unknown = null;
+    // DrawingPanel's Regenerate and DrawingCanvasView's Retry call generateDrawing(false) and drop its promise.
+    await act(async () => { await generateDrawing?.(false).catch((error: unknown) => { rejected = error; }); });
+    throwOnInitializing = false;
+    await settle();
+    assert.ok(rejected instanceof Error, 'the caller still sees the failure');
+    assert.ok(statuses.includes('generating'), `the cut raised the overlay: ${statuses.join(' -> ')}`);
+    assert.equal(useViewerStore.getState().drawing2DStatus, 'error', `statuses: ${statuses.join(' -> ')}`);
+    assert.equal(useViewerStore.getState().drawing2DError, 'failed before the cut began');
+  });
+
+  it('cancelling a regenerate-only chain keeps an earlier error instead of writing ready over it (#9488)', async () => {
+    await render({ geometryResult: geometry(), panelVisible: true });
+    await settle();
+    assert.ok(useViewerStore.getState().drawing2D);
+    const original = Drawing2DGenerator.prototype.generate;
+    Drawing2DGenerator.prototype.generate = async () => { throw new Error('cutter failed'); };
+    try {
+      await render({ sectionPlane: { axis: 'down', position: 40, flipped: false } });
+      await settle();
+    } finally { Drawing2DGenerator.prototype.generate = original; }
+    assert.equal(useViewerStore.getState().drawing2DStatus, 'error');
+    const cutter = holdCutter();
+    try {
+      const started = cutter.nextStart();
+      await render({ sectionPlane: { axis: 'down', position: 30, flipped: false } });
+      await act(async () => { await started; });
+      await render({ panelVisible: false });
+      cutter.release();
+      await settle();
+    } finally { cutter.restore(); }
+    assert.equal(useViewerStore.getState().drawing2DStatus, 'error', 'a regenerate never raised the overlay, so its cancel restores nothing');
+    assert.equal(useViewerStore.getState().drawing2DError, 'cutter failed');
   });
 });

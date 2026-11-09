@@ -18,6 +18,7 @@ interface DrawingRequestsParams {
   /** The drawing on screen, kept by a cancelled cut. */
   drawing: Drawing2D | null;
   setDrawingStatus: (status: DrawingStatus) => void;
+  setDrawingError: (error: string | null) => void;
 }
 
 /**
@@ -33,8 +34,16 @@ interface DrawingRequestsParams {
  * in the chain raised the "generating" overlay. A regenerate never raises it,
  * but it can inherit one from a first cut it superseded, so the overlay is
  * tracked for the chain, not per request (#9488).
+ *
+ * A current run that throws past `computeDrawing`'s own try/catch (anything
+ * between raising the overlay and starting the cut) records its error here,
+ * so the overlay comes down for callers that drop the rejection — the panel's
+ * Regenerate and Retry buttons. A run that is no longer current writes
+ * nothing: its chain already ended, or a newer request now owns the status.
  */
-export function useDrawingRequests({ computeDrawing, drawing, setDrawingStatus }: DrawingRequestsParams) {
+export function useDrawingRequests({
+  computeDrawing, drawing, setDrawingStatus, setDrawingError,
+}: DrawingRequestsParams) {
   const queueRef = useRef<ReturnType<typeof createDrawingRequestQueue> | null>(null);
   if (!queueRef.current) queueRef.current = createDrawingRequestQueue();
   const queue = queueRef.current;
@@ -52,6 +61,9 @@ export function useDrawingRequests({ computeDrawing, drawing, setDrawingStatus }
       if (!isRegenerate) overlayRaised.current = true;
       try {
         await computeDrawing(isRegenerate, isCurrent);
+      } catch (error) {
+        if (isCurrent()) setDrawingError(error instanceof Error ? error.message : 'Generation failed');
+        throw error;
       } finally {
         setIsRegenerating(false);
       }
@@ -63,7 +75,7 @@ export function useDrawingRequests({ computeDrawing, drawing, setDrawingStatus }
       }
       overlayRaised.current = false;
     });
-  }, [computeDrawing, queue, setDrawingStatus]);
+  }, [computeDrawing, queue, setDrawingStatus, setDrawingError]);
   const doRegenerate = useCallback(() => generateDrawing(true), [generateDrawing]);
 
   return { queue, generateDrawing, doRegenerate, isRegenerating };

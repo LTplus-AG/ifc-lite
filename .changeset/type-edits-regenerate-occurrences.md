@@ -15,6 +15,8 @@ New functions:
 
 `addElementTypeToStore` now also writes IfcSpatialElementType subtypes, so an IFC4 or IFC4X3 space can be given an IfcSpaceType.
 
+Rewriting a joined wall loaded from a file (a resize, a reshape, a join) no longer leaves the file's replaced Axis representation behind unreferenced. That broke IfcShapeModel.WR11, so the export of an edited loaded model failed express validation. The replaced representation is removed once nothing references it, together with its curve and points.
+
 In the viewer:
 
 - A type-scope layer edit (the Layers section's Type target, and reviewed `material.layers` with scope type) redraws every occurrence of the type, the walls joined to them and the generated rooms. Undo and Redo redraw them again.

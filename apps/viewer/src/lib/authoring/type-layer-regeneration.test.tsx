@@ -15,7 +15,9 @@ import assert from 'node:assert/strict';
 import { IfcParser } from '@ifc-lite/parser';
 import { IfcAPI } from '@ifc-lite/wasm';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
-import { deriveAuthoredBaseQuantities, previewTypeLayerImpact, typeLayerScopeInStore } from '@ifc-lite/create';
+import { previewTypeLayerImpact, typeLayerScopeInStore } from '@ifc-lite/create';
+import { configureMutationView } from '@/utils/configureMutationView';
+import { setEditedQuantityRefresh } from '@/lib/quantities/edited-quantity-refresh';
 import { applyAuthoredDefaults } from '@/lib/commands/modeling/authored-defaults';
 import type { MeshData } from '@ifc-lite/geometry';
 import { applyRemeshConfig, remeshOnApi, styleWireOnApi } from '../../../../../packages/geometry/src/remesh/remesh-core.js';
@@ -78,21 +80,51 @@ const SYNTHESISED = /^#\d+=(IFCPROPERTYSINGLEVALUE|IFCPROPERTYSET|IFCRELDEFINESB
 const comparable = (step: string) => step.split('\n').filter(line => !line.startsWith('FILE_NAME'))
   .map(line => SYNTHESISED.test(line) ? line.replace(/#\d+/g, '#').replace(/'[0-9A-Za-z_$]{22}'/g, "'GlobalId'") : line).sort();
 
+/** Each IfcRelDefinesByType in a STEP text: its RelatingType and RelatedObjects. */
+function typeRelations(step: string): Array<{ type: number; objects: number[] }> {
+  return [...step.matchAll(/^#\d+=IFCRELDEFINESBYTYPE\('[^']*',[^,]*,[^,]*,[^,]*,\(([^)]*)\),#(\d+)\);$/gm)]
+    .map(m => ({ type: Number(m[2]), objects: m[1].split(',').map(ref => Number(ref.trim().slice(1))) }));
+}
+/** Every type has exactly one IfcRelDefinesByType, and `typeId`'s covers exactly `occurrences`. */
+function oneRelationPerType(step: string, typeId: number, occurrences: readonly number[]): void {
+  const rels = typeRelations(step);
+  const perType = new Map<number, number>();
+  for (const rel of rels) perType.set(rel.type, (perType.get(rel.type) ?? 0) + 1);
+  for (const [type, count] of perType) assert.equal(count, 1, `#${type} has ${count} IfcRelDefinesByType`);
+  assert.deepEqual(rels.find(rel => rel.type === typeId)?.objects.sort((x, y) => x - y), [...occurrences].sort((x, y) => x - y));
+}
+/** IfcShapeRepresentation records nothing references (IfcShapeModel.WR11 needs a product shape, map or aspect to own each one). */
+function orphanRepresentations(step: string): string[] {
+  const lines = step.split('\n');
+  return lines.filter(line => line.includes('=IFCSHAPEREPRESENTATION(')).map(line => /^#(\d+)=/.exec(line)![1])
+    .filter(id => !lines.some(line => !line.startsWith(`#${id}=`) && new RegExp(`#${id}(?![0-9])`).test(line.replace(/^#\d+=/, ''))));
+}
+function effectiveGuid(id: number): string {
+  const guid = s().mutationViews.get(MODEL)!.getNewEntity(id)?.attributes[0];
+  assert.equal(typeof guid, 'string');
+  return guid as string;
+}
+
 /**
- * Two walls of one 230 mm layered type (one hosting a door), two plain walls
- * joined round them, and the generated room they enclose. The second typed wall
- * is drawn the way the Wall tool draws with the inspector's defaults: a type
- * picked and a layer default active, so it carries its own layer set usage.
+ * The acceptance model: a closed 6 x 4 m enclosure of four joined walls and a
+ * partition at x = 3 m, all five of ONE layered wall type, a door hosted in the
+ * south wall, and the two generated rooms. The south wall is drawn the way the
+ * Wall tool draws with the inspector's defaults (a type picked and a layer
+ * default active), so it carries its own layer set usage; the others are typed
+ * in the inspector.
  */
 async function acceptanceModel() {
-  const { adapter, store } = await seed();
+  const { adapter } = await seed();
+  configureMutationView(s().mutationViews.get(MODEL)!, s().models.get(MODEL)!.ifcDataStore!);
   const corners: [number, number, number][] = [[20, 20, 0], [26, 20, 0], [26, 24, 0], [20, 24, 0]];
-  const walls = corners.map((Start, i) => adapter.addWall(MODEL, STOREY, { Start, End: corners[(i + 1) % 4], Thickness: i === 1 ? .23 : .2, Height: 3 }).expressId);
-  for (let i = 0; i < 4; i++) adapter.joinWalls!(MODEL, walls[i], walls[(i + 1) % 4], {});
-  const door = adapter.addHostedDoor!(MODEL, walls[0], { Offset: 3, Width: .9, Height: 2.1 }).expressId;
+  const enclosure = corners.map((Start, i) => adapter.addWall(MODEL, STOREY, { Start, End: corners[(i + 1) % 4], Thickness: i === 0 ? .23 : .2, Height: 3 }).expressId);
+  for (let i = 0; i < 4; i++) adapter.joinWalls!(MODEL, enclosure[i], enclosure[(i + 1) % 4], {});
+  const partition = adapter.addWall(MODEL, STOREY, { Start: [23, 20, 0], End: [23, 24, 0], Thickness: .2, Height: 3 }).expressId;
+  const walls = [...enclosure, partition];
+  adapter.addHostedDoor!(MODEL, enclosure[0], { Offset: 1.5, Width: .9, Height: 2.1 });
   const generated = s().generateSpacesFromWalls(MODEL, STOREY, {});
-  assert.ok(!('error' in generated) && generated.emitted.length === 1, 'one generated room');
-  const room = generated.emitted[0].result.spaceId;
+  assert.ok(!('error' in generated) && generated.emitted.length === 2, 'two generated rooms either side of the partition');
+  const rooms = generated.emitted.map(e => e.result.spaceId);
   // Defaults: type WT-230 picked, and 230 mm Brick layers applied to "Element" (the next walls).
   const type = createElementType(MODEL, 'wall', 'WT-230');
   assert.ok(type !== null);
@@ -100,109 +132,145 @@ async function acceptanceModel() {
   assert.ok(layerDefault !== null);
   s().setAuthoringDefaults({ typeIds: { wall: { modelId: MODEL, expressId: type } }, layerSetIds: { wall: { modelId: MODEL, expressId: layerDefault } } });
   // The hook every modelling command runs on what it just drew, in the same undo step.
-  applyAuthoredDefaults(useViewerStore, MODEL, [walls[1]]);
+  applyAuthoredDefaults(useViewerStore, MODEL, [walls[0]]);
   s().setAuthoringDefaults({ typeIds: {}, layerSetIds: {} });
-  assert.equal(setElementType(MODEL, walls[0], type), true);
-  const scope = typeLayerScopeInStore(modelEditTarget(s(), MODEL)!, type);
-  assert.deepEqual([...scope.inheriting].sort(), [walls[0], walls[1]].sort(), 'both walls, the one drawn with its own usage too, follow the type');
-  await landed();
-  return { store, walls, door, room, type };
+  // One inspector edit at a time, each drawn before the next, as a user types them.
+  for (const wall of walls.slice(1)) {
+    assert.equal(setElementType(MODEL, wall, type), true);
+    await landed();
+  }
+  return { walls, rooms, type };
 }
 
-it('editing a shared wall type to 300 mm regenerates both walls, the cut, the joins and the room, and Undo and Redo restore it exactly (#9296)', async t => {
-  if (!ensureRoomWasm(t)) return;
-  const { walls, door, room, type } = await acceptanceModel();
+/** What the acceptance loop reads, on screen and in the model, after each step. */
+function readings(walls: readonly number[], rooms: readonly number[]) {
   const target = () => modelEditTarget(s(), MODEL)!;
-  const thickness = () => walls.map(id => readWallMetres(target(), id)?.thickness);
-  const rendered = (id: number) => planSize(meshes().filter(mesh => mesh.expressId === id));
-  const netArea = () => s().mutationViews.get(MODEL)!.getQuantitiesForEntity(room)
-    .find(set => set.name === 'Qto_SpaceBaseQuantities')?.quantities.find(q => q.name === 'NetFloorArea')?.value;
-  const wallWidth = (id: number) => deriveAuthoredBaseQuantities(s().models.get(MODEL)!.ifcDataStore!, s().mutationViews.get(MODEL)!, id)
-    .find(set => set.name === 'Qto_WallBaseQuantities')?.quantities.find(q => q.name === 'Width')?.value;
-  const doorCentre = () => {
-    const { min, max } = extents(meshes().filter(mesh => mesh.expressId === door));
-    return [(min[0] + max[0]) / 2, (min[1] + max[1]) / 2] as const;
+  const of = (id: number) => meshes().filter(mesh => mesh.expressId === id);
+  return {
+    thickness: () => walls.map(id => readWallMetres(target(), id)?.thickness),
+    rendered: () => walls.map(id => planSize(of(id)).thickness),
+    bodyLength: (id: number) => planSize(of(id)).length,
+    /** Each enclosure corner's join, from the walls' IFC bodies: [the end cut of one wall, the start cut of the next], left and right faces. */
+    corners: () => walls.slice(0, 4).map((id, i) => {
+      const here = readWallMetres(target(), id)?.read?.wall, next = readWallMetres(target(), walls[(i + 1) % 4])?.read?.wall;
+      return [here?.endCut, next?.startCut];
+    }),
+    netArea: () => rooms.map(id => s().mutationViews.get(MODEL)!.getQuantitiesForEntity(id)
+      .find(set => set.name === 'Qto_SpaceBaseQuantities')?.quantities.find(q => q.name === 'NetFloorArea')?.value),
+    /** Qto_WallBaseQuantities as the viewer's quantity reader gives them (the Properties panel and the export read the same). */
+    wallQto: (id: number) => Object.fromEntries((s().mutationViews.get(MODEL)!.getQuantitiesForEntity(id)
+      .find(set => set.name === 'Qto_WallBaseQuantities')?.quantities ?? []).map(q => [q.name, q.value])),
+    /**
+     * The door wall's own mesh, seen through its thickness at door height: open
+     * 1.5 m from its middle on the door's side, solid on the other. (A remeshed
+     * element's positions are local to it, so this is read within the one mesh.)
+     */
+    doorHole: () => {
+      const wall = of(walls[0]), { min, max } = extents(wall), y = min[1] + 1.05, mid = (min[0] + max[0]) / 2;
+      return [mid - 1.5, mid + 1.5].map(x => faceCovers(wall, x, y));
+    },
   };
-  const cutThrough = () => !faceCovers(meshes().filter(mesh => mesh.expressId === walls[0]), ...doorCentre());
+}
 
-  assert.deepEqual(thickness(), [.23, .23, .2, .2]);
-  near(rendered(walls[0]).thickness, .23, 'the typed wall is drawn 230 mm thick');
-  near(rendered(walls[3]).length, 4 - .1 + .115, 'the joined west wall runs to the typed wall\'s outer face');
-  near(netArea()!, 5.785 * 3.785, 'the room is the net area inside the 230 and 200 mm faces');
-  assert.ok(cutThrough(), 'the door is cut through the 230 mm wall');
+/** Everything the loop asserts for a building whose shared type is `t` metres thick. */
+function assertBuilding(r: ReturnType<typeof readings>, walls: readonly number[], t: number, label: string): void {
+  assert.deepEqual(r.thickness(), walls.map(() => t), `${label}: every wall of the type is ${t} m in IFC`);
+  r.rendered().forEach((v, i) => near(v, t, `${label}: wall ${i} is drawn ${t} m thick`));
+  // A closed butt join: one wall runs on by half the other's thickness, the other stops at its face.
+  r.corners().forEach(([end, start], i) => {
+    const cuts = [end?.left, end?.right, start?.left, start?.right];
+    assert.ok(cuts.every(c => c !== undefined), `${label}: corner ${i} has both joined bodies`);
+    assert.ok(Math.abs(cuts[0]! - cuts[1]!) < 1e-9 && Math.abs(cuts[2]! - cuts[3]!) < 1e-9, `${label}: corner ${i} cuts square`);
+    assert.deepEqual([cuts[0]!, cuts[2]!].map(c => Math.round(c * 1e6) / 1e6).sort((x, y) => x - y), [-t / 2, t / 2], `${label}: corner ${i} is closed at ${t} m`);
+  });
+  assert.deepEqual(r.doorHole().sort(), [false, true], `${label}: the door is cut through the full ${t} m wall`);
+  // Each room is 3 m by 4 m between axes, inside half a wall on every side.
+  r.netArea().forEach(area => near(area!, (3 - t) * (4 - t), `${label}: a room's net area`));
+  const qto = r.wallQto(walls[0]);
+  near(qto.Width!, t, `${label}: the wall quantities read the new width`);
+  near(qto.GrossVolume!, t * r.bodyLength(walls[0]) * 3, `${label}: gross volume is the drawn body's width x length x height`);
+  assert.ok(qto.NetVolume! < qto.GrossVolume! - .9 * 2.1 * t + 1e-3, `${label}: net volume deducts the door`);
+}
+
+it('editing the shared type of five walls regenerates them, the door cut, the joins, both rooms and the quantities; Undo, Redo, export and a fresh session agree (#9296)', async t => {
+  if (!ensureRoomWasm(t)) return;
+  const { walls, rooms, type } = await acceptanceModel();
+  const r = readings(walls, rooms);
+  const target = () => modelEditTarget(s(), MODEL)!;
+  assertBuilding(r, walls, .23, 'typed at 230 mm');
+  assert.deepEqual([...typeLayerScopeInStore(target(), type).inheriting].sort(), [...walls].sort(), 'all five follow the type, the one drawn with its own usage too');
   const before = exported(), undoBefore = depth();
+  oneRelationPerType(before, type, walls);
 
-  // The impact preview the type UI can show before Apply: computed, never applied.
+  // The impact the type UI can show before Apply: computed, never applied.
   const impact = previewTypeLayerImpact(target(), type, .3);
   assert.deepEqual(comparable(exported()), comparable(before), 'the preview applies nothing');
-  assert.deepEqual([...impact.resized].sort((x, y) => x.id - y.id).map(r => [r.id, r.from, r.to]), [[walls[0], .23, .3], [walls[1], .23, .3]]);
-  assert.deepEqual(new Set(impact.joined), new Set([walls[2], walls[3]]));
-  assert.deepEqual(impact.rooms.map(r => r.id), [room]);
-  near(impact.rooms[0].netFloorArea.after!, 5.75 * 3.75, 'the preview predicts the room\'s new net area');
+  assert.deepEqual(impact.resized.map(x => x.id).sort(), [...walls].sort());
+  assert.deepEqual(impact.differing, []);
+  assert.deepEqual(impact.rooms.map(x => x.id).sort(), [...rooms].sort());
+  impact.rooms.forEach(room => near(room.netFloorArea.after!, 2.7 * 3.7, 'the preview predicts each room\'s new net area'));
 
+  // 1. 230 -> 300 mm through a type edit.
   requests.length = 0;
   let follow: LayerFollow | null = null;
-  assert.ok(applyMaterialLayers(MODEL, { kind: 'wall', target: 'type', elementId: walls[0], typeId: type,
+  assert.ok(applyMaterialLayers(MODEL, { kind: 'wall', target: 'type', elementId: walls[1], typeId: type,
     layers: [{ thickness: .3, material: { name: 'Brick' } }] }, f => { follow = f; }) !== null);
   await landed();
   const ops = s().undoStacks.get(MODEL)!.slice(undoBefore);
-  assert.ok(ops.length > 0);
   assert.equal(new Set(ops.map(op => s().mutationBatchTags.get(op.id))).size, 1, 'the type edit is one undo step');
   assert.deepEqual(follow, { refused: [], notices: [] }, 'every dependent followed');
-  const after = () => {
-    assert.deepEqual(thickness(), [.3, .3, .2, .2], 'both occurrences take the type, the plain walls keep theirs');
-    near(rendered(walls[0]).thickness, .3, 'the door wall is redrawn 300 mm thick');
-    near(rendered(walls[1]).thickness, .3, 'the second typed wall is redrawn 300 mm thick');
-    near(rendered(walls[3]).length, 4 - .1 + .15, 'the joined west wall runs on to the new outer face, on screen');
-    near(rendered(walls[2]).length, 6 - .15 + .1, 'the joined north wall stops at the new inner face, on screen');
-    assert.ok(cutThrough(), 'the door stays cut through the full 300 mm');
-    near(netArea()!, 5.75 * 3.75, 'the generated room shrinks to the net area inside the new faces');
-    near(wallWidth(walls[0])!, .3, 'the wall quantities read the new width');
-  };
-  after();
+  assertBuilding(r, walls, .3, 'after the type edit');
   const remeshed = new Set(requests.flatMap(request => [...request.targets]));
-  for (const id of [...walls, room]) assert.ok(remeshed.has(id), `#${id} was re-meshed by the edit itself`);
-  for (const id of impact.remesh) assert.ok(remeshed.has(id), `#${id}, previewed, was re-meshed`);
+  for (const id of [...walls, ...rooms, ...impact.remesh]) assert.ok(remeshed.has(id), `#${id} was re-meshed by the edit itself`);
   const edited = exported();
+  oneRelationPerType(edited, type, walls);
+  assert.deepEqual(orphanRepresentations(edited), [], 'every representation the edit wrote belongs to a product');
 
+  // 2. Undo, then Redo.
   s().undo(MODEL);
   await landed();
-  assert.deepEqual(thickness(), [.23, .23, .2, .2]);
-  near(rendered(walls[3]).length, 4 - .1 + .115, 'Undo redraws the joined wall too');
-  near(rendered(walls[0]).thickness, .23, 'Undo redraws the typed wall');
-  near(netArea()!, 5.785 * 3.785, 'Undo restores the room');
+  assertBuilding(r, walls, .23, 'after Undo');
   assert.deepEqual(comparable(exported()), comparable(before), 'Undo restores the model exactly');
-
   s().redo(MODEL);
   await landed();
-  after();
+  assertBuilding(r, walls, .3, 'after Redo');
   assert.deepEqual(comparable(exported()), comparable(edited), 'Redo restores the edit exactly');
 
-  // The export, reopened and meshed on its own: the bodies, not the labels.
+  // 3. The export, meshed on its own: the bodies, not the labels.
   const bytes = new TextEncoder().encode(edited);
-  const parsed = await new IfcParser().parseColumnar(bytes.buffer, { disableWorkerScan: true });
-  const view = new MutablePropertyView(parsed.properties ?? null, 'reopened');
-  const reopened = walls.map(id => parsed.entities.getExpressIdByGlobalId(effectiveGuid(id)));
-  assert.deepEqual(reopened.map(id => readWallMetres({ dataStore: parsed, view, editor: new StoreEditor(parsed, view) }, id)?.thickness), [.3, .3, .2, .2]);
+  const guids = { type: effectiveGuid(type), walls: walls.map(effectiveGuid), rooms: rooms.map(effectiveGuid) };
   const api = new IfcAPI();
   try {
     applyRemeshConfig(api, { mergeLayers: false, tessellationQuality: null, skipSmallCuts: false, rectParamFastPath: true });
-    const frame = { x: 0, y: 0, z: 0, needsShift: false };
-    const meshedExport = remeshOnApi(api, { buffer: bytes, targets: Uint32Array.from(reopened), frame, ...styleWireOnApi(api, bytes) }).meshes;
-    const of = (id: number) => meshedExport.filter(mesh => mesh.expressId === id);
-    near(planSize(of(reopened[0])).thickness, .3, 'the exported door wall body is 300 mm');
-    near(planSize(of(reopened[1])).thickness, .3, 'the exported second typed wall body is 300 mm');
-    near(planSize(of(reopened[3])).length, 4 - .1 + .15, 'the exported joined wall body meets the new face');
+    const parsed = await new IfcParser().parseColumnar(bytes.slice().buffer, { disableWorkerScan: true });
+    const ids = guids.walls.map(guid => parsed.entities.getExpressIdByGlobalId(guid));
+    const meshed = remeshOnApi(api, { buffer: bytes, targets: Uint32Array.from(ids), frame: { x: 0, y: 0, z: 0, needsShift: false }, ...styleWireOnApi(api, bytes) }).meshes;
+    ids.forEach((id, i) => near(planSize(meshed.filter(mesh => mesh.expressId === id)).thickness, .3, `the exported body of wall ${i} is 300 mm`));
   } finally {
     api.free();
   }
-});
 
-function effectiveGuid(id: number): string {
-  const guid = s().mutationViews.get(MODEL)!.getNewEntity(id)?.attributes[0];
-  assert.equal(typeof guid, 'string');
-  return guid as string;
-}
+  // 4. Reopen the export in a fresh session and edit the shared type again.
+  await seed(bytes);
+  const reopened = s().models.get(MODEL)!.ifcDataStore!;
+  configureMutationView(s().mutationViews.get(MODEL)!, reopened);
+  // A loaded wall's own Qto follows its edited body when "Update quantities of edited elements" is on (off by default).
+  setEditedQuantityRefresh(true);
+  t.after(() => setEditedQuantityRefresh(false));
+  const id = (guid: string) => reopened.entities.getExpressIdByGlobalId(guid);
+  const [type2, walls2, rooms2] = [id(guids.type), guids.walls.map(id), guids.rooms.map(id)];
+  oneRelationPerType(exported(), type2, walls2);
+  const r2 = readings(walls2, rooms2);
+  assert.deepEqual(r2.thickness(), walls2.map(() => .3), 'the reopened walls are 300 mm');
+  assert.deepEqual([...typeLayerScopeInStore(modelEditTarget(s(), MODEL)!, type2).inheriting].sort(), [...walls2].sort(), 'after reopen, all five still follow the type');
+  assert.ok(applyMaterialLayers(MODEL, { kind: 'wall', target: 'type', elementId: walls2[2], typeId: type2,
+    layers: [{ thickness: .25, material: { name: 'Brick' } }] }) !== null);
+  await landed();
+  assertBuilding(r2, walls2, .25, 'edited again after reopen');
+  const reopenedEdit = exported();
+  oneRelationPerType(reopenedEdit, type2, walls2);
+  assert.deepEqual(orphanRepresentations(reopenedEdit), [], 'editing the loaded walls replaces their file axes without leaving them unowned');
+});
 
 it('an occurrence whose body cannot follow its type keeps it and is named, while the others still follow (#9296)', async t => {
   if (!ensureRoomWasm(t)) return;

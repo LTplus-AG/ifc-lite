@@ -41,6 +41,7 @@ export const activityTrayDe = {
     "other": "{count} Downloads fehlgeschlagen; keine Dateien zum Laden übergeben."
   },
   "activityTray.job.clash": "Kollisionsprüfung",
+  "activityTray.job.scanDetection": "Bauteilerkennung im Scan",
   "activityTray.job.validation": "Datenprüfung",
   "activityTray.job.list": "Liste ausführen",
   "activityTray.job.bulk": "Eigenschaften gesammelt aktualisieren",

@@ -132,6 +132,7 @@ nav:
     - Quick Start: guide/quickstart.md
     - Developer Workflows: guide/developer-workflows.md
     - Web Viewer Controls: guide/web-viewer-controls.md
+    - SpaceMouse via the 3Dconnexion Driver: guide/spacemouse-driver.md
     - Cloud Sources: guide/cloud-sources.md
     - Model Registry (Experimental): guide/local-registry.md
     - InfluxDB Time Series (Experimental): guide/influxdb.md

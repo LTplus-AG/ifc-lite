@@ -14,7 +14,7 @@
 import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { cleanup, render, type as typeInto } from '@/test/render.js';
+import { cleanup, click, render, type as typeInto } from '@/test/render.js';
 import { useViewerStore } from '@/store';
 import { SENSITIVITY } from '@/lib/spacemouse/constants';
 import { SpaceMousePanel } from './SpaceMousePanel.js';
@@ -26,6 +26,10 @@ const RESET_STATE = {
   spaceMouseError: null,
   spaceMouseSensitivity: SENSITIVITY.default,
   spaceMouseGetDiagnostics: null,
+  spaceMouseConnect: null,
+  spaceMouseUseDriver: false,
+  spaceMouseDriverStatus: 'off' as const,
+  spaceMouseDriverError: null,
 };
 
 beforeEach(() => {
@@ -51,5 +55,36 @@ describe('SpaceMousePanel — sensitivity slider (#5509)', () => {
     typeInto(slider!, String(target));
 
     assert.equal(useViewerStore.getState().spaceMouseSensitivity, target);
+  });
+});
+
+describe('SpaceMousePanel — "Use the 3Dconnexion driver" (#9131)', () => {
+  it('the switch is off by default, shows without WebHID, and turning it on writes the store', () => {
+    // Firefox/Safari case: no WebHID, but the driver path still applies.
+    useViewerStore.setState({ spaceMouseSupported: false });
+    const container = render(<SpaceMousePanel />);
+    const toggle = container.querySelector('button[role="switch"]');
+    assert.ok(toggle, 'expected the driver switch to render');
+    assert.equal(toggle!.getAttribute('aria-checked'), 'false');
+    click(toggle!);
+    assert.equal(useViewerStore.getState().spaceMouseUseDriver, true);
+  });
+
+  it('while the driver is connected the WebHID controls are hidden; when it is unavailable they stay', () => {
+    useViewerStore.setState({
+      spaceMouseSupported: true,
+      spaceMouseConnect: () => {},
+      spaceMouseUseDriver: true,
+      spaceMouseDriverStatus: 'connected',
+    });
+    const container = render(<SpaceMousePanel />);
+    assert.equal(container.querySelector('input[type="range"]'), null, 'sensitivity does not apply to the driver');
+    assert.match(container.textContent ?? '', /Connected through the 3Dconnexion driver/);
+    cleanup();
+
+    useViewerStore.setState({ spaceMouseDriverStatus: 'unavailable', spaceMouseDriverError: 'driver not reachable' });
+    const fallback = render(<SpaceMousePanel />);
+    assert.ok(fallback.querySelector('input[type="range"]'), 'WebHID stays in use when the driver is unavailable');
+    assert.ok(fallback.querySelector('[title="driver not reachable"]'), 'the reason is kept as a tooltip');
   });
 });

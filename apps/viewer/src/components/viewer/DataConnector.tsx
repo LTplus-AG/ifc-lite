@@ -142,7 +142,6 @@ export function DataConnector(props: ToolDialogProps) {
   const [review, setReview] = useState<ChangeConversion | null>(null);
   const [aiMapping, setAiMapping] = useState<TableMapping | null>(null);
 
-
   // Get list of models - includes both federated models and legacy single-model
   const modelList = useMemo(() => {
     const list = Array.from(models.values()).map((m) => ({
@@ -878,8 +877,6 @@ export function DataConnector(props: ToolDialogProps) {
                     </AlertDescription>
                   </Alert>
                 )}
-
-                {/* Error Display */}
 
               </>
             )}

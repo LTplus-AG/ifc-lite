@@ -21,18 +21,25 @@
  * report, result or error from an abandoned run cannot write anything.
  *
  * The activity journal is derived from the slot: give the slot an `activity`
- * description and every begin, progress, end and invalidation is mirrored as
- * the job's tray row, with the tray's Cancel wired to the lease. Nothing else
- * records the job, so the row cannot disagree with the store.
+ * description and every begin, progress and end is mirrored as the job's tray
+ * row, with the tray's Cancel wired to the lease. A user cancel ends the row
+ * `cancelled`; a superseded, torn-down or scope-dropped run removes its row
+ * (`CancelReason` in `./run.ts`). Nothing else records the job, so the row
+ * cannot disagree with the store.
+ *
+ * Start runs with `slot.run(owner, task, { toError })`: it settles the lease
+ * from how the task ends and never rejects. `begin` is the manual form for a
+ * caller that must settle the lease itself.
  */
 
 import {
-  beginActivity, finishActivity, updateActivity, type ActivityJob, type BeginActivity,
+  beginActivity, discardActivity, finishActivity, updateActivity, type ActivityJob, type BeginActivity,
 } from '@/lib/activity/activity-journal';
 import { assertNever } from '@/lib/assert-never';
-import type { Run } from './run';
+import { isAbortError } from './abort';
+import type { CancelReason, Run } from './run';
 
-export { IDLE_RUN, type Run } from './run';
+export { IDLE_RUN, type CancelReason, type Run } from './run';
 
 /** Where the slot's record lives. `write` is the store setter for that one key (plus whatever must change with it atomically). */
 export interface RunSlotBinding<R, P, O, E> {
@@ -54,16 +61,21 @@ export interface RunSlotActivity<P, O, E> {
 export interface BeginRunOptions {
   /**
    * Is the world the run read still the one it will publish into? Checked at
-   * `succeed`: false discards the result and ends the run `cancelled`. Use
-   * `federationIsCurrent` (`lib/federation/federation-identity.ts`) over the
-   * identity captured at begin.
+   * `succeed`: false discards the result and ends the run cancelled with
+   * reason `scope`. Use `federationIsCurrent`
+   * (`lib/federation/federation-identity.ts`) over the identity captured at begin.
    */
   scopeIsCurrent?: () => boolean;
 }
 
+export interface RunOptions<E> extends BeginRunOptions {
+  /** What a non-abort throw from the task is recorded as. */
+  toError: (thrown: unknown) => E;
+}
+
 export interface RunLease<R, P, E> {
   readonly runId: number;
-  /** Aborts when the lease goes stale: cancelled, superseded or torn down. */
+  /** Aborts when the lease goes stale: cancelled, superseded, torn down or scope-dropped. */
   readonly signal: AbortSignal;
   isCurrent(): boolean;
   /** Each returns whether it wrote; false means the lease was already stale. */
@@ -71,19 +83,33 @@ export interface RunLease<R, P, E> {
   /** False also when `scopeIsCurrent` says the result describes a world that is gone. */
   succeed(result: R): boolean;
   fail(error: E): boolean;
+  /** A user cancel (reason `user`). */
   cancel(): boolean;
+  /** Why the lease ended without a result, or null while current or after a success or failure. */
+  cancelReason(): CancelReason | null;
 }
 
 export interface RunSlot<R, P, O, E> {
-  /** Start a run, superseding (and aborting) any run in flight. */
+  /**
+   * Run `task` under a fresh lease and settle it from how the task ends:
+   * a return succeeds, an `AbortError` (`isAbortError`) cancels, any other
+   * throw fails through `toError`. Never rejects, so a fire-and-forget
+   * caller cannot leave the record `running` or an unhandled rejection.
+   * Prefer this to `begin`: setup that throws after the run started is
+   * inside the task, so it fails the run instead of stranding it.
+   */
+  run(owner: O, task: (lease: RunLease<R, P, E>) => Promise<R>, options: RunOptions<E>): Promise<void>;
+  /** Start a run by hand, superseding (and aborting) any run in flight. The caller must settle the lease. */
   begin(owner: O, options?: BeginRunOptions): RunLease<R, P, E>;
-  /** Cancel the run in flight, whoever started it. Returns whether one was running. */
+  /** Cancel the run in flight (reason `user`), whoever started it. Returns whether one was running. */
   cancel(): boolean;
 }
 
 function describeError(error: unknown): Pick<ActivityJob, 'detail'> {
   return { detail: error instanceof Error ? error.message : String(error) };
 }
+
+type End<E> = { kind: 'succeeded' } | { kind: 'failed'; error: E } | { kind: 'cancelled'; reason: CancelReason };
 
 export function createRunSlot<R, P = never, O = undefined, E = unknown>(
   binding: RunSlotBinding<R, P, O, E>,
@@ -97,10 +123,18 @@ export function createRunSlot<R, P = never, O = undefined, E = unknown>(
     return record.kind === 'running' && record.runId === runId;
   };
 
+  /** Why `runId` no longer owns the record, read off what replaced it. */
+  const lostTo = (runId: number): CancelReason => {
+    const record = binding.read();
+    if (record.kind === 'cancelled' && record.runId === runId) return record.reason;
+    if (record.kind !== 'idle' && record.runId > runId) return 'superseded';
+    return 'teardown';
+  };
+
   const cancelCurrent = (): boolean => {
     const record = binding.read();
     if (record.kind !== 'running') return false;
-    binding.write({ kind: 'cancelled', runId: record.runId });
+    binding.write({ kind: 'cancelled', runId: record.runId, reason: 'user' });
     return true;
   };
 
@@ -108,31 +142,37 @@ export function createRunSlot<R, P = never, O = undefined, E = unknown>(
     const runId = ++nextRunId;
     const controller = new AbortController();
     let ended = false;
+    let cancelReason: CancelReason | null = null;
     let journalId: string | null = null;
 
-    type End = { kind: 'succeeded' } | { kind: 'failed'; error: E } | { kind: 'cancelled' };
     /** Stop watching, abort when the run did not succeed, settle the tray row. Idempotent. */
-    const end = (how: End) => {
+    const end = (how: End<E>) => {
       if (ended) return;
       ended = true;
+      if (how.kind === 'cancelled') cancelReason = how.reason;
       unsubscribe();
       if (how.kind !== 'succeeded') controller.abort();
       if (journalId === null) return;
       switch (how.kind) {
         case 'succeeded': finishActivity(journalId, 'completed'); break;
         case 'failed': finishActivity(journalId, 'failed', (activity?.detail ?? describeError)(how.error)); break;
-        case 'cancelled': finishActivity(journalId, 'cancelled'); break;
+        // Only a cancel the user caused is a "cancelled" row; a superseded,
+        // torn-down or scope-dropped run leaves none.
+        case 'cancelled':
+          if (how.reason === 'user') finishActivity(journalId, 'cancelled');
+          else discardActivity(journalId);
+          break;
         default: assertNever(how, 'run end');
       }
     };
 
     const isCurrent = () => !ended && isRunning(runId);
 
-    // Supersede: the write below is what ends the older lease (its watcher sees a new id).
+    // Supersede: the write below is what ends the older lease (its watcher sees a newer id).
     binding.write({ kind: 'running', runId, owner });
     // Subscribed after the write, so only a LATER change can end this lease.
     const unsubscribe = binding.subscribe(() => {
-      if (!ended && !isRunning(runId)) end({ kind: 'cancelled' });
+      if (!ended && !isRunning(runId)) end({ kind: 'cancelled', reason: lostTo(runId) });
     });
 
     const lease: RunLease<R, P, E> = {
@@ -149,8 +189,8 @@ export function createRunSlot<R, P = never, O = undefined, E = unknown>(
       succeed: (result) => {
         if (!isCurrent()) return false;
         if (options.scopeIsCurrent && !options.scopeIsCurrent()) {
-          end({ kind: 'cancelled' });
-          binding.write({ kind: 'cancelled', runId });
+          end({ kind: 'cancelled', reason: 'scope' });
+          binding.write({ kind: 'cancelled', runId, reason: 'scope' });
           return false;
         }
         end({ kind: 'succeeded' });
@@ -166,9 +206,10 @@ export function createRunSlot<R, P = never, O = undefined, E = unknown>(
       cancel: () => {
         if (!isCurrent()) return false;
         // The watcher sees the cancelled record and ends the lease.
-        binding.write({ kind: 'cancelled', runId });
+        binding.write({ kind: 'cancelled', runId, reason: 'user' });
         return true;
       },
+      cancelReason: () => cancelReason,
     };
 
     const row = activity?.begin(owner) ?? null;
@@ -176,5 +217,20 @@ export function createRunSlot<R, P = never, O = undefined, E = unknown>(
     return lease;
   };
 
-  return { begin, cancel: cancelCurrent };
+  const run: RunSlot<R, P, O, E>['run'] = async (owner, task, { toError, ...options }) => {
+    const lease = begin(owner, options);
+    let result: R;
+    try {
+      result = await task(lease);
+    } catch (thrown) {
+      // Both are no-ops once the lease is stale: whoever ended it already
+      // settled the record, and aborted the signal the task is unwinding from.
+      if (isAbortError(thrown)) lease.cancel();
+      else lease.fail(toError(thrown));
+      return;
+    }
+    lease.succeed(result);
+  };
+
+  return { run, begin, cancel: cancelCurrent };
 }

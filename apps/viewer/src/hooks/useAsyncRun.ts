@@ -4,6 +4,9 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { isAbortError } from '@/lib/runs/abort';
+import type { CancelReason } from '@/lib/runs/run';
+
+export type { CancelReason } from '@/lib/runs/run';
 
 /**
  * A component's async run as ONE value. Exactly one of these holds at a time,
@@ -15,20 +18,23 @@ export type AsyncRunState<R, P = never> =
   | { kind: 'running'; progress?: P }
   | { kind: 'succeeded'; result: R }
   | { kind: 'failed'; error: unknown }
-  | { kind: 'cancelled' };
+  /** Only a user cancel (`cancel()`, or an `AbortError` from the task) is shown as a state. */
+  | { kind: 'cancelled'; reason: 'user' };
 
 /**
  * How one `start` ended, for the caller that awaits it.
  * - `refused`: another run owned the hook; the task was never called.
- * - `cancelled`: aborted (an `AbortError`, or the signal fired), or the run
- *   lost ownership before it settled (cancel, reset, supersede, `key` change,
- *   unmount). Whatever it returned was discarded.
+ * - `cancelled`: the run ended without a result, and `reason` says why:
+ *   `user` (`cancel()`, or the task threw an `AbortError`), `superseded`
+ *   (`restart`), `teardown` (`reset`, a `key` change, unmount, or `start`
+ *   called after unmount, in which case the task was never called).
+ *   Whatever the task returned was discarded.
  */
 export type AsyncRunOutcome<R> =
   | { kind: 'refused' }
   | { kind: 'succeeded'; result: R }
   | { kind: 'failed'; error: unknown }
-  | { kind: 'cancelled' };
+  | { kind: 'cancelled'; reason: Exclude<CancelReason, 'scope'> };
 
 /** What a task receives. */
 export interface AsyncRunContext<P> {
@@ -58,7 +64,7 @@ export interface AsyncRun<R, P = never> {
   start: (task: AsyncRunTask<R, P>) => Promise<AsyncRunOutcome<R>>;
   /** Like `start`, but a run in flight is aborted and superseded instead (type-ahead search). */
   restart: (task: AsyncRunTask<R, P>) => Promise<AsyncRunOutcome<R>>;
-  /** Abort the run in flight; `state` becomes `cancelled`. No-op when idle. */
+  /** Abort the run in flight; `state` becomes `cancelled` (reason `user`). No-op when idle. */
   cancel: () => void;
   /** Abort any run in flight and return to `idle` (a form closed or discarded). */
   reset: () => void;
@@ -76,11 +82,15 @@ export interface UseAsyncRunOptions {
 }
 
 const IDLE = { kind: 'idle' } as const;
-const CANCELLED = { kind: 'cancelled' } as const;
+const USER_CANCELLED = { kind: 'cancelled', reason: 'user' } as const;
 const REFUSED = { kind: 'refused' } as const;
+
+type LostReason = Exclude<CancelReason, 'scope'>;
 
 interface Lease {
   readonly controller: AbortController;
+  /** Set when the run lost ownership: what its outcome reports. */
+  lost?: LostReason;
 }
 
 /**
@@ -127,6 +137,29 @@ interface Lease {
  * never renders `state.error` does not swallow it. Work that must outlive the
  * component or be visible to other components belongs in the store run slot
  * (`lib/runs/run-slot.ts`), not here.
+ *
+ * `start` after the component unmounted never calls the task: there is no
+ * owner left to abort it or to show its result, so it returns `cancelled`
+ * with reason `teardown`.
+ *
+ * StrictMode: React's development double-invoke of effects (mount, cleanup,
+ * mount) does not touch a run, because a run can only start from a handler
+ * after the effects ran; `useAsyncRun.test.tsx` renders under `<StrictMode>`
+ * to pin that.
+ *
+ * Migrating from `useSingleFlight` (#9495), behaviour that changes:
+ * - `run(task)` becomes `start(task)`; the task takes `{ signal, isCurrent,
+ *   progress }` instead of `isCurrent`, and the outcome is `kind`, not `status`
+ *   (`refused` | `succeeded` | `failed` | `cancelled`; `stale` is `cancelled`).
+ * - `release()` becomes `reset()`, and it, unmount and a `key` change now
+ *   ABORT the run's signal instead of only marking it stale.
+ * - A task that throws no longer rejects `start`: the error lands in
+ *   `state.failed` and the outcome, and is logged with `console.warn`. Callers
+ *   that relied on the rejection (an unhandled one, in practice) now get the log.
+ * - The result type `R` is fixed per hook (`useAsyncRun<R>()`), not per call;
+ *   a hook whose tasks return nothing is `useAsyncRun()` (`R = void`).
+ * - `busy` is `state.kind === 'running'`; a finished run leaves `succeeded`,
+ *   `failed` or `cancelled` in `state` rather than an implicit idle.
  */
 export function useAsyncRun<R = void, P = never>(options: UseAsyncRunOptions = {}): AsyncRun<R, P> {
   const { key, label = 'async run' } = options;
@@ -137,10 +170,11 @@ export function useAsyncRun<R = void, P = never>(options: UseAsyncRunOptions = {
   const [state, setState] = useState<AsyncRunState<R, P>>(IDLE);
 
   /** Drop ownership and abort; the caller decides what `state` becomes. */
-  const abandon = useCallback((): boolean => {
+  const abandon = useCallback((reason: LostReason): boolean => {
     const lease = flight.current;
     if (!lease) return false;
     flight.current = null;
+    lease.lost = reason;
     lease.controller.abort();
     return true;
   }, []);
@@ -155,7 +189,7 @@ export function useAsyncRun<R = void, P = never>(options: UseAsyncRunOptions = {
     }
     return () => {
       mounted.current = false;
-      abandon();
+      abandon('teardown');
     };
   }, [key, abandon]);
 
@@ -164,8 +198,10 @@ export function useAsyncRun<R = void, P = never>(options: UseAsyncRunOptions = {
   }, []);
 
   const launch = useCallback(async (task: AsyncRunTask<R, P>, supersede: boolean): Promise<AsyncRunOutcome<R>> => {
+    // No owner left: nothing would abort the task or show its result.
+    if (!mounted.current) return { kind: 'cancelled', reason: 'teardown' };
     if (flight.current && !supersede) return REFUSED;
-    abandon();
+    abandon('superseded');
     const lease: Lease = { controller: new AbortController() };
     flight.current = lease;
     const isCurrent = () => flight.current === lease;
@@ -181,20 +217,20 @@ export function useAsyncRun<R = void, P = never>(options: UseAsyncRunOptions = {
     } catch (error) {
       if (!isCurrent()) {
         // Lost ownership: its state was already settled by whoever took it.
-        // Anything it throws after its signal fired is the abort unwinding.
-        if (!lease.controller.signal.aborted && !isAbortError(error)) console.warn(`[${labelRef.current}] An abandoned run failed`, error);
-        return CANCELLED;
+        // An AbortError is the abort unwinding; anything else is still logged.
+        if (!isAbortError(error)) console.warn(`[${labelRef.current}] An abandoned run failed`, error);
+        return { kind: 'cancelled', reason: lease.lost ?? 'teardown' };
       }
       flight.current = null;
       if (isAbortError(error)) {
-        write(CANCELLED);
-        return CANCELLED;
+        write(USER_CANCELLED);
+        return USER_CANCELLED;
       }
       console.warn(`[${labelRef.current}] Run failed`, error);
       write({ kind: 'failed', error });
       return { kind: 'failed', error };
     }
-    if (!isCurrent()) return CANCELLED;
+    if (!isCurrent()) return { kind: 'cancelled', reason: lease.lost ?? 'teardown' };
     flight.current = null;
     write({ kind: 'succeeded', result });
     return { kind: 'succeeded', result };
@@ -202,8 +238,8 @@ export function useAsyncRun<R = void, P = never>(options: UseAsyncRunOptions = {
 
   const start = useCallback((task: AsyncRunTask<R, P>) => launch(task, false), [launch]);
   const restart = useCallback((task: AsyncRunTask<R, P>) => launch(task, true), [launch]);
-  const cancel = useCallback(() => { if (abandon()) write(CANCELLED); }, [abandon, write]);
-  const reset = useCallback(() => { abandon(); write(IDLE); }, [abandon, write]);
+  const cancel = useCallback(() => { if (abandon('user')) write(USER_CANCELLED); }, [abandon, write]);
+  const reset = useCallback(() => { abandon('teardown'); write(IDLE); }, [abandon, write]);
 
   return useMemo(() => ({ state, busy: state.kind === 'running', start, restart, cancel, reset }), [state, start, restart, cancel, reset]);
 }

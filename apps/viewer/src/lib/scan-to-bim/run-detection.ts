@@ -105,52 +105,48 @@ export async function startScanDetection(sourceModelId: string, overrides: Parti
     const model = id === null ? undefined : state.models.get(id);
     if (id !== null && model) recordGatheredModel(identity, id, model);
   }
-  const lease = detectionSlot.begin(owner, { scopeIsCurrent: () => federationIsCurrent(identity, useViewerStore.getState().models) });
-  const handle = source?.pointCloudHandleId;
-  const sample = typeof handle === 'number' ? getPointCloudScanSample(handle) : null;
-  if (typeof handle !== 'number' || !sample || sample.count === 0) {
-    lease.fail('noSample');
-    return;
-  }
-  const matrix = deps.cloudMatrix(handle) ?? null;
-  // The section box crops the sample when it is on screen (render frame, like
-  // the cloud); a cut hidden by the visibility toggle does not crop.
-  const box = activeSectionPlane(state)?.box ?? null;
-  const scanToModel = scanToModelMatrix(state, matrix);
-  const region = box ? sectionBoxToScanRegion(box, matrix) : null;
-  const detector = deps.detector();
-  // Superseded, cancelled or torn down: stop the worker. A newer run's begin
-  // fires this before its own detect, so it never stops the newer job.
-  lease.signal.addEventListener('abort', () => detector.cancel(), { once: true });
-  let outcome: Awaited<ReturnType<ScanDetector['detect']>>;
-  try {
-    outcome = await detector.detect(
+  const scopeIsCurrent = () => federationIsCurrent(identity, useViewerStore.getState().models);
+  // Everything after the run starts is inside the task: a throw from the
+  // sample, the renderer placement or the worker's construction fails the
+  // run instead of leaving it running.
+  await detectionSlot.run(owner, async (lease) => {
+    const handle = source?.pointCloudHandleId;
+    const sample = typeof handle === 'number' ? getPointCloudScanSample(handle) : null;
+    if (typeof handle !== 'number' || !sample || sample.count === 0) throw new Error('noSample');
+    const matrix = deps.cloudMatrix(handle) ?? null;
+    // The section box crops the sample when it is on screen (render frame, like
+    // the cloud); a cut hidden by the visibility toggle does not crop.
+    const box = activeSectionPlane(state)?.box ?? null;
+    const scanToModel = scanToModelMatrix(state, matrix);
+    const region = box ? sectionBoxToScanRegion(box, matrix) : null;
+    const detector = deps.detector();
+    // Superseded, cancelled or torn down: stop the worker. A newer run's begin
+    // fires this before its own detect, so it never stops the newer job.
+    lease.signal.addEventListener('abort', () => detector.cancel(), { once: true });
+    const outcome = await detector.detect(
       { positions: sample.positions, count: sample.count, region, scanToModel, schema: proposalSchema(target) },
       (stage) => { lease.progress(stage); },
     );
-  } catch (error) {
-    lease.fail(error instanceof Error ? error.message : String(error));
-    return;
-  }
-  // Each lease call is a no-op once the run is no longer this one's.
-  switch (outcome.status) {
-    case 'done':
-      lease.succeed({
-        sourceModelId,
-        targetModelId: owner.targetModelId,
-        cropped: region !== null,
-        pointCount: sample.count,
-        cloudMatrix: matrix ? Array.from(matrix) : null,
-        scanToModel,
-        result: outcome.result,
-      });
-      break;
-    case 'failed': lease.fail(outcome.message); break;
-    case 'cancelled': lease.cancel(); break;
-    // A newer detect owns the worker, and with it the slot.
-    case 'superseded': break;
-    default: assertNever(outcome, 'scan detection outcome');
-  }
+    switch (outcome.status) {
+      case 'done':
+        return {
+          sourceModelId,
+          targetModelId: owner.targetModelId,
+          cropped: region !== null,
+          pointCount: sample.count,
+          cloudMatrix: matrix ? Array.from(matrix) : null,
+          scanToModel,
+          result: outcome.result,
+        };
+      case 'failed': throw new Error(outcome.message);
+      // `cancelled`: the worker was stopped (by this lease ending, or on its
+      // own); `superseded`: a newer detect owns the worker, and with it the
+      // slot. Either is a cancel, and a no-op once the lease already ended.
+      case 'cancelled': case 'superseded':
+        throw new DOMException('Scan detection stopped', 'AbortError');
+      default: return assertNever(outcome, 'scan detection outcome');
+    }
+  }, { scopeIsCurrent, toError: (thrown) => (thrown instanceof Error ? thrown.message : String(thrown)) });
 }
 
 /**

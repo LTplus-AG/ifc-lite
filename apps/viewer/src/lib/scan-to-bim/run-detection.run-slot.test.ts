@@ -75,7 +75,7 @@ describe('scan detection run slot', () => {
     await running;
     assert.equal(useViewerStore.getState().scanDetectionRun, null, 'the old session\'s result is not published');
     assert.deepEqual(job(), { kind: 'idle' });
-    assert.deepEqual(tray().map((row) => row.outcome), ['cancelled']);
+    assert.deepEqual(tray(), [], 'a reset the user did not mean as a cancel leaves no cancelled row');
   });
 
   it('records the run in the activity tray: subject, live stage, completion', async () => {
@@ -149,7 +149,7 @@ describe('scan detection run slot', () => {
     await Promise.all([first, second]);
     assert.equal(job().kind, 'succeeded');
     assert.ok(useViewerStore.getState().scanDetectionRun?.result === newer, 'the superseded answer landing last does not win');
-    assert.deepEqual(tray().map((row) => row.outcome), ['cancelled', 'completed']);
+    assert.deepEqual(tray().map((row) => row.outcome), ['completed'], 'the superseded run leaves no row');
   });
 
   it('a model replaced under the same id mid-run (a re-derived store) drops the result', async () => {
@@ -161,7 +161,9 @@ describe('scan detection run slot', () => {
     held.pending[0].settle({ status: 'done', result: RESULT });
     await running;
     assert.equal(useViewerStore.getState().scanDetectionRun, null, 'proposals framed for the replaced store are not published');
-    assert.equal(job().kind, 'cancelled');
+    const dropped = job();
+    assert.equal(dropped.kind === 'cancelled' ? dropped.reason : null, 'scope');
+    assert.deepEqual(tray(), [], 'a dropped result is not a cancel the user made');
   });
 
   it('no sample is a failed run with the catalogued refusal, in the panel and the tray', async () => {
@@ -171,6 +173,23 @@ describe('scan detection run slot', () => {
     assert.equal(failed.kind === 'failed' ? failed.error : null, 'noSample');
     assert.deepEqual(tray().map((row) => [row.outcome, row.detailKey, row.detail]), [['failed', 'scanToBim.error.noSample', undefined]]);
   });
+
+  for (const [where, deps] of [
+    ['the renderer placement', { cloudMatrix: () => { throw new Error('placement unavailable'); } }],
+    ['the detector construction', { detector: () => { throw new Error('Worker construction failed'); } }],
+  ] as const) {
+    it(`a throw from ${where} after the run started fails it instead of leaving it running`, async () => {
+      seed();
+      const held = heldDetector();
+      // Resolves, never rejects: the panel calls it fire-and-forget.
+      await startScanDetection('scan', { ...held.deps, ...deps });
+      const ended = job();
+      assert.equal(ended.kind, 'failed', 'Detect elements is enabled again');
+      const message = where === 'the renderer placement' ? 'placement unavailable' : 'Worker construction failed';
+      assert.equal(ended.kind === 'failed' ? ended.error : null, message);
+      assert.deepEqual(tray().map((row) => [row.outcome, row.detail]), [['failed', message]]);
+    });
+  }
 
   it('a crashed detection worker fails the run with its message', async () => {
     seed();

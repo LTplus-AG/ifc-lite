@@ -13,6 +13,7 @@ import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { create } from 'zustand';
 import { cancelActivity, useActivityJournal } from '@/lib/activity/activity-journal';
+import { abortError, deferred } from '@/test/race.js';
 import { createRunSlot, IDLE_RUN, type Run } from './run-slot';
 
 type TestRun = Run<string, number, { model: string }, string>;
@@ -83,7 +84,7 @@ describe('run slot leases', () => {
     const lease = slot.begin({ model: 'a' });
     assert.equal(slot.cancel(), true);
     assert.equal(lease.signal.aborted, true);
-    assert.deepEqual(job(), { kind: 'cancelled', runId: lease.runId });
+    assert.deepEqual(job(), { kind: 'cancelled', runId: lease.runId, reason: 'user' });
     assert.equal(slot.cancel(), false, 'nothing left to cancel');
   });
 
@@ -101,7 +102,7 @@ describe('run slot leases', () => {
     const lease = slot.begin({ model: 'a' }, { scopeIsCurrent: () => world === 'w1' });
     world = 'w2';
     assert.equal(lease.succeed('for w1'), false);
-    assert.deepEqual(job(), { kind: 'cancelled', runId: lease.runId });
+    assert.deepEqual(job(), { kind: 'cancelled', runId: lease.runId, reason: 'scope' });
     assert.equal(lease.signal.aborted, true);
   });
 
@@ -117,6 +118,25 @@ describe('run slot leases', () => {
     assert.equal(lease.isCurrent(), false);
     assert.equal(lease.succeed('late'), false);
     assert.deepEqual(record, IDLE_RUN);
+  });
+
+  it('a lease knows why it ended: superseded, torn down, cancelled by the user, scope-dropped', () => {
+    const { store, slot } = slotOn();
+    const superseded = slot.begin({ model: 'a' });
+    const tornDown = slot.begin({ model: 'b' });
+    assert.equal(superseded.cancelReason(), 'superseded');
+    assert.equal(tornDown.cancelReason(), null, 'still current');
+    store.setState({ job: IDLE_RUN });
+    assert.equal(tornDown.cancelReason(), 'teardown');
+    const cancelled = slot.begin({ model: 'c' });
+    cancelled.cancel();
+    assert.equal(cancelled.cancelReason(), 'user');
+    const dropped = slot.begin({ model: 'd' }, { scopeIsCurrent: () => false });
+    dropped.succeed('stale');
+    assert.equal(dropped.cancelReason(), 'scope');
+    const done = slot.begin({ model: 'e' });
+    done.succeed('ok');
+    assert.equal(done.cancelReason(), null);
   });
 
   it('an unrelated store change leaves the lease alone', () => {
@@ -139,19 +159,21 @@ describe('run slot activity mirror', () => {
     assert.deepEqual(rows(), [{ outcome: 'completed', subject: 'scan.e57', phase: undefined, detail: undefined }]);
   });
 
-  it('a failure records its message; a teardown records cancelled', () => {
-    const { store, slot } = slotOn({ journal: true });
+  it('a failure records its message; a user cancel records cancelled', () => {
+    const { slot } = slotOn({ journal: true });
     slot.begin({ model: 'a' }).fail('worker crashed');
-    slot.begin({ model: 'b' });
-    store.setState({ job: IDLE_RUN });
+    slot.begin({ model: 'b' }).cancel();
     assert.deepEqual(rows().map((row) => [row.subject, row.outcome, row.detail]), [['a', 'failed', 'worker crashed'], ['b', 'cancelled', undefined]]);
   });
 
-  it("a superseded run's row ends cancelled, the newer run gets its own row", () => {
-    const { slot } = slotOn({ journal: true });
-    slot.begin({ model: 'a' });
-    slot.begin({ model: 'b' });
-    assert.deepEqual(rows().map((row) => [row.subject, row.outcome]), [['a', 'cancelled'], ['b', 'running']]);
+  it('runs the user did not cancel leave no row: superseded, torn down, scope-dropped', () => {
+    const { store, slot } = slotOn({ journal: true });
+    slot.begin({ model: 'superseded' });
+    slot.begin({ model: 'torn down' });
+    assert.deepEqual(rows().map((row) => [row.subject, row.outcome]), [['torn down', 'running']], 'the superseded row is gone, the newer one runs');
+    store.setState({ job: IDLE_RUN });
+    slot.begin({ model: 'scope' }, { scopeIsCurrent: () => false }).succeed('stale world');
+    assert.deepEqual(rows(), [], 'no "cancelled" row the user never asked for');
   });
 
   it("the tray's Cancel cancels the lease it was recorded for, never a newer one", () => {
@@ -159,13 +181,67 @@ describe('run slot activity mirror', () => {
     const older = slot.begin({ model: 'a' });
     const olderRow = useActivityJournal.getState().jobs[0].id;
     const newer = slot.begin({ model: 'b' });
-    cancelActivity(olderRow); // a stale tray button: the row already ended
+    cancelActivity(olderRow); // a stale tray button: its row is already gone
     assert.equal(newer.isCurrent(), true);
-    const newerRow = useActivityJournal.getState().jobs[1].id;
+    const newerRow = useActivityJournal.getState().jobs[0].id;
     cancelActivity(newerRow);
     assert.equal(newer.signal.aborted, true);
-    assert.deepEqual(job(), { kind: 'cancelled', runId: newer.runId });
+    assert.deepEqual(job(), { kind: 'cancelled', runId: newer.runId, reason: 'user' });
     assert.equal(older.signal.aborted, true);
-    assert.deepEqual(rows().map((row) => row.outcome), ['cancelled', 'cancelled']);
+    assert.deepEqual(rows().map((row) => [row.subject, row.outcome]), [['b', 'cancelled']]);
+  });
+});
+
+describe('slot.run settles the lease from how the task ends', () => {
+  const toError = (thrown: unknown) => `error:${thrown instanceof Error ? thrown.message : String(thrown)}`;
+
+  it('a returned value succeeds', async () => {
+    const { slot, job } = slotOn();
+    await slot.run({ model: 'a' }, async () => 'value', { toError });
+    const ended = job();
+    assert.equal(ended.kind === 'succeeded' ? ended.result : null, 'value');
+  });
+
+  it('a throw fails through toError, and run() still resolves', async () => {
+    const { slot, job } = slotOn({ journal: true });
+    await slot.run({ model: 'a' }, async () => { throw new Error('setup broke'); }, { toError });
+    const ended = job();
+    assert.equal(ended.kind === 'failed' ? ended.error : null, 'error:setup broke');
+    assert.deepEqual(rows().map((row) => [row.outcome, row.detail]), [['failed', 'error:setup broke']]);
+  });
+
+  it('a synchronous throw before the first await fails too', async () => {
+    const { slot, job } = slotOn();
+    const task = (): Promise<string> => { throw new Error('sync'); };
+    await slot.run({ model: 'a' }, task, { toError });
+    assert.equal(job().kind, 'failed');
+  });
+
+  it('an AbortError is a user cancel, not a failure', async () => {
+    const { slot, job } = slotOn();
+    await slot.run({ model: 'a' }, async () => { throw abortError(); }, { toError });
+    const ended = job();
+    assert.equal(ended.kind === 'cancelled' ? ended.reason : null, 'user');
+  });
+
+  it('a task that throws after its lease was superseded leaves the newer run alone', async () => {
+    const { slot, job } = slotOn();
+    const gate = deferred();
+    const older = slot.run({ model: 'a' }, async (lease) => {
+      await gate.promise;
+      lease.signal.throwIfAborted();
+      return 'never';
+    }, { toError });
+    const newer = slot.begin({ model: 'b' });
+    gate.resolve();
+    await older;
+    assert.deepEqual(job(), { kind: 'running', runId: newer.runId, owner: { model: 'b' } });
+  });
+
+  it('the scope check applies to a run too', async () => {
+    const { slot, job } = slotOn();
+    await slot.run({ model: 'a' }, async () => 'stale', { toError, scopeIsCurrent: () => false });
+    const ended = job();
+    assert.equal(ended.kind === 'cancelled' ? ended.reason : null, 'scope');
   });
 });

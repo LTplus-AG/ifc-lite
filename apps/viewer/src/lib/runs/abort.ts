@@ -7,9 +7,9 @@
  * (a DOMException from `signal.throwIfAborted()` or `fetch`, Node's
  * AbortError, an abort reason object). A user cancel, not a failure.
  *
- * The one definition the activity journal, the store run slot
- * (`./run-slot.ts`) and `useAsyncRun` classify with, so "cancelled" means the
- * same thing in all three.
+ * The one definition the activity journal (`recordActivity`), the store run
+ * slot (`slot.run` in `./run-slot.ts`) and `useAsyncRun` classify a throw
+ * with, so "cancelled" means the same thing in all three.
  */
 export function isAbortError(error: unknown): boolean {
   if (error === null || (typeof error !== 'object' && typeof error !== 'function')) return false;

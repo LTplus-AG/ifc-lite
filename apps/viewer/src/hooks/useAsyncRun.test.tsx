@@ -4,7 +4,7 @@
 import '@/test/setup-dom.js';
 import { afterEach, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { act, useState } from 'react';
+import { act, StrictMode, useState } from 'react';
 import { cleanup, render } from '@/test/render.js';
 import { abortError, deferred, interleave, type Deferred } from '@/test/race.js';
 import { useAsyncRun, type AsyncRun, type AsyncRunContext, type AsyncRunState } from './useAsyncRun.js';
@@ -17,6 +17,10 @@ interface Harness {
   calls: Array<{ run: AsyncRunContext<number>; gate: Deferred<string> }>;
   outcomes: string[];
   rerender: (key: unknown) => void;
+  /** Re-render the probe with the key unchanged. */
+  touch: () => void;
+  /** Probe renders so far. */
+  renders: () => number;
 }
 
 /** Plain-value view of the state, so a failing assert never serialises DOM. */
@@ -29,23 +33,30 @@ function describe(state: AsyncRunState<string, number>): string {
   }
 }
 
-function mount(initialKey: unknown = 'a'): Harness {
+function mount(initialKey: unknown = 'a', options: { strict?: boolean } = {}): Harness {
   let latest: AsyncRun<string, number> | null = null;
   let setKey: ((key: unknown) => void) | null = null;
+  let bump: (() => void) | null = null;
+  let renders = 0;
   const calls: Harness['calls'] = [];
   const outcomes: string[] = [];
   function Probe() {
     const [runKey, set] = useState<unknown>(initialKey);
+    const [, setTick] = useState(0);
     setKey = set;
+    bump = () => setTick((tick) => tick + 1);
+    renders++;
     latest = useAsyncRun<string, number>({ key: runKey, label: 'test' });
     return null;
   }
-  render(<Probe />);
+  render(options.strict ? <StrictMode><Probe /></StrictMode> : <Probe />);
   return {
     api: () => { assert.ok(latest); return latest; },
     calls,
     outcomes,
     rerender: (key) => { assert.ok(setKey); setKey(() => key); },
+    touch: () => { assert.ok(bump); bump(); },
+    renders: () => renders,
   };
 }
 
@@ -55,7 +66,9 @@ function begin(h: Harness, how: 'start' | 'restart' = 'start'): void {
     const gate = deferred<string>();
     h.calls.push({ run, gate });
     return gate.promise;
-  }).then((outcome) => { h.outcomes.push(outcome.kind === 'succeeded' ? `succeeded:${outcome.result}` : outcome.kind); });
+  }).then((outcome) => {
+    h.outcomes.push(outcome.kind === 'succeeded' ? `succeeded:${outcome.result}` : outcome.kind === 'cancelled' ? `cancelled:${outcome.reason}` : outcome.kind);
+  });
 }
 
 const state = (h: Harness) => describe(h.api().state);
@@ -92,7 +105,7 @@ test('an AbortError from the task is cancelled, not failed', async () => {
   await act(async () => begin(h));
   await act(() => interleave(() => h.calls[0].gate.reject(abortError())));
   assert.equal(state(h), 'cancelled');
-  assert.deepEqual([...h.outcomes], ['cancelled']);
+  assert.deepEqual([...h.outcomes], ['cancelled:user']);
 });
 
 test('cancel aborts the signal; the run settling late cannot overwrite the cancelled state', async () => {
@@ -105,7 +118,7 @@ test('cancel aborts the signal; the run settling late cannot overwrite the cance
   assert.equal(state(h), 'cancelled');
   await act(() => interleave(() => gate.resolve('late')));
   assert.equal(state(h), 'cancelled', 'a late result does not land');
-  assert.deepEqual([...h.outcomes], ['cancelled']);
+  assert.deepEqual([...h.outcomes], ['cancelled:user']);
 });
 
 test('reset returns to idle and lets a new run start; the old run cannot clear the new busy', async () => {
@@ -120,7 +133,7 @@ test('reset returns to idle and lets a new run start; the old run cannot clear t
   assert.equal(h.api().busy, true);
   await act(() => interleave(() => h.calls[1].gate.resolve('new')));
   assert.equal(state(h), 'succeeded:new');
-  assert.deepEqual([...h.outcomes], ['cancelled', 'succeeded:new']);
+  assert.deepEqual([...h.outcomes], ['cancelled:teardown', 'succeeded:new']);
 });
 
 test('restart supersedes: the running run is aborted and the new one owns the state', async () => {
@@ -132,7 +145,7 @@ test('restart supersedes: the running run is aborted and the new one owns the st
   assert.equal(h.calls[1].run.signal.aborted, false);
   await act(() => interleave(() => h.calls[1].gate.resolve('second'), () => h.calls[0].gate.resolve('first')));
   assert.equal(state(h), 'succeeded:second', 'the superseded answer arriving last does not win');
-  assert.deepEqual([...h.outcomes], ['succeeded:second', 'cancelled']);
+  assert.deepEqual([...h.outcomes], ['succeeded:second', 'cancelled:superseded']);
 });
 
 test('progress from the current run is shown; progress from an abandoned run is not', async () => {
@@ -161,7 +174,9 @@ test('a key change aborts the run in flight and starts the new subject from idle
 test('the same key on re-render keeps the run', async () => {
   const h = mount('entity-1');
   await act(async () => begin(h));
-  await act(async () => h.rerender('entity-1'));
+  const before = h.renders();
+  await act(async () => h.touch());
+  assert.ok(h.renders() > before, 'the probe really re-rendered');
   assert.equal(h.calls[0].run.signal.aborted, false);
   assert.equal(state(h), 'running');
 });
@@ -174,7 +189,7 @@ test('unmount aborts the run; its late settle is cancelled and writes nothing', 
   assert.equal(run.signal.aborted, true);
   assert.equal(run.isCurrent(), false);
   await interleave(() => gate.resolve('late'));
-  assert.deepEqual([...h.outcomes], ['cancelled']);
+  assert.deepEqual([...h.outcomes], ['cancelled:teardown']);
 });
 
 test('an abandoned run that throws leaves the newer run running and busy', quiet(async () => {
@@ -188,3 +203,29 @@ test('an abandoned run that throws leaves the newer run running and busy', quiet
   await act(async () => begin(h));
   assert.equal(h.calls.length, 2, 'so a third press is still refused');
 }));
+
+test('start after unmount never calls the task and reports a teardown cancel', async () => {
+  const h = mount();
+  const start = h.api().start;
+  cleanup();
+  let called = false;
+  const outcome = await start(async () => { called = true; return 'orphan'; });
+  assert.equal(called, false, 'no owner is left to abort it or show its result');
+  assert.deepEqual(outcome, { kind: 'cancelled', reason: 'teardown' });
+});
+
+test('under StrictMode the double-invoked effects leave a run alone, and a key change still aborts it', async () => {
+  const h = mount('entity-1', { strict: true });
+  // The development build double-renders under StrictMode, and with it mounts, unmounts and re-mounts effects.
+  assert.equal(h.renders(), 2, 'the test React build runs StrictMode double-invocation');
+  await act(async () => begin(h));
+  await act(async () => h.touch());
+  assert.equal(h.calls[0].run.signal.aborted, false);
+  assert.equal(state(h), 'running');
+  await act(() => interleave(() => h.calls[0].gate.resolve('kept')));
+  assert.equal(state(h), 'succeeded:kept');
+  await act(async () => begin(h));
+  await act(async () => h.rerender('entity-2'));
+  assert.equal(h.calls[1].run.signal.aborted, true);
+  assert.equal(state(h), 'idle');
+});

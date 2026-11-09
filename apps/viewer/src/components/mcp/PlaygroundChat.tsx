@@ -63,6 +63,7 @@ import {
 } from './playground-uploads';
 import { Paperclip, X } from 'lucide-react';
 import { runConversation, type ChatMessage, type ChatToolCall } from './playground-conversation';
+import { MARKDOWN_COMPONENTS } from './playground-markdown';
 export type { ChatToolCall } from './playground-conversation';
 
 // ── component ──────────────────────────────────────────────────────────────
@@ -330,6 +331,8 @@ export function PlaygroundChat({
         </div>
       )}
 
+      {/* Dropping files supplements the adjacent keyboard-accessible attach button and file input. */}
+      {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions */}
       <form
         onSubmit={onSubmit}
         onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
@@ -348,7 +351,7 @@ export function PlaygroundChat({
               <span
                 key={f.name}
                 className="inline-flex items-center gap-1.5 rounded-full border border-[#d6ff3f]/30 bg-[#d6ff3f]/10 px-2 py-1 text-2xs"
-                style={{ ...{ fontFamily: '"JetBrains Mono", monospace' }, color: '#d6ff3f' }}
+                style={{ fontFamily: '"JetBrains Mono", monospace', color: '#d6ff3f' }}
               >
                 <Paperclip size={11} />
                 <span className="max-w-[180px] truncate" title={f.name}>{f.name}</span>
@@ -783,89 +786,6 @@ export function InlineDownload({
     </div>
   );
 }
-
-// ── markdown rendering ────────────────────────────────────────────────────
-//
-// Tailwind utility set scoped to the chat. Headings stay quiet (the chat
-// already structures the conversation). Tables get hairline borders.
-// Inline code + code blocks pick up JetBrains Mono so they read like the
-// tool-call cards.
-
-const MARKDOWN_COMPONENTS = {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  h1: (props: any) => <h3 className="mt-3 mb-1 text-base font-semibold" {...props} />,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  h2: (props: any) => <h4 className="mt-3 mb-1 text-sm font-semibold" {...props} />,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  h3: (props: any) => <h5 className="mt-2 mb-1 text-sm font-semibold" {...props} />,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  p: (props: any) => <p className="my-1.5 first:mt-0 last:mb-0" {...props} />,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ul: (props: any) => <ul className="my-1.5 ml-4 list-disc space-y-0.5" {...props} />,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ol: (props: any) => <ol className="my-1.5 ml-4 list-decimal space-y-0.5" {...props} />,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  li: (props: any) => <li className="leading-snug" {...props} />,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  strong: (props: any) => <strong className="font-semibold text-white" {...props} />,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  em: (props: any) => <em className="italic text-white/95" {...props} />,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  a: (props: any) => (
-    <a className="text-[#d6ff3f] underline-offset-2 hover:underline" target="_blank" rel="noreferrer" {...props} />
-  ),
-  // react-markdown v9 dropped the legacy `inline` prop, so we infer block
-  // vs inline from className (fenced blocks get `language-…`) and content
-  // (block code carries trailing newlines). When it's a block we render
-  // a raw <code> here and let the `pre` override below own the wrapper —
-  // doing the wrapping ourselves used to nest <pre> inside the <p>
-  // react-markdown emits for surrounding text, tripping React's DOM
-  // nesting validator.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  code: ({ className, children, ...props }: any) => {
-    const cls = typeof className === 'string' ? className : '';
-    const text = Array.isArray(children) ? children.join('') : String(children ?? '');
-    const isBlock = cls.startsWith('language-') || /\n/.test(text);
-    if (isBlock) {
-      return (
-        <code className={cn(cls, 'block')} style={{ fontFamily: '"JetBrains Mono", monospace' }} {...props}>
-          {children}
-        </code>
-      );
-    }
-    return (
-      <code
-        className={cn(
-          'rounded bg-white/10 px-1 py-0.5 text-xs text-[#d6ff3f]',
-          cls,
-        )}
-        style={{ fontFamily: '"JetBrains Mono", monospace' }}
-        {...props}
-      >
-        {children}
-      </code>
-    );
-  },
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  pre: (props: any) => (
-    <pre className="my-2 overflow-x-auto rounded bg-black/40 p-3 text-xs leading-snug" style={{ fontFamily: '"JetBrains Mono", monospace' }} {...props} />
-  ),
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  table: (props: any) => <div className="my-2 overflow-x-auto rounded border border-white/10">
-    <table className="w-full border-collapse text-xs" {...props} />
-  </div>,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  thead: (props: any) => <thead className="bg-white/[0.04]" {...props} />,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  th: (props: any) => <th className="border-b border-white/10 px-2.5 py-1.5 text-left text-2xs uppercase tracking-[0.18em] text-white/70"
-    style={{ fontFamily: '"JetBrains Mono", monospace' }} {...props} />,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  td: (props: any) => <td className="border-b border-white/5 px-2.5 py-1.5 align-top" {...props} />,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  blockquote: (props: any) => <blockquote className="my-2 border-l-2 border-white/20 pl-3 italic text-white/70" {...props} />,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  hr: (props: any) => <hr className="my-3 border-white/10" {...props} />,
-};
 
 // Tiny re-export so the playground page can show an empty-state CTA.
 export { RefreshCcw };

@@ -191,7 +191,7 @@ export function createWalkController(
     const current = input();
     const moving = current.forward !== 0 || current.right !== 0 || current.jump || current.crouch;
     if (!moving && session.isSettled() && lastEye) return;
-    apply(session.frame(elapsed, current, look()));
+    apply(session.frame(elapsed, current, look(), camera.getUp()));
     prefetchAround(world, session.character, PREFETCH_MS);
     walkStatusStore.set({ crouching: session.character.crouching });
   };

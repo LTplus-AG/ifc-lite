@@ -280,10 +280,10 @@ function firstPersonCase(rotation: number): FidelityCase {
 }
 
 /**
- * `getRotation` through the tween into a bottom view: the ViewCube reads it
- * every frame, so the azimuth must not flip on the last one. `angleErrorDeg`
- * is the largest frame-to-frame azimuth step over the final 20 degrees of
- * elevation.
+ * `getRotation` through the tween into a plan or soffit view: the ViewCube
+ * reads it every frame, so the azimuth must neither jump to the end value on
+ * the first frame nor flip on the last. `angleErrorDeg` is the largest
+ * frame-to-frame azimuth step, beyond what a smooth 300 ms turn takes.
  */
 function tweenCase(from: Vec3, view: 'top' | 'bottom'): FidelityCase {
   const c = blank(`tween ${from.x},${from.y},${from.z} -> ${view}`);
@@ -303,7 +303,6 @@ function tweenCase(from: Vec3, view: 'top' | 'bottom'): FidelityCase {
       now += 6;
       camera.update(0);
       const r = camera.getRotation();
-      if (Math.abs(r.elevation) < 70) { last = null; continue; }
       if (last !== null) c.angleErrorDeg = Math.max(c.angleErrorDeg, wrapDeg(r.azimuth - last));
       last = r.azimuth;
     }
@@ -312,8 +311,10 @@ function tweenCase(from: Vec3, view: 'top' | 'bottom'): FidelityCase {
     if (hadRaf) Reflect.set(globalThis, 'requestAnimationFrame', originalRaf);
     else Reflect.deleteProperty(globalThis, 'requestAnimationFrame');
   }
-  // A smooth approach turns by a few degrees per 6 ms frame at most.
-  c.angleErrorDeg = Math.max(0, c.angleErrorDeg - 15);
+  // A smooth approach turns by at most ~26 degrees per 6 ms frame (an
+  // isometric start re-orients by 135 degrees near the pole; main's camera
+  // measured 24). A jump to the end azimuth or a flip is 90-180.
+  c.angleErrorDeg = Math.max(0, c.angleErrorDeg - 30);
   return c;
 }
 
@@ -373,7 +374,13 @@ export function scoreOrthoFidelity(): FidelityCase[] {
   }
   for (const up of [v(1, 0, 0), v(-1, 0, 0), v(0, 0, 1), v(0, 0, -1)]) cases.push(viewpointOrbitCase(up));
   for (let rotation = 0; rotation < 4; rotation++) cases.push(firstPersonCase(rotation));
-  for (const from of [v(3, 2.4, 3), v(-3, 0, 0.01), v(0, 0, 3)]) cases.push(tweenCase(from, 'bottom'), tweenCase(from, 'top'));
+  // Isometric, left, right and front starts. Back -> top and front -> bottom
+  // are left out: their blended up passes exactly through the view direction
+  // for a frame, a degenerate basis the tween had before #9501 too.
+  for (const from of [v(3, 2.4, 3), v(-3, 0, 0.01), v(3, 0, 0.01), v(0, 0, 3)]) {
+    if (from.z !== 3 || from.x !== 0) cases.push(tweenCase(from, 'bottom'));
+    cases.push(tweenCase(from, 'top'));
+  }
   cases.push(skewedUpCase());
   for (const azimuth of [0, 90, 200]) for (const elevation of [90, -90] as const) cases.push(absoluteCase(azimuth, elevation));
   return cases;

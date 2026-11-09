@@ -40,6 +40,10 @@ describe('rotateAboutVertical', () => {
     const spin = angleOf(onScreen(turned, east)) - angleOf(onScreen(plan, east));
     const wrapped = Math.abs(((spin * 180 / Math.PI) + 540) % 360 - 180);
     assert.ok(Math.abs(wrapped - 90) < 1e-6, `the plan turned ${wrapped} degrees`);
+    // The same way the step turns an oblique view: there the camera's offset
+    // goes +X -> -Z; a plan's offset-equivalent is opposite screen-up, so
+    // screen-up -Z (offset +Z) turns to -X (offset +X).
+    assert.ok(Math.abs(turned.up.x + 1) < 1e-9 && Math.abs(turned.up.z) < 1e-9, `screen-up ${JSON.stringify(turned.up)}`);
   });
 
   it('matches the orbit convention for an oblique view, whose up stays world Y', () => {

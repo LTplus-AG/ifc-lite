@@ -103,6 +103,28 @@ describe('createWalkController', () => {
     assert.deepEqual(pose.up, { x: 0, y: 1, z: 0 }, 'a level walker has world Y up, not the plan\'s horizontal up');
   });
 
+  it('floating over a top preset, W walks toward the top of the screen (#9501)', async () => {
+    const { pose, renderer } = rig();
+    controller = createWalkController(renderer, () => true, () => 0);
+    await frames(5);
+    controller.togglePhysics();
+    // A top preset, rotated once: straight down, screen-up = -X, carried by `up`.
+    pose.position = { x: 2, y: 3.5, z: 2 };
+    pose.target = { x: 2, y: 0, z: 2 };
+    pose.up = { x: -1, y: 0, z: 0 };
+    await frames(5);
+    const start = { ...pose.position };
+    controller.setKey('w', true);
+    // Walking advances in fixed ticks of elapsed time, and these frames can
+    // come a millisecond apart: space them out so W gets real time to act.
+    for (let i = 0; i < 10; i++) { await new Promise((r) => setTimeout(r, 20)); await frame(); }
+    controller.setKey('w', false);
+    const moved = { x: pose.position.x - start.x, z: pose.position.z - start.z };
+    const flat = Math.hypot(moved.x, moved.z);
+    assert.ok(flat > 0.1, `W moved the walker (${JSON.stringify(moved)})`);
+    assert.ok(moved.x / flat < -0.999, `toward -X, the top of the screen (${JSON.stringify(moved)})`);
+  });
+
   it('stops writing to the camera and removes its hook on dispose', async () => {
     const { writes, renderer } = rig();
     controller = createWalkController(renderer, () => true, () => 0);

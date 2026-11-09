@@ -1496,7 +1496,8 @@ export class GeometryProcessor {
    * Idempotent: `IfcLiteBridge.dispose()` nulls its handle after freeing,
    * so calling this more than once (e.g. an explicit call after a `using`
    * declaration already ran `[Symbol.dispose]()`) is a no-op, not a
-   * double-free.
+   * double-free. On the WASM path an `init()` still in flight rejects
+   * instead of rebuilding the handle; a later `init()` rebuilds it.
    */
   dispose(): void {
     this.bridge?.dispose();

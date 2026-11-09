@@ -21,7 +21,20 @@ async function wall(s, y = 0, x = 0) {
 }
 async function selectWall(s, y = 0) {
   await escape(s);
-  await s.ui.clickWorld([2.5, y, 1]);
+  await s.ui.clickWorld([2.5, y, 1.5]);
+  await inspector(s);
+}
+async function inspector(s) {
+  if (await s.page.locator('[data-model-inspector]').isVisible()) return;
+  const button = s.page.getByRole('button', { name: 'Model inspector', exact: true });
+  if (await button.isVisible()) await s.ui.click(button);
+  else {
+    await s.ui.click(s.page.getByRole('button', { name: /^More panels/ }));
+    await s.ui.click(s.page.locator('[role=menuitem][data-panel-id=model]'));
+  }
+}
+async function typeScope(s) {
+  await s.ui.click(s.page.getByRole('radiogroup', { name: 'Apply to', exact: true }).getByText('Type', { exact: true }));
 }
 async function newType(s, name) {
   await s.ui.click(s.page.locator('[data-inspector-type]'));
@@ -66,6 +79,7 @@ export const U4_PROBES = [
       }));
       tasks.push(await task(s, 'select slab and change thickness to 0.3 m', async () => {
         await s.ui.clickWorld([2,1,0]);
+        await inspector(s);
         await field(s, s.page.getByLabel('Thickness in metres', { exact: true }), 0.3);
       }));
       const { step } = await oracleModel(s);
@@ -92,7 +106,7 @@ export const U4_PROBES = [
         await s.ui.click(s.page.getByRole('button', { name: 'Back to the inspector' }));
         await wall(s);
         await selectWall(s);
-        await s.ui.click(s.page.getByRole('radio', { name: 'To storey above', exact: true }));
+        await s.ui.click(s.page.locator('[data-model-inspector]').getByText('To storey above', { exact: true }));
       })];
       tasks.push(await task(s, 'raise Level 1 to 3.4 m', async () => {
         await openStoreyManager(s);
@@ -117,7 +131,7 @@ export const U4_PROBES = [
         await layer(s,2,.1,'Insulation');
         await s.ui.click(s.page.getByRole('button', { name: 'Layer', exact: true }));
         await layer(s,3,.015,'Plaster');
-        await s.ui.click(s.page.getByRole('radio', { name: 'Type', exact: true }));
+        await typeScope(s);
         await applyLayers(s);
         await wall(s);
       })];
@@ -143,7 +157,7 @@ export const U4_PROBES = [
       })];
       tasks.push(await task(s,'apply 300 mm layers to Type',async () => {
         await field(s,s.page.getByLabel('Layer 1 thickness in metres'),.3);
-        await s.ui.click(s.page.getByRole('radio',{name:'Type',exact:true}));
+        await typeScope(s);
         await applyLayers(s);
       }));
       const { step } = await oracleModel(s);

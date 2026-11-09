@@ -375,7 +375,7 @@ test('splitTopLevel respects nested <>()[]{} — a field type with tuple-of-tupl
 
 // #9268: visitor refusal enums are public through representation, not lib.rs.
 test('selected public module entry tracks refusal variant fields', () => {
-  withCrate({ 'src/lib.rs': 'pub mod representation;',
+  withCrate({ 'src/lib.rs': 'pub mod representation; pub struct RootOnly;',
     'src/representation/mod.rs': 'mod refusal; pub use refusal::WalkRefusal;',
     'src/representation/refusal.rs': 'pub enum WalkRefusal { #[non_exhaustive] Budget { max_levels: u32, details: Detail } }',
   }, (dir) => {

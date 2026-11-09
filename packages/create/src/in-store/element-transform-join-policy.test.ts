@@ -4,7 +4,7 @@
 import { expect, it } from 'vitest';
 import { addWallToStore } from './wall.js';
 import { joinWallsInStore } from './wall-join-edit.js';
-import { readWallJoinTarget } from './wall-join-read.js';
+import { readWallJoinRels, readWallJoinTarget } from './wall-join-read.js';
 import { newStorey, bodyQuad } from './wall-join-mesh.oracle.js';
 import { transformElementsInStore, type StoreyTransformOp } from './element-transform-edit.js';
 import type { PlanPoint } from './wall-join.js';
@@ -40,4 +40,22 @@ for (const reason of ['parallel', 'collapse', 'reverse'] as const) it(`#9296 ${r
   expect(() => s.move({ kind: 'move', delta: [0, reason === 'parallel' ? 1 : reason === 'collapse' ? -4 : -5] }))
     .toThrow(/Cannot carry wall join.*(parallel|collapse|reverse)/);
   expect({ records: s.view.getNewEntities(), journal: s.view.getMutations(), next: s.view.peekNextExpressId() }).toEqual(before);
+});
+
+// #9406 changes sliding walls; preserve the existing corner carry for rotation.
+it('#9406 rotating a joined wall still carries the corner through the turn', async () => {
+  const s = await joined(false);
+  s.move({ kind: 'rotate', pivot: [0, 10], angle: Math.PI / 2 });
+  const b = readWallJoinTarget(s.store, s.view, s.b, 1)!.wall;
+  expect(b.start).toEqual([4, 6]);
+  expect(b.end[0]).toBeCloseTo(0, 8);
+  expect(b.end[1]).toBeCloseTo(14, 8);
+});
+
+it('#9406 moving a T-ending wall off its stationary through wall still detaches it', async () => {
+  const s = await joined(true);
+  s.editor.runAtomic(editor => transformElementsInStore({ editor, dataStore: s.store,
+    view: editor.getMutationView(), selected: [s.b], op: { kind: 'move', delta: [0, -1] } }));
+  expect(readWallJoinRels(s.store, s.view)).toEqual([]);
+  expect(readWallJoinTarget(s.store, s.view, s.b, 1)!.wall.end).toEqual([4, 9]);
 });

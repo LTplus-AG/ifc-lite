@@ -29,14 +29,16 @@ export function assertCarriedJoinsMoveTogether(target: EditTarget, plan: Transfo
   }
 }
 
-export function carryWallJoinsInStore(target: EditTarget, plan: TransformPlan): readonly number[] {
+export function carryWallJoinsInStore(target: EditTarget, plan: TransformPlan, turn = 0): readonly number[] {
   if (String(target.dataStore.schemaVersion).toUpperCase() === 'IFC5' || !target.dataStore.source?.byteLength) return [];
   const { dataStore, view } = target;
   const scale = getModelLengthUnitScale(dataStore);
   const rigid = new Set([...plan.roots.map((r) => r.expressId), ...plan.carried]);
+  const [cos, sin] = [Math.cos(turn), Math.sin(turn)];
 
   const edits = new Map<number, WallReshape>();
   const refresh: number[] = [];
+  const extended = new Set<number>();
   for (const root of plan.roots) {
     if (!underStorey(root.parent)) continue;
     const moved = readWallJoinTarget(dataStore, view, root.expressId, scale);
@@ -56,14 +58,24 @@ export function carryWallJoinsInStore(target: EditTarget, plan: TransformPlan): 
       const other = readWallJoinTarget(dataStore, view, otherId, scale);
       if (!other) continue;
       const end = otherConnection === 'ATSTART' ? 'start' : 'end';
-      const joint = wallAxisIntersection(moved.wall, other.wall);
-      wallAtIntersection(other.wall, otherConnection, joint);
-      wallAtIntersection(moved.wall, ownConnection, joint);
+      let joint: Vec2;
+      if (turn !== 0) {
+        // Rotation keeps its existing corner carry; sliding preserves axes.
+        const p = other.wall[end], dx = p[0] - root.origin[0], dy = p[1] - root.origin[1];
+        joint = ownConnection === 'ATPATH'
+          ? [moved.origin[0] + cos * dx - sin * dy, moved.origin[1] + sin * dx + cos * dy]
+          : ownConnection === 'ATSTART' ? moved.wall.start : moved.wall.end;
+      } else {
+        joint = wallAxisIntersection(moved.wall, other.wall);
+        wallAtIntersection(other.wall, otherConnection, joint);
+        wallAtIntersection(moved.wall, ownConnection, joint);
+        extended.add(root.expressId); extended.add(otherId);
+      }
       edits.set(otherId, { ...edits.get(otherId), wallId: otherId, [end]: joint });
     }
     if (checked) refresh.push(root.expressId);
   }
   if (refresh.length === 0) return [];
-  const outcome = reshapeWallsInStore(target.editor, dataStore, resolveWallJoinAnchor(dataStore, view), [...edits.values()], { refresh, extendJoinedAxes: true });
+  const outcome = reshapeWallsInStore(target.editor, dataStore, resolveWallJoinAnchor(dataStore, view), [...edits.values()], { refresh, extendJoinedAxes: extended });
   return outcome.walls.filter((id) => !rigid.has(id));
 };

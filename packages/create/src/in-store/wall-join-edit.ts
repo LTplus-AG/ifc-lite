@@ -106,7 +106,7 @@ export interface WallReshape {
 
 export interface WallReshapeOptions {
   /** Transform carry extends/trims known connected ends on their own axes. */
-  extendJoinedAxes?: boolean;
+  extendJoinedAxes?: ReadonlySet<number>;
   /** A moved end takes the walls joined end to end with it (an L corner or a butt join) along. */
   moveJoinedEnds?: boolean;
   /** Tolerance of the recomputed joins, see `computeWallJoin`. */
@@ -213,7 +213,7 @@ export function reshapeWallsInStore(
     let a = readOrNull(store, editor, targets, rel.relatingId, scale);
     let b = readOrNull(store, editor, targets, rel.relatedId, scale);
     if (!a || !b) continue;
-    if (options.extendJoinedAxes) {
+    if (options.extendJoinedAxes?.has(a.wallId) || options.extendJoinedAxes?.has(b.wallId)) {
       const point = wallAxisIntersection(a.wall, b.wall);
       a = { ...a, wall: wallAtIntersection(a.wall, rel.relatingConnection, point) };
       b = { ...b, wall: wallAtIntersection(b.wall, rel.relatedConnection, point) };

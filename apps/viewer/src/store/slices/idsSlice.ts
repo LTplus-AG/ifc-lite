@@ -101,9 +101,9 @@ export interface IDSSliceState {
   idsPanelVisible: boolean;
   /** Loading state */
   idsLoading: boolean;
-  /** Bumped by every store path that resets `idsLoading` behind a run's back
-   *  (session reset, report clear); an in-flight IDS/rule-set run observes it
-   *  and ends itself (A1, `hooks/validation/validationRunGuard.ts`). */
+  /** Bumped by the session reset, which keeps `models` and so is invisible to
+   *  the federation identity; an in-flight IDS/rule-set run observes it and
+   *  ends itself (A1, `hooks/validation/validationRunGuard.ts`). */
   validationRunGeneration: number;
   /** Validation progress */
   idsProgress: ValidationProgress | null;
@@ -307,7 +307,6 @@ export const createIdsSlice: StateCreator<IDSSlice, [], [], IDSSlice> = (set, ge
       idsFailedEntityIds: new Set(),
       idsPassedEntityIds: new Set(),
       idsLoading: false,
-      validationRunGeneration: get().validationRunGeneration + 1,
       idsProgress: null,
       idsIsolationScope: 'ids',
       idsIsolateMode: null,

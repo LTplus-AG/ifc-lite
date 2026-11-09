@@ -125,11 +125,14 @@ async function seed(): Promise<void> {
   assert.ok(api, 'useIDS must be mounted');
 }
 
-beforeEach(() => { api = null; useActivityJournal.setState({ jobs: [] }); });
+// Each test seeds models and runs; restore the whole store so none leaks into the next.
+const initial = useViewerStore.getState();
+beforeEach(() => { api = null; useActivityJournal.setState({ jobs: [] }); useViewerStore.setState(initial, true); });
 afterEach(async () => {
   const current = root;
   root = null;
   if (current) await act(async () => current.unmount());
+  useViewerStore.setState(initial, true);
 });
 
 /** Start a run and return it WITHOUT letting any of its awaits resume. */
@@ -138,6 +141,11 @@ function startRun(): Promise<unknown> {
   act(() => { pending = api!.runValidation('A'); });
   assert.equal(useViewerStore.getState().idsLoading, true, 'setup: the run is in flight');
   return pending!;
+}
+
+/** Apply a teardown and let the guard's deferred cancel run. */
+async function tearDown(teardown: () => void): Promise<void> {
+  await act(async () => { teardown(); });
 }
 
 async function assertRunDiscarded(pending: Promise<unknown>): Promise<void> {
@@ -160,21 +168,21 @@ describe('useIDS — federation changes mid-run (A1)', () => {
   it('A1: removing a federated model mid-run discards the run', async () => {
     await seed();
     const pending = startRun();
-    act(() => { useViewerStore.getState().removeModel('B'); });
+    await tearDown(() => useViewerStore.getState().removeModel('B'));
     await assertRunDiscarded(pending);
   });
 
   it('A1: clearing every model mid-run discards the run', async () => {
     await seed();
     const pending = startRun();
-    act(() => { useViewerStore.getState().clearAllModels(); });
+    await tearDown(() => useViewerStore.getState().clearAllModels());
     await assertRunDiscarded(pending);
   });
 
   it('A1: a session reset ("open a new file") mid-run discards the run, not just the loading flag', async () => {
     await seed();
     const pending = startRun();
-    act(() => { useViewerStore.getState().resetViewerState(); });
+    await tearDown(() => useViewerStore.getState().resetViewerState());
     await assertRunDiscarded(pending);
   });
 
@@ -183,12 +191,33 @@ describe('useIDS — federation changes mid-run (A1)', () => {
     const reparsed = await parse(wallsBody(8, 'sB'));
     const pending = startRun();
     // No teardown and no generation bump: only the federation identity sees it.
-    act(() => {
+    await tearDown(() => {
       const models = new Map(useViewerStore.getState().models);
       models.set('B', { ...models.get('B')!, ifcDataStore: reparsed });
       useViewerStore.setState({ models });
     });
     await assertRunDiscarded(pending);
+  });
+
+  it('A1: a retained runValidation from before a removal refuses to publish for the removed model', async () => {
+    await seed();
+    // A caller holding the callback across a removal resolves its target from
+    // the render-time `models`, which still has B. Nothing changes AFTER the
+    // run starts, so the subscription never fires: only the publish-site
+    // check, against the models the run actually read, can refuse it.
+    const stale = api!.runValidation;
+    await act(async () => { useViewerStore.getState().removeModel('B'); });
+    assert.notEqual(api!.runValidation, stale, 'setup: the hook re-rendered past the removal');
+    let pending: Promise<unknown> | undefined;
+    act(() => { pending = stale('B'); });
+    let resolved: unknown;
+    await act(async () => { resolved = await pending; });
+    const s = useViewerStore.getState();
+    assert.equal(resolved === null, true, 'a run on a removed model resolves null');
+    assert.equal(s.idsValidationReport, null, 'no report naming the removed model');
+    assert.equal(s.idsFailedEntityIds.size, 0);
+    assert.equal(s.idsLoading, false);
+    assert.equal(s.idsProgress, null);
   });
 
   it('A1: a model ADDED mid-run does not discard the run (the clash rule)', async () => {

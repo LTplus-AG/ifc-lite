@@ -233,9 +233,10 @@ export function useInformationValidation(): UseInformationValidationResult {
     const controller = new AbortController();
     abortRef.current = controller;
     const cancelThisRun = () => { controller.abort(); if (abortRef.current === controller) cancel(); };
-    // Captured with the same state the engine input is read from below: a
-    // teardown that changes the model set ends this run (A1).
-    const federation = guardValidationRun(useViewerStore, cancelThisRun);
+    // The same state the engine input is read from below: a teardown that
+    // changes this model set ends the run (A1).
+    const state = useViewerStore.getState();
+    const federation = guardValidationRun(useViewerStore, state, cancelThisRun);
     const job = beginActivity({ kind: 'check', title: 'activityTray.job.validation', panel: 'validation', subject: file.name,
       cancel: cancelThisRun });
     let outcome: 'completed' | 'failed' | 'cancelled' = 'cancelled';
@@ -249,7 +250,6 @@ export function useInformationValidation(): UseInformationValidationResult {
       // `definedModelTagIds` now (no viewer-shaped `ModelTagState`) — the
       // live store state is turned into that shape here, the one place the
       // adapter (`lib/model-tags/evaluator-models.ts`) is called from.
-      const state = useViewerStore.getState();
       // The run's model versions, taken before the engine reads them: an edit
       // during or after the run marks this report stale, like IDS (#6833).
       const stamp = captureAnalysisStamp();

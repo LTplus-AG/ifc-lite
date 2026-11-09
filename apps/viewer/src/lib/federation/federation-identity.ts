@@ -80,9 +80,12 @@ export function recordGatheredModel(
  * Is every model this run examined still loaded, with the same entity table?
  *
  * `false` means the run described a world that no longer exists and its result
- * must be dropped: `clearAllModels` / `resetViewerState` empty the map,
- * `removeModel` drops one key, and a collab peer edit
- * (`setIfcDataStore` with a re-derived store) swaps one value.
+ * must be dropped: `clearAllModels` empties the map, `removeModel` drops one
+ * key, and a collab peer edit (`setIfcDataStore` with a re-derived store)
+ * swaps one value. `resetViewerState` (session reset) does NOT empty it — it
+ * keeps `models` and only nulls the top-level `ifcDataStore` — so a caller
+ * that must also end on a session reset needs a second signal (validation
+ * uses `validationRunGeneration`, `hooks/validation/validationRunGuard.ts`).
  *
  * An EMPTY captured identity returns `true` — vacuously current. It cannot
  * arise from a real clash run (`run()` and `runDuplicates()` both bail with "No

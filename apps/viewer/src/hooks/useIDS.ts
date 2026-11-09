@@ -198,7 +198,8 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
     const cancelThisRun = () => { abortController.abort(); if (workerAbortRef.current === abortController) cancelValidation(); };
     // A teardown that changes the model set ends this run instead of only
     // resetting its flags (A1).
-    const federation = guardValidationRun(useViewerStore, cancelThisRun);
+    // The render-time `models` / `ifcDataStore` the target was resolved from.
+    const federation = guardValidationRun(useViewerStore, { models, ifcDataStore }, cancelThisRun);
     const job = beginActivity({ kind: 'check', title: 'activityTray.job.validation', panel: 'validation', subject: document.info.title,
       cancel: cancelThisRun });
     let outcome: 'completed' | 'failed' | 'cancelled' = 'cancelled';
@@ -243,8 +244,10 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
 
       // A newer call may have started (and even published) while this one
       // awaited the worker/main-thread validation above (#2802), and the
-      // model set it read must still be loaded (A1).
-      if (!stillWanted(myEpoch) || !federation.isCurrent()) return null;
+      // model set it read must still be loaded (A1). A refused run is still
+      // this call's, so it clears its own progress (the finally ends loading).
+      if (!stillWanted(myEpoch)) return null;
+      if (!federation.isCurrent()) { setIdsProgress(null); return null; }
       setIdsValidationReport(stampAnalysisReport(validationReport, stamp), snapshot);
       outcome = 'completed';
 

@@ -66,7 +66,8 @@ for (const [label, teardown] of [
     let pending: Promise<void> | undefined;
     act(() => { pending = owner.run(); });
     assert.equal(owner.running, true, 'setup: the run is in flight');
-    act(() => { teardown(); });
+    // The guard defers its cancel to a microtask; the async act flushes it.
+    await act(async () => { teardown(); });
     assert.equal(owner.running, false, 'the teardown itself ends the run');
     assert.equal(owner.progress, null);
     await act(async () => { await pending; });
@@ -78,6 +79,22 @@ for (const [label, teardown] of [
     assert.deepEqual(useActivityJournal.getState().jobs.map((job) => job.outcome), ['cancelled']);
   });
 }
+
+it('A1: a model swap the store subscription cannot see is still refused at publish', async () => {
+  await seedTwoModels();
+  const reparsed = await parseSample();
+  let pending: Promise<void> | undefined;
+  act(() => { pending = owner.run(); });
+  // Replaced in place, with no `set`: no listener fires, so only the
+  // publish-site identity check can tell the run's ids no longer hold.
+  const b = useViewerStore.getState().models.get('b');
+  assert.ok(b);
+  b.ifcDataStore = reparsed;
+  await act(async () => { await pending; });
+  assert.equal(useViewerStore.getState().idsValidationReport, null, 'no report for a swapped id space');
+  assert.equal(owner.running, false);
+  assert.equal(owner.progress, null);
+});
 
 it('A1: an untouched model set still publishes the rule-set report', async () => {
   await seedTwoModels();

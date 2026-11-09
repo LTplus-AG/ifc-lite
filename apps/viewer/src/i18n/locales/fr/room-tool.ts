@@ -43,4 +43,5 @@ export const roomToolFr = {
   "roomTool.pick.none": "Aucun mur n'entoure ce point : cliquez à l'intérieur d'une pièce, ou passez à Dessiner",
   "roomTool.pick.taken": "Cette zone a déjà une pièce",
   "roomTool.draw.needThree": "Une pièce doit avoir au moins trois coins",
+  "roomTool.update.unresolvedPlacement": "Mur pivoté. Les pièces n’ont pas été mises à jour, car le positionnement du mur n’a pas pu être lu.",
 } satisfies Catalogue;

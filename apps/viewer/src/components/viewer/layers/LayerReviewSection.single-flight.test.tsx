@@ -111,3 +111,51 @@ test('C-1 candidate replacement hides the old review and ignores its late refres
   await act(async () => { finish({ reviews: [REVIEW] }); });
   assert.equal(document.body.querySelectorAll('input[aria-label="Review comment title"]').length, 0, 'late A refresh cannot restore A');
 });
+
+for (const phase of ['push', 'open'] as const) test(`C-1 retiring a review during ${phase} prevents the next registry operation`, async () => {
+  const { getBrowserLayerStore } = await import('@/lib/layers/browser-store');
+  const store = await getBrowserLayerStore();
+  const { computeLayerId } = await import('@ifc-lite/ifcx');
+  const file = { header: { id: '', ifcxVersion: 'ifcx_alpha', dataVersion: '1.0.0', author: 'fixture', timestamp: '2026-01-01T00:00:00Z' }, imports: [], schemas: {}, data: [] };
+  const id = computeLayerId(file);
+  store.storeLayer({ ...file, header: { ...file.header, id } });
+  let finish!: () => void;
+  let waiting = false, reads = 0, opens = 0;
+  const hold = () => new Promise<void>(resolve => { waiting = true; finish = resolve; });
+  const registry = {
+    listReviews: async () => { reads++; return { reviews: [] }; },
+    pushLayer: async () => { if (phase === 'push') await hold(); return { id }; },
+    openReview: async () => { opens++; if (phase === 'open') await hold(); return { id: 'opened' }; },
+  } as unknown as LayerRegistryClient;
+  let select!: (id: string) => void;
+  function Host() { const [candidate, setCandidate] = useState(id); select = setCandidate; return <LayerReviewSection client={registry} candidateId={candidate} refName="main" />; }
+  render(<Host />);
+  await waitFor(() => reads === 1, 'initial review read');
+  const open = [...document.querySelectorAll('button')].find(button => button.textContent?.trim() === 'Open review');
+  assert.equal(Boolean(open), true);
+  act(() => open!.click());
+  await waitFor(() => waiting, 'registry operation is pending');
+  act(() => select('replacement'));
+  await waitFor(() => reads === 2, 'replacement review read');
+  await act(async () => finish()); await settle();
+  assert.equal(opens, phase === 'push' ? 0 : 1, 'retired push cannot open a review');
+  assert.equal(reads, 2, 'retired open cannot refresh the old candidate');
+});
+
+for (const phase of ['post', 'refresh'] as const) test(`C-1 retiring a comment during ${phase} performs no stale follow-up`, async () => {
+  const { toast } = await import('@/components/ui/toast');
+  const success = mock.method(toast, 'success', () => undefined);
+  let reads = 0, pending = false;
+  let finish!: () => void;
+  const hold = () => new Promise<void>(resolve => { pending = true; finish = resolve; });
+  mock.method(client, 'listReviews', async () => { reads++; if (phase === 'refresh' && reads === 2) await hold(); return { reviews: [REVIEW] }; });
+  mock.method(client, 'postTopic', async () => { if (phase === 'post') await hold(); return { guid: 'posted' }; });
+  const comment = await readyToComment();
+  act(() => document.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click());
+  act(() => comment.click());
+  await waitFor(() => pending, 'comment operation is pending');
+  cleanup();
+  await act(async () => finish()); await settle();
+  assert.equal(reads, phase === 'post' ? 1 : 2, 'an abandoned post does not refresh');
+  assert.equal(success.mock.callCount(), 0, 'an abandoned refresh does not toast');
+});

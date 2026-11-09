@@ -13,16 +13,30 @@ import { useViewerStore } from '@/store';
 import type { ClassifyRunResult } from '@/lib/assistant/clash-classify-run';
 import { ClashClassifyAll } from './ClashClassifyAll';
 
+const pendingReplies: Array<() => void> = [];
+function holdClassifier() {
+  const requests = serveClassifier();
+  const transport = globalThis.fetch;
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const reply = transport(input, init);
+    return new Promise<Response>((resolve, reject) => {
+      pendingReplies.push(() => { void reply.then(resolve, reject); });
+      init?.signal?.addEventListener('abort', () => reject(init.signal?.reason), { once: true });
+    });
+  }) as typeof fetch;
+  return requests;
+}
+
 const initial = useViewerStore.getState();
 const originalFetch = globalThis.fetch;
-afterEach(() => { cleanup(); globalThis.fetch = originalFetch; useViewerStore.setState(initial, true); });
+afterEach(() => { cleanup(); for (const finish of pendingReplies.splice(0)) finish(); globalThis.fetch = originalFetch; useViewerStore.setState(initial, true); });
 
 // #6906: closing the review mid-run must not keep spending budget or report into a panel that is gone.
 test('unmounting during a full-run classification aborts the in-flight request and reports nothing', async () => {
   const clashes = clashFindings(250);
   const result = { clashes, summary: summarizeClashes(clashes), rulesRun: [], settings: { tolerance: 0.002, excludeVoidsAndHosts: true } };
   useViewerStore.setState({ clashResult: result, chatActiveModel: 'test/free-model' });
-  const requests = serveClassifier({ hangOnChunk: 1 });
+  const requests = holdClassifier();
   const stubbed = globalThis.fetch;
   const signals: AbortSignal[] = [];
   globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
@@ -45,7 +59,7 @@ test('C-10 replacing the result aborts the old classification and resets its con
   const clashes = clashFindings(250);
   const result = { clashes, summary: summarizeClashes(clashes), rulesRun: [], settings: { tolerance: 0.002, excludeVoidsAndHosts: true } };
   useViewerStore.setState({ clashResult: result, chatActiveModel: 'test/free-model' });
-  const requests = serveClassifier({ hangOnChunk: 1 });
+  const requests = holdClassifier();
   const stubbed = globalThis.fetch;
   let signal: AbortSignal | undefined;
   globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => { signal = init?.signal ?? undefined; return stubbed(input, init); }) as typeof fetch;
@@ -64,4 +78,36 @@ test('C-10 replacing the result aborts the old classification and resets its con
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 30)); });
   assert.equal(results.length, 0, 'old result never reaches the new review');
   assert.equal([...ui.querySelectorAll('button')].some(b => b.textContent === 'Classify all findings'), true);
+});
+
+test('C-10 selecting another model aborts the classification owner', async () => {
+  const clashes = clashFindings(10);
+  const result = { clashes, summary: summarizeClashes(clashes), rulesRun: [], settings: { tolerance: 0.002, excludeVoidsAndHosts: true } };
+  useViewerStore.setState({ clashResult: result, chatActiveModel: 'test/free-model' });
+  const requests = holdClassifier();
+  const transport = globalThis.fetch;
+  let signal: AbortSignal | undefined;
+  globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => { signal = init?.signal ?? undefined; return transport(input, init); }) as typeof fetch;
+  const ui = render(<ClashClassifyAll result={result} enabled onResult={() => {}} />);
+  click([...ui.querySelectorAll('button')].find(button => button.textContent === 'Classify all findings')!);
+  await waitFor(() => requests.length === 1, 'classification started');
+  act(() => useViewerStore.setState({ chatActiveModel: 'test/other-free-model' }));
+  assert.equal(signal?.aborted, true);
+});
+
+test('C-10 same-tick classification presses start one request', async () => {
+  const clashes = clashFindings(10);
+  const result = { clashes, summary: summarizeClashes(clashes), rulesRun: [], settings: { tolerance: 0.002, excludeVoidsAndHosts: true } };
+  useViewerStore.setState({ clashResult: result, chatActiveModel: 'test/free-model' });
+  serveClassifier(); const transport = globalThis.fetch;
+  const releases: Array<() => void> = [];
+  let starts = 0;
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => { starts++; await new Promise<void>(resolve => releases.push(resolve)); return transport(input, init); }) as typeof fetch;
+  const ui = render(<ClashClassifyAll result={result} enabled onResult={() => {}} />);
+  const start = [...ui.querySelectorAll('button')].find(button => button.textContent === 'Classify all findings')!;
+  act(() => { start.click(); start.click(); });
+  await waitFor(() => starts > 0, 'classification transport started');
+  const count = starts;
+  await act(async () => { for (const release of releases) release(); });
+  assert.equal(count, 1);
 });

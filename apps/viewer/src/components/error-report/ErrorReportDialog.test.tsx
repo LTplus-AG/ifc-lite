@@ -579,3 +579,26 @@ test('a draft cancellation settling after unmount cannot close a replacement dia
   await act(async () => finish()); await settle();
   assert.equal(closeCalls, 0, 'the deletion may finish, but its retired UI owner cannot close a new dialog');
 });
+
+
+test('private report deletion retains its synchronous double-click lock', async () => {
+  let deletions = 0;
+  const finishes: Array<() => void> = [];
+  const transport: typeof fetch = async (value, options) => {
+    if (String(value).endsWith('/session')) return Response.json(session);
+    if (options?.method === 'DELETE') {
+      deletions++; await new Promise<void>(resolve => { finishes.push(resolve); });
+      return Response.json({ id: 'private-lock', status: 'deleted' });
+    }
+    return Response.json({ id: 'private-lock', status: 'published' });
+  };
+  render(<ErrorReportDialog context={{ errorCode: 'report_resume', resumeReportId: 'private-lock' }} onClose={() => {}} client={new ReportClient(transport)} />);
+  await settle(); click(button('Delete private report and model'));
+  const confirm = button('Confirm deletion of private data');
+  act(() => { confirm.click(); confirm.click(); });
+  await settle();
+  const count = deletions;
+  await act(async () => { for (const finish of finishes) finish(); }); await settle();
+  assert.equal(count, 1);
+  assert.equal(document.body.textContent?.includes('Private data deletion confirmed'), true);
+});

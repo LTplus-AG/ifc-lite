@@ -32,6 +32,7 @@ const RIBBON_KEYS = Object.keys(ribbonToolbarEn) as RibbonKey[];
  * camera Home control now uses the same ribbon command as the Home tab (#5878).
  */
 function ownedBy(tab: RibbonTabId, key: RibbonKey): boolean {
+  if (key === 'ribbon.author.editMode') return true; // Model is visible on every tab (#9296).
   if (tab === 'view' && key === 'ribbon.home.home') return true;
   const scope = key.split('.')[1];
   return scope === tab || !TABS.some((name) => name === scope);
@@ -68,8 +69,6 @@ const NOT_RENDERED_IN_THIS_STATE: RibbonKey[] = [
   'ribbon.analyze.listsTooltip', // its tooltip is not hovered
   'ribbon.analyze.styleGroup',
   'ribbon.analyze.appsGroup', // no analysis extensions installed
-  'ribbon.author.exitEditTooltip', // edit mode is off
-  'ribbon.author.editLockedTooltip', // single-user session can edit
 ];
 
 /** Key-specific pseudo translation; keeps every `{placeholder}` of the English text. */

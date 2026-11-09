@@ -80,10 +80,14 @@ export class CameraOrientation {
       // Use up vector projection for azimuth (smooth and consistent)
       azimuth = (Math.atan2(-upX, -upZ) * 180 / Math.PI + 360) % 360;
 
-      // For bottom view, flip azimuth: looking up, screen-up points the
-      // same way the camera's horizontal offset does. `<= 0` takes the
-      // exact bottom preset too, whose `up` is horizontal (#9501).
-      if (elevation < -80 && upY <= 0) {
+      // Below the horizon, flip: a camera looking up has screen-up pointing
+      // the same way as its horizontal offset from the target, the opposite
+      // of a camera looking down, so the up-based reading is 180 degrees off
+      // the position-based one. Keyed on the hemisphere alone, so the exact
+      // bottom preset (horizontal up) and every frame of the tween into it
+      // (up blended with world Y) read alike (#9501); it used to flip only
+      // below -80 degrees, which jumped 180 on the tween's last frame.
+      if (elevation < 0) {
         azimuth = (azimuth + 180) % 360;
       }
     } else {
@@ -110,7 +114,8 @@ export class CameraOrientation {
    * The orbit radius and the target are preserved — this rotates the camera on
    * its current sphere, it does not reframe. `up` is reset to world Y, matching
    * `orbit`, so the reported azimuth comes back through `getRotation`'s
-   * position-based branch.
+   * position-based branch; straight down or up (±90°) it is the horizontal
+   * screen-up instead, as on the top/bottom presets (#9501).
    *
    * @param azimuth Horizontal angle in degrees; normalised into [0, 360).
    * @param elevation Vertical angle in degrees, 0 = horizon. ±90° and beyond

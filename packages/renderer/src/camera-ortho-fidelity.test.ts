@@ -42,8 +42,8 @@ describe('orthographic fidelity (#9501)', () => {
 
   it('covers every axis preset, rotation and navigation path', () => {
     // 2 x 4 plan/soffit presets + 4 elevations, 8 preset orbits, 4 pan/zoom,
-    // 4 plan-viewpoint orbits, 6 setRotation.
-    assert.equal(cases.length, 34);
+    // 4 plan-viewpoint orbits, 4 first-person, 6 tweens, 1 skewed up, 6 setRotation.
+    assert.equal(cases.length, 45);
     assert.ok(JOINT.some(b => b.name.startsWith('column')), 'scene has the hollow column');
   });
 

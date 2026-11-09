@@ -22,13 +22,15 @@ function rig() {
   const scene = new TestScene();
   scene.box([-20, -0.3, -20], [20, 0, 20], 'IfcSlab');
   scene.box([-20, 4, -20], [20, 4.3, 20], 'IfcSlab');
-  const pose = { position: { x: 0, y: 1.6, z: 0 } as Vec3, target: { x: 0, y: 1.6, z: 5 } as Vec3 };
+  const pose = { position: { x: 0, y: 1.6, z: 0 } as Vec3, target: { x: 0, y: 1.6, z: 5 } as Vec3, up: { x: 0, y: 1, z: 0 } as Vec3 };
   const writes = { count: 0 };
   const camera = {
     getPosition: () => ({ ...pose.position }),
     getTarget: () => ({ ...pose.target }),
     setPosition: (x: number, y: number, z: number) => { pose.position = { x, y, z }; writes.count++; },
     setTarget: (x: number, y: number, z: number) => { pose.target = { x, y, z }; },
+    getUp: () => ({ ...pose.up }),
+    setUp: (x: number, y: number, z: number) => { pose.up = { x, y, z }; },
     stopInertia: () => {},
   };
   const sceneContents = {
@@ -83,6 +85,22 @@ describe('createWalkController', () => {
     await frames(5);
     assert.equal(hook()!.spawn!.outcome, 'float');
     assert.ok(Math.abs(pose.position.y - 10) < 1e-6, `the camera stays where it was moved (${pose.position.y})`);
+  });
+
+  it('set down from a top preset, faces the screen-up and levels up (#9501)', async () => {
+    const { pose, renderer } = rig();
+    controller = createWalkController(renderer, () => true, () => 0);
+    await frames(5);
+    // A top preset, rotated once: straight down, screen-up = -X, carried by `up`.
+    pose.position = { x: 2, y: 3.5, z: 2 };
+    pose.target = { x: 2, y: 0, z: 2 };
+    pose.up = { x: -1, y: 0, z: 0 };
+    await frames(6);
+    const look = { x: pose.target.x - pose.position.x, y: pose.target.y - pose.position.y, z: pose.target.z - pose.position.z };
+    const flat = Math.hypot(look.x, look.z);
+    assert.ok(Math.abs(look.y) < 1e-6 && flat > 1, `the view is levelled (${JSON.stringify(look)})`);
+    assert.ok(look.x / flat < -0.999, `it faces what was at the top of the screen, -X (${JSON.stringify(look)})`);
+    assert.deepEqual(pose.up, { x: 0, y: 1, z: 0 }, 'a level walker has world Y up, not the plan\'s horizontal up');
   });
 
   it('stops writing to the camera and removes its hook on dispose', async () => {

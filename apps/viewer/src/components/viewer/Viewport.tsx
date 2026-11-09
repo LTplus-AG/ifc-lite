@@ -16,6 +16,7 @@ import type { MeshData, CoordinateInfo, PointCloudAsset } from '@ifc-lite/geomet
 import { useViewerStore, resolveEntityRef, type CameraViewpoint } from '@/store';
 import { LIGHTING_PRESETS } from '@/lib/lighting-presets';
 import { presetViewRotation } from '@/lib/preset-view-orientation';
+import { rotateAboutVertical } from '@/lib/viewpoint-rotate-vertical';
 import { isGeometryLoadStreaming } from '@/lib/pick-gating';
 import { isTextEntryElement } from '@/lib/keyboard-event';
 import { effectiveIsolatedIds } from '@/lib/effective-isolation';
@@ -709,25 +710,12 @@ export function Viewport({
         calculateScale();
       };
       const animateHorizontalRotation = (angle: number) => {
-        const position = camera.getPosition();
-        const target = camera.getTarget();
-        const offsetX = position.x - target.x;
-        const offsetZ = position.z - target.z;
-        const cosine = Math.cos(angle);
-        const sine = Math.sin(angle);
         const projectionMode = camera.getProjectionMode();
-
         // Keep CameraControls' spherical-orbit convention, then use the
         // shared viewpoint path so the ViewCube's animator interpolates it.
         applyViewpoint(
           {
-            position: {
-              x: target.x + offsetX * cosine + offsetZ * sine,
-              y: position.y,
-              z: target.z - offsetX * sine + offsetZ * cosine,
-            },
-            target,
-            up: camera.getUp(),
+            ...rotateAboutVertical({ position: camera.getPosition(), target: camera.getTarget(), up: camera.getUp() }, angle),
             fov: camera.getFOV(),
             projectionMode,
             orthoSize: projectionMode === 'orthographic' ? camera.getOrthoSize() : undefined,

@@ -51,6 +51,9 @@ export interface FlyCamera {
   setTarget(x: number, y: number, z: number): void;
   stopInertia(): void;
   getSceneBounds(): { min: Vec3; max: Vec3 } | null;
+  /** Read and level the up vector: a look off a plan view (#9501). */
+  getUp?(): Vec3;
+  setUp?(x: number, y: number, z: number): void;
 }
 
 type KeyTarget = Pick<Window, 'addEventListener' | 'removeEventListener'>;
@@ -190,11 +193,12 @@ export function createFlyController(opts: FlyControllerOptions): FlyController {
   let suppressMenuUntil = -Infinity;
   let velocity: Vec3 = { x: 0, y: 0, z: 0 };
 
-  const pose = (): FlyPose => ({ position: camera.getPosition(), target: camera.getTarget() });
+  const pose = (): FlyPose => ({ position: camera.getPosition(), target: camera.getTarget(), up: camera.getUp?.() });
   const apply = (next: FlyPose | null): void => {
     if (!next) return;
     camera.setPosition(next.position.x, next.position.y, next.position.z);
     camera.setTarget(next.target.x, next.target.y, next.target.z);
+    if (next.up) camera.setUp?.(next.up.x, next.up.y, next.up.z);
     onChange();
   };
 

@@ -16,6 +16,7 @@
 import type { Vec3 } from './types.js';
 import { acceptZoomStep, captureZoomState, shiftTargetTowardsMouse, zoomOrthographic, zoomPerspective } from './camera-zoom.js';
 import { CAMERA_CONSTANTS as CC } from './constants.js';
+import { viewBasis } from './math.js';
 import type { CameraInternalState } from './camera-state.js';
 import {
   areFiniteNumbers,
@@ -279,24 +280,17 @@ export class CameraControls {
     if (Math.abs(cosPhi) <= poleCos) return;
     const sign = cosPhi > 0 ? 1 : -1;
 
-    // Screen-up's horizontal direction: `up` when it has one, otherwise the
-    // offset's own horizontal part, otherwise +Z/-Z, the `viewBasis`
-    // fallback for a vertical view with a vertical `up`.
-    let hx: number;
-    let hz: number;
-    const upHoriz = Math.hypot(up.x, up.z);
-    const offHoriz = Math.hypot(offset.x, offset.z);
-    if (isUsableUp(up) && upHoriz > 1e-6) {
-      // Top: the camera sits opposite screen-up. Bottom: on its side.
-      hx = (-sign * up.x) / upHoriz;
-      hz = (-sign * up.z) / upHoriz;
-    } else if (offHoriz > 1e-12) {
-      hx = offset.x / offHoriz;
-      hz = offset.z / offHoriz;
-    } else {
-      hx = 0;
-      hz = sign;
-    }
+    // Screen-up's horizontal direction, from the same basis the view matrix
+    // is built with: the raw `up` can be tilted out of the image plane (a
+    // BCF viewpoint whose up is not orthogonal to its direction), and a
+    // vertical or unusable one falls back to `viewBasis`'s -Z hint. Near the
+    // pole screen-up is nearly horizontal, so its horizontal part is usable.
+    const screenUp = viewBasis(position, target, up).up;
+    const upHoriz = Math.hypot(screenUp.x, screenUp.z);
+    if (!(upHoriz > 1e-9)) return;
+    // Top: the camera sits opposite screen-up. Bottom: on its side.
+    const hx = (-sign * screenUp.x) / upHoriz;
+    const hz = (-sign * screenUp.z) / upHoriz;
     const sinPhi = Math.sin(CC.MIN_PHI);
     copyInto(this.state.camera.position, {
       x: target.x + dist * sinPhi * hx,

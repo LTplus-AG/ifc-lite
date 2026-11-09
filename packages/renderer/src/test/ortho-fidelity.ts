@@ -264,6 +264,77 @@ function viewpointOrbitCase(up: Vec3): FidelityCase {
   return c;
 }
 
+/** First-person W on a plan walks toward the screen's top (it used to stand still). */
+function firstPersonCase(rotation: number): FidelityCase {
+  const c = blank(`first-person W on top #${rotation}`);
+  const camera = orthoCamera();
+  applyPreset(camera, 'top', rotation);
+  camera.enableFirstPersonMode(true);
+  const before = camera.getPosition();
+  for (let i = 0; i < 10; i++) camera.moveFirstPerson(1, 0, 0);
+  const moved = sub(camera.getPosition(), before);
+  const flat = v(moved.x, 0, moved.z);
+  c.tiltErrorDeg = len(flat) < 1e-9 ? 180
+    : deg(Math.acos(Math.max(-1, Math.min(1, dot(unit(flat), presetScreenUp('top', rotation))))));
+  return c;
+}
+
+/**
+ * `getRotation` through the tween into a bottom view: the ViewCube reads it
+ * every frame, so the azimuth must not flip on the last one. `angleErrorDeg`
+ * is the largest frame-to-frame azimuth step over the final 20 degrees of
+ * elevation.
+ */
+function tweenCase(from: Vec3, view: 'top' | 'bottom'): FidelityCase {
+  const c = blank(`tween ${from.x},${from.y},${from.z} -> ${view}`);
+  const camera = orthoCamera();
+  camera.setTarget(0.4, 0.6, 0);
+  camera.setPosition(0.4 + from.x, 0.6 + from.y, from.z);
+  const originalNow = Date.now;
+  const hadRaf = Object.prototype.hasOwnProperty.call(globalThis, 'requestAnimationFrame');
+  const originalRaf = Reflect.get(globalThis, 'requestAnimationFrame');
+  let now = 1_000;
+  Date.now = () => now;
+  Reflect.set(globalThis, 'requestAnimationFrame', () => 0);
+  try {
+    camera.setPresetView(view, sceneBounds());
+    let last: number | null = null;
+    for (let i = 0; i <= 60; i++) {
+      now += 6;
+      camera.update(0);
+      const r = camera.getRotation();
+      if (Math.abs(r.elevation) < 70) { last = null; continue; }
+      if (last !== null) c.angleErrorDeg = Math.max(c.angleErrorDeg, wrapDeg(r.azimuth - last));
+      last = r.azimuth;
+    }
+  } finally {
+    Date.now = originalNow;
+    if (hadRaf) Reflect.set(globalThis, 'requestAnimationFrame', originalRaf);
+    else Reflect.deleteProperty(globalThis, 'requestAnimationFrame');
+  }
+  // A smooth approach turns by a few degrees per 6 ms frame at most.
+  c.angleErrorDeg = Math.max(0, c.angleErrorDeg - 15);
+  return c;
+}
+
+/**
+ * A pose just off the pole whose `up` is not orthogonal to the view (a BCF
+ * viewpoint from another tool): the first drag keeps the screen orientation
+ * the frame was drawn with, not the raw `up`'s horizontal part.
+ */
+function skewedUpCase(): FidelityCase {
+  const c = blank('orbit off skewed-up near-plan');
+  const camera = orthoCamera();
+  camera.setTarget(0.4, 0.6, 0);
+  camera.setPosition(0.4, 0.6 + 5 * Math.cos(0.005), 5 * Math.sin(0.005));
+  camera.setUp(0.001, 1, 0);
+  const probe = v(0, 0, -1);
+  const before = screenAngle(camera, probe);
+  camera.orbit(1, 0);
+  c.orbitJumpDeg = Math.max(0, wrapDeg(deg(screenAngle(camera, probe) - before)) - deg(CAMERA_CONSTANTS.ORBIT_SENSITIVITY));
+  return c;
+}
+
 /** Pan and zoom on a plan keep it a plan. */
 function navigateCase(view: 'top' | 'bottom', what: 'pan' | 'zoom'): FidelityCase {
   const c = blank(`${what} on ${view}`);
@@ -301,6 +372,9 @@ export function scoreOrthoFidelity(): FidelityCase[] {
     cases.push(navigateCase(view, 'pan'), navigateCase(view, 'zoom'));
   }
   for (const up of [v(1, 0, 0), v(-1, 0, 0), v(0, 0, 1), v(0, 0, -1)]) cases.push(viewpointOrbitCase(up));
+  for (let rotation = 0; rotation < 4; rotation++) cases.push(firstPersonCase(rotation));
+  for (const from of [v(3, 2.4, 3), v(-3, 0, 0.01), v(0, 0, 3)]) cases.push(tweenCase(from, 'bottom'), tweenCase(from, 'top'));
+  cases.push(skewedUpCase());
   for (const azimuth of [0, 90, 200]) for (const elevation of [90, -90] as const) cases.push(absoluteCase(azimuth, elevation));
   return cases;
 }

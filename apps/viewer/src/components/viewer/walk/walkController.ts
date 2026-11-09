@@ -21,6 +21,7 @@ import { WalkSession, type Vec3, type WalkInput, type WalkSpawn } from './walkSe
 import { WALK_STAND_EYE } from './walkCharacter.js';
 import { walkStatusStore } from './walkStatusStore.js';
 import { flySpeedStore } from '../flySpeedStore.js';
+import { flyHeading } from '../flyNavigation.js';
 
 /** Prefetch budget per frame, in ms: a sliver of a 60 Hz frame. */
 const PREFETCH_MS = 2;
@@ -111,9 +112,10 @@ export function createWalkController(
       return;
     }
     lastSpawn = { outcome: session.spawn(eye, dir), eye: { ...eye }, look: dir };
-    const flat = Math.hypot(dir.x, dir.z);
-    const hx = flat > 1e-6 ? dir.x / flat : 0;
-    const hz = flat > 1e-6 ? dir.z / flat : -1;
+    // Straight down from a top preset (#9501) the heading is the screen's up,
+    // and the levelled view needs world Y up again.
+    const { x: hx, z: hz } = flyHeading(dir, camera.getUp());
+    camera.setUp(0, 1, 0);
     const distance = Math.min(20, Math.max(2, Math.hypot(dir.x, dir.y, dir.z)));
     lastEye = null;
     apply(session.frame(0, { forward: 0, right: 0, run: false, jump: false, crouch: false }, dir), { x: hx * distance, y: 0, z: hz * distance });

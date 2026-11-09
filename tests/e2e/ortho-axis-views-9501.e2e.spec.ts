@@ -102,13 +102,16 @@ interface Frame extends DecodedPng { px(point: Point): { x: number; y: number } 
  * preset produced, moved sideways (a pan), at ~0.8 mm per pixel.
  */
 async function presetFrame(page: Page, gpu: GpuDeviceLossWatch, name: string, view: 'top' | 'bottom', clicks: number, z: number): Promise<Frame> {
-  const state = await page.evaluate(async ({ view, clicks, near }) => {
+  const tweening = () => page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().cameraCallbacks.isCameraTweening?.());
+  await page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().setProjectionMode('orthographic'));
+  for (let i = 0; i < clicks; i++) {
+    // A tween's end is the viewer's own signal, not a fixed wait: SwiftShader
+    // CI frames are slow enough that a timer can read a pose mid-tween.
+    await page.evaluate((view) => globalThis.__ifc_lite_viewer_store__.getState().cameraCallbacks.setPresetView!(view), view);
+    await expect.poll(tweening, { message: `${name}: preset click ${i + 1} settles`, timeout: 30_000 }).toBe(false);
+  }
+  const state = await page.evaluate(async ({ near }) => {
     const store = globalThis.__ifc_lite_viewer_store__.getState();
-    store.setProjectionMode('orthographic');
-    for (let i = 0; i < clicks; i++) {
-      store.cameraCallbacks.setPresetView!(view);
-      await new Promise(resolve => setTimeout(resolve, 700));
-    }
     const preset = store.cameraCallbacks.getViewpoint!()!;
     const target = { x: 0, y: near, z: 0 };
     const shift = { x: target.x - preset.target.x, y: target.y - preset.target.y, z: target.z - preset.target.z };
@@ -117,10 +120,11 @@ async function presetFrame(page: Page, gpu: GpuDeviceLossWatch, name: string, vi
       position: { x: preset.position.x + shift.x, y: preset.position.y + shift.y, z: preset.position.z + shift.z },
       target, projectionMode: 'orthographic', orthoSize: 0.25,
     }, false);
-    await new Promise(resolve => setTimeout(resolve, 500));
+    // Two frames: the immediate pose is drawn before the capture reads it.
+    for (let i = 0; i < 2; i++) await new Promise(resolve => requestAnimationFrame(resolve));
     const canvas = document.querySelector<HTMLCanvasElement>('canvas[data-viewport="main"]')!;
     return { width: canvas.width, height: canvas.height, viewProj: globalThis.__ifc_lite_view_projection__!(), preset };
-  }, { view, clicks, near: z });
+  }, { near: z });
   // The preset itself is exact: straight down (or up) the vertical, `up` horizontal.
   const look = { x: state.preset.target.x - state.preset.position.x, y: state.preset.target.y - state.preset.position.y, z: state.preset.target.z - state.preset.position.z };
   expect.soft(Math.hypot(look.x, look.z), `${name}: the preset looks along the vertical`).toBeLessThan(1e-9 * Math.abs(look.y));

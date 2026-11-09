@@ -13,6 +13,7 @@ import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { useViewerStore } from '@/store';
+import { SnapType } from '@ifc-lite/renderer';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { MODEL_ID, STOREY, seedModelingSession } from '@/test/modeling-session-fixture';
 import { cleanup, render } from '@/test/render.js';
@@ -113,7 +114,7 @@ describe('aiming through to the workplane (#9201)', () => {
     const ctx = pointer();
     ctx.renderer.raycastSceneMagnetic = (_x, _y, _lock, options) => ({
       intersection: null, edgeLock: NO_LOCK,
-      snapTarget: options?.hiddenIds?.has(space.expressId) ? null : { type: 'vertex', position: { x: 1.237, y: 3, z: -2.347 }, expressId: space.expressId, confidence: 1 },
+      snapTarget: options?.hiddenIds?.has(space.expressId) ? null : { type: SnapType.VERTEX, position: { x: 1.237, y: 3, z: -2.347 }, expressId: space.expressId, confidence: 1 },
     });
     click(ctx, 123.7, -234.7);
     assert.deepEqual(landed(), { local: [1.2, 2.3], winner: 'grid' });

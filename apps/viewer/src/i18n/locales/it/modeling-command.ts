@@ -5,7 +5,7 @@
 import type { Catalogue } from '../../registry';
 
 export const modelingCommandIt = {
-  "modelingCommand.wall.top": "Posizione della sommità del muro",
+  "modelingCommand.wall.top": "Sommità muro",
   "modelingCommand.wall.topStoreyAbove": "Fino al piano superiore",
   "modelingCommand.wall.topFixed": "Altezza fissa",
   "modelingCommand.closeAria": "Esci dal comando",

@@ -16,6 +16,7 @@ import { toast } from '@/components/ui/toast';
 import { mutationDenial } from '@/store/mutation-permission';
 import { modelStoreys } from '@/lib/commands/modeling/workspace-storeys';
 import { openStoreyManager } from '@/lib/storeys/storey-manager-open';
+import { formatElevation } from '@/lib/storeys/storey-length';
 import { loadStoreyToastAction } from './storey-toast';
 import { HudPopoverClose } from '../../../viewport-ui/hud';
 
@@ -49,7 +50,7 @@ export function StoreyPickerActions() {
       else if (outcome.storeyId !== null) {
         const createdId = outcome.storeyId;
         const level = modelStoreys(useViewerStore.getState(), modelId).find(s => s.expressId === createdId);
-        toast.success(t('storeyManager.added', { storey: level?.name ?? '', elevation: String(level?.elevation ?? '') }), {
+        toast.success(t('storeyManager.added', { storey: level?.name ?? '', elevation: level ? formatElevation(level.elevation) : '' }), {
           label: t('storeyManager.drawOn'), onClick: () => loadStoreyToastAction(actions => actions.drawOnAddedStorey(modelId, createdId)),
         }, `storey-added:${modelId}`);
       }

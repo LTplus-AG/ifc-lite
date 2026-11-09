@@ -157,7 +157,7 @@ export const storeyManagerRu = {
   "storeyManager.copy.title": "Копировать на этажи…",
   "storeyManager.copy.empty": "Сначала выберите элементы",
   "storeyManager.copy.all": "Выбрать все этажи",
-  "storeyManager.copy.level": "{storey} ({elevation} m)",
+  "storeyManager.copy.level": "{storey} ({elevation} м)",
   "storeyManager.copy.prepare": "Подготовить копии",
   "storeyManager.copy.commit": "Копировать сейчас",
   "storeyManager.copy.cancel": "Отмена",

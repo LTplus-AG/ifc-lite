@@ -32,6 +32,7 @@ import { StoreyPicker } from './StoreyPicker';
 import { ViewportHud, HudPopover, HudPopoverTrigger, HudPopoverContent } from '../../viewport-ui/hud';
 import { WorkspaceStoreyChip } from './WorkspaceStoreyChip';
 import { Toaster } from '@/components/ui/toast';
+import { commitStoreyOp } from '@/store/slices/mutation-storey';
 
 const topLeft = () => document.querySelector('[data-hud-region="top-left"]');
 const chipButton = () => document.querySelector('[data-workspace-storey-chip]') as HTMLButtonElement | null;
@@ -133,6 +134,13 @@ describe('Workspace storey chip (#6232 M2.1)', () => {
 
   it('Add storey above goes above the topmost storey when the click resolves (#9037 review)', async () => {
     act(() => { useViewerStore.getState().enterModelWorkspace({ storeyId: STOREY }); });
+    // #9334/#9389: 3.1 + 3.2 must be displayed as +6.30, never the float tail.
+    act(() => {
+      assert.ok(commitStoreyOp(useViewerStore, MODEL_ID, { kind: 'level', edit: { kind: 'elevation', storeyId: STOREY, Elevation: -0.1 } }).ok);
+      assert.ok(commitStoreyOp(useViewerStore, MODEL_ID, { kind: 'level', edit: { kind: 'elevation', storeyId: UPPER_STOREY, Elevation: 3.1 } }).ok);
+    });
+    const notices = render(<Toaster />);
+    for (const dismiss of notices.querySelectorAll('[aria-label="Dismiss notification"]')) click(dismiss);
     openList();
     const add = [...document.body.querySelectorAll<HTMLButtonElement>('[data-storey-picker-actions] button')]
       .find((b) => b.textContent?.includes('Add storey above'))!;
@@ -144,6 +152,8 @@ describe('Workspace storey chip (#6232 M2.1)', () => {
     assert.equal(created, UPPER_STOREY, '#9296 adding keeps the active drawing storey');
     const elevations = new Map(modelStoreys(useViewerStore.getState(), MODEL_ID).map((st) => [st.expressId, st.elevation]));
     assert.ok(Math.max(...elevations.values()) > elevations.get(UPPER_STOREY)!, 'the new level sits above the reference');
+    await waitFor(() => (notices.textContent ?? '').includes('added at'), 'the added-storey toast appears');
+    assert.match(notices.textContent ?? '', /added at \+6\.30 m/, 'the toast uses the shared elevation format');
   });
 
   it('lists the storeys highest first, marks the current one, and a pick relaunches the command on that plane', () => {

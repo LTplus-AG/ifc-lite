@@ -134,7 +134,7 @@ function ZoneRow({
         {!zone.footprint && (
           <IconButton
             label={editing ? t('zonesPanel.zoneRow.stopEditingTitle') : t('zonesPanel.zoneRow.editIn3dTitle')}
-            variant={editing ? 'default' : 'ghost'}
+            variant="toggle" aria-pressed={editing}
             className="h-6 w-6"
             onClick={onEdit}
           >
@@ -316,7 +316,7 @@ export function ZonesPanel({ onClose }: ZonesPanelProps) {
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center gap-2 border-b p-3">
-        <Box className="h-4 w-4 text-amber-600" />
+        <Box className="h-4 w-4 text-muted-foreground" />
         <span className="font-medium text-sm flex-1">{t('zonesPanel.header.title')}</span>
         <AssistantAction />
         {onClose && (

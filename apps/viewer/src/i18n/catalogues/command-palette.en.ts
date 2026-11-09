@@ -25,6 +25,15 @@ import type { TranslationValue } from '../types';
  */
 export const commandPaletteEn = {
   'commandPalette.extension.busy': 'Wait for the current extension export to finish',
+  'commandPalette.availability.undo': 'No workspace edits to undo (IDS and schedule history are separate)',
+  'commandPalette.availability.redo': 'No workspace edits to redo (IDS and schedule history are separate)',
+  'commandPalette.aliases.bulk': 'bulk properties query set attribute construction stage',
+  'commandPalette.aliases.import': 'CSV spreadsheet data mapping import',
+  'commandPalette.aliases.classes': 'class visibility spaces openings annotations grids merge layers fast exact geometry',
+  'commandPalette.availability.refresh': 'Reopen every model with a live file handle to refresh',
+  'commandPalette.availability.gpuChecking': 'Wait for the WebGPU check to finish',
+  'commandPalette.availability.gpu': 'WebGPU is unavailable — see the welcome screen for help',
+  'commandPalette.availability.reopen': 'Reopen the file from disk; the cached copy is no longer available',
   'commandPalette.availability.editor': 'Requires editor access',
   'commandPalette.availability.feature': 'Unavailable in this configuration',
   'commandPalette.availability.selection': 'Select elements in the viewer first',
@@ -71,6 +80,7 @@ export const commandPaletteEn = {
   'commandPalette.tool.annotate.label': 'Annotate',
   'commandPalette.tool.wall.label': 'Draw walls',
   'commandPalette.tool.slab.label': 'Draw slabs',
+  'commandPalette.tool.roof.label': 'Draw roofs',
   'commandPalette.tool.column.label': 'Place columns',
   'commandPalette.tool.beam.label': 'Draw beams',
   'commandPalette.tool.editMode.label': 'Toggle Edit Mode',

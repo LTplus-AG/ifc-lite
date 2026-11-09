@@ -27,6 +27,7 @@
  */
 
 import { effectiveReferencers } from '@ifc-lite/export';
+import { StoreEditor } from '@ifc-lite/mutations';
 import { getInheritanceChainAcrossSchemas } from '@ifc-lite/parser';
 import { walkPlacementChain } from '@ifc-lite/data';
 import { refId, type Vec3 } from '../host-geometry-frame.js';
@@ -37,8 +38,11 @@ import {
 import { storeyStateFingerprint } from './storey-fingerprint.js';
 import { gridPlacementParent, gridPlacementsOn } from './storey-grid.js';
 import { readPlacementLeaf, worldLiftInParent, type PlacementLeaf } from './storey-placement.js';
+import { planStoreyDependents, type AttachedHeightChange, type StairRefit, type WallHeightChange } from './storey-dependents.js';
+import type { RailingRefit } from '../railing-stair-refit.js';
+import { writeStoreyLevelPlan } from './storey-level-write.js';
 import {
-  MIN_STOREY_SPACING, describeElevation, describeLength, type StoreyNotice, type StoreyRefusal,
+  MIN_STOREY_SPACING, StoreyEditRefusedError, describeElevation, describeLength, type StoreyNotice, type StoreyRefusal,
 } from './storey-validation.js';
 
 export type StoreyLevelEdit =
@@ -82,6 +86,14 @@ export interface StoreyLevelPlan {
   /** Products another storey owns that hang from a moved placement and are held in place. */
   readonly held: readonly number[];
   readonly spacing: readonly SpacingChange[];
+  /** Walls attached to a storey above (or a slab) whose height follows it. */
+  readonly walls: readonly WallHeightChange[];
+  /** Columns, beams, members and curtain walls whose top follows their attachment (#9296). */
+  readonly attached: readonly AttachedHeightChange[];
+  /** Stairs refit so the top tread still lands on their storey. */
+  readonly stairs: readonly StairRefit[];
+  /** Railings that run up a refit stair, stretched with it. */
+  readonly railings: readonly RailingRefit[];
   /** Elements a person counts as moving: openings and aggregated parts excluded. */
   readonly movedElementCount: number;
   readonly refusals: readonly StoreyRefusal[];
@@ -97,7 +109,7 @@ export interface StoreyLevelPlan {
 const EPS = 1e-9;
 
 function emptyPlan(edit: StoreyLevelEdit, refusals: StoreyRefusal[]): StoreyLevelPlan {
-  return { edit, storeys: [], placements: [], moved: [], held: [], spacing: [], movedElementCount: 0, refusals, notices: [], fingerprint: '' };
+  return { edit, storeys: [], placements: [], moved: [], held: [], spacing: [], walls: [], attached: [], stairs: [], railings: [], movedElementCount: 0, refusals, notices: [], fingerprint: '' };
 }
 
 /** Neighbour checks for one storey landing at `target` metres. */
@@ -159,7 +171,17 @@ function isProduct(inventory: StoreyInventory, id: number): boolean {
   return !!type && getInheritanceChainAcrossSchemas(type).includes('IfcProduct');
 }
 
-export function planStoreyLevelEdit(inventory: StoreyInventory, edit: StoreyLevelEdit): StoreyLevelPlan {
+export interface StoreyLevelPlanOptions {
+  /**
+   * Run the complete write in a discarded draft so a late refusal (an opening
+   * above a wall's new top, a waist that no longer fits) is reported by the
+   * plan itself. Default true; the apply path re-plans inside its own
+   * transaction and skips it.
+   */
+  readonly dryRun?: boolean;
+}
+
+export function planStoreyLevelEdit(inventory: StoreyInventory, edit: StoreyLevelEdit, options: StoreyLevelPlanOptions = {}): StoreyLevelPlan {
   const deltas = storeyDeltas(inventory, edit);
   if (Array.isArray(deltas)) return emptyPlan(edit, deltas);
   if ([...deltas.values()].every((delta) => Math.abs(delta) < EPS)) return emptyPlan(edit, []);
@@ -264,11 +286,38 @@ export function planStoreyLevelEdit(inventory: StoreyInventory, edit: StoreyLeve
   let movedElementCount = 0;
   for (const set of contents.values()) movedElementCount += countedElements(inventory, set);
 
-  return {
-    edit, storeys, placements, moved, held, spacing: spacingChanges(inventory, deltas), movedElementCount,
-    refusals, notices: [],
-    fingerprint: storeyStateFingerprint(reader, referencers, [...deltas.keys()], placements.map(({ leaf }) => leaf.placementId)),
+  const dependents = planStoreyDependents(inventory, deltas);
+  refusals.push(...dependents.refusals);
+  const plan: StoreyLevelPlan = {
+    edit, storeys, placements, moved, held, spacing: spacingChanges(inventory, deltas),
+    walls: dependents.walls, attached: dependents.attached, stairs: dependents.stairs, railings: dependents.railings,
+    movedElementCount, refusals, notices: dependents.notices,
+    // Resized elements, refit stairs and their railings are pinned as reviewed too.
+    fingerprint: storeyStateFingerprint(
+      reader, referencers,
+      [
+        ...deltas.keys(), ...dependents.walls.map((wall) => wall.wallId), ...dependents.attached.map((element) => element.elementId),
+        ...dependents.stairs.flatMap((stair) => [stair.stairId, stair.flightId]), ...dependents.railings.map((railing) => railing.railingId),
+      ],
+      placements.map(({ leaf }) => leaf.placementId),
+    ),
   };
+  if (refusals.length === 0 && options.dryRun !== false) {
+    const late = dryRunRefusal(inventory, plan);
+    if (late) refusals.push(late);
+  }
+  return plan;
+}
+
+/** Write the plan into a draft that is never published; report what stopped it. */
+function dryRunRefusal(inventory: StoreyInventory, plan: StoreyLevelPlan): StoreyRefusal | null {
+  try {
+    inventory.view.prepareAtomic((draft) => writeStoreyLevelPlan(inventory.store, new StoreEditor(inventory.store, draft), plan));
+    return null;
+  } catch (error) {
+    if (error instanceof StoreyEditRefusedError && error.refusals[0]) return error.refusals[0];
+    return { code: 'dependent', message: error instanceof Error ? error.message : String(error) };
+  }
 }
 
 /** Products whose placement chain passes through one of `placements`. */

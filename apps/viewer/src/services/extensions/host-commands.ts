@@ -50,6 +50,15 @@ export interface RunCommandDeps {
    * every fixture to satisfy a surface this code never touches.
    */
   sdk: ExtensionContextV1['bim'];
+  /** Committed UI provider/contribution identity for this invocation, when supplied. */
+  isCurrent?: () => boolean;
+}
+
+class CommandInvocationRetiredError extends Error {
+  constructor() {
+    super('The command provider or contribution changed before execution. Try the command again.');
+    this.name = 'CommandInvocationRetiredError';
+  }
 }
 
 /**
@@ -83,7 +92,12 @@ export async function runExtensionCommand(
   commandId: string,
   extensionId: string,
 ): Promise<RuntimeRunResult | undefined> {
+  const assertCurrent = () => {
+    if (deps.isCurrent && !deps.isCurrent()) throw new CommandInvocationRetiredError();
+  };
+  assertCurrent();
   const records = await deps.storage.listExtensions();
+  assertCurrent();
   for (const record of records) {
     if (record.id !== extensionId) continue;
     if (!record.enabled) continue;
@@ -124,8 +138,11 @@ export async function runExtensionCommand(
     // down.
     const runOnce = async (isRetry: boolean): Promise<RuntimeRunResult> => {
       try {
+        assertCurrent();
         const activation = await deps.runtime.activate(record.id, grants, bundle);
+        assertCurrent();
         await deps.dispatcher.fire(`onCommand:${commandId}` as const);
+        assertCurrent();
         // Set ctx via setGlobal. The BimSandboxHandle special-cases
         // `__ifclite_ctx__` to synthesize from the bridge-installed
         // `globalThis.bim` (the wrapped SDK is cyclic and would crash
@@ -134,8 +151,12 @@ export async function runExtensionCommand(
         // "Sandbox disposed" on a dead handle also triggers the retry.
         const ctx: ExtensionContextV1 = { bim: deps.sdk };
         await activation.sandbox.setGlobal('__ifclite_ctx__', ctx);
+        assertCurrent();
         return await activation.sandbox.run(wrappedSource, { filename: entry });
       } catch (err) {
+        // Retirement is a refusal, even if activation also reports a dead realm.
+        assertCurrent();
+        if (err instanceof CommandInvocationRetiredError) throw err;
         const msg = err instanceof Error ? err.message : String(err);
         // Only on an actual failure that looks like a dead realm do we
         // tear down and retry once — never pre-emptively.

@@ -13,7 +13,7 @@
 import { POINT_EXTRA_CLIP_FLOAT_OFFSET, POINT_UNIFORM_SIZE } from './point-pipeline.js';
 import { packExtraClip } from '../extra-clip-planes.js';
 import type { PointCloudNode } from './point-cloud-node.js';
-import { isUsableModelMatrix } from './point-cloud-node.js';
+import { isUsableModelMatrix } from './point-cloud-model-matrix.js';
 import type { RelativeToEyeFrame } from '../relative-to-eye.js';
 import type { ClipBox, ExtraClipPlane } from '../types.js';
 import { packRteClipBox, rtePlaneDistance } from '../rte-clip-space.js';

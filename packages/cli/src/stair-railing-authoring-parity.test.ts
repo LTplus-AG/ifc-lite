@@ -53,6 +53,40 @@ async function records(content: string | Uint8Array) {
     return [id, entity] as const;
   }).sort((a, b) => a[0] - b[0]) };
 }
+// #9423: export derives stair quantities without persisting them. Undo keeps
+// the allocator monotonic, so compare their ownership and values independently
+// of generated STEP ids; every source/authored record remains exact.
+function undoSnapshot(rows: Awaited<ReturnType<typeof records>>['all'], persisted: ReadonlySet<number>) {
+  const saved = new Map(rows), generated = new Set<number>(), quantities = [];
+  const consume = (id: unknown) => {
+    if (typeof id !== 'number' || persisted.has(id) || generated.has(id)) throw new Error('Invalid generated quantity reference');
+    const entity = saved.get(id);
+    if (!entity) throw new Error(`Missing generated quantity record #${id}`);
+    generated.add(id);
+    return entity;
+  };
+  for (const [id, relation] of rows) {
+    if (persisted.has(id) || relation.type !== 'IFCRELDEFINESBYPROPERTIES') continue;
+    const definitionId = relation.attributes[5];
+    const definition = typeof definitionId === 'number' ? saved.get(definitionId) : null;
+    if (definition?.attributes[2] !== 'Qto_StairBaseQuantities') continue;
+    consume(id); consume(definitionId);
+    expect(definition.type).toBe('IFCELEMENTQUANTITY');
+    const owners = relation.attributes[4], leafIds = definition.attributes[5];
+    if (!Array.isArray(owners) || owners.length !== 1 || typeof owners[0] !== 'number' || !Array.isArray(leafIds)) throw new Error('Invalid stair quantity graph');
+    expect(saved.get(owners[0])?.type).toBe('IFCSTAIR');
+    const leaves = leafIds.map(leafId => {
+      const leaf = consume(leafId);
+      expect(leaf.type).toMatch(/^IFCQUANTITY(LENGTH|VOLUME)$/);
+      return { type: leaf.type, attributes: leaf.attributes };
+    }).sort((a, b) => String(a.attributes[0]).localeCompare(String(b.attributes[0])));
+    expect(Object.fromEntries(leaves.map(leaf => [leaf.attributes[0], leaf.attributes[3]])))
+      .toEqual({ Length: 1.2, GrossVolume: .6, NetVolume: .6 });
+    quantities.push({ relation: relation.attributes.slice(0, 5), definition: definition.attributes.slice(0, 5), leaves });
+  }
+  expect(quantities).toHaveLength(1);
+  return { records: rows.filter(([id]) => !generated.has(id)), quantities };
+}
 async function assertProduct(bim: Bim, ref: EntityRef, kind: Kind, width = 1, height = 1.1) {
   const exported = bim.export.ifc();
   const content = typeof exported === 'string' ? exported : new TextDecoder().decode(exported);
@@ -146,6 +180,8 @@ describe.skipIf(!AVAILABLE)('#6232 D5 canonical stair/railing SDK and public MCP
       const original = flow('stair');
       expect((await runFlow(original, options)).ok).toBe(true);
       const created = (await records(target.bim.export.ifc())).all, journal = target.backend.getOrCreateMutationView().getMutations();
+      const persisted = new Set([...target.store.entityIndex.byId.keys(),
+        ...target.backend.getOrCreateMutationView().getNewEntities().map(entity => entity.expressId)]);
       const beforeBytes = target.bim.export.ifc();
       const nativeBefore = await meshStairs(typeof beforeBytes === 'string' ? beforeBytes : new TextDecoder().decode(beforeBytes));
       const globalId = Object.values(options.tracking.load('d5-stair')!.entries)[0].globalId;
@@ -170,7 +206,7 @@ describe.skipIf(!AVAILABLE)('#6232 D5 canonical stair/railing SDK and public MCP
       let content = target.bim.export.ifc();
       expect(await meshStairs(typeof content === 'string' ? content : new TextDecoder().decode(content))).toEqual(railingNative);
       expect((await call('mutation_undo', { model_id: target.id })).isError).not.toBe(true);
-      expect((await records(target.bim.export.ifc())).all).toEqual(created);
+      expect(undoSnapshot((await records(target.bim.export.ifc())).all, persisted)).toEqual(undoSnapshot(created, persisted));
       expect(target.backend.getOrCreateMutationView().getMutations()).toEqual(journal);
       content = target.bim.export.ifc();
       expect(await meshStairs(typeof content === 'string' ? content : new TextDecoder().decode(content))).toEqual(nativeBefore);

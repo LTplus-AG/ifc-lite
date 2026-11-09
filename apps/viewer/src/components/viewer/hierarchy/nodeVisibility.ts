@@ -3,11 +3,11 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { IfcDataStore } from '@ifc-lite/parser';
-import type { FederatedModel } from '@/store';
+import type { EntityRef, FederatedModel, ViewerState } from '@/store';
 import { collectIfcBuildingStoreyElementsWithIfcSpace, collectSpatialSubtreeElementsWithIfcSpace } from '@/store/basketVisibleSet';
 import { ownedAggregationRelationships } from '@/utils/entity-ownership';
 import { resolveTreeGlobalId } from './productTree';
-import { overlayViewFor, type TreeOverlay } from './treeOverlay';
+import { effectiveRowType, overlayViewFor, type TreeOverlay } from './treeOverlay';
 import type { TreeNode } from './types';
 
 export type HierarchyVisibilityAction = 'show' | 'hide';
@@ -90,4 +90,30 @@ export function hierarchyNodeAppearance(
     outsideIsolation = elements.length + subtree.length > 0 && subtree.every((id) => !isolation.has(id));
   }
   return { ...hierarchyNodeVisibility(node, elements, hidden), outsideIsolation };
+}
+
+/** A subgroup is a container, never a product whose id shares its prefix. */
+export function isLayerSubgroup(node: TreeNode): boolean {
+  return node.type === 'type-group' && node.id.startsWith('presentation-layer-');
+}
+
+/** #9272: only explicit container Isolate enables default-hidden spatial types. */
+export function revealMembershipSpatialTypes(
+  node: TreeNode, elements: readonly number[],
+  state: Pick<ViewerState, 'models' | 'ifcDataStore' | 'mutationViews' | 'typeVisibility' | 'toggleTypeVisibility'>,
+  resolve: (globalId: number) => EntityRef | null,
+): void {
+  if (node.type !== 'group' && node.type !== 'presentation-layer' && !isLayerSubgroup(node)) return;
+  const memberTypes = new Set<string>();
+  for (const globalId of new Set([...(node.memberGlobalIds ?? []), ...elements])) {
+    const ref = resolve(globalId);
+    if (!ref) continue;
+    const store = state.models.get(ref.modelId)?.ifcDataStore ?? state.ifcDataStore;
+    if (!store) continue;
+    const view = overlayViewFor((id) => state.mutationViews.get(id), ref.modelId);
+    const type = effectiveRowType(store, view, ref.expressId);
+    if (type) memberTypes.add(type);
+  }
+  if (!state.typeVisibility.spaces && memberTypes.has('IfcSpace')) state.toggleTypeVisibility('spaces');
+  if (!state.typeVisibility.spatialZones && memberTypes.has('IfcSpatialZone')) state.toggleTypeVisibility('spatialZones');
 }

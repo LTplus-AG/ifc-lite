@@ -5,7 +5,7 @@
 import { useCallback } from 'react';
 import type { CSSProperties } from 'react';
 import { cn } from '@/lib/utils';
-import { VIEW_CUBE_REACH_PX } from '@/components/viewer/viewcube-box';
+import { VIEW_CUBE_REACH_PX, VIEW_CUBE_REACH_X_PX } from '@/components/viewer/viewcube-box';
 import { HUD_REGIONS, setHudLaneRulerNode, setHudRegionNode, type HudRegionName } from './hud-regions';
 
 /**
@@ -14,7 +14,7 @@ import { HUD_REGIONS, setHudLaneRulerNode, setHudRegionNode, type HudRegionName 
  * 1rem/1.5rem floor so an inset-free desktop browser still gets a margin).
  *
  * `top-right` additionally reserves the ViewCube's box (`viewcube-box.ts`:
- * its inset plus its size), so anything placed in this region starts below
+ * its top inset plus its size), so anything placed in this region starts below
  * the cube instead of colliding with it.
  *
  * `bottom-center` used to reserve the always-on Presentation pill and the
@@ -59,7 +59,7 @@ const REGION_CLASSNAME: Record<HudRegionName, string> = {
 
 /** The top-center lane's reserves (see above). */
 const LEFT_RESERVE = '14rem';
-const RIGHT_RESERVE = `(${VIEW_CUBE_REACH_PX}px + 1rem)`;
+const RIGHT_RESERVE = `(${VIEW_CUBE_REACH_X_PX}px + 1rem)`;
 
 /** Geometry derived from the ViewCube's box, which classes cannot carry. */
 const REGION_STYLE: Partial<Record<HudRegionName, CSSProperties>> = {

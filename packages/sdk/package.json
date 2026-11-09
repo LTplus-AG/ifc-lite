@@ -3,6 +3,10 @@
   "version": "9.6.1",
   "description": "Scripting SDK for ifc-lite — the bim.* API for BIM automation",
   "type": "module",
+  "sideEffects": [
+    "./src/index.ts",
+    "./dist/index.js"
+  ],
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {

@@ -1367,6 +1367,10 @@
     "value": "{face} {delta} m",
     "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
   },
+  "registry.release": {
+    "value": "Version",
+    "reason": "Same-spelling German label or established UI term (Version); placeholders retain runtime content."
+  },
   "reportExportDialog.pageSizeA3": {
     "value": "A3",
     "reason": "Preserved technical syntax/identifier or proper name: A3. Required for exact control, schema, format, shortcut or product recognition."
@@ -1731,6 +1735,14 @@
     "value": "m",
     "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
   },
+  "storeyManager.column.name": {
+    "value": "Name",
+    "reason": "Same-spelling German label or established UI term (Name); placeholders retain runtime content."
+  },
+  "storeyManager.copy.level": {
+    "value": "{storey} ({elevation} m)",
+    "reason": "Storey names and signed elevations are runtime data; the metre symbol and punctuation contain no English prose."
+  },
   "tableChanges.matchTypeTag": {
     "value": "Tag",
     "reason": "Preserved technical syntax/identifier or proper name: Tag. Required for exact control, schema, format, shortcut or product recognition."
@@ -1780,8 +1792,8 @@
     "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
   },
   "viewportLighting.container.emptyState.webgpuBanner.supportedBrowsers": {
-    "value": "Chrome 113+ / Edge 113+ / Firefox 141+ / Safari 18+",
-    "reason": "Preserved technical syntax/identifier or proper name: Chrome 113+ / Edge 113+ / Firefox 141+ / Safari 18+. Required for exact control, schema, format, shortcut or product recognition."
+    "value": "Chrome 113+ / Edge 113+ / Firefox 141+ / Safari 26+",
+    "reason": "Preserved technical syntax/identifier or proper name: Chrome 113+ / Edge 113+ / Firefox 141+ / Safari 26+. Required for exact control, schema, format, shortcut or product recognition."
   },
   "viewportLighting.sunSkyPanel.sunStudy.timezone.utc": {
     "value": "UTC",

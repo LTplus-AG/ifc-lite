@@ -1,7 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-
+import { PersistentToolHosts } from './PersistentToolHosts';
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels';
 import type { PanelImperativeHandle } from 'react-resizable-panels';
@@ -47,6 +47,7 @@ import { LEFT_PANEL_DEFAULT_SIZE } from '@/store/layoutReset';
 /** Hierarchy's minimum width, % of the main row. */
 const LEFT_PANEL_MIN_SIZE = 10;
 import { useOverlayCompositor } from './schedule/useOverlayCompositor';
+import { ActivityTrayDialog } from './activity/ActivityTray';
 import { CommandPaletteHost as CommandPalette } from './CommandPaletteHost';
 import { SearchModal } from './SearchModal';
 import { FlowStartupPrompt } from './flow/FlowStartupPrompt';
@@ -61,7 +62,7 @@ import {
   getAnalysisExtensionsSnapshot,
   subscribeAnalysisExtensions,
 } from '@/services/analysis-extensions';
-import { activeBottomPanel } from '@/lib/panels/bottom-panels';
+import { dockedBottomPanel as dockedBottomPanelOf } from '@/lib/panels/rendered-panels';
 import { useBottomPanelFlags } from '@/hooks/useBottomPanelFlags';
 import { usePanelControls } from '@/hooks/usePanelControls';
 import { useMobileLayoutMode } from '@/hooks/useMobileLayoutMode';
@@ -128,6 +129,7 @@ export function ViewerLayout() {
   }, [collabGeometryNotice]);
 
   // Command palette state
+  const [activityOpen, setActivityOpen] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
 
   // The shared dispatcher owns the Ctrl+K chord and text-entry exception.
@@ -162,7 +164,7 @@ export function ViewerLayout() {
   const setRightPanelCollapsed = useViewerStore((s) => s.setRightPanelCollapsed);
   // Which bottom panel the flags say is open (table precedence), and whether
   // it is actually docked here rather than floating / popped out.
-  const bottomPanel = activeBottomPanel(useBottomPanelFlags());
+  const bottomFlags = useBottomPanelFlags();
   // The right pane is owned by the sidebar (#1208); here we only need to know which
   // BOTTOM panel (Script / Schedule / Lists) is docked vs detached, so the bottom strip skips a floating (#1201) or popped-out one.
   const floatingPanels = useViewerStore((s) => s.floatingPanels);
@@ -171,7 +173,7 @@ export function ViewerLayout() {
     () => new Set<string>([...floatingPanels.map((p) => p.id), ...poppedOutIds]),
     [floatingPanels, poppedOutIds],
   );
-  const dockedBottomPanel = bottomPanel && !detachedIds.has(bottomPanel) ? bottomPanel : null;
+  const dockedBottomPanel = dockedBottomPanelOf(bottomFlags, (id) => detachedIds.has(id));
 
   // Side-by-side 2D/3D layout preset (#5515): a persisted dock-side choice
   // ("does Drawing go beside the viewport or below it") that only takes
@@ -237,8 +239,7 @@ export function ViewerLayout() {
 
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Track the gap between the layout viewport (innerHeight) and the visual
-  // viewport. On iOS Safari with bottom URL bar, dvh/innerHeight INCLUDES the
+  // Keep overlays inside the visible viewport. On iOS Safari with bottom URL bar, dvh/innerHeight INCLUDES the
   // URL bar area, so `bottom: 0` lands behind it; visualViewport.height excludes it.
   const bottomViewportInset = useVisualViewportBottomInset();
 
@@ -253,7 +254,7 @@ export function ViewerLayout() {
   useThemeDocumentClass();
   const safeMode = isSafeMode();
   return (
-    <TooltipProvider delayDuration={300}>
+    <TooltipProvider delayDuration={300}><PersistentToolHosts>
       <div className="flex flex-col h-screen h-[100dvh] w-screen overflow-hidden bg-background text-foreground">
         <ExtensionKeyboardBindings />
         <ShellStoreEffects />
@@ -273,7 +274,9 @@ export function ViewerLayout() {
         {/* Global dialogs above, overlays below */}
         <EntityContextMenu />
         <HoverTooltip />
-        <CommandPalette open={commandPaletteOpen} onOpenChange={setCommandPaletteOpen} />
+        <CommandPalette open={commandPaletteOpen} onOpenChange={setCommandPaletteOpen}
+          surfaceContext={{ openActivity: () => setActivityOpen(true) }} />
+        <ActivityTrayDialog open={activityOpen} onOpenChange={setActivityOpen} announce={false} />
         <SearchModal />
         <TourHost />
         <FlowStartupPrompt />
@@ -396,7 +399,7 @@ export function ViewerLayout() {
             {/* Backdrop overlay when sheet is open */}
             {(!leftPanelCollapsed || !rightPanelCollapsed) && (
               <button type="button" aria-label={t('shellChrome.layout.closePanelsAriaLabel')}
-                className="absolute inset-0 z-30 border-0 bg-black/40 p-0 animate-in fade-in duration-200"
+                className="absolute inset-0 z-30 border-0 bg-scrim/40 p-0 animate-in fade-in duration-200"
                 onClick={() => {
                   setLeftPanelCollapsed(true);
                   setRightPanelCollapsed(true);
@@ -418,8 +421,9 @@ export function ViewerLayout() {
             {/* Mobile Bottom Sheet — whichever single panel is open (`MobilePanelSheet`). */}
             <MobilePanelSheet bottomInset={bottomViewportInset} analysisExtension={activeAnalysisExtension ?? null} />
 
-            {/* Mobile Floating Buttons: Hierarchy, Properties and the Panels list
-                (#5853). Hidden in the empty state so the "Load IFC" card stays unobstructed. */}
+            {/* Mobile Panels button: one entry point to every panel, Hierarchy and
+                Properties included (#5853, #8802 R6). Hidden in the empty state so the
+                "Load IFC" card stays unobstructed. */}
             {leftPanelCollapsed && rightPanelCollapsed && hasModelsLoaded && (
               <MobilePanelLauncher bottomInset={bottomViewportInset} />
             )}
@@ -441,6 +445,6 @@ export function ViewerLayout() {
             child documents; live-synced via the shared store. */}
         <PanelWindowHost />
       </div>
-    </TooltipProvider>
+    </PersistentToolHosts></TooltipProvider>
   );
 }

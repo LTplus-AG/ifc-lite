@@ -6,16 +6,12 @@
 
 import { Play, GraduationCap } from 'lucide-react';
 import { useViewerStore } from '@/store';
-import { resolveExtensionIcon } from '@/components/extensions/icon-registry';
-import { toast as paletteToast } from '@/components/ui/toast';
-import { resolve } from '@/i18n/registry';
 import { SCRIPT_TEMPLATES } from '@/lib/scripts/templates';
 import { TOUR_REGISTRY } from '@/lib/tours/registry';
 import { startTour } from '@/lib/tours/controller';
 import { buildExportCommands } from './commandPaletteExports';
-import { describeRunCommandError } from '@/services/extensions/runtime-errors';
+import { buildPaletteExtensionCommands } from './palette-extension-commands';
 import type { Command } from './commandPaletteSearch';
-import type { PaletteAvailability } from './palette-availability';
 import { withKey, type CommandPaletteBuildParams } from './commandPaletteCommandsTypes';
 
 export function buildPanelCommands(p: CommandPaletteBuildParams): Command[] {
@@ -54,48 +50,7 @@ export function buildPanelCommands(p: CommandPaletteBuildParams): Command[] {
   }
 
   // ── Extension contributions ──
-  for (const contribution of p.extensionCommands) {
-    const payload = contribution.payload;
-    if (!payload?.id || !payload.title) continue;
-    const checkAvailability = (): PaletteAvailability => {
-      if (!p.extensionHost || p.extensionHostIsCurrent?.() === false) {
-        return { status: 'disabled', reasonKey: 'commandPalette.availability.host' };
-      }
-      if (!p.extensionHost.slotRegistry.getAll('commandPalette').includes(contribution)) {
-        return { status: 'disabled', reasonKey: 'commandPalette.availability.feature' };
-      }
-      return { status: 'available' };
-    };
-    c.push({
-      id: `ext:${payload.id}`,
-      availability: checkAvailability(),
-      checkAvailability,
-      runtimeSource: 'extension-command',
-      label: payload.title,
-      keywords: `${payload.id} ${payload.paletteCategory ?? ''} extension`,
-      category: 'Extensions',
-      icon: resolveExtensionIcon(payload.icon),
-      detail: payload.paletteCategory,
-      action: () => {
-        if (checkAvailability().status === 'disabled' || !p.extensionHost) return;
-        void p.extensionHost.dispatcher
-          .fire(`onCommand:${payload.id}` as `onCommand:${string}`)
-          .then(() => {
-            // Activation can await a bundle while the provider or contribution
-            // is retired. Never hand that stale row to the captured host.
-            const availability = checkAvailability();
-            if (availability.status === 'disabled') {
-              paletteToast.info(resolve(availability.reasonKey));
-              return;
-            }
-            return p.extensionHost?.runCommand(payload.id, contribution.extensionId);
-          })
-          .catch((err: unknown) => {
-            paletteToast.error(describeRunCommandError(payload.id, err));
-          });
-      },
-    });
-  }
+  c.push(...buildPaletteExtensionCommands(p.extensionCommands, p.extensionHost, p.extensionHostIsCurrent));
 
   return c;
 }

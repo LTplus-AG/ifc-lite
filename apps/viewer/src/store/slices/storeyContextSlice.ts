@@ -29,6 +29,9 @@ const STORAGE_KEY = 'ifc-lite:model-workspace:storey-context';
 export interface StoreyContextSlice {
   storeyContextMode: StoreyContextMode;
   setStoreyContextMode: (mode: StoreyContextMode) => void;
+  /** The Model inspector shows the storey manager instead of the element sections (#9013). */
+  storeyManagerOpen: boolean;
+  setStoreyManagerOpen: (open: boolean) => void;
 }
 
 function loadStoreyContextMode(): StoreyContextMode {
@@ -55,4 +58,6 @@ export const createStoreyContextSlice: StateCreator<StoreyContextSlice, [], [], 
     persistStoreyContextMode(storeyContextMode);
     set({ storeyContextMode });
   },
+  storeyManagerOpen: false,
+  setStoreyManagerOpen: (storeyManagerOpen) => set({ storeyManagerOpen }),
 });

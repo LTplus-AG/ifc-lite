@@ -8,12 +8,25 @@ export {
   readStoreyInventory, summarizeStoreys, storeyContents, storeySpacingAbove,
   type StoreyInventory, type StoreyRecord, type StoreySummary,
 } from './storey-model.js';
-export { addStoreyInStore, addStoreyRefusal, renameStoreyInStore, type AddStoreyParams, type AddStoreyResult } from './storey-add.js';
+export {
+  addStoreyInStore, addStoreyRefusal, planStoreyAdd, renameStoreyInStore, type AddStoreyParams, type AddStoreyResult, type StoreyAddPlan,
+} from './storey-add.js';
 export {
   planStoreyLevelEdit,
-  type StoreyLevelEdit, type StoreyLevelPlan, type StoreyMove, type SpacingChange, type PlacementWrite,
+  type StoreyLevelEdit, type StoreyLevelPlan, type StoreyLevelPlanOptions, type StoreyMove, type SpacingChange, type PlacementWrite,
 } from './storey-level-plan.js';
 export { applyStoreyLevelEdit, storeyLevelPlanSignature, type StoreyLevelResult } from './storey-level-apply.js';
+export {
+  planStoreyDependents, planAttachmentBindings, LANDING_TOLERANCE, MIN_FLIGHT_RISE,
+  type StoreyDependents, type WallHeightChange, type AttachedHeightChange, type StairRefit, type StoreyBinding,
+} from './storey-dependents.js';
+export {
+  readTopAttachment, writeTopAttachment, clearTopAttachment, topAttachmentProblem, homeStoreyOf,
+  STOREY_ATTACHMENT_PSET, TOP_CONSTRAINT, TOP_BINDING, NEXT_STOREY_ABOVE, FIXED_HEIGHT, RELATIVE_BINDING, EXPLICIT_BINDING,
+  type TopAttachment, type TopBinding,
+} from './storey-attachment.js';
+export { setTopConstraintInStore, applyNewElementTop, type TopConstraint } from './storey-top-constraint.js';
+export { attachedKind, type AttachedKind } from './storey-attached.js';
 export { planStoreyDelete, applyStoreyDelete, storeyDeletePlanSignature, type StoreyDeleteMode, type StoreyDeletePlan } from './storey-delete.js';
 export { suggestStorey, DEFAULT_STOREY_HEIGHT, type StoreySuggestion } from './storey-suggest.js';
 export {

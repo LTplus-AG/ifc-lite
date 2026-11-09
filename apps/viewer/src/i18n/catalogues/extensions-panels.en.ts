@@ -182,11 +182,10 @@ export const extensionsPanelsEn = {
     '{subject} appear once a workflow shows up repeatedly in your local activity log (model loads, lens applies, exports). Thresholds relax while the log is sparse so something appears early; tightens as data accumulates.',
   'extensionsPanels.ideasPanel.helpActions':
     'Click {tryIt} to send the idea to the AI chat assistant — chat opens and you answer follow-ups. Click {customize} if you want to prune capabilities or rename the command before chat sees it.',
-  'extensionsPanels.ideasPanel.helpPrivacy': 'The action log is local. Nothing here leaves your device.',
+  "extensionsPanels.ideasPanel.helpPrivacy": "The action log stays local. Ideas you choose to send to AI chat are included in messages sent to the configured AI provider.",
   'extensionsPanels.ideasPanel.remineAriaLabel': 'Re-mine now',
   'extensionsPanels.ideasPanel.remineButton': 'Re-mine',
-  'extensionsPanels.ideasPanel.footerPrivacy':
-    'Recurring sequences in your local activity log. Nothing here leaves your device.',
+  "extensionsPanels.ideasPanel.footerPrivacy": "The action log stays local. Ideas you choose to send to AI chat are included in messages sent to the configured AI provider.",
   'extensionsPanels.ideasPanel.recurringHeading': 'Recurring in your activity',
   'extensionsPanels.ideasPanel.occurrenceSummary': {
     one: '{occurrences}× across {sessions} session · last {date} · score {score}',
@@ -234,7 +233,7 @@ export const extensionsPanelsEn = {
   'extensionsPanels.privacyPanel.storeBody1':
     'ifc-lite keeps a content-free action log of the high-level intents you perform (model loads, lens applies, exports). We use it to mine recurring patterns and surface one-click tool suggestions. The log never records model content, chat content, file names, or API keys.',
   'extensionsPanels.privacyPanel.storeBody2':
-    "Suggestions, the audit log, the prompt overlay, and your profile library are all stored in your browser's IndexedDB — nothing here is sent off device unless you explicitly export.",
+    "Suggestions, the audit log, the prompt overlay, and your profile library are stored in your browser's IndexedDB. The action log stays local unless you export it. Prompt-overlay notes are sent with AI chat requests.",
   'extensionsPanels.privacyPanel.actionLogHeading': 'Action log',
   'extensionsPanels.privacyPanel.actionLogStats': '{events} events · {kib} KiB',
   'extensionsPanels.privacyPanel.exportJsonButton': 'Export JSON',

@@ -108,6 +108,7 @@ Tools are grouped by capability. Everything below is registered in the default t
 | Physical edits | `edit_hosted_element`, `edit_element_geometry`, `copy_elements`, `duplicate_element`, `array_elements` |
 | Native Room | `query_rooms`, `room_command` |
 | Design modelling | `place_curtain_wall`, `place_grid`, `place_grid_column` |
+| Storeys | `storey_list`, `storey_add`, `storey_rename`, `storey_plan_edit`, `storey_edit`, `storey_delete` |
 | Wall joins | `join_walls` |
 | BCF | `bcf_topic_list`, `bcf_topic_create`, `bcf_topic_update`, `bcf_topic_close`, `bcf_viewpoint_create`, `bcf_export` |
 | bSDD | `bsdd_search`, `bsdd_class`, `bsdd_property_sets`, `bsdd_match` |
@@ -568,6 +569,32 @@ Each call creates a new element and records one `mutation_undo` batch,
 including all curtain-wall parts or grid-placement helpers. Lengths are
 metres; grid `Direction` is radians. These tools require mutation scope.
 
+### Loaded-model storeys
+
+`storey_list` lists the live storeys, highest first, with elevation,
+floor-to-floor height and element count. `storey_add` adds an
+`IfcBuildingStorey` under the building, either from explicit `Name` and
+`Elevation`, or from `reference_storey_express_id` and `side`, taking the
+neighbours' naming and spacing. `storey_edit` re-levels a storey:
+
+- `kind: "elevation"` moves that storey only;
+- `kind: "floor_height"` shifts every storey above by the same amount.
+
+Contents move through real placement writes, walls attached to the storey above
+resize, and stairs refit. `storey_plan_edit` is the dry run. It reports the
+storeys and elements that would move, the walls and stairs that would change,
+and every refusal: zero spacing, crossing a neighbour, a stair with no valid
+flight, or a shared placement. It also lists notices for elements the edit
+leaves as they are. A refused `storey_edit` writes nothing. `storey_delete`
+takes `mode`:
+
+- `empty`, refused while the storey holds elements;
+- `move` with `target_storey_express_id`;
+- `delete_contents`.
+
+Lengths are metres. Each write is one `mutation_undo` batch. The dry runs work
+in read-only scope.
+
 `edit_hosted_element` edits an existing wall-hosted opening, door or window
 through the shared Model workspace core. Supply `express_id`, `model_id` when
 federated, and a nonempty `patch` containing `OverallWidth`, `OverallHeight`,
@@ -579,7 +606,10 @@ one `mutation_undo` restores the previous graph.
 ### Physical command edits
 
 `copy_elements` and `array_elements` copy selections with their hosted
-dependants, fresh GlobalIds and the viewer array policy. `duplicate_element`
+dependants, fresh GlobalIds and the viewer array policy. They return one entity
+per selected element per transform (a door selected with its wall included),
+and `unattachedTops` lists the copies whose top could not follow their new
+storey, with the reason; the message names them too. `duplicate_element`
 accepts an `express_id`, explicit IFC `offset` and optional `Name`; it preserves
 the viewer Duplicate naming policy and copies the complete hosted graph.
 `edit_element_geometry` accepts a discriminated `operation`: `transform`

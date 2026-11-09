@@ -6,7 +6,7 @@ capture, collects independent model reviews, and tallies them into numbers.
 
 | file | role |
 |---|---|
-| `scenes.mjs` | the fixed scene set (13 states, captured in light and dark) |
+| `scenes.mjs` | the fixed scene set (17 states, captured in light and dark) |
 | `capture.mjs` | serves a built `dist/`, drives Windows Chrome on the real GPU, writes PNGs and `manifest.json` with layout metrics |
 | `pair.mjs` | builds a blind packet: per-item random X/Y labels, identical-image controls, and a key kept outside the packet |
 | `COUNCIL.md` | the reviewer brief, rubric, output schema and hard constraints |
@@ -48,6 +48,12 @@ weighted win rate against the frozen baseline holds at 0.85 or more.
 Pair mode requires equal candidate/reference item-id sets. `--partial`
 allows their intersection for diagnostics, records `partial: true` in the
 key, and makes the tally ineligible for round acceptance.
+
+Changing the scene set therefore invalidates existing reference captures.
+When a PR adds or removes scenes, the next round recaptures `R0-base` and the
+previous accepted round from their kept builds (`~/ui-overhaul/builds/<label>`,
+step 1) with the new `scenes.mjs` before pairing. The builds are frozen, so a
+recapture changes only which states are shown, not the reference itself.
 
 ## Behaviour evidence
 

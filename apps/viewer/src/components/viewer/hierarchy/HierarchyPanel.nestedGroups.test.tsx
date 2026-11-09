@@ -13,6 +13,7 @@ import { cleanup, click, render } from '@/test/render.js';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { SourceHostProvider } from '@/services/sources/SourceHostProvider.js';
 import { useViewerStore } from '@/store';
+import { TYPE_VISIBILITY_SEMANTIC_DEFAULTS, TYPE_VISIBILITY_STORAGE_KEYS } from '@/store/constants';
 import { HierarchyPanel } from '../HierarchyPanel.js';
 
 afterEach(cleanup);
@@ -61,4 +62,43 @@ END-ISO-10303-21;`;
   click(button('Isolate Rental units'));
   assert.deepEqual([...(useViewerStore.getState().isolatedEntities ?? [])].sort(), [10, 11]);
   assert.equal(useViewerStore.getState().typeVisibility.spaces, true, 'isolation reveals nested spaces hidden by default');
+});
+
+it('#9383 Show on Unit A leaves an unrelated space behind the disabled global gate', async () => {
+  const source = `ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#10=IFCSPACE('0aaaaaaaaaaaaaaaaaaaa1',$,'Inside',$,$,$,$,$,$,$,$);
+#11=IFCSPACE('0aaaaaaaaaaaaaaaaaaaa2',$,'Unrelated',$,$,$,$,$,$,$,$);
+#20=IFCZONE('0bbbbbbbbbbbbbbbbbbbb1',$,'Unit A',$,$,$);
+#30=IFCRELASSIGNSTOGROUP('0cccccccccccccccccccc1',$,$,$,(#10),$,#20);
+ENDSEC;
+END-ISO-10303-21;`;
+  const store = await new IfcParser().parseColumnar(new TextEncoder().encode(source).buffer, { disableWorkerScan: true });
+  const bounds = { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } };
+  const model = { ...fixtureModel('show-group-scope'), ifcDataStore: store,
+    geometryResult: { meshes: [], totalTriangles: 0, totalVertices: 0,
+      instancedGeometryHashes: new Map([[10, 1n], [11, 2n]]),
+      coordinateInfo: { originShift: { x: 0, y: 0, z: 0 }, originalBounds: bounds, shiftedBounds: bounds, hasLargeCoordinates: false } } };
+  localStorage.setItem(TYPE_VISIBILITY_STORAGE_KEYS.spaces, 'false');
+  useViewerStore.setState({ ...fixtureModels(model), ifcDataStore: store, hierarchyMode: 'groups',
+    selectedEntityId: null, selectedEntityIds: new Set(), hiddenEntities: new Set(), isolatedEntities: null,
+    mutationViews: new Map(), typeVisibility: { ...TYPE_VISIBILITY_SEMANTIC_DEFAULTS } });
+  const ui = render(<SourceHostProvider><HierarchyPanel /></SourceHostProvider>);
+  const button = (label: string) => {
+    const el = ui.querySelector(`button[aria-label="${label}"]`);
+    assert.ok(el, `rendered ${label}`);
+    return el;
+  };
+  click(button('Hide Unit A'));
+  assert.deepEqual(useViewerStore.getState().hiddenEntities, new Set([10]));
+  click(button('Show Unit A'));
+  assert.equal(useViewerStore.getState().typeVisibility.spaces, false);
+  assert.equal(localStorage.getItem(TYPE_VISIBILITY_STORAGE_KEYS.spaces), 'false');
+  assert.deepEqual(useViewerStore.getState().hiddenEntities, new Set());
+  click(button('Isolate Unit A'));
+  assert.equal(useViewerStore.getState().typeVisibility.spaces, true, 'main already enables the global gate for container Isolate');
+  assert.deepEqual(useViewerStore.getState().isolatedEntities, new Set([10]));
 });

@@ -26,7 +26,7 @@ export function createRecordedModellingBackend(resolve: ModellingStoreModelResol
   }
   // Storey dry runs read the live view; storey writes are one compound record each (#9013).
   const storeyReads = createStoreyStoreBackend(resolve);
-  const storey = <K extends 'addStorey' | 'renameStorey' | 'editStorey' | 'deleteStorey'>(name: K, modelOf: (...args: Parameters<NonNullable<Methods[K]>>) => string) =>
+  const storey = <K extends 'addStorey' | 'renameStorey' | 'editStorey' | 'deleteStorey' | 'setTopConstraint'>(name: K, modelOf: (...args: Parameters<NonNullable<Methods[K]>>) => string) =>
     (...args: Parameters<NonNullable<Methods[K]>>): ReturnType<NonNullable<Methods[K]>> => record(modelOf(...args), methods => {
       const method = methods[name] as ((...a: Parameters<NonNullable<Methods[K]>>) => ReturnType<NonNullable<Methods[K]>>) | undefined;
       if (!method) throw new Error(`bim.store.${name} is not supported by this backend`);
@@ -34,8 +34,11 @@ export function createRecordedModellingBackend(resolve: ModellingStoreModelResol
     });
   return {
     listStoreyLevels: storeyReads.listStoreyLevels,
+    suggestStorey: storeyReads.suggestStorey,
     planStoreyEdit: storeyReads.planStoreyEdit,
     planStoreyDelete: storeyReads.planStoreyDelete,
+    planAddStorey: storeyReads.planAddStorey,
+    setTopConstraint: storey('setTopConstraint', (ref) => ref.modelId),
     addStorey: storey('addStorey', (modelId) => modelId),
     renameStorey: storey('renameStorey', (ref) => ref.modelId),
     editStorey: storey('editStorey', (modelId) => modelId),
@@ -63,6 +66,10 @@ export function createRecordedModellingBackend(resolve: ModellingStoreModelResol
     copyElements: (...args: Parameters<NonNullable<Methods['copyElements']>>) => record(args[0], methods => {
       if (!methods.copyElements) throw new Error('Missing copy capability');
       return methods.copyElements(...args);
+    }),
+    copyToStoreys: (...args: Parameters<NonNullable<Methods['copyToStoreys']>>) => record(args[0], methods => {
+      if (!methods.copyToStoreys) throw new Error('Missing copy capability');
+      return methods.copyToStoreys(...args);
     }),
     duplicateElement: (...args: Parameters<NonNullable<Methods['duplicateElement']>>) => record(args[0].modelId, methods => {
       if (!methods.duplicateElement) throw new Error('Missing duplicate capability');

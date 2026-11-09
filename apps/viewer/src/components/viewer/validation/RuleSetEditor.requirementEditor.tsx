@@ -16,6 +16,7 @@
  */
 
 import { useState } from 'react';
+import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import type { FilterRule } from '@ifc-lite/rules';
@@ -60,20 +61,18 @@ export function RequirementEditor({ requirement, onChange, models, schemaVersion
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="inline-flex self-start rounded border border-border bg-white p-0.5 text-2xs">
+      <div className="inline-flex self-start rounded border border-border bg-card p-0.5">
         {KINDS.map((k) => (
-          <button
+          <Button
             key={k}
             type="button"
+            variant="toggle"
+            size="segment"
+            aria-pressed={requirement.kind === k}
             onClick={() => k !== requirement.kind && onChange(blankRequirementOfKind(k))}
-            className={`rounded px-2 py-0.5 font-medium transition-colors ${
-              requirement.kind === k
-                ? 'bg-primary text-primary-foreground'
-                : 'text-muted-foreground hover:text-foreground'
-            }`}
           >
             {t(`validationEditor.requirementKind.${k}`)}
-          </button>
+          </Button>
         ))}
       </div>
 
@@ -247,18 +246,18 @@ function AggregateFields({
 function ScopeToggle({ value, onChange }: { value: 'perModel' | 'federation'; onChange: (v: 'perModel' | 'federation') => void }) {
   const { t } = useTranslation();
   return (
-    <div className="inline-flex rounded border border-border bg-white p-0.5 text-2xs">
+    <div className="inline-flex rounded border border-border bg-card p-0.5">
       {(['federation', 'perModel'] as const).map((s) => (
-        <button
+        <Button
           key={s}
           type="button"
+          variant="toggle"
+          size="segment"
+          aria-pressed={value === s}
           onClick={() => onChange(s)}
-          className={`rounded px-2 py-0.5 font-medium transition-colors ${
-            value === s ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'
-          }`}
         >
           {t(`validationEditor.unique.scope.${s}`)}
-        </button>
+        </Button>
       ))}
     </div>
   );
@@ -267,18 +266,18 @@ function ScopeToggle({ value, onChange }: { value: 'perModel' | 'federation'; on
 function ValueTypeToggle({ value, onChange }: { value: 'number' | 'date'; onChange: (v: 'number' | 'date') => void }) {
   const { t } = useTranslation();
   return (
-    <div className="inline-flex rounded border border-border bg-white p-0.5 text-2xs">
+    <div className="inline-flex rounded border border-border bg-card p-0.5">
       {(['number', 'date'] as const).map((v) => (
-        <button
+        <Button
           key={v}
           type="button"
+          variant="toggle"
+          size="segment"
+          aria-pressed={value === v}
           onClick={() => onChange(v)}
-          className={`rounded px-2 py-0.5 font-medium transition-colors ${
-            value === v ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'
-          }`}
         >
           {t(`validationEditor.compare.valueType.${v}`)}
-        </button>
+        </Button>
       ))}
     </div>
   );

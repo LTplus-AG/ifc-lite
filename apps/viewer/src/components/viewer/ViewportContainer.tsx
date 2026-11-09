@@ -650,7 +650,7 @@ export function ViewportContainer() {
         {/* Drop overlay — full window, since the whole window is the drop target (#5845) */}
         {isDragging && createPortal(
           <div className="pointer-events-none fixed inset-0 z-50 bg-primary/10 backdrop-blur-[2px] flex items-center justify-center p-8">
-            <div className="border-4 border-dashed border-primary bg-white/90 dark:bg-black/90 p-12 max-w-2xl w-full text-center shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] dark:shadow-[8px_8px_0px_0px_rgba(255,255,255,1)] transition-all">
+            <div className="border-4 border-dashed border-primary bg-popover/90 p-12 max-w-2xl w-full text-center shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] dark:shadow-[8px_8px_0px_0px_rgba(255,255,255,1)] transition-all">
               <Upload className="h-20 w-20 mx-auto text-primary mb-6" />
               <p className="text-3xl font-black uppercase tracking-tight text-primary">{t('viewportLighting.container.emptyState.dropOverlay.title')}</p>
             </div>
@@ -753,7 +753,7 @@ export function ViewportContainer() {
 
   return (
     <div
-      className="relative h-full w-full bg-zinc-50 dark:bg-black overflow-hidden"
+      className="relative h-full w-full bg-zinc-50 overflow-hidden"
       data-viewport
     >
       {scanRunActive && <Suspense fallback={null}><ScanDetectionOverlay /></Suspense>}

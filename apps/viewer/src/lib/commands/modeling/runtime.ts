@@ -119,9 +119,19 @@ export function beginCommandRuntime(
     nextField: () => requestFieldEdit('next'),
     typeValue: (draft) => requestFieldEdit(state.activeField ?? 0, draft),
     toggleSnap: () => { store?.getState().toggleSnap(); return true; },
-    runKey: (run) => applyStep(run(state.gesture, ctx)),
+    runKey: (run) => applyStep(run(state.gesture, state.ctx ?? ctx)),
   });
   publish({ ...IDLE, command, ctx, gesture: command.init(ctx) });
+}
+
+/**
+ * The running command's workplane moved up or down: same gesture, new context.
+ * The gesture is plan coordinates on the same storey, so it stays good; a new
+ * context object is what wakes the ghost and drops a pointer frame still queued
+ * against the old plane.
+ */
+export function rebindCommandContext(ctx: CommandContext): void {
+  if (state.command) publish({ ctx });
 }
 
 /** Drop the active command's gesture and key bindings. Never calls `onExit`. */
@@ -166,6 +176,42 @@ export function commandPointerDown(snap: SnapResult): void {
   const moved = command.pointerMove(state.gesture, snap, ctx);
   publish({ gesture: moved, snap });
   applyStep(command.pointerDown(moved, snap, ctx));
+}
+
+/**
+ * A move whose ray meets nothing to land on (the sky past the horizon with
+ * Alt held): the last snap is no longer where the pointer is, so the HUD
+ * stops marking it (#9201). The gesture keeps its last point.
+ */
+export function commandPointerMissed(): void {
+  if (state.command && state.snap) publish({ snap: null });
+}
+
+/** The gesture hovered at `snap`, when a press there would grab something a drag moves (`pressDrags`); else null. Publishes nothing. */
+function grabbedAt(snap: SnapResult): unknown {
+  const { command, ctx } = state;
+  if (!command?.pressDrags || !ctx) return null;
+  const moved = command.pointerMove(state.gesture, snap, ctx);
+  return command.pressDrags(moved) ? moved : null;
+}
+
+/** A touch press would grab something at `snap` (#9092): the long press waits for no drag there. */
+export function commandPressGrabs(snap: SnapResult): boolean {
+  return grabbedAt(snap) !== null;
+}
+
+/**
+ * A touch press that starts to drag (#9092): pressed where it landed only when
+ * it grabs something there. Otherwise the finger orbits and the gesture is left
+ * as it was, unhovered, so Enter cannot commit what an orbit passed over.
+ */
+export function commandPressDrag(snap: SnapResult): boolean {
+  const { command, ctx } = state;
+  const moved = grabbedAt(snap);
+  if (!command || !ctx || moved === null) return false;
+  publish({ gesture: moved, snap });
+  applyStep(command.pointerDown(moved, snap, ctx));
+  return true;
 }
 
 /** A button release, for a command that follows one (a drag); refreshed like a down. */

@@ -69,6 +69,7 @@ export const ELEMENT_ALIGN: ModelingCommand<AlignGesture> = {
     Plan: AlignPlan,
     hint: (g) => (g.reference === null ? 'align.hint.reference' : g.targets.length === 0 ? 'align.hint.targets' : 'align.hint.commit'),
   },
+  aimsAtElement: () => true,
   snap: ALIGN_PICK_PROFILE,
   init,
   pointerMove: (g, s) => {

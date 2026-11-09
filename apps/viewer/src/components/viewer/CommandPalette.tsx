@@ -1,12 +1,13 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { usePersistentToolHosts } from './PersistentToolHosts';
 
 /** Ctrl/Cmd+K command search with scoring and recent usage. Command DATA
  *  (icons, labels, actions) lives in `commandPaletteCommands.ts` and its two
  *  halves (#4918 slice 3) — this file is search/keyboard/rendering only. */
 
-import { useContext, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useContext, useCallback, useEffect, useLayoutEffect, useId, useMemo, useRef, useState } from 'react';
 import { Dialog, DialogClose, DialogContent } from '@/components/ui/dialog';
 import { toast } from '@/components/ui/toast';
 import { Search, X } from 'lucide-react';
@@ -14,6 +15,9 @@ import { PaletteLauncherContext } from './command-palette-launcher';
 import { PALETTE_DIALOG_LAYOUT, PALETTE_DIALOG_TOP } from './command-palette-layout';
 import { useShallow } from 'zustand/react/shallow';
 import { canRunPaletteCommand, palettePrerequisites } from './palette-availability';
+import { useMountedFileHost, getMountedFileHost } from './toolbar/mounted-file-host';
+import { useWebGPU } from '@/hooks/useWebGPU';
+import type { SurfaceCommandContext } from './surface-command-types';
 import { useViewerStore } from '@/store';
 import { liftStartFold } from './welcome/useEmptyStartFold';
 import { useTranslation, type TranslationKey } from '@/i18n';
@@ -77,13 +81,18 @@ function activateBottomPanel(panel: BottomPanelId) {
 // ── Component ──────────────────────────────────────────────────────────
 
 interface CommandPaletteProps {
+  /** Text entered in the first-load dialog before this chunk became ready. */
+  initialQuery?: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  surfaceContext?: Omit<SurfaceCommandContext, 'surface'>;
 }
 
-export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
+export function CommandPalette({ open, onOpenChange, surfaceContext, initialQuery = '' }: CommandPaletteProps) {
   const hostLauncher = useContext(PaletteLauncherContext);
-  const [query, setQuery] = useState('');
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  const [query, setQuery] = useState(initialQuery);
   const [selectedOptionId, setSelectedOptionId] = useState<string | null>(null);
   const listId = useId();
   const [recentIds, setRecentIds] = useState<string[]>([]);
@@ -94,22 +103,29 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   // Names currently in the blob cache, refreshed each open — lets recent-file clicks decide hit/miss without an async gap that would void user activation.
   const cachedNamesRef = useRef<Set<string>>(new Set());
 
+  const fileHost = useMountedFileHost();
+  const toolHosts = usePersistentToolHosts();
+  const gpuStatus = useWebGPU();
   const { execute } = useSandbox();
   const extensionCommands = useSlotContributions<CommandContribution>('commandPalette');
   const extensionHost = useOptionalExtensionHost();
-  const currentExtensionHost = useRef(extensionHost);
-  currentExtensionHost.current = extensionHost;
+  const paletteLauncher = useRef<HTMLElement | null>(null);
+  const currentExtensionHost = useMemo(() => ({ current: extensionHost }), [extensionHost]);
+  useLayoutEffect(() => {
+    currentExtensionHost.current = extensionHost;
+    return () => { currentExtensionHost.current = null; };
+  }, [currentExtensionHost, extensionHost]);
 
   useEffect(() => {
     if (open) {
       setRecentIds(getRecentIds());
       setRecentFiles(getRecentFiles());
       void getCachedFileNames().then((names) => { cachedNamesRef.current = new Set(names); });
-      setQuery('');
+      setQuery(initialQuery);
       setSelectedOptionId(null);
       requestAnimationFrame(() => inputRef.current?.focus());
     }
-  }, [open]);
+  }, [open, initialQuery]);
 
   // Retain export ownership while closed without following invisible command prerequisites.
   const prerequisites = useViewerStore(useShallow(s => open ? palettePrerequisites(s) : null));
@@ -118,12 +134,20 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   // Cesium only has something to show once a model carries georeferencing.
   const cesiumAvailable = useViewerStore((s) => s.cesiumAvailable);
 
-  const { t } = useTranslation();
+  const { t, locale, revision } = useTranslation();
   const { runExport, dialog: exportDialog, extensionExporters } = useExportRunner();
 
   // ── Command definitions ── (data table: `commandPaletteCommands.ts`)
   const commands = useMemo<Command[]>(() => !open ? [] : buildCommandPaletteCommands({
     execute,
+    surfaceContext: { ...toolHosts, ...surfaceContext,
+      openBulkProperties: (surfaceContext?.openBulkProperties ?? toolHosts.openBulkProperties)
+        ? () => (surfaceContext?.openBulkProperties ?? toolHosts.openBulkProperties)?.(paletteLauncher.current) : undefined,
+      openImportData: (surfaceContext?.openImportData ?? toolHosts.openImportData)
+        ? () => (surfaceContext?.openImportData ?? toolHosts.openImportData)?.(paletteLauncher.current) : undefined,
+      openClassFilter: (surfaceContext?.openClassFilter ?? toolHosts.openClassFilter)
+        ? () => (surfaceContext?.openClassFilter ?? toolHosts.openClassFilter)?.(paletteLauncher.current) : undefined,
+      ...fileHost, fileHostIsCurrent: () => fileHost !== null && getMountedFileHost() === fileHost },
     recentFiles,
     cachedNames: cachedNamesRef,
     extensionCommands,
@@ -135,7 +159,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
     activateBottomPanel,
     runExport,
     extensionExporters,
-  }), [open, execute, recentFiles, extensionCommands, extensionHost, canEditInSession, cesiumAvailable, runExport, extensionExporters, prerequisites]);
+  }), [open, execute, recentFiles, extensionCommands, extensionHost, currentExtensionHost, canEditInSession, cesiumAvailable, runExport, extensionExporters, prerequisites, fileHost, gpuStatus, surfaceContext, toolHosts, locale, revision]);
 
 
   // ── Search: score, filter, sort ──
@@ -191,6 +215,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
     if (!canRunPaletteCommand(cmd)) return;
     onOpenChange(false);
     const activate = () => {
+      if (!mounted.current) return;
       if (!canRunPaletteCommand(cmd, reason => toast.info(t(reason)))) return;
       recordUsage(cmd.id);
       if (!cmd.registryOwned) trackCommandExecution(cmd.id, 'palette');
@@ -223,11 +248,18 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent overlayClassName="z-(--z-command-palette)" className={`${PALETTE_DIALOG_LAYOUT} flex flex-col p-0 gap-0 overflow-hidden data-[state=open]:animate-none data-[state=closed]:animate-none`}
           style={{ top: PALETTE_DIALOG_TOP, maxHeight: 'calc(100dvh - min(12dvh, 96px) - 16px)' }} aria-label={t('commandPalette.ariaLabel')} hideCloseButton
+          onOpenAutoFocus={event => {
+            event.preventDefault();
+            paletteLauncher.current = hostLauncher?.current ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
+            // #8947: Preserve launcher capture and continue a buffered cold query
+            // at its insertion caret instead of Radix selecting all of its text.
+            const input = inputRef.current;
+            input?.focus();
+            input?.setSelectionRange(input.value.length, input.value.length);
+          }}
           onCloseAutoFocus={event => {
-            if (hostLauncher?.current?.isConnected) {
-              event.preventDefault();
-              hostLauncher.current.focus();
-            }
+            event.preventDefault();
+            if (paletteLauncher.current?.isConnected) paletteLauncher.current.focus();
           }}
           onEscapeKeyDown={event => {
             if (event.isComposing || event.keyCode === 229) event.preventDefault();

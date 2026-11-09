@@ -415,6 +415,8 @@ ifc-lite export model.ifc --format csv --out walls.csv
 
 ### `schedule` — Tabular Schedules
 
+Door and window presets (including `IfcDoorStandardCase` and `IfcWindowStandardCase`) include Mark (`Tag`), FireRating, IsExternal, Width and Height. CLI schedules and SDK CSV/JSON exports use base quantities when present and otherwise read `OverallWidth` and `OverallHeight` in the model’s length unit.
+
 Generate an AEC-style schedule (door schedule, window schedule, room schedule, material takeoff, …) for one IFC class: a filtered, columnar table with attribute/property/quantity columns, optional sort/group/subtotal rows, and CSV/JSON/Markdown/HTML output. Column values resolve through the same property/quantity resolver `export` uses and `--where` reuses `query`'s exact filter, so a schedule always agrees with the equivalent `query`/`export` invocation.
 
 ```bash
@@ -905,6 +907,38 @@ ifc-lite generate-spaces model.ifc --list-storeys
 | `--dry-run` | Detect and report only; write nothing |
 | `--force` | Re-derive even if the model already has generated spaces (may duplicate) |
 | `--list-storeys` | List storeys (ID, name, elevation) and exit |
+| `--json` | Machine-readable output |
+
+---
+
+### `storey` - Author Storeys
+
+List, add, rename, re-level and delete `IfcBuildingStorey` in an IFC file, through the same `bim.store` path as the viewer's storey manager and the MCP `storey_*` tools. Geometry follows storeys. A storey's contents move with it, walls attached to the storey above resize, and stairs that land on a moved storey are refit. Any refusal is reported before anything is written.
+
+```bash
+ifc-lite storey model.ifc list
+ifc-lite storey model.ifc add --from "Level 1" --out with-level-2.ifc
+ifc-lite storey model.ifc add --name "Basement" --elevation -3 --out basement.ifc
+ifc-lite storey model.ifc edit --storey "Level 1" --floor-height 3.5 --out raised.ifc
+ifc-lite storey model.ifc edit --storey "Level 2" --elevation 3.8 --dry-run
+ifc-lite storey model.ifc delete --storey "Level 2" --move-to "Level 1" --out merged.ifc
+```
+
+`--elevation` moves only that storey. `--floor-height` sets the gap to the storey above, and every storey above in the same building shifts by the same amount. A storey is named by its exact name (letter case is a fallback), or `#<express id>`; a bare number is read as the express ID unless a storey also has that name, which is refused as ambiguous. Lengths are metres.
+
+**Flags:**
+
+| Flag | Description |
+|------|-------------|
+| `--out <file>` | Output IFC (omit with `--dry-run`) |
+| `--name <n>` / `--elevation <m>` | Name and elevation of a storey to add; `--name` also renames |
+| `--building <id>` | The building a `--name`/`--elevation` storey joins, in a model with several (`--from` uses its storey's building) |
+| `--from <storey>` / `--below` | Add above (or below) a storey with its neighbours' naming and spacing |
+| `--storey <storey>` | The storey to rename, edit or delete |
+| `--floor-height <m>` | New floor-to-floor height of `--storey` |
+| `--move-to <storey>` | Delete, moving the contents to this storey (same identity and position) |
+| `--delete-contents` | Delete the storey and everything it holds |
+| `--dry-run` | Make the change in memory and report it, refused exactly as the real one; write nothing |
 | `--json` | Machine-readable output |
 
 ---
@@ -1803,6 +1837,7 @@ The `semantic` command reads JSON/SPARQL providers, generates shared profile art
 | `stats` | Auto-calculated model KPIs and health check |
 | `mutate` | Modify properties/attributes and save |
 | `generate-spaces` | Derive IfcSpace from walls (slab/roof-aware height) |
+| `storey` | Author storeys; geometry follows ("storey --help" for actions) |
 | `ask` | Natural language BIM queries |
 | `view` | Interactive 3D viewer in browser |
 | `analyze` | Query + visualize analysis results |

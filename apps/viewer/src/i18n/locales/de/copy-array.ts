@@ -10,6 +10,8 @@ export const copyArrayDe = {
   "commands.model.pasteInPlace": "Fügen Sie die kopierten Bauteile an Ort und Stelle im aktuellen Geschoss ein (Modellarbeitsbereich).",
   "commands.model.array": "Wiederholen Sie die ausgewählten Bauteile in einer Reihe oder um einen Mittelpunkt (Modellarbeitsbereich)",
   "copyArray.copied": {"one": "{countDisplay} Bauteil kopiert", "other": "{countDisplay} Bauteile kopiert"},
+  "copyArray.cameFree": {"one": "{countDisplay} Kopie liegt auf keinem Rasterschnittpunkt und ist nicht mehr an das Raster gebunden", "other": "{countDisplay} Kopien liegen auf keinem Rasterschnittpunkt und sind nicht mehr an das Raster gebunden"},
+  "copyArray.unattachedTops": {"one": "{countDisplay} Kopie behält ihre Höhe: Ihre Oberkante kann dem neuen Geschoss nicht folgen und ist nicht mehr gebunden", "other": "{countDisplay} Kopien behalten ihre Höhe: Ihre Oberkanten können dem neuen Geschoss nicht folgen und sind nicht mehr gebunden"},
   "copyArray.paste.label": "Einfügen",
   "copyArray.paste.hint": "Klicken Sie auf die Zielposition der Kopie. Zum Einfügen in einem anderen Geschoss zuerst das Geschoss wechseln",
   "copyArray.paste.empty": "Es wird noch nichts kopiert: Wählen Sie Bauteile aus und kopieren Sie sie zuerst",

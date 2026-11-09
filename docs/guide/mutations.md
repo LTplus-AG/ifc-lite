@@ -1103,3 +1103,15 @@ Elements whose shape depends on storey spacing follow the edit in the same trans
 **Authoring default.** `bim.store.addWall`, `addColumn`, `addColumnOnGrid`, `addBeam`, `addMember` and `addCurtainWall` take an optional `TopConstraint` (a `setTopConstraintInStore` constraint, or `'auto'`, the default). `auto` is the Model workspace's "To storey above": an element whose top lands on the storey above its own (within 1 mm) is recorded attached to it, relatively; anything else is fixed. The Model workspace's Wall, Column and Curtain Wall tools draw up to the storey above under that default and record the attachment in the same Undo step; the Beam tool records it when the beam's top lands on the storey above.
 
 `bim.store` exposes the same operations in every host: the SDK's headless backend, the viewer (through the storey manager's undo-batched path) and its script sandbox, the MCP `storey_*` tools and `ifc-lite storey`. The methods are `listStoreyLevels`, `suggestStorey`, `addStorey`, `renameStorey`, `planStoreyEdit`, `editStorey`, `planStoreyDelete` and `deleteStorey`. `editStorey` and `deleteStorey` take the reviewed plan as an optional last argument. Headless backends record each write as one Undo step. `listStoreyLevels` counts every storey, however large; only a plan refuses a storey holding more than 50,000 products. The round-1A methods `planAddStorey`, `setTopConstraint` and `copyToStoreys` are on the SDK's headless backend (and so on `ifc-lite run` scripts); the viewer adapter, its sandbox, MCP and `ifc-lite storey` follow in #9352.
+
+Walls added through `bim.store.addWall` join coincident, non-parallel chain
+endpoints automatically. Crossings and T junctions still use `joinWalls`.
+Implicit joins are best-effort: if a join is refused (for example, a loaded
+wall has unreadable hosted-opening geometry), the new wall is still added
+without that join. The returned entity ref includes `notices?: string[]`
+with the skipped pair and reason. Explicit `joinWalls` requests still refuse
+atomically. Low-level `addOrdinaryElementInStore` callers can collect the
+same notices through `options.notices`; otherwise they are logged.
+Moving an `IfcGrid` with `transformElements` carries its grid-bound products.
+The headless CLI supports `alignElements` using current native mesh bounds,
+including hosted cuts, rather than uncut parametric bounding boxes.

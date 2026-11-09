@@ -90,7 +90,7 @@ function metadataSnapshot(saved: Awaited<ReturnType<typeof records>>, known: Rea
     expect(definition.attributes[2]).toBe(isSpace ? (propertySet ? 'Pset_SpaceCommon' : 'Qto_SpaceBaseQuantities') : quantityNames[ownerType]);
     const leafIds = definition.attributes.at(-1);
     if (!Array.isArray(leafIds)) throw new Error('Generated metadata has no property/quantity aggregate');
-    if (isSpace) { expect(leafIds).toHaveLength(propertySet ? 4 : 5); spaceRecords += 2 + leafIds.length; }
+    if (isSpace) { expect(leafIds).toHaveLength(propertySet ? 4 : 6); spaceRecords += 2 + leafIds.length; }
     else expect(leafIds.length).toBeGreaterThan(0);
     const leaves = leafIds.map(leafId => {
       const leaf = consume(leafId);
@@ -98,6 +98,9 @@ function metadataSnapshot(saved: Awaited<ReturnType<typeof records>>, known: Rea
       expect(leaf.attributes).toHaveLength(propertySet ? 4 : 5);
       return { type: leaf.type, attributes: leaf.attributes };
     }).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
+    // #9423: gross/net perimeters replace the old single Perimeter quantity.
+    if (isSpace && !propertySet) expect(Object.fromEntries(leaves.map(leaf => [leaf.attributes[0], leaf.attributes[3]])))
+      .toEqual({ GrossFloorArea: 12, NetFloorArea: 12, GrossPerimeter: 14, NetPerimeter: 14, Height: 3, GrossVolume: 36 });
     metadata.push({ relation: relation.attributes.slice(1, 5), type: definition.type,
       GlobalId: isSpace ? undefined : definition.attributes[0], relationGlobalId: isSpace ? undefined : relation.attributes[0],
       definition: definition.attributes.slice(1, -1), leaves });
@@ -105,7 +108,7 @@ function metadataSnapshot(saved: Awaited<ReturnType<typeof records>>, known: Rea
   // #9355: an empty relation loop must not hide missing authored quantities.
   const expectedOwners = authoredIds.filter(id => quantityNames[all.get(id)?.type ?? '']);
   expect([...quantityOwners].sort((a,b) => a-b)).toEqual(expectedOwners.sort((a,b) => a-b));
-  expect(spaceRecords).toBe(spaceId !== undefined && all.has(spaceId) ? 13 : 0);
+  expect(spaceRecords).toBe(spaceId !== undefined && all.has(spaceId) ? 14 : 0);
   expect(consumed.size).toBe(generated.size);
   return { count: saved.length, known: saved.filter(([id]) => known.has(id)),
     metadata: metadata.sort((a, b) => a.type.localeCompare(b.type)) };

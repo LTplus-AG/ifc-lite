@@ -182,6 +182,32 @@ export function extractWallSegmentsForStorey(
   // own placement chain. See `frameInStoreyFrame`.
   const storeyChain = storeyPlacementChain(store, extractor, overlay, storeyExpressId);
 
+  // Read the live body: joined walls use arbitrary profiles, and authored
+  // walls need not have a material layer set at all (#9296).
+  const wallBodyThickness = (id: number, segment: Segment): number | undefined => {
+    const wall = readEntity(store, extractor, overlay, id);
+    const rep = numericAttr(wall?.attributes[6]);
+    const points = rep === null ? null : gatherBodyFootprintPoints(store, extractor, overlay, rep);
+    if (!points?.length) return undefined;
+    const placementId = numericAttr(wall?.attributes[5]);
+    const frame = placementId === null ? null : frameInStoreyFrame(store, extractor, overlay, placementId, storeyChain);
+    if (!frame) return undefined;
+    const dx = segment.b[0] - segment.a[0], dy = segment.b[1] - segment.a[1];
+    const length = Math.hypot(dx, dy);
+    if (!(length > AXIS_EPS)) return undefined;
+    // Both the footprint and axis must be in the storey frame. Project onto
+    // the axis normal; a mesh need not run along the placement's local X.
+    const origin = applyFrame(frame, points[0]);
+    let min = Infinity, max = -Infinity;
+    for (const p of points) {
+      const q = applyFrame(frame, p);
+      const perpendicular = ((q[0] - origin[0]) * -dy + (q[1] - origin[1]) * dx) / length;
+      min = Math.min(min, perpendicular); max = Math.max(max, perpendicular);
+    }
+    const thickness = (max - min) * lengthUnitScale;
+    return thickness > 0 && Number.isFinite(thickness) ? thickness : undefined;
+  };
+
   for (const id of dividerIds) {
     // Created dividers have no source bytes; the overlay loop below reads them.
     if (lookup.createdType(id) !== undefined) continue;
@@ -189,7 +215,7 @@ export function extractWallSegmentsForStorey(
     if (result.segment) {
       segments.push(scaleSegment(result.segment, lengthUnitScale));
       contributing.push(id);
-      wallThicknesses.push(wallThicknessFromMaterial(store, id));
+      wallThicknesses.push(wallBodyThickness(id, result.segment) ?? wallThicknessFromMaterial(store, id));
     } else {
       skipped.push({ wallId: id, reason: result.reason ?? 'no-axis-or-rect-profile' });
     }
@@ -207,13 +233,13 @@ export function extractWallSegmentsForStorey(
       // Effective class: a created wall retyped away is not a divider (#5249).
       if (!dividerTypes.has((lookup.retypeOf(ent.expressId) ?? ent.type).toLowerCase())) continue;
       overlayCount++;
-      const result = extractWallAxisFromOverlay(store, extractor, overlay, ent, storeyChain, log);
+      const result = extractWallAxisFromSource(store, extractor, overlay, ent.expressId, storeyChain, log);
       if (result.segment) {
         // Overlay walls are authored via addWallToStore, which writes the
         // file's native length unit like the source (#6232): scale them too.
         segments.push(scaleSegment(result.segment, lengthUnitScale));
         contributing.push(ent.expressId);
-        wallThicknesses.push(undefined); // overlay walls carry no material yet
+        wallThicknesses.push(wallBodyThickness(ent.expressId, result.segment));
       } else {
         skipped.push({ wallId: ent.expressId, reason: result.reason ?? 'no-axis-or-rect-profile' });
       }
@@ -362,21 +388,6 @@ function extractWallAxisFromSource(
   if (placementId === null) return { segment: null, reason: 'no-placement' };
   if (representationId === null) return { segment: null, reason: 'no-representation' };
   return computeWallSegment(store, extractor, placementId, representationId, overlay, wallId, storeyChain, log);
-}
-
-function extractWallAxisFromOverlay(
-  store: IfcDataStore,
-  extractor: EntityExtractor,
-  overlay: OverlayWallReader,
-  wall: { expressId: number; attributes: IfcAttributeValue[] },
-  storeyChain: ReadonlyMap<number, number> | null,
-  log: Logger,
-): ExtractAttempt {
-  const placementId = numericAttr(wall.attributes[5]);
-  const representationId = numericAttr(wall.attributes[6]);
-  if (placementId === null) return { segment: null, reason: 'no-placement' };
-  if (representationId === null) return { segment: null, reason: 'no-representation' };
-  return computeWallSegment(store, extractor, placementId, representationId, overlay, wall.expressId, storeyChain, log);
 }
 
 function computeWallSegment(

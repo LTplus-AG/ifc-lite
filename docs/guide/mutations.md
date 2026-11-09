@@ -680,6 +680,10 @@ const result = generateSpacesFromWalls(editor, dataStore, storeyExpressId, {
 // → { wallsConsidered, wallsContributing, detected: DetectedSpace[], emitted: [...] }
 ```
 
+By default, generated spaces use the inner wall faces, including joined wall thickness, and store paired `NetFloorArea`/`NetPerimeter` (inner faces) and `GrossFloorArea`/`GrossPerimeter` (centrelines) in `Qto_SpaceBaseQuantities`. Moving a bounding wall through `transformElementsInStore` updates generated space outlines and quantities in the same atomic edit; the SDK records it as one undo operation. If the move changes room topology or a room cannot be updated, the room is retained and the result returns a notice (also logged), while the wall move still succeeds. Transform hooks receive the draft editor and must write through it.
+
+Generated spaces retain their snap tolerance and minimum area in `IfcLite_SpaceGeneration`, so boundary edits use the same detection settings after export and reopen. If a legacy generated space cannot be re-detected, the edit emits a warning identifying the space rather than silently keeping stale quantities.
+
 The detector also picks up overlay walls (placed via `addWallToStore` since the model was parsed) when you pass an `OverlayWallReader` — the viewer's Room tool (**Auto**) does the same for freshly-drawn walls without a re-parse. `detectEnclosedAreas(segments, options)` is exported as the pure pipeline step if you want detection without IFC emission.
 
 In the viewer, **Room → More** keeps the minimum area, name pattern, and schema-specific space classification alongside read-only candidate totals. `addSpaceToStore` validates the classification before writing: IFC2X3 uses `InteriorOrExteriorSpace`, IFC4 and IFC4X3 use `PredefinedType`, and `USERDEFINED` needs an `ObjectType`. An `EXTERNAL` space sets `Pset_SpaceCommon.IsExternal` to true.

@@ -415,6 +415,8 @@ ifc-lite export model.ifc --format csv --out walls.csv
 
 ### `schedule` — Tabular Schedules
 
+Door and window presets (including `IfcDoorStandardCase` and `IfcWindowStandardCase`) include Mark (`Tag`), FireRating, IsExternal, Width and Height. CLI schedules and SDK CSV/JSON exports use base quantities when present and otherwise read `OverallWidth` and `OverallHeight` in the model’s length unit.
+
 Generate an AEC-style schedule (door schedule, window schedule, room schedule, material takeoff, …) for one IFC class: a filtered, columnar table with attribute/property/quantity columns, optional sort/group/subtotal rows, and CSV/JSON/Markdown/HTML output. Column values resolve through the same property/quantity resolver `export` uses and `--where` reuses `query`'s exact filter, so a schedule always agrees with the equivalent `query`/`export` invocation.
 
 ```bash

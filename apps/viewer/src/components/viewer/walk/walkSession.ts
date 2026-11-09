@@ -293,8 +293,9 @@ export class WalkSession {
   frame(elapsed: number, input: WalkInput, look: Vec3, up?: Vec3): Vec3 {
     const c = this.character;
     this.accumulator = Math.min(this.accumulator + Math.max(0, elapsed), MAX_TICKS_PER_FRAME * WALK_TICK);
-    const flat = Math.hypot(look.x, look.z);
-    const heading = flat > 1e-9 ? { x: look.x / flat, z: look.z / flat } : up ? flyHeading(look, up) : { x: 0, z: 1 };
+    // One heading rule with fly mode: the look's own heading, else screen-up,
+    // else -Z, whether or not the caller passes `up`.
+    const heading = flyHeading(look, up);
     const fx = heading.x;
     const fz = heading.z;
     // Screen-right for a Y-up camera looking along (fx, fz) is (-fz, fx).

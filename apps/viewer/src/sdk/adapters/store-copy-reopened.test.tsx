@@ -75,7 +75,7 @@ it('#9296 reopened typed floor keeps property definitions and one relationship p
     assert.deepEqual(quantities(copied[i].expressId),quantities(walls[i].expressId));
     assert.deepEqual(quantities(second[i].expressId),quantities(walls[i].expressId));
   }
-  for (const recordType of ['IFCELEMENTQUANTITY','IFCRELDEFINESBYPROPERTIES']) {
+  for (const recordType of ['IFCPROPERTYSET','IFCELEMENTQUANTITY','IFCRELDEFINESBYPROPERTIES']) {
     const guids=[...reader.ids(recordType)].map(id=>reader.entity(id)!.attributes[0]);
     assert.equal(new Set(guids).size,guids.length,`${recordType} GlobalIds are unique`);
   }

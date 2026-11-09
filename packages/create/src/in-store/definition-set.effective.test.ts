@@ -192,25 +192,26 @@ for (const quantity of [false, true]) it(`#9296 a copied edited ${quantity ? 'qu
   else expect(extractPropertiesOnDemand(reopened, copy).find(set => set.name === 'Pset_B')?.properties[0].value).toBe('effective');
 });
 
-for (const quantity of [false, true]) for (const operation of ['shared', 'second', 'delete'] as const) it(`#9296 same-named ${quantity ? 'quantity' : 'property'} definitions retain ${operation} edits on copy and undo`, async () => {
+for (const quantity of [false, true]) for (const operation of ['shared', 'second', 'delete', 'delete-last'] as const) it(`#9296 same-named ${quantity ? 'quantity' : 'property'} definitions retain ${operation} edits on copy and undo`, async () => {
   const name = quantity ? 'Qto_Same' : 'Pset_Same';
+  const secondName = operation === 'delete-last' ? name + 'Sibling' : name;
   const definitions = quantity
     ? `#82=IFCELEMENTQUANTITY('0QTO000000000000000082',$,'${name}',$,$,(#96));
-#83=IFCELEMENTQUANTITY('0QTO000000000000000083',$,'${name}',$,$,(#97));
+#83=IFCELEMENTQUANTITY('0QTO000000000000000083',$,'${secondName}',$,$,(#97));
 #96=IFCQUANTITYLENGTH('Length',$,$,5.,$);
 #97=IFCQUANTITYLENGTH('${operation === 'second' ? 'Second' : 'Length'}',$,$,11.,$);`
     : `#82=IFCPROPERTYSET('0PSET00000000000000082',$,'${name}',$,(#96));
-#83=IFCPROPERTYSET('0PSET00000000000000083',$,'${name}',$,(#97));
+#83=IFCPROPERTYSET('0PSET00000000000000083',$,'${secondName}',$,(#97));
 #96=IFCPROPERTYSINGLEVALUE('Code',$,IFCLABEL('first'),$);
 #97=IFCPROPERTYSINGLEVALUE('${operation === 'second' ? 'Second' : 'Code'}',$,IFCLABEL('second'),$);`;
   const source = IFC.replace(/^#82=.*\n#83=.*$/m, definitions)
     .replace('(#51),(#82,#83)', '(#51),#82')
     .replace('ENDSEC;\nEND-ISO', "#198=IFCRELDEFINESBYPROPERTIES('0RELDEF000000000000198',$,$,$,(#51),#83);\nENDSEC;\nEND-ISO");
-  const { store, view, editor } = await session(source);
+  const { store, view } = await session(source);
   view.setOnDemandExtractor(id => extractPropertiesOnDemand(store, id));
   view.setQuantityExtractor(id => extractQuantitiesOnDemand(store, id));
   const member = operation === 'second' ? 'Second' : quantity ? 'Length' : 'Code';
-  if (operation === 'delete') {
+  if (operation === 'delete' || operation === 'delete-last') {
     if (quantity) view.deleteQuantity(51, name, member); else view.deleteProperty(51, name, member);
   } else if (quantity) view.setQuantity(51, name, member, 23, QuantityType.Length);
   else view.setProperty(51, name, member, 'edited');
@@ -221,11 +222,12 @@ for (const quantity of [false, true]) for (const operation of ['shared', 'second
   const reopened = await new IfcParser().parseColumnar(output.slice().buffer as ArrayBuffer, { disableWorkerScan: true });
   for (const target of [copy, 51]) {
     const sets = quantity ? extractQuantitiesOnDemand(reopened, target) : extractPropertiesOnDemand(reopened, target);
-    expect(sets.filter(set => set.name === name), 'each populated definition survives').toHaveLength(operation === 'delete' ? 1 : 2);
+    expect(sets.filter(set => set.name === name), `each populated definition survives for ${target} (copy ${copy})`).toHaveLength(operation === 'delete-last' ? 0 : operation === 'delete' ? 1 : 2);
     const values = quantity
       ? extractQuantitiesOnDemand(reopened, target).filter(set => set.name === name).flatMap(set => set.quantities.map(member => member.value))
       : extractPropertiesOnDemand(reopened, target).filter(set => set.name === name).flatMap(set => set.properties.map(member => member.value));
-    const expected = operation === 'delete' ? quantity ? [11] : ['second']
+    if (operation === 'delete-last') expect(sets.filter(set => set.name === secondName)).toHaveLength(1);
+    const expected = operation === 'delete-last' ? [] : operation === 'delete' ? quantity ? [11] : ['second']
       : operation === 'second' ? quantity ? [5, 23] : ['first', 'edited'] : quantity ? [23, 11] : ['edited', 'second'];
     expect(values).toEqual(expected);
   }

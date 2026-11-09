@@ -14,6 +14,7 @@ export function overlayPropertyBase(
   ctx: PropertySetContext, entityId: number,
   relationships: readonly { psetId: number }[] | undefined,
 ): { properties: PropertySet[]; quantities: QuantitySet[] } | undefined {
+  // @raw-entity-enumeration-ok immutable source membership only; these definitions are parsed below before the current overlay is applied.
   const ids = [...new Set(relationships?.map(rel => rel.psetId))]
     .filter(id => ctx.dataStore.entityIndex.byId.has(id));
   if (!ids.length) return undefined;

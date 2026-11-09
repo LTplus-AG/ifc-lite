@@ -291,7 +291,7 @@ export function collectPropertyAndQuantitySetMutations(
     const overlayBase = pass.isOverlayCreated(entityId)
       ? overlayPropertyBase(ctx, entityId, relDefinesByEntity.get(entityId)) : undefined;
     const allQsets = typeProjection?.qsets ?? mutationView.getQuantitiesForEntity(entityId,
-      overlayBase?.quantities.length ? () => overlayBase.quantities : undefined);
+      overlayBase?.quantities.length ? () => overlayBase.quantities : undefined, true);
     let relevantQsets = allQsets.filter((qset: QuantitySet) => qsetNames.has(qset.name));
 
     const typeCopy = typeOwned

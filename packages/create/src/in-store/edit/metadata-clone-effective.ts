@@ -23,7 +23,7 @@ export function cloneEffectiveMetadata(view: MutablePropertyView, editor: StoreE
     deletedProperties.add(propertyKey(source, change.setName, change.name));
   }
   const properties = namedMembers(view.getForEntity(source).filter(set => propertyNames.has(set.name)), set => set.properties);
-  const quantities = namedMembers(view.getQuantitiesForEntity(source).filter(set => quantityNames.has(set.name)), set => set.quantities);
+  const quantities = namedMembers(view.getQuantitiesForEntity(source).filter(set => quantityNames.has(set.name)), set => set.quantities).filter(set => set.members.length > 0);
   const writes = targets.length * (properties.reduce((sum, set) => sum + 1 + set.members.length
     + set.members.filter(property => property.dataType !== undefined).length, 0)
     + quantities.reduce((sum, set) => sum + 1 + set.members.length, 0)
@@ -46,8 +46,9 @@ export function cloneEffectiveMetadata(view: MutablePropertyView, editor: StoreE
       existingProperties.add(set.name);
     }
     for (const change of changes) {
-      if (change.kind === 'quantity' && change.deleted && change.setName !== undefined
-        && !quantities.some(set => set.name === change.setName)) view.deleteQuantitySet(target, change.setName);
+      if (!change.deleted || change.setName === undefined) continue;
+      if (change.kind === 'property' && !properties.some(set => set.name === change.setName)) retainDeletedSet(view, view.deletePropertySet(target, change.setName));
+      if (change.kind === 'quantity' && !quantities.some(set => set.name === change.setName)) retainDeletedSet(view, view.deleteQuantitySet(target, change.setName));
     }
     for (const set of quantities) {
       if (existingQuantities.has(set.name)) continue;
@@ -90,5 +91,14 @@ function retainDeletedMembers(view: MutablePropertyView, mutation: Mutation, cha
     after.entries = after.entries.filter(([key]) => key !== quantityKey(after.entityId, after.setName, change.name!));
     after.entries.push([quantityKey(after.entityId, after.setName, change.name!), { operation: 'DELETE' }]);
   }
+  view.restoreSetOverlay(after);
+}
+
+/** The target's saved definitions are reached through new relationships, so its
+ * ordinary source-id extractor cannot see the set that this mask must hide. */
+function retainDeletedSet(view: MutablePropertyView, mutation: Mutation): void {
+  const after = mutation.setOverlay?.after;
+  if (!after) throw new Error('Metadata deletion must journal its set overlay');
+  after.masked = true;
   view.restoreSetOverlay(after);
 }

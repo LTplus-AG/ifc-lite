@@ -22,11 +22,17 @@ class ScriptedWorker {
   onerror: ((event: ErrorEvent) => void) | null = null;
   onmessageerror: (() => void) | null = null;
 
+  /** When set, the next postMessage throws it (e.g. a DataCloneError). */
+  refusePost: Error | null = null;
+
   postMessage(message: RemeshWorkerInbound, transfer: Transferable[] = []): void {
+    if (this.refusePost) throw this.refusePost;
     this.posted.push({ message, transfer });
   }
+  terminateCalls = 0;
   terminate(): void {
     this.terminated = true;
+    this.terminateCalls += 1;
   }
   reply(message: RemeshWorkerOutbound): void {
     this.onmessage?.({ data: message } as MessageEvent<RemeshWorkerOutbound>);
@@ -167,5 +173,142 @@ describe('RemeshClient (#6232)', () => {
     };
     worker.reply({ type: 'style-wire', requestId: worker.requestIds().length + 1, wire });
     await expect(pending).resolves.toBe(wire);
+  });
+
+  it('P5: an unreadable message during start rejects create() and terminates the worker', async () => {
+    const worker = new ScriptedWorker();
+    const pending = RemeshClient.create(CONFIG, { createWorker: () => worker as unknown as Worker });
+    worker.onmessageerror?.();
+    await expect(pending).rejects.toThrow(/could not be read/);
+    expect(worker.terminated).toBe(true);
+  });
+
+  it('P5: a worker that never answers init rejects create() at the deadline', async () => {
+    vi.useFakeTimers();
+    try {
+      const worker = new ScriptedWorker();
+      const pending = RemeshClient.create(CONFIG, { createWorker: () => worker as unknown as Worker, startTimeoutMs: 1_000 });
+      const failed = expect(pending).rejects.toThrow(/did not start within 1000 ms/);
+      vi.advanceTimersByTime(1_000);
+      await failed;
+      expect(worker.terminated).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('P5: a short request deadline does not cut off a slow engine start', async () => {
+    vi.useFakeTimers();
+    try {
+      const worker = new ScriptedWorker();
+      const pending = RemeshClient.create(CONFIG, { createWorker: () => worker as unknown as Worker, requestTimeoutMs: 1_000 });
+      vi.advanceTimersByTime(5_000);
+      worker.reply({ type: 'ready' });
+      const client = await pending;
+      expect(client.alive).toBe(true);
+      expect(worker.terminated).toBe(false);
+      // `ready` must disarm the start deadline: a healthy client is not
+      // killed once the default 120 s start window has passed.
+      vi.advanceTimersByTime(120_000);
+      expect(client.alive).toBe(true);
+      expect(worker.terminated).toBe(false);
+      const inFlight = client.remesh(request());
+      worker.reply({ type: 'result', requestId: worker.requestIds().at(-1)!, result: result(2) });
+      await expect(inFlight).resolves.toMatchObject({ csgFailures: 2 });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('P5: a throwing init post rejects create() and terminates the worker', async () => {
+    const worker = new ScriptedWorker();
+    worker.refusePost = new Error('DataCloneError: init');
+    await expect(RemeshClient.create(CONFIG, { createWorker: () => worker as unknown as Worker }))
+      .rejects.toThrow(/DataCloneError: init/);
+    expect(worker.terminated).toBe(true);
+  });
+
+  it('P5: a request whose post throws rejects alone and leaves no timer to kill later requests', async () => {
+    vi.useFakeTimers();
+    try {
+      const { client, worker } = await started(1_000);
+      worker.refusePost = new Error('DataCloneError: remesh');
+      await expect(client.remesh(request())).rejects.toThrow(/DataCloneError: remesh/);
+      worker.refusePost = null;
+      vi.advanceTimersByTime(600);
+      const later = client.remesh(request());
+      // Past the refused request's would-be deadline (t=1000), before the later one's (t=1600).
+      vi.advanceTimersByTime(500);
+      const [id] = worker.requestIds();
+      expect(client.alive).toBe(true);
+      expect(worker.terminated).toBe(false);
+      worker.reply({ type: 'result', requestId: id, result: result(0) });
+      await expect(later).resolves.toMatchObject({ csgFailures: 0 });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('P5: a late reply for a request whose post threw is ignored and does not disturb the client', async () => {
+    const { client, worker } = await started();
+    worker.refusePost = new Error('DataCloneError: remesh');
+    const refused = client.remesh(request());
+    await expect(refused).rejects.toThrow(/DataCloneError/);
+    worker.refusePost = null;
+    const refusedId = 1; // first request id; the refused post consumed it
+    // A reply for an id with no pending entry (the refused one, or any stray id) is dropped.
+    worker.reply({ type: 'result', requestId: refusedId, result: result(9) });
+    worker.reply({ type: 'error', requestId: 999, message: 'stray' });
+    expect(client.alive).toBe(true);
+    const next = client.remesh(request());
+    const [nextId] = worker.requestIds();
+    expect(nextId).not.toBe(refusedId);
+    worker.reply({ type: 'result', requestId: nextId, result: result(4) });
+    await expect(next).resolves.toMatchObject({ csgFailures: 4 });
+  });
+
+  it.each([
+    ['Infinity', Number.POSITIVE_INFINITY],
+    ['0', 0],
+  ])('P5: a %s timeout means no deadline, not an immediate one', async (_label, ms) => {
+    vi.useFakeTimers();
+    try {
+      const worker = new ScriptedWorker();
+      const pending = RemeshClient.create(CONFIG, {
+        createWorker: () => worker as unknown as Worker, startTimeoutMs: ms, requestTimeoutMs: ms,
+      });
+      vi.advanceTimersByTime(10 * 60_000);
+      worker.reply({ type: 'ready' });
+      const client = await pending;
+      const inFlight = client.remesh(request());
+      vi.advanceTimersByTime(10 * 60_000);
+      expect(client.alive).toBe(true);
+      worker.reply({ type: 'result', requestId: worker.requestIds()[0], result: result(1) });
+      await expect(inFlight).resolves.toMatchObject({ csgFailures: 1 });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('P5: a worker error after the start deadline fired does not terminate or reject twice', async () => {
+    vi.useFakeTimers();
+    try {
+      const worker = new ScriptedWorker();
+      const settled = vi.fn();
+      const pending = RemeshClient.create(CONFIG, { createWorker: () => worker as unknown as Worker, startTimeoutMs: 1_000 });
+      const outcome = pending.then(() => settled('resolved'), (error: Error) => { settled(error.message); });
+      vi.advanceTimersByTime(1_000);
+      // The start handlers stay attached after the deadline: a late error,
+      // unreadable message or init-error must hit the dead latch, not re-run it.
+      worker.onerror?.({ message: 'late crash' } as ErrorEvent);
+      worker.onmessageerror?.();
+      worker.reply({ type: 'init-error', message: 'late init-error' });
+      await outcome;
+      expect(settled).toHaveBeenCalledTimes(1);
+      expect(settled).toHaveBeenCalledWith('Re-mesh worker did not start within 1000 ms');
+      expect(worker.terminateCalls).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

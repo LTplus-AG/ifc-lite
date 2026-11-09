@@ -22,11 +22,16 @@
 
 import { getViewerStoreApi } from '@/store';
 import { selectActiveLoadProgress, selectLoadCanceller } from '@/store/slices/loadingSlice';
-import { beginActivity, finishActivity, updateActivity } from '@/lib/activity/activity-journal';
+import { beginActivity, discardActivity, finishActivity, updateActivity } from '@/lib/activity/activity-journal';
+import type { TranslationKey } from '@/i18n';
+
+type LoadOutcome = { outcome: 'completed' | 'failed' | 'cancelled'; detail?: string; detailKey?: TranslationKey };
 
 interface LoadActivity {
   subject: string;
-  result: () => { outcome: 'completed' | 'failed' | 'cancelled'; detail?: string };
+  result: (cancelRequested: boolean) => LoadOutcome;
+  /** Set once a retry owns this file's outcome; the attempt's own row is then dropped. */
+  handedOff?: boolean;
   /** While set, Cancel calls this instead of discarding the load. */
   interrupt?: () => void;
 }
@@ -34,17 +39,45 @@ interface LoadActivity {
 /** Per-load publication and error evidence; shared UI flags cannot settle a file. */
 export function createModelLoadActivity(subject: string) {
   return {
-    subject, published: false, cancelled: false, error: undefined as string | undefined,
+    subject, published: false, cancelled: false, handedOff: false, error: undefined as string | undefined,
     interrupt: undefined as (() => void) | undefined,
     fail(message: string): string {
       this.error = message;
       return message;
     },
-    result(): { outcome: 'completed' | 'failed' | 'cancelled'; detail?: string } {
-      return { outcome: this.cancelled ? 'cancelled' : this.error ? 'failed' : this.published ? 'completed' : 'cancelled',
-        ...(this.error ? { detail: this.error } : {}) };
+    /** A resource retry takes over: its own job reports how the file ends (J1). */
+    handOff(): void {
+      this.handedOff = true;
+    },
+    /**
+     * Only a cancel reads `cancelled` (J1): an explicit one (an aborted
+     * ingest), or a Cancel that interrupted a retained run before it published
+     * anything. A load that ends with no model and no cancel failed.
+     */
+    result(cancelRequested = false): LoadOutcome {
+      if (this.cancelled) return { outcome: 'cancelled' };
+      // Recorded, not truthy: a bare `new Error()` fails with an empty message, and the tray then shows Failed alone.
+      if (this.error !== undefined) return { outcome: 'failed', ...(this.error ? { detail: this.error } : {}) };
+      if (this.published) return { outcome: 'completed' };
+      if (cancelRequested) return { outcome: 'cancelled' };
+      return { outcome: 'failed', detailKey: 'activityTray.load.noModel' };
     },
   };
+}
+
+/**
+ * Hand a failed attempt's file to its resource retry (J1). The retry's own job
+ * reports how the file ends; the attempt's row is dropped when the retry
+ * supersedes it, never read as a cancel. With no retry to run there is no
+ * hand-off, so the attempt still settles its own row.
+ */
+export async function handOffToRetry(
+  activity: { handOff(): void },
+  retry: (() => Promise<void>) | undefined,
+): Promise<void> {
+  if (!retry) return;
+  activity.handOff();
+  await retry();
 }
 
 /**
@@ -88,15 +121,18 @@ export function installModelLoadCanceller(
   }
   let released = false;
   let abandoned = false;
+  let cancelRequested = false;
   let stopProgress = () => {};
   let jobId: string | undefined;
   const release = () => {
     if (released) return;
     released = true;
     stopProgress();
-    if (jobId) {
-      const result = abandoned ? { outcome: 'cancelled' as const } : activity?.result() ?? { outcome: 'cancelled' as const };
-      finishActivity(jobId, result.outcome, result.detail ? { detail: result.detail } : {});
+    if (jobId && activity?.handedOff) discardActivity(jobId);
+    else if (jobId && activity) {
+      // Superseded (Cancel, or a new primary load): the load did not run to an end of its own.
+      const { outcome, detail, detailKey } = abandoned ? { outcome: 'cancelled' as const } : activity.result(cancelRequested);
+      finishActivity(jobId, outcome, { ...(detail ? { detail } : {}), ...(detailKey ? { detailKey } : {}) });
     }
     pendingLoads.delete(abandon);
     if (store.getState().activeLoadCanceller === cancel) {
@@ -118,6 +154,7 @@ export function installModelLoadCanceller(
     // A retained reference to a load that has since ended or been replaced
     // must not supersede, or reset the viewer under, the load that owns the slot.
     if (released) return;
+    cancelRequested = true;
     // A retained run keeps its published products; its stream then completes the load.
     if (activity?.interrupt) { activity.interrupt(); return; }
     const ownsUi = store.getState().activeLoadCanceller === cancel;

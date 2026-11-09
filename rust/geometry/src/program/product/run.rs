@@ -78,8 +78,11 @@ impl ProductControl<'_> {
                 Action::Mapping { .. } => {
                     let Child::Mapping(control) = &mut self.child else { return Err(ProgramError::StaleRequest) };
                     while control.stage()?.is_some() {
-                        let reply = control.execute(router, decoder)?;
-                        control.accept_with_product(reply, router, || Some(element));
+                        let reply = match control.execute(router, decoder) {
+                            Ok(reply) => reply,
+                            Err(error) => control.recover_refusal(error, Some(element))?,
+                        };
+                        control.accept(reply, router);
                     }
                     self.mapping_next().ok_or(ProgramError::Outstanding)?
                 }

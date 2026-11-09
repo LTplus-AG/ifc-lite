@@ -24,16 +24,24 @@ struct LogicalRefusalDetail {
     limit: u32,
     reached: u64,
     budget: &'static str,
+    product: Option<crate::router::diagnostics::BudgetProductIdentity>,
 }
 impl LogicalRefusal {
     #[cold]
     #[inline(never)]
     fn exceeded(limit: u32, used: u32, count: usize) -> Self {
         Self(Box::new(LogicalRefusalDetail {
-            limit, reached: u64::from(used).saturating_add(count as u64), budget: "logical Items members",
+            limit, reached: u64::from(used).saturating_add(count as u64), budget: "logical Items members", product: None,
         }))
     }
 
+    #[cold]
+    pub(super) fn attach_product(&mut self, product: &ifc_lite_core::DecodedEntity) {
+        self.0.product = Some(crate::router::diagnostics::BudgetProductIdentity::from_product(product));
+    }
+    pub(super) fn product(&self) -> Option<&crate::router::diagnostics::BudgetProductIdentity> {
+        self.0.product.as_ref()
+    }
     pub(super) fn details(&self) -> (&'static str, u32, u64) { (self.0.budget, self.0.limit, self.0.reached) }
     pub(super) fn to_error(&self, item: u32) -> Error {
         crate::representation::WalkRefusal::work_budget(self.0.limit, self.0.budget, self.0.reached)

@@ -2,38 +2,11 @@
 //! Logical exhaustion stops siblings but closes entered sources normally, so
 //! completed prefix meshes receive every enclosing transform, innermost first.
 use super::drop::{report_drop, DropReason};
-use super::{Action, Event, MappingControl, MappingValue, Sink, Template};
+use super::{Action, Event, MappingControl, Sink, Template};
 use crate::program::mapping_budget::LogicalRefusal;
 use crate::GeometryRouter;
 
 impl MappingControl<'_> {
-    #[inline]
-    pub(in crate::program) fn accept(
-        &mut self,
-        reply: super::MappingReply,
-        router: &GeometryRouter,
-    ) {
-        self.accept_with_product(reply, router, || None);
-    }
-
-    /// Resolve attribution only for a refusal. Product controls already own
-    /// this reference; successful replies carry no extra identity or state.
-    #[inline(always)]
-    pub(in crate::program) fn accept_with_product<'p>(
-        &mut self,
-        reply: super::MappingReply,
-        router: &GeometryRouter,
-        product: impl FnOnce() -> Option<&'p ifc_lite_core::DecodedEntity>,
-    ) {
-        match reply {
-            MappingValue::Refused { item_id, refusal, budget } => {
-                self.budget = budget;
-                self.stop_logical(item_id, &refusal, router, product());
-            }
-            reply => self.accept_progress(reply, router),
-        }
-    }
-
     #[cold]
     #[inline(never)]
     pub(super) fn stop_logical(
@@ -41,7 +14,6 @@ impl MappingControl<'_> {
         item_id: u32,
         refusal: &LogicalRefusal,
         router: &GeometryRouter,
-        product: Option<&ifc_lite_core::DecodedEntity>,
     ) {
         // Styled admission may own a provisional template before Items. Roll
         // that claim back without attributing the refusal to its child policy.
@@ -68,8 +40,9 @@ impl MappingControl<'_> {
         // Keep the source's reporting policy, including CATIA's blank-type
         // FootPrint suppression. Product admission reports independently.
         if self.levels.last().is_none_or(|parent| parent.policy) {
-            let product = product.or_else(|| self.rep_map.as_ref().and_then(super::TypeMapRoot::product));
-            router.record_budget_refusal(item_id, budget, limit, reached, product);
+            let root = self.rep_map.as_ref().and_then(super::TypeMapRoot::product)
+                .map(crate::router::diagnostics::BudgetProductIdentity::from_product);
+            router.record_budget_refusal_identity(item_id, budget, limit, reached, refusal.product().or(root.as_ref()));
         }
         self.logical_stopped = true;
         let Some(parent) = self.levels.last() else {

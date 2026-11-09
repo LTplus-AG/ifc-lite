@@ -41,6 +41,10 @@ fn issue_9268_nested_logical_refusal_keeps_wall_identity() {
             } else {
                 while control.stage().unwrap().is_some() {
                     let reply = control.execute(&router, &mut decoder).unwrap();
+                    if matches!(&reply, ProductReply::Mapping(crate::program::mapping::MappingValue::Refused { .. })) {
+                        assert_eq!(router.take_budget_refusal_report().0, 0,
+                            "execution must not publish an unaccepted refusal");
+                    }
                     control.accept(reply, &router);
                 }
             }

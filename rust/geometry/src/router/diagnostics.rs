@@ -360,6 +360,7 @@ pub fn aggregate_diagnostics(
 
 mod budget;
 pub use budget::BudgetRefusal;
+pub(crate) use budget::BudgetProductIdentity;
 mod attribution;
 mod processor_failures;
 mod unsupported_items;

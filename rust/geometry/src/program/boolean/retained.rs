@@ -64,7 +64,10 @@ impl BooleanMachine {
         let Some(frame) = self.frames.pop() else { return Err(stale()) };
         match frame {
             Frame::RetainedMapping(mut control) => {
-                let reply = control.execute(router, decoder).map_err(|error| mapped_error(error.into()))?;
+                let reply = match control.execute(router, decoder) {
+                    Ok(reply) => reply,
+                    Err(error) => control.recover_refusal(error, None).map_err(|error| mapped_error(error.into()))?,
+                };
                 self.frames.push(Frame::RetainedMappingReply { control, reply: boxed(reply)? });
             }
             Frame::Operand { entity, .. } if entity.ifc_type == ifc_lite_core::IfcType::IfcMappedItem => {

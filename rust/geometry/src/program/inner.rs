@@ -74,6 +74,7 @@ pub(crate) enum ProgramError {
     StaleRequest,
     AlreadyExecuted,
     NotExecuted,
+    LogicalRefused, // Cold refusal awaiting attribution by its owning controller.
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -191,7 +192,9 @@ impl<'a> GeometryProgram<'a> {
         let value = match &mut self.control {
             Control::Item(item, control) => ReplyValue::Item(control.execute(item, router, decoder)?),
             Control::Cache(item, control) => ReplyValue::Cache(control.execute(item, router, decoder)?),
-            Control::Mapping(control) => ReplyValue::Mapping(control.execute(router, decoder)?),
+            Control::Mapping(control) => ReplyValue::Mapping(match control.execute(router, decoder) {
+                Ok(reply) => reply, Err(error) => control.recover_refusal(error, None)?,
+            }),
             Control::Product(control) => ReplyValue::Product(control.execute(router, decoder)?),
             Control::Voids(control) => ReplyValue::Voids(control.execute(router, decoder)?),
             Control::Layers(control) => ReplyValue::Layers(control.execute(router, decoder)?),

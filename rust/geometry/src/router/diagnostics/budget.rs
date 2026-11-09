@@ -19,6 +19,22 @@ pub struct BudgetRefusal {
     pub global_id: Option<String>,
 }
 
+/// Owned only after refusal, never carried through successful execution.
+#[derive(Debug)]
+pub(crate) struct BudgetProductIdentity {
+    id: u32,
+    ifc_type: ifc_lite_core::IfcType,
+    global_id: Option<String>,
+}
+impl BudgetProductIdentity {
+    #[cold]
+    pub(crate) fn from_product(product: &DecodedEntity) -> Self {
+        Self { id: product.id, ifc_type: product.ifc_type,
+            global_id: product.get(IfcRoot::GLOBAL_ID.index())
+                .and_then(|a| a.as_string()).map(str::to_owned) }
+    }
+}
+
 /// Maximum retained detail records per diagnostic drain. Counts remain complete.
 pub const BUDGET_REFUSAL_DETAILS_LIMIT: usize = 16;
 
@@ -33,6 +49,14 @@ impl GeometryRouter {
     #[inline(never)]
     pub(crate) fn record_budget_refusal(&self, source_id: u32, budget: &str, limit: u32,
         reached: u64, product: Option<&DecodedEntity>) {
+        let product = product.map(BudgetProductIdentity::from_product);
+        self.record_budget_refusal_identity(source_id, budget, limit, reached, product.as_ref());
+    }
+
+    #[cold]
+    #[inline(never)]
+    pub(crate) fn record_budget_refusal_identity(&self, source_id: u32, budget: &str, limit: u32,
+        reached: u64, product: Option<&BudgetProductIdentity>) {
         let mut state = self.unsupported.borrow_mut();
         let log = state.budget_refusals.get_or_insert_with(Box::default);
         if !log.seen.insert((product.map(|p| p.id), source_id, budget.into(), limit, reached)) {
@@ -43,8 +67,7 @@ impl GeometryRouter {
                 budget: budget.into(), limit, reached, source_id,
                 product_id: product.map(|p| p.id),
                 product_type: product.map(|p| p.ifc_type.to_string()),
-                global_id: product.and_then(|p| p.get(IfcRoot::GLOBAL_ID.index()))
-                    .and_then(|a| a.as_string()).map(str::to_owned),
+                global_id: product.and_then(|p| p.global_id.clone()),
             });
         }
     }

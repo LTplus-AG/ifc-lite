@@ -42,18 +42,18 @@ export function parseLockOwner(name: string): LockOwnerIdentity | null {
   return { pid: Number(match[1]), host: match[2], boot: match[3] === 'u' ? null : match[3], start: match[4] === 'u' ? null : match[4] };
 }
 /** Only valid for a local filesystem shared within one host/PID namespace. */
-export async function retiredLockOwner(owner: LockOwnerIdentity): Promise<boolean> {
+export async function retiredLockOwner(owner: LockOwnerIdentity, lock: string): Promise<boolean> {
   const local = await readLockIdentity();
-  if (owner.host !== local.host) throw new Error('Checkpoint lock is from another host; local PIDs cannot establish ownership. Verify the remote writer before removing it.');
+  if (owner.host !== local.host) throw new Error(`Checkpoint lock ${lock} is from another host; local PIDs cannot establish ownership. Verify the remote writer before removing it.`);
   if (owner.boot && local.boot && owner.boot !== local.boot) return true;
   try { process.kill(owner.pid, 0); }
   catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ESRCH') return true;
-    console.warn(`[FileCheckpointStore] Cannot establish liveness of old lock PID ${owner.pid}; retaining lock`);
+    console.warn(`[FileCheckpointStore] Cannot establish liveness of old lock ${lock} PID ${owner.pid}; retaining lock`);
     return false;
   }
   const start = await processStart(owner.pid);
   if (owner.start && start && owner.start !== start) return true;
-  console.warn(`[FileCheckpointStore] Old lock has live PID ${owner.pid}; process identity matches or cannot be verified. Retaining lock; verify the writer before manual removal.`);
+  console.warn(`[FileCheckpointStore] Old lock ${lock} has live PID ${owner.pid}; process identity matches or cannot be verified. Retaining lock; verify the writer before manual removal.`);
   return false;
 }

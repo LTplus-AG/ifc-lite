@@ -16,7 +16,7 @@
 
 import { createHash } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { copyFile, mkdtemp, readFile, symlink, link, utimes, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, mkdtemp, readFile, symlink, link, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -99,6 +99,26 @@ describe('ifc-lite flow: reviewed AI pause and resume', () => {
     expect(diagnostic).toContain('Upgrade all writers sharing this checkpoint directory together');
     expect(diagnostic).toContain('Stop all writers and verify none is active before manually removing only this lock file');
     expect(await readFile(`${checkpoint}.lock`, 'utf-8')).toBe('');
+    await expect(readFile(checkpoint)).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it.each(['.DS_Store', 'future-owner-v3'])('#9540 an unrecognized lock directory (%s) gets inspection guidance, not legacy-file removal', async entry => {
+    const dir = await mkdtemp(join(tmpdir(), 'ifc-flow-unknown-lock-'));
+    const checkpoint = join(dir, 'cp.json'), lock = `${checkpoint}.lock`;
+    await mkdir(lock);
+    await writeFile(join(lock, entry), 'preserve unknown owner');
+    const old = new Date(Date.now() - 120_000);
+    await utimes(join(lock, entry), old, old);
+    provider();
+    const c = capture();
+    exits();
+    await expect(flowCommand(['run', AI_FLOW, SAMPLE_IFC, '--checkpoint', checkpoint, '--no-tracking'])).rejects.toThrow('exit 1');
+    const diagnostic = c.err.join('');
+    expect(diagnostic).toContain(`Unrecognized checkpoint lock directory ${lock}`);
+    expect(diagnostic).toContain('inspect its entries and writer version');
+    expect(diagnostic).not.toContain('was left by an older writer');
+    expect(diagnostic).not.toContain('manually removing only this lock file');
+    expect(await readFile(join(lock, entry), 'utf-8')).toBe('preserve unknown owner');
     await expect(readFile(checkpoint)).rejects.toMatchObject({ code: 'ENOENT' });
   });
 

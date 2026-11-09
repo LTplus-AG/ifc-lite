@@ -119,7 +119,7 @@ export class FileCheckpointStore implements CheckpointStore {
     if (!(await this.oldEnough(`${lock}/${owner}`))) return false;
     const identity = parseLockOwner(owner);
     if (!identity) throw new Error(`Legacy checkpoint lock ${lock} has no process identity; verify its writer before removing it`);
-    if (!(await retiredLockOwner(identity))) return false;
+    if (!(await retiredLockOwner(identity, lock))) return false;
     await this.release(lock, owner);
     return true;
   }
@@ -152,7 +152,7 @@ export class FileCheckpointStore implements CheckpointStore {
       const candidate = `${parent}/${entry.name}`;
       try {
         if (!(await this.oldEnough(candidate))) continue;
-        if (await retiredLockOwner(identity)) await this.release(candidate, owner);
+        if (await retiredLockOwner(identity, candidate)) await this.release(candidate, owner);
       } catch (error) {
         if (['ENOENT', 'EACCES', 'EPERM'].includes((error as NodeJS.ErrnoException).code ?? '')) {
           console.warn('[FileCheckpointStore] Retaining inaccessible orphan candidate:', error);

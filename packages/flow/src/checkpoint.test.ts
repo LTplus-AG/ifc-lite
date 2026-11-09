@@ -548,9 +548,27 @@ it('#9540 identity refuses foreign-host liveness even when that PID is dead loca
   const local = await testLockIdentity();
   const f = await oldIdentityLock({ pid: spawnSync(process.execPath, ['-e', '']).pid, host: local.host === '0000000000000000' ? '1111111111111111' : '0000000000000000' });
   try {
-    await expect(f.store.write(f.checkpoint, null)).rejects.toThrow('another host');
+    await expect(f.store.write(f.checkpoint, null)).rejects.toThrow(`Checkpoint lock ${f.lock} is from another host`);
     expect(await f.fs.readdir(f.lock)).toContain(f.owner);
   } finally { await f.cleanup(); }
+});
+
+it('#9540 EPERM at PID 1 preserves the old owner and reports its lock path', async context => {
+  let code: string | undefined;
+  try { process.kill(1, 0); }
+  catch (error) { code = (error as NodeJS.ErrnoException).code; }
+  if (code !== 'EPERM') {
+    context.skip('Requires an unprivileged process denied signaling PID 1');
+    return;
+  }
+  const f = await oldIdentityLock({ pid: 1 });
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+  try {
+    expect(await f.store.write(f.checkpoint, null)).toBe(false);
+    expect(await f.fs.readFile(`${f.lock}/${f.owner}`, 'utf8')).toBe('');
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('Cannot establish liveness'));
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining(f.lock));
+  } finally { warn.mockRestore(); await f.cleanup(); }
 });
 
 for (const missing of [{}, { start: null }, { boot: null }, { start: null, boot: null }]) {
@@ -560,6 +578,7 @@ for (const missing of [{}, { start: null }, { boot: null }, { start: null, boot:
       expect(await f.store.write(f.checkpoint, null)).toBe(false);
       expect(await f.fs.readdir(f.lock)).toContain(f.owner);
       expect(warn).toHaveBeenCalledWith(expect.stringContaining(`live PID ${process.pid}`));
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining(f.lock));
     } finally { warn.mockRestore(); await f.cleanup(); }
   });
 }

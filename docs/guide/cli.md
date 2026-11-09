@@ -1699,6 +1699,10 @@ Stop all writers, upgrade them together, and verify none remains active before
 manually removing only that lock file and retrying. The CLI preserves the lock
 and does not overwrite the checkpoint while ownership is unknown.
 
+An unrecognized lock **directory** gets separate inspection guidance. Preserve
+its entries and check the writer version; an unknown future owner format or an
+unrelated file such as `.DS_Store` is not an ownerless legacy lock file.
+
 A graph with a tracked creation node (`model.addElement`) re-run on its own output updates the
 elements it made — same GlobalIds, changed geometry — and removes the ones whose lanes vanished:
 

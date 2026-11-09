@@ -65,8 +65,13 @@ export async function savePause(path: string, checkpoint: FlowCheckpoint): Promi
   try {
     if (!(await new FileCheckpointStore(path).write(checkpoint, null))) throw new Error(`${path} is being written by another process`);
   } catch (error) {
-    if (error instanceof Error && error.message.startsWith('Legacy checkpoint lock ')) {
-      throw new Error(`Legacy checkpoint lock ${path}.lock was left by an older writer. Upgrade all writers sharing this checkpoint directory together. Stop all writers and verify none is active before manually removing only this lock file, then retry.`, { cause: error });
+    if (error instanceof Error) {
+      if (error.message.startsWith(`Legacy checkpoint lock ${path}.lock has no PID;`)) {
+        throw new Error(`Legacy checkpoint lock ${path}.lock was left by an older writer. Upgrade all writers sharing this checkpoint directory together. Stop all writers and verify none is active before manually removing only this lock file, then retry.`, { cause: error });
+      }
+      if (error.message.startsWith(`Legacy checkpoint lock ${path}.lock has no process identity;`)) {
+        throw new Error(`Unrecognized checkpoint lock directory ${path}.lock: preserve it and inspect its entries and writer version before retrying. It may contain an active writer's future owner format or an unrelated file; do not remove it as an ownerless legacy lock file.`, { cause: error });
+      }
     }
     throw error;
   }

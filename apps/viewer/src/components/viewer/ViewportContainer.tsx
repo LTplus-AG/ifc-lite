@@ -383,13 +383,6 @@ export function ViewportContainer() {
             // once and use the sanitized value everywhere downstream.
             const safeName = sanitizeFilename(item.name, { fallback: 'model.ifc' });
             const file = new File([item.buffer], safeName);
-            // Pass an explicit id and treat "registered in the store" as
-            // success: addModel returns null when a concurrent load
-            // (drag-drop, viewport picker) bumps the shared load session,
-            // even though this model finished registering — same recovery
-            // syncSourceModel uses. Without it the toast would falsely report
-            // a failure and the model would get no source tag (no sync
-            // button, no badge, no downloaded-file record).
             const providerTitle =
               sourceHost?.get(item.tag.provider)?.manifest.title ?? item.tag.provider;
             // Isolate each item: a single corrupt or unparseable file must not
@@ -397,10 +390,8 @@ export function ViewportContainer() {
             // ten throws to the outer catch and the other nine silently never
             // load — with one generic toast for the whole batch.
             try {
-              const modelId = crypto.randomUUID();
-              const added = await addModel(file, { name: safeName, modelId });
-              const registered = added !== null || useViewerStore.getState().models.has(modelId);
-              if (registered) {
+              const modelId = await addModel(file, { name: safeName });
+              if (modelId) {
                 useViewerStore.getState().setSourceTag(modelId, item.tag);
                 recordDownloadedSourceFile(item.tag, item.sourceFile);
                 toast.success(`Loaded ${safeName} from ${providerTitle}`);

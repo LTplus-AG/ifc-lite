@@ -105,7 +105,11 @@ export function useIfcFederation(
   /**
    * Add a model to the federation (multi-model support)
    * Uses FederationRegistry to assign unique ID offsets - BULLETPROOF against ID collisions
-   * Returns the model ID on success, null on failure
+   *
+   * Resolves to the model id exactly when THIS add's model is registered,
+   * whether or not a newer add overlapped it; `null` when it is not (failed,
+   * cancelled, or dropped since, e.g. by a primary load clearing the
+   * federation). `options.onError` receives this add's own failure reason.
    */
   const addModel = useCallback(async (
     file: File,
@@ -118,8 +122,10 @@ export function useIfcFederation(
     const addStart = performance.now();
     // Bump the per-call ownership token first so that any error path
     // (including the load gate) can compare against this captured value
-    // before mutating shared loading/error/progress state.
+    // before mutating shared loading/error/progress state. It guards shared
+    // state only; the result below reports this add's own outcome.
     const currentSession = ++loadSessionRef.current;
+    const thisAdd = { registered: false }; // set by loadFile when THIS load registers the model
     // Memory-aware load gate: if a previous federation load is still in
     // flight on this tab and admitting this one would exceed the device
     // memory budget, wait until headroom frees. Single-file loads never
@@ -154,16 +160,16 @@ export function useIfcFederation(
         collapsed: options?.collapsed,
         loadedAt,
         sharedRtcOffset,
-      }, { sourceHandle: options?.sourceHandle, retryOperation: options?.retryOperation, workflowOwner: options?.workflowOwner, gaussianPlacement: options?.gaussianPlacement, gaussianUpAxis: options?.gaussianUpAxis, gaussianAttribution: options?.gaussianAttribution, gaussianReplacingModelId: options?.gaussianReplacingModelId, onGaussianBudgetReserved: options?.onGaussianBudgetReserved, onGaussianLoadSettled: options?.onGaussianLoadSettled });
+      }, { sourceHandle: options?.sourceHandle, retryOperation: options?.retryOperation, workflowOwner: options?.workflowOwner, gaussianPlacement: options?.gaussianPlacement, gaussianUpAxis: options?.gaussianUpAxis, gaussianAttribution: options?.gaussianAttribution, gaussianReplacingModelId: options?.gaussianReplacingModelId, onGaussianBudgetReserved: options?.onGaussianBudgetReserved, onGaussianLoadSettled: options?.onGaussianLoadSettled, onLoadError: options?.onError, onModelRegistered: () => { thisAdd.registered = true; } });
 
-      // Before the session check: a superseded load still settled a model (#4897, `federationRtcRebase.ts`).
-      if (useViewerStore.getState().models.has(modelId)) convergeFederationRtcFrame();
-      if (loadSessionRef.current !== currentSession) return null;
-      const registered = useViewerStore.getState().models.has(modelId);
-      if (registered) {
-        console.log(`[ifc-lite] Added model ${file.name} (${fileSizeForGateMB.toFixed(1)}MB) in ${(performance.now() - addStart).toFixed(0)}ms`);
-      }
-      return registered ? modelId : null;
+      // Registration is the outcome, also when a newer add overlapped this one:
+      // a superseded load still settled a model (#4897, `federationRtcRebase.ts`).
+      // THIS load must have registered it (overlapping reloads can share an
+      // explicit id), and it must still be there (a primary load clears it).
+      if (!thisAdd.registered || !useViewerStore.getState().models.has(modelId)) return null;
+      convergeFederationRtcFrame();
+      console.log(`[ifc-lite] Added model ${file.name} (${fileSizeForGateMB.toFixed(1)}MB) in ${(performance.now() - addStart).toFixed(0)}ms`);
+      return modelId;
 
     } catch (err) {
       // Only mutate shared loading/error/progress state if our session
@@ -184,8 +190,11 @@ export function useIfcFederation(
         return null;
       }
       console.error('[useIfc] addModel failed:', err);
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      // The caller learns why THIS add failed even when a newer add owns the shared error state.
+      options?.onError?.(message);
       if (isCurrent) {
-        reportError(err instanceof Error ? err.message : 'Unknown error', 'federated_add_failed',
+        reportError(message, 'federated_add_failed',
           options?.retryOperation ?? (() => { void addModel(file, options); }));
         setLoading(false);
       }

@@ -409,3 +409,12 @@ test('per-level totals exclude extras, skip, partial and non-applicable passes',
     output: { passed: 1, total: 4, applicable: 3 },
   });
 });
+
+test('#9296 exercises with null capability report against catalogue refs without changing the score', () => {
+  const catalogue = { capabilities: [{ ...CATALOGUE.capabilities[0], exercises: { refs: ['F1'] } }] };
+  const s = score(catalogue, [result(null, 'exercise', 'pass', { exercise: 'F1' })]);
+  assert.equal(s.rows[0].levels.exercise.status, 'pass');
+  assert.equal(s.rows[0].status, 'missing');
+  assert.equal(s.score, 0);
+  assert.equal(s.unknownCapabilities, undefined);
+});

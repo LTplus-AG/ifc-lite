@@ -86,9 +86,10 @@ function best(records) {
 /** Score `results` against `catalogue`. Pure: no I/O, so tests can call it directly. */
 export function score(catalogue, results, meta = {}) {
   const known = new Set(catalogue.capabilities.map((c) => c.id));
-  const unknown = [...new Set(results.filter((r) => !known.has(r.capability)).map((r) => r.capability))].sort();
+  const unknown = [...new Set(results.filter((r) => typeof r.capability === 'string' && !known.has(r.capability)).map((r) => r.capability))].sort();
   const rows = catalogue.capabilities.map((cap) => {
-    const mine = results.filter((r) => r.capability === cap.id);
+    const mine = results.filter((r) => r.capability === cap.id
+      || (r.probe === 'exercise' && cap.exercises?.refs?.includes(r.exercise)));
     const levels = {};
     for (const level of [...LEVELS, ...SIDE_LEVELS]) {
       const b = best(mine.filter((r) => r.probe === level));

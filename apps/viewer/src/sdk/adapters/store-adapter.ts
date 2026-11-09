@@ -15,6 +15,8 @@ import {
   addDoorToStore,
   addWindowToStore,
   resolveSpatialAnchor,
+  withWallAutojoinIndex,
+  type WallAutojoinIndex,
   type DoorInStoreParams,
   type WindowInStoreParams,
 } from '@ifc-lite/create';
@@ -160,19 +162,22 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
     const normalizedModelId = normalizeMutationModelId(store.getState(), modelId);
     const setState = store.setState;
     if (!setState) throw new Error(`bim.store.${operation}: creation requires a writable viewer store`);
-    const expressId = recordResolvedModellingCommit({ ...store, setState }, {
-      modelId: normalizedModelId, editor, dataStore, view: editor.getMutationView(),
-    }, (draft, data) => build(draft, data, createOrdinaryStoreBackend(() => ({
-      ...resolveModel(modelId), store: data, editor: draft, mutationView: draft.getMutationView(),
-    }))), undefined, true, element.kind === 'roof'
-      ? (id, view) => mirrorNewRoofDefinition({ ...store, setState }, normalizedModelId, id, view)
-      : undefined);
-    // The builder only wrote the overlay. Book it the way the UI's add actions
-    // do — mesh, spatial tree, undo entry, `mutationVersion` — or the element
-    // is in the export and nowhere else: a flow or script "adds" columns the
-    // user never sees.
-    store.getState().recordAuthoredElement?.(normalizedModelId, storeyExpressId, expressId, element, { historyRecorded: true });
-    return { modelId: normalizedModelId, expressId };
+    const commit = (wallIndex?: WallAutojoinIndex): EntityRef => {
+      const expressId = recordResolvedModellingCommit({ ...store, setState }, {
+        modelId: normalizedModelId, editor, dataStore, view: editor.getMutationView(),
+      }, (draft, data) => build(draft, data, createOrdinaryStoreBackend(() => ({
+        ...resolveModel(modelId), store: data, editor: draft, mutationView: draft.getMutationView(),
+      }), wallIndex)), undefined, true, element.kind === 'roof'
+        ? (id, view) => mirrorNewRoofDefinition({ ...store, setState }, normalizedModelId, id, view)
+        : undefined);
+      // The builder only wrote the overlay. Book it the way the UI's add actions
+      // do — mesh, spatial tree, undo entry, `mutationVersion` — or the element
+      // is in the export and nowhere else: a flow or script "adds" columns the
+      // user never sees.
+      store.getState().recordAuthoredElement?.(normalizedModelId, storeyExpressId, expressId, element, { historyRecorded: true });
+      return { modelId: normalizedModelId, expressId };
+    };
+    return element.kind === 'wall' ? withWallAutojoinIndex(dataStore, editor.getMutationView(), commit) : commit();
   }
 
   /**

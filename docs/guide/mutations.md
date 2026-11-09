@@ -1268,6 +1268,13 @@ without that join. The returned entity ref includes `notices?: string[]`
 with the skipped pair and reason. Explicit `joinWalls` requests still refuse
 atomically. Low-level `addOrdinaryElementInStore` callers can collect the
 same notices through `options.notices`; otherwise they are logged.
+Candidate discovery uses a session endpoint index, partitioned by parent
+placement and elevation. It reads the new wall once and checks full geometry
+only for matching endpoints. Other edits (including Undo/Redo) invalidate the
+index. Hosts wrapping creation in their own atomic transaction use
+`withWallAutojoinIndex` around that committed transaction and pass its staged
+index through `createOrdinaryStoreBackend` (or `options.wallIndex`); failed
+transactions do not publish candidate entries.
 Moving an `IfcGrid` with `transformElements` carries its grid-bound products.
 The headless CLI supports `alignElements` using current native mesh bounds,
 including hosted cuts, rather than uncut parametric bounding boxes.

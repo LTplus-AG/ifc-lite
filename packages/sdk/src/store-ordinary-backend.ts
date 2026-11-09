@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { addOrdinaryElementInStore, resolveSpatialAnchor, type OrdinaryInStoreElement } from '@ifc-lite/create';
+import { addOrdinaryElementInStore, resolveSpatialAnchor, type OrdinaryInStoreElement, type WallAutojoinIndex } from '@ifc-lite/create';
 import type { CostStoreModelResolution } from './cost-store-backend.js';
 import type { EntityRef, StoreBackendMethods } from './types.js';
 import type { TopConstraintParams } from './store-top-types.js';
@@ -20,12 +20,13 @@ type WithoutTop<T> = T extends unknown ? Omit<T, 'TopConstraint'> : never;
  * behavior outside this factory; MCP supplies its compound-recording draft. */
 export function createOrdinaryStoreBackend(
   resolve: (modelId: string) => Pick<CostStoreModelResolution, 'modelId' | 'store' | 'editor' | 'mutationView'>,
+  wallIndex?: WallAutojoinIndex,
 ): OrdinaryStoreBackendMethods {
   const add = (modelId: string, storeyId: number, element: OrdinaryInStoreElement, top?: TopConstraintParams['TopConstraint']): EntityRef & { notices?: string[] } => {
     const model = resolve(modelId);
     const anchor = resolveSpatialAnchor(model.store, storeyId, model.mutationView);
     const notices: string[] = [];
-    const expressId = addOrdinaryElementInStore(model.editor, anchor, element, { store: model.store, top: top ?? 'auto', notices });
+    const expressId = addOrdinaryElementInStore(model.editor, anchor, element, { store: model.store, top: top ?? 'auto', notices, wallIndex });
     return { modelId: model.modelId, expressId, ...(notices.length ? { notices } : {}) };
   };
   // The top constraint is the SDK's own field: the builders never see it.

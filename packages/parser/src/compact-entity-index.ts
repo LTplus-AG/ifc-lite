@@ -5,6 +5,7 @@
 /** Sorted entity columns avoid the per-entry overhead of Map<number, EntityRef>.
  * Lookups use binary search with a bounded LRU for recently read references. */
 
+import { checkByteSpan } from './checked-byte-span.js';
 import { checkedExpressId } from './express-id.js';
 import type { EntityRef } from './types.js';
 import { internType, lastEqualIndex, type CompactEntityIndexColumns } from './compact-entity-index-columns.js';
@@ -19,15 +20,11 @@ export class CompactEntityIndex {
   private readonly expressIds: Uint32Array;
   /** Parallel array: byte offset in source buffer */
   private readonly byteOffsets: Uint32Array;
-  /** Parallel array: byte length of entity in source buffer */
   private readonly byteLengths: Uint32Array;
   /** Parallel array: index into typeStrings for the entity type */
   private readonly typeIndices: Uint16Array;
-  /** Deduped type strings (typically < 800 unique types) */
   private readonly typeStrings: string[];
-  /** Type string → index lookup */
   private readonly typeStringMap: Map<string, number>;
-  /** Total number of entries */
   readonly size: number;
 
   /** LRU cache for recently accessed EntityRefs */
@@ -282,6 +279,7 @@ export class CompactEntityIndexBuilder {
     // Checked before the slot is claimed, so a caught throw cannot leave a
     // zero-filled phantom entry behind for build() to emit.
     const id = checkedExpressId(expressId);
+    checkByteSpan(byteOffset, byteLength);
     if (this.count >= this.capacity) {
       this.grow();
     }
@@ -393,6 +391,7 @@ export function buildCompactEntityIndex(
 
   for (let i = 0; i < count; i++) {
     const ref = sorted[i];
+    checkByteSpan(ref.byteOffset, ref.byteLength);
     expressIds[i] = checkedExpressId(ref.expressId);
     byteOffsets[i] = ref.byteOffset;
     byteLengths[i] = ref.byteLength;
@@ -449,6 +448,7 @@ export async function buildCompactEntityIndexAsync(
       chunkStart = performance.now();
     }
     const ref = sorted[i];
+    checkByteSpan(ref.byteOffset, ref.byteLength);
     expressIds[i] = checkedExpressId(ref.expressId);
     byteOffsets[i] = ref.byteOffset;
     byteLengths[i] = ref.byteLength;

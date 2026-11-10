@@ -15,7 +15,7 @@
  * a minimal viewer context — model loaded / selection count / etc).
  */
 
-import { useMemo } from 'react';
+import { useLayoutEffect, useMemo, useRef } from 'react';
 import type { ResolvedToolbarContribution } from '@ifc-lite/extensions';
 import { evaluateWhen, parseWhen } from '@ifc-lite/extensions';
 import { IconButton } from '@/components/ui/icon-button';
@@ -34,6 +34,11 @@ interface ExtensionToolbarSlotProps {
 export function ExtensionToolbarSlot({ slot }: ExtensionToolbarSlotProps) {
   const { t } = useTranslation();
   const host = useOptionalExtensionHost();
+  const currentHost = useRef(host);
+  useLayoutEffect(() => {
+    currentHost.current = host;
+    return () => { currentHost.current = null; };
+  }, [host]);
   // Loader enriches the toolbar payload with the linked command's
   // `icon` + `title` — see manifestToContributions in loader.ts.
   const contributions = useSlotContributions<ResolvedToolbarContribution>(slot);
@@ -76,10 +81,10 @@ export function ExtensionToolbarSlot({ slot }: ExtensionToolbarSlotProps) {
   // convention only), and this slot renders one button per contribution —
   // so the run has to be pinned to the button's extension or the second
   // button silently runs the first extension's handler.
-  const handleClick = (commandId: string, extensionId: string) => {
-    void host.dispatcher
-      .fire(`onCommand:${commandId}` as `onCommand:${string}`)
-      .then(() => host.runCommand(commandId, extensionId))
+  const handleClick = (contribution: (typeof contributions)[number]) => {
+    const { command: commandId } = contribution.payload;
+    void host.runCommand(commandId, contribution.extensionId, () =>
+      currentHost.current === host && host.slotRegistry.getAll(slot).includes(contribution))
       .catch((err) => {
         toast.error(describeRunCommandError(commandId, err));
       });
@@ -96,7 +101,7 @@ export function ExtensionToolbarSlot({ slot }: ExtensionToolbarSlotProps) {
             key={`${c.extensionId}:${cmd}`}
             label={t('extensionsFlavors.extensionToolbarSlot.runAriaLabel', { title })}
             tooltip={title}
-            onClick={() => handleClick(cmd, c.extensionId)}
+            onClick={() => handleClick(c)}
           >
             <Icon className="h-4 w-4" />
           </IconButton>

@@ -44,6 +44,7 @@ export const commandsFr = {
   "commands.command.columnRotate": "Tourner le poteau de 15° (placement d’un poteau)",
   "commands.model.wall": "Dessiner des murs (espace Modèle)",
   "commands.model.slab": "Dessiner des dalles, toitures et plaques (espace Modèle)",
+  "commands.model.roof": "Dessiner des toitures au sommet des murs (espace Modèle)",
   "commands.model.column": "Placer des poteaux (espace Modèle)",
   "commands.model.beam": "Dessiner des poutres et barres (espace Modèle)",
   "commands.model.storeyUp": "Travailler à l’étage supérieur (espace Modèle)",

@@ -51,7 +51,7 @@ export function keepsFirstPiece(firstSize: number, secondSize: number): boolean 
 /** What {@link globalIdTakenIn} needs of one loaded model. */
 export interface GlobalIdScope {
   dataStore: Pick<IfcDataStore, 'entities'> | null | undefined;
-  view: Pick<MutablePropertyView, 'getNewEntities'> | null | undefined;
+  view: (Pick<MutablePropertyView, 'getNewEntities'> & Partial<Pick<MutablePropertyView, 'readNewEntities'>>) | null | undefined;
 }
 
 /**
@@ -64,7 +64,7 @@ export function globalIdTakenIn(scopes: Iterable<GlobalIdScope>): (globalId: str
   const stores: Array<Pick<IfcDataStore, 'entities'>> = [];
   for (const { dataStore, view } of scopes) {
     if (dataStore) stores.push(dataStore);
-    for (const entity of view?.getNewEntities() ?? []) {
+    for (const entity of (view?.readNewEntities ? view.readNewEntities() : view?.getNewEntities()) ?? []) {
       const guid = entity.attributes[0];
       if (typeof guid === 'string') authored.add(guid);
     }

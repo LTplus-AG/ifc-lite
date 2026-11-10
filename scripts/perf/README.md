@@ -8,6 +8,89 @@ Citations to `evidence/`, `tests/evidence/` and `docs/architecture/evidence/` pa
 at commit [`f98785c722`](https://github.com/LTplus-AG/ifc-lite/tree/f98785c722); the retained
 bundles left the tree in #9054.
 
+## Storey planners and the QuickJS runtime leave the boot path (#9200)
+
+**Shipped: an eager-bytes cut, no boot-time change.** Three changes, each one
+synchronous with no behaviour change:
+
+- The viewer's startup modules reference `createModellingStoreBackend` statically and
+  call it only when an edit runs. That factory spread `createStoreyStoreBackend`, so it
+  linked every storey planner, although the viewer's `bim.store` storey methods come from
+  its own storey adapter, which loads on first use. The viewer now uses
+  `createModellingStoreBackendWithoutStoreys`, and the full factory is that plus the
+  storey methods, unchanged for the CLI and headless backends.
+- The `sandbox` manual chunk is eager (eager code imports `SandboxAbortError` and the
+  bridge schema). As a recursive group it also took the QuickJS runtime core, which only
+  a script run needs. A non-recursive, higher-priority group now claims that core, except
+  `quickjs-emscripten-core`'s index, which eager code does reach.
+- `@ifc-lite/create` declares `sideEffects: false`. `@ifc-lite/sdk` lists only its index,
+  which registers the schema normalizer at load.
+
+Lessons. The bundler splits by module, not by function. The storey-free factory first
+lived in the same module as the full one. The lazy headless backend still used the full
+factory, so the shared module stayed eager and kept its import of the storey backend:
+zero bytes saved until the factory moved to its own module. Storey code that
+`ordinary-element` and `copy-attachment` really use at boot (the storey model, top
+constraints, attachments) stays eager. Making the whole `sandbox` group non-recursive
+saved fewer bytes and broke the old chunk into 19 more small eager files, and boot to
+the welcome card measured about 20 ms slower unthrottled. So check the eager file count,
+not only the byte total, and measure boot with each build in both A/B positions: on a
+shared host, position alone moved the result by about 15 ms. A group that claimed every
+QuickJS module also failed, because the one eager module in it made the whole group eager.
+
+## Presentation-layer membership follows the selected shape (#9273)
+
+**Selection query verdict: remove the model-wide ownership scan.** The hierarchy's
+layer-to-products resolver is appropriate when opening the Layers grouping; calling
+it to populate one element's inspector decodes unrelated products and geometric
+constituents, even when there are no assignments. A mutation revision invalidation
+then repeats that work on an unrelated property edit.
+
+The inspector now caches the assignment declarations, returns immediately for an
+empty assignment set, and walks only the selected product's ownership graph. Shape
+aspects supply the inverse owner edges; shared maps, boolean operands and topology
+use the same schema ownership table as the full hierarchy resolver. Existing
+ownership fixtures compare both directions. The code and lookup load after render,
+and the generated BREP regression guards cold, empty and edited selections. The
+paired selection probe is `scripts/perf/presentation-layer-selection.ts`; it reports
+query latency and selected layer identity, not whole-viewer loading or rendering.
+
+Lesson: a model-wide reverse index can amortize a hierarchy view while still being
+the wrong query plan for selection. Cache small declarations and follow the selected
+shape, rather than making the first click or every authoring revision pay for every
+other product in the model.
+
+## Session authoring envelope (#8452, part of #9296)
+
+The pre-change CPU profile attributes ordinary creation primarily to whole-overlay
+cloning, whole-overlay deep comparison, and collection of snapshot garbage,
+in that order. Rebuilding class indices also repeats at each publication. A
+no-op pays those costs, and nested builder transactions multiply them.
+
+Synchronous edits now stage sparse entry copies and history appends, publish
+only changed entries, and derive compound inverses from those entries. Escaping
+prepared transactions retain exact snapshot validation. Copy source resolution
+uses authored reference buckets plus edited-slot candidates, with effective
+slot checks; metadata cloning asks for one entity's changes. Schema names use
+one finite-operation snapshot. The deterministic regression counts unrelated
+payload reads, rather than timing a host that may be running other jobs.
+
+Mutable attribute aliases remain supported: a read barrier tracks exposed rows
+and reference lookups recheck those rows. Internal readers borrow attributes
+without exposing mutable aliases, so an earlier model inventory does not turn
+every subsequent reference lookup into another inventory scan.
+
+Compound undo records successor IDs, preserving authored and STEP record order
+even across snapshots. An incremental successor index avoids scanning the
+authored prefix while capturing that inverse; only undo rebuilds the order.
+
+Mutation modules name their load-time encoder initializer explicitly so unused
+modules can be tree-shaken safely. Prepared-operation execution loads after the
+asynchronous action has copied its inputs and private checkpoints.
+
+Timing qualification and the F5 verdict are still pending; no measured scale
+acceptance is claimed by the structural guard alone.
+
 ## First selection reads typing relationships from the graph (#9192)
 
 **Shipped: the scan is gone, not made cheaper.** `readCurrentTypeQuantities` read every
@@ -16,9 +99,9 @@ first selection, so the cost was decode and inflate per record, multiplied by th
 relationship count. A per-scan schema snapshot cuts the registry cost per record but keeps
 the reads. The parsed graph already records which relationship names which element (with
 repeats as shadowed ids), so the read now walks effective rows from the index only and
-decodes a relationship only when an edit touched it, the parser recorded no edge for it, an
-edge of it has the wrong class on its relating side (the byte reader misread the record, or a
-definition set names a non-definition), or it names the element or type being read. A
+decodes a relationship only when an edit touched it, the parser recorded no edge for it (the
+byte reader records none for a record it cannot read cleanly), a definition set names a
+non-definition, or it names the element or type being read. A
 definition relationship an edit over-counts enters the reference budget at its graph count, an
 upper bound, and is decoded only if that bound would cross it.
 Answers were compared against base by digest,
@@ -28,8 +111,15 @@ compares the assigned type.
 
 Lessons: on models past the 65,536-row limit, base read 65,536 records only to refuse, and
 did not memoise the refusal, so every click repeated the walk. A refusal is now kept for the
-edit revision, model-wide, per relationship and per type, as an answer always was. The limit itself still applies and still refuses those models; it bounded
-work the read no longer does, so raising it is a behaviour change, not a perf lever.
+edit revision, model-wide, per relationship and per type, as an answer always was. The limit
+bounded work the read no longer does, so it was then raised to 131,072 rows: Holter (80,276)
+and BWK (92,432) now answer, with a first read of about 0.1 s through the graph, and answers
+matching a full read by probed digest. A store the graph cannot vouch for still reads every
+row (about 45 us each), which is what the bound now caps. One store is not covered by that:
+the one the viewer shows at spatial-ready time has typing edges but no definition edges yet,
+and the panel reads synchronously in render, so a first click there read every definition
+relationship from source (Holter 1.6 s, slower than base's refusal). Past 65,536 rows that
+store now refuses as still loading without reading a relationship; the full store answers.
 
 ## Right-sized in-circle scratch restores the large instruction ceiling (#9016)
 
@@ -5931,6 +6021,25 @@ their own bounded allowance so they cannot prevent subsequent ordinary products 
 publishing. Keep stable CLI reports free of timing and snap diagnostics; comparison
 summaries retain those observations without making artifact bytes depend on a run.
 
+### Presentation-layer classification references (#9272, #9383)
+
+Verdict: reference-decode counts and complete row digests qualify reusing a decoded
+classification reference across products. Memoize by store, source identity and
+view revision, and return independent objects and path arrays so consumers cannot
+mutate the cached result. Replacing source bytes or editing the view invalidates it.
+
+The flat-mode product walk, geometry targeting, sorting and row emission retain
+main's behavior. Grouping adds a mode check and fixed per-store resolver setup;
+classification extraction runs only for classification groups. Exact flat-row
+expectations and main/branch row digests establish output compatibility, not a
+measured latency-equivalence claim.
+
+Lesson: compare all grouping modes against a revision that actually implements
+them. Main supplies only the flat-mode control. Decode counts can establish
+reference reuse when host noise prevents timing qualification; keep rejected
+cohorts separate and never relax the timing guards. This tree-construction probe
+does not establish end-to-end model-loading or rendering performance.
+
 ## The app-start task: no top-level-await wrapper on the app build
 
 On a production build the app-start task (module evaluation, before a model is
@@ -5960,3 +6069,41 @@ Allocation checks and finish equality checks support removing the duplicate inde
 are finish-join attribution, not end-to-end worker-pool throughput. No speedup or performance-neutrality
 claim is established. The exact default path does not call the new join. Preserve the shared scan
 rather than rebuilding a whole-file entity index to resolve a small styled subset.
+
+## Modelling session scale (`modelling-session.mjs`, #9296)
+
+Build the CLI and dependencies first (`pnpm install --frozen-lockfile`,
+`pnpm build:wasm:fetch`, `pnpm turbo build --filter=@ifc-lite/cli...`) through
+fleet admission. Run `nice -n 10 node scripts/perf/modelling-session.mjs` under local ordinary admission
+for **diagnostic timings**, recording the shared host load rather than claiming
+benchmark evidence. No product code is changed. Each target (1K, 10K, 50K) starts
+with a new CLI headless context and uses public `bim.store` authoring throughout.
+The default hard budget is nine minutes per target, at most 27 minutes overall;
+`--budget-ms` can reduce it. The first 75% is available to fill with columns.
+The remainder samples at the reached size, reported as failure if below target.
+A parent deadline also stops synchronous SDK calls and preserves checkpoints.
+
+The session has ten storeys, a 50-element typical floor (40 columns, nine walls, one slab) and a host wall. Fill
+columns span the ten storeys. Each of five interleaved sample rounds adds a wall,
+column, slab and hosted window; joins a fresh wall pair; copies the typical floor
+to one storey; plans and applies alternating floor-height edits; and exports IFC4.
+Counts mean authored architectural elements, excluding storeys, opening voids
+and representation records. Sampling grows the session: each raw sample records
+its before/after counts. Export includes the whole current session. There is no
+warm-up subtraction or private overlay injection. Quantiles use nearest rank;
+with five samples p95 is the maximum. Missing/unfinished operations stay absent.
+Heap/RSS peaks are sampled between operations (lower bounds, not V8 allocation
+high-water marks). Node version, CPU, host, load before/after, command, source
+commit and dirty state are retained with results.
+
+`PARITY_OUT` defaults to `tests/modelling-parity/.out/l3`; the runner writes a
+contract JSON array and Markdown table there. The committed baseline and
+round-1 targets live in `tests/perf-ratchets/modelling-session.json`. These noisy
+diagnostics deliberately do not join daily automatic ceiling lowering.
+`node scripts/perf/modelling-session.mjs --check --input <results.json> --f5-result <F5.json>` checks the
+round-1 goals without re-running: complete sizes, both latency quantiles growing
+strictly less than 2× from 1K to 50K, and a passing F5 exercise result whose
+`metrics.ms` is strictly below 60 seconds. The F5 time comes from the exercise
+lane, not a substitute tower here. Missing sizes or F5 evidence fail the check.
+The baseline is a description of current main, not an accepted round-1 result
+or a speedup claim.

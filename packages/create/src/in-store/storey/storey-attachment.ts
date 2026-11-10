@@ -3,46 +3,78 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Which walls are attached to a storey above (#9013, requirement 4).
+ * What an element's top is attached to (#9013, #9296).
  *
- * IFC has no standard wall-top constraint, so attachment is RECORDED, never
- * inferred from a wall height that happens to equal the current spacing (a
- * fixed 3.00 m wall under a 3.00 m storey is still a fixed wall). Two records
- * are read:
+ * IFC has no standard top constraint, so attachment is RECORDED, never
+ * inferred from a height that happens to equal the current spacing (a fixed
+ * 3.00 m wall under a 3.00 m storey is still a fixed wall). Walls, columns,
+ * beams and members, and curtain walls read the same records:
  *
  * 1. `IfcLite_StoreyAttachment.TopConstraint` (IfcLabel), written by the
- *    Model workspace: the GlobalId of the storey the top is attached to, or
- *    `NextStoreyAbove` for a wall drawn as attached before any storey above
- *    existed (the blank-file case). The first storey added directly above
- *    binds it. GlobalIds survive export, reload and schema conversion, and
- *    the property is an ordinary overlay write, so it undoes with its edit.
- * 2. Revit's own export, `Constraints` › `Top Constraint` = `Up to level:
- *    <name>`: what the authoring tool recorded, matched to a storey by name.
- *    `Unconnected` (or no record) is a fixed-height wall.
+ *    Model workspace and `bim.store`:
+ *    - the GlobalId of the storey the top is attached to;
+ *    - `NextStoreyAbove`, for an element drawn attached before any storey
+ *      above existed (the blank-file case): the first storey added directly
+ *      above binds it;
+ *    - the GlobalId of a slab: the top reaches the slab's underside and
+ *      follows it when the slab's storey moves;
+ *    - `Fixed`, an explicit fixed height (it overrides a Revit record).
+ *    GlobalIds survive export, reload and schema conversion, and the property
+ *    is an ordinary overlay write, so it undoes with its edit.
+ * 2. `IfcLite_StoreyAttachment.TopBinding` (IfcLabel), how a storey target is
+ *    meant (#9296):
+ *    - `Relative`: Archicad's "home storey + 1". The element follows whatever
+ *      storey is next above its own: a storey inserted below the target
+ *      re-binds it, and a copy to another storey binds the copy to the storey
+ *      above its new one.
+ *    - `Explicit`: Revit's "Up to level: X". The element stays on that storey
+ *      whatever is inserted or copied.
+ *    A record without one (every file written before #9296) is relative when
+ *    its storey is the next storey above the element's own, which is what the
+ *    Model workspace's "To storey above" wrote, and explicit otherwise. So an
+ *    old file keeps its meaning for every edit it could already make.
+ * 3. Revit's own export, `Constraints` › `Top Constraint` = `Up to level:
+ *    <name>`: an explicit binding, matched to a storey by name. `Unconnected`
+ *    (or no record) is a fixed height.
  *
- * `Fixed` in the IfcLite record is an explicit fixed-height wall: it
- * overrides a Revit record, so making a Revit-attached wall fixed sticks.
- * A record that names no single live storey (a deleted storey's GlobalId, a
- * Revit level renamed or shared by two storeys) is not guessed at:
- * `topAttachmentProblem` reports it and the plan lists it as a notice.
+ * A record that names nothing it can follow (a deleted storey's GlobalId, a
+ * Revit level renamed or shared by two storeys, an unreadable target) is not guessed at: `topAttachmentProblem`
+ * reports it and the plan lists it as a notice.
  */
 
 import { PropertyValueType } from '@ifc-lite/data';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
-import type { StoreyInventory } from './storey-model.js';
+import { storeyNeighbour, type StoreyInventory } from './storey-model.js';
 
 export const STOREY_ATTACHMENT_PSET = 'IfcLite_StoreyAttachment';
 export const TOP_CONSTRAINT = 'TopConstraint';
+export const TOP_BINDING = 'TopBinding';
 export const NEXT_STOREY_ABOVE = 'NextStoreyAbove';
 export const FIXED_HEIGHT = 'Fixed';
+export const RELATIVE_BINDING = 'Relative';
+export const EXPLICIT_BINDING = 'Explicit';
 
 const REVIT_PSET = 'Constraints';
 const REVIT_TOP = 'Top Constraint';
 const REVIT_LEVEL = /^\s*up to level\s*:\s*(.+?)\s*$/i;
 
+/** Element classes a top may attach to, with how their underside is read (`storey-attachment-target.ts`). */
+const UNDERSIDE_TYPES = new Set(['IFCROOF', 'IFCSLAB', 'IFCSLABSTANDARDCASE', 'IFCSLABELEMENTEDCASE']);
+
+export type TopBinding = 'relative' | 'explicit';
+
 export interface TopAttachment {
-  /** The storey the top follows; null while unbound (`NextStoreyAbove` with no storey above yet). */
+  /**
+   * The storey the top follows: the attached storey, or the storey that holds
+   * the attached slab. Null while unbound (`NextStoreyAbove` with no storey above yet).
+   */
   readonly targetStoreyId: number | null;
+  /** What the top reaches: a storey's floor, or an element's underside. */
+  readonly kind: 'storey' | 'element';
+  /** The attached slab, for `kind: 'element'`. */
+  readonly targetElementId?: number;
+  /** How a storey target is meant; an element target is always explicit. */
+  readonly binding: TopBinding;
   readonly source: 'ifclite' | 'revit';
 }
 
@@ -50,37 +82,86 @@ function text(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
 }
 
-/** The recorded top attachment of a wall, or null for a fixed-height wall. */
-export function readTopAttachment(inventory: StoreyInventory, wallId: number): TopAttachment | null {
+/** The storey that contains `elementId` (through IfcRelContainedInSpatialStructure), or null. */
+export function homeStoreyOf(inventory: StoreyInventory, elementId: number): number | null {
+  const storeyIds = new Set(inventory.storeys.map((storey) => storey.expressId));
+  const rel = (inventory.incomingOf?.(elementId) ?? inventory.incoming.get(elementId) ?? []).find((candidate) => candidate.type === 'IFCRELCONTAINEDINSPATIALSTRUCTURE');
+  return rel && storeyIds.has(rel.parent) ? rel.parent : null;
+}
+
+/** Live slabs and pending targets by GlobalId, read once per inventory. */
+const targetIndexes = new WeakMap<StoreyInventory, Map<string, { id: number; type: string }>>();
+function targetByGlobalId(inventory: StoreyInventory, globalId: string): { id: number; type: string } | null {
+  let index = targetIndexes.get(inventory);
+  if (!index) {
+    index = new Map();
+    for (const type of UNDERSIDE_TYPES) {
+      for (const id of inventory.reader.ids(type)) {
+        const guid = inventory.reader.entity(id)?.attributes[0];
+        if (typeof guid === 'string') index.set(guid, { id, type });
+      }
+    }
+    targetIndexes.set(inventory, index);
+  }
+  return index.get(globalId) ?? null;
+}
+
+function recordedBinding(inventory: StoreyInventory, elementId: number): TopBinding | null {
+  const recorded = text(inventory.view.getPropertyValue(elementId, STOREY_ATTACHMENT_PSET, TOP_BINDING));
+  if (recorded === RELATIVE_BINDING) return 'relative';
+  if (recorded === EXPLICIT_BINDING) return 'explicit';
+  return null;
+}
+
+/** The recorded top attachment of an element, or null for a fixed height. */
+export function readTopAttachment(inventory: StoreyInventory, elementId: number): TopAttachment | null {
   const view = inventory.view;
-  const own = text(view.getPropertyValue(wallId, STOREY_ATTACHMENT_PSET, TOP_CONSTRAINT));
+  const own = text(view.getPropertyValue(elementId, STOREY_ATTACHMENT_PSET, TOP_CONSTRAINT));
   if (own) {
     if (own === FIXED_HEIGHT) return null;
-    if (own === NEXT_STOREY_ABOVE) return { targetStoreyId: null, source: 'ifclite' };
+    if (own === NEXT_STOREY_ABOVE) return { targetStoreyId: null, kind: 'storey', binding: 'relative', source: 'ifclite' };
     const storey = inventory.storeys.find((candidate) => candidate.GlobalId === own);
-    // A GlobalId naming no live storey (it was deleted) leaves the wall fixed.
-    return storey ? { targetStoreyId: storey.expressId, source: 'ifclite' } : null;
+    if (storey) {
+      const home = homeStoreyOf(inventory, elementId);
+      const next = home === null ? null : storeyNeighbour(inventory, home, 1);
+      // Legacy records: "To storey above" wrote the next storey's GlobalId.
+      const binding = recordedBinding(inventory, elementId) ?? (next?.expressId === storey.expressId ? 'relative' : 'explicit');
+      return { targetStoreyId: storey.expressId, kind: 'storey', binding, source: 'ifclite' };
+    }
+    const element = targetByGlobalId(inventory, own);
+    if (element && UNDERSIDE_TYPES.has(element.type)) {
+      const holder = homeStoreyOf(inventory, element.id);
+      // A slab no storey holds cannot be followed through a storey edit.
+      return holder === null ? null : { targetStoreyId: holder, kind: 'element', targetElementId: element.id, binding: 'explicit', source: 'ifclite' };
+    }
+    // A GlobalId naming no live storey, slab or roof (it was deleted) leaves the element fixed.
+    return null;
   }
-  const revit = text(view.getPropertyValue(wallId, REVIT_PSET, REVIT_TOP));
+  const revit = text(view.getPropertyValue(elementId, REVIT_PSET, REVIT_TOP));
   const level = revit ? REVIT_LEVEL.exec(revit)?.[1] : undefined;
   if (!level) return null;
   const named = inventory.storeys.filter((storey) => storey.Name.trim().toLowerCase() === level.toLowerCase());
   // Two storeys with that name: refuse to pick one.
-  return named.length === 1 ? { targetStoreyId: named[0].expressId, source: 'revit' } : null;
+  return named.length === 1 ? { targetStoreyId: named[0].expressId, kind: 'storey', binding: 'explicit', source: 'revit' } : null;
 }
 
 /**
- * Why a wall's recorded attachment cannot be followed, or null when it can
- * (or the wall records none): the record names no single live storey.
+ * Why an element's recorded attachment cannot be followed, or null when it
+ * can (or the element records none).
  */
-export function topAttachmentProblem(inventory: StoreyInventory, wallId: number): string | null {
+export function topAttachmentProblem(inventory: StoreyInventory, elementId: number): string | null {
   const view = inventory.view;
-  const own = text(view.getPropertyValue(wallId, STOREY_ATTACHMENT_PSET, TOP_CONSTRAINT));
+  const own = text(view.getPropertyValue(elementId, STOREY_ATTACHMENT_PSET, TOP_CONSTRAINT));
   if (own) {
     if (own === FIXED_HEIGHT || own === NEXT_STOREY_ABOVE) return null;
-    return inventory.storeys.some((storey) => storey.GlobalId === own) ? null : `its top is attached to a storey that no longer exists (${own})`;
+    if (inventory.storeys.some((storey) => storey.GlobalId === own)) return null;
+    const element = targetByGlobalId(inventory, own);
+    if (element && UNDERSIDE_TYPES.has(element.type)) {
+      return homeStoreyOf(inventory, element.id) === null ? `its top is attached to element #${element.id}, which no storey contains` : null;
+    }
+    return `its top is attached to a storey, slab or roof that no longer exists (${own})`;
   }
-  const level = REVIT_LEVEL.exec(text(view.getPropertyValue(wallId, REVIT_PSET, REVIT_TOP)) ?? '')?.[1];
+  const level = REVIT_LEVEL.exec(text(view.getPropertyValue(elementId, REVIT_PSET, REVIT_TOP)) ?? '')?.[1];
   if (!level) return null;
   const named = inventory.storeys.filter((storey) => storey.Name.trim().toLowerCase() === level.toLowerCase()).length;
   if (named === 1) return null;
@@ -89,21 +170,31 @@ export function topAttachmentProblem(inventory: StoreyInventory, wallId: number)
     : `Revit records its top up to level "${level}", which ${named} storeys are called`;
 }
 
-/** Record a wall as attached to `target` (a storey GlobalId or `NextStoreyAbove`). */
-export function writeTopAttachment(view: MutablePropertyView, wallId: number, target: string): void {
-  view.setProperty(wallId, STOREY_ATTACHMENT_PSET, TOP_CONSTRAINT, target, PropertyValueType.Label);
+/**
+ * Record an element as attached to `target` (a storey, slab or roof GlobalId, or
+ * `NextStoreyAbove`). `binding` says how a storey target is meant; omitted,
+ * any recorded binding is left as it is (a re-bind keeps its kind).
+ */
+export function writeTopAttachment(view: MutablePropertyView, elementId: number, target: string, binding?: TopBinding): void {
+  view.setProperty(elementId, STOREY_ATTACHMENT_PSET, TOP_CONSTRAINT, target, PropertyValueType.Label);
+  if (binding) {
+    view.setProperty(elementId, STOREY_ATTACHMENT_PSET, TOP_BINDING, binding === 'relative' ? RELATIVE_BINDING : EXPLICIT_BINDING, PropertyValueType.Label);
+  }
 }
 
 /**
- * Make a wall fixed-height again. A wall Revit recorded as attached gets an
- * explicit `Fixed` record (the Revit property is the file's own and stays);
- * any other wall simply loses the IfcLite record.
+ * Make an element fixed-height again. An element Revit recorded as attached
+ * gets an explicit `Fixed` record (the Revit property is the file's own and
+ * stays); any other loses the IfcLite record.
  */
-export function clearTopAttachment(view: MutablePropertyView, wallId: number): void {
-  const revit = text(view.getPropertyValue(wallId, REVIT_PSET, REVIT_TOP));
+export function clearTopAttachment(view: MutablePropertyView, elementId: number): void {
+  const revit = text(view.getPropertyValue(elementId, REVIT_PSET, REVIT_TOP));
   if (revit && REVIT_LEVEL.test(revit)) {
-    view.setProperty(wallId, STOREY_ATTACHMENT_PSET, TOP_CONSTRAINT, FIXED_HEIGHT, PropertyValueType.Label);
-  } else if (view.getPropertyValue(wallId, STOREY_ATTACHMENT_PSET, TOP_CONSTRAINT) !== null) {
-    view.deleteProperty(wallId, STOREY_ATTACHMENT_PSET, TOP_CONSTRAINT);
+    view.setProperty(elementId, STOREY_ATTACHMENT_PSET, TOP_CONSTRAINT, FIXED_HEIGHT, PropertyValueType.Label);
+  } else if (view.getPropertyValue(elementId, STOREY_ATTACHMENT_PSET, TOP_CONSTRAINT) !== null) {
+    view.deleteProperty(elementId, STOREY_ATTACHMENT_PSET, TOP_CONSTRAINT);
+  }
+  if (view.getPropertyValue(elementId, STOREY_ATTACHMENT_PSET, TOP_BINDING) !== null) {
+    view.deleteProperty(elementId, STOREY_ATTACHMENT_PSET, TOP_BINDING);
   }
 }

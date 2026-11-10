@@ -2,6 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+import { pollCachedData } from './poll-cached-data.js';
 import { withNarrowedCoordinateSpace,
   type HealthResponse,
   type MetadataResponse,
@@ -554,11 +555,13 @@ export class IfcServerClient {
    *
    * @param cacheKey - The cache key from the geometry parse response
    * @param options - Maximum number of retries (default: 10), or an options
-   *   object with `maxRetries` and `dataModelEntities`. Pass the same
+   *   object with `maxRetries`, `signal`, and `dataModelEntities`. Pass the same
    *   `dataModelEntities` the parse call used (#6034): the full and the
    *   rooted-only data model are separate entries, and each is served only to
    *   a request that names it. The parse call's own options object works here.
-   * @returns Data model Parquet buffer, or null if not available after retries
+   * @returns Data model Parquet buffer, or null for 404 or exhausted pending (202) responses.
+   * @throws HTTP errors, exhausted transport failures, decode failures, or caller cancellation.
+   * Pass `signal` in the options object to cancel requests and backoff.
    *
    * @example
    * ```typescript
@@ -579,50 +582,13 @@ export class IfcServerClient {
    */
   async fetchDataModel(
     cacheKey: string,
-    options: number | (Pick<ParseRequestOptions, 'dataModelEntities'> & { maxRetries?: number }) = 10
+    options: number | (Pick<ParseRequestOptions, 'dataModelEntities'> & { maxRetries?: number; signal?: AbortSignal }) = 10
   ): Promise<ArrayBuffer | null> {
-    const maxRetries = typeof options === 'number' ? options : (options.maxRetries ?? 10);
-    const query = dataModelQuery(typeof options === 'number' ? undefined : options);
-    let delay = 100; // Start with 100ms delay
-
-    for (let attempt = 0; attempt < maxRetries; attempt++) {
-      try {
-        const response = await fetch(`${this.baseUrl}/api/v1/parse/data-model/${cacheKey}${query}`, {
-          method: 'GET',
-          headers: this.authHeaders(),
-          signal: AbortSignal.timeout(30000),
-        });
-
-        if (response.status === 200) {
-          // Data model is ready
-          const buffer = await response.arrayBuffer();
-          console.log(`[client] Data model fetched: ${(buffer.byteLength / 1024 / 1024).toFixed(2)}MB`);
-          return buffer;
-        } else if (response.status === 202) {
-          // Still processing, wait and retry
-          console.log(`[client] Data model still processing (attempt ${attempt + 1}/${maxRetries}), waiting ${delay}ms...`);
-          await new Promise(resolve => setTimeout(resolve, delay));
-          delay = Math.min(delay * 1.5, 2000); // Exponential backoff, max 2s
-        } else if (response.status === 404) {
-          // Cache key not found
-          console.warn(`[client] Data model not found for cache key: ${cacheKey}`);
-          return null;
-        } else {
-          throw new Error(`Unexpected response status: ${response.status}`);
-        }
-      } catch (error) {
-        if (attempt === maxRetries - 1) {
-          console.error('[client] Failed to fetch data model:', error);
-          return null;
-        }
-        // Retry on network errors
-        await new Promise(resolve => setTimeout(resolve, delay));
-        delay = Math.min(delay * 1.5, 2000);
-      }
-    }
-
-    console.warn('[client] Data model fetch timed out after max retries');
-    return null;
+    const settings = typeof options === 'number' ? { maxRetries: options } : options;
+    return pollCachedData(
+      `${this.baseUrl}/api/v1/parse/data-model/${cacheKey}${dataModelQuery(settings)}`,
+      this.authHeaders(), settings, response => response.arrayBuffer(), response => this.handleError(response),
+    );
   }
 
   /**
@@ -640,8 +606,10 @@ export class IfcServerClient {
    * it in the background, hence the bounded retry.
    *
    * @param cacheKey - The `cache_key` from a parse response
-   * @param maxRetries - Maximum number of retries (default: 10)
-   * @returns Decoded symbol data, or null if unavailable after retries
+   * @param options - Retry count (default: 10), or `{ maxRetries, signal }`.
+   * @returns Decoded symbol data, or null for 404 or exhausted pending (202) responses.
+   * @throws HTTP errors, exhausted transport failures, decode failures, or caller cancellation.
+   * Pass `{ maxRetries, signal }` to cancel requests and backoff.
    *
    * @example
    * ```typescript
@@ -652,48 +620,15 @@ export class IfcServerClient {
    * }
    * ```
    */
-  async fetchSymbolic(cacheKey: string, maxRetries = 10): Promise<SymbolicData | null> {
-    let delay = 100; // Start with 100ms delay
-
-    for (let attempt = 0; attempt < maxRetries; attempt++) {
-      // Only transport/timeout failures are retried here. HTTP error statuses
-      // are handled below so a persistent 5xx surfaces as a thrown error rather
-      // than being collapsed into `null` (which would look like "no symbols").
-      let response: Response;
-      try {
-        response = await fetch(`${this.baseUrl}/api/v1/parse/symbolic/${cacheKey}`, {
-          method: 'GET',
-          headers: this.authHeaders(),
-          signal: AbortSignal.timeout(30000),
-        });
-      } catch (error) {
-        if (attempt === maxRetries - 1) throw error;
-        console.warn('[client] Retrying symbolic data fetch after network error:', error);
-        await new Promise(resolve => setTimeout(resolve, delay));
-        delay = Math.min(delay * 1.5, 2000); // Exponential backoff, max 2s
-        continue;
-      }
-
-      if (response.status === 200) {
-        return (await response.json()) as SymbolicData;
-      } else if (response.status === 202) {
-        // Still processing (streaming background cache), wait and retry.
-        await new Promise(resolve => setTimeout(resolve, delay));
-        delay = Math.min(delay * 1.5, 2000);
-      } else if (response.status === 404) {
-        // Definitive "no entry for this cache key" — distinct from a server error.
-        console.warn(`[client] Symbolic data not found for cache key: ${cacheKey}`);
-        return null;
-      } else {
-        // 5xx / other unexpected status: surface it instead of masking it.
-        throw await this.handleError(response);
-      }
-    }
-
-    // Exhausted retries while still 202 (background cache not ready). This is a
-    // known "not yet available" state, so return null rather than throwing.
-    console.warn('[client] Symbolic data fetch timed out after max retries');
-    return null;
+  async fetchSymbolic(
+    cacheKey: string,
+    options: number | { maxRetries?: number; signal?: AbortSignal } = 10,
+  ): Promise<SymbolicData | null> {
+    return pollCachedData(
+      `${this.baseUrl}/api/v1/parse/symbolic/${cacheKey}`, this.authHeaders(),
+      typeof options === 'number' ? { maxRetries: options } : options,
+      async response => (await response.json()) as SymbolicData, response => this.handleError(response),
+    );
   }
 
   /**

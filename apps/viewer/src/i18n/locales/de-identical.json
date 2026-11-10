@@ -1739,6 +1739,10 @@
     "value": "Name",
     "reason": "Same-spelling German label or established UI term (Name); placeholders retain runtime content."
   },
+  "storeyManager.copy.level": {
+    "value": "{storey} ({elevation} m)",
+    "reason": "Storey names and signed elevations are runtime data; the metre symbol and punctuation contain no English prose."
+  },
   "tableChanges.matchTypeTag": {
     "value": "Tag",
     "reason": "Preserved technical syntax/identifier or proper name: Tag. Required for exact control, schema, format, shortcut or product recognition."
@@ -1882,5 +1886,9 @@
   "zonesPanel.roomPanel.status.offline": {
     "value": "Offline",
     "reason": "Same-spelling German label or established UI term (Offline); placeholders retain runtime content."
+  },
+  "settings.display.wheelZoomSpeed.normal": {
+    "value": "Normal",
+    "reason": "Same-spelling German label (Normal) for the default wheel-zoom speed."
   }
 }

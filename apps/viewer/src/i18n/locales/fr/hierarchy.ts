@@ -5,6 +5,14 @@
 import type { Catalogue } from '../../registry';
 
 export const hierarchyFr = {
+  "hierarchy.layerGrouping.label": "Regrouper les éléments du calque",
+  "hierarchy.layerGrouping.noCode": "{source} (sans code)",
+  "hierarchy.layerGrouping.none": "Aucun",
+  "hierarchy.layerGrouping.class": "Classe",
+  "hierarchy.layerGrouping.classification": "Référence de classification",
+  "hierarchy.layerGrouping.unclassified": "Non classé",
+  "hierarchy.layerGrouping.unavailable": "Classification indisponible",
+
   "hierarchy.node.repositionAriaLabel": "Repositionner le modèle {name}",
   "hierarchy.node.repositionTooltip": "Repositionner le modèle",
   "hierarchy.node.hideModelAriaLabel": "Masquer le modèle {name}",

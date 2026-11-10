@@ -177,12 +177,20 @@ export type {
   SIUnitParams,
 } from './types-cost.js';
 
-export { copyBatchInStore, copySourcesInStore, copiedProductsInStore } from './in-store/copy-batch.js';
+export { copyBatchInStore, copySourcesInStore, copiedProductsInStore, copyToStoreysInStore, copiesOfSelection, type StoreyCopies, type SelectedCopy } from './in-store/copy-batch.js';
 export { arrayCopyTransforms, type CopyArrayParams } from './in-store/copy-array.js';
 export type { CopyTransform } from './in-store/copy-product.js';
+export type { CopyUnattachedTop } from './in-store/copy-attachment.js';
 
 export { setElementSizeInStore } from './in-store/element-size-edit.js';
+export { configureAuthoredQuantityReader } from './in-store/configure-authored-quantities.js';
 export { deriveAuthoredBaseQuantities } from './in-store/base-quantities.js';
+export {
+  hasRefreshableBaseQuantities,
+  refreshedBaseQuantitySet,
+  refreshedBaseQuantitySets,
+  withRefreshedBaseQuantities,
+} from './in-store/base-quantities-refresh.js';
 export { resizeWallInStore } from './in-store/wall-size-edit.js';
 
 export { transformElementsInStore, type ElementTransformInput, type StoreyTransformOp } from './in-store/element-transform-edit.js';
@@ -211,12 +219,14 @@ export { planStoreyReassignment, planStoreyReassignmentCandidates, type StoreyRe
 export { reassignElementsToStoreyInStore } from './in-store/storey-reassignment.js';
 export {
   readStoreyInventory, summarizeStoreys, storeyContents, storeySpacingAbove,
-  addStoreyInStore, addStoreyRefusal, renameStoreyInStore,
+  addStoreyInStore, addStoreyRefusal, planStoreyAdd, renameStoreyInStore,
   planStoreyLevelEdit, applyStoreyLevelEdit, storeyLevelPlanSignature,
   planStoreyDelete, applyStoreyDelete, storeyDeletePlanSignature, suggestStorey, DEFAULT_STOREY_HEIGHT,
   planAttachmentBindings, readTopAttachment, writeTopAttachment, clearTopAttachment,
-  STOREY_ATTACHMENT_PSET, NEXT_STOREY_ABOVE, FIXED_HEIGHT, topAttachmentProblem,
+  STOREY_ATTACHMENT_PSET, NEXT_STOREY_ABOVE, FIXED_HEIGHT, TOP_BINDING, RELATIVE_BINDING, EXPLICIT_BINDING, topAttachmentProblem,
+  setTopConstraintInStore, applyNewElementTop,
   type StoreyLevelResult, type StoreyLevelPlanOptions, type WallHeightChange, type StairRefit, type TopAttachment,
+  type AttachedHeightChange, type StoreyBinding, type StoreyAddPlan, type TopBinding, type TopConstraint,
   MIN_STOREY_SPACING, StoreyEditRefusedError, describeElevation,
   type StoreyInventory, type StoreyRecord, type StoreySummary, type AddStoreyParams, type AddStoreyResult,
   type StoreyLevelEdit, type StoreyLevelPlan, type StoreyMove, type SpacingChange, type PlacementWrite,

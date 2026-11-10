@@ -32,12 +32,16 @@
  * band of models that would be silently corrected without being flagged, and
  * another that would be flagged without being corrected. (#2526, #2543/#2534
  * reconciliation.)
+ *
+ * The guard also recognises the same export with the IfcSite anchor written
+ * in map units inside a millimetre file (#9480, Vectorworks 2026 Update 7);
+ * {@link DoubleGeoreference.anchorUnitRatio} says which signature fired.
  */
 
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
 
-import { computeModelCenterInIfcMeters, effectiveMapConversionForGeometry } from './map-absolute';
+import { computeModelCenterInIfcMeters, effectiveMapConversionForGeometry, matchMapAbsoluteGeometry } from './map-absolute';
 import { resolveMapAxisDirection } from './map-axis-direction';
 import {
   authoredNonUnitFactors,
@@ -47,7 +51,11 @@ import {
 } from './geo-scale';
 
 export interface DoubleGeoreference {
-  /** Model centre in IFC world metres, Z-up (X ≈ easting, Y ≈ northing). */
+  /**
+   * Model centre in map metres as ifc-lite places it (X ≈ easting,
+   * Y ≈ northing): the IFC world centre, plus the part of the anchor a #9480
+   * unit-slipped site placement leaves out.
+   */
   worldCenter: { x: number; y: number };
   /** `IfcMapConversion` eastings/northings converted to metres. */
   offset: { easting: number; northing: number };
@@ -112,6 +120,18 @@ export interface DoubleGeoreference {
    * set each to 1, including when Scale needs no change (#4675).
    */
   factorsForExport: FactorName[];
+  /**
+   * Non-null when the IfcSite placement repeats the anchor in map units
+   * instead of project units (#9480): `lengthUnitScale / mapUnitScale`, e.g.
+   * 0.001 for a millimetre file in a metre CRS. Null for the #2526 signature.
+   */
+  anchorUnitRatio: number | null;
+  /**
+   * #9480 only: metres the slipped site Z adds to the placement height, or
+   * null when it cannot be recovered (no published `siteOrigin`, or the site
+   * is not the slipped anchor) and the elevation is left as authored.
+   */
+  siteHeightShiftMetres: number | null;
 }
 
 /**
@@ -144,7 +164,14 @@ export function detectDoubleGeoreference(
 
   const easting = conversion.eastings * mapScale;
   const northing = conversion.northings * mapScale;
-  const { ifcX, ifcY } = computeModelCenterInIfcMeters(coordinateInfo);
+  const { ifcX: rawX, ifcY: rawY } = computeModelCenterInIfcMeters(coordinateInfo);
+  const match = matchMapAbsoluteGeometry(conversion, mapScale, coordinateInfo);
+  const anchorUnitRatio = match?.kind === 'unitMismatchedAnchor' ? match.anchorUnitRatio : null;
+  const siteHeightShiftMetres = match?.kind === 'unitMismatchedAnchor' ? match.siteHeightShiftMetres ?? null : null;
+  // Where ifc-lite puts the centre in the map: the neutralised conversion is a
+  // pure translation (zero for #2526), so this is the world centre moved by it.
+  const ifcX = rawX + neutralised.eastings * mapScale;
+  const ifcY = rawY + neutralised.northings * mapScale;
 
   // Where a spec-strict tool would put the model, versus where its geometry
   // already sits in the map CRS. Mirrors `computeProjectedCenter` exactly —
@@ -161,8 +188,8 @@ export function detectDoubleGeoreference(
   // renders as "an unknown distance".
   const axis = resolveMapAxisDirection(conversion.xAxisAbscissa, conversion.xAxisOrdinate);
   const { x: scaleX, y: scaleY } = getEffectiveAxisScales(conversion, mapScale, lengthUnitScale);
-  const appliedE = axis ? easting + axis.a * scaleX * ifcX - axis.b * scaleY * ifcY : Number.NaN;
-  const appliedN = axis ? northing + axis.b * scaleX * ifcX + axis.a * scaleY * ifcY : Number.NaN;
+  const appliedE = axis ? easting + axis.a * scaleX * rawX - axis.b * scaleY * rawY : Number.NaN;
+  const appliedN = axis ? northing + axis.b * scaleX * rawX + axis.a * scaleY * rawY : Number.NaN;
 
   const rotationIsIdentity = axis !== null && Math.abs(axis.a - 1) < 1e-9 && Math.abs(axis.b) < 1e-9;
   // The tolerance is expressed as INDUCED POSITION ERROR, not as a fraction:
@@ -188,6 +215,8 @@ export function detectDoubleGeoreference(
     overridesAuthoredRotation: !rotationIsIdentity,
     scaleForExport: scaleIsUnit ? null : lengthScale / mapUnitScale,
     factorsForExport,
+    anchorUnitRatio,
+    siteHeightShiftMetres,
   };
 }
 
@@ -197,7 +226,8 @@ function joinSerial(items: string[]): string {
   return `${items.slice(0, -1).join(', ')}, and ${items[items.length - 1]}`;
 }
 
-type ExportScaleFields = Pick<DoubleGeoreference, 'scaleForExport' | 'factorsForExport'>;
+type ExportScaleFields = Pick<DoubleGeoreference, 'scaleForExport' | 'factorsForExport'>
+  & Partial<Pick<DoubleGeoreference, 'anchorUnitRatio'>>;
 
 /**
  * The sentence saying the file's Scale and factors from
@@ -222,6 +252,11 @@ export function overriddenScaleNote(found: ExportScaleFields): string | null {
  * {@link DoubleGeoreference.factorsForExport} are sent to the authoring tool.
  */
 export function exportCorrectionInstruction(found: ExportScaleFields): string {
+  // #9480: no IfcMapConversion edit is a fixed point. Offsets that put the
+  // site on the anchor (`Eastings x (1 - ratio)`) still leave the geometry at
+  // `anchor x ratio`, so the guard reads them as the same slip and shrinks
+  // them again (~6 km for the reporter's file). Only the placement can be fixed.
+  if (found.anchorUnitRatio != null) return SITE_ANCHOR_SOURCE_FIX;
   const fields = ['Eastings and Northings to 0', 'Model rotation in map coordinates to 0'];
   if (found.scaleForExport !== null) fields.push(`Scale to ${trimFloat(found.scaleForExport)}`);
   const inApp = `set ${joinSerial(fields)}, then use Export IFC (with changes).`;
@@ -258,6 +293,8 @@ export function trimFloat(value: number): string {
   if (!Number.isFinite(value)) return String(value);
   return String(Number(value.toPrecision(6)));
 }
+
+const SITE_ANCHOR_SOURCE_FIX = "fix the IfcSite placement in the authoring tool so it uses the file's length unit; no IfcMapConversion edit here can express this correction.";
 
 export function formatApproxDistance(metres: number): string {
   if (!Number.isFinite(metres)) return 'an unknown distance';

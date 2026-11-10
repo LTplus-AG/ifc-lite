@@ -654,3 +654,53 @@ fn wkt_only_crs_without_an_operation_declares_nothing() {
         .is_none());
     assert!(GeoRefExtractor::extract(&mut EntityDecoder::new(&content), &types).unwrap().is_none());
 }
+
+fn context_file(contexts: &str) -> String {
+    format!(
+        "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('','',(''),(''),'','','');\n\
+         FILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#1=IFCCARTESIANPOINT((0.,0.,0.));\n\
+         #2=IFCAXIS2PLACEMENT3D(#1,$,$);\n#3=IFCDIRECTION((-0.5,0.8660254037844386));\n\
+         #4=IFCDIRECTION((0.,0.,1.));\n#5=IFCDIRECTION((0.,0.));\n{contexts}\nENDSEC;\nEND-ISO-10303-21;\n"
+    )
+}
+
+/// The Rhino earth anchor (spec `rhino-3dm-export.md`) reads TrueNorth from
+/// the `Model` context, skipping a `Plan` context listed before it.
+#[test]
+fn model_true_north_reads_the_model_context() {
+    let file = context_file(
+        "#10=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Plan',2,1.E-5,#2,#4);\n\
+         #11=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#2,#3);",
+    );
+    let n = model_true_north(file.as_bytes(), &mut EntityDecoder::new(file.as_bytes())).expect("authored TrueNorth");
+    assert!((n[0] + 0.5).abs() < 1e-12 && (n[1] - 0.866_025_403_784_438_6).abs() < 1e-12, "{n:?}");
+}
+
+#[test]
+fn model_true_north_absent_or_degenerate_is_none() {
+    let absent = context_file("#11=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#2,$);");
+    assert_eq!(model_true_north(absent.as_bytes(), &mut EntityDecoder::new(absent.as_bytes())), None);
+    let zero = context_file("#11=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#2,#5);");
+    assert_eq!(model_true_north(zero.as_bytes(), &mut EntityDecoder::new(zero.as_bytes())), None);
+    // A vertical direction has no XY part.
+    let vertical = context_file("#11=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#2,#4);");
+    assert_eq!(model_true_north(vertical.as_bytes(), &mut EntityDecoder::new(vertical.as_bytes())), None);
+}
+
+/// TrueNorth goes through the counted `IfcDirection` leaf rule (#9416
+/// review): a malformed direction, another type, or a non-reference in the
+/// slot is a counted refusal, never a north read from its first two values.
+#[test]
+fn model_true_north_refuses_a_malformed_direction() {
+    for (label, leaf, north) in [
+        ("non-numeric third ratio", "#20=IFCDIRECTION((1.,0.,'x'));", "#20"),
+        ("too many ratios", "#20=IFCDIRECTION((1.,0.,0.,0.));", "#20"),
+        ("not a direction", "#20=IFCCARTESIANPOINT((1.,0.));", "#20"),
+        ("non-reference slot", "", "'x'"),
+    ] {
+        let file = context_file(&format!("{leaf}\n#11=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#2,{north});"));
+        let mut decoder = EntityDecoder::new(file.as_bytes());
+        assert_eq!(model_true_north(file.as_bytes(), &mut decoder), None, "{label}");
+        assert_eq!(decoder.refused_records(), 1, "{label}");
+    }
+}

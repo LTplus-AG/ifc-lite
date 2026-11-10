@@ -13,6 +13,7 @@ import { beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { useViewerStore } from '@/store';
 import { readAttributes } from '@/lib/placement-core.js';
+import { rotateWithGeneratedRooms } from './mutation-placement-rooms.js';
 import { WALL, WALL_MODEL, WALL_UNITS, seedRectangleWall } from '@/test/rectangle-wall-fixture';
 
 const store = () => useViewerStore.getState();
@@ -59,4 +60,31 @@ describe('rotateEntity with an explicit tilted RefDirection', () => {
     close(store().readEntityRotation(WALL_MODEL, WALL)?.refDirection, [0, 0.8, -0.6], 'turned tilted frame');
     assert.deepEqual(store().mutationViews.get(WALL_MODEL)!.getNewEntities(), [], 'the explicit RefDirection is edited in place');
   });
+});
+
+// #9296: a generated space elsewhere in the model must not capture an
+// unresolved wall placement and prevent the existing collaboration path.
+const WITH_GENERATED_SPACE = (step: string) => step.replace('ENDSEC;\nEND-ISO', `
+#90=IFCSPACE('1cUkl32yn9qRSPvBJVyWYa',$,'Room',$,'IfcLite:GeneratedSpace',$,$,$,.ELEMENT.,.INTERNAL.,$);
+#91=IFCBUILDINGSTOREY('2cUkl32yn9qRSPvBJVyWYa',$,'Other storey',$,$,#41,$,$,.ELEMENT.,3.);
+#92=IFCRELAGGREGATES('0cUkl32yn9qRSPvBJVyWYa',$,$,$,#91,(#90));
+ENDSEC;\nEND-ISO`);
+
+it('#9296 generated-room rotation defers an unresolved placement without a commit', async () => {
+  await seedRectangleWall(WALL_UNITS[0].unit, 1, step => WITH_GENERATED_SPACE(step)
+    .replace('#51=IFCLOCALPLACEMENT(#41,#52);', '#51=IFCLOCALPLACEMENT(#41,$);'));
+  const count = store().mutationViews.get(WALL_MODEL)!.getMutationCount();
+  assert.equal(rotateWithGeneratedRooms(useViewerStore, WALL_MODEL, WALL, Math.PI / 2), null,
+    'unresolved placement stays available to the existing collaboration path');
+  assert.equal(store().mutationViews.get(WALL_MODEL)!.getMutationCount(), count);
+  assert.equal(store().undoStacks.get(WALL_MODEL)?.length ?? 0, 0);
+});
+
+it('#9296 generated-room rotation retains a vertical RefDirection refusal', async () => {
+  await seedRectangleWall(WALL_UNITS[0].unit, 1, step => WITH_GENERATED_SPACE(step)
+    .replace('#55=IFCDIRECTION((1.,0.,0.));', '#55=IFCDIRECTION((0.,0.,1.));'));
+  const result = store().rotateEntity(WALL_MODEL, WALL, Math.PI / 2);
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.match(result.reason, /RefDirection is vertical/);
+  assert.equal(store().mutationViews.get(WALL_MODEL)!.getMutationCount(), 0);
 });

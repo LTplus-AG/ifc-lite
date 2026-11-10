@@ -14,12 +14,15 @@ const TOLERANCE = 1;
  * A long straight edge drawn slanted used to come out dotted: the edge pass
  * averaged its tap votes, and the pixel at each step of the raster staircase
  * sees the other side of the edge in two directions, so it drew twice as dark
- * as the rest of the line. Every pixel along the edge must now be exactly as
- * dark as beside the same edge drawn axis-aligned, with no gap and no darker
- * dot, for every cue, quality, tap radius and MSAA count. A crease hidden
- * behind an occluder still draws nothing.
+ * as the rest of the line (#9360). The pass now marks a sample on a line when
+ * ANY direction crosses an edge (#9370). The darkest pixel of every column
+ * along the edge must be exactly as dark as beside the same edge drawn
+ * axis-aligned, with no gap and no darker dot, for every cue, quality, tap
+ * radius and MSAA count. A crease hidden behind an occluder still draws
+ * nothing. The production pass before #9370 fails this (peaks of 64 against
+ * a seam line of 32, and 89 on the crease).
  */
-test('edge-pass lines stay continuous along slanted straight edges (#9360)', async ({ page }, info) => {
+test('edge-pass lines stay continuous along slanted straight edges (#9360, #9370)', async ({ page }, info) => {
   const server = await startViewerDevServer('edge-line-continuity');
   try {
     await page.goto(new URL('/oauth/autodesk/callback', server.url).href);

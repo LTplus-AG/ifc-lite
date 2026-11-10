@@ -1,7 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-
+import { PersistentToolHosts } from './PersistentToolHosts';
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels';
 import type { PanelImperativeHandle } from 'react-resizable-panels';
@@ -12,6 +12,7 @@ import { MobileToolbar } from './MobileToolbar';
 import { RibbonToolbar } from './ribbon/RibbonToolbar';
 import { HierarchyPanel } from './HierarchyPanel';
 import { StatusBar } from './StatusBar';
+import { FlavorDialogHost } from '@/components/extensions/FlavorDialogHost';
 import { ViewportContainer } from './ViewportContainer';
 import { ModelToolRail } from './model/ModelToolRail';
 import { ModelWorkspaceSplit } from './model/ModelWorkspaceSplit';
@@ -42,11 +43,13 @@ import { useDuplicateShortcut } from './useDuplicateShortcut';
 import { HoverTooltip } from './HoverTooltip';
 import { BottomStrip } from './BottomStrip';
 import { loadBottomStripOrientation, persistBottomStripOrientation } from '@/lib/panels/bottom-strip-persistence';
+import { useModelHierarchyWidth } from './model/useModelHierarchyWidth';
 import { LEFT_PANEL_DEFAULT_SIZE } from '@/store/layoutReset';
 
 /** Hierarchy's minimum width, % of the main row. */
 const LEFT_PANEL_MIN_SIZE = 10;
 import { useOverlayCompositor } from './schedule/useOverlayCompositor';
+import { ActivityTrayDialog } from './activity/ActivityTray';
 import { CommandPaletteHost as CommandPalette } from './CommandPaletteHost';
 import { SearchModal } from './SearchModal';
 import { FlowStartupPrompt } from './flow/FlowStartupPrompt';
@@ -128,6 +131,7 @@ export function ViewerLayout() {
   }, [collabGeometryNotice]);
 
   // Command palette state
+  const [activityOpen, setActivityOpen] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
 
   // The shared dispatcher owns the Ctrl+K chord and text-entry exception.
@@ -232,13 +236,11 @@ export function ViewerLayout() {
       }
     }
   }, [leftPanelCollapsed, emptyFold]);
-  const layoutResetEpoch = useViewerStore((s) => s.layoutResetEpoch); // "Reset layout" (#5854) restores the pane width
-  useEffect(() => { if (layoutResetEpoch > 0) leftPanelRef.current?.resize(`${LEFT_PANEL_DEFAULT_SIZE}%`); }, [layoutResetEpoch]);
+  const modeling = useModelHierarchyWidth(leftPanelRef, emptyFold, LEFT_PANEL_DEFAULT_SIZE);
 
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Track the gap between the layout viewport (innerHeight) and the visual
-  // viewport. On iOS Safari with bottom URL bar, dvh/innerHeight INCLUDES the
+  // Keep overlays inside the visible viewport. On iOS Safari with bottom URL bar, dvh/innerHeight INCLUDES the
   // URL bar area, so `bottom: 0` lands behind it; visualViewport.height excludes it.
   const bottomViewportInset = useVisualViewportBottomInset();
 
@@ -253,7 +255,7 @@ export function ViewerLayout() {
   useThemeDocumentClass();
   const safeMode = isSafeMode();
   return (
-    <TooltipProvider delayDuration={300}>
+    <TooltipProvider delayDuration={300}><PersistentToolHosts>
       <div className="flex flex-col h-screen h-[100dvh] w-screen overflow-hidden bg-background text-foreground">
         <ExtensionKeyboardBindings />
         <ShellStoreEffects />
@@ -269,19 +271,21 @@ export function ViewerLayout() {
         )}
         <KeyboardShortcutsDialog open={shortcutsDialog.open} onClose={shortcutsDialog.close} initialTab={shortcutsDialog.tab} />
         <SettingsDialogHost />
+        <FlavorDialogHost />
         <ConfirmDialogHost />
         {/* Global dialogs above, overlays below */}
         <EntityContextMenu />
         <HoverTooltip />
-        <CommandPalette open={commandPaletteOpen} onOpenChange={setCommandPaletteOpen} />
+        <CommandPalette open={commandPaletteOpen} onOpenChange={setCommandPaletteOpen}
+          surfaceContext={{ openActivity: () => setActivityOpen(true) }} />
+        <ActivityTrayDialog open={activityOpen} onOpenChange={setActivityOpen} announce={false} />
         <SearchModal />
         <TourHost />
         <FlowStartupPrompt />
         {/* Trigger-less: this instance exists so the entity context menu's
             "Export anonymized…" (which only sets `anonymizedExportRequested`,
             no trigger of its own) has a mounted dialog regardless of whether the export toolbar
-            dropdown is open. Same host pattern as `FlavorDialog` in
-            `StatusBar.tsx`; `toolbar/export-commands.ts` owns the `trigger` one. */}
+            dropdown is open. Same persistent host pattern as `FlavorDialogHost`; `toolbar/export-commands.ts` owns the `trigger` one. */}
         <AnonymizedExportDialog surface="context_menu" />
         {/* The compact mobile controls and the desktop ribbon share command homes. */}
         {isMobile
@@ -300,7 +304,7 @@ export function ViewerLayout() {
                   {/* Left Panel - Hierarchy */}
                   <Panel
                     id="left-panel"
-                    defaultSize={LEFT_PANEL_DEFAULT_SIZE}
+                    defaultSize={modeling ? 18 : LEFT_PANEL_DEFAULT_SIZE}
                     minSize={LEFT_PANEL_MIN_SIZE}
                     collapsible
                     collapsedSize={0}
@@ -324,7 +328,7 @@ export function ViewerLayout() {
                   <PanelResizeHandle className="shell-splitter-v" />
 
                   {/* Center - Viewport */}
-                  <Panel id="viewport-panel" defaultSize={100 - LEFT_PANEL_DEFAULT_SIZE} minSize={30}>
+                  <Panel id="viewport-panel" defaultSize={100 - (modeling ? 18 : LEFT_PANEL_DEFAULT_SIZE)} minSize={30}>
                     {/* data-floating-snap-bounds: edge-docked floating panels
                         (#1201) snap to THIS region, not the whole window, so a
                         dock never hides under the toolbar (its own close control
@@ -442,6 +446,6 @@ export function ViewerLayout() {
             child documents; live-synced via the shared store. */}
         <PanelWindowHost />
       </div>
-    </TooltipProvider>
+    </PersistentToolHosts></TooltipProvider>
   );
 }

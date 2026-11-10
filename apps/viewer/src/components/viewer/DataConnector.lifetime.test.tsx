@@ -1,0 +1,398 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import '@/test/setup-dom.js';
+import { afterEach, beforeEach, test, type TestContext } from 'node:test';
+import assert from 'node:assert/strict';
+import { act, useState } from 'react';
+import { IfcParser } from '@ifc-lite/parser';
+import { MutablePropertyView } from '@ifc-lite/mutations';
+import { useViewerStore } from '@/store';
+import { fixtureModel, fixtureModels } from '@/test/store-fixture';
+import { advance, cleanup, click, render } from '@/test/render';
+import { setLocale } from '@/i18n';
+import { replayWorkspaceHistory } from '@/lib/model-placement/history';
+import { DataConnector } from './DataConnector';
+
+const original = useViewerStore.getState();
+const guid = (n: number) => `0${String(n).padStart(21, '0')}`;
+async function parsedModel(id: string, count = 2) {
+  const content = `ISO-10303-21; HEADER; FILE_DESCRIPTION((''),'2;1'); FILE_NAME('draft.ifc','',(''),(''),'','',''); FILE_SCHEMA(('IFC4')); ENDSEC; DATA;
+${Array.from({ length: count }, (_, i) => `#${i + 1}=IFCWALL('${guid(i + 1)}',$,'${id} wall ${i + 1}',$,$,$,$,$,.STANDARD.);`).join('\n')}
+ENDSEC; END-ISO-10303-21;`;
+  const model = fixtureModel(id);
+  model.ifcDataStore = await new IfcParser().parseColumnar(new TextEncoder().encode(content).buffer, { disableWorkerScan: true });
+  return model;
+}
+beforeEach(async () => {
+  setLocale('en');
+  useViewerStore.setState({ ...fixtureModels(await parsedModel('a'), await parsedModel('b')),
+    mutationViews: new Map(), undoStacks: new Map(), redoStacks: new Map(), mutationBatchTags: new Map(),
+    referenceUndo: [], referenceRedo: [], modelPlacement: original.modelPlacement,
+    collabRole: null, editEnabled: true, loading: false });
+});
+afterEach(() => { cleanup(); useViewerStore.setState(original); });
+function button(label: string | RegExp) {
+  const found = [...document.querySelectorAll('button')].find(b => typeof label === 'string'
+    ? b.textContent?.trim() === label : label.test(b.textContent?.trim() ?? ''));
+  assert.ok(found, String(label)); return found;
+}
+const importButton = () => button(/^Import(?: \d+ rows?)?$/);
+function Harness() {
+  const [open, setOpen] = useState(true);
+  return <><button onClick={() => setOpen(true)}>Reopen</button><DataConnector open={open} onOpenChange={setOpen} /></>;
+}
+function chooseCsv(name: string, text: string) {
+  const input = document.querySelector<HTMLInputElement>('input[type="file"]'); assert.ok(input);
+  Object.defineProperty(input, 'files', { configurable: true, value: [new File([text], name, { type: 'text/csv' })] });
+  act(() => input.dispatchEvent(new window.Event('change', { bubbles: true })));
+}
+async function upload(count = 2) {
+  chooseCsv('draft.csv',
+    ['GlobalId,FireRating', ...Array.from({ length: count }, (_, i) => `${guid(i + 1)},REI${i + 1}`)].join('\n'),
+  );
+  await advance(50); assert.equal(importButton().disabled, false);
+}
+function selectModel(id: string) {
+  const picker = [...document.querySelectorAll<HTMLButtonElement>('button[role="combobox"]')]
+    .find(b => b.textContent === 'a' || b.textContent === 'b'); assert.ok(picker);
+  click(picker);
+  const option = [...document.querySelectorAll('[role="option"]')].find(o => o.textContent === id); assert.ok(option);
+  click(option);
+}
+async function ticks(t: TestContext, count = 12) {
+  for (let i = 0; i < count; i++) await act(async () => { t.mock.timers.tick(1); await Promise.resolve(); });
+}
+
+function holdFileReads(t: TestContext) {
+  const reads: Array<() => void> = [];
+  const read = FileReader.prototype.readAsText;
+  t.mock.method(FileReader.prototype, 'readAsText', function (this: FileReader, ...args: Parameters<FileReader['readAsText']>) {
+    reads.push(() => read.apply(this, args));
+  });
+  return reads;
+}
+function mappingTarget() {
+  const pset = document.querySelector<HTMLInputElement>('input[aria-label="Target Pset"]');
+  const property = document.querySelector<HTMLInputElement>('input[aria-label="Target Property"]');
+  assert.ok(pset && property);
+  return { pset: pset.value, property: property.value };
+}
+
+test('#8947 retiring a pending CSV read keeps the displayed filename and actual import payload together', async t => {
+  render(<Harness />); await advance(0); await upload();
+  const target = mappingTarget();
+  const reads = holdFileReads(t);
+  chooseCsv('replacement.csv', `GlobalId,FireRating\n${guid(1)},REPLACEMENT\n`);
+  assert.equal(reads.length, 1);
+  selectModel('b');
+  act(() => reads[0]()); await advance(50);
+  assert.match(document.body.textContent ?? '', /draft\.csv/);
+  assert.doesNotMatch(document.body.textContent ?? '', /replacement\.csv/);
+  assert.equal(importButton().disabled, false);
+  click(importButton()); await advance(100);
+  const state = useViewerStore.getState();
+  assert.equal(state.getMutationView('a')?.getModifiedEntityCount(), 0);
+  assert.equal(state.getMutationView('b')?.getPropertyValue(1, target.pset, target.property), 'REI1');
+});
+
+test('#8947 an older CSV read finishing last cannot replace a newer accepted draft', async t => {
+  render(<Harness />); await advance(0); await upload();
+  const target = mappingTarget();
+  const reads = holdFileReads(t);
+  chooseCsv('older.csv', `GlobalId,FireRating\n${guid(1)},OLDER\n`);
+  chooseCsv('newer.csv', `GlobalId,FireRating\n${guid(1)},NEWER\n`);
+  assert.equal(reads.length, 2);
+  act(() => reads[1]()); await advance(50);
+  act(() => reads[0]()); await advance(50);
+  assert.match(document.body.textContent ?? '', /newer\.csv/);
+  assert.doesNotMatch(document.body.textContent ?? '', /older\.csv/);
+  click(importButton()); await advance(100);
+  assert.equal(useViewerStore.getState().getMutationView('a')?.getPropertyValue(1, target.pset, target.property), 'NEWER');
+});
+
+// Fake only scheduling after the real file parse: importAsync pauses at its own
+// matching/apply setTimeout boundaries; parsing, matching and writes stay real.
+test('#8947 closing at a matching yield keeps the draft retryable without retired UI writes', async t => {
+  render(<Harness />); await advance(0); await upload();
+  const view = useViewerStore.getState().getMutationView('a'); assert.ok(view);
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  click(importButton()); assert.equal(view.getModifiedEntityCount(), 0);
+  click(button('Close')); click(button('Reopen')); await ticks(t);
+  assert.equal(view.getModifiedEntityCount(), 0);
+  assert.equal(importButton().disabled, false, 'retired completion must not clear importDirty');
+  assert.doesNotMatch(document.body.textContent ?? '', /Import failed/);
+  click(importButton()); await ticks(t);
+  assert.equal(view.getModifiedEntityCount(), 2);
+  act(() => replayWorkspaceHistory(useViewerStore.getState(), 'undo'));
+  assert.equal(view.getModifiedEntityCount(), 0, 'retry uses the canonical undo log');
+});
+
+test('#8947 closing after an applied batch preserves undo and prevents later batches', async t => {
+  useViewerStore.setState({ ...fixtureModels(await parsedModel('a', 201)) });
+  render(<Harness />); await advance(0); await upload(201);
+  const view = useViewerStore.getState().getMutationView('a'); assert.ok(view);
+  t.mock.timers.enable({ apis: ['setTimeout'] }); click(importButton());
+  for (let i = 0; i < 10 && view.getModifiedEntityCount() === 0; i++) await ticks(t, 1);
+  assert.equal(view.getModifiedEntityCount(), 200, 'paused between two real apply batches');
+  click(button('Close')); await ticks(t);
+  assert.equal(view.getModifiedEntityCount(), 200);
+  act(() => replayWorkspaceHistory(useViewerStore.getState(), 'undo'));
+  assert.equal(view.getModifiedEntityCount(), 0, 'the already-applied batch remains undoable');
+  click(button('Reopen')); assert.equal(importButton().disabled, false);
+});
+
+test('#8947 changing the target at a yield retires the import before it writes the old model', async t => {
+  render(<Harness />); await advance(0); await upload();
+  const a = useViewerStore.getState().getMutationView('a'); assert.ok(a);
+  t.mock.timers.enable({ apis: ['setTimeout'] }); click(importButton()); selectModel('b'); await ticks(t);
+  const b = useViewerStore.getState().getMutationView('b'); assert.ok(b);
+  assert.equal(a.getModifiedEntityCount(), 0); assert.equal(b.getModifiedEntityCount(), 0);
+  assert.equal(importButton().disabled, false);
+  click(importButton()); await ticks(t);
+  assert.equal(a.getModifiedEntityCount(), 0); assert.equal(b.getModifiedEntityCount(), 2);
+});
+
+for (const replacement of ['data', 'view'] as const) test(`#8947 replacing the same-id target ${replacement} retires a pending import`, async t => {
+  const model = await parsedModel('a');
+  render(<Harness />); await advance(0); await upload();
+  const oldView = useViewerStore.getState().getMutationView('a'); assert.ok(oldView);
+  t.mock.timers.enable({ apis: ['setTimeout'] }); click(importButton());
+  act(() => {
+    if (replacement === 'data') useViewerStore.setState({ models: new Map([['a', model]]) });
+    else useViewerStore.getState().registerMutationView('a', new MutablePropertyView(null, 'a'));
+  });
+  await ticks(t);
+  assert.equal(oldView.getModifiedEntityCount(), 0);
+  assert.equal(useViewerStore.getState().getMutationView('a')?.getModifiedEntityCount(), 0);
+  assert.equal(importButton().disabled, false);
+});
+
+test('#8947 a persistent connector reconciles a removed target and imports into its replacement', async () => {
+  render(<Harness />); await advance(0); await upload();
+  const a = useViewerStore.getState().getMutationView('a'); assert.ok(a);
+  click(button('Close'));
+  const b = useViewerStore.getState().models.get('b'); assert.ok(b);
+  act(() => useViewerStore.setState({ ...fixtureModels(b), selectedEntityId: null, selectedEntityIds: new Set() }));
+  click(button('Reopen')); await advance(0);
+  assert.ok([...document.querySelectorAll('[role="combobox"]')].some(p => p.textContent === 'b'));
+  click(importButton()); await advance(100);
+  assert.equal(a.getModifiedEntityCount(), 0);
+  assert.equal(useViewerStore.getState().getMutationView('b')?.getModifiedEntityCount(), 2);
+});
+
+test('#8947 first open initializes the target from the current active model, not a closed host snapshot', async () => {
+  function Closed() {
+    const [open, setOpen] = useState(false);
+    return <><button onClick={() => setOpen(true)}>Open</button><DataConnector open={open} onOpenChange={setOpen} /></>;
+  }
+  render(<Closed />); act(() => useViewerStore.setState({ activeModelId: 'b' }));
+  click(button('Open')); await advance(0);
+  assert.ok([...document.querySelectorAll('[role="combobox"]')].some(p => p.textContent === 'b'));
+});
+
+test('#8947 a suggestion for an old target cannot populate the current target draft', async t => {
+  useViewerStore.setState({ chatActiveModel: 'openai/gpt-free' });
+  const replies: Array<(response: Response) => void> = [];
+  t.after(() => { for (const finish of replies) finish(new Response('data: [DONE]\n\n')); });
+  t.mock.method(globalThis, 'fetch', () => new Promise<Response>(resolve => { replies.push(resolve); }));
+  render(<Harness />); await advance(0); await upload();
+  const mapping = { version: 1, kind: 'table.mapping', title: 'Fire ratings', identity: { column: 'GlobalId', key: 'GlobalId' },
+    columns: [{ column: 'FireRating', target: 'property', pset: 'Pset_Custom', name: 'FireRating', valueType: 'text' }] };
+  const response = () => new Response(`data: ${JSON.stringify({ choices: [{ delta: { content: JSON.stringify(mapping) }, finish_reason: 'stop' }] })}\n\n`);
+  click(button('Suggest mapping'));
+  for (let i = 0; i < 20 && replies.length === 0; i++) await advance(10);
+  assert.equal(replies.length, 1);
+  selectModel('b'); await advance(0);
+  replies[0](response()); await advance(100);
+  assert.equal(Boolean(document.querySelector('section[aria-label="Suggested table mapping"]')), false);
+  assert.equal(button('Suggest mapping').disabled, false);
+  assert.equal(document.body.textContent?.includes('The suggestion was cancelled.'), false, 'retired suggestion errors do not populate the replacement draft');
+  click(button('Suggest mapping'));
+  for (let i = 0; i < 20 && replies.length < 2; i++) await advance(10);
+  assert.equal(replies.length, 2);
+  replies[1](response()); await advance(100);
+  assert.ok(document.querySelector('section[aria-label="Suggested table mapping"]'), 'a fresh request still works');
+});
+
+for (const partial of [false, true]) test(`#8962 replacing CSV during ${partial ? 'apply' : 'matching'} retires A and keeps B importable`, { timeout: 5_000 }, async t => {
+  if (partial) useViewerStore.setState({ ...fixtureModels(await parsedModel('a', 201)) });
+  render(<Harness />); await advance(0); await upload(partial ? 201 : 2);
+  const view = useViewerStore.getState().getMutationView('a'); assert.ok(view);
+  const target = mappingTarget();
+  t.mock.timers.enable({ apis: ['setTimeout'] }); click(importButton());
+  if (partial) {
+    for (let i = 0; i < 10 && view.getModifiedEntityCount() === 0; i++) await ticks(t, 1);
+    assert.equal(view.getModifiedEntityCount(), 200);
+  }
+  // Mocked import timers do not drive FileReader's real window tasks. Wait for
+  // the real CSV read before draining the retired import's remaining callbacks.
+  const read = FileReader.prototype.readAsText;
+  const loaded = new Promise<void>((resolve, reject) => {
+    t.mock.method(FileReader.prototype, 'readAsText', function (this: FileReader, ...args: Parameters<FileReader['readAsText']>) {
+      this.addEventListener('loadend', () => this.error ? reject(this.error) : resolve(), { once: true });
+      return read.apply(this, args);
+    });
+  });
+  chooseCsv('b.csv', `GlobalId,FireRating\n${guid(1)},CSV-B\n`);
+  await act(async () => { await loaded; });
+  await ticks(t, 80);
+  assert.match(document.body.textContent ?? '', /b\.csv/);
+  assert.equal(view.getModifiedEntityCount(), partial ? 200 : 0, 'A cannot apply its remaining batch');
+  assert.equal(importButton().disabled, false, 'A cannot mark B clean');
+  if (partial) {
+    act(() => replayWorkspaceHistory(useViewerStore.getState(), 'undo'));
+    assert.equal(view.getModifiedEntityCount(), 0, 'already applied A batch retains history');
+  }
+  click(importButton()); await ticks(t);
+  assert.equal(view.getPropertyValue(1, target.pset, target.property), 'CSV-B');
+  assert.equal(view.getModifiedEntityCount(), 1);
+});
+
+test('#8962 replacing CSV retires an AI mapping for the same model', async t => {
+  useViewerStore.setState({ chatActiveModel: 'openai/gpt-free' });
+  const replies: Array<(response: Response) => void> = [];
+  t.after(() => { for (const finish of replies) finish(new Response('data: [DONE]\n\n')); });
+  t.mock.method(globalThis, 'fetch', () => new Promise<Response>(resolve => replies.push(resolve)));
+  render(<Harness />); await advance(0); await upload();
+  const response = () => new Response(`data: ${JSON.stringify({ choices: [{ delta: { content: JSON.stringify({
+    version: 1, kind: 'table.mapping', title: 'Fire ratings', identity: { column: 'GlobalId', key: 'GlobalId' },
+    columns: [{ column: 'FireRating', target: 'property', pset: 'Pset_Custom', name: 'FireRating', valueType: 'text' }],
+  }) }, finish_reason: 'stop' }] })}\n\n`);
+  click(button('Suggest mapping'));
+  for (let i = 0; i < 20 && replies.length === 0; i++) await advance(10);
+  assert.equal(replies.length, 1);
+  chooseCsv('b.csv', `GlobalId,FireRating\n${guid(1)},CSV-B\n`); await advance(50);
+  replies[0](response()); await advance(100);
+  assert.equal(Boolean(document.querySelector('section[aria-label="Suggested table mapping"]')), false);
+  assert.equal(button('Suggest mapping').disabled, false);
+  assert.equal(document.body.textContent?.includes('The suggestion was cancelled.'), false, 'retired suggestion errors do not populate the replacement draft');
+  click(button('Suggest mapping'));
+  for (let i = 0; i < 20 && replies.length < 2; i++) await advance(10);
+  assert.equal(replies.length, 2); replies[1](response()); await advance(100);
+  assert.ok(document.querySelector('section[aria-label="Suggested table mapping"]'));
+});
+
+// C-12: a replacement file with no data rows cannot reuse the prior mapping.
+for (const replacement of ['', 'OtherId,OtherValue\n']) test(`C-12 replacement ${JSON.stringify(replacement)} clears the prior CSV import mapping`, async () => {
+  render(<Harness />); await advance(0); await upload();
+  chooseCsv('empty.csv', replacement);
+  await advance(50);
+  assert.equal(importButton().disabled, true, 'empty replacement cannot import old rows');
+  assert.equal(document.querySelectorAll('input[aria-label="Target Property"]').length, 0, 'old mapping is removed');
+});
+
+test('C-12 replacing the CSV aborts an in-flight mapping suggestion', async t => {
+  useViewerStore.setState({ chatActiveModel: 'openai/gpt-free' });
+  let signal: AbortSignal | undefined;
+  let finish!: (response: Response) => void;
+  t.mock.method(globalThis, 'fetch', (_input: RequestInfo | URL, init?: RequestInit) => { signal = init?.signal ?? undefined; return new Promise<Response>(resolve => { finish = resolve; }); });
+  render(<Harness />); await advance(0); await upload();
+  click(button('Suggest mapping'));
+  for (let i = 0; i < 20 && !signal; i++) await advance(10);
+  chooseCsv('b.csv', `GlobalId,FireRating\n${guid(1)},B\n`); await advance(50);
+  const aborted = signal?.aborted;
+  finish(new Response('data: [DONE]\n\n')); await advance(50);
+  assert.equal(aborted, true, 'mapping transport belongs to the retired CSV draft');
+  assert.equal(button('Suggest mapping').disabled, false);
+});
+
+test('C-12 an older suggestion finally cannot lose the replacement suggestion controller', async t => {
+  useViewerStore.setState({ chatActiveModel: 'openai/gpt-free' });
+  const replies: Array<(response: Response) => void> = [];
+  t.after(() => { for (const finish of replies) finish(new Response('data: [DONE]\n\n')); });
+  const signals: AbortSignal[] = [];
+  t.mock.method(globalThis, 'fetch', (_input: RequestInfo | URL, init?: RequestInit) => {
+    if (init?.signal) signals.push(init.signal);
+    return new Promise<Response>(resolve => replies.push(resolve));
+  });
+  render(<Harness />); await advance(0); await upload();
+  click(button('Suggest mapping'));
+  for (let i = 0; i < 30 && replies.length < 1; i++) await advance(10);
+  chooseCsv('replacement.csv', `GlobalId,FireRating\n${guid(1)},B\n`); await advance(50);
+  click(button('Suggest mapping'));
+  for (let i = 0; i < 30 && replies.length < 2; i++) await advance(10);
+  assert.equal(replies.length, 2);
+  replies[0](new Response('data: [DONE]\n\n')); await advance(30);
+  cleanup();
+  const aborted = signals[1]?.aborted;
+  replies[1](new Response('data: [DONE]\n\n')); await advance(30);
+  assert.equal(aborted, true, 'cleanup still owns the replacement controller after the old finally');
+});
+
+test('C-12 an unexpected suggestion failure releases the busy state and reports its error', async t => {
+  useViewerStore.setState({ chatActiveModel: 'openai/gpt-free' });
+  render(<Harness />); await advance(0); await upload();
+  const model = useViewerStore.getState().models.get('a'); assert.ok(model?.ifcDataStore);
+  t.mock.method(model.ifcDataStore.entities, 'getExpressIdByGlobalId', () => { throw new Error('fixture property unavailable'); });
+  click(button('Suggest mapping')); await advance(0);
+  assert.equal(button('Suggest mapping').disabled, false);
+  assert.equal(document.body.textContent?.includes('fixture property unavailable'), true);
+});
+
+
+test('C-12 a replacement CSV parse failure removes the previous mapping and displays the error', async t => {
+  render(<Harness />); await advance(0); await upload();
+  const { CsvConnector } = await import('@ifc-lite/mutations');
+  t.mock.method(CsvConnector.prototype, 'parse', () => { throw new Error('fixture CSV parse failure'); });
+  chooseCsv('broken.csv', 'Broken,Column\nvalue,value\n'); await advance(50);
+  assert.equal(importButton().disabled, true);
+  assert.equal(document.querySelectorAll('input[aria-label="Target Property"]').length, 0);
+  assert.equal(document.body.textContent?.includes('fixture CSV parse failure'), true);
+});
+
+test('C-12 accepting a pending file retires a suggestion for the previously displayed rows', async t => {
+  useViewerStore.setState({ chatActiveModel: 'openai/gpt-free' });
+  const replies: Array<(response: Response) => void> = [];
+  t.after(() => { for (const finish of replies) finish(new Response('data: [DONE]\n\n')); });
+  const signals: AbortSignal[] = [];
+  t.mock.method(globalThis, 'fetch', (_input: RequestInfo | URL, init?: RequestInit) => {
+    if (init?.signal) signals.push(init.signal);
+    return new Promise<Response>(resolve => replies.push(resolve));
+  });
+  render(<Harness />); await advance(0); await upload();
+  const reads = holdFileReads(t);
+  chooseCsv('pending.csv', `GlobalId,FireRating\n${guid(1)},NEW\n`);
+  click(button('Suggest mapping'));
+  for (let i = 0; i < 30 && replies.length === 0; i++) await advance(10);
+  assert.equal(replies.length, 1);
+  act(() => reads[0]()); await advance(50);
+  const aborted = signals[0]?.aborted;
+  replies[0](new Response('data: [DONE]\n\n')); await advance(50);
+  assert.equal(aborted, true, 'new table rows replace the suggestion context even within one file-read generation');
+  assert.equal(document.body.textContent?.includes('The suggestion was cancelled.'), false);
+  assert.equal(button('Suggest mapping').disabled, false);
+});
+
+
+test('#9576 a preview error keeps the viewport at its top alert', async t => {
+  render(<Harness />); await advance(0); await upload();
+  const { CsvConnector } = await import('@ifc-lite/mutations');
+  t.mock.method(CsvConnector.prototype, 'preview', () => { throw new Error('fixture preview failed'); });
+  t.mock.method(console, 'error', () => {});
+  const frames: FrameRequestCallback[] = [];
+  let scrolls = 0;
+  t.mock.method(globalThis, 'requestAnimationFrame', (callback: FrameRequestCallback) => { frames.push(callback); return frames.length; });
+  t.mock.method(HTMLDivElement.prototype, 'scrollTo', () => { scrolls++; });
+  click(button(/^Preview matches$/i));
+  act(() => { for (let i = 0; i < 3; i++) for (const callback of frames.splice(0)) callback(performance.now()); });
+  assert.equal(document.body.textContent?.includes('Preview failed: fixture preview failed'), true);
+  assert.equal(scrolls, 0, 'an error at the top cannot scroll the user to the bottom');
+});
+
+
+test('#9576 same-tick suggestion presses start one mapping request', async t => {
+  useViewerStore.setState({ chatActiveModel: 'openai/gpt-free' });
+  const finishes: Array<(response: Response) => void> = [];
+  t.after(() => { for (const finish of finishes) finish(new Response('data: [DONE]\n\n')); });
+  t.mock.method(globalThis, 'fetch', () => new Promise<Response>(resolve => finishes.push(resolve)));
+  render(<Harness />); await advance(0); await upload();
+  const suggest = button('Suggest mapping');
+  act(() => { suggest.click(); suggest.click(); });
+  await advance(50);
+  const requests = finishes.length;
+  await act(async () => { for (const finish of finishes) finish(new Response('data: [DONE]\n\n')); });
+  await advance(30);
+  assert.equal(requests, 1, 'the draft has one suggestion owner');
+});

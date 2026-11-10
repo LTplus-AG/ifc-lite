@@ -36,6 +36,8 @@ export interface EdgeLineRow {
   columnMax: number[];
   /** Per column, how many pixels within the band are darkened at all. */
   columnInk: number[];
+  /** Per column, the summed darkening within the band: the line's ink across it. */
+  columnSum: number[];
   /** Darkest pixel anywhere in the frame. */
   frameMax: number;
 }
@@ -161,16 +163,16 @@ export async function runEdgeLineWitness(): Promise<EdgeLineReport> {
                 });
                 const dark = await readDarkening(device, encoder, target);
                 const [pa, pb] = edgeEnds(slanted).map(p => toPixel(projection.m, p));
-                const columnMax: number[] = []; const columnInk: number[] = [];
+                const columnMax: number[] = []; const columnInk: number[] = []; const columnSum: number[] = [];
                 for (let x = Math.ceil(pa[0]) + TRIM; x < Math.floor(pb[0]) - TRIM; x++) {
                   const lineY = pa[1] + ((x + 0.5 - pa[0]) * (pb[1] - pa[1])) / (pb[0] - pa[0]);
-                  let max = 0; let ink = 0;
+                  let max = 0; let ink = 0; let sum = 0;
                   for (let y = Math.floor(lineY) - BAND; y <= Math.floor(lineY) + BAND; y++) {
-                    const v = dark[y * WIDTH + x]; max = Math.max(max, v); if (v > 0) ink++;
+                    const v = dark[y * WIDTH + x]; max = Math.max(max, v); sum += v; if (v > 0) ink++;
                   }
-                  columnMax.push(max); columnInk.push(ink);
+                  columnMax.push(max); columnInk.push(ink); columnSum.push(sum);
                 }
-                rows.push({ edgeCase, samples, quality, radius, slanted, columnMax, columnInk, frameMax: Math.max(...dark) });
+                rows.push({ edgeCase, samples, quality, radius, slanted, columnMax, columnInk, columnSum, frameMax: Math.max(...dark) });
               }
       } finally { edges.destroy(); }
     }

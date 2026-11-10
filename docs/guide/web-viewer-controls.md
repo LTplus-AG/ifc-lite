@@ -27,6 +27,15 @@ Undo/Redo operation. A lost capture, focus loss, or command change cancels the
 owned room drag. A captured drag can finish outside the canvas. Shift + left,
 middle, and right-button navigation keep the controls above.
 
+**Roof** on the Model rail (Shift + Y) draws a roof at the top of the storey's
+walls: the plane rises there while the tool runs, the roof sits on it, and the
+plane comes back down when the tool ends. The **Plane** chip on the 3D view and
+in the plan header shows how far above the storey floor new elements land, and
+sets it for any drawing tool: type a height, or pick Top of walls. A height you
+type, 0 included, stays until you change it or move to another storey. Floor
+puts the plane on the floor and hands the height back: a roof drawn now lands
+there, and the next time Roof starts it raises the plane again.
+
 A plain click on a surface above or below the workplane lands on the point you
 see, so you can draw on top of a slab. Hold **Alt** (⌥ on a Mac), or turn
 snapping off with **S**, to ignore snaps and surfaces: the point lands where
@@ -62,6 +71,23 @@ this browser and applies to every loaded model.
 
 Right-button fly remains available in every preset when camera controls are
 enabled. Shift + left drag pans in every preset and tool.
+
+### Wheel zoom
+
+Wheel zoom follows the pointer and, in 3D, stops short of the surface under
+it. In the 3D view, the Drawing panel and plans, a wheel notch zooms about 10%
+and eases in over roughly 0.2 s instead of jumping; a trackpad scroll or pinch
+follows your fingers directly. A fast spin or trackpad momentum queues at most
+about three notches, so one flick cannot fly the camera through the model.
+Reversing the wheel, orbiting or panning stops the zoom. Hold Ctrl or Cmd for a
+finer step, or Shift to dolly straight ahead. With the system's reduced-motion
+setting on, each notch applies at once.
+
+**Settings → Display → Navigation → Wheel zoom speed** sets how far a notch
+zooms: Slow (about 5%), Normal (about 10%) or Fast (about 20%). The choice is
+saved in this browser and applies to the 3D view, the Drawing panel and plans.
+Line and page wheel deltas (some Firefox and device setups) zoom as far as the
+pixel deltas other browsers report.
 
 ## Zone volume results
 
@@ -347,3 +373,10 @@ Backgrounds are resampled to at most 2048 pixels on the longest side. The
 existing raster reader accepts images up to 64 megapixels and 8-bit TIFF
 imagery. A change to the workspace coordinate system hides an old registration
 rather than silently moving it; load the image again after realignment.
+
+The Roof HUD offers Hip, Gable, Mono-pitch and Flat; a preset's pitched edges start
+at 30°. Numbered edges in the preview match the Edge selector. Set Edge slope to 0
+for a gable end, or enter an angle up to 85°. Each edge can have its own slope.
+Changing the preset, switching the outline mode, or finishing a roof clears
+individual edge slopes; the next roof keeps the preset. The preview uses the same
+planes as the IFC builder.

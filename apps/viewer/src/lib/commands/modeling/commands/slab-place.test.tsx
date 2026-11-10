@@ -22,13 +22,14 @@ import { CommandFieldsBar } from '@/components/viewer/tools/command/CommandField
 import { SlabPlaceBar } from '@/components/viewer/tools/command/PlacementBars';
 import type { SnapResult, Vec2 } from '@/lib/snap/types';
 import '../builtin.js';
-import { commandDoubleClick, commandPointerDown, commandPointerMove, getCommandRuntime } from '../runtime.js';
+import { commandDoubleClick, commandPointerDown, commandPointerMove, getCommandRuntime, updateCommandGesture } from '../runtime.js';
 import { setRequestRemesh, type RemeshRequest } from '../transaction.js';
 import type { CommandContext } from '../types.js';
 import { resolveSlabEditChain } from '@/lib/slab-edit';
 import { readPushPullTarget } from '@/lib/push-pull/push-pull-target';
 import { applyMaterialLayers, setElementDimensions } from '@/components/viewer/model-inspector/inspector-edits';
 import { authoredElementMeshPayload } from '@/store/slices/authoredFallbackMesh';
+import { planeHeightField, planeZ } from './placement-shared.js';
 import { SLAB_PLACE } from './slab-place.js';
 import type { SlabPlaceGesture } from './slab-place-geometry.js';
 
@@ -36,6 +37,11 @@ const at = (x: number, y: number, shift = false): SnapResult => ({
   local: [x, y], winner: null, guides: [], locked: false, modifiers: { shift, alt: false },
 });
 const gesture = () => getCommandRuntime().gesture as SlabPlaceGesture;
+function flatRoofGesture() {
+  // This suite exercises prism editing; pitched roofs have their own behavioural suite.
+  updateCommandGesture(value => { const g = value as SlabPlaceGesture; return { ...g, roof: { ...g.roof, preset: 'flat' } }; });
+}
+
 const ctx = () => getCommandRuntime().ctx as CommandContext;
 const undoDepth = () => useViewerStore.getState().undoStacks.get(MODEL_ID)?.length ?? 0;
 const click = (x: number, y: number, shift = false) => act(() => { commandPointerMove(at(x, y, shift)); commandPointerDown(at(x, y, shift)); });
@@ -85,12 +91,33 @@ beforeEach(async () => {
   useViewerStore.getState().setAuthoringDefaults({ slabMode: 'rectangle', slabClass: 'slab' });
   remeshed = [];
   restoreRemesh = setRequestRemesh((_get, request) => { remeshed.push(request); });
-  useViewerStore.getState().startCommand('slab.place');
+  useViewerStore.getState().startCommand('slab.place'); flatRoofGesture();
+  // These prism editing tests explicitly exercise the retained flat roof option.
+  updateCommandGesture(value => { const g = value as SlabPlaceGesture; return { ...g, roof: { ...g.roof, preset: 'flat' } }; });
 });
 afterEach(() => {
   restoreRemesh();
   useViewerStore.getState().exitModelWorkspace();
   cleanup();
+});
+
+describe('slab.place: the bar names the class being drawn (#9202)', () => {
+  it('Roof and Plate title the bar; a slab keeps the command label', () => {
+    for (const [slabClass, title] of [['slab', undefined], ['roof', 'modelWorkspace.tool.roof'], ['plate', 'modelingCommand.class.plate']] as const) {
+      act(() => { useViewerStore.getState().setAuthoringDefaults({ slabClass }); });
+      assert.equal(SLAB_PLACE.hud.title?.(useViewerStore.getState()), title, slabClass);
+    }
+  });
+});
+
+describe('the plane height field (#9202)', () => {
+  it('shows on a storey plane and hides on any other, where it could set nothing', () => {
+    const field = planeHeightField<null>();
+    const on = (spec: unknown) => ({ get: useViewerStore.getState, workplane: spec === null ? undefined : { spec } }) as unknown as CommandContext;
+    assert.equal(field.hidden?.(null, on({ kind: 'storey', storeyId: STOREY, offset: 0 })), false);
+    assert.equal(field.hidden?.(null, on({ kind: 'section' })), true);
+    assert.equal(field.hidden?.(null, on(null)), true);
+  });
 });
 
 describe('slab.place: rectangle (#6232 M2.2)', () => {
@@ -179,7 +206,7 @@ describe('slab.place: rectangle (#6232 M2.2)', () => {
 describe('slab.place: polygon (#6232 M2.2)', () => {
   beforeEach(() => {
     useViewerStore.getState().setAuthoringDefaults({ slabMode: 'polygon' });
-    useViewerStore.getState().startCommand('slab.place');
+    useViewerStore.getState().startCommand('slab.place'); flatRoofGesture();
   });
 
   const L_SHAPE: Vec2[] = [[0, 0], [4, 0], [4, 2], [2, 2], [2, 4], [0, 4]];
@@ -279,8 +306,10 @@ describe('slab.place: every class in both outline modes (#6232 A2)', () => {
         useViewerStore.getState().setAuthoringDefaults({ slabMode: mode, slabClass: cls });
         // Dimensions outlive a test (the slice is session state): pin this class's.
         useViewerStore.getState().setAuthoringDims(cls, { Thickness: thickness });
-        useViewerStore.getState().startCommand('slab.place');
+        useViewerStore.getState().startCommand('slab.place'); flatRoofGesture();
         const before = undoDepth();
+        const view = useViewerStore.getState().mutationViews.get(MODEL_ID)!;
+        const recordsBefore = structuredClone(view.getNewEntities());
         for (const [x, y] of clicks) click(x, y);
         if (mode === 'polygon') press(document.body, 'Enter');
         const bodies = authoredBodies(MODEL_ID, [...SLAB_LIKE]);
@@ -288,10 +317,18 @@ describe('slab.place: every class in both outline modes (#6232 A2)', () => {
           cls: entity, identifier: 'Body', representationType: 'SweptSolid',
           solid: 'IFCEXTRUDEDAREASOLID', profile, depth: thickness,
         }]);
-        assert.equal(undoDepth(), before + 1, 'one transaction');
+        // A roof records its complete graph, not just its product row (#9356).
+        // Defined, equal tags certify one step even when it has many rows.
+        const state = useViewerStore.getState();
+        const edits = (state.undoStacks.get(MODEL_ID) ?? []).slice(before);
+        assert.ok(edits.length > 0);
+        const tags = edits.map(mutation => state.mutationBatchTags.get(mutation.id));
+        assert.ok(tags.every(tag => typeof tag === 'string' && tag.length > 0));
+        assert.equal(new Set(tags).size, 1, 'one transaction');
         useViewerStore.getState().undo(MODEL_ID);
         assert.deepEqual(authoredBodies(MODEL_ID, [...SLAB_LIKE]), [], `one undo removes the ${cls}`);
         assert.equal(undoDepth(), before);
+        if (cls === 'roof') assert.deepEqual(view.getNewEntities(), recordsBefore, 'one undo restores every previous geometry record');
       });
     }
   }
@@ -337,7 +374,7 @@ describe('slab.place: a floor slab hangs from the plane (#9198)', () => {
     it(`a ${mode} slab's top is at the level, its underside a thickness below`, () => {
       useViewerStore.getState().setAuthoringDefaults({ slabMode: mode, slabClass: 'slab' });
       useViewerStore.getState().setAuthoringDims('slab', { Thickness: 0.3 });
-      useViewerStore.getState().startCommand('slab.place');
+      useViewerStore.getState().startCommand('slab.place'); flatRoofGesture();
       click(0, 0);
       click(2, 3);
       if (mode === 'polygon') { click(0, 3); press(document.body, 'Enter'); }
@@ -349,7 +386,7 @@ describe('slab.place: a floor slab hangs from the plane (#9198)', () => {
     it(`a ${cls} still sits on the plane`, () => {
       useViewerStore.getState().setAuthoringDefaults({ slabClass: cls });
       useViewerStore.getState().setAuthoringDims(cls, { Thickness: thickness });
-      useViewerStore.getState().startCommand('slab.place');
+      useViewerStore.getState().startCommand('slab.place'); flatRoofGesture();
       click(1, 1);
       act(() => { commandPointerMove(at(2, 2)); });
       const [ghost] = SLAB_PLACE.ghost!(gesture(), ctx());
@@ -358,13 +395,15 @@ describe('slab.place: a floor slab hangs from the plane (#9198)', () => {
       for (let i = 0; i < ghost.positions.length; i += 3) zs.push(plane.renderToLocal([ghost.positions[i], ghost.positions[i + 1], ghost.positions[i + 2]])[2]);
       assert.deepEqual([Math.min(...zs), Math.max(...zs)].map(round), [0, thickness]);
       click(2, 2);
-      assert.deepEqual(bodyOf(drawn()), { bottom: 0, top: thickness });
+      // The plane itself rises for a roof (#9202); the body starts on it either way.
+      const lift = planeZ(ctx().workplane);
+      assert.deepEqual(bodyOf(drawn()), { bottom: lift, top: round(lift + thickness) });
     });
   }
 
   it('a thickness edit keeps the top at the level', () => {
     useViewerStore.getState().setAuthoringDims('slab', { Thickness: 0.3 });
-    useViewerStore.getState().startCommand('slab.place');
+    useViewerStore.getState().startCommand('slab.place'); flatRoofGesture();
     click(0, 0);
     click(2, 3);
     const id = drawn();
@@ -374,7 +413,7 @@ describe('slab.place: a floor slab hangs from the plane (#9198)', () => {
 
   it('push / pull takes the underside: the ghost and the write both keep the top', () => {
     useViewerStore.getState().setAuthoringDims('slab', { Thickness: 0.3 });
-    useViewerStore.getState().startCommand('slab.place');
+    useViewerStore.getState().startCommand('slab.place'); flatRoofGesture();
     click(0, 0);
     click(2, 3);
     const id = drawn();
@@ -390,7 +429,7 @@ describe('slab.place: a floor slab hangs from the plane (#9198)', () => {
 
   it('a split keeps both pieces hanging, so a later thickness edit keeps their tops', () => {
     useViewerStore.getState().setAuthoringDims('slab', { Thickness: 0.3 });
-    useViewerStore.getState().startCommand('slab.place');
+    useViewerStore.getState().startCommand('slab.place'); flatRoofGesture();
     click(0, 0);
     click(4, 3);
     const split = useViewerStore.getState().splitSlabByLine(MODEL_ID, drawn(), [1, -1], [1, 4]);
@@ -415,7 +454,7 @@ describe('slab.place: a floor slab hangs from the plane (#9198)', () => {
   it('a layered slab builds its layers down from the level', () => {
     const s = useViewerStore.getState();
     useViewerStore.getState().setAuthoringDims('slab', { Thickness: 0.3 });
-    s.startCommand('slab.place');
+    s.startCommand('slab.place'); flatRoofGesture();
     click(0, 0);
     click(2, 3);
     const id = drawn();

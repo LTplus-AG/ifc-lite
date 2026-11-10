@@ -64,6 +64,9 @@ on:
       - "packages/mutations/**"
       - "packages/pointcloud/**"
       - "packages/regex-guard/**"
+      # The rest of export's build closure (`turbo --filter='@ifc-lite/export^...'`,
+      # measured with --dry-run), built by the step before the export test.
+      - "packages/load-trace/**"
       # The LandXML→IFC4X3 converter writes STEP of its own (#4937); the step
       # below grades it with the same validator plus the alignment checker, and
       # grades IfcCreator's own IFC4X3 output (#5351).
@@ -142,6 +145,15 @@ jobs:
       - name: Install workspace dependencies
         run: pnpm install --frozen-lockfile --ignore-scripts
 
+      # Restore-only: test.yml on main saves this exact tree. The fetch below
+      # then re-hashes every file and downloads only what is missing, so a
+      # release-CDN outage no longer fails the lane while the manifest is
+      # unchanged.
+      - name: Restore fixtures from the main-branch cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: tests/models
+          key: ci-fixtures-source-v2-${{ runner.os }}-${{ hashFiles('tests/models/manifest.json', 'tests/models/README.md', 'tests/models/.manifest-ignore') }}
       # The IFC4 pair, then the IFC4X3 set (#5351): two IFC4 fixtures the
       # test converts to IFC4X3 and two IFC4X3_ADD2 fixtures it round-trips.
       # Hello_Wall carries a `$` FILE_NAME author/organization (#5470).
@@ -156,6 +168,15 @@ jobs:
           tests/models/buildingsmart/annex_e/basic-geometric-shape/triangulated-item.ifc
           tests/models/ifc5/Hello_Wall_hello-wall.ifc
 
+      # The src/ aliases in packages/export/vitest.config.ts cover what this
+      # suite imports directly, but an aliased package's OWN workspace imports
+      # still resolve from dist/ (pointcloud -> wasm-lifecycle failed to resolve
+      # here). Build export's declared dependency closure, as the create step
+      # below does, so a new edge anywhere in it is covered without hand-listing
+      # packages in the aliases or here.
+      - name: Build @ifc-lite/export's workspace dependencies
+        run: pnpm exec turbo run build --filter='@ifc-lite/export^...'
+
       - name: Re-export the fixtures and validate against IfcOpenShell
         env:
           MERGIFY_TOKEN: ${{ secrets.MERGIFY_TOKEN }}
@@ -165,11 +186,11 @@ jobs:
       # The LandXML→IFC4X3 converter's output. ifc-lite's own parser cannot
       # evaluate an IFC4X3 IfcAlignment, so IfcOpenShell is the only thing in CI
       # that can say whether a written alignment lands on its authored points.
-      # `@ifc-lite/create` resolves its workspace dependencies from `dist/`
-      # (unlike `@ifc-lite/export`, whose vitest config aliases them to
-      # `src/`). This job installs with --ignore-scripts and builds nothing,
-      # so build exactly create's declared dependency closure — ~20 s — rather
-      # than alias a subset to src and risk two instances of one package.
+      # `@ifc-lite/create` resolves its workspace dependencies from `dist/`.
+      # This job installs with --ignore-scripts, so build exactly create's
+      # declared dependency closure — ~20 s, mostly already built for export
+      # above — rather than alias a subset to src and risk two instances of
+      # one package.
       - name: Build @ifc-lite/create's workspace dependencies
         run: pnpm exec turbo run build --filter='@ifc-lite/create^...'
 

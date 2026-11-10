@@ -15,9 +15,9 @@ import '@/lib/commands/modeling/builtin';
 
 const TOOL_IDS = [
   'tool:select', 'tool:walk', 'model:reposition', 'tool:measure',
-  'tool:section', 'tool:annotate', 'tool:wall', 'tool:slab', 'tool:column', 'tool:beam', 'tool:room',
+  'tool:section', 'tool:annotate', 'tool:wall', 'tool:slab', 'tool:roof', 'tool:column', 'tool:beam', 'tool:room',
   'tool:space-envelope', 'tool:curtain-wall', 'tool:grid', 'tool:opening', 'tool:door', 'tool:window',
-  'tool:edit-mode', 'tool:split', 'tool:stair', 'tool:railing', 'tool:split-multi', 'tool:push-pull', 'tool:align', 'tool:trim-extend',
+  'tool:edit-mode', 'tool:split', 'tool:stair', 'tool:railing', 'tool:split-multi', 'tool:push-pull', 'tool:align', 'tool:trim-extend', 'tool:array', 'tool:move', 'tool:rotate',
 ] as const;
 const isCoreTool = (id: string) => id.startsWith('tool:') || id === 'model:reposition';
 const originalTool = useViewerStore.getState().activeTool;

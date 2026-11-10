@@ -29,16 +29,15 @@
  */
 
 import type { DecodedPointChunk } from '../types.js';
-import {
-  chunkFromWire,
-  type WorkerRequest,
-  type WorkerResponse,
-} from './protocol.js';
+import { chunkFromWire, type WorkerResponse } from './protocol.js';
+import { WorkerSession } from './worker-session.js';
 import type {
   PointSourceInfo,
   PointSourceReopenOptions,
   StreamingPointSource,
 } from './types.js';
+
+export type { WorkerSession };
 
 export type DecodeWorkerFormat = 'las' | 'laz' | 'ply' | 'pcd' | 'e57' | 'pts' | 'xyz';
 
@@ -81,63 +80,6 @@ export async function defaultSpawn(): Promise<Worker> {
  *  with `createDecodeWorkerSource({ spawn })` when concurrent decoding is
  *  desirable (e.g. multiple federated scans). */
 
-interface PendingRequest {
-  resolve: (response: WorkerResponse) => void;
-  reject: (err: Error) => void;
-}
-
-/** Variants that need a response (open / next). */
-type RequestWithReply = Extract<WorkerRequest, { requestId: number }>;
-
-/** @internal Shared with the COPC client. */
-export class WorkerSession {
-  private requests = new Map<number, PendingRequest>();
-  private nextRequestId = 1;
-  private listener: (event: MessageEvent<WorkerResponse>) => void;
-
-  constructor(public readonly worker: Worker) {
-    this.listener = (event) => {
-      const msg = event.data;
-      if (!('requestId' in msg)) return;
-      const pending = this.requests.get(msg.requestId);
-      if (!pending) return;
-      this.requests.delete(msg.requestId);
-      if (msg.kind === 'error') {
-        pending.reject(new Error(msg.message));
-      } else {
-        pending.resolve(msg);
-      }
-    };
-    worker.addEventListener('message', this.listener);
-  }
-
-  /**
-   * Send a request that expects a single response by `requestId`.
-   * `onRequestId` exposes the id so a caller can cancel it later.
-   */
-  send<T extends WorkerResponse>(
-    build: (requestId: number) => RequestWithReply,
-    transfer: Transferable[] = [],
-    onRequestId?: (requestId: number) => void,
-  ): Promise<T> {
-    const requestId = this.nextRequestId++;
-    onRequestId?.(requestId);
-    const req = build(requestId);
-    return new Promise<T>((resolve, reject) => {
-      this.requests.set(requestId, {
-        resolve: (resp) => resolve(resp as T),
-        reject,
-      });
-      this.worker.postMessage(req, transfer);
-    });
-  }
-
-  /** Send a fire-and-forget message (close / abort). */
-  notify(req: WorkerRequest): void {
-    this.worker.postMessage(req);
-  }
-}
-
 let sharedSessionPromise: Promise<WorkerSession> | null = null;
 
 /**
@@ -158,9 +100,15 @@ export function getSharedSession(spawn: () => Worker | Promise<Worker>): Promise
   // route through the same catch path as async rejections — without this,
   // a synchronous throw would propagate before we attached the
   // cache-reset handler below.
-  const p = (async () => {
+  const p: Promise<WorkerSession> = (async () => {
     const worker = await spawn();
-    return new WorkerSession(worker);
+    const session = new WorkerSession(worker);
+    // A dead worker must not be handed to the next load: evict it so the
+    // next caller spawns a fresh one.
+    session.onDeath(() => {
+      if (sharedSessionPromise === p) sharedSessionPromise = null;
+    });
+    return session;
   })();
   // Clear the cache on rejection so consumers can recover. Without this,
   // a single failure (CSP blocks `blob:` workers, no `Worker` global at
@@ -207,10 +155,15 @@ export function createDecodeWorkerSource(
   // doesn't have to reach back into the module-level cache (which the
   // failure-reset above may have cleared by the time close() runs).
   let sessionPromise: Promise<WorkerSession> | null = null;
-  const ensureSession = (): Promise<WorkerSession> => {
-    if (!sessionPromise) {
-      sessionPromise = getSharedSession(opts.spawn ?? defaultSpawn);
+  const ensureSession = async (): Promise<WorkerSession> => {
+    if (sessionPromise) {
+      const session = await sessionPromise;
+      // A source opened on a worker that since died stays bound to it (its
+      // state died with it, so its requests reject); a never-opened source
+      // moves to a fresh worker so a retried open() can succeed.
+      if (session.alive || sourceId !== null) return session;
     }
+    sessionPromise = getSharedSession(opts.spawn ?? defaultSpawn);
     return sessionPromise;
   };
   let sourceId: number | null = null;

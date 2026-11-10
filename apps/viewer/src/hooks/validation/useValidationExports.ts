@@ -10,7 +10,7 @@
  * not a rewrite).
  */
 
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { useViewerStore } from '@/store';
 import type { ValidationReport, SupportedLocale } from '@ifc-lite/ids';
 import { downloadReportJSON, downloadReportHTML } from '../ids/idsExportService';
@@ -19,6 +19,10 @@ import type { IDSBCFExportSettings, IDSExportProgress } from '@/components/viewe
 import { useToViewerGlobalId } from './toViewerGlobalId';
 import { useTranslation } from '@/i18n';
 import { recordActivity } from '@/lib/activity/activity-journal';
+import { useReplaceableTimeout } from '../useReplaceableTimeout';
+
+/** How long "Export complete!" stays before the progress bar clears. */
+export const BCF_DONE_LINGER_MS = 2000;
 
 export interface ValidationExportsApi {
   exportReportJSON: () => void;
@@ -27,7 +31,9 @@ export interface ValidationExportsApi {
   bcfExportProgress: IDSExportProgress | null;
 }
 
-export function useValidationExports(report: ValidationReport | null, locale: SupportedLocale): ValidationExportsApi {
+export function useValidationExports(
+  report: ValidationReport | null, locale: SupportedLocale, bcfDoneLingerMs = BCF_DONE_LINGER_MS,
+): ValidationExportsApi {
   const models = useViewerStore((s) => s.models);
   const geometryResult = useViewerStore((s) => s.geometryResult);
   const bcfAuthor = useViewerStore((s) => s.bcfAuthor);
@@ -38,6 +44,10 @@ export function useValidationExports(report: ValidationReport | null, locale: Su
   const { t } = useTranslation();
 
   const [bcfExportProgress, setBcfExportProgress] = useState<IDSExportProgress | null>(null);
+  // Each BCF export owns the progress bar only while it is the latest run, so
+  // an earlier run's late write or delayed clear cannot reach a newer one.
+  const bcfRunRef = useRef(0);
+  const clearBcfProgressLater = useReplaceableTimeout();
 
   const exportReportJSON = useCallback(() => {
     if (!report) { console.warn('[Validation] No report to export'); return; }
@@ -51,6 +61,11 @@ export function useValidationExports(report: ValidationReport | null, locale: Su
 
   const exportReportBCF = useCallback(async (settings: IDSBCFExportSettings) => {
     if (!report) { console.warn('[Validation] No report to export'); return; }
+    const run = ++bcfRunRef.current;
+    clearBcfProgressLater.cancel();
+    const setRunProgress = (progress: IDSExportProgress | null) => {
+      if (bcfRunRef.current === run) setBcfExportProgress(progress);
+    };
     try {
       // The IDS dialog runs outside ExportDialogShell; this hook knows the
       // outcome (it reports a failure through `idsError`), so it records the job (#6925).
@@ -58,15 +73,17 @@ export function useValidationExports(report: ValidationReport | null, locale: Su
         report, settings, models,
         legacyGeometryResult: geometryResult,
         toViewerGlobalId, bcfAuthor,
-        setBcfExportProgress, setBcfProject, setBcfPanelVisible,
+        setBcfExportProgress: setRunProgress, setBcfProject, setBcfPanelVisible,
       }));
+      if (bcfRunRef.current === run) clearBcfProgressLater.schedule(() => setRunProgress(null), bcfDoneLingerMs);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'BCF export failed';
       setIdsError(message);
       console.error('[Validation] BCF export error:', err);
-      setBcfExportProgress(null);
+      setRunProgress(null);
     }
-  }, [report, models, geometryResult, toViewerGlobalId, bcfAuthor, setIdsError, setBcfProject, setBcfPanelVisible, t]);
+  }, [report, models, geometryResult, toViewerGlobalId, bcfAuthor, setIdsError, setBcfProject, setBcfPanelVisible, t,
+    clearBcfProgressLater, bcfDoneLingerMs]);
 
   return { exportReportJSON, exportReportHTML, exportReportBCF, bcfExportProgress };
 }

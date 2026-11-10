@@ -16,10 +16,9 @@
  * geometry). This pass instead:
  *  - also fires on a normal crease (a real angle, not a coplanar seam) and a
  *    depth silhouette, both in linear view-space units;
- *  - draws every pixel beside the edge equally dark. Averaging the votes of
- *    several tap directions (as the old pass did for its id test,
- *    `edge4Count * 0.25`) darkened each step of a slanted edge's raster
- *    staircase twice, so long straight edges drew as dotted lines.
+ *  - tests every MSAA sample and darkens by the fraction of samples on a
+ *    line (any tap direction across an edge), so a line antialiases with
+ *    the geometry instead of dashing or stepping.
  */
 
 import { depthReconstructParams } from './depth-reconstruct.js';
@@ -30,19 +29,11 @@ export type EdgeQuality = Exclude<SeparationLinesQuality, 'off'>;
 export interface EdgeQualityPreset {
   /** Tap directions: 4 (cardinal) at low, 8 (+ diagonals) at high. */
   directions: 4 | 8;
-  /**
-   * Darkening of a line pixel per unit intensity: the share of taps that
-   * cross an axis-aligned edge from the pixel beside it (1 of 4 at low, 3 of
-   * 8 at high). Those edges keep the weight the averaged votes gave them;
-   * slanted edges now get that weight along their whole length, without a
-   * darker pixel at each step of their staircase.
-   */
-  lineCoverage: number;
 }
 
 export const EDGE_QUALITY_PRESETS: Readonly<Record<EdgeQuality, EdgeQualityPreset>> = {
-  low: { directions: 4, lineCoverage: 1 / 4 },
-  high: { directions: 8, lineCoverage: 3 / 8 },
+  low: { directions: 4 },
+  high: { directions: 8 },
 };
 
 /** Crease angle (degrees) above which two adjacent face normals draw an edge. */
@@ -59,6 +50,30 @@ export const EDGE_SILHOUETTE_REL_THRESHOLD = 0.01;
 
 /** Darkening never exceeds this, matching the old separation-line cap. */
 export const EDGE_MAX_DARKEN = 0.35;
+
+/**
+ * MSAA samples the pass tests per pixel on a multisampled target: the
+ * renderer's sample count (`pipeline.ts` caps it at 4, the only multisample
+ * count WebGPU guarantees). A single-sampled target tests its one sample.
+ */
+export const EDGE_SAMPLE_COUNT = 4;
+
+/**
+ * Darkening of a fully covered line pixel, per unit of intensity.
+ *
+ * The pass once darkened by the mean of its directions' 0/1 votes: 1 of 4 (or
+ * 3 of 8 at `high`) beside an axis-aligned edge, but on a sloped edge the
+ * stair-step pixels took a second vote and a one-sided normal fit misread
+ * pixels near the crease, so sloped lines, most lines in a perspective view,
+ * drew about four times darker than axis-aligned ones. Half the intensity
+ * (three quarters at `high`, the old 1.5 ratio) puts every line, at any
+ * angle, between the two: axis-aligned lines twice the old weight, sloped
+ * lines half their old average, and uniform along their length.
+ */
+export const EDGE_LINE_WEIGHT: Readonly<Record<EdgeQuality, number>> = {
+  low: 1 / 2,
+  high: 3 / 4,
+};
 
 /** Float offsets of the `EdgeParams` struct fields in `shaders/edges.wgsl.ts`. */
 export const EDGE_UNIFORM_LAYOUT = {
@@ -81,7 +96,7 @@ export interface EdgeFrameParams {
   quality: EdgeQuality;
   /** Tap distance in pixels, already scaled by device pixel ratio. */
   radiusPx: number;
-  /** Darkening strength, already clamped to [0, 1]; scaled by the preset's `lineCoverage`. */
+  /** Darkening strength, already clamped to [0, 1]. */
   intensity: number;
 }
 
@@ -97,8 +112,7 @@ export function packEdgeUniforms(out: Float32Array, frame: EdgeFrameParams): voi
   out[L.viewport + 2] = 1 / frame.width;
   out[L.viewport + 3] = 1 / frame.height;
   out[L.edge] = Math.max(1, frame.radiusPx);
-  const preset = EDGE_QUALITY_PRESETS[frame.quality];
-  out[L.edge + 1] = frame.intensity * preset.lineCoverage;
-  out[L.edge + 2] = preset.directions === 8 ? 1 : 0;
+  out[L.edge + 1] = frame.intensity;
+  out[L.edge + 2] = EDGE_QUALITY_PRESETS[frame.quality].directions === 8 ? 1 : 0;
   out[L.edge + 3] = 0;
 }

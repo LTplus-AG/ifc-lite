@@ -73,7 +73,10 @@ test('annot search shows the actual annotation commands without fuzzy noise (#89
   const input = mount();
   typeInto(input, 'annot');
   assert.deepEqual([...document.querySelectorAll('[role="option"]')].map(row => row.getAttribute('aria-label')),
-    ['Annotate', 'Annotations']);
+    ['Annotate', 'Annotations', 'Filter']);
+  // Label hits precede the legitimate annotations keyword on class visibility (#8947).
+  assert.deepEqual([...document.querySelectorAll('[role="option"]')].map(row => row.getAttribute('data-command-id')),
+    ['tool:annotate', 'vis:ifcAnnotations', 'elements:class-filter']);
 });
 
 test('closing the palette preserves an existing transient toast (#8946)', () => {

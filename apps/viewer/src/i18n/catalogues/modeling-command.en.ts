@@ -10,8 +10,18 @@ import type { TranslationValue } from '../types';
  * label, field names and hints live beside it in this catalogue too.
  */
 export const modelingCommandEn = {
+  "modelingCommand.roof.shape": "Shape",
+  "modelingCommand.roof.hip": "Hip",
+  "modelingCommand.roof.gable": "Gable",
+  "modelingCommand.roof.mono": "Mono-pitch",
+  "modelingCommand.roof.flat": "Flat",
+  "modelingCommand.roof.pitch": "Pitch",
+  "modelingCommand.roof.overhang": "Overhang",
+  "modelingCommand.roof.edge": "Edge",
+  "modelingCommand.roof.edgeSlope": "Edge slope",
   'modelingCommand.closeAria': 'Leave the command',
   'modelingCommand.aim.tag': 'On workplane',
+  "modelingCommand.snap.increment": "Increment {step} · Alt to suspend",
   'modelingCommand.aim.holdAlt': 'Hold {key} to ignore snaps and surfaces: the point lands on the workplane',
   'modelingCommand.aim.altHeld': '{key} held: the point lands on the workplane, ignoring snaps and surfaces in front',
   'modelingCommand.aim.snapOff': 'Snapping is off: the point lands on the workplane, ignoring surfaces in front',
@@ -29,7 +39,7 @@ export const modelingCommandEn = {
   'modelingCommand.wall.alignLeft': 'Left',
   'modelingCommand.wall.alignCentre': 'Centre',
   'modelingCommand.wall.alignRight': 'Right',
-  'modelingCommand.wall.top': "Where the wall's top goes",
+  'modelingCommand.wall.top': "Wall top",
   'modelingCommand.wall.topStoreyAbove': 'To storey above',
   'modelingCommand.wall.topFixed': 'Fixed height',
   'modelingCommand.field.width': 'Width',

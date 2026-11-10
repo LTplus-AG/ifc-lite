@@ -111,10 +111,10 @@ export const extensionsPanelsDe = {
   "extensionsPanels.ideasPanel.helpRecurringSubject": "Wiederkehrende Vorschläge",
   "extensionsPanels.ideasPanel.helpRecurring": "{subject} erscheinen, sobald ein Ablauf wiederholt in Ihrem lokalen Aktivitätsprotokoll vorkommt (Modellladen, Linsenanwendung, Exporte). Bei wenigen Daten sind die Schwellen niedriger und steigen mit wachsender Datenmenge.",
   "extensionsPanels.ideasPanel.helpActions": "Klicken Sie auf {tryIt}, um die Idee an den KI-Chat-Assistenten zu senden — der Chat öffnet sich für Rückfragen. Mit {customize} können Sie vorher Berechtigungen reduzieren oder den Befehl umbenennen.",
-  "extensionsPanels.ideasPanel.helpPrivacy": "Das Aktionsprotokoll ist lokal. Nichts davon verlässt Ihr Gerät.",
+  "extensionsPanels.ideasPanel.helpPrivacy": "Das Aktionsprotokoll bleibt lokal. Ideen, die Sie an den KI-Chat senden, werden in Nachrichten an den konfigurierten KI-Anbieter aufgenommen.",
   "extensionsPanels.ideasPanel.remineAriaLabel": "Jetzt erneut nach Mustern suchen",
   "extensionsPanels.ideasPanel.remineButton": "Erneut suchen",
-  "extensionsPanels.ideasPanel.footerPrivacy": "Wiederkehrende Abfolgen in Ihrem lokalen Aktivitätsprotokoll. Nichts davon verlässt Ihr Gerät.",
+  "extensionsPanels.ideasPanel.footerPrivacy": "Das Aktionsprotokoll bleibt lokal. Ideen, die Sie an den KI-Chat senden, werden in Nachrichten an den konfigurierten KI-Anbieter aufgenommen.",
   "extensionsPanels.ideasPanel.recurringHeading": "Wiederkehrend in Ihrer Aktivität",
   "extensionsPanels.ideasPanel.occurrenceSummary": {
     "one": "{occurrences}× in {sessions} Sitzung · zuletzt {date} · Wertung {score}",

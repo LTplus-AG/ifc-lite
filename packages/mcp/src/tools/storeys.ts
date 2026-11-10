@@ -10,7 +10,7 @@
  * written, and each write is one mutation_undo step.
  */
 
-import { readStoreyInventory, suggestStorey, type StoreyDeleteMode, type StoreyLevelEdit } from '@ifc-lite/create';
+import type { StoreyDeleteMode, StoreyLevelEdit } from '@ifc-lite/create';
 import type { JsonSchema } from '../protocol/index.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 import type { ToolContext } from '../context.js';
@@ -74,9 +74,7 @@ const storeyAdd: Tool = {
       let Elevation = input.Elevation as number | undefined;
       if (Name === undefined || Elevation === undefined) {
         if (reference === undefined) throw new Error('Give Name and Elevation, or reference_storey_express_id and side');
-        const view = model.backend.getOrCreateMutationView();
-        const inventory = readStoreyInventory(model.store, view);
-        const suggestion = suggestStorey(inventory, reference, (input.side as 'above' | 'below' | undefined) ?? 'above', (n) => `Level ${n}`);
+        const suggestion = s.suggestStorey(model.id, reference, (input.side as 'above' | 'below' | undefined) ?? 'above');
         Name ??= suggestion.Name;
         Elevation ??= suggestion.Elevation;
       }

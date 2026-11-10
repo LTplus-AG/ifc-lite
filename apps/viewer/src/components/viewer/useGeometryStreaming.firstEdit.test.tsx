@@ -95,11 +95,14 @@ describe('first authored mesh resident ownership (#6232)', () => {
 
   for (const unit of ['METRE', 'MILLIMETRE'] as const) {
     for (const count of [1, 2]) {
-      it(`${unit}, ${count} models: first real wall occupies its Scene once and still fits the camera`, { skip }, async () => {
+      it(`${unit}, ${count} models: first real wall occupies its Scene once without moving the camera (#9296)`, { skip }, async () => {
         const primary = await load(blankFile(unit));
         if (count === 2) await load(blankFile(unit), 'blank-peer');
         const { scene, device, pipeline } = appearanceInstanceScene([]);
         const camera = new Camera();
+        camera.setPosition(12, 15, 20);
+        camera.setTarget(-2, 1, 3);
+        const pose = { position: { ...camera.getPosition() }, target: { ...camera.getTarget() } };
         const renderer = { getScene: () => scene, getGPUDevice: () => device, getPipeline: () => pipeline,
           getCamera: () => camera, getCanvas: () => ({ clientWidth: 800, clientHeight: 600 }),
           clearCaches() {}, requestRender() {} } as unknown as Renderer;
@@ -121,8 +124,9 @@ describe('first authored mesh resident ownership (#6232)', () => {
           const resident = scene.getMeshDataPieces(globalId) ?? [];
           assert.equal(resident.length, cpu.length, 'each actual WASM part has exactly one resident Scene part');
           assert.equal(resident.reduce((n, mesh) => n + mesh.indices.length, 0),
-            cpu.reduce((n, mesh) => n + mesh.indices.length, 0), 'first camera fitting must not upload triangles twice');
-          assert.notDeepEqual(camera.getTarget(), { x: 0, y: 0, z: 0 }, 'first geometry still fits the camera');
+            cpu.reduce((n, mesh) => n + mesh.indices.length, 0), 'first geometry must not upload triangles twice');
+          assert.deepEqual({ position: { ...camera.getPosition() }, target: { ...camera.getTarget() } }, pose,
+            '#9296: committing the first authored geometry preserves the user camera pose');
         } finally {
           cleanup();
           scene.clear();

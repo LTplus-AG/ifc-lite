@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { useSingleFlight } from '@/hooks/useSingleFlight';
 import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { reportChartDependencies, type ChartDependencyPreview, type ReportSource } from '@/lib/reports/chart-dependencies';
@@ -28,7 +29,9 @@ export function ReportDeletionPreview({ source, report, onCancel, onDeleted, sto
   const active = useRef({ alive: true });
   const action = useRef(source.kind === 'compare' ? useViewerStore.getState().deleteSavedComparison : useViewerStore.getState().deleteSavedClashReport);
   const [acknowledged, setAcknowledged] = useState<ChartDependencyPreview | null>(null);
-  const [busy, setBusy] = useState(false);
+  // C-9: a synchronous lease, so a double-clicked Confirm runs one removal pass.
+  const flight = useSingleFlight();
+  const busy = flight.busy;
   const [pendingDeletion, setPendingDeletion] = useState(false);
   const ownGuard = useRef<(() => boolean | Promise<boolean>) | null>(null);
   const [durableDocuments, setDurableDocuments] = useState<DurableDocuments>({ entries: [], phase: 'loading' });
@@ -55,8 +58,7 @@ export function ReportDeletionPreview({ source, report, onCancel, onDeleted, sto
     });
     return () => { owner.alive = false; window.removeEventListener('storage', changedStorage); };
   }, [source.kind, source.id]);
-  const remove = async () => {
-    if (busy) return;
+  const remove = () => flight.run(async () => {
     // #7252: another tab can commit a Document after this preview hydrated.
     // Refresh through the existing validated native library before approval.
     const durable = await readDurableDocuments();
@@ -65,11 +67,10 @@ export function ReportDeletionPreview({ source, report, onCancel, onDeleted, sto
     const target = source.kind === 'compare' ? latest.savedComparisons.find(row => row.id === source.id) : latest.savedClashReports.find(row => row.id === source.id);
     const next = reportChartDependencies(latest, source, durable);
     const removeAction = source.kind === 'compare' ? latest.deleteSavedComparison : latest.deleteSavedClashReport;
-    if (busy || removeAction !== action.current || target !== captured.current || !acknowledged || next.signature !== acknowledged.signature || next.documentPhase === 'loading') {
+    if (removeAction !== action.current || target !== captured.current || !acknowledged || next.signature !== acknowledged.signature || next.documentPhase === 'loading') {
       refreshRead(value => value + 1); return;
     }
     const owner = active.current;
-    setBusy(true);
     let staged = false;
     let guardRejected = false;
     const beforeWrite = async () => {
@@ -87,11 +88,13 @@ export function ReportDeletionPreview({ source, report, onCancel, onDeleted, sto
       return true;
     };
     ownGuard.current = beforeWrite;
-    const ok = await removeAction(source.id, beforeWrite);
+    let ok = false;
+    try { ok = await removeAction(source.id, beforeWrite); }
+    catch (error) { console.warn('[Report deletion] Removal failed', error); }
     if (active.current === owner && owner.alive) setPendingDeletion(staged && !ok && !guardRejected);
     if (!ok && !guardRejected) storageFailed();
-    if (active.current === owner && owner.alive) { setBusy(false); if (ok) onDeleted?.(); }
-  };
+    if (ok && active.current === owner && owner.alive) onDeleted?.();
+  });
   const cancel = () => {
     // Revoke approval before any asynchronous recovery or unmount callback.
     active.current.alive = false;

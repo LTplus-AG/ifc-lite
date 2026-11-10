@@ -113,8 +113,7 @@
   1234 apps/viewer/src/hooks/useDrawingExport.ts
   1032 apps/viewer/src/hooks/useDrawingGeneration.ts
    551 apps/viewer/src/hooks/useIfcFederation.ts
-  2171 apps/viewer/src/hooks/useIfcLoader.ts
-   436 apps/viewer/src/hooks/useIfcServer.ts
+  2170 apps/viewer/src/hooks/useIfcLoader.ts
    456 apps/viewer/src/hooks/useSymbolicAnnotations.ts
    633 apps/viewer/src/lib/analytics-scrub.ts
    627 apps/viewer/src/lib/clash/persistence.ts
@@ -175,7 +174,7 @@
    653 packages/collab/src/doc/entity.ts
    591 packages/create-ifc-lite/src/templates/react.ts
    428 packages/create-ifc-lite/src/templates/server-native.ts
-   639 packages/create-ifc-lite/src/templates/server.ts
+   538 packages/create-ifc-lite/src/templates/server.ts
   2827 packages/create/src/ifc-creator.ts
    535 packages/create/src/in-store/auto-space-detect.ts
    878 packages/create/src/in-store/extract-walls.ts
@@ -274,7 +273,7 @@
    673 packages/sandbox/src/sandbox.ts
    458 packages/sdk/src/namespaces/bsdd.ts
    732 packages/sdk/src/types.ts
-   995 packages/server-client/src/client.ts
+   929 packages/server-client/src/client.ts
    788 packages/server-client/src/data-model-decoder.ts
    444 packages/server-client/src/parquet-tables.ts
    595 packages/server-client/src/types.ts

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-// #5167 structural climb B: IFC2X3 builders must survive a real STEP round trip.
+// The structural builders write IFC2X3 records that survive a real STEP round trip.
 import { writeFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { IfcParser, extractStructuralOnDemand, EntityExtractor } from '@ifc-lite/parser';
@@ -26,7 +26,7 @@ DATA;
 #1=IFCPROJECT('0proj00000000000000000',#4,'P',$,$,$,$,(#7),#9);
 #2=IFCPERSON($,'Author',$,$,$,$,$,$);
 #3=IFCORGANIZATION($,'Org',$,$,$);
-#4=IFCOWNERHISTORY(#10,#11,$,.ADDED.,$,$,$,0);
+#4=IFCOWNERHISTORY(#10,#11,$,.ADDED.,0,$,$,0);
 #10=IFCPERSONANDORGANIZATION(#2,#3,$);
 #11=IFCAPPLICATION(#3,'1','Test','Test');
 #5=IFCCARTESIANPOINT((0.,0.,0.));
@@ -36,6 +36,7 @@ DATA;
 #91=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
 #20=IFCLOCALPLACEMENT($,#6);
 #30=IFCBUILDINGSTOREY('0storey000000000000000',#4,'Level 0',$,$,#20,$,$,.ELEMENT.,0.);
+#31=IFCRELAGGREGATES('0aggr00000000000000000',#4,$,$,#1,(#30));
 ENDSEC;
 END-ISO-10303-21;`;
 
@@ -60,7 +61,7 @@ async function fresh(schema = 'IFC2X3') {
   return { editor, anchor, roundTrip };
 }
 
-describe('structural climb B IFC2X3 STEP round trips', () => {
+describe('IFC2X3 structural builder STEP round trips', () => {
   it('analysis model preserves classification and load group references with nine slots', async () => {
     const { editor, anchor, roundTrip } = await fresh();
     const group = editor.addEntity('IfcStructuralLoadGroup', ['0group0000000000000000', '#4', 'G', null, null, '.LOAD_GROUP.', '.PERMANENT_G.', '.DEAD_LOAD_G.', 1, null]);

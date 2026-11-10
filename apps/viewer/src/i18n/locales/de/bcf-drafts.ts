@@ -62,6 +62,7 @@ export const bcfDraftsDe = {
   'bcfDrafts.reconcile.apply': 'Anwenden',
   'bcfDrafts.reconcile.applyTo': 'Vorschlag auf {title} anwenden',
   'bcfDrafts.reconcile.stale': 'Der Stapel hat sich seit dem Vergleich geändert; vergleichen Sie erneut.',
+  'bcfDrafts.reconcile.failed': 'Die Änderung konnte nicht übernommen werden; der Stapel ist unverändert. {message}',
   'bcfDrafts.reconcile.unplaced': { one: '{count} neuer Gruppentreffer könnte zu mehreren abgeteilten Themen gehören.', other: '{count} neue Gruppentreffer könnten zu mehreren abgeteilten Themen gehören.' },
   'bcfDrafts.reconcile.draftUnplaced': 'Daraus ein neues Thema entwerfen',
   'bcfDrafts.reconcile.unplacedTitle': 'Neue Treffer',

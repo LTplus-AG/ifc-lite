@@ -194,6 +194,8 @@ describe('loadFromServer — a superseded stream must not paint into the active 
       new File(['x'], 'model.ifc'),
       HUGE_BUFFER,
       () => stale,
+      undefined,
+      'server',
     );
 
     // Let batch 1 land. `loadFromServer` awaits `isServerAvailable` (which
@@ -240,7 +242,7 @@ describe('loadFromServer — a superseded stream must not paint into the active 
     const controller = new AbortController();
     controller.abort();
     releaseBatch2();
-    assert.equal(await loadFromServer!(new File(['x'], 'model.ifc'), HUGE_BUFFER, () => false, controller.signal), false);
+    assert.equal(await loadFromServer!(new File(['x'], 'model.ifc'), HUGE_BUFFER, () => false, controller.signal, 'server'), false);
     assert.notEqual(snapshot().progressPhase, 'Complete');
   });
 
@@ -248,7 +250,7 @@ describe('loadFromServer — a superseded stream must not paint into the active 
     // No staleness to wait on here — release batch 2 immediately so the
     // mocked stream completes like an ordinary uninterrupted load.
     releaseBatch2();
-    const result = await loadFromServer!(new File(['x'], 'model.ifc'), HUGE_BUFFER, () => false);
+    const result = await loadFromServer!(new File(['x'], 'model.ifc'), HUGE_BUFFER, () => false, undefined, 'server');
     assert.equal(result, true, 'a non-stale load must report success');
     const after = snapshot();
     assert.deepEqual(

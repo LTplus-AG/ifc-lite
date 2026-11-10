@@ -282,7 +282,7 @@ it('NEW-3: blank IFC restore never computes a spatial key or starts a worker', a
     await act(async () => root.unmount());
     host.remove();
     const state = useViewerStore.getState();
-    assert.equal(state.getMutationView('blank-new3'), undefined, 'blank restore does not register an inspection view');
+    assert.equal(state.getMutationView('blank-new3'), null, 'blank restore does not register an inspection view');
     assert.equal(state.getModifiedEntityCount(), mutationCountBefore, 'the mutation badge count is unchanged');
     assert.equal(collectChangedModels(state).models.some(model => model.id === 'blank-new3'), false, 'blank model has nothing to export');
   } finally {

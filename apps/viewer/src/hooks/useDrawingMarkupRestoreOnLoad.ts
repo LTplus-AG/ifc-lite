@@ -167,13 +167,13 @@ export function tryRestoreDrawingMarkup(modelId: string, requestParse = false): 
   const state = useViewerStore.getState();
   const store = state.models.get(modelId)?.ifcDataStore ?? (modelId === 'legacy' ? state.ifcDataStore : null);
   if (!store) return;
-  if (!hasEmbeddedDrawingMarkup(store, state.getMutationView(modelId))) {
+  if (!hasEmbeddedDrawingMarkup(store, state.getMutationView(modelId) ?? undefined)) {
     markRestored(modelId);
     return;
   }
   const result = restoreDrawingMarkupFromModel(modelId);
   if (!result) {
-    if (requestParse) ensureParseFor([{ store, mutationView: state.getMutationView(modelId) }]);
+    if (requestParse) ensureParseFor([{ store, mutationView: state.getMutationView(modelId) ?? undefined }]);
     return; // retry on parse publication or RTC readiness
   }
 

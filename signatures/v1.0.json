@@ -11,6 +11,17 @@
       "pull_request": 9426,
       "comment_id": 6764797875,
       "comment_url": "https://github.com/LTplus-AG/ifc-lite/pull/9426#issuecomment-6764797875"
+    },
+    {
+      "github_id": 69924139,
+      "login": "Blogbotana",
+      "cla_version": "1.0",
+      "cla_sha256": "4588846418581ca944a6e1d092631146a93a56d8b4968c7b939f7d7817c72586",
+      "cla_commit": "ac8078b9da1b64305eaeed247846d3b72da017e3",
+      "signed_at": "2026-11-10T12:51:13Z",
+      "pull_request": 9512,
+      "comment_id": 6767794179,
+      "comment_url": "https://github.com/LTplus-AG/ifc-lite/pull/9512#issuecomment-6767794179"
     }
   ],
   "offline": []

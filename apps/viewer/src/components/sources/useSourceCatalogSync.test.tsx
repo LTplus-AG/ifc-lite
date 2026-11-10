@@ -444,7 +444,7 @@ for (const kind of ['folders', 'files'] as const) {
   });
 }
 
-it('C-5 concurrent folder opens keep loading until both settle', async () => {
+it('C-5 concurrent folder opens retain each pending container', async () => {
   const provider = new FakeProvider({ containerListing: 'direct-children', listFilesIsRecursive: true });
   const replies = new Map<string, () => void>();
   provider.listContainers = async (_ctx, _project, parent) => {
@@ -458,9 +458,9 @@ it('C-5 concurrent folder opens keep loading until both settle', async () => {
     harness.get().openContainer({ id: 'Y', name: 'Y' });
   });
   await act(async () => replies.get('X')!());
-  assert.equal(harness.get().loadingFolders, true, 'Y still owns a pending folder request');
+  assert.equal(harness.get().loadingContainers.has('Y'), true, 'Y still owns a pending folder request');
   await act(async () => replies.get('Y')!());
-  assert.equal(harness.get().loadingFolders, false);
+  assert.equal(harness.get().loadingContainers.size, 0);
 });
 
 for (const kind of ['folders', 'files'] as const) it(`C-5 same-tick ${kind} load-more presses request one page`, async () => {
@@ -540,12 +540,14 @@ it('#9567 manual sync retires folder locks without letting old finally release t
   await act(async () => harness.get().openFileArea('p', 'area-1'));
   act(() => harness.get().openContainer({ id: 'X', name: 'X' }));
   await act(async () => harness.get().syncFileArea('p', 'area-1'));
+  const retiredLoading = harness.get().loadingContainers.has('X');
   act(() => harness.get().openContainer({ id: 'X', name: 'X' }));
   await act(async () => replies[0]());
-  const stillLoading = harness.get().loadingFolders;
+  const stillLoading = harness.get().loadingContainers.has('X');
   act(() => harness.get().openContainer({ id: 'X', name: 'X' }));
   const count = opens;
   await act(async () => { for (const finish of replies.slice(1)) finish(); });
+  assert.equal(retiredLoading, false, 'manual sync retires the old container loading state');
   assert.equal(count, 2, 'manual sync permits a new request and the old finally cannot unlock it');
   assert.equal(stillLoading, true);
   assert.equal(harness.get().loadingFolders, false);
@@ -598,4 +600,20 @@ it('#9567 opening a cached area releases an old pagination flight without starti
   assert.equal(cachedFetches, 0, 'the cached transition must not fall back to a fresh sync');
   assert.deepEqual(cachedIds, ['cached-file']);
   assert.deepEqual(harness.get().allFiles.map(file => file.id), ['cached-file']);
+});
+
+it('#9567 on-demand completion leaves initial area file loading owned by the area', async () => {
+  const provider = new FakeProvider({ containerListing: 'flat-subtree', listFilesIsRecursive: false, eagerFileSweep: true });
+  let finish!: () => void;
+  provider.listFiles = async (_ctx, _project, parent) => {
+    if (parent === 'area-1') await new Promise<void>(resolve => { finish = resolve; });
+    return { items: [] };
+  };
+  const harness = renderCatalogSync(provider);
+  await act(async () => harness.get().openFileArea('p', 'area-1'));
+  await act(async () => harness.get().openContainer({ id: 'X', name: 'X' }));
+  const areaStillLoading = harness.get().loadingFiles;
+  await act(async () => finish());
+  assert.equal(areaStillLoading, true, 'only the initial area fetch may clear its loading flag');
+  assert.equal(harness.get().loadingFiles, false);
 });

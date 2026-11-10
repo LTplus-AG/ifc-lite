@@ -66,6 +66,7 @@ export function useSourceCatalogSync({ provider, ctx, setError, onSynced }: UseS
   // Container ids with an on-demand fetch already running (direct-children /
   // per-folder files), so rapid re-selection cannot double-fetch.
   const openingContainersRef = useRef(new Set<string>());
+  const [loadingContainers, setLoadingContainers] = useState<ReadonlySet<string>>(new Set());
 
   // flat-subtree: single entry keyed by the file-area id.
   // direct-children: one entry per browsed parent container.
@@ -91,6 +92,7 @@ export function useSourceCatalogSync({ provider, ctx, setError, onSynced }: UseS
   const beginGeneration = useCallback((): { gen: number; signal: AbortSignal } => {
     abortRef.current?.abort();
     openingContainersRef.current.clear();
+    setLoadingContainers(new Set());
     paging.release();
     const controller = new AbortController();
     abortRef.current = controller;
@@ -200,6 +202,7 @@ export function useSourceCatalogSync({ provider, ctx, setError, onSynced }: UseS
       requestGenRef.current += 1;
       areaRef.current = { projectId, fileAreaId };
       openingContainersRef.current.clear();
+      setLoadingContainers(new Set());
       setContainersByParent(new Map());
       setFilesByContainer(new Map());
       setCatalogUpdatedAt(null);
@@ -232,18 +235,17 @@ export function useSourceCatalogSync({ provider, ctx, setError, onSynced }: UseS
       if (!needChildren && !needFiles) return;
       if (openingContainersRef.current.has(container.id)) return;
       openingContainersRef.current.add(container.id);
+      setLoadingContainers(new Set(openingContainersRef.current));
 
       setError(null);
       void (async () => {
         try {
           if (needChildren) {
-            setLoadingFolders(true);
             const page = await fetchContainers(area.projectId, container.id, undefined, signal);
             if (requestGenRef.current !== gen) return;
             setContainersByParent((previous) => new Map(previous).set(container.id, page));
           }
           if (needFiles) {
-            setLoadingFiles(true);
             const page = await fetchFiles(area.projectId, container.id, signal);
             if (requestGenRef.current !== gen) return;
             setFilesByContainer((previous) => new Map(previous).set(container.id, page));
@@ -255,7 +257,7 @@ export function useSourceCatalogSync({ provider, ctx, setError, onSynced }: UseS
         } finally {
           if (requestGenRef.current === gen) {
             openingContainersRef.current.delete(container.id);
-            if (openingContainersRef.current.size === 0) { setLoadingFolders(false); setLoadingFiles(false); }
+            setLoadingContainers(new Set(openingContainersRef.current));
           }
         }
       })();
@@ -289,8 +291,10 @@ export function useSourceCatalogSync({ provider, ctx, setError, onSynced }: UseS
         try {
           const page = await fetchContainers(area.projectId, key, current.cursor, signal);
           if (requestGenRef.current !== gen) return;
-          const next = new Map(containersByParent).set(key, appendPage(current, page));
-          setContainersByParent(previous => new Map(previous).set(key, appendPage(current, page)));
+          const merged = appendPage(current, page);
+          // Only complete flat/recursive catalogs persist; they have no concurrent on-demand writes.
+          const next = new Map(containersByParent).set(key, merged);
+          setContainersByParent(previous => new Map(previous).set(key, merged));
           maybePersist(area.projectId, area.fileAreaId, next, filesByContainer);
         } catch (err) {
           if (requestGenRef.current === gen && !(err instanceof DOMException && err.name === 'AbortError')) {
@@ -328,8 +332,10 @@ export function useSourceCatalogSync({ provider, ctx, setError, onSynced }: UseS
         try {
           const page = await fetchFilePage(provider, ctx, area.projectId, key, current.cursor, signal);
           if (requestGenRef.current !== gen) return;
-          const next = new Map(filesByContainer).set(key, appendPage(current, page));
-          setFilesByContainer(previous => new Map(previous).set(key, appendPage(current, page)));
+          const merged = appendPage(current, page);
+          // Only complete flat/recursive catalogs persist; they have no concurrent on-demand writes.
+          const next = new Map(filesByContainer).set(key, merged);
+          setFilesByContainer(previous => new Map(previous).set(key, merged));
           maybePersist(area.projectId, area.fileAreaId, containersByParent, next);
         } catch (err) {
           if (requestGenRef.current === gen && !(err instanceof DOMException && err.name === 'AbortError')) {
@@ -342,14 +348,15 @@ export function useSourceCatalogSync({ provider, ctx, setError, onSynced }: UseS
   );
 
   const resetCatalog = useCallback(() => {
-    // Same gap as openFileArea above: null the ref after aborting so a later
-    // on-demand fetch (openContainer, loadMore*) does not inherit an
-    // already-aborted signal.
+    // Null the aborted controller: a cached-area activation may return without
+    // beginGeneration replacing it. Otherwise a later on-demand consumer could
+    // inherit an aborted signal and silently stop before fetching.
     abortRef.current?.abort();
     abortRef.current = null;
     requestGenRef.current += 1;
     areaRef.current = null;
     openingContainersRef.current.clear();
+    setLoadingContainers(new Set());
     setContainersByParent(new Map());
     setFilesByContainer(new Map());
     setCatalogUpdatedAt(null);
@@ -367,6 +374,7 @@ export function useSourceCatalogSync({ provider, ctx, setError, onSynced }: UseS
     loadingFolders,
     loadingFiles,
     loadingMore,
+    loadingContainers,
     syncing,
     catalogUpdatedAt,
     openFileArea,

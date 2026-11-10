@@ -604,3 +604,72 @@ describe('jumping to a favourite folder past the first page', () => {
     );
   });
 });
+
+class ConcurrentFolderProvider extends FakeProvider {
+  override readonly manifest: PluginManifest = {
+    ...directChildrenManifest,
+    capabilities: { ...directChildrenManifest.capabilities, eagerFileSweep: true },
+  };
+  private pending = new Map<string, Array<() => void>>();
+  constructor(private readonly holdArea = false) { super(); }
+  override listContainers(c: PluginContext, project: string, parent?: string): Promise<Page<SourceContainer>> {
+    return !parent || parent === 'area-1' ? super.listContainers(c, project, parent) : Promise.resolve({ items: [] });
+  }
+  override async listFiles(_ctx?: PluginContext, _project?: string, container?: string): Promise<Page<SourceFile>> {
+    if (container === FOLDER.id || container === OTHER_FOLDER.id || (this.holdArea && container === 'area-1')) {
+      await new Promise<void>(resolve => this.pending.set(container, [...(this.pending.get(container) ?? []), resolve]));
+    }
+    return { items: container === FOLDER.id ? [IN_FOLDER] : container === OTHER_FOLDER.id ? [ELSEWHERE] : [] };
+  }
+  release(id: string): void { for (const finish of this.pending.get(id) ?? []) finish(); this.pending.delete(id); }
+  releaseAll(): void { for (const id of this.pending.keys()) this.release(id); }
+}
+
+const fileSpinner = () => [...document.querySelectorAll('output')].some(node => node.textContent?.includes('Loading'));
+
+it('#9567 selected Y files render while X is still loading with eager per-folder files', async () => {
+  const provider = new ConcurrentFolderProvider();
+  try {
+    await jumpTo(favourite({ containerId: 'area-1', containerName: 'Documents' }), provider);
+    act(() => button('Models')!.click()); await pump();
+    assert.equal(fileSpinner(), true, 'X owns its loading state');
+    act(() => button('Drawings')!.click()); await pump();
+    assert.equal(fileSpinner(), true, 'Y owns its loading state');
+    provider.release(OTHER_FOLDER.id); await pump();
+    assert.equal(text().includes('Podium.ifc'), true, 'ready Y files are visible before X finishes');
+    assert.equal(fileSpinner(), false);
+    act(() => button('Models')!.click()); await pump();
+    assert.equal(fileSpinner(), true, 'the still-pending X keeps its own loading state');
+    assert.equal(text().includes('Podium.ifc'), false);
+    provider.release(FOLDER.id); await pump();
+    assert.equal(text().includes('Tower.ifc'), true);
+    assert.equal(fileSpinner(), false);
+  } finally { provider.releaseAll(); await pump(); }
+});
+
+it('#9567 a folder finishing cannot clear the initial area file spinner', async () => {
+  const provider = new ConcurrentFolderProvider(true);
+  try {
+    await jumpTo(favourite({ containerId: 'area-1', containerName: 'Documents' }), provider);
+    assert.equal(fileSpinner(), true, 'initial per-folder area files are still pending');
+    act(() => button('Models')!.click()); await pump();
+    provider.release(FOLDER.id); await pump();
+    assert.equal(text().includes('Tower.ifc'), true);
+    act(() => button('Documents')!.click()); await pump();
+    assert.equal(fileSpinner(), true, 'the initial area request still owns the area spinner');
+    provider.release('area-1'); await pump();
+    assert.equal(fileSpinner(), false);
+  } finally { provider.releaseAll(); await pump(); }
+});
+
+it('#9567 recursive file scans keep a selected folder loading until the area scan completes', async () => {
+  const provider = new DeferringProvider('files');
+  try {
+    await jumpTo(favourite(), provider);
+    assert.equal(trail(), 'Documents / Models', 'the favourite selects the folder before its files arrive');
+    assert.equal(fileSpinner(), true, 'recursive files are owned by the area scan for every selection');
+    provider.release(); await pump();
+    assert.equal(text().includes('Tower.ifc'), true);
+    assert.equal(fileSpinner(), false);
+  } finally { provider.release(); await pump(); }
+});

@@ -60,6 +60,8 @@ for (const operation of ['split', 'copy'] as const) for (const quantity of [fals
   const setName = quantity ? 'Qto_DeletedSource' : 'Pset_DeletedSource';
   if (quantity) editor.addQuantitySet(id, setName, [{ name: 'KnownBeforeDeletion', value: 17, quantityType: 'COUNT' }]);
   else editor.addPropertySet(id, setName, [{ name: 'KnownBeforeDeletion', value: 'native source membership', type: 'LABEL' }]);
+  if (quantity) editor.addQuantitySet(id, setName + 'Sibling', [{ name: 'Kept', value: 9, quantityType: 'COUNT' }]);
+  else editor.addPropertySet(id, setName + 'Sibling', [{ name: 'Kept', value: 'sibling', type: 'LABEL' }]);
   const save = () => new StepExporter(store, view).export({ schema: 'IFC4', applyMutations: true }).content;
   store = await parse(save()); view = new MutablePropertyView(null, 'native'); editor = new StoreEditor(store, view);
   view.setOnDemandExtractor(target => extractPropertiesOnDemand(store, target));
@@ -74,6 +76,7 @@ for (const operation of ['split', 'copy'] as const) for (const quantity of [fals
     : copyBatchInStore(store, editor, [id], [{ offset: [0, 3, 0] }])[0].copyId;
   const after = await parse(save());
   for (const target of [id, added]) expect(setsFor(after, target).some(set => set.name === setName)).toBe(false);
+  for (const target of [id, added]) expect(setsFor(after, target).some(set => set.name === setName + 'Sibling')).toBe(true);
 });
 
 for (const operation of ['split', 'copy'] as const) for (const quantity of [false, true]) it(`#7251 shared native ${operation} carries a current edit to an existing source ${quantity ? 'quantity' : 'property'} set`, async () => {

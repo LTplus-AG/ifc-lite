@@ -506,6 +506,23 @@ describe('bim.store storey reads in the viewer (#9037 review)', () => {
     assert.equal(useViewerStore.getState().session?.storeyId, STOREY, 'the workspace draws on a live storey');
   });
 
+  // #9200: the store adapter's modelling methods no longer carry the SDK's own
+  // storey methods. `bim.store`'s storey calls must still reach the viewer's
+  // tracked path: one undo step per write, listed straight after.
+  it('the store adapter answers storey calls through the tracked storey path (#9200)', async () => {
+    const { createStoreAdapter } = await import('@/sdk/adapters/store-adapter');
+    const { loadStoreyAdapter } = await import('@/sdk/adapters/store-adapter-storey');
+    const api = createStoreAdapter(useViewerStore);
+    await loadStoreyAdapter();
+    assert.ok(api.addStorey && api.listStoreyLevels && api.deleteStorey, 'the adapter offers the storey methods');
+    const before = batches();
+    const roof = api.addStorey(MODEL_ID, { Name: 'Roof', Elevation: 6, referenceStoreyId: UPPER_STOREY });
+    assert.equal(batches(), before + 1, 'the write is one undo step on the viewer history');
+    assert.ok(api.listStoreyLevels(MODEL_ID).some((row) => row.expressId === roof.expressId && row.Name === 'Roof'));
+    api.deleteStorey(roof, { kind: 'empty' });
+    assert.ok(!api.listStoreyLevels(MODEL_ID).some((row) => row.expressId === roof.expressId));
+  });
+
   it('the Solo fallback ranks live elevations: a storey added above the parsed top is the top', async () => {
     const m = await storey();
     const outcome = m.commitStoreyOp(useViewerStore, MODEL_ID, { kind: 'add', params: { Name: 'Roof', Elevation: 6, referenceStoreyId: UPPER_STOREY } });

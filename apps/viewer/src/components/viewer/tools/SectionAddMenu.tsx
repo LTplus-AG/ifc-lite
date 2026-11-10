@@ -59,7 +59,7 @@ type AddLabelKey = 'sectionPlanes.addDown' | 'sectionPlanes.addFront' | 'section
 type AddTitleKey = 'sectionPlanes.addDownTitle' | 'sectionPlanes.addFrontTitle' | 'sectionPlanes.addSideTitle' | 'sectionPlanes.addFaceTitle' | 'sectionPlanes.addBoxTitle' | 'sectionPlanes.addAlignmentTitle';
 
 /** Every way to add, with a title that says what it makes, so each choice explains itself on hover (#8672). */
-const ENTRIES: ReadonlyArray<{ kind: AddKind; labelKey: AddLabelKey; titleKey: AddTitleKey }> = [
+export const SECTION_ADD_ENTRIES: ReadonlyArray<{ kind: AddKind; labelKey: AddLabelKey; titleKey: AddTitleKey }> = [
   { kind: 'down', labelKey: 'sectionPlanes.addDown', titleKey: 'sectionPlanes.addDownTitle' },
   { kind: 'front', labelKey: 'sectionPlanes.addFront', titleKey: 'sectionPlanes.addFrontTitle' },
   { kind: 'side', labelKey: 'sectionPlanes.addSide', titleKey: 'sectionPlanes.addSideTitle' },
@@ -68,8 +68,8 @@ const ENTRIES: ReadonlyArray<{ kind: AddKind; labelKey: AddLabelKey; titleKey: A
   { kind: 'alignment', labelKey: 'sectionPlanes.addAlignment', titleKey: 'sectionPlanes.addAlignmentTitle' },
 ];
 /** The axis planes come first; the ways that need a pick or a shape follow a separator. */
-const AXIS_ENTRIES = ENTRIES.slice(0, 3);
-const OTHER_ENTRIES = ENTRIES.slice(3);
+const AXIS_ENTRIES = SECTION_ADD_ENTRIES.slice(0, 3);
+const OTHER_ENTRIES = SECTION_ADD_ENTRIES.slice(3);
 
 export function SectionAddMenu({ atLimit }: { atLimit: boolean }) {
   const { t } = useTranslation();

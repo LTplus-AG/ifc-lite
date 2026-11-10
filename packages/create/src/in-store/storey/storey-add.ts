@@ -25,6 +25,7 @@ import { MIN_STOREY_SPACING, StoreyEditRefusedError, describeElevation } from '.
 import { planAttachmentBindings, type StoreyBinding, type WallHeightChange } from './storey-dependents.js';
 import { writeTopAttachment } from './storey-attachment.js';
 import { writeAttachedTop } from './storey-attached.js';
+import { dryRunTransaction } from './storey-dry-run.js';
 import { setWallSectionInStore } from '../wall-section-edit.js';
 import { scaleWallQuantities, wallGeometry } from './storey-level-write.js';
 
@@ -153,7 +154,7 @@ export function planStoreyAdd(inventory: StoreyInventory, params: AddStoreyParam
     return refused(error);
   }
   try {
-    inventory.view.prepareAtomic((draft) => addStoreyInStore(inventory.store, new StoreEditor(inventory.store, draft), params)).rollback();
+    dryRunTransaction(inventory.view, (draft) => { addStoreyInStore(inventory.store, new StoreEditor(inventory.store, draft), params); });
   } catch (error) {
     return refused(error);
   }

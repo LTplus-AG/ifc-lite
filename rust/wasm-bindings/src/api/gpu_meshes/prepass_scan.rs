@@ -37,8 +37,13 @@ fn emit_meta(
         discovery.site_position,
         decoder,
     );
+    let site_origin = ifc_lite_processing::stream_meta::resolve_site_origin(
+        &meta_res,
+        discovery.site_position,
+        decoder,
+    );
     api.collect_pipeline_refusals(decoder);
-    super::prepass_events::emit_meta(on_event, &meta_res)?;
+    super::prepass_events::emit_meta(on_event, &meta_res, site_origin)?;
     Ok(meta_res.plane_angle_to_radians)
 }
 

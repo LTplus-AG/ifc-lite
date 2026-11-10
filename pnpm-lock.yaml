@@ -56,9 +56,9 @@ patchedDependencies:
   vite-plugin-top-level-await@1.6.0:
     hash: 623974a52d27420c80972a0c5b93427d3208cc4bc31d93b1505d3fc59fb430ce
     path: patches/vite-plugin-top-level-await@1.6.0.patch
-  wkt-parser@1.5.6:
-    hash: d19ab625f1f64aa19ea8e4fc5cbaa5209dba5c080326ecd75db30e0c5dacfd7b
-    path: patches/wkt-parser@1.5.6.patch
+  wkt-parser@1.6.0:
+    hash: c6fdc42d91fb9b2256b429cf0a863e744b3ab9903fbe099a51a06143c9af9d3e
+    path: patches/wkt-parser@1.6.0.patch
 
 importers:
 
@@ -534,8 +534,8 @@ importers:
         specifier: ^0.186.1
         version: 0.186.1
       wkt-parser:
-        specifier: 1.5.6
-        version: 1.5.6(patch_hash=d19ab625f1f64aa19ea8e4fc5cbaa5209dba5c080326ecd75db30e0c5dacfd7b)
+        specifier: 1.6.0
+        version: 1.6.0(patch_hash=c6fdc42d91fb9b2256b429cf0a863e744b3ab9903fbe099a51a06143c9af9d3e)
       zustand:
         specifier: ^5.0.16
         version: 5.0.16(@types/react@19.3.0)(react@19.3.1)(use-sync-external-store@1.7.0(react@19.3.1))
@@ -1110,6 +1110,9 @@ importers:
       '@ifc-lite/wasm':
         specifier: workspace:^
         version: link:../wasm
+      '@ifc-lite/wasm-lifecycle':
+        specifier: workspace:^
+        version: link:../wasm-lifecycle
     devDependencies:
       '@ifc-lite/export':
         specifier: workspace:^
@@ -1195,6 +1198,9 @@ importers:
       '@ifc-lite/query':
         specifier: workspace:^
         version: link:../query
+      '@ifc-lite/rhino3dm':
+        specifier: workspace:^
+        version: link:../rhino3dm
       '@ifc-lite/rules':
         specifier: workspace:^
         version: link:../rules
@@ -1223,6 +1229,9 @@ importers:
       '@types/node':
         specifier: ^26.6.4
         version: 26.6.5
+      rhino3dm:
+        specifier: 8.35.0
+        version: 8.35.0
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -1496,6 +1505,9 @@ importers:
       '@ifc-lite/embed-protocol':
         specifier: workspace:^
         version: link:../embed-protocol
+      '@ifc-lite/wasm-lifecycle':
+        specifier: workspace:^
+        version: link:../wasm-lifecycle
     devDependencies:
       '@mergifyio/vitest':
         specifier: ^2026.10.11
@@ -1771,6 +1783,9 @@ importers:
       '@ifc-lite/ids-authoring':
         specifier: workspace:*
         version: link:../ids-authoring
+      '@ifc-lite/wasm-lifecycle':
+        specifier: workspace:^
+        version: link:../wasm-lifecycle
     devDependencies:
       '@anthropic-ai/sdk':
         specifier: ^0.132.1
@@ -1971,6 +1986,9 @@ importers:
       '@ifc-lite/query':
         specifier: workspace:^
         version: link:../query
+      '@ifc-lite/rhino3dm':
+        specifier: workspace:^
+        version: link:../rhino3dm
       '@ifc-lite/rules':
         specifier: workspace:^
         version: link:../rules
@@ -2131,6 +2149,9 @@ importers:
 
   packages/pointcloud:
     dependencies:
+      '@ifc-lite/wasm-lifecycle':
+        specifier: workspace:^
+        version: link:../wasm-lifecycle
       laz-perf:
         specifier: ^0.0.7
         version: 0.0.7
@@ -2242,6 +2263,25 @@ importers:
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
+      vitest:
+        specifier: ^5.0.3
+        version: 5.0.5(@edge-runtime/vm@3.2.0)(@types/node@26.6.6)(happy-dom@21.0.4)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
+
+  packages/rhino3dm:
+    dependencies:
+      rhino3dm:
+        specifier: 8.35.0
+        version: 8.35.0
+    devDependencies:
+      '@mergifyio/vitest':
+        specifier: ^2026.10.11
+        version: 2026.10.11(vitest@5.0.5(@edge-runtime/vm@3.2.0)(@types/node@26.6.6)(happy-dom@21.0.4)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+      vite:
+        specifier: ^8.1.0
+        version: 8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)
       vitest:
         specifier: ^5.0.3
         version: 5.0.5(@edge-runtime/vm@3.2.0)(@types/node@26.6.6)(happy-dom@21.0.4)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
@@ -2368,6 +2408,12 @@ importers:
       '@mergifyio/vitest':
         specifier: ^2026.10.11
         version: 2026.10.11(vitest@5.0.5(@edge-runtime/vm@3.2.0)(@types/node@26.6.6)(happy-dom@21.0.4)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))
+      apache-arrow:
+        specifier: ^21.2.0
+        version: 21.2.0
+      parquet-wasm:
+        specifier: ^0.9.0
+        version: 0.9.0
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -6980,6 +7026,9 @@ packages:
     resolution: {integrity: sha512-9aZLIrhRaD97sgVhtJOW6ckOEh6/GnvQtdVNfdZ6s67+3/XwLS9lBcQYzEEhYVeUowN7pRzMLsyGhK2i/xvWbw==}
     engines: {node: '>= 0.8.15'}
 
+  rhino3dm@8.35.0:
+    resolution: {integrity: sha512-YcMDgOT7m132Zd/Nw1AAMFkrtpx2SD30V7Mq3P7jfab6ItURXCOdS8dHe+bMGiNQPRJuYEX+Nvos6c9T1xJ6tA==}
+
   rolldown@1.2.16:
     resolution: {integrity: sha512-bWvlMpFKiTfDKfnK7FC2MPgPeWCf/Kpwsq49ApdW+FQaBZb6O6dZ4MAPbPUjp7hYQrw/RobqCzn64BRrQecGHw==}
     engines: {node: ^20.19.0 || >=22.12.0}
@@ -7522,8 +7571,8 @@ packages:
     engines: {node: '>=20.11'}
     hasBin: true
 
-  wkt-parser@1.5.6:
-    resolution: {integrity: sha512-cqHU3lzGt/gt2OqIORP0uVy5yeOX43WABmgFkmJsmcqH3HhQo9PiJG6ftytwGKmpQUbegeX7+pQc2BuNCRfcrw==}
+  wkt-parser@1.6.0:
+    resolution: {integrity: sha512-O2WMUagkdOKkgcfqZBUauysHVeifCwcs+zUd2QG7UIzVljLwK9g5xHUfL/TkQFwmQ3eF7oHFKGnMcb/kZdvbaw==}
 
   wordwrapjs@5.1.1:
     resolution: {integrity: sha512-0yweIbkINJodk27gX9LBGMzyQdBDan3s/dEAiwBOj+Mf0PPyWL6/rikalkv8EeD0E8jm4o5RXEOrFTP3NXbhJg==}
@@ -11880,7 +11929,7 @@ snapshots:
   proj4@2.22.0(geotiff@3.0.5):
     dependencies:
       mgrs: 1.0.0
-      wkt-parser: 1.5.6(patch_hash=d19ab625f1f64aa19ea8e4fc5cbaa5209dba5c080326ecd75db30e0c5dacfd7b)
+      wkt-parser: 1.6.0(patch_hash=c6fdc42d91fb9b2256b429cf0a863e744b3ab9903fbe099a51a06143c9af9d3e)
     optionalDependencies:
       geotiff: 3.0.5
 
@@ -12143,6 +12192,8 @@ snapshots:
 
   rgbcolor@1.0.1:
     optional: true
+
+  rhino3dm@8.35.0: {}
 
   rolldown@1.2.16:
     dependencies:
@@ -12680,7 +12731,7 @@ snapshots:
 
   why-is-node-running@3.2.1: {}
 
-  wkt-parser@1.5.6(patch_hash=d19ab625f1f64aa19ea8e4fc5cbaa5209dba5c080326ecd75db30e0c5dacfd7b): {}
+  wkt-parser@1.6.0(patch_hash=c6fdc42d91fb9b2256b429cf0a863e744b3ab9903fbe099a51a06143c9af9d3e): {}
 
   wordwrapjs@5.1.1: {}
 

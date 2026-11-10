@@ -18,6 +18,8 @@ on:
     branches: [main]
     paths:
       - "rust/python/**"
+      # The Rhino defaults test in rust/python/tests reads this viewer sample.
+      - "apps/viewer/public/samples/building-architecture-rev-b.ifc"
       - "rust/processing/**"
       - "rust/geometry/**"
       - "rust/export/**"
@@ -28,6 +30,8 @@ on:
   pull_request:
     paths:
       - "rust/python/**"
+      # The Rhino defaults test in rust/python/tests reads this viewer sample.
+      - "apps/viewer/public/samples/building-architecture-rev-b.ifc"
       - "rust/processing/**"
       - "rust/geometry/**"
       - "rust/export/**"
@@ -51,13 +55,17 @@ jobs:
   # OTHER four legs and the two together are the full matrix.
   build:
     name: wheel ${{ matrix.os }} / ${{ matrix.target }}
-    runs-on: ${{ matrix.os }}
+    # `runner` pins the image while `os` stays the job and artifact label
+    # (`ci-prepare-wheel-matrix.mjs` reads `wheels-ubuntu-latest-*`): the
+    # ubuntu-latest move to 26.04 has no Python 3.9 for setup-python, and
+    # 3.9 is the abi3 floor this wheel is built and tested against.
+    runs-on: ${{ matrix.runner || matrix.os }}
     timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
         include:
-          - { os: ubuntu-latest, target: x86_64 }
+          - { os: ubuntu-latest, runner: ubuntu-24.04, target: x86_64 }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v5
@@ -109,7 +117,7 @@ jobs:
           python -m pip install --upgrade pip
           # The latest pytest-mergify needs Python 3.10; 2026.10.5 is the last for this 3.9 job.
           python -m pip install pytest 'pytest-mergify>=2026.10.5'
-          python -m pip install --force-reinstall rust/python/dist/*.whl
+          python -m pip install --force-reinstall "$(ls rust/python/dist/*.whl)[3dm]"
           python -m pytest rust/python/tests -q
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v4
         with:
@@ -124,13 +132,14 @@ jobs:
   build-cross:
     name: wheel ${{ matrix.os }} / ${{ matrix.target }}
     if: github.event_name != 'pull_request'
-    runs-on: ${{ matrix.os }}
+    # Same `runner` pin as `build`.
+    runs-on: ${{ matrix.runner || matrix.os }}
     timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
         include:
-          - { os: ubuntu-latest, target: aarch64 }
+          - { os: ubuntu-latest, runner: ubuntu-24.04, target: aarch64 }
           - { os: macos-15, target: aarch64 }
           # Cross-compile the Intel-mac wheel on the Apple-silicon runner: the
           # macos-13 (Intel) runners are being deprecated and queue indefinitely.
@@ -185,7 +194,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install pytest
-          python -m pip install --force-reinstall rust/python/dist/*.whl
+          python -m pip install --force-reinstall "$(ls rust/python/dist/*.whl)[3dm]"
           python -m pytest rust/python/tests -q
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v4
         with:

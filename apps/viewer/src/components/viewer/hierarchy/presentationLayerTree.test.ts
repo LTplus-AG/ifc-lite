@@ -5,7 +5,7 @@
 import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
-import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
+import { IfcParser, extractClassificationsOnDemand, EMPTY_SOURCE_BYTES, contiguousSourceBytes, type IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { resolveEntityRef, useViewerStore, type FederatedModel } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
@@ -200,4 +200,204 @@ test('#7619 curve-only annotation layers retain overlay owner IDs for hide/show 
   const annotation = nodes.find(row => row.type === 'element' && row.expressIds[0] === 4);
   assert.ok(annotation);
   assert.equal(annotation.noGeometry, false);
+});
+
+test('#9272 optional layer grouping preserves flat rows, counts and exact selection/geometry membership', async () => {
+  const content = IFC.replace('ENDSEC;\nEND-ISO', `
+#5=IFCDOOR('0GUID000000000000000005',$,'Door',$,$,$,#14,$,$,$,$,$,$);
+#14=IFCPRODUCTDEFINITIONSHAPE($,$,(#24));
+#24=IFCSHAPEREPRESENTATION($,'Body','SweptSolid',(#34));
+#34=IFCEXTRUDEDAREASOLID($,$,$,1.);
+#54=IFCPRESENTATIONLAYERASSIGNMENT('Mixed',$,(#21,#24,#23),$);
+#60=IFCCLASSIFICATION($,$,$,'Uniclass',$,$,$);
+#61=IFCCLASSIFICATIONREFERENCE($,'EF_25','Walls',#60,$,$);
+#62=IFCRELASSOCIATESCLASSIFICATION('0GUID000000000000000062',$,$,$,(#2),#61);
+ENDSEC;\nEND-ISO`);
+  const store = await new IfcParser().parseColumnar(new TextEncoder().encode(content).buffer);
+  const build = (mode?: 'none' | 'class' | 'classification') => buildPresentationLayerTree(
+    new Map(), store, ALL, new Set([2, 3, 5]), new Set(['legacy']), undefined, mode);
+  assert.deepEqual(build(), build('none'), 'none is byte-for-byte the existing flat row projection');
+  assert.equal(build().some(row => row.type === 'type-group'), false);
+  const flatLayer = build().find(row => row.entityExpressId === 54)!;
+  assert.equal(flatLayer.elementCount, 3);
+  assert.deepEqual(build().filter(row => row.id.startsWith(`${flatLayer.id}-product-`))
+    .map(row => [row.expressIds[0], row.name, row.ifcType, row.depth]), [
+      [5, 'Door', 'IfcDoor', 1], [2, 'Wall', 'IfcWall', 1], [4, 'Without mesh', 'IfcWall', 1],
+    ], 'flat mode retains every expected element in its original name order');
+  for (const mode of ['class', 'classification'] as const) {
+    const nodes = build(mode);
+    const mixed = nodes.find(row => row.entityExpressId === 54)!;
+    assert.equal(mixed.elementCount, 3);
+    const groups = nodes.filter(row => row.type === 'type-group' && row.id.startsWith(mixed.id));
+    assert.equal(groups.length, 2);
+    assert.deepEqual(groups.map(row => row.elementCount).sort(), [1, 2]);
+    const wall = groups.find(row => row.name === (mode === 'class' ? 'IfcWall' : 'Uniclass: EF_25'))!;
+    assert.ok(wall);
+    assert.deepEqual(wall.globalIds, [2], 'non-geometric members are selectable but never visibility targets');
+    assert.deepEqual(new Set(wall.memberGlobalIds), new Set(mode === 'class' ? [4, 2] : [2]));
+    const selected = hierarchyRowSelection(wall, new Map(), id => ({ modelId: 'legacy', expressId: id }));
+    assert.deepEqual(selected.map(item => item.globalId), wall.memberGlobalIds);
+    const unclassified = groups.find(row => row.name === 'Unclassified');
+    if (mode === 'classification') {
+      assert.ok(unclassified);
+      assert.deepEqual(new Set(unclassified.memberGlobalIds), new Set([4, 5]));
+      assert.deepEqual(unclassified.globalIds, [5]);
+    }
+    for (const group of groups) assert.equal(nodes.filter(row => row.id.startsWith(`${group.id}-product-`)).length, group.elementCount);
+  }
+});
+
+test('#9272 large mixed-layer fixture keeps every member across classification groups', async (t) => {
+  // Generated STEP stress fixture: 12,000 products, shared representations and
+  // four overlapping layers. No mesh generation is needed for a metadata tree.
+  const count = 12_000;
+  const rows = Array.from({ length: count }, (_, index) => {
+    const id = 1000 + index;
+    return `#${id}=${index % 2 ? 'IFCDOOR' : 'IFCWALL'}('guid${id}',$,'Element ${id}',$,$,$,#11,$);`;
+  });
+  const productIds = Array.from({ length: count }, (_, index) => 1000 + index);
+  const content = IFC.replace('ENDSEC;\nEND-ISO', `${rows.join('\n')}
+#63=IFCCLASSIFICATION($,$,$,'Uniclass',$,$,$);
+#64=IFCCLASSIFICATIONREFERENCE($,'EF_25','Walls',#63,$,$);
+#65=IFCRELASSOCIATESCLASSIFICATION('stress',$,$,$,(${productIds.filter(id => id % 2 === 0).map(id => `#${id}`).join(',')}),#64);
+#66=IFCPRESENTATIONLAYERASSIGNMENT('Stress A',$,(#21),$);
+#67=IFCPRESENTATIONLAYERASSIGNMENT('Stress B',$,(#21),$);
+ENDSEC;\nEND-ISO`);
+  const store = await new IfcParser().parseColumnar(new TextEncoder().encode(content).buffer);
+  for (const mode of ['none', 'class', 'classification'] as const) {
+    const nodes = buildPresentationLayerTree(new Map(), store, ALL, new Set(), new Set(), undefined, mode);
+    const layer = nodes.find(row => row.entityExpressId === 66)!;
+    assert.equal(layer.elementCount, count + 1); // original wall #2 shares #21
+    const children = nodes.filter(row => row.id.startsWith(`${layer.id}-group-`) && row.type === 'type-group');
+    if (mode !== 'none') {
+      assert.equal(children.length, 2);
+      assert.equal(children.reduce((sum, row) => sum + row.elementCount!, 0), count + 1);
+    }
+    t.diagnostic(`${mode}: ${count} generated products, ${nodes.length} rows; membership complete`);
+  }
+});
+
+for (const mode of ['class', 'classification'] as const) {
+  test(`#9272 shared IFCX ${mode} groups retain every owner and aligned member selection`, async () => {
+    const store = await parse();
+    const owners = ['presentation-shared-overlay', 'presentation-shared-base'];
+    const { models } = fixtureModels(...owners.map(id => sharedModel(id, store)));
+    const nodes = buildPresentationLayerTree(models, null, ALL, new Set([2, 3]), new Set([owners[1]]), undefined, mode);
+    const groups = nodes.filter(row => row.type === 'type-group');
+    assert.ok(groups.length > 0);
+    for (const group of groups) {
+      assert.deepEqual(group.modelIds, owners, 'badges retain both shared-store owners');
+      assert.equal(group.modelId, undefined, 'shared groups never invent single-owner attribution');
+      const selection = hierarchyRowSelection(group, models, () => null);
+      assert.deepEqual(selection.map(row => row.expressId), group.expressIds);
+      assert.deepEqual(selection.map(row => row.modelId), group.expressIds.map(() => owners[0]),
+        'every member resolves through the same representative as the layer, regardless of group size');
+    }
+  });
+}
+
+const classificationIfc = (extra: string) => IFC.replace('ENDSEC;\nEND-ISO', `
+#60=IFCCLASSIFICATION($,$,$,'Uniclass',$,$,$);
+#61=IFCCLASSIFICATIONREFERENCE($,'EF_25','Walls',#60,$,$);
+${extra}
+ENDSEC;\nEND-ISO`);
+const parseClassification = (extra: string) => new IfcParser().parseColumnar(
+  new TextEncoder().encode(classificationIfc(extra)).buffer, { disableWorkerScan: true });
+
+test('#9383 source-empty classified members have a distinct unavailable bucket', async () => {
+  const store = await parseClassification("#62=IFCRELASSOCIATESCLASSIFICATION('rel',$,$,$,(#2),#61);");
+  const transport = { ...store, source: EMPTY_SOURCE_BYTES, onDemandClassificationMap: undefined };
+  assert.equal(extractClassificationsOnDemand(transport, 2)[0]?.unresolved, true, 'server graph proves classification without source attributes');
+  const view = new MutablePropertyView(null, '__legacy__');
+  view.setExpressIdWatermark(100);
+  // Native metadata-only inputs can still have live authored geometry/layers.
+  view.setAttribute(2, 'Representation', '#11');
+  view.setAttribute(11, 'Representations', '(#21)');
+  const unclassified = view.createEntity('IfcWall', ['new', null, 'Unclassified wall', null, null, null, 11, null, null]);
+  const layer = view.createEntity('IfcPresentationLayerAssignment', ['Transport layer', null, [21], null]);
+  const rows = buildPresentationLayerTree(new Map(), transport, ALL, new Set([2]), new Set(['legacy']),
+    () => view, 'classification', 'Unclassified', 'Classification unavailable');
+  const header = rows.find(row => row.entityExpressId === layer.expressId);
+  assert.ok(header);
+  const groups = rows.filter(row => row.type === 'type-group' && row.id.startsWith(header.id));
+  assert.deepEqual(groups.find(row => row.name === 'Classification unavailable')?.memberGlobalIds, [2]);
+  assert.deepEqual(groups.find(row => row.name === 'Unclassified')?.memberGlobalIds, [unclassified.expressId]);
+});
+
+test('#9383 direct classification uses the system name once', async () => {
+  const store = await parseClassification("#62=IFCRELASSOCIATESCLASSIFICATION('rel',$,$,$,(#2),#60);");
+  const rows = buildPresentationLayerTree(new Map(), store, ALL, new Set([2]), new Set(['legacy']), undefined, 'classification');
+  const group = rows.find(row => row.type === 'type-group' && row.name === 'Uniclass');
+  assert.ok(group);
+  assert.deepEqual(group.memberGlobalIds, [2]);
+  assert.equal(rows.some(row => row.name === 'Uniclass: Uniclass'), false);
+});
+
+test('#9383 direct and type-level references populate both groups with exact deduplicated counts', async () => {
+  const store = await parseClassification(`
+#62=IFCCLASSIFICATIONREFERENCE($,'EF_30','Type class',#60,$,$);
+#70=IFCWALLTYPE('type',$,'Wall type',$,$,$,$,$,$,.NOTDEFINED.);
+#71=IFCRELASSOCIATESCLASSIFICATION('direct',$,$,$,(#2),#61);
+#72=IFCRELASSOCIATESCLASSIFICATION('typeclass',$,$,$,(#70),#62);
+#73=IFCRELDEFINESBYTYPE('types',$,$,$,(#2,#4),#70);
+#74=IFCRELASSOCIATESCLASSIFICATION('duplicate',$,$,$,(#2),#62);
+#54=IFCPRESENTATIONLAYERASSIGNMENT('Mixed',$,(#21,#23),$);`);
+  const rows = buildPresentationLayerTree(new Map(), store, ALL, new Set([2]), new Set(['legacy']), undefined, 'classification');
+  const header = rows.find(row => row.entityExpressId === 54);
+  assert.ok(header);
+  const groups = rows.filter(row => row.type === 'type-group' && row.id.startsWith(header.id));
+  assert.equal(groups.length, 2);
+  for (const [name, ids] of [['Uniclass: EF_25', [2]], ['Uniclass: EF_30', [2, 4]]] as const) {
+    const group = groups.find(row => row.name === name);
+    assert.ok(group);
+    assert.equal(group.elementCount, ids.length);
+    assert.deepEqual(group.memberGlobalIds, [...ids]);
+    assert.deepEqual(rows.filter(row => row.id.startsWith(`${group.id}-product-`)).map(row => row.expressIds[0]), [...ids]);
+  }
+});
+
+test('#9383 shared reference decodes once and edits invalidate it without sharing mutable results', async () => {
+  const store = await parseClassification("#62=IFCRELASSOCIATESCLASSIFICATION('rel',$,$,$,(#2,#4),#61);");
+  const original = store.getEntity.bind(store);
+  let reads = 0;
+  store.getEntity = id => { if (id === 61) reads++; return original(id); };
+  const first = extractClassificationsOnDemand(store, 2);
+  first[0].identification = 'Caller edit';
+  first[0].path?.push('Caller path edit');
+  const next = extractClassificationsOnDemand(store, 4);
+  assert.equal(next[0].identification, 'EF_25', 'callers cannot corrupt a shared cached reference');
+  assert.deepEqual(next[0].path, [], 'path arrays are independent too');
+  assert.equal(reads, 1, 'shared references decode once instead of once per product');
+  store.source = contiguousSourceBytes(store.source.slice(0, store.source.byteLength).slice());
+  assert.equal(extractClassificationsOnDemand(store, 2)[0].identification, 'EF_25');
+  assert.equal(reads, 2, 'source replacement invalidates the reference memo');
+  const view = new MutablePropertyView(null, '__legacy__');
+  assert.equal(extractClassificationsOnDemand(store, 2, view)[0].identification, 'EF_25');
+  view.setAttribute(61, 'Identification', 'EF_30');
+  assert.equal(extractClassificationsOnDemand(store, 4, view)[0].identification, 'EF_30');
+  view.setAttribute(60, 'Name', 'Changed system');
+  assert.equal(extractClassificationsOnDemand(store, 2, view)[0].system, 'Changed system');
+});
+
+
+test('#9383 unnamed resolved reference stays classified under its source', async () => {
+  const content = classificationIfc(`
+#62=IFCRELASSOCIATESCLASSIFICATION('resolved',$,$,$,(#2),#61);
+#63=IFCRELASSOCIATESCLASSIFICATION('unresolved',$,$,$,(#1),#999);
+#54=IFCPRESENTATIONLAYERASSIGNMENT('Mixed',$,(#20,#21,#23),$);`)
+    .replace("IFCCLASSIFICATIONREFERENCE($,'EF_25','Walls',#60,$,$)", 'IFCCLASSIFICATIONREFERENCE($,$,$,#60,$,$)');
+  const store = await new IfcParser().parseColumnar(new TextEncoder().encode(content).buffer, { disableWorkerScan: true });
+  const rows = buildPresentationLayerTree(new Map(), store, ALL, new Set([2, 3]), new Set(['legacy']), undefined, 'classification');
+  const layer = rows.find(row => row.entityExpressId === 54);
+  assert.ok(layer);
+  const groups = rows.filter(row => row.type === 'type-group' && row.id.startsWith(layer.id));
+  assert.equal(groups.length, 3);
+  for (const [name, members] of [
+    ['Uniclass (no code)', [2]], ['Classification unavailable', [1]], ['Unclassified', [4]],
+  ] as const) {
+    const group = groups.find(row => row.name === name);
+    assert.ok(group, `${name} remains a distinct classification state`);
+    assert.equal(group.elementCount, 1);
+    assert.deepEqual(group.memberGlobalIds, [...members]);
+  }
 });

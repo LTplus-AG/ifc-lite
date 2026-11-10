@@ -157,7 +157,7 @@ export function DrawingPanel(): React.ReactElement {
         <TooltipContent>{t(isCustomPlane ? 'section2d.matchView.unavailableTitle' : 'section2d.matchView.title')}</TooltipContent>
       </Tooltip>
       <DrawingExportMenu
-        hasDrawing={!!vm.drawing} compact={tier === 'narrow'}
+        hasDrawing={!!vm.exportableDrawing} compact={tier === 'narrow'}
         onExportSvg={layers.handleExportSVG} onExportDxf={layers.handleExportDXF}
         onExportPdf={layers.handleExportPDF} onPrint={layers.handlePrint}
         displayedScale={displayOptions.scale || 100}

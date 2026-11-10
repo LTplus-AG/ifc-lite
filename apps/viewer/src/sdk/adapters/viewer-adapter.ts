@@ -250,7 +250,13 @@ export function createViewerAdapter(store: StoreApi): ViewerBackendMethods {
             current.target.y,
             current.target.z,
           ];
-          const [ux, uy, uz] = cameraState.up ?? [current.up.x, current.up.y, current.up.z];
+          // Without an `up`, keep the current one, except a plan view's
+          // horizontal up (#9501) when the new direction is not vertical:
+          // that would roll the new view on its side.
+          const look = [tx - px, ty - py, tz - pz] as const;
+          const lookLen = Math.hypot(...look);
+          const keepsPlanUp = Math.abs(current.up.y) < 1e-6 && lookLen > 0 && Math.abs(look[1]) / lookLen < 0.999;
+          const [ux, uy, uz] = cameraState.up ?? (keepsPlanUp ? [0, 1, 0] : [current.up.x, current.up.y, current.up.z]);
           state.cameraCallbacks?.applyViewpoint?.(
             {
               ...current,

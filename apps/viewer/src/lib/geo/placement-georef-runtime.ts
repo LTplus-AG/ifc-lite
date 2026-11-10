@@ -17,6 +17,7 @@
 import { useSyncExternalStore } from 'react';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
+import type { TranslationKey } from '@/i18n';
 
 export interface PlacementGeorefContext {
   modelId: string;
@@ -25,6 +26,9 @@ export interface PlacementGeorefContext {
   projectedCRS?: ProjectedCRS;
   coordinateInfo?: CoordinateInfo;
   lengthUnitScale?: number;
+  /** Published by the actual edit controller after CRS classification. */
+  canEdit?: boolean;
+  unavailableReason?: TranslationKey;
 }
 
 let context: PlacementGeorefContext | null = null;
@@ -40,10 +44,10 @@ function subscribe(listener: () => void): () => void {
   return () => listeners.delete(listener);
 }
 
-function getContext(): PlacementGeorefContext | null {
+export function getPlacementGeorefContext(): PlacementGeorefContext | null {
   return context;
 }
 
 export function usePlacementGeorefContext(): PlacementGeorefContext | null {
-  return useSyncExternalStore(subscribe, getContext, getContext);
+  return useSyncExternalStore(subscribe, getPlacementGeorefContext, getPlacementGeorefContext);
 }

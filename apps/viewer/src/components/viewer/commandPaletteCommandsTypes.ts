@@ -32,7 +32,7 @@ export interface CommandPaletteBuildParams {
   cachedNames: React.MutableRefObject<Set<string>>;
   extensionCommands: SlotContribution<CommandContribution>[];
   extensionHost: ExtensionHostService | null;
-  /** Refuse deferred actions after provider replacement. */
+  /** A deferred row must not invoke a host replaced by its React provider. */
   extensionHostIsCurrent?: () => boolean;
   canEditInSession: boolean;
   cesiumAvailable: boolean;

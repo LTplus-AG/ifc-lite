@@ -201,10 +201,44 @@ fn resolve_building_rotation(
     router: &GeometryRouter,
     decoder: &mut EntityDecoder,
 ) -> Option<f64> {
+    let matrix = resolve_site_placement(site_pos, router, decoder)?;
+    ifc_lite_geometry::rotation_angle_about_z(&matrix)
+}
+
+/// The `IfcSite`'s scaled world placement (column-major, translation in metres).
+fn resolve_site_placement(
+    site_pos: (u32, usize, usize),
+    router: &GeometryRouter,
+    decoder: &mut EntityDecoder,
+) -> Option<[f64; 16]> {
     let (site_id, start, end) = site_pos;
     let site_entity = decoder.decode_at_with_id(site_id, start, end).ok()?;
-    let matrix = router.resolve_scaled_placement(&site_entity, decoder).ok()?;
-    ifc_lite_geometry::rotation_angle_about_z(&matrix)
+    router.resolve_scaled_placement(&site_entity, decoder).ok()
+}
+
+/// World translation of the `IfcSite` placement in metres (IFC Z-up, before
+/// any RTC shift), resolved with `meta`'s length unit. `None` without a site,
+/// when the placement does not resolve or is non-finite, or when the unit was
+/// refused.
+///
+/// Lets georeferencing tell an authored site anchor apart from the building's
+/// own extent: #9480's export writes that anchor in map units, height
+/// included, and the geometry bounds cannot say how much of the model's Z is
+/// the site's. A function beside [`StreamMeta`] rather than a field on it, so
+/// the struct callers build literally keeps its shape.
+pub fn resolve_site_origin(
+    meta: &StreamMeta,
+    site_position: Option<(u32, usize, usize)>,
+    decoder: &mut EntityDecoder,
+) -> Option<[f64; 3]> {
+    if meta.length_unit_refused.is_some() {
+        return None;
+    }
+    let router = GeometryRouter::with_scale(meta.length_unit_scale);
+    let m = resolve_site_placement(site_position?, &router, decoder)?;
+    // Column-major: the translation is elements 12..15, already in metres.
+    let origin = [m[12], m[13], m[14]];
+    origin.iter().all(|v| v.is_finite()).then_some(origin)
 }
 
 #[cfg(test)]

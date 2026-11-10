@@ -156,6 +156,22 @@ describe('setCamera()', () => {
     assert.deepEqual(applied.up, { x: 0, y: 1, z: 0 }, 'up must be preserved, not zeroed');
   });
 
+  it('a partial update off a plan view does not keep its horizontal up for a side view (#9501)', () => {
+    // A top preset: straight down, screen orientation in a horizontal up.
+    const plan = () => makeStore({
+      position: { x: 0, y: 30, z: 0 }, target: { x: 0, y: 0, z: 0 }, up: { x: -1, y: 0, z: 0 },
+    });
+
+    const side = plan();
+    createViewerAdapter(side.store).setCamera({ position: [10, 1.5, 0], target: [0, 1.5, 0] });
+    assert.deepEqual(side.applyViewpointCalls[0][0].up, { x: 0, y: 1, z: 0 }, 'a level view gets world Y up, not a 90 degree roll');
+
+    // Still looking straight down: the plan's orientation is kept.
+    const moved = plan();
+    createViewerAdapter(moved.store).setCamera({ position: [5, 30, 5], target: [5, 0, 5] });
+    assert.deepEqual(moved.applyViewpointCalls[0][0].up, { x: -1, y: 0, z: 0 });
+  });
+
   it('mode-only call does not touch position/target/up (no applyViewpoint call)', () => {
     const { store, applyViewpointCalls } = makeStore();
     const adapter = createViewerAdapter(store);

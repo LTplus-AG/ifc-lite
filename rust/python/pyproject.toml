@@ -17,17 +17,19 @@ classifiers = [
 ]
 dynamic = ["version"]
 
+[project.optional-dependencies]
+3dm = ["rhino3dm==8.35.0"]
+
 [project.urls]
 Homepage = "https://github.com/LTplus-AG/ifc-lite"
 Repository = "https://github.com/LTplus-AG/ifc-lite"
 Documentation = "https://github.com/LTplus-AG/ifc-lite/tree/main/rust/python#readme"
 
 [tool.maturin]
-# The cdylib is `ifclite_geom`; build an abi3 wheel (one wheel per platform
-# works across CPython >= 3.9). Manifest-relative to this crate.
-module-name = "ifclite_geom"
+# Mixed package; the public API re-exports the abi3 extension from __init__.py.
+python-source = "python"
+module-name = "ifclite_geom._native"
 features = ["pyo3/extension-module"]
-# Ship the type stub next to the compiled module so editors / type checkers get
-# signatures and docstrings (the .so itself carries no static types). Pure-Rust
-# layout: the stub lands at the wheel root, adjacent to ifclite_geom.<abi>.so.
-include = [{ path = "ifclite_geom.pyi", format = "wheel" }]
+# The type stub is python/ifclite_geom/__init__.pyi (with py.typed), shipped by
+# mixed-layout discovery. It is the only stub: a second top-level
+# ifclite_geom.pyi next to the package would give type checkers two candidates.

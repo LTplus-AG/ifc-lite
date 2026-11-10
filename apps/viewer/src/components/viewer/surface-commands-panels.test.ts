@@ -12,7 +12,7 @@ import { paletteSurfaceCommands, surfaceCommand, SURFACE_COMMANDS } from './surf
 import type { CommandPaletteBuildParams } from './commandPaletteCommandsTypes.js';
 
 const PANEL_IDS = [
-  'panel:script', 'panel:lists', 'panel:gantt', 'panel:charts', 'panel:flow',
+  'panel:retained-report', 'panel:presentation', 'panel:script', 'panel:lists', 'panel:gantt', 'panel:charts', 'panel:flow',
   'panel:document', 'panel:drawing', 'panel:properties', 'panel:tree',
   'panel:assistant', 'panel:bcf', 'panel:ids', 'panel:idsStudio', 'panel:influx', 'panel:clash', 'panel:compare', 'panel:changes', 'panel:model', 'panel:review', 'panel:semantic', 'panel:changeSets',
   'panel:cost', 'panel:chat', 'panel:lens', 'panel:layers', 'panel:sources',
@@ -40,7 +40,7 @@ describe('shared panel command homes (#5870)', () => {
     const definitions = SURFACE_COMMANDS.filter((command) => command.id.startsWith('panel:'));
     assert.deepEqual(definitions.map((command) => command.id), PANEL_IDS);
     assert.throws(() => surfaceCommand('panel:tree', 'ribbon'), /not registered for ribbon/,
-      'Tree collapse belongs to the palette and is never a ribbon command');
+      'Tree destination belongs to the palette and is never a ribbon command');
 
     const hidden = paletteSurfaceCommands({ canEditInSession: true, collabEnabled: false }, () => {})
       .filter((command) => command.id.startsWith('panel:'));
@@ -63,8 +63,8 @@ describe('shared panel command homes (#5870)', () => {
   it('routes panel commands to the real right and bottom panel store actions', () => {
     useViewerStore.setState({ sidebarActivePanel: 'properties', ganttPanelVisible: false });
     const rows = paletteSurfaceCommands({ canEditInSession: true }, () => {}, {
-      activateRightPanel: (panel) => { useViewerStore.getState().toggleWorkspacePanel(panel, 'palette'); },
-      activateBottomPanel: (panel) => { useViewerStore.getState().toggleBottomPanel(panel, 'palette'); },
+      activateRightPanel: (panel) => { useViewerStore.getState().openPanelInHome(panel, 'palette'); },
+      activateBottomPanel: (panel) => { useViewerStore.getState().openPanelInHome(panel, 'palette'); },
     });
     const validation = rows.find((command) => command.id === 'panel:ids');
     const gantt = rows.find((command) => command.id === 'panel:gantt');

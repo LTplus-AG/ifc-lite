@@ -383,13 +383,6 @@ export function ViewportContainer() {
             // once and use the sanitized value everywhere downstream.
             const safeName = sanitizeFilename(item.name, { fallback: 'model.ifc' });
             const file = new File([item.buffer], safeName);
-            // Pass an explicit id and treat "registered in the store" as
-            // success: addModel returns null when a concurrent load
-            // (drag-drop, viewport picker) bumps the shared load session,
-            // even though this model finished registering — same recovery
-            // syncSourceModel uses. Without it the toast would falsely report
-            // a failure and the model would get no source tag (no sync
-            // button, no badge, no downloaded-file record).
             const providerTitle =
               sourceHost?.get(item.tag.provider)?.manifest.title ?? item.tag.provider;
             // Isolate each item: a single corrupt or unparseable file must not
@@ -397,10 +390,8 @@ export function ViewportContainer() {
             // ten throws to the outer catch and the other nine silently never
             // load — with one generic toast for the whole batch.
             try {
-              const modelId = crypto.randomUUID();
-              const added = await addModel(file, { name: safeName, modelId });
-              const registered = added !== null || useViewerStore.getState().models.has(modelId);
-              if (registered) {
+              const modelId = await addModel(file, { name: safeName });
+              if (modelId) {
                 useViewerStore.getState().setSourceTag(modelId, item.tag);
                 recordDownloadedSourceFile(item.tag, item.sourceFile);
                 toast.success(`Loaded ${safeName} from ${providerTitle}`);
@@ -436,7 +427,7 @@ export function ViewportContainer() {
     const handlesPromise = handlesFromDataTransfer(dataTransfer);
     const droppedFiles = Array.from(dataTransfer.files);
     const attempt = () => {
-      if (!guardWebGpu(attempt)) return;
+      if (!guardWebGpu(attempt, { replay: 'free' })) return;
       const { dxfFiles, modelFiles: allDropped } = splitDxfFiles(droppedFiles);
       if (dxfFiles.length > 0) void ingestDxfFiles(dxfFiles);
       if (allDropped.length === 0) return;
@@ -473,7 +464,7 @@ export function ViewportContainer() {
     // Reset while the event still owns this input; Retry uses the captured Files.
     e.target.value = '';
     const attempt = () => {
-      if (!guardWebGpu(attempt)) return;
+      if (!guardWebGpu(attempt, { replay: 'free' })) return;
 
       // DXF reference underlays split off before model routing (issue #1782).
       const { dxfFiles, modelFiles } = splitDxfFiles(files);
@@ -517,7 +508,7 @@ export function ViewportContainer() {
   useReloadResume(webgpu.supported && !webgpu.checking, routeLoad, () => { void handleOpenClick(); });
 
   const handleStartBlank = useCallback(async () => {
-    if (!guardWebGpu(() => { void handleStartBlank(); })) return;
+    if (!guardWebGpu(() => { void handleStartBlank(); }, { replay: 'on-retry' })) return;
     const file = createBlankIfcFile();
     const modelId = crypto.randomUUID();
     // Must await: loadFile() calls resetViewerState() internally, which

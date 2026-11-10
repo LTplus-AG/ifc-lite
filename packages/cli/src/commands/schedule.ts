@@ -136,6 +136,7 @@ export function resolveScheduleValue(entity: any, path: string, bim: any): unkno
   const viaColumn = resolveColumnValue(entity, path, bim);
   if (viaColumn != null) return viaColumn;
 
+
   return null;
 }
 

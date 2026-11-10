@@ -13,6 +13,7 @@ import type {
 } from '@ifc-lite/create';
 import type { RoomCommand, RoomCommandResult } from '../store-room-command.js';
 import type { BimBackend, EntityRef } from '../types.js';
+import type { CopiedElementRef } from '../store-copy-refs.js';
 import type { PhysicalSizePatch } from '../store-physical-types.js';
 
 export class StoreModellingNamespace {
@@ -60,8 +61,11 @@ export class StoreModellingNamespace {
     return method.call(this.backend.store, ref, params);
   }
 
-  /** Paste a dependency-pruned selection in storey-local metres/radians. */
-  copyElements(modelId: string, expressIds: readonly number[], transforms: readonly CopyTransform[]): EntityRef[] {
+  /**
+   * Paste a selection in storey-local metres/radians: one ref per selected element per transform, in
+   * selection order. A copy whose top could not follow its new storey is listed in `unattachedTops`.
+   */
+  copyElements(modelId: string, expressIds: readonly number[], transforms: readonly CopyTransform[]): CopiedElementRef[] {
     const method = this.backend.store.copyElements;
     if (!method) throw new Error('bim.store.copyElements: not available on this backend');
     return method.call(this.backend.store, modelId, expressIds, transforms);
@@ -71,7 +75,7 @@ export class StoreModellingNamespace {
    * Copy a selection onto each of `storeyIds` at the same plan position and height above the floor, as one
    * atomic, undoable operation; returns the copies per storey. Attachments re-bind on each storey (#9296).
    */
-  copyToStoreys(modelId: string, expressIds: readonly number[], storeyIds: readonly number[]): Array<{ storeyId: number; refs: EntityRef[] }> {
+  copyToStoreys(modelId: string, expressIds: readonly number[], storeyIds: readonly number[]): Array<{ storeyId: number; refs: CopiedElementRef[] }> {
     const method = this.backend.store.copyToStoreys;
     if (!method) throw new Error('bim.store.copyToStoreys: not available on this backend');
     return method.call(this.backend.store, modelId, expressIds, storeyIds);
@@ -85,7 +89,7 @@ export class StoreModellingNamespace {
   }
 
   /** Linear spacing/fit or polar span, sharing the viewer's placement planner. */
-  arrayElements(modelId: string, expressIds: readonly number[], params: CopyArrayParams): EntityRef[] {
+  arrayElements(modelId: string, expressIds: readonly number[], params: CopyArrayParams): CopiedElementRef[] {
     const method = this.backend.store.arrayElements;
     if (!method) throw new Error('bim.store.arrayElements: not available on this backend');
     return method.call(this.backend.store, modelId, expressIds, params);

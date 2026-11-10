@@ -102,14 +102,14 @@ are observed access gaps, not failures of the already accepted general UX scope.
 Raw observation `theme: null` means the light theme's absent HTML class; the
 manifest explicitly identifies light/dark for every capture.
 
-![Unloaded selection action lacks a reason](https://github.com/LTplus-AG/ifc-lite/blob/05232c2fd01c4b5abe9092868db84fb94debcc6d/tests/ui-scenes/command-palette-access/evidence/baseline-access-unloaded-hide.light.png)
-![Real selected wall and Hide command](https://github.com/LTplus-AG/ifc-lite/blob/05232c2fd01c4b5abe9092868db84fb94debcc6d/tests/ui-scenes/command-palette-access/evidence/baseline-access-selected-hide.dark.png)
-![After canonical Hide execution](https://github.com/LTplus-AG/ifc-lite/blob/05232c2fd01c4b5abe9092868db84fb94debcc6d/tests/ui-scenes/command-palette-access/evidence/baseline-access-selected-hide-run.dark.png)
-![Undo query has no Undo action](https://github.com/LTplus-AG/ifc-lite/blob/05232c2fd01c4b5abe9092868db84fb94debcc6d/tests/ui-scenes/command-palette-access/evidence/baseline-access-history.light.png)
-![Privacy query misses Settings](https://github.com/LTplus-AG/ifc-lite/blob/05232c2fd01c4b5abe9092868db84fb94debcc6d/tests/ui-scenes/command-palette-access/evidence/baseline-access-settings-privacy.light.png)
+![Unloaded selection action lacks a reason](https://github.com/LTplus-AG/ifc-lite/blob/1f26a7f18c5c00b5b15ebc52508d514460e18a18/tests/ui-scenes/command-palette-access/evidence/baseline-access-unloaded-hide.light.png)
+![Real selected wall and Hide command](https://github.com/LTplus-AG/ifc-lite/blob/1f26a7f18c5c00b5b15ebc52508d514460e18a18/tests/ui-scenes/command-palette-access/evidence/baseline-access-selected-hide.dark.png)
+![After canonical Hide execution](https://github.com/LTplus-AG/ifc-lite/blob/1f26a7f18c5c00b5b15ebc52508d514460e18a18/tests/ui-scenes/command-palette-access/evidence/baseline-access-selected-hide-run.dark.png)
+![Undo query has no Undo action](https://github.com/LTplus-AG/ifc-lite/blob/1f26a7f18c5c00b5b15ebc52508d514460e18a18/tests/ui-scenes/command-palette-access/evidence/baseline-access-history.light.png)
+![Privacy query misses Settings](https://github.com/LTplus-AG/ifc-lite/blob/1f26a7f18c5c00b5b15ebc52508d514460e18a18/tests/ui-scenes/command-palette-access/evidence/baseline-access-settings-privacy.light.png)
 
-[Recorded contexts and outcomes](https://github.com/LTplus-AG/ifc-lite/blob/05232c2fd01c4b5abe9092868db84fb94debcc6d/tests/ui-scenes/command-palette-access/evidence/baseline-context-observations.json) and
-[exact-artifact capture manifest](https://github.com/LTplus-AG/ifc-lite/blob/05232c2fd01c4b5abe9092868db84fb94debcc6d/tests/ui-scenes/command-palette-access/evidence/baseline-manifest.json) retain the facts.
+[Recorded contexts and outcomes](https://github.com/LTplus-AG/ifc-lite/blob/1f26a7f18c5c00b5b15ebc52508d514460e18a18/tests/ui-scenes/command-palette-access/evidence/baseline-context-observations.json) and
+[exact-artifact capture manifest](https://github.com/LTplus-AG/ifc-lite/blob/1f26a7f18c5c00b5b15ebc52508d514460e18a18/tests/ui-scenes/command-palette-access/evidence/baseline-manifest.json) retain the facts.
 No candidate access verdict has been issued yet.
 
 ## Round 1 foundation checkpoint
@@ -174,3 +174,135 @@ Turbo dry run selected the intended tests but found 58 missing dependency builds
 so it was not counted as execution. The host implementer removed its own 44,204
 bytes of redundant scratch; no active jobs, source, fixtures or evidence were
 removed. Author dialogs and class filtering remain for the next serial batch.
+
+## Round 1 author/class host checkpoint and host review
+
+Persistent hosts now share Bulk Property Editor, CSV Data Connector and class
+visibility controls between ribbon and palette. Workspace Undo/Redo uses the
+existing history resolver. Eight mounted tests cover real editor bodies, CSV
+input/mapping, draft preservation after ribbon unmount/cancel, class settings,
+host/role/model refusal, and mutation followed by workspace history replay.
+The tests are added but not yet executed; existing standalone editor regressions
+and asynchronous cancellation need matching-source validation too. Cheap lint,
+syntax, module-size, source-text and i18n guards passed. No feature-access verdict.
+
+Fresh Astra review of `2e2c35e..efdcf49` found the three foundation objections
+resolved in source. It found one P2 in the new Activity host: both it and the
+existing desktop/mobile entry point announced the same completed job. The
+correction keeps the new dialog persistent with announcements disabled there;
+two composed-shell regressions require exactly one completion live region.
+These assertions also await execution.
+
+The source reconciliation retains all 624 component records, 3,994 anchors and
+189 indirect/display records. Some remaining handler chains are explicitly
+unresolved, and candidate behavior coverage is still pending. Source accounting
+is not a completeness verdict. The author-host implementer reclaimed 2,297,930
+bytes of its own redundant dry-run and verbose guard output, retaining compact
+receipts and preserving source, fixtures, evidence and foreign jobs.
+
+## Round 1 extension-command checkpoint
+
+All manifest commands already enter the canonical command slot. Palette rows now
+use an encoded owner/command tuple, show the owner and search the description and
+category. Ambiguous legacy recent IDs are not assigned to an arbitrary owner.
+Palette, toolbar and keyboard dispatch once through the canonical host; they no
+longer pre-fire the activation event. Live checks reject removed/replaced slots
+and a replaced React host before command usage or telemetry is recorded.
+
+New unit and mounted regressions exercise colliding command names, owner routing,
+real wrapped fixture handlers, stale contributions/providers, asynchronous error
+feedback and toolbar/keyboard placement rules. Runtime assertions and typecheck
+remain unexecuted pending dependency builds; no coverage acceptance is claimed.
+The runtime implementer reclaimed 2,239,988 bytes of redundant dry-run output,
+retaining its compact receipt. Original queued validation requests are preserved.
+
+## Round 1 independent objections and remaining static tools
+
+Fresh Astra source review found no concrete extension identity/dispatch defects
+in a086c889..9f9d29a; this is not execution or lifecycle acceptance. The author
+review found four P2 issues and a P3 false-positive test: invisible class-trigger
+focus, cancelled CSV drafts losing retry, removed model targets surviving in the
+persistent host, pending work surviving target changes (preexisting race), and
+a host-retirement test that actually unmounted the palette too.
+
+The correction restores the actual ribbon trigger; the palette opens shared
+class controls in a dialog and passes its real launcher for focus restoration.
+Both editors reconcile removed targets. CSV operations belong to one open
+model/data/view lifetime; retired writes and result callbacks refuse, cancelled
+or failed drafts remain retryable, and already-applied batches retain undo. New
+regressions pause real imports at matching/apply yields, cover replacement and
+suggestion races, and retire only the host while keeping the palette mounted.
+These tests remain unexecuted. Syntax and cheap guards passed.
+
+The next serial batch adds 25 canonical entries/destinations: search and six
+hierarchies, selected-entity actions, isolate, camera and view controls, element
+array/move/rotate, clipboard, storey stepping and workspace exit. The selected
+entity destination opens the existing menu, preserving its mutation gates and
+child actions; it does not label a menu opener as a destructive action.
+ui:commands is the palette itself; view:theme is equivalent to pref:theme. These
+are explicit duplicate mappings, not hidden omissions. Parsed-IFC tests cover
+targets, live refusal and model sessions, but have not run. Deep child traversal,
+remaining destinations, full coverage reconciliation and UI acceptance are open.
+
+## Reproducible validation entry point
+
+From a clean committed root, admit `bash tests/ui-scenes/command-palette-access/validate-candidate.sh`
+through the fleet (4 CPU, 24 GiB). It installs pinned dependencies, runs plain
+root `pnpm typecheck`, builds the viewer, then runs all four viewer shards through
+root `pnpm test --filter=@ifc-lite/viewer`. TEST_PATTERN is explicitly removed.
+Each shard forwards TEST_SHARD/TEST_SHARDS through the committed Turbo config;
+all four receipts and skip counts are required. This recipe is not a passed run.
+Logs stay in the owning managed checkout until compact evidence is published
+and the task is closed. Browser correctness and feature-access review follow
+the build; they are not replaced by this script or the earlier UX acceptance.
+
+## Round 1 original validation outcome and further corrections
+
+Original foundation job `0946c2e1-c470-4e57-b850-11de05c808f2` on PC tested
+`2e2c35ea00ba32715badfca7bddab391973bc5d7`: root typecheck passed (134 Turbo
+tasks and the root tail; 4514 test files covered by typecheck programs). Focused
+viewer tests passed 90/91, zero skips. The Russian prerequisite test called
+`setLocale` before loading the catalogue, so the real locale service correctly
+fell back to English. The test now awaits the actual Russian locale activator.
+This correction is unexecuted, and the failed run did not reach the viewer build.
+It is not full-suite or current-head certification. Compact evidence was published;
+managed task closure refused because a live process or T3 task still references
+output. Those references are preserved; zero bytes were reclaimed by this closure.
+
+Fresh selected-entity/model-tool review found no concrete source defects. The
+corrected author review found one further P2: a cancelled pending CSV read left
+the new filename attached to the old importable content. Filename and content now
+publish together only on an accepted read; older reads cannot overwrite newer
+ones. Two regressions hold actual FileReader operations and verify imported IFC
+property values across target changes and reversed completion order. Lightweight
+guards passed; execution and fresh review remain pending.
+
+Original combined request `auto-abb83974a2754f3fa3464c9d88b6d8f0` tests tools
+head `319505f5671dc9c2e6bfc0c7bc296577d0365d18` using the committed root recipe.
+It predates these corrections and the next destination batch. Preserve its
+original outcome; it cannot certify later changes. No access round is accepted.
+
+## Round 1 destination and mobile host checkpoint
+
+The next source batch wires every Settings section; the five actual measurement
+modes (Distance, Polyline, Angle, Radius, Point); separate measurement panel tabs;
+six canonical Add Section choices; Search Filter/Libraries; Presentation;
+basepoints; model Plan; and the conditional retained report. These use existing
+controls and handlers. Panel destinations reveal/re-dock rather than toggle
+themselves away. Task aliases name child controls without claiming to run them.
+
+Mounted regressions reach real Settings controls, measurement radios/tabs, section
+controls, Clear-all cancellation, Presentation controls and Plan/report bodies.
+The mobile toolbar now owns the same file-command hook as the ribbon, including
+its palette bridge and load listeners. The flavor dialog moved from desktop-only
+StatusBar into a persistent shell host. Tests exercise synchronous mobile Open/Add
+picker calls, one global event receiver and the stored-flavor flow without a
+status bar. Obsolete mobile-only file-format helpers were removed; unsupported
+file reporting and mixed-case LandXML acceptance remain covered.
+
+All these runtime assertions, typecheck and browser evidence remain UNRUN. Cheap
+syntax/lint/module-size/i18n/source-test/whitespace checks passed. The implementation
+agent removed 42,408 bytes of its redundant edit scripts after preserving the
+compact result. No original queued validation was moved or replayed. Dynamic
+exporter/dock destinations, full semantic reconciliation and candidate UI evidence
+remain open; this is still access round 1, not acceptance.

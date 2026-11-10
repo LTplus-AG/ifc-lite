@@ -54,7 +54,7 @@ async function fixture() {
   }
   Object.defineProperty(globalThis, 'Worker', { configurable: true, value: WorkerFixture });
 }
-for (const gesture of ['same-tick', 'cancel', 'unmount'] as const) test(`PR #9585: workbench ${gesture} owns direct appearance actions`, async () => {
+for (const gesture of ['same-tick', 'cancel', 'cancel-return', 'restart', 'unmount'] as const) test(`PR #9585: workbench ${gesture} owns direct appearance actions`, async () => {
   await fixture();
   let work: ReturnType<typeof useScanWorkbench> | undefined;
   let release!: () => void, finish!: () => void, actions = 0, published = false;
@@ -68,6 +68,7 @@ for (const gesture of ['same-tick', 'cancel', 'unmount'] as const) test(`PR #958
       jobs.push(work!.applyAppearance(async signal => {
         actions++;
         await held;
+        if (gesture === 'cancel-return' && signal.aborted) return;
         signal.throwIfAborted();
         useViewerStore.getState().setAttribute('target', 10, 'Name', 'Applied');
         published = true;
@@ -75,7 +76,7 @@ for (const gesture of ['same-tick', 'cancel', 'unmount'] as const) test(`PR #958
       }));
     };
     return <><button onClick={() => void work!.calculate()}>Calculate fixture alignment</button>
-      <button onClick={apply}>Direct appearance action</button><button onClick={() => work!.cancel()}>Cancel action</button>
+      <button onClick={apply}>Direct appearance action</button><button onClick={() => work!.restart()}>Restart action scope</button><button onClick={() => work!.cancel()}>Cancel action</button>
       <output>{JSON.stringify(work.status)}</output><ScanTransferFields transfer={transfer} targetModelId="target" disabled={work.busy} /></>;
   }
   const ui = render(<Harness />);
@@ -87,7 +88,8 @@ for (const gesture of ['same-tick', 'cancel', 'unmount'] as const) test(`PR #958
     act(() => { button('Direct appearance action').click(); if (gesture === 'same-tick') button('Direct appearance action').click(); });
     await waitFor(() => actions > 0, 'appearance action started');
     assert.equal(actions, 1, 'every caller shares the synchronous appearance lease');
-    if (gesture === 'cancel') click(button('Cancel action'));
+    if (gesture === 'cancel' || gesture === 'cancel-return') click(button('Cancel action'));
+    if (gesture === 'restart') click(button('Restart action scope'));
     if (gesture === 'unmount') cleanup();
   } finally {
     release();
@@ -101,5 +103,5 @@ for (const gesture of ['same-tick', 'cancel', 'unmount'] as const) test(`PR #958
   }
   await advance(10);
   assert.equal(useViewerStore.getState().undoStacks.get('target')?.length ?? 0, gesture === 'same-tick' ? 1 : 0);
-  if (gesture === 'cancel') assert.match(ui.textContent ?? '', /appearanceCancelled/);
+  if (gesture === 'cancel' || gesture === 'cancel-return') assert.match(ui.textContent ?? '', /appearanceCancelled/);
 });

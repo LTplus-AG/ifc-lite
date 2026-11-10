@@ -118,11 +118,10 @@ export function useScanWorkbench() {
     if (!session || !saved || !planner.current) throw new ScanValidationError('appearance.scan.error.noRetainedBinding');
     setResult(null); setAligned(false); setStatus(translated('appearance.scan.status.refreshing'));
     const next = await prepareScanSession(session.sourceModelId, session.selector, session.targetModelId, signal);
-    signal.throwIfAborted();
     saved.rebind(next);
     const request: ScanRegistrationRequest = { ...structuredClone(saved.request), sourceFrame: next.sourceFrame, targetFrame: next.targetFrame };
     const report = await planner.current.registerScan(request, { signal });
-    next.validate(); signal.throwIfAborted();
+    next.validate();
     recovery.current = { request, rebind: next.afterAppearance() }; setSession(next); setResult({ request, report }); setStale(false); setError(false);
     setStatus(translated('appearance.scan.status.refreshed'));
   }

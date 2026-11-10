@@ -174,6 +174,7 @@ test('same-tick reference placement starts once and room entry settles its statu
   act(() => { place.click(); place.click(); });
   assert.equal(placements, 1);
   act(() => useViewerStore.setState({ collabRoomId: 'joined-during-placement' }));
+  assert.equal(ui.querySelector('[aria-busy]')?.getAttribute('aria-busy'), 'false', 'room entry settles placement before its transport returns');
   release(); await settle();
   assert.equal(ui.querySelector('[aria-busy]')?.getAttribute('aria-busy'), 'false');
   assert.equal(useViewerStore.getState().appearanceReferences.size, 1);
@@ -237,5 +238,26 @@ test('PR #9585: Discard aborts placement before a deferred preview cleanup and r
     await settle();
     assert.equal([...uploaded].filter(id => !id.startsWith('appearance-draft:')).length, 0, 'late GPU upload is removed after cancellation');
     assert.equal(useViewerStore.getState().appearanceReferences.size, 1);
+    assert.doesNotMatch(ui.textContent ?? '', /aborted/i, 'an abandoned placement cannot replace the discard notice');
+  } finally { release(); await settle(); }
+});
+
+test('PR #9585: room entry settles a held reference preview', async t => {
+  if (!await nativeAvailable(t)) return;
+  const { ui } = await fixture();
+  let release!: () => void, started = false;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  mock.method(appearanceAssets, 'decode', async () => {
+    started = true;
+    await held;
+    return { width: 1, height: 1, close() {} };
+  });
+  try {
+    click(button(ui, 'Edit Drawing 1')); await settle();
+    assert.equal(started, true);
+    assert.equal(ui.querySelector('[aria-busy]')?.getAttribute('aria-busy'), 'true');
+    act(() => useViewerStore.setState({ collabRoomId: 'joined-during-preview' }));
+    assert.equal(ui.querySelector('[aria-busy]')?.getAttribute('aria-busy'), 'false');
+    assert.match(ui.textContent ?? '', /Leave the collaboration room/);
   } finally { release(); await settle(); }
 });

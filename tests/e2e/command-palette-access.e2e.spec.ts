@@ -52,6 +52,43 @@ async function find(page: Page, id: string, query: string) {
   await expect(row).toBeVisible();
   return { row, search };
 }
+// #8947 R3: measure browser layout, including Tailwind-generated pseudo-elements.
+async function assertStableLabels(page: Page, commandId: string, blocked: boolean) {
+  const { row, search } = await find(page, commandId, 'hide');
+  const options = palette(page).getByRole('option');
+  const count = await options.count();
+  expect(count, 'navigation needs an actual neighbour').toBeGreaterThan(1);
+  for (let n = 0; n < count && await row.getAttribute('aria-selected') !== 'true'; n++) await search.press('ArrowDown');
+  await expect(row).toHaveAttribute('aria-selected', 'true');
+  if (blocked) await expect(row).toHaveAttribute('aria-disabled', 'true');
+  else await expect(row).not.toHaveAttribute('aria-disabled', 'true');
+  const measure = () => options.evaluateAll(elements => elements.map(element => {
+    const label = element.querySelector<HTMLElement>('[data-command-label]')!;
+    const rect = label.getBoundingClientRect();
+    return { id: element.getAttribute('data-command-id'), x: rect.x,
+      width: label.clientWidth, textWidth: label.scrollWidth };
+  }));
+  const before = await measure();
+  const selected = before.findIndex(item => item.id === commandId);
+  const next = (selected + 1) % count;
+  expect(Math.abs(before[selected].x - before[next].x), 'selected and next labels align').toBeLessThan(0.5);
+  await search.press('ArrowDown');
+  await expect(options.nth(next)).toHaveAttribute('aria-selected', 'true');
+  const after = await measure();
+  for (const index of [selected, next]) {
+    expect(Math.abs(after[index].x - before[index].x), 'ArrowDown never shifts a label').toBeLessThan(0.5);
+  }
+  await search.press('ArrowUp');
+  await expect(row).toHaveAttribute('aria-selected', 'true');
+  const restored = await measure();
+  expect(Math.abs(restored[selected].x - before[selected].x), 'ArrowUp never shifts a label').toBeLessThan(0.5);
+  if ((page.viewportSize()?.width ?? 1440) <= 390) {
+    for (const label of restored) {
+      expect(label.width, `${label.id} has usable label width`).toBeGreaterThan(35);
+      expect(label.textWidth, `${label.id} hide result fits without horizontal clipping`).toBeLessThanOrEqual(label.width);
+    }
+  }
+}
 async function run(page: Page, id: string, query: string) {
   const { row, search } = await find(page, id, query);
   await expect(row).not.toHaveAttribute('aria-disabled', 'true');
@@ -97,6 +134,7 @@ test.afterEach(async ({ page }, info) => {
 for (const context of contexts) {
   test(`${context.name}: unloaded selection command explains refusal; Settings sections reach real controls (#8947)`, async ({ page }) => {
     await start(page, false, context);
+    await assertStableLabels(page, 'vis:hide', true);
     const { row, search } = await find(page, 'vis:hide', 'Hide Selection');
     await expect(row).toHaveAttribute('aria-disabled', 'true');
     await expect(row).toContainText(/Select elements|Load a model/);
@@ -140,6 +178,9 @@ for (const context of contexts) {
 
   test(`${context.name}: palette quick search reaches recents, cycling, native buttons and colorful theme (#8947)`, async ({ page }, info) => {
     await start(page, true, context);
+    await assertStableLabels(page, 'vis:hide', true);
+    await wall(page);
+    await assertStableLabels(page, 'vis:hide', false);
     await run(page, 'search:inline', 'recent queries');
     const input = page.getByRole('combobox', { name: 'Search entities', exact: true });
     await expect(input).toBeVisible();

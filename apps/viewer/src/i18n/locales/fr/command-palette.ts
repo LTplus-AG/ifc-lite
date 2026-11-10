@@ -203,7 +203,7 @@ export const commandPaletteFr = {
   "commandPalette.file.dismissLoadError.keywords": "fermer effacer masquer erreur",
   "commandPalette.availability.blankSession": "La création d’un modèle vide nécessite une session vide ; fermez d’abord le modèle actuel",
   "commandPalette.availability.noLoad": "Aucun chargement correspondant n’est encore en cours",
-  "commandPalette.availability.noLoadError": "Cette erreur de chargement a disparu ou a été remplacée",
+  "commandPalette.availability.noLoadError": "Aucune erreur de chargement à résoudre",
   "commandPalette.availability.noLoadRetry": "Aucune nouvelle tentative n’est disponible pour cette erreur de chargement",
   "commandPalette.search.inline.label": "Recherche rapide",
   "commandPalette.search.inline.aliases": "recherche intégrée requêtes récentes historique effacer filtres suivant précédent parcourir",
@@ -220,4 +220,6 @@ export const commandPaletteFr = {
   "commandPalette.availability.errorReportContext": "Aucune erreur admissible ni référence à un rapport conservé. Une invitation à envoyer un rapport apparaît après une erreur pouvant être signalée.",
   "commandPalette.paths.properties": "Sélectionner une entité → Mode édition → Propriétés → modifier les propriétés, ajouter ou réaffecter ; zones de localisation au-dessus des onglets → répartition des volumes des éléments à cheval sur plusieurs zones",
   "commandPalette.paths.tree": "Hiérarchie → étiquettes de modèle ; plusieurs modèles en mode Spatial → regroupement par étiquettes, isoler les modèles étiquetés ; tri des étages, écart en vue éclatée, synchronisation avec la source et suppression des modèles modifiés",
+  "commandPalette.paths.search.filterHint": "Recherche avancée → Filtre · règles et groupes",
+  "commandPalette.availability.loadErrorReplaced": "L’erreur de chargement a changé ; choisissez l’action de récupération actuelle",
 } satisfies Catalogue;

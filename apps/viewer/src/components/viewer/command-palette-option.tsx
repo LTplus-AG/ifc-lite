@@ -83,7 +83,7 @@ function OptionChrome({ owner, icon: Icon, label, detail, disabled, reason, stat
       <Icon className={cn("mt-0.5 h-4 w-4 shrink-0", selected && !disabled ? "text-active" : "text-muted-foreground")} />
       <span className="min-w-0 flex-1">
         <span className="flex min-w-0 items-center gap-3">
-          <span data-command-label className="min-w-0 flex-1 truncate"><MatchHighlight text={label} query={disabled ? '' : query} /></span>
+          <span data-command-label className="min-w-0 flex-1 break-words sm:truncate"><MatchHighlight text={label} query={disabled ? '' : query} /></span>
           <span className="flex max-w-[55%] shrink-0 items-center justify-end gap-2 text-xs text-muted-foreground">
             {categoryLabel && <span className="truncate">{categoryLabel}</span>}
             {state && <span className="shrink-0">{state}</span>}

@@ -14,7 +14,7 @@ import { setLocale } from '@/i18n';
 import { en } from '@/i18n/en';
 import { useViewerStore } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
-import { MODEL_ID, STOREY, ROTATED_BEAM, seedModelingSession } from '@/test/modeling-session-fixture';
+import { MODEL_ID, STOREY, ROTATED_BEAM, HUNG_SLAB, seedModelingSession } from '@/test/modeling-session-fixture';
 import { envelopeWasm } from '@/test/space-envelope-oracle';
 import { advance, cleanup, click, press, render, type as typeInto } from '@/test/render';
 import { ensureSpaceWasm } from '@/lib/rooms/space-wasm';
@@ -156,10 +156,12 @@ test('#8947 palette envelope resolves an actual authored IfcSpace and exposes ro
   assert.equal(useViewerStore.getState().undoStacks.get(MODEL_ID)?.length, before, 'configuration cancellation does not edit the room');
 });
 
-test('#8947 palette split targets the parsed rotated beam and presents the cutting prompt', async () => {
-  select(ROTATED_BEAM);
-  const verdict = useViewerStore.getState().readSplitTarget(MODEL_ID, ROTATED_BEAM);
-  assert.equal(verdict.ok, true, 'parsed IFC beam is splittable');
+test('#8947 palette split targets the parsed horizontal slab and presents the cutting prompt', async () => {
+  // The rotated beam is deliberately unsupported by canonical Split (#6233).
+  // Use the imported horizontal slab whose extrusion the tool can preserve.
+  select(HUNG_SLAB);
+  const verdict = useViewerStore.getState().readSplitTarget(MODEL_ID, HUNG_SLAB);
+  assert.deepEqual(verdict, { ok: true, kind: 'slab' }, 'parsed IFC slab is splittable');
   const bar = await launch('tool:split', 'element.split', en['commandPalette.tool.split.label']);
   hint('splitTool.hint');
   cancel(bar);
@@ -213,7 +215,8 @@ test('#8947 palette trim/extend reads parsed storey targets and offers a boundar
 
 for (const refusal of ['lost selection', 'read-only role'] as const) {
   test(`#8947 pending palette split rechecks ${refusal} before starting a command`, async () => {
-    select(ROTATED_BEAM);
+    select(HUNG_SLAB);
+    assert.deepEqual(useViewerStore.getState().readSplitTarget(MODEL_ID, HUNG_SLAB), { ok: true, kind: 'slab' });
     const input = mount('tool:split', en['commandPalette.tool.split.label']);
     click(option('tool:split'));
     act(() => {

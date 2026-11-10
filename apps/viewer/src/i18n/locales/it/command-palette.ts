@@ -192,7 +192,7 @@ export const commandPaletteIt = {
   "commandPalette.file.dismissLoadError.keywords": "chiudi cancella nascondi errore",
   "commandPalette.availability.blankSession": "La creazione di un modello vuoto richiede una sessione vuota; chiudi prima il modello corrente",
   "commandPalette.availability.noLoad": "Nessun caricamento corrispondente è ancora in corso",
-  "commandPalette.availability.noLoadError": "Questo errore di caricamento è terminato o è stato sostituito",
+  "commandPalette.availability.noLoadError": "Nessun errore di caricamento da risolvere",
   "commandPalette.availability.noLoadRetry": "Non è disponibile un nuovo tentativo per questo errore di caricamento",
   "commandPalette.search.inline.label": "Ricerca rapida",
   "commandPalette.search.inline.aliases": "ricerca integrata query recenti cronologia cancella filtri successivo precedente scorri",
@@ -209,4 +209,6 @@ export const commandPaletteIt = {
   "commandPalette.availability.errorReportContext": "Nessun errore idoneo né riferimento a un rapporto conservato. Un invito a inviare un rapporto compare dopo un errore segnalabile.",
   "commandPalette.paths.properties": "Seleziona un’entità → Modalità modifica → Proprietà → modifica proprietà, aggiungi o riassegna; zone di posizione sopra le schede → ripartizione dei volumi degli elementi tra più zone",
   "commandPalette.paths.tree": "Gerarchia → etichette del modello; più modelli in modalità Spaziale → raggruppamento per etichette, isola modelli etichettati; ordinamento piani, distanza della vista esplosa, sincronizzazione con la fonte ed eliminazione dei modelli modificati",
+  "commandPalette.paths.search.filterHint": "Ricerca avanzata → Filtro · regole e gruppi",
+  "commandPalette.availability.loadErrorReplaced": "L’errore di caricamento è cambiato; scegli l’azione di recupero corrente",
 } satisfies Catalogue;

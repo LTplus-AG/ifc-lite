@@ -266,13 +266,28 @@ test('deferred camera activation rechecks unload and records no refused usage (#
   }
 });
 
-test('palette static registry is projected once and toggles expose live state (#8947)', () => {
-  mount();
+test('palette static registry is discoverable once and toggles expose live state (#8947)', () => {
+  const input = mount();
+  const inactiveRecovery = new Map([
+    ['file:cancel-load', 'Cancel model load'],
+    ['file:retry-load', 'Retry failed load'],
+    ['file:dismiss-load-error', 'Dismiss load error'],
+  ]);
   const ids = rows().map(row => row.dataset.commandId).filter(Boolean);
   for (const definition of SURFACE_COMMANDS) {
     const declared = definition.surfaces.some(surface => surface === 'palette');
     if (!declared || definition.id === 'panel:collab') continue;
-    assert.equal(ids.filter(id => id === definition.id).length, 1, definition.id);
+    const recoveryQuery = inactiveRecovery.get(definition.id);
+    if (recoveryQuery) {
+      assert.equal(ids.filter(id => id === definition.id).length, 0, 'inactive recovery stays out of browse');
+      typeInto(input, recoveryQuery);
+      const matches = rows().filter(row => row.dataset.commandId === definition.id);
+      assert.equal(matches.length, 1, `${definition.id} remains searchable once`);
+      assert.equal(matches[0].getAttribute('aria-disabled'), 'true');
+      typeInto(input, '');
+    } else {
+      assert.equal(ids.filter(id => id === definition.id).length, 1, definition.id);
+    }
   }
   const tips = () => rows().find(row => row.dataset.commandId === 'pref:tooltips')!;
   act(() => useViewerStore.setState({ hoverTooltipsEnabled: true }));

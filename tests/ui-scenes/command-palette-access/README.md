@@ -116,7 +116,8 @@ and behavioral evidence, accept/reject decision and remaining gaps separately.
 | Round | Status | Changes / hypothesis | Evidence / verdict |
 | --- | --- | --- | --- |
 | 1 | REVISE (provisional source `8021801`) | Unified projection, prerequisites and canonical destinations | 12/12 GPU context captures, no page errors; Opus found command labels clipped by reasons and unavailable rows styled as runnable. Full access unaccepted. |
-| 2 | Candidate in progress | Preserve labels above explanations; distinguish blocked rows and suppress Run hint; close eligible-report route and remaining discovery gaps | Source fixes and browser oracles authored; matching build, full tests, visual review and final source reconciliation pending. |
+| 2 | REVISE (observed UX, source `f8ca13e`) | Preserve labels above explanations; distinguish blocked rows and suppress Run hint; close eligible-report route and discovery gaps | 36/36 physical-GPU captures, zero page errors; browser 21/22 with extension calibration correction pending. Opus confirms R1 fixes, finds 12px selected-row misalignment and inactive recovery rows crowding browse. Overall coverage remains unaccepted. |
+| 3 | Observed UX ACCEPT; complete access pending | Aligned labels, contextual recovery browse, honest replaced-error reasons and narrow wrapping | Opus accepted pinned `15bd492`: 22/22 physical-GPU browser cases, 36/36 captures, 401/401 focused tests. Full four-shard, integrated-main workflow tests and inventory closure remain pending. |
 
 Implementation batches inside a round are not separate acceptance rounds. Keep
 reviewable PR layers for #8947 if the implementation exceeds roughly 1500 lines.
@@ -167,14 +168,14 @@ are observed access gaps, not failures of the already accepted general UX scope.
 Raw observation `theme: null` means the light theme's absent HTML class; the
 manifest explicitly identifies light/dark for every capture.
 
-![Unloaded selection action lacks a reason](https://github.com/LTplus-AG/ifc-lite/blob/4b84e3d29a055109eb57413bd16890993115ff5e/tests/ui-scenes/command-palette-access/evidence/baseline-access-unloaded-hide.light.png)
-![Real selected wall and Hide command](https://github.com/LTplus-AG/ifc-lite/blob/4b84e3d29a055109eb57413bd16890993115ff5e/tests/ui-scenes/command-palette-access/evidence/baseline-access-selected-hide.dark.png)
-![After canonical Hide execution](https://github.com/LTplus-AG/ifc-lite/blob/4b84e3d29a055109eb57413bd16890993115ff5e/tests/ui-scenes/command-palette-access/evidence/baseline-access-selected-hide-run.dark.png)
-![Undo query has no Undo action](https://github.com/LTplus-AG/ifc-lite/blob/4b84e3d29a055109eb57413bd16890993115ff5e/tests/ui-scenes/command-palette-access/evidence/baseline-access-history.light.png)
-![Privacy query misses Settings](https://github.com/LTplus-AG/ifc-lite/blob/4b84e3d29a055109eb57413bd16890993115ff5e/tests/ui-scenes/command-palette-access/evidence/baseline-access-settings-privacy.light.png)
+![Unloaded selection action lacks a reason](https://github.com/LTplus-AG/ifc-lite/blob/e8b269798ee43af3c6aff0bb58aa8910e0c75ab2/tests/ui-scenes/command-palette-access/evidence/baseline-access-unloaded-hide.light.png)
+![Real selected wall and Hide command](https://github.com/LTplus-AG/ifc-lite/blob/e8b269798ee43af3c6aff0bb58aa8910e0c75ab2/tests/ui-scenes/command-palette-access/evidence/baseline-access-selected-hide.dark.png)
+![After canonical Hide execution](https://github.com/LTplus-AG/ifc-lite/blob/e8b269798ee43af3c6aff0bb58aa8910e0c75ab2/tests/ui-scenes/command-palette-access/evidence/baseline-access-selected-hide-run.dark.png)
+![Undo query has no Undo action](https://github.com/LTplus-AG/ifc-lite/blob/e8b269798ee43af3c6aff0bb58aa8910e0c75ab2/tests/ui-scenes/command-palette-access/evidence/baseline-access-history.light.png)
+![Privacy query misses Settings](https://github.com/LTplus-AG/ifc-lite/blob/e8b269798ee43af3c6aff0bb58aa8910e0c75ab2/tests/ui-scenes/command-palette-access/evidence/baseline-access-settings-privacy.light.png)
 
-[Recorded contexts and outcomes](https://github.com/LTplus-AG/ifc-lite/blob/4b84e3d29a055109eb57413bd16890993115ff5e/tests/ui-scenes/command-palette-access/evidence/baseline-context-observations.json) and
-[exact-artifact capture manifest](https://github.com/LTplus-AG/ifc-lite/blob/4b84e3d29a055109eb57413bd16890993115ff5e/tests/ui-scenes/command-palette-access/evidence/baseline-manifest.json) retain the facts.
+[Recorded contexts and outcomes](https://github.com/LTplus-AG/ifc-lite/blob/e8b269798ee43af3c6aff0bb58aa8910e0c75ab2/tests/ui-scenes/command-palette-access/evidence/baseline-context-observations.json) and
+[exact-artifact capture manifest](https://github.com/LTplus-AG/ifc-lite/blob/e8b269798ee43af3c6aff0bb58aa8910e0c75ab2/tests/ui-scenes/command-palette-access/evidence/baseline-manifest.json) retain the facts.
 No candidate access verdict has been issued yet.
 
 ## Round 1 foundation checkpoint
@@ -760,3 +761,80 @@ repairs require a fresh run; no failure has been reclassified as a pass.
 Root typecheck, build and nine search tests passed on `f8ca13ee1d12f886a0c0179a877fe4470fba7f26` (tree `df0a27616861c418affe0cea3fe8f5c561de3a9f`), original Pop job `a3bf84d3-8b1e-4a10-adc4-84cb45442cd0`. The actual physical-GPU browser suite passed 21/22, with zero skips. All six typo/search viewport cases and the blank-model journey now pass. No matrix/contexts/flows capture phase ran because the extension witness failed.
 
 The extension installed and reached its real widget, but its independent model-absent calibration restored the whole model before measuring extension Hide/Show. That restoration changed the camera; the fixed-matrix assertion correctly rejected the comparison. The revised test measures the independent absent reference last, preserves the identical camera/raster assertions, completes restoration in cleanup, and reframes before each initial/re-enabled activation. This changes test sequencing only. Corrected execution, complete source coverage, fresh Opus R2 judgment and production readiness remain pending.
+
+### Round 2 visual verdict and Round 3 corrections
+
+[Opus R2 review](https://github.com/LTplus-AG/ifc-lite/blob/e8b269798ee43af3c6aff0bb58aa8910e0c75ab2/tests/ui-scenes/command-palette-access/evidence/opus-access-r2.md) marks observed UX **REVISE**.
+[Qualified capture evidence](https://github.com/LTplus-AG/ifc-lite/blob/e8b269798ee43af3c6aff0bb58aa8910e0c75ab2/tests/ui-scenes/command-palette-access/evidence/r2-qualification.json) pins all 36 successful
+captures to `f8ca13e`; it also records the 21/22 browser result and missing full
+acceptance. Immediate flow images are identified separately because the common
+protocol re-homed the camera before its manifest screenshot.
+
+![R2 inactive recovery rows crowd File browsing](https://github.com/LTplus-AG/ifc-lite/blob/e8b269798ee43af3c6aff0bb58aa8910e0c75ab2/tests/ui-scenes/command-palette-access/evidence/r2-palette-browse.dark.png)
+![R2 visible labels and explicit unavailable reasons](https://github.com/LTplus-AG/ifc-lite/blob/e8b269798ee43af3c6aff0bb58aa8910e0c75ab2/tests/ui-scenes/command-palette-access/evidence/r2-access-unloaded-hide.light.png)
+
+R3 makes selected stripes purely decorative without displacing unselected labels;
+keeps inactive load recovery searchable while omitting it from browse and recents;
+uses truthful no-error reasons and a brief Filter breadcrumb with aliases retained.
+Desktop/narrow browser scenarios measure label alignment through arrow navigation
+and live selection changes. Narrow labels may wrap instead of clipping. The camera
+flow now requests preservation of its actual result in the manifest screenshot;
+other baseline capture behavior is unchanged. These corrections are **UNRUN**
+until the matching candidate validation and GPU capture receipts exist.
+
+R3 correctness follow-up: fresh Astra review found that a deferred Retry/Dismiss
+correctly refused a replacement load error but reported the absent-error reason.
+The binding now distinguishes absent from replaced errors; mounted regressions
+assert the real notification in EN/DE/RU and preserve the newer error/history.
+This correction awaits runtime qualification; R3 remains unaccepted.
+
+The a333 physical-GPU run finished with 21 passing cases, one failing case and
+no skips. Initial installed-extension hide/show passed every raster assertion;
+reactivation exposed a test setup error: repeating the canonical isolation toggle
+revealed the surrounding building. The corrected setup preserves isolation and
+asserts it before both cycles, without changing camera or pixel thresholds.
+See [evidence/a333-extension-reactivation.json](https://github.com/LTplus-AG/ifc-lite/blob/e8b269798ee43af3c6aff0bb58aa8910e0c75ab2/tests/ui-scenes/command-palette-access/evidence/a333-extension-reactivation.json); corrected execution is pending.
+The registry regression now checks inactive recovery commands are omitted from
+browse yet remain uniquely searchable and unavailable, matching the R3 contract.
+
+The first R3 focused run also rejected the Split launch fixture before activation:
+the imported rotated beam is intentionally unsupported by the canonical reader
+(covered by #6233). The witness now uses the real parsed horizontal slab and
+asserts its supported kind before both launch and deferred-refusal scenarios.
+No tool eligibility rule or geometry code changed. Corrected runtime is pending.
+
+R3 actual browser qualification on `15bd4920d2410c102138c830bdd220799a4174b3`:
+22/22 tests passed with no skips, including both installed QuickJS GPU visibility
+cycles, disable and uninstall. All 36 matrix/context/flow captures passed; their
+PNG hashes were verified. The adapter was physical NVIDIA Lovelace, with a
+completed visible-canvas readback and no cleanup error. Root typecheck and build
+passed before capture; the focused/full-shard job was still running, so this is
+not a full-suite result. See [evidence/r3-browser-qualification.json](https://github.com/LTplus-AG/ifc-lite/blob/e8b269798ee43af3c6aff0bb58aa8910e0c75ab2/tests/ui-scenes/command-palette-access/evidence/r3-browser-qualification.json).
+
+After general UX #8950 merged, main `6b944859` was integrated through all 18
+access stack layers using serial parent merges, preserving original heads. Four
+foundation conflicts duplicated the already incorporated accepted UX; its palette
+files matched the prior UX baseline. All access-owned files and all 153 upstream
+changes were verified unchanged in every layer; no unexpected edits occurred.
+See [evidence/main-6b944-integration.json](https://github.com/LTplus-AG/ifc-lite/blob/e8b269798ee43af3c6aff0bb58aa8910e0c75ab2/tests/ui-scenes/command-palette-access/evidence/main-6b944-integration.json). The new integrated candidate needs
+matching validation and captures; the 15bd evidence remains attributed to 15bd.
+Three new mounted workflow files add Assistant, Semantic and Script child-flow
+witnesses. Their execution is pending; they do not yet close the access verdict.
+
+## Foundation catalogue and workflow-oracle qualification
+
+After main integration, the foundation German catalogue lacked thirteen entries
+already present in the final candidate. They are now placed in their owning
+foundation layer; four file-host and five authoring translations are placed only
+where their English keys are introduced. The serial propagation preserves the
+combined leaf tree exactly. See [evidence/foundation-de-backport.json](https://github.com/LTplus-AG/ifc-lite/blob/e8b269798ee43af3c6aff0bb58aa8910e0c75ab2/tests/ui-scenes/command-palette-access/evidence/foundation-de-backport.json). Actual
+foundation root typecheck plus palette and `de-catalogue-data-1` tests are queued
+on `723039da70d87e830482fd6b944525ec797cfac1`; source key accounting is not a test pass.
+
+Astra independently verified all eighteen main-integration trees. Its workflow
+witness review found one weak valid-input assertion: the semantic identity test
+now applies a nonempty mapping, observes the canonical session mapping, then
+clears it. This tests successful application without claiming the pre-existing
+error message clears. The three new workflow files and this correction still need
+actual execution. The unchanged production tree retains the pinned R3 visual
+evidence; integrated-main runtime and complete access acceptance are separate gates.

@@ -41,3 +41,15 @@ for (const [locale, query, destination] of cases) {
     assert.equal(matches[0].category, 'Panels');
   });
 }
+
+for (const [locale, query] of [['en', 'hide results'], ['de', 'ausblenden'], ['ru', 'скрыть']] as const) {
+  it(`#8947 Filter keeps ${locale} task aliases behind a brief breadcrumb`, () => {
+    registerLocale('de', commandPaletteDe); registerLocale('ru', commandPaletteRu); setLocale(locale);
+    const rows = paletteSurfaceCommands({ canEditInSession: true }, () => {});
+    const row = searchCommands(rows, query, []).find(command => command.id === 'search:filter');
+    assert.ok(row, 'localized task alias still finds Filter');
+    assert.equal(row.detailKey, 'commandPalette.paths.search.filterHint');
+    assert.equal(t(row.detailKey).split('→').length, 2, 'one brief path to the real Filter home');
+    assert.ok(!t(row.detailKey).includes(query), 'task aliases do not become the visible hint');
+  });
+}

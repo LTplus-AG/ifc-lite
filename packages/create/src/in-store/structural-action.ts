@@ -91,9 +91,6 @@ export function addStructuralPointActionToStore(
   anchor: Pick<SpatialAnchor, 'ownerHistoryId' | 'guidRandom' | 'schema'>,
   params: StructuralPointActionInStoreParams,
 ): StructuralPointActionBuildResult {
-  if (anchor.schema === 'IFC2X3') {
-    throw new Error('addStructuralPointActionToStore: IFC2X3 has no IfcStructuralPointAction — target IFC4 or later');
-  }
   assertLoadHasComponent('addStructuralPointActionToStore', [
     params.ForceX, params.ForceY, params.ForceZ,
     params.MomentX, params.MomentY, params.MomentZ,
@@ -118,7 +115,8 @@ export function addStructuralPointActionToStore(
     null, // Representation
     `#${loadId}`,
     `.${params.GlobalOrLocal ?? 'GLOBAL_COORDS'}.`,
-    boolAttr(params.DestabilizingLoad),
+    boolAttr(params.DestabilizingLoad ?? (anchor.schema === 'IFC2X3' ? false : undefined)),
+    ...(anchor.schema === 'IFC2X3' ? [null] : []), // CausedBy (IFC2X3)
   ]).expressId;
 
   return { activityId, loadId };
@@ -154,9 +152,6 @@ export function addStructuralLinearActionToStore(
   anchor: Pick<SpatialAnchor, 'ownerHistoryId' | 'guidRandom' | 'schema'>,
   params: StructuralLinearActionInStoreParams,
 ): StructuralLinearActionBuildResult {
-  if (anchor.schema === 'IFC2X3') {
-    throw new Error('addStructuralLinearActionToStore: IFC2X3 has no IfcStructuralLinearAction — target IFC4 or later');
-  }
   assertLoadHasComponent('addStructuralLinearActionToStore', [
     params.LinearForceX, params.LinearForceY, params.LinearForceZ,
     params.LinearMomentX, params.LinearMomentY, params.LinearMomentZ,
@@ -181,9 +176,10 @@ export function addStructuralLinearActionToStore(
     null, // Representation
     `#${loadId}`,
     `.${params.GlobalOrLocal ?? 'GLOBAL_COORDS'}.`,
-    boolAttr(params.DestabilizingLoad),
-    null, // ProjectedOrTrue
-    '.CONST.', // PredefinedType — EXPRESS ConstPredefinedType WHERE rule
+    boolAttr(params.DestabilizingLoad ?? (anchor.schema === 'IFC2X3' ? false : undefined)),
+    ...(anchor.schema === 'IFC2X3'
+      ? [null, '.TRUE_LENGTH.'] // CausedBy?, ProjectedOrTrue (mandatory)
+      : [null, '.CONST.']), // ProjectedOrTrue?, PredefinedType = CONST (IFC4+)
   ]).expressId;
 
   return { activityId, loadId };

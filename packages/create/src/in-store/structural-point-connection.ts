@@ -90,9 +90,11 @@ export function addStructuralPointConnectionToStore(
   anchor: SpatialAnchor,
   params: StructuralPointConnectionInStoreParams,
 ): StructuralPointConnectionBuildResult {
-  if ((anchor.schema ?? 'IFC4') === 'IFC2X3') {
-    throw new Error('addStructuralPointConnectionToStore: IFC2X3 has no IfcStructuralPointConnection — target IFC4 or later');
-  }
+  // IFC2X3 uses plain measures: -1 = rigid, 0 = free. The real marker
+  // bypasses the exporter's IFC4 SELECT qualification for these slots.
+  const stiffness = (value: boolean | undefined) => anchor.schema === 'IFC2X3'
+    ? (value === undefined ? null : { real: value ? -1 : 0 })
+    : boolAttr(value);
   const position = toNativePoint3(anchor, params.Position);
   const placementId = emitLocalPlacement(editor, anchor.storeyPlacementId, position);
 
@@ -101,12 +103,12 @@ export function addStructuralPointConnectionToStore(
   if (bc) {
     boundaryConditionId = editor.addEntity('IfcBoundaryNodeCondition', [
       bc.Name ?? null,
-      boolAttr(bc.TranslationalStiffnessX),
-      boolAttr(bc.TranslationalStiffnessY),
-      boolAttr(bc.TranslationalStiffnessZ),
-      boolAttr(bc.RotationalStiffnessX),
-      boolAttr(bc.RotationalStiffnessY),
-      boolAttr(bc.RotationalStiffnessZ),
+      stiffness(bc.TranslationalStiffnessX),
+      stiffness(bc.TranslationalStiffnessY),
+      stiffness(bc.TranslationalStiffnessZ),
+      stiffness(bc.RotationalStiffnessX),
+      stiffness(bc.RotationalStiffnessY),
+      stiffness(bc.RotationalStiffnessZ),
     ]).expressId;
   }
 
@@ -119,7 +121,7 @@ export function addStructuralPointConnectionToStore(
     `#${placementId}`,
     null, // Representation — see module doc
     boundaryConditionId === undefined ? null : `#${boundaryConditionId}`,
-    null, // ConditionCoordinateSystem
+    ...(anchor.schema === 'IFC2X3' ? [] : [null]), // ConditionCoordinateSystem (IFC4+)
   ]).expressId;
 
   return { connectionId, placementId, ...(boundaryConditionId !== undefined ? { boundaryConditionId } : {}) };

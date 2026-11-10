@@ -77,7 +77,9 @@ export function addStructuralLoadGroupToStore(
   params: StructuralLoadGroupInStoreParams,
 ): StructuralLoadGroupBuildResult {
   if (anchor.schema === 'IFC2X3') {
-    throw new Error('addStructuralLoadGroupToStore: IFC2X3 has no IfcStructuralLoadGroup — target IFC4 or later');
+    if (params.SelfWeightCoefficients !== undefined) {
+      throw new Error('addStructuralLoadGroupToStore: IFC2X3 IfcStructuralLoadGroup has no SelfWeightCoefficients; use PredefinedType LOAD_CASE without self-weight coefficients or target IFC4 or later');
+    }
   }
   const isLoadCase = params.SelfWeightCoefficients !== undefined;
   if (isLoadCase && params.PredefinedType !== undefined && params.PredefinedType !== 'LOAD_CASE') {

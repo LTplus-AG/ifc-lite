@@ -170,7 +170,7 @@ test('PDF preparation locks the parent annotation metadata (C-13)', async t => {
     await until(() => !!mode.pending);
     const name = ui.querySelector<HTMLInputElement>('fieldset input')!;
     // Happy DOM has no native keyboard default: a disabled control accepts no user typing.
-    const typeName = (value: string) => { if (!name.matches(':disabled')) type(name, value); };
+    const typeName = (value: string) => { if (!name.disabled && !name.closest('fieldset[disabled]')) type(name, value); };
     const previousName = name.value;
     typeName('Changed during preparation');
     assert.equal(name.value, previousName, 'typing cannot change Name during PDF preparation');

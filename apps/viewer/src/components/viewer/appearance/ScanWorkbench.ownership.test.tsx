@@ -49,7 +49,7 @@ async function fixture() {
     terminate() {}
     postMessage(job: AppearanceWorkerRequest) {
       if (job.type !== 'scan-registration') throw new Error('Unexpected workbench fixture request');
-      queueMicrotask(() => this.onmessage?.({ data: { type: 'scan-registration-complete', id: job.id, result: report } } as MessageEvent<AppearanceWorkerResponse>));
+      queueMicrotask(() => this.onmessage?.({ data: { type: 'scan-registration-complete', id: job.id, result: { ...report, sourceFrame: job.request.sourceFrame, targetFrame: job.request.targetFrame } } } as MessageEvent<AppearanceWorkerResponse>));
     }
   }
   Object.defineProperty(globalThis, 'Worker', { configurable: true, value: WorkerFixture });

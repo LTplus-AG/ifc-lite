@@ -60,11 +60,11 @@
   1317 apps/viewer/src/components/mcp/McpLanding.tsx
    525 apps/viewer/src/components/mcp/McpPlayground.tsx
   2051 apps/viewer/src/components/mcp/playground-dispatcher.ts
-  1187 apps/viewer/src/components/mcp/PlaygroundChat.tsx
+   715 apps/viewer/src/components/mcp/PlaygroundChat.tsx
    474 apps/viewer/src/components/viewer/BCFPanel.tsx
    604 apps/viewer/src/components/viewer/BulkPropertyEditor.tsx
    485 apps/viewer/src/components/viewer/CesiumOverlay.tsx
-  1434 apps/viewer/src/components/viewer/ChatPanel.tsx
+  1429 apps/viewer/src/components/viewer/ChatPanel.tsx
   1243 apps/viewer/src/components/viewer/ClashPanel.tsx
    964 apps/viewer/src/components/viewer/DataConnector.tsx
   1698 apps/viewer/src/components/viewer/Drawing2DCanvas.tsx

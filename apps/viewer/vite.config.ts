@@ -358,8 +358,8 @@ export default defineConfig(({ mode }) => {
       'quickjs-emscripten',
       '@jitl/quickjs-wasmfile-release-asyncify',
       'esbuild-wasm',
-      // The Rhino export worker loads it on first use; pre-bundling discovers it
-      // only then and reloads the page mid-session (dev only).
+      // Pre-bundling missed it at startup and found it on the first model load,
+      // then reloaded the page mid-session (dev only; validation-colors e2e).
       'rhino3dm',
       // maplibre-gl v6 resolves its worker as a SIBLING FILE of its own module:
       //

@@ -77,7 +77,7 @@ describe('roof by footprint in the viewer (#9296 round 3)', () => {
     });
     assert.ok('expressId' in added);
     const depth = undoDepth();
-    assert.deepEqual(editRoofIn(useViewerStore, MODEL_ID, added.expressId, { EdgeSlopes: [30 * D, 0, 30 * D, 0] }), { ok: true });
+    assert.deepEqual(editRoofIn(useViewerStore, MODEL_ID, added.expressId, { EdgeSlopes: [30 * D, 0, 30 * D, 0] }), { ok: true, remesh: [added.expressId] });
     assert.equal(body(added.expressId).type, '.GABLE_ROOF.');
     assertSingleUndoBatch(depth);
     // Fault injection: keep the actual edit and undo rows, lose only their tags.

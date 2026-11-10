@@ -120,14 +120,71 @@ key = SHA-256( "ifc-lite-native-result-v1"
   been shown across pool sizes, and keying it only costs hits between
   differently sized pools. Point-cache hit/miss counters do depend on
   scheduling. Like timings, they are the producer's values, replayed verbatim.
-- **Resource stops.** Every `resource::stop` in the process counts
-  (`resource::stop_events`). A pass during which the count moved is not stored
-  (`SkippedResourceStop`). This catches a product refused under an unrelated
+- **Resource stops.** The pass itself records whether any of its jobs started on
+  a thread carrying resource state it did not install. That covers another
+  caller's account through a stolen job, and a worker still in a stopped
+  terminal domain that refuses products without a new stop (third review). Such a
+  pass is not stored (`SkippedResourceStop`). As a second net, every
+  `resource::stop` in the process is counted (`resource::stop_events`), and a pass
+  during which the count moved is not stored either.
+- **Scan reports.** The scan reports refused records and malformed files through
+  core's `set_report_sink` callback, outside `ProcessingSink`. A hit never scans,
+  so it would drop that warning. Core counts emissions
+  (`ifc_lite_core::scan_report_events`), and a pass during which one was emitted
+  is never stored (`SkippedScanReported`), so every call for such an input
+  delivers it. Replaying the messages instead would need per-pass capture of a
+  process-global callback that concurrent passes share; that is left for when
+  malformed inputs need caching.
+- **Concurrent setters.** Writers are serialised across both generation bumps and
+  the store, so the generation is odd exactly while a store is in progress, even
+  with overlapping setters (third review). This catches a product refused under an unrelated
   scope, for example a rayon job stolen by another caller's thread. It is
   conservative: any stop anywhere skips the store.
 
   Keying on the build is deliberately conservative: any rebuild misses. Relaxing
   it to explicit revisions needs x86_64/arm64 determinism evidence.
+
+## Inputs and channels: complete inventory
+
+This table lists everything that can change what `ResultCache::process` returns, or what a caller observes, and how each item is handled. A hit must be indistinguishable from the live run on every channel listed as replayed or keyed. Tests are in `rust/processing/tests/` unless marked `(unit)`.
+
+### Inputs
+
+| Input | Kind | Handling | Pinned by |
+| --- | --- | --- | --- |
+| Source bytes (all of them) + length | request | **Keyed** (SHA-256, never sampled) | `every_output_affecting_input_misses` (mid-file digit, appended byte) |
+| `opening_filter`, `skip_voids`, `quality`, `layer_slicing`, `batching.{initial,throughput,fast_first}`, `features.{properties,presentation_layers,quick_metadata_bootstrap,finishes}`, `instancing` | request | **Keyed** (explicit tags) | `every_output_affecting_input_misses` (15 variants) |
+| `entity_ids` (`None` / `Some(empty)` / `Some(set)`) | request | **Keyed** (sorted; `None` ≠ empty) | same test (None vs `Some(empty)`, copied-entry identity mismatch) |
+| `retain_meshes == false`, `entity_index`, `cancel` | request | **Ineligible** (`Bypass`) | `off_and_bypassed_requests_do_no_cache_work_and_match_the_pipeline` |
+| A new `ProcessingRequest` field | request | **Compile error** until classified (exhaustive destructure) | compiler |
+| 13 `IFC_LITE_*` / `IFCLITE_*` output knobs (rect fast and param, local frame, void union / 2D / prism, dedup extra, half-space cap, fast-cut ratio, CSG op and element budgets, alt triangulator, degenerate backstop) | env, read once | **Keyed** through the effective policy accessors, never by re-reading env | `an_output_affecting_environment_knob_misses_in_a_fresh_process`, `a_late_environment_change_cannot_poison_a_fresh_process`, `every_environment_knob_is_classified_for_the_result_cache` |
+| A new environment read anywhere in core, geometry or processing | env | **Ratchet** (access sites counted per file) | `every_environment_access_site_is_reviewed` |
+| `IFC_LITE_CACHE_DIR` | env | **Output-neutral** (location only) | ratchet `NOT_OUTPUT` |
+| `IFC_LITE_ENGINE_BUILD_DIGEST` | compile-time `env!` | **Keyed** (it is the build digest) | ratchet `NOT_OUTPUT` |
+| Setters `local_frame_set_enabled_override`, `rect_fast::param_set_enabled_override`, `set_build_dedup_extra_override`, `budget::set_cap`, `set_element_cap`, `set_alt_triangulator` | process global | **Keyed** (effective policy) | `effective_policy_overrides_are_keyed` |
+| A setter while a pass runs or a hit is read (incl. A→B→A, overlapping writers) | process global | **Ineligible** (serialised seqlock generation) | `a_policy_change_undone_mid_pass_is_never_stored`, `overlapping_writers_never_expose_an_even_generation_mid_store` (unit), `a_panicking_store_still_closes_the_generation` (unit) |
+| Explicit router `local_frame` | router config | **Not reachable** from the cached path (every router is `RouterConfig::default()` + keyed fields) | `the_cached_pass_never_pins_a_router_frame_policy` |
+| Rayon worker count | execution | **Keyed** (conservative; no mesh dependence known) | — (phase 2 drops it after a pool-size matrix) |
+| Caller-thread `ExecutionAccount` / source stop / terminal / owned observer | thread-local | **Ineligible** (`Bypass(AmbientResourceScope)`), both ways | `ambient_resource_scopes_bypass_the_cache_both_ways` |
+| A job of the pass on a worker carrying foreign resource state (stolen job, pre-latched terminal stop) | thread-local, worker | **Ineligible** (decided per pass) | `a_worker_with_a_pre_latched_terminal_stop_never_stores_its_degraded_pass` |
+| Any `resource::stop` anywhere during the pass | process global | **Ineligible** (second net) | `a_stop_during_the_pass_is_never_stored` |
+| `analytic::with_source_capture` | thread-local | **Output-neutral** for `ProcessingResult` | `source_capture_and_the_progress_hook_are_output_neutral` |
+| Kernel, core and processing source; `Cargo.lock`; rustc; target, profile, flags, target features; processing features | build | **Keyed** (`build.rs` digest, all three `src` trees watched) | cross-build qualification (gated rebuilds miss); revert mutants |
+| Geometry resolved features | build | **Keyed** (`output_policy::BUILD_FEATURES`) | `build_features_list_every_cargo_feature` (unit), cross-build |
+| Running executable file (size, mtime, ctime, device, inode; no path) | build | **Keyed** | `an_in_place_edit_with_restored_mtime_changes_the_identity` (unit) |
+| Entry format version | build | **Keyed**; other versions → `Miss(Unsupported)` | `identity_and_version_mismatches_are_named` (unit) |
+
+### Output channels
+
+| Channel | Handling | Pinned by |
+| --- | --- | --- |
+| Every `ProcessingResult` field: meshes incl. serde-skipped fields, textures and sharing, instances, frame, transforms, metadata, stats, diagnostics | **Replayed bit for bit**. `from_cache` is set to `true`; `*_time_ms` and point-cache counters are the producer's values | `round_trip_preserves_every_field_bits_and_texture_sharing`, `fingerprint_sees_every_field`, `fingerprint_distinguishes_diagnostic_float_bits` (unit); corpus and heavy fresh-process equality |
+| `ProcessingSink` events | **Not offered**: the cached entry point takes no sink | by construction |
+| Core scan report sink (`set_report_sink`: refused ids, malformed file) | **Ineligible**: a pass that emits one is never stored, so every call keeps delivering it | `passes_that_report_scan_refusals_are_never_replayed_silently` |
+| `progress::set_hook` heartbeat | **Output-neutral** liveness signal; a hit does no work and makes no ticks | `source_capture_and_the_progress_hook_are_output_neutral` |
+| `tracing` events (e.g. the CSG failure summary) | **Not replayed**: diagnostics, not API. Their content is in the replayed stats and diagnostics; a hit logs the cache's own events | documented |
+| CSG census, `csg_capture`, rect / prism / bool2d / opening-trace counters | **Not replayed**: measurement instrumentation drained by tools (`perf_probe --census`), not consumer output | documented |
+| `CacheReport` (outcome, work, warnings) | **New channel**, current call only | integration tests |
 
 ## Entry format
 

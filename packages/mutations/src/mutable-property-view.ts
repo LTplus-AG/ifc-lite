@@ -62,6 +62,12 @@ export class MutablePropertyView extends MutableOverlayState {
     registerCooperativeOverlay(this, { modelId,
       transact: (edit, record) => runSparseAtomic(this, edit, record),
       capture: () => this.overlayState(),
+      rebuild: snapshot => {
+        const draft = new MutablePropertyView(this.baseTable, this.modelId);
+        draft.restoreOverlayState(snapshot);
+        for (const id of draft.getAttributeOverrideEntityIds()) draft.indexAttributeOverride(id);
+        return draft.overlayState();
+      },
       matches: snapshot => this.matchesOverlayState(snapshot),
       publish: snapshot => this.restoreOverlayState(snapshot),
       draft: snapshot => {
@@ -458,7 +464,7 @@ export class MutablePropertyView extends MutableOverlayState {
       valueType,
       unit,
       dataType,
-    });
+    }, [psetName, propName]);
 
     const mutation: Mutation = {
       id: generateMutationId(),
@@ -510,7 +516,7 @@ export class MutablePropertyView extends MutableOverlayState {
       p => p.name === psetName && p.properties.some(prop => prop.name === propName),
     );
     if (propExistsInBase) {
-      this.setPropertyMutation(entityId, key, { operation: 'DELETE' });
+      this.setPropertyMutation(entityId, key, { operation: 'DELETE' }, [psetName, propName]);
     } else {
       this.deletePropertyMutation(entityId, key);
     }
@@ -589,7 +595,7 @@ export class MutablePropertyView extends MutableOverlayState {
         value: prop.value,
         valueType: prop.type ?? PropertyValueType.String,
         unit: prop.unit,
-      });
+      }, [psetName, prop.name]);
     }
 
     const mutation: Mutation = {
@@ -652,7 +658,7 @@ export class MutablePropertyView extends MutableOverlayState {
       this.deletedPsets.add(`${entityId}:${psetName}`);
       for (const prop of pset.properties) {
         const key = propertyKey(entityId, psetName, prop.name);
-        this.setPropertyMutation(entityId, key, { operation: 'DELETE' });
+        this.setPropertyMutation(entityId, key, { operation: 'DELETE' }, [psetName, prop.name]);
       }
     }
 
@@ -787,7 +793,7 @@ export class MutablePropertyView extends MutableOverlayState {
         value: q.value,
         quantityType: q.quantityType,
         unit: q.unit,
-      });
+      }, [qsetName, q.name]);
     }
 
     const mutation: Mutation = {
@@ -860,7 +866,7 @@ export class MutablePropertyView extends MutableOverlayState {
       quantityType: qType,
       unit: effectiveUnit,
       unitRemoved,
-    });
+    }, [qsetName, quantName]);
 
     const mutation: Mutation = {
       id: generateMutationId(),
@@ -896,7 +902,7 @@ export class MutablePropertyView extends MutableOverlayState {
     return deleteQuantityMember({
       modelId: this.modelId, entityId, qsetName, quantName,
       baseQsets: this.getBaseQuantitiesForEntity(entityId), entityQsets: this.newQsets.get(entityId),
-      setMutation: (key, mutation) => this.setQuantityMutation(entityId, key, mutation),
+      setMutation: (key, mutation) => this.setQuantityMutation(entityId, key, mutation, [qsetName, quantName]),
       deleteMutation: key => { this.deleteQuantityMutation(entityId, key); },
       deleteEntityQsets: () => { this.newQsets.delete(entityId); },
       pushHistory: mutation => {
@@ -925,7 +931,7 @@ export class MutablePropertyView extends MutableOverlayState {
       entityQsets: this.newQsets.get(entityId), deleteEntityQsets: () => { this.newQsets.delete(entityId); },
       deleteMutation: name => { this.deleteQuantityMutation(entityId, quantityKey(entityId, qsetName, name)); },
       maskSet: () => { this.deletedQsets.add(`${entityId}:${qsetName}`); },
-      setMutation: name => this.setQuantityMutation(entityId, quantityKey(entityId, qsetName, name), { operation: 'DELETE' }),
+      setMutation: name => this.setQuantityMutation(entityId, quantityKey(entityId, qsetName, name), { operation: 'DELETE' }, [qsetName, name]),
       mutationId: generateMutationId,
       pushHistory: mutation => { this.stampSetOverlay(mutation, before); this.mutationHistory.push(mutation); },
     });
@@ -1185,24 +1191,12 @@ export class MutablePropertyView extends MutableOverlayState {
   }
 
   /**
-   * Mark an entity for deletion. Returns false if the id is unknown to this
-   * view, or was already tombstoned.
-   *
-   * An overlay-created entity is dropped from `newEntities` — so it is emitted
-   * nowhere, which is the right answer for something created and deleted in one
-   * session — AND tombstoned, so `isDeleted` tells the truth about it.
-   *
-   * It used to be only forgotten, and that made `isDeleted` lie: every guard
-   * that asks "was this deleted" got `false` for an entity that no longer
-   * exists, so the export still emitted the `IFCRELDEFINESBYPROPERTIES` for a
-   * pset queued on it, dangling at a record nothing wrote (#2012). Forgetting
-   * without tombstoning cannot be made safe one guard at a time, because the
-   * question the guards ask has no true answer to find.
-   *
-   * Consumers that count entities must therefore intersect tombstones with the
-   * source store rather than subtracting `tombstones.size` wholesale — a
-   * created-then-deleted id is absent from BOTH the store and `getNewEntities`,
-   * so counting it as a deletion would subtract it twice.
+   * Tombstone an entity; false if already tombstoned. Created entities also
+   * leave newEntities, so create-then-delete emits no record. Tombstones must
+   * remain visible to isDeleted and export guards: forgetting alone emitted
+   * dangling property relationships (#2012).
+   * Count deletions only for IDs in the source store: created-then-deleted IDs
+   * are absent from both the source and newEntities and must not count twice.
    */
   deleteEntity(expressId: number): boolean {
     if (this.newEntities.has(expressId)) {
@@ -1791,6 +1785,8 @@ export class MutablePropertyView extends MutableOverlayState {
    */
   clear(): void {
     this.markOverlayChanged();
+    this.propertyTargets.clear();
+    this.quantityTargets.clear();
     this.propertyMutations.clear();
     this.quantityMutations.clear();
     this.propertyKeysByEntity.clear();
@@ -1832,6 +1828,7 @@ export class MutablePropertyView extends MutableOverlayState {
           mutation.entityId,
           quantityKey(mutation.entityId, qsetName, quantName),
           { operation: 'DELETE' },
+          [qsetName, quantName],
         );
         if (retainHistory) this.mutationHistory.push(mutation);
       },

@@ -161,16 +161,13 @@ describe('tryRestoreDrawingMarkup: populates from a model with tagged annotation
   it('restores the tagged Measure2DResult once the parse lands, and does not duplicate on a second call', async () => {
     const store = await seedStore('populate-1');
 
-    // First call: nothing parsed yet — `tryRestoreDrawingMarkup` itself never
-    // triggers a parse (only `useDrawingMarkupRestoreOnLoad`'s effect does,
-    // via `ensureParseFor`), so it must return without writing or marking
-    // the model as attempted, leaving it free to retry once the parse lands.
+    // NEW-3: the guarded restore now requests the parse itself, after
+    // confirming there is tagged markup and localStorage is not authoritative.
+    // Install the worker before that first request; restoration still waits
+    // for the result and must not mark the model attempted prematurely.
+    const release = fakeWasmReplyWith(oneMeasureFlat());
     tryRestoreDrawingMarkup('populate-1');
     assert.deepEqual(useViewerStore.getState().measure2DResults, []);
-
-    // Simulate what the mounted hook's effect does: kick off the parse.
-    const release = fakeWasmReplyWith(oneMeasureFlat());
-    ensureParseFor([store]);
     // ensureParseFor's request-dispatch is itself async (a microtask), so
     // let it reach the fake worker before releasing the reply.
     await new Promise((r) => setTimeout(r, 0));

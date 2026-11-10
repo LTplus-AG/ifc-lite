@@ -70,9 +70,9 @@ export function useScanWorkbench() {
     // Model/frame changes invalidate the pinned session below; they never replace its source silently.
   }, [sourceId, targetId, restart, appearanceRun.reset]);
   useEffect(() => {
-    if (!session || ownAppearance.current) return;
+    if (!session || ownAppearance.current || appearanceRun.busy) return;
     try { session.validate(); } catch (failure) { operation.current?.abort(); planner.current?.cancel(); setBusy(false); setStale(true); setPending(null); setResult(null); setAligned(false); setError(true); setStatus(raw(message(failure))); }
-  }, [session, models, mutationViews, mutationVersion, placement, room, section, terrain, cesium]);
+  }, [session, models, mutationViews, mutationVersion, placement, room, section, terrain, cesium, appearanceRun.busy]);
   useEffect(() => {
     if (!pending || !session || stale) return;
     const renderer = getGlobalRenderer(); if (!renderer) { setError(true); setStatus(translated('appearance.scan.status.viewNotReady')); return; }
@@ -121,7 +121,7 @@ export function useScanWorkbench() {
     signal.throwIfAborted();
     saved.rebind(next);
     const request: ScanRegistrationRequest = { ...structuredClone(saved.request), sourceFrame: next.sourceFrame, targetFrame: next.targetFrame };
-    const report = await planner.current.registerScan(request, { signal: signal });
+    const report = await planner.current.registerScan(request, { signal });
     next.validate(); signal.throwIfAborted();
     recovery.current = { request, rebind: next.afterAppearance() }; setSession(next); setResult({ request, report }); setStale(false); setError(false);
     setStatus(translated('appearance.scan.status.refreshed'));
@@ -138,7 +138,6 @@ export function useScanWorkbench() {
     if (!session || !result || taskBusy || stale || !planner.current) return;
     await appearanceRun.start(async ({ signal, isCurrent }) => {
       recovery.current = { rebind: session.afterAppearance(), request: result.request };
-      ownAppearance.current = true;
       let applied = false; setError(false); setStatus(translated('appearance.scan.status.applying'));
       try {
         await action(signal); applied = true;
@@ -150,15 +149,13 @@ export function useScanWorkbench() {
         if (!applied) try { session.validate(); valid = true; recovery.current = null; } catch (invalid) { console.info('The previous scan binding needs explicit revalidation after appearance rollback.', invalid); }
         if (!valid) { setResult(null); setAligned(false); setStale(true); }
         setError(true); setStatus(raw(message(failure)));
-      } finally {
-        if (isCurrent()) ownAppearance.current = false;
       }
     });
   }
   function cancel() {
     const applying = appearanceRun.busy;
     appearanceRun.cancel();
-    if (applying) { ownAppearance.current = false; setResult(null); setAligned(false); setStale(true); }
+    if (applying) { setResult(null); setAligned(false); setStale(true); }
     if (!session) setStale(true);
     operation.current?.abort(); planner.current?.cancel(); setPending(null);
     if (!ownAppearance.current) setBusy(false);

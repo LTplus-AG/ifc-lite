@@ -57,8 +57,9 @@ async function fixture() {
 for (const gesture of ['same-tick', 'cancel', 'unmount'] as const) test(`PR #9585: workbench ${gesture} owns direct appearance actions`, async () => {
   await fixture();
   let work: ReturnType<typeof useScanWorkbench> | undefined;
-  let release!: () => void, actions = 0;
+  let release!: () => void, finish!: () => void, actions = 0, published = false;
   const held = new Promise<void>(resolve => { release = resolve; });
+  const finishing = new Promise<void>(resolve => { finish = resolve; });
   const jobs: Promise<void>[] = [];
   function Harness() {
     work = useScanWorkbench();
@@ -69,6 +70,8 @@ for (const gesture of ['same-tick', 'cancel', 'unmount'] as const) test(`PR #958
         await held;
         signal.throwIfAborted();
         useViewerStore.getState().setAttribute('target', 10, 'Name', 'Applied');
+        published = true;
+        if (gesture === 'same-tick') await finishing;
       }));
     };
     return <><button onClick={() => void work!.calculate()}>Calculate fixture alignment</button>
@@ -86,7 +89,16 @@ for (const gesture of ['same-tick', 'cancel', 'unmount'] as const) test(`PR #958
     assert.equal(actions, 1, 'every caller shares the synchronous appearance lease');
     if (gesture === 'cancel') click(button('Cancel action'));
     if (gesture === 'unmount') cleanup();
-  } finally { await act(async () => { release(); await Promise.all(jobs); }); }
+  } finally {
+    release();
+    try {
+      if (gesture === 'same-tick') {
+        await waitFor(() => published, 'the owned action published its IFC edit');
+        assert.equal(work!.stale, false, 'an owned publication cannot invalidate its own binding');
+        assert.equal(work!.error, false);
+      }
+    } finally { await act(async () => { finish(); await Promise.all(jobs); }); }
+  }
   await advance(10);
   assert.equal(useViewerStore.getState().undoStacks.get('target')?.length ?? 0, gesture === 'same-tick' ? 1 : 0);
   if (gesture === 'cancel') assert.match(ui.textContent ?? '', /appearanceCancelled/);

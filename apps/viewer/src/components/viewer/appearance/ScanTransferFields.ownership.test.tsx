@@ -4,7 +4,7 @@
 import '@/test/setup-dom.js';
 import { afterEach, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { act, useEffect } from 'react';
+import { act, useEffect, useMemo } from 'react';
 import { IfcParser } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
@@ -47,7 +47,7 @@ const source = `ISO-10303-21;HEADER;FILE_DESCRIPTION(('scan ownership'),'2;1');F
 ENDSEC;END-ISO-10303-21;`;
 async function until(predicate: () => boolean, message: string) {
   for (let i = 0; i < 200 && !predicate(); i++) await advance(10);
-  assert.ok(predicate(), message);
+  assert.ok(predicate(), `${message}; current UI: ${document.body.textContent}`);
 }
 for (const gesture of ['preview', 'apply', 'unmount'] as const) test(`scan transfer ${gesture} retains one native operation (PR #9585)`, async t => {
   if (!ensureWasm(t)) return;
@@ -121,7 +121,10 @@ for (const gesture of ['preview', 'apply', 'unmount'] as const) test(`scan trans
     useEffect(() => {
       if (work.session && !work.result && !work.busy && !work.stale) void work.calculate();
     }, [work.session, work.result, work.busy, work.stale]);
-    const transfer = useScanTransfer({ ...work,
+    // The real native registration fixture supplies reviewed fit/check landmarks.
+    const registration = useMemo(() => work.result && { report: work.result.report,
+      request: { ...work.result.request, fit: request.fit, heldOut: request.heldOut } }, [work.result]);
+    const transfer = useScanTransfer({ ...work, result: registration,
       applyAppearance: async action => {
         const job = work.applyAppearance(async signal => { signals.push(signal); await action(signal); });
         jobs.push(job);

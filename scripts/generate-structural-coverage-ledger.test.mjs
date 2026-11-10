@@ -22,7 +22,10 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { LEVELS, deriveCatalogue, notApplicable } from '../tests/structural-coverage/catalogue.mjs';
-import { ratchet, runProbes, score } from '../tests/structural-coverage/score.mjs';
+import { ratchet, runProbes, score, verifyTotals } from '../tests/structural-coverage/score.mjs';
+import { readRow } from '../tests/structural-coverage/probes/read.mjs';
+import { checkExport } from '../tests/structural-coverage/probes/create.mjs';
+import { normalize } from '../tests/structural-coverage/lib/values.mjs';
 import { readStep } from '../tests/structural-coverage/lib/step.mjs';
 import { unwritten } from '../tests/structural-coverage/probes/index.mjs';
 import { SCENE, stepsFor } from '../tests/structural-coverage/probes/create-scene.mjs';
@@ -196,6 +199,82 @@ ENDSEC;END-ISO-10303-21;`);
   assert.match(held[5], /typed IFCBOOLEAN in IfcMeasure$/, "the [] suffix is stripped before the slot check");
   const cyclic = { ...registry, selects: { ...registry.selects, IfcA: ['IfcB'], IfcB: ['IfcA'] } };
   assert.throws(() => nonConforming(holders, 'IfcHolder', cyclic), /select IfcA nests in a cycle/);
+});
+
+const stepFile = (path, sha256, data) => ({ path, sha256, step: readStep(`ISO-10303-21;HEADER;FILE_SCHEMA(('IFC4'));ENDSEC;DATA;\n${data}\nENDSEC;END-ISO-10303-21;`) });
+
+/** A read model holding one point connection, with only the fields the product exposes today. */
+function pointConnectionModel(id, guid) {
+  const info = { expressId: id, globalId: guid, type: 'IfcStructuralPointConnection', name: 'P', memberGlobalIds: [], activityGlobalIds: [], analysisModelGlobalIds: [] };
+  return { byId: new Map([[id, { family: 'item', info, type: info.type }]]), byGuid: new Map([[guid, info]]), fields: new Map([[info.type, new Set(Object.keys(info))]]) };
+}
+
+test('read (#9668): an attribute set only in a file outside any sample is checked, and one no fixture sets is unproven', () => {
+  const row = byId.get('IFC4/IfcStructuralPointConnection');
+  const { types } = deriveCatalogue(ROOT).tables.IFC4;
+  // Names sort the bare file first and its sha last, so neither path order nor sha order hides the setter.
+  const bare = stepFile('a-first.ifc', 'f'.repeat(64), "#1=IFCSTRUCTURALPOINTCONNECTION('g1',$,'P',$,$,$,$,$,$);");
+  const setter = stepFile('z-last.ifc', '0'.repeat(64), "#2=IFCSTRUCTURALPOINTCONNECTION('g2',$,'P',$,$,$,$,$,#3);\n#3=IFCAXIS2PLACEMENT3D(#4,$,$);\n#4=IFCCARTESIANPOINT((0.,0.,0.));");
+  const both = readRow(row, [{ file: bare, ix: pointConnectionModel(1, 'g1') }, { file: setter, ix: pointConnectionModel(2, 'g2') }], types);
+  assert.equal(both.status, 'partial');
+  assert.match(both.reason, /ConditionCoordinateSystem unexposed/);
+  assert.match(both.reason, /AppliedCondition: no fixture sets it/, 'never set anywhere: unproven, not read');
+  const reversed = readRow(row, [{ file: setter, ix: pointConnectionModel(2, 'g2') }, { file: bare, ix: pointConnectionModel(1, 'g1') }], types);
+  assert.deepEqual(reversed, both, 'carrier order does not move the verdict');
+  const onlyBare = readRow(row, [{ file: bare, ix: pointConnectionModel(1, 'g1') }], types);
+  assert.match(onlyBare.reason, /ConditionCoordinateSystem: no fixture sets it/);
+  assert.notEqual(onlyBare.status, 'pass');
+});
+
+test('create (#9668): typed values are compared typed, and a non-conforming export fails the cell', () => {
+  const ifc4 = deriveCatalogue(ROOT).tables.IFC4;
+  const row = byId.get('IFC4/IfcBoundaryNodeCondition');
+  const typedTrue = { type: 'IFCBOOLEAN', value: true };
+  assert.deepEqual(normalize({ type: 'IFCBOOLEAN', value: { enum: 'T' } }, null, ifc4.types, 'id', true), typedTrue);
+  assert.equal(normalize({ enum: 'T' }, null, ifc4.types, 'id', true), true, 'a bare .T. stays bare');
+  const sel = { name: 'TranslationalStiffnessX', type: 'IfcTranslationalStiffnessSelect', optional: true };
+  const registry = {
+    entities: {
+      IfcBoundaryNodeCondition: { allAttributes: [{ name: 'Name', type: 'IfcLabel', optional: true }, sel, ...['Y', 'Z', 'RX', 'RY', 'RZ'].map((n) => ({ ...sel, name: n }))], inheritanceChain: ['IfcBoundaryNodeCondition'] },
+    },
+    selects: { IfcTranslationalStiffnessSelect: ['IfcBoolean', 'IfcLinearStiffnessMeasure'] }, types: {}, enums: {},
+  };
+  const expect = { Name: 'Probe pinned', TranslationalStiffnessX: typedTrue };
+  const bare = readStep("ISO-10303-21;HEADER;FILE_SCHEMA(('IFC4'));ENDSEC;DATA;\n#5=IFCBOUNDARYNODECONDITION('Probe pinned',.T.,.T.,.T.,.F.,.F.,.F.);\nENDSEC;END-ISO-10303-21;");
+  const got = checkExport(row, bare, expect, ifc4.types, registry);
+  assert.equal(got.status, 'fail', 'the product export today: bare booleans in SELECT slots');
+  assert.match(got.reason, /bare value in SELECT IfcTranslationalStiffnessSelect/);
+  assert.match(got.reason, /TranslationalStiffnessX true, expected \{"type":"IFCBOOLEAN","value":true\}/);
+  const typed = readStep("ISO-10303-21;HEADER;FILE_SCHEMA(('IFC4'));ENDSEC;DATA;\n#5=IFCBOUNDARYNODECONDITION('Probe pinned',IFCBOOLEAN(.T.),$,$,$,$,$);\nENDSEC;END-ISO-10303-21;");
+  assert.equal(checkExport(row, typed, expect, ifc4.types, registry).status, 'pass');
+  // A required attribute the scene does not name still fails the cell when the export leaves it empty.
+  const required = { ...registry, entities: { IfcBoundaryNodeCondition: { ...registry.entities.IfcBoundaryNodeCondition, allAttributes: registry.entities.IfcBoundaryNodeCondition.allAttributes.map((a, i) => (i === 6 ? { ...a, optional: false } : a)) } } };
+  const gap = checkExport(row, typed, expect, ifc4.types, required);
+  assert.equal(gap.status, 'fail');
+  assert.match(gap.reason, /RZ: required value empty/);
+});
+
+test('totals (#9668): stored totals that disagree with the rows are refused by the ledger and by --check', () => {
+  const all = Object.fromEntries(LEVELS.map((l) => [l, 'pass']));
+  const s = score(two, cellsOf({ [two[0].id]: { ...all, card: 'partial' }, [two[1].id]: { capability: 'pass' } }));
+  assert.deepEqual(verifyTotals(s), []);
+  assert.ok(verifyTotals({ ...s, total: { ...s.total, score: 2 } }).some((p) => p.startsWith('total')));
+  assert.ok(verifyTotals({ ...s, rows: s.rows.map((r, i) => (i === 0 ? { ...r, status: 'met' } : r)) }).some((p) => p.includes(two[0].id)));
+  const dir = tree();
+  try {
+    const baseline = join(dir, 'tests/structural-coverage/baseline/r0.json');
+    const summary = JSON.parse(readFileSync(baseline, 'utf8'));
+    const forged = join(dir, 'forged.json');
+    writeFileSync(forged, JSON.stringify({ ...summary, total: { ...summary.total, score: summary.total.max } }));
+    const r = run(['--root', dir, '--summary', forged]);
+    assert.notEqual(r.status, 0);
+    assert.match(r.stderr, /disagree with its rows/);
+    const scored = spawnSync(process.execPath, [join(ROOT, 'tests/structural-coverage/score.mjs'), '--check', forged, '--out', join(dir, 'out.json')], { encoding: 'utf8' });
+    assert.equal(scored.status, 2, scored.stderr);
+    assert.match(scored.stderr, /disagree with its rows/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 function tree() {

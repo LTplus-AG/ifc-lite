@@ -16,6 +16,9 @@
  * To register a new builder: append a step. Nothing else changes.
  */
 
+/** IFC4 stiffness slots are SELECTs, so a fixed or free degree of freedom is the typed IfcBoolean branch. */
+const FIXED = { type: 'IFCBOOLEAN', value: true };
+const FREE = { type: 'IFCBOOLEAN', value: false };
 const guid = (tag) => `0SC${tag}`.padEnd(22, '0').slice(0, 22);
 const G = {
   member: guid('Member'), connection: guid('Connection'), point: guid('PointAction'),
@@ -53,7 +56,7 @@ export const SCENE = [
       IfcStructuralPointConnection: { GlobalId: G.connection, Name: 'Probe support' },
       IfcBoundaryNodeCondition: schema === 'IFC2X3'
         ? { Name: 'Probe pinned', unchecked: ['LinearStiffnessX', 'LinearStiffnessY', 'LinearStiffnessZ', 'RotationalStiffnessX', 'RotationalStiffnessY', 'RotationalStiffnessZ'] }
-        : { Name: 'Probe pinned', TranslationalStiffnessX: true, TranslationalStiffnessY: true, TranslationalStiffnessZ: true, RotationalStiffnessX: false, RotationalStiffnessY: false, RotationalStiffnessZ: false },
+        : { Name: 'Probe pinned', TranslationalStiffnessX: FIXED, TranslationalStiffnessY: FIXED, TranslationalStiffnessZ: FIXED, RotationalStiffnessX: FREE, RotationalStiffnessY: FREE, RotationalStiffnessZ: FREE },
     }),
     build: ({ create, editor, anchor }) => create.addStructuralPointConnectionToStore(editor, anchor, {
       Position: [0, 0, 0], Name: 'Probe support', GlobalId: G.connection,

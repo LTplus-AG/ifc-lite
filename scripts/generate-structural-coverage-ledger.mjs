@@ -22,7 +22,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ENTITY_LEVELS, LEVELS, SCHEMAS, deriveCatalogue } from '../tests/structural-coverage/catalogue.mjs';
-import { SUMMARY_SCHEMA as SCHEMA } from '../tests/structural-coverage/score.mjs';
+import { SUMMARY_SCHEMA as SCHEMA, verifyTotals } from '../tests/structural-coverage/score.mjs';
 
 const flag = (name) => { const i = process.argv.indexOf(name); return i !== -1 ? process.argv[i + 1] : null; };
 const ROOT = flag('--root') ? resolve(flag('--root')) : join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -62,6 +62,9 @@ const missing = [...derived].filter((id) => !scored.has(id));
 if (extra.length || missing.length) {
   fail(`${summaryPath} does not match the derived catalogue (${missing.length} rows missing, ${extra.length} unknown, e.g. ${[...missing, ...extra].slice(0, 4).join(', ')}); re-run tests/structural-coverage/score.mjs`);
 }
+
+const forged = verifyTotals(summary);
+if (forged.length) fail(`${summaryPath}: its stored totals disagree with its rows; re-run tests/structural-coverage/score.mjs:\n  ${forged.slice(0, 5).join('\n  ')}`);
 
 const cell = (text) => String(text).replace(/\|/g, '\\|').replace(/\r?\n/g, ' ');
 const clip = (text, n) => (text.length > n ? `${text.slice(0, n - 1)}…` : text);

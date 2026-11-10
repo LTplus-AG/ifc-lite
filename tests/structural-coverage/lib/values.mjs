@@ -18,12 +18,19 @@ export function typeIndex({ table, chain }) {
   return out;
 }
 
-export function normalize(v, step, types, refs = 'id') {
+/**
+ * With `typed`, a typed value (`IFCBOOLEAN(.T.)`) keeps its wrapper as
+ * `{ type, value }`, so it never equals the bare value a SELECT slot rejects.
+ */
+export function normalize(v, step, types, refs = 'id', typed = false) {
   if (v === null || v === undefined || v === '*') return null;
   if (typeof v === 'number' || typeof v === 'string') return v;
-  if (Array.isArray(v)) return v.map((x) => normalize(x, step, types, refs));
+  if (Array.isArray(v)) return v.map((x) => normalize(x, step, types, refs, typed));
   if ('enum' in v) return v.enum === 'T' ? true : v.enum === 'F' ? false : v.enum;
-  if ('type' in v) return normalize(v.value, step, types, refs);
+  if ('type' in v) {
+    const inner = normalize(v.value, step, types, refs, typed);
+    return typed ? { type: v.type, value: inner } : inner;
+  }
   if ('ref' in v) {
     const target = step.get(v.ref);
     if (target && types.get(target.type)?.rooted && typeof target.args[0] === 'string') return target.args[0];
@@ -41,6 +48,7 @@ export function equal(a, b) {
     const [x, y] = sortable(a) && sortable(b) ? [[...a].sort(), [...b].sort()] : [a, b];
     return x.every((v, i) => equal(v, y[i]));
   }
+  if (a && b && typeof a === 'object' && typeof b === 'object' && 'type' in a && 'type' in b) return a.type === b.type && equal(a.value, b.value);
   return a === b;
 }
 

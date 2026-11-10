@@ -82,18 +82,19 @@ export async function runProbes(rows, ctx, probes = PROBES) {
   return cells;
 }
 
-/** Score probed cells. Pure. */
-export function score(rows, cells, meta = {}) {
+/**
+ * Every derived number of a summary, recomputed from its rows' cells: each
+ * row's points, max and status, and the total, cell and per-level totals.
+ * Pure. Nothing a summary file states about its totals is taken on trust.
+ */
+export function tally(rows) {
   const levelTotals = Object.fromEntries(LEVELS.map((l) => [l, { score: 0, max: 0, pass: 0, partial: 0, fail: 0, error: 0, skip: 0, unwritten: 0 }]));
   const out = rows.map((row) => {
-    const levels = {};
     let points = 0;
     let max = 0;
     for (const level of LEVELS) {
-      const rule = notApplicable(row, level);
-      if (rule) { levels[level] = { applicable: false, rule }; continue; }
-      const cell = cells.get(row.id)[level];
-      levels[level] = cell;
+      const cell = row.levels[level];
+      if (!cell || cell.applicable === false) continue;
       const p = POINTS[cell.status] ?? 0;
       points += p;
       max++;
@@ -102,25 +103,65 @@ export function score(rows, cells, meta = {}) {
       levelTotals[level][cell.status]++;
     }
     // Only a pass earns a full point, so every applicable cell passes exactly when points === max.
-    const status = points === max ? 'met' : points > 0 ? 'partial' : 'missing';
-    const head = row.kind === 'entity'
-      ? { id: row.id, kind: row.kind, schema: row.schema, entity: row.entity, family: row.family }
-      : { id: row.id, kind: row.kind, title: row.title, round: row.round };
-    return { ...head, status, points, max, levels };
+    return { ...row, status: points === max ? 'met' : points > 0 ? 'partial' : 'missing', points, max };
   });
   const counts = { met: 0, partial: 0, missing: 0 };
   for (const r of out) counts[r.status]++;
   const cellsMax = out.reduce((a, r) => a + r.max, 0);
   if (!out.length || cellsMax === 0) throw new Error('score: empty denominator (no rows or no applicable cells); refusing to score');
   return {
-    schema: SUMMARY_SCHEMA,
-    offline: meta.offline === true,
-    absent: meta.absent ?? [],
-    corpus: meta.corpus ?? [],
     total: { score: counts.met + counts.partial * 0.5, max: out.length, ...counts },
     cells: { score: out.reduce((a, r) => a + r.points, 0), max: cellsMax },
     levels: Object.fromEntries(Object.entries(levelTotals).filter(([, t]) => t.max > 0)),
     rows: out,
+  };
+}
+
+/** Where a summary's stored totals disagree with its own rows; empty when they agree. */
+export function verifyTotals(summary) {
+  let t;
+  try {
+    t = tally(summary.rows ?? []);
+  } catch (e) {
+    return [e.message];
+  }
+  const problems = [];
+  for (const key of ['total', 'cells', 'levels']) {
+    if (JSON.stringify(summary[key]) !== JSON.stringify(t[key])) problems.push(`${key}: stored ${JSON.stringify(summary[key])}, rows give ${JSON.stringify(t[key])}`);
+  }
+  summary.rows.forEach((r, i) => {
+    const want = t.rows[i];
+    if (r.status !== want.status || r.points !== want.points || r.max !== want.max) {
+      problems.push(`${r.id}: stored ${r.status} ${r.points}/${r.max}, cells give ${want.status} ${want.points}/${want.max}`);
+    }
+  });
+  return problems;
+}
+
+/** Score probed cells. Pure. */
+export function score(rows, cells, meta = {}) {
+  const withCells = rows.map((row) => {
+    const levels = {};
+    for (const level of LEVELS) {
+      const rule = notApplicable(row, level);
+      levels[level] = rule ? { applicable: false, rule } : cells.get(row.id)[level];
+    }
+    const head = row.kind === 'entity'
+      ? { id: row.id, kind: row.kind, schema: row.schema, entity: row.entity, family: row.family }
+      : { id: row.id, kind: row.kind, title: row.title, round: row.round };
+    return { ...head, levels };
+  });
+  const { total, cells: cellTotals, levels, rows: out } = tally(withCells);
+  return {
+    schema: SUMMARY_SCHEMA,
+    offline: meta.offline === true,
+    absent: meta.absent ?? [],
+    corpus: meta.corpus ?? [],
+    total,
+    cells: cellTotals,
+    levels,
+    // Key order as before: head, status, points, max, levels.
+    rows: out.map(({ levels: l, status, points, max, ...head }) => ({ ...head, status, points, max, levels: l })),
   };
 }
 
@@ -196,6 +237,8 @@ async function main(argv) {
       return 2;
     }
     if (baseline?.schema !== SUMMARY_SCHEMA) { console.error(`score: ${rel(check)} is not an ${SUMMARY_SCHEMA} summary`); return 2; }
+    const forged = verifyTotals(baseline);
+    if (forged.length) { console.error(`score: ${rel(check)}: its stored totals disagree with its rows:\n  ${forged.slice(0, 5).join('\n  ')}`); return 2; }
   }
   let summary;
   try {

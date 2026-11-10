@@ -6,21 +6,19 @@
  * Level `read`: `extractStructuralOnDemand` (packages/parser) returns the
  * entity with the values the file holds.
  *
- * For every sampled record of the row's entity in a corpus file of the row's
- * schema, each of the entity's own attributes (those below IfcProduct /
- * IfcGroup / IfcRelConnects, plus Name and GlobalId) that the file sets is
- * compared with the read model's field for it. Pass needs every record found
- * and every value equal. A value the read model has no field for is reported
- * as unexposed and makes the row partial, so a found-but-hollow read never
- * passes. Relationships pass when both ends carry the link.
+ * Every record of the row's entity in every corpus file of the row's schema is
+ * checked (no sampling). For each of the entity's own attributes (those below
+ * IfcProduct / IfcGroup / IfcRelConnects, plus Name and GlobalId): every record
+ * that sets it must be read with that value; an attribute no fixture sets at all
+ * is unproven. Pass needs every record found, every attribute set somewhere,
+ * and every value equal. A value the read model has no field for is unexposed.
+ * Relationships pass when both ends carry the link. See `readRow`.
  */
 
 import { cached, storeOf } from '../lib/packages.mjs';
-import { equal, normalize, show, verdict } from '../lib/values.mjs';
+import { equal, normalize, show } from '../lib/values.mjs';
 
 const NO_FIELD = Symbol('no field');
-const MAX_FILES = 3;
-const MAX_RECORDS = 25;
 
 /**
  * The read model names a field after its EXPRESS attribute in camelCase
@@ -96,33 +94,60 @@ export async function extractionOrProblem(ctx, file, problems) {
   }
 }
 
-function checkRecord(row, record, file, ix, types) {
-  const problems = [];
-  const where = `${file.path}#${record.id}`;
-  const value = (attr) => normalize(record.args[row.attributes.indexOf(attr)], file.step, types);
+/**
+ * The read verdict for one row over every record of its entity in `entries`
+ * (`{ file, ix }`, `ix` null when the file did not extract). Pure, and
+ * independent of file order: each attribute is judged over all the records
+ * that set it, so an attribute set in any carrier file must be read with that
+ * value, and one no fixture sets at all is unproven, which keeps the cell
+ * below a full pass until a fixture carries it.
+ */
+export function readRow(row, entries, types, problems = []) {
+  const ordered = [...entries].sort((a, b) => a.file.sha256.localeCompare(b.file.sha256) || a.file.path.localeCompare(b.file.path));
+  const records = ordered.flatMap(({ file, ix }) => file.step.of(row.entity).map((rec) => ({ file, ix, rec, where: `${file.path}#${rec.id}` })));
+  if (!records.length) return { status: 'fail', reason: problems.join('; ') || 'no record was checked' };
+  const value = (r, attr) => normalize(r.rec.args[row.attributes.indexOf(attr)], r.file.step, types);
+  const out = [...problems];
   const link = LINKS[row.root];
+  let found;
+  let attrs;
   if (link) {
     const [from, to, held] = link;
-    const ok = held(ix, value(from), value(to));
-    if (!ok) problems.push(`${where}: link ${from} -> ${to} not in the read model`);
-    for (const attr of row.own.filter((a) => a !== from && a !== to && a !== 'Name')) {
-      if (value(attr) !== null) problems.push(`${where}: ${attr} unexposed`);
+    found = records.filter((r) => r.ix && held(r.ix, value(r, from), value(r, to)));
+    if (found.length < records.length) {
+      const lost = records.filter((r) => !found.includes(r));
+      out.push(`link ${from} -> ${to} not in the read model for ${lost.length} of ${records.length} record(s), e.g. ${lost[0].where}`);
     }
-    return { problems, held: ok };
+    attrs = row.own.filter((a) => a !== from && a !== to && a !== 'Name');
+  } else {
+    found = records.filter((r) => r.ix?.byId.get(r.rec.id)?.type === row.entity);
+    if (found.length < records.length) {
+      const lost = records.filter((r) => !found.includes(r));
+      const hit = lost[0].ix?.byId.get(lost[0].rec.id);
+      out.push(`${lost.length} of ${records.length} record(s) not in the read model, e.g. ${lost[0].where}${hit ? ` (read as ${hit.type})` : ''}`);
+    }
+    attrs = row.rooted ? ['GlobalId', ...row.own] : row.own;
   }
-  const hit = ix.byId.get(record.id);
-  if (!hit || hit.type !== row.entity) {
-    return { problems: [`${where}: not in the read model${hit ? ` (read as ${hit.type})` : ''}`], held: false };
-  }
-  const attrs = row.rooted ? ['GlobalId', ...row.own] : row.own;
   for (const attr of attrs) {
-    const want = value(attr);
-    if (want === null) continue;
-    const got = row.family === 'resource' ? resourceField(hit.info, attr) : rootedField(ix, hit.type, hit.info, attr);
-    if (got === NO_FIELD) problems.push(`${where}: ${attr} unexposed`);
-    else if (!equal(want, got ?? null)) problems.push(`${where}: ${attr} ${show(got ?? null)}, file ${show(want)}`);
+    const setters = records.filter((r) => value(r, attr) !== null);
+    if (!setters.length) { out.push(`${attr}: no fixture sets it, so reading it is unproven`); continue; }
+    if (link) { out.push(`${attr} unexposed (set in ${setters.length} record(s))`); continue; }
+    const read = setters.filter((r) => found.includes(r));
+    if (!read.length) continue; // its records are already reported as not in the read model
+    const field = (r) => {
+      const hit = r.ix.byId.get(r.rec.id);
+      return row.family === 'resource' ? resourceField(hit.info, attr) : rootedField(r.ix, hit.type, hit.info, attr);
+    };
+    if (read.every((r) => field(r) === NO_FIELD)) { out.push(`${attr} unexposed (set in ${setters.length} record(s))`); continue; }
+    const wrong = read.filter((r) => { const got = field(r); return got === NO_FIELD || !equal(value(r, attr), got ?? null); });
+    if (wrong.length) {
+      const got = field(wrong[0]);
+      out.push(`${attr} wrong in ${wrong.length} of ${read.length} record(s), e.g. ${wrong[0].where}: ${got === NO_FIELD ? 'unexposed' : show(got ?? null)}, file ${show(value(wrong[0], attr))}`);
+    }
   }
-  return { problems, held: true };
+  if (!out.length) return { status: 'pass' };
+  const reason = `${out.length} problem(s) over ${records.length} record(s): ${out.slice(0, 6).join('; ')}${out.length > 6 ? '; ...' : ''}`;
+  return { status: found.length ? 'partial' : 'fail', reason };
 }
 
 export default {
@@ -131,23 +156,12 @@ export default {
   async run(rows, ctx) {
     const out = new Map();
     for (const row of rows) {
-      const carriers = ctx.corpus.carriers(row.schema, row.entity).slice(0, MAX_FILES);
+      const carriers = ctx.corpus.carriers(row.schema, row.entity);
       if (!carriers.length) { out.set(row.id, ctx.corpus.nothingCarries(row.schema, row.entity)); continue; }
-      const { types } = ctx.tables[row.schema];
       const problems = [];
-      let checked = 0;
-      let anyHeld = false;
-      for (const file of carriers) {
-        const ix = await extractionOrProblem(ctx, file, problems);
-        if (!ix) { checked++; continue; }
-        for (const record of file.step.of(row.entity).slice(0, MAX_RECORDS)) {
-          checked++;
-          const r = checkRecord(row, record, file, ix, types);
-          problems.push(...r.problems);
-          anyHeld ||= r.held;
-        }
-      }
-      out.set(row.id, { ...verdict(checked, problems, { anyHeld }), evidence: carriers.map((f) => f.path) });
+      const entries = [];
+      for (const file of carriers) entries.push({ file, ix: await extractionOrProblem(ctx, file, problems) });
+      out.set(row.id, { ...readRow(row, entries, ctx.tables[row.schema].types, problems), evidence: carriers.map((f) => f.path) });
     }
     return out;
   },

@@ -294,7 +294,7 @@ test('totals (#9668): stored totals that disagree with the rows are refused by t
     const hidden = run(['--root', dir, '--summary', forged]);
     assert.notEqual(hidden.status, 0);
     // @source-text-assertion-ok asserts on the child process's stderr; target is read from the baseline only to build the forged input
-    assert.match(hidden.stderr, new RegExp(`${target.id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} ${level}: applicability`));
+    assert.ok(hidden.stderr.includes(`${target.id} ${level}: applicability`), hidden.stderr);
     const scored = spawnSync(process.execPath, [join(ROOT, 'tests/structural-coverage/score.mjs'), '--check', forged, '--out', join(dir, 'out.json')], { encoding: 'utf8' });
     assert.equal(scored.status, 2, scored.stderr);
     assert.match(scored.stderr, /disagree with its rows/);

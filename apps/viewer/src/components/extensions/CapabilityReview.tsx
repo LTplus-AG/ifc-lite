@@ -57,6 +57,7 @@ import { formatExtensionDate } from './localized-date';
 
 interface CapabilityReviewProps {
   open: boolean;
+  busy?: boolean;
   summary: ExtensionInstallSummary;
   /** When supplied, render the capability diff vs the previously-granted set. */
   previousGrants?: readonly string[];
@@ -76,6 +77,7 @@ const APPROVE_PHRASE = 'approve';
 
 export function CapabilityReview({
   open,
+  busy = false,
   summary,
   previousGrants,
   previousVersion,
@@ -136,7 +138,7 @@ export function CapabilityReview({
   };
 
   return (
-    <Dialog open={open} onOpenChange={(o) => { if (!o) onCancel(); }}>
+    <Dialog open={open} onOpenChange={(o) => { if (!o && !busy) onCancel(); }}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <div className="flex items-center gap-2">
@@ -289,12 +291,12 @@ export function CapabilityReview({
         </Tabs>
 
         <DialogFooter>
-          <Button variant="ghost" onClick={onCancel}>
+          <Button variant="ghost" disabled={busy} onClick={onCancel}>
             <X className="mr-1 h-4 w-4" />
             {t('extensionsPanels.capabilityReview.cancelButton')}
           </Button>
           <Button
-            disabled={!canApprove}
+            disabled={busy || !canApprove}
             onClick={() => onApprove(Array.from(granted))}
           >
             <CheckCircle2 className="mr-1 h-4 w-4" />

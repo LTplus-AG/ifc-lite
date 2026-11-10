@@ -31,3 +31,9 @@ export function roofEdgeSlopes(roof: RoofGesture, outline: readonly Vec2[]): num
     return (roof.overrides[i] ?? (pitched ? roof.pitch : 0)) * Math.PI / 180;
   });
 }
+
+/** Apply one pitch to sloped edges while keeping explicitly unsloped gable edges. */
+export function withRoofPitch(roof: RoofGesture, value: number): RoofGesture {
+  const pitch = Math.max(0, Math.min(85, value));
+  return { ...roof, pitch, overrides: Object.fromEntries(Object.entries(roof.overrides).map(([edge, slope]) => [edge, slope > 0 ? pitch : 0])) };
+}

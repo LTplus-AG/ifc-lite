@@ -115,6 +115,61 @@ for (const context of contexts) {
     await expect(settings.getByText('SpaceMouse', { exact: true }).first()).toBeVisible();
   });
 
+  test(`${context.name}: palette quick search reaches recents, cycling, native buttons and colorful theme (#8947)`, async ({ page }, info) => {
+    await start(page, true, context);
+    await run(page, 'search:inline', 'recent queries');
+    const input = page.getByRole('combobox', { name: 'Search entities', exact: true });
+    await expect(input).toBeVisible();
+    await expect(input).toBeFocused();
+    await page.keyboard.type('wall');
+    await expect(input).toBeFocused();
+    await expect(input).toHaveValue('wall');
+    await expect(page.locator('#search-inline-popover').getByRole('option').first()).toBeVisible();
+    await input.press('Enter');
+    await expect.poll(() => page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().searchVimCycle?.results.length ?? 0)).toBeGreaterThan(1);
+    const expectedNext = await page.evaluate(() => {
+      const state = globalThis.__ifc_lite_viewer_store__.getState();
+      const cycle = state.searchVimCycle;
+      if (!cycle || cycle.results.length < 2) throw new Error('A real multi-result cycle is required');
+      const next = cycle.results[(cycle.index + 1) % cycle.results.length];
+      return { modelId: next.modelId, expressId: next.expressId, globalId: state.toGlobalId(next.modelId, next.expressId) };
+    });
+    // Native Tab moves out of text entry; n then invokes the real cycle binding.
+    await input.press('Tab');
+    await expect(page.getByRole('button', { name: 'Advanced filter', exact: true })).toBeFocused();
+    await page.keyboard.press('n');
+    await expect.poll(() => page.evaluate(() => {
+      const state = globalThis.__ifc_lite_viewer_store__.getState();
+      return { modelId: state.selectedEntity?.modelId, expressId: state.selectedEntity?.expressId,
+        globalId: state.selectedEntityId, multiSelection: [...state.selectedEntityIds] };
+    })).toEqual({ ...expectedNext, multiSelection: [] });
+    await run(page, 'search:inline', 'quick search');
+    await expect(input).toBeFocused();
+    await input.fill('');
+    const recents = page.locator('#search-inline-popover');
+    const recent = recents.getByRole('option', { name: 'wall', exact: true });
+    await expect(recent).toBeVisible();
+    await recent.press('Space');
+    await expect(input).toHaveValue('wall');
+    await input.fill('');
+    await recents.getByRole('button', { name: 'Clear', exact: true }).press('Enter');
+    await expect(recents).toBeHidden();
+    await run(page, 'search:inline', 'quick search');
+    await expect(input).toBeFocused();
+    await expect(recents).toBeHidden();
+    await input.press('Tab');
+    await page.getByRole('button', { name: 'Advanced filter', exact: true }).press('Enter');
+    await expect(page.getByRole('tab', { name: 'Filter', exact: true })).toHaveAttribute('aria-selected', 'true');
+    await page.keyboard.press('Escape');
+    await run(page, 'pref:colorful', 'rainbow');
+    await expect(page.locator('html')).toHaveClass(/\bcolorful\b/);
+    const { row } = await find(page, 'pref:colorful', 'rainbow');
+    await expect(row).toContainText('On');
+    await info.attach(`${context.name}-colorful-palette.png`, { body: await page.screenshot(), contentType: 'image/png' });
+    await run(page, 'pref:colorful', 'rainbow');
+    await expect(page.locator('html')).not.toHaveClass(/\bcolorful\b/);
+  });
+
   test(`${context.name}: native fallback Open and Add choosers retain user activation (#8947)`, async ({ page }) => {
     // Exercise the production input fallback, with the Chromium-only API absent.
     // No picker handler or load result is substituted. File System Access needs separate evidence.

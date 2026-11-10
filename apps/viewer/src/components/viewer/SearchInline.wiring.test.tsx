@@ -26,7 +26,7 @@ import '@/test/setup-dom.js';
 
 import { after, afterEach, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { render, cleanup, mouseDown, press, advance } from '@/test/render.js';
+import { render, cleanup, click, press, advance } from '@/test/render.js';
 import { useViewerStore } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { toGlobalIdFromModels } from '@/store/globalId';
@@ -95,12 +95,8 @@ function row(container: HTMLElement, name: string): HTMLElement {
   return found[0];
 }
 
-/**
- * `SearchPopover` commits on mousedown, not click — it must beat the input's
- * blur, which would tear the popover down first. So mousedown is the whole
- * user gesture here, and a `click()` would assert nothing.
- */
-const pick = mouseDown;
+/** Native clicks cover both pointer and keyboard activation (#8947). */
+const pick = click;
 
 /** A window-level keystroke, the way the global n/N listener receives it. */
 function pressKey(key: string): void {

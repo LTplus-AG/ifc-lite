@@ -194,4 +194,8 @@ export const commandPaletteIt = {
   "commandPalette.availability.noLoad": "Nessun caricamento corrispondente è ancora in corso",
   "commandPalette.availability.noLoadError": "Questo errore di caricamento è terminato o è stato sostituito",
   "commandPalette.availability.noLoadRetry": "Non è disponibile un nuovo tentativo per questo errore di caricamento",
+  "commandPalette.search.inline.label": "Ricerca rapida",
+  "commandPalette.search.inline.aliases": "ricerca integrata query recenti cronologia cancella filtri successivo precedente scorri",
+  "commandPalette.pref.colorful.label": "Tema colorato",
+  "commandPalette.pref.colorful.aliases": "colorato colore arcobaleno tema aspetto attiva disattiva",
 } satisfies Catalogue;

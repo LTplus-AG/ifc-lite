@@ -205,4 +205,8 @@ export const commandPaletteFr = {
   "commandPalette.availability.noLoad": "Aucun chargement correspondant n’est encore en cours",
   "commandPalette.availability.noLoadError": "Cette erreur de chargement a disparu ou a été remplacée",
   "commandPalette.availability.noLoadRetry": "Aucune nouvelle tentative n’est disponible pour cette erreur de chargement",
+  "commandPalette.search.inline.label": "Recherche rapide",
+  "commandPalette.search.inline.aliases": "recherche intégrée requêtes récentes historique effacer filtres suivant précédent parcourir",
+  "commandPalette.pref.colorful.label": "Thème coloré",
+  "commandPalette.pref.colorful.aliases": "coloré couleur arc-en-ciel thème apparence activer désactiver",
 } satisfies Catalogue;

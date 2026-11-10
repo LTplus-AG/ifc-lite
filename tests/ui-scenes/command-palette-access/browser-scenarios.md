@@ -107,7 +107,7 @@ pnpm exec playwright test --project=viewer-e2e-ci --list \
   tests/e2e/command-palette-access-extension.e2e.spec.ts
 ```
 
-Expect 20 tests (11 frozen UX + 8 access + 1 extension). After the matching
+Expect 22 tests (11 frozen UX + 10 access + 1 extension). After the matching
 artifact is available, coordinator owns the preview and browser lifetimes. Choose a free PLAYWRIGHT_PORT and verify server
 ownership and dist hash: the standard config may reuse an existing server.
 For PC real GPU correctness use ifc-gpu-check, never a plain WSL browser launch.
@@ -132,7 +132,7 @@ From this checkout, after the coordinator has arranged the matching preview:
 
 Set PLAYWRIGHT_JSON_OUTPUT_FILE to an owned evidence path beforehand. Do not
 nest GPU helpers, inherit another owner's browser, or run this against a stale
-artifact. Report host, source/artifact hash, adapter, exits, all 20 outcomes,
+artifact. Report host, source/artifact hash, adapter, exits, all 22 outcomes,
 skips and pageerrors; GPU checks are untimed correctness, never perf proof.
 
 ## Frozen comparisons and new flow captures
@@ -175,3 +175,7 @@ requires separate observed browser evidence.
 Fresh Astra witness objections addressed in source: post-enable command execution
 and completed-frame color evidence. These strengthened assertions remain UNRUN.
 They do not prove withheld-consent enforcement or same-frame stale callback rejection.
+
+Two additional desktop/light and narrow/dark journeys cover search:inline from
+the actual palette, native Tab/Space/Enter, real model selection cycling, recent
+query reuse/clear, advanced Filter and pref:colorful on/off. Both remain UNRUN.

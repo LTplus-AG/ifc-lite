@@ -1484,7 +1484,7 @@ export class Scene {
   }
 
   private translateFlatMeshesForEntity(expressId: number, delta: [number, number, number]): boolean {
-    this.streamWork.topology = null; // positions move in place below
+    this.streamWork.invalidate(); // positions move in place below
     const meshDataList = this.meshDataMap.get(expressId);
     if (!meshDataList || meshDataList.length === 0) return false;
     const [dx, dy, dz] = delta;
@@ -1708,7 +1708,7 @@ export class Scene {
    */
   rotateMeshesForEntity(expressId: number, angleRad: number, pivot: [number, number, number]): boolean {
     this.appearanceController?.cancelFor(expressId);
-    this.streamWork.topology = null;
+    this.streamWork.invalidate(); // positions rotate in place below
     const meshDataList = this.meshDataMap.get(expressId);
     if (!meshDataList || meshDataList.length === 0) return false;
     if (angleRad === 0) return false;

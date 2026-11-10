@@ -109,7 +109,7 @@ function countFround<T>(run: () => T): { result: T; calls: number } {
 interface Load { scene: Scene; finalize: ReturnType<typeof recordingDevice>['work']; streamFround: number; finalizeFround: number; counters: Record<string, number> }
 
 /** Stream like the viewer (one flush per arrival), then the time-sliced finalize. */
-async function streamedLoad(options: { rebuildReference?: boolean; recolor?: number } = {}): Promise<Load> {
+async function streamedLoad(options: { rebuildReference?: boolean; recolor?: number; mutate?: (scene: Scene, first: readonly MeshData[]) => void } = {}): Promise<Load> {
   const { device, work } = recordingDevice();
   const scene = new Scene();
   scene.setSpatialChunking({ cellSize: 32 });
@@ -129,6 +129,7 @@ async function streamedLoad(options: { rebuildReference?: boolean; recolor?: num
     const registered = scene.getMeshDataPieces(batches[0][options.recolor].expressId)![0];
     registered.color = PALETTE[(PALETTE.indexOf(registered.color as [number, number, number, number]) + 1) % PALETTE.length];
   }
+  options.mutate?.(scene, batches[0]);
   Object.assign(work, { vertexWriteBytes: 0, indexWriteBytes: 0, copyBytes: 0, buffers: 0 });
   perfCounters.enable();
   const before = perfCounters.read();
@@ -197,6 +198,29 @@ describe('cold finalize work after the last batch arrived', () => {
     const reference = await streamedLoad({ rebuildReference: true });
     assert.equal(reference.counters['render.finalize.assembled.count'] ?? 0, 0, 'the reference took the full rebuild');
     assert.ok(reference.finalize.vertexWriteBytes > 0);
+    assert.deepEqual(assembled.scene.getBatchedMeshes().map(decoded), reference.scene.getBatchedMeshes().map(decoded));
+  });
+
+  it('a recolour that keeps the bucket key but changes the entity-lane salt rebuilds that bucket', async () => {
+    // colorKey rounds to 1/1000 and the salt to 1/255: both colours key `504|…`, but salt from 128 and 129.
+    const before: [number, number, number, number] = [0.50388, 0.3, 0.3, 1];
+    const after: [number, number, number, number] = [0.50396, 0.3, 0.3, 1];
+    const recolour = (scene: Scene, first: readonly MeshData[]) => {
+      const target = first.find((mesh) => mesh.color === before)!;
+      scene.getMeshDataPieces(target.expressId)![0].color = after;
+    };
+    const seed = (load: () => Promise<Load>) => { PALETTE.push(before); return load().finally(() => PALETTE.pop()); };
+    const assembled = await seed(() => streamedLoad({ mutate: recolour }));
+    const reference = await seed(() => streamedLoad({ mutate: recolour, rebuildReference: true }));
+    assert.ok((assembled.counters['render.finalize.rebuilt.uncovered'] ?? 0) > 0, 'the stale fragment is not assembled from');
+    assert.deepEqual(assembled.scene.getBatchedMeshes().map(decoded), reference.scene.getBatchedMeshes().map(decoded));
+  });
+
+  it('positions moved in place while streaming: nothing is assembled from the stale fragments', async () => {
+    const move = (scene: Scene, first: readonly MeshData[]) => { scene.translateMeshesForEntity(first[0].expressId, [0.25, 0, 0]); };
+    const assembled = await streamedLoad({ mutate: move });
+    const reference = await streamedLoad({ mutate: move, rebuildReference: true });
+    assert.equal(assembled.counters['render.finalize.assembled.count'] ?? 0, 0);
     assert.deepEqual(assembled.scene.getBatchedMeshes().map(decoded), reference.scene.getBatchedMeshes().map(decoded));
   });
 

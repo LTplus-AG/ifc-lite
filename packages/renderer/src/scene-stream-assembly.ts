@@ -37,7 +37,7 @@ import type { LatticeFrame } from './quantize.js';
 import { QUANT_BYTES_PER_VERTEX } from './quantize.js';
 import { BATCH_CONSTANTS } from './constants.js';
 import { TopologyMemo } from './scene-precision.js';
-import { entityLaneOf, packEntityLane } from './scene-geometry.js';
+import { colorSaltByte, entityLaneOf, packEntityLane } from './scene-geometry.js';
 import { createBatchUniform } from './scene-batch-upload.js';
 import type { BatchQuantization } from './scene-derived-batches.js';
 import { createStaticGpuBuffer } from './gpu-static-upload.js';
@@ -48,6 +48,8 @@ import { LOD_MIN_TRIANGLES, lodCellSizeForBounds, simplifyIndicesByClustering } 
 interface FragmentRun {
   readonly fragment: BatchedMesh;
   readonly meshes: readonly MeshData[];
+  /** Each mesh's colour salt in the entity lane when uploaded: an in-place recolour that keeps its bucket still changes it. */
+  readonly salts: Uint8Array;
 }
 
 export interface AssembleOptions {
@@ -87,7 +89,13 @@ export class StreamAssembly {
 
   /** Record a fragment uploaded from these registered meshes, whole and in this order. */
   record(fragment: BatchedMesh, meshes: readonly MeshData[]): void {
-    if (meshes.length > 0) this.runs.set(meshes[0], { fragment, meshes });
+    if (meshes.length > 0) this.runs.set(meshes[0], { fragment, meshes, salts: Uint8Array.from(meshes, (mesh) => colorSaltByte(mesh.color)) });
+  }
+
+  /** Positions changed in place: no fragment's bytes, nor any verdict, can be trusted. */
+  invalidate(): void {
+    this.runs.clear();
+    this.topology = null;
   }
 
   /** Fragments a finalize may assemble from: the ones it is about to retire. */
@@ -118,6 +126,7 @@ export class StreamAssembly {
     meshes: readonly MeshData[], color: [number, number, number, number],
     device: GPUDevice, pipeline: RenderPipeline, options: AssembleOptions,
   ): BatchedMesh | null {
+    if (!this.live) return null; // only a finalize assembles, from the fragments it retires
     const runs = this.cover(meshes);
     const miss = runs ? encodingMiss(runs, options) : 'uncovered';
     if (miss || !runs) {
@@ -219,7 +228,9 @@ export class StreamAssembly {
       const run = this.runs.get(meshes[i]);
       if (!run || !live.has(run.fragment) || run.fragment.gpuResident === false || !run.fragment.bounds
         || i + run.meshes.length > meshes.length) return null;
-      for (let k = 1; k < run.meshes.length; k++) if (run.meshes[k] !== meshes[i + k]) return null;
+      for (let k = 0; k < run.meshes.length; k++) {
+        if (run.meshes[k] !== meshes[i + k] || run.salts[k] !== colorSaltByte(meshes[i + k].color)) return null;
+      }
       out.push(run);
       i += run.meshes.length;
     }

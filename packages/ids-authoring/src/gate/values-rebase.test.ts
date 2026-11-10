@@ -26,6 +26,23 @@ describe('rebaseRestriction', () => {
     expect(rebaseRestriction({ type: 'bounds', minInclusive: 1, unparseableFacets: [{ facet: 'maxInclusive', rawValue: 'x' }] }, 'xs:integer')).toBeUndefined();
   });
 
+  it('leaves a base whose literals are not checked, a pattern, and fractionDigits under xs:integer', () => {
+    expect(rebaseRestriction({ type: 'enumeration', values: ['good', 'bad'] }, 'xs:date')).toBeUndefined();
+    expect(rebaseRestriction({ type: 'enumeration', values: ['x'] }, 'xs:anyURI')).toBeUndefined();
+    expect(rebaseRestriction({ type: 'pattern', pattern: '[A-Z]{2}' }, 'xs:integer')).toBeUndefined();
+    expect(rebaseRestriction({ type: 'bounds', minInclusive: 1, fractionDigits: 2 }, 'xs:integer')).toBeUndefined();
+    expect(rebaseRestriction({ type: 'bounds', minInclusive: 1, fractionDigits: 2 }, 'xs:decimal'))
+      .toEqual({ type: 'bounds', minInclusive: 1, fractionDigits: 2, base: 'xs:decimal' });
+  });
+
+  it('moves boolean and string enumerations', () => {
+    expect(rebaseRestriction({ type: 'enumeration', values: ['true', 'false'] }, 'xs:boolean'))
+      .toEqual({ type: 'enumeration', values: ['true', 'false'], base: 'xs:boolean' });
+    expect(rebaseRestriction({ type: 'enumeration', values: ['yes'] }, 'xs:boolean')).toBeUndefined();
+    expect(rebaseRestriction({ type: 'enumeration', values: ['A'], base: 'xs:integer' }, 'xs:string'))
+      .toEqual({ type: 'enumeration', values: ['A'], base: 'xs:string' });
+  });
+
   it('leaves simple values, conjunctions and restrictions already on the base', () => {
     expect(rebaseRestriction({ type: 'simpleValue', value: '3' }, 'xs:integer')).toBeUndefined();
     expect(rebaseRestriction({ type: 'enumeration', values: ['1'], base: 'xs:integer' }, 'xs:integer')).toBeUndefined();

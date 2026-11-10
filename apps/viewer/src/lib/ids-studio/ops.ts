@@ -9,8 +9,10 @@
  */
 
 import {
+  rebaseRestriction,
   uuidv7,
   type FacetDraft,
+  type GateContext,
   type FacetFieldName,
   type InfoField,
   type Scalar,
@@ -21,7 +23,8 @@ import {
   type Uuid,
   type ValueInput,
 } from '@ifc-lite/ids-authoring';
-import type { IFCVersion, PartOfRelation, RequirementOptionality } from '@ifc-lite/ids';
+import type { IDSPropertyFacet, IFCVersion, PartOfRelation, RequirementOptionality } from '@ifc-lite/ids';
+import { dataTypeBase } from './schema-pickers';
 
 /** Blank text clears an optional field (IDS omits empty attributes). */
 const textOrNull = (value: string): string | null => (value.trim() ? value : null);
@@ -79,6 +82,23 @@ export function moveFacetOp(facetId: Uuid, toIndex: number): StudioOp {
 /** `null` removes an optional field (a value, a predefinedType, a dataType). */
 export function setFieldOp(facetId: Uuid, field: FacetFieldName, value: ValueInput | null): StudioOp {
   return { kind: 'facet.setField', opId: uuidv7(), payload: { facetId, field, value } };
+}
+
+/**
+ * Set a property's data type, and in the same batch move a value set before
+ * it onto the data type's XSD base. The value form writes the base only when
+ * the value is applied, so a list typed first would otherwise keep no base
+ * and be written as `xs:string`.
+ */
+export function dataTypeOps(
+  facetId: Uuid, facet: IDSPropertyFacet, input: ValueInput | null, gate: GateContext, versions: readonly IFCVersion[],
+): StudioOp[] {
+  const base = input?.kind === 'equals' ? dataTypeBase(gate, versions, String(input.value)) : undefined;
+  const rebased = facet.value && base ? rebaseRestriction(facet.value, base) : undefined;
+  return [
+    setFieldOp(facetId, 'property.dataType', input),
+    ...(rebased ? [setFieldOp(facetId, 'property.value', { kind: 'raw', constraint: rebased })] : []),
+  ];
 }
 
 export function setRelationOp(facetId: Uuid, relation: PartOfRelation): StudioOp {

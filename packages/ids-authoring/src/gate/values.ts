@@ -133,19 +133,26 @@ function siblings(and: readonly IDSConstraint[] | undefined, base: string | unde
   return (and ?? []).flatMap((s) => checkConstraint(s, base));
 }
 
+/** Bases whose literals `literalOk` actually checks (it accepts anything under the rest). */
+const REBASE_TARGETS = new Set([...NUMERIC_BASES, 'xs:boolean', 'xs:string']);
+
 /**
  * `c` moved onto restriction base `base` (the XSD type behind a newly chosen
  * property dataType), or `undefined` when it already has that base, is not a
- * single restriction, or would not hold under it: an enumeration value that
- * is not a `base` literal, bounds under a non-numeric base, a fractional
- * bound under `xs:integer`, or a length facet (XSD allows those on strings
- * only).
+ * single enumeration or bounds, or might not hold under it: a base whose
+ * literals are not checked (temporal, URI), an enumeration value that is not
+ * a `base` literal, bounds under a non-numeric base, a fractional bound or
+ * `fractionDigits` under `xs:integer`, or a length facet (XSD allows those
+ * on strings only). A pattern keeps its base, so IDSL-VAL-002 still reports
+ * a pattern that does not fit the data type.
  */
 export function rebaseRestriction(c: IDSConstraint, base: string): IDSConstraint | undefined {
-  if (c.type === 'simpleValue' || c.base === base || c.and?.length) return undefined;
+  if ((c.type !== 'enumeration' && c.type !== 'bounds') || c.base === base || c.and?.length) return undefined;
+  if (!REBASE_TARGETS.has(base)) return undefined;
   if (c.type === 'bounds') {
     if (!NUMERIC_BASES.has(base) || c.temporalBounds) return undefined;
     if (c.length !== undefined || c.minLength !== undefined || c.maxLength !== undefined) return undefined;
+    if (base === 'xs:integer' && (c.fractionDigits ?? 0) > 0) return undefined;
     const limits = [c.minInclusive, c.minExclusive, c.maxInclusive, c.maxExclusive];
     if (limits.some((v) => v !== undefined && !literalOk(base, String(v)))) return undefined;
   }

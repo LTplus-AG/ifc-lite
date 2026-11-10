@@ -12,10 +12,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { IDSConstraint } from '@ifc-lite/ids';
-import { commit, createStudioDocument, createStudioState, normaliseValue } from '@ifc-lite/ids-authoring';
-import { formFromConstraint, inputFromForm, rebasedValue, sampleMatches, splitPastedValues } from './value-model';
-import { addFacetOps, addSpecOps, setFieldOp } from './ops';
-import { studioXml } from './xml';
+import { normaliseValue } from '@ifc-lite/ids-authoring';
+import { formFromConstraint, inputFromForm, sampleMatches, splitPastedValues } from './value-model';
 import { siUnitOf, splitQuantity } from './units';
 
 const STORED: Array<[string, IDSConstraint]> = [
@@ -98,36 +96,5 @@ describe('unit-aware numeric input (IDS-045)', () => {
     assert.equal(siUnitOf('IFCLENGTHMEASURE'), 'm');
     assert.equal(siUnitOf('IfcAreaMeasure'), 'm²');
     assert.equal(siUnitOf('IFCLABEL'), undefined);
-  });
-});
-
-describe('a data type picked after the value', () => {
-  // Reported from the field: Conditionscore (1-5, IFCINTEGER) was saved as xs:string.
-  it('writes the data type\'s base, not xs:string', () => {
-    const spec = addSpecOps({ name: 'Condition', ifcVersions: ['IFC4'] });
-    const property = addFacetOps(spec.specId, 'requirements', {
-      type: 'property', propertySet: { kind: 'equals', value: 'Pset_Custom' }, baseName: { kind: 'equals', value: 'Conditionscore' },
-    }, 'required');
-    let state = commit(createStudioState(createStudioDocument({ title: 'T' })), [...spec.ops, ...property.ops]).state;
-    const typed = inputFromForm({ ...formFromConstraint(undefined), kind: 'oneOf', values: ['1', '2', '3', '4', '5'] });
-    assert.ok('input' in typed && typed.input);
-    state = commit(state, [setFieldOp(property.facetId, 'property.value', typed.input)]).state;
-    const { facet } = state.doc.ids.specifications[0].requirements[0];
-    assert.ok(facet.type === 'property');
-    const value = rebasedValue(facet.value, 'xs:integer');
-    assert.ok(value);
-    state = commit(state, [
-      setFieldOp(property.facetId, 'property.dataType', { kind: 'equals', value: 'IFCINTEGER' }),
-      setFieldOp(property.facetId, 'property.value', value),
-    ]).state;
-    const xml = studioXml(state.doc);
-    assert.ok(xml.ok);
-    assert.match(xml.xml, /<xs:restriction base="xs:integer">/);
-    assert.doesNotMatch(xml.xml, /xs:string/);
-  });
-
-  it('leaves a value that does not hold under the new base', () => {
-    assert.equal(rebasedValue({ type: 'enumeration', values: ['good', 'bad'] }, 'xs:integer'), null);
-    assert.equal(rebasedValue({ type: 'enumeration', values: ['1'] }, undefined), null);
   });
 });

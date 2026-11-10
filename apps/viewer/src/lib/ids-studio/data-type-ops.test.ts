@@ -57,7 +57,9 @@ describe('a data type picked after the value', () => {
     const { facet } = state.doc.ids.specifications[0].requirements[0];
     assert.ok(facet.type === 'property');
     assert.equal(dataTypeOps(facetId, facet, null, gate, ['IFC4']).length, 1);
-    assert.equal(dataTypeOps(facetId, facet, { kind: 'equals', value: 'IFCLABEL' }, gate, ['IFC4']).length, 2);
+    // An unbased list is already written as xs:string, so IFCLABEL needs no value op.
+    assert.equal(dataTypeOps(facetId, facet, { kind: 'equals', value: 'IFCLABEL' }, gate, ['IFC4']).length, 1);
+    assert.equal(dataTypeOps(facetId, facet, { kind: 'equals', value: 'IFCINTEGER' }, gate, ['IFC4']).length, 2);
     assert.equal(dataTypeOps(facetId, facet, { kind: 'equals', value: 'NOT_A_TYPE' }, gate, ['IFC4']).length, 1);
   });
 });

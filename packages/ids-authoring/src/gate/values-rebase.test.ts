@@ -35,12 +35,22 @@ describe('rebaseRestriction', () => {
       .toEqual({ type: 'bounds', minInclusive: 1, fractionDigits: 2, base: 'xs:decimal' });
   });
 
-  it('moves boolean and string enumerations', () => {
-    expect(rebaseRestriction({ type: 'enumeration', values: ['true', 'false'] }, 'xs:boolean'))
-      .toEqual({ type: 'enumeration', values: ['true', 'false'], base: 'xs:boolean' });
-    expect(rebaseRestriction({ type: 'enumeration', values: ['yes'] }, 'xs:boolean')).toBeUndefined();
+  it('leaves what XSD does not allow on the new base', () => {
+    // xs:boolean takes no enumeration; xs:double and xs:float take no digits facets.
+    expect(rebaseRestriction({ type: 'enumeration', values: ['true', 'false'] }, 'xs:boolean')).toBeUndefined();
+    expect(rebaseRestriction({ type: 'bounds', minInclusive: 1, fractionDigits: 2 }, 'xs:double')).toBeUndefined();
+    expect(rebaseRestriction({ type: 'bounds', minInclusive: 1, totalDigits: 3 }, 'xs:float')).toBeUndefined();
+    expect(rebaseRestriction({ type: 'enumeration', values: ['1'], base: 'xs:integer', toleranceRule: 'ids11-418' }, 'xs:string')).toBeUndefined();
+  });
+
+  it('moves a string enumeration off a numeric base', () => {
     expect(rebaseRestriction({ type: 'enumeration', values: ['A'], base: 'xs:integer' }, 'xs:string'))
       .toEqual({ type: 'enumeration', values: ['A'], base: 'xs:string' });
+  });
+
+  it('leaves a value the writer already emits with that base', () => {
+    expect(rebaseRestriction({ type: 'enumeration', values: ['A'] }, 'xs:string')).toBeUndefined();
+    expect(rebaseRestriction({ type: 'bounds', minInclusive: 1 }, 'xs:double')).toBeUndefined();
   });
 
   it('leaves simple values, conjunctions and restrictions already on the base', () => {

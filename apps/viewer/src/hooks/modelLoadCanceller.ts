@@ -120,6 +120,23 @@ export function settleOwnedLoadUi(release: () => void, progress: LoadProgress = 
 // unfinished load, while concurrent federated additions remain independent.
 const pendingLoads = new Map<() => void, () => void>();
 
+/** Work waiting to start a load, keyed to the newer load starts that supersede it. */
+const supersessionWatches = new Map<AbortController, 'primary' | 'any'>();
+
+/**
+ * A signal that aborts when a newer load starts (L6, L9): with `'primary'`
+ * only a load that replaces the scene, with `'any'` every load the user
+ * starts. Work that waits before its own load begins (a queued federated add,
+ * a URL autoload's fetch, a reload resume, a cache revalidation) checks it
+ * before loading. `stop` ends the watch; call it before starting that load,
+ * or once the work ends.
+ */
+export function watchLoadSupersession(scope: 'primary' | 'any'): { signal: AbortSignal; stop(): void } {
+  const controller = new AbortController();
+  supersessionWatches.set(controller, scope);
+  return { signal: controller.signal, stop: () => { supersessionWatches.delete(controller); } };
+}
+
 /**
  * Publish a canceller for the load that `supersede` belongs to. Returns the
  * release to call when that load ends by any path; it clears the slot only
@@ -132,6 +149,11 @@ export function installModelLoadCanceller(
   activity?: LoadActivity,
 ): () => void {
   const store = getViewerStoreApi();
+  for (const [watch, scope] of [...supersessionWatches]) {
+    if (scope === 'primary' && kind !== 'primary') continue;
+    supersessionWatches.delete(watch);
+    watch.abort();
+  }
   if (kind === 'primary') {
     for (const abandon of [...pendingLoads.keys()]) abandon();
   }

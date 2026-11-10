@@ -13,7 +13,7 @@ import { attachCapturedLoad } from '@/lib/error-reports/correlation';
 import { useShallow } from 'zustand/react/shallow';
 import { type FederatedModel, useViewerStore } from '@/store';
 import { resolveLoadTessellationTier, isMeshOnlyCacheEnabled } from '../store/constants.js';
-import { createModelLoadActivity, handOffToRetry, installModelLoadCanceller, LOAD_COMPLETE, settleOwnedLoadUi } from './modelLoadCanceller.js';
+import { createModelLoadActivity, handOffToRetry, installModelLoadCanceller, LOAD_COMPLETE, settleOwnedLoadUi, watchLoadSupersession } from './modelLoadCanceller.js';
 import type { ModelLoadOptions } from './modelLoadOptions.js';
 import { assertWorkflowOwner } from '@/lib/flow/run-session';
 import { buildModelLoadedGeometryProps, reportOmittedTypeRecords, reportRefusedLengthUnit, reportSkippedHungElements, warnGeometryDiagnostics } from './modelLoadedGeometryProps.js';
@@ -244,7 +244,6 @@ export function useIfcLoader() {
 
   // Background revalidation of a SERVED cache hit (#4269): `ingest/cacheRevalidation.ts`.
   const revalidateServedCacheHit = useCallback((hit: ServedCacheHit) => revalidateServedCache(hit, {
-    isCurrent: (session) => loadSessionRef.current === session,
     reload: (file, target) => loadFileRef.current?.(file, target),
   }), []);
 
@@ -1197,10 +1196,11 @@ export function useIfcLoader() {
                 void revalidateServedCacheHit({
                   file,
                   target,
+                  modelId,
                   identity: placementIdentity,
                   cacheKey,
                   expectedHash: revalidateAgainst,
-                  session: currentSession,
+                  supersession: watchLoadSupersession('any'),
                 });
               }
               return;

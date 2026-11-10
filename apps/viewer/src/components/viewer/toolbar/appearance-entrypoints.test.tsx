@@ -32,7 +32,7 @@ describe('appearance entry points #4243', () => {
   it('opens the workspace from the command palette', async () => {
     render(<BimProvider><CommandPalette open onOpenChange={() => {}} /></BimProvider>);
     const row = [...document.body.querySelectorAll<HTMLElement>('[role="option"]')]
-      .find(element => element.textContent?.trim() === 'Appearance');
+      .find(element => element.getAttribute('aria-label') === 'Appearance');
     assert.ok(row, 'The palette must expose Appearance');
     click(row);
     await act(async () => { await new Promise<void>(resolve => requestAnimationFrame(() => resolve())); });

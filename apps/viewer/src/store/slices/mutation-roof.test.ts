@@ -51,7 +51,7 @@ describe('roof by footprint in the viewer (#9296 round 3)', () => {
     assert.equal(hip.type, '.HIP_ROOF.');
 
     const depth = undoDepth();
-    assert.deepEqual(editRoofIn(useViewerStore, MODEL_ID, roofId, { EdgeSlopes: [30 * D, 0, 30 * D, 0], Overhang: 0.5 }), { ok: true });
+    assert.deepEqual(editRoofIn(useViewerStore, MODEL_ID, roofId, { EdgeSlopes: [30 * D, 0, 30 * D, 0], Overhang: 0.5 }), { ok: true, remesh: [roofId] });
     assert.equal(body(roofId).type, '.GABLE_ROOF.');
     assert.notEqual(body(roofId).shape, hip.shape, 'the planes were rebuilt');
     const stack = useViewerStore.getState().undoStacks.get(MODEL_ID) ?? [];
@@ -75,7 +75,7 @@ describe('roof by footprint in the viewer (#9296 round 3)', () => {
       if (entity === added.expressId && pset === 'IfcLite_RoofFootprint') published.push([name, value]);
     } });
     try {
-      assert.deepEqual(editRoofIn(useViewerStore, MODEL_ID, added.expressId, { Edge: { Index: 1, Slope: 0 }, Overhang: 0.5 }), { ok: true });
+      assert.deepEqual(editRoofIn(useViewerStore, MODEL_ID, added.expressId, { Edge: { Index: 1, Slope: 0 }, Overhang: 0.5 }), { ok: true, remesh: [added.expressId] });
     } finally {
       useViewerStore.setState({ mirrorPropertyEdit: original });
     }

@@ -68,6 +68,15 @@ async function init(transport: InProcessTransport, id = 1): Promise<unknown> {
 }
 
 describe('MCP server: handshake', () => {
+  it('ignores initialized notifications before initialize (lifecycle audit)', async () => {
+    const { transport } = build();
+    await transport.send({ jsonrpc: '2.0', method: 'notifications/initialized' });
+    const response = await transport.send({ jsonrpc: '2.0', id: 90, method: 'tools/list' });
+    expect(response).toMatchObject({ error: { code: -32002 } });
+    await init(transport);
+    expect(await transport.send({ jsonrpc: '2.0', id: 91, method: 'tools/list' })).toHaveProperty('result');
+  });
+
   it('returns server info on initialize', async () => {
     const { transport } = build();
     const res = await init(transport) as { result: { serverInfo: { name: string }; protocolVersion: string } };

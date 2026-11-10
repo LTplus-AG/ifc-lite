@@ -32,7 +32,8 @@ export default defineConfig({
       '@ifc-lite/parser': path.resolve(__dirname, '../parser/src/index.ts'),
       // ifcx's entity-extractor imports @ifc-lite/pointcloud; alias it to src so
       // the suite resolves on a clean checkout without built dists. pointcloud's
-      // src pulls in no further workspace deps (only laz-perf + node builtins).
+      // own `@ifc-lite/wasm-lifecycle` import resolves from dist/, which the
+      // schema-conformance workflow builds with export's `^...` closure.
       '@ifc-lite/pointcloud': path.resolve(__dirname, '../pointcloud/src/index.ts'),
       // `@ifc-lite/mutations` imports this; it publishes only `./dist`, and the
       // schema-conformance workflow runs this suite straight after

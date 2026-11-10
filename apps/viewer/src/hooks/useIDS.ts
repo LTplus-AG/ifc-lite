@@ -40,7 +40,7 @@ import { posthog } from '../lib/analytics';
 import { errorCaptureProps } from '../lib/load-errors';
 import { useValidationResults, type UseValidationResults } from './validation/useValidationResults';
 import { useValidationEpoch } from './validation/useValidationEpoch';
-import { guardValidationRun } from './validation/validationRunGuard';
+import { captureRunIdentity, guardAnalysisRun } from './analysisRunGuard';
 
 export interface UseIDSOptions {
   /** Automatically apply color overrides after validation */
@@ -199,7 +199,7 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
     // A teardown that changes the model set ends this run instead of only
     // resetting its flags (A1).
     // The render-time `models` / `ifcDataStore` the target was resolved from.
-    const federation = guardValidationRun(useViewerStore, { models, ifcDataStore }, cancelThisRun);
+    const federation = guardAnalysisRun(useViewerStore, cancelThisRun, captureRunIdentity({ models, ifcDataStore }));
     const job = beginActivity({ kind: 'check', title: 'activityTray.job.validation', panel: 'validation', subject: document.info.title,
       cancel: cancelThisRun });
     let outcome: 'completed' | 'failed' | 'cancelled' = 'cancelled';

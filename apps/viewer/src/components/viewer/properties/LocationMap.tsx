@@ -353,7 +353,7 @@ export function LocationMap({
     setPickedElevation(null);
   }, []);
 
-  const mapReady = useLocationMapReady(containerRef, !!latLon);
+  const mapReady = useLocationMapReady(!!latLon);
   useEffect(() => {
     if (!mapReady || !latLon || !containerRef.current) return;
     if (mapUnavailable) return;

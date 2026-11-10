@@ -1,29 +1,32 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-import { useEffect, useState, type RefObject } from 'react';
+import { useEffect, useState } from 'react';
 import { useViewerStore } from '@/store';
+import { getGlobalRenderer } from '@/hooks/useBCF';
 
-/** Initialise only a visible minimap; old browsers fall back to load settlement. */
-export function useLocationMapReady(container: RefObject<HTMLDivElement | null>, hasLocation: boolean): boolean {
+/** Keep initial WebGL setup after scene drain/finalise, then latch readiness. */
+export function useLocationMapReady(hasLocation: boolean): boolean {
   const loading = useViewerStore((s) => s.loading);
-  const [visible, setVisible] = useState(false);
-  const observesVisibility = typeof IntersectionObserver === 'function';
-  const eligible = !observesVisibility && !loading && hasLocation;
-  const [settledOnce, setSettledOnce] = useState(eligible);
-  useEffect(() => { if (eligible) setSettledOnce(true); }, [eligible]);
+  const [ready, setReady] = useState(false);
   useEffect(() => {
-    const element = container.current;
-    if (!element || !hasLocation || settledOnce || visible || !observesVisibility) return;
-    const observer = new IntersectionObserver((entries) => {
-      if (entries.some((entry) => entry.isIntersecting && entry.intersectionRatio > 0)) {
-        setVisible(true);
-        observer.disconnect();
+    if (ready || loading || !hasLocation) return;
+    let frame = 0;
+    const check = () => {
+      const state = useViewerStore.getState();
+      if (state.loading) return; // a new load owns the next effect
+      const scene = getGlobalRenderer()?.getScene();
+      // Finalisation empties fragments before its async rebuild ends. Both
+      // guards are required; loading=false alone precedes this whole phase.
+      if (state.geometryStreamingActive || state.pendingInstancedShards?.length
+        || scene?.hasQueuedMeshes() || scene?.hasStreamingFragments() || scene?.isFinalizeInProgress()) {
+        frame = requestAnimationFrame(check);
+        return;
       }
-    }, { threshold: 0.01 });
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, [container, hasLocation, settledOnce, visible, observesVisibility]);
-  // Later primary/federated loads must not re-enter the init effect and flyTo.
-  return settledOnce || eligible || visible;
+      setReady(true);
+    };
+    frame = requestAnimationFrame(check);
+    return () => cancelAnimationFrame(frame);
+  }, [ready, loading, hasLocation]);
+  return ready;
 }

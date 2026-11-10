@@ -19,10 +19,10 @@
     "test": "vitest run"
   },
   "devDependencies": {
-    "@mergifyio/vitest": "^2026.10.11",
+    "@mergifyio/vitest": "^2026.11.5",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.5",
-    "vite": "^8.3.5"
+    "vitest": "^5.1.0",
+    "vite": "^8.3.6"
   },
   "license": "MPL-2.0",
   "repository": {

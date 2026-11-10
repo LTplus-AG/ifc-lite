@@ -28,3 +28,12 @@ it('uses the exact exclusive wasm32 source boundary', () => {
   expect(wasmBytesScanAllowed(2 ** 31)).toBe(false);
   expect(wasmBytesScanAllowed(2 ** 31 + 1)).toBe(false);
 });
+
+// PR #9617: scan eligibility rejects invalid numeric sizes as well.
+it('refuses non-finite, negative and fractional sizes', () => {
+  for (const size of [NaN, Infinity, -Infinity, -1, -0.5, 0.5]) {
+    expect(wasmBytesScanAllowed(size)).toBe(false);
+  }
+  expect(wasmBytesScanAllowed(0)).toBe(true);
+  expect(wasmBytesScanAllowed(1)).toBe(true);
+});

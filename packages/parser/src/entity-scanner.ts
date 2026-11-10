@@ -268,7 +268,7 @@ async function scanEntities(
  * The whole-source allocation must fit Rust wasm32 isize::MAX.
  */
 export function wasmBytesScanAllowed(byteLength: number): boolean {
-  return byteLength < WASM_SOURCE_BYTE_LIMIT;
+  return Number.isInteger(byteLength) && byteLength >= 0 && byteLength < WASM_SOURCE_BYTE_LIMIT;
 }
 
 function selectWasmScanFunction(api: WasmScanApi | undefined, uint8Buffer: Uint8Array): WasmScanFunction | null {

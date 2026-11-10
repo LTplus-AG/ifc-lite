@@ -15,5 +15,8 @@ export class WasmSourceSizeError extends RangeError {
 }
 
 export function assertWasmSourceSize(byteLength: number): void {
+  if (!Number.isInteger(byteLength) || byteLength < 0) {
+    throw new RangeError('IFC source byte length must be a finite non-negative integer');
+  }
   if (byteLength >= WASM_SOURCE_BYTE_LIMIT) throw new WasmSourceSizeError();
 }

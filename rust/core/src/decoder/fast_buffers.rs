@@ -110,6 +110,63 @@ impl EntityDecoder<'_> {
         }
         None
     }
+
+    /// Whether [`Self::decode_by_id`] would read `id` as a plain `IfcFace`,
+    /// proven from its bytes without decoding it: the record is exactly
+    /// `#n=IFCFACE((#a,#b,...));`, STEP whitespace allowed between tokens, the
+    /// keyword upper case, every name a `u32` express id. The decode reads every
+    /// such record as an `IfcFace` holding one reference list and cannot refuse
+    /// it (no literal the tokenizer rejects, no REAL for strict admission), so a
+    /// caller that decodes a face only to learn whether it is an
+    /// `IfcAdvancedFace` may skip that decode on `true`. The skipped decode would
+    /// only have filled the entity memo. `false` for anything else (a comment,
+    /// another keyword or spelling, an empty list) and for an id this decoder
+    /// already holds decoded, whose memo the decode would have returned: those
+    /// decode as before.
+    pub fn is_plain_face(&mut self, id: u32) -> bool {
+        !self.cache.contains_key(&id) && self.get_raw_bytes(id).is_some_and(is_plain_face_record)
+    }
+}
+
+/// `#n = IFCFACE ( ( #a , ... ) ) ;` and nothing else up to the `;`, which is
+/// where the tokenizer stops reading too. See [`EntityDecoder::is_plain_face`].
+fn is_plain_face_record(record: &[u8]) -> bool {
+    let mut at = 0;
+    // `token` after optional STEP whitespace (a subset of the tokenizer's trivia).
+    let eat = |at: &mut usize, token: &[u8]| {
+        while record.get(*at).copied().is_some_and(crate::parser::is_step_space) {
+            *at += 1;
+        }
+        let found = record[*at..].starts_with(token);
+        *at += if found { token.len() } else { 0 };
+        found
+    };
+    // `#digits` with no space inside, as the tokenizer's `entity_ref` reads it.
+    let name = |at: &mut usize| {
+        if !eat(at, b"#") {
+            return false;
+        }
+        let digits = record[*at..].iter().take_while(|b| b.is_ascii_digit()).count();
+        let id = (digits > 0).then(|| crate::express_id::parse_express_id(&record[*at..*at + digits]));
+        *at += digits;
+        id.flatten().is_some()
+    };
+    if !(name(&mut at) && eat(&mut at, b"=") && eat(&mut at, b"IFCFACE")) {
+        return false;
+    }
+    // A longer keyword (`IFCFACESURFACE`, `IFCFACE_X`) is another entity.
+    if record.get(at).is_some_and(|&b| b.is_ascii_alphanumeric() || b == b'_') {
+        return false;
+    }
+    if !(eat(&mut at, b"(") && eat(&mut at, b"(") && name(&mut at)) {
+        return false;
+    }
+    while eat(&mut at, b",") {
+        if !name(&mut at) {
+            return false;
+        }
+    }
+    eat(&mut at, b")") && eat(&mut at, b")") && eat(&mut at, b";")
 }
 
 #[cfg(test)]

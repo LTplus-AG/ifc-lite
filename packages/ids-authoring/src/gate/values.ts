@@ -145,15 +145,10 @@ function siblings(and: readonly IDSConstraint[] | undefined, base: string | unde
 
 /**
  * `c` moved onto restriction base `base` (the XSD type behind a newly chosen
- * property dataType), or `undefined` when the move changes nothing or might
- * not hold. It changes nothing when `c` is already written with that base
- * (its own, or the writer's default: `xs:string`, or `xs:double` for numeric
- * bounds). It might not hold for anything but a single enumeration or bounds,
- * a base outside REBASE_TARGETS, an enumeration value that is not a `base`
- * literal, a tolerance rule on a non-numeric base, bounds under a non-numeric
- * base, a fractional bound under `xs:integer`, a length facet (strings only),
- * or a digits facet outside DIGITS_BASES. A pattern keeps its base, so
- * IDSL-VAL-002 still reports a pattern that does not fit the data type.
+ * property dataType), or `undefined` when `c` is already written with that
+ * base or might not be valid XSD under it. Only a single enumeration or
+ * bounds moves. A pattern keeps its base, so IDSL-VAL-002 still reports a
+ * pattern that does not fit the data type.
  */
 export function rebaseRestriction(c: IDSConstraint, base: string): IDSConstraint | undefined {
   if ((c.type !== 'enumeration' && c.type !== 'bounds') || c.and?.length) return undefined;

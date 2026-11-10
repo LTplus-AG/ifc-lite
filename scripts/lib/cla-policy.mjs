@@ -46,6 +46,18 @@ export const NAMED_BOTS = new Map([
  * whoever opened it, has its commit authors checked.
  */
 export const MERGE_QUEUE_ACCOUNT = 37929162;
+/**
+ * `Co-authored-by` emails that name no person who holds rights in the work:
+ * AI coding assistants, and LTplus's own addresses. Every other co-author
+ * must have signed, like a commit author.
+ */
+export const EXEMPT_COAUTHOR_EMAILS = new Set([
+  'noreply@anthropic.com',
+  'noreply@openai.com',
+  'cursoragent@cursor.com',
+  'louis@lt.plus',
+  'info@lt.plus',
+]);
 
 export class ClaGateError extends Error {
   constructor(reason, message) {
@@ -57,6 +69,29 @@ export class ClaGateError extends Error {
 
 const lower = (login) => (typeof login === 'string' ? login.trim().toLowerCase() : '');
 const isBot = (user) => user?.type === 'Bot' || /\[bot\]$/i.test(user?.login ?? '');
+
+const NOREPLY = /^(?:(\d+)\+)?([A-Za-z0-9-]+(?:\[bot\])?)@users\.noreply\.github\.com$/i;
+
+/**
+ * The co-authors a commit message names, as GitHub reads them: lines
+ * `Co-authored-by: Name <email>`, case-insensitive. A GitHub noreply address
+ * names the account (with its id when the address carries one); any other
+ * address is returned as an email.
+ */
+export function coAuthors(message) {
+  const out = [];
+  if (typeof message !== 'string') return out;
+  for (const m of message.matchAll(/^[ \t]*co-authored-by:[^<\n]*<([^>\n]*)>/gim)) {
+    const email = m[1].trim().toLowerCase();
+    if (!email) continue;
+    const n = NOREPLY.exec(email);
+    if (n) {
+      const login = n[2];
+      out.push({ user: { id: n[1] ? Number(n[1]) : undefined, login, type: /\[bot\]$/i.test(login) ? 'Bot' : 'User' } });
+    } else out.push({ email });
+  }
+  return out;
+}
 
 /** Is this comment body the sign phrase? Case, outer whitespace and a final full stop are forgiven. */
 export function isSignComment(body) {
@@ -117,34 +152,51 @@ export function decideEvent(eventName, payload) {
  * emails with no linked account cannot be matched to a signature, so they
  * block until the author links the email or a maintainer records an offline
  * signature for that email. App accounts other than the named bots cannot
- * sign, so their work blocks for a maintainer. `Co-authored-by` trailers do not
- * name accounts and are out of scope.
+ * sign, so their work blocks for a maintainer.
+ *
+ * `Co-authored-by` trailers count too: work a maintainer lands for someone
+ * else carries their name only there. A GitHub noreply address names the
+ * account, which must have signed; any other address must be covered by an
+ * offline signature for that email. AI assistants and LTplus addresses are
+ * exempt (EXEMPT_COAUTHOR_EMAILS).
  */
 export function requiredSigners(pr, commits) {
   const author = pr?.user;
   if (!author?.login) throw new ClaGateError('BAD_PR', 'Pull request has no author.');
   if (author.id === MERGE_QUEUE_ACCOUNT) {
-    return { exemptPr: true, signers: [], unlinked: [], unlistedBots: [], truncated: false };
+    return { exemptPr: true, signers: [], unlinked: [], coauthorEmails: [], unlistedBots: [], truncated: false };
   }
   const signers = new Map();
   const unlistedBots = new Set();
   const add = (user) => {
     if (!user?.login) return;
     if (LTPLUS_ACCOUNTS.has(user.id) || NAMED_BOTS.has(user.id)) return;
+    // Only an id-less co-author address reaches here without an id.
+    if (!Number.isSafeInteger(user.id) &&
+      [...LTPLUS_ACCOUNTS.values(), ...NAMED_BOTS.values()].some((l) => lower(l) === lower(user.login))) return;
     if (isBot(user)) unlistedBots.add(user.login);
     else signers.set(user.id ?? lower(user.login), { id: user.id, login: user.login });
   };
   add(author);
   const unlinked = new Set();
+  const coauthorEmails = new Set();
   for (const commit of commits ?? []) {
     if (commit?.author?.login) add(commit.author);
     else unlinked.add((commit?.commit?.author?.email || '').toLowerCase() || '(no email)');
+    for (const co of coAuthors(commit?.commit?.message)) {
+      if (co.user) {
+        // An old-style noreply address has no id; the login alone still names the account.
+        if (!Number.isSafeInteger(co.user.id)) delete co.user.id;
+        add(co.user);
+      } else if (!EXEMPT_COAUTHOR_EMAILS.has(co.email)) coauthorEmails.add(co.email);
+    }
   }
   const listed = commits?.length ?? 0;
   return {
     exemptPr: false,
     signers: [...signers.values()],
     unlinked: [...unlinked].sort(),
+    coauthorEmails: [...coauthorEmails].sort(),
     unlistedBots: [...unlistedBots].sort(),
     // `pr.commits` is the real count; the listing stops at PR_COMMIT_LIMIT.
     truncated: Number.isSafeInteger(pr.commits) ? pr.commits > listed : listed >= PR_COMMIT_LIMIT,
@@ -183,18 +235,20 @@ export function emailCovered(record, email) {
 
 export function evaluate(pr, commits, record) {
   const req = requiredSigners(pr, commits);
-  const base = { state: 'success', missing: [], unlinked: [], unlistedBots: [], truncated: false, exemptPr: req.exemptPr };
+  const base = { state: 'success', missing: [], unlinked: [], coauthorEmails: [], unlistedBots: [], truncated: false, exemptPr: req.exemptPr };
   if (req.exemptPr) return { ...base, description: 'Merge-queue batch; its pull requests were checked.' };
   const result = {
     ...base,
     missing: req.signers.filter((u) => !hasSigned(record, u)),
     unlinked: req.unlinked.filter((e) => !emailCovered(record, e)),
+    coauthorEmails: req.coauthorEmails.filter((e) => !emailCovered(record, e)),
     unlistedBots: req.unlistedBots,
     truncated: req.truncated,
   };
   const problems = [];
   if (result.missing.length) problems.push(`not signed by ${result.missing.map((u) => `@${u.login}`).join(', ')}`);
   if (result.unlinked.length) problems.push(`${result.unlinked.length} commit email(s) not linked to an account`);
+  if (result.coauthorEmails.length) problems.push(`${result.coauthorEmails.length} co-author email(s) not covered`);
   if (result.unlistedBots.length) problems.push(`unlisted bot ${result.unlistedBots.map((b) => `@${b}`).join(', ')}`);
   if (result.truncated) problems.push(`over ${PR_COMMIT_LIMIT} commits, authors not all visible`);
   if (problems.length === 0) return { ...result, description: `All contributors have signed CLA v${CLA_VERSION}.` };
@@ -245,6 +299,14 @@ export function commentBody(result, claUrl, faqUrl) {
       ...result.unlinked.map((e) => `- \`${e.replace(/[^A-Za-z0-9._%+\-@ ()]/g, '')}\``),
       '', 'Add the email to your GitHub account (Settings, Emails) and comment `recheck`, or re-author the commits ' +
         'with a linked email. If the author signed by email or PDF instead, a maintainer records that.',
+    );
+  }
+  if (result.coauthorEmails?.length) {
+    lines.push(
+      '', 'These `Co-authored-by` emails are not GitHub noreply addresses, so the check cannot tell which account they belong to:', '',
+      ...result.coauthorEmails.map((e) => `- \`${e.replace(/[^A-Za-z0-9._%+\-@ ()]/g, '')}\``),
+      '', 'Write the trailer with the co-author\'s GitHub noreply address (`ID+login@users.noreply.github.com`, shown in ' +
+        'their GitHub email settings) and push again, so they can sign here. If they signed by email or PDF instead, a maintainer records that.',
     );
   }
   if (result.unlistedBots.length) {

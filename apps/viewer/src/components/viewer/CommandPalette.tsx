@@ -36,6 +36,7 @@ import { trackCommandExecution } from './surface-command-run';
 import type { BottomPanelId } from '@/lib/panels/bottom-panels';
 import { buildCommandPaletteCommands, type RightPanel } from './commandPaletteCommands';
 import { DynamicPaletteOption, RegisteredPaletteOption, registeredPaletteId } from './command-palette-option';
+import { useExtensionDockDestinations } from '@/components/extensions/useExtensionDockDestinations';
 import { useExportRunner } from './useExportRunner';
 import {
   type Command,
@@ -102,6 +103,7 @@ export function CommandPalette({ open, onOpenChange, surfaceContext, initialQuer
   // Names currently in the blob cache, refreshed each open — lets recent-file clicks decide hit/miss without an async gap that would void user activation.
   const cachedNamesRef = useRef<Set<string>>(new Set());
 
+  const dockDestinations = useExtensionDockDestinations();
   const fileHost = useMountedFileHost();
   const toolHosts = usePersistentToolHosts();
   const retainedReportHost = useRetainedReportHost();
@@ -142,7 +144,7 @@ export function CommandPalette({ open, onOpenChange, surfaceContext, initialQuer
   const { runExport, dialog: exportDialog, extensionExporters } = useExportRunner();
 
   // ── Command definitions ── (data table: `commandPaletteCommands.ts`)
-  const commands = useMemo<Command[]>(() => !open ? [] : buildCommandPaletteCommands({
+  const commands = useMemo<Command[]>(() => !open ? [] : [...buildCommandPaletteCommands({
     execute,
     surfaceContext: { ...toolHosts, ...surfaceContext,
       openBulkProperties: (surfaceContext?.openBulkProperties ?? toolHosts.openBulkProperties)
@@ -164,7 +166,7 @@ export function CommandPalette({ open, onOpenChange, surfaceContext, initialQuer
     activateBottomPanel,
     runExport,
     extensionExporters,
-  }), [open, execute, recentFiles, extensionCommands, extensionHost, currentExtensionHost, canEditInSession, cesiumAvailable, runExport, extensionExporters, prerequisites, copyClipboard, fileHost, gpuStatus, retainedReportHost, splitWidth, placementGeoref, surfaceContext, toolHosts, locale, revision]);
+  }), ...dockDestinations.commands], [open, dockDestinations.commands, execute, recentFiles, extensionCommands, extensionHost, currentExtensionHost, canEditInSession, cesiumAvailable, runExport, extensionExporters, prerequisites, copyClipboard, fileHost, gpuStatus, retainedReportHost, splitWidth, placementGeoref, surfaceContext, toolHosts, locale, revision]);
 
 
   // ── Search: score, filter, sort ──
@@ -354,6 +356,7 @@ export function CommandPalette({ open, onOpenChange, surfaceContext, initialQuer
       </Dialog>
       {/* Outside the palette's Dialog: an export dialog must outlive the palette closing. */}
       {exportDialog}
+      {dockDestinations.dialog}
     </>
   );
 }

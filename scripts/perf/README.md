@@ -6153,8 +6153,9 @@ manual chunk groups remain; inspect the rebuilt closure before claiming one.
 Review follow-up: pending and failed shells retain their title and Close on
 mobile as well as desktop. #9590 already made BCFDraftsDialog lazy inside
 BCFDraftsControl; this change adds only the outer BCFPanel boundary. #9616's
-drafts change overlaps #9590, not this router. Neither changes manual chunk
-groups or the audit tool, and neither introduces a shared loading helper.
+earlier drafts hunk was removed; its current diff loads the profiles dialog on
+demand, with no BCF overlap. Neither #9590 nor #9616 changes manual chunk groups
+or the audit tool, or introduces a shared loading helper.
 Run the branch audit with `--expect-lazy` to reject any emitted eager module
 for the three panels or the drafts dialog. If the controlled current-main
 delta is small, shrink to the useful boundary or close rather than carrying

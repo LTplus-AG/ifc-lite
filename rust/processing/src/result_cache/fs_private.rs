@@ -152,10 +152,16 @@ pub(super) fn open_lock(path: &Path) -> io::Result<File> {
     Ok(file)
 }
 
-/// Flush a directory's entries (the rename) to disk; best effort.
+/// Flush a directory's entries (the rename) to disk; best effort. The temp
+/// file is fsynced before its rename, so a crash can lose a new entry (a later
+/// miss) but never leave a torn one under an entry name; a failed directory
+/// fsync is logged, not reported, because the entry is already complete.
 pub(super) fn sync_dir(dir: &Path) {
     #[cfg(unix)]
-    if let Ok(d) = File::open(dir) {
+    if let Ok(d) = {
+        use std::os::unix::fs::OpenOptionsExt;
+        OpenOptions::new().read(true).custom_flags(libc::O_NOFOLLOW | libc::O_DIRECTORY | libc::O_CLOEXEC).open(dir)
+    } {
         if let Err(error) = d.sync_all() {
             tracing::debug!(%error, "result cache: directory fsync failed");
         }

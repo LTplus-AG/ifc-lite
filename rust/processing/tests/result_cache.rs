@@ -251,6 +251,20 @@ fn damaged_entries_on_disk_miss_warn_and_are_repaired() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// PR #9614 review 2: a result whose raw payload alone is over the entry
+/// limit is refused before it is encoded. At 12298a6e the whole result was
+/// serialised, twice over, before the size check.
+#[test]
+fn a_certainly_oversized_result_is_refused_before_encoding() {
+    let content = fixture("issue_8190_slab_12381.ifc");
+    let dir = temp_dir("preflight");
+    let tiny = ResultCache::new(ResultCacheConfig::default().mode(CacheMode::ReadWrite).directory(&dir).max_entry_bytes(64));
+    let out = tiny.process(&content, &ProcessingRequest::full_pass());
+    assert!(matches!(out.report.publish, PublishOutcome::SkippedOversized { limit: 64, .. }), "{:?}", out.report.publish);
+    assert_eq!(out.report.work.encode, std::time::Duration::ZERO, "nothing was encoded");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// The hillclimb gate's heavy fixtures, cold then warm in fresh processes.
 /// Run in release: they take minutes in a debug build.
 #[test]

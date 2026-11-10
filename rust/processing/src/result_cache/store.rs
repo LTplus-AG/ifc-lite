@@ -134,7 +134,13 @@ impl Store {
     }
 
     pub(super) fn publish(&self, key: &str, bytes: &[u8]) -> PublishOutcome {
-        let len = bytes.len() as u64;
+        self.publish_parts(key, &[bytes])
+    }
+
+    /// Publish an entry given as consecutive parts (header, then sections),
+    /// so the encoder never builds a second, concatenated copy.
+    pub(super) fn publish_parts(&self, key: &str, parts: &[&[u8]]) -> PublishOutcome {
+        let len = parts.iter().map(|p| p.len() as u64).sum::<u64>();
         if len > self.max_entry_bytes || len > self.max_bytes {
             return PublishOutcome::SkippedOversized { bytes: len, limit: self.max_entry_bytes.min(self.max_bytes) };
         }
@@ -150,10 +156,10 @@ impl Store {
             Err(TryLockError::WouldBlock) => return PublishOutcome::SkippedConcurrentWriter,
             Err(TryLockError::Error(e)) => return PublishOutcome::Failed(format!("lock: {e}")),
         }
-        if self.same_entry_present(key, bytes) {
+        if self.same_entry_present(key, len, parts.first().copied().unwrap_or_default()) {
             return PublishOutcome::AlreadyPresent;
         }
-        let outcome = match self.write_and_rename(key, bytes) {
+        let outcome = match self.write_and_rename(key, parts) {
             Ok(()) => PublishOutcome::Published { bytes: len },
             Err(e) => PublishOutcome::Failed(e.to_string()),
         };
@@ -166,18 +172,20 @@ impl Store {
 
     /// An entry already holds exactly these bytes' header: the same key,
     /// identity, lengths and directory checksums.
-    fn same_entry_present(&self, key: &str, bytes: &[u8]) -> bool {
-        let header_len = super::envelope::HEADER_LEN.min(bytes.len());
+    fn same_entry_present(&self, key: &str, len: u64, first: &[u8]) -> bool {
+        let header_len = super::envelope::HEADER_LEN.min(first.len());
         let Ok((file, meta)) = open_read(&self.entry_path(key)) else { return false };
         let mut head = vec![0u8; header_len];
-        meta.len() == bytes.len() as u64 && (&file).read_exact(&mut head).is_ok() && head == bytes[..header_len]
+        meta.len() == len && (&file).read_exact(&mut head).is_ok() && head == first[..header_len]
     }
 
-    fn write_and_rename(&self, key: &str, bytes: &[u8]) -> io::Result<()> {
+    fn write_and_rename(&self, key: &str, parts: &[&[u8]]) -> io::Result<()> {
         static NEXT: AtomicU64 = AtomicU64::new(0);
         let temp = self.dir.join(format!("{key}.{}.{}.tmp", std::process::id(), NEXT.fetch_add(1, Ordering::Relaxed)));
         let written = create_new(&temp).and_then(|mut file| {
-            file.write_all(bytes)?;
+            for part in parts {
+                file.write_all(part)?;
+            }
             file.sync_all()
         });
         let renamed = written.and_then(|()| fs::rename(&temp, self.entry_path(key)));

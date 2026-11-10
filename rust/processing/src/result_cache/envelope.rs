@@ -98,7 +98,45 @@ pub(super) fn check_invariants(result: &ProcessingResult) -> Result<(), CodecErr
     Ok(())
 }
 
+/// A lower bound on the encoded size: the raw array and pixel payload alone.
+/// If it is already over a limit the entry certainly is, so a huge result is
+/// refused before anything is encoded or allocated for it.
+pub(super) fn payload_lower_bound(result: &ProcessingResult) -> u64 {
+    let (table, _) = texture_table(&result.meshes);
+    let arrays: u64 = result
+        .meshes
+        .iter()
+        .map(|m| {
+            let floats = m.positions.len() + m.normals.len() + m.uvs.as_ref().map_or(0, Vec::len);
+            ((floats + m.indices.len()) as u64).saturating_mul(4)
+        })
+        .fold(0u64, u64::saturating_add);
+    let pixels = table.iter().map(|p| p.len() as u64).fold(0u64, u64::saturating_add);
+    arrays.saturating_add(pixels)
+}
+
+/// An encoded entry as its header-plus-directory and its four section bodies,
+/// written out in order without first concatenating them.
+pub(super) struct EncodedEntry {
+    pub(super) head: Vec<u8>,
+    pub(super) bodies: [Vec<u8>; 4],
+}
+
+impl EncodedEntry {
+    pub(super) fn len(&self) -> usize {
+        self.head.len() + self.bodies.iter().map(Vec::len).sum::<usize>()
+    }
+    pub(super) fn parts(&self) -> [&[u8]; 5] {
+        [&self.head, &self.bodies[0], &self.bodies[1], &self.bodies[2], &self.bodies[3]]
+    }
+}
+
+/// The entry as one buffer (tests and tools).
 pub(super) fn encode_entry(result: &ProcessingResult, id: &EntryIdentity) -> Result<Vec<u8>, CodecError> {
+    Ok(encode_parts(result, id)?.parts().concat())
+}
+
+pub(super) fn encode_parts(result: &ProcessingResult, id: &EntryIdentity) -> Result<EncodedEntry, CodecError> {
     check_invariants(result)?;
     let mut meta = Writer::default();
     encode_meta(
@@ -122,7 +160,7 @@ pub(super) fn encode_entry(result: &ProcessingResult, id: &EntryIdentity) -> Res
     let bodies = [(meta.0, 1), (textures.0, table.len()), (meshes.0, result.meshes.len()), (instances.0, result.instances.len())];
 
     let total = bodies.iter().try_fold(BODY_START, |acc, (b, _)| acc.checked_add(b.len())).ok_or(CodecError::Overflow)?;
-    let mut out = Vec::with_capacity(total);
+    let mut out = Vec::with_capacity(BODY_START);
     out.extend_from_slice(&MAGIC);
     for v in [FORMAT_VERSION, HEADER_LEN as u32, SECTIONS.len() as u32, 0] {
         out.extend_from_slice(&v.to_le_bytes());
@@ -147,9 +185,10 @@ pub(super) fn encode_entry(result: &ProcessingResult, id: &EntryIdentity) -> Res
     let dir_digest = Sha256::new().chain_update(&out[..IDENTITY_END]).chain_update(&directory).finalize();
     out.extend_from_slice(&dir_digest);
     out.extend_from_slice(&directory);
-    bodies.iter().for_each(|(b, _)| out.extend_from_slice(b));
-    debug_assert_eq!(out.len(), total);
-    Ok(out)
+    let [(meta, _), (textures, _), (meshes, _), (instances, _)] = bodies;
+    let entry = EncodedEntry { head: out, bodies: [meta, textures, meshes, instances] };
+    debug_assert_eq!(entry.len(), total);
+    Ok(entry)
 }
 
 fn le_u32(b: &[u8], at: usize) -> u32 {

@@ -42,7 +42,7 @@
     "@ifc-lite/wasm-lifecycle": "workspace:^"
   },
   "peerDependencies": {
-    "@anthropic-ai/sdk": ">=0.128.0"
+    "@anthropic-ai/sdk": "^1.6.0"
   },
   "peerDependenciesMeta": {
     "@anthropic-ai/sdk": {

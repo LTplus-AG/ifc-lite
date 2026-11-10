@@ -73,7 +73,7 @@ mode, strict tools where the schema allows, eager input streaming, prompt
 caching (tools, then the frozen system prompt, then the run's context),
 `output_config.task_budget` and server-side refusal fallbacks. Turn
 `fallbacks`, `taskBudgets` or `eagerInputStreaming` off for a platform or
-proxy that rejects them. `@anthropic-ai/sdk` is an optional peer dependency.
+proxy that rejects them. `@anthropic-ai/sdk` is an optional peer dependency; the Anthropic adapter requires SDK 1.6 or later within the 1.x line.
 
 `openAiTransport({ apiKey, baseUrl })` from `@ifc-lite/ids-agent/openai`
 speaks OpenAI-compatible Chat Completions through the host's `fetch`.

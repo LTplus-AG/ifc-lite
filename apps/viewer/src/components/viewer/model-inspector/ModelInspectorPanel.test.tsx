@@ -15,7 +15,7 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { useViewerStore } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
-import { blur, cleanup, click, render, type } from '@/test/render.js';
+import { blur, cleanup, click, render, type, waitFor } from '@/test/render.js';
 import { MODEL_ID, STOREY, seedModelingSession } from '@/test/modeling-session-fixture';
 import '@/lib/commands/modeling/builtin';
 import { setRequestRemesh } from '@/lib/commands/modeling/transaction';
@@ -143,8 +143,9 @@ describe('ModelInspectorPanel (#6232 M2.5)', () => {
     assert.equal(visible('[data-model-inspector]'), false, 'Defaults is hidden after returning to Storeys');
   });
 
-  it('shows the selected wall: header, name, size and its sections', () => {
+  it('shows the selected wall: header, name, size and its sections', async () => {
     const root = render(<ModelInspectorPanel />);
+    await waitFor(() => root.querySelector('[data-inspector-apply-layers]') !== null, 'the layer editor loads (its own chunk, #9296)');
     assert.equal(root.querySelector('[data-inspector-title]')?.textContent, `IfcWall #${wall} · L0`);
     assert.equal(input(root, 'Name').value, 'W1');
     assert.equal(input(root, 'Thickness in metres').value, '0.20');
@@ -167,8 +168,9 @@ describe('ModelInspectorPanel (#6232 M2.5)', () => {
     assert.equal(input(root, 'Name').value, 'W1', 'the field shows the old name again');
   });
 
-  it('a new thickness is one undo step', () => {
+  it('a new thickness is one undo step', async () => {
     const root = render(<ModelInspectorPanel />);
+    await waitFor(() => root.querySelector('[data-inspector-apply-layers]') !== null, 'the layer editor loads (its own chunk, #9296)');
     const depth = undoDepth();
     const field = input(root, 'Thickness in metres');
     type(field, '0,3');

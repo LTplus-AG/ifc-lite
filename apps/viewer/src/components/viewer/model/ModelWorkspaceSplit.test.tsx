@@ -18,8 +18,9 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { useViewerStore } from '@/store';
-import { cleanup, render } from '@/test/render.js';
+import { activate, cleanup, render } from '@/test/render.js';
 import { seedModelingSession } from '@/test/modeling-session-fixture';
+import { RibbonToolbar } from '../ribbon/RibbonToolbar';
 import { ModelWorkspaceSplit } from './ModelWorkspaceSplit';
 
 function mount(): HTMLElement {
@@ -90,6 +91,21 @@ describe('ModelWorkspaceSplit (#6232 M2.1)', () => {
       assert.equal(ui.querySelectorAll('[data-workspace-leave]').length, 1);
     });
   }
+
+  // #9296 review: Leave unmounts with the bar, which dropped focus to <body>.
+  it('Leave names its key and hands focus back to the Model button (#9296)', async () => {
+    useViewerStore.getState().setModelLayout('3d');
+    const ui = render(<><RibbonToolbar /><ModelWorkspaceSplit><div data-viewport-stub /></ModelWorkspaceSplit></>);
+    const model = ui.querySelector<HTMLButtonElement>('[data-command-id="tool:edit-mode"]')!;
+    activate(model, 'Enter');
+    await act(frame);
+    const leave = ui.querySelector<HTMLButtonElement>('[data-workspace-leave]')!;
+    assert.match(leave.textContent ?? '', /Leave\s*· M$/);
+    activate(leave, ' ');
+    assert.equal(useViewerStore.getState().workspaceMode, 'view');
+    assert.equal(ui.querySelector('[data-workspace-leave]'), null, 'the bar is gone');
+    assert.equal(document.activeElement === model, true, 'focus is back on the Model button');
+  });
 
   it('enters the workspace with a saved Split layout without throwing', async () => {
     useViewerStore.getState().setModelLayout('split');

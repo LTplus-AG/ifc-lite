@@ -179,11 +179,20 @@ export const RAIL_TOOLS: readonly RailTool[] = [
   },
 ];
 
-/** The rail's footer: leave the workspace (E, like the ribbon's Model button). */
+/**
+ * Leave from a control that unmounts with the workspace (the rail's and the
+ * bar's Leave): focus moves to the tab-row Model button, not to <body> (#9296).
+ */
+export function leaveModelWorkspace(): void {
+  useViewerStore.getState().exitModelWorkspace();
+  document.querySelector<HTMLElement>('[data-command-id="tool:edit-mode"]')?.focus();
+}
+
+/** The rail's footer: leave the workspace (M, like the tab row's Model button). */
 export const LEAVE_TOOL = {
   id: 'leave',
   labelKey: 'modelWorkspace.tool.leave',
   Icon: LogOut,
   shortcut: 'edit.toggleEditMode',
-  run: () => useViewerStore.getState().exitModelWorkspace(),
+  run: leaveModelWorkspace,
 } as const satisfies Pick<RailTool, 'id' | 'labelKey' | 'Icon' | 'shortcut' | 'run'>;

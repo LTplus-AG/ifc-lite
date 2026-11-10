@@ -17,7 +17,7 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { useViewerStore } from '@/store';
-import { cleanup, render } from '@/test/render.js';
+import { cleanup, click, render } from '@/test/render.js';
 import { seedModelingSession } from '@/test/modeling-session-fixture';
 import '@/lib/commands/modeling/builtin';
 import { HANDLE_PX, MODEL_3D_MIN_PX, PLAN_MIN_PX, effectiveModelLayout, planPaneWidth, splitFits } from './model-layout';
@@ -94,9 +94,11 @@ describe('ModelWorkspaceSplit applies the rule (#6232 M2.4)', () => {
     const ui = render(<><ModelToolRail /><ModelWorkspaceSplit><div data-probe-3d /></ModelWorkspaceSplit></>);
     assert.equal(ui.querySelector('[data-model-plan-pane]')?.getAttribute('aria-hidden'), 'true');
     const split = [...ui.querySelectorAll<HTMLButtonElement>('[role="radio"]')].find(button => button.textContent?.startsWith('Split'));
-    assert.ok(split && !split.disabled, 'Split stays available and explains the fallback');
-    assert.ok(ui.querySelector('[data-model-layout-notice]'));
+    assert.ok(split && !split.disabled, 'Split stays available');
+    assert.equal(ui.querySelector('[data-model-layout-notice]'), null, 'entry falls back quietly (#9296)');
     assert.equal(useViewerStore.getState().modelLayout, 'auto', 'nothing was persisted');
+    click(split);
+    assert.ok(ui.querySelector('[data-model-layout-notice]'), 'an explicit Split pick explains the fallback');
   });
 
   it('too narrow beside an expanded sidebar: the rail toggle folds it to make room (#9296)', () => {

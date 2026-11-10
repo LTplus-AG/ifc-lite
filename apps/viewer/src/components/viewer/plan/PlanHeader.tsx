@@ -12,10 +12,12 @@ import { Grid3x3, Maximize } from 'lucide-react';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { cn } from '@/lib/utils';
+import { primaryShortcutLabel } from '@/lib/commands/shortcut-label';
 import type { ModelLayout } from '@/store/slices/authoringSessionSidebar';
 import { HudSegmented } from '../../viewport-ui/hud';
 import { WorkspaceStoreyControl } from '../model/WorkspaceStoreyChip';
 import { PlanWorkplaneHeight } from '../model/WorkplaneHeightControl';
+import { leaveModelWorkspace } from '../model/rail-tools';
 
 export interface PlanHeaderProps {
   grid: boolean;
@@ -37,7 +39,7 @@ const iconButton = 'inline-flex h-5 w-5 items-center justify-center rounded-sm t
 export function PlanHeader({ grid, onToggleGrid, onFit, loading, simplified, failed, onRetry, layout }: PlanHeaderProps) {
   const { t } = useTranslation();
   const setModelLayout = useViewerStore((s) => s.setModelLayout);
-  const leave = useViewerStore((s) => s.exitModelWorkspace);
+  const leaveKey = primaryShortcutLabel('edit.toggleEditMode');
 
   return (
     <div data-plan-header data-workspace-bar className="flex h-7 shrink-0 items-center gap-1 border-b border-border/60 bg-muted/20 px-1.5 text-xs">
@@ -88,9 +90,10 @@ export function PlanHeader({ grid, onToggleGrid, onFit, loading, simplified, fai
           { value: '3d', ariaLabel: t('modelWorkspace.layout.3d'), label: <>{t('modelWorkspace.layout.3d')} <kbd aria-hidden className="ml-1 rounded-sm border border-current/30 px-1 font-sans text-2xs">3</kbd></> },
         ]}
       />
-      <button type="button" data-workspace-leave onClick={leave}
+      <button type="button" data-workspace-leave onClick={leaveModelWorkspace} aria-keyshortcuts={leaveKey}
         className="shrink-0 rounded-sm px-2 py-0.5 text-muted-foreground hover:bg-accent hover:text-foreground">
         {t('modelWorkspace.leave')}
+        <span aria-hidden className="ml-1 opacity-60">{t('modelWorkspace.tool.shortcutHint', { key: leaveKey })}</span>
       </button>
     </div>
   );

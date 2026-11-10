@@ -2,33 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-/**
- * Writing back to Dalux: `FileSourceProvider.uploadFile`.
- *
- * Dalux uploads are a three-step flow (official spec, "File upload" tag):
- *
- *   1. `POST /1.0/projects/{p}/file_areas/{fa}/upload` → an `uploadGuid` slot.
- *   2. `POST /1.0/.../upload/{guid}` once per part (≤ 100 MiB), each carrying
- *      `Content-Range: bytes start-end/total` and a `Content-Disposition`
- *      with the file name.
- *   3. `POST /2.0/.../upload/{guid}/finalize` with `{ fileName, fileType,
- *      fileId | folderId, properties? }`. `fileId` adds a revision to that
- *      file; `folderId` creates a new file in that folder. Never both.
- *
- * Nothing is overwritten: the API only ever appends a revision or creates a
- * file. What it does NOT do is tell us about conflicts, so the two refusals
- * the contract defines are decided here, before any byte is sent:
- *
- *   - `stale-base`: the file's current revision is not the one the edit was
- *     based on.
- *   - `name-exists`: the destination folder already holds a file of that name
- *     (compared case-insensitively, as Dalux's own UI treats names).
- *
- * Both are check-then-write, so a concurrent writer can still slip in between
- * the check and the finalize. Dalux offers no conditional write to close that
- * window; the check narrows it from "whenever the user last loaded the file"
- * to "the few hundred ms of one upload".
- */
+/** Dalux write-back (#9522): create a slot, send bounded parts, then finalize
+ * with fileId (new revision) or folderId (new file). Never both.
+ * Conflicts are checked before sending bytes. Dalux offers no conditional
+ * finalize, so another writer may still race the preflight check. */
 
 import type {
   SourceFile,
@@ -50,6 +27,8 @@ import {
 import {
   convertListLenient,
   currentRevisionId,
+  nonEmptyString,
+  LATEST_REVISION,
   decodeContainerId,
   enc,
   toSourceFile,
@@ -301,9 +280,14 @@ export async function uploadToDalux(
     const current = decodeFileResponse(response).data;
     if (current.deleted) throw new DaluxUploadError('That Dalux file has been deleted; save it as a new file instead.');
 
-    const currentRevision = currentRevisionId(current);
-    if (target.baseRevisionId !== undefined && target.baseRevisionId !== currentRevision) {
-      return { ok: false, conflict: { kind: 'stale-base', currentRevisionId: currentRevision } };
+    if (target.baseRevisionId !== undefined) {
+      const base = nonEmptyString(target.baseRevisionId);
+      const identities = [nonEmptyString(current.fileRevisionId), nonEmptyString(current.contentHash)].filter((id): id is string => id !== undefined && id !== LATEST_REVISION);
+      if (!base || base === LATEST_REVISION || identities.length === 0) {
+        throw new DaluxUploadError('Cannot verify the base revision; reload a file with a revision identity before saving.');
+      }
+      // A listing can expose the hash while the file response also has an ID.
+      if (!identities.includes(base)) return { ok: false, conflict: { kind: 'stale-base', currentRevisionId: currentRevisionId(current) } };
     }
 
     await loadFileArea(ctx, client, projectId, fileAreaId, signal);

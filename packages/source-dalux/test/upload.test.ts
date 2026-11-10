@@ -511,3 +511,38 @@ describe('upload helpers', () => {
     expect(value).toContain(`filename*=UTF-8''Geb%C3%A4ude%20%22A%22%27s%20%28v2%29.ifc`);
   });
 });
+
+
+describe('base identity verification (#9526)', () => {
+  function withIdentity(identity: Record<string, unknown>) {
+    const base = setup();
+    const ctx = createDaluxMockContext(async (input, init) => {
+      const response = await base.fetchImpl(input, init);
+      const url = String(input);
+      if ((init?.method ?? 'GET') === 'GET' && url.endsWith('/files/file-a')) {
+        const payload = await response.json() as { data: Record<string, unknown> };
+        delete payload.data.fileRevisionId;
+        delete payload.data.contentHash;
+        Object.assign(payload.data, identity);
+        return new Response(JSON.stringify(payload), { headers: { 'Content-Type': 'application/json' } });
+      }
+      return response;
+    });
+    let posts = 0;
+    const recording = createDaluxMockContext(async (input, init) => { if (init?.method === 'POST') posts++; return ctx.fetch(input, init); });
+    return { ctx: recording, posts: () => posts };
+  }
+
+  it('accepts a matching content hash even when the fresh file also has a revision ID', async () => {
+    const { ctx } = withIdentity({ fileRevisionId: 'rev-1', contentHash: 'hash-one' });
+    const result = await new DaluxBuildProvider().uploadFile(ctx, { mode: 'new-version', ref: FILE_A, baseRevisionId: 'hash-one' }, bytesOf('EDITED'));
+    expect(result.ok).toBe(true);
+  });
+
+  it.each([{}, { fileRevisionId: '' }, { fileRevisionId: 'ifc-lite:dalux:no-revision-id' }])('refuses an unverifiable base without POST or progress: %j', async identity => {
+    const { ctx, posts } = withIdentity(identity), progress: number[] = [];
+    await expect(new DaluxBuildProvider().uploadFile(ctx, { mode: 'new-version', ref: FILE_A, baseRevisionId: 'ifc-lite:dalux:no-revision-id' }, bytesOf('EDITED'), { onProgress: sent => progress.push(sent) })).rejects.toThrow(/Cannot verify/);
+    expect(posts()).toBe(0);
+    expect(progress).toEqual([]);
+  });
+});

@@ -11,6 +11,8 @@ export interface RoofGesture {
   readonly overhang: number;
 }
 export const initialRoof = (): RoofGesture => ({ preset: 'hip', pitch: 30, edge: 0, overrides: {}, overhang: 0 });
+/** Per-edge choices belong to one footprint; the next outline keeps only preset, pitch and overhang. */
+export const nextRoof = (roof: RoofGesture): RoofGesture => ({ ...roof, edge: 0, overrides: {} });
 /** Edges retain the outline's order; UI degrees become SDK radians only here. */
 export function roofEdgeSlopes(roof: RoofGesture, outline: readonly Vec2[]): number[] {
   const n = outline.length;

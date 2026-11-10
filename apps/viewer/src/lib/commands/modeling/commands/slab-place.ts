@@ -16,7 +16,7 @@
  */
 
 import { roofGhostMeshes } from './roof-place-ghost.js';
-import { roofEdgeSlopes } from './roof-place-params.js';
+import { nextRoof, roofEdgeSlopes } from './roof-place-params.js';
 import { SlabPlaceBar } from '@/components/viewer/tools/command/PlacementBars';
 import { SlabPlaceScene } from '@/components/viewer/tools/command/SlabPlaceScene';
 import type { SlabClass } from '@/store/slices/authoringDefaultsSlice';
@@ -142,7 +142,7 @@ export const SLAB_PLACE: ModelingCommand<SlabPlaceGesture> = {
     if ('error' in made) throw new Error(`Couldn't add the ${cls}: ${made.error}`);
     return { created: [made.expressId], authored: [made.expressId], deleted: [], remesh: [made.expressId], select: [made.expressId] };
   },
-  afterCommit: (g) => ({ ...initSlabGesture(g.mode), roof: g.roof }),
+  afterCommit: (g) => ({ ...initSlabGesture(g.mode), roof: nextRoof(g.roof) }),
   ghost(g, ctx) {
     if (!ctx.workplane) return [];
     const cls = slabClassOf(ctx);

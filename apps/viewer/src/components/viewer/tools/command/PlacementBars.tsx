@@ -16,6 +16,7 @@ import { useViewerStore } from '@/store';
 import { updateCommandGesture } from '@/lib/commands/modeling/runtime';
 import type { CommandHudProps } from '@/lib/commands/modeling/types';
 import { initSlabGesture, type SlabPlaceGesture } from '@/lib/commands/modeling/commands/slab-place-geometry';
+import { nextRoof } from '@/lib/commands/modeling/commands/roof-place-params';
 import type { BeamClass, SlabClass, SlabDrawMode, WallAlign, WallTop } from '@/store/slices/authoringDefaultsSlice';
 import { HudDivider, HudSegmented, HudToggle } from '../../../viewport-ui/hud';
 
@@ -96,7 +97,7 @@ export function SlabPlaceBar({ gesture }: CommandHudProps<SlabPlaceGesture>) {
   const setMode = (slabMode: SlabDrawMode) => {
     setDefaults({ slabMode });
     // A half-drawn outline of the other kind means nothing in this one.
-    updateCommandGesture((value) => ({ ...initSlabGesture(slabMode), roof: (value as SlabPlaceGesture).roof }));
+    updateCommandGesture((value) => ({ ...initSlabGesture(slabMode), roof: nextRoof((value as SlabPlaceGesture).roof) }));
   };
   return (
     <>

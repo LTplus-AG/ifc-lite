@@ -66,7 +66,7 @@ impl BooleanMachine {
             Frame::RetainedMapping(mut control) => {
                 let reply = match control.execute(router, decoder) {
                     Ok(reply) => reply,
-                    Err(error) => control.recover_refusal(error, None).map_err(|error| mapped_error(error.into()))?,
+                    Err(error) => error.recover(None).map_err(|error| mapped_error(error.into()))?,
                 };
                 self.frames.push(Frame::RetainedMappingReply { control, reply: boxed(reply)? });
             }

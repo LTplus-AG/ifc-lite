@@ -36,6 +36,9 @@ use std::sync::Arc;
 #[path = "mapping_type_root.rs"]
 mod type_root;
 use type_root::TypeMapRoot;
+#[path = "mapping_failure.rs"]
+mod failure;
+use failure::MappingFailure;
 
 type Textures<'a> = Option<&'a FxHashMap<u32, ResolvedTextureMap>>;
 

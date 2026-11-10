@@ -289,7 +289,7 @@ impl<'a> ProductControl<'a> {
                 let Child::Mapping(control) = &mut self.child else { return Err(ProgramError::StaleRequest) };
                 return match control.execute(router, decoder) {
                     Ok(reply) => Ok(ProductReply::Mapping(reply)),
-                    Err(error) => control.recover_refusal(error, Some(self.element)).map(ProductReply::Mapping),
+                    Err(error) => error.recover(Some(self.element)).map(ProductReply::Mapping),
                 };
             }
             Action::Placement => {

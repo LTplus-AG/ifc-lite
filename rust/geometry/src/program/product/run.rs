@@ -80,7 +80,7 @@ impl ProductControl<'_> {
                     while control.stage()?.is_some() {
                         let reply = match control.execute(router, decoder) {
                             Ok(reply) => reply,
-                            Err(error) => control.recover_refusal(error, Some(element))?,
+                            Err(error) => error.recover(Some(element))?,
                         };
                         control.accept(reply, router);
                     }

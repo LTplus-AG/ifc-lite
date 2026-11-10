@@ -63,8 +63,11 @@ refusal; retained transactions return their refusal without a second unread log.
 Occurrence attribution attaches the owning product only from the existing
 execution error arm. A second acceptance dispatcher, even with a lazy owner
 callback, regressed successful work; restore the original monomorphic acceptance
-path. The refused transaction reuses the owned-root slot without widening the
-control or Result, and only that cold transaction allocates identity.
+path. A boxed execution error carries the refused transaction back to the
+product without changing the controller or successful Result sizes; only that
+cold error arm attaches identity. Instruction attribution also needs the
+allocation call graph: identical growth-call counts can still cost more when
+compiler inlining changes, outside the mapping controller itself.
 
 ## Presentation-layer membership follows the selected shape (#9273)
 

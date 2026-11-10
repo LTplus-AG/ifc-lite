@@ -154,7 +154,10 @@ export function extractStructuralOnDemand(
       globalId: asString(created.attributes?.[0]) ?? '',
     } : undefined;
     const viewed = view?.readEntity?.(id, effectiveType, source);
-    return viewed ? { ...viewed, type: normalizeIfcTypeName(viewed.type) } : source;
+    if (!viewed || viewed === source) return viewed ?? source;
+    // A view may hand back STEP casing; RawEntity.type is canonical PascalCase.
+    const type = normalizeIfcTypeName(viewed.type);
+    return type === viewed.type ? viewed : { ...viewed, type };
   };
   const activeByRole = new Map<StructuralRole, number[]>();
   const relMemberIds: number[] = [];

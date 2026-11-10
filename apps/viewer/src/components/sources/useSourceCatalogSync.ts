@@ -150,6 +150,7 @@ export function useSourceCatalogSync({ provider, ctx, setError, onSynced }: UseS
     async (projectId: string, fileAreaId: string, options: { announce?: boolean } = {}) => {
       const { gen, signal } = beginGeneration();
       areaRef.current = { projectId, fileAreaId };
+      setFilesByContainer(new Map());
       setSyncing(true);
       setLoadingFolders(true);
       setLoadingFiles(true);
@@ -166,7 +167,7 @@ export function useSourceCatalogSync({ provider, ctx, setError, onSynced }: UseS
         if (requestGenRef.current !== gen) return;
         const nextContainers = new Map([[fileAreaId, containerPage]]);
         const nextFiles = new Map([[fileAreaId, filePage]]);
-        setFilesByContainer(nextFiles);
+        setFilesByContainer(previous => new Map(previous).set(fileAreaId, filePage));
         setCatalogUpdatedAt(null);
         maybePersist(projectId, fileAreaId, nextContainers, nextFiles);
         onSynced?.();
@@ -198,6 +199,7 @@ export function useSourceCatalogSync({ provider, ctx, setError, onSynced }: UseS
   const openFileArea = useCallback(
     (projectId: string, fileAreaId: string) => {
       abortRef.current?.abort();
+      // See resetCatalog: cached activation must not retain an aborted signal.
       abortRef.current = null;
       requestGenRef.current += 1;
       areaRef.current = { projectId, fileAreaId };
@@ -206,6 +208,7 @@ export function useSourceCatalogSync({ provider, ctx, setError, onSynced }: UseS
       setContainersByParent(new Map());
       setFilesByContainer(new Map());
       setCatalogUpdatedAt(null);
+      // Retired finally blocks can no longer clear these flags.
       setLoadingFolders(false);
       setLoadingFiles(false);
       paging.reset();
@@ -225,7 +228,7 @@ export function useSourceCatalogSync({ provider, ctx, setError, onSynced }: UseS
   const openContainer = useCallback(
     (container: SourceContainer) => {
       const area = areaRef.current;
-      if (!area) return;
+      if (!area || container.id === area.fileAreaId) return;
       const gen = requestGenRef.current;
       const signal = abortRef.current?.signal ?? new AbortController().signal;
 

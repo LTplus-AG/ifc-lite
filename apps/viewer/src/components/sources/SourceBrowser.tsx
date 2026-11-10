@@ -257,7 +257,7 @@ export function SourceBrowser({
 
   const selectedContainerId = selectedContainer?.id ?? null;
   const selectedContainerLoading = selectedContainerId !== null && catalog.loadingContainers.has(selectedContainerId);
-  const loadingFolders = catalog.loadingFolders || selectedContainerLoading;
+  const loadingFolders = catalog.loadingFolders;
   const loadingFiles = selectedContainerLoading || (
     (capabilities.listFilesIsRecursive || selectedContainerId === selectedFileArea?.id) && catalog.loadingFiles
   );

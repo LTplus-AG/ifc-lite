@@ -159,7 +159,7 @@ interface Harness {
   readonly hook: ReturnType<typeof useSourceCatalogSync>;
 }
 
-function renderCatalogSync(provider: FileSourceProvider): { get: () => Harness['hook'] } {
+function renderCatalogSync(provider: FileSourceProvider): { get: () => Harness['hook']; rerender: (next: FileSourceProvider) => void } {
   const container = document.createElement('div');
   document.body.appendChild(container);
   const root = createRoot(container);
@@ -176,6 +176,7 @@ function renderCatalogSync(provider: FileSourceProvider): { get: () => Harness['
   mounted.push({ root, container });
 
   return {
+    rerender: next => { provider = next; act(() => root.render(<Probe />)); },
     get: () => {
       if (!latest) throw new Error('hook has not rendered yet');
       return latest;
@@ -659,3 +660,47 @@ for (const kind of ['folders', 'files'] as const) for (const retire of ['reset',
     }
   });
 }
+
+for (const action of ['reset', 'cached-open'] as const) it(`#9567 ${action} clears the rendered container loading set`, async () => {
+  const provider = new FakeProvider({ containerListing: 'direct-children', listFilesIsRecursive: true });
+  let release!: () => void;
+  provider.listContainers = async (_ctx, _project, parent) => {
+    if (parent === 'X') await new Promise<void>(resolve => { release = resolve; });
+    return { items: [] };
+  };
+  const harness = renderCatalogSync(provider);
+  await act(async () => harness.get().openFileArea('p', 'area-1'));
+  act(() => harness.get().openContainer({ id: 'X', name: 'X' }));
+  assert.equal(harness.get().loadingContainers.size, 1);
+  if (action === 'reset') act(() => harness.get().resetCatalog());
+  else {
+    // Provider replacement can restore a complete cached catalog while the
+    // previous provider's folder request is still outstanding.
+    const cachedProvider = new FakeProvider();
+    harness.rerender(cachedProvider);
+    saveSourceCatalogCache(cachedProvider.manifest.name, 'p', 'cached', [], []);
+    act(() => harness.get().openFileArea('p', 'cached'));
+  }
+  const size = harness.get().loadingContainers.size;
+  await act(async () => release());
+  assert.equal(size, 0, 'retirement clears rendered loading without waiting for the old provider');
+});
+
+it('#9567 manual sync removes prior folder files before its replacement area page arrives', async () => {
+  const provider = new FakeProvider({ containerListing: 'direct-children', listFilesIsRecursive: false });
+  let hold = false, release!: () => void;
+  provider.listFiles = async (_ctx, _project, parent) => {
+    if (hold && parent === 'area-1') await new Promise<void>(resolve => { release = resolve; });
+    return { items: [{ ...fileOf('old-file'), containerId: parent }] };
+  };
+  const harness = renderCatalogSync(provider);
+  await act(async () => harness.get().openFileArea('p', 'area-1'));
+  await act(async () => harness.get().openContainer({ id: 'X', name: 'X' }));
+  assert.equal(harness.get().filesByContainer.has('X'), true);
+  hold = true;
+  let sync!: Promise<void>;
+  await act(async () => { sync = harness.get().syncFileArea('p', 'area-1'); });
+  const size = harness.get().filesByContainer.size;
+  await act(async () => { release(); await sync; });
+  assert.equal(size, 0, 'the new sync must not retain stale prior-generation files');
+});

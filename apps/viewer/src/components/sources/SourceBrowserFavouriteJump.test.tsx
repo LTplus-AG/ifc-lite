@@ -610,12 +610,14 @@ class ConcurrentFolderProvider extends FakeProvider {
     ...directChildrenManifest,
     capabilities: { ...directChildrenManifest.capabilities, eagerFileSweep: true },
   };
+  areaFileCalls = 0;
   private pending = new Map<string, Array<() => void>>();
   constructor(private readonly holdArea = false) { super(); }
   override listContainers(c: PluginContext, project: string, parent?: string): Promise<Page<SourceContainer>> {
     return !parent || parent === 'area-1' ? super.listContainers(c, project, parent) : Promise.resolve({ items: [] });
   }
   override async listFiles(_ctx?: PluginContext, _project?: string, container?: string): Promise<Page<SourceFile>> {
+    if (container === 'area-1') this.areaFileCalls++;
     if (container === FOLDER.id || container === OTHER_FOLDER.id || (this.holdArea && container === 'area-1')) {
       await new Promise<void>(resolve => this.pending.set(container, [...(this.pending.get(container) ?? []), resolve]));
     }
@@ -656,6 +658,7 @@ it('#9567 a folder finishing cannot clear the initial area file spinner', async 
     provider.release(FOLDER.id); await pump();
     assert.equal(text().includes('Tower.ifc'), true);
     act(() => button('Documents')!.click()); await pump();
+    assert.equal(provider.areaFileCalls, 1, 'clicking the root must not start another eager sweep');
     assert.equal(fileSpinner(), true, 'the initial area request still owns the area spinner');
     provider.release('area-1'); await pump();
     assert.equal(fileSpinner(), false);
@@ -672,4 +675,17 @@ it('#9567 recursive file scans keep a selected folder loading until the area sca
     assert.equal(text().includes('Tower.ifc'), true);
     assert.equal(fileSpinner(), false);
   } finally { provider.release(); await pump(); }
+});
+
+it('#9567 X files survive the initial area sync completing', async () => {
+  const provider = new ConcurrentFolderProvider(true);
+  try {
+    await jumpTo(favourite({ containerId: 'area-1', containerName: 'Documents' }), provider);
+    act(() => button('Models')!.click()); await pump();
+    provider.release(FOLDER.id); await pump();
+    assert.equal(text().includes('Tower.ifc'), true);
+    provider.release('area-1'); await pump();
+    assert.equal(text().includes('Tower.ifc'), true, 'X files survive the area sync completing');
+    assert.equal(fileSpinner(), false);
+  } finally { provider.releaseAll(); await pump(); }
 });

@@ -33,7 +33,7 @@ import { useViewerStore } from '@/store';
 import { hasRetainedGeometryModel, RETAINED_EXACT_ONLY_REASON } from '@/store/retainedGeometry';
 import { toast } from '@/components/ui/toast';
 import { isNoRenderGeometryError } from '@ifc-lite/geometry';
-import { downloadBlob, buildExportFilename, stripExtension } from '@/lib/export/download';
+import { downloadFile, modelExportFilename } from '@/lib/export/download';
 import { exportRhino3dmInWorker, type RhinoExportProgress } from '@/lib/export/rhino-export-client';
 import { isStepSourceModel, resolveStepExportBytes } from './step-export-source';
 import {
@@ -105,9 +105,8 @@ export function RhinoExportDialog({ surface, trigger }: RhinoExportDialogProps) 
         controller.signal,
       );
 
-      const blob = new Blob([result.bytes as BlobPart], { type: 'application/octet-stream' });
-      downloadBlob(blob, buildExportFilename(stripExtension(selectedModel.name), '3dm'));
-      const sizeKb = Math.round(blob.size / 1024);
+      downloadFile(result.bytes, modelExportFilename(selectedModel.name, '3dm'));
+      const sizeKb = Math.round(result.bytes.byteLength / 1024);
       trackExportCompleted({ format: '3dm', surface, size_kb: sizeKb, visible_only: settings.visibleOnly });
 
       const msg = t('rhinoExport.exportedMessage', { sizeKb: String(sizeKb) });
@@ -135,7 +134,7 @@ export function RhinoExportDialog({ surface, trigger }: RhinoExportDialogProps) 
   }, [selectedModel, getMutationView, settings, t, surface]);
 
   const filenamePreview = selectedModel
-    ? buildExportFilename(stripExtension(selectedModel.name), '3dm')
+    ? modelExportFilename(selectedModel.name, '3dm')
     : undefined;
 
   return (

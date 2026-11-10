@@ -38,6 +38,8 @@ import {
 import { selectBoundingBoxesInRect, type RectangleRteFrame } from './scene-rect-select.js';
 import { splitMeshDataForBufferLimit, cachedWorldAabb, worldAabbFromPieces, destroyGpuResources, topologySafeBatchOrigin } from './scene-geometry.js';
 import { TopologyMemo } from './scene-precision.js';
+import { StreamAssembly } from './scene-stream-assembly.js';
+import { mergeSameColorPieces } from './scene-mesh-pieces.js';
 import { resolvePrecisionBucket } from './scene-bucket-routing.js';
 import { residentBatchBytes, sumResidentGpuBytes, type ResidentGpuBytes } from './render-stats.js';
 import { composeInstancedOverrideColor, writeOriginalInstancedColors } from './instanced-override-color.js';
@@ -396,6 +398,8 @@ export class Scene {
   private streamedBucketKeys: Set<string> = new Set();
   /** Indices the transient streaming-fragment pass may still draw; see limitStreamingFragments. */
   private streamingFragmentIndexBudget = Number.POSITIVE_INFINITY;
+  /** Topology verdicts and fragment runs of the current stream (finalize assembles from them). */
+  private readonly streamWork = new StreamAssembly();
 
   // ─── Mesh command queue ────────────────────────────────────────────
   // Decouples React state updates from GPU work.  Callers push meshes
@@ -1018,75 +1022,8 @@ export class Scene {
     const mergedOrigin = precisionPlaceable
       ? firstBucket?.batchedMesh?.origin ?? firstBucket?.frameOrigin ?? firstOrigin ?? [0, 0, 0]
       : undefined;
-    // Check if all pieces have the same color (within tolerance)
-    // This handles multi-material elements like windows (frame vs glass)
-    const firstColor = pieces[0].color;
-    const colorTolerance = 0.01; // Allow small floating point differences
-    const allSameColor = pieces.every(piece => {
-      const c = piece.color;
-      return Math.abs(c[0] - firstColor[0]) < colorTolerance &&
-             Math.abs(c[1] - firstColor[1]) < colorTolerance &&
-             Math.abs(c[2] - firstColor[2]) < colorTolerance &&
-             Math.abs(c[3] - firstColor[3]) < colorTolerance;
-    });
-
-    // If colors differ, return first piece without merging
-    // This preserves correct per-piece colors for multi-material elements
-    // Callers can use getMeshDataPieces() if they need all pieces
-    if (!allSameColor) {
-      return pieces[0];
-    }
-
-    // All pieces have same color - safe to merge
-    // Calculate total sizes
-    let totalPositions = 0;
-    let totalIndices = 0;
-    for (const piece of pieces) {
-      totalPositions += piece.positions.length;
-      totalIndices += piece.indices.length;
-    }
-
-    // Create merged arrays
-    const mergedPositions = new Float32Array(totalPositions);
-    const mergedNormals = new Float32Array(totalPositions);
-    const mergedIndices = new Uint32Array(totalIndices);
-
-    let posOffset = 0;
-    let idxOffset = 0;
-    let vertexOffset = 0;
-    for (const piece of pieces) {
-      if (mergedOrigin) {
-        const ox = (piece.origin?.[0] ?? 0) - mergedOrigin[0], oy = (piece.origin?.[1] ?? 0) - mergedOrigin[1], oz = (piece.origin?.[2] ?? 0) - mergedOrigin[2];
-        for (let i = 0; i < piece.positions.length; i += 3) {
-          mergedPositions[posOffset + i] = piece.positions[i] + ox;
-          mergedPositions[posOffset + i + 1] = piece.positions[i + 1] + oy;
-          mergedPositions[posOffset + i + 2] = piece.positions[i + 2] + oz;
-        }
-      } else {
-        mergedPositions.set(piece.positions, posOffset);
-      }
-      mergedNormals.set(piece.normals, posOffset);
-      // Copy indices with offset
-      for (let i = 0; i < piece.indices.length; i++) {
-        mergedIndices[idxOffset + i] = piece.indices[i] + vertexOffset;
-      }
-
-      posOffset += piece.positions.length;
-      idxOffset += piece.indices.length;
-      vertexOffset += piece.positions.length / 3;
-    }
-
-    // Return merged MeshData (all pieces have same color)
-    const merged = {
-      expressId,
-      modelIndex: pieces[0].modelIndex,  // Preserve modelIndex for multi-model support
-      positions: mergedPositions,
-      normals: mergedNormals,
-      indices: mergedIndices,
-      color: firstColor,
-      ifcType: pieces[0].ifcType,
-      ...(mergedOrigin ? { origin: mergedOrigin } : {}),
-    };
+    const merged = mergeSameColorPieces(pieces, expressId, mergedOrigin);
+    if (!merged) return pieces[0]; // colours differ: keep the first piece's (multi-material elements)
     // The common frame is explicit above.  Keep a source only when every part
     // belongs to the same live bucket; an arbitrary source would give a merged
     // result the wrong quantization/frame after a re-batch.
@@ -1210,7 +1147,7 @@ export class Scene {
     meshDataArray = meshDataArray.map((mesh) => this.modelTranslations.placeMesh(mesh));
     // One verdict per (mesh, frame) for the whole append: the validation below
     // and bucket routing ask the same question about the same placed mesh.
-    const topology = new TopologyMemo();
+    const topology = isStreaming ? this.streamWork.streamTopology() : new TopologyMemo();
     // Validate every input before cancelling appearance work, publishing a
     // bucket, or touching GPU state. A single impossible f32 frame must leave
     // an already-valid scene usable and allow the next safe append.
@@ -1547,6 +1484,7 @@ export class Scene {
   }
 
   private translateFlatMeshesForEntity(expressId: number, delta: [number, number, number]): boolean {
+    this.streamWork.topology = null; // positions move in place below
     const meshDataList = this.meshDataMap.get(expressId);
     if (!meshDataList || meshDataList.length === 0) return false;
     const [dx, dy, dz] = delta;
@@ -1770,6 +1708,7 @@ export class Scene {
    */
   rotateMeshesForEntity(expressId: number, angleRad: number, pivot: [number, number, number]): boolean {
     this.appearanceController?.cancelFor(expressId);
+    this.streamWork.topology = null;
     const meshDataList = this.meshDataMap.get(expressId);
     if (!meshDataList || meshDataList.length === 0) return false;
     if (angleRad === 0) return false;
@@ -1947,14 +1886,18 @@ export class Scene {
       const chunks = this.splitMeshDataForBufferLimit(group, this.cachedMaxBufferSize);
       for (const chunk of chunks) {
         const color = chunk[0].color;
+        // The model's shared frame once it exists (the finalize rebuild draws in it,
+        // so its batch can be assembled from these bytes), else the bucket's own.
+        const modelIndex = chunk[0].modelIndex ?? 0;
         const fragment = this.createBatchedMesh(
           chunk, color, device, pipeline, undefined, undefined,
-          this.buckets.get(key)?.frameOrigin, key,
+          this.modelTranslations.frameOrigin(this.sharedFrameOrigins.get(modelIndex) ?? null, modelIndex) ?? this.buckets.get(key)?.frameOrigin, key,
         );
         this.batchedMeshes.push(fragment);
         this.streamingFragments.push(fragment); this.pickGeometryRevision++;
         // Ephemeral mode registers no meshes to filter, and keeps no geometry alive.
         if (!this.ephemeralStreamingMode) this.fragmentPieces.record(fragment, chunk, sourceOf);
+        if (!this.ephemeralStreamingMode && !chunk.some((piece) => sourceOf.has(piece))) this.streamWork.record(fragment, chunk);
       }
     }
   }
@@ -1982,6 +1925,7 @@ export class Scene {
     } finally {
       this.finalizeInProgress = false;
       this.streamingFragmentIndexBudget = Number.POSITIVE_INFINITY;
+      this.streamWork.endFinalize();
     }
   }
 
@@ -1994,9 +1938,15 @@ export class Scene {
       pendingBatchKeys: this.pendingBatchKeys,
       streamedBucketKeys: this.streamedBucketKeys,
       bucketBaseKey: (md) => this.bucketBaseKey(md),
-      resolveActiveBucket: (base, md) => this.resolveActiveBucket(base, md),
+      resolveActiveBucket: (base, md) => this.resolveActiveBucket(base, md, this.streamWork.topology ?? undefined),
       createBucket: (key) => ({ key, meshData: [], batchedMesh: null, vertexBytes: 0 }),
       beforeJoin: (bucket) => this.fragmentPieces.recordBuilt(bucket),
+      freshFrameOrigin: (md) => {
+        const modelIndex = md.modelIndex ?? 0;
+        return topologySafeBatchOrigin([md], undefined,
+          this.modelTranslations.frameOrigin(this.sharedFrameOrigins.get(modelIndex) ?? null, modelIndex),
+          undefined, this.streamWork.topology ?? undefined);
+      },
     });
   }
 
@@ -2014,6 +1964,7 @@ export class Scene {
     // until the new proper batches are fully built (no visual gap).
     const oldFragments = this.streamingFragments;
     perfTally('render.finalize', oldFragments.length, 'fragments'); // #6957 fragment rebuilds
+    this.streamWork.beginFinalize(oldFragments);
     const oldBatches = this.batchedMeshes;
     const fragmentSet = new Set(oldFragments);
     const oldBatchSet = new Set(oldBatches);
@@ -2090,6 +2041,7 @@ export class Scene {
     const scene = this;
     const oldFragments = this.streamingFragments;
     perfTally('render.finalize', oldFragments.length, 'fragments'); // #6957 fragment rebuilds
+    this.streamWork.beginFinalize(oldFragments);
     const oldBatches = this.batchedMeshes;
     const fragmentSet = new Set(oldFragments);
     const oldBatchSet = new Set(oldBatches);
@@ -2139,6 +2091,7 @@ export class Scene {
         scene.streamingFragments = [...oldFragments, ...scene.streamingFragments]; // + any streamed in meanwhile
         scene.batchedMeshes = oldBatches;
         scene.finalizeInProgress = false;
+        scene.streamWork.endFinalize();
       }
 
       function processChunk(): void {
@@ -2190,6 +2143,7 @@ export class Scene {
           perfCount('render.finalize.batches', createdOwned.length);
           scene.finalizeInProgress = false;
           scene.streamingFragmentIndexBudget = Number.POSITIVE_INFINITY;
+          scene.streamWork.endFinalize();
           scene.snapshots.completeCapture();
           trace?.end(span, { batches: createdOwned.length, chunks });
           resolve();
@@ -2223,6 +2177,7 @@ export class Scene {
 
   finishEphemeralStreaming(): void {
     this.snapshots.dropCapture();
+    this.streamWork.clear();
     this.streamingFragmentIndexBudget = Number.POSITIVE_INFINITY;
     if (this.streamingFragments.length === 0) {
       this.ephemeralStreamingMode = false;
@@ -2476,15 +2431,20 @@ export class Scene {
       frameOrigin ?? this.meshDataBucket.get(meshes[0])?.batchedMesh?.origin,
       this.modelTranslations.frameOrigin(this.sharedFrameOrigins.get(modelIndex) ?? null, modelIndex),
       this.meshDataBucket.get(meshes[0])?.frameOrigin,
+      this.streamWork.topology ?? undefined,
     );
     if (!origin) throw new Error('Unable to resolve a topology-safe GPU frame for mesh geometry.');
-    const result = createSceneBatch(meshes, color, device, pipeline, {
+    const onMerged = this.snapshots.mergedSink(bucketKey, this.nextBatchId);
+    const fragmentOf = bucketKey === undefined && !this.ephemeralStreamingMode ? ownerKey : undefined;
+    const result = (bucketKey !== undefined && !onMerged && this.streamWork.assemble(meshes, color, device, pipeline,
+      { id: this.nextBatchId, colorKey: bucketKey, origin, quantized: quantization, lod: this.lodBuildsEnabled }))
+      || createSceneBatch(meshes, color, device, pipeline, {
       // A derived batch (no bucketKey) is a subset of ONE material-uniform
       // bucket, so its first piece's finish labels it like bucketBaseKey does (#5582).
       id: this.nextBatchId, colorKey: bucketKey ?? ownerKey ?? this.colorKey(color, meshes[0]?.material),
       origin,
       quantized: quantization, lod: this.lodBuildsEnabled,
-      onMerged: this.snapshots.mergedSink(bucketKey, this.nextBatchId),
+      onMerged, ...(fragmentOf !== undefined ? { lattice: this.streamWork.latticeFor(fragmentOf), copySource: true } : {}),
     }, bucketKey);
     this.nextBatchId++;
     if (!this.sharedFrameOrigins.has(modelIndex) && result.origin) {
@@ -3703,6 +3663,7 @@ export class Scene {
   }
 
   private clearFlatBuffers(): void {
+    this.streamWork.clear();
     for (const mesh of this.meshes) destroyGpuResources(mesh);
     for (const batch of this.batchedMeshes) destroyGpuResources(batch);
     for (const tm of this.texturedMeshes) {

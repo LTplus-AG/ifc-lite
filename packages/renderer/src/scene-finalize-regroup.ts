@@ -4,6 +4,7 @@
 
 import type { MeshData } from '@ifc-lite/geometry';
 import type { BatchedMesh } from './types.js';
+import { BATCH_CONSTANTS } from './constants.js';
 
 /** The slice of a bucket the finalize re-group reads and writes. */
 export interface RegroupBucket {
@@ -30,6 +31,12 @@ export interface RegroupHost<Bucket extends RegroupBucket> {
   createBucket(key: string): Bucket;
   /** Called before a moved mesh joins a bucket that existed before the re-group. */
   beforeJoin?(bucket: Bucket): void;
+  /**
+   * The frame `resolveActiveBucket` would give a bucket it created now for this
+   * mesh. With it, a streamed bucket that re-routing would rebuild exactly as it
+   * stands is kept instead of dissolved (see `intactStreamedBuckets`).
+   */
+  freshFrameOrigin?(meshData: MeshData): [number, number, number] | undefined;
 }
 
 export interface FinalizeRegroup {
@@ -61,12 +68,18 @@ export interface FinalizeRegroup {
  * are never dissolved.
  */
 export function regroupStreamedBuckets<Bucket extends RegroupBucket>(host: RegroupHost<Bucket>): FinalizeRegroup {
+  const intact = intactStreamedBuckets(host);
   const activeSnapshot = new Map(host.activeBucketKey);
   const pendingSnapshot = new Set(host.pendingBatchKeys);
   const streamedSnapshot = new Set(host.streamedBucketKeys);
   const dissolved: Array<[string, Bucket]> = [];
   const retired: BatchedMesh[] = [];
   const moved: MeshData[] = [];
+  // The re-route order: every moved mesh, and each intact bucket at the place
+  // its first mesh would have re-created it, so the bucket map (and with it the
+  // batch draw order) ends exactly as a full re-route leaves it.
+  const order: Array<MeshData | Bucket> = [];
+  const vertexBytesBefore = new Map<Bucket, number>();
 
   for (const key of host.streamedBucketKeys) {
     const bucket = host.buckets.get(key);
@@ -75,8 +88,13 @@ export function regroupStreamedBuckets<Bucket extends RegroupBucket>(host: Regro
     host.buckets.delete(key);
     host.pendingBatchKeys.delete(key);
     dissolved.push([key, bucket]);
+    if (intact.has(bucket)) {
+      vertexBytesBefore.set(bucket, bucket.vertexBytes);
+      order.push(bucket);
+      continue;
+    }
     if (bucket.batchedMesh) retired.push(bucket.batchedMesh);
-    for (const md of bucket.meshData) moved.push(md);
+    for (const md of bucket.meshData) { moved.push(md); order.push(md); }
   }
   host.streamedBucketKeys.clear();
 
@@ -117,6 +135,8 @@ export function regroupStreamedBuckets<Bucket extends RegroupBucket>(host: Regro
     for (const [key, bucket] of dissolved) {
       host.buckets.set(key, bucket);
       for (const md of bucket.meshData) host.meshDataBucket.set(md, bucket);
+      const bytes = vertexBytesBefore.get(bucket);
+      if (bytes !== undefined) bucket.vertexBytes = bytes;
     }
     for (const [base, change] of activeChanges) {
       if (host.activeBucketKey.get(base) !== change.after) continue;
@@ -129,7 +149,19 @@ export function regroupStreamedBuckets<Bucket extends RegroupBucket>(host: Regro
   };
 
   try {
-    for (const meshData of moved) {
+    for (const entry of order) {
+      if (intact.has(entry as Bucket)) {
+        const bucket = entry as Bucket;
+        // What re-routing its meshes into a fresh bucket would have counted.
+        let bytes = 0;
+        for (const md of bucket.meshData) bytes += (md.positions.length / 3) * BATCH_CONSTANTS.BYTES_PER_VERTEX;
+        bucket.vertexBytes = bytes;
+        host.buckets.set(bucket.key, bucket);
+        if (!host.pendingBatchKeys.has(bucket.key)) addedPending.add(bucket.key);
+        host.pendingBatchKeys.add(bucket.key);
+        continue;
+      }
+      const meshData = entry as MeshData;
       const key = host.resolveActiveBucket(host.bucketBaseKey(meshData), meshData);
       let bucket = host.buckets.get(key);
       if (!bucket) {
@@ -161,4 +193,42 @@ export function regroupStreamedBuckets<Bucket extends RegroupBucket>(host: Regro
       if (before !== key) activeChanges.set(base, { before, after: key });
     }
   }
+}
+
+/**
+ * Streamed buckets the re-group would rebuild exactly as they stand, so it keeps
+ * them instead of dissolving and re-routing every mesh (each re-route re-reads
+ * the key and re-checks f32 topology). A bucket qualifies when re-routing its
+ * meshes, in their order, would land every one of them back in a bucket with
+ * the same key, frame and contents:
+ * - it has no built batch, is not cold, and its key was never split (the key is
+ *   still the active key for its base, and is that base);
+ * - every mesh still keys to it (no colour changed in place while streaming);
+ * - no mesh moving out of another streamed bucket keys to it, which would
+ *   interleave into its order;
+ * - a bucket created now would take the frame it already has.
+ * Re-routing then sees the same frames and, from a zero byte count, the same or
+ * smaller running sizes, so it splits nothing streaming did not split.
+ */
+function intactStreamedBuckets<Bucket extends RegroupBucket>(host: RegroupHost<Bucket>): ReadonlySet<Bucket> {
+  const kept = new Set<Bucket>();
+  if (!host.freshFrameOrigin) return kept;
+  const targets = new Set<string>();
+  const candidates: Bucket[] = [];
+  for (const key of host.streamedBucketKeys) {
+    const bucket = host.buckets.get(key);
+    if (!bucket || bucket.meshData.length === 0) continue;
+    const bases = bucket.meshData.map((md) => host.bucketBaseKey(md));
+    const settled = bucket.batchedMesh === null && !host.coldBuckets.has(key)
+      && (host.activeBucketKey.get(key) ?? key) === key && bases.every((base) => base === key);
+    if (settled) candidates.push(bucket);
+    else for (const base of bases) targets.add(base);
+  }
+  for (const bucket of candidates) {
+    if (targets.has(bucket.key)) continue;
+    const fresh = host.freshFrameOrigin(bucket.meshData[0]);
+    const own = bucket.frameOrigin;
+    if (fresh && own && fresh[0] === own[0] && fresh[1] === own[1] && fresh[2] === own[2]) kept.add(bucket);
+  }
+  return kept;
 }

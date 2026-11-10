@@ -1,0 +1,5 @@
+---
+"@ifc-lite/renderer": patch
+---
+
+Finalizing a streamed load no longer rebuilds geometry the stream already uploaded. Each streamed bucket's final batch is now assembled on the GPU from the fragments that drew its meshes while streaming: a buffer copy, with indices rebased on the CPU. The old path merged, lattice-checked, quantized and uploaded every vertex a second time. A stream also keeps one f32 topology verdict per mesh and frame, instead of re-scanning each mesh four times, and the finalize regroup keeps buckets that no colour change touched. The rendered batches are unchanged: same frames, bounds, indices, LOD1 and decoded vertex positions. Quantized fragments of one bucket now share one lattice origin, which decodes to the same exact positions. A bucket that cannot be proven identical (f32 fragments, a lattice origin that did not fit, a mesh re-keyed while streaming, a scene-snapshot capture) takes the full rebuild as before. Load-trace counters `render.finalize.assembled.*`, `render.finalize.rebuilt.*` and `gpu.assembleCopy.*` report which path each bucket took.

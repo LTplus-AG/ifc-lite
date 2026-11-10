@@ -1,0 +1,210 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/**
+ * The work a cold load's finalize does after the last batch arrived, counted
+ * through the real Scene streaming and finalize code (only the GPU device is a
+ * recording stub). The geometry already went to the GPU once, as the
+ * streaming fragments of the buckets finalize builds, so finalize must not
+ * merge, quantize or upload those vertices again, nor re-check their f32
+ * topology. Output identity: every final batch decodes to exactly what the full
+ * rebuild produces (a snapshot capture forces that rebuild, which records the
+ * merged bytes it uploads).
+ */
+
+import { afterEach, describe, it, mock } from 'node:test';
+import assert from 'node:assert/strict';
+import type { MeshData } from '@ifc-lite/geometry';
+import { diffCounters, perfCounters } from '@ifc-lite/load-trace';
+import { Scene } from './scene.js';
+import type { RenderPipeline } from './pipeline.js';
+import type { BatchedMesh } from './types.js';
+
+Object.assign(globalThis, { GPUBufferUsage: { MAP_READ: 1, MAP_WRITE: 2, COPY_SRC: 4, COPY_DST: 8, INDEX: 16, VERTEX: 32, UNIFORM: 64, STORAGE: 128, INDIRECT: 256, QUERY_RESOLVE: 512 } });
+
+type StubBuffer = { size: number; usage: number; bytes: Uint8Array; destroyed: boolean; destroy(): void };
+
+function recordingDevice() {
+  const work = { vertexWriteBytes: 0, indexWriteBytes: 0, copyBytes: 0, buffers: 0 };
+  const device = {
+    limits: { maxBufferSize: 1 << 28, maxStorageBufferBindingSize: 1 << 28 },
+    createBuffer({ size, usage }: GPUBufferDescriptor): StubBuffer {
+      work.buffers++;
+      const buffer: StubBuffer = { size, usage, bytes: new Uint8Array(size), destroyed: false, destroy() { buffer.destroyed = true; } };
+      return buffer;
+    },
+    createBindGroup: () => ({}),
+    createCommandEncoder: () => ({
+      copyBufferToBuffer(from: StubBuffer, fromOffset: number, to: StubBuffer, toOffset: number, size: number) {
+        assert.ok(!from.destroyed, 'copies only from live fragments');
+        assert.ok(from.usage & GPUBufferUsage.COPY_SRC, 'the source allows copies');
+        to.bytes.set(from.bytes.subarray(fromOffset, fromOffset + size), toOffset);
+        work.copyBytes += size;
+      },
+      finish: () => ({}),
+    }),
+    queue: {
+      submit() {},
+      writeBuffer(buffer: StubBuffer, offset: number, data: ArrayBufferView) {
+        const bytes = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+        buffer.bytes.set(bytes, offset);
+        if (buffer.usage & GPUBufferUsage.VERTEX) work.vertexWriteBytes += bytes.byteLength;
+        if (buffer.usage & GPUBufferUsage.INDEX) work.indexWriteBytes += bytes.byteLength;
+      },
+    },
+  } as unknown as GPUDevice;
+  return { device, work };
+}
+
+const pipeline = { getUniformBufferSize: () => 256, getBindGroupLayout: () => ({}) } as unknown as RenderPipeline;
+const PALETTE: Array<[number, number, number, number]> = [[0.8, 0.2, 0.2, 1], [0.2, 0.7, 0.3, 1], [0.3, 0.3, 0.9, 1], [0.9, 0.9, 0.9, 1], [0.6, 0.5, 0.1, 1]];
+
+/** An axis-aligned box of size `s` at (x, y, z), each face a 4×4 grid, local to a georeferenced origin. */
+function box(id: number, x: number, y: number, z: number, s: number, color: [number, number, number, number]): MeshData {
+  const positions: number[] = [];
+  const normals: number[] = [];
+  const indices: number[] = [];
+  const faces: Array<[number[], number[], number[], number[]]> = [
+    [[1, 0, 0], [0, 1, 0], [0, 0, 1], [1, 0, 0]], [[-1, 0, 0], [0, 0, 1], [0, 1, 0], [0, 0, 0]],
+    [[0, 1, 0], [0, 0, 1], [1, 0, 0], [0, 1, 0]], [[0, -1, 0], [1, 0, 0], [0, 0, 1], [0, 0, 0]],
+    [[0, 0, 1], [1, 0, 0], [0, 1, 0], [0, 0, 1]], [[0, 0, -1], [0, 1, 0], [1, 0, 0], [0, 0, 0]],
+  ];
+  const N = 4;
+  for (const [n, u, v, o] of faces) {
+    const base = positions.length / 3;
+    for (let b = 0; b <= N; b++) for (let a = 0; a <= N; a++) {
+      positions.push(...[0, 1, 2].map((axis) => [x, y, z][axis] + (o[axis] + (a / N) * u[axis] + (b / N) * v[axis]) * s));
+      normals.push(...n);
+    }
+    for (let b = 0; b < N; b++) for (let a = 0; a < N; a++) {
+      const c = base + b * (N + 1) + a;
+      indices.push(c, c + 1, c + N + 2, c, c + N + 2, c + N + 1);
+    }
+  }
+  return { expressId: id, modelIndex: 0, color, origin: [2_600_000, 1_200_000, 400],
+    positions: new Float32Array(positions), normals: new Float32Array(normals), indices: new Uint32Array(indices) };
+}
+
+/** Boxes spread over several 32 m cells and colours, delivered in arrivals of 40. */
+function arrivals(): MeshData[][] {
+  const meshes: MeshData[] = [];
+  let id = 1;
+  for (let i = 0; i < 12; i++) for (let j = 0; j < 12; j++) for (let k = 0; k < 4; k++) {
+    meshes.push(box(id, i * 7.3 + 0.13, k * 3.1, j * 6.7 + 0.29, 0.4 + ((i + j + k) % 5) * 0.37, PALETTE[(i * 3 + j + k) % PALETTE.length]));
+    id++;
+  }
+  const out: MeshData[][] = [];
+  for (let at = 0; at < meshes.length; at += 40) out.push(meshes.slice(at, at + 40));
+  return out;
+}
+
+function countFround<T>(run: () => T): { result: T; calls: number } {
+  const original = Math.fround;
+  let calls = 0;
+  Math.fround = (x: number) => { calls++; return original(x); };
+  try { return { result: run(), calls }; } finally { Math.fround = original; }
+}
+
+interface Load { scene: Scene; finalize: ReturnType<typeof recordingDevice>['work']; streamFround: number; finalizeFround: number; counters: Record<string, number> }
+
+/** Stream like the viewer (one flush per arrival), then the time-sliced finalize. */
+async function streamedLoad(options: { rebuildReference?: boolean; recolor?: number } = {}): Promise<Load> {
+  const { device, work } = recordingDevice();
+  const scene = new Scene();
+  scene.setSpatialChunking({ cellSize: 32 });
+  scene.setLodBuildsEnabled(true);
+  scene.setQuantizedBatches(true);
+  // A snapshot capture needs the merged bytes of every final batch, so it takes the full rebuild.
+  if (options.rebuildReference) scene.captureNextFinalize(() => {});
+  const batches = arrivals();
+  const streamFround = countFround(() => {
+    for (const batch of batches) {
+      scene.queueMeshes(batch);
+      while (scene.hasQueuedMeshes()) scene.flushPending(device, pipeline, 1e9);
+    }
+  }).calls;
+  // A style colour resolved while streaming re-keys its mesh in place (#5358).
+  if (options.recolor !== undefined) {
+    const registered = scene.getMeshDataPieces(batches[0][options.recolor].expressId)![0];
+    registered.color = PALETTE[(PALETTE.indexOf(registered.color as [number, number, number, number]) + 1) % PALETTE.length];
+  }
+  Object.assign(work, { vertexWriteBytes: 0, indexWriteBytes: 0, copyBytes: 0, buffers: 0 });
+  perfCounters.enable();
+  const before = perfCounters.read();
+  const original = Math.fround;
+  let finalizeFround = 0;
+  Math.fround = (x: number) => { finalizeFround++; return original(x); };
+  try {
+    await scene.finalizeStreamingAsync(device, pipeline, 1e9);
+  } finally {
+    Math.fround = original;
+  }
+  const counters = diffCounters(perfCounters.read(), before);
+  return { scene, finalize: { ...work }, streamFround, finalizeFround, counters };
+}
+
+/** Everything a final batch draws, decoded: keys, ids, frame, bounds, indices, LOD, and each vertex's exact position, normal and lane. */
+function decoded(batch: BatchedMesh): string {
+  const vb = (batch.vertexBuffer as unknown as StubBuffer).bytes;
+  const ib = new Uint32Array((batch.indexBuffer as unknown as StubBuffer).bytes.buffer, 0, batch.indexCount);
+  let vertices = 0;
+  for (const i of ib) vertices = Math.max(vertices, i + 1);
+  const dv = new DataView(vb.buffer);
+  const records: number[] = [];
+  for (let v = 0; v < vertices; v++) {
+    if (batch.quantized) {
+      const { min, step } = batch.quantized;
+      const o = v * 12;
+      for (let axis = 0; axis < 3; axis++) records.push(Math.fround(Math.fround(min[axis]) + dv.getUint16(o + axis * 2, true) * step));
+      records.push(dv.getUint16(o + 6, true), dv.getUint32(o + 8, true));
+    } else {
+      for (let f = 0; f < 6; f++) records.push(dv.getFloat32(v * 28 + f * 4, true));
+      records.push(dv.getUint32(v * 28 + 24, true));
+    }
+  }
+  const lod = batch.lod1IndexBuffer ? Array.from(new Uint32Array((batch.lod1IndexBuffer as unknown as StubBuffer).bytes.buffer, 0, batch.lod1IndexCount)) : null;
+  return JSON.stringify({ key: batch.colorKey, ids: batch.expressIds, models: batch.modelIndices, origin: batch.origin, bounds: batch.bounds,
+    quantized: !!batch.quantized, indices: Array.from(ib), lod, records });
+}
+
+describe('cold finalize work after the last batch arrived', () => {
+  afterEach(() => mock.restoreAll());
+
+  it('uploads no vertex bytes the stream already uploaded, merges nothing and re-checks no topology', async () => {
+    const load = await streamedLoad();
+    const batches = load.scene.getBatchedMeshes();
+    assert.ok(batches.length >= 10, `a multi-bucket scene (${batches.length} batches)`);
+    assert.ok(batches.some((b) => b.lod1IndexBuffer), 'some batch builds LOD1, as the viewer enables it');
+    assert.equal(load.finalize.vertexWriteBytes, 0, 'every final vertex buffer is a GPU copy of its fragments');
+    assert.ok(load.finalize.copyBytes > 0);
+    assert.equal(load.counters['render.mergeGeometry.vertices'] ?? 0, 0, 'no CPU merge of streamed vertices');
+    assert.equal(load.counters['render.finalize.assembled.count'], batches.length, 'every streamed bucket is assembled');
+    assert.equal(load.finalizeFround, 0, 'no f32 topology re-check in finalize');
+  });
+
+  it('checks each streamed mesh once per frame across the whole load', async () => {
+    const load = await streamedLoad();
+    const triangles = arrivals().flat().reduce((n, mesh) => n + mesh.indices.length / 3, 0);
+    // The first arrival is scanned against its own frames before the model's
+    // shared frame exists, and once more against the shared one; every later
+    // mesh once. Before the stream-wide memo every mesh was scanned four times.
+    assert.ok(load.streamFround + load.finalizeFround <= triangles * 9 * 1.5, `${load.streamFround + load.finalizeFround} fround calls for ${triangles} triangles`);
+  });
+
+  it('draws exactly what the full rebuild draws', async () => {
+    const assembled = await streamedLoad();
+    const reference = await streamedLoad({ rebuildReference: true });
+    assert.equal(reference.counters['render.finalize.assembled.count'] ?? 0, 0, 'the reference took the full rebuild');
+    assert.ok(reference.finalize.vertexWriteBytes > 0);
+    assert.deepEqual(assembled.scene.getBatchedMeshes().map(decoded), reference.scene.getBatchedMeshes().map(decoded));
+  });
+
+  it('a mesh re-keyed while streaming: its buckets rebuild, the rest assemble, the result still matches', async () => {
+    const assembled = await streamedLoad({ recolor: 3 });
+    const reference = await streamedLoad({ recolor: 3, rebuildReference: true });
+    assert.ok((assembled.counters['render.finalize.rebuilt.uncovered'] ?? 0) > 0, 'the buckets the mesh left and joined rebuild');
+    assert.ok((assembled.counters['render.finalize.assembled.count'] ?? 0) > 0, 'every other bucket still assembles');
+    assert.deepEqual(assembled.scene.getBatchedMeshes().map(decoded), reference.scene.getBatchedMeshes().map(decoded));
+  });
+});

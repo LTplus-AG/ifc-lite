@@ -45,7 +45,10 @@ function stubDevice(): GPUDevice {
       return { usage, destroy() { destroyed++; } };
     },
     createBindGroup: () => ({}),
+    // Finalize assembles a streamed bucket's batch from its fragments on the GPU.
+    createCommandEncoder: () => ({ copyBufferToBuffer() {}, finish: () => ({}) }),
     queue: {
+      submit() {},
       writeBuffer: (buffer: { usage: number }, _offset: number, data: ArrayBuffer | ArrayBufferView, dataOffset = 0, size?: number) => {
         const view = data instanceof ArrayBuffer ? new Uint8Array(data) : new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
         written.push({ bytes: [...view.subarray(dataOffset, size === undefined ? undefined : dataOffset + size)], usage: buffer.usage, buffer });

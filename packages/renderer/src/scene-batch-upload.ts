@@ -6,7 +6,7 @@ import type { BatchedMesh } from './types.js';
 import type { RenderPipeline } from './pipeline.js';
 import { mergeGeometry } from './scene-geometry.js';
 import { BATCH_CONSTANTS } from './constants.js';
-import { latticeCollapsesGeometry, quantizeInterleaved } from './quantize.js';
+import { latticeCollapsesGeometry, quantizeInterleaved, type LatticeFrame } from './quantize.js';
 import { createStaticGpuBuffer } from './gpu-static-upload.js';
 import type { MergedBatchBytes } from './scene-snapshot-batches.js';
 import { meshUniformArena, type MeshUniformSlot } from './mesh-uniform-arena.js';
@@ -33,6 +33,10 @@ export function createSceneBatch(
     lod: boolean;
     /** Handed the exact arrays this batch uploads (scene-snapshot-batches.ts). */
     onMerged?: (bytes: MergedBatchBytes) => void;
+    /** Encode against this shared lattice origin when it fits (a streamed bucket's fragments). */
+    lattice?: LatticeFrame;
+    /** The vertex buffer can be copied from (a fragment a finalize may assemble from). */
+    copySource?: boolean;
   },
   bucketKey?: string,
 ): BatchedMesh {
@@ -83,6 +87,7 @@ export function createSceneBatch(
       ? quantizeInterleaved(
           merged.vertexData,
           BATCH_CONSTANTS.BYTES_PER_VERTEX / 4,
+          options.lattice,
         )
       : null;
     if (!quantizedData && options.quantized === 'required') {
@@ -95,28 +100,20 @@ export function createSceneBatch(
         'its partial-batch depth will not match the base geometry (#4832).',
       );
     }
+    const vertexUsage = GPUBufferUsage.VERTEX | (options.copySource ? GPUBufferUsage.COPY_SRC : 0);
     if (quantizedData) {
-      vertexBuffer = track(createStaticGpuBuffer(device, quantizedData.vertexData, GPUBufferUsage.VERTEX));
+      vertexBuffer = track(createStaticGpuBuffer(device, quantizedData.vertexData, vertexUsage));
       quantized = { min: quantizedData.quantMin, step: quantizedData.step };
     } else {
-      vertexBuffer = track(createStaticGpuBuffer(device, merged.vertexData, GPUBufferUsage.VERTEX));
+      vertexBuffer = track(createStaticGpuBuffer(device, merged.vertexData, vertexUsage));
     }
 
     // Create index buffer
     const indexBuffer = track(createStaticGpuBuffer(device, merged.indices, GPUBufferUsage.INDEX));
 
-    // This batch's uniform block: a slice of the shared per-device arena, so
-    // the frame uploads every drawn batch in one write (mesh-uniform-arena.ts).
-    uniformSlot = meshUniformArena(device, pipeline.getUniformBufferSize()).allocate();
-    const bindGroup = device.createBindGroup({
-      layout: pipeline.getBindGroupLayout(),
-      entries: [
-        {
-          binding: 0,
-          resource: { buffer: uniformSlot.buffer, offset: uniformSlot.offset, size: uniformSlot.size },
-        },
-      ],
-    });
+    const uniform = createBatchUniform(device, pipeline);
+    uniformSlot = uniform.uniformSlot;
+    const bindGroup = uniform.bindGroup;
 
     // LOD1 (issue #1682 phase 5): simplified second index range over the SAME
     // vertex buffer. Bucket-owned batches only (`bucketKey` present) — the
@@ -180,6 +177,25 @@ export function createSceneBatch(
         console.warn('[Scene] batch rollback disposal failed', disposeError);
       }
     }
+    throw error;
+  }
+}
+
+/**
+ * A batch's uniform block: a slice of the shared per-device arena, so the frame
+ * uploads every drawn batch in one write (mesh-uniform-arena.ts). The caller
+ * owns the slot, and releases it if the rest of the batch fails.
+ */
+export function createBatchUniform(device: GPUDevice, pipeline: RenderPipeline): { uniformSlot: MeshUniformSlot; bindGroup: GPUBindGroup } {
+  const uniformSlot = meshUniformArena(device, pipeline.getUniformBufferSize()).allocate();
+  try {
+    const bindGroup = device.createBindGroup({
+      layout: pipeline.getBindGroupLayout(),
+      entries: [{ binding: 0, resource: { buffer: uniformSlot.buffer, offset: uniformSlot.offset, size: uniformSlot.size } }],
+    });
+    return { uniformSlot, bindGroup };
+  } catch (error) {
+    uniformSlot.release();
     throw error;
   }
 }

@@ -54,7 +54,8 @@ test('create scene: in every schema, each need runs and each expected value name
       for (const [entity, expect] of Object.entries(step.emits)) {
         const attrs = tables[schema].table.get(entity)?.attributes;
         if (!attrs) { bad.push(`${step.id}: ${schema} has no ${entity}`); continue; }
-        for (const attr of Object.keys(expect)) if (!attrs.includes(attr)) bad.push(`${step.id}: ${schema} ${entity} has no ${attr}`);
+        const { unchecked = [], ...values } = expect;
+        for (const attr of [...Object.keys(values), ...unchecked]) if (!attrs.includes(attr)) bad.push(`${step.id}: ${schema} ${entity} has no ${attr}`);
       }
     }
   }

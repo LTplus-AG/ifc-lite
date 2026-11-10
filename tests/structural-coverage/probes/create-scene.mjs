@@ -8,7 +8,8 @@
  * Each step calls one in-store builder and lists, per entity it emits, the
  * attribute values (EXPRESS names, STEP-normalised: references to rooted
  * entities as their GlobalId, booleans as true/false) the exported record must
- * carry, or a function of the schema returning that. `needs` names earlier steps
+ * carry, or a function of the schema returning that. An entity's `unchecked` lists
+ * attributes with no expected value yet; it caps the cell at partial. `needs` names earlier steps
  * whose results it uses; `schemas` limits a step to the schemas that have its
  * entities (omit it to run everywhere).
  *
@@ -45,12 +46,13 @@ export const SCENE = [
   {
     id: 'point-connection',
     builder: 'addStructuralPointConnectionToStore',
-    // IFC2X3 names the stiffness attributes Linear* and has no boolean branch: there only the name is
-    // expected until the IFC2X3 builder lands and its real output sets the rest.
+    // IFC2X3 names the stiffness attributes Linear* and has no boolean branch. Their expected values
+    // are set from the IFC2X3 builder's real output when it lands; until then `unchecked` caps the
+    // cell at partial, so it cannot pass with the stiffness unverified.
     emits: (schema) => ({
       IfcStructuralPointConnection: { GlobalId: G.connection, Name: 'Probe support' },
       IfcBoundaryNodeCondition: schema === 'IFC2X3'
-        ? { Name: 'Probe fixed' }
+        ? { Name: 'Probe fixed', unchecked: ['LinearStiffnessX', 'LinearStiffnessZ', 'RotationalStiffnessY'] }
         : { Name: 'Probe fixed', TranslationalStiffnessX: true, TranslationalStiffnessZ: true, RotationalStiffnessY: false },
     }),
     build: ({ create, editor, anchor }) => create.addStructuralPointConnectionToStore(editor, anchor, {

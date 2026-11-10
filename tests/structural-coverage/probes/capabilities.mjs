@@ -54,10 +54,11 @@ const linkRead = {
       if (!ix) { checked++; continue; }
       for (const [itemId, productId] of links.slice(0, MAX_LINKS_PER_FILE)) {
         checked++;
-        const guid = file.step.get(productId)?.args[0];
+        const product = file.step.get(productId);
+        const guid = product?.args[0];
         const hit = ix.byId.get(itemId);
         const info = hit?.family === 'item' ? hit.info : undefined;
-        if (productId === undefined || !file.step.get(productId)) problems.push(`${file.path}#${itemId}: the link names no physical element the file holds`);
+        if (!product) problems.push(`${file.path}#${itemId}: the link names no physical element the file holds`);
         else if (typeof guid !== 'string') problems.push(`${file.path}#${itemId}: the physical element has no GlobalId`);
         else if (!info) problems.push(`${file.path}#${itemId}: item not in the read model`);
         else if (!mentions(info, guid)) problems.push(`${file.path}#${itemId}: no field names physical ${guid}`);

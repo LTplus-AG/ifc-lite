@@ -48,7 +48,8 @@ async function buildScene(ctx, schema) {
 function matchRecord(row, exported, expect, types) {
   let best = null;
   for (const rec of exported.of(row.entity)) {
-    const diffs = Object.entries(expect).flatMap(([attr, want]) => {
+    const { unchecked: _unchecked, ...values } = expect;
+    const diffs = Object.entries(values).flatMap(([attr, want]) => {
       const got = normalize(rec.args[row.attributes.indexOf(attr)], exported, types);
       return equal(want, got) ? [] : [`${attr} ${show(got)}, expected ${show(want)}`];
     });
@@ -86,6 +87,9 @@ export default {
         if (!m) { problems.push(`${step.id}: no ${row.entity} record in the export`); continue; }
         exportedAny = true;
         if (m.diffs.length) problems.push(`${step.id}: ${m.diffs.join(', ')}`);
+        // An expectation that leaves attributes unchecked can never earn a full pass.
+        const unchecked = step.emits[row.entity].unchecked ?? [];
+        if (unchecked.length) problems.push(`${step.id}: no expected value yet for ${unchecked.join(', ')}`);
       }
       const evidence = steps.map((s) => s.builder);
       out.set(row.id, problems.length

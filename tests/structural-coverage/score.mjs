@@ -195,8 +195,8 @@ async function main(argv) {
       console.error(`score: cannot read the --check baseline ${rel(check)}: ${e.message}`);
       return 2;
     }
+    if (baseline?.schema !== SUMMARY_SCHEMA) { console.error(`score: ${rel(check)} is not an ${SUMMARY_SCHEMA} summary`); return 2; }
   }
-  if (check && baseline?.schema !== SUMMARY_SCHEMA) { console.error(`score: ${rel(check)} is not an ${SUMMARY_SCHEMA} summary`); return 2; }
   let summary;
   try {
     const { rows, tables } = deriveCatalogue(ROOT);

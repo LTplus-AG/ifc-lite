@@ -51,6 +51,27 @@ not only the byte total, and measure boot with each build in both A/B positions:
 shared host, position alone moved the result by about 15 ms. A group that claimed every
 QuickJS module also failed, because the one eager module in it made the whole group eager.
 
+## Georeference minimap waits for scene settlement (#9623)
+
+**Untimed diagnostic, pending scoreboard confirmation.** The minimap already
+imports MapLibre dynamically. Its WebGL context and painter setup nevertheless
+ran during scene drain on real cold and metadata-cache loads. Waiting for the UI
+loading flag, or merely observing visibility, did not remove that work: the flag
+clears before geometry finalisation, and the default panel is already visible.
+
+The gate now waits for the existing scene queue, streaming fragments and async
+finalisation, together with the store's streaming and pending-shard state.
+Readiness latches once eligible so subsequent model loads cannot reset the map's
+viewport. A renderer-free metadata view retains its settled-store fallback.
+Real Holter cold and warm diagnostics on hardware, repeated on both sources,
+place context construction after interactive while still showing a usable map.
+No load-latency or eager-byte saving is claimed.
+
+Lesson: a loading flag is not scene readiness. Check the renderer's actual
+protocol, including finalisation after its fragment collection has been emptied.
+Keep negative visibility/UI-flag results so future changes do not reintroduce
+a gate that only appears to leave the critical window.
+
 ## Presentation-layer membership follows the selected shape (#9273)
 
 **Selection query verdict: remove the model-wide ownership scan.** The hierarchy's

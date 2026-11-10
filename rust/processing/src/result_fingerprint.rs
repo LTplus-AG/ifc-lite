@@ -14,6 +14,9 @@
 //! from the cache codec and never calls it: a field the codec drops still
 //! changes this digest. `perf_probe --result-fingerprint` prints it.
 //!
+//! Diagnostics are walked field by field too, never through serde, whose
+//! JSON form cannot tell NaN payloads or infinities apart.
+//!
 //! Two kinds of field are left out, stated rather than hidden:
 //! [`ProcessingStats::from_cache`] (a replay sets it; that is its job) and,
 //! unless `include_timings`, the wall-clock `*_time_ms` fields, which differ
@@ -23,11 +26,14 @@ use crate::types::mesh::{InstanceRecord, MeshData, MeshTextureData};
 use crate::types::presentation::{
     MeshPresentationProvenance, NormalProvenance, PaletteAbsence, PaletteBinding, TextureBinding, UvAuthority,
 };
-use crate::types::response::{CoordinateInfo, ModelMetadata, ProcessingStats};
-use crate::{Georeferencing, MeshFrame, ProcessingResult};
-use ifc_lite_geometry::{GeometryDiagnostics, InstanceMeta};
+use crate::{MeshFrame, ProcessingResult};
+use ifc_lite_geometry::InstanceMeta;
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
+
+#[path = "result_fingerprint_stats.rs"]
+mod stats;
+use stats::{metadata_fp, stats_fp};
 
 struct Fp(Sha256);
 
@@ -263,136 +269,3 @@ fn frame_fp(h: &mut Fp, frame: &MeshFrame) {
     }
 }
 
-fn metadata_fp(h: &mut Fp, m: &ModelMetadata) {
-    let ModelMetadata {
-        schema_version,
-        entity_count,
-        geometry_entity_count,
-        coordinate_info,
-        length_unit_scale,
-        length_unit_refused,
-        georeferencing,
-    } = m;
-    h.str(schema_version);
-    h.len(*entity_count);
-    h.len(*geometry_entity_count);
-    let CoordinateInfo { origin_shift, is_geo_referenced } = coordinate_info;
-    h.f64s(origin_shift);
-    h.bool(*is_geo_referenced);
-    h.opt(*length_unit_scale, |h, v| h.f64s(&[v]));
-    h.opt(*length_unit_refused, |h, v| h.u32(v));
-    h.opt(georeferencing.as_ref(), georef_fp);
-}
-
-fn georef_fp(h: &mut Fp, g: &Georeferencing) {
-    let Georeferencing {
-        crs_name,
-        geodetic_datum,
-        vertical_datum,
-        map_projection,
-        eastings,
-        northings,
-        orthogonal_height,
-        x_axis_abscissa,
-        x_axis_ordinate,
-        scale,
-        factor_x,
-        factor_y,
-        factor_z,
-        rotation_degrees,
-        transform_matrix,
-        crs_description,
-        map_zone,
-        map_unit,
-        map_unit_scale,
-        source,
-    } = g;
-    [crs_name, geodetic_datum, vertical_datum, map_projection].into_iter().for_each(|s| h.opt_str(s));
-    h.f64s(&[
-        *eastings,
-        *northings,
-        *orthogonal_height,
-        *x_axis_abscissa,
-        *x_axis_ordinate,
-        *scale,
-        *factor_x,
-        *factor_y,
-        *factor_z,
-        *rotation_degrees,
-    ]);
-    h.f64s(transform_matrix);
-    [crs_description, map_zone, map_unit].into_iter().for_each(|s| h.opt_str(s));
-    h.opt(*map_unit_scale, |h, v| h.f64s(&[v]));
-    h.opt_str(source);
-}
-
-fn stats_fp(h: &mut Fp, s: &ProcessingStats, include_timings: bool) {
-    let ProcessingStats {
-        total_meshes,
-        total_vertices,
-        total_triangles,
-        parse_time_ms,
-        entity_scan_time_ms,
-        lookup_time_ms,
-        preprocess_time_ms,
-        geometry_time_ms,
-        total_time_ms,
-        from_cache: _,
-        total_csg_failures,
-        products_with_failures,
-        degenerate_triangles_dropped,
-        refused_input_elements,
-        refused_prepass_records,
-        point_cache_hits,
-        point_cache_misses,
-        faceted_brep_time_ms,
-        geometry_diagnostics,
-    } = s;
-    [total_meshes, total_vertices, total_triangles].into_iter().for_each(|v| h.len(*v));
-    if include_timings {
-        let timings = [
-            parse_time_ms,
-            entity_scan_time_ms,
-            lookup_time_ms,
-            preprocess_time_ms,
-            geometry_time_ms,
-            total_time_ms,
-            faceted_brep_time_ms,
-        ];
-        timings.into_iter().for_each(|v| h.u64(*v));
-    }
-    let counters = [
-        total_csg_failures,
-        products_with_failures,
-        degenerate_triangles_dropped,
-        refused_input_elements,
-        refused_prepass_records,
-        point_cache_hits,
-        point_cache_misses,
-    ];
-    counters.into_iter().for_each(|v| h.u64(*v));
-    h.opt(geometry_diagnostics.as_ref(), diagnostics_fp);
-}
-
-fn diagnostics_fp(h: &mut Fp, d: &GeometryDiagnostics) {
-    // The geometry crate owns these structs; its serde form names every field
-    // and carries no floats beyond the f32 host boxes, which JSON prints
-    // shortest-round-trip. Destructured so a new field is still a decision.
-    let GeometryDiagnostics {
-        schema_version: _,
-        total_csg_failures: _,
-        products_with_failures: _,
-        hosts_with_openings: _,
-        classification: _,
-        failures_by_reason: _,
-        silent_no_ops: _,
-        rect_fast: _,
-        worst_hosts: _,
-        oversized_ref_drops: _,
-        total_unsupported_items: _,
-        unsupported_items_by_type: _,
-    } = d;
-    let json = serde_json::to_vec(d).expect("GeometryDiagnostics serializes");
-    h.len(json.len());
-    h.raw(&json);
-}

@@ -185,6 +185,33 @@ fn fingerprint_sees_every_field() {
     assert_ne!(result_fingerprint(&timing, true), result_fingerprint(&full_result(), true));
 }
 
+/// PR #9614 review finding 5: diagnostic host boxes are compared by raw bits.
+/// At b2ad1daf the fingerprint printed diagnostics as JSON, which writes every
+/// non-finite f32 as `null`, so these pairs fingerprinted alike.
+#[test]
+fn fingerprint_distinguishes_diagnostic_float_bits() {
+    let with_min0 = |bits: u32| {
+        let mut r = full_result();
+        r.stats.geometry_diagnostics.as_mut().unwrap().worst_hosts[0].bbox.as_mut().unwrap().min[0] = f32::from_bits(bits);
+        result_fingerprint(&r, true)
+    };
+    let pairs = [
+        (0x7fc0_0001, 0x7fc0_0002), // NaN payloads
+        (0x7f80_0000, 0xff80_0000), // +inf / -inf
+        (0x7f80_0000, 0x7fc0_0000), // inf / NaN
+        (0x0000_0000, 0x8000_0000), // +0 / -0
+    ];
+    for (a, b) in pairs {
+        assert_ne!(with_min0(a), with_min0(b), "{a:#x} vs {b:#x}");
+    }
+    // And the codec carries those bits through a round trip.
+    let mut r = full_result();
+    r.stats.geometry_diagnostics.as_mut().unwrap().worst_hosts[0].bbox.as_mut().unwrap().max[2] = f32::from_bits(0x7fc0_0003);
+    let replay = decode(&encode_entry(&r, &identity()).unwrap()).unwrap();
+    let max = replay.stats.geometry_diagnostics.unwrap().worst_hosts[0].bbox.unwrap().max;
+    assert_eq!(max[2].to_bits(), 0x7fc0_0003);
+}
+
 /// Split an entry into its section payloads and counts.
 pub(super) fn sections(bytes: &[u8]) -> Vec<(Vec<u8>, u64)> {
     (0..4)

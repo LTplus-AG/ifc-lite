@@ -124,7 +124,7 @@ Reports the CLI runtime, resolved versions of its declared first-party dependenc
 - `info` - model summary: schema, entities, storeys
 - `query` - query entities by type, properties, quantities; supports `--sum`, `--group-by`, `--spatial`
 - `props` - all properties for a single entity (`--id N`)
-- `export` - export to `csv`, `json`, `ifc`, `obj`, `gltf`, `glb`, `jsonld`, `ifcx`, `usd`, `step`, `hbjson`, or `dfjson`
+- `export` - export to `csv`, `json`, `ifc`, `obj`, `gltf`, `glb`, `jsonld`, `ifcx`, `usd`, `3dm`, `step`, `hbjson`, or `dfjson`
 - `ids` - validate against buildingSMART IDS rules
 - `validate` - structural validation checks
 - `stats` - auto-calculated model KPIs and health check

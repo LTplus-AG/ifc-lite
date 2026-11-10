@@ -16,6 +16,7 @@ import type { HbjsonStats } from './hbjson-stats.js';
 import * as energyExport from './energy-export-bridge.js';
 import { callExportLandXmlTerrain, type LandXmlTerrainExport, type LandXmlTerrainExportOptions } from './landxml-terrain-export.js';
 import type { GeometryDiagnostics } from './diagnostics.js';
+import { readNodeWasmBytes } from './node-wasm-bytes.js';
 import type { ExtrusionDefinitions, SweptDiskDescriptions } from './analytic-descriptions.js';
 import { initMainThreadEngine } from './main-engine-init.js';
 import { createLifetime, type LifetimeAttempt } from '@ifc-lite/wasm-lifecycle';
@@ -152,34 +153,14 @@ export class IfcLiteBridge {
 
   private async startEngine(attempt: LifetimeAttempt): Promise<void> {
     try {
-      // Initialize WASM module. In the browser/worker, wasm-bindgen resolves the
-      // .wasm URL from import.meta.url and fetch()es it. Node's fetch() cannot load
-      // file:// URLs, so when running under Node we read the bytes ourselves and
-      // pass them to init(). Strictly Node-gated — the browser path is untouched.
-      // (Node-only modules are imported via variable + `@vite-ignore` so the browser
-      // bundler never tries to resolve them, matching the xmldom gating in @ifc-lite/ids.)
-      // Browser-first package: no @types/node, so reach `process` via globalThis
-      // and keep the Node-only modules untyped (`any`) behind the runtime guard.
-      const proc = (globalThis as { process?: { versions?: { node?: string } } }).process;
-      const isNode = !!proc?.versions?.node && typeof window === 'undefined';
-      let wasmInitArg: BufferSource | undefined;
-      if (isNode) {
-        const moduleSpecifier = 'node:module';
-        const fsSpecifier = 'node:fs/promises';
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const nodeModule: any = await import(/* @vite-ignore */ moduleSpecifier);
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const nodeFs: any = await import(/* @vite-ignore */ fsSpecifier);
-        const requireFromHere = nodeModule.createRequire(import.meta.url);
-        const wasmPath: string = requireFromHere.resolve('@ifc-lite/wasm/ifc-lite_bg.wasm');
-        wasmInitArg = (await nodeFs.readFile(wasmPath)) as BufferSource;
-      }
+      // In the browser/worker, wasm-bindgen resolves and fetches the .wasm
+      // itself; under Node the bytes are read from the installed package.
+      const wasmInitArg = await readNodeWasmBytes('@ifc-lite/wasm/ifc-lite_bg.wasm');
       // Raw package resolution and Node's supplied bytes retain their paths; the
       // browser path joins the realm's one main-thread init (#7036), which a host
       // may already have started when the load was requested.
       if (wasmInitArg) {
-        const bytes = wasmInitArg;
-        await initWasmWithRetry(async () => { await init({ module_or_path: bytes }); }, { label: 'ifc-lite-bridge' });
+        await initWasmWithRetry(async () => { await init({ module_or_path: wasmInitArg }); }, { label: 'ifc-lite-bridge' });
       } else {
         await initMainThreadEngine();
       }

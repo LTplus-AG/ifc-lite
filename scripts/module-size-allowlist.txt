@@ -213,8 +213,8 @@
    638 packages/geometry/src/coordinate-handler.ts
   1545 packages/geometry/src/geometry-parallel.ts
   1780 packages/geometry/src/geometry.worker.ts
-   917 packages/geometry/src/ifc-lite-bridge.ts
-  1534 packages/geometry/src/index.ts
+   898 packages/geometry/src/ifc-lite-bridge.ts
+  1531 packages/geometry/src/index.ts
    625 packages/geometry/src/native-bridge.ts
    904 packages/ids/src/audit/ifc-schema/index.ts
    411 packages/ids/src/audit/structural/index.ts
@@ -315,5 +315,5 @@
    531 scripts/review/run-reviewer.mjs
    688 scripts/source-text-assertion-detect.mjs
    504 scripts/test-geometry-regression.mjs
-  2095 scripts/test-wasm-contract.mjs
+  2069 scripts/test-wasm-contract.mjs
    678 scripts/typecheck-tests.mjs

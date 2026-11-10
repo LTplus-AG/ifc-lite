@@ -1146,6 +1146,12 @@ Pre-built `ifc-lite-server` binaries for deployment without a Rust toolchain or 
 
 WebAssembly bindings (the `IfcAPI` class and mesh/profile/clash types). See the [WASM API reference](wasm.md).
 
+### Independent Rhino scene WASM module
+
+`@ifc-lite/wasm/rhino` holds the Rhino .3dm scene builder (`exportRhinoScene`)
+outside the default engine. `@ifc-lite/geometry`'s `exportRhinoScene` loads it on
+first use; `@ifc-lite/rhino3dm` writes the returned scene to a .3dm archive.
+
 ### Independent diff WASM module
 
 `@ifc-lite/wasm/diff` exposes the Rust comparison bindings in a separate module.

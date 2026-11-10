@@ -3033,6 +3033,24 @@ Preserve failed loads alongside successful samples. Listen for renderer crashes
 as well as JavaScript errors, and stop memory sampling on every exit path.
 
 ### Shipped wins
+- **Surface-model faces skip their type-only decode (native instruction
+  hillclimb, 2026-11-10):** `surface_model_plan::lower` fully decoded every
+  face (`decode_by_id`, about 3.5k instructions each) only to learn whether it
+  is an `IfcAdvancedFace`, then re-read its bounds from the raw bytes anyway.
+  `EntityDecoder::is_plain_face` proves from the bytes that a record is exactly
+  `#n=IFCFACE((#a,...));` (STEP whitespace only, upper-case keyword, `u32`
+  ids, not already in the entity memo), which the tokenizer always reads as an
+  `IfcFace` and cannot refuse, so that decode is skipped; every other record
+  decodes as before. Cold single-thread Callgrind, pipeline instructions:
+  advanced_model -12.2% (its 13 face-based surface models are lowered 839
+  times through styled mapped occurrences, 555k face reads), Holter -3.0%,
+  schependomlaan -0.6%, ISSUE_129 -0.1%, FZK flat; ordered `perf_probe`
+  mesh fingerprints identical on all five. **Lesson:** the expensive part was
+  not the surface model but a decode whose only consumer was a type check;
+  look at what a decode's result is used for before making the decode faster.
+  The repeated lowering itself (styled occurrences never hit the mapped-source
+  cache) and the per-point `point3` re-reads remain; caching either adds
+  per-worker memory and was not attempted. Not a wall-time or browser claim.
 - **Review startup bundle (#7015):** load the Script panel on demand and keep
   CodeMirror's shared state module in its own chunk. Assistant text-edit planning
   still uses `ChangeSet`, while the editor UI stays outside the eager import

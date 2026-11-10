@@ -65,6 +65,8 @@ pub(super) struct ReadEntry {
     pub(super) bytes: Vec<u8>,
     file: File,
     generation: (u64, u64),
+    #[cfg(windows)]
+    path: PathBuf,
 }
 
 impl Store {
@@ -112,12 +114,31 @@ impl Store {
         if bytes.len() as u64 != len {
             return Err(ReadError::Io(io::Error::other("entry changed size while it was read")));
         }
-        Ok(Some(ReadEntry { bytes, generation: identity(&meta), file }))
+        Ok(Some(ReadEntry {
+            bytes,
+            generation: identity(&meta),
+            file,
+            #[cfg(windows)]
+            path: self.entry_path(key),
+        }))
     }
 
     /// Mark an entry used, for LRU eviction. Best effort.
+    ///
+    /// On Unix the owner may set times through the read-only handle. On
+    /// Windows that handle lacks `FILE_WRITE_ATTRIBUTES`, so a second handle
+    /// with only that right is opened; failure stays best effort.
     pub(super) fn touch(&self, entry: &ReadEntry) {
-        if let Err(error) = entry.file.set_times(FileTimes::new().set_modified(SystemTime::now())) {
+        let now = FileTimes::new().set_modified(SystemTime::now());
+        #[cfg(not(windows))]
+        let refreshed = entry.file.set_times(now);
+        #[cfg(windows)]
+        let refreshed = {
+            use std::os::windows::fs::OpenOptionsExt;
+            const FILE_WRITE_ATTRIBUTES: u32 = 0x0100;
+            fs::OpenOptions::new().access_mode(FILE_WRITE_ATTRIBUTES).open(&entry.path).and_then(|f| f.set_times(now))
+        };
+        if let Err(error) = refreshed {
             tracing::debug!(%error, "result cache: could not refresh entry mtime");
         }
     }

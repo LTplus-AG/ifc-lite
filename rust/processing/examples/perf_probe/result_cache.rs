@@ -22,6 +22,46 @@ pub(super) struct CacheArgs {
     pub(super) expect: Option<String>,
 }
 
+/// A flag's value, refusing a missing one or the next flag in its place (so
+/// `--result-cache --json` cannot silently run uncached).
+pub(super) fn flag_value(flag: &str, value: Option<String>) -> String {
+    checked_value(value).unwrap_or_else(|| {
+        eprintln!("{flag} expects a value");
+        std::process::exit(2);
+    })
+}
+
+fn checked_value(value: Option<String>) -> Option<String> {
+    value.filter(|v| !v.starts_with("--"))
+}
+
+/// Cache options without `--result-cache` would be silently ignored.
+pub(super) fn validate(dir: bool, mode: bool, expect: bool) -> Result<(), &'static str> {
+    if !dir && (mode || expect) {
+        Err("--result-cache-mode and --expect-cache need --result-cache DIR")
+    } else {
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{checked_value, validate};
+
+    /// CodeRabbit on #9614: a missing value or a following flag in its place
+    /// must not silently run uncached; cache options need a cache.
+    #[test]
+    fn cache_flags_refuse_missing_values_and_orphans() {
+        assert_eq!(checked_value(None), None);
+        assert_eq!(checked_value(Some("--json".into())), None);
+        assert_eq!(checked_value(Some("/tmp/rc".into())).as_deref(), Some("/tmp/rc"));
+        assert!(validate(false, false, true).is_err());
+        assert!(validate(false, true, false).is_err());
+        assert!(validate(true, true, true).is_ok());
+        assert!(validate(false, false, false).is_ok());
+    }
+}
+
 pub(super) fn parse_mode(value: Option<String>) -> CacheMode {
     match value.as_deref() {
         Some("rw") | Some("read-write") => CacheMode::ReadWrite,

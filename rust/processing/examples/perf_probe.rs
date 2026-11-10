@@ -314,7 +314,7 @@ fn main() {
     let mut single_thread = false;
     let mut result_fingerprint = false;
     let mut cache_dir: Option<String> = None;
-    let mut cache_mode = ifc_lite_processing::result_cache::CacheMode::ReadWrite;
+    let mut cache_mode: Option<ifc_lite_processing::result_cache::CacheMode> = None;
     let mut expect_cache: Option<String> = None;
     let mut fixtures: Vec<String> = Vec::new();
 
@@ -338,9 +338,11 @@ fn main() {
             "--cold" => cold = true,
             "--single-thread" => single_thread = true,
             "--result-fingerprint" => result_fingerprint = true,
-            "--result-cache" => cache_dir = args.next(),
-            "--result-cache-mode" => cache_mode = result_cache::parse_mode(args.next()),
-            "--expect-cache" => expect_cache = args.next(),
+            "--result-cache" => cache_dir = Some(result_cache::flag_value("--result-cache", args.next())),
+            "--result-cache-mode" => {
+                cache_mode = Some(result_cache::parse_mode(Some(result_cache::flag_value("--result-cache-mode", args.next()))));
+            }
+            "--expect-cache" => expect_cache = Some(result_cache::flag_value("--expect-cache", args.next())),
             other if other.starts_with("--") => {
                 eprintln!("unknown flag: {other}");
                 eprintln!("usage: perf_probe [<file.ifc>...] [--suite] [--iters N] [--cold] [--single-thread] [--census] [--fingerprint] [--result-fingerprint] [--result-cache DIR [--result-cache-mode rw|ro|off] [--expect-cache hit|miss]] [--json]");
@@ -369,7 +371,15 @@ fn main() {
         eprintln!("--result-cache requires --cold (one fixture, one iteration, a fresh process per measurement)");
         std::process::exit(2);
     }
-    let cache = cache_dir.map(|dir| result_cache::CacheArgs { dir, mode: cache_mode, expect: expect_cache });
+    if let Err(message) = result_cache::validate(cache_dir.is_some(), cache_mode.is_some(), expect_cache.is_some()) {
+        eprintln!("{message}");
+        std::process::exit(2);
+    }
+    let cache = cache_dir.map(|dir| result_cache::CacheArgs {
+        dir,
+        mode: cache_mode.unwrap_or(ifc_lite_processing::result_cache::CacheMode::ReadWrite),
+        expect: expect_cache,
+    });
 
     if single_thread {
         if let Err(error) = rayon::ThreadPoolBuilder::new().num_threads(1).use_current_thread().build_global() {

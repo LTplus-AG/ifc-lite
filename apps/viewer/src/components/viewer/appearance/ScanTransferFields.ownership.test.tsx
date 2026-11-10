@@ -98,7 +98,7 @@ for (const gesture of ['preview', 'apply', 'unmount'] as const) test(`scan trans
   const session = await prepareScanSession('source', 0, 'target', new AbortController().signal);
   const point = (x: number, y: number): ScanPoint => [x, 0, -y];
   const fit = [point(0,0), point(1,0), point(0,1), point(0.2,0.2)];
-  const check = [point(0.1,0.1), point(0.2,0.2), point(0.3,0.1), point(0.1,0.3)];
+  const check = [point(0.1,0.1), point(0.25,0.2), point(0.3,0.1), point(0.1,0.3)];
   const rows = (points: ScanPoint[], prefix: string) => points.map((p, i) => ({ id: `${prefix}${i}`, sourceObservation: `${prefix}s${i}`, targetFeature: `${prefix}t${i}`, source: p, target: [p[0], -p[2], p[1]] as ScanPoint }));
   const request: ScanRegistrationRequest = { sourceFrame: session.sourceFrame, targetFrame: session.targetFrame, fit: rows(fit, 'f'), heldOut: rows(check, 'c') };
   const result = { request, report: await runScanRegistration(request) };

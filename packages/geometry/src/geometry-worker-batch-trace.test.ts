@@ -74,11 +74,11 @@ async function streamTwoBatches(): Promise<void> {
   await send({ type: 'stream-chunk', jobsFlat: new Uint32Array([2, 0, 1]) });
 }
 
-const spanNames = () => posted
+const workerSpans = () => posted
   .filter((m) => m.type === 'load-trace:spans')
   .flatMap((m) => m.payload!.spans)
-  .filter((s) => s.name.startsWith('worker.'))
-  .map((s) => s.name);
+  .filter((s) => s.name.startsWith('worker.'));
+const spanNames = () => workerSpans().map((s) => s.name);
 
 it('records one wasm, collect and post span per partitioned batch', async () => {
   await send({ type: 'load-trace:enable', thread: 'geom-0' });
@@ -91,6 +91,11 @@ it('records one wasm, collect and post span per partitioned batch', async () => 
   expect(count('worker.batch.wasm')).toBe(2);
   expect(count('worker.batch.collect')).toBe(2);
   expect(count('worker.batch.post')).toBe(2);
+  // The wasm span closes when the call returns, before collection starts: a
+  // second end() from processBatch's finally must not re-stamp it to cover collect.
+  const of = (name: string) => workerSpans().filter((s) => s.name === name).sort((x, y) => x.start - y.start);
+  const [wasmSpans, collectSpans] = [of('worker.batch.wasm'), of('worker.batch.collect')];
+  wasmSpans.forEach((w, i) => expect(w.end).toBeLessThanOrEqual(collectSpans[i].start));
 });
 
 it('posts no spans and the same batches when tracing is off', async () => {

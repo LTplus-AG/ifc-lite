@@ -60,6 +60,15 @@ export interface EffectiveEntityOverlay {
    * per-element authoring linear (#5413). Absent: the full list is scanned.
    */
   getNewEntitiesOfType?(type: string): Iterable<{ readonly expressId: number; readonly type: string }>;
+  /**
+   * Ids and authored classes of the created entities (of one class when
+   * `type` is given), in creation order, without reading or copying any
+   * payload. Preferred over the getters above: inside a transaction they copy
+   * each row they return into the draft (#8452).
+   */
+  readNewEntityKinds?(type?: string): Iterable<{ readonly expressId: number; readonly type: string }>;
+  /** Created-entity membership without reading or copying the row. */
+  hasNewEntity?(expressId: number): boolean;
 }
 
 /**
@@ -94,7 +103,7 @@ export function countEffectiveEntityTypes(
   if (!overlay) return counts;
 
   const retypes = overlay.getTypeMutations?.();
-  const created = overlay.getNewEntities();
+  const created = Array.from(overlay.readNewEntityKinds?.() ?? overlay.getNewEntities());
   const createdIds = new Set(created.map((entity) => entity.expressId));
   const changedSourceIds = new Set<number>([...(tombstones ?? []), ...(retypes?.keys() ?? [])]);
   for (const expressId of changedSourceIds) {
@@ -184,6 +193,7 @@ export function* iterateEffectiveEntities(
   let createdIds: Set<number> | undefined;
   const isCreated = (expressId: number): boolean => {
     if (!overlay) return false;
+    if (overlay.hasNewEntity) return overlay.hasNewEntity(expressId);
     if (overlay.getNewEntity) return overlay.getNewEntity(expressId) != null;
     createdIds ??= new Set(overlay.getNewEntities().map((entity) => entity.expressId));
     return createdIds.has(expressId);
@@ -194,11 +204,12 @@ export function* iterateEffectiveEntities(
   // class and no retype touching a created entity: that class's bucket IS the
   // answer, in the same creation order the full list gives, at O(matches).
   const only = wanted?.size === 1 ? [...wanted][0] : undefined;
-  const byClass = only !== undefined && overlay?.getNewEntitiesOfType
+  const byClass = only !== undefined && (overlay?.readNewEntityKinds || overlay?.getNewEntitiesOfType)
     && ![...(retypes?.keys() ?? [])].some(isCreated)
-    ? overlay.getNewEntitiesOfType(only)
+    ? overlay.readNewEntityKinds?.(only) ?? overlay.getNewEntitiesOfType!(only)
     : undefined;
-  const created = byClass ? Array.from(byClass) : overlay?.getNewEntities() ?? [];
+  const created = byClass ? Array.from(byClass)
+    : overlay ? Array.from(overlay.readNewEntityKinds?.() ?? overlay.getNewEntities()) : [];
 
   // An IFCX store has no STEP records, so its `entityIndex` is empty and every walk of the buckets above finds
   // nothing: no space, no material, no wall, whoever asks. The entity table is its source then, and is walked

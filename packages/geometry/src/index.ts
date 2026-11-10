@@ -10,6 +10,7 @@
 // IFC-Lite components (recommended - faster)
 export { IfcLiteBridge, type SymbolicRepresentationCollection, type SymbolicPolyline, type SymbolicCircle, type ProfileCollection, type ProfileEntryJs } from './ifc-lite-bridge.js';
 export type { ExtrusionDefinitions, SweptDiskDescriptions } from './analytic-descriptions.js';
+export { exportRhinoScene, RHINO_SCENE_DEFAULTS, RHINO_UNITS, RHINO_COORDINATES, RHINO_LAYER_SCHEMES, RHINO_PROPERTIES, type RhinoSceneBuffers, type RhinoSceneExportOptions } from './rhino-export.js';
 import { safeUtf8Decode } from '@ifc-lite/data';
 
 // Platform bridge abstraction (auto-selects WASM or native based on environment)

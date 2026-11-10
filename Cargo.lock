@@ -1747,6 +1747,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "ifc-lite-rhino-wasm"
+version = "28.2.0"
+dependencies = [
+ "ifc-lite-export",
+ "js-sys",
+ "serde_json",
+ "wasm-bindgen",
+]
+
+[[package]]
 name = "ifc-lite-server"
 version = "28.2.0"
 dependencies = [

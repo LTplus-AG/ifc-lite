@@ -17,8 +17,10 @@
  * intermediate schema with that schema's attribute count. A record copied
  * through unconverted makes the file schema-invalid, so that file earns no
  * credit for the row even when the record comes back. Attribute TYPES are not
- * checked (the generated tables carry none): a value copied into a slot of
- * another type with the same arity is not caught.
+ * checked: the entity table the harness loads is untyped, so a value copied into
+ * a slot of another type with the same arity is not caught, for any entity. The
+ * parser's generated schema registry is typed and is where such a check would
+ * come from.
  */
 
 import { CONVERT_HOP as OTHER } from '../catalogue.mjs';
@@ -37,10 +39,14 @@ function roundTrip(ctx, file, schema) {
   })().catch((error) => ({ error })));
 }
 
-/** Records of `entity` in `intermediate` that do not exist in its schema `target` with that schema's attribute count. */
-export function nonConforming(intermediate, entity, target) {
+/** Records of `entity` in `intermediate` that `table` (the intermediate schema) lacks, or has with another attribute count. */
+export function nonConforming(intermediate, entity, table) {
+  const target = table.get(entity);
   return intermediate.of(entity).filter((rec) => target === undefined || rec.args.length !== target.attributes.length);
 }
+
+/** The records of the row's entity a file contributes: every outcome counts this many as checked. */
+const sampleOf = (row, file) => file.step.of(row.entity).slice(0, MAX_RECORDS);
 
 function tuple(row, record, step, types) {
   return row.own.map((a) => normalize(record.args[row.attributes.indexOf(a)], step, types, 'type'));
@@ -49,7 +55,7 @@ function tuple(row, record, step, types) {
 function compareFile(row, file, back, types) {
   const problems = [];
   let anyHeld = false;
-  const sample = file.step.of(row.entity).slice(0, MAX_RECORDS);
+  const sample = sampleOf(row, file);
   if (row.rooted) {
     const byGuid = new Map([...back.entities.values()].filter((e) => typeof e.args?.[0] === 'string').map((e) => [e.args[0], e]));
     for (const rec of sample) {
@@ -84,17 +90,18 @@ export default {
         .sort((a, b) => a.bytes.length - b.bytes.length || a.path.localeCompare(b.path)).slice(0, MAX_FILES);
       if (!carriers.length) { out.set(row.id, ctx.corpus.nothingCarries(row.schema, row.entity)); continue; }
       const { types } = ctx.tables[row.schema];
-      const target = ctx.tables[OTHER[row.schema]].table.get(row.entity);
+      const otherTable = ctx.tables[OTHER[row.schema]].table;
+      const target = otherTable.get(row.entity);
       const problems = [];
       let checked = 0;
       let anyHeld = false;
       for (const file of carriers) {
         const rt = await roundTrip(ctx, file, row.schema);
-        if (rt.error) { problems.push(`${file.path}: ${row.schema} -> ${OTHER[row.schema]} -> ${row.schema} threw: ${rt.error.message.split('\n')[0]}`); checked++; continue; }
-        const copied = nonConforming(rt.there, row.entity, target);
+        if (rt.error) { problems.push(`${file.path}: ${row.schema} -> ${OTHER[row.schema]} -> ${row.schema} threw: ${rt.error.message.split('\n')[0]}`); checked += sampleOf(row, file).length; continue; }
+        const copied = nonConforming(rt.there, row.entity, otherTable);
         if (copied.length) {
           problems.push(`${file.path}: ${copied.length} ${row.entity} record(s) in the ${OTHER[row.schema]} file do not conform to ${OTHER[row.schema]} (${target ? `${target.attributes.length} attributes expected` : 'no such entity'})`);
-          checked += Math.min(file.step.count(row.entity), MAX_RECORDS);
+          checked += sampleOf(row, file).length;
           continue;
         }
         const r = compareFile(row, file, rt.step, types);

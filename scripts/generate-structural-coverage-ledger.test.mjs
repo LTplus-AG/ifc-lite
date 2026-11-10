@@ -138,8 +138,8 @@ test('convert: a record copied into a schema that lacks the entity, or with the 
 #5=IFCSTRUCTURALLOADGROUP('2',$,$,$,$,.LOAD_GROUP.,.PERMANENT_G.,.DEAD_LOAD_G.,1.);
 ENDSEC;END-ISO-10303-21;`);
   const table = tables.IFC4.table;
-  assert.equal(nonConforming(ifc4, 'IfcRelConnectsStructuralElement', table.get('IfcRelConnectsStructuralElement')).length, 1, 'IFC4 has no such entity');
-  assert.deepEqual(nonConforming(ifc4, 'IfcStructuralLoadGroup', table.get('IfcStructuralLoadGroup')).map((r) => r.id), [5], 'only the short record');
+  assert.equal(nonConforming(ifc4, 'IfcRelConnectsStructuralElement', table).length, 1, 'IFC4 has no such entity');
+  assert.deepEqual(nonConforming(ifc4, 'IfcStructuralLoadGroup', table).map((r) => r.id), [5], 'only the short record');
 });
 
 function tree() {

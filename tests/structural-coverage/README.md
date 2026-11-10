@@ -46,10 +46,12 @@ schema lacks keeps its convert level, so the cell shows what the converter does
 with it: maps it, refuses the file, or copies it through unconverted. The probe
 reports a record of the row's entity in the intermediate file that is missing
 from that schema or has the wrong attribute count, and gives that file no
-credit. It does not check attribute types: R0 showed the converter copying
+credit. It does not check attribute types, for any entity: the entity table the
+harness loads is untyped. R0 showed one case it misses, the converter copying
 IFC4 boolean stiffness (`IFCBOOLEAN(.T.)`) into IFC2X3 boundary-condition slots
-that must hold a measure, and those IFC4 boundary-condition convert cells still
-pass. A type check needs attribute types the generated tables do not carry.
+that must hold a measure; those IFC4 boundary-condition convert cells still
+pass. The parser's generated schema registry is typed, and a later round can
+source the catalogue's attributes from it to close the gap.
 
 ## Scoring and the ratchet
 

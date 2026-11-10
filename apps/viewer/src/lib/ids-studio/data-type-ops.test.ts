@@ -6,6 +6,7 @@
 
 import { before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import type { IDSPropertyFacet } from '@ifc-lite/ids';
 import { commit, createGateContext, createStudioDocument, createStudioState, type GateContext, type StudioState, type Uuid } from '@ifc-lite/ids-authoring';
 import { addFacetOps, addSpecOps, dataTypeOps, declarePsetOp, setFieldOp } from './ops';
 import { formFromConstraint, inputFromForm } from './value-model';
@@ -25,6 +26,15 @@ function typedFirst(values: string[]): { state: StudioState; facetId: Uuid } {
   assert.ok('input' in typed && typed.input);
   state = commit(state, [setFieldOp(property.facetId, 'property.value', typed.input)]).state;
   return { state, facetId: property.facetId };
+}
+
+/** An IFCINTEGER Conditionscore facet over the list ['1'], with or without an explicit base. */
+function integerFacet(base?: string): IDSPropertyFacet {
+  return {
+    type: 'property', propertySet: { type: 'simpleValue', value: 'Custom_Condition' },
+    baseName: { type: 'simpleValue', value: 'Conditionscore' }, dataType: { type: 'simpleValue', value: 'IFCINTEGER' },
+    value: { type: 'enumeration', values: ['1'], ...(base ? { base } : {}) },
+  };
 }
 
 function pick(state: StudioState, facetId: Uuid, dataType: string): string {
@@ -65,11 +75,7 @@ describe('a data type picked after the value', () => {
 
   it('leaves an explicit base when the current data type is picked again', () => {
     const { facetId } = typedFirst(['1']);
-    const facet = {
-      type: 'property' as const, propertySet: { type: 'simpleValue' as const, value: 'Custom_Condition' },
-      baseName: { type: 'simpleValue' as const, value: 'Conditionscore' }, dataType: { type: 'simpleValue' as const, value: 'IFCINTEGER' },
-      value: { type: 'enumeration' as const, values: ['1'], base: 'xs:string' },
-    };
+    const facet = integerFacet('xs:string');
     assert.equal(dataTypeOps(facetId, facet, { kind: 'equals', value: 'IFCINTEGER' }, gate, ['IFC4']).length, 1);
     assert.equal(dataTypeOps(facetId, facet, { kind: 'equals', value: 'ifcinteger' }, gate, ['IFC4']).length, 1);
     assert.equal(dataTypeOps(facetId, facet, { kind: 'equals', value: 'IFCREAL' }, gate, ['IFC4']).length, 2);
@@ -78,11 +84,7 @@ describe('a data type picked after the value', () => {
   it('fills a missing base when the current data type is picked again', () => {
     // A document saved before this fix: IFCINTEGER over an unbased list.
     const { facetId } = typedFirst(['1']);
-    const facet = {
-      type: 'property' as const, propertySet: { type: 'simpleValue' as const, value: 'Custom_Condition' },
-      baseName: { type: 'simpleValue' as const, value: 'Conditionscore' }, dataType: { type: 'simpleValue' as const, value: 'IFCINTEGER' },
-      value: { type: 'enumeration' as const, values: ['1'] },
-    };
+    const facet = integerFacet();
     assert.equal(dataTypeOps(facetId, facet, { kind: 'equals', value: 'IFCINTEGER' }, gate, ['IFC4']).length, 2);
   });
 });

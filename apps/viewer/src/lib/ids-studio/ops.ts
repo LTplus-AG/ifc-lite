@@ -96,9 +96,8 @@ export function dataTypeOps(
   const name = input?.kind === 'equals' ? String(input.value) : undefined;
   // Re-picking the current type keeps an explicit base (say, from an import); a missing one is still filled.
   const current = facet.dataType?.type === 'simpleValue' ? facet.dataType.value : undefined;
-  const explicit = facet.value?.type !== 'simpleValue' && facet.value?.base !== undefined;
-  const repick = name !== undefined && name.toUpperCase() === current?.toUpperCase();
-  const base = name && !(repick && explicit) ? dataTypeBase(gate, versions, name) : undefined;
+  const keepsBase = facet.value?.type !== 'simpleValue' && !!facet.value?.base && name?.toUpperCase() === current?.toUpperCase();
+  const base = name && !keepsBase ? dataTypeBase(gate, versions, name) : undefined;
   const rebased = facet.value && base ? rebaseRestriction(facet.value, base) : undefined;
   return [
     setFieldOp(facetId, 'property.dataType', input),

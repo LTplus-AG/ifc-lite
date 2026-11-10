@@ -13,7 +13,7 @@ use super::{
     admit_upload, begin_symbolic_fill, cache_symbolic_data_off_runtime, request_cache_key_off_runtime, ParseQuery,
 };
 use crate::error::ApiError;
-use crate::services::{extract_data_model, process_streaming, serialize_data_model_to_parquet};
+use crate::services::{extract_data_model_with, process_streaming, serialize_data_model_to_parquet, DataModelOptions};
 use crate::types::StreamEvent;
 use crate::AppState;
 use axum::{
@@ -21,6 +21,7 @@ use axum::{
     response::sse::{Event, KeepAlive, Sse},
 };
 use std::convert::Infallible;
+use std::sync::Arc;
 
 /// POST /api/v1/parse/parquet-stream - Streaming parse with Parquet batches.
 ///
@@ -58,7 +59,7 @@ pub async fn parse_parquet_stream(
     use axum::response::IntoResponse;
     use base64::{engine::general_purpose::STANDARD, Engine};
     use futures::StreamExt;
-    use std::sync::{Arc, Mutex};
+    use std::sync::Mutex;
 
     let tessellation_quality = query.resolved_tessellation_quality()?;
     let stream_shapes = query.resolved_stream_shapes()?;
@@ -361,25 +362,14 @@ pub async fn parse_parquet_stream(
     // `GET /parse/data-model` answered the terminal 404. Holding the shared
     // guard also keeps the request charged until the fill ends.
     let admission_for_dm = Arc::clone(&admission);
-    tokio::spawn(async move {
-        let _in_flight = in_flight;
-        let _admission = admission_for_dm;
-        // Run data model extraction in blocking task
-        let dm_result =
-            tokio::task::spawn_blocking(move || extract_data_model(&content_for_cache)).await;
-
-        if let Ok(mut data_model) = dm_result {
-            // Serialize and cache
-            let serialize_result = tokio::task::spawn_blocking(move || {
-                data_model_entities.apply(&mut data_model);
-                serialize_data_model_to_parquet(&data_model)
-            }).await;
-
-            super::stream_data_model::cache_streamed_data_model(&cache_for_dm, &dm_key, serialize_result).await;
-        }
-        // `_in_flight` drops here, clearing the marker only after the cache
-        // write (success or failure) is fully resolved.
-    });
+    tokio::spawn(fill_data_model_cache(
+        content_for_cache,
+        DataModelOptions::for_entities(data_model_entities),
+        cache_for_dm,
+        dm_key,
+        in_flight,
+        admission_for_dm,
+    ));
 
     let boxed_stream: std::pin::Pin<
         Box<dyn futures::Stream<Item = Result<Event, Infallible>> + Send>,
@@ -387,6 +377,33 @@ pub async fn parse_parquet_stream(
     Ok(Sse::new(boxed_stream)
         .keep_alive(KeepAlive::default())
         .into_response())
+}
+
+/// Extract the data model and write it to its cache entry, off the stream.
+///
+/// Holds `_in_flight` for the task's whole lifetime (#5129) and `_admission`
+/// for the request's (#7676, SERVER-8) -- see the call site for why each must
+/// outlive the cache write.
+async fn fill_data_model_cache(
+    content: bytes::Bytes,
+    options: DataModelOptions,
+    cache: Arc<crate::services::cache::DiskCache>,
+    dm_key: String,
+    _in_flight: crate::in_flight::InFlightGuard,
+    _admission: Arc<crate::admission::AdmissionGuard>,
+) {
+    // The extraction applies the entities variant itself (#9582): this fill
+    // runs beside the stream it was spawned from, so its peak is the one with
+    // a ceiling.
+    let dm_result = tokio::task::spawn_blocking(move || extract_data_model_with(&content, options)).await;
+
+    if let Ok(data_model) = dm_result {
+        let serialize_result =
+            tokio::task::spawn_blocking(move || serialize_data_model_to_parquet(&data_model)).await;
+        super::stream_data_model::cache_streamed_data_model(&cache, &dm_key, serialize_result).await;
+    }
+    // `_in_flight` drops here, clearing the marker only after the cache write
+    // (success or failure) is fully resolved.
 }
 
 #[cfg(test)]

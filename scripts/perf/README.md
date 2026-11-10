@@ -46,6 +46,41 @@ and cutout picture; tinting the original textured draw was rejected because
 it moves selection before glass and retains texture cutouts. Keep stride
 variants on shared shaders and invalidate borrowed records with scene revisions.
 
+## The rooted data model is narrowed before it is built (#9582)
+
+**Shipped: the rows are never materialised, not dropped after the fact.**
+`extract_data_model` built an `EntityMetadata` row -- six owned `String`s -- for
+every STEP instance, and `DataModelEntities::Rooted` then threw about five in six
+away. The narrowing now runs before the metadata pass. Base-vs-branch over six
+catalogued models: rooted peak RSS -48% to -64%, wall time -58% to -63%, with a
+digest over every table of the data model identical to base in both variants. The
+default `All` path borrows its job list rather than copying it and keeps its
+metadata pass in the same `rayon::join`, and measures within a point of base on
+all six.
+
+The catch was ordering, not the filter. Deciding before the entities table exists
+means deciding from the type name plus the ids the OTHER tables name, so every
+other table has to be built first. The association pass was not: a materials row
+names an `IfcMaterial` and an `IfcMaterialLayerSet` that carry no GlobalId and
+that nothing else references, so they were dropped before anything recorded that
+they were referenced. Moving that pass ahead of the filter fixes it.
+
+Lessons. A filter applied to a finished result and the same filter applied to the
+work that produces it are not the same filter; the difference is everything the
+result knows that the work does not. Here that included the spatial hierarchy,
+which is BUILT from the entities table and so can never be consulted by a
+pre-filter -- safe only because every id it can reach is a spatial-typed row or a
+relationship endpoint, which is an argument, so it is also a test.
+
+And report peak RSS as a median with its spread, because the spread is what tells
+you whether the machine was fit to measure on. An early sweep here put the 327 MB
+model's `All` peak 43% apart between repetitions of the SAME binary, which read as
+an unmeasurable model; it was this agent's own `cargo test` running beside it. Idle,
+the same pair repeats to 4% and resolves to +1.0%. The existing rule about an
+otherwise-idle machine already covered it -- the lesson is that a wide spread
+should be read as a question about the harness before it is reported as a property
+of the model, and that a min-of-N hides exactly that question.
+
 ## Single-edit IFC derivations (#9296, R7 P3)
 
 **Diagnostic improvement; performance qualification remains open.** Storey display,

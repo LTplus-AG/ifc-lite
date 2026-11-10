@@ -188,3 +188,78 @@ export async function runPipelineDiagnosticsContracts({ IfcAPI, test, root: ROOT
     } finally { relayApi.clearPrePassCache(); relayApi.free(); }
   });
 }
+
+// #9268: generated, data-free IFC. Repeated root references trip the actual
+// walk meter before geometry, and cross the production feature-off WASM API.
+export function runBudgetRefusalContract({ IfcAPI, test }) {
+  test('#9268 work budget refusal carries identity and demand through WASM', () => {
+    const items = Array(65538).fill('#22').join(',');
+    const source = `ISO-10303-21;HEADER;FILE_DESCRIPTION(('budget'),'2;1');FILE_NAME('budget.ifc','',(),(),'','','');FILE_SCHEMA(('IFC2X3'));ENDSEC;DATA;
+#1=IFCCARTESIANPOINT((0.,0.,0.));
+#10=IFCAXIS2PLACEMENT3D(#1,$,$);
+#11=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,0.00001,#10,$);
+#20=IFCSHAPEREPRESENTATION(#11,'Body','SurfaceModel',(#1));
+#21=IFCREPRESENTATIONMAP(#10,#20);
+#22=IFCMAPPEDITEM(#21,$);
+#23=IFCSHAPEREPRESENTATION(#11,'Body','MappedRepresentation',(${items}));
+#24=IFCPRODUCTDEFINITIONSHAPE($,$,(#23));
+#25=IFCFLOWTERMINAL('0000000000000000000001',$,'budget',$,$,$,#24,$);
+ENDSEC;END-ISO-10303-21;`;
+    const api = new IfcAPI();
+    try {
+      const bytes = new TextEncoder().encode(source);
+      const pre = api.buildPrePassOnce(bytes);
+      assert.ok(pre.jobs.length > 0);
+      const meshes = api.processGeometryBatch(bytes, pre.jobs, pre.unitScale,
+        ...pre.rtcOffset, pre.needsShift, pre.voidKeys, pre.voidCounts, pre.voidValues,
+        pre.styleIds, pre.styleColors, pre.planeAngleToRadians);
+      try {
+        const diag = meshes.diagnostics;
+        assert.ok(diag, 'refusal must survive the normal diagnostics path');
+        assert.equal(diag.totalUnsupportedItems, 0);
+        assert.equal(diag.totalCsgFailures, 0);
+        assert.equal(diag.totalBudgetRefusals, 1);
+        assert.deepEqual(diag.budgetRefusals, [{ budget: 'walk Items members', limit: 65536,
+          reached: 65537, sourceId: 23, productId: 25, productType: 'IfcFlowTerminal',
+          GlobalId: '0000000000000000000001' }]);
+      } finally { meshes.free(); }
+    } finally { api.clearPrePassCache(); api.free(); }
+  });
+  test('#9268 type-map budget refusal carries its type-product identity through WASM', () => {
+    const items = Array(65538).fill('#22').join(',');
+    const original = `ISO-10303-21;HEADER;FILE_DESCRIPTION(('budget'),'2;1');FILE_NAME('budget.ifc','',(),(),'','','');FILE_SCHEMA(('IFC2X3'));ENDSEC;DATA;
+#1=IFCCARTESIANPOINT((0.,0.,0.));
+#10=IFCAXIS2PLACEMENT3D(#1,$,$);
+#11=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,0.00001,#10,$);
+#20=IFCSHAPEREPRESENTATION(#11,'Body','SurfaceModel',(#1));
+#21=IFCREPRESENTATIONMAP(#10,#20);
+#22=IFCMAPPEDITEM(#21,$);
+#23=IFCSHAPEREPRESENTATION(#11,'Body','MappedRepresentation',(${items}));
+#24=IFCPRODUCTDEFINITIONSHAPE($,$,(#23));
+#25=IFCFLOWTERMINAL('0000000000000000000001',$,'budget',$,$,$,#24,$);
+ENDSEC;END-ISO-10303-21;`;
+    const source = original.replace('#22=IFCMAPPEDITEM(#21,$);', '')
+      .replace("SurfaceModel',(#1)", `SurfaceModel',(${Array(65538).fill('#1').join(',')})`)
+      .replace("#25=IFCFLOWTERMINAL('0000000000000000000001',$,'budget',$,$,$,#24,$);",
+        "#60=IFCWALLTYPE('type-guid',$,'budget type',$,$,$,(#21),$,$,.NOTDEFINED.);");
+    const api = new IfcAPI();
+    try {
+      const bytes = new TextEncoder().encode(source);
+      const pre = api.buildPrePassOnce(bytes);
+      assert.ok(pre.jobs.length > 0);
+      const meshes = api.processGeometryBatch(bytes, pre.jobs, pre.unitScale,
+        ...pre.rtcOffset, pre.needsShift, pre.voidKeys, pre.voidCounts, pre.voidValues,
+        pre.styleIds, pre.styleColors, pre.planeAngleToRadians);
+      try {
+        const diag = meshes.diagnostics;
+        assert.ok(diag, 'refusal must survive the normal diagnostics path');
+        assert.equal(diag.totalUnsupportedItems, 0);
+        assert.equal(diag.totalCsgFailures, 0);
+        assert.equal(diag.totalBudgetRefusals, 1);
+        assert.deepEqual(diag.budgetRefusals, [{ budget: 'logical Items members', limit: 65536,
+          reached: 65537, sourceId: 21, productId: 60, productType: 'IfcWallType',
+          GlobalId: 'type-guid' }]);
+      } finally { meshes.free(); }
+    } finally { api.clearPrePassCache(); api.free(); }
+  });
+}

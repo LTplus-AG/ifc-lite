@@ -7,10 +7,12 @@ use crate::program::mapping_budget::LogicalRefusal;
 use crate::GeometryRouter;
 
 impl MappingControl<'_> {
+    #[cold]
+    #[inline(never)]
     pub(super) fn stop_logical(
         &mut self,
         item_id: u32,
-        refusal: LogicalRefusal,
+        refusal: &LogicalRefusal,
         router: &GeometryRouter,
     ) {
         // Styled admission may own a provisional template before Items. Roll
@@ -20,7 +22,8 @@ impl MappingControl<'_> {
                 router.rollback_logical_template(pending.source_id, claim);
             }
         }
-        let error = match GeometryRouter::recoverable_source_error(refusal.into_error(item_id)) {
+        let (budget, limit, reached) = refusal.details();
+        let error = match GeometryRouter::recoverable_source_error(refusal.to_error(item_id)) {
             Ok(error) => error,
             Err(stop) => {
                 let event = self.fail_level(stop, router);
@@ -29,8 +32,18 @@ impl MappingControl<'_> {
             }
         };
         if self.retained.is_some() {
+            // Retained transactions return this refusal to their caller; their
+            // model-lifetime router must not accumulate an unread duplicate log.
             self.action = Action::Complete(Err(error));
             return;
+        }
+        // Keep the source's reporting policy, including CATIA's blank-type
+        // FootPrint suppression. Product admission reports independently.
+        if self.levels.last().is_none_or(|parent| parent.policy) {
+            let root = self.rep_map.as_ref().and_then(super::TypeMapRoot::product)
+                .map(crate::router::diagnostics::BudgetProductIdentity::from_product);
+            let product = refusal.product();
+            router.record_budget_refusal_identity(item_id, budget, limit, reached, product.as_ref().or(root.as_ref()));
         }
         self.logical_stopped = true;
         let Some(parent) = self.levels.last() else {
@@ -38,12 +51,7 @@ impl MappingControl<'_> {
             self.complete(Err(error));
             return;
         };
-        report_drop(
-            DropReason::LogicalStop { item_id },
-            &error,
-            parent.policy,
-            router,
-        );
+        report_drop(DropReason::LogicalStop { item_id }, &error, parent.policy, router);
         for level in &mut self.levels {
             level.truncated = true;
             level.items = Vec::new().into_iter();

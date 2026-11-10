@@ -108,7 +108,9 @@ const MAP_ABSOLUTE_MAX_CENTER_DISTANCE_METERS = NORMAL_COORD_THRESHOLD_M;
  * the geometry's Z) and 0 in OrthogonalHeight, so keeping it is correct
  * there; a map-absolute file that ALSO wrote a non-zero OrthogonalHeight
  * would double-count height — the detection reads only the horizontal
- * signature and cannot tell. The authored entity values are NOT modified —
+ * signature and cannot tell. The one exception is #9480 with a published
+ * `coordinateInfo.siteOrigin`: its height is raised by the slipped part of
+ * the site's Z (see {@link MapAbsoluteMatch}). The authored entity values are NOT modified —
  * panels and exports still see the file's data.
  */
 export function effectiveMapConversionForGeometry(
@@ -122,9 +124,11 @@ export function effectiveMapConversionForGeometry(
   // for the #2526 signature, the mis-scaled site anchor for #9480. Moving the
   // geometry by the rest puts that anchor on the declared one.
   const carried = match.kind === 'unitMismatchedAnchor' ? match.anchorUnitRatio : 1;
+  const heightShift = match.kind === 'unitMismatchedAnchor' ? match.siteHeightShiftMetres ?? 0 : 0;
   return {
     ...conversion,
     eastings: conversion.eastings * (1 - carried),
+    orthogonalHeight: conversion.orthogonalHeight + heightShift / mapUnitScale,
     northings: conversion.northings * (1 - carried),
     xAxisAbscissa: 1,
     xAxisOrdinate: 0,
@@ -149,12 +153,15 @@ export function effectiveMapConversionForGeometry(
  *   `lengthUnitScale / mapUnitScale` (0.001 for a millimetre file in a metre
  *   CRS) — kilometres from the map origin, so the conversion applied on top
  *   lands the model that same distance off and turned by its rotation. The
- *   placement's height carries the same slip (14 instead of 14000) and is NOT
- *   recovered: the geometry bounds cannot tell it from the building's own Z.
+ *   placement's height carries the same slip (14 instead of 14000). The
+ *   geometry bounds cannot tell it from the building's own Z, so it is
+ *   recovered only from the pre-pass `coordinateInfo.siteOrigin`, and only
+ *   when that origin sits at the mis-scaled anchor: `siteHeightShiftMetres`
+ *   is then `siteZ x (1/ratio - 1)`, else undefined (height left authored).
  */
 export type MapAbsoluteMatch =
   | { kind: 'anchor' }
-  | { kind: 'unitMismatchedAnchor'; anchorUnitRatio: number };
+  | { kind: 'unitMismatchedAnchor'; anchorUnitRatio: number; siteHeightShiftMetres?: number };
 
 /**
  * The #9480 radius, relative to the mis-scaled anchor's own distance from the
@@ -208,9 +215,14 @@ export function matchMapAbsoluteGeometry(
     UNIT_MISMATCH_RELATIVE_RADIUS * anchorDistance * ratio,
   );
   const misDistance = Math.hypot(ifcX - misE, ifcY - misN);
-  return Number.isFinite(misDistance) && misDistance < radius
-    ? { kind: 'unitMismatchedAnchor', anchorUnitRatio: ratio }
-    : null;
+  if (!(Number.isFinite(misDistance) && misDistance < radius)) return null;
+  // The site's own Z carries the slip only if the site IS the slipped anchor.
+  const site = coordinateInfo.siteOrigin;
+  const siteIsAnchor = site !== undefined && Number.isFinite(site.z)
+    && Math.hypot(site.x - misE, site.y - misN) < radius;
+  return siteIsAnchor
+    ? { kind: 'unitMismatchedAnchor', anchorUnitRatio: ratio, siteHeightShiftMetres: site.z * (1 / ratio - 1) }
+    : { kind: 'unitMismatchedAnchor', anchorUnitRatio: ratio };
 }
 
 /**

@@ -110,6 +110,8 @@ export function createZoomSurfacePicker(
 export interface ZoomPoseCamera {
   getPosition(): SurfacePoint;
   getTarget(): SurfacePoint;
+  /** Orthographic half-height; a centred ortho zoom changes only this. */
+  getOrthoSize?(): number;
 }
 
 /**

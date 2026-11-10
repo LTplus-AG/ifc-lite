@@ -13,7 +13,7 @@ import { attachCapturedLoad } from '@/lib/error-reports/correlation';
 import { useShallow } from 'zustand/react/shallow';
 import { type FederatedModel, useViewerStore } from '@/store';
 import { resolveLoadTessellationTier, isMeshOnlyCacheEnabled } from '../store/constants.js';
-import { createModelLoadActivity, handOffToRetry, installModelLoadCanceller } from './modelLoadCanceller.js';
+import { createModelLoadActivity, handOffToRetry, installModelLoadCanceller, LOAD_COMPLETE, settleOwnedLoadUi, watchLoadSupersession } from './modelLoadCanceller.js';
 import type { ModelLoadOptions } from './modelLoadOptions.js';
 import { assertWorkflowOwner } from '@/lib/flow/run-session';
 import { buildModelLoadedGeometryProps, reportOmittedTypeRecords, reportRefusedLengthUnit, reportSkippedHungElements, warnGeometryDiagnostics } from './modelLoadedGeometryProps.js';
@@ -244,7 +244,6 @@ export function useIfcLoader() {
 
   // Background revalidation of a SERVED cache hit (#4269): `ingest/cacheRevalidation.ts`.
   const revalidateServedCacheHit = useCallback((hit: ServedCacheHit) => revalidateServedCache(hit, {
-    isCurrent: (session) => loadSessionRef.current === session,
     reload: (file, target) => loadFileRef.current?.(file, target),
   }), []);
 
@@ -277,6 +276,8 @@ export function useIfcLoader() {
       metadataAbort.abort();
       abortGeometry?.();
     }, () => cancelOwnedStream, activity); // #5849: federated cancellation preserves loaded models
+    // Every end of this load, completed or failed: the last live load ends the shared UI (L2).
+    const settleLoadUi = (progress: Parameters<typeof settleOwnedLoadUi>[1] = null) => settleOwnedLoadUi(releaseCanceller, progress);
 
     // Cold-storage residency (issue #1682 phase 3b): any new load invalidates
     // the previous entry-backed provider — a primary load replaces the model,
@@ -674,7 +675,7 @@ export function useIfcLoader() {
       if (isStale()) return;
       if (gaussianAdmission.kind !== 'ordinary') { // #8565: every entry reaches this one admission decision
         const outcome = await loadGaussianCapture({ file, admission: gaussianAdmission, target, modelId, options,
-          signal: metadataAbort.signal, isCurrent, showLoadError, finalize: finalizeModel });
+          signal: metadataAbort.signal, isCurrent, showLoadError, settleLoadUi, finalize: finalizeModel });
         options?.onGaussianLoadSettled?.(isCurrent() ? outcome : 'cancelled'); return;
       }
       const pointCloudFormat = detectPointCloudFormat(file.name, headBuf), landXmlCandidate = format === 'landxml';
@@ -689,7 +690,7 @@ export function useIfcLoader() {
         if (target.kind === 'primary') updateModel(modelId, { sourceFingerprint: modelSourceIdentity });
         await loadLandXmlModel({ file, fileSizeMB, targetKind: target.kind, totalStartTime, wasHidden: wasHidden(), trace,
           assumedLinearUnit: options?.assumedLinearUnit, landXmlAssumptions: options?.landXmlAssumptions ?? useViewerStore.getState().landXmlGeorefAssumptionSettings,
-          isCurrent: () => isCurrent(), setProgress, setGeometryStreamingActive, setLoading,
+          isCurrent: () => isCurrent(), setProgress, settleLoadUi,
           openProvisional: target.kind === 'primary' ? (preflight) => openPrimaryLandXmlProvisional(modelId, preflight) : undefined,
           openFederatedStreamingPlan: target.kind === 'federated'
             ? (preflight, sourceCoordinateInfo, spatialReference, declaredCrs, assumptions) => openFederatedLandXmlStreamingPlan(modelId, preflight, sourceCoordinateInfo, spatialReference, declaredCrs, () => isCurrent(), assumptions)
@@ -742,7 +743,7 @@ export function useIfcLoader() {
       // A SAB here is the un-unwrapped file, so `headBuf` is its head.
       format = pointCloudFormat ?? detectFormat(buffer instanceof ArrayBuffer ? buffer : headBuf);
 
-      if (geometryKernel.refuseSource(format, buffer.byteLength, { modelId, activity })) return;
+      if (geometryKernel.refuseSource(format, buffer.byteLength, { modelId, activity })) { settleLoadUi(); return; }
 
       // LAS / LAZ point clouds: stream chunks straight to the renderer.
       // No on-disk cache, no server upload — the data goes worker → GPU.
@@ -751,7 +752,7 @@ export function useIfcLoader() {
         if (!renderer) {
           showLoadError('Renderer not initialised — try again after the viewer mounts.', 'renderer_not_ready');
           updateModel(modelId, { loadState: 'error', loadError: 'renderer-missing' });
-          setLoading(false);
+          settleLoadUi();
           return;
         }
         // A point cloud dropped before IFC still waits for async WebGPU initialization.
@@ -780,11 +781,10 @@ export function useIfcLoader() {
             loadState: 'error',
             loadError: deviceLost ? 'renderer-device-lost' : 'renderer-destroyed',
           });
-          setLoading(false);
+          settleLoadUi();
           return;
         }
         setProgress({ phase: `Streaming ${format.toUpperCase()}`, percent: 5 });
-        setGeometryStreamingActive(false);
         const blob = file;
         const incCount = useViewerStore.getState().incrementPointCloudAssetCount;
         const setClassCounts = useViewerStore.getState().setPointCloudClassCounts;
@@ -897,7 +897,6 @@ export function useIfcLoader() {
             );
             updateModel(modelId, { loadState: 'error', loadError: 'cancelled' });
             setError(null);
-            setProgress({ phase: 'Cancelled', percent: 0 });
           } else {
             console.error(
               `[useIfc] pointcloud ingest failed (format=${format}, model=${modelId}):`,
@@ -907,7 +906,7 @@ export function useIfcLoader() {
             showLoadError(classifyLoadError(err) === 'invalid_input' ? formatLoadError(err) : `${format.toUpperCase()} parsing failed: ${message}`, `${format}_parse_failed`);
           }
           clearOwnedCanceller();
-          setLoading(false);
+          settleLoadUi(isAbort ? { phase: 'Cancelled', percent: 0 } : null);
           return;
         }
         clearOwnedCanceller();
@@ -942,19 +941,17 @@ export function useIfcLoader() {
         // into a newer load after that await.
         if (isStale()) return;
         void identifyLoadedPlacementSource(modelId, file);
-        setProgress({ phase: 'Complete', percent: 100 });
         // Snapshot: points, not meshes - the ingest GeometryResult's zero
         // triangle/mesh totals are placeholders, not measurements, so only the
         // file size is recorded (absent != 0, see ModelLoadedSnapshot).
         captureModelLoaded({ format, file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'point-cloud', total_elapsed_ms: Math.round(performance.now() - totalStartTime), was_hidden: wasHidden() }, { fileSizeMB }, trace);
-        setLoading(false);
+        settleLoadUi(LOAD_COMPLETE);
         return;
       }
 
       // IFCX files must be parsed client-side (server only supports IFC4 STEP)
       if (format === 'ifcx') {
         setProgress({ phase: 'Parsing IFCX (client-side)', percent: 10 });
-        setGeometryStreamingActive(false);
 
         try {
           const result = await parseIfcxViewerModel(sourceArrayBuffer(buffer, 'source.arrayBuffer'), setProgress);
@@ -977,9 +974,8 @@ export function useIfcLoader() {
           }
           await finalizeModel(result.dataStore, result.geometryResult, result.schemaVersion, { loadPath: 'wasm' });
           if (isStale()) return;
-          setProgress({ phase: 'Complete', percent: 100 });
           captureModelLoaded({ format: 'ifcx', file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'wasm', total_elapsed_ms: Math.round(performance.now() - totalStartTime), was_hidden: wasHidden() }, snapshotFromGeometry(fileSizeMB, result.geometryResult), trace);
-          setLoading(false);
+          settleLoadUi(LOAD_COMPLETE);
           return;
         } catch (err: unknown) {
           // Same guard on the error path (#stale-guard sweep): a superseded
@@ -994,14 +990,14 @@ export function useIfcLoader() {
             console.warn('[useIfc] To use this file, load it together with a base IFCX file (select both files at once).');
             showLoadError(`"${file.name}" is an overlay file with no geometry. Please load it together with a base IFCX file (select all files at once).`, 'ifcx_overlay_only');
             updateModel(modelId, { loadState: 'error', loadError: 'overlay-only-ifcx' });
-            setLoading(false);
+            settleLoadUi();
             return;
           }
           console.error('[useIfc] IFCX parsing failed:', err);
           const message = err instanceof Error ? err.message : String(err);
           updateModel(modelId, { loadState: 'error', loadError: message });
           showLoadError(classifyLoadError(err) === 'invalid_input' ? formatLoadError(err) : `IFCX parsing failed: ${message}`, 'ifcx_parse_failed');
-          setLoading(false);
+          settleLoadUi();
           return;
         }
       }
@@ -1009,7 +1005,6 @@ export function useIfcLoader() {
       // GLB files: parse directly to MeshData (no data model, geometry only)
       if (format === 'glb') {
         setProgress({ phase: 'Parsing GLB', percent: 10 });
-        setGeometryStreamingActive(false);
 
         try {
           const result = await prepareGlbViewerModel(sourceArrayBuffer(buffer, 'source.arrayBuffer'), appearanceLoad!.decode, () => isStale());
@@ -1028,9 +1023,8 @@ export function useIfcLoader() {
 
           if (isStale()) return;
           appearanceLoad?.finish(useViewerStore.getState().models.has(modelId));
-          setProgress({ phase: 'Complete', percent: 100 });
           captureModelLoaded({ format: 'glb', file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'wasm', total_elapsed_ms: Math.round(performance.now() - totalStartTime), was_hidden: wasHidden() }, snapshotFromGeometry(fileSizeMB, result.geometryResult), trace);
-          setLoading(false);
+          settleLoadUi(LOAD_COMPLETE);
           return;
         } catch (err: unknown) {
           if (isStale()) return;
@@ -1038,7 +1032,7 @@ export function useIfcLoader() {
           const message = err instanceof Error ? err.message : String(err);
           updateModel(modelId, { loadState: 'error', loadError: message });
           showLoadError(`GLB parsing failed: ${message}`, 'glb_parse_failed');
-          setLoading(false);
+          settleLoadUi();
           return;
         }
       }
@@ -1190,8 +1184,7 @@ export function useIfcLoader() {
                 fileSizeMB,
                 isStale: () => isStale(),
               });
-              setLoading(false);
-              if (target.kind === 'federated') setProgress({ phase: 'Complete', percent: 100 }); // #1570, as the fresh path
+              settleLoadUi(LOAD_COMPLETE); // #1570, as the fresh path
               // #2183: compact the restored source, then drop this scope's binding to the raw file.
               const restoredStore = target.kind === 'federated' ? federatedHitStore : state.ifcDataStore;
               if (restoredStore) void compactSource(restoredStore.source).then((o) => { if (o === 'compacted') buffer = new ArrayBuffer(0); });
@@ -1203,10 +1196,11 @@ export function useIfcLoader() {
                 void revalidateServedCacheHit({
                   file,
                   target,
+                  modelId,
                   identity: placementIdentity,
                   cacheKey,
                   expectedHash: revalidateAgainst,
-                  session: currentSession,
+                  supersession: watchLoadSupersession('any'),
                 });
               }
               return;
@@ -1265,7 +1259,7 @@ export function useIfcLoader() {
           // prevent. Absent stays absent; `is_resource_retry` is the one fact
           // that is true on this path.
           captureModelLoaded({ format, file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'server', total_elapsed_ms: Math.round(performance.now() - totalStartTime), was_hidden: wasHidden(), is_resource_retry: isResourceRetryLoad }, snapshotFromGeometry(fileSizeMB, state.geometryResult), trace);
-          setLoading(false);
+          settleLoadUi(LOAD_COMPLETE);
           return;
         }
         // Server not available - continue with local WASM (no error logging needed)
@@ -2033,8 +2027,7 @@ export function useIfcLoader() {
           is_retry: options?.isResourceRetry === true,
           ...failureProps,
         }));
-        setLoading(false);
-        setGeometryStreamingActive(false);
+        settleLoadUi();
         return;
       }
 
@@ -2119,15 +2112,13 @@ export function useIfcLoader() {
         fileSizeMB,
         isStale: () => isStale(),
       });
-      setLoading(false);
-      setGeometryStreamingActive(false);
-      // Normalize progress to a terminal state, mirroring the loading /
-      // streaming flags reset above. A federated georef model runs
-      // finalizeModel AFTER the streaming 'Complete' 100% and re-sets progress
-      // to 'Aligning georeferenced model' 90%; without this reset it sticks
-      // below 100%, and getPickOptions() then reports isStreaming=true forever,
-      // disabling ALL element picking once a second model is loaded (#1570).
-      setProgress({ phase: 'Complete', percent: 100 });
+      // Normalize progress to a terminal state with the loading / streaming
+      // flags. A federated georef model runs finalizeModel AFTER the streaming
+      // 'Complete' 100% and re-sets progress to 'Aligning georeferenced model'
+      // 90%; without this reset it sticks below 100%, and getPickOptions() then
+      // reports isStreaming=true forever, disabling ALL element picking once a
+      // second model is loaded (#1570).
+      settleLoadUi(LOAD_COMPLETE);
     } catch (err) {
       console.error(`[useIfc] loadFile THREW (session=${currentSession}, current=${loadSessionRef.current}):`, err);
       if (isStale()) return;
@@ -2156,8 +2147,7 @@ export function useIfcLoader() {
         load_stage: loadStage,
         is_retry: options?.isResourceRetry === true,
       }));
-      setLoading(false);
-      setGeometryStreamingActive(false);
+      settleLoadUi();
     } finally {
       settleResumable();
       metadataAbort.abort();

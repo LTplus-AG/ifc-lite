@@ -33,6 +33,10 @@ export function writeCoordinateInfo(writer: BufferWriter, info: CoordinateInfo):
   // Version 24+: absence is unknown; a recorded zero recovery count is known.
   writeOptionalNumber(writer, info.boundsRecoveryFallbackCount);
   writeOptionalNumber(writer, info.lengthUnitScale);
+
+  // Version 27+: the IfcSite world origin (#9480).
+  writer.writeUint8(info.siteOrigin === undefined ? 0 : 1);
+  if (info.siteOrigin !== undefined) writeVec3(writer, info.siteOrigin);
 }
 
 function writeOptionalNumber(writer: BufferWriter, value: number | undefined): void {
@@ -87,6 +91,7 @@ export function readCoordinateInfo(reader: BufferReader, version: number = 2): C
   let wasmRtcFrame: CoordinateInfo['wasmRtcFrame'];
   let boundsRecoveryFallbackCount: number | undefined;
   let lengthUnitScale: number | undefined;
+  let siteOrigin: Vec3 | undefined;
 
   if (version >= 3) {
     if (reader.readUint8() === 1) wasmRtcOffset = readVec3(reader);
@@ -114,6 +119,14 @@ export function readCoordinateInfo(reader: BufferReader, version: number = 2): C
     lengthUnitScale = readOptionalNumber(reader, 'lengthUnitScale');
   }
 
+  if (version >= 27) {
+    const hasSiteOrigin = reader.readUint8();
+    if (hasSiteOrigin !== 0 && hasSiteOrigin !== 1) {
+      throw new Error(`Invalid siteOrigin presence flag: ${hasSiteOrigin}`);
+    }
+    if (hasSiteOrigin === 1) siteOrigin = readVec3(reader);
+  }
+
   return {
     originShift,
     originalBounds,
@@ -124,6 +137,7 @@ export function readCoordinateInfo(reader: BufferReader, version: number = 2): C
     buildingRotation,
     boundsRecoveryFallbackCount,
     lengthUnitScale,
+    ...(siteOrigin ? { siteOrigin } : {}),
   };
 }
 

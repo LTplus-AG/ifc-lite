@@ -12,6 +12,7 @@ import { MobileToolbar } from './MobileToolbar';
 import { RibbonToolbar } from './ribbon/RibbonToolbar';
 import { HierarchyPanel } from './HierarchyPanel';
 import { StatusBar } from './StatusBar';
+import { FlavorDialogHost } from '@/components/extensions/FlavorDialogHost';
 import { ViewportContainer } from './ViewportContainer';
 import { ModelToolRail } from './model/ModelToolRail';
 import { ModelWorkspaceSplit } from './model/ModelWorkspaceSplit';
@@ -270,6 +271,7 @@ export function ViewerLayout() {
         )}
         <KeyboardShortcutsDialog open={shortcutsDialog.open} onClose={shortcutsDialog.close} initialTab={shortcutsDialog.tab} />
         <SettingsDialogHost />
+        <FlavorDialogHost />
         <ConfirmDialogHost />
         {/* Global dialogs above, overlays below */}
         <EntityContextMenu />
@@ -283,8 +285,7 @@ export function ViewerLayout() {
         {/* Trigger-less: this instance exists so the entity context menu's
             "Export anonymized…" (which only sets `anonymizedExportRequested`,
             no trigger of its own) has a mounted dialog regardless of whether the export toolbar
-            dropdown is open. Same host pattern as `FlavorDialog` in
-            `StatusBar.tsx`; `toolbar/export-commands.ts` owns the `trigger` one. */}
+            dropdown is open. Same persistent host pattern as `FlavorDialogHost`; `toolbar/export-commands.ts` owns the `trigger` one. */}
         <AnonymizedExportDialog surface="context_menu" />
         {/* The compact mobile controls and the desktop ribbon share command homes. */}
         {isMobile

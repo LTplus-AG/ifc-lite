@@ -1173,10 +1173,15 @@ authored reference indices; retained or removed references need those indices.
 The ordinary entity getters keep their mutable-array contract. Reference
 lookups conservatively recheck a record after its attribute array is exposed,
 including later edits through a retained alias. Pure readers can use
-`readNewEntity`, `readNewEntities`, and `readNewEntitiesOfType`; these borrow
-attributes for reading and must not mutate them. Reference-query results also
-borrow their arrays for reading. Use the ordinary getters or mutation methods
-for writes. `StoreEditor.readNewEntity` provides the same read-only borrow.
+`readNewEntity`, `readNewEntities`, and `readNewEntitiesOfType`. These return
+frozen copies, so a write through a borrowed array throws instead of editing a
+record behind the reference index. Reference-query results are borrows too.
+Borrowing marks nothing as exposed, and inside a transaction a borrow reads an
+unmodified row without copying it into the draft. Use the ordinary getters or
+mutation methods for writes. `StoreEditor.readNewEntity` provides the same
+read-only borrow. `readNewEntityKinds(type?)`, `hasNewEntity(id)` and
+`getNewEntityCount()` answer enumeration and membership without reading any
+payload.
 
 ### Persisting an overlay
 

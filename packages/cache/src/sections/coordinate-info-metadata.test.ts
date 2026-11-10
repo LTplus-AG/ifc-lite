@@ -18,10 +18,16 @@ import { toCacheDataStore } from '../adapt.js';
 // This is a metadata transport invariant; no meshes or rendered parity are claimed.
 const capturedInfo: CoordinateInfo = capture.coordinateInfo;
 
-function encode(info: CoordinateInfo): ArrayBuffer {
+function encodeCurrent(info: CoordinateInfo): ArrayBuffer {
   const writer = new BufferWriter();
   writeCoordinateInfo(writer, info);
   return writer.build();
+}
+
+/** The v24-v26 layout these cases pin: the current bytes without the v27 site-origin absence flag. */
+function encode(info: CoordinateInfo): ArrayBuffer {
+  if (info.siteOrigin !== undefined) throw new Error('a v24 payload has no site origin');
+  return encodeCurrent(info).slice(0, -1);
 }
 
 describe('complete CoordinateInfo cache transport (#7239)', () => {
@@ -31,7 +37,7 @@ describe('complete CoordinateInfo cache transport (#7239)', () => {
 
   it('preserves that snapshot through the actual geometry-section head and directory', async () => {
     const section = await buildGeometrySectionV13([], capturedInfo);
-    const result = await readGeometryV13(section, 0, 24);
+    const result = await readGeometryV13(section, 0, 27);
     expect(result.coordinateInfo).toEqual(capturedInfo);
     expect(result.meshes).toEqual([]);
     expect(result.totalVertices).toBe(0);
@@ -60,7 +66,7 @@ describe('complete CoordinateInfo cache transport (#7239)', () => {
       meshes: [], totalVertices: 0, totalTriangles: 0, coordinateInfo: capturedInfo,
     }, source);
     const reader = new BinaryCacheReader();
-    expect(reader.readHeader(cache).version).toBe(26);
+    expect(reader.readHeader(cache).version).toBe(27);
     expect(reader.validate(cache, source)).toBe(true);
     expect((await reader.read(cache)).geometry?.coordinateInfo).toEqual(capturedInfo);
   });
@@ -93,4 +99,26 @@ describe('complete CoordinateInfo cache transport (#7239)', () => {
         .toThrow(/past end/);
     },
   );
+});
+
+describe('CoordinateInfo IfcSite origin cache transport (#9480)', () => {
+  it('round-trips a site origin at v27 and keeps its absence', () => {
+    const withSite = { ...capturedInfo, siteOrigin: { x: 311.98818054, y: 5996.14856499, z: 0.014 } };
+    expect(readCoordinateInfo(new BufferReader(encodeCurrent(withSite)), 27)).toEqual(withSite);
+    expect(readCoordinateInfo(new BufferReader(encodeCurrent(capturedInfo)), 27)).toEqual(capturedInfo);
+    expect('siteOrigin' in readCoordinateInfo(new BufferReader(encodeCurrent(capturedInfo)), 27)).toBe(false);
+  });
+
+  it('reads no site origin from a pre-v27 section', () => {
+    const withSite = { ...capturedInfo, siteOrigin: { x: 1, y: 2, z: 3 } };
+    expect(readCoordinateInfo(new BufferReader(encodeCurrent(withSite)), 26).siteOrigin).toBeUndefined();
+  });
+
+  it('refuses a corrupt presence flag', () => {
+    const writer = new BufferWriter();
+    writeCoordinateInfo(writer, capturedInfo);
+    const bytes = new Uint8Array(writer.build());
+    bytes[bytes.length - 1] = 7;
+    expect(() => readCoordinateInfo(new BufferReader(bytes.buffer), 27)).toThrow(/siteOrigin presence flag/);
+  });
 });

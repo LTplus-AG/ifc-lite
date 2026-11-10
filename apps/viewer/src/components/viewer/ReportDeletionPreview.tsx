@@ -62,12 +62,24 @@ export function ReportDeletionPreview({ source, report, onCancel, onDeleted, sto
   const remove = () => flight.start(async () => {
     // #7252: another tab can commit a Document after this preview hydrated.
     // Refresh through the existing validated native library before approval.
-    const durable = await readDurableDocuments();
-    setDurableDocuments(durable);
-    const latest = useViewerStore.getState();
-    const target = source.kind === 'compare' ? latest.savedComparisons.find(row => row.id === source.id) : latest.savedClashReports.find(row => row.id === source.id);
-    const next = reportChartDependencies(latest, source, durable);
-    const removeAction = source.kind === 'compare' ? latest.deleteSavedComparison : latest.deleteSavedClashReport;
+    // Inside a try: useAsyncRun does not rethrow, so a throw here would only
+    // reach the console; it fails the removal the way a storage failure does.
+    let prepared;
+    try {
+      const durable = await readDurableDocuments();
+      setDurableDocuments(durable);
+      const latest = useViewerStore.getState();
+      prepared = {
+        target: source.kind === 'compare' ? latest.savedComparisons.find(row => row.id === source.id) : latest.savedClashReports.find(row => row.id === source.id),
+        next: reportChartDependencies(latest, source, durable),
+        removeAction: source.kind === 'compare' ? latest.deleteSavedComparison : latest.deleteSavedClashReport,
+      };
+    } catch (error) {
+      console.warn('[Report deletion] Preparing the removal failed', error);
+      storageFailed();
+      return;
+    }
+    const { target, next, removeAction } = prepared;
     if (removeAction !== action.current || target !== captured.current || !acknowledged || next.signature !== acknowledged.signature || next.documentPhase === 'loading') {
       refreshRead(value => value + 1); return;
     }

@@ -8,7 +8,7 @@
  * finding another topic holds is shown, never moved.
  */
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useAsyncRun } from '@/hooks/useAsyncRun';
 import { Button } from '@/components/ui/button';
 import { useTranslation } from '@/i18n';
@@ -25,9 +25,13 @@ export function BCFDraftReconcile({ batch, onChange }: { batch: DraftBatch; onCh
   // C-2: each action rebuilds the batch from the one shown when pressed, so
   // only one runs at a time; a second would land over the first and lose it.
   const flight = useAsyncRun({ label: 'BCF draft reconcile' });
+  // A failure describes the comparison its action started under: a later
+  // Compare dismisses it, even one pressed while that action still runs. The
+  // flight itself is never reset here, so a running action keeps its lane.
+  const [comparison, setComparison] = useState(0);
+  const actionComparison = useRef(0);
   const compare = () => {
-    // A new comparison replaces the last action's failure; a running action keeps its lane.
-    if (flight.state.kind === 'failed') flight.reset();
+    setComparison(value => value + 1);
     const run = currentDraftRun();
     if (!run) { setProposal(null); setMessage(t('bcfDrafts.reconcile.noRun')); return; }
     const groups = useClashGroupLibrary.getState().entries;
@@ -36,6 +40,7 @@ export function BCFDraftReconcile({ batch, onChange }: { batch: DraftBatch; onCh
   };
   const title = (guid: string) => batch.topics.find(topic => topic.guid === guid)?.title ?? guid;
   const apply = (guid: string) => flight.start(async () => {
+    actionComparison.current = comparison;
     const topic = proposal?.topics.find(item => item.topicGuid === guid);
     const next = topic ? await applyTopicReconciliation(batch, topic) : null;
     if (!next) { setMessage(t('bcfDrafts.reconcile.stale')); return; }
@@ -43,6 +48,7 @@ export function BCFDraftReconcile({ batch, onChange }: { batch: DraftBatch; onCh
     setProposal(current => current ? { ...current, topics: current.topics.filter(item => item.topicGuid !== guid) } : current);
   });
   const draftUnplaced = () => flight.start(async () => {
+    actionComparison.current = comparison;
     if (!proposal?.unplaced.length) return;
     const topic = await draftTopic(t('bcfDrafts.reconcile.unplacedTitle'), proposal.unplaced, { kind: 'selection' }, batch.source.worldOffset);
     onChange({ ...batch, modifiedAt: new Date().toISOString(), topics: [...batch.topics, topic] });
@@ -57,7 +63,7 @@ export function BCFDraftReconcile({ batch, onChange }: { batch: DraftBatch; onCh
       </div>
       {message && <output className="mt-1 block">{message}</output>}
       {/* A throw from applying or drafting lands here; useAsyncRun does not rethrow it. */}
-      {flight.state.kind === 'failed' && <p role="alert" className="mt-1 text-danger">
+      {flight.state.kind === 'failed' && actionComparison.current === comparison && <p role="alert" className="mt-1 text-danger">
         {t('bcfDrafts.reconcile.failed', { message: flight.state.error instanceof Error ? flight.state.error.message : String(flight.state.error) })}</p>}
       {proposal && (
         <output className="mt-1 flex flex-col gap-1">

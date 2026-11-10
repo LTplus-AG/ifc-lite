@@ -99,3 +99,26 @@ test('a new Compare clears the last action\'s failure', async () => {
     console.warn = warn;
   }
 });
+
+test('an apply that fails after a Compare pressed while it ran does not show under the new comparison', async () => {
+  const batch = await reconcilable();
+  const warn = console.warn;
+  console.warn = () => {};
+  try {
+    let calls = 0;
+    const ui = render(<BCFDraftReconcile batch={batch} onChange={() => { calls++; throw new Error('Saving the batch failed.'); }} />);
+    const compareButton = () => [...ui.querySelectorAll('button')].find((node) => node.textContent === 'Compare')!;
+    click(compareButton());
+    const apply = applyButton(ui)!;
+    // Apply starts computing; Compare lands before it can settle.
+    act(() => {
+      apply.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+      compareButton().dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+    });
+    await waitFor(() => calls === 1, 'the earlier apply ran to its failure');
+    await act(async () => {});
+    assert.equal(alertText(ui), null, 'its failure described the previous comparison');
+  } finally {
+    console.warn = warn;
+  }
+});

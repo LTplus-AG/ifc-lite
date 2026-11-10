@@ -73,10 +73,15 @@ pub(super) fn read_loop_points_memo(
     for point_id in point_ids {
         let [x, y, z] = match memo.get(&point_id) {
             Some(&point) => point,
-            None => match decoder.point3_fast(point_id) {
-                Some(point) => *memo.entry(point_id).or_insert(point),
-                None => decoder.point3(point_id).ok()?,
-            },
+            None => {
+                // Test builds count the reads the memo could not serve.
+                #[cfg(test)]
+                super::tests::note_point_read();
+                match decoder.point3_fast(point_id) {
+                    Some(point) => *memo.entry(point_id).or_insert(point),
+                    None => decoder.point3(point_id).ok()?,
+                }
+            }
         };
         points.push(Point3::new(x, y, z));
     }

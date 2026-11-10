@@ -248,6 +248,47 @@ impl Default for ShellBasedSurfaceModelProcessor {
     }
 }
 
+/// The memo's own equivalence test names `read_simple_face_bounds_memo`, so
+/// it lives here and reverts with it. The work it removes (repeated point reads)
+/// is observed from `processors/tests.rs` through a test-only read probe.
+#[cfg(test)]
+mod point_memo_tests {
+    use super::*;
+    use crate::processors::take_face_refused;
+
+    /// A walk-scoped point memo is invisible: reading faces that share points
+    /// through one memo gives the same bounds, the same face refusals and the same
+    /// refused-record count as reading each face with fresh state, including when
+    /// a shared point is one the byte fast path cannot read (never memoized, so
+    /// `point3` refuses it again on every use, as before).
+    #[test]
+    fn shared_point_memo_matches_fresh_reads_and_refusals() {
+        for bad in ["IFCCARTESIANPOINT((1.,1.,1.E400))", "IFCDIRECTION((1.,1.,0.))", "IFCCARTESIANPOINT ( ( 2. , 2. ) )"] {
+            let source = format!("#1=IFCCARTESIANPOINT((0.,0.));#2=IFCCARTESIANPOINT((4.,0.));#3=IFCCARTESIANPOINT((4.,4.));#4={bad};#5=IFCPOLYLOOP((#1,#2,#3));#6=IFCFACEOUTERBOUND(#5,.T.);#7=IFCPOLYLOOP((#1,#3,#4));#8=IFCFACEOUTERBOUND(#7,.T.);#9=IFCPOLYLOOP((#2,#3,#1));#10=IFCFACEOUTERBOUND(#9,.F.);");
+            let faces: [Vec<u32>; 5] = [vec![6], vec![8], vec![10], vec![8], vec![6, 10]];
+            let mut shared = EntityDecoder::new(&source);
+            let mut memo = PointMemo::default();
+            for bounds in &faces {
+                let mut fresh = EntityDecoder::new(&source);
+                let _ = take_face_refused();
+                let want = read_simple_face_bounds(&IfcType::IfcFace, bounds.clone(), &mut fresh);
+                let want_refused = take_face_refused();
+                let got = read_simple_face_bounds_memo(&IfcType::IfcFace, bounds.clone(), &mut shared, &mut memo);
+                assert_eq!(got, want, "{bad} {bounds:?}");
+                assert_eq!(take_face_refused(), want_refused, "{bad} {bounds:?}");
+            }
+            let mut sequential = EntityDecoder::new(&source);
+            for bounds in &faces {
+                let _ = read_simple_face_bounds(&IfcType::IfcFace, bounds.clone(), &mut sequential);
+            }
+            let _ = take_face_refused();
+            assert_eq!(shared.refused_records(), sequential.refused_records(), "{bad}");
+            // Only a fast-path read is ever memoized: the spaced record is one.
+            assert_eq!(memo.contains_key(&4), bad.starts_with("IFCCARTESIANPOINT ("), "{bad}");
+        }
+    }
+}
+
 #[cfg(test)]
 #[path = "polyloop_leaf_tests.rs"]
 mod leaf_tests;

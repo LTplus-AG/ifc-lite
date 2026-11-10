@@ -216,8 +216,11 @@ async function main() {
       status: git('status', '--porcelain'), diffSha256: sha(git('diff', 'HEAD', '--binary')) };
     const allowed = new Set(['run-browser.mjs', 'attach-gpu.mjs', 'browser-scenarios.md']
       .map(name => `tests/ui-scenes/command-palette-access/${name}`));
-    manifest.runnerFiles = Object.fromEntries(await Promise.all([...allowed].map(async path =>
-      [path, sha(await readFile(join(HERE, path.split('/').at(-1))))])));
+    const harnessFiles = ['run-browser.mjs', 'attach-gpu.mjs', 'browser-scenarios.md',
+      '../capture.mjs', '../capture-preview.mjs', '../scenes.mjs',
+      '../command-palette/capture-matrix.mjs', 'capture-contexts.mjs', 'capture-flows.mjs'];
+    manifest.runnerFiles = Object.fromEntries(await Promise.all(harnessFiles.map(async path =>
+      [path, sha(await readFile(resolve(HERE, path)))])));
     const dirty = [...git('diff', 'HEAD', '--name-only').split('\n'),
       ...git('ls-files', '--others', '--exclude-standard').split('\n')].filter(Boolean);
     // The admitted protocol owns these generated receipts, not application source.
@@ -245,7 +248,7 @@ async function main() {
     if (interrupted) throw new Error('Interrupted before GPU probe');
     manifest.adapter = await probe(browser.cdp);
     scratch = await mkdtemp(join(tmpdir(), 'palette-runner-'));
-    const env = { ...process.env, IFC_GPU_CDP_URL: browser.cdp,
+    const env = { ...process.env, IFC_GPU_CDP_URL: browser.cdp, IFC_CAPTURE_CHECKOUT: ROOT,
       NODE_OPTIONS: [process.env.NODE_OPTIONS, `--import=${pathToFileURL(join(HERE, 'attach-gpu.mjs')).href}`].filter(Boolean).join(' ') };
     for (const mode of manifest.requested) {
       if (interrupted) throw new Error('Interrupted');
@@ -283,7 +286,7 @@ export default { ...base, testDir: ${JSON.stringify(join(ROOT, 'tests'))},
         const [script, scenes] = CAPTURES[mode];
         const captureOut = join(out, mode);
         try {
-          await command([process.execPath, script, '--dist', dist, '--out', captureOut,
+          await command([process.execPath, resolve(HERE, '..', script.replace('tests/ui-scenes/', '')), '--dist', dist, '--out', captureOut,
             '--label', manifest.source.sha, '--cdp', browser.cdp, '--themes', 'light,dark', '--scenes', scenes], env, out, manifest);
         } finally {
           try { manifest[mode] = await json(join(captureOut, 'manifest.json')); }
@@ -292,7 +295,8 @@ export default { ...base, testDir: ${JSON.stringify(join(ROOT, 'tests'))},
         const capture = manifest[mode];
         const expected = scenes.split(',').flatMap(scene => ['light', 'dark'].map(theme => `${scene}.${theme}`)).sort();
         const actual = capture.results.map(result => `${result.scene}.${result.theme}`).sort();
-        if (capture.distIndexSha256 !== indexHash || capture.failures.length || JSON.stringify(actual) !== JSON.stringify(expected) ||
+        if (capture.distIndexSha256 !== indexHash || capture.preview?.servedIndexSha256 !== indexHash ||
+            capture.preview?.expectedIndexSha256 !== indexHash || capture.failures.length || JSON.stringify(actual) !== JSON.stringify(expected) ||
             capture.results.some(result => result.pageErrors.length)) throw new Error(`${mode}: incomplete or failed capture`);
       }
       manifest.completed.push(mode);
@@ -302,7 +306,7 @@ export default { ...base, testDir: ${JSON.stringify(join(ROOT, 'tests'))},
         git('status', '--porcelain') !== manifest.source.status ||
         sha(git('diff', 'HEAD', '--binary')) !== manifest.source.diffSha256) throw new Error('Source or artifact changed during run');
     for (const [path, hash] of Object.entries(manifest.runnerFiles)) {
-      if (sha(await readFile(join(HERE, path.split('/').at(-1)))) !== hash) throw new Error(`Runner source changed: ${path}`);
+      if (sha(await readFile(resolve(HERE, path))) !== hash) throw new Error(`Runner source changed: ${path}`);
     }
     if (interrupted) throw new Error('Interrupted');
     manifest.status = 'passed';

@@ -185,8 +185,16 @@ uses workers=1 and the JSON reporter, preserves attachments/failure traces, and
 lets Playwright own preview startup/teardown. It selects an unused port, enforces
 `--strictPort` and `reuseExistingServer: false`, and serves the exact receipt's
 dist. A port race fails instead of borrowing a foreign server. Capture commands
-use their unchanged strict-port preview lifecycle and receive explicit `--cdp`
-on both hosts. No build graph is invoked by the runner.
+use `capture-preview.mjs`: an unused loopback port, successful startup from the
+owned strict-port Vite child, and an HTTP-served index SHA256 equal to the requested
+build. HTTP 200 from another process is never readiness. Capture manifests retain
+both index hashes and the owned PID/URL; the runner checks them. SIGINT/SIGTERM
+abort capture, close its contexts/CDP connection, and await bounded termination of
+only its preview process group. No build graph is invoked by the runner.
+
+The five `node --test scripts/capture-preview.test.mjs` regressions exercise an
+occupied foreign port, mismatched served bytes, normal teardown and both signals.
+They are transport tests, not substitutes for real browser and GPU acceptance.
 
 Retain `manifest.json`, `e2e.json`, `test-results/`, command logs, and each capture
 subdirectory. The compact runner manifest records host, observed source/tree/diff,
@@ -241,8 +249,12 @@ the actual palette, native Tab/Space/Enter, real model selection cycling, recent
 query reuse/clear, advanced Filter and pref:colorful on/off. Both remain UNRUN.
 
 When using a managed built checkout that still has an original validation owner,
-keep its source untouched. Run these three runner files from a separate owned
-helper directory and pass `--checkout /absolute/managed/checkout`. The checkout's
+keep its source untouched. Copy the nine hashed harness files listed in
+`run-browser.mjs` into a separate owned directory, preserving their relative
+`tests/ui-scenes/` layout, and pass `--checkout /absolute/managed/checkout`.
+The harness sends that checkout to the shared preview helper as
+`IFC_CAPTURE_CHECKOUT`; application source and built output remain untouched.
+The checkout's
 HEAD/tree must match the recorded root build; runner file hashes and location are
 recorded independently. This allows read-only browser evidence after the build
 phase while full tests continue, without copying new source into an active job.

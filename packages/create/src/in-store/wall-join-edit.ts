@@ -21,6 +21,7 @@
  */
 
 import { editOwnershipRefusal, expandAffectedSet } from '@ifc-lite/export';
+import { dropReplacedSourceAxes } from './wall-join-axis-cleanup.js';
 import type { StoreEditor } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { toNativeLength } from './anchor.js';
@@ -92,7 +93,9 @@ function joinWalls(
   assertWallOpeningsFit(store, editor.getMutationView(), a, join.a.wall, anchor.lengthUnitScale ?? 1);
   assertWallOpeningsFit(store, editor.getMutationView(), b, join.b.wall, anchor.lengthUnitScale ?? 1);
   for (const rel of existing) editor.removeEntity(rel.relId);
-  return { ...applyWallJoinToStore(editor, anchor, a, b, joinOptions), replacedRelIds: existing.map((rel) => rel.relId) };
+  const applied = applyWallJoinToStore(editor, anchor, a, b, joinOptions);
+  dropReplacedSourceAxes(store, editor, [a.axisRepId, b.axisRepId]);
+  return { ...applied, replacedRelIds: existing.map((rel) => rel.relId) };
 }
 
 /** A wall's new axis ends and thickness, storey-local metres. What is left out stays. */
@@ -200,6 +203,7 @@ export function reshapeWallsInStore(
   const placementIds = [...axes].flatMap(([id, ends]) => holdsPlacement(load(id).wall, ends.start, ends.end) ? [] : [load(id).axisPlacementId]);
   const placementOwnership = editOwnershipRefusal(store, view(), placementIds, expandAffectedSet(store, view(), targets.keys(), 'hostsChanged'));
   if (placementOwnership) throw new Error(`${op}: ${placementOwnership}`);
+  const originalAxes = [...targets.values()].map(read => read.axisRepId);
   for (const [id, { start, end, thickness }] of axes) targets.set(id, writeAxis(editor, anchor, load(id), start, end, thickness));
 
   // Recompute every join that touches a moved wall: the joined end snaps to the
@@ -232,6 +236,7 @@ export function reshapeWallsInStore(
       touched.add(id);
     }
   }
+  dropReplacedSourceAxes(store, editor, originalAxes);
   return { walls: [...touched], relIds, droppedRelIds };
 }
 

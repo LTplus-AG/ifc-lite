@@ -360,6 +360,8 @@ export default defineConfig(({ mode }) => {
       'esbuild-wasm',
       // Pre-bundling missed it at startup and found it on the first model load,
       // then reloaded the page mid-session (dev only; validation-colors e2e).
+      // Excluded, not included: the browser entry is one ESM file whose wasm the
+      // worker locates by URL, as with the emscripten builds above.
       'rhino3dm',
       // maplibre-gl v6 resolves its worker as a SIBLING FILE of its own module:
       //

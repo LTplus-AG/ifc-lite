@@ -23,6 +23,8 @@
     "projection-depth.gpu.ts",
     "selection-mask-depth.gpu.ts",
     "selection-mask-depth.e2e.spec.ts",
+    "edge-line-continuity.gpu.ts",
+    "edge-line-continuity.e2e.spec.ts",
     "projection-texture.gpu.ts",
     "projection-texture.e2e.spec.ts",
     "selective-clipping.gpu.ts",

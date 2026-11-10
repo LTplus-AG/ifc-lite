@@ -10,6 +10,7 @@
 import type { MapConversion } from '@ifc-lite/parser';
 import { NORMAL_COORD_THRESHOLD_M, type CoordinateInfo } from '@ifc-lite/geometry';
 import { ifcToViewerAxes, viewerToIfcAxes } from './coordinate-frame';
+import { viewerFrameCenter } from './cesium-viewer-frame';
 
 /**
  * Compute the model's center in IFC Z-up metres from coordinate info.
@@ -20,28 +21,21 @@ export function computeModelCenterInIfcMeters(
 ): { ifcX: number; ifcY: number; ifcZ: number } {
   if (!coordinateInfo) return { ifcX: 0, ifcY: 0, ifcZ: 0 };
 
-  // `shiftedBounds`, NOT `originalBounds`. The producer defines
-  // `shiftedBounds = originalBounds - originShift`
-  // (utils/localParsingUtils.ts), so `originalBounds` is ALREADY in the world
-  // frame — adding `shift` to it below would count the shift twice and put the
-  // model centre `originShift` away from where the footprint polygon
-  // (computeFootprintGeoJSON, which reads `shiftedBounds`) places the very same
-  // box. This matches the rule stated in reproject.ts's pipeline doc:
-  // `world_yup = bounds_center + originShift`, from the VIEWER bounds.
-  const bounds = coordinateInfo.shiftedBounds;
+  // The renderer-frame pivot (from `shiftedBounds`, NOT `originalBounds`:
+  // `originalBounds` is ALREADY in the world frame, so adding the shift to it
+  // would count it twice) plus the render-frame offset. This is reproject.ts's
+  // `world_yup = bounds_center + originShift`, and the same pivot the camera
+  // and model matrix use, including its stray-element fallback.
+  // Summed centre + shift first, then RTC: the shift can cancel the centre
+  // exactly, and adding it to the RTC first would lose small RTC digits.
+  const center = viewerFrameCenter(coordinateInfo);
   const shift = coordinateInfo.originShift;
   const rtcYup = ifcToViewerAxes(coordinateInfo.wasmRtcOffset ?? { x: 0, y: 0, z: 0 });
-
-  const cx = (bounds.min.x + bounds.max.x) / 2;
-  const cy = (bounds.min.y + bounds.max.y) / 2;
-  const cz = (bounds.min.z + bounds.max.z) / 2;
-
-  const worldYup = {
-    x: cx + shift.x + rtcYup.x,
-    y: cy + shift.y + rtcYup.y,
-    z: cz + shift.z + rtcYup.z,
-  };
-  const worldIfc = viewerToIfcAxes(worldYup);
+  const worldIfc = viewerToIfcAxes({
+    x: center.x + shift.x + rtcYup.x,
+    y: center.y + shift.y + rtcYup.y,
+    z: center.z + shift.z + rtcYup.z,
+  });
   return { ifcX: worldIfc.x, ifcY: worldIfc.y, ifcZ: worldIfc.z };
 }
 

@@ -2,18 +2,40 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import type { CoordinateInfo } from '@ifc-lite/geometry';
+import { NORMAL_COORD_THRESHOLD_M, type CoordinateInfo } from '@ifc-lite/geometry';
 import type { GeodesicPosition } from './cesium-bridge';
 import type { ViewerToEnuRotation } from './viewer-enu-rotation';
 
-/** Camera and model consume the same renderer coordinates, after originShift. */
+/**
+ * The renderer-frame point the georeference pivots on, after originShift.
+ * Camera, model matrix and map anchor all use it
+ * (`computeModelCenterInIfcMeters` is this point in IFC world metres).
+ *
+ * Normally the centre of the bounds. The exception is a box stretched by a
+ * few stray elements: Vectorworks writes some provision-for-void proxies
+ * with absolute placements in site-local numbers, 6000 km from a building
+ * placed at its UTM site. The WASM RTC origin (the median element placement)
+ * then still sits in the box, but the box centre is more than
+ * `NORMAL_COORD_THRESHOLD_M` from it, and the pivot is the RTC origin, in the
+ * bulk of the model. A model that is merely far from its RTC origin (the box
+ * does not reach it) keeps its centre.
+ */
 export function viewerFrameCenter(coordinateInfo: CoordinateInfo | undefined) {
   const bounds = coordinateInfo?.shiftedBounds;
-  return bounds ? {
+  if (!bounds) return { x: 0, y: 0, z: 0 };
+  const center = {
     x: (bounds.min.x + bounds.max.x) / 2,
     y: (bounds.min.y + bounds.max.y) / 2,
     z: (bounds.min.z + bounds.max.z) / 2,
-  } : { x: 0, y: 0, z: 0 };
+  };
+  if (!coordinateInfo?.wasmRtcOffset) return center;
+  const shift = coordinateInfo.originShift;
+  const rtcOrigin = { x: -shift.x, y: -shift.y, z: -shift.z };
+  const t = NORMAL_COORD_THRESHOLD_M;
+  const inBox = (['x', 'y', 'z'] as const)
+    .every((k) => rtcOrigin[k] >= bounds.min[k] - t && rtcOrigin[k] <= bounds.max[k] + t);
+  const offCentre = Math.hypot(center.x - rtcOrigin.x, center.y - rtcOrigin.y, center.z - rtcOrigin.z);
+  return inBox && offCentre > t ? rtcOrigin : center;
 }
 
 /** The one viewer-to-ECEF matrix used by both the camera and the model. */

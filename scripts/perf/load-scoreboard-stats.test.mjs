@@ -9,7 +9,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  aaNoiseFloor, bootstrapHalfWidth, browserShares, browserStages, diffElements, expectedCacheTier, gainOf, median, nativeStages, rankShares,
+  aaNoiseFloor, bootstrapHalfWidth, browserShares, browserStages, diffElements, ownNoiseFloor, expectedCacheTier, gainOf, median, nativeStages, rankShares,
   relativeSpread, stageShares, unionLength, verdictFor,
 } from './load-scoreboard-stats.mjs';
 import { summarize } from './load-scoreboard-report.mjs';
@@ -77,6 +77,8 @@ test('failed loads stay in the data: more branch failures is a regression, too f
   assert.equal(thin.verdict, 'regression: more failed loads');
   const thinEqual = verdictFor([[1000, 990], [null, null], [null, null], [1003, 1001], [null, null]], { failures: { base: 3, branch: 3 } });
   assert.match(thinEqual.verdict, /^inconclusive/);
+  // Protocol minimum: five successful samples a side, even with no failures.
+  assert.match(verdictFor(pairs(A.slice(0, 4), A2.slice(0, 4).map((x) => x * 1.3))).verdict, /^inconclusive/);
 });
 
 test('the A/A floor includes the systematic difference between identical builds', () => {
@@ -152,4 +154,23 @@ test('per-element output diff ignores order and names missing, extra and changed
   const empty = diffElements({}, {});
   assert.equal(empty.identical, false);
   assert.equal(empty.unverifiable, true);
+});
+
+test('H5: a cell with fewer than three samples lists them instead of reporting a median', async () => {
+  const { renderMarkdown } = await import('./load-scoreboard-report.mjs');
+  const plan = { name: 't', kind: 'compare', lanes: ['native-cold'], rounds: 2, seed: 1, fixtures: [{ name: 'fx', set: 'tuning', bytes: 1 }],
+    sides: { base: { label: 'a' }, branch: { label: 'b' } } };
+  const rows = [0, 1].flatMap((round) => ['base', 'branch'].map((side) => ({ lane: 'native-cold', fixture: 'fx', round, side, ok: true,
+    interactiveMs: round ? 6644 : 1705, peakMemoryMiB: 20, fingerprint: 'm=1' })));
+  const md = renderMarkdown(summarize(plan, rows), plan, null);
+  assert.match(md, /n=2: 1,705, 6,644/);
+  assert.doesNotMatch(md, /4,175/); // the mean of two, which an n=2 "median" would print
+});
+
+test('an A/A whose few pairs all lean one way is not a gain: the floor covers the samples own scatter', () => {
+  // Measured: native FZK, two copies of one binary, branch 3-4 ms faster in every round of a 28 ms load.
+  const base = [32.4, 31.1, 28.0, 30.2, 29.5], branch = [27.9, 28.4, 23.7, 27.6, 27.0];
+  assert.ok(bootstrapHalfWidth(pairs(base, branch), { seed: 1 }) < 0.06, 'the bootstrap alone collapses');
+  assert.ok(ownNoiseFloor(pairs(base, branch), { seed: 1 }) >= 0.07);
+  assert.equal(verdictFor(pairs(base, branch)).verdict, 'no significant difference');
 });

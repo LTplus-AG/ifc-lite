@@ -21,14 +21,14 @@
  * Not a CI gate.
  */
 
-import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { hostname, loadavg } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { roundOrder, seededRand } from './ab-order.mjs';
 import { nativeSample } from './load-scoreboard-native.mjs';
-import { LANES, renderMarkdown, summarize } from './load-scoreboard-report.mjs';
+import { BROWSER_LANES, LANES, renderMarkdown, summarize } from './load-scoreboard-report.mjs';
 import { browserShares, diffElements } from './load-scoreboard-stats.mjs';
 
 const ROOT = resolve(fileURLToPath(new URL('../..', import.meta.url)));
@@ -85,6 +85,29 @@ export function hostSnapshot() {
   };
 }
 
+const BUILDERS = new Set(['cargo', 'rustc', 'rust-lld', 'cc1', 'cc1plus', 'wasm-opt', 'wasm-pack', 'turbo', 'pnpm', 'tsc']);
+function cpuPressure10() { return Number(/some avg10=([\d.]+)/.exec(readText('/proc/pressure/cpu') ?? '')?.[1] ?? NaN); }
+function foreignBuilders() {
+  const out = [];
+  for (const pid of readdirSync('/proc').filter((e) => /^\d+$/.test(e))) {
+    const name = readText(`/proc/${pid}/comm`);
+    if (name && BUILDERS.has(name)) out.push(name);
+  }
+  return out;
+}
+
+/** H9: before each sample, wait (at most 20 s) for CPU pressure avg10 < 5; flag the sample if the host stays busy. */
+export async function hostQuiet({ limit = 5, maxWaitMs = 20000 } = {}) {
+  const started = Date.now();
+  let psi = cpuPressure10();
+  while (!(psi < limit) && Date.now() - started < maxWaitMs) {
+    await new Promise((r) => setTimeout(r, 1000));
+    psi = cpuPressure10();
+  }
+  const builders = foreignBuilders();
+  return { cpuPressureAvg10: psi, waitedMs: Date.now() - started, builders, underLoad: !(psi < limit) || builders.length > 0 };
+}
+
 /** Balanced, randomized first-side order per lane group and fixture (ab-order.mjs), reproducible from the seed. */
 export function buildOrder(plan) {
   const rand = seededRand(plan.seed);
@@ -137,7 +160,8 @@ async function run(opt) {
         for (const group of Object.keys(order)) {
           for (const side of order[group][fixture.name][round]) {
             if (done.has(`${group}/${fixture.name}/${round}/${side}`)) continue;
-            const common = { group, fixture: fixture.name, round, side, sideLabel: plan.sides[side].label, at: new Date().toISOString(), loadavg1: loadavg()[0] };
+            const common = { group, fixture: fixture.name, round, side, sideLabel: plan.sides[side].label, at: new Date().toISOString(),
+              loadavg1: loadavg()[0], host: await hostQuiet() };
             const tag = `${fixture.name}-${side}-r${round}`;
             log(`${group} ${tag}`);
             if (group === 'native') {
@@ -146,13 +170,17 @@ async function run(opt) {
               record({ ...common, ...row, probe }, null);
               log(`  ${tag} native: ${s.ok ? `${s.interactiveMs.toFixed(0)} ms, ${s.peakMemoryMiB?.toFixed(0)} MiB` : `FAILED ${s.error}`}`);
             } else {
-              const s = await browser.sample({ side: plan.sides[side], fixture, tag, warmOpens: plan.warmOpens });
+              const s = await browser.sample({ side: plan.sides[side], fixture, tag, warmOpens: plan.warmOpens, pass: 'timing' });
+              // H3: peak memory comes from a separate pass with the sampler on, never from the timed opens.
+              const m = plan.memoryPass === false ? null : await browser.sample({ side: plan.sides[side], fixture, tag: `${tag}-mem`, warmOpens: plan.warmOpens, pass: 'memory' });
               const adapter = s.meta.adapter ? JSON.stringify(s.meta.adapter) : null;
-              for (const lane of ['browser-cold', 'browser-warm']) {
-                const r = lane === 'browser-cold' ? s.cold : s.warm;
-                if (!r || !plan.lanes.includes(lane)) continue;
+              for (const [lane, r] of Object.entries(s.lanes)) {
+                if (!plan.lanes.includes(lane)) continue;
                 const { trace, ...row } = r;
+                const mem = m?.lanes[lane];
                 record({ ...common, ...row, lane, adapter, browserVersion: s.meta.browserVersion ?? null, pageErrors: s.meta.pageErrors.length,
+                  peakMemoryMiB: mem?.ok ? mem.peakMemoryMiB : null, memoryPass: mem ? { ok: mem.ok, error: mem.error, memory: mem.memory,
+                    interactiveMs: mem.interactiveMs, adapter: m.meta.adapter ?? null } : null,
                   gpuHealth: lane === 'browser-cold' ? s.meta.gpuHealthCold ?? null : s.meta.gpuHealth ?? null,
                   warmOpens: lane === 'browser-warm' ? s.warmOpens : undefined }, trace ?? null);
               }
@@ -190,7 +218,7 @@ async function startBrowserLane(plan, out) {
 
 /** Per-element maps saved by the browser lane (`<fixture>-<side>-r<round>-<open>.elements.json`). */
 function readElements(out, row) {
-  const open = row.lane === 'browser-cold' ? 'cold' : `warm${row.warmOpens?.length ?? 2}`;
+  const open = { 'browser-cold': 'cold', 'browser-warm1': 'warm1' }[row.lane] ?? `warm${row.warmOpens?.length ?? 2}`;
   const path = join(out, 'traces', `${row.fixture}-${row.side}-r${row.round}-${open}.elements.json`);
   return existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')).reduce((a, m) => Object.assign(a, m), {}) : null;
 }
@@ -198,7 +226,7 @@ function readElements(out, row) {
 /** For browser lanes, diff per-element output of every round pair against the first base sample. */
 function attachElementDiffs(summary, samples, plan, out) {
   for (const f of summary.fixtures) {
-    for (const lane of ['browser-cold', 'browser-warm']) {
+    for (const lane of BROWSER_LANES) {
       const l = f.lanes[lane];
       if (!l) continue;
       const rows = samples.filter((r) => r.fixture === f.name && r.lane === lane && r.ok);

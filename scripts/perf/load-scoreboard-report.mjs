@@ -10,25 +10,28 @@
 
 import { aaNoiseFloor, expectedCacheTier, median, rankShares, relativeSpread, verdictFor } from './load-scoreboard-stats.mjs';
 
-export const LANES = ['native-cold', 'browser-cold', 'browser-warm'];
+export const LANES = ['native-cold', 'browser-cold', 'browser-warm1', 'browser-warm'];
 export const METRICS = [
   // [key, label, smallest countable absolute difference]
   ['firstGeometryMs', 'first geometry ms', 1],
   ['interactiveMs', 'interactive ms', 1],
   ['peakMemoryMiB', 'peak memory MiB', 1],
+  ['uiQuietMs', 'UI quiet ms', 1],
 ];
+export const BROWSER_LANES = ['browser-cold', 'browser-warm1', 'browser-warm'];
 
 const shareOf = (row) => row.stageShares ?? (row.stageMs && row.interactiveMs
   ? Object.fromEntries(Object.entries(row.stageMs).map(([k, v]) => [k, v / row.interactiveMs])) : null);
 
 /** Browser readiness components (median ms) and which one ended the load most often. */
-export const READINESS = [['firstGeometryMs', 'first geometry'], ['geometryMs', 'geometry finalized'], ['propsMs', 'metadata ready'], ['storeSettledMs', 'store settled']];
+export const READINESS = [['firstGeometryMs', 'first geometry'], ['geometryMs', 'geometry finalized'], ['propsMs', 'metadata ready'], ['settlePaintMs', 'settled + frame'], ['publishPaintMs', 'publish + frame'], ['uiQuietMs', 'UI quiet']];
 function readinessOf(ok) {
   if (!ok.some((r) => Number.isFinite(r.storeSettledMs))) return null;
-  const medians = Object.fromEntries(READINESS.map(([k]) => [k, median(ok.map((r) => r[k]))]));
+  const medians = Object.fromEntries(READINESS.map(([k]) => [k, ok.length >= 3 ? median(ok.map((r) => r[k])) : null]));
   const counts = {};
   for (const r of ok) {
-    const last = READINESS.slice(1).reduce((a, [k]) => ((r[k] ?? -1) > (r[a] ?? -1) ? k : a), 'geometryMs');
+    // Binding = the last of the three components that define interactive.
+    const last = ['propsMs', 'settlePaintMs'].reduce((a, k) => ((r[k] ?? r.storeSettledMs ?? -1) > (r[a] ?? -1) ? k : a), 'geometryMs');
     counts[last] = (counts[last] ?? 0) + 1;
   }
   const binding = Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
@@ -64,6 +67,9 @@ export function summarize(plan, samples, { floors = null } = {}) {
           cacheTiers: [...new Set(ok.flatMap((r) => r.cacheTiers ?? []).filter(Boolean))],
           snapshotAdopted: ok.some((r) => (r.snapshotAdopted ?? []).some(Boolean)),
           settleQuantized: ok.filter((r) => r.settleQuantized).length,
+          // H9: taken while the host was busy (pre-sample check), and H2: input event dispatched >100 ms late.
+          underLoad: mine.filter((r) => r.host?.underLoad).length,
+          inputDelayed: mine.filter((r) => (r.inputDelayMs ?? 0) > 100).length,
           stages: rankShares(ok.map(shareOf).filter(Boolean)),
           readiness: readinessOf(ok),
           metrics: Object.fromEntries(METRICS.map(([key]) => {
@@ -110,9 +116,12 @@ const n0 = (v) => (v === null || v === undefined || !Number.isFinite(v) ? '—' 
 const pct = (v, d = 1) => (v === null || v === undefined || !Number.isFinite(v) ? '—' : `${(v * 100).toFixed(d)}%`);
 const signed = (v) => (v === null || v === undefined || !Number.isFinite(v) ? '—' : `${v >= 0 ? '+' : ''}${(v * 100).toFixed(1)}%`);
 
+/** Median [min-max] (n); fewer than three values are listed, never summarized as a median (H5). */
 function cell(m) {
-  if (!m || m.median === null) return '—';
-  return `${n0(m.median)} ±${pct(m.spread ?? 0, 0)}`;
+  const v = (m?.values ?? []).filter(Number.isFinite);
+  if (v.length === 0) return '—';
+  if (v.length < 3) return `n=${v.length}: ${v.map(n0).join(', ')}`;
+  return `${n0(median(v))} [${n0(Math.min(...v))}-${n0(Math.max(...v))}] n=${v.length}`;
 }
 
 function tierCell(f, lane) {
@@ -125,8 +134,8 @@ function tierCell(f, lane) {
 
 /** Baseline table (one set). For an A/A run the base and branch sides are the same build, so values are pooled. */
 function baselineTable(summary, set, lanes) {
-  const lines = ['| fixture | MB | expected tier | lane | first geometry ms | interactive ms | peak memory MiB | ok/failed | observed tier, path | output |',
-    '|---|---:|---|---|---:|---:|---:|---|---|---|'];
+  const lines = ['| fixture | MB | expected tier | lane | first geometry ms | interactive ms | UI quiet ms | peak memory MiB | ok/failed | flagged (load / input delay) | observed tier, path | output |',
+    '|---|---:|---|---|---:|---:|---:|---:|---|---|---|---|'];
   for (const f of summary.fixtures.filter((x) => x.set === set)) {
     for (const lane of lanes) {
       const l = f.lanes[lane];
@@ -134,11 +143,13 @@ function baselineTable(summary, set, lanes) {
       const pooled = (key) => {
         const values = summary.kind === 'aa'
           ? [...l.sides.base.metrics[key].values, ...l.sides.branch.metrics[key].values] : l.sides.base.metrics[key].values;
-        return { median: median(values), spread: relativeSpread(values) };
+        return { median: median(values), spread: relativeSpread(values), values };
       };
       const okFailed = `${l.sides.base.ok + (summary.kind === 'aa' ? l.sides.branch.ok : 0)}/${l.sides.base.failed + (summary.kind === 'aa' ? l.sides.branch.failed : 0)}`;
-      const warmNote = lane === 'browser-warm' && /^none/.test(f.expectedTier ?? '') ? ' (no cache tier: warm = uncached reopen)' : '';
-      lines.push(`| ${f.name} | ${f.bytes ? (f.bytes / 2 ** 20).toFixed(1) : '—'} | ${f.expectedTier ?? '—'} | ${lane}${warmNote} | ${lane === 'native-cold' ? 'n/a (batch)' : cell(pooled('firstGeometryMs'))} | ${cell(pooled('interactiveMs'))} | ${cell(pooled('peakMemoryMiB'))} | ${okFailed} | ${tierCell(f, lane)} | ${l.output === 'match' ? (l.sides.base.fingerprints[0] ?? '').slice(0, 60) : l.output} |`);
+      const warmNote = lane.startsWith('browser-warm') && /^none/.test(f.expectedTier ?? '') ? ' (no cache tier: warm = uncached reopen)' : '';
+      const flags = summary.kind === 'aa' ? [l.sides.base, l.sides.branch] : [l.sides.base];
+      const flagged = `${flags.reduce((a, x) => a + x.underLoad, 0)} / ${flags.reduce((a, x) => a + x.inputDelayed, 0)}`;
+      lines.push(`| ${f.name} | ${f.bytes ? (f.bytes / 2 ** 20).toFixed(1) : '—'} | ${f.expectedTier ?? '—'} | ${lane}${warmNote} | ${lane === 'native-cold' ? 'n/a (batch)' : cell(pooled('firstGeometryMs'))} | ${cell(pooled('interactiveMs'))} | ${lane === 'native-cold' ? 'n/a' : cell(pooled('uiQuietMs'))} | ${cell(pooled('peakMemoryMiB'))} | ${okFailed} | ${flagged} | ${tierCell(f, lane)} | ${l.output === 'match' ? (l.sides.base.fingerprints[0] ?? '').slice(0, 60) : l.output} |`);
     }
   }
   return lines.join('\n');
@@ -155,7 +166,8 @@ function verdictTable(summary, set, lanes) {
         const v = l.verdicts[key];
         if (!v) continue;
         const mark = v.pass ? 'PASS gain' : v.regression ? `FLAG ${v.verdict}` : v.verdict;
-        lines.push(`| ${f.name} | ${lane} | ${label} | ${n0(v.baseMedian)} | ${n0(v.branchMedian)} | ${signed(v.gain)} | ${pct(v.ownFloor)} | ${pct(v.aaFloor)} | ${pct(v.noiseFloor === null ? null : v.noiseFloor * 2)} | ${mark} | ${l.output} |`);
+        const med = (side) => (v.samples[side] >= 3 ? n0(side === 'base' ? v.baseMedian : v.branchMedian) : `n=${v.samples[side]} (no median)`);
+        lines.push(`| ${f.name} | ${lane} | ${label} | ${med('base')} | ${med('branch')} | ${signed(v.gain)} | ${pct(v.ownFloor)} | ${pct(v.aaFloor)} | ${pct(v.noiseFloor === null ? null : v.noiseFloor * 2)} | ${mark} | ${l.output} |`);
       }
     }
   }
@@ -175,7 +187,7 @@ export function renderMarkdown(summary, plan, host) {
     out.push(`- Segment (${seg.fixtures}): host ${seg.start?.hostname}; ${seg.workerKind ?? 'no'} admission, job ${seg.workerJobId ?? 'none'}; power ${seg.start?.powerProfile ?? '?'} -> ${seg.end?.powerProfile ?? '?'}; max freq ${seg.start?.scalingMaxFreqKHz ?? '?'} -> ${seg.end?.scalingMaxFreqKHz ?? '?'} kHz; ${seg.start?.at} .. ${seg.end?.at ?? 'unfinished'}`);
   }
   out.push(`Sides: base = ${plan.sides.base.label}; branch = ${plan.sides.branch.label}. Rounds ${plan.rounds}, warm opens ${plan.warmOpens ?? 0}, order seed ${plan.seed}.`, '');
-  out.push('Interactive = geometry streamed, drained and finalized, metadata ready and the store settled (README cold-load notes). Native has no first-geometry event (batch call); native interactive = file read + full `process_geometry`. Cells: median ±(max-min)/median.', '');
+  out.push('Interactive = geometry streamed, drained and finalized, metadata ready, and the first frame after the store settled (README cold-load notes). UI quiet = end of the last main-thread long task before 500 ms without one. Native has no first-geometry event (batch call); native interactive = file read + full `process_geometry`. Times are ms from the file input change event. Cells: median [min-max] n; fewer than 3 values are listed, never summarized.', '');
   for (const set of ['tuning', 'holdout']) {
     if (!summary.fixtures.some((f) => f.set === set)) continue;
     out.push(`## Baseline (${set})`, '', baselineTable(summary, set, plan.lanes), '');
@@ -184,7 +196,7 @@ export function renderMarkdown(summary, plan, host) {
     if (!summary.fixtures.some((f) => f.set === set)) continue;
     out.push(`## Verdicts (${set}): gain >= 2x noise floor`, '', verdictTable(summary, set, plan.lanes), '');
   }
-  const diffRows = summary.fixtures.flatMap((f) => ['browser-cold', 'browser-warm'].filter((lane) => f.lanes[lane]?.elementDiff).map((lane) => {
+  const diffRows = summary.fixtures.flatMap((f) => BROWSER_LANES.filter((lane) => f.lanes[lane]?.elementDiff).map((lane) => {
     const d = f.lanes[lane].elementDiff, worst = d.diffs.find((x) => !x.identical);
     if (d.diffs.some((x) => x.unverifiable)) return `| ${f.name} | ${lane} | ${d.diffs.length + 1} | UNVERIFIABLE (no element hashes on a sample) |`;
     return `| ${f.name} | ${lane} | ${d.diffs.length + 1} | ${d.identical ? 'IDENTICAL' : `DIFFERS (${worst.side} r${worst.round}: ${worst.onlyBase} missing, ${worst.onlyBranch} extra, ${worst.changed} changed of ${worst.compared}; e.g. ${[...worst.examples.changed, ...worst.examples.onlyBase, ...worst.examples.onlyBranch].slice(0, 5).join(', ')})`} |`;
@@ -197,12 +209,12 @@ export function renderMarkdown(summary, plan, host) {
   for (const [lane, s] of Object.entries(summary.laneSummary)) {
     out.push(`- **${lane}**: gains [${s.gains.join(', ')}]; regressions [${s.regressions.join(', ')}]; no significant difference [${s.noDifference.join(', ')}]; inconclusive [${s.inconclusive.join(', ')}]; output not matching [${s.outputChanged.join(', ')}]`);
   }
-  const readinessRows = summary.fixtures.flatMap((f) => ['browser-cold', 'browser-warm'].filter((lane) => f.lanes[lane]?.sides.base.readiness)
+  const readinessRows = summary.fixtures.flatMap((f) => BROWSER_LANES.filter((lane) => f.lanes[lane]?.sides.base.readiness)
     .map((lane) => { const r = f.lanes[lane].sides.base.readiness; const label = Object.fromEntries(READINESS);
       return `| ${f.name} | ${f.set} | ${lane} | ${READINESS.map(([k]) => n0(r.medians[k])).join(' | ')} | ${label[r.binding] ?? '—'} (${Object.entries(r.bindingCounts).map(([k, c]) => `${label[k]} ${c}`).join(', ')}) |`; }));
   if (readinessRows.length) {
-    out.push('', '## Readiness components (base side medians, ms from the input event; interactive = the last of the final three)', '',
-      '| fixture | set | lane | first geometry | geometry finalized | metadata ready | store settled | binding (count) |', '|---|---|---|---:|---:|---:|---:|---|', ...readinessRows);
+    out.push('', '## Readiness components (base side medians, n>=3, ms from the input change event; interactive = the last of geometry finalized, metadata ready, settled + frame)', '',
+      `| fixture | set | lane | ${READINESS.map(([, l]) => l).join(' | ')} | binding (count) |`, `|---|---|---|${READINESS.map(() => '---:|').join('')}---|`, ...readinessRows);
   }
   out.push('', '## Stage shares, ranked (tuning set, base side; concurrent stages overlap, so shares need not sum to 100%)', '');
   for (const lane of plan.lanes) {

@@ -12,63 +12,92 @@ bundles left the tree in #9054.
 
 One table for IFC load time, used to accept or reject load optimisations.
 Per fixture and lane it reports time to first geometry, time to fully
-interactive, peak memory, per-stage shares, median and spread, output
-fingerprints, and a base-vs-branch verdict. It drives existing tools and
-compiles nothing:
+interactive, UI-quiet time, peak memory, per-stage shares, median and
+min-max, output identity, and a base-vs-branch verdict. It drives existing
+tools and compiles nothing:
 
 | lane | sample | interactive | peak memory |
 |---|---|---|---|
 | `native-cold` | fresh `perf_probe --cold --iters 1 --fingerprint` process | file read + whole `process_geometry` (incl. trailing metadata) | process max RSS (`/usr/bin/time`) |
-| `browser-cold` | fresh Chrome, empty profile, first open | see below | peak sampled PSS sum of the profile's Chrome processes |
-| `browser-warm` | same browser, last of `warmOpens` reopens (default 2: the first reopen streams the cache hit and writes the scene snapshot, the second adopts it) | see below | as cold |
+| `browser-cold` | fresh Chrome, empty profile, first open | see below | separate memory pass: peak sampled PSS sum of the profile's Chrome processes |
+| `browser-warm1` | same browser, first reopen: streams the cache hit and writes the scene snapshot | see below | as cold |
+| `browser-warm` | same browser, last of `warmOpens` (default 2) reopens: adopts the scene snapshot | see below | as cold |
 
 Native warm has no cache outside `apps/server`, so there is no native warm
 lane. Native is a batch call with no streamed-geometry event, so it has no
 first-geometry time. Below 10 MB and above 400 MB the viewer caches nothing,
-so `browser-warm` there is an uncached reopen; the table states the
-expected tier and the observed load path per row.
+so the warm lanes there are uncached reopens (the snapshot wait is skipped).
+Each row states the expected tier and the observed load path.
 
-Browser readiness lives in `viewer-load-probe.mjs`, shared with
-`scenoptic-bench.mjs`, and follows the cold-load validation notes below:
-geometry streamed, the GPU queue drained and the scene finalized, metadata
-ready (`parser.complete` or `cache.storeReady`) and the store out of its
-loading state. The store transition is captured by a subscription armed
-before the input event, so short loads are not quantized by the poll. First
-geometry is `geometry.firstVisible`. Stage shares are the union of each
-`?perfTrace=1` span name's intervals over the interactive time, milestones
-excluded. Concurrent stages overlap, so shares need not sum to 100%. Native
-stages come from `perf_probe` and sum to the full load. Each browser sample
-records the WebGPU adapter the renderer used, a GPU-health check
-(`tests/benchmark/gpu-health.ts`), crashes and page errors. Failed samples
-stay in the data. A branch with more failures than the base is a regression.
+Browser timing (`viewer-load-probe.mjs`, `viewer-load-boot.mjs`; readiness is
+shared with `scenoptic-bench.mjs`):
+
+- **Clock.** Each open is armed only once the shell has run no long task for
+  1 s (boot-tail work such as the welcome WebGL scene otherwise queues the
+  input event by 1-3 s). Times run from the file input's `change` event; the
+  delay from arming to it is reported, and samples over 100 ms are flagged.
+- **Interactive** = geometry streamed, the GPU queue drained and the scene
+  finalized; metadata ready (`parser.complete` or `cache.storeReady`); and
+  the first frame after the store left its loading state with every model
+  complete. The publish of the populated store (+ next frame) is reported
+  beside it, and **UI quiet** = the end of the last main-thread long task
+  before 500 ms without one, so UI work deferred past the settle event stays
+  visible. First geometry is `geometry.firstVisible`.
+- **Overhead control.** Timed opens run `?perfTrace=1` for spans, with the
+  page's perf counters pre-installed disabled (`Symbol.for('ifc-lite.perf-counters')`),
+  which removes the main-thread worker-message byte walk (about 0.5 s on a
+  Holter cold load). Workers still count their own sends. Peak memory comes
+  from a second, untimed-for-the-verdict pass with the 250 ms PSS sampler,
+  which cost about 12% when it ran inside the timed opens.
+- **Output identity** is the per-element Rust geometry hash (#924, taken before
+  flat/instanced routing) over flat meshes plus `instancedGeometryHashes`.
+  Batch-local instancing moves elements between flat meshes and IFNS shards
+  with the batch partition, so flat mesh/triangle counts are not an identity.
+  Cache hits carry no hashes: a warm open inherits its cold load's identity
+  only when it restored that load's flat output exactly. A comparison without
+  hashes is reported unverifiable. The report lists differing element ids.
+- **Stages** are the union of each `?perfTrace=1` span name's intervals over
+  the interactive time, milestones excluded, umbrella spans marked `*`, and the
+  uncovered remainder as `(no span)`. Concurrent stages overlap. Native stages
+  come from `perf_probe` and sum to the full load.
+- **Host.** Before each sample the runner waits up to 20 s for CPU pressure
+  (`/proc/pressure/cpu` avg10) below 5 and flags the sample when the host
+  stays busy or build processes run. Each browser sample records the WebGPU
+  adapter, GPU health (`tests/benchmark/gpu-health.ts`), crashes and page
+  errors. Failed samples stay in the data.
 
 Verdict: `gain = 1 - median(branch)/median(base)`. The noise floor of a
 comparison is the larger of the recorded A/A floor for that fixture, lane and
 metric and the run's own floor. The run's own floor is the half-width of the
 90% paired-bootstrap interval of the gain: rounds are resampled, keeping each
 round's two sides together. An A/A run's floor also includes its own |gain|.
-A change counts only when |gain| >= 2 x floor. Rounds are interleaved with
-the balanced, randomized first-side order of `ab-order.mjs`, per lane group
-and fixture.
+A change counts only when |gain| >= 2 x floor. Fewer than 3 samples is never
+summarized as a median and never gets a verdict. A branch with more failed
+loads than the base is a regression. Rounds use the balanced, randomized
+first-side order of `ab-order.mjs`, per lane group and fixture.
 
 ```sh
 # 1. Build each side (ordinary fleet job): source-built WASM, viewer dist,
-#    perf_probe (profiling profile). Copy them out of the checkout.
+#    perf_probe (profiling profile). Copy them out of the checkout. Force or
+#    hash-check the served WASM: the shared Turbo cache can replay another
+#    checkout's @ifc-lite/wasm build.
 # 2. Plan: sides {label, perfProbe, dist, query?, env?, probeArgs?}, fixtures
-#    {name, path, set: tuning|holdout}, lanes, rounds (>= 5), seed, warmOpens.
+#    {name, path, set: tuning|holdout}, lanes, rounds (>= 5), seed, warmOpens,
+#    memoryPass (default true).
 # 3. Inside exclusive benchmark admission, on a private Xvfb display:
 DISPLAY=:97 node scripts/perf/load-scoreboard.mjs run --plan plan.json --out DIR \
-  [--aa-reference aa-run/report.json] [--resume]
+  [--fixtures a,b] [--aa-reference aa-run/report.json] [--resume]
 node scripts/perf/load-scoreboard.mjs report --out DIR --aa-reference aa-run/report.json
 ```
 
 A plan whose sides are two copies of one build (`"kind": "aa"`) measures the
 noise floor. Its `report.json` `floors` become the `--aa-reference` for later
-comparisons. A side's `query` appends viewer URL flags (e.g.
-`perf.sceneSnapshot=0`, `geomWorkers=1`). Its `env` and `probeArgs` reach
-`perf_probe`. Worker reservations export `RAYON_NUM_THREADS`, so the native
-lane removes it unless a side sets it. Outside `IFC_WORKER_KIND=benchmark` the
-report marks itself a dry run. The OS file cache is not purged in any lane.
+comparisons made with the same harness version. A side's `query` appends
+viewer URL flags (e.g. `perf.sceneSnapshot=0`, `geomWorkers=1`). Its `env`
+and `probeArgs` reach `perf_probe`. Worker reservations export
+`RAYON_NUM_THREADS`, so the native lane removes it unless a side sets it.
+Outside `IFC_WORKER_KIND=benchmark` the report marks itself a dry run. The OS
+file cache is not purged in any lane.
 
 ## Storey planners and the QuickJS runtime leave the boot path (#9200)
 

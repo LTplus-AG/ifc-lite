@@ -72,21 +72,35 @@ export async function openViewerPage(context, url, { onFailure } = {}) {
   return page;
 }
 
-/** In page: start the clock and subscribe to the store's settle transition. Returns t0. */
+/**
+ * In page: arm the clock and its explicit readiness witnesses. Returns t0 (the arm).
+ * - `change`: the file input's change event, in a capture listener. The load
+ *   clock starts there, so a busy boot tail delaying the event's dispatch is
+ *   reported as input delay instead of being counted as load time (H2).
+ * - `publishPaint`: the next frame after the store first holds every model's
+ *   populated data store; `settle`/`settlePaint`: the store leaving its
+ *   loading state with every model complete, and the next frame after it (H7).
+ */
 function armLoadClock(count) {
   const store = globalThis.__ifc_lite_viewer_store__;
   globalThis.__benchSettle?.unsub?.();
+  const modelsOf = (s) => [...(s.models?.values?.() ?? [])];
   const isSettled = (s) => {
-    const models = [...(s.models?.values?.() ?? [])];
+    const models = modelsOf(s);
     return !s.loading && models.length >= count && models.every((m) => m.loadState === 'complete' || m.loadState === undefined);
   };
-  const st = { at: null, prev: isSettled(store.getState()), unsub: null };
+  const isPublished = (s) => { const models = modelsOf(s); return models.length >= count && models.every((m) => m.ifcDataStore); };
+  const frame = (key) => requestAnimationFrame(() => { st[key] = performance.now(); });
+  const st = { at: null, prev: isSettled(store.getState()), unsub: null, change: null, publish: null, publishPaint: null, settlePaint: null };
   st.unsub = store.subscribe((s) => {
     const ok = isSettled(s);
-    if (ok && !st.prev) st.at = performance.now();
-    if (!ok) st.at = null;
+    if (ok && !st.prev) { st.at = performance.now(); st.settlePaint = null; frame('settlePaint'); }
+    if (!ok) { st.at = null; st.settlePaint = null; }
     st.prev = ok;
+    if (st.publish === null && isPublished(s)) { st.publish = performance.now(); frame('publishPaint'); }
   });
+  const input = document.getElementById('file-input-open');
+  input?.addEventListener('change', () => { st.change ??= performance.now(); }, { capture: true, once: true });
   globalThis.__benchSettle = st;
   return (globalThis.__benchT0 = performance.now());
 }
@@ -96,8 +110,11 @@ function interactiveProbe(count) {
   const trace = globalThis.__IFC_LITE_LOAD_TRACE__;
   const s = globalThis.__ifc_lite_viewer_store__?.getState();
   if (!trace || !s) return null;
-  const t = globalThis.__benchT0;
-  const loads = trace.loads().filter((l) => l.start >= t - 50);
+  const st = globalThis.__benchSettle ?? {};
+  const t0 = globalThis.__benchT0;
+  const loads = trace.loads().filter((l) => l.start >= t0 - 50);
+  // Times are relative to the input's change event when it was observed (H2), else to the arm.
+  const t = st.change ?? t0;
   if (loads.length < count) return null;
   const end = (l, name) => l.spans.find((sp) => sp.name === name && sp.end !== null)?.end ?? null;
   // Full geometry = stream complete AND the GPU queue drained and finalized: the
@@ -115,8 +132,12 @@ function interactiveProbe(count) {
   const models = [...(s.models?.values?.() ?? [])];
   const settled = !s.loading && models.length >= count && models.every((m) => m.loadState === 'complete' || m.loadState === undefined);
   if (geomDone.some((v) => v === null) || meta.some((v) => v === null) || !settled) return null;
+  // Wait for the frames after the publish and the settle, so both milestones are real paints.
+  // A stalled rAF (hidden page) must not hang the probe: after 2 s the milestone stays null.
   const now = performance.now();
-  const settledAt = globalThis.__benchSettle?.at ?? null;
+  if (st.at !== null && st.settlePaint === null && now - st.at < 2000) return null;
+  if (st.publish !== null && st.publishPaint === null && now - st.publish < 2000) return null;
+  const settledAt = st.at ?? null;
   const firstVisible = loads.map((l) => end(l, 'geometry.firstVisible')).filter((v) => v !== null);
   const geometryMs = Math.max(...geomDone) - t;
   const propsMs = Math.max(...meta) - t;
@@ -131,7 +152,13 @@ function interactiveProbe(count) {
     propsMs,
     storeSettledMs,
     settleQuantized: settledAt === null,
-    interactiveMs: Math.max(geometryMs, propsMs, storeSettledMs),
+    originAbs: t,
+    inputDelayMs: st.change === null || st.change === undefined ? null : st.change - t0,
+    clockFrom: st.change === null || st.change === undefined ? 'arm (change event not observed)' : 'change event',
+    publishPaintMs: st.publishPaint === null || st.publishPaint === undefined ? null : st.publishPaint - t,
+    settlePaintMs: st.settlePaint === null || st.settlePaint === undefined ? null : st.settlePaint - t,
+    // Interactive: geometry finalized, metadata ready, and the first frame after the store settled.
+    interactiveMs: Math.max(geometryMs, propsMs, st.settlePaint ? st.settlePaint - t : storeSettledMs),
     settledMs: now - t,
     loadPaths: loads.map((l) => l.attrs?.loadPath ?? l.attrs?.path ?? null),
     cacheTiers: loads.map((l) => l.attrs?.cacheTier ?? null),

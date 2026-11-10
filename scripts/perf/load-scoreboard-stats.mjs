@@ -13,11 +13,12 @@
  *
  * Noise floor of one comparison = max(the A/A floor recorded for that
  * fixture/lane/metric, this run's own floor). A run's own floor is the
- * half-width of the 90% paired-bootstrap interval of its gain: rounds are
- * resampled with replacement, keeping each round's base and branch together
- * because they ran next to each other. An A/A run's floor additionally
- * includes its own |gain|, the systematic difference between two identical
- * builds. A verdict needs |gain| >= 2 x floor.
+ * larger of the half-width of the 90% paired-bootstrap interval of its gain
+ * (rounds resampled with replacement, each round's base and branch kept
+ * together because they ran next to each other) and half the larger side's
+ * relative range. An A/A run's floor additionally includes its own |gain|,
+ * the systematic difference between two identical builds. A verdict needs
+ * |gain| >= 2 x floor and at least 5 successful samples per side.
  */
 
 import { seededRand } from './ab-order.mjs';
@@ -71,10 +72,23 @@ export function bootstrapHalfWidth(pairs, { resamples = 2000, level = 0.9, seed 
   return (hi - lo) / 2;
 }
 
+/**
+ * A run's own floor: the paired-bootstrap half-width, but never less than half
+ * the larger side's relative range. With 3-5 rounds whose pairs happen to lean
+ * one way, the bootstrap alone collapses far below the samples' own scatter
+ * (an A/A FZK native cohort: 3% half-width against a 14% base range).
+ */
+export function ownNoiseFloor(pairs, options) {
+  const hw = bootstrapHalfWidth(pairs, options);
+  if (hw === null) return null;
+  const spread = (i) => relativeSpread(pairs.map((p) => p[i]).filter(Number.isFinite)) ?? 0;
+  return Math.max(hw, Math.max(spread(0), spread(1)) / 2);
+}
+
 /** The floor an A/A run contributes: the larger of its own |gain| and its bootstrap half-width. */
 export function aaNoiseFloor(pairs, options) {
   const g = gainOf(pairs.map((p) => p[0]), pairs.map((p) => p[1]));
-  const hw = bootstrapHalfWidth(pairs, options);
+  const hw = ownNoiseFloor(pairs, options);
   if (g === null && hw === null) return null;
   return Math.max(Math.abs(g ?? 0), hw ?? 0);
 }
@@ -85,14 +99,14 @@ export function aaNoiseFloor(pairs, options) {
  * floor (omit for an A/A run itself). `minAbs`: smallest absolute median
  * difference, in the metric's unit, that can count at all (timer resolution).
  */
-export function verdictFor(pairs, { failures = { base: 0, branch: 0 }, aaFloor = null, minAbs = 1, minSamples = 3, seed = 1 } = {}) {
+export function verdictFor(pairs, { failures = { base: 0, branch: 0 }, aaFloor = null, minAbs = 1, minSamples = 5, seed = 1 } = {}) {
   const base = pairs.map((p) => p[0]).filter(Number.isFinite);
   const branch = pairs.map((p) => p[1]).filter(Number.isFinite);
   const out = {
     baseMedian: median(base), branchMedian: median(branch),
     baseSpread: relativeSpread(base), branchSpread: relativeSpread(branch),
     samples: { base: base.length, branch: branch.length }, failures,
-    gain: gainOf(base, branch), ownFloor: bootstrapHalfWidth(pairs, { seed }), aaFloor,
+    gain: gainOf(base, branch), ownFloor: ownNoiseFloor(pairs, { seed }), aaFloor,
     noiseFloor: null, ratio: null, verdict: 'inconclusive', pass: false, regression: false,
   };
   if (failures.branch > failures.base) {

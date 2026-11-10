@@ -16,37 +16,19 @@ import { commitRealignmentFrame } from '@/lib/model-placement/realignment-frame'
 import { useCallback, useRef } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useViewerStore, type FederatedModel } from '../store/index.js';
-import { layerStackEntry } from '../lib/layers/stack.js';
-import { detectFormat, type IfcDataStore } from '@ifc-lite/parser';
-import type { MeshData } from '@ifc-lite/geometry';
+import { detectFormat } from '@ifc-lite/parser';
 import { chooseSharedRtcOffset } from '@ifc-lite/geometry/world-frame';
 import { IfcQuery } from '@ifc-lite/query';
-import { calculateMeshBounds, createCoordinateInfo } from '../utils/localParsingUtils.js';
-import { buildIfcxDataStore, convertIfcxMeshes } from './ingest/viewerModelIngest.js';
+import { publishFederatedIfcxComposition, type IfcxDataStore } from './ingest/federatedIfcxComposition.js';
 import { extractModelSpatialPlacement, findReferenceSpatialModel } from './ingest/federationAlign.js';
 import { realignFederationModels } from './ingest/federationRealign.js';
 import { withModelRotationsUnbaked } from '../components/viewer/useModelRotationSync.js';
 import { convergeFederationRtcFrame } from './ingest/federationRtcRebase.js';
 import { toast } from '../components/ui/toast.js';
 import { acquireFederationLoadSlot, releaseFederationLoadSlot } from './federationLoadGate.js';
+import { createModelLoadActivity, installModelLoadCanceller, LOAD_COMPLETE, settleOwnedLoadUi, watchLoadSupersession } from './modelLoadCanceller.js';
 import { realignFederatedPointClouds } from './ingest/pointCloudFederationLifecycle.js';
 import { showLoadError } from '@/lib/analytics';
-
-/**
- * Extended data store type for IFCX (IFC5) files.
- * IFCX uses schemaVersion 'IFC5' and may include federated composition metadata.
- */
-export interface IfcxDataStore extends IfcDataStore {
-  schemaVersion: 'IFC5';
-  /** Federated layer info for re-composition */
-  _federatedLayers?: Array<{ id: string; name: string; enabled: boolean }>;
-  /** Original buffers for re-composition when adding overlays */
-  _federatedBuffers?: Array<{ buffer: ArrayBuffer; name: string }>;
-  /** Composition statistics */
-  _compositionStats?: { layersUsed: number; inheritanceResolutions: number; crossLayerReferences: number };
-  /** Layer info for display */
-  _layerInfo?: Array<{ id: string; name: string; meshCount: number }>;
-}
 
 /**
  * Hook providing multi-model federation operations
@@ -66,10 +48,8 @@ export function useIfcFederation(
     setLoading,
     setError,
     setProgress,
-    setIfcDataStore,
     setGeometryResult,
     // Multi-model state and actions
-    addModel: storeAddModel,
     removeModel: storeRemoveModel,
     clearAllModels,
     getModel,
@@ -81,9 +61,7 @@ export function useIfcFederation(
     setLoading: s.setLoading,
     setError: s.setError,
     setProgress: s.setProgress,
-    setIfcDataStore: s.setIfcDataStore,
     setGeometryResult: s.setGeometryResult,
-    addModel: s.addModel,
     removeModel: s.removeModel,
     clearAllModels: s.clearAllModels,
     getModel: s.getModel,
@@ -131,7 +109,23 @@ export function useIfcFederation(
     // memory budget, wait until headroom frees. Single-file loads never
     // wait. See `federationLoadGate.ts` for the budget formula. (#600)
     const fileSizeForGateMB = (typeof (file as File).size === 'number' ? (file as File).size : 0) / (1024 * 1024);
-    const gateSlot = await acquireFederationLoadSlot(fileSizeForGateMB);
+    // A primary that starts while this add waits replaces the scene it was
+    // asked for: the add leaves the queue and touches nothing (L6).
+    const supersession = watchLoadSupersession('primary');
+    let gateSlot: number;
+    try {
+      gateSlot = await acquireFederationLoadSlot(fileSizeForGateMB, supersession.signal);
+    } catch (error) {
+      if (supersession.signal.aborted) return null;
+      throw error;
+    } finally {
+      supersession.stop(); // from here this add's own load is what a primary supersedes
+    }
+    // Admitted, but a primary may have started before this add resumed.
+    if (supersession.signal.aborted) {
+      releaseFederationLoadSlot(gateSlot);
+      return null;
+    }
     try {
       // (Removed the legacy→Map migration: every model — including model #1 —
       // now registers in the FederationRegistry + models Map via loadFile's
@@ -359,6 +353,12 @@ export function useIfcFederation(
     buffers: Array<{ buffer: ArrayBuffer; name: string }>,
   ): Promise<void> => {
     const { resetViewerState, clearAllModels } = useViewerStore.getState();
+    // The composition replaces the scene, so it holds a primary load's
+    // contract (L7): a Cancel and activity row, superseded by any newer
+    // primary, and the shared load UI settled as its owner.
+    let superseded = false;
+    const activity = createModelLoadActivity(buffers.map((b) => b.name).join(', '));
+    const release = installModelLoadCanceller('primary', () => { superseded = true; }, () => null, activity);
 
     try {
       // Reset viewer state on EVERY federated (re-)composition, including
@@ -385,6 +385,7 @@ export function useIfcFederation(
       clearAllModels();
 
       setLoading(true);
+      useViewerStore.getState().setLoadingFileName(buffers[0]?.name ?? null);
       setError(null);
       setProgress({ phase: 'Parsing federated IFCX', percent: 0 });
 
@@ -393,141 +394,25 @@ export function useIfcFederation(
       const { parseFederatedIfcx } = await import('@ifc-lite/ifcx');
       const result = await parseFederatedIfcx(buffers, {
         onProgress: (prog: { phase: string; percent: number }) => {
-          setProgress({ phase: `IFCX ${prog.phase}`, percent: prog.percent });
+          if (!superseded) setProgress({ phase: `IFCX ${prog.phase}`, percent: prog.percent });
         },
       });
+      if (superseded) return;
 
-      // Convert IFCX meshes to viewer format
-      const meshes: MeshData[] = convertIfcxMeshes(result.meshes);
-
-      // Calculate bounds
-      const { bounds, stats } = calculateMeshBounds(meshes);
-      const coordinateInfo = createCoordinateInfo(bounds);
-
-      const geometryResult = {
-        meshes,
-        totalVertices: stats.totalVertices,
-        totalTriangles: stats.totalTriangles,
-        coordinateInfo,
-      };
-
-      // NOTE: Do NOT call setGeometryResult() here!
-      // For federated loading, geometry comes from the models Map via mergedGeometryResult.
-      // Calling setGeometryResult() before models are added causes a race condition where
-      // meshes are added to the scene WITHOUT modelIndex, breaking selection highlighting.
-
-      // Get layer info with mesh counts
-      const layers = result.layerStack.getLayers();
-
-      // Layers panel (#1717): expose the stack behind this composition.
-      // getLayers() is strongest-first; the panel slice keeps composition
-      // order (weakest first). The parser retains each parsed IfcxFile, so
-      // entries reference them without re-parsing.
-      useViewerStore.getState().setLayerStack(
-        [...layers].reverse().map((layer) => layerStackEntry(layer)),
-        result.pathToId ?? null,
-      );
-      // First composed stack this browser has seen: open the Layers panel
-      // once so the feature introduces itself (#1717 exposure). Never
-      // repeats — after that the rail icon, badge, and menus carry it.
-      if (layers.length >= 2 && typeof window !== 'undefined') {
-        const INTRO_KEY = 'ifc-lite:layers:intro-shown';
-        try {
-          if (!window.localStorage.getItem(INTRO_KEY)) {
-            window.localStorage.setItem(INTRO_KEY, '1');
-            useViewerStore.getState().openWorkspacePanel('layers', 'programmatic');
-            toast.info(
-              `Composed ${layers.length} layers - inspect, diff, publish, and merge them in the Layers panel.`,
-            );
-          }
-        } catch {
-          /* private-mode storage failures must never break loading */
-        }
-      }
-
-      // Create data store from federated result. Route through the shared
-      // IFCX store factory so the lazy accessors (getEntity/getProperties/
-      // getQuantities) the query + mutation paths call exist — without
-      // them, selecting or editing an entity in a federated model threw
-      // "this.store.getProperties is not a function" (#1717 V2).
-      const accessorStore = buildIfcxDataStore(result, buffers[0].buffer);
-      const dataStore = Object.assign(accessorStore, {
-        // Federated-specific: store layer info and ORIGINAL BUFFERS for re-composition
-        _federatedLayers: layers.map((l: { id: string; name: string; enabled: boolean }) => ({
-          id: l.id,
-          name: l.name,
-          enabled: l.enabled,
-        })),
-        _federatedBuffers: buffers.map(b => ({
-          buffer: b.buffer.slice(0), // Clone buffer
-          name: b.name,
-        })),
-        _compositionStats: result.compositionStats,
-      }) as unknown as IfcxDataStore;
-
-      // IfcxDataStore extends IfcDataStore (with schemaVersion: 'IFC5'), so this is safe
-      setIfcDataStore(dataStore);
-
-      // Clear existing models and add each layer as a "model" in the Models panel
-      // This shows users all the files that contributed to the composition
-      clearAllModels();
-
-      // Find max expressId for proper ID range tracking
-      // This is needed for resolveGlobalIdFromModels to work correctly
-      let maxExpressId = 0;
-      if (result.entities?.expressId) {
-        // @raw-entity-enumeration-ok load-time ID watermark scans the newly composed IFCX table before any session overlay is installed
-        for (let i = 0; i < result.entities.count; i++) {
-          const id = result.entities.expressId[i];
-          if (id > maxExpressId) maxExpressId = id;
-        }
-      }
-
-      for (let i = 0; i < layers.length; i++) {
-        const layer = layers[i];
-        const layerBuffer = buffers.find(b => b.name === layer.name);
-
-        // Count how many meshes came from this layer
-        // For base layers: count meshes, for overlays: show as data-only
-        const isBaseLayer = i === layers.length - 1; // Last layer (weakest) is typically base
-
-        const layerModel: FederatedModel = {
-          id: layer.id,
-          name: layer.name,
-          ifcDataStore: dataStore, // Share the composed data store
-          geometryResult: isBaseLayer ? geometryResult : {
-            meshes: [],
-            totalVertices: 0,
-            totalTriangles: 0,
-            coordinateInfo,
-          },
-          visible: true,
-          collapsed: i > 0, // Collapse overlays by default
-          schemaVersion: 'IFC5',
-          loadedAt: Date.now() - (layers.length - i) * 100, // Stagger timestamps
-          fileSize: layerBuffer?.buffer.byteLength || 0,
-          // For base layer: set proper ID range for resolveGlobalIdFromModels
-          // Overlays share the same data store so they don't need their own range
-          idOffset: 0,
-          maxExpressId: isBaseLayer ? maxExpressId : 0,
-          // Mark overlay-only layers
-          _isOverlay: !isBaseLayer,
-          _layerIndex: i,
-        } as FederatedModel & { _isOverlay?: boolean; _layerIndex?: number };
-
-        storeAddModel(layerModel);
-      }
-
-      setProgress({ phase: 'Complete', percent: 100 });
-      setLoading(false);
+      publishFederatedIfcxComposition(result, buffers);
+      activity.published = true;
+      settleOwnedLoadUi(release, LOAD_COMPLETE);
     } catch (err: unknown) {
       console.error('[useIfc] Federated IFCX loading failed:', err);
+      if (superseded) return; // the newer load or the Cancel owns the viewer now
       const message = err instanceof Error ? err.message : String(err);
-      reportError(`Federated IFCX loading failed: ${message}`, 'ifcx_federated_load_failed',
+      reportError(activity.fail(`Federated IFCX loading failed: ${message}`), 'ifcx_federated_load_failed',
         () => { void loadFederatedIfcxFromBuffers(buffers); }); // retry re-composes the same buffers
-      setLoading(false);
+      settleOwnedLoadUi(release);
+    } finally {
+      release();
     }
-  }, [setLoading, setProgress, setGeometryResult, setIfcDataStore, storeAddModel, clearAllModels]);
+  }, [setLoading, setProgress, setGeometryResult, clearAllModels]);
 
   const loadFederatedIfcx = useCallback(async (files: File[]): Promise<void> => {
     if (files.length === 0) {

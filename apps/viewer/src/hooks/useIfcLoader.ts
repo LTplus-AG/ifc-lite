@@ -1944,18 +1944,11 @@ export function useIfcLoader() {
                 }, allInstancedShards));
                 if (isStale()) return; // finalize awaited the identity pass (#7022)
 
-                // Cache the result in the background, reusing the `cachePlan`
-                // decided once above (single source of truth for read + write).
-                // Both tiers (`source` 10-150MB, `mesh-only` 150-400MB, kill switch `?meshCache=0`) cache
-                // tables + geometry WITHOUT the source; re-open rehydrates from the fresh buffer, validated
-                // by the mtime guard + off-thread full hash (cacheTier.ts) — the key only keys the lookup.
-                // Files above 400MB (or with the mesh-only kill switch set) are not cached.
+                // Persist eligible tiers without source bytes; re-open validates
+                // the fresh buffer via mtime and the off-thread full hash.
                 if (cacheable) {
-                  // Final safety pass so cache always contains post-style colors.
                   applyColorUpdatesToMeshes(allMeshes, cumulativeColorUpdates);
-                  // Own the raw-id mesh list and scalar properties independently
-                  // of scene/list cleanup. Base tables and typed geometry buffers
-                  // are immutable; authored edits live in mutation overlays.
+                  // Capture raw ids/colours; base tables/buffers are immutable.
                   const cacheMeshes = allMeshes.map((mesh) => ({ ...mesh, color: [...mesh.color] as typeof mesh.color }));
                   void deferCacheWrite(() => Promise.resolve(writeCache(cacheMeshes)))
                     .catch((error) => console.warn('[useIfc] Deferred cache write failed:', error))
@@ -1963,7 +1956,6 @@ export function useIfcLoader() {
                 }
 
                 if (!cacheable) compactSourceAfterLoad(dataStore);
-                // Release closure references; geometryResult owns the rendered meshes.
                 setTimeout(() => {
                   allMeshes.length = 0;
                   cumulativeColorUpdates.clear();

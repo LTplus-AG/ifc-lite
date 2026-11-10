@@ -13,7 +13,6 @@ import {
   computeWorkerCount,
   GeometryMemoryBudgetError,
   planLoadWorkerCount,
-  planParallelLoad,
 } from './worker-count.js';
 import {
   deviceMemoryCeilingGB,
@@ -203,11 +202,13 @@ describe('fail early when one worker cannot fit the device', () => {
 
   it('the simulated device memory flag plans an exact N-GiB device on a large host', () => {
     vi.stubGlobal('navigator', { hardwareConcurrency: 32, deviceMemory: 32 });
-    expect(planParallelLoad(986 * 1024 ** 2).count).toBe(4);
+    expect(planLoadWorkerCount(986).count).toBe(4);
     (globalThis as Record<string, unknown>).__IFC_LITE_GEOM_MEMORY_GB = 8;
-    const simulated = planParallelLoad(986 * 1024 ** 2);
+    const simulated = planLoadWorkerCount(986);
     expect(simulated.count).toBe(1); // no 10+-core lift to 16 for an exact value
     expect(simulated.budgetMiB).toBe(6144);
-    expect(() => planParallelLoad(1655 * 1024 ** 2)).toThrow(GeometryMemoryBudgetError);
+    // The pool's plan never throws: it still runs one worker. Refusing is the host's opt-in.
+    expect(planLoadWorkerCount(1655)).toMatchObject({ count: 1, exceedsDevice: true });
+    expect(() => assertGeometryMemoryFits(1655 * 1024 ** 2)).toThrow(GeometryMemoryBudgetError);
   });
 });

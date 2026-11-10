@@ -12,7 +12,8 @@
  * its calibration). The count is the cores/thermal tier below, lowered to the
  * largest N whose estimated tab peak fits the device's budget, never below
  * one. When even one worker cannot fit the most memory the device can have,
- * the plan says so (`exceedsDevice`) and the load is refused up front.
+ * the plan says so (`exceedsDevice`); `assertGeometryMemoryFits` lets the
+ * host refuse such a load up front.
  */
 
 import { readDeviceMemoryOverrideGB } from './perf-flags.js';
@@ -72,8 +73,9 @@ export interface WorkerCountResult {
   fitsBudget: boolean;
   /**
    * Even one geometry worker's estimated peak exceeds the most memory the
-   * device can have (never set for an override or an unknown ceiling). The
-   * load should be refused with `GeometryMemoryBudgetError`.
+   * device can have (never set for an override or an unknown ceiling). A host
+   * may refuse the load (`assertGeometryMemoryFits`); the pool still runs it
+   * with one worker.
    */
   exceedsDevice: boolean;
   /** Estimated peak with one geometry worker, MiB (the refusal's "required"). */
@@ -266,22 +268,14 @@ export function planLoadWorkerCount(fileSizeMB: number, workerCountOverride?: nu
 
 /**
  * Refuse a load of `byteLength` source bytes up front when even one geometry
- * worker cannot fit this device (see `computeWorkerCount`'s `exceedsDevice`).
- * The host calls this before reading the file; the parallel pool checks the
- * same plan again before spawning a worker.
+ * worker cannot fit this device (see `computeWorkerCount`'s `exceedsDevice`),
+ * by throwing `GeometryMemoryBudgetError`. Opt-in for the host, called before
+ * reading the file: the parallel pool itself never refuses, it only budgets
+ * (the estimate can over-count unusual files, so the host decides).
  */
 export function assertGeometryMemoryFits(byteLength: number, workerCountOverride?: number): void {
-  planParallelLoad(byteLength, workerCountOverride);
-}
-
-/**
- * Plan a parallel load of `byteLength` source bytes, refusing it with
- * `GeometryMemoryBudgetError` when even one worker cannot fit this device.
- */
-export function planParallelLoad(byteLength: number, workerCountOverride?: number): WorkerCountResult & { cores: number } {
   const plan = planLoadWorkerCount(byteLength / (1024 * 1024), workerCountOverride);
   if (plan.exceedsDevice) throw new GeometryMemoryBudgetError(plan.minimumPeakMiB, plan.deviceCeilingMiB);
-  return plan;
 }
 
 /** The pool's one-line plan diagnostic: binding bound, estimated peak and budget. */

@@ -32,7 +32,7 @@ import type { ByteStreamingPrePassResult } from './byte-streaming-prepass-result
 import type { StreamingGeometryEvent } from './index.js';
 import { mergeGeometryDiagnostics, type GeometryDiagnostics } from './diagnostics.js';
 import { omittedTypeRecordsField, parseOmittedTypeRecords } from './omitted-type-records.js';
-import { describeWorkerPlan, planParallelLoad } from './worker-count.js';
+import { describeWorkerPlan, planLoadWorkerCount } from './worker-count.js';
 import { readBatchSizingOverride, readShardScanFlag, readVisibilityFilterOverride } from './perf-flags.js';
 import { notifyIfWasmAssetUnavailable, notifyIfWorkerScriptUnavailable } from './wasm-asset-error.js';
 import { restashWasmPanicLocation } from './wasm-panic-forward.js';
@@ -134,8 +134,8 @@ export async function* processParallel(
   coordinator.reset();
   yield { type: 'start', totalEstimate: buffer.length / 1000 };
   yield { type: 'model-open', modelID: 0 };
-  // Plan first: a device that cannot fit one worker is refused before the SAB copy, the compile or any worker.
-  const workerPlan = planParallelLoad(buffer.byteLength, options?.workerCountOverride);
+  // Budget by whole-tab memory; refusing a load that cannot fit is the host's call (`assertGeometryMemoryFits`).
+  const workerPlan = planLoadWorkerCount(buffer.byteLength / (1024 * 1024), options?.workerCountOverride);
   const fileSizeMB = buffer.byteLength / (1024 * 1024), workerCount = workerPlan.count;
   // Kick off the ONE shared wasm compile immediately so it overlaps the SAB
   // setup below; awaited just before the workers init

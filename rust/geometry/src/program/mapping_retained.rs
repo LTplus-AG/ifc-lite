@@ -264,7 +264,7 @@ impl<'a> MappingControl<'a> {
     pub(in crate::program) fn retained_type_map(rep_map: DecodedEntity, textures: Textures<'a>,
         selection: RetainedSelection) -> Self {
         let mut control = Self::new(Walk::TypeMap, Action::EnterTypeMap);
-        control.rep_map = Some(Reached::Nested(rep_map));
+        control.rep_map = Some(TypeMapRoot::Owned(rep_map));
         #[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
         { control.retained = Some(Box::new(State { selection, levels: Vec::new(), styled: true,
             pending_binding: None, bindings: Vec::new() })); }
@@ -285,7 +285,7 @@ impl<'a> MappingControl<'a> {
         decoder: &mut EntityDecoder,
     ) -> MappingValue {
         let value = (|| {
-            let map = self.rep_map.as_ref().map(Reached::item)
+            let map = self.rep_map.as_ref().map(TypeMapRoot::item)
                 .ok_or_else(|| crate::Error::geometry("retained type-map root missing"))?;
             let selection = self.retained_selection()
                 .ok_or_else(|| crate::Error::geometry("missing retained selection"))?;

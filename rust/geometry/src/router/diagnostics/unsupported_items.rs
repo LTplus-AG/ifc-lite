@@ -21,6 +21,7 @@ pub(crate) struct UnsupportedItemState {
     /// Dropped items (no processor / errored), by `IfcType`. Drained per
     /// element or batch by `take_unsupported_items`.
     counts: FxHashMap<String, u64>,
+    pub(super) budget_refusals: Option<Box<super::budget::BudgetRefusalLog>>,
     /// `IfcRepresentationMap` source ids already counted, so a source is
     /// counted ONCE however many `IfcMappedItem` occurrences walk it.
     sources_recorded: FxHashSet<u32>,

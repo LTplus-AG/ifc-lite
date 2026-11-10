@@ -152,6 +152,14 @@ function buildActions(model: FederatedModel, d: GeometryDiagnostics | null): str
           'incomplete in the 3D view.',
       );
     }
+    const refusals = d.totalBudgetRefusals ?? d.budgetRefusals?.length ?? 0;
+    if (refusals > 0) {
+      actions.push(
+        `${refusals} work budget refusal(s) stopped representation expansion — ` +
+          'these elements are missing or incomplete in the 3D view; inspect the affected ' +
+          'entities and simplify their mapped representations in the source model.',
+      );
+    }
     if ((d.oversizedRefDrops ?? 0) > 0) {
       actions.push(
         `${d.oversizedRefDrops} content-hash reference(s) were skipped (exceeded the hashing ` +
@@ -175,7 +183,7 @@ function buildActions(model: FederatedModel, d: GeometryDiagnostics | null): str
 
 function buildAffectedEntities(model: FederatedModel, d: GeometryDiagnostics | null): LoadReportAffectedEntity[] {
   if (!d) return [];
-  return d.worstHosts.map((h) => ({
+  const entities = d.worstHosts.map((h) => ({
     productId: h.productId,
     globalId: h.productId + model.idOffset,
     ifcType: h.ifcType,
@@ -184,6 +192,21 @@ function buildAffectedEntities(model: FederatedModel, d: GeometryDiagnostics | n
     firstFailureLabel: h.firstFailureLabel,
     renderable: h.bbox !== undefined,
   }));
+  const seen = new Set(entities.map((entity) => entity.productId));
+  for (const refusal of d.budgetRefusals ?? []) {
+    if (refusal.productId == null || seen.has(refusal.productId)) continue;
+    seen.add(refusal.productId);
+    entities.push({
+      productId: refusal.productId,
+      globalId: refusal.productId + model.idOffset,
+      ifcType: refusal.productType ?? 'unknown',
+      csgFailures: 0,
+      openings: 0,
+      firstFailureLabel: `${refusal.budget}: limit ${refusal.limit}, reached ${refusal.reached}; source #${refusal.sourceId}`,
+      renderable: false,
+    });
+  }
+  return entities;
 }
 
 /** Build a report for one loaded model. Never throws; a model with no

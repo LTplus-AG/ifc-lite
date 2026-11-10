@@ -102,6 +102,11 @@ export function buildSnapshot({ crates = CRATES, rustRoot = RUST_ROOT } = {}) {
     if (Object.keys(surface).length === 0) {
       throw new Error(`EMPTY_SURFACE: ${crate} yielded zero crate-root-reachable public items`);
     }
+    if (crate === 'ifc-lite-geometry' && existsSync(join(dirs.get(crate), 'src/representation/mod.rs'))) {
+      const nested = extractCrateSurface(dirs.get(crate), 'src/representation/mod.rs');
+      for (const [name, shape] of Object.entries(nested.surface)) surface[`representation::${name}`] = shape;
+      crateWarnings.push(...nested.warnings);
+    }
     for (const w of crateWarnings) warnings.push(`${crate}: ${w}`);
     // Sorted by name rather than `lib.rs` insertion order: a cosmetic
     // `pub use` reshuffle in the source then produces no diff at all in the

@@ -11,6 +11,7 @@ interface OverlayAccess {
   readonly modelId: string;
   transact<T>(edit: (draft: MutablePropertyView) => T, record: boolean): { result: T; inverse?: CompoundInverse; written: string[] };
   capture(): OverlaySnapshot;
+  rebuild(snapshot: OverlaySnapshot): OverlaySnapshot;
   matches(snapshot: OverlaySnapshot): boolean;
   draft(snapshot: OverlaySnapshot): MutablePropertyView;
   publish(snapshot: OverlaySnapshot): void;

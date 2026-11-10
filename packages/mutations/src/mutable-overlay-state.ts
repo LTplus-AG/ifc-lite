@@ -34,6 +34,8 @@ export interface ForgottenEntityOverlay {
 
 /** Internal mutable overlay state; source tables and extractors are never copied. */
 export class MutableOverlayState {
+  protected propertyTargets: Map<string, readonly [string, string]> = new Map();
+  protected quantityTargets: Map<string, readonly [string, string]> = new Map();
   protected propertyMutations: Map<string, PropertyMutation> = new Map();
   protected quantityMutations: Map<string, QuantityMutation> = new Map();
   /**
@@ -68,28 +70,9 @@ export class MutableOverlayState {
    * `restoreNewEntity` (the undo-of-delete counterpart) clears the id back out.
    */
   protected forgottenCreatedEntities: Set<number> = new Set();
-  /**
-   * Snapshot of a forgotten-created entity's overlay rows, stashed by
-   * `deleteEntity` and restored by `restoreNewEntity`.
-   *
-   * `deleteEntity` on an overlay-created entity does more than drop it from
-   * `newEntities` — it also PURGES every other overlay entry the entity left
-   * behind (property/quantity/attribute/positional/type mutations, its
-   * `newPsets`/`newQsets` entries, and its own `mutationHistory` records).
-   * Without that purge, an entity that was created, edited, then deleted
-   * before export left a dangling reference: `StepExporter` derives its
-   * property/quantity work list from `getMutations()` (the append-only
-   * history) and reads `getForEntity()` / `getQuantitiesForEntity()` straight
-   * off `newPsets` / `newQsets` — neither of which the review-side
-   * `forgottenCreatedEntities` filter in `effective-changes.ts` touches. The
-   * review dialog looked clean while the exported file still contained an
-   * `IFCPROPERTYSET` + `IFCRELDEFINESBYPROPERTIES` pointing at an expressId
-   * that was never actually created (maintainer finding on #1967).
-   *
-   * The purged data is captured here, not discarded, because `restoreNewEntity`
-   * (undo of the delete) must bring it all back — rows AND count AND what the
-   * exporter would see — not just re-add the bare `NewEntity` record.
-   */
+  /** Rows purged when a creation is forgotten; undo-of-delete restores them
+   * with their original journal. Omitting the purge leaves dangling exported
+   * psets/relationships; omitting the stash loses edits on undo (#1967). */
   protected forgottenEntityOverlay: Map<number, ForgottenEntityOverlay> = new Map();
   /**
    * Overlay-entity → source-entity aliases for property/quantity reads.
@@ -206,7 +189,8 @@ export class MutableOverlayState {
     return removed;
   }
 
-  protected setPropertyMutation(entityId: number, key: string, mutation: PropertyMutation): void {
+  protected setPropertyMutation(entityId: number, key: string, mutation: PropertyMutation, target?: readonly [string, string]): void {
+    if (target) this.propertyTargets.set(key, target);
     this.propertyMutations.set(key, mutation);
     this.markOverlayChanged();
     let bucket = this.propertyKeysByEntity.get(entityId);
@@ -230,7 +214,8 @@ export class MutableOverlayState {
     return removed;
   }
 
-  protected setQuantityMutation(entityId: number, key: string, mutation: QuantityMutation): void {
+  protected setQuantityMutation(entityId: number, key: string, mutation: QuantityMutation, target?: readonly [string, string]): void {
+    if (target) this.quantityTargets.set(key, target);
     this.quantityMutations.set(key, mutation);
     this.markOverlayChanged();
     let bucket = this.quantityKeysByEntity.get(entityId);
@@ -301,12 +286,12 @@ export class MutableOverlayState {
       for (const key of this.propertyKeysByEntity.get(entityId) ?? []) {
         if (key.startsWith(prefix)) this.deletePropertyMutation(entityId, key);
       }
-      for (const [key, row] of copy.entries) this.setPropertyMutation(entityId, key, row);
+      for (const [key, row] of copy.entries) this.setPropertyMutation(entityId, key, row, [setName, key.slice(prefix.length)]);
     } else {
       for (const key of this.quantityKeysByEntity.get(entityId) ?? []) {
         if (key.startsWith(prefix)) this.deleteQuantityMutation(entityId, key);
       }
-      for (const [key, row] of copy.entries) this.setQuantityMutation(entityId, key, row);
+      for (const [key, row] of copy.entries) this.setQuantityMutation(entityId, key, row, [setName, key.slice(prefix.length)]);
     }
   }
 
@@ -332,6 +317,8 @@ export class MutableOverlayState {
   /** Borrowed only for synchronous comparison; never returned to callers. */
   protected overlayState() {
     return {
+      propertyTargets: this.propertyTargets,
+      quantityTargets: this.quantityTargets,
       propertyMutations: this.propertyMutations,
       quantityMutations: this.quantityMutations,
       propertyKeysByEntity: this.propertyKeysByEntity,

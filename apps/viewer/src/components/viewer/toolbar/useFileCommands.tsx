@@ -3,8 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * File-command surface for the ribbon. Owns the Open / Add Model / Refresh
- * flows, hidden file inputs, and global `ifc-lite:*` load events. The ribbon
+ * Shared file-command surface for desktop and mobile. Owns the Open / Add Model / Refresh
+ * flows, hidden file inputs, and global `ifc-lite:*` load events. The active toolbar
  * mounts it once, so the window listeners never double-fire.
  */
 
@@ -80,7 +80,7 @@ export function useFileCommands(): FileCommands {
   const resetViewerState = useViewerStore((state) => state.resetViewerState);
 
   // Share dialog host. Owned here (not by a toolbar or tab panel) because
-  // this hook is mounted by RibbonToolbar for the whole session, while its
+  // this hook is mounted by the active toolbar for the whole session, while its
   // tab panels unmount on tab switch/collapse — the
   // `ifc-lite:open-share-dialog` event (RoomPanel's "Create a room") must
   // always find a live listener.

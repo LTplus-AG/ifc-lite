@@ -346,8 +346,8 @@ test('Mergify cannot merge a batch unless full-lane jobs succeeded, and is label
   // name Mergify requires; its one rendered leg must still be exactly that name.
   const rustFull = parse(readFileSync(join(REPO_ROOT, '.github/workflows/test.yml'), 'utf8')).jobs['rust-full'];
   const rendered = rustFull.strategy.matrix.lane.map((lane) => rustFull.name.replace('${{ matrix.lane }}', lane));
-  assert.deepEqual(rendered, ['Rust tests (feature builds)'], 'the required job name exists'); // @source-text-assertion-ok subject is the parsed config or the decision's returned text
-  assert.notEqual(rustFull.name, 'Rust tests (feature builds)', 'a skipped run must not publish the required name'); // @source-text-assertion-ok subject is the parsed config or the decision's returned text
+  assert.deepEqual(rendered, ['Rust tests (feature builds)'], 'the required job name exists');
+  assert.notEqual(rustFull.name, 'Rust tests (feature builds)', 'a skipped run must not publish the required name');
   assert.ok(names.includes('Build + WASM + Rust + Node'), 'the required job name exists'); // @source-text-assertion-ok subject is the parsed config or the decision's returned text
   assert.ok(names.some((n) => String(n).startsWith('Viewer tests (shard')), 'the required job name exists'); // @source-text-assertion-ok subject is the parsed config or the decision's returned text
 });

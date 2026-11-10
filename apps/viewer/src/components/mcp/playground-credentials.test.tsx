@@ -278,7 +278,7 @@ for (const boundary of ['stop', 'swap', 'stop-then-swap', 'stop-swap-back'] as c
   const ui = render(<Host />);
   const add = playgroundFiles.add.bind(playgroundFiles);
   let stopped = false;
-  t.mock.method(playgroundFiles, 'add', input => {
+  t.mock.method(playgroundFiles, 'add', (input: Parameters<typeof add>[0]) => {
     const file = add(input); // The real topic and archive are committed before the boundary.
     if (!stopped) {
       stopped = true;
@@ -309,7 +309,7 @@ it('#9577 N1 Send and Enter stay blocked until the stopped dispatch settles', as
   t.after(() => { cleanup(); clearApiKeys(); });
   updateApiKeys({ anthropicKey: 'sk-ant-test' });
   let release!: () => void, networkStarted = false, turns = 0;
-  t.mock.method(globalThis, 'fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
+  t.mock.method(globalThis, 'fetch', async (input: RequestInfo | URL, _init?: RequestInit) => {
     if (String(input).includes('/api/bsdd')) {
       networkStarted = true;
       await new Promise<void>(resolve => { release = resolve; });
@@ -373,7 +373,7 @@ it('#9577 N1 final results update only their own assistant and tool slot', async
   const ui = render(<PlaygroundChat model={await oneWallModel()} />);
   const add = playgroundFiles.add.bind(playgroundFiles);
   let finished = 0;
-  t.mock.method(playgroundFiles, 'add', input => {
+  t.mock.method(playgroundFiles, 'add', (input: Parameters<typeof add>[0]) => {
     const file = add(input);
     if (++finished % 2 === 0) act(() => ui.querySelector<HTMLButtonElement>('button[aria-label="Stop generating"]')!.click());
     return file;

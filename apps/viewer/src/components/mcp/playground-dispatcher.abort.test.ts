@@ -6,6 +6,7 @@ import { it } from 'node:test';
 import assert from 'node:assert/strict';
 import { GeometryProcessor, type GeometryResult } from '@ifc-lite/geometry';
 import { BsddNamespace } from '@ifc-lite/sdk';
+import type { ClashElement, ClashRule, ClashSettings } from '@ifc-lite/clash';
 import { dispatch, parsePlaygroundModel } from './playground-dispatcher';
 import { playgroundFiles } from './playground-files';
 
@@ -102,7 +103,7 @@ for (const phase of ['progress', 'validation'] as const) it(`#9577 N1 IDS checks
   if (phase === 'progress') t.mock.method(m.backend, 'getMutationView', () => { controller.abort(); return view(); });
   const getEntry = m.store.entityIndex.byId.get.bind(m.store.entityIndex.byId);
   let reads = 0;
-  t.mock.method(m.store.entityIndex.byId, 'get', id => { reads++; if (phase === 'validation') controller.abort(); return getEntry(id); });
+  t.mock.method(m.store.entityIndex.byId, 'get', (id: number) => { reads++; if (phase === 'validation') controller.abort(); return getEntry(id); });
   const before = playgroundFiles.list().length;
   const result = await dispatch(m, 'ids_validate', { ids_xml: `<ids xmlns="http://standards.buildingsmart.org/IDS"><info><title>Cancellation</title></info><specifications><specification name="s" ifcVersion="IFC4"><applicability><entity><name><simpleValue>IFCWALL</simpleValue></name></entity></applicability><requirements><attribute><name><simpleValue>Name</simpleValue></name><value><simpleValue>Wall A</simpleValue></value></attribute></requirements></specification></specifications></ids>` }, { signal: controller.signal });
   assert.equal(result.errorCode, 'CANCELLED');
@@ -123,7 +124,7 @@ for (const tool of ['clash_check', 'clash_matrix', 'clash_bcf_export'] as const)
     expressId: 1, positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
     normals: new Float32Array(9), indices: new Uint32Array([0, 1, 2]), color: [1, 1, 1, 1],
   }] }) as unknown as GeometryResult);
-  t.mock.method(prototype, 'run', async (elements, rules, settings) => {
+  t.mock.method(prototype, 'run', async (elements: ClashElement[], rules: ClashRule[], settings?: ClashSettings) => {
     controller.abort();
     settings?.signal?.throwIfAborted();
     return run(elements, rules, settings);

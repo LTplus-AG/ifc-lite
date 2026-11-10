@@ -48,6 +48,26 @@ const ENTRY_EXT: &str = "ifcr";
 const FREE_SPACE_HEADROOM: u64 = 1 << 30;
 const ORPHAN_TEMP_AGE: Duration = Duration::from_secs(60);
 
+/// `try_lock`, retried for up to ~10 ms. These locks belong to an open file
+/// description, so a child process forked by ANY thread of this process holds
+/// a copy of every lock this process had open at that instant until its exec
+/// closes it (`O_CLOEXEC`). A store that spawns nothing still lives in hosts
+/// (and test binaries) that do. A real writer holds a stripe for its whole
+/// write, far longer than that window, so the retry only absorbs the fork
+/// copy; a stripe still busy afterwards is reported as before.
+fn try_lock_briefly(file: &File) -> Result<(), TryLockError> {
+    let mut attempt = 0;
+    loop {
+        match file.try_lock() {
+            Err(TryLockError::WouldBlock) if attempt < 20 => {
+                attempt += 1;
+                std::thread::sleep(Duration::from_micros(500));
+            }
+            other => return other,
+        }
+    }
+}
+
 pub(super) struct Store {
     dir: PathBuf,
     max_bytes: u64,
@@ -148,7 +168,7 @@ impl Store {
     /// concurrent writer's fresh replacement with it.
     pub(super) fn remove_if_same(&self, key: &str, seen: &ReadEntry) {
         let Ok(lock) = open_lock(&self.lock_path(key)) else { return };
-        if lock.try_lock().is_err() {
+        if try_lock_briefly(&lock).is_err() {
             return;
         }
         let path = self.entry_path(key);
@@ -180,7 +200,7 @@ impl Store {
             Ok(lock) => lock,
             Err(e) => return PublishOutcome::Failed(format!("lock: {e}")),
         };
-        match lock.try_lock() {
+        match try_lock_briefly(&lock) {
             Ok(()) => {}
             Err(TryLockError::WouldBlock) => return PublishOutcome::SkippedConcurrentWriter,
             Err(TryLockError::Error(e)) => return PublishOutcome::Failed(format!("lock: {e}")),
@@ -230,7 +250,7 @@ impl Store {
     /// entries (never `keep`). Skipped while another process evicts.
     fn evict(&self, keep: &str) {
         let Ok(gc) = open_lock(&self.dir.join("gc.lock")) else { return };
-        if gc.try_lock().is_err() {
+        if try_lock_briefly(&gc).is_err() {
             return;
         }
         let Ok(listing) = fs::read_dir(&self.dir) else { return };
@@ -279,7 +299,7 @@ impl Store {
     /// `key`'s stripe, locked, if no writer holds it; unlocked on drop.
     fn hold_stripe(&self, key: &str) -> Option<File> {
         let lock = open_lock(&self.lock_path(key)).ok()?;
-        lock.try_lock().is_ok().then_some(lock)
+        try_lock_briefly(&lock).is_ok().then_some(lock)
     }
 
     #[cfg(test)]

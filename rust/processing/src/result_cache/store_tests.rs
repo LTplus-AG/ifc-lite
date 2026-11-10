@@ -298,3 +298,24 @@ fn non_regular_files_at_entry_and_lock_paths_never_block() {
     assert!(matches!(outcome, PublishOutcome::Failed(_)), "{outcome:?}");
     let _ = fs::remove_dir_all(&root);
 }
+
+/// A child process forked by any thread holds a copy of every lock this
+/// process had open until its exec closes it. On the fleet the FIFO test's
+/// `mkfifo` children made `corrupt_entry_removal_spares_a_newer_generation`
+/// fail 5 of 40 runs (`SkippedConcurrentWriter`, a skipped removal); 0 of 40
+/// without them. A lock held for a moment, as that copy is, must not skip a
+/// publication; one held for the whole write still does (previous test).
+#[test]
+fn a_lock_held_for_a_moment_does_not_skip_publication() {
+    let root = temp_root("brief");
+    let s = store(&root);
+    let copy = super::fs_private::open_lock(&s.lock_path(KEY_A)).unwrap();
+    copy.try_lock().unwrap();
+    let release = std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(3));
+        drop(copy);
+    });
+    published(s.publish(KEY_A, b"entry"));
+    release.join().unwrap();
+    let _ = fs::remove_dir_all(&root);
+}

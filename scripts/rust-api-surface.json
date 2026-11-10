@@ -103,6 +103,7 @@
     "resolve_unit_by_ref": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "scan_model_bounds": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "scan_placement_bounds": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
+    "scan_report_events": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "set_report_sink": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "should_use_fast_path": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "si_prefix": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",

@@ -5,6 +5,7 @@
 import { registryProxy } from './registry-proxy.ts';
 import { viewerAliases } from './vite-aliases';
 import { collectPackageVersions } from './vite-package-versions';
+import { bundleAnalysis } from './vite-bundle-analysis';
 import { legacyManualChunk, quickjsRuntimeChunkGroup, tslibChunkGroup } from './vite-chunks';
 import { defineConfig, loadEnv } from 'vite';
 import { retainedEngine } from './vite-plugins/retained-engine';
@@ -205,6 +206,7 @@ export default defineConfig(({ mode }) => {
   } as const;
   return {
   plugins: [
+    ...(process.env.VITE_BUNDLE_ANALYSIS === '1' ? [bundleAnalysis()] : []),
     retainedEngine(retained),
     react(),
     Icons({

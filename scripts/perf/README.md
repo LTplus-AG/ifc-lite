@@ -6128,3 +6128,10 @@ signature per operation while keeping definitions live. The paired public SDK
 cohort reports cold and warm calls independently, verifies that the walls do
 not join, and compares reopened geometry. The timing verdict is reported on
 #9406; an operation counter alone is not timing qualification.
+
+The final exclusive paired cohort on the session-scale base passed both the
+non-joining cold/warm overhead gate and the session-growth gate, with identical
+reopened geometry. Incremental raw creation removed the cold rebuild; skipping
+candidate-key work for an empty staged index brought the warm path within the
+same acceptance gate. Keep both checks: fixing cold scaling alone had left a
+warm-call regression.

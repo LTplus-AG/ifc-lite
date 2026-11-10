@@ -111,4 +111,7 @@ export const sharedCommandsFr = {
   "classVisibility.pinnedDetail.descriptionIgnored": "Ignoré en mode Exact · à gérer dans les paramètres de performances",
   "classVisibility.pinnedDetail.descriptionOverrides": "Remplace le niveau de détail automatique · à gérer dans les paramètres de performances",
   "classVisibility.performanceSettings": "Paramètres de performances",
+  "exportCommands.screenshot.saved": "Capture d’écran enregistrée",
+  "exportCommands.screenshot.notReady": "Ouvrez la vue 3D et attendez la fin du chargement, puis réessayez.",
+  "exportCommands.screenshot.failed": "Impossible de capturer la vue 3D. Réessayez une fois le rendu terminé.",
 } satisfies Catalogue;

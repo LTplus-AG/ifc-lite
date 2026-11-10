@@ -8,9 +8,59 @@
  */
 
 import type { MapConversion } from '@ifc-lite/parser';
-import { NORMAL_COORD_THRESHOLD_M, type CoordinateInfo } from '@ifc-lite/geometry';
-import { ifcToViewerAxes, viewerToIfcAxes } from './coordinate-frame';
-import { viewerFrameCenter } from './cesium-viewer-frame';
+import { NORMAL_COORD_THRESHOLD_M, type CoordinateInfo, type Vec3 } from '@ifc-lite/geometry';
+import { ifcToViewerAxes, totalYupOffset, viewerToIfcAxes } from './coordinate-frame';
+
+/**
+ * The declared anchor must sit at real projected-CRS magnitude before the
+ * map-absolute detection may fire. Compliant zero-ish offsets (site grids a
+ * few km out) stay below this, so a small legitimate offset + rotation is
+ * never silently dropped. Real projected CRS coordinates (UTM, national
+ * grids) start in the hundreds of km.
+ */
+const MAP_ABSOLUTE_MIN_ANCHOR_METERS = 100_000;
+
+/**
+ * The renderer-frame point the georeference pivots on, after originShift.
+ * Camera, model matrix and map anchor all use it
+ * (`computeModelCenterInIfcMeters` is this point in IFC world metres).
+ *
+ * Normally the centre of the bounds. The exception is a box stretched by
+ * elements the site placement never re-based: Vectorworks writes some
+ * provision-for-void proxies with absolute placements in site-local numbers,
+ * so they sit at the file's own origin, 6000 km from a building placed at its
+ * UTM site. The box then reaches both the WASM RTC origin (the median element
+ * placement, for a model loaded on its own) and the IFC world origin, and its
+ * centre falls between them. The pivot is the RTC origin, in the bulk of the
+ * model. The RTC origin must sit at projected-CRS magnitude, like the #2526
+ * anchor; a local-coordinate model starting near its origin keeps its centre,
+ * as does a long model or one federated onto another model's anchor, which
+ * never reach the world origin. When most elements are the unplaced ones,
+ * the median follows them.
+ */
+export function viewerFrameCenter(coordinateInfo: CoordinateInfo | undefined) {
+  const bounds = coordinateInfo?.shiftedBounds;
+  if (!bounds) return { x: 0, y: 0, z: 0 };
+  const center = {
+    x: (bounds.min.x + bounds.max.x) / 2,
+    y: (bounds.min.y + bounds.max.y) / 2,
+    z: (bounds.min.z + bounds.max.z) / 2,
+  };
+  // No RTC offset (server or native load): no median to fall back to.
+  if (!coordinateInfo?.wasmRtcOffset) return center;
+  const shift = coordinateInfo.originShift;
+  const rtcOrigin = { x: -shift.x, y: -shift.y, z: -shift.z };
+  // Where the file's own (0,0,0) sits in the renderer frame (as ifc-origin.ts `ownOrigin`).
+  const offset = totalYupOffset(coordinateInfo);
+  const worldOrigin = { x: -offset.x, y: -offset.y, z: -offset.z };
+  // The RTC origin must be a map anchor, hundreds of km from the file origin.
+  if (Math.hypot(rtcOrigin.x - worldOrigin.x, rtcOrigin.z - worldOrigin.z) < MAP_ABSOLUTE_MIN_ANCHOR_METERS) return center;
+  const t = NORMAL_COORD_THRESHOLD_M;
+  const reaches = (p: Vec3) => (['x', 'y', 'z'] as const)
+    .every((k) => p[k] >= bounds.min[k] - t && p[k] <= bounds.max[k] + t);
+  const offCentre = Math.hypot(center.x - rtcOrigin.x, center.y - rtcOrigin.y, center.z - rtcOrigin.z);
+  return offCentre > t && reaches(rtcOrigin) && reaches(worldOrigin) ? rtcOrigin : center;
+}
 
 /**
  * Compute the model's center in IFC Z-up metres from coordinate info.
@@ -39,14 +89,6 @@ export function computeModelCenterInIfcMeters(
   return { ifcX: worldIfc.x, ifcY: worldIfc.y, ifcZ: worldIfc.z };
 }
 
-/**
- * The declared anchor must sit at real projected-CRS magnitude before the
- * map-absolute detection may fire. Compliant zero-ish offsets (site grids a
- * few km out) stay below this, so a small legitimate offset + rotation is
- * never silently dropped. Real projected CRS coordinates (UTM, national
- * grids) start in the hundreds of km.
- */
-const MAP_ABSOLUTE_MIN_ANCHOR_METERS = 100_000;
 /**
  * How close (metres) the geometry centre must be to the declared anchor to
  * count as "already sitting at it". This IS the wasm RTC re-base threshold

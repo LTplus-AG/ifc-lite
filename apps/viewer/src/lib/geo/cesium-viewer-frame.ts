@@ -2,47 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { NORMAL_COORD_THRESHOLD_M, type CoordinateInfo, type Vec3 } from '@ifc-lite/geometry';
-import { totalYupOffset } from './coordinate-frame';
+import type { CoordinateInfo } from '@ifc-lite/geometry';
+import { viewerFrameCenter } from './map-absolute';
 import type { GeodesicPosition } from './cesium-bridge';
 import type { ViewerToEnuRotation } from './viewer-enu-rotation';
 
-/**
- * The renderer-frame point the georeference pivots on, after originShift.
- * Camera, model matrix and map anchor all use it
- * (`computeModelCenterInIfcMeters` is this point in IFC world metres).
- *
- * Normally the centre of the bounds. The exception is a box stretched by
- * elements the site placement never re-based: Vectorworks writes some
- * provision-for-void proxies with absolute placements in site-local numbers,
- * so they sit at the file's own origin, 6000 km from a building placed at its
- * UTM site. The box then reaches both the WASM RTC origin (the median element
- * placement, for a model loaded on its own) and the IFC world origin, and its
- * centre falls between them. The pivot is the RTC origin, in the bulk of the
- * model. A long model, or one federated onto another model's anchor, does not
- * reach the world origin and keeps its centre. When most elements are the
- * unplaced ones, the median follows them.
- */
-export function viewerFrameCenter(coordinateInfo: CoordinateInfo | undefined) {
-  const bounds = coordinateInfo?.shiftedBounds;
-  if (!bounds) return { x: 0, y: 0, z: 0 };
-  const center = {
-    x: (bounds.min.x + bounds.max.x) / 2,
-    y: (bounds.min.y + bounds.max.y) / 2,
-    z: (bounds.min.z + bounds.max.z) / 2,
-  };
-  if (!coordinateInfo?.wasmRtcOffset) return center;
-  const shift = coordinateInfo.originShift;
-  const rtcOrigin = { x: -shift.x, y: -shift.y, z: -shift.z };
-  // Where the file's own (0,0,0) sits in the renderer frame (as ifc-origin.ts `ownOrigin`).
-  const offset = totalYupOffset(coordinateInfo);
-  const worldOrigin = { x: -offset.x, y: -offset.y, z: -offset.z };
-  const t = NORMAL_COORD_THRESHOLD_M;
-  const reaches = (p: Vec3) => (['x', 'y', 'z'] as const)
-    .every((k) => p[k] >= bounds.min[k] - t && p[k] <= bounds.max[k] + t);
-  const offCentre = Math.hypot(center.x - rtcOrigin.x, center.y - rtcOrigin.y, center.z - rtcOrigin.z);
-  return offCentre > t && reaches(rtcOrigin) && reaches(worldOrigin) ? rtcOrigin : center;
-}
+/** The georeference pivot, defined beside the #2526 guard that reads it. */
+export { viewerFrameCenter };
 
 /** The one viewer-to-ECEF matrix used by both the camera and the model. */
 export function buildViewerToEcefMatrix(

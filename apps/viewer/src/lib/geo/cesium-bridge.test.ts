@@ -281,7 +281,7 @@ describe('createCesiumBridge with stray elements far outside a map-absolute mode
   const rtc = { x: 311987.5867813219, y: 5996133.899618746, z: 14 };
   const clean = { min: { x: -12.334, y: 0, z: -15.154 }, max: { x: 14.18, y: 3, z: 15.819 } };
   const streamed = { min: { x: -312021.566, y: 0, z: -15.154 }, max: { x: 14.18, y: 28.7, z: 5996126.615 } };
-  const info = (bounds: CoordinateInfo['shiftedBounds'], shift = { x: 0, y: 0, z: 0 }): CoordinateInfo => ({
+  const info = (bounds: CoordinateInfo['shiftedBounds'], shift = { x: 0, y: 0, z: 0 }, wasmRtcOffset = rtc): CoordinateInfo => ({
     originShift: shift,
     originalBounds: {
       min: { x: bounds.min.x + shift.x, y: bounds.min.y + shift.y, z: bounds.min.z + shift.z },
@@ -289,7 +289,7 @@ describe('createCesiumBridge with stray elements far outside a map-absolute mode
     },
     shiftedBounds: bounds,
     hasLargeCoordinates: false,
-    wasmRtcOffset: rtc,
+    wasmRtcOffset,
     lengthUnitScale: 0.001,
   });
   // The sync `process()` path re-centres on the polluted box as well.
@@ -347,5 +347,19 @@ describe('createCesiumBridge with stray elements far outside a map-absolute mode
         x: (box.min.x + box.max.x) / 2, y: (box.min.y + box.max.y) / 2, z: (box.min.z + box.max.z) / 2,
       });
     }
+  });
+
+  it('keeps the bounds centre unless the box reaches a projected-CRS RTC origin', () => {
+    const mid = (b: CoordinateInfo['shiftedBounds']) => ({
+      x: (b.min.x + b.max.x) / 2, y: (b.min.y + b.max.y) / 2, z: (b.min.z + b.max.z) / 2,
+    });
+    // A local-coordinate corridor from 5 km to 40 km, median near 38 km: it
+    // reaches its own origin, but its RTC origin is no map anchor.
+    const corridor = { min: { x: -33_000, y: 0, z: -15 }, max: { x: 2_000, y: 3, z: 15 } };
+    assert.deepStrictEqual(viewerFrameCenter(info(corridor, undefined, { x: 38_000, y: 0, z: 0 })), mid(corridor));
+    // Geometry only at the file origin, none at the anchor: the box reaches the
+    // world origin but not the RTC origin.
+    const unplaced = { min: { x: -rtc.x - 50, y: -14, z: rtc.y - 50 }, max: { x: -rtc.x + 50, y: 0, z: rtc.y + 50 } };
+    assert.deepStrictEqual(viewerFrameCenter(info(unplaced)), mid(unplaced));
   });
 });

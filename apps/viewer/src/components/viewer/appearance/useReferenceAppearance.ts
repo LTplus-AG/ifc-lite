@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { useAsyncRun } from '@/hooks/useAsyncRun';
 import { captureReferencePdfLineage } from '@/lib/appearance/references/pdf-lineage';
 import { useEffect, useRef, useState } from 'react';
 import { useViewerStore } from '@/store';
@@ -41,6 +42,7 @@ export function useReferenceAppearance(base: AppearancePanelViewProps, enabled: 
   const [active, setActive] = useState(true);
   const [status, setStatus] = useState<AppearancePanelViewProps['status']>('idle');
   const [message, setMessage] = useState<LocalizedMessage>(() => translatedMessage('appearance.reference.chooseSource'));
+  const placeRun = useAsyncRun();
   const draftId = useRef(`appearance-draft:${crypto.randomUUID()}`).current;
   const draft = useRef<Preview | null>(null);
   const settings = base.settings;
@@ -48,7 +50,12 @@ export function useReferenceAppearance(base: AppearancePanelViewProps, enabled: 
 
   useEffect(() => {
     const renderer = getGlobalRenderer();
-    if (!enabled || !active || base.sourceBusy || roomId) return;
+    if (!enabled || !active) return;
+    if (roomId) {
+      setStatus('idle'); setMessage(translatedMessage('appearance.reference.leaveRoom'));
+      return;
+    }
+    if (base.sourceBusy) return;
     if (editing && useViewerStore.getState().appearanceReferences.get(editing.id) !== editing) {
       setStatus('stale'); setMessage(translatedMessage('appearance.reference.drawingChanged')); return;
     }
@@ -92,42 +99,45 @@ export function useReferenceAppearance(base: AppearancePanelViewProps, enabled: 
       }
     })(); }, 150);
     return () => {
-      clearTimeout(timer); controller.abort(); draft.current = null;
+      placeRun.reset(); clearTimeout(timer); controller.abort(); draft.current = null;
       renderer.getReferenceImages().remove(draftId);
       if (!inFlight) appearanceAssets.releaseOwner(owner);
     };
-  }, [enabled, active, source, settings, frameKey, base.sourceBusy, roomId, draftId, editing]);
+  }, [enabled, active, source, settings, frameKey, base.sourceBusy, roomId, draftId, editing, placeRun.reset]);
 
   async function place(): Promise<void> {
     const prepared = draft.current, renderer = getGlobalRenderer();
     if (!prepared || !renderer) return;
-    const { record, bitmap, signal } = prepared;
-    setStatus('applying'); setMessage(translatedMessage('appearance.reference.placing'));
-    const placementOwner = { kind: 'draft' as const, id: `reference-place:${crypto.randomUUID()}` };
-    try {
-      appearanceAssets.retain(record.assetId, placementOwner);
-      signal.throwIfAborted();
-      const corners = referenceRenderCorners(record, useViewerStore.getState());
-      if (!corners) throw new ReferenceAppearanceError('appearance.reference.workspaceFrameChanged');
-      // Replacement is published through the committed-record bridge, so the
-      // old registered image stays valid until the transaction is accepted.
-      if (!editing) await renderer.getReferenceImages().set({ ...record, corners, bitmap }, signal);
-      signal.throwIfAborted();
-      const state = useViewerStore.getState();
-      if (placementFrameKey(state) !== record.frameKey || state.appearanceSources.find(item => item.id === record.sourceId) !== prepared.source) {
-        throw new ReferenceAppearanceError('appearance.reference.sourceChanged');
-      }
-      if (editing) {
-        if (state.appearanceReferences.get(editing.id) !== editing) throw new ReferenceAppearanceError('appearance.reference.drawingChanged');
-        state.replaceAppearanceReference(editing.id, record);
-      } else state.addAppearanceReference(record);
-      state.selectAppearanceReference(record.id);
-      setActive(false); setEditing(null); setStatus('idle'); setMessage(translatedMessage(editing
-        ? 'appearance.reference.saved' : 'appearance.reference.placed'));
-    } catch (error) {
-      if (!useViewerStore.getState().appearanceReferences.has(record.id)) renderer.getReferenceImages().remove(record.id);
-      if (!signal.aborted) { setStatus('error'); setMessage(referenceErrorMessage(error)); }
-    } finally { appearanceAssets.releaseOwner(placementOwner); }
+    await placeRun.start(async ({ signal: runSignal }) => {
+      const { record, bitmap } = prepared;
+      const signal = AbortSignal.any([prepared.signal, runSignal]);
+      setMessage(translatedMessage('appearance.reference.placing'));
+      const placementOwner = { kind: 'draft' as const, id: `reference-place:${crypto.randomUUID()}` };
+      try {
+        appearanceAssets.retain(record.assetId, placementOwner);
+        signal.throwIfAborted();
+        const corners = referenceRenderCorners(record, useViewerStore.getState());
+        if (!corners) throw new ReferenceAppearanceError('appearance.reference.workspaceFrameChanged');
+        // Replacement is published through the committed-record bridge, so the
+        // old registered image stays valid until the transaction is accepted.
+        if (!editing) await renderer.getReferenceImages().set({ ...record, corners, bitmap }, signal);
+        signal.throwIfAborted();
+        const state = useViewerStore.getState();
+        if (placementFrameKey(state) !== record.frameKey || state.appearanceSources.find(item => item.id === record.sourceId) !== prepared.source) {
+          throw new ReferenceAppearanceError('appearance.reference.sourceChanged');
+        }
+        if (editing) {
+          if (state.appearanceReferences.get(editing.id) !== editing) throw new ReferenceAppearanceError('appearance.reference.drawingChanged');
+          state.replaceAppearanceReference(editing.id, record);
+        } else state.addAppearanceReference(record);
+        state.selectAppearanceReference(record.id);
+        setActive(false); setEditing(null); setStatus('idle'); setMessage(translatedMessage(editing
+          ? 'appearance.reference.saved' : 'appearance.reference.placed'));
+      } catch (error) {
+        if (!useViewerStore.getState().appearanceReferences.has(record.id)) renderer.getReferenceImages().remove(record.id);
+        if (!signal.aborted) { setStatus('error'); setMessage(referenceErrorMessage(error)); }
+      } finally { appearanceAssets.releaseOwner(placementOwner); }
+    });
   }
   function edit(id: string): void {
     try {
@@ -142,12 +152,12 @@ export function useReferenceAppearance(base: AppearancePanelViewProps, enabled: 
     } catch (error) { setStatus('error'); setMessage(referenceErrorMessage(error)); }
   }
   if (!enabled) return base;
-  return { ...base, status, statusMessage: message, onEditReference: edit, editingReference: !!editing,
+  return { ...base, status: placeRun.busy ? 'applying' : status, statusMessage: message, onEditReference: edit, editingReference: !!editing,
     calibration: base.calibration ? { ...base.calibration, sourceKey: `${base.calibration.sourceKey}:${editRevision}` } : undefined,
     unavailableReason: roomId ? translatedMessage('appearance.reference.leaveRoom') : undefined,
-    canApply: status === 'ready' && !!draft.current, hasPreview: !!draft.current,
+    canApply: !placeRun.busy && status === 'ready' && !!draft.current, hasPreview: !!draft.current,
     canDiscard: base.canDiscard || active, showingOriginal: false,
-    onDiscard: () => { base.onDiscard(); setEditing(null); setActive(false); setStatus('idle'); setMessage(translatedMessage('appearance.reference.discarded')); },
+    onDiscard: () => { placeRun.reset(); base.onDiscard(); setEditing(null); setActive(false); setStatus('idle'); setMessage(translatedMessage('appearance.reference.discarded')); },
     onApply: () => { void place(); },
   };
 }

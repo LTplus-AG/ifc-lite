@@ -663,6 +663,10 @@
     "value": "PDF",
     "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
   },
+  "exportCommands.rhino.label": {
+    "value": "Rhino (.3dm)",
+    "reason": "Preserved technical syntax/identifier or proper name: Rhino, .3dm. Required for exact control, schema, format, shortcut or product recognition."
+  },
   "exportCommands.usd.label": {
     "value": "USD",
     "reason": "Reviewed shared technical symbol, unit, format, proper name, schema example or French label; exact displayed value is pinned."
@@ -1678,6 +1682,14 @@
   "reviewWorkspace.sourceKind.validation": {
     "value": "Validation",
     "reason": "French uses the same spelling « Validation » for this contextual label; reviewed against its feature meaning."
+  },
+  "rhinoExport.version.7": {
+    "value": "Rhino 7",
+    "reason": "Preserved product name and version number: Rhino 7. Required for exact product recognition when choosing the archive version."
+  },
+  "rhinoExport.version.8": {
+    "value": "Rhino 8",
+    "reason": "Preserved product name and version number: Rhino 8. Required for exact product recognition when choosing the archive version."
   },
   "ribbon.analyze.styleGroup": {
     "value": "Style",

@@ -8,13 +8,21 @@
 //! ```text
 //! <root>/result-v1/          0700
 //!     <key hex>.ifcr         0600  complete entries, only ever renamed into place
-//!     <key hex>.lock         0600  per-key writer lock (advisory, cross-process)
 //!     <key hex>.<pid>.<n>.tmp      a writer's file before its rename
+//!     locks/<00..ff>.lock    0600  256 writer-lock stripes, by the key's first byte
 //!     gc.lock                      held while evicting
 //! ```
 //!
-//! Publication: take the key's lock without waiting (a busy lock means another
-//! process is already writing the same result, so this one skips), recheck
+//! Lock files are permanent: nothing ever unlinks or replaces one, so every
+//! process that opens a stripe locks the same inode. (Per-key lock files that
+//! eviction removed let a writer holding the old inode and a writer holding a
+//! recreated one both "own" a key; PR #9614 review finding 3.) A stripe is
+//! shared by the keys that start with the same byte, so a writer can skip
+//! because an unrelated key in its stripe is being written; that costs one
+//! publication, never correctness.
+//!
+//! Publication: take the key's stripe without waiting (a busy stripe usually
+//! means another process is writing this result, so this one skips), recheck
 //! for an identical entry, write a temp file, fsync it, rename it over the
 //! entry path, fsync the directory. Readers open whole entries, so they see
 //! the old file or the new one, never a prefix. A crash leaves a `.tmp` that
@@ -35,6 +43,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, SystemTime};
 
 pub(super) const NAMESPACE: &str = "result-v1";
+const LOCKS: &str = "locks";
 const ENTRY_EXT: &str = "ifcr";
 const FREE_SPACE_HEADROOM: u64 = 1 << 30;
 const ORPHAN_TEMP_AGE: Duration = Duration::from_secs(60);
@@ -62,6 +71,10 @@ impl Store {
     pub(super) fn open(root: &Path, create: bool, max_bytes: u64, max_entry_bytes: u64) -> io::Result<Self> {
         let dir = root.join(NAMESPACE);
         private_dir(&dir, create)?;
+        // Read-only stores never lock; a writable one needs the stripe directory.
+        if create {
+            private_dir(&dir.join(LOCKS), true)?;
+        }
         Ok(Self { dir, max_bytes, max_entry_bytes })
     }
 
@@ -69,8 +82,10 @@ impl Store {
         self.dir.join(format!("{key}.{ENTRY_EXT}"))
     }
 
-    fn lock_path(&self, key: &str) -> PathBuf {
-        self.dir.join(format!("{key}.lock"))
+    /// The key's permanent lock stripe.
+    pub(super) fn lock_path(&self, key: &str) -> PathBuf {
+        let stripe = key.get(..2).filter(|s| s.bytes().all(|b| b.is_ascii_hexdigit())).unwrap_or("00");
+        self.dir.join(LOCKS).join(format!("{stripe}.lock"))
     }
 
     /// `Ok(None)` when there is no entry for `key`.
@@ -84,7 +99,8 @@ impl Store {
         if len > self.max_entry_bytes {
             return Err(ReadError::Oversized(len));
         }
-        let mut bytes = Vec::with_capacity(len as usize);
+        let capacity = usize::try_from(len).map_err(|_| ReadError::Oversized(len))?;
+        let mut bytes = Vec::with_capacity(capacity);
         (&file).take(len + 1).read_to_end(&mut bytes).map_err(ReadError::Io)?;
         if bytes.len() as u64 != len {
             return Err(ReadError::Io(io::Error::other("entry changed size while it was read")));
@@ -193,7 +209,10 @@ impl Store {
             let modified = meta.modified().unwrap_or(SystemTime::UNIX_EPOCH);
             if name.ends_with(".tmp") {
                 let stale = modified.elapsed().is_ok_and(|age| age > ORPHAN_TEMP_AGE);
-                if stale && self.key_is_idle(&stem) {
+                // Hold the stripe while removing: no writer of this key can be
+                // between creating and renaming its temp file meanwhile.
+                let held = stale.then(|| self.hold_stripe(&stem)).flatten();
+                if held.is_some() {
                     let _ = fs::remove_file(item.path());
                 }
             } else if name.ends_with(ENTRY_EXT) {
@@ -213,17 +232,17 @@ impl Store {
             if stem == keep {
                 continue;
             }
-            let Ok(lock) = open_lock(&self.lock_path(&stem)) else { continue };
-            if lock.try_lock().is_ok() && fs::remove_file(self.entry_path(&stem)).is_ok() {
+            let Some(_stripe) = self.hold_stripe(&stem) else { continue };
+            if fs::remove_file(self.entry_path(&stem)).is_ok() {
                 total = total.saturating_sub(len);
-                let _ = fs::remove_file(self.lock_path(&stem));
             }
         }
     }
 
-    /// No writer holds `key`'s lock right now.
-    fn key_is_idle(&self, key: &str) -> bool {
-        open_lock(&self.lock_path(key)).is_ok_and(|lock| lock.try_lock().is_ok())
+    /// `key`'s stripe, locked, if no writer holds it; unlocked on drop.
+    fn hold_stripe(&self, key: &str) -> Option<File> {
+        let lock = open_lock(&self.lock_path(key)).ok()?;
+        lock.try_lock().is_ok().then_some(lock)
     }
 
     #[cfg(test)]

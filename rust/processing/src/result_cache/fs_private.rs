@@ -4,13 +4,16 @@
 
 //! Private-file primitives for the result-cache store.
 //!
-//! On Unix: directories are created 0700 and files 0600, every open passes
-//! `O_NOFOLLOW` (a symlink at an entry path fails the open instead of being
-//! followed), and an opened entry or directory is trusted only when the
-//! current effective user owns it and no group/other bit can write it. Other
-//! platforms rely on the per-user cache location and refuse symlinks with a
-//! metadata check before the open, which is weaker (a race can still swap
-//! the path); phase 1 states that rather than claiming parity.
+//! On Unix: directories are created 0700 and files 0600. A file is opened
+//! only after `lstat` shows a regular file, with `O_NOFOLLOW | O_NONBLOCK`
+//! (a symlink fails the open; a FIFO or device swapped in after the check
+//! cannot block it), and the opened handle must still be that same regular
+//! file (device and inode), owned by the effective user with no group/other
+//! permission bit at all (0o077). Directories are checked by path (`lstat`:
+//! a real directory, ours, no group/other bits); their ancestors are trusted
+//! and followed. Other platforms check the file type by path before the open,
+//! which a race can defeat, and skip the owner/mode checks; phase 1 states
+//! that rather than claiming parity.
 
 use std::fs::{DirBuilder, File, Metadata, OpenOptions};
 use std::io;
@@ -22,7 +25,7 @@ mod imp {
     use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt};
 
     pub(crate) fn options(base: &mut OpenOptions, mode: u32) -> &mut OpenOptions {
-        base.custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC).mode(mode)
+        base.custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC | libc::O_NONBLOCK).mode(mode)
     }
 
     pub(crate) fn builder() -> DirBuilder {
@@ -90,11 +93,24 @@ mod imp {
 
 pub(super) use imp::{available_bytes, identity};
 
-fn refuse_symlink(path: &Path) -> io::Result<()> {
-    match std::fs::symlink_metadata(path) {
-        Ok(m) if m.file_type().is_symlink() => Err(io::Error::other("refusing a symlink")),
-        _ => Ok(()),
+/// `lstat` says a regular file (`NotFound` passes through as itself).
+fn regular_by_path(path: &Path) -> io::Result<Metadata> {
+    let meta = std::fs::symlink_metadata(path)?;
+    if meta.file_type().is_file() {
+        Ok(meta)
+    } else {
+        Err(io::Error::other("not a regular file (symlink, directory, FIFO, socket or device)"))
     }
+}
+
+/// The opened handle is still the regular, private file `lstat` saw.
+fn same_private_file(file: &File, seen: &Metadata) -> io::Result<Metadata> {
+    let meta = file.metadata()?;
+    if !meta.is_file() || identity(&meta) != identity(seen) {
+        return Err(io::Error::other("path changed while it was opened"));
+    }
+    imp::private(&meta, 0o077).map_err(io::Error::other)?;
+    Ok(meta)
 }
 
 /// Create `dir` (0700) if asked, then require a private real directory.
@@ -112,13 +128,9 @@ pub(super) fn private_dir(dir: &Path, create: bool) -> io::Result<()> {
 /// Open an existing entry read-only without following a symlink, and require
 /// a private regular file.
 pub(super) fn open_read(path: &Path) -> io::Result<(File, Metadata)> {
-    refuse_symlink(path)?;
+    let seen = regular_by_path(path)?;
     let file = imp::options(OpenOptions::new().read(true), 0).open(path)?;
-    let meta = file.metadata()?;
-    if !meta.is_file() {
-        return Err(io::Error::other("entry is not a regular file"));
-    }
-    imp::private(&meta, 0o022).map_err(io::Error::other)?;
+    let meta = same_private_file(&file, &seen)?;
     Ok((file, meta))
 }
 
@@ -129,13 +141,14 @@ pub(super) fn create_new(path: &Path) -> io::Result<File> {
 
 /// Open or create a per-key lock file (0600).
 pub(super) fn open_lock(path: &Path) -> io::Result<File> {
-    refuse_symlink(path)?;
-    let file = imp::options(OpenOptions::new().read(true).write(true).create(true).truncate(false), 0o600).open(path)?;
-    let meta = file.metadata()?;
-    if !meta.is_file() {
-        return Err(io::Error::other("lock is not a regular file"));
+    match regular_by_path(path) {
+        Ok(_) => {}
+        Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+        Err(e) => return Err(e),
     }
-    imp::private(&meta, 0o022).map_err(io::Error::other)?;
+    let file = imp::options(OpenOptions::new().read(true).write(true).create(true).truncate(false), 0o600).open(path)?;
+    let seen = file.metadata()?;
+    same_private_file(&file, &seen)?;
     Ok(file)
 }
 

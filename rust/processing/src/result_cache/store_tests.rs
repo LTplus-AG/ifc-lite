@@ -48,10 +48,15 @@ fn publish_then_read_with_private_modes() {
         let mode = |p: PathBuf| fs::metadata(p).unwrap().permissions().mode() & 0o777;
         assert_eq!(mode(root.join(NAMESPACE)), 0o700);
         assert_eq!(mode(root.join(NAMESPACE).join(format!("{KEY_A}.ifcr"))), 0o600);
-        // A group-writable entry is not trusted.
+        // A group-writable entry is not trusted, and (PR #9614 review finding
+        // 6) neither is a group/world-readable one: files must be 0600.
         let entry = root.join(NAMESPACE).join(format!("{KEY_A}.ifcr"));
-        fs::set_permissions(&entry, fs::Permissions::from_mode(0o620)).unwrap();
-        assert!(matches!(s.read(KEY_A), Err(ReadError::Io(_))));
+        for mode in [0o620, 0o644, 0o604] {
+            fs::set_permissions(&entry, fs::Permissions::from_mode(mode)).unwrap();
+            assert!(matches!(s.read(KEY_A), Err(ReadError::Io(_))), "mode {mode:o} accepted");
+        }
+        fs::set_permissions(&entry, fs::Permissions::from_mode(0o600)).unwrap();
+        assert!(read_bytes(&s, KEY_A).is_some());
         // A non-private namespace directory refuses to open.
         fs::set_permissions(root.join(NAMESPACE), fs::Permissions::from_mode(0o750)).unwrap();
         assert!(Store::open(&root, true, 1 << 30, 1 << 20).is_err());
@@ -203,5 +208,73 @@ fn eviction_removes_least_recently_used_first() {
     s.publish(KEY_C, &[3; 1000]);
     assert!(read_bytes(&s, KEY_B).is_none(), "LRU entry evicted");
     assert!(read_bytes(&s, KEY_A).is_some() && read_bytes(&s, KEY_C).is_some());
+    let _ = fs::remove_dir_all(&root);
+}
+
+/// PR #9614 review finding 3, the reviewer's schedule: a writer opens its key
+/// lock, eviction removes that key's entry, then the writer locks its handle.
+/// A second participant opening the lock path afterwards must contend for the
+/// SAME lock. At b2ad1daf eviction unlinked the lock file and both acquired.
+#[test]
+fn eviction_never_replaces_a_lock_a_writer_may_hold() {
+    let root = temp_root("lock-identity");
+    let s = Store::open(&root, true, 600, 500).unwrap();
+    assert!(matches!(s.publish(KEY_A, &[1; 400]), PublishOutcome::Published { .. }));
+    let paused_writer = super::fs_private::open_lock(&s.lock_path(KEY_A)).unwrap();
+    assert!(matches!(s.publish(KEY_B, &[2; 400]), PublishOutcome::Published { .. }));
+    assert!(read_bytes(&s, KEY_A).is_none(), "A was evicted to fit B");
+    assert!(s.lock_path(KEY_A).exists(), "lock files are never removed");
+    paused_writer.try_lock().expect("the paused writer locks its handle");
+    let second = super::fs_private::open_lock(&s.lock_path(KEY_A)).unwrap();
+    assert!(second.try_lock().is_err(), "two participants held the same key's lock");
+    // While the paused writer holds it, nobody else publishes that key.
+    assert_eq!(s.publish(KEY_A, &[3; 100]), PublishOutcome::SkippedConcurrentWriter);
+    let _ = fs::remove_dir_all(&root);
+}
+
+/// Run `f` on a thread and fail (not hang) if it does not return in time.
+#[cfg(unix)]
+fn within_deadline<T: Send + 'static>(what: &str, f: impl FnOnce() -> T + Send + 'static) -> T {
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let _ = tx.send(f());
+    });
+    rx.recv_timeout(Duration::from_secs(10)).unwrap_or_else(|_| panic!("{what} blocked for 10 s"))
+}
+
+/// PR #9614 review finding 4: a FIFO, directory or socket at an entry or lock
+/// path is refused without blocking. At b2ad1daf opening a FIFO entry waited
+/// forever for a writer before its file type was checked.
+#[cfg(unix)]
+#[test]
+fn non_regular_files_at_entry_and_lock_paths_never_block() {
+    let root = temp_root("fifo");
+    let s = store(&root);
+    let entry = s.dir().join(format!("{KEY_A}.ifcr"));
+    let made = std::process::Command::new("mkfifo").arg(&entry).status().expect("mkfifo runs");
+    assert!(made.success());
+    let reader_root = root.clone();
+    let read = within_deadline("reading a FIFO entry", move || matches!(store(&reader_root).read(KEY_A), Err(ReadError::Io(_))));
+    assert!(read, "a FIFO entry is refused");
+    fs::remove_file(&entry).unwrap();
+
+    fs::create_dir(&entry).unwrap();
+    assert!(matches!(s.read(KEY_A), Err(ReadError::Io(_))), "a directory entry is refused");
+    fs::remove_dir(&entry).unwrap();
+
+    let _socket = std::os::unix::net::UnixListener::bind(&entry).unwrap();
+    assert!(matches!(s.read(KEY_A), Err(ReadError::Io(_))), "a socket entry is refused");
+    fs::remove_file(&entry).unwrap();
+
+    std::os::unix::fs::symlink("/dev/zero", &entry).unwrap();
+    assert!(matches!(s.read(KEY_A), Err(ReadError::Io(_))), "a device symlink is refused");
+    fs::remove_file(&entry).unwrap();
+
+    // A FIFO at the key's lock stripe: publication fails fast instead of hanging.
+    let lock = s.lock_path(KEY_B);
+    assert!(std::process::Command::new("mkfifo").arg(&lock).status().unwrap().success());
+    let writer_root = root.clone();
+    let outcome = within_deadline("locking a FIFO lock", move || store(&writer_root).publish(KEY_B, b"b"));
+    assert!(matches!(outcome, PublishOutcome::Failed(_)), "{outcome:?}");
     let _ = fs::remove_dir_all(&root);
 }

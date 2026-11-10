@@ -3285,6 +3285,25 @@ Orientation reuses deterministic edge adjacency, triangle filters compact their 
     cheaply.
   - Judge perf by the multi-threaded critical path as well as by CPU: moving
     work onto a few heavy hosts can lower total CPU and still lengthen the load.
+- **Incircle stages C/D without per-call zeroing: measured, WITHDRAWN on
+  provenance (native instruction hillclimb, 2026-11-10, PR #9637 closed).** The
+  mechanism is real. #9016 hands what stage B cannot decide to
+  `geometry_predicates::incircle`, assuming that is rare, but on ISSUE_129
+  43,331 calls take that path, and `incircleadapt` zeroes about 20 KB per call
+  (two 1152-entry `fin` expansions only ever read below their written length):
+  806M of their 1.03G instructions. Continuing from #9016's own stage-B state
+  into stages C/D with reused thread-local `fin` scratch measured, alone against
+  main: FZK -4.3%, ISSUE_129 -3.3%, Holter -0.4% pipeline instructions, the
+  others flat, `perf_probe` fingerprints identical, and the existing bit-identity
+  test passed. It was not landed because that port followed the MIT-licensed
+  crate's `incircleadapt` operation for operation, and CLA.md §4(a) admits only
+  original work in an ordinary contribution. Note the crate reads past a
+  written prefix in two places (length-1 `bct`/`cat`/`abt` defaults; `cxtab`,
+  whose shadowed length is read as 8), so only the `fin` buffers can safely be
+  reused. **To pursue it: upstream the zeroing fix to `geometry-predicates`, or
+  write an original exact-sign stage C/D (the CDT reads only the sign) that
+  keeps the crate's results in the underflow and overflow ranges the #9016 test
+  covers.** Not a wall-time or browser claim.
 - **More geometry workers** -> zero CSG speedup: memory-bandwidth bound, not CPU.
 - **Shared entity-index for the VIEWER huge-file path** (#1445): CLOSED, branch
   deleted, REFUTED by an end-to-end 722MB re-measure. The retained-size spike looked

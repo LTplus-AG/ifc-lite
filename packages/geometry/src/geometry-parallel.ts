@@ -281,6 +281,7 @@ export async function* processParallel(
       const msg = e.data;
       if (isTraceSpansMessage(msg)) { trace.merge(msg.payload, poolSpan); return; }
       if (msg.type === 'ready') {
+        if (trace.enabled) trace.span('geometry.workerReady', () => {}, { worker: workerIndex });
         console.log(`[stream] worker[${workerIndex}] WASM ready @ ${elapsed()}ms`);
         return;
       }
@@ -300,6 +301,7 @@ export async function* processParallel(
           // Absent = "no stop reported". TODO(#3699): no wasm build sets it yet.
           malformedStart: msg.malformedStart as number | undefined,
         };
+        if (trace.enabled) trace.span('geometry.shardComplete', () => {}, { worker: workerIndex, shard: si });
         shardResultsRemaining--;
         console.log(`[stream][shard] worker[${workerIndex}] shard ${si} done @ ${elapsed()}ms (${(msg.ids as Uint32Array).length} entities, remaining=${shardResultsRemaining})`);
         if (shardResultsRemaining === 0) {

@@ -726,7 +726,8 @@ function applySourceBytesToApi(): void {
   const ifcApi = api as IfcAPIWithMerge | null;
   if (!ifcApi || sourceBytesApplied || !cachedSourceBytes) return;
   if (typeof ifcApi.setSourceBytes !== 'function') return;
-  ifcApi.setSourceBytes(cachedSourceBytes);
+  const sourceSpan = traceGeometryWorkerMessage.begin('worker.sourceInstall');
+  try { ifcApi.setSourceBytes(cachedSourceBytes); } finally { traceGeometryWorkerMessage.end(sourceSpan); }
   sourceBytesApplied = true;
 }
 
@@ -942,6 +943,8 @@ function flushPending(session: ProcessingSession): void {
   // Total counts both routes: flat meshes + instanced occurrences (the latter
   // left the flat array but are still rendered geometry).
   session.totalMeshesEmitted += meshes.length + instancedOccurrences;
+  const postSpan = traceGeometryWorkerMessage.begin('worker.batch.post');
+  try {
   (self as unknown as Worker).postMessage(
     {
       type: 'batch',
@@ -955,12 +958,16 @@ function flushPending(session: ProcessingSession): void {
     } as GeometryWorkerBatchMessage,
     [...transfers, ...instancedShards],
   );
+  } finally { traceGeometryWorkerMessage.end(postSpan); }
 }
 
 function collectMeshes(
   session: ProcessingSession,
   collection: ReturnType<IfcAPI['processGeometryBatch']>,
 ): void {
+  traceGeometryWorkerMessage.endNamed('worker.batch.wasm');
+  const collectSpan = traceGeometryWorkerMessage.begin('worker.batch.collect');
+  try {
   try {
     // Per-entity geometry fingerprints — hash (#924) plus the absolute world
     // box (#1891) and the proved enclosed volume (#1993) — empty unless
@@ -1092,6 +1099,7 @@ function collectMeshes(
   } finally {
     collection.free();
   }
+  } finally { traceGeometryWorkerMessage.end(collectSpan); }
 }
 
 /** Shape of a PartitionedBatch result (legacy or `*FromSource`). */
@@ -1120,6 +1128,9 @@ type IfcAPIWithSourceBatch = IfcAPI & {
  * minus the per-call file copy.
  */
 function consumePartitioned(session: ProcessingSession, partitioned: PartitionedBatchResult): void {
+  traceGeometryWorkerMessage.endNamed('worker.batch.wasm');
+  const collectSpan = traceGeometryWorkerMessage.begin('worker.batch.collect');
+  try {
   try {
     // takeMeshes() MOVES the flat MeshCollection out (take-once); collectMeshes
     // frees it. None only on a second take — we call it once.
@@ -1145,6 +1156,7 @@ function consumePartitioned(session: ProcessingSession, partitioned: Partitioned
     // Free the now-empty PartitionedBatch wrapper (its contents were moved out).
     partitioned.free?.();
   }
+  } finally { traceGeometryWorkerMessage.end(collectSpan); }
 }
 
 /**
@@ -1196,6 +1208,8 @@ async function processBatch(session: ProcessingSession, jobs: Uint32Array): Prom
       processGeometryBatchPartitioned?: (...args: unknown[]) => PartitionedBatchResult;
     }).processGeometryBatchPartitioned;
 
+    const wasmSpan = traceGeometryWorkerMessage.begin('worker.batch.wasm');
+    try {
     if (typeof partitionedFromSourceFn === 'function' && instancingEnabled) {
       consumePartitioned(session, partitionedFromSourceFn.call(
         ifcApi, jobs, session.unitScale,
@@ -1231,6 +1245,7 @@ async function processBatch(session: ProcessingSession, jobs: Uint32Array): Prom
       );
       collectMeshes(session, collection);
     }
+    } finally { traceGeometryWorkerMessage.end(wasmSpan); }
   } catch (err) {
     const msg = (err as Error).message;
     // The recovery below issues more synchronous WASM work — a SAB-fallback

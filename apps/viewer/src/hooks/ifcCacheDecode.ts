@@ -182,6 +182,7 @@ export async function decodeCachedMetadata(
   if (sourceBuffer) {
     source = new Uint8Array(sourceBuffer);
 
+    const entityIndexSpan = trace.begin('cache.entityIndex');
     if (result.entityIndex) {
       entityIndex = buildEntityIndexFromCachedColumns(result.entityIndex);
     } else {
@@ -208,14 +209,16 @@ export async function decodeCachedMetadata(
       entityIndex = { byId: indexBuilder.build(), byType };
     }
 
+    trace.end(entityIndexSpan);
+
     // Rebuild on-demand maps from relationships.
     // Pass entityIndex which contains ALL entity types including IfcPropertySet/IfcElementQuantity
     // (the entity table may not include these since they're filtered during fresh parse).
-    ({ onDemandPropertyMap, onDemandQuantityMap, onDemandMaterialMap } = rebuildOnDemandMaps(
+    ({ onDemandPropertyMap, onDemandQuantityMap, onDemandMaterialMap } = trace.span('cache.onDemandMaps', () => rebuildOnDemandMaps(
       cacheStore.entities,
       cacheStore.relationships,
       entityIndex
-    ));
+    )));
   } else {
     console.warn('[useIfcCache] No source buffer in cache - on-demand property extraction disabled');
   }
@@ -233,6 +236,7 @@ export async function decodeCachedMetadata(
     onDemandMaterialMap,
   }));
 
+  const spatialSpan = trace.begin('cache.spatial');
   // Rebuild spatial hierarchy from cache data (cache doesn't serialize it)
   // Use SpatialHierarchyBuilder to extract elevations from source buffer
   if (!dataStore.spatialHierarchy && dataStore.entities && dataStore.relationships) {
@@ -266,6 +270,7 @@ export async function decodeCachedMetadata(
     }
   }
 
+  trace.end(spatialSpan);
   return { dataStore, cacheBuffer, cacheBlob, headerInfo, geometrySection };
 }
 
@@ -303,7 +308,7 @@ export async function decodeCachedModel(
   const meshes: MeshData[] = [];
   await trace.span('cache.geometry', async () => {
     // Chunks decompress independently; overlap them instead of one at a time.
-    const chunks = await Promise.all(open.chunks.map((_, i) => open.readChunk(i)));
+    const chunks = await Promise.all(open.chunks.map((_, i) => trace.span('cache.chunkDecode', () => open.readChunk(i), { chunk: i })));
     for (const chunk of chunks) for (const mesh of chunk) meshes.push(mesh);
   });
   if (isStale()) return null;

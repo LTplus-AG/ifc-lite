@@ -1210,6 +1210,8 @@ export function useIfcLoader() {
         }
       }
 
+      trace.milestone('cache.miss'); // Gap to geometry.pool includes server, init and source copy.
+
       // Try server parsing first (enabled by default for multi-core performance)
       // Only for IFC4 STEP files (server doesn't support IFCX). Native
       // file handles (Tauri) don't have an HTTP-uploadable body, so skip

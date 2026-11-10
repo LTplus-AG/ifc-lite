@@ -6107,3 +6107,29 @@ strictly less than 2× from 1K to 50K, and a passing F5 exercise result whose
 lane, not a substitute tower here. Missing sizes or F5 evidence fail the check.
 The baseline is a description of current main, not an accepted round-1 result
 or a speedup claim.
+
+### Load hillclimb stage instrumentation
+
+Measurement only; no scheduling or geometry changes and no measured speedup claimed.
+With `?perfTrace=1`, warm loads additionally record `cache.entityIndex`
+(cached-column or source-scan rebuild), `cache.onDemandMaps` (relationship maps),
+and `cache.spatial` (spatial rebuild, including elevation and height extraction).
+`cache.chunkDecode` records each geometry chunk with a `chunk` index on primary,
+snapshot and federated hits. Sum its durations for total decode work; overlapping
+snapshot/federated spans are work time, not wall time.
+`scene.snapshotHydrate` times attachment to adopted batches;
+`scene.snapshotHydrate.refused` counts attachment refusals.
+
+`geometry.workerReady` records every ready receipt with `worker`, so the earliest
+and latest give first/last readiness. `geometry.shardComplete` records each shard
+receipt with `worker` and `shard`. `prepass.sharded` distinguishes the sharded
+worker handler from `prepass.scan`; the existing `styles.finalize` remains the
+style-finalization handler span. Worker sub-stages are `worker.sourceInstall`
+(the source-to-wasm copy), `worker.batch.wasm` (batch geometry call),
+`worker.batch.collect` (copy-out/collection, possibly nested for partitioned output),
+and `worker.batch.post` (synchronous batch postMessage). Existing
+`msg.worker.out.transfers` and byte counters measure transfer lists.
+`cache.miss` marks fallthrough after lookup/rejected-hit processing; the interval
+from the existing `cache.lookup` end to `geometry.pool` start measures the full
+miss preparation gap (server attempt, engine initialization and source copy).
+No pool means a different load path, not a missing duration.

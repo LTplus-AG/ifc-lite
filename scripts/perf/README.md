@@ -8,6 +8,27 @@ Citations to `evidence/`, `tests/evidence/` and `docs/architecture/evidence/` pa
 at commit [`f98785c722`](https://github.com/LTplus-AG/ifc-lite/tree/f98785c722); the retained
 bundles left the tree in #9054.
 
+## Deferred viewer cache encoding (NEW-5, #9622)
+
+**Rejected: a short idle timeout does not establish scene readiness.** The
+scheduler probe starts encoding during a saturated post-load task sequence,
+while the original real-load attribution places cache work before scene
+finalisation. Moving the same synchronous table serializers to that timer
+preserves the long task and can charge it to the next file open instead.
+Deep-cloning the captured mesh graph adds synchronous copies and a second
+geometry lifetime inside the window this change was meant to shorten.
+
+The attempted viewer-only implementation was withdrawn; no load-time win or
+scoreboard acceptance is claimed. Reconsider only with an actual interactive
+readiness signal followed by idle admission, yielding table/geometry encoding,
+and cheap generation checks that discard writes after edits or supersession.
+A new file must cancel pending work rather than synchronously encode the old
+model. Hidden/pagehide handling must respect the same validity check; an
+optional cache entry is preferable to persisting geometry from a later edit.
+These are cross-layer scheduling and serializer contracts, beyond a small
+write-site timing change. Preserve byte-format compatibility and measure the
+whole load plus first interaction before accepting a replacement.
+
 ## Storey planners and the QuickJS runtime leave the boot path (#9200)
 
 **Shipped: an eager-bytes cut, no boot-time change.** Three changes, each one

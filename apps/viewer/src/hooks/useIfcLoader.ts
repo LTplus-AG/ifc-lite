@@ -8,7 +8,6 @@
  * cache management, and server-side parsing delegation
  *
  */
-import { deferCacheWrite, flushDeferredCacheWrites } from './deferred-cache-write.js';
 import { useCallback, useEffect, useRef } from 'react';
 import { attachCapturedLoad } from '@/lib/error-reports/correlation';
 import { useShallow } from 'zustand/react/shallow';
@@ -255,7 +254,6 @@ export function useIfcLoader() {
     options?: ModelLoadOptions,
   ) => {
     assertWorkflowOwner(options?.workflowOwner);
-    flushDeferredCacheWrites();
     const draping = drapeIfGeoRaster(file); if (draping) return draping; // #5942: imagery, never a model
     const geometryKernel = beginGeometryKernel(file, target, () => void loadFileRef.current?.(file, target, options)); if (geometryKernel.refused) return settleKernelRefusal(geometryKernel.refused, options?.onLoadError); // #7955 M2: out-of-scope retained requests stop before any work
     const { resetViewerState, clearAllModels } = useViewerStore.getState();
@@ -1886,16 +1884,15 @@ export function useIfcLoader() {
                 // either silently, without the notice, so re-process instead.
                 const hasTexturedMeshes = allMeshes.some((m) => m.texture || m.textureRef);
                 if (hasTexturedMeshes) console.log('[useIfc] Skipping cache write: model carries surface textures the cache format does not persist yet (#1781)');
-                const cacheCoordinateInfo = finalCoordinateInfo ? structuredClone(finalCoordinateInfo) : undefined;
+                const cacheCoordinateInfo = finalCoordinateInfo;
                 const cacheable = cachePlan.shouldCache && !hasTexturedMeshes && !skippedHungElements && !omittedTypeRecords && allMeshes.length > 0 && !!cacheCoordinateInfo;
-                const cacheShards = cacheable ? allInstancedShards.map((shard) => shard.slice(0)) : [];
                 const writeCache = (meshes: MeshData[]) => cacheCoordinateInfo && trace.span('cache.write', () => saveToCache(cacheKey, dataStore, {
                   meshes, coordinateInfo: cacheCoordinateInfo,
                   totalVertices: meshes.reduce((sum, m) => sum + m.positions.length / 3, 0),
                   totalTriangles: meshes.reduce((sum, m) => sum + m.indices.length / 3, 0),
                   // Persist the GPU-instancing shards too, else a cache reload would
                   // restore the flat meshes only and drop all instanced occurrences.
-                  ...(cacheShards.length > 0 ? { instancedShards: cacheShards } : {}),
+                  ...(allInstancedShards.length > 0 ? { instancedShards: allInstancedShards } : {}),
                 }, buffer, file.name, {
                   // mtime guard plus the load's identity as the full-content
                   // validation hash (#7022: no second pass in the write).
@@ -1909,7 +1906,7 @@ export function useIfcLoader() {
                   // alive as the model's geometryResult.meshes, so it is NOT cleared.
                   applyColorUpdatesToMeshes(allMeshes, cumulativeColorUpdates);
                   // finalizeModel re-homes ids on the mesh objects in place; the cache keeps raw ids.
-                  const cacheMeshes = cacheable ? structuredClone(allMeshes) : null;
+                  const cacheMeshes = cacheable ? allMeshes.map((m) => ({ ...m })) : null;
                   const federatedGeometry: GeometryResult = {
                     meshes: allMeshes,
                     totalVertices: allMeshes.reduce((sum, m) => sum + m.positions.length / 3, 0),
@@ -1932,7 +1929,7 @@ export function useIfcLoader() {
                     loadState: 'complete', loadPath: 'wasm', tessellationTier: loadTessellationTier, skipSmallCuts: skipSmallCutsAtLoad,
                   }, allInstancedShards));
                   // Background, like the primary write; compaction waits so the write keeps the raw length.
-                  if (cacheMeshes && !isStale()) void deferCacheWrite(() => Promise.resolve(writeCache(cacheMeshes))).catch((error) => console.warn('[useIfc] Deferred cache write failed:', error)).finally(() => compactSourceAfterLoad(dataStore));
+                  if (cacheMeshes && !isStale()) void Promise.resolve(writeCache(cacheMeshes)).finally(() => compactSourceAfterLoad(dataStore));
                   else compactSourceAfterLoad(dataStore);
                   return;
                 }
@@ -1945,17 +1942,20 @@ export function useIfcLoader() {
                 }, allInstancedShards));
                 if (isStale()) return; // finalize awaited the identity pass (#7022)
 
-                // Persist eligible tiers without source bytes; re-open validates
-                // the fresh buffer via mtime and the off-thread full hash.
+                // Cache the result in the background, reusing the `cachePlan`
+                // decided once above (single source of truth for read + write).
+                // Both tiers (`source` 10-150MB, `mesh-only` 150-400MB, kill switch `?meshCache=0`) cache
+                // tables + geometry WITHOUT the source; re-open rehydrates from the fresh buffer, validated
+                // by the mtime guard + off-thread full hash (cacheTier.ts) — the key only keys the lookup.
+                // Files above 400MB (or with the mesh-only kill switch set) are not cached.
                 if (cacheable) {
+                  // Final safety pass so cache always contains post-style colors.
                   applyColorUpdatesToMeshes(allMeshes, cumulativeColorUpdates);
-                  const cacheMeshes = structuredClone(allMeshes);
-                  void deferCacheWrite(() => Promise.resolve(writeCache(cacheMeshes)))
-                    .catch((error) => console.warn('[useIfc] Deferred cache write failed:', error))
-                    .finally(() => compactSourceAfterLoad(dataStore));
+                  await writeCache(allMeshes);
                 }
 
-                if (!cacheable) compactSourceAfterLoad(dataStore);
+                compactSourceAfterLoad(dataStore);
+                // Release closure references; geometryResult owns the rendered meshes.
                 setTimeout(() => {
                   allMeshes.length = 0;
                   cumulativeColorUpdates.clear();

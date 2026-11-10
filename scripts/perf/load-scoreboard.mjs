@@ -29,7 +29,7 @@ import { fileURLToPath } from 'node:url';
 import { roundOrder, seededRand } from './ab-order.mjs';
 import { nativeSample } from './load-scoreboard-native.mjs';
 import { LANES, renderMarkdown, summarize } from './load-scoreboard-report.mjs';
-import { browserShares } from './load-scoreboard-stats.mjs';
+import { browserShares, diffElements } from './load-scoreboard-stats.mjs';
 
 const ROOT = resolve(fileURLToPath(new URL('../..', import.meta.url)));
 const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
@@ -188,6 +188,29 @@ async function startBrowserLane(plan, out) {
   };
 }
 
+/** Per-element maps saved by the browser lane (`<fixture>-<side>-r<round>-<open>.elements.json`). */
+function readElements(out, row) {
+  const open = row.lane === 'browser-cold' ? 'cold' : `warm${row.warmOpens?.length ?? 2}`;
+  const path = join(out, 'traces', `${row.fixture}-${row.side}-r${row.round}-${open}.elements.json`);
+  return existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')).reduce((a, m) => Object.assign(a, m), {}) : null;
+}
+
+/** For browser lanes, diff per-element output of every round pair against the first base sample. */
+function attachElementDiffs(summary, samples, plan, out) {
+  for (const f of summary.fixtures) {
+    for (const lane of ['browser-cold', 'browser-warm']) {
+      const l = f.lanes[lane];
+      if (!l) continue;
+      const rows = samples.filter((r) => r.fixture === f.name && r.lane === lane && r.ok);
+      const ref = rows.find((r) => r.side === 'base');
+      const refElements = ref && readElements(out, ref);
+      if (!refElements) continue;
+      const diffs = rows.filter((r) => r !== ref).map((r) => ({ side: r.side, round: r.round, ...diffElements(refElements, readElements(out, r) ?? {}) }));
+      l.elementDiff = { reference: `base r${ref.round}`, identical: diffs.every((d) => d.identical), diffs };
+    }
+  }
+}
+
 function report(opt) {
   const out = resolve(opt.out);
   const plan = JSON.parse(readFileSync(opt.plan ?? join(out, 'plan.json'), 'utf8'));
@@ -203,6 +226,7 @@ function report(opt) {
   const floors = aaPath ? JSON.parse(readFileSync(aaPath, 'utf8')).floors : null;
   const host = existsSync(join(out, 'host.json')) ? JSON.parse(readFileSync(join(out, 'host.json'), 'utf8')) : null;
   const summary = summarize(plan, samples, { floors });
+  attachElementDiffs(summary, samples, plan, out);
   summary.aaReference = aaPath;
   summary.host = host;
   writeFileSync(join(out, 'report.json'), JSON.stringify(summary, null, 2) + '\n');

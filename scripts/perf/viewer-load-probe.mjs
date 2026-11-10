@@ -158,28 +158,60 @@ export async function openAndWaitInteractive(page, files, { timeoutMs = 45 * 60 
   return { ...value, t0 };
 }
 
-/** After the timer: output counts and an order-independent mesh signature per model. */
+/**
+ * After the timer: each model's output identity, independent of how batches
+ * split geometry between flat meshes and instanced (IFNS) shards. Batch-local
+ * instancing legitimately moves elements between the two forms with the batch
+ * partition, so flat mesh/triangle counts are not an output identity.
+ *
+ * Identity = per element, the Rust element geometry hash (#924: quantized,
+ * RTC-invariant, computed on the whole element before flat/instanced routing),
+ * read from flat `MeshData.geometryHash` plus `geometryResult.instancedGeometryHashes`.
+ * `sig` is an order-independent aggregate over (expressId, hash); `elements`
+ * maps each id to its hash for a per-element diff. Flat counts are kept as
+ * information only.
+ */
 export async function readOutputFingerprint(page) {
   return page.evaluate(() => {
     const s = globalThis.__ifc_lite_viewer_store__?.getState();
     const models = [...(s?.models?.values?.() ?? [])];
-    const fnv = (values) => {
-      let h = 0x811c9dc5;
-      for (const v of values) { h ^= v & 0xff; h = Math.imul(h, 0x01000193); h ^= (v >>> 8) & 0xff; h = Math.imul(h, 0x01000193);
-        h ^= (v >>> 16) & 0xff; h = Math.imul(h, 0x01000193); h ^= v >>> 24; h = Math.imul(h, 0x01000193); }
+    const fnv = (text, seed) => {
+      let h = seed >>> 0;
+      for (let i = 0; i < text.length; i++) { h ^= text.charCodeAt(i); h = Math.imul(h, 0x01000193); }
       return h >>> 0;
     };
     return models.map((m) => {
       const g = m.geometryResult;
       const meshes = g?.meshes ?? [];
-      let triangles = 0, vertices = 0, sig = 0;
+      const elements = {};
+      const unhashed = new Set();
+      let conflicts = 0, flatTriangles = 0;
+      const put = (id, hash) => {
+        const hex = hash.toString(16);
+        if (elements[id] !== undefined && elements[id] !== hex) conflicts++;
+        elements[id] = hex;
+      };
       for (const mesh of meshes) {
-        const t = (mesh.indices?.length ?? 0) / 3, v = (mesh.positions?.length ?? 0) / 3;
-        triangles += t; vertices += v;
-        sig = (sig + fnv([mesh.expressId >>> 0, v >>> 0, t >>> 0])) >>> 0; // sum: independent of arrival order
+        flatTriangles += (mesh.indices?.length ?? 0) / 3;
+        if (mesh.geometryHash !== undefined && mesh.geometryHash !== null) put(mesh.expressId, mesh.geometryHash);
+        else unhashed.add(mesh.expressId);
       }
-      return { name: m.name, meshes: meshes.length, triangles, vertices, reportedTriangles: g?.totalTriangles ?? null,
-        reportedVertices: g?.totalVertices ?? null, entities: m.ifcDataStore?.entityCount ?? null, meshSignature: sig.toString(16) };
+      for (const [id, hash] of g?.instancedGeometryHashes ?? []) put(id, hash);
+      for (const id of Object.keys(elements)) unhashed.delete(Number(id));
+      let sumA = 0, sumB = 0;
+      for (const [id, hex] of Object.entries(elements)) {
+        const key = `${id}:${hex}`;
+        sumA = (sumA + fnv(key, 0x811c9dc5)) >>> 0;
+        sumB = (sumB + fnv(key, 0x01000193)) >>> 0;
+      }
+      const hashed = Object.keys(elements).length;
+      return {
+        name: m.name,
+        identity: `elements=${hashed + unhashed.size} hashed=${hashed} unhashed=${unhashed.size} conflicts=${conflicts} sig=${sumA.toString(16).padStart(8, '0')}${sumB.toString(16).padStart(8, '0')}`,
+        elements, unhashedIds: [...unhashed].slice(0, 200),
+        flat: { meshes: meshes.length, triangles: flatTriangles, instancedElements: g?.instancedGeometryHashes?.size ?? 0 },
+        entities: m.ifcDataStore?.entityCount ?? null,
+      };
     });
   });
 }

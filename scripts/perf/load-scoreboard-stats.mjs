@@ -202,6 +202,20 @@ export function rankShares(shares) {
     .sort((a, b) => b.share - a.share);
 }
 
+/** Per-element output diff of two { expressId: hash } maps: ids on one side only, and ids whose hash differs. */
+export function diffElements(base, branch, limit = 10) {
+  const onlyBase = [], onlyBranch = [], changed = [];
+  for (const [id, hash] of Object.entries(base)) {
+    if (!(id in branch)) onlyBase.push(Number(id));
+    else if (branch[id] !== hash) changed.push(Number(id));
+  }
+  for (const id of Object.keys(branch)) if (!(id in base)) onlyBranch.push(Number(id));
+  const head = (xs) => xs.sort((a, b) => a - b).slice(0, limit);
+  return { identical: onlyBase.length + onlyBranch.length + changed.length === 0, compared: Object.keys(base).length,
+    onlyBase: onlyBase.length, onlyBranch: onlyBranch.length, changed: changed.length,
+    examples: { onlyBase: head(onlyBase), onlyBranch: head(onlyBranch), changed: head(changed) } };
+}
+
 /** Viewer cache tier a source of `bytes` qualifies for (apps/viewer/src/utils/ifcConfig.ts, hooks/cacheTier.ts). */
 export function expectedCacheTier(bytes) {
   const MB = 1024 * 1024;

@@ -9,7 +9,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  aaNoiseFloor, bootstrapHalfWidth, browserShares, browserStages, expectedCacheTier, gainOf, median, nativeStages, rankShares,
+  aaNoiseFloor, bootstrapHalfWidth, browserShares, browserStages, diffElements, expectedCacheTier, gainOf, median, nativeStages, rankShares,
   relativeSpread, stageShares, unionLength, verdictFor,
 } from './load-scoreboard-stats.mjs';
 import { summarize } from './load-scoreboard-report.mjs';
@@ -140,4 +140,12 @@ test('browser shares name the untraced part of the load and keep milestone times
     ['cache.decode', 'main', 100, 200, 0, 2, null], ['search.tier1', 'main', 200, 300, 0, 3, null]] }], 1000);
   assert.ok(Math.abs(shares['(no span)'] - 0.6) < 1e-12);
   assert.equal(milestones['cache.storeReady'], 700);
+});
+
+test('per-element output diff ignores order and names missing, extra and changed elements', () => {
+  assert.equal(diffElements({ 1: 'a', 2: 'b' }, { 2: 'b', 1: 'a' }).identical, true);
+  const d = diffElements({ 1: 'a', 2: 'b', 3: 'c' }, { 2: 'b', 3: 'x', 4: 'd' });
+  assert.equal(d.identical, false);
+  assert.deepEqual([d.onlyBase, d.onlyBranch, d.changed], [1, 1, 1]);
+  assert.deepEqual(d.examples, { onlyBase: [1], onlyBranch: [4], changed: [3] });
 });

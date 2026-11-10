@@ -113,7 +113,10 @@ export async function browserSample({ chromium, executablePath, baseUrl, setRoot
     try { open = await openAndWaitInteractive(page, [fixture.path], { timeoutMs }); } finally { meta[`${label}Memory`] = sampler.stop(); }
     const fingerprint = await readOutputFingerprint(page);
     log?.(`  ${tag} ${label}: first ${open.firstFrameMs?.toFixed(0)} ms, interactive ${open.interactiveMs.toFixed(0)} ms, peak PSS ${meta[`${label}Memory`].peakPssMiB.toFixed(0)} MiB, path ${open.loadPaths.join(',')}`);
-    return { ...summarizeOpen(open, meta[`${label}Memory`]), fingerprint: fingerprint.map((m) => `meshes=${m.meshes} triangles=${m.triangles} vertices=${m.vertices} sig=${m.meshSignature}`).join(' | '), models: fingerprint };
+    // Per-element hashes go to their own file (large); the row keeps the partition-independent identity.
+    writeFileSync(join(outDir, `${tag}-${label}.elements.json`), JSON.stringify(fingerprint.map((m) => m.elements)));
+    return { ...summarizeOpen(open, meta[`${label}Memory`]), fingerprint: fingerprint.map((m) => m.identity).join(' | '),
+      models: fingerprint.map(({ elements, ...rest }) => rest) };
   };
   try {
     context = await chromium.launchPersistentContext(profileDir, { env, executablePath, headless: false,

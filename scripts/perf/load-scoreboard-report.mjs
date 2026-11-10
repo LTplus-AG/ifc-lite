@@ -184,6 +184,14 @@ export function renderMarkdown(summary, plan, host) {
     if (!summary.fixtures.some((f) => f.set === set)) continue;
     out.push(`## Verdicts (${set}): gain >= 2x noise floor`, '', verdictTable(summary, set, plan.lanes), '');
   }
+  const diffRows = summary.fixtures.flatMap((f) => ['browser-cold', 'browser-warm'].filter((lane) => f.lanes[lane]?.elementDiff).map((lane) => {
+    const d = f.lanes[lane].elementDiff, worst = d.diffs.find((x) => !x.identical);
+    return `| ${f.name} | ${lane} | ${d.diffs.length + 1} | ${d.identical ? 'IDENTICAL' : `DIFFERS (${worst.side} r${worst.round}: ${worst.onlyBase} missing, ${worst.onlyBranch} extra, ${worst.changed} changed of ${worst.compared}; e.g. ${[...worst.examples.changed, ...worst.examples.onlyBase, ...worst.examples.onlyBranch].slice(0, 5).join(', ')})`} |`;
+  }));
+  if (diffRows.length) {
+    out.push('## Per-element output (element geometry hashes, flat + instanced; every sample vs the first base sample)', '',
+      '| fixture | lane | samples | result |', '|---|---|---:|---|', ...diffRows, '');
+  }
   out.push('## Lane summary (interactive time)', '');
   for (const [lane, s] of Object.entries(summary.laneSummary)) {
     out.push(`- **${lane}**: gains [${s.gains.join(', ')}]; regressions [${s.regressions.join(', ')}]; no significant difference [${s.noDifference.join(', ')}]; inconclusive [${s.inconclusive.join(', ')}]; output not matching [${s.outputChanged.join(', ')}]`);

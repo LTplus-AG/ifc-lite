@@ -162,3 +162,70 @@ fn issue7880_integer_valued_reals_preserve_bits_across_conversion_boundary() {
         }
     }
 }
+
+/// The single-pass reader values a literal in the grammar walk when one IEEE
+/// operation is exact (mantissa <= 2^53, |power| <= 22) and asks
+/// `fast_float2` otherwise; both must give the same bits as `fast_float2`
+/// alone, and integers the same value as `str::parse::<i64>`, on every
+/// literal shape: signs, leading zeros, bare dots, long mantissas around
+/// 2^53, exponents around +-22, and the `i64` edge.
+#[test]
+fn single_pass_reader_matches_fast_float_and_i64_bit_for_bit() {
+    let mut state = 0x9e37_79b9_7f4a_7c15_u64;
+    let mut next = |n: u64| {
+        state = state.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407);
+        (state >> 33) % n
+    };
+    let mut cases: Vec<String> = [
+        "9007199254740992.", "9007199254740993.", "-9007199254740993.", "9007199254740992.5",
+        "1E22", "1E23", "1.E-22", "1.E-23", "123456789012345678.", "-0.", "0.E5", "-0.E-400",
+        "1.7976931348623157E308", "1.E400", "4.9E-324", "1234567890123456789.", "12345678901234567890.",
+        "0.000000000000000000001", "-1.5E+0010", "9223372036854775807", "-9223372036854775808",
+        "9223372036854775808", "999999999999999999", "-999999999999999999", "+0007", "-0",
+        "1E99999999999999999999", "1E-99999999999999999999",
+    ]
+    .iter()
+    .map(|s| s.to_string())
+    .collect();
+    for _ in 0..200_000 {
+        let mut text = String::new();
+        text.push_str(["", "+", "-"][next(3) as usize]);
+        let digits = |text: &mut String, count: u64, next: &mut dyn FnMut(u64) -> u64| {
+            for _ in 0..count {
+                text.push(char::from(b'0' + next(10) as u8));
+            }
+        };
+        digits(&mut text, next(21), &mut next);
+        if next(4) != 0 {
+            text.push('.');
+            digits(&mut text, next(21), &mut next);
+        }
+        if next(3) == 0 {
+            text.push(['e', 'E'][next(2) as usize]);
+            text.push_str(["", "+", "-"][next(3) as usize]);
+            digits(&mut text, 1 + next(3), &mut next);
+        }
+        cases.push(text);
+    }
+    for text in &cases {
+        let got = read_step_number(text.as_bytes());
+        let has_digit = text.split(['e', 'E']).next().unwrap().bytes().any(|b| b.is_ascii_digit());
+        let real = text.contains(['.', 'e', 'E']);
+        match got {
+            Some((StepNumber::Real(v), len)) => {
+                assert!(real && len == text.len(), "{text}");
+                let want: f64 = fast_float2::parse(text).unwrap();
+                assert_eq!(v.to_bits(), want.to_bits(), "{text}");
+            }
+            Some((StepNumber::Unrepresentable(raw), _)) => {
+                assert!(real && raw == text.as_bytes(), "{text}");
+                assert!(!fast_float2::parse::<f64, _>(text).unwrap().is_finite(), "{text}");
+            }
+            Some((StepNumber::Integer(i), len)) => {
+                assert!(!real && len == text.len(), "{text}");
+                assert_eq!(Some(i), text.parse::<i64>().ok(), "{text}");
+            }
+            None => assert!(!has_digit || (!real && text.parse::<i64>().is_err()), "{text}"),
+        }
+    }
+}

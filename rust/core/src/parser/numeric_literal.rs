@@ -38,8 +38,38 @@ pub fn step_numeric_literal_len(bytes: &[u8]) -> Option<usize> {
 /// scan the admitted literal again to distinguish INTEGER from REAL (#7779).
 #[inline]
 fn scan_step_numeric_literal(bytes: &[u8]) -> Option<(usize, bool)> {
-    let digits_from = |mut i: usize| {
-        while bytes.get(i).is_some_and(u8::is_ascii_digit) {
+    scan::<false>(bytes).map(|literal| (literal.len, literal.real))
+}
+
+/// One admitted literal as the grammar walk saw it. With `VALUE`, the walk
+/// also folds every digit into `mantissa` (wrapping: it is only read when
+/// `digits <= 19`, where it cannot wrap) and reads the exponent (saturated
+/// far beyond any exponent the exact path accepts), so the reader need not
+/// walk the literal a second time to value it.
+struct Literal {
+    len: usize,
+    real: bool,
+    /// Integer and fraction digits, leading zeros included.
+    digits: usize,
+    fraction_digits: usize,
+    mantissa: u64,
+    exponent: i64,
+}
+
+/// Saturation for the exponent read by [`scan`]: far outside both the exact
+/// path's range and `f64`'s, so a saturated exponent always falls back.
+const EXPONENT_CAP: i64 = 1 << 20;
+
+/// The grammar walk of [`scan_step_numeric_literal`]: the one grammar, with
+/// the value accumulation compiled in only for [`read_step_number`].
+#[inline(always)]
+fn scan<const VALUE: bool>(bytes: &[u8]) -> Option<Literal> {
+    let mut mantissa = 0u64;
+    let mut digits_from = |mut i: usize| {
+        while let Some(&b) = bytes.get(i).filter(|b| b.is_ascii_digit()) {
+            if VALUE {
+                mantissa = mantissa.wrapping_mul(10).wrapping_add(u64::from(b - b'0'));
+            }
             i += 1;
         }
         i
@@ -49,27 +79,67 @@ fn scan_step_numeric_literal(bytes: &[u8]) -> Option<(usize, bool)> {
     let mut digits = int_end - i;
     i = int_end;
     let mut real = bytes.get(i) == Some(&b'.');
+    let mut fraction_digits = 0;
     if real {
         let frac_end = digits_from(i + 1);
-        digits += frac_end - (i + 1);
+        fraction_digits = frac_end - (i + 1);
+        digits += fraction_digits;
         i = frac_end;
     }
     if digits == 0 {
         return None;
     }
+    let mut exponent = 0i64;
     if matches!(bytes.get(i), Some(b'e' | b'E')) {
         real = true;
+        let negative = bytes.get(i + 1) == Some(&b'-');
         let exp_start = i + 1 + usize::from(matches!(bytes.get(i + 1), Some(b'+' | b'-')));
-        let exp_end = digits_from(exp_start);
+        let mut exp_end = exp_start;
+        while let Some(&b) = bytes.get(exp_end).filter(|b| b.is_ascii_digit()) {
+            if VALUE {
+                exponent = (exponent * 10 + i64::from(b - b'0')).min(EXPONENT_CAP);
+            }
+            exp_end += 1;
+        }
         if exp_end == exp_start {
             return None;
         }
+        if negative {
+            exponent = -exponent;
+        }
         i = exp_end;
     }
+    let literal = Literal { len: i, real, digits, fraction_digits, mantissa, exponent };
     match bytes.get(i) {
-        None => Some((i, real)),
-        Some(&b) if b == b',' || b == b')' || is_step_space(b) => Some((i, real)),
-        Some(&b'/') if bytes.get(i + 1) == Some(&b'*') => Some((i, real)),
+        None => Some(literal),
+        Some(&b) if b == b',' || b == b')' || is_step_space(b) => Some(literal),
+        Some(&b'/') if bytes.get(i + 1) == Some(&b'*') => Some(literal),
+        _ => None,
+    }
+}
+
+/// Exact powers of ten: every one up to 1e22 is an `f64` exactly.
+const POW10: [f64; 23] = [
+    1e0, 1e1, 1e2, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9, 1e10, 1e11, 1e12, 1e13, 1e14, 1e15, 1e16,
+    1e17, 1e18, 1e19, 1e20, 1e21, 1e22,
+];
+
+/// The literal's magnitude when it is exact in one IEEE operation (Clinger's
+/// fast path): a mantissa of at most 2^53 is an exact `f64`, as is 10^k for
+/// k <= 22, so `m * 10^k` and `m / 10^k` are each the correctly rounded value
+/// of the decimal, the value `fast_float2` returns for it. `None` otherwise;
+/// the caller then asks `fast_float2`. The sign is the caller's (-0. stays
+/// -0.).
+#[inline(always)]
+fn exact_magnitude(literal: &Literal) -> Option<f64> {
+    if literal.digits > 19 || literal.mantissa > 1 << 53 {
+        return None;
+    }
+    let power = literal.exponent - literal.fraction_digits as i64;
+    let m = literal.mantissa as f64;
+    match power {
+        0..=22 => Some(m * POW10[power as usize]),
+        -22..=-1 => Some(m / POW10[(-power) as usize]),
         _ => None,
     }
 }
@@ -149,34 +219,31 @@ pub enum StepNumber<'a> {
 /// not exactly one literal, and for an `INTEGER` beyond `i64`.
 #[inline]
 pub fn read_step_number(bytes: &[u8]) -> Option<(StepNumber<'_>, usize)> {
-    let (len, real) = scan_step_numeric_literal(bytes)?;
+    let scanned = scan::<true>(bytes)?;
+    let len = scanned.len;
     let literal = &bytes[..len];
-    if real {
-        let negative = literal[0] == b'-';
-        let sign_len = usize::from(matches!(literal[0], b'+' | b'-'));
-        let unsigned = &literal[sign_len..];
-        let value = if unsigned.last() == Some(&b'.') && unsigned.len() <= 16 {
-            // The length guard limits this fast path to 1..=15 digits plus the dot.
-            // Their magnitude is below 2^50: accumulation and the f64 cast
-            // are exact. Apply the sign afterward to preserve -0. (#7880).
-            let magnitude = unsigned[..unsigned.len() - 1]
-                .iter()
-                .fold(0_u64, |value, &digit| value * 10 + u64::from(digit - b'0'));
-            let value = magnitude as f64;
-            if negative { -value } else { value }
-        } else {
-            // The grammar already validated the entire literal (#7779).
-            let (value, _) = fast_float2::parse_partial::<f64, _>(literal).ok()?;
-            value
+    let negative = literal[0] == b'-';
+    if scanned.real {
+        // The grammar walk already valued the literal when it is exact in one
+        // operation (#7880's `N.` case among them); else it already validated
+        // the entire literal for `fast_float2` (#7779).
+        let value = match exact_magnitude(&scanned) {
+            Some(magnitude) => if negative { -magnitude } else { magnitude },
+            None => fast_float2::parse_partial::<f64, _>(literal).ok()?.0,
         };
         let number = admit_step_real(value)
             .map_or(StepNumber::Unrepresentable(literal), StepNumber::Real);
         return Some((number, len));
     }
-    let (negative, digits) = match literal[0] {
-        b'-' => (true, &literal[1..]),
-        b'+' => (false, &literal[1..]),
-        _ => (false, literal),
+    // At most 18 digits cannot leave `i64`, so the walk's mantissa is the
+    // value; a longer integer takes the checked walk.
+    if scanned.digits <= 18 {
+        let magnitude = scanned.mantissa as i64;
+        return Some((StepNumber::Integer(if negative { -magnitude } else { magnitude }), len));
+    }
+    let digits = match literal[0] {
+        b'-' | b'+' => &literal[1..],
+        _ => literal,
     };
     // Accumulate negatively so `i64::MIN` is representable.
     let mut value: i64 = 0;

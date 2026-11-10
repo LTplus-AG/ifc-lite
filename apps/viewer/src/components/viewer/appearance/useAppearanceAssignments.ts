@@ -1,7 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-import { useSingleFlight } from '@/hooks/useSingleFlight';
+import { useAsyncRun } from '@/hooks/useAsyncRun';
 import { trackExportCompleted } from '@/lib/analytics';
 import { canResumeAssignmentReview, rememberAssignmentReview, forgetAssignmentReview } from '@/lib/appearance/assignments/session-review.js';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -43,7 +43,7 @@ export function useAppearanceAssignments(base: AppearancePanelViewProps, enabled
   const rows = useMemo(() => recipe?.assignments ?? [], [recipe]);
   const live = useRef(new Map<string, CapturedAssignment>());
   const worker = useRef<ReturnType<typeof createAppearancePlanner> | null>(null);
-  const { run: runApply, release: releaseApply } = useSingleFlight();
+  const { start: startApply, reset: resetApply } = useAsyncRun();
   const pending = useRef<AbortController | null>(null), mounted = useRef(true);
   const roomBlocked = useRef(false);
   const draft = useRef<{ preparation: Prepared; preview: Preview; owner: AppearanceAssetOwner } | null>(null);
@@ -60,16 +60,16 @@ export function useAppearanceAssignments(base: AppearancePanelViewProps, enabled
     setOriginal(false);
   }
   function cancel() {
-    releaseApply(); pending.current?.abort(); pending.current = null; worker.current?.cancel(); releasePreview();
+    resetApply(); pending.current?.abort(); pending.current = null; worker.current?.cancel(); releasePreview();
     setStatus('idle'); setNotice(translatedMessage('appearance.assignments.status.cancelled'));
   }
   useEffect(() => {
     mounted.current = true; worker.current = createAppearancePlanner();
-    return () => { mounted.current = false; releaseApply(); pending.current?.abort(); worker.current?.dispose(); worker.current = null;
+    return () => { mounted.current = false; resetApply(); pending.current?.abort(); worker.current?.dispose(); worker.current = null;
       const current = draft.current; draft.current = null;
       if (current) try { current.preview.session.cancel(); } finally { appearanceAssets.releaseOwner(current.owner); }
     };
-  }, [releaseApply]);
+  }, [resetApply]);
   useEffect(() => {
     const resumable = rows.filter(row => !live.current.has(row.id) && canResumeAssignmentReview(row));
     if (!enabled || !resumable.length) return;
@@ -181,7 +181,7 @@ export function useAppearanceAssignments(base: AppearancePanelViewProps, enabled
   async function apply() {
     const current = draft.current, renderer = getGlobalRenderer();
     if (!current || !renderer || original || status !== 'ready') return;
-    await runApply(async isCurrent => {
+    await startApply(async ({ isCurrent }) => {
       const controller = new AbortController(); pending.current = controller; setStatus('applying');
       try {
         const result = await commitAppearanceAssignments(current.preparation, renderer, current.preview.session, current.preview.groups,

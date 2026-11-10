@@ -1,7 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-import { useSingleFlight } from '@/hooks/useSingleFlight';
+import { useAsyncRun } from '@/hooks/useAsyncRun';
 import { resolveAppearanceScope } from '@/lib/appearance/query-scope.js';
 import { modelDisplayLabels } from '@/lib/model-labels.js';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -77,7 +77,7 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply', suspendPr
     if (previousIntent.current !== intent) { previousIntent.current = intent; setPreviewEnabled(true); }
   }, [intent]);
   const pendingAbort = useRef<AbortController | null>(null);
-  const { run: runApply, release: releaseApply } = useSingleFlight();
+  const { start: startApply, reset: resetApply } = useAsyncRun();
   const applyAbort = useRef<AbortController | null>(null);
   const appliedRevision = useRef<string | null>(null);
   const draft = useRef<Draft | null>(null);
@@ -116,14 +116,14 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply', suspendPr
     planner.current = ownedPlanner;
     return () => {
       mounted.current = false;
-      applyAbort.current?.abort(); releaseApply();
+      applyAbort.current?.abort(); resetApply();
       ownedPlanner.dispose();
       snapshot.current = null;
       if (planner.current === ownedPlanner) planner.current = null;
       const previous = draft.current; draft.current = null;
       discardDraft(previous);
     };
-  }, [releaseApply]);
+  }, [resetApply]);
 
   useEffect(() => {
     if (applyAbort.current && !applyAbort.current.signal.aborted) return;
@@ -264,7 +264,7 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply', suspendPr
   }
   function discard(): void {
     pdfSource.cancel();
-    applyAbort.current?.abort(); releaseApply();
+    applyAbort.current?.abort(); resetApply();
     appliedRevision.current = null;
     pendingAbort.current?.abort();
     planner.current?.cancel();
@@ -289,7 +289,7 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply', suspendPr
     const renderer = getGlobalRenderer();
     if (!current?.session || !renderer || status !== 'ready') return;
     const session = current.session;
-    await runApply(async isCurrent => {
+    await startApply(async ({ isCurrent }) => {
       const controller = new AbortController(); applyAbort.current = controller;
       setStatus('applying');
       try {

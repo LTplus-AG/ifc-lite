@@ -1,7 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-import { useSingleFlight } from '@/hooks/useSingleFlight';
+import { useAsyncRun } from '@/hooks/useAsyncRun';
 import { captureReferencePdfLineage } from '@/lib/appearance/references/pdf-lineage';
 import { useEffect, useRef, useState } from 'react';
 import { useViewerStore } from '@/store';
@@ -42,7 +42,7 @@ export function useReferenceAppearance(base: AppearancePanelViewProps, enabled: 
   const [active, setActive] = useState(true);
   const [status, setStatus] = useState<AppearancePanelViewProps['status']>('idle');
   const [message, setMessage] = useState<LocalizedMessage>(() => translatedMessage('appearance.reference.chooseSource'));
-  const { run: runPlace, release: releasePlace } = useSingleFlight();
+  const { start: startPlace, reset: resetPlace } = useAsyncRun();
   const draftId = useRef(`appearance-draft:${crypto.randomUUID()}`).current;
   const draft = useRef<Preview | null>(null);
   const settings = base.settings;
@@ -98,16 +98,16 @@ export function useReferenceAppearance(base: AppearancePanelViewProps, enabled: 
       }
     })(); }, 150);
     return () => {
-      releasePlace(); clearTimeout(timer); controller.abort(); draft.current = null;
+      resetPlace(); clearTimeout(timer); controller.abort(); draft.current = null;
       renderer.getReferenceImages().remove(draftId);
       if (!inFlight) appearanceAssets.releaseOwner(owner);
     };
-  }, [enabled, active, source, settings, frameKey, base.sourceBusy, roomId, draftId, editing, releasePlace]);
+  }, [enabled, active, source, settings, frameKey, base.sourceBusy, roomId, draftId, editing, resetPlace]);
 
   async function place(): Promise<void> {
     const prepared = draft.current, renderer = getGlobalRenderer();
     if (!prepared || !renderer) return;
-    await runPlace(async isCurrent => {
+    await startPlace(async ({ isCurrent }) => {
       const { record, bitmap, signal } = prepared;
       setStatus('applying'); setMessage(translatedMessage('appearance.reference.placing'));
       const placementOwner = { kind: 'draft' as const, id: `reference-place:${crypto.randomUUID()}` };
@@ -156,7 +156,7 @@ export function useReferenceAppearance(base: AppearancePanelViewProps, enabled: 
     unavailableReason: roomId ? translatedMessage('appearance.reference.leaveRoom') : undefined,
     canApply: status === 'ready' && !!draft.current, hasPreview: !!draft.current,
     canDiscard: base.canDiscard || active, showingOriginal: false,
-    onDiscard: () => { releasePlace(); base.onDiscard(); setEditing(null); setActive(false); setStatus('idle'); setMessage(translatedMessage('appearance.reference.discarded')); },
+    onDiscard: () => { resetPlace(); base.onDiscard(); setEditing(null); setActive(false); setStatus('idle'); setMessage(translatedMessage('appearance.reference.discarded')); },
     onApply: () => { void place(); },
   };
 }

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { useEffect, useRef, useState } from 'react';
-import { useSingleFlight } from '@/hooks/useSingleFlight';
+import { useAsyncRun } from '@/hooks/useAsyncRun';
 import { expandAppearanceCorners } from '@ifc-lite/renderer';
 import { useViewerStore } from '@/store';
 import { getGlobalRenderer } from '@/hooks/useBCF';
@@ -31,8 +31,8 @@ export function useScanTransfer(work: ScanTransferWorkbench) {
     // Point-cloud fit (#4381): 3 cm support, 4..32 neighbours, 3 mm surface band.
     neighborhoodRadiusMetres: 0.03, minNeighbors: 4, maxNeighbors: 32, surfaceBandMetres: 0.003 });
   const [coverage, setCoverage] = useState<MeshTransferPlan['transfer'] | null>(null);
-  const { busy, run: runPreview, release: releasePreviewRun } = useSingleFlight();
-  const { run: runApply } = useSingleFlight();
+  const { busy, start: startPreview, reset: resetPreviewRun } = useAsyncRun();
+  const { start: startApply } = useAsyncRun();
   const [ready, setReady] = useState(false), [original, setOriginal] = useState(false);
   const [status, setStatus] = useState<ScanWorkflowMessage>(() => translated('appearance.scanTransfer.status.chooseObjects')), [error, setError] = useState(false);
   const planner = useRef<ReturnType<typeof createAppearancePlanner> | null>(null);
@@ -53,14 +53,14 @@ export function useScanTransfer(work: ScanTransferWorkbench) {
     return () => { mounted.current = false; operation.current?.abort(); worker.dispose(); release(); planner.current = null; };
   }, []);
   useEffect(() => {
-    releasePreviewRun(); operation.current?.abort(); planner.current?.cancel(); release(); setReady(false); setOriginal(false); setCoverage(null);
-  }, [work.session, work.result, work.stale, settings, productIds, releasePreviewRun]);
+    resetPreviewRun(); operation.current?.abort(); planner.current?.cancel(); release(); setReady(false); setOriginal(false); setCoverage(null);
+  }, [work.session, work.result, work.stale, settings, productIds, resetPreviewRun]);
   useEffect(() => { setProductIds([]); }, [work.targetId]);
   useEffect(() => { setSettings(value => value.reviewed ? { ...value, reviewed: false } : value); }, [work.result]);
   async function preview() {
     const session = work.session, registration = work.result, worker = planner.current;
     if (!session || !registration || work.stale || work.busy || !worker || busy) return;
-    await runPreview(async isCurrent => {
+    await startPreview(async ({ isCurrent }) => {
       release(); const controller = new AbortController(); operation.current = controller;
       const owner: AppearanceAssetOwner = { kind: 'draft', id: crypto.randomUUID() };
       let adopted = false; setReady(false); setError(false); setStatus(translated('appearance.scanTransfer.status.sampling'));
@@ -96,7 +96,7 @@ export function useScanTransfer(work: ScanTransferWorkbench) {
     const current = draft.current, session = work.session, renderer = getGlobalRenderer();
     if (!current?.output.plan || !session || !renderer || busy || work.busy || !ready) return;
     const plan = current.output.plan;
-    await runApply(async isCurrent => {
+    await startApply(async ({ isCurrent }) => {
       await work.applyAppearance(async signal => {
         session.validate();
         if (!current.preview) { current.preview = new AppearancePreviewSession(renderer); current.preview.stage(current.groups); }
@@ -110,6 +110,6 @@ export function useScanTransfer(work: ScanTransferWorkbench) {
   return { productIds, setProductIds, targets, selectedCount, settings, setSettings, coverage, busy, ready, original, status, error, preview, compare, apply,
     pointSource: work.session?.source.kind === 'points',
     chooseSelection() { setProductIds(appearanceOwners(useViewerStore.getState(), work.targetId).selectedProductIds); setStatus(translated('appearance.scanTransfer.status.targetsPinned')); },
-    discard() { releasePreviewRun(); operation.current?.abort(); planner.current?.cancel(); release(); setReady(false); setOriginal(false); setCoverage(null); setStatus(translated('appearance.scanTransfer.status.discarded')); },
+    discard() { resetPreviewRun(); operation.current?.abort(); planner.current?.cancel(); release(); setReady(false); setOriginal(false); setCoverage(null); setStatus(translated('appearance.scanTransfer.status.discarded')); },
   };
 }

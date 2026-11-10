@@ -24,13 +24,24 @@ export function mutationPermission(
   state: MutationPermissionState,
   modelId?: string,
 ): { allowed: true } | { allowed: false; reason: MutationDenialReason } {
+  // A running workflow is named first: turning on Edit mode would not unblock it.
   if (areWorkflowModelsReadLocked()) return { allowed: false, reason: 'workflow-running' };
   if (!state.editEnabled) return { allowed: false, reason: 'edit-mode' };
+  return dataMutationPermission(state, modelId);
+}
+
+/** In-place data edits keep the current workspace; all write locks still apply. */
+export function dataMutationPermission(state: MutationPermissionState, modelId?: string): ReturnType<typeof mutationPermission> {
+  if (areWorkflowModelsReadLocked()) return { allowed: false, reason: 'workflow-running' };
   if (!state.canCollabEdit()) return { allowed: false, reason: 'collab-role' };
   if (modelId !== undefined && !getModelForRef(state, modelId)?.ifcDataStore) {
     return { allowed: false, reason: 'model-unavailable' };
   }
   return { allowed: true };
+}
+
+export function canMutateData(state: MutationPermissionState, modelId?: string): boolean {
+  return dataMutationPermission(state, modelId).allowed;
 }
 
 export function canMutate(state: MutationPermissionState, modelId?: string): boolean {
@@ -44,6 +55,17 @@ export function mutationPermissionForModels(state: MutationPermissionState, mode
     if (!modelId) return { allowed: false, reason: 'model-unavailable' } as const;
     hasTarget = true;
     const permission = mutationPermission(state, modelId);
+    if (!permission.allowed) return permission;
+  }
+  return hasTarget ? { allowed: true } as const : { allowed: false, reason: 'model-unavailable' } as const;
+}
+
+export function dataMutationPermissionForModels(state: MutationPermissionState, modelIds: Iterable<string>) {
+  let hasTarget = false;
+  for (const modelId of modelIds) {
+    if (!modelId) return { allowed: false, reason: 'model-unavailable' } as const;
+    hasTarget = true;
+    const permission = dataMutationPermission(state, modelId);
     if (!permission.allowed) return permission;
   }
   return hasTarget ? { allowed: true } as const : { allowed: false, reason: 'model-unavailable' } as const;

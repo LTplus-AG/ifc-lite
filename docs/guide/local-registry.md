@@ -14,8 +14,9 @@ artifact format; it is not an existing OCI or IETF standard.
 
 Use the matching [Subsoil checkout](https://github.com/zahmadsaleem/subsoil).
 Its root `compose.yaml` includes the demo services and an optional IFC Lite
-viewer. The build fetches pinned production source and applies the handoff patch
-included in Subsoil; it requires no separate IFC Lite checkout:
+viewer. Its build fetches `codex/open-artifact-receiver` from
+`zahmadsaleem/ifc-lite` and compiles it in Docker; it requires no separate IFC
+Lite checkout:
 
 ```sh
 # From the Subsoil repository.

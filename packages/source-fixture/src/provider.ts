@@ -276,7 +276,6 @@ export function createFixtureSourceProvider(options: FixtureProviderOptions): Fi
       );
     }
     const content = new Uint8Array(bytes.slice(0));
-    uploadOptions?.onProgress?.(content.byteLength, content.byteLength);
 
     if (target.mode === 'new-version') {
       const { ref } = target;
@@ -285,6 +284,7 @@ export function createFixtureSourceProvider(options: FixtureProviderOptions): Fi
       if (target.baseRevisionId !== undefined && target.baseRevisionId !== current.id) {
         return { ok: false, conflict: { kind: 'stale-base', currentRevisionId: current.id } };
       }
+      uploadOptions?.onProgress?.(content.byteLength, content.byteLength);
       const revision = world.addRevision(file, content);
       return { ok: true, file: toSourceFile(file), revision: toSourceRevision(revision) };
     }
@@ -294,6 +294,7 @@ export function createFixtureSourceProvider(options: FixtureProviderOptions): Fi
     }
     const existing = world.findFileByName(target.projectId, target.containerId, target.fileName);
     if (existing) return { ok: false, conflict: { kind: 'name-exists', existingFileId: existing.id } };
+    uploadOptions?.onProgress?.(content.byteLength, content.byteLength);
     const file = world.addFile(target.projectId, target.containerId, target.fileName, content, uploadOptions?.mimeType);
     return { ok: true, file: toSourceFile(file), revision: toSourceRevision(world.currentRevision(file)) };
   }

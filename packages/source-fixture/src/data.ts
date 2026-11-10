@@ -278,9 +278,12 @@ export class FixtureWorld {
 
   /** Prepends a revision with deterministic, strictly increasing ids (`rev<N+1>`). */
   addRevision(file: RuntimeFile, content: Uint8Array, createdBy?: string): RuntimeRevision {
+    let next = file.revisions.length + 1;
+    const used = new Set(file.revisions.map(revision => revision.id));
+    while (used.has(`rev${next}`)) next++;
     const revision: RuntimeRevision = {
-      id: `rev${file.revisions.length + 1}`,
-      label: `Revision ${file.revisions.length + 1}`,
+      id: `rev${next}`,
+      label: `Revision ${next}`,
       createdAt: new Date(1700000000000 + this.writeCount++ * 1000).toISOString(),
       ...(createdBy !== undefined ? { createdBy } : {}),
       content,

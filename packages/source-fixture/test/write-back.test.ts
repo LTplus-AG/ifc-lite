@@ -147,3 +147,30 @@ describe('uploadFile plumbing', () => {
     expect(new TextDecoder().decode(await provider.download(ctx, ref))).toBe('ORIGINAL');
   });
 });
+
+
+describe('write-back review regressions (#9526)', () => {
+  it('keeps old revision bytes addressable when generated IDs have gaps', async () => {
+    const world = buildTestWorldSpec();
+    const projects = world.projects.map(project => ({ ...project, files: project.files.map(file => file.id === ref.fileId ? { ...file, revisions: [{ id: 'rev3', content: 'OLD-THREE' }, { id: 'rev1', content: 'OLD-ONE' }] } : file) }));
+    const provider = createFixtureSourceProvider({ world: { projects }, capabilities: { writeBack: allModes } });
+    const ctx = createFixtureContext();
+    const result = await provider.uploadFile!(ctx, { mode: 'new-version', ref, baseRevisionId: 'rev3' }, bytes('NEW'));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.revision.id).not.toBe('rev3');
+    expect(new TextDecoder().decode(await provider.download(ctx, { ...ref, revisionId: 'rev3' }))).toBe('OLD-THREE');
+    const watch = await provider.watchRevisions!(ctx, [{ ...ref, revisionId: 'rev3' }]);
+    expect(watch.events[0]?.latestRevisionId).toBe(result.revision.id);
+  });
+
+  it('reports no byte progress for stale-base or existing-name conflicts', async () => {
+    const provider = writable(), ctx = createFixtureContext(), progress: number[] = [];
+    const options = { onProgress: (sent: number) => progress.push(sent) };
+    const stale = await provider.uploadFile!(ctx, { mode: 'new-version', ref, baseRevisionId: 'old' }, bytes('X'), options);
+    const existing = await provider.uploadFile!(ctx, { mode: 'new-file', projectId: ref.projectId, containerId: ref.containerId, fileName: 'structural-model.ifc' }, bytes('X'), options);
+    expect(stale.ok).toBe(false);
+    expect(existing.ok).toBe(false);
+    expect(progress).toEqual([]);
+  });
+});

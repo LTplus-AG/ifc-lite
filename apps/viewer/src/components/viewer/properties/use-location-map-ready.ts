@@ -8,9 +8,11 @@ import { useViewerStore } from '@/store';
 export function useLocationMapReady(container: RefObject<HTMLDivElement | null>, hasLocation: boolean): boolean {
   const loading = useViewerStore((s) => s.loading);
   const [visible, setVisible] = useState(false);
+  const [settledOnce, setSettledOnce] = useState(!loading);
+  useEffect(() => { if (!loading) setSettledOnce(true); }, [loading]);
   useEffect(() => {
     const element = container.current;
-    if (!element || !hasLocation || !loading || typeof IntersectionObserver === 'undefined') return;
+    if (!element || !hasLocation || !loading || settledOnce || visible || typeof IntersectionObserver === 'undefined') return;
     const observer = new IntersectionObserver((entries) => {
       if (entries.some((entry) => entry.isIntersecting && entry.intersectionRatio > 0)) {
         setVisible(true);
@@ -19,6 +21,7 @@ export function useLocationMapReady(container: RefObject<HTMLDivElement | null>,
     }, { threshold: 0.01 });
     observer.observe(element);
     return () => observer.disconnect();
-  }, [container, hasLocation, loading]);
-  return !loading || visible;
+  }, [container, hasLocation, loading, settledOnce, visible]);
+  // Later primary/federated loads must not re-enter the init effect and flyTo.
+  return settledOnce || !loading || visible;
 }

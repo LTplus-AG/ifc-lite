@@ -56,3 +56,41 @@ for (const trigger of ['visible', 'settled'] as const) {
     }
   });
 }
+
+
+it('NEW-7: an already-ready real map never re-enters visibility gating on later loads', async () => {
+  const original = globalThis.IntersectionObserver;
+  const loading = useViewerStore.getState().loading;
+  let observations = 0;
+  class Observer implements IntersectionObserver {
+    observe() { observations++; }
+    disconnect() {}
+    unobserve() {}
+    takeRecords() { return []; }
+    readonly root = null;
+    readonly rootMargin = '0px';
+    readonly scrollMargin = '0px';
+    readonly thresholds = [0.01];
+  }
+  globalThis.IntersectionObserver = Observer;
+  let probes = 0;
+  const context = mock.method(HTMLCanvasElement.prototype, 'getContext', () => { probes++; return null; });
+  resetMapWebglSupportForTests();
+  useViewerStore.setState({ loading: false });
+  try {
+    render(<LocationMap mapConversion={{ id: 1, sourceCRS: 2, targetCRS: 3,
+      eastings: 500_000, northings: 4_000_000, orthogonalHeight: 0 }}
+      projectedCRS={{ id: 3, name: 'EPSG:32632', mapUnitScale: 1 }} />);
+    await waitFor(() => probes > 0, 'initially settled map reaches WebGL');
+    act(() => useViewerStore.setState({ loading: true }));
+    assert.equal(observations, 0, 'a later load must not gate a map that was already ready');
+    act(() => useViewerStore.setState({ loading: false }));
+    assert.equal(observations, 0);
+  } finally {
+    cleanup();
+    context.mock.restore();
+    globalThis.IntersectionObserver = original;
+    resetMapWebglSupportForTests();
+    useViewerStore.setState({ loading });
+  }
+});

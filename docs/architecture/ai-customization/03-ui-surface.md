@@ -160,7 +160,9 @@ values (functions, DOM nodes, host objects) cannot cross.
 
 Widgets emit events to commands, not to closures. A `Button`'s `command`
 field names a command id; clicking it invokes the command via the
-host's command dispatcher. The host enforces the user's keybindings,
+host's owner-scoped command dispatcher. The button's JSON `args` object is
+forwarded as `ctx.args` to `run(ctx)`; invocations without arguments do not
+retain arguments from a previous run. The host enforces the user's keybindings,
 focus order, and accessibility along the way.
 
 Why this matters: a closure-based event handler invites the extension

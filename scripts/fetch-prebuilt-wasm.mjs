@@ -173,6 +173,21 @@ for (const name of runtimeFiles) {
   copyFileSync(join(pkgDir, name), join(wasmOut, name));
 }
 
+// The geometry-core engine (`@ifc-lite/wasm/core`) ships only in released
+// tarballs that were built with BUILD_CORE=1. Install it when present so an
+// alias to the core entry works without a Rust toolchain too.
+const fetchedCore = join(extractDir, 'package/pkg-core');
+if (existsSync(join(fetchedCore, 'ifc-lite_bg.wasm'))) {
+  const coreOut = join(rootDir, 'packages/wasm/pkg-core');
+  const coreAssets = wasmRuntimeAssets(fetchedCore);
+  assertWasmRuntimeDestinations(rootDir, coreAssets, { output: 'packages/wasm/pkg-core' });
+  for (const name of coreAssets) {
+    mkdirSync(dirname(join(coreOut, name)), { recursive: true });
+    copyFileSync(join(fetchedCore, name), join(coreOut, name));
+  }
+  writeFileSync(join(coreOut, '.npmignore'), '\n');
+}
+
 for (const { payload, source, assets } of fetchedPayloads) {
   for (const name of assets) {
     mkdirSync(dirname(join(payload.out, name)), { recursive: true });

@@ -8,103 +8,6 @@ Citations to `evidence/`, `tests/evidence/` and `docs/architecture/evidence/` pa
 at commit [`f98785c722`](https://github.com/LTplus-AG/ifc-lite/tree/f98785c722); the retained
 bundles left the tree in #9054.
 
-## Load scoreboard (`load-scoreboard.mjs`)
-
-One table for IFC load time, used to accept or reject load optimisations.
-Per fixture and lane it reports time to first geometry, time to fully
-interactive, UI-quiet time, peak memory, per-stage shares, median and
-min-max, output identity, and a base-vs-branch verdict. It drives existing
-tools and compiles nothing:
-
-| lane | sample | interactive | peak memory |
-|---|---|---|---|
-| `native-cold` | fresh `perf_probe --cold --iters 1 --fingerprint` process | file read + whole `process_geometry` (incl. trailing metadata) | process max RSS (`/usr/bin/time`) |
-| `browser-cold` | fresh Chrome, empty profile, first open | see below | separate memory pass: peak sampled PSS sum of the profile's Chrome processes |
-| `browser-warm1` | same browser, first reopen: streams the cache hit and writes the scene snapshot | see below | as cold |
-| `browser-warm` | same browser, last of `warmOpens` (default 2) reopens: adopts the scene snapshot | see below | as cold |
-
-Native warm has no cache outside `apps/server`, so there is no native warm
-lane. Native is a batch call with no streamed-geometry event, so it has no
-first-geometry time. Below 10 MB and above 400 MB the viewer caches nothing,
-so the warm lanes there are uncached reopens (the snapshot wait is skipped).
-Each row states the expected tier and the observed load path.
-
-Browser timing (`viewer-load-probe.mjs`, `viewer-load-boot.mjs`; readiness is
-shared with `scenoptic-bench.mjs`):
-
-- **Clock.** Each open is armed only once the shell has run no long task for
-  1 s (boot-tail work such as the welcome WebGL scene otherwise queues the
-  input event by 1-3 s). Times run from the file input's `change` event; the
-  delay from arming to it is reported, and samples over 100 ms are flagged.
-- **Interactive** = geometry streamed, the GPU queue drained and the scene
-  finalized; metadata ready (`parser.complete` or `cache.storeReady`); and
-  the first frame after the store left its loading state with every model
-  complete. The publish of the populated store (+ next frame) is reported
-  beside it, and **UI quiet** = the end of the last main-thread long task
-  before 500 ms without one, so UI work deferred past the settle event stays
-  visible. First geometry is `geometry.firstVisible`.
-- **Overhead control.** Timed opens run `?perfTrace=1` for spans, with the
-  page's perf counters pre-installed disabled (`Symbol.for('ifc-lite.perf-counters')`),
-  which removes the main-thread worker-message byte walk (about 0.5 s on a
-  Holter cold load). Workers still count their own sends. Peak memory comes
-  from a second, untimed-for-the-verdict pass with the 250 ms PSS sampler,
-  which cost about 12% when it ran inside the timed opens.
-- **Output identity** is the per-element Rust geometry hash (#924, taken before
-  flat/instanced routing) over flat meshes plus `instancedGeometryHashes`.
-  Batch-local instancing moves elements between flat meshes and IFNS shards
-  with the batch partition, so flat mesh/triangle counts are not an identity.
-  Cache hits carry no hashes: a warm open inherits its cold load's identity
-  only when it restored that load's flat output exactly. A comparison without
-  hashes is reported unverifiable. The report lists differing element ids.
-- **Stages** are the union of each `?perfTrace=1` span name's intervals over
-  the interactive time, milestones excluded, umbrella spans marked `*`, and the
-  uncovered remainder as `(no span)`. Concurrent stages overlap. Native stages
-  come from `perf_probe` and sum to the full load.
-- **Host.** Before each sample the runner waits up to 20 s for CPU pressure
-  (`/proc/pressure/cpu` avg10) below 5 and flags the sample when the host
-  stays busy or build processes run. Each browser sample records the WebGPU
-  adapter, GPU health (`tests/benchmark/gpu-health.ts`), crashes and page
-  errors. Failed samples stay in the data.
-
-Verdict: `gain = 1 - median(branch)/median(base)`. The noise floor of a
-comparison is the larger of the recorded A/A floor for that fixture, lane and
-metric and the run's own floor. The run's own floor is one robust standard
-deviation (interquartile range / 1.349) of what the run can see: each side's
-relative scatter and the scatter of the paired per-round differences. An A/A
-run's floor also includes its own |gain|. A change counts only when
-|gain| >= 2 x floor, with at least 5 successful samples per side; fewer than
-3 samples is never summarized as a median. A branch with more failed loads
-than the base is a regression. The timed A/A of the baseline picked this
-estimator. A range or a 5-round paired bootstrap let one outlier hide a
-consistent +37% regression. A median absolute deviation read bimodal metrics
-(first geometry, peak memory) as differences between identical builds. At
-2 x one SD with five rounds, expect about one false positive per hundred A/A
-cells; the A/A floor's |gain| term then protects that cell. Rounds use the balanced, randomized
-first-side order of `ab-order.mjs`, per lane group and fixture.
-
-```sh
-# 1. Build each side (ordinary fleet job): source-built WASM, viewer dist,
-#    perf_probe (profiling profile). Copy them out of the checkout. Force or
-#    hash-check the served WASM: the shared Turbo cache can replay another
-#    checkout's @ifc-lite/wasm build.
-# 2. Plan: sides {label, perfProbe, dist, query?, env?, probeArgs?}, fixtures
-#    {name, path, set: tuning|holdout}, lanes, rounds (>= 5), seed, warmOpens,
-#    memoryPass (default true).
-# 3. Inside exclusive benchmark admission, on a private Xvfb display:
-DISPLAY=:97 node scripts/perf/load-scoreboard.mjs run --plan plan.json --out DIR \
-  [--fixtures a,b] [--aa-reference aa-run/report.json] [--resume]
-node scripts/perf/load-scoreboard.mjs report --out DIR --aa-reference aa-run/report.json
-```
-
-A plan whose sides are two copies of one build (`"kind": "aa"`) measures the
-noise floor. Its `report.json` `floors` become the `--aa-reference` for later
-comparisons made with the same harness version. A side's `query` appends
-viewer URL flags (e.g. `perf.sceneSnapshot=0`, `geomWorkers=1`). Its `env`
-and `probeArgs` reach `perf_probe`. Worker reservations export
-`RAYON_NUM_THREADS`, so the native lane removes it unless a side sets it.
-Outside `IFC_WORKER_KIND=benchmark` the report marks itself a dry run. The OS
-file cache is not purged in any lane.
-
 ## Storey planners and the QuickJS runtime leave the boot path (#9200)
 
 **Shipped: an eager-bytes cut, no boot-time change.** Three changes, each one
@@ -3306,6 +3209,21 @@ as well as JavaScript errors, and stop memory sampling on every exit path.
 Orientation reuses deterministic edge adjacency, triangle filters compact their existing index buffer, and welding/content hashing avoid duplicate map probes. Geometry policy, tolerances and traversal/output order remain unchanged. Own-layer native subset comparisons did not establish a meaningful full-load improvement; sampled leaf CPU and the cumulative result cannot establish a layer-specific gain. Preserve exact output and diagnostic oracles, including invalid/degenerate triangles and reused-buffer capacity. No isolated browser gain is established here; invalid Firefox cohorts and unrun follow-ups remain excluded. Owned-weld, sliver-incidence and alternate meshing experiments are not included.
 
 ### Dead ends (do NOT re-spike without a new mechanism)
+- **Forced inlining of entity-index dispatch (native instruction hillclimb,
+  2026-11-10):** forcing `EntityIndexStore::lookup` inline did not reduce pipeline
+  instructions on any of four tuning fixtures and exceeded the campaign's
+  regression ceiling on the structural fixture. Reverted. A large attributed
+  self-instruction share does not imply removable call overhead; let the compiler
+  choose unless a different mechanism is demonstrated. This was a cold,
+  single-thread Callgrind screen, not a wall-time or browser result.
+- **Early-exit columnar binary search (native instruction hillclimb,
+  2026-11-10):** replacing the standard library's fixed-iteration search with an
+  exact-match early return increased pipeline instructions on the structural and
+  architectural tuning fixtures. Reverted independently of the inlining trial.
+  Keep the standard search; fewer iterations are not necessarily fewer executed
+  instructions. Both trials failed the tuning gate, so the holdout and subsequent
+  identity/test/clippy/WASM acceptance gates were deliberately not run. No runtime
+  change survived and no browser speedup is claimed.
 - **Frame-invariant routing for plan-rotated voided walls** (#5739, PR #6035):
   the two routing fixes were NOT SHIPPED; both were measured on ISSUE_098 against the merge-base. With
   per-element local frames (the viewer default), the analytic prism cut's route

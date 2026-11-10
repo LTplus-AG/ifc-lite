@@ -202,7 +202,8 @@ pub fn orient_mesh_outward_verdict(mesh: &mut Mesh) -> OrientVerdict {
     // use corner slots instead, so scratch never exceeds the old corner budget.
     let indexed = vertex_count < mesh.indices.len();
     if indexed { corner.resize(vertex_count, u32::MAX); }
-    let q = |v: f32| (v as f64 * WELD_SCALE).round() as i64;
+    // `round_i64` is `.round() as i64` bit for bit, without a libm call.
+    let q = |v: f32| crate::grid::round_i64(v as f64 * WELD_SCALE);
     for &idx in &mesh.indices {
         if indexed && corner[idx as usize] != u32::MAX { continue; }
         let b = idx as usize * 3;

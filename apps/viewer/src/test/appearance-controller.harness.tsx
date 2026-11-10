@@ -5,7 +5,7 @@
 /* This Source Code Form is subject to the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-import { act, StrictMode } from 'react';
+import { act, Profiler, StrictMode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { IfcParser } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
@@ -108,6 +108,8 @@ export async function runAppearanceControllerScenario(
       }
     } });
   let stages = 0, nativeBitmaps = 0;
+  let collectCancellationNotices = false;
+  const cancellationNotices: string[] = [];
   try {
     const source = new TextEncoder().encode(`ISO-10303-21;
 HEADER;
@@ -166,7 +168,9 @@ END-ISO-10303-21;`);
     setGlobalRendererRef({ current: renderer });
     const mount = async () => {
       root = createRoot(container);
-      await act(async () => { root!.render(<StrictMode><AppearancePanel /></StrictMode>); });
+      await act(async () => { root!.render(<StrictMode><Profiler id="appearance-controller" onRender={() => {
+        if (collectCancellationNotices) cancellationNotices.push(container.textContent ?? '');
+      }}><AppearancePanel /></Profiler></StrictMode>); });
     };
     const unmount = async () => { await act(async () => { root?.unmount(); root = undefined; }); };
     const button = (label: string) => {
@@ -266,12 +270,13 @@ END-ISO-10303-21;`);
           const cancellation = new Promise<void>(resolve => { cancelled = resolve; });
           editor.prepareEntityOperations = async (operations, options) => {
             const result = await prepare(operations, options);
-            queueMicrotask(() => { button('Discard').click(); cancelled(); });
+            queueMicrotask(() => { collectCancellationNotices = true; button('Discard').click(); cancelled(); });
             return result;
           };
           await act(async () => { button('Apply').click(); await cancellation; });
           await advance(20);
-          check(container.textContent?.toLowerCase().includes('discarded'), 'late commit progress replaced the discard notice');
+          check(cancellationNotices.some(text => text.includes('Preview discarded.')), 'Discard never rendered its cancellation notice');
+          check(!cancellationNotices.some(text => /Preparing IFC changes|Saving appearance/.test(text)), 'late commit progress replaced the discard notice');
         } else if (scenario === 'apply-selection') {
           let release!: () => void;
           const held = new Promise<void>(resolve => { release = resolve; });

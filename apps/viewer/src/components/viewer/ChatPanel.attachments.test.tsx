@@ -9,7 +9,7 @@ import { useViewerStore } from '@/store';
 import { waitFor } from '@/test/render';
 import { chatFrames, serveGated, mountProxy, send } from '@/test/script-chat-fixture';
 
-// C-6: attachments belong to the turn that sent them, not the first reply chunk.
+// #9577 C-6: attachments belong to the turn that sent them, not the first reply chunk.
 test('C-6 first streamed chunk preserves attachments added after Send', async () => {
   const { sent, release } = serveGated(chatFrames('Received.'));
   const ui = mountProxy();

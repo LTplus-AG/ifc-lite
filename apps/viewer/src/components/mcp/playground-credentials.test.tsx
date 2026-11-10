@@ -91,6 +91,7 @@ describe('MCP playground BYOK credential', () => {
   });
 });
 
+// #9577: each lifecycle boundary must retire only its own conversation.
 for (const action of ['replace', 'stop', 'unmount'] as const) it(`playground ${action} aborts the current API turn`, async t => {
   t.after(() => { cleanup(); clearApiKeys(); });
   updateApiKeys({ anthropicKey: 'sk-ant-test' });

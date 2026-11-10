@@ -167,6 +167,7 @@ describe('chat panel localization (#4918)', () => {
   });
 });
 
+// #9577 C-6: async attachment batches share the composer’s live capacity.
 it('C-6 overlapping file batches never exceed six attachments', async () => {
   useViewerStore.setState({ chatActiveModel: 'openai/gpt-free', chatAttachments: [] });
   const ui = renderPanel();

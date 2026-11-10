@@ -186,6 +186,7 @@ export function renderMarkdown(summary, plan, host) {
   }
   const diffRows = summary.fixtures.flatMap((f) => ['browser-cold', 'browser-warm'].filter((lane) => f.lanes[lane]?.elementDiff).map((lane) => {
     const d = f.lanes[lane].elementDiff, worst = d.diffs.find((x) => !x.identical);
+    if (d.diffs.some((x) => x.unverifiable)) return `| ${f.name} | ${lane} | ${d.diffs.length + 1} | UNVERIFIABLE (no element hashes on a sample) |`;
     return `| ${f.name} | ${lane} | ${d.diffs.length + 1} | ${d.identical ? 'IDENTICAL' : `DIFFERS (${worst.side} r${worst.round}: ${worst.onlyBase} missing, ${worst.onlyBranch} extra, ${worst.changed} changed of ${worst.compared}; e.g. ${[...worst.examples.changed, ...worst.examples.onlyBase, ...worst.examples.onlyBranch].slice(0, 5).join(', ')})`} |`;
   }));
   if (diffRows.length) {

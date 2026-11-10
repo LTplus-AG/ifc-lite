@@ -211,7 +211,9 @@ export function diffElements(base, branch, limit = 10) {
   }
   for (const id of Object.keys(branch)) if (!(id in base)) onlyBranch.push(Number(id));
   const head = (xs) => xs.sort((a, b) => a - b).slice(0, limit);
-  return { identical: onlyBase.length + onlyBranch.length + changed.length === 0, compared: Object.keys(base).length,
+  // No hashes on either side proves nothing: never report that as identical.
+  const empty = Object.keys(base).length === 0 || Object.keys(branch).length === 0;
+  return { identical: !empty && onlyBase.length + onlyBranch.length + changed.length === 0, unverifiable: empty, compared: Object.keys(base).length,
     onlyBase: onlyBase.length, onlyBranch: onlyBranch.length, changed: changed.length,
     examples: { onlyBase: head(onlyBase), onlyBranch: head(onlyBranch), changed: head(changed) } };
 }

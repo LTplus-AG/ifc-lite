@@ -100,7 +100,7 @@ export async function browserSample({ chromium, executablePath, baseUrl, setRoot
   const consoleLogs = [];
   const meta = { query, executablePath, chromeArgs: CHROME_ARGS, pageErrors: [], crashed: false };
   const result = { cold: { lane: 'browser-cold', ok: false }, warm: warmOpens > 0 ? { lane: 'browser-warm', ok: false } : null, warmOpens: [], meta };
-  let context = null, page = null, phase = 'launch';
+  let context = null, page = null, phase = 'launch', coldFingerprint = null;
   const watch = (p) => {
     p.on('console', (m) => { if (consoleLogs.length < 5000) consoleLogs.push(m.text()); });
     p.on('pageerror', (e) => meta.pageErrors.push(e.message.slice(0, 300)));
@@ -113,10 +113,24 @@ export async function browserSample({ chromium, executablePath, baseUrl, setRoot
     try { open = await openAndWaitInteractive(page, [fixture.path], { timeoutMs }); } finally { meta[`${label}Memory`] = sampler.stop(); }
     const fingerprint = await readOutputFingerprint(page);
     log?.(`  ${tag} ${label}: first ${open.firstFrameMs?.toFixed(0)} ms, interactive ${open.interactiveMs.toFixed(0)} ms, peak PSS ${meta[`${label}Memory`].peakPssMiB.toFixed(0)} MiB, path ${open.loadPaths.join(',')}`);
+    let identity = fingerprint.map((m) => m.identity).join(' | ');
+    let elements = fingerprint.map((m) => m.elements);
+    let identitySource = 'element hashes';
+    if (label !== 'cold' && fingerprint.every((m) => m.hashed === 0)) {
+      // A cache hit has no element hashes. It is identified by its cold load when it
+      // restored that load's flat output exactly; otherwise it is a restore mismatch.
+      const restored = coldFingerprint && coldFingerprint.length === fingerprint.length
+        && fingerprint.every((m, i) => m.flat.signature === coldFingerprint[i].flat.signature && m.flat.meshes === coldFingerprint[i].flat.meshes);
+      identity = restored ? `restored cold: ${coldFingerprint.map((m) => m.identity).join(' | ')}`
+        : `RESTORE MISMATCH vs cold: flat ${fingerprint.map((m) => `${m.flat.meshes}/${m.flat.signature}`).join(',')}`;
+      elements = restored ? coldFingerprint.map((m) => m.elements) : fingerprint.map(() => ({}));
+      identitySource = restored ? 'cold load (warm restored its flat output exactly; instanced shards not compared)' : 'none';
+    }
+    if (label === 'cold') coldFingerprint = fingerprint;
     // Per-element hashes go to their own file (large); the row keeps the partition-independent identity.
-    writeFileSync(join(outDir, `${tag}-${label}.elements.json`), JSON.stringify(fingerprint.map((m) => m.elements)));
-    return { ...summarizeOpen(open, meta[`${label}Memory`]), fingerprint: fingerprint.map((m) => m.identity).join(' | '),
-      models: fingerprint.map(({ elements, ...rest }) => rest) };
+    writeFileSync(join(outDir, `${tag}-${label}.elements.json`), JSON.stringify(elements));
+    return { ...summarizeOpen(open, meta[`${label}Memory`]), fingerprint: identity, identitySource,
+      models: fingerprint.map(({ elements: _e, ...rest }) => rest) };
   };
   try {
     context = await chromium.launchPersistentContext(profileDir, { env, executablePath, headless: false,

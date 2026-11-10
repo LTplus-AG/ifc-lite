@@ -148,4 +148,8 @@ test('per-element output diff ignores order and names missing, extra and changed
   assert.equal(d.identical, false);
   assert.deepEqual([d.onlyBase, d.onlyBranch, d.changed], [1, 1, 1]);
   assert.deepEqual(d.examples, { onlyBase: [1], onlyBranch: [4], changed: [3] });
+  // Two loads without element hashes (e.g. cache hits) are unverifiable, not identical.
+  const empty = diffElements({}, {});
+  assert.equal(empty.identical, false);
+  assert.equal(empty.unverifiable, true);
 });

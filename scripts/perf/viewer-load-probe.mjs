@@ -170,6 +170,10 @@ export async function openAndWaitInteractive(page, files, { timeoutMs = 45 * 60 
  * `sig` is an order-independent aggregate over (expressId, hash); `elements`
  * maps each id to its hash for a per-element diff. Flat counts are kept as
  * information only.
+ *
+ * Cache hits (warm opens) carry no element hashes: the cache persists geometry,
+ * not the hash pass. A warm open is identified through the cold load it was
+ * cached from (see load-scoreboard-browser.mjs).
  */
 export async function readOutputFingerprint(page) {
   return page.evaluate(() => {
@@ -185,14 +189,16 @@ export async function readOutputFingerprint(page) {
       const meshes = g?.meshes ?? [];
       const elements = {};
       const unhashed = new Set();
-      let conflicts = 0, flatTriangles = 0;
+      let conflicts = 0, flatTriangles = 0, flatSig = 0;
       const put = (id, hash) => {
         const hex = hash.toString(16);
         if (elements[id] !== undefined && elements[id] !== hex) conflicts++;
         elements[id] = hex;
       };
       for (const mesh of meshes) {
-        flatTriangles += (mesh.indices?.length ?? 0) / 3;
+        const tris = (mesh.indices?.length ?? 0) / 3;
+        flatTriangles += tris;
+        flatSig = (flatSig + fnv(`${mesh.expressId}:${(mesh.positions?.length ?? 0) / 3}:${tris}`, 0x811c9dc5)) >>> 0;
         if (mesh.geometryHash !== undefined && mesh.geometryHash !== null) put(mesh.expressId, mesh.geometryHash);
         else unhashed.add(mesh.expressId);
       }
@@ -209,7 +215,9 @@ export async function readOutputFingerprint(page) {
         name: m.name,
         identity: `elements=${hashed + unhashed.size} hashed=${hashed} unhashed=${unhashed.size} conflicts=${conflicts} sig=${sumA.toString(16).padStart(8, '0')}${sumB.toString(16).padStart(8, '0')}`,
         elements, unhashedIds: [...unhashed].slice(0, 200),
-        flat: { meshes: meshes.length, triangles: flatTriangles, instancedElements: g?.instancedGeometryHashes?.size ?? 0 },
+        hashed,
+        // Flat split only: partition-dependent across loads, but a cache hit must restore it exactly.
+        flat: { meshes: meshes.length, triangles: flatTriangles, instancedElements: g?.instancedGeometryHashes?.size ?? 0, signature: flatSig.toString(16) },
         entities: m.ifcDataStore?.entityCount ?? null,
       };
     });

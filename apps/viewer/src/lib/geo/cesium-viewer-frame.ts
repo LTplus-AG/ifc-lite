@@ -2,8 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { NORMAL_COORD_THRESHOLD_M, type CoordinateInfo } from '@ifc-lite/geometry';
-import { ifcToViewerAxes } from './coordinate-frame';
+import { NORMAL_COORD_THRESHOLD_M, type CoordinateInfo, type Vec3 } from '@ifc-lite/geometry';
+import { totalYupOffset } from './coordinate-frame';
 import type { GeodesicPosition } from './cesium-bridge';
 import type { ViewerToEnuRotation } from './viewer-enu-rotation';
 
@@ -17,10 +17,11 @@ import type { ViewerToEnuRotation } from './viewer-enu-rotation';
  * provision-for-void proxies with absolute placements in site-local numbers,
  * so they sit at the file's own origin, 6000 km from a building placed at its
  * UTM site. The box then reaches both the WASM RTC origin (the median element
- * placement) and the IFC world origin, and its centre falls between them. The
- * pivot is the RTC origin, in the bulk of the model. A long or federated
- * model does not reach the world origin and keeps its centre. When most
- * elements are the unplaced ones, the median follows them.
+ * placement, for a model loaded on its own) and the IFC world origin, and its
+ * centre falls between them. The pivot is the RTC origin, in the bulk of the
+ * model. A long model, or one federated onto another model's anchor, does not
+ * reach the world origin and keeps its centre. When most elements are the
+ * unplaced ones, the median follows them.
  */
 export function viewerFrameCenter(coordinateInfo: CoordinateInfo | undefined) {
   const bounds = coordinateInfo?.shiftedBounds;
@@ -30,14 +31,14 @@ export function viewerFrameCenter(coordinateInfo: CoordinateInfo | undefined) {
     y: (bounds.min.y + bounds.max.y) / 2,
     z: (bounds.min.z + bounds.max.z) / 2,
   };
-  const rtc = coordinateInfo?.wasmRtcOffset;
-  if (!rtc) return center;
+  if (!coordinateInfo?.wasmRtcOffset) return center;
   const shift = coordinateInfo.originShift;
   const rtcOrigin = { x: -shift.x, y: -shift.y, z: -shift.z };
-  const rtcYup = ifcToViewerAxes(rtc);
-  const worldOrigin = { x: rtcOrigin.x - rtcYup.x, y: rtcOrigin.y - rtcYup.y, z: rtcOrigin.z - rtcYup.z };
+  // Where the file's own (0,0,0) sits in the renderer frame (as ifc-origin.ts `ownOrigin`).
+  const offset = totalYupOffset(coordinateInfo);
+  const worldOrigin = { x: -offset.x, y: -offset.y, z: -offset.z };
   const t = NORMAL_COORD_THRESHOLD_M;
-  const reaches = (p: { x: number; y: number; z: number }) => (['x', 'y', 'z'] as const)
+  const reaches = (p: Vec3) => (['x', 'y', 'z'] as const)
     .every((k) => p[k] >= bounds.min[k] - t && p[k] <= bounds.max[k] + t);
   const offCentre = Math.hypot(center.x - rtcOrigin.x, center.y - rtcOrigin.y, center.z - rtcOrigin.z);
   return offCentre > t && reaches(rtcOrigin) && reaches(worldOrigin) ? rtcOrigin : center;

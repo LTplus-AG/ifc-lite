@@ -4,9 +4,15 @@
 #
 # Type stubs for the ifclite-geom native extension.
 # Shipped next to the compiled module so editors and type checkers see the API.
+import os
 from typing import Any, Dict, List, Literal, Optional, Set, TypedDict, Union, overload
 
 Quality = Literal["lowest", "low", "medium", "high", "highest"]
+
+class RhinoScene(TypedDict):
+    """Encoded Rhino scene: JSON manifest plus the binary blob it references."""
+    manifest: str
+    blob: bytes
 
 class ElementColorBuffers(TypedDict, total=False):
     palette: List[List[float]]  # distinct RGBA; present only for multi-color elements
@@ -733,3 +739,30 @@ def alignment_axes(
 ) -> AlignmentAxes:
     """Bounded samples in geometric horizontal metres from each physical start, not authored chainage."""
     ...
+
+
+def rhino_scene(
+    ifc_bytes: bytes, *, units: Optional[str] = None, coordinates: Optional[str] = None,
+    layer_scheme: Optional[str] = None, instancing: Optional[bool] = None,
+    properties: Optional[str] = None, include_spaces: Optional[bool] = None,
+    normals: Optional[bool] = None, layer_slicing: Optional[bool] = None,
+) -> RhinoScene:
+    """Return {"manifest": str, "blob": bytes} from the shared Rhino scene encoder.
+
+    units: source, meters, millimeters, centimeters, feet, inches;
+        default: Rust default (source).
+    coordinates: local or world; default: Rust default (local).
+    layer_scheme: spatial-class, class, presentation;
+        default: Rust default (spatial-class).
+    instancing: default: Rust default (True).
+    properties: all, attributes, none; default: Rust default (all).
+    include_spaces: default: Rust default (True).
+    normals: default: Rust default (True).
+    layer_slicing: default: Rust default (False).
+    None selects the Rust default. Invalid strings and absent render geometry
+    raise ValueError. The GIL is released during geometry processing.
+    Use ifclite_geom.write_3dm(scene, path, version=8) with the optional 3dm extra.
+    """
+
+def write_3dm(scene: RhinoScene, path: str | os.PathLike[str], *, version: int = 8) -> None:
+    """Write an encoded Rhino scene to a version 7 or 8 .3dm; requires the 3dm extra."""

@@ -275,11 +275,10 @@ export const createPointCloudSlice: StateCreator<PointCloudSlice, [], [], PointC
     const next = Number.isFinite(count) ? Math.max(0, count) : 0;
     return s.pointCloudAssetCount === next ? s : { pointCloudAssetCount: next };
   }),
-  incrementPointCloudAssetCount: (n = 1) => set((s) => ({
-    pointCloudAssetCount: Number.isFinite(n)
-      ? Math.max(0, s.pointCloudAssetCount + n)
-      : s.pointCloudAssetCount,
-  })),
+  incrementPointCloudAssetCount: (n = 1) => set((s) => {
+    const next = Number.isFinite(n) ? Math.max(0, s.pointCloudAssetCount + n) : s.pointCloudAssetCount;
+    return s.pointCloudAssetCount === next ? s : { pointCloudAssetCount: next };
+  }),
   setPointCloudAlignmentAvailable: (available) => set({ pointCloudAlignmentAvailable: available }),
   setPointCloudAlignmentEnabled: (enabled) => set({ pointCloudAlignmentEnabled: enabled }),
 });

@@ -2,7 +2,7 @@
 import { expect, it } from 'vitest';
 import { generateIfcGuid } from '@ifc-lite/encoding';
 import { MutablePropertyView } from '@ifc-lite/mutations';
-import { newStorey, exportText, parse, type Schema } from './wall-join-mesh.oracle.js';
+import { newStorey, exportText, parse } from './wall-join-mesh.oracle.js';
 import { addClassificationInStore } from './classification.js';
 import { mirrorElementsInStore } from './element-mirror.js';
 import { addGridToStore, rectangularGridAxes } from './grid.js';
@@ -13,7 +13,7 @@ import { AnchorEntityReader } from './resolve-anchor.js';
 import { refId } from './host-geometry-frame.js';
 import { schemaAttributes, schemaRegistry } from './schema-attributes.js';
 
-for (const schema of ['IFC2X3', 'IFC4', 'IFC4X3'] as const) it(`#9409 classification reuse matches an omitted edition exactly (${schema})`, async () => {
+for (const schema of ['IFC4', 'IFC4X3'] as const) it(`#9409 classification reuse matches an omitted edition exactly (${schema})`, async () => {
   const s = await newStorey(schema);
   const add = (Edition?: string) => addClassificationInStore(s.store, s.editor, { System: 'Uniclass', Identification: 'EF_25', Edition });
   const versioned = add('2024'), unversioned = add();

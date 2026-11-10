@@ -12,6 +12,7 @@ import { effectiveStoreyId } from './edit/effective-storey.js';
 import { objectPlacementOf, uprightFrame, unrotateBy, rotateBy } from './element-transform-frames.js';
 import { axis3d, refId } from './host-geometry-frame.js';
 import { liveEntityConforms } from './resolve-relations.js';
+import { mirrorDoorHandedness } from './element-mirror-door.js';
 import { getModelLengthUnitScale } from './edit/length-unit-scale.js';
 
 export interface MirrorElementsParams {
@@ -34,6 +35,9 @@ export function mirrorElementsInStore(store: IfcDataStore, editor: StoreEditor, 
     return [2 * dot * u[0] - p[0], 2 * dot * u[1] - p[1]];
   };
   return editor.runAtomic(draft => {
+    if (ids.some(id => liveEntityConforms(store, id, 'IfcGrid', draft.getMutationView()))) {
+      throw new Error('Mirror does not support grids');
+    }
     const selected = params.copy ? copyBatchInStore(store, draft, ids, [{}]).map(r => r.copyId) : [...new Set(ids)];
     const view = draft.getMutationView(), reader = new AnchorEntityReader(store, view);
     const plan = planElementTransform({ dataStore: store, view, selected, storeyOf: id => effectiveStoreyId(store, view, id) ?? null });
@@ -127,16 +131,8 @@ export function mirrorElementsInStore(store: IfcDataStore, editor: StoreEditor, 
           }
         }
       }
-      if (liveEntityConforms(store, id, 'IfcDoor', view)) {
-        const slot = product.names.indexOf('OperationType');
-        const operation = product.attributes[slot];
-        if (slot >= 0 && typeof operation === 'string') {
-          const token = operation.replace(/^\./, '').replace(/\.$/, '');
-          const flipped = token.replace(/LEFT|RIGHT/g, side => side === 'LEFT' ? 'RIGHT' : 'LEFT');
-          if (flipped !== token) draft.setPositionalAttribute(id, slot, `.${flipped}.`);
-        }
-      }
     }
+    mirrorDoorHandedness(store, draft, products);
     return selected;
   });
 }

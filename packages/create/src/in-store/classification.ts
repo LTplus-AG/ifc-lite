@@ -34,7 +34,7 @@ export function addClassificationInStore(store: IfcDataStore, editor: StoreEdito
     let system = [...reader.ids('IFCCLASSIFICATION')].find(id => {
       const e = reader.entity(id)!;
       return e.attributes[e.names.indexOf('Name')] === params.System
-        && (params.Edition === undefined || e.attributes[e.names.indexOf('Edition')] === params.Edition);
+        && (e.attributes[e.names.indexOf('Edition')] ?? undefined) === params.Edition;
     });
     system ??= emit('IfcClassification', { Source: params.Source, Edition: params.Edition, Name: params.System });
     let reference = [...reader.ids('IFCCLASSIFICATIONREFERENCE')].find(id => {

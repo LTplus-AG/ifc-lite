@@ -21,7 +21,7 @@ for (const schema of ['IFC4', 'IFC4X3'] as const) it(`#9409 classification reuse
   expect(add()).toBe(unversioned);
   expect(add('2024')).toBe(versioned);
   expect(add('2025')).not.toBe(versioned);
-  const saved = await parse(exportText(s)), reader = new AnchorEntityReader(saved);
+  const saved = await parse(exportText(s)), reader = new AnchorEntityReader(saved, null);
   const source = (id: number) => refId(reader.entity(id)!.attributes[reader.entity(id)!.names.indexOf('ReferencedSource')]);
   const a = reader.entity(source(versioned)!)!, b = reader.entity(source(unversioned)!)!;
   expect(a.attributes[a.names.indexOf('Edition')]).toBe('2024');

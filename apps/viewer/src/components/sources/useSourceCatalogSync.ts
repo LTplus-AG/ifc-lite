@@ -4,7 +4,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { FileSourceProvider, PluginContext, SourceContainer, SourceFile } from '@ifc-lite/plugin-api';
-import { useSingleFlight } from '@/hooks/useSingleFlight';
+import { useAsyncRun } from '@/hooks/useAsyncRun';
 import { toast } from '@/components/ui/toast';
 import { isCatalogCacheable, persistCompleteCatalog, readCachedCatalog } from './sourceCatalogCache';
 import { appendPage, fetchAllFilePages, fetchContainerPage, fetchFilePage, type PagedItems } from './sourceCatalogPaging';
@@ -77,7 +77,7 @@ export function useSourceCatalogSync({ provider, ctx, setError, onSynced }: UseS
 
   const [loadingFolders, setLoadingFolders] = useState(false);
   const [loadingFiles, setLoadingFiles] = useState(false);
-  const paging = useSingleFlight();
+  const paging = useAsyncRun({ label: 'source catalog pagination' });
   const loadingMore = paging.busy;
   const [syncing, setSyncing] = useState(false);
   const [catalogUpdatedAt, setCatalogUpdatedAt] = useState<number | null>(null);
@@ -93,11 +93,11 @@ export function useSourceCatalogSync({ provider, ctx, setError, onSynced }: UseS
     abortRef.current?.abort();
     openingContainersRef.current.clear();
     setLoadingContainers(new Set());
-    paging.release();
+    paging.reset();
     const controller = new AbortController();
     abortRef.current = controller;
     return { gen: ++requestGenRef.current, signal: controller.signal };
-  }, [paging.release]);
+  }, [paging.reset]);
 
   useEffect(() => () => {
     abortRef.current?.abort();
@@ -208,13 +208,13 @@ export function useSourceCatalogSync({ provider, ctx, setError, onSynced }: UseS
       setCatalogUpdatedAt(null);
       setLoadingFolders(false);
       setLoadingFiles(false);
-      paging.release();
+      paging.reset();
       setSyncing(false);
 
       if (applyCachedCatalog(projectId, fileAreaId)) return;
       void syncFileArea(projectId, fileAreaId);
     },
-    [applyCachedCatalog, syncFileArea, paging.release],
+    [applyCachedCatalog, syncFileArea, paging.reset],
   );
 
   /**
@@ -286,8 +286,7 @@ export function useSourceCatalogSync({ provider, ctx, setError, onSynced }: UseS
       if (current?.cursor === undefined) return;
 
       const gen = requestGenRef.current;
-      const signal = abortRef.current?.signal ?? new AbortController().signal;
-      void paging.run(async () => {
+      void paging.start(async ({ signal }) => {
         try {
           const page = await fetchContainers(area.projectId, key, current.cursor, signal);
           if (requestGenRef.current !== gen) return;
@@ -303,7 +302,7 @@ export function useSourceCatalogSync({ provider, ctx, setError, onSynced }: UseS
         }
       });
     },
-    [containersByParent, fetchContainers, filesByContainer, folderKeyFor, loadingMore, maybePersist, paging.run, setError],
+    [containersByParent, fetchContainers, filesByContainer, folderKeyFor, loadingMore, maybePersist, paging.start, setError],
   );
 
   /** The map key holding files for the current selection. */
@@ -327,8 +326,7 @@ export function useSourceCatalogSync({ provider, ctx, setError, onSynced }: UseS
       if (current?.cursor === undefined) return;
 
       const gen = requestGenRef.current;
-      const signal = abortRef.current?.signal ?? new AbortController().signal;
-      void paging.run(async () => {
+      void paging.start(async ({ signal }) => {
         try {
           const page = await fetchFilePage(provider, ctx, area.projectId, key, current.cursor, signal);
           if (requestGenRef.current !== gen) return;
@@ -344,7 +342,7 @@ export function useSourceCatalogSync({ provider, ctx, setError, onSynced }: UseS
         }
       });
     },
-    [containersByParent, ctx, fileKeyFor, filesByContainer, loadingMore, maybePersist, paging.run, provider, setError],
+    [containersByParent, ctx, fileKeyFor, filesByContainer, loadingMore, maybePersist, paging.start, provider, setError],
   );
 
   const resetCatalog = useCallback(() => {
@@ -362,9 +360,9 @@ export function useSourceCatalogSync({ provider, ctx, setError, onSynced }: UseS
     setCatalogUpdatedAt(null);
     setLoadingFolders(false);
     setLoadingFiles(false);
-    paging.release();
+    paging.reset();
     setSyncing(false);
-  }, [paging.release]);
+  }, [paging.reset]);
 
   return {
     folders,

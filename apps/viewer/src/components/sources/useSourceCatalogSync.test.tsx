@@ -617,3 +617,45 @@ it('#9567 on-demand completion leaves initial area file loading owned by the are
   assert.equal(areaStillLoading, true, 'only the initial area fetch may clear its loading flag');
   assert.equal(harness.get().loadingFiles, false);
 });
+
+// #9567 / #9590: the helper migration preserves physical cancellation of page requests.
+for (const kind of ['folders', 'files'] as const) for (const retire of ['reset', 'replace', 'sync', 'unmount'] as const) {
+  it(`#9567 ${retire} aborts an in-flight ${kind} page and rejects its late result`, async () => {
+    const provider = new FakeProvider();
+    let pageSignal: AbortSignal | undefined;
+    let finish!: () => void;
+    const hold = async (options?: ListOptions) => {
+      if (options?.cursor) {
+        pageSignal = options.signal;
+        await new Promise<void>(resolve => { finish = resolve; });
+      }
+    };
+    provider.listContainers = async (_ctx, _project, _parent, options) => {
+      await hold(options);
+      return { items: options?.cursor ? [{ id: 'retired-page', name: 'retired page' }] : [],
+        cursor: kind === 'folders' && !options?.cursor ? 'next' : undefined };
+    };
+    provider.listFiles = async (_ctx, _project, _parent, _filter, options) => {
+      await hold(options);
+      return { items: options?.cursor ? [fileOf('retired-page')] : [],
+        cursor: kind === 'files' && !options?.cursor ? 'next' : undefined };
+    };
+    const harness = renderCatalogSync(provider);
+    await act(async () => harness.get().openFileArea('p', 'area-1'));
+    act(() => { if (kind === 'folders') harness.get().loadMoreFolders(null); else harness.get().loadMoreFiles(null); });
+    await act(async () => {});
+    assert.equal(Boolean(pageSignal), true, 'paging reaches the provider with an abort signal');
+    if (retire === 'reset') act(() => harness.get().resetCatalog());
+    else if (retire === 'replace') await act(async () => harness.get().openFileArea('p', 'area-2'));
+    else if (retire === 'sync') await act(async () => harness.get().syncFileArea('p', 'area-1'));
+    else { const entry = mounted.pop()!; act(() => entry.root.unmount()); entry.container.remove(); }
+    const aborted = pageSignal?.aborted;
+    await act(async () => finish());
+    assert.equal(aborted, true, 'retiring the page aborts its transport');
+    if (retire !== 'unmount') {
+      assert.equal(harness.get().loadingMore, false);
+      const ids = kind === 'folders' ? harness.get().folders.map(folder => folder.id) : harness.get().allFiles.map(file => file.id);
+      assert.equal(ids.includes('retired-page'), false, 'an abort-ignoring provider cannot publish a retired page');
+    }
+  });
+}

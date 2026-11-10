@@ -137,8 +137,8 @@ Entries live in `<root>/result-v1/<key>.ifcr`.
 ```sh
 cargo build --profile profiling -p ifc-lite-processing --example perf_probe
 P=target/profiling/examples/perf_probe
-$P model.ifc --cold --result-cache /tmp/rc --expect-cache miss --result-fingerprint --json
-$P model.ifc --cold --result-cache /tmp/rc --expect-cache hit  --result-fingerprint --json
+$P model.ifc --cold --iters 1 --result-cache /tmp/rc --expect-cache miss --result-fingerprint --json
+$P model.ifc --cold --iters 1 --result-cache /tmp/rc --expect-cache hit  --result-fingerprint --json
 ```
 
 The second run is a fresh process. Its `resultCache` object reports the hash, read,

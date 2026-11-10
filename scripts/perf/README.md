@@ -30,7 +30,7 @@ Lessons:
   hand-bumped constant keeps up. `build.rs` digests the core, geometry and processing
   sources, `Cargo.lock`, rustc, the target, the profile and the flags. A dozen
   `IFC_LITE_*` environment knobs also change geometry at runtime, so they key too.
-- **Timing a warm hit.** Run `perf_probe <f> --cold --result-cache DIR --expect-cache
+- **Timing a warm hit.** Run `perf_probe <f> --cold --iters 1 --result-cache DIR --expect-cache
   hit --json` in a fresh process. The JSON object `resultCache` holds this run's work.
   The phase table on a hit is the producer's (`statsAreProducers`). Never cite it as
   current work.

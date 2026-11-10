@@ -190,11 +190,30 @@ function registryFamily(schema: string | undefined): 'IFC2X3' | 'IFC4' | 'IFC4X3
     return family === 'IFC2X3' || family === 'IFC4' || family === 'IFC4X3' ? family : undefined;
 }
 
+// A finite name snapshot already validated its registry. Keep an enumerable
+// witness so repeated reads avoid recounting every class; removal/replacement
+// still goes through the original empty-registry guard and its diagnostic.
+const nameSnapshotRegistries = new WeakMap<SchemaEntityNameSnapshot, {
+    family: NonNullable<ReturnType<typeof registryFamily>>;
+    registry: SchemaEntityNameSnapshot['registry']; witness: string;
+}>();
+
+function registryForAttributeNames(family: NonNullable<ReturnType<typeof registryFamily>>, snapshot?: SchemaEntityNameSnapshot) {
+    const cached = snapshot && nameSnapshotRegistries.get(snapshot);
+    if (cached?.family === family && cached.registry === snapshot?.registry
+        && Object.prototype.propertyIsEnumerable.call(cached.registry.entities, cached.witness)) return cached.registry;
+    const registry = getSchemaRegistryForVersion(family);
+    if (snapshot?.registry === registry) {
+        nameSnapshotRegistries.set(snapshot, { family, registry, witness: Object.keys(registry.entities)[0]! });
+    }
+    return registry;
+}
+
 /** Attribute names in one model schema, falling back to the bundled union. */
 export function getAttributeNamesForSchema(type: string, schema: string | undefined, snapshot?: SchemaEntityNameSnapshot): string[] {
     const family = registryFamily(schema);
     if (family) {
-        const registry = getSchemaRegistryForVersion(family);
+        const registry = registryForAttributeNames(family, snapshot);
         const canonical = getCanonicalEntityName(registry, type, snapshot);
         const attributes = canonical ? registry.entities[canonical]?.allAttributes : undefined;
         if (attributes) return attributes.map(attribute => attribute.name);

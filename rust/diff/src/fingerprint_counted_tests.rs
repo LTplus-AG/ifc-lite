@@ -4,6 +4,7 @@
 //! Counted holes, hole runs and engine length checks (#8114): every streamed
 //! form equals the per-hole materialized text, and huge counts stay O(1).
 use super::*;
+use crate::js_json::stringify_sorted;
 use crate::input::{PropertySetInput, QuantitySetInput};
 use crate::js_json::{cmp_sorted, stable_hash_json, stringify, utf16_length};
 use crate::utf16::{cmp_code_units, stable_hash};

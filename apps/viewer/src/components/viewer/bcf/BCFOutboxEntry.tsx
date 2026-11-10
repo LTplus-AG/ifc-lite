@@ -10,6 +10,7 @@
  */
 
 import { useState } from 'react';
+import { useAsyncRun } from '@/hooks/useAsyncRun';
 import { Button } from '@/components/ui/button';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import { checkEntry, requeueAfterCheck, resolveWithCandidate, settleRemoteConflict } from '@/lib/bcf-publication/outbox-check';
@@ -39,16 +40,19 @@ export interface BCFOutboxEntryProps {
 
 export function BCFOutboxEntry({ record, entry, label, connection }: BCFOutboxEntryProps) {
   const { t } = useTranslation();
-  const [busy, setBusy] = useState(false);
+  // One entry action at a time (C-2): a same-tick double press is refused
+  // before it settles, checks or requeues the entry twice.
+  const flight = useAsyncRun();
+  const busy = flight.busy;
   const [error, setError] = useState<string | null>(null);
-  const run = async (work: () => Promise<unknown>) => {
-    setBusy(true); setError(null);
+  const run = (work: () => Promise<unknown>) => flight.start(async () => {
+    setError(null);
     try { await work(); }
     catch (cause) {
       console.warn('[BCF outbox] Entry action failed', cause);
       setError(cause instanceof Error ? cause.message : String(cause));
-    } finally { setBusy(false); }
-  };
+    }
+  });
   const checkable = entry.state === 'uncertain' || entry.state === 'blocked' && entry.blocked === 'imported';
   const check = entry.check;
   return (

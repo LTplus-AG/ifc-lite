@@ -27,8 +27,9 @@ import type { GeometryResult } from '@ifc-lite/geometry';
 import type { CesiumPlacementDraft } from './cesiumSlice.js';
 import { applyThemeClasses, hasLoadedModel, initialPointerInput, initialShowPerformanceStats, persistShowPerformanceStats } from './uiSlice.helpers.js';
 import type { NavigationPreset } from '@/lib/navigation/presets.js';
+import type { WheelZoomSensitivity } from '@/lib/navigation/wheel-input.js';
 import type { SelectedDirectrixSegment } from '@/lib/analytic/segment-selection.js';
-import { getInitialHierarchyMode, getInitialNavigationPreset, persistHierarchyMode, persistNavigationPreset } from './uiPreferences.js';
+import { getInitialHierarchyMode, getInitialNavigationPreset, getInitialWheelZoomSensitivity, persistHierarchyMode, persistNavigationPreset, persistWheelZoomSensitivity } from './uiPreferences.js';
 
 export type ThemeMode = 'light' | 'dark' | 'colorful';
 export type { GeometryReloadReason } from './geometryLoadSettings.js';
@@ -131,6 +132,7 @@ export interface UISlice extends GeometryLoadSettingsState, GeometryLoadSettings
   hoverTooltipsEnabled: boolean;
   showPerformanceStats: boolean;
   navigationPreset: NavigationPreset;
+  wheelZoomSensitivity: WheelZoomSensitivity; // every view's wheel zoom, saved per browser (#9507)
   visualEnhancementsEnabled: boolean;
   /** Show exact authored swept-disk directrices for selected IFC products. */
   centrelineOverlayEnabled: boolean;
@@ -177,6 +179,7 @@ export interface UISlice extends GeometryLoadSettingsState, GeometryLoadSettings
   toggleHoverTooltips: () => void;
   setShowPerformanceStats: (enabled: boolean) => void;
   setNavigationPreset: (preset: NavigationPreset) => void;
+  setWheelZoomSensitivity: (sensitivity: WheelZoomSensitivity) => void;
   setVisualEnhancementsEnabled: (enabled: boolean) => void;
   setCentrelineOverlayEnabled: (enabled: boolean) => void;
   setSelectedDirectrixSegment: (segment: SelectedDirectrixSegment | null) => void;
@@ -228,6 +231,7 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
   hoverTooltipsEnabled: UI_DEFAULTS.HOVER_TOOLTIPS_ENABLED,
   showPerformanceStats: initialShowPerformanceStats(),
   navigationPreset: getInitialNavigationPreset(),
+  wheelZoomSensitivity: getInitialWheelZoomSensitivity(),
   visualEnhancementsEnabled: UI_DEFAULTS.VISUAL_ENHANCEMENTS_ENABLED,
   centrelineOverlayEnabled: false,
   selectedDirectrixSegment: null,
@@ -356,6 +360,10 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
   setNavigationPreset: (navigationPreset) => {
     persistNavigationPreset(navigationPreset);
     set({ navigationPreset });
+  },
+  setWheelZoomSensitivity: (wheelZoomSensitivity) => {
+    persistWheelZoomSensitivity(wheelZoomSensitivity);
+    set({ wheelZoomSensitivity });
   },
   setVisualEnhancementsEnabled: (visualEnhancementsEnabled) => set({ visualEnhancementsEnabled }),
   setCentrelineOverlayEnabled: (centrelineOverlayEnabled) => set({ centrelineOverlayEnabled }),

@@ -26,6 +26,7 @@ import type { TranslationKey } from '@/i18n';
 import type { CollabRole } from '@/store/slices/collabSlice';
 import { buildShareUrl, mintRoomToken } from '@/lib/collab/share-link';
 import { describeSeedPhase, isCollabSeedInFlight } from '@/lib/collab/seed-phase';
+import { peerViewpoint, type PeerCamera } from '@/lib/collab/peer-viewpoint';
 
 interface RoomPanelProps {
   onClose: () => void;
@@ -82,8 +83,6 @@ function PresenceDot({ color, active }: { color: string; active?: boolean }) {
     </span>
   );
 }
-
-type Vec3 = { x: number; y: number; z: number };
 
 function PeerRow({
   color,
@@ -222,21 +221,10 @@ export function RoomPanel({ onClose }: RoomPanelProps) {
   }, [stopCollab, onClose]);
 
   const jumpToPeer = useCallback(
-    (camera: { position: Vec3; target: Vec3; fov: number } | undefined) => {
+    (camera: PeerCamera | undefined) => {
       if (!camera) return;
       const { cameraCallbacks, projectionMode } = useViewerStore.getState();
-      // Presence carries only position/target/fov; reconstruct a viewpoint with
-      // world-up + our own projection ("jump to roughly their view").
-      cameraCallbacks.applyViewpoint?.(
-        {
-          position: camera.position,
-          target: camera.target,
-          up: { x: 0, y: 1, z: 0 },
-          fov: camera.fov,
-          projectionMode,
-        },
-        true,
-      );
+      cameraCallbacks.applyViewpoint?.(peerViewpoint(camera, projectionMode), true);
     },
     [],
   );
@@ -246,7 +234,7 @@ export function RoomPanel({ onClose }: RoomPanelProps) {
       collabPeers.filter((p) => p?.user).map((p, i) => {
         const clientId = (p as { clientId?: number }).clientId;
         const name = p.user.name ?? 'Guest';
-        const camera = (p as { camera?: { position: Vec3; target: Vec3; fov: number } }).camera;
+        const camera = (p as { camera?: PeerCamera }).camera;
         const selection = (p as { selection?: string[] }).selection;
         return (
           <PeerRow

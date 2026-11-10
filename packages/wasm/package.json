@@ -20,6 +20,11 @@
     "pkg/ifc-lite.js",
     "pkg/ifc-lite.d.ts",
     "pkg/snippets/**",
+    "pkg-core/ifc-lite_bg.wasm",
+    "pkg-core/ifc-lite.js",
+    "pkg-core/snippets/**",
+    "core.js",
+    "core.d.ts",
     "retained.js",
     "retained.d.ts",
     "pkg-retained/ifc-lite.d.ts",
@@ -27,6 +32,10 @@
     "pkg-diff/ifc-lite-diff_bg.wasm",
     "pkg-diff/ifc-lite-diff.d.ts",
     "pkg-diff/snippets/**",
+    "pkg-rhino/ifc-lite-rhino.js",
+    "pkg-rhino/ifc-lite-rhino_bg.wasm",
+    "pkg-rhino/ifc-lite-rhino.d.ts",
+    "pkg-rhino/snippets/**",
     "THIRD_PARTY_NOTICES.txt"
   ],
   "main": "./pkg/ifc-lite.js",
@@ -39,6 +48,11 @@
       "default": "./pkg/ifc-lite.js"
     },
     "./ifc-lite_bg.wasm": "./pkg/ifc-lite_bg.wasm",
+    "./core": {
+      "types": "./core.d.ts",
+      "import": "./core.js",
+      "default": "./core.js"
+    },
     "./retained": {
       "types": "./retained.d.ts",
       "import": "./retained.js",
@@ -49,7 +63,13 @@
       "import": "./pkg-diff/ifc-lite-diff.js",
       "default": "./pkg-diff/ifc-lite-diff.js"
     },
-    "./diff_bg.wasm": "./pkg-diff/ifc-lite-diff_bg.wasm"
+    "./diff_bg.wasm": "./pkg-diff/ifc-lite-diff_bg.wasm",
+    "./rhino": {
+      "types": "./pkg-rhino/ifc-lite-rhino.d.ts",
+      "import": "./pkg-rhino/ifc-lite-rhino.js",
+      "default": "./pkg-rhino/ifc-lite-rhino.js"
+    },
+    "./rhino_bg.wasm": "./pkg-rhino/ifc-lite-rhino_bg.wasm"
   },
   "sideEffects": false,
   "keywords": [

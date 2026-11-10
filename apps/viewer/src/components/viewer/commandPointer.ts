@@ -97,14 +97,29 @@ function pickOptions(ctx: MouseHandlerContext, command: ModelingCommand) {
 }
 
 /** The renderer's magnetic pick at the cursor, given the held edge lock. */
-function magneticPick(ctx: MouseHandlerContext, command: ModelingCommand, x: number, y: number): MeshPick {
+function magneticPick(ctx: MouseHandlerContext, command: ModelingCommand, x: number, y: number): MeshPick | null {
   const lock = ctx.edgeLockStateRef.current;
-  return ctx.renderer.raycastSceneMagnetic(x, y, {
-    edge: lock.edge, meshExpressId: lock.meshExpressId, lockStrength: lock.lockStrength,
-  }, {
-    ...pickOptions(ctx, command),
-    snapOptions: { snapToVertices: true, snapToEdges: true, snapToFaces: true, screenSnapRadius: 40 },
-  }) as MeshPick;
+  const options = pickOptions(ctx, command);
+  const construction = command.id.endsWith('.place') && command.aimsAtElement?.(getCommandRuntime().gesture) !== true;
+  const hiddenIds = new Set(options.hiddenIds);
+  // Spatial volumes may extend through the next floor. They are not physical
+  // construction references. Bound retries even if a renderer ignores exclusions.
+  for (let attempt = 0; attempt < 16; attempt++) {
+    const pick = ctx.renderer.raycastSceneMagnetic(x, y, {
+      edge: lock.edge, meshExpressId: lock.meshExpressId, lockStrength: lock.lockStrength,
+    }, { ...options, hiddenIds, snapOptions: { snapToVertices: true, snapToEdges: true, snapToFaces: true, screenSnapRadius: 40 } }) as MeshPick;
+    if (!pick || !construction) return pick;
+    const id = pick.snapTarget?.expressId ?? pick.intersection?.expressId;
+    const s = useViewerStore.getState();
+    const ref = id === undefined ? null : s.resolveGlobalIdFromModels(id);
+    const view = ref && s.mutationViews.get(ref.modelId);
+    const type = ref && (view?.getEntityTypeMutation(ref.expressId)?.newType ?? view?.getNewEntity(ref.expressId)?.type
+      ?? s.models.get(ref.modelId)?.ifcDataStore?.entities.getTypeName(ref.expressId));
+    if (type?.toUpperCase() !== 'IFCSPACE') return pick;
+    if (id === undefined || hiddenIds.has(id)) break;
+    hiddenIds.add(id);
+  }
+  return { snapTarget: null, intersection: null, edgeLock: { shouldLock: false, shouldRelease: true, edge: null, meshExpressId: null, edgeT: 0, isCorner: false, cornerValence: 0 } };
 }
 
 function resolveCommandSnap(
@@ -141,9 +156,11 @@ function resolveCommandSnap(
       pick: () => pick,
       lock: { get: () => ctx.edgeLockStateRef.current, set: ctx.setEdgeLock, clear: ctx.clearEdgeLock },
       toLocal,
+      entityOf: (id) => useViewerStore.getState().resolveGlobalIdFromModels(id),
+      suppressSurfacePoints: command.id.endsWith('.place') && command.aimsAtElement?.(runtime.gesture) !== true,
     }),
-    ...(plane.spec.kind === 'section' ? [] : modelSnapSources(commandCtx.modelId)),
   ] : [];
+  if (aim === 'snap' && plane.spec.kind !== 'section') sources.push(...modelSnapSources(commandCtx.modelId));
   ctx.setSnapTarget(pick?.snapTarget ?? null);
   return solveCommandSnap(runtime, plane, { cursor, metresPerPixel, sources, mods, aim });
 }

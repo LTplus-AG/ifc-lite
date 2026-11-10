@@ -734,6 +734,54 @@ here has one", not "this build cannot see them".
 
 ## Performance Optimization
 
+### Smaller engine for mesh-only pages (geometry-core)
+
+`@ifc-lite/wasm` also publishes a geometry-core engine at
+`@ifc-lite/wasm/core`: the same Rust crate built without the exporters
+(glTF/GLB, OBJ, STEP, IFC5, JSON/CSV, HBJSON/DFJSON, USD), LandXML, clash
+detection, point-cloud scan operations and PDF underlays. Parsing, the
+pre-pass, mesh batches, styles, symbolic/2D helpers and re-meshing are the same
+code, so both engines produce byte-identical meshes; the core binary is just
+smaller to download and compile.
+
+A page that only turns IFC into meshes (`processAdaptive`, `processStreaming`,
+`process`) swaps the engine with one exact-match bundler alias. Nothing else
+changes; `@ifc-lite/geometry` picks up the core binary through the glue it
+imports, in the page and in its workers:
+
+<!-- Reason: bundler configuration, not package source. -->
+<!-- docs-check: skip -->
+```ts
+// vite.config.ts (applies to worker bundles too)
+import { defineConfig } from 'vite';
+
+export default defineConfig({
+  resolve: {
+    alias: [{ find: /^@ifc-lite\/wasm$/, replacement: '@ifc-lite/wasm/core' }],
+  },
+  worker: { format: 'es' },
+});
+
+// webpack.config.js: the trailing `$` makes the alias exact
+// resolve: { alias: { '@ifc-lite/wasm$': '@ifc-lite/wasm/core' } }
+```
+
+A page that passes explicit `wasmUrls: { wasm }` (see the geometry README's
+Vite setup) must point that URL at the core binary too, for example
+`ENGINE_BINARY_URL.href` imported from `@ifc-lite/wasm/core`: an explicit URL
+wins over the glue's own,
+and the alias does not rewrite the `ifc-lite_bg.wasm` subpath. Match the bare
+specifier only: `@ifc-lite/wasm/diff` and the other subpaths
+must keep resolving to themselves. The core engine is typed with the full engine's
+TypeScript declarations, so a method from a left-out family still type-checks
+but throws `TypeError: … is not a function` at run time
+(`exportGlb`, `exportStep`, the LandXML, clash, scan-segmentation and PDF
+methods, and the `GeometryProcessor` exports built on them). It is a
+bundler-only option: Node (`IfcLiteBridge` reading the binary from disk)
+always loads the full engine. The full binary is still emitted by the
+bundler as an unreferenced asset, because `@ifc-lite/geometry` names it
+statically, but no page fetches it.
+
 ### Memory-Efficient Processing
 
 Use streaming for large files:
@@ -891,7 +939,7 @@ const { meshes, csgFailures } = await client.remesh({
 client.dispose(); // terminates the worker; in-flight requests reject
 ```
 
-`client.styleWire(sourceBytes)` runs one whole-file pre-pass in the worker and returns that style wire, for a model whose load did not keep one; the viewer captures it once per model. A client whose worker fails or does not answer within `requestTimeoutMs` (default 30 s) is dead: `alive` turns false, requests still in flight and any later ones reject at once, and the caller creates a new client.
+`client.styleWire(sourceBytes)` runs one whole-file pre-pass in the worker and returns that style wire, for a model whose load did not keep one; the viewer captures it once per model. A client whose worker fails or does not answer within `requestTimeoutMs` (default 30 s) is dead: `alive` turns false, requests still in flight and any later ones reject at once, and the caller creates a new client. `RemeshClient.create` has its own deadline, `startTimeoutMs` (default 120 s, covering the wasm fetch and compile): a worker that does not report its engine ready in time, or fails while starting, rejects `create` and is terminated. Both timeouts are clamped to 2^31-1 ms (the most `setTimeout` honours), and `0`, a negative number, `NaN` or `Infinity` means no deadline. A request whose message cannot be posted (for example a `DataCloneError`) rejects on its own and leaves the client alive.
 
 The meshes come back in the same frame and units as the load, so they can replace the element's load-time meshes directly. `scripts/lib/wasm-remesh-contracts.mjs` pins this. For each wall of several fixtures, including one with an RTC shift, it re-meshes the wall from its subgraph and checks the positions, indices, colours and origins against meshing the whole file.
 

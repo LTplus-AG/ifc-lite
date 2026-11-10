@@ -62,6 +62,7 @@ ifc-lite ships its public npm packages under the `@ifc-lite/*` scope, plus the `
 | [`@ifc-lite/opencde-foundation`](https://www.npmjs.com/package/@ifc-lite/opencde-foundation) | buildingSMART OpenCDE Foundation API client: version discovery, auth discovery, OAuth2 flows and the shared HTTP client used by every OpenCDE service client |
 | [`@ifc-lite/plugin-api`](https://www.npmjs.com/package/@ifc-lite/plugin-api) | Dependency-free type surface for ifc-lite file-source plugins |
 | [`@ifc-lite/regex-guard`](https://www.npmjs.com/package/@ifc-lite/regex-guard) | A shared, dependency-free guard against catastrophic-backtracking (ReDoS) regex patterns compiled from untrusted input |
+| [`@ifc-lite/rhino3dm`](https://www.npmjs.com/package/@ifc-lite/rhino3dm) | Lazy Rhino 3dm writer for encoded ifc-lite RhinoScene data |
 | [`@ifc-lite/rules`](https://www.npmjs.com/package/@ifc-lite/rules) | Filter-rule vocabulary, evaluator and .rules.json information-validation engine for IFC-Lite |
 | [`@ifc-lite/semantic`](https://www.npmjs.com/package/@ifc-lite/semantic) | Portable semantic datasets, profiles, validation and IFC identity resolution |
 | [`@ifc-lite/source-autodesk`](https://www.npmjs.com/package/@ifc-lite/source-autodesk) | Autodesk Forma and Data Exchange cloud-source provider for ifc-lite |
@@ -70,7 +71,7 @@ ifc-lite ships its public npm packages under the `@ifc-lite/*` scope, plus the `
 | [`@ifc-lite/source-dalux`](https://www.npmjs.com/package/@ifc-lite/source-dalux) | Dalux Build (Box) file-source provider for ifc-lite |
 | [`@ifc-lite/source-dropbox`](https://www.npmjs.com/package/@ifc-lite/source-dropbox) | Dropbox file-source provider for ifc-lite |
 | [`@ifc-lite/source-msgraph`](https://www.npmjs.com/package/@ifc-lite/source-msgraph) | Microsoft Graph file-source provider for the signed-in user's own OneDrive |
-| [`@ifc-lite/wasm-lifecycle`](https://www.npmjs.com/package/@ifc-lite/wasm-lifecycle) | Shared WASM engine load-retry classification and cross-realm panic-forwarding, used by @ifc-lite/geometry and @ifc-lite/parser |
+| [`@ifc-lite/wasm-lifecycle`](https://www.npmjs.com/package/@ifc-lite/wasm-lifecycle) | Shared WASM engine load-retry classification, cross-realm panic-forwarding, single-flight init lifetime and worker RPC dead latch used by the ifc-lite engine and worker clients |
 <!-- END GENERATED: package-index -->
 
 ---
@@ -589,6 +590,26 @@ class MergedExporter {
 - `'assume-shared'`: force one project without rescaling
 
 Spatial matching is tunable per container type via `mergeSites` / `mergeBuildings` (`'single' | 'by-name'`) and `mergeStoreys` (`'by-name' | 'by-elevation' | 'by-name-then-elevation'`).
+
+### renumberStepIds
+
+Give every entity instance of a STEP file a new `#id` from a seeded permutation and rewrite every reference to match. Only `#digits` tokens outside string literals, comments and `<uri>` literals change, so `'Room #205'` survives; references are rewritten in DATA and in edition-3 ANCHOR and REFERENCE sections, and the HEADER and comments are copied as is. Useful for teaching that `#id`s are file-local (GlobalIds stay), and for test corpora that must not depend on `#id` values or instance order.
+
+```typescript
+import { renumberStepIds } from '@ifc-lite/export';
+import { readFileSync } from 'node:fs';
+
+let seed = 42;
+const random = () => {
+  seed = (seed * 1103515245 + 12345) % 2147483648;
+  return seed / 2147483648;
+};
+
+const source = readFileSync('model.ifc', 'latin1');
+const { text, idMap, danglingReferences } = renumberStepIds(source, { random, reorder: true });
+// idMap: old #id -> new #id. New ids are 1..n, skipping any id a dangling reference uses.
+console.log(idMap.size, danglingReferences.length, text.length);
+```
 
 ### ParquetExporter
 
@@ -1144,6 +1165,12 @@ Pre-built `ifc-lite-server` binaries for deployment without a Rust toolchain or 
 ## @ifc-lite/wasm
 
 WebAssembly bindings (the `IfcAPI` class and mesh/profile/clash types). See the [WASM API reference](wasm.md).
+
+### Independent Rhino scene WASM module
+
+`@ifc-lite/wasm/rhino` holds the Rhino .3dm scene builder (`exportRhinoScene`)
+outside the default engine. `@ifc-lite/geometry`'s `exportRhinoScene` loads it on
+first use; `@ifc-lite/rhino3dm` writes the returned scene to a .3dm archive.
 
 ### Independent diff WASM module
 

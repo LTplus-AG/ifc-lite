@@ -6,7 +6,9 @@
  * Mutation slice - manages property/quantity mutations for IFC export
  */
 
-import { mirrorNewRoofDefinition } from './mutation-roof.js';
+import { moveWithGeneratedRooms, notifySkippedRoomRotation, rotateWithGeneratedRooms } from './mutation-placement-rooms.js';
+import { createRoofIn } from './mutation-roof-create.js';
+import { moveAttachedTargetIn } from './mutation-attached-target-move.js';
 import { type StateCreator } from 'zustand';
 import type { ViewerState } from '../index.js';
 import type { MutablePropertyView, NewEntity, IfcAttributeValue } from '@ifc-lite/mutations';
@@ -892,7 +894,6 @@ function recordAuthoredElementIn(
   options: { historyRecorded?: boolean } = {},
 ): void {
   const ifcType = authoredIfcType(element);
-  if (element.kind === 'roof') mirrorNewRoofDefinition(get(), modelId, entityId, view);
 
   // Make the authored element a first-class citizen immediately: register it in
   // the spatial hierarchy so it appears in the spatial tree under its storey and
@@ -1303,11 +1304,21 @@ export const createMutationSlice: StateCreator<
     const [x, y, z] = chain.coordinates;
     const [nx, ny, nz] = pointToNative(dataStore, delta);
     const nativeNext: [number, number, number] = [x + nx, y + ny, z + nz];
+    const attached = moveAttachedTargetIn(api, modelId, expressId, nativeNext, batchId);
+    if (attached) {
+      if (!attached.ok) return attached;
+      // Same canonical placement as the plain move below; the remesh publishes the refit geometry.
+      get().mirrorPlacementEdit(modelId, expressId, delta);
+      return { ok: true, newCoordinates: pointToMetres(dataStore, attached.newCoordinates) };
+    }
     // Go through the slice's own `setPositionalAttribute` action so
     // the mutation lands on the undo stack with the standard envelope.
-    const mutation = get().setPositionalAttribute(modelId, chain.cartesianPointId, 0, nativeNext);
+    const updated = moveWithGeneratedRooms(api, modelId, expressId, chain.cartesianPointId, nativeNext, batchId);
+    const mutation = updated?.mutation
+      ?? get().setPositionalAttribute(modelId, chain.cartesianPointId, 0, nativeNext);
+    const moveBatch = updated?.batch ?? batchId;
 
-    if (!remeshGridPlacementAfterCommit(get, modelId, expressId, mutation, batchId)) {
+    if (!remeshGridPlacementAfterCommit(get, modelId, expressId, mutation, moveBatch)) {
 
       // Push the renderer-frame delta so the visible mesh follows
       // the IFC mutation. IFC is Z-up; renderer is Y-up. Conversion:
@@ -1326,9 +1337,9 @@ export const createMutationSlice: StateCreator<
       if (mutation) {
         const meshTags = new Map(get().mutationMeshTranslations);
         meshTags.set(mutation.id, { globalId, rendererDelta });
-        if (batchId) {
+        if (moveBatch) {
           const batchTags = new Map(get().mutationBatchTags);
-          batchTags.set(mutation.id, batchId);
+          batchTags.set(mutation.id, moveBatch);
           set({ mutationMeshTranslations: meshTags, mutationBatchTags: batchTags });
         } else {
           set({ mutationMeshTranslations: meshTags });
@@ -1381,9 +1392,17 @@ export const createMutationSlice: StateCreator<
     const dx = position[0] - oldX;
     const dy = position[1] - oldY;
     const dz = position[2] - oldZ;
-    const mutation = get().setPositionalAttribute(modelId, chain.cartesianPointId, 0, pointToNative(dataStore, position));
+    const attached = moveAttachedTargetIn(api, modelId, expressId, pointToNative(dataStore, position));
+    if (attached) {
+      if (!attached.ok) return attached;
+      if (dx !== 0 || dy !== 0 || dz !== 0) get().mirrorPlacementEdit(modelId, expressId, [dx, dy, dz]);
+      return { ok: true, newCoordinates: position };
+    }
+    const updated = moveWithGeneratedRooms(api, modelId, expressId, chain.cartesianPointId, pointToNative(dataStore, position));
+    const mutation = updated?.mutation
+      ?? get().setPositionalAttribute(modelId, chain.cartesianPointId, 0, pointToNative(dataStore, position));
     if (dx !== 0 || dy !== 0 || dz !== 0) {
-      if (!remeshGridPlacementAfterCommit(get, modelId, expressId, mutation)) {
+      if (!remeshGridPlacementAfterCommit(get, modelId, expressId, mutation, updated?.batch)) {
         const globalId = toGlobalIdFromModels(get().models, modelId, expressId);
         const rendererDelta: [number, number, number] = [dx, dz, -dy];
         get().setPendingMeshTranslations(new Map([[globalId, rendererDelta]]));
@@ -1404,6 +1423,11 @@ export const createMutationSlice: StateCreator<
   rotateEntity: (modelId, expressId, deltaYaw) => {
     const denial = mutationDenial(get(), modelId);
     if (denial) return { ok: false, reason: denial };
+    const updated = rotateWithGeneratedRooms(api, modelId, expressId, deltaYaw);
+    if (updated) {
+      if (updated.result.ok) presentEntityRotation(get, modelId, expressId, deltaYaw, updated.mutation, updated.batch);
+      return updated.result;
+    }
     const view = get().mutationViews.get(modelId);
     const dataStore = get().models.get(modelId)?.ifcDataStore;
     if (view && dataStore) {
@@ -1432,6 +1456,7 @@ export const createMutationSlice: StateCreator<
     // No STEP rotation chain (recipient's IFCX-reconstructed store): rotate via
     // the collab doc, which syncs + live-rotates the local mesh.
     if (get().collabRotateEntity(modelId, expressId, deltaYaw)) {
+      notifySkippedRoomRotation(api, modelId, expressId);
       return { ok: true, newYawZ: deltaYaw };
     }
     return {
@@ -1626,9 +1651,7 @@ export const createMutationSlice: StateCreator<
     get, set, modelId, storeyExpressId, { kind: 'space', params },
   ),
 
-  addRoof: (modelId, storeyExpressId, params) => runInStoreElementBuilder(
-    get, set, modelId, storeyExpressId, { kind: 'roof', params },
-  ),
+  addRoof: (modelId, storeyExpressId, params) => createRoofIn(api, modelId, storeyExpressId, params),
 
   addPlate: (modelId, storeyExpressId, params) => runInStoreElementBuilder(
     get, set, modelId, storeyExpressId, { kind: 'plate', params },

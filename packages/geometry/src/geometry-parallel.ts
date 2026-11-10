@@ -107,7 +107,7 @@ function entityIndexSetup(
   };
 }
 
-interface PrepassMeta extends Pick<ByteStreamingPrePassResult, 'unitRefused'> {
+interface PrepassMeta extends Pick<ByteStreamingPrePassResult, 'unitRefused' | 'siteOrigin'> {
   /** Prepass-resolved plane-angle→radians scale; seeds worker batch decoders. */
   planeAngleToRadians?: number;
   unitScale: number;
@@ -609,7 +609,7 @@ export async function* processParallel(
     coordinator.setWasmMetadata(
       prepassMeta.unitScale,
       effectiveNeedsShift ? { x: rtcX, y: rtcY, z: rtcZ } : null,
-      frame,
+      frame, prepassMeta.siteOrigin,
     );
     wasmFrameResolved = true;
 
@@ -1126,7 +1126,7 @@ export async function* processParallel(
           planeAngleToRadians: (evt.planeAngleToRadians as number | undefined) ?? undefined,
           rtcOffset: evt.rtcOffset as Float64Array,
           needsShift: evt.needsShift as boolean,
-          buildingRotation: (evt.buildingRotation as number | null | undefined) ?? null,
+          buildingRotation: (evt.buildingRotation as number | null | undefined) ?? null, siteOrigin: (evt.siteOrigin as Float64Array | null | undefined) ?? null,
         };
         console.log(`[stream] meta @ ${elapsed()}ms unitScale=${prepassMeta.unitScale} rtc=[${(prepassMeta.rtcOffset[0]).toFixed(0)},${(prepassMeta.rtcOffset[1]).toFixed(0)},${(prepassMeta.rtcOffset[2]).toFixed(0)}]`);
         maybeDispatchFinalize();

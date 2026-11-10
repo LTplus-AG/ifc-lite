@@ -1,6 +1,6 @@
 {
   "format": 2,
-  "manifestSha256": "28c8d6f3df4f4d90731f406ae2894147f4cce39bc6df2fbd9f96e51d56986a62",
+  "manifestSha256": "615032d3dce21c6a1cbbfbbbd2f95951291d092686ba3887d6779e654a7bdd17",
   "inputs": {
     "cargoClosures": {
       "ifc-lite-wasm": [
@@ -1296,6 +1296,1070 @@
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "checksum": "b8848ee67ecc8aedbaf3e4122217aff892639231befc6a1b58d29fff4c2cabaa"
         }
+      ],
+      "ifc-lite-rhino-wasm": [
+        {
+          "name": "adler2",
+          "version": "2.0.1",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
+        },
+        {
+          "name": "ahash",
+          "version": "0.8.12",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "5a15f179cd60c4584b8a8c596927aadc462e27f2ca70c04e0071964a73ba7a75"
+        },
+        {
+          "name": "aho-corasick",
+          "version": "1.1.4",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "ddd31a130427c27518df266943a5308ed92d4b226cc639f5a8f1002816174301"
+        },
+        {
+          "name": "android_system_properties",
+          "version": "0.1.5",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "819e7219dbd41043ac279b19830f2efc897156490d7fd6ea916720117ee66311"
+        },
+        {
+          "name": "approx",
+          "version": "0.5.1",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "cab112f0a86d568ea0e627cc1d6be74a1e9cd55214684db5561995f6dad897c6"
+        },
+        {
+          "name": "arrow",
+          "version": "60.0.0",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "234ce58e76c04e8162c2e4bc3fe53fa7c2418ef5fba7bb2838b8531b7d4fbf14"
+        },
+        {
+          "name": "arrow-arith",
+          "version": "60.0.0",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "2303ebedb1071f4f72d71171e383859a9a285c94d99e4892685a96fca9890720"
+        },
+        {
+          "name": "arrow-array",
+          "version": "60.0.0",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "51dff6e4b9f158864a0aeb6a131ad53858ecbae7a2fc8989307b9b3c6b2f122e"
+        },
+        {
+          "name": "arrow-buffer",
+          "version": "60.0.0",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "c7235b863533e9db3ab86905b4521251de11226275b436ff3cb2d0010558d1c5"
+        },
+        {
+          "name": "arrow-cast",
+          "version": "60.0.0",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "d52cf840f0c34aeeb7e8b05aba72d66878e6c001827f423331f0b260209e7b7e"
+        },
+        {
+          "name": "arrow-cmp",
+          "version": "60.0.0",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "73a0e9adb28d95739fabcdae637261a2c14e618caf58ba1b88857120f9ee2687"
+        },
+        {
+          "name": "arrow-data",
+          "version": "60.0.0",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "5aa06d5e22786c4966ffc4d2f171d0cb65d95f6bdea108a14e8c335e9faa437f"
+        },
+        {
+          "name": "arrow-ipc",
+          "version": "60.0.0",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "86c523472d22e31f984df7a44fc36e6323d3c9b05ffe53d267ee4c3aa7c128d2"
+        },
+        {
+          "name": "arrow-ord",
+          "version": "60.0.0",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "5a7ac2c6a9cdc782fa9548d3763461eaec8c93347e297fddbaa44807e70a3698"
+        },
+        {
+          "name": "arrow-row",
+          "version": "60.0.0",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "758b87e9648d80001e0916c083334ed93074c677a81a96144d5c84bd2d8eab2a"
+        },
+        {
+          "name": "arrow-schema",
+          "version": "60.0.0",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "f85a9a58cd03560526b0066487574aacb9008e413504fa0ee23d61141e96c338"
+        },
+        {
+          "name": "arrow-select",
+          "version": "60.0.0",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "ba3482b7d03bf4a3bf0b195f08a7f2b071595ccd54897e35b975ac63d3104977"
+        },
+        {
+          "name": "arrow-string",
+          "version": "60.0.0",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "f300b4400b1e7cd58f7cbbd5dd2a0072cc59e73bfaee2a152b3ac660e46d9dd1"
+        },
+        {
+          "name": "atoi",
+          "version": "3.1.0",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "e7a8bbe9949e43a1edaa043038c68703b04774156afdfb62ba2cef5bf93d67be"
+        },
+        {
+          "name": "autocfg",
+          "version": "1.5.0",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "c08606f8c3cbf4ce6ec8e28fb0014a2c086708fe954eaa885384a6165172e7e8"
+        },
+        {
+          "name": "base64",
+          "version": "0.23.1",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "ac07cdecf99051d9a5238b80f35af32cdeba5b336e55d957b318b50137e18da5"
+        },
+        {
+          "name": "bitflags",
+          "version": "2.11.1",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "c4512299f36f043ab09a583e57bceb5a5aab7a73db1805848e8fef3c9e8c78b3"
+        },
+        {
+          "name": "block-buffer",
+          "version": "0.10.4",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "3078c7629b62d3f0439517fa394996acacc5cbc91c5a20d8c658e77abd503a71"
+        },
+        {
+          "name": "bnum",
+          "version": "0.14.4",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "b1b08cb4ecbb540b940016b0a0f35b7e48ab0cc372ab88150c351de4cc469959"
+        },
+        {
+          "name": "bumpalo",
+          "version": "3.20.2",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "5d20789868f4b01b2f2caec9f5c4e0213b41e3e5702a50157d699ae31ced2fcb"
+        },
+        {
+          "name": "bytemuck",
+          "version": "1.25.2",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "95832e849adfb21180ccb6826a99da14e5d266ae5c2e668e1602cf234f153797"
+        },
+        {
+          "name": "bytes",
+          "version": "1.12.1",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04"
+        },
+        {
+          "name": "cc",
+          "version": "1.2.62",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "a1dce859f0832a7d088c4f1119888ab94ef4b5d6795d1ce05afb7fe159d79f98"
+        },
+        {
+          "name": "cfg-if",
+          "version": "1.0.4",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801"
+        },
+        {
+          "name": "cfg_aliases",
+          "version": "0.2.2",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "f079e83a288787bcd14a6aea84cee5c87a67c5a3e660c30f557a3d24761b3527"
+        },
+        {
+          "name": "chrono",
+          "version": "0.4.44",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "c673075a2e0e5f4a1dde27ce9dee1ea4558c7ffe648f576438a20ca1d2acc4b0"
+        },
+        {
+          "name": "const-random",
+          "version": "0.1.18",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "87e00182fe74b066627d63b85fd550ac2998d4b0bd86bfed477a0ae4c7c71359"
+        },
+        {
+          "name": "const-random-macro",
+          "version": "0.1.16",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "f9d839f2a20b0aee515dc581a6172f2321f96cab76c1a38a4c584a194955390e"
+        },
+        {
+          "name": "core-foundation-sys",
+          "version": "0.8.7",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "773648b94d0e5d620f64f280777445740e61fe701025087ec8b57f45c791888b"
+        },
+        {
+          "name": "cpufeatures",
+          "version": "0.2.17",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "59ed5838eebb26a2bb2e58f6d5b5316989ae9d08bab10e0e6d103e656d1b0280"
+        },
+        {
+          "name": "crc32fast",
+          "version": "1.5.0",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "9481c1c90cbf2ac953f07c8d4a58aa3945c425b7185c9154d67a65e4230da511"
+        },
+        {
+          "name": "crossbeam-deque",
+          "version": "0.8.6",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "9dd111b7b7f7d55b72c0a6ae361660ee5853c9af73f70c3c2ef6858b950e2e51"
+        },
+        {
+          "name": "crossbeam-epoch",
+          "version": "0.9.18",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "5b82ac4a3c2ca9c3460964f020e1402edd5753411d7737aa39c3714ad1b5420e"
+        },
+        {
+          "name": "crossbeam-utils",
+          "version": "0.8.21",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "d0a5c400df2834b80a4c3327b3aad3a4c4cd4de0629063962b03235697506a28"
+        },
+        {
+          "name": "crunchy",
+          "version": "0.2.4",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "460fbee9c2c2f33933d720630a6a0bac33ba7053db5344fac858d4b8952d77d5"
+        },
+        {
+          "name": "crypto-common",
+          "version": "0.1.7",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "78c8292055d1c1df0cce5d180393dc8cce0abec0a7102adb6c7b1eef6016d60a"
+        },
+        {
+          "name": "digest",
+          "version": "0.10.7",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "9ed9a281f7bc9b7576e61468ba615a66a5c8cfdff42420a70aa82701a3b1e292"
+        },
+        {
+          "name": "earcut",
+          "version": "0.4.11",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "9f03dd5350900133e14471c90d513eb5ba264004cd833adecab7dfa5fb5a2974"
+        },
+        {
+          "name": "earcutr",
+          "version": "0.5.0",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "afc28d89ac6cb489f679fcf51aaa62b4667bb0fb73a30f1d4d23949069707c07"
+        },
+        {
+          "name": "either",
+          "version": "1.15.0",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "48c757948c5ede0e46177b7add2e67155f70e33c07fea8284df6576da70b3719"
+        },
+        {
+          "name": "equivalent",
+          "version": "1.0.2",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "877a4ace8713b0bcf2a4e7eec82529c029f1d0619886d18145fea96c3ffe5c0f"
+        },
+        {
+          "name": "fast-float2",
+          "version": "0.2.4",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "c6e8948ce679d00a02a94739ea185595dca7118ed04feb991127e443bd3d761f"
+        },
+        {
+          "name": "fdeflate",
+          "version": "0.3.7",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "1e6853b52649d4ac5c0bd02320cddc5ba956bdb407c4b75a2c6b75bf51500f8c"
+        },
+        {
+          "name": "find-msvc-tools",
+          "version": "0.1.9",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "5baebc0774151f905a1a2cc41989300b1e6fbb29aff0ceffa1064fdd3088d582"
+        },
+        {
+          "name": "flatbuffers",
+          "version": "25.12.19",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "35f6839d7b3b98adde531effaf34f0c2badc6f4735d26fe74709d8e513a96ef3"
+        },
+        {
+          "name": "flate2",
+          "version": "1.1.10",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "6e634e2e0ebac1ee034020da1ca582e17ffe4e0f5e985823721e168928136dcb"
+        },
+        {
+          "name": "futures-channel",
+          "version": "0.3.34",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "b1f9e3d69d39e4862ffed03ed071a76f9a13ba1d9109d355b0f0aa6b15e393c4"
+        },
+        {
+          "name": "futures-core",
+          "version": "0.3.34",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "92d699e522242e69e3003b94ecc1f960f3a5e015aa7c5d7486e65ad01dd94f5e"
+        },
+        {
+          "name": "futures-io",
+          "version": "0.3.34",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "53c0fa8157de1303bfffdaa1cc2a673bfffb60102f76b0ef4441659124373fed"
+        },
+        {
+          "name": "futures-macro",
+          "version": "0.3.34",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "9fb9654ba8355388abeb8dcb4fc62f511300867002afc858860463bdd9fe0c44"
+        },
+        {
+          "name": "futures-sink",
+          "version": "0.3.34",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "1944426bf7d03f1d14f708785e4b33efd750b36d48a157b836b3efc15ede8e1d"
+        },
+        {
+          "name": "futures-task",
+          "version": "0.3.34",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "cd417de3d1d015fc3bfd2b1ea46dfc7bab72ef86f1cc7cc9c78e728b34a6d1fd"
+        },
+        {
+          "name": "futures-util",
+          "version": "0.3.34",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "0d50a92467f8ba5dd6e3ee5d4bd04d73ab2e4e1c44474a0674821dfce14b79bc"
+        },
+        {
+          "name": "generic-array",
+          "version": "0.14.7",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "85649ca51fd72272d7821adaf274ad91c288277713d9c18820d8499a7ff69e9a"
+        },
+        {
+          "name": "geometry-predicates",
+          "version": "0.3.0",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "8dba84198cf199c11b83f1cb9243eaeb70dc50b719d2835ebf34bf2481bca010"
+        },
+        {
+          "name": "getrandom",
+          "version": "0.2.17",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "ff2abc00be7fca6ebc474524697ae276ad847ad0a6b3faa4bcb027e9a4614ad0"
+        },
+        {
+          "name": "getrandom",
+          "version": "0.3.4",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "899def5c37c4fd7b2664648c28120ecec138e4d395b459e5ca34f9cce2dd77fd"
+        },
+        {
+          "name": "glam",
+          "version": "0.30.10",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "19fc433e8437a212d1b6f1e68c7824af3aed907da60afa994e7f542d18d12aa9"
+        },
+        {
+          "name": "glam",
+          "version": "0.31.1",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "556f6b2ea90b8d15a74e0e7bb41671c9bdf38cd9f78c284d750b9ce58a2b5be7"
+        },
+        {
+          "name": "glam",
+          "version": "0.32.1",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "f70749695b063ecbf6b62949ccccde2e733ec3ecbbd71d467dca4e5c6c97cca0"
+        },
+        {
+          "name": "glam",
+          "version": "0.33.0",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "8fb167719045debebe9f532320accc7b5c993c5a3b813f5696a11d5ca7bdc57b"
+        },
+        {
+          "name": "half",
+          "version": "2.7.1",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "6ea2d84b969582b4b1864a92dc5d27cd2b77b622a8d79306834f1be5ba20d84b"
+        },
+        {
+          "name": "hashbrown",
+          "version": "0.17.1",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "ed5909b6e89a2db4456e54cd5f673791d7eca6732202bbf2a9cc504fe2f9b84a"
+        },
+        {
+          "name": "i_float",
+          "version": "4.1.0",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "c614c2cfc06cfe8809ccc48cd445864502478e673721ca2a05931fc057ec33a0"
+        },
+        {
+          "name": "i_key_sort",
+          "version": "0.11.0",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "7c6c58d0c60705e66264ce0f788a69a2f21472aeb8188559e7c8c619dbdc10fa"
+        },
+        {
+          "name": "i_overlay",
+          "version": "8.1.2",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "997dfc291f5192f34b4f3ddc67e60086a27ee9f3b880154933582490c6e218d3"
+        },
+        {
+          "name": "i_shape",
+          "version": "4.0.0",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "67ec1fc3ad980a24e4761b763bf5bfbf58c1d88be1bffb14654d369d7f420258"
+        },
+        {
+          "name": "i_tree",
+          "version": "0.19.0",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "1e9d4a992a9fe83130f41ceacceac3bb116a4355dfc9c8d6ecea4f1e4b4c6caf"
+        },
+        {
+          "name": "iana-time-zone",
+          "version": "0.1.65",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "e31bc9ad994ba00e440a8aa5c9ef0ec67d5cb5e5cb0cc7f8b744a35b389cc470"
+        },
+        {
+          "name": "iana-time-zone-haiku",
+          "version": "0.1.2",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "f31827a206f56af32e590ba56d5d2d085f558508192593743f16b2306495269f"
+        },
+        {
+          "name": "indexmap",
+          "version": "2.14.0",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "d466e9454f08e4a911e14806c24e16fba1b4c121d1ea474396f396069cf949d9"
+        },
+        {
+          "name": "itertools",
+          "version": "0.14.0",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "2b192c782037fadd9cfa75548310488aabdbf3d2da73885b31bd0abd03351285"
+        },
+        {
+          "name": "itoa",
+          "version": "1.0.18",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682"
+        },
+        {
+          "name": "jobserver",
+          "version": "0.1.34",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "9afb3de4395d6b3e67a780b6de64b51c978ecf11cb9a462c66be7d4ca9039d33"
+        },
+        {
+          "name": "jpeg-decoder",
+          "version": "0.3.2",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "00810f1d8b74be64b13dbf3db89ac67740615d6c891f0e7b6179326533011a07"
+        },
+        {
+          "name": "js-sys",
+          "version": "0.3.103",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "53b44bfcdb3f8d5837a46dae1ca9660a837176eee74a28b229bc626816589102"
+        },
+        {
+          "name": "lexical-core",
+          "version": "1.0.6",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "7d8d125a277f807e55a77304455eb7b1cb52f2b18c143b60e766c120bd64a594"
+        },
+        {
+          "name": "lexical-parse-float",
+          "version": "1.0.6",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "52a9f232fbd6f550bc0137dcb5f99ab674071ac2d690ac69704593cb4abbea56"
+        },
+        {
+          "name": "lexical-parse-integer",
+          "version": "1.0.6",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "9a7a039f8fb9c19c996cd7b2fcce303c1b2874fe1aca544edc85c4a5f8489b34"
+        },
+        {
+          "name": "lexical-util",
+          "version": "1.0.7",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "2604dd126bb14f13fb5d1bd6a66155079cb9fa655b37f875b3a742c705dbed17"
+        },
+        {
+          "name": "lexical-write-float",
+          "version": "1.0.6",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "50c438c87c013188d415fbabbb1dceb44249ab81664efbd31b14ae55dabb6361"
+        },
+        {
+          "name": "lexical-write-integer",
+          "version": "1.0.6",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "409851a618475d2d5796377cad353802345cba92c867d9fbcde9cf4eac4e14df"
+        },
+        {
+          "name": "libc",
+          "version": "0.2.186",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "68ab91017fe16c622486840e4c83c9a37afeff978bd239b5293d61ece587de66"
+        },
+        {
+          "name": "libm",
+          "version": "0.2.16",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "b6d2cec3eae94f9f509c767b45932f1ada8350c4bdb85af2fcab4a3c14807981"
+        },
+        {
+          "name": "log",
+          "version": "0.4.29",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "5e5032e24019045c762d3c0f28f5b6b8bbf38563a65908389bf7978758920897"
+        },
+        {
+          "name": "lz4_flex",
+          "version": "0.14.0",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "ecbdfe44b1bd960b68170b417450a628c43f7cf56bb3c5317e61cb230ee7f226"
+        },
+        {
+          "name": "matrixmultiply",
+          "version": "0.3.10",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "a06de3016e9fae57a36fd14dba131fccf49f74b40b7fbdb472f96e361ec71a08"
+        },
+        {
+          "name": "memchr",
+          "version": "2.8.3",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
+        },
+        {
+          "name": "minimal-lexical",
+          "version": "0.2.1",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "68354c5c6bd36d73ff3feceb05efa59b6acb7626617f4962be322a825e61f79a"
+        },
+        {
+          "name": "miniz_oxide",
+          "version": "0.8.9",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "1fa76a2c86f704bdb222d66965fb3d63269ce38518b83cb0575fca855ebb6316"
+        },
+        {
+          "name": "miniz_oxide",
+          "version": "0.9.1",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "b63fbc4a50860e98e7b2aa7804ded1db5cbc3aff9193adaff57a6931bf7c4b4c"
+        },
+        {
+          "name": "nalgebra",
+          "version": "0.35.0",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "adc43a60c217b0c6ff46e47f26911015ad8d2e5a8be1af668c67e370d99a4346"
+        },
+        {
+          "name": "nix",
+          "version": "0.31.3",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "cf20d2fde8ff38632c426f1165ed7436270b44f199fc55284c38276f9db47c3d"
+        },
+        {
+          "name": "nom",
+          "version": "7.1.3",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "d273983c5a657a70a3e8f2a01329822f3b8c8172b73826411a55751e404a0a4a"
+        },
+        {
+          "name": "num-bigint",
+          "version": "0.4.6",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "a5e44f723f1133c9deac646763579fdb3ac745e418f2a7af9cd0c431da1f20b9"
+        },
+        {
+          "name": "num-bigint",
+          "version": "0.5.1",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "93e7820bc0a80a0238e650327316f929ba18d5be054b647490a3a6a339f3e7c0"
+        },
+        {
+          "name": "num-complex",
+          "version": "0.4.6",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "73f88a1307638156682bada9d7604135552957b7818057dcef22705b4d509495"
+        },
+        {
+          "name": "num-integer",
+          "version": "0.1.46",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "7969661fd2958a5cb096e56c8e1ad0444ac2bbcd0061bd28660485a44879858f"
+        },
+        {
+          "name": "num-rational",
+          "version": "0.4.2",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "f83d14da390562dca69fc84082e73e548e1ad308d24accdedd2720017cb37824"
+        },
+        {
+          "name": "num-traits",
+          "version": "0.2.19",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "071dfc062690e90b734c0b2273ce72ad0ffa95f0c74596bc250dcfd960262841"
+        },
+        {
+          "name": "once_cell",
+          "version": "1.21.4",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
+        },
+        {
+          "name": "parquet",
+          "version": "60.0.0",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "8af83d2940bc0510f9aef86d865f56fdc6095f87ab115ac885a80b7c5226d3ba"
+        },
+        {
+          "name": "pin-project-lite",
+          "version": "0.2.17",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "a89322df9ebe1c1578d689c92318e070967d1042b512afbe49518723f4e6d5cd"
+        },
+        {
+          "name": "pkg-config",
+          "version": "0.3.33",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "19f132c84eca552bf34cab8ec81f1c1dcc229b811638f9d283dceabe58c5569e"
+        },
+        {
+          "name": "png",
+          "version": "0.18.1",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "60769b8b31b2a9f263dae2776c37b1b28ae246943cf719eb6946a1db05128a61"
+        },
+        {
+          "name": "proc-macro2",
+          "version": "1.0.106",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "8fd00f0bb2e90d81d1044c2b32617f68fcb9fa3bb7640c23e9c748e53fb30934"
+        },
+        {
+          "name": "quote",
+          "version": "1.0.45",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "41f2619966050689382d2b44f664f4bc593e129785a36d6ee376ddf37259b924"
+        },
+        {
+          "name": "r-efi",
+          "version": "5.3.0",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "69cdb34c158ceb288df11e18b4bd39de994f6657d83847bdffdbd7f346754b0f"
+        },
+        {
+          "name": "rawpointer",
+          "version": "0.2.1",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "60a357793950651c4ed0f3f52338f53b2f809f32d83a07f72909fa13e4c6c1e3"
+        },
+        {
+          "name": "rayon",
+          "version": "1.12.0",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "fb39b166781f92d482534ef4b4b1b2568f42613b53e5b6c160e24cfbfa30926d"
+        },
+        {
+          "name": "rayon-core",
+          "version": "1.13.0",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "22e18b0f0062d30d4230b2e85ff77fdfe4326feb054b9783a3460d8435c8ab91"
+        },
+        {
+          "name": "regex",
+          "version": "1.12.3",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "e10754a14b9137dd7b1e3e5b0493cc9171fdd105e0ab477f51b72e7f3ac0e276"
+        },
+        {
+          "name": "regex-automata",
+          "version": "0.4.14",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "6e1dd4122fc1595e8162618945476892eefca7b88c52820e74af6262213cae8f"
+        },
+        {
+          "name": "regex-syntax",
+          "version": "0.8.10",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "dc897dd8d9e8bd1ed8cdad82b5966c3e0ecae09fb1907d58efaa013543185d0a"
+        },
+        {
+          "name": "rustc-hash",
+          "version": "2.1.3",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "6b1e7f9a428571be2dc5bc0505c13fb6bf936822b894ec87abf8a08a4e51742d"
+        },
+        {
+          "name": "rustc_version",
+          "version": "0.4.1",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "cfcb3a22ef46e85b45de6ee7e79d063319ebb6594faafcf1c225ea92ab6e9b92"
+        },
+        {
+          "name": "rustversion",
+          "version": "1.0.22",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "b39cdef0fa800fc44525c84ccb54a029961a8215f9619753635a9c0d2538d46d"
+        },
+        {
+          "name": "ryu",
+          "version": "1.0.23",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "9774ba4a74de5f7b1c1451ed6cd5285a32eddb5cccb8cc655a4e50009e06477f"
+        },
+        {
+          "name": "safe_arch",
+          "version": "1.0.0",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "1f7caad094bd561859bcd467734a720c3c1f5d1f338995351fefe2190c45efed"
+        },
+        {
+          "name": "semver",
+          "version": "1.0.28",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "8a7852d02fc848982e0c167ef163aaff9cd91dc640ba85e263cb1ce46fae51cd"
+        },
+        {
+          "name": "seq-macro",
+          "version": "0.3.6",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "1bc711410fbe7399f390ca1c3b60ad0f53f80e95c5eb935e52268a0e2cd49acc"
+        },
+        {
+          "name": "serde",
+          "version": "1.0.229",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "4148590afebada386688f18773da617792bf2ef03ffc1e4cbd2b1d45b023e0ba"
+        },
+        {
+          "name": "serde_core",
+          "version": "1.0.229",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "67dca2c9c51e58a4791a4b1ed58308b39c64224d349a935ab5039aa360942a48"
+        },
+        {
+          "name": "serde_derive",
+          "version": "1.0.229",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "e7a5d71263a5a7d47b41f6b3f06ba276f10cc18b0931f1799f710578e2309348"
+        },
+        {
+          "name": "serde_json",
+          "version": "1.0.154",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "e7e9cc8b1b85264074fbcc02a88680c4096b1e47df8f739dceb03bf482f04bd6"
+        },
+        {
+          "name": "sha2",
+          "version": "0.10.9",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "a7507d819769d01a365ab707794a4084392c824f54a7a6a7862f8c3d0892b283"
+        },
+        {
+          "name": "shlex",
+          "version": "1.3.0",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "0fda2ff0d084019ba4d7c6f371c95d8fd75ce3524c3cb8fb653a3023f6323e64"
+        },
+        {
+          "name": "simba",
+          "version": "0.10.0",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "8f45c644a9f3a386f9288625d9f0c1e999e1acf07a37df35d0516c7f199d9cb2"
+        },
+        {
+          "name": "simd-adler32",
+          "version": "0.3.9",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "703d5c7ef118737c72f1af64ad2f6f8c5e1921f818cdcb97b8fe6fc69bf66214"
+        },
+        {
+          "name": "slab",
+          "version": "0.4.12",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "0c790de23124f9ab44544d7ac05d60440adc586479ce501c1d6d7da3cd8c9cf5"
+        },
+        {
+          "name": "smallvec",
+          "version": "1.16.3",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "5b3dc8af474f516a851ff4bd12db780f948b9250ad37211e4eec0bccea54e01b"
+        },
+        {
+          "name": "snap",
+          "version": "1.1.1",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "1b6b67fb9a61334225b5b790716f609cd58395f895b3fe8b328786812a40bc3b"
+        },
+        {
+          "name": "syn",
+          "version": "2.0.117",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "e665b8803e7b1d2a727f4023456bbbbe74da67099c585258af0ad9c5013b9b99"
+        },
+        {
+          "name": "syn",
+          "version": "3.0.2",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "a207d6d6a2b7fc470b80443726053f18a2481b7e1eee970597051596567987a3"
+        },
+        {
+          "name": "thiserror",
+          "version": "2.0.21",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "09e52cb86a36cede5cb101bf8908837b3e4c6e5e59fe7fd85c23fb56200d189e"
+        },
+        {
+          "name": "thiserror-impl",
+          "version": "2.0.21",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "fe5197923287db20a58125f0bc85c062f7f2c892de97b18c356f9efb14b28524"
+        },
+        {
+          "name": "tiny-keccak",
+          "version": "2.0.2",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "2c9d3793400a45f954c52e73d068316d76b6f4e36977e3fcebb13a2721e80237"
+        },
+        {
+          "name": "tracing",
+          "version": "0.1.44",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "63e71662fa4b2a2c3a26f570f037eb95bb1f85397f3cd8076caed2f026a6d100"
+        },
+        {
+          "name": "tracing-attributes",
+          "version": "0.1.31",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "7490cfa5ec963746568740651ac6781f701c9c5ea257c58e057f3ba8cf69e8da"
+        },
+        {
+          "name": "tracing-core",
+          "version": "0.1.36",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "db97caf9d906fbde555dd62fa95ddba9eecfd14cb388e4f491a66d74cd5fb79a"
+        },
+        {
+          "name": "twox-hash",
+          "version": "2.1.5",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "86a801b3cea342a06d468c8710662aa29e5e05e4f5c0d62f00bbb7f2ad7941c2"
+        },
+        {
+          "name": "typed-path",
+          "version": "0.12.3",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "8e28f89b80c87b8fb0cf04ab448d5dd0dd0ade2f8891bae878de66a75a28600e"
+        },
+        {
+          "name": "typenum",
+          "version": "1.20.0",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "40ce102ab67701b8526c123c1bab5cbe42d7040ccfd0f64af1a385808d2f43de"
+        },
+        {
+          "name": "unicode-ident",
+          "version": "1.0.24",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "e6e4313cd5fcd3dad5cafa179702e2b244f760991f45397d14d4ebf38247da75"
+        },
+        {
+          "name": "valuable",
+          "version": "0.1.1",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "ba73ea9cf16a25df0c8caa16c51acb937d5712a8429db78a3ee29d5dcacd3a65"
+        },
+        {
+          "name": "value-bag",
+          "version": "1.12.0",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "7ba6f5989077681266825251a52748b8c1d8a4ad098cc37e440103d0ea717fc0"
+        },
+        {
+          "name": "version_check",
+          "version": "0.9.5",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
+        },
+        {
+          "name": "wasi",
+          "version": "0.11.1+wasi-snapshot-preview1",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "ccf3ec651a847eb01de73ccad15eb7d99f80485de043efb2f370cd654f4ea44b"
+        },
+        {
+          "name": "wasip2",
+          "version": "1.0.3+wasi-0.2.9",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "20064672db26d7cdc89c7798c48a0fdfac8213434a1186e5ef29fd560ae223d6"
+        },
+        {
+          "name": "wasm-bindgen",
+          "version": "0.2.126",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "4b067c0c11094aef6b7a801c1e34a26affafdf3d051dba08456b868789aaf9a4"
+        },
+        {
+          "name": "wasm-bindgen-macro",
+          "version": "0.2.126",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "167ce5e579f6bcf889c4f7175a8a5a585de84e8ff93976ce393efa5f2837aab1"
+        },
+        {
+          "name": "wasm-bindgen-macro-support",
+          "version": "0.2.126",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "f3997c7839262f4ef12cf90b818d6340c18e80f263f1a94bf157d0ec4420380e"
+        },
+        {
+          "name": "wasm-bindgen-shared",
+          "version": "0.2.126",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "dc1b4cb0cc549fcf58d7dfc081778139b3d283a081644e833e84682ad71cea24"
+        },
+        {
+          "name": "wasm_sync",
+          "version": "0.1.2",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "cff360cade7fec41ff0e9d2cda57fe58258c5f16def0e21302394659e6bbb0ea"
+        },
+        {
+          "name": "web-sys",
+          "version": "0.3.103",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "8622dcb61c0bcc9fffa6938bed81210af2da9a7e4a1a834b2e37a59b6dfb6141"
+        },
+        {
+          "name": "wide",
+          "version": "1.4.0",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "9a7714cd0430a663154667c74da5d09325c2387695bee18b3f7f72825aa3693a"
+        },
+        {
+          "name": "windows-core",
+          "version": "0.62.2",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "b8e83a14d34d0623b51dce9581199302a221863196a1dde71a7663a4c2be9deb"
+        },
+        {
+          "name": "windows-implement",
+          "version": "0.60.2",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "053e2e040ab57b9dc951b72c264860db7eb3b0200ba345b4e4c3b14f67855ddf"
+        },
+        {
+          "name": "windows-interface",
+          "version": "0.59.3",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "3f316c4a2570ba26bbec722032c4099d8c8bc095efccdc15688708623367e358"
+        },
+        {
+          "name": "windows-link",
+          "version": "0.2.1",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "f0805222e57f7521d6a62e36fa9163bc891acd422f971defe97d64e70d0a4fe5"
+        },
+        {
+          "name": "windows-result",
+          "version": "0.4.1",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "7781fa89eaf60850ac3d2da7af8e5242a5ea78d1a11c49bf2910bb5a73853eb5"
+        },
+        {
+          "name": "windows-strings",
+          "version": "0.5.1",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "7837d08f69c77cf6b07689544538e017c1bfcf57e34b4c0ff58e6c2cd3b37091"
+        },
+        {
+          "name": "wit-bindgen",
+          "version": "0.57.1",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "1ebf944e87a7c253233ad6766e082e3cd714b5d03812acc24c318f549614536e"
+        },
+        {
+          "name": "zerocopy",
+          "version": "0.8.48",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "eed437bf9d6692032087e337407a86f04cd8d6a16a37199ed57949d415bd68e9"
+        },
+        {
+          "name": "zerocopy-derive",
+          "version": "0.8.48",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "70e3cd084b1788766f53af483dd21f93881ff30d7320490ec3ef7526d203bad4"
+        },
+        {
+          "name": "zip",
+          "version": "9.0.5",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "6e04976da629d3b04204ba8105b396a193af8ad2583b2c79bfb3ab8af580a11e"
+        },
+        {
+          "name": "zlib-rs",
+          "version": "0.6.4",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "977347db8caa080403f6b6b7c1cda9479a8e869316f7e13a59b19076a40f94e3"
+        },
+        {
+          "name": "zmij",
+          "version": "1.0.21",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "b8848ee67ecc8aedbaf3e4122217aff892639231befc6a1b58d29fff4c2cabaa"
+        },
+        {
+          "name": "zopfli",
+          "version": "0.8.3",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "f05cd8797d63865425ff89b5c4a48804f35ba0ce8d125800027ad6017d2b5249"
+        },
+        {
+          "name": "zstd",
+          "version": "0.14.0",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "bf06bd8162af0734b344780deb55b42a2429ae430870d13fcc12f238e880fe6e"
+        },
+        {
+          "name": "zstd-safe",
+          "version": "8.0.0",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "ae42c0555055784c70058d19ba8e275528e8a99a706684868ace5da4e716a4ab"
+        },
+        {
+          "name": "zstd-sys",
+          "version": "2.1.0+zstd.1.5.7",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "checksum": "0ef0a8027ec3ee71300ab3bcbcd0393f434aa72b91ca6d635a39941deae8eea0"
+        }
       ]
     },
     "smlibRevision": "c9c5979f04cea8c38213004d4f04df0dcfb40d05",
@@ -1567,7 +2631,7 @@
       "version": "2.0.1",
       "license": "0BSD OR MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-0BSD",
@@ -1591,7 +2655,7 @@
       "version": "0.8.12",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -1610,7 +2674,7 @@
       "version": "1.1.4",
       "license": "Unlicense OR MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "COPYING",
@@ -1629,7 +2693,7 @@
       "version": "0.1.5",
       "license": "MIT/Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -1648,7 +2712,7 @@
       "version": "0.5.1",
       "license": "Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE",
@@ -1662,7 +2726,7 @@
       "version": "60.0.0",
       "license": "Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE.txt",
@@ -1681,7 +2745,7 @@
       "version": "60.0.0",
       "license": "Apache-2.0 AND MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-MIT",
@@ -1705,7 +2769,7 @@
       "version": "60.0.0",
       "license": "Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE.txt",
@@ -1724,7 +2788,7 @@
       "version": "60.0.0",
       "license": "Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE.txt",
@@ -1743,7 +2807,7 @@
       "version": "60.0.0",
       "license": "Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE.txt",
@@ -1762,7 +2826,7 @@
       "version": "60.0.0",
       "license": "Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE.txt",
@@ -1781,7 +2845,7 @@
       "version": "60.0.0",
       "license": "Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE.txt",
@@ -1800,7 +2864,7 @@
       "version": "60.0.0",
       "license": "Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE.txt",
@@ -1819,7 +2883,7 @@
       "version": "60.0.0",
       "license": "Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE.txt",
@@ -1838,7 +2902,7 @@
       "version": "60.0.0",
       "license": "Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE.txt",
@@ -1857,7 +2921,7 @@
       "version": "60.0.0",
       "license": "Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE.txt",
@@ -1876,7 +2940,7 @@
       "version": "60.0.0",
       "license": "Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE.txt",
@@ -1895,7 +2959,7 @@
       "version": "60.0.0",
       "license": "Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE.txt",
@@ -1914,7 +2978,7 @@
       "version": "3.1.0",
       "license": "MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE",
@@ -1928,7 +2992,7 @@
       "version": "1.5.0",
       "license": "Apache-2.0 OR MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -1947,7 +3011,7 @@
       "version": "0.23.1",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -1966,7 +3030,7 @@
       "version": "2.11.1",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -1985,7 +3049,7 @@
       "version": "0.10.4",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -2004,7 +3068,7 @@
       "version": "0.14.4",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "COPYRIGHT",
@@ -2033,7 +3097,7 @@
       "version": "3.20.2",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained; pkg-diff (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-diff; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -2052,7 +3116,7 @@
       "version": "1.25.2",
       "license": "Zlib OR Apache-2.0 OR MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -2076,7 +3140,7 @@
       "version": "1.12.1",
       "license": "MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE",
@@ -2090,7 +3154,7 @@
       "version": "1.2.62",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -2109,7 +3173,7 @@
       "version": "0.2.2",
       "license": "MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE",
@@ -2128,7 +3192,7 @@
       "version": "1.0.4",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained; pkg-diff (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-diff; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -2147,7 +3211,7 @@
       "version": "0.4.44",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE.txt",
@@ -2180,7 +3244,7 @@
       "version": "0.1.16",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -2199,7 +3263,7 @@
       "version": "0.1.18",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -2218,7 +3282,7 @@
       "version": "0.8.7",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -2237,7 +3301,7 @@
       "version": "0.2.17",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -2256,7 +3320,7 @@
       "version": "1.5.0",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -2299,7 +3363,7 @@
       "version": "0.8.6",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -2318,7 +3382,7 @@
       "version": "0.9.18",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -2337,7 +3401,7 @@
       "version": "0.8.21",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -2356,7 +3420,7 @@
       "version": "0.2.4",
       "license": "MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE",
@@ -2370,7 +3434,7 @@
       "version": "0.1.7",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -2389,7 +3453,7 @@
       "version": "0.10.7",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -2408,7 +3472,7 @@
       "version": "0.4.11",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -2432,7 +3496,7 @@
       "version": "0.5.0",
       "license": "ISC",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE",
@@ -2446,7 +3510,7 @@
       "version": "1.15.0",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -2465,7 +3529,7 @@
       "version": "1.0.2",
       "license": "Apache-2.0 OR MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -2484,7 +3548,7 @@
       "version": "0.2.4",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -2503,7 +3567,7 @@
       "version": "0.3.7",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -2522,7 +3586,7 @@
       "version": "0.1.9",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -2541,7 +3605,7 @@
       "version": "25.12.19",
       "license": "Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "https://raw.githubusercontent.com/google/flatbuffers/7e163021e59cca4f8e1e35a7c828b5c6b7915953/LICENSE",
@@ -2555,7 +3619,7 @@
       "version": "1.1.10",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -2574,7 +3638,7 @@
       "version": "0.3.34",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained; pkg-diff (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-diff; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -2593,7 +3657,7 @@
       "version": "0.3.34",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained; pkg-diff (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-diff; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -2612,7 +3676,7 @@
       "version": "0.3.34",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained; pkg-diff (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-diff; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -2631,7 +3695,7 @@
       "version": "0.3.34",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained; pkg-diff (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-diff; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -2650,7 +3714,7 @@
       "version": "0.3.34",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained; pkg-diff (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-diff; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -2669,7 +3733,7 @@
       "version": "0.3.34",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained; pkg-diff (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-diff; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -2688,7 +3752,7 @@
       "version": "0.3.34",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained; pkg-diff (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-diff; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -2707,7 +3771,7 @@
       "version": "0.14.7",
       "license": "MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE",
@@ -2721,7 +3785,7 @@
       "version": "0.3.0",
       "license": "MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE",
@@ -2735,7 +3799,7 @@
       "version": "0.2.17",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -2754,7 +3818,7 @@
       "version": "0.3.4",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -2773,7 +3837,7 @@
       "version": "0.30.10",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -2792,7 +3856,7 @@
       "version": "0.31.1",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -2811,7 +3875,7 @@
       "version": "0.32.1",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -2830,7 +3894,7 @@
       "version": "0.33.0",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -2849,7 +3913,7 @@
       "version": "2.7.1",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -2868,7 +3932,7 @@
       "version": "0.17.1",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -2887,7 +3951,7 @@
       "version": "4.1.0",
       "license": "MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE",
@@ -2901,7 +3965,7 @@
       "version": "0.11.0",
       "license": "MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "https://raw.githubusercontent.com/iShape-Rust/iKeySort/d8c914dc29afd4d4824dacd2c134dbc16168e78c/LICENSE",
@@ -2915,7 +3979,7 @@
       "version": "8.1.2",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "https://raw.githubusercontent.com/iShape-Rust/iOverlay/340bd5d1eaa21692fd2048574554ed95b781af63/LICENSE-APACHE",
@@ -2934,7 +3998,7 @@
       "version": "4.0.0",
       "license": "MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE",
@@ -2948,7 +4012,7 @@
       "version": "0.19.0",
       "license": "MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE",
@@ -2962,7 +4026,7 @@
       "version": "0.1.2",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -2981,7 +4045,7 @@
       "version": "0.1.65",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -3000,7 +4064,7 @@
       "version": "2.14.0",
       "license": "Apache-2.0 OR MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -3019,7 +4083,7 @@
       "version": "0.14.0",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -3038,7 +4102,7 @@
       "version": "1.0.18",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained; pkg-diff (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-diff; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -3057,7 +4121,7 @@
       "version": "0.1.34",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -3076,7 +4140,7 @@
       "version": "0.3.2",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -3095,7 +4159,7 @@
       "version": "0.3.103",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained; pkg-diff (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-diff; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -3114,7 +4178,7 @@
       "version": "1.0.6",
       "license": "MIT/Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -3138,7 +4202,7 @@
       "version": "1.0.6",
       "license": "MIT/Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -3162,7 +4226,7 @@
       "version": "1.0.6",
       "license": "MIT/Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -3186,7 +4250,7 @@
       "version": "1.0.7",
       "license": "MIT/Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -3205,7 +4269,7 @@
       "version": "1.0.6",
       "license": "MIT/Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -3229,7 +4293,7 @@
       "version": "1.0.6",
       "license": "MIT/Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -3253,7 +4317,7 @@
       "version": "0.2.186",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -3272,7 +4336,7 @@
       "version": "0.2.16",
       "license": "MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE.txt",
@@ -3286,7 +4350,7 @@
       "version": "0.4.29",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -3305,7 +4369,7 @@
       "version": "0.14.0",
       "license": "MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE",
@@ -3319,7 +4383,7 @@
       "version": "0.3.10",
       "license": "MIT/Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -3338,7 +4402,7 @@
       "version": "2.8.3",
       "license": "Unlicense OR MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained; pkg-diff (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-diff; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "COPYING",
@@ -3357,7 +4421,7 @@
       "version": "0.2.1",
       "license": "MIT/Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -3381,7 +4445,7 @@
       "version": "0.8.9",
       "license": "MIT OR Zlib OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE",
@@ -3410,7 +4474,7 @@
       "version": "0.9.1",
       "license": "MIT OR Zlib OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE",
@@ -3439,7 +4503,7 @@
       "version": "0.35.0",
       "license": "Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE",
@@ -3453,7 +4517,7 @@
       "version": "0.31.3",
       "license": "MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE",
@@ -3467,7 +4531,7 @@
       "version": "7.1.3",
       "license": "MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE",
@@ -3481,7 +4545,7 @@
       "version": "0.4.6",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -3500,7 +4564,7 @@
       "version": "0.5.1",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -3519,7 +4583,7 @@
       "version": "0.4.6",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -3538,7 +4602,7 @@
       "version": "0.1.46",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -3557,7 +4621,7 @@
       "version": "0.4.2",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -3576,7 +4640,7 @@
       "version": "0.2.19",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -3595,7 +4659,7 @@
       "version": "1.21.4",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained; pkg-diff (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-diff; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -3614,7 +4678,7 @@
       "version": "60.0.0",
       "license": "Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE.txt",
@@ -3633,7 +4697,7 @@
       "version": "0.2.17",
       "license": "Apache-2.0 OR MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained; pkg-diff (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-diff; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -3652,7 +4716,7 @@
       "version": "0.3.33",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -3671,7 +4735,7 @@
       "version": "0.18.1",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -3690,7 +4754,7 @@
       "version": "1.0.106",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained; pkg-diff (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-diff; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -3723,7 +4787,7 @@
       "version": "1.0.45",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained; pkg-diff (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-diff; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -3742,7 +4806,7 @@
       "version": "5.3.0",
       "license": "MIT OR Apache-2.0 OR LGPL-2.1-or-later",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "AUTHORS",
@@ -3758,7 +4822,7 @@
       "version": "0.2.1",
       "license": "MIT/Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -3777,7 +4841,7 @@
       "version": "1.13.0",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -3796,7 +4860,7 @@
       "version": "1.12.0",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -3815,7 +4879,7 @@
       "version": "0.4.14",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -3834,7 +4898,7 @@
       "version": "0.8.10",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -3858,7 +4922,7 @@
       "version": "1.12.3",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -3877,7 +4941,7 @@
       "version": "0.4.1",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -3896,7 +4960,7 @@
       "version": "2.1.3",
       "license": "Apache-2.0 OR MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -3915,7 +4979,7 @@
       "version": "1.0.22",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained; pkg-diff (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-diff; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -3960,7 +5024,7 @@
       "version": "1.0.23",
       "license": "Apache-2.0 OR BSL-1.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -3986,7 +5050,7 @@
       "version": "1.0.0",
       "license": "Zlib OR Apache-2.0 OR MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE.md",
@@ -4010,7 +5074,7 @@
       "version": "1.0.28",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -4029,7 +5093,7 @@
       "version": "0.3.6",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -4048,7 +5112,7 @@
       "version": "1.0.229",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained; pkg-diff (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-diff; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -4067,7 +5131,7 @@
       "version": "1.0.229",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained; pkg-diff (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-diff; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -4086,7 +5150,7 @@
       "version": "1.0.154",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained; pkg-diff (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-diff; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -4119,7 +5183,7 @@
       "version": "1.0.229",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained; pkg-diff (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-diff; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -4138,7 +5202,7 @@
       "version": "0.10.9",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -4157,7 +5221,7 @@
       "version": "1.3.0",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -4176,7 +5240,7 @@
       "version": "0.10.0",
       "license": "Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE",
@@ -4190,7 +5254,7 @@
       "version": "0.3.9",
       "license": "MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE.md",
@@ -4204,7 +5268,7 @@
       "version": "0.4.12",
       "license": "MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained; pkg-diff (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-diff; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE",
@@ -4218,7 +5282,7 @@
       "version": "1.16.3",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -4237,7 +5301,7 @@
       "version": "1.1.1",
       "license": "BSD-3-Clause",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "COPYING",
@@ -4251,7 +5315,7 @@
       "version": "2.0.117",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained; pkg-diff (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-diff; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -4270,7 +5334,7 @@
       "version": "3.0.2",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained; pkg-diff (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-diff; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -4289,7 +5353,7 @@
       "version": "2.0.21",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -4308,7 +5372,7 @@
       "version": "2.0.21",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -4327,7 +5391,7 @@
       "version": "2.0.2",
       "license": "CC0-1.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE",
@@ -4341,7 +5405,7 @@
       "version": "0.1.31",
       "license": "MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE",
@@ -4355,7 +5419,7 @@
       "version": "0.1.36",
       "license": "MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE",
@@ -4374,7 +5438,7 @@
       "version": "0.1.44",
       "license": "MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE",
@@ -4388,7 +5452,7 @@
       "version": "2.1.5",
       "license": "MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE.txt",
@@ -4402,7 +5466,7 @@
       "version": "0.12.3",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -4421,7 +5485,7 @@
       "version": "1.20.0",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE",
@@ -4445,7 +5509,7 @@
       "version": "1.0.24",
       "license": "(MIT OR Apache-2.0) AND Unicode-3.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained; pkg-diff (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-diff; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -4469,7 +5533,7 @@
       "version": "0.1.1",
       "license": "MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "https://raw.githubusercontent.com/tokio-rs/valuable/9efc29b6e58cef28f6566a47aa7e142a55fead77/LICENSE",
@@ -4483,7 +5547,7 @@
       "version": "1.12.0",
       "license": "Apache-2.0 OR MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -4502,7 +5566,7 @@
       "version": "0.9.5",
       "license": "MIT/Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -4521,7 +5585,7 @@
       "version": "0.11.1+wasi-snapshot-preview1",
       "license": "Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -4545,7 +5609,7 @@
       "version": "1.0.3+wasi-0.2.9",
       "license": "Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -4569,7 +5633,7 @@
       "version": "0.1.2",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "https://raw.githubusercontent.com/spdx/license-list-data/v3.27.0/text/Apache-2.0.txt",
@@ -4604,7 +5668,7 @@
       "version": "0.2.126",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained; pkg-diff (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-diff; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -4623,7 +5687,7 @@
       "version": "0.2.126",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained; pkg-diff (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-diff; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -4656,7 +5720,7 @@
       "version": "0.2.126",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained; pkg-diff (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-diff; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -4675,7 +5739,7 @@
       "version": "0.2.126",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained; pkg-diff (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-diff; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -4694,7 +5758,7 @@
       "version": "0.3.103",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -4713,7 +5777,7 @@
       "version": "1.4.0",
       "license": "Zlib OR Apache-2.0 OR MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-ZLIB.md",
@@ -4729,7 +5793,7 @@
       "version": "0.62.2",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "license-apache-2.0",
@@ -4748,7 +5812,7 @@
       "version": "0.60.2",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "license-apache-2.0",
@@ -4767,7 +5831,7 @@
       "version": "0.59.3",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "license-apache-2.0",
@@ -4786,7 +5850,7 @@
       "version": "0.2.1",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "license-apache-2.0",
@@ -4805,7 +5869,7 @@
       "version": "0.4.1",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "license-apache-2.0",
@@ -4824,7 +5888,7 @@
       "version": "0.5.1",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "license-apache-2.0",
@@ -4843,7 +5907,7 @@
       "version": "0.57.1",
       "license": "Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -4867,7 +5931,7 @@
       "version": "0.8.48",
       "license": "BSD-2-Clause OR Apache-2.0 OR MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -4891,7 +5955,7 @@
       "version": "0.8.48",
       "license": "BSD-2-Clause OR Apache-2.0 OR MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-APACHE",
@@ -4915,7 +5979,7 @@
       "version": "9.0.5",
       "license": "MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE",
@@ -4929,7 +5993,7 @@
       "version": "0.6.4",
       "license": "Zlib",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE",
@@ -4943,7 +6007,7 @@
       "version": "1.0.21",
       "license": "MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained; pkg-diff (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-diff; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE-MIT",
@@ -4957,7 +6021,7 @@
       "version": "0.8.3",
       "license": "Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "COPYING",
@@ -4971,7 +6035,7 @@
       "version": "8.0.0",
       "license": "BSD-3-Clause",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE",
@@ -4985,7 +6049,7 @@
       "version": "2.1.0+zstd.1.5.7",
       "license": "BSD-3-Clause",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE",
@@ -5014,7 +6078,7 @@
       "version": "0.14.0",
       "license": "BSD-3-Clause",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
-      "scope": "default pkg + pkg-retained (locked production closure, includes optional/target-specific dependencies and build tools)",
+      "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
           "origin": "LICENSE",

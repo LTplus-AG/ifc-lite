@@ -13,6 +13,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { CheckCircle2, CloudDownload, LogOut, XCircle } from 'lucide-react';
+import { useAsyncRun } from '@/hooks/useAsyncRun';
 import { Spinner } from '@/components/ui/spinner';
 import {
   Dialog,
@@ -61,7 +62,14 @@ export function BCFServerDialog({ open, onOpenChange }: BCFServerDialogProps) {
   const [initialUsername, setInitialUsername] = useState('');
   const [projects, setProjects] = useState<BcfProjectDto[] | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState('');
-  const [busy, setBusy] = useState(false);
+  // One topic pull at a time (C-2): a same-tick double press is refused; any
+  // change of the saved connection (an account switch, a disconnect in this tab
+  // or another) releases it through applySavedConnection, and the generation
+  // guard below still drops its late result.
+  const pullFlight = useAsyncRun();
+  const busy = pullFlight.busy;
+  const releasePull = pullFlight.reset;
+  const runPull = pullFlight.start;
   const [progress, setProgress] = useState<BcfSyncProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
   // Number of local topics the next pull would replace; non-null means the
@@ -109,9 +117,9 @@ export function BCFServerDialog({ open, onOpenChange }: BCFServerDialogProps) {
     setError(null);
     setProgress(null);
     setReplaceCount(null);
-    setBusy(false);
+    releasePull();
     if (saved) void loadProjects();
-  }, [loadProjects]);
+  }, [loadProjects, releasePull]);
 
   // Re-seed from the saved connection only on the closed -> open transition,
   // so parent re-renders never wipe in-progress typing.
@@ -159,7 +167,10 @@ export function BCFServerDialog({ open, onOpenChange }: BCFServerDialogProps) {
     setProjects(null);
     setSelectedProjectId('');
     setError(null);
-    setBusy(false);
+    // No pull to release here. clearBcfServerConfig() dispatches the change
+    // event in this same tab, so the subscription below already ran
+    // applySavedConnection(null), which releases one; and Disconnect is
+    // disabled while a pull runs anyway.
   }, []);
 
   const handlePull = useCallback(async () => {
@@ -172,48 +183,46 @@ export function BCFServerDialog({ open, onOpenChange }: BCFServerDialogProps) {
       setReplaceCount(localTopics);
       return;
     }
-    const generation = sessionGenerationRef.current;
-    setReplaceCount(null);
-    setBusy(true);
-    setError(null);
-    setBcfError(null);
-    try {
-      const result = await pullBcfServerProject(
-        project.project_id,
-        project.name ?? 'BCF project',
-        (progress) => {
-          if (generation !== sessionGenerationRef.current) return;
-          setProgress(progress);
-        },
-      );
-      if (generation !== sessionGenerationRef.current) return;
-      setBcfProject(result.project);
-      posthog.capture('bcf_server_synced', {
-        topic_count: result.project.topics.size,
-        warning_count: result.warnings.length,
-      });
-      if (result.warnings.length > 0) {
-        console.warn('[bcf-server] sync warnings:', result.warnings);
-        toast.info(
-          t('bcf.serverDialog.syncWarnings', {
-            count: result.project.topics.size,
-            itemsSkipped: t('bcf.serverDialog.itemsSkipped', { count: result.warnings.length }),
-          }),
+    await runPull(async () => {
+      const generation = sessionGenerationRef.current;
+      setReplaceCount(null);
+      setError(null);
+      setBcfError(null);
+      try {
+        const result = await pullBcfServerProject(
+          project.project_id,
+          project.name ?? 'BCF project',
+          (progress) => {
+            if (generation !== sessionGenerationRef.current) return;
+            setProgress(progress);
+          },
         );
-      } else {
-        toast.success(t('bcf.serverDialog.syncSuccess', { count: result.project.topics.size }));
+        if (generation !== sessionGenerationRef.current) return;
+        setBcfProject(result.project);
+        posthog.capture('bcf_server_synced', {
+          topic_count: result.project.topics.size,
+          warning_count: result.warnings.length,
+        });
+        if (result.warnings.length > 0) {
+          console.warn('[bcf-server] sync warnings:', result.warnings);
+          toast.info(
+            t('bcf.serverDialog.syncWarnings', {
+              count: result.project.topics.size,
+              itemsSkipped: t('bcf.serverDialog.itemsSkipped', { count: result.warnings.length }),
+            }),
+          );
+        } else {
+          toast.success(t('bcf.serverDialog.syncSuccess', { count: result.project.topics.size }));
+        }
+        onOpenChange(false);
+      } catch (err) {
+        if (generation !== sessionGenerationRef.current) return;
+        setError(err instanceof Error ? err.message : String(err));
+      } finally {
+        if (generation === sessionGenerationRef.current) setProgress(null);
       }
-      onOpenChange(false);
-    } catch (err) {
-      if (generation !== sessionGenerationRef.current) return;
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      if (generation === sessionGenerationRef.current) {
-        setBusy(false);
-        setProgress(null);
-      }
-    }
-  }, [projects, selectedProjectId, replaceCount, setBcfProject, setBcfError, onOpenChange]);
+    });
+  }, [runPull, projects, selectedProjectId, replaceCount, setBcfProject, setBcfError, onOpenChange]);
 
   const connected = config !== null;
 

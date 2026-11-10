@@ -12,7 +12,7 @@ const VIEW_IDS = [
   'view:home', 'view:fit', 'view:frame', 'view:stacked', 'view:exploded',
   'view:solo', 'view:projection', 'view:top', 'view:bottom', 'view:front',
   'view:back', 'view:left', 'view:right', 'view:world', 'view:lighting',
-  'view:spacemouse', 'view:centreline', 'view:zoom-in', 'view:zoom-out', 'view:rotate-left',
+  'view:spacemouse', 'view:basepoints', 'view:centreline', 'view:zoom-in', 'view:zoom-out', 'view:rotate-left',
   'view:rotate-right', 'view:move-georef', 'view:follow-work',
 ] as const;
 

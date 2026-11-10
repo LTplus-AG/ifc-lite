@@ -10,6 +10,7 @@
 
 import { useCallback, useMemo, useState } from 'react';
 import { XCircle } from 'lucide-react';
+import { useAsyncRun } from '@/hooks/useAsyncRun';
 import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -65,7 +66,11 @@ export function BCFServerConnectForm({
   const [accessToken, setAccessToken] = useState('');
   const [clientId, setClientId] = useState('');
   const [clientSecret, setClientSecret] = useState('');
-  const [busy, setBusy] = useState(false);
+  // One sign-in at a time (C-2): a same-tick double press is refused before
+  // it opens a second popup or registers a second client.
+  const connectFlight = useAsyncRun();
+  const busy = connectFlight.busy;
+  const runConnect = connectFlight.start;
   const [error, setError] = useState<string | null>(null);
 
   const preset = findBcfServerPreset(presetId);
@@ -98,28 +103,30 @@ export function BCFServerConnectForm({
     setError(null);
   }, []);
 
-  const handleConnect = useCallback(async () => {
-    const urlError = validateBcfServerUrl(serverUrl);
-    if (urlError) {
-      setError(urlError);
-      return;
-    }
-    // The popup must be opened synchronously inside the click handler or
-    // popup blockers eat it; it navigates once discovery has the auth URL.
-    const popup =
-      authMethod === 'oauth'
-        ? window.open('about:blank', 'ifc-lite-bcf-oauth', 'width=500,height=700')
-        : null;
-    // A blocked popup fails the attempt before any network work — running
-    // discovery and dynamic client registration for a sign-in that cannot
-    // complete would mint throwaway clients on the server.
-    if (authMethod === 'oauth' && (!popup || popup.closed)) {
-      setError(t('bcf.serverConnect.popupBlocked'));
-      return;
-    }
-    setBusy(true);
-    setError(null);
+  const handleConnect = useCallback(() => runConnect(async () => {
+    let popup: Window | null = null;
+    // Everything, validation included, is inside the try: useAsyncRun does not
+    // rethrow, so an escaping throw would only reach the console.
     try {
+      const urlError = validateBcfServerUrl(serverUrl);
+      if (urlError) {
+        setError(urlError);
+        return;
+      }
+      // The popup must be opened synchronously inside the click handler or
+      // popup blockers eat it; it navigates once discovery has the auth URL.
+      popup =
+        authMethod === 'oauth'
+          ? window.open('about:blank', 'ifc-lite-bcf-oauth', 'width=500,height=700')
+          : null;
+      // A blocked popup fails the attempt before any network work — running
+      // discovery and dynamic client registration for a sign-in that cannot
+      // complete would mint throwaway clients on the server.
+      if (authMethod === 'oauth' && (!popup || popup.closed)) {
+        setError(t('bcf.serverConnect.popupBlocked'));
+        return;
+      }
+      setError(null);
       let config: BcfServerConfig;
       if (authMethod === 'password') {
         config = await signInToBcfServer(serverUrl, username.trim(), password);
@@ -167,9 +174,9 @@ export function BCFServerConnectForm({
     } finally {
       // Inert when COOP already severed the handle or the page closed itself.
       popup?.close();
-      setBusy(false);
     }
-  }, [
+  }), [
+    runConnect,
     serverUrl,
     authMethod,
     username,

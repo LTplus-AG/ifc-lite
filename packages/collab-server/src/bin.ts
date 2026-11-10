@@ -115,7 +115,15 @@ async function main() {
     // eslint-disable-next-line no-console
     console.log('[collab-server] shutting down…');
     blobGc?.stop();
-    await handle.stop();
+    // A failed stop must not skip the access-control flush below.
+    let exitCode = 0;
+    try {
+      await handle.stop();
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('[collab-server] shutdown error (continuing to flush):', err);
+      exitCode = 1;
+    }
     // A SIGTERM during the persist debounce (or mid-write) must not lose
     // claims/revocations: await the pending/in-flight state write. flush()
     // rejects when the state never reached disk — exit non-zero and say so
@@ -132,7 +140,7 @@ async function main() {
         process.exit(1);
       }
     }
-    process.exit(0);
+    process.exit(exitCode);
   };
   process.once('SIGINT', shutdown);
   process.once('SIGTERM', shutdown);

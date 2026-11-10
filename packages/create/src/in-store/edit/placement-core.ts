@@ -20,6 +20,7 @@
  * generic so file size + cognitive scope stay manageable.
  */
 
+import { refreshTopAttachmentsInStore } from '../top-attachment-refresh.js';
 import { EntityExtractor, resolveEffectiveEntityRecord, type IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 
@@ -47,10 +48,11 @@ export function setSourceAttrsReader(reader: SourceAttrsReader | null): void {
 }
 
 type EntityAttrs = unknown[];
+type PlacementEditor = Pick<StoreEditor, 'getNewEntity'> & Partial<Pick<StoreEditor, 'readNewEntity'>>;
 
 /** Shared source callback baseline; effective placement reads add no decoder. */
-function baseAttributes(dataStore: IfcDataStore, editor: Pick<StoreEditor, 'getNewEntity'>, expressId: number): EntityAttrs | null {
-  const overlay = editor.getNewEntity(expressId);
+function baseAttributes(dataStore: IfcDataStore, editor: PlacementEditor, expressId: number): EntityAttrs | null {
+  const overlay = editor.readNewEntity ? editor.readNewEntity(expressId) : editor.getNewEntity(expressId);
   let attrs: EntityAttrs | null = null;
   if (overlay) {
     attrs = overlay.attributes.slice();
@@ -69,7 +71,7 @@ function baseAttributes(dataStore: IfcDataStore, editor: Pick<StoreEditor, 'getN
 
 /** #7315: only native placement owners use current named/retyped fields.
  * The general body/profile reader retains its existing positional contract. */
-export function readPlacementAttributes(dataStore: IfcDataStore, view: MutablePropertyView, editor: Pick<StoreEditor, 'getNewEntity'> & Partial<Pick<StoreEditor, 'getEntityType'>>, expressId: number): EntityAttrs | null {
+export function readPlacementAttributes(dataStore: IfcDataStore, view: MutablePropertyView, editor: PlacementEditor & Partial<Pick<StoreEditor, 'getEntityType'>>, expressId: number): EntityAttrs | null {
   if (view.isDeleted(expressId)) return null;
   const attributes = baseAttributes(dataStore, editor, expressId);
   if (!attributes) return null;
@@ -232,7 +234,7 @@ export function translatedCoordinates(coordinates: readonly number[], delta: rea
 }
 
 export type TranslateResult =
-  | { ok: true; oldCoordinates: [number, number, number]; newCoordinates: [number, number, number] }
+  | { ok: true; oldCoordinates: [number, number, number]; newCoordinates: [number, number, number]; remesh?: number[] }
   | { ok: false; reason: string };
 
 /**
@@ -248,6 +250,7 @@ export function translateProduct(
   editor: StoreEditor,
   expressId: number,
   delta: [number, number, number],
+  options: { readonly refreshAttachedTops?: boolean } = {},
 ): TranslateResult {
   const chain = resolvePlacementChain(dataStore, view, editor, expressId);
   if (!chain) {
@@ -259,8 +262,19 @@ export function translateProduct(
   }
   const next = translatedCoordinates(chain.coordinates, delta);
   if (!next) return { ok: false, reason: 'Placement translation overflow: derived coordinates must be finite' };
-  editor.setPositionalAttribute(chain.cartesianPointId, 0, next);
-  return { ok: true, oldCoordinates: chain.coordinates, newCoordinates: next };
+  const follows = /^(IFCROOF|IFCSLAB|IFCSLABSTANDARDCASE|IFCSLABELEMENTEDCASE|IFCWALL|IFCWALLSTANDARDCASE|IFCWALLELEMENTEDCASE)$/.test(editor.getEntityType?.(expressId)?.toUpperCase() ?? '');
+  // A transform batch refits once after every root has its final placement.
+  if (!follows || options.refreshAttachedTops === false) {
+    editor.setPositionalAttribute(chain.cartesianPointId, 0, next);
+    return { ok: true, oldCoordinates: chain.coordinates, newCoordinates: next };
+  }
+  try {
+    const remesh = editor.runAtomic(draft => {
+      draft.setPositionalAttribute(chain.cartesianPointId, 0, next);
+      return refreshTopAttachmentsInStore({ dataStore, view: draft.getMutationView(), editor: draft }, [expressId], [expressId]);
+    });
+    return { ok: true, oldCoordinates: chain.coordinates, newCoordinates: next, remesh };
+  } catch (error) { return { ok: false, reason: error instanceof Error ? error.message : String(error) }; }
 }
 
 /**
@@ -284,6 +298,5 @@ export function setProductPosition(
     };
   }
   if (!position.every(Number.isFinite)) return { ok: false, reason: 'Placement coordinates must be finite' };
-  editor.setPositionalAttribute(chain.cartesianPointId, 0, position);
-  return { ok: true, oldCoordinates: chain.coordinates, newCoordinates: position };
+  return translateProduct(dataStore, view, editor, expressId, [position[0] - chain.coordinates[0], position[1] - chain.coordinates[1], position[2] - chain.coordinates[2]]);
 }

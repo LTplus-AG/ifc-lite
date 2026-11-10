@@ -34,13 +34,6 @@ import { viewBasis } from './math.js';
 import { CAMERA_CONSTANTS } from './constants.js';
 
 /**
- * The ~0.6 degree tilt that keeps the top and bottom presets off the pole, so
- * the orbit math that follows has a well-defined polar tangent.
- */
-const POLE_TILT_SIN = Math.sin(0.01);
-const POLE_TILT_COS = Math.cos(0.01);
-
-/**
  * Get current bounds estimate (simplified - in production would use scene bounds).
  */
 export function estimateBoundsFromPose(state: CameraInternalState): FramingBounds {
@@ -137,49 +130,39 @@ export function presetViewTarget(
 
   switch (view) {
     case 'top': {
-      // Top view: position camera *just barely* off the +Y pole so the
-      // subsequent orbit math has a well-defined polar tangent (no pole
-      // singularity). camera.up stays world Y throughout — screen-up is
-      // then determined by lookAt projecting (0,1,0) onto perp(look),
-      // which falls along the horizontal component of `-look`.
+      // Top view: straight down the +Y pole, exactly (#9501). It used to
+      // stop 0.01 rad (~0.6 degrees) off the pole so the orbit math had a
+      // polar tangent, and in orthographic projection that tilt drew the
+      // walls of every vertical member as a band beside its section: 13 mm
+      // of a 1.3 m column, inside a hollow section and on the far face.
+      // Screen-up is carried by `camera.up` instead, which is horizontal
+      // here, and `CameraControls.orbit` steps back off the pole along it
+      // before the first drag (`leavePole`).
       //
-      // The 4 rotation cycles select which compass direction appears at
-      // the top of the screen by varying the small horizontal offset
-      // (theta in the spherical math).
-      //   rotation 0 → camera slightly to +Z of center → screen-up = +Z
-      //   rotation 1 → camera slightly to +X → screen-up = +X
-      //   rotation 2 → camera slightly to -Z → screen-up = -Z
-      //   rotation 3 → camera slightly to -X → screen-up = -X
-      // Building rotation is applied as the same Y-axis rotation that
-      // setPresetView would have used to remap the legacy up vector.
-      const poleOffset = POLE_TILT_SIN;
-      const verticalOffset = POLE_TILT_COS;
+      // The 4 rotation cycles pick which compass direction is at the top of
+      // the screen, the same ones the tilted pose produced:
+      //   rotation 0 → screen-up = -Z
+      //   rotation 1 → screen-up = -X
+      //   rotation 2 → screen-up = +Z
+      //   rotation 3 → screen-up = +X
+      // Building rotation is applied as the same Y-axis rotation.
+      //
       // `?? 0`: `rotation` is the animator's 0-3 cycle counter today, but it
       // is a plain `number` on the signature, and an out-of-range, fractional
       // or non-finite one indexes past the table and makes `thetaWorld` — and
       // with it the whole preset pose — NaN.
       const thetaPerRotation = [0, Math.PI / 2, Math.PI, -Math.PI / 2];
       const thetaWorld = (thetaPerRotation[rotation] ?? 0) + rotationRadians;
-      offsetDir = {
-        x: poleOffset * Math.sin(thetaWorld),
-        y: verticalOffset,
-        z: poleOffset * Math.cos(thetaWorld),
-      };
-      upVector = { x: 0, y: 1, z: 0 };
+      offsetDir = { x: 0, y: 1, z: 0 };
+      upVector = { x: -Math.sin(thetaWorld), y: 0, z: -Math.cos(thetaWorld) };
       break;
     }
     case 'bottom': {
-      // Bottom view: mirror of top — phi = π − MIN_PHI.
-      const poleOffset = POLE_TILT_SIN;
-      const verticalOffset = POLE_TILT_COS;
+      // Bottom view: mirror of top, exactly on the -Y pole.
       const thetaPerRotation = [Math.PI, Math.PI / 2, 0, -Math.PI / 2];
       const thetaWorld = (thetaPerRotation[rotation] ?? 0) + rotationRadians;
-      offsetDir = {
-        x: poleOffset * Math.sin(thetaWorld),
-        y: -verticalOffset,
-        z: poleOffset * Math.cos(thetaWorld),
-      };
-      upVector = { x: 0, y: 1, z: 0 };
+      offsetDir = { x: 0, y: -1, z: 0 };
+      upVector = { x: Math.sin(thetaWorld), y: 0, z: Math.cos(thetaWorld) };
       break;
     }
     case 'front':
@@ -214,8 +197,8 @@ export function presetViewTarget(
   // The standoff that keeps every corner of the box on screen from this
   // direction, with 1.5x padding. `viewBasis` is the same function
   // `MathUtils.lookAt` will build the real view matrix with, so the axes here
-  // are the ones the frame is drawn in — including the substitute up axis a
-  // near-vertical top/bottom preset gets. It is given `offsetDir` about the
+  // are the ones the frame is drawn in — including the horizontal up the
+  // top/bottom presets carry. It is given `offsetDir` about the
   // origin rather than the real pose because it only ever uses `eye - target`,
   // and the difference at the real centre is the same direction with the low
   // bits of a georeferenced coordinate rounded off it.

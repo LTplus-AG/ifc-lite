@@ -28,10 +28,11 @@ const HERE = dirname(fileURLToPath(import.meta.url));
  * field on every file swap.
  */
 const PINNED_SESSION_RESET_KEYS: readonly string[] = [
+  'serverPropertiesRuns', // #9538 model-owned optional property polling
   'appearanceReferenceEntry', // #6615 unopened section requests cannot outlive their live model session
   'workspaceMode', 'session', // #6232 authoring session: it names one model and storey
   'documentPanelVisible', // #4594 documents: templates survive, the panel closes
-  'flowPanelVisible', 'flowRunning', 'flowLastRun', 'flowLastError', 'flowLastRunWindow', // #5167 flow: graphs survive, the last run holds handles of the outgoing model
+  'flowPanelVisible', 'flowLastRun', 'flowLastError', 'flowLastRunWindow', // #5167 flow: graphs survive, the last run holds handles of the outgoing model
   'flowArtifacts', 'flowProgress', 'flowRunWarnings', // #6612 transient run evidence names the outgoing model inputs
   'chartPanelVisible', 'chartSelectionRevision', 'chartSlice', 'chartSliceSource', 'chartSliceBuckets', 'chartVisibilityOwned', 'chartVisibilityRevision', // #3944 charts: the slice is renderer ids of the outgoing model; the claim is on a shared channel
   'modelTagAssignments', 'modelTagView', // #4215 model tags: assignments and the Models-section view die with the federation, definitions survive
@@ -51,7 +52,7 @@ const PINNED_SESSION_RESET_KEYS: readonly string[] = [
   'compareReconciliation', 'compareRunCaptures', // #6921 captured runs name the outgoing federation's model ids
   'compareRunning', 'compareSelectedKey', 'contactShadingIntensity', 'contactShadingQuality',
   'contactShadingRadius', 'contextMenu', 'customOverrideRules', 'dirtyModels', 'discoveredLensData', 'draft',
-  'drawing2D', 'drawing2DDisplayOptions', 'drawing2DError', 'drawing2DPanelVisible',
+  'drawing2D', 'drawing2DDisplayOptions', 'drawing2DError', 'drawing2DPanelVisible', 'drawing2DPlane',
   'drawing2DPhase', 'drawing2DProgress', 'drawing2DStatus', 'drawing2DSvgContent',
   'editEnabled', 'editingZone', 'error',
   'expandedTaskGlobalIds', 'ganttPanelVisible', 'generateScheduleDialogOpen',
@@ -82,7 +83,7 @@ const PINNED_SESSION_RESET_KEYS: readonly string[] = [
   'pointCloudDeviationStatistics', // #6833 stored deviation statistics describe the outgoing scene's run
   'pointCloudFixedColor', 'pointCloudPointSize', 'pointCloudPreviewStride',
   'pointCloudRoundShape', 'pointCloudSizeMode', 'pointCloudWorldRadius', 'polygonArea2DPoints',
-  'scanDetectionError', 'scanDetectionRun', 'scanDetectionStage', 'scanDetectionStatus', 'scanCreatedGlobalIds', 'scanProposalCreated', 'scanProposalDecisions', 'scanProposalFilter', // #6894 scan-to-BIM review
+  'scanDetectionJob', 'scanDetectionRun', 'scanCreatedGlobalIds', 'scanProposalCreated', 'scanProposalDecisions', 'scanProposalFilter', // #6894 scan-to-BIM review
   'polygonArea2DResults', 'progress', 'projectionMode', 'redoStacks', 'scheduleData',
   'scheduleRange', 'scriptAssistantTurnSnapshot', 'scriptDeleteConfirmId',
   'scriptExecutionState', 'scriptLastDiagnostics', 'scriptLastError', 'scriptLastResult',
@@ -97,15 +98,18 @@ const PINNED_SESSION_RESET_KEYS: readonly string[] = [
   'textAnnotation2DEditing', 'textAnnotations2D', 'titleBlockEditorVisible', 'typeViewMode',
   'typeVisibility', 'undoStacks', 'visualEnhancementsEnabled', 'zoneApportionment',
   'zoneAssignmentTiming', 'zoneAssignments',
+  'analysisRunGeneration', // A1/A2: a session reset ends every in-flight analysis run
 ];
 
 /** The same, for `all-models-cleared`. */
 const PINNED_ALL_MODELS_CLEARED_KEYS: readonly string[] = [
+  'serverPropertiesRuns', // #9538 model-owned optional property polling
   'pendingPresentationLayerReveal', // #9273 one-shot layer reveal belongs to the outgoing model
   'appearanceReferenceEntry', // #6615 unopened section requests cannot outlive their live model session
   'workspaceMode', 'session', // #6232 authoring session: it names one model and storey
   'flowLastRun', 'flowLastError', 'flowLastRunWindow', // #5167 flow: the last run's outputs hold handles into the cleared models
   'flowArtifacts', 'flowProgress', 'flowRunWarnings', // #6612 transient run evidence names the outgoing model inputs
+  'analysisRunGeneration', // A2: clearing the models ends every in-flight analysis run
   'chartSelectionRevision', 'chartSlice', 'chartSliceSource', 'chartSliceBuckets', 'chartVisibilityOwned', 'chartVisibilityRevision', // #3944 charts
   'listVisibilityOwned', // #6368 lists: the group-row isolate / X-ray claim names the cleared models' ids
   'modelTagAssignments', 'modelTagView', // #4215 model tags: assignments and the Models-section view die with the federation, definitions survive
@@ -118,7 +122,7 @@ const PINNED_ALL_MODELS_CLEARED_KEYS: readonly string[] = [
   'selectedEntities', 'selectedEntitiesSet',
   'selectedEntity', 'selectedEntityId', 'selectedEntityIds', 'selectedLandXmlSource', 'selectedModelId', 'selectedStoreys', 'selectionRevision',
   'validationRuleSetDraft', 'validationRuleSetEditing', // #5825 full unload discards the unsaved editor
-  'scanDetectionError', 'scanDetectionRun', 'scanDetectionStage', 'scanDetectionStatus', 'scanCreatedGlobalIds', 'scanProposalCreated', 'scanProposalDecisions', // #6894 a scan-to-BIM run dies with its models
+  'scanDetectionJob', 'scanDetectionRun', 'scanCreatedGlobalIds', 'scanProposalCreated', 'scanProposalDecisions', // #6894 a scan-to-BIM run dies with its models
 ];
 
 /**
@@ -158,6 +162,7 @@ const PINNED_ALL_MODELS_CLEARED_KEYS: readonly string[] = [
  * like this one a compile error.
  */
 const PINNED_MODEL_REMOVED_KEYS: readonly string[] = [
+  'serverPropertiesRuns', // #9538 model-owned optional property polling
   'modelTagAssignments', // #4215 model tags: assignments die with the model, definitions survive
   'flowLastRun', 'flowLastError', 'flowLastRunWindow', // #5167 flow: the last run's outputs hold handles into the removed model
   'flowArtifacts', 'flowProgress', 'flowRunWarnings', // #6612 transient run evidence names the outgoing model inputs
@@ -228,12 +233,13 @@ function modelRemovedFixture() {
  * `owns` list fails even when no scope emits it under an empty state.
  */
 const PINNED_OWNED_KEYS: readonly string[] = [
+  'serverPropertiesRuns', // #9538 model-owned optional property polling
   'appearanceReferenceEntry', // #6615 unopened section requests cannot outlive their live model session
   'workspaceMode', 'session', // #6232 authoring session: it names one model and storey
   'authoringDefaults', // #6232 M2: type / layer-set picks name one model's entities; dimensions survive
   'documentPanelVisible', // #4594 documents
   'idsStudioRejection', 'idsStudioFixPreview', // IDS-030 Studio: transient gate/fix feedback; the document itself survives
-  'flowPanelVisible', 'flowRunning', 'flowLastRun', 'flowLastError', 'flowLastRunWindow', // #5167 flow
+  'flowPanelVisible', 'flowLastRun', 'flowLastError', 'flowLastRunWindow', // #5167 flow
   'flowArtifacts', 'flowProgress', 'flowRunWarnings', // #6612 transient run evidence names the outgoing model inputs
   'chartPanelVisible', 'chartSelectionRevision', 'chartSlice', 'chartSliceSource', 'chartSliceBuckets', 'chartVisibilityOwned', 'chartVisibilityRevision', // #3944 charts
   'modelTagAssignments', 'modelTagView', // #4215 model tags: assignments and the Models-section view die with the federation, definitions survive
@@ -253,7 +259,7 @@ const PINNED_OWNED_KEYS: readonly string[] = [
   'compareReconciliation', 'compareRunCaptures', // #6921
   'compareSelectedKey', 'contactShadingIntensity', 'contactShadingQuality',
   'contactShadingRadius', 'contextMenu', 'customOverrideRules', 'dirtyModels', 'discoveredLensData', 'draft',
-  'drawing2D', 'drawing2DDisplayOptions', 'drawing2DError', 'drawing2DPanelVisible',
+  'drawing2D', 'drawing2DDisplayOptions', 'drawing2DError', 'drawing2DPanelVisible', 'drawing2DPlane',
   'drawing2DPhase', 'drawing2DProgress', 'drawing2DStatus', 'drawing2DSvgContent',
   'editEnabled', 'editingZone', 'error',
   'expandedTaskGlobalIds', 'ganttPanelVisible', 'generateScheduleDialogOpen',
@@ -285,7 +291,7 @@ const PINNED_OWNED_KEYS: readonly string[] = [
   'pointCloudDeviationStatistics', // #6833 stored deviation statistics describe the outgoing scene's run
   'pointCloudFixedColor', 'pointCloudPointSize', 'pointCloudPreviewStride',
   'pointCloudRoundShape', 'pointCloudSizeMode', 'pointCloudWorldRadius', 'polygonArea2DPoints',
-  'scanDetectionError', 'scanDetectionRun', 'scanDetectionStage', 'scanDetectionStatus', 'scanCreatedGlobalIds', 'scanProposalCreated', 'scanProposalDecisions', 'scanProposalFilter', // #6894 scan-to-BIM review
+  'scanDetectionJob', 'scanDetectionRun', 'scanCreatedGlobalIds', 'scanProposalCreated', 'scanProposalDecisions', 'scanProposalFilter', // #6894 scan-to-BIM review
   'polygonArea2DResults', 'progress', 'projectionMode', 'redoStacks', 'scheduleData',
   'scheduleRange', 'scriptAssistantTurnSnapshot', 'scriptDeleteConfirmId',
   'scriptExecutionState', 'scriptLastDiagnostics', 'scriptLastError', 'scriptLastResult',
@@ -301,6 +307,7 @@ const PINNED_OWNED_KEYS: readonly string[] = [
   'typeVisibility', 'undoStacks', 'visibilityRevision', 'visualEnhancementsEnabled', 'zoneApportionment',
   'zoneAssignmentTiming', 'zoneAssignments',
   'validationRuleSetDraft', 'validationRuleSetEditing', // #5825 owned by the draft slice
+  'analysisRunGeneration', // A1/A2
 ];
 
 

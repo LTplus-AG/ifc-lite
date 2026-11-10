@@ -1194,3 +1194,53 @@ definition together before committing the local draft. If publication fails,
 creation leaves no roof, undo entry or partial definition on peers; the same
 creation can be retried. Mesh and spatial-tree registration follow a successful
 commit.
+
+### Persisting an overlay
+
+Use `snapshotOverlay` and `restoreOverlay` from `@ifc-lite/mutations` to save
+edits without copying the source IFC file. The versioned JSON contains current
+logical rows, created entities in creation order, forgotten creation rows, the
+allocator and the mutation journal. It includes edits made with `skipHistory`.
+Source tables, extractors, derived indices, GPU meshes and Revert registries are
+not persisted. Restore rebuilds class and reference indices.
+
+```ts
+import { MutablePropertyView, snapshotOverlay, restoreOverlay } from '@ifc-lite/mutations';
+
+async function persistAndRestore(view: MutablePropertyView, destination: MutablePropertyView, completeSource: ArrayBuffer) {
+  const digest = await crypto.subtle.digest('SHA-256', completeSource);
+  const sourceContentHash = 'sha256:' + Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
+  const saved = snapshotOverlay(view, { sourceContentHash, schema: 'IFC4' });
+  restoreOverlay(destination, saved, { sourceContentHash });
+  return destination;
+}
+```
+
+Supply the digest of the actual complete source buffer, using SHA-256 or another
+hex digest of at least 256 bits (an optional algorithm prefix is accepted).
+The viewer's full `placement-sha256-1m-v1:` identity is accepted. The package
+compares hashes; it cannot check which bytes the caller hashed. A mismatch
+throws `OverlaySourceMismatchError` before changing the view. Schema and
+creation time are informational. A newer snapshot version is refused.
+
+Prepare the destination against the same parsed source, attaching its normal
+base table/extractors before restore. Restore refuses an occupied view unless `{ replace: true }` is supplied.
+Successful replacement advances the live mutation revision, invalidating old
+prepared edits; it never lowers the allocator below the target's watermark.
+Malformed rows and input over the default 64 MiB UTF-8 limit are refused before
+publication. A caller can set `maxBytes`; data is bounded to 256 nested levels
+and two million values. Nonfinite values and negative zero survive
+in attributes as well as property/quantity rows.
+
+A host may pass optional `history: { undo, redo, groups, parked }` to
+`snapshotOverlay`: mutation IDs in the two stacks, mutation/group-ID pairs,
+and entity payloads needed to redo creations. `restoreOverlay` returns that
+history after validation. Invalid or host-only undo records drop the entire
+history and return `historyDroppedReason`, while retaining the valid edits.
+The journal's model IDs are preserved; bind host stacks to the same logical
+model. Rebuild meshes and host Revert state separately after restoring.
+
+For asynchronous work on a fork, use
+`const fork = view.prepareAtomic(draft => draft).result` and leave that
+transaction uncommitted. Later asynchronous code can edit, snapshot or export
+the detached fork without publishing it to the original view.

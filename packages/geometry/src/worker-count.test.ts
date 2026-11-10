@@ -255,16 +255,18 @@ describe('computeWorkerCount', () => {
     expect(r.count).toBeGreaterThanOrEqual(1);
   });
 
-  it('low-end laptop (4 cores, 4 GB): 343 MB keeps 2 workers, 400 MB drops to 1 (whole-tab budget)', () => {
-    // 4-core tier caps at 2. The tab budget on 4 GB is 3072 MiB. At 343 MB two
-    // workers are estimated at 2980 MiB and keep fitting; at 400 MB they are
-    // estimated at 3376 MiB (SAB + tables + pre-pass + 2 source copies), which
-    // the old per-worker formula (2.2 GiB) under-counted, so one worker it is.
-    const fits = computeWorkerCount({ fileSizeMB: 343, cores: 4, deviceMemoryGB: 4, totalJobs: 5000 });
-    expect(fits.count).toBe(2);
-    expect(fits.reason).toBe('cores');
+  it('low-end laptop (4 cores, 4 GB): mid-size files keep 2 workers; 512 MB drops to 1', () => {
+    // 4-core tier caps at 2. Up to 512 MiB the budget keeps two workers while
+    // they fit the whole device: measured on real 177 / 343 MB models, the tab
+    // peak at 1–2 workers comes after geometry and does not shrink with fewer
+    // workers, while one worker cost up to 2.5× the load time. At 512 MB two
+    // workers are estimated at 4153 MiB, more than the whole 4 GiB device.
+    for (const fileSizeMB of [343, 400, 500]) {
+      const r = computeWorkerCount({ fileSizeMB, cores: 4, deviceMemoryGB: 4, totalJobs: 5000 });
+      expect(r.count).toBe(2);
+    }
     const r = computeWorkerCount({
-      fileSizeMB: 400, cores: 4, deviceMemoryGB: 4, totalJobs: 5000,
+      fileSizeMB: 512, cores: 4, deviceMemoryGB: 4, totalJobs: 5000,
     });
     expect(r.count).toBe(1);
     expect(r.reason).toBe('memory');

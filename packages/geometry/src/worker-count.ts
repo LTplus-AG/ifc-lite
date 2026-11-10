@@ -53,10 +53,12 @@ export interface WorkerCountInputs {
   maxWorkers?: number;
   /**
    * Explicit worker count requested by the host (the viewer's `?geomWorkers=N`
-   * A/B knob). It wins over the cores tier AND the memory budget, and skips
-   * the up-front refusal: the user asked for this count. It is clamped only
-   * to `[minWorkers, maxWorkers]` and the job count. `fitsBudget` in the
-   * result says whether the estimate fit. Undefined ⇒ use the policy.
+   * A/B knob, which persists in localStorage). It wins over the cores tier
+   * and the 75 % tab budget, so it can spend the headroom, and it skips the
+   * up-front refusal. It is clamped to `[minWorkers, maxWorkers]`, the job
+   * count, and the hard limit: the most workers whose estimate fits the whole
+   * device memory planned with (never below one). `fitsBudget` in the result
+   * says whether the estimate fit the budget. Undefined ⇒ use the policy.
    */
   workerCountOverride?: number;
 }
@@ -89,6 +91,9 @@ export interface WorkerCountResult {
  * and host capability. Pure function. All inputs validated, result clamped to
  * `[minWorkers, maxWorkers]` when there are jobs.
  */
+/** Files up to this size keep at least two workers under the memory budget (see `computeWorkerCount`). */
+const MID_SIZE_FLOOR_MB = 512;
+
 export function computeWorkerCount(inputs: WorkerCountInputs): WorkerCountResult {
   // NaN loses every comparison, so a NaN input would silently drop a cap or return NaN: replace non-finite inputs first.
   const fileSizeMB = Number.isFinite(inputs.fileSizeMB) ? Math.max(0, inputs.fileSizeMB) : 0;
@@ -128,11 +133,18 @@ export function computeWorkerCount(inputs: WorkerCountInputs): WorkerCountResult
   }
 
   // Explicit host override (A/B tuning, field debugging): the user's count
-  // wins over the cores tier and the memory budget. Only the job count and
-  // the hard bounds clip it; `reason` names the bound that did.
+  // wins over the cores tier and the 75 % budget. The job count, the hard
+  // bounds and the whole device memory still clip it (a sticky `?geomWorkers=8`
+  // left over from a small model must not plan ~25 GiB for a 2 GB file on a
+  // 16 GB laptop); `reason` names the bound that did.
   if (inputs.workerCountOverride != null && Number.isFinite(inputs.workerCountOverride)) {
     let count = Math.max(1, Math.floor(inputs.workerCountOverride));
     let reason: WorkerCountResult['reason'] = 'override';
+    const deviceCap = Math.max(1, maxWorkersWithinBudget(fileSizeMB, planningMemoryGB * 1024));
+    if (deviceCap < count) {
+      count = deviceCap;
+      reason = 'memory';
+    }
     if (totalJobs < count) {
       count = totalJobs;
       reason = 'jobs';
@@ -218,7 +230,16 @@ export function computeWorkerCount(inputs: WorkerCountInputs): WorkerCountResult
   // Whole-tab memory budget: the most workers whose estimated tab peak (SAB,
   // main-thread tables, pre-pass instance and N full-source worker heaps)
   // fits. Fewer workers rather than an out-of-memory tab; never below one.
-  const memoryCap = Math.max(1, maxWorkersWithinBudget(fileSizeMB, budgetMiB));
+  // Up to 512 MiB the budget never takes the count below 2 when two workers fit
+  // the whole device. Measured on real 177 / 343 MB models: at 1–2 workers the
+  // tab peak (~2.9–3.2 GiB) comes AFTER geometry and does not depend on the
+  // worker count (343 MB: 3237 MiB at 1 worker vs 3015 at 2), while one worker
+  // cost up to 2.5× the load time. Above 512 MiB the geometry phase sets the
+  // peak (1.03 GB: 9.2 GiB during geometry, 3.35 after), so the trade is real.
+  // Below 4 GiB that post-geometry peak alone fills the device, so no floor there.
+  const twoFitDevice = planningMemoryGB >= 4 && estimateTabPeakMiB(fileSizeMB, 2) <= planningMemoryGB * 1024;
+  const memoryFloor = fileSizeMB <= MID_SIZE_FLOOR_MB && twoFitDevice ? Math.min(2, coresCap) : 1;
+  const memoryCap = Math.max(memoryFloor, maxWorkersWithinBudget(fileSizeMB, budgetMiB));
 
   // Final pick: tightest ceiling, then clamp.
   const candidates: Array<{ value: number; reason: WorkerCountResult['reason'] }> = [

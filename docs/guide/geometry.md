@@ -431,7 +431,9 @@ before reading a file; it throws `GeometryMemoryBudgetError` when even one
 worker's estimate exceeds the most memory the device can have. That happens only
 when `deviceMemory` proves an upper bound: absent or possibly clamped values
 (8, 32) never refuse. An explicit `workerCountOverride` wins over the budget and
-the refusal.
+the refusal, but not over the whole device: it is clamped to the most workers whose
+estimate fits the device memory. Files up to 512 MiB keep two workers whenever
+two fit the whole device.
 
 ### Hung elements and abandoning a stream
 

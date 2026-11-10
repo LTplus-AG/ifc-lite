@@ -6135,5 +6135,12 @@ Lessons:
   holds changes (e.g. stage 3's range reads).
 - **The flat/instanced split is not an identity check across worker counts**: see the `mesh_count` entry above.
   The stage-1 evidence compares per-entity geometry hashes (flat meshes plus `instancedGeometryHashes`) instead.
-- `?perf.geomMemoryGB=N` reproduces an exact N-GiB device on a large host. `?geomWorkers=N` now wins over the
-  budget.
+- **The model is a geometry-phase model; real mid-size files peak later.** Forced counts on the real 343 MB and 177 MB
+  fixtures (1/2/4/8 workers) measured 3,237/3,015/3,363/5,120 and 2,931/3,081/3,338/3,834 MiB. The model
+  under-estimates the 1-worker peak by 23 % and 48 % there: at 1–2 workers the peak (~2.9–3.2 GiB) comes after
+  geometry, does not depend on the worker count, and is not proportional to F (it tracks output, not bytes). One
+  worker saved nothing on the 343 MB file and cost 2.5× the load time on the 177 MB one. So up to 512 MiB the budget
+  keeps two workers whenever they fit the whole device (≥ 4 GiB). Above that, the 1.03 GB replica's geometry phase
+  (9.2 GiB) dwarfed its later peak (3.35 GiB), so the trade is real there.
+- `?perf.geomMemoryGB=N` reproduces an exact N-GiB device on a large host. `?geomWorkers=N` wins over the
+  budget, but not over the whole device: a sticky `?geomWorkers=8` would otherwise plan ~25 GiB for a 2 GB file.

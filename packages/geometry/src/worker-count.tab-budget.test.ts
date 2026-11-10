@@ -99,7 +99,7 @@ describe('worker count: unchanged where it already fits, fewer where it does not
   // that changes has before > after and estimate(before) > budget.
   const SIZES = [5, 20, 54, 100, 200, 343, 400, 512, 722, 986, 1200, 1655, 1990];
   const TABLE: Array<[string, number, number | undefined, number[], number[]]> = [
-    ['4c / 4 GB', 4, 4, [2, 2, 2, 2, 2, 2, 2, 2, 1, 1, 1, 1, 1], [2, 2, 2, 2, 2, 2, 1, 1, 1, 1, 1, 1, 1]],
+    ['4c / 4 GB', 4, 4, [2, 2, 2, 2, 2, 2, 2, 2, 1, 1, 1, 1, 1], [2, 2, 2, 2, 2, 2, 2, 1, 1, 1, 1, 1, 1]],
     ['8c / 8 GB', 8, 8, [3, 3, 3, 3, 3, 3, 3, 3, 2, 2, 1, 1, 1], [3, 3, 3, 3, 3, 3, 3, 3, 2, 1, 1, 1, 1]],
     ['10c / 16 GB', 10, 16, [4, 8, 4, 4, 4, 4, 4, 4, 3, 3, 3, 3, 2], [4, 8, 4, 4, 4, 4, 4, 4, 3, 3, 3, 2, 1]],
     ['12c / 8 (clamped)', 12, 8, [5, 8, 5, 5, 5, 5, 5, 5, 4, 4, 4, 3, 2], [5, 8, 5, 5, 5, 5, 5, 5, 4, 4, 4, 2, 1]],
@@ -121,7 +121,8 @@ describe('worker count: unchanged where it already fits, fewer where it does not
           expect(estimateTabPeakMiB(f, before[i])).toBeGreaterThan(r.budgetMiB);
           expect(r.reason).toBe('memory');
         } else {
-          expect(r.fitsBudget || r.count === 1).toBe(true);
+          // Unchanged cells fit, sit at the one-worker floor, or keep the mid-size two-worker floor.
+          expect(r.fitsBudget || r.count === 1 || (f <= 512 && r.count === 2)).toBe(true);
         }
       });
     });
@@ -133,6 +134,19 @@ describe('worker count: unchanged where it already fits, fewer where it does not
     expect(r.reason).toBe('memory');
     expect(r.estimatedPeakMiB).toBeLessThanOrEqual(r.budgetMiB);
     expect(estimateTabPeakMiB(1655, 3)).toBeGreaterThan(r.budgetMiB);
+  });
+
+  it('up to 512 MiB the budget keeps two workers that fit the whole device (real-model measurement)', () => {
+    // Real 343 MB model, forced counts: peak 3237 MiB at 1 worker vs 3015 at 2;
+    // real 177 MB model: 2931 vs 3081, but 38 s vs 15 s to interactive.
+    const fits = plan(400, 4, 4);
+    expect(estimateTabPeakMiB(400, 2)).toBeGreaterThan(fits.budgetMiB);
+    expect(fits.count).toBe(2);
+    // Not on a device whose whole memory cannot hold two (below 4 GiB, or past the device):
+    expect(plan(300, 4, 2).count).toBe(1);
+    expect(plan(512, 4, 4).count).toBe(1);
+    // And not above 512 MiB, where the geometry phase sets the peak.
+    expect(plan(600, 8, 4).count).toBe(1);
   });
 
   it('never returns fewer than one worker when there are jobs', () => {
@@ -177,12 +191,25 @@ describe('non-finite inputs (review on #9659)', () => {
 });
 
 describe('override', () => {
+  it('cannot plan past the whole device: a sticky ?geomWorkers=8 on a 2 GB file', () => {
+    // Worst case without the clamp: 8 workers on 2048 MiB ≈ 25,981 MiB.
+    expect(estimateTabPeakMiB(2048, 8)).toBeCloseTo(25_980.6, 0);
+    const laptop = computeWorkerCount({ fileSizeMB: 2048, cores: 16, deviceMemoryGB: 16, totalJobs: 100_000, workerCountOverride: 8 });
+    expect(laptop).toMatchObject({ count: 2, reason: 'memory' });
+    expect(laptop.estimatedPeakMiB).toBeLessThanOrEqual(16 * 1024);
+    // A 32 GB desktop can hold the forced count, so the user gets it (over the 75 % budget).
+    const desktop = computeWorkerCount({ fileSizeMB: 2048, cores: 16, deviceMemoryGB: 32, totalJobs: 100_000, workerCountOverride: 8 });
+    expect(desktop).toMatchObject({ count: 8, reason: 'override', fitsBudget: false });
+    // Never below one, even when one worker exceeds the device.
+    expect(computeWorkerCount({ fileSizeMB: 2048, cores: 4, deviceMemoryGB: 4, totalJobs: 10, workerCountOverride: 4 }).count).toBe(1);
+  });
+
   it('wins over the budget and skips the refusal', () => {
     const r = computeWorkerCount({
       fileSizeMB: 1500, cores: 4, deviceMemoryGB: 4, deviceMemoryCeilingGB: deviceMemoryCeilingGB(4),
-      totalJobs: 100_000, workerCountOverride: 3,
+      totalJobs: 100_000, workerCountOverride: 1,
     });
-    expect(r.count).toBe(3);
+    expect(r.count).toBe(1);
     expect(r.reason).toBe('override');
     expect(r.exceedsDevice).toBe(false);
   });

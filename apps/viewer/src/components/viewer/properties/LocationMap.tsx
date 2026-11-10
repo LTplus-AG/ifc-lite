@@ -15,6 +15,7 @@
  */
 
 import { useLocationMapReady } from './use-location-map-ready.js';
+import { LocationMapWaiting } from './LocationMapWaiting.js';
 import { trackExportCompleted } from '@/lib/analytics';
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import { Map as MapIcon, MapPinOff, Search, Mountain, MapPin, X, Check } from 'lucide-react';
@@ -353,7 +354,7 @@ export function LocationMap({
     setPickedElevation(null);
   }, []);
 
-  const mapReady = useLocationMapReady(!!latLon);
+  const mapReady = useLocationMapReady(!!latLon && !mapUnavailable);
   useEffect(() => {
     if (!mapReady || !latLon || !containerRef.current) return;
     if (mapUnavailable) return;
@@ -651,10 +652,7 @@ export function LocationMap({
 
       {/* Map container */}
       {mapState === 'loading' && (
-        <div className="flex items-center justify-center h-[180px] bg-muted">
-          <Spinner size="md" className="text-muted-foreground" />
-          <span className="text-xs text-muted-foreground ml-2">{t('properties.locationMap.resolvingCoordinates')}</span>
-        </div>
+        <LocationMapWaiting label={t('properties.locationMap.resolvingCoordinates')} />
       )}
 
       {mapState === 'error' && (
@@ -682,8 +680,10 @@ export function LocationMap({
             </div>
           ) : (
             <div className="relative">
+              {!mapReady && <LocationMapWaiting label={t('commandPalette.availability.loading')} />}
               <div
                 ref={containerRef}
+                hidden={!mapReady}
                 className={`h-[180px] w-full ${mapInkClass(darkBasemap)} [&_.maplibregl-ctrl-attrib]:!text-2xs [&_.maplibregl-ctrl-attrib]:!bg-popover/40 [&_.maplibregl-ctrl-attrib]:!py-0 [&_.maplibregl-ctrl-attrib]:!px-1 [&_.maplibregl-ctrl-attrib]:!shadow-none [&_.maplibregl-ctrl-attrib]:!text-zinc-400/70 [&_.maplibregl-ctrl-attrib_a]:!text-zinc-400/70 [&_.maplibregl-ctrl-attrib]:!leading-normal`}
                 style={{ minHeight: 180, ...mapInkStyle(darkBasemap) }}
               />

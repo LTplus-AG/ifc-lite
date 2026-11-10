@@ -9,9 +9,10 @@ import { act, lazy, useState } from 'react';
 import { cleanup, click, render } from '@/test/render.js';
 import { useViewerStore } from '@/store';
 import { DeferredPanel } from './DeferredPanel';
-import { panelTitleKey } from './registry';
 import { resolve as translate } from '@/i18n/registry';
 
+// Independent expectations: a swapped registry mapping must fail these cases.
+const titleKeys = { bcf: 'bcf.panel.title', validation: 'validationPanel.title', lens: 'lensPanel.title' } as const;
 const initial = useViewerStore.getState();
 afterEach(() => { cleanup(); useViewerStore.setState(initial, true); });
 
@@ -30,7 +31,7 @@ for (const mobile of [false, true]) {
       let closed = 0;
       const ui = render(<DeferredPanel id={id} onClose={() => { closed++; }}><Cold /></DeferredPanel>);
       assert.ok(ui.querySelector('output'));
-      assert.ok(ui.textContent?.includes(translate(panelTitleKey(id))), 'pending shell retains its title on every layout');
+      assert.ok(ui.textContent?.includes(translate(titleKeys[id])), 'pending shell retains its title on every layout');
       const close = ui.querySelector('button[aria-label="Close"]');
       assert.ok(close);
       click(close);
@@ -59,7 +60,7 @@ for (const mobile of [false, true]) {
       const ui = render(<Host />);
       await act(async () => { await Promise.resolve(); });
       assert.ok(ui.querySelector('[role="alert"]'));
-      assert.ok(ui.textContent?.includes(translate(panelTitleKey(id))), 'failed shell retains its title');
+      assert.ok(ui.textContent?.includes(translate(titleKeys[id])), 'failed shell retains its title');
       click(ui.querySelector('button[aria-label="Close"]')!);
       assert.equal(closed, 1);
       click(ui.querySelector('button')!);

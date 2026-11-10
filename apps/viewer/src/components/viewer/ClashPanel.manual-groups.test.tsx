@@ -68,7 +68,7 @@ function buttonWithText(text: string): HTMLButtonElement {
 }
 
 async function setDialogName(value: string): Promise<void> {
-  const input = document.body.querySelector('input[maxlength="100"]');
+  const input = document.body.querySelector('[role="dialog"] input[maxlength="100"]');
   assert.ok(input instanceof HTMLInputElement, 'group-name input must render in the dialog portal');
   const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
   assert.ok(setter, 'native input value setter must exist');
@@ -260,7 +260,7 @@ describe('ClashPanel manual groups (#4921, #5122)', () => {
     ));
     await act(async () => buttonWithText('Create group').click());
     assert.equal(closeRequested, false);
-    assert.ok(document.body.querySelector('input[maxlength="100"]'),
+    assert.ok(document.body.querySelector('[role="dialog"] input[maxlength="100"]'),
       'the entered name remains available for retry');
   });
 

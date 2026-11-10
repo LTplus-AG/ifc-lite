@@ -44,6 +44,7 @@ import { ClashManualGroupDialog } from '@/components/viewer/ClashManualGroupDial
 import { useManualClashGroups } from '@/components/viewer/useManualClashGroups';
 import { ClashGroupingCheckbox, RemoveFromClashGroupButton } from '@/components/viewer/ClashManualGroupControls';
 import { ClashGroupHeaderWithActions } from '@/components/viewer/ClashGroupHeaderWithActions';
+import { ClashQualityGates } from './ClashQualityGates';
 import { ClashResultSummary, type ClashResultView } from '@/components/viewer/ClashResultSummary';
 import { ClashResultState } from '@/components/viewer/clash/ClashResultState';
 import { ResultAction, SelectionSummary } from '@/components/viewer/result/ResultAction';
@@ -873,6 +874,8 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
       })()}
 
       <ClashModelTagNotice />
+
+      <ClashQualityGates />
 
       {/* Summary */}
       {result && (

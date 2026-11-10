@@ -37,6 +37,7 @@ import { appearanceWorkflowsEn } from './catalogues/appearance-workflows.en';
 import { bcfEn } from './catalogues/bcf.en';
 import { bcfDraftsEn } from './catalogues/bcf-drafts.en';
 import { clashGroupsEn } from './catalogues/clash-groups.en';
+import { clashQualityEn } from './catalogues/clash-quality.en';
 import { clashToolsEn } from './catalogues/clash-tools.en';
 import { bulkPropertyEditorEn } from './catalogues/bulk-property-editor.en';
 import { ionUploadEn } from './catalogues/ion-upload.en';
@@ -298,6 +299,7 @@ export const en = {
   ...assistantArtifactsEn,
   ...clashPanelEn,
   ...clashToolsEn,
+  ...clashQualityEn,
   ...bcfEn,
   ...bcfDraftsEn,
   ...layersPanelEn,

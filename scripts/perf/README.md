@@ -6165,3 +6165,31 @@ strictly less than 2× from 1K to 50K, and a passing F5 exercise result whose
 lane, not a substitute tower here. Missing sizes or F5 evidence fail the check.
 The baseline is a description of current main, not an accepted round-1 result
 or a speedup claim.
+
+## Implicit wall joins use maintained endpoint membership (#9406)
+
+Candidate discovery uses rounded endpoints partitioned by parent placement and
+elevation. Ordinary additions stage index entries until their owning publication
+and history transaction succeeds. Other edits invalidate the cache.
+
+Public raw creation also maintains the index when each complete wall record
+arrives. Otherwise the first ordinary addition after a raw-authored session
+would rebuild all wall endpoints. Incomplete forward-reference graphs discard
+the cache, so later creation reads the completed graph. Raw appends never mask
+an intervening placement edit. The regression checks unrelated payload reads
+at two session sizes and then joins against a moved raw-created wall.
+
+Earlier measurements, before session-scale publication (#9411), grew with the
+whole overlay on both main and branch. Those results do not qualify the rebased
+code. Finite schema-name snapshots separately bound registry-key work to one
+signature per operation while keeping definitions live. The paired public SDK
+cohort reports cold and warm calls independently, verifies that the walls do
+not join, and compares reopened geometry. The timing verdict is reported on
+#9406; an operation counter alone is not timing qualification.
+
+The final exclusive paired cohort on the session-scale base passed both the
+non-joining cold/warm overhead gate and the session-growth gate, with identical
+reopened geometry. Incremental raw creation removed the cold rebuild; skipping
+candidate-key work for an empty staged index brought the warm path within the
+same acceptance gate. Keep both checks: fixing cold scaling alone had left a
+warm-call regression.

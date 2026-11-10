@@ -849,6 +849,18 @@ A copy of an element on a grid (one whose placement reaches an `IfcGridPlacement
 
 The canonical `reshapeWallsInStore` writer uses this calculation too. Trim/Extend uses it for the ghost, so an unchanged joined or custom-cut face matches the body that is committed. Existing joins are then recomputed by the writer; callers group those writes in their atomic undo transaction.
 
+Sliding one joined wall extends or trims a connected neighbour on the
+neighbour's existing axis, preserving its direction and opposite endpoint.
+The connected endpoint is solved at the intersection of the two axis lines;
+the body then stops at the moved wall's face for a T or butt join. The moved
+wall's connected ends can also extend or trim to retain their joins, while its
+placement follows the requested transform. An imported mitre can become a
+butt corner when the profiles are resolved. Both walls require remeshing.
+Parallel or near-parallel lines, non-finite intersections, and intersections
+that collapse or reverse a wall refuse the transaction with an explanatory
+error. A slide never silently rotates a neighbour as a fallback. A rotation
+carries its joined endpoint through the turn.
+
 ```typescript
 import { reshapeWallAxis, wallBodyOutline, type WallJoinWall } from '@ifc-lite/create';
 
@@ -1259,3 +1271,32 @@ For asynchronous work on a fork, use
 `const fork = view.prepareAtomic(draft => draft).result` and leave that
 transaction uncommitted. Later asynchronous code can edit, snapshot or export
 the detached fork without publishing it to the original view.
+
+Walls added through `bim.store.addWall` join coincident, non-parallel chain
+endpoints automatically. Crossings and T junctions still use `joinWalls`.
+Implicit joins are best-effort: if a join is refused (for example, a loaded
+wall has unreadable hosted-opening geometry), the new wall is still added
+without that join. The returned entity ref includes `notices?: string[]`
+with the skipped pair and reason. Explicit `joinWalls` requests still refuse
+atomically. Low-level `addOrdinaryElementInStore` callers can collect the
+same notices through `options.notices`; otherwise they are logged.
+Candidate discovery uses a session endpoint index, partitioned by parent
+placement and elevation. It reads the new wall once and checks full geometry
+only for matching endpoints. Other edits (including Undo/Redo) invalidate the
+index. Hosts wrapping creation in their own atomic transaction use
+`withWallAutojoinIndex` around that committed transaction and pass its staged
+index through `createOrdinaryStoreBackend` (or `options.wallIndex`); failed
+transactions do not publish candidate entries.
+Moving an `IfcGrid` with `transformElements` carries its grid-bound products.
+Products placed directly with `IfcGridPlacement` are included in the remesh
+result. Hosted openings and fillings placed independently on the storey move
+with a grid-bound host as separate roots. A move that would separate a carried
+wall from a stationary wall linked by `IfcRelConnectsPathElements` refuses
+atomically with a reason; include the other joined wall in the move or remove
+the join first. Joined walls carried together remain connected.
+The headless CLI supports `alignElements` using current native mesh bounds,
+including hosted cuts, rather than uncut parametric bounding boxes.
+
+The wall endpoint index also follows public raw `addEntity` creation. Incomplete
+forward-reference graphs and intervening geometry edits invalidate it; ordinary
+wall creation then reads the completed effective graph.

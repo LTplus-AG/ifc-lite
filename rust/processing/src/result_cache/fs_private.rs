@@ -128,10 +128,19 @@ pub(super) fn private_dir(dir: &Path, create: bool) -> io::Result<()> {
 /// Open an existing entry read-only without following a symlink, and require
 /// a private regular file.
 pub(super) fn open_read(path: &Path) -> io::Result<(File, Metadata)> {
-    let seen = regular_by_path(path)?;
-    let file = imp::options(OpenOptions::new().read(true), 0).open(path)?;
-    let meta = same_private_file(&file, &seen)?;
-    Ok((file, meta))
+    // A writer may rename a new entry into place between the `lstat` and the
+    // open; that is a newer complete entry, not tampering, so look again
+    // (bounded) rather than report a spurious failure.
+    for _ in 0..3 {
+        let seen = regular_by_path(path)?;
+        let file = imp::options(OpenOptions::new().read(true), 0).open(path)?;
+        if identity(&file.metadata()?) != identity(&seen) {
+            continue;
+        }
+        let meta = same_private_file(&file, &seen)?;
+        return Ok((file, meta));
+    }
+    Err(io::Error::other("entry kept changing while it was opened"))
 }
 
 /// Create a file that must not exist yet (0600).

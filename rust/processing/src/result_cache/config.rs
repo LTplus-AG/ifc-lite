@@ -30,6 +30,8 @@ pub struct ResultCacheConfig {
     pub directory: Option<PathBuf>,
     pub max_bytes: u64,
     pub max_entry_bytes: u64,
+    /// Free space a write must leave on the cache's filesystem (default 1 GiB).
+    pub min_free_bytes: u64,
     /// Test hook: mixed into the engine identity to stand for a different
     /// build or entry format. Empty in production.
     #[doc(hidden)]
@@ -69,6 +71,7 @@ impl Default for ResultCacheConfig {
             directory: None,
             max_bytes: 10 << 30,
             max_entry_bytes: 1 << 30,
+            min_free_bytes: 1 << 30,
             engine_salt: Vec::new(),
             pass_hook: None,
         }
@@ -90,6 +93,10 @@ impl ResultCacheConfig {
     }
     pub fn max_entry_bytes(mut self, bytes: u64) -> Self {
         self.max_entry_bytes = bytes;
+        self
+    }
+    pub fn min_free_bytes(mut self, bytes: u64) -> Self {
+        self.min_free_bytes = bytes;
         self
     }
     #[doc(hidden)]

@@ -196,7 +196,7 @@ stripes, `<root>/result-v1/locks/<first key byte>.lock`.
 - **Corruption.** A corrupt entry is removed only if it is still the generation that
   was read, so a concurrent repair is never deleted.
 - **Budget.** The limits are 10 GiB per directory and 1 GiB per entry, and a write
-  must leave at least 1 GiB free. These are policy choices, not measured optima.
+  must leave at least 1 GiB free (`min_free_bytes`). These are policy choices, not measured optima.
   Over budget, after a publish, the least recently used entries are evicted (by
   mtime, which each read-write hit refreshes) down to 90 % of the budget. Eviction
   runs only on publish, never on lookup. The budget is approximate, not a hard

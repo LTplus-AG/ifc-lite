@@ -52,6 +52,7 @@ pub(super) struct Store {
     dir: PathBuf,
     max_bytes: u64,
     max_entry_bytes: u64,
+    min_free_bytes: u64,
 }
 
 pub(super) enum ReadError {
@@ -75,7 +76,13 @@ impl Store {
         if create {
             private_dir(&dir.join(LOCKS), true)?;
         }
-        Ok(Self { dir, max_bytes, max_entry_bytes })
+        Ok(Self { dir, max_bytes, max_entry_bytes, min_free_bytes: FREE_SPACE_HEADROOM })
+    }
+
+    /// Free space a write must leave behind (default 1 GiB).
+    pub(super) fn with_min_free(mut self, bytes: u64) -> Self {
+        self.min_free_bytes = bytes;
+        self
     }
 
     fn entry_path(&self, key: &str) -> PathBuf {
@@ -144,7 +151,7 @@ impl Store {
         if len > self.max_entry_bytes || len > self.max_bytes {
             return PublishOutcome::SkippedOversized { bytes: len, limit: self.max_entry_bytes.min(self.max_bytes) };
         }
-        if available_bytes(&self.dir).is_some_and(|free| free < len.saturating_add(FREE_SPACE_HEADROOM)) {
+        if available_bytes(&self.dir).is_some_and(|free| free < len.saturating_add(self.min_free_bytes)) {
             return PublishOutcome::SkippedLowDiskSpace;
         }
         let lock = match open_lock(&self.lock_path(key)) {

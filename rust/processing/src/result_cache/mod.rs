@@ -136,7 +136,8 @@ impl ResultCache {
             report.outcome = CacheOutcome::Bypass(BypassReason::Unavailable("no cache directory".into()));
             return self.run_live(content, request, report, None);
         };
-        let store = match Store::open(&root, writable, self.config.max_bytes, self.config.max_entry_bytes) {
+        let store = match Store::open(&root, writable, self.config.max_bytes, self.config.max_entry_bytes)
+            .map(|store| store.with_min_free(self.config.min_free_bytes)) {
             Ok(store) => Some(store),
             Err(e) if !writable && e.kind() == std::io::ErrorKind::NotFound => None,
             Err(e) => {

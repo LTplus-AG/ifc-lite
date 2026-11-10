@@ -43,7 +43,8 @@ of phase 1.
 | A cancellable request (`cancel` set) | `Bypass(CancellationArmed)` |
 | An injected `entity_index` (not verified against the bytes) | `Bypass(InjectedEntityIndex)` |
 | `retain_meshes == false` | `Bypass(MeshesNotRetained)` |
-| Cache directory missing (read-only), unusable or not private | `Miss(Absent)` or `Bypass(Unavailable)`, plus a warning |
+| Read-only mode and the cache directory does not exist yet | `Miss(Absent)`, silently (an empty cache is not an error) |
+| Cache directory unusable or not private, or the executable identity unreadable | `Bypass(Unavailable)`, plus a warning |
 | Streaming or callback consumers | They keep calling `process(content, request, sink)`. The cached entry point takes no sink, so no sink event can go missing on a hit. |
 
 A bypass or a miss runs the unchanged pipeline. `process` itself does no I/O.
@@ -63,14 +64,39 @@ key = SHA-256( "ifc-lite-native-result-v1"
   (including `fast_first`), all four feature flags and instancing. The ID filter
   sorts its ids, and `None` differs from `Some(empty)`. The request struct is
   destructured in full, so a new field does not compile until someone classifies it.
-- **Engine.** `build.rs` digests the sources of `ifc-lite-core`, `-geometry` and
-  `-processing`, plus `Cargo.lock`, the rustc version, the target, the profile, the
-  rustc flags, the target features and the enabled features. The entry format
-  version is mixed in at runtime. So is every `IFC_LITE_*` / `IFCLITE_*`
-  environment variable except `IFC_LITE_CACHE_DIR` and `IFC_LITE_REQUIRE_FIXTURES`,
-  because `IFC_LITE_RECT_FAST`, `IFC_LITE_VOID_2D` and others change geometry at
-  runtime. This is deliberately conservative: any rebuild of the engine misses.
-  Relaxing the key to explicit revisions needs x86_64/arm64 determinism evidence.
+- **Engine, build.** This part covers three things:
+  - The `build.rs` digest: the sources of `ifc-lite-core`, `-geometry` and
+    `-processing`, `Cargo.lock`, the rustc version, the target, profile and flags,
+    the target features, and processing's own features.
+  - The geometry crate's own resolved features,
+    `ifc_lite_geometry::output_policy::BUILD_FEATURES`. A downstream binary can
+    enable `ifc-lite-geometry/csg_topology_gate` without changing processing's
+    features; a geometry test keeps that list equal to its `Cargo.toml`.
+  - The running executable's identity: path, size, mtime, device and inode.
+
+  So a developer who changes kernel output invalidates every entry in two
+  independent ways. The source edit changes the build digest, and the rebuilt
+  binary changes the executable identity. A relink that only changes third-party
+  feature unification is caught by the executable identity alone.
+- **Engine, policy.** This is the *effective* process-global output policy, read
+  through the same accessors the pipeline calls:
+  `ifc_lite_geometry::output_policy::effective_output_policy` (rect fast and
+  parametric paths, local frame, void union / 2D / prism paths, extra dedup, the
+  half-space cap, the fast-cut ratio, the effective per-boolean and per-element CSG
+  caps, the alternate triangulator), plus processing's degenerate backstop and the
+  calling thread's rayon worker count. It is never the raw environment. Most knobs
+  cache their environment variable in a `OnceLock` on first use, and several have
+  programmatic overrides (`local_frame_set_enabled_override`, `budget::set_cap`,
+  ...). Hashing the environment let a process that set `IFC_LITE_LOCAL_FRAME=1`
+  after the policy was cached write a non-local-frame entry under the
+  local-frame key (PR #9614 review). The policy is snapshotted before the pass. If
+  it differs afterwards (a concurrent override), the result is not stored
+  (`SkippedPolicyChanged`). `tests/result_cache_policy_ratchet.rs` fails on any
+  `IFC_LITE_*` variable read in core, geometry or processing that is neither keyed
+  nor listed as non-output.
+
+  Keying on the build is deliberately conservative: any rebuild misses. Relaxing
+  it to explicit revisions needs x86_64/arm64 determinism evidence.
 
 ## Entry format
 
@@ -102,33 +128,56 @@ that are re-sealed past the checksums.
 
 **Limit.** A checksum detects damage, not authorship. A process running as the same
 user can write a self-consistent entry with wrong geometry, and the cache cannot
-tell. Phase 1 relies on a private per-user directory: 0700 directories and 0600
-files, owner and permission checks on every opened file, `O_NOFOLLOW`, and file
-names made only of the digest. An environment that needs more than that needs
-authenticated entries or a separate trusted writer. On non-Unix targets the
-symlink check is a racy metadata check.
+tell. Phase 1 relies on a private per-user directory and file names made only of
+the digest:
+
+- **Files.** An entry or lock is opened only after `lstat` shows a regular file,
+  with `O_NOFOLLOW | O_NONBLOCK`. The opened handle must still be that file (same
+  device and inode), owned by the effective user, with no group or other
+  permission bit (0600). A FIFO, socket, device, directory or symlink at an entry
+  or lock path is refused without blocking.
+- **Directories.** `result-v1` and `locks` are created 0700 and checked *by path*:
+  a real directory, owned by the user, no group or other bits. Their ancestors
+  are trusted and followed. A hostile writer of a parent directory can swap them;
+  pinning a directory handle is a later hardening.
+
+An environment that needs more than that needs authenticated entries or a separate
+trusted writer. On non-Unix targets the file-type check happens by path before the
+open, which a race can defeat, and the owner and mode checks are skipped.
 
 ## Store, policy and concurrency
 
 The default root is `IFC_LITE_CACHE_DIR`, else the platform cache directory
 (`$XDG_CACHE_HOME` or `~/.cache`, then `ifc-lite/native`; on macOS
 `~/Library/Caches/ifc-lite/native`; on Windows `%LOCALAPPDATA%\ifc-lite\native`).
-Entries live in `<root>/result-v1/<key>.ifcr`.
+Entries live in `<root>/result-v1/<key>.ifcr`. Writers lock one of 256 permanent
+stripes, `<root>/result-v1/locks/<first key byte>.lock`.
 
-- **Publication.** The writer takes the key's advisory lock without waiting (a busy
-  lock means another process is writing the same result, so this one skips). It
+- **Locks.** Lock files are never unlinked or replaced, so everyone who opens a
+  stripe locks the same inode. An earlier design kept one lock file per key and
+  removed it with the entry. A writer that opened the lock before an eviction and a
+  writer that opened the recreated file could then both hold "the" lock
+  (PR #9614 review). Sharing a stripe can make a writer skip because an unrelated
+  key is being stored. That costs a publication, never correctness.
+- **Publication.** The writer takes the key's stripe without waiting (a busy stripe
+  usually means another process is writing the same result, so this one skips). It
   rechecks for an identical entry, writes a temp file, fsyncs it, renames it into
   place and fsyncs the directory. Readers see the old file or the new one, never a
   prefix.
 - **Crash.** A writer that dies before the rename leaves a `.tmp` file that no
-  reader opens. A later eviction pass removes it once the key's lock is free.
+  reader opens. A later eviction pass removes it after a minute, while holding the
+  key's stripe, so no live writer can be between creating and renaming it.
 - **Corruption.** A corrupt entry is removed only if it is still the generation that
   was read, so a concurrent repair is never deleted.
 - **Budget.** The limits are 10 GiB per directory and 1 GiB per entry, and a write
   must leave at least 1 GiB free. These are policy choices, not measured optima.
   Over budget, after a publish, the least recently used entries are evicted (by
   mtime, which each read-write hit refreshes) down to 90 % of the budget. Eviction
-  runs only on publish, never on lookup.
+  runs only on publish, never on lookup. The budget is approximate, not a hard
+  quota. It ignores lock files, young temps, unrelated files and old namespaces.
+  Concurrent writers can exceed it briefly. The size limit is checked after the
+  result is encoded, so a skipped oversized result has still paid for one encoded
+  copy. The free-space check is best effort and absent on non-Unix.
 - **Failure.** Disk and permission errors fail open: a warning, then the live
   result.
 

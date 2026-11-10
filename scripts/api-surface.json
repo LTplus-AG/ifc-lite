@@ -6605,7 +6605,14 @@
     "PointCloudAsset: interface",
     "ProfileCollection: class (type-only)",
     "ProfileEntryJs: class (type-only)",
+    "RHINO_COORDINATES: const",
+    "RHINO_LAYER_SCHEMES: const",
+    "RHINO_PROPERTIES: const",
+    "RHINO_SCENE_DEFAULTS: const",
+    "RHINO_UNITS: const",
     "ResolveSpatialPlacementOptions: interface",
+    "RhinoSceneBuffers: interface",
+    "RhinoSceneExportOptions: interface",
     "RtcFrame: interface",
     "SimplifiedElementMesh: interface",
     "SimplifyMeshesResult: interface",
@@ -6643,6 +6650,7 @@
     "computeWorkerCount: function",
     "createPlatformBridge: function",
     "decodeInstancedShard: function",
+    "exportRhinoScene: function",
     "geometryAabbAt: function",
     "geometryVolumeAt: function",
     "getGeometryStreamWatchdogMs: function",
@@ -10943,6 +10951,15 @@
   "@ifc-lite/wasm/retained": [
     "RetainedEngine: type",
     "loadRetainedEngine: function"
+  ],
+  "@ifc-lite/wasm/rhino": [
+    "InitInput: type",
+    "InitOutput: interface",
+    "RhinoSceneJs: class",
+    "SyncInitInput: type",
+    "default: function",
+    "exportRhinoScene: function",
+    "initSync: function"
   ],
   "create-ifc-lite": []
 }

@@ -384,6 +384,9 @@ ifc-lite export model.ifc --format ifc --schema IFC4 --out filtered.ifc
 # GLB whose element nodes are named by GlobalId (for tools that look objects up by node name)
 ifc-lite export model.ifc --format glb --name-by-global-id --out model.glb
 
+# Rhino (.3dm) — IFC layers, blocks, materials and user text
+ifc-lite export model.ifc --format 3dm --out model.3dm
+
 # OpenUSD (.usda) — a real Z-up USD stage (whole model; opens in usdview/Blender/Omniverse)
 ifc-lite export model.ifc --format usd --out model.usda
 
@@ -398,7 +401,7 @@ ifc-lite export model.ifc --format csv --out walls.csv
 
 | Flag | Description |
 |------|-------------|
-| `--format <fmt>` | `csv`, `json`, `ifc`, `obj`, `gltf`, `glb`, `jsonld`, `step`, `ifcx`, `usd`, `hbjson`, or `dfjson` |
+| `--format <fmt>` | `csv`, `json`, `ifc`, `obj`, `gltf`, `glb`, `jsonld`, `step`, `ifcx`, `usd`, `3dm`, `hbjson`, or `dfjson` |
 | `--type <T>` | Filter entities by type |
 | `--where <filter>` | Property filter: `PsetName.PropName=Value` |
 | `--storey <name>` | Filter to elements in a storey |
@@ -410,6 +413,25 @@ ifc-lite export model.ifc --format csv --out walls.csv
 | `--diagnostics` | Print a geometry summary after mesh-based exports |
 | `--name-by-global-id` | `gltf`/`glb`: make each element one node named by its `GlobalId`, with its mesh parts as children |
 | `--out <file>` | Write to file instead of stdout |
+
+#### Rhino export options
+
+For `--format 3dm`, `--out` is required. Entity filters (`--type`, `--storey`,
+`--where`, `--limit`) restrict exported objects; a zero-match filter fails closed.
+
+| Flag | Values / default |
+|---|---|
+| `--units` | `source` (default), `meters`, `millimeters`, `centimeters`, `feet`, `inches` |
+| `--coordinates` | `local` (default), `world` |
+| `--layers` | `spatial-class` (default), `class`, `presentation` |
+| `--properties` | `all` (default), `attributes`, `none` |
+| `--no-instancing` | Bake repeated geometry instead of blocks |
+| `--no-spaces` | Exclude spaces (included on hidden layers by default) |
+| `--no-normals` | Omit vertex normals |
+| `--layer-slicing` | Enable material-layer slicing |
+| `--3dm-version` | `7`, `8` (default) |
+
+Scene warnings print to stderr.
 
 ---
 

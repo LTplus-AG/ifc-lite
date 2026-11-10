@@ -60,6 +60,7 @@ on:
       - 'packages/parser/**'
       - 'packages/pointcloud/**'
       - 'packages/query/**'
+      - 'packages/rhino3dm/**'
       - 'packages/rules/**'
       - 'packages/regex-guard/**'
       - 'packages/sandbox/**'

@@ -756,9 +756,10 @@ jobs:
       - name: Verify committed wasm types are in sync
         if: needs.changes.outputs.wasm_prebuilt != 'true'
         run: |
-          if ! git diff --quiet -- packages/wasm/pkg/ifc-lite.d.ts packages/wasm/pkg-diff/ifc-lite-diff.d.ts; then
-            echo "::error file=packages/wasm/pkg/ifc-lite.d.ts::Committed wasm types are out of sync with the Rust source. Run 'bash scripts/build-wasm.sh' and commit the regenerated packages/wasm/pkg/ifc-lite.d.ts."
-            git diff -- packages/wasm/pkg/ifc-lite.d.ts packages/wasm/pkg-diff/ifc-lite-diff.d.ts
+          dts="packages/wasm/pkg/ifc-lite.d.ts packages/wasm/pkg-diff/ifc-lite-diff.d.ts packages/wasm/pkg-rhino/ifc-lite-rhino.d.ts"
+          if ! git diff --quiet -- $dts; then
+            echo "::error::Committed wasm types are out of sync with the Rust source. Run 'bash scripts/build-wasm.sh' and commit the regenerated declarations shown below ($dts)."
+            git diff -- $dts
             exit 1
           fi
           echo "✅ committed wasm types match the Rust source"
@@ -825,13 +826,15 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: build-output
-          # Downstream packed-package checks and actual-WASM diff tests need
-          # both the geometry runtime and the independent diff payload.
+          # Downstream packed-package checks, actual-WASM diff tests and the
+          # CLI/MCP .3dm export need the geometry runtime and the independent
+          # diff and Rhino payloads.
           path: |
             packages/*/dist
             packages/*/wasm
             packages/*/pkg
             packages/*/pkg-diff
+            packages/*/pkg-rhino
           retention-days: 1
           if-no-files-found: error
 

@@ -35,7 +35,7 @@ export function mirrorDoorHandedness(store: IfcDataStore, editor: StoreEditor, p
     if (slot < 0 || operation === null) continue;
     let clone = clones.get(typeId);
     if (clone === undefined) {
-      const attributes = structuredClone(type.attributes);
+      const attributes = [...structuredClone(type.attributes)];
       attributes[type.names.indexOf('GlobalId')] = generateIfcGuid();
       const nameSlot = type.names.indexOf('Name');
       if (nameSlot >= 0 && typeof attributes[nameSlot] === 'string') attributes[nameSlot] += ' (mirrored)';
@@ -46,7 +46,7 @@ export function mirrorDoorHandedness(store: IfcDataStore, editor: StoreEditor, p
     const remaining = related.filter(value => !doors.has(refId(value) ?? -1)).map(value => `#${refId(value)}`);
     if (remaining.length) editor.setPositionalAttribute(id, 4, remaining);
     else editor.removeEntity(id);
-    const attributes = structuredClone(rel.attributes);
+    const attributes = [...structuredClone(rel.attributes)];
     attributes[rel.names.indexOf('GlobalId')] = generateIfcGuid();
     attributes[4] = selected;
     attributes[5] = `#${clone}`;

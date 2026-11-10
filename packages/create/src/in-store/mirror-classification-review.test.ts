@@ -53,11 +53,11 @@ for (const schema of ['IFC2X3', 'IFC4'] as const) it(`#9409 mirrors door ${schem
   const emit = (type: string, values: Record<string, unknown>) => s.editor.addEntity(type,
     schemaAttributes(registry, type, values, 'test') as Parameters<typeof s.editor.addEntity>[1]).expressId;
   const type = schema === 'IFC2X3' ? 'IfcDoorStyle' : 'IfcDoorType';
-  const original = emit(type, { GlobalId: generateIfcGuid(), OwnerHistory: `#${s.anchor.ownerHistoryId}`, Name: 'Shared left door',
+  const original = emit(type, { GlobalId: generateIfcGuid(), OwnerHistory: s.anchor.ownerHistoryId === null ? null : `#${s.anchor.ownerHistoryId}`, Name: 'Shared left door',
     OperationType: 'SINGLE_SWING_LEFT', ParameterTakesPrecedence: false,
     ...(schema === 'IFC2X3' ? { ConstructionType: 'NOTDEFINED', Sizeable: true } : { PredefinedType: 'DOOR' }),
   });
-  emit('IfcRelDefinesByType', { GlobalId: generateIfcGuid(), OwnerHistory: `#${s.anchor.ownerHistoryId}`,
+  emit('IfcRelDefinesByType', { GlobalId: generateIfcGuid(), OwnerHistory: s.anchor.ownerHistoryId === null ? null : `#${s.anchor.ownerHistoryId}`,
     RelatedObjects: [...selected, untouched].map(id => `#${id}`), RelatingType: `#${original}` });
   mirrorElementsInStore(s.store, s.editor, [a.wallId], { axis: [[0, 0], [0, 10]] });
   const saved = await parse(exportText(s)), view = new MutablePropertyView(saved.properties, 'saved');

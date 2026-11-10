@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import { expect, it } from 'vitest';
-import { IfcCreator, addWallToStore, resolveSpatialAnchor, readRelatedLists } from '@ifc-lite/create';
+import { IfcCreator, addWallToStore, resolveSpatialAnchor } from '@ifc-lite/create';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import { IfcParser } from '@ifc-lite/parser';
 import { createModellingStoreBackendWithoutStoreys, StoreNamespace, type BimBackend, type BimContext } from '@ifc-lite/sdk';
@@ -26,9 +26,9 @@ it('#9409 script bridge mirrors and classifies through the real slim SDK factory
   expect(view.getNewEntities().some(entity => entity.type.toUpperCase() === 'IFCMAPPEDITEM')).toBe(true);
   const classification = call('addClassification', ['m', { System: 'Example', Identification: 'Walls', objects: [a] }]) as { expressId: number };
   call('assignClassification', ['m', classification.expressId, [b, a]]);
-  const relations = readRelatedLists(store, 'IfcRelAssociatesClassification', view);
+  const relations = view.getNewEntities().filter(entity => entity.type.toUpperCase() === 'IFCRELASSOCIATESCLASSIFICATION');
   expect(relations).toHaveLength(1);
-  expect(new Set(relations[0].relatedIds)).toEqual(new Set([a, b]));
+  expect(new Set(relations[0].attributes[4] as string[])).toEqual(new Set([`#${a}`, `#${b}`]));
   const before = view.getMutations();
   expect(() => call('mirrorElements', ['m', [0], { axis: [[0, 0], [0, 10]] }])).toThrow(/positive entity ids/);
   expect(view.getMutations()).toEqual(before);

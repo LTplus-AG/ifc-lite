@@ -86,10 +86,16 @@ describe('extractStructuralOnDemand effective membership (#5236)', () => {
         "#8=IFCBEAM('BeamGuid0000000000001',$,$,$,$,$,$,$,$);\n" +
         "#10=IFCRELASSIGNSTOPRODUCT('AssignGuid000000000001',$,$,$,(#1),.PRODUCT.,#8);",
     );
-    const result = extractStructuralOnDemand(await parse(step), view({
+    const store = await parse(step);
+    const copied = extractStructuralOnDemand(store, view({
       readEntity: (_id, type, source) => (source ? { ...source, type } : source),
     }));
-    expect(result.members[0]?.physicalElementIds).toEqual([8]);
+    expect(copied.members[0]?.physicalElementIds).toEqual([8]);
+    // A view that edits the passed source in place and returns it.
+    const inPlace = extractStructuralOnDemand(store, view({
+      readEntity: (_id, type, source) => { if (source) source.type = type; return source; },
+    }));
+    expect(inPlace.members[0]?.physicalElementIds).toEqual([8]);
   });
 
   it('classifies a physical end by its session type, not its source type', async () => {

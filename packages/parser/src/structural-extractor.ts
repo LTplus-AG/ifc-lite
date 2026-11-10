@@ -128,7 +128,7 @@ export function extractStructuralOnDemand(
   }
 
   for (const type of RELATION_TYPES) for (const id of byType.get(type) ?? []) sourceIds.add(id);
-  const typeMutations = view?.getTypeMutations?.(); // one copy: the viewer's getter clones its map
+  const typeMutations = view?.getTypeMutations?.();
   for (const [id, mutation] of typeMutations ?? []) {
     if (roleOf(mutation.newType) || RELATION_TYPES.includes(mutation.newType.toUpperCase())) sourceIds.add(id);
   }
@@ -180,7 +180,7 @@ export function extractStructuralOnDemand(
     ids.map((id) => readRaw(id, effectiveTypeById.get(id)!)).filter((row): row is RawEntity => !!row);
   const read = (role: StructuralRole): RawEntity[] => readRows(activeByRole.get(role) ?? []);
   const typeOf = (id: number): string => effectiveTypeById.get(id) ?? typeMutations?.get(id)?.newType
-    ?? view?.getNewEntity?.(id)?.type ?? getEntityRefFromStore(store, id)?.type ?? exactTypeName(store.entities, id);
+    ?? getEntityRefFromStore(store, id)?.type ?? exactTypeName(store.entities, id);
   const isDeleted = (id: number): boolean => view?.isDeleted(id) ?? false;
   const readResolved = (id: number) => (isDeleted(id) ? undefined : readRaw(id, typeOf(id)));
   /** Deleted resources read as absent; loads and conditions use the view only when one exists. */

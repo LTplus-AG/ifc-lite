@@ -42,8 +42,9 @@ QuickJS module also failed, because the one eager module in it made the whole gr
 
 **Retained: detailed refusals behind cold error carriers.** Adding demand and
 budget identity enlarged the errors returned by per-attempt admission helpers.
-Boxing the logical refusal and the walk's demand payload keeps that detail out
-of successful Results; allocation occurs only when work is refused. The walk
+An owned four-byte slot token keeps logical detail in a synchronized registry
+accessed only on refusal; drop reclaims the slot, including across threads.
+The walk's demand payload stays boxed. Allocation occurs only on refusal. The walk
 keeps its existing Result types, with a compile-time bound against the decoder
 error carrier on both native and wasm32. Empty routers hold only a nullable
 pointer to the refusal log; the buffer, identity strings and refusal constructors
@@ -55,7 +56,10 @@ PR #9386; this is cost containment, not an end-to-end worker-pool speedup claim.
 Lesson: refusal-only reporting can still affect successful work through error
 layout. Shrinking an entire Result can also change its optimized callers;
 contain the cold payload while preserving the common carrier, then check the
-compiled pipeline. The logical attempt Result has a pointer-size invariant.
+compiled pipeline. A boxed logical error kept the unit Result pointer-sized but
+widened the intermediate Result carrying a u32; assertions now cover the token,
+the value Result and the unit Result against main's layouts. No registry access
+or identity construction occurs for accepted work.
 Type-product attribution fits inside the existing owned type-map root slot,
 with size/alignment assertions, rather than adding an owner field to every
 mapping controller. A persistent dedup set and capped details run only on

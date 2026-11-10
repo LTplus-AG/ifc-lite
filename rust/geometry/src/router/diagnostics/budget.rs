@@ -20,7 +20,7 @@ pub struct BudgetRefusal {
 }
 
 /// Owned only after refusal, never carried through successful execution.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) struct BudgetProductIdentity {
     id: u32,
     ifc_type: ifc_lite_core::IfcType,

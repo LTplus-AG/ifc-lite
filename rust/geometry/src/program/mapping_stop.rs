@@ -42,7 +42,8 @@ impl MappingControl<'_> {
         if self.levels.last().is_none_or(|parent| parent.policy) {
             let root = self.rep_map.as_ref().and_then(super::TypeMapRoot::product)
                 .map(crate::router::diagnostics::BudgetProductIdentity::from_product);
-            router.record_budget_refusal_identity(item_id, budget, limit, reached, refusal.product().or(root.as_ref()));
+            let product = refusal.product();
+            router.record_budget_refusal_identity(item_id, budget, limit, reached, product.as_ref().or(root.as_ref()));
         }
         self.logical_stopped = true;
         let Some(parent) = self.levels.last() else {

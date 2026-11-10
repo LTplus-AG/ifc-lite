@@ -17,8 +17,7 @@ import { useViewerStore } from '@/store';
 import { setGlobalRendererRef } from '@/hooks/useBCF';
 import { emptyPlacementState } from '@/lib/model-placement/state';
 import { appearanceAssets, modelAppearanceAssets } from '@/lib/appearance/model-assets';
-import { prepareScanSession } from '@/lib/appearance/scan/session';
-import type { ScanPoint, ScanRegistrationRequest } from '@/lib/appearance/scan/types';
+import type { ScanPoint } from '@/lib/appearance/scan/types';
 import type { AppearanceWorker } from '@/lib/appearance/planner-worker-client';
 import type { AppearanceWorkerRequest, AppearanceWorkerResponse } from '@/lib/appearance/planner-types';
 import { runMeshTransfer, runScanRegistration } from '@/workers/appearance.worker';
@@ -89,9 +88,10 @@ for (const gesture of ['preview', 'apply', 'unmount'] as const) test(`scan trans
     terminate() { this.dead = true; }
     postMessage(job: AppearanceWorkerRequest) {
       if (job.type === 'scan-registration') {
-        // Registration quality is covered by the native fixture above; here the real workbench adopts that report.
-        queueMicrotask(() => this.onmessage?.({ data: { type: 'scan-registration-complete', id: job.id,
-          result: { ...result.report, sourceFrame: job.request.sourceFrame, targetFrame: job.request.targetFrame } } } as MessageEvent<AppearanceWorkerResponse>));
+        // Solve against this session's exact exported snapshot: a later export can have a different FILE_NAME timestamp.
+        void runScanRegistration({ ...job.request, ...correspondences }).then(result => {
+          if (!this.dead) this.onmessage?.({ data: { type: 'scan-registration-complete', id: job.id, result } } as MessageEvent<AppearanceWorkerResponse>);
+        }, error => { if (!this.dead) this.onerror?.({ message: String(error) } as ErrorEvent); });
         return;
       }
       if (job.type !== 'mesh-transfer') throw new Error('Unexpected scan job');
@@ -102,13 +102,11 @@ for (const gesture of ['preview', 'apply', 'unmount'] as const) test(`scan trans
     }
   }
   Object.defineProperty(globalThis, 'Worker', { configurable: true, value: NativeWorker });
-  const session = await prepareScanSession('source', 0, 'target', new AbortController().signal);
   const point = (x: number, y: number): ScanPoint => [x, 0, -y];
   const fit = [point(0,0), point(1,0), point(0,1), point(0.2,0.2)];
   const check = [point(0.1,0.1), point(0.25,0.2), point(0.3,0.1), point(0.1,0.3)];
   const rows = (points: ScanPoint[], prefix: string) => points.map((p, i) => ({ id: `${prefix}${i}`, sourceObservation: `${prefix}s${i}`, targetFeature: `${prefix}t${i}`, source: p, target: [p[0], -p[2], p[1]] as ScanPoint }));
-  const request: ScanRegistrationRequest = { sourceFrame: session.sourceFrame, targetFrame: session.targetFrame, fit: rows(fit, 'f'), heldOut: rows(check, 'c') };
-  const result = { request, report: await runScanRegistration(request) };
+  const correspondences = { fit: rows(fit, 'f'), heldOut: rows(check, 'c') };
   const signals: AbortSignal[] = [], jobs: Promise<void>[] = [];
   let workbench: ReturnType<typeof useScanWorkbench> | undefined;
   let preparations = 0, release!: () => void;
@@ -123,7 +121,7 @@ for (const gesture of ['preview', 'apply', 'unmount'] as const) test(`scan trans
     }, [work.session, work.result, work.busy, work.stale]);
     // The real native registration fixture supplies reviewed fit/check landmarks.
     const registration = useMemo(() => work.result && { report: work.result.report,
-      request: { ...work.result.request, fit: request.fit, heldOut: request.heldOut } }, [work.result]);
+      request: { ...work.result.request, ...correspondences } }, [work.result]);
     const transfer = useScanTransfer({ ...work, result: registration,
       applyAppearance: async action => {
         const job = work.applyAppearance(async signal => { signals.push(signal); await action(signal); });

@@ -27,7 +27,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { chromePids, memoryOf, vramOf } from './scenoptic-bench-sampling.mjs';
 import { COUNT_FRAMES, openAndWaitInteractive, openViewerPage, readOutputFingerprint, replacePage, waitCacheWrites, waitSceneSnapshots } from './viewer-load-probe.mjs';
-import { browserStages, stageShares } from './load-scoreboard-stats.mjs';
+import { browserShares, browserStages, stageShares } from './load-scoreboard-stats.mjs';
 import { readGpuHealth } from '../../tests/benchmark/gpu-health.ts';
 
 export const CHROME_ARGS = ['--enable-gpu', '--enable-unsafe-webgpu', '--enable-features=Vulkan,VulkanFromANGLE,DefaultANGLEVulkan',
@@ -73,13 +73,14 @@ export function startMemorySampler(profileDir, intervalMs = 250) {
 }
 
 function summarizeOpen(open, memory) {
-  const { byName, byGroup } = browserStages(open.trace);
+  const { byGroup } = browserStages(open.trace);
+  const { shares, milestones } = browserShares(open.trace, open.interactiveMs);
   return {
     firstGeometryMs: open.firstFrameMs, interactiveMs: open.interactiveMs, geometryMs: open.geometryMs, propsMs: open.propsMs,
     storeSettledMs: open.storeSettledMs, settleQuantized: open.settleQuantized, completeFrameMs: open.completeFrameMs,
     peakMemoryMiB: memory.peakPssMiB, peakMemoryMetric: 'peak sampled PSS sum over Chrome processes (250 ms), incl. browser baseline', memory,
     loadPaths: open.loadPaths, cacheTiers: open.cacheTiers, cacheHit: open.cacheHit, snapshotAdopted: open.snapshotAdopted,
-    stageShares: stageShares(byName, open.interactiveMs), stageGroupShares: stageShares(byGroup, open.interactiveMs),
+    stageShares: shares, stageGroupShares: stageShares(byGroup, open.interactiveMs), milestones,
     trace: open.trace,
   };
 }

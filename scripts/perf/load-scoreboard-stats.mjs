@@ -161,6 +161,23 @@ export function browserStages(trace) {
   return { byName, byGroup };
 }
 
+/**
+ * Stage shares of one browser open: per span name, plus `(no span)`, the part
+ * of [0, interactive] no non-milestone span covers (untraced work or idle
+ * waiting). Milestone times are returned beside them.
+ */
+export function browserShares(trace, interactiveMs) {
+  const { byName } = browserStages(trace);
+  const shares = stageShares(byName, interactiveMs);
+  const covered = stageShares({ all: Object.values(byName).flat() }, interactiveMs).all ?? 0;
+  shares['(no span)'] = Math.max(0, 1 - covered);
+  const milestones = {};
+  for (const load of trace ?? []) {
+    for (const [name, , start, dur, milestone] of load.spans ?? []) if (milestone) milestones[name] = Math.max(milestones[name] ?? 0, start + dur);
+  }
+  return { shares, milestones };
+}
+
 /** perf_probe --cold JSON row -> sequential stages (ms). Each pipeline phase is reported once, residuals named. */
 export function nativeStages(row) {
   const parseSub = (row.entityScanMs ?? 0) + (row.lookupMs ?? 0) + (row.preprocessMs ?? 0);

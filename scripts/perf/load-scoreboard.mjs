@@ -29,6 +29,7 @@ import { fileURLToPath } from 'node:url';
 import { roundOrder, seededRand } from './ab-order.mjs';
 import { nativeSample } from './load-scoreboard-native.mjs';
 import { LANES, renderMarkdown, summarize } from './load-scoreboard-report.mjs';
+import { browserShares } from './load-scoreboard-stats.mjs';
 
 const ROOT = resolve(fileURLToPath(new URL('../..', import.meta.url)));
 const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
@@ -191,6 +192,13 @@ function report(opt) {
   const out = resolve(opt.out);
   const plan = JSON.parse(readFileSync(opt.plan ?? join(out, 'plan.json'), 'utf8'));
   const samples = readFileSync(join(out, 'samples.jsonl'), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
+  // Browser shares are recomputed from the raw traces, so a run keeps up with the current share definition.
+  for (const row of samples) {
+    const tracePath = join(out, 'traces', `${row.fixture}-${row.lane}-${row.side}-r${row.round}.json`);
+    if (row.ok && row.lane.startsWith('browser') && existsSync(tracePath)) {
+      Object.assign(row, { stageShares: browserShares(JSON.parse(readFileSync(tracePath, 'utf8')), row.interactiveMs).shares });
+    }
+  }
   const aaPath = opt['aa-reference'] ?? plan.aaReference ?? null;
   const floors = aaPath ? JSON.parse(readFileSync(aaPath, 'utf8')).floors : null;
   const host = existsSync(join(out, 'host.json')) ? JSON.parse(readFileSync(join(out, 'host.json'), 'utf8')) : null;

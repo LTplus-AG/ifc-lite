@@ -21,6 +21,20 @@ export const METRICS = [
 const shareOf = (row) => row.stageShares ?? (row.stageMs && row.interactiveMs
   ? Object.fromEntries(Object.entries(row.stageMs).map(([k, v]) => [k, v / row.interactiveMs])) : null);
 
+/** Browser readiness components (median ms) and which one ended the load most often. */
+export const READINESS = [['firstGeometryMs', 'first geometry'], ['geometryMs', 'geometry finalized'], ['propsMs', 'metadata ready'], ['storeSettledMs', 'store settled']];
+function readinessOf(ok) {
+  if (!ok.some((r) => Number.isFinite(r.storeSettledMs))) return null;
+  const medians = Object.fromEntries(READINESS.map(([k]) => [k, median(ok.map((r) => r[k]))]));
+  const counts = {};
+  for (const r of ok) {
+    const last = READINESS.slice(1).reduce((a, [k]) => ((r[k] ?? -1) > (r[a] ?? -1) ? k : a), 'geometryMs');
+    counts[last] = (counts[last] ?? 0) + 1;
+  }
+  const binding = Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+  return { medians, binding, bindingCounts: counts };
+}
+
 function pairsFor(rows, metric) {
   const rounds = [...new Set(rows.map((r) => r.round))].sort((a, b) => a - b);
   return rounds.map((round) => ['base', 'branch'].map((side) => {
@@ -51,6 +65,7 @@ export function summarize(plan, samples, { floors = null } = {}) {
           snapshotAdopted: ok.some((r) => (r.snapshotAdopted ?? []).some(Boolean)),
           settleQuantized: ok.filter((r) => r.settleQuantized).length,
           stages: rankShares(ok.map(shareOf).filter(Boolean)),
+          readiness: readinessOf(ok),
           metrics: Object.fromEntries(METRICS.map(([key]) => {
             const values = ok.map((r) => r[key]).filter(Number.isFinite);
             return [key, { median: median(values), spread: relativeSpread(values), n: values.length, values }];
@@ -172,6 +187,13 @@ export function renderMarkdown(summary, plan, host) {
   out.push('## Lane summary (interactive time)', '');
   for (const [lane, s] of Object.entries(summary.laneSummary)) {
     out.push(`- **${lane}**: gains [${s.gains.join(', ')}]; regressions [${s.regressions.join(', ')}]; no significant difference [${s.noDifference.join(', ')}]; inconclusive [${s.inconclusive.join(', ')}]; output not matching [${s.outputChanged.join(', ')}]`);
+  }
+  const readinessRows = summary.fixtures.flatMap((f) => ['browser-cold', 'browser-warm'].filter((lane) => f.lanes[lane]?.sides.base.readiness)
+    .map((lane) => { const r = f.lanes[lane].sides.base.readiness; const label = Object.fromEntries(READINESS);
+      return `| ${f.name} | ${f.set} | ${lane} | ${READINESS.map(([k]) => n0(r.medians[k])).join(' | ')} | ${label[r.binding] ?? '—'} (${Object.entries(r.bindingCounts).map(([k, c]) => `${label[k]} ${c}`).join(', ')}) |`; }));
+  if (readinessRows.length) {
+    out.push('', '## Readiness components (base side medians, ms from the input event; interactive = the last of the final three)', '',
+      '| fixture | set | lane | first geometry | geometry finalized | metadata ready | store settled | binding (count) |', '|---|---|---|---:|---:|---:|---:|---|', ...readinessRows);
   }
   out.push('', '## Stage shares, ranked (tuning set, base side; concurrent stages overlap, so shares need not sum to 100%)', '');
   for (const lane of plan.lanes) {

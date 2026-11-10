@@ -9,7 +9,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  aaNoiseFloor, bootstrapHalfWidth, browserStages, expectedCacheTier, gainOf, median, nativeStages, rankShares,
+  aaNoiseFloor, bootstrapHalfWidth, browserShares, browserStages, expectedCacheTier, gainOf, median, nativeStages, rankShares,
   relativeSpread, stageShares, unionLength, verdictFor,
 } from './load-scoreboard-stats.mjs';
 import { summarize } from './load-scoreboard-report.mjs';
@@ -133,4 +133,11 @@ test('the report keeps failures, flags changed output and exports per-metric flo
   assert.equal(lane.output, 'CHANGED');
   assert.equal(lane.primary.regression, true);
   assert.ok(Number.isFinite(lane.floors.interactiveMs));
+});
+
+test('browser shares name the untraced part of the load and keep milestone times', () => {
+  const { shares, milestones } = browserShares([{ spans: [['cache.storeReady', 'main', 0, 700, 1, 1, null],
+    ['cache.decode', 'main', 100, 200, 0, 2, null], ['search.tier1', 'main', 200, 300, 0, 3, null]] }], 1000);
+  assert.ok(Math.abs(shares['(no span)'] - 0.6) < 1e-12);
+  assert.equal(milestones['cache.storeReady'], 700);
 });

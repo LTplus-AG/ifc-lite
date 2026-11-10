@@ -670,7 +670,10 @@ Custom `RaycastEngine` scene adapters can optionally implement
 `getTexturedMeshes()` returning owners with `expressId` and optional `modelIndex`;
 `getMeshDataPieces` supplies their retained geometry. Existing adapters without
 that capability keep their regular/batched/instanced behavior. This does not add
-texture GPU handles to the `Renderer.getScene()` interface.
+texture GPU handles to the `Renderer.getScene()` interface. An adapter that drops
+CPU pieces without bumping `getPickGeometryRevision()` can also implement
+`onHostEviction(listener)`; the raycast index then releases them at once, as it
+does for `Scene`'s host-budget eviction.
 
 ```typescript
 // Full raycast with intersection details
@@ -975,6 +978,13 @@ The renderer uses a Bounding Volume Hierarchy for fast raycasting:
 
 // Clear BVH cache when geometry changes significantly
 renderer.invalidateBVHCache();
+
+// True when the flat index is warm; instances may still materialize per ray
+const raycastReady = renderer.isRaycastCacheWarm();
+
+// Moving or rotating meshes in place keeps every piece's identity, so the BVH
+// and snap caches cannot see it: clear them after the edit.
+renderer.getScene().translateMeshesForEntities(new Map([[expressId, [1, 0, 0]]]));
 renderer.clearCaches();
 ```
 

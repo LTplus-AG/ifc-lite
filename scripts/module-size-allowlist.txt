@@ -113,7 +113,7 @@
   1234 apps/viewer/src/hooks/useDrawingExport.ts
   1032 apps/viewer/src/hooks/useDrawingGeneration.ts
    551 apps/viewer/src/hooks/useIfcFederation.ts
-  2171 apps/viewer/src/hooks/useIfcLoader.ts
+  2170 apps/viewer/src/hooks/useIfcLoader.ts
    436 apps/viewer/src/hooks/useIfcServer.ts
    456 apps/viewer/src/hooks/useSymbolicAnnotations.ts
    633 apps/viewer/src/lib/analytics-scrub.ts

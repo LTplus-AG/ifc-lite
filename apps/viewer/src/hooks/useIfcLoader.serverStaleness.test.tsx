@@ -106,3 +106,10 @@ for (const cause of ['cancel', 'supersede'] as const) {
     } finally { release(); await Promise.allSettled([pending, replacement]); }
   });
 }
+
+it('#9538 a current server failure starts local processing', async () => {
+  mock.method(IfcServerClient.prototype, 'parseParquet', async () => { throw new Error('server unavailable #9538'); });
+  await act(async () => { await api!.loadFile(file('fallback.ifc')); });
+  assert.equal(localEntries, 1, 'a current server failure must publish local-path progress');
+  assert.equal(engineInits, 1, 'a current server failure must try local WASM');
+});

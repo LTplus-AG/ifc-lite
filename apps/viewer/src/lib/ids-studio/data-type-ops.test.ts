@@ -74,4 +74,15 @@ describe('a data type picked after the value', () => {
     assert.equal(dataTypeOps(facetId, facet, { kind: 'equals', value: 'ifcinteger' }, gate, ['IFC4']).length, 1);
     assert.equal(dataTypeOps(facetId, facet, { kind: 'equals', value: 'IFCREAL' }, gate, ['IFC4']).length, 2);
   });
+
+  it('fills a missing base when the current data type is picked again', () => {
+    // A document saved before this fix: IFCINTEGER over an unbased list.
+    const { facetId } = typedFirst(['1']);
+    const facet = {
+      type: 'property' as const, propertySet: { type: 'simpleValue' as const, value: 'Custom_Condition' },
+      baseName: { type: 'simpleValue' as const, value: 'Conditionscore' }, dataType: { type: 'simpleValue' as const, value: 'IFCINTEGER' },
+      value: { type: 'enumeration' as const, values: ['1'] },
+    };
+    assert.equal(dataTypeOps(facetId, facet, { kind: 'equals', value: 'IFCINTEGER' }, gate, ['IFC4']).length, 2);
+  });
 });

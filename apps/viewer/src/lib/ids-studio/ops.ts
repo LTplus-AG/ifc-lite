@@ -94,9 +94,11 @@ export function dataTypeOps(
   facetId: Uuid, facet: IDSPropertyFacet, input: ValueInput | null, gate: GateContext, versions: readonly IFCVersion[],
 ): StudioOp[] {
   const name = input?.kind === 'equals' ? String(input.value) : undefined;
-  // Re-picking the current type changes nothing, so an explicit base (say, from an import) stays.
+  // Re-picking the current type keeps an explicit base (say, from an import); a missing one is still filled.
   const current = facet.dataType?.type === 'simpleValue' ? facet.dataType.value : undefined;
-  const base = name && name.toUpperCase() !== current?.toUpperCase() ? dataTypeBase(gate, versions, name) : undefined;
+  const explicit = facet.value?.type !== 'simpleValue' && facet.value?.base !== undefined;
+  const repick = name !== undefined && name.toUpperCase() === current?.toUpperCase();
+  const base = name && !(repick && explicit) ? dataTypeBase(gate, versions, name) : undefined;
   const rebased = facet.value && base ? rebaseRestriction(facet.value, base) : undefined;
   return [
     setFieldOp(facetId, 'property.dataType', input),

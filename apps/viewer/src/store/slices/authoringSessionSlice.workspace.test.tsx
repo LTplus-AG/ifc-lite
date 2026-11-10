@@ -95,6 +95,14 @@ describe('Model workspace entry / exit (#6232 WP2)', () => {
     assert.equal(wallCount(), 0);
   });
 
+  // #9296 review: Flow preflight and the change reviews turn edit mode on for
+  // authoring; a bare flag in View would expose the move gizmo outside Model.
+  it('turning edit mode on enters Model, so geometry tools never run in View (#9296)', () => {
+    useViewerStore.getState().setEditEnabled(true);
+    assert.equal(useViewerStore.getState().workspaceMode, 'model');
+    assert.equal(useViewerStore.getState().editEnabled, true);
+  });
+
   it('E toggles the workspace; the status-bar chip names the storey and toggles it too', () => {
     function Keys() { useKeyboardShortcuts(); return null; }
     render(<Keys />);

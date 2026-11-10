@@ -104,6 +104,7 @@ describe('BsddCard Qto_* rows (#8407)', () => {
     try {
       const view = new MutablePropertyView(null, 'm1');
       const { ui } = await mountQuantityRows(view);
+      assert.equal(ui.textContent?.includes('Length'), true, 'the Length row rendered, so only its add control is missing');
       assert.equal(ui.querySelector('input[aria-label="Value for Length"]') === null, true, 'no add control under the lock');
     } finally {
       run.release();

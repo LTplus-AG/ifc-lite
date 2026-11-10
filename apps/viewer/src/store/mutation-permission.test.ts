@@ -61,8 +61,6 @@ describe('canonical viewer mutation permission (#5901)', () => {
   });
 
   it('edits a pset in View without entering Model, with one undo step (#9296)', () => {
-    const s = useViewerStore.getState();
-    s.setEditEnabled(true);
     assert.equal(useViewerStore.getState().workspaceMode, 'view');
     const mutation = useViewerStore.getState().setProperty(first.id, 11, 'Pset_Test', 'FireRating', 'EI60');
     assert.ok(mutation);

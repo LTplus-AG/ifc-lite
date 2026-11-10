@@ -118,7 +118,7 @@ describe('Properties find and section disclosure (#5899)', () => {
     const geometryCard = () => [...panel.querySelectorAll('button[aria-expanded]')].some((b) => b.textContent === 'Geometry');
     assert.ok(panel.querySelector('button[aria-label="FireRating: REI60"]'), 'data stays editable in View');
     assert.equal(geometryCard(), false, 'no geometry editor outside Model');
-    act(() => useViewerStore.getState().setEditEnabled(true));
+    act(() => useViewerStore.setState({ editEnabled: true }));
     assert.equal(geometryCard(), false, 'the edit flag alone does not open geometry editing in View');
     act(() => useViewerStore.setState({ workspaceMode: 'model' }));
     assert.equal(geometryCard(), true, 'the geometry editor returns in Model');

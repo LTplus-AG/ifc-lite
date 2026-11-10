@@ -280,12 +280,14 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
     set({ activeTool });
   },
   setEditEnabled: (editEnabled) => {
-    // Data editing may enable the compatibility flag without entering Model (#9296).
-    // Workspace entry belongs to its explicit controls and authoring tools.
+    // Data edits no longer need this flag (#9296). Turning edit mode on is
+    // for geometry and authoring, so it enters Model, which keeps the flag in
+    // step; the bare flag is for a UISlice composed without the session slice.
     const cross = get() as unknown as WorkspaceCrossSlice;
     if (editEnabled) {
       if (cross.canCollabEdit && !cross.canCollabEdit()) return;
-      set({ editEnabled: true });
+      if (cross.enterModelWorkspace) cross.enterModelWorkspace();
+      else set({ editEnabled: true });
       return;
     }
     if (cross.workspaceMode === 'model' && cross.exitModelWorkspace) {

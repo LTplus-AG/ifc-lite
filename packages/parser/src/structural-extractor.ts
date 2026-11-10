@@ -128,7 +128,8 @@ export function extractStructuralOnDemand(
   }
 
   for (const type of RELATION_TYPES) for (const id of byType.get(type) ?? []) sourceIds.add(id);
-  for (const [id, mutation] of view?.getTypeMutations?.() ?? []) {
+  const typeMutations = view?.getTypeMutations?.(); // one copy: the viewer's getter clones its map
+  for (const [id, mutation] of typeMutations ?? []) {
     if (roleOf(mutation.newType) || RELATION_TYPES.includes(mutation.newType.toUpperCase())) sourceIds.add(id);
   }
   const effectiveRows = [...iterateEffectiveEntities(store, view, undefined, sourceIds)];
@@ -178,7 +179,6 @@ export function extractStructuralOnDemand(
   const readRows = (ids: readonly number[]): RawEntity[] =>
     ids.map((id) => readRaw(id, effectiveTypeById.get(id)!)).filter((row): row is RawEntity => !!row);
   const read = (role: StructuralRole): RawEntity[] => readRows(activeByRole.get(role) ?? []);
-  const typeMutations = view?.getTypeMutations?.();
   const typeOf = (id: number): string => effectiveTypeById.get(id) ?? typeMutations?.get(id)?.newType
     ?? view?.getNewEntity?.(id)?.type ?? getEntityRefFromStore(store, id)?.type ?? exactTypeName(store.entities, id);
   const isDeleted = (id: number): boolean => view?.isDeleted(id) ?? false;

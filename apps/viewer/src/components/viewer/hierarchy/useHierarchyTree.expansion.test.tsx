@@ -14,7 +14,7 @@ import { useHierarchyTree } from './useHierarchyTree';
 // The idle build is held until a test releases it, so "before idle" is a
 // state the test controls rather than a race against a timer.
 type IdleGlobal = typeof globalThis & {
-  requestIdleCallback?: (callback: () => void) => number;
+  requestIdleCallback?: (callback: IdleRequestCallback) => number;
   cancelIdleCallback?: (handle: number) => void;
 };
 const idleGlobal = globalThis as IdleGlobal;
@@ -23,7 +23,7 @@ let heldIdle: (() => void) | null = null;
 const releaseIdle = () => act(() => { const task = heldIdle; heldIdle = null; task?.(); });
 beforeEach(() => {
   heldIdle = null;
-  idleGlobal.requestIdleCallback = (callback) => { heldIdle = callback; return 1; };
+  idleGlobal.requestIdleCallback = (callback: IdleRequestCallback) => { heldIdle = () => callback({ didTimeout: false, timeRemaining: () => 50 }); return 1; };
   idleGlobal.cancelIdleCallback = () => { heldIdle = null; };
 });
 afterEach(() => {

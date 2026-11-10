@@ -10,11 +10,11 @@ import { isModelStreaming, sameModelExceptGeometry, streamingRefreshDue } from '
 type Models = Map<string, FederatedModel>;
 
 /** Which ids each geometry result meshes; one scan per result object, shared with the tree. */
-function meshedIds(result: GeometryResult | null): Set<number> | null {
+function meshedIds(result: GeometryResult | null): ReadonlySet<number> | null {
   return result ? sharedMeshedIds(result) : null;
 }
 
-function sameIds(a: Set<number> | null, b: Set<number> | null): boolean {
+function sameIds(a: ReadonlySet<number> | null, b: ReadonlySet<number> | null): boolean {
   if (a === b) return true;
   if (!a || !b || a.size !== b.size) return false;
   for (const id of a) if (!b.has(id)) return false;

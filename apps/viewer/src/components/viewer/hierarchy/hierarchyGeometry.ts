@@ -23,7 +23,7 @@ import { sharedMeshedIds } from '@/lib/object-count';
 export function buildGeometricIdSet(
   models: Map<string, FederatedModel>,
   legacyGeometry: GeometryResult | null | undefined,
-): Set<number> {
+): ReadonlySet<number> {
   if (models.size > 0) {
     // One model: its shared meshed-id set as is (read-only), not a second scan (NEW-4).
     if (models.size === 1) {

@@ -44,7 +44,7 @@ const fixtureSkip = skip || (existsSync(FIXTURE) ? false : 'Run pnpm fixtures fo
 
 // The idle structure build is held and released by the test, not raced with a sleep.
 type IdleGlobal = typeof globalThis & {
-  requestIdleCallback?: (callback: () => void) => number;
+  requestIdleCallback?: (callback: IdleRequestCallback) => number;
   cancelIdleCallback?: (handle: number) => void;
 };
 const idleGlobal = globalThis as IdleGlobal;
@@ -89,7 +89,7 @@ it('NEW-4: the populated-store commit does no per-element hierarchy work and one
   ));
 
   const realIdle = { request: idleGlobal.requestIdleCallback, cancel: idleGlobal.cancelIdleCallback };
-  idleGlobal.requestIdleCallback = (callback) => { heldIdle = callback; return 1; };
+  idleGlobal.requestIdleCallback = (callback: IdleRequestCallback) => { heldIdle = () => callback({ didTimeout: false, timeRemaining: () => 50 }); return 1; };
   idleGlobal.cancelIdleCallback = () => { heldIdle = null; };
   let relatedCalls = 0, typeIndexScans = 0;
   const relationships = store.relationships;

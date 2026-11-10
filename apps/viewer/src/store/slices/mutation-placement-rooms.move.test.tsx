@@ -142,7 +142,9 @@ it('#9296 a slab-attached room wall updates its generated rooms in the same undo
     await advance(30);
     assert.notDeepEqual(areas(), before, 'the rooms follow the attached wall');
     const written = useViewerStore.getState().undoStacks.get(MODEL_ID)!.slice(priorHistory);
-    assert.equal(new Set(written.map(m => useViewerStore.getState().mutationBatchTags.get(m.id))).size, 1, 'wall and rooms are one undo step');
+    const tags = new Set(written.map(m => useViewerStore.getState().mutationBatchTags.get(m.id)));
+    assert.equal(tags.size, 1, 'wall and rooms are one undo step');
+    assert.equal(typeof [...tags][0], 'string', 'the shared batch tag is defined');
     assert.ok(rooms.length > 0);
     act(() => useViewerStore.getState().undo(MODEL_ID));
     await advance(30);

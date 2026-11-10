@@ -138,6 +138,17 @@ it('retargeting a roof-cut wall to a roof without a footprint restores its plana
   expect(deriveBaseQuantitySet(s.store, s.view, wall)?.quantities.some(q => q.name === 'NetVolume'), 'prism quantities apply again').toBe(true);
 });
 
+it('Fixed detaches a roof-cut wall and keeps its last cut shape (#9296)', async () => {
+  const s = await newStorey();
+  const roof = addRoofToStore(s.editor, s.anchor, GABLE).roofId;
+  const wall = addWallToStore(s.editor, s.anchor, { Start: [5, 0, 0], End: [5, 8, 0], Height: 3, Thickness: .2 }).wallId;
+  setTopConstraintInStore(s.store, s.editor, wall, { kind: 'roof', roofId: roof });
+  const signature = s.view.getPropertyValue(wall, ROOF_ATTACHMENT, 'Signature');
+  setTopConstraintInStore(s.store, s.editor, wall, { kind: 'fixed' });
+  expect(s.view.getPropertyValue(wall, ROOF_ATTACHMENT, 'Clipped')).toBe(true);
+  expect(s.view.getPropertyValue(wall, ROOF_ATTACHMENT, 'Signature')).toBe(signature);
+});
+
 it('resizing a roof-cut wall refits its cut in the same edit (#9296)', async () => {
   const s = await newStorey();
   const roof = addRoofToStore(s.editor, s.anchor, GABLE).roofId;

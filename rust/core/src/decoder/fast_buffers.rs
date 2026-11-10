@@ -180,6 +180,25 @@ mod plain_face_tests {
     /// The byte proof behind skipping a face decode: every record it accepts
     /// decodes, uncached, to an `IfcFace`; every variant it refuses still decodes
     /// (or fails) exactly as before because the caller then decodes it.
+    /// Independent review (#9632): with a supplied index that maps a requested
+    /// id onto a record DECLARING another id, `decode_by_id` answers from the
+    /// memo of the declared id (`decode_at`). The proof must never disagree:
+    /// here `#2` is memoised as an `IfcAdvancedFace` while id 9 is indexed onto
+    /// a plain-looking `#2=IFCFACE((#10));` record.
+    #[test]
+    fn plain_face_proof_must_preserve_parsed_id_cache_precedence() {
+        let source = "#2=IFCADVANCEDFACE((#10),#99,.T.);#2=IFCFACE((#10));";
+        let split = source.find(';').unwrap() + 1;
+        let mut decoder = EntityDecoder::new(source);
+        decoder.decode_at(0, split).unwrap();
+        let mut index = crate::EntityIndex::default();
+        index.insert(9, (split, source.len()));
+        decoder.set_entity_index(std::sync::Arc::new(index));
+        assert!(decoder.get_cached(9).is_none());
+        assert!(!decoder.is_plain_face(9), "the proof must defer to the declared id's memo");
+        assert_eq!(decoder.decode_by_id(9).unwrap().ifc_type, crate::IfcType::IfcAdvancedFace);
+    }
+
     #[test]
     fn plain_face_proof_accepts_only_records_the_decode_reads_as_ifc_face() {
         let accepted = [

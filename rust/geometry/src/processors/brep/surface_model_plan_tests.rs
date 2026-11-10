@@ -212,3 +212,32 @@ fn plain_ifcface_records_are_lowered_without_a_full_decode() {
     let mesh = plan.evaluate().unwrap();
     assert_eq!(mesh.indices.len(), 12, "both quads still mesh");
 }
+
+/// Independent review (#9632), as a lowering: under a supplied index that maps
+/// face id 9 onto a record declaring `#2`, while `#2` is memoised as an
+/// `IfcAdvancedFace`, lowering must take the advanced-face path exactly as the
+/// canonical decode does, never mesh the plain-looking record's polyloop.
+#[test]
+fn an_aliased_face_id_is_classified_by_the_canonical_decode() {
+    let source = "#1=IFCCARTESIANPOINT((0.,0.,0.));#3=IFCCARTESIANPOINT((1.,0.,0.));\
+        #4=IFCCARTESIANPOINT((0.,1.,0.));#5=IFCPOLYLOOP((#1,#3,#4));#10=IFCFACEOUTERBOUND(#5,.T.);\
+        #2=IFCADVANCEDFACE((#10),#99,.T.);#2=IFCFACE((#10));\
+        #20=IFCCONNECTEDFACESET((#9));#30=IFCFACEBASEDSURFACEMODEL((#20));";
+    let advanced = source.find("#2=IFCADVANCEDFACE").unwrap();
+    let advanced_end = advanced + source[advanced..].find(';').unwrap() + 1;
+    let plain = source.find("#2=IFCFACE").unwrap();
+    let plain_end = plain + source[plain..].find(';').unwrap() + 1;
+    let mut index = ifc_lite_core::build_entity_index(source);
+    index.insert(9, (plain, plain_end));
+    let mut decoder = EntityDecoder::new(source);
+    decoder.decode_at(advanced, advanced_end).unwrap();
+    decoder.set_entity_index(std::sync::Arc::new(index));
+    let entity = decoder.decode_by_id(30).unwrap();
+    let names = ("FaceBasedSurfaceModel missing FbsmFaces", "face set");
+    let plan = lower(&entity, &mut decoder, TessellationQuality::Medium, None, names, 0).unwrap();
+    assert_eq!(plan.faces.len(), 1);
+    assert!(
+        !matches!(plan.faces[0].face, Some(SurfaceFace::Simple { .. })),
+        "the aliased advanced face was meshed as a plain polyloop face"
+    );
+}

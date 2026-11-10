@@ -71,11 +71,12 @@ export function checkExport(row, exported, expect, types, registry) {
   const { unchecked = [], ...values } = expect;
   const m = matchRecord(row, exported, values, types);
   if (!m) return { status: 'fail', reason: `no ${row.entity} record in the export`, exported: false, invalid: false };
-  const problems = [...m.diffs];
+  // Non-conformance first: it is why the cell fails, so it must survive the reason's clip.
+  const bad = nonConforming(exported, row.entity, registry);
+  const problems = bad.length ? [`${bad.length} of ${exported.count(row.entity)} exported record(s) do not conform to ${row.schema}, e.g. #${bad[0].id} ${bad[0].why}`] : [];
+  problems.push(...m.diffs);
   // An expectation that leaves attributes unchecked can never earn a full pass.
   if (unchecked.length) problems.push(`no expected value yet for ${unchecked.join(', ')}`);
-  const bad = nonConforming(exported, row.entity, registry);
-  if (bad.length) problems.push(`${bad.length} of ${exported.count(row.entity)} exported record(s) do not conform to ${row.schema}, e.g. #${bad[0].id} ${bad[0].why}`);
   const invalid = bad.length > 0;
   if (!problems.length) return { status: 'pass', exported: true, invalid };
   return { status: invalid ? 'fail' : 'partial', reason: problems.join(', '), exported: true, invalid };

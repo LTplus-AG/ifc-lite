@@ -224,6 +224,10 @@ test('read (#9668): an attribute set only in a file outside any sample is checke
   const onlyBare = readRow(row, [{ file: bare, ix: pointConnectionModel(1, 'g1') }], types);
   assert.match(onlyBare.reason, /ConditionCoordinateSystem: no fixture sets it/);
   assert.notEqual(onlyBare.status, 'pass');
+  // A file that did not extract adds its throw, not a claim that its records are missing from the read model.
+  const unread = readRow(row, [{ file: setter, ix: pointConnectionModel(2, 'g2') }, { file: bare, ix: null }], types, ['a-first.ifc: parse or extract threw: x']);
+  assert.match(unread.reason, /over 1 record\(s\)/);
+  assert.doesNotMatch(unread.reason, /not in the read model/);
 });
 
 test('create (#9668): typed values are compared typed, and a non-conforming export fails the cell', () => {
@@ -252,14 +256,17 @@ test('create (#9668): typed values are compared typed, and a non-conforming expo
   const gap = checkExport(row, typed, expect, ifc4.types, required);
   assert.equal(gap.status, 'fail');
   assert.match(gap.reason, /RZ: required value empty/);
+  assert.match(got.reason, /^1 of 1 exported record\(s\) do not conform/, 'the reason a cell fails comes first');
 });
 
-test('totals (#9668): stored totals that disagree with the rows are refused by the ledger and by --check', () => {
+test('totals (#9668): stored totals that disagree with the rows are refused by the ledger and by --check', async () => {
   const all = Object.fromEntries(LEVELS.map((l) => [l, 'pass']));
   const s = score(two, cellsOf({ [two[0].id]: { ...all, card: 'partial' }, [two[1].id]: { capability: 'pass' } }));
   assert.deepEqual(verifyTotals(s), []);
   assert.ok(verifyTotals({ ...s, total: { ...s.total, score: 2 } }).some((p) => p.startsWith('total')));
   assert.ok(verifyTotals({ ...s, rows: s.rows.map((r, i) => (i === 0 ? { ...r, status: 'met' } : r)) }).some((p) => p.includes(two[0].id)));
+  const { card: _dropped, ...fewer } = s.rows[0].levels;
+  assert.ok(verifyTotals({ ...s, rows: [{ ...s.rows[0], levels: fewer }, s.rows[1]] }).some((p) => /card: no cell/.test(p)), 'a deleted cell is refused, not dropped');
   const dir = tree();
   try {
     const baseline = join(dir, 'tests/structural-coverage/baseline/r0.json');
@@ -269,6 +276,14 @@ test('totals (#9668): stored totals that disagree with the rows are refused by t
     const r = run(['--root', dir, '--summary', forged]);
     assert.notEqual(r.status, 0);
     assert.match(r.stderr, /disagree with its rows/);
+    // Marking a failing cell not applicable, with totals recomputed to match, is refused against the catalogue rules.
+    const target = summary.rows.find((x) => x.levels.read?.status === 'fail');
+    const rows = summary.rows.map((x) => (x === target ? { ...x, levels: { ...x.levels, read: { applicable: false, rule: 'forged' } } } : x));
+    const { tally } = await import('../tests/structural-coverage/score.mjs');
+    writeFileSync(forged, JSON.stringify({ ...summary, ...tally(rows) }));
+    const hidden = run(['--root', dir, '--summary', forged]);
+    assert.notEqual(hidden.status, 0);
+    assert.match(hidden.stderr, new RegExp(`${target.id} read: applicability`));
     const scored = spawnSync(process.execPath, [join(ROOT, 'tests/structural-coverage/score.mjs'), '--check', forged, '--out', join(dir, 'out.json')], { encoding: 'utf8' });
     assert.equal(scored.status, 2, scored.stderr);
     assert.match(scored.stderr, /disagree with its rows/);

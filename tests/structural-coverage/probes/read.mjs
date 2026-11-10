@@ -104,7 +104,9 @@ export async function extractionOrProblem(ctx, file, problems) {
  */
 export function readRow(row, entries, types, problems = []) {
   const ordered = [...entries].sort((a, b) => a.file.sha256.localeCompare(b.file.sha256) || a.file.path.localeCompare(b.file.path));
-  const records = ordered.flatMap(({ file, ix }) => file.step.of(row.entity).map((rec) => ({ file, ix, rec, where: `${file.path}#${rec.id}` })));
+  // A file that did not extract is already a problem; its records prove nothing either way.
+  const records = ordered.filter((e) => e.ix).flatMap(({ file, ix }) => file.step.of(row.entity).map((rec) => ({ file, ix, rec, where: `${file.path}#${rec.id}` })));
+  if (!records.length) return { status: 'fail', reason: problems.join('; ') || 'no record was checked' };
   const value = (r, attr) => normalize(r.rec.args[row.attributes.indexOf(attr)], r.file.step, types);
   const out = [...problems];
   const link = LINKS[row.root];

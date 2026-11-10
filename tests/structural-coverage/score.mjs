@@ -94,7 +94,9 @@ export function tally(rows) {
     let max = 0;
     for (const level of LEVELS) {
       const cell = row.levels[level];
-      if (!cell || cell.applicable === false) continue;
+      // Every level has a cell (not-applicable ones say so); a missing one is a damaged summary, never a skip.
+      if (!cell) throw new Error(`${row.id} ${level}: no cell`);
+      if (cell.applicable === false) continue;
       const p = POINTS[cell.status] ?? 0;
       points += p;
       max++;
@@ -137,6 +139,19 @@ export function verifyTotals(summary) {
     }
   });
   return problems;
+}
+
+/**
+ * Everything wrong with a stored summary that a rerun is not needed to see:
+ * a cell whose applicability differs from the catalogue rule (marking a failing
+ * cell not applicable drops it from every total), and totals that disagree
+ * with the rows. `catalogueRows` is `deriveCatalogue(root).rows`.
+ */
+export function verifySummary(summary, catalogueRows) {
+  const byId = new Map(catalogueRows.map((r) => [r.id, r]));
+  const problems = (summary.rows ?? []).flatMap((r) => (byId.has(r.id) ? LEVELS.filter((l) => (r.levels[l]?.applicable === false) !== (notApplicable(byId.get(r.id), l) !== null))
+    .map((l) => `${r.id} ${l}: applicability differs from the catalogue rule`) : []));
+  return [...problems, ...verifyTotals(summary)];
 }
 
 /** Score probed cells. Pure. */
@@ -227,8 +242,8 @@ async function main(argv) {
       return 2;
     }
     if (baseline?.schema !== SUMMARY_SCHEMA) { console.error(`score: ${rel(check)} is not an ${SUMMARY_SCHEMA} summary`); return 2; }
-    const forged = verifyTotals(baseline);
-    if (forged.length) { console.error(`score: ${rel(check)}: its stored totals disagree with its rows:\n  ${forged.slice(0, 5).join('\n  ')}`); return 2; }
+    const forged = verifySummary(baseline, deriveCatalogue(ROOT).rows);
+    if (forged.length) { console.error(`score: ${rel(check)}: its stored totals or applicability disagree with its rows and the catalogue:\n  ${forged.slice(0, 5).join('\n  ')}`); return 2; }
   }
   let summary;
   try {

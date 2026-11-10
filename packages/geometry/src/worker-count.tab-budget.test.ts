@@ -34,19 +34,22 @@ function plan(fileSizeMB: number, cores: number, reportedGB: number | undefined)
 }
 
 describe('whole-tab peak model', () => {
-  it('reproduces the four measured cold loads it was calibrated on within -1 %..+3 %', () => {
-    // Peak summed Chrome PSS, Chrome 156, exact kernel (huge-files study
-    // 2026-11-10): real 343 MB model at 8 workers, 1.03/1.74/2.09 GB replicas at 4.
+  it('reproduces the six measured cold loads it was fitted to within ±2 %', () => {
+    // Peak summed Chrome PSS, Chrome 156, exact kernel, Pop (huge-file study
+    // and stage-1 evidence, 2026-11-10): real 343 MB model at 8 workers;
+    // 1.03 GB replica at 4 and 1, 1.74 GB at 4 and 2, 2.09 GB at 4 workers.
     const measured: Array<[fileMiB: number, workers: number, peakMiB: number]> = [
       [342_657_851 / 2 ** 20, 8, 5189],
-      [985.7, 4, 9185],
-      [1655.2, 4, 14955],
+      [985.7, 4, 9219],
+      [985.7, 1, 6523],
+      [1655.2, 4, 15040],
+      [1655.2, 2, 12045],
       [1990.0, 4, 18136],
     ];
     for (const [f, n, peak] of measured) {
       const ratio = estimateTabPeakMiB(f, n) / peak;
       expect(ratio).toBeGreaterThan(0.98);
-      expect(ratio).toBeLessThan(1.04);
+      expect(ratio).toBeLessThan(1.02);
     }
   });
 
@@ -166,9 +169,9 @@ describe('fail early when one worker cannot fit the device', () => {
   });
 
   it('does not refuse just below the boundary', () => {
-    // estimate(1) = 400 + 5.64 F; ceiling 6144 MiB → boundary at F ≈ 1018.4 MiB.
-    expect(plan(1018, 4, 4).exceedsDevice).toBe(false);
-    expect(plan(1019, 4, 4).exceedsDevice).toBe(true);
+    // estimate(1) = 500 + 6.08 F; ceiling 6144 MiB → boundary at F ≈ 928.3 MiB.
+    expect(plan(928, 4, 4).exceedsDevice).toBe(false);
+    expect(plan(929, 4, 4).exceedsDevice).toBe(true);
   });
 
   it('never refuses when deviceMemory is missing or possibly clamped', () => {

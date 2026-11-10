@@ -257,8 +257,8 @@ describe('computeWorkerCount', () => {
 
   it('low-end laptop (4 cores, 4 GB): 343 MB keeps 2 workers, 400 MB drops to 1 (whole-tab budget)', () => {
     // 4-core tier caps at 2. The tab budget on 4 GB is 3072 MiB. At 343 MB two
-    // workers are estimated at ~2.8 GiB and keep fitting; at 400 MB they are
-    // estimated at 3154 MiB (SAB + tables + pre-pass + 2 source copies), which
+    // workers are estimated at 2980 MiB and keep fitting; at 400 MB they are
+    // estimated at 3376 MiB (SAB + tables + pre-pass + 2 source copies), which
     // the old per-worker formula (2.2 GiB) under-counted, so one worker it is.
     const fits = computeWorkerCount({ fileSizeMB: 343, cores: 4, deviceMemoryGB: 4, totalJobs: 5000 });
     expect(fits.count).toBe(2);

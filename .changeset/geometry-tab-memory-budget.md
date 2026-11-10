@@ -3,7 +3,7 @@
 "@ifc-lite/viewer": patch
 ---
 
-Budget parallel geometry workers by the memory of the whole tab. Every wasm instance (the pre-pass worker and each geometry worker) holds a full copy of the source, so the tab peak grows with workers × file size; the worker count is now the cores tier lowered to the largest count whose estimated tab peak (`300 MiB + 3.4·F + (N+1)·(50 MiB + 1.12·F)`, calibrated on measured cold loads) fits 75 % of `navigator.deviceMemory` (at least 1 GiB headroom). Counts that already fit are unchanged; large files get fewer workers instead of exhausting the tab, never fewer than one.
+Budget parallel geometry workers by the memory of the whole tab. Every wasm instance (the pre-pass worker and each geometry worker) holds a full copy of the source, so the tab peak grows with workers × file size; the worker count is now the cores tier lowered to the largest count whose estimated tab peak (`300 MiB + 4.36·F + (N+1)·(100 MiB + 0.86·F)`, fitted to six measured cold loads within ±1.3 %) fits 75 % of `navigator.deviceMemory` (at least 1 GiB headroom). Counts that already fit are unchanged; large files get fewer workers instead of exhausting the tab, never fewer than one.
 
 New, opt-in for the host: `assertGeometryMemoryFits(byteLength, workerCountOverride?)` throws `GeometryMemoryBudgetError` when even one worker's estimate exceeds the most memory the device can have; `processParallel`/`processAdaptive` never throw for this and still run one worker (only when `deviceMemory` proves an upper bound; absent or possibly clamped values never refuse). `WorkerCountResult` gains `estimatedPeakMiB`, `budgetMiB`, `fitsBudget`, `exceedsDevice`, `minimumPeakMiB` and `deviceCeilingMiB`, and `reason` can be `'override'`.
 

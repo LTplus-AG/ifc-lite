@@ -15,12 +15,12 @@
  *
  * with F the source size in MiB and N the geometry worker count.
  *
- * Calibration: peak summed Chrome PSS of four cold loads (Chrome 156,
- * exact kernel, `?perfMem=1`) of a real 343 MB architectural model at
- * 8 workers and synthetic 1.03 / 1.74 / 2.09 GB replicas of it at 4
- * workers. The model is within -1 % to +3 % of all four. Summed wasm heaps
- * divided by the five instances gave 1.07-1.10 x F per instance above a
- * ~50 MiB base, so 1.12 is slightly conservative. The file is sparse
+ * Calibration: least-squares fit to the peak summed Chrome PSS of six cold
+ * loads (Chrome 156, exact kernel, `?perfMem=1`): a real 343 MB architectural
+ * model at 8 workers, synthetic 1.03 GB replicas of it at 4 and 1 workers,
+ * 1.74 GB at 4 and 2, 2.09 GB at 4. The model is within ±1.2 % of all six;
+ * the runs at different worker counts pin the per-worker slope (≈ 0.9 × F
+ * per worker removed, measured directly). The file is sparse
  * (~78 B per record). Denser files carry a larger index per byte and cost
  * more per instance, so for them the model is an UNDER-estimate. That is
  * the safe direction for the refusal below (it refuses less), and the
@@ -33,11 +33,11 @@ export const TAB_MEMORY_MODEL = {
   /** Page, renderer and wasm-module baseline that does not scale with the file. */
   fixedMiB: 300,
   /** Source SAB (1×) + main-thread entity/metadata tables + parser-worker tables + received meshes. */
-  sharedPerSourceMiB: 3.4,
+  sharedPerSourceMiB: 4.36,
   /** Per wasm instance (allocator, module state, batch working set) independent of the file. */
-  perInstanceMiB: 50,
-  /** Per wasm instance: its whole-source copy (1×) + its entity index + scratch. */
-  perInstancePerSourceMiB: 1.12,
+  perInstanceMiB: 100,
+  /** Per wasm instance: its whole-source copy + its entity index + scratch, net of what the tab shares. */
+  perInstancePerSourceMiB: 0.86,
   /** The pre-pass worker is one more full-source instance, alive while the geometry stream runs. */
   prepassInstances: 1,
 } as const;

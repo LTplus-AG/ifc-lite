@@ -6115,8 +6115,10 @@ instance (the pre-pass worker and each geometry worker) holds a full copy of the
 per-worker cap (`1.5·F` per worker, `2.5·F` for the main thread, no pre-pass term) under-counted: a 1.03 GB replica
 peaked at ~9 × F of summed Chrome PSS at 4 workers, ~97 % of it in one renderer process. `worker-count.ts` now
 lowers the cores tier to the largest N whose `estimateTabPeakMiB` (`tab-memory-budget.ts`:
-`300 MiB + 3.4·F + (N+1)·(50 MiB + 1.12·F)`) fits 75 % of `deviceMemory`. That model reproduces four measured peaks
-(343 MB at 8 workers, 1.03 / 1.74 / 2.09 GB at 4) within -1 % to +3 %. When one worker cannot fit the most RAM
+`300 MiB + 4.36·F + (N+1)·(100 MiB + 0.86·F)`) fits 75 % of `deviceMemory`. That model reproduces six measured peaks
+(343 MB at 8 workers; 1.03 GB at 4 and 1; 1.74 GB at 4 and 2; 2.09 GB at 4) within ±1.3 %. A first fit on the four
+4-/8-worker points alone (`3.4·F`, `1.12·F` per instance) under-estimated the 1-worker peak by 9 %. Measure at a
+second worker count before trusting a per-worker slope. When one worker cannot fit the most RAM
 `deviceMemory` proves the device can have, the load is refused before the file is read.
 
 Lessons:

@@ -4,7 +4,6 @@
 import type { UploadTarget, UploadOptions, UploadResult, DownloadOptions } from './file-transfer-types.js';
 export type { UploadTarget, UploadOptions, UploadResult, UploadConflict, DownloadOptions } from './file-transfer-types.js';
 
-
 import type { SourceAuth } from './source-auth.js';
 export type { SourceAuth, SourceIdentity } from './source-auth.js';
 
@@ -14,13 +13,8 @@ export type { SourceAuth, SourceIdentity } from './source-auth.js';
 // This package is dependency-free. Plugins import only from here; they never
 // touch the DOM, the store, or any app-internal module.
 //
-// Shape notes (v2). The v1 contract was drawn around a single provider whose
-// API cannot filter server-side, and it encoded that limitation as the
-// interface. v2 is drawn against two deliberately dissimilar providers — a
-// static-API-key CDE with no CORS and no server-side folder filtering, and an
-// OAuth CDE with per-folder listing, cursor pagination and pre-signed download
-// URLs on a foreign host. Every difference between them is expressed as a
-// declared capability rather than as an assumption.
+// Providers differ in auth, CORS, filtering and download transport. Declare
+// those differences as capabilities rather than assuming one provider's API.
 // ============================================================================
 
 // ---------------------------------------------------------------------------

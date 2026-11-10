@@ -546,3 +546,20 @@ describe('base identity verification (#9526)', () => {
     expect(progress).toEqual([]);
   });
 });
+
+it('refuses a concrete base when fresh Dalux metadata has no comparable identity (#9526)', async () => {
+  const inner = setup().fetchImpl;
+  let posts = 0;
+  const ctx = createDaluxMockContext(async (input, init) => {
+    if (init?.method === 'POST') posts++;
+    const response = await inner(input, init);
+    if ((init?.method ?? 'GET') === 'GET' && String(input).endsWith('/files/file-a')) {
+      const payload = await response.json() as { data: Record<string, unknown> };
+      delete payload.data.fileRevisionId; delete payload.data.contentHash;
+      return new Response(JSON.stringify(payload), { headers: { 'Content-Type': 'application/json' } });
+    }
+    return response;
+  });
+  await expect(new DaluxBuildProvider().uploadFile(ctx, { mode: 'new-version', ref: FILE_A, baseRevisionId: 'rev-1' }, bytesOf('EDITED'))).rejects.toThrow(/Cannot verify/);
+  expect(posts).toBe(0);
+});

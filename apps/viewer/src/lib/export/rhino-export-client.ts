@@ -40,8 +40,9 @@ export interface RhinoExportWorkerLike {
 }
 
 /**
- * Ceiling on one export. Generous because the measured serialize rate is
- * about 10 MB/s and a large model writes hundreds of MB; reaching it means the
+ * Longest silence allowed between worker messages; each phase or progress
+ * message restarts it. Generous because serialization posts nothing while it
+ * runs (about 10 MB/s, hundreds of MB on a large model); reaching it means the
  * worker is gone (an OS-killed worker fires neither `message` nor `error`),
  * not slow.
  */
@@ -90,20 +91,26 @@ export function exportRhino3dmInWorker(
       worker.terminate();
       fn();
     }
+    function armTimer(): void {
+      if (timer !== null) clearTimeout(timer);
+      timer = setTimeout(
+        () => settle(() => reject(new Error('The Rhino export worker stopped responding'))),
+        RHINO_EXPORT_TIMEOUT_MS,
+      );
+    }
     signal?.addEventListener('abort', onAbort, { once: true });
-    timer = setTimeout(
-      () => settle(() => reject(new Error('The Rhino export worker stopped responding'))),
-      RHINO_EXPORT_TIMEOUT_MS,
-    );
+    armTimer();
 
     worker.onmessage = (event) => {
       const message = event.data;
       if (!message || (message.id !== id && !(message.type === 'error' && message.id === 0))) return;
       switch (message.type) {
         case 'phase':
+          armTimer();
           onProgress?.({ phase: message.phase });
           return;
         case 'progress':
+          armTimer();
           onProgress?.({ phase: 'objects', done: message.done, total: message.total });
           return;
         case 'complete':

@@ -59,6 +59,16 @@ for (const schema of ['IFC2X3', 'IFC4'] as const) it(`#9409 mirrors door ${schem
   });
   emit('IfcRelDefinesByType', { GlobalId: generateIfcGuid(), OwnerHistory: s.anchor.ownerHistoryId === null ? null : `#${s.anchor.ownerHistoryId}`,
     RelatedObjects: [...selected, untouched].map(id => `#${id}`), RelatingType: `#${original}` });
+  const material = emit('IfcMaterial', { Name: 'Door finish' });
+  const system = emit('IfcClassification', { Source: 'Example', Edition: '2024', Name: 'Door classes' });
+  const classification = emit('IfcClassificationReference', { ReferencedSource: `#${system}`,
+    [schema === 'IFC2X3' ? 'ItemReference' : 'Identification']: 'Doors' });
+  for (const [type, key, target] of [
+    ['IfcRelAssociatesMaterial', 'RelatingMaterial', material],
+    ['IfcRelAssociatesClassification', 'RelatingClassification', classification],
+  ] as const) emit(type, { GlobalId: generateIfcGuid(),
+    OwnerHistory: s.anchor.ownerHistoryId === null ? null : `#${s.anchor.ownerHistoryId}`,
+    RelatedObjects: [`#${original}`], [key]: `#${target}` });
   mirrorElementsInStore(s.store, s.editor, [a.wallId], { axis: [[0, 0], [0, 10]] });
   const saved = await parse(exportText(s)), view = new MutablePropertyView(saved.properties, 'saved');
   const reader = new AnchorEntityReader(saved, view);
@@ -70,6 +80,12 @@ for (const schema of ['IFC2X3', 'IFC4'] as const) it(`#9409 mirrors door ${schem
   expect(mirrored[0]).not.toBe(original);
   expect(typeFor(selected[1])).toEqual(mirrored);
   expect(typeFor(untouched)).toEqual([original]);
+  // Mirroring an occurrence must retain the metadata it inherited from its type.
+  for (const type of ['IFCRELASSOCIATESMATERIAL', 'IFCRELASSOCIATESCLASSIFICATION']) {
+    const relations = [...reader.ids(type)].map(id => reader.entity(id)!);
+    expect(relations).toHaveLength(1);
+    expect(new Set((relations[0].attributes[4] as unknown[]).map(refId))).toEqual(new Set([original, mirrored[0]]));
+  }
   for (const [id, operation] of [[mirrored[0]!, '.SINGLE_SWING_RIGHT.'], [original, '.SINGLE_SWING_LEFT.']] as const) {
     const entity = reader.entity(id)!;
     expect(entity.attributes[entity.names.indexOf('OperationType')]).toBe(operation);

@@ -44,8 +44,9 @@ import { slabExtrusionFrame } from './edit/slab-edit-frame.js';
 import { localBodyExtent, placedBodyExtent } from './resolve-host.js';
 import { fileOpeningsOf } from './base-quantities-openings.js';
 import { baseQuantitySetName, BASE_QUANTITY_TYPES, LINEAR_TYPES, SLAB_TYPES, WALL_TYPES, effectiveElementType } from './base-quantities-kinds.js';
-import { roofPlaneAreas } from './base-quantities-roof.js';
+import { roofQuantityRows } from './base-quantities-roof.js';
 import { wallBodyOutline } from './wall-join.js';
+import { ROOF_ATTACHMENT } from './edit/wall-base-solid.js';
 import { readWallJoinTarget } from './wall-join-read.js';
 
 /** A quantity in SI, on its way to the file's own units. */
@@ -195,8 +196,8 @@ function wallSet(reading: Reading, id: number): QuantitySet | null {
     ['GrossSideArea', QuantityType.Area, side],
     ['GrossVolume', QuantityType.Volume, volume],
   ];
-  // A wall's openings subtract from its net side area and volume, and from its
-  // footprint where they reach the floor: a door does, a window with a sill does not.
+  // Roof cuts invalidate prism height/areas/volume; the floor footprint remains unchanged.
+  if (reading.view.getPropertyValue(id, ROOF_ATTACHMENT, 'Clipped') === true) return toQuantitySet(reading.dataStore, reading.scale, 'Qto_WallBaseQuantities', rows.filter(([name]) => name === 'Length' || name === 'Width' || name.endsWith(footprintKey)));
   const boxes = openingBoxes(reading, id);
   const body = boxes && (boxes.length === 0 ? null : hostBox(reading, id));
   // Only an opening that meets the body cuts it; one moved clear of it changes nothing.
@@ -283,12 +284,8 @@ function slabLikeSet(reading: Reading, id: number, isRoof: boolean): QuantitySet
 
 /** A pitched roof (`roof-footprint.ts`): its planes' sloped and plan areas. It has no openings of its own to net. */
 function pitchedRoofSet(reading: Reading, id: number): QuantitySet | null {
-  const areas = roofPlaneAreas(reading.dataStore, reading.view, reading.editor, id, reading.scale);
-  const openings = reading.openingsOf(id);
-  if (!areas || openings === null || openings.length > 0) return null;
-  return toQuantitySet(reading.dataStore, reading.scale, 'Qto_RoofBaseQuantities', [
-    ['GrossArea', QuantityType.Area, areas.sloped], ['NetArea', QuantityType.Area, areas.sloped], ['ProjectedArea', QuantityType.Area, areas.projected],
-  ]);
+  const rows = roofQuantityRows(reading.dataStore, reading.view, reading.editor, id, reading.scale, reading.openingsOf(id));
+  return rows ? toQuantitySet(reading.dataStore, reading.scale, 'Qto_RoofBaseQuantities', rows) : null;
 }
 
 /** Whether a slab the plan readers refuse for its turn about the vertical is otherwise upright. */

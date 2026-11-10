@@ -116,6 +116,8 @@ export function recordResolvedModellingCommit<T>(
   commit: (editor: StoreEditor, dataStore: IfcDataStore) => T,
   batchId?: string,
   appendOnly = false,
+  /** Publish creation metadata with the room graph while the local overlay is still a draft. */
+  publishCreated?: (result: T, view: MutablePropertyView) => void,
 ): T {
   const state = store.getState();
   const { modelId } = target;
@@ -126,11 +128,24 @@ export function recordResolvedModellingCommit<T>(
   const cursor = appendOnly ? view.getMutationCount() : 0;
   const seen = appendOnly ? null : new Set(view.getMutations().map(m => m.id));
   const overlayBefore = appendOnly ? null : new Map(view.getNewEntities().map(e => [e.expressId, e]));
-  const prepared = room ? view.prepareAtomic(draft => commit(new StoreEditor(dataStore, draft), dataStore)) : null;
+  const prepared = room ? view.prepareAtomic(draft => {
+    const draftEditor = new StoreEditor(dataStore, draft);
+    const result = commit(draftEditor, dataStore);
+    if (publishCreated) {
+      // Room encoding reads the same staged records as the builder, without
+      // exposing them to live model readers before publication succeeds.
+      const stagedStore = { ...store, getState: () => {
+        const current = store.getState();
+        return { ...current, getMutationView: (id: string) => id === modelId ? draft : current.getMutationView(id) };
+      } };
+      mirrorStoreOverlayDelta(stagedStore, modelId, draftEditor, dataStore, room, 'modelling', () => publishCreated(result, draft));
+    }
+    return result;
+  }) : null;
   const result = prepared ? prepared.result : commit(editor, dataStore);
   prepared?.commit();
   try {
-    if (room) mirrorStoreOverlayDelta(store, modelId, editor, dataStore, room, 'modelling');
+    if (room && !publishCreated) mirrorStoreOverlayDelta(store, modelId, editor, dataStore, room, 'modelling');
   } catch (error) {
     prepared?.rollback();
     throw error;

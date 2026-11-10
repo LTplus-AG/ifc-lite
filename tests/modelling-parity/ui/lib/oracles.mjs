@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { readFileSync } from 'node:fs';
+import { judgeRoof } from '../../probes/sdk/lib/roof-oracle.mjs';
 export function hardwareAdapter(a) {
   return !!a && !a.isFallbackAdapter && !a.info?.isFallbackAdapter && !a.fallback && !/swiftshader|llvmpipe|lavapipe|microsoft basic render/i.test(`${a.architecture} ${a.description} ${a.info?.architecture} ${a.info?.description}`);
 }
@@ -94,4 +95,11 @@ export function copiedPlansMatch(reference, floors) {
       return true;
     });
   });
+}
+
+/** Judge only the exported roof, using the SDK oracle's sampled envelope and volume. */
+export function roofGeometry(step, meshes, expected) {
+  const roofs = [...step.of('IFCROOF'), ...step.of('IFCSLAB').filter(e => e.args?.[8]?.enum === 'ROOF')];
+  if (roofs.length !== 1) return `expected one roof, found ${roofs.length}`;
+  return judgeRoof(meshes.get(roofs[0].id)?.parts ?? [], expected);
 }

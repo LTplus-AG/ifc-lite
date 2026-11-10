@@ -38,3 +38,4 @@ for (const provider of ['proxy', 'openai', 'anthropic'] as const) test(`#7093 mo
   assert.ok(result.logs.some(log => log.args[0] === '7093 native walls' && log.args[1] === expected), 'QuickJS calls the real model-backed query adapter');
   assert.equal(useRequestReceipts.getState().inFlight.length, 0);
 });
+

@@ -5,6 +5,15 @@
 import type { Catalogue } from '../../registry';
 
 export const modelingCommandFr = {
+  "modelingCommand.roof.shape": "Forme",
+  "modelingCommand.roof.hip": "Croupes",
+  "modelingCommand.roof.gable": "Deux pans",
+  "modelingCommand.roof.mono": "Monopente",
+  "modelingCommand.roof.flat": "Plat",
+  "modelingCommand.roof.pitch": "Pente",
+  "modelingCommand.roof.overhang": "Débord",
+  "modelingCommand.roof.edge": "Arête",
+  "modelingCommand.roof.edgeSlope": "Pente de l’arête",
   "modelingCommand.closeAria": "Quitter la commande",
   "modelingCommand.aim.tag": "Sur le plan de travail",
   "modelingCommand.snap.increment": "Incrément {step} · Alt pour suspendre",

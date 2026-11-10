@@ -10,6 +10,15 @@ import type { TranslationValue } from '../types';
  * label, field names and hints live beside it in this catalogue too.
  */
 export const modelingCommandEn = {
+  "modelingCommand.roof.shape": "Shape",
+  "modelingCommand.roof.hip": "Hip",
+  "modelingCommand.roof.gable": "Gable",
+  "modelingCommand.roof.mono": "Mono-pitch",
+  "modelingCommand.roof.flat": "Flat",
+  "modelingCommand.roof.pitch": "Pitch",
+  "modelingCommand.roof.overhang": "Overhang",
+  "modelingCommand.roof.edge": "Edge",
+  "modelingCommand.roof.edgeSlope": "Edge slope",
   'modelingCommand.closeAria': 'Leave the command',
   'modelingCommand.aim.tag': 'On workplane',
   "modelingCommand.snap.increment": "Increment {step} · Alt to suspend",

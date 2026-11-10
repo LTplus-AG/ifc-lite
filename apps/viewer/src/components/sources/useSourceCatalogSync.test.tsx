@@ -44,7 +44,7 @@ import type {
   SourceFile,
   SourceProject,
 } from '@ifc-lite/plugin-api';
-import { saveSourceCatalogCache } from '@/lib/sources/persistence';
+import { loadSourceCatalogCache, saveSourceCatalogCache } from '@/lib/sources/persistence';
 import { useSourceCatalogSync } from './useSourceCatalogSync.js';
 
 class MemoryStorage implements Storage {
@@ -703,4 +703,35 @@ it('#9567 manual sync removes prior folder files before its replacement area pag
   const size = harness.get().filesByContainer.size;
   await act(async () => { release(); await sync; });
   assert.equal(size, 0, 'the new sync must not retain stale prior-generation files');
+});
+
+for (const order of ['files first', 'folders first'] as const) it(`#9567 overlapping sync and pagination persist the complete live catalog: ${order}`, async () => {
+  const provider = new FakeProvider();
+  let finishFiles = () => {}, finishFolders = () => {};
+  provider.listContainers = async (_ctx, _project, _parent, options) => {
+    if (options?.cursor) await new Promise<void>(resolve => { finishFolders = resolve; });
+    return { items: [{ id: options?.cursor ? 'folder-2' : 'folder-1', name: 'Folder', parentId: 'area-1' }], cursor: options?.cursor ? undefined : 'next' };
+  };
+  provider.listFiles = async () => {
+    await new Promise<void>(resolve => { finishFiles = resolve; });
+    return { items: provider.files };
+  };
+  const harness = renderCatalogSync(provider);
+  try {
+    await act(async () => harness.get().openFileArea('project-1', 'area-1'));
+    act(() => harness.get().loadMoreFolders(null));
+    if (order === 'files first') {
+      await act(async () => finishFiles());
+      await act(async () => finishFolders());
+    } else {
+      await act(async () => finishFolders());
+      await act(async () => finishFiles());
+    }
+    const cached = loadSourceCatalogCache(provider.manifest.name, 'project-1', 'area-1');
+    assert.equal(Boolean(cached), true, 'one completion must persist the combined complete catalog');
+    assert.deepEqual(cached!.folders.map(folder => folder.id), ['folder-1', 'folder-2']);
+    assert.deepEqual(cached!.files.map(file => file.id), ['file-1']);
+    await act(async () => harness.get().openFileArea('project-1', 'area-1'));
+    assert.deepEqual(harness.get().folders.map(folder => folder.id), ['folder-1', 'folder-2'], 'reopening restores the complete cache');
+  } finally { await act(async () => { finishFiles(); finishFolders(); }); }
 });

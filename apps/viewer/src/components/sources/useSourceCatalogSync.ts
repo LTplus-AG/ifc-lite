@@ -5,9 +5,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { FileSourceProvider, PluginContext, SourceContainer, SourceFile } from '@ifc-lite/plugin-api';
 import { useAsyncRun } from '@/hooks/useAsyncRun';
+import { useCatalogPages } from './useCatalogPages';
 import { toast } from '@/components/ui/toast';
 import { isCatalogCacheable, persistCompleteCatalog, readCachedCatalog } from './sourceCatalogCache';
-import { appendPage, fetchAllFilePages, fetchContainerPage, fetchFilePage, type PagedItems } from './sourceCatalogPaging';
+import { appendPage, fetchAllFilePages, fetchContainerPage, fetchFilePage } from './sourceCatalogPaging';
 import {
   collectUniqueById,
   isCatalogComplete,
@@ -70,10 +71,10 @@ export function useSourceCatalogSync({ provider, ctx, setError, onSynced }: UseS
 
   // flat-subtree: single entry keyed by the file-area id.
   // direct-children: one entry per browsed parent container.
-  const [containersByParent, setContainersByParent] = useState(new Map<string, PagedItems<SourceContainer>>());
+  const { pages: containersByParent, current: containersRef, replace: setContainersByParent, setPage: setContainerPage } = useCatalogPages<SourceContainer>();
   // recursive files: single entry keyed by the file-area id.
   // per-folder files: one entry per browsed container.
-  const [filesByContainer, setFilesByContainer] = useState(new Map<string, PagedItems<SourceFile>>());
+  const { pages: filesByContainer, current: filesRef, replace: setFilesByContainer, setPage: setFilePage } = useCatalogPages<SourceFile>();
 
   const [loadingFolders, setLoadingFolders] = useState(false);
   const [loadingFiles, setLoadingFiles] = useState(false);
@@ -119,17 +120,12 @@ export function useSourceCatalogSync({ provider, ctx, setError, onSynced }: UseS
   );
 
   const maybePersist = useCallback(
-    (
-      projectId: string,
-      fileAreaId: string,
-      containers: ReadonlyMap<string, PagedItems<SourceContainer>>,
-      files: ReadonlyMap<string, PagedItems<SourceFile>>,
-    ) => {
+    (projectId: string, fileAreaId: string) => {
       if (!cacheable) return;
-      const updatedAt = persistCompleteCatalog({ providerName, projectId, fileAreaId }, containers, files);
+      const updatedAt = persistCompleteCatalog({ providerName, projectId, fileAreaId }, containersRef.current, filesRef.current);
       if (updatedAt !== null) setCatalogUpdatedAt(updatedAt);
     },
-    [cacheable, providerName],
+    [cacheable, containersRef, filesRef, providerName],
   );
 
   const applyCachedCatalog = useCallback(
@@ -143,7 +139,7 @@ export function useSourceCatalogSync({ provider, ctx, setError, onSynced }: UseS
       setCatalogUpdatedAt(cached.updatedAt);
       return true;
     },
-    [cacheable, providerName],
+    [cacheable, providerName, setContainersByParent, setFilesByContainer],
   );
 
   const syncFileArea = useCallback(
@@ -165,11 +161,9 @@ export function useSourceCatalogSync({ provider, ctx, setError, onSynced }: UseS
 
         const filePage = await fetchFiles(projectId, fileAreaId, signal);
         if (requestGenRef.current !== gen) return;
-        const nextContainers = new Map([[fileAreaId, containerPage]]);
-        const nextFiles = new Map([[fileAreaId, filePage]]);
-        setFilesByContainer(previous => new Map(previous).set(fileAreaId, filePage));
+        setFilePage(fileAreaId, filePage);
         setCatalogUpdatedAt(null);
-        maybePersist(projectId, fileAreaId, nextContainers, nextFiles);
+        maybePersist(projectId, fileAreaId);
         onSynced?.();
         if (options.announce) {
           const folderCount = containerPage.items.length;
@@ -191,7 +185,7 @@ export function useSourceCatalogSync({ provider, ctx, setError, onSynced }: UseS
         }
       }
     },
-    [beginGeneration, fetchContainers, fetchFiles, maybePersist, onSynced, setError],
+    [beginGeneration, fetchContainers, fetchFiles, maybePersist, onSynced, setError, setContainersByParent, setFilesByContainer, setFilePage],
   );
 
   /** Resolves a newly-entered file area's catalog: localStorage cache (complete
@@ -217,7 +211,7 @@ export function useSourceCatalogSync({ provider, ctx, setError, onSynced }: UseS
       if (applyCachedCatalog(projectId, fileAreaId)) return;
       void syncFileArea(projectId, fileAreaId);
     },
-    [applyCachedCatalog, syncFileArea, paging.reset],
+    [applyCachedCatalog, syncFileArea, paging.reset, setContainersByParent, setFilesByContainer],
   );
 
   /**
@@ -246,12 +240,12 @@ export function useSourceCatalogSync({ provider, ctx, setError, onSynced }: UseS
           if (needChildren) {
             const page = await fetchContainers(area.projectId, container.id, undefined, signal);
             if (requestGenRef.current !== gen) return;
-            setContainersByParent((previous) => new Map(previous).set(container.id, page));
+            setContainerPage(container.id, page);
           }
           if (needFiles) {
             const page = await fetchFiles(area.projectId, container.id, signal);
             if (requestGenRef.current !== gen) return;
-            setFilesByContainer((previous) => new Map(previous).set(container.id, page));
+            setFilePage(container.id, page);
           }
         } catch (err) {
           if (requestGenRef.current === gen && !(err instanceof DOMException && err.name === 'AbortError')) {
@@ -265,7 +259,7 @@ export function useSourceCatalogSync({ provider, ctx, setError, onSynced }: UseS
         }
       })();
     },
-    [containersByParent, fetchContainers, fetchFiles, filesByContainer, flatSubtree, listFilesIsRecursive, setError],
+    [containersByParent, fetchContainers, fetchFiles, filesByContainer, flatSubtree, listFilesIsRecursive, setError, setContainerPage, setFilePage],
   );
 
   /** The map key holding folders for the current selection. */
@@ -294,10 +288,8 @@ export function useSourceCatalogSync({ provider, ctx, setError, onSynced }: UseS
           const page = await fetchContainers(area.projectId, key, current.cursor, signal);
           if (requestGenRef.current !== gen) return;
           const merged = appendPage(current, page);
-          // Only complete flat/recursive catalogs persist; they have no concurrent on-demand writes.
-          const next = new Map(containersByParent).set(key, merged);
-          setContainersByParent(previous => new Map(previous).set(key, merged));
-          maybePersist(area.projectId, area.fileAreaId, next, filesByContainer);
+          setContainerPage(key, merged);
+          maybePersist(area.projectId, area.fileAreaId);
         } catch (err) {
           if (requestGenRef.current === gen && !(err instanceof DOMException && err.name === 'AbortError')) {
             setError(err instanceof Error ? err.message : String(err));
@@ -305,7 +297,7 @@ export function useSourceCatalogSync({ provider, ctx, setError, onSynced }: UseS
         }
       });
     },
-    [containersByParent, fetchContainers, filesByContainer, folderKeyFor, loadingMore, maybePersist, paging.start, setError],
+    [containersByParent, fetchContainers, folderKeyFor, loadingMore, maybePersist, paging.start, setError, setContainerPage],
   );
 
   /** The map key holding files for the current selection. */
@@ -334,10 +326,8 @@ export function useSourceCatalogSync({ provider, ctx, setError, onSynced }: UseS
           const page = await fetchFilePage(provider, ctx, area.projectId, key, current.cursor, signal);
           if (requestGenRef.current !== gen) return;
           const merged = appendPage(current, page);
-          // Only complete flat/recursive catalogs persist; they have no concurrent on-demand writes.
-          const next = new Map(filesByContainer).set(key, merged);
-          setFilesByContainer(previous => new Map(previous).set(key, merged));
-          maybePersist(area.projectId, area.fileAreaId, containersByParent, next);
+          setFilePage(key, merged);
+          maybePersist(area.projectId, area.fileAreaId);
         } catch (err) {
           if (requestGenRef.current === gen && !(err instanceof DOMException && err.name === 'AbortError')) {
             setError(err instanceof Error ? err.message : String(err));
@@ -345,7 +335,7 @@ export function useSourceCatalogSync({ provider, ctx, setError, onSynced }: UseS
         }
       });
     },
-    [containersByParent, ctx, fileKeyFor, filesByContainer, loadingMore, maybePersist, paging.start, provider, setError],
+    [ctx, fileKeyFor, filesByContainer, loadingMore, maybePersist, paging.start, provider, setError, setFilePage],
   );
 
   const resetCatalog = useCallback(() => {
@@ -365,7 +355,7 @@ export function useSourceCatalogSync({ provider, ctx, setError, onSynced }: UseS
     setLoadingFiles(false);
     paging.reset();
     setSyncing(false);
-  }, [paging.reset]);
+  }, [paging.reset, setContainersByParent, setFilesByContainer]);
 
   return {
     folders,

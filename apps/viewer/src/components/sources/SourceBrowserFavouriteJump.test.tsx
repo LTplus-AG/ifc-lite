@@ -689,3 +689,54 @@ it('#9567 X files survive the initial area sync completing', async () => {
     assert.equal(fileSpinner(), false);
   } finally { provider.releaseAll(); await pump(); }
 });
+
+it('#9567 an uncached selected folder shows its own folder spinner while child fetch is held', async () => {
+  class HeldChildrenProvider extends FakeProvider {
+    override readonly manifest: PluginManifest = { ...manifest, capabilities: { ...manifest.capabilities, containerListing: 'direct-children', listFilesIsRecursive: false } };
+    release = () => {};
+    releaseFiles = () => {};
+    override listContainers(c: PluginContext, project: string, parent?: string): Promise<Page<SourceContainer>> {
+      if (parent === FOLDER.id) return new Promise(resolve => { this.release = () => resolve({ items: [{ id: 'new-child', name: 'New child', parentId: FOLDER.id }] }); });
+      return super.listContainers(c, project, parent);
+    }
+    override listFiles(_c?: PluginContext, _project?: string, parent?: string): Promise<Page<SourceFile>> {
+      if (parent === FOLDER.id) return new Promise(resolve => { this.releaseFiles = () => resolve({ items: [] }); });
+      return Promise.resolve({ items: [] });
+    }
+  }
+  const provider = new HeldChildrenProvider();
+  try {
+    await jumpTo(favourite({ containerId: 'area-1', containerName: 'Documents' }), provider);
+    act(() => button('Models')!.click()); await pump();
+    assert.equal(trail(), 'Documents / Models');
+    assert.equal(Boolean(document.querySelector('output[aria-label="Subfolders"]')), true, 'selected folder loading is visible independently of file loading');
+    assert.equal(text().includes('New child'), false, 'the child list is empty while fetchContainers is pending');
+    provider.release(); await pump();
+    assert.equal(Boolean(document.querySelector('output[aria-label="Subfolders"]')), false);
+    assert.equal(text().includes('New child'), true);
+    assert.equal(fileSpinner(), true, 'files can remain pending after children arrive');
+  } finally { provider.release(); provider.releaseFiles(); await pump(); }
+});
+
+it('#9567 failed manual recursive file sync leaves subfolders enabled', async () => {
+  class FailedSyncProvider extends FakeProvider {
+    fail = false;
+    reject = () => {};
+    override listFiles(): Promise<Page<SourceFile>> {
+      if (this.fail) return new Promise((_resolve, reject) => { this.reject = () => reject(new Error('file listing unavailable')); });
+      return super.listFiles();
+    }
+  }
+  const provider = new FailedSyncProvider();
+  try {
+    await jumpTo(favourite({ containerId: 'area-1', containerName: 'Documents' }), provider);
+    assert.equal(button('Models')!.disabled, false);
+    provider.fail = true;
+    act(() => button('Sync')!.click()); await pump();
+    const disabledWhilePending = button('Models')!.disabled;
+    provider.reject(); await pump();
+    assert.equal(text().includes('file listing unavailable'), true);
+    assert.equal(button('Models')!.disabled, false, 'a failed file listing cannot assert that the folder is empty');
+    assert.equal(disabledWhilePending, false, 'folder-only data cannot disable folders while files are pending');
+  } finally { provider.reject(); await pump(); }
+});

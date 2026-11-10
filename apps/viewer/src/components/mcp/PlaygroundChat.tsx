@@ -101,6 +101,9 @@ export function PlaygroundChat({
   const [dispatching, setDispatching] = useState(false);
   const { busy: isStreaming, start, reset } = useAsyncRun({ key: model, label: 'playground conversation' });
   useEffect(() => {
+    // A new IFC model retires any stopped tool's lock; written here, not during
+    // render, so a discarded render cannot release it.
+    dispatchPending.current = null;
     setDispatching(false);
     setMessages(prior => prior.map(message => message.pending ? { ...message, pending: false } : message));
   }, [model]);
@@ -142,7 +145,6 @@ export function PlaygroundChat({
     // re-dropping a revised `model.ifc` keeps the id while every expressId may
     // have moved — the load counter is what distinguishes them.
     loadCounter.current += 1;
-    dispatchPending.current = null;
     nextRef.current = model ? { loadId: loadCounter.current, name: model.name } : null;
   }
   const next = nextRef.current;

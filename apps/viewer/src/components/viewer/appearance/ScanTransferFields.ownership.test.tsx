@@ -61,8 +61,8 @@ for (const gesture of ['preview', 'apply', 'unmount'] as const) test(`scan trans
   const bounds = { min: {x:0,y:0,z:-1}, max: {x:1,y:0,z:0} };
   const geometry: GeometryResult = { meshes: [targetMesh], totalTriangles: 1, totalVertices: 3,
     coordinateInfo: { originShift: {x:0,y:0,z:0}, originalBounds: bounds, shiftedBounds: bounds, hasLargeCoordinates: false } };
-  const target = { ...fixtureModel('target'), loadedAt: 1, ifcDataStore: store, schemaVersion: 'IFC4' as const, maxExpressId: 25, geometryResult: geometry };
-  const scan = { ...fixtureModel('source', { idOffset: 1_000_000 }), loadedAt: 2, sourceFile: new File(['retained source'], 'scan.glb'),
+  const target: ReturnType<typeof fixtureModel> = { ...fixtureModel('target'), loadedAt: 1, ifcDataStore: store, schemaVersion: 'IFC4' as const, maxExpressId: 25, geometryResult: geometry };
+  const scan: ReturnType<typeof fixtureModel> = { ...fixtureModel('source', { idOffset: 1_000_000 }), loadedAt: 2, sourceFile: new File(['retained source'], 'scan.glb'),
     geometryResult: { ...geometry, meshes: [scanMesh] } };
   useViewerStore.setState({ models: new Map([['target', target], ['source', scan]]), activeModelId: 'target',
     ifcDataStore: store, geometryResult: geometry, editEnabled: true, mutationViews: new Map([['target', view]]), storeEditors: new Map([['target', editor]]),

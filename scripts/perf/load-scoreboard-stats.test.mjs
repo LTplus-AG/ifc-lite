@@ -9,7 +9,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  aaNoiseFloor, bootstrapHalfWidth, browserShares, browserStages, diffElements, gpuUnhealthy, ownNoiseFloor, expectedCacheTier, gainOf, median, nativeStages, rankShares,
+  aaNoiseFloor, bootstrapHalfWidth, browserShares, browserStages, diffElements, failedOpenIndex, gpuUnhealthy, ownNoiseFloor, expectedCacheTier, gainOf, median, nativeStages, rankShares,
   relativeSpread, stageShares, unionLength, verdictFor,
 } from './load-scoreboard-stats.mjs';
 import { summarize } from './load-scoreboard-report.mjs';
@@ -180,4 +180,13 @@ test('a GPU health read that failed is not a healthy sample', () => {
   assert.match(gpuUnhealthy(null), /unreadable/);
   assert.match(gpuUnhealthy({ contaminated: true, reasons: ['lost'] }), /device lost/);
   assert.equal(gpuUnhealthy({ contaminated: false, reasons: [] }), null);
+});
+
+test('a failure while preparing reopen 2 belongs to reopen 2, not to the clean first reopen (review #9607)', () => {
+  assert.equal(failedOpenIndex('cold-shell'), 0);
+  assert.equal(failedOpenIndex('boot'), 0);
+  assert.equal(failedOpenIndex('warm1-prep'), 1);
+  assert.equal(failedOpenIndex('warm2-prep'), 2);
+  assert.equal(failedOpenIndex('warm2-shell'), 2);
+  assert.equal(failedOpenIndex('warm2'), 2);
 });

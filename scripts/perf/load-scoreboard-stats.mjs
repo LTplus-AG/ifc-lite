@@ -232,6 +232,18 @@ export function diffElements(base, branch, limit = 10) {
     examples: { onlyBase: head(onlyBase), onlyBranch: head(onlyBranch), changed: head(changed) } };
 }
 
+/**
+ * Which open a browser-sample failure belongs to: 0 = the cold open (launch, boot, its
+ * shell wait or the open itself), i = warm open i, including the steps that prepare it
+ * (`warm<i>-prep`: cache-write or snapshot wait, page replacement). That open and every
+ * later one fail; earlier clean opens keep their result.
+ */
+export function failedOpenIndex(phase) {
+  if (['launch', 'boot', 'cold', 'cold-shell'].includes(phase)) return 0;
+  const warm = /^warm(\d+)/.exec(phase ?? '');
+  return warm ? Number(warm[1]) : 1;
+}
+
 /** Why a sample's GPU health fails it, or null. A health read that itself failed is not a clean bill (unknown is not healthy). */
 export function gpuUnhealthy(health) {
   if (!health || typeof health.contaminated !== 'boolean') return `GPU health unreadable (${health?.error ?? 'no result'})`;

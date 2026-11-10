@@ -27,6 +27,7 @@ import { hostname, loadavg } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { roundOrder, seededRand } from './ab-order.mjs';
+import { isMainEntry } from '../lib/is-main-entry.mjs';
 import { nativeSample } from './load-scoreboard-native.mjs';
 import { BROWSER_LANES, LANES, renderMarkdown, summarize } from './load-scoreboard-report.mjs';
 import { browserShares, diffElements } from './load-scoreboard-stats.mjs';
@@ -264,7 +265,7 @@ function report(opt) {
   return summary;
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (isMainEntry(import.meta.url)) {
   const opt = parseArgs(process.argv.slice(2));
   const commands = { run, report };
   if (!commands[opt.command] || !opt.out || (opt.command === 'run' && !opt.plan)) {

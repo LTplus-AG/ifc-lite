@@ -27,7 +27,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { chromePids, memoryOf, vramOf } from './scenoptic-bench-sampling.mjs';
 import { COUNT_FRAMES, openAndWaitInteractive, openViewerPage, readOutputFingerprint, replacePage, waitCacheWrites, waitSceneSnapshots } from './viewer-load-probe.mjs';
-import { browserShares, browserStages, expectedCacheTier, gpuUnhealthy, stageShares } from './load-scoreboard-stats.mjs';
+import { browserShares, browserStages, expectedCacheTier, failedOpenIndex, gpuUnhealthy, stageShares } from './load-scoreboard-stats.mjs';
 import { BOOT_OBSERVERS, waitShellQuiet, waitUiQuiet } from './viewer-load-boot.mjs';
 import { readGpuHealth } from '../../tests/benchmark/gpu-health.ts';
 
@@ -165,12 +165,14 @@ export async function browserSample({ chromium, executablePath, baseUrl, setRoot
       throw new Error(meta.crashed ? 'renderer crashed' : gpuUnhealthy(meta.gpuHealthCold));
     }
     if (warmOpens > 0) {
-      phase = 'cache-write';
+      // Every step that prepares reopen i is attributed to open i (`warm<i>-prep`), so a
+      // failure there taints that open and later ones, never an earlier clean open.
+      phase = 'warm1-prep';
       meta.cacheWriteSettled = await waitCacheWrites(page);
       for (let i = 1; i <= warmOpens; i++) {
+        phase = `warm${i}-prep`;
         // Uncached tiers never write a snapshot: waiting for one cost 60 s per sample (H6).
         if (i > 1 && !uncached && !/perf\.sceneSnapshot=0\b/.test(side.query ?? '')) {
-          phase = 'snapshot-write';
           meta.snapshotWritten = await waitSceneSnapshots(page).then(() => true, () => false);
         }
         await replacePage(context, page);
@@ -198,7 +200,7 @@ export async function browserSample({ chromium, executablePath, baseUrl, setRoot
     if (!meta.gpuHealth && page) meta.gpuHealth = await readGpuHealth(page, consoleLogs).catch((e) => ({ error: String(e) }));
     // A failure taints every lane of this sample that had not already finished cleanly before it.
     // A failure taints the open it happened in and every later one; earlier clean opens keep their result.
-    const failedOpen = ['launch', 'boot', 'cold', 'cold-shell'].includes(phase) ? 0 : Number(/^warm(\d+)/.exec(phase)?.[1] ?? 1);
+    const failedOpen = failedOpenIndex(phase);
     const index = { 'browser-cold': 0, 'browser-warm1': 1, 'browser-warm': warmOpens };
     for (const [name, lane] of Object.entries(lanes)) if (index[name] >= failedOpen) lanes[name] = { ...lane, ok: false, error };
   } finally {

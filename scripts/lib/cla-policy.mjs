@@ -55,6 +55,9 @@ export const EXEMPT_COAUTHOR_EMAILS = new Set([
   'noreply@anthropic.com',
   'noreply@openai.com',
   'cursoragent@cursor.com',
+  // GitHub Copilot's coding agent; its account is a user, not a bot, so it is named here.
+  '223556219+copilot@users.noreply.github.com',
+  'copilot@users.noreply.github.com',
   'louis@lt.plus',
   'info@lt.plus',
 ]);
@@ -84,6 +87,7 @@ export function coAuthors(message) {
   for (const m of message.matchAll(/^[ \t]*co-authored-by:[^<\n]*<([^>\n]*)>/gim)) {
     const email = m[1].trim().toLowerCase();
     if (!email) continue;
+    if (EXEMPT_COAUTHOR_EMAILS.has(email)) continue;
     const n = NOREPLY.exec(email);
     if (n) {
       const login = n[2];
@@ -188,7 +192,7 @@ export function requiredSigners(pr, commits) {
         // An old-style noreply address has no id; the login alone still names the account.
         if (!Number.isSafeInteger(co.user.id)) delete co.user.id;
         add(co.user);
-      } else if (!EXEMPT_COAUTHOR_EMAILS.has(co.email)) coauthorEmails.add(co.email);
+      } else coauthorEmails.add(co.email);
     }
   }
   const listed = commits?.length ?? 0;

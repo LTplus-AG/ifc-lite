@@ -12,6 +12,7 @@ import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { getOrCreateMutationView } from '@/sdk/adapters/mutation-view';
 import { useViewerStore } from './index.js';
 import { canMutate, mutationPermission } from './mutation-permission.js';
+import { startWorkflowRun } from '@/lib/flow/run-session';
 
 const first = fixtureModel('first', { entities: [{ expressId: 11, type: 'IfcWall', name: 'A' }] });
 const second = fixtureModel('second', { idOffset: 1000, entities: [{ expressId: 22, type: 'IfcWall', name: 'B' }] });
@@ -35,24 +36,40 @@ describe('canonical viewer mutation permission (#5901)', () => {
   beforeEach(() => seed(false));
 
   for (const twoModels of [false, true]) {
-    it(`keeps ${twoModels ? 'federated' : 'single-model'} writes and undo state unchanged until Edit mode is on`, () => {
+    it(`keeps ${twoModels ? 'federated' : 'single-model'} data edits work in View while geometry stays gated (#9296)`, () => {
       seed(twoModels);
       const modelId = twoModels ? second.id : first.id;
       const expressId = twoModels ? 22 : 11;
       const state = useViewerStore.getState();
       assert.deepEqual(mutationPermission(state, modelId), { allowed: false, reason: 'edit-mode' });
-      assert.equal(state.setAttribute(modelId, expressId, 'Name', 'Edited'), null);
-      assert.equal(useViewerStore.getState().undoStacks.get(modelId)?.length ?? 0, 0);
-      assert.equal(useViewerStore.getState().dirtyModels.has(modelId), false);
-
-      useViewerStore.setState({ editEnabled: true });
-      assert.equal(canMutate(useViewerStore.getState(), modelId), true);
-      assert.ok(useViewerStore.getState().setAttribute(modelId, expressId, 'Name', 'Edited'));
+      assert.ok(state.setAttribute(modelId, expressId, 'Name', 'Edited'));
       assert.equal(useViewerStore.getState().undoStacks.get(modelId)?.length, 1);
       assert.equal(useViewerStore.getState().dirtyModels.has(modelId), true);
+      assert.equal(canMutate(useViewerStore.getState(), modelId), false, 'geometry still needs Model');
       if (twoModels) assert.equal(useViewerStore.getState().undoStacks.get(first.id), undefined);
     });
   }
+
+  it('names a running workflow before Edit mode, since Edit mode would not unblock it (#9296)', () => {
+    const run = startWorkflowRun();
+    run.modelReaders = 1;
+    try {
+      assert.deepEqual(mutationPermission(useViewerStore.getState(), first.id), { allowed: false, reason: 'workflow-running' });
+    } finally {
+      run.release();
+    }
+  });
+
+  it('edits a pset in View without entering Model, with one undo step (#9296)', () => {
+    assert.equal(useViewerStore.getState().workspaceMode, 'view');
+    const mutation = useViewerStore.getState().setProperty(first.id, 11, 'Pset_Test', 'FireRating', 'EI60');
+    assert.ok(mutation);
+    assert.equal(useViewerStore.getState().workspaceMode, 'view');
+    assert.equal(useViewerStore.getState().undoStacks.get(first.id)?.length, 1);
+    assert.equal(useViewerStore.getState().mutationViews.get(first.id)?.getPropertyValue(11, 'Pset_Test', 'FireRating'), 'EI60');
+    useViewerStore.getState().undo(first.id);
+    assert.equal(useViewerStore.getState().mutationViews.get(first.id)?.getPropertyValue(11, 'Pset_Test', 'FireRating'), null);
+  });
 
   it('rejects a non-IFC model and a collaboration viewer before creating an undo entry', () => {
     const unavailable = { ...second, ifcDataStore: null };

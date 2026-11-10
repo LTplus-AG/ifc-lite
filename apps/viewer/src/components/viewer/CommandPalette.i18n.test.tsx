@@ -87,6 +87,14 @@ const RESET = {
  */
 const NOT_RENDERED_IN_THIS_STATE: PaletteKey[] = [
   'commandPalette.category.recent',
+  // #8965: search metadata only; these paths do not render as row labels.
+  'commandPalette.paths.modelPlan',
+  'commandPalette.paths.retainedReport',
+  'commandPalette.paths.sectionAdd',
+  'commandPalette.paths.basepoints',
+  // No section host in this seed: its refusal precedes limit/bounds checks.
+  'commandPalette.availability.sectionLimit',
+  'commandPalette.availability.sectionBounds',
   // #8962: localized search-only aliases; command labels render separately.
   'commandPalette.aliases.bulk',
   'commandPalette.aliases.import',

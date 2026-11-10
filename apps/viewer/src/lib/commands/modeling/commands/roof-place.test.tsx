@@ -63,6 +63,40 @@ it('the HUD changes one edge slope without changing the other edges (#9296)', ()
   draw(); assert.deepEqual(slopes(), [Math.PI / 4, Math.PI / 6, Math.PI / 6, Math.PI / 6]);
 });
 
+function allRoofSlopes(): number[][] {
+  const view = useViewerStore.getState().mutationViews.get(MODEL_ID)!;
+  return view.getNewEntities().filter(e => e.type.toUpperCase() === 'IFCROOF' && !view.isDeleted(e.expressId))
+    .map(e => JSON.parse(String(view.getPropertyValue(e.expressId, 'IfcLite_RoofFootprint', 'EdgeSlopes'))) as number[]);
+}
+it('the next roof does not inherit the previous footprint\'s edge slopes or edge, but keeps preset and pitch (#9296)', () => {
+  const ui = render(<Bar />);
+  const gable = [...ui.querySelectorAll('button')].find(b => b.textContent === 'Gable');
+  assert.ok(gable); click(gable);
+  const field = ui.querySelector('[aria-label="Edge slope"]');
+  assert.ok(field); press(field, 'Enter');
+  const input = ui.querySelector('input[aria-label="Edge slope"]');
+  assert.ok(input); type(input as HTMLInputElement, '45'); press(input, 'Enter');
+  draw();
+  const next = (getCommandRuntime().gesture as SlabPlaceGesture).roof;
+  assert.deepEqual({ edge: next.edge, overrides: next.overrides, preset: next.preset, pitch: next.pitch }, { edge: 0, overrides: {}, preset: 'gable', pitch: 30 });
+  draw();
+  const [first, second] = allRoofSlopes();
+  assert.deepEqual(first, [Math.PI / 4, 0, Math.PI / 6, 0]);
+  assert.deepEqual(second, [Math.PI / 6, 0, Math.PI / 6, 0], 'the second footprint uses the preset, not the first roof\'s edge override');
+});
+it('switching the outline mode drops footprint-specific edge slopes (#9296)', () => {
+  const ui = render(<Bar />);
+  const field = ui.querySelector('[aria-label="Edge slope"]');
+  assert.ok(field); press(field, 'Enter');
+  const input = ui.querySelector('input[aria-label="Edge slope"]');
+  assert.ok(input); type(input as HTMLInputElement, '45'); press(input, 'Enter');
+  assert.deepEqual((getCommandRuntime().gesture as SlabPlaceGesture).roof.overrides, { 0: 45 });
+  const polygon = [...ui.querySelectorAll('button')].find(b => b.textContent === 'Polygon');
+  assert.ok(polygon); click(polygon);
+  const roof = (getCommandRuntime().gesture as SlabPlaceGesture).roof;
+  assert.deepEqual({ edge: roof.edge, overrides: roof.overrides, pitch: roof.pitch }, { edge: 0, overrides: {}, pitch: 30 });
+});
+
 it('the hip preview has the builder’s pitched ridge rather than a flat prism (#9296)', () => {
   act(() => {
     commandPointerMove({ local: [0, 0], winner: null, guides: [], locked: false });

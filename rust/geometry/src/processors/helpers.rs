@@ -50,13 +50,45 @@ pub(super) fn read_loop_points_by_id(
     loop_id: u32,
     decoder: &mut EntityDecoder,
 ) -> Option<Vec<Point3<f64>>> {
-    read_loop_points_memo(loop_id, decoder, &mut PointMemo::default())
+    let point_ids = decoder.get_polyloop_point_ids_fast(loop_id)?;
+
+    let mut points = Vec::with_capacity(point_ids.len());
+    for point_id in point_ids {
+        let [x, y, z] = decoder.point3(point_id).ok()?;
+        points.push(Point3::new(x, y, z));
+    }
+    Some(points)
 }
+
+/// Most distinct points one [`PointMemo`] keeps: about 2-4 MB of table at the
+/// limit, whatever the face set's size. Past it, new points are read uncached
+/// (never refused), so a model with millions of distinct points keeps the old
+/// per-read cost for the excess instead of a table that grows with the model.
+pub(super) const POINT_MEMO_CAP: usize = 1 << 16;
 
 /// Points already read by [`EntityDecoder::point3_fast`] during ONE walk over
 /// ONE decoder, by express id. Scoped by its owner (a surface-model lowering)
-/// and dropped with it, so it is never a cache across sources or jobs.
-pub(super) type PointMemo = rustc_hash::FxHashMap<u32, [f64; 3]>;
+/// and dropped with it, so it is never a cache across sources or jobs, and
+/// bounded by [`POINT_MEMO_CAP`]. Only points of loops that read completely are
+/// kept: a loop a later point rejects takes its new entries back out.
+#[derive(Default)]
+pub(super) struct PointMemo {
+    points: rustc_hash::FxHashMap<u32, [f64; 3]>,
+    /// Ids this loop added, removed again if the loop is rejected.
+    pending: Vec<u32>,
+}
+
+#[cfg(test)]
+impl PointMemo {
+    /// Entries kept.
+    pub(super) fn len(&self) -> usize {
+        self.points.len()
+    }
+
+    pub(super) fn contains_key(&self, id: &u32) -> bool {
+        self.points.contains_key(id)
+    }
+}
 
 /// [`read_loop_points_by_id`], reusing points this walk already read. Same
 /// result and the same refusals: a memo entry is only ever `point3_fast`'s
@@ -69,21 +101,37 @@ pub(super) fn read_loop_points_memo(
 ) -> Option<Vec<Point3<f64>>> {
     let point_ids = decoder.get_polyloop_point_ids_fast(loop_id)?;
 
+    memo.pending.clear();
     let mut points = Vec::with_capacity(point_ids.len());
     for point_id in point_ids {
-        let [x, y, z] = match memo.get(&point_id) {
+        let [x, y, z] = match memo.points.get(&point_id) {
             Some(&point) => point,
             None => {
                 // Test builds count the reads the memo could not serve.
                 #[cfg(test)]
                 super::tests::note_point_read();
                 match decoder.point3_fast(point_id) {
-                    Some(point) => *memo.entry(point_id).or_insert(point),
-                    None => decoder.point3(point_id).ok()?,
+                    Some(point) => {
+                        if memo.points.len() < POINT_MEMO_CAP && memo.points.insert(point_id, point).is_none() {
+                            memo.pending.push(point_id);
+                        }
+                        point
+                    }
+                    None => match decoder.point3(point_id) {
+                        Ok(point) => point,
+                        Err(_) => {
+                            // Rejected: this loop's new entries go back out.
+                            for id in memo.pending.drain(..) {
+                                memo.points.remove(&id);
+                            }
+                            return None;
+                        }
+                    },
                 }
             }
         };
         points.push(Point3::new(x, y, z));
     }
+    memo.pending.clear();
     Some(points)
 }

@@ -10,7 +10,7 @@ import proj4 from 'proj4';
 import { computeCesiumModelOrigin, computeGridConvergence, createCesiumBridge, viewerToEnuRotation } from './cesium-bridge.js';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
-import { viewerFrameCenter } from './cesium-viewer-frame.js';
+import { viewerFrameCenter } from './map-absolute.js';
 import PROJ_ORACLE from './__fixtures__/proj-oracle.json' with { type: 'json' };
 
 const KROVAK =
@@ -292,6 +292,9 @@ describe('createCesiumBridge with stray elements far outside a map-absolute mode
     wasmRtcOffset,
     lengthUnitScale: 0.001,
   });
+  const mid = (b: CoordinateInfo['shiftedBounds']) => ({
+    x: (b.min.x + b.max.x) / 2, y: (b.min.y + b.max.y) / 2, z: (b.min.z + b.max.z) / 2,
+  });
   // The sync `process()` path re-centres on the polluted box as well.
   const syncShift = { x: -156003.693, y: 14.35, z: 2998055.73 };
   const synced = {
@@ -332,8 +335,7 @@ describe('createCesiumBridge with stray elements far outside a map-absolute mode
     const origin = await computeCesiumModelOrigin(conversion, crs, info(long), 0.001);
     const centred = await computeCesiumModelOrigin(conversion, crs, info(clean), 0.001);
     assert.ok(origin && centred);
-    const midX = (b: CoordinateInfo['shiftedBounds']) => (b.min.x + b.max.x) / 2;
-    assert.ok(Math.abs(origin.easting - centred.easting - (midX(long) - midX(clean))) < 1e-6, `easting ${origin.easting}`);
+    assert.ok(Math.abs(origin.easting - centred.easting - (mid(long).x - mid(clean).x)) < 1e-6, `easting ${origin.easting}`);
   });
 
   it('keeps the bounds centre for a long or federated model that never reaches the world origin', () => {
@@ -343,16 +345,11 @@ describe('createCesiumBridge with stray elements far outside a map-absolute mode
       // A model federated onto another model's anchor, 10.5 km away from it.
       { min: { x: 9_500, y: 0, z: -15 }, max: { x: 11_500, y: 3, z: 15 } },
     ]) {
-      assert.deepStrictEqual(viewerFrameCenter(info(box)), {
-        x: (box.min.x + box.max.x) / 2, y: (box.min.y + box.max.y) / 2, z: (box.min.z + box.max.z) / 2,
-      });
+      assert.deepStrictEqual(viewerFrameCenter(info(box)), mid(box));
     }
   });
 
   it('keeps the bounds centre unless the box reaches a projected-CRS RTC origin', () => {
-    const mid = (b: CoordinateInfo['shiftedBounds']) => ({
-      x: (b.min.x + b.max.x) / 2, y: (b.min.y + b.max.y) / 2, z: (b.min.z + b.max.z) / 2,
-    });
     // A local-coordinate corridor from 5 km to 40 km, median near 38 km: it
     // reaches its own origin, but its RTC origin is no map anchor.
     const corridor = { min: { x: -33_000, y: 0, z: -15 }, max: { x: 2_000, y: 3, z: 15 } };

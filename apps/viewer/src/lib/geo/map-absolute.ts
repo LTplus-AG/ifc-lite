@@ -12,11 +12,12 @@ import { NORMAL_COORD_THRESHOLD_M, type CoordinateInfo, type Vec3 } from '@ifc-l
 import { ifcToViewerAxes, totalYupOffset, viewerToIfcAxes } from './coordinate-frame';
 
 /**
- * The declared anchor must sit at real projected-CRS magnitude before the
- * map-absolute detection may fire. Compliant zero-ish offsets (site grids a
- * few km out) stay below this, so a small legitimate offset + rotation is
- * never silently dropped. Real projected CRS coordinates (UTM, national
- * grids) start in the hundreds of km.
+ * Real projected-CRS coordinates (UTM, national grids) sit at least this far
+ * from the local origin. The declared anchor must, before the map-absolute
+ * detection may fire, and so must the RTC origin before the stray-element
+ * pivot in {@link viewerFrameCenter} may. Compliant zero-ish offsets (site
+ * grids a few km out) stay below this, so a small legitimate offset +
+ * rotation is never silently dropped.
  */
 const MAP_ABSOLUTE_MIN_ANCHOR_METERS = 100_000;
 
@@ -53,7 +54,6 @@ export function viewerFrameCenter(coordinateInfo: CoordinateInfo | undefined) {
   // Where the file's own (0,0,0) sits in the renderer frame (as ifc-origin.ts `ownOrigin`).
   const offset = totalYupOffset(coordinateInfo);
   const worldOrigin = { x: -offset.x, y: -offset.y, z: -offset.z };
-  // The RTC origin must be a map anchor, hundreds of km from the file origin.
   if (Math.hypot(rtcOrigin.x - worldOrigin.x, rtcOrigin.z - worldOrigin.z) < MAP_ABSOLUTE_MIN_ANCHOR_METERS) return center;
   const t = NORMAL_COORD_THRESHOLD_M;
   const reaches = (p: Vec3) => (['x', 'y', 'z'] as const)

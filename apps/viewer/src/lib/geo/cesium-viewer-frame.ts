@@ -7,9 +7,6 @@ import { viewerFrameCenter } from './map-absolute';
 import type { GeodesicPosition } from './cesium-bridge';
 import type { ViewerToEnuRotation } from './viewer-enu-rotation';
 
-/** The georeference pivot, defined beside the #2526 guard that reads it. */
-export { viewerFrameCenter };
-
 /** The one viewer-to-ECEF matrix used by both the camera and the model. */
 export function buildViewerToEcefMatrix(
   Cesium: typeof import('cesium'),

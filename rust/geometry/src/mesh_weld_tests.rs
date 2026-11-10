@@ -308,3 +308,29 @@ fn instance_meta_does_not_imply_welded_in_object_frame() {
          `build_mesh_data`'s \"was this already welded?\" question"
     );
 }
+
+/// The weld's pooled key map must cost what the CURRENT mesh needs: after a
+/// large weld, a small one leaves a table sized for itself, not the large one
+/// (whose every control byte a `clear()` used to rewrite on each later mesh).
+#[test]
+fn a_small_weld_after_a_large_one_resets_a_small_key_table() {
+    let grid = |n: usize| {
+        let mut positions = Vec::with_capacity(n * 3);
+        for i in 0..n {
+            positions.extend_from_slice(&[i as f32, (i % 7) as f32, 0.0]);
+        }
+        let normals = [0.0f32, 0.0, 1.0].repeat(n);
+        let indices: Vec<u32> = (0..n as u32).collect();
+        (positions, normals, indices)
+    };
+    WELD_SCRATCH.with(|slot| *slot.borrow_mut() = Some(WeldScratch::default()));
+    let (positions, normals, indices) = grid(60_000);
+    let _ = weld_indexed(&positions, &normals, None, &indices);
+    let large = WELD_SCRATCH.with(|slot| slot.borrow().as_ref().unwrap().map.capacity());
+    assert!(large >= 60_000, "the large weld grew the table: {large}");
+    let (positions, normals, indices) = grid(3);
+    let _ = weld_indexed(&positions, &normals, None, &indices);
+    let small = WELD_SCRATCH.with(|slot| slot.borrow().as_ref().unwrap().map.capacity());
+    assert!(small <= 1_024, "a 3-vertex weld kept a {small}-entry table");
+    WELD_SCRATCH.with(|slot| *slot.borrow_mut() = Some(WeldScratch::default()));
+}

@@ -107,7 +107,12 @@ key = SHA-256( "ifc-lite-native-result-v1"
   live globals, so an uncached pass during a setter can mix policies as before;
   the cache only refuses to store or replay it.
   `tests/result_cache_policy_ratchet.rs` fails on any `IFC_LITE_*` name that is
-  neither keyed nor listed as non-output. It also fails on any change in the
+  neither keyed nor listed as non-output. The non-output list is
+  `IFC_LITE_CACHE_DIR` (it only chooses where entries live) and
+  `IFC_LITE_ENGINE_BUILD_DIGEST` (a compile-time `env!` set by `build.rs` to the
+  build digest, which is itself keyed). The ratchet also fails if any router on
+  the cached pass pins an explicit frame policy (`RouterConfig::local_frame`),
+  which would bypass the keyed process-wide fallback. It also fails on any change in the
   number of environment access sites per file in core, geometry and
   processing, so a read under any other name has to be reviewed as well.
 - **Engine, execution.** This is the calling thread's rayon worker count. No mesh

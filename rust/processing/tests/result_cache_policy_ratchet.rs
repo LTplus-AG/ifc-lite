@@ -47,11 +47,14 @@ const KEYED_BY_POLICY: &[&str] = &[
     "IFC_LITE_DISABLE_DEGENERATE_BACKSTOP",
 ];
 
-/// Cannot change a processing result.
+/// Named in these crates but cannot change a processing result. Each entry
+/// says why; nothing is excluded merely for being absent from the scan.
 const NOT_OUTPUT: &[&str] = &[
-    // Where the result cache lives.
+    // Read only by `result_cache::default_directory` to choose WHERE entries
+    // are stored; never by the pipeline.
     "IFC_LITE_CACHE_DIR",
-    // Compile-time (`env!`) build identity from build.rs; it IS part of the key.
+    // Not a runtime variable: a compile-time `env!` that build.rs sets to the
+    // engine's build digest, which is itself hashed into every key.
     "IFC_LITE_ENGINE_BUILD_DIGEST",
 ];
 
@@ -156,4 +159,39 @@ fn access_site_counting_sees_aliases_and_built_names() {
     let hostile = r#"std::env::var("GEOMETRY_TOLERANCE"); std::env::var(concat!("IFC_", "LITE_X")); use std::env::var_os as v;"#;
     assert_eq!(access_sites(hostile), 3);
     assert_eq!(access_sites(r#"option_env!("A"); env!("B")"#), 2);
+}
+
+/// PR #9614 review thread: a router built with an explicit `local_frame`
+/// (`RouterConfig::local_frame = Some(_)`, `with_scale_and_local_frame`)
+/// ignores the process-global fallback the key records. No router on the
+/// cached `process()` path may set one: every one is built from
+/// `RouterConfig::default()` plus keyed request fields (`jobs.rs` job_router,
+/// `diagnostics.rs` unit_router). Appearance authoring sets it explicitly, but
+/// `ResultCache::process` never reaches it. A new explicit frame policy in
+/// these files fails here until it is keyed through `ProcessingRequest`.
+#[test]
+fn the_cached_pass_never_pins_a_router_frame_policy() {
+    let Some(root) = repo_root() else {
+        common::refuse_to_skip_in_ci(GATE);
+        eprintln!("repo root not found (packaged context) - skipping {GATE}");
+        return;
+    };
+    let on_path = |rel: &str| {
+        rel.starts_with("rust/processing/src/processor/")
+            || rel.starts_with("rust/processing/src/element/")
+            || rel == "rust/processing/src/execution.rs"
+            || rel == "rust/processing/src/element.rs"
+    };
+    let mut pinned = Vec::new();
+    for (rel, path) in production_sources(GATE, &root) {
+        if on_path(&rel) {
+            let text = std::fs::read_to_string(&path).expect("readable source");
+            for needle in ["local_frame:", ".local_frame =", "with_scale_and_local_frame", "local_frame_set_enabled_override"] {
+                if text.contains(needle) {
+                    pinned.push(format!("{rel}: {needle}"));
+                }
+            }
+        }
+    }
+    assert!(pinned.is_empty(), "the cached pass pins a frame policy the key does not record: {pinned:?}");
 }

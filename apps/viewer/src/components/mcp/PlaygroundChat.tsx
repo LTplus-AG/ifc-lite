@@ -466,11 +466,12 @@ export function PlaygroundChat({
             {canStop ? <Square size={14} fill="currentColor" /> : <ArrowUp size={14} strokeWidth={2.5} />}
           </button>
         </div>
-        {!isStreaming && dispatching && <p className="mt-1.5 text-2xs text-white/60">{t('mcp.playgroundChat.finishingTool')}</p>}
         <p className="mt-1.5 text-2xs text-white/40">
-          {uploads.length > 0
-            ? t('mcp.playgroundChat.footerHintWithAttachments', { tools: tools.length, count: uploads.length })
-            : t('mcp.playgroundChat.footerHintNoAttachments', { tools: tools.length })}
+          {!isStreaming && dispatching
+            ? t('mcp.playgroundChat.finishingTool')
+            : uploads.length > 0
+              ? t('mcp.playgroundChat.footerHintWithAttachments', { tools: tools.length, count: uploads.length })
+              : t('mcp.playgroundChat.footerHintNoAttachments', { tools: tools.length })}
         </p>
         {dragOver && (
           <div

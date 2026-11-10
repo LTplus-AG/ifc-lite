@@ -226,5 +226,14 @@ guard and `git lfs pre-push "$@"` is safe to drop, but if yours also runs your
 own commands, delete only the git-lfs lines and keep the rest. Details in
 [docs/contributing/setup.md](./docs/contributing/setup.md#push-fails-with-you-need-push-access-to-upload-git-lfs-objects).
 
-By contributing you agree your contributions are licensed under the repository
-license and that you follow the [Code of Conduct](./CODE_OF_CONDUCT.md).
+## Contributor License Agreement
+
+Contributions need a signed [LTplus AG Contributor License Agreement](./CLA.md).
+It is a license, not a copyright transfer: you keep ownership of your work, and
+LTplus keeps it available as open source while it may also license it under
+other terms, including commercial licenses. The **CLA** check on your pull
+request tells you how to sign; you sign once. See
+[docs/contributing/cla.md](./docs/contributing/cla.md) for why we ask.
+
+Your contributions are licensed under the repository license (MPL-2.0), and by
+contributing you agree to follow the [Code of Conduct](./CODE_OF_CONDUCT.md).

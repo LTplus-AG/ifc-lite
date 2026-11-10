@@ -11,6 +11,7 @@ import { noteSoftwareGpuSkip } from './gpu-device-loss';
 declare global {
   var __ifc_lite_viewer_store__: { getState(): ViewerState };
   var __ifc_lite_capture_color_frame__: (() => Promise<string | null>) | undefined;
+  var __ifc_lite_render_frame__: (() => { timestamp: number } | null) | undefined;
   var __ifc_lite_rendered_point_cloud__: ((handleId: number) => {
     pointCount: number;
     points: Point3[];
@@ -137,12 +138,25 @@ export async function rendererColorFrame(page: Page): Promise<Buffer> {
   // #7655: retry completed null captures while lazy visibility shaders compile.
   // Await each in-flight GPU readback under the enclosing test's deadline:
   // expect.poll's 5s callback deadline interrupted in-flight Revit captures.
-  const retryDeadline = Date.now() + 5_000;
-  const capture = () => page.evaluate(async () => globalThis.__ifc_lite_capture_color_frame__?.() ?? null);
-  let dataUrl = await capture();
-  while (dataUrl === null && Date.now() < retryDeadline) {
+  // A null that no submitted frame preceded is a frame discarded before submit,
+  // and on SwiftShader the frame itself can come seconds late (rAF stalls while
+  // the GPU process compiles), so it restarts the 5 s window instead of using
+  // it up; STALL_LIMIT_MS still bounds a viewport that never submits.
+  const STALL_LIMIT_MS = 60_000;
+  const stallDeadline = Date.now() + STALL_LIMIT_MS;
+  let retryDeadline = Date.now() + 5_000;
+  const capture = () => page.evaluate(async () => {
+    const requested = performance.now();
+    const dataUrl = await globalThis.__ifc_lite_capture_color_frame__?.() ?? null;
+    // Read in the settling task: no later frame can have run yet.
+    return { dataUrl, submitted: (globalThis.__ifc_lite_render_frame__?.()?.timestamp ?? -Infinity) > requested };
+  });
+  let { dataUrl, submitted } = await capture();
+  while (dataUrl === null) {
+    if (!submitted) retryDeadline = Date.now() + 5_000;
+    if (Date.now() >= Math.min(retryDeadline, stallDeadline)) break;
     await page.waitForTimeout(100);
-    dataUrl = await capture();
+    ({ dataUrl, submitted } = await capture());
   }
   expect(dataUrl, 'renderer color capture is available after the viewport submits a frame').not.toBeNull();
   const encoded = dataUrl!.match(/^data:image\/png;base64,(.+)$/);

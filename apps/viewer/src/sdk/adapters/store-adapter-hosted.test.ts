@@ -15,7 +15,7 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
-import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
+import { IfcParser, resolveEffectiveEntityRecord, type IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import { useViewerStore, type FederatedModel } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
@@ -183,12 +183,20 @@ describe('#6232 bim.store hosted openings, doors and windows', () => {
     const targets = new Set(mesher.requests.slice(from).flatMap(request => [...request.targets]));
     for (const id of [wall.expressId, door.expressId]) assert.ok(targets.has(id), `mirrored #${id} is remeshed`);
     const view = useViewerStore.getState().mutationViews.get(MODEL)!;
-    assert.equal(view.getNewEntity(door.expressId)?.attributes[11], '.SINGLE_SWING_RIGHT.');
+    const operation = () => {
+      const effective = resolveEffectiveEntityRecord(view.getNewEntity(door.expressId)!, {
+        retype: view.getEntityTypeMutation(door.expressId)?.newType,
+        named: view.getAttributeMutationsForEntity(door.expressId).map(({ name, value }) => [name, value] as const),
+        positional: view.getPositionalMutationsForEntity(door.expressId) ?? [],
+      }, 'IFC4');
+      return effective.attributes[effective.names.indexOf('OperationType')];
+    };
+    assert.equal(operation(), '.SINGLE_SWING_RIGHT.');
     useViewerStore.getState().undo(MODEL);
-    assert.equal(view.getNewEntity(door.expressId)?.attributes[11], '.SINGLE_SWING_LEFT.');
+    assert.equal(operation(), '.SINGLE_SWING_LEFT.');
     assert.equal(live('IFCMAPPEDITEM'), 0, 'one Undo restores original geometry');
     useViewerStore.getState().redo(MODEL);
-    assert.equal(view.getNewEntity(door.expressId)?.attributes[11], '.SINGLE_SWING_RIGHT.');
+    assert.equal(operation(), '.SINGLE_SWING_RIGHT.');
     assert.ok(live('IFCMAPPEDITEM') > 0);
     await settleRemesh();
   });

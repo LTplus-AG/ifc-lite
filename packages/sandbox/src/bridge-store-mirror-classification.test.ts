@@ -2,7 +2,7 @@
 import { expect, it } from 'vitest';
 import { IfcCreator, addWallToStore, resolveSpatialAnchor } from '@ifc-lite/create';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
-import { IfcParser } from '@ifc-lite/parser';
+import { IfcParser, resolveEffectiveEntityRecord } from '@ifc-lite/parser';
 import { createModellingStoreBackendWithoutStoreys, StoreNamespace, type BimBackend, type BimContext } from '@ifc-lite/sdk';
 import { buildStoreNamespace } from './bridge-store.js';
 
@@ -28,7 +28,13 @@ it('#9409 script bridge mirrors and classifies through the real slim SDK factory
   call('assignClassification', ['m', classification.expressId, [b, a]]);
   const relations = view.getNewEntities().filter(entity => entity.type.toUpperCase() === 'IFCRELASSOCIATESCLASSIFICATION');
   expect(relations).toHaveLength(1);
-  expect(new Set(relations[0].attributes[4] as string[])).toEqual(new Set([`#${a}`, `#${b}`]));
+  const rel = relations[0];
+  const effective = resolveEffectiveEntityRecord(rel, {
+    retype: view.getEntityTypeMutation(rel.expressId)?.newType,
+    named: view.getAttributeMutationsForEntity(rel.expressId).map(({ name, value }) => [name, value] as const),
+    positional: view.getPositionalMutationsForEntity(rel.expressId) ?? [],
+  }, store.schemaVersion);
+  expect(new Set(effective.attributes[effective.names.indexOf('RelatedObjects')] as string[])).toEqual(new Set([`#${a}`, `#${b}`]));
   const before = view.getMutations();
   expect(() => call('mirrorElements', ['m', [0], { axis: [[0, 0], [0, 10]] }])).toThrow(/positive entity ids/);
   expect(view.getMutations()).toEqual(before);

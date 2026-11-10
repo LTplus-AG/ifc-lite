@@ -22,6 +22,7 @@ it('NEW-7: map work waits for panel visibility or load settlement', () => {
     takeRecords() { return []; }
     readonly root = null;
     readonly rootMargin = '0px';
+    readonly scrollMargin = '0px';
     readonly thresholds = [0];
   }
   globalThis.IntersectionObserver = Observer;

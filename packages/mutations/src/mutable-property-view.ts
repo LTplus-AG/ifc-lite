@@ -1191,24 +1191,12 @@ export class MutablePropertyView extends MutableOverlayState {
   }
 
   /**
-   * Mark an entity for deletion. Returns false if the id is unknown to this
-   * view, or was already tombstoned.
-   *
-   * An overlay-created entity is dropped from `newEntities` — so it is emitted
-   * nowhere, which is the right answer for something created and deleted in one
-   * session — AND tombstoned, so `isDeleted` tells the truth about it.
-   *
-   * It used to be only forgotten, and that made `isDeleted` lie: every guard
-   * that asks "was this deleted" got `false` for an entity that no longer
-   * exists, so the export still emitted the `IFCRELDEFINESBYPROPERTIES` for a
-   * pset queued on it, dangling at a record nothing wrote (#2012). Forgetting
-   * without tombstoning cannot be made safe one guard at a time, because the
-   * question the guards ask has no true answer to find.
-   *
-   * Consumers that count entities must therefore intersect tombstones with the
-   * source store rather than subtracting `tombstones.size` wholesale — a
-   * created-then-deleted id is absent from BOTH the store and `getNewEntities`,
-   * so counting it as a deletion would subtract it twice.
+   * Tombstone an entity; false if already tombstoned. Created entities also
+   * leave newEntities, so create-then-delete emits no record. Tombstones must
+   * remain visible to isDeleted and export guards: forgetting alone emitted
+   * dangling property relationships (#2012).
+   * Count deletions only for IDs in the source store: created-then-deleted IDs
+   * are absent from both the source and newEntities and must not count twice.
    */
   deleteEntity(expressId: number): boolean {
     if (this.newEntities.has(expressId)) {

@@ -46,6 +46,9 @@ type ChunkErrorTone = 'panel' | 'night';
 const NIGHT_TONE = { fg: '#ede4d3', dim: '#9c9486' } as const;
 
 const CHUNK_LABEL_KEYS = {
+  'BCF panel': 'bcf.panel.title',
+  'Validation panel': 'validationPanel.title',
+  'Lens panel': 'lensPanel.title',
   'Command palette': 'commandPalette.ariaLabel',
   'Bulk Property Editor': 'bulkPropertyEditor.title',
   'Data Connector': 'dataConnector.dialogTitle',

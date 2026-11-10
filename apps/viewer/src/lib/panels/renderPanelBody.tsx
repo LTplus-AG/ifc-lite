@@ -11,6 +11,7 @@
  * hosts stay in lock-step.
  */
 
+import { DeferredPanel } from './DeferredPanel';
 import { AssistantSourceContext } from '@/components/viewer/assistant/AssistantAction';
 import { lazy, Suspense, type ReactNode } from 'react';
 import { panelModelGateMode, type WorkspacePanelId } from './registry';
@@ -21,9 +22,9 @@ const InfluxPanel = lazy(() => import('@/components/viewer/influx/InfluxPanel').
 
 const ComparePanel = lazy(() => import('@/components/viewer/ComparePanel').then(module => ({ default: module.ComparePanel })));
 const ClashPanel = lazy(() => import('@/components/viewer/ClashPanel').then(module => ({ default: module.ClashPanel })));
-import { BCFPanel } from '@/components/viewer/BCFPanel';
-import { ValidationPanel } from '@/components/viewer/validation/ValidationPanel';
-import { LensPanel } from '@/components/viewer/LensPanel';
+const BCFPanel = lazy(() => import('@/components/viewer/BCFPanel').then(module => ({ default: module.BCFPanel })));
+const ValidationPanel = lazy(() => import('@/components/viewer/validation/ValidationPanel').then(module => ({ default: module.ValidationPanel })));
+const LensPanel = lazy(() => import('@/components/viewer/LensPanel').then(module => ({ default: module.LensPanel })));
 import { ExtensionsPanel } from '@/components/extensions/ExtensionsPanel';
 import { GanttPanel } from '@/components/viewer/schedule/GanttPanel';
 import { ListPanel } from '@/components/viewer/lists/ListPanel';
@@ -187,9 +188,9 @@ function panelBody(id: WorkspacePanelId, onClose: () => void): ReactNode {
     // whenever the panel showed one of the branches that lacked it.
     case 'properties': return <div {...tourAnchor(TOUR_ANCHORS.propertiesPanel)} className="h-full"><PropertiesPanel /></div>;
     case 'compare': return <ChunkErrorBoundary key="compare" label="Compare models"><Suspense fallback={null}><ComparePanel onClose={onClose} /></Suspense></ChunkErrorBoundary>;
-    case 'bcf': return <BCFPanel onClose={onClose} />;
-    case 'validation': return <ValidationPanel onClose={onClose} />;
-    case 'lens': return <LensPanel onClose={onClose} />;
+    case 'bcf': return <DeferredPanel id="bcf" onClose={onClose}><BCFPanel onClose={onClose} /></DeferredPanel>;
+    case 'validation': return <DeferredPanel id="validation" onClose={onClose}><ValidationPanel onClose={onClose} /></DeferredPanel>;
+    case 'lens': return <DeferredPanel id="lens" onClose={onClose}><LensPanel onClose={onClose} /></DeferredPanel>;
     case 'clash': return <ChunkErrorBoundary key="clash" label="Clash panel"><Suspense fallback={null}><ClashPanel onClose={onClose} /></Suspense></ChunkErrorBoundary>;
     case 'extensions': return <ExtensionsPanel onClose={onClose} />;
     case 'script': return <ChunkErrorBoundary label="Script panel"><Suspense fallback={null}><ScriptPanel /></Suspense></ChunkErrorBoundary>;

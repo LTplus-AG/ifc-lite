@@ -6107,3 +6107,25 @@ strictly less than 2× from 1K to 50K, and a passing F5 exercise result whose
 lane, not a substitute tower here. Missing sizes or F5 evidence fail the check.
 The baseline is a description of current main, not an accepted round-1 result
 or a speedup claim.
+
+### Viewer eager panel boundaries (2026-11-10; validation pending)
+
+BCF, Data validation and Lens now load through dynamic imports at the shared
+workspace-panel router. The default welcome screen and first-model loader do
+not need their authoring UI. Docked, floating and pop-out hosts, shortcuts and
+panel deep links still use the same router. A translated loading shell keeps
+Close usable; chunk errors use the existing error boundary and retain Close.
+The model gate still wraps the feature, so a gated Lens does not download until
+it can render. This is independent of #9623's minimap visibility gate: MapLibre
+was already dynamically imported on main and is unchanged here.
+
+The opt-in `VITE_BUNDLE_ANALYSIS=1` build emits module attribution; run
+`node scripts/perf-ratchet/audit-viewer-eager.mjs` afterward to rank the complete
+HTML/static-import closure. Rendered module lengths precede final minification;
+only emitted chunk bytes establish savings. The controlled base/branch builds,
+root typecheck and feature tests are submitted through the fleet. No byte-saving
+or cold-boot timing verdict is claimed until those results exist. Leave the
+ceilings to the daily main-only lowering process after merge; do not stamp a
+branch measurement as main provenance. **Lesson:** a dynamic panel boundary
+alone cannot establish a saving while shared eager consumers and recursive
+manual chunk groups remain; inspect the rebuilt closure before claiming one.

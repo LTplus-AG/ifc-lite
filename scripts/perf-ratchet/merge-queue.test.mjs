@@ -33,10 +33,10 @@ const CEILING_FILES = readdirSync(join(REPO_ROOT, 'tests/perf-ratchets'))
   .filter((f) => f.endsWith('.json'))
   .map((f) => `tests/perf-ratchets/${f}`);
 
-/** @param {string} cond @param {{ labels: string[], draft: boolean, files: string[], head: string }} pr */
+/** @param {string} cond @param {{ labels: string[], draft: boolean, files: string[], head: string, statuses: string[] }} pr */
 function matches(cond, pr) {
   // @source-text-assertion-ok subject is the parsed config, evaluated as conditions
-  const [, negated, kind, arg] = /^(-?)(draft$|label=|files~=|head=)(.*)$/.exec(cond) ?? [];
+  const [, negated, kind, arg] = /^(-?)(draft$|label=|files~=|head=|status-success=)(.*)$/.exec(cond) ?? [];
   if (!kind) throw new Error(`merge-queue.test.mjs cannot evaluate Mergify condition ${JSON.stringify(cond)}; teach matches() its meaning`);
   const hit = {
     draft: () => pr.draft,
@@ -45,6 +45,7 @@ function matches(cond, pr) {
     // @source-text-assertion-ok subject is the parsed config, evaluated as conditions
     'files~=': () => pr.files.some((f) => new RegExp(arg).test(f)),
     'head=': () => pr.head === arg,
+    'status-success=': () => pr.statuses.includes(arg),
   }[kind]();
   return negated ? !hit : hit;
 }
@@ -62,7 +63,7 @@ function queueFor(pr) {
   assert.equal(rules[0].actions.queue.name, queues[0].name, 'the routing rule names the queue that admits the PR');
   return queues[0];
 }
-const pr = (files, extra = {}) => ({ labels: ['mergify-trial'], draft: false, files, head: 'feature/x', ...extra });
+const pr = (files, extra = {}) => ({ labels: ['mergify-trial'], draft: false, files, head: 'feature/x', statuses: ['CLA'], ...extra });
 const RELEASE = 'changeset-release/main';
 
 test('a lowering PR like #8459 is queued alone, for every committed ceiling family', () => {
@@ -106,4 +107,11 @@ test('the ceilings queue is not a weaker gate: every queue requires the same ful
   const [first, ...rest] = cfg.queue_rules;
   assert.ok(first.merge_conditions.length > 0);
   for (const q of rest) assert.deepEqual(q.merge_conditions, first.merge_conditions, q.name);
+});
+
+test('no queue admits a PR whose CLA status is not green, so batch PRs only carry signed work', () => {
+  for (const files of [['apps/viewer/src/main.tsx'], ['tests/perf-ratchets/bundle.json']]) {
+    assert.equal(queueFor(pr(files, { statuses: [] })), null, JSON.stringify(files));
+  }
+  assert.equal(queueFor(pr(['Cargo.toml'], { head: RELEASE, statuses: [] })), null, 'the release PR too');
 });

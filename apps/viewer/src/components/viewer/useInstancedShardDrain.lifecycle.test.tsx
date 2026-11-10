@@ -73,7 +73,7 @@ afterEach(() => { cleanup(); discardInstancedShards(); useViewerStore.getState()
 
 it('drops a removed model\'s queued shards instead of uploading them as the primary\'s', async () => {
   render(<Viewport />);
-  act(() => enqueueInstancedShards('second', [buildShardBytes(31)]));
+  act(() => enqueueInstancedShards('second', [buildShardBytes(31)], instancedShardGeneration()));
   act(() => useViewerStore.getState().removeModel('second'));
   await drainTask();
   assert.deepEqual(uploads, [], 'a removed model\'s shard reaches no surviving model');
@@ -83,8 +83,8 @@ it('drops a removed model\'s queued shards instead of uploading them as the prim
 it('drops every queued shard when all models are cleared', async () => {
   render(<Viewport />);
   act(() => {
-    enqueueInstancedShards('primary', [buildShardBytes(31)]);
-    enqueueInstancedShards('second', [buildShardBytes(32)]);
+    enqueueInstancedShards('primary', [buildShardBytes(31)], instancedShardGeneration());
+    enqueueInstancedShards('second', [buildShardBytes(32)], instancedShardGeneration());
   });
   act(() => useViewerStore.getState().clearAllModels());
   await drainTask();
@@ -97,8 +97,8 @@ it('keeps the surviving model\'s shards when another model is removed', async ()
   const offset = useViewerStore.getState().models.get('second')!.idOffset;
   const index = modelIndices(useViewerStore.getState().models).get('second');
   act(() => {
-    enqueueInstancedShards('primary', [buildShardBytes(31)]);
-    enqueueInstancedShards('second', [buildShardBytes(32)]);
+    enqueueInstancedShards('primary', [buildShardBytes(31)], instancedShardGeneration());
+    enqueueInstancedShards('second', [buildShardBytes(32)], instancedShardGeneration());
   });
   act(() => useViewerStore.getState().removeModel('primary'));
   await drainTask();
@@ -124,7 +124,7 @@ it('waits while the drain\'s maps are one render behind the store, then uploads 
   render(<LaggingViewport />);
   const offset = useViewerStore.getState().registerModelOffset('late', 100);
   useViewerStore.setState(fixtureModels(...useViewerStore.getState().models.values(), fixtureModel('late', { idOffset: offset })));
-  act(() => enqueueInstancedShards('late', [buildShardBytes(31)]));
+  act(() => enqueueInstancedShards('late', [buildShardBytes(31)], instancedShardGeneration()));
   await drainTask();
   assert.deepEqual(uploads, [], 'never attributed to model 0 while the maps lack its owner');
   assert.equal(hasPendingInstancedShards('late'), true, 'the store lists the owner, so the shard waits');
@@ -138,7 +138,7 @@ it('waits while the drain\'s maps are one render behind the store, then uploads 
 it('drops, and counts, a shard whose owner is in neither the maps nor the store', async () => {
   render(<Viewport />);
   const before = instancedShardDrops().ownerless;
-  act(() => enqueueInstancedShards('never-published', [buildShardBytes(31), buildShardBytes(32)]));
+  act(() => enqueueInstancedShards('never-published', [buildShardBytes(31), buildShardBytes(32)], instancedShardGeneration()));
   await drainTask();
   assert.deepEqual(uploads, []);
   assert.equal(hasPendingInstancedShards(), false, 'an owner that cannot appear does not hold its bytes in the queue');
@@ -158,4 +158,32 @@ it('refuses shards from a load that a reset has superseded', async () => {
   act(() => enqueueInstancedShards('primary', [buildShardBytes(32)], instancedShardGeneration()));
   await drainTask();
   assert.deepEqual(uploads, [{ id: 32, index: modelIndices(useViewerStore.getState().models).get('primary') }], 'the current load still delivers');
+});
+
+it('a renderer that throws after uploading does not get the same shards uploaded again', async () => {
+  let throwOnce = true;
+  const flaky = {
+    ...renderer,
+    getGPUDevice: () => ({}),
+    getScene: renderer.getScene,
+    requestRender: () => { if (throwOnce) { throwOnce = false; throw new Error('render request failed'); } },
+  } as unknown as Renderer;
+  function FlakyViewport() {
+    const models = useViewerStore((s) => s.models);
+    useInstancedShardDrain({
+      rendererRef: useRef(flaky), isInitialized: true, gpuRecoveryEpoch: 0, geometryKernel: 'exact', geometry: null,
+      modelIdToIndex: modelIndices(models),
+      modelIdToOffset: new Map([...models].map(([id, model]) => [id, model.idOffset ?? 0])),
+      cameraFittedRef: useRef(false), cameraSnapshotRef: useRef(null),
+      geometryBoundsRef: useRef({ min: { x: 0, y: 0, z: 0 }, max: { x: 0, y: 0, z: 0 } }),
+      finalBoundsRefittedRef: useRef(false), lastFitPolicyKindRef: useRef(null), lastGeometryRef: useRef(null),
+    });
+    return null;
+  }
+  render(<FlakyViewport />);
+  act(() => enqueueInstancedShards('primary', [buildShardBytes(31), buildShardBytes(32)], instancedShardGeneration()));
+  await drainTask();
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 600)); }); // past any retry backoff
+  assert.deepEqual(uploads.map((u) => u.id), [31, 32], 'each shard uploads exactly once despite the throw');
+  assert.equal(hasPendingInstancedShards(), false, 'settled shards are not left queued');
 });

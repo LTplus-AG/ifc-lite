@@ -16,7 +16,7 @@ import { sectionNativeGeometry, sectionIndexedBounds, sourceDigest } from '@/tes
 import { isMeshVisibleInViewMode, meshClassIsPlaced } from '@/lib/type-view-visibility';
 import { subscribeViewportHealth, resetDeviceLossReportForTests } from './device-loss-report';
 import { useGeometryStreaming } from './useGeometryStreaming';
-import { discardInstancedShards, enqueueInstancedShards } from '@/store/instancedShardQueue';
+import { discardInstancedShards, enqueueInstancedShards, instancedShardGeneration } from '@/store/instancedShardQueue';
 
 it('#6993/#7484 early device loss retains the real FZK flat and IFNS population after actual renderer recovery', { timeout: 30_000 }, async t => {
   const parsed = sectionNativeGeometry(t); if (!parsed) return;
@@ -56,7 +56,7 @@ it('#6993/#7484 early device loss retains the real FZK flat and IFNS population 
       const bounds = useRef({ min: { x: -100, y: -100, z: -100 }, max: { x: 100, y: 100, z: 100 } });
       const clearColor = useRef<[number, number, number, number]>([0, 0, 0, 1]);
       publishFlat = () => { setGeometry(flat); setStreaming(false); };
-      publishShard = () => enqueueInstancedShards('native', [native.shardBytes.slice().buffer]);
+      publishShard = () => enqueueInstancedShards('native', [native.shardBytes.slice().buffer], instancedShardGeneration());
       useEffect(() => subscribeViewportHealth(renderer, undefined, () => {
         setEpoch(value => value + 1); completeRecovery();
       }), []);

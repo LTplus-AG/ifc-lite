@@ -15,12 +15,12 @@ import { emptyPlacementState } from './state';
 import { buildPlacedSpatialIndex, createPlacementIndexSync } from './spatial-index';
 import { modelIndices } from './model-indices';
 import { settle } from '@/test/settle';
-import { discardInstancedShards, drainInstancedShards, enqueueInstancedShards, subscribeInstancedShards } from '@/store/instancedShardQueue';
+import { discardInstancedShards, drainInstancedShards, enqueueInstancedShards, subscribeInstancedShards, instancedShardGeneration } from '@/store/instancedShardQueue';
 
 afterEach(() => discardInstancedShards());
 
 /** The renderer drain's part, without a renderer: hand the queued shards over. */
-const drainToRenderer = () => drainInstancedShards(() => { /* the fake scene already lists the instances */ });
+const drainToRenderer = () => drainInstancedShards((shards, settle) => { for (const shard of shards) settle(shard, 'uploaded'); /* the fake scene already lists the instances */ });
 
 /** `useModelPlacementSync`'s two subscriptions: store updates and shard arrivals/drains. */
 function subscribeSync(sync: ReturnType<typeof createPlacementIndexSync>): () => void {
@@ -85,8 +85,8 @@ it('waits for GPU shard drain and indexes pure instances for primary and federat
   const federated = { ...fixtureModel('federated'), idOffset: 1000, maxExpressId: 1000,
     geometryResult: emptyGeometry, loadState: 'complete' } as FederatedModel;
   useViewerStore.setState({ ...fixtureModels(primary, federated), modelPlacement: emptyPlacementState() });
-  enqueueInstancedShards('primary', [new ArrayBuffer(1)]);
-  enqueueInstancedShards('federated', [new ArrayBuffer(1)]);
+  enqueueInstancedShards('primary', [new ArrayBuffer(1)], instancedShardGeneration());
+  enqueueInstancedShards('federated', [new ArrayBuffer(1)], instancedShardGeneration());
   const rendererIndices = modelIndices(useViewerStore.getState().models);
   const instances = [occurrence(20, 156, rendererIndices.get('primary')!),
     occurrence(50, 1156, rendererIndices.get('federated')!)];
@@ -111,7 +111,7 @@ it('waits for GPU shard drain and indexes pure instances for primary and federat
     useViewerStore.setState({ selectedEntityId: 156 });
     await pastDebounce('a selection change schedules no rebuild');
     assert.equal(materializations, 2, 'ordinary selection updates do not rematerialize instances');
-    enqueueInstancedShards('primary', [new ArrayBuffer(1)]);
+    enqueueInstancedShards('primary', [new ArrayBuffer(1)], instancedShardGeneration());
     assert.equal(primary.ifcDataStore!.spatialIndex, undefined, 'a late shard withdraws the incomplete index');
     instances.push(occurrence(80, 157, rendererIndices.get('primary')!));
     drainToRenderer();
@@ -168,7 +168,7 @@ it('indexes a drained instance when its data store arrives afterward (#5275)', a
   const model = { ...fixtureModel('late-store'), ifcDataStore: null, idOffset: 0, maxExpressId: 10,
     loadState: 'complete', geometryResult: { meshes: [], totalTriangles: 0 } as unknown as GeometryResult } as FederatedModel;
   useViewerStore.setState({ ...fixtureModels(model), modelPlacement: emptyPlacementState() });
-  enqueueInstancedShards('late-store', [new ArrayBuffer(1)]);
+  enqueueInstancedShards('late-store', [new ArrayBuffer(1)], instancedShardGeneration());
   const mesh = { expressId: 7, modelIndex: modelIndices(useViewerStore.getState().models).get('late-store')!,
     positions: new Float32Array([30, 0, 0, 31, 0, 0, 30, 1, 0]),
     indices: new Uint32Array([0, 1, 2]), normals: new Float32Array(9), color: [1, 1, 1, 1] } as MeshData;
@@ -206,7 +206,7 @@ it('replaces a flat index when an instance drains during placement-sync remount 
     const flatIndex = await waitForPublication(() => model.ifcDataStore!.spatialIndex, 'flat index');
     assert.deepEqual(flatIndex.queryAABB({ min: [40, 0, 0], max: [41, 1, 0] }), []);
     sync.dispose();
-    enqueueInstancedShards('missed-shard', [new ArrayBuffer(1)]);
+    enqueueInstancedShards('missed-shard', [new ArrayBuffer(1)], instancedShardGeneration());
     pieces.push({ expressId: 7, modelIndex: modelIndices(useViewerStore.getState().models).get('missed-shard')!,
       positions: new Float32Array([40, 0, 0, 41, 0, 0, 40, 1, 0]),
       indices: new Uint32Array([0, 1, 2]), normals: new Float32Array(9), color: [1, 1, 1, 1] } as MeshData);

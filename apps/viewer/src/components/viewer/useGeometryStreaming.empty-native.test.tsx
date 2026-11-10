@@ -15,7 +15,7 @@ import { useViewerStore } from '@/store';
 import { recoveryAllocationDevice } from '@/test/recovery-allocation-device';
 import { sectionNativeGeometry, sourceDigest } from '@/test/section-native-geometry';
 import { useGeometryStreaming } from './useGeometryStreaming';
-import { discardInstancedShards, enqueueInstancedShards } from '@/store/instancedShardQueue';
+import { discardInstancedShards, enqueueInstancedShards, instancedShardGeneration } from '@/store/instancedShardQueue';
 
 for (const mode of ['instanced', 'filtered', 'clear-and-reload'] as const) {
   it(`#6993 valid ${mode} empty-flat stream preserves completion ownership`, { timeout: 30_000 }, async t => {
@@ -61,7 +61,7 @@ for (const mode of ['instanced', 'filtered', 'clear-and-reload'] as const) {
         return <canvas />;
       };
       // Queued before mount: the drain takes it as soon as the renderer is up.
-      if (mode !== 'filtered') enqueueInstancedShards('native', [native.shardBytes.slice().buffer]);
+      if (mode !== 'filtered') enqueueInstancedShards('native', [native.shardBytes.slice().buffer], instancedShardGeneration());
       render(<Probe />);
       const scene = renderer.getScene();
       const occurrences = [...new Set(native.shard.instances.map(instance => instance.entityId))].flatMap(id => scene.getInstancedMeshDataPieces(id) ?? []);

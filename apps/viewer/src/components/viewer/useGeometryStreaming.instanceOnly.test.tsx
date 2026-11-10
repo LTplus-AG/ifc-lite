@@ -13,7 +13,7 @@ import { buildShardBytes } from '@/test/instanced-shard-fixture.js';
 import { flushPlacementGeometry } from '@/lib/model-placement/bounds-revision';
 import { cleanup, render, advance } from '@/test/render.js';
 import { useGeometryStreaming } from './useGeometryStreaming.js';
-import { enqueueInstancedShards } from '@/store/instancedShardQueue';
+import { enqueueInstancedShards, instancedShardGeneration } from '@/store/instancedShardQueue';
 
 interface Input { geometry: MeshData[] | null; source?: MeshData[]; shard?: ArrayBuffer; streaming: boolean }
 let update: (input: Input) => void;
@@ -22,7 +22,7 @@ const box = { min: { x: 20, y: 0, z: 0 }, max: { x: 21, y: 1, z: 0 } };
 const coordinateInfo: CoordinateInfo = { originalBounds: box, shiftedBounds: box, originShift: { x: 0, y: 0, z: 0 }, hasLargeCoordinates: false };
 function View({ renderer, geometryKernel }: { renderer: Renderer; geometryKernel: 'exact' | 'retained' }) {
   const [input, set] = useState<Input>({ geometry: null, streaming: false });
-  update = (next) => { set(next); if (next.shard) enqueueInstancedShards('m', [next.shard]); };
+  update = (next) => { set(next); if (next.shard) enqueueInstancedShards('m', [next.shard], instancedShardGeneration()); };
   const rendererRef = useRef<Renderer | null>(renderer), geometryBoundsRef = useRef(box);
   const clearColorRef = useRef<[number, number, number, number]>([0,0,0,1]);
   useGeometryStreaming({ rendererRef, geometryKernel, geometry: input.geometry, appearanceSourceGeometry: input.source ?? input.geometry ?? [],

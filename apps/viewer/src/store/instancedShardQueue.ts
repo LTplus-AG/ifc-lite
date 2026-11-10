@@ -77,11 +77,12 @@ function modelIdsOf(shards: readonly PendingInstancedShard[]): Set<string> {
 
 /**
  * Queue `modelId`'s shard bytes for upload, oldest first. The bytes are read,
- * never detached. A producer that captured `instancedShardGeneration()` passes
- * it: shards from a load a reset or full clear has since superseded are
- * refused here, so they cannot sit in the queue holding their buffers.
+ * never detached. Every producer passes the `instancedShardGeneration()` it
+ * captured when its load began (after its own reset): shards from a load that
+ * a reset or full clear has since superseded are refused here, so they cannot
+ * sit in the queue holding their buffers. Required, so no producer can skip it.
  */
-export function enqueueInstancedShards(modelId: string, shards: readonly ArrayBuffer[], fromGeneration = generation): void {
+export function enqueueInstancedShards(modelId: string, shards: readonly ArrayBuffer[], fromGeneration: number): void {
   if (shards.length === 0) return;
   if (fromGeneration !== generation) {
     noteDroppedInstancedShards('superseded', shards.length, [modelId]);
@@ -92,27 +93,35 @@ export function enqueueInstancedShards(modelId: string, shards: readonly ArrayBu
   emit({ kind: 'enqueued', modelIds: new Set([modelId]) });
 }
 
+/** What the consumer did with one shard: `waiting` keeps it queued. */
+export type InstancedShardOutcome = 'uploaded' | 'dropped' | 'waiting';
+
 /**
- * Hand every queued shard to `consume` and empty the queue. `consume` returns
- * the shards it could not place yet (owner not known to it); they go back to
- * the front of the queue in order. Listeners hear `drained` for the shards it
- * took, after `consume` returns (or throws), so a consumer that uploads
- * synchronously has finished before anyone treats the model as settled.
+ * Hand every queued shard to `consume`, which settles each one. Uploaded and
+ * dropped shards leave the queue; a `waiting` shard, and any shard `consume`
+ * did not settle (it returned early or threw), goes back to the front of the
+ * queue in its original order, so a failing consumer loses nothing and
+ * uploads nothing twice. Listeners hear `drained` only for shards that left,
+ * after `consume` finished, so a synchronous upload is done before anyone
+ * treats the model as settled. A throw is rethrown after the queue is
+ * restored. A full discard during `consume` wins: its shards are not restored.
  */
 export function drainInstancedShards(
-  consume: (shards: readonly PendingInstancedShard[]) => readonly PendingInstancedShard[] | void,
+  consume: (shards: readonly PendingInstancedShard[], settle: (shard: PendingInstancedShard, outcome: InstancedShardOutcome) => void) => void,
 ): void {
   if (pending.length === 0) return;
   const taken = pending;
+  const takenGeneration = generation;
   pending = [];
-  let deferred: readonly PendingInstancedShard[] = [];
+  const outcomes = new Map<PendingInstancedShard, InstancedShardOutcome>();
   try {
-    deferred = consume(taken) ?? [];
+    consume(taken, (shard, outcome) => { outcomes.set(shard, outcome); });
   } finally {
-    if (deferred.length > 0) pending = [...deferred, ...pending];
-    const kept = new Set(deferred);
-    const drained = taken.filter((shard) => !kept.has(shard));
-    if (drained.length > 0) emit({ kind: 'drained', modelIds: modelIdsOf(drained) });
+    const gone = (shard: PendingInstancedShard) => outcomes.get(shard) === 'uploaded' || outcomes.get(shard) === 'dropped';
+    const left = taken.filter(gone);
+    const restored = taken.filter((shard) => !gone(shard));
+    if (restored.length > 0 && generation === takenGeneration) pending = [...restored, ...pending];
+    if (left.length > 0) emit({ kind: 'drained', modelIds: modelIdsOf(left) });
   }
 }
 

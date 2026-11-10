@@ -17,7 +17,7 @@ import { cleanup, render, waitFor } from '@/test/render.js';
 import { settle } from '@/test/settle.js';
 import { useGeometryStreaming } from './useGeometryStreaming.js';
 import { buildShardBytes } from '@/test/instanced-shard-fixture.js';
-import { discardInstancedShards, enqueueInstancedShards, hasPendingInstancedShards } from '@/store/instancedShardQueue';
+import { discardInstancedShards, enqueueInstancedShards, hasPendingInstancedShards, instancedShardGeneration } from '@/store/instancedShardQueue';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 
 interface State {
@@ -155,7 +155,7 @@ for (const federated of [false, true]) {
     native.available(false);
     await act(async () => {
       update({ meshes, streaming: false, epoch: 0 });
-      enqueueInstancedShards('source', [buildShardBytes(42)]);
+      enqueueInstancedShards('source', [buildShardBytes(42)], instancedShardGeneration());
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
     assert.equal(native.scene.getInstancedMeshDataPieces(id), undefined);

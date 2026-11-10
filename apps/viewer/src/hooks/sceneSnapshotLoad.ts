@@ -15,7 +15,7 @@ import { decodeInstancedShard, type CoordinateInfo, type MeshData } from '@ifc-l
 import type { LoadTrace } from '@ifc-lite/load-trace';
 import { useViewerStore } from '../store/index.js';
 import { noteInstancedShardModel } from '../store/instancedShardModels.js';
-import { enqueueInstancedShards } from '../store/instancedShardQueue.js';
+import { enqueueInstancedShards, instancedShardGeneration } from '../store/instancedShardQueue.js';
 import { fitCameraToSnapshot, lastFinalFitBounds, sceneSnapshotKey, type SnapshotCameraFit, setPendingSceneSnapshot, withdrawPendingSceneSnapshot } from '../components/viewer/sceneSnapshotOwnership.js';
 import { readPerfFlag } from '../lib/perf/flags.js';
 import { recordFirstVisible } from '../lib/perf/loadTrace.js';
@@ -127,11 +127,12 @@ export async function publishAdoptedSceneMeshes(
   isStale: (() => boolean) | undefined,
   append: (modelId: string, meshes: MeshData[], coordinateInfo?: CoordinateInfo) => void,
 ): Promise<MeshData[]> {
+  const shardGeneration = instancedShardGeneration(); // a later reset supersedes the requeue below
   const chunks = await Promise.all(open.chunks.map((_, i) => open.readChunk(i)));
   if (isStale?.()) return [];
   const meshes = chunks.flat();
   setPendingSceneSnapshot(adopted.adoption, () => {
-    enqueueInstancedShards(modelId, adopted.shards);
+    enqueueInstancedShards(modelId, adopted.shards, shardGeneration);
     forgetRefusedSnapshot(cacheResult, cacheKey);
   }, adopted.fit);
   append(modelId, meshes, open.coordinateInfo);

@@ -37,7 +37,7 @@ import type { DecodedInstancedShard } from '@ifc-lite/geometry';
 import { useGeometryStreaming, type UseGeometryStreamingParams } from './useGeometryStreaming.js';
 
 import { buildShardBytes } from '@/test/instanced-shard-fixture.js';
-import { enqueueInstancedShards } from '@/store/instancedShardQueue';
+import { enqueueInstancedShards, instancedShardGeneration } from '@/store/instancedShardQueue';
 
 interface RecordedCall {
   modelIndex: number | undefined;
@@ -110,7 +110,7 @@ describe('useGeometryStreaming — federated instanced-shard forwarding (#1912)'
       root.render(<Harness params={params} />);
     });
     await act(async () => {
-      enqueueInstancedShards('model-b', [buildShardBytes(RAW_ENTITY_ID)]);
+      enqueueInstancedShards('model-b', [buildShardBytes(RAW_ENTITY_ID)], instancedShardGeneration());
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
 

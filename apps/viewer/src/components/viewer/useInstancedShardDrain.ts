@@ -27,7 +27,7 @@ import { decodeInstancedShard, type MeshData } from '@ifc-lite/geometry';
 import { liftNewInstancedOccurrences } from '@/lib/level-arrival';
 import { activeLoadTrace } from '@/lib/perf/activeLoadTrace';
 import { useViewerStore } from '@/store';
-import { drainInstancedShards, hasPendingInstancedShards, noteDroppedInstancedShards, subscribeInstancedShards, type PendingInstancedShard } from '@/store/instancedShardQueue';
+import { drainInstancedShards, hasPendingInstancedShards, noteDroppedInstancedShards, subscribeInstancedShards } from '@/store/instancedShardQueue';
 import { applyFederationOffsetToShard } from './instancedFederationOffset.js';
 import { fitInstanceOnlyBounds } from './streamingInstancedBounds.js';
 import type { Bounds } from './streamingBounds.js';
@@ -63,6 +63,7 @@ export function useInstancedShardDrain(params: InstancedShardDrainParams): void 
   useEffect(() => {
     if (!isInitialized) return;
     let timer: ReturnType<typeof setTimeout> | undefined;
+    let failures = 0;
     const drain = () => {
       timer = undefined;
       const p = latest.current;
@@ -72,48 +73,63 @@ export function useInstancedShardDrain(params: InstancedShardDrainParams): void 
       // `gpuRecoveryEpoch`, which re-subscribes and drains again.
       if (!renderer || !device) return;
       const scene = renderer.getScene();
-      drainInstancedShards((shards) => {
-        const trace = activeLoadTrace(); // #6979: shards only arrive while a load streams
-        const waiting: PendingInstancedShard[] = [];
-        const ownerless: string[] = [];
-        const liveModels = useViewerStore.getState().models;
-        for (const pending of shards) {
-          const { modelId, bytes } = pending;
-          // No maps at all is the single-model legacy wiring (index 0, offset 0).
-          const modelIndex = p.modelIdToIndex ? p.modelIdToIndex.get(modelId) : 0;
-          const idOffset = p.modelIdToOffset ? p.modelIdToOffset.get(modelId) : 0;
-          if (modelIndex === undefined || idOffset === undefined) {
-            if (liveModels.has(modelId)) waiting.push(pending);
-            else ownerless.push(modelId);
-            continue;
+      try {
+        drainInstancedShards((shards, settle) => {
+          const trace = activeLoadTrace(); // #6979: shards only arrive while a load streams
+          const ownerless: string[] = [];
+          let uploaded = 0;
+          const liveModels = useViewerStore.getState().models;
+          for (const pending of shards) {
+            const { modelId, bytes } = pending;
+            // No maps at all is the single-model legacy wiring (index 0, offset 0).
+            const modelIndex = p.modelIdToIndex ? p.modelIdToIndex.get(modelId) : 0;
+            const idOffset = p.modelIdToOffset ? p.modelIdToOffset.get(modelId) : 0;
+            if (modelIndex === undefined || idOffset === undefined) {
+              if (liveModels.has(modelId)) settle(pending, 'waiting');
+              else { ownerless.push(modelId); settle(pending, 'dropped'); }
+              continue;
+            }
+            // CRITICAL: never let a shard decode/upload throw out of the drain.
+            // addInstancedShard creates GPU buffers; on a degraded backend whose
+            // device is being lost (e.g. CI's SwiftShader), createBuffer throws.
+            // Instanced overlays are non-essential, so a failed shard is dropped:
+            // the flat geometry still renders.
+            let outcome: 'uploaded' | 'dropped' = 'dropped';
+            try {
+              const shard = trace.span('instanced.decode', () => decodeInstancedShard(new Uint8Array(bytes)));
+              if (shard) {
+                applyFederationOffsetToShard(shard, idOffset);
+                liftNewInstancedOccurrences(shard, p.currentLevelY ?? new Map());
+                trace.span('instanced.upload', () => scene.addInstancedShard(device, shard, modelIndex));
+                uploaded++;
+                outcome = 'uploaded';
+              }
+            } catch (err) {
+              console.warn('[useInstancedShardDrain] instanced shard upload failed (device lost?), skipping:', err);
+            }
+            // Settled once its upload was attempted: a later throw cannot replay it.
+            settle(pending, outcome);
           }
-          // CRITICAL: never let a shard decode/upload throw out of the drain.
-          // addInstancedShard creates GPU buffers; on a degraded backend whose
-          // device is being lost (e.g. CI's SwiftShader), createBuffer throws.
-          // Instanced overlays are non-essential, so swallow per-shard
-          // failures: the flat geometry still renders.
-          try {
-            const shard = trace.span('instanced.decode', () => decodeInstancedShard(new Uint8Array(bytes)));
-            if (!shard) continue;
-            applyFederationOffsetToShard(shard, idOffset);
-            liftNewInstancedOccurrences(shard, p.currentLevelY ?? new Map());
-            trace.span('instanced.upload', () => scene.addInstancedShard(device, shard, modelIndex));
-          } catch (err) {
-            console.warn('[useInstancedShardDrain] instanced shard upload failed (device lost?), skipping:', err);
+          noteDroppedInstancedShards('ownerless', ownerless.length, ownerless);
+          if (uploaded === 0) return;
+          if (p.geometryKernel === 'retained' && p.geometry?.length === 0 && !p.appearanceSourceGeometry?.length
+            && scene.getInstancedModelIndices().length > 0) {
+            fitInstanceOnlyBounds({ renderer, cameraFittedRef: p.cameraFittedRef, cameraSnapshotRef: p.cameraSnapshotRef,
+              geometryBoundsRef: p.geometryBoundsRef, finalBoundsRefittedRef: p.finalBoundsRefittedRef,
+              lastFitPolicyKindRef: p.lastFitPolicyKindRef, complete: false });
+            p.lastGeometryRef.current = p.geometry;
           }
-        }
-        noteDroppedInstancedShards('ownerless', ownerless.length, ownerless);
-        if (waiting.length + ownerless.length === shards.length) return waiting;
-        if (p.geometryKernel === 'retained' && p.geometry?.length === 0 && !p.appearanceSourceGeometry?.length
-          && scene.getInstancedModelIndices().length > 0) {
-          fitInstanceOnlyBounds({ renderer, cameraFittedRef: p.cameraFittedRef, cameraSnapshotRef: p.cameraSnapshotRef,
-            geometryBoundsRef: p.geometryBoundsRef, finalBoundsRefittedRef: p.finalBoundsRefittedRef,
-            lastFitPolicyKindRef: p.lastFitPolicyKindRef, complete: false });
-          p.lastGeometryRef.current = p.geometry;
-        }
-        renderer.requestRender();
-        return waiting;
-      });
+          renderer.requestRender();
+        });
+        failures = 0;
+      } catch (err) {
+        // The queue restored every shard the drain had not settled. Retry a few
+        // times with backoff; after that the next enqueue, owner change or
+        // device recovery drains again.
+        failures++;
+        console.error('[useInstancedShardDrain] drain failed; unsettled shards stay queued:', err);
+        if (failures <= 3 && hasPendingInstancedShards() && timer === undefined) timer = setTimeout(drain, 250 * 2 ** failures);
+      }
     };
     const later = () => { if (timer === undefined) timer = setTimeout(drain, 0); };
     schedule.current = later;

@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { render, cleanup, click, advance } from '@/test/render';
 import { seedAuthoringSample } from '@/test/authoring-sample-fixture';
-import { drainInstancedShards, enqueueInstancedShards } from '@/store/instancedShardQueue';
+import { drainInstancedShards, enqueueInstancedShards, instancedShardGeneration } from '@/store/instancedShardQueue';
 import { useViewerStore } from '@/store';
 import { ADAPTERS } from '@/lib/assistant/adapters/registry';
 import { PANEL_SURFACE_COMMANDS } from '@/components/viewer/surface-commands-panels';
@@ -70,8 +70,8 @@ test('#7160 drained native IFNS input stays offered only for its own eligible mo
   // Shards travel outside the store (NEW-1); the load's next store write (its
   // completion) is what re-renders the picker after they drain.
   act(() => {
-    enqueueInstancedShards(owner, [shard]);
-    drainInstancedShards(() => { /* uploaded by the renderer drain */ });
+    enqueueInstancedShards(owner, [shard], instancedShardGeneration());
+    drainInstancedShards((shards, settle) => { for (const shard of shards) settle(shard, 'uploaded'); });
     useViewerStore.setState({ clashRunning: false });
   });
   assert.equal(run()?.disabled, false, 'queue drain and absent optional hashes do not erase native input availability');

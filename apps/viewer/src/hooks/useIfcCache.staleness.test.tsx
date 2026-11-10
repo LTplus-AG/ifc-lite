@@ -45,7 +45,7 @@ import {
   type CacheDataStore,
 } from '@ifc-lite/cache';
 import type { MeshData, CoordinateInfo, GeometryResult } from '@ifc-lite/geometry';
-import { discardInstancedShards, subscribeInstancedShards } from '@/store/instancedShardQueue';
+import { discardInstancedShards, instancedShardDrops, subscribeInstancedShards } from '@/store/instancedShardQueue';
 import { useViewerStore } from '@/store';
 import { useIfcCache, type CacheResult, type CacheLoadResult } from './useIfcCache.js';
 
@@ -297,6 +297,9 @@ afterEach(async () => {
   const current = root;
   root = null;
   if (current) await act(async () => current.unmount());
+  // The shard queue is module state outside the store: a shard one test left
+  // undrained must not appear in the next test's snapshot.
+  discardInstancedShards();
   useViewerStore.setState({
     geometryResult: null,
     ifcDataStore: null,
@@ -499,6 +502,29 @@ describe('loadFromCache — bounding controls: the fix must not disable caching'
     assert.equal(Object.is(restoredFrame?.y, -0), true, 'the cache reload must retain signed zero');
     assert.equal(after.progress?.phase, 'Complete (from cache)', 'the load must report completion');
     assert.equal(after.streaming, false, 'the stream must be closed so the fragments finalize');
+  });
+
+  it('a full clear during a live hit\'s chunk reads refuses its shards (queue generation, #9628 review)', async () => {
+    // The session check alone cannot see this: the load stays current, but a
+    // full clear (e.g. a federation rebuild) bumped the queue generation while
+    // its chunks were being read, so the shards it then restores belong to a
+    // scene that is gone.
+    const entry = await buildCacheEntry();
+    useViewerStore.setState({ geometryResult: null, geometryStreamingActive: false });
+    const before = instancedShardDrops().superseded;
+    let cleared = false;
+    const unsubscribe = useViewerStore.subscribe((s) => {
+      if (!cleared && s.geometryResult && s.geometryResult.meshes.length > 0) { cleared = true; discardInstancedShards(); }
+    });
+    try {
+      const result = await load(entry, () => false);
+      assert.equal(result.success, true, 'the load itself is live and completes');
+    } finally {
+      unsubscribe();
+    }
+    assert.ok(cleared, 'the clear landed between chunk reads');
+    assert.equal(snapshot().shards, null, 'no shard of the cleared scene is queued');
+    assert.equal(instancedShardDrops().superseded - before, 1, 'the refusal is counted');
   });
 
   it('a non-stale load with no geometry section still hydrates the store', async () => {

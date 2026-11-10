@@ -37,7 +37,7 @@ import '../../test/setup-dom.js';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { useRef } from 'react';
-import { enqueueInstancedShards } from '@/store/instancedShardQueue';
+import { enqueueInstancedShards, instancedShardGeneration } from '@/store/instancedShardQueue';
 import { fixtureModel } from '@/test/store-fixture.js';
 import { loadedInstancedModelIndices } from '@/lib/visibility/model-hidden-entities.js';
 import { act } from 'react';
@@ -170,7 +170,7 @@ function Harness(props: Omit<UseGeometryStreamingParams, 'rendererRef' | 'clearC
   const seeded = useRef(false);
   if (!seeded.current) {
     seeded.current = true;
-    if (initialShardBytes !== null) enqueueInstancedShards('model-0', initialShardBytes);
+    if (initialShardBytes !== null) enqueueInstancedShards('model-0', initialShardBytes, instancedShardGeneration());
   }
   const rendererRef = useRef<Renderer | null>(renderer);
   const clearColorRef = useRef<[number, number, number, number]>([0, 0, 0, 1]);

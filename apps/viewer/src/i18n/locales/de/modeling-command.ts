@@ -5,8 +5,18 @@
 import type { Catalogue } from '../../registry';
 
 export const modelingCommandDe = {
+  "modelingCommand.roof.shape": "Form",
+  "modelingCommand.roof.hip": "Walmdach",
+  "modelingCommand.roof.gable": "Satteldach",
+  "modelingCommand.roof.mono": "Pultdach",
+  "modelingCommand.roof.flat": "Flachdach",
+  "modelingCommand.roof.pitch": "Neigung",
+  "modelingCommand.roof.overhang": "Überstand",
+  "modelingCommand.roof.edge": "Kante",
+  "modelingCommand.roof.edgeSlope": "Kantenneigung",
   "modelingCommand.closeAria": "Befehl verlassen",
   "modelingCommand.aim.tag": "Auf Arbeitsebene",
+  "modelingCommand.snap.increment": "Schrittmaß {step} · Alt zum Aussetzen",
   "modelingCommand.aim.holdAlt": "{key} halten, um Fangpunkte und Flächen zu ignorieren: Der Punkt liegt auf der Arbeitsebene",
   "modelingCommand.aim.altHeld": "{key} gehalten: Der Punkt liegt auf der Arbeitsebene, Fangpunkte und Flächen davor werden ignoriert",
   "modelingCommand.aim.snapOff": "Fang ist aus: Der Punkt liegt auf der Arbeitsebene, Flächen davor werden ignoriert",

@@ -38,6 +38,10 @@ export interface ModelLoadOptions {
   onGaussianBudgetReserved?: (release: () => void) => void;
   /** Report settlement after awaited Gaussian source metadata, including cancellation. */
   onGaussianLoadSettled?: (outcome: GaussianLoadOutcome) => void;
+  /** THIS load's user-visible failure message; the store's `error` may belong to another load by the time the caller reads it. */
+  onLoadError?: (message: string) => void;
+  /** A federated target: THIS load registered its model (another load may reuse an explicit id). */
+  onModelRegistered?: () => void;
 }
 
 /** Federation placement/display options share loader ownership and source handles. */
@@ -47,4 +51,12 @@ export interface FederationAddModelOptions extends Pick<ModelLoadOptions, 'sourc
   loadedAt?: number;
   visible?: boolean;
   collapsed?: boolean;
+  /** Why THIS add failed (load or federation error); never another overlapping load's. Not called on cancel. */
+  onError?: (message: string) => void;
+  /**
+   * A replacement transaction (Gaussian reload, #8566): a newer add that starts
+   * before this one settles cancels it, so it resolves `null` even if its model
+   * registered. The caller owns cleanup of that model by its explicit id.
+   */
+  failIfSuperseded?: boolean;
 }

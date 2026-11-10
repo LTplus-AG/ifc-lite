@@ -5,10 +5,12 @@
 /** Shared selection, preview and atomic write for paste, array and Duplicate (#6232 D5). */
 import type { StoreEditor } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
+import type { CopyShape } from './copy-shape.js';
 import { copyProductGraph, copyRefusal, createCopyContext, productStoreyOrigin, type CopyContext, type CopyProductResult, type CopyTransform } from './copy-product.js';
 import { openTypeRelationBatch, type DuplicateInStoreOptions } from './duplicate.js';
 import { copiedProductWork, COPY_PRODUCT_WORK_LIMIT } from './copy-dependent-walk.js';
 import { readCopyAttachments, rebindCopiedAttachments, withUnattachedTops, type CopyUnattachedTop } from './copy-attachment.js';
+import { duplicateSourceStoreyId, type DuplicateSourceScope } from './resolve-source.js';
 
 /** Bound pruned root fan-out before allocating products/transforms. */
 export const COPY_BATCH_LIMIT = 10_000;
@@ -60,6 +62,8 @@ export function copiedProductsInStore(ctx: CopyContext, ids: readonly number[]):
 }
 
 export interface CopyBatchOptions {
+  /** Deep-copy file shape records with 'own'; default 'shared' keeps current behaviour (#8447). */
+  readonly shape?: CopyShape;
   /** Duplicate's naming/randomness policy; displacement is supplied by transforms. */
   readonly duplicate?: Pick<DuplicateInStoreOptions, 'name' | 'guidRandom'>;
 }
@@ -88,20 +92,27 @@ export function copyBatchInStore(
     if (transform.targetStoreyId !== undefined && (!Number.isSafeInteger(transform.targetStoreyId) || transform.targetStoreyId <= 0)) throw new Error('Copy targetStoreyId must be a positive integer');
   }
   return editor.runAtomic((draft) => {
-    const ctx = createCopyContext(store, draft, { guidRandom: options.duplicate?.guidRandom });
+    const sourceScope: DuplicateSourceScope = { storeys: new Map() };
+    const ctx: CopyContext = { ...createCopyContext(store, draft, { guidRandom: options.duplicate?.guidRandom }), sourceScope };
     for (const transform of transforms) {
       if (transform.targetStoreyId !== undefined && ctx.read(transform.targetStoreyId)?.type.toUpperCase() !== 'IFCBUILDINGSTOREY') throw new Error('Copy targetStoreyId must identify an IfcBuildingStorey in this model');
     }
     const sources = copySourcesInStore(ctx, ids, transforms.length);
     if ('refusal' in sources) throw new Error(sources.refusal);
+    // Resolve every root's effective storey against the overlay as it stands
+    // before the batch's first write. An unreadable root keeps its own error
+    // for the copy step to report.
+    for (const id of sources.ids) {
+      try { duplicateSourceStoreyId(store, id, draft, sourceScope); } catch { /* reported by the copy */ }
+    }
     const attachments = readCopyAttachments(ctx, copiedProductsInStore(ctx, sources.ids));
     const flushTypeRelations = openTypeRelationBatch(draft); // one IfcRelDefinesByType write per type per batch
     const copies = transforms.flatMap((transform) => {
       const results = sources.ids.map((id) => {
-        if (!options.duplicate) return copyProductGraph(ctx, id, transform);
+        if (!options.duplicate) return copyProductGraph(ctx, id, transform, { shape: options.shape });
         const sourceName = ctx.read(id)?.attributes[2];
         const name = options.duplicate.name ?? (typeof sourceName === 'string' && sourceName.length > 0 ? `${sourceName} (copy)` : sourceName);
-        return copyProductGraph(ctx, id, transform, typeof name === 'string' ? { Name: name } : {});
+        return copyProductGraph(ctx, id, transform, { shape: options.shape, ...(typeof name === 'string' ? { Name: name } : {}) });
       });
       return withUnattachedTops(results, rebindCopiedAttachments(ctx, attachments, results).unattached);
     });

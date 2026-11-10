@@ -62,7 +62,7 @@ export {
   type AskUserQuestion,
   type AskUserChoice,
 } from './bridges.js';
-export { createWorkerModelBridge, serveModelBridge, type BridgePort, type BridgeRequest, type BridgeResponse } from './worker-bridge.js';
+export { createWorkerModelBridge, serveModelBridge, type BridgePort, type BridgePortEvent, type BridgeRequest, type BridgeResponse, type WorkerModelBridgeOptions } from './worker-bridge.js';
 
 // Tool registry (IDS-076)
 export { ALL_TOOLS } from './tools/index.js';

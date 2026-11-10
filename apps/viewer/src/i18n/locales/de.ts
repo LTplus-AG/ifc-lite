@@ -41,6 +41,7 @@ import { checkAuthoringDe } from './de/check-authoring';
 import { clashGroupApplyDe } from './de/clash-group-apply';
 import { clashGroupsDe } from './de/clash-groups';
 import { clashPanelDe } from './de/clash-panel';
+import { clashQualityDe } from './de/clash-quality';
 import { clashToolsDe } from './de/clash-tools';
 import { commandPaletteDe } from './de/command-palette';
 import { commandsDe } from './de/commands';
@@ -203,6 +204,7 @@ export default {
   ...clashGroupApplyDe,
   ...clashGroupsDe,
   ...clashPanelDe,
+  ...clashQualityDe,
   ...clashToolsDe,
   ...commandPaletteDe,
   ...commandsDe,

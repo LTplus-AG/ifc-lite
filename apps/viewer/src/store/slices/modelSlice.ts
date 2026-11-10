@@ -17,7 +17,7 @@ import { federationRegistry, type GlobalIdLookup } from '@ifc-lite/renderer';
 import type { ViewerState } from '../index.js';
 import { localIdInParseRange, localIdInOverlay } from '../globalId.js';
 import { viewerTeardown } from '../teardown-registry.js';
-import { modelAppearanceAssets } from '../../lib/appearance/model-assets.js';
+import { releaseAllModelSessions, releaseRemovedModelSession } from './modelSlice.sessionRelease.js';
 import { modelRemovedScope } from '../teardown-scope.js';
 import { endIdsRowFocusPresentation, type IDSRowFocusPresentation } from '../../lib/ids/visibility-ownership.js';
 import { endClashScenePresentation, type ClashSceneTeardown } from '@/lib/clash/visibility-ownership';
@@ -34,6 +34,9 @@ export interface ModelSlice {
   models: Map<string, FederatedModel>;
   /** ID of the currently active model (for property panel focus) */
   activeModelId: string | null;
+  /** Bumped by every teardown that ends the model session an analysis run read
+   *  (`modelSlice.teardown.ts`); runs end themselves on it (`hooks/analysisRunGuard.ts`). */
+  analysisRunGeneration: number;
 
   // Actions
   /** Add a new model to the federation */
@@ -152,6 +155,7 @@ export const createModelSlice: StateCreator<ViewerState, [], [], ModelSlice> = (
   // Initial state
   models: new Map(),
   activeModelId: null,
+  analysisRunGeneration: 0,
 
   // Actions
   addModel: (model) => set((state) => {
@@ -377,7 +381,7 @@ export const createModelSlice: StateCreator<ViewerState, [], [], ModelSlice> = (
     // through `withVisibilityOwnershipInvalidation`.
     const state = get();
     set(viewerTeardown(modelRemovedScope(state, modelId), state));
-    modelAppearanceAssets.remove(modelId);
+    releaseRemovedModelSession(modelId);
   },
 
   clearAllModels: () => {
@@ -514,7 +518,7 @@ export const createModelSlice: StateCreator<ViewerState, [], [], ModelSlice> = (
     // stored global id is stale by definition AND the very next model loaded
     // can be handed those exact numbers back.
     set(viewerTeardown({ kind: 'all-models-cleared' }, get()));
-    modelAppearanceAssets.clear();
+    releaseAllModelSessions();
   },
 
   setActiveModel: (modelId) => set((state) => {

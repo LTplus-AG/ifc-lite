@@ -60,12 +60,11 @@
   1317 apps/viewer/src/components/mcp/McpLanding.tsx
    525 apps/viewer/src/components/mcp/McpPlayground.tsx
   2051 apps/viewer/src/components/mcp/playground-dispatcher.ts
-  1187 apps/viewer/src/components/mcp/PlaygroundChat.tsx
-   414 apps/viewer/src/components/viewer/bcf/BCFTopicDetail.tsx
-   529 apps/viewer/src/components/viewer/BCFPanel.tsx
+   715 apps/viewer/src/components/mcp/PlaygroundChat.tsx
+   474 apps/viewer/src/components/viewer/BCFPanel.tsx
    604 apps/viewer/src/components/viewer/BulkPropertyEditor.tsx
    485 apps/viewer/src/components/viewer/CesiumOverlay.tsx
-  1434 apps/viewer/src/components/viewer/ChatPanel.tsx
+  1429 apps/viewer/src/components/viewer/ChatPanel.tsx
   1243 apps/viewer/src/components/viewer/ClashPanel.tsx
    964 apps/viewer/src/components/viewer/DataConnector.tsx
   1698 apps/viewer/src/components/viewer/Drawing2DCanvas.tsx
@@ -100,7 +99,7 @@
    501 apps/viewer/src/components/viewer/tools/measure-modes/radius.ts
    813 apps/viewer/src/components/viewer/tools/MeasurementVisuals.tsx
    742 apps/viewer/src/components/viewer/useGeometryStreaming.ts
-   893 apps/viewer/src/components/viewer/useMouseControls.ts
+   880 apps/viewer/src/components/viewer/useMouseControls.ts
    461 apps/viewer/src/components/viewer/ViewerLayout.tsx
   1507 apps/viewer/src/components/viewer/Viewport.tsx
    846 apps/viewer/src/components/viewer/ViewportContainer.tsx
@@ -112,9 +111,9 @@
    764 apps/viewer/src/hooks/useBCF.ts
   1334 apps/viewer/src/hooks/useClash.ts
   1234 apps/viewer/src/hooks/useDrawingExport.ts
-  1041 apps/viewer/src/hooks/useDrawingGeneration.ts
-   667 apps/viewer/src/hooks/useIfcFederation.ts
-  2211 apps/viewer/src/hooks/useIfcLoader.ts
+  1032 apps/viewer/src/hooks/useDrawingGeneration.ts
+   551 apps/viewer/src/hooks/useIfcFederation.ts
+  2171 apps/viewer/src/hooks/useIfcLoader.ts
    436 apps/viewer/src/hooks/useIfcServer.ts
    456 apps/viewer/src/hooks/useSymbolicAnnotations.ts
    633 apps/viewer/src/lib/analytics-scrub.ts
@@ -141,7 +140,7 @@
    444 apps/viewer/src/store/constants.ts
    452 apps/viewer/src/store/slices/chatSlice.ts
    992 apps/viewer/src/store/slices/clashSlice.ts
-  1312 apps/viewer/src/store/slices/collabSlice.ts
+  1201 apps/viewer/src/store/slices/collabSlice.ts
    482 apps/viewer/src/store/slices/dataSlice.ts
    882 apps/viewer/src/store/slices/drawing2DSlice.ts
    474 apps/viewer/src/store/slices/idsSlice.ts
@@ -185,7 +184,7 @@
    432 packages/data/src/property-table.ts
    457 packages/data/src/step-serializers.ts
    508 packages/data/src/types.ts
-   550 packages/drawing-2d/src/drawing-generator.ts
+   541 packages/drawing-2d/src/drawing-generator.ts
    507 packages/drawing-2d/src/dxf/convert.ts
    898 packages/drawing-2d/src/dxf/parser.ts
    413 packages/drawing-2d/src/dxf/writer.ts
@@ -214,9 +213,9 @@
    638 packages/geometry/src/coordinate-handler.ts
   1545 packages/geometry/src/geometry-parallel.ts
   1780 packages/geometry/src/geometry.worker.ts
-   918 packages/geometry/src/ifc-lite-bridge.ts
-  1534 packages/geometry/src/index.ts
-   730 packages/geometry/src/native-bridge.ts
+   898 packages/geometry/src/ifc-lite-bridge.ts
+  1531 packages/geometry/src/index.ts
+   625 packages/geometry/src/native-bridge.ts
    904 packages/ids/src/audit/ifc-schema/index.ts
    411 packages/ids/src/audit/structural/index.ts
    445 packages/ids/src/facets/property-facet.ts
@@ -315,5 +314,5 @@
    531 scripts/review/run-reviewer.mjs
    688 scripts/source-text-assertion-detect.mjs
    504 scripts/test-geometry-regression.mjs
-  2095 scripts/test-wasm-contract.mjs
+  2069 scripts/test-wasm-contract.mjs
    678 scripts/typecheck-tests.mjs

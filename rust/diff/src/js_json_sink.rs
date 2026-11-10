@@ -10,7 +10,7 @@ use crate::JsString;
 use crate::utf16::{cmp_code_units, StableHasher};
 use super::{write_value, JsonValue};
 
-pub(super) trait JsonSink {
+pub(crate) trait JsonSink {
     fn push_str(&mut self, text: &str);
     /// `text`, `count` times over.
     fn push_repeat(&mut self, text: &str, count: u64);

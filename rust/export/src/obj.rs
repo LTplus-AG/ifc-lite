@@ -19,6 +19,7 @@ use std::fmt::Write as _;
 use ifc_lite_processing::{process, MeshData, MeshFrame, ProcessingRequest};
 
 use crate::error::ExportError;
+use crate::visibility::ElementFilter;
 use ifc_lite_geometry::math::frame::zup_to_yup;
 
 /// Options for OBJ export.
@@ -61,22 +62,12 @@ pub struct ObjStats {
 }
 
 /// True when `mesh` should be written given the isolation/hidden filters.
-fn mesh_visible(mesh: &MeshData, isolated: &Option<Vec<u32>>, hidden: &[u32]) -> bool {
-    if hidden.contains(&mesh.express_id) {
-        return false;
-    }
-    // `Some(ids)` = isolation is ACTIVE — an empty allowlist must exclude every
-    // mesh here, not read the same as "no filter" (`None`). See `ObjOptions::isolated`.
-    if let Some(ids) = isolated {
-        if !ids.contains(&mesh.express_id) {
-            return false;
-        }
-    }
+fn mesh_visible(mesh: &MeshData, ids: &ElementFilter) -> bool {
     // OBJ's `v`/`vn` tokens have no lexical form for a non-finite number, and
     // this exporter folds `mesh.origin` into every position, so the shared
     // from-bytes gate (instanced type-library shapes out, whole triangles, all
-    // finite) is exactly what it needs.
-    crate::mesh_input::is_exportable(mesh)
+    // finite) is exactly what it needs. `ObjOptions` has no `hidden_types`.
+    ids.keeps(mesh.express_id, &mesh.ifc_type) && crate::mesh_input::is_exportable(mesh)
 }
 
 /// Export the render geometry in `content` (raw IFC/STEP bytes) as a Wavefront OBJ string.
@@ -120,8 +111,9 @@ fn write_obj_in(meshes: &[MeshData], frame: MeshFrame, opts: &ObjOptions) -> (St
 
     // The frame's rotation check is made once per export, not per vertex.
     let (to_world, direction) = (frame.world_mapper(), frame.direction_mapper());
+    let ids = ElementFilter::new(&opts.hidden, opts.isolated.as_deref(), &[]);
     for mesh in meshes {
-        if !mesh_visible(mesh, &opts.isolated, &opts.hidden) {
+        if !mesh_visible(mesh, &ids) {
             continue;
         }
         let nverts = mesh.positions.len() / 3;

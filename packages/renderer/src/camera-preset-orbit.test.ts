@@ -61,18 +61,17 @@ function finishPreset(camera: Camera, view: PresetView): void {
 }
 
 describe('Camera preset orbit behavior', () => {
-  it('top preset starts on MIN_PHI with world Y-up and no first-orbit phi snap', () => {
+  it('top preset sits exactly on the pole with a horizontal up, and its first orbit steps to MIN_PHI without a screen snap (#9501)', () => {
     const camera = new Camera();
     finishPreset(camera, 'top');
 
-    approxEqual(phiFromCamera(camera), CC.MIN_PHI, 1e-6);
+    approxEqual(phiFromCamera(camera), 0, 1e-12);
     approxEqual(camera.getUp().x, 0);
-    approxEqual(camera.getUp().y, 1);
-    approxEqual(camera.getUp().z, 0);
+    approxEqual(camera.getUp().y, 0);
+    approxEqual(camera.getUp().z, -1);
 
-    const beforePhi = phiFromCamera(camera);
     camera.orbit(100, 0);
-    approxEqual(phiFromCamera(camera), beforePhi, 1e-6);
+    approxEqual(phiFromCamera(camera), CC.MIN_PHI, 1e-6);
   });
 
   it('top preset ignores off-axis click pivot while near pole to prevent sideways drift', () => {
@@ -85,18 +84,16 @@ describe('Camera preset orbit behavior', () => {
     approxEqual(camera.getPosition().x, 0, 1e-6);
   });
 
-  it('bottom preset starts on MAX_PHI and does not snap on first horizontal orbit', () => {
+  it('bottom preset sits exactly on the pole and its first orbit steps to MAX_PHI (#9501)', () => {
     const camera = new Camera();
     finishPreset(camera, 'bottom');
 
-    approxEqual(phiFromCamera(camera), CC.MAX_PHI, 1e-6);
-    approxEqual(camera.getUp().x, 0);
-    approxEqual(camera.getUp().y, 1);
-    approxEqual(camera.getUp().z, 0);
+    approxEqual(phiFromCamera(camera), Math.PI, 1e-12);
+    approxEqual(camera.getUp().y, 0);
+    approxEqual(Math.hypot(camera.getUp().x, camera.getUp().z), 1);
 
-    const beforePhi = phiFromCamera(camera);
     camera.orbit(100, 0);
-    approxEqual(phiFromCamera(camera), beforePhi, 1e-6);
+    approxEqual(phiFromCamera(camera), CC.MAX_PHI, 1e-6);
   });
 
   it('side presets start at the horizon and do not lift on first horizontal orbit', () => {

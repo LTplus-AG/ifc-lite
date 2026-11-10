@@ -17,6 +17,7 @@
  */
 
 import { useViewerStore } from '@/store';
+import { formatLocaleNumber } from '@/i18n/intlFormat';
 import { useTranslation } from '@/i18n';
 import type { SnapResult, Vec2 } from '@/lib/snap/types';
 import type { Workplane } from '@/lib/commands/modeling/types';
@@ -71,7 +72,7 @@ export function SnapHud({ snap, plane }: SnapHudProps) {
  * so both views show the same snap the same way.
  */
 export function SnapHudShapes({ snap, screen }: { snap: SnapResult; screen: (p: Vec2, z?: number) => Screen | null }) {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const glyph = glyphFor(snap);
   const at = glyph ? screen(snap.local) : null;
   const winner = snap.winner;
@@ -92,14 +93,14 @@ export function SnapHudShapes({ snap, screen }: { snap: SnapResult; screen: (p: 
       {glyph && at && (
         <g transform={`translate(${at.x} ${at.y})`} data-scene-primitive="snap-glyph" data-snap-kind={glyph}>
           <SnapGlyphShape kind={glyph} />
-          {glyph === 'workplane' && (
+          {(glyph === 'workplane' || winner?.increment !== undefined) && (
             <text
               x={TAG_OFFSET_PX} y={-TAG_OFFSET_PX}
               className="fill-overlay-accent stroke-overlay-halo text-2xs font-medium"
               strokeWidth={3} style={{ paintOrder: 'stroke' }}
-              data-snap-tag=""
+              data-snap-tag="" data-snap-increment={winner?.increment}
             >
-              {t('modelingCommand.aim.tag')}
+              {winner?.increment !== undefined ? t('modelingCommand.snap.increment', { step: formatLocaleNumber(locale, winner.increment < 1 ? winner.increment * 1000 : winner.increment, { style: 'unit', unit: winner.increment < 1 ? 'millimeter' : 'meter', maximumFractionDigits: 3 }) }) : t('modelingCommand.aim.tag')}
             </text>
           )}
         </g>

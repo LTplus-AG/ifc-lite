@@ -4,9 +4,9 @@
 
 /**
  * The plan's viewport (charter #6232, M2 §1.5): its measured size, the
- * `Fit` (screen ↔ workplane-local), wheel zoom about the cursor and drag
- * pan. Zoom goes through `zoomStep`, so the plan refuses an out-of-range zoom
- * instead of drifting.
+ * `Fit` (screen ↔ workplane-local), eased wheel zoom about the cursor
+ * (#9507) and drag pan. Each zoom step goes through `zoomByScale`, so the
+ * plan refuses an out-of-range zoom instead of drifting.
  *
  * The plan frames itself once per storey, as soon as its cut has settled
  * (it arrives after a debounce), and keeps the frame fitted while the pane
@@ -14,9 +14,12 @@
  * an empty storey must not make the plan jump); Fit and a storey change do.
  */
 
-import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
+import { useCallback, useEffect, useRef, useState, type RefObject, type SetStateAction } from 'react';
 import type { Fit } from '@/lib/rooms/plate-geometry';
-import { zoomStep } from './plan-zoom';
+import { zoomByScale } from './plan-zoom';
+import { useViewerStore } from '@/store/index.js';
+import { wheelZoomSensitivityFactor } from '@/lib/navigation/wheel-input.js';
+import { createTransformWheelZoom } from '../wheelZoom.js';
 
 export interface PlanViewport {
   size: { width: number; height: number };
@@ -39,7 +42,16 @@ export function usePlanViewport(
   ready: boolean,
 ): PlanViewport {
   const [size, setSize] = useState({ width: 0, height: 0 });
-  const [fit, setFit] = useState<Fit | null>(null);
+  const [fit, setFitState] = useState<Fit | null>(null);
+  // The live fit. Every write goes through `setFit`, which updates it before
+  // the state, so the eased wheel zoom (#9507) steps from what a pan or a
+  // refit wrote this frame instead of overwriting it with a stale value.
+  const fitRef = useRef(fit);
+  const setFit = useCallback((next: SetStateAction<Fit | null>) => {
+    const value = typeof next === 'function' ? next(fitRef.current) : next;
+    fitRef.current = value;
+    setFitState(value);
+  }, []);
   const framed = useRef<string | null>(null);
   /** The user panned or zoomed since the last fit: resizes stop refitting. */
   const moved = useRef(false);
@@ -85,20 +97,26 @@ export function usePlanViewport(
     setFit((f) => (f ? { ...f, offX: f.offX + dx, offY: f.offY + dy } : f));
   }, []);
 
-  // Wheel zoom about the cursor; non-passive so the page never scrolls instead.
+  // Eased wheel zoom about the cursor; non-passive so the page never scrolls instead.
   useEffect(() => {
     const svg = svgRef.current;
     if (!svg) return;
+    const zoom = createTransformWheelZoom<Fit>({
+      get: () => fitRef.current,
+      set: setFit,
+      zoomAbout: zoomByScale,
+      rect: () => svg.getBoundingClientRect(),
+      sensitivity: () => wheelZoomSensitivityFactor(useViewerStore.getState().wheelZoomSensitivity),
+      keyTarget: svg.ownerDocument.defaultView ?? undefined,
+    });
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
       moved.current = true;
-      const rect = svg.getBoundingClientRect();
-      const ax = e.clientX - rect.left, ay = e.clientY - rect.top;
-      setFit((f) => (f ? zoomStep(f, e.deltaY, ax, ay) ?? f : f));
+      zoom.zoom(e);
     };
     svg.addEventListener('wheel', onWheel, { passive: false });
-    return () => svg.removeEventListener('wheel', onWheel);
-  }, [svgRef]);
+    return () => { svg.removeEventListener('wheel', onWheel); zoom.dispose(); };
+  }, [svgRef, setFit]);
 
   return { size, fit, refit, panBy };
 }

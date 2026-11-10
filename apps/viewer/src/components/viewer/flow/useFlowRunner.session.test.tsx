@@ -9,7 +9,7 @@ import { afterEach, before, beforeEach, describe, it } from 'node:test';
 import { act } from 'react';
 import type { FlowDocument } from '@ifc-lite/flow';
 import { BimProvider } from '@/sdk/BimProvider';
-import { useViewerStore } from '@/store';
+import { useViewerStore, type FederatedModel } from '@/store';
 import { render, cleanup } from '@/test/render';
 import { snapshotComparison } from '@/lib/compare/savedComparisons';
 import { comparisonModels, comparisonResult } from '@/test/saved-comparison-fixture';
@@ -41,6 +41,20 @@ before(() => {
       // settles, and the old result must not activate dependent PDF work.
       await settle.promise;
       return { reports: inputs.reports };
+    },
+  });
+});
+// A model-reading graph, not an automation one (`isAutomationGraph`): none of
+// the automation cancels apply, so only the run generation can end it.
+const MODEL_DELAY = 'test.modelDelayA2';
+before(() => {
+  flowRegistry().register({ type: MODEL_DELAY, title: 'Delayed model read', category: 'test', params: [], capabilities: [], volatile: true,
+    inputs: [], outputs: [],
+    run: async (context) => {
+      nodeSignal = context.signal;
+      entered.resolve();
+      await settle.promise;
+      return {};
     },
   });
 });
@@ -135,6 +149,51 @@ describe('mounted workflow run ownership (#6612)', () => {
     assert.equal(state.flowArtifacts.length, 0);
     assert.equal(state.documents.length, 0, 'dependent document creation must never start after cancellation');
     assert.equal(state.flowRunning, false);
+    assert.equal(isNativeWorkflowBusy(), false);
+  });
+
+  it('A2 a session reset cancels the run; Run stays disabled until the lease drains, and the drained run writes nothing into the new session', async () => {
+    let pending!: Promise<void>;
+    await act(async () => { pending = api!.run(selections()); await entered.promise; });
+    // "Open file": the graph is workspace state and survives, so `stillOpen()` alone cannot see it.
+    await act(async () => { useViewerStore.getState().resetViewerState(); });
+    assert.equal(nodeSignal?.aborted, true, 'the session reset must abort the run, not only reset its flag');
+    assert.equal(isNativeWorkflowBusy(), true, 'setup: the non-abortable node still holds the lease');
+    assert.equal(useViewerStore.getState().flowRunning, true, 'the running flag mirrors the lease while it drains');
+    assert.equal(api?.canRun, false, 'Run must not be offered while the old lease drains');
+    // A run started anyway (a retained handler) must not surface "already running".
+    await act(async () => { await api!.run(selections()); });
+    assert.equal(useViewerStore.getState().flowLastError, null);
+    await act(async () => { settle.resolve(); await pending; });
+    const state = useViewerStore.getState();
+    assert.equal(state.flowLastError, null, 'the drained run\'s AbortError must not land in the new session');
+    assert.equal(state.flowLastRun, null);
+    assert.equal(state.flowLastRunWindow, null);
+    assert.equal(state.flowArtifacts.length, 0);
+    assert.equal(state.flowProgress, null);
+    assert.equal(state.flowRunning, false);
+    assert.equal(isNativeWorkflowBusy(), false);
+    assert.equal(api?.canRun, true, 'Run is offered again once the lease is released');
+  });
+
+  it('A2 a session reset cancels a model graph through the run generation alone', async () => {
+    const model = { id: 'M', name: 'M.ifc', ifcDataStore: null, geometryResult: null, visible: true, collapsed: false,
+      schemaVersion: 'IFC4', loadedAt: 0, fileSize: 0, idOffset: 0, maxExpressId: 0 } as unknown as FederatedModel;
+    act(() => useViewerStore.setState({ models: new Map([['M', model]]), activeModelId: 'M',
+      flowDoc: { flowVersion: 2, id: 'model-graph', name: 'Model graph', capabilities: [], inputs: [], nodes: [{ id: 'wait', type: MODEL_DELAY }], edges: [], outputs: [] } }));
+    assert.equal(api?.canRun, true, 'setup: a model graph runs against the active model');
+    let pending!: Promise<void>;
+    await act(async () => { pending = api!.run(); await Promise.race([entered.promise, pending]); });
+    assert.equal(useViewerStore.getState().flowLastError, null, 'setup: the graph reached its node');
+    const before = useViewerStore.getState();
+    await act(async () => { useViewerStore.getState().resetViewerState(); });
+    const after = useViewerStore.getState();
+    assert.equal(after.models, before.models, 'setup: the reset keeps the models');
+    assert.equal(after.flowDoc, before.flowDoc, 'setup: the reset keeps the graph');
+    assert.equal(nodeSignal?.aborted, true, 'the session reset must cancel the run');
+    await act(async () => { settle.resolve(); await pending; });
+    assert.equal(useViewerStore.getState().flowLastError, null);
+    assert.equal(useViewerStore.getState().flowRunning, false);
     assert.equal(isNativeWorkflowBusy(), false);
   });
 

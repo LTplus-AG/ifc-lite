@@ -39,6 +39,7 @@ export const mcpPlaygroundFr = {
   "mcp.playgroundChat.placeholderNoKey": "Définissez d’abord une clé Anthropic.",
   "mcp.playgroundChat.placeholderAddNote": "Ajoutez une note (ou envoyez directement pour valider le fichier joint)…",
   "mcp.playgroundChat.placeholderDefault": "Interrogez l’agent — déposez un .ids dans la discussion pour le valider.",
+  "mcp.playgroundChat.stopped": "Arrêté",
   "mcp.playgroundChat.send": "Envoyer",
   "mcp.playgroundChat.footerHintNoAttachments": "Votre clé API · {tools} outils · Entrée pour envoyer · ⇧+Entrée pour une nouvelle ligne · déposer des fichiers pour les joindre",
   "mcp.playgroundChat.footerHintWithAttachments": {"one":"Votre clé API · {tools} outils · {count} fichier joint · Entrée pour envoyer · ⇧+Entrée pour une nouvelle ligne · déposer des fichiers pour les joindre","other":"Votre clé API · {tools} outils · {count} fichiers joints · Entrée pour envoyer · ⇧+Entrée pour une nouvelle ligne · déposer des fichiers pour les joindre","many":"Votre clé API · {tools} outils · {count} fichiers joints · Entrée pour envoyer · ⇧+Entrée pour une nouvelle ligne · déposer des fichiers pour les joindre"},

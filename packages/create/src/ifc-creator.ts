@@ -19,30 +19,20 @@
  */
 
 import type {
-  Point3D, Point2D, Placement3D, RectangularOpening,
-  ElementAttributes, ProfileDef,
-  GenericElementParams, AxisElementParams,
-  WallParams, SlabParams, ColumnParams, BeamParams, StairParams, RoofParams, GableRoofParams,
-  WallDoorParams, WallWindowParams, DoorParams, WindowParams, RampParams, RailingParams,
-  PlateParams, MemberParams, FootingParams, PileParams,
-  SpaceParams, CurtainWallParams, FurnishingParams, ProxyParams,
-  ProjectParams, StoreyParams,
-  PropertySetDef, QuantitySetDef,
-  MaterialDef,
-  WorkScheduleParams, WorkPlanParams, TaskParams, SequenceParams,
-  WorkCalendarParams,
-  CreatedEntity, CreateResult,
+  Point3D, Point2D, Placement3D, RectangularOpening, ElementAttributes, ProfileDef, GenericElementParams, AxisElementParams,
+  WallParams, SlabParams, ColumnParams, BeamParams, StairParams, RoofParams, GableRoofParams, WallDoorParams, WallWindowParams,
+  DoorParams, WindowParams, RampParams, RailingParams, PlateParams, MemberParams, FootingParams, PileParams, SpaceParams,
+  CurtainWallParams, FurnishingParams, ProxyParams, ProjectParams, StoreyParams, PropertySetDef, QuantitySetDef, MaterialDef,
+  WorkScheduleParams, WorkPlanParams, TaskParams, SequenceParams, WorkCalendarParams, CreatedEntity, CreateResult,
 } from './types.js';
 
 import type {
   CostItemParams, CostQuantityParams, CostScheduleParams, CostTypedValue,
   CostValueParams, SIUnitParams,
 } from './types-cost.js';
-import {
-  esc, stepLine, num, vecLen, vecNorm, vecCross,
-  optStr, optEnum,
-  NON_ELEMENT_TYPES, assertPositiveFinite, assertFinitePoint3, completePlacementAxes,
-} from './ifc-creator-math.js';
+import { esc, stepLine, num, vecLen, vecNorm, vecCross, optStr, optEnum,
+  NON_ELEMENT_TYPES, assertPositiveFinite, assertFinitePoint3, completePlacementAxes } from './ifc-creator-math.js';
+import { classificationToken } from './ifc-creator-predefined-type.js';
 import { emitWorkCalendar, emitTaskTime } from './ifc-creator-scheduling.js';
 import {
   assertCostSchema, emitCostItem, emitCostSchedule, emitCostValue,
@@ -249,6 +239,7 @@ export class IfcCreator {
   addIfcWall(storeyId: number, params: WallParams): number {
     assertFinitePoint3({ Start: params.Start, End: params.End }, 'addIfcWall');
     assertPositiveFinite({ Thickness: params.Thickness, Height: params.Height }, 'addIfcWall');
+    const predefined = this.classified('IfcWall', 'addIfcWall', params, 'NOTDEFINED');
     const dx = params.End[0] - params.Start[0];
     const dy = params.End[1] - params.Start[1];
     const dz = params.End[2] - params.Start[2];
@@ -279,7 +270,7 @@ export class IfcCreator {
     const tag = params.Tag ? `'${esc(params.Tag)}'` : '$';
 
     this.line(wallId, 'IFCWALL',
-      `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},#${placementId},#${prodShapeId},${tag}${this.ifc4Only('.STANDARD.')}`);
+      `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},#${placementId},#${prodShapeId},${tag}${predefined}`);
 
     this.elementSolids.set(wallId, [solidId]);
     this.trackElement(storeyId, wallId);
@@ -303,6 +294,7 @@ export class IfcCreator {
    */
   addIfcSlab(storeyId: number, params: SlabParams): number {
     assertPositiveFinite({ Thickness: params.Thickness }, 'addIfcSlab');
+    const predefined = this.classified('IfcSlab', 'addIfcSlab', params, 'FLOOR');
     if (params.Width !== undefined) assertPositiveFinite({ Width: params.Width }, 'addIfcSlab');
     if (params.Depth !== undefined) assertPositiveFinite({ Depth: params.Depth }, 'addIfcSlab');
     const placementId = this.addLocalPlacement(this.getStoreyPlacement(storeyId), {
@@ -331,7 +323,7 @@ export class IfcCreator {
     const tag = params.Tag ? `'${esc(params.Tag)}'` : '$';
 
     this.line(slabId, 'IFCSLAB',
-      `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},#${placementId},#${prodShapeId},${tag},.FLOOR.`);
+      `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},#${placementId},#${prodShapeId},${tag}${predefined}`);
 
     this.elementSolids.set(slabId, [solidId]);
     this.trackElement(storeyId, slabId);
@@ -376,6 +368,7 @@ export class IfcCreator {
   }
 
   private buildIfcColumn(storeyId: number, params: ColumnParams): number {
+    const predefined = this.classified('IfcColumn', 'addIfcColumn', params, 'COLUMN');
     const placementId = this.addLocalPlacement(this.getStoreyPlacement(storeyId), {
       Location: params.Position,
     });
@@ -394,7 +387,7 @@ export class IfcCreator {
     const tag = params.Tag ? `'${esc(params.Tag)}'` : '$';
 
     this.line(colId, 'IFCCOLUMN',
-      `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},#${placementId},#${prodShapeId},${tag}${this.ifc4Only('.COLUMN.')}`);
+      `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},#${placementId},#${prodShapeId},${tag}${predefined}`);
 
     this.elementSolids.set(colId, [solidId]);
     this.trackElement(storeyId, colId);
@@ -409,6 +402,7 @@ export class IfcCreator {
   addIfcBeam(storeyId: number, params: BeamParams): number {
     assertFinitePoint3({ Start: params.Start, End: params.End }, 'addIfcBeam');
     assertPositiveFinite({ Width: params.Width, Height: params.Height }, 'addIfcBeam');
+    const predefined = this.classified('IfcBeam', 'addIfcBeam', params, 'BEAM');
     const dx = params.End[0] - params.Start[0];
     const dy = params.End[1] - params.Start[1];
     const dz = params.End[2] - params.Start[2];
@@ -437,7 +431,7 @@ export class IfcCreator {
     const tag = params.Tag ? `'${esc(params.Tag)}'` : '$';
 
     this.line(beamId, 'IFCBEAM',
-      `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},#${placementId},#${prodShapeId},${tag}${this.ifc4Only('.BEAM.')}`);
+      `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},#${placementId},#${prodShapeId},${tag}${predefined}`);
 
     this.elementSolids.set(beamId, [solidId]);
     this.trackElement(storeyId, beamId);
@@ -1064,6 +1058,7 @@ export class IfcCreator {
    */
   addIfcSpace(storeyId: number, params: SpaceParams): number {
     assertPositiveFinite({ Height: params.Height }, 'addIfcSpace');
+    const predefined = this.classified('IfcSpace', 'addIfcSpace', params, 'INTERNAL', this.schema === 'IFC2X3' ? 'InteriorOrExteriorSpace' : undefined);
     const placementId = this.addLocalPlacement(this.getStoreyPlacement(storeyId), {
       Location: params.Position,
     });
@@ -1088,7 +1083,7 @@ export class IfcCreator {
     const longName = params.LongName ? `'${esc(params.LongName)}'` : '$';
 
     this.line(spaceId, 'IFCSPACE',
-      `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},#${placementId},#${prodShapeId},${longName},.ELEMENT.,.INTERNAL.,$`);
+      `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},#${placementId},#${prodShapeId},${longName},.ELEMENT.${predefined},$`);
 
     this.elementSolids.set(spaceId, [solidId]);
     this.trackElement(storeyId, spaceId);
@@ -2746,6 +2741,11 @@ export class IfcCreator {
 
   // `serializePropertyValue` / `quantityValueField` moved to `ifc-creator-math.ts`.
   private ifc4Only(v: string): string { return this.schema === 'IFC2X3' ? '' : `,${v}`; } // trailing IFC4/4X3-only attribute
+  /** `,.TOKEN.` for the classification enum (see ./ifc-creator-predefined-type.ts), or '' where the schema has no such attribute. */
+  private classified(entity: string, op: string, p: { PredefinedType?: string; ObjectType?: string }, fallback: string, attribute?: string): string {
+    const t = classificationToken(this.schema, { entity, value: p.PredefinedType, fallback, objectType: p.ObjectType, op, attribute });
+    return t === null ? '' : `,${t}`;
+  }
 
   // ============================================================================
   // Internal — Relationship finalization

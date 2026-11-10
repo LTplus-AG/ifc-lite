@@ -26,8 +26,10 @@ import { MobileToolbar } from './MobileToolbar';
 
 const THEMES: readonly Theme[] = ['light', 'dark', 'colorful'];
 const TOOLS = ['tool:select', 'tool:measure', 'tool:section'] as const;
-/** The toolbar's height and its buttons' size, unchanged by the restyle. */
-const TOOLBAR_HEIGHT_PX = 44;
+/** The toolbar: a 44px target row plus its 1px bottom border
+ * (`MobileToolbar.targets.test.tsx` checks the 44px targets). The active
+ * state paints the buttons' 36px face. */
+const TOOLBAR_HEIGHT_PX = 45;
 const TOOL_BUTTON_PX = 36;
 
 const initial = useViewerStore.getState();
@@ -108,7 +110,7 @@ describe('the active phone tool paints the shared active state (#8802)', () => {
       assert.equal(painted.active.shadow, painted.refActive.shadow, `${theme}: active tool carries the inset active edge`);
       assert.notEqual(painted.active.background, painted.refPrimary.background, `${theme}: active tool is not the solid primary fill`);
       assert.notEqual(painted.resting.background, painted.refActive.background, `${theme}: a resting tool is not painted active`);
-      assert.equal(painted.toolbarHeight, TOOLBAR_HEIGHT_PX, `${theme}: toolbar keeps its height`);
+      assert.equal(painted.toolbarHeight, TOOLBAR_HEIGHT_PX, `${theme}: toolbar is one 44px target row plus its border`);
       assert.deepEqual(painted.buttonSizes, TOOLS.flatMap(() => [TOOL_BUTTON_PX, TOOL_BUTTON_PX]), `${theme}: tool buttons keep their size`);
     });
   }

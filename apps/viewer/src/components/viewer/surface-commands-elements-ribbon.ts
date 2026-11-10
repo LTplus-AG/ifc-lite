@@ -5,11 +5,11 @@
 /** Mounted Elements controls with no palette or mobile equivalent. */
 import { Ellipsis, Filter, Layers3, Search } from 'lucide-react';
 import { useViewerStore, type HierarchyMode } from '@/store';
-import { runContextAction } from './surface-commands-context';
+import { openSelectedEntityActions } from './selected-entity-actions';
 import { liftStartFold } from './welcome/useEmptyStartFold';
 import type { SurfaceCommandDefinition, SurfaceCommandState } from './surface-commands';
 
-const ribbonOnly = ['ribbon'] as const;
+const paletteAndRibbon = ['palette', 'ribbon'] as const;
 const alwaysEnabled = (_state: SurfaceCommandState): boolean => true;
 
 function showHierarchy(mode: HierarchyMode): void {
@@ -24,8 +24,8 @@ export const RIBBON_ELEMENTS_SURFACE_COMMANDS = [
   {
     id: 'elements:search', labelKey: 'ribbon.elements.search',
     ribbonTooltipKey: 'ribbon.elements.searchTooltip',
-    keywords: 'search entities properties', category: 'Tools', icon: Search,
-    surfaces: ribbonOnly, enabled: alwaysEnabled,
+    keywords: 'search entities properties filter saved filters query results export', category: 'Tools', icon: Search,
+    surfaces: paletteAndRibbon, enabled: alwaysEnabled,
     run: () => {
       const state = useViewerStore.getState();
       state.setSearchModalTab('search');
@@ -36,48 +36,57 @@ export const RIBBON_ELEMENTS_SURFACE_COMMANDS = [
     id: 'elements:spatial', labelKey: 'ribbon.elements.spatial',
     ribbonTooltipKey: 'ribbon.elements.spatialTooltip',
     keywords: 'spatial hierarchy', category: 'Tools', icon: Layers3,
-    surfaces: ribbonOnly, enabled: alwaysEnabled, run: () => showHierarchy('spatial'),
+    surfaces: paletteAndRibbon, enabled: alwaysEnabled, run: () => showHierarchy('spatial'),
   },
   {
     id: 'elements:class', labelKey: 'ribbon.elements.class',
     ribbonTooltipKey: 'ribbon.elements.classTooltip',
     keywords: 'class hierarchy', category: 'Tools', icon: Layers3,
-    surfaces: ribbonOnly, enabled: alwaysEnabled, run: () => showHierarchy('type'),
+    surfaces: paletteAndRibbon, enabled: alwaysEnabled, run: () => showHierarchy('type'),
   },
   {
     id: 'elements:type', labelKey: 'ribbon.elements.type',
     ribbonTooltipKey: 'ribbon.elements.typeTooltip',
     keywords: 'ifc type hierarchy', category: 'Tools', icon: Layers3,
-    surfaces: ribbonOnly, enabled: alwaysEnabled, run: () => showHierarchy('ifc-type'),
+    surfaces: paletteAndRibbon, enabled: alwaysEnabled, run: () => showHierarchy('ifc-type'),
   },
   {
     id: 'elements:materials', labelKey: 'ribbon.elements.materials',
     ribbonTooltipKey: 'ribbon.elements.materialsTooltip',
     keywords: 'material hierarchy', category: 'Tools', icon: Layers3,
-    surfaces: ribbonOnly, enabled: alwaysEnabled, run: () => showHierarchy('material'),
+    surfaces: paletteAndRibbon, enabled: alwaysEnabled, run: () => showHierarchy('material'),
   },
   {
     id: 'elements:groups', labelKey: 'ribbon.elements.groups',
     ribbonTooltipKey: 'ribbon.elements.groupsTooltip',
     keywords: 'group hierarchy', category: 'Tools', icon: Layers3,
-    surfaces: ribbonOnly, enabled: alwaysEnabled, run: () => showHierarchy('groups'),
+    surfaces: paletteAndRibbon, enabled: alwaysEnabled, run: () => showHierarchy('groups'),
   },
   {
     id: 'elements:presentation-layers', labelKey: 'ribbon.elements.presentationLayers',
     ribbonTooltipKey: 'ribbon.elements.presentationLayersTooltip',
     keywords: 'presentation layer assignment hierarchy', category: 'Tools', icon: Layers3,
-    surfaces: ribbonOnly, enabled: alwaysEnabled, run: () => showHierarchy('presentation-layers'),
+    surfaces: paletteAndRibbon, enabled: alwaysEnabled, run: () => showHierarchy('presentation-layers'),
   },
   {
-    id: 'elements:class-filter', labelKey: 'ribbon.elements.filter',
-    keywords: 'class visibility filter', category: 'Visibility', icon: Filter,
-    surfaces: ribbonOnly, enabled: alwaysEnabled,
-    run: runContextAction,
+    id: 'elements:class-filter', keywordsKey: 'commandPalette.aliases.classes', labelKey: 'ribbon.elements.filter',
+    keywords: 'class visibility filter spaces openings annotations grids merge layers fast exact geometry', category: 'Visibility', icon: Filter,
+    surfaces: ['ribbon', 'palette'], enabled: alwaysEnabled,
+    run: (context) => {
+      // The real ribbon trigger owns Radix focus; the palette owns its dialog.
+      if (context.contextAction) context.contextAction();
+      else context.openClassFilter?.();
+    },
   },
   {
-    id: 'elements:entity-actions', labelKey: 'entityContextMenu.entityActions',
+    id: 'elements:entity-actions', labelKey: 'commandPalette.elements.entityActions',
+    ribbonLabelKey: 'entityContextMenu.entityActions', keywordsKey: 'commandPalette.aliases.entityActions',
     keywords: 'selected entity type storey duplicate delete actions',
     category: 'Tools', icon: Ellipsis,
-    surfaces: ribbonOnly, enabled: alwaysEnabled, run: runContextAction,
+    surfaces: paletteAndRibbon, enabled: alwaysEnabled,
+    run: (context) => {
+      if (context.contextAction) context.contextAction();
+      else openSelectedEntityActions(undefined, context.entityActionsLauncher?.());
+    },
   },
 ] as const satisfies readonly SurfaceCommandDefinition[];

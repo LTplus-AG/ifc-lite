@@ -18,7 +18,7 @@
  */
 
 import type { WebGPUDevice } from './device.js';
-import { POINT_QUAD_VERTS, POINT_VERTEX_BYTES } from './pointcloud/point-pipeline.js';
+import { POINT_QUAD_VERTS, POINT_VERTEX_BYTES } from './pointcloud/point-vertex-layout.js';
 import type { RelativeToEyeSnapshot } from './relative-to-eye.js';
 import type { ClipBox } from './types.js';
 import { relativeToEyeWgsl } from './shaders/relative-to-eye.wgsl.js';

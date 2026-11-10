@@ -53,4 +53,5 @@ export const roomToolRu = {
   "roomTool.pick.none": "Эта точка не ограничена стенами: щёлкните внутри помещения или переключитесь в режим рисования",
   "roomTool.pick.taken": "В этой области уже есть помещение",
   "roomTool.draw.needThree": "В помещении должно быть как минимум три угла",
+  "roomTool.update.unresolvedPlacement": "Стена повёрнута. Помещения не обновлены, поскольку не удалось прочитать размещение стены.",
 } satisfies Catalogue;

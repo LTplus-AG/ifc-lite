@@ -12,8 +12,9 @@ import type { Vec3, Mat4 } from './types.js';
  * Squared sine of the angle between `up` and the view direction below which
  * {@link MathUtils.lookAt} treats `up` as degenerate. 1e-12 means an angle
  * under a microradian — orders of magnitude tighter than any pose the
- * navigation code produces (the ViewCube top preset deliberately stops
- * 0.01 rad off the pole), so the fallback only ever replaces a basis that
+ * navigation code produces (the top/bottom presets sit on the pole with a
+ * horizontal `up`, 90 degrees off the view direction, #9501), so the
+ * fallback only ever replaces a basis that
  * carries no usable orientation.
  *
  * This is a threshold on the *angle*, never on a length: `up` is mutable

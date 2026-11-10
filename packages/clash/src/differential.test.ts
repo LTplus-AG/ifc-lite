@@ -314,10 +314,11 @@ describe('differential: WASM kernel === TS kernel', () => {
     // The Rust/WASM broad phase ingests only positions/indices/AABBs — it has no
     // notion of durable `key`/`model`, so same-entity exclusion for the WASM
     // engine relies entirely on the shared orchestrator's post-filter (see
-    // orchestrator.ts `elA.key === elB.key` check). This pins that the WASM
+    // orchestrator.ts model/ref check). This pins that the WASM
     // engine agrees with TS (0 clashes) for two overlapping elements sharing a
     // durable key, the way a split IFC5/USD entity would.
     const els = [box('SAME', 'IfcWall', [0, 0, 0]), box('SAME', 'IfcWall', [0.2, 0, 0])];
+    els[1].ref = els[0].ref; // #9259 split geometry shares a source object reference
     expect(await bothAgree(els, [{ id: 'self', name: 'wall self-clash', a: 'IfcWall', mode: 'hard' }])).toBe(0);
   });
 
@@ -333,6 +334,7 @@ describe('differential: WASM kernel === TS kernel', () => {
   it('agrees on the #5194 same-key dumbbell shape (broad-phase false positive + a real clash)', async () => {
     const a1 = dumbbell('A', 'IfcWall', 0.5, 20.5);
     const a2 = box('A', 'IfcWall', [10.5, 0, 0], 2);
+    a2.ref = a1.ref; // #9259 both meshes belong to the same object
     const b = box('B', 'IfcBeam', [10, 0, 0], 2);
     const rules: ClashRule[] = [{ id: 'r', name: 'r', a: 'IfcWall', b: 'IfcBeam', mode: 'hard' }];
     expect(await bothAgree([a1, a2, b], rules)).toBe(1);
@@ -346,6 +348,7 @@ describe('differential: WASM kernel === TS kernel', () => {
   it('agrees on which same-key sub-prim record survives the dedup (#5194)', async () => {
     const shallow = box('A', 'IfcWall', [9.6, 0, 0]);
     const deep = box('A', 'IfcWall', [10.05, 0, 0]);
+    deep.ref = shallow.ref; // #9259 both sub-prims belong to the same object
     const b = box('B', 'IfcBeam', [10, 0, 0]);
     const rules: ClashRule[] = [{ id: 'r', name: 'r', a: 'IfcWall', b: 'IfcBeam', mode: 'hard' }];
     const deepAlone = await ts.run([deep, b], rules);

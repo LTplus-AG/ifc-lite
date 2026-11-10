@@ -12,10 +12,13 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Check, AlertCircle, Info, X } from 'lucide-react';
+import { Button } from './button';
 import { cn } from '@/lib/utils';
 import { useTranslation } from '@/i18n';
 
 // ─── Store (vanilla, framework-agnostic) ─────────────────────────────────
+
+interface ToastAction { label: string; onClick: () => void; dismiss?: boolean }
 
 interface Toast {
   id: number;
@@ -27,7 +30,7 @@ interface Toast {
   count: number;
   /** Increases every time a toast is shown or merged into; orders by recency. */
   seq: number;
-  action?: { label: string; onClick: () => void };
+  action?: ToastAction | ToastAction[];
 }
 
 type Listener = () => void;
@@ -154,6 +157,7 @@ export function Toaster({ variant = 'fixed' }: ToasterProps = {}) {
 
   const renderItem = (item: Toast) => {
     const Icon = iconMap[item.type];
+    const actions: ToastAction[] = Array.isArray(item.action) ? item.action : item.action ? [item.action] : [];
     return (
       <div
         key={item.id}
@@ -171,17 +175,17 @@ export function Toaster({ variant = 'fixed' }: ToasterProps = {}) {
             ×{item.count}
           </span>
         )}
-        {item.action && (
-          <button
+        {actions.map((action) => (
+          <Button key={action.label} size="sm" variant="link"
             onClick={() => {
-              item.action?.onClick();
-              handleDismiss(item.id);
+              action.onClick();
+              if (action.dismiss !== false) handleDismiss(item.id);
             }}
             className="shrink-0 min-h-6 rounded-sm px-1 text-xs font-semibold underline underline-offset-2 hover:bg-black/10 dark:hover:bg-white/10"
           >
-            {item.action.label}
-          </button>
-        )}
+            {action.label}
+          </Button>
+        ))}
         <button
           onClick={() => handleDismiss(item.id)}
           aria-label={t('viewerShell.toast.dismiss')}

@@ -11,6 +11,7 @@ export {
   MutablePropertyView,
   type PropertyExtractor,
   type QuantityExtractor,
+  type QuantityBaseRevision,
   type AttributeExtractor,
 } from './mutable-property-view.js';
 export {
@@ -62,3 +63,6 @@ export {
 } from './change-set-to-ops.js';
 
 export type { EntityOperation, EntityOperationEffect, EntityPreparationOptions, PreparedEntityOperations } from './cooperative-operation-types.js';
+
+export { snapshotOverlay, restoreOverlay, OverlaySourceMismatchError } from './overlay-snapshot.js';
+export type { OverlaySnapshotV1, OverlaySnapshotHistory, OverlaySnapshotOptions, OverlayRestoreOptions, OverlayRestoreResult } from './overlay-snapshot-types.js';

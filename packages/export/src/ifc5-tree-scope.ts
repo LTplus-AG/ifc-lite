@@ -145,7 +145,7 @@ function addRawEdges(
   for (const row of flattenRelationshipEdges(relationships.inverse)) {
     if (!declarationOrder.has(row.relationshipId)) declarationOrder.set(row.relationshipId, declarationOrder.size);
   }
-  const created = new Map((view?.getNewEntities() ?? []).map((entity) => [entity.expressId, entity]));
+  const created = new Map((view?.readNewEntities?.() ?? view?.getNewEntities() ?? []).map((entity) => [entity.expressId, entity]));
   const orderedRelations = [...relations].sort(([left], [right]) =>
     (declarationOrder.get(left) ?? 0) - (declarationOrder.get(right) ?? 0));
   for (const [id, relation] of orderedRelations) {
@@ -233,7 +233,7 @@ function buildEffectiveTreeGraph(
 
   const extractor = new EntityExtractor(dataStore.source);
   const created = new Map<number, NewEntity>();
-  for (const entity of view?.getNewEntities() ?? []) created.set(entity.expressId, entity);
+  for (const entity of view?.readNewEntities?.() ?? view?.getNewEntities() ?? []) created.set(entity.expressId, entity);
 
   // Effective iteration preserves declaration order and appends creations.
   for (const [id, record] of effective) {

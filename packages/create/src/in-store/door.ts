@@ -33,7 +33,7 @@ import {
  * normalised to USERDEFINED + UserDefinedOperationType so the exported
  * STEP carries a valid enum token.
  */
-const DOOR_OPERATION_ENUM = new Set([
+export const DOOR_OPERATION_ENUM: ReadonlySet<string> = new Set([
   'SINGLE_SWING_LEFT',
   'SINGLE_SWING_RIGHT',
   'DOUBLE_DOOR_SINGLE_SWING',

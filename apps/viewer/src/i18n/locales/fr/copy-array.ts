@@ -15,6 +15,11 @@ export const copyArrayFr = {
     "other": "{countDisplay} copies n’ont pas été placées à une intersection de la grille et ne sont donc plus liées à la grille",
     "many": "{countDisplay} copies n’ont pas été placées à une intersection de la grille et ne sont donc plus liées à la grille",
   },
+  "copyArray.unattachedTops": {
+    "one": "{countDisplay} copie garde sa hauteur : son sommet ne peut pas suivre son nouveau niveau, elle n’y est donc plus liée",
+    "other": "{countDisplay} copies gardent leur hauteur : leur sommet ne peut pas suivre leur nouveau niveau, elles n’y sont donc plus liées",
+    "many": "{countDisplay} copies gardent leur hauteur : leur sommet ne peut pas suivre leur nouveau niveau, elles n’y sont donc plus liées",
+  },
   "copyArray.paste.label": "Coller",
   "copyArray.paste.hint": "Cliquez à l’emplacement de la copie. Pour coller à un autre étage, changez d’abord d’étage",
   "copyArray.paste.empty": "Rien n’est encore copié : sélectionnez d’abord des éléments et copiez-les",

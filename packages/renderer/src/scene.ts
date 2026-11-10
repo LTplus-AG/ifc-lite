@@ -658,7 +658,7 @@ export class Scene {
     const budget = this.hostBudgetBytes;
     if (budget === null || !this.coldProvider) return;
     if (this.geometryReleased || this.ephemeralStreamingMode) return;
-    if (this.streamingFragments.length > 0) return;
+    if (this.streamingFragments.length > 0 || this.finalizeInProgress) return; // see enforceGpuBudget
 
     const residentBytes = this.getResidentCpuBytes();
     if (residentBytes <= budget) return;
@@ -669,7 +669,7 @@ export class Scene {
       if (!b || b.gpuResident !== false) continue;             // hot buckets stay warm-skippable
       if (bucket.meshData.length === 0) continue;              // already cold
       if (bucket.key.includes('#')) continue;                  // overflow sub-bucket
-      if (this.dirtyBuckets.has(bucket.key)) continue;         // diverged from disk
+      if (this.dirtyBuckets.has(bucket.key) || this.fragmentPieces.forBatch(b)) continue; // diverged from disk, or outgrew its batch: a restore keyed by its ids drops the rest (#9270)
       // Colour-merged meshes (per-vertex entityIds) are registered in
       // meshDataMap under EVERY contained id; evicting only the primary id's
       // entry would leave the typed arrays reachable (no memory freed) and a
@@ -805,9 +805,9 @@ export class Scene {
     if (budget === null) return;
     if (this.geometryReleased || this.ephemeralStreamingMode) return;
     this.subsetResidency.sweep();
-    // During streaming the batch set churns (fragments + finalize rebuild
-    // everything anyway) — start enforcing once the scene is stable.
-    if (this.streamingFragments.length > 0) return;
+    // Start once the scene is stable: not while streaming, nor in a sliced finalize, whose unpublished
+    // batches look never-drawn and whose old fragments still cut subsets from meshDataMap (#9254).
+    if (this.streamingFragments.length > 0 || this.finalizeInProgress) return;
 
     // Sizes only first: this runs after every frame, and under budget (the
     // common case) the eviction bookkeeping below, whose ownership scan is
@@ -1265,7 +1265,7 @@ export class Scene {
         if (!bucket) {
           bucket = { key: bucketKey, meshData: [], batchedMesh: null, vertexBytes: 0 };
           this.buckets.set(bucketKey, bucket);
-        }
+        } else if (isStreaming) this.fragmentPieces.recordBuilt(bucket); // its batch draws on without this mesh (#9270)
         bucket.meshData.push(meshData);
 
         // Track reverse mapping for O(1) bucket lookup in updateMeshColors
@@ -1998,6 +1998,7 @@ export class Scene {
       bucketBaseKey: (md) => this.bucketBaseKey(md),
       resolveActiveBucket: (base, md) => this.resolveActiveBucket(base, md),
       createBucket: (key) => ({ key, meshData: [], batchedMesh: null, vertexBytes: 0 }),
+      beforeJoin: (bucket) => this.fragmentPieces.recordBuilt(bucket),
     });
   }
 
@@ -2113,7 +2114,7 @@ export class Scene {
       // null for a freshly built bucket and, for a surviving bucket the
       // re-group added meshes to, the batch still drawn from the old array —
       // put back on failure, retired on success.
-      type Owned = { bucket: BatchBucket; previous: BatchedMesh | null; previousFrameOrigin?: [number, number, number]; batch: BatchedMesh };
+      type Owned = { bucket: BatchBucket; previous: BatchedMesh | null; previousFrameOrigin?: [number, number, number]; batch: BatchedMesh | null };
       const createdOwned: Owned[] = [];
       // Pending keys whose bucket ended up empty: deleted (and their batch
       // retired) at the swap, exactly as rebuildPendingBatches would.
@@ -2132,7 +2133,7 @@ export class Scene {
             bucket.batchedMesh = previous;
             bucket.frameOrigin = previousFrameOrigin;
           }
-          if (!oldBatchSet.has(batch) && !fragmentSet.has(batch)) {
+          if (batch && !oldBatchSet.has(batch) && !fragmentSet.has(batch)) {
             destroyGpuResources(batch);
           }
         }
@@ -2153,12 +2154,13 @@ export class Scene {
               emptied.push(key);
               continue;
             }
-            const color = bucket.meshData[0].color;
             const previous = bucket.batchedMesh;
             const previousFrameOrigin = bucket.frameOrigin;
-            const batchedMesh = scene.createBatchedMesh(bucket.meshData, color, device, pipeline, key);
+            const own = scene.fragmentPieces.unclaimed(bucket.meshData, scene.streamingFragments); // a window append stays its fragment's (#9270)
+            const batchedMesh = own.meshes.length ? scene.createBatchedMesh(own.meshes, own.meshes[0].color, device, pipeline, key) : null;
+            if (batchedMesh) own.held(batchedMesh);
             bucket.batchedMesh = batchedMesh;
-            bucket.frameOrigin = batchedMesh.origin;
+            bucket.frameOrigin = batchedMesh?.origin ?? previousFrameOrigin;
             createdOwned.push({ bucket, previous, previousFrameOrigin, batch: batchedMesh });
 
             // Check time budget — yield if exceeded. A MessageChannel task, not
@@ -2186,7 +2188,7 @@ export class Scene {
             ...scene.streamingFragments,
           ];
           scene.retireFinalizedBatches(retired); scene.pickGeometryRevision++;
-          scene.fragmentPieces.retainOnly(scene.streamingFragments);
+          scene.fragmentPieces.retainOnly(scene.batchedMeshes); // a batch built here may already have a record
           perfCount('render.finalize.batches', createdOwned.length);
           scene.finalizeInProgress = false;
           scene.streamingFragmentIndexBudget = Number.POSITIVE_INFINITY;
@@ -2322,8 +2324,8 @@ export class Scene {
     this.coldBuckets.clear();
     this.dirtyBuckets.clear();
 
-    // 3. Clear partial batch cache (would need mesh data to rebuild)
-    this.dropAllPartialCaches();
+    // 3. Clear partial batch cache (would need mesh data to rebuild), and the piece records partials are cut from
+    this.dropAllPartialCaches(); this.fragmentPieces.retainOnly([]);
 
     this.geometryReleased = true;
 
@@ -2540,25 +2542,33 @@ export class Scene {
   /**
    * Whether this batch's entities can be drawn as separate sub-batches right
    * now — the precondition for splitting a batch by per-entity X-Ray alpha
-   * (#4129) or by any other per-entity property.
+   * (#4129) or by override promotion (#677, #9220).
    *
-   * Three ways a batch is indivisible:
+   * A batch is indivisible when:
    * - its CPU geometry was released (GPU-resident mode) — nothing to re-merge;
-   * - it is not the live batch of a warm bucket: an evicted (cold) bucket has
-   *   had its `meshData` dropped, and non-bucket batches (streaming fragments,
-   *   sub-batches) have no piece list keyed the way the partial builder looks
-   *   pieces up, so it would silently come back empty;
-   * - it holds a colour-merged piece, where many entities share ONE MeshData
-   *   tagged per vertex. Such a piece is registered under every contained id,
-   *   so it would land whole in more than one subset — the same geometry drawn
-   *   twice, at two different alphas.
+   * - a snapshot is hydrating: the partial builder has no pieces yet and hands
+   *   back the bucket's whole batch for every slot, so each subset would draw it;
+   * - it is neither the live batch of a warm bucket nor a batch with a piece
+   *   record (a fragment, or a replaced batch drawing until the finalize swap).
+   *   A cold bucket has had its `meshData` dropped, and a sub-batch or ephemeral
+   *   fragment has no piece list, so a subset would silently come back empty;
+   * - it holds a colour-merged piece (a recorded batch: among its own, #9270),
+   *   where many entities share ONE MeshData tagged per vertex. Such a piece is
+   *   registered under every contained id, so it would land whole in more than
+   *   one subset — the same geometry drawn twice, at two different alphas.
+   *
+   * A recorded batch cuts its subsets from its own pieces only (#9081, #9270), so
+   * each piece of a mesh split across batches is drawn once, by the batch holding it (#9254).
    *
    * The caller must fall back to drawing the batch whole when this is false.
    */
   canPartitionBatch(batch: BatchedMesh): boolean {
-    if (this.geometryReleased) return false;
+    if (this.geometryReleased || this.snapshots.hydrating) return false;
     const bucket = this.buckets.get(batch.colorKey);
-    if (!bucket || bucket.batchedMesh !== batch || bucket.meshData.length === 0) return false;
+    const live = bucket !== undefined && bucket.batchedMesh === batch;
+    if (live && bucket.meshData.length === 0) return false;
+    const record = this.fragmentPieces.forBatch(batch);
+    if (record || !live) return record !== undefined && !record.colorMerged;
     for (const md of bucket.meshData) {
       if (md.entityIds && md.entityIds.length > 0) return false;
     }
@@ -2651,8 +2661,8 @@ export class Scene {
     // `colorKey` is the bucket key: match each piece's OWNING bucket exactly.
     // Matching the base key (suffix "#N" stripped) pulled sibling overflow
     // buckets' pieces in — drawn twice, wrong quantization inherited (#4832).
-    // A streaming fragment draws only its own pieces (#9081): fragments share
-    // a bucket, and after a finalize regroup it may hold other meshes.
+    // A fragment, or a built batch its bucket has outgrown, draws only its own
+    // pieces (#9081, #9270): the bucket holds other batches' meshes too.
     const bucket = this.buckets.get(colorKey);
     const baseKey = this.baseColorKey(colorKey);
     const own = this.fragmentPieces.forSlot(sourceBatchKey, colorKey);
@@ -2670,7 +2680,7 @@ export class Scene {
     // Drawn INSTEAD of its source batch, so it inherits the source's f32/quantized
     // decision (#4832): the overlay built from the same source must match its depth.
     const color = visibleMeshData[0].color;
-    const source = own ? own.fragment : bucket?.batchedMesh;
+    const source = own ? own.batch : bucket?.batchedMesh;
     const partialBatch = this.createBatchedMesh(visibleMeshData, color, device, pipeline, undefined,
       inheritedQuantization(this.quantizedBatchesEnabled, source), source?.origin);
 

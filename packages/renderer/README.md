@@ -30,6 +30,13 @@ renderer.requestRender();
 
 Camera zoom refuses a step that would move the eye or target outside the renderer's supported source-coordinate envelope (±1,000,000,000 metres per axis). The previous pose, cursor anchor and orbit pivot remain intact, so reversing the gesture works. If another control has already moved outside the envelope, zoom may recover incrementally: each accepted step must strictly reduce the largest absolute eye/target coordinate until the pose is supported again. This applies to ordinary, cursor-anchored, fast, surface and inertial zoom. Orthographic zoom keeps its existing scale behavior while its cursor translation observes the same coordinate boundary.
 
+### Mesh-only pages
+
+`import { Renderer } from '@ifc-lite/renderer/core'` is the same renderer
+without point-cloud rendering and scan deviation, so those pipelines and
+shaders stay out of the bundle. Its point-cloud and deviation methods throw.
+See [Rendering](https://ifclite.dev/docs/guide/rendering/#mesh-only-pages-ifc-literenderercore).
+
 ## Inspect GPU pass timing
 
 Timestamp queries are opt-in. Enable them before rendering, then read resolved
@@ -67,7 +74,12 @@ renderer.onDeviceLost(async () => {
 `recoverDevice()` requests a replacement adapter/device and rebuilds the GPU
 scene in place, preserving the `Renderer`, camera, IFC geometry, model
 placements, visibility, selection and colour overrides. Concurrent calls share
-one attempt. It returns a typed failure instead of presenting an incomplete
+one attempt. A newer public `init()` supersedes a pending attempt with the
+existing `renderer-destroyed` reason plus optional `superseded: true` metadata.
+Public `destroy()` reports `renderer-destroyed` without that flag. The reason
+union remains unchanged, preserving existing exhaustive switches.
+Reinitializing a destroyed instance also reconnects its canvas-size observer.
+It returns a typed failure instead of presenting an incomplete
 scene when CPU geometry has been released, a finalizer or authoring transaction
 is active, cold geometry cannot be restored, or public `addMesh()` content has
 no CPU source. Retained streaming fragments are rebuilt from their CPU owners;

@@ -29,6 +29,8 @@ export function storeyLevelPlanSignature(plan: StoreyLevelPlan): string {
     // The floor-to-floor gaps as reviewed: a neighbour moved since changes them.
     spacing: plan.spacing.map(({ lowerId, upperId, from, to }) => [lowerId, upperId, micro(from), micro(to)]),
     walls: plan.walls.map(({ wallId, targetStoreyId, from, to }) => [wallId, targetStoreyId, micro(from), micro(to)]),
+    attached: plan.attached.map(({ elementId, kind, targetStoreyId, from, to }) => [elementId, kind, targetStoreyId, micro(from), micro(to)]),
+    railings: plan.railings.map(({ railingId, stairId }) => [railingId, stairId]),
     stairs: plan.stairs.map(({ stairId, flightId, landingStoreyId, from, to }) => [
       stairId, flightId, landingStoreyId, from.NumberOfRisers, Math.round(from.RiserHeight * 1e9), to.NumberOfRisers, Math.round(to.RiserHeight * 1e9),
     ]),
@@ -41,7 +43,7 @@ export function storeyLevelPlanSignature(plan: StoreyLevelPlan): string {
 
 export interface StoreyLevelResult {
   readonly plan: StoreyLevelPlan;
-  /** Products whose shape changed (resized walls and their openings, refit stairs). */
+  /** Products whose shape changed (resized walls and their openings, followed columns, beams and curtain walls, refit stairs and their railings). */
   readonly reshaped: readonly number[];
 }
 
@@ -49,7 +51,7 @@ export interface StoreyLevelResult {
  * Re-level a storey atomically: re-plan against the live overlay, refuse
  * (writing nothing) when the plan has a refusal or differs from `expected`,
  * otherwise write the placement lifts, storey Elevation attributes, attached
- * wall heights and stair refits.
+ * element tops, stair refits and their railings.
  * The caller records the one compound operation for Undo.
  */
 export function applyStoreyLevelEdit(

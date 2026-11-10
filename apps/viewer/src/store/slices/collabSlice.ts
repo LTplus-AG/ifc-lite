@@ -18,6 +18,7 @@
  */
 
 import type { StateCreator } from 'zustand';
+import { bindRoomPropertyApi } from '@/lib/collab/room-property-api';
 import { attachRoomSpatialContextMirror } from '@/lib/collab/room-spatial-context-mirror';
 // IMPORTANT: only *type* imports from '@ifc-lite/collab' at module scope. The
 // collab runtime (yjs, automerge, providers) is heavy and must stay out of the
@@ -48,13 +49,12 @@ import {
   mirrorPlacement,
   mirrorProperty,
   mirrorPropertyDelete,
-  type CollabDocApi,
 } from '@/lib/collab/mutation-bridge';
 import { pathForEntity, pathForGuid, registerEntityPath } from '@/lib/collab/entity-paths';
 import { createRemoteOverlayEntity, deleteRemoteOverlayEntity } from '@/lib/collab/remote-entity-create';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MeshData } from '@ifc-lite/geometry';
-import { seedGeometryToRoom, type CollabGeomApi } from '@/lib/collab/geometry-sync';
+import { seedGeometryToRoom } from '@/lib/collab/geometry-sync';
 import { runOwnerSeed, type CollabSeedInput } from '@/lib/collab/owner-seed';
 import { buildOwnerSeedDeps } from '@/lib/collab/owner-seed-deps';
 import type { CollabSeedPhase, CollabSeedProgress } from '@/lib/collab/seed-phase';
@@ -68,6 +68,13 @@ import {
 import { roomSlotRef } from '@/lib/collab/model-slot-ref';
 import { createRoomReconstructor } from '@/lib/collab/room-reconstruct';
 import {
+  beginCollabAttempt,
+  collabAttemptApis,
+  liveCollabAttempt,
+  type CollabAttempt,
+  type CollabAttemptApis,
+} from '@/lib/collab/session-attempt';
+import {
   PLACEMENT_EPS,
   YAW_EPS,
   rendererDeltaForPlacement,
@@ -77,7 +84,6 @@ import {
 import {
   attachAnnotationInbound,
   annotationToCrdtFields,
-  type AnnotationDocApi,
 } from '@/lib/collab/annotation-sync';
 import type { Annotation } from '@/store/slices/annotationsSlice';
 import { toGlobalIdFromModels } from '../globalId.js';
@@ -363,33 +369,6 @@ function remotePeers(peers: Record<number, PresenceState>, selfClientId: number)
   return out;
 }
 
-// Collab doc helpers captured from the lazy-loaded runtime (see startCollab),
-// so the synchronous mutation mirror can write to the doc without re-importing.
-let docApi: CollabDocApi | null = null;
-// Placement (move/rotate) helpers captured from the lazy-loaded runtime.
-interface PlacementApi {
-  getEntityPlacement: (doc: CollabSession['doc'], path: string) => LocalPlacement | null;
-  setEntityPlacement: (doc: CollabSession['doc'], path: string, p: LocalPlacement) => void;
-  getPlacementBaseline: (doc: CollabSession['doc'], path: string) => LocalPlacement | null;
-  setPlacementBaseline: (doc: CollabSession['doc'], path: string, p: LocalPlacement) => void;
-}
-let placementApi: PlacementApi | null = null;
-// Geometry API + a blob-store factory captured at startCollab, so a local
-// create (addElement) can push the new entity's mesh blob into the room.
-let geomApiRef: CollabGeomApi | null = null;
-let makeBlobStore: (() => Promise<Awaited<ReturnType<typeof createSharedBlobStore>>>) | null = null;
-let cachedBlobStore: Awaited<ReturnType<typeof createSharedBlobStore>> | null = null;
-// Per-session render reconciliation: renderer-frame translation (Y-up) currently
-// baked into each entity's live mesh, RELATIVE to its baked baseline. Keyed by
-// federation GLOBAL id (`toGlobalIdFromModels`), because a room holds one
-// model per slot (#4444) and two slots can share every local expressId. Lets
-// inbound placement edits push only the *incremental* delta (and avoids
-// re-applying our own edits).
-let placementAppliedLoc: Map<number, [number, number, number]> | null = null;
-// Companion to placementAppliedLoc: renderer-frame yaw (radians) currently
-// baked into each entity's live mesh, relative to its baked baseline.
-let placementAppliedYaw: Map<number, number> | null = null;
-
 /** Normalize a builder's STEP-uppercase type ('IFCWALL') to IFC case ('IfcWall'). */
 function normalizeIfcClass(stepType: string): string {
   if (!stepType.toUpperCase().startsWith('IFC')) return stepType;
@@ -435,6 +414,7 @@ function composePlacement(
  */
 
 function reconcilePlacementMesh(
+  attempt: CollabAttempt,
   get: () => ViewerState,
   modelId: string,
   store: IfcDataStore,
@@ -442,7 +422,9 @@ function reconcilePlacementMesh(
   entityId: number,
   placement: LocalPlacement,
 ): void {
-  if (!placementApi || !placementAppliedLoc || !placementAppliedYaw) return;
+  const placementApi = attempt.apis?.placement;
+  if (!placementApi) return;
+  const { placementAppliedLoc, placementAppliedYaw } = attempt;
   const path = pathForEntity(store, entityId);
   if (!path) return;
   let baseline = placementApi.getPlacementBaseline(doc, path);
@@ -498,14 +480,6 @@ function reconcilePlacementMesh(
     }
   }
 }
-// Annotation CRDT helpers + inbound-observer teardown (collab markup sync).
-let annotationDocApi: AnnotationDocApi | null = null;
-let annotationInboundTeardown: (() => void) | null = null;
-// Teardown for the remote→local Y.Doc observer.
-let remoteApplyTeardown: (() => void) | null = null;
-// Teardown for the recipient's live re-reconstruction observer.
-let recipientLiveTeardown: (() => void) | null = null;
-
 export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> = (set, get, api) => ({
   // Initial state
   collabSession: null,
@@ -540,8 +514,13 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
   },
 
   startCollab: async ({ roomId, role, token, seed }) => {
-    // Tear down any existing session first (idempotent join).
+    // Tear down any existing session first (idempotent join), then open this
+    // join's attempt. `attempt.live` — never `collabRoomId === roomId`, which a
+    // Leave + rejoin of the SAME room satisfies for the abandoned join too — is
+    // the only currency check below; see session-attempt.ts.
     get().stopCollab();
+    const attempt = beginCollabAttempt(roomId);
+    const current = () => attempt.live;
     // Set the join token up front (not just at the end): setting collabRoomId
     // re-renders subscribers (e.g. ShareDialog) that immediately mint a
     // role-scoped share link, which needs our admin bearer to be available.
@@ -585,45 +564,13 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
 
     let session: CollabSession;
     let collabMod: typeof import('@ifc-lite/collab');
+    let apis: CollabAttemptApis;
     try {
       // Lazy-load the collab runtime (code-split) — see the import note above.
-      const collab = await import('@ifc-lite/collab');
+      const collab = bindRoomPropertyApi(await import('@ifc-lite/collab'));
       collabMod = collab;
-      // Capture the doc helpers the synchronous mutation mirror needs.
-      docApi = {
-        hasEntity: collab.hasEntity,
-        setPropertyValue: collab.setPropertyValue,
-        deletePropertyValue: collab.deletePropertyValue,
-        setAttribute: collab.setAttribute,
-        setEntityPlacement: collab.setEntityPlacement,
-        deleteEntity: collab.deleteEntity,
-        createEntity: (doc, path, options) => {
-          collab.createEntity(doc, path, options);
-        },
-        XFORMOP_KEY: collab.USD_XFORMOP,
-        placementFromXformOp: (value) => {
-          const xform = value as { transform?: number[][] } | undefined;
-          if (!xform || !Array.isArray(xform.transform)) return null;
-          return collab.matrixToPlacement(xform.transform);
-        },
-        PROPERTY_TYPE_NAMES: collab.PROPERTY_TYPE_NAMES,
-      };
-      // Placement (move/rotate) helpers + a fresh per-session render-track map.
-      placementApi = {
-        getEntityPlacement: collab.getEntityPlacement,
-        setEntityPlacement: collab.setEntityPlacement,
-        getPlacementBaseline: collab.getPlacementBaseline,
-        setPlacementBaseline: collab.setPlacementBaseline,
-      };
-      placementAppliedLoc = new Map();
-      placementAppliedYaw = new Map();
-      // Capture the annotation (markup) CRDT helpers for the sync bridge.
-      annotationDocApi = {
-        annotationsMap: (doc) => collab.annotationsMap(doc),
-        createAnnotation: (doc, id, fields) => collab.createAnnotation(doc, id, fields),
-        deleteAnnotation: (doc, id) => collab.deleteAnnotation(doc, id),
-        iterAnnotations: (doc) => collab.iterAnnotations(doc),
-      };
+      apis = collabAttemptApis(collab);
+      attempt.apis = apis;
       session = await collab.createCollabSession({
         roomId,
         user,
@@ -639,9 +586,11 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
       // as "still in the room" (the toolbar indicator, ShareDialog) — and
       // canCollabEdit()/canCollabComment(), which mutationSlice gates every
       // write on — must not keep applying a room/role that never actually
-      // started. Guarded on collabRoomId still matching this attempt so a
-      // newer start/stop that ran while we awaited isn't clobbered here.
-      if (get().collabRoomId === roomId) {
+      // started. Only while this attempt is still live: a stale attempt that
+      // fails after a Leave + rejoin of the same room must not clear the
+      // rejoin's room fields (or its connecting flag) — they are not its own.
+      if (current()) {
+        attempt.retire();
         set({
           collabConnecting: false,
           collabStatus: 'disconnected',
@@ -650,17 +599,13 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
           collabSelfToken: null,
           collabSeedPhase: 'none',
         });
-      } else {
-        set({ collabConnecting: false, collabStatus: 'disconnected' });
       }
       return;
     }
 
-    // If a newer start/stop happened while we were awaiting, discard.
-    if (get().collabRoomId !== roomId) {
-      session.dispose();
-      return;
-    }
+    // A retired attempt (Leave, or a newer join) disposes the session it just
+    // created and stops here.
+    if (!attempt.adopt(session)) return;
 
     const selfClientId = session.clientId;
     session.presence.onUpdate((peers) => {
@@ -679,35 +624,16 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
       /* cleanup — safe to ignore: presence may not accept the patch in older runtimes */
     }
 
-    /**
-     * This join's own recipient teardown, kept beside the module-level slot it
-     * is published into. The abandoned-join guard below has to be able to run
-     * the teardown THIS join installed and no other: the slot is module-level,
-     * so by the time a stale continuation reaches that guard a newer join may
-     * already own it. (#3016)
-     */
-    let ownLiveTeardown: (() => void) | null = null;
-
-    const geomApi: CollabGeomApi = {
-      createGeometry: (doc, geomId, opts) => collabMod.createGeometry(doc, geomId, opts),
-      hasEntity: (doc, path) => collabMod.hasEntity(doc, path),
-      addGeometryRef: (doc, path, geomId) => collabMod.addGeometryRef(doc, path, geomId),
-      setGeometryRef: (doc, path, ref) => collabMod.setGeometryRef(doc, path, ref),
-      getGeometryRef: (doc, path) => collabMod.getGeometryRef(doc, path),
-      getGeometry: (doc, geomId) => collabMod.getGeometry(doc, geomId),
-      iterEntities: (doc) => collabMod.iterEntities(doc),
-    };
+    const geomApi = apis.geom;
     // Doc reads for the reconstruct-side placement sweep (placement-sweep.ts).
     const sweepApi: PlacementSweepApi = {
       iterEntities: (doc) => collabMod.iterEntities(doc),
       getEntityPlacement: (doc, path) => collabMod.getEntityPlacement(doc, path),
       getPlacementBaseline: (doc, path) => collabMod.getPlacementBaseline(doc, path),
     };
-    // Expose the geometry API + a blob-store factory so a local create can push
-    // the new mesh blob into the room later (not just at seed).
-    geomApiRef = geomApi;
-    makeBlobStore = () => createSharedBlobStore(collabMod, collabServerUrl(), token);
-    cachedBlobStore = null;
+    // A blob-store factory so a local create can push the new mesh blob into
+    // the room later (not just at seed).
+    attempt.setBlobStoreFactory(() => createSharedBlobStore(collabMod, collabServerUrl(), token));
 
     // Owner seeds every model of the share scope into the Y.Doc (plan §4.6
     // seed-into-room), one slot each, once the room has synced — structure
@@ -720,7 +646,6 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
     // guarded on the join still being current, so a Leave landing mid-seed
     // cannot have a stale continuation re-stamp it.
     if (seed) {
-      const current = () => get().collabRoomId === roomId;
       // Loaded lazily so the collab feature stays code-split.
       const { parseIfcxViewerModel } = await import('@/hooks/ingest/viewerModelIngest');
       const outcome = await runOwnerSeed(
@@ -771,78 +696,42 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
             // are known — the recipient half of the "resolved once" contract
             // in the synchronous prefix above. Guarded like every other
             // post-await write in this function.
-            if (get().collabRoomId === roomId) set({ collabRoomModels: models });
+            if (current()) set({ collabRoomModels: models });
           },
           notify: (message) => {
-            if (get().collabRoomId === roomId) set({ collabGeometryNotice: message });
+            if (current()) set({ collabGeometryNotice: message });
           },
-          applied: () => ({ loc: placementAppliedLoc, yaw: placementAppliedYaw }),
+          applied: () => ({ loc: attempt.placementAppliedLoc, yaw: attempt.placementAppliedYaw }),
           reconcile: (modelId, store, entityId, placement) => {
-            reconcilePlacementMesh(get, modelId, store, session.doc, entityId, placement);
+            reconcilePlacementMesh(attempt, get, modelId, store, session.doc, entityId, placement);
           },
         });
 
         // Initial build (only when we don't already have a local model).
-        if (get().collabRoomId === roomId && !get().ifcDataStore) {
+        if (current() && !get().ifcDataStore) {
           await reconstructor.reconstruct();
         }
 
         // Live updates: re-reconstruct (debounced) whenever a peer edits the doc.
+        // The teardown belongs to THIS attempt: a join the user left
+        // mid-reconstruct runs it on the spot (its attempt already retired),
+        // so its room models never linger and never touch a newer join's (#3016).
         reconstructor.attachLive();
-        ownLiveTeardown = reconstructor.teardown;
-        // Published into the module-level slot only while this join is still
-        // the live one. A join the user left mid-reconstruct resumes here after
-        // whatever came next — including a NEWER join that has already put its
-        // own teardown in the slot — and an unconditional assignment overwrote
-        // it, so the newer room's model was never removed on the next Leave
-        // while this dead one's was removed twice. The abandoned case is
-        // handled by the guard below, which runs `ownLiveTeardown` directly
-        // rather than through the slot. (#3016)
-        //
-        // Same granularity as every other re-check in this function: it cannot
-        // tell a rejoin of the SAME room from this join still being live.
-        if (get().collabRoomId === roomId) recipientLiveTeardown = ownLiveTeardown;
+        attempt.onRetire(reconstructor.teardown);
       } catch (err) {
+        // A Leave before the room synced disposes the session, so its
+        // `whenSynced` rejects here; the join is over, not failed.
+        if (!current()) return;
         // eslint-disable-next-line no-console
         console.error('[collab] model reconstruction failed:', err);
       }
     }
 
-    // The seed/reconstruct branches above re-check `collabRoomId === roomId`
-    // after each of their own awaits, but nothing after them did: a
-    // `stopCollab()` landing anywhere in the awaits above (e.g. RoomPanel's
-    // "Leave" button, reachable the moment `collabRoomId` is set — before
-    // this join has finished) left `collabRoomId`/`collabSession` cleared,
-    // and this function then sailed on regardless, wiring up
-    // `remoteApplyTeardown` for a session nothing still tracks and ending
-    // with a `set({ collabSession: session, ... })` that revived a session
-    // the user had explicitly left. Same guard as every other
-    // `collabRoomId`-vs-`roomId` re-check earlier in `startCollab`, added
-    // for the one block that had none.
-    if (get().collabRoomId !== roomId) {
-      // Run the cleanup this join installed after its last guarded await, which
-      // returning here would otherwise skip: the recipient branch registers the
-      // `room:<roomId>:<slotId>` models, then assigns its teardown, then falls through to
-      // this check. A Leave landing in that window left the model in `models`
-      // (and the doc listener attached) until the next `stopCollab` — an orphan
-      // sitting in the store between leaving and rejoining. (#3016)
-      //
-      // This join's OWN closure, never whatever the module-level slot holds:
-      // by the time a stale continuation gets here, a newer join may already
-      // have published its own teardown there, and running THAT one would drop
-      // the room model of the session the user is actually in. The assignment
-      // above is conditional for the same reason, so the slot cannot be
-      // holding this closure here — nothing to clear.
-      if (ownLiveTeardown) {
-        try {
-          ownLiveTeardown();
-        } catch {
-          /* cleanup — safe to ignore */
-        }
-      }
-      session.dispose();
-      return;
-    }
+    // A Leave (or a newer join) landing in any await above retired this
+    // attempt: its session is already disposed and everything it registered
+    // has been or will be torn down by `onRetire`. Nothing below may wire up a
+    // session nothing tracks, or revive one the user explicitly left.
+    if (!current()) return;
     // Replay peer edits into the named ROOM model without local undo or echo.
     // Room paths, never activeModelId, select the model because expressIds are
     // model-local. Resolution fails closed until registration; reconstruct then
@@ -851,7 +740,7 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
       console.warn('[collab] rejected remote write:', rejected);
       set({ collabGeometryNotice: `A collaborative edit could not be applied: ${rejected}` });
     };
-    const detachRemoteApply = attachRemoteApply(docApi!, session, (path) => roomEntityTargetForPath(get(), path), {
+    const detachRemoteApply = attachRemoteApply(apis.doc, session, (path) => roomEntityTargetForPath(get(), path), {
       // Consulted by the bridge's single tombstone guard before any write (#5187).
       isLocallyDeleted: (modelId, entityId) => roomMutationViewFor(get(), modelId)?.isDeleted(entityId) ?? false,
       onRejectedWrite: rejectRemoteWrite,
@@ -899,7 +788,7 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
       onPlacement: (modelId, entityId, placement) => {
         const store = roomStoreFor(get(), modelId);
         if (!store) return;
-        reconcilePlacementMesh(get, modelId, store, session.doc, entityId, placement);
+        reconcilePlacementMesh(attempt, get, modelId, store, session.doc, entityId, placement);
         get().invalidateHistoryForEntity(modelId, entityId); // clear stale placement history (#5223)
         set((s) => ({ mutationVersion: s.mutationVersion + 1 }));
       },
@@ -926,27 +815,25 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
     });
 
     const detachSpatial = attachRoomSpatialContextMirror(api, session);
-    remoteApplyTeardown = () => { detachRemoteApply(); detachSpatial(); };
+    attempt.onRetire(() => { detachRemoteApply(); detachSpatial(); });
 
     // Annotation (markup) sync: reflect peers' pins into the local slice, and
     // seed our existing local pins into the room ("share existing + new").
-    if (annotationDocApi) {
-      try {
-        annotationInboundTeardown = attachAnnotationInbound(session, annotationDocApi, {
-          myId: () => get().collabIdentity.id,
-          getLocal: () => get().annotations,
-          upsertRemote: (a) => get().upsertRemoteAnnotation(a),
-          removeRemote: (id) => get().removeRemoteAnnotation(id),
-        });
-        if (get().canCollabComment()) {
-          for (const a of get().annotations.values()) {
-            if (!a.remote) get().mirrorAnnotationUpsert(a);
-          }
+    try {
+      attempt.onRetire(attachAnnotationInbound(session, apis.annotation, {
+        myId: () => get().collabIdentity.id,
+        getLocal: () => get().annotations,
+        upsertRemote: (a) => get().upsertRemoteAnnotation(a),
+        removeRemote: (id) => get().removeRemoteAnnotation(id),
+      }));
+      if (get().canCollabComment()) {
+        for (const a of get().annotations.values()) {
+          if (!a.remote) get().mirrorAnnotationUpsert(a);
         }
-      } catch (err) {
-        // eslint-disable-next-line no-console
-        console.error('[collab] annotation sync setup failed:', err);
       }
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('[collab] annotation sync setup failed:', err);
     }
 
     set({
@@ -962,42 +849,15 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
   },
 
   stopCollab: () => {
-    if (remoteApplyTeardown) {
+    // Retiring the live attempt runs every teardown it registered and disposes
+    // its session. A session committed without one (tests seed `collabSession`
+    // directly) is still disposed here.
+    const attempt = liveCollabAttempt();
+    const committed = get().collabSession;
+    attempt?.retire();
+    if (committed && committed !== attempt?.session) {
       try {
-        remoteApplyTeardown();
-      } catch {
-        /* cleanup — safe to ignore */
-      }
-      remoteApplyTeardown = null;
-    }
-    if (recipientLiveTeardown) {
-      try {
-        recipientLiveTeardown();
-      } catch {
-        /* cleanup — safe to ignore */
-      }
-      recipientLiveTeardown = null;
-    }
-    if (annotationInboundTeardown) {
-      try {
-        annotationInboundTeardown();
-      } catch {
-        /* cleanup — safe to ignore */
-      }
-      annotationInboundTeardown = null;
-    }
-    docApi = null;
-    annotationDocApi = null;
-    placementApi = null;
-    placementAppliedLoc = null;
-    placementAppliedYaw = null;
-    geomApiRef = null;
-    makeBlobStore = null;
-    cachedBlobStore = null;
-    const session = get().collabSession;
-    if (session) {
-      try {
-        session.dispose();
+        committed.dispose();
       } catch (err) {
         // eslint-disable-next-line no-console
         console.error('[collab] error disposing session:', err);
@@ -1087,6 +947,7 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
   mirrorPropertyEdit: (modelId, entityId, psetName, propName, value, valueType, dataType) => {
     const session = get().collabSession;
     const store = roomStoreFor(get(), modelId);
+    const docApi = liveCollabAttempt()?.apis?.doc;
     if (!session || !store || !docApi) return;
     mirrorProperty(docApi, session, store, entityId, psetName, propName, value, valueType, dataType);
   },
@@ -1094,6 +955,7 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
   mirrorPropertyDelete: (modelId, entityId, psetName, propName) => {
     const session = get().collabSession;
     const store = roomStoreFor(get(), modelId);
+    const docApi = liveCollabAttempt()?.apis?.doc;
     if (!session || !store || !docApi) return;
     mirrorPropertyDelete(docApi, session, store, entityId, psetName, propName);
   },
@@ -1101,6 +963,7 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
   mirrorAttributeEdit: (modelId, entityId, attrName, value) => {
     const session = get().collabSession;
     const store = roomStoreFor(get(), modelId);
+    const docApi = liveCollabAttempt()?.apis?.doc;
     if (!session || !store || !docApi) return;
     mirrorAttribute(docApi, session, store, entityId, attrName, value);
   },
@@ -1115,7 +978,10 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
     // call sites, so a new call site cannot forget.
     const session = get().collabSession;
     const store = roomStoreFor(get(), modelId);
-    if (!session || !store || !docApi || !placementApi || !placementAppliedLoc) return;
+    const attempt = liveCollabAttempt();
+    const apis = attempt?.apis;
+    if (!session || !store || !attempt || !apis) return;
+    const { doc: docApi, placement: placementApi } = apis;
     if (!get().canCollabEdit()) return;
     const path = pathForEntity(store, entityId);
     if (!path) return;
@@ -1129,8 +995,8 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
     // edit (and so a remote edit computes the correct incremental). Keyed by
     // global id like the reconciler (see `placementAppliedLoc`).
     const globalId = toGlobalIdFromModels(get().models, modelId, entityId);
-    placementAppliedLoc.set(globalId, rendererDeltaForPlacement(baseline, next));
-    if (placementAppliedYaw) placementAppliedYaw.set(globalId, yawOf(next) - yawOf(baseline));
+    attempt.placementAppliedLoc.set(globalId, rendererDeltaForPlacement(baseline, next));
+    attempt.placementAppliedYaw.set(globalId, yawOf(next) - yawOf(baseline));
   },
 
   readCollabPlacement: (modelId, entityId) => {
@@ -1141,7 +1007,9 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
     // model's entities (the room's dense `idToPath` resolves any id to some
     // real room path), and dragging it runs the write below.
     const store = roomStoreFor(get(), modelId);
-    if (!session || !store || !placementApi || !docApi) return null;
+    const apis = liveCollabAttempt()?.apis;
+    if (!session || !store || !apis) return null;
+    const { doc: docApi, placement: placementApi } = apis;
     const path = pathForEntity(store, entityId);
     if (!path || !docApi.hasEntity(session.doc, path)) return null;
     // Any entity that exists in the room is movable: prefer its live placement,
@@ -1159,7 +1027,10 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
     const session = get().collabSession;
     // Room model only — see `mirrorPlacementEdit`.
     const store = roomStoreFor(get(), modelId);
-    if (!session || !store || !docApi || !placementApi) return false;
+    const attempt = liveCollabAttempt();
+    const apis = attempt?.apis;
+    if (!session || !store || !attempt || !apis) return false;
+    const { doc: docApi, placement: placementApi } = apis;
     if (!get().canCollabEdit()) return false;
     const path = pathForEntity(store, entityId);
     if (!path) return false;
@@ -1177,7 +1048,7 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
     };
     mirrorPlacement(docApi, session, store, entityId, next);
     // No STEP chain on this store — move our own mesh via the shared reconciler.
-    reconcilePlacementMesh(get, modelId, store, session.doc, entityId, next);
+    reconcilePlacementMesh(attempt, get, modelId, store, session.doc, entityId, next);
     return true;
   },
 
@@ -1185,7 +1056,10 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
     const session = get().collabSession;
     // Room model only — see `mirrorPlacementEdit`.
     const store = roomStoreFor(get(), modelId);
-    if (!session || !store || !docApi || !placementApi) return false;
+    const attempt = liveCollabAttempt();
+    const apis = attempt?.apis;
+    if (!session || !store || !attempt || !apis) return false;
+    const { doc: docApi, placement: placementApi } = apis;
     if (!get().canCollabEdit()) return false;
     const path = pathForEntity(store, entityId);
     if (!path) return false;
@@ -1195,7 +1069,7 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
     const next = composePlacement(prev, [0, 0, 0], deltaYaw);
     mirrorPlacement(docApi, session, store, entityId, next);
     // Live-rotate our own mesh via the shared reconciler (rotation branch).
-    reconcilePlacementMesh(get, modelId, store, session.doc, entityId, next);
+    reconcilePlacementMesh(attempt, get, modelId, store, session.doc, entityId, next);
     return true;
   },
 
@@ -1203,19 +1077,23 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
     // Room model only — see `mirrorPlacementEdit`.
     const session = get().collabSession;
     const store = roomStoreFor(get(), modelId);
-    if (!session || !store || !docApi) return;
+    const attempt = liveCollabAttempt();
+    const docApi = attempt?.apis?.doc;
+    if (!session || !store || !attempt || !docApi) return;
     if (!get().canCollabEdit()) return;
     mirrorEntityDelete(docApi, session, store, entityId);
     // Drop any placement tracking for the removed entity.
     const globalId = toGlobalIdFromModels(get().models, modelId, entityId);
-    placementAppliedLoc?.delete(globalId);
-    placementAppliedYaw?.delete(globalId);
+    attempt.placementAppliedLoc.delete(globalId);
+    attempt.placementAppliedYaw.delete(globalId);
   },
   mirrorEntityCreate: (modelId, entityId, ifcType, guid, mesh, initialAttributes, sourceExpressId) => {
     // Room model only — see `mirrorPlacementEdit`.
     const session = get().collabSession;
     const store = roomStoreFor(get(), modelId);
-    if (!session || !store || !docApi || !placementApi || !geomApiRef) return;
+    const attempt = liveCollabAttempt();
+    const apis = attempt?.apis;
+    if (!session || !store || !attempt || !apis) return;
     if (!get().canCollabEdit()) return;
     // Overlay entities aren't in the GUID maps; derive their room path and
     // register it only after CRDT creation succeeds so failed writes can retry.
@@ -1227,7 +1105,7 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
     }
     if (!path) return;
     const ifcClass = normalizeIfcClass(ifcType);
-    const api = docApi;
+    const api = apis.doc;
     session.transact(() => {
       api.createEntity(session.doc, path, {
         ifcClass,
@@ -1238,21 +1116,28 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
     if (generatedPath) registerEntityPath(store, entityId, path);
     // The mesh blob is baked at the element's world position → identity baseline
     // (so a later move composes correctly; see reconcilePlacementMesh).
-    placementApi.setPlacementBaseline(session.doc, path, { location: [0, 0, 0] });
+    apis.placement.setPlacementBaseline(session.doc, path, { location: [0, 0, 0] });
     // Push the new mesh as a room blob so peers hydrate + render it. Async,
     // fire-and-forget — the local element already rendered.
-    if (mesh && makeBlobStore) {
-      const geom = geomApiRef;
+    if (mesh && attempt.hasBlobStore()) {
+      const geom = apis.geom;
       void (async () => {
         try {
-          cachedBlobStore = cachedBlobStore ?? (await makeBlobStore!());
-          const report = await seedGeometryToRoom(geom, session, cachedBlobStore, [mesh], () => path);
+          const blobStore = await attempt.blobStore();
+          // A Leave or rejoin during the upload: this room is not the user's
+          // any more, so neither its result nor its failure is theirs to see.
+          if (!attempt.live) return;
+          const report = await seedGeometryToRoom(geom, session, blobStore, [mesh], () => path);
+          if (!attempt.live) return;
           if (report.seeded === 0) {
             // eslint-disable-next-line no-console
             console.error('[collab] mirror create geometry failed:', report);
             set({ collabGeometryNotice: 'The new element could not be shared with the room.' });
           }
         } catch (err) {
+          // Retiring the attempt disposes its session and blob store, which is
+          // usually what threw here; that is the user leaving, not a failure.
+          if (!attempt.live) return;
           // eslint-disable-next-line no-console
           console.error('[collab] mirror create geometry failed:', err);
           set({ collabGeometryNotice: 'The new element could not be shared with the room.' });
@@ -1265,7 +1150,9 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
     // Room model only — see `mirrorPlacementEdit`.
     const session = get().collabSession;
     const store = roomStoreFor(get(), modelId);
-    if (!session || !store || !geomApiRef || !makeBlobStore || meshes.length === 0) return;
+    const attempt = liveCollabAttempt();
+    const geom = attempt?.apis?.geom;
+    if (!session || !store || !attempt || !geom || !attempt.hasBlobStore() || meshes.length === 0) return;
     if (!get().canCollabEdit()) return;
     const path = pathForEntity(store, entityId);
     if (!path) return;
@@ -1274,21 +1161,23 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
     // is treated as the new zero (resize-after-move on a peer is an accepted v1
     // limitation — the peer's stale applied delta isn't reset remotely).
     const globalId = toGlobalIdFromModels(get().models, modelId, entityId);
-    placementAppliedLoc?.delete(globalId);
-    placementAppliedYaw?.delete(globalId);
-    const geom = geomApiRef;
+    attempt.placementAppliedLoc.delete(globalId);
+    attempt.placementAppliedYaw.delete(globalId);
     void (async () => {
       try {
-        cachedBlobStore = cachedBlobStore ?? (await makeBlobStore!());
-        const report = await seedGeometryToRoom(geom, session, cachedBlobStore, meshes, () => path, {
+        const blobStore = await attempt.blobStore();
+        if (!attempt.live) return; // see mirrorEntityCreate
+        const report = await seedGeometryToRoom(geom, session, blobStore, meshes, () => path, {
           replace: true,
         });
+        if (!attempt.live) return;
         if (report.seeded === 0) {
           // eslint-disable-next-line no-console
           console.error('[collab] mirror resize geometry failed:', report);
           set({ collabGeometryNotice: 'The updated geometry could not be shared with the room.' });
         }
       } catch (err) {
+        if (!attempt.live) return; // see mirrorEntityCreate
         // eslint-disable-next-line no-console
         console.error('[collab] mirror resize geometry failed:', err);
         set({ collabGeometryNotice: 'The updated geometry could not be shared with the room.' });
@@ -1298,15 +1187,15 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
 
   mirrorAnnotationUpsert: (annotation) => {
     const session = get().collabSession;
-    if (!session || !annotationDocApi || !get().canCollabComment()) return;
-    const api = annotationDocApi;
+    const api = liveCollabAttempt()?.apis?.annotation;
+    if (!session || !api || !get().canCollabComment()) return;
     session.transact(() => api.createAnnotation(session.doc, annotation.id, annotationToCrdtFields(annotation)));
   },
 
   mirrorAnnotationDelete: (id) => {
     const session = get().collabSession;
-    if (!session || !annotationDocApi || !get().canCollabComment()) return;
-    const api = annotationDocApi;
+    const api = liveCollabAttempt()?.apis?.annotation;
+    if (!session || !api || !get().canCollabComment()) return;
     session.transact(() => api.deleteAnnotation(session.doc, id));
   },
 });

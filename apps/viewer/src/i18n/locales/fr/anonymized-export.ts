@@ -57,7 +57,7 @@ export const anonymizedExportFr = {
 
   // AnonymizedExportDialog
   'anonymizedExport.dialog.title': 'Exporter un sous-ensemble anonymisé',
-  'anonymizedExport.dialog.description': 'Les objets mis en évidence dans la vue 3D à droite sont ceux qui seront exportés — tout indice permettant d’identifier le projet est supprimé, les transformations locales sont conservées.',
+  "anonymizedExport.dialog.description": "Les objets mis en évidence dans la vue 3D à droite sont exportés. Seules les catégories sélectionnées pour l’anonymisation sont anonymisées ; les catégories réglées sur Conserver gardent leurs valeurs d’origine. Les transformations locales sont conservées.",
   'anonymizedExport.dialog.otherModelSeedsExcluded': {
     one: '{count} objet sélectionné dans d’autres modèles n’est pas inclus',
     many: '{count} d’objets sélectionnés dans d’autres modèles ne sont pas inclus',

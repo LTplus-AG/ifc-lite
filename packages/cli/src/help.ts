@@ -20,7 +20,11 @@ export function buildHelp(version: string): string {
     query     <file.ifc> [--type T] [--json]      Query entities by type/properties/quantities
               [--select "IfcWall, Pset_WallCommon.FireRating=2HR"]  IfcOpenShell-style selector (classes union with --type; properties AND with --where)
     props     <file.ifc> --id <N>                 All properties for a single entity
-    export    <file.ifc> --format csv|json|ifc|obj|gltf|glb|jsonld|step|ifcx|usd|hbjson|dfjson  Export data / geometry / energy model
+    export    <file.ifc> --format csv|json|ifc|obj|gltf|glb|jsonld|step|ifcx|usd|3dm|hbjson|dfjson  Export data / geometry / energy model
+              3dm: --units source|meters|millimeters|centimeters|feet|inches
+                   --coordinates local|world --layers spatial-class|class|presentation
+                   --properties all|attributes|none --3dm-version 7|8
+                   --no-instancing --no-spaces --no-normals --layer-slicing
     schedule  <file.ifc> --type T --columns "H=path,..."  Tabular schedule of one class (csv/json/md/html)
               [--preset door|window|space|wall|material-takeoff]  default type+columns (flags override)
               [--where PsetName.Prop=Value] [--format csv|json|md|html]  path = attr | Pset.Prop | Qto.Qty
@@ -65,6 +69,11 @@ export function buildHelp(version: string): string {
     stats     <file.ifc>                          Auto-calculated model KPIs and health check
     mutate    <file.ifc> --id N --set P=V --out F  Modify properties/attributes and save
     generate-spaces <file.ifc> --out F           Derive IfcSpace from walls (slab/roof-aware height)
+    storey    <file.ifc> list|add|rename|edit|delete  Author storeys; geometry follows ("storey --help" for actions)
+              list [--json]                       Storeys with elevation, floor-to-floor height and element count
+              add --from S [--below] | --name N --elevation M  Add a storey (from a neighbour: its naming and spacing)
+              rename --storey S --name N | edit --storey S --elevation M | --floor-height M
+              delete --storey S [--move-to S | --delete-contents]  Each writes --out F; --dry-run writes nothing
     ask       <file.ifc> "<question>"            Natural language BIM queries
     view      <file.ifc> [--port N]              Interactive 3D viewer in browser
     analyze   <file.ifc> --viewer <port>        Query + visualize analysis results

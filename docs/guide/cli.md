@@ -384,6 +384,9 @@ ifc-lite export model.ifc --format ifc --schema IFC4 --out filtered.ifc
 # GLB whose element nodes are named by GlobalId (for tools that look objects up by node name)
 ifc-lite export model.ifc --format glb --name-by-global-id --out model.glb
 
+# Rhino (.3dm) — IFC layers, blocks, materials and user text
+ifc-lite export model.ifc --format 3dm --out model.3dm
+
 # OpenUSD (.usda) — a real Z-up USD stage (whole model; opens in usdview/Blender/Omniverse)
 ifc-lite export model.ifc --format usd --out model.usda
 
@@ -398,7 +401,7 @@ ifc-lite export model.ifc --format csv --out walls.csv
 
 | Flag | Description |
 |------|-------------|
-| `--format <fmt>` | `csv`, `json`, `ifc`, `obj`, `gltf`, `glb`, `jsonld`, `step`, `ifcx`, `usd`, `hbjson`, or `dfjson` |
+| `--format <fmt>` | `csv`, `json`, `ifc`, `obj`, `gltf`, `glb`, `jsonld`, `step`, `ifcx`, `usd`, `3dm`, `hbjson`, or `dfjson` |
 | `--type <T>` | Filter entities by type |
 | `--where <filter>` | Property filter: `PsetName.PropName=Value` |
 | `--storey <name>` | Filter to elements in a storey |
@@ -411,9 +414,30 @@ ifc-lite export model.ifc --format csv --out walls.csv
 | `--name-by-global-id` | `gltf`/`glb`: make each element one node named by its `GlobalId`, with its mesh parts as children |
 | `--out <file>` | Write to file instead of stdout |
 
+#### Rhino export options
+
+For `--format 3dm`, `--out` is required. Entity filters (`--type`, `--storey`,
+`--where`, `--limit`) restrict exported objects; a zero-match filter fails closed.
+
+| Flag | Values / default |
+|---|---|
+| `--units` | `source` (default), `meters`, `millimeters`, `centimeters`, `feet`, `inches` |
+| `--coordinates` | `local` (default), `world` |
+| `--layers` | `spatial-class` (default), `class`, `presentation` |
+| `--properties` | `all` (default), `attributes`, `none` |
+| `--no-instancing` | Bake repeated geometry instead of blocks |
+| `--no-spaces` | Exclude spaces (included on hidden layers by default) |
+| `--no-normals` | Omit vertex normals |
+| `--layer-slicing` | Enable material-layer slicing |
+| `--3dm-version` | `7`, `8` (default) |
+
+Scene warnings print to stderr.
+
 ---
 
 ### `schedule` — Tabular Schedules
+
+Door and window presets (including `IfcDoorStandardCase` and `IfcWindowStandardCase`) include Mark (`Tag`), FireRating, IsExternal, Width and Height. CLI schedules and SDK CSV/JSON exports use base quantities when present and otherwise read `OverallWidth` and `OverallHeight` in the model’s length unit.
 
 Generate an AEC-style schedule (door schedule, window schedule, room schedule, material takeoff, …) for one IFC class: a filtered, columnar table with attribute/property/quantity columns, optional sort/group/subtotal rows, and CSV/JSON/Markdown/HTML output. Column values resolve through the same property/quantity resolver `export` uses and `--where` reuses `query`'s exact filter, so a schedule always agrees with the equivalent `query`/`export` invocation.
 
@@ -905,6 +929,38 @@ ifc-lite generate-spaces model.ifc --list-storeys
 | `--dry-run` | Detect and report only; write nothing |
 | `--force` | Re-derive even if the model already has generated spaces (may duplicate) |
 | `--list-storeys` | List storeys (ID, name, elevation) and exit |
+| `--json` | Machine-readable output |
+
+---
+
+### `storey` - Author Storeys
+
+List, add, rename, re-level and delete `IfcBuildingStorey` in an IFC file, through the same `bim.store` path as the viewer's storey manager and the MCP `storey_*` tools. Geometry follows storeys. A storey's contents move with it, walls attached to the storey above resize, and stairs that land on a moved storey are refit. Any refusal is reported before anything is written.
+
+```bash
+ifc-lite storey model.ifc list
+ifc-lite storey model.ifc add --from "Level 1" --out with-level-2.ifc
+ifc-lite storey model.ifc add --name "Basement" --elevation -3 --out basement.ifc
+ifc-lite storey model.ifc edit --storey "Level 1" --floor-height 3.5 --out raised.ifc
+ifc-lite storey model.ifc edit --storey "Level 2" --elevation 3.8 --dry-run
+ifc-lite storey model.ifc delete --storey "Level 2" --move-to "Level 1" --out merged.ifc
+```
+
+`--elevation` moves only that storey. `--floor-height` sets the gap to the storey above, and every storey above in the same building shifts by the same amount. A storey is named by its exact name (letter case is a fallback), or `#<express id>`; a bare number is read as the express ID unless a storey also has that name, which is refused as ambiguous. Lengths are metres.
+
+**Flags:**
+
+| Flag | Description |
+|------|-------------|
+| `--out <file>` | Output IFC (omit with `--dry-run`) |
+| `--name <n>` / `--elevation <m>` | Name and elevation of a storey to add; `--name` also renames |
+| `--building <id>` | The building a `--name`/`--elevation` storey joins, in a model with several (`--from` uses its storey's building) |
+| `--from <storey>` / `--below` | Add above (or below) a storey with its neighbours' naming and spacing |
+| `--storey <storey>` | The storey to rename, edit or delete |
+| `--floor-height <m>` | New floor-to-floor height of `--storey` |
+| `--move-to <storey>` | Delete, moving the contents to this storey (same identity and position) |
+| `--delete-contents` | Delete the storey and everything it holds |
+| `--dry-run` | Make the change in memory and report it, refused exactly as the real one; write nothing |
 | `--json` | Machine-readable output |
 
 ---
@@ -1658,6 +1714,17 @@ ifc-lite flow review roles.checkpoint.json --approve <digest>
 ifc-lite flow resume roles.flow.json model.ifc --checkpoint roles.checkpoint.json --out roles.ifc
 ```
 
+All CLI/MCP writers sharing a checkpoint directory must be upgraded together:
+checkpoint locks now use owner-tagged directories instead of exclusive files.
+If saving a pause reports a legacy `.lock` file, an older writer left it.
+Stop all writers, upgrade them together, and verify none remains active before
+manually removing only that lock file and retrying. The CLI preserves the lock
+and does not overwrite the checkpoint while ownership is unknown.
+
+An unrecognized lock **directory** gets separate inspection guidance. Preserve
+its entries and check the writer version; an unknown future owner format or an
+unrelated file such as `.DS_Store` is not an ownerless legacy lock file.
+
 A graph with a tracked creation node (`model.addElement`) re-run on its own output updates the
 elements it made — same GlobalIds, changed geometry — and removes the ones whose lanes vanished:
 
@@ -1803,6 +1870,7 @@ The `semantic` command reads JSON/SPARQL providers, generates shared profile art
 | `stats` | Auto-calculated model KPIs and health check |
 | `mutate` | Modify properties/attributes and save |
 | `generate-spaces` | Derive IfcSpace from walls (slab/roof-aware height) |
+| `storey` | Author storeys; geometry follows ("storey --help" for actions) |
 | `ask` | Natural language BIM queries |
 | `view` | Interactive 3D viewer in browser |
 | `analyze` | Query + visualize analysis results |

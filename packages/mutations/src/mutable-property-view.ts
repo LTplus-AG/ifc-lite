@@ -12,6 +12,8 @@
  * for optimal performance with large models.
  */
 
+import { runSparseAtomic } from './sparse-atomic.js';
+import { readEntitySnapshot } from './entity-read-barrier.js';
 import { registerCooperativeOverlay } from './cooperative-overlay-access.js';
 import type { PropertyTable, PropertySet, Property, QuantitySet, Quantity } from '@ifc-lite/data';
 import { quantityHistoryBefore } from './quantity-history-before.js';
@@ -20,6 +22,7 @@ import { encodeNonFiniteNumbers, decodeNonFiniteNumbers } from './nonfinite-json
 import { PropertyValueType, QuantityType } from '@ifc-lite/data';
 import type { IfcAttributeValue, PropertyValue, PropertyMutation, QuantityMutation, EntityTypeMutation, Mutation, NewEntity, EffectiveChange } from './types.js';
 import { propertyKey, quantityKey, attributeKey, generateMutationId } from './types.js';
+import { changesForEntity } from './effective-entity-changes.js';
 import { collectEffectiveChanges, type AttributeExtractor } from './effective-changes.js';
 import { applyMutationsBatch } from './apply-mutations.js';
 import { MutableOverlayState, type ForgottenEntityOverlay } from './mutable-overlay-state.js';
@@ -41,11 +44,14 @@ export type PropertyExtractor = (entityId: number) => Array<{
  * Function type for on-demand quantity extraction. `view` is the view asking (a draft reads its own edits), `occurrenceId` the entity asked about before any alias.
  */
 export type QuantityExtractor = (entityId: number, view: MutablePropertyView, occurrenceId: number) => QuantitySet[];
+/** A set the view's quantity base reads differently from the file (a refreshed `Qto_*` of an edited element). */
+export type QuantityBaseRevision = { readonly entityId: number; readonly setName: string };
 
 export class MutablePropertyView extends MutableOverlayState {
   private baseTable: PropertyTable | null;
   private onDemandExtractor: PropertyExtractor | null = null;
   private quantityExtractor: QuantityExtractor | null = null;
+  private quantityBaseRevisions: ((view: MutablePropertyView) => Iterable<QuantityBaseRevision>) | null = null;
   private attributeExtractor: AttributeExtractor | null = null;
   private modelId: string;
 
@@ -54,15 +60,23 @@ export class MutablePropertyView extends MutableOverlayState {
     this.baseTable = baseTable;
     this.modelId = modelId;
     registerCooperativeOverlay(this, { modelId,
+      transact: (edit, record) => runSparseAtomic(this, edit, record),
       capture: () => this.overlayState(),
+      rebuild: snapshot => {
+        const draft = new MutablePropertyView(this.baseTable, this.modelId);
+        draft.restoreOverlayState(snapshot);
+        for (const id of draft.getAttributeOverrideEntityIds()) draft.indexAttributeOverride(id);
+        return draft.overlayState();
+      },
       matches: snapshot => this.matchesOverlayState(snapshot),
       publish: snapshot => this.restoreOverlayState(snapshot),
       draft: snapshot => {
         const draft = new MutablePropertyView(this.baseTable, this.modelId);
         draft.onDemandExtractor = this.onDemandExtractor;
         draft.quantityExtractor = this.quantityExtractor;
+        draft.quantityBaseRevisions = this.quantityBaseRevisions;
         draft.attributeExtractor = this.attributeExtractor;
-        draft.restoreOverlayState(snapshot);
+        draft.restoreOverlayState(snapshot, this.getMutationRevision());
         return draft;
       },
     });
@@ -76,10 +90,9 @@ export class MutablePropertyView extends MutableOverlayState {
    * External effects (files, renderer or network) belong outside this callback.
    */
   runAtomic<T>(edit: (draft: MutablePropertyView) => T): T {
-    const prepared = this.prepareAtomic(edit);
-    prepared.commit();
-    return prepared.result;
+    return runSparseAtomic(this, edit, false).result;
   }
+
 
   /**
    * Prepare an overlay publication without changing live IFC state (#4243).
@@ -92,8 +105,9 @@ export class MutablePropertyView extends MutableOverlayState {
     const draft = new MutablePropertyView(this.baseTable, this.modelId);
     draft.onDemandExtractor = this.onDemandExtractor;
     draft.quantityExtractor = this.quantityExtractor;
+    draft.quantityBaseRevisions = this.quantityBaseRevisions;
     draft.attributeExtractor = this.attributeExtractor;
-    draft.restoreOverlayState(structuredClone(original));
+    draft.restoreOverlayState(structuredClone(original), this.getMutationRevision());
     const result = edit(draft);
     if (result !== null && (typeof result === 'object' || typeof result === 'function')
       && 'then' in result && typeof result.then === 'function') {
@@ -124,17 +138,6 @@ export class MutablePropertyView extends MutableOverlayState {
     } };
   }
 
-  /**
-   * Seed the express-ID allocator. Should be called once after parsing with
-   * the highest existing expressId in the store; subsequent `createEntity`
-   * calls allocate IDs strictly above this watermark.
-   */
-  setExpressIdWatermark(maxExistingId: number): void {
-    if (maxExistingId > this.nextAllocatedId) {
-      this.nextAllocatedId = maxExistingId;
-    }
-  }
-
   /** The next expressId that `createEntity` would allocate. */
   peekNextExpressId(): number {
     return this.nextAllocatedId + 1;
@@ -154,6 +157,10 @@ export class MutablePropertyView extends MutableOverlayState {
   setQuantityExtractor(extractor: QuantityExtractor): void {
     this.quantityExtractor = extractor;
   }
+
+  /** Name the sets the quantity base revises, so a full export writes them as it writes an edited set. Installed beside `setQuantityExtractor`. */
+  setQuantityBaseRevisions(provider: ((view: MutablePropertyView) => Iterable<QuantityBaseRevision>) | null): void { this.quantityBaseRevisions = provider; }
+  getQuantityBaseRevisions(): Iterable<QuantityBaseRevision> { return this.quantityBaseRevisions?.(this) ?? []; }
 
   /**
    * Whether this view has anything UNDER its quantity overlay.
@@ -457,7 +464,7 @@ export class MutablePropertyView extends MutableOverlayState {
       valueType,
       unit,
       dataType,
-    });
+    }, [psetName, propName]);
 
     const mutation: Mutation = {
       id: generateMutationId(),
@@ -509,7 +516,7 @@ export class MutablePropertyView extends MutableOverlayState {
       p => p.name === psetName && p.properties.some(prop => prop.name === propName),
     );
     if (propExistsInBase) {
-      this.setPropertyMutation(entityId, key, { operation: 'DELETE' });
+      this.setPropertyMutation(entityId, key, { operation: 'DELETE' }, [psetName, propName]);
     } else {
       this.deletePropertyMutation(entityId, key);
     }
@@ -588,7 +595,7 @@ export class MutablePropertyView extends MutableOverlayState {
         value: prop.value,
         valueType: prop.type ?? PropertyValueType.String,
         unit: prop.unit,
-      });
+      }, [psetName, prop.name]);
     }
 
     const mutation: Mutation = {
@@ -651,7 +658,7 @@ export class MutablePropertyView extends MutableOverlayState {
       this.deletedPsets.add(`${entityId}:${psetName}`);
       for (const prop of pset.properties) {
         const key = propertyKey(entityId, psetName, prop.name);
-        this.setPropertyMutation(entityId, key, { operation: 'DELETE' });
+        this.setPropertyMutation(entityId, key, { operation: 'DELETE' }, [psetName, prop.name]);
       }
     }
 
@@ -786,7 +793,7 @@ export class MutablePropertyView extends MutableOverlayState {
         value: q.value,
         quantityType: q.quantityType,
         unit: q.unit,
-      });
+      }, [qsetName, q.name]);
     }
 
     const mutation: Mutation = {
@@ -859,7 +866,7 @@ export class MutablePropertyView extends MutableOverlayState {
       quantityType: qType,
       unit: effectiveUnit,
       unitRemoved,
-    });
+    }, [qsetName, quantName]);
 
     const mutation: Mutation = {
       id: generateMutationId(),
@@ -895,7 +902,7 @@ export class MutablePropertyView extends MutableOverlayState {
     return deleteQuantityMember({
       modelId: this.modelId, entityId, qsetName, quantName,
       baseQsets: this.getBaseQuantitiesForEntity(entityId), entityQsets: this.newQsets.get(entityId),
-      setMutation: (key, mutation) => this.setQuantityMutation(entityId, key, mutation),
+      setMutation: (key, mutation) => this.setQuantityMutation(entityId, key, mutation, [qsetName, quantName]),
       deleteMutation: key => { this.deleteQuantityMutation(entityId, key); },
       deleteEntityQsets: () => { this.newQsets.delete(entityId); },
       pushHistory: mutation => {
@@ -924,7 +931,7 @@ export class MutablePropertyView extends MutableOverlayState {
       entityQsets: this.newQsets.get(entityId), deleteEntityQsets: () => { this.newQsets.delete(entityId); },
       deleteMutation: name => { this.deleteQuantityMutation(entityId, quantityKey(entityId, qsetName, name)); },
       maskSet: () => { this.deletedQsets.add(`${entityId}:${qsetName}`); },
-      setMutation: name => this.setQuantityMutation(entityId, quantityKey(entityId, qsetName, name), { operation: 'DELETE' }),
+      setMutation: name => this.setQuantityMutation(entityId, quantityKey(entityId, qsetName, name), { operation: 'DELETE' }, [qsetName, name]),
       mutationId: generateMutationId,
       pushHistory: mutation => { this.stampSetOverlay(mutation, before); this.mutationHistory.push(mutation); },
     });
@@ -996,6 +1003,7 @@ export class MutablePropertyView extends MutableOverlayState {
     }
     const oldValue = entityMap.has(index) ? entityMap.get(index)! : null;
     entityMap.set(index, value);
+    this.indexAttributeOverride(entityId);
     this.markOverlayChanged();
 
     const mutation: Mutation = {
@@ -1032,6 +1040,7 @@ export class MutablePropertyView extends MutableOverlayState {
     if (entityMap.size === 0) {
       this.positionalAttrMutations.delete(entityId);
     }
+    this.indexAttributeOverride(entityId);
   }
 
   // ---------------------------------------------------------------------------
@@ -1100,6 +1109,7 @@ export class MutablePropertyView extends MutableOverlayState {
       oldType: baseType,
       predefinedType: predefinedType ?? null,
     });
+    this.indexAttributeOverride(entityId);
 
     const mutation: Mutation = {
       id: generateMutationId(),
@@ -1137,6 +1147,7 @@ export class MutablePropertyView extends MutableOverlayState {
    */
   removeTypeMutation(entityId: number): void {
     if (this.typeMutations.delete(entityId)) this.markOverlayChanged();
+    this.indexAttributeOverride(entityId);
   }
 
   // ---------------------------------------------------------------------------
@@ -1165,6 +1176,7 @@ export class MutablePropertyView extends MutableOverlayState {
       creationId,
     };
     this.newEntities.set(expressId, entity);
+    this.indexAttributeOverride(expressId);
     this.markOverlayChanged();
 
     this.mutationHistory.push({
@@ -1179,24 +1191,12 @@ export class MutablePropertyView extends MutableOverlayState {
   }
 
   /**
-   * Mark an entity for deletion. Returns false if the id is unknown to this
-   * view, or was already tombstoned.
-   *
-   * An overlay-created entity is dropped from `newEntities` — so it is emitted
-   * nowhere, which is the right answer for something created and deleted in one
-   * session — AND tombstoned, so `isDeleted` tells the truth about it.
-   *
-   * It used to be only forgotten, and that made `isDeleted` lie: every guard
-   * that asks "was this deleted" got `false` for an entity that no longer
-   * exists, so the export still emitted the `IFCRELDEFINESBYPROPERTIES` for a
-   * pset queued on it, dangling at a record nothing wrote (#2012). Forgetting
-   * without tombstoning cannot be made safe one guard at a time, because the
-   * question the guards ask has no true answer to find.
-   *
-   * Consumers that count entities must therefore intersect tombstones with the
-   * source store rather than subtracting `tombstones.size` wholesale — a
-   * created-then-deleted id is absent from BOTH the store and `getNewEntities`,
-   * so counting it as a deletion would subtract it twice.
+   * Tombstone an entity; false if already tombstoned. Created entities also
+   * leave newEntities, so create-then-delete emits no record. Tombstones must
+   * remain visible to isDeleted and export guards: forgetting alone emitted
+   * dangling property relationships (#2012).
+   * Count deletions only for IDs in the source store: created-then-deleted IDs
+   * are absent from both the source and newEntities and must not count twice.
    */
   deleteEntity(expressId: number): boolean {
     if (this.newEntities.has(expressId)) {
@@ -1247,6 +1247,23 @@ export class MutablePropertyView extends MutableOverlayState {
   /** Look up a single overlay-created entity. */
   /** Created entities authored as `type`, in creation order, from an index (#5413). */
   getNewEntitiesOfType(type: string): IterableIterator<NewEntity> { return this.newEntities.ofType(type); }
+  /** Authored reference candidates, before named/positional overrides. */
+  *getNewEntitiesReferencing(id: number): IterableIterator<NewEntity> { for (const row of this.newEntities.peekReferencing(id)) yield readEntitySnapshot(row); }
+  /** Read-only borrows; use the ordinary getters when retaining mutable arrays.
+   * Borrowed rows are frozen copies. Inside a transaction they read unmodified
+   * rows without copying them into the draft, so a scan of the session adds
+   * nothing to the commit's comparison (#8452). */
+  readNewEntity(id: number): NewEntity | null { const row = this.newEntities.peek(id); return row ? readEntitySnapshot(row) : null; }
+  readNewEntities(): NewEntity[] { return Array.from(this.newEntities.peekValues(), readEntitySnapshot); }
+  *readNewEntitiesOfType(type: string): IterableIterator<NewEntity> { for (const row of this.newEntities.peekOfType(type)) yield readEntitySnapshot(row); }
+  /** Ids and authored classes of created entities (of `type`, when given), in creation order; reads no payload, copies no row. */
+  *readNewEntityKinds(type?: string): IterableIterator<{ expressId: number; type: string }> {
+    for (const row of type === undefined ? this.newEntities.peekValues() : this.newEntities.peekOfType(type)) yield { expressId: row.expressId, type: row.type };
+  }
+  /** Whether the overlay created `id` and still holds it; reads no payload. */
+  hasNewEntity(id: number): boolean { return this.newEntities.has(id); }
+  /** Number of overlay-created entities; reads no payload. */
+  getNewEntityCount(): number { return this.newEntities.size; }
 
   getNewEntity(expressId: number): NewEntity | null {
     return this.newEntities.get(expressId) ?? null;
@@ -1329,6 +1346,7 @@ export class MutablePropertyView extends MutableOverlayState {
     // mutations, newPsets/newQsets, history) — a no-op if this entity was
     // never forgotten (e.g. a plain create with nothing purged).
     this.unstashEntityOverlay(entity.expressId);
+    this.indexAttributeOverride(entity.expressId);
   }
 
   /**
@@ -1430,6 +1448,7 @@ export class MutablePropertyView extends MutableOverlayState {
     if (hasStashedData) {
       this.forgottenEntityOverlay.set(expressId, stash);
     }
+    this.indexAttributeOverride(expressId);
   }
 
   /**
@@ -1750,31 +1769,15 @@ export class MutablePropertyView extends MutableOverlayState {
    *
    * Deterministic ordering: entityId, then kind, then name, then setName.
    */
-  getEffectiveChanges(): EffectiveChange[] {
-    return collectEffectiveChanges(
-      {
-        attributeMutations: this.attributeMutations,
-        positionalAttrMutations: this.positionalAttrMutations,
-        typeMutations: this.typeMutations,
-        newPsets: this.newPsets,
-        deletedPsets: this.deletedPsets,
-        newQsets: this.newQsets,
-        deletedQsets: this.deletedQsets,
-        propertyKeysByEntity: this.propertyKeysByEntity,
-        propertyMutations: this.propertyMutations,
-        quantityKeysByEntity: this.quantityKeysByEntity,
-        quantityMutations: this.quantityMutations,
-        newEntities: this.newEntities,
-        tombstones: this.tombstones,
-        forgottenCreatedEntities: this.forgottenCreatedEntities,
-      },
-      {
-        attributeExtractor: this.attributeExtractor,
-        resolveBaseEntityId: (entityId: number) => this.resolveBaseEntityId(entityId),
-        getBasePropertiesForEntity: (entityId: number) => this.getBasePropertiesForEntity(entityId),
-        getBaseQuantitiesForEntity: (entityId: number) => this.getBaseQuantitiesForEntity(entityId),
-      },
-    );
+  /** With an entity ID, visit only that entity's indexed mutation rows. */
+  getEffectiveChanges(entityId?: number): EffectiveChange[] {
+    const state = this.overlayState();
+    return collectEffectiveChanges(entityId === undefined ? state : changesForEntity(state, entityId, this.attributeKeysByEntity.get(entityId) ?? []), {
+      attributeExtractor: this.attributeExtractor,
+      resolveBaseEntityId: id => this.resolveBaseEntityId(id),
+      getBasePropertiesForEntity: id => this.getBasePropertiesForEntity(id),
+      getBaseQuantitiesForEntity: id => this.getBaseQuantitiesForEntity(id),
+    });
   }
 
   /**
@@ -1782,6 +1785,8 @@ export class MutablePropertyView extends MutableOverlayState {
    */
   clear(): void {
     this.markOverlayChanged();
+    this.propertyTargets.clear();
+    this.quantityTargets.clear();
     this.propertyMutations.clear();
     this.quantityMutations.clear();
     this.propertyKeysByEntity.clear();
@@ -1795,6 +1800,8 @@ export class MutablePropertyView extends MutableOverlayState {
     this.positionalAttrMutations.clear();
     this.typeMutations.clear();
     this.newEntities.clear();
+    this.overriddenEntities.clear();
+    this.overriddenSourceIds.clear();
     this.tombstones.clear();
     this.forgottenCreatedEntities.clear();
     this.forgottenEntityOverlay.clear();
@@ -1821,6 +1828,7 @@ export class MutablePropertyView extends MutableOverlayState {
           mutation.entityId,
           quantityKey(mutation.entityId, qsetName, quantName),
           { operation: 'DELETE' },
+          [qsetName, quantName],
         );
         if (retainHistory) this.mutationHistory.push(mutation);
       },

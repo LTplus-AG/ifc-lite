@@ -3,16 +3,21 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * The top of a wall the Wall tool draws (#9013). "Storey above" makes the wall
- * reach the storey above the workplane and records that attachment
- * (`IfcLite_StoreyAttachment.TopConstraint`), so a later floor-to-floor edit
- * resizes it; with no storey above yet it keeps the default height and is
- * recorded as `NextStoreyAbove`, which the first storey added above binds.
- * "Fixed height" writes the default height and no attachment.
+ * The top of a wall, column or curtain wall the Model workspace draws
+ * (#9013, #9296). "Storey above" makes the element reach the storey above the
+ * workplane and records that attachment (`IfcLite_StoreyAttachment
+ * .TopConstraint`, with `TopBinding` `Relative`: Archicad's "home storey + 1"),
+ * so a later floor-to-floor edit resizes it, an inserted storey re-binds it
+ * and a copy to another storey attaches to the storey above its new one.
+ * With no storey above yet it keeps the default height and is recorded as
+ * `NextStoreyAbove`, which the first storey added above binds. "Fixed height"
+ * writes the default height and no attachment. A beam keeps the height and
+ * underside it is drawn with and is attached when its top lands on the storey
+ * above (`beamTopAttachment`).
  */
 
 import { PropertyValueType } from '@ifc-lite/data';
-import { NEXT_STOREY_ABOVE, STOREY_ATTACHMENT_PSET } from '@ifc-lite/create';
+import { NEXT_STOREY_ABOVE, RELATIVE_BINDING, STOREY_ATTACHMENT_PSET, TOP_BINDING } from '@ifc-lite/create';
 import type { ViewerState } from '@/store';
 import { authoringDim } from '@/store/slices/authoringDefaultsSlice';
 import { modelStoreys, type WorkspaceStorey } from './workspace-storeys.js';
@@ -32,7 +37,11 @@ export interface WallTopResolution {
 type State = Pick<ViewerState, 'authoringDefaults' | 'models' | 'mutationViews'>;
 
 export function resolveWallTop(s: State, modelId: string, storeyId: number | null, baseZ: number): WallTopResolution {
-  const fixed = authoringDim(s.authoringDefaults, 'wall', 'Height');
+  return resolveElementTop(s, modelId, storeyId, baseZ, authoringDim(s.authoringDefaults, 'wall', 'Height'));
+}
+
+/** The wall rule for any element drawn upwards from `baseZ`, `fixed` being its own default height. */
+export function resolveElementTop(s: State, modelId: string, storeyId: number | null, baseZ: number, fixed: number): WallTopResolution {
   if (s.authoringDefaults.wallTop === 'fixed' || storeyId === null) return { Height: fixed, attachTo: null, above: null };
   const storeys = modelStoreys(s, modelId);
   const index = storeys.findIndex((storey) => storey.expressId === storeyId);
@@ -62,8 +71,23 @@ export function typeWallHeight(s: Pick<ViewerState, 'setAuthoringDims' | 'setAut
   s.setAuthoringDefaults({ wallTop: 'fixed' });
 }
 
-/** Record a placed wall's attachment in the caller's undo batch. Throws when the write is refused. */
-export function recordWallTop(s: Pick<ViewerState, 'setProperty'>, modelId: string, wallId: number, attachTo: string): void {
-  const written = s.setProperty(modelId, wallId, STOREY_ATTACHMENT_PSET, 'TopConstraint', attachTo, PropertyValueType.Label);
-  if (!written) throw new Error(`Couldn't record the top of wall #${wallId}`);
+/**
+ * A beam drawn on `storeyId` whose top is `topZ` above the storey floor: the
+ * storey above's GlobalId when the top lands on it (within 1 mm) under the
+ * "Storey above" default, else null (a fixed beam).
+ */
+export function beamTopAttachment(s: State, modelId: string, storeyId: number | null, topZ: number): string | null {
+  if (s.authoringDefaults.wallTop === 'fixed' || storeyId === null) return null;
+  const storeys = modelStoreys(s, modelId);
+  const index = storeys.findIndex((storey) => storey.expressId === storeyId);
+  const above = index >= 0 ? storeys[index + 1] : undefined;
+  if (!above || Math.abs(above.elevation - storeys[index].elevation - topZ) > 1e-3) return null;
+  return storeyGlobalId(s, modelId, above.expressId);
+}
+
+/** Record a placed element's attachment in the caller's undo batch. Throws when the write is refused. */
+export function recordWallTop(s: Pick<ViewerState, 'setProperty'>, modelId: string, elementId: number, attachTo: string): void {
+  const written = s.setProperty(modelId, elementId, STOREY_ATTACHMENT_PSET, 'TopConstraint', attachTo, PropertyValueType.Label)
+    && s.setProperty(modelId, elementId, STOREY_ATTACHMENT_PSET, TOP_BINDING, RELATIVE_BINDING, PropertyValueType.Label);
+  if (!written) throw new Error(`Couldn't record the top of #${elementId}`);
 }

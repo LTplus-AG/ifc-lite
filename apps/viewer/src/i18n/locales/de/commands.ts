@@ -44,6 +44,7 @@ export const commandsDe = {
   "commands.command.columnRotate": "Stütze um 15° drehen (beim Platzieren einer Stütze)",
   "commands.model.wall": "Wände zeichnen (Modellarbeitsbereich)",
   "commands.model.slab": "Decken, Dächer und Platten zeichnen (Modellarbeitsbereich)",
+  "commands.model.roof": "Dächer auf Höhe der Wandoberkante zeichnen (Modellarbeitsbereich)",
   "commands.model.column": "Stützen platzieren (Modellarbeitsbereich)",
   "commands.model.beam": "Träger und Stäbe zeichnen (Modellarbeitsbereich)",
   "commands.model.storeyUp": "Im Geschoss darüber arbeiten (Modellarbeitsbereich)",

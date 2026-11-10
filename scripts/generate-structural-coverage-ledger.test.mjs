@@ -137,12 +137,11 @@ test('convert (#9668): a record copied into a schema that lacks the entity, with
 #4=IFCSTRUCTURALLOADGROUP('1',$,$,$,$,.LOAD_GROUP.,.PERMANENT_G.,.DEAD_LOAD_G.,1.,$);
 #5=IFCSTRUCTURALLOADGROUP('2',$,$,$,$,.LOAD_GROUP.,.PERMANENT_G.,.DEAD_LOAD_G.,1.);
 ENDSEC;END-ISO-10303-21;`);
-  const table = tables.IFC4.table;
-  assert.equal(nonConforming(ifc4, 'IfcRelConnectsStructuralElement', table).length, 1, 'IFC4 has no such entity');
-  assert.deepEqual(nonConforming(ifc4, 'IfcStructuralLoadGroup', table).map((r) => r.id), [5], 'only the short record');
-  // A two-schema registry in the parser's SchemaRegistry shape: X is a SELECT slot, Y a defined-type slot.
+  // A registry in the parser's SchemaRegistry shape. IfcStructuralLoadGroup takes IFC4's attribute
+  // count with untyped slots; on IfcBoundaryNodeCondition, X is a SELECT slot and the rest are not.
+  const loadGroupSlots = tables.IFC4.table.get('IfcStructuralLoadGroup').attributes.map((name) => ({ name, type: 'IfcLabel' }));
   const registry = {
-    entities: { IfcBoundaryNodeCondition: { attributes: [{ name: 'Name', type: 'IfcLabel' }, { name: 'X', type: 'IfcSel' }, { name: 'Y', type: 'IfcMeasure' }, { name: 'A', type: 'IfcMeasure' }, { name: 'B', type: 'IfcMeasure' }, { name: 'C', type: 'IfcMeasure' }, { name: 'D', type: 'IfcMeasure' }] } },
+    entities: { IfcStructuralLoadGroup: { allAttributes: loadGroupSlots }, IfcBoundaryNodeCondition: { allAttributes: [{ name: 'Name', type: 'IfcLabel' }, { name: 'X', type: 'IfcSel' }, { name: 'Y', type: 'IfcMeasure' }, { name: 'A', type: 'IfcMeasure' }, { name: 'B', type: 'IfcMeasure' }, { name: 'C', type: 'IfcMeasure' }, { name: 'D', type: 'IfcMeasure' }] } },
     selects: { IfcSel: ['IfcBoolean', 'IfcMeasure'] }, types: { IfcMeasure: 'REAL', IfcLabel: 'STRING' }, enums: {},
   };
   const bc = readStep(`ISO-10303-21;HEADER;FILE_SCHEMA(('IFC4'));ENDSEC;DATA;
@@ -150,7 +149,9 @@ ENDSEC;END-ISO-10303-21;`);
 #2=IFCBOUNDARYNODECONDITION('bare in select',1.,1.,$,$,$,$);
 #3=IFCBOUNDARYNODECONDITION('typed in measure',IFCBOOLEAN(.T.),IFCBOOLEAN(.T.),$,$,$,$);
 ENDSEC;END-ISO-10303-21;`);
-  const found = nonConforming(bc, 'IfcBoundaryNodeCondition', table, registry);
+  assert.equal(nonConforming(ifc4, 'IfcRelConnectsStructuralElement', registry).length, 1, 'the schema has no such entity');
+  assert.deepEqual(nonConforming(ifc4, 'IfcStructuralLoadGroup', registry).map((r) => r.id), [5], 'only the short record');
+  const found = nonConforming(bc, 'IfcBoundaryNodeCondition', registry);
   assert.deepEqual(found.map((r) => r.id), [2, 3]);
   assert.match(found[0].why, /bare value in SELECT IfcSel/);
   assert.match(found[1].why, /typed IFCBOOLEAN in IfcMeasure/);

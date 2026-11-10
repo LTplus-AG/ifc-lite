@@ -39,13 +39,6 @@ function roundTrip(ctx, file, schema) {
   })().catch((error) => ({ error })));
 }
 
-/** Every attribute of `entity` in `registry` (a parser SchemaRegistry), inherited ones first. (#9668) */
-function slots(registry, entity) {
-  const chain = [];
-  for (let e = registry.entities[entity]; e; e = registry.entities[e.parent]) chain.unshift(e);
-  return chain.flatMap((e) => e.attributes);
-}
-
 /** Why `value` cannot fill a slot of `type`, or null. Lists are checked element by element. */
 function slotMismatch(value, type, registry) {
   if (value === null || value === '*' || (value && typeof value === 'object' && 'ref' in value)) return null;
@@ -58,18 +51,21 @@ function slotMismatch(value, type, registry) {
 }
 
 /**
- * Records of `entity` in `intermediate` that do not conform to its schema: the
- * entity is missing from `table`, the attribute count differs, or a value does
- * not fit its slot in `registry`. Returns `{ id, why }` per record.
+ * Records of `entity` in `intermediate` that do not conform to its schema, as
+ * `registry` (a parser SchemaRegistry, typed) defines it: the entity is missing,
+ * the attribute count differs, or a value does not fit its slot. Returns
+ * `{ id, why }` per record.
  */
-export function nonConforming(intermediate, entity, table, registry) {
-  const target = table.get(entity);
-  const typed = registry ? slots(registry, entity) : [];
+export function nonConforming(intermediate, entity, registry) {
+  const slots = registry.entities[entity]?.allAttributes;
   return intermediate.of(entity).flatMap((rec) => {
-    if (target === undefined) return [{ id: rec.id, why: 'no such entity' }];
-    if (rec.args.length !== target.attributes.length) return [{ id: rec.id, why: `${rec.args.length} attributes, ${target.attributes.length} expected` }];
-    const bad = typed.map((slot, i) => slotMismatch(rec.args[i], slot.type, registry) && `${slot.name}: ${slotMismatch(rec.args[i], slot.type, registry)}`).find(Boolean);
-    return bad ? [{ id: rec.id, why: bad }] : [];
+    if (!slots) return [{ id: rec.id, why: 'no such entity' }];
+    if (rec.args.length !== slots.length) return [{ id: rec.id, why: `${rec.args.length} attributes, ${slots.length} expected` }];
+    for (const [i, slot] of slots.entries()) {
+      const why = slotMismatch(rec.args[i], slot.type, registry);
+      if (why) return [{ id: rec.id, why: `${slot.name}: ${why}` }];
+    }
+    return [];
   });
 }
 
@@ -118,7 +114,6 @@ export default {
         .sort((a, b) => a.bytes.length - b.bytes.length || a.path.localeCompare(b.path)).slice(0, MAX_FILES);
       if (!carriers.length) { out.set(row.id, ctx.corpus.nothingCarries(row.schema, row.entity)); continue; }
       const { types } = ctx.tables[row.schema];
-      const otherTable = ctx.tables[OTHER[row.schema]].table;
       const otherRegistry = ctx.pkgs.parser.getSchemaRegistryForVersion(OTHER[row.schema]);
       const problems = [];
       let checked = 0;
@@ -126,7 +121,7 @@ export default {
       for (const file of carriers) {
         const rt = await roundTrip(ctx, file, row.schema);
         if (rt.error) { problems.push(`${file.path}: ${row.schema} -> ${OTHER[row.schema]} -> ${row.schema} threw: ${rt.error.message.split('\n')[0]}`); checked += sampleOf(row, file).length; continue; }
-        const copied = nonConforming(rt.there, row.entity, otherTable, otherRegistry);
+        const copied = nonConforming(rt.there, row.entity, otherRegistry);
         if (copied.length) {
           problems.push(`${file.path}: ${copied.length} of ${rt.there.count(row.entity)} ${row.entity} record(s) in the ${OTHER[row.schema]} file do not conform to ${OTHER[row.schema]} (e.g. ${copied[0].why})`);
           checked += sampleOf(row, file).length;

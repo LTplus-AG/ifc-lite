@@ -52,7 +52,7 @@ export interface AsyncRunContext<P> {
 
 export type AsyncRunTask<R, P> = (run: AsyncRunContext<P>) => Promise<R>;
 
-export interface AsyncRun<R, P = never> {
+export interface AsyncRun<R = void, P = never> {
   state: AsyncRunState<R, P>;
   /** `state.kind === 'running'`, for disabling controls. */
   busy: boolean;
@@ -143,9 +143,12 @@ interface Lease {
  * with reason `teardown`.
  *
  * StrictMode: React's development double-invoke of effects (mount, cleanup,
- * mount) does not touch a run, because a run can only start from a handler
- * after the effects ran; `useAsyncRun.test.tsx` renders under `<StrictMode>`
- * to pin that.
+ * mount) runs this hook's cleanup once on mount. A run that an effect starts
+ * during that first mount is therefore aborted and, when the effect runs
+ * again, started a second time. A run started later, from a handler or from
+ * an effect reacting to a state change (BCFPanel's and useBcfFromChange's
+ * capture when their form opens), is not touched. `useAsyncRun.test.tsx`
+ * renders under `<StrictMode>` to pin the second case.
  *
  * Migrating from `useSingleFlight` (#9495), behaviour that changes:
  * - `run(task)` becomes `start(task)`; the task takes `{ signal, isCurrent,

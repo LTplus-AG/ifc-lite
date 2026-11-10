@@ -71,5 +71,9 @@ export const modelInspectorRu = {
   "modelInspector.layers.defaultsHint": "Новые элементы получают эти слои.",
   "modelInspector.layers.needName": "Назовите каждый новый материал",
   "modelInspector.layers.needLayer": "Присвойте каждому слою толщину больше нуля",
+  "modelInspector.layers.typeScope": {"one": "Изменит {countDisplay} элемент этого типа вместе с примыканиями и созданными помещениями.", "few": "Изменит {countDisplay} элемента этого типа вместе с примыканиями и созданными помещениями.", "many": "Изменит {countDisplay} элементов этого типа вместе с примыканиями и созданными помещениями.", "other": "Изменит {countDisplay} элемента этого типа вместе с примыканиями и созданными помещениями."},
+  "modelInspector.layers.typeOwnLayers": {"one": "{countDisplay} использует другой набор слоёв или материал и сохраняет его.", "few": "{countDisplay} используют другой набор слоёв или материал и сохраняют его.", "many": "{countDisplay} используют другой набор слоёв или материал и сохраняют его.", "other": "{countDisplay} используют другой набор слоёв или материал и сохраняют его."},
+  "modelInspector.layers.notFollowed": {"one": "{countDisplay} элемент сохранил прежнюю форму:", "few": "{countDisplay} элемента сохранили прежнюю форму:", "many": "{countDisplay} элементов сохранили прежнюю форму:", "other": "{countDisplay} элемента сохранили прежнюю форму:"},
+  "modelInspector.layers.keptBody": "{name}: {reason}",
   "modelInspector.hosting.title": "Размещение в основе",
 } satisfies Catalogue;

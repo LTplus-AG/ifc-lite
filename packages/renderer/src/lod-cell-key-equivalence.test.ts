@@ -97,8 +97,32 @@ describe('issue #3991 exact LOD cell keys', () => {
     assert.ok(result, 'the observed call must produce an accepted LOD');
     assert.equal(result.length, 120 * 3, 'the mesh must actually lose collapsed triangles');
     assert.deepEqual(result, expected, 'numeric cells preserve first representatives and entity lanes');
-    assert.equal(numericInsertions, 6, 'three occupied cells for each of two full-u32 entity lanes');
+    // Packed neighbourhood cells live in a typed table, so not even a numeric
+    // Map key (a boxed 53-bit double) is allocated per occupied cell.
+    assert.equal(numericInsertions, 0, 'no Map entry for the six occupied cells (three per entity lane)');
     assert.equal(stringInsertions, 0, 'eligible cells must use no string map keys');
+  });
+
+  it('matches the oracle when the packed cell table grows past its first allocation', () => {
+    // 80k small triangles over 7 entity lanes occupy ~100k cells: the table
+    // starts at 2^17 slots and must rehash while keeping first representatives.
+    const triangles = 80_000;
+    const data = new Float32Array(triangles * 3 * 7);
+    const lanes = new Uint32Array(data.buffer);
+    let seed = 7;
+    const random = () => ((seed = (Math.imul(seed, 1103515245) + 12345) >>> 0) / 2 ** 32);
+    for (let t = 0; t < triangles; t++) {
+      const cx = random() * 60, cy = random() * 60, cz = random() * 20;
+      for (let corner = 0; corner < 3; corner++) {
+        const v = t * 3 + corner;
+        data[v * 7] = cx + random() * 0.6; data[v * 7 + 1] = cy + random() * 0.6; data[v * 7 + 2] = cz + random() * 0.6;
+        lanes[v * 7 + 6] = 0x8000_0000 + (t % 7);
+      }
+    }
+    const indices = Uint32Array.from({ length: triangles * 3 }, (_, i) => i);
+    const expected = stringCellOracle(data, 7, indices, 1);
+    assert.ok(expected && expected.length < indices.length, 'a non-trivial LOD');
+    assert.deepEqual(simplifyIndicesByClustering(data, 7, indices, 1), expected);
   });
 
   it('keeps coincident cells from different full-u32 entity lanes isolated', () => {

@@ -72,7 +72,11 @@ export function simplifyIndicesByClustering(
   // same population.
   const vertexCount = strideFloats > 0 ? (vertexData.length / strideFloats) | 0 : 0;
   const cellOf = new Int32Array(vertexCount).fill(-1); // vertexIndex -> representative, -1 = unset
-  const repOfCell = new Map<number | string, number>(); // exact cell key -> representative vertexIndex
+  // Exact cell key -> representative vertexIndex: packed neighbourhood keys in
+  // a typed table (a Map would box each 53-bit key as a heap double), the rare
+  // exact string keys in a Map. Together they hold what one Map did.
+  const packedCells = new PackedCellTable(Math.min(vertexCount >> 1, 1 << 16)); // grows past that
+  const stringCells = new Map<string, number>();
   let cellOrigin: readonly [number, number, number] | undefined;
 
   // Clustering is ENTITY-SCOPED: the per-vertex entityId lane (u32 bit-cast
@@ -97,7 +101,7 @@ export function simplifyIndicesByClustering(
     // #3991: normal LOD cells fit in a small neighborhood. Pack that exact
     // neighborhood with the FULL u32 entity lane instead of allocating a key
     // string per vertex. Keep generic tiny-cell/huge/nonfinite inputs exact.
-    let key: number | string;
+    let packed = -1;
     if (Number.isSafeInteger(cx) && Number.isSafeInteger(cy) && Number.isSafeInteger(cz)) {
       cellOrigin ??= [cx, cy, cz];
       const dx = cx - cellOrigin[0];
@@ -105,28 +109,27 @@ export function simplifyIndicesByClustering(
       const dz = cz - cellOrigin[2];
       if (dx >= -64 && dx < 64 && dy >= -64 && dy < 64 && dz >= -64 && dz < 64) {
         // Safe integer coordinates and anchor make these bounded differences
-        // exact. 3 * 7 cell bits + 32 entity bits fit in 53 bits: the largest
-        // possible key is 2^53 - 1, with no rounding or dropped entity bits.
-        key = entity * 0x200000 + (dx + 64) * 0x4000 + (dy + 64) * 0x80 + dz + 64;
-      } else {
-        key = `${cx},${cy},${cz},${entity}`;
+        // exact. 3 * 7 cell bits beside the FULL u32 entity lane: (entity,
+        // packed) names the cell exactly, with no rounding or dropped bits.
+        packed = (dx + 64) * 0x4000 + (dy + 64) * 0x80 + dz + 64;
       }
-    } else {
-      key = `${cx},${cy},${cz},${entity}`;
     }
-    const existing = repOfCell.get(key);
+    const key = packed < 0 ? `${cx},${cy},${cz},${entity}` : '';
+    const found = packed < 0 ? stringCells.get(key) : packedCells.find(entity, packed);
+    const existing = found === -1 ? undefined : found;
     let rep: number;
     if (existing === undefined) {
       rep = vi;
-      // `repOfCell` is the remaining Map, and it is bounded by the number of
+      // The cell tables are bounded by the number of
       // OCCUPIED cells rather than by vertices, so it only approaches the same
       // 2^24 cap when almost nothing collapses. That case is precisely the one
       // where LOD1 would be no smaller than LOD0, so bail through the
       // function's existing "simplification does not pay" contract rather than
       // letting it throw. Callers already handle null (`scene.ts` renders
       // LOD0), so nothing goes missing (issue #3028).
-      if (repOfCell.size >= MAX_MAP_ENTRIES) return -1;
-      repOfCell.set(key, vi);
+      if (packedCells.size + stringCells.size >= MAX_MAP_ENTRIES) return -1;
+      if (packed < 0) stringCells.set(key, vi);
+      else packedCells.insert(entity, packed, vi);
     } else {
       rep = existing;
     }
@@ -157,6 +160,69 @@ export function simplifyIndicesByClustering(
 }
 
 /** Cell size for a batch from its world AABB (diagonal * LOD_CELL_FRACTION). */
+/**
+ * Open-addressing (u32 entity, 21-bit packed cell) -> representative table.
+ * `find` returns the representative or -1, and remembers where the key
+ * belongs, so an `insert` of the same key right after it lands there.
+ */
+class PackedCellTable {
+  size = 0;
+  private entities!: Uint32Array;
+  private cells!: Uint32Array;
+  private reps!: Int32Array;
+  private mask = 0;
+  private slot = 0;
+
+  constructor(expected: number) {
+    let capacity = 16;
+    while (capacity < expected * 2) capacity *= 2;
+    this.allocate(capacity);
+  }
+
+  find(entity: number, cell: number): number {
+    const { entities, cells, reps, mask } = this;
+    let slot = ((Math.imul(entity, 0x9e3779b1) ^ Math.imul(cell + 1, 0x85ebca6b)) >>> 0) & mask;
+    for (;;) {
+      const rep = reps[slot];
+      if (rep === -1 || (entities[slot] === entity && cells[slot] === cell)) {
+        this.slot = slot;
+        return rep;
+      }
+      slot = (slot + 1) & mask;
+    }
+  }
+
+  insert(entity: number, cell: number, rep: number): void {
+    if ((this.size + 1) * 2 > this.mask + 1) {
+      this.grow();
+      this.find(entity, cell);
+    }
+    this.entities[this.slot] = entity;
+    this.cells[this.slot] = cell;
+    this.reps[this.slot] = rep;
+    this.size++;
+  }
+
+  private allocate(capacity: number): void {
+    this.entities = new Uint32Array(capacity);
+    this.cells = new Uint32Array(capacity);
+    this.reps = new Int32Array(capacity).fill(-1);
+    this.mask = capacity - 1;
+  }
+
+  private grow(): void {
+    const { entities, cells, reps } = this;
+    this.allocate(reps.length * 2);
+    for (let i = 0; i < reps.length; i++) {
+      if (reps[i] === -1) continue;
+      this.find(entities[i], cells[i]);
+      this.entities[this.slot] = entities[i];
+      this.cells[this.slot] = cells[i];
+      this.reps[this.slot] = reps[i];
+    }
+  }
+}
+
 export function lodCellSizeForBounds(
   min: readonly [number, number, number],
   max: readonly [number, number, number],

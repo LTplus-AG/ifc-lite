@@ -184,8 +184,8 @@ test('PDF preparation locks the parent annotation metadata (C-13)', async t => {
     click(button('Prepare vector preview')!);
     await until(() => !!mode.pending);
     click(button('Cancel')!);
+    assert.match(ui.textContent ?? '', /cancelled/);
     typeName('Changed after cancellation');
     assert.equal(name.value, 'Changed after cancellation');
-    assert.match(ui.textContent ?? '', /cancelled/);
   } finally { cleanup(); restore(); fixture.dispose(); api.free(); }
 });

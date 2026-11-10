@@ -4,7 +4,7 @@
 import '@/test/setup-dom.js';
 import { afterEach, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { act, useEffect, useState } from 'react';
+import { act, useEffect } from 'react';
 import { IfcParser } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
@@ -23,6 +23,7 @@ import type { AppearanceWorker } from '@/lib/appearance/planner-worker-client';
 import type { AppearanceWorkerRequest, AppearanceWorkerResponse } from '@/lib/appearance/planner-types';
 import { runMeshTransfer, runScanRegistration } from '@/workers/appearance.worker';
 import { useScanTransfer } from './useScanTransfer';
+import { useScanWorkbench } from './useScanWorkbench';
 import { ScanTransferFields } from './ScanTransferFields';
 const initial = useViewerStore.getState();
 const descriptors = ['Worker', 'OffscreenCanvas'].map(name => [name, Object.getOwnPropertyDescriptor(globalThis, name)] as const);
@@ -87,6 +88,12 @@ for (const gesture of ['preview', 'apply', 'unmount'] as const) test(`scan trans
     dead = false;
     terminate() { this.dead = true; }
     postMessage(job: AppearanceWorkerRequest) {
+      if (job.type === 'scan-registration') {
+        // Registration quality is covered by the native fixture above; here the real workbench adopts that report.
+        queueMicrotask(() => this.onmessage?.({ data: { type: 'scan-registration-complete', id: job.id,
+          result: { ...result.report, sourceFrame: job.request.sourceFrame, targetFrame: job.request.targetFrame } } } as MessageEvent<AppearanceWorkerResponse>));
+        return;
+      }
       if (job.type !== 'mesh-transfer') throw new Error('Unexpected scan job');
       previews++;
       void runMeshTransfer(job.source, job.request, job.rgba).then(result => {
@@ -102,24 +109,30 @@ for (const gesture of ['preview', 'apply', 'unmount'] as const) test(`scan trans
   const rows = (points: ScanPoint[], prefix: string) => points.map((p, i) => ({ id: `${prefix}${i}`, sourceObservation: `${prefix}s${i}`, targetFeature: `${prefix}t${i}`, source: p, target: [p[0], -p[2], p[1]] as ScanPoint }));
   const request: ScanRegistrationRequest = { sourceFrame: session.sourceFrame, targetFrame: session.targetFrame, fit: rows(fit, 'f'), heldOut: rows(check, 'c') };
   const result = { request, report: await runScanRegistration(request) };
-  const controllers: AbortController[] = [], jobs: Promise<void>[] = [], failures: string[] = [];
+  const signals: AbortSignal[] = [], jobs: Promise<void>[] = [];
+  let workbench: ReturnType<typeof useScanWorkbench> | undefined;
   let preparations = 0, release!: () => void;
   const held = new Promise<void>(resolve => { release = resolve; });
   const prepare = editor.prepareEntityOperations.bind(editor);
   t.mock.method(editor, 'prepareEntityOperations', async (...args: Parameters<typeof prepare>) => { preparations++; await held; return prepare(...args); });
   function Harness() {
-    const [busy, setBusy] = useState(false);
-    useEffect(() => () => { for (const controller of controllers) controller.abort(); }, []);
-    const transfer = useScanTransfer({ targetId: 'target', session, result, stale: false, busy,
+    const work = useScanWorkbench();
+    workbench = work;
+    useEffect(() => {
+      if (work.session && !work.result && !work.busy && !work.stale) void work.calculate();
+    }, [work.session, work.result, work.busy, work.stale]);
+    const transfer = useScanTransfer({ ...work,
       applyAppearance: async action => {
-        const controller = new AbortController(); controllers.push(controller); setBusy(true);
-        const job = action(controller.signal).catch(error => { failures.push(String(error)); }).finally(() => setBusy(false));
-        jobs.push(job); await job;
+        const job = work.applyAppearance(async signal => { signals.push(signal); await action(signal); });
+        jobs.push(job);
+        await job;
       } });
-    return <ScanTransferFields transfer={transfer} targetModelId="target" disabled={busy} />;
+    return <ScanTransferFields transfer={transfer} targetModelId="target" disabled={work.busy} />;
   }
+
   const ui = render(<Harness />);
   const button = (name: string) => { const found = [...ui.querySelectorAll('button')].find(item => item.textContent?.startsWith(name)); assert.ok(!!found, name); return found!; };
+  await until(() => !!workbench?.result && !workbench.busy, 'real workbench prepared its retained registration');
   click(button('Use selected IFC object'));
   const reviewed = [...ui.querySelectorAll('label')].find(label => label.textContent?.includes('I reviewed'))?.querySelector('input');
   assert.ok(!!reviewed, 'review checkbox'); click(reviewed!);
@@ -138,10 +151,10 @@ for (const gesture of ['preview', 'apply', 'unmount'] as const) test(`scan trans
     act(() => { apply.click(); if (gesture === 'apply') apply.click(); });
     await until(() => preparations > 0, 'detached preparation');
     act(() => useViewerStore.setState({ selectedEntityId: null, selectedEntityIds: new Set() }));
-    assert.equal(controllers.every(controller => !controller.signal.aborted), true, '3D selection does not cancel pinned scan targets');
+    assert.equal(signals.length === 1 && signals.every(signal => !signal.aborted), true, '3D selection does not cancel pinned scan targets');
     assert.equal(preparations, 1, 'only one detached Apply per press burst');
   } finally { await act(async () => { release(); await Promise.all(jobs); }); unsubscribe(); }
-  assert.equal(failures.length, 0, failures.join('\n'));
+  assert.equal(signals.some(signal => signal.aborted), gesture === 'unmount');
   assert.equal(useViewerStore.getState().undoStacks.get('target')?.length, 1);
   if (gesture === 'unmount') assert.equal(useViewerStore.getState().activeModelId, 'source', 'closed transfer cannot switch active model');
 });

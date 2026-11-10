@@ -66,7 +66,7 @@ test('assignment controller messages follow live locale changes (#4918)', () => 
   }
 });
 
-for (const scenario of ['apply', 'cancel', 'stale', 'room', 'query', 'room-pending', 'apply-cancel'] as const) test(`mounted native multi-model assignments ${scenario} preserve complete transaction scope #4420`, {
+for (const scenario of ['apply', 'cancel', 'stale', 'room', 'query', 'room-pending', 'apply-cancel', 'apply-error', 'apply-abort'] as const) test(`mounted native multi-model assignments ${scenario} preserve complete transaction scope #4420`, {
   skip: !existsSync(wasm) && 'Run pnpm build:wasm for native assignment tests',
 }, async t => {
   const initial = useViewerStore.getState(), previousRenderer = getGlobalRenderer();
@@ -120,6 +120,20 @@ for (const scenario of ['apply', 'cancel', 'stale', 'room', 'query', 'room-pendi
         assert.equal(f.scene.get(entry.globalId)?.parts[0].texture,undefined);
         assert.equal(useViewerStore.getState().undoStacks.get(entry.modelId)?.length ?? 0,0);
       }
+      return;
+    }
+    if (scenario === 'apply-error' || scenario === 'apply-abort') {
+      // PR #9585: shared-run failure and cancellation must settle the domain UI too.
+      const editor = useViewerStore.getState().storeEditors.get('a')!;
+      t.mock.method(editor, 'prepareEntityOperations', async () => {
+        throw scenario === 'apply-abort' ? new DOMException('native preparation stopped', 'AbortError') : new Error('detached preparation failed');
+      });
+      click(button(ui, 'Apply assignments'));
+      await advance(50);
+      assert.equal(ui.querySelector('[data-operation-status]')?.getAttribute('data-operation-status'), scenario === 'apply-abort' ? 'idle' : 'error');
+      assert.match(ui.textContent ?? '', scenario === 'apply-abort' ? /cancelled/ : /detached preparation failed/);
+      assert.equal(useViewerStore.getState().undoStacks.size, 0);
+      for (const entry of f.entries) assert.equal(f.scene.get(entry.globalId)?.parts[0].texture, undefined);
       return;
     }
     if (scenario === 'apply-cancel') {

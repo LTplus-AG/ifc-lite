@@ -40,6 +40,8 @@ const KEYED_BY_POLICY: &[&str] = &[
 const NOT_OUTPUT: &[&str] = &[
     // Where the result cache lives.
     "IFC_LITE_CACHE_DIR",
+    // Compile-time (`env!`) build identity from build.rs; it IS part of the key.
+    "IFC_LITE_ENGINE_BUILD_DIGEST",
 ];
 
 fn names_in(text: &str) -> BTreeSet<String> {

@@ -35,6 +35,8 @@ export interface StructuralMemberInfo {
   IfcRelConnectsStructuralMember?: {
     expressId: number;
     RelatedStructuralConnection: number;
+    /** Member-end release or fixity at this connection, resolved. */
+    AppliedCondition?: BoundaryConditionInfo;
     AdditionalConditions?: { expressId: number; type: string; name?: string; components: Record<string, number> };
     SupportedLength?: number;
     ConditionCoordinateSystem?: number;

@@ -2,12 +2,39 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-/** Schema-aware, on-demand structural analysis read model. */
+/**
+ * Structural analysis extractor — parses IfcStructuralAnalysisModel,
+ * IfcStructuralMember / IfcStructuralConnection subtypes, IfcStructuralAction /
+ * IfcStructuralReaction subtypes, IfcStructuralLoadGroup / IfcStructuralLoadCase,
+ * IfcStructuralResultGroup, IfcBoundaryCondition, IfcRelConnectsStructuralMember,
+ * IfcRelConnectsStructuralActivity, IfcRelAssignsToGroup and the physical links
+ * (`structural-relations.ts`) into a connected `StructuralExtraction`.
+ *
+ * On-demand, like the schedule extractor: nothing here runs during a normal
+ * parse, and a model with no structural entity costs one `byType` sweep.
+ *
+ * The structural relationships are read from the type index directly rather
+ * than from the relationship graph, because that graph's `REL_TYPE_MAP`
+ * carries none of them — the rows are retained, but nothing indexes
+ * member↔connection or item↔activity edges for a query traversal to follow.
+ *
+ * Two things are schema-derived rather than hand-tabulated, because the
+ * alternative is a table that silently mis-reads the next subtype to appear:
+ *
+ * - **Which types count.** Every `IFCSTRUCTURAL*` key in the type index is
+ *   classified by its inheritance chain, so `IfcStructuralCurveMemberVarying`
+ *   is a member and `IfcStructuralLinearAction` is an action without either
+ *   being named here.
+ * - **Where each attribute sits.** Positions come from the file's own schema
+ *   by EXPRESS attribute name, never from a literal index, so IFC2X3's
+ *   `LinearStiffness*` / `DeltaT_*` names read in place, and one the file's
+ *   schema does not declare (IFC2X3 `Axis`) reads as absent.
+ */
 
 import { EntityExtractor } from './entity-extractor.js';
 import { iterateEffectiveEntities, type EffectiveEntityOverlay } from '@ifc-lite/data';
 import type { IfcDataStore } from './columnar-parser.js';
-import { normalizeIfcTypeName, getAttributeNamesForSchema, getInheritanceChain } from './ifc-schema.js';
+import { normalizeIfcTypeName } from './ifc-schema.js';
 import {
   extractBoundaryCondition,
   extractStructuralLoad,
@@ -26,8 +53,13 @@ import {
   asRef,
   asRefList,
   asString,
+  readAttr as readSchemaAttr,
   type RawEntity,
 } from './structural-step-values.js';
+import {
+  MEMBER_RELATION_TYPES, PHYSICAL_LINK_TYPES, STRUCTURAL_RELATION_TYPES as RELATION_TYPES,
+  readMemberRelation, readPhysicalLinks, type StructuralMemberRelation, type StructuralRelationContext,
+} from './structural-relations.js';
 import type {
   StructuralActivityInfo,
   StructuralAnalysisModelInfo,
@@ -80,11 +112,14 @@ export function extractStructuralOnDemand(
 ): StructuralExtraction {
   if (!store.source?.length && !view) return emptyExtraction();
 
-  // @raw-entity-enumeration-ok source buckets define the candidate domain; iterateEffectiveEntities below applies tombstones, creations and retypes
   const readAttr = (type: string, attrs: unknown[], name: string): unknown =>
-    attrs[getAttributeNamesForSchema(type, store.schemaVersion).indexOf(name)];
+    readSchemaAttr(type, attrs, name, store.schemaVersion);
+  // @raw-entity-enumeration-ok source buckets define the candidate domain; iterateEffectiveEntities below applies tombstones, creations and retypes
   const byType = store.entityIndex.byType;
 
+  // Candidate source ids are the structural classes plus the relation classes
+  // below. The effective iterator removes tombstones and folds in created and
+  // retyped records before the extractor reads their attributes.
   const sourceIds = new Set<number>();
   for (const [typeKey, ids] of byType) {
     if (!typeKey.startsWith('IFCSTRUCTURAL')) continue;
@@ -93,19 +128,9 @@ export function extractStructuralOnDemand(
     for (const id of ids) sourceIds.add(id);
   }
 
-  const relationIds = new Set<number>([
-    ...(byType.get('IFCRELCONNECTSSTRUCTURALMEMBER') ?? []),
-    ...(byType.get('IFCRELCONNECTSWITHECCENTRICITY') ?? []),
-    ...(byType.get('IFCRELASSIGNSTOPRODUCT') ?? []),
-    ...(byType.get('IFCRELCONNECTSSTRUCTURALELEMENT') ?? []),
-    ...(byType.get('IFCRELCONNECTSSTRUCTURALACTIVITY') ?? []),
-    ...(byType.get('IFCRELASSIGNSTOGROUP') ?? []),
-  ]);
-  for (const id of relationIds) sourceIds.add(id);
+  for (const type of RELATION_TYPES) for (const id of byType.get(type) ?? []) sourceIds.add(id);
   for (const [id, mutation] of view?.getTypeMutations?.() ?? []) {
-    if (roleOf(mutation.newType) || mutation.newType.toUpperCase().startsWith('IFCRELCONNECTSSTRUCTURAL') || ['IFCRELASSIGNSTOGROUP', 'IFCRELASSIGNSTOPRODUCT', 'IFCRELCONNECTSWITHECCENTRICITY'].includes(mutation.newType.toUpperCase())) {
-      sourceIds.add(id);
-    }
+    if (roleOf(mutation.newType) || RELATION_TYPES.includes(mutation.newType.toUpperCase())) sourceIds.add(id);
   }
   const effectiveRows = [...iterateEffectiveEntities(store, view, undefined, sourceIds)];
   // Preserve the common no-structural-data path without setting up a source
@@ -133,6 +158,7 @@ export function extractStructuralOnDemand(
   };
   const activeByRole = new Map<StructuralRole, number[]>();
   const relMemberIds: number[] = [];
+  const relPhysicalIds: number[] = [];
   const relActivityIds: number[] = [];
   const relGroupIds: number[] = [];
   for (const row of effectiveRows) {
@@ -142,12 +168,18 @@ export function extractStructuralOnDemand(
       ids.push(row.expressId);
       activeByRole.set(role, ids);
     }
-    if (['IFCRELCONNECTSSTRUCTURALMEMBER', 'IFCRELCONNECTSWITHECCENTRICITY'].includes(row.type)) relMemberIds.push(row.expressId);
+    if (MEMBER_RELATION_TYPES.includes(row.type)) relMemberIds.push(row.expressId);
+    if (PHYSICAL_LINK_TYPES.includes(row.type)) relPhysicalIds.push(row.expressId);
     if (row.type === 'IFCRELCONNECTSSTRUCTURALACTIVITY') relActivityIds.push(row.expressId);
     if (row.type === 'IFCRELASSIGNSTOGROUP') relGroupIds.push(row.expressId);
   }
-  const read = (role: StructuralRole): RawEntity[] =>
-    (activeByRole.get(role) ?? []).map((id) => readRaw(id, effectiveTypeById.get(id)!)).filter((row): row is RawEntity => !!row);
+  const readRows = (ids: readonly number[]): RawEntity[] =>
+    ids.map((id) => readRaw(id, effectiveTypeById.get(id)!)).filter((row): row is RawEntity => !!row);
+  const read = (role: StructuralRole): RawEntity[] => readRows(activeByRole.get(role) ?? []);
+  // @raw-entity-enumeration-ok resolve a bounded referenced resource's source type when it has no effective row
+  const typeOf = (id: number): string => effectiveTypeById.get(id) ?? store.entityIndex.byId.get(id)?.type ?? store.deferredEntityIndex?.get(id)?.type ?? store.entities.getTypeName(id);
+  /** Load and condition reads go through the session view only when one exists. */
+  const readResource = view ? (id: number) => readRaw(id, typeOf(id)) : undefined;
 
   const memberRaw = read('member');
   const connectionRaw = read('connection');
@@ -170,65 +202,27 @@ export function extractStructuralOnDemand(
   }
 
   // ── Relationship passes ────────────────────────────────────────────────
-  const physicalElementStructuralItemIds: Record<number, number[]> = {};
-  const physicalOfItem = new Map<number, number[]>();
-  const itemIds = new Set([...memberRaw, ...connectionRaw].map(e => e.expressId));
-  // @raw-entity-enumeration-ok resolve a bounded referenced resource's source type when it has no columnar row
-  const typeOf = (id: number): string => effectiveTypeById.get(id) ?? store.entityIndex.byId.get(id)?.type ?? store.deferredEntityIndex?.get(id)?.type ?? store.entities.getTypeName(id);
-  const readResource = (id: number): RawEntity | undefined => readRaw(id, typeOf(id));
-  const additionalCondition = (value: unknown) => {
-    const id = asRef(value);
-    const e = id === undefined ? undefined : readResource(id);
-    if (!e || !getInheritanceChain(e.type).includes('IfcStructuralConnectionCondition')) return undefined;
-    const components: Record<string, number> = {};
-    for (const name of getAttributeNamesForSchema(e.type, store.schemaVersion)) {
-      const n = asNumber(readAttr(e.type, e.attrs, name));
-      if (n !== undefined) components[name] = n;
-    }
-    return { expressId: e.expressId, type: e.type, name: asString(readAttr(e.type, e.attrs, 'Name')), components };
+  const boundaryCondition = (id: number) => extractBoundaryCondition(extractor, store, id, readResource);
+  const relationContext: StructuralRelationContext = {
+    schema: store.schemaVersion,
+    readResource: (id) => readRaw(id, typeOf(id)),
+    typeOf,
+    boundaryCondition,
   };
-  for (const row of effectiveRows) {
-    if (!['IFCRELASSIGNSTOPRODUCT', 'IFCRELCONNECTSSTRUCTURALELEMENT'].includes(row.type)) continue;
-    const rel = readRaw(row.expressId, row.type);
-    if (!rel) continue;
-    const product = asRef(readAttr(rel.type, rel.attrs, row.type === 'IFCRELASSIGNSTOPRODUCT' ? 'RelatingProduct' : 'RelatingElement'));
-    const objects = row.type === 'IFCRELASSIGNSTOPRODUCT' ? asRefList(readAttr(rel.type, rel.attrs, 'RelatedObjects')) : [asRef(readAttr(rel.type, rel.attrs, 'RelatedStructuralMember'))];
-    if (product === undefined) continue;
-    for (const object of objects) {
-      if (object === undefined) continue;
-      const [item, physical] = itemIds.has(product) ? [product, object] : [object, product];
-      const chain = getInheritanceChain(typeOf(physical));
-      if (!itemIds.has(item) || !chain.includes('IfcProduct') || chain.includes('IfcStructuralItem') || chain.includes('IfcStructuralActivity')) continue;
-      const ids = physicalOfItem.get(item) ?? [];
-      if (!ids.includes(physical)) ids.push(physical);
-      physicalOfItem.set(item, ids);
-      const reverse = physicalElementStructuralItemIds[physical] ??= [];
-      if (!reverse.includes(item)) reverse.push(item);
-    }
-  }
-  const memberRelations = new Map<number, NonNullable<StructuralMemberInfo['IfcRelConnectsStructuralMember']>>();
+  const { physicalOfItem, itemsOfPhysical } = readPhysicalLinks(
+    readRows(relPhysicalIds),
+    new Set([...memberRaw, ...connectionRaw].map((e) => e.expressId)),
+    relationContext,
+  );
+  const memberRelations = new Map<number, StructuralMemberRelation[]>();
   const connectionsOfMember = new Map<number, string[]>();
   const membersOfConnection = new Map<number, string[]>();
-  for (const rel of relMemberIds.map((id) => readRaw(id, effectiveTypeById.get(id)!)).filter((row): row is RawEntity => !!row)) {
+  for (const rel of readRows(relMemberIds)) {
     const memberId = asRef(readAttr(rel.type, rel.attrs, 'RelatingStructuralMember'));
     const connectionId = asRef(readAttr(rel.type, rel.attrs, 'RelatedStructuralConnection'));
     if (memberId === undefined || connectionId === undefined) continue;
-    const constraintId = asRef(readAttr(rel.type, rel.attrs, 'ConnectionConstraint'));
-    const constraint = constraintId === undefined ? undefined : readResource(constraintId);
-    const fields = constraint?.type === 'IfcConnectionPointEccentricity' ? {
-      expressId: constraint.expressId,
-      EccentricityInX: asNumber(readAttr(constraint.type, constraint.attrs, 'EccentricityInX')),
-      EccentricityInY: asNumber(readAttr(constraint.type, constraint.attrs, 'EccentricityInY')),
-      EccentricityInZ: asNumber(readAttr(constraint.type, constraint.attrs, 'EccentricityInZ')),
-      PointOnRelatingElement: asRef(readAttr(constraint.type, constraint.attrs, 'PointOnRelatingElement')),
-      PointOnRelatedElement: asRef(readAttr(constraint.type, constraint.attrs, 'PointOnRelatedElement')),
-    } : undefined;
     const relations = memberRelations.get(memberId) ?? [];
-    relations.push({ expressId: rel.expressId, RelatedStructuralConnection: connectionId,
-      AdditionalConditions: additionalCondition(readAttr(rel.type, rel.attrs, 'AdditionalConditions')),
-      SupportedLength: asNumber(readAttr(rel.type, rel.attrs, 'SupportedLength')),
-      ConditionCoordinateSystem: asRef(readAttr(rel.type, rel.attrs, 'ConditionCoordinateSystem')),
-      ConnectionConstraint: fields });
+    relations.push(readMemberRelation(rel, connectionId, relationContext));
     memberRelations.set(memberId, relations);
     const memberGid = globalIdById.get(memberId);
     const connectionGid = globalIdById.get(connectionId);
@@ -265,6 +259,11 @@ export function extractStructuralOnDemand(
     }
   }
 
+  /**
+   * A group's `RelatedObjects` may hold anything, and IfcRelAssignsToGroup is
+   * not structural-specific, so each of the three directions below is narrowed
+   * to the role its field name promises rather than reporting the raw set.
+   */
   const gidsOf = (lists: RawEntity[][]): Set<string> =>
     new Set(lists.flat().map((e) => e.globalId).filter((g) => g.length > 0));
 
@@ -315,7 +314,7 @@ export function extractStructuralOnDemand(
       appliedCondition:
         conditionId === undefined
           ? undefined
-          : extractBoundaryCondition(extractor, store, conditionId, view ? id => readRaw(id, effectiveTypeById.get(id) ?? store.entities.getTypeName(id)) : undefined),
+          : boundaryCondition(conditionId),
       memberGlobalIds: membersOfConnection.get(e.expressId) ?? [],
       activityGlobalIds: activitiesOfItem.get(e.expressId) ?? [],
       analysisModelGlobalIds: modelsOf(e.expressId),
@@ -335,7 +334,7 @@ export function extractStructuralOnDemand(
       globalOrLocal: asEnum(readAttr(e.type, e.attrs, 'GlobalOrLocal')),
       destabilizingLoad: asBoolean(readAttr(e.type, e.attrs, 'DestabilizingLoad')),
       appliedLoad:
-        loadId === undefined ? undefined : extractStructuralLoad(extractor, store, loadId, view ? id => readRaw(id, effectiveTypeById.get(id) ?? store.entities.getTypeName(id)) : undefined),
+        loadId === undefined ? undefined : extractStructuralLoad(extractor, store, loadId, readResource),
       appliesToGlobalId: itemOfActivity.get(e.expressId),
       groupGlobalIds: groupsOfObject.get(e.expressId) ?? [],
     };
@@ -386,7 +385,7 @@ export function extractStructuralOnDemand(
     activities,
     loadGroups,
     resultGroups,
-    physicalElementStructuralItemIds,
+    physicalElementStructuralItemIds: itemsOfPhysical,
     hasStructural:
       analysisModels.length +
         members.length +
@@ -395,6 +394,10 @@ export function extractStructuralOnDemand(
         loadGroups.length +
         resultGroups.length >
       0,
+    // Derived from the loads rather than tracked alongside them, so the
+    // extraction cannot claim a completeness its own tree contradicts. A
+    // nested configuration propagates its truncation to its parent, so the
+    // top-level load carries the whole subtree's answer.
     loadsTruncated: activities.some((a) => a.appliedLoad?.configuration?.truncated === true),
   };
 }

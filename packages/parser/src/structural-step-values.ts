@@ -15,7 +15,7 @@
 import { getReference } from './attribute-helpers.js';
 import type { EntityExtractor } from './entity-extractor.js';
 import type { IfcDataStore } from './columnar-parser.js';
-import { getAttributeNames, normalizeIfcTypeName } from './ifc-schema.js';
+import { getAttributeNamesForSchema, normalizeIfcTypeName } from './ifc-schema.js';
 
 /**
  * Unwrap a STEP typed value. `EntityExtractor` returns `IFCFORCEMEASURE(-100.)`
@@ -81,17 +81,20 @@ export function asNumberList(value: unknown): number[] | undefined {
 }
 
 /**
- * Resolve an attribute's STEP position from the generated registry by its
- * EXPRESS name, rather than writing the index literally. A type whose registry
- * entry does not carry the name answers -1, and {@link readAttr} reports the
- * attribute as absent instead of reading whatever sits at a guessed offset.
+ * Resolve an attribute's STEP position from the file's own schema by its
+ * EXPRESS name, rather than writing the index literally. IFC2X3 and IFC4
+ * order and name some structural attributes differently (IFC2X3
+ * `IfcStructuralLinearActionVarying`, `LinearStiffnessX`), so the IFC4 pin
+ * would misread them. A type whose schema does not carry the name answers -1,
+ * and {@link readAttr} reports the attribute as absent instead of reading
+ * whatever sits at a guessed offset.
  */
-export function attrIndex(type: string, attrName: string): number {
-  return getAttributeNames(type).indexOf(attrName);
+export function attrIndex(type: string, attrName: string, schema: string | undefined): number {
+  return getAttributeNamesForSchema(type, schema).indexOf(attrName);
 }
 
-export function readAttr(type: string, attrs: unknown[], attrName: string): unknown {
-  const i = attrIndex(type, attrName);
+export function readAttr(type: string, attrs: unknown[], attrName: string, schema: string | undefined): unknown {
+  const i = attrIndex(type, attrName, schema);
   return i >= 0 ? attrs[i] : undefined;
 }
 

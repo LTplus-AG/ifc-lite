@@ -46,8 +46,10 @@ for (const schema of ['IFC2X3', 'IFC4', 'IFC4X3']) {
     });
 
     it('reads member connection conditions, length, coordinates and eccentricity values', async () => {
+      const release = old ? '1.,2.,3.,4.,5.,6.' : 'IFCBOOLEAN(.T.),IFCLINEARSTIFFNESSMEASURE(2.),IFCBOOLEAN(.T.),IFCBOOLEAN(.F.),IFCROTATIONALSTIFFNESSMEASURE(5.),IFCBOOLEAN(.F.)';
       const out = await extract(schema, [member, point,
-        "#40=IFCRELCONNECTSSTRUCTURALMEMBER('normal',$,$,$,#10,#20,$,#50,2.75,#91);",
+        "#40=IFCRELCONNECTSSTRUCTURALMEMBER('normal',$,$,$,#10,#20,#55,#50,2.75,#91);",
+        `#55=IFCBOUNDARYNODECONDITION('Release',${release});`,
         "#41=IFCRELCONNECTSWITHECCENTRICITY('ecc',$,$,$,#10,#20,$,#50,3.5,#91,#60);",
         "#50=IFCSLIPPAGECONNECTIONCONDITION('Slip',0.1,0.2,0.3);",
         '#60=IFCCONNECTIONPOINTECCENTRICITY(#70,#71,1.25,-2.5,3.75);',
@@ -60,6 +62,10 @@ for (const schema of ['IFC2X3', 'IFC4', 'IFC4X3']) {
       const relations = out.members[0].IfcRelConnectsStructuralMember;
       expect(relations?.map(r => [r.expressId, r.RelatedStructuralConnection, r.SupportedLength, r.ConditionCoordinateSystem])).toEqual([[40,20,2.75,91],[41,20,3.5,91]]);
       expect(relations?.[0].AdditionalConditions).toEqual({expressId:50,type:'IfcSlippageConnectionCondition',name:'Slip',components:{SlippageX:0.1,SlippageY:0.2,SlippageZ:0.3}});
+      // Member-end release, carried by 547 relations across five real analysis exports.
+      const t = old ? 'Linear' : 'Translational';
+      expect(relations?.[0].AppliedCondition).toEqual({expressId:55,type:'IfcBoundaryNodeCondition',name:'Release',components:{[`${t}StiffnessX`]:old ? 1 : true,[`${t}StiffnessY`]:2,[`${t}StiffnessZ`]:old ? 3 : true,RotationalStiffnessX:old ? 4 : false,RotationalStiffnessY:5,RotationalStiffnessZ:old ? 6 : false}});
+      expect(relations?.[1].AppliedCondition).toBeUndefined();
       expect(relations?.[0].ConnectionConstraint).toBeUndefined();
       expect(relations?.[1].ConnectionConstraint).toEqual({expressId:60,EccentricityInX:1.25,EccentricityInY:-2.5,EccentricityInZ:3.75,PointOnRelatingElement:70,PointOnRelatedElement:71});
     });

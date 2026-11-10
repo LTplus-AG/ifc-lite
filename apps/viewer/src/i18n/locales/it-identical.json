@@ -1007,6 +1007,10 @@
     "value": "{ifcClass} #{id} · {storey}",
     "reason": "modelInspector.header.selectionOnStorey: Selection identity combines IFC class, entity number and model-authored storey name."
   },
+  "modelInspector.layers.keptBody": {
+    "value": "{name}: {reason}",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
   "modelWorkspace.layout.3d": {
     "value": "3D",
     "reason": "modelWorkspace.layout.3d: 2D/3D is dimensional notation, not an English descriptive phrase."

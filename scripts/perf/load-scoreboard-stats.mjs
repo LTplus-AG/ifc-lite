@@ -142,13 +142,19 @@ export function stageShares(stages, totalMs) {
   return out;
 }
 
-/** Browser trace spans -> stages by full name and by group (the name up to its first dot). Milestones are excluded. */
+/**
+ * Browser trace spans -> stages by name and by group (the name up to its first
+ * dot). Milestones are excluded. A name with child spans is an umbrella and is
+ * keyed with a trailing `*`, so it is not mistaken for leaf work.
+ */
 export function browserStages(trace) {
   const byName = {}, byGroup = {};
   for (const load of trace ?? []) {
+    const parents = new Set((load.spans ?? []).map((sp) => sp[6]).filter((id) => id !== null && id !== undefined));
+    const umbrella = new Set((load.spans ?? []).filter((sp) => parents.has(sp[5])).map((sp) => sp[0]));
     for (const [name, , start, dur, milestone] of load.spans ?? []) {
       if (milestone) continue;
-      (byName[name] ??= []).push([start, dur]);
+      (byName[umbrella.has(name) ? `${name}*` : name] ??= []).push([start, dur]);
       (byGroup[name.split('.')[0]] ??= []).push([start, dur]);
     }
   }

@@ -138,10 +138,10 @@ function interactiveProbe(count) {
     cacheHit: loads.map((l) => l.spans.some((sp) => sp.name === 'cache.lookup' && sp.attrs?.hit === true) || l.attrs?.loadPath === 'cache'),
     spans: loads.map((l) => l.spans.filter((sp) => sp.end !== null && sp.end - sp.start > 50)
       .map((sp) => ({ name: sp.name, startMs: Math.round(sp.start - t), ms: Math.round(sp.end - sp.start) }))),
-    // Every finished span, compact: [name, thread, startMs, durationMs, milestone], relative to the input event.
+    // Every finished span, compact: [name, thread, startMs, durationMs, milestone, id, parentId], relative to the input event.
     trace: loads.map((l) => ({ attrs: l.attrs ?? {}, startMs: l.start - t, endMs: l.end === null ? null : l.end - t,
       spans: l.spans.filter((sp) => sp.end !== null)
-        .map((sp) => [sp.name, sp.thread, +(sp.start - t).toFixed(2), +(sp.end - sp.start).toFixed(2), sp.milestone ? 1 : 0]) })),
+        .map((sp) => [sp.name, sp.thread, +(sp.start - t).toFixed(2), +(sp.end - sp.start).toFixed(2), sp.milestone ? 1 : 0, sp.id, sp.parentId]) })),
   };
 }
 

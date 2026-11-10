@@ -95,9 +95,10 @@ test('stage shares union concurrent intervals and clip to the load window', () =
   assert.deepEqual(ranked.map((r) => r.stage), ['geometry', 'parser', 'tail']);
 });
 
-test('browser stages skip milestones, which span from the load start to the event', () => {
-  const { byName, byGroup } = browserStages([{ spans: [['geometry.streamComplete', 'main', 0, 900, 1], ['parser.wasmInit', 'main', 5, 50, 0], ['parser.hydrate', 'parser', 60, 100, 0]] }]);
-  assert.deepEqual(Object.keys(byName).sort(), ['parser.hydrate', 'parser.wasmInit']);
+test('browser stages skip milestones, which span from the load start to the event, and mark umbrella spans', () => {
+  const { byName, byGroup } = browserStages([{ spans: [['geometry.streamComplete', 'main', 0, 900, 1, 1, null],
+    ['parser.worker', 'main', 5, 300, 0, 2, null], ['parser.hydrate', 'parser', 60, 100, 0, 3, 2]] }]);
+  assert.deepEqual(Object.keys(byName).sort(), ['parser.hydrate', 'parser.worker*']);
   assert.equal(byGroup.parser.length, 2);
 });
 

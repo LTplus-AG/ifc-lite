@@ -10,7 +10,7 @@
  * fingerprints and a base-vs-branch verdict (gain >= 2x noise floor). See
  * the "Load scoreboard" section of scripts/perf/README.md.
  *
- *   node scripts/perf/load-scoreboard.mjs run --plan plan.json --out DIR [--resume] [--aa-reference aa/report.json]
+ *   node scripts/perf/load-scoreboard.mjs run --plan plan.json --out DIR [--fixtures a,b] [--resume] [--aa-reference aa/report.json]
  *   node scripts/perf/load-scoreboard.mjs report --plan plan.json --out DIR [--aa-reference aa/report.json]
  *
  * It drives existing tools: `perf_probe --cold` for native, and the viewer
@@ -115,7 +115,11 @@ async function run(opt) {
     node: process.version, resumed: Boolean(opt.resume) };
   host.timedEvidence = host.workerKind === 'benchmark';
   if (!host.timedEvidence) log('WARNING: not inside exclusive benchmark admission; timings are a dry run, not evidence');
-  writeFileSync(join(out, 'host.json'), JSON.stringify(host, null, 2) + '\n');
+  const hostPath = join(out, 'host.json');
+  const previous = existsSync(hostPath) ? JSON.parse(readFileSync(hostPath, 'utf8')) : null;
+  host.segments = [...(previous?.segments ?? []), { start: host.start, workerKind: host.workerKind, workerJobId: host.workerJobId, fixtures: opt.fixtures ?? 'all' }];
+  host.timedEvidence = host.segments.every((seg) => seg.workerKind === 'benchmark');
+  writeFileSync(hostPath, JSON.stringify(host, null, 2) + '\n');
 
   let browser = null;
   if (order.browser) browser = await startBrowserLane(plan, out);
@@ -124,8 +128,11 @@ async function run(opt) {
     appendFileSync(samplesPath, JSON.stringify(row) + '\n');
   };
   try {
+    // --fixtures a,b runs a subset into the same result set (bounded exclusive jobs); --resume continues it.
+    const only = opt.fixtures ? new Set(opt.fixtures.split(',')) : null;
+    for (const name of only ?? []) if (!plan.fixtures.some((f) => f.name === name)) throw new Error(`--fixtures: ${name} is not in the plan`);
     for (let round = 0; round < plan.rounds; round++) {
-      for (const fixture of plan.fixtures) {
+      for (const fixture of plan.fixtures.filter((f) => !only || only.has(f.name))) {
         for (const group of Object.keys(order)) {
           for (const side of order[group][fixture.name][round]) {
             if (done.has(`${group}/${fixture.name}/${round}/${side}`)) continue;
@@ -159,7 +166,8 @@ async function run(opt) {
     host.powerProfile = { start: host.start.powerProfile, end: host.end.powerProfile };
     host.scalingMaxFreqKHz = { start: host.start.scalingMaxFreqKHz, end: host.end.scalingMaxFreqKHz };
     host.hostname = host.start.hostname;
-    writeFileSync(join(out, 'host.json'), JSON.stringify(host, null, 2) + '\n');
+    host.segments.at(-1).end = host.end;
+    writeFileSync(hostPath, JSON.stringify(host, null, 2) + '\n');
   }
   return report({ ...opt, plan: join(out, 'plan.json') });
 }

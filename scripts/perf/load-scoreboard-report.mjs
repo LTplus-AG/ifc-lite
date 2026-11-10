@@ -156,7 +156,9 @@ export function laneStageRanking(summary, lane, set = 'tuning') {
 export function renderMarkdown(summary, plan, host) {
   const out = [`# Load scoreboard: ${summary.name}`, ''];
   out.push(`Kind: ${summary.kind}. Timed evidence: ${host?.timedEvidence ? 'yes (exclusive benchmark admission)' : 'NO (not exclusive; dry run)'}.`);
-  if (host) out.push(`Host ${host.hostname}; power profile ${host.powerProfile?.start ?? '?'} -> ${host.powerProfile?.end ?? '?'}; max freq ${host.scalingMaxFreqKHz?.start ?? '?'} kHz; job ${host.workerJobId ?? 'none'}.`);
+  for (const seg of host?.segments ?? []) {
+    out.push(`- Segment (${seg.fixtures}): host ${seg.start?.hostname}; ${seg.workerKind ?? 'no'} admission, job ${seg.workerJobId ?? 'none'}; power ${seg.start?.powerProfile ?? '?'} -> ${seg.end?.powerProfile ?? '?'}; max freq ${seg.start?.scalingMaxFreqKHz ?? '?'} -> ${seg.end?.scalingMaxFreqKHz ?? '?'} kHz; ${seg.start?.at} .. ${seg.end?.at ?? 'unfinished'}`);
+  }
   out.push(`Sides: base = ${plan.sides.base.label}; branch = ${plan.sides.branch.label}. Rounds ${plan.rounds}, warm opens ${plan.warmOpens ?? 0}, order seed ${plan.seed}.`, '');
   out.push('Interactive = geometry streamed, drained and finalized, metadata ready and the store settled (README cold-load notes). Native has no first-geometry event (batch call); native interactive = file read + full `process_geometry`. Cells: median ±(max-min)/median.', '');
   for (const set of ['tuning', 'holdout']) {

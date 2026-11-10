@@ -30,10 +30,10 @@ const MAX_RECORDS = 25;
 const RENAMED = { LoadedBy: 'loadGroupGlobalIds', HasResults: 'resultGroupGlobalIds', ResultForLoadGroup: 'resultForLoadGroupGlobalId' };
 const ref = (x) => (x ? `#${x.expressId}` : null);
 
-/** A rooted object's field for `attr`, NO_FIELD when no object of its family has that field at all. */
-function rootedField(ix, family, info, attr) {
+/** A rooted object's field for `attr`, NO_FIELD when no read-model object of its type has that field. */
+function rootedField(ix, type, info, attr) {
   const key = RENAMED[attr] ?? attr[0].toLowerCase() + attr.slice(1);
-  if (!ix.fields.get(family)?.has(key)) return NO_FIELD;
+  if (!ix.fields.get(type)?.has(key)) return NO_FIELD;
   const v = info[key];
   return v && typeof v === 'object' && !Array.isArray(v) && 'expressId' in v ? ref(v) : v;
 }
@@ -53,7 +53,7 @@ const LINKS = {
   IfcRelConnectsStructuralElement: ['RelatingElement', 'RelatedStructuralMember', () => false],
 };
 
-/** Every read-model object of the extraction, by expressId and GlobalId, plus the fields each family has. */
+/** Every read-model object of the extraction, by expressId and GlobalId, plus the fields each type has. */
 function indexExtraction(x) {
   const byId = new Map();
   const byGuid = new Map();
@@ -62,8 +62,8 @@ function indexExtraction(x) {
   const put = (family, info, type = info.type) => {
     byId.set(info.expressId, { family, info, type });
     if (info.globalId) byGuid.set(info.globalId, info);
-    if (!fields.has(family)) fields.set(family, new Set());
-    for (const k of Object.keys(info)) fields.get(family).add(k);
+    if (!fields.has(type)) fields.set(type, new Set());
+    for (const k of Object.keys(info)) fields.get(type).add(k);
   };
   for (const m of x.members) put('item', m);
   for (const c of x.connections) put('item', c);
@@ -104,7 +104,7 @@ function checkRecord(row, record, file, ix, types) {
   for (const attr of attrs) {
     const want = value(attr);
     if (want === null) continue;
-    const got = row.family === 'resource' ? resourceField(hit.info, attr) : rootedField(ix, row.family, hit.info, attr);
+    const got = row.family === 'resource' ? resourceField(hit.info, attr) : rootedField(ix, hit.type, hit.info, attr);
     if (got === NO_FIELD) problems.push(`${where}: ${attr} unexposed`);
     else if (!equal(want, got ?? null)) problems.push(`${where}: ${attr} ${show(got ?? null)}, file ${show(want)}`);
   }

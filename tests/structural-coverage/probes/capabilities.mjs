@@ -50,7 +50,14 @@ const linkRead = {
     let checked = 0;
     let anyHeld = false;
     for (const [file, links] of linked) {
-      const ix = await extraction(ctx, file);
+      let ix;
+      try {
+        ix = await extraction(ctx, file);
+      } catch (e) {
+        problems.push(`${file.path}: parse or extract threw: ${e.message}`);
+        checked++;
+        continue;
+      }
       for (const [itemId, productId] of links.slice(0, MAX_LINKS_PER_FILE)) {
         checked++;
         const guid = file.step.get(productId)?.args[0];
@@ -77,7 +84,9 @@ const docsPage = {
     if (!pages.length) result = { status: 'fail', reason: 'no docs/guide/*structural*.md page' };
     else {
       const text = pages.map((p) => readFileSync(join(dir, p), 'utf8')).join('\n');
-      const missing = ctx.rows.filter((r) => r.kind === 'entity' && r.schema === 'IFC4' && !text.includes(r.entity)).map((r) => r.entity);
+      // Whole words: naming IfcStructuralCurveMemberVarying must not count as naming IfcStructuralCurveMember.
+      const named = new Set(text.match(/\bIfc[A-Za-z0-9]+\b/g) ?? []);
+      const missing = ctx.rows.filter((r) => r.kind === 'entity' && r.schema === 'IFC4' && !named.has(r.entity)).map((r) => r.entity);
       result = missing.length
         ? { status: 'partial', reason: `${pages.join(', ')} does not name ${missing.length} IFC4 entities, e.g. ${missing.slice(0, 5).join(', ')}` }
         : { status: 'pass', evidence: pages };

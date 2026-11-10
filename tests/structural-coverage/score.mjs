@@ -170,6 +170,12 @@ function print(s) {
 
 async function main(argv) {
   const flag = (name) => { const i = argv.indexOf(name); return i !== -1 ? argv[i + 1] : null; };
+  // A valued flag given without its value must not silently run without it (no ratchet, or '--out' read as a path).
+  const valueless = ['--out', '--check'].filter((f) => argv.includes(f) && (!flag(f) || flag(f).startsWith('--')));
+  if (valueless.length) {
+    console.error(`score: ${valueless.join(', ')} needs a path`);
+    return 2;
+  }
   const rel = (p) => relative(ROOT, p).split('\\').join('/');
   const out = resolve(flag('--out') ?? join(ROOT, 'tests/structural-coverage/.out/summary.json'));
   const check = flag('--check') ? resolve(flag('--check')) : null;

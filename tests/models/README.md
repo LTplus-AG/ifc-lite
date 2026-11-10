@@ -118,9 +118,10 @@ this project. Treat them as untrusted input.
 | `geometrygym/shellandbeam.ifc` | [GeometryGym](https://github.com/jmirtsch/GeometryGym) (`9ffe44a9`) | IFC4 | ggRhinoIFC (Karamba to IFC) | none declared |
 | `geometrygymifcexamples/surfaceMember.ifc` | [GeometryGymIFCExamples](https://github.com/GeometryGym/GeometryGymIFCExamples) (`704df17a`) | IFC4X2 (scored under no schema) | GeometryGym console example | MIT |
 
-The 19th corpus file, `ara3d/ISSUE_171_IfcSurfaceCurveSweptAreaSolid.ifc`, was
-already catalogued; it carries 26 `IfcRelAssignsToProduct` links between its
-physical and analytical models.
+With them, the corpus holds `ara3d/ISSUE_171_IfcSurfaceCurveSweptAreaSolid.ifc`
+(already catalogued; 26 `IfcRelAssignsToProduct` links between its physical and
+analytical models), the three existing `ifcopenshell/*structural*` fixtures and
+the three generated coverage fixtures below: 26 files.
 
 `ifcopenshell/generated_structural_coverage_{ifc2x3,ifc4,ifc4x3}.ifc` are
 independently authored by the ifc-lite contributors under MPL-2.0 and written by

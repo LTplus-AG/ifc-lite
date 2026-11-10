@@ -18,9 +18,18 @@ import { parseStore } from '../lib/packages.mjs';
 import { readStep } from '../lib/step.mjs';
 import { catalogueSchema } from '../lib/corpus.mjs';
 import { equal, normalize, show } from '../lib/values.mjs';
-import { SCENE, blankModel } from './create-scene.mjs';
+import { blankModel, emitsOf, stepsFor } from './create-scene.mjs';
 
+/** Build one schema's scene. A throw outside a builder step fails that schema's rows only. */
 async function buildScene(ctx, schema) {
+  try {
+    return await buildSceneUnguarded(ctx, schema);
+  } catch (e) {
+    return { fatal: `building the ${schema} scene threw: ${e.message}` };
+  }
+}
+
+async function buildSceneUnguarded(ctx, schema) {
   const { create, mutations, exporter } = ctx.pkgs;
   const store = await parseStore(ctx.pkgs, blankModel(schema));
   const view = new mutations.MutablePropertyView(null, 'structural-coverage');
@@ -29,7 +38,7 @@ async function buildScene(ctx, schema) {
   const anchor = create.resolveSpatialAnchor(store, storeyId, view);
   const done = new Map();
   const errors = new Map();
-  for (const step of SCENE) {
+  for (const step of stepsFor(schema)) {
     const missing = (step.needs ?? []).filter((n) => !done.has(n));
     if (missing.length) { errors.set(step.id, `needs ${missing.join(', ')}, which did not build`); continue; }
     try {
@@ -65,10 +74,11 @@ export default {
     const out = new Map();
     const scenes = new Map();
     for (const row of rows) {
-      const steps = SCENE.filter((s) => s.emits[row.entity] && (!s.schemas || s.schemas.includes(row.schema)));
+      const steps = stepsFor(row.schema).filter((s) => emitsOf(s, row.schema)[row.entity]);
       if (!steps.length) { out.set(row.id, { status: 'fail', reason: `no in-store builder emits ${row.entity}` }); continue; }
       if (!scenes.has(row.schema)) scenes.set(row.schema, await buildScene(ctx, row.schema));
       const scene = scenes.get(row.schema);
+      if (scene.fatal) { out.set(row.id, { status: 'fail', reason: scene.fatal }); continue; }
       const { types } = ctx.tables[row.schema];
       const problems = [];
       if (catalogueSchema(scene.exported.schema) !== row.schema) problems.push(`export declares ${scene.exported.schema}, not ${row.schema}`);
@@ -78,7 +88,7 @@ export default {
       for (const step of steps) {
         const error = scene.errors.get(step.id);
         if (error) { problems.push(`${step.id}: ${error}`); continue; }
-        const m = matchRecord(row, scene.exported, step.emits[row.entity], types);
+        const m = matchRecord(row, scene.exported, emitsOf(step, row.schema)[row.entity], types);
         if (!m) { problems.push(`${step.id}: no ${row.entity} record in the export`); continue; }
         exportedAny = true;
         if (m.diffs.length) problems.push(`${step.id}: ${m.diffs.join(', ')}`);

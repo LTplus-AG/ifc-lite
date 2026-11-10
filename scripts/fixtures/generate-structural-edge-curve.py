@@ -289,7 +289,9 @@ def coverage(schema: str, output: Path) -> None:
 
 
 if __name__ == "__main__":
-    if len(sys.argv) > 2 and sys.argv[1] == "--coverage":
+    if len(sys.argv) > 1 and sys.argv[1] == "--coverage":
+        if len(sys.argv) < 3 or sys.argv[2].upper() not in COVERAGE_SCHEMAS:
+            sys.exit(f"usage: {sys.argv[0]} --coverage <{'|'.join(COVERAGE_SCHEMAS)}> [output.ifc]")
         schema = sys.argv[2].upper()
         default = f"tests/models/ifcopenshell/generated_structural_coverage_{schema.lower()}.ifc"
         coverage(schema, Path(sys.argv[3] if len(sys.argv) > 3 else default))

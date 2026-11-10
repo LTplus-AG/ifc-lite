@@ -11,6 +11,12 @@
 //! bnum#74 makes. The product mod 2^(K*64) is digit-width independent, so
 //! both paths are bit-identical; `super::tests::digit_width_*` pins that per
 //! width, and the bnum differential fuzz pins the dispatching callers.
+//!
+//! A wasm32 build WITH the wide-arithmetic proposal
+//! (`-C target-feature=+wide-arithmetic`, the optional `pkg-wide` bundle) has a
+//! single-instruction 64x64->128 multiply (`i64.mul_wide_u`) and 128-bit
+//! add (`i64.add128`), so it takes the native u64-limb path instead. Every
+//! other build — including the default wasm bundles — is unchanged.
 
 /// Low `K` limbs of the unsigned product `a * b` (mod 2^(K*64)). Exact for the
 /// low limbs because a partial product `a[i]*b[j]` with `i+j >= K` is a multiple
@@ -18,11 +24,11 @@
 /// are `0 mod 2^(K*64)` and may be dropped.
 #[inline]
 pub(super) fn mul_low<const K: usize>(a: &[u64; K], b: &[u64; K]) -> [u64; K] {
-    #[cfg(target_arch = "wasm32")]
+    #[cfg(all(target_arch = "wasm32", not(target_feature = "wide-arithmetic")))]
     {
         mul_low_u32(a, b)
     }
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(not(all(target_arch = "wasm32", not(target_feature = "wide-arithmetic"))))]
     {
         mul_low_u64(a, b)
     }
@@ -36,11 +42,11 @@ pub(super) fn mul_low_magnitude<const K: usize>(
     a: &[u64; K], b: &[u64; K], a_bits: usize, b_bits: usize,
 ) -> [u64; K] {
     debug_assert!(a_bits > 0 && b_bits > 0 && a_bits + b_bits < K * 64);
-    #[cfg(target_arch = "wasm32")]
+    #[cfg(all(target_arch = "wasm32", not(target_feature = "wide-arithmetic")))]
     {
         mul_low_u32_bounded(a, b, a_bits.div_ceil(32), b_bits.div_ceil(32))
     }
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(not(all(target_arch = "wasm32", not(target_feature = "wide-arithmetic"))))]
     {
         mul_low_u64_bounded(a, b, a_bits.div_ceil(64), b_bits.div_ceil(64))
     }
@@ -48,7 +54,7 @@ pub(super) fn mul_low_magnitude<const K: usize>(
 
 /// u64-limb schoolbook low product.
 #[inline]
-#[cfg_attr(target_arch = "wasm32", allow(dead_code))]
+#[cfg_attr(all(target_arch = "wasm32", not(target_feature = "wide-arithmetic")), allow(dead_code))]
 pub(super) fn mul_low_u64<const K: usize>(a: &[u64; K], b: &[u64; K]) -> [u64; K] {
     mul_low_u64_bounded(a, b, K, K)
 }
@@ -89,7 +95,7 @@ pub(super) fn mul_low_u64_bounded<const K: usize>(
 /// the result is unchanged; on narrow magnitudes (the common case in the
 /// predicate cascade) it also erases most of the 4x digit-count overhead.
 #[inline]
-#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+#[cfg_attr(not(all(target_arch = "wasm32", not(target_feature = "wide-arithmetic"))), allow(dead_code))]
 pub(super) fn mul_low_u32<const K: usize>(a: &[u64; K], b: &[u64; K]) -> [u64; K] {
     mul_low_u32_bounded(a, b, 2 * K, 2 * K)
 }
@@ -154,11 +160,11 @@ pub(super) fn mul_full<const K: usize>(ma: &[u64; K], mb: &[u64; K], full: &mut 
         full[..2 * K].iter().all(|&limb| limb == 0),
         "mul_full requires a zeroed output buffer (digit paths diverge on dirty input)"
     );
-    #[cfg(target_arch = "wasm32")]
+    #[cfg(all(target_arch = "wasm32", not(target_feature = "wide-arithmetic")))]
     {
         mul_full_u32(ma, mb, full)
     }
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(not(all(target_arch = "wasm32", not(target_feature = "wide-arithmetic"))))]
     {
         mul_full_u64(ma, mb, full)
     }
@@ -166,7 +172,7 @@ pub(super) fn mul_full<const K: usize>(ma: &[u64; K], mb: &[u64; K], full: &mut 
 
 /// u64-limb schoolbook full product.
 #[inline]
-#[cfg_attr(target_arch = "wasm32", allow(dead_code))]
+#[cfg_attr(all(target_arch = "wasm32", not(target_feature = "wide-arithmetic")), allow(dead_code))]
 pub(super) fn mul_full_u64<const K: usize>(ma: &[u64; K], mb: &[u64; K], full: &mut [u64; 64]) {
     for i in 0..K {
         let mut carry: u128 = 0;
@@ -183,7 +189,7 @@ pub(super) fn mul_full_u64<const K: usize>(ma: &[u64; K], mb: &[u64; K], full: &
 /// u32-digit schoolbook full product (wasm32; see [`mul_low_u32`]). Requires
 /// the zeroed buffer [`mul_full`] asserts.
 #[inline]
-#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+#[cfg_attr(not(all(target_arch = "wasm32", not(target_feature = "wide-arithmetic"))), allow(dead_code))]
 pub(super) fn mul_full_u32<const K: usize>(ma: &[u64; K], mb: &[u64; K], full: &mut [u64; 64]) {
     debug_assert!(K <= 32, "FixedInt u32-digit scratch supports only K <= 32");
     let n = 2 * K;

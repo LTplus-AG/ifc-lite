@@ -151,5 +151,21 @@ export function buildStoreModellingMethods(): MethodSchema[] {
       "{ ForLayerSet: number; LayerSetDirection?: 'AXIS1' | 'AXIS2' | 'AXIS3'; DirectionSense?: 'POSITIVE' | 'NEGATIVE'; OffsetFromReferenceLine: number; ReferenceExtent?: number }",
     ),
     assignMethod('assignMaterial', 'materialExpressId', 'Associate a material with objects via IfcRelAssociatesMaterial, replacing their previous one. Returns the relationship.'),
+    {
+      name: 'editRoof',
+      doc: 'Change a roof by footprint (addRoof with EdgeSlopes/Overhang): one edge\'s slope, every slope (radians, 0 = gable end), Overhang or Thickness (metres). Rebuilds its planes as one undoable edit; a refusal writes nothing.',
+      args: ['dump', 'dump'],
+      paramNames: ['ref', 'patch'],
+      tsParamTypes: [ENTITY_REF, '{ EdgeSlopes?: number[]; Edge?: { Index: number; Slope: number }; Overhang?: number; Thickness?: number }'],
+      tsReturn: ENTITY_REF,
+      returns: 'value',
+      call: (sdk, args) => {
+        const ref = args[0] as { modelId?: unknown; expressId?: unknown } | null;
+        if (!ref || typeof ref !== 'object' || typeof ref.modelId !== 'string') throw new Error('bim.store.editRoof: ref must be { modelId, expressId }');
+        const expressId = requireId('editRoof', 'ref.expressId', ref.expressId);
+        if (!args[1] || typeof args[1] !== 'object' || Array.isArray(args[1])) throw new Error('bim.store.editRoof: patch must be an object');
+        return sdk.store.editRoof({ modelId: ref.modelId, expressId }, args[1] as Parameters<typeof sdk.store.editRoof>[1]);
+      },
+    },
   ];
 }

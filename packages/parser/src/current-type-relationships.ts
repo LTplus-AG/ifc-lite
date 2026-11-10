@@ -12,7 +12,8 @@
  *
  *   - the graph cannot vouch for it: an edit touched it, the session created
  *     it, the parser recorded no edge for it (a record the byte reader could
- *     not use, or a store whose graph is not complete yet), or it is a
+ *     not use, or a store whose graph is not complete yet: the early store, which
+ *     refuses as still loading past LOADING_ROW_LIMIT rows), or it is a
  *     definition set naming something other than a definition (see
  *     readGraphFacts). These are read once per revision, so they keep refusing
  *     for the whole model as they always did;
@@ -39,8 +40,25 @@ import { effectiveMetadataRecord, type MetadataReadView } from './effective-meta
 import { propertyDefinitionsInModel } from './property-definition-members.js';
 import { getInheritanceChain, normalizeIfcTypeName } from './ifc-schema.js';
 
-const MAX_RELATIONSHIPS = 65_536;
+/**
+ * The bounds on one model's typing and definition relationships (#9192). The largest real models
+ * in the fixture manifest need 92,432 rows (BWK) and 140,475 references (Holter); a first read
+ * there takes about 0.1 s through the graph. A store the graph cannot vouch for reads every row
+ * from source (about 45 us each on those models), so the row bound also caps that walk near 6 s.
+ */
+const MAX_RELATIONSHIPS = 131_072;
 const MAX_RELATION_REFERENCES = 262_144;
+/**
+ * The row bound before #9192 raised it, kept for the store emitted before the definition edges
+ * exist. The viewer makes that store active at spatial-ready time (`onSpatialReady`) while property
+ * parsing goes on; its graph has typing edges but no definition edges, so every definition
+ * relationship there is read from source. The Properties panel runs this walk synchronously in
+ * render (useInheritedTypeQuantities), on the UI thread. Past this many rows that store refuses as
+ * still loading, without reading a relationship, and the full store answers once it replaces it.
+ * Measured there on a first selection: Holter 1.6-1.7 s and BWK 1.6 s to answer, against 1.3-1.4 s
+ * and 1.1-1.2 s for the refusal at this bound before #9192. Below it the early store still answers.
+ */
+const LOADING_ROW_LIMIT = 65_536;
 
 export class CurrentQuantityRefusal extends Error {}
 
@@ -158,6 +176,24 @@ export interface CurrentTypeRelationships {
 }
 
 /**
+ * The store emitted before property parsing finished (`relationshipsPending`) has no definition
+ * edges, so every definition relationship would be read from source. Past LOADING_ROW_LIMIT rows,
+ * with definition relationships among them, that read is refused until the full store arrives, as
+ * main refused every model past that bound. Counts rows only; reads no relationship.
+ */
+function refuseWhileDefinitionsLoad(store: IfcDataStore, view: MetadataReadView): void {
+    let rows = 0;
+    let definitions = false;
+    for (const row of iterateEffectiveEntities(store, view, ['IfcRelDefinesByType', 'IfcRelDefinesByProperties'])) {
+        rows++;
+        if (row.type === 'IFCRELDEFINESBYPROPERTIES') definitions = true;
+        if (rows > LOADING_ROW_LIMIT && definitions) {
+            throw new CurrentQuantityRefusal(`Native type relationships are still loading (more than ${LOADING_ROW_LIMIT} relationships)`);
+        }
+    }
+}
+
+/**
  * Walk the effective rows (no source read) and read only what the graph cannot
  * vouch for. Refuses, as a whole, on what makes the model's relationships
  * unusable: too many rows, too many references, or an unreadable row of those read.
@@ -166,6 +202,10 @@ export function resolveCurrentTypeRelationships(store: IfcDataStore, view: Metad
     const graph = store.relationships;
     const facts = store.source?.length && graph ? readGraphFacts(store, graph.forward) : undefined;
     const counts = facts?.counts;
+    // Only the parser's spatial-ready store says so. A complete store whose graph happens to hold
+    // no definition edge (a model with none, plus one a view created) is never replaced, so it
+    // answers, within MAX_RELATIONSHIPS, rather than staying "still loading" (#9192).
+    if (store.relationshipsPending) refuseWhileDefinitionsLoad(store, view);
     const retypes = view.getTypeMutations?.();
     // A definition deleted or retyped by an edit drops out of the sets naming it, so the graph
     // over-counts those relationships, as it does every definition relationship of a view that
@@ -205,7 +245,7 @@ export function resolveCurrentTypeRelationships(store: IfcDataStore, view: Metad
     let referenceCount = 0;
     for (const row of iterateEffectiveEntities(store, view, ['IfcRelDefinesByType', 'IfcRelDefinesByProperties'])) {
         const order = ++relationshipCount;
-        if (relationshipCount > MAX_RELATIONSHIPS) throw new CurrentQuantityRefusal('Native type relationship inventory exceeds the read limit');
+        if (relationshipCount > MAX_RELATIONSHIPS) throw new CurrentQuantityRefusal(`Native type relationship inventory exceeds the read limit of ${MAX_RELATIONSHIPS} relationships`);
         const touched = row.overlayCreated || retypes?.has(row.expressId)
             || view.getPositionalMutationsForEntity(row.expressId) !== null
             || view.getAttributeMutationsForEntity(row.expressId).length > 0
@@ -237,7 +277,7 @@ export function resolveCurrentTypeRelationships(store: IfcDataStore, view: Metad
             const relation = readOnce(next.id);
             if (relation) referenceCount += relation.members.length * relation.targets.length;
         }
-        if (referenceCount > MAX_RELATION_REFERENCES) throw new CurrentQuantityRefusal('Native type relationship references exceed the read limit');
+        if (referenceCount > MAX_RELATION_REFERENCES) throw new CurrentQuantityRefusal(`Native type relationship references exceed the read limit of ${MAX_RELATION_REFERENCES} references`);
     }
 
     const lookup = (edited: Map<number, Contribution[]>, type: RelationshipType) => {

@@ -56,12 +56,13 @@ export function mirrorStoreOverlayDelta(
   before: OverlaySnapshot,
   /** Names the surface in the publish failure, e.g. 'cost' or 'structural'. */
   label: string,
+  afterCreate?: () => void,
 ): void {
   const state = store.getState();
   const view = getMutationViewForModel(store, modelId);
   if (!view) return;
   const created = view.getNewEntities().map(entity => entity.expressId).filter(id => !before.created.has(id));
-  if (created.length > 0 && !ensureSourceRoomEntities(store, modelId, editor, created, dataStore)) {
+  if (created.length > 0 && !ensureSourceRoomEntities(store, modelId, editor, created, dataStore, undefined, afterCreate)) {
     throw new Error(`bim.store: the new ${label} entities could not be published to the room`);
   }
   for (const id of view.getTombstones()) {

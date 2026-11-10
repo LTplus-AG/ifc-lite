@@ -375,3 +375,61 @@ fn small_file_single_bounds_fallback_rebases_a_kilometre_model() {
         "offset in metres"
     );
 }
+
+// #9480: a MILLIMETRE model whose IfcSite placement repeats a UTM anchor in
+// metre numbers (Vectorworks 2026 Update 7), rotated like the reporter's file.
+const IFC_SITE_ORIGIN: &str = "\
+ISO-10303-21;
+HEADER;
+ENDSEC;
+DATA;
+#1=IFCPROJECT('p',$,'P',$,$,$,$,$,#8);
+#8=IFCUNITASSIGNMENT((#9));
+#9=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);
+#20=IFCSITE('site',$,$,$,$,#21,$,$,.ELEMENT.,$,$,$,$,$);
+#21=IFCLOCALPLACEMENT($,#22);
+#22=IFCAXIS2PLACEMENT3D(#23,#24,#25);
+#23=IFCCARTESIANPOINT((311988.18054,5996148.56499,14.));
+#24=IFCDIRECTION((0.,0.,1.));
+#25=IFCDIRECTION((-0.46689605,-0.88431221,0.));
+ENDSEC;
+END-ISO-10303-21;
+";
+
+/// The site's world translation is published in metres next to its rotation,
+/// both read off the one resolved placement.
+#[test]
+fn site_origin_is_the_scaled_site_translation() {
+    let content = IFC_SITE_ORIGIN.as_bytes();
+    let full_index = ifc_lite_core::build_entity_index(content);
+    let site = *full_index.get(&20).expect("site present");
+    let mut decoder = EntityDecoder::with_index(content, full_index);
+
+    let meta = resolve_stream_meta(
+        MetaMode::SmallFileSingle,
+        content,
+        Some(1),
+        Some((20, site.0, site.1)),
+        &mut decoder,
+    );
+
+    let mut decoder = EntityDecoder::with_index(content, ifc_lite_core::build_entity_index(content));
+    let origin = resolve_site_origin(&meta, Some((20, site.0, site.1)), &mut decoder).expect("site origin resolves");
+    let expected = [311.98818054, 5996.14856499, 0.014];
+    for (got, want) in origin.iter().zip(expected) {
+        assert!((got - want).abs() < 1e-9, "site origin {origin:?}, expected {expected:?}");
+    }
+    let rotation = meta.building_rotation.expect("site rotation resolves");
+    assert!((rotation - (-0.88431221f64).atan2(-0.46689605)).abs() < 1e-9, "rotation {rotation}");
+}
+
+/// No site position, no site origin.
+#[test]
+fn site_origin_is_absent_without_a_site() {
+    let content = IFC_SITE_ORIGIN.as_bytes();
+    let full_index = ifc_lite_core::build_entity_index(content);
+    let mut decoder = EntityDecoder::with_index(content, full_index);
+    let meta = resolve_stream_meta(MetaMode::SmallFileSingle, content, Some(1), None, &mut decoder);
+    assert_eq!(resolve_site_origin(&meta, None, &mut decoder), None);
+    assert_eq!(meta.building_rotation, None);
+}

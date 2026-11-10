@@ -83,6 +83,15 @@ export class FirstPersonNavigator {
       x: this.state.camera.target.x - this.state.camera.position.x,
       z: this.state.camera.target.z - this.state.camera.position.z,
     };
+    // Straight down or up (a top/bottom preset, #9501) the look has no
+    // heading: forward is the screen's up, carried by the horizontal `up`.
+    const up = this.state.camera.up;
+    if (Math.hypot(dir.x, dir.z) < 1e-10 && Number.isFinite(up.x) && Number.isFinite(up.z)) {
+      const lookY = this.state.camera.target.y - this.state.camera.position.y;
+      const sign = lookY <= 0 ? 1 : -1;
+      dir.x = sign * up.x;
+      dir.z = sign * up.z;
+    }
     const horizLen = Math.sqrt(dir.x * dir.x + dir.z * dir.z);
     // Finiteness, not just magnitude: `NaN < 1e-10` is false, so a malformed
     // pose fell through here and `dir.x / horizLen` came back NaN. That does

@@ -11,6 +11,7 @@ import { BimReactContext } from '@/sdk/BimProvider';
 import { useViewerStore } from '@/store';
 import { setLocale } from '@/i18n';
 import { posthog } from '@/lib/analytics';
+import { activityListReady } from '@/test/activity-list';
 import { advance, cleanup, click, press, render, type as typeInto } from '@/test/render';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { CommandPalette } from './CommandPalette';
@@ -160,26 +161,35 @@ test('real mobile toolbar owns palette Open/Add and shares loading refusal (#894
     });
     const toolbar = document.querySelector('[data-command-surface="mobile"]')!;
     const mobileOpen = toolbar.querySelector<HTMLButtonElement>('[data-command-id="file:open"]')!;
-    const mobileAdd = toolbar.querySelector<HTMLButtonElement>('[data-command-id="file:add-model"]')!;
+    // Add model lives in More actions since the 44px phone targets (#8802); open it on demand.
+    const mobileAdd = async (): Promise<HTMLElement> => {
+      const find = () => document.querySelector<HTMLElement>('[role="menuitem"][data-command-id="file:add-model"]');
+      if (!find()) {
+        press(toolbar.querySelector<HTMLElement>('[data-command-disclosure="mobile:more"]')!, 'ArrowDown');
+        await advance(10);
+      }
+      const item = find();
+      assert.equal(item !== null, true, 'More actions holds Add model');
+      return item!;
+    };
     const paletteRow = () => document.querySelector<HTMLButtonElement>(`[role="option"][data-command-id="${id}"]`)!;
     assert.ok(mobileOpen);
-    assert.ok(mobileAdd);
     act(() => useViewerStore.setState({ loading: true }));
     assert.equal(mobileOpen.disabled, true);
-    assert.equal(mobileAdd.disabled, true);
+    assert.equal((await mobileAdd()).getAttribute('aria-disabled'), 'true');
     assert.equal(paletteRow().getAttribute('aria-disabled'), 'true');
     click(mobileOpen);
-    click(mobileAdd);
+    click(await mobileAdd());
     click(paletteRow());
     act(() => window.dispatchEvent(new CustomEvent('ifc-lite:open-files')));
     assert.deepEqual(inputs, []);
     assert.equal(localStorage.getItem(RECENT_KEY), null);
     act(() => useViewerStore.setState({ loading: false }));
     assert.equal(mobileOpen.disabled, false);
-    assert.equal(mobileAdd.disabled, false);
+    assert.notEqual((await mobileAdd()).getAttribute('aria-disabled'), 'true');
     assert.notEqual(paletteRow().getAttribute('aria-disabled'), 'true');
     click(mobileOpen);
-    click(mobileAdd);
+    click(await mobileAdd());
     assert.deepEqual(inputs, ['file-input-open', 'file-input-add']);
     click(paletteRow());
     assert.deepEqual(inputs, ['file-input-open', 'file-input-add', id === 'file:open' ? 'file-input-open' : 'file-input-add']);
@@ -269,11 +279,12 @@ test('Share disabled when collaboration is off; Activity opens real empty list w
   assert.match(row('file:open').textContent ?? '', /WebGPU/);
   assert.notEqual(row('ui:activity').getAttribute('aria-disabled'), 'true');
   click(row('ui:activity'));
-  await settle();
+  // #8947: the shell opens before React.lazy finishes loading the real list.
+  const list = await activityListReady();
+  const dialog = list.closest('[role="dialog"]');
+  assert.ok(dialog, 'Activity list is hosted in its dialog');
+  assert.equal(dialog.querySelector('h2')?.textContent, 'Activity', 'Activity dialog renders its visible title');
   assert.equal(document.querySelector('input[role="combobox"]'), null);
-  const dialog = document.querySelector('[role="dialog"]');
-  assert.ok(dialog);
-  assert.match(dialog.textContent ?? '', /Activity/);
   assert.match(dialog.textContent ?? '', /No jobs in this session yet/);
 });
 

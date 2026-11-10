@@ -202,6 +202,8 @@ declare namespace BimGroup {
 //   packages/create/src/in-store/storey/storey-delete.ts
 //   packages/create/src/in-store/storey/storey-suggest.ts
 //   packages/create/src/in-store/host-geometry-frame.ts
+//   packages/create/src/in-store/storey/storey-attached.ts
+//   packages/create/src/in-store/railing-stair-refit.ts
 
 declare namespace BimCreate {
   export type AlignMode = 'left' | 'centre' | 'right' | 'top' | 'middle' | 'bottom';
@@ -361,10 +363,14 @@ declare namespace BimCreate {
     /** Products another storey owns that hang from a moved placement and are held in place. */
     readonly held: readonly number[];
     readonly spacing: readonly SpacingChange[];
-    /** Walls attached to a storey above whose height follows it. */
+    /** Walls attached to a storey above (or a slab) whose height follows it. */
     readonly walls: readonly WallHeightChange[];
+    /** Columns, beams, members and curtain walls whose top follows their attachment (#9296). */
+    readonly attached: readonly AttachedHeightChange[];
     /** Stairs refit so the top tread still lands on their storey. */
     readonly stairs: readonly StairRefit[];
+    /** Railings that run up a refit stair, stretched with it. */
+    readonly railings: readonly RailingRefit[];
     /** Elements a person counts as moving: openings and aggregated parts excluded. */
     readonly movedElementCount: number;
     readonly refusals: readonly StoreyRefusal[];
@@ -443,6 +449,21 @@ declare namespace BimCreate {
     readonly to: number;
   }
 
+  /**
+   * A column, beam, member or curtain wall whose top follows its attachment
+   * (#9296). `from` and `to` are the kind's `top` measure (`storey-attached.ts`):
+   * the height above its base, or a beam's top end above its placement's parent.
+   */
+  export interface AttachedHeightChange {
+    readonly elementId: number;
+    readonly kind: Exclude<AttachedKind, 'wall'>;
+    readonly storeyId: number;
+    readonly targetStoreyId: number;
+    /** Metres. */
+    readonly from: number;
+    readonly to: number;
+  }
+
   export interface StairRefit {
     readonly stairId: number;
     readonly flightId: number;
@@ -450,6 +471,11 @@ declare namespace BimCreate {
     readonly landingStoreyId: number;
     readonly from: { readonly NumberOfRisers: number; readonly RiserHeight: number };
     readonly to: { readonly NumberOfRisers: number; readonly RiserHeight: number };
+  }
+
+  export interface RailingRefit {
+    readonly railingId: number;
+    readonly stairId: number;
   }
 
   export interface StoreyRefusal {
@@ -541,6 +567,8 @@ declare namespace BimCreate {
   }
 
   export type Vec3 = [number, number, number];
+
+  export type AttachedKind = 'wall' | 'column' | 'linear' | 'curtainWall';
 
   export type StoreyRefusalCode =
     | 'notFound'
@@ -718,6 +746,9 @@ declare namespace BimClash {
      */
     matchedKeysA?: readonly string[];
     matchedKeysB?: readonly string[] | null;
+    /** Model-qualified union of both matched sides, for object-based quality gates (#9259).
+     * The per-load ref distinguishes objects even when GlobalIds are repeated. */
+    matchedElements?: readonly { model: string; key: string; ref: number }[];
     /**
      * Broad-phase candidate pairs the geometry kernel actually narrow-phase
      * tested for THIS rule (`RuleDetection.candidatesProcessed` in
@@ -767,6 +798,9 @@ declare namespace BimClash {
   export interface ClashElementRef {
     key: string;
     ref: number;
+    /** This run found distinct source objects with this key in the same model.
+     * Review/exclusion identity must include ref rather than trust the repeated key. */
+    keyAmbiguous?: true;
     model: string;
     tag: string;
     name?: string;
@@ -1251,8 +1285,8 @@ declare const bim: {
     addWindow(modelId: string, storeyExpressId: number, params: { Position: [number, number, number]; Width: number; Height: number; FrameThickness?: number; PredefinedType?: string; PartitioningType?: string; UserDefinedPartitioningType?: string; Name?: string; Description?: string; ObjectType?: string; Tag?: string }): { modelId: string; expressId: number };
     /** Add an IfcSpace (room) — rectangle or polygon footprint extruded by Height. Aggregated under the storey via IfcRelAggregates. */
     addSpace(modelId: string, storeyExpressId: number, params: { Position: [number, number, number]; Width: number; Depth: number; Height: number; Profile?: "rectangle"; Name?: string; LongName?: string; Description?: string; ObjectType?: string } | { Profile: "polygon"; OuterCurve: Array<[number, number]>; Position?: [number, number, number]; Height: number; Name?: string; LongName?: string; Description?: string; ObjectType?: string }): { modelId: string; expressId: number };
-    /** Add an IfcRoof (flat-roof slab variant). Two modes: rectangle or polygon. */
-    addRoof(modelId: string, storeyExpressId: number, params: { Position: [number, number, number]; Width: number; Depth: number; Thickness: number; Profile?: "rectangle"; Name?: string; Description?: string; ObjectType?: string; Tag?: string } | { Profile: "polygon"; OuterCurve: Array<[number, number]>; Position?: [number, number, number]; Thickness: number; Name?: string; Description?: string; ObjectType?: string; Tag?: string }): { modelId: string; expressId: number };
+    /** Add an IfcRoof. Rectangle or polygon; flat unless EdgeSlopes/Overhang are given, then a roof by footprint: EdgeSlopes[i] (radians, 0 = gable end) slopes the edge from point i to point i+1, Overhang (metres) carries every edge out. Hip, gable, mono-pitch and L-shaped roofs. */
+    addRoof(modelId: string, storeyExpressId: number, params: { Position: [number, number, number]; Width: number; Depth: number; Thickness: number; Profile?: "rectangle"; EdgeSlopes?: number[]; Overhang?: number; Name?: string; Description?: string; ObjectType?: string; Tag?: string } | { Profile: "polygon"; OuterCurve: Array<[number, number]>; Position?: [number, number, number]; Thickness: number; EdgeSlopes?: number[]; Overhang?: number; Name?: string; Description?: string; ObjectType?: string; Tag?: string }): { modelId: string; expressId: number };
     /** Add an IfcPlate (thin flat element). Two modes: rectangle or polygon. */
     addPlate(modelId: string, storeyExpressId: number, params: { Position: [number, number, number]; Width: number; Depth: number; Thickness: number; Profile?: "rectangle"; PredefinedType?: string; Name?: string; Description?: string; ObjectType?: string; Tag?: string } | { Profile: "polygon"; OuterCurve: Array<[number, number]>; Position?: [number, number, number]; Thickness: number; PredefinedType?: string; Name?: string; Description?: string; ObjectType?: string; Tag?: string }): { modelId: string; expressId: number };
     /** Add an IfcMember (generic structural — brace, post, strut) from Start to End with a rectangular or canonical parameterised cross-section. */
@@ -1279,6 +1313,8 @@ declare const bim: {
     addMaterialLayerSetUsage(modelId: string, params: { ForLayerSet: number; LayerSetDirection?: 'AXIS1' | 'AXIS2' | 'AXIS3'; DirectionSense?: 'POSITIVE' | 'NEGATIVE'; OffsetFromReferenceLine: number; ReferenceExtent?: number }): { modelId: string; expressId: number };
     /** Associate a material with objects via IfcRelAssociatesMaterial, replacing their previous one. Returns the relationship. */
     assignMaterial(modelId: string, materialExpressId: number, objectExpressIds: number[]): { modelId: string; expressId: number };
+    /** Change a roof by footprint (addRoof with EdgeSlopes/Overhang): one edge's slope, every slope (radians, 0 = gable end), Overhang or Thickness (metres). Rebuilds its planes as one undoable edit; a refusal writes nothing. */
+    editRoof(ref: { modelId: string; expressId: number }, patch: { EdgeSlopes?: number[]; Edge?: { Index: number; Slope: number }; Overhang?: number; Thickness?: number }): { modelId: string; expressId: number };
     /** List the live storeys of a model, highest first, with elevation (m), floor-to-floor height to the storey above in the same building (m, null for the top) and element count. */
     listStoreyLevels(modelId: string): BimCreate.StoreySummary[];
     /** The default Name, Elevation and floor-to-floor height for a new storey above or below a storey, from its neighbours. Writes nothing. */

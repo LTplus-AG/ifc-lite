@@ -57,6 +57,7 @@ import { cameraTeardown } from './slices/cameraSlice.js';
 import { sectionTeardown } from './slices/sectionSlice.teardown.js';
 import { dataTeardown } from './slices/dataSlice.teardown.js';
 import { modelTeardown } from './slices/modelSlice.teardown.js';
+import { serverPropertiesTeardown } from './slices/serverPropertiesSlice.js';
 import { mutationTeardown } from './slices/mutationSlice.teardown.js';
 import { drawing2DTeardown } from './slices/drawing2DSlice.teardown.js';
 import { sheetTeardown } from './slices/sheetSlice.teardown.js';
@@ -104,6 +105,7 @@ export const viewerTeardownRegistry: readonly AnySliceTeardown[] = createTeardow
   sectionTeardown,
   dataTeardown,
   modelTeardown,
+  serverPropertiesTeardown,
   mutationTeardown,
   drawing2DTeardown,
   sheetTeardown,

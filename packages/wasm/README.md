@@ -327,6 +327,15 @@ distances and unresolved units, curves or placements fail explicitly. The
 to precision-sensitive consumers. Whole-source parsing belongs in a disposable
 worker when used by the viewer, so releasing the tool also releases WASM pages.
 
+## Rhino scene bindings
+
+The Rhino .3dm scene builder is a separate `@ifc-lite/wasm/rhino` payload, built
+from `rust/rhino-wasm` by `scripts/build-wasm.sh`, so the default engine never
+carries it. Initialize it explicitly (default asynchronous initializer or
+`initSync`), then call `exportRhinoScene(content, optionsJson)` and `free()` the
+returned `RhinoSceneJs`. `@ifc-lite/geometry`'s `exportRhinoScene` does this for
+you and loads the payload only on the first .3dm export.
+
 ## Rust diff bindings
 
 The Rust diff engine is a separate `@ifc-lite/wasm/diff` payload, built from

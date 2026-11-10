@@ -3,7 +3,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { StoreEditor } from '@ifc-lite/mutations';
+import type { IfcDataStore } from '@ifc-lite/parser';
 import type { SpatialAnchor } from './anchor.js';
+import { applyNewElementTop, type TopConstraint } from './storey/storey-top-constraint.js';
 import { addBeamToStore, type BeamInStoreParams, type ProfiledBeamInStoreParams } from './beam.js';
 import { addColumnToStore, type ColumnInStoreParams, type ProfiledColumnInStoreParams } from './column.js';
 import { addMemberToStore, type MemberInStoreParams, type ProfiledMemberInStoreParams } from './member.js';
@@ -35,12 +37,21 @@ export function addOrdinaryElementInStore(
   editor: StoreEditor,
   anchor: SpatialAnchor | ((draft: StoreEditor) => SpatialAnchor),
   element: OrdinaryInStoreElement,
+  /**
+   * The new element's top constraint (#9296), applied in the same
+   * transaction to a wall, column, beam or member (`applyNewElementTop`).
+   */
+  options: { readonly top?: TopConstraint | 'auto'; readonly store?: IfcDataStore } = {},
 ): number {
   return editor.runAtomic(draft => {
     const resolved = typeof anchor === 'function' ? anchor(draft) : anchor;
-    return emitOrdinaryElement(draft, resolved, element);
+    const id = emitOrdinaryElement(draft, resolved, element);
+    if (options.top !== undefined && options.store && TOP_KINDS.has(element.kind)) applyNewElementTop(options.store, draft, id, options.top, resolved.storeyId);
+    return id;
   });
 }
+
+const TOP_KINDS = new Set<OrdinaryInStoreElement['kind']>(['wall', 'column', 'beam', 'member']);
 
 /** Package-private builder dispatch; callers own the enclosing atomic edit. */
 export function emitOrdinaryElement(draft: StoreEditor, resolved: SpatialAnchor, element: OrdinaryInStoreElement): number {

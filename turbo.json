@@ -63,7 +63,7 @@
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
-      "outputs": ["dist/**", "pkg/**", "pkg-diff/**", "pkg-core/**"],
+      "outputs": ["dist/**", "pkg/**", "pkg-diff/**", "pkg-rhino/**", "pkg-core/**"],
       "inputs": [
         "$TURBO_DEFAULT$",
         "src/**",

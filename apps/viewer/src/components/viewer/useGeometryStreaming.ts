@@ -19,6 +19,7 @@ import { flushPlacementGeometry } from '@/lib/model-placement/bounds-revision';
  */
 
 import { useEffect, useRef } from 'react';
+import { useViewerStore } from '@/store';
 import { decodeInstancedShard } from '@ifc-lite/geometry';
 import type { MeshData } from '@ifc-lite/geometry';
 import { NOOP_LOAD_TRACE } from '@ifc-lite/load-trace';
@@ -429,8 +430,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
       lastGeometryLengthRef.current = currentLength;
     }
 
-    // ── Fit camera ──
-    //
+    // Fit a loaded source once; authoring keeps the user camera.
     // Pre-#871 the branching here was structured as
     //   if (coordinateInfo?.shiftedBounds) { try to fit }
     //   else if (geometry.length > 0) { fall back }
@@ -444,7 +444,8 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
     // to the user. Compute the size first so the branch reflects
     // whether the data is actually usable, not just whether the
     // property exists.
-    if (!cameraFittedRef.current) {
+    if (useViewerStore.getState().session) cameraFittedRef.current = true;
+    else if (!cameraFittedRef.current) {
       const fitStart = performance.now();
       // The adaptive fit picks an SE-isometric pose for compact models
       // (today's behaviour) but switches to a side-on-along-the-alignment

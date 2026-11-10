@@ -19,7 +19,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@ifc-lite/embed-protocol": "workspace:^"
+    "@ifc-lite/embed-protocol": "workspace:^",
+    "@ifc-lite/wasm-lifecycle": "workspace:^"
   },
   "devDependencies": {
     "@mergifyio/vitest": "^2026.10.11",

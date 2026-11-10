@@ -13,7 +13,7 @@
  * so a handle and a typed value cannot disagree.
  */
 
-import { WallTopRow, setWallHeightFixed } from './WallTopRow';
+import { WallTopRow, readWallTop, setWallHeightFixed } from './WallTopRow';
 import { resolveWallTop, typeWallHeight } from '@/lib/commands/modeling/wall-top';
 import { getCommandRuntime } from '@/lib/commands/modeling/runtime';
 import { planeZ } from '@/lib/commands/modeling/commands/placement-shared';
@@ -124,6 +124,8 @@ export function SelectionDimensions({ selection }: { selection: InspectorSelecti
   const mutationVersion = useViewerStore((s) => s.mutationVersion);
   const measured = useMemo(() => { void mutationVersion; return measure(selection); }, [selection, mutationVersion]);
   const { modelId, expressId } = selection;
+  const wallTop = measured.kind === 'wall' ? readWallTop(modelId, expressId) : null;
+  const heightFrom = wallTop?.top === 'storeyAbove' ? wallTop.target?.from : undefined;
 
   return (
     <InspectorSection title={t('modelInspector.dims.title')}>
@@ -131,8 +133,9 @@ export function SelectionDimensions({ selection }: { selection: InspectorSelecti
         <>
           <MetreRow param="Length" value={measured.length} />
           <MetreRow param="Thickness" value={measured.thickness} onCommit={(thickness) => setElementDimensions(modelId, expressId, { kind: 'wall', thickness })} />
-          {/* Typing a height makes the wall fixed-height, as in the Wall tool (#9013). */}
-          <MetreRow param="Height" value={measured.height} onCommit={(height) => setWallHeightFixed(modelId, expressId, height)} />
+          {/* A resolved storey drives this height; fixed fallback heights remain editable. */}
+          <MetreRow param="Height" value={measured.height} onCommit={heightFrom ? undefined : (height) => setWallHeightFixed(modelId, expressId, height)} />
+          {heightFrom && <InspectorCaption>{t('storeyManager.wallHeightFrom', { storey: heightFrom })}</InspectorCaption>}
           <WallTopRow modelId={modelId} wallId={expressId} />
         </>
       )}

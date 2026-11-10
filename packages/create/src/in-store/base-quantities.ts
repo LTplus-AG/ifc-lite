@@ -23,6 +23,7 @@
  * (`base-quantities-refresh.ts`, behind the viewer's opt-in setting).
  */
 
+import { additionalQuantityRows } from './base-quantities-additional.js';
 import { QuantityType, type QuantitySet } from '@ifc-lite/data';
 import { uuidToIfcGuid, uuidV5 } from '@ifc-lite/encoding';
 import { StoreEditor, type MutablePropertyView } from '@ifc-lite/mutations';
@@ -37,13 +38,15 @@ import {
 } from './base-quantities-measure.js';
 import { asExpressIdRef, readAttributes, resolvePlacementChain } from './edit/placement-core.js';
 import { getModelLengthUnitScale } from './edit/length-unit-scale.js';
-import { resolveLinearElementChain } from './edit/linear-element-edit.js';
+import { readLinearBodyMeasures } from './edit/linear-element-edit.js';
 import { resolveSlabEditChain } from './edit/slab-edit.js';
 import { slabExtrusionFrame } from './edit/slab-edit-frame.js';
 import { localBodyExtent, placedBodyExtent } from './resolve-host.js';
 import { fileOpeningsOf } from './base-quantities-openings.js';
-import { BASE_QUANTITY_TYPES, SLAB_TYPES, WALL_TYPES, effectiveElementType } from './base-quantities-kinds.js';
+import { baseQuantitySetName, BASE_QUANTITY_TYPES, LINEAR_TYPES, SLAB_TYPES, WALL_TYPES, effectiveElementType } from './base-quantities-kinds.js';
+import { roofQuantityRows } from './base-quantities-roof.js';
 import { wallBodyOutline } from './wall-join.js';
+import { ROOF_ATTACHMENT } from './edit/wall-base-solid.js';
 import { readWallJoinTarget } from './wall-join-read.js';
 
 /** A quantity in SI, on its way to the file's own units. */
@@ -90,7 +93,7 @@ function revisionOf(dataStore: IfcDataStore, view: MutablePropertyView): Revisio
  */
 function overlayOpenings(dataStore: IfcDataStore, view: MutablePropertyView, editor: StoreEditor): Map<number, number[]> {
   const byHost = new Map<number, number[]>();
-  for (const rel of view.getNewEntitiesOfType('IFCRELVOIDSELEMENT')) {
+  for (const rel of view.readNewEntitiesOfType?.('IFCRELVOIDSELEMENT') ?? view.getNewEntitiesOfType('IFCRELVOIDSELEMENT')) {
     const attributes = readAttributes(dataStore, view, editor, rel.expressId);
     const host = asExpressIdRef(attributes?.[4]);
     const opening = asExpressIdRef(attributes?.[5]);
@@ -193,8 +196,8 @@ function wallSet(reading: Reading, id: number): QuantitySet | null {
     ['GrossSideArea', QuantityType.Area, side],
     ['GrossVolume', QuantityType.Volume, volume],
   ];
-  // A wall's openings subtract from its net side area and volume, and from its
-  // footprint where they reach the floor: a door does, a window with a sill does not.
+  // Roof cuts invalidate prism height/areas/volume; the floor footprint remains unchanged.
+  if (reading.view.getPropertyValue(id, ROOF_ATTACHMENT, 'Clipped') === true) return toQuantitySet(reading.dataStore, reading.scale, 'Qto_WallBaseQuantities', rows.filter(([name]) => name === 'Length' || name === 'Width' || name.endsWith(footprintKey)));
   const boxes = openingBoxes(reading, id);
   const body = boxes && (boxes.length === 0 ? null : hostBox(reading, id));
   // Only an opening that meets the body cuts it; one moved clear of it changes nothing.
@@ -279,6 +282,12 @@ function slabLikeSet(reading: Reading, id: number, isRoof: boolean): QuantitySet
   return toQuantitySet(dataStore, scale, 'Qto_SlabBaseQuantities', rows);
 }
 
+/** A pitched roof (`roof-footprint.ts`): its planes' sloped and plan areas. It has no openings of its own to net. */
+function pitchedRoofSet(reading: Reading, id: number): QuantitySet | null {
+  const rows = roofQuantityRows(reading.dataStore, reading.view, reading.editor, id, reading.scale, reading.openingsOf(id));
+  return rows ? toQuantitySet(reading.dataStore, reading.scale, 'Qto_RoofBaseQuantities', rows) : null;
+}
+
 /** Whether a slab the plan readers refuse for its turn about the vertical is otherwise upright. */
 function uprightAfterTurn(reading: Reading, id: number, solidId: number): boolean {
   const { dataStore, view, editor } = reading;
@@ -291,7 +300,7 @@ function uprightAfterTurn(reading: Reading, id: number, solidId: number): boolea
 
 function linearSet(reading: Reading, id: number, type: string): QuantitySet | null {
   const { dataStore, view, editor, scale } = reading;
-  const chain = resolveLinearElementChain(dataStore, view, editor, id, scale);
+  const chain = readLinearBodyMeasures(dataStore, view, editor, id, scale);
   if (!chain) return null;
   const section = sectionMeasures(chain.profile, chain.profileWidth, chain.profileHeight);
   if (!section) return null;
@@ -324,8 +333,10 @@ function deriveSet(dataStore: IfcDataStore, view: MutablePropertyView, expressId
   try {
     const { editor } = revision;
     const reading: Reading = { dataStore, view, editor, scale: getModelLengthUnitScale(dataStore), openingsOf: (hostId) => openingsOf({ editor }, hostId) };
-    const set = WALL_TYPES.has(type) ? wallSet(reading, expressId)
-      : SLAB_TYPES.has(type) ? slabLikeSet(reading, expressId, type === 'IFCROOF') : linearSet(reading, expressId, type);
+    const extra = additionalQuantityRows({ dataStore, view, editor }, expressId, type);
+    const set = extra ? toQuantitySet(dataStore, reading.scale, baseQuantitySetName(type)!, extra) : WALL_TYPES.has(type) ? wallSet(reading, expressId)
+      : SLAB_TYPES.has(type) ? slabLikeSet(reading, expressId, type === 'IFCROOF') ?? (type === 'IFCROOF' ? pitchedRoofSet(reading, expressId) : null)
+        : LINEAR_TYPES.has(type) ? linearSet(reading, expressId, type) : null;
     return set ? { set, reading } : null;
   } catch (error) {
     console.warn(`[quantities] #${expressId} has no base quantities: its geometry could not be read`, error);

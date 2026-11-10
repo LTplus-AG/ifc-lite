@@ -10,18 +10,22 @@
  * Backspace drops the last). The bar's class segment picks the builder
  * (`addSlab` / `addRoof` / `addPlate`); Thickness is that class's default.
  * A floor slab hangs from the workplane, so its top is the level and stays
- * there when its thickness changes (#9198); a roof or plate sits on the plane.
+ * there when its thickness changes (#9198); a roof or plate sits on the plane,
+ * which the session raises to the top of the walls for a roof (#9202).
  * Each outline is one transaction, one undo step.
  */
 
+import { roofGhostMeshes } from './roof-place-ghost.js';
+import { nextRoof, roofEdgeSlopes } from './roof-place-params.js';
 import { SlabPlaceBar } from '@/components/viewer/tools/command/PlacementBars';
 import { SlabPlaceScene } from '@/components/viewer/tools/command/SlabPlaceScene';
 import type { SlabClass } from '@/store/slices/authoringDefaultsSlice';
+import type { TranslationKey } from '@/i18n';
 import type { ViewerState } from '@/store';
 import { commandGhostId } from '../ghost.js';
 import { prismGhostMesh } from '../ghost-shapes.js';
 import type { CommandContext, CommandField, ModelingCommand } from '../types.js';
-import { defaultsField, dimOf, planeZ } from './placement-shared.js';
+import { defaultsField, dimOf, planeHeightField, planeZ } from './placement-shared.js';
 import {
   closesPolygon,
   initSlabGesture,
@@ -50,6 +54,17 @@ const FIELDS: readonly CommandField<SlabPlaceGesture>[] = [
     hidden: (g) => g.mode !== 'rectangle', read: rectSide(1), write: (g, v) => ({ ...g, depth: Math.abs(v) }),
   },
   defaultsField('thickness', slabClassOf, 'Thickness', 'modelingCommand.field.thickness'),
+  planeHeightField(),
+  {
+    id: 'roofPitch', labelKey: 'modelingCommand.roof.pitch', unit: 'deg', group: 'roof',
+    hidden: (_g, ctx) => slabClassOf(ctx) !== 'roof', read: (g) => g.roof.pitch,
+    write: (g, pitch) => ({ ...g, roof: { ...g.roof, pitch: Math.max(0, Math.min(85, pitch)), overrides: {} } }),
+  },
+  {
+    id: 'roofOverhang', labelKey: 'modelingCommand.roof.overhang', unit: 'm', group: 'roof',
+    hidden: (_g, ctx) => slabClassOf(ctx) !== 'roof', read: (g) => g.roof.overhang,
+    write: (g, overhang) => ({ ...g, roof: { ...g.roof, overhang: Math.max(0, overhang) } }),
+  },
 ];
 
 /** The builder for each class; slab, roof and plate take the same params. */
@@ -69,10 +84,19 @@ function slabParams(g: SlabPlaceGesture, cls: SlabClass, z: number, thickness: n
   return { Position: [rect.min[0], rect.min[1], z], Width: rect.width, Depth: rect.depth, Thickness: thickness, ...extrusion };
 }
 
+const SLAB_CLASS_TITLES: Record<SlabClass, TranslationKey | undefined> = {
+  slab: undefined,
+  roof: 'modelWorkspace.tool.roof',
+  plate: 'modelingCommand.class.plate',
+};
+
 export const SLAB_PLACE: ModelingCommand<SlabPlaceGesture> = {
   id: 'slab.place',
   labelKey: 'modelingCommand.slab.label',
   hud: {
+    // The rail's Roof entry is this command: the bar says what is being drawn,
+    // roof or plate, and a slab keeps the command's own label.
+    title: (s) => SLAB_CLASS_TITLES[s.authoringDefaults.slabClass],
     Bar: SlabPlaceBar,
     Scene: SlabPlaceScene,
     hint: (g) => {
@@ -105,14 +129,29 @@ export const SLAB_PLACE: ModelingCommand<SlabPlaceGesture> = {
     if (tx.storeyId === null) throw new Error('No storey to draw on');
     const cls = tx.store.authoringDefaults.slabClass;
     const thickness = dimOf({ get: () => tx.store }, cls, 'Thickness');
-    const made = BUILDERS[cls](tx.store)(tx.modelId, tx.storeyId, slabParams(g, cls, planeZ(tx.workplane), thickness));
+    const params = slabParams(g, cls, planeZ(tx.workplane), thickness);
+    const outline = g.mode === 'polygon' ? g.points : (() => {
+      const r = rectangleExtent(g)!;
+      return [[r.min[0], r.min[1]], [r.min[0] + r.width, r.min[1]], [r.min[0] + r.width, r.min[1] + r.depth], [r.min[0], r.min[1] + r.depth]] as const;
+    })();
+    const slopes = cls === 'roof' ? roofEdgeSlopes(g.roof, outline) : [];
+    const footprintRoof = slopes.some(slope => slope > 0) || g.roof.overhang > 0;
+    const made = cls === 'roof'
+      ? tx.store.addRoof(tx.modelId, tx.storeyId, footprintRoof ? { ...params, EdgeSlopes: slopes, Overhang: g.roof.overhang } : params)
+      : BUILDERS[cls](tx.store)(tx.modelId, tx.storeyId, params);
     if ('error' in made) throw new Error(`Couldn't add the ${cls}: ${made.error}`);
     return { created: [made.expressId], authored: [made.expressId], deleted: [], remesh: [made.expressId], select: [made.expressId] };
   },
-  afterCommit: (g) => initSlabGesture(g.mode),
+  afterCommit: (g) => ({ ...initSlabGesture(g.mode), roof: nextRoof(g.roof) }),
   ghost(g, ctx) {
     if (!ctx.workplane) return [];
     const cls = slabClassOf(ctx);
+    if (cls === 'roof') {
+      const r = rectangleExtent(g);
+      const outline = g.mode === 'polygon' ? previewOutline(g) : r
+        ? [[r.min[0], r.min[1]], [r.min[0] + r.width, r.min[1]], [r.min[0] + r.width, r.min[1] + r.depth], [r.min[0], r.min[1] + r.depth]] as const : null;
+      return outline ? roofGhostMeshes(ctx.workplane, outline, g.roof, dimOf(ctx, cls, 'Thickness'), commandGhostId(ctx.get())) : [];
+    }
     const [z0, z1] = slabBodyRange(cls, dimOf(ctx, cls, 'Thickness'));
     const mesh = prismGhostMesh(ctx.workplane, previewOutline(g), z0, z1, commandGhostId(ctx.get()));
     return mesh ? [mesh] : [];

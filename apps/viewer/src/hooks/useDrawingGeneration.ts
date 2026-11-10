@@ -16,7 +16,7 @@ import type { IfcSourceBytes } from '@ifc-lite/parser';
  * - Section plane change detection with overlap protection
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import {
   Drawing2DGenerator,
   createSectionConfig,
@@ -27,7 +27,7 @@ import {
   type SectionConfig,
   type ProfileEntry,
 } from '@ifc-lite/drawing-2d';
-import { createDrawingRequestQueue } from './drawingRequestQueue.js';
+import { useDrawingRequests } from './useDrawingRequests.js';
 import { createMeshOutlineProvider, type MeshOutline2dFn } from './meshOutlineProvider.js';
 import { type GeometryResult } from '@ifc-lite/geometry';
 import { getWholeSourceForWorker, parseProfilesFlat } from '@/lib/overlay-parse/index.js';
@@ -45,7 +45,7 @@ import { ifcToViewerAxes } from '@/lib/geo/coordinate-frame';
 import { useDrawingRtcContext } from './useDrawingRtcContext.js';
 import { FIRST_SECTION_PLANE_NAME } from '@/lib/section/section-plane-set';
 import { restoredCutPosition } from '@/lib/section/section-distance';
-import { markActiveDrawingGenerationCompleted, markActiveDrawingGenerationStarted } from '@/lib/drawing/active-canvas-snapshot';
+import { markActiveDrawingGenerationCompleted } from '@/lib/drawing/active-canvas-snapshot';
 import { constructionProjectionEnabled } from '@/lib/drawing/construction-projection';
 // The winding-robust Rust `meshOutline2d` binding (issue #979) is gitignored →
 // CI-built, so reference it defensively: against an older wasm bundle it's
@@ -127,7 +127,7 @@ interface UseDrawingGenerationParams {
   activeTool: string;
   drawing: Drawing2D | null;
   // Store actions
-  setDrawing: (d: Drawing2D | null) => void;
+  setDrawing: (d: Drawing2D | null, generatedAt?: UseDrawingGenerationParams['sectionPlane']) => void;
   setDrawingStatus: (s: 'idle' | 'generating' | 'ready' | 'error') => void;
   setDrawingProgress: (p: number, phase: string) => void;
   setDrawingError: (e: string | null) => void;
@@ -874,7 +874,7 @@ export function useDrawingGeneration({
 
         completedDrawing = hybridDrawing;
       }
-      setDrawing(completedDrawing); markActiveDrawingGenerationCompleted(completedDrawing);
+      setDrawing(completedDrawing, sectionPlane); markActiveDrawingGenerationCompleted(completedDrawing);
 
       // Remember the SectionConfig that produced this view so the markup
       // persistence bridge (issue #4153) can save it alongside the results —
@@ -911,17 +911,8 @@ export function useDrawingGeneration({
   ]);
 
   // All entry points share one queue; superseded cuts cannot publish over newer inputs (#3921).
-  const queueRef = useRef<ReturnType<typeof createDrawingRequestQueue> | null>(null);
-  if (!queueRef.current) queueRef.current = createDrawingRequestQueue();
-  const queue = queueRef.current;
-  const [isRegenerating, setIsRegenerating] = useState(false);
-  const generateDrawing = useCallback((isRegenerate = false) => {
-    markActiveDrawingGenerationStarted(); return queue.request(async isCurrent => {
-      setIsRegenerating(isRegenerate);
-      try { await computeDrawing(isRegenerate, isCurrent); }
-      finally { setIsRegenerating(false); }
-    }); }, [computeDrawing, queue]);
-  const doRegenerate = useCallback(() => generateDrawing(true), [generateDrawing]);
+  const { queue, generateDrawing, doRegenerate, isRegenerating } =
+    useDrawingRequests({ computeDrawing, drawing, setDrawingStatus, setDrawingError });
 
   // Restore the persisted section cut on reload (issue #4153 gap):
   // `useDrawing2DPersistence.ts`'s restore path loaded a saved model's
@@ -1024,9 +1015,9 @@ export function useDrawingGeneration({
     }
     if (activated || changed || planeChanged || openedEmpty) {
       const regenerate = !activated && !changed && !openedEmpty && planeChanged;
+      // useDrawingRequests reports a current failure; a stale one must not overwrite the status.
       void generateDrawing(regenerate).catch(error => {
         console.error('Automatic drawing request failed:', error);
-        setDrawingError(error instanceof Error ? error.message : 'Generation failed');
       });
     }
   });

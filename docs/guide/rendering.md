@@ -105,6 +105,31 @@ asynchronous waits can replace the image being exported, even at DPR1.
 Captures reject a refused render before waiting for completion or reading the
 canvas, so an earlier frame cannot stand in for the requested capture.
 
+### Mesh-only pages: `@ifc-lite/renderer/core`
+
+`@ifc-lite/renderer/core` exports the same `Renderer` and the same surface
+without point-cloud rendering and BIM ↔ scan deviation. Import from it when a
+page never loads a point cloud, and the bundler leaves out the point splat
+pipeline and its shader, the per-asset spatial index, the point picker,
+eye-dome lighting and the deviation compute pipeline:
+
+```typescript
+import { Renderer } from '@ifc-lite/renderer/core';
+
+const canvas = document.getElementById('viewer') as HTMLCanvasElement;
+const renderer = new Renderer(canvas);
+await renderer.init();
+```
+
+On a renderer from this entry, `setPointClouds`, `addPointClouds`,
+`beginPointCloudStream`, `computeDeviations`, `readDeviationAssetStats` and
+`readDeviationDistances` throw an error that names `@ifc-lite/renderer`;
+`getPointCloudAssetCount()` and `getPointCloudPointCount()` return 0. The
+`PointCloudRenderer`, `PointRenderPipeline` and deviation-statistics exports
+are only on the package root. Importing `@ifc-lite/renderer` anywhere in the
+same program installs point-cloud support for every `Renderer`, including
+ones built from the core entry.
+
 ## Appearance triangle mapping
 
 `expandAppearanceCorners(mesh, sourceIndices, cornerUvs, targetIndices, targetCornerNormals, targetVertexCount)` binds

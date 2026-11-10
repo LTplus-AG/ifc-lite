@@ -53,8 +53,11 @@ If you use the bundled `NativeBridge`, your Tauri shell must register these Rust
 
 | Event | Payload |
 |-------|---------|
+| `geometry-batch` | A batch of mesh data with its progress |
 | `geometry-packed-batch` | A packed batch of mesh data |
 | `geometry-color-update` | Per-element color updates |
+
+Tauri event names are global to the app, so `get_geometry_streaming` receives a `jobId` (a random string, one per stream) and the shell should copy it into every event payload it emits for that stream as `jobId`. The bridge drops a tagged event whose `jobId` belongs to another stream, so two streams running at once never receive each other's batches. Events without a `jobId` are still accepted for older shells, but such a shell must not run two streams at once.
 
 The native commands wrap the `ifc-lite-core` / `ifc-lite-geometry` Rust crates directly (no WASM overhead). Your shell is also free to add its own commands for native file dialogs, filesystem access, preferences, and on-disk caching.
 

@@ -357,6 +357,7 @@ function rebuildMesh(
   if (source.ifcType !== undefined) clippedMesh.ifcType = source.ifcType;
   if (source.modelIndex !== undefined) clippedMesh.modelIndex = source.modelIndex;
   if (source.shadingColor !== undefined) clippedMesh.shadingColor = source.shadingColor;
+  if (source.materialId !== undefined) clippedMesh.materialId = source.materialId;
   // `origin` is carried through UNCHANGED and `positions` stay local: the
   // whole no-double-fold contract of this module.
   if (source.origin !== undefined) clippedMesh.origin = source.origin;

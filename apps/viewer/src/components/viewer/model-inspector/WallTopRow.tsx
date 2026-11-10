@@ -9,6 +9,7 @@
  */
 
 import { useMemo } from 'react';
+import { parsePropertyValue } from '@ifc-lite/encoding';
 import { NEXT_STOREY_ABOVE, STOREY_ATTACHMENT_PSET, readStoreyInventory, readTopAttachment } from '@ifc-lite/create';
 import { PropertyValueType } from '@ifc-lite/data';
 import { useViewerStore } from '@/store';
@@ -19,20 +20,25 @@ import { effectiveStoreyId } from '@/lib/effective-storey';
 import { modelStoreys } from '@/lib/commands/modeling/workspace-storeys';
 import { modelEditTarget } from '@/store/slices/mutation-modelling-records';
 import type { WallTop } from '@/store/slices/authoringDefaultsSlice';
+import { storeyAttachmentDisplay } from '@/lib/actions/storey-attachment-display';
 import { InspectorRow } from './InspectorControls';
 import { runInspectorEdit, setWallDimensions } from './inspector-edits';
 import { fixWallTop } from '@/lib/commands/modeling/wall-top-fix';
 import { MIN_ATTACHED_HEIGHT } from '@/lib/commands/modeling/wall-top';
 
-function readWallTop(modelId: string, wallId: number): { top: WallTop; target: string | null } {
+export function readWallTop(modelId: string, wallId: number): { top: WallTop; target: { text: string; raw: string; from?: string } | null } {
   const s = useViewerStore.getState();
   const target = modelEditTarget(s, modelId);
   if (!target) return { top: 'fixed', target: null };
   const inventory = readStoreyInventory(target.dataStore, target.view);
+  const raw = target.view.getPropertyValue(wallId, STOREY_ATTACHMENT_PSET, 'TopConstraint');
   const attachment = readTopAttachment(inventory, wallId);
-  if (!attachment) return { top: 'fixed', target: null };
-  const storey = inventory.storeys.find((candidate) => candidate.expressId === attachment.targetStoreyId);
-  return { top: 'storeyAbove', target: storey?.Name ?? null };
+  const constraint = parsePropertyValue(raw).displayValue;
+  const value = raw ?? inventory.storeys.find(storey => storey.expressId === attachment?.targetStoreyId)?.GlobalId;
+  const display = storeyAttachmentDisplay(s, modelId, wallId, value);
+  // The shared resolver decodes typed IfcLabels before resolving a storey.
+  const resolvedStorey = display?.from !== undefined;
+  return { top: attachment || resolvedStorey || constraint === NEXT_STOREY_ABOVE ? 'storeyAbove' : 'fixed', target: constraint === 'Fixed' ? null : display ?? (raw !== null && raw !== undefined && raw !== '' ? { text: constraint, raw: constraint } : null) };
 }
 
 /**
@@ -84,7 +90,7 @@ export function setWallTop(modelId: string, wallId: number, top: WallTop): boole
 export function WallTopRow({ modelId, wallId }: { modelId: string; wallId: number }) {
   const { t } = useTranslation();
   const mutationVersion = useViewerStore((s) => s.mutationVersion);
-  const { top, target } = useMemo(() => { void mutationVersion; return readWallTop(modelId, wallId); }, [modelId, wallId, mutationVersion]);
+  const { top, target } = useMemo(() => { void mutationVersion; return readWallTop(modelId, wallId); }, [modelId, wallId, mutationVersion, t]);
   return (
     <InspectorRow label={t('modelingCommand.wall.top')}>
       <div className="flex min-w-0 flex-col gap-0.5">
@@ -98,7 +104,7 @@ export function WallTopRow({ modelId, wallId }: { modelId: string; wallId: numbe
             { value: 'fixed', label: t('modelingCommand.wall.topFixed') },
           ]}
         />
-        {top === 'storeyAbove' && target && <span className="truncate text-2xs text-muted-foreground">{target}</span>}
+        {target && <span title={target.raw} className="whitespace-normal break-words text-2xs leading-snug text-muted-foreground">{target.text}</span>}
       </div>
     </InspectorRow>
   );

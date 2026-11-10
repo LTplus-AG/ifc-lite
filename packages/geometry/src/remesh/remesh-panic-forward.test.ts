@@ -79,8 +79,14 @@ afterEach(() => {
  * are production code. Regression diagnostic coverage for #6555. */
 async function harness() {
   const sent: RemeshWorkerOutbound[] = [];
+  const clientListeners = new Set<(event: MessageEvent<RemeshWorkerOutbound>) => void>();
   const clientWorker = {
-    onmessage: null as ((event: MessageEvent<RemeshWorkerOutbound>) => void) | null,
+    addEventListener(type: string, listener: (event: MessageEvent<RemeshWorkerOutbound>) => void) {
+      if (type === 'message') clientListeners.add(listener);
+    },
+    removeEventListener(type: string, listener: (event: MessageEvent<RemeshWorkerOutbound>) => void) {
+      if (type === 'message') clientListeners.delete(listener);
+    },
     terminate: vi.fn(),
     postMessage(message: RemeshWorkerInbound) {
       workerRealm.onmessage?.({ data: message } as MessageEvent<RemeshWorkerInbound>);
@@ -90,7 +96,7 @@ async function harness() {
     onmessage: null as ((event: MessageEvent<RemeshWorkerInbound>) => void) | null,
     postMessage(message: RemeshWorkerOutbound) {
       sent.push(message);
-      clientWorker.onmessage?.({ data: message } as MessageEvent<RemeshWorkerOutbound>);
+      for (const listener of clientListeners) listener({ data: message } as MessageEvent<RemeshWorkerOutbound>);
     },
   };
   vi.stubGlobal('self', workerRealm);

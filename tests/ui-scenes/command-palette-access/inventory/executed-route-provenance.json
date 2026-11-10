@@ -1,0 +1,76 @@
+{
+  "schema": "qualified-executed-route-overlay/v1",
+  "issue": 8947,
+  "inspectedHead": "08aaa281e791783db0ac7fe292eb86115c813511",
+  "executedProductionSource": "ef550cc27c82fc67e4b6f281a5c041f3c680b4bf",
+  "executedTree": "bdd6f1fe095e2de41126843c97a80c81c8a75147",
+  "sourceTransferQualification": "git diff ef550..08: only entity-tools test comment, E2E launcher precondition and documentation; production behavior unchanged. Focused receipt remains attributed to ef550, not relabeled as executed on 08.",
+  "evidenceClassDefinitions": {
+    "mounted-real-flow": "Actual mounted components and explicit observed actions, qualified for fixture seams and child reach.",
+    "pure-availability-ranking-or-catalogue": "Search/availability/translation/data structure only; no runtime dispatch inference.",
+    "canonical-action-without-mounted-palette": "Production canonical helper/row action invoked directly, or mounted primitive with substituted boundary. Not full mounted palette dispatch.",
+    "native-canonical-export-without-mounted-palette": "Installed packed QuickJS handler over parsed authored IFC; canonical export hook mounted, palette chain not joined."
+  },
+  "globalLimits": [
+    "No GPU proof anywhere in this overlay.",
+    "Host/panel presence grants no unclicked child behavior.",
+    "No overall acceptance, score, coverage percentage or completeness claim.",
+    "Source-count accounting is not feature coverage.",
+    "All pending parent jobs, source, fixtures, immutable reports/logs preserved; no builds/tests/browser/delegation/watch or process mutations performed."
+  ],
+  "evidence": {
+    "focusedResult": {
+      "path": "/home/louistrue/.t3/scratch/palette-access-ef550-focused-result-fd0b1714.json",
+      "sha256": "f4ca7a44b0186923d73eb98384dd953a9db6d17990e805b8f0ca75e9ebcce411"
+    },
+    "losslessLog": {
+      "path": "/home/louistrue/.t3/scratch/palette-access-ef550-focused-fd0b1714.log.gz",
+      "sha256Compressed": "3bc9de5691d31d37814ce71a4c5c49f0b4aa19dbf21724a77976ba95a0018184",
+      "sha256UncompressedVerified": "39961d90dff9bc952c080cdd394a09532c0013b2f129f067ce896021a5192ad8"
+    },
+    "rootCommand": "pnpm test --filter=@ifc-lite/viewer",
+    "host": "pop-os",
+    "request": "auto-65e2cf6f06724af7b87554c6814e8964",
+    "job": "e9a2f284-4409-4e59-8b0f-37c4fcd6452d",
+    "selectedFiles": 50,
+    "summary": {
+      "tests": 382,
+      "suites": 17,
+      "pass": 382,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "qualification": "Actual passed focused run only. Reported labels include suite labels; not a second test count."
+  },
+  "preservedInventory": {
+    "references": [
+      {
+        "repositoryPath": "tests/ui-scenes/command-palette-access/inventory/README.md",
+        "sha256": "da4e1033370c5eed24bfd7eb6ac290e33cb24ae229c90e06750996d634eff9c2"
+      },
+      {
+        "repositoryPath": "tests/ui-scenes/command-palette-access/inventory/final-source-reconciliation.md",
+        "sha256": "5b0b6d744fbe8879cdd3ae912d02570bdc5f3b080304a406f307f896cee16e5d"
+      },
+      {
+        "repositoryPath": "tests/ui-scenes/command-palette-access/inventory/source-controls.jsonl",
+        "sha256": "a950bbea5b7abe87bce3167fc104f9fe3322b0636983c76c0d4a210369526eb9"
+      },
+      {
+        "repositoryPath": "tests/ui-scenes/command-palette-access/inventory/provenance.json",
+        "sha256": "06aad90d35ae38d382aed5ae2611c3df9bab79a687a6a31b17a0db05158901dc"
+      }
+    ],
+    "identityCount": 813,
+    "originalAnchorCount": 3994,
+    "joinRule": "Join relatedOriginalRecords.id to source-controls.jsonl.id, retain originalSites unchanged by reference. All 813 identities and 3994 anchors stay in original file; no runtime verdict overwritten. Unmapped IDs stay unknown.",
+    "runtimeVerdictsRemain": "UNRUN"
+  },
+  "sourceReportSha256": "4b447da02785e89ac2ee4515b976c3f7f97fbeb32c719bbbd29841700862c3b6",
+  "bindingsFile": "executed-route-bindings.jsonl",
+  "bindingCount": 48,
+  "acceptance": "R2 UNACCEPTED. Qualified focused execution only; full suite and corrected GPU extension witness remain pending.",
+  "scopeBoundary": "The access contract ends at functioning configuration, review and launch controls. Remote publishing, paid provider calls, every geometry parameter and complete domain correctness are not implied by this overlay. Unvisited child routes remain explicit; a parent panel alone is not proof."
+}

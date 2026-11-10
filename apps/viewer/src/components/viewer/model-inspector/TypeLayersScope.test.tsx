@@ -15,7 +15,7 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { useViewerStore } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
-import { cleanup, click, render, type } from '@/test/render.js';
+import { cleanup, click, render, type, waitFor } from '@/test/render.js';
 import { MODEL_ID, STOREY, seedModelingSession } from '@/test/modeling-session-fixture';
 import '@/lib/commands/modeling/builtin';
 import { setRequestRemesh } from '@/lib/commands/modeling/transaction';
@@ -59,9 +59,16 @@ afterEach(() => {
   restoreRemesh();
 });
 
+/** The layer editor is its own chunk (#9296): render the inspector and wait until it has loaded. */
+async function renderWithLayers(): Promise<HTMLElement> {
+  const ui = render(<ModelInspectorPanel />);
+  await waitFor(() => ui.querySelector('[data-inspector-apply-layers]') !== null, 'the layer editor loads');
+  return ui;
+}
+
 describe('editing a shared type from the inspector (#9296)', () => {
-  it('says how many elements of the type will change before Apply, then changes all of them in one undo step', () => {
-    const ui = render(<ModelInspectorPanel />);
+  it('says how many elements of the type will change before Apply, then changes all of them in one undo step', async () => {
+    const ui = await renderWithLayers();
     assert.doesNotMatch(text(ui), /of this type/, 'the element scope makes no type claim');
     act(() => click(radio(ui, 'Type')));
     assert.match(text(ui), /Changes 2 elements of this type/, 'the count is shown before Apply');
@@ -76,9 +83,9 @@ describe('editing a shared type from the inspector (#9296)', () => {
     assert.deepEqual(walls.map(thickness), [.2, .2], 'one Undo puts both back');
   });
 
-  it('counts out an occurrence with its own layers, which keeps them when the type changes', () => {
+  it('counts out an occurrence with its own layers, which keeps them when the type changes', async () => {
     assert.ok(applyMaterialLayers(MODEL_ID, { kind: 'wall', target: 'element', elementId: walls[1], typeId, layers: [{ thickness: .15, material: null }] }) !== null);
-    const ui = render(<ModelInspectorPanel />);
+    const ui = await renderWithLayers();
     act(() => click(radio(ui, 'Type')));
     assert.match(text(ui), /Changes 1 element of this type.*1 uses a different layer set or material and keeps it/);
     type(ui.querySelector<HTMLInputElement>('input[aria-label="Layer 1 thickness in metres"]')!, '0.3');

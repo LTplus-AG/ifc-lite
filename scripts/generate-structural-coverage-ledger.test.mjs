@@ -194,6 +194,8 @@ ENDSEC;END-ISO-10303-21;`);
   assert.match(held[3], /typed IFCBOOLEAN in IfcReactionSelect/);
   assert.match(held[4], /reference to a missing record/);
   assert.match(held[5], /typed IFCBOOLEAN in IfcMeasure$/, "the [] suffix is stripped before the slot check");
+  const cyclic = { ...registry, selects: { ...registry.selects, IfcA: ['IfcB'], IfcB: ['IfcA'] } };
+  assert.throws(() => nonConforming(holders, 'IfcHolder', cyclic), /select IfcA nests in a cycle/);
 });
 
 function tree() {

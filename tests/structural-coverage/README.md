@@ -50,7 +50,7 @@ exists, the attribute count matches, a required slot is not `$`, a reference
 resolves to an entity the slot admits, a typed value sits only in a SELECT with
 value members, and a bare value only in a defined-type, enum or primitive slot.
 A file that fails gets no credit for the row. Not checked yet, so a convert pass
-can still overstate (R1 ruler work on #9668): aggregate shape and bounds (a
+can still overstate (tracked on #9668): aggregate shape and bounds (a
 scalar in a LIST slot), the kind of a bare value (an enum in a REAL slot), `*`
 outside derived slots, which select member a typed value is, enum values, and
 records of other entities. The registry is

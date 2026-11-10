@@ -42,23 +42,31 @@ function entityName(registry, keyword) {
   return names.get(registry).get(keyword);
 }
 
-/** Select nesting in the generated registries is shallow; deeper means a codegen cycle, not a converter defect. */
-const MAX_SELECT_DEPTH = 8;
-function selectDepth(depth, type) {
-  if (depth > MAX_SELECT_DEPTH) throw new Error(`select ${type} nests deeper than ${MAX_SELECT_DEPTH}: registry cycle?`);
+const acyclic = new WeakSet();
+/** Refuse a registry whose selects nest in a cycle: a codegen fault, not a converter defect. Checked once per registry. */
+function assertAcyclicSelects(registry) {
+  if (acyclic.has(registry)) return;
+  const state = new Map();
+  const visit = (type) => {
+    if (state.get(type) === 'open') throw new Error(`select ${type} nests in a cycle: the schema registry is malformed`);
+    if (state.has(type) || !Object.hasOwn(registry.selects, type)) return;
+    state.set(type, 'open');
+    for (const m of registry.selects[type]) visit(m);
+    state.set(type, 'done');
+  };
+  for (const type of Object.keys(registry.selects)) visit(type);
+  acyclic.add(registry);
 }
 
 /** Whether a slot of `type` accepts a reference to an entity named `target`. */
-function acceptsRef(registry, type, target, depth = 0) {
-  selectDepth(depth, type);
+function acceptsRef(registry, type, target) {
   if (Object.hasOwn(registry.entities, type)) return registry.entities[target]?.inheritanceChain.includes(type) ?? false;
-  return Object.hasOwn(registry.selects, type) && registry.selects[type].some((m) => acceptsRef(registry, m, target, depth + 1));
+  return Object.hasOwn(registry.selects, type) && registry.selects[type].some((m) => acceptsRef(registry, m, target));
 }
 
 /** Whether a SELECT of `type` has a non-entity member, so a typed value can fill it. */
-function acceptsValue(registry, type, depth = 0) {
-  selectDepth(depth, type);
-  return registry.selects[type].some((m) => !Object.hasOwn(registry.entities, m) && (!Object.hasOwn(registry.selects, m) || acceptsValue(registry, m, depth + 1)));
+function acceptsValue(registry, type) {
+  return registry.selects[type].some((m) => !Object.hasOwn(registry.entities, m) && (!Object.hasOwn(registry.selects, m) || acceptsValue(registry, m)));
 }
 
 /**
@@ -94,6 +102,7 @@ function slotMismatch(value, type, optional, registry, step) {
  * `{ id, why }` per record.
  */
 export function nonConforming(intermediate, entity, registry) {
+  assertAcyclicSelects(registry);
   const slots = registry.entities[entity]?.allAttributes;
   return intermediate.of(entity).flatMap((rec) => {
     if (!slots) return [{ id: rec.id, why: 'no such entity' }];

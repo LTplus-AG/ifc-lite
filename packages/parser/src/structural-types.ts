@@ -8,9 +8,9 @@
  * extractor stays orchestration and every later layer (query namespace,
  * properties card, serializer) has one place to import the contract from.
  *
- * Every cross-link is a globalId, not an expressId, matching the schedule
+ * Group/activity cross-links use globalIds, matching the schedule
  * extraction's contract: a consumer federating two models is never handed an
- * id it cannot place.
+ * id it cannot place. Physical links explicitly carry model-local expressIds.
  */
 
 import type { BoundaryConditionInfo, StructuralLoadInfo } from './structural-load-extractor.js';
@@ -27,6 +27,26 @@ export interface StructuralMemberInfo {
   predefinedType?: string;
   /** `IfcStructuralSurfaceMember.Thickness`, when the file carries it. */
   thickness?: number;
+  /** IFC4+ direction reference (model-local expressId). */
+  Axis?: number;
+  /** Physical products linked by assignment or IFC2X3 structural-element relations. */
+  physicalElementIds?: number[];
+  /** Relationship attributes, preserving each member/connection pair. */
+  IfcRelConnectsStructuralMember?: {
+    expressId: number;
+    RelatedStructuralConnection: number;
+    AdditionalConditions?: { expressId: number; type: string; name?: string; components: Record<string, number> };
+    SupportedLength?: number;
+    ConditionCoordinateSystem?: number;
+    ConnectionConstraint?: {
+      expressId: number;
+      EccentricityInX?: number;
+      EccentricityInY?: number;
+      EccentricityInZ?: number;
+      PointOnRelatingElement?: number;
+      PointOnRelatedElement?: number;
+    };
+  }[];
   /** Connections this member is joined to, via IfcRelConnectsStructuralMember. */
   connectionGlobalIds: string[];
   /** Activities applied to it, via IfcRelConnectsStructuralActivity. */
@@ -45,6 +65,9 @@ export interface StructuralConnectionInfo {
   objectType?: string;
   /** The support condition, resolved from `AppliedCondition`. */
   appliedCondition?: BoundaryConditionInfo;
+  /** IFC4+ placement reference (model-local expressId). */
+  ConditionCoordinateSystem?: number;
+  physicalElementIds?: number[];
   memberGlobalIds: string[];
   activityGlobalIds: string[];
   analysisModelGlobalIds: string[];
@@ -68,6 +91,7 @@ export interface StructuralActivityInfo {
   predefinedType?: string;
   /** `IfcStructuralActivity.GlobalOrLocal`, e.g. `GLOBAL_COORDS`. */
   globalOrLocal?: string;
+  ProjectedOrTrue?: string;
   /** `IfcStructuralAction.DestabilizingLoad`; absent on reactions. */
   destabilizingLoad?: boolean;
   /** `IfcStructuralActivity.AppliedLoad`, resolved. */
@@ -142,6 +166,8 @@ export interface StructuralExtraction {
   resultGroups: StructuralResultGroupInfo[];
   /** True if any structural entity was found (empty-state UI). */
   hasStructural: boolean;
+  /** Model-local physical product expressId → structural item expressIds; absent on an empty extraction. */
+  physicalElementStructuralItemIds?: Record<number, number[]>;
   /**
    * True when reading an activity's `AppliedLoad` hit one of the walk's own
    * bounds — the nesting cap, the node budget, or a cycle — and so returned

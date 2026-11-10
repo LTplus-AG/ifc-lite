@@ -8,7 +8,10 @@ import { refId } from './host-geometry-frame.js';
 
 /** Occurrence operation plus an independent style/type for mirrored doors.
  * A shared IfcDoorStyle (IFC2X3) or IfcDoorType must keep unselected users' hand. */
-export function mirrorDoorHandedness(store: IfcDataStore, editor: StoreEditor, products: ReadonlySet<number>): void {
+export function mirrorDoorHandedness(
+  store: IfcDataStore, editor: StoreEditor, products: ReadonlySet<number>,
+  referencing: (id: number) => readonly number[],
+): void {
   const view = editor.getMutationView(), reader = new AnchorEntityReader(store, view);
   const doors = new Set([...products].filter(id => liveEntityConforms(store, id, 'IfcDoor', view)));
   if (!doors.size) return;
@@ -52,10 +55,34 @@ export function mirrorDoorHandedness(store: IfcDataStore, editor: StoreEditor, p
     attributes[5] = `#${clone}`;
     editor.addEntity(rel.type, attributes as Parameters<StoreEditor['addEntity']>[1]);
   }
+  carryTypeAssociations(store, editor, reader, clones, referencing);
 }
 
 function flipped(value: unknown): string | null {
   if (typeof value !== 'string') return null;
   const result = value.replace(/LEFT|RIGHT/g, side => side === 'LEFT' ? 'RIGHT' : 'LEFT');
   return result === value ? null : result;
+}
+
+/** Retain inherited material/classification and declaration links. Batch each
+ * relationship once even when many mirrored types share its object list. */
+function carryTypeAssociations(
+  store: IfcDataStore, editor: StoreEditor, reader: AnchorEntityReader,
+  clones: ReadonlyMap<number, number>, referencing: (id: number) => readonly number[],
+): void {
+  const view = editor.getMutationView(), relations = new Set<number>();
+  for (const original of clones.keys()) for (const id of referencing(original)) relations.add(id);
+  for (const id of relations) {
+    const key = liveEntityConforms(store, id, 'IfcRelAssociates', view) ? 'RelatedObjects'
+      : liveEntityConforms(store, id, 'IfcRelDeclares', view) ? 'RelatedDefinitions' : null;
+    if (key === null) continue;
+    const rel = reader.entity(id)!;
+    const slot = rel.names.indexOf(key), related = rel.attributes[slot];
+    if (!Array.isArray(related)) throw new Error(`Mirror type association #${id} is unreadable`);
+    const ids = related.map(refId);
+    const added = ids.flatMap(original => original === null || !clones.has(original) ? [] : [clones.get(original)!]);
+    if (!added.length) continue;
+    if (ids.includes(null)) throw new Error(`Mirror type association #${id} has unreadable objects`);
+    editor.setPositionalAttribute(id, slot, [...new Set([...ids, ...added])].map(value => `#${value}`));
+  }
 }

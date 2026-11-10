@@ -133,7 +133,7 @@ export function mirrorElementsInStore(store: IfcDataStore, editor: StoreEditor, 
         }
       }
     }
-    mirrorDoorHandedness(store, draft, products);
+    mirrorDoorHandedness(store, draft, products, references);
     return selected;
   });
 }

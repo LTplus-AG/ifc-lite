@@ -18,7 +18,7 @@ export const traceGeometryWorkerMessage = createWorkerTraceHost({
     init: 'worker.init',
     'scan-shard': 'shard.scan',
     'prepass-streaming': 'prepass.scan',
-    'prepass-streaming-sharded': 'prepass.scan',
+    'prepass-streaming-sharded': 'prepass.sharded',
     'resolve-styles-shard': 'styles.shard',
     'finalize-styles': 'styles.finalize',
     'stream-chunk': 'geometry.firstChunk',
@@ -36,6 +36,6 @@ export const traceGeometryWorkerMessage = createWorkerTraceHost({
  * (#6993). Merely draining finished spans loses the still-running handler.
  */
 export function postPrepassEvent(event: unknown): void {
-  if ((event as { type?: unknown } | null)?.type === 'complete') traceGeometryWorkerMessage.flush('prepass.scan');
+  if ((event as { type?: unknown } | null)?.type === 'complete') { traceGeometryWorkerMessage.flush('prepass.scan'); traceGeometryWorkerMessage.flush('prepass.sharded'); }
   (self as unknown as Worker).postMessage({ type: 'prepass-stream', event });
 }

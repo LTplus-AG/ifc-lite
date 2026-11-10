@@ -82,6 +82,20 @@ export function extraction(ctx, file) {
   return cached(ctx, `read:${file.path}`, async () => indexExtraction(ctx.pkgs.parser.extractStructuralOnDemand(await storeOf(ctx, file))));
 }
 
+/**
+ * `extraction`, or null after recording why: a file the product cannot parse or
+ * extract is a measured problem for the row, never a probe error that hides the
+ * other files' results.
+ */
+export async function extractionOrProblem(ctx, file, problems) {
+  try {
+    return await extraction(ctx, file);
+  } catch (e) {
+    problems.push(`${file.path}: parse or extract threw: ${e.message}`);
+    return null;
+  }
+}
+
 function checkRecord(row, record, file, ix, types) {
   const problems = [];
   const where = `${file.path}#${record.id}`;
@@ -124,13 +138,8 @@ export default {
       let checked = 0;
       let anyHeld = false;
       for (const file of carriers) {
-        let ix;
-        try {
-          ix = await extraction(ctx, file);
-        } catch (e) {
-          problems.push(`${file.path}: parse or extract threw: ${e.message}`);
-          continue;
-        }
+        const ix = await extractionOrProblem(ctx, file, problems);
+        if (!ix) { checked++; continue; }
         for (const record of file.step.of(row.entity).slice(0, MAX_RECORDS)) {
           checked++;
           const r = checkRecord(row, record, file, ix, types);

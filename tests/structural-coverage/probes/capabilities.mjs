@@ -18,7 +18,7 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { verdict } from '../lib/values.mjs';
-import { extraction } from './read.mjs';
+import { extractionOrProblem } from './read.mjs';
 
 const MAX_LINKS_PER_FILE = 25;
 
@@ -50,14 +50,8 @@ const linkRead = {
     let checked = 0;
     let anyHeld = false;
     for (const [file, links] of linked) {
-      let ix;
-      try {
-        ix = await extraction(ctx, file);
-      } catch (e) {
-        problems.push(`${file.path}: parse or extract threw: ${e.message}`);
-        checked++;
-        continue;
-      }
+      const ix = await extractionOrProblem(ctx, file, problems);
+      if (!ix) { checked++; continue; }
       for (const [itemId, productId] of links.slice(0, MAX_LINKS_PER_FILE)) {
         checked++;
         const guid = file.step.get(productId)?.args[0];

@@ -26,6 +26,7 @@
 import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parseArgs } from 'node:util';
 import { isMainEntry } from '../../scripts/lib/is-main-entry.mjs';
 import { LEVELS, deriveCatalogue, notApplicable } from './catalogue.mjs';
 import { loadCorpus } from './lib/corpus.mjs';
@@ -169,16 +170,19 @@ function print(s) {
 }
 
 async function main(argv) {
-  const flag = (name) => { const i = argv.indexOf(name); return i !== -1 ? argv[i + 1] : null; };
-  // A valued flag given without its value must not silently run without it (no ratchet, or '--out' read as a path).
-  const valueless = ['--out', '--check'].filter((f) => argv.includes(f) && (!flag(f) || flag(f).startsWith('--')));
-  if (valueless.length) {
-    console.error(`score: ${valueless.join(', ')} needs a path`);
+  // Strict: a valued flag without its value, or a misspelt flag, exits 2 instead of running without the ratchet.
+  let values;
+  try {
+    ({ values } = parseArgs({ args: argv, strict: true, options: {
+      out: { type: 'string' }, check: { type: 'string' }, offline: { type: 'boolean' }, quiet: { type: 'boolean' },
+    } }));
+  } catch (e) {
+    console.error(`score: ${e.message}`);
     return 2;
   }
   const rel = (p) => relative(ROOT, p).split('\\').join('/');
-  const out = resolve(flag('--out') ?? join(ROOT, 'tests/structural-coverage/.out/summary.json'));
-  const check = flag('--check') ? resolve(flag('--check')) : null;
+  const out = resolve(values.out ?? join(ROOT, 'tests/structural-coverage/.out/summary.json'));
+  const check = values.check ? resolve(values.check) : null;
   if (check && (check === out || (existsSync(out) && realpathSync(check) === realpathSync(out)))) {
     console.error(`score: --out and --check both name ${rel(out)}; write the summary elsewhere, check it, then copy it over.`);
     return 2;
@@ -188,7 +192,7 @@ async function main(argv) {
   let summary;
   try {
     const { rows, tables } = deriveCatalogue(ROOT);
-    const corpus = loadCorpus(ROOT, { offline: argv.includes('--offline') });
+    const corpus = loadCorpus(ROOT, { offline: values.offline === true });
     const pkgs = await loadPackages(ROOT);
     const cells = await runProbes(rows, { root: ROOT, rows, tables, corpus, pkgs, cache: new Map() });
     summary = score(rows, cells, {
@@ -202,7 +206,7 @@ async function main(argv) {
   }
   mkdirSync(dirname(out), { recursive: true });
   writeFileSync(out, serialize(summary));
-  if (!argv.includes('--quiet')) print(summary);
+  if (!values.quiet) print(summary);
   console.log(`Summary written to ${rel(out)}`);
   if (baseline) {
     const problems = ratchet(baseline, summary);

@@ -8,9 +8,8 @@
  * Each step calls one in-store builder and lists, per entity it emits, the
  * attribute values (EXPRESS names, STEP-normalised: references to rooted
  * entities as their GlobalId, booleans as true/false) the exported record must
- * carry. `emits` may be a function of the schema where IFC2X3 spells a value
- * differently. `needs` names earlier steps whose results it uses; `schemas`
- * limits a step to the schemas that have its entities (omit it to run everywhere).
+ * carry. `needs` names earlier steps whose results it uses; `schemas` limits a
+ * step to the schemas that have its entities (omit it to run everywhere).
  *
  * To register a new builder: append a step. Nothing else changes.
  */
@@ -20,6 +19,18 @@ const G = {
   member: guid('Member'), connection: guid('Connection'), point: guid('PointAction'),
   linear: guid('LinearAction'), group: guid('LoadGroup'), loadCase: guid('LoadCase'), model: guid('AnalysisModel'),
 };
+
+/** The analysis model is loaded by the load groups the schema has; IFC2X3 has no load case. */
+const analysisModel = (id, schemas, needs, loadedBy) => ({
+  id,
+  builder: 'addStructuralAnalysisModelToStore',
+  schemas,
+  needs,
+  emits: { IfcStructuralAnalysisModel: { GlobalId: G.model, Name: 'Probe model', PredefinedType: 'LOADING_3D', LoadedBy: loadedBy } },
+  build: ({ create, editor, anchor, done }) => create.addStructuralAnalysisModelToStore(editor, anchor, {
+    Name: 'Probe model', GlobalId: G.model, PredefinedType: 'LOADING_3D', LoadGroupIds: needs.map((n) => done.get(n)),
+  }).analysisModelId,
+});
 
 export const SCENE = [
   {
@@ -33,13 +44,12 @@ export const SCENE = [
   {
     id: 'point-connection',
     builder: 'addStructuralPointConnectionToStore',
-    // IFC2X3 types stiffness as a measure with no boolean branch, so there only the name is expected.
-    emits: (schema) => ({
+    // IFC2X3 stiffness is a measure with no boolean branch. The IFC2X3 builder does not exist yet;
+    // when it lands, set the IFC2X3 expectation against its real output.
+    emits: {
       IfcStructuralPointConnection: { GlobalId: G.connection, Name: 'Probe support' },
-      IfcBoundaryNodeCondition: schema === 'IFC2X3'
-        ? { Name: 'Probe fixed' }
-        : { Name: 'Probe fixed', TranslationalStiffnessX: true, TranslationalStiffnessZ: true, RotationalStiffnessY: false },
-    }),
+      IfcBoundaryNodeCondition: { Name: 'Probe fixed', TranslationalStiffnessX: true, TranslationalStiffnessZ: true, RotationalStiffnessY: false },
+    },
     build: ({ create, editor, anchor }) => create.addStructuralPointConnectionToStore(editor, anchor, {
       Position: [0, 0, 0], Name: 'Probe support', GlobalId: G.connection,
       BoundaryCondition: { Name: 'Probe fixed', TranslationalStiffnessX: true, TranslationalStiffnessY: true, TranslationalStiffnessZ: true, RotationalStiffnessX: false, RotationalStiffnessY: false, RotationalStiffnessZ: false },
@@ -98,30 +108,11 @@ export const SCENE = [
       Name: 'Probe case', GlobalId: G.loadCase, ActionType: 'VARIABLE_Q', ActionSource: 'LIVE_LOAD_Q', SelfWeightCoefficients: [0, 0, -1],
     }).loadGroupId,
   },
-  {
-    id: 'analysis-model-ifc2x3',
-    builder: 'addStructuralAnalysisModelToStore',
-    schemas: ['IFC2X3'],
-    needs: ['load-group'],
-    emits: { IfcStructuralAnalysisModel: { GlobalId: G.model, Name: 'Probe model', PredefinedType: 'LOADING_3D', LoadedBy: [G.group] } },
-    build: ({ create, editor, anchor, done }) => create.addStructuralAnalysisModelToStore(editor, anchor, {
-      Name: 'Probe model', GlobalId: G.model, PredefinedType: 'LOADING_3D', LoadGroupIds: [done.get('load-group')],
-    }).analysisModelId,
-  },
-  {
-    id: 'analysis-model',
-    builder: 'addStructuralAnalysisModelToStore',
-    schemas: ['IFC4', 'IFC4X3'],
-    needs: ['load-group', 'load-case'],
-    emits: { IfcStructuralAnalysisModel: { GlobalId: G.model, Name: 'Probe model', PredefinedType: 'LOADING_3D', LoadedBy: [G.group, G.loadCase] } },
-    build: ({ create, editor, anchor, done }) => create.addStructuralAnalysisModelToStore(editor, anchor, {
-      Name: 'Probe model', GlobalId: G.model, PredefinedType: 'LOADING_3D', LoadGroupIds: [done.get('load-group'), done.get('load-case')],
-    }).analysisModelId,
-  },
+  analysisModel('analysis-model-ifc2x3', ['IFC2X3'], ['load-group'], [G.group]),
+  analysisModel('analysis-model', ['IFC4', 'IFC4X3'], ['load-group', 'load-case'], [G.group, G.loadCase]),
 ];
 
 export const stepsFor = (schema) => SCENE.filter((s) => !s.schemas || s.schemas.includes(schema));
-export const emitsOf = (step, schema) => (typeof step.emits === 'function' ? step.emits(schema) : step.emits);
 
 /** A blank one-storey model in `schema`, with the owner history IFC2X3 requires. */
 export function blankModel(schema) {

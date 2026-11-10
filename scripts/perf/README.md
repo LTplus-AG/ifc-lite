@@ -53,6 +53,19 @@ stay unchanged. RTC geometry probing is outlined so its refusal handling cannot
 enlarge the loop that filters every model record. The native instruction comparison and output counts are recorded in
 PR #9386; this is cost containment, not an end-to-end worker-pool speedup claim.
 
+Verdict: **accepted performance exception, user-approved 2026-11-10**. The
+matched native instruction comparison retains a small fixed regression for the
+correct diagnostic, with identical output counts and a passing full functional
+suite (official job `29f590e6`, PR #9386). Four levers were tried: vector
+pre-sizing, the retained four-byte logical-refusal token, lazy aggregate
+diagnostic storage, and a diagnostic handle in existing padding. Restoring
+the logical Result and diagnostic/stat aggregates to main's sizes left equal
+growth-call counts and the same growth-helper self-cost increase. The attribution verdict is a fixed
+code-placement/compiler effect, rather than new refusal recording work on
+accepted items. The latter two aggregate experiments were rejected and
+reverted. Detailed numbers and attribution stay in the PR; this is an approved
+correctness trade-off, not an end-to-end speedup or a wall-clock claim.
+
 Lesson: refusal-only reporting can still affect successful work through error
 layout. Shrinking an entire Result can also change its optimized callers;
 contain the cold payload while preserving the common carrier, then check the

@@ -1748,7 +1748,7 @@ dependencies = [
 
 [[package]]
 name = "ifc-lite-rhino-wasm"
-version = "28.2.0"
+version = "29.2.0"
 dependencies = [
  "ifc-lite-export",
  "js-sys",

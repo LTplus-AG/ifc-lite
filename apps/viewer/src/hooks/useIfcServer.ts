@@ -123,11 +123,11 @@ export function useIfcServer() {
      * inside the streaming batch callback below — a stale batch (or a stale
      * post-stream/post-parse result) writes nothing.
      */
-    isStale?: () => boolean,
-    signal?: AbortSignal,
-    modelId = useViewerStore.getState().activeModelId,
+    isStale: (() => boolean) | undefined,
+    signal: AbortSignal | undefined,
+    modelId: string,
   ): Promise<boolean> => {
-    cancelProperties();
+    cancelProperties(modelId);
     const { setProgress, setGeometryResult } = useViewerStore.getState();
     try {
       setProgress({ phase: 'Connecting to server', percent: 5 });

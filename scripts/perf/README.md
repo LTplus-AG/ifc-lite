@@ -8,32 +8,18 @@ Citations to `evidence/`, `tests/evidence/` and `docs/architecture/evidence/` pa
 at commit [`f98785c722`](https://github.com/LTplus-AG/ifc-lite/tree/f98785c722); the retained
 bundles left the tree in #9054.
 
-## Native result cache, phase 1 (`result_cache`, warm-load hillclimb)
+## Raycast keeps one index across visibility changes (#9504)
 
-**Shipped (opt-in, off by default). This is a lever for a repeat open, not for a first
-open.** `ifc_lite_processing::result_cache::ResultCache` stores the complete
-`ProcessingResult` of a full pass and replays it when the same source bytes, request and
-engine come back. A hit costs a SHA-256 over every source byte, plus reading and
-SHA-256-checking the entry, plus decoding it. That is O(source + entry), not O(1). A miss
-or the off mode runs the unchanged pipeline, and off hashes nothing. Design, key, format
-and trust model: `docs/architecture/native-result-cache.md`.
+**Shipped.** `collectVisibleMeshData` rebuilt its list on every ray, and the BVH was
+keyed on the visible list, so each hide or isolate change rebuilt the tree. The flat
+pieces are now collected once per pick-geometry revision, one BVH covers all of them,
+and visibility filters each ray's candidates. Instanced occurrences stay per-ray.
 
-Lessons:
-
-- **The existing fingerprints were not enough to prove replay.** The perf fingerprint
-  excludes text, materials, UVs, textures and instances. Serde skips `instance`,
-  `local_bounds`, `local_to_world` and `presentation`. A JSON round trip loses all of
-  these. `result_fingerprint` covers every field, including texture sharing, and is
-  written separately from the codec. A test mutates each field and requires the digest
-  to move.
-- **Key on the build, not on a revision constant.** Geometry changes land daily, and no
-  hand-bumped constant keeps up. `build.rs` digests the core, geometry and processing
-  sources, `Cargo.lock`, rustc, the target, the profile and the flags. A dozen
-  `IFC_LITE_*` environment knobs also change geometry at runtime, so they key too.
-- **Timing a warm hit.** Run `perf_probe <f> --cold --iters 1 --result-cache DIR --expect-cache
-  hit --json` in a fresh process. The JSON object `resultCache` holds this run's work.
-  The phase table on a hit is the producer's (`statsAreProducers`). Never cite it as
-  current work.
+Lesson: the freshness key is `getPickGeometryRevision()` plus draw-list identity.
+`meshDataMap.size` is not enough, because fragments can be replaced under the same ids
+(#4556). The renderer's `BVH` is separate from `@ifc-lite/spatial`'s (#5252), so a win
+in one does not carry to the other. The tree's typed-array layout is a heap win; the
+per-ray and post-hide wins come from the cache.
 
 ## Storey planners and the QuickJS runtime leave the boot path (#9200)
 
@@ -3067,6 +3053,21 @@ as well as JavaScript errors, and stop memory sampling on every exit path.
   byte-size verdict, not a measured load-time improvement. **Lesson:** inspect
   the complete HTML preload closure, and isolate shared state before assuming a
   dynamic panel import makes its dependencies lazy.
+- **STEP reals valued in the grammar walk (native instruction hillclimb,
+  2026-11-10):** `read_step_number` walked every literal once to admit it
+  (#7779) and then gave it to `fast_float2`, which walked it again. The walk
+  now folds digits and exponent as it goes; when the mantissa is at most 2^53
+  and the power of ten at most 22 in magnitude, one IEEE multiply or divide
+  is correctly rounded and therefore gives `fast_float2`'s bits (Clinger's
+  fast path; it also subsumes #7880's `N.` case). Everything else still
+  goes to `fast_float2`; integers of up to 18 digits take the walk's
+  mantissa. About 99.5% of the REAL literals in the tuning fixtures take the
+  exact path. Cold single-thread Callgrind, pipeline instructions:
+  advanced_model -5.4%, Holter -1.4%, schependomlaan -0.8%, FZK -0.2%,
+  ISSUE_129 -0.2%; ordered `perf_probe` mesh fingerprints identical on all
+  five, and a 200k-literal bit-for-bit test against `fast_float2`.
+  `parse_step_numeric` (generic, also `f32`) is unchanged: valuing in `f64`
+  then narrowing would round twice. Not a wall-time or browser claim.
 - **Firefox spatial-publication stall (#3983):** Chrome-only cold-load timing
   missed an engine-dependent entity-cache eviction cost. Georeference discovery
   runs through the property-set index during React rendering. Restarting a Map
@@ -3079,6 +3080,21 @@ as well as JavaScript errors, and stop memory sampling on every exit path.
   event-loop gaps and visible hierarchy readiness, and keep profiling runs apart
   from uninstrumented timing. A worker-complete event alone cannot establish that
   publishing its result leaves the UI responsive.
+- **Pooled orient/weld maps reset in O(mesh) (native instruction hillclimb,
+  2026-11-10):** the mesh orienter's vertex and edge maps and the weld's key
+  map are per-worker scratch (#3988), `clear()`ed before every mesh. A
+  non-empty `HashMap::clear` rewrites every bucket's control byte, so after one
+  large mesh every later mesh paid to wipe the large table: on Holter (109k
+  meshes) that memset was about 5% of pipeline instructions.
+  `scratch_map::reset_for` keeps a pooled table only while it is within 4x of
+  the pass's need and otherwise replaces it with one sized for the pass; the
+  maps are only probed and inserted into, never iterated, so capacity cannot
+  reach the output. Cold single-thread Callgrind, pipeline instructions:
+  Holter -4.7%, schependomlaan -2.4%, FZK -1.5%, advanced_model -1.0%,
+  ISSUE_129 -0.7%; ordered `perf_probe` mesh fingerprints identical on all
+  five. **Lesson:** pooling scratch turns `clear()` into a cost proportional to
+  the worst mesh a worker ever saw; check a pooled map's clear cost, not just
+  its allocation count. Not a wall-time or browser claim.
 - **Native cold-load working set (#3967):** immutable schema classification replaces
   contended global caches; completed BREP signatures are shared within one
   immutable source; the geometry scan supplies ordered georeferencing candidates
@@ -3236,6 +3252,21 @@ as well as JavaScript errors, and stop memory sampling on every exit path.
 Orientation reuses deterministic edge adjacency, triangle filters compact their existing index buffer, and welding/content hashing avoid duplicate map probes. Geometry policy, tolerances and traversal/output order remain unchanged. Own-layer native subset comparisons did not establish a meaningful full-load improvement; sampled leaf CPU and the cumulative result cannot establish a layer-specific gain. Preserve exact output and diagnostic oracles, including invalid/degenerate triangles and reused-buffer capacity. No isolated browser gain is established here; invalid Firefox cohorts and unrun follow-ups remain excluded. Owned-weld, sliver-incidence and alternate meshing experiments are not included.
 
 ### Dead ends (do NOT re-spike without a new mechanism)
+- **Forced inlining of entity-index dispatch (native instruction hillclimb,
+  2026-11-10):** forcing `EntityIndexStore::lookup` inline did not reduce pipeline
+  instructions on any of four tuning fixtures and exceeded the campaign's
+  regression ceiling on the structural fixture. Reverted. A large attributed
+  self-instruction share does not imply removable call overhead; let the compiler
+  choose unless a different mechanism is demonstrated. This was a cold,
+  single-thread Callgrind screen, not a wall-time or browser result.
+- **Early-exit columnar binary search (native instruction hillclimb,
+  2026-11-10):** replacing the standard library's fixed-iteration search with an
+  exact-match early return increased pipeline instructions on the structural and
+  architectural tuning fixtures. Reverted independently of the inlining trial.
+  Keep the standard search; fewer iterations are not necessarily fewer executed
+  instructions. Both trials failed the tuning gate, so the holdout and subsequent
+  identity/test/clippy/WASM acceptance gates were deliberately not run. No runtime
+  change survived and no browser speedup is claimed.
 - **Frame-invariant routing for plan-rotated voided walls** (#5739, PR #6035):
   the two routing fixes were NOT SHIPPED; both were measured on ISSUE_098 against the merge-base. With
   per-element local frames (the viewer default), the analytic prism cut's route

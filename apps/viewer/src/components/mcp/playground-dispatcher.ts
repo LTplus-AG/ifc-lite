@@ -91,6 +91,8 @@ import { playgroundCostTools } from './playground-cost';
 import { effectiveEntities, effectiveEntityCount, effectiveGlobalIdLookup, effectiveTypeCounts } from './playground-effective';
 import { playgroundContainmentChain, playgroundSpatialHierarchy } from './playground-spatial';
 import { playgroundGeometrySource } from './playground-geometry-source';
+import { assertDispatchActive, cancelledDispatch } from './playground-dispatch-cancellation';
+import { isAbortError } from '@/lib/runs/abort';
 
 // ── loaded-model handle ────────────────────────────────────────────────────
 
@@ -162,6 +164,8 @@ export interface ToolDispatchResult {
 
 /** Optional context surfaces the dispatcher can use beyond the model. */
 export interface DispatchContext {
+  /** Conversation cancellation; completed mutations still return their real result. */
+  signal?: AbortSignal;
   /** Refresh local model summaries after a successful entity mutation. */
   onModelChanged?: () => void;
   /** Inline 3D viewer controller. When absent, viewer_* tools fail with
@@ -429,7 +433,7 @@ function setCachedMeshes(key: string, meshed: ClashMeshes): void {
 /** Mesh the whole model once (in-browser, same path as PlaygroundViewer) and
  *  cache it. Throws UNSUPPORTED_OPERATION when the model carries no drawable
  *  geometry — clash needs tessellated solids, not quantity sets. */
-async function meshForClash(m: LoadedPlaygroundModel): Promise<ClashMeshes> {
+async function meshForClash(m: LoadedPlaygroundModel, signal?: AbortSignal): Promise<ClashMeshes> {
   const key = meshCacheKey(m);
   const pending = m.backend.getMutationView()?.hasPendingChanges() ?? false;
   const cached = pending ? undefined : getCachedMeshes(key);
@@ -442,12 +446,15 @@ async function meshForClash(m: LoadedPlaygroundModel): Promise<ClashMeshes> {
   const processor = new GeometryProcessor({ preferNative: false });
   try {
     await processor.init();
+    assertDispatchActive(signal);
     const source = await playgroundGeometrySource(m);
+    assertDispatchActive(signal);
     // @raw-entity-enumeration-ok the mesher takes the index parsed from source.bytes, which already includes pending edits.
     const result = await processor.process(
       source.bytes,
       source.store.entityIndex.byId as unknown as Map<number, unknown>,
     );
+    assertDispatchActive(signal);
     const meshes = result.meshes ?? [];
     if (meshes.length === 0) {
       throw new ToolExecutionError({
@@ -478,11 +485,11 @@ async function meshForClash(m: LoadedPlaygroundModel): Promise<ClashMeshes> {
 const lastClashResult = new Map<string, { result: ClashResult; coordinateInfo: CoordinateInfo | undefined }>();
 
 /** Run a rule set against a model's meshes, returning (and caching) the result. */
-async function runClashRules(m: LoadedPlaygroundModel, rules: ClashRule[]): Promise<ClashResult> {
-  const { meshes, coordinateInfo, store } = await meshForClash(m);
+async function runClashRules(m: LoadedPlaygroundModel, rules: ClashRule[], signal?: AbortSignal): Promise<ClashResult> {
+  const { meshes, coordinateInfo, store } = await meshForClash(m, signal);
   const { elements, exclusions } = elementsFromStep({ store, meshes, modelId: m.id });
   const engine = createClashEngine({ backend: 'ts' });
-  const result = await engine.run(elements, rules, { exclusions, maxCandidatePairs: CLASH_MAX_CANDIDATE_PAIRS });
+  const result = await engine.run(elements, rules, { exclusions, maxCandidatePairs: CLASH_MAX_CANDIDATE_PAIRS, signal });
   lastClashResult.set(meshCacheKey(m), { result, coordinateInfo });
   return result;
 }
@@ -788,7 +795,7 @@ const IMPLS: Record<string, ToolImpl> = { ...playgroundCostTools,
   },
 
   // ── Clash detection ───────────────────────────────────────────────────────
-  async clash_check(m, args) {
+  async clash_check(m, args, ctx) {
     const a = (args.a as string | undefined) ?? '*';
     const b = args.b as string | undefined;
     const mode = (args.mode as ClashMode | undefined) ?? 'hard';
@@ -808,7 +815,7 @@ const IMPLS: Record<string, ToolImpl> = { ...playgroundCostTools,
       ...(clearance != null ? { clearance } : {}),
     };
 
-    const result = await runClashRules(m, [rule]);
+    const result = await runClashRules(m, [rule], ctx.signal);
     const { rows, truncated } = topClashRows(result.clashes, CLASH_DISPLAY_CAP);
     const capNote = truncated
       ? ` Showing top ${truncated.shown} by penetration depth; ${truncated.dropped} more not shown.`
@@ -825,12 +832,12 @@ const IMPLS: Record<string, ToolImpl> = { ...playgroundCostTools,
       },
     };
   },
-  async clash_matrix(m, args) {
+  async clash_matrix(m, args, ctx) {
     const mode = (args.mode as ClashMode | undefined) ?? 'hard';
     const clearance = args.clearance as number | undefined;
     const rules = disciplineMatrixRules(mode, clearance);
 
-    const result = await runClashRules(m, rules);
+    const result = await runClashRules(m, rules, ctx.signal);
     const { rows, truncated } = topClashRows(result.clashes, CLASH_DISPLAY_CAP);
     const capNote = truncated
       ? ` Sampling top ${truncated.shown} by penetration depth; ${truncated.dropped} more not shown.`
@@ -851,7 +858,7 @@ const IMPLS: Record<string, ToolImpl> = { ...playgroundCostTools,
       },
     };
   },
-  async clash_bcf_export(m, args) {
+  async clash_bcf_export(m, args, ctx) {
     const groupBy = (args.group_by as GroupOptions['by'] | undefined) ?? 'cluster';
     const epsilon = args.cluster_epsilon as number | undefined;
     const status = args.status as string | undefined;
@@ -860,7 +867,7 @@ const IMPLS: Record<string, ToolImpl> = { ...playgroundCostTools,
     // Reuse the last clash run for this model; if there is none, run a default
     // all-vs-all hard self-clash so the tool works standalone (and caches it).
     const result = lastClashResult.get(meshCacheKey(m))?.result
-      ?? await runClashRules(m, [{ id: 'clash_check', name: 'all elements (self-clash)', a: '*', mode: 'hard' }]);
+      ?? await runClashRules(m, [{ id: 'clash_check', name: 'all elements (self-clash)', a: '*', mode: 'hard' }], ctx.signal);
     // The frame of the run above, recorded next to its result.
     const coordinateInfo = lastClashResult.get(meshCacheKey(m))?.coordinateInfo;
     if (result.summary.total === 0) {
@@ -930,11 +937,12 @@ const IMPLS: Record<string, ToolImpl> = { ...playgroundCostTools,
   },
 
   // ── bSDD (network — proxied through /api/bsdd to dodge CORS) ───────────
-  async bsdd_search(_m, args) {
+  async bsdd_search(_m, args, ctx) {
     const query = String(args.query ?? '').trim();
     if (!query) throw new ToolExecutionError({ code: ToolErrorCode.INVALID_INPUT, message: '`query` is required.' });
     try {
       const results = await PROXIED_BSDD.search(query);
+      assertDispatchActive(ctx.signal);
       const head = `bSDD search '${query}' — ${results.length} result(s)${results.length > 25 ? ', showing first 25' : ''}:`;
       const lines = results.slice(0, 25).map((r) => `• ${r.code || r.name} — ${r.name ?? ''}\n  ${r.uri}`);
       return { text: [head, ...lines].join('\n'), structured: { query, count: results.length, results: results.slice(0, 25) } };
@@ -942,11 +950,12 @@ const IMPLS: Record<string, ToolImpl> = { ...playgroundCostTools,
       throw rethrowBsdd(err, 'search');
     }
   },
-  async bsdd_class(_m, args) {
+  async bsdd_class(_m, args, ctx) {
     const ifcType = String(args.ifc_type ?? '');
     if (!ifcType) throw new ToolExecutionError({ code: ToolErrorCode.INVALID_INPUT, message: '`ifc_type` is required.' });
     try {
       const info = await PROXIED_BSDD.fetchClassInfo(ifcType);
+      assertDispatchActive(ctx.signal);
       if (!info) throw new ToolExecutionError({ code: ToolErrorCode.ENTITY_NOT_FOUND, message: `bSDD has no class for '${ifcType}'.` });
       const psetGroups = new Map<string, string[]>();
       for (const p of info.classProperties) {
@@ -1148,7 +1157,7 @@ const IMPLS: Record<string, ToolImpl> = { ...playgroundCostTools,
   },
 
   // ── IDS (parses + validates against the loaded model) ─────────────────
-  async ids_validate(m, args) {
+  async ids_validate(m, args, ctx) {
     const xml = resolveIdsXml(args);
     if (!xml) throw new ToolExecutionError({
       code: ToolErrorCode.INVALID_INPUT,
@@ -1165,7 +1174,7 @@ const IMPLS: Record<string, ToolImpl> = { ...playgroundCostTools,
       modelId: m.id,
       schemaVersion: m.store.schemaVersion,
       entityCount: effectiveEntityCount(m),
-    });
+    }, { onProgress: () => assertDispatchActive(ctx.signal) });
     const head = `IDS '${doc.info?.title ?? 'untitled'}' · ${report.summary.passedSpecifications}/${report.summary.totalSpecifications} specs passed (${report.summary.overallPassRate.toFixed(0)}%).`;
     const lines = report.specificationResults.map((s) => {
       const ok = s.status === 'pass';
@@ -1555,11 +1564,12 @@ const IMPLS: Record<string, ToolImpl> = { ...playgroundCostTools,
     return { text: lines.join('\n'), structured: { selection: enriched } };
   },
 
-  async bsdd_property_sets(_m, args) {
+  async bsdd_property_sets(_m, args, ctx) {
     const ifcType = String(args.ifc_type ?? '');
     if (!ifcType) throw new ToolExecutionError({ code: ToolErrorCode.INVALID_INPUT, message: '`ifc_type` is required.' });
     try {
       const psets = await PROXIED_BSDD.getPropertySets(ifcType);
+      assertDispatchActive(ctx.signal);
       const groups = Array.from(psets.entries()).map(([name, props]) => ({ name, properties: props }));
       const head = `bSDD property sets for ${ifcType} — ${groups.length} Pset(s):`;
       const lines = [head, ...groups.map((g) => `• ${g.name} (${g.properties.length} properties)`)];
@@ -1569,7 +1579,7 @@ const IMPLS: Record<string, ToolImpl> = { ...playgroundCostTools,
     }
   },
 
-  async bsdd_match(m, args) {
+  async bsdd_match(m, args, ctx) {
     // Find related bSDD classes for an entity by IFC type. Mirrors the
     // stdio MCP path: pull the entity's IFC type, then ask bSDD for related
     // dictionary classes.
@@ -1585,6 +1595,7 @@ const IMPLS: Record<string, ToolImpl> = { ...playgroundCostTools,
     const ifcType = m.store.entities.getTypeName(expressId) ?? 'Unknown';
     try {
       const candidates = await PROXIED_BSDD.searchRelatedClasses(ifcType);
+      assertDispatchActive(ctx.signal);
       const head = `bSDD candidates for ${ifcType} (#${expressId}) — ${candidates.length} match(es):`;
       const lines = [head, ...candidates.slice(0, 10).map((c) => `• ${c.code} — ${c.name} (${c.dictionaryUri})`)];
       if (candidates.length > 10) lines.push(`  … +${candidates.length - 10} more`);
@@ -1642,6 +1653,7 @@ const IMPLS: Record<string, ToolImpl> = { ...playgroundCostTools,
         break;
       }
       try {
+        assertDispatchActive(ctx.signal);
         const out = await impl(m, op.args ?? {}, ctx);
         results.push({ tool: op.tool, ok: true, text: out.text });
       } catch (err) {
@@ -1678,18 +1690,26 @@ const IMPLS: Record<string, ToolImpl> = { ...playgroundCostTools,
     // Use the multi-subscriber API so we don't replace whichever handler
     // the panel registered (which would silently kill live selection
     // updates everywhere else after the first wait_for_selection call).
-    const hits: import('./playground-viewer-types').SelectionHit[] = await new Promise((resolve) => {
+    const hits: import('./playground-viewer-types').SelectionHit[] = await new Promise((resolve, reject) => {
       let unsubscribe: (() => void) | null = null;
-      const timer = window.setTimeout(() => {
-        unsubscribe?.();
-        resolve([]);
-      }, timeoutMs);
-      unsubscribe = v.subscribeSelection((sel) => {
-        if (sel.length === 0) return; // ignore deselects
+      let settled = false;
+      const finish = (selection: import('./playground-viewer-types').SelectionHit[], error?: unknown) => {
+        if (settled) return;
+        settled = true;
         window.clearTimeout(timer);
+        ctx.signal?.removeEventListener('abort', abort);
         unsubscribe?.();
-        resolve(sel);
+        if (error) reject(error); else resolve(selection);
+      };
+      const abort = () => finish([], cancelledDispatch());
+      const timer = window.setTimeout(() => finish([]), timeoutMs);
+      unsubscribe = v.subscribeSelection(sel => {
+        if (sel.length === 0) return; // ignore deselects
+        finish(sel);
       });
+      if (settled) unsubscribe(); // A controller may synchronously emit its selection.
+      else if (ctx.signal?.aborted) abort();
+      else ctx.signal?.addEventListener('abort', abort, { once: true });
     });
     const waitedMs = Date.now() - t0;
     if (hits.length === 0) {
@@ -1936,13 +1956,15 @@ export async function dispatch(
     };
   }
   try {
+    assertDispatchActive(ctx.signal);
     const out = await impl(model, args, ctx);
     if (MODEL_MUTATION_TOOLS.has(toolName)) {
       lastClashResult.delete(meshCacheKey(model));
       ctx.onModelChanged?.();
     }
     return { text: out.text, textKey: out.textKey, structured: out.structured, isError: false, download: out.download };
-  } catch (err) {
+  } catch (caught) {
+    const err = isAbortError(caught) ? cancelledDispatch() : caught;
     if (err instanceof ToolExecutionError) {
       const webglUnavailable = err.details?.webglUnavailable === true;
       return {

@@ -3231,12 +3231,10 @@ export class Renderer {
         this.raycastEngine.setSourceSnapCurves(curves); this.pickSources.noteCurves(curves);
     }
 
-    /**
-     * Invalidate BVH cache (call when geometry changes)
-     */
-    invalidateBVHCache(): void {
-        this.raycastEngine.invalidateBVHCache();
-    }
+    /** Invalidate BVH cache (call when geometry changes). */
+    invalidateBVHCache(): void { this.raycastEngine.invalidateBVHCache(); }
+    /** True when the flat index is warm; ray-hit instance geometry may still materialize per ray. */
+    isRaycastCacheWarm(): boolean { return this.raycastEngine.isCacheWarm(); }
 
     /**
      * Clear all caches (call when geometry changes)

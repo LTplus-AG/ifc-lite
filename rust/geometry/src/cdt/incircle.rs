@@ -15,14 +15,18 @@
 //!
 //! [`incircle`] runs stage A, stage B and the exact zero-tail return with the
 //! same public expansion routines, in the same order, as the crate, so it
-//! returns the bit-identical `f64`. Anything stage B cannot decide is handed to
-//! [`geometry_predicates::incircle`] unchanged, which redoes stages A and B
-//! before stage C. That path is rare, so its repeated work costs less than the
-//! zeroing saved on every other adaptive call.
+//! returns the bit-identical `f64`. What stage B cannot decide continues from
+//! stage B's own state into stages C and D ([`tail`]), which keep the crate's
+//! operations but reuse this thread's `fin` scratch instead of zeroing 18 KB
+//! per call. That path was not rare: on ISSUE_129 43k calls reached it and
+//! their zeroing was about 3% of the model's pipeline instructions.
 
 use geometry_predicates::predicates::{
     abs, fast_expansion_sum_zeroelim, scale_expansion_zeroelim, two_diff_tail, two_product, two_two_diff,
 };
+
+#[path = "incircle_tail.rs"]
+mod tail;
 
 /// `geometry_predicates`' machine epsilon, `2^-53`: the bounds below must match
 /// its private `PARAMS` exactly for stage A and B to decide the same calls.
@@ -58,12 +62,20 @@ pub(super) fn incircle(pa: [f64; 2], pb: [f64; 2], pc: [f64; 2], pd: [f64; 2]) -
     if det > errbound || -det > errbound {
         return det;
     }
-    stage_b(pa, pb, pc, pd, permanent).unwrap_or_else(|| geometry_predicates::incircle(pa, pb, pc, pd))
+    stage_b_or_tail(pa, pb, pc, pd, permanent).unwrap_or_else(|tail| tail::stages_c_d(&tail))
+}
+
+/// [`stage_b_or_tail`]'s decision alone: `None` when stage C is needed.
+#[cfg(test)]
+fn stage_b(pa: [f64; 2], pb: [f64; 2], pc: [f64; 2], pd: [f64; 2], permanent: f64) -> Option<f64> {
+    stage_b_or_tail(pa, pb, pc, pd, permanent).ok()
 }
 
 /// The determinant of the rounded differences as a 96-entry expansion, summed.
-/// `Some` when its sign is certain, as in `incircleadapt`; `None` for stage C.
-fn stage_b(pa: [f64; 2], pb: [f64; 2], pc: [f64; 2], pd: [f64; 2], permanent: f64) -> Option<f64> {
+/// `Ok` when its sign is certain, as in `incircleadapt`; else the state stage C
+/// continues from.
+fn stage_b_or_tail(pa: [f64; 2], pb: [f64; 2], pc: [f64; 2], pd: [f64; 2], permanent: f64)
+    -> Result<f64, Box<tail::Tail>> {
     let adx = pa[0] - pd[0];
     let bdx = pb[0] - pd[0];
     let cdx = pc[0] - pd[0];
@@ -73,9 +85,10 @@ fn stage_b(pa: [f64; 2], pb: [f64; 2], pc: [f64; 2], pd: [f64; 2], permanent: f6
     let mut adet = [0.0; 32];
     let mut bdet = [0.0; 32];
     let mut cdet = [0.0; 32];
-    let alen = lifted_term(two_minor(bdx, cdy, cdx, bdy), adx, ady, &mut adet);
-    let blen = lifted_term(two_minor(cdx, ady, adx, cdy), bdx, bdy, &mut bdet);
-    let clen = lifted_term(two_minor(adx, bdy, bdx, ady), cdx, cdy, &mut cdet);
+    let (bc, ca, ab) = (two_minor(bdx, cdy, cdx, bdy), two_minor(cdx, ady, adx, cdy), two_minor(adx, bdy, bdx, ady));
+    let alen = lifted_term(bc, adx, ady, &mut adet);
+    let blen = lifted_term(ca, bdx, bdy, &mut bdet);
+    let clen = lifted_term(ab, cdx, cdy, &mut cdet);
     let mut abdet = [0.0; 64];
     let ablen = fast_expansion_sum_zeroelim(&adet[..alen], &bdet[..blen], &mut abdet);
     let mut fin = [0.0; 96];
@@ -83,16 +96,21 @@ fn stage_b(pa: [f64; 2], pb: [f64; 2], pc: [f64; 2], pd: [f64; 2], permanent: f6
     let det: f64 = fin[..finlength].iter().sum();
     let errbound = ICC_ERRBOUND_B * permanent;
     if det >= errbound || -det >= errbound {
-        return Some(det);
+        return Ok(det);
     }
-    let exact_differences = two_diff_tail(pa[0], pd[0], adx) == 0.0
-        && two_diff_tail(pb[0], pd[0], bdx) == 0.0
-        && two_diff_tail(pc[0], pd[0], cdx) == 0.0
-        && two_diff_tail(pa[1], pd[1], ady) == 0.0
-        && two_diff_tail(pb[1], pd[1], bdy) == 0.0
-        && two_diff_tail(pc[1], pd[1], cdy) == 0.0;
+    let t = [
+        two_diff_tail(pa[0], pd[0], adx),
+        two_diff_tail(pb[0], pd[0], bdx),
+        two_diff_tail(pc[0], pd[0], cdx),
+        two_diff_tail(pa[1], pd[1], ady),
+        two_diff_tail(pb[1], pd[1], bdy),
+        two_diff_tail(pc[1], pd[1], cdy),
+    ];
     // With exact differences the expansion IS the determinant.
-    exact_differences.then_some(det)
+    if t.iter().all(|&tail| tail == 0.0) {
+        return Ok(det);
+    }
+    Err(Box::new(tail::Tail { fin, len: finlength, det, permanent, d: [adx, bdx, cdx, ady, bdy, cdy], t, bc, ca, ab }))
 }
 
 /// `p*s - q*r` as a 4-entry expansion (`two_two_diff` of two exact products).

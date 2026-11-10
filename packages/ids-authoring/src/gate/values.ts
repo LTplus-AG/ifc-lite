@@ -153,7 +153,8 @@ function siblings(and: readonly IDSConstraint[] | undefined, base: string | unde
 export function rebaseRestriction(c: IDSConstraint, base: string): IDSConstraint | undefined {
   if ((c.type !== 'enumeration' && c.type !== 'bounds') || c.and?.length) return undefined;
   if (writtenBase(c) === base || !REBASE_TARGETS.has(base)) return undefined;
-  if (c.type === 'enumeration' && c.toleranceRule && !NUMERIC_BASES.has(base)) return undefined;
+  // An IDS 1.1 tolerance rule compares as real numbers; it is not carried to another base.
+  if (c.type === 'enumeration' && c.toleranceRule) return undefined;
   if (c.type === 'bounds') {
     if (!NUMERIC_BASES.has(base) || c.temporalBounds) return undefined;
     if (c.length !== undefined || c.minLength !== undefined || c.maxLength !== undefined) return undefined;

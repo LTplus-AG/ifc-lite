@@ -62,4 +62,16 @@ describe('a data type picked after the value', () => {
     assert.equal(dataTypeOps(facetId, facet, { kind: 'equals', value: 'IFCINTEGER' }, gate, ['IFC4']).length, 2);
     assert.equal(dataTypeOps(facetId, facet, { kind: 'equals', value: 'NOT_A_TYPE' }, gate, ['IFC4']).length, 1);
   });
+
+  it('leaves an explicit base when the current data type is picked again', () => {
+    const { facetId } = typedFirst(['1']);
+    const facet = {
+      type: 'property' as const, propertySet: { type: 'simpleValue' as const, value: 'Custom_Condition' },
+      baseName: { type: 'simpleValue' as const, value: 'Conditionscore' }, dataType: { type: 'simpleValue' as const, value: 'IFCINTEGER' },
+      value: { type: 'enumeration' as const, values: ['1'], base: 'xs:string' },
+    };
+    assert.equal(dataTypeOps(facetId, facet, { kind: 'equals', value: 'IFCINTEGER' }, gate, ['IFC4']).length, 1);
+    assert.equal(dataTypeOps(facetId, facet, { kind: 'equals', value: 'ifcinteger' }, gate, ['IFC4']).length, 1);
+    assert.equal(dataTypeOps(facetId, facet, { kind: 'equals', value: 'IFCREAL' }, gate, ['IFC4']).length, 2);
+  });
 });

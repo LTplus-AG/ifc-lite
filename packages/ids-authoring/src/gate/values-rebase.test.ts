@@ -41,6 +41,7 @@ describe('rebaseRestriction', () => {
     expect(rebaseRestriction({ type: 'bounds', minInclusive: 1, fractionDigits: 2 }, 'xs:double')).toBeUndefined();
     expect(rebaseRestriction({ type: 'bounds', minInclusive: 1, totalDigits: 3 }, 'xs:float')).toBeUndefined();
     expect(rebaseRestriction({ type: 'enumeration', values: ['1'], base: 'xs:integer', toleranceRule: 'ids11-418' }, 'xs:string')).toBeUndefined();
+    expect(rebaseRestriction({ type: 'enumeration', values: ['1'], base: 'xs:double', toleranceRule: 'ids11-418' }, 'xs:integer')).toBeUndefined();
   });
 
   it('moves a string enumeration off a numeric base', () => {

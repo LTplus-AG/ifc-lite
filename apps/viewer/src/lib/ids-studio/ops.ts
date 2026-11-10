@@ -93,7 +93,10 @@ export function setFieldOp(facetId: Uuid, field: FacetFieldName, value: ValueInp
 export function dataTypeOps(
   facetId: Uuid, facet: IDSPropertyFacet, input: ValueInput | null, gate: GateContext, versions: readonly IFCVersion[],
 ): StudioOp[] {
-  const base = input?.kind === 'equals' ? dataTypeBase(gate, versions, String(input.value)) : undefined;
+  const name = input?.kind === 'equals' ? String(input.value) : undefined;
+  // Re-picking the current type changes nothing, so an explicit base (say, from an import) stays.
+  const current = facet.dataType?.type === 'simpleValue' ? facet.dataType.value : undefined;
+  const base = name && name.toUpperCase() !== current?.toUpperCase() ? dataTypeBase(gate, versions, name) : undefined;
   const rebased = facet.value && base ? rebaseRestriction(facet.value, base) : undefined;
   return [
     setFieldOp(facetId, 'property.dataType', input),

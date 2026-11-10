@@ -5207,6 +5207,7 @@
     "wallJoinWallFromParams: function",
     "wallRectsFromMeshes: function",
     "withRefreshedBaseQuantities: function",
+    "withWallAutojoinAppend: function",
     "withWallAutojoinIndex: function",
     "writeTopAttachment: function"
   ],

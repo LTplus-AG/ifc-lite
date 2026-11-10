@@ -463,19 +463,24 @@ it('C-5 concurrent folder opens keep loading until both settle', async () => {
   assert.equal(harness.get().loadingFolders, false);
 });
 
-it('C-5 same-tick load-more presses request one page', async () => {
-  const provider = new FakeProvider();
+for (const kind of ['folders', 'files'] as const) it(`C-5 same-tick ${kind} load-more presses request one page`, async () => {
+  const provider = new FakeProvider({ containerListing: 'direct-children', listFilesIsRecursive: false });
+  const replies: Array<() => void> = [];
   let pages = 0;
-  let finish!: () => void;
   provider.listContainers = async (_ctx, _project, _parent, options) => {
-    if (options?.cursor) { pages++; await new Promise<void>(resolve => { finish = resolve; }); }
-    return { items: [], cursor: options?.cursor ? undefined : 'next' };
+    if (options?.cursor) { pages++; await new Promise<void>(resolve => replies.push(resolve)); }
+    return { items: [], cursor: kind === 'folders' && !options?.cursor ? 'next' : undefined };
+  };
+  provider.listFiles = async (_ctx, _project, _parent, _filter, options) => {
+    if (options?.cursor) { pages++; await new Promise<void>(resolve => replies.push(resolve)); }
+    return { items: [], cursor: kind === 'files' && !options?.cursor ? 'next' : undefined };
   };
   const harness = renderCatalogSync(provider);
   await act(async () => harness.get().openFileArea('p', 'area-1'));
-  act(() => { harness.get().loadMoreFolders(null); harness.get().loadMoreFolders(null); });
+  const loadMore = () => kind === 'folders' ? harness.get().loadMoreFolders(null) : harness.get().loadMoreFiles(null);
+  act(() => { loadMore(); loadMore(); });
   const count = pages;
-  await act(async () => finish());
+  await act(async () => { for (const finish of replies) finish(); });
   assert.equal(count, 1);
 });
 
@@ -568,4 +573,29 @@ it('#9567 manual sync retires the pagination flight before the old page resolves
   assert.equal(count, 2);
   assert.equal(stillLoading, true, 'the old page cannot finish the replacement flight');
   assert.equal(harness.get().loadingMore, false);
+});
+
+it('#9567 opening a cached area releases an old pagination flight without starting another sync', async () => {
+  const provider = new FakeProvider();
+  saveSourceCatalogCache(provider.manifest.name, 'p', 'cached', [],
+    [{ ...fileOf('cached-file'), containerId: 'cached' }]);
+  let finish!: () => void, cachedFetches = 0;
+  provider.listContainers = async (_ctx, _project, parent, options) => {
+    if (parent === 'cached') cachedFetches++;
+    if (options?.cursor) await new Promise<void>(resolve => { finish = resolve; });
+    return { items: [], cursor: options?.cursor ? undefined : 'next' };
+  };
+  const harness = renderCatalogSync(provider);
+  await act(async () => harness.get().openFileArea('p', 'old'));
+  act(() => harness.get().loadMoreFolders(null));
+  const wasLoading = harness.get().loadingMore;
+  act(() => harness.get().openFileArea('p', 'cached'));
+  const released = !harness.get().loadingMore;
+  const cachedIds = harness.get().allFiles.map(file => file.id);
+  await act(async () => finish());
+  assert.equal(wasLoading, true);
+  assert.equal(released, true, 'the cache path returns before beginGeneration can release the old owner');
+  assert.equal(cachedFetches, 0, 'the cached transition must not fall back to a fresh sync');
+  assert.deepEqual(cachedIds, ['cached-file']);
+  assert.deepEqual(harness.get().allFiles.map(file => file.id), ['cached-file']);
 });

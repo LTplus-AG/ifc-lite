@@ -60,7 +60,7 @@
 import { useEffect } from 'react';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store';
-import { restoreDrawingMarkupFromModel } from '@/lib/drawing2d-markup/drawing-markup-restore';
+import { hasEmbeddedDrawingMarkup, restoreDrawingMarkupFromModel } from '@/lib/drawing2d-markup/drawing-markup-restore';
 import { ensureParseFor, subscribeToParseCache } from './symbolic-parse-cache.js';
 import { hasPersistedMarkupEntryFor, onLocalStorageDecidedFor } from './useDrawing2DPersistence.js';
 
@@ -132,7 +132,7 @@ function markupFieldsEmpty(): boolean {
  * overwrite this guards against is exactly the kind of synchronous-store
  * race `act()` batching would mask.
  */
-export function tryRestoreDrawingMarkup(modelId: string): void {
+export function tryRestoreDrawingMarkup(modelId: string, requestParse = false): void {
   if (restoredForModel.has(modelId)
     && restoredForModel.get(modelId)?.deref() === useViewerStore.getState().models.get(modelId)?.sourceFile) return;
   if (useViewerStore.getState().activeModelId !== modelId) return;
@@ -151,7 +151,7 @@ export function tryRestoreDrawingMarkup(modelId: string): void {
     if (!awaitingLocalStorageDecision.has(modelId)) {
       const unsubscribe = onLocalStorageDecidedFor(modelId, () => {
         awaitingLocalStorageDecision.delete(modelId);
-        tryRestoreDrawingMarkup(modelId);
+        tryRestoreDrawingMarkup(modelId, requestParse);
       });
       awaitingLocalStorageDecision.set(modelId, unsubscribe);
     }
@@ -164,8 +164,18 @@ export function tryRestoreDrawingMarkup(modelId: string): void {
     return;
   }
 
+  const state = useViewerStore.getState();
+  const store = state.models.get(modelId)?.ifcDataStore ?? (modelId === 'legacy' ? state.ifcDataStore : null);
+  if (!store) return;
+  if (!hasEmbeddedDrawingMarkup(store, state.getMutationView(modelId) ?? undefined)) {
+    markRestored(modelId);
+    return;
+  }
   const result = restoreDrawingMarkupFromModel(modelId);
-  if (!result) return; // not parsed yet — retry on the next parse-cache notification
+  if (!result) {
+    if (requestParse) ensureParseFor([{ store, mutationView: state.getMutationView(modelId) ?? undefined }]);
+    return; // retry on parse publication or RTC readiness
+  }
 
   markRestored(modelId);
   const total =
@@ -223,9 +233,8 @@ export function useDrawingMarkupRestoreOnLoad(): void {
 
   useEffect(() => {
     if (!activeModelId || !dataStore) return;
-    tryRestoreDrawingMarkup(activeModelId);
-    ensureParseFor([dataStore]);
-    const unsubscribeParseCache = subscribeToParseCache(() => tryRestoreDrawingMarkup(activeModelId));
+    tryRestoreDrawingMarkup(activeModelId, true);
+    const unsubscribeParseCache = subscribeToParseCache(() => tryRestoreDrawingMarkup(activeModelId, true));
     return () => {
       unsubscribeParseCache();
       // This model is no longer the one this effect is watching (switched

@@ -170,4 +170,5 @@ export const commandPaletteFr = {
   "commandPalette.paths.basepoints": "Afficher les points de base des modèles origine coordonnées zéro IFC",
   "commandPalette.availability.sectionLimit": "Supprimez un plan de coupe pour pouvoir en ajouter un autre.",
   "commandPalette.availability.sectionBounds": "Chargez ou sélectionnez une géométrie dont les limites sont définies pour ajuster une boîte de coupe.",
+  "commandPalette.extension.conditions": "Les conditions d’utilisation de cet outil ne sont pas remplies. Vérifiez les exigences concernant le modèle ou la sélection indiquées à côté de l’extension qui le fournit.",
 } satisfies Catalogue;

@@ -42,7 +42,7 @@
     "@ifc-lite/wasm-lifecycle": "workspace:^"
   },
   "peerDependencies": {
-    "@anthropic-ai/sdk": ">=0.128.0"
+    "@anthropic-ai/sdk": "^1.6.0"
   },
   "peerDependenciesMeta": {
     "@anthropic-ai/sdk": {
@@ -50,9 +50,11 @@
     }
   },
   "devDependencies": {
-    "@anthropic-ai/sdk": "^0.132.1",
+    "@anthropic-ai/sdk": "^1.6.0",
     "@mergifyio/vitest": "^2026.10.11",
     "@types/node": "^26.6.5",
+    "@types/semver": "7.7.1",
+    "semver": "7.8.5",
     "typescript": "^6.0.3",
     "vitest": "^5.0.5"
   },

@@ -21,7 +21,7 @@ async function report(name) {
   const bytes = await readFile(join(root, filename));
   const value = JSON.parse(bytes);
   reportRefs.push({ filename, sha256: createHash('sha256').update(bytes).digest('hex'),
-    source: value.sourceCommit ?? value.sourceRevision ?? value.reviewCommit ?? value.researchHead ?? null });
+    source: value.sourceCommit ?? value.sourceRevision ?? value.reviewCommit ?? value.pinnedSourceCommit ?? value.researchHead ?? null });
   return value;
 }
 const original = await report('feature-access-reconciled');
@@ -40,6 +40,8 @@ const sources = [
   ['access-file-extension-routes', 'focused-source-trace'],
   ['access-unassigned-routes', 'focused-source-trace'],
   ['access-assistant-routes', 'focused-source-trace'],
+  ['access-appearance-routes', 'focused-source-trace'],
+  ['access-drawing-hierarchy-routes', 'focused-source-trace'],
   ['access-indirect-resolved', 'indirect-source-classification'],
 ];
 const omitted = new Set(['rawCensusRow', 'pinnedAnchorExcerpt', 'evidence', 'ownerEvidence',
@@ -53,21 +55,24 @@ function compact(value) {
 }
 function summarize(row) {
   const { controls, sites, originalInventorySites, source, originalInventorySource,
-    sourceRefs, original, ...route } = row;
-  const reviewedControls = controls ?? (row.terminalSemantics ? sites : undefined);
+    sourceRefs, original, originalSites, ...route } = row;
+  const reviewedControls = controls ?? ((row.terminalSemantics || row.assistantReport) ? sites : undefined);
   // Originals are stored once above. Keep semantic paths and terminal boundaries;
   // source excerpts/call-graph dumps remain in hash-identified immutable reports.
   return compact({ ...route, controls: reviewedControls?.map((control, index) => ({
     id: control.id ?? control.branchId ?? `${row.id}.${index + 1}`,
-    path: control.orderedUserControlPath ?? control.route ?? control.orderedChildControls
-      ?? control.orderedTail ?? control.orderedChildControl
+    path: control.orderedUserControlPath ?? control.orderedRoute ?? control.route ?? control.orderedChildControls
+      ?? control.orderedTail ?? control.orderedChildControl ?? control.sequenceRef
       ?? control.bindings?.map(binding => binding.orderedControlTail) ?? null,
     terminal: control.terminalCanonicalPublicAction ?? control.canonicalHandlerBoundary
       ?? control.operationTargets ?? control.canonicalAction ?? control.semanticAction
       ?? control.bindings?.map(binding => binding.handler) ?? control.binding ?? null,
     qualification: control.classification ?? control.disposition ?? control.sequenceStatus ?? null,
     unresolved: control.unresolved ?? control.uncertainty ?? null,
-    oracle: control.finiteOracle ?? control.oracleRef ?? control.scenarioRef ?? control.scenario ?? null,
+    oracle: control.finiteOracle ?? control.oracleRef ?? control.scenarioOracleRef ?? control.scenarioRef ?? control.scenario ?? null,
+    ...(control.publicHandler ? { publicHandler: control.publicHandler } : {}),
+    ...(control.resolvedSource ? { resolvedSource: control.resolvedSource } : {}),
+    ...(control.prerequisitesRef ? { prerequisitesRef: control.prerequisitesRef } : {}),
   })) });
 }
 for (const [name, kind] of sources) {

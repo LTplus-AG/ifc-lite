@@ -45,4 +45,7 @@ The focused Assistant/Semantic review traces 60 records / 392 original sites.
 Its reported “missing shortcuts” are discoverability gaps: the real panel paths
 reach those child controls subject to model/provider/proposal prerequisites. They
 are not 60 missing tools, and adding unconditional proposal execution would be
-incorrect. 219 component records still have only partial family tracing.
+incorrect. The appearance/settings review adds 69 records / 499 sites, and drawing/hierarchy
+adds 72 records / 490 sites. 78 component records still have only partial family
+tracing. These source reviews identify the conditional error-report launcher as
+a remaining palette gap; their behavioral oracles remain unexecuted.

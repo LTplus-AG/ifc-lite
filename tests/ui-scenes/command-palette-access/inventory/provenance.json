@@ -54,6 +54,16 @@
       "source": "675f44eded1c1b36cce4c7c9119173ae4d240ad0"
     },
     {
+      "filename": "palette-access-appearance-routes-fd0b1714.json",
+      "sha256": "86858185357cb60655215017c932c694cf383d094fc74b2b642df1b1cc460949",
+      "source": "2f14db5c2a799485a9655187fcf3a6297ac47dda"
+    },
+    {
+      "filename": "palette-access-drawing-hierarchy-routes-fd0b1714.json",
+      "sha256": "46f342e3154d0adf6f237c533dd0ffbb50ecd1b31774c20965b70f739f3e3371",
+      "source": "2f14db5c2a799485a9655187fcf3a6297ac47dda"
+    },
+    {
       "filename": "palette-access-indirect-resolved-fd0b1714.json",
       "sha256": "40c60e8abb17e5f98e8bf71245225c11f7ea6219fad7e60ffbad16020316bdc3",
       "source": "9d476f01e7b2bfc1e69799d39a1b0289d6a6e2d3"

@@ -9,7 +9,7 @@
  * next element, the inspector and the bar agree.
  */
 
-import { RoofPlaceBar } from './RoofPlaceBar';
+import { lazy, Suspense } from 'react';
 import { Link2 } from 'lucide-react';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import { useViewerStore } from '@/store';
@@ -19,6 +19,8 @@ import { initSlabGesture, type SlabPlaceGesture } from '@/lib/commands/modeling/
 import { nextRoof } from '@/lib/commands/modeling/commands/roof-place-params';
 import type { BeamClass, SlabClass, SlabDrawMode, WallAlign, WallTop } from '@/store/slices/authoringDefaultsSlice';
 import { HudDivider, HudSegmented, HudToggle } from '../../../viewport-ui/hud';
+
+const RoofPlaceBar = lazy(() => import('./RoofPlaceBar').then(module => ({ default: module.RoofPlaceBar })));
 
 function options<T extends string>(values: readonly T[], keys: Record<T, TranslationKey>, t: (key: TranslationKey) => string) {
   return values.map((value) => ({ value, label: t(keys[value]) }));
@@ -115,7 +117,7 @@ export function SlabPlaceBar({ gesture }: CommandHudProps<SlabPlaceGesture>) {
         value={slabClass}
         onChange={(next) => setDefaults({ slabClass: next })}
       />
-      {slabClass === 'roof' && <RoofPlaceBar gesture={gesture} />}
+      {slabClass === 'roof' && <Suspense fallback={null}><RoofPlaceBar gesture={gesture} /></Suspense>}
     </>
   );
 }

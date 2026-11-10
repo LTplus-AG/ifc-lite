@@ -11,6 +11,17 @@
 //! classified below: either covered by that policy, or proven not to change
 //! output. An unclassified one fails here, because a cache hit could otherwise
 //! replay output computed under a different setting.
+//!
+//! Names alone are a lexical check that a non-`IFC_LITE_` name or a
+//! `concat!`-built one slips past (PR #9614 review 2, R2-4). So the second test
+//! counts every environment ACCESS SITE (`env::var`, `var_os`, `vars`,
+//! `vars_os`, `use std::env`, `env!`, `option_env!`) per file: a new read
+//! anywhere in the three crates, under any name, fails until a reviewer adds
+//! it here, after making it an `output_policy` accessor or showing it cannot
+//! change output. Stated holes: reads in other crates (dependencies), raw
+//! `libc::getenv`, and macro-generated code. New programmatic setters and
+//! thread-local policy are not lexically detectable; `output_policy`'s docs
+//! and the generation counter own those.
 
 mod common;
 use common::source_walk::{production_sources, repo_root};
@@ -92,4 +103,57 @@ fn every_environment_knob_is_classified_for_the_result_cache() {
 fn the_scanner_finds_quoted_names_only() {
     let names = names_in(r#"std::env::var("IFC_LITE_X1") // `IFC_LITE_Y` "IFCLITE_Z" "IFC_LITE_partial"#);
     assert_eq!(names.into_iter().collect::<Vec<_>>(), ["IFCLITE_Z", "IFC_LITE_X1"]);
+}
+
+/// Reviewed environment access sites per file. Each is an `output_policy`
+/// accessor's one read, the cache's own location, or the compile-time build
+/// identity. Counts include doc comments naming `std::env::var`.
+const ACCESS_SITES: &[(&str, usize)] = &[
+    ("rust/geometry/src/kernel/budget.rs", 2),
+    ("rust/geometry/src/processors/boolean/cut_heuristics.rs", 1),
+    ("rust/geometry/src/processors/boolean/halfspace_cap.rs", 1),
+    ("rust/geometry/src/rect_fast.rs", 3),
+    ("rust/geometry/src/router/mod.rs", 1),
+    ("rust/geometry/src/router/transforms/mod.rs", 1),
+    ("rust/geometry/src/router/voids/bool2d_path.rs", 1),
+    ("rust/geometry/src/router/voids/coaxial_union.rs", 1),
+    ("rust/geometry/src/router/voids/prism_cut.rs", 1),
+    ("rust/geometry/src/triangulation/alt_oracle.rs", 1),
+    ("rust/processing/src/element_degenerate.rs", 1),
+    ("rust/processing/src/result_cache/config.rs", 1),
+    ("rust/processing/src/result_cache/key.rs", 1),
+];
+
+fn access_sites(text: &str) -> usize {
+    let patterns = ["env::var(", "env::var_os(", "env::vars(", "env::vars_os(", "env::var`", "use std::env", "std::env::{", "env!(", "option_env!("];
+    // `option_env!(` also contains `env!(`; count it once.
+    patterns.iter().map(|p| text.matches(p).count()).sum::<usize>() - text.matches("option_env!(").count()
+}
+
+#[test]
+fn every_environment_access_site_is_reviewed() {
+    let Some(root) = repo_root() else {
+        common::refuse_to_skip_in_ci(GATE);
+        eprintln!("repo root not found (packaged context) - skipping {GATE}");
+        return;
+    };
+    let mut found = Vec::new();
+    for (rel, path) in production_sources(GATE, &root) {
+        let in_scope = ["rust/core/src/", "rust/geometry/src/", "rust/processing/src/"].iter().any(|p| rel.starts_with(p));
+        if in_scope {
+            let sites = access_sites(&std::fs::read_to_string(&path).expect("readable source"));
+            if sites > 0 {
+                found.push((rel, sites));
+            }
+        }
+    }
+    let expected: Vec<(String, usize)> = ACCESS_SITES.iter().map(|(f, n)| (f.to_string(), *n)).collect();
+    assert_eq!(found, expected, "environment access sites changed: review each new read for the result cache key");
+}
+
+#[test]
+fn access_site_counting_sees_aliases_and_built_names() {
+    let hostile = r#"std::env::var("GEOMETRY_TOLERANCE"); std::env::var(concat!("IFC_", "LITE_X")); use std::env::var_os as v;"#;
+    assert_eq!(access_sites(hostile), 3);
+    assert_eq!(access_sites(r#"option_env!("A"); env!("B")"#), 2);
 }

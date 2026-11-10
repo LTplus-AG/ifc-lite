@@ -43,6 +43,7 @@ of phase 1.
 | A cancellable request (`cancel` set) | `Bypass(CancellationArmed)` |
 | An injected `entity_index` (not verified against the bytes) | `Bypass(InjectedEntityIndex)` |
 | `retain_meshes == false` | `Bypass(MeshesNotRetained)` |
+| The calling thread is inside an `ExecutionAccount` scope, a source stop or a terminal domain | `Bypass(AmbientResourceScope)`: such a scope can refuse or degrade products, so neither a hit nor a stored result would be its output |
 | Read-only mode and the cache directory does not exist yet | `Miss(Absent)`, silently (an empty cache is not an error) |
 | Cache directory unusable or not private, or the executable identity unreadable | `Bypass(Unavailable)`, plus a warning |
 | Streaming or callback consumers | They keep calling `process(content, request, sink)`. The cached entry point takes no sink, so no sink event can go missing on a hit. |
@@ -72,7 +73,13 @@ key = SHA-256( "ifc-lite-native-result-v1"
     `ifc_lite_geometry::output_policy::BUILD_FEATURES`. A downstream binary can
     enable `ifc-lite-geometry/csg_topology_gate` without changing processing's
     features; a geometry test keeps that list equal to its `Cargo.toml`.
-  - The running executable's identity: path, size, mtime, device and inode.
+  - The running executable file's identity: size, mtime, ctime, device and inode,
+    without the path. `touch`, `cp -p` and `utime` cannot restore ctime, so an
+    in-place edit that restores mtime still changes it. This is metadata, not
+    a content hash. It identifies the binary that statically links the engine.
+    A future FFI or Python consumer, where `current_exe` is the host, needs an
+    identity embedded in the engine library; that is a stated prerequisite for
+    those phases.
 
   So a developer who changes kernel output invalidates every entry in two
   independent ways. The source edit changes the build digest, and the rebuilt
@@ -89,11 +96,30 @@ key = SHA-256( "ifc-lite-native-result-v1"
   programmatic overrides (`local_frame_set_enabled_override`, `budget::set_cap`,
   ...). Hashing the environment let a process that set `IFC_LITE_LOCAL_FRAME=1`
   after the policy was cached write a non-local-frame entry under the
-  local-frame key (PR #9614 review). The policy is snapshotted before the pass. If
-  it differs afterwards (a concurrent override), the result is not stored
-  (`SkippedPolicyChanged`). `tests/result_cache_policy_ratchet.rs` fails on any
-  `IFC_LITE_*` variable read in core, geometry or processing that is neither keyed
-  nor listed as non-output.
+  local-frame key (PR #9614 review). Environment knobs are read once per process
+  (`OnceLock`), so they cannot change during a pass. Every programmatic setter
+  bumps a mutation generation before and after its store, seqlock style
+  (`output_policy::policy_generation`). The policy is read between two equal,
+  even generations. A pass whose generation moved is not stored
+  (`SkippedPolicyChanged`), even if the value was set back before the pass ended
+  (A → B → A; second review). A hit whose generation moved while it was read is
+  dropped (`Miss(PolicyChangedDuringLookup)`). The pass itself still reads the
+  live globals, so an uncached pass during a setter can mix policies as before;
+  the cache only refuses to store or replay it.
+  `tests/result_cache_policy_ratchet.rs` fails on any `IFC_LITE_*` name that is
+  neither keyed nor listed as non-output. It also fails on any change in the
+  number of environment access sites per file in core, geometry and
+  processing, so a read under any other name has to be reviewed as well.
+- **Engine, execution.** This is the calling thread's rayon worker count. No mesh
+  output is known to depend on it. It is keyed because that independence has not
+  been shown across pool sizes, and keying it only costs hits between
+  differently sized pools. Point-cache hit/miss counters do depend on
+  scheduling. Like timings, they are the producer's values, replayed verbatim.
+- **Resource stops.** Every `resource::stop` in the process counts
+  (`resource::stop_events`). A pass during which the count moved is not stored
+  (`SkippedResourceStop`). This catches a product refused under an unrelated
+  scope, for example a rayon job stolen by another caller's thread. It is
+  conservative: any stop anywhere skips the store.
 
   Keying on the build is deliberately conservative: any rebuild misses. Relaxing
   it to explicit revisions needs x86_64/arm64 determinism evidence.
@@ -178,6 +204,18 @@ stripes, `<root>/result-v1/locks/<first key byte>.lock`.
   Concurrent writers can exceed it briefly. The size limit is checked after the
   result is encoded, so a skipped oversized result has still paid for one encoded
   copy. The free-space check is best effort and absent on non-Unix.
+- **Size before encoding.** A result whose raw array and pixel payload alone
+  exceeds the entry limit is refused before it is encoded. Otherwise the header
+  and sections are written as separate buffers, never concatenated. The
+  serialised size is roughly the result's own size, so a large result costs one
+  serialised copy before the final size check. Allocation is infallible: an
+  allocator failure aborts like any other pipeline allocation.
+- **Crash consistency.** The temp file is fsynced before it is renamed, so a
+  crash can lose a new entry but never leave a torn file under an entry name.
+  Readers verify checksums regardless. The directory fsync is best effort, so
+  `Published` means renamed, not guaranteed to survive power loss. A lost entry
+  is a later miss. Locks and rename assume a local filesystem with coherent
+  advisory locks; NFS and overlay mounts are untested.
 - **Failure.** Disk and permission errors fail open: a warning, then the live
   result.
 

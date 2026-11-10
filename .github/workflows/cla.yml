@@ -1,0 +1,78 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+name: CLA
+
+# Contributor License Agreement gate. Reports the `CLA` commit status on every
+# pull request and records signatures posted as PR comments on the
+# `cla-signatures` branch. See CLA.md and docs/contributing/cla.md.
+#
+# `pull_request_target` and `issue_comment` run with write tokens, which is
+# safe here only because the job checks out the DEFAULT BRANCH and executes
+# `scripts/cla-gate.mjs` from it. It must never check out or run PR code.
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize]
+  issue_comment:
+    types: [created]
+  # Rechecks every open pull request. Run it once before making `CLA` a
+  # required check, so PRs opened before this workflow get a status.
+  workflow_dispatch:
+
+permissions:
+  # Writes the signature record to the `cla-signatures` branch.
+  contents: write
+  # Posts and updates the instruction comment. BOTH scopes: measured on this
+  # repo on 2026-08-31 (see label-authority.yml), `issues: write` alone
+  # returns 403 on issue endpoints when the target is a pull request.
+  issues: write
+  pull-requests: write
+  # Sets the `CLA` commit status on the PR head.
+  statuses: write
+
+jobs:
+  cla:
+    name: CLA
+    # Only pull request events, and PR comments that could be a signature or a
+    # recheck, reach a runner; the script still matches the phrase exactly.
+    # `contains` is case-insensitive.
+    if: >-
+      github.event_name == 'pull_request_target' || github.event_name == 'workflow_dispatch' ||
+      (github.event.issue.pull_request &&
+       (contains(github.event.comment.body, 'hereby sign the CLA') ||
+        contains(github.event.comment.body, 'recheck')))
+    # Job level, so comments that skip the job never join a group, and only
+    # pull request events share one: GitHub replaces a PENDING run in a group
+    # with the next one, which would silently drop a queued signature. Sign
+    # runs each get their own group; concurrent writes retry on conflict.
+    concurrency:
+      group: cla-${{ github.event_name == 'pull_request_target' && github.event.pull_request.number || github.run_id }}
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+          lfs: false
+          filter: blob:none
+          sparse-checkout: |
+            scripts
+            CLA.md
+          sparse-checkout-cone-mode: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+
+      # scripts/cla-gate.test.mjs runs in test.yml's scripts/ catch-all; a test
+      # failure here would only stop every PR from getting a status at all.
+      - name: Check CLA signatures
+        env:
+          GH_TOKEN: ${{ github.token }}
+        # The CLA text the signer is shown is the one checked out here, from the
+        # default branch. GITHUB_SHA is the PR's base branch for
+        # pull_request_target, which is not main for a stacked PR.
+        run: CLA_COMMIT="$(git rev-parse HEAD)" node scripts/cla-gate.mjs

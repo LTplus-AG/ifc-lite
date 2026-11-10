@@ -241,8 +241,9 @@ END-ISO-10303-21;`);
         if (scenario === 'apply-cancel-repreview') {
           const prepare = editor.prepareEntityOperations.bind(editor);
           let release!: () => void;
+          let preparations = 0;
           const held = new Promise<void>(resolve => { release = resolve; });
-          editor.prepareEntityOperations = async (operations, options) => { await held; return prepare(operations, options); };
+          editor.prepareEntityOperations = async (operations, options) => { preparations++; await held; return prepare(operations, options); };
           try {
             await click('Apply');
             await click('Discard');
@@ -252,9 +253,13 @@ END-ISO-10303-21;`);
               mapping.value = 'box'; mapping.dispatchEvent(new window.Event('change', { bubbles: true }));
             });
             await until(() => !!workers[1]?.message, 'Discard blocked a new preview while cancelled Apply was settling');
-          } finally { release(); }
+            await act(async () => { workers[1].complete(); });
+            await until(() => !button('Apply').disabled, 'replacement preview never became ready');
+            await click('Apply');
+            check(preparations === 2, 'discarded Apply lease refused replacement preparation');
+            await click('Discard');
+          } finally { await act(async () => { release(); }); }
           await advance(20);
-          await click('Discard');
         } else if (scenario === 'apply-cancel-late') {
           const prepare = editor.prepareEntityOperations.bind(editor);
           let cancelled!: () => void;

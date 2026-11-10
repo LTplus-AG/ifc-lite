@@ -126,7 +126,7 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply', suspendPr
   }, [releaseApply]);
 
   useEffect(() => {
-    if (applyAbort.current) return;
+    if (applyAbort.current && !applyAbort.current.signal.aborted) return;
     if (intent !== 'apply' || !modelId || unavailableReason) {
       const previous = draft.current; draft.current = null;
       discardDraft(previous);

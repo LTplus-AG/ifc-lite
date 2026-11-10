@@ -154,7 +154,7 @@ test('foreign-frame Edit previews explicit registration and Discard preserves th
   assert.deepEqual(useViewerStore.getState().appearanceReferences.get('drawing'), original);
 });
 
-test('joining a room during reference placement settles the applying status', async t => {
+test('same-tick reference placement starts once and room entry settles its status (#4308)', async t => {
   if (!await nativeAvailable(t)) return;
   const { ui, renderer } = await fixture();
   click(button(ui, 'Edit Drawing 1')); await settle();
@@ -163,12 +163,13 @@ test('joining a room during reference placement settles the applying status', as
   type(span, '3'); await settle();
   let release!: () => void;
   const held = new Promise<void>(resolve => { release = resolve; });
-  let placing = false;
+  let placements = 0;
   mock.method(renderer.getReferenceImages(), 'set', async (item: Parameters<ReturnType<Renderer['getReferenceImages']>['set']>[0]) => {
-    if (!item.id.startsWith('appearance-draft:')) { placing = true; await held; }
+    if (!item.id.startsWith('appearance-draft:')) { placements++; await held; }
   });
-  click(button(ui, 'Place reference'));
-  assert.equal(placing, true);
+  const place = button(ui, 'Place reference');
+  act(() => { place.click(); place.click(); });
+  assert.equal(placements, 1);
   act(() => useViewerStore.setState({ collabRoomId: 'joined-during-placement' }));
   release(); await settle();
   assert.equal(ui.querySelector('[aria-busy]')?.getAttribute('aria-busy'), 'false');

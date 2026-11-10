@@ -347,6 +347,9 @@ importers:
       '@ifc-lite/report-contract':
         specifier: workspace:^
         version: link:../../packages/report-contract
+      '@ifc-lite/rhino3dm':
+        specifier: workspace:^
+        version: link:../../packages/rhino3dm
       '@ifc-lite/rules':
         specifier: workspace:^
         version: link:../../packages/rules
@@ -518,6 +521,9 @@ importers:
       remark-gfm:
         specifier: ^4.0.0
         version: 4.0.1
+      rhino3dm:
+        specifier: 8.35.0
+        version: 8.35.0
       svg2pdf.js:
         specifier: ^2.8.1
         version: 2.8.1(jspdf@4.2.1)
@@ -720,6 +726,9 @@ importers:
       '@ifc-lite/report-contract':
         specifier: workspace:^
         version: link:../../packages/report-contract
+      '@ifc-lite/rhino3dm':
+        specifier: workspace:^
+        version: link:../../packages/rhino3dm
       '@ifc-lite/rules':
         specifier: workspace:^
         version: link:../../packages/rules

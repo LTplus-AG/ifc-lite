@@ -125,6 +125,22 @@ describe('worker message accounting (#6957)', () => {
     });
   });
 
+  it('counts every transfer-list entry, in array and options form (#9605)', () => {
+    const counters = createPerfCounters();
+    counters.enable();
+    const worker = { postMessage: (_m: unknown, _t?: unknown) => {} };
+    const wrapped = accountWorkerMessages(worker, 'geometry', counters);
+    const [a, b, c] = [new ArrayBuffer(4), new ArrayBuffer(8), new ArrayBuffer(12)];
+    wrapped.postMessage({ a }, [a, b, c]);
+    const [d, e] = [new ArrayBuffer(2), new ArrayBuffer(2)];
+    wrapped.postMessage({ d }, { transfer: [d, e] });
+    expect(counters.read()).toMatchObject({
+      'msg.geometry.out.count': 2,
+      'msg.geometry.out.transferObjects': 5,
+      'msg.geometry.out.transferBytes': 28,
+    });
+  });
+
   it('returns the worker untouched when counters are off', () => {
     const post = () => {};
     const worker = { postMessage: post, addEventListener: () => { throw new Error('must not listen'); } };

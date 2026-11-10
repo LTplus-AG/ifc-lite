@@ -6107,3 +6107,26 @@ strictly less than 2× from 1K to 50K, and a passing F5 exercise result whose
 lane, not a substitute tower here. Missing sizes or F5 evidence fail the check.
 The baseline is a description of current main, not an accepted round-1 result
 or a speedup claim.
+
+## Symbolic spatial keys share the mutation-view binding (#9621)
+
+**Qualified for reduced hash work, not a load-time speedup.** Untimed real-model
+cold and cached diagnostics show fewer spatial-key feed operations when drawing
+markup restore and viewport overlays read through the same mutation-view binding.
+The default annotation/grid parse still runs. This model also still publishes a
+mutation view: the conservative source preflight admits uncertain encoded input,
+so no registration reduction is claimed for it. Provably blank sources avoid the
+restore registration in a separate functional invariant.
+
+The spatial snapshot cache held one binding per store. Restore registered a view
+then read without it, alternating that slot with the viewport's view-bound reads
+and repeatedly copying, sorting and digesting the same maps. Passing the same
+binding removes those alternations; numeric FNV preserves the old digest while
+removing per-character BigInt arithmetic. The source preflight runs outside
+render and never rejects pending overlay edits or uncertain STEP escapes.
+
+Lesson: verify which consumer invalidates a cache, and measure repeated work on
+the actual default path. A conditional restore does not imply that another
+visible overlay stops parsing. Operation-count attribution and digest-equivalence
+tests establish this mechanism; the exclusive load scoreboard remains the
+acceptance source for end-to-end timing.

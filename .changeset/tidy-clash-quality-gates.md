@@ -4,6 +4,7 @@
 "@ifc-lite/sdk": major
 "@ifc-lite/sandbox": major
 "@ifc-lite/mcp": minor
+"@ifc-lite/viewer": major
 ---
 
 Include model-qualified matched objects in rule coverage so object quality gates count federated models without conflating equal GlobalIds.
@@ -17,3 +18,5 @@ Tag and escape ambiguous identities so literal keys cannot collide with referenc
 The SDK review adapter uses these keys for finding lineages and revision comparison. SDK consumers must also establish a new clash baseline after upgrading; the SDK release is major for this behavior change.
 
 CLI JSON, MCP clash rows, and sandbox `bim.clash` results also expose the changed IDs. Their releases carry the same compatibility migration (major for CLI and sandbox; minor for the pre-1.0 MCP package). Re-establish baselines and stored ID-based references after upgrading these integrations.
+
+The viewer also declares a major release: saved element-pair exclusions whose keys require escaping (reserved prefix or whitespace) must be renewed using the new identity encoding. Existing repeated-key exclusions likewise require renewed review to avoid transferring decisions between distinct objects.

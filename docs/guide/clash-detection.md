@@ -251,6 +251,8 @@ their original `key` for model lookups and exports.
 This migration also applies to SDK review findings, CLI JSON, MCP clash rows,
 and sandbox `bim.clash` results: they expose the changed keys or IDs. Renew
 stored ID-based references as well as comparison baselines after upgrading.
+Renew existing viewer element-pair exclusions for keys containing whitespace or
+a reserved encoding prefix; their stored identities use the previous encoding.
 
 **Saved clash reports** captures the gate, the current category policy and model
 identities with the run's rule and tolerances. Later preference edits leave that

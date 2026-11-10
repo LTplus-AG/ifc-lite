@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { useAsyncRun } from '@/hooks/useAsyncRun';
 import { completeReport, forgetReport, rememberReport } from '@/lib/error-reports/pending';
 import { useEffect, useRef, useState } from 'react';
 import { isPublicSharingConsent } from '@ifc-lite/report-contract';
@@ -105,12 +106,14 @@ export function ErrorReportDialog({ context, onClose, client: injectedClient }: 
       publicPrivacyConfirmed: isPublicSharingConsent(restored.uploadSource?.publicSharingConsent),
       publicCopiesConfirmed: isPublicSharingConsent(restored.uploadSource?.publicSharingConsent) });
   }
+  const receiptRefresh = useAsyncRun({ key: receipt?.id, label: 'report receipt refresh' });
   async function deletePrivateReport() {
     if (!receipt || deleting.current) return;
     deleting.current = true; setDeleteState('deleting'); setError('');
     try {
       const deleted = await client.request<ReportReceipt>(`/${encodeURIComponent(receipt.id)}`, 'DELETE');
       if (deleted.status !== 'deleted' || deleted.id !== receipt.id) throw new Error('Deletion was not confirmed. Please retry.');
+      receiptRefresh.reset();
       forgetReport(receipt.id);
       setReceipt({ ...deleted, issueUrl: deleted.issueUrl ?? receipt.issueUrl });
       setDeleteState('idle');
@@ -121,9 +124,15 @@ export function ErrorReportDialog({ context, onClose, client: injectedClient }: 
   }
   async function refreshReceipt() {
     if (!receipt) return;
-    try { restoreReceipt(await client.request<ReportReceipt>(`/${encodeURIComponent(receipt.id)}`)); }
-    catch (reason) { setError(reason instanceof Error ? reason.message : 'Request failed'); }
+    await receiptRefresh.start(async ({ signal, isCurrent }) => {
+      try {
+        const next = await client.request<ReportReceipt>(`/${encodeURIComponent(receipt.id)}`, 'GET', undefined, signal);
+        if (isCurrent()) restoreReceipt(next);
+      }
+      catch (reason) { if (isCurrent()) setError(reason instanceof Error ? reason.message : 'Request failed'); }
+    });
   }
+
   const customApproved = existing?.customNdaStatus === 'approved' && !existing.uploadSource;
   const resumeFileValid = !existing?.uploadSource || existing.upload?.status === 'ready' || (!!attachment.file && attachment.file.name === existing.uploadSource.name && attachment.file.size === existing.uploadSource.size);
   const canReview = !!session && !!title.trim() && (!!existing || issueChoice.reviewed) && (existing ? resumeFileValid && (!customApproved || (!!attachment.file && attachment.uploadConsent && validAttachment({ ...attachment, confidentiality: 'none' }, session))) : validAttachment(attachment, session));
@@ -158,18 +167,22 @@ export function ErrorReportDialog({ context, onClose, client: injectedClient }: 
     await inFlight.current;
     onClose();
   }
+  const cancellation = useAsyncRun({ label: 'report cancellation' });
   async function cancel() {
-    if (deleting.current) return;
-    if (receipt) { onClose(); return; }
-    abort.current?.abort();
-    await inFlight.current;
-    try {
-      if (submission.current) await submission.current.cancel();
-      else if (context.resumeReportId) { await client.request(`/${encodeURIComponent(context.resumeReportId)}`, 'DELETE'); forgetReport(context.resumeReportId); }
-      onClose();
-    }
-    catch (reason) { setError(reason instanceof Error ? reason.message : 'Cancellation failed'); }
+    await cancellation.start(async ({ isCurrent }) => {
+      if (deleting.current) return;
+      if (receipt) { onClose(); return; }
+      abort.current?.abort();
+      await inFlight.current;
+      try {
+        if (submission.current) await submission.current.cancel();
+        else if (context.resumeReportId) { await client.request(`/${encodeURIComponent(context.resumeReportId)}`, 'DELETE'); forgetReport(context.resumeReportId); }
+        if (isCurrent()) onClose();
+      }
+      catch (reason) { setError(reason instanceof Error ? reason.message : 'Cancellation failed'); }
+    });
   }
+
   const issueUrl = safeIssueUrl(receipt?.issueUrl);
   const agreementUrl = safeAgreementUrl(submission.current?.agreementReceipt?.pdfUrl ?? (receipt?.agreementAccepted ? `/api/reports/${receipt.id}/agreement.pdf` : undefined));
   return <Dialog open onOpenChange={open => { if (!open) void closeDialog(); }}>

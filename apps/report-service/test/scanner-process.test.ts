@@ -76,3 +76,20 @@ it("#7521 cleanup output overflow retains the unverified-removal category", asyn
   await expect(api.removeScannerContainer("ifclite-scan-00000000-0000-0000-0000-000000000002"))
     .rejects.toThrow("scanner_cleanup_failed");
 });
+it("#7521 an already-removed container counts as removed in either Docker CLI wording", async () => {
+  // Docker on ubuntu-24.04 runners printed "Error response from daemon: No such
+  // container"; the CLI on ubuntu-26.04 prints "error: no such container".
+  for (const wording of [
+    "Error response from daemon: No such container: ifclite-scan-00000000-0000-0000-0000-000000000003",
+    "error: no such container: ifclite-scan-00000000-0000-0000-0000-000000000003",
+  ]) {
+    const api = await executable(`printf '%s\\n' '${wording}' >&2; exit 1`);
+    await expect(api.removeScannerContainer("ifclite-scan-00000000-0000-0000-0000-000000000003"))
+      .resolves.toBeUndefined();
+  }
+});
+it("#7521 any other cleanup failure stays an unverified removal", async () => {
+  const api = await executable("printf 'error: permission denied while connecting to the daemon\\n' >&2; exit 1");
+  await expect(api.removeScannerContainer("ifclite-scan-00000000-0000-0000-0000-000000000004"))
+    .rejects.toThrow("scanner_cleanup_failed");
+});

@@ -144,7 +144,7 @@ function siblings(and: readonly IDSConstraint[] | undefined, base: string | unde
 export function rebaseRestriction(c: IDSConstraint, base: string): IDSConstraint | undefined {
   if (c.type === 'simpleValue' || c.base === base || c.and?.length) return undefined;
   if (c.type === 'bounds') {
-    if (!NUMERIC_BASES.has(base) || c.temporalBounds || c.unparseableFacets?.length) return undefined;
+    if (!NUMERIC_BASES.has(base) || c.temporalBounds) return undefined;
     if (c.length !== undefined || c.minLength !== undefined || c.maxLength !== undefined) return undefined;
     const limits = [c.minInclusive, c.minExclusive, c.maxInclusive, c.maxExclusive];
     if (limits.some((v) => v !== undefined && !literalOk(base, String(v)))) return undefined;

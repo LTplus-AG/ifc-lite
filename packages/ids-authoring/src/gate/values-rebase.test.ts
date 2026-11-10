@@ -23,6 +23,7 @@ describe('rebaseRestriction', () => {
     expect(rebaseRestriction({ type: 'bounds', minInclusive: 1.5 }, 'xs:integer')).toBeUndefined();
     expect(rebaseRestriction({ type: 'bounds', minInclusive: 1 }, 'xs:string')).toBeUndefined();
     expect(rebaseRestriction({ type: 'bounds', maxLength: 5 }, 'xs:integer')).toBeUndefined();
+    expect(rebaseRestriction({ type: 'bounds', minInclusive: 1, unparseableFacets: [{ facet: 'maxInclusive', rawValue: 'x' }] }, 'xs:integer')).toBeUndefined();
   });
 
   it('leaves simple values, conjunctions and restrictions already on the base', () => {

@@ -1714,6 +1714,17 @@ ifc-lite flow review roles.checkpoint.json --approve <digest>
 ifc-lite flow resume roles.flow.json model.ifc --checkpoint roles.checkpoint.json --out roles.ifc
 ```
 
+All CLI/MCP writers sharing a checkpoint directory must be upgraded together:
+checkpoint locks now use owner-tagged directories instead of exclusive files.
+If saving a pause reports a legacy `.lock` file, an older writer left it.
+Stop all writers, upgrade them together, and verify none remains active before
+manually removing only that lock file and retrying. The CLI preserves the lock
+and does not overwrite the checkpoint while ownership is unknown.
+
+An unrecognized lock **directory** gets separate inspection guidance. Preserve
+its entries and check the writer version; an unknown future owner format or an
+unrelated file such as `.DS_Store` is not an ownerless legacy lock file.
+
 A graph with a tracked creation node (`model.addElement`) re-run on its own output updates the
 elements it made — same GlobalIds, changed geometry — and removes the ones whose lanes vanished:
 

@@ -40,6 +40,7 @@ export const mcpPlaygroundDe = {
   "mcp.playgroundChat.placeholderAddNote": "Fügen Sie eine Notiz hinzu (oder senden Sie sie einfach, um die angehängte Datei zu validieren)…",
   "mcp.playgroundChat.placeholderDefault": "Fragen Sie den Agenten – ziehen Sie eine .ids-Datei in den Chat, um sie zu validieren.",
   "mcp.playgroundChat.stopped": "Angehalten",
+  "mcp.playgroundChat.finishingTool": "Vorheriges Werkzeug wird beendet… Erneut Stopp drücken, um Senden freizugeben. Das Ergebnis kann unbekannt bleiben.",
   "mcp.playgroundChat.send": "Senden",
   "mcp.playgroundChat.footerHintNoAttachments": "BYOK · {tools} Tools · Eingabetaste zum Senden · ⇧+Eingabetaste für Zeilenumbruch · Dateien zum Anhängen ablegen",
   "mcp.playgroundChat.footerHintWithAttachments": {"one": "BYOK · {tools} Tools · {count} angehängte Datei · Zum Senden eingeben · ⇧+Eingabetaste für Zeilenumbruch · Dateien zum Anhängen ablegen", "other": "BYOK · {tools} Tools · {count} angehängte Dateien · Zum Senden eingeben · ⇧+Eingabetaste für Zeilenumbruch · Dateien zum Anhängen ablegen"},

@@ -4960,6 +4960,7 @@
     "VerticalSegment: interface",
     "VerticalSegmentType: type",
     "WallAlignment: type",
+    "WallAutojoinIndex: interface",
     "WallBodyOutline: interface",
     "WallBuildResult: interface",
     "WallConnectionType: type",
@@ -5214,6 +5215,8 @@
     "wallJoinWallFromParams: function",
     "wallRectsFromMeshes: function",
     "withRefreshedBaseQuantities: function",
+    "withWallAutojoinAppend: function",
+    "withWallAutojoinIndex: function",
     "writeTopAttachment: function"
   ],
   "@ifc-lite/data": [
@@ -6702,6 +6705,16 @@
     "RemeshResult: interface",
     "StyleWire: interface",
     "filterStyleWire: function"
+  ],
+  "@ifc-lite/geometry/rhino-export": [
+    "RHINO_COORDINATES: const",
+    "RHINO_LAYER_SCHEMES: const",
+    "RHINO_PROPERTIES: const",
+    "RHINO_SCENE_DEFAULTS: const",
+    "RHINO_UNITS: const",
+    "RhinoSceneBuffers: interface",
+    "RhinoSceneExportOptions: interface",
+    "exportRhinoScene: function"
   ],
   "@ifc-lite/geometry/rtc-rebase": [
     "RtcConvergeResult: interface",

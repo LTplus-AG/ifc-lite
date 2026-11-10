@@ -87,6 +87,7 @@ import { ionUploadIt } from './it/ion-upload';
 import { keyboardShortcutsIt } from './it/keyboard-shortcuts';
 import { landXmlGeorefAssumptionsIt } from './it/landxml-georef-assumptions';
 import { landXmlTerrainExportIt } from './it/landxml-terrain-export';
+import { rhinoExportIt } from './it/rhino-export';
 import { landXmlIt } from './it/landxml';
 import { layersPanelIt } from './it/layers-panel';
 import { lensPanelIt } from './it/lens-panel';
@@ -248,6 +249,7 @@ export default {
   ...keyboardShortcutsIt,
   ...landXmlGeorefAssumptionsIt,
   ...landXmlTerrainExportIt,
+  ...rhinoExportIt,
   ...landXmlIt,
   ...layersPanelIt,
   ...lensPanelIt,

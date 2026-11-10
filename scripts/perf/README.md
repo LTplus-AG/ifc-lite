@@ -8,6 +8,27 @@ Citations to `evidence/`, `tests/evidence/` and `docs/architecture/evidence/` pa
 at commit [`f98785c722`](https://github.com/LTplus-AG/ifc-lite/tree/f98785c722); the retained
 bundles left the tree in #9054.
 
+## Deferred viewer cache encoding (NEW-5, #9622)
+
+**Rejected: a short idle timeout does not establish scene readiness.** The
+scheduler probe starts encoding during a saturated post-load task sequence,
+while the original real-load attribution places cache work before scene
+finalisation. Moving the same synchronous table serializers to that timer
+preserves the long task and can charge it to the next file open instead.
+Deep-cloning the captured mesh graph adds synchronous copies and a second
+geometry lifetime inside the window this change was meant to shorten.
+
+The attempted viewer-only implementation was withdrawn; no load-time win or
+scoreboard acceptance is claimed. Reconsider only with an actual interactive
+readiness signal followed by idle admission, yielding table/geometry encoding,
+and cheap generation checks that discard writes after edits or supersession.
+A new file must cancel pending work rather than synchronously encode the old
+model. Hidden/pagehide handling must respect the same validity check; an
+optional cache entry is preferable to persisting geometry from a later edit.
+These are cross-layer scheduling and serializer contracts, beyond a small
+write-site timing change. Preserve byte-format compatibility and measure the
+whole load plus first interaction before accepting a replacement.
+
 ## Load scoreboard (`load-scoreboard.mjs`) (#9607)
 
 One table for IFC load time, used to accept or reject load optimisations.
@@ -131,6 +152,19 @@ Lessons:
   hit --json` in a fresh process. The JSON object `resultCache` holds this run's work.
   The phase table on a hit is the producer's (`statsAreProducers`). Never cite it as
   current work.
+
+## Raycast keeps one index across visibility changes (#9504)
+
+**Shipped.** `collectVisibleMeshData` rebuilt its list on every ray, and the BVH was
+keyed on the visible list, so each hide or isolate change rebuilt the tree. The flat
+pieces are now collected once per pick-geometry revision, one BVH covers all of them,
+and visibility filters each ray's candidates. Instanced occurrences stay per-ray.
+
+Lesson: the freshness key is `getPickGeometryRevision()` plus draw-list identity.
+`meshDataMap.size` is not enough, because fragments can be replaced under the same ids
+(#4556). The renderer's `BVH` is separate from `@ifc-lite/spatial`'s (#5252), so a win
+in one does not carry to the other. The tree's typed-array layout is a heap win; the
+per-ray and post-hide wins come from the cache.
 
 ## Storey planners and the QuickJS runtime leave the boot path (#9200)
 
@@ -3203,6 +3237,21 @@ as well as JavaScript errors, and stop memory sampling on every exit path.
   byte-size verdict, not a measured load-time improvement. **Lesson:** inspect
   the complete HTML preload closure, and isolate shared state before assuming a
   dynamic panel import makes its dependencies lazy.
+- **STEP reals valued in the grammar walk (native instruction hillclimb,
+  2026-11-10):** `read_step_number` walked every literal once to admit it
+  (#7779) and then gave it to `fast_float2`, which walked it again. The walk
+  now folds digits and exponent as it goes; when the mantissa is at most 2^53
+  and the power of ten at most 22 in magnitude, one IEEE multiply or divide
+  is correctly rounded and therefore gives `fast_float2`'s bits (Clinger's
+  fast path; it also subsumes #7880's `N.` case). Everything else still
+  goes to `fast_float2`; integers of up to 18 digits take the walk's
+  mantissa. About 99.5% of the REAL literals in the tuning fixtures take the
+  exact path. Cold single-thread Callgrind, pipeline instructions:
+  advanced_model -5.4%, Holter -1.4%, schependomlaan -0.8%, FZK -0.2%,
+  ISSUE_129 -0.2%; ordered `perf_probe` mesh fingerprints identical on all
+  five, and a 200k-literal bit-for-bit test against `fast_float2`.
+  `parse_step_numeric` (generic, also `f32`) is unchanged: valuing in `f64`
+  then narrowing would round twice. Not a wall-time or browser claim.
 - **Firefox spatial-publication stall (#3983):** Chrome-only cold-load timing
   missed an engine-dependent entity-cache eviction cost. Georeference discovery
   runs through the property-set index during React rendering. Restarting a Map
@@ -3215,6 +3264,21 @@ as well as JavaScript errors, and stop memory sampling on every exit path.
   event-loop gaps and visible hierarchy readiness, and keep profiling runs apart
   from uninstrumented timing. A worker-complete event alone cannot establish that
   publishing its result leaves the UI responsive.
+- **Pooled orient/weld maps reset in O(mesh) (native instruction hillclimb,
+  2026-11-10):** the mesh orienter's vertex and edge maps and the weld's key
+  map are per-worker scratch (#3988), `clear()`ed before every mesh. A
+  non-empty `HashMap::clear` rewrites every bucket's control byte, so after one
+  large mesh every later mesh paid to wipe the large table: on Holter (109k
+  meshes) that memset was about 5% of pipeline instructions.
+  `scratch_map::reset_for` keeps a pooled table only while it is within 4x of
+  the pass's need and otherwise replaces it with one sized for the pass; the
+  maps are only probed and inserted into, never iterated, so capacity cannot
+  reach the output. Cold single-thread Callgrind, pipeline instructions:
+  Holter -4.7%, schependomlaan -2.4%, FZK -1.5%, advanced_model -1.0%,
+  ISSUE_129 -0.7%; ordered `perf_probe` mesh fingerprints identical on all
+  five. **Lesson:** pooling scratch turns `clear()` into a cost proportional to
+  the worst mesh a worker ever saw; check a pooled map's clear cost, not just
+  its allocation count. Not a wall-time or browser claim.
 - **Native cold-load working set (#3967):** immutable schema classification replaces
   contended global caches; completed BREP signatures are shared within one
   immutable source; the geometry scan supplies ordered georeferencing candidates
@@ -6386,3 +6450,31 @@ merge; never stamp branch or attribution-only measurements as main provenance.
 Retry of a cached React.lazy rejection and loading flash/focus polish remain
 app-wide follow-ups. This ledger entry is consolidated here so code PR #9634
 can merge without another shared README conflict.
+
+## Implicit wall joins use maintained endpoint membership (#9406)
+
+Candidate discovery uses rounded endpoints partitioned by parent placement and
+elevation. Ordinary additions stage index entries until their owning publication
+and history transaction succeeds. Other edits invalidate the cache.
+
+Public raw creation also maintains the index when each complete wall record
+arrives. Otherwise the first ordinary addition after a raw-authored session
+would rebuild all wall endpoints. Incomplete forward-reference graphs discard
+the cache, so later creation reads the completed graph. Raw appends never mask
+an intervening placement edit. The regression checks unrelated payload reads
+at two session sizes and then joins against a moved raw-created wall.
+
+Earlier measurements, before session-scale publication (#9411), grew with the
+whole overlay on both main and branch. Those results do not qualify the rebased
+code. Finite schema-name snapshots separately bound registry-key work to one
+signature per operation while keeping definitions live. The paired public SDK
+cohort reports cold and warm calls independently, verifies that the walls do
+not join, and compares reopened geometry. The timing verdict is reported on
+#9406; an operation counter alone is not timing qualification.
+
+The final exclusive paired cohort on the session-scale base passed both the
+non-joining cold/warm overhead gate and the session-growth gate, with identical
+reopened geometry. Incremental raw creation removed the cold rebuild; skipping
+candidate-key work for an empty staged index brought the warm path within the
+same acceptance gate. Keep both checks: fixing cold scaling alone had left a
+warm-call regression.

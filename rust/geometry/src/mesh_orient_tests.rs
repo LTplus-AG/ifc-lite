@@ -782,3 +782,32 @@ fn a_lone_inside_out_shell_is_still_made_positive_7755() {
     assert!(orient_mesh_outward_verdict(&mut m).flipped);
     assert!((mesh_volume(&m) - 1.0).abs() < 1e-9);
 }
+
+/// The pooled scratch must cost what the CURRENT mesh needs. After one large
+/// mesh, orienting a small one used to clear (rewrite every control byte of)
+/// the large vertex table again, on every later mesh of the worker. The table a
+/// small mesh leaves in the scratch is now sized for that small mesh.
+#[test]
+fn a_small_mesh_after_a_large_one_resets_a_small_vertex_table() {
+    let quad = |x: f32, mesh: &mut Mesh| {
+        let part = soup(&[[x, 0.0, 0.0], [x + 1.0, 0.0, 0.0], [x + 1.0, 1.0, 0.0], [x, 1.0, 0.0]], &[[0, 1, 2], [0, 2, 3]]);
+        let offset = mesh.positions.len() as u32 / 3;
+        mesh.positions.extend(part.positions);
+        mesh.normals.extend(part.normals);
+        mesh.indices.extend(part.indices.into_iter().map(|i| i + offset));
+    };
+    ORIENT_SCRATCH.with(|slot| *slot.borrow_mut() = Some(OrientScratch::default()));
+    let mut large = Mesh::new();
+    for i in 0..20_000 {
+        quad(i as f32 * 2.0, &mut large);
+    }
+    orient_mesh_outward_verdict(&mut large);
+    let large_capacity = ORIENT_SCRATCH.with(|slot| slot.borrow().as_ref().unwrap().vid_of.capacity());
+    assert!(large_capacity >= 80_000, "the large mesh grew the table: {large_capacity}");
+    let mut small = Mesh::new();
+    quad(0.0, &mut small);
+    orient_mesh_outward_verdict(&mut small);
+    let small_capacity = ORIENT_SCRATCH.with(|slot| slot.borrow().as_ref().unwrap().vid_of.capacity());
+    assert!(small_capacity <= 1_024, "a 4-vertex mesh kept a {small_capacity}-entry table");
+    ORIENT_SCRATCH.with(|slot| *slot.borrow_mut() = Some(OrientScratch::default()));
+}

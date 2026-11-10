@@ -15,6 +15,9 @@ import {
   addDoorToStore,
   addWindowToStore,
   resolveSpatialAnchor,
+  withWallAutojoinIndex,
+  withWallAutojoinAppend,
+  type WallAutojoinIndex,
   type DoorInStoreParams,
   type WindowInStoreParams,
 } from '@ifc-lite/create';
@@ -48,6 +51,8 @@ import { roomSlotFor } from '@/lib/collab/room-model-target.js';
 import { mutationDenialMessage, mutationPermission } from '../../store/mutation-permission.js';
 import { recordResolvedModellingCommit } from '@/store/slices/mutation-modelling-records';
 import { mirrorNewRoofDefinition } from '@/store/slices/mutation-roof';
+import { toast } from '@/components/ui/toast';
+import { trackImplicitWallJoins } from './store-adapter-wall-autojoin.js';
 
 export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
   // One StoreEditor per (modelId, MutablePropertyView) pair. Editors are
@@ -149,8 +154,8 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
     modelId: string,
     storeyExpressId: number,
     element: AuthoredElement,
-    build: (editor: StoreEditor, dataStore: IfcDataStore, ordinary: ReturnType<typeof createOrdinaryStoreBackend>) => number,
-  ): EntityRef {
+    build: (editor: StoreEditor, dataStore: IfcDataStore, ordinary: ReturnType<typeof createOrdinaryStoreBackend>) => number | ReturnType<StoreBackendMethods['addWall']>,
+  ): ReturnType<StoreBackendMethods['addWall']> {
     assertCanEdit(operation, modelId);
     const editor = getEditor(modelId);
     const dataStore = resolveDataStore(modelId);
@@ -160,19 +165,27 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
     const normalizedModelId = normalizeMutationModelId(store.getState(), modelId);
     const setState = store.setState;
     if (!setState) throw new Error(`bim.store.${operation}: creation requires a writable viewer store`);
-    const expressId = recordResolvedModellingCommit({ ...store, setState }, {
-      modelId: normalizedModelId, editor, dataStore, view: editor.getMutationView(),
-    }, (draft, data) => build(draft, data, createOrdinaryStoreBackend(() => ({
-      ...resolveModel(modelId), store: data, editor: draft, mutationView: draft.getMutationView(),
-    }))), undefined, true, element.kind === 'roof'
-      ? (id, view) => mirrorNewRoofDefinition({ ...store, setState }, normalizedModelId, id, view)
-      : undefined);
-    // The builder only wrote the overlay. Book it the way the UI's add actions
-    // do — mesh, spatial tree, undo entry, `mutationVersion` — or the element
-    // is in the export and nowhere else: a flow or script "adds" columns the
-    // user never sees.
-    store.getState().recordAuthoredElement?.(normalizedModelId, storeyExpressId, expressId, element, { historyRecorded: true });
-    return { modelId: normalizedModelId, expressId };
+    const commit = (wallIndex?: WallAutojoinIndex): ReturnType<StoreBackendMethods['addWall']> => {
+      const joins = wallIndex ? trackImplicitWallJoins(editor, wallIndex) : null;
+      const created = recordResolvedModellingCommit({ ...store, setState }, {
+        modelId: normalizedModelId, editor, dataStore, view: editor.getMutationView(),
+      }, (draft, data) => build(draft, data, createOrdinaryStoreBackend(() => ({
+        ...resolveModel(modelId), store: data, editor: draft, mutationView: draft.getMutationView(),
+      }), joins?.index)), undefined, true, element.kind === 'roof'
+        ? (id, view) => mirrorNewRoofDefinition({ ...store, setState }, normalizedModelId, typeof id === 'number' ? id : id.expressId, view)
+        : undefined, joins?.prepareHistory);
+      const ref = typeof created === 'number' ? { modelId: normalizedModelId, expressId: created }
+        : { ...created, modelId: normalizedModelId };
+      // The builder only wrote the overlay. Book it the way the UI's add actions
+      // do — mesh, spatial tree, undo entry, `mutationVersion` — or the element
+      // is in the export and nowhere else: a flow or script "adds" columns the
+      // user never sees.
+      if (joins) joins.complete(store, normalizedModelId, dataStore, storeyExpressId, ref.expressId, element);
+      else store.getState().recordAuthoredElement?.(normalizedModelId, storeyExpressId, ref.expressId, element, { historyRecorded: true });
+      if ('notices' in ref && ref.notices?.length) toast.info(ref.notices.join('\n'));
+      return ref;
+    };
+    return element.kind === 'wall' ? withWallAutojoinIndex(dataStore, editor.getMutationView(), commit) : commit();
   }
 
   /**
@@ -232,9 +245,11 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
         ));
         ensureSourceRoomEntities(store, modelId, editor, referenced, dataStore);
       }
-      const ref = editor.addEntity(def.type, def.attributes as Parameters<StoreEditor['addEntity']>[1]);
-      mirrorCreatedEntity(modelId, editor, ref.expressId, dataStore);
-      return { modelId: normalizedId, expressId: ref.expressId };
+      return withWallAutojoinAppend(dataStore, editor.getMutationView(), def.type, () => {
+        const ref = editor.addEntity(def.type, def.attributes as Parameters<StoreEditor['addEntity']>[1]);
+        mirrorCreatedEntity(modelId, editor, ref.expressId, dataStore);
+        return { modelId: normalizedId, expressId: ref.expressId };
+      });
     },
     removeEntity(ref: EntityRef): boolean {
       assertCanEdit('removeEntity', ref.modelId);
@@ -312,9 +327,9 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
       return buildElement('addColumn', modelId, storeyExpressId, { kind: 'column', params },
         (_editor, _dataStore, ordinary) => ordinary.addColumn(modelId, storeyExpressId, params).expressId);
     },
-    addWall(modelId: string, storeyExpressId: number, params: AddWallInStoreParams): EntityRef {
+    addWall(modelId: string, storeyExpressId: number, params: AddWallInStoreParams): ReturnType<StoreBackendMethods['addWall']> {
       return buildElement('addWall', modelId, storeyExpressId, { kind: 'wall', params },
-        (_editor, _dataStore, ordinary) => ordinary.addWall(modelId, storeyExpressId, params).expressId);
+        (_editor, _dataStore, ordinary) => ordinary.addWall(modelId, storeyExpressId, params));
     },
     addSlab(modelId: string, storeyExpressId: number, params: AddSlabInStoreParams): EntityRef {
       return buildElement('addSlab', modelId, storeyExpressId, { kind: 'slab', params },

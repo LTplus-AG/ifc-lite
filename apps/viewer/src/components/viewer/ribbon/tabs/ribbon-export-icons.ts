@@ -27,6 +27,9 @@ export const RIBBON_EXPORT_ICONS: ExportIconSet = {
   kmz: FileKmz,
   ion: CesiumIonUpload,
   usd: FileUsd,
+  // No Rhino glyph in `src/icons/`; the layer mark reads as the layered scene
+  // the export writes, and avoids a new SVG asset for one small button.
+  '3dm': Layer,
   energy: FileHbjson,
   // No terrain/LandXML glyph in `src/icons/`; the layer mark reads as a
   // surface, and reusing it avoids a new SVG asset for one small button.

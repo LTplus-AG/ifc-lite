@@ -47,6 +47,7 @@
     "@ifc-lite/query": "workspace:^",
     "@ifc-lite/renderer": "workspace:^",
     "@ifc-lite/report-contract": "workspace:^",
+    "@ifc-lite/rhino3dm": "workspace:^",
     "@ifc-lite/rules": "workspace:^",
     "@ifc-lite/sandbox": "workspace:^",
     "@ifc-lite/sdk": "workspace:^",

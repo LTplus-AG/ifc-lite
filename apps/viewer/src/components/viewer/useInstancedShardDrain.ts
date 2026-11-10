@@ -12,6 +12,11 @@
  * task as the enqueue (a federated finalize registers the model, then
  * enqueues), so the model-index and id-offset maps read here already list
  * that model. Shards enqueued in one task are drained together.
+ *
+ * A shard belongs to its model. Removal withdraws it from the queue
+ * (`modelSlice.sessionRelease`), and a shard whose owner the maps do not list
+ * yet stays queued until they do: it is never uploaded under index 0 and
+ * offset 0, which are another model's (#9628 review).
  */
 
 import { useEffect, useLayoutEffect, useRef, type MutableRefObject } from 'react';
@@ -19,7 +24,7 @@ import type { Renderer } from '@ifc-lite/renderer';
 import { decodeInstancedShard, type MeshData } from '@ifc-lite/geometry';
 import { liftNewInstancedOccurrences } from '@/lib/level-arrival';
 import { activeLoadTrace } from '@/lib/perf/activeLoadTrace';
-import { drainInstancedShards, subscribeInstancedShards } from '@/store/instancedShardQueue';
+import { drainInstancedShards, hasPendingInstancedShards, subscribeInstancedShards, type PendingInstancedShard } from '@/store/instancedShardQueue';
 import { applyFederationOffsetToShard } from './instancedFederationOffset.js';
 import { fitInstanceOnlyBounds } from './streamingInstancedBounds.js';
 import type { Bounds } from './streamingBounds.js';
@@ -44,8 +49,13 @@ export interface InstancedShardDrainParams {
 
 export function useInstancedShardDrain(params: InstancedShardDrainParams): void {
   const latest = useRef(params);
+  const schedule = useRef<(() => void) | null>(null);
   useLayoutEffect(() => { latest.current = params; });
-  const { isInitialized, gpuRecoveryEpoch } = params;
+  const { isInitialized, gpuRecoveryEpoch, modelIdToIndex, modelIdToOffset } = params;
+  // An owner the drain was waiting for may have just been published.
+  useLayoutEffect(() => {
+    if (hasPendingInstancedShards()) schedule.current?.();
+  }, [modelIdToIndex, modelIdToOffset]);
 
   useEffect(() => {
     if (!isInitialized) return;
@@ -61,7 +71,17 @@ export function useInstancedShardDrain(params: InstancedShardDrainParams): void 
       const scene = renderer.getScene();
       drainInstancedShards((shards) => {
         const trace = activeLoadTrace(); // #6979: shards only arrive while a load streams
-        for (const { modelId, bytes } of shards) {
+        const waiting: PendingInstancedShard[] = [];
+        for (const pending of shards) {
+          const { modelId, bytes } = pending;
+          // No maps at all is the single-model legacy wiring (index 0, offset 0).
+          // Maps that do not list the owner mean "not published yet": wait.
+          const modelIndex = p.modelIdToIndex ? p.modelIdToIndex.get(modelId) : 0;
+          const idOffset = p.modelIdToOffset ? p.modelIdToOffset.get(modelId) : 0;
+          if (modelIndex === undefined || idOffset === undefined) {
+            waiting.push(pending);
+            continue;
+          }
           // CRITICAL: never let a shard decode/upload throw out of the drain.
           // addInstancedShard creates GPU buffers; on a degraded backend whose
           // device is being lost (e.g. CI's SwiftShader), createBuffer throws.
@@ -70,14 +90,14 @@ export function useInstancedShardDrain(params: InstancedShardDrainParams): void 
           try {
             const shard = trace.span('instanced.decode', () => decodeInstancedShard(new Uint8Array(bytes)));
             if (!shard) continue;
-            applyFederationOffsetToShard(shard, p.modelIdToOffset?.get(modelId) ?? 0);
+            applyFederationOffsetToShard(shard, idOffset);
             liftNewInstancedOccurrences(shard, p.currentLevelY ?? new Map());
-            const modelIndex = p.modelIdToIndex?.get(modelId) ?? 0;
             trace.span('instanced.upload', () => scene.addInstancedShard(device, shard, modelIndex));
           } catch (err) {
             console.warn('[useInstancedShardDrain] instanced shard upload failed (device lost?), skipping:', err);
           }
         }
+        if (waiting.length === shards.length) return waiting;
         if (p.geometryKernel === 'retained' && p.geometry?.length === 0 && !p.appearanceSourceGeometry?.length
           && scene.getInstancedModelIndices().length > 0) {
           fitInstanceOnlyBounds({ renderer, cameraFittedRef: p.cameraFittedRef, cameraSnapshotRef: p.cameraSnapshotRef,
@@ -86,14 +106,18 @@ export function useInstancedShardDrain(params: InstancedShardDrainParams): void 
           p.lastGeometryRef.current = p.geometry;
         }
         renderer.requestRender();
+        return waiting;
       });
     };
+    const later = () => { if (timer === undefined) timer = setTimeout(drain, 0); };
+    schedule.current = later;
     const unsubscribe = subscribeInstancedShards((event) => {
-      if (event.kind === 'enqueued' && timer === undefined) timer = setTimeout(drain, 0);
+      if (event.kind === 'enqueued') later();
     });
     // Shards queued before the renderer was ready, or across a device recovery.
     drain();
     return () => {
+      if (schedule.current === later) schedule.current = null;
       unsubscribe();
       if (timer !== undefined) clearTimeout(timer);
     };

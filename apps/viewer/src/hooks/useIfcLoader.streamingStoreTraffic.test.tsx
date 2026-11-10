@@ -40,7 +40,9 @@ it('NEW-1: store notifications and consumer renders while streaming do not scale
   assert.ok(hook);
   const uploads: number[] = [];
   const scene = {
-    addInstancedShard: (_device: unknown, shard: DecodedInstancedShard) => { uploads.push(shard.instances.length); },
+    addInstancedShard: (_device: unknown, shard: DecodedInstancedShard) => {
+      for (const instance of shard.instances) uploads.push(instance.entityId);
+    },
     getInstancedModelIndices: () => [0],
   };
   const renderer = { getGPUDevice: () => ({}), getPipeline: () => null, getScene: () => scene, requestRender: () => {} } as unknown as Renderer;
@@ -67,8 +69,12 @@ it('NEW-1: store notifications and consumer renders while streaming do not scale
     yield { type: 'start', totalEstimate: BATCHES };
     streaming = true;
     for (let i = 0; i < BATCHES; i++) {
-      yield { type: 'batch', meshes: [mesh()], instancedShards: [buildShardBytes(31)], coordinateInfo, totalSoFar: i + 1 };
+      // A task boundary per batch, as worker messages have: scheduled drains
+      // run between batches, inside the counted window.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      yield { type: 'batch', meshes: [mesh()], instancedShards: [buildShardBytes(1000 + i)], coordinateInfo, totalSoFar: i + 1 };
     }
+    await new Promise((resolve) => setTimeout(resolve, 0));
     streaming = false;
     yield { type: 'complete', coordinateInfo, totalMeshes: BATCHES };
   });
@@ -82,19 +88,21 @@ it('NEW-1: store notifications and consumer renders while streaming do not scale
   try {
     rendersAtStart = renders;
     await act(async () => { await hook!.loadFile(blankFile('METRE'), { kind: 'primary', modelId: id }); });
+    await waitFor(() => uploads.length >= BATCHES, `all ${BATCHES} shards uploaded (got ${uploads.length})`);
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
     rendersAtEnd = renders;
-    await waitFor(() => uploads.length === BATCHES, `all ${BATCHES} shards uploaded (got ${uploads.length})`);
   } finally {
     unsubscribe();
     await act(async () => root.unmount());
     container.remove();
   }
   assert.equal(useViewerStore.getState().models.get(id)?.loadState, 'complete');
-  assert.equal(uploads.length, BATCHES, 'every streamed shard reaches the renderer exactly once');
-  // Before the queue: 99 notifications and 99 renders for 48 batches (the
-  // shard hop's append + clear per batch, plus 3). Now only the time-throttled
-  // geometry/progress publishes remain (2 here; more on a slow runner, never
-  // per batch), and the wiring renders only for the load's own resets.
-  assert.ok(streamingNotifications <= 12, `store notified ${streamingNotifications} times while ${BATCHES} batches streamed`);
-  assert.ok(rendersAtEnd - rendersAtStart <= 6, `Viewport wiring rendered ${rendersAtEnd - rendersAtStart} times during the load`);
+  assert.deepEqual(uploads, Array.from({ length: BATCHES }, (_, i) => 1000 + i), 'every streamed shard reaches the renderer exactly once, in order');
+  // Before the queue: 2 notifications and 2 renders per batch (the shard
+  // hop's append + clear). Now only the time-throttled geometry/progress
+  // publishes remain (more on a slow runner, never per batch), and the wiring
+  // renders only for the load's own resets, counted until every drain settled.
+  console.log(`[NEW-1] batches=${BATCHES} streamingNotifications=${streamingNotifications} consumerRenders=${rendersAtEnd - rendersAtStart}`);
+  assert.ok(streamingNotifications < BATCHES / 2, `store notified ${streamingNotifications} times while ${BATCHES} batches streamed`);
+  assert.ok(rendersAtEnd - rendersAtStart < BATCHES / 4, `Viewport wiring rendered ${rendersAtEnd - rendersAtStart} times during the load`);
 });

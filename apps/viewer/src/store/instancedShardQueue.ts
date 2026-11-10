@@ -61,26 +61,39 @@ export function enqueueInstancedShards(modelId: string, shards: readonly ArrayBu
 }
 
 /**
- * Hand every queued shard to `consume` and empty the queue. Listeners hear
- * `drained` after `consume` returns (or throws), so a consumer that uploads
+ * Hand every queued shard to `consume` and empty the queue. `consume` returns
+ * the shards it could not place yet (owner not known to it); they go back to
+ * the front of the queue in order. Listeners hear `drained` for the shards it
+ * took, after `consume` returns (or throws), so a consumer that uploads
  * synchronously has finished before anyone treats the model as settled.
  */
-export function drainInstancedShards(consume: (shards: readonly PendingInstancedShard[]) => void): void {
+export function drainInstancedShards(
+  consume: (shards: readonly PendingInstancedShard[]) => readonly PendingInstancedShard[] | void,
+): void {
   if (pending.length === 0) return;
   const taken = pending;
   pending = [];
+  let deferred: readonly PendingInstancedShard[] = [];
   try {
-    consume(taken);
+    deferred = consume(taken) ?? [];
   } finally {
-    emit({ kind: 'drained', modelIds: modelIdsOf(taken) });
+    if (deferred.length > 0) pending = [...deferred, ...pending];
+    const kept = new Set(deferred);
+    const drained = taken.filter((shard) => !kept.has(shard));
+    if (drained.length > 0) emit({ kind: 'drained', modelIds: modelIdsOf(drained) });
   }
 }
 
-/** Drop undrained shards so a rapid model switch cannot upload them into the next scene. */
-export function discardInstancedShards(): void {
-  if (pending.length === 0) return;
-  const dropped = pending;
-  pending = [];
+/**
+ * Drop undrained shards: all of them (a session reset or a full model clear,
+ * so a rapid switch cannot upload them into the next scene), or one model's
+ * (its removal: model ids are reused, so its bytes must not reach whoever
+ * takes the id next, nor fall back to another model's index).
+ */
+export function discardInstancedShards(modelId?: string): void {
+  const dropped = modelId === undefined ? pending : pending.filter((shard) => shard.modelId === modelId);
+  if (dropped.length === 0) return;
+  pending = modelId === undefined ? [] : pending.filter((shard) => shard.modelId !== modelId);
   emit({ kind: 'discarded', modelIds: modelIdsOf(dropped) });
 }
 

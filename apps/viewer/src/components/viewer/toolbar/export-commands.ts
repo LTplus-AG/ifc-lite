@@ -36,7 +36,7 @@ import { GLBExportDialog } from '../GLBExportDialog';
 import { KmzExportDialog } from '../KmzExportDialog';
 import { EnergyModelExportDialog } from '../EnergyModelExportDialog';
 import { UsdExportDialog } from '../UsdExportDialog';
-import { RhinoExportDialog } from '../RhinoExportDialog';
+import { RhinoExportCommand } from '../RhinoExportCommand';
 import { LandXmlTerrainExportCommand } from '../LandXmlTerrainExportCommand';
 import { PdfViewExportDialog } from '../PdfViewExportDialog';
 
@@ -205,7 +205,7 @@ export const EXPORT_COMMANDS = [
     // formats share a stack, and energy + terrain move to the next one.
     id: '3dm',
     kind: 'dialog',
-    Dialog: RhinoExportDialog,
+    Dialog: RhinoExportCommand,
     labelKey: 'exportCommands.rhino.label',
     menuLabelKey: 'exportCommands.rhino.menuLabel',
     tooltipKey: 'exportCommands.rhino.tooltip',

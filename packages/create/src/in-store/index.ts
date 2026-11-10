@@ -88,7 +88,9 @@ export {
   type MaterialLayerSetUsageInStoreParams,
 } from './material.js';
 export type { OneToManyResult } from './relate.js';
-export { applyLayerThicknessInStore, effectiveLayerSetThickness, typeOccurrencesInStore } from './type-layer-thickness.js';
+export { applyLayerThicknessInStore, effectiveLayerSetThickness, takeLayerThicknessOutcome, typeOccurrencesInStore, type LayerThicknessOutcome } from './type-layer-thickness.js';
+export { previewTypeLayerImpact, type TypeLayerImpact } from './type-layer-impact.js';
+export { retargetInheritingLayerUsagesInStore, typeLayerScopeInStore, typeLayerSetInStore, type TypeLayerScope } from './type-layer-inheritance.js';
 export { hostedFillTypeName, typeHostedFillInStore, type HostedFillTypeParams } from './hosted-fill-type.js';
 export { resolveAuthoringAnchor, readRelatedLists, liveEntityType, liveEntityConforms } from './resolve-relations.js';
 export { addSpaceToStore, type SpaceInStoreParams, type SpaceRectangleParams, type SpacePolygonParams, type SpaceBuildResult } from './space.js';

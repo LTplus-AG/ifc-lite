@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { liveEntityConforms } from '@ifc-lite/create';
 import { entityName, typeOf } from '@/lib/commands/modeling/authored-kinds';
-import { writeMaterialLayersInDraft, type ApplyLayersSpec } from '@/lib/authoring/material-layers';
+import { writeMaterialLayersInDraft, type ApplyLayersSpec, type LayerFollow } from '@/lib/authoring/material-layers';
 import type { ModelEditTarget, ModellingMethods } from '@/store/slices/mutation-modelling-records';
 import type { StoreEditor } from '@ifc-lite/mutations';
 import type { NativeReadState } from './model-authoring-read-target';
@@ -61,7 +61,7 @@ export function resolveReviewedLayers(state: NativeReadState, target: ModelEditT
 }
 
 export function writeReviewedLayers(target: ModelEditTarget, draft: StoreEditor, methods: ModellingMethods,
-  spec: ApplyLayersSpec, op: Operation, units: AuthoringUnits, state: NativeReadState): readonly number[] {
+  spec: ApplyLayersSpec, op: Operation, units: AuthoringUnits, state: NativeReadState): { remesh: readonly number[]; follow: LayerFollow } {
   const occurrence = spec.elementId;
   if (occurrence === undefined || !uniqueSplitGuid(target.dataStore, draft, op.target.globalId)
     || effectiveMetadataRecord(target.dataStore, occurrence, target.view)?.attributes[0] !== op.target.globalId
@@ -79,5 +79,6 @@ export function writeReviewedLayers(target: ModelEditTarget, draft: StoreEditor,
       || entityName(target, material.expressId) !== material.Name)) throw new Error('The native layer material changed before writing');
   }
   const current = resolveReviewedLayers(state, target, occurrence, op, units);
-  return writeMaterialLayersInDraft(target, draft, methods, current).remesh;
+  const { remesh, follow } = writeMaterialLayersInDraft(target, draft, methods, current);
+  return { remesh, follow };
 }

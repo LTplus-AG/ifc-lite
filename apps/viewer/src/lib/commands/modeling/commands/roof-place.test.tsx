@@ -8,6 +8,7 @@ import { act } from 'react';
 import { useViewerStore } from '@/store';
 import { seedModelingSession, MODEL_ID } from '@/test/modeling-session-fixture';
 import { cleanup, render, click, type, press } from '@/test/render';
+import { CommandFieldsBar } from '@/components/viewer/tools/command/CommandFieldsBar';
 import { SlabPlaceBar } from '@/components/viewer/tools/command/PlacementBars';
 import { useCommandRuntime } from '../runtime';
 import { commandPointerMove, commandPointerDown, getCommandRuntime } from '../runtime';
@@ -25,7 +26,7 @@ beforeEach(async () => {
 afterEach(() => { restore(); useViewerStore.getState().exitModelWorkspace(); cleanup(); });
 function Bar() {
   const rt = useCommandRuntime();
-  return <SlabPlaceBar gesture={rt.gesture as SlabPlaceGesture} ctx={rt.ctx!} />;
+  return <><CommandFieldsBar /><SlabPlaceBar gesture={rt.gesture as SlabPlaceGesture} ctx={rt.ctx!} /></>;
 }
 async function renderBar() {
   let ui!: HTMLElement;
@@ -121,6 +122,7 @@ it('the hip preview has the builder’s pitched ridge rather than a flat prism (
 });
 
 function enterRoofValue(ui: HTMLElement, label: string, value: string) {
+  assert.equal(ui.querySelectorAll(`[aria-label="${label}"]`).length, 1, `${label} has one visible control (#9296)`);
   const field = ui.querySelector(`[aria-label="${label}"]`);
   assert.ok(field, `the Roof HUD offers ${label} (#9296)`);
   press(field, 'Enter');
@@ -147,7 +149,7 @@ it('typed Pitch updates every sloped edge live, preserving unsloped edges, and c
   const before = previewBounds();
   const depth = useViewerStore.getState().undoStacks.get(MODEL_ID)?.length ?? 0;
   enterRoofValue(ui, 'Pitch', '45');
-  assert.ok(previewBounds().maxZ > before.maxZ + 1);
+  assert.ok(previewBounds().maxZ > before.maxZ + 1, 'Pitch changes the live roof without submitting it');
   assert.equal(useViewerStore.getState().undoStacks.get(MODEL_ID)?.length ?? 0, depth);
   act(() => commandPointerDown({ local: [10, 8], winner: null, guides: [], locked: false }));
   assert.deepEqual(slopes(), [0, Math.PI / 4, Math.PI / 4, Math.PI / 4]);
@@ -162,7 +164,7 @@ it('typed Overhang extends the live eave and persists through the footprint buil
     commandPointerMove({ local: [10, 8], winner: null, guides: [], locked: false });
   });
   enterRoofValue(ui, 'Overhang', '0.6');
-  assert.ok(Math.abs(previewBounds().minX + 0.6) < 1e-5);
+  assert.ok(Math.abs(previewBounds().minX + 0.6) < 1e-5, 'Overhang extends the live eave without submitting the roof');
   act(() => commandPointerDown({ local: [10, 8], winner: null, guides: [], locked: false }));
   const view = useViewerStore.getState().mutationViews.get(MODEL_ID)!;
   const roof = view.getNewEntities().find(e => e.type.toUpperCase() === 'IFCROOF')!;

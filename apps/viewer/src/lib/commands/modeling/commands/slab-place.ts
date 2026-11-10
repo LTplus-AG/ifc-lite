@@ -16,7 +16,7 @@
  */
 
 import { roofGhostMeshes } from './roof-place-ghost.js';
-import { nextRoof, roofEdgeSlopes, withRoofPitch } from './roof-place-params.js';
+import { nextRoof, roofEdgeSlopes } from './roof-place-params.js';
 import { SlabPlaceBar } from '@/components/viewer/tools/command/PlacementBars';
 import { SlabPlaceScene } from '@/components/viewer/tools/command/SlabPlaceScene';
 import type { SlabClass } from '@/store/slices/authoringDefaultsSlice';
@@ -44,6 +44,8 @@ const rectSide = (axis: 0 | 1) => (g: SlabPlaceGesture): number | null => {
   return first && corner ? Math.abs(corner[axis] - first[axis]) : (axis === 0 ? g.width : g.depth);
 };
 
+// Roof parameters live in RoofPlaceBar: generic field submission finishes the
+// outline, while Pitch and Overhang must keep the current footprint open.
 const FIELDS: readonly CommandField<SlabPlaceGesture>[] = [
   {
     id: 'width', labelKey: 'modelingCommand.field.width', unit: 'm', group: 'rect',
@@ -55,16 +57,6 @@ const FIELDS: readonly CommandField<SlabPlaceGesture>[] = [
   },
   defaultsField('thickness', slabClassOf, 'Thickness', 'modelingCommand.field.thickness'),
   planeHeightField(),
-  {
-    id: 'roofPitch', labelKey: 'modelingCommand.roof.pitch', unit: 'deg', group: 'roof',
-    hidden: (_g, ctx) => slabClassOf(ctx) !== 'roof', read: (g) => g.roof.pitch,
-    write: (g, pitch) => ({ ...g, roof: withRoofPitch(g.roof, pitch) }),
-  },
-  {
-    id: 'roofOverhang', labelKey: 'modelingCommand.roof.overhang', unit: 'm', group: 'roof',
-    hidden: (_g, ctx) => slabClassOf(ctx) !== 'roof', read: (g) => g.roof.overhang,
-    write: (g, overhang) => ({ ...g, roof: { ...g.roof, overhang: Math.max(0, overhang) } }),
-  },
 ];
 
 /** The builder for each class; slab, roof and plate take the same params. */

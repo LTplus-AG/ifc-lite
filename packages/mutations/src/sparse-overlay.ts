@@ -47,6 +47,11 @@ function sparseMap<K, V, T extends Map<K, V>>(base: T): { value: T; changes(): C
     for (const key of rawKeys()) if (!ordering.has(key as number)) yield key;
   }
   const restoreOrder = (ids: readonly number[]) => { ordering = new Map(ids.map((id, i) => [id, i])); };
+  // Read-only borrowers see an unmodified row in place. They never receive a
+  // mutable alias (borrows are frozen copies), so the row needs no private copy
+  // and no comparison when the transaction finishes.
+  const peek = (key: K): V | undefined => !has(key) ? undefined : reads.has(key) ? reads.get(key) : base.get(key);
+  function* peekValues(): MapIterator<V> { for (const key of keys()) yield peek(key)!; }
   function* entries(): MapIterator<[K, V]> { for (const key of keys()) yield [key, get(key)!]; }
   function* values(): MapIterator<V> { for (const key of keys()) yield get(key)!; }
   const target = base instanceof NewEntityMap ? new NewEntityMap() : new Map<K, V>();
@@ -70,6 +75,8 @@ function sparseMap<K, V, T extends Map<K, V>>(base: T): { value: T; changes(): C
     };
     if (name === 'watchAttributeExposure' && localEntities) return (listener: (id: number) => void) => localEntities.watchAttributeExposure(listener);
     if (name === 'get') return get;
+    if (name === 'peek' && localEntities) return peek;
+    if (name === 'peekValues' && localEntities) return peekValues;
     if (name === 'has') return has;
     if (name === 'set') return (key: K, next: V) => {
       if (!has(key)) { size++; inserted.add(key); }
@@ -86,21 +93,27 @@ function sparseMap<K, V, T extends Map<K, V>>(base: T): { value: T; changes(): C
     if (name === 'forEach') return (fn: (v: V, k: K, map: T) => void, self?: unknown) => {
       for (const [k, v] of entries()) fn.call(self, v, k, value);
     };
-    if ((name === 'ofType' || name === 'referencing') && base instanceof NewEntityMap) return function* (query: string | number): IterableIterator<NewEntity> {
+    if ((name === 'ofType' || name === 'referencing' || name === 'peekOfType' || name === 'peekReferencing') && base instanceof NewEntityMap) return function* (query: string | number): IterableIterator<NewEntity> {
+      const borrow = name === 'peekOfType' || name === 'peekReferencing';
+      const kind = name === 'ofType' || name === 'peekOfType' ? 'ofType' : 'referencing';
       const matches = function* () {
-        if (name === 'referencing') localEntities!.refreshReferences();
+        if (kind === 'referencing') localEntities!.refreshReferences();
         const seen = new Set<number>();
-        const candidates = name === 'ofType' ? base.ofType(String(query)) : base.referencing(Number(query));
+        const candidates = kind === 'ofType'
+          ? borrow ? base.peekOfType(String(query)) : base.ofType(String(query))
+          : borrow ? base.peekReferencing(Number(query)) : base.referencing(Number(query));
         for (const entity of candidates) {
           const key = entity.expressId as K;
           if (removed.has(key)) continue;
+          // An untouched row still matches by the base index that found it.
+          if (borrow && !reads.has(key)) { seen.add(entity.expressId); yield entity; continue; }
           const next = get(key) as NewEntity;
           // A replaced entry is checked in the private draft bucket below.
-          if (name === 'ofType' ? next.type.toUpperCase() !== String(query).toUpperCase()
+          if (kind === 'ofType' ? next.type.toUpperCase() !== String(query).toUpperCase()
             : !localEntities!.referencesId(next.expressId, Number(query))) continue;
           seen.add(next.expressId); yield next;
         }
-        const local = name === 'ofType' ? localEntities!.ofType(String(query)) : localEntities!.referencing(Number(query));
+        const local = kind === 'ofType' ? localEntities!.ofType(String(query)) : localEntities!.referencing(Number(query));
         for (const entity of local) if (!seen.has(entity.expressId) && has(entity.expressId as K)) yield entity;
       };
       yield* ordering ? [...matches()].sort((a, b) => positionOf(a.expressId) - positionOf(b.expressId)) : matches();

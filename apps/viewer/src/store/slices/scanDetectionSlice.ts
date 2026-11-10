@@ -191,7 +191,9 @@ export function presentGlobalIds(
   const present = new Set<string>();
   if (!model) return present;
   const authored = new Map<string, number>();
-  for (const entity of view?.getNewEntities() ?? []) {
+  // A read-only borrow: reading every created GlobalId must not mark every
+  // created row as exposed, which would make later transactions recheck them.
+  for (const entity of view?.readNewEntities() ?? []) {
     const gid = entity.attributes[0];
     if (typeof gid === 'string' && !view?.isDeleted(entity.expressId)) authored.set(gid, entity.expressId);
   }

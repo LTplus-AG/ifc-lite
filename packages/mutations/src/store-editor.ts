@@ -18,7 +18,7 @@
  */
 
 import { prepareEntityOperations } from './prepare-entity-operations.js';
-import { highestExistingExpressId } from './express-id-watermark.js';
+import { highestExistingExpressId, rescanHighestExpressId } from './express-id-watermark.js';
 import { sourceEntityRef, storeHasSourceEntity } from './source-entity-index.js';
 import type { EntityOperation, EntityPreparationOptions, PreparedEntityOperations } from './cooperative-operation-types.js';
 import type { MutablePropertyView } from './mutable-property-view.js';
@@ -107,7 +107,7 @@ export class StoreEditor {
    * no-op.
    */
   refreshWatermark(): void {
-    const fresh = highestExistingExpressId(this.store);
+    const fresh = rescanHighestExpressId(this.store);
     if (fresh > this.maxExistingId) {
       this.maxExistingId = fresh;
     }

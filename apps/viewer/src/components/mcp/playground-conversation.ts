@@ -87,6 +87,9 @@ interface RunOpts {
   assistantId: string;
   getDispatchContext: () => DispatchContext;
   onUpdate: (patch: Partial<ChatMessage>) => void;
+  /** Commit completed tool effects independently of the conversation's UI owner. */
+  onToolResult: (call: ChatToolCall) => void;
+  onDispatchChange: (pending: boolean) => void;
 }
 
 type ApiMessage =
@@ -320,17 +323,24 @@ export async function runConversation(opts: RunOpts): Promise<void> {
     // mounts/unmounts the panel mid-conversation.
     const results: AnthropicToolResultBlock[] = [];
     for (const tc of newToolCalls) {
-      const ctx = opts.getDispatchContext();
-      const dispatched = await dispatch(opts.model, tc.name, tc.args, ctx);
-      opts.signal.throwIfAborted();
-      tc.result = dispatched;
-      tc.finishedAt = Date.now();
-      results.push({
-        type: 'tool_result',
-        tool_use_id: tc.id,
-        content: dispatched.text,
-        is_error: dispatched.isError,
-      });
+      opts.onDispatchChange(true);
+      try {
+        const ctx = { ...opts.getDispatchContext(), signal: opts.signal };
+        const dispatched = await dispatch(opts.model, tc.name, tc.args, ctx);
+        const finished = { ...tc, result: dispatched, finishedAt: Date.now() };
+        // Replace instead of mutating the call already held by React history.
+        accumulated.toolCalls = accumulated.toolCalls.map(call => call.id === tc.id ? finished : call);
+        opts.onToolResult(finished);
+        opts.signal.throwIfAborted();
+        results.push({
+          type: 'tool_result',
+          tool_use_id: tc.id,
+          content: dispatched.text,
+          is_error: dispatched.isError,
+        });
+      } finally {
+        opts.onDispatchChange(false);
+      }
     }
     toolCallCount += newToolCalls.length;
     opts.onUpdate({ toolCalls: accumulated.toolCalls });

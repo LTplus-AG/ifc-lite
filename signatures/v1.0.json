@@ -22,6 +22,17 @@
       "pull_request": 9512,
       "comment_id": 6767794179,
       "comment_url": "https://github.com/LTplus-AG/ifc-lite/pull/9512#issuecomment-6767794179"
+    },
+    {
+      "github_id": 17197629,
+      "login": "NikChao",
+      "cla_version": "1.0",
+      "cla_sha256": "4588846418581ca944a6e1d092631146a93a56d8b4968c7b939f7d7817c72586",
+      "cla_commit": "5790205e37e1f5782958d1731dd13af3b4515ca9",
+      "signed_at": "2026-11-10T22:27:25Z",
+      "pull_request": 9680,
+      "comment_id": 6780993013,
+      "comment_url": "https://github.com/LTplus-AG/ifc-lite/pull/9680#issuecomment-6780993013"
     }
   ],
   "offline": []

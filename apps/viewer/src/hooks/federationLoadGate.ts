@@ -89,8 +89,11 @@ function tryAdmit(): void {
  * Acquire a slot for a load of the given estimated size. Resolves
  * immediately when budget allows; otherwise queues FIFO and resolves when
  * an active load releases. Returns the slot id to pass to `release`.
+ * Aborting `signal` while queued dequeues the waiter and rejects with an
+ * `AbortError` (L6): a superseded add never wakes into a newer scene.
  */
-export async function acquireFederationLoadSlot(fileSizeMB: number): Promise<number> {
+export async function acquireFederationLoadSlot(fileSizeMB: number, signal?: AbortSignal): Promise<number> {
+  signal?.throwIfAborted();
   const id = nextId++;
   const cost = Math.max(0, fileSizeMB) * COST_PER_FILE_MULTIPLIER;
   const available = getAvailableBudgetMB() - activeCostMB();
@@ -100,8 +103,16 @@ export async function acquireFederationLoadSlot(fileSizeMB: number): Promise<num
     return id;
   }
 
-  await new Promise<void>((resolve) => {
-    queue.push({ id, fileSizeMB, resolve });
+  await new Promise<void>((resolve, reject) => {
+    const abandon = () => {
+      const index = queue.findIndex((pending) => pending.id === id);
+      if (index < 0) return; // already admitted
+      queue.splice(index, 1);
+      reject(signal?.reason);
+      tryAdmit(); // a waiter behind this one may fit now
+    };
+    signal?.addEventListener('abort', abandon, { once: true });
+    queue.push({ id, fileSizeMB, resolve: () => { signal?.removeEventListener('abort', abandon); resolve(); } });
   });
   // The slot is registered into `active` by tryAdmit at the moment of
   // admission, so no active.set is needed here.

@@ -43,7 +43,8 @@ describe('PlanPointer on the shared solver (#6232 M2.4)', () => {
 
     const runtime = getCommandRuntime();
     const bare = solveCommandSnap(runtime, runtime.ctx!.workplane!, { cursor: [2.3, 2.2], metresPerPixel: 0.1, sources: [cut], mods: { shiftKey: false, altKey: false } });
-    assert.deepEqual(bare?.local, [2.3, 2.2], 'the modelling profile has no plancut source');
+    assert.deepEqual(bare?.local, [2, 2], 'without the plan cut, the construction increment still applies');
+    assert.equal(bare?.winner?.kind, 'grid', 'the modelling profile has no plancut source');
   });
 
   it('Alt and the snap toggle both suspend snapping', () => {

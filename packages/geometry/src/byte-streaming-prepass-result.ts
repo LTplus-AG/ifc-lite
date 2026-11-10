@@ -12,6 +12,9 @@ export interface ByteStreamingPrePassResult {
   rtcOffset?: Float64Array;
   needsShift: boolean;
   buildingRotation?: number | null;
+  /** `IfcSite` world translation `[x,y,z]` in metres (IFC Z-up, before RTC);
+   *  null when it does not resolve, absent on an older wasm. */
+  siteOrigin?: Float64Array | null;
   voidKeys: Uint32Array;
   voidCounts: Uint32Array;
   voidValues: Uint32Array;

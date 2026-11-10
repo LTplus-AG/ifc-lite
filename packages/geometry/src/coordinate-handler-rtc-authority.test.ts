@@ -214,3 +214,23 @@ describe('CoordinateHandler authoritative WASM RTC state (#4799)', () => {
     expect(nativeBatch.positions[0]).toBe(-5);
   });
 });
+
+describe('CoordinateHandler IfcSite origin (#9480)', () => {
+  it('publishes a finite pre-pass site origin as a copy, and clears it on reset', () => {
+    const handler = new CoordinateHandler();
+    const origin = new Float64Array([311.98818054, 5996.14856499, 0.014]);
+    handler.setWasmMetadata(0.001, null, { x: 0, y: 0, z: 0, needsShift: false }, origin);
+    origin[2] = 99;
+    expect(handler.getFinalCoordinateInfo().siteOrigin).toEqual({ x: 311.98818054, y: 5996.14856499, z: 0.014 });
+    handler.reset();
+    expect(handler.getFinalCoordinateInfo().siteOrigin).toBeUndefined();
+  });
+
+  it('drops an absent, short or non-finite site origin', () => {
+    for (const origin of [undefined, null, [1, 2], [1, Number.NaN, 3]]) {
+      const handler = new CoordinateHandler();
+      handler.setWasmMetadata(1, null, { x: 0, y: 0, z: 0, needsShift: false }, origin);
+      expect(handler.getFinalCoordinateInfo().siteOrigin).toBeUndefined();
+    }
+  });
+});

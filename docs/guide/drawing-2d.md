@@ -340,7 +340,9 @@ In the IFClite viewer:
 
 Wheel zoom follows the pointer and uses the input magnitude, including pixel,
 line and page wheel deltas. Hold Ctrl or Cmd for fine zoom. A trackpad pinch
-zooms normally unless that modifier key is physically held.
+zooms normally unless that modifier key is physically held. A notch eases in
+over roughly 0.2 s, as in the 3D view, and a pan or the zoom buttons stop it.
+**Settings → Display → Navigation → Wheel zoom speed** applies here too.
 
 The navigation preset also applies to the Drawing panel: Default uses vertical
 wheel movement to zoom and horizontal movement to pan; Navisworks uses vertical
@@ -484,3 +486,7 @@ When using the Select / Pan tool (or after pressing Escape to exit a creation to
 ### Selective section cutting
 
 `SectionPlaneConfig.sectionExcludedIds` accepts a `ReadonlySet<number>` of mesh `expressId` values to keep whole. `SectionCutter`, `cutMeshesStreaming` and `GPUSectionCutter` omit those meshes before producing segments and polygons, so they contribute neither caps, hatch regions nor cut outlines. Pass the renderer's same full scene-ID set when producing its primary and extra-plane caps. An absent or empty set cuts every mesh as usual.
+
+### Material identity on section polygons
+
+`DrawingPolygon.materialId` carries the source mesh’s `IfcMaterial` ID when available. Layers with different material IDs remain separate polygons even when their colours match. The ID uses the same model/federation ID space as `entityId`; resolve both through the host’s model resolver. It is absent for meshes without material identity and for combined opaque base polygons spanning several layers. CPU and GPU section cutters carry it through to polygon reconstruction.

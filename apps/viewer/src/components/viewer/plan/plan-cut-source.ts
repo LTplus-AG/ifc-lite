@@ -15,8 +15,9 @@
  * every command already snaps by.
  */
 
+import { useViewerStore } from '@/store';
 import { createLineworkSource, type Linework } from '@/lib/snap/sources/linework';
-import type { SnapSource, Vec2 } from '@/lib/snap/types';
+import type { SnapCandidate, SnapSource, Vec2 } from '@/lib/snap/types';
 import type { PlanCutPolygon, PlanCutLine } from './usePlanCut';
 
 export const PLAN_CUT_SOURCE_ID = 'plancut';
@@ -24,18 +25,27 @@ export const PLAN_CUT_SOURCE_ID = 'plancut';
 /** Every edge of the cut outlines (outer rings and holes) plus the visible projection lines. */
 export function planCutLinework(polygons: readonly PlanCutPolygon[], lines: readonly PlanCutLine[]): Linework {
   const segments: (readonly [Vec2, Vec2])[] = [];
-  const ring = (pts: readonly Vec2[]) => {
+  const segmentEntities: SnapCandidate["entity"][] = [];
+  const state = useViewerStore.getState();
+  const ring = (pts: readonly Vec2[], entityId: number) => {
+    const entity = state.resolveGlobalIdFromModels(entityId) ?? undefined;
     for (let i = 0; i < pts.length; i++) {
       const a = pts[i], b = pts[(i + 1) % pts.length];
-      if (a[0] !== b[0] || a[1] !== b[1]) segments.push([a, b]);
+      if (a[0] !== b[0] || a[1] !== b[1]) {
+        segments.push([a, b]);
+        segmentEntities.push(entity);
+      }
     }
   };
   for (const polygon of polygons) {
-    ring(polygon.outer);
-    for (const hole of polygon.holes) ring(hole);
+    ring(polygon.outer, polygon.entityId);
+    for (const hole of polygon.holes) ring(hole, polygon.entityId);
   }
-  for (const line of lines) if (!line.hidden) segments.push([line.a, line.b]);
-  return { segments, midpoints: true };
+  for (const line of lines) if (!line.hidden) {
+    segments.push([line.a, line.b]);
+    segmentEntities.push(state.resolveGlobalIdFromModels(line.entityId) ?? undefined);
+  }
+  return { segments, segmentEntities, midpoints: true };
 }
 
 export function createPlanCutSource(linework: () => Linework): SnapSource {

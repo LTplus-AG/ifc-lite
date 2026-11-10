@@ -5,7 +5,7 @@
 /** Compound history for commits that rewrite or forget earlier overlay
  * entities (#6232 D5). A raw mutation journal cannot reconstruct those graphs. */
 import { cooperativeOverlay } from './cooperative-overlay-access.js';
-import { captureCompoundInverse, restoreCompoundInverse, type CompoundInverse } from './compound-inverse.js';
+import { restoreCompoundInverse, type CompoundInverse } from './compound-inverse.js';
 import type { MutablePropertyView } from './mutable-property-view.js';
 import type { Mutation } from './types.js';
 
@@ -19,19 +19,7 @@ const records = new WeakMap<MutablePropertyView, Map<string, CompoundRecord>>();
  * touched-entry inverse as one undo operation. The callback must write through
  * the supplied draft; external effects belong after this call returns. */
 export function recordCompoundMutation<T>(view: MutablePropertyView, edit: (draft: MutablePropertyView) => T): T {
-  const before = structuredClone(cooperativeOverlay(view).capture());
-  const seen = new Set(before.mutationHistory.map(m => m.id));
-  let written: string[] = [];
-  let inverse: CompoundInverse | undefined;
-  const result = view.runAtomic(draft => {
-    const value = edit(draft);
-    written = draft.getMutations().filter(m => !seen.has(m.id)).map(m => m.id);
-    if (written.length === 0 && !cooperativeOverlay(draft).matches(before)) {
-      throw new Error('A compound edit must record its mutations');
-    }
-    if (written.length) inverse = captureCompoundInverse(before, cooperativeOverlay(draft).capture());
-    return value;
-  });
+  const { result, inverse, written } = cooperativeOverlay(view).transact(edit, true);
   if (inverse) {
     let map = records.get(view);
     if (!map) records.set(view, map = new Map());

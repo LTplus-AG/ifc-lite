@@ -153,6 +153,9 @@ export interface ModelingCommand<G = unknown> {
   /** What the snap solver constrains against: the anchor, the chain so far, typed locks. */
   snapQuery?(g: G): Pick<SnapQuery, 'anchor' | 'chain' | 'locks'>;
   /**
+   * With neither aim predicate true, the gesture places a free workplane
+   * point, including move/copy targets, and may use world increments.
+   *
    * This gesture points at a region of the workplane, not a position on it, so
    * the pointer stays on the plane, unsnapped: nothing in front of the plane
    * and no target nearby moves it, and a click reads what the hover read.

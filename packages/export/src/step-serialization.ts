@@ -148,7 +148,7 @@ function serializeInnerByBase(value: string | number | boolean, base: string | n
  * `IFCLENGTHMEASURE(3.)`). `type` is the IFC type name (`'IfcBoolean'`); the
  * inner value is serialized to match that type's underlying primitive.
  */
-export function serializeTypedMarker(type: string, value: string | number | boolean): string {
+export function serializeTypedMarker(type: string, value: string | number | boolean | number[]): string {
   let token = type.toUpperCase();
   if (!token.startsWith('IFC')) token = `IFC${token}`;
   // The token is written bare, outside any string quotes: a `(`, `;` or newline
@@ -156,6 +156,15 @@ export function serializeTypedMarker(type: string, value: string | number | bool
   // records into DATA (the class-name guard of EXPORT-STEP-26).
   if (!/^IFC[A-Z][A-Z0-9_]*$/.test(token)) {
     throw new Error(`Cannot write ${JSON.stringify(type)} as a STEP type name: it is not an IFC identifier`);
+  }
+  if (Array.isArray(value)) {
+    // IFC4 indexed segments are defined aggregate SELECT members (#8447).
+    const validLength = token === 'IFCLINEINDEX' ? value.length >= 2
+      : token === 'IFCARCINDEX' && value.length === 3;
+    if (!validLength || !value.every((index) => Number.isSafeInteger(index) && index > 0)) {
+      throw new Error(`Cannot write ${token}: expected positive integer segment indices`);
+    }
+    return `${token}((${value.join(',')}))`;
   }
   return `${token}(${serializeInnerByBase(value, resolveExpressBase(type))})`;
 }

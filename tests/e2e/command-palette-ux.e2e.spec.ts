@@ -130,7 +130,9 @@ test.describe('#8946 unloaded palette UX', () => {
         }
         await expectSearchTop(search, initial!.y);
         await search.fill('secton');
-        await expect(options.first()).toContainText('Section');
+        // #8965 projects the canonical section-add entries; Down (Z) ranks first for this typo.
+        await expect(options.first()).toHaveAttribute('data-command-id', 'section-add:down');
+        await expect(options.first()).toHaveAttribute('aria-label', 'Down (Z)');
         await expectSearchTop(search, initial!.y);
 
         await search.fill('Settings');

@@ -58,12 +58,11 @@ import { restoreOverridesForGhosting } from '@/lib/clash/ghost-color-overrides';
 import { focusClashGroup } from '@/lib/clash/group-focus';
 import { releaseOwnedClashVisibility } from '@/lib/clash/visibility-ownership';
 import {
-  clashFederationIsCurrent,
   clashRefModelIsCurrent,
-  recordGatheredModel,
   rememberFederationIdentity,
   type ClashFederationIdentity,
 } from '@/lib/clash/federation-identity';
+import { federationIsCurrent, recordGatheredModel } from '@/lib/federation/federation-identity';
 import { definedModelTagIdsOf, evaluatorModelsFromState } from '@/lib/model-tags/evaluator-models';
 import { captureModelTagInputs, rememberModelTagInputs, type ClashModelTagInputs } from '@/lib/clash/model-tag-inputs';
 import { allElementsRule, rememberRunRequest, type ClashRunRequest } from '@/lib/clash/run-request';
@@ -209,7 +208,7 @@ export function useClash() {
   /**
    * Per-call supersession guard for `run()` / `runDuplicates()` (#2802).
    *
-   * `publishClashResult`'s `clashFederationIsCurrent` check is keyed on the
+   * `publishClashResult`'s `federationIsCurrent` check is keyed on the
    * MODEL SET, not on which call started it — two detection jobs issued while
    * the federation is untouched (a slow "All elements" run, then a quick
    * duplicate scan started while it is still going) carry the identical
@@ -389,21 +388,23 @@ export function useClash() {
    * completion signal bumped AFTER a successful write, not a cancellation
    * guard (see its field doc in `clashSlice`).
    *
-   * `epoch` is the calling `run()` / `runDuplicates()` invocation's own token
-   * from `runEpochRef` (see its doc above `elementsByRef`): a SECOND call
-   * issued while the federation is untouched carries the same
-   * `federationIdentity`, so that check alone cannot refuse an older call
-   * that is merely finishing after a newer one. `stillWanted(epoch)` is what
-   * catches that case immediately before the write.
+   * `owns` is the calling `run()` / `runDuplicates()` invocation's own check:
+   * its epoch from `runEpochRef` (see its doc above `elementsByRef`) AND its
+   * analysis-run guard. A SECOND call issued while the federation is untouched
+   * carries the same `federationIdentity`, so that check alone cannot refuse
+   * an older call that is merely finishing after a newer one; the epoch does.
+   * A session reset keeps `models`, so the identity passes it too, and its
+   * epoch bump is deferred to a microtask; the guard refuses it in the same
+   * tick (A2). Both are checked immediately before the write.
    *
    * @returns whether the result was published. A discarded run must not go on
    *   to write its dependent state (groups, selection, telemetry) either.
    */
   const publishClashResult = useCallback(
-    (federationIdentity: ClashFederationIdentity, res: ClashResult, epoch: number, stamp: AnalysisStamp): boolean => {
-      if (!stillWanted(epoch)) return false;
+    (federationIdentity: ClashFederationIdentity, res: ClashResult, owns: () => boolean, stamp: AnalysisStamp): boolean => {
+      if (!owns()) return false;
       const state = useViewerStore.getState();
-      if (!clashFederationIsCurrent(federationIdentity, state.models) || !jobPlacementIsCurrent(federationIdentity, state)) return false;
+      if (!federationIsCurrent(federationIdentity, state.models) || !jobPlacementIsCurrent(federationIdentity, state)) return false;
       // The identity travels WITH the result object. Publish-time currency is
       // not the end of the question: the federation can be superseded while the
       // result is on screen, and only a result that remembers what it was
@@ -414,7 +415,7 @@ export function useClash() {
       state.bumpClashRunSeq();
       return true;
     },
-    [stillWanted],
+    [],
   );
 
   /**
@@ -453,7 +454,10 @@ export function useClash() {
       // already in flight (`runAll` again, a duplicate scan, a preset) makes
       // every write below — including this call's own error/finally, once
       // superseded — a no-op instead of clobbering the newer call (#2802).
-      const { runEpoch: myEpoch, controller: abortController } = prepared ?? beginAbortableRun(runEpochRef, runAbortRef);
+      const { runEpoch: myEpoch, controller: abortController, guard } = prepared ?? beginAbortableRun(runEpochRef, runAbortRef);
+      // Still this call's run AND still the model session it read (A2): a
+      // teardown turns the guard off synchronously, before its cancel lands.
+      const owns = (): boolean => stillWanted(myEpoch) && guard.isCurrent();
       const stamp = captureAnalysisStamp(true);
       const state = useViewerStore.getState();
       discardSolidPresentation();
@@ -466,10 +470,11 @@ export function useClash() {
         // a hidden tab never delivers a frame, and the whole run sits after this
         // await, so an unbounded wait means the run simply never starts. (#2385)
         await nextFrameOrTimeout(PAINT_FRAME_WAIT_MS);
-        if (!stillWanted(myEpoch)) return;
+        if (!owns()) return;
         const { elements, exclusions, federationIdentity } = gatherElements();
+        guard.track(federationIdentity);
         if (elements.length === 0) {
-          if (stillWanted(myEpoch)) state.setClashError('No model geometry is loaded. Load an IFC model first.');
+          state.setClashError('No model geometry is loaded. Load an IFC model first.');
           return;
         }
         // Keep per-occurrence geometry so focusClash can build the contact interface.
@@ -480,17 +485,16 @@ export function useClash() {
           tolerance: state.clashTolerance,
           signal: abortController.signal,
           // The TS engine yields between chunks, so these updates actually paint.
-          // A superseded run keeps reporting progress harmlessly — `clashProgress`
-          // is re-armed by the call that superseded it and this write loses any
-          // race against that the same way every other write here does.
-          onProgress: (p) => { if (stillWanted(myEpoch)) useViewerStore.getState().setClashProgress(p); },
+          // A superseded or torn-down run writes nothing: a teardown already
+          // reset `clashProgress`, and the guard refuses in the same tick.
+          onProgress: (p) => { if (owns()) useViewerStore.getState().setClashProgress(p); },
         });
         // Publishes the raw run, the user's exclusion-filtered view of it, and
         // the spatial clusters (the BCF unit) in one commit; the panel list
         // groups by its own dimension separately. Discarded outright if the
         // federation it examined is gone, or if a newer call has started —
         // see `publishClashResult`.
-        if (!publishClashResult(federationIdentity, res, myEpoch, stamp)) return;
+        if (!publishClashResult(federationIdentity, res, owns, stamp)) return;
         rememberModelTagInputs(res, tagInputs);
         rememberRunRequest(res, request);
         state.setClashSelectedId(null);
@@ -598,7 +602,8 @@ export function useClash() {
    */
   const runDuplicates = useCallback(async (): Promise<void> => {
     // Owned cancellation also bounds the frame wait before the synchronous scan (#2802).
-    const { runEpoch: myEpoch, controller: abortController } = beginAbortableRun(runEpochRef, runAbortRef);
+    const { runEpoch: myEpoch, controller: abortController, guard } = beginAbortableRun(runEpochRef, runAbortRef);
+    const owns = (): boolean => stillWanted(myEpoch) && guard.isCurrent(); // see `run()`
     const stamp = captureAnalysisStamp(true);
     const state = useViewerStore.getState();
     discardSolidPresentation();
@@ -609,10 +614,12 @@ export function useClash() {
       // Paint the running state before the (synchronous) scan blocks the thread.
       // Bounded for the same reason as the clash run above (#2385).
       await nextFrameOrTimeout(PAINT_FRAME_WAIT_MS);
-      if (!stillWanted(myEpoch)) return;
+      if (!owns()) return;
+      // No `guard.track`: the scan is synchronous up to the publish, so there is
+      // nothing to abort early; the publish checks the identity and the guard.
       const { elements, exclusions, federationIdentity } = gatherElements();
       if (elements.length === 0) {
-        if (stillWanted(myEpoch)) state.setClashError('No model geometry is loaded. Load an IFC model first.');
+        state.setClashError('No model geometry is loaded. Load an IFC model first.');
         return;
       }
       // The duplicate scan has its own tolerance ("how far apart may two
@@ -630,7 +637,7 @@ export function useClash() {
       // must not be one line apart in correctness: adding a yield to the
       // duplicate scan tomorrow would otherwise reopen the defect on this path
       // alone, silently.
-      if (!publishClashResult(federationIdentity, res, myEpoch, stamp)) return;
+      if (!publishClashResult(federationIdentity, res, owns, stamp)) return;
       rememberRunRequest(res, { kind: 'duplicates' });
       // Coincident SETS, not spatial clusters: three copies of one column are one
       // finding, and two unrelated duplicate pairs a metre apart stay two. The

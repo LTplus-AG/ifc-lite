@@ -8,18 +8,20 @@ import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { ChunkErrorBoundary } from '@/components/ChunkErrorBoundary';
 import { ClassVisibilityControls } from './toolbar/ClassVisibilityMenu';
+import { useSectionPaletteHost } from './section-palette-host';
 import type { SurfaceCommandContext } from './surface-command-types';
 
 const BulkPropertyEditor = lazy(() => import('./BulkPropertyEditor').then(module => ({ default: module.BulkPropertyEditor })));
 const DataConnector = lazy(() => import('./DataConnector').then(module => ({ default: module.DataConnector })));
 
-type ToolContext = Pick<SurfaceCommandContext, 'openBulkProperties' | 'openImportData' | 'openClassFilter' | 'toolHostIsCurrent'>;
+type ToolContext = Pick<SurfaceCommandContext, 'openBulkProperties' | 'openImportData' | 'openClassFilter' | 'toolHostIsCurrent' | 'addSectionPlane' | 'sectionAddUnavailable'>;
 const ToolHosts = createContext<ToolContext>({});
 export const usePersistentToolHosts = () => useContext(ToolHosts);
 
 /** One owner survives palette close, ribbon collapse, and tab changes (#8947). */
 export function PersistentToolHosts({ children }: { children: ReactNode }) {
   const { t } = useTranslation();
+  const sectionHost = useSectionPaletteHost();
   const [bulk, setBulk] = useState(false);
   const [data, setData] = useState(false);
   const [bulkRequested, setBulkRequested] = useState(false);
@@ -48,7 +50,7 @@ export function PersistentToolHosts({ children }: { children: ReactNode }) {
       } },
     };
   }, []);
-  return <ToolHosts.Provider value={context}>
+  return <ToolHosts.Provider value={{ ...context, ...sectionHost }}>
     {children}
     {/* Latch the first eligible request; closing must retain each tool's drafts (#8947). */}
     {bulkRequested && <ChunkErrorBoundary label="Bulk Property Editor" renderFallback={fallback => (

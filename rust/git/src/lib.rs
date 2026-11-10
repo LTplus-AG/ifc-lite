@@ -42,17 +42,22 @@
 //! # Scope of this PR
 //!
 //! [`address`] (the BLAKE3 digest and its canonical writer) and [`node`] (the
-//! vertices and their components). The keyed tree and the entity → node
-//! adapter follow in the next PR on the same issue. The commit object is
+//! vertices and their components), with [`tree`] (the keyed, chunked tree
+//! that carries entity keys outside the nodes) and [`adapter`] (one entity's
+//! content projection to nodes) on top of them. The commit object is
 //! deferred: its no-empty-commit rule hinges on the coincident-duplicate
 //! equivalence policy that §2.8 still leaves open. The object store and refs
 //! are **not** coming here at all, because #8217 placed them with Layer PRs.
 
+pub mod adapter;
 pub mod address;
 pub mod node;
+pub mod tree;
 
+pub use adapter::{entity_nodes, AdapterError, EntityNodes};
 pub use address::{Address, AddressError, ADDRESS_ALGORITHM};
 pub use node::{Component, Field, FieldValue, Node, NodeKind, Role, SetKind};
+pub use tree::{build_tree, Tree, TreeChunk, TreeEntry};
 
 #[cfg(test)]
 #[path = "wire_format_tests.rs"]

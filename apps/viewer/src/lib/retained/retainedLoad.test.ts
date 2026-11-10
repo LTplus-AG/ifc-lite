@@ -158,6 +158,47 @@ describe('#7955 M2-C retained scope', () => {
     assert.equal(loadFailure(new Error('out of memory')), null, 'a failure outside the host keeps the loader wording');
   });
 
+  // #7955 M2-C: `addModel` raises the load UI before `loadFile` asks for a
+  // kernel, and a refusal returns before any canceller exists. The refusal
+  // must end that UI itself, but never the UI of a load that is still running.
+  for (const owner of ['no other load', 'another running load'] as const) {
+    it(`a refused federated add with ${owner} leaves the load UI ${owner === 'no other load' ? 'idle' : 'to that load'}, with its message shown (#7955)`, async () => {
+      chooseGeometryKernel('retained');
+      const state = useViewerStore.getState();
+      // Distinct values on both sides: a non-zero one that only a settle can
+      // clear, and a running load at exactly 0% that must survive unchanged.
+      const seeded = owner === 'no other load'
+        ? { phase: 'Reading second.ifc', percent: 12 }
+        : { phase: 'Loading file', percent: 0 };
+      if (owner !== 'no other load') state.setActiveLoadCanceller(() => {});
+      state.setLoading(true);
+      state.setLoadingFileName('first.ifc');
+      state.setProgress(seeded);
+      try {
+        const kernel = harness().begin(stepFile('second.ifc'), 'federated');
+        assert.ok(kernel?.refused);
+        await kernel.refused;
+        const after = useViewerStore.getState();
+        assert.match(after.error ?? '', /one model at a time/);
+        if (owner === 'no other load') {
+          assert.equal(after.progress, null, 'no progress left without a Cancel');
+          assert.equal(after.loading, false, 'and no spinner');
+          assert.equal(after.loadingFileName, null);
+        } else {
+          assert.equal(after.loading, true, 'the running load keeps its spinner');
+          assert.equal(after.progress?.phase, 'Loading file', 'and its 0% progress, unchanged');
+          assert.equal(after.progress?.percent, 0);
+          assert.equal(after.loadingFileName, 'first.ifc');
+        }
+      } finally {
+        state.setActiveLoadCanceller(null);
+        state.setLoading(false);
+        state.setProgress(null);
+        state.setLoadingFileName(null);
+      }
+    });
+  }
+
   it('M11-Z keeps federation refused for an open final retained model, including an exact add', async () => {
     useViewerStore.getState().addModel({
       id: 'r', name: 'r.ifc', ifcDataStore: null, geometryResult: null, visible: true, collapsed: false,

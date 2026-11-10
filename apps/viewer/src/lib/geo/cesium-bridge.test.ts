@@ -205,3 +205,67 @@ describe('createCesiumBridge with map-absolute geometry (#2526)', () => {
     ));
   });
 });
+
+describe('createCesiumBridge with a unit-slipped map-absolute site anchor (#9480)', () => {
+  // Vectorworks 2026 Update 7 export of the #2526 project: the same
+  // conversion, but IfcSite #49 = (311988.18054, 5996148.56499, 14.) in a
+  // MILLIMETRE file — the metre numbers, 1000x too small. Geometry around the
+  // site keeps the #2526 fixture's offsets from it.
+  const siteAnchorMm = { x: 311988.18054, y: 5996148.56499, z: 14 };
+  const fromSite = { x: 312018.898 - 311988.18054, y: 5996169.654 - 5996148.56499 };
+  const bounds = {
+    min: { x: -29.07, y: -0.2, z: -13.68 },
+    max: { x: 5.98, y: 3.76, z: 31.68 },
+  };
+  const coordinateInfo: CoordinateInfo = {
+    originShift: { x: 0, y: 0, z: 0 },
+    originalBounds: bounds,
+    shiftedBounds: bounds,
+    hasLargeCoordinates: false,
+    wasmRtcOffset: {
+      x: siteAnchorMm.x * 0.001 + fromSite.x,
+      y: siteAnchorMm.y * 0.001 + fromSite.y,
+      z: siteAnchorMm.z * 0.001,
+    },
+    lengthUnitScale: 0.001,
+  };
+  const conversion: MapConversion = {
+    id: 60, sourceCRS: 41, targetCRS: 58, eastings: 311988.181, northings: 5996148.565,
+    orthogonalHeight: 0, xAxisAbscissa: 0, xAxisOrdinate: 1,
+  };
+  const crs: ProjectedCRS = {
+    id: 58, name: 'EPSG:25833', description: 'EPSG:25833 ETRS89 / UTM zone 33N',
+    geodeticDatum: 'ETRS89', mapUnit: 'METRE', mapUnitScale: 1,
+  };
+
+  it('places the model in Rostock, not 6 km off and turned by the conversion', async () => {
+    const bridge = await createCesiumBridge(conversion, crs, coordinateInfo, 0.001);
+    assert.ok(bridge, 'expected a bridge');
+    assert.strictEqual(bridge.rotationAngle, 0);
+    const geo = bridge.viewerToGeodetic(0, 0, 0);
+    assert.ok(geo, 'expected a geodetic position');
+    // Same point as the #2526 file: E 312018.898 N 5996169.654.
+    const [lon, lat] = proj4('+proj=utm +zone=33 +ellps=GRS80 +units=m +no_defs', 'WGS84', [312018.898, 5996169.654]);
+    assert.ok(Math.abs(geo.latitude - lat) < 1e-6, `lat ${geo.latitude} should be ${lat}`);
+    assert.ok(Math.abs(geo.longitude - lon) < 1e-6, `lon ${geo.longitude} should be ${lon}`);
+  });
+
+  it('lifts the height by the slipped site Z once the pre-pass publishes the site origin', async () => {
+    const withSite: CoordinateInfo = {
+      ...coordinateInfo,
+      siteOrigin: { x: siteAnchorMm.x * 0.001, y: siteAnchorMm.y * 0.001, z: siteAnchorMm.z * 0.001 },
+    };
+    const lifted = await createCesiumBridge(conversion, crs, withSite, 0.001);
+    const flat = await createCesiumBridge(conversion, crs, coordinateInfo, 0.001);
+    assert.ok(lifted && flat);
+    // Viewer origin = the RTC offset, at the site's own Z: 14 m like the #2526 file, not 0.014 m.
+    assert.ok(Math.abs(lifted.viewerToGeodetic(0, 0, 0)!.height - 14) < 1e-9, `height ${lifted.viewerToGeodetic(0, 0, 0)!.height}`);
+    assert.ok(Math.abs(flat.viewerToGeodetic(0, 0, 0)!.height - 0.014) < 1e-9);
+  });
+
+  it('reads the geometry as grid coordinates, like the #2526 file', async () => {
+    const origin = await computeCesiumModelOrigin(conversion, crs, coordinateInfo, 0.001);
+    assert.ok(origin);
+    assert.equal(origin.gridSource, 'mapAbsolute');
+  });
+});

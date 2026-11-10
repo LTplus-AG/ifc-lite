@@ -13,9 +13,10 @@
  */
 
 import type { Point2D, Polygon2D, CutSegment, DrawingPolygon, EntityKey } from './types.js';
-import { makeEntityKey, colorKey } from './types.js';
+import { makeEntityKey } from './types.js';
 import type { OpenSurfaceIndex } from './open-surface.js';
 import { findOpenChainSegments } from './open-chains.js';
+import { layerKey, layerStamp } from './cut-layer.js';
 import {
   EPSILON,
   point2DDistance,
@@ -172,7 +173,7 @@ export class PolygonBuilder {
         this.routeOpenChains(key, allSegments, openSurfaces, new Set()),
       );
       // Only entities that cut into >1 material get per-layer fills (hence a base).
-      const colors = new Set(entitySegments.map((s) => colorKey(s.color)));
+      const colors = new Set(entitySegments.map(layerKey));
       if (colors.size < 2) continue;
       // Colourless build ⇒ closed-loop path (the combined section is closed).
       const base = this.withScaleAwareTolerance(allSegments, () =>
@@ -199,19 +200,18 @@ export class PolygonBuilder {
   /**
    * Build polygons for a single entity.
    *
-   * Sub-groups the entity's segments by material colour so an
-   * `IfcMaterialLayerSet` wall/slab — sliced into one sub-mesh (hence one
-   * colour) per layer — reconstructs as one polygon set per layer, each
-   * carrying that layer's colour. A single-material entity yields exactly one
-   * colour group and is built identically to before, with no colour stamped
-   * (so renderers keep their per-`ifcType` / per-entity fill for it).
+   * Sub-groups the entity's segments by layer (colour and `IfcMaterial`), so an
+   * `IfcMaterialLayerSet` wall/slab (one sub-mesh per layer) reconstructs as one
+   * polygon set per layer carrying its colour and material, even when two layers
+   * share a colour. A single-material entity yields exactly one group and is built
+   * as before, with no fill colour stamped (renderers keep their per-`ifcType` / per-entity fill).
    */
   private buildEntityPolygons(segments: CutSegment[]): DrawingPolygon[] {
     if (segments.length === 0) return [];
 
     const byColor = new Map<string, CutSegment[]>();
     for (const seg of segments) {
-      const key = colorKey(seg.color);
+      const key = layerKey(seg);
       let bucket = byColor.get(key);
       if (!bucket) {
         bucket = [];
@@ -220,14 +220,14 @@ export class PolygonBuilder {
       bucket.push(seg);
     }
 
-    // Only a genuinely multi-material cut (≥2 colours) gets per-layer fills;
+    // Only a genuinely multi-layer cut (≥2 colour/material keys) gets per-layer fills;
     // ordinary elements stay colourless so existing fill rules apply.
     const multiMaterial = byColor.size > 1;
 
     const out: DrawingPolygon[] = [];
     for (const groupSegments of byColor.values()) {
-      const groupColor = multiMaterial ? groupSegments[0].color : undefined;
-      for (const p of this.buildColorGroupPolygons(groupSegments, groupColor)) out.push(groupSegments[0].color ? { ...p, sourceColor: groupSegments[0].color } : p);
+      const layer = groupSegments[0];
+      for (const p of this.buildColorGroupPolygons(groupSegments, multiMaterial ? layer.color : undefined)) out.push({ ...p, ...layerStamp(layer) });
     }
     return out;
   }

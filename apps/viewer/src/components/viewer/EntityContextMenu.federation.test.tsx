@@ -81,8 +81,16 @@ function unmountAll(): void {
 after(unmountAll);
 afterEach(() => mock.restoreAll());
 
-function menuItem(container: HTMLElement, label: string): HTMLButtonElement {
-  const btn = [...container.querySelectorAll('button')].find((b) =>
+/** The Radix menu portals to `document.body` (and its submenu to a sibling
+ *  portal), so menu rows live outside the render container. Scope lookups to
+ *  the open menus so a ribbon button with the same label never matches. */
+function menuButtons(): HTMLButtonElement[] {
+  return [...document.querySelectorAll<HTMLElement>('[role="menu"]')]
+    .flatMap((menu) => [...menu.querySelectorAll<HTMLButtonElement>('button')]);
+}
+
+function menuItem(label: string): HTMLButtonElement {
+  const btn = menuButtons().find((b) =>
     b.getAttribute('aria-label') === label || b.textContent?.trim() === label);
   assert.ok(btn, `no menu item labelled "${label}"`);
   return btn as HTMLButtonElement;
@@ -92,14 +100,14 @@ function openRibbonEntityActions(container: HTMLElement, selectedId: number): vo
   const button = container.querySelector<HTMLButtonElement>('[data-command-id="elements:entity-actions"]');
   assert.ok(button, 'the Elements ribbon exposes selected-entity actions');
   assert.equal(button.getAttribute('aria-label'),
-    resolveEnglish(surfaceCommand('elements:entity-actions', 'ribbon').labelKey),
+    resolveEnglish(surfaceCommand('elements:entity-actions', 'ribbon').ribbonLabelKey ?? surfaceCommand('elements:entity-actions', 'ribbon').labelKey),
     'the ribbon announces the registered command name');
   assert.ok(button.querySelector('svg'), 'the ribbon renders its entity-actions icon');
   assert.equal(button.disabled, false);
   act(() => { button.click(); });
   assert.equal(useViewerStore.getState().contextMenu.entityId, selectedId,
     'the ribbon opens the existing entity menu for the selected global ID');
-  assert.ok(container.querySelector('[role="menu"]'), 'the shared menu is visible');
+  assert.ok(document.querySelector('[role="menu"]'), 'the shared menu is visible');
 }
 
 beforeEach(async () => {
@@ -149,17 +157,17 @@ describe('EntityContextMenu — federation-space selection', () => {
       act(() => { useViewerStore.setState({ selectedEntityId: null, selectedEntityIds: new Set([selectedId]) }); });
       const container = render(true);
       openRibbonEntityActions(container, selectedId);
-      assert.ok(menuItem(container, 'Select all IfcWall'));
-      assert.ok(menuItem(container, 'Select same storey'));
-      assert.ok(menuItem(container, 'Duplicate'));
-      assert.ok(menuItem(container, 'Delete entity'));
+      assert.ok(menuItem('Select all IfcWall'));
+      assert.ok(menuItem('Select same storey'));
+      assert.ok(menuItem('Duplicate'));
+      assert.ok(menuItem('Delete entity'));
 
-      act(() => { menuItem(container, 'Select all IfcWall').click(); });
+      act(() => { menuItem('Select all IfcWall').click(); });
       assert.deepEqual(useViewerStore.getState().selectedEntityIds,
         new Set([globalId(FIXTURE_WALL_A), globalId(FIXTURE_WALL_B), globalId(FIXTURE_WALL_C)]));
       act(() => { useViewerStore.setState({ selectedEntityId: null, selectedEntityIds: new Set([selectedId]) }); });
       openRibbonEntityActions(container, selectedId);
-      act(() => { menuItem(container, 'Select same storey').click(); });
+      act(() => { menuItem('Select same storey').click(); });
       assert.deepEqual(useViewerStore.getState().selectedEntityIds,
         new Set([globalId(FIXTURE_WALL_B), globalId(FIXTURE_WALL_C)]));
       if (twoModels) assert.ok(!useViewerStore.getState().selectedEntityIds.has(FIXTURE_WALL_A));
@@ -181,17 +189,17 @@ describe('EntityContextMenu — federation-space selection', () => {
       useViewerStore.setState({ selectedEntityId: selectedId, selectedEntityIds: new Set([selectedId]) });
       const container = render(true);
       openRibbonEntityActions(container, selectedId);
-      assert.equal(menuItem(container, 'Duplicate').disabled, true);
-      assert.equal(menuItem(container, 'Delete entity').disabled, true);
+      assert.equal(menuItem('Duplicate').disabled, true);
+      assert.equal(menuItem('Delete entity').disabled, true);
       act(() => { useViewerStore.setState({ editEnabled: true }); });
-      assert.equal(menuItem(container, 'Duplicate').disabled, false);
-      act(() => { menuItem(container, 'Duplicate').click(); });
+      assert.equal(menuItem('Duplicate').disabled, false);
+      act(() => { menuItem('Duplicate').click(); });
       assert.ok(lastUndoBatch('m1').some((m) => m.type === 'CREATE_ENTITY'));
       if (twoModels) assert.equal(useViewerStore.getState().undoStacks.has('m0'), false);
 
       act(() => { useViewerStore.setState({ selectedEntityId: selectedId, selectedEntityIds: new Set([selectedId]) }); });
       openRibbonEntityActions(container, selectedId);
-      act(() => { menuItem(container, 'Delete entity').click(); });
+      act(() => { menuItem('Delete entity').click(); });
       assert.equal(useViewerStore.getState().mutationViews.get('m1')?.isDeleted(1222), true);
       if (twoModels) assert.equal(useViewerStore.getState().mutationViews.has('m0'), false);
     });
@@ -200,12 +208,12 @@ describe('EntityContextMenu — federation-space selection', () => {
   it('renders the literal entity and canvas context registry matrix (#5870)', () => {
     useViewerStore.setState({ editEnabled: true });
     act(() => { useViewerStore.getState().openContextMenu(globalId(FIXTURE_WALL_A), 10, 10); });
-    const container = render();
+    render();
     const directions = new Set<string>(DUPLICATE_CONTEXT_DIRECTIONS.map((item) => item.id));
     const entityIds = SURFACE_COMMANDS.filter((command) =>
       command.surfaces.some((surface) => surface === 'context')
       && command.id !== 'vis:show' && !directions.has(command.id)).map((command) => command.id);
-    const rows = [...container.querySelectorAll<HTMLButtonElement>('[data-command-id]')];
+    const rows = menuButtons().filter((row) => row.dataset.commandId);
     assert.deepEqual(new Set(rows.map((row) => row.dataset.commandId)), new Set(entityIds),
       'every entity-context declaration is mounted, without an extra undeclared row');
     for (const id of entityIds) {
@@ -217,7 +225,7 @@ describe('EntityContextMenu — federation-space selection', () => {
       `${id} uses its registered label`);
     }
 
-    const directionTrigger = [...container.querySelectorAll<HTMLElement>('[role="menuitem"]')]
+    const directionTrigger = [...document.querySelectorAll<HTMLElement>('[role="menu"] [role="menuitem"]')]
       .find((item) => item.textContent?.includes(resolveEnglish('entityContextMenu.duplicateDirectionLabel')));
     assert.ok(directionTrigger);
     act(() => { directionTrigger.click(); });
@@ -232,7 +240,7 @@ describe('EntityContextMenu — federation-space selection', () => {
 
     act(() => { useViewerStore.getState().closeContextMenu(); });
     act(() => { useViewerStore.getState().openContextMenu(null, 10, 10); });
-    const canvasRows = [...container.querySelectorAll<HTMLButtonElement>('[data-command-id]')];
+    const canvasRows = menuButtons().filter((row) => row.dataset.commandId);
     assert.deepEqual(new Set(canvasRows.map((row) => row.dataset.commandId)), new Set(['vis:show']),
       'the canvas context renders its one registered command');
     assert.equal(canvasRows[0]?.getAttribute('aria-label'), resolveEnglish(surfaceCommand('vis:show', 'context').labelKey));
@@ -248,19 +256,19 @@ describe('EntityContextMenu — federation-space selection', () => {
         ]) });
       }
       act(() => { useViewerStore.getState().openContextMenu(globalId(FIXTURE_WALL_A), 10, 10); });
-      const container = render();
-      const deleteButton = menuItem(container, 'Delete entity');
-      const duplicateButton = menuItem(container, 'Duplicate');
+      render();
+      const deleteButton = menuItem('Delete entity');
+      const duplicateButton = menuItem('Duplicate');
       assert.equal(deleteButton.disabled, true);
       assert.equal(duplicateButton.disabled, true);
       assert.match(deleteButton.title, /Turn on Edit mode/);
       assert.equal(useViewerStore.getState().mutationViews.size, 0);
 
       act(() => { useViewerStore.setState({ editEnabled: true }); });
-      assert.equal(menuItem(container, 'Delete entity').disabled, false);
-      assert.equal(menuItem(container, 'Duplicate').disabled, false);
+      assert.equal(menuItem('Delete entity').disabled, false);
+      assert.equal(menuItem('Duplicate').disabled, false);
       assert.ok(useViewerStore.getState().mutationViews.has('m1'));
-      act(() => { menuItem(container, 'Delete entity').click(); });
+      act(() => { menuItem('Delete entity').click(); });
       assert.equal(useViewerStore.getState().mutationViews.get('m1')?.isDeleted(FIXTURE_WALL_A), true);
       assert.equal(useViewerStore.getState().dirtyModels.has('m1'), true);
       if (twoModels) assert.equal(useViewerStore.getState().mutationViews.has('m0'), false);
@@ -279,13 +287,13 @@ describe('EntityContextMenu — federation-space selection', () => {
         : new Map([['m1', target]]);
       useViewerStore.setState({ models, mutationViews: new Map(), undoStacks: new Map(), dirtyModels: new Set() });
       act(() => { useViewerStore.getState().openContextMenu(globalId(1222), 10, 10); });
-      const container = render();
-      assert.equal(menuItem(container, 'Duplicate').disabled, true);
+      render();
+      assert.equal(menuItem('Duplicate').disabled, true);
       assert.equal(useViewerStore.getState().undoStacks.size, 0);
 
       act(() => { useViewerStore.setState({ editEnabled: true }); });
-      assert.equal(menuItem(container, 'Duplicate').disabled, false);
-      act(() => { menuItem(container, 'Duplicate').click(); });
+      assert.equal(menuItem('Duplicate').disabled, false);
+      act(() => { menuItem('Duplicate').click(); });
       const created = lastUndoBatch('m1').filter((m) => m.type === 'CREATE_ENTITY');
       assert.ok(created.length > 0, 'Duplicate must record a new entity through the menu');
       assert.ok(created.every((m) => m.entityId !== 1222));
@@ -300,9 +308,9 @@ describe('EntityContextMenu — federation-space selection', () => {
       events.push({ event, properties });
     });
     act(() => { useViewerStore.getState().openContextMenu(globalId(FIXTURE_WALL_A), 10, 10); });
-    const container = render();
+    render();
 
-    act(() => { menuItem(container, 'Select all IfcWall').click(); });
+    act(() => { menuItem('Select all IfcWall').click(); });
 
     const state = useViewerStore.getState();
     assert.deepEqual(
@@ -325,15 +333,15 @@ describe('EntityContextMenu — federation-space selection', () => {
     useViewerStore.setState({ mutationViews: new Map([['m1', view]]) });
 
     act(() => { useViewerStore.getState().openContextMenu(globalId(FIXTURE_WALL_A), 10, 10); });
-    const container = render();
-    act(() => { menuItem(container, 'Select all IfcWall').click(); });
+    render();
+    act(() => { menuItem('Select all IfcWall').click(); });
 
     assert.deepEqual(useViewerStore.getState().selectedEntityIds,
       new Set([globalId(FIXTURE_WALL_A), globalId(FIXTURE_WINDOW), globalId(created.expressId)]));
 
     act(() => { useViewerStore.setState({ selectedEntityIds: new Set() }); });
     act(() => { useViewerStore.getState().openContextMenu(globalId(created.expressId), 10, 10); });
-    act(() => { menuItem(container, 'Select all IfcWall').click(); });
+    act(() => { menuItem('Select all IfcWall').click(); });
     assert.deepEqual(useViewerStore.getState().selectedEntityIds,
       new Set([globalId(FIXTURE_WALL_A), globalId(FIXTURE_WINDOW), globalId(created.expressId)]));
   });
@@ -348,17 +356,17 @@ describe('EntityContextMenu — federation-space selection', () => {
       mutationViews: new Map([['__legacy__', view]]) });
 
     act(() => { useViewerStore.getState().openContextMenu(FIXTURE_WALL_A, 10, 10); });
-    const container = render();
-    act(() => { menuItem(container, 'Select all IfcWall').click(); });
+    render();
+    act(() => { menuItem('Select all IfcWall').click(); });
     assert.deepEqual(useViewerStore.getState().selectedEntityIds,
       new Set([FIXTURE_WALL_A, FIXTURE_WALL_C, created.expressId]));
   });
 
   it('"Select same storey" resolves through the model offset', () => {
     act(() => { useViewerStore.getState().openContextMenu(globalId(FIXTURE_WALL_B), 10, 10); });
-    const container = render();
+    render();
 
-    act(() => { menuItem(container, 'Select same storey').click(); });
+    act(() => { menuItem('Select same storey').click(); });
 
     const state = useViewerStore.getState();
     assert.deepEqual(
@@ -379,8 +387,8 @@ describe('EntityContextMenu — federation-space selection', () => {
     useViewerStore.setState({ mutationViews: new Map([['m1', view]]) });
 
     act(() => { useViewerStore.getState().openContextMenu(globalId(FIXTURE_WALL_C), 10, 10); });
-    const container = render();
-    act(() => { menuItem(container, 'Select same storey').click(); });
+    render();
+    act(() => { menuItem('Select same storey').click(); });
 
     assert.deepEqual(useViewerStore.getState().selectedEntityIds,
       new Set([globalId(FIXTURE_WALL_C), globalId(created.expressId)]));
@@ -392,8 +400,8 @@ describe('EntityContextMenu — federation-space selection', () => {
     useViewerStore.setState({ mutationViews: new Map([['m1', view]]) });
 
     act(() => { useViewerStore.getState().openContextMenu(globalId(FIXTURE_WALL_B), 10, 10); });
-    const container = render();
-    act(() => { menuItem(container, 'Select same storey').click(); });
+    render();
+    act(() => { menuItem('Select same storey').click(); });
 
     assert.deepEqual(useViewerStore.getState().selectedEntityIds,
       new Set([globalId(FIXTURE_WALL_A), globalId(FIXTURE_WALL_B), globalId(FIXTURE_WALL_C)]));
@@ -406,8 +414,8 @@ describe('EntityContextMenu — federation-space selection', () => {
     useViewerStore.setState({ mutationViews: new Map([['m1', view]]) });
 
     act(() => { useViewerStore.getState().openContextMenu(globalId(FIXTURE_WALL_B), 10, 10); });
-    const container = render();
-    act(() => { menuItem(container, 'Select same storey').click(); });
+    render();
+    act(() => { menuItem('Select same storey').click(); });
 
     assert.deepEqual(useViewerStore.getState().selectedEntityIds,
       new Set([globalId(FIXTURE_WALL_B), globalId(FIXTURE_WALL_C)]));
@@ -423,8 +431,8 @@ describe('EntityContextMenu — federation-space selection', () => {
     useViewerStore.setState({ mutationViews: new Map([['m1', view]]) });
 
     act(() => { useViewerStore.getState().openContextMenu(globalId(part.expressId), 10, 10); });
-    const container = render();
-    act(() => { menuItem(container, 'Select same storey').click(); });
+    render();
+    act(() => { menuItem('Select same storey').click(); });
 
     assert.deepEqual(useViewerStore.getState().selectedEntityIds,
       new Set([globalId(FIXTURE_WALL_B), globalId(FIXTURE_WALL_C)]));
@@ -440,8 +448,8 @@ describe('EntityContextMenu — federation-space selection', () => {
     useViewerStore.setState({ mutationViews: new Map([['m1', view]]) });
 
     act(() => { useViewerStore.getState().openContextMenu(globalId(part.expressId), 10, 10); });
-    const container = render();
-    act(() => { menuItem(container, 'Select same storey').click(); });
+    render();
+    act(() => { menuItem('Select same storey').click(); });
 
     assert.deepEqual(useViewerStore.getState().selectedEntityIds,
       new Set([globalId(FIXTURE_WALL_B), globalId(FIXTURE_WALL_C)]));
@@ -453,8 +461,8 @@ describe('EntityContextMenu — federation-space selection', () => {
     useViewerStore.setState({ mutationViews: new Map([['m1', view]]) });
 
     act(() => { useViewerStore.getState().openContextMenu(globalId(FIXTURE_WALL_B), 10, 10); });
-    const container = render();
-    act(() => { menuItem(container, 'Select same storey').click(); });
+    render();
+    act(() => { menuItem('Select same storey').click(); });
 
     assert.deepEqual(useViewerStore.getState().selectedEntityIds, new Set());
   });

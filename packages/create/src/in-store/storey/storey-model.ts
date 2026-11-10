@@ -13,7 +13,8 @@
  */
 
 import type { MutablePropertyView } from '@ifc-lite/mutations';
-import type { IfcDataStore } from '@ifc-lite/parser';
+import { createSchemaEntityNameSnapshot, getSchemaRegistryForVersion, type IfcDataStore } from '@ifc-lite/parser';
+import { effectiveReferencers } from '@ifc-lite/export';
 import { AnchorEntityReader } from '../resolve-anchor.js';
 import { refId } from '../host-geometry-frame.js';
 import { safeLengthUnitScale } from '../length-unit-scale.js';
@@ -60,6 +61,21 @@ export interface StoreyInventory {
   readonly relationships: readonly StoreyRelationship[];
   readonly outgoing: ReadonlyMap<number, readonly StoreyRelationship[]>;
   readonly incoming: ReadonlyMap<number, readonly StoreyRelationship[]>;
+  /** `incoming.get(id) ?? []`, answered from the reference index while the
+   * whole relationship graph has not been read (see `lazyRelationships`). */
+  incomingOf?(id: number): readonly StoreyRelationship[];
+}
+
+/** Options for {@link readStoreyInventory}. */
+export interface StoreyInventoryOptions {
+  /**
+   * Read the whole relationship graph only if `relationships`, `outgoing` or
+   * `incoming` is asked for, from the overlay as it stands then (#8452).
+   * `incomingOf` and the storey list answer per element through the reference
+   * index. For callers that only ask about a few elements before writing,
+   * such as a copy batch reading its sources' attachments.
+   */
+  readonly lazyRelationships?: boolean;
 }
 
 const SPATIAL_RELATIONSHIPS = [
@@ -85,34 +101,34 @@ function realValue(value: unknown): number | null {
   return null;
 }
 
-/** Live relationships only, and only their live ends: a deleted product is nobody's content. */
-function relationshipsOf(reader: AnchorEntityReader, deleted: ReadonlySet<number>): StoreyRelationship[] {
+/** One live relationship with only its live ends: a deleted product is nobody's content. */
+function spatialRelationship(reader: AnchorEntityReader, id: number, type: string, deleted: ReadonlySet<number>): StoreyRelationship | null {
+  const entity = reader.entity(id);
+  if (!entity) return null;
+  const contained = type === 'IFCRELCONTAINEDINSPATIALSTRUCTURE';
+  const parentIndex = contained ? 5 : 4;
+  const listIndex = contained ? 4 : 5;
+  const parent = refId(entity.attributes[parentIndex]);
+  const raw = entity.attributes[listIndex];
+  const children = (Array.isArray(raw) ? raw : [raw]).map(refId)
+    .filter((child): child is number => child !== null && !deleted.has(child));
+  if (parent === null || deleted.has(parent) || children.length === 0) return null;
+  return { id, type, parent, children, parentIndex, listIndex };
+}
+
+/** Live relationships only, and only their live ends. */
+function relationshipsOf(reader: AnchorEntityReader, deleted: ReadonlySet<number>, types: readonly string[] = SPATIAL_RELATIONSHIPS): StoreyRelationship[] {
   const result: StoreyRelationship[] = [];
-  for (const type of SPATIAL_RELATIONSHIPS) {
+  for (const type of types) {
     for (const id of reader.ids(type)) {
-      const entity = reader.entity(id);
-      if (!entity) continue;
-      const contained = type === 'IFCRELCONTAINEDINSPATIALSTRUCTURE';
-      const parentIndex = contained ? 5 : 4;
-      const listIndex = contained ? 4 : 5;
-      const parent = refId(entity.attributes[parentIndex]);
-      const raw = entity.attributes[listIndex];
-      const children = (Array.isArray(raw) ? raw : [raw]).map(refId)
-        .filter((child): child is number => child !== null && !deleted.has(child));
-      if (parent === null || deleted.has(parent) || children.length === 0) continue;
-      result.push({ id, type, parent, children, parentIndex, listIndex });
+      const rel = spatialRelationship(reader, id, type, deleted);
+      if (rel) result.push(rel);
     }
   }
   return result;
 }
 
-/** Read the live storeys and spatial relationships of one model. */
-export function readStoreyInventory(store: IfcDataStore, view: MutablePropertyView): StoreyInventory {
-  const reader = new CachedReader(store, view);
-  const scale = store.source.byteLength > 0
-    ? safeLengthUnitScale(store.source, store.entityIndex, 'readStoreyInventory') ?? 1
-    : store.lengthUnitScale ?? 1;
-  const relationships = relationshipsOf(reader, view.getTombstones());
+function relationshipMaps(relationships: readonly StoreyRelationship[]) {
   const outgoing = new Map<number, StoreyRelationship[]>();
   const incoming = new Map<number, StoreyRelationship[]>();
   const append = (map: Map<number, StoreyRelationship[]>, key: number, rel: StoreyRelationship) => {
@@ -123,11 +139,55 @@ export function readStoreyInventory(store: IfcDataStore, view: MutablePropertyVi
     append(outgoing, rel.parent, rel);
     for (const child of rel.children) append(incoming, child, rel);
   }
+  return { relationships, outgoing, incoming };
+}
+
+/** The non-aggregate spatial relationships naming `id` as a child, found
+ * through its effective referencers. A storey is named by every containment
+ * relationship it parents, so its own parents come from the aggregates. */
+function incomingThroughReferencers(
+  reader: AnchorEntityReader, referencers: (id: number) => readonly number[], id: number, deleted: ReadonlySet<number>,
+): StoreyRelationship[] {
+  const found: StoreyRelationship[] = [];
+  for (const relId of referencers(id)) {
+    const type = reader.entity(relId)?.type.toUpperCase();
+    if (!type || type === 'IFCRELAGGREGATES' || !(SPATIAL_RELATIONSHIPS as readonly string[]).includes(type)) continue;
+    const rel = spatialRelationship(reader, relId, type, deleted);
+    if (rel?.children.includes(id)) found.push(rel);
+  }
+  // The order a whole-graph read lists them in: relationship class, then id.
+  const rank = (type: string) => (SPATIAL_RELATIONSHIPS as readonly string[]).indexOf(type);
+  return found.sort((a, b) => rank(a.type) - rank(b.type) || a.id - b.id);
+}
+
+/** Read the live storeys and spatial relationships of one model. */
+export function readStoreyInventory(store: IfcDataStore, view: MutablePropertyView, options: StoreyInventoryOptions = {}): StoreyInventory {
+  const names = createSchemaEntityNameSnapshot(getSchemaRegistryForVersion(store.schemaVersion === 'IFC2X3' ? 'IFC2X3' : store.schemaVersion === 'IFC4X3' || store.schemaVersion === 'IFC5' ? 'IFC4X3' : 'IFC4'));
+  const reader = new CachedReader(store, view, names);
+  const scale = store.source.byteLength > 0
+    ? safeLengthUnitScale(store.source, store.entityIndex, 'readStoreyInventory') ?? 1
+    : store.lengthUnitScale ?? 1;
+  const deleted = view.getTombstones();
+  let graph = options.lazyRelationships ? undefined : relationshipMaps(relationshipsOf(reader, deleted));
+  const full = () => graph ??= relationshipMaps(relationshipsOf(reader, deleted));
+  // Aggregates are few (the spatial tree and assemblies); read them whole.
+  const aggregates = graph ? undefined : relationshipMaps(relationshipsOf(reader, deleted, ['IFCRELAGGREGATES']));
+  let referencers: ((id: number) => readonly number[]) | undefined;
+  const incomingById = new Map<number, readonly StoreyRelationship[]>();
+  const incomingOf = (id: number): readonly StoreyRelationship[] => {
+    if (graph) return graph.incoming.get(id) ?? [];
+    let rels = incomingById.get(id);
+    if (!rels) {
+      incomingById.set(id, rels = [...aggregates!.incoming.get(id) ?? [],
+        ...incomingThroughReferencers(reader, referencers ??= effectiveReferencers(store, view), id, deleted)]);
+    }
+    return rels;
+  };
   const storeys: StoreyRecord[] = [];
   for (const expressId of reader.ids('IFCBUILDINGSTOREY')) {
     const entity = reader.entity(expressId);
     if (!entity) continue;
-    const aggregate = (incoming.get(expressId) ?? []).find((rel) => rel.type === 'IFCRELAGGREGATES');
+    const aggregate = (graph ?? aggregates!).incoming.get(expressId)?.find((rel) => rel.type === 'IFCRELAGGREGATES');
     storeys.push({
       expressId,
       GlobalId: typeof entity.attributes[0] === 'string' ? entity.attributes[0] : '',
@@ -140,7 +200,13 @@ export function readStoreyInventory(store: IfcDataStore, view: MutablePropertyVi
     });
   }
   storeys.sort((a, b) => a.elevation - b.elevation || a.expressId - b.expressId);
-  return { store, view, reader, scale, schema: String(store.schemaVersion ?? 'IFC4').toUpperCase(), storeys, relationships, outgoing, incoming };
+  return {
+    store, view, reader, scale, schema: String(store.schemaVersion ?? 'IFC4').toUpperCase(), storeys,
+    get relationships() { return full().relationships; },
+    get outgoing() { return full().outgoing; },
+    get incoming() { return full().incoming; },
+    incomingOf,
+  };
 }
 
 export function storeyRecord(inventory: StoreyInventory, storeyId: number): StoreyRecord {

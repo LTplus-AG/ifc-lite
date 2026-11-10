@@ -40,15 +40,6 @@ export const MODEL_FILE_EXTENSIONS = [
  * told apart by content. */
 const GAUSSIAN_FILE_EXTENSIONS: readonly string[] = gaussianAdmissionEnabled() ? ['.splat'] : [];
 
-/** Formats exposed by the compact mobile toolbar's single-file flow. */
-export const MOBILE_MODEL_FILE_EXTENSIONS = [
-  '.ifc',
-  '.ifcx',
-  '.ifczip',
-  '.glb',
-  '.xml',
-] as const;
-
 /**
  * Reference underlays. `.dxf` is offered by every picker but splits off to
  * the 2D ingest path before model routing, so it is deliberately not part
@@ -69,19 +60,10 @@ export const PICKER_FILE_EXTENSIONS: readonly string[] = [
 /** `accept` attribute for the hidden `<input type="file">` elements. */
 export const FILE_ACCEPT = PICKER_FILE_EXTENSIONS.join(',');
 
-/** `accept` attribute for the mobile toolbar's deliberately smaller format set. */
-export const MOBILE_FILE_ACCEPT = MOBILE_MODEL_FILE_EXTENSIONS.join(',');
-
 /** Extensions the viewer can ingest (IFC / IFCX / GLB / point clouds). */
 export function isSupportedModelFile(f: File): boolean {
   const n = f.name.toLowerCase();
   return [...MODEL_FILE_EXTENSIONS, ...GAUSSIAN_FILE_EXTENSIONS].some((ext) => n.endsWith(ext));
-}
-
-/** Case-insensitive guard for formats handled by the mobile toolbar. */
-export function isSupportedMobileModelFile(f: File): boolean {
-  const n = f.name.toLowerCase();
-  return MOBILE_MODEL_FILE_EXTENSIONS.some((ext) => n.endsWith(ext));
 }
 
 /** Files retained alongside a `.gltf` document until its local bundle is packed. */

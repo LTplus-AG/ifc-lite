@@ -32,14 +32,17 @@
  */
 
 import type { DrawingSheet } from '@ifc-lite/drawing-2d';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useSyncExternalStore } from 'react';
 import { useViewerStore } from '@/store';
 import { getDefaultDrawing2DState } from '@/store/slices/drawing2DSlice.js';
 import { identifyLoadedPlacementSource } from '@/lib/model-placement/loaded-source-identity';
 import { placementSourceIdentity } from '@/lib/model-placement/source-identity';
 import { loadDrawing2DEntry, defaultMarkupPatch, suppressNextSaveFor, type PersistedDrawing2DEntry } from '@/store/slices/drawing2DSlice.persistence.js';
 import { setCachedHash, notifyDecided } from './drawingMarkupRestorePrecedence.js';
-import { resetSaveState, beginRestore, endRestore, setRestoredSectionConfig, ensureSaveSubscription } from './drawingMarkupSave.js';
+import {
+  resetSaveState, beginRestore, endRestore, setRestoredSectionConfig, ensureSaveSubscription,
+  subscribeModelActivations, modelActivationEpoch,
+} from './drawingMarkupSave.js';
 import { ensureSheetPersistence, hasUnsavedSheetEdit, settleSheetHash } from './sheetPersistence.js';
 import {
   drawingPersistenceOnDemand as drawingKey,
@@ -105,6 +108,8 @@ export function useDrawing2DPersistence(): void {
   const activeModelId = useViewerStore((s) => s.activeModelId);
   const activeSourceFile = useViewerStore((s) => s.activeModelId ? s.models.get(s.activeModelId)?.sourceFile : undefined);
   const tokenRef = useRef(0);
+  // Every activation restores, including a return to the same model before React rendered.
+  const activation = useSyncExternalStore(subscribeModelActivations, modelActivationEpoch);
 
   useEffect(() => {
     ensureSaveSubscription();
@@ -234,5 +239,5 @@ export function useDrawing2DPersistence(): void {
         applyHash(null, settleHash(null));
         notifyDecided(activeModelId);
       });
-  }, [activeModelId, activeSourceFile]);
+  }, [activeModelId, activeSourceFile, activation]);
 }

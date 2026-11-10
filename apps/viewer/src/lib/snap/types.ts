@@ -47,6 +47,8 @@ export type Guide =
   | { kind: 'circle'; center: Vec2; radius: number; role: GuideRole };
 
 export interface SnapCandidate {
+  /** Decimal construction increment in metres, for the live HUD. */
+  increment?: number;
   kind: SnapKind;
   /** The snap target itself (for an edge: the closest point on it to the cursor). */
   local: Vec2;

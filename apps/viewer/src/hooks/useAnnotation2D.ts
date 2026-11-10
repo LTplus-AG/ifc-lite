@@ -416,10 +416,19 @@ export function useAnnotation2D({
     setAnnotation2DCursorPos, applyShiftConstraint, polygonArea2DPoints, cloudAnnotation2DPoints,
     commitDragPosition]);
 
-  const handleMouseUp = useCallback((_e: React.MouseEvent) => {
+  const endDrag = useCallback(() => {
     isDraggingRef.current = false;
     dragOffsetRef.current = null;
   }, []);
+  const handleMouseUp = useCallback((_e: React.MouseEvent) => endDrag(), [endDrag]);
+
+  // A release outside the canvas never reaches its onMouseUp (like useMeasure2D's
+  // global mouseup); a lost pointer or window blur ends the drag too.
+  useEffect(() => {
+    const events = ['mouseup', 'pointercancel', 'blur'] as const;
+    for (const type of events) window.addEventListener(type, endDrag);
+    return () => { for (const type of events) window.removeEventListener(type, endDrag); };
+  }, [endDrag]);
 
   const handleDoubleClick = useCallback((e: React.MouseEvent) => {
     if (activeTool === 'polygon-area' && polygonArea2DPoints.length >= 3) {

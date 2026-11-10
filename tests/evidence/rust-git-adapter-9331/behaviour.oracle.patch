@@ -1,0 +1,12 @@
+diff --git a/rust/git/src/adapter.rs b/rust/git/src/adapter.rs
+--- a/rust/git/src/adapter.rs
++++ b/rust/git/src/adapter.rs
+@@ -164,7 +164,7 @@
+ 
+ /// A hole is content (see [`AdapterError::Hole`]); refuse rather than skip.
+ fn refuse_holes(count: usize, field: &'static str) -> Result<(), AdapterError> {
+-    if false && count > 0 {
++    if count > 0 {
+         return Err(AdapterError::Hole { field, count });
+     }
+     Ok(())

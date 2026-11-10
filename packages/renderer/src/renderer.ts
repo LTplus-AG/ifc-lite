@@ -601,6 +601,7 @@ export class Renderer {
         // Re-arm `whenReady()`: this instance is being brought back up, so a
         // wait requested from here on is "not ready yet" again, not "destroyed".
         this.destroyed = false;
+        this.canvasCssSize.observe();
         // A previous init that REJECTED must not block the next one, so the
         // stored link swallows the outcome. The caller still receives `run`, so
         // rejections continue to surface exactly as before.
@@ -616,11 +617,8 @@ export class Renderer {
         // `pipeline` is the marker for "a previous init() completed": it is
         // assigned unconditionally there and nulled by destroy().
         if (this.pipeline !== null) {
-            // Release the device the previous init() resolved on, and re-arm
-            // `whenReady()` so it cannot resolve against GPU objects that no
-            // longer exist. `teardown()`, not the public `destroy()`: this
-            // teardown is part of THIS init, so it must not invalidate this
-            // init's own generation.
+            // Release the previous GPU lifetime and revoke readiness without
+            // invalidating this init's generation (as public destroy would).
             this.teardown();
         }
         // Clear the lost flag so a re-init (destroy()+init() on the same instance)

@@ -97,11 +97,11 @@ export function PlaygroundChat({
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   // Physical dispatch lifetime outlives a user Stop if the tool cannot abort.
-  const dispatchPending = useRef(false);
+  const dispatchPending = useRef<{ assistantId: string; released: boolean } | null>(null);
   const [dispatching, setDispatching] = useState(false);
-  const stopIntent = useRef({ userStopped: false });
   const { busy: isStreaming, start, reset } = useAsyncRun({ key: model, label: 'playground conversation' });
   useEffect(() => {
+    setDispatching(false);
     setMessages(prior => prior.map(message => message.pending ? { ...message, pending: false } : message));
   }, [model]);
   const [error, setError] = useState<LiveTranslationMessage | null>(null); const errorText = resolveLiveMessage(t, error);
@@ -142,6 +142,7 @@ export function PlaygroundChat({
     // re-dropping a revised `model.ifc` keeps the id while every expressId may
     // have moved — the load counter is what distinguishes them.
     loadCounter.current += 1;
+    dispatchPending.current = null;
     nextRef.current = model ? { loadId: loadCounter.current, name: model.name } : null;
   }
   const next = nextRef.current;
@@ -174,8 +175,6 @@ export function PlaygroundChat({
       }
       return start(async ({ signal, isCurrent }) => {
         const loadId = loadCounter.current;
-        const intent = { userStopped: false };
-        stopIntent.current = intent;
         setError(null);
 
         // Prepend a tiny system-note prefix when files were attached so the
@@ -194,6 +193,7 @@ export function PlaygroundChat({
           toolCalls: [],
           pending: true,
         };
+        const attempt = { assistantId: assistantMessage.id, released: false };
         setMessages((m) => [...m, userMessage, assistantMessage]);
 
         const credentials = { apiKey: keys.anthropicKey, workspaceId: keys.anthropicWorkspaceId };
@@ -208,12 +208,13 @@ export function PlaygroundChat({
             assistantId: assistantMessage.id,
             getDispatchContext: dispatchContext ?? (() => ({})),
             onDispatchChange: pending => {
-              dispatchPending.current = pending;
+              if (loadCounter.current !== loadId || attempt.released) return;
+              dispatchPending.current = pending ? attempt : null;
               setDispatching(pending);
             },
             onToolResult: call => {
-              // A completed effect is history even after Stop. IFC swaps retire it.
-              if (loadCounter.current !== loadId || (!isCurrent() && !intent.userStopped)) return;
+              // loadCounter owns IFC-swap discards; force-release seals cancellation.
+              if (loadCounter.current !== loadId || attempt.released) return;
               setMessages(prior => prior.map(message => message.id === assistantMessage.id
                 ? { ...message, toolCalls: message.toolCalls?.map(previous => previous.id === call.id ? call : previous) }
                 : message));
@@ -246,7 +247,21 @@ export function PlaygroundChat({
   );
 
   const stop = () => {
-    stopIntent.current.userStopped = true;
+    if (!isStreaming && dispatchPending.current) {
+      const attempt = dispatchPending.current;
+      attempt.released = true;
+      dispatchPending.current = null;
+      setDispatching(false);
+      setMessages(prior => prior.map(message => message.id === attempt.assistantId
+        ? { ...message, toolCalls: message.toolCalls?.map(call => call.result ? call : {
+            ...call, finishedAt: Date.now(), result: {
+              text: 'Cancelled while the tool was still running; outcome unknown. Do not retry mutations automatically.',
+              structured: null, isError: true, errorCode: 'CANCELLED',
+            },
+          }) }
+        : message));
+      return;
+    }
     reset();
     setMessages(prior => prior.map(message => message.pending
       ? { ...message, pending: false, ...(message.text ? {} : { displayTextKey: 'mcp.playgroundChat.stopped' as const }) }
@@ -317,6 +332,7 @@ export function PlaygroundChat({
   }
 
   // ── render ──────────────────────────────────────────────────────────────
+  const canStop = isStreaming || dispatching;
   return (
     <div className="flex h-full min-h-0 flex-col bg-[#0f0f12] text-[#ede4d3]">
       <PlaygroundHeader
@@ -441,15 +457,16 @@ export function PlaygroundChat({
             style={{ fontFamily: '"Bricolage Grotesque", system-ui, sans-serif' }}
           />
           <button
-            type={isStreaming ? 'button' : 'submit'}
-            onClick={isStreaming ? stop : undefined}
-            disabled={!isStreaming && (dispatching || (!input.trim() && pendingAttachments.length === 0) || !model || !keys.anthropicKey)}
+            type={canStop ? 'button' : 'submit'}
+            onClick={canStop ? stop : undefined}
+            disabled={!canStop && ((!input.trim() && pendingAttachments.length === 0) || !model || !keys.anthropicKey)}
             className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-[#d6ff3f] text-[#0a0a0c] transition-opacity disabled:opacity-30"
-            aria-label={t(isStreaming ? 'chat.panel.stopGeneratingTooltip' : 'mcp.playgroundChat.send')}
+            aria-label={t(canStop ? 'chat.panel.stopGeneratingTooltip' : 'mcp.playgroundChat.send')}
           >
-            {isStreaming ? <Square size={14} fill="currentColor" /> : <ArrowUp size={14} strokeWidth={2.5} />}
+            {canStop ? <Square size={14} fill="currentColor" /> : <ArrowUp size={14} strokeWidth={2.5} />}
           </button>
         </div>
+        {!isStreaming && dispatching && <p className="mt-1.5 text-2xs text-white/60">{t('mcp.playgroundChat.finishingTool')}</p>}
         <p className="mt-1.5 text-2xs text-white/40">
           {uploads.length > 0
             ? t('mcp.playgroundChat.footerHintWithAttachments', { tools: tools.length, count: uploads.length })

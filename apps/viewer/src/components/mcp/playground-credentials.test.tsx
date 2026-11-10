@@ -327,12 +327,12 @@ it('#9577 N1 Send and Enter stay blocked until the stopped dispatch settles', as
   act(() => ui.querySelector<HTMLButtonElement>('button[aria-label="Stop generating"]')!.click());
   const input = ui.querySelector('textarea')!;
   typeInto(input, 'Next request');
-  const disabled = ui.querySelector<HTMLButtonElement>('button[type="submit"]')!.disabled;
+  const finishing = Boolean(ui.querySelector<HTMLButtonElement>('button[aria-label="Stop generating"]'));
   await act(async () => { input.closest('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); });
   const whilePending = turns;
   await act(async () => release());
   await advance(0);
-  assert.equal(disabled, true, 'Send remains disabled while the tool can still complete');
+  assert.equal(finishing, true, 'the pending tool keeps Stop available while Send is blocked');
   assert.equal(whilePending, 1, 'Enter cannot overlap the old dispatch');
   await send(ui, 'Next request');
   assert.equal(turns, 2, 'Send resumes once the dispatch has settled');
@@ -384,4 +384,59 @@ it('#9577 N1 final results update only their own assistant and tool slot', async
   const blocks = payloads.at(-1)!.messages.flatMap(message => Array.isArray(message.content) ? message.content : []) as Array<{ type: string; content?: string }>;
   const results = blocks.filter(block => block.type === 'tool_result').map(block => block.content?.split(' · guid=')[0]);
   assert.deepEqual(results, ["Created topic 'Turn 1 first'", "Created topic 'Turn 1 last'", "Created topic 'Turn 2 first'", "Created topic 'Turn 2 last'"]);
+});
+
+for (const boundary of ['model change', 'model swap-back', 'second Stop'] as const) it(`#9603 ${boundary} releases a stopped tool without letting its late finally unlock the next tool`, async t => {
+  const releases: Array<() => void> = [];
+  t.after(async () => { for (const release of releases) release(); await advance(0); cleanup(); clearApiKeys(); });
+  updateApiKeys({ anthropicKey: 'sk-ant-test' });
+  const payloads: Array<{ messages: Array<{ content: unknown }> }> = [];
+  t.mock.method(globalThis, 'fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
+    if (String(input).includes('/api/bsdd')) {
+      await new Promise<void>(resolve => { releases.push(resolve); });
+      return jsonResponse({ classes: [] });
+    }
+    payloads.push(JSON.parse(String(init?.body)));
+    return jsonResponse({ id: `recover-${payloads.length}`, type: 'message', role: 'assistant',
+      content: payloads.length <= 2 ? [...(payloads.length === 1 ? [{ type: 'tool_use', id: 'completed', name: 'model_info', input: {} }] : []), { type: 'tool_use', id: 'lookup', name: 'bsdd_search', input: { query: `held-${payloads.length}` } }]
+        : [{ type: 'text', text: 'Replacement completed.' }],
+      stop_reason: payloads.length <= 2 ? 'tool_use' : 'end_turn', usage: { input_tokens: 1, output_tokens: 1 } });
+  });
+  const model = await oneWallModel();
+  let swap!: () => void, restore!: () => void;
+  function Host() { const [current, setCurrent] = useState(model); swap = () => setCurrent({ ...model }); restore = () => setCurrent(model); return <PlaygroundChat model={current} />; }
+  const ui = render(<Host />);
+  await send(ui, 'First lookup');
+  await waitFor(() => releases.length === 1, 'the first tool is held');
+  act(() => ui.querySelector<HTMLButtonElement>('button[aria-label="Stop generating"]')!.click());
+  typeInto(ui.querySelector('textarea')!, 'Replacement lookup');
+  if (boundary !== 'second Stop') act(() => { flushSync(swap); if (boundary === 'model swap-back') flushSync(restore); });
+  else {
+    const stopAgain = ui.querySelector<HTMLButtonElement>('button[aria-label="Stop generating"]');
+    assert.equal(Boolean(stopAgain), true, 'a stopped tool keeps an accessible release control');
+    assert.equal(ui.textContent?.includes('Finishing previous tool'), true, 'the release action is explained visibly');
+    act(() => stopAgain!.click());
+  }
+  assert.equal(ui.querySelector<HTMLButtonElement>('button[type="submit"]')?.disabled, false, 'Send recovers without waiting for the old tool');
+  await send(ui, 'Replacement lookup');
+  await waitFor(() => releases.length === 2, 'the replacement tool is held');
+  await act(async () => releases[0]());
+  await advance(0);
+  act(() => ui.querySelector<HTMLButtonElement>('button[aria-label="Stop generating"]')!.click());
+  const stopAgain = ui.querySelector<HTMLButtonElement>('button[aria-label="Stop generating"]');
+  assert.equal(Boolean(stopAgain), true, 'the old finally cannot release the replacement tool');
+  await act(async () => { ui.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); });
+  assert.equal(payloads.length, 2, 'Enter remains locked for the replacement dispatch');
+  act(() => stopAgain!.click());
+  await act(async () => releases[1]());
+  await advance(0);
+  await send(ui, 'Inspect the recovered history');
+  const results = payloads.at(-1)!.messages.flatMap(message => Array.isArray(message.content) ? message.content : []) as Array<{ type: string; content?: string; is_error?: boolean }>;
+  const tools = results.filter(result => result.type === 'tool_result');
+  assert.equal(tools.length, 3);
+  assert.equal(tools[0].is_error, false, 'release preserves an earlier completed tool');
+  assert.equal(tools[1].is_error, true);
+  assert.equal(tools[1].content?.includes('outcome unknown'), boundary === 'second Stop', 'a released result stays cancelled after its late completion');
+  assert.equal(tools[2].content?.includes('outcome unknown'), true, 'the replacement tool keeps its own cancellation record');
+  assert.equal(ui.textContent?.includes('Replacement completed.'), true);
 });

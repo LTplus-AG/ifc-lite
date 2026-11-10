@@ -39,6 +39,16 @@ const body = (roofId: number) => {
   return { shape: attribute(6), type: attribute(8) };
 };
 
+/** Check the real edit's journal, including absent tags rather than only distinct values. */
+function assertSingleUndoBatch(depth: number): void {
+  const state = useViewerStore.getState();
+  const mutations = (state.undoStacks.get(MODEL_ID) ?? []).slice(depth);
+  assert.ok(mutations.length > 0, 'the roof edit records mutations');
+  const tags = mutations.map(mutation => state.mutationBatchTags.get(mutation.id));
+  assert.ok(tags.every(tag => typeof tag === 'string' && tag.length > 0), 'every edit mutation has a real batch tag (#9356 review)');
+  assert.equal(new Set(tags).size, 1, 'one undo step');
+}
+
 describe('roof by footprint in the viewer (#9296 round 3)', () => {
   it('editing one edge\'s slope is one undo step that undo reverts whole', async () => {
     const { editRoofIn } = await roof();
@@ -54,13 +64,27 @@ describe('roof by footprint in the viewer (#9296 round 3)', () => {
     assert.deepEqual(editRoofIn(useViewerStore, MODEL_ID, roofId, { EdgeSlopes: [30 * D, 0, 30 * D, 0], Overhang: 0.5 }), { ok: true, remesh: [roofId] });
     assert.equal(body(roofId).type, '.GABLE_ROOF.');
     assert.notEqual(body(roofId).shape, hip.shape, 'the planes were rebuilt');
-    const stack = useViewerStore.getState().undoStacks.get(MODEL_ID) ?? [];
-    const tags = new Set(stack.slice(depth).map((m) => useViewerStore.getState().mutationBatchTags.get(m.id)));
-    assert.ok([...tags].every(tag => typeof tag === 'string' && tag.length > 0), 'every edit mutation has a real batch tag (#9356 review)');
-    assert.equal(tags.size, 1, 'one undo step');
+    assertSingleUndoBatch(depth);
 
     useViewerStore.getState().undo(MODEL_ID);
     assert.deepEqual(body(roofId), hip, 'undo restores the hip roof');
+  });
+
+  it('missing tags cannot satisfy the roof single-undo-step check (#9356 review)', async () => {
+    const { editRoofIn } = await roof();
+    const added = useViewerStore.getState().addRoof(MODEL_ID, STOREY, {
+      Position: [0, 0, 3], Width: 10, Depth: 8, Thickness: .25, EdgeSlopes: Array(4).fill(30 * D),
+    });
+    assert.ok('expressId' in added);
+    const depth = undoDepth();
+    assert.deepEqual(editRoofIn(useViewerStore, MODEL_ID, added.expressId, { EdgeSlopes: [30 * D, 0, 30 * D, 0] }), { ok: true, remesh: [added.expressId] });
+    assert.equal(body(added.expressId).type, '.GABLE_ROOF.');
+    assertSingleUndoBatch(depth);
+    // Fault injection: keep the actual edit and undo rows, lose only their tags.
+    const state = useViewerStore.getState(), tags = new Map(state.mutationBatchTags);
+    for (const mutation of (state.undoStacks.get(MODEL_ID) ?? []).slice(depth)) tags.delete(mutation.id);
+    useViewerStore.setState({ mutationBatchTags: tags });
+    assert.throws(() => assertSingleUndoBatch(depth), /every edit mutation has a real batch tag/);
   });
 
   it('publishes the recorded definition with the rebuilt body (#9356 review)', async () => {

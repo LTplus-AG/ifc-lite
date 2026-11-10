@@ -61,10 +61,10 @@
   "devDependencies": {
     "rhino3dm": "8.35.0",
     "@ifc-lite/bcf-api": "workspace:^",
-    "@mergifyio/vitest": "^2026.10.11",
-    "@types/node": "^26.6.4",
+    "@mergifyio/vitest": "^2026.11.5",
+    "@types/node": "^26.6.6",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.5"
+    "vitest": "^5.1.0"
   },
   "engines": {
     "node": ">=18.0.0"

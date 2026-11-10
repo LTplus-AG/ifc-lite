@@ -32,16 +32,16 @@
     "@ifc-lite/ifcx": "workspace:^",
     "@ifc-lite/merge": "workspace:^",
     "lib0": "^0.2.119",
-    "ws": "^8.22.0",
+    "ws": "^8.22.1",
     "y-protocols": "^1.0.6",
     "yjs": "^13.6.33"
   },
   "devDependencies": {
-    "@mergifyio/vitest": "^2026.10.11",
-    "@types/node": "^26.6.4",
+    "@mergifyio/vitest": "^2026.11.5",
+    "@types/node": "^26.6.6",
     "@types/ws": "^8.18.2",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.5",
+    "vitest": "^5.1.0",
     "y-websocket": "^3.1.0"
   },
   "license": "MPL-2.0",

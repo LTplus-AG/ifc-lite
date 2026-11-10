@@ -8,6 +8,19 @@ Citations to `evidence/`, `tests/evidence/` and `docs/architecture/evidence/` pa
 at commit [`f98785c722`](https://github.com/LTplus-AG/ifc-lite/tree/f98785c722); the retained
 bundles left the tree in #9054.
 
+## Raycast keeps one index across visibility changes (#9504)
+
+**Shipped.** `collectVisibleMeshData` rebuilt its list on every ray, and the BVH was
+keyed on the visible list, so each hide or isolate change rebuilt the tree. The flat
+pieces are now collected once per pick-geometry revision, one BVH covers all of them,
+and visibility filters each ray's candidates. Instanced occurrences stay per-ray.
+
+Lesson: the freshness key is `getPickGeometryRevision()` plus draw-list identity.
+`meshDataMap.size` is not enough, because fragments can be replaced under the same ids
+(#4556). The renderer's `BVH` is separate from `@ifc-lite/spatial`'s (#5252), so a win
+in one does not carry to the other. The tree's typed-array layout is a heap win; the
+per-ray and post-hide wins come from the cache.
+
 ## Storey planners and the QuickJS runtime leave the boot path (#9200)
 
 **Shipped: an eager-bytes cut, no boot-time change.** Three changes, each one

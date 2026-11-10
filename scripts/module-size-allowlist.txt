@@ -212,7 +212,7 @@
   1537 packages/geometry/src/geometry-parallel.ts
   1780 packages/geometry/src/geometry.worker.ts
    898 packages/geometry/src/ifc-lite-bridge.ts
-  1531 packages/geometry/src/index.ts
+  1529 packages/geometry/src/index.ts
    625 packages/geometry/src/native-bridge.ts
    904 packages/ids/src/audit/ifc-schema/index.ts
    411 packages/ids/src/audit/structural/index.ts

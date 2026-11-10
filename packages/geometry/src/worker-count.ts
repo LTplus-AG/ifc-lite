@@ -7,13 +7,13 @@
  *
  * Every dedicated worker shares the page's renderer process, and every wasm
  * instance (the pre-pass worker and each geometry worker) holds a full copy
- * of the source. So the tab's peak grows as workers × file size, plus the
- * SAB and the main-thread tables (`tab-memory-budget.ts` has the model and
- * its calibration). The count is the cores/thermal tier below, lowered to the
- * largest N whose estimated tab peak fits the device's budget, never below
- * one. When even one worker cannot fit the most memory the device can have,
- * the plan says so (`exceedsDevice`); `assertGeometryMemoryFits` lets the
- * host refuse such a load up front.
+ * of the source, so the tab's peak grows as workers × file size
+ * (`tab-memory-budget.ts` has both estimates and their calibration). The
+ * count is the cores/thermal tier below, lowered to the largest N whose
+ * conservative estimate fits the device's budget, never below one. Refusal is
+ * a separate, strict lower bound: only when even the source copies the chosen
+ * path must hold exceed the most memory the device can have
+ * (`assertGeometryMemoryFits`, opt-in for the host).
  */
 
 import { readDeviceMemoryOverrideGB } from './perf-flags.js';
@@ -22,10 +22,26 @@ import {
   estimateTabPeakMiB,
   GeometryMemoryBudgetError,
   maxWorkersWithinBudget,
+  sourceCopiesFloorMiB,
   tabBudgetMiB,
 } from './tab-memory-budget.js';
 
 export { GeometryMemoryBudgetError };
+
+/** Largest device memory (GiB) taken at face value; beyond it MiB arithmetic stops being meaningful. */
+const MAX_PLAUSIBLE_MEMORY_GB = 1 << 20;
+/** Files up to this size keep at least two workers under the memory budget (see `computeWorkerCount`). */
+const MID_SIZE_FLOOR_MB = 512;
+
+/**
+ * An explicit worker count. A plain number keeps the long-standing semantics:
+ * the memory budget still clips it (a value saved in localStorage months ago
+ * must not lift memory protection). `{ count, beyondBudget: true }` is a fresh,
+ * deliberate request (the viewer passes it only for `?geomWorkers=N` in the
+ * current page URL): it may spend the budget's 25 % headroom, but is still
+ * clamped to the most workers that fit the whole device (never below one).
+ */
+export type WorkerCountOverride = number | { count: number; beyondBudget: true };
 
 export interface WorkerCountInputs {
   /** File size in megabytes (MiB). */
@@ -33,57 +49,50 @@ export interface WorkerCountInputs {
   /** `navigator.hardwareConcurrency`, 1+. */
   cores: number;
   /**
-   * Device memory in GiB to plan with: `navigator.deviceMemory`, or 8 when
-   * the browser does not expose it (Firefox, Safari). On 10+ cores it is
-   * raised to at least 16 (capped by `deviceMemoryCeilingGB`), because a
-   * clamped 8 on such a machine is in practice 16 GB or more.
+   * Device memory in GiB: `navigator.deviceMemory`, or 8 when the browser does
+   * not expose it (Firefox, Safari). On 10+ cores the tiers and the budget lift
+   * it to at least 16, because a clamped 8 on such a machine is in practice 16
+   * GB or more; the budget never lifts it above `deviceMemoryCeilingGB`.
    */
   deviceMemoryGB: number;
   /**
    * The most RAM (GiB) the device can have (`deviceMemoryCeilingGB` of the
-   * reported value). `Infinity`/undefined when unknown: the load is then never
-   * refused, only budgeted.
+   * reported value). Undefined, non-finite or non-positive ⇒ unknown: the
+   * load is then never refused, only budgeted.
    */
   deviceMemoryCeilingGB?: number;
+  /** Plan the budget as if the device had at most this many GiB (diagnostic simulation; lowers only). */
+  planningMemoryCapGB?: number;
   /** Total geometry jobs the pre-pass discovered. Workers can't exceed this. */
   totalJobs: number;
   /** Lower bound on workers when there are jobs. Defaults to 1. */
   minWorkers?: number;
   /** Upper bound on workers regardless of resources. Defaults to 8. */
   maxWorkers?: number;
-  /**
-   * Explicit worker count requested by the host (the viewer's `?geomWorkers=N`
-   * A/B knob, which persists in localStorage). It wins over the cores tier
-   * and the 75 % tab budget, so it can spend the headroom, and it skips the
-   * up-front refusal. It is clamped to `[minWorkers, maxWorkers]`, the job
-   * count, and the hard limit: the most workers whose estimate fits the whole
-   * device memory planned with (never below one). `fitsBudget` in the result
-   * says whether the estimate fit the budget. Undefined ⇒ use the policy.
-   */
-  workerCountOverride?: number;
+  /** Explicit worker count (the viewer's `?geomWorkers=N` A/B knob); see `WorkerCountOverride`. */
+  workerCountOverride?: WorkerCountOverride;
 }
 
 export interface WorkerCountResult {
   count: number;
   /** For diagnostics: which constraint was binding. */
-  reason: 'cores' | 'memory' | 'jobs' | 'min' | 'max' | 'override';
-  /** Estimated peak tab memory (MiB) at `count` workers (`estimateTabPeakMiB`). */
+  reason: 'cores' | 'memory' | 'jobs' | 'min' | 'max';
+}
+
+/** `computeWorkerCount`'s result with the memory plan it was chosen from. */
+export interface WorkerCountPlan extends WorkerCountResult {
+  /** Conservative estimate of the tab's geometry-phase peak (MiB) at `count` workers. */
   estimatedPeakMiB: number;
   /** The tab budget (MiB) the count was planned against. */
   budgetMiB: number;
   /** Whether `estimatedPeakMiB` is within `budgetMiB`. */
   fitsBudget: boolean;
-  /**
-   * Even one geometry worker's estimated peak exceeds the most memory the
-   * device can have (never set for an override or an unknown ceiling). A host
-   * may refuse the load (`assertGeometryMemoryFits`); the pool still runs it
-   * with one worker.
-   */
-  exceedsDevice: boolean;
-  /** Estimated peak with one geometry worker, MiB (the refusal's "required"). */
-  minimumPeakMiB: number;
+  /** Lower bound (MiB) on what the parallel pool must hold: its full source copies. */
+  floorMiB: number;
   /** The most memory the device can have, MiB (`Infinity` when unknown). */
   deviceCeilingMiB: number;
+  /** `floorMiB` exceeds `deviceCeilingMiB`: a host may refuse (`assertGeometryMemoryFits`). */
+  exceedsDevice: boolean;
 }
 
 /**
@@ -91,37 +100,39 @@ export interface WorkerCountResult {
  * and host capability. Pure function. All inputs validated, result clamped to
  * `[minWorkers, maxWorkers]` when there are jobs.
  */
-/** Files up to this size keep at least two workers under the memory budget (see `computeWorkerCount`). */
-const MID_SIZE_FLOOR_MB = 512;
-
-export function computeWorkerCount(inputs: WorkerCountInputs): WorkerCountResult {
+export function computeWorkerCount(inputs: WorkerCountInputs): WorkerCountPlan {
   // NaN loses every comparison, so a NaN input would silently drop a cap or return NaN: replace non-finite inputs first.
   const fileSizeMB = Number.isFinite(inputs.fileSizeMB) ? Math.max(0, inputs.fileSizeMB) : 0;
   const cores = Number.isFinite(inputs.cores) ? Math.max(1, Math.floor(inputs.cores)) : 1;
-  const ceilingGB = Number.isNaN(inputs.deviceMemoryCeilingGB) ? Infinity : inputs.deviceMemoryCeilingGB ?? Infinity;
+  const positiveGB = (v: number | undefined): number | undefined =>
+    v !== undefined && Number.isFinite(v) && v > 0 ? Math.min(v, MAX_PLAUSIBLE_MEMORY_GB) : undefined;
+  const ceilingGB = positiveGB(inputs.deviceMemoryCeilingGB) ?? Infinity;
+  // A non-finite or non-positive value is treated as unknown: the documented 8.
+  const reportedMemoryGB = Math.max(1, positiveGB(inputs.deviceMemoryGB) ?? 8);
   // `navigator.deviceMemory` is clamped (8 on older Chrome and Android) as a
   // fingerprinting mitigation. When cores indicates a Pro/Max-tier machine
   // (10+) we know in practice it ships with ≥16 GB, so we lift the floor for
   // the cores tiers. The memory budget uses the same lift, but never above
-  // what the reported value proves the device can have.
-  // A non-finite or non-positive value is treated as unknown: the documented 8.
-  const reportedMemoryGB = Number.isFinite(inputs.deviceMemoryGB) && inputs.deviceMemoryGB > 0
-    ? Math.max(1, inputs.deviceMemoryGB) : 8;
+  // what the reported value proves the device can have, nor above a simulation cap.
   const deviceMemoryGB = cores >= 10 ? Math.max(reportedMemoryGB, 16) : reportedMemoryGB;
-  const planningMemoryGB = Math.min(deviceMemoryGB, Math.max(reportedMemoryGB, ceilingGB));
+  const planningMemoryGB = Math.min(
+    deviceMemoryGB, Math.max(reportedMemoryGB, ceilingGB), positiveGB(inputs.planningMemoryCapGB) ?? Infinity,
+  );
   // An unknown (NaN) job count does not bind; the other ceilings decide.
   const totalJobs = Number.isNaN(inputs.totalJobs) ? Infinity : Math.max(0, Math.floor(inputs.totalJobs));
   const minWorkers = Number.isFinite(inputs.minWorkers) ? Math.max(1, Math.floor(inputs.minWorkers ?? 1)) : 1;
   const maxWorkers = Number.isFinite(inputs.maxWorkers) ? Math.max(minWorkers, Math.floor(inputs.maxWorkers ?? 8)) : Math.max(minWorkers, 8);
 
   const budgetMiB = tabBudgetMiB(planningMemoryGB);
-  const minimumPeakMiB = estimateTabPeakMiB(fileSizeMB, 1);
-  const finish = (count: number, reason: WorkerCountResult['reason'], exceedsDevice = false): WorkerCountResult => {
+  const floorMiB = sourceCopiesFloorMiB(fileSizeMB, 'parallel');
+  // Refuse only on the strict lower bound (source copies), never on the
+  // conservative planning estimate: inaccuracy may cost workers, never a load.
+  const exceedsDevice = floorMiB > ceilingGB * 1024;
+  const finish = (count: number, reason: WorkerCountResult['reason']): WorkerCountPlan => {
     const estimatedPeakMiB = estimateTabPeakMiB(fileSizeMB, count);
     return {
-      count, reason, estimatedPeakMiB, budgetMiB,
-      fitsBudget: estimatedPeakMiB <= budgetMiB, exceedsDevice, minimumPeakMiB,
-      deviceCeilingMiB: ceilingGB * 1024,
+      count, reason, estimatedPeakMiB, budgetMiB, fitsBudget: estimatedPeakMiB <= budgetMiB,
+      floorMiB, deviceCeilingMiB: ceilingGB * 1024, exceedsDevice,
     };
   };
 
@@ -130,34 +141,6 @@ export function computeWorkerCount(inputs: WorkerCountInputs): WorkerCountResult
     // ~250ms WASM compile that has nothing to do; the docstring's
     // non-zero guarantee is scoped to "when there are jobs to do."
     return finish(0, 'jobs');
-  }
-
-  // Explicit host override (A/B tuning, field debugging): the user's count
-  // wins over the cores tier and the 75 % budget. The job count, the hard
-  // bounds and the whole device memory still clip it (a sticky `?geomWorkers=8`
-  // left over from a small model must not plan ~25 GiB for a 2 GB file on a
-  // 16 GB laptop); `reason` names the bound that did.
-  if (inputs.workerCountOverride != null && Number.isFinite(inputs.workerCountOverride)) {
-    let count = Math.max(1, Math.floor(inputs.workerCountOverride));
-    let reason: WorkerCountResult['reason'] = 'override';
-    const deviceCap = Math.max(1, maxWorkersWithinBudget(fileSizeMB, planningMemoryGB * 1024));
-    if (deviceCap < count) {
-      count = deviceCap;
-      reason = 'memory';
-    }
-    if (totalJobs < count) {
-      count = totalJobs;
-      reason = 'jobs';
-    }
-    if (maxWorkers < count) {
-      count = maxWorkers;
-      reason = 'max';
-    }
-    if (minWorkers > count) {
-      count = minWorkers;
-      reason = 'min';
-    }
-    return finish(count, reason);
   }
 
   // Cores-based ceiling (thermal and memory-bandwidth tiers).
@@ -227,9 +210,9 @@ export function computeWorkerCount(inputs: WorkerCountInputs): WorkerCountResult
     coresCap = Math.max(1, Math.min(2, Math.floor(cores / 2)));
   }
 
-  // Whole-tab memory budget: the most workers whose estimated tab peak (SAB,
-  // main-thread tables, pre-pass instance and N full-source worker heaps)
-  // fits. Fewer workers rather than an out-of-memory tab; never below one.
+  // Whole-tab memory budget: the most workers whose conservative estimate
+  // (SAB, main-thread tables, pre-pass instance and N full-source worker
+  // heaps) fits. Fewer workers rather than an out-of-memory tab; never below one.
   // Up to 512 MiB the budget never takes the count below 2 when two workers fit
   // the whole device. Measured on real 177 / 343 MB models: at 1–2 workers the
   // tab peak (~2.9–3.2 GiB) comes AFTER geometry and does not depend on the
@@ -240,6 +223,37 @@ export function computeWorkerCount(inputs: WorkerCountInputs): WorkerCountResult
   const twoFitDevice = planningMemoryGB >= 4 && estimateTabPeakMiB(fileSizeMB, 2) <= planningMemoryGB * 1024;
   const memoryFloor = fileSizeMB <= MID_SIZE_FLOOR_MB && twoFitDevice ? Math.min(2, coresCap) : 1;
   const memoryCap = Math.max(memoryFloor, maxWorkersWithinBudget(fileSizeMB, budgetMiB));
+
+  // Explicit host override (A/B tuning, field debugging): wins over the cores
+  // tier. A plain number is still clipped by the memory budget, as it always
+  // was; `beyondBudget` (fresh URL request) only by the whole device. The job
+  // count and the hard bounds clip both; `reason` names the bound that did.
+  const override = inputs.workerCountOverride;
+  const overrideCount = typeof override === 'number' ? override : override?.count;
+  if (overrideCount != null && Number.isFinite(overrideCount)) {
+    let count = Math.max(1, Math.floor(overrideCount));
+    let reason: WorkerCountResult['reason'] = 'cores'; // honouring the override
+    const memoryBound = typeof override === 'object' && override.beyondBudget
+      ? Math.max(1, maxWorkersWithinBudget(fileSizeMB, planningMemoryGB * 1024))
+      : memoryCap;
+    if (memoryBound < count) {
+      count = memoryBound;
+      reason = 'memory';
+    }
+    if (totalJobs < count) {
+      count = totalJobs;
+      reason = 'jobs';
+    }
+    if (maxWorkers < count) {
+      count = maxWorkers;
+      reason = 'max';
+    }
+    if (minWorkers > count) {
+      count = minWorkers;
+      reason = 'min';
+    }
+    return finish(count, reason);
+  }
 
   // Final pick: tightest ceiling, then clamp.
   const candidates: Array<{ value: number; reason: WorkerCountResult['reason'] }> = [
@@ -252,13 +266,8 @@ export function computeWorkerCount(inputs: WorkerCountInputs): WorkerCountResult
   for (let i = 1; i < candidates.length; i++) {
     if (candidates[i].value < pick.value) pick = candidates[i];
   }
-  // Refuse only when one worker exceeds the most RAM the device can have.
-  // With an unknown or possibly clamped `deviceMemory` the ceiling is
-  // infinite, so the load is attempted with one worker: an uncertain
-  // estimate is never grounds to block a load that might succeed.
-  const exceedsDevice = minimumPeakMiB > ceilingGB * 1024;
-  if (pick.value < minWorkers) return finish(minWorkers, 'min', exceedsDevice);
-  return finish(pick.value, pick.reason, exceedsDevice);
+  if (pick.value < minWorkers) return finish(minWorkers, 'min');
+  return finish(pick.value, pick.reason);
 }
 
 /**
@@ -268,23 +277,36 @@ export function pickWorkerCount(inputs: WorkerCountInputs): number {
   return computeWorkerCount(inputs).count;
 }
 
+/** Whether `processAdaptive` can run the parallel worker pool in this realm (else it streams serially). */
+export function parallelPoolAvailable(): boolean {
+  return typeof SharedArrayBuffer !== 'undefined'
+    && typeof Worker !== 'undefined'
+    && typeof navigator !== 'undefined'
+    && (navigator.hardwareConcurrency ?? 1) > 1;
+}
+
+function browserDeviceMemoryGB(): number | undefined {
+  const nav = typeof navigator !== 'undefined' ? navigator as Navigator & { deviceMemory?: number } : undefined;
+  return nav?.deviceMemory;
+}
+
 /**
  * The worker count a parallel load of `fileSizeMB` uses on this host: the
  * browser's cores and memory, and a file-size proxy for the job count (the
  * memory budget keeps an over-estimate harmless). `?perf.geomMemoryGB=N`
- * (or `__IFC_LITE_GEOM_MEMORY_GB`) plans as if this were an N-GiB device whose
- * memory is known exactly, for testing the budget on a large host.
+ * (or `__IFC_LITE_GEOM_MEMORY_GB`) caps the planning memory at N GiB to
+ * reproduce a small device on a large host. It can only LOWER the count:
+ * it never raises the budget and never changes the refusal ceiling.
  */
-export function planLoadWorkerCount(fileSizeMB: number, workerCountOverride?: number): WorkerCountResult & { cores: number } {
-  const nav = typeof navigator !== 'undefined' ? navigator as Navigator & { deviceMemory?: number } : undefined;
-  const cores = nav?.hardwareConcurrency ?? 2;
-  const simulatedGB = readDeviceMemoryOverrideGB();
-  const reported = simulatedGB ?? nav?.deviceMemory;
+export function planLoadWorkerCount(fileSizeMB: number, workerCountOverride?: WorkerCountOverride): WorkerCountPlan & { cores: number } {
+  const cores = typeof navigator !== 'undefined' ? navigator.hardwareConcurrency ?? 2 : 2;
+  const reported = browserDeviceMemoryGB();
   const result = computeWorkerCount({
     fileSizeMB,
     cores,
     deviceMemoryGB: reported ?? 8,
-    deviceMemoryCeilingGB: simulatedGB ?? deviceMemoryCeilingGB(reported),
+    deviceMemoryCeilingGB: deviceMemoryCeilingGB(reported),
+    planningMemoryCapGB: readDeviceMemoryOverrideGB(),
     totalJobs: Math.max(1, Math.ceil(fileSizeMB * 100)),
     workerCountOverride,
   });
@@ -292,21 +314,26 @@ export function planLoadWorkerCount(fileSizeMB: number, workerCountOverride?: nu
 }
 
 /**
- * Refuse a load of `byteLength` source bytes up front when even one geometry
- * worker cannot fit this device (see `computeWorkerCount`'s `exceedsDevice`),
- * by throwing `GeometryMemoryBudgetError`. Opt-in for the host, called before
- * reading the file: the parallel pool itself never refuses, it only budgets
- * (the estimate can over-count unusual files, so the host decides).
+ * Refuse a load of `byteLength` source bytes up front by throwing
+ * `GeometryMemoryBudgetError` when even the source copies of the path that will
+ * run (`parallelPoolAvailable()`: 3 × source for the worker pool, 2 × for the
+ * serial fallback) exceed the most memory the browser's `deviceMemory` reading
+ * allows. A strict lower bound against a reported ceiling: never decided by the
+ * planning estimate, never by the memory simulation. Opt-in for the host,
+ * called before reading the file; the pool itself never refuses.
  */
-export function assertGeometryMemoryFits(byteLength: number, workerCountOverride?: number): void {
-  const plan = planLoadWorkerCount(byteLength / (1024 * 1024), workerCountOverride);
-  if (plan.exceedsDevice) throw new GeometryMemoryBudgetError(plan.minimumPeakMiB, plan.deviceCeilingMiB);
+export function assertGeometryMemoryFits(byteLength: number): void {
+  const fileSizeMB = Number.isFinite(byteLength) ? Math.max(0, byteLength) / (1024 * 1024) : 0;
+  const ceilingMiB = deviceMemoryCeilingGB(browserDeviceMemoryGB()) * 1024;
+  const floorMiB = sourceCopiesFloorMiB(fileSizeMB, parallelPoolAvailable() ? 'parallel' : 'serial');
+  if (floorMiB > ceilingMiB) throw new GeometryMemoryBudgetError(floorMiB, ceilingMiB);
 }
 
 /** The pool's one-line plan diagnostic: binding bound, estimated peak and budget. */
-export function describeWorkerPlan(plan: WorkerCountResult & { cores: number }, workerCountOverride?: number): string {
-  const bound = workerCountOverride != null
-    ? `(override=${workerCountOverride}, bound=${plan.reason})`
+export function describeWorkerPlan(plan: WorkerCountPlan & { cores: number }, workerCountOverride?: WorkerCountOverride): string {
+  const requested = typeof workerCountOverride === 'object' ? `${workerCountOverride.count}, beyond budget` : workerCountOverride;
+  const bound = requested != null
+    ? `(override=${requested}, bound=${plan.reason})`
     : `(cores=${plan.cores}, bound=${plan.reason})`;
   return `${bound} tabPeakEstMiB=${Math.round(plan.estimatedPeakMiB)} tabBudgetMiB=${Math.round(plan.budgetMiB)}`
     + (plan.fitsBudget ? '' : ' (over budget)');

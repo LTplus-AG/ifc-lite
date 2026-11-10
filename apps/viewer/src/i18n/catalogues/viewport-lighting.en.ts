@@ -77,7 +77,7 @@ export const viewportLightingEn = {
   // ── ViewportLoadErrorCard.tsx — one load-error card for every load
   // path: the picker, drop, ?model= autoload and federated adds (#5851) ──
   'viewportLighting.container.loadErrorCard.invalidInput': 'This file is invalid or is not in the expected format. Check the file type, or export a new copy and open it again.',
-  'viewportLighting.container.loadErrorCard.deviceMemory': 'This model needs about {required} of memory to load in the browser, more than this device or browser can provide (at most {available}). Open it on a computer with more memory, or use the native CLI or server.',
+  'viewportLighting.container.loadErrorCard.deviceMemory': 'This model needs at least {required} of memory to load in the browser, more than this device reports ({available} at most). Choose Retry to try anyway (the load may run out of memory), open it on a computer with more memory, or use the native CLI or server.',
   'viewportLighting.container.loadErrorCard.title': 'Could not load the model',
   'viewportLighting.container.loadErrorCard.retry': 'Retry',
   'viewportLighting.container.loadErrorCard.dismiss': 'Dismiss',

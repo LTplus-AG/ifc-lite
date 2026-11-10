@@ -24,7 +24,7 @@ import { useViewerStore } from '@/store';
 import { showLoadError } from '@/lib/analytics';
 import { formatLoadError } from '../../lib/load-error-message.js';
 import { settleUnownedLoadUi } from '../modelLoadCanceller.js';
-import { getGeomWorkerOverride } from '../../store/constants.js';
+import { getGeomWorkerOverrideRequest } from '../../store/constants.js';
 import { getDynamicBatchConfig, USE_SERVER } from '../../utils/ifcConfig.js';
 import type { CachePlan } from '../cacheTier.js';
 
@@ -70,40 +70,46 @@ export interface GeometryKernelLoad {
 }
 
 /**
- * The exact kernel's one refusal: the whole-tab memory estimate for even one
- * geometry worker exceeds the most memory this device can have (see
- * `computeWorkerCount` in `@ifc-lite/geometry`). A configured geometry server
- * may still take the load, so nothing is refused then.
+ * The exact kernel's one refusal: even the source copies the load must hold
+ * on the path that will run (3 × source for the worker pool, 2 × for the
+ * serial fallback) exceed the most memory the browser's `deviceMemory` reading
+ * allows (`assertGeometryMemoryFits` in `@ifc-lite/geometry`). A configured
+ * geometry server may still take the load, so nothing is refused then. Retry
+ * waives it for that file: the reading is not proof (swap, compression), so the
+ * user can always try anyway.
  */
-function memoryRefusal(fileName: string, byteLength: number): string | null {
-  if (USE_SERVER) return null;
+const memoryRefusalWaived = new WeakSet<File>();
+
+function memoryRefusal(file: File, byteLength: number): string | null {
+  if (USE_SERVER || memoryRefusalWaived.has(file)) return null;
   try {
-    assertGeometryMemoryFits(byteLength, getGeomWorkerOverride());
+    assertGeometryMemoryFits(byteLength);
     return null;
   } catch (err) {
-    if (err instanceof GeometryMemoryBudgetError) return formatLoadError(err, fileName);
+    if (err instanceof GeometryMemoryBudgetError) return formatLoadError(err, file.name);
     throw err;
   }
 }
 
-/** Shown like every load error; no Retry, because the same device gives the same answer. */
-function reportMemoryRefusal(message: string, file: File): void {
+/** Shown like every load error; its Retry tries the same file anyway, without the refusal. */
+function reportMemoryRefusal(message: string, file: File, retry: () => void): void {
   const { setError, setLastLoadRetry } = useViewerStore.getState();
-  showLoadError(setError, setLastLoadRetry, message, 'device_memory_insufficient', null, file);
+  const tryAnyway = () => { memoryRefusalWaived.add(file); retry(); };
+  showLoadError(setError, setLastLoadRetry, message, 'device_memory_insufficient', tryAnyway, file);
 }
 
-function exactGeometryKernel(file: File): GeometryKernelLoad {
+function exactGeometryKernel(file: File, retry: () => void): GeometryKernelLoad {
   return {
     kind: 'exact',
     serverEnabled: true,
     cachePlan: (plan) => plan,
     // An `.ifczip` is only measurable once unwrapped, so its refusal comes here.
     refuseSource(format, byteLength, { modelId, activity }) {
-      const message = format === 'ifc' ? memoryRefusal(file.name, byteLength) : null;
+      const message = format === 'ifc' ? memoryRefusal(file, byteLength) : null;
       if (!message) return false;
       const shown = activity.fail(message);
       useViewerStore.getState().updateModel(modelId, { loadState: 'error', loadError: shown });
-      reportMemoryRefusal(shown, file);
+      reportMemoryRefusal(shown, file, retry);
       return true;
     },
   };
@@ -123,11 +129,11 @@ export function beginGeometryKernel(
   // `retainedKernel` is `null` in the default viewer (the alias maps to off.ts).
   const retained = retainedKernel?.begin(file, target, retry);
   if (retained) return retained;
-  const exact = exactGeometryKernel(file);
+  const exact = exactGeometryKernel(file, retry);
   // A plain `.ifc` file's size is its source size: refuse before a byte is read.
-  const early = /\.ifc$/i.test(file.name) ? memoryRefusal(file.name, file.size) : null;
+  const early = /\.ifc$/i.test(file.name) ? memoryRefusal(file, file.size) : null;
   if (!early) return exact;
-  reportMemoryRefusal(early, file);
+  reportMemoryRefusal(early, file, retry);
   settleUnownedLoadUi();
   return { ...exact, refused: Promise.resolve(early) };
 }
@@ -151,10 +157,11 @@ export function openGeometryEvents(kernel: GeometryKernelLoad, request: Geometry
     onEntityIndex: request.onEntityIndex,
     sourceFingerprint: request.sourceFingerprint,
     // `?geomWorkers=N` A/B knob — overrides the cores/memory worker-
-    // count policy so the host's thermal sweet spot can be measured. It
-    // also wins over the engine's tab-memory budget. Geometry output
-    // is unaffected by the count (disjoint deterministic element slices).
-    workerCountOverride: getGeomWorkerOverride(),
+    // count policy so the host's thermal sweet spot can be measured. Only a
+    // URL request may exceed the engine's tab-memory budget (never the device);
+    // a remembered one stays clipped. Geometry output is unaffected by the
+    // count (disjoint deterministic element slices).
+    workerCountOverride: getGeomWorkerOverrideRequest(),
     trace: request.trace,
   });
 }

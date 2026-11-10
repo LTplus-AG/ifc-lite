@@ -104,17 +104,17 @@ describe('computeWorkerCount', () => {
     expect(down.count).toBe(2);
   });
 
-  it('override wins over the tab-memory budget (the user asked for this count)', () => {
-    // 8 GB fanless host, 722 MB file: the budget fits 1 worker. An explicit
-    // `?geomWorkers=4` is honoured anyway (it used to be clipped to the old
-    // per-worker memory cap); the result says it is over budget.
+  it('override is still clamped by the memory budget (cannot OOM)', () => {
+    // 8 GB fanless host, 722 MB file: the tab budget fits 1 worker. An override
+    // of 12 is clipped to the memory bound, not honoured blindly (unchanged
+    // semantics for a plain override; see worker-count.tab-budget.test.ts for
+    // the explicit beyond-budget request).
     const r = computeWorkerCount({
       fileSizeMB: 722, cores: 8, deviceMemoryGB: 8, totalJobs: 70_000,
-      workerCountOverride: 4,
+      workerCountOverride: 12,
     });
-    expect(r.count).toBe(4);
-    expect(r.reason).toBe('override');
-    expect(r.fitsBudget).toBe(false);
+    expect(r.count).toBeLessThanOrEqual(4);
+    expect(r.reason).toBe('memory');
   });
 
   it('override is also clamped by totalJobs and maxWorkers', () => {
@@ -260,8 +260,8 @@ describe('computeWorkerCount', () => {
     // they fit the whole device: measured on real 177 / 343 MB models, the tab
     // peak at 1–2 workers comes after geometry and does not shrink with fewer
     // workers, while one worker cost up to 2.5× the load time. At 512 MB two
-    // workers are estimated at 4153 MiB, more than the whole 4 GiB device.
-    for (const fileSizeMB of [343, 400, 500]) {
+    // workers are estimated at 4,364 MiB, more than the whole 4 GiB device.
+    for (const fileSizeMB of [343, 400, 470]) {
       const r = computeWorkerCount({ fileSizeMB, cores: 4, deviceMemoryGB: 4, totalJobs: 5000 });
       expect(r.count).toBe(2);
     }

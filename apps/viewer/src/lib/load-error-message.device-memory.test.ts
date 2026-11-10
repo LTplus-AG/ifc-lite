@@ -18,12 +18,19 @@ afterEach(() => setLocale('en'));
 // device gets its own message, not the generic out-of-memory advice.
 const refusal = new GeometryMemoryBudgetError(9734, 6144);
 
-it('says the model needs more memory than the device can give, with both amounts', () => {
+it('says the model needs more memory than the device reports, with both amounts and the way to try anyway', () => {
   const text = formatLoadError(refusal, 'big.ifc');
-  assert.match(text, /about 9\.5 GiB of memory/);
-  assert.match(text, /at most 6 GiB/);
+  assert.match(text, /at least 9\.6 GiB of memory/); // required rounds up
+  assert.match(text, /\(6 GiB at most\)/); // available rounds down
+  assert.match(text, /Retry to try anyway/);
   assert.doesNotMatch(text, /closing other tabs/);
   assert.doesNotMatch(formatLoadError(new Error('out of memory'), 'big.ifc'), /more than this device/);
+});
+
+it('never shows "X, more than X": a load just over the line rounds required up and available down', () => {
+  const text = formatLoadError(new GeometryMemoryBudgetError(6148.32, 6144), 'big.ifc');
+  assert.match(text, /at least 6\.1 GiB/);
+  assert.match(text, /\(6 GiB at most\)/);
 });
 
 it('is translated in every shipped locale, with both amounts in the locale\'s number format', () => {
@@ -35,7 +42,7 @@ it('is translated in every shipped locale, with both amounts in the locale\'s nu
     const text = formatLoadError(refusal, 'big.ifc');
     assert.doesNotMatch(text, /This model needs/, `${locale} falls back to English`);
     // All four shipped locales use a decimal comma.
-    assert.ok(text.includes('9,5 GiB'), `${locale}: ${text}`);
+    assert.ok(text.includes('9,6 GiB'), `${locale}: ${text}`);
     assert.ok(text.includes('6 GiB'), `${locale}: ${text}`);
     seen.add(text);
   }

@@ -37,8 +37,9 @@ import {
  */
 export function formatLoadError(err: unknown, fileName?: string, context?: unknown): string {
   if (err instanceof GeometryMemoryBudgetError) {
-    const gib = (mib: number) => `${formatLocaleNumber(getLocale(), mib / 1024, { maximumFractionDigits: 1 })} GiB`;
-    return translate('viewportLighting.container.loadErrorCard.deviceMemory', { required: gib(err.requiredMiB), available: gib(err.availableMiB) });
+    // Required rounds up and available down, so a load just over the line never reads as "6 GiB, more than 6 GiB".
+    const gib = (mib: number, round: (x: number) => number) => `${formatLocaleNumber(getLocale(), round(mib / 102.4) / 10, { maximumFractionDigits: 1 })} GiB`;
+    return translate('viewportLighting.container.loadErrorCard.deviceMemory', { required: gib(err.requiredMiB, Math.ceil), available: gib(err.availableMiB, Math.floor) });
   }
   const kind = classifyLoadError(err, context);
   const subject = fileName ? `"${fileName}"` : 'the model';

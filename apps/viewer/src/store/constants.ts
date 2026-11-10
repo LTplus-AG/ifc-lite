@@ -25,7 +25,7 @@ export {
   type GeometryMode,
 } from './geometryFidelity.js';
 import { getGeomTierOverride, getInitialGeometryMode } from './geometryFidelity.js';
-export { GEOM_WORKERS_STORAGE_KEY, getGeomWorkerOverride, clearGeomWorkerOverride } from './geomWorkerOverride.js';
+export { GEOM_WORKERS_STORAGE_KEY, getGeomWorkerOverride, getGeomWorkerOverrideRequest, clearGeomWorkerOverride } from './geomWorkerOverride.js';
 
 // ============================================================================
 // Camera Defaults

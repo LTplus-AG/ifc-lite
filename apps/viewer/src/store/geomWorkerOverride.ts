@@ -51,6 +51,25 @@ export function getGeomWorkerOverride(): number | undefined {
   return undefined;
 }
 
+/**
+ * The override to hand the geometry engine. `?geomWorkers=N` in THIS page's
+ * URL is a fresh, deliberate request and may spend the memory budget's
+ * headroom (`beyondBudget`, still clamped to the whole device). A value only
+ * remembered in localStorage may be months old and set for another model, so
+ * it stays a plain number and the engine's memory budget clips it, as it always did.
+ */
+export function getGeomWorkerOverrideRequest(): number | { count: number; beyondBudget: true } | undefined {
+  const count = getGeomWorkerOverride();
+  if (count === undefined || typeof window === 'undefined') return count;
+  try {
+    const fromUrl = parseWorkerCount(new URLSearchParams(window.location.search).get('geomWorkers'));
+    return fromUrl === count ? { count, beyondBudget: true } : count;
+  } catch (error) {
+    console.warn('[geom-workers] override URL read failed; keeping the budget', error);
+    return count;
+  }
+}
+
 /** Restore automatic worker selection, including on the originating URL. */
 export function clearGeomWorkerOverride(): void {
   clearStickyQueryOverride(GEOM_WORKERS_STORAGE_KEY, 'geomWorkers');

@@ -50,6 +50,7 @@ export { BufferBuilder } from './buffer-builder.js';
 export { CoordinateHandler, NORMAL_COORD_THRESHOLD_M } from './coordinate-handler.js';
 export type { RtcFrame } from './rtc-frame.js';
 export { assertGeometryMemoryFits, computeWorkerCount, GeometryMemoryBudgetError, pickWorkerCount, type WorkerCountInputs, type WorkerCountResult } from './worker-count.js';
+import { parallelPoolAvailable } from './worker-count.js';
 export { getGeometryStreamWatchdogMs, type WatchdogInputs } from './watchdog.js';
 export { DEFAULT_HUNG_JOB_TIMEOUT_MS, type SkippedHungElements } from './hung-job-recovery.js';
 // #4902: which pre-worker pipeline phase a consumer's own stream watchdog
@@ -739,11 +740,11 @@ export class GeometryProcessor {
     wasmUrls?: { wasm?: string },
     /**
      * Explicit geometry-worker count for A/B tuning (the viewer's
-     * `?geomWorkers=N` knob). Wins over the cores tier and the tab-memory
-     * budget (see `computeWorkerCount`). Geometry output is unaffected (workers
+     * `?geomWorkers=N` knob). Wins over the cores tier; the tab-memory budget
+     * still clips a plain number (see `computeWorkerCount`). Geometry output is unaffected (workers
      * process disjoint, deterministic element slices). Undefined ⇒ heuristic.
      */
-    workerCountOverride?: number,
+    workerCountOverride?: number | { count: number; beyondBudget: true },
     sourceFingerprint?: SharedArrayBuffer,
     /** Terminates the worker pool and ends the stream (#4884). */
     signal?: AbortSignal,
@@ -827,10 +828,10 @@ export class GeometryProcessor {
       wasmUrls?: { wasm?: string };
       /**
        * Explicit geometry-worker count for A/B tuning (viewer `?geomWorkers=N`).
-       * Forwarded to the parallel path; wins over its tab-memory budget.
+       * Forwarded to the parallel path; see `WorkerCountOverride` for the budget.
        * Geometry output is unaffected by the count.
        */
-      workerCountOverride?: number;
+      workerCountOverride?: number | { count: number; beyondBudget: true };
       /** Terminates the parallel worker pool; see `ProcessParallelOptions.signal` (#4884). */
       signal?: AbortSignal;
       /** Opt in to hung-call recovery on the parallel path (#4884). */
@@ -894,10 +895,7 @@ export class GeometryProcessor {
       yield { type: 'complete', totalMeshes: allMeshes.length, coordinateInfo, ...omittedTypeRecordsField(omittedTypeRecords) };
     } else {
       // Large files: parallel or streaming
-      const useParallel = typeof SharedArrayBuffer !== 'undefined'
-        && typeof Worker !== 'undefined'
-        && typeof navigator !== 'undefined'
-        && (navigator.hardwareConcurrency ?? 1) > 1;
+      const useParallel = parallelPoolAvailable(); // same capability test the host's refusal uses
 
       if (useParallel) {
         yield* this.processParallel(

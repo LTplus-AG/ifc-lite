@@ -5,6 +5,7 @@
 import type { TessellationQuality } from './types.js';
 import type { BatchSizingConfig } from './batch-sizing.js';
 import type { StallPhaseHandle } from './stall-phase.js';
+import type { WorkerCountOverride } from './worker-count.js';
 import type { LoadTrace } from '@ifc-lite/load-trace';
 
 export interface ProcessParallelOptions {
@@ -95,13 +96,13 @@ export interface ProcessParallelOptions {
   visibilityFilter?: { disabledTypes?: string[]; skipTypeGeometry?: boolean };
   /**
    * Explicit geometry-worker count for A/B tuning (the viewer's
-   * `?geomWorkers=N` knob). Wins over the cores tier and the tab-memory
-   * budget, clamped only to the job count and the hard bounds — see the
-   * worker-count policy. `undefined` ⇒ use the policy. Lets a user measure their host's true thermal optimum
+   * `?geomWorkers=N` knob). Wins over the cores tier; a plain number is still
+   * clipped by the tab-memory budget, `{ count, beyondBudget: true }` only by
+   * the whole device (see `WorkerCountOverride`). `undefined` ⇒ use the policy. Lets a user measure their host's true thermal optimum
    * (which is machine-specific). Geometry output is unaffected by the count
    * (workers process disjoint, deterministic element slices).
    */
-  workerCountOverride?: number;
+  workerCountOverride?: WorkerCountOverride;
   /**
    * Issue #4884 — opt in to hung-call recovery with a silence budget (ms), e.g.
    * `DEFAULT_HUNG_JOB_TIMEOUT_MS`. A busy worker silent that long inside one

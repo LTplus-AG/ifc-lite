@@ -421,19 +421,23 @@ for await (const event of geometry.processAdaptive(new Uint8Array(buffer))) {
 }
 ```
 
-The worker count is the cores tier, lowered until the estimated peak memory of
-the whole tab fits 75 % of `navigator.deviceMemory` (at least 1 GiB of
+The worker count is the cores tier, lowered until a conservative estimate of the
+whole tab's peak memory fits 75 % of `navigator.deviceMemory` (at least 1 GiB of
 headroom), and never below one. Each worker and the pre-pass hold a full copy of
-the source. Geometry output is identical regardless of the count (workers process
-deterministic, disjoint slices). The stream itself never refuses: it runs at
-least one worker. To refuse up front, call `assertGeometryMemoryFits(byteLength)`
-before reading a file; it throws `GeometryMemoryBudgetError` when even one
-worker's estimate exceeds the most memory the device can have. That happens only
-when `deviceMemory` proves an upper bound: absent or possibly clamped values
-(8, 32) never refuse. An explicit `workerCountOverride` wins over the budget and
-the refusal, but not over the whole device: it is clamped to the most workers whose
-estimate fits the device memory. Files up to 512 MiB keep two workers whenever
-two fit the whole device.
+the source. Files up to 512 MiB keep two workers whenever two fit the whole device.
+Geometry output is identical regardless of the count (workers process
+deterministic, disjoint slices).
+
+The stream itself never refuses. To refuse up front, call
+`assertGeometryMemoryFits(byteLength)` before reading a file. It throws
+`GeometryMemoryBudgetError` only when even the full source copies the chosen path
+must hold (3 × the source for the worker pool, 2 × for the serial fallback)
+exceed what the `deviceMemory` reading allows. Absent or possibly clamped readings
+(8, 32) never refuse.
+
+A plain `workerCountOverride` is still clipped by the memory budget;
+`{ count, beyondBudget: true }` may use the headroom but never more than the
+whole device.
 
 ### Hung elements and abandoning a stream
 

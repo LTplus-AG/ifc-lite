@@ -20,7 +20,7 @@ export const GEOMETRY_PERF_FLAG_BINDINGS = {
   visibilityFilter: { global: '__IFC_LITE_VISIBILITY_FILTER', urlParam: 'perf.visibilityFilter' },
   /** Sharded entity-index pre-pass; on by default, `0` is the kill switch. */
   shardScan: { global: '__IFC_LITE_SHARD_SCAN', urlParam: 'perf.shardScan' },
-  /** Simulated device memory in GiB for the tab-memory worker budget; a positive number. */
+  /** Simulated device memory cap in GiB for the tab-memory worker budget (lowers the count only). */
   geomMemoryGB: { global: '__IFC_LITE_GEOM_MEMORY_GB', urlParam: 'perf.geomMemoryGB' },
 } as const satisfies Record<string, PerfFlagBinding>;
 
@@ -62,15 +62,14 @@ export function readShardScanFlag(): boolean {
 }
 
 /**
- * Simulated device memory (GiB) for the geometry worker budget, read off
- * `globalThis.__IFC_LITE_GEOM_MEMORY_GB` or `?perf.geomMemoryGB=N`. The plan
- * then treats the device as having exactly N GiB (both the budget and the
- * refusal ceiling), so a low-memory machine can be reproduced on a large
- * host. Unset or not a positive finite number ⇒ `undefined` (use the browser's
- * `navigator.deviceMemory`).
+ * Simulated device memory cap (GiB) for the geometry worker budget, read off
+ * `globalThis.__IFC_LITE_GEOM_MEMORY_GB` or `?perf.geomMemoryGB=N`. It only
+ * caps the PLANNING memory, so a link can lower the worker count but cannot
+ * raise it, cannot cause a refusal and cannot change what a refusal says about
+ * the device. Outside (0, 4096] GiB, or not a number ⇒ `undefined` (no cap).
  */
 export function readDeviceMemoryOverrideGB(): number | undefined {
   const v = readPerfFlagRaw(GEOMETRY_PERF_FLAG_BINDINGS.geomMemoryGB);
   const n = typeof v === 'string' ? Number(v) : v;
-  return typeof n === 'number' && Number.isFinite(n) && n > 0 ? n : undefined;
+  return typeof n === 'number' && Number.isFinite(n) && n > 0 && n <= 4096 ? n : undefined;
 }

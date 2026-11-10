@@ -6113,34 +6113,38 @@ or a speedup claim.
 The tab, not the worker, is the unit of memory. All dedicated workers share the page's renderer process, and every wasm
 instance (the pre-pass worker and each geometry worker) holds a full copy of the source plus its own index. The old
 per-worker cap (`1.5·F` per worker, `2.5·F` for the main thread, no pre-pass term) under-counted: a 1.03 GB replica
-peaked at ~9 × F of summed Chrome PSS at 4 workers, ~97 % of it in one renderer process. `worker-count.ts` now
-lowers the cores tier to the largest N whose `estimateTabPeakMiB` (`tab-memory-budget.ts`:
-`300 MiB + 4.36·F + (N+1)·(100 MiB + 0.86·F)`) fits 75 % of `deviceMemory`. That model reproduces six measured peaks
-(343 MB at 8 workers; 1.03 GB at 4 and 1; 1.74 GB at 4 and 2; 2.09 GB at 4) within ±1.3 %. A first fit on the four
-4-/8-worker points alone (`3.4·F`, `1.12·F` per instance) under-estimated the 1-worker peak by 9 %. Measure at a
-second worker count before trusting a per-worker slope. When one worker cannot fit the most RAM
-`deviceMemory` proves the device can have, the load is refused before the file is read.
+peaked at ~9 × F of summed Chrome PSS at 4 workers, ~97 % of it in one renderer process. `worker-count.ts` now lowers the
+cores tier to the largest N whose conservative estimate fits 75 % of `deviceMemory`. That estimate is
+`tab-memory-budget.ts`: `300 MiB + 4.36·F + (N+1)·(170 MiB + 0.86·F)`, an upper envelope of 13 measured
+geometry-dominated cold loads (synthetic 1.03–2.09 GB replicas at 1–4 workers; real 2–343 MB models at 8 workers).
+Refusal uses a separate strict lower bound: the full source copies of the path that will run.
 
 Lessons:
-- **Counts that already fit do not move.** Against main's policy over 179,456 (file size × cores × deviceMemory)
-  cases the count never rises, and it changes only where main's count exceeds the new budget. The 10-core
-  "clamped 8 means ≥ 16" lift stays on the cores tiers. Capping it by the device ceiling there changed the tiers
-  on small devices, so only the budget is capped.
-- **Never refuse on a value that can be clamped.** Chrome reports the nearest power of two, clamped to 32 on
-  desktop and 8 on Android and older builds; Firefox and Safari report nothing. Only values below the clamp (2, 4,
-  16) bound the device, at 1.5 × the value. 8, 32 and absent values budget the load but never refuse it.
-- **The model is BWK-density (~78 B/record).** Denser files cost more per instance, so it under-estimates them.
-  That is lenient for the refusal by construction, and the reason the recorded 1.6–1.8 GB dense traps
-  (4 GiB per instance) are not addressed here. Re-fit `TAB_MEMORY_MODEL` from measured peaks whenever what a worker
-  holds changes (e.g. stage 3's range reads).
+- **Check a fitted slope at a second worker count, and against real files.** A first fit on synthetic replicas at
+  4 and 8 workers only (`3.4·F`, `1.12·F` per instance) under-estimated the replica's 1-worker peak by 9 %. Refit on the
+  synthetic points alone (±1.3 %), it then under-estimated a real 177 MB model at 8 workers by 15 %. That model is denser
+  and heavier per byte than the sparse replicas. A size-only estimate must over-predict sparse files to cover dense ones.
+  This one does so by +1–5 % on the huge replicas, +13 % at 343 MB and up to +110 % on a 2 MB model, and it costs a
+  worker in places: 1.74 GB on a 16 GB device plans 1 worker, where a measured 2 would have fit.
+- **The geometry phase is not the whole load.** On the real 343 / 177 MB models at 1/2/4/8 forced workers the peaks were
+  3,237/3,015/3,363/5,120 and 2,931/3,081/3,338/3,834 MiB. At 1–2 workers the peak comes after geometry (~2.9–3.4 GiB),
+  does not depend on N, and is not proportional to F. One worker saved nothing on the 343 MB file and cost 2.5× the load
+  time on the 177 MB one. So up to 512 MiB the budget keeps two workers whenever they fit the whole device (≥ 4 GiB).
+  Above that, the 1.03 GB replica's geometry phase (9.2 GiB) dwarfed its later peak (3.35 GiB), so the trade is real there.
+- **Refuse only on a bound the model cannot get wrong.** An earlier version refused when the 1-worker planning estimate
+  exceeded the device. That claimed impossibility from a fit, ignored the serial fallback (no pool, no per-worker copies)
+  and let a `?perf.geomMemoryGB` link refuse every load. Now the refusal needs 3 × F (pool: source + pre-pass + one worker)
+  or 2 × F (serial) above the reading's ceiling, which is far below every measured load. Retry tries anyway. On a reading of
+  4 GB it never fires below 2 GiB.
+- **Counts that already fit do not move.** Against main's policy over 179,456 (file size × cores × deviceMemory) cases
+  the count never rises, and it changes only where main's count exceeds the new budget. The 10-core "clamped 8 means
+  ≥ 16" lift stays on the cores tiers; only the budget is capped by the ceiling.
+- **Never refuse on a value that can be clamped.** Chrome reports the nearest power of two, clamped to 2–32 on desktop
+  and 1–8 on Android and older builds; Firefox and Safari report nothing. An unclamped reading v allows at most 1.5 v.
+  8, 32 and absent values budget the load but never refuse it.
+- **Keep old meanings for remembered settings.** A plain `workerCountOverride` (and a `geomWorkers` value remembered in
+  localStorage) is still clipped by the budget, as it always was. Only `?geomWorkers=N` in the current URL
+  (`{ count, beyondBudget: true }`) may use the headroom, and never more than the whole device. A sticky 8 would
+  otherwise plan ~26 GiB for a 2 GB file. `?perf.geomMemoryGB=N` only lowers the planning memory.
 - **The flat/instanced split is not an identity check across worker counts**: see the `mesh_count` entry above.
   The stage-1 evidence compares per-entity geometry hashes (flat meshes plus `instancedGeometryHashes`) instead.
-- **The model is a geometry-phase model; real mid-size files peak later.** Forced counts on the real 343 MB and 177 MB
-  fixtures (1/2/4/8 workers) measured 3,237/3,015/3,363/5,120 and 2,931/3,081/3,338/3,834 MiB. The model
-  under-estimates the 1-worker peak by 23 % and 48 % there: at 1–2 workers the peak (~2.9–3.2 GiB) comes after
-  geometry, does not depend on the worker count, and is not proportional to F (it tracks output, not bytes). One
-  worker saved nothing on the 343 MB file and cost 2.5× the load time on the 177 MB one. So up to 512 MiB the budget
-  keeps two workers whenever they fit the whole device (≥ 4 GiB). Above that, the 1.03 GB replica's geometry phase
-  (9.2 GiB) dwarfed its later peak (3.35 GiB), so the trade is real there.
-- `?perf.geomMemoryGB=N` reproduces an exact N-GiB device on a large host. `?geomWorkers=N` wins over the
-  budget, but not over the whole device: a sticky `?geomWorkers=8` would otherwise plan ~25 GiB for a 2 GB file.

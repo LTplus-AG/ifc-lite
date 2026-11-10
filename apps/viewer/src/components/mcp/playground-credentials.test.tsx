@@ -163,6 +163,7 @@ it('playground same-tick submissions start one API turn', async t => {
   const count = calls;
   await act(async () => { for (const finish of releases) finish(); });
   assert.equal(count, 1);
+  assert.equal([...ui.querySelectorAll('li')].filter(message => message.textContent === 'hello').length, 1, 'same-tick submissions create one transcript turn');
 });
 
 it('playground an old API completion cannot clear a replacement run or show its error', async t => {

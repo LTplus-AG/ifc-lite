@@ -31,12 +31,12 @@
  */
 
 import { createRequire } from 'node:module';
-import { createServer } from 'node:http';
-import { createReadStream, existsSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { basename, extname, join, normalize, resolve, sep } from 'node:path';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { basename, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { TICK, chromePids, cpuTicks, memoryOf, settleCpu, vramOf, withGpuClock } from './scenoptic-bench-sampling.mjs';
+import { COUNT_FRAMES, openAndWaitInteractive, openViewerPage, replacePage, startViewerServer, waitCacheWrites, waitSceneSnapshots } from './viewer-load-probe.mjs';
 
 const ROOT = resolve(fileURLToPath(new URL('../..', import.meta.url)));
 // SCENOPTIC_BENCH_DEPS: a checkout with node_modules, when this one has none installed.
@@ -103,129 +103,28 @@ const PROFILE = new Set((opt.profile ?? '').split(',').filter(Boolean));
 const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
 
 // ---------------------------------------------------------------- static server
-const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8',
-  '.css': 'text/css; charset=utf-8', '.wasm': 'application/wasm', '.json': 'application/json; charset=utf-8', '.svg': 'image/svg+xml',
-  '.png': 'image/png', '.woff2': 'font/woff2' };
 let currentRoot = BUILDS[0].dist;
-const server = createServer((req, res) => {
-  let pathname = decodeURIComponent((req.url ?? '/').split('?')[0]);
-  if (pathname.endsWith('/')) pathname += 'index.html';
-  let file = normalize(join(currentRoot, pathname));
-  if (!file.startsWith(currentRoot + sep)) { res.writeHead(403).end(); return; }
-  if (!existsSync(file) || statSync(file).isDirectory()) {
-    if (extname(pathname)) { log('404', pathname); res.writeHead(404).end(); return; }
-    file = join(currentRoot, 'index.html'); // SPA route
-  }
-  res.writeHead(200, { 'Content-Type': MIME[extname(file)] ?? 'application/octet-stream', 'Cache-Control': 'no-store',
-    'Cross-Origin-Opener-Policy': 'same-origin', 'Cross-Origin-Embedder-Policy': 'credentialless' });
-  createReadStream(file).pipe(res);
-});
-await new Promise((r) => server.listen(0, '127.0.0.1', r));
-const BASE_URL = `http://127.0.0.1:${server.address().port}`;
+const { server, baseUrl: BASE_URL } = await startViewerServer(() => currentRoot, log);
 const QUERY = '?perfTrace=1&perf.gpuFrameTiming=1';
 let currentFlags = ''; // the running build's own `--build name=dir?flags`
 
 // ---------------------------------------------------------------- page helpers
-const INIT = () => {
-  // Count presented frames: a rendered frame acquires the swap-chain texture.
-  const proto = globalThis.GPUCanvasContext?.prototype;
-  if (proto && !proto.__benchWrapped) {
-    const orig = proto.getCurrentTexture;
-    proto.getCurrentTexture = function () { globalThis.__benchFrames = (globalThis.__benchFrames ?? 0) + 1; return orig.call(this); };
-    proto.__benchWrapped = true;
-  }
-};
-
-/** Chrome can exit with its last page, so open the next one first. */
-async function replacePage(context, page) {
-  await context.newPage();
-  await page.close();
-}
+const INIT = COUNT_FRAMES;
 
 async function openPage(context) {
   const page = context.pages()[0] ?? await context.newPage();
   page.on('pageerror', (e) => log('pageerror', e.message.slice(0, 300)));
-  await page.goto(`${BASE_URL}/${QUERY}${currentFlags}`);
-  const step = async (what, fn) => { try { await fn(); } catch (err) {
-    await page.screenshot({ path: join(OUT, `fail-${what}-${Date.now()}.png`) }).catch(() => {});
-    throw new Error(`${what}: ${err.message}`);
-  } };
-  await step('store', () => page.waitForFunction(() => Boolean(globalThis.__ifc_lite_viewer_store__), null, { timeout: 60000 }));
-  await step('file-input', () => page.locator('#file-input-open').waitFor({ state: 'attached', timeout: 60000 }));
-  return page;
+  return openViewerPage(context, `${BASE_URL}/${QUERY}${currentFlags}`, {
+    onFailure: (p, what) => p.screenshot({ path: join(OUT, `fail-${what}-${Date.now()}.png`) }).catch(() => {}),
+  });
 }
 
-/** Open `files`, wait for full geometry + metadata in every model, return timings relative to the input event. */
+/** Open `files`, wait until every model is fully interactive (viewer-load-probe.mjs), return timings relative to the input event. */
 async function openFiles(page, files, label) {
-  const t0 = await page.evaluate(() => (globalThis.__benchT0 = performance.now()));
-  await page.locator('#file-input-open').setInputFiles(files);
-  const result = await page.waitForFunction((count) => {
-    const trace = globalThis.__IFC_LITE_LOAD_TRACE__;
-    const s = globalThis.__ifc_lite_viewer_store__?.getState();
-    if (!trace || !s) return null;
-    const loads = trace.loads().filter((l) => l.start >= globalThis.__benchT0 - 50);
-    if (loads.length < count) return null;
-    const end = (l, name) => l.spans.find((sp) => sp.name === name && sp.end !== null)?.end ?? null;
-    // Full geometry = stream complete AND the GPU queue drained and finalized: the
-    // `geometry.streamComplete` milestone fires before the upload drain and regroup.
-    const DRAIN = /^(stream\.queueDrain|scene\.finalize.*|camera\.refit)$/;
-    const geomDone = loads.map((l) => {
-      const stream = end(l, 'geometry.streamComplete');
-      if (stream === null || l.spans.some((sp) => DRAIN.test(sp.name) && sp.end === null)) return null;
-      // A streamed load finalizes its fragments; a federated add uploads final batches directly.
-      const streamed = l.spans.some((sp) => sp.name === 'stream.queue');
-      if (streamed ? !l.spans.some((sp) => sp.name === 'scene.finalize' && sp.end !== null) : l.end === null) return null;
-      return Math.max(stream, ...l.spans.filter((sp) => DRAIN.test(sp.name)).map((sp) => sp.end));
-    });
-    const meta = loads.map((l) => end(l, 'parser.complete') ?? end(l, 'cache.storeReady'));
-    const models = [...(s.models?.values?.() ?? [])];
-    const settled = !s.loading && models.length >= count && models.every((m) => m.loadState === 'complete' || m.loadState === undefined);
-    if (geomDone.some((v) => v === null) || meta.some((v) => v === null) || !settled) return null;
-    const firstVisible = loads.map((l) => end(l, 'geometry.firstVisible')).filter((v) => v !== null);
-    const t = globalThis.__benchT0;
-    return {
-      firstFrameMs: firstVisible.length ? Math.min(...firstVisible) - t : null,
-      // Everything on screen: a snapshot's first paint, else the finalize swap (geometryMs).
-      completeFrameMs: Math.max(...loads.map((l, i) => (end(l, 'scene.snapshotAdopted') !== null ? end(l, 'geometry.firstVisible') : null) ?? geomDone[i])) - t,
-      snapshotAdopted: loads.map((l) => end(l, 'scene.snapshotAdopted') !== null),
-      geometryMs: Math.max(...geomDone) - t,
-      propsMs: Math.max(...meta) - t,
-      settledMs: performance.now() - t,
-      loadPaths: loads.map((l) => l.attrs?.loadPath ?? l.attrs?.path ?? null),
-      cacheHit: loads.map((l) => l.spans.some((sp) => sp.name === 'cache.lookup' && sp.attrs?.hit === true) || l.attrs?.loadPath === 'cache'),
-      spans: loads.map((l) => l.spans.filter((sp) => sp.end !== null && sp.end - sp.start > 50)
-        .map((sp) => ({ name: sp.name, startMs: Math.round(sp.start - t), ms: Math.round(sp.end - sp.start) }))),
-    };
-  }, files.length, { timeout: 45 * 60 * 1000, polling: 100 });
-  const value = await result.jsonValue();
-  log(`  ${label}: first frame ${fmt(value.firstFrameMs)} ms, geometry ${fmt(value.geometryMs)} ms, props ${fmt(value.propsMs)} ms (t0 ${t0.toFixed(0)})`);
+  const value = await openAndWaitInteractive(page, files);
+  log(`  ${label}: first frame ${fmt(value.firstFrameMs)} ms, geometry ${fmt(value.geometryMs)} ms, props ${fmt(value.propsMs)} ms, interactive ${fmt(value.interactiveMs)} ms (t0 ${value.t0.toFixed(0)})`);
+  delete value.trace; // full span dump is the scoreboard's; keep this summary's shape
   return value;
-}
-
-/** Closing the page could interrupt the write, and the next open would then measure the ordinary path. */
-async function waitSceneSnapshots(page, timeoutMs = 60 * 1000) {
-  await page.waitForFunction(() => new Promise((done) => {
-    const open = indexedDB.open('ifc-lite-cache');
-    open.onerror = () => done(false);
-    open.onsuccess = () => {
-      const all = open.result.transaction('models').objectStore('models').getAll();
-      all.onerror = () => done(false);
-      all.onsuccess = () => { open.result.close(); done(all.result.length > 0 && all.result.every((entry) => entry.sceneSnapshot)); };
-    };
-  }), null, { timeout: timeoutMs, polling: 500 });
-}
-
-async function waitCacheWrites(page, timeoutMs = 10 * 60 * 1000) {
-  // The cold load writes the IndexedDB cache beside the critical path; the warm open needs it complete.
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    const pending = await page.evaluate(() => globalThis.__IFC_LITE_LOAD_TRACE__.loads()
-      .filter((l) => l.start >= globalThis.__benchT0 - 50)
-      .some((l) => l.spans.some((sp) => sp.name.startsWith('cache.write') && sp.end === null)));
-    if (!pending) return;
-    await page.waitForTimeout(500);
-  }
-  log('  cache write still pending after timeout');
 }
 
 async function sampleMemory(page, profileDir) {
@@ -330,7 +229,7 @@ async function runSample(build, set, round) {
     sample.adapter = sample.cold.memory.adapter;
     log(`    memory: PSS ${fmt(sample.cold.memory.pssMiB)} MiB, RSS ${fmt(sample.cold.memory.rssMiB)} MiB, VRAM ${fmt(sample.cold.memory.vramMiB)} MiB`);
     if (!opt['no-warm']) {
-      await waitCacheWrites(page);
+      if (!(await waitCacheWrites(page))) log('  cache write still pending after timeout');
       await replacePage(context, page);
       // A flagged warm open may store what the next one reads (`--warm-opens 2`); the last is the sample.
       for (let open = 1; open <= WARM_OPENS; open++) {

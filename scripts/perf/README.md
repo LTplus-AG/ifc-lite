@@ -8,6 +8,68 @@ Citations to `evidence/`, `tests/evidence/` and `docs/architecture/evidence/` pa
 at commit [`f98785c722`](https://github.com/LTplus-AG/ifc-lite/tree/f98785c722); the retained
 bundles left the tree in #9054.
 
+## Load scoreboard (`load-scoreboard.mjs`)
+
+One table for IFC load time, used to accept or reject load optimisations.
+Per fixture and lane it reports time to first geometry, time to fully
+interactive, peak memory, per-stage shares, median and spread, output
+fingerprints, and a base-vs-branch verdict. It drives existing tools and
+compiles nothing:
+
+| lane | sample | interactive | peak memory |
+|---|---|---|---|
+| `native-cold` | fresh `perf_probe --cold --iters 1 --fingerprint` process | file read + whole `process_geometry` (incl. trailing metadata) | process max RSS (`/usr/bin/time`) |
+| `browser-cold` | fresh Chrome, empty profile, first open | see below | peak sampled PSS sum of the profile's Chrome processes |
+| `browser-warm` | same browser, last of `warmOpens` reopens (default 2: the first reopen streams the cache hit and writes the scene snapshot, the second adopts it) | see below | as cold |
+
+Native warm has no cache outside `apps/server`, so there is no native warm
+lane. Native is a batch call with no streamed-geometry event, so it has no
+first-geometry time. Below 10 MB and above 400 MB the viewer caches nothing,
+so `browser-warm` there is an uncached reopen; the table states the
+expected tier and the observed load path per row.
+
+Browser readiness lives in `viewer-load-probe.mjs`, shared with
+`scenoptic-bench.mjs`, and follows the cold-load validation notes below:
+geometry streamed, the GPU queue drained and the scene finalized, metadata
+ready (`parser.complete` or `cache.storeReady`) and the store out of its
+loading state. The store transition is captured by a subscription armed
+before the input event, so short loads are not quantized by the poll. First
+geometry is `geometry.firstVisible`. Stage shares are the union of each
+`?perfTrace=1` span name's intervals over the interactive time, milestones
+excluded. Concurrent stages overlap, so shares need not sum to 100%. Native
+stages come from `perf_probe` and sum to the full load. Each browser sample
+records the WebGPU adapter the renderer used, a GPU-health check
+(`tests/benchmark/gpu-health.ts`), crashes and page errors. Failed samples
+stay in the data. A branch with more failures than the base is a regression.
+
+Verdict: `gain = 1 - median(branch)/median(base)`. The noise floor of a
+comparison is the larger of the recorded A/A floor for that fixture, lane and
+metric and the run's own floor. The run's own floor is the half-width of the
+90% paired-bootstrap interval of the gain: rounds are resampled, keeping each
+round's two sides together. An A/A run's floor also includes its own |gain|.
+A change counts only when |gain| >= 2 x floor. Rounds are interleaved with
+the balanced, randomized first-side order of `ab-order.mjs`, per lane group
+and fixture.
+
+```sh
+# 1. Build each side (ordinary fleet job): source-built WASM, viewer dist,
+#    perf_probe (profiling profile). Copy them out of the checkout.
+# 2. Plan: sides {label, perfProbe, dist, query?, env?, probeArgs?}, fixtures
+#    {name, path, set: tuning|holdout}, lanes, rounds (>= 5), seed, warmOpens.
+# 3. Inside exclusive benchmark admission, on a private Xvfb display:
+DISPLAY=:97 node scripts/perf/load-scoreboard.mjs run --plan plan.json --out DIR \
+  [--aa-reference aa-run/report.json] [--resume]
+node scripts/perf/load-scoreboard.mjs report --out DIR --aa-reference aa-run/report.json
+```
+
+A plan whose sides are two copies of one build (`"kind": "aa"`) measures the
+noise floor. Its `report.json` `floors` become the `--aa-reference` for later
+comparisons. A side's `query` appends viewer URL flags (e.g.
+`perf.sceneSnapshot=0`, `geomWorkers=1`). Its `env` and `probeArgs` reach
+`perf_probe`. Worker reservations export `RAYON_NUM_THREADS`, so the native
+lane removes it unless a side sets it. Outside `IFC_WORKER_KIND=benchmark` the
+report marks itself a dry run. The OS file cache is not purged in any lane.
+
 ## Storey planners and the QuickJS runtime leave the boot path (#9200)
 
 **Shipped: an eager-bytes cut, no boot-time change.** Three changes, each one

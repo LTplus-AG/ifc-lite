@@ -7,6 +7,25 @@
 
 use super::{parse_step_numeric, parse_step_real, read_step_number, step_numeric_literal_len, StepNumber};
 use serde_json::Value;
+use std::cell::Cell;
+
+thread_local! {
+    /// Test-only probes of how `read_step_number` valued each REAL on this
+    /// thread: in its grammar walk, or by handing the literal to `fast_float2`.
+    /// Bumped from the reader under `cfg(test)` only.
+    static VALUED_IN_WALK: Cell<u64> = const { Cell::new(0) };
+    static VALUED_BY_FAST_FLOAT: Cell<u64> = const { Cell::new(0) };
+}
+
+/// Called by `read_step_number` (test builds only) for every admitted REAL.
+pub(super) fn note_valuation(in_walk: bool) {
+    let probe = if in_walk { &VALUED_IN_WALK } else { &VALUED_BY_FAST_FLOAT };
+    probe.with(|count| count.set(count.get() + 1));
+}
+
+fn valuations() -> (u64, u64) {
+    (VALUED_IN_WALK.with(Cell::get), VALUED_BY_FAST_FLOAT.with(Cell::get))
+}
 
 /// The vectors `packages/data/src/step-numeric-literal.test.ts` reads too.
 fn vectors() -> Vec<Value> {
@@ -228,4 +247,25 @@ fn single_pass_reader_matches_fast_float_and_i64_bit_for_bit() {
             None => assert!(!has_digit || (!real && text.parse::<i64>().is_err()), "{text}"),
         }
     }
+}
+
+/// The work, not the value: a typical coordinate is valued in the grammar walk
+/// that admitted it, and `fast_float2` is not asked to walk it again. Only a
+/// literal outside the exact range (here 17 significant digits, and an
+/// exponent past 10^22) still goes to `fast_float2`.
+#[test]
+fn a_typical_coordinate_is_valued_in_one_walk_without_fast_float() {
+    let before = valuations();
+    for text in ["1234.56789012345", "-0.5", "17.", ".25E-3", "1E5"] {
+        assert!(matches!(read_step_number(text.as_bytes()), Some((StepNumber::Real(_), _))), "{text}");
+    }
+    let after_exact = valuations();
+    assert_eq!(after_exact.0 - before.0, 5, "every exact-range REAL is valued in the walk");
+    assert_eq!(after_exact.1 - before.1, 0, "fast_float2 is not called on the exact path");
+    for text in ["0.12345678901234567", "1.5E40"] {
+        assert!(matches!(read_step_number(text.as_bytes()), Some((StepNumber::Real(_), _))), "{text}");
+    }
+    let after_fallback = valuations();
+    assert_eq!(after_fallback.0 - after_exact.0, 0);
+    assert_eq!(after_fallback.1 - after_exact.1, 2, "outside the exact range fast_float2 still decides");
 }

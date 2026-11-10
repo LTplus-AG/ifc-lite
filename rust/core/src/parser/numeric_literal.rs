@@ -228,8 +228,16 @@ pub fn read_step_number(bytes: &[u8]) -> Option<(StepNumber<'_>, usize)> {
         // operation (#7880's `N.` case among them); else it already validated
         // the entire literal for `fast_float2` (#7779).
         let value = match exact_magnitude(&scanned) {
-            Some(magnitude) => if negative { -magnitude } else { magnitude },
-            None => fast_float2::parse_partial::<f64, _>(literal).ok()?.0,
+            Some(magnitude) => {
+                #[cfg(test)]
+                tests::note_valuation(true);
+                if negative { -magnitude } else { magnitude }
+            }
+            None => {
+                #[cfg(test)]
+                tests::note_valuation(false);
+                fast_float2::parse_partial::<f64, _>(literal).ok()?.0
+            }
         };
         let number = admit_step_real(value)
             .map_or(StepNumber::Unrepresentable(literal), StepNumber::Real);

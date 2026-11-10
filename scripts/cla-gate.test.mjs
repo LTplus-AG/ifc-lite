@@ -379,6 +379,7 @@ test('AI assistants, LTplus addresses and named bots as co-authors need no signa
   const msg = [
     'Co-authored-by: Claude <noreply@anthropic.com>',
     'co-authored-by: Codex <noreply@openai.com>',
+    'Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>',
     'Co-authored-by: L <78563314+louistrue@users.noreply.github.com>',
     'Co-authored-by: L <louistrue@users.noreply.github.com>',
     'Co-authored-by: L <Louis@LT.plus>',
@@ -399,6 +400,7 @@ test('a co-author with another email blocks until an offline signature covers th
 test('co-author parsing reads trailer lines only and an id-less noreply address by login', () => {
   assert.deepEqual(coAuthors('mention Co-authored-by: X <x@y.z> inline\nCo-authored-by: Bob <bob@users.noreply.github.com>'),
     [{ user: { id: undefined, login: 'bob', type: 'User' } }]);
+  assert.deepEqual(coAuthors('Co-authored-by: C <noreply@anthropic.com>'), [], 'exempt addresses are dropped while parsing');
   const r = evaluate({ user: louis }, [commit(louis, 'l@x', 'x\n\nCo-authored-by: Bob <bob@users.noreply.github.com>')], signedBy(bob));
   assert.equal(r.state, 'success', 'an id-less co-author matches the signature by login');
 });

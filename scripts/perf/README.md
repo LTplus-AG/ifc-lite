@@ -8,6 +8,19 @@ Citations to `evidence/`, `tests/evidence/` and `docs/architecture/evidence/` pa
 at commit [`f98785c722`](https://github.com/LTplus-AG/ifc-lite/tree/f98785c722); the retained
 bundles left the tree in #9054.
 
+## Raycast keeps one index across visibility changes (#9504)
+
+**Shipped.** `collectVisibleMeshData` rebuilt its list on every ray, and the BVH was
+keyed on the visible list, so each hide or isolate change rebuilt the tree. The flat
+pieces are now collected once per pick-geometry revision, one BVH covers all of them,
+and visibility filters each ray's candidates. Instanced occurrences stay per-ray.
+
+Lesson: the freshness key is `getPickGeometryRevision()` plus draw-list identity.
+`meshDataMap.size` is not enough, because fragments can be replaced under the same ids
+(#4556). The renderer's `BVH` is separate from `@ifc-lite/spatial`'s (#5252), so a win
+in one does not carry to the other. The tree's typed-array layout is a heap win; the
+per-ray and post-hide wins come from the cache.
+
 ## Storey planners and the QuickJS runtime leave the boot path (#9200)
 
 **Shipped: an eager-bytes cut, no boot-time change.** Three changes, each one
@@ -3040,6 +3053,21 @@ as well as JavaScript errors, and stop memory sampling on every exit path.
   byte-size verdict, not a measured load-time improvement. **Lesson:** inspect
   the complete HTML preload closure, and isolate shared state before assuming a
   dynamic panel import makes its dependencies lazy.
+- **STEP reals valued in the grammar walk (native instruction hillclimb,
+  2026-11-10):** `read_step_number` walked every literal once to admit it
+  (#7779) and then gave it to `fast_float2`, which walked it again. The walk
+  now folds digits and exponent as it goes; when the mantissa is at most 2^53
+  and the power of ten at most 22 in magnitude, one IEEE multiply or divide
+  is correctly rounded and therefore gives `fast_float2`'s bits (Clinger's
+  fast path; it also subsumes #7880's `N.` case). Everything else still
+  goes to `fast_float2`; integers of up to 18 digits take the walk's
+  mantissa. About 99.5% of the REAL literals in the tuning fixtures take the
+  exact path. Cold single-thread Callgrind, pipeline instructions:
+  advanced_model -5.4%, Holter -1.4%, schependomlaan -0.8%, FZK -0.2%,
+  ISSUE_129 -0.2%; ordered `perf_probe` mesh fingerprints identical on all
+  five, and a 200k-literal bit-for-bit test against `fast_float2`.
+  `parse_step_numeric` (generic, also `f32`) is unchanged: valuing in `f64`
+  then narrowing would round twice. Not a wall-time or browser claim.
 - **Firefox spatial-publication stall (#3983):** Chrome-only cold-load timing
   missed an engine-dependent entity-cache eviction cost. Georeference discovery
   runs through the property-set index during React rendering. Restarting a Map
@@ -3052,6 +3080,21 @@ as well as JavaScript errors, and stop memory sampling on every exit path.
   event-loop gaps and visible hierarchy readiness, and keep profiling runs apart
   from uninstrumented timing. A worker-complete event alone cannot establish that
   publishing its result leaves the UI responsive.
+- **Pooled orient/weld maps reset in O(mesh) (native instruction hillclimb,
+  2026-11-10):** the mesh orienter's vertex and edge maps and the weld's key
+  map are per-worker scratch (#3988), `clear()`ed before every mesh. A
+  non-empty `HashMap::clear` rewrites every bucket's control byte, so after one
+  large mesh every later mesh paid to wipe the large table: on Holter (109k
+  meshes) that memset was about 5% of pipeline instructions.
+  `scratch_map::reset_for` keeps a pooled table only while it is within 4x of
+  the pass's need and otherwise replaces it with one sized for the pass; the
+  maps are only probed and inserted into, never iterated, so capacity cannot
+  reach the output. Cold single-thread Callgrind, pipeline instructions:
+  Holter -4.7%, schependomlaan -2.4%, FZK -1.5%, advanced_model -1.0%,
+  ISSUE_129 -0.7%; ordered `perf_probe` mesh fingerprints identical on all
+  five. **Lesson:** pooling scratch turns `clear()` into a cost proportional to
+  the worst mesh a worker ever saw; check a pooled map's clear cost, not just
+  its allocation count. Not a wall-time or browser claim.
 - **Native cold-load working set (#3967):** immutable schema classification replaces
   contended global caches; completed BREP signatures are shared within one
   immutable source; the geometry scan supplies ordered georeferencing candidates
@@ -6122,55 +6165,3 @@ strictly less than 2× from 1K to 50K, and a passing F5 exercise result whose
 lane, not a substitute tower here. Missing sizes or F5 evidence fail the check.
 The baseline is a description of current main, not an accepted round-1 result
 or a speedup claim.
-
-### Viewer eager panel boundaries (2026-11-10; measured size win, validation pending)
-
-BCF, Data validation and Lens now load through dynamic imports at the shared
-workspace-panel router. The default welcome screen and first-model loader do
-not need their authoring UI. Docked, floating and pop-out hosts, shortcuts and
-panel deep links still use the same router. A translated loading shell keeps
-Close usable; chunk errors use the existing error boundary and retain Close.
-The model gate still wraps the feature, so a gated Lens does not download until
-it can render. This is independent of #9623's minimap visibility gate: MapLibre
-was already dynamically imported on main and is unchanged here.
-
-The opt-in `VITE_BUNDLE_ANALYSIS=1` build emits module attribution; run
-`node scripts/perf-ratchet/audit-viewer-eager.mjs` afterward to rank the complete
-HTML/static-import closure. Rendered module lengths precede final minification;
-only emitted chunk bytes establish savings. After #9590 removed the drafts dialog from startup, this is no longer a
-ceiling emergency: judge the remaining gain against the panel-shell complexity.
-The controlled base/branch builds,
-root typecheck and feature tests are submitted through the fleet. The paired
-current-main builds now establish a substantial raw and Brotli size reduction;
-all three panels and the drafts dialog are outside the emitted eager closure.
-The size ratchet and retained-free artifact check pass. There is no cold-boot
-timing claim; remaining validation is tracked separately from the size verdict. Leave the
-ceilings to the daily main-only lowering process after merge; do not stamp a
-branch measurement as main provenance. **Lesson:** a dynamic panel boundary
-alone cannot establish a saving while shared eager consumers and recursive
-manual chunk groups remain; inspect the rebuilt closure before claiming one.
-
-Review follow-up: pending and failed shells retain their title and Close on
-mobile as well as desktop. #9590 already made BCFDraftsDialog lazy inside
-BCFDraftsControl; this change adds only the outer BCFPanel boundary. #9616's
-earlier drafts hunk was removed; its current diff loads the profiles dialog on
-demand, with no BCF overlap. Neither #9590 nor #9616 changes manual chunk groups
-or the audit tool, or introduces a shared loading helper.
-Run the branch audit with `--expect-lazy` to reject any emitted eager module
-for the three panels or the drafts dialog. If the controlled current-main
-delta is small, shrink to the useful boundary or close rather than carrying
-three loading shells for a ceiling that no longer needs them. This round
-cleared that test on the exact main containing #9590: keep the three boundaries
-subject to feature/typecheck acceptance and rechecking the main that includes
-#9616. Do not attribute #9590's own reduction to this change.
-
-Review follow-up for the same round: imperative panel tests must wait for an
-actual feature control, and absence assertions must first prove that the real
-panel mounted. The Assistant evidence adapters capture eager store state and
-never drive panel DOM; only their test harnesses had assumed synchronous panel
-mounting. Tours now await the shared deferred-module factories before spending
-the anchor deadline. Offline chunk failures surface in the existing boundary
-without automatic navigation, and CI now enables attribution and invokes the
-emitted lazy-module assertion. Acceptance for these changes requires the full
-four-shard viewer helper, not just selected boundary tests. Retry of a rejected
-React.lazy import and the loading flash/focus polish remain app-wide follow-ups.

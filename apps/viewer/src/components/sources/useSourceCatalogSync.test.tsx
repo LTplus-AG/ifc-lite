@@ -735,3 +735,38 @@ for (const order of ['files first', 'folders first'] as const) it(`#9567 overlap
     assert.deepEqual(harness.get().folders.map(folder => folder.id), ['folder-1', 'folder-2'], 'reopening restores the complete cache');
   } finally { await act(async () => { finishFiles(); finishFolders(); }); }
 });
+
+for (const order of ['children first', 'area first'] as const) it(`#9567 folder refresh preserves this generation's children and retires old parents: ${order}`, async () => {
+  const provider = new FakeProvider({ containerListing: 'direct-children', listFilesIsRecursive: true });
+  let refreshing = false, releaseArea = () => {}, releaseChildren = () => {};
+  provider.listContainers = async (_ctx, _project, parent) => {
+    if (refreshing && parent === 'area-1') await new Promise<void>(resolve => { releaseArea = resolve; });
+    if (refreshing && parent === 'Y') await new Promise<void>(resolve => { releaseChildren = resolve; });
+    return { items: parent === 'X' ? [{ id: 'old-child', name: 'Old child', parentId: 'X' }]
+      : parent === 'Y' ? [{ id: 'fresh-child', name: 'Fresh child', parentId: 'Y' }]
+        : [{ id: 'X', name: 'X', parentId: 'area-1' }, { id: 'Y', name: 'Y', parentId: 'area-1' }] };
+  };
+  const harness = renderCatalogSync(provider);
+  await act(async () => harness.get().openFileArea('p', 'area-1'));
+  await act(async () => harness.get().openContainer({ id: 'X', name: 'X' }));
+  assert.equal(harness.get().folders.some(folder => folder.id === 'old-child'), true);
+  refreshing = true;
+  let sync!: Promise<void>;
+  try {
+    await act(async () => { sync = harness.get().syncFileArea('p', 'area-1'); });
+    act(() => harness.get().openContainer({ id: 'Y', name: 'Y' }));
+    assert.equal(harness.get().loadingContainers.has('Y'), true);
+    if (order === 'children first') {
+      await act(async () => releaseChildren());
+      assert.equal(harness.get().loadingContainers.has('Y'), false);
+      assert.equal(harness.get().folders.some(folder => folder.id === 'fresh-child'), true);
+      await act(async () => { releaseArea(); await sync; });
+    } else {
+      await act(async () => { releaseArea(); await sync; });
+      await act(async () => releaseChildren());
+    }
+    assert.equal(harness.get().folders.some(folder => folder.id === 'fresh-child'), true, 'new-generation children survive the area folder page');
+    assert.equal(harness.get().folders.some(folder => folder.id === 'old-child'), false, 'an old parent not reopened during sync is retired');
+    assert.equal(harness.get().loadingContainers.has('Y'), false);
+  } finally { await act(async () => { releaseChildren(); releaseArea(); await sync; }); }
+});

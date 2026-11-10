@@ -67,6 +67,8 @@ export function useSourceCatalogSync({ provider, ctx, setError, onSynced }: UseS
   // Container ids with an on-demand fetch already running (direct-children /
   // per-folder files), so rapid re-selection cannot double-fetch.
   const openingContainersRef = useRef(new Set<string>());
+  // Keep completed opens as well as pending ones until this sync generation ends.
+  const openedParentsRef = useRef(new Set<string>());
   const [loadingContainers, setLoadingContainers] = useState<ReadonlySet<string>>(new Set());
 
   // flat-subtree: single entry keyed by the file-area id.
@@ -93,6 +95,7 @@ export function useSourceCatalogSync({ provider, ctx, setError, onSynced }: UseS
   const beginGeneration = useCallback((): { gen: number; signal: AbortSignal } => {
     abortRef.current?.abort();
     openingContainersRef.current.clear();
+    openedParentsRef.current.clear();
     setLoadingContainers(new Set());
     paging.reset();
     const controller = new AbortController();
@@ -156,7 +159,13 @@ export function useSourceCatalogSync({ provider, ctx, setError, onSynced }: UseS
         // Fetch sequentially to avoid bursting provider-side rate limits.
         const containerPage = await fetchContainers(projectId, fileAreaId, undefined, signal);
         if (requestGenRef.current !== gen) return;
-        setContainersByParent(new Map([[fileAreaId, containerPage]]));
+        const next = new Map([[fileAreaId, containerPage]]);
+        // Retire the old catalog, preserving parent pages opened by this sync.
+        for (const parentId of openedParentsRef.current) {
+          const page = containersRef.current.get(parentId);
+          if (page) next.set(parentId, page);
+        }
+        setContainersByParent(next);
         setLoadingFolders(false);
 
         const filePage = await fetchFiles(projectId, fileAreaId, signal);
@@ -185,7 +194,7 @@ export function useSourceCatalogSync({ provider, ctx, setError, onSynced }: UseS
         }
       }
     },
-    [beginGeneration, fetchContainers, fetchFiles, maybePersist, onSynced, setError, setContainersByParent, setFilesByContainer, setFilePage],
+    [beginGeneration, containersRef, fetchContainers, fetchFiles, maybePersist, onSynced, setError, setContainersByParent, setFilesByContainer, setFilePage],
   );
 
   /** Resolves a newly-entered file area's catalog: localStorage cache (complete
@@ -232,6 +241,7 @@ export function useSourceCatalogSync({ provider, ctx, setError, onSynced }: UseS
       if (!needChildren && !needFiles) return;
       if (openingContainersRef.current.has(container.id)) return;
       openingContainersRef.current.add(container.id);
+      openedParentsRef.current.add(container.id);
       setLoadingContainers(new Set(openingContainersRef.current));
 
       setError(null);

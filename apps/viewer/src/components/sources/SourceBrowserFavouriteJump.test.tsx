@@ -740,3 +740,37 @@ it('#9567 failed manual recursive file sync leaves subfolders enabled', async ()
     assert.equal(disabledWhilePending, false, 'folder-only data cannot disable folders while files are pending');
   } finally { provider.reject(); await pump(); }
 });
+
+it('#9567 a manual folder refresh preserves a sibling opened from the old tree', async () => {
+  class FolderRefreshProvider extends FakeProvider {
+    override readonly manifest: PluginManifest = { ...directChildrenManifest };
+    refreshing = false;
+    releaseArea = () => {};
+    releaseChildren = () => {};
+    override async listContainers(c: PluginContext, project: string, parent?: string): Promise<Page<SourceContainer>> {
+      if (this.refreshing && parent === 'area-1') await new Promise<void>(resolve => { this.releaseArea = resolve; });
+      if (this.refreshing && parent === OTHER_FOLDER.id) await new Promise<void>(resolve => { this.releaseChildren = resolve; });
+      if (parent === FOLDER.id) return { items: [{ id: 'old-child', name: 'Old child', parentId: FOLDER.id }] };
+      if (parent === OTHER_FOLDER.id) return { items: [{ id: 'fresh-child', name: 'Fresh child', parentId: OTHER_FOLDER.id }] };
+      return super.listContainers(c, project, parent);
+    }
+    override listFiles(): Promise<Page<SourceFile>> { return Promise.resolve({ items: [] }); }
+  }
+  const provider = new FolderRefreshProvider();
+  try {
+    await jumpTo(favourite({ containerId: 'area-1', containerName: 'Documents' }), provider);
+    act(() => button('Models')!.click()); await pump();
+    assert.equal(text().includes('Old child'), true);
+    provider.refreshing = true;
+    act(() => button('Sync')!.click()); await pump();
+    act(() => button('Drawings')!.click()); await pump();
+    assert.equal(Boolean(document.querySelector('output[aria-label="Subfolders"]')), true);
+    provider.releaseChildren(); await pump();
+    assert.equal(text().includes('Fresh child'), true);
+    assert.equal(Boolean(document.querySelector('output[aria-label="Subfolders"]')), false);
+    provider.releaseArea(); await pump();
+    assert.equal(text().includes('Fresh child'), true, 'Y children remain visible after the area folder refresh');
+    assert.equal(Boolean(document.querySelector('output[aria-label="Subfolders"]')), false, 'Y has completed and must not spin');
+    assert.equal(text().includes('Old child'), false, 'the untouched old parent page is retired');
+  } finally { provider.releaseChildren(); provider.releaseArea(); await pump(); }
+});

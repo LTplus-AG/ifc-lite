@@ -1888,7 +1888,7 @@ export function useIfcLoader() {
                 if (hasTexturedMeshes) console.log('[useIfc] Skipping cache write: model carries surface textures the cache format does not persist yet (#1781)');
                 const cacheCoordinateInfo = finalCoordinateInfo ? structuredClone(finalCoordinateInfo) : undefined;
                 const cacheable = cachePlan.shouldCache && !hasTexturedMeshes && !skippedHungElements && !omittedTypeRecords && allMeshes.length > 0 && !!cacheCoordinateInfo;
-                const cacheShards = allInstancedShards.map((shard) => shard.slice(0));
+                const cacheShards = cacheable ? allInstancedShards.map((shard) => shard.slice(0)) : [];
                 const writeCache = (meshes: MeshData[]) => cacheCoordinateInfo && trace.span('cache.write', () => saveToCache(cacheKey, dataStore, {
                   meshes, coordinateInfo: cacheCoordinateInfo,
                   totalVertices: meshes.reduce((sum, m) => sum + m.positions.length / 3, 0),

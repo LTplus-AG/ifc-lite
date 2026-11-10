@@ -6108,7 +6108,7 @@ lane, not a substitute tower here. Missing sizes or F5 evidence fail the check.
 The baseline is a description of current main, not an accepted round-1 result
 or a speedup claim.
 
-### Viewer eager panel boundaries (2026-11-10; validation pending)
+### Viewer eager panel boundaries (2026-11-10; measured size win, validation pending)
 
 BCF, Data validation and Lens now load through dynamic imports at the shared
 workspace-panel router. The default welcome screen and first-model loader do
@@ -6125,8 +6125,11 @@ HTML/static-import closure. Rendered module lengths precede final minification;
 only emitted chunk bytes establish savings. After #9590 removed the drafts dialog from startup, this is no longer a
 ceiling emergency: judge the remaining gain against the panel-shell complexity.
 The controlled base/branch builds,
-root typecheck and feature tests are submitted through the fleet. No byte-saving
-or cold-boot timing verdict is claimed until those results exist. Leave the
+root typecheck and feature tests are submitted through the fleet. The paired
+current-main builds now establish a substantial raw and Brotli size reduction;
+all three panels and the drafts dialog are outside the emitted eager closure.
+The size ratchet and retained-free artifact check pass. There is no cold-boot
+timing claim; remaining validation is tracked separately from the size verdict. Leave the
 ceilings to the daily main-only lowering process after merge; do not stamp a
 branch measurement as main provenance. **Lesson:** a dynamic panel boundary
 alone cannot establish a saving while shared eager consumers and recursive
@@ -6140,4 +6143,7 @@ groups or the audit tool, and neither introduces a shared loading helper.
 Run the branch audit with `--expect-lazy` to reject any emitted eager module
 for the three panels or the drafts dialog. If the controlled current-main
 delta is small, shrink to the useful boundary or close rather than carrying
-three loading shells for a ceiling that no longer needs them.
+three loading shells for a ceiling that no longer needs them. This round
+cleared that test on the exact main containing #9590: keep the three boundaries
+subject to feature/typecheck acceptance and rechecking the main that includes
+#9616. Do not attribute #9590's own reduction to this change.

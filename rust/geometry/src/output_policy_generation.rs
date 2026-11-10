@@ -101,21 +101,27 @@ mod tests {
             })
         };
         inside.wait();
+        // Writer B also stays inside its store once it gets there. Before the
+        // fix it got there at once, beside A, and the two first bumps left the
+        // counter even with both stores pending. Now it waits for A's lock.
         let (b_started_tx, b_started_rx) = mpsc::channel::<()>();
+        let (b_release_tx, b_release_rx) = mpsc::channel::<()>();
         let b = std::thread::spawn(move || {
             b_started_tx.send(()).unwrap();
-            mutate(|| {});
+            mutate(|| {
+                b_release_rx.recv().unwrap();
+            });
         });
         b_started_rx.recv().unwrap();
-        // Give B every chance to bump (it did, immediately, before the fix).
-        let deadline = Instant::now() + Duration::from_millis(200);
+        let deadline = Instant::now() + Duration::from_millis(300);
         while Instant::now() < deadline {
-            assert_eq!(policy_generation() % 2, 1, "generation went even while writer A was mid-store");
+            assert_eq!(policy_generation() % 2, 1, "generation went even while a writer was mid-store");
             std::thread::yield_now();
         }
         assert!(coherent_output_policy().is_none(), "a coherent policy was read during a store");
         release_tx.send(()).unwrap();
         a.join().unwrap();
+        b_release_tx.send(()).unwrap();
         b.join().unwrap();
         assert!(policy_generation() >= start + 4, "each completed store moves the generation by two");
     }

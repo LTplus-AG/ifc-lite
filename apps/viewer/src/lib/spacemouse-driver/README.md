@@ -102,8 +102,8 @@ World space is the renderer's frame: Y up, the camera looks down -Z, one unit is
   > 3D input device development tools and related technology are provided under license from 3Dconnexion. © 3Dconnexion 1992 - 2025. All rights reserved.
 
   The module exports it as `THREEDCONNEXION_ATTRIBUTION` (and the licence link as `THREEDCONNEXION_LICENCE_URL`).
-- **Distribution.** For JavaScript components the licence permits distribution solely as part of web applications designed
-  to operate exclusively in conjunction with 3Dconnexion products.
+- **Distribution.** Consult the shipped `LicenseAgreementSDK.txt` for the terms governing distribution of the SDK's
+  JavaScript components.
 - **Confidentiality / restrictions.** The licence treats the SDK source as confidential and forbids using it to build a
   product that competes with 3Dconnexion's.
 - **Never vendor it.** Do not copy the SDK's files into a repository. It is installed from npm as a dependency of the

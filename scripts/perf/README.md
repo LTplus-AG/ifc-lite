@@ -8,6 +8,103 @@ Citations to `evidence/`, `tests/evidence/` and `docs/architecture/evidence/` pa
 at commit [`f98785c722`](https://github.com/LTplus-AG/ifc-lite/tree/f98785c722); the retained
 bundles left the tree in #9054.
 
+## Load scoreboard (`load-scoreboard.mjs`) (#9607)
+
+One table for IFC load time, used to accept or reject load optimisations.
+Per fixture and lane it reports time to first geometry, time to fully
+interactive, UI-quiet time, peak memory, per-stage shares, median and
+min-max, output identity, and a base-vs-branch verdict. It drives existing
+tools and compiles nothing:
+
+| lane | sample | interactive | peak memory |
+|---|---|---|---|
+| `native-cold` | fresh `perf_probe --cold --iters 1 --fingerprint` process | file read + whole `process_geometry` (incl. trailing metadata) | process max RSS (`/usr/bin/time`) |
+| `browser-cold` | fresh Chrome, empty profile, first open | see below | separate memory pass: peak sampled PSS sum of the profile's Chrome processes |
+| `browser-warm1` | same browser, first reopen: streams the cache hit and writes the scene snapshot | see below | as cold |
+| `browser-warm` | same browser, last of `warmOpens` (default 2) reopens: adopts the scene snapshot | see below | as cold |
+
+Native warm has no cache outside `apps/server`, so there is no native warm
+lane. Native is a batch call with no streamed-geometry event, so it has no
+first-geometry time. Below 10 MB and above 400 MB the viewer caches nothing,
+so the warm lanes there are uncached reopens (the snapshot wait is skipped).
+Each row states the expected tier and the observed load path.
+
+Browser timing (`viewer-load-probe.mjs`, `viewer-load-boot.mjs`; readiness is
+shared with `scenoptic-bench.mjs`):
+
+- **Clock.** Each open is armed only once the shell has run no long task for
+  1 s (boot-tail work such as the welcome WebGL scene otherwise queues the
+  input event by 1-3 s). Times run from the file input's `change` event; the
+  delay from arming to it is reported, and samples over 100 ms are flagged.
+- **Interactive** = geometry streamed, the GPU queue drained and the scene
+  finalized; metadata ready (`parser.complete` or `cache.storeReady`); and
+  the first frame after the store left its loading state with every model
+  complete. The publish of the populated store (+ next frame) is reported
+  beside it, and **UI quiet** = the end of the last main-thread long task
+  before 500 ms without one, so UI work deferred past the settle event stays
+  visible. First geometry is `geometry.firstVisible`.
+- **Overhead control.** Timed opens run `?perfTrace=1` for spans, with the
+  page's perf counters pre-installed disabled (`Symbol.for('ifc-lite.perf-counters')`),
+  which removes the main-thread worker-message byte walk (about 0.5 s on a
+  Holter cold load). Workers still count their own sends. Peak memory comes
+  from a second, untimed-for-the-verdict pass with the 250 ms PSS sampler,
+  which cost about 12% when it ran inside the timed opens.
+- **Output identity** is the per-element Rust geometry hash (#924, taken before
+  flat/instanced routing) over flat meshes plus `instancedGeometryHashes`.
+  Batch-local instancing moves elements between flat meshes and IFNS shards
+  with the batch partition, so flat mesh/triangle counts are not an identity.
+  Cache hits carry no hashes: a warm open inherits its cold load's identity
+  only when it restored that load's flat output exactly. A comparison without
+  hashes is reported unverifiable. The report lists differing element ids.
+- **Stages** are the union of each `?perfTrace=1` span name's intervals over
+  the interactive time, milestones excluded, umbrella spans marked `*`, and the
+  uncovered remainder as `(no span)`. Concurrent stages overlap. Native stages
+  come from `perf_probe` and sum to the full load.
+- **Host.** Before each sample the runner waits up to 20 s for CPU pressure
+  (`/proc/pressure/cpu` avg10) below 5 and flags the sample when the host
+  stays busy or build processes run. Each browser sample records the WebGPU
+  adapter, GPU health (`tests/benchmark/gpu-health.ts`), crashes and page
+  errors. Failed samples stay in the data.
+
+Verdict: `gain = 1 - median(branch)/median(base)`. The noise floor of a
+comparison is the larger of the recorded A/A floor for that fixture, lane and
+metric and the run's own floor. The run's own floor is one robust standard
+deviation (interquartile range / 1.349) of what the run can see: each side's
+relative scatter and the scatter of the paired per-round differences. An A/A
+run's floor also includes its own |gain|. A change counts only when
+|gain| >= 2 x floor, with at least 5 successful samples per side; fewer than
+3 samples is never summarized as a median. A branch with more failed loads
+than the base is a regression. The timed A/A of the baseline picked this
+estimator. A range or a 5-round paired bootstrap let one outlier hide a
+consistent +37% regression. A median absolute deviation read bimodal metrics
+(first geometry, peak memory) as differences between identical builds. At
+2 x one SD with five rounds, expect about one false positive per hundred A/A
+cells; the A/A floor's |gain| term then protects that cell. Rounds use the balanced, randomized
+first-side order of `ab-order.mjs`, per lane group and fixture.
+
+```sh
+# 1. Build each side (ordinary fleet job): source-built WASM, viewer dist,
+#    perf_probe (profiling profile). Copy them out of the checkout. Force or
+#    hash-check the served WASM: the shared Turbo cache can replay another
+#    checkout's @ifc-lite/wasm build.
+# 2. Plan: sides {label, perfProbe, dist, query?, env?, probeArgs?}, fixtures
+#    {name, path, set: tuning|holdout}, lanes, rounds (>= 5), seed, warmOpens,
+#    memoryPass (default true).
+# 3. Inside exclusive benchmark admission, on a private Xvfb display:
+DISPLAY=:97 node scripts/perf/load-scoreboard.mjs run --plan plan.json --out DIR \
+  [--fixtures a,b] [--aa-reference aa-run/report.json] [--resume]
+node scripts/perf/load-scoreboard.mjs report --out DIR --aa-reference aa-run/report.json
+```
+
+A plan whose sides are two copies of one build (`"kind": "aa"`) measures the
+noise floor. Its `report.json` `floors` become the `--aa-reference` for later
+comparisons made with the same harness version. A side's `query` appends
+viewer URL flags (e.g. `perf.sceneSnapshot=0`, `geomWorkers=1`). Its `env`
+and `probeArgs` reach `perf_probe`. Worker reservations export
+`RAYON_NUM_THREADS`, so the native lane removes it unless a side sets it.
+Outside `IFC_WORKER_KIND=benchmark` the report marks itself a dry run. The OS
+file cache is not purged in any lane.
+
 ## Storey planners and the QuickJS runtime leave the boot path (#9200)
 
 **Shipped: an eager-bytes cut, no boot-time change.** Three changes, each one
@@ -37,6 +134,27 @@ the welcome card measured about 20 ms slower unthrottled. So check the eager fil
 not only the byte total, and measure boot with each build in both A/B positions: on a
 shared host, position alone moved the result by about 15 ms. A group that claimed every
 QuickJS module also failed, because the one eager module in it made the whole group eager.
+
+## Georeference minimap waits for scene settlement (#9623)
+
+**Untimed diagnostic, pending scoreboard confirmation.** The minimap already
+imports MapLibre dynamically. Its WebGL context and painter setup nevertheless
+ran during scene drain on real cold and metadata-cache loads. Waiting for the UI
+loading flag, or merely observing visibility, did not remove that work: the flag
+clears before geometry finalisation, and the default panel is already visible.
+
+The gate now waits for the existing scene queue, streaming fragments and async
+finalisation, together with the store's streaming and pending-shard state.
+Readiness latches once eligible so subsequent model loads cannot reset the map's
+viewport. A renderer-free metadata view retains its settled-store fallback.
+Real Holter cold and warm diagnostics on hardware, repeated on both sources,
+place context construction after interactive while still showing a usable map.
+No load-latency or eager-byte saving is claimed.
+
+Lesson: a loading flag is not scene readiness. Check the renderer's actual
+protocol, including finalisation after its fragment collection has been emptied.
+Keep negative visibility/UI-flag results so future changes do not reintroduce
+a gate that only appears to leave the critical window.
 
 ## Presentation-layer membership follows the selected shape (#9273)
 
@@ -3033,6 +3151,24 @@ Preserve failed loads alongside successful samples. Listen for renderer crashes
 as well as JavaScript errors, and stop memory sampling on every exit path.
 
 ### Shipped wins
+- **Surface-model faces skip their type-only decode (native instruction
+  hillclimb, 2026-11-10, #9632):** `surface_model_plan::lower` fully decoded every
+  face (`decode_by_id`, about 3.5k instructions each) only to learn whether it
+  is an `IfcAdvancedFace`, then re-read its bounds from the raw bytes anyway.
+  `EntityDecoder::is_plain_face` proves from the bytes that a record is exactly
+  `#n=IFCFACE((#a,...));` (STEP whitespace only, upper-case keyword, `u32`
+  ids, not already in the entity memo), which the tokenizer always reads as an
+  `IfcFace` and cannot refuse, so that decode is skipped; every other record
+  decodes as before. Cold single-thread Callgrind, pipeline instructions:
+  advanced_model -12.2% (its 13 face-based surface models are lowered 839
+  times through styled mapped occurrences, 555k face reads), Holter -3.0%,
+  schependomlaan -0.6%, ISSUE_129 -0.1%, FZK flat; ordered `perf_probe`
+  mesh fingerprints identical on all five. **Lesson:** the expensive part was
+  not the surface model but a decode whose only consumer was a type check;
+  look at what a decode's result is used for before making the decode faster.
+  The repeated lowering itself (styled occurrences never hit the mapped-source
+  cache) and the per-point `point3` re-reads remain; caching either adds
+  per-worker memory and was not attempted. Not a wall-time or browser claim.
 - **Review startup bundle (#7015):** load the Script panel on demand and keep
   CodeMirror's shared state module in its own chunk. Assistant text-edit planning
   still uses `ChangeSet`, while the editor UI stays outside the eager import
@@ -3282,6 +3418,25 @@ Orientation reuses deterministic edge adjacency, triangle filters compact their 
     cheaply.
   - Judge perf by the multi-threaded critical path as well as by CPU: moving
     work onto a few heavy hosts can lower total CPU and still lengthen the load.
+- **Incircle stages C/D without per-call zeroing: measured, WITHDRAWN on
+  provenance (native instruction hillclimb, 2026-11-10, PR #9637 closed).** The
+  mechanism is real. #9016 hands what stage B cannot decide to
+  `geometry_predicates::incircle`, assuming that is rare, but on ISSUE_129
+  43,331 calls take that path, and `incircleadapt` zeroes about 20 KB per call
+  (two 1152-entry `fin` expansions only ever read below their written length):
+  806M of their 1.03G instructions. Continuing from #9016's own stage-B state
+  into stages C/D with reused thread-local `fin` scratch measured, alone against
+  main: FZK -4.3%, ISSUE_129 -3.3%, Holter -0.4% pipeline instructions, the
+  others flat, `perf_probe` fingerprints identical, and the existing bit-identity
+  test passed. It was not landed because that port followed the MIT-licensed
+  crate's `incircleadapt` operation for operation, and CLA.md §4(a) admits only
+  original work in an ordinary contribution. Note the crate reads past a
+  written prefix in two places (length-1 `bct`/`cat`/`abt` defaults; `cxtab`,
+  whose shadowed length is read as 8), so only the `fin` buffers can safely be
+  reused. **To pursue it: upstream the zeroing fix to `geometry-predicates`, or
+  write an original exact-sign stage C/D (the CDT reads only the sign) that
+  keeps the crate's results in the underflow and overflow ranges the #9016 test
+  covers.** Not a wall-time or browser claim.
 - **More geometry workers** -> zero CSG speedup: memory-bandwidth bound, not CPU.
 - **Shared entity-index for the VIEWER huge-file path** (#1445): CLOSED, branch
   deleted, REFUTED by an end-to-end 722MB re-measure. The retained-size spike looked
@@ -6122,3 +6277,39 @@ strictly less than 2× from 1K to 50K, and a passing F5 exercise result whose
 lane, not a substitute tower here. Missing sizes or F5 evidence fail the check.
 The baseline is a description of current main, not an accepted round-1 result
 or a speedup claim.
+
+### Load hillclimb stage instrumentation (#9605)
+
+Measurement only; no scheduling or geometry changes and no measured speedup claimed.
+With `?perfTrace=1`, warm loads additionally record `cache.entityIndex`
+(cached-column or source-scan rebuild), `cache.onDemandMaps` (relationship maps),
+and `cache.spatial` (spatial rebuild, including elevation and height extraction).
+`cache.chunkDecode` records each geometry chunk with a `chunk` index on primary,
+snapshot and federated hits. Primary hits decode chunks one at a time, so their
+spans sum to decode time. Snapshot and federated hits start every chunk at once:
+each span is that chunk's latency (inflate, then main-thread record decode,
+including the wait behind other chunks' decodes), so do not sum them; use
+`cache.geometry` (federated) or the first-start to last-end interval instead.
+`scene.snapshotHydrate` times attachment to adopted batches;
+`scene.snapshotHydrate.refused` counts attachment refusals.
+
+`geometry.workerReady` records every ready receipt with `worker`, so the earliest
+and latest give first/last readiness. `geometry.shardScanReceived` marks each
+entity-index scan shard's arrival on the main thread (`worker`, `shard`), nested
+under the existing `geometry.shardScan`; it is not a geometry batch. `prepass.sharded` distinguishes the sharded
+worker handler from `prepass.scan`; the existing `styles.finalize` remains the
+style-finalization handler span. Worker sub-stages are `worker.sourceInstall`
+(the source-to-wasm copy), `worker.batch.wasm` (batch geometry call),
+`worker.batch.collect` (copy-out/collection, one per batch, including the
+partitioned shard take), and `worker.batch.post` (synchronous batch postMessage).
+While tracing, the worker's postMessage is the accounting wrapper, so
+`worker.batch.post` also contains the clone-size estimate walk and the span/counter
+flush message; treat it as an upper bound on production post cost.
+`msg.worker.out.transferObjects` (new) and the existing byte counters measure
+transfer lists.
+`cache.miss` marks a lookup that did not serve (no entry, rejected hit, or failed
+hit decode); loads that skip the lookup (no cache tier for the file's size,
+retained kernel, textured `.ifcZIP`) record neither `cache.lookup` nor `cache.miss`. The interval
+from the existing `cache.lookup` end to `geometry.pool` start measures the full
+miss preparation gap (server attempt, engine initialization and source copy).
+No pool means a different load path, not a missing duration.

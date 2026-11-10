@@ -508,11 +508,12 @@ test('#7495 unavailable issue lookup requires an explicit new-issue choice', asy
 // Async ownership audit: an explicit refresh may still be in flight at deletion.
 test('late manual GET cannot restore submitted after private report deletion', async () => {
   let reads = 0;
+  let signal: AbortSignal | undefined;
   let finish!: () => void;
   const transport: typeof fetch = async (value, options) => {
     if (String(value).endsWith('/session')) return Response.json(session);
     if (options?.method === 'DELETE') return Response.json({ id: 'late-get', status: 'deleted' });
-    if (++reads > 1) await new Promise<void>(resolve => { finish = resolve; });
+    if (++reads > 1) { signal = options?.signal ?? undefined; await new Promise<void>(resolve => { finish = resolve; }); }
     return Response.json({ id: 'late-get', status: 'submitted', publicationHold: true });
   };
   render(<ErrorReportDialog context={{ errorCode: 'report_resume', resumeReportId: 'late-get' }} onClose={() => {}} client={new ReportClient(transport)} />);
@@ -521,6 +522,7 @@ test('late manual GET cannot restore submitted after private report deletion', a
   click(button('Delete private report and model')); click(button('Confirm deletion of private data'));
   await settle();
   assert.equal(document.body.textContent?.includes('Private data deletion confirmed'), true);
+  assert.equal(signal?.aborted, true, 'confirmed deletion aborts its retired receipt request');
   await act(async () => finish()); await settle();
   assert.equal(document.body.textContent?.includes('Private data deletion confirmed'), true, 'late refresh cannot undo deletion');
 });
@@ -601,4 +603,45 @@ test('private report deletion retains its synchronous double-click lock', async 
   await act(async () => { for (const finish of finishes) finish(); }); await settle();
   assert.equal(count, 1);
   assert.equal(document.body.textContent?.includes('Private data deletion confirmed'), true);
+});
+
+// #9576: only a confirmed deletion retires an otherwise valid receipt refresh.
+for (const failure of ['request', 'confirmation'] as const) test(`#9576 a ${failure} DELETE failure preserves a valid in-flight receipt refresh`, async t => {
+  let reads = 0;
+  let finish!: () => void;
+  t.after(() => finish?.());
+  const issueUrl = 'https://github.com/LTplus-AG/ifc-lite/issues/7495';
+  const transport: typeof fetch = async (value, options) => {
+    if (String(value).endsWith('/session')) return Response.json(session);
+    if (options?.method === 'DELETE') return failure === 'request'
+      ? Response.json({ message: 'fixture deletion unavailable' }, { status: 503 })
+      : Response.json({ id: 'wrong-receipt', status: 'deleted' });
+    if (++reads === 1) return Response.json({ id: 'failed-delete', status: 'submitted', publicationHold: true });
+    await new Promise<void>(resolve => { finish = resolve; });
+    return Response.json({ id: 'failed-delete', status: 'published', issueUrl });
+  };
+  render(<ErrorReportDialog context={{ errorCode: 'report_resume', resumeReportId: 'failed-delete' }} onClose={() => {}} client={new ReportClient(transport)} />);
+  await settle(); click(button('Check review status'));
+  click(button('Delete private report and model')); click(button('Confirm deletion of private data'));
+  await settle();
+  await act(async () => finish()); await settle();
+  assert.equal(Boolean(document.querySelector(`a[href="${issueUrl}"]`)), true, 'a failed DELETE cannot discard a successful GET');
+  assert.equal(document.body.textContent?.includes('Private data deletion confirmed'), false);
+});
+
+test('#9576 same-tick receipt refresh presses start one manual GET', async () => {
+  let reads = 0;
+  const finishes: Array<() => void> = [];
+  const transport: typeof fetch = async (value) => {
+    if (String(value).endsWith('/session')) return Response.json(session);
+    if (++reads > 1) await new Promise<void>(resolve => finishes.push(resolve));
+    return Response.json({ id: 'refresh-once', status: 'submitted', publicationHold: true });
+  };
+  render(<ErrorReportDialog context={{ errorCode: 'report_resume', resumeReportId: 'refresh-once' }} onClose={() => {}} client={new ReportClient(transport)} />);
+  await settle();
+  const refresh = button('Check review status');
+  act(() => { refresh.click(); refresh.click(); }); await settle();
+  const requests = reads - 1;
+  await act(async () => { for (const finish of finishes) finish(); }); await settle();
+  assert.equal(requests, 1, 'one owner refreshes the receipt');
 });

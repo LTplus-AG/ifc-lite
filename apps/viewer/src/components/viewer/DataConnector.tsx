@@ -488,10 +488,10 @@ export function DataConnector(props: ToolDialogProps) {
     });
   }, []);
 
-  // Auto-scroll when import completes or errors appear
+  // Auto-scroll when import completes; errors remain visible at the top.
   useEffect(() => {
-    if (importStats || error) scrollToBottom();
-  }, [importStats, error, scrollToBottom]);
+    if (importStats) scrollToBottom();
+  }, [importStats, scrollToBottom]);
 
   // Auto-scroll when progress first appears (so user sees the bar)
   const prevProgressRef = useRef<ImportProgress | null>(null);
@@ -690,15 +690,15 @@ export function DataConnector(props: ToolDialogProps) {
               )}
             </div>
 
-                {error && (
-                  <Alert variant="destructive">
-                    <AlertCircle className="h-4 w-4" />
-                    <AlertTitle>{t('dataConnector.errorTitle')}</AlertTitle>
-                    <AlertDescription className="whitespace-pre-wrap">
-                      {error}
-                    </AlertDescription>
-                  </Alert>
-                )}
+            {error && (
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertTitle>{t('dataConnector.errorTitle')}</AlertTitle>
+                <AlertDescription className="whitespace-pre-wrap">
+                  {error}
+                </AlertDescription>
+              </Alert>
+            )}
             {csvColumns.length > 0 && (
               <>
                 <Separator />

@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { useSingleFlight } from '@/hooks/useSingleFlight';
+import { useAsyncRun } from '@/hooks/useAsyncRun';
 import { completeReport, forgetReport, rememberReport } from '@/lib/error-reports/pending';
 import { useEffect, useRef, useState } from 'react';
 import { isPublicSharingConsent } from '@ifc-lite/report-contract';
@@ -106,14 +107,14 @@ export function ErrorReportDialog({ context, onClose, client: injectedClient }: 
       publicPrivacyConfirmed: isPublicSharingConsent(restored.uploadSource?.publicSharingConsent),
       publicCopiesConfirmed: isPublicSharingConsent(restored.uploadSource?.publicSharingConsent) });
   }
-  const receiptGeneration = useRef(0);
+  const receiptRefresh = useAsyncRun({ key: receipt?.id, label: 'report receipt refresh' });
   async function deletePrivateReport() {
     if (!receipt || deleting.current) return;
-    receiptGeneration.current++;
     deleting.current = true; setDeleteState('deleting'); setError('');
     try {
       const deleted = await client.request<ReportReceipt>(`/${encodeURIComponent(receipt.id)}`, 'DELETE');
       if (deleted.status !== 'deleted' || deleted.id !== receipt.id) throw new Error('Deletion was not confirmed. Please retry.');
+      receiptRefresh.reset();
       forgetReport(receipt.id);
       setReceipt({ ...deleted, issueUrl: deleted.issueUrl ?? receipt.issueUrl });
       setDeleteState('idle');
@@ -124,13 +125,15 @@ export function ErrorReportDialog({ context, onClose, client: injectedClient }: 
   }
   async function refreshReceipt() {
     if (!receipt) return;
-    const generation = receiptGeneration.current;
-    try {
-      const next = await client.request<ReportReceipt>(`/${encodeURIComponent(receipt.id)}`);
-      if (generation === receiptGeneration.current) restoreReceipt(next);
-    }
-    catch (reason) { if (generation === receiptGeneration.current) setError(reason instanceof Error ? reason.message : 'Request failed'); }
+    await receiptRefresh.start(async ({ signal, isCurrent }) => {
+      try {
+        const next = await client.request<ReportReceipt>(`/${encodeURIComponent(receipt.id)}`, 'GET', undefined, signal);
+        if (isCurrent()) restoreReceipt(next);
+      }
+      catch (reason) { if (isCurrent()) setError(reason instanceof Error ? reason.message : 'Request failed'); }
+    });
   }
+
   const customApproved = existing?.customNdaStatus === 'approved' && !existing.uploadSource;
   const resumeFileValid = !existing?.uploadSource || existing.upload?.status === 'ready' || (!!attachment.file && attachment.file.name === existing.uploadSource.name && attachment.file.size === existing.uploadSource.size);
   const canReview = !!session && !!title.trim() && (!!existing || issueChoice.reviewed) && (existing ? resumeFileValid && (!customApproved || (!!attachment.file && attachment.uploadConsent && validAttachment({ ...attachment, confidentiality: 'none' }, session))) : validAttachment(attachment, session));

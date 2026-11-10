@@ -557,3 +557,35 @@ it('C-8 a retired join returning without its room cannot report failure into the
   await act(async () => joins[1]()); await settle();
   assert.equal(text.includes('No session was created'), false);
 });
+
+// #9576: leaving a completed room must not offer its link after a later failed attempt.
+for (const failure of ['mint', 'join'] as const) it(`#9576 a failed ${failure} cannot reuse the previous room link or copied state`, async t => {
+  t.mock.method(console, 'error', () => {});
+  t.mock.method(navigator.clipboard, 'writeText', async () => {});
+  window.localStorage.setItem('ifc-lite:collab:server-url', 'wss://relay.example');
+  t.mock.method(globalThis, 'fetch', async (_input: RequestInfo | URL, init?: RequestInit) => {
+    const body = JSON.parse(String(init?.body));
+    if (body.role === 'admin' && failure === 'mint') throw new Error('fixture admin mint failed');
+    return Response.json({ token: body.role === 'admin' ? 'admin-b' : 'invite-a' });
+  });
+  useViewerStore.setState({ models: new Map([['a', makeModel('a', 'shared.ifc', 0)]]), activeModelId: 'a',
+    collabRoomId: 'room-a', collabRole: 'admin', collabSelfToken: 'admin-a', collabSession: null,
+    collabSeedPhase: 'ready', startCollab: async () => { throw new Error('fixture join failed'); } });
+  let change!: (open: boolean) => void;
+  function Host() { const [open, setOpen] = useState(true); change = setOpen; return <ShareDialog open={open} onOpenChange={setOpen} />; }
+  render(<Host />); await settle();
+  assert.equal(linkField().value.includes('room=room-a'), true);
+  const copy = [...document.querySelectorAll('button')].find(button => button.textContent?.trim() === 'Copy')!;
+  click(copy); await settle();
+  assert.equal(document.body.textContent?.includes('Copied'), true);
+  act(() => change(false));
+  act(() => useViewerStore.setState({ collabRoomId: null, collabRole: null, collabSelfToken: null,
+    collabLastShareToken: null, collabSeedPhase: 'none' }));
+  act(() => change(true));
+  click(createLinkButton()!); await settle();
+  const freshCopy = [...document.querySelectorAll('button')].find(button => /^(Copy|Copied)$/.test(button.textContent?.trim() ?? ''))!;
+  assert.equal(document.body.textContent?.includes('Link creation failed'), true);
+  assert.equal(linkField().value, '', 'a failed attempt cannot expose room A’s URL');
+  assert.equal(freshCopy.disabled, true, 'an old room cannot still be copied');
+  assert.equal(freshCopy.textContent?.trim(), 'Copy', 'copied state belongs to the retired link');
+});

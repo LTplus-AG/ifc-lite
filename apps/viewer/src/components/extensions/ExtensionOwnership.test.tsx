@@ -278,3 +278,13 @@ test('closing an existing promotion review removes it in the closing commit', as
   click(button('External close'));
   assert.equal(visibleAtClose, false);
 });
+
+for (const origin of ['file', 'authored'] as const) test(`rejected ${origin} bundles retain their unpack-failure message (PR #9581)`, async t => {
+  const host = hostFixture(), errors: string[] = [];
+  t.mock.method(toast, 'error', (message: string) => { errors.push(message); });
+  if (origin === 'authored') useViewerStore.getState().setPendingAuthoredBundle(new Uint8Array([1, 2, 3]));
+  const ui = render(<ExtensionHostContext.Provider value={host}><ExtensionsPanel /></ExtensionHostContext.Provider>);
+  if (origin === 'file') choose(ui, new Uint8Array([1, 2, 3]), 'invalid');
+  await until(() => errors.length > 0);
+  assert.equal(errors[0].startsWith(origin === 'file' ? 'Bundle did not unpack:' : "Authored bundle didn't unpack:"), true);
+});

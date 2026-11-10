@@ -114,13 +114,19 @@ test('ratchet: fails on a drop in the total, a row, a cell, a changed row set, o
   const base = score(two, cellsOf({ [two[0].id]: { ...all, card: 'partial' }, [two[1].id]: { capability: 'pass' } }));
   assert.deepEqual(ratchet(base, base), []);
   const cellDrop = score(two, cellsOf({ [two[0].id]: { ...all, card: 'fail', edit: 'partial' }, [two[1].id]: { capability: 'pass' } }));
+  // @source-text-assertion-ok asserts on ratchet()'s returned problem strings, not source text
   assert.ok(ratchet(base, cellDrop).some((p) => p.includes('card: partial -> fail')), 'a cell drop fails even when the row status holds');
   const rowDrop = score(two, cellsOf({ [two[0].id]: { ...all, card: 'partial' } }));
+  // @source-text-assertion-ok asserts on ratchet()'s returned problem strings, not source text
   assert.ok(ratchet(base, rowDrop).some((p) => p.includes('cap/docs-page: met -> missing')));
+  // @source-text-assertion-ok asserts on ratchet()'s returned problem strings, not source text
   assert.ok(ratchet(base, rowDrop).some((p) => p.startsWith('total dropped')));
   const fewer = score([two[0]], cellsOf({ [two[0].id]: { ...all, card: 'partial' } }));
+  // @source-text-assertion-ok asserts on ratchet()'s returned problem strings, not source text
   assert.ok(ratchet(base, fewer).some((p) => p.includes('row is gone')));
+  // @source-text-assertion-ok asserts on ratchet()'s returned problem strings, not source text
   assert.ok(ratchet(fewer, base).some((p) => p.includes('rows not in the baseline')));
+  // @source-text-assertion-ok asserts on ratchet()'s returned problem strings, not source text
   assert.ok(ratchet(base, { ...base, offline: true, absent: ['a.ifc'] }).some((p) => p.includes('offline')));
 });
 
@@ -181,9 +187,13 @@ ENDSEC;END-ISO-10303-21;`);
 ENDSEC;END-ISO-10303-21;`);
   const why = Object.fromEntries(nonConforming(refs, 'IfcAction', registry).map((r) => [r.id, r.why]));
   assert.deepEqual(Object.keys(why).map(Number), [3, 4, 5, 7], 'only #2 references what the slot admits');
+  // @source-text-assertion-ok asserts on nonConforming()'s returned reason, not source text
   assert.match(why[3], /required value empty/);
+  // @source-text-assertion-ok asserts on nonConforming()'s returned reason, not source text
   assert.match(why[4], /bare value in entity slot IfcReaction/);
+  // @source-text-assertion-ok asserts on nonConforming()'s returned reason, not source text
   assert.match(why[5], /reference to IFCNOTINSCHEMA, which the schema lacks/);
+  // @source-text-assertion-ok asserts on nonConforming()'s returned reason, not source text
   assert.match(why[7], /reference to IfcAction in IfcReaction/);
   const holders = readStep(`ISO-10303-21;HEADER;FILE_SCHEMA(('IFC4'));ENDSEC;DATA;
 #1=IFCREACTION();
@@ -194,8 +204,11 @@ ENDSEC;END-ISO-10303-21;`);
 ENDSEC;END-ISO-10303-21;`);
   const held = Object.fromEntries(nonConforming(holders, 'IfcHolder', registry).map((r) => [r.id, r.why]));
   assert.deepEqual(Object.keys(held).map(Number), [3, 4, 5], 'a nested list of measures and a reference through an entity SELECT conform');
+  // @source-text-assertion-ok asserts on nonConforming()'s returned reason, not source text
   assert.match(held[3], /typed IFCBOOLEAN in IfcReactionSelect/);
+  // @source-text-assertion-ok asserts on nonConforming()'s returned reason, not source text
   assert.match(held[4], /reference to a missing record/);
+  // @source-text-assertion-ok asserts on nonConforming()'s returned reason, not source text
   assert.match(held[5], /typed IFCBOOLEAN in IfcMeasure$/, "the [] suffix is stripped before the slot check");
   const cyclic = { ...registry, selects: { ...registry.selects, IfcA: ['IfcB'], IfcB: ['IfcA'] } };
   assert.throws(() => nonConforming(holders, 'IfcHolder', cyclic), /select IfcA nests in a cycle/);
@@ -212,26 +225,33 @@ function pointConnectionModel(id, guid) {
 test('read (#9668): an attribute set only in a file outside any sample is checked, and one no fixture sets is unproven', () => {
   const row = byId.get('IFC4/IfcStructuralPointConnection');
   const { types } = deriveCatalogue(ROOT).tables.IFC4;
-  // Names sort the bare file first and its sha last, so neither path order nor sha order hides the setter.
-  const bare = stepFile('a-first.ifc', 'f'.repeat(64), "#1=IFCSTRUCTURALPOINTCONNECTION('g1',$,'P',$,$,$,$,$,$);");
-  const setter = stepFile('z-last.ifc', '0'.repeat(64), "#2=IFCSTRUCTURALPOINTCONNECTION('g2',$,'P',$,$,$,$,$,#3);\n#3=IFCAXIS2PLACEMENT3D(#4,$,$);\n#4=IFCCARTESIANPOINT((0.,0.,0.));");
+  // The bare file sorts first by path AND by sha, the setter last by both: keeping only the first
+  // carrier in either order misses the only file that sets ConditionCoordinateSystem.
+  const bare = stepFile('a-first.ifc', '0'.repeat(64), "#1=IFCSTRUCTURALPOINTCONNECTION('g1',$,'P',$,$,$,$,$,$);");
+  const setter = stepFile('z-last.ifc', 'f'.repeat(64), "#2=IFCSTRUCTURALPOINTCONNECTION('g2',$,'P',$,$,$,$,$,#3);\n#3=IFCAXIS2PLACEMENT3D(#4,$,$);\n#4=IFCCARTESIANPOINT((0.,0.,0.));");
   const both = readRow(row, [{ file: bare, ix: pointConnectionModel(1, 'g1') }, { file: setter, ix: pointConnectionModel(2, 'g2') }], types);
   assert.equal(both.status, 'partial');
+  // @source-text-assertion-ok asserts on readRow()'s returned reason, not source text
   assert.match(both.reason, /ConditionCoordinateSystem unexposed/);
+  // @source-text-assertion-ok asserts on readRow()'s returned reason, not source text
   assert.match(both.reason, /AppliedCondition: no fixture sets it/, 'never set anywhere: unproven, not read');
   const reversed = readRow(row, [{ file: setter, ix: pointConnectionModel(2, 'g2') }, { file: bare, ix: pointConnectionModel(1, 'g1') }], types);
   assert.deepEqual(reversed, both, 'carrier order does not move the verdict');
   const onlyBare = readRow(row, [{ file: bare, ix: pointConnectionModel(1, 'g1') }], types);
+  // @source-text-assertion-ok asserts on readRow()'s returned reason, not source text
   assert.match(onlyBare.reason, /ConditionCoordinateSystem: no fixture sets it/);
   assert.notEqual(onlyBare.status, 'pass');
   // A file that did not extract adds its throw, not a claim that its records are missing from the read model.
   const unread = readRow(row, [{ file: setter, ix: pointConnectionModel(2, 'g2') }, { file: bare, ix: null, error: 'parse or extract threw: x' }], types);
+  // @source-text-assertion-ok asserts on readRow()'s returned reason, not source text
   assert.match(unread.reason, /a-first\.ifc: parse or extract threw: x/);
+  // @source-text-assertion-ok asserts on readRow()'s returned reason, not source text
   assert.match(unread.reason, /over 1 record\(s\)/);
   assert.doesNotMatch(unread.reason, /not in the read model/);
   // The only file setting an attribute did not extract: it is still a fixture for it, so not "no fixture sets it".
   const setterUnread = readRow(row, [{ file: setter, ix: null }, { file: bare, ix: pointConnectionModel(1, 'g1') }], types);
   assert.doesNotMatch(setterUnread.reason, /ConditionCoordinateSystem: no fixture sets it/);
+  // @source-text-assertion-ok asserts on readRow()'s returned reason, not source text
   assert.match(setterUnread.reason, /z-last\.ifc: not extracted/, 'an unextracted file is a problem even when the caller reports nothing');
 });
 
@@ -252,7 +272,9 @@ test('create (#9668): typed values are compared typed, and a non-conforming expo
   const bare = stepFile('bare.ifc', '', "#5=IFCBOUNDARYNODECONDITION('Probe pinned',.T.,.T.,.T.,.F.,.F.,.F.);").step;
   const got = checkExport(row, bare, expect, ifc4.types, registry);
   assert.equal(got.status, 'fail', 'the product export today: bare booleans in SELECT slots');
+  // @source-text-assertion-ok asserts on checkExport()'s returned reason, not source text
   assert.match(got.reason, /bare value in SELECT IfcTranslationalStiffnessSelect/);
+  // @source-text-assertion-ok asserts on checkExport()'s returned reason, not source text
   assert.match(got.reason, /TranslationalStiffnessX true, expected \{"type":"IFCBOOLEAN","value":true\}/);
   const typed = stepFile('typed.ifc', '', "#5=IFCBOUNDARYNODECONDITION('Probe pinned',IFCBOOLEAN(.T.),$,$,$,$,$);").step;
   assert.equal(checkExport(row, typed, expect, ifc4.types, registry).status, 'pass');
@@ -260,7 +282,9 @@ test('create (#9668): typed values are compared typed, and a non-conforming expo
   const required = { ...registry, entities: { IfcBoundaryNodeCondition: { ...registry.entities.IfcBoundaryNodeCondition, allAttributes: registry.entities.IfcBoundaryNodeCondition.allAttributes.map((a, i) => (i === 6 ? { ...a, optional: false } : a)) } } };
   const gap = checkExport(row, typed, expect, ifc4.types, required);
   assert.equal(gap.status, 'fail');
+  // @source-text-assertion-ok asserts on checkExport()'s returned reason, not source text
   assert.match(gap.reason, /RZ: required value empty/);
+  // @source-text-assertion-ok asserts on checkExport()'s returned reason, not source text
   assert.match(got.reason, /^1 of 1 exported record\(s\) do not conform/, 'the reason a cell fails comes first');
 });
 
@@ -268,12 +292,16 @@ test('totals (#9668): stored totals that disagree with the rows are refused by t
   const all = Object.fromEntries(LEVELS.map((l) => [l, 'pass']));
   const s = score(two, cellsOf({ [two[0].id]: { ...all, card: 'partial' }, [two[1].id]: { capability: 'pass' } }));
   assert.deepEqual(verifyTotals(s), []);
+  // @source-text-assertion-ok asserts on the verifier's returned problem strings, not source text
   assert.ok(verifyTotals({ ...s, total: { ...s.total, score: 2 } }).some((p) => p.startsWith('total')));
+  // @source-text-assertion-ok asserts on the verifier's returned problem strings, not source text
   assert.ok(verifyTotals({ ...s, rows: s.rows.map((r, i) => (i === 0 ? { ...r, status: 'met' } : r)) }).some((p) => p.includes(two[0].id)));
   const { card: _dropped, ...fewer } = s.rows[0].levels;
+  // @source-text-assertion-ok asserts on the verifier's returned problem strings, not source text
   assert.ok(verifyTotals({ ...s, rows: [{ ...s.rows[0], levels: fewer }, s.rows[1]] }).some((p) => /card: no cell/.test(p)), 'a deleted cell is refused, not dropped');
   const { levels: _gone, ...bare } = s.rows[0];
   assert.deepEqual(verifySummary({ ...s, rows: [bare, s.rows[1]] }, two), ['rows: every row must carry a levels object'], 'a malformed row is refused, not a crash');
+  // @source-text-assertion-ok asserts on the verifier's returned problem strings, not source text
   assert.ok(verifySummary({ ...s, rows: [...s.rows, { ...s.rows[1], id: 'cap/not-a-row' }] }, two).includes('cap/not-a-row: not a catalogue row'));
   const dir = tree();
   try {
@@ -283,6 +311,7 @@ test('totals (#9668): stored totals that disagree with the rows are refused by t
     writeFileSync(forged, JSON.stringify({ ...summary, total: { ...summary.total, score: summary.total.max } }));
     const r = run(['--root', dir, '--summary', forged]);
     assert.notEqual(r.status, 0);
+    // @source-text-assertion-ok asserts on the child process's stderr, which is runtime output
     assert.match(r.stderr, /disagree with its rows/);
     // Marking a failing cell not applicable, with totals recomputed to match, is refused against the catalogue rules.
     const target = summary.rows.find((x) => x.levels.read?.status === 'fail') ?? summary.rows.find((x) => x.levels.card?.status === 'unwritten');
@@ -292,6 +321,7 @@ test('totals (#9668): stored totals that disagree with the rows are refused by t
     writeFileSync(forged, JSON.stringify({ ...summary, ...tally(rows) }));
     const hidden = run(['--root', dir, '--summary', forged]);
     assert.notEqual(hidden.status, 0);
+    // @source-text-assertion-ok asserts on the child process's stderr, which is runtime output
     assert.match(hidden.stderr, new RegExp(`${target.id} ${level}: applicability`));
     const scored = spawnSync(process.execPath, [join(ROOT, 'tests/structural-coverage/score.mjs'), '--check', forged, '--out', join(dir, 'out.json')], { encoding: 'utf8' });
     assert.equal(scored.status, 2, scored.stderr);

@@ -64,6 +64,12 @@ jobs:
       # Should the publish verifiers run for this commit? See the comment on
       # `version_changed` in the `pre` step, and on `verify-npm-publish`.
       verify: ${{ steps.changesets.outputs.published == 'true' || steps.pre.outputs.version_changed == 'true' }}
+    env:
+      # Both `pnpm build` and `pnpm release` (changesets) build the published
+      # artifacts: the published @ifc-lite/wasm carries the geometry-core
+      # bundle (`pkg-core`, `@ifc-lite/wasm/core`), which ordinary builds skip.
+      # Declared in turbo.json's build env, so the cache key includes it.
+      BUILD_CORE: '1'
     steps:
       # AUTH for the changesets version PR (`chore: version packages`):
       # we use a fine-grained PAT (`secrets.RELEASE_PAT`), NOT the default
@@ -352,6 +358,17 @@ jobs:
       - name: Build Packages
         if: steps.changesets-read.outputs.publish == 'true'
         run: pnpm build
+
+      # `files` in packages/wasm/package.json lists pkg-core; npm packs a
+      # missing listed file silently, so refuse here instead of publishing a
+      # `@ifc-lite/wasm/core` export that 404s.
+      - name: Verify the geometry-core bundle was built
+        if: steps.changesets-read.outputs.publish == 'true'
+        run: |
+          for f in ifc-lite_bg.wasm ifc-lite.js ifc-lite.d.ts; do
+            test -s "packages/wasm/pkg-core/$f" || { echo "::error::packages/wasm/pkg-core/$f missing: BUILD_CORE=1 did not reach scripts/build-wasm.sh"; exit 1; }
+          done
+          grep -q 'export const ENGINE_BINARY_URL = new URL' packages/wasm/pkg-core/ifc-lite.js
 
       # Exchange the workflow's OIDC ID-token for a short-lived (30-minute)
       # crates.io access token. A Trusted Publisher must be configured on

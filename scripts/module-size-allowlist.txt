@@ -61,7 +61,7 @@
    525 apps/viewer/src/components/mcp/McpPlayground.tsx
   2051 apps/viewer/src/components/mcp/playground-dispatcher.ts
    715 apps/viewer/src/components/mcp/PlaygroundChat.tsx
-   474 apps/viewer/src/components/viewer/BCFPanel.tsx
+   453 apps/viewer/src/components/viewer/BCFPanel.tsx
    604 apps/viewer/src/components/viewer/BulkPropertyEditor.tsx
    485 apps/viewer/src/components/viewer/CesiumOverlay.tsx
   1429 apps/viewer/src/components/viewer/ChatPanel.tsx

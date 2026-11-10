@@ -86,7 +86,8 @@ describe('CommandPalette — export:3dm', () => {
     });
     const title = 'Export Rhino (.3dm)'; // literal, not the catalogue the dialog renders from
     await waitFor(() => [...document.body.querySelectorAll('[role="dialog"]')]
-      .some((d) => d.textContent?.includes(title) && d.textContent?.includes('Units')), 'the Rhino dialog opens');
+      // The palette is a dialog too and shows the same label; skip the one holding its input.
+      .some((d) => !d.contains(input) && d.textContent?.includes(title) && d.textContent?.includes('Units')), 'the Rhino dialog opens');
     await advance(20);
   });
 });

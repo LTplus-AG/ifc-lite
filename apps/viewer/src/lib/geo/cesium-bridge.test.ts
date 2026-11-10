@@ -312,9 +312,9 @@ describe('createCesiumBridge with stray elements far outside a map-absolute mode
       const bridge = await createCesiumBridge(conversion, crs, polluted, 0.001);
       assert.ok(reference && bridge);
       assert.strictEqual(bridge.rotationAngle, 0);
-      const toRtcOrigin = (ci: CoordinateInfo) => ({ x: -ci.originShift.x, y: -ci.originShift.y, z: -ci.originShift.z });
-      const at = toRtcOrigin(polluted);
-      const geo = bridge.viewerToGeodetic(at.x, at.y, at.z);
+      // The RTC origin in the renderer frame is -originShift.
+      const { x, y, z } = polluted.originShift;
+      const geo = bridge.viewerToGeodetic(-x, -y, -z);
       const want = reference.viewerToGeodetic(0, 0, 0);
       assert.ok(geo && want);
       assert.ok(Math.abs(geo.latitude - want.latitude) < 1e-9, `lat ${geo.latitude} should be ${want.latitude}`);
@@ -326,11 +326,12 @@ describe('createCesiumBridge with stray elements far outside a map-absolute mode
   }
 
   it('keeps the bounds centre as the pivot while it is inside the RTC window', async () => {
-    // A long model whose centre is 9 km from the RTC origin: no stray-element signature.
+    // A long model whose centre is 7 km from the RTC origin: no stray-element signature.
     const long = { min: { x: -2000, y: 0, z: -15 }, max: { x: 16000, y: 3, z: 15 } };
     const origin = await computeCesiumModelOrigin(conversion, crs, info(long), 0.001);
     const centred = await computeCesiumModelOrigin(conversion, crs, info(clean), 0.001);
     assert.ok(origin && centred);
-    assert.ok(Math.abs(origin.easting - centred.easting - (7000 - 0.923)) < 1e-6, `easting ${origin.easting}`);
+    const midX = (b: CoordinateInfo['shiftedBounds']) => (b.min.x + b.max.x) / 2;
+    assert.ok(Math.abs(origin.easting - centred.easting - (midX(long) - midX(clean))) < 1e-6, `easting ${origin.easting}`);
   });
 });

@@ -42,6 +42,10 @@ export const sharedCommandsEn = {
   'exportCommands.usd.menuLabel': 'Export USD (OpenUSD)',
   'exportCommands.usd.tooltip': 'Export USD (OpenUSD .usda)',
 
+  'exportCommands.rhino.label': 'Rhino (.3dm)',
+  'exportCommands.rhino.menuLabel': 'Export Rhino (.3dm)',
+  'exportCommands.rhino.tooltip': 'Export Rhino (.3dm)',
+
   'exportCommands.energy.label': 'Energy',
   'exportCommands.energy.menuLabel': 'Energy Model (HBJSON / DFJSON)',
   'exportCommands.energy.tooltip': 'Export energy model (HBJSON / DFJSON)',

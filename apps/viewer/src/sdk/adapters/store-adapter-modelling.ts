@@ -22,7 +22,7 @@
 
 import type { StoreEditor } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
-import { removeStairInStore } from '@ifc-lite/create';
+import { removeStairInStore, takeLayerThicknessOutcome } from '@ifc-lite/create';
 import type { createModellingStoreBackendWithoutStoreys, EntityRef, ModellingStoreBackendMethods } from '@ifc-lite/sdk';
 import { createStoreMutationTracker } from './store-adapter-cost.js';
 import { normalizeMutationModelId } from './mutation-view.js';
@@ -31,6 +31,8 @@ import type { StoreApi } from './types.js';
 import { recordModellingEdit } from '@/store/slices/mutation-modelling-records';
 import { mutationDenial } from '@/store/mutation-permission';
 import { remeshAfterCommit } from '@/lib/remesh/remesh-registry';
+import { requestRemesh } from '@/lib/remesh/remesh-service';
+import { reportLayerFollow } from '@/lib/authoring/layer-follow-report';
 import { addCurtainWallIn, addGridIn } from '@/store/slices/mutation-curtain-grid';
 import { addGridColumnIn } from '@/store/slices/mutation-grid-column';
 import { addStairIn, addRailingIn } from '@/store/slices/mutation-stair-railing';
@@ -64,6 +66,24 @@ export function withModellingMutationTracking(
       if ('error' in outcome) throw new Error(`bim.store.${op}: ${outcome.error}`);
       return { modelId: normalized, expressId: outcome.expressId };
     };
+  /**
+   * A typing or material assignment can re-size what it types through the
+   * backend (a layered type drives its occurrences' thickness), re-trimming
+   * joined walls and refitting generated rooms. The backend writes that on this
+   * model's editor; take it here so those elements re-mesh with the call and any
+   * occurrence that could not follow is named, as every viewer path does (#9296).
+   */
+  const layered = <A extends [string, number, number[]]>(fn: (...args: A) => EntityRef) =>
+    compound((...args: A): EntityRef => {
+      const ref = fn(...args);
+      const target = resolve(ref.modelId);
+      if (target) {
+        const outcome = takeLayerThicknessOutcome(target.editor);
+        if (outcome.remesh.length > 0) void requestRemesh(store.getState, ref.modelId, outcome.remesh, 'shape');
+        reportLayerFollow(store.getState(), ref.modelId, outcome);
+      }
+      return ref;
+    });
   const addPlainMaterial = create('IFCMATERIAL', methods.addMaterial);
   const addStyledMaterial = compound(methods.addMaterial);
   return {
@@ -186,7 +206,7 @@ export function withModellingMutationTracking(
     // A layer set is several records; the assignments rewrite or remove
     // existing IfcRel* rows the objects move out of.
     addMaterialLayerSet: compound(methods.addMaterialLayerSet),
-    assignType: compound(methods.assignType),
-    assignMaterial: compound(methods.assignMaterial),
+    assignType: layered(methods.assignType),
+    assignMaterial: layered(methods.assignMaterial),
   };
 }

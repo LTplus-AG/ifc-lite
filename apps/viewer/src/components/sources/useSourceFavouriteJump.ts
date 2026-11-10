@@ -92,13 +92,9 @@ export function useSourceFavouriteJump({
     // Descend into the favourited folder when it is deeper than the area root.
     if (pending.containerId !== pending.fileAreaId && selectedContainer?.id !== pending.containerId) {
       const match = sortedFolders.find((folder) => folder.id === pending.containerId);
-      // Both flags and the paging flag, for the same reasons the file branch
-      // below documents. On a `direct-children` provider there is a render
-      // where `loadingFiles` is true and `loadingFolders` is false, and the
-      // folder listing is paged exactly like the file listing, so a favourited
-      // folder further down is absent for a reason that has nothing to do with
-      // it being gone. Falling through here does not merely mis-report: it
-      // reaches the synthesised container below and fabricates a `parentId`.
+      // Wait for the initial catalog, the selected container and outstanding
+      // folder pages before treating an id as missing. An incomplete listing
+      // cannot supply a trustworthy parent for a synthesized container.
       if (!match && (loadingFolders || loadingFiles || foldersHaveMore)) return;
       // Renamed upstream: the id still opens it and only the label went stale,
       // so refresh the label rather than leave the favourites list lying.
@@ -123,15 +119,9 @@ export function useSourceFavouriteJump({
 
     const file = allFiles.find((candidate) => candidate.id === pending.fileId);
     if (!file) {
-      // Both flags, not just `loadingFiles`. On a `direct-children` provider
-      // (Dropbox, msgraph) `openContainer` fetches the child folders FIRST and
-      // only sets `loadingFiles` once `fetchContainers` resolves, so there is a
-      // render where `loadingFolders` is true, `loadingFiles` is false and the
-      // file is simply not listed yet. Guarding on `loadingFiles` alone falls
-      // through there and reports a file that is still in flight as missing.
-      // Unreachable on Dalux (flat-subtree + recursive makes `openContainer` a
-      // no-op and `syncFileArea` sets both flags together), which is why the
-      // direct-children fixture exists in `SourceBrowserFavouriteJump.test.tsx`.
+      // The caller combines initial-area flags with selected-container loads.
+      // This also covers the children-before-files phase of a folder request:
+      // absence is meaningful only once that whole request has settled.
       if (loadingFiles || loadingFolders) return;
       // "Not in the listing" only means "gone" once the listing is the WHOLE
       // listing. Without `eagerFileSweep` (off by default — Dalux is the only

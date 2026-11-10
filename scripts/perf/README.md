@@ -38,27 +38,6 @@ not only the byte total, and measure boot with each build in both A/B positions:
 shared host, position alone moved the result by about 15 ms. A group that claimed every
 QuickJS module also failed, because the one eager module in it made the whole group eager.
 
-## Georeference minimap waits for scene settlement (#9623)
-
-**Untimed diagnostic, pending scoreboard confirmation.** The minimap already
-imports MapLibre dynamically. Its WebGL context and painter setup nevertheless
-ran during scene drain on real cold and metadata-cache loads. Waiting for the UI
-loading flag, or merely observing visibility, did not remove that work: the flag
-clears before geometry finalisation, and the default panel is already visible.
-
-The gate now waits for the existing scene queue, streaming fragments and async
-finalisation, together with the store's streaming and pending-shard state.
-Readiness latches once eligible so subsequent model loads cannot reset the map's
-viewport. A renderer-free metadata view retains its settled-store fallback.
-Real Holter cold and warm diagnostics on hardware, repeated on both sources,
-place context construction after interactive while still showing a usable map.
-No load-latency or eager-byte saving is claimed.
-
-Lesson: a loading flag is not scene readiness. Check the renderer's actual
-protocol, including finalisation after its fragment collection has been emptied.
-Keep negative visibility/UI-flag results so future changes do not reintroduce
-a gate that only appears to leave the critical window.
-
 ## Presentation-layer membership follows the selected shape (#9273)
 
 **Selection query verdict: remove the model-wide ownership scan.** The hierarchy's
@@ -3230,6 +3209,21 @@ as well as JavaScript errors, and stop memory sampling on every exit path.
 Orientation reuses deterministic edge adjacency, triangle filters compact their existing index buffer, and welding/content hashing avoid duplicate map probes. Geometry policy, tolerances and traversal/output order remain unchanged. Own-layer native subset comparisons did not establish a meaningful full-load improvement; sampled leaf CPU and the cumulative result cannot establish a layer-specific gain. Preserve exact output and diagnostic oracles, including invalid/degenerate triangles and reused-buffer capacity. No isolated browser gain is established here; invalid Firefox cohorts and unrun follow-ups remain excluded. Owned-weld, sliver-incidence and alternate meshing experiments are not included.
 
 ### Dead ends (do NOT re-spike without a new mechanism)
+- **Forced inlining of entity-index dispatch (native instruction hillclimb,
+  2026-11-10):** forcing `EntityIndexStore::lookup` inline did not reduce pipeline
+  instructions on any of four tuning fixtures and exceeded the campaign's
+  regression ceiling on the structural fixture. Reverted. A large attributed
+  self-instruction share does not imply removable call overhead; let the compiler
+  choose unless a different mechanism is demonstrated. This was a cold,
+  single-thread Callgrind screen, not a wall-time or browser result.
+- **Early-exit columnar binary search (native instruction hillclimb,
+  2026-11-10):** replacing the standard library's fixed-iteration search with an
+  exact-match early return increased pipeline instructions on the structural and
+  architectural tuning fixtures. Reverted independently of the inlining trial.
+  Keep the standard search; fewer iterations are not necessarily fewer executed
+  instructions. Both trials failed the tuning gate, so the holdout and subsequent
+  identity/test/clippy/WASM acceptance gates were deliberately not run. No runtime
+  change survived and no browser speedup is claimed.
 - **Frame-invariant routing for plan-rotated voided walls** (#5739, PR #6035):
   the two routing fixes were NOT SHIPPED; both were measured on ISSUE_098 against the merge-base. With
   per-element local frames (the viewer default), the analytic prism cut's route

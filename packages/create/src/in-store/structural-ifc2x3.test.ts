@@ -119,19 +119,25 @@ describe('IFC2X3 structural builder STEP round trips', () => {
     const { connectionId } = addStructuralPointConnectionToStore(editor, anchor, { Position: [4, 0, 0], BoundaryCondition: { TranslationalStiffnessX: true, RotationalStiffnessZ: false }, GlobalId: '0conn00000000000000000' });
     const { activityId } = addStructuralPointActionToStore(editor, anchor, { ForceZ: -12, DestabilizingLoad: true, GlobalId: '0action000000000000000' });
     const { activityId: linearId } = addStructuralLinearActionToStore(editor, anchor, { LinearForceZ: -5, GlobalId: '0linear000000000000000' });
+    // Linked to a member but NOT assigned to the load group, so a reader that ignores group membership shows up.
+    const strayGuid = '0stray0000000000000000';
+    const { activityId: strayId } = addStructuralPointActionToStore(editor, anchor, { ForceX: 7, GlobalId: strayGuid });
     const { loadGroupId } = addStructuralLoadGroupToStore(editor, anchor, { PredefinedType: 'LOAD_CASE', ...(schema === 'IFC2X3' ? {} : { SelfWeightCoefficients: [0, 0, -1] as [number, number, number] }), ActionType: 'PERMANENT_G', ActionSource: 'DEAD_LOAD_G', GlobalId: '0group0000000000000000' });
     const { analysisModelId } = addStructuralAnalysisModelToStore(editor, anchor, { LoadGroupIds: [loadGroupId], GlobalId: '0model0000000000000000' });
     connectStructuralMemberToConnectionInStore(editor, anchor.ownerHistoryId, memberId, connectionId, anchor.guidRandom);
     connectStructuralActivityToItemInStore(editor, anchor.ownerHistoryId, connectionId, activityId, anchor.guidRandom);
     connectStructuralActivityToItemInStore(editor, anchor.ownerHistoryId, memberId, linearId, anchor.guidRandom);
+    connectStructuralActivityToItemInStore(editor, anchor.ownerHistoryId, memberId, strayId, anchor.guidRandom);
     assignToStructuralGroupInStore(editor, anchor.ownerHistoryId, analysisModelId, [memberId, connectionId], anchor.guidRandom);
     assignToStructuralGroupInStore(editor, anchor.ownerHistoryId, loadGroupId, [activityId, linearId], anchor.guidRandom);
     const { data, text } = await roundTrip();
     expect(data.members[0].connectionGlobalIds).toEqual([data.connections[0].globalId]);
     expect(data.connections[0].memberGlobalIds).toEqual([data.members[0].globalId]);
-    expect(data.activities.map(a => a.appliesToGlobalId)).toEqual([data.connections[0].globalId, data.members[0].globalId]);
+    expect(data.activities.map(a => a.appliesToGlobalId)).toEqual([data.connections[0].globalId, data.members[0].globalId, data.members[0].globalId]);
     expect(data.analysisModels[0].itemGlobalIds).toEqual([data.members[0].globalId, data.connections[0].globalId]);
-    expect(data.loadGroups[0].activityGlobalIds).toEqual(data.activities.map(a => a.globalId));
+    expect(data.activities.map(a => a.globalId)).toContain(strayGuid);
+    expect(data.loadGroups[0].activityGlobalIds).toEqual(['0action000000000000000', '0linear000000000000000']);
+    expect(data.loadGroups[0].activityGlobalIds).not.toContain(strayGuid);
     expect(data.analysisModels[0].loadGroupGlobalIds).toEqual([data.loadGroups[0].globalId]);
     // Set STRUCTURAL_EXPORT_DIR to keep the files for an IfcOpenShell validation run.
     if (process.env.STRUCTURAL_EXPORT_DIR) writeFileSync(`${process.env.STRUCTURAL_EXPORT_DIR}/${schema}.ifc`, text);

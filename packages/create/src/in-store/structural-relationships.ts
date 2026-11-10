@@ -85,6 +85,9 @@ export function connectStructuralActivityToItemInStore(
  * Assign objects into an `IfcGroup` (an analysis model gathering its
  * members/connections, or a load group gathering its activities).
  * `objectIds` must be non-empty — `RelatedObjects` is `SET [1:?]`.
+ * Each call writes a new relationship. IFC2X3 allows exactly one per group
+ * (`IfcGroup.IsGroupedBy` is not a set there), so pass all of a group's
+ * objects in one call.
  */
 export function assignToStructuralGroupInStore(
   editor: StoreEditor,

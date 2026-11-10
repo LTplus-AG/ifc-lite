@@ -190,3 +190,16 @@ test('a failure while preparing reopen 2 belongs to reopen 2, not to the clean f
   assert.equal(failedOpenIndex('warm2-shell'), 2);
   assert.equal(failedOpenIndex('warm2'), 2);
 });
+
+test('the snapshot wait follows the viewer rule: on unless perf.sceneSnapshot is set to anything but 1/true (review #9607)', async () => {
+  const { sceneSnapshotsEnabled, expectSceneSnapshot } = await import('./viewer-scene-snapshot.mjs');
+  // Default (absent) is on, as sceneSnapshotLoad.ts snapshotsEnabled() decides; scenoptic-bench used to wait only for =1.
+  assert.equal(sceneSnapshotsEnabled('?perfTrace=1'), true);
+  assert.equal(sceneSnapshotsEnabled('perfTrace=1&perf.sceneSnapshot=1'), true);
+  assert.equal(sceneSnapshotsEnabled('?perf.sceneSnapshot=true'), true);
+  // Every other value turns it off in the product, not only =0.
+  for (const off of ['0', 'false', 'off', '2']) assert.equal(sceneSnapshotsEnabled(`?perf.sceneSnapshot=${off}`), false, off);
+  assert.equal(expectSceneSnapshot({ query: '?perfTrace=1', files: 1, cached: true }), true);
+  assert.equal(expectSceneSnapshot({ query: '?perfTrace=1', files: 1, cached: false }), false, 'uncached tiers never write one');
+  assert.equal(expectSceneSnapshot({ query: '?perfTrace=1', files: 2, cached: true }), false, 'federated hits keep their path');
+});

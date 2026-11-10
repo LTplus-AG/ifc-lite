@@ -29,6 +29,7 @@ import { chromePids, memoryOf, vramOf } from './scenoptic-bench-sampling.mjs';
 import { COUNT_FRAMES, openAndWaitInteractive, openViewerPage, readOutputFingerprint, replacePage, waitCacheWrites, waitSceneSnapshots } from './viewer-load-probe.mjs';
 import { browserShares, browserStages, expectedCacheTier, failedOpenIndex, gpuUnhealthy, stageShares } from './load-scoreboard-stats.mjs';
 import { BOOT_OBSERVERS, waitShellQuiet, waitUiQuiet } from './viewer-load-boot.mjs';
+import { expectSceneSnapshot } from './viewer-scene-snapshot.mjs';
 import { readGpuHealth } from '../../tests/benchmark/gpu-health.ts';
 
 export const CHROME_ARGS = ['--enable-gpu', '--enable-unsafe-webgpu', '--enable-features=Vulkan,VulkanFromANGLE,DefaultANGLEVulkan',
@@ -172,7 +173,9 @@ export async function browserSample({ chromium, executablePath, baseUrl, setRoot
       for (let i = 1; i <= warmOpens; i++) {
         phase = `warm${i}-prep`;
         // Uncached tiers never write a snapshot: waiting for one cost 60 s per sample (H6).
-        if (i > 1 && !uncached && !/perf\.sceneSnapshot=0\b/.test(side.query ?? '')) {
+        // The viewer's own rule decides whether a snapshot will be written (viewer-scene-snapshot.mjs).
+        meta.snapshotExpected = expectSceneSnapshot({ query, files: 1, cached: !uncached });
+        if (i > 1 && meta.snapshotExpected) {
           meta.snapshotWritten = await waitSceneSnapshots(page).then(() => true, () => false);
         }
         await replacePage(context, page);

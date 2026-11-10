@@ -37,6 +37,8 @@ import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { TICK, chromePids, cpuTicks, memoryOf, settleCpu, vramOf, withGpuClock } from './scenoptic-bench-sampling.mjs';
 import { COUNT_FRAMES, openAndWaitInteractive, openViewerPage, replacePage, startViewerServer, waitCacheWrites, waitSceneSnapshots } from './viewer-load-probe.mjs';
+import { expectSceneSnapshot } from './viewer-scene-snapshot.mjs';
+import { expectedCacheTier } from './load-scoreboard-stats.mjs';
 
 const ROOT = resolve(fileURLToPath(new URL('../..', import.meta.url)));
 // SCENOPTIC_BENCH_DEPS: a checkout with node_modules, when this one has none installed.
@@ -231,11 +233,13 @@ async function runSample(build, set, round) {
     if (!opt['no-warm']) {
       if (!(await waitCacheWrites(page))) log('  cache write still pending after timeout');
       await replacePage(context, page);
-      // A flagged warm open may store what the next one reads (`--warm-opens 2`); the last is the sample.
+      // A warm open may store a scene snapshot the next one reads (`--warm-opens 2`); the last is the sample.
       for (let open = 1; open <= WARM_OPENS; open++) {
         if (open > 1) {
-          // Only a primary single-file hit writes one (federated hits keep their path).
-          if (/perf\.sceneSnapshot=1\b/.test(build.flags) && set.files.length === 1) await waitSceneSnapshots(page);
+          // The viewer's own default rule (on unless perf.sceneSnapshot says otherwise); only a cached single-file hit writes one.
+          if (expectSceneSnapshot({ query: `${QUERY}${build.flags}`, files: set.files.length, cached: !expectedCacheTier(set.bytes).startsWith('none') })) {
+            await waitSceneSnapshots(page).catch(() => log('  scene snapshot not written within 60 s'));
+          }
           await replacePage(context, page);
         }
         page = await openPage(context);

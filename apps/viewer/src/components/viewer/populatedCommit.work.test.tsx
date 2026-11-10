@@ -42,6 +42,14 @@ Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true
 const FIXTURE = new URL('../../../../../tests/models/ara3d/AC20-FZK-Haus.ifc', import.meta.url);
 const fixtureSkip = skip || (existsSync(FIXTURE) ? false : 'Run pnpm fixtures for ara3d/AC20-FZK-Haus.ifc');
 
+// The idle structure build is held and released by the test, not raced with a sleep.
+type IdleGlobal = typeof globalThis & {
+  requestIdleCallback?: (callback: () => void) => number;
+  cancelIdleCallback?: (handle: number) => void;
+};
+const idleGlobal = globalThis as IdleGlobal;
+let heldIdle: (() => void) | null = null;
+
 function ActiveModelMetadata() {
   const model = useViewerStore((s) => (s.activeModelId ? s.models.get(s.activeModelId) : undefined));
   return model ? <ModelMetadataPanel model={model} /> : null;
@@ -80,6 +88,9 @@ it('NEW-4: the populated-store commit does no per-element hierarchy work and one
     </ExtensionHostContext.Provider>,
   ));
 
+  const realIdle = { request: idleGlobal.requestIdleCallback, cancel: idleGlobal.cancelIdleCallback };
+  idleGlobal.requestIdleCallback = (callback) => { heldIdle = callback; return 1; };
+  idleGlobal.cancelIdleCallback = () => { heldIdle = null; };
   let relatedCalls = 0, typeIndexScans = 0;
   const relationships = store.relationships;
   const getRelated = relationships.getRelated.bind(relationships);
@@ -100,12 +111,15 @@ it('NEW-4: the populated-store commit does no per-element hierarchy work and one
     // Deferred, not dropped: the complete structure (search, reveal, cheap
     // expansion) is built once the main thread is idle, and what the user
     // sees does not change when it lands.
-    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 50)); });
+    assert.ok(heldIdle, 'the structure build waits for idle');
+    act(() => { const task = heldIdle; heldIdle = null; task?.(); });
     assert.ok(relatedCalls - commitRelated >= elementRows, 'the idle build visits every contained element');
     assert.deepEqual(panelText(container), visibleAtCommit, 'deferred structure changes no visible row');
   } finally {
     relationships.getRelated = getRelated;
     byType.keys = keys;
+    idleGlobal.requestIdleCallback = realIdle.request;
+    idleGlobal.cancelIdleCallback = realIdle.cancel;
     act(() => root.unmount());
     container.remove();
   }

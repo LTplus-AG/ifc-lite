@@ -274,6 +274,10 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
 
   const toggleExpand = useCallback((nodeId: string) => {
     if (searchQuery.trim()) return;
+    // The first expansion builds the complete structure once, as search and
+    // reveal do, so this and every later toggle only project it (#5886);
+    // rebuilding the visible rows instead rescans membership per toggle.
+    structure.get();
     setExpandedNodes(prev => {
       const next = new Set(prev);
       if (next.has(nodeId)) {
@@ -283,7 +287,7 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
       }
       return next;
     });
-  }, [searchQuery]);
+  }, [searchQuery, structure]);
 
   // Get all elements for a node (handles type groups, ifc-type, unified storeys, single storeys, model contributions, and elements)
   const getNodeElements = useCallback((node: TreeNode): number[] => {

@@ -695,3 +695,69 @@ canonical evaluator, rather than duplicating evaluation or sampling renderer
 Float32 lines. Source: <https://github.com/geobim-app/geobim> (MPL-2.0).
 
 Both geometry functions accept `layer_slicing=True` to slice material-layer walls; the default is `False`.
+
+## Rhino .3dm export
+
+Install the optional MIT-licensed writer dependency (the base wheel has no
+Python runtime dependencies):
+
+```bash
+pip install 'ifclite-geom[3dm]'
+```
+
+```python
+from pathlib import Path
+import ifclite_geom
+
+scene = ifclite_geom.rhino_scene(Path("model.ifc").read_bytes())
+ifclite_geom.write_3dm(scene, "model.3dm", version=8)
+```
+
+`rhino_scene(ifc_bytes, *, units=None, coordinates=None,
+layer_scheme=None, instancing=None, properties=None,
+include_spaces=None, normals=None, layer_slicing=None)` returns
+`{"manifest": str, "blob": bytes}` directly from the shared Rust scene encoder.
+It runs with the GIL released on the large-stack geometry pool. Unknown option
+strings and models with no render geometry raise `ValueError`. Omitted or `None`
+options use the shared Rust defaults: source units, local coordinates, spatial-class
+layers, instancing enabled, all properties, spaces and normals included, and
+layer slicing disabled.
+
+- `units`: `source`, `meters`, `millimeters`, `centimeters`, `feet`, `inches`.
+- `coordinates`: `local` (shift recorded in document strings/earth anchor),
+  `world` (survey coordinates).
+- `layer_scheme`: `spatial-class`, `class`, `presentation`.
+- `properties`: `all`, `attributes`, `none` (identity keys always retained).
+- `include_spaces`: include spaces on a hidden layer; `normals`: include vertex
+  normals; `layer_slicing`: material-layer wall slicing.
+
+Inspect `json.loads(scene["manifest"])["warnings"]` before writing. The packaged
+pure-Python `write_3dm(scene, path, *, version=8)` supports archive versions 7
+and 8 and uses `rhino3dm==8.35.0`. It preserves layer hierarchy, materials,
+groups, blocks, document settings/user text and deterministic scene object IDs.
+`IFC::GlobalId` user text is the portable identity; Python also sets
+`ObjectAttributes.Id`. openNURBS silently replaces duplicate IDs, so do not
+combine independently encoded scenes without resolving collisions.
+
+The writer uses `Vertices.UseDoublePrecisionVertices = True` and
+`Vertices.AddPoint3d(x, y, z)`: `Vertices.Add(x, y, z)` truncates large doubles.
+Read double vertices with `Vertices.Point3dAt(i)`; indexing the vertex list
+returns `Point3f` and loses precision even when the file preserves it. Scene
+manifest/blob are deterministic; archive bytes contain timestamps and generated
+IDs, so tests compare read-back behavior instead of pinning `.3dm` bytes.
+
+Maturin's mixed layout packages `python/ifclite_geom`, with the abi3 extension
+at `ifclite_geom._native` and existing functions re-exported at `ifclite_geom`.
+The wheel workflow installs the `3dm` extra before running the tests. For local checks:
+
+```bash
+python -m venv /tmp/ifclite-python-venv
+source /tmp/ifclite-python-venv/bin/activate
+pip install maturin pytest rhino3dm==8.35.0
+maturin develop --manifest-path rust/python/Cargo.toml
+python -m pytest rust/python/tests -q
+cargo test --manifest-path rust/python/Cargo.toml
+cargo clippy --manifest-path rust/python/Cargo.toml --all-targets -- -D warnings
+```
+
+Round-trip tests skip when the optional `rhino3dm` dependency is absent.

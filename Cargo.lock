@@ -1721,6 +1721,7 @@ dependencies = [
  "ifc-lite-core",
  "ifc-lite-geometry",
  "ifc-lite-testkit",
+ "libc",
  "libm",
  "nalgebra",
  "png",

@@ -42,7 +42,7 @@ pub(crate) use diagnostics::ClassificationKind;
 pub use diagnostics::{
     aggregate_diagnostics, count_attributed_products, format_unsupported_breakdown, ClassificationStats,
     ClassificationSummary, GeometryDiagnostics, HostOpeningDiagnostic, OpeningDiagnostic, OpeningKindDiag, ReasonCount,
-    RectFastSummary, WorstHost, GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION, UNATTRIBUTED_PRODUCT_ID,
+    HostBbox, RectFastSummary, WorstHost, GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION, UNATTRIBUTED_PRODUCT_ID,
 };
 pub use item_dedup_cache::{ItemDedupCache, ItemDedupCacheState};
 pub use mapped_cache_ownership::AccountedMappedItemCache;

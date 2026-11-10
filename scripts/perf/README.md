@@ -8,6 +8,33 @@ Citations to `evidence/`, `tests/evidence/` and `docs/architecture/evidence/` pa
 at commit [`f98785c722`](https://github.com/LTplus-AG/ifc-lite/tree/f98785c722); the retained
 bundles left the tree in #9054.
 
+## Native result cache, phase 1 (`result_cache`, warm-load hillclimb)
+
+**Shipped (opt-in, off by default). This is a lever for a repeat open, not for a first
+open.** `ifc_lite_processing::result_cache::ResultCache` stores the complete
+`ProcessingResult` of a full pass and replays it when the same source bytes, request and
+engine come back. A hit costs a SHA-256 over every source byte, plus reading and
+SHA-256-checking the entry, plus decoding it. That is O(source + entry), not O(1). A miss
+or the off mode runs the unchanged pipeline, and off hashes nothing. Design, key, format
+and trust model: `docs/architecture/native-result-cache.md`.
+
+Lessons:
+
+- **The existing fingerprints were not enough to prove replay.** The perf fingerprint
+  excludes text, materials, UVs, textures and instances. Serde skips `instance`,
+  `local_bounds`, `local_to_world` and `presentation`. A JSON round trip loses all of
+  these. `result_fingerprint` covers every field, including texture sharing, and is
+  written separately from the codec. A test mutates each field and requires the digest
+  to move.
+- **Key on the build, not on a revision constant.** Geometry changes land daily, and no
+  hand-bumped constant keeps up. `build.rs` digests the core, geometry and processing
+  sources, `Cargo.lock`, rustc, the target, the profile and the flags. A dozen
+  `IFC_LITE_*` environment knobs also change geometry at runtime, so they key too.
+- **Timing a warm hit.** Run `perf_probe <f> --cold --result-cache DIR --expect-cache
+  hit --json` in a fresh process. The JSON object `resultCache` holds this run's work.
+  The phase table on a hit is the producer's (`statsAreProducers`). Never cite it as
+  current work.
+
 ## Storey planners and the QuickJS runtime leave the boot path (#9200)
 
 **Shipped: an eager-bytes cut, no boot-time change.** Three changes, each one

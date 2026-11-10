@@ -37,6 +37,13 @@
 //! `--fingerprint` checks ordered mesh payloads after timing (excludes text,
 //! material definitions, UVs, textures and instancing); see `perf_probe/fingerprint.rs`.
 //!
+//! `--result-cache DIR [--result-cache-mode rw|ro] [--expect-cache hit|miss]`
+//! (requires `--cold`) runs the pass through the native result cache and
+//! reports this process's hash/read/validate/decode (hit) or live/encode/write
+//! (miss) work; run it twice in fresh processes to time a warm hit.
+//! `--result-fingerprint` prints the complete-result fingerprint (every field,
+//! timings included) so two processes' results can be compared exactly.
+//!
 //! `--single-thread` pins the rayon global pool to one worker, so the run is
 //! deterministic enough to count instructions. Built with
 //! `--features phase-markers` it is the per-phase instruction-count harness
@@ -48,6 +55,9 @@ mod fingerprint;
 
 #[path = "perf_probe/measurement.rs"]
 mod measurement;
+
+#[path = "perf_probe/result_cache.rs"]
+mod result_cache;
 
 use ifc_lite_geometry::csg::take_csg_census;
 use ifc_lite_processing::ProcessingStats;
@@ -66,6 +76,9 @@ struct Probe {
     all_wall_ms: Vec<f64>,
     fingerprints: Option<Vec<String>>,
     census: Option<CensusSummary>,
+    cache_report: Option<ifc_lite_processing::result_cache::CacheReport>,
+    /// Complete-result fingerprint of the last run (`--result-fingerprint`).
+    result_fingerprint: Option<String>,
 }
 
 /// Aggregate of the always-on CSG op census for one run.
@@ -135,6 +148,12 @@ fn print_human(p: &Probe) {
     );
     if let Some(hashes) = &p.fingerprints {
         eprintln!("  ordered mesh FNV-1a64 (per run): {hashes:?}");
+    }
+    if let Some(fp) = &p.result_fingerprint {
+        eprintln!("  complete result fingerprint (sha256, timings included): {fp}");
+    }
+    if let Some(report) = &p.cache_report {
+        result_cache::print_human(report);
     }
     eprintln!("  phase                    ms        % total");
     eprintln!("  full pipeline wall: {:?} ms (includes final metadata)", p.all_wall_ms);
@@ -223,6 +242,9 @@ fn print_json(probes: &[Probe]) {
             .unwrap_or_default();
         let hashes = p.fingerprints.as_ref()
             .map(|h| format!(r#","meshFingerprintsFnv1a64":{h:?}"#)).unwrap_or_default();
+        let cache = p.cache_report.as_ref().map(result_cache::json).unwrap_or_default();
+        let result_fp = p.result_fingerprint.as_ref()
+            .map(|fp| format!(r#","resultFingerprint":"{fp}""#)).unwrap_or_default();
         let cold = p.cold_timing.as_ref().map(|t| format!(
             r#","fileReadMs":{:.3},"fullLoadWallMs":{:.3},"cold":true"#,
             t.file_read_ms, t.full_load_wall_ms,
@@ -234,7 +256,7 @@ fn print_json(probes: &[Probe]) {
                 r#""indexBuildMs":{},"parseMs":{},"entityScanMs":{},"lookupMs":{},"preprocessMs":{},"#,
                 r#""geometryMs":{},"facetedBrepMs":{},"totalMs":{},"allTotalsMs":{:?},"#,
                 r#""allWallMs":{:?},"#,
-                r#""pointCacheHits":{},"pointCacheMisses":{},"csgFailures":{},"degenerateDropped":{}{}{}{}}}"#,
+                r#""pointCacheHits":{},"pointCacheMisses":{},"csgFailures":{},"degenerateDropped":{}{}{}{}{}{}}}"#,
             ),
             serde_json::to_string(&p.path).expect("serialize fixture path"),
             p.file_mb,
@@ -259,6 +281,8 @@ fn print_json(probes: &[Probe]) {
             census,
             hashes,
             cold,
+            cache,
+            result_fp,
         ));
         out.push_str(if i + 1 < probes.len() { ",\n" } else { "\n" });
     }
@@ -288,6 +312,10 @@ fn main() {
     let mut suite = false;
     let mut cold = false;
     let mut single_thread = false;
+    let mut result_fingerprint = false;
+    let mut cache_dir: Option<String> = None;
+    let mut cache_mode = ifc_lite_processing::result_cache::CacheMode::ReadWrite;
+    let mut expect_cache: Option<String> = None;
     let mut fixtures: Vec<String> = Vec::new();
 
     let mut args = std::env::args().skip(1);
@@ -309,9 +337,13 @@ fn main() {
             "--suite" => suite = true,
             "--cold" => cold = true,
             "--single-thread" => single_thread = true,
+            "--result-fingerprint" => result_fingerprint = true,
+            "--result-cache" => cache_dir = args.next(),
+            "--result-cache-mode" => cache_mode = result_cache::parse_mode(args.next()),
+            "--expect-cache" => expect_cache = args.next(),
             other if other.starts_with("--") => {
                 eprintln!("unknown flag: {other}");
-                eprintln!("usage: perf_probe [<file.ifc>...] [--suite] [--iters N] [--cold] [--single-thread] [--census] [--fingerprint] [--json]");
+                eprintln!("usage: perf_probe [<file.ifc>...] [--suite] [--iters N] [--cold] [--single-thread] [--census] [--fingerprint] [--result-fingerprint] [--result-cache DIR [--result-cache-mode rw|ro|off] [--expect-cache hit|miss]] [--json]");
                 std::process::exit(2);
             }
             other => fixtures.push(other.to_string()),
@@ -323,7 +355,7 @@ fn main() {
         }
     }
     if fixtures.is_empty() {
-        eprintln!("usage: perf_probe [<file.ifc>...] [--suite] [--iters N] [--cold] [--single-thread] [--census] [--fingerprint] [--json]");
+        eprintln!("usage: perf_probe [<file.ifc>...] [--suite] [--iters N] [--cold] [--single-thread] [--census] [--fingerprint] [--result-fingerprint] [--result-cache DIR [--result-cache-mode rw|ro|off] [--expect-cache hit|miss]] [--json]");
         eprintln!("  no fixtures given; try --suite (uses catalogued models on disk)");
         std::process::exit(2);
     }
@@ -332,6 +364,12 @@ fn main() {
         eprintln!("{message}");
         std::process::exit(2);
     }
+
+    if cache_dir.is_some() && !cold {
+        eprintln!("--result-cache requires --cold (one fixture, one iteration, a fresh process per measurement)");
+        std::process::exit(2);
+    }
+    let cache = cache_dir.map(|dir| result_cache::CacheArgs { dir, mode: cache_mode, expect: expect_cache });
 
     if single_thread {
         if let Err(error) = rayon::ThreadPoolBuilder::new().num_threads(1).use_current_thread().build_global() {
@@ -350,7 +388,7 @@ fn main() {
 
     let mut probes = Vec::new();
     for f in &fixtures {
-        if let Some(p) = measurement::run(f, iters, census, fingerprint, cold) {
+        if let Some(p) = measurement::run(f, iters, census, fingerprint, result_fingerprint, cold, cache.as_ref()) {
             print_human(&p);
             probes.push(p);
         }

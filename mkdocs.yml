@@ -260,6 +260,7 @@ nav:
     - Element Splitting: architecture/element-splitting.md
     - Spatial Zone Emission: architecture/spatial-zone-emission.md
     - Mesh Determinism: architecture/mesh-determinism.md
+    - Native Result Cache: architecture/native-result-cache.md
     - CSG Threading: architecture/csg-threading-design.md
     - N-ary Union Repair: architecture/nary-union-repair.md
     - WASM Wide Arithmetic: architecture/wasm-wide-arithmetic.md

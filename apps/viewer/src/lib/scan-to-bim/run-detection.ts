@@ -8,17 +8,28 @@
  * the detector off the main thread and put the result in the store for
  * review. One detector for the session: a second click supersedes the first
  * run, Cancel terminates it.
+ *
+ * The job is a store run slot (`lib/runs/run-slot.ts`, the pilot for it): the
+ * slice's `scanDetectionJob` record is the ownership. A newer start, Cancel
+ * (here or in the activity tray) and the slice teardown (the scan or its
+ * target removed, every model cleared, a session reset) each end the lease,
+ * which terminates the worker; the lease then refuses the answer.
  */
 
 import type { ProposalSchema } from '@ifc-lite/geometry/scan-proposals';
 import { useViewerStore, type ViewerState } from '@/store';
 import type { FederatedModel } from '@/store/types';
-import type { ScanDetectionRun } from '@/store/slices/scanDetectionSlice';
+import type { ScanDetectionJob, ScanDetectionOwner, ScanDetectionRun } from '@/store/slices/scanDetectionSlice';
+import type { ScanDetectStage } from './detect-job';
+import type { TranslationKey } from '@/i18n';
+import { createRunSlot } from '@/lib/runs/run-slot';
+import { federationIsCurrent, recordGatheredModel } from '@/lib/federation/federation-identity';
 import { getPointCloudScanSample } from '@/hooks/ingest/pointCloudScanCache';
 import { activeSectionPlane } from '@/store/section-active';
 import { getGlobalRenderer } from '@/hooks/useBCF';
 import { scanToModelMatrix, sectionBoxToScanRegion } from './scan-model-frame';
 import { createScanDetector, type ScanDetector } from './scan-detector';
+import { assertNever } from '@/lib/assert-never';
 
 export interface DetectionDeps {
   detector: () => ScanDetector;
@@ -27,8 +38,27 @@ export interface DetectionDeps {
 }
 
 let sessionDetector: ScanDetector | null = null;
-/** Bumped by every start and every abandon: an answer for an older value is discarded. */
-let generation = 0;
+
+/** Refusals a detection fails with by code rather than a detector message. */
+export const SCAN_DETECTION_REFUSALS: Readonly<Record<string, TranslationKey>> = {
+  noSample: 'scanToBim.error.noSample',
+};
+
+const detectionSlot = createRunSlot<ScanDetectionRun, ScanDetectStage, ScanDetectionOwner, string>(
+  {
+    read: () => useViewerStore.getState().scanDetectionJob,
+    write: (job: ScanDetectionJob) => useViewerStore.getState().setScanDetectionJob(job),
+    subscribe: (listener) => useViewerStore.subscribe(listener),
+  },
+  {
+    begin: ({ sourceModelId }) => ({
+      kind: 'check', title: 'activityTray.job.scanDetection', panel: 'pointclouds',
+      subject: useViewerStore.getState().models.get(sourceModelId)?.name,
+    }),
+    phase: (stage) => stage,
+    detail: (error) => Object.hasOwn(SCAN_DETECTION_REFUSALS, error) ? { detailKey: SCAN_DETECTION_REFUSALS[error] } : { detail: error },
+  },
+);
 
 const productionDeps: DetectionDeps = {
   detector: () => (sessionDetector ??= createScanDetector()),
@@ -63,63 +93,60 @@ export function proposalSchema(target: FederatedModel | null): ProposalSchema {
 /** Run detection on `sourceModelId`'s scan. Resolves once the store holds the outcome. */
 export async function startScanDetection(sourceModelId: string, overrides: Partial<DetectionDeps> = {}): Promise<void> {
   const deps: DetectionDeps = { ...productionDeps, ...overrides };
-  const store = useViewerStore;
-  const state = store.getState();
+  const state = useViewerStore.getState();
   const source = state.models.get(sourceModelId);
-  const handle = source?.pointCloudHandleId;
-  const sample = typeof handle === 'number' ? getPointCloudScanSample(handle) : null;
-  if (typeof handle !== 'number' || !sample || sample.count === 0) {
-    state.failScanDetection('noSample');
-    return;
-  }
   const target = proposalTargetModel(state.models, state.activeModelId);
-  const matrix = deps.cloudMatrix(handle) ?? null;
-  // The section box crops the sample when it is on screen (render frame, like
-  // the cloud); a cut hidden by the visibility toggle does not crop.
-  const box = activeSectionPlane(state)?.box ?? null;
-  const scanToModel = scanToModelMatrix(state, matrix);
-  const region = box ? sectionBoxToScanRegion(box, matrix) : null;
-  const mine = ++generation;
-  state.beginScanDetection();
-  // A run belongs to its scan and its IFC target: if either leaves (removed,
-  // or every model cleared) while the worker runs, terminate it and drop
-  // whatever it returns, as the slice teardown does for a finished run.
-  const targetId = target?.id ?? null;
-  const unsubscribe = store.subscribe((s) => {
-    if (mine !== generation) return;
-    if (s.models.has(sourceModelId) && (targetId === null || s.models.has(targetId))) return;
-    generation++;
-    deps.detector().cancel();
-    if (s.scanDetectionStatus === 'running') s.stopScanDetection();
-  });
-  let outcome: Awaited<ReturnType<ScanDetector['detect']>>;
-  try {
-    outcome = await deps.detector().detect(
+  const owner: ScanDetectionOwner = { sourceModelId, targetModelId: target?.id ?? null };
+  // The models the proposals are made from and framed for. Removing either
+  // already ends the job (slice teardown); a model replaced under the same id
+  // (a re-derived store) is a different world too, so the result is dropped.
+  const identity = new Map<string, unknown>();
+  for (const id of [owner.sourceModelId, owner.targetModelId]) {
+    const model = id === null ? undefined : state.models.get(id);
+    if (id !== null && model) recordGatheredModel(identity, id, model);
+  }
+  const scopeIsCurrent = () => federationIsCurrent(identity, useViewerStore.getState().models);
+  // Everything after the run starts is inside the task: a throw from the
+  // sample, the renderer placement or the worker's construction fails the
+  // run instead of leaving it running.
+  await detectionSlot.run(owner, async (lease) => {
+    const handle = source?.pointCloudHandleId;
+    const sample = typeof handle === 'number' ? getPointCloudScanSample(handle) : null;
+    if (typeof handle !== 'number' || !sample || sample.count === 0) throw new Error('noSample');
+    const matrix = deps.cloudMatrix(handle) ?? null;
+    // The section box crops the sample when it is on screen (render frame, like
+    // the cloud); a cut hidden by the visibility toggle does not crop.
+    const box = activeSectionPlane(state)?.box ?? null;
+    const scanToModel = scanToModelMatrix(state, matrix);
+    const region = box ? sectionBoxToScanRegion(box, matrix) : null;
+    const detector = deps.detector();
+    // Superseded, cancelled or torn down: stop the worker. A newer run's begin
+    // fires this before its own detect, so it never stops the newer job.
+    lease.signal.addEventListener('abort', () => detector.cancel(), { once: true });
+    const outcome = await detector.detect(
       { positions: sample.positions, count: sample.count, region, scanToModel, schema: proposalSchema(target) },
-      (stage) => { if (mine === generation) store.getState().setScanDetectionStage(stage); },
+      (stage) => { lease.progress(stage); },
     );
-  } finally {
-    unsubscribe();
-  }
-  // Abandoned (its scan left) or superseded by a newer run: not ours to store.
-  if (mine !== generation) return;
-  const now = store.getState();
-  if (outcome.status === 'done') {
-    now.finishScanDetection({
-      sourceModelId,
-      targetModelId: target?.id ?? null,
-      cropped: region !== null,
-      pointCount: sample.count,
-      cloudMatrix: matrix ? Array.from(matrix) : null,
-      scanToModel,
-      result: outcome.result,
-    });
-  } else if (outcome.status === 'failed') {
-    now.failScanDetection(outcome.message);
-  } else if (outcome.status === 'cancelled') {
-    now.stopScanDetection();
-  }
-  // `superseded`: a newer run owns the status.
+    switch (outcome.status) {
+      case 'done':
+        return {
+          sourceModelId,
+          targetModelId: owner.targetModelId,
+          cropped: region !== null,
+          pointCount: sample.count,
+          cloudMatrix: matrix ? Array.from(matrix) : null,
+          scanToModel,
+          result: outcome.result,
+        };
+      case 'failed': throw new Error(outcome.message);
+      // `cancelled`: the worker was stopped (by this lease ending, or on its
+      // own); `superseded`: a newer detect owns the worker, and with it the
+      // slot. Either is a cancel, and a no-op once the lease already ended.
+      case 'cancelled': case 'superseded':
+        throw new DOMException('Scan detection stopped', 'AbortError');
+      default: return assertNever(outcome, 'scan detection outcome');
+    }
+  }, { scopeIsCurrent, toError: (thrown) => (thrown instanceof Error ? thrown.message : String(thrown)) });
 }
 
 /**
@@ -153,6 +180,7 @@ export function scanFrameMoved(run: ScanDetectionRun, overrides: Partial<Detecti
   return now.some((v, i) => !(Math.abs(v - run.scanToModel[i]) <= (TRANSLATION_ENTRIES.has(i) ? FRAME_TRANSLATION_TOLERANCE_METRES : FRAME_LINEAR_TOLERANCE)));
 }
 
-export function cancelScanDetection(overrides: Partial<DetectionDeps> = {}): void {
-  ({ ...productionDeps, ...overrides }).detector().cancel();
+/** Cancel the detection in flight; its lease terminates the worker. */
+export function cancelScanDetection(): void {
+  detectionSlot.cancel();
 }

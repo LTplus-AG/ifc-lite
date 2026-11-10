@@ -191,7 +191,9 @@ impl<'a> GeometryProgram<'a> {
         let value = match &mut self.control {
             Control::Item(item, control) => ReplyValue::Item(control.execute(item, router, decoder)?),
             Control::Cache(item, control) => ReplyValue::Cache(control.execute(item, router, decoder)?),
-            Control::Mapping(control) => ReplyValue::Mapping(control.execute(router, decoder)?),
+            Control::Mapping(control) => ReplyValue::Mapping(match control.execute(router, decoder) {
+                Ok(reply) => reply, Err(error) => error.recover(None)?,
+            }),
             Control::Product(control) => ReplyValue::Product(control.execute(router, decoder)?),
             Control::Voids(control) => ReplyValue::Voids(control.execute(router, decoder)?),
             Control::Layers(control) => ReplyValue::Layers(control.execute(router, decoder)?),

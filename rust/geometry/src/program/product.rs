@@ -30,6 +30,8 @@ use super::item::{ItemControl, ItemStep};
 use super::retained::{RetainedSelection, LogicalRetainedValue};
 mod merged;
 mod run;
+#[cfg(test)]
+mod mapping_budget_tests;
 use merged::{Merged, Prepared};
 
 type Textures<'a> = Option<&'a FxHashMap<u32, ResolvedTextureMap>>;
@@ -285,7 +287,10 @@ impl<'a> ProductControl<'a> {
             }
             Action::Mapping { .. } => {
                 let Child::Mapping(control) = &mut self.child else { return Err(ProgramError::StaleRequest) };
-                return control.execute(router, decoder).map(ProductReply::Mapping);
+                return match control.execute(router, decoder) {
+                    Ok(reply) => Ok(ProductReply::Mapping(reply)),
+                    Err(error) => error.recover(Some(self.element)).map(ProductReply::Mapping),
+                };
             }
             Action::Placement => {
                 return Ok(ProductReply::Placement(router.resolve_object_placement(element, decoder)));

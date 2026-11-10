@@ -105,6 +105,16 @@ impl GeometryRouter {
         crate::program::GeometryProgram::type_map(rep_map, texture_index).drain_type_parts(self, decoder)
     }
 
+    /// Process a type map with its owning IfcTypeProduct for refusal attribution.
+    pub fn process_representation_map_for_product(
+        &self, rep_map: &DecodedEntity, product: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+        texture_index: &rustc_hash::FxHashMap<u32, crate::ResolvedTextureMap>,
+    ) -> Result<Vec<(Mesh, Vec<f32>, Option<TextureAttachment>)>> {
+        crate::program::GeometryProgram::type_map_for_product(rep_map, texture_index, product)
+            .drain_type_parts(self, decoder)
+    }
+
     /// Admit a type's representation map for the type-map walk: its
     /// `MappedRepresentation` and that representation's whole Items list.
     pub(crate) fn admit_type_map(

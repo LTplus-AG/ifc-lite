@@ -11,6 +11,19 @@ use crate::diagnostics::{BoolFailure, BoolFailureReason, BoolOp};
 use crate::rect_fast::RectFastStats;
 
 #[test]
+fn issue_9268_budget_dedup_keeps_distinct_limits() {
+    let router = GeometryRouter::new();
+    router.record_budget_refusal(8, "logical mapped attempts", 3, 5, None);
+    router.record_budget_refusal(8, "logical mapped attempts", 4, 5, None);
+    router.record_budget_refusal(8, "logical mapped attempts", 3, 5, None);
+
+    let (total, refusals) = router.take_budget_refusal_report();
+    assert_eq!(total, 2);
+    assert_eq!(refusals.len(), 2);
+    assert_eq!(refusals.iter().map(|r| r.limit).collect::<Vec<_>>(), vec![3, 4]);
+}
+
+#[test]
 fn aggregate_empty_is_all_zero() {
     let d = aggregate_diagnostics(
         ClassificationStats::default(),
@@ -245,12 +258,12 @@ fn schema_version_round_trips_and_defaults() {
     let d = GeometryDiagnostics::default();
     assert_eq!(d.schema_version, GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION);
     let json = serde_json::to_string(&d).unwrap();
-    assert!(json.contains("\"schemaVersion\":4"), "serialized unconditionally: {json}");
+    assert!(json.contains("\"schemaVersion\":5"), "serialized unconditionally: {json}");
     let back: GeometryDiagnostics = serde_json::from_str(&json).unwrap();
     assert_eq!(back.schema_version, GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION);
     // A pre-versioned producer (field absent) deserializes to 0, distinguishable.
     let legacy: GeometryDiagnostics =
-        serde_json::from_str(&json.replace("\"schemaVersion\":4,", "")).unwrap();
+        serde_json::from_str(&json.replace("\"schemaVersion\":5,", "")).unwrap();
     assert_eq!(legacy.schema_version, 0);
 }
 

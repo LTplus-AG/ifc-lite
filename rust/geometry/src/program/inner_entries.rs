@@ -51,6 +51,12 @@ impl<'a> GeometryProgram<'a> {
         Self::with_control(Control::Mapping(MappingControl::type_map(rep_map, textures)))
     }
 
+    pub(crate) fn type_map_for_product(rep_map: &'a DecodedEntity,
+        textures: &'a rustc_hash::FxHashMap<u32, crate::ResolvedTextureMap>,
+        product: &'a DecodedEntity) -> Self {
+        Self::with_control(Control::Mapping(MappingControl::type_map_for_product(rep_map, textures, product)))
+    }
+
     /// One product's walk merged into placed frame parts (#6349).
     pub(crate) fn product(element: &'a DecodedEntity, hygiene: crate::router::processing::SourceHygiene) -> Self {
         Self::with_control(Control::Product(ProductControl::merged(element, hygiene)))

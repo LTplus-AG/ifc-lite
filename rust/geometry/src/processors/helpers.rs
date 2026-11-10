@@ -50,11 +50,34 @@ pub(super) fn read_loop_points_by_id(
     loop_id: u32,
     decoder: &mut EntityDecoder,
 ) -> Option<Vec<Point3<f64>>> {
+    read_loop_points_memo(loop_id, decoder, &mut PointMemo::default())
+}
+
+/// Points already read by [`EntityDecoder::point3_fast`] during ONE walk over
+/// ONE decoder, by express id. Scoped by its owner (a surface-model lowering)
+/// and dropped with it, so it is never a cache across sources or jobs.
+pub(super) type PointMemo = rustc_hash::FxHashMap<u32, [f64; 3]>;
+
+/// [`read_loop_points_by_id`], reusing points this walk already read. Same
+/// result and the same refusals: a memo entry is only ever `point3_fast`'s
+/// `Some`, which is exactly what `point3` returns for that id, and any id the
+/// fast path cannot read goes through `point3` itself, every time, in order.
+pub(super) fn read_loop_points_memo(
+    loop_id: u32,
+    decoder: &mut EntityDecoder,
+    memo: &mut PointMemo,
+) -> Option<Vec<Point3<f64>>> {
     let point_ids = decoder.get_polyloop_point_ids_fast(loop_id)?;
 
     let mut points = Vec::with_capacity(point_ids.len());
     for point_id in point_ids {
-        let [x, y, z] = decoder.point3(point_id).ok()?;
+        let [x, y, z] = match memo.get(&point_id) {
+            Some(&point) => point,
+            None => match decoder.point3_fast(point_id) {
+                Some(point) => *memo.entry(point_id).or_insert(point),
+                None => decoder.point3(point_id).ok()?,
+            },
+        };
         points.push(Point3::new(x, y, z));
     }
     Some(points)

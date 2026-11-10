@@ -6,7 +6,7 @@ use crate::{Mesh, Point3, Result, TessellationQuality};
 use ifc_lite_core::{slot, DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 
 use super::super::advanced_face::note_face_refused;
-use super::super::helpers::read_loop_points_by_id;
+use super::super::helpers::{read_loop_points_memo, PointMemo};
 use crate::router::GeometryProcessor;
 pub(crate) use super::surface_model_plan::SurfaceModelPlan;
 
@@ -29,10 +29,21 @@ pub(super) fn trace_capped_face(face_id: u32, error: &dyn std::fmt::Display) {
 /// The bounds of a simple (`IfcPolyLoop`) face, or `None` when a bound does
 /// not read: that refuses the face (D14, under D3), as in
 /// `FacetedBrepProcessor`, and the refusal is counted here.
+#[cfg(test)]
 pub(super) fn read_simple_face_bounds(
     face_type: &IfcType,
     bound_ids: Vec<u32>,
     decoder: &mut EntityDecoder,
+) -> Option<(Option<Vec<Point3<f64>>>, Vec<Vec<Point3<f64>>>)> {
+    read_simple_face_bounds_memo(face_type, bound_ids, decoder, &mut PointMemo::default())
+}
+
+/// [`read_simple_face_bounds`] reusing the caller's walk-scoped [`PointMemo`].
+pub(super) fn read_simple_face_bounds_memo(
+    face_type: &IfcType,
+    bound_ids: Vec<u32>,
+    decoder: &mut EntityDecoder,
+    memo: &mut PointMemo,
 ) -> Option<(Option<Vec<Point3<f64>>>, Vec<Vec<Point3<f64>>>)> {
     let bound_count = bound_ids.len();
     let mut degenerate = 0usize;
@@ -46,7 +57,7 @@ pub(super) fn read_simple_face_bounds(
             None => continue,
         };
 
-        let mut points = match read_loop_points_by_id(loop_id, decoder) {
+        let mut points = match read_loop_points_memo(loop_id, decoder, memo) {
             Some(p) => p,
             None => continue,
         };

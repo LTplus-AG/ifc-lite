@@ -320,8 +320,8 @@ export async function getCommitIndex(
     () => {
       entry.settled = true;
       // Only this build's own entry, and only if nothing has replaced it: a
-      // build that outlives the TTL can have a second one already running
-      // under the same key by the time this rejects, and deleting
+      // build replaced by explicit invalidation may still reject while a new
+      // build runs under the same key; deleting
       // unconditionally would evict THAT one instead (review on #8647).
       if (cache.get(key) === entry) cache.delete(key);
     },

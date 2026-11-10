@@ -114,8 +114,10 @@ export const drawing2DTeardown = defineSliceTeardown(
     // The generated drawing, its overrides and its annotations are all keyed
     // to the file that was loaded. Clearing every model leaves the 2D view
     // to be regenerated on demand and must not throw away the user's markup,
-    // so that scope is a no-op here — same reasoning as `'model-removed'`
-    // below when the removed model was NOT the active one.
+    // so that scope leaves the store alone — same reasoning as `'model-removed'`
+    // below when the removed model was NOT the active one. The per-model
+    // markup snapshots go with their models, evicted by the entry points
+    // (`forgetLiveMarkup`): a teardown is a pure patch.
     //
     // #4159 bug 5: when the removed model WAS the active one,
     // `modelSlice.teardown.ts`'s own arm moves `activeModelId` to

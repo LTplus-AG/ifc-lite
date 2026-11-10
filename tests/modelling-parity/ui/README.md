@@ -11,7 +11,9 @@ GPU. Every probe starts from "Start blank" and does its task with real input:
   panel and File > Export.
 
 The oracle is the result, never "no error". In most probes that's the IFC the
-viewer exports, parsed by `lib/step.mjs`. The rest read the viewer's state:
+viewer exports, parsed by `lib/step.mjs`. The roof probe meshes its exported IFC with the shipped WASM kernel and uses
+the SDK roof oracle to check its sloped surface, low eaves, high centre and
+volume. IFC labels cannot certify the shape. The rest read the viewer's state:
 the plan shapes and the section drawing.
 
 | file | role |

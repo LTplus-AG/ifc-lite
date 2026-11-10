@@ -68,7 +68,7 @@ Columns:
 | IfcBoilerType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcBoolean | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcBooleanClippingResult | ✅ | ✅ | — | ✅ | ❌ | ❌ | IFC4:✅ | rust/geometry/tests/fixtures/issue_1155_halfspace_flyaway.ifc |
-| IfcBooleanResult | ✅ | ✅ | — | ✅ | ❌ | ❌ | IFC4:✅ | rust/geometry/tests/fixtures/issue_7292_sloped_coplanar_difference.ifc |
+| IfcBooleanResult | ✅ | ✅ | — | ✅ | ✅ | ❌ | IFC4:✅ | rust/geometry/tests/fixtures/issue_7292_sloped_coplanar_difference.ifc |
 | IfcBoundaryEdgeCondition | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcBoundaryFaceCondition | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcBoundaryNodeCondition | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC4:✅ | — |
@@ -761,7 +761,7 @@ Columns:
 | IfcBoilerType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | rust/processing/tests/fixtures/c4_bare_type_map_7782.ifc |
 | IfcBoolean | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcBooleanClippingResult | ✅ | ✅ | — | ✅ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
-| IfcBooleanResult | ✅ | ✅ | — | ✅ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
+| IfcBooleanResult | ✅ | ✅ | — | ✅ | ✅ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcBoundaryCurve | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:✅ | — |
 | IfcBoundaryEdgeCondition | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcBoundaryFaceCondition | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
@@ -1572,7 +1572,7 @@ Columns:
 | IfcBoilerType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcBoolean | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcBooleanClippingResult | ✅ | ✅ | — | ✅ | ❌ | ❌ | IFC4:✅ | — |
-| IfcBooleanResult | ✅ | ✅ | — | ✅ | ❌ | ❌ | IFC4:✅ | rust/geometry/tests/fixtures/bath_csg_solid.ifc |
+| IfcBooleanResult | ✅ | ✅ | — | ✅ | ✅ | ❌ | IFC4:✅ | rust/geometry/tests/fixtures/bath_csg_solid.ifc |
 | IfcBorehole | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcBoundaryCurve | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcBoundaryEdgeCondition | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |

@@ -50,6 +50,30 @@ function asNumber(v: IfcAttributeValue | undefined): number | null {
 }
 
 /**
+ * Effective storeys resolved once for one copy batch (#8452). A copy never
+ * changes a source's containment: copies get their own containment, and
+ * relationships only gain copied members. So the storey a source had when
+ * the batch began answers every later lookup in that batch, instead of each
+ * copied element re-resolving the session's spatial overlay two to four
+ * times. Scope it to one synchronous batch; never keep it across edits.
+ */
+export interface DuplicateSourceScope {
+  readonly storeys: Map<number, number | null>;
+}
+
+/** The storey saving this session would give `sourceExpressId`, memoised in `scope`. */
+export function duplicateSourceStoreyId(store: IfcDataStore, sourceExpressId: number, editor?: StoreEditor, scope?: DuplicateSourceScope): number | null {
+  if (scope?.storeys.has(sourceExpressId)) return scope.storeys.get(sourceExpressId)!;
+  // The duplicate must inherit the storey that saving this session would
+  // produce, including edited/deleted containment and aggregate ancestors.
+  const view = editor?.getMutationView();
+  const spatialContext = view?.hasPendingChanges() ? sourceSpatialContext(store, view, sourceExpressId) : null;
+  const storeyId = effectiveStoreyId(store, sourceExpressId, spatialContext) ?? null;
+  scope?.storeys.set(sourceExpressId, storeyId);
+  return storeyId;
+}
+
+/**
  * Resolve everything `duplicateInStore` needs to clone a source
  * IfcRoot product. Throws when the source isn't an IfcProduct
  * (no ObjectPlacement at index 5).
@@ -58,6 +82,7 @@ export function resolveDuplicateSource(
   store: IfcDataStore,
   sourceExpressId: number,
   editor?: StoreEditor,
+  scope?: DuplicateSourceScope,
 ): SourceAttributes {
   if (!store.source) {
     throw new Error('resolveDuplicateSource: data store has no source bytes');
@@ -138,11 +163,7 @@ export function resolveDuplicateSource(
     }
   }
 
-  // The duplicate must inherit the storey that saving this session would
-  // produce, including edited/deleted containment and aggregate ancestors.
-  const view = editor?.getMutationView();
-  const spatialContext = view?.hasPendingChanges() ? sourceSpatialContext(store, view, sourceExpressId) : null;
-  const storeyId = effectiveStoreyId(store, sourceExpressId, spatialContext) ?? null;
+  const storeyId = duplicateSourceStoreyId(store, sourceExpressId, editor, scope);
 
   // Association rels that reference the source — replayed against
   // the duplicate by `duplicateInStore` so the exported STEP carries

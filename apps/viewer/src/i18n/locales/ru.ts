@@ -41,6 +41,7 @@ import { checkAuthoringRu } from './ru/check-authoring';
 import { clashGroupApplyRu } from './ru/clash-group-apply';
 import { clashGroupsRu } from './ru/clash-groups';
 import { clashPanelRu } from './ru/clash-panel';
+import { clashQualityRu } from './ru/clash-quality';
 import { clashToolsRu } from './ru/clash-tools';
 import { commandPaletteRu } from './ru/command-palette';
 import { commandsRu } from './ru/commands';
@@ -198,6 +199,7 @@ export default {
   ...clashGroupApplyRu,
   ...clashGroupsRu,
   ...clashPanelRu,
+  ...clashQualityRu,
   ...clashToolsRu,
   ...commandPaletteRu,
   ...commandsRu,

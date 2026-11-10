@@ -13,7 +13,7 @@ import { attachCapturedLoad } from '@/lib/error-reports/correlation';
 import { useShallow } from 'zustand/react/shallow';
 import { type FederatedModel, useViewerStore } from '@/store';
 import { resolveLoadTessellationTier, isMeshOnlyCacheEnabled } from '../store/constants.js';
-import { createModelLoadActivity, handOffToRetry, installModelLoadCanceller, LOAD_COMPLETE, settleOwnedLoadUi } from './modelLoadCanceller.js';
+import { createModelLoadActivity, handOffToRetry, installModelLoadCanceller, LOAD_COMPLETE, settleOwnedLoadUi, watchLoadSupersession } from './modelLoadCanceller.js';
 import type { ModelLoadOptions } from './modelLoadOptions.js';
 import { assertWorkflowOwner } from '@/lib/flow/run-session';
 import { buildModelLoadedGeometryProps, reportOmittedTypeRecords, reportRefusedLengthUnit, reportSkippedHungElements, warnGeometryDiagnostics } from './modelLoadedGeometryProps.js';
@@ -66,6 +66,7 @@ import { useIfcCache, getCached, deleteCached } from './useIfcCache.js';
 
 // Server hook
 import { useIfcServer } from './useIfcServer.js';
+import { handleServerLoadAttempt } from './ingest/serverLoadAttempt.js';
 
 import { prepareGlbViewerModel } from './ingest/glbTextureValidation.js';
 import { getMaxExpressId, getViewerSchemaVersion, parseIfcxViewerModel } from './ingest/viewerModelIngest.js';
@@ -244,7 +245,6 @@ export function useIfcLoader() {
 
   // Background revalidation of a SERVED cache hit (#4269): `ingest/cacheRevalidation.ts`.
   const revalidateServedCacheHit = useCallback((hit: ServedCacheHit) => revalidateServedCache(hit, {
-    isCurrent: (session) => loadSessionRef.current === session,
     reload: (file, target) => loadFileRef.current?.(file, target),
   }), []);
 
@@ -1197,10 +1197,11 @@ export function useIfcLoader() {
                 void revalidateServedCacheHit({
                   file,
                   target,
+                  modelId,
                   identity: placementIdentity,
                   cacheKey,
                   expectedHash: revalidateAgainst,
-                  session: currentSession,
+                  supersession: watchLoadSupersession('any'),
                 });
               }
               return;
@@ -1236,8 +1237,7 @@ export function useIfcLoader() {
       if (target.kind === 'primary' && format === 'ifc' && !mergeLayersAtLoad && !textureBitmaps && USE_SERVER && SERVER_URL && SERVER_URL !== '' && geometryKernel.serverEnabled) {
         // Pass buffer directly - server uses File object for parsing, buffer is only for size checks
         loadStage = 'server-fetch';
-        const serverSuccess = await loadFromServer(file, buffer, () => isStale());
-        if (serverSuccess) {
+        if (await handleServerLoadAttempt(() => loadFromServer(file, buffer, () => isStale(), metadataAbort.signal, modelId), isStale, async () => {
           const state = useViewerStore.getState();
           await finalizeModel(state.ifcDataStore, state.geometryResult, getViewerSchemaVersion(state.ifcDataStore), { loadPath: 'server' });
           if (isStale()) return;
@@ -1260,8 +1260,7 @@ export function useIfcLoader() {
           // that is true on this path.
           captureModelLoaded({ format, file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'server', total_elapsed_ms: Math.round(performance.now() - totalStartTime), was_hidden: wasHidden(), is_resource_retry: isResourceRetryLoad }, snapshotFromGeometry(fileSizeMB, state.geometryResult), trace);
           settleLoadUi(LOAD_COMPLETE);
-          return;
-        }
+        })) return;
         // Server not available - continue with local WASM (no error logging needed)
       } else if (format === 'unknown') {
       }

@@ -17,6 +17,7 @@ import { applyLevelDisplayMode } from '@/store/levelDisplay';
 import { openSettings } from '@/lib/settings/open-settings';
 import type { Command } from './commandPaletteSearch';
 import { MODEL_EDIT_SURFACE_COMMANDS } from './surface-commands-model-edit';
+import { DESTINATION_SURFACE_COMMANDS } from './surface-commands-destinations';
 import { TOOL_SURFACE_COMMANDS } from './surface-commands-tools';
 import { PANEL_SURFACE_COMMANDS } from './surface-commands-panels';
 import { WORKSPACE_SURFACE_COMMANDS } from './surface-commands-workspace';
@@ -188,6 +189,7 @@ const FILE_AND_VIEW_SURFACE_COMMANDS = [
 type SurfaceCommandEntry =
   | (typeof FILE_AND_VIEW_SURFACE_COMMANDS)[number]
   | (typeof MODEL_EDIT_SURFACE_COMMANDS)[number]
+  | (typeof DESTINATION_SURFACE_COMMANDS)[number]
   | (typeof TOOL_SURFACE_COMMANDS)[number]
   | (typeof PANEL_SURFACE_COMMANDS)[number]
   | (typeof WORKSPACE_SURFACE_COMMANDS)[number]
@@ -206,6 +208,7 @@ export type SurfaceCommandIdFor<Surface extends CommandSurface> = SurfaceCommand
   : never;
 export const SURFACE_COMMANDS: readonly (SurfaceCommandDefinition & { id: SurfaceCommandId })[] = [
   ...FILE_AND_VIEW_SURFACE_COMMANDS,
+  ...DESTINATION_SURFACE_COMMANDS,
   ...TOOL_SURFACE_COMMANDS,
   ...MODEL_EDIT_SURFACE_COMMANDS,
   ...PANEL_SURFACE_COMMANDS,
@@ -255,6 +258,7 @@ export function commandRowFromDefinition(
     id: command.id,
     label: command.searchLabel ?? resolveEnglish(command.labelKey),
     labelKey: command.labelKey,
+    detailKey: command.detailKey,
     keywords: command.keywordsKey ? `${command.keywords} ${t(command.keywordsKey)}` : command.keywords,
     category: command.category,
     icon: command.icon,

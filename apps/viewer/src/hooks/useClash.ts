@@ -401,7 +401,7 @@ export function useClash() {
    *   to write its dependent state (groups, selection, telemetry) either.
    */
   const publishClashResult = useCallback(
-    (federationIdentity: ClashFederationIdentity, res: ClashResult, owns: () => boolean, stamp: AnalysisStamp): boolean => {
+    (federationIdentity: ClashFederationIdentity, res: ClashResult, owns: () => boolean, stamp: AnalysisStamp, request: ClashRunRequest | null): boolean => {
       if (!owns()) return false;
       const state = useViewerStore.getState();
       if (!federationIsCurrent(federationIdentity, state.models) || !jobPlacementIsCurrent(federationIdentity, state)) return false;
@@ -410,6 +410,7 @@ export function useClash() {
       // result is on screen, and only a result that remembers what it was
       // computed on can refuse to resolve afterwards (see `refOf`).
       rememberFederationIdentity(res, federationIdentity);
+      rememberRunRequest(res, request);
       state.setClashResult(stampAnalysisReport(res, stamp));
       // Completed-run signal for baseline consumers (clash tour run gate).
       state.bumpClashRunSeq();
@@ -494,9 +495,8 @@ export function useClash() {
         // groups by its own dimension separately. Discarded outright if the
         // federation it examined is gone, or if a newer call has started —
         // see `publishClashResult`.
-        if (!publishClashResult(federationIdentity, res, owns, stamp)) return;
+        if (!publishClashResult(federationIdentity, res, owns, stamp, request)) return;
         rememberModelTagInputs(res, tagInputs);
-        rememberRunRequest(res, request);
         state.setClashSelectedId(null);
         posthog.capture('clash_detection_run', {
           clash_count: res.clashes.length,
@@ -637,8 +637,7 @@ export function useClash() {
       // must not be one line apart in correctness: adding a yield to the
       // duplicate scan tomorrow would otherwise reopen the defect on this path
       // alone, silently.
-      if (!publishClashResult(federationIdentity, res, owns, stamp)) return;
-      rememberRunRequest(res, { kind: 'duplicates' });
+      if (!publishClashResult(federationIdentity, res, owns, stamp, { kind: 'duplicates' })) return;
       // Coincident SETS, not spatial clusters: three copies of one column are one
       // finding, and two unrelated duplicate pairs a metre apart stay two. The
       // panel renders these as its sections (see duplicate-set-sections.ts).

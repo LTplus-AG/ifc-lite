@@ -5,7 +5,7 @@ import '@/test/setup-dom.js';
 import { afterEach, test, mock, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { access, readFile } from 'node:fs/promises';
-import { act } from 'react';
+import { act, startTransition } from 'react';
 import { Renderer } from '@ifc-lite/renderer';
 import { render, click, type, cleanup } from '@/test/render.js';
 import { useViewerStore } from '@/store';
@@ -60,7 +60,7 @@ async function fixture() {
   mock.method(appearanceAssets, 'decode', async () => ({ width: 1, height: 1, close() {} }));
   setGlobalRendererRef({ current: renderer });
   const original = useViewerStore.getState().appearanceReferences.get('drawing')!;
-  return { ui: render(<AppearancePanel />), original };
+  return { ui: render(<AppearancePanel />), original, renderer };
 }
 
 test('Edit restores removed PDF raster calibration and Save registration replaces once with real native corners and Undo (#4308)', async t => {
@@ -75,6 +75,7 @@ test('Edit restores removed PDF raster calibration and Save registration replace
   type(distance, '4'); await settle();
   assert.equal(useViewerStore.getState().appearanceReferences.get('drawing'), original, 'preview never repaints committed registration');
   const save = button(ui, 'Save registration'); assert.equal(save.disabled, false); click(save); await settle();
+  assert.match(ui.textContent ?? '', /Registration saved/, 'successful Save retains its completion notice');
   const state = useViewerStore.getState(), updated = state.appearanceReferences.get('drawing')!;
   assert.equal(state.appearanceReferences.size, 1); assert.equal(state.referenceUndo.length, 2);
   assert.equal(updated.assetId, original.assetId); assert.equal(updated.opacity, 0.6);
@@ -151,4 +152,113 @@ test('foreign-frame Edit previews explicit registration and Discard preserves th
   assert.equal(updated.assetId, original.assetId);
   act(() => useViewerStore.getState().replayAppearanceReference('undo'));
   assert.deepEqual(useViewerStore.getState().appearanceReferences.get('drawing'), original);
+});
+
+test('same-tick reference placement starts once and room entry settles its status (#4308)', async t => {
+  if (!await nativeAvailable(t)) return;
+  const { ui, renderer } = await fixture();
+  click(button(ui, 'Edit Drawing 1')); await settle();
+  click(button(ui, 'Discard')); await settle();
+  const span = ui.querySelector<HTMLInputElement>('input[aria-label="Distance A–B (m)"]')!;
+  type(span, '3'); await settle();
+  let release!: () => void;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  let placements = 0;
+  const images = new Set<string>();
+  mock.method(renderer.getReferenceImages(), 'set', async (item: Parameters<ReturnType<Renderer['getReferenceImages']>['set']>[0]) => {
+    if (!item.id.startsWith('appearance-draft:')) { placements++; await held; }
+    images.add(item.id);
+  });
+  mock.method(renderer.getReferenceImages(), 'remove', (id: string) => { images.delete(id); });
+  const place = button(ui, 'Place reference');
+  act(() => { place.click(); place.click(); });
+  assert.equal(placements, 1);
+  assert.equal(ui.querySelector('[aria-busy]')?.getAttribute('aria-busy'), 'true', 'placement busy is rendered from its run');
+  act(() => useViewerStore.setState({ collabRoomId: 'joined-during-placement' }));
+  assert.equal(ui.querySelector('[aria-busy]')?.getAttribute('aria-busy'), 'false', 'room entry settles placement before its transport returns');
+  release(); await settle();
+  assert.equal(ui.querySelector('[aria-busy]')?.getAttribute('aria-busy'), 'false');
+  assert.equal(useViewerStore.getState().appearanceReferences.size, 1);
+  assert.equal([...images].some(id => !id.startsWith('appearance-draft:') && id !== 'drawing'), false, 'cancelled placement removes its uploaded GPU image');
+});
+
+test('PR #9585: uploading a source preserves the ready reference notice', async t => {
+  if (!await nativeAvailable(t)) return;
+  const { ui } = await fixture();
+  click(button(ui, 'Edit Drawing 1')); await settle();
+  click(button(ui, 'Discard')); await settle();
+  type(ui.querySelector<HTMLInputElement>('input[aria-label="Distance A–B (m)"]')!, '3'); await settle();
+  assert.match(ui.textContent ?? '', /Reference ready/);
+  const add = appearanceAssets.add.bind(appearanceAssets);
+  let release!: () => void, started = false;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  mock.method(appearanceAssets, 'add', async (...args: Parameters<typeof add>) => {
+    started = true;
+    await held;
+    return add(...args);
+  });
+  try {
+    const input = ui.querySelector<HTMLInputElement>('input[type=file]')!;
+    const files = new DataTransfer();
+    files.items.add(new File([new Uint8Array(png)], 'replacement.png', { type: 'image/png' }));
+    Object.defineProperty(input, 'files', { configurable: true, value: files.files });
+    act(() => input.dispatchEvent(new Event('change', { bubbles: true })));
+    await settle();
+    assert.equal(started, true, 'the real upload reaches the held inventory write');
+    assert.match(ui.textContent ?? '', /Reference ready/, 'sourceBusy must preserve the preceding reference notice');
+    assert.doesNotMatch(ui.textContent ?? '', /Choose a source and calibrate/);
+  } finally { release(); await settle(); }
+});
+
+test('PR #9585: Discard aborts placement before a deferred preview cleanup and removes the GPU image', async t => {
+  if (!await nativeAvailable(t)) return;
+  const { ui, renderer } = await fixture();
+  click(button(ui, 'Edit Drawing 1')); await settle();
+  click(button(ui, 'Discard')); await settle();
+  type(ui.querySelector<HTMLInputElement>('input[aria-label="Distance A–B (m)"]')!, '3'); await settle();
+  let release!: () => void, signal: AbortSignal | undefined, started = false;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  const uploaded = new Set<string>();
+  mock.method(renderer.getReferenceImages(), 'set', async (item: Parameters<ReturnType<Renderer['getReferenceImages']>['set']>[0], requestSignal?: AbortSignal) => {
+    if (!item.id.startsWith('appearance-draft:')) {
+      signal = requestSignal;
+      started = true;
+      await held;
+    }
+    uploaded.add(item.id);
+  });
+  mock.method(renderer.getReferenceImages(), 'remove', (id: string) => { uploaded.delete(id); });
+  try {
+    click(button(ui, 'Place reference'));
+    assert.equal(started, true);
+    await act(async () => {
+      startTransition(() => button(ui, 'Discard').click());
+      assert.equal(signal?.aborted, true, 'Discard aborts the placement transport before the deferred render cleans up its preview');
+      release();
+    });
+    await settle();
+    assert.equal([...uploaded].filter(id => !id.startsWith('appearance-draft:')).length, 0, 'late GPU upload is removed after cancellation');
+    assert.equal(useViewerStore.getState().appearanceReferences.size, 1);
+    assert.doesNotMatch(ui.textContent ?? '', /aborted/i, 'an abandoned placement cannot replace the discard notice');
+  } finally { release(); await settle(); }
+});
+
+test('PR #9585: room entry settles a held reference preview', async t => {
+  if (!await nativeAvailable(t)) return;
+  const { ui } = await fixture();
+  let release!: () => void, started = false;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  mock.method(appearanceAssets, 'decode', async () => {
+    started = true;
+    await held;
+    return { width: 1, height: 1, close() {} };
+  });
+  try {
+    click(button(ui, 'Edit Drawing 1')); await settle();
+    assert.equal(started, true);
+    assert.equal(ui.querySelector('[aria-busy]')?.getAttribute('aria-busy'), 'true');
+    act(() => useViewerStore.setState({ collabRoomId: 'joined-during-preview' }));
+    assert.equal(ui.querySelector('[aria-busy]')?.getAttribute('aria-busy'), 'false');
+    assert.match(ui.textContent ?? '', /Leave the shared session to place drawing references/);
+  } finally { release(); await settle(); }
 });

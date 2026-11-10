@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ClashFocusMode } from '@/hooks/useClash';
 import { useBCF } from '@/hooks/useBCF';
-import type { SingleFlight } from '@/hooks/useSingleFlight';
+import type { AsyncRun } from '@/hooks/useAsyncRun';
 import { useViewerStore } from '@/store';
 import { toast } from '@/components/ui/toast';
 import {
@@ -57,7 +57,7 @@ interface UseManualClashGroupsOptions {
   focusMode: ClashFocusMode;
   focusClashes: (clashes: readonly Clash[], mode: ClashFocusMode) => FocusedClashGroup | null;
   /** The panel's shared BCF-topic flight: one capture at a time, stale after the panel closes. */
-  runTopic: SingleFlight['run'];
+  runTopic: AsyncRun['start'];
   showGroups: () => void;
 }
 
@@ -216,7 +216,7 @@ export function useManualClashGroups({
   const createBcfTopic = useCallback(async (groupId: string): Promise<void> => {
     const group = resolved.find((item) => item.definition.id === groupId);
     if (!group || group.members.length === 0) return;
-    await runTopic(async (isCurrent) => {
+    await runTopic(async ({ isCurrent }) => {
       try {
         // Ghosting is a viewer-only presentation channel that BCF cannot replay.
         // Capture the same A/B colors without the non-serializable context fade.

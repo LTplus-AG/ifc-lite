@@ -3033,24 +3033,6 @@ Preserve failed loads alongside successful samples. Listen for renderer crashes
 as well as JavaScript errors, and stop memory sampling on every exit path.
 
 ### Shipped wins
-- **Surface-model faces skip their type-only decode (native instruction
-  hillclimb, 2026-11-10):** `surface_model_plan::lower` fully decoded every
-  face (`decode_by_id`, about 3.5k instructions each) only to learn whether it
-  is an `IfcAdvancedFace`, then re-read its bounds from the raw bytes anyway.
-  `EntityDecoder::is_plain_face` proves from the bytes that a record is exactly
-  `#n=IFCFACE((#a,...));` (STEP whitespace only, upper-case keyword, `u32`
-  ids, not already in the entity memo), which the tokenizer always reads as an
-  `IfcFace` and cannot refuse, so that decode is skipped; every other record
-  decodes as before. Cold single-thread Callgrind, pipeline instructions:
-  advanced_model -12.2% (its 13 face-based surface models are lowered 839
-  times through styled mapped occurrences, 555k face reads), Holter -3.0%,
-  schependomlaan -0.6%, ISSUE_129 -0.1%, FZK flat; ordered `perf_probe`
-  mesh fingerprints identical on all five. **Lesson:** the expensive part was
-  not the surface model but a decode whose only consumer was a type check;
-  look at what a decode's result is used for before making the decode faster.
-  The repeated lowering itself (styled occurrences never hit the mapped-source
-  cache) and the per-point `point3` re-reads remain; caching either adds
-  per-worker memory and was not attempted. Not a wall-time or browser claim.
 - **Review startup bundle (#7015):** load the Script panel on demand and keep
   CodeMirror's shared state module in its own chunk. Assistant text-edit planning
   still uses `ChangeSet`, while the editor UI stays outside the eager import
@@ -3227,6 +3209,21 @@ as well as JavaScript errors, and stop memory sampling on every exit path.
 Orientation reuses deterministic edge adjacency, triangle filters compact their existing index buffer, and welding/content hashing avoid duplicate map probes. Geometry policy, tolerances and traversal/output order remain unchanged. Own-layer native subset comparisons did not establish a meaningful full-load improvement; sampled leaf CPU and the cumulative result cannot establish a layer-specific gain. Preserve exact output and diagnostic oracles, including invalid/degenerate triangles and reused-buffer capacity. No isolated browser gain is established here; invalid Firefox cohorts and unrun follow-ups remain excluded. Owned-weld, sliver-incidence and alternate meshing experiments are not included.
 
 ### Dead ends (do NOT re-spike without a new mechanism)
+- **Forced inlining of entity-index dispatch (native instruction hillclimb,
+  2026-11-10):** forcing `EntityIndexStore::lookup` inline did not reduce pipeline
+  instructions on any of four tuning fixtures and exceeded the campaign's
+  regression ceiling on the structural fixture. Reverted. A large attributed
+  self-instruction share does not imply removable call overhead; let the compiler
+  choose unless a different mechanism is demonstrated. This was a cold,
+  single-thread Callgrind screen, not a wall-time or browser result.
+- **Early-exit columnar binary search (native instruction hillclimb,
+  2026-11-10):** replacing the standard library's fixed-iteration search with an
+  exact-match early return increased pipeline instructions on the structural and
+  architectural tuning fixtures. Reverted independently of the inlining trial.
+  Keep the standard search; fewer iterations are not necessarily fewer executed
+  instructions. Both trials failed the tuning gate, so the holdout and subsequent
+  identity/test/clippy/WASM acceptance gates were deliberately not run. No runtime
+  change survived and no browser speedup is claimed.
 - **Frame-invariant routing for plan-rotated voided walls** (#5739, PR #6035):
   the two routing fixes were NOT SHIPPED; both were measured on ISSUE_098 against the merge-base. With
   per-element local frames (the viewer default), the analytic prism cut's route
@@ -3285,25 +3282,6 @@ Orientation reuses deterministic edge adjacency, triangle filters compact their 
     cheaply.
   - Judge perf by the multi-threaded critical path as well as by CPU: moving
     work onto a few heavy hosts can lower total CPU and still lengthen the load.
-- **Incircle stages C/D without per-call zeroing: measured, WITHDRAWN on
-  provenance (native instruction hillclimb, 2026-11-10, PR #9637 closed).** The
-  mechanism is real. #9016 hands what stage B cannot decide to
-  `geometry_predicates::incircle`, assuming that is rare, but on ISSUE_129
-  43,331 calls take that path, and `incircleadapt` zeroes about 20 KB per call
-  (two 1152-entry `fin` expansions only ever read below their written length):
-  806M of their 1.03G instructions. Continuing from #9016's own stage-B state
-  into stages C/D with reused thread-local `fin` scratch measured, alone against
-  main: FZK -4.3%, ISSUE_129 -3.3%, Holter -0.4% pipeline instructions, the
-  others flat, `perf_probe` fingerprints identical, and the existing bit-identity
-  test passed. It was not landed because that port followed the MIT-licensed
-  crate's `incircleadapt` operation for operation, and CLA.md §4(a) admits only
-  original work in an ordinary contribution. Note the crate reads past a
-  written prefix in two places (length-1 `bct`/`cat`/`abt` defaults; `cxtab`,
-  whose shadowed length is read as 8), so only the `fin` buffers can safely be
-  reused. **To pursue it: upstream the zeroing fix to `geometry-predicates`, or
-  write an original exact-sign stage C/D (the CDT reads only the sign) that
-  keeps the crate's results in the underflow and overflow ranges the #9016 test
-  covers.** Not a wall-time or browser claim.
 - **More geometry workers** -> zero CSG speedup: memory-bandwidth bound, not CPU.
 - **Shared entity-index for the VIEWER huge-file path** (#1445): CLOSED, branch
   deleted, REFUTED by an end-to-end 722MB re-measure. The retained-size spike looked

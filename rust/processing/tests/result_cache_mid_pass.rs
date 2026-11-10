@@ -20,7 +20,7 @@ use ifc_lite_processing::result_cache::{
     BypassReason, CacheMode, CacheOutcome, MissReason, PublishOutcome, ResultCache, ResultCacheConfig,
 };
 use ifc_lite_processing::{process, result_fingerprint, Batching, ProcessingRequest};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -41,7 +41,7 @@ fn per_product() -> ProcessingRequest {
     ProcessingRequest::full_pass().batching(Batching::new(1, 1))
 }
 
-fn cache(dir: &PathBuf, mode: CacheMode) -> ResultCache {
+fn cache(dir: &Path, mode: CacheMode) -> ResultCache {
     ResultCache::new(ResultCacheConfig::default().mode(mode).directory(dir))
 }
 

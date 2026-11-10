@@ -131,7 +131,8 @@ impl EncodedEntry {
     }
 }
 
-/// The entry as one buffer (tests and tools).
+/// The entry as one buffer (tests).
+#[cfg(test)]
 pub(super) fn encode_entry(result: &ProcessingResult, id: &EntryIdentity) -> Result<Vec<u8>, CodecError> {
     Ok(encode_parts(result, id)?.parts().concat())
 }

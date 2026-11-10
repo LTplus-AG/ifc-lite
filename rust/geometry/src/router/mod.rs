@@ -368,16 +368,8 @@ impl GeometryRouter {
 
     /// Test-only: force [`Self::build_dedup_extra_enabled`] on/off (`None` = env).
     pub fn set_build_dedup_extra_override(v: Option<bool>) {
-        crate::output_policy::mutate(|| {
-            DEDUP_EXTRA_OVERRIDE.store(
-                match v {
-                    None => -1,
-                    Some(false) => 0,
-                    Some(true) => 1,
-                },
-                std::sync::atomic::Ordering::Release,
-            )
-        });
+        let raw = match v { None => -1, Some(false) => 0, Some(true) => 1 };
+        crate::output_policy::mutate(|| DEDUP_EXTRA_OVERRIDE.store(raw, std::sync::atomic::Ordering::Release));
     }
 
     /// Inject a shared item-dedup cache (see [`Self::new_dedup_cache`]) into this

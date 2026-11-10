@@ -140,6 +140,7 @@ impl Store {
         }
     }
 
+    #[cfg(test)]
     pub(super) fn publish(&self, key: &str, bytes: &[u8]) -> PublishOutcome {
         self.publish_parts(key, &[bytes])
     }

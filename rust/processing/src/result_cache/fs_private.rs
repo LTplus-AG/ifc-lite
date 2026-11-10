@@ -167,10 +167,12 @@ pub(super) fn open_lock(path: &Path) -> io::Result<File> {
 /// fsync is logged, not reported, because the entry is already complete.
 pub(super) fn sync_dir(dir: &Path) {
     #[cfg(unix)]
-    if let Ok(d) = {
+    let opened = {
         use std::os::unix::fs::OpenOptionsExt;
         OpenOptions::new().read(true).custom_flags(libc::O_NOFOLLOW | libc::O_DIRECTORY | libc::O_CLOEXEC).open(dir)
-    } {
+    };
+    #[cfg(unix)]
+    if let Ok(d) = opened {
         if let Err(error) = d.sync_all() {
             tracing::debug!(%error, "result cache: directory fsync failed");
         }

@@ -123,14 +123,20 @@ impl EntityDecoder<'_> {
     /// another keyword or spelling, an empty list) and for an id this decoder
     /// already holds decoded, whose memo the decode would have returned: those
     /// decode as before.
+    ///
+    /// The record must also DECLARE `id`. Under a supplied index that maps `id`
+    /// onto a record declaring another id, the decode answers from that other
+    /// id's memo (`decode_at`), so only when the two ids agree is the memo slot
+    /// the decode would consult the one checked empty here.
     pub fn is_plain_face(&mut self, id: u32) -> bool {
-        !self.cache.contains_key(&id) && self.get_raw_bytes(id).is_some_and(is_plain_face_record)
+        !self.cache.contains_key(&id) && self.get_raw_bytes(id).and_then(plain_face_declared_id) == Some(id)
     }
 }
 
-/// `#n = IFCFACE ( ( #a , ... ) ) ;` and nothing else up to the `;`, which is
-/// where the tokenizer stops reading too. See [`EntityDecoder::is_plain_face`].
-fn is_plain_face_record(record: &[u8]) -> bool {
+/// The declared id `n` when the record is `#n = IFCFACE ( ( #a , ... ) ) ;` and
+/// nothing else up to the `;`, which is where the tokenizer stops reading too.
+/// See [`EntityDecoder::is_plain_face`].
+fn plain_face_declared_id(record: &[u8]) -> Option<u32> {
     let mut at = 0;
     // `token` after optional STEP whitespace (a subset of the tokenizer's trivia).
     let eat = |at: &mut usize, token: &[u8]| {
@@ -144,29 +150,28 @@ fn is_plain_face_record(record: &[u8]) -> bool {
     // `#digits` with no space inside, as the tokenizer's `entity_ref` reads it.
     let name = |at: &mut usize| {
         if !eat(at, b"#") {
-            return false;
+            return None;
         }
         let digits = record[*at..].iter().take_while(|b| b.is_ascii_digit()).count();
         let id = (digits > 0).then(|| crate::express_id::parse_express_id(&record[*at..*at + digits]));
         *at += digits;
-        id.flatten().is_some()
+        id.flatten()
     };
-    if !(name(&mut at) && eat(&mut at, b"=") && eat(&mut at, b"IFCFACE")) {
-        return false;
+    let declared = name(&mut at)?;
+    if !(eat(&mut at, b"=") && eat(&mut at, b"IFCFACE")) {
+        return None;
     }
     // A longer keyword (`IFCFACESURFACE`, `IFCFACE_X`) is another entity.
     if record.get(at).is_some_and(|&b| b.is_ascii_alphanumeric() || b == b'_') {
-        return false;
+        return None;
     }
-    if !(eat(&mut at, b"(") && eat(&mut at, b"(") && name(&mut at)) {
-        return false;
+    if !(eat(&mut at, b"(") && eat(&mut at, b"(") && name(&mut at).is_some()) {
+        return None;
     }
     while eat(&mut at, b",") {
-        if !name(&mut at) {
-            return false;
-        }
+        name(&mut at)?;
     }
-    eat(&mut at, b")") && eat(&mut at, b")") && eat(&mut at, b";")
+    (eat(&mut at, b")") && eat(&mut at, b")") && eat(&mut at, b";")).then_some(declared)
 }
 
 /// The byte proof's own tests live with it: they name `is_plain_face`, so a

@@ -1,6 +1,6 @@
 # Structural coverage harness
 
-The ruler for the structural domain hill climb: how much of the IFC structural
+The ruler for the structural domain hill climb ([#9668](https://github.com/LTplus-AG/ifc-lite/issues/9668)): how much of the IFC structural
 analysis domain ifc-lite reads, shows, authors and converts. The generated
 ledger is `docs/architecture/structural-coverage-ledger.md`.
 
@@ -44,14 +44,11 @@ of their own, IFC4X3 rows have no convert level (the hop under test is
 IFC4 <-> IFC2X3), and each kind of row uses its own levels. An entity the other
 schema lacks keeps its convert level, so the cell shows what the converter does
 with it: maps it, refuses the file, or copies it through unconverted. The probe
-reports a record of the row's entity in the intermediate file that is missing
-from that schema or has the wrong attribute count, and gives that file no
-credit. It does not check attribute types, for any entity: the entity table the
-harness loads is untyped. R0 showed one case it misses, the converter copying
-IFC4 boolean stiffness (`IFCBOOLEAN(.T.)`) into IFC2X3 boundary-condition slots
-that must hold a measure; those IFC4 boundary-condition convert cells still
-pass. The parser's generated schema registry is typed, and a later round can
-source the catalogue's attributes from it to close the gap.
+checks every record of the row's entity in the intermediate file against that
+schema: the entity exists, the attribute count matches, and each value fits its
+slot (a typed value only in a SELECT slot, a bare value only elsewhere, decided
+by the parser's typed schema registry). A file that fails gets no credit for the
+row. Which select member a typed value is, and enum values, are not checked.
 
 ## Scoring and the ratchet
 

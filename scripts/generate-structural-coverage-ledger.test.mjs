@@ -4,7 +4,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Regression harness for the structural coverage scorecard: the derived
+ * Regression harness for the structural coverage scorecard (#9668): the derived
  * catalogue, the not-applicable rules, scoring and the ratchet
  * (`tests/structural-coverage/score.mjs`), the independent STEP reader, and
  * `scripts/generate-structural-coverage-ledger.mjs` (the committed ledger is
@@ -130,7 +130,7 @@ test('STEP reader: typed values with a space, comments, escapes and every record
   assert.deepEqual(step.get(4).args, [[1e-5, -2], { enum: 'T' }]);
 });
 
-test('convert: a record copied into a schema that lacks the entity, or with the wrong arity, does not conform', () => {
+test('convert (#9668): a record copied into a schema that lacks the entity, with the wrong arity, or with a value that does not fit its slot, does not conform', () => {
   const { tables } = deriveCatalogue(ROOT);
   const ifc4 = readStep(`ISO-10303-21;HEADER;FILE_SCHEMA(('IFC4'));ENDSEC;DATA;
 #1=IFCRELCONNECTSSTRUCTURALELEMENT('0',$,$,$,#2,#3);
@@ -140,6 +140,20 @@ ENDSEC;END-ISO-10303-21;`);
   const table = tables.IFC4.table;
   assert.equal(nonConforming(ifc4, 'IfcRelConnectsStructuralElement', table).length, 1, 'IFC4 has no such entity');
   assert.deepEqual(nonConforming(ifc4, 'IfcStructuralLoadGroup', table).map((r) => r.id), [5], 'only the short record');
+  // A two-schema registry in the parser's SchemaRegistry shape: X is a SELECT slot, Y a defined-type slot.
+  const registry = {
+    entities: { IfcBoundaryNodeCondition: { attributes: [{ name: 'Name', type: 'IfcLabel' }, { name: 'X', type: 'IfcSel' }, { name: 'Y', type: 'IfcMeasure' }, { name: 'A', type: 'IfcMeasure' }, { name: 'B', type: 'IfcMeasure' }, { name: 'C', type: 'IfcMeasure' }, { name: 'D', type: 'IfcMeasure' }] } },
+    selects: { IfcSel: ['IfcBoolean', 'IfcMeasure'] }, types: { IfcMeasure: 'REAL', IfcLabel: 'STRING' }, enums: {},
+  };
+  const bc = readStep(`ISO-10303-21;HEADER;FILE_SCHEMA(('IFC4'));ENDSEC;DATA;
+#1=IFCBOUNDARYNODECONDITION('ok',IFCBOOLEAN(.T.),1.,$,$,$,$);
+#2=IFCBOUNDARYNODECONDITION('bare in select',1.,1.,$,$,$,$);
+#3=IFCBOUNDARYNODECONDITION('typed in measure',IFCBOOLEAN(.T.),IFCBOOLEAN(.T.),$,$,$,$);
+ENDSEC;END-ISO-10303-21;`);
+  const found = nonConforming(bc, 'IfcBoundaryNodeCondition', table, registry);
+  assert.deepEqual(found.map((r) => r.id), [2, 3]);
+  assert.match(found[0].why, /bare value in SELECT IfcSel/);
+  assert.match(found[1].why, /typed IFCBOOLEAN in IfcMeasure/);
 });
 
 function tree() {

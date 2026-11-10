@@ -14,13 +14,13 @@
  * A record that comes back as another entity is partial evidence; one that is
  * gone is a failure. The converter throwing is the product failing, not the probe.
  * Every record of the entity in the intermediate file must exist in the
- * intermediate schema with that schema's attribute count. A record copied
- * through unconverted makes the file schema-invalid, so that file earns no
- * credit for the row even when the record comes back. Attribute TYPES are not
- * checked: the entity table the harness loads is untyped, so a value copied into
- * a slot of another type with the same arity is not caught, for any entity. The
- * parser's generated schema registry is typed and is where such a check would
- * come from.
+ * intermediate schema with that schema's attribute count, and each attribute
+ * value must fit its slot by the STEP rule the schema's typed registry decides:
+ * a typed value (`IFCBOOLEAN(.T.)`) only in a SELECT slot, a bare value only in
+ * a defined-type, enum or primitive slot. A record copied through unconverted
+ * makes the file schema-invalid, so that file earns no credit for the row even
+ * when the record comes back. The check does not test which select member a
+ * typed value is, nor enum values.
  */
 
 import { CONVERT_HOP as OTHER } from '../catalogue.mjs';
@@ -39,10 +39,38 @@ function roundTrip(ctx, file, schema) {
   })().catch((error) => ({ error })));
 }
 
-/** Records of `entity` in `intermediate` that `table` (the intermediate schema) lacks, or has with another attribute count. */
-export function nonConforming(intermediate, entity, table) {
+/** Every attribute of `entity` in `registry` (a parser SchemaRegistry), inherited ones first. (#9668) */
+function slots(registry, entity) {
+  const chain = [];
+  for (let e = registry.entities[entity]; e; e = registry.entities[e.parent]) chain.unshift(e);
+  return chain.flatMap((e) => e.attributes);
+}
+
+/** Why `value` cannot fill a slot of `type`, or null. Lists are checked element by element. */
+function slotMismatch(value, type, registry) {
+  if (value === null || value === '*' || (value && typeof value === 'object' && 'ref' in value)) return null;
+  if (Array.isArray(value)) return value.map((v) => slotMismatch(v, type, registry)).find(Boolean) ?? null;
+  const select = type in registry.selects;
+  const typed = value && typeof value === 'object' && 'type' in value;
+  if (typed && !select) return `typed ${value.type} in ${type}`;
+  if (!typed && select) return `bare value in SELECT ${type}`;
+  return null;
+}
+
+/**
+ * Records of `entity` in `intermediate` that do not conform to its schema: the
+ * entity is missing from `table`, the attribute count differs, or a value does
+ * not fit its slot in `registry`. Returns `{ id, why }` per record.
+ */
+export function nonConforming(intermediate, entity, table, registry) {
   const target = table.get(entity);
-  return intermediate.of(entity).filter((rec) => target === undefined || rec.args.length !== target.attributes.length);
+  const typed = registry ? slots(registry, entity) : [];
+  return intermediate.of(entity).flatMap((rec) => {
+    if (target === undefined) return [{ id: rec.id, why: 'no such entity' }];
+    if (rec.args.length !== target.attributes.length) return [{ id: rec.id, why: `${rec.args.length} attributes, ${target.attributes.length} expected` }];
+    const bad = typed.map((slot, i) => slotMismatch(rec.args[i], slot.type, registry) && `${slot.name}: ${slotMismatch(rec.args[i], slot.type, registry)}`).find(Boolean);
+    return bad ? [{ id: rec.id, why: bad }] : [];
+  });
 }
 
 /** The records of the row's entity a file contributes: every outcome counts this many as checked. */
@@ -91,16 +119,16 @@ export default {
       if (!carriers.length) { out.set(row.id, ctx.corpus.nothingCarries(row.schema, row.entity)); continue; }
       const { types } = ctx.tables[row.schema];
       const otherTable = ctx.tables[OTHER[row.schema]].table;
-      const target = otherTable.get(row.entity);
+      const otherRegistry = ctx.pkgs.parser.getSchemaRegistryForVersion(OTHER[row.schema]);
       const problems = [];
       let checked = 0;
       let anyHeld = false;
       for (const file of carriers) {
         const rt = await roundTrip(ctx, file, row.schema);
         if (rt.error) { problems.push(`${file.path}: ${row.schema} -> ${OTHER[row.schema]} -> ${row.schema} threw: ${rt.error.message.split('\n')[0]}`); checked += sampleOf(row, file).length; continue; }
-        const copied = nonConforming(rt.there, row.entity, otherTable);
+        const copied = nonConforming(rt.there, row.entity, otherTable, otherRegistry);
         if (copied.length) {
-          problems.push(`${file.path}: ${copied.length} ${row.entity} record(s) in the ${OTHER[row.schema]} file do not conform to ${OTHER[row.schema]} (${target ? `${target.attributes.length} attributes expected` : 'no such entity'})`);
+          problems.push(`${file.path}: ${copied.length} of ${rt.there.count(row.entity)} ${row.entity} record(s) in the ${OTHER[row.schema]} file do not conform to ${OTHER[row.schema]} (e.g. ${copied[0].why})`);
           checked += sampleOf(row, file).length;
           continue;
         }

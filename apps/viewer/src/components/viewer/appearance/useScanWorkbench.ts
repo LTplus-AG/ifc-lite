@@ -121,7 +121,7 @@ export function useScanWorkbench() {
     saved.rebind(next);
     const request: ScanRegistrationRequest = { ...structuredClone(saved.request), sourceFrame: next.sourceFrame, targetFrame: next.targetFrame };
     const report = await planner.current.registerScan(request, { signal });
-    next.validate();
+    next.validate(); signal.throwIfAborted();
     recovery.current = { request, rebind: next.afterAppearance() }; setSession(next); setResult({ request, report }); setStale(false); setError(false);
     setStatus(translated('appearance.scan.status.refreshed'));
   }

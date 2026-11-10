@@ -279,7 +279,7 @@ export async function* processParallel(
       const msg = e.data;
       if (isTraceSpansMessage(msg)) { trace.merge(msg.payload, poolSpan); return; }
       if (msg.type === 'ready') {
-        if (trace.enabled) trace.span('geometry.workerReady', () => {}, { worker: workerIndex });
+        if (trace.enabled) trace.span('geometry.workerReady', () => {}, { worker: workerIndex }, poolSpan);
         console.log(`[stream] worker[${workerIndex}] WASM ready @ ${elapsed()}ms`);
         return;
       }

@@ -61,6 +61,7 @@ import { useEffect } from 'react';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store';
 import { hasEmbeddedDrawingMarkup, restoreDrawingMarkupFromModel } from '@/lib/drawing2d-markup/drawing-markup-restore';
+import { getDrawingMarkupReadContext } from '@/lib/drawing2d-markup/drawing-markup-context';
 import { ensureParseFor, subscribeToParseCache } from './symbolic-parse-cache.js';
 import { hasPersistedMarkupEntryFor, onLocalStorageDecidedFor } from './useDrawing2DPersistence.js';
 
@@ -148,6 +149,15 @@ export function tryRestoreDrawingMarkup(modelId: string, requestParse = false): 
   // entry exists for this exact file.
   const persisted = hasPersistedMarkupEntryFor(modelId);
   if (persisted === 'pending') {
+    // #9621: precedence gates the WRITE, not a candidate's worker request.
+    // With overlays hidden this hook is the only parse producer. Keep it
+    // parallel with the hash, while still skipping provably blank sources.
+    const state = useViewerStore.getState();
+    const store = state.models.get(modelId)?.ifcDataStore ?? (modelId === 'legacy' ? state.ifcDataStore : null);
+    if (requestParse && store && hasEmbeddedDrawingMarkup(store, state.getMutationView(modelId) ?? undefined)) {
+      const context = getDrawingMarkupReadContext(modelId);
+      if (context) ensureParseFor([{ store: context.dataStore, mutationView: context.view }]);
+    }
     if (!awaitingLocalStorageDecision.has(modelId)) {
       const unsubscribe = onLocalStorageDecidedFor(modelId, () => {
         awaitingLocalStorageDecision.delete(modelId);

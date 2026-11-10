@@ -114,3 +114,52 @@ it('the hip preview has the builder’s pitched ridge rather than a flat prism (
   }
   assert.ok(Math.abs(highest - (4 * Math.tan(Math.PI / 6) + 0.3 / Math.cos(Math.PI / 6))) < 1e-5);
 });
+
+function enterRoofValue(ui: HTMLElement, label: string, value: string) {
+  const field = ui.querySelector(`[aria-label="${label}"]`);
+  assert.ok(field, `the Roof HUD offers ${label} (#9296)`);
+  press(field, 'Enter');
+  const input = ui.querySelector(`input[aria-label="${label}"]`);
+  assert.ok(input); type(input as HTMLInputElement, value); press(input, 'Enter');
+}
+function previewBounds() {
+  const rt = getCommandRuntime();
+  assert.ok(rt.ctx?.workplane);
+  const points = (rt.command!.ghost?.(rt.gesture, rt.ctx) ?? []).flatMap(mesh => {
+    const points = [];
+    for (let i = 0; i < mesh.positions.length; i += 3) points.push(rt.ctx!.workplane!.renderToLocal([mesh.positions[i], mesh.positions[i + 1], mesh.positions[i + 2]]));
+    return points;
+  });
+  return { minX: Math.min(...points.map(p => p[0])), maxZ: Math.max(...points.map(p => p[2])) };
+}
+it('typed Pitch updates every sloped edge live, preserving unsloped edges, and commits in one undo (#9296)', () => {
+  const ui = render(<Bar />);
+  enterRoofValue(ui, 'Edge slope', '0');
+  act(() => {
+    commandPointerDown({ local: [0, 0], winner: null, guides: [], locked: false });
+    commandPointerMove({ local: [10, 8], winner: null, guides: [], locked: false });
+  });
+  const before = previewBounds();
+  const depth = useViewerStore.getState().undoStacks.get(MODEL_ID)?.length ?? 0;
+  enterRoofValue(ui, 'Pitch', '45');
+  assert.ok(previewBounds().maxZ > before.maxZ + 1);
+  assert.equal(useViewerStore.getState().undoStacks.get(MODEL_ID)?.length ?? 0, depth);
+  act(() => commandPointerDown({ local: [10, 8], winner: null, guides: [], locked: false }));
+  assert.deepEqual(slopes(), [0, Math.PI / 4, Math.PI / 4, Math.PI / 4]);
+  assert.equal(useViewerStore.getState().undoStacks.get(MODEL_ID)!.length, depth + 1);
+  act(() => useViewerStore.getState().undo(MODEL_ID));
+  assert.deepEqual(allRoofSlopes(), []);
+});
+it('typed Overhang extends the live eave and persists through the footprint builder (#9296)', () => {
+  const ui = render(<Bar />);
+  act(() => {
+    commandPointerDown({ local: [0, 0], winner: null, guides: [], locked: false });
+    commandPointerMove({ local: [10, 8], winner: null, guides: [], locked: false });
+  });
+  enterRoofValue(ui, 'Overhang', '0.6');
+  assert.ok(Math.abs(previewBounds().minX + 0.6) < 1e-5);
+  act(() => commandPointerDown({ local: [10, 8], winner: null, guides: [], locked: false }));
+  const view = useViewerStore.getState().mutationViews.get(MODEL_ID)!;
+  const roof = view.getNewEntities().find(e => e.type.toUpperCase() === 'IFCROOF')!;
+  assert.equal(view.getPropertyValue(roof.expressId, 'IfcLite_RoofFootprint', 'Overhang'), 0.6);
+});

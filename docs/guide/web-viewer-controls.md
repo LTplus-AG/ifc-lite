@@ -376,7 +376,9 @@ rather than silently moving it; load the image again after realignment.
 
 The Roof HUD offers Hip, Gable, Mono-pitch and Flat; a preset's pitched edges start
 at 30°. Numbered edges in the preview match the Edge selector. Set Edge slope to 0
-for a gable end, or enter an angle up to 85°. Each edge can have its own slope.
+for a gable end, or enter an angle up to 85°. Each edge can have its own slope. Pitch applies one angle to all sloped edges,
+keeping gable ends at 0°. Overhang sets the eave extension in metres. Both update
+the preview before the footprint is committed as one undo step.
 Changing the preset, switching the outline mode, or finishing a roof clears
 individual edge slopes; the next roof keeps the preset. The preview uses the same
 planes as the IFC builder.

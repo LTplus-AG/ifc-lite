@@ -16,7 +16,7 @@
  */
 
 import { roofGhostMeshes } from './roof-place-ghost.js';
-import { nextRoof, roofEdgeSlopes } from './roof-place-params.js';
+import { nextRoof, roofEdgeSlopes, withRoofPitch } from './roof-place-params.js';
 import { SlabPlaceBar } from '@/components/viewer/tools/command/PlacementBars';
 import { SlabPlaceScene } from '@/components/viewer/tools/command/SlabPlaceScene';
 import type { SlabClass } from '@/store/slices/authoringDefaultsSlice';
@@ -58,7 +58,7 @@ const FIELDS: readonly CommandField<SlabPlaceGesture>[] = [
   {
     id: 'roofPitch', labelKey: 'modelingCommand.roof.pitch', unit: 'deg', group: 'roof',
     hidden: (_g, ctx) => slabClassOf(ctx) !== 'roof', read: (g) => g.roof.pitch,
-    write: (g, pitch) => ({ ...g, roof: { ...g.roof, pitch: Math.max(0, Math.min(85, pitch)), overrides: {} } }),
+    write: (g, pitch) => ({ ...g, roof: withRoofPitch(g.roof, pitch) }),
   },
   {
     id: 'roofOverhang', labelKey: 'modelingCommand.roof.overhang', unit: 'm', group: 'roof',

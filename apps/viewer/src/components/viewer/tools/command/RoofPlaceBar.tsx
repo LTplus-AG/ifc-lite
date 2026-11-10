@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { useTranslation, type TranslationKey } from '@/i18n';
 import { updateCommandGesture } from '@/lib/commands/modeling/runtime';
-import { roofEdgeSlopes, type RoofPreset } from '@/lib/commands/modeling/commands/roof-place-params';
+import { roofEdgeSlopes, withRoofPitch, type RoofPreset } from '@/lib/commands/modeling/commands/roof-place-params';
 import { type SlabPlaceGesture } from '@/lib/commands/modeling/commands/slab-place-geometry';
 import { HudDivider, HudSegmented, HudValueField } from '../../../viewport-ui/hud';
 const KEYS: Record<RoofPreset, TranslationKey> = {
@@ -30,6 +30,13 @@ export function RoofPlaceBar({ gesture }: { gesture: SlabPlaceGesture }) {
     <HudSegmented aria-label={t('modelingCommand.roof.shape')}
       options={(Object.keys(KEYS) as RoofPreset[]).map(value => ({ value, label: t(KEYS[value]) }))}
       value={roof.preset} onChange={(preset) => update({ preset, overrides: {} })} />
+    <HudDivider />
+    <span className="text-2xs text-overlay-ink-muted">{t('modelingCommand.roof.pitch')}</span>
+    <HudValueField aria-label={t('modelingCommand.roof.pitch')} value={roof.pitch} unit="°" min={0} max={85} precision={1}
+      onChange={(value) => update(withRoofPitch(roof, value))} />
+    <span className="text-2xs text-overlay-ink-muted">{t('modelingCommand.roof.overhang')}</span>
+    <HudValueField aria-label={t('modelingCommand.roof.overhang')} value={roof.overhang} unit="m" min={0} step={0.1}
+      onChange={(value) => update({ overhang: Math.max(0, value) })} />
     <HudDivider />
     <span className="text-2xs text-overlay-ink-muted">{t('modelingCommand.roof.edge')}</span>
     <HudValueField aria-label={t('modelingCommand.roof.edge')} value={edge + 1} precision={0} min={1} max={count}

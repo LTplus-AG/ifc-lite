@@ -7279,6 +7279,7 @@
     "previewDictionaryIds: function",
     "readIdsz: function",
     "readStudioDocument: function",
+    "rebaseRestriction: function",
     "redo: function",
     "reidentify: function",
     "resolveConflict: function",

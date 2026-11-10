@@ -48,6 +48,7 @@ export const activityTrayRu = {
     other: "{count} скачивания завершилось ошибкой; файлы не переданы на загрузку.",
   },
   "activityTray.job.clash": "Проверка коллизий",
+  "activityTray.job.scanDetection": "Распознавание элементов в скане",
   "activityTray.job.validation": "Проверка данных",
   "activityTray.job.list": "Выполнение списка",
   "activityTray.job.bulk": "Массовое изменение свойств",

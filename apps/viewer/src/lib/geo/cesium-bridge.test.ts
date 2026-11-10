@@ -11,6 +11,7 @@ import { computeCesiumModelOrigin, computeGridConvergence, createCesiumBridge, v
 import type { CoordinateInfo } from '@ifc-lite/geometry';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import { computeModelCenterInIfcMeters } from './map-absolute.js';
+import { viewerToIfcAxes } from './coordinate-frame.js';
 import PROJ_ORACLE from './__fixtures__/proj-oracle.json' with { type: 'json' };
 
 const KROVAK =
@@ -297,9 +298,9 @@ describe('createCesiumBridge with stray elements far outside a map-absolute mode
   });
   /** Asserts the georeference pivots on the box centre: IFC world = centre + RTC (viewer Y-up -> IFC Z-up). */
   const assertCentrePivot = (b: CoordinateInfo['shiftedBounds'], offset = rtc) => {
-    const c = mid(b);
+    const c = viewerToIfcAxes(mid(b));
     const got = computeModelCenterInIfcMeters(info(b, undefined, offset));
-    const want = { ifcX: c.x + offset.x, ifcY: -c.z + offset.y, ifcZ: c.y + offset.z };
+    const want = { ifcX: c.x + offset.x, ifcY: c.y + offset.y, ifcZ: c.z + offset.z };
     for (const k of ['ifcX', 'ifcY', 'ifcZ'] as const) {
       assert.ok(Math.abs(got[k] - want[k]) < 1e-6, `${k} ${got[k]} should be ${want[k]}`);
     }

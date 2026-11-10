@@ -166,14 +166,14 @@ are observed access gaps, not failures of the already accepted general UX scope.
 Raw observation `theme: null` means the light theme's absent HTML class; the
 manifest explicitly identifies light/dark for every capture.
 
-![Unloaded selection action lacks a reason](https://github.com/LTplus-AG/ifc-lite/blob/3efa74e830e80310b69b04cc7f4f9eff1bd10c16/tests/ui-scenes/command-palette-access/evidence/baseline-access-unloaded-hide.light.png)
-![Real selected wall and Hide command](https://github.com/LTplus-AG/ifc-lite/blob/3efa74e830e80310b69b04cc7f4f9eff1bd10c16/tests/ui-scenes/command-palette-access/evidence/baseline-access-selected-hide.dark.png)
-![After canonical Hide execution](https://github.com/LTplus-AG/ifc-lite/blob/3efa74e830e80310b69b04cc7f4f9eff1bd10c16/tests/ui-scenes/command-palette-access/evidence/baseline-access-selected-hide-run.dark.png)
-![Undo query has no Undo action](https://github.com/LTplus-AG/ifc-lite/blob/3efa74e830e80310b69b04cc7f4f9eff1bd10c16/tests/ui-scenes/command-palette-access/evidence/baseline-access-history.light.png)
-![Privacy query misses Settings](https://github.com/LTplus-AG/ifc-lite/blob/3efa74e830e80310b69b04cc7f4f9eff1bd10c16/tests/ui-scenes/command-palette-access/evidence/baseline-access-settings-privacy.light.png)
+![Unloaded selection action lacks a reason](https://github.com/LTplus-AG/ifc-lite/blob/01949384dd4104935f0f0fba2e33cb1cae78ab53/tests/ui-scenes/command-palette-access/evidence/baseline-access-unloaded-hide.light.png)
+![Real selected wall and Hide command](https://github.com/LTplus-AG/ifc-lite/blob/01949384dd4104935f0f0fba2e33cb1cae78ab53/tests/ui-scenes/command-palette-access/evidence/baseline-access-selected-hide.dark.png)
+![After canonical Hide execution](https://github.com/LTplus-AG/ifc-lite/blob/01949384dd4104935f0f0fba2e33cb1cae78ab53/tests/ui-scenes/command-palette-access/evidence/baseline-access-selected-hide-run.dark.png)
+![Undo query has no Undo action](https://github.com/LTplus-AG/ifc-lite/blob/01949384dd4104935f0f0fba2e33cb1cae78ab53/tests/ui-scenes/command-palette-access/evidence/baseline-access-history.light.png)
+![Privacy query misses Settings](https://github.com/LTplus-AG/ifc-lite/blob/01949384dd4104935f0f0fba2e33cb1cae78ab53/tests/ui-scenes/command-palette-access/evidence/baseline-access-settings-privacy.light.png)
 
-[Recorded contexts and outcomes](https://github.com/LTplus-AG/ifc-lite/blob/3efa74e830e80310b69b04cc7f4f9eff1bd10c16/tests/ui-scenes/command-palette-access/evidence/baseline-context-observations.json) and
-[exact-artifact capture manifest](https://github.com/LTplus-AG/ifc-lite/blob/3efa74e830e80310b69b04cc7f4f9eff1bd10c16/tests/ui-scenes/command-palette-access/evidence/baseline-manifest.json) retain the facts.
+[Recorded contexts and outcomes](https://github.com/LTplus-AG/ifc-lite/blob/01949384dd4104935f0f0fba2e33cb1cae78ab53/tests/ui-scenes/command-palette-access/evidence/baseline-context-observations.json) and
+[exact-artifact capture manifest](https://github.com/LTplus-AG/ifc-lite/blob/01949384dd4104935f0f0fba2e33cb1cae78ab53/tests/ui-scenes/command-palette-access/evidence/baseline-manifest.json) retain the facts.
 No candidate access verdict has been issued yet.
 
 ## Round 1 foundation checkpoint
@@ -507,3 +507,21 @@ and localized child-path hints for conversations, preferences, proposal review,
 Semantic identity/projection/workspace, and script import/export/promotion.
 Conditional proposal execution still belongs to the actual reviewed flow. Ranking
 regressions are authored for English, German and Russian; runtime remains UNRUN.
+
+### R1 test repairs and updated UX integration checkpoint
+
+Seven mounted-test files now use valid widget schemas, the actual Bim context,
+canonical model pickers, real Radix tab activation, owner-qualified export labels
+and the shared export lock contract. Refusal tests observe visible errors and no
+publication; serial exports still assert real native model output. Static guards
+pass; these repaired assertions have not run yet. Original recovery job
+`835cba3b-6fb4-4f09-88b3-0a347ca04560` is running on older `8021801`; its
+typecheck (134 tasks plus tail) and build (58 tasks) passed, while viewer failures
+remain under investigation. It cannot certify this source.
+
+Parent merged BCF fixture fix #8959 (`e527fe607930ef1032ceecb9fda4109e4d5ffd16`)
+and updated UX #8950 to `d18ff8eac2c012e9c3d74e0adca2a2271c123805`.
+The old `307fbc5` full run passed build, typecheck, all 16 viewer and 8 E2E shards,
+lint and Node guards; Node shard 2 failed nine BCF fixture collisions, and the
+aggregate failed. Path-gated Rust lanes skipped. That is not a full pass, and
+results for the new integration head remain separate. Access R1 is unaccepted.

@@ -242,4 +242,18 @@ describe('current-file metadata races (#8648)', () => {
     const page = await provider.listRevisions!(ctx, REF);
     expect(page.items.map((r) => r.id)).toEqual(['rev-3', 'rev-2', 'rev-1']);
   });
+
+  it('orders an unnumbered, unpinned current revision by date against newer pins', async () => {
+    // The current-file read returned a revision no set pins and no version;
+    // rev-3 (2026-09-25) was pinned during the sweep and is provably newer.
+    const { provider, ctx } = withCurrent('rev-x', { lastModified: '2026-09-20' });
+    const page = await provider.listRevisions!(ctx, REF);
+    expect(page.items.map((r) => r.id)).toEqual(['rev-3', 'rev-x', 'rev-2', 'rev-1']);
+  });
+
+  it('keeps an unorderable current revision first when it has neither number nor date', async () => {
+    const { provider, ctx } = withCurrent('rev-x', {});
+    const page = await provider.listRevisions!(ctx, REF);
+    expect(page.items[0].id).toBe('rev-x');
+  });
 });

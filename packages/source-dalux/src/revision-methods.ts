@@ -9,7 +9,7 @@ import { decodeFileResponse } from './dalux-types.js';
 import type { BrowserDaluxApiClient } from './http-client.js';
 import { decodeContainerId, enc, nonEmptyString } from './mapping.js';
 import { toSourceRevision } from './revision-mapping.js';
-import { isModelFileName } from './version-sets.js';
+import { commitTimestamp, isModelFileName } from './version-sets.js';
 
 /** Histories share one project sweep; current metadata is read afresh each time.
  * Incomplete sweeps reject so the host displays an error, never a partial success. */
@@ -37,10 +37,19 @@ export async function listVersionSetRevisions(
   const current: DaluxModelCommit = { ...pinnedCurrent, revisionId, file: currentFile, fileAreaId, versionSets: pinnedCurrent?.versionSets ?? [], sweepIndex: pinnedCurrent?.sweepIndex ?? -1 };
   const others = commits.filter((commit) => commit.revisionId !== revisionId);
   // The current file is authoritative even when no coordination set pins it.
-  // A pin with a higher revision number than the metadata we read means the
-  // file was re-uploaded between the two reads; those rows are newer.
+  // A pin that is provably newer than the metadata we read means the file was
+  // re-uploaded between the two reads; those rows go first. "Provably" means
+  // a higher revision number when both sides have one, else a later timestamp
+  // when both sides have one. With neither, the current-file read is the only
+  // recency evidence there is, so it stays first.
   const currentNumber = current.revisionNumber ?? Number(nonEmptyString(currentFile.version));
-  const newer = Number.isFinite(currentNumber) ? others.filter((commit) => commit.revisionNumber !== undefined && commit.revisionNumber > currentNumber) : [];
+  const currentTime = Date.parse(commitTimestamp(currentFile) ?? '');
+  const isNewerThanCurrent = (commit: DaluxModelCommit): boolean => {
+    if (Number.isFinite(currentNumber) && commit.revisionNumber !== undefined) return commit.revisionNumber > currentNumber;
+    const pinnedTime = Date.parse(commitTimestamp(commit.file) ?? '');
+    return Number.isFinite(currentTime) && Number.isFinite(pinnedTime) && pinnedTime > currentTime;
+  };
+  const newer = others.filter(isNewerThanCurrent);
   const older = others.filter((commit) => !newer.includes(commit));
   return { items: [...newer, current, ...older].map(toSourceRevision) };
 }

@@ -524,4 +524,58 @@ describe('history sweep review regressions (#8647)', () => {
     expect(index.partial).toBe(true);
     expect(index.models.size).toBe(0);
   });
+
+  it('expires an index when the clock reads earlier than its build time (#8648)', async () => {
+    let calls = 0;
+    const inner = createDaluxApiMock(worldWithSets([]), { pageSize: 1 });
+    const client = new BrowserDaluxApiClient(
+      { baseUrl: DALUX_MOCK_BASE_URL, apiKey: 'test-key' },
+      createDaluxMockContext((input, init) => {
+        calls += 1;
+        return inner(input, init);
+      }),
+    );
+    await getCommitIndex(client, 'p-alpha', undefined, 10 * 60_000);
+    const afterFirst = calls;
+    // Same instant: served from cache.
+    await getCommitIndex(client, 'p-alpha', undefined, 10 * 60_000);
+    expect(calls).toBe(afterFirst);
+    // A clock that went backwards gives no usable age; rebuild, don't keep it.
+    await getCommitIndex(client, 'p-alpha', undefined, 0);
+    expect(calls).toBeGreaterThan(afterFirst);
+  });
+});
+
+
+describe('concurrent index retention (#8648)', () => {
+  beforeEach(() => invalidateCommitIndex());
+
+  it('shares an in-flight sweep even after its original TTL has elapsed', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    let calls = 0;
+    const inner = createDaluxApiMock(worldWithSets([]));
+    const client = new BrowserDaluxApiClient({ baseUrl: DALUX_MOCK_BASE_URL, apiKey: 'test-key' }, createDaluxMockContext(async (input, init) => {
+      calls++; await gate; return inner(input, init);
+    }));
+    const first = getCommitIndex(client, 'p-alpha', undefined, 0);
+    const second = getCommitIndex(client, 'p-alpha', undefined, 60 * 60_000);
+    release();
+    const [one, two] = await Promise.all([first, second]);
+    expect(two).toBe(one);
+    expect(calls).toBe(1);
+  });
+
+  it('evicts settled excess indexes after nine simultaneous builds complete', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const inner = createDaluxApiMock(worldWithSets([]));
+    const clients = Array.from({ length: 9 }, () => new BrowserDaluxApiClient({ baseUrl: DALUX_MOCK_BASE_URL, apiKey: 'test-key' }, createDaluxMockContext(async (input, init) => {
+      await gate; return inner(input, init);
+    })));
+    const pending = clients.map(client => getCommitIndex(client, 'p-alpha', undefined, 0));
+    release();
+    const indexes = await Promise.all(pending);
+    expect(await getCommitIndex(clients[0], 'p-alpha', undefined, 0)).not.toBe(indexes[0]);
+  });
 });

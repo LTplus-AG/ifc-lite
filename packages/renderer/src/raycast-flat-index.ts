@@ -135,7 +135,7 @@ export class RaycastFlatIndex {
 
   /** Discarded engines must stop retaining a scene listener (#9512). */
   dispose(): void {
-    this.unsubscribe?.();
+    if (typeof this.unsubscribe === 'function') this.unsubscribe();
     this.invalidate();
   }
 }

@@ -12,6 +12,7 @@ import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { getOrCreateMutationView } from '@/sdk/adapters/mutation-view';
 import { useViewerStore } from './index.js';
 import { canMutate, mutationPermission } from './mutation-permission.js';
+import { startWorkflowRun } from '@/lib/flow/run-session';
 
 const first = fixtureModel('first', { entities: [{ expressId: 11, type: 'IfcWall', name: 'A' }] });
 const second = fixtureModel('second', { idOffset: 1000, entities: [{ expressId: 22, type: 'IfcWall', name: 'B' }] });
@@ -48,6 +49,16 @@ describe('canonical viewer mutation permission (#5901)', () => {
       if (twoModels) assert.equal(useViewerStore.getState().undoStacks.get(first.id), undefined);
     });
   }
+
+  it('names a running workflow before Edit mode, since Edit mode would not unblock it (#9296)', () => {
+    const run = startWorkflowRun();
+    run.modelReaders = 1;
+    try {
+      assert.deepEqual(mutationPermission(useViewerStore.getState(), first.id), { allowed: false, reason: 'workflow-running' });
+    } finally {
+      run.release();
+    }
+  });
 
   it('edits a pset in View without entering Model, with one undo step (#9296)', () => {
     const s = useViewerStore.getState();

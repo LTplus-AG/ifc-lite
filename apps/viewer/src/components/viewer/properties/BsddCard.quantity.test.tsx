@@ -19,6 +19,7 @@ import { TooltipProvider } from '@/components/ui/tooltip.js';
 import { render, click, cleanup, type } from '@/test/render.js';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { useViewerStore } from '@/store';
+import { startWorkflowRun } from '@/lib/flow/run-session';
 import { BsddCard } from './BsddCard.js';
 
 const RESPONSE = {
@@ -95,6 +96,18 @@ describe('BsddCard Qto_* rows (#8407)', () => {
 
     const exported = new StepExporter(store, view).export({ schema: 'IFC4', applyMutations: true, includeQuantities: true });
     assert.match(new TextDecoder().decode(exported.content), /IFCQUANTITYLENGTH\('Length',.*,4\.5/);
+  });
+
+  it('offers no add while a workflow holds the model, instead of reporting a refused write as added (#9296)', async () => {
+    const run = startWorkflowRun();
+    run.modelReaders = 1;
+    try {
+      const view = new MutablePropertyView(null, 'm1');
+      const { ui } = await mountQuantityRows(view);
+      assert.equal(ui.querySelector('input[aria-label="Value for Length"]') === null, true, 'no add control under the lock');
+    } finally {
+      run.release();
+    }
   });
 
   it('offers no bulk add for a quantity set, since each quantity needs its own value', async () => {

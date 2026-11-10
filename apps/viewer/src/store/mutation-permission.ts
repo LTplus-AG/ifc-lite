@@ -24,6 +24,8 @@ export function mutationPermission(
   state: MutationPermissionState,
   modelId?: string,
 ): { allowed: true } | { allowed: false; reason: MutationDenialReason } {
+  // A running workflow is named first: turning on Edit mode would not unblock it.
+  if (areWorkflowModelsReadLocked()) return { allowed: false, reason: 'workflow-running' };
   if (!state.editEnabled) return { allowed: false, reason: 'edit-mode' };
   return dataMutationPermission(state, modelId);
 }

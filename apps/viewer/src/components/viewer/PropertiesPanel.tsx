@@ -147,7 +147,7 @@ export function PropertiesPanel() {
   );
   const editMode = editPermission.allowed;
   // Geometry and georeference placement stay in the Model workspace.
-  const geometryEditMode = useViewerStore((s) => s.editEnabled) && editMode;
+  const geometryEditMode = useViewerStore((s) => s.workspaceMode === 'model' && s.editEnabled) && editMode;
   const propertiesActiveTab = useViewerStore((s) => s.propertiesActiveTab);
   const setPropertiesActiveTab = useViewerStore((s) => s.setPropertiesActiveTab);
   const pendingPropertyFocus = useViewerStore((s) => s.pendingPropertyFocus);

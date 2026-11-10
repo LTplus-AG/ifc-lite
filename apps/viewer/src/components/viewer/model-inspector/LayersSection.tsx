@@ -12,6 +12,13 @@
  * on its axis; up through a slab) or the set on the type, each through
  * IfcRelAssociatesMaterial. A wall then takes the layers' total thickness.
  * In defaults mode "Element" means every element the command builds next.
+ *
+ * "Type" edits the shared type: every occurrence that uses the type's layer
+ * set takes the new total, as one undo step. That includes one with no
+ * material of its own, and one whose own layer usage places the type's set (a
+ * wall drawn with a layer default). An occurrence with a different layer set
+ * or material keeps it. The section says how many follow and how many keep
+ * theirs before Apply, and names any occurrence that could not follow after.
  */
 
 import { useMemo, useState } from 'react';
@@ -24,11 +31,12 @@ import { Select, SelectContent, SelectItem, SelectSeparator, SelectTrigger, Sele
 import { toast } from '@/components/ui/toast';
 import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
-import { materialsOf, type LayerRow, type LiveModel } from '@/lib/commands/modeling/authored-kinds';
+import { typeLayerScopeInStore } from '@ifc-lite/create';
+import { entityName, materialsOf, type LayerRow, type LiveModel } from '@/lib/commands/modeling/authored-kinds';
 import type { AuthoredElementKind } from '@/store/slices/authoringDefaultsSlice';
 import { InspectorCaption, InspectorSection } from './InspectorControls';
 import { METRE_SYMBOL, formatMetres, parseMetres } from './inspector-fields';
-import { applyMaterialLayers, type LayerInput } from './inspector-edits';
+import { applyMaterialLayers, type LayerFollow, type LayerInput } from './inspector-edits';
 
 const NONE = 'none';
 const NEW = 'new';
@@ -63,16 +71,25 @@ let nextKey = 0;
 const row = (thickness: number, material: number | null): DraftRow =>
   ({ key: nextKey++, thickness: formatMetres(thickness), material: material === null ? NONE : String(material), newName: '' });
 
+/** Before Apply to Type: the elements that follow the type's layers, and those whose layers differ. */
+export function typeScopeOf(live: LiveModel, typeId: number): { follow: number; own: number } {
+  const scope = typeLayerScopeInStore(live, typeId);
+  return { follow: scope.inheriting.length, own: scope.differing.length };
+}
+
 export function LayersSection({ modelId, live, kind, initial, inheritedFromType, elementId, typeId, defaultThickness }: LayersSectionProps) {
   const { t } = useTranslation();
   const mutationVersion = useViewerStore((s) => s.mutationVersion);
   const materials = useMemo(() => { void mutationVersion; return materialsOf(live); }, [live, mutationVersion]);
-  const [rows, setRows] = useState<DraftRow[]>(() => (initial.length > 0
+  const [rows, setDraftRows] = useState<DraftRow[]>(() => (initial.length > 0
     ? initial.map((layer) => row(layer.thickness, layer.materialId))
     : [row(defaultThickness, null)]));
   const [picked, setTarget] = useState<Target>('element');
+  const [follow, setFollow] = useState<LayerFollow | null>(null);
   const target: Target = typeId === null ? 'element' : picked;
   const total = rows.reduce((sum, r) => sum + (parseMetres(r.thickness) ?? 0), 0);
+  const scope = useMemo(() => { void mutationVersion; return typeId === null ? null : typeScopeOf(live, typeId); }, [live, typeId, mutationVersion]);
+  const setRows = (next: (all: DraftRow[]) => DraftRow[]) => { setFollow(null); setDraftRows(next); };
   const update = (key: number, patch: Partial<DraftRow>) => setRows((all) => all.map((r) => (r.key === key ? { ...r, ...patch } : r)));
 
   const apply = () => {
@@ -83,7 +100,8 @@ export function LayersSection({ modelId, live, kind, initial, inheritedFromType,
       thickness: l.thickness ?? 0,
       material: l.material === NEW ? { name: l.name } : l.material === NONE ? null : { id: Number(l.material) },
     }));
-    const layerSetId = applyMaterialLayers(modelId, { kind, layers, target, elementId, typeId });
+    setFollow(null);
+    const layerSetId = applyMaterialLayers(modelId, { kind, layers, target, elementId, typeId }, setFollow);
     if (layerSetId !== null && elementId === undefined && target === 'element') {
       const s = useViewerStore.getState();
       s.setAuthoringDefaults({ layerSetIds: { ...s.authoringDefaults.layerSetIds, [kind]: { modelId, expressId: layerSetId } } });
@@ -121,7 +139,7 @@ export function LayersSection({ modelId, live, kind, initial, inheritedFromType,
             size="sm"
             label={t('modelInspector.layers.applyTo')}
             value={target}
-            onValueChange={setTarget}
+            onValueChange={(next) => { setFollow(null); setTarget(next); }}
             options={[
               { value: 'element', label: t('modelInspector.layers.targetElement') },
               { value: 'type', label: t('modelInspector.layers.targetType'), disabled: typeId === null },
@@ -134,6 +152,22 @@ export function LayersSection({ modelId, live, kind, initial, inheritedFromType,
       </div>
       {elementId === undefined && <InspectorCaption>{t('modelInspector.layers.defaultsHint')}</InspectorCaption>}
       {kind === 'wall' && target === 'element' && <InspectorCaption>{t('modelInspector.layers.wallFollows')}</InspectorCaption>}
+      {target === 'type' && scope && (
+        <InspectorCaption>
+          {t('modelInspector.layers.typeScope', { count: scope.follow, countDisplay: String(scope.follow) })}
+          {scope.own > 0 && ` ${t('modelInspector.layers.typeOwnLayers', { count: scope.own, countDisplay: String(scope.own) })}`}
+        </InspectorCaption>
+      )}
+      {follow && follow.refused.length > 0 && (
+        <div role="alert" data-inspector-layer-refusals className="space-y-0.5 rounded border border-destructive/40 px-2 py-1 text-2xs text-destructive">
+          <p className="font-medium">{t('modelInspector.layers.notFollowed', { count: follow.refused.length, countDisplay: String(follow.refused.length) })}</p>
+          <ul>
+            {follow.refused.map(({ id, reason }) => (
+              <li key={id}>{t('modelInspector.layers.keptBody', { name: entityName(live, id) || `#${id}`, reason })}</li>
+            ))}
+          </ul>
+        </div>
+      )}
     </InspectorSection>
   );
 }

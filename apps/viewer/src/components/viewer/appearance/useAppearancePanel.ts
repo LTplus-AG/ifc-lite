@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { useAsyncRun } from '@/hooks/useAsyncRun';
 import { resolveAppearanceScope } from '@/lib/appearance/query-scope.js';
 import { modelDisplayLabels } from '@/lib/model-labels.js';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -76,13 +77,14 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply', suspendPr
     if (previousIntent.current !== intent) { previousIntent.current = intent; setPreviewEnabled(true); }
   }, [intent]);
   const pendingAbort = useRef<AbortController | null>(null);
-  const applyAbort = useRef<AbortController | null>(null);
+  const applyRun = useAsyncRun();
   const appliedRevision = useRef<string | null>(null);
   const draft = useRef<Draft | null>(null);
   const planner = useRef<ReturnType<typeof createAppearancePlanner> | null>(null);
   const supported = useRef<number[]>([]);
   const snapshot = useRef<AppearanceSnapshot | null>(null);
   const [catalogState, setCatalogState] = useState<{ modelId: string; catalog: AppearanceCatalog } | null>(null);
+  // Raster uploads publish catalog assets globally; this ref only fences their local upload UI.
   const mounted = useRef(true);
   const selectedSource = sources.find(source => source.id === sourceId);
   const target = models.get(modelId ?? '');
@@ -114,7 +116,6 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply', suspendPr
     planner.current = ownedPlanner;
     return () => {
       mounted.current = false;
-      applyAbort.current?.abort();
       ownedPlanner.dispose();
       snapshot.current = null;
       if (planner.current === ownedPlanner) planner.current = null;
@@ -123,7 +124,25 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply', suspendPr
     };
   }, []);
 
+  const previewInputs = [intent, modelId, sourceId, selectedSource, settings, owners, scope, unavailableReason,
+    mutationVersion, previewEnabled, suspendPreview, faceMasks.masks] as const;
+  const previousPreviewInputs = useRef<typeof previewInputs | null>(null);
+  const inputsChangedWhileBusy = useRef(false);
   useEffect(() => {
+    const previousInputs = previousPreviewInputs.current;
+    const inputsChanged = previousInputs === null || previewInputs.some((value, index) => !Object.is(value, previousInputs[index]));
+    previousPreviewInputs.current = previewInputs;
+    if (applyRun.busy) {
+      // Entering the busy state alone does not invalidate the reviewed preview.
+      inputsChangedWhileBusy.current ||= inputsChanged;
+      return;
+    }
+    const needsReplan = inputsChanged || inputsChangedWhileBusy.current;
+    inputsChangedWhileBusy.current = false;
+    if (!needsReplan && applyRun.state.kind === 'failed') {
+      setStatus('error'); setStatusMessage(rawMessage(applyRun.state.error));
+      return;
+    }
     if (intent !== 'apply' || !modelId || unavailableReason) {
       const previous = draft.current; draft.current = null;
       discardDraft(previous);
@@ -153,7 +172,7 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply', suspendPr
         const worker = planner.current;
         if (!worker) throw new AppearanceValidationError('appearance.controller.workerUnavailable');
         const currentSnapshot = await prepareAppearanceSnapshot(snapshot.current, modelId, owners.productIds, worker, controller.signal);
-        if (controller.signal.aborted || !mounted.current) return;
+        if (controller.signal.aborted) return;
         snapshot.current = currentSnapshot;
         setCatalogState({ modelId, catalog: currentSnapshot.catalog });
         if (suspendPreview || !previewEnabled || !sourceId) {
@@ -185,7 +204,7 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply', suspendPr
           productIds: currentScope.productIds, imageUri, repeatS: settings.repeatS,
           repeatT: settings.repeatT, representationPolicy: settings.representationPolicy ?? 'preserve', mapping: appearanceMapping(settings),
           ...(masks ? { faceMasks: masks } : {}) }, { signal: controller.signal });
-        if (controller.signal.aborted || !mounted.current) return;
+        if (controller.signal.aborted) return;
         currentSnapshot.validate();
         // A stale or spent face selection is dropped here with its diagnostic; the
         // mask change re-runs this effect, so this plan is not staged.
@@ -217,11 +236,11 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply', suspendPr
         setConvertedObjects((plan.conversions ?? []).map(item => ({ productId: item.productId, name: `IFC object #${item.productId}` })));
         setShowingOriginal(false); setStatus('ready'); setStatusMessage(translatedMessage('appearance.controller.previewReady'));
       } catch (error) {
-        if (!controller.signal.aborted && mounted.current) { setStatus('error'); setStatusMessage(appearanceErrorMessage(error)); }
+        if (!controller.signal.aborted) { setStatus('error'); setStatusMessage(appearanceErrorMessage(error)); }
       } finally { if (!adopted) appearanceAssets.releaseOwner(owner); }
     })(); }, 250);
-    return () => { clearTimeout(timer); controller.abort(); applyAbort.current?.abort(); if (!adopted) appearanceAssets.releaseOwner(owner); };
-  }, [intent, modelId, sourceId, selectedSource, settings, owners, scope, unavailableReason, mutationVersion, previewEnabled, suspendPreview, faceMasks.masks]);
+    return () => { clearTimeout(timer); controller.abort(); if (!adopted) appearanceAssets.releaseOwner(owner); };
+  }, [intent, modelId, sourceId, selectedSource, settings, owners, scope, unavailableReason, mutationVersion, previewEnabled, suspendPreview, faceMasks.masks, applyRun.busy, applyRun.state]);
 
   async function upload(file: File): Promise<void> {
     if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) { await pdfSource.upload(file); return; }
@@ -261,7 +280,7 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply', suspendPr
   }
   function discard(): void {
     pdfSource.cancel();
-    applyAbort.current?.abort();
+    applyRun.reset();
     appliedRevision.current = null;
     pendingAbort.current?.abort();
     planner.current?.cancel();
@@ -285,22 +304,22 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply', suspendPr
     const current = draft.current;
     const renderer = getGlobalRenderer();
     if (!current?.session || !renderer || status !== 'ready') return;
-    const controller = new AbortController(); applyAbort.current = controller;
-    setStatus('applying');
-    try {
-      await commitAppearance(current.modelId, current.assetIds, current.plan, renderer, current.session, current.groups, current.source, {
-        signal: controller.signal,
-        onProgress: phase => { if (mounted.current) setStatusMessage(translatedMessage(phase === 'preparing'
+    const session = current.session;
+    await applyRun.start(async ({ signal, isCurrent }) => {
+      setStatus('applying');
+      await commitAppearance(current.modelId, current.assetIds, current.plan, renderer, session, current.groups, current.source, {
+        signal,
+        onProgress: phase => { if (isCurrent()) setStatusMessage(translatedMessage(phase === 'preparing'
           ? 'appearance.controller.preparingChanges' : 'appearance.controller.saving')); },
       });
+      if (!isCurrent()) return;
       setPreviewEnabled(false); setConvertedObjects([]);
       faceMasks.clearApplied((current.plan.conversions ?? []).map(conversion => conversion.productId));
       appliedRevision.current = appearanceRevision(current.modelId);
       draft.current = null;
       appearanceAssets.releaseOwner(current.owner);
       setStatus('idle'); setStatusMessage(translatedMessage('appearance.controller.applied'));
-    } catch (error) { if (mounted.current && !controller.signal.aborted) { setStatus('error'); setStatusMessage(rawMessage(error)); } }
-    finally { if (applyAbort.current === controller) applyAbort.current = null; }
+    });
   }
   return {
     allowPdf: true, pdf: pdfSource.controls, pdfPassword: pdfSource.passwordPrompt,

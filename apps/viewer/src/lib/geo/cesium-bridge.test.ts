@@ -10,7 +10,7 @@ import proj4 from 'proj4';
 import { computeCesiumModelOrigin, computeGridConvergence, createCesiumBridge, viewerToEnuRotation } from './cesium-bridge.js';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
-import { viewerFrameCenter } from './map-absolute.js';
+import { computeModelCenterInIfcMeters } from './map-absolute.js';
 import PROJ_ORACLE from './__fixtures__/proj-oracle.json' with { type: 'json' };
 
 const KROVAK =
@@ -295,6 +295,15 @@ describe('createCesiumBridge with stray elements far outside a map-absolute mode
   const mid = (b: CoordinateInfo['shiftedBounds']) => ({
     x: (b.min.x + b.max.x) / 2, y: (b.min.y + b.max.y) / 2, z: (b.min.z + b.max.z) / 2,
   });
+  /** Asserts the georeference pivots on the box centre: IFC world = centre + RTC (viewer Y-up -> IFC Z-up). */
+  const assertCentrePivot = (b: CoordinateInfo['shiftedBounds'], offset = rtc) => {
+    const c = mid(b);
+    const got = computeModelCenterInIfcMeters(info(b, undefined, offset));
+    const want = { ifcX: c.x + offset.x, ifcY: -c.z + offset.y, ifcZ: c.y + offset.z };
+    for (const k of ['ifcX', 'ifcY', 'ifcZ'] as const) {
+      assert.ok(Math.abs(got[k] - want[k]) < 1e-6, `${k} ${got[k]} should be ${want[k]}`);
+    }
+  };
   // The sync `process()` path re-centres on the polluted box as well.
   const syncShift = { x: -156003.693, y: 14.35, z: 2998055.73 };
   const synced = {
@@ -345,7 +354,7 @@ describe('createCesiumBridge with stray elements far outside a map-absolute mode
       // A model federated onto another model's anchor, 10.5 km away from it.
       { min: { x: 9_500, y: 0, z: -15 }, max: { x: 11_500, y: 3, z: 15 } },
     ]) {
-      assert.deepStrictEqual(viewerFrameCenter(info(box)), mid(box));
+      assertCentrePivot(box);
     }
   });
 
@@ -353,10 +362,10 @@ describe('createCesiumBridge with stray elements far outside a map-absolute mode
     // A local-coordinate corridor from 5 km to 40 km, median near 38 km: it
     // reaches its own origin, but its RTC origin is no map anchor.
     const corridor = { min: { x: -33_000, y: 0, z: -15 }, max: { x: 2_000, y: 3, z: 15 } };
-    assert.deepStrictEqual(viewerFrameCenter(info(corridor, undefined, { x: 38_000, y: 0, z: 0 })), mid(corridor));
+    assertCentrePivot(corridor, { x: 38_000, y: 0, z: 0 });
     // Geometry only at the file origin, none at the anchor: the box reaches the
     // world origin but not the RTC origin.
     const unplaced = { min: { x: -rtc.x - 50, y: -14, z: rtc.y - 50 }, max: { x: -rtc.x + 50, y: 0, z: rtc.y + 50 } };
-    assert.deepStrictEqual(viewerFrameCenter(info(unplaced)), mid(unplaced));
+    assertCentrePivot(unplaced);
   });
 });

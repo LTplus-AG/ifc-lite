@@ -8,18 +8,28 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import {
-  aaNoiseFloor, bootstrapHalfWidth, browserShares, browserStages, diffElements, failedOpenIndex, gpuUnhealthy, ownNoiseFloor, expectedCacheTier, gainOf, median, nativeStages, rankShares,
-  relativeSpread, stageShares, unionLength, verdictFor,
-} from './load-scoreboard-stats.mjs';
-import { summarize } from './load-scoreboard-report.mjs';
+
+// The modules under test are loaded inside each test, not at the top of the
+// file. Without them (the revert oracle reverses this PR's production hunks),
+// every test must still be collected and fail on its own assertion, instead of
+// the whole file dying at import with nothing asserted.
+async function load(path) {
+  let failure = null;
+  const mod = await import(path).catch((error) => { failure = error; return null; });
+  assert.ok(mod, `${path} did not load (${failure?.name ?? 'unknown'}); run \`node --input-type=module -e "import('${path}')"\` from scripts/perf for the cause`);
+  return mod;
+}
+const stats = () => load('./load-scoreboard-stats.mjs');
+const report = () => load('./load-scoreboard-report.mjs');
+const snapshotRule = () => load('./viewer-scene-snapshot.mjs');
 
 const pairs = (base, branch) => base.map((b, i) => [b, branch[i]]);
 // Five rounds with about +-2% scatter, the shape of a quiet A/A cohort.
 const A = [1000, 1012, 991, 1005, 998];
 const A2 = [1003, 995, 1010, 999, 1006];
 
-test('median and spread ignore missing values', () => {
+test('median and spread ignore missing values', async () => {
+  const { median, relativeSpread } = await stats();
   assert.equal(median([3, null, 1, 2]), 2);
   assert.equal(median([4, 1, 3, 2]), 2.5);
   assert.equal(median([]), null);
@@ -27,13 +37,15 @@ test('median and spread ignore missing values', () => {
   assert.equal(relativeSpread([100]), null);
 });
 
-test('gain is the fraction of the base median the branch saves', () => {
+test('gain is the fraction of the base median the branch saves', async () => {
+  const { gainOf } = await stats();
   assert.ok(Math.abs(gainOf([100, 100], [80, 80]) - 0.2) < 1e-12);
   assert.ok(Math.abs(gainOf([100], [130]) + 0.3) < 1e-12);
   assert.equal(gainOf([0], [5]), null);
 });
 
-test('the paired bootstrap is reproducible and widens with scatter', () => {
+test('the paired bootstrap is reproducible and widens with scatter', async () => {
+  const { bootstrapHalfWidth } = await stats();
   const quiet = bootstrapHalfWidth(pairs(A, A2), { seed: 7 });
   assert.equal(quiet, bootstrapHalfWidth(pairs(A, A2), { seed: 7 }));
   const noisy = bootstrapHalfWidth(pairs([1000, 1300, 800, 1150, 900], [1100, 850, 1250, 950, 1020]), { seed: 7 });
@@ -41,21 +53,24 @@ test('the paired bootstrap is reproducible and widens with scatter', () => {
   assert.equal(bootstrapHalfWidth([[1, 2]]), null);
 });
 
-test('an A/A comparison of two identical builds is no significant difference', () => {
+test('an A/A comparison of two identical builds is no significant difference', async () => {
+  const { verdictFor } = await stats();
   const v = verdictFor(pairs(A, A2));
   assert.equal(v.verdict, 'no significant difference');
   assert.equal(v.pass, false);
   assert.equal(v.regression, false);
 });
 
-test('a 30% slowdown is flagged as a regression', () => {
+test('a 30% slowdown is flagged as a regression', async () => {
+  const { verdictFor } = await stats();
   const v = verdictFor(pairs(A, A2.map((x) => x * 1.3)));
   assert.equal(v.verdict, 'regression');
   assert.equal(v.regression, true);
   assert.ok(v.gain < -0.25);
 });
 
-test('a gain passes only when it clears twice the larger of the A/A floor and the own floor', () => {
+test('a gain passes only when it clears twice the larger of the A/A floor and the own floor', async () => {
+  const { verdictFor } = await stats();
   const faster = A2.map((x) => x * 0.9);
   assert.equal(verdictFor(pairs(A, faster)).verdict, 'gain');
   // The recorded A/A floor binds even when this run happened to be quiet: 10% < 2 x 6%.
@@ -65,12 +80,14 @@ test('a gain passes only when it clears twice the larger of the A/A floor and th
   assert.equal(verdictFor(pairs(A, faster), { aaFloor: 0.04 }).verdict, 'gain');
 });
 
-test('a difference below the absolute resolution never counts', () => {
+test('a difference below the absolute resolution never counts', async () => {
+  const { verdictFor } = await stats();
   const v = verdictFor(pairs([10, 10, 10, 10, 10], [9.6, 9.6, 9.6, 9.6, 9.6]), { minAbs: 1 });
   assert.equal(v.verdict, 'no significant difference');
 });
 
-test('failed loads stay in the data: more branch failures is a regression, too few samples is inconclusive', () => {
+test('failed loads stay in the data: more branch failures is a regression, too few samples is inconclusive', async () => {
+  const { verdictFor } = await stats();
   const withFailures = verdictFor([[1000, null], [1010, 990], [995, null], [1003, 1001], [999, 1000]], { failures: { base: 0, branch: 2 } });
   assert.equal(withFailures.verdict, 'regression: more failed loads');
   const thin = verdictFor([[1000, 990], [null, null], [null, null], [1003, null], [999, null]], { failures: { base: 2, branch: 3 } });
@@ -81,13 +98,15 @@ test('failed loads stay in the data: more branch failures is a regression, too f
   assert.match(verdictFor(pairs(A.slice(0, 4), A2.slice(0, 4).map((x) => x * 1.3))).verdict, /^inconclusive/);
 });
 
-test('the A/A floor includes the systematic difference between identical builds', () => {
+test('the A/A floor includes the systematic difference between identical builds', async () => {
+  const { aaNoiseFloor } = await stats();
   const skewed = aaNoiseFloor(pairs(A, A2.map((x) => x * 1.05)), { seed: 3 });
   assert.ok(skewed >= 0.045, String(skewed));
   assert.ok(aaNoiseFloor(pairs(A, A2), { seed: 3 }) < 0.03);
 });
 
-test('stage shares union concurrent intervals and clip to the load window', () => {
+test('stage shares union concurrent intervals and clip to the load window', async () => {
+  const { rankShares, stageShares, unionLength } = await stats();
   assert.equal(unionLength([[0, 10], [5, 10], [30, 5]]), 20);
   const shares = stageShares({ geometry: [[0, 40], [20, 40]], parser: [[-10, 30]], tail: [[90, 50]] }, 100);
   assert.equal(shares.geometry, 0.6);
@@ -97,14 +116,16 @@ test('stage shares union concurrent intervals and clip to the load window', () =
   assert.deepEqual(ranked.map((r) => r.stage), ['geometry', 'parser', 'tail']);
 });
 
-test('browser stages skip milestones, which span from the load start to the event, and mark umbrella spans', () => {
+test('browser stages skip milestones, which span from the load start to the event, and mark umbrella spans', async () => {
+  const { browserStages } = await stats();
   const { byName, byGroup } = browserStages([{ spans: [['geometry.streamComplete', 'main', 0, 900, 1, 1, null],
     ['parser.worker', 'main', 5, 300, 0, 2, null], ['parser.hydrate', 'parser', 60, 100, 0, 3, 2]] }]);
   assert.deepEqual(Object.keys(byName).sort(), ['parser.hydrate', 'parser.worker*']);
   assert.equal(byGroup.parser.length, 2);
 });
 
-test('native stages account for the whole cold load exactly once', () => {
+test('native stages account for the whole cold load exactly once', async () => {
+  const { nativeStages } = await stats();
   const row = { fileReadMs: 12.5, parseMs: 300, entityScanMs: 120, lookupMs: 40, preprocessMs: 90, geometryMs: 650, totalMs: 960, allWallMs: [1010], fullLoadWallMs: 1022.5 };
   const stages = nativeStages(row);
   const sum = Object.values(stages).reduce((a, b) => a + b, 0);
@@ -113,7 +134,8 @@ test('native stages account for the whole cold load exactly once', () => {
   assert.equal(stages['metadata.tail'], 50);
 });
 
-test('cache tiers follow the viewer thresholds', () => {
+test('cache tiers follow the viewer thresholds', async () => {
+  const { expectedCacheTier } = await stats();
   const MB = 2 ** 20;
   assert.match(expectedCacheTier(2.4 * MB), /^none/);
   assert.match(expectedCacheTier(49 * MB), /^source/);
@@ -121,7 +143,8 @@ test('cache tiers follow the viewer thresholds', () => {
   assert.match(expectedCacheTier(401 * MB), /^none/);
 });
 
-test('the report keeps failures, flags changed output and exports per-metric floors', () => {
+test('the report keeps failures, flags changed output and exports per-metric floors', async () => {
+  const { summarize } = await report();
   const plan = { name: 't', lanes: ['native-cold'], fixtures: [{ name: 'fx', set: 'tuning', bytes: 1 }], sides: {} };
   const rows = [];
   for (let round = 0; round < 5; round++) {
@@ -137,14 +160,16 @@ test('the report keeps failures, flags changed output and exports per-metric flo
   assert.ok(Number.isFinite(lane.floors.interactiveMs));
 });
 
-test('browser shares name the untraced part of the load and keep milestone times', () => {
+test('browser shares name the untraced part of the load and keep milestone times', async () => {
+  const { browserShares } = await stats();
   const { shares, milestones } = browserShares([{ spans: [['cache.storeReady', 'main', 0, 700, 1, 1, null],
     ['cache.decode', 'main', 100, 200, 0, 2, null], ['search.tier1', 'main', 200, 300, 0, 3, null]] }], 1000);
   assert.ok(Math.abs(shares['(no span)'] - 0.6) < 1e-12);
   assert.equal(milestones['cache.storeReady'], 700);
 });
 
-test('per-element output diff ignores order and names missing, extra and changed elements', () => {
+test('per-element output diff ignores order and names missing, extra and changed elements', async () => {
+  const { diffElements } = await stats();
   assert.equal(diffElements({ 1: 'a', 2: 'b' }, { 2: 'b', 1: 'a' }).identical, true);
   const d = diffElements({ 1: 'a', 2: 'b', 3: 'c' }, { 2: 'b', 3: 'x', 4: 'd' });
   assert.equal(d.identical, false);
@@ -157,7 +182,8 @@ test('per-element output diff ignores order and names missing, extra and changed
 });
 
 test('H5: a cell with fewer than three samples lists them instead of reporting a median', async () => {
-  const { renderMarkdown } = await import('./load-scoreboard-report.mjs');
+  const { median } = await stats();
+  const { renderMarkdown, summarize } = await report();
   const plan = { name: 't', kind: 'compare', lanes: ['native-cold'], rounds: 2, seed: 1, fixtures: [{ name: 'fx', set: 'tuning', bytes: 1 }],
     sides: { base: { label: 'a' }, branch: { label: 'b' } } };
   const rows = [0, 1].flatMap((round) => ['base', 'branch'].map((side) => ({ lane: 'native-cold', fixture: 'fx', round, side, ok: true,
@@ -167,7 +193,8 @@ test('H5: a cell with fewer than three samples lists them instead of reporting a
   assert.doesNotMatch(md, /4,175/); // the mean of two, which an n=2 "median" would print
 });
 
-test('an A/A whose few pairs all lean one way is not a gain: the floor covers the samples own scatter', () => {
+test('an A/A whose few pairs all lean one way is not a gain: the floor covers the samples own scatter', async () => {
+  const { bootstrapHalfWidth, ownNoiseFloor, verdictFor } = await stats();
   // Measured: native FZK, two copies of one binary, branch 3-4 ms faster in every round of a 28 ms load.
   const base = [32.4, 31.1, 28.0, 30.2, 29.5], branch = [27.9, 28.4, 23.7, 27.6, 27.0];
   assert.ok(bootstrapHalfWidth(pairs(base, branch), { seed: 1 }) < 0.06, 'the bootstrap alone collapses');
@@ -175,14 +202,16 @@ test('an A/A whose few pairs all lean one way is not a gain: the floor covers th
   assert.equal(verdictFor(pairs(base, branch)).verdict, 'no significant difference');
 });
 
-test('a GPU health read that failed is not a healthy sample', () => {
+test('a GPU health read that failed is not a healthy sample', async () => {
+  const { gpuUnhealthy } = await stats();
   assert.match(gpuUnhealthy({ error: 'page.evaluate: Target closed' }), /unreadable/);
   assert.match(gpuUnhealthy(null), /unreadable/);
   assert.match(gpuUnhealthy({ contaminated: true, reasons: ['lost'] }), /device lost/);
   assert.equal(gpuUnhealthy({ contaminated: false, reasons: [] }), null);
 });
 
-test('a failure while preparing reopen 2 belongs to reopen 2, not to the clean first reopen (review #9607)', () => {
+test('a failure while preparing reopen 2 belongs to reopen 2, not to the clean first reopen (review #9607)', async () => {
+  const { failedOpenIndex } = await stats();
   assert.equal(failedOpenIndex('cold-shell'), 0);
   assert.equal(failedOpenIndex('boot'), 0);
   assert.equal(failedOpenIndex('warm1-prep'), 1);
@@ -192,7 +221,7 @@ test('a failure while preparing reopen 2 belongs to reopen 2, not to the clean f
 });
 
 test('the snapshot wait follows the viewer rule: on unless perf.sceneSnapshot is set to anything but 1/true (review #9607)', async () => {
-  const { sceneSnapshotsEnabled, expectSceneSnapshot } = await import('./viewer-scene-snapshot.mjs');
+  const { sceneSnapshotsEnabled, expectSceneSnapshot } = await snapshotRule();
   // Default (absent) is on, as sceneSnapshotLoad.ts snapshotsEnabled() decides; scenoptic-bench used to wait only for =1.
   assert.equal(sceneSnapshotsEnabled('?perfTrace=1'), true);
   assert.equal(sceneSnapshotsEnabled('perfTrace=1&perf.sceneSnapshot=1'), true);

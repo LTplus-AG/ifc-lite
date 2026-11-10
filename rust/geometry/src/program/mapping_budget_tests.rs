@@ -141,7 +141,7 @@ fn issue_7873_each_list_boundary_has_exact_small_threshold_and_ignored_members_p
     // list's repeated #8 pays one more. Three attempts fit both limits; the
     // six members fit only the second.
     let source = nested("#8,#8").replace("(#4)", "(#4,$,17,$,$)");
-    for (limit, indices, dropped) in [(5, 3, Some(&1)), (6, 6, None)] {
+    for (limit, indices) in [(5, 3), (6, 6)] {
         let router = GeometryRouter::new();
         let mut decoder = EntityDecoder::new(&source);
         let item = decoder.decode_by_id(18).unwrap();
@@ -165,7 +165,13 @@ fn issue_7873_each_list_boundary_has_exact_small_threshold_and_ignored_members_p
                 .sum::<usize>(),
             indices
         );
-        assert_eq!(router.take_unsupported_items().get("IfcMappedItem"), dropped);
+        assert!(router.take_unsupported_items().is_empty(), "#9268 budget is not unsupported");
+        let refusals = router.take_budget_refusals();
+        assert_eq!(refusals.len(), usize::from(limit == 5));
+        if let Some(refusal) = refusals.first() {
+            assert_eq!((refusal.budget.as_str(), refusal.limit, refusal.reached, refusal.source_id),
+                ("logical Items members", 5, 6, 8));
+        }
     }
 }
 
@@ -175,6 +181,39 @@ fn nested(items: &str) -> String {
         #16=IFCREPRESENTATIONMAP(#2,#15);#18=IFCMAPPEDITEM(#16,#7);",
         SOURCE
     )
+}
+
+#[test]
+fn issue_9268_shared_router_keeps_standalone_refusal_unattributed() {
+    let source = format!(
+        "{}#23=IFCSHAPEREPRESENTATION($,'Body','MappedRepresentation',(#8,#8,#8,#8,#8,#8));\
+        #24=IFCPRODUCTDEFINITIONSHAPE($,$,(#23));\
+        #25=IFCWALL('0000000000000000000001',$,$,$,$,$,#24,$);",
+        SOURCE.replace("(#4)", "(#4,#4,#4,#4,#4,#4)")
+    );
+    let router = GeometryRouter::new();
+    let (standalone, mut decoder) = run(0, &source, 4, &router);
+    assert!(standalone.unwrap_err().to_string().contains("work budget"));
+    let product = decoder.decode_by_id(25).unwrap();
+    GeometryProgram::product_with_limit(
+        &product,
+        crate::router::processing::SourceHygiene::Watertight,
+        4,
+        None,
+    )
+    .drain_parts(&router, &mut decoder)
+    .unwrap();
+    let refusals = serde_json::to_value(router.take_budget_refusals()).unwrap();
+    let refusals = refusals.as_array().unwrap();
+    assert_eq!(refusals.len(), 2);
+    assert_eq!(refusals[0]["sourceId"], 8);
+    assert!(refusals[0]["productId"].is_null());
+    assert!(refusals[0]["productType"].is_null());
+    assert!(refusals[0]["GlobalId"].is_null());
+    assert_eq!(refusals[1]["sourceId"], 23);
+    assert_eq!(refusals[1]["productId"], 25);
+    assert_eq!(refusals[1]["productType"], "IfcWall");
+    assert_eq!(refusals[1]["GlobalId"], "0000000000000000000001");
 }
 
 #[test]
@@ -219,10 +258,8 @@ fn issue_7873_repeated_dag_occurrences_pay_and_prefix_never_publishes() {
             };
             // Both keep the two completed occurrences and stop the rest.
             assert_eq!(indices, 6);
-            assert_eq!(
-                router.take_unsupported_items().get("IfcMappedItem"),
-                Some(&1)
-            );
+            assert!(router.take_unsupported_items().is_empty(), "#9268 budget is not unsupported");
+            assert_attempt_refusal(&router);
             assert!(!cache.lock().unwrap().contains_key(&16));
             // Same router, same source: a fresh invocation has fresh counters,
             // and cannot hit a previously published partial local/shared root.
@@ -260,10 +297,8 @@ fn issue_7873_attempt_meter_counts_warm_cache_hits_independently_of_members() {
             parts.iter().map(|mesh| mesh.indices.len()).sum::<usize>(),
             6
         );
-        assert_eq!(
-            router.take_unsupported_items().get("IfcMappedItem"),
-            Some(&1)
-        );
+        assert!(router.take_unsupported_items().is_empty(), "#9268 budget is not unsupported");
+        assert_attempt_refusal(&router);
         let parts = limited(GeometryProgram::mapped_item(&item), 4)
             .drain_parts(&router, &mut decoder)
             .unwrap();
@@ -288,7 +323,7 @@ fn issue_9102_distinct_mapped_items_over_one_source_each_pay_an_attempt() {
         #51=IFCREPRESENTATIONMAP(#2,#50);"
     );
     let textures = FxHashMap::default();
-    for (limit, indices, dropped) in [(5, 15, Some(&1)), (6, 18, None)] {
+    for (limit, indices) in [(5, 15), (6, 18)] {
         let mut router = GeometryRouter::new();
         router.enable_shared_mapped_item_cache(GeometryRouter::new_mapped_item_cache());
         let mut decoder = EntityDecoder::new(&source);
@@ -297,7 +332,13 @@ fn issue_9102_distinct_mapped_items_over_one_source_each_pay_an_attempt() {
             .drain_type_parts(&router, &mut decoder)
             .unwrap();
         assert_eq!(parts.iter().map(|part| part.0.indices.len()).sum::<usize>(), indices, "limit {limit}");
-        assert_eq!(router.take_unsupported_items().get("IfcMappedItem"), dropped, "limit {limit}");
+        assert!(router.take_unsupported_items().is_empty(), "#9268 budget is not unsupported at limit {limit}");
+        let refusals = router.take_budget_refusals();
+        assert_eq!(refusals.len(), usize::from(limit == 5));
+        if let Some(refusal) = refusals.first() {
+            assert_eq!((refusal.budget.as_str(), refusal.limit, refusal.reached, refusal.source_id),
+                ("logical mapped attempts", 5, 6, 45));
+        }
     }
 }
 
@@ -387,10 +428,8 @@ fn issue_7873_default_nested_budget_keeps_prefix_and_stops_siblings_in_both_rend
         // The merged walk serves the second #28 from its source cache, which
         // reads no Items; the styled walk re-reads them and is refused.
         assert_eq!(indices, if styled { 6 } else { 12 });
-        assert_eq!(
-            router.take_unsupported_items().get("IfcMappedItem"),
-            styled.then_some(&1)
-        );
+        assert!(router.take_unsupported_items().is_empty(), "#9268 budget is not unsupported");
+        assert_eq!(router.take_budget_refusals().len(), usize::from(styled));
         assert_eq!(router.unsupported_scope_depth(), 0);
     }
 }
@@ -664,12 +703,51 @@ fn issue_7781_logical_drop_keeps_parent_attribution_and_prefix_without_cache_pub
         assert_eq!(meshes.sub_meshes[0].mesh.indices.len(), 3);
         assert!(cache.lock().unwrap().is_empty());
         let drops = router.take_unsupported_items();
-        assert_eq!(
-            drops.get("IfcMappedItem").copied().unwrap_or(0),
-            u64::from(body)
-        );
-        assert_eq!(drops.len(), usize::from(body));
+        assert!(drops.is_empty(), "#9268 budget is not unsupported (Body={body})");
+        assert_eq!(router.take_budget_refusals().len(), usize::from(body));
         assert_eq!(router.unsupported_scope_depth(), 0);
     }
 }
 
+
+fn assert_attempt_refusal(router: &GeometryRouter) {
+    let refusals = router.take_budget_refusals();
+    assert_eq!(refusals.len(), 1, "#9268 refusal must be reported exactly once");
+    let refusal = &refusals[0];
+    assert_eq!((refusal.budget.as_str(), refusal.limit, refusal.reached, refusal.source_id),
+        ("logical mapped attempts", 3, 4, 8));
+}
+
+#[test]
+fn issue_9268_type_map_identity_dedup_and_bounded_details() {
+    let types: String = (60..80).map(|id| format!(
+        "#{id}=IFCWALLTYPE('type-{id}',$,$,$,$,$,(#6),$,$,.NOTDEFINED.);"
+    )).collect();
+    let source = format!("{}{types}", SOURCE.replace("(#4)", "(#4,#4,#4,#4,#4,#4)"));
+    let mut decoder = EntityDecoder::new(&source);
+    let map = decoder.decode_by_id(6).unwrap();
+    let textures = FxHashMap::default();
+    let router = GeometryRouter::new();
+    for id in 60..80 {
+        let product = decoder.decode_by_id(id).unwrap();
+        for _ in 0..2 {
+            assert!(limited(GeometryProgram::type_map_for_product(&map, &textures, &product), 4)
+                .drain_type_parts(&router, &mut decoder).unwrap_err().to_string().contains("work budget"));
+        }
+    }
+    let (total, refusals) = router.take_budget_refusal_report();
+    assert_eq!(total, 20, "repeating a walk must not report again until drain");
+    assert_eq!(refusals.len(), 16, "bounded details, complete count");
+    for (index, refusal) in refusals.iter().enumerate() {
+        assert_eq!(refusal.product_id, Some(60 + index as u32));
+        assert_eq!(refusal.product_type.as_deref(), Some("IfcWallType"));
+        assert_eq!(refusal.global_id, Some(format!("type-{}", 60 + index)));
+        assert_eq!((refusal.budget.as_str(), refusal.limit, refusal.reached, refusal.source_id),
+            ("logical Items members", 4, 5, 6));
+    }
+    assert_eq!(router.take_budget_refusal_report(), (0, Vec::new()));
+    let product = decoder.decode_by_id(79).unwrap();
+    assert!(limited(GeometryProgram::type_map_for_product(&map, &textures, &product), 4)
+        .drain_type_parts(&router, &mut decoder).is_err());
+    assert_eq!(router.take_budget_refusal_report().0, 1, "drain resets dedup scope");
+}

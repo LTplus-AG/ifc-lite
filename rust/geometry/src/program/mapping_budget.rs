@@ -8,18 +8,9 @@ use crate::representation::first_seen::FirstSeen;
 use crate::Error;
 use std::sync::Arc;
 
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct LogicalRefusal {
-    limit: u32,
-}
-impl LogicalRefusal {
-    pub(super) fn into_error(self, item: u32) -> Error {
-        crate::representation::WalkRefusal::Budget {
-            max_levels: self.limit,
-        }
-        .into_error(item)
-    }
-}
+#[path = "logical_refusal.rs"]
+mod refusal;
+pub(crate) use refusal::LogicalRefusal;
 
 pub(crate) enum SourceFailure {
     Content(Error),
@@ -73,7 +64,7 @@ impl LogicalBudget {
             .ok()
             .and_then(|count| used.checked_add(count))
             .filter(|next| *next <= limit)
-            .ok_or(LogicalRefusal { limit })?;
+            .ok_or_else(|| LogicalRefusal::exceeded(limit, *used, count))?;
         *used = next;
         Ok(())
     }
@@ -90,7 +81,7 @@ impl LogicalBudget {
     /// Enter a mapped item. Every attempt pays, distinct item or not: each one
     /// expands a shared source, so it is the amplifier this meter bounds.
     pub(super) fn mapped_attempt(&mut self) -> std::result::Result<(), LogicalRefusal> {
-        Self::debit(&mut self.maps, 1, self.limit)
+        Self::debit(&mut self.maps, 1, self.limit).map_err(|mut refusal| { refusal.set_budget("logical mapped attempts"); refusal })
     }
     /// Materialize representation `rep`'s Items `members`. A repeated list
     /// pays every member, and a first read every repeated reference within

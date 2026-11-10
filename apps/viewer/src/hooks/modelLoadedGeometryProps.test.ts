@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import type { GeometryDiagnostics, StallPhaseHandle } from '@ifc-lite/geometry';
-import { buildModelLoadedGeometryProps, geometryProcessingStallPhase, reportOmittedTypeRecords, reportRefusedLengthUnit, reportSkippedHungElements } from './modelLoadedGeometryProps.js';
+import { buildModelLoadedGeometryProps, geometryProcessingStallPhase, reportOmittedTypeRecords, reportRefusedLengthUnit, reportSkippedHungElements, warnGeometryDiagnostics } from './modelLoadedGeometryProps.js';
 import { stripSource } from '@/test/strip-comments.js';
 
 function diag(over: Partial<GeometryDiagnostics> = {}): GeometryDiagnostics {
@@ -442,51 +442,32 @@ describe('ifc_model_loaded wiring (#2388)', () => {
   });
 });
 
-/*
- * The cache-hit half of #2388 is tested where it can be OBSERVED, not here:
- * `useIfcLoader.cacheHitTelemetry.test.tsx` seeds a real cache entry, drives
- * the real `loadFile` to a real hit, and reads the `ifc_model_loaded` payload
- * that actually leaves `posthog.capture`. That path is reachable under
- * `tsx --test` — the hit is decided at `loadStage = 'cache-lookup'`, hundreds
- * of lines before the wasm engine is touched — so it needs no source-text
- * stand-in and no builder-level stand-in either, unlike the wasm-path wiring
- * above.
- *
- * A builder-level "mirrors the call shape the cache-hit site should use" test
- * lived here until #2393 review, and was removed rather than kept as a second
- * spelling of the same claim. The commit that removed it said every assertion
- * it made was "covered twice over". That was not accurate — counted row by
- * row in the #2393 self-review, five of its seven had two surviving homes and
- * two had one. Where the missing home was worth having, it was ADDED rather
- * than argued away:
- *
- *  - absent CSG counters (`total_csg_failures`, `csg_products_with_failures`,
- *    `csg_silent_no_ops`) for absent diagnostics — the builder unit test
- *    "leaves the CSG counts UNSET when no producer emitted diagnostics"
- *    above, and behaviourally `cacheHitTelemetry.test.tsx`'s "leaves the CSG
- *    counters ABSENT on a cache hit" (mutation-verified: flattening any of
- *    them to `?? 0` fails it). Two homes.
- *  - absent `csg_top_failure_reason` for ABSENT diagnostics — had exactly one
- *    home (`cacheHitTelemetry.test.tsx:271`). "Omits the top reason when
- *    nothing failed" above is a DIFFERENT input: real diagnostics with a zero
- *    count. The absent-diagnostics assertion is now part of "leaves the CSG
- *    counts UNSET …" too, so this row has two homes as well.
- *  - `tessellation_tier` / `skip_small_cuts` carrying real values — the
- *    builder unit test "records the two fidelity inputs …" above, and
- *    behaviourally the cache-hit test's two OPPOSITE-fidelity loads, which
- *    also rule out the hardcoded constant a single-value mirror cannot. Two
- *    homes.
- *  - the COMBINED case — CSG counters absent while the fidelity fields still
- *    carry real values, i.e. "absent CSG was not achieved by dropping the
- *    whole geometry-props spread" — still has exactly ONE home,
- *    `cacheHitTelemetry.test.tsx:280-282`, and deliberately so: the only
- *    second spelling available at the builder level is the mirrored call that
- *    was deleted, which asserts what the test file says rather than what the
- *    capture site does. One behavioural home beats two, one of them fictional.
- *
- * That single home is load-bearing, so it is worth stating why it cannot go
- * quiet: `captureCacheHitPayload` asserts it saw exactly one
- * `load_path === 'cache'` event and says in the failure message that a count
- * of 0 would prove nothing. A fixture that stopped reaching the cache-hit
- * branch fails loudly rather than passing vacuously — verified.
- */
+// #9268: normal diagnostics carry budget details without tracing.
+it('#9268 warns with budget demand and product/source identity', () => {
+  const calls: unknown[][] = [];
+  const original = console.warn;
+  console.warn = (...args: unknown[]) => { calls.push(args); };
+  try {
+    warnGeometryDiagnostics('model.ifc', diag({ budgetRefusals: [{
+      budget: 'walk mapped attempts', limit: 65536, reached: 65537,
+      productId: 25, productType: 'IfcFlowTerminal', GlobalId: 'test', sourceId: 22,
+    }] }));
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0][0], '[useIfc] model.ifc: work budget refusal: walk mapped attempts limit=65536 reached=65537 product=#25 IfcFlowTerminal GlobalId=test source=#22');
+  } finally { console.warn = original; }
+});
+
+it('#9268 caps budget warning details and uses unknown for missing identity', () => {
+  const calls: unknown[][] = [];
+  const original = console.warn;
+  console.warn = (...args: unknown[]) => { calls.push(args); };
+  try {
+    const refusal = { budget: 'logical mapped attempts', limit: 3, reached: 4,
+      sourceId: 8, productId: null, productType: null, GlobalId: null };
+    warnGeometryDiagnostics('model.ifc', diag({ totalBudgetRefusals: 40,
+      budgetRefusals: Array.from({ length: 20 }, () => refusal) }));
+    assert.equal(calls.length, 17);
+    assert.match(String(calls[0][0]), /product=#unknown unknown GlobalId=unavailable/);
+    assert.match(String(calls[16][0]), /and 24 more/);
+  } finally { console.warn = original; }
+});

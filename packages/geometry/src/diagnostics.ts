@@ -19,14 +19,16 @@
 export interface GeometryDiagnostics {
   /**
    * Contract version handshake (mirrors Rust
-   * `GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION`, currently 4 — that constant carries
-   * the per-version changelog and is the single source of truth). Bumped on
-   * field renames, field removals, and count-semantics changes; also on an
-   * additive field whose absence a consumer must tell apart from a real zero,
-   * which is why 2 (removed `guardSaved`), 3 (added `totalUnsupportedItems`)
-   * and 4 (`totalUnsupportedItems` also counts unmeshable openings) all
-   * bumped. A purely additive optional field that no consumer gates on does
-   * not bump.
+   * `GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION`, currently 5). Bumped on field
+   * renames/removals and count-semantics changes; also on an additive field
+   * whose absence a consumer must tell apart from a real zero. A purely
+   * additive optional field that no consumer gates on does not bump.
+   *
+   * - 2: removed the permanently dead `guardSaved` signal.
+   * - 3: added `totalUnsupportedItems` / `unsupportedItemsByType`.
+   * - 4: unsupported counts also include unmeshable openings.
+   * - 5: work-budget refusals carry budget, demand and product/source identity
+   *   separately from unsupported items.
    *
    * REQUIRED, not optional: the Rust field is a plain `u32` serialized
    * unconditionally, so every producer since #1514 writes the key. A value of
@@ -115,6 +117,17 @@ export interface GeometryDiagnostics {
   totalUnsupportedItems?: number;
   /** `totalUnsupportedItems` broken down by IFC type, sorted desc by count. */
   unsupportedItemsByType?: Array<{ reason: string; count: number }>;
+  /** Complete safety-policy refusal count (v5); details are capped at sixteen. */
+  totalBudgetRefusals?: number;
+  budgetRefusals?: Array<{
+    budget: string;
+    limit: number;
+    reached: number;
+    sourceId: number;
+    productId: number | null;
+    productType: string | null;
+    GlobalId: string | null;
+  }>;
 }
 
 /** Cap on the merged worst-hosts detail list (matches the Rust WORST_HOSTS_LIMIT). */
@@ -229,6 +242,14 @@ export function mergeGeometryDiagnostics(
     oversizedRefDrops: (a.oversizedRefDrops ?? 0) + (b.oversizedRefDrops ?? 0),
     worstHosts,
     ...unsupportedFields,
+    ...(a.totalBudgetRefusals !== undefined || b.totalBudgetRefusals !== undefined
+      || a.budgetRefusals !== undefined || b.budgetRefusals !== undefined
+      ? {
+        totalBudgetRefusals: (a.totalBudgetRefusals ?? a.budgetRefusals?.length ?? 0)
+          + (b.totalBudgetRefusals ?? b.budgetRefusals?.length ?? 0),
+        budgetRefusals: [...(a.budgetRefusals ?? []), ...(b.budgetRefusals ?? [])].slice(0, 16),
+      }
+      : {}),
   };
 }
 

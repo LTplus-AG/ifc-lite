@@ -224,3 +224,20 @@ describe('buildLoadReportJSON', () => {
     assert.ok(typeof json.generatedAt === 'string');
   });
 });
+
+// #9268: a budget-only load has missing geometry, even without CSG/unsupported drops.
+it('issue 9268 budget-only report is actionable and identifies unrenderable products', () => {
+  const refusal = { budget: 'walk Items members', limit: 4, reached: 5, sourceId: 170,
+    productId: 100, productType: 'IfcWall', GlobalId: 'wall-guid' };
+  const report = buildLoadReport(model({ idOffset: 1_000_000,
+    diagnostics: diag({ totalBudgetRefusals: 20, budgetRefusals: [refusal, refusal] }) }));
+  assert.equal(report.isClean, false);
+  assert.equal(report.actions.length, 1);
+  assert.match(report.actions[0], /20 work budget refusal.*missing or incomplete/);
+  assert.deepEqual(report.affectedEntities, [{ productId: 100, globalId: 1_000_100,
+    ifcType: 'IfcWall', csgFailures: 0, openings: 0, renderable: false,
+    firstFailureLabel: 'walk Items members: limit 4, reached 5; source #170' }]);
+  const unknown = buildLoadReport(model({ diagnostics: diag({ totalBudgetRefusals: 1 }) }));
+  assert.equal(unknown.isClean, false, 'count alone must never read as clean');
+  assert.deepEqual(unknown.affectedEntities, []);
+});

@@ -122,6 +122,18 @@ describe('renumberStepIds', () => {
     expect(text).toContain(`IFCAXIS2PLACEMENT3D(#${idMap.get(1)},#${idMap.get(12)},$);`);
   });
 
+  it('a ; inside a <uri> literal does not end the REFERENCE statement', () => {
+    const file = [
+      'ISO-10303-21;', 'HEADER;', "FILE_DESCRIPTION((''),'2;1');", 'ENDSEC;',
+      'DATA;', '#1=IFCCARTESIANPOINT((0.,0.,0.));', '#2=IFCAXIS2PLACEMENT3D(#1,#12,$);', 'ENDSEC;',
+      'REFERENCE;', '#12=<https://example.org/model.ifc;#99>;', 'ENDSEC;', 'END-ISO-10303-21;',
+    ].join('\n');
+    const { text, idMap, danglingReferences } = renumberStepIds(file, { random: () => 0 });
+    expect(danglingReferences).toEqual([]);
+    expect(text).toContain(`#${idMap.get(12)}=<https://example.org/model.ifc;#99>;`);
+    expect(text).toContain(`IFCAXIS2PLACEMENT3D(#${idMap.get(1)},#${idMap.get(12)},$);`);
+  });
+
   it('rejects a file that declares an instance twice', () => {
     expect(() => renumberStepIds(FILE.replace('#11=IFCLOCALPLACEMENT', '#10=IFCLOCALPLACEMENT'), { random: seeded(1) }))
       .toThrow(/declared twice/);

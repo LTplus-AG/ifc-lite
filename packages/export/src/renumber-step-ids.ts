@@ -47,7 +47,7 @@ interface Statement {
   end: number;
 }
 
-/** Statements (`...;`) in `text`, split outside string literals and `/* *\/` comments. */
+/** Statements (`...;`) in `text`, split outside string literals, `/* *\/` comments and `<...>` literals. */
 function splitStatements(text: string): Statement[] {
   const out: Statement[] = [];
   let start = 0;
@@ -65,6 +65,11 @@ function splitStatements(text: string): Statement[] {
       if (end === -1) throw new Error(`renumberStepIds: unterminated comment at offset ${i}`);
       i = end + 2;
       continue;
+    }
+    if (c === 0x3c /* < */) {
+      // Edition-3 resource literal `<...>`: a `;` inside a URI does not end the statement.
+      const end = text.indexOf('>', i + 1);
+      if (end !== -1) { i = end + 1; continue; }
     }
     if (c === 0x3b /* ; */) {
       out.push({ start, end: i + 1 });

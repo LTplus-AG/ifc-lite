@@ -24,6 +24,7 @@ import { act, createElement } from 'react';
 import { createRoot } from 'react-dom/client';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store/index.js';
+import { collectChangedModels } from '@/lib/export/model-changes.js';
 import { __setOverlayWorkerFactoryForTest } from '@/lib/overlay-parse/index.js';
 import { createEmptyFlatSymbolic } from '@/lib/overlay-parse/symbolic-flat.js';
 import { __resetSymbolicAnnotationsCacheForTests, ensureParseFor, getParseFor } from './symbolic-parse-cache.js';
@@ -259,6 +260,7 @@ describe('tryRestoreDrawingMarkup: populates from a model with tagged annotation
 
 it('NEW-3: blank IFC restore never computes a spatial key or starts a worker', async () => {
   const store = await seedStore('blank-new3', fixture().replaceAll('IfcLite:Markup:Measure', 'OrdinaryAnnotation'));
+  const mutationCountBefore = useViewerStore.getState().getModifiedEntityCount();
   let rendering = false;
   const sourceSlice = store.source.slice.bind(store.source);
   const reads = mock.method(store.source, 'slice', (start: number, end: number) => {
@@ -279,6 +281,10 @@ it('NEW-3: blank IFC restore never computes a spatial key or starts a worker', a
     await act(async () => root.render(createElement(Restore)));
     await act(async () => root.unmount());
     host.remove();
+    const state = useViewerStore.getState();
+    assert.equal(state.getMutationView('blank-new3'), undefined, 'blank restore does not register an inspection view');
+    assert.equal(state.getModifiedEntityCount(), mutationCountBefore, 'the mutation badge count is unchanged');
+    assert.equal(collectChangedModels(state).models.some(model => model.id === 'blank-new3'), false, 'blank model has nothing to export');
   } finally {
     reads.mock.restore();
     Object.defineProperty(store, 'spatialHierarchy', { configurable: true, value: hierarchy });

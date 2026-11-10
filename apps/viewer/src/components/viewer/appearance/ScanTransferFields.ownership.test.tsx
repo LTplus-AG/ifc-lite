@@ -156,6 +156,7 @@ for (const gesture of ['preview', 'apply', 'unmount'] as const) test(`scan trans
     act(() => useViewerStore.setState({ selectedEntityId: null, selectedEntityIds: new Set() }));
     assert.equal(signals.length === 1 && signals.every(signal => !signal.aborted), true, '3D selection does not cancel pinned scan targets');
     assert.equal(preparations, 1, 'only one detached Apply per press burst');
+    assert.equal(button('Apply scan appearance').disabled, true, 'the workbench lease disables repeat approval while preparing');
   } finally { await act(async () => { release(); await Promise.all(jobs); }); unsubscribe(); }
   assert.equal(signals.some(signal => signal.aborted), gesture === 'unmount');
   assert.equal(useViewerStore.getState().undoStacks.get('target')?.length, 1);

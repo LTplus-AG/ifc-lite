@@ -173,6 +173,7 @@ test('same-tick reference placement starts once and room entry settles its statu
   const place = button(ui, 'Place reference');
   act(() => { place.click(); place.click(); });
   assert.equal(placements, 1);
+  assert.equal(ui.querySelector('[aria-busy]')?.getAttribute('aria-busy'), 'true', 'placement busy is rendered from its run');
   act(() => useViewerStore.setState({ collabRoomId: 'joined-during-placement' }));
   assert.equal(ui.querySelector('[aria-busy]')?.getAttribute('aria-busy'), 'false', 'room entry settles placement before its transport returns');
   release(); await settle();

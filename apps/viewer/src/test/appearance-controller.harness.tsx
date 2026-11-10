@@ -364,8 +364,8 @@ END-ISO-10303-21;`);
         }
       }
     }
-    check(scenario === 'apply-selection' || graph() === originalGraph, 'preview/cancellation changed exported IFC');
-    check(scenario === 'apply-selection' || JSON.stringify(view.getMutations()) === originalHistory, 'preview/cancellation recorded IFC edits');
+    check(scenario === 'apply-selection' || scenario === 'apply-published-discard' || graph() === originalGraph, 'preview/cancellation changed exported IFC');
+    check(scenario === 'apply-selection' || scenario === 'apply-published-discard' || JSON.stringify(view.getMutations()) === originalHistory, 'preview/cancellation recorded IFC edits');
     check(parts[0].textureBitmap === undefined, 'cancelled preview still owns renderer appearance');
     await unmount();
     const retained = appearanceAssets.encoded(sourceId);

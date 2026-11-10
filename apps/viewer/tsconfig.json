@@ -12,6 +12,7 @@
       "@ifc-lite/parser/browser": ["../../packages/parser/src/browser"],
       "@ifc-lite/geometry": ["../../packages/geometry/src"],
       "@ifc-lite/geometry/geometry-class": ["../../packages/geometry/src/geometry-class"],
+      "@ifc-lite/geometry/rhino-export": ["../../packages/geometry/src/rhino-export"],
       "@ifc-lite/geometry/world-frame": ["../../packages/geometry/src/world-frame"],
       "@ifc-lite/geometry/rtc-rebase": ["../../packages/geometry/src/rtc-rebase"],
       "@ifc-lite/geometry/remesh": ["../../packages/geometry/src/remesh"],

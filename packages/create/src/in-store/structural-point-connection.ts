@@ -55,7 +55,11 @@ import type { StoreEditor } from '@ifc-lite/mutations';
 import { toNativePoint3, type SpatialAnchor } from './anchor.js';
 import { emitLocalPlacement, ownerHistoryRef, productGuid } from './_emit-helpers.js';
 
-/** The `IfcBoolean` branch of `IfcTranslationalStiffnessSelect`/`IfcRotationalStiffnessSelect`: `true` = fixed, `false` = free. */
+/**
+ * `true` = fixed, `false` = free. IFC4+ writes the `IfcBoolean` branch of
+ * `IfcTranslationalStiffnessSelect`/`IfcRotationalStiffnessSelect`; IFC2X3
+ * writes the plain measures `-1.`/`0.`, which read back as numbers.
+ */
 export interface StructuralBoundaryConditionParams {
   Name?: string;
   TranslationalStiffnessX?: boolean;

@@ -32,7 +32,9 @@
  * `assignCostItemsToScheduleInStore`, there is no merge-into-existing-list
  * variant here; a caller assigning the same object into the same group
  * twice gets two `IfcRelAssignsToGroup` records, which importers fold
- * together same as `IfcRelContainedInSpatialStructure` does.
+ * together same as `IfcRelContainedInSpatialStructure` does. That holds for
+ * IFC4 and IFC4X3 only: IFC2X3 allows one `IfcRelAssignsToGroup` per group,
+ * so there a second call on the same group writes an invalid file.
  *
  * Pure: no I/O, no parser access — operates entirely through the editor.
  */

@@ -242,3 +242,13 @@ test('a UI-quiet wait that hit its cap is not a measurement, flagged or inferred
   assert.equal(uiQuietValue({ interactiveMs: 2000, uiQuietMs: 9000 }), 9000);
   assert.equal(uiQuietValue({ interactiveMs: 2000 }), null);
 });
+
+test('a reopen without a settled cache write or its expected snapshot is a failed sample, not a cache-hit measurement (review #9607)', async () => {
+  const { warmPrepFailure } = await stats();
+  assert.equal(warmPrepFailure({ open: 1, cacheWriteSettled: true, snapshotExpected: true }), null);
+  assert.equal(warmPrepFailure({ open: 2, cacheWriteSettled: true, snapshotExpected: true, snapshotWritten: true }), null);
+  assert.match(warmPrepFailure({ open: 1, cacheWriteSettled: false, snapshotExpected: true }), /cache write did not settle/);
+  assert.match(warmPrepFailure({ open: 2, cacheWriteSettled: true, snapshotExpected: true, snapshotWritten: false }), /snapshot was not written/);
+  // perf.sceneSnapshot=0 or an uncached tier: no snapshot is expected, so none missing is not a failure.
+  assert.equal(warmPrepFailure({ open: 2, cacheWriteSettled: true, snapshotExpected: false, snapshotWritten: undefined }), null);
+});

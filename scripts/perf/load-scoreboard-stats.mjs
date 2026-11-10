@@ -244,6 +244,18 @@ export function failedOpenIndex(phase) {
   return warm ? Number(warm[1]) : 1;
 }
 
+/**
+ * Why reopen `open` cannot be measured as the cache hit it is labelled, or null.
+ * A cache write that never settled leaves every reopen measuring something else;
+ * an expected scene snapshot that was never written leaves reopen 2 onwards
+ * measuring the streamed hit instead of the snapshot adoption.
+ */
+export function warmPrepFailure({ open, cacheWriteSettled, snapshotExpected, snapshotWritten }) {
+  if (cacheWriteSettled === false) return 'cache write did not settle within 10 min, so the reopen would not measure a cache hit';
+  if (open > 1 && snapshotExpected && snapshotWritten === false) return 'expected scene snapshot was not written within 60 s, so the reopen would not measure snapshot adoption';
+  return null;
+}
+
 /** The quiet wait's cap after readiness (viewer-load-boot.mjs `waitUiQuiet` timeoutMs). */
 export const UI_QUIET_CAP_MS = 20000;
 

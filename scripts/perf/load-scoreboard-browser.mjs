@@ -27,7 +27,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { chromePids, memoryOf, vramOf } from './scenoptic-bench-sampling.mjs';
 import { COUNT_FRAMES, openAndWaitInteractive, openViewerPage, readOutputFingerprint, replacePage, waitCacheWrites, waitSceneSnapshots } from './viewer-load-probe.mjs';
-import { browserShares, browserStages, expectedCacheTier, failedOpenIndex, gpuUnhealthy, stageShares, uiQuietValue } from './load-scoreboard-stats.mjs';
+import { browserShares, browserStages, expectedCacheTier, failedOpenIndex, gpuUnhealthy, stageShares, uiQuietValue, warmPrepFailure } from './load-scoreboard-stats.mjs';
 import { BOOT_OBSERVERS, waitShellQuiet, waitUiQuiet } from './viewer-load-boot.mjs';
 import { expectSceneSnapshot } from './viewer-scene-snapshot.mjs';
 import { readGpuHealth } from '../../tests/benchmark/gpu-health.ts';
@@ -180,6 +180,9 @@ export async function browserSample({ chromium, executablePath, baseUrl, setRoot
         if (i > 1 && meta.snapshotExpected) {
           meta.snapshotWritten = await waitSceneSnapshots(page).then(() => true, () => false);
         }
+        // A reopen whose cache write or expected snapshot is missing fails as that open (warm<i>-prep).
+        const unprepared = warmPrepFailure({ open: i, ...meta });
+        if (unprepared) throw new Error(unprepared);
         await replacePage(context, page);
         page = context.pages().at(-1);
         watch(page);

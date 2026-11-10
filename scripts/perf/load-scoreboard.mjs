@@ -183,6 +183,8 @@ async function run(opt) {
                   peakMemoryMiB: mem?.ok ? mem.peakMemoryMiB : null, memoryPass: mem ? { ok: mem.ok, error: mem.error, memory: mem.memory,
                     interactiveMs: mem.interactiveMs, adapter: m.meta.adapter ?? null } : null,
                   gpuHealth: lane === 'browser-cold' ? s.meta.gpuHealthCold ?? null : s.meta.gpuHealth ?? null,
+                  // What the reopens were prepared with (null when the sample never got that far).
+                  cacheWriteSettled: s.meta.cacheWriteSettled ?? null, snapshotExpected: s.meta.snapshotExpected ?? null, snapshotWritten: s.meta.snapshotWritten ?? null,
                   warmOpens: lane === 'browser-warm' ? s.warmOpens : undefined }, trace ?? null);
               }
             }

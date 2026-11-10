@@ -124,7 +124,8 @@ describe('BulkPropertyEditor — collab role gate on bulk mutation execute', () 
     const container = render(<BulkPropertyEditor trigger={<button>Open</button>} />);
     openDialog(container);
     await fillAndExecute();
-    assert.equal(document.body.querySelector('output'), null);
+    // Compare text, never the node: a failing assert on a happy-dom element hangs inspecting it.
+    assert.equal(document.body.querySelector('output')?.textContent ?? null, null, 'no edit-mode denial in View');
     assert.equal(useViewerStore.getState().workspaceMode, 'view');
     assert.equal(useViewerStore.getState().editEnabled, false);
     assert.equal(useViewerStore.getState().mutationViews.get(MODEL_ID)?.getPropertyValue(42, 'Pset_Test', 'Foo'), 'Bar');

@@ -71,7 +71,14 @@ it('#9296 C5 mirrors a wall copy with its hosted door', async () => {
   const [again] = await boxes(bim, [refs[0].expressId]);
   expect(again.min[1]).toBeCloseTo(-1.1, 3);
   expect(again.max[1]).toBeCloseTo(-.9, 3);
-  expect(exportStep(bim)).not.toContain('.SINGLE_SWING_RIGHT.');
+  // #9409: unused type catalogue entries retain their handedness. Assert the
+  // live doors after two reflections, rather than every enum in the file.
+  const doors = bim.query().byType('IfcDoor').toArray();
+  expect(doors).toHaveLength(2);
+  for (const door of doors) {
+    const operation = bim.attributes(door.ref).find(attribute => attribute.name === 'OperationType')?.value;
+    expect(String(operation).replace(/^\.|\.$/g, '')).toBe('SINGLE_SWING_LEFT');
+  }
   const shared = bim.store.addWall('default', level, { Start: [10, 7, 0], End: [13, 7, 0], Thickness: .3, Height: 3 });
   const placement = bim.attributes(wall).find(a => a.name === 'ObjectPlacement')!.value;
   bim.store.setPositionalAttribute(shared, 5, placement);

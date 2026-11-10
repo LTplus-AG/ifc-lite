@@ -14,6 +14,7 @@
  *   - Links to Google Maps, OpenStreetMap, and Google Earth (KMZ export)
  */
 
+import { useLocationMapReady } from './use-location-map-ready.js';
 import { trackExportCompleted } from '@/lib/analytics';
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import { Map as MapIcon, MapPinOff, Search, Mountain, MapPin, X, Check } from 'lucide-react';
@@ -352,10 +353,9 @@ export function LocationMap({
     setPickedElevation(null);
   }, []);
 
-  // Initialize/update the map when we have a valid lat/lon
+  const mapReady = useLocationMapReady(containerRef, !!latLon);
   useEffect(() => {
-    if (!latLon || !containerRef.current) return;
-    // Already known to be unavailable: never touch the GPU again this session.
+    if (!mapReady || !latLon || !containerRef.current) return;
     if (mapUnavailable) return;
 
     let cancelled = false;
@@ -504,7 +504,7 @@ export function LocationMap({
     return () => {
       cancelled = true;
     };
-  }, [latLon, locationKind, handleMapClick, mapUnavailable, degradeMap]);
+  }, [mapReady, latLon, locationKind, handleMapClick, mapUnavailable, degradeMap]);
 
   // Add/update the footprint when it or the style changes, and repaint it when the theme
   // changes the container ink without a style reload (light <-> colorful keep the tiles).

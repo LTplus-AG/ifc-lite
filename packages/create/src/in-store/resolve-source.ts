@@ -219,7 +219,7 @@ function collectSourceAssociations(
   // a material) is, and a queued edit to a relationship is what gets copied.
   const view = editor?.getMutationView() ?? null;
   const deletedProperties = new Set<string>(), deletedQuantities = new Set<string>();
-  for (const change of view?.getEffectiveChanges() ?? []) {
+  for (const change of view?.getEffectiveChanges(sourceId) ?? []) {
     if (change.entityId !== sourceId || change.setName === undefined) continue;
     if (change.kind === 'pset-deleted') deletedProperties.add(change.setName);
     if (change.kind === 'qset-deleted') deletedQuantities.add(change.setName);

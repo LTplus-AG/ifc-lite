@@ -46,6 +46,7 @@ export function ModelWorkspaceSplit({ children }: { children: ReactNode }) {
   const { t } = useTranslation();
   const entry = useViewerStore((s) => s.session?.entry);
   const pick = useViewerStore((s) => s.modelLayout);
+  const picked = useViewerStore((s) => s.session?.layoutPicked === true);
   const inWorkspace = useViewerStore((s) => s.workspaceMode === 'model');
   const hostRef = useRef<HTMLDivElement>(null);
   const width = useWidth(hostRef);
@@ -93,7 +94,7 @@ export function ModelWorkspaceSplit({ children }: { children: ReactNode }) {
   return (
     // A plain wrapper measured for `model-layout.ts`; the plan toggle is the rail's.
     <div ref={hostRef} data-model-split-width={width} className="flex h-full min-w-0 flex-1 flex-col">
-      {inWorkspace && pick !== '3d' && width > 0 && !splitFits(width) && (
+      {inWorkspace && picked && pick !== '3d' && width > 0 && !splitFits(width) && (
         <output data-model-layout-notice className="shrink-0 border-b border-border px-2 py-1 text-xs text-muted-foreground">{t('modelWorkspace.plan.noRoom')}</output>
       )}
       <PanelGroup orientation="horizontal" className="h-full min-w-0 flex-1" data-model-layout={showPlan ? layout : '3d'}>

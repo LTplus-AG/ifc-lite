@@ -59,6 +59,8 @@ export interface AuthoringSession {
   readonly snap: { readonly profile: SnapProfileId };
   /** The sidebar panel to put back on exit (null: the workspace took nothing over). */
   readonly sidebarRestore: SidebarRestore | null;
+  /** Plan or Split was picked in this session, so a width fallback explains itself (#9296). */
+  readonly layoutPicked?: boolean;
 }
 
 export interface EnterModelWorkspaceOptions {
@@ -194,7 +196,8 @@ export const createAuthoringSessionSlice: StateCreator<ViewerState, [], [], Auth
       if (modelLayout !== '3d' && s.workspaceMode === 'model' && s.sidebarMode === 'expanded'
         && getSplitWidth() > 0 && !splitFits(getSplitWidth())) s.setSidebarMode('collapsed');
       persistModelLayout(modelLayout);
-      set({ modelLayout });
+      const session = get().session;
+      set(session ? { modelLayout, session: { ...session, layoutPicked: modelLayout !== '3d' } } : { modelLayout });
     },
 
     enterModelWorkspace: (opts = {}) => {

@@ -6,7 +6,7 @@
 import { RefreshCcw, Share2 } from 'lucide-react';
 import type { SurfaceCommandContext, SurfaceCommandDefinition, SurfaceCommandState } from './surface-commands';
 
-const ribbonOnly = ['ribbon'] as const;
+const ribbonOnly = ['palette', 'ribbon'] as const;
 const alwaysEnabled = (_state: SurfaceCommandState): boolean => true;
 
 export const RIBBON_FILE_SURFACE_COMMANDS = [

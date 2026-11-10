@@ -10,6 +10,7 @@
 // IFC-Lite components (recommended - faster)
 export { IfcLiteBridge, type SymbolicRepresentationCollection, type SymbolicPolyline, type SymbolicCircle, type ProfileCollection, type ProfileEntryJs } from './ifc-lite-bridge.js';
 export type { ExtrusionDefinitions, SweptDiskDescriptions } from './analytic-descriptions.js';
+export { exportRhinoScene, RHINO_SCENE_DEFAULTS, RHINO_UNITS, RHINO_COORDINATES, RHINO_LAYER_SCHEMES, RHINO_PROPERTIES, type RhinoSceneBuffers, type RhinoSceneExportOptions } from './rhino-export.js';
 import { safeUtf8Decode } from '@ifc-lite/data';
 
 // Platform bridge abstraction (auto-selects WASM or native based on environment)
@@ -98,6 +99,7 @@ import { exportMerged, planMapConversionNormalization, planSectionExport } from 
 import { BufferBuilder } from './buffer-builder.js';
 import { CoordinateHandler } from './coordinate-handler.js';
 import { GEOM_CLASS_OCCURRENCE, geometryClassOf } from './geometry-class.js';
+import { createLifetime } from '@ifc-lite/wasm-lifecycle';
 import { createPlatformBridge, isTauri, type GeometryStats as PlatformGeometryStats, type IPlatformBridge } from './platform-bridge.js';
 import type { GeometryResult, MeshData, CoordinateInfo, GridAxis, TessellationQuality, KmzAltitudeMode, SimplifyMeshesResult } from './types.js';
 import type { HbjsonStats } from './hbjson-stats.js';
@@ -214,6 +216,21 @@ export class GeometryProcessor {
 
   private bridge: IfcLiteBridge | null = null;
   private platformBridge: IPlatformBridge | null = null;
+  /** Native path: one platform bridge per processor, single-flight, released by `dispose()` (F5). */
+  private readonly nativeLifetime = createLifetime<IPlatformBridge>({
+    start: async () => {
+      const bridge = await createPlatformBridge();
+      try {
+        await bridge.init();
+      } catch (error) {
+        bridge.dispose?.();
+        throw error;
+      }
+      return bridge;
+    },
+    release: (bridge) => bridge.dispose?.(),
+    supersededError: () => new Error('GeometryProcessor.init() was superseded by dispose() before it finished'),
+  });
   private bufferBuilder: BufferBuilder;
   private coordinateHandler: CoordinateHandler;
   private isNative: boolean = false;
@@ -258,10 +275,8 @@ export class GeometryProcessor {
    */
   async init(): Promise<void> {
     if (this.isNative) {
-      // Create platform bridge for native processing
-      this.platformBridge = await createPlatformBridge();
-      await this.platformBridge.init();
-      console.log('[GeometryProcessor] Native bridge initialized');
+      // Concurrent and repeated calls share one platform bridge.
+      this.platformBridge = await this.nativeLifetime.init();
     } else {
       // WASM path
       if (this.bridge) {
@@ -394,6 +409,7 @@ export class GeometryProcessor {
       prePass.unitScale,
       frame.needsShift ? { x: frame.x, y: frame.y, z: frame.z } : null,
       frame,
+      prePass.siteOrigin,
     );
     return frame;
   }
@@ -1490,16 +1506,19 @@ export class GeometryProcessor {
    * arrays plus `clearPrePassCache()` in every load path's `finally`), so
    * this only needs to release the long-lived `IfcAPI` handle itself.
    *
-   * The native (Tauri) path has no WASM handle to release; `platformBridge`
-   * is left untouched.
+   * The native (Tauri) path has no WASM handle; its platform bridge is
+   * disposed, and an `init()` still in flight rejects instead of installing it.
    *
    * Idempotent: `IfcLiteBridge.dispose()` nulls its handle after freeing,
    * so calling this more than once (e.g. an explicit call after a `using`
    * declaration already ran `[Symbol.dispose]()`) is a no-op, not a
-   * double-free.
+   * double-free. On the WASM path an `init()` still in flight rejects
+   * instead of rebuilding the handle; a later `init()` rebuilds it.
    */
   dispose(): void {
     this.bridge?.dispose();
+    this.nativeLifetime.dispose();
+    this.platformBridge = null;
   }
 
   /**

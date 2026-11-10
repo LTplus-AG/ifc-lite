@@ -13,13 +13,16 @@ import { documentPreviewReady } from './document-preview';
 afterEach(cleanup);
 
 it('#6731 readiness waits for an actual mounted paper instead of accepting absence', async () => {
-  await assert.rejects(documentPreviewReady(10), /document preview finishes resolving/,
+  await assert.rejects(documentPreviewReady({ timeoutMs: 10 }), /document preview finishes resolving/,
     'absence cannot satisfy the readiness condition (#6731)');
   const ui = render(<DocumentPreview document={{ version: DOCUMENT_VERSION, id: 'readiness', name: 'Readiness',
     page: { size: 'A4', orientation: 'portrait' }, blocks: [] }}
     bindings={{ models: [], activeModelId: null, today: new Date('2026-10-03') }}
     aggregations={new Map()} chartMessages={new Map()} topics={new Map()} tables={new Map()}
     onSelectBlock={() => {}} />);
-  await documentPreviewReady();
+  await documentPreviewReady({ root: ui });
+  const empty = render(<div />);
+  await assert.rejects(documentPreviewReady({ root: empty, timeoutMs: 10 }),
+    /document preview finishes resolving/, 'a healthy preview outside root cannot satisfy readiness');
   assert.ok(ui.querySelector('[data-preview-section]'), 'the actual composer mounted a sheet');
 });

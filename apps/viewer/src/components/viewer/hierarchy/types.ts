@@ -59,6 +59,8 @@ export interface TreeNode {
    * `globalIds` instead holds resolved geometry for isolation.
    */
   memberGlobalIds?: number[];
+  /** Selection owners aligned with expressIds; modelIds retains all shared-store owners. */
+  memberModelIds?: string[];
   /** Structured entity expressId for selectable non-element nodes (for example IFC type entities) */
   entityExpressId?: number;
   /** Model IDs this node belongs to */

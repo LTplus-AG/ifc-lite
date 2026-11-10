@@ -5,11 +5,11 @@
 import { useState, useLayoutEffect, useCallback, lazy, Suspense } from 'react';
 import { X, Sparkles, Info, Keyboard, ExternalLink, GraduationCap } from 'lucide-react';
 import { IconButton } from '@/components/ui/icon-button';
-import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogBody, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { LearnTab } from '@/components/tours/LearnTab';
 import { navigateToPath } from '@/services/app-navigation';
-import { useTranslation } from '@/i18n';
+import { useTranslation, type TranslationKey } from '@/i18n';
 import { registerKeyboardCommand } from '@/lib/commands/dispatcher';
 import { AboutTab } from './KeyboardShortcutsDialogTabs';
 import { ShortcutsTab } from './ShortcutsTab';
@@ -25,6 +25,19 @@ const WhatsNewTab = lazy(() => import('./KeyboardShortcutsWhatsNewTab').then(m =
 export { PrivacyBanner } from './KeyboardShortcutsDialogTabs';
 
 export type InfoDialogTab = 'about' | 'whatsnew' | 'shortcuts' | 'learn';
+
+const TABS: ReadonlyArray<{ value: InfoDialogTab; Icon: typeof Info; label: TranslationKey }> = [
+  { value: 'about', Icon: Info, label: 'keyboardShortcuts.tabs.about' },
+  { value: 'whatsnew', Icon: Sparkles, label: 'keyboardShortcuts.tabs.whatsNew' },
+  { value: 'shortcuts', Icon: Keyboard, label: 'keyboardShortcuts.tabs.shortcuts' },
+  { value: 'learn', Icon: GraduationCap, label: 'keyboardShortcuts.tabs.learn' },
+];
+/** Tabs share the strip's width on a desktop and keep their label width
+ *  when it is too narrow (the strip then scrolls); 44 px tall on a phone. */
+const TAB_TRIGGER_CLASS = 'flex-auto shrink-0 gap-1.5 max-sm:min-h-11 data-[state=active]:bg-background data-[state=active]:text-foreground';
+/** The scroll body: as tall as the content up to 24rem on a desktop, and
+ *  whatever the capped dialog leaves on a phone. */
+const TAB_BODY_CLASS = 'mt-0 p-4 sm:max-h-96';
 
 interface InfoDialogProps {
   open: boolean;
@@ -57,24 +70,25 @@ export function KeyboardShortcutsDialog({ open, onClose, initialTab }: InfoDialo
           explicitly (CodeRabbit, #5817 review) rather than leaving it
           unset, which some Radix versions read as "forgot to wire one up"
           and warn about in dev. */}
-      <DialogContent hideCloseButton aria-describedby={undefined} className="max-w-md w-full gap-0 p-0 bg-card">
+      <DialogContent scrollBody hideCloseButton aria-describedby={undefined} className="gap-0 p-0 bg-card">
         {/* Header — the MCP CTA lives here, in line with the title, so
             it's a discoverable "what else can this do?" affordance
-            without crowding the modeling toolbar. */}
-        <div className="flex items-center justify-between gap-2 p-4 border-b">
+            without crowding the modeling toolbar. On a narrow screen its
+            label truncates so the close button stays on the panel. */}
+        <div className="flex shrink-0 items-center justify-between gap-2 p-4 border-b">
           <DialogTitle className="text-lg font-semibold shrink-0">{t('keyboardShortcuts.header.title')}</DialogTitle>
           <div className="flex items-center gap-1 min-w-0">
             <button
               type="button"
               onClick={() => { onClose(); navigateToPath('/mcp'); }}
-              className="group inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/5 hover:bg-primary/10 hover:border-primary/50 transition-colors px-3 py-1.5 text-xs font-medium text-primary"
+              className="group inline-flex min-w-0 items-center gap-1.5 rounded-full border border-primary/30 bg-primary/5 hover:bg-primary/10 hover:border-primary/50 transition-colors px-3 py-1.5 text-xs font-medium text-primary"
               aria-label={t('keyboardShortcuts.header.mcpAriaLabel')}
             >
-              <Sparkles className="h-3.5 w-3.5 group-hover:rotate-12 transition-transform" />
-              <span className="whitespace-nowrap">{t('keyboardShortcuts.header.mcpCta')}</span>
-              <ExternalLink className="h-3 w-3 opacity-60" />
+              <Sparkles className="h-3.5 w-3.5 shrink-0 group-hover:rotate-12 transition-transform" />
+              <span className="truncate">{t('keyboardShortcuts.header.mcpCta')}</span>
+              <ExternalLink className="h-3 w-3 shrink-0 opacity-60" />
             </button>
-            <IconButton label={t('viewerShell.dialog.close')} variant="ghost" size="icon-sm" onClick={onClose}>
+            <IconButton label={t('viewerShell.dialog.close')} variant="ghost" size="icon-sm" className="shrink-0" onClick={onClose}>
               <X className="h-4 w-4" />
             </IconButton>
           </div>
@@ -83,38 +97,32 @@ export function KeyboardShortcutsDialog({ open, onClose, initialTab }: InfoDialo
         {/* Tabbed Content */}
         {/* The dialog unmounts when closed, so defaultValue re-applies on
             every open - enough for deep-linking without controlled tabs. */}
-        <Tabs defaultValue={initialTab ?? 'about'} className="w-full">
-          <div className="px-4 pt-4">
-            <TabsList className="w-full">
-              <TabsTrigger value="about" className="flex-1 gap-1.5 data-[state=active]:bg-background data-[state=active]:text-foreground">
-                <Info className="h-3.5 w-3.5" />
-                {t('keyboardShortcuts.tabs.about')}
-              </TabsTrigger>
-              <TabsTrigger value="whatsnew" className="flex-1 gap-1.5 data-[state=active]:bg-background data-[state=active]:text-foreground">
-                <Sparkles className="h-3.5 w-3.5" />
-                {t('keyboardShortcuts.tabs.whatsNew')}
-              </TabsTrigger>
-              <TabsTrigger value="shortcuts" className="flex-1 gap-1.5 data-[state=active]:bg-background data-[state=active]:text-foreground">
-                <Keyboard className="h-3.5 w-3.5" />
-                {t('keyboardShortcuts.tabs.shortcuts')}
-              </TabsTrigger>
-              <TabsTrigger value="learn" className="flex-1 gap-1.5 data-[state=active]:bg-background data-[state=active]:text-foreground">
-                <GraduationCap className="h-3.5 w-3.5" />
-                {t('keyboardShortcuts.tabs.learn')}
-              </TabsTrigger>
+        <Tabs defaultValue={initialTab ?? 'about'} className="flex min-h-0 flex-1 flex-col">
+          <div className="shrink-0 px-4 pt-4">
+            {/* Wider than a phone: the strip scrolls sideways, and the
+                selected tab stays in view. */}
+            <TabsList scrollable className="w-full justify-start max-sm:h-auto">
+              {TABS.map(({ value, Icon, label }) => (
+                <TabsTrigger key={value} value={value} className={TAB_TRIGGER_CLASS}>
+                  <Icon className="h-3.5 w-3.5" />
+                  {t(label)}
+                </TabsTrigger>
+              ))}
             </TabsList>
           </div>
 
-          {/* Each wraps exactly one child — single-line, so a fifth tab
-              (Preferences, #5509) didn't need a module-size budget raise. */}
-          <TabsContent value="about" className="p-4 max-h-80 overflow-y-auto"><AboutTab /></TabsContent>
-          <TabsContent value="whatsnew" className="p-4 max-h-96 overflow-y-auto"><ChunkErrorBoundary label="What's New tab"><Suspense fallback={null}><WhatsNewTab /></Suspense></ChunkErrorBoundary></TabsContent>
-          <TabsContent value="shortcuts" className="p-4 max-h-80 overflow-y-auto"><ShortcutsTab /></TabsContent>
-          <TabsContent value="learn" className="p-4 max-h-80 overflow-y-auto"><LearnTab onClose={onClose} /></TabsContent>
+          {/* One scroller for every tab, between a header and footer that
+              stay put. Each wraps exactly one child — single-line, so a
+              fifth tab (Preferences, #5509) didn't need a module-size
+              budget raise. */}
+          <DialogBody asChild><TabsContent value="about" className={TAB_BODY_CLASS}><AboutTab /></TabsContent></DialogBody>
+          <DialogBody asChild><TabsContent value="whatsnew" className={TAB_BODY_CLASS}><ChunkErrorBoundary label="What's New tab"><Suspense fallback={null}><WhatsNewTab /></Suspense></ChunkErrorBoundary></TabsContent></DialogBody>
+          <DialogBody asChild><TabsContent value="shortcuts" className={TAB_BODY_CLASS}><ShortcutsTab /></TabsContent></DialogBody>
+          <DialogBody asChild><TabsContent value="learn" className={TAB_BODY_CLASS}><LearnTab onClose={onClose} /></TabsContent></DialogBody>
         </Tabs>
 
         {/* Footer */}
-        <div className="p-4 border-t text-center">
+        <div className="shrink-0 p-4 border-t text-center">
           <span className="text-xs text-muted-foreground">
             {t('keyboardShortcuts.footer.pressPrefix')}{' '}
             <kbd className="px-1 py-0.5 bg-muted rounded border font-mono text-xs">

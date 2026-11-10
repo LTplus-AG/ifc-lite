@@ -4,14 +4,13 @@
 
 
 
-import { modelEditTarget, recordModellingEdit } from '@/store/slices/mutation-modelling-records';
+import { modelEditTarget } from '@/store/slices/mutation-modelling-records';
 import { wallJoinRefusal } from '@/store/slices/mutation-wall-joins';
 import { carryWallJoinsInStore } from '../../../../../packages/create/src/in-store/element-transform-joins.js';
 import type { TransformJoinCarrier } from './commit.js';
 
-export const carryWallJoins: TransformJoinCarrier = ({ tx, modelId, plan, op }) => {
+export const carryWallJoins: TransformJoinCarrier = ({ tx, modelId, plan, op, editor }) => {
   const target = modelEditTarget(tx.store, modelId);
   if (!target || wallJoinRefusal(tx.store, modelId) !== null) return [];
-  return recordModellingEdit(tx.api, modelId, (_methods, draft) =>
-    carryWallJoinsInStore({ ...target, view: draft.getMutationView(), editor: draft }, plan, op.kind === 'rotate' ? op.angle : 0), tx.batchId);
+  return carryWallJoinsInStore({ ...target, view: editor.getMutationView(), editor }, plan, op.kind === 'rotate' ? op.angle : 0);
 };

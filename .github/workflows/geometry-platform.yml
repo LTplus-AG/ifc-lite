@@ -228,6 +228,15 @@ jobs:
         id: halfspace-generated
         continue-on-error: true
         run: python3 tests/fixtures/synthetic-retained/generate-halfspace-boundaries.py --check
+      # Restore-only: test.yml on main saves this exact tree. The fetch below
+      # then re-hashes every file and downloads only what is missing, so a
+      # release-CDN outage no longer fails the lane while the manifest is
+      # unchanged (#9329, #9342, #9351).
+      - name: Restore fixtures from the main-branch cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: tests/models
+          key: ci-fixtures-source-v2-${{ runner.os }}-${{ hashFiles('tests/models/manifest.json', 'tests/models/README.md', 'tests/models/.manifest-ignore') }}
       - name: Fetch required native halfspace witnesses
         id: halfspace-fetch
         continue-on-error: true
@@ -452,6 +461,21 @@ jobs:
         with:
           name: cli-retained-engine
           path: ${{ runner.temp }}/cli-retained-engine
+          # The engine manifest lists pkg-retained/.gitignore and .npmignore, and
+          # validateEngine rejects an inventory that differs from it. upload-artifact
+          # drops dotfiles unless told otherwise.
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 3
+      # browser.mjs imports the CLI's compiled retained validator and report
+      # (packages/cli/dist/retained/*.js). The browser corpus job has no Rust
+      # or WASM toolchain to rebuild them, so hand over the dist built above.
+      - name: Keep the built CLI for the browser corpus
+        if: inputs.corpus == true || github.event_name == 'schedule'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: cli-dist
+          path: packages/cli/dist
           if-no-files-found: error
           retention-days: 3
       - name: Browser parity and real retained viewer
@@ -561,6 +585,15 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # Restore-only: test.yml on main saves this exact tree. The fetch below
+      # then re-hashes every file and downloads only what is missing, so a
+      # release-CDN outage no longer fails the lane while the manifest is
+      # unchanged (#9329, #9342, #9351).
+      - name: Restore the corpus from the main-branch cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: tests/models
+          key: ci-fixtures-source-v2-${{ runner.os }}-${{ hashFiles('tests/models/manifest.json', 'tests/models/README.md', 'tests/models/.manifest-ignore') }}
       - name: Download the corpus
         run: pnpm fixtures
       - name: Select this shard's models
@@ -652,6 +685,15 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps chromium
+      # Restore-only: test.yml on main saves this exact tree. The fetch below
+      # then re-hashes every file and downloads only what is missing, so a
+      # release-CDN outage no longer fails the lane while the manifest is
+      # unchanged (#9329, #9342, #9351).
+      - name: Restore the corpus from the main-branch cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: tests/models
+          key: ci-fixtures-source-v2-${{ runner.os }}-${{ hashFiles('tests/models/manifest.json', 'tests/models/README.md', 'tests/models/.manifest-ignore') }}
       # The models the product table names come from the fetch, not the checkout.
       - name: Download the corpus
         run: pnpm fixtures
@@ -663,6 +705,10 @@ jobs:
         with:
           name: cli-retained-engine
           path: ${{ runner.temp }}/cli-retained-engine
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: cli-dist
+          path: packages/cli/dist
       - name: Compare the corpus in the browser
         run: |
           node scripts/retained-compare/browser.mjs --engine "$RUNNER_TEMP/cli-retained-engine" \

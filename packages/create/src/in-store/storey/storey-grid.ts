@@ -14,7 +14,7 @@
  */
 
 import type { AnchorEntityReader } from '../resolve-anchor.js';
-import { refId } from '../host-geometry-frame.js';
+import { num, placementInAncestor, refId } from '../host-geometry-frame.js';
 
 type Reader = Pick<AnchorEntityReader, 'entity'>;
 type Referencers = (id: number) => readonly number[];
@@ -92,4 +92,40 @@ export function productsOnGrid(reader: Reader, referencers: Referencers, gridId:
     }
   }
   return [...products];
+}
+
+/**
+ * World Z of a placement's origin in file units, through an IfcGridPlacement
+ * on the way (a grid-bound column's local placement hangs from one): the
+ * grid's own placement, the intersection's vertical offset, then the local
+ * hops below. Assumes the grid stands upright (`addColumnOnGridToStore`
+ * refuses any other); null when the chain cannot be read.
+ */
+export function placementWorldZ(reader: Pick<AnchorEntityReader, 'entity' | 'ids'>, placementId: number): number | null {
+  const seen = new Set<number>();
+  let gridPlacement: number | null = null;
+  let id: number | null = placementId;
+  while (id !== null && !seen.has(id)) {
+    seen.add(id);
+    const entity = reader.entity(id);
+    const type = entity?.type.toUpperCase();
+    if (type === 'IFCGRIDPLACEMENT') { gridPlacement = id; break; }
+    if (type !== 'IFCLOCALPLACEMENT') return null;
+    id = refId(entity!.attributes[0]);
+  }
+  if (gridPlacement === null) return placementInAncestor(reader, placementId, null)?.o[2] ?? null;
+  const below = placementId === gridPlacement ? { o: [0, 0, 0] } : placementInAncestor(reader, placementId, gridPlacement);
+  const intersection = refId(attribute(reader, gridPlacement, 'PlacementLocation'));
+  if (intersection === null) return null;
+  const axes = refs(attribute(reader, intersection, 'IntersectingAxes'));
+  const offsets = attribute(reader, intersection, 'OffsetDistances');
+  const lift = Array.isArray(offsets) ? num(offsets[2]) ?? 0 : 0;
+  let grid: number | null = null;
+  for (const id of reader.ids('IFCGRID')) {
+    if (['UAxes', 'VAxes', 'WAxes'].some((name) => refs(attribute(reader, id, name)).some((axis) => axes.includes(axis)))) { grid = id; break; }
+  }
+  const gridPlacementOf = grid === null ? null : refId(reader.entity(grid)?.attributes[5]);
+  const frame = gridPlacementOf === null ? null : placementInAncestor(reader, gridPlacementOf, null);
+  if (!below || !frame || Math.abs(frame.z[2] - 1) > 1e-9) return null;
+  return frame.o[2] + lift + below.o[2];
 }

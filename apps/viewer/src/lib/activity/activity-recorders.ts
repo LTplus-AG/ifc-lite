@@ -116,19 +116,20 @@ const AI_OUTCOME: Record<UsageReceipt['outcome'], { outcome: 'completed' | 'part
 };
 
 function watchRequests(): () => void {
-  const recorded = new Set<string>();
+  // Request id -> the job handle its begin returned (J1: finish the job this request started).
+  const recorded = new Map<string, string>();
   const observe = ({ inFlight, receipts }: ReturnType<typeof useRequestReceipts.getState>) => {
     for (const request of inFlight) {
       if (recorded.has(request.id)) continue;
-      recorded.add(request.id);
-      beginActivity({ id: request.id, kind: 'ai', title: 'activityTray.job.ai', subject: request.model, panel: 'assistant',
-        cancel: request.cancel }, request.startedAt);
+      recorded.set(request.id, beginActivity({ id: request.id, kind: 'ai', title: 'activityTray.job.ai', subject: request.model,
+        panel: 'assistant', cancel: request.cancel }, request.startedAt));
     }
     for (const receipt of receipts) {
-      if (!recorded.has(receipt.id)) continue;
+      const job = recorded.get(receipt.id);
+      if (job === undefined) continue;
       recorded.delete(receipt.id);
       const { outcome, detailKey } = AI_OUTCOME[receipt.outcome];
-      finishActivity(receipt.id, outcome, detailKey ? { detailKey } : {}, receipt.finishedAt);
+      finishActivity(job, outcome, detailKey ? { detailKey } : {}, receipt.finishedAt);
     }
   };
   observe(useRequestReceipts.getState());

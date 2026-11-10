@@ -2,12 +2,16 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import type { MutablePropertyView } from './mutable-property-view.js';
+import type { CompoundInverse } from './compound-inverse.js';
 import type { MutableOverlayState } from './mutable-overlay-state.js';
 
 export type OverlaySnapshot = ReturnType<MutableOverlayState['copyOverlayState']>;
+/** @internal Capability registered by MutablePropertyView; absent from package exports. */
 interface OverlayAccess {
   readonly modelId: string;
+  transact<T>(edit: (draft: MutablePropertyView) => T, record: boolean): { result: T; inverse?: CompoundInverse; written: string[] };
   capture(): OverlaySnapshot;
+  rebuild(snapshot: OverlaySnapshot): OverlaySnapshot;
   matches(snapshot: OverlaySnapshot): boolean;
   draft(snapshot: OverlaySnapshot): MutablePropertyView;
   publish(snapshot: OverlaySnapshot): void;

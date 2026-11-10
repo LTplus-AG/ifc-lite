@@ -87,17 +87,39 @@ const RESET = {
  */
 const NOT_RENDERED_IN_THIS_STATE: PaletteKey[] = [
   'commandPalette.category.recent',
+  // #8965: search metadata only; these paths do not render as row labels.
+  'commandPalette.paths.modelPlan',
+  'commandPalette.paths.retainedReport',
+  'commandPalette.paths.sectionAdd',
+  'commandPalette.paths.basepoints',
+  // No section host in this seed: its refusal precedes limit/bounds checks.
+  'commandPalette.availability.sectionLimit',
+  'commandPalette.availability.sectionBounds',
+  // #8962: localized search-only aliases; command labels render separately.
+  'commandPalette.aliases.bulk',
+  'commandPalette.aliases.import',
+  'commandPalette.aliases.classes',
+  // Search-only metadata; the entity destination label renders separately.
+  'commandPalette.aliases.entityActions',
+  // No model workspace, copyable renderer selection, or selected browser text.
+  'commandPalette.availability.storeyBoundary',
+  'commandPalette.availability.copyTarget',
+  'commandPalette.availability.textSelection',
+  // Catalogue reservation: no production consumer currently requests this key.
+  'commandPalette.availability.world',
   // #8947: requires a pending extension export; exercised by runtime-refusal and exporter Activity cases.
   'commandPalette.extension.busy',
   // #8947: modified-IFC's disabled reason is now visible in the unloaded palette.
   // These prerequisites need roles, loaded models, or a missing host beyond this seed.
   'commandPalette.availability.editor',
-  'commandPalette.availability.feature',
   'commandPalette.availability.camera',
   'commandPalette.availability.selection',
   'commandPalette.availability.workplane',
   'commandPalette.availability.schedule',
-  'commandPalette.availability.host',
+  'commandPalette.availability.refresh',
+  'commandPalette.availability.gpuChecking',
+  'commandPalette.availability.gpu',
+  'commandPalette.availability.reopen',
   'commandPalette.availability.loading',
 ];
 

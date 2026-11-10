@@ -24,19 +24,22 @@
  * one of an element on a grid: on the crossing it lands on, or free (#9199).
  */
 
+import { cloneShape, type CopyShape } from './copy-shape.js';
 import { cloneEffectiveMetadata } from './edit/metadata-clone-effective.js';
-import { iterateEffectiveEntityIds, type IfcAttributeValue, type StoreEditor } from '@ifc-lite/mutations';
+import { iterateEffectiveEntityIds, type StoreEditor } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { generateIfcGuid, type RandomSource } from '@ifc-lite/encoding';
 import { duplicateInStore, type SourceAttributes } from './duplicate.js';
-import { resolveDuplicateSource } from './resolve-source.js';
+import { resolveDuplicateSource, type DuplicateSourceScope } from './resolve-source.js';
 import { copyDependentSteps, copiedProductWork } from './copy-dependent-walk.js';
 import { follow, gridCopyRefusal, placeOnStorey, type Placed } from './copy-placement.js';
 import { asRef, createStyleEntityReader, indexExistingStyles, refList } from './style-entity-reader.js';
 import {
-  readOwnPlacement, refToken, remapRefs, turnDirection, turnThenMove, finiteCopyFrame,
+  readOwnPlacement, refToken, turnDirection, turnThenMove, finiteCopyFrame,
   type CopyVec3, type LiveRead, type RigidFrame,
 } from './copy-frame.js';
+
+import { readCopyAttachments, rebindCopiedAttachments, withUnattachedTops, type CopyUnattachedTop } from './copy-attachment.js';
 
 export { productStoreyOrigin } from './copy-placement.js';
 
@@ -60,6 +63,8 @@ export interface CopyProductResult {
   readonly partIds: readonly number[];
   /** Source product id for every copied product, including openings, fillings and assembly parts. */
   readonly copiedFrom: ReadonlyMap<number, number>;
+  /** Copied child → copied parent, including nested assemblies and hosted dependents. */
+  readonly carriedBy?: ReadonlyMap<number, number>;
   /** The storey the copy (and its doors and windows) is contained in. */
   readonly storeyId: number | null;
   /** Every element the copy wrote with a shape to mesh: the copy and its doors and windows. */
@@ -72,13 +77,17 @@ export interface CopyProductResult {
   readonly boundToGrid: readonly number[];
   /** Copies that found their own place on the grid and landed on no crossing, now free of it. Listed as {@link boundToGrid}. */
   readonly cameFree: readonly number[];
+  /**
+   * Copies whose top attachment could not follow their new storey, left fixed
+   * at the source's height, with the reason (`copy-attachment.ts`). Absent
+   * when every attached copy followed.
+   */
+  readonly unattachedTops?: readonly CopyUnattachedTop[];
 }
 
 /** Classes that are copied with their host, never on their own. */
 const HOSTED_TYPES = new Set(['IFCOPENINGELEMENT', 'IFCOPENINGSTANDARDCASE', 'IFCVOIDINGFEATURE']);
 const SPATIAL_TYPES = new Set(['IFCSPACE', 'IFCBUILDINGSTOREY', 'IFCBUILDING', 'IFCSITE', 'IFCSPATIALZONE', 'IFCEXTERNALSPATIALELEMENT', 'IFCPROJECT']);
-/** A shape bigger than this is not deep-copied (a pathological overlay graph). */
-const MAX_CLONED_SHAPE_RECORDS = 50_000;
 
 interface HostedLink { readonly id: number; readonly ownerHistory: string | null }
 
@@ -103,6 +112,8 @@ export interface CopyContext {
   readonly parts: ReadonlyMap<number, readonly PartsLink[]>;
   /** Part id → its assembly. */
   readonly partOf: ReadonlyMap<number, number>;
+  /** Set by a copy batch: source storeys resolved once for the whole batch. */
+  readonly sourceScope?: DuplicateSourceScope;
 }
 
 export function createCopyContext(store: IfcDataStore, editor: StoreEditor, options: { guidRandom?: RandomSource } = {}): CopyContext {
@@ -161,12 +172,44 @@ export function copyRefusal(ctx: CopyContext, sourceId: number): string | null {
   return gridCopyRefusal(ctx, sourceId);
 }
 
-/** Copy the complete product graph. `options.Name` overrides only the root product’s Name. */
-export function copyProductInStore(ctx: CopyContext, sourceId: number, transform: CopyTransform = {}, options: { Name?: string } = {}): CopyProductResult {
+/**
+ * Copy the complete product graph. `options.Name` overrides only the root
+ * product’s Name; `options.shape: 'own'` deep-copies file shape records. A copy on another storey re-resolves its top attachment
+ * there (`copy-attachment.ts`), as the batch does. The copy and the re-bind
+ * are one atomic write: when either refuses, nothing is left behind (#9352).
+ */
+export function copyProductInStore(ctx: CopyContext, sourceId: number, transform: CopyTransform = {}, options: { Name?: string; shape?: CopyShape } = {}): CopyProductResult {
+  return ctx.editor.runAtomic((draft) => {
+    const inner: CopyContext = { ...ctx, editor: draft, read: createStyleEntityReader(ctx.store, draft) };
+    const attachments = readCopyAttachments(inner, carriedParts(inner, sourceId));
+    const result = copyProductGraph(inner, sourceId, transform, options);
+    return withUnattachedTops([result], rebindCopiedAttachments(inner, attachments, [result]).unattached)[0];
+  });
+}
+
+/** The product and every assembly part it carries, at every depth (iterative, visited set). */
+function carriedParts(ctx: CopyContext, sourceId: number): number[] {
+  const seen = new Set<number>();
+  const pending = [sourceId];
+  while (pending.length > 0) {
+    const id = pending.pop()!;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    for (const link of ctx.parts.get(id) ?? []) pending.push(...link.parts);
+  }
+  return [...seen];
+}
+
+/**
+ * `copyProductInStore` without the attachment step: for a batch, which reads
+ * every source's attachment once before its first copy and re-binds each
+ * transform's copies together (so a slab copied alongside is found).
+ */
+export function copyProductGraph(ctx: CopyContext, sourceId: number, transform: CopyTransform = {}, options: { Name?: string; shape?: CopyShape } = {}): CopyProductResult {
   const refusal = copyRefusal(ctx, sourceId);
   if (refusal) throw new Error(refusal);
   copiedProductWork(ctx, sourceId);
-  const source = resolveDuplicateSource(ctx.store, sourceId, ctx.editor);
+  const source = resolveDuplicateSource(ctx.store, sourceId, ctx.editor, ctx.sourceScope);
   const scale = source.lengthUnitScale && source.lengthUnitScale > 0 ? source.lengthUnitScale : 1;
   const native = (m: number) => m / scale;
   const [ox, oy, oz] = transform.offset ?? [0, 0, 0];
@@ -175,16 +218,16 @@ export function copyProductInStore(ctx: CopyContext, sourceId: number, transform
 
   const targetStoreyId = transform.targetStoreyId ?? source.storeyId;
   const placed = placeOnStorey(ctx, source, targetStoreyId, move);
-  const copy = writeCopy(ctx, source, placed, targetStoreyId, options.Name);
+  const copy = writeCopy(ctx, source, placed, targetStoreyId, options.shape, options.Name);
 
   // Openings, their doors and windows, and the parts of an assembly follow it.
-  const acc: Dependents = { placements: new Map([[source.placementExpressId, copy.placementId]]), openingIds: [], fillingIds: [], partIds: [], copiedFrom: new Map([[copy.id, sourceId]]), boundToGrid: [], cameFree: [] };
+  const acc: Dependents = { placements: new Map([[source.placementExpressId, copy.placementId]]), openingIds: [], fillingIds: [], partIds: [], copiedFrom: new Map([[copy.id, sourceId]]), carriedBy: new Map(), boundToGrid: [], cameFree: [] };
   noteGridOutcome(acc, placed, copy.id);
-  copyDependents(ctx, sourceId, copy.id, source, targetStoreyId, move, acc);
+  copyDependents(ctx, sourceId, copy.id, source, targetStoreyId, move, acc, options.shape);
   for (const [copiedId, originalId] of acc.copiedFrom) cloneEffectiveMetadata(ctx.editor.getMutationView(), ctx.editor, originalId, [copiedId]);
   return {
     copyId: copy.id, openingIds: acc.openingIds, fillingIds: acc.fillingIds, partIds: acc.partIds, storeyId: targetStoreyId,
-    meshed: [copy.id, ...acc.partIds, ...acc.fillingIds], copiedFrom: acc.copiedFrom,
+    meshed: [copy.id, ...acc.partIds, ...acc.fillingIds], copiedFrom: acc.copiedFrom, carriedBy: acc.carriedBy,
     boundToGrid: acc.boundToGrid, cameFree: acc.cameFree,
   };
 }
@@ -196,6 +239,7 @@ interface Dependents {
   readonly fillingIds: number[];
   readonly partIds: number[];
   readonly copiedFrom: Map<number, number>;
+  readonly carriedBy: Map<number, number>;
   readonly boundToGrid: number[];
   readonly cameFree: number[];
 }
@@ -206,7 +250,7 @@ function noteGridOutcome(acc: Dependents, placed: Placed, copyId: number): void 
 }
 
 /** The copies of `sourceId`'s openings (with their doors and windows) and parts (recursively), written under `copyId`. */
-function copyDependents(ctx: CopyContext, sourceId: number, copyId: number, root: SourceAttributes, targetStoreyId: number | null, move: RigidFrame, acc: Dependents): void {
+function copyDependents(ctx: CopyContext, sourceId: number, copyId: number, root: SourceAttributes, targetStoreyId: number | null, move: RigidFrame, acc: Dependents, shape?: CopyShape): void {
   const copies = new Map([[sourceId, copyId]]);
   for (const step of copyDependentSteps(ctx, sourceId)) {
     if (step.kind === 'assembly') {
@@ -215,11 +259,12 @@ function copyDependents(ctx: CopyContext, sourceId: number, copyId: number, root
       continue;
     }
     const parentCopy = copies.get(step.parentId)!;
-    const source = resolveDuplicateSource(ctx.store, step.sourceId, ctx.editor);
+    const source = resolveDuplicateSource(ctx.store, step.sourceId, ctx.editor, ctx.sourceScope);
     const placed = follow(ctx, source, root, targetStoreyId, acc.placements, move);
-    const copy = writeCopy(ctx, source, placed, step.kind === 'filling' ? targetStoreyId : null);
+    const copy = writeCopy(ctx, source, placed, step.kind === 'filling' ? targetStoreyId : null, shape);
     noteGridOutcome(acc, placed, copy.id);
     acc.placements.set(source.placementExpressId, copy.placementId);
+    acc.carriedBy.set(copy.id, parentCopy);
     acc.copiedFrom.set(copy.id, step.sourceId); copies.set(step.sourceId, copy.id);
     if (step.kind === 'part') acc.partIds.push(copy.id);
     else if (step.kind === 'opening') {
@@ -232,7 +277,7 @@ function copyDependents(ctx: CopyContext, sourceId: number, copyId: number, root
   }
 }
 
-function writeCopy(ctx: CopyContext, source: SourceAttributes, placed: Placed, storeyId: number | null, name?: string): { id: number; placementId: number } {
+function writeCopy(ctx: CopyContext, source: SourceAttributes, placed: Placed, storeyId: number | null, shapeMode?: CopyShape, name?: string): { id: number; placementId: number } {
   if (![...placed.location, ...placed.turn.origin, placed.turn.c, placed.turn.s].every(Number.isFinite)) throw new Error('Copy placement must remain finite in native model units');
   const turned = Math.abs(placed.turn.s) > 1e-12 || placed.turn.c < 0;
   const own = turned ? placed.own ?? readOwnPlacement(ctx.read, source.placementExpressId) : null;
@@ -244,7 +289,7 @@ function writeCopy(ctx: CopyContext, source: SourceAttributes, placed: Placed, s
     return `#${ctx.editor.addEntity('IfcDirection', [moved]).expressId}`;
   };
   const attributes = [...source.attributes];
-  const shape = cloneCreatedShape(ctx, source.representationId);
+  const shape = cloneShape(ctx, source.representationId, shapeMode);
   if (shape !== null) attributes[6] = `#${shape}`;
   const built = duplicateInStore(ctx.editor, {
     ...source,
@@ -271,50 +316,3 @@ function relate(ctx: CopyContext, type: 'IfcRelVoidsElement' | 'IfcRelFillsEleme
   ctx.editor.addEntity(type, [generateIfcGuid(ctx.guidRandom), ownerHistory, null, null, `#${relating}`, `#${related}`]);
 }
 
-/**
- * Copy a shape created this session, record by record, with the styles on
- * its items; null when the shape is the file's own (it is then shared).
- * Records the file holds (a representation context) stay shared references.
- */
-function cloneCreatedShape(ctx: CopyContext, shapeId: number | null): number | null {
-  const view = ctx.editor.getMutationView();
-  const created = (id: number) => view.getNewEntity(id) !== null && !view.isDeleted(id);
-  if (shapeId === null || !created(shapeId)) return null;
-  const copies = new Map<number, number>();
-  const expanded = new Set<number>();
-  // Iterative post-order: children are written before the records that name them.
-  const stack = [shapeId];
-  while (stack.length > 0) {
-    const id = stack[stack.length - 1];
-    const record = copies.has(id) ? null : ctx.read(id);
-    if (!record) { stack.pop(); continue; }
-    if (!expanded.has(id)) {
-      expanded.add(id);
-      if (expanded.size > MAX_CLONED_SHAPE_RECORDS) throw new Error(`The shape of this element is too large to copy (over ${MAX_CLONED_SHAPE_RECORDS} records)`);
-      for (const child of childRefs(record.attributes)) if (created(child) && !expanded.has(child)) stack.push(child);
-      continue;
-    }
-    stack.pop();
-    copies.set(id, ctx.editor.addEntity(record.type, record.attributes.map((a) => remapRefs(a, copies))).expressId);
-  }
-  for (const [from, to] of copies) {
-    const styledItem = ctx.styledBy.get(from);
-    const style = styledItem === undefined ? null : ctx.read(styledItem);
-    // IfcStyledItem(Item, Styles, Name): the same styles, on the copied item.
-    if (style) ctx.editor.addEntity('IfcStyledItem', [`#${to}`, refList(style.attributes[1]).map((id) => `#${id}`), (style.attributes[2] ?? null) as IfcAttributeValue]);
-  }
-  return copies.get(shapeId) ?? null;
-}
-
-function childRefs(values: readonly unknown[]): number[] {
-  const out: number[] = [];
-  const visit = (value: unknown) => {
-    if (Array.isArray(value)) value.forEach(visit);
-    else if (typeof value === 'string') {
-      const id = asRef(value);
-      if (id !== null) out.push(id);
-    }
-  };
-  values.forEach(visit);
-  return out;
-}

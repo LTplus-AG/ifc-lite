@@ -205,6 +205,18 @@ export function skipTrivia(buf: Uint8Array, pos: number, len: number): Skip {
   }
 }
 
+// `skipTrivia` without the line count or the result object, for byte readers
+// that run once per value (the relationship reader, #9192). Returns the next
+// non-trivia position, or -1 when a comment opens and never closes.
+export function skipGap(buf: Uint8Array, pos: number, len: number): number {
+  for (;;) {
+    while (pos < len && isSpaceByte(buf[pos])) pos++;
+    if (pos >= len || !opensComment(buf, pos, len)) return pos;
+    pos = skipComment(buf, pos, len);
+    if (pos < 0) return -1;
+  }
+}
+
 // Newlines in [from, to), so a skipped region does not desync line numbers.
 export function countNewlines(buf: Uint8Array, from: number, to: number): number {
   let n = 0;

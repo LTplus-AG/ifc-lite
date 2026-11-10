@@ -111,6 +111,14 @@ created in the run.
 
 `createWorkerModelBridge(port)` / `serveModelBridge(port, impl)` carry a
 `ModelBridge` over a message port, so model data stays in a worker.
+Once `dispose()` has run, every pending and later call rejects
+(`bridge disposed`) instead of waiting for an answer. Pass
+`createWorkerModelBridge(port, { watchErrors: true })` when `port` is a
+`Worker` or `MessagePort`: the bridge then also treats the port's `error` and
+`messageerror` events as the worker dying, and every pending and later call
+rejects with the reason. It is opt-in because an adapter port that forwards
+every event to its `message` listener, whatever the type, would otherwise
+feed ordinary answers to the error handler.
 
 ## Stop conditions, receipts and privacy
 

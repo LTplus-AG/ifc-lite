@@ -854,3 +854,21 @@ short symbol/unit clusters (`⌘Z`, `m²`) — and ratchets a per-file count in
 `scripts/i18n-literals-baseline.json` (wired into `pnpm lint` and CI's
 node-tests job): a file's count may never rise above its baseline row,
 and a fall also fails until `node scripts/check-i18n-literals.mjs --update` re-records it (a ratchet in both directions).
+
+## Italian glossary and maintenance
+
+Use piano for storey, elemento for model product, proprietà, quantità,
+interferenza, sezione / piano di sezione and misura. Livello denotes a generic
+level. Preserve exact IFC EXPRESS names, technical tokens and model content.
+Warnings retain the action, condition, negation and consequence; Annulla reverses
+edits already applied. Italian Intl cardinal categories are one, other and many;
+decimals select other, and million multiples select many. Keep exact placeholders
+in each branch, using the corresponding English branch or other as the contract.
+
+`italian-catalogue.test.ts` checks every eager/lazy key, placeholder branches and
+value-pinned identical exceptions in `locales/it-identical.json`.
+`italian-startup.test.ts` checks ownership before lazy English registration;
+`italian-ids.test.tsx` checks IDS synchronization. The Settings language choice persists;
+browser `it-CH` negotiates to Italian and updates HTML lang.
+The acceptance checklist, bounded round ledger and actual validation evidence
+live in `tools/localization-italian/`. Runtime model names remain unmodified.

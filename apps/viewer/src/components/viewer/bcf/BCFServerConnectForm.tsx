@@ -10,6 +10,7 @@
 
 import { useCallback, useMemo, useState } from 'react';
 import { XCircle } from 'lucide-react';
+import { useSingleFlight } from '@/hooks/useSingleFlight';
 import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -65,7 +66,11 @@ export function BCFServerConnectForm({
   const [accessToken, setAccessToken] = useState('');
   const [clientId, setClientId] = useState('');
   const [clientSecret, setClientSecret] = useState('');
-  const [busy, setBusy] = useState(false);
+  // One sign-in at a time (C-2): a same-tick double press is refused before
+  // it opens a second popup or registers a second client.
+  const connectFlight = useSingleFlight();
+  const busy = connectFlight.busy;
+  const runConnect = connectFlight.run;
   const [error, setError] = useState<string | null>(null);
 
   const preset = findBcfServerPreset(presetId);
@@ -98,7 +103,7 @@ export function BCFServerConnectForm({
     setError(null);
   }, []);
 
-  const handleConnect = useCallback(async () => {
+  const handleConnect = useCallback(() => runConnect(async () => {
     const urlError = validateBcfServerUrl(serverUrl);
     if (urlError) {
       setError(urlError);
@@ -117,7 +122,6 @@ export function BCFServerConnectForm({
       setError(t('bcf.serverConnect.popupBlocked'));
       return;
     }
-    setBusy(true);
     setError(null);
     try {
       let config: BcfServerConfig;
@@ -167,9 +171,9 @@ export function BCFServerConnectForm({
     } finally {
       // Inert when COOP already severed the handle or the page closed itself.
       popup?.close();
-      setBusy(false);
     }
-  }, [
+  }), [
+    runConnect,
     serverUrl,
     authMethod,
     username,

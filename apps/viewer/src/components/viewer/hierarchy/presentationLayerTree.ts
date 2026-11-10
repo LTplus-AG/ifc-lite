@@ -2,8 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import type { IfcDataStore } from '@ifc-lite/parser';
+import { extractClassificationsOnDemand, type IfcDataStore } from '@ifc-lite/parser';
 import type { FederatedModel } from '@/store';
+import { appendLayerGroups, type LayerGrouping } from './presentationLayerGroups';
 import { resolvePresentationLayers } from '@/lib/presentation-layers';
 import { effectiveTreeEntityName } from './effectiveTypeEntities';
 import { makeAssemblyGeometry, resolveTreeGlobalId } from './productTree';
@@ -23,6 +24,10 @@ export function buildPresentationLayerTree(
   geometricIds: Set<number>,
   geometryReadyModelIds: ReadonlySet<string>,
   overlay?: TreeOverlay,
+  grouping: LayerGrouping = 'none',
+  unclassified = 'Unclassified',
+  unavailable = 'Classification unavailable',
+  noCode: (source: string) => string = source => `${source || 'Classification'} (no code)`,
 ): TreeNode[] {
   const nodes: TreeNode[] = [];
   const append = (store: IfcDataStore, ownerModelIds: string[]) => {
@@ -33,6 +38,25 @@ export function buildPresentationLayerTree(
     const view = overlayViewFor(overlay, modelId);
     const geometryKnown = ownerModelIds.some((owner) => geometryReadyModelIds.has(owner));
     const geometry = makeAssemblyGeometry(store, modelId, models, geometricIds, geometryKnown, view);
+    const classificationGroups = new Map<number, { key: string; name: string }[]>();
+    const groupsFor = (row: TreeNode) => {
+      if (grouping === 'class') return [{ key: row.ifcType ?? row.name, name: row.ifcType ?? row.name, ifcType: row.ifcType }];
+      const id = row.expressIds[0];
+      if (!classificationGroups.has(id)) {
+        const refs = extractClassificationsOnDemand(store, id, view ?? undefined);
+        classificationGroups.set(id, refs.flatMap(ref => {
+          if (ref.unresolved) return [{ key: 'unavailable', name: unavailable }];
+          const code = ref.identification?.trim() || ref.name?.trim();
+          if (code) return [{ key: JSON.stringify([ref.system, code]),
+            name: ref.system && ref.system !== code ? `${ref.system}: ${code}` : code }];
+          const path = ref.path?.join(' / ');
+          const source = [ref.system, path].filter(Boolean).join(': ');
+          return [{ key: JSON.stringify(['no-code', ref.system, ref.path]), name: noCode(source) }];
+        }));
+      }
+      const groups = classificationGroups.get(id)!;
+      return groups.length ? groups : [{ key: 'unclassified', name: unclassified }];
+    };
     const productRows = new Map<number, TreeNode>();
     const layers = resolvePresentationLayers(store, view).sort((a, b) =>
       names.compare(a.Name, b.Name) || a.expressId - b.expressId);
@@ -79,7 +103,11 @@ export function buildPresentationLayerTree(
       });
       if (expansion.has(id)) {
         members.sort((a, b) => names.compare(a.name, b.name) || a.expressIds[0] - b.expressIds[0]);
-        for (const member of members) nodes.push({ ...member, id: `${id}-product-${member.expressIds[0]}` });
+        if (grouping === 'none') {
+          for (const member of members) nodes.push({ ...member, id: `${id}-product-${member.expressIds[0]}` });
+        } else {
+          appendLayerGroups(nodes, id, members, groupsFor, expansion, geometryKnown, geometricIds);
+        }
       }
     }
   };

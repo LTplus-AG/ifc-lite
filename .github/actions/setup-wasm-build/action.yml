@@ -70,8 +70,13 @@ runs:
     # `latest` hit the releases API every run and intermittently got an HTML
     # rate-limit page back. To bump: change WASM_PACK_VERSION and BOTH digests
     # (`gh api repos/wasm-bindgen/wasm-pack/releases/tags/<v> --jq
-    # '.assets[] | [.name, .digest] | @tsv'`).
-    - name: Install wasm-pack (host arch, checksum-verified)
+    # '.assets[] | [.name, .digest] | @tsv'`). If the release download exhausts
+    # its retries, compile the same pinned version from crates.io, a separate
+    # CDN. `--locked` pins its dependencies; the version check below guards
+    # the result on either install path and on cache hits. Checksum failures
+    # remain fatal rather than falling back from an untrusted archive.
+    - name: Select pinned wasm-pack for host arch
+      id: wasm-pack-config
       shell: bash
       env:
         WASM_PACK_VERSION: v0.15.0
@@ -92,17 +97,59 @@ runs:
             ;;
         esac
         name="wasm-pack-${WASM_PACK_VERSION}-${arch}-unknown-linux-musl"
+        echo "version=$WASM_PACK_VERSION" >> "$GITHUB_OUTPUT"
+        echo "sha256=$sha256" >> "$GITHUB_OUTPUT"
+        echo "name=$name" >> "$GITHUB_OUTPUT"
+        echo "dest=${RUNNER_TEMP}/wasm-pack-${WASM_PACK_VERSION}-${arch}" >> "$GITHUB_OUTPUT"
+        echo "key=wasm-pack-${WASM_PACK_VERSION}-${arch}-${sha256}" >> "$GITHUB_OUTPUT"
+
+    - name: Cache pinned wasm-pack binary
+      id: wasm-pack-cache
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ steps.wasm-pack-config.outputs.dest }}/wasm-pack
+        key: ${{ steps.wasm-pack-config.outputs.key }}
+
+    - name: Install wasm-pack (host arch, pinned)
+      if: steps.wasm-pack-cache.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        WASM_PACK_VERSION: ${{ steps.wasm-pack-config.outputs.version }}
+        sha256: ${{ steps.wasm-pack-config.outputs.sha256 }}
+        name: ${{ steps.wasm-pack-config.outputs.name }}
+        dest: ${{ steps.wasm-pack-config.outputs.dest }}
+      run: |
+        set -euo pipefail
         url="https://github.com/wasm-bindgen/wasm-pack/releases/download/${WASM_PACK_VERSION}/${name}.tar.gz"
-        dest="${RUNNER_TEMP}/wasm-pack-${WASM_PACK_VERSION}-${arch}"
         rm -rf "$dest"
         mkdir -p "$dest"
         echo "Downloading $url"
-        curl --fail --silent --show-error --location --retry 3 --retry-all-errors \
-          --output "$dest/${name}.tar.gz" "$url"
-        echo "${sha256}  $dest/${name}.tar.gz" | sha256sum --check --strict
-        tar -xzf "$dest/${name}.tar.gz" -C "$dest" --strip-components=1 "${name}/wasm-pack"
+        # Always remove partial downloads and the temporary Cargo install tree.
+        trap 'rm -f "$dest/${name}.tar.gz"; rm -rf "$dest/cargo-install"' EXIT
+        if curl --fail --silent --show-error --location \
+          --retry 8 --retry-delay 5 --retry-max-time 240 --retry-all-errors \
+          --connect-timeout 20 --max-time 240 \
+          --output "$dest/${name}.tar.gz" "$url"; then
+          echo "${sha256}  $dest/${name}.tar.gz" | sha256sum --check --strict
+          tar -xzf "$dest/${name}.tar.gz" -C "$dest" --strip-components=1 "${name}/wasm-pack"
+        else
+          rm -f "$dest/${name}.tar.gz"
+          echo "::warning::wasm-pack release download failed after retries; falling back to cargo install from crates.io (pinned version, --locked)"
+          if ! cargo install wasm-pack --version "${WASM_PACK_VERSION#v}" --locked --root "$dest/cargo-install"; then
+            echo "::error::wasm-pack crates.io cargo install fallback failed" >&2
+            exit 1
+          fi
+          mv "$dest/cargo-install/bin/wasm-pack" "$dest/wasm-pack"
+        fi
         chmod +x "$dest/wasm-pack"
-        rm -f "$dest/${name}.tar.gz"
+
+    - name: Verify wasm-pack version (including cache hits)
+      shell: bash
+      env:
+        WASM_PACK_VERSION: ${{ steps.wasm-pack-config.outputs.version }}
+        dest: ${{ steps.wasm-pack-config.outputs.dest }}
+      run: |
+        set -euo pipefail
         # Fail in setup if the binary cannot run on this host (wrong arch,
         # truncated, wrong libc) and if it is not the pinned version.
         reported="$("$dest/wasm-pack" --version)"

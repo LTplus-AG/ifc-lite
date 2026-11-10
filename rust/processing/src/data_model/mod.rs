@@ -28,6 +28,7 @@ mod spatial;
 mod types;
 
 pub use rooted::DataModelEntities;
+pub use spatial::extract_elevation_if_storey;
 pub use types::*;
 
 use classifications::extract_classifications;

@@ -29,6 +29,8 @@ export const MODEL_ID = 'ifc';
 export const STOREY = 40;
 /** A second storey, 3 m up. */
 export const UPPER_STOREY = 50;
+/** With `raisedStorey`: a third storey whose placement itself sits 3 m up. */
+export const RAISED_STOREY = 60;
 /** The imported wall with a mesh (IfcTriangulatedFaceSet) body. */
 export const MESH_WALL = 130;
 /**
@@ -51,9 +53,13 @@ export interface ModelingSessionOptions {
   storeyOffset?: [number, number];
   /** Imported native owners for the Room tests’ explicit remeshed geometry. */
   roomGeometry?: boolean;
+  /** Adds `RAISED_STOREY`, placed 3 m up in world coordinates (the others are placed at 0). */
+  raisedStorey?: boolean;
+  /** A whole STEP file to load instead, e.g. one this fixture's session exported. */
+  step?: string;
 }
 
-function fixtureStep({ unit = 'metre', storeyOffset = [0, 0], roomGeometry = false }: ModelingSessionOptions): string {
+export function fixtureStep({ unit = 'metre', storeyOffset = [0, 0], roomGeometry = false, raisedStorey = false }: ModelingSessionOptions): string {
   const prefix = unit === 'metre' ? '$' : '.MILLI.';
   const k = unit === 'metre' ? 1 : 1000;
   const [ox, oy] = storeyOffset.map((v) => v * k);
@@ -91,7 +97,7 @@ DATA;
 #137=IFCTRIANGULATEDFACESET(#136,$,$,((1,2,3)),$);
 #138=IFCSHAPEREPRESENTATION(#20,'Body','Tessellation',(#137));
 #139=IFCPRODUCTDEFINITIONSHAPE($,$,(#138));
-#70=IFCRELAGGREGATES('0kTvXnbbzCWw8lcMd1dR4o',$,$,$,#1,(#40,#50));
+#70=IFCRELAGGREGATES('0kTvXnbbzCWw8lcMd1dR4o',$,$,$,#1,(#40,#50${raisedStorey ? ',#60' : ''}));
 #71=IFCRELCONTAINEDINSPATIALSTRUCTURE('1kTvXnbbzCWw8lcMd1dR4o',$,$,$,(#130,#80,#100,#120),#40);
 #100=IFCSLAB('1pPHnf7cXCpPsNEnQf8_6B',$,'hung slab',$,$,#101,#109,$,.FLOOR.);
 #101=IFCLOCALPLACEMENT(#41,#102);
@@ -129,6 +135,10 @@ DATA;
 #93=IFCSHAPEREPRESENTATION(#20,'Body','SweptSolid',(#92));
 #90=IFCPRODUCTDEFINITIONSHAPE($,$,(#93));
 ${nativeRooms}
+${raisedStorey ? `#60=IFCBUILDINGSTOREY('2hQBAVPOr5VxhS3Jl0O47k',$,'L2',$,$,#61,$,$,.ELEMENT.,${3 * k}.);
+#61=IFCLOCALPLACEMENT($,#62);
+#62=IFCAXIS2PLACEMENT3D(#63,$,$);
+#63=IFCCARTESIANPOINT((0.,0.,${3 * k}.));` : ''}
 ENDSEC;
 END-ISO-10303-21;
 `;
@@ -149,7 +159,7 @@ function emptyGeometry(): GeometryResult {
 }
 
 export async function seedModelingSession(options: ModelingSessionOptions = {}): Promise<MutablePropertyView> {
-  const bytes = new TextEncoder().encode(fixtureStep(options));
+  const bytes = new TextEncoder().encode(options.step ?? fixtureStep(options));
   const dataStore = await new IfcParser().parseColumnar(bytes.buffer as ArrayBuffer, { disableWorkerScan: true });
   const geometry = emptyGeometry();
   const maxExpressId = Math.max(...dataStore.entities.expressId);

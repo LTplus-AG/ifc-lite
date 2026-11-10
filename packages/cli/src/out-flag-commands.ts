@@ -15,5 +15,5 @@
 export const COMMANDS_WITH_OUT = new Set([
   'export', 'diagnose-geometry', 'extract-entities', 'anonymize', 'bcf', 'create',
   'merge', 'convert', 'rekey', 'mutate', 'generate-spaces', 'analyze', 'lod',
-  'simplify', 'delivery', 'flow', 'semantic',
+  'simplify', 'delivery', 'flow', 'semantic', 'storey',
 ]);

@@ -10,6 +10,7 @@
  * storey chip and, from M2.4, the plan header.
  */
 
+import { HudPopoverClose } from '../../viewport-ui/hud/HudPopover';
 import { Layers } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useTranslation } from '@/i18n';
@@ -50,6 +51,7 @@ export function StoreyPicker({ groups, current, onPick }: StoreyPickerProps) {
               const active = current?.modelId === storey.modelId && current.storeyId === storey.expressId;
               return (
                 <li key={storey.expressId}>
+                  <HudPopoverClose asChild>
                   <button
                     type="button"
                     aria-current={active ? 'true' : undefined}
@@ -67,6 +69,7 @@ export function StoreyPicker({ groups, current, onPick }: StoreyPickerProps) {
                       {t('modelWorkspace.storey.elevation', { elevation: formatStoreyElevation(storey.elevation) })}
                     </span>
                   </button>
+                  </HudPopoverClose>
                 </li>
               );
             })}

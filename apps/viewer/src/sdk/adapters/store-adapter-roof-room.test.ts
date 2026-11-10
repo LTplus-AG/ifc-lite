@@ -72,6 +72,11 @@ for (const failAt of [1, 3]) it(`roof room failure after ${failAt} writes preser
     }) };
   };
   const properties = () => structuredClone(view.getForEntity(roof.expressId));
+  const sharedDefinitionValues = (definition: { name: string; properties: Array<{ name: string }> }) => {
+    const path = pathForEntity(store, roof.expressId); assert.ok(path);
+    return Object.fromEntries(definition.properties.map(property => [property.name,
+      structuredClone(getPropertyValue(session.doc, path, definition.name, property.name)?.value)]));
+  };
   const mesh = (id: number) => structuredClone(nativeSdkMeshes().filter(part => part.expressId === id));
   const roomQuantities = async () => {
     const source = editedModelBytes(store, view);
@@ -121,6 +126,8 @@ for (const failAt of [1, 3]) it(`roof room failure after ${failAt} writes preser
         if (fail) { fail = false; historyWrites.push(direction); throw new Error(`Injected ${direction} roof history publication failure`); }
       } });
   };
+  const editedDefinition = editedProperties.find(set => set.name === 'IfcLite_RoofFootprint'); assert.ok(editedDefinition);
+  const sharedBeforeUndo = sharedDefinitionValues(editedDefinition);
   failNextHistoryPublication('undo');
   assert.doesNotThrow(() => useViewerStore.getState().undo(MODEL), 'Undo completes when its follow-up roof definition publish fails');
   bindRoomPropertyApi({ getPropertyValue, setPropertyValue, deletePropertyValue });
@@ -132,17 +139,15 @@ for (const failAt of [1, 3]) it(`roof room failure after ${failAt} writes preser
   const undoNotice = useViewerStore.getState().consumeCollabGeometryNotice();
   assert.match(undoNotice ?? '', /Roof review room/);
   assert.match(undoNotice ?? '', /Undo|history|shared/i);
+  assert.deepEqual(sharedDefinitionValues(editedDefinition), sharedBeforeUndo, 'failed Undo publication restores the complete previous shared definition');
   await settle();
   assert.deepEqual(await nativeGraph(bytes()), await nativeGraph(before), 'Undo restores the complete persisted roof and room IFC graph');
   assert.deepEqual(properties(), beforeProperties, 'Undo restores the recorded roof definition');
-  const path = pathForEntity(store, roof.expressId); assert.ok(path);
-  const definition = beforeProperties.find(set => set.name === 'IfcLite_RoofFootprint'); assert.ok(definition);
-  for (const property of definition.properties) assert.deepEqual(getPropertyValue(session.doc, path, definition.name, property.name)?.value,
-    property.value, `failed Undo restores shared roof property ${property.name}`);
   assert.deepEqual(mesh(roof.expressId), roofMesh, 'Undo restores actual native roof meshes');
   assert.deepEqual(mesh(space.expressId), spaceMesh, 'Undo preserves actual native room meshes');
   assert.deepEqual(await roomQuantities(), spaceQuantities, 'Undo preserves exported room quantities');
   assert.ok(restoredWithoutGuid.length > 0, 'Undo exercised restored geometry identities without GUIDs');
+  const sharedBeforeRedo = sharedDefinitionValues(editedDefinition);
   transactions = 0;
   session.doc.on('afterTransaction', observe);
   failNextHistoryPublication('redo');
@@ -156,12 +161,10 @@ for (const failAt of [1, 3]) it(`roof room failure after ${failAt} writes preser
   const redoNotice = useViewerStore.getState().consumeCollabGeometryNotice();
   assert.match(redoNotice ?? '', /Roof review room/);
   assert.match(redoNotice ?? '', /Redo|history|shared/i);
+  assert.deepEqual(sharedDefinitionValues(editedDefinition), sharedBeforeRedo, 'failed Redo publication restores the complete previous shared definition');
   await settle();
   assert.deepEqual(await nativeGraph(bytes()), await nativeGraph(edited), 'Redo restores the complete edited IFC graph');
   assert.deepEqual(properties(), editedProperties, 'Redo restores the edited roof definition');
-  const redone = editedProperties.find(set => set.name === definition.name); assert.ok(redone);
-  for (const property of redone.properties) assert.deepEqual(getPropertyValue(session.doc, path, redone.name, property.name)?.value,
-    property.value, `Redo restores shared roof property ${property.name}`);
   assert.deepEqual(mesh(roof.expressId), editedRoofMesh, 'Redo restores actual edited native roof meshes');
   assert.deepEqual(mesh(space.expressId), spaceMesh, 'Redo preserves actual native room meshes');
   assert.deepEqual(await roomQuantities(), spaceQuantities, 'Redo preserves exported room quantities');

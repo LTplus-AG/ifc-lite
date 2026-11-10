@@ -9,8 +9,8 @@
  * federated model add, an in-place content-version bump). That destroys
  * EVERY GPU-instanced template — including ones belonging to a model that is
  * still loaded and visible — and nothing re-uploads them afterwards: the raw
- * IFNS shard bytes are dropped from the store right after their one-time
- * drain (`clearInstancedShards()` / `pendingInstancedShards: null`), so
+ * IFNS shard bytes are dropped right after their one-time drain (then from
+ * the store, now from `instancedShardQueue`), so
  * repeated geometry (windows, doors, bolts, ...) silently vanished for the
  * rest of the session on the very next reshape.
  *
@@ -36,7 +36,8 @@
 import '../../test/setup-dom.js';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { useRef, useState } from 'react';
+import { useRef } from 'react';
+import { enqueueInstancedShards } from '@/store/instancedShardQueue';
 import { fixtureModel } from '@/test/store-fixture.js';
 import { loadedInstancedModelIndices } from '@/lib/visibility/model-hidden-entities.js';
 import { act } from 'react';
@@ -153,11 +154,10 @@ function fakeRenderer(scene: FakeScene) {
 }
 
 /** Harness: mounts the real hook, letting the test drive its params via
- *  external re-renders. `pendingInstancedShards` is owned INTERNALLY (seeded
- *  once from `initialShardBytes`) so `clearInstancedShards()` behaves exactly
- *  like the real store action — set to null and stay null across later
- *  reshapes, since nothing in this bug scenario ever repopulates it. */
-function Harness(props: Omit<UseGeometryStreamingParams, 'pendingInstancedShards' | 'clearInstancedShards' | 'rendererRef' | 'clearColorRef'> & {
+ *  external re-renders. The shard queue is seeded ONCE from
+ *  `initialShardBytes` on first render; the drain empties it, and nothing in
+ *  this bug scenario ever repopulates it. */
+function Harness(props: Omit<UseGeometryStreamingParams, 'rendererRef' | 'clearColorRef'> & {
   initialShardBytes: ArrayBuffer[] | null;
   renderer: Renderer;
 }) {
@@ -167,16 +167,16 @@ function Harness(props: Omit<UseGeometryStreamingParams, 'pendingInstancedShards
   // and these tests deliberately supply no `modelIdToIndex`, so every shard
   // lands on modelIndex 0 — which is what the assertions below expect. Tagging
   // here rather than at each call site keeps the fixtures about retention.
-  const [shards, setShards] = useState<Array<{ modelId: string; bytes: ArrayBuffer }> | null>(() =>
-    initialShardBytes === null ? null : initialShardBytes.map((bytes) => ({ modelId: 'model-0', bytes }))
-  );
+  const seeded = useRef(false);
+  if (!seeded.current) {
+    seeded.current = true;
+    if (initialShardBytes !== null) enqueueInstancedShards('model-0', initialShardBytes);
+  }
   const rendererRef = useRef<Renderer | null>(renderer);
   const clearColorRef = useRef<[number, number, number, number]>([0, 0, 0, 1]);
   useGeometryStreaming({
     ...rest,
     rendererRef,
-    pendingInstancedShards: shards,
-    clearInstancedShards: () => setShards(null),
     clearColorRef,
   });
   return null;
@@ -246,7 +246,7 @@ describe('useGeometryStreaming — instanced-template retention across scene.cle
 
     // Reshape #1: in-place content mutation (e.g. realignFederation) with the
     // SAME model (0) still present — geometryContentVersion bumps. No new
-    // shard bytes arrive (pendingInstancedShards stays null, drained once).
+    // shard bytes arrive (the queue stays empty, drained once).
     act(() => {
       root.render(
         <Harness

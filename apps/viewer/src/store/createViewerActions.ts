@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { discardInstancedShards } from './instancedShardQueue.js';
 import { clearLoadReport } from '../lib/error-reports/context';
 /** Cross-slice viewer actions. Domain state stays in its owning slice; this
  * composition seam preserves reset side effects and workspace routing. */
@@ -97,6 +98,9 @@ export const createViewerActions: StateCreator<ViewerState, [], [], ViewerAction
     // channels sit in `NEVER_DROPPED` so the filter cannot remove them, so it
     // fires on EVERY reset as the hand-written payload did. Keep that exemption.
     set(viewerTeardown({ kind: 'session-reset' }, get()));
+    // Undrained GPU-instancing shards belong to the outgoing scene; they live
+    // outside the store (`instancedShardQueue`), so dropping them is a side effect.
+    discardInstancedShards();
     // The per-model 2D markup snapshots describe the session just reset (a side effect, so here).
     forgetLiveMarkup();
 

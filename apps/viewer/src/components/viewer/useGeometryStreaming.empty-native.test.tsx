@@ -4,7 +4,7 @@
 import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
 import { it } from 'node:test';
-import { act, useCallback, useRef, useState } from 'react';
+import { act, useRef, useState } from 'react';
 import { Renderer } from '@ifc-lite/renderer';
 import type { MeshData } from '@ifc-lite/geometry';
 import { createLoadTracer } from '@ifc-lite/load-trace';
@@ -15,6 +15,7 @@ import { useViewerStore } from '@/store';
 import { recoveryAllocationDevice } from '@/test/recovery-allocation-device';
 import { sectionNativeGeometry, sourceDigest } from '@/test/section-native-geometry';
 import { useGeometryStreaming } from './useGeometryStreaming';
+import { discardInstancedShards, enqueueInstancedShards } from '@/store/instancedShardQueue';
 
 for (const mode of ['instanced', 'filtered', 'clear-and-reload'] as const) {
   it(`#6993 valid ${mode} empty-flat stream preserves completion ownership`, { timeout: 30_000 }, async t => {
@@ -39,9 +40,6 @@ for (const mode of ['instanced', 'filtered', 'clear-and-reload'] as const) {
         const [geometry, setGeometry] = useState<MeshData[] | null>([]);
         const [streaming, setStreaming] = useState(true);
         const [replacement, setReplacement] = useState(0);
-        const [shards, setShards] = useState<Array<{ modelId: string; bytes: ArrayBuffer }> | null>(
-          mode === 'filtered' ? null : [{ modelId: 'native', bytes: native.shardBytes.slice().buffer }]);
-        const clearShards = useCallback(() => setShards(null), []);
         const ref = useRef(renderer), bounds = useRef({ min: { x: -100, y: -100, z: -100 }, max: { x: 100, y: 100, z: 100 } });
         const color = useRef<[number, number, number, number]>([0, 0, 0, 1]);
         const indices = useRef(new Map([['native', 0]])).current;
@@ -54,14 +52,16 @@ for (const mode of ['instanced', 'filtered', 'clear-and-reload'] as const) {
           modelCount: 1, geometryReplacementVersion: replacement, geometryBoundsRef: bounds, clearColorRef: color,
           coordinateInfo: native.coordinateInfo, pendingMeshColorUpdates: null, pendingColorUpdates: null,
           pendingMeshRemovals: null, pendingMeshTranslations: null, pendingMeshRotations: null,
-          pendingInstancedShards: shards, modelIdToIndex: indices, modelIdToOffset: offsets,
-          presentInstancedModelIndices: present, clearInstancedShards: clearShards,
+          modelIdToIndex: indices, modelIdToOffset: offsets,
+          presentInstancedModelIndices: present,
           clearPendingMeshColorUpdates: noop, clearPendingColorUpdates: noop, clearPendingMeshRemovals: noop,
           pruneGeometryMeshes: noop, clearPendingMeshTranslations: noop, clearPendingMeshRotations: noop,
           releaseGeometryAfterFinalize: mode !== 'instanced', onGeometryReleased: () => { released++; },
         });
         return <canvas />;
       };
+      // Queued before mount: the drain takes it as soon as the renderer is up.
+      if (mode !== 'filtered') enqueueInstancedShards('native', [native.shardBytes.slice().buffer]);
       render(<Probe />);
       const scene = renderer.getScene();
       const occurrences = [...new Set(native.shard.instances.map(instance => instance.entityId))].flatMap(id => scene.getInstancedMeshDataPieces(id) ?? []);
@@ -85,7 +85,7 @@ for (const mode of ['instanced', 'filtered', 'clear-and-reload'] as const) {
       assert.equal(finalized(), 1, 'settled empty-flat stream does not repeat finalization');
       assert.equal(sourceDigest(native.source), before, 'native source bytes remain unchanged');
     } finally {
-      cleanup(); renderer.destroy(); allocation.restore();
+      cleanup(); discardInstancedShards(); renderer.destroy(); allocation.restore();
     }
   });
 }

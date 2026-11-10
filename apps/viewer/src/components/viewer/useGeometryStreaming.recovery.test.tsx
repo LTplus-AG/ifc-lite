@@ -17,6 +17,7 @@ import { cleanup, render, waitFor } from '@/test/render.js';
 import { settle } from '@/test/settle.js';
 import { useGeometryStreaming } from './useGeometryStreaming.js';
 import { buildShardBytes } from '@/test/instanced-shard-fixture.js';
+import { discardInstancedShards, enqueueInstancedShards, hasPendingInstancedShards } from '@/store/instancedShardQueue';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 
 interface State {
@@ -30,7 +31,6 @@ interface State {
   meshColors?: Map<number, [number, number, number, number]>;
   overlays?: Map<number, [number, number, number, number]>;
   removals?: Set<number>;
-  shards?: Array<{ modelId: string; bytes: ArrayBuffer }>;
 }
 let update: Dispatch<SetStateAction<State>>;
 
@@ -42,7 +42,6 @@ function Viewport({ renderer }: { renderer: Renderer }) {
   const modelOffsets = useRef(new Map([...models].map(([id, model]) => [id, model.idOffset]))).current;
   const presentIndices = useRef(new Set(modelIndices.values())).current;
   update = setState;
-  const clearShards = useCallback(() => setState((current) => current.shards ? { ...current, shards: undefined } : current), []);
   const clearTranslations = useCallback(() => {
     useViewerStore.getState().clearPendingMeshTranslations();
     setState((current) => ({ ...current, translations: undefined }));
@@ -61,7 +60,7 @@ function Viewport({ renderer }: { renderer: Renderer }) {
     isInitialized: true, isStreaming: state.streaming, geometryReplacementVersion: state.replacement,
     pendingMeshColorUpdates: state.meshColors ?? null, pendingColorUpdates: state.overlays ?? null,
     pendingMeshRemovals: state.removals ?? null, pendingMeshTranslations: state.translations ?? queuedTranslations,
-    pendingMeshRotations: state.rotations ?? null, pendingInstancedShards: state.shards ?? null,
+    pendingMeshRotations: state.rotations ?? null,
     modelIdToIndex: modelIndices, modelIdToOffset: modelOffsets, presentInstancedModelIndices: presentIndices,
     clearPendingMeshColorUpdates: clearMeshColors,
     clearPendingColorUpdates: clearOverlays,
@@ -69,7 +68,6 @@ function Viewport({ renderer }: { renderer: Renderer }) {
     pruneGeometryMeshes: prune,
     clearPendingMeshTranslations: clearTranslations,
     clearPendingMeshRotations: clearRotations,
-    clearInstancedShards: clearShards,
   }, { gpuRecoveryEpoch: state.epoch }));
   return null;
 }
@@ -110,7 +108,7 @@ const finalized = (tracer: ReturnType<typeof createLoadTracer>) =>
  */
 const quiesce = (message: string) => act(() => settle(message));
 
-afterEach(() => { cleanup(); useViewerStore.getState().clearAllModels(); });
+afterEach(() => { cleanup(); discardInstancedShards(); useViewerStore.getState().clearAllModels(); });
 
 it('replays unchanged source geometry that arrived while the GPU was lost (#6993)', async () => {
   const native = fixture();
@@ -153,13 +151,17 @@ for (const federated of [false, true]) {
   it(`replays a pending ${federated ? 'federated' : 'primary'} instanced shard after recovery (#6993)`, async () => {
     const native = fixture(federated);
     const meshes: MeshData[] = [];
-    const shards = [{ modelId: 'source', bytes: buildShardBytes(42) }];
     const id = useViewerStore.getState().toGlobalId('source', 42);
     native.available(false);
-    await act(async () => { update({ meshes, shards, streaming: false, epoch: 0 }); });
+    await act(async () => {
+      update({ meshes, streaming: false, epoch: 0 });
+      enqueueInstancedShards('source', [buildShardBytes(42)]);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
     assert.equal(native.scene.getInstancedMeshDataPieces(id), undefined);
+    assert.equal(hasPendingInstancedShards('source'), true, 'a lost device leaves the shard queued');
     native.available(true);
-    await act(async () => { update({ meshes, shards, streaming: false, epoch: 1 }); });
+    await act(async () => { update({ meshes, streaming: false, epoch: 1 }); });
     const pieces = native.scene.getInstancedMeshDataPieces(id);
     assert.ok(pieces, 'the encoded instance must reach the real Scene');
     assert.equal(pieces.length, 1);

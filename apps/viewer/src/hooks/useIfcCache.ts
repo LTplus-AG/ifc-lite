@@ -27,6 +27,7 @@ import { NOOP_LOAD_TRACE, type LoadTrace } from '@ifc-lite/load-trace';
 
 import { useShallow } from 'zustand/react/shallow';
 import { useViewerStore } from '../store/index.js';
+import { enqueueInstancedShards } from '../store/instancedShardQueue.js';
 import { getCached, setCached, deleteCached, type CacheResult } from '../services/cacheService.js';
 import { recordFirstVisible } from '../lib/perf/loadTrace.js';
 
@@ -79,14 +80,12 @@ export function useIfcCache() {
     setProgress,
     setIfcDataStore,
     setGeometryResult,
-    appendInstancedShards,
     appendGeometryBatch,
     setGeometryStreamingActive,
   } = useViewerStore(useShallow((s) => ({
     setProgress: s.setProgress,
     setIfcDataStore: s.setIfcDataStore,
     setGeometryResult: s.setGeometryResult,
-    appendInstancedShards: s.appendInstancedShards,
     appendGeometryBatch: s.appendGeometryBatch,
     setGeometryStreamingActive: s.setGeometryStreamingActive,
   })));
@@ -239,7 +238,7 @@ export function useIfcCache() {
         // Restore the GPU-instancing shards (opaque repeated occurrences that
         // were partitioned off the flat meshes).
         const shards = readCachedInstancedShards({ dataStore, cacheBuffer, cacheBlob, headerInfo, geometrySection });
-        if (shards.length > 0 && !adopted) appendInstancedShards(modelId, shards);
+        if (shards.length > 0 && !adopted) enqueueInstancedShards(modelId, shards);
 
         setIfcDataStore(dataStore);
 

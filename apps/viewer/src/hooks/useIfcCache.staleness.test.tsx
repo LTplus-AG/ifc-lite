@@ -45,6 +45,7 @@ import {
   type CacheDataStore,
 } from '@ifc-lite/cache';
 import type { MeshData, CoordinateInfo, GeometryResult } from '@ifc-lite/geometry';
+import { discardInstancedShards, subscribeInstancedShards } from '@/store/instancedShardQueue';
 import { useViewerStore } from '@/store';
 import { useIfcCache, type CacheResult, type CacheLoadResult } from './useIfcCache.js';
 
@@ -197,13 +198,20 @@ function Probe() {
   return null;
 }
 
+/** Shards the cache path queued for the renderer (outside the store since NEW-1). No drain runs here. */
+const queuedShards: Array<{ modelId: string }> = [];
+subscribeInstancedShards((event) => {
+  if (event.kind === 'enqueued') for (const modelId of event.modelIds) queuedShards.push({ modelId });
+  else queuedShards.length = 0;
+});
+
 /** Progress/streaming/geometry/shards/store — the whole active-slot surface. */
 function snapshot() {
   const s = useViewerStore.getState();
   return {
     geometryMeshIds: (s.geometryResult?.meshes ?? []).map((m) => m.expressId),
     geometryResultIsNull: s.geometryResult === null,
-    shards: s.pendingInstancedShards,
+    shards: queuedShards.length > 0 ? [...queuedShards] : null,
     ifcDataStore: s.ifcDataStore,
     progress: s.progress,
     streaming: s.geometryStreamingActive,
@@ -228,11 +236,11 @@ const NEWER_LOADS_PROGRESS = { phase: 'Newer load in flight', percent: 42 };
 function seedNewerLoadState() {
   useViewerStore.setState({
     geometryResult: NEWER_LOADS_GEOMETRY,
-    pendingInstancedShards: null,
     ifcDataStore: null,
     progress: { ...NEWER_LOADS_PROGRESS },
     geometryStreamingActive: true,
   });
+  discardInstancedShards();
 }
 
 /**
@@ -291,7 +299,6 @@ afterEach(async () => {
   if (current) await act(async () => current.unmount());
   useViewerStore.setState({
     geometryResult: null,
-    pendingInstancedShards: null,
     ifcDataStore: null,
     geometryStreamingActive: false,
     activeModelId: null,

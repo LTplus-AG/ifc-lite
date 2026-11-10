@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { render, cleanup, click, advance } from '@/test/render';
 import { seedAuthoringSample } from '@/test/authoring-sample-fixture';
+import { drainInstancedShards, enqueueInstancedShards } from '@/store/instancedShardQueue';
 import { useViewerStore } from '@/store';
 import { ADAPTERS } from '@/lib/assistant/adapters/registry';
 import { PANEL_SURFACE_COMMANDS } from '@/components/viewer/surface-commands-panels';
@@ -66,7 +67,13 @@ test('#7160 drained native IFNS input stays offered only for its own eligible mo
   const run = () => Array.from(ui.querySelectorAll<HTMLButtonElement>('li[data-source="clash"] button'))
     .find(button => button.textContent?.includes('Run clash detection'));
   assert.equal(run()?.disabled, true);
-  act(() => { useViewerStore.getState().appendInstancedShards(owner, [shard]); useViewerStore.getState().clearInstancedShards(); });
+  // Shards travel outside the store (NEW-1); the load's next store write (its
+  // completion) is what re-renders the picker after they drain.
+  act(() => {
+    enqueueInstancedShards(owner, [shard]);
+    drainInstancedShards(() => { /* uploaded by the renderer drain */ });
+    useViewerStore.setState({ clashRunning: false });
+  });
   assert.equal(run()?.disabled, false, 'queue drain and absent optional hashes do not erase native input availability');
   // Input delivery cannot stand in for live renderer residency. The actual native host refuses it.
   const offered = run();

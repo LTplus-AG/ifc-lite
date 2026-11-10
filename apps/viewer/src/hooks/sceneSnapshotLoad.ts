@@ -15,6 +15,7 @@ import { decodeInstancedShard, type CoordinateInfo, type MeshData } from '@ifc-l
 import type { LoadTrace } from '@ifc-lite/load-trace';
 import { useViewerStore } from '../store/index.js';
 import { noteInstancedShardModel } from '../store/instancedShardModels.js';
+import { enqueueInstancedShards } from '../store/instancedShardQueue.js';
 import { fitCameraToSnapshot, lastFinalFitBounds, sceneSnapshotKey, type SnapshotCameraFit, setPendingSceneSnapshot, withdrawPendingSceneSnapshot } from '../components/viewer/sceneSnapshotOwnership.js';
 import { readPerfFlag } from '../lib/perf/flags.js';
 import { recordFirstVisible } from '../lib/perf/loadTrace.js';
@@ -68,7 +69,7 @@ async function rendererReady(isStale: (() => boolean) | undefined, timeoutMs = 3
   }
 }
 
-/** Direct, unlike a stream's store-queued shards: the first frame is complete, and an abandoned adoption can remove them. */
+/** Direct, unlike a stream's queued shards (`instancedShardQueue`): the first frame is complete, and an abandoned adoption can remove them. */
 function uploadSnapshotShards(scene: SceneContents, device: GPUDevice, modelId: string, shards: ArrayBuffer[]): void {
   if (shards.length > 0) noteInstancedShardModel(modelId);
   for (const bytes of shards) {
@@ -130,7 +131,7 @@ export async function publishAdoptedSceneMeshes(
   if (isStale?.()) return [];
   const meshes = chunks.flat();
   setPendingSceneSnapshot(adopted.adoption, () => {
-    useViewerStore.getState().appendInstancedShards(modelId, adopted.shards);
+    enqueueInstancedShards(modelId, adopted.shards);
     forgetRefusedSnapshot(cacheResult, cacheKey);
   }, adopted.fit);
   append(modelId, meshes, open.coordinateInfo);

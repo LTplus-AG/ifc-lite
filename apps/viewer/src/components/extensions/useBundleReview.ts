@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useSingleFlight } from '@/hooks/useSingleFlight';
+import { useAsyncRun } from '@/hooks/useAsyncRun';
 import { useViewerStore } from '@/store';
 import { toast } from '@/components/ui/toast';
 import { useTranslation } from '@/i18n';
@@ -17,7 +17,7 @@ export function useBundleReview(host: ExtensionHostService) {
   const [pending, updatePending] = useState<Review | null>(null);
   const pendingRef = useRef<Review | null>(null);
   const origin = useRef<'file' | 'authored' | null>(null);
-  const { run, release, busy } = useSingleFlight();
+  const { start, reset, busy } = useAsyncRun();
   const setPending = useCallback((review: Review | null) => { pendingRef.current = review; updatePending(review); }, []);
   const preview = useCallback(async (bytes: Uint8Array, isCurrent: () => boolean) => {
     const result = await host.previewBundle(bytes);
@@ -35,8 +35,8 @@ export function useBundleReview(host: ExtensionHostService) {
     if (!file.name.toLowerCase().endsWith('.iflx')) {
       toast.error(t('extensionsFlavors.extensionsPanel.toast.expectedBundle', { filename: file.name })); return;
     }
-    if (origin.current === 'authored') release();
-    await run(async isCurrent => {
+    if (origin.current === 'authored') reset();
+    await start(async ({ isCurrent }) => {
       origin.current = 'file';
       try {
         const bytes = new Uint8Array(await file.arrayBuffer());
@@ -48,10 +48,10 @@ export function useBundleReview(host: ExtensionHostService) {
         { error: error instanceof Error ? error.message : String(error) }));
       } finally { if (isCurrent()) origin.current = null; }
     });
-  }, [preview, release, run, t]);
+  }, [preview, reset, start, t]);
   useEffect(() => {
     if (!authored || pending || busy) return;
-    void run(async isCurrent => {
+    void start(async ({ isCurrent }) => {
       origin.current = 'authored';
       const owns = () => isCurrent() && useViewerStore.getState().pendingAuthoredBundle === authored;
       try {
@@ -66,6 +66,6 @@ export function useBundleReview(host: ExtensionHostService) {
         }
       } finally { if (isCurrent()) origin.current = null; }
     });
-  }, [authored, pending, busy, preview, run, t]);
+  }, [authored, pending, busy, preview, start, t]);
   return { pending, setPending, handleFiles };
 }

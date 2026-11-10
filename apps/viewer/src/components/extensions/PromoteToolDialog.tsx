@@ -14,7 +14,7 @@
  * `09-implementation-plan.md` P1.T11 / T12.
  */
 
-import { useSingleFlight } from '@/hooks/useSingleFlight';
+import { useAsyncRun } from '@/hooks/useAsyncRun';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronRight, Sparkles, X } from 'lucide-react';
 import {
@@ -69,22 +69,22 @@ export function PromoteToolDialog({ open, source, initialName, onClose }: Promot
   const [hotkey, setHotkey] = useState('');
   const [icon, setIcon] = useState<string>('sparkles');
   const [pending, setPending] = useState<{ bytes: Uint8Array; summary: ExtensionInstallSummary } | null>(null);
-  const { busy, run, release } = useSingleFlight();
+  const { busy, start, reset } = useAsyncRun();
 
   const inference = useMemo(() => inferCapabilities(source), [source]);
 
   useEffect(() => {
     if (!open) {
-      release(); setPending(null);
+      reset(); setPending(null);
       nameEditedRef.current = false;
       return;
     }
     if (!nameEditedRef.current) {
       setName(initialName ?? defaultName);
     }
-  }, [defaultName, initialName, open, release]);
+  }, [defaultName, initialName, open, reset]);
 
-  const handlePromote = () => run(async isCurrent => {
+  const handlePromote = () => start(async ({ isCurrent }) => {
     try {
       const { bytes, summary } = await synthesiseBundle({
         name,
@@ -103,7 +103,7 @@ export function PromoteToolDialog({ open, source, initialName, onClose }: Promot
 
   const handleApprove = async (grants: string[]) => {
     if (!pending || busy) return;
-    await run(async isCurrent => {
+    await start(async ({ isCurrent }) => {
       try {
         const status = await host.installFromBytes(pending.bytes, grants);
         if (!isCurrent()) return;

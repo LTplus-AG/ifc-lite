@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { UnpackedFlavor } from '@ifc-lite/extensions';
 import type { ExtensionHostService } from '@/services/extensions/host';
-import { useSingleFlight } from '@/hooks/useSingleFlight';
+import { useAsyncRun } from '@/hooks/useAsyncRun';
 import { toast } from '@/components/ui/toast';
 import { useTranslation } from '@/i18n';
 import { flavorFailure } from './flavor-dialog-feedback';
@@ -15,20 +15,20 @@ export function useFlavorImportReview(host: ExtensionHostService, open: boolean)
   const { t } = useTranslation();
   const [preview, setPreview] = useState<Review | null>(null);
   const previewRef = useRef<Review | null>(null);
-  const { busy, run, release } = useSingleFlight();
+  const { busy, start, reset } = useAsyncRun();
   const clearPreview = useCallback(() => {
     previewRef.current?.bytes.fill(0);
     previewRef.current = null;
     setPreview(null);
   }, []);
-  useEffect(() => () => { release(); clearPreview(); }, [open, release, clearPreview]);
+  useEffect(() => () => { reset(); clearPreview(); }, [open, reset, clearPreview]);
   async function handleFiles(files: FileList | null) {
     if (!files?.length || previewRef.current) return;
     const file = files[0];
     if (!file.name.toLowerCase().endsWith('.iflv')) {
       toast.error(t('extensionsFlavors.flavorDialog.toast.expectedFile', { filename: file.name })); return;
     }
-    await run(async isCurrent => {
+    await start(async ({ isCurrent }) => {
       let bytes: Uint8Array | undefined, adopted = false;
       try {
         bytes = new Uint8Array(await file.arrayBuffer());

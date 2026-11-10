@@ -51,7 +51,21 @@ test('wheel zoom eases a notch, bounds a burst and reads line-mode wheels like p
       bubbles: true, cancelable: true,
     }));
     const nextFrame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-    const settle = () => new Promise<void>((resolve) => setTimeout(resolve, 500));
+    // Settled = the camera held still for 15 frames. Not a fixed wait: a slow
+    // software renderer (CI) draws few frames, and the ease counts a long
+    // frame as at most 50 ms, so it takes longer in wall time there.
+    const settle = async () => {
+      const deadline = performance.now() + 5000;
+      let still = 0;
+      let last = distance();
+      while (still < 15 && performance.now() < deadline) {
+        await nextFrame();
+        const now = distance();
+        still = now === last ? still + 1 : 0;
+        last = now;
+      }
+      if (still < 15) throw new Error('the camera never settled');
+    };
 
     // One notch, sampled every frame.
     const start = distance();

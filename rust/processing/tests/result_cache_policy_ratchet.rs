@@ -16,6 +16,8 @@ mod common;
 use common::source_walk::{production_sources, repo_root};
 use std::collections::BTreeSet;
 
+const GATE: &str = "result-cache policy ratchet";
+
 /// Read through an accessor that `effective_output_policy` (or the
 /// processing backstop accessor) also calls.
 const KEYED_BY_POLICY: &[&str] = &[
@@ -56,9 +58,13 @@ fn names_in(text: &str) -> BTreeSet<String> {
 
 #[test]
 fn every_environment_knob_is_classified_for_the_result_cache() {
-    let root = repo_root();
+    let Some(root) = repo_root() else {
+        common::refuse_to_skip_in_ci(GATE);
+        eprintln!("repo root not found (packaged context) - skipping {GATE}");
+        return;
+    };
     let mut found = BTreeSet::new();
-    for (rel, path) in production_sources("result-cache policy ratchet", &root) {
+    for (rel, path) in production_sources(GATE, &root) {
         let in_scope = ["rust/core/src/", "rust/geometry/src/", "rust/processing/src/"].iter().any(|p| rel.starts_with(p));
         if in_scope {
             let text = std::fs::read_to_string(&path).expect("readable source");

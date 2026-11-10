@@ -29,6 +29,7 @@
 //!     overrides (`local_frame_set_enabled_override`, `set_cap`, ...) are
 //!     keyed as the pipeline will see them.
 //!   - Execution: the calling thread's rayon worker count.
+//!
 //!   The format version and a test-only salt are mixed in too.
 
 use super::envelope::FORMAT_VERSION;

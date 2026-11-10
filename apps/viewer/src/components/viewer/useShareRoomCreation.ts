@@ -7,13 +7,15 @@ import { useTranslation } from '@/i18n';
 import { mintRoomId, mintRoomToken, releaseRoomClaim } from '@/lib/collab/share-link';
 import { buildShareSeed, prepareShareSeed, type ShareScope } from '@/lib/collab/share-scope';
 
-export function useShareRoomCreation({ open, hasModel, collabRoomId, awaitingConsent, scope, setNotice }: {
+export function useShareRoomCreation({ open, hasModel, collabRoomId, awaitingConsent, scope, setNotice, resetLink }: {
   open: boolean; hasModel: boolean; collabRoomId: string | null; awaitingConsent: boolean; scope: ShareScope;
-  setNotice: (notice: string | null) => void;
+  setNotice: (notice: string | null) => void; resetLink: () => void;
 }) {
   const { t } = useTranslation();
   const startCollab = useViewerStore(s => s.startCollab);
   const [creating, setCreating] = useState(false);
+  // Keep an explicit room owner instead of useAsyncRun: closing must stop
+  // only this pending join, while an established session stays alive.
   const roomAttemptRef = useRef<{ roomId: string; joining: boolean } | null>(null);
   useEffect(() => {
     setCreating(false);
@@ -39,6 +41,7 @@ export function useShareRoomCreation({ open, hasModel, collabRoomId, awaitingCon
     const roomId = mintRoomId();
     setCreating(true);
     setNotice(null);
+    resetLink();
     const owner = { roomId, joining: false };
     roomAttemptRef.current = owner;
     const isCurrent = () => roomAttemptRef.current === owner;
@@ -81,7 +84,7 @@ export function useShareRoomCreation({ open, hasModel, collabRoomId, awaitingCon
         if (isCurrent()) setCreating(false);
       }
     })();
-  }, [open, hasModel, collabRoomId, startCollab, awaitingConsent, scope]);
+  }, [open, hasModel, collabRoomId, startCollab, awaitingConsent, scope, setNotice, resetLink, t]);
 
   return creating;
 }

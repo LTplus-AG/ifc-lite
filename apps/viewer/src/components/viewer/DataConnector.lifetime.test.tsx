@@ -206,7 +206,7 @@ test('#8947 a suggestion for an old target cannot populate the current target dr
   assert.equal(replies.length, 1);
   selectModel('b'); await advance(0);
   replies[0](response()); await advance(100);
-  assert.equal(document.querySelector('section[aria-label="Suggested table mapping"]'), null);
+  assert.equal(Boolean(document.querySelector('section[aria-label="Suggested table mapping"]')), false);
   assert.equal(button('Suggest mapping').disabled, false);
   assert.equal(document.body.textContent?.includes('The suggestion was cancelled.'), false, 'retired suggestion errors do not populate the replacement draft');
   click(button('Suggest mapping'));
@@ -265,7 +265,7 @@ test('#8962 replacing CSV retires an AI mapping for the same model', async t => 
   assert.equal(replies.length, 1);
   chooseCsv('b.csv', `GlobalId,FireRating\n${guid(1)},CSV-B\n`); await advance(50);
   replies[0](response()); await advance(100);
-  assert.equal(document.querySelector('section[aria-label="Suggested table mapping"]'), null);
+  assert.equal(Boolean(document.querySelector('section[aria-label="Suggested table mapping"]')), false);
   assert.equal(button('Suggest mapping').disabled, false);
   assert.equal(document.body.textContent?.includes('The suggestion was cancelled.'), false, 'retired suggestion errors do not populate the replacement draft');
   click(button('Suggest mapping'));
@@ -363,4 +363,36 @@ test('C-12 accepting a pending file retires a suggestion for the previously disp
   assert.equal(aborted, true, 'new table rows replace the suggestion context even within one file-read generation');
   assert.equal(document.body.textContent?.includes('The suggestion was cancelled.'), false);
   assert.equal(button('Suggest mapping').disabled, false);
+});
+
+
+test('#9576 a preview error keeps the viewport at its top alert', async t => {
+  render(<Harness />); await advance(0); await upload();
+  const { CsvConnector } = await import('@ifc-lite/mutations');
+  t.mock.method(CsvConnector.prototype, 'preview', () => { throw new Error('fixture preview failed'); });
+  t.mock.method(console, 'error', () => {});
+  const frames: FrameRequestCallback[] = [];
+  let scrolls = 0;
+  t.mock.method(globalThis, 'requestAnimationFrame', (callback: FrameRequestCallback) => { frames.push(callback); return frames.length; });
+  t.mock.method(HTMLDivElement.prototype, 'scrollTo', () => { scrolls++; });
+  click(button(/^Preview matches$/i));
+  act(() => { for (let i = 0; i < 3; i++) for (const callback of frames.splice(0)) callback(performance.now()); });
+  assert.equal(document.body.textContent?.includes('Preview failed: fixture preview failed'), true);
+  assert.equal(scrolls, 0, 'an error at the top cannot scroll the user to the bottom');
+});
+
+
+test('#9576 same-tick suggestion presses start one mapping request', async t => {
+  useViewerStore.setState({ chatActiveModel: 'openai/gpt-free' });
+  const finishes: Array<(response: Response) => void> = [];
+  t.after(() => { for (const finish of finishes) finish(new Response('data: [DONE]\n\n')); });
+  t.mock.method(globalThis, 'fetch', () => new Promise<Response>(resolve => finishes.push(resolve)));
+  render(<Harness />); await advance(0); await upload();
+  const suggest = button('Suggest mapping');
+  act(() => { suggest.click(); suggest.click(); });
+  await advance(50);
+  const requests = finishes.length;
+  await act(async () => { for (const finish of finishes) finish(new Response('data: [DONE]\n\n')); });
+  await advance(30);
+  assert.equal(requests, 1, 'the draft has one suggestion owner');
 });

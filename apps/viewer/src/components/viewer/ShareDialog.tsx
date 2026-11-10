@@ -131,11 +131,12 @@ export function ShareDialog({ open, onOpenChange }: ShareDialogProps) {
   const title = scopeIsChoice && sharedModelCount > 1 ? t('shareDialog.titleMulti', { count: sharedModelCount }) : t('shareDialog.titleSingle', { model: modelName });
 
   useEffect(() => {
-    setNotice(null); setMinting(false);
+    setNotice(null);
     if (!open) setScopeConfirmed(false);
   }, [open]);
 
-  const creating = useShareRoomCreation({ open, hasModel, collabRoomId, awaitingConsent, scope, setNotice });
+  const resetLink = useCallback(() => { setLink(''); setCopied(false); }, []);
+  const creating = useShareRoomCreation({ open, hasModel, collabRoomId, awaitingConsent, scope, setNotice, resetLink });
 
   // 2. Mint the invite — re-minted when the dialog opens or the role changes,
   // and only once the seed has settled (`seedInFlight` false). Until then the

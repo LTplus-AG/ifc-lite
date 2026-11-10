@@ -114,3 +114,26 @@ test('published flavor review buffers are cleared on Cancel and unmount', async 
   select('unmount'); await until(() => text().includes('ownership.unmount')); cleanup();
   assert.equal(captured[1].every(value => value === 0), true);
 });
+
+for (const outcome of ['success', 'failure'] as const) test(`PR #9581: closed flavor confirmation ${outcome} cannot toast or clear a new preview`, async t => {
+  const host = fixture(), install = host.flavors.importFlavor.bind(host.flavors), notices: string[] = [];
+  let release!: () => void, started = false, finished = false;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  t.mock.method(toast, 'success', (message: string) => { notices.push(message); });
+  t.mock.method(toast, 'error', (message: string) => { notices.push(message); });
+  t.mock.method(host.flavors, 'importFlavor', async (...args: Parameters<typeof install>) => {
+    started = true; await held;
+    try { if (outcome === 'failure') throw new Error('old confirmation failed'); return await install(...args); }
+    finally { finished = true; }
+  });
+  try {
+    select('oldconfirm'); await until(() => text().includes('ownership.oldconfirm'));
+    click(button('Replace existing')); await until(() => started);
+    click(button('Close flavor owner')); click(button('Reopen flavor owner'));
+    select('newconfirm'); await until(() => text().includes('ownership.newconfirm'));
+    release(); await until(() => finished); await advance(40);
+    assert.equal(text().includes('ownership.newconfirm'), true, 'late confirmation cannot clear the reopened preview');
+    assert.equal(notices.length, 0, 'closed confirmation has no dialog feedback');
+    if (outcome === 'success') assert.equal((await host.flavors.list()).some(flavor => flavor.id === 'ownership.oldconfirm'), true, 'the global save may finish');
+  } finally { release(); await advance(20); }
+});

@@ -310,3 +310,64 @@ test('an authored preview exception keeps its preview-failure message (PR #9581)
   await until(() => errors.length > 0);
   assert.equal(errors[0], 'Authored bundle preview failed: preview engine failed');
 });
+
+test('PR #9581 B1: a held install and Cancel cannot consume a newer authored review', async t => {
+  const host = hostFixture(), put = host.storage.putBundle.bind(host.storage), install = host.installFromBytes.bind(host);
+  const first = bundle('firstfile'), second = bundle('queuedreview'), successes: string[] = [];
+  let release!: () => void, started = false, finished = false;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  t.mock.method(host.storage, 'putBundle', async (...args: Parameters<typeof put>) => { if (args[0] === 'com.example.firstfile') { started = true; await held; } await put(...args); });
+  t.mock.method(host, 'installFromBytes', async (...args: Parameters<typeof install>) => { try { return await install(...args); } finally { finished = true; } });
+  t.mock.method(toast, 'success', (message: string) => { successes.push(message); });
+  const ui = render(<ExtensionHostContext.Provider value={host}><ExtensionsPanel /></ExtensionHostContext.Provider>);
+  try {
+    choose(ui, first, 'firstfile'); await until(() => reviewText().includes('com.example.firstfile'));
+    click(button('Install')); await until(() => started);
+    const cancelDisabled = button('Cancel').disabled;
+    click(button('Cancel'));
+    act(() => useViewerStore.getState().setPendingAuthoredBundle(second));
+    await advance(30);
+    release(); await until(() => finished); await advance(100);
+    assert.equal(reviewText().includes('com.example.queuedreview'), true, 'the first install cannot close the newer review');
+    assert.equal(cancelDisabled, true, 'Cancel stays disabled during installation');
+    assert.equal(successes.length, 1);
+    assert.equal((await host.storage.getExtension('com.example.firstfile'))?.id, 'com.example.firstfile');
+  } finally { release(); await advance(20); }
+});
+
+test('PR #9581: file preview exposes busy state on Import and the drop zone', async t => {
+  const host = hostFixture(), preview = host.previewBundle.bind(host);
+  let release!: () => void, started = false;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  t.mock.method(host, 'previewBundle', async bytes => { started = true; await held; return preview(bytes); });
+  const ui = render(<ExtensionHostContext.Provider value={host}><ExtensionsPanel /></ExtensionHostContext.Provider>);
+  try {
+    choose(ui, bundle('busypreview'), 'busypreview'); await until(() => started);
+    assert.equal(button('Import').disabled, true);
+    assert.equal(ui.querySelector('[aria-disabled="true"]') !== null, true, 'the drop zone announces its disabled state');
+  } finally { release(); await advance(30); }
+});
+
+test('PR #9581: promotion reports a committed install after external close without closing its replacement', async t => {
+  const host = hostFixture(), put = host.storage.putBundle.bind(host.storage), successes: string[] = [];
+  let release!: () => void, started = false, closes = 0;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  t.mock.method(host.storage, 'putBundle', async (...args: Parameters<typeof put>) => { started = true; await held; await put(...args); });
+  t.mock.method(toast, 'success', (message: string) => { successes.push(message); });
+  function Harness() {
+    const [open, setOpen] = useState(true);
+    return <><button onClick={() => setOpen(false)}>External close</button><button onClick={() => setOpen(true)}>Reopen</button>
+      <PromoteToolDialog open={open} initialName="Global install" source="const x = 1;" onClose={() => { closes++; setOpen(false); }} /></>;
+  }
+  render(<ExtensionHostContext.Provider value={host}><Harness /></ExtensionHostContext.Provider>);
+  try {
+    click(button('Review & install')); await until(() => reviewText().includes('Install com.local.tools'));
+    click(button('Install')); await until(() => started);
+    click(button('External close')); click(button('Reopen')); release();
+    await advance(150);
+    assert.equal((await host.listInstalled()).some(row => row.id === 'com.local.tools.global-install'), true);
+    assert.equal(successes.length, 1, 'a successful global install remains visible to the user');
+    assert.equal(closes, 0);
+    assert.equal(reviewText().includes('Review & install'), true);
+  } finally { release(); await advance(20); }
+});

@@ -84,9 +84,11 @@ pub enum PublishOutcome {
     /// somewhere in the process was stopped while it ran: the result may be
     /// incomplete.
     SkippedResourceStop,
-    /// The pass emitted a scan diagnostic (refused records, malformed file)
-    /// through core's report sink, which a replay would not repeat.
-    SkippedScanReported,
+    /// The pass reported refused input through a process-wide channel a replay
+    /// would not repeat: a scan diagnostic through core's report sink
+    /// (refused records, malformed file) or a refused texture binary
+    /// (`ifc_lite_geometry::binary_textures_refused`).
+    SkippedRefusalReported,
     /// The result breaks a structural invariant the decoder enforces.
     Unencodable(String),
     Failed(String),

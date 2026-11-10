@@ -220,14 +220,14 @@ impl ResultCache {
             // ended, may have produced mixed output that is not this key's.
             // A job of THIS pass ran under foreign resource state (decided by
             // the pass itself, PR #9614 review 3, R3-3); or any stop happened
-            // anywhere during it; or it emitted a scan report a replay would
-            // not repeat (R3-4).
+            // anywhere during it; or it reported a refusal a replay would not
+            // repeat (scan reports R3-4, texture binaries R4-1).
             let skip = if engine.policy_changed() {
                 Some(PublishOutcome::SkippedPolicyChanged)
             } else if observed.foreign_resource_scope || engine.resource_stopped() {
                 Some(PublishOutcome::SkippedResourceStop)
-            } else if engine.scan_reported() {
-                Some(PublishOutcome::SkippedScanReported)
+            } else if engine.refusal_reported() {
+                Some(PublishOutcome::SkippedRefusalReported)
             } else {
                 None
             };

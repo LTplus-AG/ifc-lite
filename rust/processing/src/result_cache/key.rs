@@ -171,6 +171,8 @@ pub(super) struct EngineIdentity {
     stops: u64,
     /// `ifc_lite_core::scan_report_events` at the snapshot.
     reports: u64,
+    /// `ifc_lite_geometry::binary_textures_refused` at the snapshot.
+    textures_refused: u64,
 }
 
 impl EngineIdentity {
@@ -185,11 +187,12 @@ impl EngineIdentity {
         // Stops first: a stop that lands while the policy is read is still seen.
         let stops = ifc_lite_geometry::resource::stop_events();
         let reports = ifc_lite_core::scan_report_events();
+        let textures_refused = ifc_lite_geometry::binary_textures_refused();
         let (generation, policy) = ifc_lite_geometry::output_policy::coherent_output_policy()?;
         let mut policy = policy.canonical_bytes();
         policy.push(u8::from(crate::element::degenerate_backstop_disabled()));
         policy.extend_from_slice(&(rayon::current_num_threads() as u64).to_le_bytes());
-        Some(Self { build, policy, generation, stops, reports })
+        Some(Self { build, policy, generation, stops, reports, textures_refused })
     }
 
     pub(super) fn digest(&self) -> [u8; 32] {
@@ -212,11 +215,15 @@ impl EngineIdentity {
         ifc_lite_geometry::resource::stop_events() != self.stops
     }
 
-    /// A scan diagnostic (refused records, malformed file) was emitted through
-    /// core's report sink since this snapshot. Conservative: another pass's
-    /// report also counts.
-    pub(super) fn scan_reported(&self) -> bool {
+    /// Since this snapshot, input was refused through a process-wide refusal
+    /// channel a host reads after a load and a replay would not repeat: a scan
+    /// diagnostic through core's report sink (refused records, malformed file)
+    /// or a texture binary that does not decode exactly
+    /// (`binary_textures_refused`, PR #9614 review 4, R4-1). Conservative:
+    /// another pass's refusal also counts.
+    pub(super) fn refusal_reported(&self) -> bool {
         ifc_lite_core::scan_report_events() != self.reports
+            || ifc_lite_geometry::binary_textures_refused() != self.textures_refused
     }
 }
 

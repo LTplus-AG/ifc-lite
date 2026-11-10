@@ -37,7 +37,7 @@ import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { TICK, chromePids, cpuTicks, memoryOf, settleCpu, vramOf, withGpuClock } from './scenoptic-bench-sampling.mjs';
 import { COUNT_FRAMES, openAndWaitInteractive, openViewerPage, replacePage, startViewerServer, waitCacheWrites, waitSceneSnapshots } from './viewer-load-probe.mjs';
-import { expectSceneSnapshot } from './viewer-scene-snapshot.mjs';
+import { expectSceneSnapshot, prepareWarmOpen } from './viewer-scene-snapshot.mjs';
 import { expectedCacheTier } from './load-scoreboard-stats.mjs';
 
 const ROOT = resolve(fileURLToPath(new URL('../..', import.meta.url)));
@@ -233,25 +233,31 @@ async function runSample(build, set, round) {
     sample.adapter = sample.cold.memory.adapter;
     log(`    memory: PSS ${fmt(sample.cold.memory.pssMiB)} MiB, RSS ${fmt(sample.cold.memory.rssMiB)} MiB, VRAM ${fmt(sample.cold.memory.vramMiB)} MiB`);
     if (!opt['no-warm']) {
-      if (!(await waitCacheWrites(page))) log('  cache write still pending after timeout');
-      await replacePage(context, page);
+      const cacheWriteSettled = await waitCacheWrites(page);
+      // The viewer's own default rule (on unless perf.sceneSnapshot says otherwise); only a cached single-file hit writes one.
+      const snapshotExpected = expectSceneSnapshot({ query: `${QUERY}${build.flags}`, files: set.files.length, cached: !expectedCacheTier(set.bytes).startsWith('none') });
       // A warm open may store a scene snapshot the next one reads (`--warm-opens 2`); the last is the sample.
       for (let open = 1; open <= WARM_OPENS; open++) {
-        if (open > 1) {
-          // The viewer's own default rule (on unless perf.sceneSnapshot says otherwise); only a cached single-file hit writes one.
-          if (expectSceneSnapshot({ query: `${QUERY}${build.flags}`, files: set.files.length, cached: !expectedCacheTier(set.bytes).startsWith('none') })) {
-            await waitSceneSnapshots(page).catch(() => log('  scene snapshot not written within 60 s'));
-          }
-          await replacePage(context, page);
+        const prep = await prepareWarmOpen({ open, cacheWriteSettled, snapshotExpected, waitSnapshot: () => waitSceneSnapshots(page) });
+        if (prep.failure) {
+          // Not measured: a reopen without its cache write or expected snapshot would time a different path.
+          // The reason stays in the sample; the cold open stays valid; no warm or orbit numbers enter the medians.
+          sample.warmError = `warm${open}: ${prep.failure}`;
+          delete sample.warm;
+          log(`  ${sample.warmError}`);
+          break;
         }
+        await replacePage(context, page);
         page = await openPage(context);
         openTicks = cpuTicks(chromePids(profileDir));
         sample.warm = await profiled(page, 'warm', tag, () => openFiles(page, set.files, `${build.id}/${set.name}#${round} warm${open}`));
       }
-      sample.warm.memory = await sampleMemory(page, profileDir);
-      log(`    memory: PSS ${fmt(sample.warm.memory.pssMiB)} MiB, RSS ${fmt(sample.warm.memory.rssMiB)} MiB, VRAM ${fmt(sample.warm.memory.vramMiB)} MiB`);
+      if (sample.warm) {
+        sample.warm.memory = await sampleMemory(page, profileDir);
+        log(`    memory: PSS ${fmt(sample.warm.memory.pssMiB)} MiB, RSS ${fmt(sample.warm.memory.rssMiB)} MiB, VRAM ${fmt(sample.warm.memory.vramMiB)} MiB`);
+      }
     }
-    if (!opt['no-orbit']) sample.orbit = await profiled(page, 'orbit', tag, () => orbit(page, profileDir, openTicks));
+    if (!opt['no-orbit'] && !sample.warmError) sample.orbit = await profiled(page, 'orbit', tag, () => orbit(page, profileDir, openTicks));
   } catch (err) {
     sample.error = String(err?.stack ?? err);
     log('  sample failed:', String(err?.message ?? err).slice(0, 400));
@@ -298,7 +304,8 @@ for (const set of SETS) {
   }
 }
 const failures = samples.filter((s) => s.error).length;
-writeFileSync(join(OUT, 'summary.json'), JSON.stringify({ builds: BUILDS, sets: SETS, rounds: ROUNDS, failures, summary }, null, 2));
+const warmFailures = samples.filter((s) => s.warmError).length;
+writeFileSync(join(OUT, 'summary.json'), JSON.stringify({ builds: BUILDS, sets: SETS, rounds: ROUNDS, failures, warmFailures, summary }, null, 2));
 writeFileSync(join(OUT, 'summary.md'), lines.join('\n') + '\n');
-console.log(`\nmedians over ${ROUNDS} round(s), ${failures} failed sample(s):\n` + lines.join('\n'));
-process.exit(failures ? 1 : 0);
+console.log(`\nmedians over ${ROUNDS} round(s), ${failures} failed sample(s), ${warmFailures} unmeasured warm open(s):\n` + lines.join('\n'));
+process.exit(failures || warmFailures ? 1 : 0);

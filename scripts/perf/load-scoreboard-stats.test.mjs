@@ -276,3 +276,22 @@ test('a bimodal metric in an A/A is no difference: the interquartile floor spans
   assert.equal(verdictFor(pairs([358, 463, 464, 344, 372], [470, 380, 488, 447, 465])).verdict, 'no significant difference');
   assert.equal(verdictFor(pairs([896, 894, 868, 891, 898], [903, 894, 868, 869, 868])).verdict, 'no significant difference');
 });
+
+test('a scene-snapshot write that times out makes the snapshot reopen a failed sample, not a valid warm one (review #9607 r4530369554)', async () => {
+  const { prepareWarmOpen } = await snapshotRule();
+  // Forced timeout: waitSceneSnapshots rejects the way Playwright's waitForFunction does after its 60 s budget.
+  const timedOut = () => Promise.reject(new Error('page.waitForFunction: Timeout 60000ms exceeded.'));
+  const timedOutPrep = await prepareWarmOpen({ open: 2, cacheWriteSettled: true, snapshotExpected: true, waitSnapshot: timedOut });
+  assert.equal(timedOutPrep.snapshotWritten, false);
+  assert.match(timedOutPrep.failure ?? '', /snapshot was not written/);
+  // A written snapshot prepares a measurable reopen.
+  const written = await prepareWarmOpen({ open: 2, cacheWriteSettled: true, snapshotExpected: true, waitSnapshot: () => Promise.resolve() });
+  assert.deepEqual(written, { snapshotWritten: true, failure: null });
+  // The first reopen and snapshot-less runs never wait (nothing to time out on); an unsettled cache write still fails them.
+  let waited = 0;
+  const count = () => { waited++; return Promise.resolve(); };
+  assert.equal((await prepareWarmOpen({ open: 1, cacheWriteSettled: true, snapshotExpected: true, waitSnapshot: count })).failure, null);
+  assert.equal((await prepareWarmOpen({ open: 2, cacheWriteSettled: true, snapshotExpected: false, waitSnapshot: count })).failure, null);
+  assert.equal(waited, 0);
+  assert.match((await prepareWarmOpen({ open: 1, cacheWriteSettled: false, snapshotExpected: true, waitSnapshot: count })).failure ?? '', /cache write did not settle/);
+});

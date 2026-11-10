@@ -16,6 +16,7 @@
  */
 
 import { parsePerfFlagUrlValue } from '../../packages/data/src/perf-flag-reader.ts';
+import { warmPrepFailure } from './load-scoreboard-stats.mjs';
 
 /** The viewer's `snapshotsEnabled()` for a page URL query (with or without the leading `?`). */
 export function sceneSnapshotsEnabled(query = '') {
@@ -27,4 +28,17 @@ export function sceneSnapshotsEnabled(query = '') {
 /** Whether a reopen of this source will find a scene snapshot to wait for. */
 export function expectSceneSnapshot({ query, files, cached }) {
   return cached && files === 1 && sceneSnapshotsEnabled(query);
+}
+
+/**
+ * Prepare reopen `open` (1-based) and say whether it may be measured as the cache
+ * hit or snapshot adoption it is labelled. Shared by load-scoreboard and
+ * scenoptic-bench so neither can treat a timed-out snapshot write as a valid
+ * snapshot-reopen sample: a snapshot wait that rejects (60 s timeout) returns
+ * `failure`, and the caller records the open as failed instead of measuring it.
+ * `waitSnapshot` is only called when a snapshot is expected and `open > 1`.
+ */
+export async function prepareWarmOpen({ open, cacheWriteSettled, snapshotExpected, waitSnapshot }) {
+  const snapshotWritten = open > 1 && snapshotExpected ? await waitSnapshot().then(() => true, () => false) : undefined;
+  return { snapshotWritten, failure: warmPrepFailure({ open, cacheWriteSettled, snapshotExpected, snapshotWritten }) };
 }

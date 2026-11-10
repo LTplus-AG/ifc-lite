@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * One deadline timer for the re-mesh client's start and request timeouts.
+ * One deadline timer for worker start and request timeouts (`createWorkerRpc`).
  *
  * `setTimeout` treats a delay above 2^31-1 ms (and `Infinity`) as 1 ms, so a
  * caller asking for "very long" would get "immediately". The timeout options

@@ -86,6 +86,8 @@ const RESET = {
  *    render (a query nothing matches) covers it instead.
  */
 const NOT_RENDERED_IN_THIS_STATE: PaletteKey[] = [
+  // No extension dock contributions are installed in this scenario.
+  'commandPalette.extension.conditions',
   'commandPalette.category.recent',
   // #8965: search metadata only; these paths do not render as row labels.
   'commandPalette.paths.modelPlan',

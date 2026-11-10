@@ -67,7 +67,7 @@ interface CommandBase {
 export type Command = CommandBase & (
   | { registryOwned: true; labelKey: TranslationKey; runtimeSource?: never;
       labelKeyParams?: never }
-  | { registryOwned?: never; runtimeSource: 'recent-file' | 'script-template' | 'tour' | 'extension-command' | 'extension-export';
+  | { registryOwned?: never; runtimeSource: 'recent-file' | 'script-template' | 'tour' | 'extension-command' | 'extension-export' | 'extension-widget';
       labelKey?: TranslationKey; labelKeyParams?: TranslationParameters }
 );
 

@@ -148,6 +148,14 @@ export function ratchet(baseline, current) {
   return problems;
 }
 
+/** Pretty header, one line per row and per corpus file, so a baseline diff shows which rows moved. */
+export function serialize(summary) {
+  const { rows, corpus, ...head } = summary;
+  const list = (items) => `[\n${items.map((x) => `    ${JSON.stringify(x)}`).join(',\n')}\n  ]`;
+  const top = JSON.stringify(head, null, 2).slice(0, -2);
+  return `${top},\n  "corpus": ${list(corpus)},\n  "rows": ${list(rows)}\n}\n`;
+}
+
 function print(s) {
   const pad = (x, n) => String(x).padEnd(n);
   const MARK = { pass: 'pass', partial: 'part', fail: 'FAIL', error: 'ERR', skip: 'skip', unwritten: 'todo' };
@@ -187,7 +195,7 @@ async function main(argv) {
     return 2;
   }
   mkdirSync(dirname(out), { recursive: true });
-  writeFileSync(out, JSON.stringify(summary, null, 2) + '\n');
+  writeFileSync(out, serialize(summary));
   if (!argv.includes('--quiet')) print(summary);
   console.log(`Summary written to ${rel(out)}`);
   if (baseline) {

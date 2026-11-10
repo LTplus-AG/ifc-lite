@@ -34,6 +34,7 @@ class Endpoints {
   }
 
   candidates(wall: WallEndpoints): number[] {
+    if (this.order.size === 0) return [];
     const found = new Set<number>();
     // Search neighbouring rounded cells too: coincident points can straddle a
     // rounding boundary, including elevation. The exact test remains in join.

@@ -13,6 +13,7 @@ import type { StateCreator } from 'zustand';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { ProposalClass } from '@ifc-lite/geometry/scan-proposals';
 import type { ScanDetectResult, ScanDetectStage } from '@/lib/scan-to-bim/detect-job';
+import { IDLE_RUN, type Run } from '@/lib/runs/run';
 import { defineSliceTeardown } from '../teardown.js';
 import type { FederatedModel } from '../types';
 
@@ -40,6 +41,19 @@ export interface ScanDetectionRun {
   result: ScanDetectResult;
 }
 
+/** What a detection run reads: it ends when either model leaves. */
+export interface ScanDetectionOwner {
+  sourceModelId: string;
+  targetModelId: string | null;
+}
+
+/**
+ * The detection job (`lib/runs/run-slot.ts`). A failure carries a refusal code
+ * (`noSample`) or the detector's message. A success also becomes
+ * `scanDetectionRun`, which outlives later cancelled or failed jobs.
+ */
+export type ScanDetectionJob = Run<ScanDetectionRun, ScanDetectStage, ScanDetectionOwner, string>;
+
 export interface ScanProposalFilter {
   classes: readonly ProposalClass[];
   /** 0..1 */
@@ -47,9 +61,9 @@ export interface ScanProposalFilter {
 }
 
 export interface ScanDetectionSlice {
-  scanDetectionStatus: 'idle' | 'running' | 'done' | 'failed';
-  scanDetectionStage: ScanDetectStage | null;
-  scanDetectionError: string | null;
+  /** The detection job in flight or last ended; written only through its run slot. */
+  scanDetectionJob: ScanDetectionJob;
+  /** The last successful run: what the review list and overlay show. */
   scanDetectionRun: ScanDetectionRun | null;
   scanProposalDecisions: Readonly<Record<string, ScanProposalDecision>>;
   scanProposalFilter: ScanProposalFilter;
@@ -61,12 +75,12 @@ export interface ScanDetectionSlice {
    * create bar can warn before a new run's proposals duplicate them.
    */
   scanCreatedGlobalIds: Readonly<Record<string, readonly string[]>>;
-  beginScanDetection: () => void;
-  setScanDetectionStage: (stage: ScanDetectStage) => void;
-  finishScanDetection: (run: ScanDetectionRun) => void;
-  failScanDetection: (message: string) => void;
-  /** Back to idle after a cancel; the previous run, if any, stays reviewable. */
-  stopScanDetection: () => void;
+  /**
+   * The run slot's store binding (`lib/scan-to-bim/run-detection.ts`); start,
+   * cancel and finish a detection there. A success also replaces the reviewed
+   * run and its decisions; a cancel or failure keeps the previous run reviewable.
+   */
+  setScanDetectionJob: (job: ScanDetectionJob) => void;
   /** null clears a decision back to pending. */
   decideScanProposals: (ids: readonly string[], decision: ScanProposalDecision | null) => void;
   setScanProposalFilter: (patch: Partial<ScanProposalFilter>) => void;
@@ -84,21 +98,15 @@ export interface ScanCreatedRecord {
 const DEFAULT_FILTER: ScanProposalFilter = { classes: SCAN_PROPOSAL_CLASSES, minConfidence: 0 };
 
 export const createScanDetectionSlice: StateCreator<ScanDetectionSlice, [], [], ScanDetectionSlice> = (set) => ({
-  scanDetectionStatus: 'idle',
-  scanDetectionStage: null,
-  scanDetectionError: null,
+  scanDetectionJob: IDLE_RUN,
   scanDetectionRun: null,
   scanProposalDecisions: {},
   scanProposalFilter: DEFAULT_FILTER,
   scanProposalCreated: {},
   scanCreatedGlobalIds: {},
-  beginScanDetection: () => set({ scanDetectionStatus: 'running', scanDetectionStage: null, scanDetectionError: null }),
-  setScanDetectionStage: (stage) => set({ scanDetectionStage: stage }),
-  finishScanDetection: (run) => set({
-    scanDetectionStatus: 'done', scanDetectionStage: null, scanDetectionError: null, scanDetectionRun: run, scanProposalDecisions: {}, scanProposalCreated: {},
-  }),
-  failScanDetection: (message) => set({ scanDetectionStatus: 'failed', scanDetectionStage: null, scanDetectionError: message }),
-  stopScanDetection: () => set((s) => ({ scanDetectionStatus: s.scanDetectionRun ? 'done' : 'idle', scanDetectionStage: null })),
+  setScanDetectionJob: (job) => set(job.kind === 'succeeded'
+    ? { scanDetectionJob: job, scanDetectionRun: job.result, scanProposalDecisions: {}, scanProposalCreated: {} }
+    : { scanDetectionJob: job }),
   decideScanProposals: (ids, decision) => set((s) => {
     const next = { ...s.scanProposalDecisions };
     for (const id of ids) {
@@ -116,9 +124,11 @@ export const createScanDetectionSlice: StateCreator<ScanDetectionSlice, [], [], 
       },
     };
   }),
-  clearScanDetection: () => set({
-    scanDetectionStatus: 'idle', scanDetectionStage: null, scanDetectionError: null, scanDetectionRun: null, scanProposalDecisions: {}, scanProposalCreated: {},
-  }),
+  clearScanDetection: () => set((s) => ({
+    // Clearing the review keeps a job in flight: it is the run slot's to end.
+    ...(s.scanDetectionJob.kind === 'running' ? {} : { scanDetectionJob: IDLE_RUN }),
+    scanDetectionRun: null, scanProposalDecisions: {}, scanProposalCreated: {},
+  })),
   recordScanProposalsCreated: (modelId, items) => set((s) => {
     const next = { ...s.scanProposalCreated };
     for (const { proposalId, expressId, globalId } of items) next[proposalId] = { modelId, expressId, globalId };
@@ -129,10 +139,8 @@ export const createScanDetectionSlice: StateCreator<ScanDetectionSlice, [], [], 
   }),
 });
 
+/** The reviewed run and its decisions; the job is ended separately (`jobEnds`). */
 const cleared = () => ({
-  scanDetectionStatus: 'idle' as const,
-  scanDetectionStage: null,
-  scanDetectionError: null,
   scanDetectionRun: null,
   scanProposalDecisions: {},
   scanProposalCreated: {},
@@ -140,21 +148,25 @@ const cleared = () => ({
 
 export const scanDetectionTeardown = defineSliceTeardown(
   'scanDetectionSlice',
-  ['scanDetectionStatus', 'scanDetectionStage', 'scanDetectionError', 'scanDetectionRun', 'scanProposalDecisions', 'scanProposalFilter', 'scanProposalCreated', 'scanCreatedGlobalIds'],
+  ['scanDetectionJob', 'scanDetectionRun', 'scanProposalDecisions', 'scanProposalFilter', 'scanProposalCreated', 'scanCreatedGlobalIds'],
   {
-    'session-reset': () => ({ ...cleared(), scanProposalFilter: DEFAULT_FILTER, scanCreatedGlobalIds: {} }),
-    // A run belongs to its scan and its target model: either leaving ends it.
+    // Writing the job idle INVALIDATES a run in flight: its lease aborts the
+    // worker and can no longer publish into the new session.
+    'session-reset': () => ({ ...cleared(), scanDetectionJob: IDLE_RUN, scanProposalFilter: DEFAULT_FILTER, scanCreatedGlobalIds: {} }),
+    // A run, in flight or reviewed, belongs to its scan and its target model: either leaving ends it.
     'model-removed': (scope, state) => {
-      const run = state.scanDetectionRun;
-      const ends = run && (run.sourceModelId === scope.modelId || run.targetModelId === scope.modelId);
+      const touches = (owner: ScanDetectionOwner | null | undefined) =>
+        !!owner && (owner.sourceModelId === scope.modelId || owner.targetModelId === scope.modelId);
+      const job = state.scanDetectionJob;
+      const jobEnds = job?.kind === 'running' && touches(job.owner) ? { scanDetectionJob: IDLE_RUN } : {};
       // A removed scan takes its creation history with it.
       const created = state.scanCreatedGlobalIds ?? {};
       const history = scope.modelId in created
         ? { scanCreatedGlobalIds: Object.fromEntries(Object.entries(created).filter(([id]) => id !== scope.modelId)) }
         : {};
-      return ends ? { ...cleared(), ...history } : history;
+      return touches(state.scanDetectionRun) ? { ...cleared(), ...jobEnds, ...history } : { ...jobEnds, ...history };
     },
-    'all-models-cleared': () => ({ ...cleared(), scanCreatedGlobalIds: {} }),
+    'all-models-cleared': () => ({ ...cleared(), scanDetectionJob: IDLE_RUN, scanCreatedGlobalIds: {} }),
   },
 );
 

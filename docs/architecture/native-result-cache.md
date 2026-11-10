@@ -131,10 +131,14 @@ key = SHA-256( "ifc-lite-native-result-v1"
   core's `set_report_sink` callback, outside `ProcessingSink`. A hit never scans,
   so it would drop that warning. Core counts emissions
   (`ifc_lite_core::scan_report_events`), and a pass during which one was emitted
-  is never stored (`SkippedScanReported`), so every call for such an input
+  is never stored (`SkippedRefusalReported`), so every call for such an input
   delivers it. Replaying the messages instead would need per-pass capture of a
   process-global callback that concurrent passes share; that is left for when
   malformed inputs need caching.
+- **Texture refusals.** An embedded texture binary that does not decode exactly
+  is refused and counted (`ifc_lite_geometry::binary_textures_refused`, a
+  host-readable refusal channel). A pass during which that count moved is never
+  stored either (fourth review), for the same reason.
 - **Concurrent setters.** Writers are serialised across both generation bumps and
   the store, so the generation is odd exactly while a store is in progress, even
   with overlapping setters (third review). This catches a product refused under an unrelated
@@ -160,6 +164,10 @@ This table lists everything that can change what `ResultCache::process` returns,
 | 13 `IFC_LITE_*` / `IFCLITE_*` output knobs (rect fast and param, local frame, void union / 2D / prism, dedup extra, half-space cap, fast-cut ratio, CSG op and element budgets, alt triangulator, degenerate backstop) | env, read once | **Keyed** through the effective policy accessors, never by re-reading env | `an_output_affecting_environment_knob_misses_in_a_fresh_process`, `a_late_environment_change_cannot_poison_a_fresh_process`, `every_environment_knob_is_classified_for_the_result_cache` |
 | A new environment read anywhere in core, geometry or processing | env | **Ratchet** (access sites counted per file) | `every_environment_access_site_is_reviewed` |
 | `IFC_LITE_CACHE_DIR` | env | **Output-neutral** (location only) | ratchet `NOT_OUTPUT` |
+| `HOME`, `XDG_CACHE_HOME`, `LOCALAPPDATA` | env | **Output-neutral**: they only choose the default directory (`default_directory`), never read by the pipeline | by inspection (the pipeline's env sites are ratchet-listed) |
+| Config `mode`, `directory`, `max_bytes`, `max_entry_bytes`, `min_free_bytes` | cache config | **Change only the cache outcome and work** (hit, miss, bypass, skip, eviction), never the returned result | `off_and_bypassed_requests_do_no_cache_work_and_match_the_pipeline`, `damaged_entries_on_disk_miss_warn_and_are_repaired` (oversized), `a_certainly_oversized_result_is_refused_before_encoding`, `eviction_removes_least_recently_used_first` (unit) |
+| Config `engine_salt` (doc-hidden test hook) | cache config | **Keyed** | `every_output_affecting_input_misses` (salt) |
+| Config `pass_hook` (doc-hidden test hook) | cache config | **Live passes only**: called after each live batch, never on a hit. Not a supported API; the one exception to "takes no sink" | `a_policy_change_undone_mid_pass_is_never_stored` |
 | `IFC_LITE_ENGINE_BUILD_DIGEST` | compile-time `env!` | **Keyed** (it is the build digest) | ratchet `NOT_OUTPUT` |
 | Setters `local_frame_set_enabled_override`, `rect_fast::param_set_enabled_override`, `set_build_dedup_extra_override`, `budget::set_cap`, `set_element_cap`, `set_alt_triangulator` | process global | **Keyed** (effective policy) | `effective_policy_overrides_are_keyed` |
 | A setter while a pass runs or a hit is read (incl. A→B→A, overlapping writers) | process global | **Ineligible** (serialised seqlock generation) | `a_policy_change_undone_mid_pass_is_never_stored`, `overlapping_writers_never_expose_an_even_generation_mid_store` (unit), `a_panicking_store_still_closes_the_generation` (unit) |
@@ -180,11 +188,36 @@ This table lists everything that can change what `ResultCache::process` returns,
 | --- | --- | --- |
 | Every `ProcessingResult` field: meshes incl. serde-skipped fields, textures and sharing, instances, frame, transforms, metadata, stats, diagnostics | **Replayed bit for bit**. `from_cache` is set to `true`; `*_time_ms` and point-cache counters are the producer's values | `round_trip_preserves_every_field_bits_and_texture_sharing`, `fingerprint_sees_every_field`, `fingerprint_distinguishes_diagnostic_float_bits` (unit); corpus and heavy fresh-process equality |
 | `ProcessingSink` events | **Not offered**: the cached entry point takes no sink | by construction |
-| Core scan report sink (`set_report_sink`: refused ids, malformed file) | **Ineligible**: a pass that emits one is never stored, so every call keeps delivering it | `passes_that_report_scan_refusals_are_never_replayed_silently` |
+| Core scan report sink (`set_report_sink`: refused ids, malformed file) | **Ineligible**: a pass that emits one is never stored (`SkippedRefusalReported`), so every call keeps delivering it | `passes_that_report_scan_refusals_are_never_replayed_silently` |
+| `ifc_lite_geometry::binary_textures_refused()`: embedded texture binaries refused because they do not decode exactly (D18, #7778) | **Ineligible**: a pass that refuses one is never stored (`SkippedRefusalReported`), so every call counts it | `passes_that_refuse_a_texture_binary_are_never_replayed_silently` |
 | `progress::set_hook` heartbeat | **Output-neutral** liveness signal; a hit does no work and makes no ticks | `source_capture_and_the_progress_hook_are_output_neutral` |
 | `tracing` events (e.g. the CSG failure summary) | **Not replayed**: diagnostics, not API. Their content is in the replayed stats and diagnostics; a hit logs the cache's own events | documented |
-| CSG census, `csg_capture`, rect / prism / bool2d / opening-trace counters | **Not replayed**: measurement instrumentation drained by tools (`perf_probe --census`), not consumer output | documented |
+| Work measurements of the call that did the work: `take_cdt_recovery_fallbacks`, `take_plane_weld_stats`, `take_prism_stats` / `take_prism_defers`, `take_bool2d_stats`, rect-param fires, `kernel::budget::peak` / `element_peak` / `reset_peak`, `take_csg_census`, `csg_capture`, opening traces, `phase-markers` | **Not replayed**: they count work this call performed, and a hit performs none, so zero is the truthful reading. Its result is the producer's output whichever path the producer took (CDT or ear-clip and so on). These are diagnostics read by tools (`perf_probe --census`, calibration), not refusal reports | documented; sweep below |
+| Process-wide observations `output_policy::policy_generation`, `resource::stop_events`, `ifc_lite_core::scan_report_events` | **Guards**: the cache reads them around a pass. A hit advances none of them, because it performs no setter, stop or scan | the guard tests above |
+| Router- and decoder-owned refusal accessors (`take_csg_failures`, `refused_records`, `take_classification_stats`, ...) | **Replayed** through the result: the pass drains them into `ProcessingStats` and `GeometryDiagnostics` (for example `refused_input_elements`, `refused_prepass_records`, failure breakdowns). A host never holds the pass's router or decoder | `fingerprint_sees_every_field` (unit); corpus equality |
 | `CacheReport` (outcome, work, warnings) | **New channel**, current call only | integration tests |
+
+**Sweep for host-readable refusal and diagnostic accessors** (`pub fn` names matching refus / skip / drop / degrad / fail / reject / fallback / census / capped / stats / peak / recover across core, geometry and processing):
+- **Process-global ones a host can read after a load:** `binary_textures_refused` is a refusal (row above). All the others are in the work-measurement row.
+- **Object-scoped ones** (decoder, router, processors): drained into the result by the pass.
+- **Mesh-editing helpers** (`drop_degenerate_triangles`, ...): not accessors.
+- **`take_pending_mapped_bool_failures`:** has no producer today; a router drains it into the result.
+
+### Assumptions (stated, not enforced)
+
+| Assumption | Status |
+| --- | --- |
+| Floating-point environment: default rounding, no FTZ/DAZ, default MXCSR/FPCR on the calling thread and on every rayon worker | **Assumed, not enforced.** Compiler flags and target features are keyed; a thread's mutable FP control register is not. Core, geometry and processing never read or set it. Phase 1 requires the default Rust FP environment. Before FFI, the host contract must normalise and restore it, or test it. |
+| Runtime CPU dispatch | None in core, geometry or processing (no `is_x86_feature_detected` / `std::arch`); compile-time target features are keyed. `sha2` detects SHA-NI at runtime only to hash, with identical output. |
+| Allocator choice, allocation failure | The allocator (system or mimalloc) does not change output. Allocation failure aborts, as for the uncached pipeline; it is not a cache miss. |
+| Hash seeds, scheduling, address order | Results use ordered, indexed collections. The cache guarantees **replay equals its producer**, byte for byte, not that two independent cold runs are identical. Point-cache counters and timings are scheduling- and clock-dependent producer values. |
+| Wall clock | Only in `*_time_ms`, which are replayed as producer metadata. |
+| Filesystem errors, permissions, locks, free space | Change the cache outcome only: fail open to the live result, with a warning. Covered by the store tests (modes, symlinks, FIFO, oversized, eviction, lock races). |
+| Immutable schema and type tables (`OnceLock`) | Source-derived constants, covered by the build digest. |
+| Owner, document, load and block id counters | Identify execution scopes, not output. |
+| Memo, scratch and budget thread-locals (weld, orient, placement and point caches, per-op and per-element budgets, incidence work) | Reset per operation or element, or pure memoisation of deterministic values. |
+| External references | Image textures are returned as URLs and never read. No locale, schema or other file is read by the pass besides the source bytes. Host-side texture resolution is outside this cache. |
+| Analytic source capture, progress hook | Proven output-neutral on one fixture (row above). The hook contract is a pure liveness heartbeat. A hook that changes policy is caught by the generation guard; one that panics prevents storage. |
 
 ## Entry format
 

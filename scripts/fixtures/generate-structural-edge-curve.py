@@ -12,8 +12,9 @@ path as the first argument.
 `--coverage <IFC2X3|IFC4|IFC4X3>` instead writes the structural coverage
 fixture for that schema (tests/structural-coverage): every concrete
 structural-analysis entity the schema defines, once, with known values, so
-the entity types no real exported file carries still have a fixture. It does
-not touch the default output above.
+the entity types no real exported file carries still have a fixture. From
+IFC4 on, IfcSurfaceReinforcementArea goes to a sibling `_reinforcement` file.
+It does not touch the default output above.
 """
 
 from pathlib import Path
@@ -133,8 +134,13 @@ def main() -> None:
 COVERAGE_SCHEMAS = {"IFC2X3": "IFC2X3", "IFC4": "IFC4", "IFC4X3": "IFC4X3_ADD2"}
 
 
-def coverage(schema: str, output: Path) -> None:
-    """One record of every structural-analysis entity `schema` defines."""
+def coverage(schema: str, output: Path, reinforcement: bool = False) -> None:
+    """One record of every structural-analysis entity `schema` defines.
+
+    With `reinforcement`, only the IfcSurfaceReinforcementArea instead: it has no
+    IFC2X3 form and is not an IfcRoot, so the converter refuses any file that
+    holds it, and it must not take every other entity's convert result with it.
+    """
     model = ifcopenshell.file(schema=COVERAGE_SCHEMAS[schema])
     declared = ifcopenshell.ifcopenshell_wrapper.schema_by_name(model.schema_identifier)
 
@@ -179,17 +185,25 @@ def coverage(schema: str, output: Path) -> None:
     def root(name: str, *rest, tag: str = ""):
         return e(name, guid(name + tag), owner, f"Coverage {name}{tag}", None, None, *rest)
 
-    def aspect():
-        """(shape, aspect): IFC2X3 binds a shape to exactly one product, so the varying product carries `shape`."""
-        rep = e("IfcShapeRepresentation", context, "Reference", "Point", (origin,))
-        shape = e("IfcProductDefinitionShape", None, None, (rep,))
-        return shape, e("IfcShapeAspect", (rep,), "Coverage aspect", None, True, shape)
+    if reinforcement:
+        e("IfcSurfaceReinforcementArea", "Coverage reinforcement", (0.0005, 0.0005), (0.0004, 0.0004), 0.25)
+        write(model, output, "for the structural coverage harness", "2026-11-10T00:00:00", "ifc-lite structural coverage fixture generator")
+        return
 
-    def action_tail(curve_or_surface):
+    def rep():
+        return e("IfcShapeRepresentation", context, "Reference", "Point", (origin,))
+
+    def aspect():
+        """(shape, aspect): IFC2X3 binds a shape to one product and a representation to one use (WR11)."""
+        shape = e("IfcProductDefinitionShape", None, None, (rep(),))
+        return shape, e("IfcShapeAspect", (rep(),), "Coverage aspect", None, True, shape)
+
+    def action_tail(predefined=None):
+        # Curve and surface actions carry ProjectedOrTrue (and in IFC4 a PredefinedType); point actions carry neither.
         # IFC2X3: DestabilizingLoad, CausedBy[, ProjectedOrTrue]; IFC4: DestabilizingLoad[, ProjectedOrTrue, PredefinedType].
         if v2:
-            return (False, None) + (("TRUE_LENGTH",) if curve_or_surface else ())
-        return (False,) + (("TRUE_LENGTH", "LINEAR" if curve_or_surface == "curve" else "CONST") if curve_or_surface else ())
+            return (False, None) + (("TRUE_LENGTH",) if predefined else ())
+        return (False,) + (("TRUE_LENGTH", predefined) if predefined else ())
 
     # Loads and support conditions, with values a reader must return.
     single_force = e("IfcStructuralLoadSingleForce", "Coverage force", 0.0, 0.0, -1000.0, 0.0, 0.0, 0.0)
@@ -202,8 +216,6 @@ def coverage(schema: str, output: Path) -> None:
     configuration = None
     if has("IfcStructuralLoadConfiguration"):
         configuration = e("IfcStructuralLoadConfiguration", "Coverage configuration", (linear_force, linear_force), ((0.0,), (4.0,)))
-    if has("IfcSurfaceReinforcementArea"):
-        e("IfcSurfaceReinforcementArea", "Coverage reinforcement", (0.0005, 0.0005), (0.0004, 0.0004), 0.25)
     node = e("IfcBoundaryNodeCondition", "Coverage node support",
              *(stiffness("IfcLinearStiffnessMeasure", 1.0e9) for _ in range(3)), *(stiffness("IfcRotationalStiffnessMeasure", 0.0) for _ in range(3)))
     node_warping = e("IfcBoundaryNodeConditionWarping", "Coverage warping support",
@@ -232,23 +244,24 @@ def coverage(schema: str, output: Path) -> None:
 
     # Activities: actions and reactions of every kind the schema has.
     activities = [
-        root("IfcStructuralPointAction", place(), None, single_force, "GLOBAL_COORDS", *action_tail(None)),
-        root("IfcStructuralLinearAction", place(), None, linear_force, "GLOBAL_COORDS", *action_tail("curve")),
-        root("IfcStructuralPlanarAction", place(), None, planar_force, "GLOBAL_COORDS", *action_tail("surface")),
+        root("IfcStructuralPointAction", place(), None, single_force, "GLOBAL_COORDS", *action_tail()),
+        # Linear and planar actions are constant by WHERE rule (ConstPredefinedType).
+        root("IfcStructuralLinearAction", place(), None, linear_force, "GLOBAL_COORDS", *action_tail("CONST")),
+        root("IfcStructuralPlanarAction", place(), None, planar_force, "GLOBAL_COORDS", *action_tail("CONST")),
     ]
     if v2:
         for name, load in [("IfcStructuralLinearActionVarying", linear_force), ("IfcStructuralPlanarActionVarying", planar_force)]:
             shape, varying = aspect()
             activities.append(root(name, place(), shape, load, "GLOBAL_COORDS", False, None, "TRUE_LENGTH", varying, (load, load)))
     else:
-        activities.append(root("IfcStructuralCurveAction", place(), None, configuration, "GLOBAL_COORDS", *action_tail("curve")))
-        activities.append(root("IfcStructuralSurfaceAction", place(), None, temperature, "GLOBAL_COORDS", *action_tail("surface")))
+        activities.append(root("IfcStructuralCurveAction", place(), None, configuration, "GLOBAL_COORDS", *action_tail("LINEAR")))
+        activities.append(root("IfcStructuralSurfaceAction", place(), None, temperature, "GLOBAL_COORDS", *action_tail("CONST")))
     reactions = [root("IfcStructuralPointReaction", place(), None, displacement, "GLOBAL_COORDS")]
     if not v2:
         reactions.append(root("IfcStructuralCurveReaction", place(), None, linear_force, "GLOBAL_COORDS", "CONST"))
         reactions.append(root("IfcStructuralSurfaceReaction", place(), None, planar_force, "GLOBAL_COORDS", "CONST"))
-    activities.append(root("IfcStructuralPointAction", place(), None, warping_force, "GLOBAL_COORDS", *action_tail(None), tag=" warping"))
-    activities.append(root("IfcStructuralPointAction", place(), None, distortion, "GLOBAL_COORDS", *action_tail(None), tag=" distortion"))
+    activities.append(root("IfcStructuralPointAction", place(), None, warping_force, "GLOBAL_COORDS", *action_tail(), tag=" warping"))
+    activities.append(root("IfcStructuralPointAction", place(), None, distortion, "GLOBAL_COORDS", *action_tail(), tag=" distortion"))
 
     # Relationships.
     def rel(name: str, *rest):
@@ -294,6 +307,9 @@ if __name__ == "__main__":
         if schema not in COVERAGE_SCHEMAS:
             sys.exit(f"usage: {sys.argv[0]} --coverage <{'|'.join(COVERAGE_SCHEMAS)}> [output.ifc]")
         default = f"tests/models/ifcopenshell/generated_structural_coverage_{schema.lower()}.ifc"
-        coverage(schema, Path(sys.argv[3] if len(sys.argv) > 3 else default))
+        output = Path(sys.argv[3] if len(sys.argv) > 3 else default)
+        coverage(schema, output)
+        if schema != "IFC2X3":  # IfcSurfaceReinforcementArea is IFC4+
+            coverage(schema, output.with_name(f"{output.stem}_reinforcement.ifc"), reinforcement=True)
     else:
         main()

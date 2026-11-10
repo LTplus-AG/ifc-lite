@@ -25,6 +25,8 @@ import { typeIndex } from './lib/values.mjs';
 export const SCHEMAS = ['IFC2X3', 'IFC4', 'IFC4X3'];
 export const ENTITY_LEVELS = ['fixture', 'read', 'card', 'render', 'create', 'edit', 'remove', 'convert'];
 export const LEVELS = [...ENTITY_LEVELS, 'capability'];
+/** The converter hop under test: each schema's round-trip partner. */
+export const CONVERT_HOP = { IFC4: 'IFC2X3', IFC2X3: 'IFC4' };
 
 /**
  * Domain roots. A concrete entity whose chain reaches `root` joins the
@@ -79,8 +81,11 @@ export function notApplicable(row, level) {
   if (level === 'card' && row.family === 'relationship') {
     return 'a relationship is shown as the links on the cards of the items it connects, not as a card of its own';
   }
-  if (level === 'convert' && row.schema === 'IFC4X3') {
+  if (level === 'convert' && !CONVERT_HOP[row.schema]) {
     return 'the converter hop under test is IFC4 <-> IFC2X3';
+  }
+  if (level === 'convert' && !row.inHopPartner) {
+    return 'the other schema of the hop has no such entity, so a round trip cannot preserve it';
   }
   return null;
 }
@@ -130,6 +135,7 @@ export function deriveCatalogue(root) {
         rooted: c.includes('IfcRoot'),
         attributes: e.attributes,
         own: ownAttributes(tables, schema, e.name, d.family),
+        inHopPartner: CONVERT_HOP[schema] ? tables[CONVERT_HOP[schema]].table.has(e.name) : false,
       });
     }
   }

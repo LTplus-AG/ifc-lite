@@ -57,7 +57,8 @@ const linkRead = {
         const guid = file.step.get(productId)?.args[0];
         const hit = ix.byId.get(itemId);
         const info = hit?.family === 'item' ? hit.info : undefined;
-        if (!info) problems.push(`${file.path}#${itemId}: item not in the read model`);
+        if (typeof guid !== 'string') problems.push(`${file.path}#${itemId}: the physical side of the link has no GlobalId in the file`);
+        else if (!info) problems.push(`${file.path}#${itemId}: item not in the read model`);
         else if (!mentions(info, guid)) problems.push(`${file.path}#${itemId}: no field names physical ${guid}`);
         else anyHeld = true;
       }

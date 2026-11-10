@@ -49,6 +49,8 @@ function matchRecord(row, exported, expect, types) {
   let best = null;
   for (const rec of exported.of(row.entity)) {
     const diffs = Object.entries(expect).flatMap(([attr, want]) => {
+      // An expectation naming an attribute this schema does not have is a scene bug, said so.
+      if (!row.attributes.includes(attr)) return [`scene expects ${attr}, which ${row.schema} ${row.entity} does not have`];
       const got = normalize(rec.args[row.attributes.indexOf(attr)], exported, types);
       return equal(want, got) ? [] : [`${attr} ${show(got)}, expected ${show(want)}`];
     });

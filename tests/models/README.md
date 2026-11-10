@@ -121,15 +121,17 @@ this project. Treat them as untrusted input.
 With them, the corpus holds `ara3d/ISSUE_171_IfcSurfaceCurveSweptAreaSolid.ifc`
 (already catalogued; 26 `IfcRelAssignsToProduct` links between its physical and
 analytical models), the three existing `ifcopenshell/*structural*` fixtures and
-the three generated coverage fixtures below: 26 files.
+the five generated coverage fixtures below: 28 files.
 
-`ifcopenshell/generated_structural_coverage_{ifc2x3,ifc4,ifc4x3}.ifc` are
+`ifcopenshell/generated_structural_coverage_{ifc2x3,ifc4,ifc4x3}.ifc` and
+`ifcopenshell/generated_structural_coverage_{ifc4,ifc4x3}_reinforcement.ifc` are
 independently authored by the ifc-lite contributors under MPL-2.0 and written by
 `scripts/fixtures/generate-structural-edge-curve.py --coverage <schema>` with
 IfcOpenShell 0.8.3.post2: one record of every structural-analysis entity the
 schema defines, with known values, so the types no real file carries have a
-fixture. The output is byte-reproducible with that version and passes
-`python -m ifcopenshell.validate`.
+fixture. IfcSurfaceReinforcementArea sits in its own file because the converter
+refuses any file that holds it. The output is byte-reproducible with that
+version and passes `python -m ifcopenshell.validate --rules`.
 
 ## For maintainers: adding a new fixture
 

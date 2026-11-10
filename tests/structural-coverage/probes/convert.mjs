@@ -15,11 +15,11 @@
  * gone is a failure. The converter throwing is the product failing, not the probe.
  */
 
+import { CONVERT_HOP as OTHER } from '../catalogue.mjs';
 import { cached, parseStore, storeOf } from '../lib/packages.mjs';
 import { readStep } from '../lib/step.mjs';
 import { equal, normalize, show, verdict } from '../lib/values.mjs';
 
-const OTHER = { IFC4: 'IFC2X3', IFC2X3: 'IFC4' };
 const MAX_FILES = 2;
 const MAX_RECORDS = 25;
 

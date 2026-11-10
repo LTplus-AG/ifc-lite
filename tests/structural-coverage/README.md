@@ -41,7 +41,8 @@ model, four checks, the CLI command, the docs page).
 Not-applicable cells come only from `notApplicable()` in `catalogue.mjs`, by
 family or schema: only items and activities render, relationships have no card
 of their own, IFC4X3 rows have no convert level (the hop under test is
-IFC4 <-> IFC2X3), and each kind of row uses its own levels.
+IFC4 <-> IFC2X3), neither does an entity the other schema of the hop lacks
+(a round trip cannot preserve it), and each kind of row uses its own levels.
 
 ## Scoring and the ratchet
 

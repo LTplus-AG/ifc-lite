@@ -183,11 +183,17 @@ async function main(argv) {
   const rel = (p) => relative(ROOT, p).split('\\').join('/');
   const out = resolve(values.out ?? join(ROOT, 'tests/structural-coverage/.out/summary.json'));
   const check = values.check ? resolve(values.check) : null;
-  if (check && (check === out || (existsSync(out) && realpathSync(check) === realpathSync(out)))) {
+  if (check && (check === out || (existsSync(out) && existsSync(check) && realpathSync(check) === realpathSync(out)))) {
     console.error(`score: --out and --check both name ${rel(out)}; write the summary elsewhere, check it, then copy it over.`);
     return 2;
   }
-  const baseline = check ? JSON.parse(readFileSync(check, 'utf8')) : null;
+  let baseline = null;
+  try {
+    baseline = check ? JSON.parse(readFileSync(check, 'utf8')) : null;
+  } catch (e) {
+    console.error(`score: cannot read the --check baseline ${rel(check)}: ${e.message}`);
+    return 2;
+  }
   if (baseline && baseline.schema !== SUMMARY_SCHEMA) { console.error(`score: ${rel(check)} is not an ${SUMMARY_SCHEMA} summary`); return 2; }
   let summary;
   try {

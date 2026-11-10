@@ -50,6 +50,8 @@ test('not-applicable rules are by family and schema, never per row', () => {
   assert.equal(na('IFC4/IfcRelConnectsStructuralMember', 'card'), true);
   assert.equal(na('IFC4X3/IfcStructuralCurveMember', 'convert'), true);
   assert.equal(na('IFC2X3/IfcStructuralCurveMember', 'convert'), false);
+  assert.equal(na('IFC4/IfcStructuralCurveAction', 'convert'), true, 'IFC2X3 has no curve action to round-trip through');
+  assert.equal(na('IFC2X3/IfcRelConnectsStructuralElement', 'convert'), true, 'IFC4 has no such relationship');
   assert.equal(na('cap/docs-page', 'read'), true);
   assert.equal(na('cap/docs-page', 'capability'), false);
 });

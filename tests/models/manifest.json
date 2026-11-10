@@ -1639,18 +1639,28 @@
     },
     {
       "path": "ifcopenshell/generated_structural_coverage_ifc2x3.ifc",
-      "sha256": "bf78484c258759139789253069d8097bcd7381ac4401f41519e7e36818188fca",
-      "size": 7209
+      "sha256": "cb0e5e1d83bd5b35ee6076913430dfbbc2eff5ccda3207ef8a0a4597d37341ab",
+      "size": 7380
     },
     {
       "path": "ifcopenshell/generated_structural_coverage_ifc4.ifc",
-      "sha256": "5befd1a47c23980cdc1c393d4aea27c27c727a9936e2752fc37d4aa8df8e7bc9",
-      "size": 8169
+      "sha256": "4411c329d2caa4b1aac1500723b9b941d36b580844a7aa8853ca8a877adbc82f",
+      "size": 8072
     },
     {
       "path": "ifcopenshell/generated_structural_coverage_ifc4x3.ifc",
-      "sha256": "58a64a9f141522e9635221f25bf155fd4e0ca9790638b1ca6cfa1097abec80db",
-      "size": 8178
+      "sha256": "11928a01fc3726893203e155f10345644f0d0987a6efba62cfd827a27da79a6f",
+      "size": 8081
+    },
+    {
+      "path": "ifcopenshell/generated_structural_coverage_ifc4_reinforcement.ifc",
+      "sha256": "4626897dc0afbbd11553239e62c22c63e36034ac01b370f457df945b03d27b79",
+      "size": 1311
+    },
+    {
+      "path": "ifcopenshell/generated_structural_coverage_ifc4x3_reinforcement.ifc",
+      "sha256": "acf003581d048f268969e0450cc13a01a84080d693920d14daa494b2343abaf8",
+      "size": 1320
     }
   ]
 }

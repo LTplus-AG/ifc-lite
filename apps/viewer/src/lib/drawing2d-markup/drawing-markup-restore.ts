@@ -84,10 +84,11 @@ export function hasEmbeddedDrawingMarkup(dataStore: IfcDataStore, view?: Mutable
     if (bytes.indexOf(92) >= 0) { embeddedMarkup.set(source, true); return true; }
     for (let i = bytes.indexOf(markupPrefix[0]); i >= 0; i = bytes.indexOf(markupPrefix[0], i + 1)) {
       if (i + markupPrefix.length > bytes.length) break;
-      if (markupPrefix.every((byte, j) => bytes[i + j] === byte)) {
-        embeddedMarkup.set(source, true);
-        return true;
+      let match = true;
+      for (let j = 1; j < markupPrefix.length; j++) {
+        if (bytes[i + j] !== markupPrefix[j]) { match = false; break; }
       }
+      if (match) { embeddedMarkup.set(source, true); return true; }
     }
   }
   embeddedMarkup.set(source, false);

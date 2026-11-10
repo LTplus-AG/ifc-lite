@@ -237,6 +237,34 @@ for (const surface of ['SDK', 'UI'] as const) for (const failAt of [1, 3]) {
   });
 }
 
+it('one throwing restore does not stop the rest of a refused roof edit rollback (#9453 review)', async () => {
+  const { adapter, session } = await roofRoom();
+  const roof = adapter.addRoof(MODEL, 42, { Position: [0,0,4], Width: 10, Depth: 8, Thickness: .25, EdgeSlopes: Array(4).fill(Math.PI / 6) });
+  const original = useViewerStore.getState().mirrorPropertyEdit;
+  let writes = 0, restores = 0;
+  useViewerStore.setState({ mirrorPropertyEdit: (...args) => {
+    original(...args);
+    if (++writes === 3) throw new Error('Injected roof property publication failure');
+  } });
+  bindRoomPropertyApi({ getPropertyValue, deletePropertyValue: (...args: Parameters<typeof deletePropertyValue>) => {
+    if (++restores === 1) throw new Error('Injected restore failure');
+    return deletePropertyValue(...args);
+  }, setPropertyValue: (...args: Parameters<typeof setPropertyValue>) => {
+    if (++restores === 1) throw new Error('Injected restore failure');
+    return setPropertyValue(...args);
+  } });
+  try {
+    assert.throws(() => adapter.editRoof!(roof, { Edge: { Index: 1, Slope: 0 }, Overhang: .5 }), /Injected roof property publication failure/,
+      'the publication failure, not the restore failure, is what the edit reports');
+    assert.ok(restores > 1, 'the remaining definition fields were still restored');
+    assert.match(String(useViewerStore.getState().collabGeometryNotice), /could not be shared/);
+  } finally {
+    useViewerStore.setState({ mirrorPropertyEdit: original, collabGeometryNotice: null });
+    bindRoomPropertyApi({ getPropertyValue, setPropertyValue, deletePropertyValue });
+    session.dispose();
+  }
+});
+
 for (const failAt of [1, 3]) it(`roof edit property publication failure after ${failAt} real writes preserves local and peer state (#9356 review)`, async () => {
   const { view, adapter, session } = await roofRoom();
   const roof = adapter.addRoof(MODEL, 42, { Position: [0,0,4], Width: 10, Depth: 8, Thickness: .25, EdgeSlopes: Array(4).fill(Math.PI / 6) });

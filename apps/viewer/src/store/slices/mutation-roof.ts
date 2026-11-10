@@ -110,8 +110,12 @@ function withRoofDefinitionRollback<T>(store: ModellingStore, target: ModelEditT
     try { return edit(publish); }
     catch (error) {
       for (const [name, value] of before) {
-        if (value === undefined) api.deletePropertyValue(room.session.doc, room.path, ROOF_FOOTPRINT_PSET, name);
-        else api.setPropertyValue(room.session.doc, room.path, ROOF_FOOTPRINT_PSET, name, value);
+        try {
+          if (value === undefined) api.deletePropertyValue(room.session.doc, room.path, ROOF_FOOTPRINT_PSET, name);
+          else api.setPropertyValue(room.session.doc, room.path, ROOF_FOOTPRINT_PSET, name, value);
+        } catch (rollbackError) {
+          console.warn(`[roof] could not restore shared definition for room "${room.session.roomId}"`, rollbackError);
+        }
       }
       // A refused draft is unchanged locally and in the room. Surface the
       // publication failure through the layout's existing notice channel.

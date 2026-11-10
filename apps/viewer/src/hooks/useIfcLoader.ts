@@ -8,6 +8,7 @@
  * cache management, and server-side parsing delegation
  *
  */
+import { deferCacheWrite, flushDeferredCacheWrites } from './deferred-cache-write.js';
 import { useCallback, useEffect, useRef } from 'react';
 import { attachCapturedLoad } from '@/lib/error-reports/correlation';
 import { useShallow } from 'zustand/react/shallow';
@@ -254,6 +255,7 @@ export function useIfcLoader() {
     options?: ModelLoadOptions,
   ) => {
     assertWorkflowOwner(options?.workflowOwner);
+    flushDeferredCacheWrites();
     const draping = drapeIfGeoRaster(file); if (draping) return draping; // #5942: imagery, never a model
     const geometryKernel = beginGeometryKernel(file, target, () => void loadFileRef.current?.(file, target, options)); if (geometryKernel.refused) return settleKernelRefusal(geometryKernel.refused, options?.onLoadError); // #7955 M2: out-of-scope retained requests stop before any work
     const { resetViewerState, clearAllModels } = useViewerStore.getState();
@@ -1929,7 +1931,7 @@ export function useIfcLoader() {
                     loadState: 'complete', loadPath: 'wasm', tessellationTier: loadTessellationTier, skipSmallCuts: skipSmallCutsAtLoad,
                   }, allInstancedShards));
                   // Background, like the primary write; compaction waits so the write keeps the raw length.
-                  if (cacheMeshes && !isStale()) void Promise.resolve(writeCache(cacheMeshes)).finally(() => compactSourceAfterLoad(dataStore));
+                  if (cacheMeshes && !isStale()) void deferCacheWrite(() => Promise.resolve(writeCache(cacheMeshes))).catch((error) => console.warn('[useIfc] Deferred cache write failed:', error)).finally(() => compactSourceAfterLoad(dataStore));
                   else compactSourceAfterLoad(dataStore);
                   return;
                 }
@@ -1951,10 +1953,16 @@ export function useIfcLoader() {
                 if (cacheable) {
                   // Final safety pass so cache always contains post-style colors.
                   applyColorUpdatesToMeshes(allMeshes, cumulativeColorUpdates);
-                  await writeCache(allMeshes);
+                  // Own the raw-id mesh list and scalar properties independently
+                  // of scene/list cleanup. Base tables and typed geometry buffers
+                  // are immutable; authored edits live in mutation overlays.
+                  const cacheMeshes = allMeshes.map((mesh) => ({ ...mesh, color: [...mesh.color] as typeof mesh.color }));
+                  void deferCacheWrite(() => Promise.resolve(writeCache(cacheMeshes)))
+                    .catch((error) => console.warn('[useIfc] Deferred cache write failed:', error))
+                    .finally(() => compactSourceAfterLoad(dataStore));
                 }
 
-                compactSourceAfterLoad(dataStore);
+                if (!cacheable) compactSourceAfterLoad(dataStore);
                 // Release closure references; geometryResult owns the rendered meshes.
                 setTimeout(() => {
                   allMeshes.length = 0;

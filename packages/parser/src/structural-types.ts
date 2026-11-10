@@ -15,7 +15,6 @@
 
 import type { BoundaryConditionInfo, StructuralLoadInfo } from './structural-load-extractor.js';
 
-/** An `IfcStructuralMember` subtype occurrence. */
 /** An `IfcStructuralConnectionCondition` subtype, numeric attributes keyed by EXPRESS name. */
 export interface StructuralConnectionConditionInfo {
   expressId: number;
@@ -44,6 +43,7 @@ export interface StructuralMemberConnectionInfo {
   };
 }
 
+/** An `IfcStructuralMember` subtype occurrence. */
 export interface StructuralMemberInfo {
   expressId: number;
   globalId: string;
@@ -79,6 +79,10 @@ export interface StructuralConnectionInfo {
   objectType?: string;
   /** The support condition, resolved from `AppliedCondition`. */
   appliedCondition?: BoundaryConditionInfo;
+  /** IFC4 `IfcStructuralCurveConnection.Axis` direction (model-local expressId). */
+  Axis?: number;
+  /** The same direction under its IFC4X3 name, `AxisDirection`. */
+  AxisDirection?: number;
   /** IFC4+ placement reference (model-local expressId). */
   ConditionCoordinateSystem?: number;
   physicalElementIds?: number[];

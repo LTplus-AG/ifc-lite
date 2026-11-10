@@ -78,4 +78,31 @@ describe('extractStructuralOnDemand effective membership (#5236)', () => {
     expect(result.connections.find((connection) => connection.expressId === 3)?.memberGlobalIds)
       .toEqual(['MemberGuid00000000001']);
   });
+
+  it('does not resurrect session-deleted physical products, relation resources or connections', async () => {
+    const step = STEP.replace(
+      "#1=IFCSTRUCTURALMEMBER('MemberGuid00000000001',$,'Source member',$,$);",
+      "#1=IFCSTRUCTURALCURVEMEMBER('MemberGuid00000000001',$,'Source member',$,$,$,$,.RIGID_JOINED_MEMBER.,$);\n" +
+        "#2=IFCSTRUCTURALPOINTCONNECTION('ConnectionGuid000000001',$,'Kept',$,$,$,$,$,$);\n" +
+        "#3=IFCSTRUCTURALPOINTCONNECTION('ConnectionGuid000000002',$,'Deleted',$,$,$,$,$,$);\n" +
+        "#4=IFCRELCONNECTSWITHECCENTRICITY('RelationGuid00000000001',$,$,$,#1,#2,#5,$,$,$,#6);\n" +
+        "#7=IFCRELCONNECTSSTRUCTURALMEMBER('RelationGuid00000000002',$,$,$,#1,#3,$,$,$,$);\n" +
+        "#5=IFCBOUNDARYNODECONDITION('Release',$,$,$,$,$,$);\n" +
+        "#6=IFCCONNECTIONPOINTECCENTRICITY($,$,1.,2.,3.);\n" +
+        "#8=IFCBEAM('BeamGuid0000000000001',$,$,$,$,$,$,$,$);\n" +
+        "#9=IFCBEAM('BeamGuid0000000000002',$,$,$,$,$,$,$,$);\n" +
+        "#10=IFCRELASSIGNSTOPRODUCT('AssignGuid000000000001',$,$,$,(#1),.PRODUCT.,#8);\n" +
+        "#11=IFCRELASSIGNSTOPRODUCT('AssignGuid000000000002',$,$,$,(#1),.PRODUCT.,#9);",
+    );
+    const deleted = new Set([3, 5, 6, 9]);
+    const result = extractStructuralOnDemand(await parse(step), view({
+      isDeleted: (id) => deleted.has(id),
+      readEntity: (id, _type, source) => (deleted.has(id) ? undefined : source),
+    }));
+    const member = result.members[0];
+    expect(member?.physicalElementIds).toEqual([8]);
+    expect(result.physicalElementStructuralItemIds).toEqual({ 8: [1] });
+    expect(member?.connectionGlobalIds).toEqual(['ConnectionGuid000000001']);
+    expect(member?.IfcRelConnectsStructuralMember).toEqual([{ expressId: 4, RelatedStructuralConnection: 2 }]);
+  });
 });

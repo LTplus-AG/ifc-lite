@@ -73,7 +73,8 @@ for (const schema of ['IFC2X3', 'IFC4', 'IFC4X3']) {
     it('reads edge, face and warping support component values in the declared schema', async () => {
       const values = old ? '11.,22.,33.,44.,55.,66.' : 'IFCBOOLEAN(.T.),IFCBOOLEAN(.F.),IFCLINEARSTIFFNESSMEASURE(33.),44.,55.,66.';
       const out = await extract(schema, [
-        "#10=IFCSTRUCTURALCURVECONNECTION('edge',$,$,$,$,$,$,#40,$);",
+        `#10=IFCSTRUCTURALCURVECONNECTION('edge',$,$,$,$,$,$,#40${old ? '' : ',#95'});`,
+        '#95=IFCDIRECTION((0.,0.,1.));',
         "#20=IFCSTRUCTURALSURFACECONNECTION('face',$,$,$,$,$,$,#41);",
         "#30=IFCSTRUCTURALPOINTCONNECTION('warp',$,$,$,$,$,$,#42,$);",
         `#40=IFCBOUNDARYEDGECONDITION('Edge',${values.replace('IFCLINEARSTIFFNESSMEASURE', 'IFCMODULUSOFLINEARSUBGRADEREACTIONMEASURE')});`,
@@ -81,6 +82,9 @@ for (const schema of ['IFC2X3', 'IFC4', 'IFC4X3']) {
         `#42=IFCBOUNDARYNODECONDITIONWARPING('Warp',${values},${old ? '77.' : 'IFCWARPINGMOMENTMEASURE(77.)'});`,
       ]);
       const prefix = old ? 'Linear' : 'Translational';
+      // IfcStructuralCurveConnection: IFC4 Axis, IFC4X3 AxisDirection, IFC2X3 neither.
+      const edge = out.connections.find(c => c.expressId === 10);
+      expect([edge?.Axis, edge?.AxisDirection]).toEqual(old ? [undefined, undefined] : schema === 'IFC4' ? [95, undefined] : [undefined, 95]);
       const byId = new Map(out.connections.map(c => [c.expressId,c.appliedCondition]));
       expect(byId.get(10)?.components).toEqual({[`${prefix}StiffnessByLengthX`]:old ? 11 : true,[`${prefix}StiffnessByLengthY`]:old ? 22 : false,[`${prefix}StiffnessByLengthZ`]:33,RotationalStiffnessByLengthX:44,RotationalStiffnessByLengthY:55,RotationalStiffnessByLengthZ:66});
       expect(byId.get(20)?.components).toEqual({[`${prefix}StiffnessByAreaX`]:old ? 12 : false,[`${prefix}StiffnessByAreaY`]:23,[`${prefix}StiffnessByAreaZ`]:old ? 34 : true});

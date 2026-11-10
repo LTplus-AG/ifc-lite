@@ -58,14 +58,13 @@ import {
   type RawEntity,
 } from './structural-step-values.js';
 import { MEMBER_RELATION_TYPES, PHYSICAL_LINK_TYPES, STRUCTURAL_RELATION_TYPES as RELATION_TYPES,
-  readMemberRelation, readPhysicalLinks, type StructuralRelationContext } from './structural-relations.js';
+  readMemberRelations, readPhysicalLinks, type StructuralRelationContext } from './structural-relations.js';
 import type {
   StructuralActivityInfo,
   StructuralAnalysisModelInfo,
   StructuralConnectionInfo,
   StructuralExtraction,
   StructuralLoadGroupInfo,
-  StructuralMemberConnectionInfo,
   StructuralMemberInfo,
   StructuralResultGroupInfo,
 } from './structural-types.js';
@@ -178,8 +177,9 @@ export function extractStructuralOnDemand(
   const read = (role: StructuralRole): RawEntity[] => readRows(activeByRole.get(role) ?? []);
   const typeOf = (id: number): string =>
     effectiveTypeById.get(id) ?? getEntityRefFromStore(store, id)?.type ?? exactTypeName(store.entities, id);
-  const readResolved = (id: number) => readRaw(id, typeOf(id));
-  /** Load and condition reads go through the session view only when one exists. */
+  const isDeleted = (id: number): boolean => view?.isDeleted(id) ?? false;
+  const readResolved = (id: number) => (isDeleted(id) ? undefined : readRaw(id, typeOf(id)));
+  /** Deleted resources read as absent; loads and conditions use the view only when one exists. */
   const readResource = view ? readResolved : undefined;
 
   const memberRaw = read('member');
@@ -204,22 +204,18 @@ export function extractStructuralOnDemand(
 
   // ── Relationship passes ────────────────────────────────────────────────
   const boundaryCondition = (id: number) => extractBoundaryCondition(extractor, store, id, readResource);
-  const relationContext: StructuralRelationContext = { schema: store.schemaVersion, readResource: readResolved, typeOf, boundaryCondition };
-  const { physicalOfItem, itemsOfPhysical } = readPhysicalLinks(
-    readRows(relPhysicalIds),
-    new Set([...memberRaw, ...connectionRaw].map((e) => e.expressId)),
-    relationContext,
-  );
-  const memberRelations = new Map<number, StructuralMemberConnectionInfo[]>();
+  const relationContext: StructuralRelationContext = { schema: store.schemaVersion, readResource: readResolved, typeOf, isDeleted, boundaryCondition };
+  const connectionIds = new Set(connectionRaw.map((e) => e.expressId));
+  const itemIds = new Set([...memberRaw.map((e) => e.expressId), ...connectionIds]);
+  const { physicalOfItem, itemsOfPhysical } = readPhysicalLinks(readRows(relPhysicalIds), itemIds, relationContext);
+  const memberRelationRows = readRows(relMemberIds);
+  const memberRelations = readMemberRelations(memberRelationRows, connectionIds, relationContext);
   const connectionsOfMember = new Map<number, string[]>();
   const membersOfConnection = new Map<number, string[]>();
-  for (const rel of readRows(relMemberIds)) {
+  for (const rel of memberRelationRows) {
     const memberId = asRef(readAttr(rel.type, rel.attrs, 'RelatingStructuralMember'));
     const connectionId = asRef(readAttr(rel.type, rel.attrs, 'RelatedStructuralConnection'));
     if (memberId === undefined || connectionId === undefined) continue;
-    const relations = memberRelations.get(memberId) ?? [];
-    relations.push(readMemberRelation(rel, connectionId, relationContext));
-    memberRelations.set(memberId, relations);
     const memberGid = globalIdById.get(memberId);
     const connectionGid = globalIdById.get(connectionId);
     if (connectionGid) addUnique(connectionsOfMember, memberId, connectionGid);
@@ -305,6 +301,8 @@ export function extractStructuralOnDemand(
       globalId: e.globalId,
       type: e.type,
       ...rootFields(e),
+      Axis: asRef(readAttr(e.type, e.attrs, 'Axis')),
+      AxisDirection: asRef(readAttr(e.type, e.attrs, 'AxisDirection')),
       ConditionCoordinateSystem: asRef(readAttr(e.type, e.attrs, 'ConditionCoordinateSystem')),
       physicalElementIds: physicalOfItem.get(e.expressId) ?? [],
       appliedCondition:

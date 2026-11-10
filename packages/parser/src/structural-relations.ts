@@ -20,6 +20,7 @@ export interface StructuralRelationContext {
   /** Read a referenced record by id, resolving its effective type. */
   readResource(id: number): RawEntity | undefined;
   typeOf(id: number): string;
+  isDeleted(id: number): boolean;
   boundaryCondition(id: number): BoundaryConditionInfo | undefined;
 }
 
@@ -55,6 +56,7 @@ export function readPhysicalLinks(
       if (object === undefined) continue;
       const [item, physical] = itemIds.has(product) ? [product, object] : [object, product];
       if (!itemIds.has(item)) continue;
+      if (ctx.isDeleted(physical)) continue;
       const physicalType = ctx.typeOf(physical);
       if (!getInheritanceChain(physicalType).includes('IfcProduct') || structuralRoleOf(physicalType)) continue;
       addUnique(physicalOfItem, item, physical);
@@ -64,8 +66,30 @@ export function readPhysicalLinks(
   return { physicalOfItem, itemsOfPhysical: Object.fromEntries(itemsOfPhysical) };
 }
 
+/**
+ * Each member's relations to an effective connection, keyed by member id. A
+ * relation whose connection is deleted or absent is dropped, matching the
+ * member's `connectionGlobalIds`.
+ */
+export function readMemberRelations(
+  rels: readonly RawEntity[],
+  connectionIds: ReadonlySet<number>,
+  ctx: StructuralRelationContext,
+): Map<number, StructuralMemberConnectionInfo[]> {
+  const byMember = new Map<number, StructuralMemberConnectionInfo[]>();
+  for (const rel of rels) {
+    const memberId = asRef(readAttr(rel.type, rel.attrs, 'RelatingStructuralMember', ctx.schema));
+    const connectionId = asRef(readAttr(rel.type, rel.attrs, 'RelatedStructuralConnection', ctx.schema));
+    if (memberId === undefined || connectionId === undefined || !connectionIds.has(connectionId)) continue;
+    const relations = byMember.get(memberId) ?? [];
+    relations.push(readMemberRelation(rel, connectionId, ctx));
+    byMember.set(memberId, relations);
+  }
+  return byMember;
+}
+
 /** Every attribute of one member/connection relation past the pair itself. */
-export function readMemberRelation(rel: RawEntity, connectionId: number, ctx: StructuralRelationContext): StructuralMemberConnectionInfo {
+function readMemberRelation(rel: RawEntity, connectionId: number, ctx: StructuralRelationContext): StructuralMemberConnectionInfo {
   const attr = (e: RawEntity, name: string) => readAttr(e.type, e.attrs, name, ctx.schema);
   const conditionId = asRef(attr(rel, 'AppliedCondition'));
   const constraintId = asRef(attr(rel, 'ConnectionConstraint'));

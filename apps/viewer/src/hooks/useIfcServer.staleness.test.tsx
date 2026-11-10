@@ -236,6 +236,14 @@ describe('loadFromServer — a superseded stream must not paint into the active 
     );
   });
 
+  it('refuses an aborted load before starting model properties (#9538)', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    releaseBatch2();
+    assert.equal(await loadFromServer!(new File(['x'], 'model.ifc'), HUGE_BUFFER, () => false, controller.signal), false);
+    assert.notEqual(snapshot().progressPhase, 'Complete');
+  });
+
   it('control: a NON-stale load still paints both batches', async () => {
     // No staleness to wait on here — release batch 2 immediately so the
     // mocked stream completes like an ordinary uninterrupted load.

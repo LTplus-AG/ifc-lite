@@ -143,6 +143,25 @@ describe('worker count: unchanged where it already fits, fewer where it does not
   });
 });
 
+describe('non-finite inputs (review on #9659)', () => {
+  it('a non-finite deviceMemory is treated as unknown (8), never as a NaN budget that drops the cap', () => {
+    const unknown = plan(1655, 16, undefined);
+    for (const deviceMemoryGB of [Infinity, Number.NaN, -1, 0]) {
+      const r = computeWorkerCount({ fileSizeMB: 1655, cores: 16, deviceMemoryGB, totalJobs: 100_000 });
+      expect(Number.isFinite(r.budgetMiB)).toBe(true);
+      expect(r.count).toBe(unknown.count);
+      expect(r.reason).toBe('memory');
+    }
+  });
+
+  it('a NaN file size or ceiling does not poison the plan', () => {
+    const r = computeWorkerCount({ fileSizeMB: Number.NaN, cores: 8, deviceMemoryGB: 8, totalJobs: 10, deviceMemoryCeilingGB: Number.NaN });
+    expect(r.count).toBe(3);
+    expect(r.exceedsDevice).toBe(false);
+    expect(Number.isFinite(r.estimatedPeakMiB)).toBe(true);
+  });
+});
+
 describe('override', () => {
   it('wins over the budget and skips the refusal', () => {
     const r = computeWorkerCount({

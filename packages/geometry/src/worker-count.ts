@@ -90,15 +90,18 @@ export interface WorkerCountResult {
  * `[minWorkers, maxWorkers]` when there are jobs.
  */
 export function computeWorkerCount(inputs: WorkerCountInputs): WorkerCountResult {
-  const fileSizeMB = Math.max(0, inputs.fileSizeMB);
+  // Non-finite inputs would turn the budget arithmetic into NaN, which loses every comparison and silently drops the cap.
+  const fileSizeMB = Number.isFinite(inputs.fileSizeMB) ? Math.max(0, inputs.fileSizeMB) : 0;
   const cores = Math.max(1, Math.floor(inputs.cores));
-  const ceilingGB = inputs.deviceMemoryCeilingGB ?? Infinity;
+  const ceilingGB = Number.isNaN(inputs.deviceMemoryCeilingGB) ? Infinity : inputs.deviceMemoryCeilingGB ?? Infinity;
   // `navigator.deviceMemory` is clamped (8 on older Chrome and Android) as a
   // fingerprinting mitigation. When cores indicates a Pro/Max-tier machine
   // (10+) we know in practice it ships with ≥16 GB, so we lift the floor for
   // the cores tiers. The memory budget uses the same lift, but never above
   // what the reported value proves the device can have.
-  const reportedMemoryGB = Math.max(1, inputs.deviceMemoryGB);
+  // A non-finite or non-positive value is treated as unknown: the documented 8.
+  const reportedMemoryGB = Number.isFinite(inputs.deviceMemoryGB) && inputs.deviceMemoryGB > 0
+    ? Math.max(1, inputs.deviceMemoryGB) : 8;
   const deviceMemoryGB = cores >= 10 ? Math.max(reportedMemoryGB, 16) : reportedMemoryGB;
   const planningMemoryGB = Math.min(deviceMemoryGB, Math.max(reportedMemoryGB, ceilingGB));
   const totalJobs = Math.max(0, Math.floor(inputs.totalJobs));

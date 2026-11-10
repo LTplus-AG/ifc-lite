@@ -46,6 +46,7 @@ export const viewportLightingRu = {
   "viewportLighting.container.loadErrorCard.dismiss": "Закрыть",
   "viewportLighting.container.loadErrorCard.webgpuChecking": "Поддержка WebGPU всё ещё проверяется. Попробуйте открыть модель ещё раз через некоторое время.",
   "viewportLighting.container.loadErrorCard.webgpuUnsupported": "Этот браузер не поддерживает необходимый для просмотра веб-графический рендерер WebGPU. Попробуйте использовать последние версии Chrome, Edge, Firefox или Safari — см. ссылку на поддержку браузеров в верхней части окна просмотра.",
+  "viewportLighting.container.loadErrorCard.deviceMemory": "Для загрузки этой модели в браузере нужно около {required} памяти — больше, чем может предоставить это устройство или браузер (не более {available}). Откройте её на компьютере с большим объёмом памяти или используйте нативный CLI или сервер.",
   "viewportLighting.container.modelUrlAutoload.malformedUrl": "Указанный адрес модели не является допустимым URL-адресом.",
   "viewportLighting.container.modelUrlAutoload.crossOrigin": "Модель, ссылка на которую приведена, размещена на другом сайте, поэтому она не была загружена в целях вашей безопасности.",
   "viewportLighting.container.modelUrlAutoload.fetchFailed": "Не удалось скачать модель по ссылке: {reason}",

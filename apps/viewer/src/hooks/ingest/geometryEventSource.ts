@@ -15,10 +15,17 @@
  * passed inline before.
  */
 
-import { DEFAULT_HUNG_JOB_TIMEOUT_MS, type GeometryProcessor, type StallPhaseHandle, type StreamingGeometryEvent } from '@ifc-lite/geometry';
+import {
+  assertGeometryMemoryFits, DEFAULT_HUNG_JOB_TIMEOUT_MS, GeometryMemoryBudgetError,
+  type GeometryProcessor, type StallPhaseHandle, type StreamingGeometryEvent,
+} from '@ifc-lite/geometry';
 import { retainedKernel } from '@ifc-lite/viewer-retained';
+import { useViewerStore } from '@/store';
+import { showLoadError } from '@/lib/analytics';
+import { formatLoadError } from '../../lib/load-error-message.js';
+import { settleUnownedLoadUi } from '../modelLoadCanceller.js';
 import { getGeomWorkerOverride } from '../../store/constants.js';
-import { getDynamicBatchConfig } from '../../utils/ifcConfig.js';
+import { getDynamicBatchConfig, USE_SERVER } from '../../utils/ifcConfig.js';
 import type { CachePlan } from '../cacheTier.js';
 
 type AdaptiveOptions = NonNullable<Parameters<GeometryProcessor['processAdaptive']>[1]>;
@@ -62,12 +69,45 @@ export interface GeometryKernelLoad {
   loadFailure?(error: unknown): { message: string; retry?: () => void } | null;
 }
 
-const EXACT_GEOMETRY_KERNEL: GeometryKernelLoad = {
-  kind: 'exact',
-  serverEnabled: true,
-  cachePlan: (plan) => plan,
-  refuseSource: () => false,
-};
+/**
+ * The exact kernel's one refusal: the whole-tab memory estimate for even one
+ * geometry worker exceeds the most memory this device can have (see
+ * `computeWorkerCount` in `@ifc-lite/geometry`). A configured geometry server
+ * may still take the load, so nothing is refused then.
+ */
+function memoryRefusal(fileName: string, byteLength: number): string | null {
+  if (USE_SERVER) return null;
+  try {
+    assertGeometryMemoryFits(byteLength, getGeomWorkerOverride());
+    return null;
+  } catch (err) {
+    if (err instanceof GeometryMemoryBudgetError) return formatLoadError(err, fileName);
+    throw err;
+  }
+}
+
+/** Shown like every load error; no Retry, because the same device gives the same answer. */
+function reportMemoryRefusal(message: string, file: File): void {
+  const { setError, setLastLoadRetry } = useViewerStore.getState();
+  showLoadError(setError, setLastLoadRetry, message, 'device_memory_insufficient', null, file);
+}
+
+function exactGeometryKernel(file: File): GeometryKernelLoad {
+  return {
+    kind: 'exact',
+    serverEnabled: true,
+    cachePlan: (plan) => plan,
+    // An `.ifczip` is only measurable once unwrapped, so its refusal comes here.
+    refuseSource(format, byteLength, { modelId, activity }) {
+      const message = format === 'ifc' ? memoryRefusal(file.name, byteLength) : null;
+      if (!message) return false;
+      const shown = activity.fail(message);
+      useViewerStore.getState().updateModel(modelId, { loadState: 'error', loadError: shown });
+      reportMemoryRefusal(shown, file);
+      return true;
+    },
+  };
+}
 
 /**
  * Decide the kernel for this load. A retained request outside retained scope
@@ -81,7 +121,15 @@ export function beginGeometryKernel(
   retry: () => void,
 ): GeometryKernelLoad {
   // `retainedKernel` is `null` in the default viewer (the alias maps to off.ts).
-  return retainedKernel?.begin(file, target, retry) ?? EXACT_GEOMETRY_KERNEL;
+  const retained = retainedKernel?.begin(file, target, retry);
+  if (retained) return retained;
+  const exact = exactGeometryKernel(file);
+  // A plain `.ifc` file's size is its source size: refuse before a byte is read.
+  const early = /\.ifc$/i.test(file.name) ? memoryRefusal(file.name, file.size) : null;
+  if (!early) return exact;
+  reportMemoryRefusal(early, file);
+  settleUnownedLoadUi();
+  return { ...exact, refused: Promise.resolve(early) };
 }
 
 export function openGeometryEvents(kernel: GeometryKernelLoad, request: GeometryEventRequest): AsyncIterable<StreamingGeometryEvent> {
@@ -103,8 +151,8 @@ export function openGeometryEvents(kernel: GeometryKernelLoad, request: Geometry
     onEntityIndex: request.onEntityIndex,
     sourceFingerprint: request.sourceFingerprint,
     // `?geomWorkers=N` A/B knob — overrides the cores/memory worker-
-    // count heuristic so the host's thermal sweet spot can be measured.
-    // Still clamped to the memory budget by the engine. Geometry output
+    // count policy so the host's thermal sweet spot can be measured. It
+    // also wins over the engine's tab-memory budget. Geometry output
     // is unaffected by the count (disjoint deterministic element slices).
     workerCountOverride: getGeomWorkerOverride(),
     trace: request.trace,

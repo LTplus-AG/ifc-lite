@@ -32,7 +32,7 @@ import type { ByteStreamingPrePassResult } from './byte-streaming-prepass-result
 import type { StreamingGeometryEvent } from './index.js';
 import { mergeGeometryDiagnostics, type GeometryDiagnostics } from './diagnostics.js';
 import { omittedTypeRecordsField, parseOmittedTypeRecords } from './omitted-type-records.js';
-import { planLoadWorkerCount } from './worker-count.js';
+import { describeWorkerPlan, planParallelLoad } from './worker-count.js';
 import { readBatchSizingOverride, readShardScanFlag, readVisibilityFilterOverride } from './perf-flags.js';
 import { notifyIfWasmAssetUnavailable, notifyIfWorkerScriptUnavailable } from './wasm-asset-error.js';
 import { restashWasmPanicLocation } from './wasm-panic-forward.js';
@@ -134,8 +134,11 @@ export async function* processParallel(
   coordinator.reset();
   yield { type: 'start', totalEstimate: buffer.length / 1000 };
   yield { type: 'model-open', modelID: 0 };
+  // Plan first: a device that cannot fit one worker is refused before the SAB copy, the compile or any worker.
+  const workerPlan = planParallelLoad(buffer.byteLength, options?.workerCountOverride);
+  const fileSizeMB = buffer.byteLength / (1024 * 1024), workerCount = workerPlan.count;
   // Kick off the ONE shared wasm compile immediately so it overlaps the SAB
-  // setup + worker-count planning below; awaited just before the workers init
+  // setup below; awaited just before the workers init
   // (see `compileSharedWasmModule`). Null ⇒ each worker self-inits (unchanged).
   const wasmModulePromise = compileSharedWasmModule(options?.wasmUrls?.wasm);
 
@@ -492,13 +495,6 @@ export async function* processParallel(
     };
   };
 
-  // Pick worker count and pre-spawn them now. `computeWorkerCount` needs a
-  // totalJobs estimate; use file-size proxy. The memory-budget cap in
-  // `computeWorkerCount` keeps an over-estimate harmless, and still bounds an
-  // explicit `workerCountOverride` so the A/B knob can't OOM the tab.
-  const fileSizeMB = buffer.byteLength / (1024 * 1024);
-  const { cores, ...workerCountResult } = planLoadWorkerCount(fileSizeMB, options?.workerCountOverride);
-  const workerCount = workerCountResult.count;
 
   // Await the ONE shared compile (started up-front) so every worker instantiates
   // the SAME module via `initSync` instead of recompiling the binary N+1 times.
@@ -767,10 +763,7 @@ export async function* processParallel(
   const t0 = performance.now();
   const elapsed = () => Math.round(performance.now() - t0);
   trace.setAttrs({ workerCount }); poolSpan = trace.begin('geometry.pool', { workerCount });
-  const overrideNote = options?.workerCountOverride != null
-    ? ` (override=${options.workerCountOverride}, bound=${workerCountResult.reason})`
-    : ` (cores=${cores}, bound=${workerCountResult.reason})`;
-  console.log(`[stream] processParallel start, fileSizeMB=${fileSizeMB.toFixed(1)} workerCount=${workerCount}${overrideNote}`);
+  console.log(`[stream] processParallel start, fileSizeMB=${fileSizeMB.toFixed(1)} workerCount=${workerCount} ${describeWorkerPlan(workerPlan, options?.workerCountOverride)}`);
 
   /**
    * Deliver a built entity index to every geometry worker (via a shared SAB

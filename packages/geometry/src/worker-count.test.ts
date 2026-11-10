@@ -104,15 +104,17 @@ describe('computeWorkerCount', () => {
     expect(down.count).toBe(2);
   });
 
-  it('override is still clamped by the memory budget (cannot OOM)', () => {
-    // 8 GB fanless host, 722 MB file: memoryCap ≈ 4. An override of 12 is
-    // clipped to the memory bound, not honoured blindly.
+  it('override wins over the tab-memory budget (the user asked for this count)', () => {
+    // 8 GB fanless host, 722 MB file: the budget fits 1 worker. An explicit
+    // `?geomWorkers=4` is honoured anyway (it used to be clipped to the old
+    // per-worker memory cap); the result says it is over budget.
     const r = computeWorkerCount({
       fileSizeMB: 722, cores: 8, deviceMemoryGB: 8, totalJobs: 70_000,
-      workerCountOverride: 12,
+      workerCountOverride: 4,
     });
-    expect(r.count).toBeLessThanOrEqual(4);
-    expect(r.reason).toBe('memory');
+    expect(r.count).toBe(4);
+    expect(r.reason).toBe('override');
+    expect(r.fitsBudget).toBe(false);
   });
 
   it('override is also clamped by totalJobs and maxWorkers', () => {
@@ -253,12 +255,19 @@ describe('computeWorkerCount', () => {
     expect(r.count).toBeGreaterThanOrEqual(1);
   });
 
-  it('low-end laptop (4 cores, 4 GB), 400 MB file → 2 workers (matches previous heuristic)', () => {
+  it('low-end laptop (4 cores, 4 GB): 343 MB keeps 2 workers, 400 MB drops to 1 (whole-tab budget)', () => {
+    // 4-core tier caps at 2. The tab budget on 4 GB is 3072 MiB. At 343 MB two
+    // workers are estimated at ~2.8 GiB and keep fitting; at 400 MB they are
+    // estimated at 3154 MiB (SAB + tables + pre-pass + 2 source copies), which
+    // the old per-worker formula (2.2 GiB) under-counted, so one worker it is.
+    const fits = computeWorkerCount({ fileSizeMB: 343, cores: 4, deviceMemoryGB: 4, totalJobs: 5000 });
+    expect(fits.count).toBe(2);
+    expect(fits.reason).toBe('cores');
     const r = computeWorkerCount({
       fileSizeMB: 400, cores: 4, deviceMemoryGB: 4, totalJobs: 5000,
     });
-    // 4-core tier hard-caps at 2; budget allows 2 here (no regression vs old code).
-    expect(r.count).toBe(2);
+    expect(r.count).toBe(1);
+    expect(r.reason).toBe('memory');
   });
 
   it('low-end laptop, 800 MB file → memory-capped to 1', () => {

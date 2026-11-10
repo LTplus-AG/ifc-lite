@@ -42,6 +42,7 @@ export const viewportLightingFr = {
   "viewportLighting.container.loadingCard.titleFallback": "Chargement du modèle…",
   "viewportLighting.container.loadingCard.cancel": "Annuler",
   "viewportLighting.container.loadErrorCard.invalidInput": "Ce fichier n'est pas valide ou n'est pas au format attendu. Vérifiez le type de fichier, ou exportez une nouvelle copie et ouvrez-la à nouveau.",
+  "viewportLighting.container.loadErrorCard.deviceMemory": "Ce modèle a besoin d'environ {required} de mémoire pour se charger dans le navigateur, soit plus que ce que cet appareil ou ce navigateur peut fournir ({available} au maximum). Ouvrez-le sur un ordinateur doté de plus de mémoire, ou utilisez la CLI ou le serveur natifs.",
   "viewportLighting.container.loadErrorCard.title": "Impossible de charger le modèle",
   "viewportLighting.container.loadErrorCard.retry": "Réessayer",
   "viewportLighting.container.loadErrorCard.dismiss": "Ignorer",

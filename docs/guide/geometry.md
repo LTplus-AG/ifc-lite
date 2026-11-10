@@ -421,9 +421,16 @@ for await (const event of geometry.processAdaptive(new Uint8Array(buffer))) {
 }
 ```
 
-The worker count is chosen by a cores/memory heuristic; geometry output is
-identical regardless of the count (workers process deterministic, disjoint
-slices).
+The worker count is the cores tier, lowered until the estimated peak memory of
+the whole tab fits 75 % of `navigator.deviceMemory` (at least 1 GiB of
+headroom), and never below one. Each worker and the pre-pass hold a full copy of
+the source. Geometry output is identical regardless of the count (workers process
+deterministic, disjoint slices). When even one worker's estimate exceeds the
+most memory the device can have, the stream throws `GeometryMemoryBudgetError`
+before any worker starts; call `assertGeometryMemoryFits(byteLength)` to check
+before reading a file. This happens only when `deviceMemory` proves an upper
+bound: absent or possibly clamped values (8, 32) never refuse. An explicit
+`workerCountOverride` wins over the budget and the refusal.
 
 ### Hung elements and abandoning a stream
 

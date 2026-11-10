@@ -49,7 +49,7 @@ export { geometryAabbAt, geometryVolumeAt } from './geometry-fingerprints.js';
 export { BufferBuilder } from './buffer-builder.js';
 export { CoordinateHandler, NORMAL_COORD_THRESHOLD_M } from './coordinate-handler.js';
 export type { RtcFrame } from './rtc-frame.js';
-export { computeWorkerCount, pickWorkerCount, type WorkerCountInputs, type WorkerCountResult } from './worker-count.js';
+export { assertGeometryMemoryFits, computeWorkerCount, GeometryMemoryBudgetError, pickWorkerCount, type WorkerCountInputs, type WorkerCountResult } from './worker-count.js';
 export { getGeometryStreamWatchdogMs, type WatchdogInputs } from './watchdog.js';
 export { DEFAULT_HUNG_JOB_TIMEOUT_MS, type SkippedHungElements } from './hung-job-recovery.js';
 // #4902: which pre-worker pipeline phase a consumer's own stream watchdog
@@ -739,8 +739,8 @@ export class GeometryProcessor {
     wasmUrls?: { wasm?: string },
     /**
      * Explicit geometry-worker count for A/B tuning (the viewer's
-     * `?geomWorkers=N` knob). Overrides the cores-tier heuristic but stays
-     * clamped to the memory budget. Geometry output is unaffected (workers
+     * `?geomWorkers=N` knob). Wins over the cores tier and the tab-memory
+     * budget (see `computeWorkerCount`). Geometry output is unaffected (workers
      * process disjoint, deterministic element slices). Undefined ⇒ heuristic.
      */
     workerCountOverride?: number,
@@ -827,7 +827,7 @@ export class GeometryProcessor {
       wasmUrls?: { wasm?: string };
       /**
        * Explicit geometry-worker count for A/B tuning (viewer `?geomWorkers=N`).
-       * Forwarded to the parallel path; clamped to the memory budget there.
+       * Forwarded to the parallel path; wins over its tab-memory budget.
        * Geometry output is unaffected by the count.
        */
       workerCountOverride?: number;

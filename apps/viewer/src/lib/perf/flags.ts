@@ -99,6 +99,15 @@ export const PERF_FLAGS = [
     bindings: { ...GEOMETRY_PERF_FLAG_BINDINGS.shardScan, benchmarkEnv: 'VIEWER_BENCHMARK_SHARD_SCAN' },
   },
   {
+    id: 'geomMemoryGB',
+    kind: 'kill-switch',
+    owner: '@louistrue',
+    removalCondition: 'Delete when the in-browser huge-file path no longer copies the source into every geometry worker, so the tab-memory worker budget no longer needs low-memory reproduction on large hosts.',
+    introducedAt: '2026-11-10',
+    default: null,
+    bindings: { ...GEOMETRY_PERF_FLAG_BINDINGS.geomMemoryGB },
+  },
+  {
     id: 'contribCull',
     kind: 'kill-switch',
     owner: '@louistrue',

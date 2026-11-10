@@ -95,9 +95,9 @@ export interface ProcessParallelOptions {
   visibilityFilter?: { disabledTypes?: string[]; skipTypeGeometry?: boolean };
   /**
    * Explicit geometry-worker count for A/B tuning (the viewer's
-   * `?geomWorkers=N` knob). Overrides the cores-tier heuristic but stays
-   * clamped to the memory budget — see the worker-count policy. `undefined`
-   * ⇒ use the heuristic. Lets a user measure their host's true thermal optimum
+   * `?geomWorkers=N` knob). Wins over the cores tier and the tab-memory
+   * budget, clamped only to the job count and the hard bounds — see the
+   * worker-count policy. `undefined` ⇒ use the policy. Lets a user measure their host's true thermal optimum
    * (which is machine-specific). Geometry output is unaffected by the count
    * (workers process disjoint, deterministic element slices).
    */

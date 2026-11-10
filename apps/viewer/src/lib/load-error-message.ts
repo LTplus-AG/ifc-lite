@@ -13,7 +13,9 @@
  * diff that changes matching semantics is worth being able to read on its own.
  */
 
-import { resolve as translate } from '../i18n/registry.js';
+import { GeometryMemoryBudgetError } from '@ifc-lite/geometry';
+import { formatLocaleNumber } from '../i18n/intlFormat.js';
+import { getLocale, resolve as translate } from '../i18n/registry.js';
 
 import {
   classifyLoadError,
@@ -34,6 +36,10 @@ import {
  *   one, because that is precisely the case the gate exists to exclude.
  */
 export function formatLoadError(err: unknown, fileName?: string, context?: unknown): string {
+  if (err instanceof GeometryMemoryBudgetError) {
+    const gib = (mib: number) => `${formatLocaleNumber(getLocale(), mib / 1024, { maximumFractionDigits: 1 })} GiB`;
+    return translate('viewportLighting.container.loadErrorCard.deviceMemory', { required: gib(err.requiredMiB), available: gib(err.availableMiB) });
+  }
   const kind = classifyLoadError(err, context);
   const subject = fileName ? `"${fileName}"` : 'the model';
   switch (kind) {

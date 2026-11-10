@@ -20,6 +20,8 @@ export const GEOMETRY_PERF_FLAG_BINDINGS = {
   visibilityFilter: { global: '__IFC_LITE_VISIBILITY_FILTER', urlParam: 'perf.visibilityFilter' },
   /** Sharded entity-index pre-pass; on by default, `0` is the kill switch. */
   shardScan: { global: '__IFC_LITE_SHARD_SCAN', urlParam: 'perf.shardScan' },
+  /** Simulated device memory in GiB for the tab-memory worker budget; a positive number. */
+  geomMemoryGB: { global: '__IFC_LITE_GEOM_MEMORY_GB', urlParam: 'perf.geomMemoryGB' },
 } as const satisfies Record<string, PerfFlagBinding>;
 
 /**
@@ -57,4 +59,18 @@ export function readShardScanFlag(): boolean {
   // other #1682 load/render knobs).
   if (v === 0 || v === '0' || v === false) return false;
   return true;
+}
+
+/**
+ * Simulated device memory (GiB) for the geometry worker budget, read off
+ * `globalThis.__IFC_LITE_GEOM_MEMORY_GB` or `?perf.geomMemoryGB=N`. The plan
+ * then treats the device as having exactly N GiB (both the budget and the
+ * refusal ceiling), so a low-memory machine can be reproduced on a large
+ * host. Unset or not a positive finite number ⇒ `undefined` (use the browser's
+ * `navigator.deviceMemory`).
+ */
+export function readDeviceMemoryOverrideGB(): number | undefined {
+  const v = readPerfFlagRaw(GEOMETRY_PERF_FLAG_BINDINGS.geomMemoryGB);
+  const n = typeof v === 'string' ? Number(v) : v;
+  return typeof n === 'number' && Number.isFinite(n) && n > 0 ? n : undefined;
 }

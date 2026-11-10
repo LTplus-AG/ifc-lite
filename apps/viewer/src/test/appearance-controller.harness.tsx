@@ -87,7 +87,7 @@ class ControlledWorker implements AppearanceWorker {
 
 /** Shared by Node/HappyDOM and an isolated real-browser lab; never run in a user's model session. */
 export async function runAppearanceControllerScenario(
-  scenario: 'strict-source' | 'discard-debounce' | 'discard-worker' | 'stale-version' | 'upload-failure' | 'partial-exclusion' | 'apply-selection' | 'apply-cancel-late' | 'apply-cancel-repreview',
+  scenario: 'strict-source' | 'discard-debounce' | 'discard-worker' | 'stale-version' | 'upload-failure' | 'partial-exclusion' | 'apply-selection' | 'apply-cancel-late' | 'apply-cancel-repreview' | 'apply-stale-repreview',
   imageBytes = controllerPng,
 ): Promise<{ scenario: string; requests: number; terminations: number; stages: number; nativeBitmaps: number }> {
   const initial = useViewerStore.getState();
@@ -242,7 +242,29 @@ END-ISO-10303-21;`);
         await act(async () => { workers[0].complete(); });
         await until(() => !button('Apply').disabled, `preview never became ready: ${container.textContent}`);
         check(parts[0].textureBitmap?.width, 'real inventory decode did not reach the preview');
-        if (scenario === 'apply-cancel-repreview') {
+        if (scenario === 'apply-stale-repreview') {
+          // PR #9585 B1: settling a failed Apply must revisit dependency changes skipped while busy.
+          const prepare = editor.prepareEntityOperations.bind(editor);
+          let release!: () => void;
+          let preparations = 0;
+          const held = new Promise<void>(resolve => { release = resolve; });
+          editor.prepareEntityOperations = async (operations, options) => {
+            preparations++;
+            await held;
+            return prepare(operations, options);
+          };
+          try {
+            await click('Apply');
+            check(preparations === 1, 'Apply never reached held IFC preparation');
+            await act(async () => { useViewerStore.getState().bumpMutationVersion(); });
+            await act(async () => { release(); });
+            await until(() => !!workers[1]?.message,
+              'a model change during Apply left the panel stuck instead of planning a new preview');
+            await act(async () => { workers[1].complete(); });
+            await until(() => !button('Apply').disabled, 'refreshed appearance preview did not enable Apply');
+            await click('Discard');
+          } finally { await act(async () => { release(); }); }
+        } else if (scenario === 'apply-cancel-repreview') {
           const prepare = editor.prepareEntityOperations.bind(editor);
           let release!: () => void;
           let preparations = 0;

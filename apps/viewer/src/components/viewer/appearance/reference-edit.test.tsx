@@ -164,9 +164,12 @@ test('same-tick reference placement starts once and room entry settles its statu
   let release!: () => void;
   const held = new Promise<void>(resolve => { release = resolve; });
   let placements = 0;
+  const images = new Set<string>();
   mock.method(renderer.getReferenceImages(), 'set', async (item: Parameters<ReturnType<Renderer['getReferenceImages']>['set']>[0]) => {
     if (!item.id.startsWith('appearance-draft:')) { placements++; await held; }
+    images.add(item.id);
   });
+  mock.method(renderer.getReferenceImages(), 'remove', (id: string) => { images.delete(id); });
   const place = button(ui, 'Place reference');
   act(() => { place.click(); place.click(); });
   assert.equal(placements, 1);
@@ -174,4 +177,33 @@ test('same-tick reference placement starts once and room entry settles its statu
   release(); await settle();
   assert.equal(ui.querySelector('[aria-busy]')?.getAttribute('aria-busy'), 'false');
   assert.equal(useViewerStore.getState().appearanceReferences.size, 1);
+  assert.equal([...images].some(id => !id.startsWith('appearance-draft:') && id !== 'drawing'), false, 'cancelled placement removes its uploaded GPU image');
+});
+
+test('PR #9585: uploading a source preserves the ready reference notice', async t => {
+  if (!await nativeAvailable(t)) return;
+  const { ui } = await fixture();
+  click(button(ui, 'Edit Drawing 1')); await settle();
+  click(button(ui, 'Discard')); await settle();
+  type(ui.querySelector<HTMLInputElement>('input[aria-label="Distance A–B (m)"]')!, '3'); await settle();
+  assert.match(ui.textContent ?? '', /Reference ready/);
+  const add = appearanceAssets.add.bind(appearanceAssets);
+  let release!: () => void, started = false;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  mock.method(appearanceAssets, 'add', async (...args: Parameters<typeof add>) => {
+    started = true;
+    await held;
+    return add(...args);
+  });
+  try {
+    const input = ui.querySelector<HTMLInputElement>('input[type=file]')!;
+    const files = new DataTransfer();
+    files.items.add(new File([new Uint8Array(png)], 'replacement.png', { type: 'image/png' }));
+    Object.defineProperty(input, 'files', { configurable: true, value: files.files });
+    act(() => input.dispatchEvent(new Event('change', { bubbles: true })));
+    await settle();
+    assert.equal(started, true, 'the real upload reaches the held inventory write');
+    assert.match(ui.textContent ?? '', /Reference ready/, 'sourceBusy must preserve the preceding reference notice');
+    assert.doesNotMatch(ui.textContent ?? '', /Choose a source and calibrate/);
+  } finally { release(); await settle(); }
 });

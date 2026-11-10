@@ -11,7 +11,7 @@ import { Renderer } from '@ifc-lite/renderer';
 import { useViewerStore } from '@/store';
 import { setGlobalRendererRef } from '@/hooks/useBCF';
 import { pdfReferenceAnnotationFixture } from '@/test/pdf-reference-annotation-fixture';
-import { render, cleanup, click } from '@/test/render';
+import { render, cleanup, click, type } from '@/test/render';
 import type { AppearanceWorkerRequest, AppearanceWorkerResponse } from '@/lib/appearance/planner-types';
 import type { PdfFillAnnotationPlan } from '@/lib/appearance/pdf/fill-plan-types';
 import type { PreparedPdfVectorPage } from '@/lib/appearance/pdf/vector-types';
@@ -169,15 +169,23 @@ test('PDF preparation locks the parent annotation metadata (C-13)', async t => {
     click(button('Prepare vector preview')!);
     await until(() => !!mode.pending);
     const name = ui.querySelector<HTMLInputElement>('fieldset input')!;
-    assert.equal(name.closest('fieldset')?.disabled, true, 'Name must stay fixed while PDF geometry is prepared');
+    // Happy DOM has no native keyboard default: a disabled control accepts no user typing.
+    const typeName = (value: string) => { if (!name.matches(':disabled')) type(name, value); };
+    const previousName = name.value;
+    typeName('Changed during preparation');
+    assert.equal(name.value, previousName, 'typing cannot change Name during PDF preparation');
+    assert.ok(!!mode.pending, 'typing must not cancel the in-flight PDF plan');
+    assert.doesNotMatch(ui.textContent ?? '', /cancelled/);
     await act(async () => { details.open = false; details.dispatchEvent(new Event('toggle')); });
-    assert.equal(name.closest('fieldset')?.disabled, false, 'collapsing the PDF editor releases its metadata lock');
+    typeName('Changed after closing PDF');
+    assert.equal(name.value, 'Changed after closing PDF', 'closing PDF preparation unlocks Name');
     await act(async () => { details.open = true; details.dispatchEvent(new Event('toggle')); });
     mode.pending = undefined;
     click(button('Prepare vector preview')!);
     await until(() => !!mode.pending);
     click(button('Cancel')!);
-    assert.equal(name.closest('fieldset')?.disabled, false);
+    typeName('Changed after cancellation');
+    assert.equal(name.value, 'Changed after cancellation');
     assert.match(ui.textContent ?? '', /cancelled/);
   } finally { cleanup(); restore(); fixture.dispose(); api.free(); }
 });

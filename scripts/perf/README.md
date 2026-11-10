@@ -48,7 +48,11 @@ Native warm has no cache outside `apps/server`, so there is no native warm
 lane. Native is a batch call with no streamed-geometry event, so it has no
 first-geometry time. Below 10 MB and above 400 MB the viewer caches nothing,
 so the warm lanes there are uncached reopens (the snapshot wait is skipped).
-Each row states the expected tier and the observed load path.
+Each row states the expected tier and the observed load path. A reopen whose
+cache write did not settle, or whose expected scene snapshot was not written
+within 60 s, would time a different path. It is recorded as a failed sample
+with that reason, kept in the data and left out of medians and verdicts;
+`scenoptic-bench.mjs` applies the same rule (`prepareWarmOpen`).
 
 Browser timing (`viewer-load-probe.mjs`, `viewer-load-boot.mjs`; readiness is
 shared with `scenoptic-bench.mjs`):

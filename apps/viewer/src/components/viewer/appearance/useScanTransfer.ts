@@ -58,15 +58,16 @@ export function useScanTransfer(work: ScanTransferWorkbench) {
   useEffect(() => { setProductIds([]); }, [work.targetId]);
   useEffect(() => { setSettings(value => value.reviewed ? { ...value, reviewed: false } : value); }, [work.result]);
   async function preview() {
-    if (!work.session || !work.result || work.stale || work.busy || !planner.current || busy) return;
+    const session = work.session, registration = work.result, worker = planner.current;
+    if (!session || !registration || work.stale || work.busy || !worker || busy) return;
     await runPreview(async isCurrent => {
       release(); const controller = new AbortController(); operation.current = controller;
       const owner: AppearanceAssetOwner = { kind: 'draft', id: crypto.randomUUID() };
       let adopted = false; setReady(false); setError(false); setStatus(translated('appearance.scanTransfer.status.sampling'));
       try {
-        const session = work.session, renderer = getGlobalRenderer();
+        const renderer = getGlobalRenderer();
         if (!renderer) throw new ScanValidationError('appearance.scanTransfer.error.viewNotReady');
-        const output = await prepareMeshTransfer(session, work.result, productIds, settings, planner.current, owner, controller.signal);
+        const output = await prepareMeshTransfer(session, registration, productIds, settings, worker, owner, controller.signal);
         controller.signal.throwIfAborted(); if (!isCurrent()) return; session.validate();
         setCoverage(output.transfer);
         if (!output.plan || !output.transfer.applicable || !(output.transfer.coverage.observedRasterInteriorTexels > 0)) { setStatus(output.transfer.diagnostics.length ? raw(output.transfer.diagnostics.join(' ')) : translated('appearance.scanTransfer.status.noSurface')); return; }

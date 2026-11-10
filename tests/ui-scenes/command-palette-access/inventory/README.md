@@ -46,6 +46,14 @@ Its reported “missing shortcuts” are discoverability gaps: the real panel pa
 reach those child controls subject to model/provider/proposal prerequisites. They
 are not 60 missing tools, and adding unconditional proposal execution would be
 incorrect. The appearance/settings review adds 69 records / 499 sites, and drawing/hierarchy
-adds 72 records / 490 sites. 78 component records still have only partial family
-tracing. These source reviews identify the conditional error-report launcher as
-a remaining palette gap; their behavioral oracles remain unexecuted.
+adds 72 records / 490 sites. The final shared-control review adds the remaining
+78 component records / 340 sites. Every original component now has a scoped source
+review, but some consumer chains remain explicitly unresolved. This is source
+accounting only. The conditional error-report launcher found in earlier reports
+is now implemented in the R2 candidate; its behavioral tests remain unexecuted.
+
+Remaining qualification includes shared HUD/analysis producer branches, installed
+extension contributions, popup policy, role/provider conditions and downstream
+mutation/export results. A complete count cannot clear those unknowns. The
+coordinator must bind actual canonical destinations and behavior receipts before
+claiming complete access.

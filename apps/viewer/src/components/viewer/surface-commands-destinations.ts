@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /** Parameterized destinations use the same labels and actions as their real controls (#8947). */
+import { openErrorReportDestination } from '@/lib/error-reports/destination';
 import { openModelPlan } from './model/open-model-plan';
 import { openRetainedReport } from './retained-report-destination';
 import { registerEnglish } from '@/i18n';
@@ -65,6 +66,12 @@ export const DESTINATION_SURFACE_COMMANDS = [
     ...base, id: 'model:plan', labelKey: 'modelWorkspace.plan.show',
     keywords: 'model plan split layout 2d 3d', keywordsKey: 'commandPalette.paths.modelPlan',
     category: 'Tools', icon: Crosshair, run: () => { openModelPlan(); },
+  },
+  {
+    ...base, id: 'panel:error-report', labelKey: 'commandPalette.errorReport.label',
+    keywords: 'report error bug failed load report help improve resume recent report pending report',
+    keywordsKey: 'commandPalette.errorReport.aliases', detailKey: 'commandPalette.paths.errorReport',
+    category: 'Panels', icon: Search, run: () => openErrorReportDestination(),
   },
   {
     ...base, id: 'panel:retained-report', labelKey: 'retainedGeometry.chip.aria',

@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /** Palette-only prerequisites. Shared ribbon/context enabled predicates stay intact (#8947). */
+import { errorReportDestinationBlock } from '@/lib/error-reports/destination';
 import { hasInlineSearchHost } from './inline-search-focus';
 import { blankModelUnavailable } from '@/hooks/startBlankModel';
 import { getPlacementGeorefContext } from '@/lib/geo/placement-georef-runtime';
@@ -58,6 +59,10 @@ export function paletteAvailability(command: SurfaceCommandDefinition, context: 
     if (!s.session) return blocked('commandPalette.availability.ifc');
     if (!canMutate(s, s.session.modelId)) return blocked('commandPalette.availability.editor');
     if (s.selectedEntityId === null && s.selectedEntityIds.size === 0) return blocked('commandPalette.availability.selection');
+  }
+  if (id === 'panel:error-report') {
+    const reason = errorReportDestinationBlock();
+    if (reason) return blocked(reason);
   }
   if (id === 'search:inline' && !hasInlineSearchHost()) return blocked('commandPalette.availability.host');
   if (id === 'file:new-blank') {

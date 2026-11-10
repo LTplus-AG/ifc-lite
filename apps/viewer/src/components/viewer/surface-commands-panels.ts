@@ -79,7 +79,8 @@ export const PANEL_SURFACE_COMMANDS = [
   {
     id: 'panel:properties', panelId: 'properties', panelGroup: panelGroupFor('properties'),
     labelKey: panelTitleKey('properties'),
-    keywords: 'properties attributes material classification schedule task panel right inspector information',
+    keywords: 'properties attributes material classification schedule task panel right inspector information select entity edit mode location zones volume split add reassign geometry property editing',
+    keywordsKey: 'commandPalette.paths.properties', detailKey: 'commandPalette.paths.properties',
     category: 'Panels', icon: Layout, surfaces: paletteOnly, enabled: alwaysEnabled,
     run: () => {
       closeActiveAnalysisExtension();
@@ -90,7 +91,8 @@ export const PANEL_SURFACE_COMMANDS = [
   {
     id: 'panel:tree', panelId: 'hierarchy', panelGroup: panelGroupFor('hierarchy'),
     labelKey: panelTitleKey('hierarchy'),
-    keywords: 'spatial tree hierarchy left panel', category: 'Panels', icon: TreeDeciduous,
+    keywords: 'spatial tree hierarchy left panel model tags tag grouping isolate tagged models storey sort exploded gap source sync changed model removal',
+    keywordsKey: 'commandPalette.paths.tree', detailKey: 'commandPalette.paths.tree', category: 'Panels', icon: TreeDeciduous,
     surfaces: paletteOnly, enabled: alwaysEnabled,
     run: () => {
       closeActiveAnalysisExtension();

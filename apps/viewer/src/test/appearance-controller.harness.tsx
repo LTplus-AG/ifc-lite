@@ -87,7 +87,7 @@ class ControlledWorker implements AppearanceWorker {
 
 /** Shared by Node/HappyDOM and an isolated real-browser lab; never run in a user's model session. */
 export async function runAppearanceControllerScenario(
-  scenario: 'strict-source' | 'discard-debounce' | 'discard-worker' | 'stale-version' | 'upload-failure' | 'partial-exclusion' | 'apply-selection' | 'apply-cancel-late' | 'apply-cancel-repreview' | 'apply-stale-repreview',
+  scenario: 'strict-source' | 'discard-debounce' | 'discard-worker' | 'stale-version' | 'upload-failure' | 'partial-exclusion' | 'apply-selection' | 'apply-cancel-late' | 'apply-cancel-repreview' | 'apply-stale-repreview' | 'apply-published-discard',
   imageBytes = controllerPng,
 ): Promise<{ scenario: string; requests: number; terminations: number; stages: number; nativeBitmaps: number }> {
   const initial = useViewerStore.getState();
@@ -242,7 +242,30 @@ END-ISO-10303-21;`);
         await act(async () => { workers[0].complete(); });
         await until(() => !button('Apply').disabled, `preview never became ready: ${container.textContent}`);
         check(parts[0].textureBitmap?.width, 'real inventory decode did not reach the preview');
-        if (scenario === 'apply-stale-repreview') {
+        if (scenario === 'apply-published-discard') {
+          // PR #9585: publication may finish in the same flush as Discard.
+          const version = useViewerStore.getState().mutationVersion;
+          let discarded = false;
+          const stop = useViewerStore.subscribe(state => {
+            if (!discarded && state.mutationVersion > version) {
+              discarded = true;
+              queueMicrotask(() => {
+                collectCancellationNotices = true;
+                button('Discard').click();
+              });
+            }
+          });
+          try {
+            await click('Apply');
+            await until(() => discarded, 'Apply never reached its publication boundary');
+            await advance(30);
+            check((useViewerStore.getState().undoStacks.get(MODEL)?.length ?? 0) === 2,
+              'Discard retroactively removed a committed appearance');
+            check(cancellationNotices.some(text => text.includes('Preview discarded.')), 'publication-boundary Discard was not shown');
+            check(!cancellationNotices.some(text => text.includes('Appearance applied.')), 'stale success overwrote the discard notice');
+          } finally { stop(); }
+          await act(async () => { useViewerStore.getState().undo(MODEL); });
+        } else if (scenario === 'apply-stale-repreview') {
           // PR #9585 B1: settling a failed Apply must revisit dependency changes skipped while busy.
           const prepare = editor.prepareEntityOperations.bind(editor);
           let release!: () => void;
@@ -346,7 +369,7 @@ END-ISO-10303-21;`);
     await unmount();
     const retained = appearanceAssets.encoded(sourceId);
     check(retained.length === imageBytes.length && retained.every((byte, index) => byte === imageBytes[index]), 'panel close lost original image bytes');
-    if (scenario === 'apply-selection') useViewerStore.getState().clearAllMutations();
+    if (scenario === 'apply-selection' || scenario === 'apply-published-discard') useViewerStore.getState().clearAllMutations();
     useViewerStore.getState().removeAppearanceSource(sourceId);
     check(appearanceAssets.get(sourceId) === undefined, 'removing the final source leaked a draft lease');
     check(allWorkers.every(worker => worker.terminations === 1), 'catalog or preview worker leaked after unmount');

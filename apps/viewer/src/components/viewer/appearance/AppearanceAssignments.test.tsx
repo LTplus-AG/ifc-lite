@@ -66,7 +66,7 @@ test('assignment controller messages follow live locale changes (#4918)', () => 
   }
 });
 
-for (const scenario of ['apply', 'cancel', 'stale', 'room', 'query', 'room-pending', 'apply-cancel', 'apply-error', 'apply-abort'] as const) test(`mounted native multi-model assignments ${scenario} preserve complete transaction scope #4420`, {
+for (const scenario of ['apply', 'cancel', 'stale', 'room', 'query', 'room-pending', 'apply-cancel', 'apply-error', 'apply-abort', 'apply-published-cancel'] as const) test(`mounted native multi-model assignments ${scenario} preserve complete transaction scope #4420`, {
   skip: !existsSync(wasm) && 'Run pnpm build:wasm for native assignment tests',
 }, async t => {
   const initial = useViewerStore.getState(), previousRenderer = getGlobalRenderer();
@@ -120,6 +120,28 @@ for (const scenario of ['apply', 'cancel', 'stale', 'room', 'query', 'room-pendi
         assert.equal(f.scene.get(entry.globalId)?.parts[0].texture,undefined);
         assert.equal(useViewerStore.getState().undoStacks.get(entry.modelId)?.length ?? 0,0);
       }
+      return;
+    }
+    if (scenario === 'apply-published-cancel') {
+      // PR #9585: a completed global commit must not publish stale local success after Cancel.
+      const version = useViewerStore.getState().mutationVersion;
+      let cancelled = false;
+      const stop = useViewerStore.subscribe(state => {
+        if (!cancelled && state.mutationVersion > version) {
+          cancelled = true;
+          queueMicrotask(() => click(button(ui, 'Cancel assignments')));
+        }
+      });
+      try {
+        click(button(ui, 'Apply assignments'));
+        await until(() => cancelled);
+        await advance(50);
+        assert.match(ui.textContent ?? '', /cancelled/);
+        assert.doesNotMatch(ui.textContent ?? '', /All assignments applied/);
+        assert.equal(useViewerStore.getState().undoStacks.get('a')?.length, 1);
+        assert.equal(useViewerStore.getState().undoStacks.get('b')?.length, 1);
+        act(() => useViewerStore.getState().undo('a'));
+      } finally { stop(); }
       return;
     }
     if (scenario === 'apply-error' || scenario === 'apply-abort') {

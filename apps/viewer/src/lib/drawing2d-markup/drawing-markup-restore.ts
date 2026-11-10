@@ -21,7 +21,6 @@
 import { EntityExtractor, extractLengthUnitScale, getAttributeNames, type IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import {
-  DRAWING_MARKUP_OBJECTTYPE,
   DRAWING_MARKUP_PSET_NAME,
   DRAWING_MARKUP_QSET_NAME,
 } from '@ifc-lite/create';
@@ -63,18 +62,36 @@ function readBaseObjectType(dataStore: IfcDataStore, expressId: number): string 
   return typeof value === 'string' && value.length > 0 ? value : null;
 }
 
-const embeddedMarkup = new WeakMap<IfcDataStore, boolean>();
-const markupObjectTypes = new Set<string>(Object.values(DRAWING_MARKUP_OBJECTTYPE));
+const embeddedMarkup = new WeakMap<IfcDataStore['source'], boolean>();
+const markupPrefix = new TextEncoder().encode('IfcLite:Markup:');
 
-/** Source-only, once-per-store preflight; no symbolic geometry or spatial key. */
-export function hasEmbeddedDrawingMarkup(dataStore: IfcDataStore): boolean {
-  const cached = embeddedMarkup.get(dataStore);
+/**
+ * Conservative source preflight, independent of owner class. Any STEP escape
+ * or live overlay change must reach the reader, which resolves decoded tags
+ * and effective ObjectType edits. Only immutable source negatives are cached.
+ * Call outside render: compacted sources can inflate blocks on slice().
+ */
+export function hasEmbeddedDrawingMarkup(dataStore: IfcDataStore, view?: MutablePropertyView): boolean {
+  if (view?.hasPendingChanges()) return true;
+  const source = dataStore.source;
+  if (!source?.byteLength) return false;
+  const cached = embeddedMarkup.get(source);
   if (cached !== undefined) return cached;
-  // @raw-entity-enumeration-ok restore-on-load examines immutable embedded annotation tags only
-  const ids = dataStore.entityIndex?.byType.get('IFCANNOTATION') ?? [];
-  const found = ids.some((id) => markupObjectTypes.has(readBaseObjectType(dataStore, id) ?? ''));
-  embeddedMarkup.set(dataStore, found);
-  return found;
+  const chunkSize = 256 * 1024;
+  for (let offset = 0; offset < source.byteLength; offset += chunkSize) {
+    const bytes = source.slice(offset, Math.min(source.byteLength, offset + chunkSize + markupPrefix.length - 1));
+    // Encoded tags need the real STEP decoder; never reject them lexically.
+    if (bytes.indexOf(92) >= 0) { embeddedMarkup.set(source, true); return true; }
+    for (let i = bytes.indexOf(markupPrefix[0]); i >= 0; i = bytes.indexOf(markupPrefix[0], i + 1)) {
+      if (i + markupPrefix.length > bytes.length) break;
+      if (markupPrefix.every((byte, j) => bytes[i + j] === byte)) {
+        embeddedMarkup.set(source, true);
+        return true;
+      }
+    }
+  }
+  embeddedMarkup.set(source, false);
+  return false;
 }
 
 /**
@@ -153,7 +170,7 @@ export function restoreDrawingMarkupFromModel(modelId: string): DrawingMarkupRea
     if (!context) return null;
     const { view, dataStore } = context;
 
-    const parseResult = getParseFor(dataStore);
+    const parseResult = getParseFor({ store: dataStore, mutationView: view });
     if (!parseResult) return null;
 
     const meta = buildDrawingMarkupMetaLookup(view, dataStore);

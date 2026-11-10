@@ -29,7 +29,7 @@ import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { readDrawingMarkupFromParseResult } from '@/lib/overlay-parse/drawing-markup-read';
 import { useViewerStore } from '@/store/index.js';
 import { getDrawingMarkupModelContext } from './drawing-markup-context.js';
-import { buildDrawingMarkupMetaLookup, restoreDrawingMarkupFromModel } from './drawing-markup-restore.js';
+import { buildDrawingMarkupMetaLookup, restoreDrawingMarkupFromModel, hasEmbeddedDrawingMarkup } from './drawing-markup-restore.js';
 
 const TAGGED_ANNOTATION_ID = 50;
 const UNTAGGED_ANNOTATION_ID = 60;
@@ -198,4 +198,18 @@ describe('restoreDrawingMarkupFromModel: not parsed yet', () => {
     const result = restoreDrawingMarkupFromModel('never-loaded');
     assert.equal(result, null);
   });
+});
+
+
+it('NEW-3: preflight admits non-annotation owners, encoded tags and overlay edits', async () => {
+  const grid = await parse(fixture().replace("IFCANNOTATION('0Annot000000000000050a',#4,'Measurement',$,'IfcLite:Markup:Measure',$,$)", "IFCGRID('0Annot000000000000050a',#4,'Measurement',$,'IfcLite:Markup:Measure',$,$,(),(),$)"));
+  assert.equal(hasEmbeddedDrawingMarkup(grid), true, 'reader accepts tagged grid owners too');
+  const blank = await parse(fixture().replaceAll('IfcLite:Markup:Measure', 'OrdinaryAnnotation'));
+  assert.equal(hasEmbeddedDrawingMarkup(blank), false);
+  const { MutablePropertyView } = await import('@ifc-lite/mutations');
+  const view = new MutablePropertyView(blank.properties, 'overlay-preflight');
+  view.setAttribute(UNTAGGED_ANNOTATION_ID, 'ObjectType', 'IfcLite:Markup:Measure');
+  assert.equal(hasEmbeddedDrawingMarkup(blank, view), true, 'cached source negative cannot hide a live tag edit');
+  const encoded = await parse(fixture().replaceAll('IfcLite:Markup:Measure', String.raw`IfcLite:Markup:\X2\004D\X0\easure`));
+  assert.equal(hasEmbeddedDrawingMarkup(encoded), true, 'STEP-encoded tags reach the real decoder');
 });

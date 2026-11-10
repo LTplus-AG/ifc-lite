@@ -18,7 +18,7 @@
  */
 
 import '@/test/setup-dom.js';
-import { describe, it, beforeEach } from 'node:test';
+import { describe, it, beforeEach, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { act, createElement } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -56,15 +56,15 @@ END-ISO-10303-21;
 `;
 }
 
-async function parse(): Promise<IfcDataStore> {
-  const bytes = new TextEncoder().encode(fixture());
+async function parse(ifc = fixture()): Promise<IfcDataStore> {
+  const bytes = new TextEncoder().encode(ifc);
   return new IfcParser().parseColumnar(
     bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
   );
 }
 
-async function seedStore(modelId: string): Promise<IfcDataStore> {
-  const store = await parse();
+async function seedStore(modelId: string, ifc = fixture()): Promise<IfcDataStore> {
+  const store = await parse(ifc);
   const state = useViewerStore.getState();
   useViewerStore.setState({
     activeModelId: modelId,
@@ -258,21 +258,29 @@ describe('tryRestoreDrawingMarkup: populates from a model with tagged annotation
 });
 
 it('NEW-3: blank IFC restore never computes a spatial key or starts a worker', async () => {
-  const store = await seedStore('blank-new3');
-  // Remove the sole annotation from the real parsed fixture's type index.
-  store.entityIndex.byType.set('IFCANNOTATION', []);
+  const store = await seedStore('blank-new3', fixture().replaceAll('IfcLite:Markup:Measure', 'OrdinaryAnnotation'));
+  let rendering = false;
+  const sourceSlice = store.source.slice.bind(store.source);
+  const reads = mock.method(store.source, 'slice', (start: number, end: number) => {
+    assert.equal(rendering, false, 'source preflight must run outside React render');
+    return sourceSlice(start, end);
+  });
   const hierarchy = store.spatialHierarchy;
   Object.defineProperty(store, 'spatialHierarchy', { configurable: true, get() { throw new Error('blank restore requested spatial buckets'); } });
   try {
-    tryRestoreDrawingMarkup('blank-new3');
     const host = document.createElement('div');
     document.body.appendChild(host);
     const root = createRoot(host);
-    const Restore = () => { useDrawingMarkupRestoreOnLoad(); return null; };
+    const Restore = () => {
+      rendering = true;
+      try { useDrawingMarkupRestoreOnLoad(); } finally { rendering = false; }
+      return null;
+    };
     await act(async () => root.render(createElement(Restore)));
     await act(async () => root.unmount());
     host.remove();
   } finally {
+    reads.mock.restore();
     Object.defineProperty(store, 'spatialHierarchy', { configurable: true, value: hierarchy });
   }
 });

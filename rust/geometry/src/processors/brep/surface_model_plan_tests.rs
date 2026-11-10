@@ -188,3 +188,27 @@ fn lowering_defers_refusal_reports_until_ordered_evaluation() {
         [IfcType::IfcFace, IfcType::IfcAdvancedFace]
     );
 }
+
+/// What the lowering does NOT do: decode a face whose record is a plain
+/// `IFCFACE((..))` only to learn its type. The decoder's entity memo shows
+/// which faces were fully decoded (`decode_by_id` fills it; the raw-byte
+/// readers do not). The plain face stays out of it, while a face the byte proof
+/// cannot read (a comment inside the record) is still decoded, so the memo is
+/// a live witness of the decode, and both faces still mesh.
+#[test]
+fn plain_ifcface_records_are_lowered_without_a_full_decode() {
+    let source = "#1=IFCCARTESIANPOINT((0.,0.,0.));#2=IFCCARTESIANPOINT((1.,0.,0.));\
+        #3=IFCCARTESIANPOINT((1.,1.,0.));#4=IFCCARTESIANPOINT((0.,1.,0.));\
+        #5=IFCPOLYLOOP((#1,#2,#3,#4));#6=IFCFACEOUTERBOUND(#5,.T.);\
+        #7=IFCPOLYLOOP((#4,#3,#2,#1));#8=IFCFACEOUTERBOUND(#7,.T.);\
+        #13=IFCFACE((#6));#14=IFCFACE((#8)/* decoded */);\
+        #20=IFCCONNECTEDFACESET((#13,#14));#30=IFCFACEBASEDSURFACEMODEL((#20));";
+    let mut decoder = EntityDecoder::new(source);
+    let entity = decoder.decode_by_id(30).unwrap();
+    let names = ("FaceBasedSurfaceModel missing FbsmFaces", "face set");
+    let plan = lower(&entity, &mut decoder, TessellationQuality::Medium, None, names, 0).unwrap();
+    assert!(decoder.get_cached(13).is_none(), "a plain IFCFACE must not be fully decoded");
+    assert!(decoder.get_cached(14).is_some(), "a face the byte proof refuses is still decoded");
+    let mesh = plan.evaluate().unwrap();
+    assert_eq!(mesh.indices.len(), 12, "both quads still mesh");
+}

@@ -169,6 +169,61 @@ fn is_plain_face_record(record: &[u8]) -> bool {
     eat(&mut at, b")") && eat(&mut at, b")") && eat(&mut at, b";")
 }
 
+/// The byte proof's own tests live with it: they name `is_plain_face`, so a
+/// whole-file revert of this module removes them together. What the proof
+/// buys (no face decode in surface-model lowering) is observed from
+/// `ifc-lite-geometry`'s `surface_model_plan` tests through the entity memo.
+#[cfg(test)]
+mod plain_face_tests {
+    use super::EntityDecoder;
+
+    /// The byte proof behind skipping a face decode: every record it accepts
+    /// decodes, uncached, to an `IfcFace`; every variant it refuses still decodes
+    /// (or fails) exactly as before because the caller then decodes it.
+    #[test]
+    fn plain_face_proof_accepts_only_records_the_decode_reads_as_ifc_face() {
+        let accepted = [
+            "#1=IFCFACE((#10));",
+            "#2=IFCFACE((#10,#11,#12));",
+            "#3= IFCFACE((#10,#11));",
+            "#4 =\tIFCFACE ( ( #10 , #11 ) ) ;",
+            "#5=IFCFACE((#10,#11))\r\n;",
+            "#6=IFCFACE((#4294967295));",
+            "#7=IFCFACE((#0010));",
+        ];
+        let refused = [
+            "#20=IFCFACE(());",
+            "#21=IFCFACE($);",
+            "#22=IFCFACE((#10),$);",
+            "#23=IFCFACE((#10,));",
+            "#24=IFCFACE((# 10));",
+            "#25=IFCFACE((#4294967296));",
+            "#26=IFCFACE((#10/* c */));",
+            "#27=ifcface((#10));",
+            "#28=IFCFACESURFACE((#10),#11,.T.);",
+            "#29=IFCADVANCEDFACE((#10),#11,.T.);",
+            "#30=IFCFACE((#10,#11.5));",
+            "#31=IFCFACE((#10)));",
+            "#32=IFCFACE((#10))",
+            "#33=IFCFACE((#10a));",
+            "#34=IFCFACE (#10);",
+            "#35=IFCFACE_X((#10));",
+        ];
+        let source: String = accepted.iter().chain(&refused).map(|r| format!("{r}\n")).collect();
+        for (record, expected) in accepted.iter().map(|r| (r, true)).chain(refused.iter().map(|r| (r, false))) {
+            let id: u32 = record[1..].split(|c: char| !c.is_ascii_digit()).next().unwrap().parse().unwrap();
+            let mut decoder = EntityDecoder::new(&source);
+            assert_eq!(decoder.is_plain_face(id), expected, "{record}");
+            if expected {
+                let face = decoder.decode_by_id(id).unwrap_or_else(|e| panic!("{record}: {e}"));
+                assert_eq!(face.ifc_type, crate::IfcType::IfcFace, "{record}");
+                // A decoded (memoized) id is the decode's to answer.
+                assert!(!decoder.is_plain_face(id), "{record}");
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 #[path = "fast_buffers_tests.rs"]
 mod tests;

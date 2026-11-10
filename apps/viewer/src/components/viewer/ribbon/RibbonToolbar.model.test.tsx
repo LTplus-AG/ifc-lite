@@ -23,7 +23,7 @@ for (const tab of ['home', 'view', 'file', 'elements', 'analyze', 'author'] sati
     const buttons = ui.querySelectorAll<HTMLButtonElement>('[data-command-id="tool:edit-mode"]');
     assert.equal(buttons.length, 1);
     const button = buttons[0];
-    assert.equal(button.closest('[role="tabpanel"]'), null);
+    assert.equal(button.closest('[role="tabpanel"]') === null, true, 'Model belongs to the tab row');
     click(button);
     assert.equal(useViewerStore.getState().workspaceMode, 'model');
     assert.equal(button.getAttribute('aria-pressed'), 'true');
@@ -43,10 +43,10 @@ it('Enter on Model enters and leaves with focus kept on the button (#9296)', asy
   const button = ui.querySelector<HTMLButtonElement>('[data-command-id="tool:edit-mode"]')!;
   activate(button, 'Enter');
   assert.equal(useViewerStore.getState().workspaceMode, 'model');
-  assert.equal(document.activeElement, button, 'focus stays on Model after entering');
+  assert.equal(document.activeElement === button, true, 'focus stays on Model after entering');
   activate(button, ' ');
   assert.equal(useViewerStore.getState().workspaceMode, 'view');
-  assert.equal(document.activeElement, button, 'focus stays on Model after leaving');
+  assert.equal(document.activeElement === button, true, 'focus stays on Model after leaving');
 });
 
 // #9296 review: Move owns Shift+M inside Model, so Measure needs its own key.

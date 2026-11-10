@@ -77,12 +77,12 @@ test('PDF preview cancellation, changed inputs and stale models cannot enable la
     const start = async () => { mode.pending = undefined; click(button('Prepare vector preview')!); await until(() => !!mode.pending); };
     await start(); const lateCancel = mode.pending!;
     click(button('Cancel')!); await act(async () => { lateCancel(); });
-    assert.ok(mode.terminations > 0); assert.equal(button('Create annotation'), undefined);
+    assert.ok(mode.terminations > 0); assert.equal(button('Create annotation') === undefined, true);
     assert.match(ui.textContent ?? '', /cancelled/);
     await start(); const lateInput = mode.pending!;
     assert.match(ui.textContent ?? '', /Exact conversion: 2 convertible paths/, 'the report stays visible while the plan is prepared');
     click(button('Change annotation name')!); await act(async () => { lateInput(); });
-    assert.equal(button('Create annotation'), undefined, 'changed visible Name cannot reuse the previous planned IFC metadata');
+    assert.equal(button('Create annotation') === undefined, true, 'changed visible Name cannot reuse the previous planned IFC metadata');
     await start(); await act(async () => { mode.pending!(); });
     await until(() => !!button('Create annotation') && !button('Create annotation')!.disabled);
     assert.equal(fixture.view.getNewEntities().length, 0, 'ready preview still has no authored IFC rows');
@@ -112,7 +112,7 @@ test('partial pages show the report, need explicit acceptance and record their o
     assert.match(ui.textContent ?? '', /Partial conversion: 1 visible omission would be left out; 2 paths convert/);
     assert.match(ui.textContent ?? '', /1 × Text runs — region x 20–/, 'the /UserUnit 2 control page reports its extent in points');
     assert.match(ui.textContent ?? '', /accept the partial conversion to prepare it/);
-    assert.equal(button('Create annotation'), undefined);
+    assert.equal(button('Create annotation') === undefined, true);
     assert.ok(button('Prepare partial conversion')!.disabled, 'no partial preparation without acceptance');
     click(checkbox()!);
     assert.ok(!button('Prepare partial conversion')!.disabled);
@@ -148,8 +148,8 @@ test('partial pages show the report, need explicit acceptance and record their o
     click(button('Prepare vector preview')!);
     await until(() => /raster reference only/.test(ui.textContent ?? ''));
     assert.ok(button('Prepare vector preview')!.disabled, 'a raster-only page is never offered as editable vectors');
-    assert.equal(ui.querySelector('input[type="checkbox"]'), null);
-    assert.equal(button('Create annotation'), undefined);
+    assert.equal(ui.querySelector('input[type="checkbox"]') === null, true);
+    assert.equal(button('Create annotation') === undefined, true);
     assert.equal(raster.view.getNewEntities().length, 0);
   } finally { cleanup(); restoreRaster(); raster.dispose(); api.free(); }
 });

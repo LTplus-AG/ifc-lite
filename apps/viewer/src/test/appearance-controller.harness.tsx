@@ -322,6 +322,7 @@ END-ISO-10303-21;`);
           await advance(20);
           check(cancellationNotices.some(text => text.includes('Preview discarded.')), 'Discard never rendered its cancellation notice');
           check(!cancellationNotices.some(text => /Preparing IFC changes|Saving appearance/.test(text)), 'late commit progress replaced the discard notice');
+          check(!cancellationNotices.some(text => /aborted/i.test(text)), 'an obsolete Apply error replaced the discard notice');
         } else if (scenario === 'apply-selection') {
           let release!: () => void;
           const held = new Promise<void>(resolve => { release = resolve; });

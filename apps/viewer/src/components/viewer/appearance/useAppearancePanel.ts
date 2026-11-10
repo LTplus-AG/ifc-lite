@@ -77,14 +77,14 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply', suspendPr
     if (previousIntent.current !== intent) { previousIntent.current = intent; setPreviewEnabled(true); }
   }, [intent]);
   const pendingAbort = useRef<AbortController | null>(null);
-  const { start: startApply, reset: resetApply } = useAsyncRun();
-  const applyAbort = useRef<AbortController | null>(null);
+  const applyRun = useAsyncRun();
   const appliedRevision = useRef<string | null>(null);
   const draft = useRef<Draft | null>(null);
   const planner = useRef<ReturnType<typeof createAppearancePlanner> | null>(null);
   const supported = useRef<number[]>([]);
   const snapshot = useRef<AppearanceSnapshot | null>(null);
   const [catalogState, setCatalogState] = useState<{ modelId: string; catalog: AppearanceCatalog } | null>(null);
+  // Raster uploads publish catalog assets globally; this ref only fences their local upload UI.
   const mounted = useRef(true);
   const selectedSource = sources.find(source => source.id === sourceId);
   const target = models.get(modelId ?? '');
@@ -116,17 +116,16 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply', suspendPr
     planner.current = ownedPlanner;
     return () => {
       mounted.current = false;
-      applyAbort.current?.abort(); resetApply();
       ownedPlanner.dispose();
       snapshot.current = null;
       if (planner.current === ownedPlanner) planner.current = null;
       const previous = draft.current; draft.current = null;
       discardDraft(previous);
     };
-  }, [resetApply]);
+  }, []);
 
   useEffect(() => {
-    if (applyAbort.current && !applyAbort.current.signal.aborted) return;
+    if (applyRun.busy) return;
     if (intent !== 'apply' || !modelId || unavailableReason) {
       const previous = draft.current; draft.current = null;
       discardDraft(previous);
@@ -156,7 +155,7 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply', suspendPr
         const worker = planner.current;
         if (!worker) throw new AppearanceValidationError('appearance.controller.workerUnavailable');
         const currentSnapshot = await prepareAppearanceSnapshot(snapshot.current, modelId, owners.productIds, worker, controller.signal);
-        if (controller.signal.aborted || !mounted.current) return;
+        if (controller.signal.aborted) return;
         snapshot.current = currentSnapshot;
         setCatalogState({ modelId, catalog: currentSnapshot.catalog });
         if (suspendPreview || !previewEnabled || !sourceId) {
@@ -188,7 +187,7 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply', suspendPr
           productIds: currentScope.productIds, imageUri, repeatS: settings.repeatS,
           repeatT: settings.repeatT, representationPolicy: settings.representationPolicy ?? 'preserve', mapping: appearanceMapping(settings),
           ...(masks ? { faceMasks: masks } : {}) }, { signal: controller.signal });
-        if (controller.signal.aborted || !mounted.current) return;
+        if (controller.signal.aborted) return;
         currentSnapshot.validate();
         // A stale or spent face selection is dropped here with its diagnostic; the
         // mask change re-runs this effect, so this plan is not staged.
@@ -220,11 +219,11 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply', suspendPr
         setConvertedObjects((plan.conversions ?? []).map(item => ({ productId: item.productId, name: `IFC object #${item.productId}` })));
         setShowingOriginal(false); setStatus('ready'); setStatusMessage(translatedMessage('appearance.controller.previewReady'));
       } catch (error) {
-        if (!controller.signal.aborted && mounted.current) { setStatus('error'); setStatusMessage(appearanceErrorMessage(error)); }
+        if (!controller.signal.aborted) { setStatus('error'); setStatusMessage(appearanceErrorMessage(error)); }
       } finally { if (!adopted) appearanceAssets.releaseOwner(owner); }
     })(); }, 250);
     return () => { clearTimeout(timer); controller.abort(); if (!adopted) appearanceAssets.releaseOwner(owner); };
-  }, [intent, modelId, sourceId, selectedSource, settings, owners, scope, unavailableReason, mutationVersion, previewEnabled, suspendPreview, faceMasks.masks]);
+  }, [intent, modelId, sourceId, selectedSource, settings, owners, scope, unavailableReason, mutationVersion, previewEnabled, suspendPreview, faceMasks.masks, applyRun.busy]);
 
   async function upload(file: File): Promise<void> {
     if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) { await pdfSource.upload(file); return; }
@@ -264,7 +263,7 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply', suspendPr
   }
   function discard(): void {
     pdfSource.cancel();
-    applyAbort.current?.abort(); resetApply();
+    applyRun.reset();
     appliedRevision.current = null;
     pendingAbort.current?.abort();
     planner.current?.cancel();
@@ -289,24 +288,22 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply', suspendPr
     const renderer = getGlobalRenderer();
     if (!current?.session || !renderer || status !== 'ready') return;
     const session = current.session;
-    await startApply(async ({ isCurrent }) => {
-      const controller = new AbortController(); applyAbort.current = controller;
+    await applyRun.start(async ({ signal, isCurrent }) => {
       setStatus('applying');
       try {
         await commitAppearance(current.modelId, current.assetIds, current.plan, renderer, session, current.groups, current.source, {
-          signal: controller.signal,
-          onProgress: phase => { if (isCurrent() && !controller.signal.aborted && mounted.current) setStatusMessage(translatedMessage(phase === 'preparing'
+          signal,
+          onProgress: phase => { if (isCurrent()) setStatusMessage(translatedMessage(phase === 'preparing'
             ? 'appearance.controller.preparingChanges' : 'appearance.controller.saving')); },
         });
-        if (!isCurrent() || controller.signal.aborted) return;
+        if (!isCurrent()) return;
         setPreviewEnabled(false); setConvertedObjects([]);
         faceMasks.clearApplied((current.plan.conversions ?? []).map(conversion => conversion.productId));
         appliedRevision.current = appearanceRevision(current.modelId);
         draft.current = null;
         appearanceAssets.releaseOwner(current.owner);
         setStatus('idle'); setStatusMessage(translatedMessage('appearance.controller.applied'));
-      } catch (error) { if (isCurrent() && mounted.current && !controller.signal.aborted) { setStatus('error'); setStatusMessage(rawMessage(error)); } }
-      finally { if (applyAbort.current === controller) applyAbort.current = null; }
+      } catch (error) { if (isCurrent()) { setStatus('error'); setStatusMessage(rawMessage(error)); } }
     });
   }
   return {

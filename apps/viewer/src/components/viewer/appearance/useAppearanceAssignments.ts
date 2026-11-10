@@ -4,7 +4,7 @@
 import { useAsyncRun } from '@/hooks/useAsyncRun';
 import { trackExportCompleted } from '@/lib/analytics';
 import { canResumeAssignmentReview, rememberAssignmentReview, forgetAssignmentReview } from '@/lib/appearance/assignments/session-review.js';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useViewerStore } from '@/store';
 import { downloadBlob, sanitizeFilename } from '@/lib/export/download.js';
 import { getGlobalRenderer } from '@/hooks/useBCF';
@@ -43,8 +43,7 @@ export function useAppearanceAssignments(base: AppearancePanelViewProps, enabled
   const rows = useMemo(() => recipe?.assignments ?? [], [recipe]);
   const live = useRef(new Map<string, CapturedAssignment>());
   const worker = useRef<ReturnType<typeof createAppearancePlanner> | null>(null);
-  const { start: startApply, reset: resetApply } = useAsyncRun();
-  const pending = useRef<AbortController | null>(null), mounted = useRef(true);
+  const applyRun = useAsyncRun();
   const roomBlocked = useRef(false);
   const draft = useRef<{ preparation: Prepared; preview: Preview; owner: AppearanceAssetOwner } | null>(null);
   const [status, setStatus] = useState<AppearancePanelViewProps['status']>('idle');
@@ -53,23 +52,30 @@ export function useAppearanceAssignments(base: AppearancePanelViewProps, enabled
   const [review, setReview] = useState<Review[] | null>(null);
   const [bindings, setBindings] = useState(new Map<string, { modelId: string; sourceId: string }>());
   const [version, setVersion] = useState(0);
-  const busy = status === 'preparing' || status === 'applying';
-  function releasePreview() {
+  const busy = applyRun.busy;
+  const releasePreview = useCallback(() => {
     const current = draft.current; draft.current = null;
     if (current) try { current.preview.session.cancel(); } finally { appearanceAssets.releaseOwner(current.owner); }
     setOriginal(false);
-  }
+  }, []);
   function cancel() {
-    resetApply(); pending.current?.abort(); pending.current = null; worker.current?.cancel(); releasePreview();
+    applyRun.reset(); worker.current?.cancel(); releasePreview();
     setStatus('idle'); setNotice(translatedMessage('appearance.assignments.status.cancelled'));
   }
   useEffect(() => {
-    mounted.current = true; worker.current = createAppearancePlanner();
-    return () => { mounted.current = false; resetApply(); pending.current?.abort(); worker.current?.dispose(); worker.current = null;
+    if (applyRun.state.kind === 'failed') {
+      releasePreview(); setStatus('error'); setNotice(localizedError(applyRun.state.error));
+    } else if (applyRun.state.kind === 'cancelled') {
+      releasePreview(); setStatus('idle'); setNotice(translatedMessage('appearance.assignments.status.cancelled'));
+    }
+  }, [applyRun.state, releasePreview]);
+  useEffect(() => {
+    worker.current = createAppearancePlanner();
+    return () => { worker.current?.dispose(); worker.current = null;
       const current = draft.current; draft.current = null;
       if (current) try { current.preview.session.cancel(); } finally { appearanceAssets.releaseOwner(current.owner); }
     };
-  }, [resetApply]);
+  }, []);
   useEffect(() => {
     const resumable = rows.filter(row => !live.current.has(row.id) && canResumeAssignmentReview(row));
     if (!enabled || !resumable.length) return;
@@ -83,14 +89,14 @@ export function useAppearanceAssignments(base: AppearancePanelViewProps, enabled
           || result.changes.removed.length || result.changes.renumbered.length || result.removedExclusions.length) continue;
         live.current.set(row.id, result.proposed); rememberAssignmentReview(result.proposed);
       }
-      if (mounted.current) { setVersion(v => v + 1); setStatus('idle'); setNotice(translatedMessage('appearance.assignments.status.reviewedRestored')); }
+      signal.throwIfAborted(); setVersion(v => v + 1); setStatus('idle'); setNotice(translatedMessage('appearance.assignments.status.reviewedRestored'));
     });
   }, [enabled]);
   useEffect(() => { if (!enabled) cancel(); }, [enabled]);
   useEffect(() => {
     if (!rows.length || status === 'applying') return;
     if (room) {
-      pending.current?.abort(); pending.current = null; worker.current?.cancel();
+      applyRun.reset(); worker.current?.cancel();
       roomBlocked.current = true; releasePreview(); setStatus('stale');
       setNotice(translatedMessage('appearance.assignments.status.leaveRoom'));
       return;
@@ -108,7 +114,7 @@ export function useAppearanceAssignments(base: AppearancePanelViewProps, enabled
         setNotice(translatedMessage('appearance.assignments.status.changed'));
       }
     } catch (error) { roomBlocked.current = false; releasePreview(); setStatus('stale'); setNotice(translatedMessage('appearance.assignments.status.stale', { reason: message(error) })); }
-  }, [models, revision, sources, room]);
+  }, [models, revision, sources, room, applyRun.busy, applyRun.reset]);
 
   function save(next: AppearanceAssignment[]) {
     if (next.length) resolveAppearanceAssignments(next);
@@ -117,13 +123,13 @@ export function useAppearanceAssignments(base: AppearancePanelViewProps, enabled
     setStatus('idle'); setNotice(translatedMessage('appearance.assignments.status.changed'));
   }
   async function run(operation: (signal: AbortSignal) => Promise<void>) {
-    pending.current?.abort(); worker.current?.cancel();
-    const controller = new AbortController(); pending.current = controller;
-    setStatus('preparing');
-    try { await operation(controller.signal); }
-    catch (error) { if (!controller.signal.aborted && mounted.current) { setStatus('error'); setNotice(localizedError(error)); } }
-    finally { if (pending.current === controller) pending.current = null; }
+    await applyRun.restart(async ({ signal }) => {
+      worker.current?.cancel();
+      setStatus('preparing');
+      await operation(signal);
+    });
   }
+
   function add() {
     base.onDiscard(); releasePreview();
     void run(async signal => {
@@ -132,7 +138,7 @@ export function useAppearanceAssignments(base: AppearancePanelViewProps, enabled
       const captured = await captureAppearanceAssignment({ modelId: base.modelId, sourceId: base.sourceId,
         slotId: previous?.model.slotId ?? crypto.randomUUID(), scope: base.scope, settings: base.settings,
         planner: worker.current, signal, previousSnapshot: previous ? live.current.get(previous.id)?.snapshot : undefined });
-      signal.throwIfAborted(); if (!mounted.current) return;
+      signal.throwIfAborted();
       save([...rows, captured.assignment]); live.current.set(captured.assignment.id, captured); rememberAssignmentReview(captured); setVersion(v => v + 1);
     });
   }
@@ -158,8 +164,8 @@ export function useAppearanceAssignments(base: AppearancePanelViewProps, enabled
       let adopted = false;
       try {
         const preparation = await prepareAppearanceAssignments({ captured, planner, owner, signal,
-          onProgress: (done, total) => { if (mounted.current) setNotice(translatedMessage('appearance.assignments.status.preparing', { done, total })); } });
-        signal.throwIfAborted(); if (!mounted.current) return;
+          onProgress: (done, total) => { if (!signal.aborted) setNotice(translatedMessage('appearance.assignments.status.preparing', { done, total })); } });
+        signal.throwIfAborted();
         const preview = stageAppearanceAssignments(preparation, captured, renderer);
         draft.current = { preparation, preview, owner }; adopted = true;
         const converted = preparation.steps.reduce((sum, step) => sum + (step.plan.conversions?.length ?? 0), 0);
@@ -181,20 +187,18 @@ export function useAppearanceAssignments(base: AppearancePanelViewProps, enabled
   async function apply() {
     const current = draft.current, renderer = getGlobalRenderer();
     if (!current || !renderer || original || status !== 'ready') return;
-    await startApply(async ({ isCurrent }) => {
-      const controller = new AbortController(); pending.current = controller; setStatus('applying');
-      try {
-        const result = await commitAppearanceAssignments(current.preparation, renderer, current.preview.session, current.preview.groups,
-          { signal: controller.signal, onProgress: phase => { if (isCurrent() && !controller.signal.aborted && mounted.current) setNotice(translatedMessage(phase === 'preparing'
-            ? 'appearance.assignments.status.preparingChanges' : 'appearance.assignments.status.saving')); } });
-        if (!isCurrent() || controller.signal.aborted) return;
-        draft.current = null; appearanceAssets.releaseOwner(current.owner); live.current.clear(); rows.forEach(forgetAssignmentReview);
-        if (mounted.current) { setStatus('idle'); setVersion(v => v + 1); setNotice(translatedMessage(result.observerFailed
-          ? 'appearance.assignments.status.appliedObserverFailed' : 'appearance.assignments.status.applied')); }
-      } catch (error) { if (isCurrent() && !controller.signal.aborted && mounted.current) { releasePreview(); setStatus('error'); setNotice(rawMessage(error)); } }
-      finally { if (pending.current === controller) pending.current = null; }
+    await applyRun.start(async ({ signal, isCurrent }) => {
+      setStatus('applying');
+      const result = await commitAppearanceAssignments(current.preparation, renderer, current.preview.session, current.preview.groups,
+        { signal, onProgress: phase => { if (isCurrent()) setNotice(translatedMessage(phase === 'preparing'
+          ? 'appearance.assignments.status.preparingChanges' : 'appearance.assignments.status.saving')); } });
+      if (!isCurrent()) return;
+      draft.current = null; appearanceAssets.releaseOwner(current.owner); live.current.clear(); rows.forEach(forgetAssignmentReview);
+      setStatus('idle'); setVersion(v => v + 1); setNotice(translatedMessage(result.observerFailed
+        ? 'appearance.assignments.status.appliedObserverFailed' : 'appearance.assignments.status.applied'));
     });
   }
+
   function binding(row: AppearanceAssignment) { return bindings.get(row.id) ?? { modelId: row.model.modelId, sourceId: row.source.id }; }
   function setBinding(id: string, patch: { modelId?: string; sourceId?: string }) {
     if (busy) return;
@@ -228,7 +232,7 @@ export function useAppearanceAssignments(base: AppearancePanelViewProps, enabled
         proposed.push(await reviewRestoredAssignment({ saved: row, modelId,
           sourceId: binding(row).sourceId, planner: worker.current, signal }));
       }
-      signal.throwIfAborted(); if (!mounted.current) return;
+      signal.throwIfAborted();
       setReview(proposed); setStatus('idle'); setNotice(translatedMessage('appearance.assignments.status.reviewMembership'));
     });
   }
@@ -246,7 +250,6 @@ export function useAppearanceAssignments(base: AppearancePanelViewProps, enabled
     if (file.size > 4 * 1024 * 1024) { setStatus('error'); setNotice(translatedMessage('appearance.assignments.status.recipeTooLarge')); return; }
     void run(async signal => {
       const restored = parseAppearanceAssignments(await file.text()); signal.throwIfAborted();
-      if (!mounted.current) return;
       rows.forEach(forgetAssignmentReview); restored.assignments.forEach(forgetAssignmentReview);
       save(restored.assignments); setBindings(new Map()); live.current.clear(); setVersion(v => v + 1);
       setNotice(translatedMessage('appearance.assignments.status.recipeRestored'));

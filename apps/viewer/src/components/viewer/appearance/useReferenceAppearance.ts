@@ -42,7 +42,7 @@ export function useReferenceAppearance(base: AppearancePanelViewProps, enabled: 
   const [active, setActive] = useState(true);
   const [status, setStatus] = useState<AppearancePanelViewProps['status']>('idle');
   const [message, setMessage] = useState<LocalizedMessage>(() => translatedMessage('appearance.reference.chooseSource'));
-  const { start: startPlace, reset: resetPlace } = useAsyncRun();
+  const placeRun = useAsyncRun();
   const draftId = useRef(`appearance-draft:${crypto.randomUUID()}`).current;
   const draft = useRef<Preview | null>(null);
   const settings = base.settings;
@@ -51,10 +51,11 @@ export function useReferenceAppearance(base: AppearancePanelViewProps, enabled: 
   useEffect(() => {
     const renderer = getGlobalRenderer();
     if (!enabled || !active) return;
-    if (base.sourceBusy || roomId) {
-      setStatus('idle'); setMessage(translatedMessage(roomId ? 'appearance.reference.leaveRoom' : 'appearance.reference.chooseSource'));
+    if (roomId) {
+      setStatus('idle'); setMessage(translatedMessage('appearance.reference.leaveRoom'));
       return;
     }
+    if (base.sourceBusy) return;
     if (editing && useViewerStore.getState().appearanceReferences.get(editing.id) !== editing) {
       setStatus('stale'); setMessage(translatedMessage('appearance.reference.drawingChanged')); return;
     }
@@ -98,18 +99,19 @@ export function useReferenceAppearance(base: AppearancePanelViewProps, enabled: 
       }
     })(); }, 150);
     return () => {
-      resetPlace(); clearTimeout(timer); controller.abort(); draft.current = null;
+      placeRun.reset(); clearTimeout(timer); controller.abort(); draft.current = null;
       renderer.getReferenceImages().remove(draftId);
       if (!inFlight) appearanceAssets.releaseOwner(owner);
     };
-  }, [enabled, active, source, settings, frameKey, base.sourceBusy, roomId, draftId, editing, resetPlace]);
+  }, [enabled, active, source, settings, frameKey, base.sourceBusy, roomId, draftId, editing, placeRun.reset]);
 
   async function place(): Promise<void> {
     const prepared = draft.current, renderer = getGlobalRenderer();
     if (!prepared || !renderer) return;
-    await startPlace(async ({ isCurrent }) => {
-      const { record, bitmap, signal } = prepared;
-      setStatus('applying'); setMessage(translatedMessage('appearance.reference.placing'));
+    await placeRun.start(async ({ signal: runSignal }) => {
+      const { record, bitmap } = prepared;
+      const signal = AbortSignal.any([prepared.signal, runSignal]);
+      setMessage(translatedMessage('appearance.reference.placing'));
       const placementOwner = { kind: 'draft' as const, id: `reference-place:${crypto.randomUUID()}` };
       try {
         appearanceAssets.retain(record.assetId, placementOwner);
@@ -120,7 +122,6 @@ export function useReferenceAppearance(base: AppearancePanelViewProps, enabled: 
         // old registered image stays valid until the transaction is accepted.
         if (!editing) await renderer.getReferenceImages().set({ ...record, corners, bitmap }, signal);
         signal.throwIfAborted();
-        if (!isCurrent()) return;
         const state = useViewerStore.getState();
         if (placementFrameKey(state) !== record.frameKey || state.appearanceSources.find(item => item.id === record.sourceId) !== prepared.source) {
           throw new ReferenceAppearanceError('appearance.reference.sourceChanged');
@@ -134,7 +135,7 @@ export function useReferenceAppearance(base: AppearancePanelViewProps, enabled: 
           ? 'appearance.reference.saved' : 'appearance.reference.placed'));
       } catch (error) {
         if (!useViewerStore.getState().appearanceReferences.has(record.id)) renderer.getReferenceImages().remove(record.id);
-        if (isCurrent() && !signal.aborted) { setStatus('error'); setMessage(referenceErrorMessage(error)); }
+        if (!signal.aborted) { setStatus('error'); setMessage(referenceErrorMessage(error)); }
       } finally { appearanceAssets.releaseOwner(placementOwner); }
     });
   }
@@ -151,12 +152,12 @@ export function useReferenceAppearance(base: AppearancePanelViewProps, enabled: 
     } catch (error) { setStatus('error'); setMessage(referenceErrorMessage(error)); }
   }
   if (!enabled) return base;
-  return { ...base, status, statusMessage: message, onEditReference: edit, editingReference: !!editing,
+  return { ...base, status: placeRun.busy ? 'applying' : status, statusMessage: message, onEditReference: edit, editingReference: !!editing,
     calibration: base.calibration ? { ...base.calibration, sourceKey: `${base.calibration.sourceKey}:${editRevision}` } : undefined,
     unavailableReason: roomId ? translatedMessage('appearance.reference.leaveRoom') : undefined,
-    canApply: status === 'ready' && !!draft.current, hasPreview: !!draft.current,
+    canApply: !placeRun.busy && status === 'ready' && !!draft.current, hasPreview: !!draft.current,
     canDiscard: base.canDiscard || active, showingOriginal: false,
-    onDiscard: () => { resetPlace(); base.onDiscard(); setEditing(null); setActive(false); setStatus('idle'); setMessage(translatedMessage('appearance.reference.discarded')); },
+    onDiscard: () => { placeRun.reset(); base.onDiscard(); setEditing(null); setActive(false); setStatus('idle'); setMessage(translatedMessage('appearance.reference.discarded')); },
     onApply: () => { void place(); },
   };
 }

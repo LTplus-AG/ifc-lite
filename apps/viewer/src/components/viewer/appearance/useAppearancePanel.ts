@@ -124,8 +124,25 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply', suspendPr
     };
   }, []);
 
+  const previewInputs = [intent, modelId, sourceId, selectedSource, settings, owners, scope, unavailableReason,
+    mutationVersion, previewEnabled, suspendPreview, faceMasks.masks] as const;
+  const previousPreviewInputs = useRef<typeof previewInputs | null>(null);
+  const inputsChangedWhileBusy = useRef(false);
   useEffect(() => {
-    if (applyRun.busy) return;
+    const previousInputs = previousPreviewInputs.current;
+    const inputsChanged = previousInputs === null || previewInputs.some((value, index) => !Object.is(value, previousInputs[index]));
+    previousPreviewInputs.current = previewInputs;
+    if (applyRun.busy) {
+      // Entering the busy state alone does not invalidate the reviewed preview.
+      inputsChangedWhileBusy.current ||= inputsChanged;
+      return;
+    }
+    const needsReplan = inputsChanged || inputsChangedWhileBusy.current;
+    inputsChangedWhileBusy.current = false;
+    if (!needsReplan && applyRun.state.kind === 'failed') {
+      setStatus('error'); setStatusMessage(rawMessage(applyRun.state.error));
+      return;
+    }
     if (intent !== 'apply' || !modelId || unavailableReason) {
       const previous = draft.current; draft.current = null;
       discardDraft(previous);
@@ -223,7 +240,7 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply', suspendPr
       } finally { if (!adopted) appearanceAssets.releaseOwner(owner); }
     })(); }, 250);
     return () => { clearTimeout(timer); controller.abort(); if (!adopted) appearanceAssets.releaseOwner(owner); };
-  }, [intent, modelId, sourceId, selectedSource, settings, owners, scope, unavailableReason, mutationVersion, previewEnabled, suspendPreview, faceMasks.masks, applyRun.busy]);
+  }, [intent, modelId, sourceId, selectedSource, settings, owners, scope, unavailableReason, mutationVersion, previewEnabled, suspendPreview, faceMasks.masks, applyRun.busy, applyRun.state]);
 
   async function upload(file: File): Promise<void> {
     if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) { await pdfSource.upload(file); return; }
@@ -290,20 +307,18 @@ export function useAppearancePanel(intent: AppearanceIntent = 'apply', suspendPr
     const session = current.session;
     await applyRun.start(async ({ signal, isCurrent }) => {
       setStatus('applying');
-      try {
-        await commitAppearance(current.modelId, current.assetIds, current.plan, renderer, session, current.groups, current.source, {
-          signal,
-          onProgress: phase => { if (isCurrent()) setStatusMessage(translatedMessage(phase === 'preparing'
-            ? 'appearance.controller.preparingChanges' : 'appearance.controller.saving')); },
-        });
-        if (!isCurrent()) return;
-        setPreviewEnabled(false); setConvertedObjects([]);
-        faceMasks.clearApplied((current.plan.conversions ?? []).map(conversion => conversion.productId));
-        appliedRevision.current = appearanceRevision(current.modelId);
-        draft.current = null;
-        appearanceAssets.releaseOwner(current.owner);
-        setStatus('idle'); setStatusMessage(translatedMessage('appearance.controller.applied'));
-      } catch (error) { if (isCurrent()) { setStatus('error'); setStatusMessage(rawMessage(error)); } }
+      await commitAppearance(current.modelId, current.assetIds, current.plan, renderer, session, current.groups, current.source, {
+        signal,
+        onProgress: phase => { if (isCurrent()) setStatusMessage(translatedMessage(phase === 'preparing'
+          ? 'appearance.controller.preparingChanges' : 'appearance.controller.saving')); },
+      });
+      if (!isCurrent()) return;
+      setPreviewEnabled(false); setConvertedObjects([]);
+      faceMasks.clearApplied((current.plan.conversions ?? []).map(conversion => conversion.productId));
+      appliedRevision.current = appearanceRevision(current.modelId);
+      draft.current = null;
+      appearanceAssets.releaseOwner(current.owner);
+      setStatus('idle'); setStatusMessage(translatedMessage('appearance.controller.applied'));
     });
   }
   return {

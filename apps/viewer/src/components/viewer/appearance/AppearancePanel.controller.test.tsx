@@ -16,7 +16,7 @@ afterEach(() => {
   else Reflect.deleteProperty(globalThis, 'createImageBitmap');
 });
 
-for (const scenario of ['strict-source', 'discard-debounce', 'discard-worker', 'stale-version', 'upload-failure', 'partial-exclusion', 'apply-selection', 'apply-cancel-late', 'apply-cancel-repreview', 'apply-stale-repreview', 'apply-published-discard'] as const) {
+for (const scenario of ['strict-source', 'discard-debounce', 'discard-worker', 'stale-version', 'upload-failure', 'partial-exclusion', 'apply-selection', 'apply-cancel-late', 'apply-cancel-repreview', 'apply-stale-repreview', 'apply-error-persists', 'apply-published-discard'] as const) {
   it(`mounted AppearancePanel #4243: ${scenario}`, async () => {
     let decodes = 0, closes = 0;
     // HappyDOM has no bitmap decoder. The same harness runs with unmodified
@@ -28,7 +28,7 @@ for (const scenario of ['strict-source', 'discard-debounce', 'discard-worker', '
       return { width: 1, height: 1, close() { closes++; } } as ImageBitmap;
     } });
     const result = await runAppearanceControllerScenario(scenario);
-    assert.equal(result.requests, scenario === 'discard-debounce' ? 0 : scenario === 'strict-source' || scenario === 'apply-cancel-repreview' || scenario === 'apply-stale-repreview' ? 2 : 1);
+    assert.equal(result.requests, scenario === 'discard-debounce' ? 0 : scenario === 'strict-source' || scenario === 'apply-cancel-repreview' || scenario === 'apply-stale-repreview' || scenario === 'apply-error-persists' ? 2 : 1);
     assert.equal(result.terminations, result.requests);
     assert.equal(decodes, scenario === 'discard-debounce' ? 0 : 1);
     assert.equal(closes, decodes, 'last library/draft owner closes decoded image exactly once');

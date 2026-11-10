@@ -87,7 +87,7 @@ class ControlledWorker implements AppearanceWorker {
 
 /** Shared by Node/HappyDOM and an isolated real-browser lab; never run in a user's model session. */
 export async function runAppearanceControllerScenario(
-  scenario: 'strict-source' | 'discard-debounce' | 'discard-worker' | 'stale-version' | 'upload-failure' | 'partial-exclusion' | 'apply-selection' | 'apply-cancel-late' | 'apply-cancel-repreview' | 'apply-stale-repreview' | 'apply-published-discard',
+  scenario: 'strict-source' | 'discard-debounce' | 'discard-worker' | 'stale-version' | 'upload-failure' | 'partial-exclusion' | 'apply-selection' | 'apply-cancel-late' | 'apply-cancel-repreview' | 'apply-stale-repreview' | 'apply-error-persists' | 'apply-published-discard',
   imageBytes = controllerPng,
 ): Promise<{ scenario: string; requests: number; terminations: number; stages: number; nativeBitmaps: number }> {
   const initial = useViewerStore.getState();
@@ -269,6 +269,36 @@ END-ISO-10303-21;`);
             check(!cancellationNotices.some(text => text.includes('Appearance applied.')), 'stale success overwrote the discard notice');
           } finally { stop(); }
           await act(async () => { useViewerStore.getState().undo(MODEL); });
+        } else if (scenario === 'apply-error-persists') {
+          // PR #9585 / r4524087920: settling alone must not hide a failed Apply.
+          let release!: () => void;
+          let preparations = 0;
+          const held = new Promise<void>(resolve => { release = resolve; });
+          const failure = 'Appearance fixture storage refused the write';
+          editor.prepareEntityOperations = async () => {
+            preparations++;
+            await held;
+            throw new Error(failure);
+          };
+          try {
+            await click('Apply');
+            check(preparations === 1, 'Apply never reached held IFC preparation');
+            await act(async () => { release(); });
+            await advance(600); // Beyond the preview debounce, after the run has settled.
+            check(container.querySelector('[role=alert]')?.textContent === failure,
+              `failed Apply error disappeared after settling: ${container.textContent}`);
+            check(workers.length === 1 && preparations === 1, 'settling a failed Apply started new preparation');
+            const mapping = container.querySelector<HTMLSelectElement>('select[aria-label="Texture mapping"]');
+            check(mapping && !mapping.disabled, 'failed Apply did not unlock settings');
+            await act(async () => {
+              mapping.value = 'box'; mapping.dispatchEvent(new window.Event('change', { bubbles: true }));
+            });
+            await until(() => !!workers[1]?.message, 'changing inputs after failure did not start a fresh preview');
+            check(!container.querySelector('[role=alert]'), 'a user input change retained the old Apply error');
+            await act(async () => { workers[1].complete(); });
+            await until(() => !button('Apply').disabled, 'user input change never restored a ready preview');
+            await click('Discard');
+          } finally { await act(async () => { release(); }); }
         } else if (scenario === 'apply-stale-repreview') {
           // PR #9585 B1: settling a failed Apply must revisit dependency changes skipped while busy.
           const prepare = editor.prepareEntityOperations.bind(editor);
@@ -289,6 +319,13 @@ END-ISO-10303-21;`);
               'a model change during Apply left the panel stuck instead of planning a new preview');
             await act(async () => { workers[1].complete(); });
             await until(() => !button('Apply').disabled, 'refreshed appearance preview did not enable Apply');
+            const failure = 'Appearance write failed after refreshing the model';
+            editor.prepareEntityOperations = async () => { throw new Error(failure); };
+            await click('Apply');
+            await advance(600);
+            check(container.querySelector('[role=alert]')?.textContent === failure,
+              'an earlier deferred model change hid a later Apply failure');
+            check(workers.length === 2, 'the deferred-input flag remained set after re-planning');
             await click('Discard');
           } finally { await act(async () => { release(); }); }
         } else if (scenario === 'apply-cancel-repreview') {

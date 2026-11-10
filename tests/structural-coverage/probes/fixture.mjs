@@ -6,7 +6,8 @@
  * Level `fixture`: a manifest-backed corpus file whose own `FILE_SCHEMA`
  * declares the row's schema carries at least one record of the row's entity.
  * A file is only ever counted under the schema it declares (an IFC4X2 file
- * counts for none), the same rule the coverage ledger uses.
+ * counts for none). The coverage ledger applies a similar rule, but its IFC4X3
+ * pattern is stricter (`catalogueSchema` accepts any `IFC4X3*` identifier).
  */
 
 export default {

@@ -13,13 +13,14 @@
  * inheritance chain reaches one of the DOMAIN roots below. A schema update that
  * adds a structural subtype adds its row without anyone editing this file.
  *
- * Which levels apply to a row is decided by `applicable()` from the row's
+ * Which levels apply to a row is decided by `notApplicable()` from the row's
  * family, never per row by hand. The rules are written next to it.
  */
 
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseEntityTable } from '../../scripts/lib/entity-table.mjs';
+import { typeIndex } from './lib/values.mjs';
 
 export const SCHEMAS = ['IFC2X3', 'IFC4', 'IFC4X3'];
 export const ENTITY_LEVELS = ['fixture', 'read', 'card', 'render', 'create', 'edit', 'remove', 'convert'];
@@ -84,8 +85,6 @@ export function notApplicable(row, level) {
   return null;
 }
 
-export const applicable = (row, level) => notApplicable(row, level) === null;
-
 /** Parsed entity table for one schema, with an inheritance-chain helper. */
 export function schemaTable(root, schema) {
   const file = join(root, `packages/data/src/ifc-schema/generated/entities-${schema.toLowerCase()}.ts`);
@@ -96,7 +95,8 @@ export function schemaTable(root, schema) {
     for (let e = table.get(name); e; e = table.get(e.parent)) out.push(e.name);
     return out;
   };
-  return { table, chain };
+  const tables = { table, chain };
+  return { ...tables, types: typeIndex(tables) };
 }
 
 /** Attributes declared below the family base: the ones a structural read has to carry. */

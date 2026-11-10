@@ -100,8 +100,8 @@ export function score(rows, cells, meta = {}) {
       levelTotals[level].max++;
       levelTotals[level][cell.status]++;
     }
-    const scored = Object.values(levels).filter((c) => c.applicable !== false);
-    const status = scored.every((c) => c.status === 'pass') ? 'met' : points > 0 ? 'partial' : 'missing';
+    // Only a pass earns a full point, so every applicable cell passes exactly when points === max.
+    const status = points === max ? 'met' : points > 0 ? 'partial' : 'missing';
     const head = row.kind === 'entity'
       ? { id: row.id, kind: row.kind, schema: row.schema, entity: row.entity, family: row.family }
       : { id: row.id, kind: row.kind, title: row.title, round: row.round };
@@ -186,7 +186,7 @@ async function main(argv) {
     const pkgs = await loadPackages(ROOT);
     const cells = await runProbes(rows, { root: ROOT, rows, tables, corpus, pkgs, cache: new Map() });
     summary = score(rows, cells, {
-      offline: corpus.offline && corpus.absent.length > 0,
+      offline: corpus.absent.length > 0,
       absent: corpus.absent.map((a) => a.path),
       corpus: corpus.files.map((f) => ({ path: f.path, sha256: f.sha256, schema: f.fileSchema })),
     });

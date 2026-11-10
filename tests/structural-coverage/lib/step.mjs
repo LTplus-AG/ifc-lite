@@ -81,8 +81,7 @@ function parseValue(text, start) {
     if (n) { i += n[0].length; return Number(n[0]); }
     throw new Error(`STEP: cannot parse value at ${i}: ${text.slice(i, i + 30)}`);
   };
-  const v = value();
-  return { value: v, end: i };
+  return value();
 }
 
 /** Split the DATA section into statements on `;` outside strings. */
@@ -118,7 +117,7 @@ export function readStep(text) {
   for (const st of statements(data)) {
     const m = /^\s*(?:\/\*[\s\S]*?\*\/\s*)*#(\d+)\s*=\s*([A-Za-z0-9_]+)\s*\(/.exec(st);
     if (!m) continue;
-    const { value: args } = parseValue(st, m[0].length - 1);
+    const args = parseValue(st, m[0].length - 1);
     const entity = { id: Number(m[1]), type: m[2].toUpperCase(), args };
     entities.set(entity.id, entity);
     if (!byType.has(entity.type)) byType.set(entity.type, []);
@@ -128,7 +127,6 @@ export function readStep(text) {
   return {
     schema,
     entities,
-    byType,
     of,
     get: (ref) => entities.get(ref && typeof ref === 'object' ? ref.ref : ref),
     count: (type) => of(type).length,

@@ -15,25 +15,20 @@
  * gone is a failure. The converter throwing is the product failing, not the probe.
  */
 
-import { parseStore } from '../lib/packages.mjs';
+import { cached, parseStore, storeOf } from '../lib/packages.mjs';
 import { readStep } from '../lib/step.mjs';
-import { equal, normalize, show, typeIndex, verdict } from '../lib/values.mjs';
+import { equal, normalize, show, verdict } from '../lib/values.mjs';
 
 const OTHER = { IFC4: 'IFC2X3', IFC2X3: 'IFC4' };
 const MAX_FILES = 2;
 const MAX_RECORDS = 25;
 
-async function roundTrip(ctx, file, schema) {
-  const key = `convert:${file.path}`;
-  if (!ctx.cache.has(key)) {
-    ctx.cache.set(key, (async () => {
-      const { exportToStep } = ctx.pkgs.exporter;
-      const there = exportToStep(await parseStore(ctx.pkgs, file.bytes), { schema: OTHER[schema] });
-      const back = exportToStep(await parseStore(ctx.pkgs, there), { schema });
-      return readStep(back);
-    })().then((step) => ({ step }), (error) => ({ error })));
-  }
-  return ctx.cache.get(key);
+function roundTrip(ctx, file, schema) {
+  return cached(ctx, `convert:${file.path}`, () => (async () => {
+    const { exportToStep } = ctx.pkgs.exporter;
+    const there = exportToStep(await storeOf(ctx, file), { schema: OTHER[schema] });
+    return readStep(exportToStep(await parseStore(ctx.pkgs, there), { schema }));
+  })().then((step) => ({ step }), (error) => ({ error })));
 }
 
 function tuple(row, record, step, types) {
@@ -77,7 +72,7 @@ export default {
       const carriers = ctx.corpus.carriers(row.schema, row.entity)
         .sort((a, b) => a.bytes.length - b.bytes.length || a.path.localeCompare(b.path)).slice(0, MAX_FILES);
       if (!carriers.length) { out.set(row.id, ctx.corpus.nothingCarries(row.schema, row.entity)); continue; }
-      const types = typeIndex(ctx.tables[row.schema]);
+      const { types } = ctx.tables[row.schema];
       const problems = [];
       let checked = 0;
       let anyHeld = false;

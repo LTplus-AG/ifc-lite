@@ -16,7 +16,8 @@
 
 import { parseStore } from '../lib/packages.mjs';
 import { readStep } from '../lib/step.mjs';
-import { equal, normalize, show, typeIndex } from '../lib/values.mjs';
+import { catalogueSchema } from '../lib/corpus.mjs';
+import { equal, normalize, show } from '../lib/values.mjs';
 import { SCENE, blankModel } from './create-scene.mjs';
 
 async function buildScene(ctx, schema) {
@@ -27,22 +28,21 @@ async function buildScene(ctx, schema) {
   const storeyId = store.entityIndex.byType.get('IFCBUILDINGSTOREY')?.[0];
   const anchor = create.resolveSpatialAnchor(store, storeyId, view);
   const done = new Map();
-  const steps = new Map();
+  const errors = new Map();
   for (const step of SCENE) {
     const missing = (step.needs ?? []).filter((n) => !done.has(n));
-    if (missing.length) { steps.set(step.id, { error: `needs ${missing.join(', ')}, which did not build` }); continue; }
+    if (missing.length) { errors.set(step.id, `needs ${missing.join(', ')}, which did not build`); continue; }
     try {
       done.set(step.id, step.build({ create, editor, anchor, done }));
-      steps.set(step.id, { ok: true });
     } catch (e) {
-      steps.set(step.id, { error: `${step.builder} threw: ${e.message}` });
+      errors.set(step.id, `${step.builder} threw: ${e.message}`);
     }
   }
   const text = new TextDecoder().decode(new exporter.StepExporter(store, view).export({ schema, applyMutations: true }).content);
   const exported = readStep(text);
   let reparse = null;
   try { await parseStore(ctx.pkgs, text); } catch (e) { reparse = e.message; }
-  return { steps, exported, reparse };
+  return { errors, exported, reparse };
 }
 
 function matchRecord(row, exported, expect, types) {
@@ -69,15 +69,15 @@ export default {
       if (!steps.length) { out.set(row.id, { status: 'fail', reason: `no in-store builder emits ${row.entity}` }); continue; }
       if (!scenes.has(row.schema)) scenes.set(row.schema, await buildScene(ctx, row.schema));
       const scene = scenes.get(row.schema);
-      const types = typeIndex(ctx.tables[row.schema]);
+      const { types } = ctx.tables[row.schema];
       const problems = [];
-      if (scene.exported.schema?.toUpperCase().startsWith(row.schema) !== true) problems.push(`export declares ${scene.exported.schema}, not ${row.schema}`);
+      if (catalogueSchema(scene.exported.schema) !== row.schema) problems.push(`export declares ${scene.exported.schema}, not ${row.schema}`);
       if (scene.reparse) problems.push(`export does not re-parse: ${scene.reparse}`);
       // A record that is exported but carries wrong values is partial evidence; nothing exported is a failure.
       let exportedAny = false;
       for (const step of steps) {
-        const s = scene.steps.get(step.id);
-        if (s.error) { problems.push(`${step.id}: ${s.error}`); continue; }
+        const error = scene.errors.get(step.id);
+        if (error) { problems.push(`${step.id}: ${error}`); continue; }
         const m = matchRecord(row, scene.exported, step.emits[row.entity], types);
         if (!m) { problems.push(`${step.id}: no ${row.entity} record in the export`); continue; }
         exportedAny = true;

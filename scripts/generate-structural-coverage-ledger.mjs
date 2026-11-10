@@ -21,13 +21,13 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ENTITY_LEVELS, SCHEMAS, deriveCatalogue } from '../tests/structural-coverage/catalogue.mjs';
+import { ENTITY_LEVELS, LEVELS, SCHEMAS, deriveCatalogue } from '../tests/structural-coverage/catalogue.mjs';
+import { SUMMARY_SCHEMA as SCHEMA } from '../tests/structural-coverage/score.mjs';
 
 const flag = (name) => { const i = process.argv.indexOf(name); return i !== -1 ? process.argv[i + 1] : null; };
 const ROOT = flag('--root') ? resolve(flag('--root')) : join(dirname(fileURLToPath(import.meta.url)), '..');
 const OUT_REL = 'docs/architecture/structural-coverage-ledger.md';
 const BASELINE_REL = 'tests/structural-coverage/baseline';
-const SCHEMA = 'ifclite-structural-coverage/1';
 const ICON = { pass: '✅', partial: '◐', fail: '❌', error: '❌', skip: '⏸', unwritten: '·' };
 
 function fail(message) {
@@ -70,7 +70,7 @@ const ROW = { met: '✅ met', partial: '◐ partial', missing: '❌ missing' };
 
 function why(row) {
   const parts = [];
-  for (const level of ['fixture', 'read', 'create', 'convert', 'capability']) {
+  for (const level of LEVELS) {
     const c = row.levels[level];
     if (!c || c.applicable === false || c.status === 'pass' || c.status === 'unwritten') continue;
     parts.push(`**${level}** ${c.status}: ${clip(c.reason ?? 'no reason given', 200)}`);

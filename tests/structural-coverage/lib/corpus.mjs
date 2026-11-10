@@ -47,7 +47,7 @@ export function loadCorpus(root, { offline = false } = {}) {
     const text = bytes.toString('latin1');
     const step = readStep(text);
     const schema = catalogueSchema(step.schema);
-    files.push({ path, abs, bytes, step, fileSchema: step.schema, schema, sha256: sha });
+    files.push({ path, bytes, step, fileSchema: step.schema, schema, sha256: sha });
   }
   if (absent.length && !offline) {
     const paths = absent.map((a) => a.path);
@@ -57,19 +57,18 @@ export function loadCorpus(root, { offline = false } = {}) {
         + '  or run with --offline: those files then score as skip, which never counts as a pass.',
     );
   }
+  /** Status when nothing present has what a probe needs: skip while a file is absent, else fail. */
+  const nothingFound = (what) => (absent.length
+    ? { status: 'skip', reason: `offline: no present corpus file ${what}, and ${absent.length} corpus file(s) are absent` }
+    : { status: 'fail', reason: `no corpus file ${what}` });
   return {
     files,
     absent,
-    offline,
+    nothingFound,
     /** Files of `schema` that carry at least one record of `entity`. */
     carriers(schema, entity) {
       return files.filter((f) => f.schema === schema && f.step.count(entity) > 0);
     },
-    /** Status for a row nothing present carries: skip while a file is absent, else fail. */
-    nothingCarries(schema, entity) {
-      return absent.length
-        ? { status: 'skip', reason: `offline: no present ${schema} fixture carries ${entity}, and ${absent.length} corpus file(s) are absent` }
-        : { status: 'fail', reason: `no ${schema} fixture in the corpus carries ${entity}` };
-    },
+    nothingCarries: (schema, entity) => nothingFound(`of ${schema} carries ${entity}`),
   };
 }

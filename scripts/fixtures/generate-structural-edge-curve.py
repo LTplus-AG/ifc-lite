@@ -29,6 +29,22 @@ def stable_guid(name: str) -> str:
     return ifcopenshell.guid.compress(value.hex)
 
 
+def write(model, output: Path, purpose: str, time_stamp: str, system: str) -> None:
+    """Write `model` with the fixed, reproducible header every fixture here carries."""
+    model.header.file_description.description = (
+        "ViewDefinition [StructuralAnalysisView]",
+        f"Authored by ifc-lite {purpose}; generated via IfcOpenShell exporter API",
+    )
+    model.header.file_name.name = output.name
+    model.header.file_name.time_stamp = time_stamp
+    model.header.file_name.author = ("ifc-lite contributors",)
+    model.header.file_name.organization = ("LTplus AG",)
+    model.header.file_name.preprocessor_version = f"IfcOpenShell {ifcopenshell.version}"
+    model.header.file_name.originating_system = system
+    model.header.file_name.authorization = "MPL-2.0"
+    model.write(str(output))
+
+
 def main() -> None:
     output = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(
         "tests/models/ifcopenshell/generated_structural_edge_curve.ifc"
@@ -111,18 +127,7 @@ def main() -> None:
     )
     member("Generated reverse-sense circle", reverse_circle)
 
-    model.header.file_description.description = (
-        "ViewDefinition [StructuralAnalysisView]",
-        "Authored by ifc-lite for #4206; generated via IfcOpenShell exporter API",
-    )
-    model.header.file_name.name = output.name
-    model.header.file_name.time_stamp = "2026-09-19T00:00:00"
-    model.header.file_name.author = ("ifc-lite contributors",)
-    model.header.file_name.organization = ("LTplus AG",)
-    model.header.file_name.preprocessor_version = f"IfcOpenShell {ifcopenshell.version}"
-    model.header.file_name.originating_system = "ifc-lite #4206 fixture generator"
-    model.header.file_name.authorization = "MPL-2.0"
-    model.write(str(output))
+    write(model, output, "for #4206", "2026-09-19T00:00:00", "ifc-lite #4206 fixture generator")
 
 
 COVERAGE_SCHEMAS = {"IFC2X3": "IFC2X3", "IFC4": "IFC4", "IFC4X3": "IFC4X3_ADD2"}
@@ -279,19 +284,8 @@ def coverage(schema: str, output: Path) -> None:
     if has("IfcRelDeclares"):
         rel("IfcRelDeclares", project, (analysis,))
 
-    model.header.file_description.description = (
-        "ViewDefinition [StructuralAnalysisView]",
-        "Authored by ifc-lite for the structural coverage harness; generated via IfcOpenShell exporter API",
-    )
-    model.header.file_name.name = output.name
-    model.header.file_name.time_stamp = "2026-11-10T00:00:00"
-    model.header.file_name.author = ("ifc-lite contributors",)
-    model.header.file_name.organization = ("LTplus AG",)
-    model.header.file_name.preprocessor_version = f"IfcOpenShell {ifcopenshell.version}"
-    model.header.file_name.originating_system = "ifc-lite structural coverage fixture generator"
-    model.header.file_name.authorization = "MPL-2.0"
     output.parent.mkdir(parents=True, exist_ok=True)
-    model.write(str(output))
+    write(model, output, "for the structural coverage harness", "2026-11-10T00:00:00", "ifc-lite structural coverage fixture generator")
 
 
 if __name__ == "__main__":

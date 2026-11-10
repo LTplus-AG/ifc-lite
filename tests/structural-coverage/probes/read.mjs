@@ -15,56 +15,56 @@
  * passes. Relationships pass when both ends carry the link.
  */
 
-import { parseStore } from '../lib/packages.mjs';
-import { equal, normalize, show, typeIndex, verdict } from '../lib/values.mjs';
+import { cached, storeOf } from '../lib/packages.mjs';
+import { equal, normalize, show, verdict } from '../lib/values.mjs';
 
 const NO_FIELD = Symbol('no field');
 const MAX_FILES = 3;
 const MAX_RECORDS = 25;
 
+/**
+ * The read model names a field after its EXPRESS attribute in camelCase
+ * (`GlobalOrLocal` -> `globalOrLocal`). These three resolve to GlobalIds and
+ * are named for that instead.
+ */
+const RENAMED = { LoadedBy: 'loadGroupGlobalIds', HasResults: 'resultGroupGlobalIds', ResultForLoadGroup: 'resultForLoadGroupGlobalId' };
 const ref = (x) => (x ? `#${x.expressId}` : null);
-const ROOT_FIELDS = { GlobalId: (i) => i.globalId, Name: (i) => i.name ?? null, Description: (i) => i.description ?? null, ObjectType: (i) => i.objectType ?? null, PredefinedType: (i) => i.predefinedType ?? null };
 
-const FIELDS = {
-  item: { ...ROOT_FIELDS, Thickness: (i) => i.thickness ?? null, AppliedCondition: (i) => ref(i.appliedCondition) },
-  activity: { ...ROOT_FIELDS, AppliedLoad: (i) => ref(i.appliedLoad), GlobalOrLocal: (i) => i.globalOrLocal ?? null, DestabilizingLoad: (i) => i.destabilizingLoad ?? null },
-  group: {
-    ...ROOT_FIELDS,
-    ActionType: (i) => i.actionType ?? null,
-    ActionSource: (i) => i.actionSource ?? null,
-    Coefficient: (i) => i.coefficient ?? null,
-    Purpose: (i) => i.purpose ?? null,
-    SelfWeightCoefficients: (i) => i.selfWeightCoefficients ?? null,
-    TheoryType: (i) => i.theoryType ?? null,
-    ResultForLoadGroup: (i) => i.resultForLoadGroupGlobalId ?? null,
-    IsLinear: (i) => i.isLinear ?? null,
-    LoadedBy: (i) => i.loadGroupGlobalIds,
-    HasResults: (i) => i.resultGroupGlobalIds,
-  },
-};
+/** A rooted object's field for `attr`, NO_FIELD when no object of its family has that field at all. */
+function rootedField(ix, family, info, attr) {
+  const key = RENAMED[attr] ?? attr[0].toLowerCase() + attr.slice(1);
+  if (!ix.fields.get(family)?.has(key)) return NO_FIELD;
+  const v = info[key];
+  return v && typeof v === 'object' && !Array.isArray(v) && 'expressId' in v ? ref(v) : v;
+}
 
 function resourceField(info, attr) {
-  if (attr === 'Name') return info.name ?? null;
+  if (attr === 'Name') return info.name;
   if (info.configuration && attr === 'Values') return info.configuration.entries.map((e) => ref(e.value));
   if (info.configuration && attr === 'Locations') return info.configuration.entries.map((e) => e.location ?? []);
   return info.components?.[attr];
 }
 
-/** Relationship end attributes and how the read model is expected to carry the link. */
+/** Relationship end attributes and how the read model is expected to carry the link, by catalogue root. */
 const LINKS = {
   IfcRelConnectsStructuralMember: ['RelatingStructuralMember', 'RelatedStructuralConnection', (ix, a, b) => ix.byGuid.get(a)?.connectionGlobalIds?.includes(b) && ix.byGuid.get(b)?.memberGlobalIds?.includes(a)],
-  IfcRelConnectsWithEccentricity: ['RelatingStructuralMember', 'RelatedStructuralConnection', (ix, a, b) => ix.byGuid.get(a)?.connectionGlobalIds?.includes(b) && ix.byGuid.get(b)?.memberGlobalIds?.includes(a)],
   IfcRelConnectsStructuralActivity: ['RelatingElement', 'RelatedStructuralActivity', (ix, a, b) => ix.byGuid.get(b)?.appliesToGlobalId === a],
   // IFC2X3 only: a physical element to its structural member. The read model has no field for it yet.
   IfcRelConnectsStructuralElement: ['RelatingElement', 'RelatedStructuralMember', () => false],
 };
 
-/** Every read-model object of the extraction, by expressId and GlobalId. */
+/** Every read-model object of the extraction, by expressId and GlobalId, plus the fields each family has. */
 function indexExtraction(x) {
   const byId = new Map();
   const byGuid = new Map();
+  const fields = new Map();
   // Result groups and analysis models carry no `type` field: their collection names it.
-  const put = (family, info, type = info.type) => { byId.set(info.expressId, { family, info, type }); if (info.globalId) byGuid.set(info.globalId, info); };
+  const put = (family, info, type = info.type) => {
+    byId.set(info.expressId, { family, info, type });
+    if (info.globalId) byGuid.set(info.globalId, info);
+    if (!fields.has(family)) fields.set(family, new Set());
+    for (const k of Object.keys(info)) fields.get(family).add(k);
+  };
   for (const m of x.members) put('item', m);
   for (const c of x.connections) put('item', c);
   for (const a of x.activities) put('activity', a);
@@ -74,25 +74,19 @@ function indexExtraction(x) {
   const loads = (l) => { if (!l || byId.has(l.expressId)) return; put('resource', l); for (const e of l.configuration?.entries ?? []) loads(e.value); };
   for (const a of x.activities) loads(a.appliedLoad);
   for (const c of x.connections) if (c.appliedCondition) put('resource', c.appliedCondition);
-  return { byId, byGuid };
+  return { byId, byGuid, fields };
 }
 
-async function extraction(ctx, file) {
-  const key = `read:${file.path}`;
-  if (!ctx.cache.has(key)) {
-    ctx.cache.set(key, (async () => {
-      const store = await parseStore(ctx.pkgs, file.bytes);
-      return indexExtraction(ctx.pkgs.parser.extractStructuralOnDemand(store));
-    })());
-  }
-  return ctx.cache.get(key);
+/** The indexed read model of one corpus file, shared by every probe that reads it. */
+export function extraction(ctx, file) {
+  return cached(ctx, `read:${file.path}`, async () => indexExtraction(ctx.pkgs.parser.extractStructuralOnDemand(await storeOf(ctx, file))));
 }
 
 function checkRecord(row, record, file, ix, types) {
   const problems = [];
   const where = `${file.path}#${record.id}`;
   const value = (attr) => normalize(record.args[row.attributes.indexOf(attr)], file.step, types);
-  const link = LINKS[row.entity];
+  const link = LINKS[row.root];
   if (link) {
     const [from, to, held] = link;
     const ok = held(ix, value(from), value(to));
@@ -110,10 +104,9 @@ function checkRecord(row, record, file, ix, types) {
   for (const attr of attrs) {
     const want = value(attr);
     if (want === null) continue;
-    const getter = row.family === 'resource' ? (i) => resourceField(i, attr) : FIELDS[row.family]?.[attr] ?? (() => NO_FIELD);
-    const got = getter(hit.info);
+    const got = row.family === 'resource' ? resourceField(hit.info, attr) : rootedField(ix, row.family, hit.info, attr);
     if (got === NO_FIELD) problems.push(`${where}: ${attr} unexposed`);
-    else if (!equal(want, got ?? null)) problems.push(`${where}: ${attr} ${show(got)}, file ${show(want)}`);
+    else if (!equal(want, got ?? null)) problems.push(`${where}: ${attr} ${show(got ?? null)}, file ${show(want)}`);
   }
   return { problems, held: true };
 }
@@ -126,7 +119,7 @@ export default {
     for (const row of rows) {
       const carriers = ctx.corpus.carriers(row.schema, row.entity).slice(0, MAX_FILES);
       if (!carriers.length) { out.set(row.id, ctx.corpus.nothingCarries(row.schema, row.entity)); continue; }
-      const types = typeIndex(ctx.tables[row.schema]);
+      const { types } = ctx.tables[row.schema];
       const problems = [];
       let checked = 0;
       let anyHeld = false;

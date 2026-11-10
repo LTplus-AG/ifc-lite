@@ -24,8 +24,7 @@ export function unwritten(level, name, plan, covers) {
   return {
     name,
     level,
-    unwritten: true,
-    ...(covers ? { covers } : {}),
+    covers,
     async run(rows) {
       return new Map(rows.map((r) => [r.id, { status: 'unwritten', reason: `probe ${name} not written yet: ${plan}` }]));
     },

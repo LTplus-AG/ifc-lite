@@ -44,7 +44,7 @@ export function equal(a, b) {
   return a === b;
 }
 
-export const show = (v) => (typeof v === 'string' ? JSON.stringify(v) : JSON.stringify(v) ?? 'undefined');
+export const show = (v) => JSON.stringify(v) ?? 'undefined';
 
 /** Status from per-record checks: pass when every record holds, partial when some evidence holds, fail otherwise. */
 export function verdict(checked, problems, { anyHeld }) {

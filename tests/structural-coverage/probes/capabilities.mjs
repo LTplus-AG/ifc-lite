@@ -17,8 +17,8 @@
 
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { parseStore } from '../lib/packages.mjs';
 import { verdict } from '../lib/values.mjs';
+import { extraction } from './read.mjs';
 
 const MAX_LINKS_PER_FILE = 25;
 
@@ -44,28 +44,24 @@ const linkRead = {
   level: 'capability',
   covers: (row) => row.id === 'cap/physical-analytical-link-read',
   async run(rows, ctx) {
-    const files = ctx.corpus.files.filter((f) => physicalLinks(f.step).length);
-    if (!files.length) {
-      return new Map(rows.map((r) => [r.id, ctx.corpus.absent.length
-        ? { status: 'skip', reason: 'offline: no present corpus file carries a physical-to-structural link' }
-        : { status: 'fail', reason: 'no corpus file carries a physical-to-structural link' }]));
-    }
+    const linked = ctx.corpus.files.map((f) => [f, physicalLinks(f.step)]).filter(([, links]) => links.length);
+    if (!linked.length) return new Map(rows.map((r) => [r.id, ctx.corpus.nothingFound('carries a physical-to-structural link')]));
     const problems = [];
     let checked = 0;
     let anyHeld = false;
-    for (const file of files) {
-      const x = ctx.pkgs.parser.extractStructuralOnDemand(await parseStore(ctx.pkgs, file.bytes));
-      const byId = new Map([...x.members, ...x.connections].map((i) => [i.expressId, i]));
-      for (const [itemId, productId] of physicalLinks(file.step).slice(0, MAX_LINKS_PER_FILE)) {
+    for (const [file, links] of linked) {
+      const ix = await extraction(ctx, file);
+      for (const [itemId, productId] of links.slice(0, MAX_LINKS_PER_FILE)) {
         checked++;
         const guid = file.step.get(productId)?.args[0];
-        const info = byId.get(itemId);
+        const hit = ix.byId.get(itemId);
+        const info = hit?.family === 'item' ? hit.info : undefined;
         if (!info) problems.push(`${file.path}#${itemId}: item not in the read model`);
         else if (!mentions(info, guid)) problems.push(`${file.path}#${itemId}: no field names physical ${guid}`);
         else anyHeld = true;
       }
     }
-    const result = { ...verdict(checked, problems, { anyHeld }), evidence: files.map((f) => f.path) };
+    const result = { ...verdict(checked, problems, { anyHeld }), evidence: linked.map(([f]) => f.path) };
     return new Map(rows.map((r) => [r.id, result]));
   },
 };

@@ -33,6 +33,7 @@
 //!
 //! Keys, layout and store policy: `key.rs`, `envelope.rs`, `store.rs`.
 
+mod config;
 mod envelope;
 mod fs_private;
 mod key;
@@ -48,92 +49,14 @@ mod codec_tests;
 #[path = "store_tests.rs"]
 mod store_tests;
 
+pub use config::{default_directory, CacheMode, PassHook, ResultCacheConfig};
 pub use report::{BypassReason, CacheOutcome, CacheReport, CacheWork, MissReason, PublishOutcome};
+use config::HookSink;
 
 use crate::{ProcessingRequest, ProcessingResult};
 use envelope::EntryIdentity;
-use std::path::PathBuf;
 use std::time::Instant;
 use store::{ReadEntry, ReadError, Store};
-
-/// What a [`ResultCache`] may do. Off unless a caller opts in.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum CacheMode {
-    /// Call [`process`](crate::process) directly; no hashing, no file access.
-    #[default]
-    Off,
-    /// Replay entries; never create, write or touch anything.
-    ReadOnly,
-    /// Replay entries; store new results; refresh last-use times; evict.
-    ReadWrite,
-}
-
-/// Where and how much. Defaults: off, the platform cache directory, 10 GiB
-/// per directory, 1 GiB per entry. The limits are policy choices, not
-/// measured optima.
-#[non_exhaustive]
-#[derive(Debug, Clone)]
-pub struct ResultCacheConfig {
-    pub mode: CacheMode,
-    /// `None`: [`default_directory`]. Entries go in a `result-v1` directory
-    /// beneath it.
-    pub directory: Option<PathBuf>,
-    pub max_bytes: u64,
-    pub max_entry_bytes: u64,
-    /// Test hook: mixed into the engine identity to stand for a different
-    /// build or entry format. Empty in production.
-    #[doc(hidden)]
-    pub engine_salt: Vec<u8>,
-}
-
-impl Default for ResultCacheConfig {
-    fn default() -> Self {
-        Self { mode: CacheMode::Off, directory: None, max_bytes: 10 << 30, max_entry_bytes: 1 << 30, engine_salt: Vec::new() }
-    }
-}
-
-impl ResultCacheConfig {
-    pub fn mode(mut self, mode: CacheMode) -> Self {
-        self.mode = mode;
-        self
-    }
-    pub fn directory(mut self, directory: impl Into<PathBuf>) -> Self {
-        self.directory = Some(directory.into());
-        self
-    }
-    pub fn max_bytes(mut self, bytes: u64) -> Self {
-        self.max_bytes = bytes;
-        self
-    }
-    pub fn max_entry_bytes(mut self, bytes: u64) -> Self {
-        self.max_entry_bytes = bytes;
-        self
-    }
-    #[doc(hidden)]
-    pub fn engine_salt(mut self, salt: &[u8]) -> Self {
-        self.engine_salt = salt.to_vec();
-        self
-    }
-}
-
-/// The per-user default root: `IFC_LITE_CACHE_DIR` if set, else
-/// `$XDG_CACHE_HOME/ifc-lite/native` or `~/.cache/ifc-lite/native` (Linux and
-/// other Unix), `~/Library/Caches/ifc-lite/native` (macOS),
-/// `%LOCALAPPDATA%\ifc-lite\native` (Windows).
-pub fn default_directory() -> Option<PathBuf> {
-    let env_dir = |name: &str| std::env::var_os(name).filter(|v| !v.is_empty()).map(PathBuf::from);
-    if let Some(dir) = env_dir("IFC_LITE_CACHE_DIR") {
-        return Some(dir);
-    }
-    let base = if cfg!(windows) {
-        env_dir("LOCALAPPDATA")
-    } else if cfg!(target_os = "macos") {
-        env_dir("HOME").map(|h| h.join("Library").join("Caches"))
-    } else {
-        env_dir("XDG_CACHE_HOME").filter(|p| p.is_absolute()).or_else(|| env_dir("HOME").map(|h| h.join(".cache")))
-    };
-    base.map(|b| b.join("ifc-lite").join("native"))
-}
 
 /// A result and what the cache did to produce it.
 pub struct CachedProcessing {
@@ -200,6 +123,14 @@ impl ResultCache {
                 return self.run_live(content, request, report, None);
             }
         };
+        // Inside an execution account, source stop or terminal domain the
+        // pass can be refused or degraded by that scope; a hit would hand back
+        // a complete result the scope would not have produced, and a stored
+        // result could be a degraded one (PR #9614 review 2, R2-2).
+        if ifc_lite_geometry::resource::ambient_scope_active() {
+            report.outcome = CacheOutcome::Bypass(BypassReason::AmbientResourceScope);
+            return self.run_live(content, request, report, None);
+        }
         let writable = self.config.mode == CacheMode::ReadWrite;
         let Some(root) = self.config.directory.clone().or_else(default_directory) else {
             report.outcome = CacheOutcome::Bypass(BypassReason::Unavailable("no cache directory".into()));
@@ -242,6 +173,14 @@ impl ResultCache {
             return self.run_live(content, request, report, None);
         };
         match lookup(&store, &key_hex, &id, self.config.max_entry_bytes, &mut report) {
+            Ok(_) if engine.policy_changed() => {
+                // A setter ran while the entry was read: the snapshot the key
+                // named is no longer the policy, so do not return it. The live
+                // run is not stored either (its policy may be mixed).
+                report.outcome = CacheOutcome::Miss(MissReason::PolicyChangedDuringLookup);
+                let publish = writable.then_some(Publish { store: &store, id: &id, key_hex: &key_hex, engine: &engine });
+                self.run_live(content, request, report, publish)
+            }
             Ok((mut result, entry)) => {
                 if writable {
                     store.touch(&entry);
@@ -270,27 +209,44 @@ impl ResultCache {
         publish: Option<Publish<'_>>,
     ) -> CachedProcessing {
         let started = Instant::now();
-        let result = crate::process(content, request, &mut ());
+        let result = match &self.config.pass_hook {
+            Some(hook) => crate::process(content, request, &mut HookSink(hook, 0)),
+            None => crate::process(content, request, &mut ()),
+        };
         report.work.process = started.elapsed();
         if let Some(Publish { engine, .. }) = &publish {
-            if engine.policy_changed() {
-                // A racing override changed the output policy during the pass:
-                // the result may mix both, and it is not this key's.
-                report.publish = PublishOutcome::SkippedPolicyChanged;
+            // Any policy setter during the pass, even one undone before it
+            // ended, may have produced mixed output that is not this key's.
+            let skip = if engine.policy_changed() {
+                Some(PublishOutcome::SkippedPolicyChanged)
+            } else if engine.resource_stopped() {
+                Some(PublishOutcome::SkippedResourceStop)
+            } else {
+                None
+            };
+            if let Some(skip) = skip {
+                report.publish = skip;
                 return CachedProcessing { result, report };
             }
         }
         if let Some(Publish { store, id, key_hex, .. }) = publish {
+            let limit = self.config.max_entry_bytes.min(self.config.max_bytes);
+            let at_least = envelope::payload_lower_bound(&result);
+            if at_least > limit {
+                // Certainly too big: refuse before encoding (no copy at all).
+                report.publish = PublishOutcome::SkippedOversized { bytes: at_least, limit };
+                return CachedProcessing { result, report };
+            }
             let started = Instant::now();
-            let encoded = envelope::encode_entry(&result, id);
+            let encoded = envelope::encode_parts(&result, id);
             report.work.encode = started.elapsed();
             report.publish = match encoded {
-                Ok(bytes) => {
+                Ok(entry) => {
                     let started = Instant::now();
-                    let outcome = store.publish(key_hex, &bytes);
+                    let outcome = store.publish_parts(key_hex, &entry.parts());
                     report.work.write = started.elapsed();
                     if matches!(outcome, PublishOutcome::Published { .. }) {
-                        report.work.entry_bytes_written = bytes.len() as u64;
+                        report.work.entry_bytes_written = entry.len() as u64;
                     }
                     outcome
                 }

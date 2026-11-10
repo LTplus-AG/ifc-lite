@@ -30,10 +30,12 @@ pub(crate) fn force_cdt_fail_on_ring_for_test(ring: Option<usize>) {
     FORCE_CDT_FAIL_ON_RING.with(|c| c.set(ring));
 }
 
-/// `IFC_LITE_HALFSPACE_CAP_OFF`: the escape hatch, read per call. The one
-/// accessor, shared with `crate::output_policy`.
+/// `IFC_LITE_HALFSPACE_CAP_OFF`: the escape hatch, read once per process
+/// like every other output knob, so it cannot change while a pass runs. The
+/// one accessor, shared with `crate::output_policy`.
 pub(crate) fn disabled() -> bool {
-    std::env::var_os("IFC_LITE_HALFSPACE_CAP_OFF").is_some()
+    static OFF: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *OFF.get_or_init(|| std::env::var_os("IFC_LITE_HALFSPACE_CAP_OFF").is_some())
 }
 
 /// Close the planar cut left by an unbounded `IfcHalfSpaceSolid` DIFFERENCE.

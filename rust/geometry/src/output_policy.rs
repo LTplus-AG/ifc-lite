@@ -14,9 +14,18 @@
 //! would disagree with a `OnceLock` initialised before the variable changed,
 //! and would miss the overrides entirely.
 //!
+//! Every programmatic setter bumps a mutation generation
+//! ([`policy_generation`]), so a cache can tell that a policy changed during a
+//! pass even when it was changed back.
+//!
 //! A new process-global output knob belongs here; the processing crate's
 //! `result_cache_policy_ratchet` test fails on an unclassified `IFC_LITE_*`
 //! variable.
+
+#[path = "output_policy_generation.rs"]
+mod generation;
+pub(crate) use generation::mutate;
+pub use generation::{coherent_output_policy, policy_generation};
 
 /// Every feature of this crate and whether this build enabled it. Cargo
 /// resolves features per build, so a downstream binary can enable, say,

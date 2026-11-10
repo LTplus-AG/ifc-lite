@@ -18,9 +18,9 @@
 //!     the geometry crate's own resolved features
 //!     (`ifc_lite_geometry::output_policy::BUILD_FEATURES`, which a downstream
 //!     binary can change without touching this crate), and the running
-//!     executable's identity (path, size, mtime, device and inode): any
-//!     relink, including one that only changes third-party feature
-//!     unification, misses.
+//!     executable file's identity (size, mtime, ctime, device, inode; no
+//!     path): a relink, including one that only changes third-party feature
+//!     unification, writes a new file and misses.
 //!   - Policy: the EFFECTIVE process-global output policy, read through the
 //!     same accessors the pipeline calls
 //!     (`ifc_lite_geometry::output_policy::effective_output_policy`, plus the
@@ -28,7 +28,11 @@
 //!     initialised before an environment change and the programmatic
 //!     overrides (`local_frame_set_enabled_override`, `set_cap`, ...) are
 //!     keyed as the pipeline will see them.
-//!   - Execution: the calling thread's rayon worker count.
+//!   - Execution: the calling thread's rayon worker count. No mesh output is
+//!     known to depend on it; it is keyed because that has not been shown
+//!     across pool sizes, and it costs hits only between differently sized
+//!     pools. Scheduling-dependent statistics (point-cache hit/miss counts)
+//!     are not made reproducible by it; like timings they are the producer's.
 //!
 //!   The format version and a test-only salt are mixed in too.
 
@@ -133,41 +137,56 @@ pub(super) fn request_digest(req: &ProcessingRequest) -> Result<[u8; 32], Bypass
     Ok(h.finish())
 }
 
-/// The running executable: path, size, mtime, device and inode. Any rebuild
-/// or relink changes it. `None` when it cannot be read; the caller bypasses.
-fn executable_identity() -> Option<Vec<u8>> {
-    let path = std::env::current_exe().ok()?;
-    let meta = std::fs::metadata(&path).ok()?;
+/// Identity of the file at `path` as the kernel tracks it: size, mtime,
+/// ctime, device and inode. No path, so a moved binary keeps its entries.
+/// ctime cannot be set by `touch`/`cp -p`/`utime`: any write or metadata
+/// restore advances it, so an in-place edit that restores mtime still changes
+/// this (PR #9614 review 2, R2-3). `None` when unreadable; the caller bypasses.
+pub(super) fn file_identity(path: &std::path::Path) -> Option<Vec<u8>> {
+    let meta = std::fs::metadata(path).ok()?;
     let modified = meta.modified().ok()?.duration_since(std::time::UNIX_EPOCH).ok()?;
-    let mut out = path.as_os_str().as_encoded_bytes().to_vec();
-    out.extend_from_slice(&meta.len().to_le_bytes());
+    let mut out = meta.len().to_le_bytes().to_vec();
     out.extend_from_slice(&modified.as_nanos().to_le_bytes());
     #[cfg(unix)]
     {
         use std::os::unix::fs::MetadataExt;
+        for v in [meta.ctime(), meta.ctime_nsec()] {
+            out.extend_from_slice(&v.to_le_bytes());
+        }
         out.extend_from_slice(&meta.dev().to_le_bytes());
         out.extend_from_slice(&meta.ino().to_le_bytes());
     }
     Some(out)
 }
 
-/// Everything about the engine that keys an entry. Build and executable parts
-/// are fixed for the process; the policy part is re-read per call.
+/// Everything about the engine that keys an entry, plus the two counters that
+/// say whether a pass may store its result under it.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub(super) struct EngineIdentity {
     build: Vec<u8>,
     policy: Vec<u8>,
+    /// `ifc_lite_geometry::output_policy::policy_generation` at the snapshot.
+    generation: u64,
+    /// `ifc_lite_geometry::resource::stop_events` at the snapshot.
+    stops: u64,
 }
 
 impl EngineIdentity {
-    /// Snapshot now. `None` when the executable identity is unreadable.
+    /// Snapshot now. `None` when the executable identity is unreadable or
+    /// policy setters keep racing the read.
     pub(super) fn current(salt: &[u8]) -> Option<Self> {
         let mut build = BUILD_DIGEST.as_bytes().to_vec();
         build.extend_from_slice(&FORMAT_VERSION.to_le_bytes());
-        build.extend_from_slice(&executable_identity()?);
+        build.extend_from_slice(&file_identity(&std::env::current_exe().ok()?)?);
         build.extend_from_slice(&(salt.len() as u64).to_le_bytes());
         build.extend_from_slice(salt);
-        Some(Self { build, policy: policy_bytes() })
+        // Stops first: a stop that lands while the policy is read is still seen.
+        let stops = ifc_lite_geometry::resource::stop_events();
+        let (generation, policy) = ifc_lite_geometry::output_policy::coherent_output_policy()?;
+        let mut policy = policy.canonical_bytes();
+        policy.push(u8::from(crate::element::degenerate_backstop_disabled()));
+        policy.extend_from_slice(&(rayon::current_num_threads() as u64).to_le_bytes());
+        Some(Self { build, policy, generation, stops })
     }
 
     pub(super) fn digest(&self) -> [u8; 32] {
@@ -177,19 +196,18 @@ impl EngineIdentity {
         h.finish()
     }
 
-    /// The policy changed since this snapshot (a racing override): a result
-    /// computed across the change must not be stored under this identity.
+    /// A policy setter ran since this snapshot, even if it restored the old
+    /// value (A -> B -> A): work done in between may mix policies.
     pub(super) fn policy_changed(&self) -> bool {
-        self.policy != policy_bytes()
+        ifc_lite_geometry::output_policy::policy_generation() != self.generation
     }
-}
 
-/// The effective output policy, as the pipeline reads it right now.
-pub(super) fn policy_bytes() -> Vec<u8> {
-    let mut out = ifc_lite_geometry::output_policy::effective_output_policy().canonical_bytes();
-    out.push(u8::from(crate::element::degenerate_backstop_disabled()));
-    out.extend_from_slice(&(rayon::current_num_threads() as u64).to_le_bytes());
-    out
+    /// Some product, anywhere in the process, was refused, cancelled or
+    /// degraded by resource state since this snapshot. Conservative: an
+    /// unrelated caller's stop also counts.
+    pub(super) fn resource_stopped(&self) -> bool {
+        ifc_lite_geometry::resource::stop_events() != self.stops
+    }
 }
 
 pub(super) fn cache_key(source: &[u8; 32], source_len: u64, request: &[u8; 32], engine: &[u8; 32]) -> [u8; 32] {
@@ -203,4 +221,35 @@ pub(super) fn cache_key(source: &[u8; 32], source_len: u64, request: &[u8; 32], 
 
 pub(super) fn hex(bytes: &[u8; 32]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::file_identity;
+
+    /// PR #9614 review 2, R2-3: the reviewer's reproducer edited a binary in
+    /// place to different bytes of the same length and restored its mtime,
+    /// which left size/mtime/device/inode unchanged. ctime cannot be restored,
+    /// so the identity must differ.
+    #[cfg(unix)]
+    #[test]
+    fn an_in_place_edit_with_restored_mtime_changes_the_identity() {
+        let dir = std::env::temp_dir().join(format!("ifc-lite-rc-exe-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let path = dir.join("engine");
+        std::fs::write(&path, b"BUILD_A and the rest of a binary").unwrap();
+        let before = file_identity(&path).unwrap();
+        let mtime = std::fs::metadata(&path).unwrap().modified().unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        std::fs::write(&path, b"BUILD_B and the rest of a binary").unwrap();
+        std::fs::File::options().write(true).open(&path).unwrap().set_modified(mtime).unwrap();
+        assert_eq!(std::fs::metadata(&path).unwrap().modified().unwrap(), mtime, "mtime restored");
+        assert_ne!(file_identity(&path).unwrap(), before, "edited bytes with a restored mtime kept the identity");
+        // A path is not part of it: a hard link to the same file agrees.
+        let link = dir.join("engine-link");
+        let _ = std::fs::remove_file(&link);
+        std::fs::hard_link(&path, &link).unwrap();
+        assert_eq!(file_identity(&link), file_identity(&path));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

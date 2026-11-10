@@ -35,6 +35,9 @@ pub enum BypassReason {
     InjectedEntityIndex,
     /// `retain_meshes == false`: nothing worth replaying.
     MeshesNotRetained,
+    /// The calling thread is inside an execution account, source stop or
+    /// terminal domain, whose allowance or cancellation can refuse work.
+    AmbientResourceScope,
     /// The cache directory could not be opened or is not private.
     Unavailable(String),
 }
@@ -54,6 +57,8 @@ pub enum MissReason {
     Oversized { bytes: u64, limit: u64 },
     /// The entry could not be opened or read (permissions, symlink, I/O).
     ReadFailed(String),
+    /// An output-policy setter ran while the entry was being read.
+    PolicyChangedDuringLookup,
 }
 
 /// What happened to the live result afterwards.
@@ -71,9 +76,12 @@ pub enum PublishOutcome {
     SkippedConcurrentWriter,
     /// Less than the write plus 1 GiB of headroom is free.
     SkippedLowDiskSpace,
-    /// The effective output policy changed while the pass ran (a concurrent
-    /// override such as `set_cap`), so the result is not this key's.
+    /// An output-policy setter ran while the pass ran (even one undone before
+    /// it ended), so the result may mix policies and is not this key's.
     SkippedPolicyChanged,
+    /// A product somewhere in the process was refused, cancelled or degraded
+    /// by resource state while the pass ran; the result may be incomplete.
+    SkippedResourceStop,
     /// The result breaks a structural invariant the decoder enforces.
     Unencodable(String),
     Failed(String),

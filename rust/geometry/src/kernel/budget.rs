@@ -158,20 +158,20 @@ fn env_element_cap() -> Option<u64> {
 /// `n` BigRational escalations (the interactive viewer/wasm profile). The
 /// default is [`DEFAULT_CAP`], so the viewer is bounded out of the box.
 pub fn set_cap(cap: Option<u64>) {
-    CAP.store(cap.unwrap_or(0), Ordering::Relaxed);
+    crate::output_policy::mutate(|| CAP.store(cap.unwrap_or(0), Ordering::Release));
 }
 
 /// Set the global per-element escalation cap (#1109 follow-up). `None` =
 /// unbounded. The default is [`DEFAULT_ELEMENT_CAP`].
 pub fn set_element_cap(cap: Option<u64>) {
-    ELEMENT_CAP.store(cap.unwrap_or(0), Ordering::Relaxed);
+    crate::output_policy::mutate(|| ELEMENT_CAP.store(cap.unwrap_or(0), Ordering::Release));
 }
 
 /// The active per-boolean cap, as configured (`None` ⇒ unbounded).
 pub fn cap() -> Option<u64> {
     #[cfg(test)]
     if let Some(profile) = test_profile::configured() { return profile.cap(); }
-    match CAP.load(Ordering::Relaxed) {
+    match CAP.load(Ordering::Acquire) {
         0 => None,
         n => Some(n),
     }
@@ -181,7 +181,7 @@ pub fn cap() -> Option<u64> {
 pub fn element_cap() -> Option<u64> {
     #[cfg(test)]
     if let Some(profile) = test_profile::configured() { return profile.element_cap(); }
-    match ELEMENT_CAP.load(Ordering::Relaxed) {
+    match ELEMENT_CAP.load(Ordering::Acquire) {
         0 => None,
         n => Some(n),
     }

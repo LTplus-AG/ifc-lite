@@ -4960,6 +4960,7 @@
     "VerticalSegment: interface",
     "VerticalSegmentType: type",
     "WallAlignment: type",
+    "WallAutojoinIndex: interface",
     "WallBodyOutline: interface",
     "WallBuildResult: interface",
     "WallConnectionType: type",
@@ -5214,6 +5215,8 @@
     "wallJoinWallFromParams: function",
     "wallRectsFromMeshes: function",
     "withRefreshedBaseQuantities: function",
+    "withWallAutojoinAppend: function",
+    "withWallAutojoinIndex: function",
     "writeTopAttachment: function"
   ],
   "@ifc-lite/data": [

@@ -104,12 +104,15 @@ it('plan.move carries joined walls through the shared physical writer and one Un
   assert.ok(target);
   const command = getModelingCommand(PLAN_MOVE.id);
   assert.ok(command);
-  const outcome = runTransaction(useViewerStore, command, { target, base: [20,20], to: [21,20] },
+  // #9406: a perpendicular slide trims the neighbour along its own axis.
+  // Keep a real geometry change so the remesh and Undo assertions stay useful.
+  const outcome = runTransaction(useViewerStore, command, { target, base: [20,20], to: [20,21] },
     { get: useViewerStore.getState, modelId: MODEL, storeyId: 42, workplane: plane });
   assert.ok(outcome.ok, outcome.ok ? 'plan.move committed' : outcome.reason);
   const endpoints = useViewerStore.getState().readWallEndpoints(MODEL, second.expressId);
   assert.ok(endpoints);
-  assert.deepEqual(endpoints.start.slice(0, 2), [25,20], 'the adjacent joined endpoint follows the moved wall');
+  assert.deepEqual(endpoints.start.slice(0, 2), [24,21], 'the joined endpoint slides along the neighbour axis');
+  assert.deepEqual(endpoints.end.slice(0, 2), [24,23], 'the far endpoint stays fixed and the neighbour stays orthogonal');
   assert.ok(outcome.result.remesh.includes(second.expressId), 'the joined neighbour is remeshed in the same transaction');
   await settle();
   assert.notDeepEqual(meshes().filter(mesh => mesh.expressId === second.expressId).map(mesh => Array.from(mesh.positions)), secondBefore);

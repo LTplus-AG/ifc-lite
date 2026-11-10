@@ -6115,8 +6115,11 @@ With `?perfTrace=1`, warm loads additionally record `cache.entityIndex`
 (cached-column or source-scan rebuild), `cache.onDemandMaps` (relationship maps),
 and `cache.spatial` (spatial rebuild, including elevation and height extraction).
 `cache.chunkDecode` records each geometry chunk with a `chunk` index on primary,
-snapshot and federated hits. Sum its durations for total decode work; overlapping
-snapshot/federated spans are work time, not wall time.
+snapshot and federated hits. Primary hits decode chunks one at a time, so their
+spans sum to decode time. Snapshot and federated hits start every chunk at once:
+each span is that chunk's latency (inflate, then main-thread record decode,
+including the wait behind other chunks' decodes), so do not sum them; use
+`cache.geometry` (federated) or the first-start to last-end interval instead.
 `scene.snapshotHydrate` times attachment to adopted batches;
 `scene.snapshotHydrate.refused` counts attachment refusals.
 
@@ -6126,10 +6129,16 @@ receipt with `worker` and `shard`. `prepass.sharded` distinguishes the sharded
 worker handler from `prepass.scan`; the existing `styles.finalize` remains the
 style-finalization handler span. Worker sub-stages are `worker.sourceInstall`
 (the source-to-wasm copy), `worker.batch.wasm` (batch geometry call),
-`worker.batch.collect` (copy-out/collection, possibly nested for partitioned output),
-and `worker.batch.post` (synchronous batch postMessage). Existing
-`msg.worker.out.transferObjects` and byte counters measure transfer lists.
-`cache.miss` marks fallthrough after lookup/rejected-hit processing; the interval
+`worker.batch.collect` (copy-out/collection, one per batch, including the
+partitioned shard take), and `worker.batch.post` (synchronous batch postMessage).
+While tracing, the worker's postMessage is the accounting wrapper, so
+`worker.batch.post` also contains the clone-size estimate walk and the span/counter
+flush message; treat it as an upper bound on production post cost.
+`msg.worker.out.transferObjects` (new) and the existing byte counters measure
+transfer lists.
+`cache.miss` marks a lookup that did not serve (no entry, rejected hit, or failed
+hit decode); loads that skip the lookup (no cache tier for the file's size,
+retained kernel, textured `.ifcZIP`) record neither `cache.lookup` nor `cache.miss`. The interval
 from the existing `cache.lookup` end to `geometry.pool` start measures the full
 miss preparation gap (server attempt, engine initialization and source copy).
 No pool means a different load path, not a missing duration.

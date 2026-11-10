@@ -43,8 +43,9 @@ family or schema: only items and activities render, relationships have no card
 of their own, IFC4X3 rows have no convert level (the hop under test is
 IFC4 <-> IFC2X3), and each kind of row uses its own levels. An entity the other
 schema lacks keeps its convert level, so the cell shows what the converter does
-with it: maps it, refuses the file, or copies it through unconverted (which the
-probe reports and does not credit).
+with it: maps it, refuses the file, or copies it through unconverted. The probe
+reports any record in the intermediate file that does not conform to that
+schema and gives that file no credit.
 
 ## Scoring and the ratchet
 

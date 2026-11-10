@@ -48,13 +48,10 @@ test('create scene: in every schema, each need runs earlier and each expected va
   const { tables } = deriveCatalogue(ROOT);
   const bad = [];
   for (const schema of Object.keys(tables)) {
-    const order = stepsFor(schema).map((s) => s.id);
-    for (const [at, step] of stepsFor(schema).entries()) {
-      // buildScene fills its results in order, so a need must run, and run earlier.
-      for (const need of step.needs ?? []) {
-        const i = order.indexOf(need);
-        if (i === -1 || i > at) bad.push(`${step.id}: needs ${need}, which does not run before it in ${schema}`);
-      }
+    const ran = new Set();
+    for (const step of stepsFor(schema)) {
+      for (const need of step.needs ?? []) if (!ran.has(need)) bad.push(`${step.id}: needs ${need}, which does not run before it in ${schema}`);
+      ran.add(step.id);
       for (const [entity, expect] of Object.entries(step.emits)) {
         const attrs = tables[schema].table.get(entity)?.attributes;
         if (!attrs) { bad.push(`${step.id}: ${schema} has no ${entity}`); continue; }

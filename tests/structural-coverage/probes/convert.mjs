@@ -13,8 +13,9 @@
  * GlobalId, or by its type when it has none, since a re-export may renumber.
  * A record that comes back as another entity is partial evidence; one that is
  * gone is a failure. The converter throwing is the product failing, not the probe.
- * An entity the intermediate schema lacks must not appear in the intermediate
- * file at all: copying it through unconverted writes a schema-invalid file, so
+ * Every record of the entity in the intermediate file must conform to the
+ * intermediate schema (the entity exists there, with that schema's attribute
+ * count). A record copied through unconverted makes the file schema-invalid, so
  * that file earns no credit for the row even when the record comes back.
  */
 
@@ -31,7 +32,7 @@ function roundTrip(ctx, file, schema) {
     const { exportToStep } = ctx.pkgs.exporter;
     const there = exportToStep(await storeOf(ctx, file), { schema: OTHER[schema] });
     return { there: readStep(there), step: readStep(exportToStep(await parseStore(ctx.pkgs, there), { schema })) };
-  })().then((r) => r, (error) => ({ error })));
+  })().catch((error) => ({ error })));
 }
 
 function tuple(row, record, step, types) {
@@ -76,14 +77,17 @@ export default {
         .sort((a, b) => a.bytes.length - b.bytes.length || a.path.localeCompare(b.path)).slice(0, MAX_FILES);
       if (!carriers.length) { out.set(row.id, ctx.corpus.nothingCarries(row.schema, row.entity)); continue; }
       const { types } = ctx.tables[row.schema];
+      const target = ctx.tables[OTHER[row.schema]].table.get(row.entity);
+      const conforms = (rec) => target !== undefined && rec.args.length === target.attributes.length;
       const problems = [];
       let checked = 0;
       let anyHeld = false;
       for (const file of carriers) {
         const rt = await roundTrip(ctx, file, row.schema);
         if (rt.error) { problems.push(`${file.path}: ${row.schema} -> ${OTHER[row.schema]} -> ${row.schema} threw: ${rt.error.message.split('\n')[0]}`); checked++; continue; }
-        if (!ctx.tables[OTHER[row.schema]].types.has(row.entity.toUpperCase()) && rt.there.count(row.entity) > 0) {
-          problems.push(`${file.path}: ${row.entity} passed through unconverted into a file declaring ${OTHER[row.schema]}, which has no such entity`);
+        const copied = rt.there.of(row.entity).filter((rec) => !conforms(rec));
+        if (copied.length) {
+          problems.push(`${file.path}: ${copied.length} ${row.entity} record(s) in the ${OTHER[row.schema]} file do not conform to ${OTHER[row.schema]} (${target ? `${target.attributes.length} attributes expected` : 'no such entity'})`);
           checked++;
           continue;
         }

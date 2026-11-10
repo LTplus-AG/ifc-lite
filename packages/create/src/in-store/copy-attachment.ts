@@ -53,12 +53,13 @@ export interface CopyAttachmentContext {
 /** Read the attachments of every product a batch may copy (roots and what they carry). */
 export function readCopyAttachments(ctx: CopyContext, ids: Iterable<number>): CopyAttachmentContext {
   const view = ctx.editor.getMutationView();
-  // The storey inventory reads the whole model: only read it when a copy records an attachment.
+  // Only read the storey inventory when a copy records an attachment.
   const recorded = [...ids].filter((id) => attachedKind(ctx.read(id)?.type)
     && (view.getPropertyValue(id, STOREY_ATTACHMENT_PSET, TOP_CONSTRAINT) !== null || view.getPropertyValue(id, 'Constraints', 'Top Constraint') !== null));
   const sources = new Map<number, { attachment: TopAttachment; homeId: number }>();
   if (recorded.length === 0) return { inventory: null, sources };
-  const inventory = readStoreyInventory(ctx.store, view);
+  // Only these sources' home storeys are asked for: no whole relationship graph.
+  const inventory = readStoreyInventory(ctx.store, view, { lazyRelationships: true });
   for (const id of recorded) {
     const attachment = readTopAttachment(inventory, id);
     const homeId = homeStoreyOf(inventory, id);

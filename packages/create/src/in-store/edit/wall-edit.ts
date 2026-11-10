@@ -14,7 +14,7 @@
  * Generic placement reads / writes live in `placement-core.ts`.
  */
 
-import { wallBaseSolid } from './wall-base-solid.js';
+import { wallBaseSolid, ROOF_ATTACHMENT } from './wall-base-solid.js';
 import { AnchorEntityReader } from '../resolve-anchor.js';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
@@ -356,6 +356,10 @@ export function resizeRectangleWall(
       reason:
         'Wall does not have a simple IfcRectangleProfileDef → IfcExtrudedAreaSolid representation',
     };
+  }
+  // These four writes would leave a roof cut in the old wall frame.
+  if (view.getPropertyValue(expressId, ROOF_ATTACHMENT, 'Clipped') === true) {
+    return { ok: false, reason: 'Wall top is cut by a roof; resize it through resizeWallInStore so the cut follows' };
   }
   // A wall with joins, cut ends or an offset body is more than these four coupled entities: overwriting
   // them would leave its `IfcRelConnectsPathElements` and cuts describing the old place.

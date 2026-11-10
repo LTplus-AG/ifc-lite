@@ -100,7 +100,8 @@ function removeCuts(target: EditTarget, root: number, base: number): void {
 /** Caller owns an atomic edit. The cutters start exactly on the shared roof underside. */
 export function clipWallToRoof(target: EditTarget, wallId: number, roofId: number): void {
   const definition = readFootprintRoofInStore(target.dataStore, roofId, target.view);
-  if (!definition) return;
+  // A roof without a footprint has a planar underside: drop any earlier roof's cut.
+  if (!definition) { clearWallRoofClip(target, wallId); return; }
   const scale = getModelLengthUnitScale(target.dataStore), unit = { lengthUnitScale: scale };
   const roofFrame = frame(target, roofId), wallFrame = frame(target, wallId);
   const roofToWall = composeFrame(inverseFrame(wallFrame), roofFrame);

@@ -52,6 +52,15 @@ function withGeneratedRooms<T>(
   return { result: committed.result, mutation: committed.mutation, batch };
 }
 
+/** Room regeneration for a wall that bounds generated rooms, prepared inside the caller's draft before its edit. */
+export function prepareWallRoomUpdate(store: ModellingStore, modelId: string, expressId: number): ((draft: StoreEditor) => () => number[]) | null {
+  const target = generatedRoomTarget(store, modelId, expressId);
+  if (!target) return null;
+  const storeyId = effectiveStoreyId(target.dataStore, target.view, expressId);
+  if (storeyId === undefined) return null;
+  return draft => prepareGeneratedRoomUpdate(target.dataStore, draft, [storeyId]);
+}
+
 /** Inspector and gizmo translations share the move command's room updater. */
 export function moveWithGeneratedRooms(
   store: ModellingStore, modelId: string, expressId: number,

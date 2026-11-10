@@ -1305,7 +1305,12 @@ export const createMutationSlice: StateCreator<
     const [nx, ny, nz] = pointToNative(dataStore, delta);
     const nativeNext: [number, number, number] = [x + nx, y + ny, z + nz];
     const attached = moveAttachedTargetIn(api, modelId, expressId, nativeNext, batchId);
-    if (attached) return attached.ok ? { ok: true, newCoordinates: pointToMetres(dataStore, attached.newCoordinates) } : attached;
+    if (attached) {
+      if (!attached.ok) return attached;
+      // Same canonical placement as the plain move below; the remesh publishes the refit geometry.
+      get().mirrorPlacementEdit(modelId, expressId, delta);
+      return { ok: true, newCoordinates: pointToMetres(dataStore, attached.newCoordinates) };
+    }
     // Go through the slice's own `setPositionalAttribute` action so
     // the mutation lands on the undo stack with the standard envelope.
     const updated = moveWithGeneratedRooms(api, modelId, expressId, chain.cartesianPointId, nativeNext, batchId);
@@ -1383,12 +1388,16 @@ export const createMutationSlice: StateCreator<
     // Push the IFC → renderer delta for the rendered mesh. Same
     // Z-up → Y-up conversion as `translateEntity` above. `position` is
     // metres; the point holds the file's native unit (#6233).
-    const attached = moveAttachedTargetIn(api, modelId, expressId, pointToNative(dataStore, position));
-    if (attached) return attached.ok ? { ok: true, newCoordinates: position } : attached;
     const [oldX, oldY, oldZ] = pointToMetres(dataStore, chain.coordinates);
     const dx = position[0] - oldX;
     const dy = position[1] - oldY;
     const dz = position[2] - oldZ;
+    const attached = moveAttachedTargetIn(api, modelId, expressId, pointToNative(dataStore, position));
+    if (attached) {
+      if (!attached.ok) return attached;
+      if (dx !== 0 || dy !== 0 || dz !== 0) get().mirrorPlacementEdit(modelId, expressId, [dx, dy, dz]);
+      return { ok: true, newCoordinates: position };
+    }
     const updated = moveWithGeneratedRooms(api, modelId, expressId, chain.cartesianPointId, pointToNative(dataStore, position));
     const mutation = updated?.mutation
       ?? get().setPositionalAttribute(modelId, chain.cartesianPointId, 0, pointToNative(dataStore, position));

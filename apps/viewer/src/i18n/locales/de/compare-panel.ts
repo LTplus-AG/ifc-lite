@@ -21,6 +21,7 @@ export const comparePanelDe = {
   "comparePanel.saved.dependencies.storagePending": "Das Löschen steht aus, weil der Browserspeicher nicht verfügbar oder voll ist. „Behalten“ stellt den aktuellen gespeicherten Bericht wieder her.",
   "comparePanel.saved.dependencies.sourceChanged": "Dieser Bericht wurde geändert oder ersetzt. Brechen Sie ab und öffnen Sie den Löschdialog erneut.",
   "comparePanel.saved.dependencies.changed": "Diagrammverweise wurden geändert. Prüfen Sie die aktualisierte Liste, bevor Sie das Löschen bestätigen.",
+  "comparePanel.saved.dependencies.finishFailed": "Der Bericht wurde entfernt, aber diese Ansicht konnte nicht aktualisiert werden. Schließen und öffnen Sie sie erneut.",
   "comparePanel.saved.dependencies.review": "Aktualisierte Verweise prüfen",
   "comparePanel.saved.title": "Gespeicherte Vergleiche",
   "comparePanel.saved.name": "Vergleichsname",

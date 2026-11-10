@@ -22,7 +22,12 @@ export function BCFDraftReconcile({ batch, onChange }: { batch: DraftBatch; onCh
   const { t } = useTranslation();
   const [proposal, setProposal] = useState<BatchReconciliation | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  // C-2: each action rebuilds the batch from the one shown when pressed, so
+  // only one runs at a time; a second would land over the first and lose it.
+  const flight = useAsyncRun({ label: 'BCF draft reconcile' });
   const compare = () => {
+    // A new comparison replaces the last action's failure; a running action keeps its lane.
+    if (flight.state.kind === 'failed') flight.reset();
     const run = currentDraftRun();
     if (!run) { setProposal(null); setMessage(t('bcfDrafts.reconcile.noRun')); return; }
     const groups = useClashGroupLibrary.getState().entries;
@@ -30,9 +35,6 @@ export function BCFDraftReconcile({ batch, onChange }: { batch: DraftBatch; onCh
     setMessage(null);
   };
   const title = (guid: string) => batch.topics.find(topic => topic.guid === guid)?.title ?? guid;
-  // C-2: each action rebuilds the batch from the one shown when pressed, so
-  // only one runs at a time; a second would land over the first and lose it.
-  const flight = useAsyncRun({ label: 'BCF draft reconcile' });
   const apply = (guid: string) => flight.start(async () => {
     const topic = proposal?.topics.find(item => item.topicGuid === guid);
     const next = topic ? await applyTopicReconciliation(batch, topic) : null;

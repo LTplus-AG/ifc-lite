@@ -5,12 +5,17 @@
 /**
  * The drafts dialog's edit lane (C-2). An asynchronous edit (merge, split,
  * remove member) is computed from the batch as it was when pressed, so the
- * editor is held until it lands; a second edit pressed meanwhile is refused,
- * because it would land over the first from the same stale batch.
+ * editor is held until it lands; a second edit pressed on the same batch while
+ * it stays on screen is refused, because it would land over the first from the
+ * same stale batch.
  *
- * The lane belongs to the batch on screen: switching batch (`batchId`)
- * aborts the held lane so the new batch's editor is usable at once. The
- * switched-away edit still lands into its own batch, which `save` addresses.
+ * The lane belongs to the batch on screen (`batchId`): ANY change of the
+ * active batch releases it, whether a pick in the batch list, an archive
+ * import or a deleted batch moving the selection, or another tab. The new
+ * batch's editor is usable at once, and the switched-away edit still lands in
+ * its own batch, which `save` addresses. The release is not remembered per
+ * batch: switching A -> B -> A while A's edit is still computing frees A's
+ * editor too, so a second A edit can start before the first one lands.
  */
 
 import { useAsyncRun } from '@/hooks/useAsyncRun';

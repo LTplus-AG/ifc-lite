@@ -82,3 +82,20 @@ test('a successful apply shows no failure', async () => {
   await waitFor(() => applied !== null, 'the reconciled batch is handed to the dialog');
   assert.equal(alertText(ui), null);
 });
+
+test('a new Compare clears the last action\'s failure', async () => {
+  const batch = await reconcilable();
+  const warn = console.warn;
+  console.warn = () => {};
+  try {
+    const ui = render(<BCFDraftReconcile batch={batch} onChange={() => { throw new Error('Saving the batch failed.'); }} />);
+    const compare = () => click([...ui.querySelectorAll('button')].find((node) => node.textContent === 'Compare')!);
+    compare();
+    click(applyButton(ui)!);
+    await waitFor(() => alertText(ui) !== null, 'the failure is shown');
+    compare();
+    assert.equal(alertText(ui), null, 'the failure described the previous comparison');
+  } finally {
+    console.warn = warn;
+  }
+});

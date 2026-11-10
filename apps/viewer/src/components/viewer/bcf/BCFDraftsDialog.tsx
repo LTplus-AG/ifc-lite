@@ -141,7 +141,7 @@ export function BCFDraftsDialog({ open, onOpenChange }: { open: boolean; onOpenC
           </div>
           <ContentStorageNotice status={library.status} retry={bcfDraftLibrary.retry} restore={bcfDraftLibrary.restore} />
           {!batch && <p className="text-xs text-muted-foreground">{t('bcfDrafts.dialog.empty')}</p>}
-          {batch && batch.source.kind === 'clash' && <BCFDraftReconcile batch={batch} onChange={save} />}
+          {batch && batch.source.kind === 'clash' && <BCFDraftReconcile key={batch.id} batch={batch} onChange={save} />}
           {/* A disabled fieldset disables every control in every editor while an edit lands. */}
           <fieldset disabled={editing} className="m-0 flex min-w-0 flex-col gap-2 border-0 p-0">
             {batch?.topics.map(topic => (

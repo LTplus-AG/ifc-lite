@@ -62,9 +62,10 @@ export function BCFServerDialog({ open, onOpenChange }: BCFServerDialogProps) {
   const [initialUsername, setInitialUsername] = useState('');
   const [projects, setProjects] = useState<BcfProjectDto[] | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState('');
-  // One topic pull at a time (C-2): a same-tick double press is refused; an
-  // account switch or a disconnect from another tab releases it
-  // (applySavedConnection; the generation guard below still drops its late result).
+  // One topic pull at a time (C-2): a same-tick double press is refused; any
+  // change of the saved connection (an account switch, a disconnect in this tab
+  // or another) releases it through applySavedConnection, and the generation
+  // guard below still drops its late result.
   const pullFlight = useAsyncRun();
   const busy = pullFlight.busy;
   const releasePull = pullFlight.reset;
@@ -166,8 +167,10 @@ export function BCFServerDialog({ open, onOpenChange }: BCFServerDialogProps) {
     setProjects(null);
     setSelectedProjectId('');
     setError(null);
-    // No pull to release: Disconnect is disabled while one runs, and a
-    // disconnect from another tab reaches applySavedConnection, which does.
+    // No pull to release here. clearBcfServerConfig() dispatches the change
+    // event in this same tab, so the subscription below already ran
+    // applySavedConnection(null), which releases one; and Disconnect is
+    // disabled while a pull runs anyway.
   }, []);
 
   const handlePull = useCallback(async () => {

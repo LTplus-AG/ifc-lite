@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { toast } from '@/components/ui/toast';
 import { useAsyncRun } from '@/hooks/useAsyncRun';
 import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
@@ -91,9 +92,15 @@ export function ReportDeletionPreview({ source, report, onCancel, onDeleted, sto
     let ok = false;
     try { ok = await removeAction(source.id, beforeWrite); }
     catch (error) { console.warn('[Report deletion] Removal failed', error); }
-    if (active.current === owner && owner.alive) setPendingDeletion(staged && !ok && !guardRejected);
-    if (!ok && !guardRejected) storageFailed();
-    if (ok && active.current === owner && owner.alive) onDeleted?.();
+    try {
+      if (active.current === owner && owner.alive) setPendingDeletion(staged && !ok && !guardRejected);
+      if (!ok && !guardRejected) storageFailed();
+      if (ok && active.current === owner && owner.alive) onDeleted?.();
+    } catch (error) {
+      // The host's callbacks threw; useAsyncRun does not rethrow, so say it here.
+      console.error('[Report deletion] Finishing the removal failed', error);
+      toast.error(t('comparePanel.saved.dependencies.finishFailed'));
+    }
   });
   const cancel = () => {
     // Revoke approval before any asynchronous recovery or unmount callback.

@@ -22,6 +22,7 @@ export const comparePanelIt = {
   "comparePanel.saved.dependencies.storagePending": "L'eliminazione è in sospeso perché l'archiviazione del browser non è disponibile o è piena. Mantieni ripristina il rapporto salvato attuale.",
   "comparePanel.saved.dependencies.sourceChanged": "Questo rapporto è cambiato o è stato sostituito. Annulla e apri di nuovo l'eliminazione.",
   "comparePanel.saved.dependencies.changed": "I riferimenti da grafici sono cambiati. Esamina l'elenco aggiornato prima di confermare l'eliminazione.",
+  "comparePanel.saved.dependencies.finishFailed": "Il report è stato rimosso, ma questa vista non è stata aggiornata. Chiudila e riaprila.",
   "comparePanel.saved.dependencies.review": "Esamina riferimenti aggiornati",
   "comparePanel.saved.title": "Confronti salvati",
   "comparePanel.saved.name": "Nome del confronto",

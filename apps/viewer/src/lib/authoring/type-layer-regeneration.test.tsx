@@ -307,6 +307,9 @@ it('an occurrence whose body cannot follow its type keeps it and is named, while
   assert.match(notice.textContent ?? '', /1 element kept its previous body/);
   assert.match(notice.textContent ?? '', /Wall: .*IfcRectangleProfileDef/, 'named, with the reason');
   assert.equal(JSON.stringify(meshes().filter(mesh => mesh.expressId === NATIVE_WALL).map(mesh => [...mesh.positions])), nativeBefore, 'and it keeps the body it had');
+  // The notice is about that Apply: switching what the next Apply targets clears it, as editing a row does.
+  act(() => click([...ui.querySelectorAll('input[type="radio"]')].find(el => el.closest('label')?.textContent === 'Element')!));
+  assert.equal(ui.querySelector('[data-inspector-layer-refusals]') === null, true, 'switching to Element clears the previous notice');
 });
 
 it('a reviewed typing whose element cannot follow its layered type names it, as the inspector does (#9296)', async t => {

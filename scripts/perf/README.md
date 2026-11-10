@@ -3053,6 +3053,21 @@ as well as JavaScript errors, and stop memory sampling on every exit path.
   byte-size verdict, not a measured load-time improvement. **Lesson:** inspect
   the complete HTML preload closure, and isolate shared state before assuming a
   dynamic panel import makes its dependencies lazy.
+- **STEP reals valued in the grammar walk (native instruction hillclimb,
+  2026-11-10):** `read_step_number` walked every literal once to admit it
+  (#7779) and then gave it to `fast_float2`, which walked it again. The walk
+  now folds digits and exponent as it goes; when the mantissa is at most 2^53
+  and the power of ten at most 22 in magnitude, one IEEE multiply or divide
+  is correctly rounded and therefore gives `fast_float2`'s bits (Clinger's
+  fast path; it also subsumes #7880's `N.` case). Everything else still
+  goes to `fast_float2`; integers of up to 18 digits take the walk's
+  mantissa. About 99.5% of the REAL literals in the tuning fixtures take the
+  exact path. Cold single-thread Callgrind, pipeline instructions:
+  advanced_model -5.4%, Holter -1.4%, schependomlaan -0.8%, FZK -0.2%,
+  ISSUE_129 -0.2%; ordered `perf_probe` mesh fingerprints identical on all
+  five, and a 200k-literal bit-for-bit test against `fast_float2`.
+  `parse_step_numeric` (generic, also `f32`) is unchanged: valuing in `f64`
+  then narrowing would round twice. Not a wall-time or browser claim.
 - **Firefox spatial-publication stall (#3983):** Chrome-only cold-load timing
   missed an engine-dependent entity-cache eviction cost. Georeference discovery
   runs through the property-set index during React rendering. Restarting a Map

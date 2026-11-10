@@ -111,10 +111,10 @@ export function readRow(row, entries, types, problems = []) {
   const out = [...problems];
   const link = LINKS[row.root];
   const [from, to, held] = link ?? [];
-  const found = new Set(records.filter((r) => (link ? r.ix && held(r.ix, value(r, from), value(r, to)) : r.ix?.byId.get(r.rec.id)?.type === row.entity)));
+  const found = new Set(records.filter((r) => (link ? held(r.ix, value(r, from), value(r, to)) : r.ix.byId.get(r.rec.id)?.type === row.entity)));
   const lost = records.filter((r) => !found.has(r));
   if (lost.length) {
-    const hit = lost[0].ix?.byId.get(lost[0].rec.id);
+    const hit = lost[0].ix.byId.get(lost[0].rec.id);
     out.push(link
       ? `link ${from} -> ${to} not in the read model for ${lost.length} of ${records.length} record(s), e.g. ${lost[0].where}`
       : `${lost.length} of ${records.length} record(s) not in the read model, e.g. ${lost[0].where}${hit ? ` (read as ${hit.type})` : ''}`);

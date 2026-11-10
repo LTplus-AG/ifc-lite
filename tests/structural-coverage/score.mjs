@@ -149,8 +149,15 @@ export function verifyTotals(summary) {
  */
 export function verifySummary(summary, catalogueRows) {
   const byId = new Map(catalogueRows.map((r) => [r.id, r]));
-  const problems = (summary.rows ?? []).flatMap((r) => (byId.has(r.id) ? LEVELS.filter((l) => (r.levels[l]?.applicable === false) !== (notApplicable(byId.get(r.id), l) !== null))
-    .map((l) => `${r.id} ${l}: applicability differs from the catalogue rule`) : []));
+  const problems = [];
+  for (const r of summary.rows ?? []) {
+    const rule = byId.get(r.id);
+    if (!rule) continue;
+    for (const l of LEVELS) {
+      const storedNa = r.levels[l]?.applicable === false;
+      if (storedNa !== (notApplicable(rule, l) !== null)) problems.push(`${r.id} ${l}: applicability differs from the catalogue rule`);
+    }
+  }
   return [...problems, ...verifyTotals(summary)];
 }
 
@@ -233,6 +240,13 @@ async function main(argv) {
     console.error(`score: --out and --check both name ${rel(out)}; write the summary elsewhere, check it, then copy it over.`);
     return 2;
   }
+  let catalogue;
+  try {
+    catalogue = deriveCatalogue(ROOT);
+  } catch (e) {
+    console.error(`score: ${e.message}`);
+    return 2;
+  }
   let baseline = null;
   if (check) {
     try {
@@ -242,12 +256,12 @@ async function main(argv) {
       return 2;
     }
     if (baseline?.schema !== SUMMARY_SCHEMA) { console.error(`score: ${rel(check)} is not an ${SUMMARY_SCHEMA} summary`); return 2; }
-    const forged = verifySummary(baseline, deriveCatalogue(ROOT).rows);
+    const forged = verifySummary(baseline, catalogue.rows);
     if (forged.length) { console.error(`score: ${rel(check)}: its stored totals or applicability disagree with its rows and the catalogue:\n  ${forged.slice(0, 5).join('\n  ')}`); return 2; }
   }
   let summary;
   try {
-    const { rows, tables } = deriveCatalogue(ROOT);
+    const { rows, tables } = catalogue;
     const corpus = loadCorpus(ROOT, { offline: values.offline === true });
     const pkgs = await loadPackages(ROOT);
     const cells = await runProbes(rows, { root: ROOT, rows, tables, corpus, pkgs, cache: new Map() });

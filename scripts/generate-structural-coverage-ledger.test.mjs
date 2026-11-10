@@ -22,7 +22,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { LEVELS, deriveCatalogue, notApplicable } from '../tests/structural-coverage/catalogue.mjs';
-import { ratchet, runProbes, score, verifyTotals } from '../tests/structural-coverage/score.mjs';
+import { ratchet, runProbes, score, tally, verifyTotals } from '../tests/structural-coverage/score.mjs';
 import { readRow } from '../tests/structural-coverage/probes/read.mjs';
 import { checkExport } from '../tests/structural-coverage/probes/create.mjs';
 import { normalize } from '../tests/structural-coverage/lib/values.mjs';
@@ -259,7 +259,7 @@ test('create (#9668): typed values are compared typed, and a non-conforming expo
   assert.match(got.reason, /^1 of 1 exported record\(s\) do not conform/, 'the reason a cell fails comes first');
 });
 
-test('totals (#9668): stored totals that disagree with the rows are refused by the ledger and by --check', async () => {
+test('totals (#9668): stored totals that disagree with the rows are refused by the ledger and by --check', () => {
   const all = Object.fromEntries(LEVELS.map((l) => [l, 'pass']));
   const s = score(two, cellsOf({ [two[0].id]: { ...all, card: 'partial' }, [two[1].id]: { capability: 'pass' } }));
   assert.deepEqual(verifyTotals(s), []);
@@ -279,7 +279,6 @@ test('totals (#9668): stored totals that disagree with the rows are refused by t
     // Marking a failing cell not applicable, with totals recomputed to match, is refused against the catalogue rules.
     const target = summary.rows.find((x) => x.levels.read?.status === 'fail');
     const rows = summary.rows.map((x) => (x === target ? { ...x, levels: { ...x.levels, read: { applicable: false, rule: 'forged' } } } : x));
-    const { tally } = await import('../tests/structural-coverage/score.mjs');
     writeFileSync(forged, JSON.stringify({ ...summary, ...tally(rows) }));
     const hidden = run(['--root', dir, '--summary', forged]);
     assert.notEqual(hidden.status, 0);

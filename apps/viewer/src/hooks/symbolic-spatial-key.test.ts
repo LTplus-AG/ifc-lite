@@ -44,7 +44,7 @@ it('NEW-3: numeric FNV matches legacy UTF-16 BigInt FNV for random and adversari
   for (const text of ['', '長いéΩ', '\u0000', '\ud800', '\udfff', '😀', 'a'.repeat(100_000), '\ud800é\udfff'.repeat(10_000)]) {
     // Deliberately malformed runtime values exercise the full UTF-16 feed,
     // beyond the ASCII numeric strings produced by valid spatial maps.
-    const map = new Map([[0, text as unknown as number], [Infinity, NaN], [-0, -Infinity]]);
+    const map = new Map([[1, text as unknown as number], [Infinity, NaN], [-0, -Infinity]]);
     assert.equal(spatialBucketKey(map, undefined), legacy(map, undefined));
     assert.equal(spatialBucketKey(new Map(), map), legacy(new Map(), map));
   }

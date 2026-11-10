@@ -103,7 +103,7 @@ describe('ModelWorkspaceSplit (#6232 M2.1)', () => {
     assert.match(leave.textContent ?? '', /Leave\s*· M$/);
     activate(leave, ' ');
     assert.equal(useViewerStore.getState().workspaceMode, 'view');
-    assert.equal(ui.querySelector('[data-workspace-leave]'), null, 'the bar is gone');
+    assert.equal(ui.querySelector('[data-workspace-leave]') === null, true, 'the bar is gone');
     assert.equal(document.activeElement === model, true, 'focus is back on the Model button');
   });
 

@@ -95,7 +95,7 @@ describe('ModelWorkspaceSplit applies the rule (#6232 M2.4)', () => {
     assert.equal(ui.querySelector('[data-model-plan-pane]')?.getAttribute('aria-hidden'), 'true');
     const split = [...ui.querySelectorAll<HTMLButtonElement>('[role="radio"]')].find(button => button.textContent?.startsWith('Split'));
     assert.ok(split && !split.disabled, 'Split stays available');
-    assert.equal(ui.querySelector('[data-model-layout-notice]'), null, 'entry falls back quietly (#9296)');
+    assert.equal(ui.querySelector('[data-model-layout-notice]') === null, true, 'entry falls back quietly (#9296)');
     assert.equal(useViewerStore.getState().modelLayout, 'auto', 'nothing was persisted');
     click(split);
     assert.ok(ui.querySelector('[data-model-layout-notice]'), 'an explicit Split pick explains the fallback');
@@ -117,6 +117,6 @@ describe('ModelWorkspaceSplit applies the rule (#6232 M2.4)', () => {
     restore = splitWidth(1600);
     const ui = render(<><ModelToolRail /><ModelWorkspaceSplit><div data-probe-3d /></ModelWorkspaceSplit></>);
     assert.equal(ui.querySelector('[data-model-plan-pane]')?.getAttribute('aria-hidden'), 'true');
-    assert.equal(ui.querySelector('[data-rail-tool="plan"]'), null, 'the workspace bar owns layout');
+    assert.equal(ui.querySelector('[data-rail-tool="plan"]') === null, true, 'the workspace bar owns layout');
   });
 });

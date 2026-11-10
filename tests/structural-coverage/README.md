@@ -44,8 +44,12 @@ of their own, IFC4X3 rows have no convert level (the hop under test is
 IFC4 <-> IFC2X3), and each kind of row uses its own levels. An entity the other
 schema lacks keeps its convert level, so the cell shows what the converter does
 with it: maps it, refuses the file, or copies it through unconverted. The probe
-reports any record in the intermediate file that does not conform to that
-schema and gives that file no credit.
+reports a record of the row's entity in the intermediate file that is missing
+from that schema or has the wrong attribute count, and gives that file no
+credit. It does not check attribute types: R0 showed the converter copying
+IFC4 boolean stiffness (`IFCBOOLEAN(.T.)`) into IFC2X3 boundary-condition slots
+that must hold a measure, and those IFC4 boundary-condition convert cells still
+pass. A type check needs attribute types the generated tables do not carry.
 
 ## Scoring and the ratchet
 

@@ -26,6 +26,7 @@ import { ratchet, runProbes, score } from '../tests/structural-coverage/score.mj
 import { readStep } from '../tests/structural-coverage/lib/step.mjs';
 import { unwritten } from '../tests/structural-coverage/probes/index.mjs';
 import { SCENE, stepsFor } from '../tests/structural-coverage/probes/create-scene.mjs';
+import { nonConforming } from '../tests/structural-coverage/probes/convert.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const GENERATOR = join(ROOT, 'scripts/generate-structural-coverage-ledger.mjs');
@@ -127,6 +128,18 @@ test('STEP reader: typed values with a space, comments, escapes and every record
   assert.deepEqual(step.get(2).args[0], { type: 'IFCPLANEANGLEMEASURE', value: 0.0174 });
   assert.equal(step.get(3).args[0], "a;'bä");
   assert.deepEqual(step.get(4).args, [[1e-5, -2], { enum: 'T' }]);
+});
+
+test('convert: a record copied into a schema that lacks the entity, or with the wrong arity, does not conform', () => {
+  const { tables } = deriveCatalogue(ROOT);
+  const ifc4 = readStep(`ISO-10303-21;HEADER;FILE_SCHEMA(('IFC4'));ENDSEC;DATA;
+#1=IFCRELCONNECTSSTRUCTURALELEMENT('0',$,$,$,#2,#3);
+#4=IFCSTRUCTURALLOADGROUP('1',$,$,$,$,.LOAD_GROUP.,.PERMANENT_G.,.DEAD_LOAD_G.,1.,$);
+#5=IFCSTRUCTURALLOADGROUP('2',$,$,$,$,.LOAD_GROUP.,.PERMANENT_G.,.DEAD_LOAD_G.,1.);
+ENDSEC;END-ISO-10303-21;`);
+  const table = tables.IFC4.table;
+  assert.equal(nonConforming(ifc4, 'IfcRelConnectsStructuralElement', table.get('IfcRelConnectsStructuralElement')).length, 1, 'IFC4 has no such entity');
+  assert.deepEqual(nonConforming(ifc4, 'IfcStructuralLoadGroup', table.get('IfcStructuralLoadGroup')).map((r) => r.id), [5], 'only the short record');
 });
 
 function tree() {

@@ -147,6 +147,7 @@ export const ribbonToolbarEn = {
 
   'ribbon.author.editGroup': 'Edit',
   'ribbon.author.editMode': 'Model',
+  'ribbon.author.editLockedTooltip': 'Editing requires editor access in this shared session',
   'ribbon.author.undo': 'Undo',
   'ribbon.author.redo': 'Redo',
   'ribbon.author.createGroup': 'Create',

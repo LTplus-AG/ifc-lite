@@ -69,6 +69,7 @@ const NOT_RENDERED_IN_THIS_STATE: RibbonKey[] = [
   'ribbon.analyze.listsTooltip', // its tooltip is not hovered
   'ribbon.analyze.styleGroup',
   'ribbon.analyze.appsGroup', // no analysis extensions installed
+  'ribbon.author.editLockedTooltip', // single-user session can edit
 ];
 
 /** Key-specific pseudo translation; keeps every `{placeholder}` of the English text. */

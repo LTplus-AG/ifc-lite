@@ -175,7 +175,8 @@ export function RibbonToolbar({ onShowShortcuts }: RibbonToolbarProps = {} as Ri
 
         <div className="ml-1 flex shrink-0 items-center gap-0.5 border-l border-divider pl-2">
           <RibbonCommandSmallButton commandId="tool:edit-mode"
-            active={inModel} aria-pressed={inModel} disabled={!canEdit}
+            active={inModel} aria-pressed={inModel} aria-disabled={!canEdit || undefined}
+            tooltip={canEdit ? undefined : t('ribbon.author.editLockedTooltip')}
             activeClassName="bg-overlay-accent-soft text-foreground ring-1 ring-inset ring-overlay-accent/50"
             className="h-7 w-auto shrink-0 whitespace-nowrap border border-divider px-2 text-xs" />
           <Button

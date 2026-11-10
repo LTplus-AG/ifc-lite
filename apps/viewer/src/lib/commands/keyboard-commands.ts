@@ -100,7 +100,7 @@ export const KEY_COMMANDS = [
   // ── Tools ─────────────────────────────────────────────────────────────
   { id: 'tool.select', labelKey: 'commands.tool.select', category: 'tools', when: 'global', keys: [k('v')] },
   { id: 'tool.walk', labelKey: 'commands.tool.walk', category: 'tools', when: 'global', keys: [k('c')] },
-  { id: 'tool.measure', labelKey: 'commands.tool.measure', category: 'tools', when: 'global', keys: [k('m', { shift: true })] },
+  { id: 'tool.measure', labelKey: 'commands.tool.measure', category: 'tools', when: 'global', keys: [k('l')] },
   { id: 'tool.annotate', labelKey: 'commands.tool.annotate', category: 'tools', when: 'global', keys: [k('p')] },
   { id: 'tool.section', labelKey: 'commands.tool.section', category: 'tools', when: 'global', keys: [k('x')] },
   { id: 'tool.split', labelKey: 'commands.tool.split', category: 'tools', when: 'global', keys: [k('k')] },

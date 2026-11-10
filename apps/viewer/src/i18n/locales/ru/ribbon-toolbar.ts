@@ -132,6 +132,7 @@ export const ribbonToolbarRu = {
   "ribbon.analyze.appsGroup": "Приложения",
   "ribbon.author.editGroup": "Редактировать",
   "ribbon.author.editMode": "Модель",
+  "ribbon.author.editLockedTooltip": "Для редактирования требуется доступ редактора в этой общей сессии",
   "ribbon.author.undo": "Отменить действие",
   "ribbon.author.redo": "Повторить действие",
   "ribbon.author.createGroup": "Создать",

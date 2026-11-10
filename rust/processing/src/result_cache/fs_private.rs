@@ -34,6 +34,11 @@ mod imp {
         b
     }
 
+    /// An entry read: the owner may set its times through this handle.
+    pub(crate) fn read_options(base: &mut OpenOptions) -> &mut OpenOptions {
+        options(base.read(true), 0)
+    }
+
     fn euid() -> u32 {
         // SAFETY: geteuid takes no arguments, cannot fail and touches no memory.
         unsafe { libc::geteuid() }
@@ -71,8 +76,37 @@ mod imp {
 mod imp {
     use super::*;
 
+    /// Windows: open a reparse point (symlink, junction) itself instead of
+    /// following it, so the handle checks below reject it as not a regular
+    /// file, the counterpart of `O_NOFOLLOW` on the opened handle.
     pub(crate) fn options(base: &mut OpenOptions, _mode: u32) -> &mut OpenOptions {
-        base
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::OpenOptionsExt;
+            const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
+            base.custom_flags(FILE_FLAG_OPEN_REPARSE_POINT)
+        }
+        #[cfg(not(windows))]
+        {
+            base
+        }
+    }
+
+    /// An entry read. Windows also asks for `FILE_WRITE_ATTRIBUTES`, so the
+    /// LRU refresh goes through this validated handle rather than a second
+    /// open by path (PR #9614 review 4, R4-2).
+    pub(crate) fn read_options(base: &mut OpenOptions) -> &mut OpenOptions {
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::OpenOptionsExt;
+            const GENERIC_READ: u32 = 0x8000_0000;
+            const FILE_WRITE_ATTRIBUTES: u32 = 0x0000_0100;
+            options(base.access_mode(GENERIC_READ | FILE_WRITE_ATTRIBUTES), 0)
+        }
+        #[cfg(not(windows))]
+        {
+            options(base.read(true), 0)
+        }
     }
     pub(crate) fn builder() -> DirBuilder {
         let mut b = DirBuilder::new();
@@ -133,7 +167,14 @@ pub(super) fn open_read(path: &Path) -> io::Result<(File, Metadata)> {
     // (bounded) rather than report a spurious failure.
     for _ in 0..3 {
         let seen = regular_by_path(path)?;
-        let file = imp::options(OpenOptions::new().read(true), 0).open(path)?;
+        let file = match imp::read_options(&mut OpenOptions::new()).open(path) {
+            // Attribute-write access refused (Windows ACL): read without the
+            // LRU refresh rather than miss.
+            Err(e) if cfg!(windows) && e.kind() == io::ErrorKind::PermissionDenied => {
+                imp::options(OpenOptions::new().read(true), 0).open(path)?
+            }
+            other => other?,
+        };
         if identity(&file.metadata()?) != identity(&seen) {
             continue;
         }

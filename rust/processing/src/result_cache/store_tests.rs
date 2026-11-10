@@ -330,3 +330,28 @@ fn a_lock_held_for_a_moment_does_not_skip_publication() {
     release.join().unwrap();
     let _ = fs::remove_dir_all(&root);
 }
+
+/// PR #9614 review 4, R4-2: the LRU refresh goes through the handle the entry
+/// was read and validated through, never a second open by path, so swapping
+/// the path for a link to another file between read and refresh cannot
+/// touch that file. (The Windows code path had reopened the path; Unix
+/// always used the handle. This pins the contract on Unix; Windows runtime
+/// coverage is part of the FFI phase.)
+#[cfg(unix)]
+#[test]
+fn the_lru_refresh_never_follows_a_swapped_path() {
+    let root = temp_root("touch");
+    let s = store(&root);
+    published(s.publish(KEY_A, b"entry"));
+    let entry = s.read(KEY_A).ok().flatten().unwrap();
+    let victim = root.join("victim");
+    fs::write(&victim, b"not a cache entry").unwrap();
+    let old = SystemTime::UNIX_EPOCH + Duration::from_secs(1000);
+    fs::File::options().write(true).open(&victim).unwrap().set_modified(old).unwrap();
+    let path = s.dir().join(format!("{KEY_A}.ifcr"));
+    fs::remove_file(&path).unwrap();
+    std::os::unix::fs::symlink(&victim, &path).unwrap();
+    s.touch(&entry);
+    assert_eq!(fs::metadata(&victim).unwrap().modified().unwrap(), old, "the refresh followed the swapped path");
+    let _ = fs::remove_dir_all(&root);
+}

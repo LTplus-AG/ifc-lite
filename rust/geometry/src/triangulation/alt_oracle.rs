@@ -29,7 +29,7 @@ pub fn set_alt_triangulator(on: bool) {
     ALT.store(on, Ordering::Relaxed);
 }
 
-fn armed() -> bool {
+pub(crate) fn armed() -> bool {
     INIT.call_once(|| {
         if std::env::var_os("IFCLITE_TRIANGULATION_ALT").is_some() {
             ALT.store(true, Ordering::Relaxed);

@@ -12,12 +12,24 @@
 //!   [`ProcessingRequest`] field with explicit tags, sorted id sets, and
 //!   `None` distinct from `Some(empty)`. The request is destructured in full,
 //!   so a new field does not compile until it is classified here.
-//! * Engine: the build digest from `build.rs` (crate sources, `Cargo.lock`,
-//!   rustc, target, profile, flags, features), the entry format version, and
-//!   every `IFC_LITE_*` / `IFCLITE_*` environment variable, since several
-//!   change geometry at runtime (`IFC_LITE_RECT_FAST`, `IFC_LITE_VOID_2D`,
-//!   ...). `IFC_LITE_CACHE_DIR` (location) and `IFC_LITE_REQUIRE_FIXTURES`
-//!   (test harness) are left out.
+//! * Engine ([`EngineIdentity`]): what produced the bytes, at three levels.
+//!   - Build: the `build.rs` digest (core/geometry/processing sources,
+//!     `Cargo.lock`, rustc, target, profile, flags, this crate's features),
+//!     the geometry crate's own resolved features
+//!     (`ifc_lite_geometry::output_policy::BUILD_FEATURES`, which a downstream
+//!     binary can change without touching this crate), and the running
+//!     executable's identity (path, size, mtime, device and inode): any
+//!     relink, including one that only changes third-party feature
+//!     unification, misses.
+//!   - Policy: the EFFECTIVE process-global output policy, read through the
+//!     same accessors the pipeline calls
+//!     (`ifc_lite_geometry::output_policy::effective_output_policy`, plus the
+//!     degenerate backstop), never the raw environment, so a `OnceLock`
+//!     initialised before an environment change and the programmatic
+//!     overrides (`local_frame_set_enabled_override`, `set_cap`, ...) are
+//!     keyed as the pipeline will see them.
+//!   - Execution: the calling thread's rayon worker count.
+//!   The format version and a test-only salt are mixed in too.
 
 use super::envelope::FORMAT_VERSION;
 use super::BypassReason;
@@ -27,9 +39,6 @@ use sha2::{Digest, Sha256};
 
 /// Compile-time engine identity; see `build.rs`.
 const BUILD_DIGEST: &str = env!("IFC_LITE_ENGINE_BUILD_DIGEST");
-/// `IFC_LITE_*` variables that cannot change output: the cache location and
-/// the test harness's fixture requirement.
-const NON_OUTPUT_ENV: &[&str] = &["IFC_LITE_CACHE_DIR", "IFC_LITE_REQUIRE_FIXTURES"];
 
 struct Framed(Sha256);
 
@@ -123,28 +132,63 @@ pub(super) fn request_digest(req: &ProcessingRequest) -> Result<[u8; 32], Bypass
     Ok(h.finish())
 }
 
-/// This process's engine identity. `salt` is a test hook standing in for a
-/// different build or format; production passes an empty salt.
-pub(super) fn engine_digest(salt: &[u8]) -> [u8; 32] {
-    let mut h = Framed::new("ifc-lite-native-engine-v1");
-    h.field(BUILD_DIGEST.as_bytes());
-    h.u64(u64::from(FORMAT_VERSION));
-    h.field(salt);
-    let mut knobs: Vec<(Vec<u8>, Vec<u8>)> = std::env::vars_os()
-        .filter_map(|(k, v)| {
-            let name = k.to_str()?;
-            let output_affecting = (name.starts_with("IFC_LITE_") || name.starts_with("IFCLITE_"))
-                && !NON_OUTPUT_ENV.contains(&name);
-            output_affecting.then(|| (k.as_encoded_bytes().to_vec(), v.as_encoded_bytes().to_vec()))
-        })
-        .collect();
-    knobs.sort();
-    h.u64(knobs.len() as u64);
-    for (k, v) in &knobs {
-        h.field(k);
-        h.field(v);
+/// The running executable: path, size, mtime, device and inode. Any rebuild
+/// or relink changes it. `None` when it cannot be read; the caller bypasses.
+fn executable_identity() -> Option<Vec<u8>> {
+    let path = std::env::current_exe().ok()?;
+    let meta = std::fs::metadata(&path).ok()?;
+    let modified = meta.modified().ok()?.duration_since(std::time::UNIX_EPOCH).ok()?;
+    let mut out = path.as_os_str().as_encoded_bytes().to_vec();
+    out.extend_from_slice(&meta.len().to_le_bytes());
+    out.extend_from_slice(&modified.as_nanos().to_le_bytes());
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        out.extend_from_slice(&meta.dev().to_le_bytes());
+        out.extend_from_slice(&meta.ino().to_le_bytes());
     }
-    h.finish()
+    Some(out)
+}
+
+/// Everything about the engine that keys an entry. Build and executable parts
+/// are fixed for the process; the policy part is re-read per call.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub(super) struct EngineIdentity {
+    build: Vec<u8>,
+    policy: Vec<u8>,
+}
+
+impl EngineIdentity {
+    /// Snapshot now. `None` when the executable identity is unreadable.
+    pub(super) fn current(salt: &[u8]) -> Option<Self> {
+        let mut build = BUILD_DIGEST.as_bytes().to_vec();
+        build.extend_from_slice(&FORMAT_VERSION.to_le_bytes());
+        build.extend_from_slice(&executable_identity()?);
+        build.extend_from_slice(&(salt.len() as u64).to_le_bytes());
+        build.extend_from_slice(salt);
+        Some(Self { build, policy: policy_bytes() })
+    }
+
+    pub(super) fn digest(&self) -> [u8; 32] {
+        let mut h = Framed::new("ifc-lite-native-engine-v2");
+        h.field(&self.build);
+        h.field(&self.policy);
+        h.finish()
+    }
+
+    /// The policy changed since this snapshot (a racing override): a result
+    /// computed across the change must not be stored under this identity.
+    pub(super) fn policy_changed(&self) -> bool {
+        self.policy != policy_bytes()
+    }
+}
+
+/// The effective output policy, as the pipeline reads it right now.
+pub(super) fn policy_bytes() -> Vec<u8> {
+    let mut out = ifc_lite_geometry::output_policy::effective_output_policy().canonical_bytes();
+    out.push(u8::from(crate::element::degenerate_backstop_disabled()));
+    out.extend_from_slice(&(rayon::current_num_threads() as u64).to_le_bytes());
+    out
 }
 
 pub(super) fn cache_key(source: &[u8; 32], source_len: u64, request: &[u8; 32], engine: &[u8; 32]) -> [u8; 32] {

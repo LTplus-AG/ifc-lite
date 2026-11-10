@@ -60,6 +60,9 @@ use std::collections::BTreeMap;
 /// serve this file's produce/emit cycle.
 #[path = "element_degenerate.rs"]
 mod degenerate;
+/// `IFC_LITE_DISABLE_DEGENERATE_BACKSTOP` as the backstop reads it; the result
+/// cache keys on the same value.
+pub(crate) use degenerate::disabled as degenerate_backstop_disabled;
 mod element_color;
 use element_color::{find_indexed_colour_for_element, infer_opening_subpart_material_name};
 // Re-exported because they have callers outside this module: the colour

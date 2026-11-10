@@ -30,6 +30,12 @@ pub(crate) fn force_cdt_fail_on_ring_for_test(ring: Option<usize>) {
     FORCE_CDT_FAIL_ON_RING.with(|c| c.set(ring));
 }
 
+/// `IFC_LITE_HALFSPACE_CAP_OFF`: the escape hatch, read per call. The one
+/// accessor, shared with `crate::output_policy`.
+pub(crate) fn disabled() -> bool {
+    std::env::var_os("IFC_LITE_HALFSPACE_CAP_OFF").is_some()
+}
+
 /// Close the planar cut left by an unbounded `IfcHalfSpaceSolid` DIFFERENCE.
 ///
 /// `ClippingProcessor::clip_mesh` clips each triangle to the half-plane but
@@ -69,7 +75,7 @@ pub(crate) fn cap_half_space_clip(
 
     // Escape hatch: revert to the pre-fix (uncapped) plane clip without a
     // rebuild, should the section cap ever misbehave on an unforeseen host.
-    if std::env::var_os("IFC_LITE_HALFSPACE_CAP_OFF").is_some() {
+    if disabled() {
         return false;
     }
     let tri_n = mesh.indices.len() / 3;

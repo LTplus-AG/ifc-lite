@@ -140,6 +140,7 @@ pub(crate) mod instancing;
 /// Pure-Rust exact mesh-arrangement CSG kernel — the only CSG kernel, on
 /// every target (see docs/architecture/geometry-pipeline.md).
 pub mod kernel;
+pub mod output_policy;
 pub mod material_layer_index;
 /// Vector, matrix, frame and AABB math over arrays: the one cross-crate home
 /// (`nalgebra` stays geometry's interior type). See the module docs for the

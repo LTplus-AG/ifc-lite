@@ -1,0 +1,87 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+//! Result-cache policy ratchet (PR #9614 review, finding 1).
+//!
+//! The native result cache keys on the EFFECTIVE output policy
+//! (`ifc_lite_geometry::output_policy::effective_output_policy` plus the
+//! processing crate's degenerate backstop). An `IFC_LITE_*` / `IFCLITE_*`
+//! variable read anywhere in the core, geometry or processing sources must be
+//! classified below: either covered by that policy, or proven not to change
+//! output. An unclassified one fails here, because a cache hit could otherwise
+//! replay output computed under a different setting.
+
+mod common;
+use common::source_walk::{production_sources, repo_root};
+use std::collections::BTreeSet;
+
+/// Read through an accessor that `effective_output_policy` (or the
+/// processing backstop accessor) also calls.
+const KEYED_BY_POLICY: &[&str] = &[
+    "IFC_LITE_RECT_FAST",
+    "IFC_LITE_RECT_PARAM",
+    "IFC_LITE_LOCAL_FRAME",
+    "IFC_LITE_VOID_UNION",
+    "IFC_LITE_VOID_2D",
+    "IFC_LITE_PRISM_CUT",
+    "IFC_LITE_DEDUP_EXTRA",
+    "IFC_LITE_HALFSPACE_CAP_OFF",
+    "IFC_LITE_FAST_CUT_RATIO",
+    "IFC_LITE_CSG_BUDGET",
+    "IFC_LITE_CSG_ELEMENT_BUDGET",
+    "IFCLITE_TRIANGULATION_ALT",
+    "IFC_LITE_DISABLE_DEGENERATE_BACKSTOP",
+];
+
+/// Cannot change a processing result.
+const NOT_OUTPUT: &[&str] = &[
+    // Where the result cache lives.
+    "IFC_LITE_CACHE_DIR",
+];
+
+fn names_in(text: &str) -> BTreeSet<String> {
+    let mut out = BTreeSet::new();
+    for prefix in ["\"IFC_LITE_", "\"IFCLITE_"] {
+        for (at, _) in text.match_indices(prefix) {
+            let rest = &text[at + 1..];
+            let name: String = rest.chars().take_while(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || *c == '_').collect();
+            if rest[name.len()..].starts_with('"') {
+                out.insert(name);
+            }
+        }
+    }
+    out
+}
+
+#[test]
+fn every_environment_knob_is_classified_for_the_result_cache() {
+    let root = repo_root();
+    let mut found = BTreeSet::new();
+    for (rel, path) in production_sources("result-cache policy ratchet", &root) {
+        let in_scope = ["rust/core/src/", "rust/geometry/src/", "rust/processing/src/"].iter().any(|p| rel.starts_with(p));
+        if in_scope {
+            let text = std::fs::read_to_string(&path).expect("readable source");
+            for name in names_in(&text) {
+                found.insert((name, rel.clone()));
+            }
+        }
+    }
+    let classified: BTreeSet<&str> = KEYED_BY_POLICY.iter().chain(NOT_OUTPUT).copied().collect();
+    let unclassified: Vec<_> = found.iter().filter(|(name, _)| !classified.contains(name.as_str())).collect();
+    assert!(
+        unclassified.is_empty(),
+        "unclassified environment knobs (key them in output_policy or list them as NOT_OUTPUT): {unclassified:?}"
+    );
+    // Each keyed knob is still read somewhere; a stale row is a classification
+    // nobody re-checked.
+    for name in KEYED_BY_POLICY {
+        assert!(found.iter().any(|(n, _)| n == name), "{name} is no longer read; drop its row");
+    }
+}
+
+#[test]
+fn the_scanner_finds_quoted_names_only() {
+    let names = names_in(r#"std::env::var("IFC_LITE_X1") // `IFC_LITE_Y` "IFCLITE_Z" "IFC_LITE_partial"#);
+    assert_eq!(names.into_iter().collect::<Vec<_>>(), ["IFCLITE_Z", "IFC_LITE_X1"]);
+}

@@ -71,6 +71,9 @@ pub enum PublishOutcome {
     SkippedConcurrentWriter,
     /// Less than the write plus 1 GiB of headroom is free.
     SkippedLowDiskSpace,
+    /// The effective output policy changed while the pass ran (a concurrent
+    /// override such as `set_cap`), so the result is not this key's.
+    SkippedPolicyChanged,
     /// The result breaks a structural invariant the decoder enforces.
     Unencodable(String),
     Failed(String),

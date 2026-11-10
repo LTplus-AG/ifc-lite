@@ -45,6 +45,8 @@ pub(crate) use test_profile::TestProfile;
 
 #[path = "budget_state.rs"]
 mod state;
+mod effective;
+pub use effective::{effective_element_cap, effective_op_cap};
 pub use state::ElementState;
 
 use std::cell::Cell;
@@ -196,11 +198,7 @@ pub fn begin() {
     if prev != 0 {
         PEAK.fetch_max(prev, Ordering::Relaxed);
     }
-    let cap = match env_cap() {
-        Some(v) => v, // env override wins (0 = unbounded)
-        None => cap().unwrap_or(0),
-    };
-    OP_CAP.with(|c| c.set(if cap == 0 { u64::MAX } else { cap }));
+    OP_CAP.with(|c| c.set(effective_op_cap()));
     COUNT.with(|c| c.set(0));
 }
 
@@ -223,20 +221,7 @@ pub fn begin_element() {
     if prev != 0 {
         ELEM_PEAK.fetch_max(prev, Ordering::Relaxed);
     }
-    // Per-element cap is unbounded iff the per-boolean profile is unbounded.
-    let boolean_unbounded = match env_cap() {
-        Some(v) => v == 0,
-        None => cap().is_none(),
-    };
-    let elem_cap = if boolean_unbounded {
-        0 // unbounded (server / offline export)
-    } else {
-        match env_element_cap() {
-            Some(v) => v, // override (0 = unbounded)
-            None => element_cap().unwrap_or(0),
-        }
-    };
-    ELEM_CAP.with(|c| c.set(if elem_cap == 0 { u64::MAX } else { elem_cap }));
+    ELEM_CAP.with(|c| c.set(effective_element_cap()));
     ELEM_COUNT.with(|c| c.set(0));
 }
 

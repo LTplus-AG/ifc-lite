@@ -148,6 +148,53 @@ fn an_output_affecting_environment_knob_misses_in_a_fresh_process() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// PR #9614 review finding 1: a process-global output policy changed through
+/// a public setter (not the environment) must miss, and the miss's live output
+/// must be what that policy really produces. At b2ad1daf the key hashed only
+/// environment strings, so every one of these hit the default-policy entry.
+#[test]
+fn effective_policy_overrides_are_keyed() {
+    let path = support::fixture_path("issue_8190_slab_12381.ifc");
+    let dir = temp_dir("policy");
+    let default = support::run_policy_child(&path, &dir, "rw", "", &[]);
+    assert_eq!(default.outcome, "miss");
+    assert_eq!(support::run_policy_child(&path, &dir, "ro", "", &[]).outcome, "hit");
+    for policy in ["local-frame-on", "csg-cap-1", "csg-cap-none", "element-cap-1", "rect-param-off", "dedup-extra-on"] {
+        let changed = support::run_policy_child(&path, &dir, "ro", policy, &[]);
+        assert_eq!(changed.outcome, "miss", "{policy} hit the default-policy entry");
+        let live = support::run_policy_child(&path, &dir, "off", policy, &[]);
+        assert_eq!(changed.fingerprint, live.fingerprint, "{policy}: the miss is the live result");
+    }
+    // The policy is observable, so a wrong hit would have been wrong output.
+    let local_frame = support::run_policy_child(&path, &dir, "off", "local-frame-on", &[]);
+    assert_ne!(local_frame.fingerprint, default.fingerprint, "local frame changes this fixture's meshes");
+    // Positive control: the changed policy hits its own entry.
+    assert_eq!(support::run_policy_child(&path, &dir, "rw", "local-frame-on", &[]).outcome, "miss");
+    let replay = support::run_policy_child(&path, &dir, "ro", "local-frame-on", &[]);
+    assert_eq!((replay.outcome.as_str(), replay.fingerprint.as_str()), ("hit", local_frame.fingerprint.as_str()));
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// PR #9614 review finding 1, poisoning half: a writer whose cached
+/// local-frame policy was read before `IFC_LITE_LOCAL_FRAME=1` was set meshes
+/// with the OLD policy. A fresh process started with the variable meshes with
+/// the new one and must not replay the writer's entry.
+#[test]
+fn a_late_environment_change_cannot_poison_a_fresh_process() {
+    let path = support::fixture_path("issue_8190_slab_12381.ifc");
+    let dir = temp_dir("poison");
+    let writer = support::run_policy_child(&path, &dir, "rw", "late-env-local-frame", &[]);
+    assert_eq!(writer.outcome, "miss");
+    assert!(writer.publish.starts_with("Published"), "{}", writer.line);
+    let env = [("IFC_LITE_LOCAL_FRAME", "1")];
+    let fresh = support::run_policy_child(&path, &dir, "ro", "", &env);
+    assert_eq!(fresh.outcome, "miss", "a fresh local-frame process replayed a non-local-frame entry");
+    let live = support::run_policy_child(&path, &dir, "off", "", &env);
+    assert_eq!(fresh.fingerprint, live.fingerprint);
+    assert_ne!(fresh.fingerprint, writer.fingerprint, "the two policies really differ here");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 #[test]
 fn two_processes_writing_one_key_leave_one_valid_entry() {
     let path = support::fixture_path("issue_8190_slab_12381.ifc");

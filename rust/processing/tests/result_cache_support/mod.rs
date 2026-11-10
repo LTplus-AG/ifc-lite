@@ -3,7 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 //! Fresh-process harness for `tests/result_cache.rs`: the parent re-runs this
-//! test binary with `RC_TEST_CHILD=<fixture>|<dir>|<mode>|<variant>|<salt>`,
+//! test binary with `RC_TEST_CHILD=<fixture>|<dir>|<mode>|<variant>|<salt>|<policy>`,
 //! and the child prints one `RCLINE` with its outcome and fingerprints.
 
 use ifc_lite_processing::result_cache::{CacheMode, ResultCache, ResultCacheConfig};
@@ -115,10 +115,34 @@ pub struct Child {
     pub line: String,
 }
 
+/// Process-global output policy changes a child applies before processing,
+/// through the public setters a host could call.
+pub fn apply_policy(name: &str) {
+    use ifc_lite_geometry::kernel::budget;
+    match name {
+        "" => {}
+        "local-frame-on" => ifc_lite_geometry::local_frame_set_enabled_override(Some(true)),
+        "csg-cap-1" => budget::set_cap(Some(1)),
+        "csg-cap-none" => budget::set_cap(None),
+        "element-cap-1" => budget::set_element_cap(Some(1)),
+        "rect-param-off" => ifc_lite_geometry::rect_fast::param_set_enabled_override(Some(false)),
+        "dedup-extra-on" => ifc_lite_geometry::GeometryRouter::set_build_dedup_extra_override(Some(true)),
+        // Initialise the lazily cached local-frame policy with the variable
+        // absent, THEN set it: the pipeline keeps the cached `false`.
+        "late-env-local-frame" => {
+            assert!(std::env::var_os("IFC_LITE_LOCAL_FRAME").is_none());
+            let _ = ifc_lite_geometry::output_policy::effective_output_policy();
+            std::env::set_var("IFC_LITE_LOCAL_FRAME", "1");
+        }
+        other => panic!("unknown policy {other}"),
+    }
+}
+
 pub fn child_main() {
     let Ok(spec) = std::env::var(CHILD_ENV) else { return };
     let parts: Vec<&str> = spec.split('|').collect();
-    let [fixture, dir, mode, variant, salt] = parts[..] else { panic!("bad child spec {spec}") };
+    let [fixture, dir, mode, variant, salt, policy] = parts[..] else { panic!("bad child spec {spec}") };
+    apply_policy(policy);
     let mode = match mode {
         "rw" => CacheMode::ReadWrite,
         "ro" => CacheMode::ReadOnly,
@@ -144,10 +168,23 @@ pub fn child_main() {
 }
 
 pub fn spawn_child(fixture: &Path, dir: &Path, mode: &str, variant: &str, salt: &str, env: &[(&str, &str)]) -> std::process::Child {
-    let spec = format!("{}|{}|{mode}|{variant}|{salt}", fixture.display(), dir.display());
+    spawn_child_with_policy(fixture, dir, mode, variant, salt, "", env)
+}
+
+pub fn spawn_child_with_policy(
+    fixture: &Path,
+    dir: &Path,
+    mode: &str,
+    variant: &str,
+    salt: &str,
+    policy: &str,
+    env: &[(&str, &str)],
+) -> std::process::Child {
+    let spec = format!("{}|{}|{mode}|{variant}|{salt}|{policy}", fixture.display(), dir.display());
     let mut cmd = Command::new(std::env::current_exe().unwrap());
     cmd.args(["--exact", "child_process_entry", "--nocapture", "--test-threads", "1"])
         .env(CHILD_ENV, spec)
+        .env_remove("IFC_LITE_LOCAL_FRAME")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     for (k, v) in env {
@@ -171,6 +208,10 @@ pub fn wait_child(child: std::process::Child) -> Child {
 
 pub fn run_child(fixture: &Path, dir: &Path, mode: &str, variant: &str, salt: &str, env: &[(&str, &str)]) -> Child {
     wait_child(spawn_child(fixture, dir, mode, variant, salt, env))
+}
+
+pub fn run_policy_child(fixture: &Path, dir: &Path, mode: &str, policy: &str, env: &[(&str, &str)]) -> Child {
+    wait_child(spawn_child_with_policy(fixture, dir, mode, "full", "", policy, env))
 }
 
 /// A cold read-write child then a warm read-only child on a fresh directory;

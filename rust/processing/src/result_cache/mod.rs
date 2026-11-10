@@ -215,11 +215,18 @@ impl ResultCache {
             }
         };
 
+        // Snapshot the engine (build, executable, effective output policy)
+        // before anything runs, so the key names the policy the pass will use.
+        let Some(engine) = key::EngineIdentity::current(&self.config.engine_salt) else {
+            report.warn("result cache: executable identity unreadable".into());
+            report.outcome = CacheOutcome::Bypass(BypassReason::Unavailable("no engine identity".into()));
+            return self.run_live(content, request, report, None);
+        };
         let started = Instant::now();
         let source_sha256 = key::source_digest(content);
         report.work.hash = started.elapsed();
         report.work.bytes_hashed = content.len() as u64;
-        let engine_digest = key::engine_digest(&self.config.engine_salt);
+        let engine_digest = engine.digest();
         let source_len = content.len() as u64;
         let id = EntryIdentity {
             key: key::cache_key(&source_sha256, source_len, &request_digest, &engine_digest),
@@ -248,7 +255,7 @@ impl ResultCache {
                     store.remove_if_same(&key_hex, entry);
                 }
                 report.outcome = CacheOutcome::Miss(reason);
-                let publish = writable.then_some((&store, &id, key_hex.as_str()));
+                let publish = writable.then_some(Publish { store: &store, id: &id, key_hex: &key_hex, engine: &engine });
                 self.run_live(content, request, report, publish)
             }
         }
@@ -260,12 +267,20 @@ impl ResultCache {
         content: &[u8],
         request: &ProcessingRequest,
         mut report: CacheReport,
-        publish: Option<(&Store, &EntryIdentity, &str)>,
+        publish: Option<Publish<'_>>,
     ) -> CachedProcessing {
         let started = Instant::now();
         let result = crate::process(content, request, &mut ());
         report.work.process = started.elapsed();
-        if let Some((store, id, key_hex)) = publish {
+        if let Some(Publish { engine, .. }) = &publish {
+            if engine.policy_changed() {
+                // A racing override changed the output policy during the pass:
+                // the result may mix both, and it is not this key's.
+                report.publish = PublishOutcome::SkippedPolicyChanged;
+                return CachedProcessing { result, report };
+            }
+        }
+        if let Some(Publish { store, id, key_hex, .. }) = publish {
             let started = Instant::now();
             let encoded = envelope::encode_entry(&result, id);
             report.work.encode = started.elapsed();
@@ -287,6 +302,14 @@ impl ResultCache {
         }
         CachedProcessing { result, report }
     }
+}
+
+/// Where a read-write miss publishes, and the engine snapshot it was keyed on.
+struct Publish<'a> {
+    store: &'a Store,
+    id: &'a EntryIdentity,
+    key_hex: &'a str,
+    engine: &'a key::EngineIdentity,
 }
 
 type Lookup = Result<(ProcessingResult, ReadEntry), (MissReason, Option<ReadEntry>)>;

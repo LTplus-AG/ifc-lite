@@ -212,8 +212,8 @@ function pointConnectionModel(id, guid) {
 test('read (#9668): an attribute set only in a file outside any sample is checked, and one no fixture sets is unproven', () => {
   const row = byId.get('IFC4/IfcStructuralPointConnection');
   const { types } = deriveCatalogue(ROOT).tables.IFC4;
-  // The bare file sorts first by path AND by sha, the setter last by both: keeping only the first
-  // carrier in either order misses the only file that sets ConditionCoordinateSystem.
+  // The bare file sorts first by path AND by sha, the setter last by both: a regression that keeps
+  // only the first carrier, by path or by sha, misses the only file that sets ConditionCoordinateSystem.
   const bare = stepFile('a-first.ifc', '0'.repeat(64), "#1=IFCSTRUCTURALPOINTCONNECTION('g1',$,'P',$,$,$,$,$,$);");
   const setter = stepFile('z-last.ifc', 'f'.repeat(64), "#2=IFCSTRUCTURALPOINTCONNECTION('g2',$,'P',$,$,$,$,$,#3);\n#3=IFCAXIS2PLACEMENT3D(#4,$,$);\n#4=IFCCARTESIANPOINT((0.,0.,0.));");
   const both = readRow(row, [{ file: bare, ix: pointConnectionModel(1, 'g1') }, { file: setter, ix: pointConnectionModel(2, 'g2') }], types);
@@ -294,7 +294,7 @@ test('totals (#9668): stored totals that disagree with the rows are refused by t
     const hidden = run(['--root', dir, '--summary', forged]);
     assert.notEqual(hidden.status, 0);
     // @source-text-assertion-ok asserts on the child process's stderr; target is read from the baseline only to build the forged input
-    assert.match(hidden.stderr, new RegExp(`${target.id} ${level}: applicability`));
+    assert.match(hidden.stderr, new RegExp(`${target.id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} ${level}: applicability`));
     const scored = spawnSync(process.execPath, [join(ROOT, 'tests/structural-coverage/score.mjs'), '--check', forged, '--out', join(dir, 'out.json')], { encoding: 'utf8' });
     assert.equal(scored.status, 2, scored.stderr);
     assert.match(scored.stderr, /disagree with its rows/);

@@ -26,7 +26,7 @@ import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store/index.js';
 import { __setOverlayWorkerFactoryForTest } from '@/lib/overlay-parse/index.js';
 import { createEmptyFlatSymbolic } from '@/lib/overlay-parse/symbolic-flat.js';
-import { __resetSymbolicAnnotationsCacheForTests, getParseFor } from './symbolic-parse-cache.js';
+import { __resetSymbolicAnnotationsCacheForTests, ensureParseFor, getParseFor } from './symbolic-parse-cache.js';
 import {
   tryRestoreDrawingMarkup,
   useDrawingMarkupRestoreOnLoad,
@@ -161,13 +161,12 @@ describe('tryRestoreDrawingMarkup: populates from a model with tagged annotation
   it('restores the tagged Measure2DResult once the parse lands, and does not duplicate on a second call', async () => {
     const store = await seedStore('populate-1');
 
-    // NEW-3: the guarded restore now requests the parse itself, after
-    // confirming there is tagged markup and localStorage is not authoritative.
-    // Install the worker before that first request; restoration still waits
-    // for the result and must not mark the model attempted prematurely.
-    const release = fakeWasmReplyWith(oneMeasureFlat());
+    // A bare restore remains read-only until its parse arrives. Only the
+    // mounted hook opts into requesting work after its metadata preflight.
     tryRestoreDrawingMarkup('populate-1');
     assert.deepEqual(useViewerStore.getState().measure2DResults, []);
+    const release = fakeWasmReplyWith(oneMeasureFlat());
+    ensureParseFor([store]);
     // ensureParseFor's request-dispatch is itself async (a microtask), so
     // let it reach the fake worker before releasing the reply.
     await new Promise((r) => setTimeout(r, 0));
@@ -269,7 +268,7 @@ it('NEW-3: blank IFC restore never computes a spatial key or starts a worker', a
     const host = document.createElement('div');
     document.body.appendChild(host);
     const root = createRoot(host);
-    function Restore() { useDrawingMarkupRestoreOnLoad(); return null; }
+    const Restore = () => { useDrawingMarkupRestoreOnLoad(); return null; };
     await act(async () => root.render(createElement(Restore)));
     await act(async () => root.unmount());
     host.remove();

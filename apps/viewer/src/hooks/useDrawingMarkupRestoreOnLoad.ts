@@ -132,7 +132,7 @@ function markupFieldsEmpty(): boolean {
  * overwrite this guards against is exactly the kind of synchronous-store
  * race `act()` batching would mask.
  */
-export function tryRestoreDrawingMarkup(modelId: string): void {
+export function tryRestoreDrawingMarkup(modelId: string, requestParse = false): void {
   if (restoredForModel.has(modelId)
     && restoredForModel.get(modelId)?.deref() === useViewerStore.getState().models.get(modelId)?.sourceFile) return;
   if (useViewerStore.getState().activeModelId !== modelId) return;
@@ -151,7 +151,7 @@ export function tryRestoreDrawingMarkup(modelId: string): void {
     if (!awaitingLocalStorageDecision.has(modelId)) {
       const unsubscribe = onLocalStorageDecidedFor(modelId, () => {
         awaitingLocalStorageDecision.delete(modelId);
-        tryRestoreDrawingMarkup(modelId);
+        tryRestoreDrawingMarkup(modelId, requestParse);
       });
       awaitingLocalStorageDecision.set(modelId, unsubscribe);
     }
@@ -173,7 +173,7 @@ export function tryRestoreDrawingMarkup(modelId: string): void {
   }
   const result = restoreDrawingMarkupFromModel(modelId);
   if (!result) {
-    ensureParseFor([store]);
+    if (requestParse) ensureParseFor([store]);
     return; // retry on parse publication or RTC readiness
   }
 
@@ -235,8 +235,8 @@ export function useDrawingMarkupRestoreOnLoad(): void {
 
   useEffect(() => {
     if (!activeModelId || !dataStore) return;
-    tryRestoreDrawingMarkup(activeModelId);
-    const unsubscribeParseCache = subscribeToParseCache(() => tryRestoreDrawingMarkup(activeModelId));
+    tryRestoreDrawingMarkup(activeModelId, true);
+    const unsubscribeParseCache = subscribeToParseCache(() => tryRestoreDrawingMarkup(activeModelId, true));
     return () => {
       unsubscribeParseCache();
       // This model is no longer the one this effect is watching (switched

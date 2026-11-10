@@ -94,6 +94,7 @@ export const bcfDraftsRu = {
   "bcfDrafts.reconcile.apply": "Применить",
   "bcfDrafts.reconcile.applyTo": "Применить предложение к {title}",
   "bcfDrafts.reconcile.stale": "Пакет изменился после сравнения; выполните сравнение снова.",
+  "bcfDrafts.reconcile.failed": "Не удалось применить изменение; пакет не изменён. {message}",
   "bcfDrafts.reconcile.unplaced": {
     one: "{count} новое совпадение группы может относиться к нескольким разделённым темам.",
     few: "{count} новых совпадения групп могут относиться к нескольким разделённым темам.",

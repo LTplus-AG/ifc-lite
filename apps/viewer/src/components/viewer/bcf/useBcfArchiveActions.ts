@@ -17,7 +17,7 @@ import { useTranslation } from '@/i18n';
 import { posthog, trackExportCompleted } from '@/lib/analytics';
 import { bcfExportFilename, sanitizeFilename } from '@/lib/export/download';
 import { publishBcfArchive } from '@/lib/bcf-drafts/archive-activity';
-import { useSingleFlight } from '@/hooks/useSingleFlight';
+import { useAsyncRun } from '@/hooks/useAsyncRun';
 import { readBCFWithDiagnostics, warnIfNoModelLoaded, warnIfImportTruncated, warnIfUnsupportedVersion } from './bcfImportGuidance';
 
 export function useBcfArchiveActions(bcfProject: BCFProject | null, getDefaultProjectName: () => string) {
@@ -26,17 +26,17 @@ export function useBcfArchiveActions(bcfProject: BCFProject | null, getDefaultPr
   const setBcfProject = useViewerStore((s) => s.setBcfProject);
   const setBcfLoading = useViewerStore((s) => s.setBcfLoading);
   const setBcfError = useViewerStore((s) => s.setBcfError);
-  const importFlight = useSingleFlight();
-  const exportFlight = useSingleFlight();
+  const importFlight = useAsyncRun();
+  const exportFlight = useAsyncRun();
 
   // Import BCF file
-  const releaseImport = importFlight.release;
-  const runImport = importFlight.run;
+  const releaseImport = importFlight.reset;
+  const runImport = importFlight.start;
   const handleImportFile = useCallback(async (file: File | null | undefined) => {
     if (!file) return;
     if (fileInputRef.current) fileInputRef.current.value = '';
     releaseImport();
-    await runImport(async (isCurrent) => {
+    await runImport(async ({ isCurrent }) => {
       try {
         setBcfLoading(true);
         setBcfError(null);
@@ -66,7 +66,7 @@ export function useBcfArchiveActions(bcfProject: BCFProject | null, getDefaultPr
   }, []);
 
   // Export BCF file
-  const runExport = exportFlight.run;
+  const runExport = exportFlight.start;
   const handleExport = useCallback(async () => {
     if (!bcfProject) return;
     await runExport(async () => {

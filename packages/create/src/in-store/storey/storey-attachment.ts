@@ -93,7 +93,7 @@ function text(value: unknown): string | null {
 /** The storey that contains `elementId` (through IfcRelContainedInSpatialStructure), or null. */
 export function homeStoreyOf(inventory: StoreyInventory, elementId: number): number | null {
   const storeyIds = new Set(inventory.storeys.map((storey) => storey.expressId));
-  const rel = (inventory.incoming.get(elementId) ?? []).find((candidate) => candidate.type === 'IFCRELCONTAINEDINSPATIALSTRUCTURE');
+  const rel = (inventory.incomingOf?.(elementId) ?? inventory.incoming.get(elementId) ?? []).find((candidate) => candidate.type === 'IFCRELCONTAINEDINSPATIALSTRUCTURE');
   return rel && storeyIds.has(rel.parent) ? rel.parent : null;
 }
 

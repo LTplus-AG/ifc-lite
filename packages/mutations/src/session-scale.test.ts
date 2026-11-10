@@ -207,3 +207,68 @@ it('reference queries follow in-place draft attributes and retained array aliase
   });
   expect([...view.getNewEntitiesReferencing(43)].map(e => e.expressId)).toEqual([relation.expressId]);
 });
+
+it('read-only borrows are frozen copies, so a write through one cannot bypass the index #8452', () => {
+  const view = new MutablePropertyView(null, 'borrow-write');
+  const relation = view.createEntity('IfcRelAggregates', ['guid', null, null, null, '#1', ['#2']]);
+  const [row] = view.readNewEntities();
+  const related = row!.attributes[5] as string[];
+  // A borrowed alias used to be the stored array itself: the edit landed in the
+  // overlay while the reference buckets still named #2.
+  expect(() => { related[0] = '#42'; }).toThrow(TypeError);
+  expect(() => { (row!.attributes as unknown[])[4] = '#42'; }).toThrow(TypeError);
+  expect(view.getNewEntity(relation.expressId)?.attributes[5]).toEqual(['#2']);
+  expect([...view.getNewEntitiesReferencing(42)]).toEqual([]);
+  expect(view.readNewEntity(relation.expressId)?.attributes).toEqual(['guid', null, null, null, '#1', ['#2']]);
+});
+
+it('a transaction scan of the session neither copies nor compares unmodified rows #8452', () => {
+  const view = new MutablePropertyView(null, 'draft-scan');
+  for (let i = 0; i < 3000; i++) view.createEntity('IfcCartesianPoint', [[i, 0, 0]]);
+  const clones = vi.spyOn(globalThis, 'structuredClone');
+  try {
+    view.runAtomic(draft => {
+      expect(draft.readNewEntities()).toHaveLength(3000);
+      expect([...draft.readNewEntitiesOfType('IfcCartesianPoint')]).toHaveLength(3000);
+      expect(draft.readNewEntity(7)?.attributes).toEqual([[6, 0, 0]]);
+      draft.createEntity('IfcCartesianPoint', [[1, 2, 3]]);
+    });
+    // Each unmodified row read through the draft used to be cloned into it,
+    // then compared again when the transaction finished.
+    expect(clones.mock.calls.length).toBeLessThan(20);
+  } finally { clones.mockRestore(); }
+  expect(view.getNewEntityCount()).toBe(3001);
+  expect(view.hasNewEntity(3001)).toBe(true);
+});
+
+it('borrows inside a transaction see draft edits, deletions and inserts #8452', () => {
+  const view = new MutablePropertyView(null, 'draft-borrow');
+  const a = view.createEntity('IfcWall', ['a', null, 'A']), b = view.createEntity('IfcWall', ['b', null, 'B']);
+  view.runAtomic(draft => {
+    draft.getNewEntity(a.expressId)!.attributes[2] = 'A2';
+    draft.deleteEntity(b.expressId);
+    const c = draft.createEntity('IfcWall', ['c', null, 'C']);
+    expect(draft.readNewEntities().map(row => row.attributes[2])).toEqual(['A2', 'C']);
+    expect([...draft.readNewEntitiesOfType('IFCWALL')].map(row => row.expressId)).toEqual([a.expressId, c.expressId]);
+    expect(draft.readNewEntity(b.expressId)).toBeNull();
+  });
+  expect(view.readNewEntities().map(row => row.attributes[2])).toEqual(['A2', 'C']);
+});
+
+it('the express-id watermark scans a store once, not once per editor, and rescans on growth #8452', () => {
+  const byId = new Map<number, unknown>([[10, {}], [20, {}]]);
+  const keys = vi.spyOn(byId, 'keys');
+  const store = { entityIndex: { byId } } as unknown as ConstructorParameters<typeof StoreEditor>[0];
+  for (let i = 0; i < 25; i++) new StoreEditor(store, new MutablePropertyView(null, `w${i}`));
+  expect(keys).toHaveBeenCalledTimes(1);
+  byId.set(30, {});
+  const view = new MutablePropertyView(null, 'grown');
+  const editor = new StoreEditor(store, view);
+  expect(keys).toHaveBeenCalledTimes(2);
+  expect(editor.addEntity('IfcCartesianPoint', [[0, 0, 0]]).expressId).toBe(31);
+  // Same size, different ids: the allocation guard still forces a rescan.
+  byId.delete(10); byId.set(32, {});
+  const sameSize = new MutablePropertyView(null, 'same-size');
+  sameSize.setExpressIdWatermark(31);
+  expect(new StoreEditor(store, sameSize).addEntity('IfcCartesianPoint', [[0, 0, 0]]).expressId).toBe(33);
+});

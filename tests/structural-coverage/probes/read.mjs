@@ -80,18 +80,24 @@ export function extraction(ctx, file) {
   return cached(ctx, `read:${file.path}`, async () => indexExtraction(ctx.pkgs.parser.extractStructuralOnDemand(await storeOf(ctx, file))));
 }
 
+/** `{ file, ix }`, or `{ file, ix: null, error }` when the product cannot parse or extract the file. */
+export async function extractionEntry(ctx, file) {
+  try {
+    return { file, ix: await extraction(ctx, file) };
+  } catch (e) {
+    return { file, ix: null, error: `parse or extract threw: ${e.message}` };
+  }
+}
+
 /**
  * `extraction`, or null after recording why: a file the product cannot parse or
  * extract is a measured problem for the row, never a probe error that hides the
  * other files' results.
  */
 export async function extractionOrProblem(ctx, file, problems) {
-  try {
-    return await extraction(ctx, file);
-  } catch (e) {
-    problems.push(`${file.path}: parse or extract threw: ${e.message}`);
-    return null;
-  }
+  const { ix, error } = await extractionEntry(ctx, file);
+  if (error) problems.push(`${file.path}: ${error}`);
+  return ix;
 }
 
 /**
@@ -154,13 +160,7 @@ export default {
       const carriers = ctx.corpus.carriers(row.schema, row.entity);
       if (!carriers.length) { out.set(row.id, ctx.corpus.nothingCarries(row.schema, row.entity)); continue; }
       const entries = [];
-      for (const file of carriers) {
-        try {
-          entries.push({ file, ix: await extraction(ctx, file) });
-        } catch (e) {
-          entries.push({ file, ix: null, error: `parse or extract threw: ${e.message}` });
-        }
-      }
+      for (const file of carriers) entries.push(await extractionEntry(ctx, file));
       out.set(row.id, { ...readRow(row, entries, ctx.tables[row.schema].types), evidence: carriers.map((f) => f.path) });
     }
     return out;

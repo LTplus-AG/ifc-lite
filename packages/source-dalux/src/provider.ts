@@ -2,40 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import {
-  decodeFile,
-  decodeFileArea,
-  decodeFileResponse,
-  decodeFolder,
-  decodeProject,
-} from './dalux-types.js';
-
-import type {
-  DaluxFile,
-  DaluxFileArea,
-  DaluxFolder,
-  DaluxProject,
-} from './dalux-types.js';
+import { decodeFile, decodeFileArea, decodeFileResponse, decodeFolder, decodeProject } from './dalux-types.js';
+import type { DaluxFile, DaluxFileArea, DaluxFolder, DaluxProject } from './dalux-types.js';
 
 import { matchesGlob } from '@ifc-lite/plugin-api';
 import type {
-  ConnectionTestResult,
-  DownloadOptions,
-  FileFilter,
-  FileSourceProvider,
-  ListOptions,
-  ListProjectsOptions,
-  Page,
-  PluginContext,
-  RevisionEvent,
-  RevisionWatchResult,
-  SourceContainer,
-  SourceFile,
-  SourceFileRef,
-  SourceProject,
-  UploadOptions,
-  UploadResult,
-  UploadTarget,
+  ConnectionTestResult, DownloadOptions, FileFilter, FileSourceProvider, ListOptions, ListProjectsOptions, Page, PluginContext,
+  RevisionEvent, RevisionWatchResult, SourceContainer, SourceFile, SourceFileRef, SourceProject, UploadOptions, UploadResult, UploadTarget,
 } from '@ifc-lite/plugin-api';
 
 import { DALUX_MANIFEST } from './manifest.js';

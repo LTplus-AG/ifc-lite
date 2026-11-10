@@ -15,6 +15,7 @@
  * neither be re-shaped nor joined.
  */
 
+import { wallBaseSolid } from './edit/wall-base-solid.js';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { AnchorEntityReader } from './resolve-anchor.js';
@@ -184,7 +185,7 @@ export function readWallJoinTarget(
   const bodyRepId = repOf('Body') ?? ids[0];
   const axisRepId = repOf('Axis');
   const bodyItems = reader.entity(bodyRepId)?.attributes[3];
-  const solidId = Array.isArray(bodyItems) && bodyItems.length > 0 ? refId(bodyItems[0]) : null;
+  const solidId = wallBaseSolid(reader, view, wallId, Array.isArray(bodyItems) && bodyItems.length > 0 ? refId(bodyItems[0]) : null);
   const solid = solidId === null ? null : reader.entity(solidId);
   if (solidId === null || solid?.type.toUpperCase() !== 'IFCEXTRUDEDAREASOLID') return null;
   const profileId = refId(solid.attributes[0]);

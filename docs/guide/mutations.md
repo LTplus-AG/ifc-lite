@@ -1126,11 +1126,11 @@ Elements whose shape depends on storey spacing follow the edit in the same trans
   A height of zero or less is refused before anything is written (code `dependent`). Attachment is recorded, never inferred from a height that happens to match the spacing:
   - `IfcLite_StoreyAttachment.TopConstraint` (IfcLabel) holds the target storey's GlobalId. It holds `NextStoreyAbove` for an element drawn attached before any storey existed above; the first storey added directly above binds it, and `addStoreyInStore` resizes the element to reach that storey. One whose body or placement it cannot read is still bound and returned in `unresizedWalls`, so later edits list it as not resized.
   - `IfcLite_StoreyAttachment.TopBinding` says how a storey target is meant. `Relative` is Archicad's "home storey + 1": a storey inserted between the element's storey and its target re-binds it (`addStoreyInStore` lists it in `bindings`, and `planStoreyAdd` reports it before anything is written), and a copy to another storey attaches to the storey above its new one. `Explicit` is Revit's "Up to level: X": it stays on X. A record without `TopBinding` (every file written before #9296) is relative when its storey is the next storey above the element's own, which is what the Model workspace's "To storey above" wrote, and explicit otherwise, so such a file keeps its meaning.
-  - `TopConstraint` may hold a slab's GlobalId instead: the top ends on the slab's underside and follows it when the slab's storey moves. A roof is not followed yet (pitched roofs come in a later round); the plan lists it as a notice.
+  - `TopConstraint` may hold a slab's or a roof's GlobalId instead: the top ends on its underside and follows it when the target or the target's storey moves. Only walls attach to a roof; a roof by footprint cuts the wall to its planes, as described below.
   - Revit's own `Constraints` › `Top Constraint` = `Up to level: <name>` is read as an explicit binding.
   - An element with neither record keeps its height. `Fixed` in the IfcLite record is an explicit fixed height and overrides a Revit record; `clearTopAttachment` writes it for an element Revit recorded as attached.
-  - A record that names nothing it can follow (a deleted storey's GlobalId, a Revit level renamed or shared by two storeys, a roof) is not guessed at: the element keeps its height and the plan lists it in `notices` (`wallAttachmentUnresolved`; `topAttachmentProblem` gives the reason).
-  - `readTopAttachment` / `writeTopAttachment` / `clearTopAttachment` read and write the record. `setTopConstraintInStore(dataStore, editor, elementId, constraint)` sets it and fits the top there now, atomically: `{ kind: 'storeyAbove' }` (relative), `{ kind: 'storey', storeyId }` (explicit), `{ kind: 'slab', slabId }` or `{ kind: 'fixed' }`.
+  - A record that names nothing it can follow (a deleted storey's GlobalId, a Revit level renamed or shared by two storeys, or an unreadable underside) is not guessed at: the element keeps its height and the plan lists it in `notices` (`wallAttachmentUnresolved`; `topAttachmentProblem` gives the reason).
+  - `readTopAttachment` / `writeTopAttachment` / `clearTopAttachment` read and write the record. `setTopConstraintInStore(dataStore, editor, elementId, constraint)` sets it and fits the top there now, atomically: `{ kind: 'storeyAbove' }` (relative), `{ kind: 'storey', storeyId }` (explicit), `{ kind: 'slab', slabId }`, `{ kind: 'roof', roofId }` (walls) or `{ kind: 'fixed' }`.
 - **Stairs and their railings.** A stair whose top tread lands on a storey is refit with the riser height it was built with, rounded to whole risers. It lands on a storey when its base plus `NumberOfRisers × RiserHeight` equals that storey's elevation within 1 mm. The refit runs through `editStairDimensionsInStore`, which now also takes `NumberOfRisers`, so the IfcStair and IfcStairFlight keep their identities. A rise no flight fits (under 0.30 m), or a waist that no longer fits, is refused. A railing that runs up the stair (the railing builder's layout on the stair's storey, from its foot to its top tread, beside or over the flight) is stretched with it: along the new run and up the new rise, keeping its height above the pitch.
 - **What is left alone.** Attached elements that are not simple extrusions, and stairs that are not a single stepped flight this editor can rebuild, still move with their storey but keep their shape. The plan lists them in `notices`, before anything is applied.
 
@@ -1141,6 +1141,21 @@ Elements whose shape depends on storey spacing follow the edit in the same trans
 **Authoring default.** `bim.store.addWall`, `addColumn`, `addColumnOnGrid`, `addBeam`, `addMember` and `addCurtainWall` take an optional `TopConstraint` (a `setTopConstraintInStore` constraint, or `'auto'`, the default). `auto` is the Model workspace's "To storey above": an element whose top lands on the storey above its own (within 1 mm) is recorded attached to it, relatively; anything else is fixed. The Model workspace's Wall, Column and Curtain Wall tools draw up to the storey above under that default and record the attachment in the same Undo step; the Beam tool records it when the beam's top lands on the storey above. A level beam or member lands with its top face, the way a storey edit lifts it whole. The viewer's `bim.store` applies the constraint the same way as headless, curtain walls and grid columns included.
 
 `bim.store` exposes the same operations in every host: the SDK's headless backend, the viewer (through the storey manager's undo-batched path) and its script sandbox, the MCP `storey_*` tools and `ifc-lite storey`. The methods are `listStoreyLevels`, `suggestStorey`, `addStorey`, `renameStorey`, `planStoreyEdit`, `editStorey`, `planStoreyDelete` and `deleteStorey`. `editStorey` and `deleteStorey` take the reviewed plan as an optional last argument. Headless backends record each write as one Undo step. `listStoreyLevels` counts every storey, however large; only a plan refuses a storey holding more than 50,000 products. The round-1A methods `planAddStorey`, `setTopConstraint` and `copyToStoreys` are on the SDK's headless backend (and so on `ifc-lite run` scripts); the viewer adapter, its sandbox, MCP and `ifc-lite storey` follow in #9352.
+
+A wall attached to an authored footprint roof is trimmed to its actual underside,
+including ridges and valleys. The roof must cover the whole wall, and both
+placements must be upright. A roof or slab translation, a roof shape edit, and a
+storey edit refit the attached tops in the same atomic edit. An invalid fit leaves
+the original model unchanged. Fixed detaches the top and keeps its last shape;
+attaching to a storey or slab restores a planar top.
+
+The shared placement and transform operations refit attached tops inside their
+transaction and return every product that needs remeshing. Custom hosts that write
+placements directly can call
+`refreshTopAttachmentsInStore({ dataStore, view, editor }, movedElementIds)`
+inside their transaction and remesh the returned product ids.
+
+Walls fitted to pitched roofs retain their editable base extrusion beneath the roof cuts. Their derived quantities retain length, width and floor footprint; prism height, side area and volume are omitted until the quantity reader can measure the finished CSG body. Loaded files retain their original quantity sets under the normal opt-in refresh policy.
 
 Cyclic or unreadable session-created shape graphs are refused atomically in both copy modes. Valid shapes retain the default sharing policy.
 
@@ -1194,3 +1209,53 @@ definition together before committing the local draft. If publication fails,
 creation leaves no roof, undo entry or partial definition on peers; the same
 creation can be retried. Mesh and spatial-tree registration follow a successful
 commit.
+
+### Persisting an overlay
+
+Use `snapshotOverlay` and `restoreOverlay` from `@ifc-lite/mutations` to save
+edits without copying the source IFC file. The versioned JSON contains current
+logical rows, created entities in creation order, forgotten creation rows, the
+allocator and the mutation journal. It includes edits made with `skipHistory`.
+Source tables, extractors, derived indices, GPU meshes and Revert registries are
+not persisted. Restore rebuilds class and reference indices.
+
+```ts
+import { MutablePropertyView, snapshotOverlay, restoreOverlay } from '@ifc-lite/mutations';
+
+async function persistAndRestore(view: MutablePropertyView, destination: MutablePropertyView, completeSource: ArrayBuffer) {
+  const digest = await crypto.subtle.digest('SHA-256', completeSource);
+  const sourceContentHash = 'sha256:' + Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
+  const saved = snapshotOverlay(view, { sourceContentHash, schema: 'IFC4' });
+  restoreOverlay(destination, saved, { sourceContentHash });
+  return destination;
+}
+```
+
+Supply the digest of the actual complete source buffer, using SHA-256 or another
+hex digest of at least 256 bits (an optional algorithm prefix is accepted).
+The viewer's full `placement-sha256-1m-v1:` identity is accepted. The package
+compares hashes; it cannot check which bytes the caller hashed. A mismatch
+throws `OverlaySourceMismatchError` before changing the view. Schema and
+creation time are informational. A newer snapshot version is refused.
+
+Prepare the destination against the same parsed source, attaching its normal
+base table/extractors before restore. Restore refuses an occupied view unless `{ replace: true }` is supplied.
+Successful replacement advances the live mutation revision, invalidating old
+prepared edits; it never lowers the allocator below the target's watermark.
+Malformed rows and input over the default 64 MiB UTF-8 limit are refused before
+publication. A caller can set `maxBytes`; data is bounded to 256 nested levels
+and two million values. Nonfinite values and negative zero survive
+in attributes as well as property/quantity rows.
+
+A host may pass optional `history: { undo, redo, groups, parked }` to
+`snapshotOverlay`: mutation IDs in the two stacks, mutation/group-ID pairs,
+and entity payloads needed to redo creations. `restoreOverlay` returns that
+history after validation. Invalid or host-only undo records drop the entire
+history and return `historyDroppedReason`, while retaining the valid edits.
+The journal's model IDs are preserved; bind host stacks to the same logical
+model. Rebuild meshes and host Revert state separately after restoring.
+
+For asynchronous work on a fork, use
+`const fork = view.prepareAtomic(draft => draft).result` and leave that
+transaction uncommitted. Later asynchronous code can edit, snapshot or export
+the detached fork without publishing it to the original view.

@@ -8,7 +8,8 @@ import { resolve, relative } from 'node:path';
 import { eagerJsFiles, brotliSize } from './measure-bundle.mjs';
 import { staticImports } from '../check-viewer-retained-free.mjs';
 
-const dist = resolve(process.argv[2] ?? 'apps/viewer/dist');
+const args = process.argv.slice(2);
+const dist = resolve(args.find(arg => !arg.startsWith('--')) ?? 'apps/viewer/dist');
 const chunks = JSON.parse(readFileSync(resolve(dist, 'bundle-analysis.json'), 'utf8'));
 const { files } = eagerJsFiles(dist, readFileSync(resolve(dist, 'index.html'), 'utf8'));
 const closure = new Set(files.map(({ file }) => file));
@@ -42,4 +43,23 @@ console.log(`| **Total** | **${rows.reduce((n, r) => n + r[1], 0)}** | **${rows.
 for (const [label, values] of [['Package', totals], ['Module', modules]]) {
   console.log(`\n| ${label} | Rendered length |\n| --- | ---: |`);
   for (const [name, size] of [...values].sort((a, b) => b[1] - a[1])) console.log(`| ${name} | ${size} |`);
+}
+
+// Optional acceptance assertion for this diet: inspect emitted module ownership,
+// not source text or chunk names. Also catches a shared module pulling a panel back.
+if (args.includes('--expect-lazy')) {
+  for (const suffix of [
+    '/components/viewer/BCFPanel.tsx',
+    '/components/viewer/validation/ValidationPanel.tsx',
+    '/components/viewer/LensPanel.tsx',
+    '/components/viewer/bcf/BCFDraftsDialog.tsx',
+  ]) {
+    if (![...chunks].some(chunk => chunk.modules.some(module => module.id.endsWith(suffix)))) {
+      throw new Error(`Expected lazy feature missing from output: ${suffix}`);
+    }
+    if ([...modules.keys()].some(id => id.endsWith(suffix))) {
+      throw new Error(`Feature leaked into the eager closure: ${suffix}`);
+    }
+    console.log(`Verified outside eager closure: ${suffix}`);
+  }
 }

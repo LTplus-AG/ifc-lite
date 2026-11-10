@@ -18,30 +18,29 @@ afterEach(() => { cleanup(); useViewerStore.setState(initial, true); });
 // Eager-JS diet: a delayed chunk must not leave a blank or undismissible panel.
 for (const mobile of [false, true]) {
   for (const id of ['bcf', 'validation', 'lens'] as const) {
-      it(`${mobile ? 'mobile' : 'desktop'} ${id} shows loading, remains closable, and mounts an interactive cold chunk`, async () => {
-        useViewerStore.setState({ isMobile: mobile });
-        let complete!: (module: { default: typeof Feature }) => void;
-        const pending = new Promise<{ default: typeof Feature }>(resolve => { complete = resolve; });
-        function Feature() {
-          const [used, setUsed] = useState(false);
-          return <button onClick={() => setUsed(true)}>{used ? 'Used feature' : 'Use feature'}</button>;
-        }
-        const Cold = lazy(() => pending);
-        let closed = 0;
-        const ui = render(<DeferredPanel id={id} onClose={() => { closed++; }}><Cold /></DeferredPanel>);
-        assert.ok(ui.querySelector('[role="status"]'));
-        assert.ok(ui.textContent?.includes(translate(panelTitleKey(id))), 'pending shell retains its title on every layout');
-        const close = ui.querySelector('button[aria-label="Close"]');
-        assert.ok(close);
-        click(close);
-        assert.equal(closed, 1);
-        await act(async () => { complete({ default: Feature }); await pending; });
-        assert.equal(ui.querySelector('[role="status"]'), null);
-        click(ui.querySelector('button')!);
-        assert.match(ui.textContent ?? '', /Used feature/);
-      });
+    it(`${mobile ? 'mobile' : 'desktop'} ${id} shows loading, remains closable, and mounts an interactive cold chunk`, async () => {
+      useViewerStore.setState({ isMobile: mobile });
+      let complete!: (module: { default: typeof Feature }) => void;
+      const pending = new Promise<{ default: typeof Feature }>(resolve => { complete = resolve; });
+      function Feature() {
+        const [used, setUsed] = useState(false);
+        return <button onClick={() => setUsed(true)}>{used ? 'Used feature' : 'Use feature'}</button>;
+      }
+      const Cold = lazy(() => pending);
+      let closed = 0;
+      const ui = render(<DeferredPanel id={id} onClose={() => { closed++; }}><Cold /></DeferredPanel>);
+      assert.ok(ui.querySelector('[role="status"]'));
+      assert.ok(ui.textContent?.includes(translate(panelTitleKey(id))), 'pending shell retains its title on every layout');
+      const close = ui.querySelector('button[aria-label="Close"]');
+      assert.ok(close);
+      click(close);
+      assert.equal(closed, 1);
+      await act(async () => { complete({ default: Feature }); await pending; });
+      assert.equal(ui.querySelector('[role="status"]'), null);
+      click(ui.querySelector('button')!);
+      assert.match(ui.textContent ?? '', /Used feature/);
+    });
   }
-
 }
 
 for (const mobile of [false, true]) {

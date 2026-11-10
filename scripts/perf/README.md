@@ -6122,10 +6122,22 @@ was already dynamically imported on main and is unchanged here.
 The opt-in `VITE_BUNDLE_ANALYSIS=1` build emits module attribution; run
 `node scripts/perf-ratchet/audit-viewer-eager.mjs` afterward to rank the complete
 HTML/static-import closure. Rendered module lengths precede final minification;
-only emitted chunk bytes establish savings. The controlled base/branch builds,
+only emitted chunk bytes establish savings. After #9590 removed the drafts dialog from startup, this is no longer a
+ceiling emergency: judge the remaining gain against the panel-shell complexity.
+The controlled base/branch builds,
 root typecheck and feature tests are submitted through the fleet. No byte-saving
 or cold-boot timing verdict is claimed until those results exist. Leave the
 ceilings to the daily main-only lowering process after merge; do not stamp a
 branch measurement as main provenance. **Lesson:** a dynamic panel boundary
 alone cannot establish a saving while shared eager consumers and recursive
 manual chunk groups remain; inspect the rebuilt closure before claiming one.
+
+Review follow-up: pending and failed shells retain their title and Close on
+mobile as well as desktop. #9590 already made BCFDraftsDialog lazy inside
+BCFDraftsControl; this change adds only the outer BCFPanel boundary. #9616's
+drafts change overlaps #9590, not this router. Neither changes manual chunk
+groups or the audit tool, and neither introduces a shared loading helper.
+Run the branch audit with `--expect-lazy` to reject any emitted eager module
+for the three panels or the drafts dialog. If the controlled current-main
+delta is small, shrink to the useful boundary or close rather than carrying
+three loading shells for a ceiling that no longer needs them.

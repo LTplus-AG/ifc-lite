@@ -6340,3 +6340,49 @@ retained kernel, textured `.ifcZIP`) record neither `cache.lookup` nor `cache.mi
 from the existing `cache.lookup` end to `geometry.pool` start measures the full
 miss preparation gap (server attempt, engine initialization and source copy).
 No pool means a different load path, not a missing duration.
+
+### Viewer eager panel boundaries (#9634; 2026-11-10; post-profiles revalidation pending)
+
+BCF, Data validation and Lens load through dynamic imports at the shared
+workspace-panel router. The welcome screen and first-model loader do not need
+their authoring UI. Docked, floating, pop-out and mobile hosts, shortcuts and
+panel deep links retain the same router. Model gates and eager Lens evaluation
+stay in place; a translated loading/error shell keeps title and Close usable
+on every layout and contains failures to the affected panel.
+
+The earlier controlled main/branch pair established a substantial raw and
+Brotli eager-JS reduction. This remains useful independently of #9590 relieving
+the ceiling pressure. The final combined head after #9616 is being remeasured
+against exact current main; full four-shard viewer coverage, typecheck and the
+retained-free check are required before treating that head as validated. The
+PR carries source-qualified numeric evidence, separately from shared-base
+drift. There is no cold-boot timing claim.
+
+The opt-in VITE_BUNDLE_ANALYSIS build and audit-viewer-eager tool inspect the
+complete HTML preload plus recursive static-import closure. Emitted chunk
+bytes establish the gain; rendered module lengths only attribute it. The
+--expect-lazy assertion is wired into the bundle-build/ratchet workflow and
+checks actual emitted ownership for the three panels and BCFDraftsDialog.
+Lesson: a dynamic panel import alone does not prove its shared dependencies
+left startup; isolate shared state and inspect the rebuilt closure (#7015).
+
+#9590 already deferred BCFDraftsDialog inside BCFDraftsControl; #9634 adds only
+the outer BCFPanel boundary. #9616's earlier drafts hunk was removed and its
+merged change loads only the profiles dialog. Neither introduces a reusable
+loading helper or changes manual chunk groups. MapLibre was already imported
+dynamically; #9623's minimap construction work is independent.
+
+Imperative panel tests must wait for real feature controls. An absence check
+must first prove that the actual panel mounted. Registry identity tests must
+look through transparent deferred hosts to compare the lazy children, keeping
+their fall-through invariant. Production Assistant evidence adapters capture
+eager store state rather than driving panel DOM; artifact-open requests persist
+in state for mount. Tours await the shared module factories before starting
+the anchor deadline. Offline chunk failures surface without automatic
+navigation or spending reload budget.
+
+Leave byte ceilings to the sanctioned daily main-only lowering process after
+merge; never stamp branch or attribution-only measurements as main provenance.
+Retry of a cached React.lazy rejection and loading flash/focus polish remain
+app-wide follow-ups. This ledger entry is consolidated here so code PR #9634
+can merge without another shared README conflict.

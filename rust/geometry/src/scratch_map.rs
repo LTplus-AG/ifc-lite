@@ -16,8 +16,13 @@
 //!
 //! Output cannot change: these maps are only ever probed and inserted into,
 //! never iterated, so their bucket count is unobservable (the same argument
-//! that made pooling them byte-identical, #3988). It also bounds the memory a
-//! worker retains after one outsized mesh.
+//! that made pooling them byte-identical, #3988). A side effect is that a
+//! worker no longer keeps an outsized hash TABLE after one large mesh. The
+//! sibling scratch `Vec`s (the orienter's `links` bytes, `vpos`, `corner`,
+//! `flip`, `visited`; the weld's `remap`, `first_vert`) still keep their peak
+//! capacity, as before; their reset was never the cost, because clearing a
+//! `Vec` of plain values is O(1) and their refill (`resize`) writes only this
+//! mesh's length.
 
 use rustc_hash::FxHashMap;
 

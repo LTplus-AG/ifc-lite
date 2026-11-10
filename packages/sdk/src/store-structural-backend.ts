@@ -50,10 +50,10 @@ function ref(modelId: string, expressId: number): EntityRef {
 }
 
 /**
- * `IfcStructuralAnalysisModel` and friends do not exist before IFC4, and the
- * builders each refuse IFC2X3 individually. Refusing here as well keeps the
- * message at the call the caller actually made, and refuses IFC5 — which no
- * builder checks, and which `extractStructuralOnDemand` cannot read back.
+ * The `bim.store` structural methods are offered for IFC4 and IFC4X3 only.
+ * The `@ifc-lite/create` builders also write IFC2X3, but this backend has not
+ * been wired or tested for it. IFC5 is refused because no builder checks it
+ * and `extractStructuralOnDemand` cannot read it back.
  */
 const SUPPORTED_STRUCTURAL_SCHEMAS: ReadonlySet<string> = new Set(['IFC4', 'IFC4X3']);
 

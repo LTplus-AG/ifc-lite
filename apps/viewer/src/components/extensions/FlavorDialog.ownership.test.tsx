@@ -62,8 +62,8 @@ test('two flavor imports retain the first pending review', async t => {
   });
   try { select('first'); await until(() => started); select('second'); }
   finally { release(); }
-  await until(() => text().includes('ownership.first')); await advance(20);
-  assert.equal(calls, 1); assert.equal(text().includes('ownership.second'), false);
+  await advance(30); assert.equal(calls, 1, 'a second preview started before the first review settled');
+  await until(() => text().includes('ownership.first'));  assert.equal(text().includes('ownership.second'), false);
 });
 test('closing and reopening flavor import fences an abandoned preview and releases its bytes', async t => {
   const host = fixture(), preview = host.flavors.preview.bind(host.flavors);
@@ -107,7 +107,9 @@ test('an abandoned flavor file read never starts preview', async t => {
 test('published flavor review buffers are cleared on Cancel and unmount', async t => {
   const host = fixture(), preview = host.flavors.preview.bind(host.flavors), captured: Uint8Array[] = [];
   t.mock.method(host.flavors, 'preview', async (data: Uint8Array) => { captured.push(data); return preview(data); });
-  select('cancel'); await until(() => text().includes('ownership.cancel')); click(button('Cancel'));
+  select('cancel'); await until(() => text().includes('ownership.cancel'));
+  assert.equal(captured[0].some(value => value !== 0), true, 'the active review retains its owned buffer');
+  click(button('Cancel'));
   assert.equal(captured[0].every(value => value === 0), true);
   select('unmount'); await until(() => text().includes('ownership.unmount')); cleanup();
   assert.equal(captured[1].every(value => value === 0), true);

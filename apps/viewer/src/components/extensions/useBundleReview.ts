@@ -8,6 +8,7 @@ import { toast } from '@/components/ui/toast';
 import { useTranslation } from '@/i18n';
 import type { ExtensionHostService, ExtensionInstallSummary } from '@/services/extensions/host';
 
+class BundleRejectedError extends Error {}
 type Review = { bytes: Uint8Array; summary: ExtensionInstallSummary; previousGrants?: readonly string[]; previousVersion?: string };
 /** File imports own the active review. Authored bundles wait behind them. */
 export function useBundleReview(host: ExtensionHostService) {
@@ -21,7 +22,7 @@ export function useBundleReview(host: ExtensionHostService) {
   const preview = useCallback(async (bytes: Uint8Array, isCurrent: () => boolean) => {
     const result = await host.previewBundle(bytes);
     if (!isCurrent()) return;
-    if (!result.ok) throw new Error(result.errors[0]?.message ?? t('extensionsFlavors.extensionsPanel.unknownError'));
+    if (!result.ok) throw new BundleRejectedError(result.errors[0]?.message ?? t('extensionsFlavors.extensionsPanel.unknownError'));
     const installed = await host.listInstalled();
     if (!isCurrent()) return;
     const existing = installed.find(row => row.id === result.value.id);
@@ -42,7 +43,9 @@ export function useBundleReview(host: ExtensionHostService) {
         if (!isCurrent()) return;
         await preview(bytes, isCurrent);
       } catch (error) {
-        if (isCurrent()) toast.error(t('extensionsFlavors.extensionsPanel.toast.readFileFailed', { error: error instanceof Error ? error.message : String(error) }));
+        if (isCurrent()) toast.error(t(error instanceof BundleRejectedError
+          ? 'extensionsFlavors.extensionsPanel.toast.bundleUnpackFailed' : 'extensionsFlavors.extensionsPanel.toast.readFileFailed',
+        { error: error instanceof Error ? error.message : String(error) }));
       } finally { if (isCurrent()) origin.current = null; }
     });
   }, [preview, release, run, t]);
@@ -56,7 +59,9 @@ export function useBundleReview(host: ExtensionHostService) {
         if (owns()) useViewerStore.getState().setPendingAuthoredBundle(null);
       } catch (error) {
         if (owns()) {
-          toast.error(t('extensionsFlavors.extensionsPanel.toast.authoredBundlePreviewFailed', { error: error instanceof Error ? error.message : String(error) }));
+          toast.error(t(error instanceof BundleRejectedError
+            ? 'extensionsFlavors.extensionsPanel.toast.authoredBundleUnpackFailed' : 'extensionsFlavors.extensionsPanel.toast.authoredBundlePreviewFailed',
+          { error: error instanceof Error ? error.message : String(error) }));
           useViewerStore.getState().setPendingAuthoredBundle(null);
         }
       } finally { if (isCurrent()) origin.current = null; }

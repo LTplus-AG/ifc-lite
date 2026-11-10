@@ -20,7 +20,7 @@ import { encodeSavedLens } from '@/lib/lens/migrate-saved-lens';
 import { trackExportCompleted } from '@/lib/analytics';
 import { useEffect, useRef, useState } from 'react';
 import { Palette } from 'lucide-react';
-import type { Flavor, UnpackedFlavor } from '@ifc-lite/extensions';
+import type { Flavor } from '@ifc-lite/extensions';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useExtensionHost } from '@/sdk/ExtensionHostProvider';
 import { toast } from '@/components/ui/toast';
@@ -29,6 +29,7 @@ import { downloadFile } from '@/lib/export/download';
 import { FlavorMergeDialog } from './FlavorMergeDialog';
 import { FlavorListView } from './FlavorListView';
 import { useFlavorDialogLibrary } from './useFlavorDialogLibrary';
+import { useFlavorImportReview } from './useFlavorImportReview';
 import { FlavorImportPreview } from './FlavorImportPreview';
 import { flavorFailure, flavorSwitchPartial } from './flavor-dialog-feedback';
 import { HelpHint } from './HelpHint';
@@ -48,24 +49,15 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
   const { confirmDialog } = useDialogs();
   const host = useExtensionHost();
   const { flavors, activeId, phase, refresh } = useFlavorDialogLibrary(host, open);
-  const [busy, setBusy] = useState(false);
-  const [preview, setPreview] = useState<{ bytes: Uint8Array; unpacked: UnpackedFlavor } | null>(null);
+  const [actionBusy, setBusy] = useState(false);
+  const { preview, clearPreview, handleFiles, busy: previewBusy } = useFlavorImportReview(host, open);
+  const busy = actionBusy || previewBusy;
   const [mergeTarget, setMergeTarget] = useState<Flavor | null>(null);
   const liveLensCount = useViewerStore((s) => s.savedLenses.length);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const failure = (operation: string, err: unknown) => flavorFailure(t, operation, err);
 
-  // When the dialog closes (or the preview is dismissed), zero the
-  // preview bytes so a sensitive `.iflv` doesn't sit in memory longer
-  // than necessary. Best effort — the GC will reclaim eventually.
-  useEffect(() => {
-    if (open) return;
-    if (preview) {
-      preview.bytes.fill(0);
-      setPreview(null);
-    }
-    if (mergeTarget) setMergeTarget(null);
-  }, [open, preview, mergeTarget]);
+  useEffect(() => { if (!open && mergeTarget) setMergeTarget(null); }, [open, mergeTarget]);
   const handleExport = async (id: string) => {
     setBusy(true);
     try {
@@ -282,29 +274,13 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
     }
   };
 
-  const handleFiles = async (files: FileList | null) => {
-    if (!files || files.length === 0) return;
-    const file = files[0];
-    if (!file.name.toLowerCase().endsWith('.iflv')) {
-      toast.error(t('extensionsFlavors.flavorDialog.toast.expectedFile', { filename: file.name }));
-      return;
-    }
-    try {
-      const bytes = new Uint8Array(await file.arrayBuffer());
-      const unpacked = await host.flavors.preview(bytes);
-      setPreview({ bytes, unpacked });
-    } catch (err) {
-      toast.error(failure(t('extensionsFlavors.flavorDialog.operation.preview'), err));
-    }
-  };
-
   const handleConfirmImport = async (strategy: 'replace' | 'save-as-new') => {
     if (!preview) return;
     setBusy(true);
     try {
       const flavor = await host.flavors.importFlavor(preview.unpacked, { strategy });
       toast.success(t('extensionsFlavors.flavorDialog.toast.imported', { name: localizedFlavorName(flavor, t) }));
-      setPreview(null);
+      clearPreview();
     } catch (err) {
       if (err && (err as { name?: string }).name === 'ExtensionStorageQuotaError') {
         toast.error(t('extensionsFlavors.flavorDialog.toast.storageFull'));
@@ -336,10 +312,10 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
           <FlavorImportPreview
             unpacked={preview.unpacked}
             busy={busy}
-            onCancel={() => setPreview(null)}
+            onCancel={clearPreview}
             onMerge={() => {
               setMergeTarget(preview.unpacked.flavor);
-              setPreview(null);
+              clearPreview();
             }}
             onSaveAsNew={() => void handleConfirmImport('save-as-new')}
             onReplace={() => void handleConfirmImport('replace')}

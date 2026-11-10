@@ -285,7 +285,11 @@ jobs:
       # A merge-queue batch is validated as a whole: declare every area changed
       # so all lanes run. paths-filter is a pull_request/push tool and has no
       # PR to diff on merge_group.
-      - if: github.event_name == 'merge_group' || steps.lane.outputs.batch == 'true'
+      # Not on a no-op edit replay: `noop` publishes no filter output so every lane
+      # skips and the aggregate replays the recorded verdict. Mergify rewrites a batch
+      # PR's body on every status change, and without this gate each rewrite re-ran
+      # the whole suite on the same head (draft #9664: 3 full runs, 2 h to merge).
+      - if: (github.event_name == 'merge_group' || steps.lane.outputs.batch == 'true') && steps.noop.outputs.noop != 'true'
         id: all
         run: for k in rust frontend geometry python plato docs agents_md license_headers perf_ratchet; do echo "$k=true" >> "$GITHUB_OUTPUT"; done
       - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
@@ -2585,8 +2589,18 @@ jobs:
   # `rust-tests` writes `ci-rust-main-*` first, so sharing that key would
   # leave the arrow/parquet dependency tree cold on every run.
   rust-full:
-    name: Rust tests (feature builds)
+    # A one-leg matrix ON PURPOSE. A job skipped by `if:` publishes its check run
+    # under the job name; a skipped MATRIX job publishes the unexpanded template
+    # (`Rust tests (${{ matrix.lane }})`). Mergify requires
+    # `check-success=Rust tests (feature builds)` on a batch, and a no-op edit
+    # replay skips this lane: under a literal name that skip became the latest
+    # check of that name and blocked a green batch. The template keeps the skip
+    # off the real name, exactly as `Viewer tests (shard ${{ matrix.shard }})` does.
+    name: Rust tests (${{ matrix.lane }})
     needs: changes
+    strategy:
+      matrix:
+        lane: ['feature builds']
     if: needs.changes.outputs.rust == 'true' && (github.event_name != 'pull_request' || needs.changes.outputs.batch == 'true') && needs.changes.outputs.replay_queue != 'true'
     runs-on: ${{ ((vars.SELF_HOSTED_QUEUE == 'true' && github.event_name == 'merge_group') || (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted'))))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
     timeout-minutes: 45

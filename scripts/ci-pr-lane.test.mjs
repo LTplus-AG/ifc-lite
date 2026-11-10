@@ -329,6 +329,7 @@ test('test.yml hands the batch signal to the decision and to the queue-only lane
   }
   const all = wf.jobs.changes.steps.find((s) => s.id === 'all');
   assert.match(all.if, /steps\.lane\.outputs\.batch == 'true'/, 'a batch declares every area changed'); // @source-text-assertion-ok subject is the parsed config or the decision's returned text
+  assert.match(all.if, /steps\.noop\.outputs\.noop != 'true'/, 'a no-op edit replay of a batch runs no lanes'); // @source-text-assertion-ok subject is the parsed config or the decision's returned text
   const filter = wf.jobs.changes.steps.find((s) => s.id === 'filter');
   assert.match(filter.if, /steps\.lane\.outputs\.batch != 'true'/, 'a batch does not narrow lanes by path'); // @source-text-assertion-ok subject is the parsed config or the decision's returned text
 });
@@ -341,7 +342,12 @@ test('Mergify cannot merge a batch unless full-lane jobs succeeded, and is label
   }
   assert.ok(rule.queue_conditions.includes('label=mergify-trial')); // @source-text-assertion-ok subject is the parsed config or the decision's returned text
   const names = Object.values(parse(readFileSync(join(REPO_ROOT, '.github/workflows/test.yml'), 'utf8')).jobs).map((j) => j.name);
-  assert.ok(names.includes('Rust tests (feature builds)'), 'the required job name exists'); // @source-text-assertion-ok subject is the parsed config or the decision's returned text
+  // rust-full is a one-leg matrix so a skipped run publishes the template, not the
+  // name Mergify requires; its one rendered leg must still be exactly that name.
+  const rustFull = parse(readFileSync(join(REPO_ROOT, '.github/workflows/test.yml'), 'utf8')).jobs['rust-full'];
+  const rendered = rustFull.strategy.matrix.lane.map((lane) => rustFull.name.replace('${{ matrix.lane }}', lane));
+  assert.deepEqual(rendered, ['Rust tests (feature builds)'], 'the required job name exists'); // @source-text-assertion-ok subject is the parsed config or the decision's returned text
+  assert.notEqual(rustFull.name, 'Rust tests (feature builds)', 'a skipped run must not publish the required name'); // @source-text-assertion-ok subject is the parsed config or the decision's returned text
   assert.ok(names.includes('Build + WASM + Rust + Node'), 'the required job name exists'); // @source-text-assertion-ok subject is the parsed config or the decision's returned text
   assert.ok(names.some((n) => String(n).startsWith('Viewer tests (shard')), 'the required job name exists'); // @source-text-assertion-ok subject is the parsed config or the decision's returned text
 });

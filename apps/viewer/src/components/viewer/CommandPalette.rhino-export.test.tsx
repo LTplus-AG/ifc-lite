@@ -16,7 +16,6 @@ import type { BimContext } from '@ifc-lite/sdk';
 import { BimReactContext } from '@/sdk/BimProvider.js';
 import { useViewerStore } from '@/store/index.js';
 import type { FederatedModel } from '@/store/types.js';
-import { resolveEnglish } from '@/i18n/registry';
 import { RETAINED_EXACT_ONLY_REASON } from '@/store/retainedGeometry';
 import { advance, cleanup, render, type as typeInto, waitFor } from '@/test/render.js';
 import { CommandPaletteHost } from './CommandPaletteHost.js';
@@ -85,7 +84,7 @@ describe('CommandPalette — export:3dm', () => {
     act(() => {
       option.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
     });
-    const title = resolveEnglish('rhinoExport.dialogTitle');
+    const title = 'Export Rhino (.3dm)'; // literal, not the catalogue the dialog renders from
     await waitFor(() => [...document.body.querySelectorAll('[role="dialog"]')]
       .some((d) => d.textContent?.includes(title) && d.textContent?.includes('Units')), 'the Rhino dialog opens');
     await advance(20);

@@ -5,11 +5,21 @@
 import type { Catalogue } from '../../registry';
 
 export const modelingCommandIt = {
-  "modelingCommand.wall.top": "Posizione della sommità del muro",
+  "modelingCommand.roof.shape": "Forma",
+  "modelingCommand.roof.hip": "Padiglione",
+  "modelingCommand.roof.gable": "Due falde",
+  "modelingCommand.roof.mono": "Una falda",
+  "modelingCommand.roof.flat": "Piano",
+  "modelingCommand.roof.pitch": "Pendenza",
+  "modelingCommand.roof.overhang": "Sporto",
+  "modelingCommand.roof.edge": "Bordo",
+  "modelingCommand.roof.edgeSlope": "Pendenza del bordo",
+  "modelingCommand.wall.top": "Sommità muro",
   "modelingCommand.wall.topStoreyAbove": "Fino al piano superiore",
   "modelingCommand.wall.topFixed": "Altezza fissa",
   "modelingCommand.closeAria": "Esci dal comando",
   "modelingCommand.aim.tag": "Sul piano di lavoro",
+  "modelingCommand.snap.increment": "Incremento {step} · Alt per sospendere",
   "modelingCommand.aim.holdAlt": "Tieni premuto {key} per ignorare gli agganci e le superfici: il punto viene posizionato sul piano di lavoro",
   "modelingCommand.aim.altHeld": "{key} premuto: il punto viene posizionato sul piano di lavoro, ignorando gli agganci e le superfici davanti",
   "modelingCommand.aim.snapOff": "L’aggancio è disattivato: il punto viene posizionato sul piano di lavoro, ignorando le superfici davanti",

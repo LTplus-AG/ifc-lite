@@ -31,28 +31,32 @@ import type {
 } from '@ifc-lite/create';
 import type { RoomCommand, RoomCommandResult } from './store-room-command.js';
 import type { EntityRef } from './types.js';
+import type { CopiedElementRef } from './store-copy-refs.js';
 import type { PhysicalStoreBackendMethods } from './store-physical-types.js';
 import type { StoreyStoreBackendMethods } from './store-storey-types.js';
 import type { TopConstraintParams } from './store-top-types.js';
+import type { RoofStoreBackendMethods } from './store-roof-types.js';
 
-export interface ModellingStoreBackendMethods extends PhysicalStoreBackendMethods, StoreyStoreBackendMethods {
+export interface ModellingStoreBackendMethods extends PhysicalStoreBackendMethods, StoreyStoreBackendMethods, RoofStoreBackendMethods {
   /** Native mesh/DCEL Room operations with atomic history-aware layout edits. */
   roomCommand?(modelId: string, storeyId: number, command: RoomCommand): Promise<RoomCommandResult>;
   /**
    * Copy a dependency-pruned selection once per storey-local transform, atomically. A copy on another
    * storey re-resolves its top attachment there: one attached to the storey above its own attaches to
-   * the storey above its new one (#9296).
+   * the storey above its new one (#9296). Returns one ref per selected element per transform, in
+   * selection order (a door selected with its wall is its copy in the wall's copy); a copy whose top
+   * could not follow its new storey is listed in its ref's `unattachedTops` (#9352).
    */
-  copyElements?(modelId: string, expressIds: readonly number[], transforms: readonly CopyTransform[]): EntityRef[];
+  copyElements?(modelId: string, expressIds: readonly number[], transforms: readonly CopyTransform[]): CopiedElementRef[];
   /**
    * Copy a selection onto each of `storeyIds` (same plan position and height above the floor) in one
    * atomic, undoable operation; the copies come back per storey, in the order given.
    */
-  copyToStoreys?(modelId: string, expressIds: readonly number[], storeyIds: readonly number[]): Array<{ storeyId: number; refs: EntityRef[] }>;
+  copyToStoreys?(modelId: string, expressIds: readonly number[], storeyIds: readonly number[]): Array<{ storeyId: number; refs: CopiedElementRef[] }>;
   /** Duplicate with the viewer naming policy; explicit storey-local IFC XYZ displacement. */
   duplicateElement?(ref: EntityRef, options: { offset: [number, number, number]; Name?: string }): EntityRef;
   /** Array count includes the original; full circles exclude a coincident final copy. */
-  arrayElements?(modelId: string, expressIds: readonly number[], params: CopyArrayParams): EntityRef[];
+  arrayElements?(modelId: string, expressIds: readonly number[], params: CopyArrayParams): CopiedElementRef[];
 
   /** Edit the physical hosted cut/filling together, preserving identity and relationships. Metres, host-local. */
   editHostedElement?(ref: EntityRef, patch: HostedElementEdit): EntityRef;

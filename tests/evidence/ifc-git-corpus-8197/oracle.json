@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "why": "PR #9475 adds geometry-proof.ts; deleting it breaks the generator import. A surgical wrong-displacement mutation keeps the real generator executable and makes its world-geometry witness fail.",
+  "key": "tools/ifc-git-corpus/geometry-proof.ts",
+  "mutation": "tests/evidence/ifc-git-corpus-8197/behaviour.oracle.patch",
+  "test": "scripts/ifc-git-corpus.test.mjs"
+}

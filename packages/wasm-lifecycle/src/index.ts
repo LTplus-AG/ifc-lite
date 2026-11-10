@@ -14,3 +14,23 @@ export {
   restashWasmPanicLocation,
   type WasmPanicStash,
 } from './wasm-panic-forward.js';
+
+export {
+  createLifetime,
+  type Lifetime,
+  type LifetimeAttempt,
+  type LifetimeOptions,
+  type LifetimeState,
+} from './lifetime.js';
+
+export {
+  createWorkerRpc,
+  type PortRpcOptions,
+  type RpcReply,
+  type RpcRequestOptions,
+  type RpcStartOptions,
+  type RpcStartStep,
+  type RpcWorker,
+  type WorkerRpc,
+  type WorkerRpcOptions,
+} from './worker-rpc.js';

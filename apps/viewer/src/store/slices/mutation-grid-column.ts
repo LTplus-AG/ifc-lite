@@ -5,7 +5,7 @@
 /** Record the complete grid placement and column graph as one modelling edit
  * (#6232), using the same live target and Undo/Redo path as authored grids. */
 import {
-  addColumnOnGridToStore, resolveSpatialAnchor,
+  addColumnOnGridToStore, applyNewElementTop, resolveSpatialAnchor, type TopConstraint,
   type ColumnInStoreParams, type ProfiledColumnInStoreParams, type GridColumnBinding,
 } from '@ifc-lite/create';
 import { registerAuthoredElement } from '@/utils/spatialHierarchy.js';
@@ -19,15 +19,19 @@ export function addGridColumnIn(
   storeyId: number,
   params: ColumnInStoreParams | ProfiledColumnInStoreParams,
   binding: GridColumnBinding,
+  /** `bim.store`'s top constraint, applied in the same edit as headless does; the Model workspace passes none. */
+  top?: TopConstraint | 'auto',
 ): { expressId: number } | { error: string } {
   const denial = mutationDenial(store.getState(), modelId);
   if (denial) return { error: denial };
   const target = modelEditTarget(store.getState(), modelId);
   if (!target) return { error: `No model loaded for id "${modelId}"` };
   try {
-    const build = recordModellingEdit(store, modelId, (_methods, draft) => addColumnOnGridToStore(
-      draft, target.dataStore, resolveSpatialAnchor(target.dataStore, storeyId, draft.getMutationView()), params, binding,
-    ));
+    const build = recordModellingEdit(store, modelId, (_methods, draft) => {
+      const column = addColumnOnGridToStore(draft, target.dataStore, resolveSpatialAnchor(target.dataStore, storeyId, draft.getMutationView()), params, binding);
+      if (top !== undefined) applyNewElementTop(target.dataStore, draft, column.columnId, top, storeyId);
+      return column;
+    });
     if (target.dataStore.spatialHierarchy) {
       const name = target.view.getNewEntity(build.columnId)?.attributes[2];
       registerAuthoredElement(target.dataStore.spatialHierarchy, storeyId, build.columnId, 'IFCCOLUMN', typeof name === 'string' ? name : '');

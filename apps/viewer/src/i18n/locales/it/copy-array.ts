@@ -19,6 +19,11 @@ export const copyArrayIt = {
     "other": "Copiati {countDisplay} elementi",
     "many": "Copiati {countDisplay} elementi"
   },
+  "copyArray.unattachedTops": {
+    "one": "{countDisplay} copia mantiene la sua altezza: la sommità non può seguire il nuovo piano, quindi non è più collegata",
+    "other": "{countDisplay} copie mantengono la loro altezza: la sommità non può seguire il nuovo piano, quindi non sono più collegate",
+    "many": "{countDisplay} copie mantengono la loro altezza: la sommità non può seguire il nuovo piano, quindi non sono più collegate",
+  },
   "copyArray.paste.label": "Incolla",
   "copyArray.paste.hint": "Fai clic dove inserire la copia. Per incollare su un altro piano, cambia prima piano",
   "copyArray.paste.empty": "Nessun elemento copiato: seleziona gli elementi e copiali prima",

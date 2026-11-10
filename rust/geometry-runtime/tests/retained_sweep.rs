@@ -357,6 +357,7 @@ fn actual_sdk_receipt_binds_exact_completion_and_its_live_owner() {
         assert!((lo[axis] - l).abs() < 1e-9 && (hi[axis] - h).abs() < 1e-9);
     }
     let owner = receipt.owner().clone();
+    #[cfg(target_os = "linux")]
     let pid = worker.process_id();
     owner.retire();
     assert_eq!(worker.incarnation(), 0);

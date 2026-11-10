@@ -13,7 +13,7 @@
  * Hosting (doors and windows). Every edit is one undo step.
  */
 
-import { lazy, Suspense, useId, useMemo } from 'react';
+import { lazy, Suspense, useId, useMemo, useState } from 'react';
 import { ChevronRight, X } from 'lucide-react';
 import { EditElement } from '@/icons';
 import { Button } from '@/components/ui/button';
@@ -42,12 +42,38 @@ const HOSTED: ReadonlySet<AuthoredElementKind> = new Set(['door', 'window']);
 
 export function ModelInspectorPanel({ onClose }: { onClose?: () => void }) {
   const { t } = useTranslation();
+  const managerOpen = useViewerStore((s) => s.storeyManagerOpen && s.session !== null);
+  const [tab, setTab] = useState<'storeys' | 'defaults'>('storeys');
+  if (!managerOpen) return <ModelInspectorBody onClose={onClose} />;
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="border-b border-border p-2">
+        <SegmentedControl label={t('modelInspector.panel.title')} size="sm" value={tab} onValueChange={setTab}
+          options={[{ value: 'storeys', label: t('storeyManager.title') }, { value: 'defaults', label: t('modelInspector.mode.defaults') }]} />
+      </div>
+      <div hidden={tab !== 'storeys'} className="min-h-0 flex-1">
+        <ChunkErrorBoundary label="Storey manager">
+          <Suspense fallback={<Spinner label={t('storeyManager.title')} />}>
+            <StoreyManager onBack={() => useViewerStore.getState().setStoreyManagerOpen(false)} />
+          </Suspense>
+        </ChunkErrorBoundary>
+      </div>
+      <div hidden={tab !== 'defaults'} className="min-h-0 flex-1">
+        <ModelInspectorBody onClose={onClose} forceDefaults />
+      </div>
+    </div>
+  );
+}
+
+function ModelInspectorBody({ onClose, forceDefaults = false }: { onClose?: () => void; forceDefaults?: boolean }) {
+  const { t } = useTranslation();
   const hasModel = useViewerStore((s) => s.models.size > 0);
   const canEdit = useViewerStore((s) => s.canCollabEdit());
   const enter = useViewerStore((s) => s.enterModelWorkspace);
-  const target = useInspectorTarget();
-  const storeyManagerOpen = useViewerStore((s) => s.storeyManagerOpen);
-  const closeStoreyManager = useViewerStore((s) => s.setStoreyManagerOpen);
+  const originalTarget = useInspectorTarget();
+  const lastKind = useViewerStore((s) => s.authoringDefaults.lastKind);
+  const defaultKind = originalTarget.defaultsKind ?? (originalTarget.kindlessCommand ? null : lastKind);
+  const target = forceDefaults && defaultKind ? { ...originalTarget, defaultsKind: defaultKind, mode: 'defaults' as const } : originalTarget;
   const { mode, selection, defaultsKind, kindlessCommand } = target;
 
   const title = mode === 'selection' && selection
@@ -59,17 +85,6 @@ export function ModelInspectorPanel({ onClose }: { onClose?: () => void }) {
       : kindlessCommand
         ? t(kindlessCommand)
         : t('modelInspector.panel.title');
-
-  // The storey manager (#9013) takes the inspector's place until its Back button.
-  if (storeyManagerOpen && target.inSession) {
-    return (
-      <ChunkErrorBoundary label="Storey manager">
-        <Suspense fallback={<div className="flex h-full items-center justify-center"><Spinner label={t('storeyManager.title')} /></div>}>
-          <StoreyManager onBack={() => closeStoreyManager(false)} />
-        </Suspense>
-      </ChunkErrorBoundary>
-    );
-  }
 
   return (
     <div data-model-inspector data-inspector-mode={mode ?? undefined} className="flex h-full min-h-0 flex-col" aria-label={t('modelInspector.panel.title')}>
@@ -102,7 +117,7 @@ export function ModelInspectorPanel({ onClose }: { onClose?: () => void }) {
         </div>
       ) : (
         <>
-          <InspectorToolbar target={target} />
+          {!forceDefaults && <InspectorToolbar target={target} />}
           <div className="min-h-0 flex-1 overflow-y-auto">
             {mode === 'selection' && selection ? <SelectionBody key={`${selection.modelId}:${selection.expressId}`} selection={selection} /> : null}
             {mode === 'defaults' && defaultsKind && target.sessionModel ? (

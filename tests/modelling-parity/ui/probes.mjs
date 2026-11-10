@@ -21,12 +21,14 @@
  * - `notes`: where the UI blocked or misled, in plain words.
  */
 
-import { copiedPlansMatch, uniqueWallJoins, wallEndpointsJoined, hasDwgDownload, assignedTypes, ownOpenings, wallPropertySets, wallQuantityCoverage } from './lib/oracles.mjs';
+import { roofGeometry, copiedPlansMatch, uniqueWallJoins, wallEndpointsJoined, hasDwgDownload, assignedTypes, ownOpenings, wallPropertySets, wallQuantityCoverage } from './lib/oracles.mjs';
 import { downloadCount, nextDownload, task } from './lib/driver.mjs';
 import {
   escape, hudText, oracleModel, openStoreyManager, readSession, readStoreyManager, switchStorey, tool, toasts, typeFields,
 } from './lib/model-ui.mjs';
+import { U4_PROBES } from './probes-u4.mjs';
 import { readStep } from './lib/step.mjs';
+import { meshIfc } from '../probes/sdk/lib/parity.mjs';
 
 const PLAN_CAM = { pos: [2.5, -2, 28], target: [2.5, 2, 0] };
 const near = (a, b, tol) => Math.abs(a - b) <= tol;
@@ -111,6 +113,7 @@ const isDxf = (d) => !!d && /\bSECTION\b/.test(d.text) && /\bEOF\b/.test(d.text)
 const svgShapes = (d) => (d?.text.match(/<(path|polygon|polyline|line|rect)\b/g) ?? []).length;
 
 export const PROBES = [
+  ...U4_PROBES,
   {
     id: 'ui.storeys',
     capability: 'storeys',
@@ -385,26 +388,28 @@ export const PROBES = [
     title: 'Roof over a 5x4 m footprint (hip expected; #9214)',
     async run(s) {
       const tasks = [await setupRoom(s)];
-      const notes = ['There is no Roof tool in the rail: a roof is the Slab tool with its class switched to Roof, and it makes a flat slab.'];
-      tasks.push(await task(s, 'Slab tool, class Roof, typed 5.6 x 4.6 m', async () => {
-        await tool(s, 'slab.place');
-        await s.ui.click(s.page.locator('[data-command-id]').getByRole('radio', { name: 'Roof' }));
-        await s.ui.clickWorld([-0.3, -0.3, 3]);
+      const notes = ['The exported roof is meshed and checked against four 30-degree eave planes; its IFC type alone cannot establish a hip.'];
+      tasks.push(await task(s, 'Roof tool, typed 5.6 x 4.6 m', async () => {
+        await s.ui.key('Shift+Y', { settle: 300 });
+        await s.ui.clickWorld([-0.3, -0.3, 3], { modifiers: ['Alt'] });
         await typeFields(s, [5.6, 4.6]);
         await escape(s);
       }));
       await s.harness.aim([14, -12, 12], [2.5, 2, 1.5], { pin: false });
       const shot = await s.shot('roof');
-      const { step } = await oracleModel(s);
+      const { step, text } = await oracleModel(s);
       const roofs = [...step.of('IFCROOF'), ...step.of('IFCSLAB').filter((x) => x.args?.[8]?.enum === 'ROOF')];
-      // Representation categories do not prove slope or hip form (#9324).
-      // Until the geometric oracle is implemented, this check is unmeasured.
-      const sloped = false;
+      // Reuse the geometric SDK oracle: slabs, full-height prisms and mono-pitch
+      // plates cannot pass as a hip even if their IFC label says HIP_ROOF.
+      const sloped = roofGeometry(step, await meshIfc(text), {
+        footprint: [[-.3,-.3],[5.3,-.3],[5.3,4.3],[-.3,4.3]],
+        slopes: Array(4).fill(Math.PI / 6), thickness: .3, hip: true,
+      });
       return {
         tasks, notes, evidence: [shot],
         checks: [
           { name: 'a roof element exists (IfcRoof or IfcSlab ROOF)', ok: roofs.length >= 1, detail: `${roofs.length} roof elements` },
-          { name: 'the roof is sloped (hip by footprint)', ok: sloped, detail: 'unmeasured: requires geometric slope and hip-form evidence (#9328)' },
+          { name: 'the roof is sloped (hip by footprint)', ok: sloped === true, detail: sloped === true ? 'four 30-degree planes, low eaves, high centre and volume pass the native-mesh oracle' : sloped },
         ],
       };
     },
@@ -554,7 +559,7 @@ export const PROBES = [
       const notes = [];
       tasks.push(await task(s, 'Show the plan (rail); close the inspector first if there is no room', async () => {
         const show = s.page.getByRole('button', { name: 'Show the plan' });
-        if (await show.isDisabled()) {
+        if ((await show.isVisible()) && (await show.isDisabled())) {
           notes.push('At 1600x900 "Show the plan" is disabled ("No room for the plan beside 3D"): the modeller has to close a side panel before the plan can open.');
           for (const name of ['Close the Model inspector', 'Collapse sidebar to icons']) {
             if (!(await show.isVisible().catch(() => false)) || !(await show.isDisabled())) break;
@@ -622,10 +627,9 @@ export const PROBES = [
         await s.ui.key('Escape');
       }));
       const shot = await s.shot('dimension');
-      const annotations = await s.state(() => {
-        const st = globalThis.__ifc_lite_viewer_store__.getState();
-        return Object.entries(st).filter(([k, v]) => /measure2D|annotation/i.test(k) && Array.isArray(v)).reduce((n, [, v]) => n + v.length, 0);
-      });
+      const dimensions = await s.state(() =>
+        (globalThis.__ifc_lite_viewer_store__.getState().measure2DResults ?? []).map((m) => m.distance));
+      const annotations = dimensions.length;
       let svg = null;
       tasks.push(await task(s, 'Drawing > Export > SVG', async () => { svg = await exportDrawing(s, 'svg'); }));
       const added = svg && plain ? svg.text.length - plain.text.length : 0;
@@ -635,8 +639,9 @@ export const PROBES = [
         tasks, notes: tagTool ? [] : [`The Drawing toolbar has no tag tool (${toolbar.join(', ')}).`], evidence: [shot], artifacts: { svg },
         checks: [
           { name: 'a dimension was placed in the drawing', ok: annotations > 0, detail: `${annotations} drawing markups in the store` },
+          { name: 'dimension measures the 5 m room span', ok: dimensions.length === 1 && near(dimensions[0], 5, 0.25), detail: JSON.stringify(dimensions) },
           { name: 'the exported SVG carries the dimension', ok: added > 0 && numbers > 0, detail: `${added} more SVG characters than before, ${numbers} numeric text labels` },
-          { name: 'a tag tool for elements (door, window, room tags)', ok: tagTool, detail: `toolbar: ${toolbar.join(', ')}` },
+          { name: 'a tag tool for elements (door, window, room tags)', ok: false, detail: tagTool ? 'tag control found, but no entity-bound tag placement/export oracle has passed' : `no tag control in toolbar: ${toolbar.join(', ')}` },
         ],
       };
     },
@@ -765,6 +770,19 @@ export const PROBES = [
     },
   },
 ];
+
+// The original combined probe only credited the structure row, leaving grids unscored.
+const gridProbe = PROBES.find((p) => p.id === 'ui.grid-columns');
+PROBES.push({
+  ...gridProbe, id: 'ui.grids', capability: 'grids',
+  async run(s) {
+    const out = await gridProbe.run(s);
+    return { ...out, checks: [...out.checks.slice(0, 2), {
+      name: 'moving a grid carries its columns', ok: false,
+      detail: 'not measured by placement/level-change probe: grid movement and bound column displacement require a separate gesture',
+    }] };
+  },
+});
 
 /** Run one probe in a fresh page. Returns a contract result plus the export text when the probe has one. */
 export async function runProbe(probe, openFresh, base, { saveArtifact } = {}) {

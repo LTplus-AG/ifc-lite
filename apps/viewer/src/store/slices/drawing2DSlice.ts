@@ -11,6 +11,7 @@ import type { StateCreator } from 'zustand';
 import type { Drawing2D, DxfPlacement, DxfUnderlay, GraphicOverrideRule, GraphicOverridePreset } from '@ifc-lite/drawing-2d';
 import { BUILT_IN_PRESETS } from '@ifc-lite/drawing-2d';
 import type { DxfReferenceFrame } from '@/hooks/dxfReferencePlane';
+import type { SectionPlane } from '../section-types';
 import { createDxfUnderlayActions } from './drawing2DSlice.dxfActions';
 import { validateDrawingDisplayOptions } from '@/lib/drawing/projection-depth';
 import { DEFAULT_SCAN_SECTION_THICKNESS } from '@/hooks/scanSectionMath';
@@ -18,6 +19,9 @@ import { DEFAULT_SCAN_OUTLINE_MAX_GAP } from '@/lib/scan-outline/scan-outline';
 import { isDegenerateMeasurement, isDegenerateArea, isDegenerateCloud } from './drawing2DDegenerateGuards';
 
 export type Drawing2DStatus = 'idle' | 'generating' | 'ready' | 'error';
+
+/** The semantic cut a drawing was generated at (see `drawnSectionPlane`). */
+export type DrawnSectionPlane = Pick<SectionPlane, 'axis' | 'position' | 'flipped' | 'custom'>;
 
 /** Active 2D annotation tool */
 export type Annotation2DTool = 'none' | 'measure' | 'polygon-area' | 'text' | 'cloud';
@@ -130,6 +134,12 @@ export interface DxfUnderlayState {
 export interface Drawing2DState {
   /** Current drawing data (null when not generated) */
   drawing2D: Drawing2D | null;
+  /**
+   * The cut `drawing2D` was generated at, published with it by `setDrawing2D`
+   * and cleared with it. The live `sectionPlane` moves first; until the next
+   * drawing lands, export and the canvas describe this one (`drawnSectionPlane`).
+   */
+  drawing2DPlane: DrawnSectionPlane | null;
   /** Generation status */
   drawing2DStatus: Drawing2DStatus;
   /** Generation progress (0-100) */
@@ -260,7 +270,7 @@ export interface Drawing2DState {
 
 export interface Drawing2DSlice extends Drawing2DState {
   // Drawing Actions
-  setDrawing2D: (drawing: Drawing2D | null) => void;
+  setDrawing2D: (drawing: Drawing2D | null, plane?: DrawnSectionPlane) => void;
   setDrawing2DStatus: (status: Drawing2DStatus) => void;
   setDrawing2DProgress: (progress: number, phase: string) => void;
   setDrawing2DError: (error: string | null) => void;
@@ -390,6 +400,7 @@ const getDefaultDisplayOptions = (): Drawing2DState['drawing2DDisplayOptions'] =
 
 export const getDefaultDrawing2DState = (): Drawing2DState => ({
   drawing2D: null,
+  drawing2DPlane: null,
   drawing2DStatus: 'idle',
   drawing2DProgress: 0,
   drawing2DPhase: '',
@@ -431,8 +442,9 @@ export const createDrawing2DSlice: StateCreator<Drawing2DSlice, [], [], Drawing2
   ...getDefaultDrawing2DState(),
 
   // Drawing Actions
-  setDrawing2D: (drawing) => set({
+  setDrawing2D: (drawing, plane) => set({
     drawing2D: drawing,
+    drawing2DPlane: drawing ? plane ?? null : null,
     drawing2DStatus: drawing ? 'ready' : 'idle',
     drawing2DError: null,
   }),
@@ -466,6 +478,7 @@ export const createDrawing2DSlice: StateCreator<Drawing2DSlice, [], [], Drawing2
   // would wipe) untouched.
   clearDrawing2D: () => set({
     drawing2D: null,
+    drawing2DPlane: null,
     drawing2DStatus: 'idle',
     drawing2DProgress: 0,
     drawing2DPhase: '',

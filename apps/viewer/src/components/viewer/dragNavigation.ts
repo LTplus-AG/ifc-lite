@@ -23,8 +23,12 @@ export function applyDragNavigation(camera: Camera, kind: DragNavigation, dx: nu
   if (kind === 'pan') {
     camera.pan(dx, dy, false);
   } else if (kind === 'look') {
-    const look = flyLook({ position: camera.getPosition(), target: camera.getTarget() }, dx, dy);
-    if (look) camera.setTarget(look.target.x, look.target.y, look.target.z);
+    const look = flyLook({ position: camera.getPosition(), target: camera.getTarget(), up: camera.getUp() }, dx, dy);
+    if (look) {
+      camera.setTarget(look.target.x, look.target.y, look.target.z);
+      // A look off a top preset (#9501) leaves the plan's horizontal up behind.
+      if (look.up) camera.setUp(look.up.x, look.up.y, look.up.z);
+    }
   } else {
     camera.orbit(dx, dy, false);
   }

@@ -26,7 +26,7 @@ import {
  * normalised to USERDEFINED + UserDefinedPartitioningType so the
  * exported STEP carries a valid enum token.
  */
-const WINDOW_PARTITIONING_ENUM = new Set([
+export const WINDOW_PARTITIONING_ENUM: ReadonlySet<string> = new Set([
   'SINGLE_PANEL',
   'DOUBLE_PANEL_VERTICAL',
   'DOUBLE_PANEL_HORIZONTAL',

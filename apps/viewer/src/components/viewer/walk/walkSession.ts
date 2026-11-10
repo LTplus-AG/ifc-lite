@@ -17,6 +17,7 @@ import {
   WalkCharacter, WALK_CROUCH_EYE, WALK_CROUCH_HEIGHT, WALK_STAND_EYE, WALK_STAND_HEIGHT,
 } from './walkCharacter.js';
 import type { WalkCollisionWorld } from './walkCollisionWorld.js';
+import { flyHeading } from '../flyNavigation.js';
 
 export const WALK_TICK = 1 / 120;
 /** At most this many ticks per frame: a long stall resumes instead of fast-forwarding. */
@@ -284,14 +285,19 @@ export class WalkSession {
 
   /**
    * Advance by a frame's elapsed seconds. `look` is the camera's view
-   * direction; only its horizontal heading steers walking. Returns the eye.
+   * direction; only its horizontal heading steers walking. `up` is the
+   * camera's up: looking straight down or up (a top/bottom preset while
+   * floating, #9501) the look has no heading, and screen-up gives it.
+   * Returns the eye.
    */
-  frame(elapsed: number, input: WalkInput, look: Vec3): Vec3 {
+  frame(elapsed: number, input: WalkInput, look: Vec3, up?: Vec3): Vec3 {
     const c = this.character;
     this.accumulator = Math.min(this.accumulator + Math.max(0, elapsed), MAX_TICKS_PER_FRAME * WALK_TICK);
-    const flat = Math.hypot(look.x, look.z);
-    const fx = flat > 1e-9 ? look.x / flat : 0;
-    const fz = flat > 1e-9 ? look.z / flat : 1;
+    // One heading rule with fly mode: the look's own heading, else screen-up,
+    // else -Z, whether or not the caller passes `up`.
+    const heading = flyHeading(look, up);
+    const fx = heading.x;
+    const fz = heading.z;
     // Screen-right for a Y-up camera looking along (fx, fz) is (-fz, fx).
     const rx = -fz, rz = fx;
     let wx = fx * input.forward + rx * input.right;

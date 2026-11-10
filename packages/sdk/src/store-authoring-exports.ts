@@ -5,9 +5,12 @@ export { createCostStoreBackend, type CostStoreModelResolution, type CostStoreMo
 export { createStructuralStoreBackend, type StructuralStoreModelResolver } from './store-structural-backend.js';
 export { createModellingStoreBackend, type ModellingStoreModelResolver } from './store-modelling-backend.js';
 export { createModellingStoreBackendWithoutStoreys } from './store-modelling-backend-without-storeys.js';
+export { copiedElementRefs, type CopiedElementRef, type CopyUnattachedTopNotice } from './store-copy-refs.js';
 export { createOrdinaryStoreBackend, type OrdinaryStoreBackendMethods } from './store-ordinary-backend.js';
 export { createGroupStoreBackend } from './group-store-backend.js';
+export { createRoofStoreBackend } from './store-roof-backend.js';
 export type { CostStoreBackendMethods } from './store-cost-types.js';
 export type { StructuralStoreBackendMethods } from './store-structural-types.js';
 export type { ModellingStoreBackendMethods, ModellingStoreBackendMethodsWithoutStoreys } from './store-modelling-types.js';
+export type { RoofStoreBackendMethods } from './store-roof-types.js';
 export type { GroupStoreBackendMethods, GroupStoreIdentity, GroupStoreSnapshot, GroupStoreCreateParams, GroupStorePatch } from './store-group-types.js';

@@ -38,6 +38,59 @@ not only the byte total, and measure boot with each build in both A/B positions:
 shared host, position alone moved the result by about 15 ms. A group that claimed every
 QuickJS module also failed, because the one eager module in it made the whole group eager.
 
+## Presentation-layer membership follows the selected shape (#9273)
+
+**Selection query verdict: remove the model-wide ownership scan.** The hierarchy's
+layer-to-products resolver is appropriate when opening the Layers grouping; calling
+it to populate one element's inspector decodes unrelated products and geometric
+constituents, even when there are no assignments. A mutation revision invalidation
+then repeats that work on an unrelated property edit.
+
+The inspector now caches the assignment declarations, returns immediately for an
+empty assignment set, and walks only the selected product's ownership graph. Shape
+aspects supply the inverse owner edges; shared maps, boolean operands and topology
+use the same schema ownership table as the full hierarchy resolver. Existing
+ownership fixtures compare both directions. The code and lookup load after render,
+and the generated BREP regression guards cold, empty and edited selections. The
+paired selection probe is `scripts/perf/presentation-layer-selection.ts`; it reports
+query latency and selected layer identity, not whole-viewer loading or rendering.
+
+Lesson: a model-wide reverse index can amortize a hierarchy view while still being
+the wrong query plan for selection. Cache small declarations and follow the selected
+shape, rather than making the first click or every authoring revision pay for every
+other product in the model.
+
+## Session authoring envelope (#8452, part of #9296)
+
+The pre-change CPU profile attributes ordinary creation primarily to whole-overlay
+cloning, whole-overlay deep comparison, and collection of snapshot garbage,
+in that order. Rebuilding class indices also repeats at each publication. A
+no-op pays those costs, and nested builder transactions multiply them.
+
+Synchronous edits now stage sparse entry copies and history appends, publish
+only changed entries, and derive compound inverses from those entries. Escaping
+prepared transactions retain exact snapshot validation. Copy source resolution
+uses authored reference buckets plus edited-slot candidates, with effective
+slot checks; metadata cloning asks for one entity's changes. Schema names use
+one finite-operation snapshot. The deterministic regression counts unrelated
+payload reads, rather than timing a host that may be running other jobs.
+
+Mutable attribute aliases remain supported: a read barrier tracks exposed rows
+and reference lookups recheck those rows. Internal readers borrow attributes
+without exposing mutable aliases, so an earlier model inventory does not turn
+every subsequent reference lookup into another inventory scan.
+
+Compound undo records successor IDs, preserving authored and STEP record order
+even across snapshots. An incremental successor index avoids scanning the
+authored prefix while capturing that inverse; only undo rebuilds the order.
+
+Mutation modules name their load-time encoder initializer explicitly so unused
+modules can be tree-shaken safely. Prepared-operation execution loads after the
+asynchronous action has copied its inputs and private checkpoints.
+
+Timing qualification and the F5 verdict are still pending; no measured scale
+acceptance is claimed by the structural guard alone.
+
 ## First selection reads typing relationships from the graph (#9192)
 
 **Shipped: the scan is gone, not made cheaper.** `readCurrentTypeQuantities` read every
@@ -5967,6 +6020,25 @@ Lesson: fault accounting is also a shared resource. Band transport retirements n
 their own bounded allowance so they cannot prevent subsequent ordinary products from
 publishing. Keep stable CLI reports free of timing and snap diagnostics; comparison
 summaries retain those observations without making artifact bytes depend on a run.
+
+### Presentation-layer classification references (#9272, #9383)
+
+Verdict: reference-decode counts and complete row digests qualify reusing a decoded
+classification reference across products. Memoize by store, source identity and
+view revision, and return independent objects and path arrays so consumers cannot
+mutate the cached result. Replacing source bytes or editing the view invalidates it.
+
+The flat-mode product walk, geometry targeting, sorting and row emission retain
+main's behavior. Grouping adds a mode check and fixed per-store resolver setup;
+classification extraction runs only for classification groups. Exact flat-row
+expectations and main/branch row digests establish output compatibility, not a
+measured latency-equivalence claim.
+
+Lesson: compare all grouping modes against a revision that actually implements
+them. Main supplies only the flat-mode control. Decode counts can establish
+reference reuse when host noise prevents timing qualification; keep rejected
+cohorts separate and never relax the timing guards. This tree-construction probe
+does not establish end-to-end model-loading or rendering performance.
 
 ## The app-start task: no top-level-await wrapper on the app build
 

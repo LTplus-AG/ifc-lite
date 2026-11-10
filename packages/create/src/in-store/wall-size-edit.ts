@@ -9,6 +9,8 @@ import { toNativeLength } from './anchor.js';
 import { resolveWallEditChain, type WallEditChain } from './edit/wall-edit.js';
 import { getModelLengthUnitScale } from './edit/length-unit-scale.js';
 import type { EditTarget } from './edit/target.js';
+import { ROOF_ATTACHMENT } from './edit/wall-base-solid.js';
+import { refreshTopAttachmentsInStore } from './top-attachment-refresh.js';
 
 type Vec3 = [number, number, number];
 export type WallEditContext = EditTarget;
@@ -35,8 +37,20 @@ export function readWallMetres(ctx: WallEditContext, expressId: number): WallMet
   return { start, end, thickness: chain.thickness, height: chain.height, chain, read: null };
 }
 
-/** Caller owns an atomic transaction. Coordinates are storey-local IFC Z-up metres. */
+/**
+ * Caller owns an atomic transaction. Coordinates are storey-local IFC Z-up metres.
+ * Walls cut by a roof are refit to it in the same edit; a refit the roof refuses
+ * throws, so the caller's transaction writes nothing.
+ */
 export function resizeWallInStore(ctx: EditTarget, expressId: number, newStart: Vec3, newEnd: Vec3, options: WallResizeOptions = {}): WallResizeOutcome {
+  const outcome = resizeWallBody(ctx, expressId, newStart, newEnd, options);
+  if (!outcome.ok) return outcome;
+  const cut = outcome.walls.filter(id => ctx.view.getPropertyValue(id, ROOF_ATTACHMENT, 'Clipped') === true);
+  if (cut.length === 0) return outcome;
+  return { ...outcome, walls: [...new Set([...outcome.walls, ...refreshTopAttachmentsInStore(ctx, [], cut)])] };
+}
+
+function resizeWallBody(ctx: EditTarget, expressId: number, newStart: Vec3, newEnd: Vec3, options: WallResizeOptions): WallResizeOutcome {
   if (![...newStart, ...newEnd].every(Number.isFinite)) return { ok: false, reason: 'Wall endpoints must be finite' };
   const wall = readWallMetres(ctx, expressId);
   if (!wall) return { ok: false, reason: 'Wall does not have a simple IfcRectangleProfileDef → IfcExtrudedAreaSolid representation' };

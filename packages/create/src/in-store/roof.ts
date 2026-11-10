@@ -3,12 +3,11 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Anchored builder for IfcRoof — a flat roof slab. Same geometry shape
- * as IfcSlab (rectangle or polygon, extruded by Thickness) but emits
- * an IfcRoof entity with `.FLAT_ROOF.` PredefinedType. Pitched roofs
- * (gable / hip / mono-pitch) are out of scope for v1; users who need
- * them can drop a placeholder roof here and refine via Raw STEP, or
- * use `IfcCreator.addIfcGableRoof` for the from-scratch path.
+ * Anchored builder for IfcRoof. Without footprint fields it is a flat roof
+ * slab: the same geometry as IfcSlab (rectangle or polygon, extruded by
+ * Thickness) on an IfcRoof with `.FLAT_ROOF.` PredefinedType. With
+ * `EdgeSlopes` or `Overhang` it is a roof by footprint (`roof-footprint.ts`):
+ * hip, gable, mono-pitch and L-shaped roofs from a slope per footprint edge.
  */
 
 import type { StoreEditor } from '@ifc-lite/mutations';
@@ -24,10 +23,11 @@ import {
   emitRelContainedInSpatialStructure,
   ifcElementHeader,
 } from './_emit-helpers.js';
+import { emitFootprintRoofBody, footprintDefinition, writeFootprintDefinition, type RoofFootprintFields } from './roof-footprint.js';
 
 export type RoofInStoreParams = RoofRectangleParams | RoofPolygonParams;
 
-export interface RoofRectangleParams {
+export interface RoofRectangleParams extends RoofFootprintFields {
   Position: [number, number, number];
   Width: number;
   Depth: number;
@@ -41,7 +41,7 @@ export interface RoofRectangleParams {
   GlobalId?: string;
 }
 
-export interface RoofPolygonParams {
+export interface RoofPolygonParams extends RoofFootprintFields {
   Profile: 'polygon';
   OuterCurve: Array<[number, number]>;
   Position?: [number, number, number];
@@ -62,6 +62,8 @@ export interface RoofBuildResult {
   shapeRepId: number;
   productShapeId: number;
   relContainedId: number;
+  /** Every plane's solid of a roof by footprint (its first is `solidId`). */
+  solidIds?: number[];
 }
 
 function isPolygonParams(p: RoofInStoreParams): p is RoofPolygonParams {
@@ -73,6 +75,7 @@ export function addRoofToStore(
   anchor: SpatialAnchor,
   params: RoofInStoreParams,
 ): RoofBuildResult {
+  if (params.EdgeSlopes !== undefined || params.Overhang !== undefined) return addFootprintRoofToStore(editor, anchor, params);
   assertPositiveFinite([params.Thickness], 'addRoofToStore: Thickness must be positive');
   if (params.Position !== undefined) {
     assertFinitePoint3({ Position: params.Position }, 'addRoofToStore');
@@ -120,4 +123,35 @@ export function addRoofToStore(
   const relContainedId = emitRelContainedInSpatialStructure(editor, anchor.ownerHistoryId, roofId, anchor.storeyId, anchor.guidRandom);
 
   return { roofId, placementId, profileId, solidId, shapeRepId, productShapeId, relContainedId };
+}
+
+/**
+ * A roof by footprint: the outline is the polygon (or the rectangle from its
+ * Position corner) in the placement's plan, the underside passes through every
+ * sloped edge at the placement's height, and the definition is recorded on the
+ * roof so an edit can rebuild it.
+ */
+function addFootprintRoofToStore(editor: StoreEditor, anchor: SpatialAnchor, params: RoofInStoreParams): RoofBuildResult {
+  assertPositiveFinite([params.Thickness], 'addRoofToStore: Thickness must be positive');
+  if (params.Position !== undefined) assertFinitePoint3({ Position: params.Position }, 'addRoofToStore');
+  let footprint: Array<[number, number]>;
+  if (isPolygonParams(params)) {
+    footprint = params.OuterCurve.map((p) => [p[0], p[1]]);
+  } else {
+    assertPositiveFinite([params.Width, params.Depth], 'addRoofToStore: Width and Depth must be positive');
+    footprint = [[0, 0], [params.Width, 0], [params.Width, params.Depth], [0, params.Depth]];
+  }
+  const definition = footprintDefinition(footprint, params, params.Thickness);
+  const body = emitFootprintRoofBody(editor, anchor, anchor.bodyContextId, definition);
+  const placementId = emitLocalPlacement(editor, anchor.storeyPlacementId, toNativePoint3(anchor, params.Position ?? [0, 0, 0]));
+  const attrs = ifcElementHeader(anchor.ownerHistoryId, placementId, body.productShapeId, params, 'Roof', anchor.guidRandom);
+  // IFC4 PredefinedType and IFC2X3 ShapeType share the slot and these values.
+  attrs.push(`.${body.plan.shapeType}.`);
+  const roofId = editor.addEntity('IfcRoof', attrs as Parameters<StoreEditor['addEntity']>[1]).expressId;
+  const relContainedId = emitRelContainedInSpatialStructure(editor, anchor.ownerHistoryId, roofId, anchor.storeyId, anchor.guidRandom);
+  writeFootprintDefinition(editor.getMutationView(), roofId, { ...definition, PredefinedType: body.plan.shapeType });
+  return {
+    roofId, placementId, profileId: body.profileIds[0], solidId: body.solidIds[0], solidIds: body.solidIds,
+    shapeRepId: body.shapeRepId, productShapeId: body.productShapeId, relContainedId,
+  };
 }

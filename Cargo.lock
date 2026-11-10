@@ -1704,6 +1704,7 @@ name = "ifc-lite-git"
 version = "28.2.0"
 dependencies = [
  "blake3",
+ "ifc-lite-diff",
  "unicode-normalization",
 ]
 
@@ -1754,6 +1755,16 @@ dependencies = [
  "libc",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "ifc-lite-rhino-wasm"
+version = "28.2.0"
+dependencies = [
+ "ifc-lite-export",
+ "js-sys",
+ "serde_json",
+ "wasm-bindgen",
 ]
 
 [[package]]

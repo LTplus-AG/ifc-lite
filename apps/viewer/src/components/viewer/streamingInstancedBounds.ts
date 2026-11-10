@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { useViewerStore } from '@/store';
 import type { MutableRefObject } from 'react';
 import type { Renderer } from '@ifc-lite/renderer';
 import { activeLoadTrace, tracePhaseOnce } from '@/lib/perf/activeLoadTrace';
@@ -30,7 +31,7 @@ export function fitInstanceOnlyBounds(p: FitParams): void {
   if (!bounds) return;
   const fit = bounds.robust ?? bounds.full;
   const started = performance.now(), camera = p.renderer.getCamera();
-  if (!p.complete || !userMovedCamera(p.renderer, p.cameraSnapshotRef.current)) {
+  if (!useViewerStore.getState().session && (!p.complete || !userMovedCamera(p.renderer, p.cameraSnapshotRef.current))) {
     const canvas = p.renderer.getCanvas();
     const short = Math.min(canvas?.clientHeight ?? 0, canvas?.clientWidth ?? 0);
     const policy = camera.fitBoundsAdaptive(fit, { viewportShortPx: short > 0 ? short : undefined });

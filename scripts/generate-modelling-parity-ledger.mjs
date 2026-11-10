@@ -31,6 +31,8 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { levelTotals } from '../tests/modelling-parity/score.mjs';
+
 const flag = (name) => { const i = process.argv.indexOf(name); return i !== -1 ? process.argv[i + 1] : null; };
 const ROOT = flag('--root') ? resolve(flag('--root')) : join(dirname(fileURLToPath(import.meta.url)), '..');
 const CHECK = process.argv.includes('--check');
@@ -109,6 +111,9 @@ function render() {
   lines.push('The scorecard of the modelling parity hill climb ([#9296](https://github.com/LTplus-AG/ifc-lite/issues/9296)): the capabilities an architect treats as table stakes in Revit, Archicad, Vectorworks and Bonsai, each measured by three probes. Rows, oracles and owners live in `tests/modelling-parity/catalogue.json`; statuses come from the probes\' result files, scored by `tests/modelling-parity/score.mjs`.');
   lines.push('');
   lines.push(`**Table-stakes score: ${summary.score} / ${summary.maxScore}** (met ${c.met}, partial ${c.partial}, missing ${c.missing}). A met row counts 1, a partial row 0.5. The score may only go up: \`node tests/modelling-parity/score.mjs <dirs> --check ${summaryPath}\` fails when it or any row drops.`);
+  lines.push('');
+  const totals = levelTotals(summary.rows);
+  lines.push(`**Per-level passes: ${LEVELS.map((l) => `${l.toUpperCase()} ${totals[l].passed}/${totals[l].total}`).join(' · ')}.** Non-applicable levels earn no pass.`);
   lines.push('');
   lines.push(`Summary: \`${summaryPath}\`, generated ${summary.generatedAt} from ${summary.results} results on ${commits}; inputs ${(summary.inputs ?? []).map((i) => `\`${i}\``).join(', ') || 'not recorded'}.`);
   lines.push('');

@@ -68,8 +68,9 @@ const MIN_DIRECTION_LEN = 1e-8;
  * 1e-6 is one microradian, the same cut `MathUtils.viewBasis` makes in
  * `packages/renderer/src/math.ts` (stated there as `DEGENERATE_UP_SIN_SQ =
  * 1e-12` on the squared sine). Orders of magnitude tighter than any pose the
- * navigation code produces — the ViewCube top preset deliberately stops
- * 0.01 rad off the pole — so it only ever replaces a basis that was already
+ * navigation code produces — the ViewCube top preset sits on the pole with
+ * a horizontal `up`, 90 degrees off the view direction (#9501) — so it only
+ * ever replaces a basis that was already
  * meaningless.
  *
  * It is a threshold on the ANGLE and never on a length: `up` reaches the

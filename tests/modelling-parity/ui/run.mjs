@@ -58,6 +58,7 @@ function parseArgs(argv) {
     else if (key === '--no-probes') args.probes = false;
     else if (key === '--no-frames') args.frames = false;
     else if (key === '--themes') args.themes = value().split(',');
+    else if (key === '--round') args.round = Number(value());
     else if (key === '--label') args.label = value();
     else if (key === '--cdp') args.cdp = value();
     else if (key === '--baseline') args.baseline = resolve(value());
@@ -120,6 +121,7 @@ async function main() {
       for (const p of PROBES.filter((x) => !args.only || args.only.includes(x.id))) {
         const { result } = await runProbe(p, openFresh, base, { saveArtifact });
         probeResults.push(result);
+        await writeFile(join(args.out, 'probes.json'), `${JSON.stringify(probeResults, null, 2)}\n`);
         console.log(`${result.status.padEnd(7)} ${p.id.padEnd(20)} actions ${String(result.metrics.actions).padStart(3)}  ${String(result.metrics.ms).padStart(6)} ms${result.reason ? `  ${result.reason.slice(0, 160)}` : ''}`);
       }
       await writeFile(join(args.out, 'probes.json'), `${JSON.stringify(probeResults, null, 2)}\n`);
@@ -157,7 +159,7 @@ async function main() {
     await writeFile(args.baseline, `${JSON.stringify({
       schema: 'ifclite-parity-ui-baseline/1',
       issue: 9296,
-      round: 0,
+      round: args.round ?? 0,
       label: args.label,
       source,
       distIndexSha256,

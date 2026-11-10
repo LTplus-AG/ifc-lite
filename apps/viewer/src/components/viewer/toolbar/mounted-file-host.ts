@@ -4,7 +4,7 @@
 
 import { useSyncExternalStore } from 'react';
 
-/** The one Ribbon-owned file hook, never a second loader (#8947). */
+/** The active toolbar’s one file hook, never a second loader (#8947). */
 export interface MountedFileHost {
   openFiles: () => void;
   addModel: () => void;

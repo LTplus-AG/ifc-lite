@@ -551,7 +551,7 @@ interface IfcDataStore {
 }
 ```
 
-Source-empty server stores can provide `resolvedClassifications`, an optional map from entity express IDs to `ClassificationInfo[]`. `extractClassificationsOnDemand` combines the entity's rows with those inherited through `IfcRelDefinesByType`, using the relationship graph to confirm classification associations. The server derives classifications and relationships from the same immutable IFC input. Repeated relationships may produce multiple resolved rows for one deduplicated graph edge. When resolved rows are absent, the parser returns unresolved markers instead of certifying classification attributes. Source-bearing stores continue to decode classifications from their IFC bytes.
+Source-empty server stores can provide `resolvedClassifications`, an optional map from entity express IDs to `ClassificationInfo[]`. `extractClassificationsOnDemand` combines the entity's rows with those inherited through `IfcRelDefinesByType`, using the relationship graph to confirm classification associations. The server derives classifications and relationships from the same immutable IFC input. Repeated relationships may produce multiple resolved rows for one deduplicated graph edge. When resolved rows are absent, the parser returns unresolved markers instead of certifying classification attributes. Source-bearing stores decode classification references from their IFC bytes and memoize each shared reference per store and overlay revision. Replacing source bytes or editing the overlay invalidates the decoded-reference cache; callers still receive independent result objects.
 
 ### Native Rust owned index columns
 

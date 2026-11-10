@@ -520,9 +520,9 @@ export interface AddSpacePolygonParams extends Omit<AddElementCommonParams, 'Tag
   LongName?: string;
 }
 
-export type AddRoofInStoreParams = AddRoofRectangleParams | AddRoofPolygonParams;
+export type AddRoofInStoreParams = AddRoofRectangleParams | AddRoofPolygonParams; type RoofFootprintFields = import('@ifc-lite/create').RoofFootprintFields;
 
-export interface AddRoofRectangleParams extends AddElementCommonParams {
+export interface AddRoofRectangleParams extends AddElementCommonParams, RoofFootprintFields {
   Position: [number, number, number];
   Width: number;
   Depth: number;
@@ -530,7 +530,7 @@ export interface AddRoofRectangleParams extends AddElementCommonParams {
   Profile?: 'rectangle';
 }
 
-export interface AddRoofPolygonParams extends AddElementCommonParams {
+export interface AddRoofPolygonParams extends AddElementCommonParams, RoofFootprintFields {
   Profile: 'polygon';
   OuterCurve: Array<[number, number]>;
   Position?: [number, number, number];

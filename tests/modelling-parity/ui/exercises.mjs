@@ -327,6 +327,9 @@ export const EXERCISES = {
         name: 'EG spaces: Shift+O, Pick in the 3 walled rooms, Draw rectangles for Kueche, Flur, Wohnen (no wall between them)',
         run: async (s) => {
           await tool(s, 'room.place');
+          // F2 floors are 2.7m apart. A default 3m ground-floor space
+          // overlaps the loft occupancy band and blocks its later Pick (#9296).
+          await setDefault(s, 'Height in metres', 2.7);
           for (const p of FZK_PICKED_ROOMS) {
             if ((await readSession(s)).command !== 'room.place') await tool(s, 'room.place');
             await s.ui.clickWorld([p[0], p[1], 0], { modifiers: ['Alt'] });

@@ -1,0 +1,12 @@
+diff --git a/packages/mutations/src/overlay-snapshot.ts b/packages/mutations/src/overlay-snapshot.ts
+--- a/packages/mutations/src/overlay-snapshot.ts
++++ b/packages/mutations/src/overlay-snapshot.ts
+@@ -63,7 +63,7 @@
+   });
+   validateSnapshot(parsed);
+   requireHash(parsed.source.contentHash);
+-  if (false) throw new OverlaySourceMismatchError();
++  if (parsed.source.contentHash !== options.sourceContentHash) throw new OverlaySourceMismatchError();
+   const access = cooperativeOverlay(view), original = access.capture();
+   const occupied = original.mutationHistory.length > 0 || Object.values(original).some(value => value instanceof Map || value instanceof Set ? value.size > 0 : false);
+   if (occupied && options.replace !== true) throw new Error('Restore requires an empty overlay; pass replace: true to replace its edits.');

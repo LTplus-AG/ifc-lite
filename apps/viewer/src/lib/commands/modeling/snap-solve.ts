@@ -17,11 +17,13 @@
  * snapping the same way and the HUD can say so.
  */
 
+import { remapWallBodySnap } from './wall-axis-snap';
+import { nearestGridNode } from '@/lib/snap/grid';
 import { MODELING_SNAP_PROFILE } from '@/lib/snap/rank';
 import { solveSnap } from '@/lib/snap/solve';
 import type { SnapProfile, SnapResult, SnapSource, Vec2 } from '@/lib/snap/types';
 import { createSemanticSource, type SemanticSource } from '@/lib/snap/sources/semantic';
-import { storeyWallAxes } from '@/lib/snap/sources/semantic-walls';
+import { modelWallAxes } from './model-wall-axes';
 import { createIfcGridSource, type IfcGridSource } from '@/lib/snap/sources/ifc-grid';
 import { storeyGridAxes } from '@/lib/snap/sources/ifc-grid-store';
 import { useViewerStore } from '@/store';
@@ -71,12 +73,7 @@ function semanticSource(modelId: string): SemanticSource {
     extensions: true,
     version: () => useViewerStore.getState().mutationVersion,
     storeyId: () => useViewerStore.getState().session?.storeyId ?? null,
-    loadAxes: (storeyId) => {
-      const s = useViewerStore.getState();
-      const store = s.models.get(modelId)?.ifcDataStore;
-      const view = s.mutationViews.get(modelId);
-      return store && view ? storeyWallAxes(store, view, storeyId) : [];
-    },
+    loadAxes: (storeyId) => [...modelWallAxes(modelId, storeyId).values()],
   });
   semantic = { modelId, source };
   return source;
@@ -127,17 +124,31 @@ export function solveCommandSnap(runtime: CommandRuntimeState, plane: Workplane,
   const query = command.snapQuery?.(runtime.gesture) ?? { anchor: null, chain: [], locks: {} };
   // Suspended by the snap toggle as well as Alt: the chain's inferred guides stop too.
   const suspended = input.aim === 'through' || input.aim === 'surface';
-  const solved = solveSnap(
+  let solved = solveSnap(
     {
       cursor: input.cursor,
       metresPerPixel: input.metresPerPixel,
       ...query,
       modifiers: { shift: input.mods.shiftKey, alt: input.mods.altKey || suspended },
     },
-    input.sources,
+    [...input.sources, {
+      id: 'grid',
+      collect(q, _radius, out) {
+        // Host/region picks are not free points; move and copy targets are.
+        if (command.aimsAtElement?.(runtime.gesture) === true || command.aimsAtRegion?.(runtime.gesture) === true) return;
+        if (input.aim && input.aim !== 'snap') return;
+        // A decimal increment around 1–10px, down to micrometre precision.
+        const spacing = Math.max(1e-6, 10 ** Math.floor(Math.log10(q.metresPerPixel * 10) + 1e-9));
+        const local = nearestGridNode(q.cursor, { origin: query.anchor ?? [0, 0], spacing });
+        if (local) out.push({ kind: 'grid', source: 'grid', local, increment: spacing });
+      },
+    }],
     input.profile ?? profileOf(command),
     runtime.snap ?? undefined,
   );
+  if (command.id === 'wall.place' && runtime.ctx && !input.mods.altKey && !suspended) {
+    solved = remapWallBodySnap(solved, plane, query, input);
+  }
   return {
     ...solved,
     // The HUD's mark: the plane itself is what this point landed on.

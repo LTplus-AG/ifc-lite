@@ -5,9 +5,9 @@ import { Spinner } from '@/components/ui/spinner';
 
 export function LocationMapWaiting({ label }: { label: string }) {
   return (
-    <div role="status" className="flex items-center justify-center h-[180px] bg-muted">
+    <output className="flex items-center justify-center h-[180px] bg-muted">
       <Spinner size="md" className="text-muted-foreground" />
       <span className="text-xs text-muted-foreground ml-2">{label}</span>
-    </div>
+    </output>
   );
 }

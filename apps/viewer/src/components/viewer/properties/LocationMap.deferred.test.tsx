@@ -43,7 +43,7 @@ it('NEW-7 #9623: the real Renderer scene supplies every gate method and blocks o
     const ui = render(<LocationMap mapConversion={conversion} projectedCRS={crs} />);
     await waitFor(() => queued.mock.callCount() > 0, 'real queue queried');
     assert.equal(context.mock.callCount(), 0, 'a real queued mesh prevents WebGL setup');
-    assert.match(ui.querySelector('[role="status"]')?.textContent ?? '', /Wait for model loading to finish/);
+    assert.match(ui.querySelector('output')?.textContent ?? '', /Wait for model loading to finish/);
     scene.clear();
     await waitFor(() => context.mock.callCount() > 0, 'actual queue removal releases WebGL setup');
     assert.ok(fragments.mock.callCount() > 0);
@@ -130,10 +130,10 @@ for (const phase of ['queue', 'fragments', 'finalising'] as const) {
       // protocol instead. Both execute the existing component entry point.
       await waitFor(() => polls > 0 || probes > 0, 'scene fence or WebGL setup');
       assert.equal(probes, 0, 'UI settlement must not run map setup during scene work');
-      assert.match(ui.querySelector('[role="status"]')?.textContent ?? '', /Wait for model loading to finish/);
+      assert.match(ui.querySelector('output')?.textContent ?? '', /Wait for model loading to finish/);
       busy = false;
       await waitFor(() => probes > 0, 'scene settlement releases real WebGL setup');
-      assert.equal(ui.querySelector('[role="status"]'), null, 'waiting state clears when the gate opens');
+      assert.equal(ui.querySelector('output'), null, 'waiting state clears when the gate opens');
       const settledPolls = polls;
       act(() => useViewerStore.setState({ loading: true }));
       busy = true;

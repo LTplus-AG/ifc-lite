@@ -22,8 +22,8 @@ export type RhinoLayerScheme = NonNullable<RhinoSceneExportOptions['layerScheme'
 export type RhinoProperties = NonNullable<RhinoSceneExportOptions['properties']>;
 export type RhinoCoordinates = NonNullable<RhinoSceneExportOptions['coordinates']>;
 export { RHINO_UNITS, RHINO_COORDINATES, RHINO_LAYER_SCHEMES, RHINO_PROPERTIES } from '@ifc-lite/geometry';
-export { RHINO_3DM_VERSIONS, type Rhino3dmVersion } from '@ifc-lite/rhino3dm';
 import { RHINO_3DM_VERSIONS, type Rhino3dmVersion } from '@ifc-lite/rhino3dm';
+export { RHINO_3DM_VERSIONS, type Rhino3dmVersion };
 
 /** The dialog's own fields. */
 export type RhinoExportSettings = Required<Pick<RhinoSceneExportOptions,

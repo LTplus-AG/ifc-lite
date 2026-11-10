@@ -7,4 +7,4 @@ Allow cancellation of cached data polling and distinguish missing or pending ent
 
 Breaking: fetchDataModel now rejects HTTP failures and exhausted transport failures instead of resolving to null. Catch these failures when properties are optional; null now means only a missing or still-pending cache entry. fetchSymbolic follows the same contract.
 
-Viewer completion, model finalization, and load telemetry now wait for optional property fetching and decoding. The default property poll may spend roughly 5.3 minutes in bounded request timeouts and backoff, and is cancellable. Cancelling or superseding that wait no longer falls through into local WASM processing.
+Viewer geometry completes, finalizes and emits load telemetry without waiting for optional properties. Property fetching runs under the loaded model's lifetime, independently of the load attempt's metadata signal; model removal/replacement, supersession and hook unmount abort it. Late responses cannot overwrite another model. Stale server attempts still never fall through to local WASM processing.

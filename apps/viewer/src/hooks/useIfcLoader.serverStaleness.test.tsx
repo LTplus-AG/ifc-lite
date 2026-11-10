@@ -56,12 +56,13 @@ let container: HTMLDivElement;
 let entered!: () => void, release!: () => void;
 let properties: Promise<void>, ready: Promise<void>;
 let localEntries = 0, engineInits = 0, fetches = 0;
+let pollSignal: AbortSignal | undefined;
 const progress = useViewerStore.getState().setProgress;
 function Probe() { api = useIfcLoader(); return null; }
 const file = (name: string) => new File(["ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\nENDSEC;\nEND-ISO-10303-21;"], name);
 
 beforeEach(async () => {
-  localEntries = 0; engineInits = 0; fetches = 0;
+  localEntries = 0; engineInits = 0; fetches = 0; pollSignal = undefined;
   properties = new Promise<void>(resolve => { release = resolve; });
   ready = new Promise<void>(resolve => { entered = resolve; });
   useViewerStore.getState().resetViewerState(); useViewerStore.getState().clearAllModels();
@@ -75,6 +76,7 @@ beforeEach(async () => {
   mock.method(IfcServerClient.prototype, 'fetchDataModel', async (_key: string, options?: Parameters<IfcServerClient['fetchDataModel']>[1]) => {
     if (++fetches !== 1) return null;
     const signal = typeof options === 'object' ? options.signal : undefined;
+    pollSignal = signal;
     entered();
     await Promise.race([properties, new Promise<never>((_resolve, reject) => signal?.addEventListener('abort', () => reject(signal.reason), { once: true }))]);
     return null;
@@ -91,7 +93,12 @@ afterEach(async () => {
 });
 
 for (const cause of ['cancel', 'supersede'] as const) {
-  it(`#9538 ${cause} during optional server properties never enters the local fallback`, async () => {
+  it(`#9538 ${cause} during server geometry never enters the local fallback`, async () => {
+    let first = true;
+    mock.method(IfcServerClient.prototype, 'parseParquet', async () => {
+      if (first) { first = false; entered(); await properties; }
+      return PARQUET_RESULT;
+    });
     const pending = api!.loadFile(file('first.ifc')); let replacement: Promise<void> | undefined;
     try {
       await ready;
@@ -112,4 +119,21 @@ it('#9538 a current server failure starts local processing', async () => {
   await act(async () => { await api!.loadFile(file('fallback.ifc')); });
   assert.equal(localEntries, 1, 'a current server failure must publish local-path progress');
   assert.equal(engineInits, 1, 'a current server failure must try local WASM');
+});
+
+it('#9538 geometry completes and load finally leaves the model property poll alive', async () => {
+  let completed = false;
+  const pending = api!.loadFile(file('geometry-ready.ifc')).then(() => { completed = true; });
+  try {
+    await ready;
+    let deadline: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await act(async () => { await Promise.race([pending, new Promise(resolve => { deadline = setTimeout(resolve, 1000); })]); });
+    } finally { clearTimeout(deadline); }
+    assert.equal(completed, true, 'optional properties must not delay load completion');
+    assert.equal(useViewerStore.getState().loading, false);
+    assert.equal(useViewerStore.getState().progress?.phase, 'Complete');
+    assert.equal(useViewerStore.getState().models.values().next().value?.loadState, 'complete');
+    assert.equal(pollSignal?.aborted, false, 'the load finally must not abort model-owned properties');
+  } finally { release(); await pending; }
 });

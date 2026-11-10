@@ -1237,7 +1237,7 @@ export function useIfcLoader() {
       if (target.kind === 'primary' && format === 'ifc' && !mergeLayersAtLoad && !textureBitmaps && USE_SERVER && SERVER_URL && SERVER_URL !== '' && geometryKernel.serverEnabled) {
         // Pass buffer directly - server uses File object for parsing, buffer is only for size checks
         loadStage = 'server-fetch';
-        if (await handleServerLoadAttempt(() => loadFromServer(file, buffer, () => isStale(), metadataAbort.signal), isStale, async () => {
+        if (await handleServerLoadAttempt(() => loadFromServer(file, buffer, () => isStale(), metadataAbort.signal, modelId), isStale, async () => {
           const state = useViewerStore.getState();
           await finalizeModel(state.ifcDataStore, state.geometryResult, getViewerSchemaVersion(state.ifcDataStore), { loadPath: 'server' });
           if (isStale()) return;

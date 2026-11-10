@@ -216,7 +216,9 @@ async function runSample(build, set, round) {
   const launch = () => chromium.launchPersistentContext(profileDir, {
     env: GPU_ENV, executablePath: CHROME, headless: false, viewport: { width: W, height: H }, deviceScaleFactor: 1,
     args: ['--enable-gpu', '--enable-unsafe-webgpu', '--enable-features=Vulkan,VulkanFromANGLE,DefaultANGLEVulkan',
-      '--use-angle=vulkan', '--ignore-gpu-blocklist', '--hide-scrollbars', '--no-first-run', `--window-size=${W},${H}`, '--window-position=0,0'],
+      // Pin the default WebGPU adapter to the discrete GPU: on Pop it flips between Intel and NVIDIA (#8787).
+      '--use-angle=vulkan', '--ignore-gpu-blocklist', '--use-webgpu-power-preference=default-high-performance',
+      '--hide-scrollbars', '--no-first-run', `--window-size=${W},${H}`, '--window-position=0,0'],
   });
   const sample = { build: build.id, set: set.name, round, files: set.files.map((f) => basename(f)), bytes: set.bytes };
   let context = null;

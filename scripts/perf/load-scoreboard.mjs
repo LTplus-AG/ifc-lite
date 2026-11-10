@@ -30,7 +30,7 @@ import { roundOrder, seededRand } from './ab-order.mjs';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
 import { nativeSample } from './load-scoreboard-native.mjs';
 import { BROWSER_LANES, LANES, renderMarkdown, summarize } from './load-scoreboard-report.mjs';
-import { browserShares, diffElements } from './load-scoreboard-stats.mjs';
+import { browserShares, diffElements, uiQuietValue } from './load-scoreboard-stats.mjs';
 
 const ROOT = resolve(fileURLToPath(new URL('../..', import.meta.url)));
 const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
@@ -246,6 +246,9 @@ function report(opt) {
   const samples = readFileSync(join(out, 'samples.jsonl'), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
   // Browser shares are recomputed from the raw traces, so a run keeps up with the current share definition.
   for (const row of samples) {
+    if (row.lane?.startsWith('browser') && Number.isFinite(row.uiQuietMs) && uiQuietValue(row) === null) {
+      Object.assign(row, { uiQuietRawMs: row.uiQuietMs, uiQuietMs: null, uiQuietTimedOut: row.uiQuietTimedOut ?? 'inferred (>= 19 s past readiness)' });
+    }
     const tracePath = join(out, 'traces', `${row.fixture}-${row.lane}-${row.side}-r${row.round}.json`);
     if (row.ok && row.lane.startsWith('browser') && existsSync(tracePath)) {
       Object.assign(row, { stageShares: browserShares(JSON.parse(readFileSync(tracePath, 'utf8')), row.interactiveMs).shares });

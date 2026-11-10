@@ -27,7 +27,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { chromePids, memoryOf, vramOf } from './scenoptic-bench-sampling.mjs';
 import { COUNT_FRAMES, openAndWaitInteractive, openViewerPage, readOutputFingerprint, replacePage, waitCacheWrites, waitSceneSnapshots } from './viewer-load-probe.mjs';
-import { browserShares, browserStages, expectedCacheTier, failedOpenIndex, gpuUnhealthy, stageShares } from './load-scoreboard-stats.mjs';
+import { browserShares, browserStages, expectedCacheTier, failedOpenIndex, gpuUnhealthy, stageShares, uiQuietValue } from './load-scoreboard-stats.mjs';
 import { BOOT_OBSERVERS, waitShellQuiet, waitUiQuiet } from './viewer-load-boot.mjs';
 import { expectSceneSnapshot } from './viewer-scene-snapshot.mjs';
 import { readGpuHealth } from '../../tests/benchmark/gpu-health.ts';
@@ -81,7 +81,9 @@ function summarizeOpen(open, memory) {
     firstGeometryMs: open.firstFrameMs, interactiveMs: open.interactiveMs, geometryMs: open.geometryMs, propsMs: open.propsMs,
     storeSettledMs: open.storeSettledMs, settleQuantized: open.settleQuantized, completeFrameMs: open.completeFrameMs,
     publishPaintMs: open.publishPaintMs, settlePaintMs: open.settlePaintMs, inputDelayMs: open.inputDelayMs, clockFrom: open.clockFrom,
-    uiQuietMs: open.uiQuietMs ?? null, longTasksAfterReady: open.longTasksAfterReady ?? null, shell: open.shell ?? null,
+    // A capped quiet wait is not a measurement: it is kept as null with the flag (uiQuietValue).
+    uiQuietMs: uiQuietValue(open), uiQuietTimedOut: Boolean(open.uiQuietTimedOut), uiQuietRawMs: open.uiQuietMs ?? null,
+    longTasksAfterReady: open.longTasksAfterReady ?? null, shell: open.shell ?? null,
     peakMemoryMiB: memory ? memory.peakPssMiB : null,
     peakMemoryMetric: memory ? 'peak sampled PSS sum over Chrome processes (250 ms), incl. browser baseline' : 'not sampled (timing pass)', memory,
     loadPaths: open.loadPaths, cacheTiers: open.cacheTiers, cacheHit: open.cacheHit, snapshotAdopted: open.snapshotAdopted,
@@ -129,7 +131,7 @@ export async function browserSample({ chromium, executablePath, baseUrl, setRoot
     Object.assign(open, { shell }, await waitUiQuiet(page, open.originAbs + open.interactiveMs, open.originAbs));
     const memory = meta[`${label}Memory`] ?? null;
     const fingerprint = await readOutputFingerprint(page);
-    log?.(`  ${tag} ${pass} ${label}: first ${open.firstFrameMs?.toFixed(0)} ms, interactive ${open.interactiveMs.toFixed(0)} ms, ui quiet ${open.uiQuietMs.toFixed(0)} ms, input delay ${open.inputDelayMs?.toFixed(0)} ms${memory ? `, peak PSS ${memory.peakPssMiB.toFixed(0)} MiB` : ''}, path ${open.loadPaths.join(',')}`);
+    log?.(`  ${tag} ${pass} ${label}: first ${open.firstFrameMs?.toFixed(0)} ms, interactive ${open.interactiveMs.toFixed(0)} ms, ui quiet ${open.uiQuietTimedOut ? 'capped' : `${open.uiQuietMs.toFixed(0)} ms`}, input delay ${open.inputDelayMs?.toFixed(0)} ms${memory ? `, peak PSS ${memory.peakPssMiB.toFixed(0)} MiB` : ''}, path ${open.loadPaths.join(',')}`);
     let identity = fingerprint.map((m) => m.identity).join(' | ');
     let elements = fingerprint.map((m) => m.elements);
     let identitySource = 'element hashes';

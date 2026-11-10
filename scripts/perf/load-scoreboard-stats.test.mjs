@@ -232,3 +232,13 @@ test('the snapshot wait follows the viewer rule: on unless perf.sceneSnapshot is
   assert.equal(expectSceneSnapshot({ query: '?perfTrace=1', files: 1, cached: false }), false, 'uncached tiers never write one');
   assert.equal(expectSceneSnapshot({ query: '?perfTrace=1', files: 2, cached: true }), false, 'federated hits keep their path');
 });
+
+test('a UI-quiet wait that hit its cap is not a measurement, flagged or inferred from older rows (review #9607)', async () => {
+  const { uiQuietValue } = await stats();
+  assert.equal(uiQuietValue({ interactiveMs: 2000, uiQuietMs: 2600, uiQuietTimedOut: false }), 2600);
+  assert.equal(uiQuietValue({ interactiveMs: 2000, uiQuietMs: 21800, uiQuietTimedOut: true }), null);
+  // Rows from a harness that did not record the flag: only a capped wait lands >= 19 s past readiness.
+  assert.equal(uiQuietValue({ interactiveMs: 2000, uiQuietMs: 21700 }), null);
+  assert.equal(uiQuietValue({ interactiveMs: 2000, uiQuietMs: 9000 }), 9000);
+  assert.equal(uiQuietValue({ interactiveMs: 2000 }), null);
+});

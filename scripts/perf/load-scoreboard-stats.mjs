@@ -244,6 +244,23 @@ export function failedOpenIndex(phase) {
   return warm ? Number(warm[1]) : 1;
 }
 
+/** The quiet wait's cap after readiness (viewer-load-boot.mjs `waitUiQuiet` timeoutMs). */
+export const UI_QUIET_CAP_MS = 20000;
+
+/**
+ * A row's UI-quiet time, or null when the wait hit its cap: the main thread
+ * never went quiet, so the value is the cap, not a measurement. Rows from
+ * harnesses that did not record `uiQuietTimedOut` are recognised by landing at
+ * least 19 s past readiness, which only a capped wait does (it stops at 20 s
+ * with a long task inside the last 500 ms).
+ */
+export function uiQuietValue(row) {
+  if (!Number.isFinite(row?.uiQuietMs)) return null;
+  if (row.uiQuietTimedOut === true) return null;
+  if (row.uiQuietTimedOut === undefined && Number.isFinite(row.interactiveMs) && row.uiQuietMs - row.interactiveMs >= UI_QUIET_CAP_MS - 1000) return null;
+  return row.uiQuietMs;
+}
+
 /** Why a sample's GPU health fails it, or null. A health read that itself failed is not a clean bill (unknown is not healthy). */
 export function gpuUnhealthy(health) {
   if (!health || typeof health.contaminated !== 'boolean') return `GPU health unreadable (${health?.error ?? 'no result'})`;

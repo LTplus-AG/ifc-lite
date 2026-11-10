@@ -21,6 +21,8 @@
  *   still visible to the scoreboard.
  */
 
+import { UI_QUIET_CAP_MS } from './load-scoreboard-stats.mjs';
+
 /** Init script (arg: { countersOff }): record long tasks from boot; optionally disable perf counters. */
 export function BOOT_OBSERVERS({ countersOff }) {
   globalThis.__benchLongTasks = [];
@@ -64,7 +66,7 @@ export async function waitShellQuiet(page, { quietMs = 1000, timeoutMs = 15000 }
  * After readiness: the end of the last long task before the main thread first
  * stays quiet for `quietMs`, as ms after `originAbs` (page clock). Capped by `timeoutMs`.
  */
-export async function waitUiQuiet(page, readyAbs, originAbs, { quietMs = 500, timeoutMs = 20000 } = {}) {
+export async function waitUiQuiet(page, readyAbs, originAbs, { quietMs = 500, timeoutMs = UI_QUIET_CAP_MS } = {}) {
   const started = Date.now();
   for (;;) {
     const s = await page.evaluate(() => ({ now: performance.now(), tasks: globalThis.__benchLongTasks ?? [] }));

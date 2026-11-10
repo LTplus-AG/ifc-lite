@@ -8,7 +8,7 @@ import { wasmBytesScanAllowed } from './entity-scanner.js';
 describe('wasmBytesScanAllowed', () => {
   it('allows typical large models', () => {
     expect(wasmBytesScanAllowed(883 * 1024 * 1024)).toBe(true);
-    expect(wasmBytesScanAllowed(2_400_000_000)).toBe(true);
+    expect(wasmBytesScanAllowed(2_400_000_000)).toBe(false);
   });
 
   it('refuses sources beyond the wasm32 ceiling instead of trapping', () => {
@@ -20,4 +20,11 @@ describe('wasmBytesScanAllowed', () => {
     // `>=` so the two ceilings agree at the boundary.
     expect(wasmBytesScanAllowed(2_500_000_000)).toBe(false);
   });
+});
+
+// Regression: huge-file report, wasm32 single-allocation boundary.
+it('uses the exact exclusive wasm32 source boundary', () => {
+  expect(wasmBytesScanAllowed(2 ** 31 - 1)).toBe(true);
+  expect(wasmBytesScanAllowed(2 ** 31)).toBe(false);
+  expect(wasmBytesScanAllowed(2 ** 31 + 1)).toBe(false);
 });

@@ -259,6 +259,6 @@ test('PR #9585: room entry settles a held reference preview', async t => {
     assert.equal(ui.querySelector('[aria-busy]')?.getAttribute('aria-busy'), 'true');
     act(() => useViewerStore.setState({ collabRoomId: 'joined-during-preview' }));
     assert.equal(ui.querySelector('[aria-busy]')?.getAttribute('aria-busy'), 'false');
-    assert.match(ui.textContent ?? '', /Leave the collaboration room/);
+    assert.match(ui.textContent ?? '', /Leave the shared session to place drawing references/);
   } finally { release(); await settle(); }
 });

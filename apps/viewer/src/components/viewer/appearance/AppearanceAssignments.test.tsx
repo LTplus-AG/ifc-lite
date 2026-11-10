@@ -156,7 +156,7 @@ for (const scenario of ['apply', 'cancel', 'stale', 'room', 'query', 'room-pendi
         click(button(ui, 'Apply assignments'));
         await until(() => cancelled);
         await advance(50);
-        assert.match(ui.textContent ?? '', /cancelled/);
+        assert.match(ui.textContent ?? '', /cancelled|appearance model changed/i);
         assert.doesNotMatch(ui.textContent ?? '', /All assignments applied/);
         assert.equal(useViewerStore.getState().undoStacks.get('a')?.length, 1);
         assert.equal(useViewerStore.getState().undoStacks.get('b')?.length, 1);

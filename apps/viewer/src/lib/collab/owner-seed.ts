@@ -372,6 +372,9 @@ export async function runOwnerSeed(deps: OwnerSeedDeps): Promise<OwnerSeedResult
     }
     return { phase: seedPhaseFromOutcome(classifySeed(report)), failure };
   } catch (err) {
+    // An abandoned join has nothing to report: its session was disposed under
+    // it (which is usually what threw), and nobody reads the outcome.
+    if (!deps.isCurrent()) return null;
     // A throw here means the seed did not complete: the room may hold a
     // partial model or none at all. Never let the Share dialog call that a
     // success.
@@ -381,15 +384,13 @@ export async function runOwnerSeed(deps: OwnerSeedDeps): Promise<OwnerSeedResult
     // had, so the marker records "interrupted" rather than "expected: 0",
     // which would read as the legitimate nothing-to-seed case and silence
     // the very warning this room needs.
-    if (deps.isCurrent()) {
-      try {
-        session.transact(() => {
-          writeGeometrySeedMarker(session.doc, interruptedSeedMarker(new Date().toISOString()));
-        });
-      } catch (markerErr) {
-        // eslint-disable-next-line no-console
-        console.error('[collab] could not record the interrupted seed:', markerErr);
-      }
+    try {
+      session.transact(() => {
+        writeGeometrySeedMarker(session.doc, interruptedSeedMarker(new Date().toISOString()));
+      });
+    } catch (markerErr) {
+      // eslint-disable-next-line no-console
+      console.error('[collab] could not record the interrupted seed:', markerErr);
     }
     return {
       phase: 'failed',

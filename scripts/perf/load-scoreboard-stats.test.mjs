@@ -9,7 +9,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  aaNoiseFloor, bootstrapHalfWidth, browserShares, browserStages, diffElements, ownNoiseFloor, expectedCacheTier, gainOf, median, nativeStages, rankShares,
+  aaNoiseFloor, bootstrapHalfWidth, browserShares, browserStages, diffElements, gpuUnhealthy, ownNoiseFloor, expectedCacheTier, gainOf, median, nativeStages, rankShares,
   relativeSpread, stageShares, unionLength, verdictFor,
 } from './load-scoreboard-stats.mjs';
 import { summarize } from './load-scoreboard-report.mjs';
@@ -173,4 +173,11 @@ test('an A/A whose few pairs all lean one way is not a gain: the floor covers th
   assert.ok(bootstrapHalfWidth(pairs(base, branch), { seed: 1 }) < 0.06, 'the bootstrap alone collapses');
   assert.ok(ownNoiseFloor(pairs(base, branch), { seed: 1 }) >= 0.07);
   assert.equal(verdictFor(pairs(base, branch)).verdict, 'no significant difference');
+});
+
+test('a GPU health read that failed is not a healthy sample', () => {
+  assert.match(gpuUnhealthy({ error: 'page.evaluate: Target closed' }), /unreadable/);
+  assert.match(gpuUnhealthy(null), /unreadable/);
+  assert.match(gpuUnhealthy({ contaminated: true, reasons: ['lost'] }), /device lost/);
+  assert.equal(gpuUnhealthy({ contaminated: false, reasons: [] }), null);
 });

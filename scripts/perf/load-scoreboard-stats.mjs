@@ -232,6 +232,12 @@ export function diffElements(base, branch, limit = 10) {
     examples: { onlyBase: head(onlyBase), onlyBranch: head(onlyBranch), changed: head(changed) } };
 }
 
+/** Why a sample's GPU health fails it, or null. A health read that itself failed is not a clean bill (unknown is not healthy). */
+export function gpuUnhealthy(health) {
+  if (!health || typeof health.contaminated !== 'boolean') return `GPU health unreadable (${health?.error ?? 'no result'})`;
+  return health.contaminated ? `GPU device lost during sample (${health.reasons.join('; ')})` : null;
+}
+
 /** Viewer cache tier a source of `bytes` qualifies for (apps/viewer/src/utils/ifcConfig.ts, hooks/cacheTier.ts). */
 export function expectedCacheTier(bytes) {
   const MB = 1024 * 1024;

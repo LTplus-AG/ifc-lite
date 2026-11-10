@@ -92,7 +92,7 @@ export function summarize(plan, samples, { floors = null } = {}) {
           : fpBase[0] === fpBranch[0] ? 'match' : 'CHANGED';
       lanes[lane] = { sides, verdicts, floors: laneFloors, output, primary: verdicts.interactiveMs ?? null };
     }
-    fixtures.push({ name: fx.name, set: fx.set ?? 'tuning', bytes: fx.bytes, expectedTier: fx.bytes ? expectedCacheTier(fx.bytes) : null, lanes });
+    fixtures.push({ name: fx.name, set: fx.set ?? 'tuning', bytes: fx.bytes, expectedTier: Number.isFinite(fx.bytes) ? expectedCacheTier(fx.bytes) : null, lanes });
   }
   const floorsOut = {};
   for (const f of fixtures) for (const [lane, l] of Object.entries(f.lanes)) (floorsOut[f.name] ??= {})[lane] = l.floors;

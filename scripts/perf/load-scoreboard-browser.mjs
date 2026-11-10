@@ -27,7 +27,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { chromePids, memoryOf, vramOf } from './scenoptic-bench-sampling.mjs';
 import { COUNT_FRAMES, openAndWaitInteractive, openViewerPage, readOutputFingerprint, replacePage, waitCacheWrites, waitSceneSnapshots } from './viewer-load-probe.mjs';
-import { browserShares, browserStages, expectedCacheTier, stageShares } from './load-scoreboard-stats.mjs';
+import { browserShares, browserStages, expectedCacheTier, gpuUnhealthy, stageShares } from './load-scoreboard-stats.mjs';
 import { BOOT_OBSERVERS, waitShellQuiet, waitUiQuiet } from './viewer-load-boot.mjs';
 import { readGpuHealth } from '../../tests/benchmark/gpu-health.ts';
 
@@ -161,8 +161,8 @@ export async function browserSample({ chromium, executablePath, baseUrl, setRoot
     lanes['browser-cold'] = { lane: 'browser-cold', ok: true, ...(await measuredOpen('cold')) };
     meta.adapter = await page.evaluate(() => globalThis.__ifc_lite_render_stats__?.()?.adapter ?? null);
     meta.gpuHealthCold = await readGpuHealth(page, consoleLogs).catch((e) => ({ error: String(e) }));
-    if (meta.gpuHealthCold?.contaminated || meta.crashed) {
-      throw new Error(meta.crashed ? 'renderer crashed' : `GPU device lost during sample (${meta.gpuHealthCold.reasons.join('; ')})`);
+    if (gpuUnhealthy(meta.gpuHealthCold) || meta.crashed) {
+      throw new Error(meta.crashed ? 'renderer crashed' : gpuUnhealthy(meta.gpuHealthCold));
     }
     if (warmOpens > 0) {
       phase = 'cache-write';
@@ -189,7 +189,7 @@ export async function browserSample({ chromium, executablePath, baseUrl, setRoot
     phase = 'warm1';
     meta.gpuHealth = await readGpuHealth(page, consoleLogs).catch((e) => ({ error: String(e) }));
     meta.vramMiB = vramOf(chromePids(profileDir));
-    if (meta.gpuHealth?.contaminated) throw new Error(`GPU device lost during sample (${meta.gpuHealth.reasons.join('; ')})`);
+    if (gpuUnhealthy(meta.gpuHealth)) throw new Error(gpuUnhealthy(meta.gpuHealth));
     if (meta.crashed) throw new Error('renderer crashed');
   } catch (err) {
     const error = `${phase}: ${String(err?.message ?? err).slice(0, 600)}`;

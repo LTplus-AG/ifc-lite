@@ -102,8 +102,7 @@ function storeOf(ranges?: Map<number, [number, number]>): IfcDataStore {
  * the two fields the byte path reads are real; the rest would be a defect in
  * the reader if it were touched, so they throw rather than answer.
  */
-function readersOf(ranges?: Map<number, [number, number]>): LineReaders {
-  const dataStore = storeOf(ranges);
+function readersOf(ranges?: Map<number, [number, number]>, dataStore = storeOf(ranges)): LineReaders {
   const unused = (): never => { throw new Error('not reachable from a line reader'); };
   const ctx: PropertySetContext = {
     dataStore,
@@ -175,6 +174,21 @@ describe('entityLineText byte range', () => {
   // exercised above with representable offsets that exceed the source bounds.
   it('refuses a negative source offset before constructing a corrupt index (#9617)', () => {
     expect(() => storeOf(new Map([[2, [-2, SET_A.length]]]))).toThrow(RangeError);
+  });
+
+  // #9617: Map-backed and overlay refs can retain negative offsets even
+  // though compact source indexes cannot. Keep the reader's rejection too.
+  it('answers nothing for a negative ref and an overlay sentinel outside a compact index', () => {
+    for (const [byteOffset, byteLength] of [[-2, SET_A.length], [-1, 0]]) {
+      const store = storeOf();
+      const byId = new Map(store.entityIndex.byId);
+      const ref = byId.get(2)!;
+      byId.set(2, { ...ref, byteOffset, byteLength });
+      const readers = readersOf(undefined, { ...store, entityIndex: { ...store.entityIndex, byId } });
+      expect(readers.getPropertySetName(2)).toBeNull();
+      expect(readers.getPropertyIdsInSet(2)).toEqual([]);
+      expect(readers.entityLineText(2)).toBeNull();
+    }
   });
 
   /** A zero-length ref is the canonical "no source line" marker. */

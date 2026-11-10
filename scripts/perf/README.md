@@ -68,12 +68,18 @@ shared with `scenoptic-bench.mjs`):
 
 Verdict: `gain = 1 - median(branch)/median(base)`. The noise floor of a
 comparison is the larger of the recorded A/A floor for that fixture, lane and
-metric and the run's own floor. The run's own floor is the half-width of the
-90% paired-bootstrap interval of the gain: rounds are resampled, keeping each
-round's two sides together. An A/A run's floor also includes its own |gain|.
-A change counts only when |gain| >= 2 x floor. Fewer than 3 samples is never
-summarized as a median and never gets a verdict. A branch with more failed
-loads than the base is a regression. Rounds use the balanced, randomized
+metric and the run's own floor. The run's own floor is one robust standard
+deviation (interquartile range / 1.349) of what the run can see: each side's
+relative scatter and the scatter of the paired per-round differences. An A/A
+run's floor also includes its own |gain|. A change counts only when
+|gain| >= 2 x floor, with at least 5 successful samples per side; fewer than
+3 samples is never summarized as a median. A branch with more failed loads
+than the base is a regression. The timed A/A of the baseline picked this
+estimator. A range or a 5-round paired bootstrap let one outlier hide a
+consistent +37% regression. A median absolute deviation read bimodal metrics
+(first geometry, peak memory) as differences between identical builds. At
+2 x one SD with five rounds, expect about one false positive per hundred A/A
+cells; the A/A floor's |gain| term then protects that cell. Rounds use the balanced, randomized
 first-side order of `ab-order.mjs`, per lane group and fixture.
 
 ```sh

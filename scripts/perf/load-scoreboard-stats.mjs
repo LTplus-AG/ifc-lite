@@ -12,11 +12,10 @@
  * a regression.
  *
  * Noise floor of one comparison = max(the A/A floor recorded for that
- * fixture/lane/metric, this run's own floor). A run's own floor is the
- * larger of the half-width of the 90% paired-bootstrap interval of its gain
- * (rounds resampled with replacement, each round's base and branch kept
- * together because they ran next to each other) and half the larger side's
- * relative range. An A/A run's floor additionally includes its own |gain|,
+ * fixture/lane/metric, this run's own floor). A run's own floor is one robust
+ * standard deviation (IQR / 1.349) of what it can see: the larger side's
+ * relative scatter, or the scatter of the paired per-round differences
+ * (`ownNoiseFloor`). An A/A run's floor additionally includes its own |gain|,
  * the systematic difference between two identical builds. A verdict needs
  * |gain| >= 2 x floor and at least 5 successful samples per side.
  */
@@ -72,23 +71,58 @@ export function bootstrapHalfWidth(pairs, { resamples = 2000, level = 0.9, seed 
   return (hi - lo) / 2;
 }
 
-/**
- * A run's own floor: the paired-bootstrap half-width, but never less than half
- * the larger side's relative range. With 3-5 rounds whose pairs happen to lean
- * one way, the bootstrap alone collapses far below the samples' own scatter
- * (an A/A FZK native cohort: 3% half-width against a 14% base range).
- */
-export function ownNoiseFloor(pairs, options) {
-  const hw = bootstrapHalfWidth(pairs, options);
-  if (hw === null) return null;
-  const spread = (i) => relativeSpread(pairs.map((p) => p[i]).filter(Number.isFinite)) ?? 0;
-  return Math.max(hw, Math.max(spread(0), spread(1)) / 2);
+/** Linear-interpolation quantile (type 7) of finite values; null when empty. */
+export function quantile(xs, q) {
+  const s = xs.filter((x) => Number.isFinite(x)).sort((a, b) => a - b);
+  if (s.length === 0) return null;
+  const pos = (s.length - 1) * q, lo = Math.floor(pos), hi = Math.ceil(pos);
+  return s[lo] + (s[hi] - s[lo]) * (pos - lo);
 }
 
-/** The floor an A/A run contributes: the larger of its own |gain| and its bootstrap half-width. */
+/** One robust standard deviation of `xs`: interquartile range / 1.349. */
+export function robustSd(xs) {
+  const v = xs.filter((x) => Number.isFinite(x));
+  if (v.length < 2) return null;
+  return (quantile(v, 0.75) - quantile(v, 0.25)) / 1.349;
+}
+
+/** Robust relative scatter: IQR / 1.349 / median, null below two values or at a zero median. */
+export function robustSpread(xs) {
+  const v = xs.filter((x) => Number.isFinite(x));
+  const med = median(v), sd = robustSd(v);
+  if (sd === null || !med) return null;
+  return sd / med;
+}
+
+/**
+ * A run's own floor: one robust standard deviation (IQR / 1.349) of the noise
+ * it can see, the largest of
+ * - each side's relative scatter around its median, and
+ * - the scatter of the paired per-round differences (branch/base - 1), which
+ *   carries what interleaving pairs share (drift, position in the round).
+ * Interquartile, measured on the timed A/A (`stage0-REPORT.md`):
+ * - not the range or a 5-round paired bootstrap: one outlier (advanced_model
+ *   warm, 1,938 ms against 1,080-1,188) made them 37% and 21%, which hid a
+ *   consistent +37% regression in the same cell;
+ * - not the MAD: bimodal metrics (FZK first geometry in two clusters ~100 ms
+ *   apart; peak memory at ~868 or ~895 MiB) gave a MAD far below the jump
+ *   between modes, so two identical builds read as different.
+ * With five values the quartiles are the 2nd and 4th order statistics: a lone
+ * outlier falls outside them, a split between modes falls inside them. The
+ * bootstrap half-width stays in the verdict as information only.
+ */
+export function ownNoiseFloor(pairs) {
+  const ok = pairs.filter(([a, b]) => Number.isFinite(a) && Number.isFinite(b) && a > 0);
+  if (ok.length < 2) return null;
+  const sideSpread = (i) => robustSpread(pairs.map((p) => p[i]).filter(Number.isFinite)) ?? 0;
+  const pairedSpread = robustSd(ok.map(([a, b]) => b / a - 1)) ?? 0;
+  return Math.max(sideSpread(0), sideSpread(1), pairedSpread);
+}
+
+/** The floor an A/A run contributes: the larger of its own |gain| and its own floor (`ownNoiseFloor`). */
 export function aaNoiseFloor(pairs, options) {
   const g = gainOf(pairs.map((p) => p[0]), pairs.map((p) => p[1]));
-  const hw = ownNoiseFloor(pairs, options);
+  const hw = ownNoiseFloor(pairs);
   if (g === null && hw === null) return null;
   return Math.max(Math.abs(g ?? 0), hw ?? 0);
 }
@@ -106,7 +140,7 @@ export function verdictFor(pairs, { failures = { base: 0, branch: 0 }, aaFloor =
     baseMedian: median(base), branchMedian: median(branch),
     baseSpread: relativeSpread(base), branchSpread: relativeSpread(branch),
     samples: { base: base.length, branch: branch.length }, failures,
-    gain: gainOf(base, branch), ownFloor: ownNoiseFloor(pairs, { seed }), aaFloor,
+    gain: gainOf(base, branch), ownFloor: ownNoiseFloor(pairs), bootstrapHalfWidth: bootstrapHalfWidth(pairs, { seed }), aaFloor,
     noiseFloor: null, ratio: null, verdict: 'inconclusive', pass: false, regression: false,
   };
   if (failures.branch > failures.base) {

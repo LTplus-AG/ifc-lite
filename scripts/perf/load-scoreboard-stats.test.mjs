@@ -193,13 +193,30 @@ test('H5: a cell with fewer than three samples lists them instead of reporting a
   assert.doesNotMatch(md, /4,175/); // the mean of two, which an n=2 "median" would print
 });
 
-test('an A/A whose few pairs all lean one way is not a gain: the floor covers the samples own scatter', async () => {
-  const { bootstrapHalfWidth, ownNoiseFloor, verdictFor } = await stats();
-  // Measured: native FZK, two copies of one binary, branch 3-4 ms faster in every round of a 28 ms load.
-  const base = [32.4, 31.1, 28.0, 30.2, 29.5], branch = [27.9, 28.4, 23.7, 27.6, 27.0];
-  assert.ok(bootstrapHalfWidth(pairs(base, branch), { seed: 1 }) < 0.06, 'the bootstrap alone collapses');
-  assert.ok(ownNoiseFloor(pairs(base, branch), { seed: 1 }) >= 0.07);
-  assert.equal(verdictFor(pairs(base, branch)).verdict, 'no significant difference');
+test('a consistent lean between two identical builds is contained by the recorded A/A floor', async () => {
+  const { aaNoiseFloor, verdictFor } = await stats();
+  // Measured, timed baseline v2: FZK native-cold, copies A and B of one binary (a ~30 ms load at 1 ms resolution).
+  const aaFloor = aaNoiseFloor(pairs([55.8, 28.8, 32.8, 22.7, 24.9], [60.1, 25.2, 23.9, 30.4, 31.4]));
+  assert.ok(aaFloor > 0.2, `A/A floor ${aaFloor}`);
+  // An untimed smoke of the same pair, extended to five rounds, leaned ~9% one way in every round.
+  const lean = pairs([32.4, 31.1, 28.0, 30.2, 29.5], [27.9, 28.4, 23.7, 27.6, 27.0]);
+  assert.equal(verdictFor(lean, { aaFloor }).verdict, 'no significant difference');
+  // Without the A/A floor, five consistent pairs are evidence of a difference: catching a systematic
+  // difference between identical builds is the A/A floor's job (its |gain| term), not the run's own.
+  assert.equal(verdictFor(lean).verdict, 'gain');
+});
+
+test('one outlier in the A/A cannot blind a consistent regression: the floor is interquartile, not the range or the bootstrap (timed baseline v2)', async () => {
+  const { aaNoiseFloor, bootstrapHalfWidth, verdictFor } = await stats();
+  // Measured: advanced_model browser-warm, A/A copies (one 1,938 ms outlier), then perf.sceneSnapshot=0 against main.
+  const aaBase = [1138, 1173, 1080, 1188, 1938], aaBranch = [1173, 1145, 1155, 1084, 1180];
+  const aaFloor = aaNoiseFloor(pairs(aaBase, aaBranch), { seed: 0x5eed });
+  assert.ok(aaFloor < 0.15, `A/A floor ${aaFloor}`);
+  assert.ok(bootstrapHalfWidth(pairs(aaBase, aaBranch), { seed: 0x5eed }) > 0.15, 'the 5-round bootstrap alone is outlier-dominated');
+  const v = verdictFor(pairs([1120, 1207, 1170, 1121, 1132], [1626, 1497, 1591, 1550, 1482]), { aaFloor, seed: 0x5eed });
+  assert.equal(v.verdict, 'regression');
+  // The same A/A against itself stays quiet.
+  assert.equal(verdictFor(pairs(aaBase, aaBranch), { seed: 0x5eed }).verdict, 'no significant difference');
 });
 
 test('a GPU health read that failed is not a healthy sample', async () => {
@@ -251,4 +268,11 @@ test('a reopen without a settled cache write or its expected snapshot is a faile
   assert.match(warmPrepFailure({ open: 2, cacheWriteSettled: true, snapshotExpected: true, snapshotWritten: false }), /snapshot was not written/);
   // perf.sceneSnapshot=0 or an uncached tier: no snapshot is expected, so none missing is not a failure.
   assert.equal(warmPrepFailure({ open: 2, cacheWriteSettled: true, snapshotExpected: false, snapshotWritten: undefined }), null);
+});
+
+test('a bimodal metric in an A/A is no difference: the interquartile floor spans the mode split (timed baseline v2)', async () => {
+  const { verdictFor } = await stats();
+  // Measured on two copies of one build: FZK warm first geometry (~100 ms mode jump), ISSUE_129 warm peak memory (~868 / ~895 MiB).
+  assert.equal(verdictFor(pairs([358, 463, 464, 344, 372], [470, 380, 488, 447, 465])).verdict, 'no significant difference');
+  assert.equal(verdictFor(pairs([896, 894, 868, 891, 898], [903, 894, 868, 869, 868])).verdict, 'no significant difference');
 });

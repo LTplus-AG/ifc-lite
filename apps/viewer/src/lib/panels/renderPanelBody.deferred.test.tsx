@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import '@/test/setup-dom.js';
+import 'fake-indexeddb/auto';
 import assert from 'node:assert/strict';
 import { afterEach, it } from 'node:test';
 import { readFileSync } from 'node:fs';
@@ -34,7 +35,14 @@ for (const [id, load] of [
     // transition so a missing feature fails instead of pinning a fleet slot.
     await load();
     await waitFor(() => ui.querySelector('output') === null, 'the feature replaced the shell');
-    assert.equal(ui.querySelector('[role="alert"]') === null, true, 'the actual feature mounted');
+    // Storage notices can legitimately be alerts. Prove the feature's own
+    // action is present instead of banning every alert in its subtree.
+    const buttons = [...ui.querySelectorAll('button')];
+    const featureAction = id === 'bcf'
+      ? ui.querySelector('button[data-panel-action="bcf-import"]') !== null
+      : buttons.some(button => button.textContent?.trim() === translate(id === 'validation'
+        ? 'validationPanel.entry.newRuleSet' : 'lensPanel.newRuleLensButton'));
+    assert.equal(featureAction, true, 'the actual feature action mounted');
     // Lens owns a custom header; select the accessible control, not a
     // PanelHeader implementation detail (review of #9634).
     const closeLabel = translate(id === 'lens' ? 'lensPanel.closeAriaLabel' : 'panelHeader.close');

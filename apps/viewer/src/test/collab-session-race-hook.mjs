@@ -60,6 +60,10 @@ export async function load(url, context, nextLoad) {
 export * from ${JSON.stringify(realUrl)};
 import { createCollabSession as __realCreateCollabSession } from ${JSON.stringify(realUrl)};
 export async function createCollabSession(opts) {
+  // Optional pre-create hold: a test can park (or fail) THIS call to
+  // createCollabSession before the real session exists, read once per call.
+  const hold = globalThis.__collabCreateHold;
+  if (hold) await hold(opts);
   const session = await __realCreateCollabSession(opts);
   // Hand the REAL session to the test so it can inspect the doc the seed
   // wrote (collabSlice.seed-phase.test.ts): \`collabSession\` is only committed

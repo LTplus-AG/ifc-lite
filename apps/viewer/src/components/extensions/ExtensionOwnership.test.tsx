@@ -349,10 +349,11 @@ test('PR #9581: file preview exposes busy state on Import and the drop zone', as
 });
 
 test('PR #9581: promotion reports a committed install after external close without closing its replacement', async t => {
-  const host = hostFixture(), put = host.storage.putBundle.bind(host.storage), successes: string[] = [];
-  let release!: () => void, started = false, closes = 0;
+  const host = hostFixture(), put = host.storage.putBundle.bind(host.storage), install = host.installFromBytes.bind(host), successes: string[] = [];
+  let release!: () => void, started = false, finished = false, closes = 0;
   const held = new Promise<void>(resolve => { release = resolve; });
   t.mock.method(host.storage, 'putBundle', async (...args: Parameters<typeof put>) => { started = true; await held; await put(...args); });
+  t.mock.method(host, 'installFromBytes', async (...args: Parameters<typeof install>) => { try { return await install(...args); } finally { finished = true; } });
   t.mock.method(toast, 'success', (message: string) => { successes.push(message); });
   function Harness() {
     const [open, setOpen] = useState(true);
@@ -364,10 +365,79 @@ test('PR #9581: promotion reports a committed install after external close witho
     click(button('Review & install')); await until(() => reviewText().includes('Install com.local.tools'));
     click(button('Install')); await until(() => started);
     click(button('External close')); click(button('Reopen')); release();
-    await advance(150);
+    await until(() => finished); await advance(20);
     assert.equal((await host.listInstalled()).some(row => row.id === 'com.local.tools.global-install'), true);
     assert.equal(successes.length, 1, 'a successful global install remains visible to the user');
     assert.equal(closes, 0);
     assert.equal(reviewText().includes('Review & install'), true);
   } finally { release(); await advance(20); }
+});
+
+for (const outcome of ['success', 'failure'] as const) test(`PR #9581: an unmounted panel suppresses stale install ${outcome} feedback`, async t => {
+  const host = hostFixture(), install = host.installFromBytes.bind(host), notices: string[] = [];
+  let release!: () => void, started = false, finished = false;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  t.mock.method(host, 'installFromBytes', async (...args: Parameters<typeof install>) => {
+    started = true;
+    await held;
+    try {
+      if (outcome === 'failure') throw new Error('Installation rejected');
+      return await install(...args);
+    } finally { finished = true; }
+  });
+  t.mock.method(toast, 'success', (message: string) => { notices.push(message); });
+  t.mock.method(toast, 'error', (message: string) => { notices.push(message); });
+  const ui = render(<ExtensionHostContext.Provider value={host}><ExtensionsPanel /></ExtensionHostContext.Provider>);
+  try {
+    choose(ui, bundle('closedinstall'), 'closedinstall'); await until(() => reviewText().includes('com.example.closedinstall'));
+    click(button('Install')); await until(() => started);
+    cleanup(); release(); await until(() => finished); await advance(20);
+    assert.equal(notices.length, 0);
+    if (outcome === 'success') assert.equal((await host.storage.getExtension('com.example.closedinstall'))?.id, 'com.example.closedinstall');
+  } finally { release(); await advance(20); }
+});
+
+test('PR #9581: an installation keeps its review through Cancel and dialog dismissal', async t => {
+  const host = hostFixture(), install = host.installFromBytes.bind(host);
+  let release!: () => void, started = false, finished = false;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  t.mock.method(host, 'installFromBytes', async (...args: Parameters<typeof install>) => {
+    started = true; await held;
+    try { return await install(...args); } finally { finished = true; }
+  });
+  const ui = render(<ExtensionHostContext.Provider value={host}><ExtensionsPanel /></ExtensionHostContext.Provider>);
+  try {
+    choose(ui, bundle('lockedreview'), 'lockedreview'); await until(() => reviewText().includes('com.example.lockedreview'));
+    click(button('Install')); await until(() => started);
+    assert.equal(button('Install').disabled, true);
+    click(button('Cancel'));
+    assert.equal(reviewText().includes('com.example.lockedreview'), true, 'Cancel preserves the installing review');
+    click(button('Close'));
+    assert.equal(reviewText().includes('com.example.lockedreview'), true, 'dialog dismissal preserves the installing review');
+  } finally { release(); await until(() => finished); await advance(20); }
+});
+
+for (const surface of ['panel', 'promotion'] as const) test(`PR #9581: ${surface} installation refuses same-tick approval and busy dismissal`, async t => {
+  const host = hostFixture(), install = host.installFromBytes.bind(host);
+  let release!: () => void, calls = 0, finished = 0;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  t.mock.method(host, 'installFromBytes', async (...args: Parameters<typeof install>) => {
+    calls++;
+    await held;
+    try { return await install(...args); } finally { finished++; }
+  });
+  const ui = render(<ExtensionHostContext.Provider value={host}>{surface === 'panel'
+    ? <ExtensionsPanel /> : <PromoteToolDialog open initialName="Double approval" source="const x = 1;" onClose={() => {}} />}</ExtensionHostContext.Provider>);
+  try {
+    if (surface === 'panel') choose(ui, bundle('sameapproval'), 'sameapproval');
+    else click(button('Review & install'));
+    await until(() => reviewText().includes(surface === 'panel' ? 'com.example.sameapproval' : 'Install com.local.tools'));
+    const approve = button('Install');
+    act(() => { approve.click(); approve.click(); });
+    await until(() => calls > 0);
+    assert.equal(calls, 1, 'the run lease refuses a second approval in the same render');
+    assert.equal(button('Cancel').disabled, true);
+    click(button('Close'));
+    assert.equal(reviewText().includes(surface === 'panel' ? 'com.example.sameapproval' : 'Install com.local.tools'), true);
+  } finally { release(); await until(() => finished === calls); await advance(20); }
 });

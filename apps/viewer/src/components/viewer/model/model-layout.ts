@@ -92,3 +92,6 @@ export function useSplitWidth(): number {
     () => splitWidth,
   );
 }
+
+/** Current measured split width for command eligibility; same publisher as the rail. */
+export function getSplitWidth(): number { return splitWidth; }

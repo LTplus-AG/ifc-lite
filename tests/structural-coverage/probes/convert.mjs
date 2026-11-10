@@ -35,7 +35,6 @@ function roundTrip(ctx, file, schema) {
   })().catch((error) => ({ error })));
 }
 
-const own = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
 const names = new WeakMap();
 /** STEP keyword -> registry entity name, built once per registry. */
 function entityName(registry, keyword) {
@@ -43,15 +42,23 @@ function entityName(registry, keyword) {
   return names.get(registry).get(keyword);
 }
 
+/** Select nesting in the generated registries is shallow; deeper means a codegen cycle, not a converter defect. */
+const MAX_SELECT_DEPTH = 8;
+function selectDepth(depth, type) {
+  if (depth > MAX_SELECT_DEPTH) throw new Error(`select ${type} nests deeper than ${MAX_SELECT_DEPTH}: registry cycle?`);
+}
+
 /** Whether a slot of `type` accepts a reference to an entity named `target`. */
 function acceptsRef(registry, type, target, depth = 0) {
-  if (own(registry.entities, type)) return registry.entities[target]?.inheritanceChain.includes(type) ?? false;
-  return depth < 8 && own(registry.selects, type) && registry.selects[type].some((m) => acceptsRef(registry, m, target, depth + 1));
+  selectDepth(depth, type);
+  if (Object.hasOwn(registry.entities, type)) return registry.entities[target]?.inheritanceChain.includes(type) ?? false;
+  return Object.hasOwn(registry.selects, type) && registry.selects[type].some((m) => acceptsRef(registry, m, target, depth + 1));
 }
 
 /** Whether a SELECT of `type` has a non-entity member, so a typed value can fill it. */
 function acceptsValue(registry, type, depth = 0) {
-  return depth < 8 && registry.selects[type].some((m) => !own(registry.entities, m) && (!own(registry.selects, m) || acceptsValue(registry, m, depth + 1)));
+  selectDepth(depth, type);
+  return registry.selects[type].some((m) => !Object.hasOwn(registry.entities, m) && (!Object.hasOwn(registry.selects, m) || acceptsValue(registry, m, depth + 1)));
 }
 
 /**
@@ -72,8 +79,8 @@ function slotMismatch(value, type, optional, registry, step) {
     if (!name) return `reference to ${target.type}, which the schema lacks`;
     return acceptsRef(registry, t, name) ? null : `reference to ${name} in ${t}`;
   }
-  if (own(registry.entities, t)) return `bare value in entity slot ${t}`;
-  const select = own(registry.selects, t);
+  if (Object.hasOwn(registry.entities, t)) return `bare value in entity slot ${t}`;
+  const select = Object.hasOwn(registry.selects, t);
   const typed = typeof value === 'object' && 'type' in value;
   if (typed && !(select && acceptsValue(registry, t))) return `typed ${value.type} in ${t}`;
   if (!typed && select) return `bare value in SELECT ${t}`;

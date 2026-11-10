@@ -151,8 +151,10 @@ ENDSEC;END-ISO-10303-21;`);
       // Required Reaction slot of entity type IfcReaction.
       IfcAction: { allAttributes: [{ name: 'Reaction', type: 'IfcReaction', optional: false }], inheritanceChain: ['IfcAction'] },
       IfcReaction: { allAttributes: [], inheritanceChain: ['IfcReaction'] },
+      // Optional slots: a nested list of IfcMeasure, and an entity-only SELECT over IfcReaction.
+      IfcHolder: { allAttributes: [opt('Grid', 'IfcMeasure[]'), opt('Pick', 'IfcReactionSelect')], inheritanceChain: ['IfcHolder'] },
     },
-    selects: { IfcSel: ['IfcBoolean', 'IfcMeasure'] }, types: { IfcMeasure: 'REAL', IfcLabel: 'STRING' }, enums: {},
+    selects: { IfcSel: ['IfcBoolean', 'IfcMeasure'], IfcReactionSelect: ['IfcReaction'] }, types: { IfcMeasure: 'REAL', IfcLabel: 'STRING' }, enums: {},
   };
   const bc = readStep(`ISO-10303-21;HEADER;FILE_SCHEMA(('IFC4'));ENDSEC;DATA;
 #1=IFCBOUNDARYNODECONDITION('ok',IFCBOOLEAN(.T.),1.,$,$,$,$);
@@ -180,6 +182,18 @@ ENDSEC;END-ISO-10303-21;`);
   assert.match(why[4], /bare value in entity slot IfcReaction/);
   assert.match(why[5], /reference to IFCNOTINSCHEMA, which the schema lacks/);
   assert.match(why[7], /reference to IfcAction in IfcReaction/);
+  const holders = readStep(`ISO-10303-21;HEADER;FILE_SCHEMA(('IFC4'));ENDSEC;DATA;
+#1=IFCREACTION();
+#2=IFCHOLDER(((1.,2.),(3.,4.)),#1);
+#3=IFCHOLDER($,IFCBOOLEAN(.T.));
+#4=IFCHOLDER($,#9);
+#5=IFCHOLDER(((1.,IFCBOOLEAN(.T.))),$);
+ENDSEC;END-ISO-10303-21;`);
+  const held = Object.fromEntries(nonConforming(holders, 'IfcHolder', registry).map((r) => [r.id, r.why]));
+  assert.deepEqual(Object.keys(held).map(Number), [3, 4, 5], 'a nested list of measures and a reference through an entity SELECT conform');
+  assert.match(held[3], /typed IFCBOOLEAN in IfcReactionSelect/);
+  assert.match(held[4], /reference to a missing record/);
+  assert.match(held[5], /typed IFCBOOLEAN in IfcMeasure$/, "the [] suffix is stripped before the slot check");
 });
 
 function tree() {

@@ -12,8 +12,8 @@ path as the first argument.
 `--coverage <IFC2X3|IFC4|IFC4X3>` instead writes the structural coverage
 fixture for that schema (tests/structural-coverage): every concrete
 structural-analysis entity the schema defines, once, with known values, so
-the entity types no real exported file carries still have a fixture. From
-IFC4 on, IfcSurfaceReinforcementArea goes to a sibling `_reinforcement` file.
+the entity types no real exported file carries still have a fixture. For
+IFC4, IfcSurfaceReinforcementArea goes to a sibling `_reinforcement` file.
 It does not touch the default output above.
 """
 
@@ -138,8 +138,9 @@ def coverage(schema: str, output: Path, reinforcement: bool = False) -> None:
     """One record of every structural-analysis entity `schema` defines.
 
     With `reinforcement`, only the IfcSurfaceReinforcementArea instead: it has no
-    IFC2X3 form and is not an IfcRoot, so the converter refuses any file that
-    holds it, and it must not take every other entity's convert result with it.
+    IFC2X3 form and is not an IfcRoot, so the converter refuses any IFC4 file that
+    holds it, and it must not take every other IFC4 entity's convert result with
+    it. IFC4X3 has no convert level, so there it stays in the main file.
     """
     model = ifcopenshell.file(schema=COVERAGE_SCHEMAS[schema])
     declared = ifcopenshell.ifcopenshell_wrapper.schema_by_name(model.schema_identifier)
@@ -185,10 +186,18 @@ def coverage(schema: str, output: Path, reinforcement: bool = False) -> None:
     def root(name: str, *rest, tag: str = ""):
         return e(name, guid(name + tag), owner, f"Coverage {name}{tag}", None, None, *rest)
 
-    if reinforcement:
-        e("IfcSurfaceReinforcementArea", "Coverage reinforcement", (0.0005, 0.0005), (0.0004, 0.0004), 0.25)
+    def save():
         write(model, output, "for the structural coverage harness", "2026-11-10T00:00:00", "ifc-lite structural coverage fixture generator")
+
+    def reinforcement_area():
+        e("IfcSurfaceReinforcementArea", "Coverage reinforcement", (0.0005, 0.0005), (0.0004, 0.0004), 0.25)
+
+    if reinforcement:
+        reinforcement_area()
+        save()
         return
+    if schema == "IFC4X3":
+        reinforcement_area()
 
     def rep():
         return e("IfcShapeRepresentation", context, "Reference", "Point", (origin,))
@@ -298,7 +307,7 @@ def coverage(schema: str, output: Path, reinforcement: bool = False) -> None:
         rel("IfcRelDeclares", project, (analysis,))
 
     output.parent.mkdir(parents=True, exist_ok=True)
-    write(model, output, "for the structural coverage harness", "2026-11-10T00:00:00", "ifc-lite structural coverage fixture generator")
+    save()
 
 
 if __name__ == "__main__":
@@ -309,7 +318,7 @@ if __name__ == "__main__":
         default = f"tests/models/ifcopenshell/generated_structural_coverage_{schema.lower()}.ifc"
         output = Path(sys.argv[3] if len(sys.argv) > 3 else default)
         coverage(schema, output)
-        if schema != "IFC2X3":  # IfcSurfaceReinforcementArea is IFC4+
+        if schema == "IFC4":  # the one schema with both a convert level and IfcSurfaceReinforcementArea
             coverage(schema, output.with_name(f"{output.stem}_reinforcement.ifc"), reinforcement=True)
     else:
         main()

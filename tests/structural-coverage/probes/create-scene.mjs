@@ -44,8 +44,9 @@ export const SCENE = [
   {
     id: 'point-connection',
     builder: 'addStructuralPointConnectionToStore',
-    // IFC2X3 stiffness is a measure with no boolean branch. The IFC2X3 builder does not exist yet;
-    // when it lands, set the IFC2X3 expectation against its real output.
+    // IFC2X3 names the stiffness attributes Linear* and has no boolean branch; an IFC2X3 step
+    // with its own expectations lands with the IFC2X3 builder.
+    schemas: ['IFC4', 'IFC4X3'],
     emits: {
       IfcStructuralPointConnection: { GlobalId: G.connection, Name: 'Probe support' },
       IfcBoundaryNodeCondition: { Name: 'Probe fixed', TranslationalStiffnessX: true, TranslationalStiffnessZ: true, RotationalStiffnessY: false },

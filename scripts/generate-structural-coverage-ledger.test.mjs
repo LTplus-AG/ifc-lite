@@ -25,6 +25,7 @@ import { LEVELS, deriveCatalogue, notApplicable } from '../tests/structural-cove
 import { ratchet, runProbes, score } from '../tests/structural-coverage/score.mjs';
 import { readStep } from '../tests/structural-coverage/lib/step.mjs';
 import { unwritten } from '../tests/structural-coverage/probes/index.mjs';
+import { SCENE, stepsFor } from '../tests/structural-coverage/probes/create-scene.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const GENERATOR = join(ROOT, 'scripts/generate-structural-coverage-ledger.mjs');
@@ -41,6 +42,22 @@ test('catalogue: derived per schema from the generated tables, schema difference
   assert.ok(!rows.some((r) => r.entity === 'IfcStructuralItem'), 'abstract entities are not rows');
   assert.deepEqual(byId.get('IFC4/IfcStructuralLoadTemperature').own, ['Name', 'DeltaTConstant', 'DeltaTY', 'DeltaTZ']);
   assert.deepEqual(byId.get('IFC2X3/IfcStructuralLoadTemperature').own, ['Name', 'DeltaT_Constant', 'DeltaT_Y', 'DeltaT_Z']);
+});
+
+test('create scene: every expected value names an attribute of that entity in every schema the step runs in', () => {
+  const { tables } = deriveCatalogue(ROOT);
+  const bad = [];
+  for (const schema of Object.keys(tables)) {
+    for (const step of stepsFor(schema)) {
+      for (const [entity, expect] of Object.entries(step.emits)) {
+        const attrs = tables[schema].table.get(entity)?.attributes;
+        if (!attrs) { bad.push(`${step.id}: ${schema} has no ${entity}`); continue; }
+        for (const attr of Object.keys(expect)) if (!attrs.includes(attr)) bad.push(`${step.id}: ${schema} ${entity} has no ${attr}`);
+      }
+    }
+  }
+  assert.ok(SCENE.length > 0);
+  assert.deepEqual(bad, []);
 });
 
 test('not-applicable rules are by family and schema, never per row', () => {

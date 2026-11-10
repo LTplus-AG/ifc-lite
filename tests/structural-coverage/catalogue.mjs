@@ -135,7 +135,7 @@ export function deriveCatalogue(root) {
         rooted: c.includes('IfcRoot'),
         attributes: e.attributes,
         own: ownAttributes(tables, schema, e.name, d.family),
-        inHopPartner: CONVERT_HOP[schema] ? tables[CONVERT_HOP[schema]].table.has(e.name) : false,
+        inHopPartner: Boolean(tables[CONVERT_HOP[schema]]?.table.has(e.name)),
       });
     }
   }

@@ -188,11 +188,13 @@ async function main(argv) {
     return 2;
   }
   let baseline = null;
-  try {
-    baseline = check ? JSON.parse(readFileSync(check, 'utf8')) : null;
-  } catch (e) {
-    console.error(`score: cannot read the --check baseline ${rel(check)}: ${e.message}`);
-    return 2;
+  if (check) {
+    try {
+      baseline = JSON.parse(readFileSync(check, 'utf8'));
+    } catch (e) {
+      console.error(`score: cannot read the --check baseline ${rel(check)}: ${e.message}`);
+      return 2;
+    }
   }
   if (baseline && baseline.schema !== SUMMARY_SCHEMA) { console.error(`score: ${rel(check)} is not an ${SUMMARY_SCHEMA} summary`); return 2; }
   let summary;

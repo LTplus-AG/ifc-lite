@@ -99,7 +99,7 @@ export function PlaygroundChat({
   // Physical dispatch lifetime outlives a user Stop if the tool cannot abort.
   const dispatchPending = useRef(false);
   const [dispatching, setDispatching] = useState(false);
-  const markUserStop = useRef<() => void>(() => undefined);
+  const stopIntent = useRef({ userStopped: false });
   const { busy: isStreaming, start, reset } = useAsyncRun({ key: model, label: 'playground conversation' });
   useEffect(() => {
     setMessages(prior => prior.map(message => message.pending ? { ...message, pending: false } : message));
@@ -174,8 +174,8 @@ export function PlaygroundChat({
       }
       return start(async ({ signal, isCurrent }) => {
         const loadId = loadCounter.current;
-        let userStopped = false;
-        markUserStop.current = () => { userStopped = true; };
+        const intent = { userStopped: false };
+        stopIntent.current = intent;
         setError(null);
 
         // Prepend a tiny system-note prefix when files were attached so the
@@ -213,7 +213,7 @@ export function PlaygroundChat({
             },
             onToolResult: call => {
               // A completed effect is history even after Stop. IFC swaps retire it.
-              if (loadCounter.current !== loadId || (!isCurrent() && !userStopped)) return;
+              if (loadCounter.current !== loadId || (!isCurrent() && !intent.userStopped)) return;
               setMessages(prior => prior.map(message => message.id === assistantMessage.id
                 ? { ...message, toolCalls: message.toolCalls?.map(previous => previous.id === call.id ? call : previous) }
                 : message));
@@ -246,7 +246,7 @@ export function PlaygroundChat({
   );
 
   const stop = () => {
-    markUserStop.current();
+    stopIntent.current.userStopped = true;
     reset();
     setMessages(prior => prior.map(message => message.pending
       ? { ...message, pending: false, ...(message.text ? {} : { displayTextKey: 'mcp.playgroundChat.stopped' as const }) }

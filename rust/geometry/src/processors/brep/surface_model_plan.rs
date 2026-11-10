@@ -97,23 +97,31 @@ fn lower_entry(
     quality: TessellationQuality,
     rtc_file_units: Option<(f64, f64, f64)>,
 ) -> Option<SurfaceFace> {
-    // Decode the face entity to check its type: some exporters use
-    // IfcAdvancedFace here, which requires surface processing.
-    let face = decoder.decode_by_id(face_id).ok()?;
-    if face.ifc_type == IfcType::IfcAdvancedFace {
-        // A capped B-spline curve EDGE (#4901) inside a still-OK face is
-        // deliberately NOT drained here: the router owns the single
-        // authoritative drain, and the captured report is replayed in order.
-        return Some(match lower_face(&face, decoder, quality, rtc_file_units) {
-            Ok(plan) => SurfaceFace::Advanced { face_id, plan },
-            Err(error) => SurfaceFace::RefusedAdvanced { face_id, error: error.to_string() },
-        });
-    }
+    // Only the face's type is read from its decode: some exporters use
+    // IfcAdvancedFace here, which requires surface processing. A plain
+    // `IFCFACE((..))` record is proven an `IfcFace` from its bytes, so the
+    // decode (and its allocations) is skipped for it; it would decode to the
+    // same type and could not fail.
+    let face_type = if decoder.is_plain_face(face_id) {
+        IfcType::IfcFace
+    } else {
+        let face = decoder.decode_by_id(face_id).ok()?;
+        if face.ifc_type == IfcType::IfcAdvancedFace {
+            // A capped B-spline curve EDGE (#4901) inside a still-OK face is
+            // deliberately NOT drained here: the router owns the single
+            // authoritative drain, and the captured report is replayed in order.
+            return Some(match lower_face(&face, decoder, quality, rtc_file_units) {
+                Ok(plan) => SurfaceFace::Advanced { face_id, plan },
+                Err(error) => SurfaceFace::RefusedAdvanced { face_id, error: error.to_string() },
+            });
+        }
+        face.ifc_type
+    };
     let bound_ids = decoder.get_entity_ref_list_fast(face_id)?;
-    let (outer, holes) = read_simple_face_bounds(&face.ifc_type, bound_ids, decoder)?;
+    let (outer, holes) = read_simple_face_bounds(&face_type, bound_ids, decoder)?;
     let outer = outer.filter(|points| points.len() >= 3)?;
     Some(SurfaceFace::Simple {
-        face_type: face.ifc_type,
+        face_type,
         outer,
         holes,
     })

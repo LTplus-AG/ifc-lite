@@ -169,6 +169,8 @@ pub(super) struct EngineIdentity {
     generation: u64,
     /// `ifc_lite_geometry::resource::stop_events` at the snapshot.
     stops: u64,
+    /// `ifc_lite_core::scan_report_events` at the snapshot.
+    reports: u64,
 }
 
 impl EngineIdentity {
@@ -182,11 +184,12 @@ impl EngineIdentity {
         build.extend_from_slice(salt);
         // Stops first: a stop that lands while the policy is read is still seen.
         let stops = ifc_lite_geometry::resource::stop_events();
+        let reports = ifc_lite_core::scan_report_events();
         let (generation, policy) = ifc_lite_geometry::output_policy::coherent_output_policy()?;
         let mut policy = policy.canonical_bytes();
         policy.push(u8::from(crate::element::degenerate_backstop_disabled()));
         policy.extend_from_slice(&(rayon::current_num_threads() as u64).to_le_bytes());
-        Some(Self { build, policy, generation, stops })
+        Some(Self { build, policy, generation, stops, reports })
     }
 
     pub(super) fn digest(&self) -> [u8; 32] {
@@ -207,6 +210,13 @@ impl EngineIdentity {
     /// unrelated caller's stop also counts.
     pub(super) fn resource_stopped(&self) -> bool {
         ifc_lite_geometry::resource::stop_events() != self.stops
+    }
+
+    /// A scan diagnostic (refused records, malformed file) was emitted through
+    /// core's report sink since this snapshot. Conservative: another pass's
+    /// report also counts.
+    pub(super) fn scan_reported(&self) -> bool {
+        ifc_lite_core::scan_report_events() != self.reports
     }
 }
 

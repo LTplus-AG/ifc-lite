@@ -210,18 +210,24 @@ impl ResultCache {
         publish: Option<Publish<'_>>,
     ) -> CachedProcessing {
         let started = Instant::now();
-        let result = match &self.config.pass_hook {
-            Some(hook) => crate::process(content, request, &mut HookSink(hook, 0)),
-            None => crate::process(content, request, &mut ()),
+        let (result, observed) = match &self.config.pass_hook {
+            Some(hook) => crate::processor::process_observed(content, request, &mut HookSink(hook, 0)),
+            None => crate::processor::process_observed(content, request, &mut ()),
         };
         report.work.process = started.elapsed();
         if let Some(Publish { engine, .. }) = &publish {
             // Any policy setter during the pass, even one undone before it
             // ended, may have produced mixed output that is not this key's.
+            // A job of THIS pass ran under foreign resource state (decided by
+            // the pass itself, PR #9614 review 3, R3-3); or any stop happened
+            // anywhere during it; or it emitted a scan report a replay would
+            // not repeat (R3-4).
             let skip = if engine.policy_changed() {
                 Some(PublishOutcome::SkippedPolicyChanged)
-            } else if engine.resource_stopped() {
+            } else if observed.foreign_resource_scope || engine.resource_stopped() {
                 Some(PublishOutcome::SkippedResourceStop)
+            } else if engine.scan_reported() {
+                Some(PublishOutcome::SkippedScanReported)
             } else {
                 None
             };

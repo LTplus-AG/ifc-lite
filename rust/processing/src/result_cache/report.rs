@@ -79,9 +79,14 @@ pub enum PublishOutcome {
     /// An output-policy setter ran while the pass ran (even one undone before
     /// it ended), so the result may mix policies and is not this key's.
     SkippedPolicyChanged,
-    /// A product somewhere in the process was refused, cancelled or degraded
-    /// by resource state while the pass ran; the result may be incomplete.
+    /// A job of this pass ran under resource state it did not install (a
+    /// stopped terminal domain, another caller's account), or a product
+    /// somewhere in the process was stopped while it ran: the result may be
+    /// incomplete.
     SkippedResourceStop,
+    /// The pass emitted a scan diagnostic (refused records, malformed file)
+    /// through core's report sink, which a replay would not repeat.
+    SkippedScanReported,
     /// The result breaks a structural invariant the decoder enforces.
     Unencodable(String),
     Failed(String),

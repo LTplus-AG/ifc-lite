@@ -150,3 +150,42 @@ fn a_stop_during_the_pass_is_never_stored() {
     assert_eq!(cache(&dir, CacheMode::ReadOnly).process(&content, &per_product()).report.outcome, CacheOutcome::Miss(MissReason::Absent));
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// Inventory rows (PR #9614 review 3): two process/thread state channels that
+/// reach the pipeline but are proven not to change its result, so the cache
+/// neither keys them nor bypasses on them.
+/// - `ifc_lite_geometry::analytic::with_source_capture` (thread-local): fills
+///   analytic `source` fields for exports, not `ProcessingResult`.
+/// - `ifc_lite_geometry::progress::set_hook` (process-global, set once): a
+///   liveness heartbeat; a hit simply makes no ticks.
+#[test]
+fn source_capture_and_the_progress_hook_are_output_neutral() {
+    let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    static TICKS: AtomicUsize = AtomicUsize::new(0);
+    fn tick() {
+        TICKS.fetch_add(1, Ordering::Relaxed);
+    }
+    let content = fixture();
+    let request = ProcessingRequest::full_pass();
+    let pool = rayon::ThreadPoolBuilder::new().num_threads(1).build().unwrap();
+    let plain = pool.install(|| result_fingerprint(&process(&content, &request, &mut ()), false));
+    let captured = pool.install(|| {
+        ifc_lite_geometry::analytic::with_source_capture(|| result_fingerprint(&process(&content, &request, &mut ()), false))
+    });
+    assert_eq!(captured, plain, "source capture changed the result");
+    let installed = ifc_lite_geometry::progress::set_hook(tick);
+    let hooked = pool.install(|| result_fingerprint(&process(&content, &request, &mut ()), false));
+    assert_eq!(hooked, plain, "the progress hook changed the result");
+    if installed {
+        assert!(TICKS.load(Ordering::Relaxed) > 0, "the hook really ran");
+    }
+    // And the cache treats neither as a reason to bypass.
+    let dir = fresh_dir("neutral");
+    let rw = cache(&dir, CacheMode::ReadWrite);
+    let cold = pool.install(|| rw.process(&content, &request));
+    assert!(matches!(cold.report.publish, PublishOutcome::Published { .. }), "{:?}", cold.report.publish);
+    let hit = pool.install(|| ifc_lite_geometry::analytic::with_source_capture(|| rw.process(&content, &request)));
+    assert_eq!(hit.report.outcome, CacheOutcome::Hit);
+    assert_eq!(result_fingerprint(&hit.result, false), plain);
+    let _ = std::fs::remove_dir_all(&dir);
+}

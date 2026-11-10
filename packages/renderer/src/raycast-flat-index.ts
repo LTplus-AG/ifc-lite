@@ -11,8 +11,8 @@ import type { SceneContents } from './scene-contents.js';
 export type RaycastScene = SceneContents & {
   getTexturedMeshes?(): readonly Pick<MeshData, 'expressId' | 'modelIndex'>[];
   getPickGeometryRevision?(): number;
-  /** Called after host-budget eviction drops CPU pieces without a revision bump. */
-  onHostEviction?(listener: () => void): void;
+  /** CPU geometry discarded by host eviction or explicit release. */
+  onHostEviction?(listener: () => void): (() => void) | void;
 };
 
 type DrawRef = Pick<MeshData, 'expressId' | 'modelIndex'>;
@@ -42,11 +42,12 @@ export class RaycastFlatIndex {
   private readonly bvh = new BVH();
   private flat: FlatPieces | null = null;
   private bvhPieces: MeshData[] | null = null;
+  private readonly unsubscribe: (() => void) | void;
 
   constructor(private readonly scene: RaycastScene, private readonly bvhThreshold: number) {
     // Cold eviction exists to free those typed arrays, so let go of them now
     // rather than at the next ray.
-    scene.onHostEviction?.(() => this.invalidate());
+    this.unsubscribe = scene.onHostEviction?.(() => this.invalidate());
   }
 
   /** Identity and revision checks only. An adapter without a revision is never known fresh. */
@@ -129,5 +130,12 @@ export class RaycastFlatIndex {
   invalidate(): void {
     this.flat = null;
     this.bvhPieces = null;
+    this.bvh.clear();
+  }
+
+  /** Discarded engines must stop retaining a scene listener (#9512). */
+  dispose(): void {
+    this.unsubscribe?.();
+    this.invalidate();
   }
 }

@@ -859,6 +859,52 @@ describe('RaycastEngine flat index (#9504)', () => {
     assert.equal(aim(engine), undefined, 'the replaced pieces must be seen without a revision');
   });
 
+  // #9512: memory-release invariants require checking retained allocations,
+  // not just the next query (which would lazily rebuild and mask retention).
+  function heldIndex(engine: RaycastEngine) {
+    return (engine as unknown as { flatIndex: {
+      flat: unknown; bvhPieces: unknown; bvh: {
+        meshAABBs: unknown; order: unknown; nodeBounds: unknown; nodeLinks: unknown;
+      };
+    } }).flatIndex;
+  }
+  function assertReleased(engine: RaycastEngine) {
+    const index = heldIndex(engine);
+    assert.equal(index.flat, null);
+    assert.equal(index.bvhPieces, null);
+    for (const key of ['meshAABBs', 'order', 'nodeBounds', 'nodeLinks'] as const) {
+      assert.equal(index.bvh[key], null, `released ${key} must not remain reachable`);
+    }
+  }
+
+  it('explicit geometry release immediately drops warmed pieces and BVH buffers (#9512)', () => {
+    const scene = largeScene();
+    const engine = engineFor(scene, orthoCameraLookingDownZ([0, 0, 0], 50));
+    assert.equal(aim(engine), 7);
+    assert.ok(heldIndex(engine).bvh.nodeBounds, 'setup: a large index is allocated');
+    scene.releaseGeometryData();
+    assert.equal(scene.isGeometryDataReleased(), true);
+    assertReleased(engine);
+    assert.equal(aim(engine), undefined, 'released geometry cannot be picked');
+  });
+
+  it('discarded engines unsubscribe and release allocations without disabling active engines (#9512)', () => {
+    const scene = largeScene();
+    const camera = orthoCameraLookingDownZ([0, 0, 0], 50);
+    const discarded = Array.from({ length: 3 }, () => engineFor(scene, camera));
+    const active = engineFor(scene, camera);
+    for (const engine of [...discarded, active]) assert.equal(aim(engine), 7);
+    const listeners = (scene as unknown as { hostEvictionListeners: Set<() => void> }).hostEvictionListeners;
+    assert.equal(listeners.size, 4, 'setup: four engines hold subscriptions');
+    for (const engine of discarded) { engine.dispose(); engine.dispose(); assertReleased(engine); }
+    assert.equal(listeners.size, 1, 'only the live engine remains subscribed');
+    assert.equal(aim(active), 7);
+    scene.releaseGeometryData();
+    assertReleased(active);
+    active.dispose();
+    assert.equal(listeners.size, 0);
+  });
+
   // #9512 review: cold eviction keeps the pick revision (#8998) and the draw
   // lists, so nothing the index checks moves; it must still let go of the
   // evicted typed arrays, which is the whole point of the host budget.
@@ -872,7 +918,8 @@ describe('RaycastEngine flat index (#9504)', () => {
     } as unknown as GPUDevice;
     const pipeline = { getUniformBufferSize: () => 256, getBindGroupLayout: () => ({}) } as unknown as RenderPipeline;
     const quad = makeQuad({ expressId: 7 });
-    scene.appendToBatches([quad], device, pipeline);
+    const quads = [quad, ...Array.from({ length: 120 }, (_, i) => makeQuad({ expressId: 100 + i, translate: [1_000 + i * 20, 0, 0] }))];
+    scene.appendToBatches(quads, device, pipeline);
     const engine = engineFor(scene, orthoCameraLookingDownZ([0, 0, 0], 50));
     assert.equal(engine.raycastScene(400, 300)?.intersection.expressId, 7);
     assert.equal(engine.isCacheWarm(), true);
@@ -885,6 +932,7 @@ describe('RaycastEngine flat index (#9504)', () => {
     assert.equal(scene.getMeshDataPieces(7), undefined, 'setup: the bucket went cold');
     assert.equal(scene.getPickGeometryRevision(), revision, 'setup: eviction keeps the pick revision');
 
+    assertReleased(engine);
     assert.equal(engine.isCacheWarm(), false, 'the index still holds the evicted pieces');
     assert.equal(engine.raycastScene(400, 300), null, 'evicted geometry is not pickable, as before #9504');
   });

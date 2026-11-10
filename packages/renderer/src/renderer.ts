@@ -3233,7 +3233,7 @@ export class Renderer {
 
     /** Invalidate BVH cache (call when geometry changes). */
     invalidateBVHCache(): void { this.raycastEngine.invalidateBVHCache(); }
-    /** True when the next raycastScene() rebuilds nothing, so a caller can warm it off the gesture path. */
+    /** True when the flat index is warm; ray-hit instance geometry may still materialize per ray. */
     isRaycastCacheWarm(): boolean { return this.raycastEngine.isCacheWarm(); }
 
     /**

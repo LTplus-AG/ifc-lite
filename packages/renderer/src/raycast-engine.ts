@@ -318,9 +318,17 @@ export class RaycastEngine {
         this.flatIndex.invalidate();
     }
 
-    /** True when the next raycast rebuilds nothing. */
+    /** True when the flat index is warm; instances can still materialize per ray. */
     isCacheWarm(): boolean {
         return this.flatIndex.isWarm();
+    }
+
+    /** Release this engine before discarding it; create a new engine to resume picking. */
+    dispose(): void {
+        this.flatIndex.dispose();
+        this.snapDetector.clearCache();
+        this.pointCloudProvider = null;
+        this.sourceSnapCurves = [];
     }
 
     /** Get the raycaster for advanced usage. */

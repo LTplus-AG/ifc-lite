@@ -979,7 +979,7 @@ The renderer uses a Bounding Volume Hierarchy for fast raycasting:
 // Clear BVH cache when geometry changes significantly
 renderer.invalidateBVHCache();
 
-// True when the next raycastScene() rebuilds nothing
+// True when the flat index is warm; instances may still materialize per ray
 const raycastReady = renderer.isRaycastCacheWarm();
 
 // Moving or rotating meshes in place keeps every piece's identity, so the BVH

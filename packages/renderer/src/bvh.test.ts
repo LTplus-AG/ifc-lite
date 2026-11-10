@@ -344,3 +344,17 @@ describe('BVH', () => {
     });
   });
 });
+
+// #9512: analytic crossing at t=1 despite an overflowing reciprocal on Y.
+it('keeps nonzero subnormal directions in the BVH slab test (#9512)', () => {
+  const mesh = boxMesh(42, 1.5, 0.5, 0.5, 0.5);
+  const meshes = Array.from({ length: 101 }, () => mesh);
+  const bvh = new BVH();
+  bvh.build(meshes);
+  for (const sign of [-1, 1]) {
+    const ray: Ray = { origin: { x: 0, y: sign < 0 ? 1 : -1e-309, z: 0.5 },
+      direction: { x: 1, y: sign * 1e-309, z: 0 } };
+    // Positive ray enters Y=0 at t=1; negative ray starts on Y=1 and enters.
+    assert.ok(bvh.getMeshesForRay(ray, meshes).includes(0));
+  }
+});

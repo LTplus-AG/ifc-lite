@@ -333,7 +333,7 @@ export class Scene {
   private coldRestoresInFlight: Map<string, Promise<void>> = new Map();
   private hostOverBudgetWarned = false;
   private hostEnforceCountdown = 0;
-  private readonly hostEvictionListeners: Array<() => void> = [];
+  private readonly hostEvictionListeners = new Set<() => void>();
   // LOD1 builds (issue #1682 phase 5): off unless the app enables them.
   private lodBuildsEnabled = false;
   // 12-byte quantized batch vertices (issue #1682 phase 6): off unless the
@@ -628,8 +628,8 @@ export class Scene {
     this.hostOverBudgetWarned = false;
   }
 
-  /** Notify after warm->cold demotion drops bucket CPU pieces, so caches holding them let go. */
-  onHostEviction(listener: () => void): void { this.hostEvictionListeners.push(listener); }
+  /** Notify caches when CPU geometry is discarded; return an unsubscribe handle. */
+  onHostEviction(listener: () => void): () => void { this.hostEvictionListeners.add(listener); return () => { this.hostEvictionListeners.delete(listener); }; }
 
   /** CPU bytes held by bucket meshData (positions + normals + indices). */
   getResidentCpuBytes(): number { return residentCpuBytes(this.buckets.values()); }
@@ -2326,7 +2326,7 @@ export class Scene {
     this.dropAllPartialCaches(); this.fragmentPieces.retainOnly([]);
 
     this.geometryReleased = true;
-
+    for (const listener of this.hostEvictionListeners) listener();
     console.log(
       `[Scene] Released JS geometry data. ${this.boundingBoxes.size} bounding boxes cached. ` +
       `${this.batchedMeshes.length} GPU batches retained.`

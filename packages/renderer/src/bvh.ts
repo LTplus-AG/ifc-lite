@@ -53,14 +53,19 @@ export class BVH {
   private nodeCount = 0;
   private stack = new Int32Array(64);
 
-  /**
-   * Build BVH from meshes
-   */
+  /** Release every geometry-sized allocation (#9512). */
+  clear(): void {
+    this.nodeCount = 0;
+    this.meshAABBs = this.order = this.nodeBounds = this.nodeLinks = null;
+    if (this.stack.length > 64) this.stack = new Int32Array(64);
+  }
+
+  /** Build BVH from meshes. */
   build(meshes: readonly MeshData[]): void {
     const n = meshes.length;
     this.nodeCount = 0;
     if (n === 0) {
-      this.meshAABBs = this.order = this.nodeBounds = this.nodeLinks = null;
+      this.clear();
       return;
     }
 
@@ -112,9 +117,9 @@ export class BVH {
     const { origin, direction } = ray;
     const o = [origin.x, origin.y, origin.z];
     const inv = [1 / direction.x, 1 / direction.y, 1 / direction.z];
-    // Only a component whose reciprocal overflows is parallel: any finite one,
-    // however small, still crosses slabs and must be slab-tested (#9504).
-    const parallel = [!Number.isFinite(inv[0]), !Number.isFinite(inv[1]), !Number.isFinite(inv[2])];
+    const d = [direction.x, direction.y, direction.z];
+    // A nonzero component can cross a slab even when its reciprocal overflows (#9512).
+    const parallel = d.map(component => component === 0);
     const bounds = this.nodeBounds!, links = this.nodeLinks!, order = this.order!;
     let stack = this.stack;
     let top = 0;
@@ -131,7 +136,9 @@ export class BVH {
           if (o[axis] < low || o[axis] > high) continue traversal;
           continue;
         }
-        let t0 = (low - o[axis]) * inv[axis], t1 = (high - o[axis]) * inv[axis];
+        const reciprocal = inv[axis];
+        let t0 = Number.isFinite(reciprocal) ? (low - o[axis]) * reciprocal : (low - o[axis]) / d[axis];
+        let t1 = Number.isFinite(reciprocal) ? (high - o[axis]) * reciprocal : (high - o[axis]) / d[axis];
         if (t0 > t1) { const swap = t0; t0 = t1; t1 = swap; }
         if (t0 > tmin) tmin = t0;
         if (t1 < tmax) tmax = t1;

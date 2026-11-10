@@ -11,10 +11,11 @@ import { Renderer } from '@ifc-lite/renderer';
 import { useViewerStore } from '@/store';
 import { setGlobalRendererRef } from '@/hooks/useBCF';
 import { pdfReferenceAnnotationFixture } from '@/test/pdf-reference-annotation-fixture';
-import { render, cleanup, click } from '@/test/render';
+import { render, cleanup, click, type } from '@/test/render';
 import type { AppearanceWorkerRequest, AppearanceWorkerResponse } from '@/lib/appearance/planner-types';
 import type { PdfFillAnnotationPlan } from '@/lib/appearance/pdf/fill-plan-types';
 import type { PreparedPdfVectorPage } from '@/lib/appearance/pdf/vector-types';
+import { AppearanceAnnotationFields } from './AppearanceAnnotationFields';
 import { PdfAnnotationFields } from './PdfAnnotationFields';
 import { registerLocale, setLocale } from '@/i18n';
 
@@ -76,12 +77,12 @@ test('PDF preview cancellation, changed inputs and stale models cannot enable la
     const start = async () => { mode.pending = undefined; click(button('Prepare vector preview')!); await until(() => !!mode.pending); };
     await start(); const lateCancel = mode.pending!;
     click(button('Cancel')!); await act(async () => { lateCancel(); });
-    assert.ok(mode.terminations > 0); assert.equal(button('Create annotation'), undefined);
+    assert.ok(mode.terminations > 0); assert.equal(button('Create annotation') === undefined, true);
     assert.match(ui.textContent ?? '', /cancelled/);
     await start(); const lateInput = mode.pending!;
     assert.match(ui.textContent ?? '', /Exact conversion: 2 convertible paths/, 'the report stays visible while the plan is prepared');
     click(button('Change annotation name')!); await act(async () => { lateInput(); });
-    assert.equal(button('Create annotation'), undefined, 'changed visible Name cannot reuse the previous planned IFC metadata');
+    assert.equal(button('Create annotation') === undefined, true, 'changed visible Name cannot reuse the previous planned IFC metadata');
     await start(); await act(async () => { mode.pending!(); });
     await until(() => !!button('Create annotation') && !button('Create annotation')!.disabled);
     assert.equal(fixture.view.getNewEntities().length, 0, 'ready preview still has no authored IFC rows');
@@ -111,7 +112,7 @@ test('partial pages show the report, need explicit acceptance and record their o
     assert.match(ui.textContent ?? '', /Partial conversion: 1 visible omission would be left out; 2 paths convert/);
     assert.match(ui.textContent ?? '', /1 × Text runs — region x 20–/, 'the /UserUnit 2 control page reports its extent in points');
     assert.match(ui.textContent ?? '', /accept the partial conversion to prepare it/);
-    assert.equal(button('Create annotation'), undefined);
+    assert.equal(button('Create annotation') === undefined, true);
     assert.ok(button('Prepare partial conversion')!.disabled, 'no partial preparation without acceptance');
     click(checkbox()!);
     assert.ok(!button('Prepare partial conversion')!.disabled);
@@ -147,8 +148,44 @@ test('partial pages show the report, need explicit acceptance and record their o
     click(button('Prepare vector preview')!);
     await until(() => /raster reference only/.test(ui.textContent ?? ''));
     assert.ok(button('Prepare vector preview')!.disabled, 'a raster-only page is never offered as editable vectors');
-    assert.equal(ui.querySelector('input[type="checkbox"]'), null);
-    assert.equal(button('Create annotation'), undefined);
+    assert.equal(ui.querySelector('input[type="checkbox"]') === null, true);
+    assert.equal(button('Create annotation') === undefined, true);
     assert.equal(raster.view.getNewEntities().length, 0);
   } finally { cleanup(); restoreRaster(); raster.dispose(); api.free(); }
+});
+
+test('PDF preparation locks the parent annotation metadata (C-13)', async t => {
+  const api = await nativeApi(t); if (!api) return;
+  const fixture = await pdfReferenceAnnotationFixture();
+  const mode: WorkerMode = { deferFill: true, terminations: 0 }, restore = installWorker(api, mode);
+  try {
+    const ui = render(<AppearanceAnnotationFields referenceId={fixture.reference.id} name="Drawing" disabled={false} />);
+    const details = ui.querySelector('details')!;
+    await act(async () => { details.open = true; details.dispatchEvent(new Event('toggle')); });
+    const representation = ui.querySelector<HTMLSelectElement>('select[aria-label="Annotation representation"]')!;
+    assert.ok(!!representation, 'parent representation control renders');
+    act(() => { representation.value = 'fills'; representation.dispatchEvent(new Event('change', { bubbles: true })); });
+    const button = buttons(ui);
+    click(button('Prepare vector preview')!);
+    await until(() => !!mode.pending);
+    const name = ui.querySelector<HTMLInputElement>('fieldset input')!;
+    // Happy DOM has no native keyboard default: a disabled control accepts no user typing.
+    const typeName = (value: string) => { if (!name.disabled && !name.closest('fieldset[disabled]')) type(name, value); };
+    const previousName = name.value;
+    typeName('Changed during preparation');
+    assert.equal(name.value, previousName, 'typing cannot change Name during PDF preparation');
+    assert.ok(!!mode.pending, 'typing must not cancel the in-flight PDF plan');
+    assert.doesNotMatch(ui.textContent ?? '', /cancelled/);
+    await act(async () => { details.open = false; details.dispatchEvent(new Event('toggle')); });
+    typeName('Changed after closing PDF');
+    assert.equal(name.value, 'Changed after closing PDF', 'closing PDF preparation unlocks Name');
+    await act(async () => { details.open = true; details.dispatchEvent(new Event('toggle')); });
+    mode.pending = undefined;
+    click(button('Prepare vector preview')!);
+    await until(() => !!mode.pending);
+    click(button('Cancel')!);
+    assert.match(ui.textContent ?? '', /cancelled/);
+    typeName('Changed after cancellation');
+    assert.equal(name.value, 'Changed after cancellation');
+  } finally { cleanup(); restore(); fixture.dispose(); api.free(); }
 });

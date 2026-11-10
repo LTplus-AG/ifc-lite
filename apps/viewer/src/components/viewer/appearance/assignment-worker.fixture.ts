@@ -11,11 +11,13 @@ export function installAssignmentWorker() {
   const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'Worker');
   const waiting: Array<() => void> = [];
   let hold = false;
+  const instances: Array<{ stopped: boolean }> = [];
   class NativeWorker implements AppearanceWorker {
     onmessage: ((event: MessageEvent<AppearanceWorkerResponse>) => void) | null = null;
     onerror: ((event: ErrorEvent) => void) | null = null;
     onmessageerror = null;
     stopped = false;
+    constructor() { instances.push(this); }
     terminate() { this.stopped = true; }
     postMessage(job: AppearanceWorkerRequest) {
       const execute = () => queueMicrotask(() => {
@@ -36,7 +38,7 @@ export function installAssignmentWorker() {
     }
   }
   Object.defineProperty(globalThis, 'Worker', { configurable: true, value: NativeWorker });
-  return { hold() { hold = true; }, waiting: () => waiting.length,
+  return { active: () => instances.filter(worker => !worker.stopped).length, hold() { hold = true; }, waiting: () => waiting.length,
     release() { hold = false; for (const execute of waiting.splice(0)) execute(); },
     dispose() { waiting.length = 0; if (descriptor) Object.defineProperty(globalThis, 'Worker', descriptor); else Reflect.deleteProperty(globalThis, 'Worker'); },
   };

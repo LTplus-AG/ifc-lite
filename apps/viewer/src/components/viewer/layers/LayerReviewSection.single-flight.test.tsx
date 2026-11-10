@@ -35,7 +35,7 @@ beforeEach(() => {
   capture = installHeldCapture();
   useViewerStore.setState({ layerStackPathToId: new Map([['2O2Fr$t4X7Zf8NOew3FLOH', 7]]), selectedEntityId: 7, selectedEntityIds: new Set([7]) });
 });
-afterEach(() => { cleanup(); capture.dispose(); mock.restoreAll(); document.body.innerHTML = ''; });
+afterEach(() => { cleanup(); useViewerStore.setState({ collabSelfToken: null }); capture.dispose(); mock.restoreAll(); document.body.innerHTML = ''; });
 
 async function readyToComment(): Promise<HTMLButtonElement> {
   render(<LayerReviewSection client={client} candidateId="candidate-1" refName="main" />);
@@ -158,4 +158,63 @@ for (const phase of ['post', 'refresh'] as const) test(`C-1 retiring a comment d
   await act(async () => finish()); await settle();
   assert.equal(reads, phase === 'post' ? 1 : 2, 'an abandoned post does not refresh');
   assert.equal(success.mock.callCount(), 0, 'an abandoned refresh does not toast');
+});
+
+test('#9566 a retired Open review push failure cannot toast into another candidate', async () => {
+  const { toast } = await import('@/components/ui/toast');
+  const errors = mock.method(toast, 'error', () => undefined);
+  const { getBrowserLayerStore } = await import('@/lib/layers/browser-store');
+  const { computeLayerId } = await import('@ifc-lite/ifcx');
+  const file = { header: { id: '', ifcxVersion: 'ifcx_alpha', dataVersion: '1.0.0', author: 'fixture', timestamp: '2026-01-01T00:00:00Z' }, imports: [], schemas: {}, data: [] };
+  const id = computeLayerId(file);
+  (await getBrowserLayerStore()).storeLayer({ ...file, header: { ...file.header, id } });
+  let reject!: (reason: Error) => void, pending = false, select!: (id: string) => void;
+  const registry = { listReviews: async () => ({ reviews: [] }), pushLayer: () => new Promise((_, fail) => { pending = true; reject = fail; }) } as unknown as LayerRegistryClient;
+  function Host() { const [candidate, setCandidate] = useState(id); select = setCandidate; return <LayerReviewSection client={registry} candidateId={candidate} refName="main" />; }
+  render(<Host />); await settle();
+  act(() => [...document.querySelectorAll('button')].find(button => button.textContent?.trim() === 'Open review')!.click());
+  await waitFor(() => pending, 'push pending');
+  act(() => select('replacement'));
+  await act(async () => reject(new Error('retired push failed'))); await settle();
+  assert.equal(errors.mock.callCount(), 0);
+});
+
+for (const outcome of ['success', 'failure'] as const) test(`#9566 older ${outcome} refresh cannot overwrite a posted comment`, async () => {
+  const warnings = mock.method(console, 'warn', () => undefined);
+  let reads = 0, finish!: () => void;
+  const updated: RegistryReviewSummary = { ...REVIEW, topics: [{ guid: 'posted-topic', title: 'Posted note', entity: '2O2Fr$t4X7Zf8NOew3FLOH', createdAt: REVIEW.openedAt }] };
+  mock.method(client, 'listReviews', () => {
+    reads++;
+    if (reads === 2) return new Promise<{ reviews: RegistryReviewSummary[] }>((resolve, reject) => {
+      finish = () => outcome === 'success' ? resolve({ reviews: [REVIEW] }) : reject(new Error('older read failed'));
+    });
+    return Promise.resolve({ reviews: [reads > 2 ? updated : REVIEW] });
+  });
+  const comment = await readyToComment();
+  act(() => document.querySelector<HTMLButtonElement>('button[aria-label="Refresh review"]')!.click());
+  act(() => document.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click());
+  act(() => comment.click());
+  await waitFor(() => Boolean(document.body.textContent?.includes('Posted note')), 'post refresh shows the new topic');
+  await act(async () => finish()); await settle();
+  assert.equal(document.body.textContent?.includes('Posted note'), true);
+  assert.equal(warnings.mock.calls.filter(call => String(call.arguments[0]) === '[layer review] Refresh failed').length, 0);
+});
+
+test('#9566 token/client replacement resets the draft and ignores an old-client 401', async () => {
+  const warnings = mock.method(console, 'warn', () => undefined);
+  let reads = 0, reject!: (reason: Error) => void, replace!: () => void;
+  useViewerStore.setState({ collabSelfToken: 'fixture-old-context' });
+  const oldClient = { ...client, listReviews: () => ++reads === 1 ? Promise.resolve({ reviews: [REVIEW] }) : new Promise<{ reviews: RegistryReviewSummary[] }>((_, fail) => { reject = fail; }) } as unknown as LayerRegistryClient;
+  const nextClient = { ...client, listReviews: async () => ({ reviews: [REVIEW] }) } as unknown as LayerRegistryClient;
+  function Host() { const [current, setCurrent] = useState(oldClient); replace = () => setCurrent(nextClient); return <LayerReviewSection client={current} candidateId="candidate-1" refName="main" />; }
+  render(<Host />); await settle();
+  type(document.querySelector<HTMLInputElement>('input[aria-label="Review comment title"]')!, 'Old token draft');
+  act(() => document.querySelector<HTMLButtonElement>('button[aria-label="Refresh review"]')!.click());
+  act(() => { useViewerStore.setState({ collabSelfToken: 'fixture-new-context' }); replace(); });
+  await settle();
+  const draft = document.querySelector<HTMLInputElement>('input[aria-label="Review comment title"]')?.value;
+  await act(async () => reject(new Error('401 old client'))); await settle();
+  assert.equal(draft, '', 'a new token owns a fresh review draft');
+  assert.equal(document.querySelectorAll('input[aria-label="Review comment title"]').length, 1);
+  assert.equal(warnings.mock.calls.filter(call => String(call.arguments[0]) === '[layer review] Refresh failed').length, 0);
 });

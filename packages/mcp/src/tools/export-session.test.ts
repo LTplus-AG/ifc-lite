@@ -26,7 +26,9 @@ const boundary = vi.hoisted(() => {
   }
   return { stop, capture, GeometryProcessor };
 });
-vi.mock('@ifc-lite/geometry', () => ({
+// Real module underneath (pure option constants such as RHINO_UNITS); boundary overridden.
+vi.mock('@ifc-lite/geometry', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@ifc-lite/geometry')>()),
   GeometryProcessor: boundary.GeometryProcessor,
   isNoRenderGeometryError: () => false,
 }));

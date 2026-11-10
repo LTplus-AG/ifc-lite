@@ -71,7 +71,7 @@ ifc-lite ships its public npm packages under the `@ifc-lite/*` scope, plus the `
 | [`@ifc-lite/source-dalux`](https://www.npmjs.com/package/@ifc-lite/source-dalux) | Dalux Build (Box) file-source provider for ifc-lite |
 | [`@ifc-lite/source-dropbox`](https://www.npmjs.com/package/@ifc-lite/source-dropbox) | Dropbox file-source provider for ifc-lite |
 | [`@ifc-lite/source-msgraph`](https://www.npmjs.com/package/@ifc-lite/source-msgraph) | Microsoft Graph file-source provider for the signed-in user's own OneDrive |
-| [`@ifc-lite/wasm-lifecycle`](https://www.npmjs.com/package/@ifc-lite/wasm-lifecycle) | Shared WASM engine load-retry classification, cross-realm panic-forwarding and single-flight init lifetime used by the ifc-lite engine clients |
+| [`@ifc-lite/wasm-lifecycle`](https://www.npmjs.com/package/@ifc-lite/wasm-lifecycle) | Shared WASM engine load-retry classification, cross-realm panic-forwarding, single-flight init lifetime and worker RPC dead latch used by the ifc-lite engine and worker clients |
 <!-- END GENERATED: package-index -->
 
 ---

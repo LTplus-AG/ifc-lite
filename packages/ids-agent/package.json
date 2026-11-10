@@ -38,7 +38,8 @@
     "@ifc-lite/ai": "workspace:^",
     "@ifc-lite/data": "workspace:*",
     "@ifc-lite/ids": "workspace:*",
-    "@ifc-lite/ids-authoring": "workspace:*"
+    "@ifc-lite/ids-authoring": "workspace:*",
+    "@ifc-lite/wasm-lifecycle": "workspace:^"
   },
   "peerDependencies": {
     "@anthropic-ai/sdk": ">=0.128.0"

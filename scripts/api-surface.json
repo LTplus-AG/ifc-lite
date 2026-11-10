@@ -6695,6 +6695,16 @@
     "StyleWire: interface",
     "filterStyleWire: function"
   ],
+  "@ifc-lite/geometry/rhino-export": [
+    "RHINO_COORDINATES: const",
+    "RHINO_LAYER_SCHEMES: const",
+    "RHINO_PROPERTIES: const",
+    "RHINO_SCENE_DEFAULTS: const",
+    "RHINO_UNITS: const",
+    "RhinoSceneBuffers: interface",
+    "RhinoSceneExportOptions: interface",
+    "exportRhinoScene: function"
+  ],
   "@ifc-lite/geometry/rtc-rebase": [
     "RtcConvergeResult: interface",
     "RtcRebaseGeometry: interface",

@@ -3033,6 +3033,13 @@ Preserve failed loads alongside successful samples. Listen for renderer crashes
 as well as JavaScript errors, and stop memory sampling on every exit path.
 
 ### Shipped wins
+- **Review startup bundle (#7015):** load the Script panel on demand and keep
+  CodeMirror's shared state module in its own chunk. Assistant text-edit planning
+  still uses `ChangeSet`, while the editor UI stays outside the eager import
+  closure. The production bundle clears the unchanged size ceilings; this is a
+  byte-size verdict, not a measured load-time improvement. **Lesson:** inspect
+  the complete HTML preload closure, and isolate shared state before assuming a
+  dynamic panel import makes its dependencies lazy.
 - **STEP reals valued in the grammar walk (native instruction hillclimb,
   2026-11-10):** `read_step_number` walked every literal once to admit it
   (#7779) and then gave it to `fast_float2`, which walked it again. The walk
@@ -3048,13 +3055,6 @@ as well as JavaScript errors, and stop memory sampling on every exit path.
   five, and a 200k-literal bit-for-bit test against `fast_float2`.
   `parse_step_numeric` (generic, also `f32`) is unchanged: valuing in `f64`
   then narrowing would round twice. Not a wall-time or browser claim.
-- **Review startup bundle (#7015):** load the Script panel on demand and keep
-  CodeMirror's shared state module in its own chunk. Assistant text-edit planning
-  still uses `ChangeSet`, while the editor UI stays outside the eager import
-  closure. The production bundle clears the unchanged size ceilings; this is a
-  byte-size verdict, not a measured load-time improvement. **Lesson:** inspect
-  the complete HTML preload closure, and isolate shared state before assuming a
-  dynamic panel import makes its dependencies lazy.
 - **Firefox spatial-publication stall (#3983):** Chrome-only cold-load timing
   missed an engine-dependent entity-cache eviction cost. Georeference discovery
   runs through the property-set index during React rendering. Restarting a Map

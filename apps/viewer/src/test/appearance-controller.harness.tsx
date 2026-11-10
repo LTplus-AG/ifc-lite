@@ -110,6 +110,7 @@ export async function runAppearanceControllerScenario(
   let stages = 0, nativeBitmaps = 0;
   let collectCancellationNotices = false;
   const cancellationNotices: string[] = [];
+  const cancellationAlerts: boolean[] = [];
   try {
     const source = new TextEncoder().encode(`ISO-10303-21;
 HEADER;
@@ -169,7 +170,10 @@ END-ISO-10303-21;`);
     const mount = async () => {
       root = createRoot(container);
       await act(async () => { root!.render(<StrictMode><Profiler id="appearance-controller" onRender={() => {
-        if (collectCancellationNotices) cancellationNotices.push(container.textContent ?? '');
+        if (collectCancellationNotices) {
+          cancellationNotices.push(container.textContent ?? '');
+          cancellationAlerts.push(!!container.querySelector('[role=alert]'));
+        }
       }}><AppearancePanel /></Profiler></StrictMode>); });
     };
     const unmount = async () => { await act(async () => { root?.unmount(); root = undefined; }); };
@@ -323,6 +327,7 @@ END-ISO-10303-21;`);
           check(cancellationNotices.some(text => text.includes('Preview discarded.')), 'Discard never rendered its cancellation notice');
           check(!cancellationNotices.some(text => /Preparing IFC changes|Saving appearance/.test(text)), 'late commit progress replaced the discard notice');
           check(!cancellationNotices.some(text => /aborted/i.test(text)), 'an obsolete Apply error replaced the discard notice');
+          check(!cancellationAlerts.some(Boolean), 'an obsolete Apply rendered an error alert after Discard');
         } else if (scenario === 'apply-selection') {
           let release!: () => void;
           const held = new Promise<void>(resolve => { release = resolve; });

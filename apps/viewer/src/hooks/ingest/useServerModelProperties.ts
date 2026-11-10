@@ -63,15 +63,12 @@ function start(modelId: string | null, isStale: (() => boolean) | undefined,
       };
     },
   }, { begin: () => ({ kind: 'load', title: 'activityTray.job.load', phase: 'Server properties (geometry remains available)' }) });
-  // Dropping the prior record ends its lease, even when the model id is reused.
-  write(IDLE_RUN);
   void slot.run(owner, async lease => {
     const dataStore = await hydrate(lease.signal);
     if (!dataStore) return;
     await waitForCompletion(modelId, lease.signal);
-    if (lease.isCurrent() && ownsModel()) {
-      // End ownership before replacing the very store identity it protects.
-      lease.succeed();
+    // A rejected settlement must never publish, including after cancellation.
+    if (lease.succeed()) {
       useViewerStore.getState().updateModel(modelId, { ifcDataStore: dataStore });
     }
   }, { scopeIsCurrent: ownsModel, toError: error => {
@@ -80,6 +77,16 @@ function start(modelId: string | null, isStale: (() => boolean) | undefined,
   } });
 }
 
-const properties = { start, cancel: () => useViewerStore.getState().clearServerPropertiesRuns() };
+function fallbackModelId(): string | null {
+  console.warn('[Server properties] Using active-model fallback; pass modelId explicitly.');
+  return useViewerStore.getState().activeModelId;
+}
+
+const properties = {
+  start, fallbackModelId,
+  cancel: (modelId: string | null) => {
+    if (modelId) useViewerStore.getState().setServerPropertiesRun(modelId, IDLE_RUN);
+  },
+};
 /** Store-owned runs survive unmount/remount of every component using this facade. */
 export function useServerModelProperties() { return properties; }

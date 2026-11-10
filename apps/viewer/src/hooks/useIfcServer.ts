@@ -105,7 +105,7 @@ async function isServerAvailable(serverUrl: string, client: IfcServerClient): Pr
  * and ServerClient lifecycle
  */
 export function useIfcServer() {
-  const { start: hydrateProperties, cancel: cancelProperties } = useServerModelProperties();
+  const { start: hydrateProperties, cancel: cancelProperties, fallbackModelId } = useServerModelProperties();
   /**
    * Load from server - uses server-side PARALLEL parsing for maximum speed
    * Uses full parse endpoint (not streaming) for all-at-once parallel processing
@@ -125,9 +125,9 @@ export function useIfcServer() {
      */
     isStale?: () => boolean,
     signal?: AbortSignal,
-    modelId = useViewerStore.getState().activeModelId,
+    modelId = fallbackModelId(),
   ): Promise<boolean> => {
-    cancelProperties();
+    cancelProperties(modelId);
     const { setProgress, setGeometryResult } = useViewerStore.getState();
     try {
       setProgress({ phase: 'Connecting to server', percent: 5 });
@@ -392,7 +392,7 @@ export function useIfcServer() {
       console.error('[useIfc] Server parse failed:', err);
       return false;
     }
-  }, [hydrateProperties, cancelProperties]);
+  }, [hydrateProperties, cancelProperties, fallbackModelId]);
 
   return { loadFromServer };
 }

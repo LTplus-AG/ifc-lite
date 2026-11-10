@@ -198,4 +198,8 @@ export const commandPaletteIt = {
   "commandPalette.search.inline.aliases": "ricerca integrata query recenti cronologia cancella filtri successivo precedente scorri",
   "commandPalette.pref.colorful.label": "Tema colorato",
   "commandPalette.pref.colorful.aliases": "colorato colore arcobaleno tema aspetto attiva disattiva",
+  "commandPalette.paths.panels.assistant": "Conversazioni · Ricette · Preferenze · Revisioni delle proposte",
+  "commandPalette.paths.panels.semantic": "Identità · Profili · Fonti · Spazio di lavoro · Proiezione",
+  "commandPalette.paths.panels.script": "Importa · Esporta · Converti in strumento",
+  "commandPalette.paths.panels.chat": "Modello · Chiavi API · Allegati · Azioni sul codice",
 } satisfies Catalogue;

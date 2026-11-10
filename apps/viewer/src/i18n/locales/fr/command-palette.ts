@@ -209,4 +209,8 @@ export const commandPaletteFr = {
   "commandPalette.search.inline.aliases": "recherche intégrée requêtes récentes historique effacer filtres suivant précédent parcourir",
   "commandPalette.pref.colorful.label": "Thème coloré",
   "commandPalette.pref.colorful.aliases": "coloré couleur arc-en-ciel thème apparence activer désactiver",
+  "commandPalette.paths.panels.assistant": "Conversations · Recettes · Préférences · Revues des propositions",
+  "commandPalette.paths.panels.semantic": "Identité · Profils · Sources · Espace de travail · Projection",
+  "commandPalette.paths.panels.script": "Importer · Exporter · Convertir en outil",
+  "commandPalette.paths.panels.chat": "Modèle · Clés API · Pièces jointes · Actions sur le code",
 } satisfies Catalogue;

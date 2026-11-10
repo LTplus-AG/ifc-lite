@@ -166,14 +166,14 @@ are observed access gaps, not failures of the already accepted general UX scope.
 Raw observation `theme: null` means the light theme's absent HTML class; the
 manifest explicitly identifies light/dark for every capture.
 
-![Unloaded selection action lacks a reason](https://github.com/LTplus-AG/ifc-lite/blob/87c7092108a6a86d242777459210aa70333e7600/tests/ui-scenes/command-palette-access/evidence/baseline-access-unloaded-hide.light.png)
-![Real selected wall and Hide command](https://github.com/LTplus-AG/ifc-lite/blob/87c7092108a6a86d242777459210aa70333e7600/tests/ui-scenes/command-palette-access/evidence/baseline-access-selected-hide.dark.png)
-![After canonical Hide execution](https://github.com/LTplus-AG/ifc-lite/blob/87c7092108a6a86d242777459210aa70333e7600/tests/ui-scenes/command-palette-access/evidence/baseline-access-selected-hide-run.dark.png)
-![Undo query has no Undo action](https://github.com/LTplus-AG/ifc-lite/blob/87c7092108a6a86d242777459210aa70333e7600/tests/ui-scenes/command-palette-access/evidence/baseline-access-history.light.png)
-![Privacy query misses Settings](https://github.com/LTplus-AG/ifc-lite/blob/87c7092108a6a86d242777459210aa70333e7600/tests/ui-scenes/command-palette-access/evidence/baseline-access-settings-privacy.light.png)
+![Unloaded selection action lacks a reason](https://github.com/LTplus-AG/ifc-lite/blob/3efa74e830e80310b69b04cc7f4f9eff1bd10c16/tests/ui-scenes/command-palette-access/evidence/baseline-access-unloaded-hide.light.png)
+![Real selected wall and Hide command](https://github.com/LTplus-AG/ifc-lite/blob/3efa74e830e80310b69b04cc7f4f9eff1bd10c16/tests/ui-scenes/command-palette-access/evidence/baseline-access-selected-hide.dark.png)
+![After canonical Hide execution](https://github.com/LTplus-AG/ifc-lite/blob/3efa74e830e80310b69b04cc7f4f9eff1bd10c16/tests/ui-scenes/command-palette-access/evidence/baseline-access-selected-hide-run.dark.png)
+![Undo query has no Undo action](https://github.com/LTplus-AG/ifc-lite/blob/3efa74e830e80310b69b04cc7f4f9eff1bd10c16/tests/ui-scenes/command-palette-access/evidence/baseline-access-history.light.png)
+![Privacy query misses Settings](https://github.com/LTplus-AG/ifc-lite/blob/3efa74e830e80310b69b04cc7f4f9eff1bd10c16/tests/ui-scenes/command-palette-access/evidence/baseline-access-settings-privacy.light.png)
 
-[Recorded contexts and outcomes](https://github.com/LTplus-AG/ifc-lite/blob/87c7092108a6a86d242777459210aa70333e7600/tests/ui-scenes/command-palette-access/evidence/baseline-context-observations.json) and
-[exact-artifact capture manifest](https://github.com/LTplus-AG/ifc-lite/blob/87c7092108a6a86d242777459210aa70333e7600/tests/ui-scenes/command-palette-access/evidence/baseline-manifest.json) retain the facts.
+[Recorded contexts and outcomes](https://github.com/LTplus-AG/ifc-lite/blob/3efa74e830e80310b69b04cc7f4f9eff1bd10c16/tests/ui-scenes/command-palette-access/evidence/baseline-context-observations.json) and
+[exact-artifact capture manifest](https://github.com/LTplus-AG/ifc-lite/blob/3efa74e830e80310b69b04cc7f4f9eff1bd10c16/tests/ui-scenes/command-palette-access/evidence/baseline-manifest.json) retain the facts.
 No candidate access verdict has been issued yet.
 
 ## Round 1 foundation checkpoint
@@ -498,3 +498,12 @@ Two browser scenarios additionally exercise actual palette close/focus, native T
 Space/Enter, selected-model cycling, history clearing and real Filter destination.
 Cheap source guards pass; runtime/typecheck/browser execution remains UNRUN.
 Fresh review and matching full validation are required; R1 is not accepted.
+
+### R1 Assistant/Semantic/script route reconciliation
+
+The focused 60-record audit found existing conditional child flows, not missing
+capabilities. Their real panel destinations now expose task-language search terms
+and localized child-path hints for conversations, preferences, proposal review,
+Semantic identity/projection/workspace, and script import/export/promotion.
+Conditional proposal execution still belongs to the actual reviewed flow. Ranking
+regressions are authored for English, German and Russian; runtime remains UNRUN.

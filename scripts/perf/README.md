@@ -6124,8 +6124,9 @@ including the wait behind other chunks' decodes), so do not sum them; use
 `scene.snapshotHydrate.refused` counts attachment refusals.
 
 `geometry.workerReady` records every ready receipt with `worker`, so the earliest
-and latest give first/last readiness. `geometry.shardComplete` records each shard
-receipt with `worker` and `shard`. `prepass.sharded` distinguishes the sharded
+and latest give first/last readiness. `geometry.shardScanReceived` marks each
+entity-index scan shard's arrival on the main thread (`worker`, `shard`), nested
+under the existing `geometry.shardScan`; it is not a geometry batch. `prepass.sharded` distinguishes the sharded
 worker handler from `prepass.scan`; the existing `styles.finalize` remains the
 style-finalization handler span. Worker sub-stages are `worker.sourceInstall`
 (the source-to-wasm copy), `worker.batch.wasm` (batch geometry call),

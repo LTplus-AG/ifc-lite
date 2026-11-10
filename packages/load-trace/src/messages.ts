@@ -97,6 +97,7 @@ export function accountWorkerMessages<W extends MessageEndpoint>(
       for (const value of list) if (value instanceof ArrayBuffer) transferBytes += value.byteLength;
       const prefix = prefixOf();
       registry.add(`${prefix}.out.count`);
+      registry.add(`${prefix}.out.transferObjects`, list.size);
       registry.add(`${prefix}.out.cloneBytes`, est.cloneBytes);
       registry.add(`${prefix}.out.transferBytes`, transferBytes);
       registry.add(`${prefix}.out.sharedBytes`, est.sharedBytes);

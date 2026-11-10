@@ -6128,7 +6128,7 @@ style-finalization handler span. Worker sub-stages are `worker.sourceInstall`
 (the source-to-wasm copy), `worker.batch.wasm` (batch geometry call),
 `worker.batch.collect` (copy-out/collection, possibly nested for partitioned output),
 and `worker.batch.post` (synchronous batch postMessage). Existing
-`msg.worker.out.transfers` and byte counters measure transfer lists.
+`msg.worker.out.transferObjects` and byte counters measure transfer lists.
 `cache.miss` marks fallthrough after lookup/rejected-hit processing; the interval
 from the existing `cache.lookup` end to `geometry.pool` start measures the full
 miss preparation gap (server attempt, engine initialization and source copy).

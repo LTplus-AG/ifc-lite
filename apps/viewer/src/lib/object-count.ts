@@ -135,6 +135,20 @@ export function countObjects(expressIds: Iterable<number>, model: ObjectCountMod
   return count;
 }
 
+const meshedIdsByResult = new WeakMap<object, Set<number>>();
+
+/**
+ * `collectMeshedIds(result)` in the result's own id space, scanned once per
+ * geometry result object and shared: the hierarchy's selector and its
+ * geometric-id set both read it in the commit that publishes a model (NEW-4).
+ * Never mutate the returned set.
+ */
+export function sharedMeshedIds(result: Parameters<typeof collectMeshedIds>[0] & object): Set<number> {
+  let ids = meshedIdsByResult.get(result);
+  if (!ids) meshedIdsByResult.set(result, ids = collectMeshedIds(result));
+  return ids;
+}
+
 /** Geometry-bearing express ids, including entities rendered only through GPU instancing. */
 export function collectMeshedIds(
   geometryResult: {

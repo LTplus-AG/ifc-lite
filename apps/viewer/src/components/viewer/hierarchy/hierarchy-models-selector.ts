@@ -4,18 +4,14 @@
 
 import type { CoordinateInfo, GeometryResult } from '@ifc-lite/geometry';
 import type { FederatedModel } from '@/store/types';
-import { collectMeshedIds } from '@/lib/object-count';
+import { sharedMeshedIds } from '@/lib/object-count';
 import { isModelStreaming, sameModelExceptGeometry, streamingRefreshDue } from '@/lib/streaming-refresh';
 
 type Models = Map<string, FederatedModel>;
 
-/** Which ids each geometry result meshes; one scan per result object. */
-const meshedIdsByResult = new WeakMap<GeometryResult, Set<number>>();
+/** Which ids each geometry result meshes; one scan per result object, shared with the tree. */
 function meshedIds(result: GeometryResult | null): Set<number> | null {
-  if (!result) return null;
-  let ids = meshedIdsByResult.get(result);
-  if (!ids) meshedIdsByResult.set(result, ids = collectMeshedIds(result));
-  return ids;
+  return result ? sharedMeshedIds(result) : null;
 }
 
 function sameIds(a: Set<number> | null, b: Set<number> | null): boolean {

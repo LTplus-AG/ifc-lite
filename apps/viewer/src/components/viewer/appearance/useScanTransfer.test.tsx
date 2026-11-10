@@ -113,10 +113,51 @@ for (const reason of ['cancel', 'settings', 'stale', 'removed'] as const) test(`
     act(() => worker.failLate()); await advance(10);
     assert.equal(read!.ready, false);
     assert.equal(read!.coverage, null);
+    assert.equal(read!.error, false, 'invalidation must not surface an aborted preview as an error');
     assert.equal(appearanceAssets.get(f.assetId), undefined, 'obsolete preparation releases its last draft lease');
     assert.doesNotMatch(ui.textContent!, /Late obsolete/);
   } finally {
     cleanup(); f.restoreCanvas();
+    if (descriptor) Object.defineProperty(globalThis, 'Worker', descriptor); else Reflect.deleteProperty(globalThis, 'Worker');
+  }
+});
+
+test('PR #9585: cancelling during image decode never starts the scan worker', async () => {
+  const f = await fixture(), workers: HeldWorker[] = [], descriptor = Object.getOwnPropertyDescriptor(globalThis, 'Worker');
+  Object.defineProperty(globalThis, 'Worker', { configurable: true, writable: true, value: class extends HeldWorker {
+    constructor() { super(); workers.push(this); }
+  } });
+  const decode = appearanceAssets.decode.bind(appearanceAssets);
+  let release!: () => void, entered = false;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  mock.method(appearanceAssets, 'decode', async (...args: Parameters<typeof decode>) => {
+    entered = true;
+    await held;
+    return decode(...args);
+  });
+  let transfer: ReturnType<typeof useScanTransfer> | undefined;
+  function Harness() {
+    transfer = useScanTransfer({ targetId: 'target', session: f.session, result: f.result, stale: false, busy: false,
+      applyAppearance: async () => { throw new Error('Decode cancellation never applies appearance'); } });
+    return <><button onClick={() => { transfer!.setProductIds([10]); transfer!.setSettings(s => ({ ...s, reviewed: true })); }}>Choose</button>
+      <button onClick={() => void transfer!.preview()}>Preview</button><button onClick={() => transfer!.discard()}>Cancel</button>
+      <output>{JSON.stringify(transfer.status)}</output></>;
+  }
+  try {
+    const ui = render(<Harness />), button = (label: string) => [...ui.querySelectorAll('button')].find(item => item.textContent === label)!;
+    click(button('Choose')); click(button('Preview'));
+    for (let i = 0; i < 100 && !entered; i++) await advance(5);
+    assert.equal(entered, true);
+    appearanceAssets.release(f.assetId, { kind: 'source', id: 'fixture' });
+    click(button('Cancel'));
+    release(); await advance(100);
+    assert.equal(workers.filter(worker => !!worker.message).length, 0, 'the run signal stops payload preparation before worker admission');
+    assert.equal(transfer!.ready, false);
+    assert.equal(transfer!.error, false);
+    assert.equal(appearanceAssets.get(f.assetId) === undefined, true, 'abandoned decode releases its draft pixels');
+    assert.match(ui.textContent ?? '', /discarded/);
+  } finally {
+    release(); cleanup(); await advance(20); f.restoreCanvas();
     if (descriptor) Object.defineProperty(globalThis, 'Worker', descriptor); else Reflect.deleteProperty(globalThis, 'Worker');
   }
 });

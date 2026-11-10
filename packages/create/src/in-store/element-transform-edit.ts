@@ -12,7 +12,7 @@ import { rotateProductYaw, resolveRotationState, verticalRefDirectionRefusal } f
 import { getModelLengthUnitScale } from './edit/length-unit-scale.js';
 import { toNativeLength } from './anchor.js';
 import { effectiveStoreyId } from './edit/effective-storey.js';
-import { carryWallJoinsInStore } from './element-transform-joins.js';
+import { assertCarriedJoinsMoveTogether, carryWallJoinsInStore } from './element-transform-joins.js';
 import type { StoreEditor } from '@ifc-lite/mutations';
 import type { EditTarget } from './edit/target.js';
 
@@ -79,6 +79,7 @@ function transformElementsInDraft(input: ElementTransformInput): ElementTransfor
     const nativeDelta: [number, number, number] = [toNativeLength(unit, parentDelta[0]), toNativeLength(unit, parentDelta[1]), 0];
     return { ...step, parentDelta, nativeDelta };
   });
+  if (prepared.some(step => step.turn !== 0 || Math.hypot(...step.delta) > 1e-9)) assertCarriedJoinsMoveTogether(input, plan);
   const writtenIds: number[] = [];
   for (const { root, delta, turn, nativeDelta } of prepared) {
     if (Math.hypot(...delta) > 1e-9) {

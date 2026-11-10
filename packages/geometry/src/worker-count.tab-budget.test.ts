@@ -154,6 +154,20 @@ describe('non-finite inputs (review on #9659)', () => {
     }
   });
 
+  it('NaN or infinite cores, job count and bounds never yield a NaN count (never below one)', () => {
+    const cases: Array<Partial<Parameters<typeof computeWorkerCount>[0]>> = [
+      { cores: Number.NaN }, { cores: Infinity }, { totalJobs: Number.NaN },
+      { minWorkers: Number.NaN }, { maxWorkers: Number.NaN }, { minWorkers: Infinity }, { maxWorkers: Infinity },
+    ];
+    for (const override of cases) {
+      const r = computeWorkerCount({ fileSizeMB: 500, cores: 8, deviceMemoryGB: 8, totalJobs: 50_000, ...override });
+      expect(Number.isInteger(r.count), JSON.stringify(override)).toBe(true);
+      expect(r.count).toBeGreaterThanOrEqual(1);
+      expect(r.count).toBeLessThanOrEqual(8);
+    }
+    expect(computeWorkerCount({ fileSizeMB: 500, cores: Number.NaN, deviceMemoryGB: 8, totalJobs: 50_000 }).count).toBe(1);
+  });
+
   it('a NaN file size or ceiling does not poison the plan', () => {
     const r = computeWorkerCount({ fileSizeMB: Number.NaN, cores: 8, deviceMemoryGB: 8, totalJobs: 10, deviceMemoryCeilingGB: Number.NaN });
     expect(r.count).toBe(3);

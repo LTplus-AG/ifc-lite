@@ -90,9 +90,9 @@ export interface WorkerCountResult {
  * `[minWorkers, maxWorkers]` when there are jobs.
  */
 export function computeWorkerCount(inputs: WorkerCountInputs): WorkerCountResult {
-  // Non-finite inputs would turn the budget arithmetic into NaN, which loses every comparison and silently drops the cap.
+  // NaN loses every comparison, so a NaN input would silently drop a cap or return NaN: replace non-finite inputs first.
   const fileSizeMB = Number.isFinite(inputs.fileSizeMB) ? Math.max(0, inputs.fileSizeMB) : 0;
-  const cores = Math.max(1, Math.floor(inputs.cores));
+  const cores = Number.isFinite(inputs.cores) ? Math.max(1, Math.floor(inputs.cores)) : 1;
   const ceilingGB = Number.isNaN(inputs.deviceMemoryCeilingGB) ? Infinity : inputs.deviceMemoryCeilingGB ?? Infinity;
   // `navigator.deviceMemory` is clamped (8 on older Chrome and Android) as a
   // fingerprinting mitigation. When cores indicates a Pro/Max-tier machine
@@ -104,9 +104,10 @@ export function computeWorkerCount(inputs: WorkerCountInputs): WorkerCountResult
     ? Math.max(1, inputs.deviceMemoryGB) : 8;
   const deviceMemoryGB = cores >= 10 ? Math.max(reportedMemoryGB, 16) : reportedMemoryGB;
   const planningMemoryGB = Math.min(deviceMemoryGB, Math.max(reportedMemoryGB, ceilingGB));
-  const totalJobs = Math.max(0, Math.floor(inputs.totalJobs));
-  const minWorkers = Math.max(1, Math.floor(inputs.minWorkers ?? 1));
-  const maxWorkers = Math.max(minWorkers, Math.floor(inputs.maxWorkers ?? 8));
+  // An unknown (NaN) job count does not bind; the other ceilings decide.
+  const totalJobs = Number.isNaN(inputs.totalJobs) ? Infinity : Math.max(0, Math.floor(inputs.totalJobs));
+  const minWorkers = Number.isFinite(inputs.minWorkers) ? Math.max(1, Math.floor(inputs.minWorkers ?? 1)) : 1;
+  const maxWorkers = Number.isFinite(inputs.maxWorkers) ? Math.max(minWorkers, Math.floor(inputs.maxWorkers ?? 8)) : Math.max(minWorkers, 8);
 
   const budgetMiB = tabBudgetMiB(planningMemoryGB);
   const minimumPeakMiB = estimateTabPeakMiB(fileSizeMB, 1);

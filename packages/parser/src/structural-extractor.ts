@@ -153,7 +153,8 @@ export function extractStructuralOnDemand(
       attrs: [...(created.attributes ?? [])],
       globalId: asString(created.attributes?.[0]) ?? '',
     } : undefined;
-    return view?.readEntity?.(id, effectiveType, source) ?? source;
+    const viewed = view?.readEntity?.(id, effectiveType, source);
+    return viewed ? { ...viewed, type: normalizeIfcTypeName(viewed.type) } : source;
   };
   const activeByRole = new Map<StructuralRole, number[]>();
   const relMemberIds: number[] = [];
@@ -180,7 +181,7 @@ export function extractStructuralOnDemand(
   const isDeleted = (id: number): boolean => view?.isDeleted(id) ?? false;
   const readResolved = (id: number) => (isDeleted(id) ? undefined : readRaw(id, typeOf(id)));
   /** Deleted resources read as absent; loads and conditions use the view only when one exists. */
-  const readResource = view ? readResolved : undefined;
+  const viewResource = view ? readResolved : undefined;
 
   const memberRaw = read('member');
   const connectionRaw = read('connection');
@@ -203,11 +204,11 @@ export function extractStructuralOnDemand(
   }
 
   // ── Relationship passes ────────────────────────────────────────────────
-  const boundaryCondition = (id: number) => extractBoundaryCondition(extractor, store, id, readResource);
+  const boundaryCondition = (id: number) => extractBoundaryCondition(extractor, store, id, viewResource);
   const relationContext: StructuralRelationContext = { schema: store.schemaVersion, readResource: readResolved, typeOf, isDeleted, boundaryCondition };
   const connectionIds = new Set(connectionRaw.map((e) => e.expressId));
   const itemIds = new Set([...memberRaw.map((e) => e.expressId), ...connectionIds]);
-  const { physicalOfItem, itemsOfPhysical } = readPhysicalLinks(readRows(relPhysicalIds), itemIds, relationContext);
+  const physicalOfItem = readPhysicalLinks(readRows(relPhysicalIds), itemIds, relationContext);
   const memberRelationRows = readRows(relMemberIds);
   const memberRelations = readMemberRelations(memberRelationRows, connectionIds, relationContext);
   const connectionsOfMember = new Map<number, string[]>();
@@ -328,7 +329,7 @@ export function extractStructuralOnDemand(
       globalOrLocal: asEnum(readAttr(e.type, e.attrs, 'GlobalOrLocal')),
       destabilizingLoad: asBoolean(readAttr(e.type, e.attrs, 'DestabilizingLoad')),
       appliedLoad:
-        loadId === undefined ? undefined : extractStructuralLoad(extractor, store, loadId, readResource),
+        loadId === undefined ? undefined : extractStructuralLoad(extractor, store, loadId, viewResource),
       appliesToGlobalId: itemOfActivity.get(e.expressId),
       groupGlobalIds: groupsOfObject.get(e.expressId) ?? [],
     };
@@ -379,7 +380,6 @@ export function extractStructuralOnDemand(
     activities,
     loadGroups,
     resultGroups,
-    physicalElementStructuralItemIds: itemsOfPhysical,
     hasStructural:
       analysisModels.length +
         members.length +

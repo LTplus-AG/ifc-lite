@@ -79,6 +79,19 @@ describe('extractStructuralOnDemand effective membership (#5236)', () => {
       .toEqual(['MemberGuid00000000001']);
   });
 
+  it('reads physical links when the view returns STEP-cased types', async () => {
+    const step = STEP.replace(
+      "#1=IFCSTRUCTURALMEMBER('MemberGuid00000000001',$,'Source member',$,$);",
+      "#1=IFCSTRUCTURALCURVEMEMBER('MemberGuid00000000001',$,'Source member',$,$,$,$,.RIGID_JOINED_MEMBER.,$);\n" +
+        "#8=IFCBEAM('BeamGuid0000000000001',$,$,$,$,$,$,$,$);\n" +
+        "#10=IFCRELASSIGNSTOPRODUCT('AssignGuid000000000001',$,$,$,(#1),.PRODUCT.,#8);",
+    );
+    const result = extractStructuralOnDemand(await parse(step), view({
+      readEntity: (_id, type, source) => (source ? { ...source, type } : source),
+    }));
+    expect(result.members[0]?.physicalElementIds).toEqual([8]);
+  });
+
   it('does not resurrect session-deleted physical products, relation resources or connections', async () => {
     const step = STEP.replace(
       "#1=IFCSTRUCTURALMEMBER('MemberGuid00000000001',$,'Source member',$,$);",
@@ -101,7 +114,6 @@ describe('extractStructuralOnDemand effective membership (#5236)', () => {
     }));
     const member = result.members[0];
     expect(member?.physicalElementIds).toEqual([8]);
-    expect(result.physicalElementStructuralItemIds).toEqual({ 8: [1] });
     expect(member?.connectionGlobalIds).toEqual(['ConnectionGuid000000001']);
     expect(member?.IfcRelConnectsStructuralMember).toEqual([{ expressId: 4, RelatedStructuralConnection: 2 }]);
   });

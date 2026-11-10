@@ -57,7 +57,7 @@ export interface StructuralMemberInfo {
   thickness?: number;
   /** IFC4+ direction reference (model-local expressId). */
   Axis?: number;
-  /** Physical products linked by assignment or IFC2X3 structural-element relations. */
+  /** Physical `IfcElement`s linked by assignment or IFC2X3 structural-element relations (model-local expressIds). */
   physicalElementIds?: number[];
   /** Relationship attributes, preserving each member/connection pair. */
   IfcRelConnectsStructuralMember?: StructuralMemberConnectionInfo[];
@@ -184,8 +184,6 @@ export interface StructuralExtraction {
   resultGroups: StructuralResultGroupInfo[];
   /** True if any structural entity was found (empty-state UI). */
   hasStructural: boolean;
-  /** Model-local physical product expressId → structural item expressIds; absent on an empty extraction. */
-  physicalElementStructuralItemIds?: Record<number, number[]>;
   /**
    * True when reading an activity's `AppliedLoad` hit one of the walk's own
    * bounds — the nesting cap, the node budget, or a cycle — and so returned

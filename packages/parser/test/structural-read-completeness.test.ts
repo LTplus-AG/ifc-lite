@@ -35,6 +35,9 @@ for (const schema of ['IFC2X3', 'IFC4', 'IFC4X3']) {
         "#42=IFCRELASSIGNSTOPRODUCT('r3',$,$,$,(#20,#10),.PRODUCT.,#33);",
         "#43=IFCRELASSIGNSTOPRODUCT('invalid',$,$,$,(#20),.PRODUCT.,#10);",
         "#44=IFCRELASSIGNSTOPRODUCT('nonproduct',$,$,$,(#90),.PRODUCT.,#10);",
+        // A spatial product is not the analysed physical element.
+        "#35=IFCBUILDINGSTOREY('st',$,$,$,$,$,$,$,.ELEMENT.,$);",
+        "#47=IFCRELASSIGNSTOPRODUCT('storey',$,$,$,(#10),.PRODUCT.,#35);",
         '#90=IFCDIRECTION((0.,0.,1.));',
         ...(old ? ["#45=IFCRELCONNECTSSTRUCTURALELEMENT('legacy',$,$,$,#30,#10);",
           "#34=IFCBEAM('legacy-beam',$,$,$,$,$,$,$);",
@@ -42,7 +45,6 @@ for (const schema of ['IFC2X3', 'IFC4', 'IFC4X3']) {
       ]);
       expect(out.members[0].physicalElementIds).toEqual(old ? [30,31,32,33,34] : [30,31,32,33]);
       expect(out.connections[0].physicalElementIds).toEqual([33]);
-      expect(out.physicalElementStructuralItemIds).toEqual({30:[10],31:[10],32:[10],33:[20,10],...(old ? {34:[10]} : {})});
     });
 
     it('reads member connection conditions, length, coordinates and eccentricity values', async () => {

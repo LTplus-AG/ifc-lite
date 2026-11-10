@@ -11,7 +11,6 @@
 
 import { readNumericComponents, type BoundaryConditionInfo } from './structural-load-extractor.js';
 import { getInheritanceChain } from './ifc-schema.js';
-import { structuralRoleOf } from './structural-extractor-values.js';
 import { addUnique, asNumber, asRef, asRefList, asString, readAttr, type RawEntity } from './structural-step-values.js';
 import type { StructuralConnectionConditionInfo, StructuralMemberConnectionInfo } from './structural-types.js';
 
@@ -36,16 +35,17 @@ export const STRUCTURAL_RELATION_TYPES = [
  * write `IfcRelAssignsToProduct` in both orientations (AxisVM puts the item in
  * `RelatedObjects` and the beam in `RelatingProduct`), so the item side is
  * whichever end is a structural member or connection. IFC2X3 also carries
- * `IfcRelConnectsStructuralElement`. An end that is not a physical
- * `IfcProduct` (a direction, or another structural item) is not a link.
+ * `IfcRelConnectsStructuralElement`. The physical end must be an `IfcElement`
+ * (what IFC2X3 `RelatingElement` declares), so a direction, a storey or
+ * another structural item is not a link. Consumers that need the reverse
+ * direction derive it from each item's `physicalElementIds`.
  */
 export function readPhysicalLinks(
   rels: readonly RawEntity[],
   itemIds: ReadonlySet<number>,
   ctx: StructuralRelationContext,
-): { physicalOfItem: Map<number, number[]>; itemsOfPhysical: Record<number, number[]> } {
+): Map<number, number[]> {
   const physicalOfItem = new Map<number, number[]>();
-  const itemsOfPhysical = new Map<number, number[]>();
   const attr = (rel: RawEntity, name: string) => readAttr(rel.type, rel.attrs, name, ctx.schema);
   for (const rel of rels) {
     const assigns = rel.type === 'IfcRelAssignsToProduct';
@@ -56,20 +56,17 @@ export function readPhysicalLinks(
       if (object === undefined) continue;
       const [item, physical] = itemIds.has(product) ? [product, object] : [object, product];
       if (!itemIds.has(item)) continue;
-      if (ctx.isDeleted(physical)) continue;
-      const physicalType = ctx.typeOf(physical);
-      if (!getInheritanceChain(physicalType).includes('IfcProduct') || structuralRoleOf(physicalType)) continue;
+      if (ctx.isDeleted(physical) || !getInheritanceChain(ctx.typeOf(physical)).includes('IfcElement')) continue;
       addUnique(physicalOfItem, item, physical);
-      addUnique(itemsOfPhysical, physical, item);
     }
   }
-  return { physicalOfItem, itemsOfPhysical: Object.fromEntries(itemsOfPhysical) };
+  return physicalOfItem;
 }
 
 /**
  * Each member's relations to an effective connection, keyed by member id. A
- * relation whose connection is deleted or absent is dropped, matching the
- * member's `connectionGlobalIds`.
+ * relation whose connection is deleted or is not a structural connection is
+ * dropped.
  */
 export function readMemberRelations(
   rels: readonly RawEntity[],

@@ -170,20 +170,11 @@ describe('entityLineText byte range', () => {
     expect(readers.getPropertyIdsInSet(2)).toEqual([]);
   });
 
-  /**
-   * A ref starting before the source. This one is green on `main` too, and
-   * for a reason worth recording rather than for the gate: `CompactEntityIndex`
-   * keeps offsets in a `Uint32Array`, so `-2` comes back out as 4294967294 and
-   * is out of range at the far end instead. A negative offset is not
-   * representable through the index these readers consult — which is why the
-   * REACHABLE bad shape is the overrun above, not this one. Over a plain-`Map`
-   * index (the test doubles in `sourceless-store-export.test.ts`) `-2` survives
-   * as `-2`, floors to 0, and used to name `#2` `'SetA'`; the gate rejects that
-   * too.
-   */
-  it('answers nothing for a ref that starts before the source', () => {
-    const readers = readersOf(new Map([[2, [-2, SET_A.length]]]));
-    expect(readers.getPropertySetName(2)).toBeNull();
+  // #9617: a negative offset must fail at insertion, before uint32 wrapping
+  // could turn it into an unrelated far-end ref. Reader overrun handling is
+  // exercised above with representable offsets that exceed the source bounds.
+  it('refuses a negative source offset before constructing a corrupt index (#9617)', () => {
+    expect(() => storeOf(new Map([[2, [-2, SET_A.length]]]))).toThrow(RangeError);
   });
 
   /** A zero-length ref is the canonical "no source line" marker. */

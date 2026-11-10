@@ -78,7 +78,9 @@ describe('SpaceMousePanel — "Use the 3Dconnexion driver" (#9131)', () => {
       spaceMouseDriverStatus: 'connected',
     });
     const container = render(<SpaceMousePanel />);
-    assert.equal(container.querySelector('input[type="range"]'), null, 'sensitivity does not apply to the driver');
+    // A boolean, not the element: a failing assert.equal(element, null) makes the test reporter serialise the live
+    // DOM node (and the window behind it), which hangs the file until the test timeout instead of failing.
+    assert.ok(!container.querySelector('input[type="range"]'), 'sensitivity does not apply to the driver');
     assert.match(container.textContent ?? '', /Connected through the 3Dconnexion driver/);
     cleanup();
 

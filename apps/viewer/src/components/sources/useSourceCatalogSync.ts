@@ -90,10 +90,12 @@ export function useSourceCatalogSync({ provider, ctx, setError, onSynced }: UseS
 
   const beginGeneration = useCallback((): { gen: number; signal: AbortSignal } => {
     abortRef.current?.abort();
+    openingContainersRef.current.clear();
+    paging.release();
     const controller = new AbortController();
     abortRef.current = controller;
     return { gen: ++requestGenRef.current, signal: controller.signal };
-  }, []);
+  }, [paging.release]);
 
   useEffect(() => () => {
     abortRef.current?.abort();

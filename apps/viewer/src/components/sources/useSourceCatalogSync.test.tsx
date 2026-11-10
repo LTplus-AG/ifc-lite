@@ -522,3 +522,50 @@ for (const action of ['reset', 'replace'] as const) it(`C-5 ${action} releases t
   assert.equal(count, 2, 'replacement area can page while the retired provider promise is pending');
   assert.equal(harness.get().loadingMore, false);
 });
+
+it('#9567 manual sync retires folder locks without letting old finally release the new request', async () => {
+  const provider = new FakeProvider({ containerListing: 'direct-children', listFilesIsRecursive: true });
+  const replies: Array<() => void> = [];
+  let opens = 0;
+  provider.listContainers = async (_ctx, _project, parent) => {
+    if (parent === 'X') { opens++; await new Promise<void>(resolve => replies.push(resolve)); }
+    return { items: [] };
+  };
+  const harness = renderCatalogSync(provider);
+  await act(async () => harness.get().openFileArea('p', 'area-1'));
+  act(() => harness.get().openContainer({ id: 'X', name: 'X' }));
+  await act(async () => harness.get().syncFileArea('p', 'area-1'));
+  act(() => harness.get().openContainer({ id: 'X', name: 'X' }));
+  await act(async () => replies[0]());
+  const stillLoading = harness.get().loadingFolders;
+  act(() => harness.get().openContainer({ id: 'X', name: 'X' }));
+  const count = opens;
+  await act(async () => { for (const finish of replies.slice(1)) finish(); });
+  assert.equal(count, 2, 'manual sync permits a new request and the old finally cannot unlock it');
+  assert.equal(stillLoading, true);
+  assert.equal(harness.get().loadingFolders, false);
+});
+
+it('#9567 manual sync retires the pagination flight before the old page resolves', async () => {
+  const provider = new FakeProvider();
+  const replies: Array<() => void> = [];
+  let pages = 0;
+  provider.listContainers = async (_ctx, _project, _parent, options) => {
+    if (options?.cursor) { pages++; await new Promise<void>(resolve => replies.push(resolve)); }
+    return { items: [], cursor: options?.cursor ? undefined : 'next' };
+  };
+  const harness = renderCatalogSync(provider);
+  await act(async () => harness.get().openFileArea('p', 'area-1'));
+  act(() => harness.get().loadMoreFolders(null));
+  await act(async () => harness.get().syncFileArea('p', 'area-1'));
+  const released = !harness.get().loadingMore;
+  act(() => harness.get().loadMoreFolders(null));
+  await act(async () => replies[0]());
+  const stillLoading = harness.get().loadingMore;
+  const count = pages;
+  await act(async () => { for (const finish of replies.slice(1)) finish(); });
+  assert.equal(released, true, 'manual sync releases the old flight immediately');
+  assert.equal(count, 2);
+  assert.equal(stillLoading, true, 'the old page cannot finish the replacement flight');
+  assert.equal(harness.get().loadingMore, false);
+});

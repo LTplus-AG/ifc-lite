@@ -1886,15 +1886,16 @@ export function useIfcLoader() {
                 // either silently, without the notice, so re-process instead.
                 const hasTexturedMeshes = allMeshes.some((m) => m.texture || m.textureRef);
                 if (hasTexturedMeshes) console.log('[useIfc] Skipping cache write: model carries surface textures the cache format does not persist yet (#1781)');
-                const cacheCoordinateInfo = finalCoordinateInfo;
+                const cacheCoordinateInfo = finalCoordinateInfo ? structuredClone(finalCoordinateInfo) : undefined;
                 const cacheable = cachePlan.shouldCache && !hasTexturedMeshes && !skippedHungElements && !omittedTypeRecords && allMeshes.length > 0 && !!cacheCoordinateInfo;
+                const cacheShards = allInstancedShards.map((shard) => shard.slice(0));
                 const writeCache = (meshes: MeshData[]) => cacheCoordinateInfo && trace.span('cache.write', () => saveToCache(cacheKey, dataStore, {
                   meshes, coordinateInfo: cacheCoordinateInfo,
                   totalVertices: meshes.reduce((sum, m) => sum + m.positions.length / 3, 0),
                   totalTriangles: meshes.reduce((sum, m) => sum + m.indices.length / 3, 0),
                   // Persist the GPU-instancing shards too, else a cache reload would
                   // restore the flat meshes only and drop all instanced occurrences.
-                  ...(allInstancedShards.length > 0 ? { instancedShards: allInstancedShards } : {}),
+                  ...(cacheShards.length > 0 ? { instancedShards: cacheShards } : {}),
                 }, buffer, file.name, {
                   // mtime guard plus the load's identity as the full-content
                   // validation hash (#7022: no second pass in the write).
@@ -1908,7 +1909,7 @@ export function useIfcLoader() {
                   // alive as the model's geometryResult.meshes, so it is NOT cleared.
                   applyColorUpdatesToMeshes(allMeshes, cumulativeColorUpdates);
                   // finalizeModel re-homes ids on the mesh objects in place; the cache keeps raw ids.
-                  const cacheMeshes = cacheable ? allMeshes.map((m) => ({ ...m })) : null;
+                  const cacheMeshes = cacheable ? structuredClone(allMeshes) : null;
                   const federatedGeometry: GeometryResult = {
                     meshes: allMeshes,
                     totalVertices: allMeshes.reduce((sum, m) => sum + m.positions.length / 3, 0),
@@ -1948,8 +1949,7 @@ export function useIfcLoader() {
                 // the fresh buffer via mtime and the off-thread full hash.
                 if (cacheable) {
                   applyColorUpdatesToMeshes(allMeshes, cumulativeColorUpdates);
-                  // Capture raw ids/colours; base tables/buffers are immutable.
-                  const cacheMeshes = allMeshes.map((mesh) => ({ ...mesh, color: [...mesh.color] as typeof mesh.color }));
+                  const cacheMeshes = structuredClone(allMeshes);
                   void deferCacheWrite(() => Promise.resolve(writeCache(cacheMeshes)))
                     .catch((error) => console.warn('[useIfc] Deferred cache write failed:', error))
                     .finally(() => compactSourceAfterLoad(dataStore));

@@ -16,7 +16,7 @@ export function useLocationMapReady(container: RefObject<HTMLDivElement | null>,
         setVisible(true);
         observer.disconnect();
       }
-    });
+    }, { threshold: 0.01 });
     observer.observe(element);
     return () => observer.disconnect();
   }, [container, hasLocation, loading]);

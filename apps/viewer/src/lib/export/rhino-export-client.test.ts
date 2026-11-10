@@ -8,13 +8,14 @@
  * engine's error text kept intact for NO_RENDER_GEOMETRY matching.
  */
 
-import { afterEach, describe, it } from 'node:test';
+import { afterEach, describe, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { isNoRenderGeometryError } from '@ifc-lite/geometry';
 import { installFakeRhinoWorker, type FakeRhinoWorkerHandle } from '@/test/rhino-export-worker-fake.js';
 import {
   __setRhinoExportWorkerFactoryForTest,
   exportRhino3dmInWorker,
+  RHINO_EXPORT_TIMEOUT_MS,
   type RhinoExportProgress,
   type RhinoExportWorkerLike,
 } from './rhino-export-client.js';
@@ -130,4 +131,30 @@ it('rejects worker-wide unreadable-request errors promptly', async () => {
   });
   await assert.rejects(exportRhino3dmInWorker(REQUEST), /received an unreadable message/);
   assert.equal(terminated, true);
+});
+
+it('progress restarts the liveness timeout; only a silent worker times out', async () => {
+    mock.timers.enable({ apis: ['setTimeout'] });
+    try {
+      let live: RhinoExportWorkerLike | null = null;
+      let id = 0;
+      __setRhinoExportWorkerFactoryForTest(() => {
+        live = { onmessage: null, onerror: null, onmessageerror: null, postMessage(m) { id = m.id; }, terminate() {} };
+        return live;
+      });
+      const send = (data: object) => live!.onmessage?.({ data: { id, ...data } } as MessageEvent);
+      const busy = exportRhino3dmInWorker(REQUEST);
+      const step = RHINO_EXPORT_TIMEOUT_MS * 0.75;
+      mock.timers.tick(step);
+      send({ type: 'progress', done: 1, total: 2 });
+      mock.timers.tick(step); // past one full timeout in total, but never silent that long
+      send({ type: 'complete', bytes: new Uint8Array([9]), warnings: [] });
+      assert.deepEqual([...(await busy).bytes], [9]);
+
+      const silent = exportRhino3dmInWorker(REQUEST);
+      mock.timers.tick(RHINO_EXPORT_TIMEOUT_MS);
+      await assert.rejects(silent, /stopped responding/);
+    } finally {
+      mock.timers.reset();
+    }
 });

@@ -12,6 +12,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { IfcServerClient, type HealthResponse, type ParquetParseResponse } from '@ifc-lite/server-client';
 import { useViewerStore } from '@/store';
+import { waitUntil, settle } from '@/test/settle';
 import { propertyModelBuffer } from '../../../../packages/server-client/test/fixtures/property-model.js';
 const { useIfcLoader } = await import('./useIfcLoader.js');
 const wire = propertyModelBuffer();
@@ -52,7 +53,7 @@ for (const mode of ['stay', 'remount', 'unmount'] as const) {
     if (mode !== 'stay') await act(async () => { root.render(null); });
     if (mode === 'remount') await act(async () => { root.render(<Probe />); });
     assert.equal(sig?.aborted, false);
-    await act(async () => { release(wire); await new Promise(r => setTimeout(r, 300)); });
+    await act(async () => { release(wire); await waitUntil(() => useViewerStore.getState().models.get(id)?.ifcDataStore != null, 'model properties publish'); });
     assert.equal(useViewerStore.getState().models.get(id)?.ifcDataStore?.entities.getName(1), 'Server properties');
     assert.equal(useViewerStore.getState().ifcDataStore?.entities.getName(1), 'Server properties');
   });
@@ -68,13 +69,13 @@ it('#9538 real loader: second primary load from another hook instance aborts the
   function A() { a = useIfcLoader(); return null; } function B() { b = useIfcLoader(); return null; }
   const c = document.createElement('div'); document.body.appendChild(c);
   const root = createRoot(c); roots.push(root); containers.push(c); await act(async () => { root.render(<><A /><B /></>); });
-  await act(async () => { await a!.loadFile(file('a.ifc')); await new Promise(r => setTimeout(r, 50)); });
-  await act(async () => { await b!.loadFile(file('b.ifc')); await new Promise(r => setTimeout(r, 50)); });
+  await act(async () => { await a!.loadFile(file('a.ifc')); await waitUntil(() => sigs.length === 1, 'first poll starts'); });
+  await act(async () => { await b!.loadFile(file('b.ifc')); await waitUntil(() => sigs.length === 2, 'replacement poll starts'); });
   assert.equal(sigs.length, 2); assert.equal(sigs[0].aborted, true); assert.equal(sigs[1].aborted, false);
   const id = [...useViewerStore.getState().models.keys()][0];
-  await act(async () => { releases[0](wire); await new Promise(r => setTimeout(r, 300)); });
+  await act(async () => { releases[0](wire); await settle('abandoned decoded properties cannot publish'); });
   assert.equal(useViewerStore.getState().models.get(id)?.ifcDataStore ?? null, null);
-  await act(async () => { releases[1](wire); await new Promise(r => setTimeout(r, 300)); });
+  await act(async () => { releases[1](wire); await waitUntil(() => useViewerStore.getState().models.get(id)?.ifcDataStore != null, 'replacement properties publish'); });
   assert.equal(useViewerStore.getState().models.get(id)?.ifcDataStore?.entities.getName(1), 'Server properties');
   assert.equal(useViewerStore.getState().serverPropertiesRuns.size <= 1, true);
 });

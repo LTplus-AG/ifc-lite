@@ -77,13 +77,8 @@ function start(modelId: string | null, isStale: (() => boolean) | undefined,
   } });
 }
 
-function fallbackModelId(): string | null {
-  console.warn('[Server properties] Using active-model fallback; pass modelId explicitly.');
-  return useViewerStore.getState().activeModelId;
-}
-
 const properties = {
-  start, fallbackModelId,
+  start,
   cancel: (modelId: string | null) => {
     if (modelId) useViewerStore.getState().setServerPropertiesRun(modelId, IDLE_RUN);
   },

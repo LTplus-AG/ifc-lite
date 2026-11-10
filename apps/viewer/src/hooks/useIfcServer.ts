@@ -105,7 +105,7 @@ async function isServerAvailable(serverUrl: string, client: IfcServerClient): Pr
  * and ServerClient lifecycle
  */
 export function useIfcServer() {
-  const { start: hydrateProperties, cancel: cancelProperties, fallbackModelId } = useServerModelProperties();
+  const { start: hydrateProperties, cancel: cancelProperties } = useServerModelProperties();
   /**
    * Load from server - uses server-side PARALLEL parsing for maximum speed
    * Uses full parse endpoint (not streaming) for all-at-once parallel processing
@@ -123,9 +123,9 @@ export function useIfcServer() {
      * inside the streaming batch callback below — a stale batch (or a stale
      * post-stream/post-parse result) writes nothing.
      */
-    isStale?: () => boolean,
-    signal?: AbortSignal,
-    modelId = fallbackModelId(),
+    isStale: (() => boolean) | undefined,
+    signal: AbortSignal | undefined,
+    modelId: string,
   ): Promise<boolean> => {
     cancelProperties(modelId);
     const { setProgress, setGeometryResult } = useViewerStore.getState();
@@ -392,7 +392,7 @@ export function useIfcServer() {
       console.error('[useIfc] Server parse failed:', err);
       return false;
     }
-  }, [hydrateProperties, cancelProperties, fallbackModelId]);
+  }, [hydrateProperties, cancelProperties]);
 
   return { loadFromServer };
 }

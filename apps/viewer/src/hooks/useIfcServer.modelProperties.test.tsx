@@ -122,10 +122,9 @@ for (const modelId of [null, 'not-registered']) {
     useViewerStore.getState().clearAllModels();
     const warnings: unknown[][] = [];
     mock.method(console, 'warn', (...args: unknown[]) => { warnings.push(args); });
-    let calls = 0;
-    mock.method(IfcServerClient.prototype, 'fetchDataModel', async () => { calls++; return null; });
-    await act(async () => { await api.loadFromServer(file, new ArrayBuffer(1), undefined, undefined, modelId); });
-    assert.equal(calls, 0);
+    let hydrations = 0;
+    useServerModelProperties().start(modelId, undefined, async () => { hydrations++; return null; });
+    assert.equal(hydrations, 0);
     assert.equal(warnings.some(args => String(args[0]).includes('registered model')), true);
   });
 }
@@ -244,11 +243,23 @@ it('#9538 follow-up: starting a server load for another model preserves the firs
   assert.equal(useViewerStore.getState().models.get('server')?.ifcDataStore?.entities.getName(1), 'Server properties');
   assert.equal(useViewerStore.getState().models.get('other')?.ifcDataStore === null, true);
 });
-it('#9538 follow-up: implicit active-model fallback warns instead of hiding ownership', async () => {
-  const warnings: unknown[][] = [];
-  mock.method(console, 'warn', (...args: unknown[]) => { warnings.push(args); });
-  mock.method(IfcServerClient.prototype, 'fetchDataModel', async () => wire);
-  await act(async () => { await api.loadFromServer(file, new ArrayBuffer(1)); await new Promise(resolve => setTimeout(resolve, 200)); });
-  assert.equal(useViewerStore.getState().models.get('server')?.ifcDataStore?.entities.getName(1), 'Server properties');
-  assert.equal(warnings.some(args => String(args[0]).includes('active-model fallback')), true);
+it('#9601 same-model retry aborts the old poll before the new attempt can hydrate', async () => {
+  await start(); await pending;
+  const oldSignal = signal;
+  const parsed = await IfcServerClient.prototype.parse(file);
+  let entered!: () => void;
+  let resume!: () => void;
+  const parsing = new Promise<void>(resolve => { entered = resolve; });
+  const held = new Promise<void>(resolve => { resume = resolve; });
+  mock.method(IfcServerClient.prototype, 'parse', async () => { entered(); await held; return parsed; });
+  let hydrations = 0;
+  mock.method(IfcServerClient.prototype, 'fetchDataModel', async () => { hydrations++; return null; });
+  pending = api.loadFromServer(file, new ArrayBuffer(1), undefined, undefined, 'server');
+  try {
+    await parsing;
+    assert.equal(hydrations, 0, 'the retry is still held before optional hydration');
+    assert.equal(oldSignal.aborted, true, 'retry cancellation must happen before a later start replaces the lease');
+    assert.equal(useViewerStore.getState().models.get('server')?.sourceFile === file, true);
+    assert.equal(useViewerStore.getState().models.get('server')?.ifcDataStore === null, true);
+  } finally { resume(); await pending; }
 });

@@ -228,7 +228,10 @@ for (const contract of ['stop glyph', 'localized stopped status'] as const) it(`
   const { mcpPlaygroundRu } = await import('@/i18n/locales/ru/mcp-playground');
   t.after(() => { cleanup(); clearApiKeys(); setLocale('en'); });
   updateApiKeys({ anthropicKey: 'sk-ant-test' });
-  t.mock.method(globalThis, 'fetch', (_input: RequestInfo | URL, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
+  let finish!: () => void;
+  t.after(() => finish?.());
+  t.mock.method(globalThis, 'fetch', (_input: RequestInfo | URL, init?: RequestInit) => new Promise<Response>((resolve, reject) => {
+    finish = () => resolve(jsonResponse({ id: 'disposed', type: 'message', role: 'assistant', content: [], stop_reason: 'end_turn', usage: { input_tokens: 0, output_tokens: 0 } }));
     init?.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
   }));
   const ui = render(<PlaygroundChat model={await oneWallModel()} />);

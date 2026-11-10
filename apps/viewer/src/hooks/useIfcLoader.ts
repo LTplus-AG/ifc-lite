@@ -12,7 +12,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import { attachCapturedLoad } from '@/lib/error-reports/correlation';
 import { useShallow } from 'zustand/react/shallow';
 import { type FederatedModel, useViewerStore } from '@/store';
-import { enqueueInstancedShards } from '@/store/instancedShardQueue';
+import { enqueueInstancedShards, instancedShardGeneration } from '@/store/instancedShardQueue';
 import { resolveLoadTessellationTier, isMeshOnlyCacheEnabled } from '../store/constants.js';
 import { createModelLoadActivity, handOffToRetry, installModelLoadCanceller, LOAD_COMPLETE, settleOwnedLoadUi, watchLoadSupersession } from './modelLoadCanceller.js';
 import type { ModelLoadOptions } from './modelLoadOptions.js';
@@ -434,6 +434,7 @@ export function useIfcLoader() {
         // A non-federated load has no layer stack behind it (#1717).
         useViewerStore.getState().clearLayerStack();
       }
+      const shardGeneration = instancedShardGeneration(); // after our own reset: a later one supersedes our shards
 
       // Reset memory accounting so per-load summaries don't accumulate across files.
       memoryAccounting.reset();
@@ -630,14 +631,12 @@ export function useIfcLoader() {
             toast.error('Point-cloud realignment failed; existing scan transforms were restored.');
           }
           // GPU-instancing (#1912): forward this model's shards now — NOT during
-          // streaming — because the renderer drain re-homes each
-          // occurrence's raw entity id by `idOffset`, which is only known now
-          // (registerModelOffset ran a few lines up). AFTER addModel: the drain
-          // runs in a later task, once React has committed it, so the
-          // renderer-side modelId → modelIndex / idOffset lookups
-          // (Viewport.tsx's `modelIdToIndex` / `modelIdToOffset`) see this model.
+          // streaming — because the renderer drain re-homes each occurrence's raw
+          // entity id by `idOffset`, only known now (registerModelOffset ran above).
+          // AFTER addModel: the drain runs in a later task, once React committed it,
+          // so Viewport.tsx's `modelIdToIndex` / `modelIdToOffset` see this model.
           if (instancedShards.length > 0) {
-            enqueueInstancedShards(modelId, instancedShards);
+            enqueueInstancedShards(modelId, instancedShards, shardGeneration);
           }
           return;
         }
@@ -1729,7 +1728,7 @@ export function useIfcLoader() {
                 // is always 0 (the federation registry is cleared before every
                 // primary load), so there is nothing to wait on.
                 if (event.instancedShards && event.instancedShards.length > 0) {
-                  enqueueInstancedShards(modelId, event.instancedShards);
+                  enqueueInstancedShards(modelId, event.instancedShards, shardGeneration);
                 }
                 // Accumulate meshes for batched rendering
                 for (let i = 0; i < event.meshes.length; i++) pendingMeshes.push(event.meshes[i]);

@@ -8,9 +8,10 @@
  * The drain runs a task after the enqueue, so a model can leave in between. A
  * shard of a removed model used to be taken anyway and, with its owner gone
  * from both maps, uploaded under index 0 and offset 0: the surviving primary's
- * ids. Removal and full clears now withdraw the model's queued shards, and a
- * shard whose owner the drain's maps do not list yet waits for it instead of
- * being attributed to model 0.
+ * ids. Removal and full clears now withdraw the model's queued shards; a
+ * shard whose owner the drain's maps do not list waits only while the store
+ * lists it, and is otherwise dropped and counted; a superseded load's shards
+ * are refused on arrival. Nothing is attributed to model 0.
  *
  * Real store actions and index allocator, the actual drain hook, hand-built
  * IFNS bytes; the renderer records uploads.
@@ -18,7 +19,7 @@
 import '@/test/setup-dom.js';
 import { afterEach, beforeEach, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { act, useRef } from 'react';
+import { act, useRef, useState } from 'react';
 import type { Renderer } from '@ifc-lite/renderer';
 import type { DecodedInstancedShard } from '@ifc-lite/geometry';
 import { render, cleanup } from '@/test/render.js';
@@ -26,7 +27,7 @@ import { useViewerStore } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { modelIndices } from '@/lib/model-placement/model-indices';
 import { buildShardBytes } from '@/test/instanced-shard-fixture.js';
-import { discardInstancedShards, enqueueInstancedShards, hasPendingInstancedShards } from '@/store/instancedShardQueue';
+import { discardInstancedShards, enqueueInstancedShards, hasPendingInstancedShards, instancedShardDrops, instancedShardGeneration } from '@/store/instancedShardQueue';
 import { useInstancedShardDrain } from './useInstancedShardDrain.js';
 
 let uploads: Array<{ id: number; index: number | undefined }> = [];
@@ -104,17 +105,57 @@ it('keeps the surviving model\'s shards when another model is removed', async ()
   assert.deepEqual(uploads, [{ id: 32 + offset, index }], 'only the survivor\'s shard uploads, under its own index and offset');
 });
 
-it('waits for a model the drain does not know yet, then uploads under its own index and offset', async () => {
-  render(<Viewport />);
+it('waits while the drain\'s maps are one render behind the store, then uploads under the owner\'s index and offset', async () => {
+  // A Viewport whose maps lag the store: the test publishes them explicitly.
+  let publish: () => void = () => { throw new Error('not mounted'); };
+  function LaggingViewport() {
+    const [models, setModels] = useState(() => useViewerStore.getState().models);
+    publish = () => setModels(useViewerStore.getState().models);
+    useInstancedShardDrain({
+      rendererRef: useRef(renderer), isInitialized: true, gpuRecoveryEpoch: 0, geometryKernel: 'exact', geometry: null,
+      modelIdToIndex: modelIndices(models),
+      modelIdToOffset: new Map([...models].map(([id, model]) => [id, model.idOffset ?? 0])),
+      cameraFittedRef: useRef(false), cameraSnapshotRef: useRef(null),
+      geometryBoundsRef: useRef({ min: { x: 0, y: 0, z: 0 }, max: { x: 0, y: 0, z: 0 } }),
+      finalBoundsRefittedRef: useRef(false), lastFitPolicyKindRef: useRef(null), lastGeometryRef: useRef(null),
+    });
+    return null;
+  }
+  render(<LaggingViewport />);
+  const offset = useViewerStore.getState().registerModelOffset('late', 100);
+  useViewerStore.setState(fixtureModels(...useViewerStore.getState().models.values(), fixtureModel('late', { idOffset: offset })));
   act(() => enqueueInstancedShards('late', [buildShardBytes(31)]));
   await drainTask();
-  assert.deepEqual(uploads, [], 'never attributed to model 0 while its owner is unknown');
-  assert.equal(hasPendingInstancedShards('late'), true);
-  const offset = useViewerStore.getState().registerModelOffset('late', 100);
-  act(() => useViewerStore.setState(fixtureModels(
-    ...useViewerStore.getState().models.values(), fixtureModel('late', { idOffset: offset }))));
+  assert.deepEqual(uploads, [], 'never attributed to model 0 while the maps lack its owner');
+  assert.equal(hasPendingInstancedShards('late'), true, 'the store lists the owner, so the shard waits');
+  act(() => publish());
   await drainTask();
   const index = modelIndices(useViewerStore.getState().models).get('late');
   assert.deepEqual(uploads, [{ id: 31 + offset, index }]);
   assert.equal(hasPendingInstancedShards(), false);
+});
+
+it('drops, and counts, a shard whose owner is in neither the maps nor the store', async () => {
+  render(<Viewport />);
+  const before = instancedShardDrops().ownerless;
+  act(() => enqueueInstancedShards('never-published', [buildShardBytes(31), buildShardBytes(32)]));
+  await drainTask();
+  assert.deepEqual(uploads, []);
+  assert.equal(hasPendingInstancedShards(), false, 'an owner that cannot appear does not hold its bytes in the queue');
+  assert.equal(instancedShardDrops().ownerless - before, 2);
+});
+
+it('refuses shards from a load that a reset has superseded', async () => {
+  render(<Viewport />);
+  const before = instancedShardDrops().superseded;
+  const staleGeneration = instancedShardGeneration();
+  act(() => useViewerStore.getState().resetViewerState()); // the next primary load's reset
+  act(() => enqueueInstancedShards('primary', [buildShardBytes(31)], staleGeneration));
+  await drainTask();
+  assert.deepEqual(uploads, []);
+  assert.equal(hasPendingInstancedShards(), false, 'refused on arrival, never queued');
+  assert.equal(instancedShardDrops().superseded - before, 1);
+  act(() => enqueueInstancedShards('primary', [buildShardBytes(32)], instancedShardGeneration()));
+  await drainTask();
+  assert.deepEqual(uploads, [{ id: 32, index: modelIndices(useViewerStore.getState().models).get('primary') }], 'the current load still delivers');
 });

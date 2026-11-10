@@ -14,9 +14,11 @@
  * that model. Shards enqueued in one task are drained together.
  *
  * A shard belongs to its model. Removal withdraws it from the queue
- * (`modelSlice.sessionRelease`), and a shard whose owner the maps do not list
- * yet stays queued until they do: it is never uploaded under index 0 and
- * offset 0, which are another model's (#9628 review).
+ * (`modelSlice.sessionRelease`), and it is never uploaded under index 0 and
+ * offset 0, which are another model's (#9628 review). Every producer publishes
+ * the owner before enqueueing, so an owner missing from the drain's maps is
+ * either one render behind (the live store lists it: wait for the maps) or
+ * gone for good (the store does not: drop and count, never hold the bytes).
  */
 
 import { useEffect, useLayoutEffect, useRef, type MutableRefObject } from 'react';
@@ -24,7 +26,8 @@ import type { Renderer } from '@ifc-lite/renderer';
 import { decodeInstancedShard, type MeshData } from '@ifc-lite/geometry';
 import { liftNewInstancedOccurrences } from '@/lib/level-arrival';
 import { activeLoadTrace } from '@/lib/perf/activeLoadTrace';
-import { drainInstancedShards, hasPendingInstancedShards, subscribeInstancedShards, type PendingInstancedShard } from '@/store/instancedShardQueue';
+import { useViewerStore } from '@/store';
+import { drainInstancedShards, hasPendingInstancedShards, noteDroppedInstancedShards, subscribeInstancedShards, type PendingInstancedShard } from '@/store/instancedShardQueue';
 import { applyFederationOffsetToShard } from './instancedFederationOffset.js';
 import { fitInstanceOnlyBounds } from './streamingInstancedBounds.js';
 import type { Bounds } from './streamingBounds.js';
@@ -72,14 +75,16 @@ export function useInstancedShardDrain(params: InstancedShardDrainParams): void 
       drainInstancedShards((shards) => {
         const trace = activeLoadTrace(); // #6979: shards only arrive while a load streams
         const waiting: PendingInstancedShard[] = [];
+        const ownerless: string[] = [];
+        const liveModels = useViewerStore.getState().models;
         for (const pending of shards) {
           const { modelId, bytes } = pending;
           // No maps at all is the single-model legacy wiring (index 0, offset 0).
-          // Maps that do not list the owner mean "not published yet": wait.
           const modelIndex = p.modelIdToIndex ? p.modelIdToIndex.get(modelId) : 0;
           const idOffset = p.modelIdToOffset ? p.modelIdToOffset.get(modelId) : 0;
           if (modelIndex === undefined || idOffset === undefined) {
-            waiting.push(pending);
+            if (liveModels.has(modelId)) waiting.push(pending);
+            else ownerless.push(modelId);
             continue;
           }
           // CRITICAL: never let a shard decode/upload throw out of the drain.
@@ -97,7 +102,8 @@ export function useInstancedShardDrain(params: InstancedShardDrainParams): void 
             console.warn('[useInstancedShardDrain] instanced shard upload failed (device lost?), skipping:', err);
           }
         }
-        if (waiting.length === shards.length) return waiting;
+        noteDroppedInstancedShards('ownerless', ownerless.length, ownerless);
+        if (waiting.length + ownerless.length === shards.length) return waiting;
         if (p.geometryKernel === 'retained' && p.geometry?.length === 0 && !p.appearanceSourceGeometry?.length
           && scene.getInstancedModelIndices().length > 0) {
           fitInstanceOnlyBounds({ renderer, cameraFittedRef: p.cameraFittedRef, cameraSnapshotRef: p.cameraSnapshotRef,

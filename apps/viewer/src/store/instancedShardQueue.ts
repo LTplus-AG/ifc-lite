@@ -20,6 +20,7 @@
  * model still has shards in flight and is told when they land.
  */
 
+import { perfTally } from '@ifc-lite/load-trace';
 import { noteInstancedShardModel } from './instancedShardModels.js';
 
 export interface PendingInstancedShard {
@@ -37,6 +38,28 @@ type Listener = (event: InstancedShardQueueEvent) => void;
 
 let pending: PendingInstancedShard[] = [];
 const listeners = new Set<Listener>();
+// Bumped by every full discard (session reset, all models cleared). A load
+// captures it after its own reset; its shards are refused once it is behind.
+let generation = 0;
+const drops = { superseded: 0, ownerless: 0 };
+
+/** Shards that were refused or dropped instead of uploaded, by reason. */
+export function instancedShardDrops(): Readonly<typeof drops> {
+  return { ...drops };
+}
+
+/** Count (and report once per call) shards that never reached the renderer. */
+export function noteDroppedInstancedShards(reason: keyof typeof drops, count: number, modelIds: Iterable<string>): void {
+  if (count === 0) return;
+  drops[reason] += count;
+  perfTally(`viewer.instancedShardsDropped.${reason}`, count, 'shards');
+  console.warn(`[instancedShardQueue] dropped ${count} ${reason} shard(s) for ${[...new Set(modelIds)].join(', ')}`);
+}
+
+/** The queue generation a load should capture after its own reset. */
+export function instancedShardGeneration(): number {
+  return generation;
+}
 
 function emit(event: InstancedShardQueueEvent): void {
   for (const listener of listeners) {
@@ -52,9 +75,18 @@ function modelIdsOf(shards: readonly PendingInstancedShard[]): Set<string> {
   return new Set(shards.map((shard) => shard.modelId));
 }
 
-/** Queue `modelId`'s shard bytes for upload, oldest first. The bytes are read, never detached. */
-export function enqueueInstancedShards(modelId: string, shards: readonly ArrayBuffer[]): void {
+/**
+ * Queue `modelId`'s shard bytes for upload, oldest first. The bytes are read,
+ * never detached. A producer that captured `instancedShardGeneration()` passes
+ * it: shards from a load a reset or full clear has since superseded are
+ * refused here, so they cannot sit in the queue holding their buffers.
+ */
+export function enqueueInstancedShards(modelId: string, shards: readonly ArrayBuffer[], fromGeneration = generation): void {
   if (shards.length === 0) return;
+  if (fromGeneration !== generation) {
+    noteDroppedInstancedShards('superseded', shards.length, [modelId]);
+    return;
+  }
   noteInstancedShardModel(modelId);
   for (const bytes of shards) pending.push({ modelId, bytes });
   emit({ kind: 'enqueued', modelIds: new Set([modelId]) });
@@ -91,6 +123,7 @@ export function drainInstancedShards(
  * takes the id next, nor fall back to another model's index).
  */
 export function discardInstancedShards(modelId?: string): void {
+  if (modelId === undefined) generation++;
   const dropped = modelId === undefined ? pending : pending.filter((shard) => shard.modelId === modelId);
   if (dropped.length === 0) return;
   pending = modelId === undefined ? [] : pending.filter((shard) => shard.modelId !== modelId);

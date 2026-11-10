@@ -4,7 +4,7 @@
 
 import { afterEach, describe, expect, it } from 'vitest';
 import { readPerfFlagRaw } from '@ifc-lite/data';
-import { GEOMETRY_PERF_FLAG_BINDINGS } from './perf-flags.js';
+import { GEOMETRY_PERF_FLAG_BINDINGS, readDeviceMemoryOverrideGB } from './perf-flags.js';
 
 const g = globalThis as Record<string, unknown>;
 
@@ -17,6 +17,7 @@ describe('GEOMETRY_PERF_FLAG_BINDINGS', () => {
   it('keep the legacy global names', () => {
     expect(Object.values(GEOMETRY_PERF_FLAG_BINDINGS).map((b) => b.global).sort()).toEqual([
       '__IFC_LITE_BATCH_SIZING',
+      '__IFC_LITE_GEOM_MEMORY_GB',
       '__IFC_LITE_SHARD_SCAN',
       '__IFC_LITE_VISIBILITY_FILTER',
     ]);
@@ -32,5 +33,14 @@ describe('GEOMETRY_PERF_FLAG_BINDINGS', () => {
     expect(readPerfFlagRaw(batchSizing)).toEqual({ targetMs: 8000 });
     g.__IFC_LITE_SHARD_SCAN = 1;
     expect(readPerfFlagRaw(shardScan)).toBe(1);
+  });
+
+  it('read the simulated device memory as a positive number only (huge-file stage 1)', () => {
+    Object.defineProperty(globalThis, 'location', { value: { search: '?perf.geomMemoryGB=8' }, configurable: true });
+    expect(readDeviceMemoryOverrideGB()).toBe(8);
+    for (const bad of [0, -4, 'lots', Number.NaN]) {
+      g.__IFC_LITE_GEOM_MEMORY_GB = bad;
+      expect(readDeviceMemoryOverrideGB()).toBeUndefined();
+    }
   });
 });

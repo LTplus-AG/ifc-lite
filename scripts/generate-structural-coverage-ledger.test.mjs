@@ -22,7 +22,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { LEVELS, deriveCatalogue, notApplicable } from '../tests/structural-coverage/catalogue.mjs';
-import { ratchet, runProbes, score, tally, verifyTotals } from '../tests/structural-coverage/score.mjs';
+import { ratchet, runProbes, score, tally, verifySummary, verifyTotals } from '../tests/structural-coverage/score.mjs';
 import { readRow } from '../tests/structural-coverage/probes/read.mjs';
 import { checkExport } from '../tests/structural-coverage/probes/create.mjs';
 import { normalize } from '../tests/structural-coverage/lib/values.mjs';
@@ -225,9 +225,14 @@ test('read (#9668): an attribute set only in a file outside any sample is checke
   assert.match(onlyBare.reason, /ConditionCoordinateSystem: no fixture sets it/);
   assert.notEqual(onlyBare.status, 'pass');
   // A file that did not extract adds its throw, not a claim that its records are missing from the read model.
-  const unread = readRow(row, [{ file: setter, ix: pointConnectionModel(2, 'g2') }, { file: bare, ix: null }], types, ['a-first.ifc: parse or extract threw: x']);
+  const unread = readRow(row, [{ file: setter, ix: pointConnectionModel(2, 'g2') }, { file: bare, ix: null, error: 'parse or extract threw: x' }], types);
+  assert.match(unread.reason, /a-first\.ifc: parse or extract threw: x/);
   assert.match(unread.reason, /over 1 record\(s\)/);
   assert.doesNotMatch(unread.reason, /not in the read model/);
+  // The only file setting an attribute did not extract: it is still a fixture for it, so not "no fixture sets it".
+  const setterUnread = readRow(row, [{ file: setter, ix: null }, { file: bare, ix: pointConnectionModel(1, 'g1') }], types);
+  assert.doesNotMatch(setterUnread.reason, /ConditionCoordinateSystem: no fixture sets it/);
+  assert.match(setterUnread.reason, /z-last\.ifc: not extracted/, 'an unextracted file is a problem even when the caller reports nothing');
 });
 
 test('create (#9668): typed values are compared typed, and a non-conforming export fails the cell', () => {
@@ -267,6 +272,9 @@ test('totals (#9668): stored totals that disagree with the rows are refused by t
   assert.ok(verifyTotals({ ...s, rows: s.rows.map((r, i) => (i === 0 ? { ...r, status: 'met' } : r)) }).some((p) => p.includes(two[0].id)));
   const { card: _dropped, ...fewer } = s.rows[0].levels;
   assert.ok(verifyTotals({ ...s, rows: [{ ...s.rows[0], levels: fewer }, s.rows[1]] }).some((p) => /card: no cell/.test(p)), 'a deleted cell is refused, not dropped');
+  const { levels: _gone, ...bare } = s.rows[0];
+  assert.deepEqual(verifySummary({ ...s, rows: [bare, s.rows[1]] }, two), ['rows: every row must carry a levels object'], 'a malformed row is refused, not a crash');
+  assert.ok(verifySummary({ ...s, rows: [...s.rows, { ...s.rows[1], id: 'cap/not-a-row' }] }, two).includes('cap/not-a-row: not a catalogue row'));
   const dir = tree();
   try {
     const baseline = join(dir, 'tests/structural-coverage/baseline/r0.json');
@@ -277,12 +285,14 @@ test('totals (#9668): stored totals that disagree with the rows are refused by t
     assert.notEqual(r.status, 0);
     assert.match(r.stderr, /disagree with its rows/);
     // Marking a failing cell not applicable, with totals recomputed to match, is refused against the catalogue rules.
-    const target = summary.rows.find((x) => x.levels.read?.status === 'fail');
-    const rows = summary.rows.map((x) => (x === target ? { ...x, levels: { ...x.levels, read: { applicable: false, rule: 'forged' } } } : x));
+    const target = summary.rows.find((x) => x.levels.read?.status === 'fail') ?? summary.rows.find((x) => x.levels.card?.status === 'unwritten');
+    assert.ok(target, 'a failing applicable cell to hide');
+    const level = target.levels.read?.status === 'fail' ? 'read' : 'card';
+    const rows = summary.rows.map((x) => (x === target ? { ...x, levels: { ...x.levels, [level]: { applicable: false, rule: 'forged' } } } : x));
     writeFileSync(forged, JSON.stringify({ ...summary, ...tally(rows) }));
     const hidden = run(['--root', dir, '--summary', forged]);
     assert.notEqual(hidden.status, 0);
-    assert.match(hidden.stderr, new RegExp(`${target.id} read: applicability`));
+    assert.match(hidden.stderr, new RegExp(`${target.id} ${level}: applicability`));
     const scored = spawnSync(process.execPath, [join(ROOT, 'tests/structural-coverage/score.mjs'), '--check', forged, '--out', join(dir, 'out.json')], { encoding: 'utf8' });
     assert.equal(scored.status, 2, scored.stderr);
     assert.match(scored.stderr, /disagree with its rows/);

@@ -148,11 +148,14 @@ export function verifyTotals(summary) {
  * with the rows. `catalogueRows` is `deriveCatalogue(root).rows`.
  */
 export function verifySummary(summary, catalogueRows) {
+  if (!Array.isArray(summary.rows) || summary.rows.some((r) => !r || typeof r.levels !== 'object' || r.levels === null)) {
+    return ['rows: every row must carry a levels object'];
+  }
   const byId = new Map(catalogueRows.map((r) => [r.id, r]));
   const problems = [];
-  for (const r of summary.rows ?? []) {
+  for (const r of summary.rows) {
     const rule = byId.get(r.id);
-    if (!rule) continue;
+    if (!rule) { problems.push(`${r.id}: not a catalogue row`); continue; }
     for (const l of LEVELS) {
       const storedNa = r.levels[l]?.applicable === false;
       if (storedNa !== (notApplicable(rule, l) !== null)) problems.push(`${r.id} ${l}: applicability differs from the catalogue rule`);

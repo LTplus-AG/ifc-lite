@@ -96,16 +96,20 @@ export async function extractionOrProblem(ctx, file, problems) {
 
 /**
  * The read verdict for one row over every record of its entity in `entries`
- * (`{ file, ix }`, `ix` null when the file did not extract). Pure, and
+ * (`{ file, ix, error? }`, `ix` null and `error` set when the file did not
+ * extract; such a file is a problem of its own and its records prove nothing
+ * about the read model, though they still count as fixtures that set an
+ * attribute). Pure, and
  * independent of file order: each attribute is judged over all the records
  * that set it, so an attribute set in any carrier file must be read with that
  * value, and one no fixture sets at all is unproven, which keeps the cell
  * below a full pass until a fixture carries it.
  */
-export function readRow(row, entries, types, problems = []) {
+export function readRow(row, entries, types) {
   const ordered = [...entries].sort((a, b) => a.file.sha256.localeCompare(b.file.sha256) || a.file.path.localeCompare(b.file.path));
-  // A file that did not extract is already a problem; its records prove nothing either way.
-  const records = ordered.filter((e) => e.ix).flatMap(({ file, ix }) => file.step.of(row.entity).map((rec) => ({ file, ix, rec, where: `${file.path}#${rec.id}` })));
+  const problems = ordered.filter((e) => !e.ix).map((e) => `${e.file.path}: ${e.error ?? 'not extracted'}`);
+  const all = ordered.flatMap(({ file, ix }) => file.step.of(row.entity).map((rec) => ({ file, ix, rec, where: `${file.path}#${rec.id}` })));
+  const records = all.filter((r) => r.ix);
   if (!records.length) return { status: 'fail', reason: problems.join('; ') || 'no record was checked' };
   const value = (r, attr) => normalize(r.rec.args[row.attributes.indexOf(attr)], r.file.step, types);
   const out = [...problems];
@@ -121,7 +125,8 @@ export function readRow(row, entries, types, problems = []) {
   }
   const attrs = link ? row.own.filter((a) => a !== from && a !== to && a !== 'Name') : row.rooted ? ['GlobalId', ...row.own] : row.own;
   for (const attr of attrs) {
-    const setters = records.filter((r) => value(r, attr) !== null);
+    // Any carrier that sets the attribute counts as a fixture for it, read or not.
+    const setters = all.filter((r) => value(r, attr) !== null);
     if (!setters.length) { out.push(`${attr}: no fixture sets it, so reading it is unproven`); continue; }
     if (link) { out.push(`${attr} unexposed (set in ${setters.length} record(s))`); continue; }
     const read = setters.filter((r) => found.has(r));
@@ -148,10 +153,15 @@ export default {
     for (const row of rows) {
       const carriers = ctx.corpus.carriers(row.schema, row.entity);
       if (!carriers.length) { out.set(row.id, ctx.corpus.nothingCarries(row.schema, row.entity)); continue; }
-      const problems = [];
       const entries = [];
-      for (const file of carriers) entries.push({ file, ix: await extractionOrProblem(ctx, file, problems) });
-      out.set(row.id, { ...readRow(row, entries, ctx.tables[row.schema].types, problems), evidence: carriers.map((f) => f.path) });
+      for (const file of carriers) {
+        try {
+          entries.push({ file, ix: await extraction(ctx, file) });
+        } catch (e) {
+          entries.push({ file, ix: null, error: `parse or extract threw: ${e.message}` });
+        }
+      }
+      out.set(row.id, { ...readRow(row, entries, ctx.tables[row.schema].types), evidence: carriers.map((f) => f.path) });
     }
     return out;
   },

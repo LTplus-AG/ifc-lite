@@ -8,7 +8,7 @@ import { expect, test } from '@playwright/test';
 test.use({ viewport: { width: 1280, height: 900 } });
 
 const TAB_BUTTON_COUNTS = [
-  ['File', 20], // includes the Cesium ion upload command (#6587) and LandXML (terrain) (#7600)
+  ['File', 21], // includes the Cesium ion upload command (#6587), LandXML (terrain) (#7600) and Rhino .3dm
   ['Home', 7],
   ['View', 19], // Settings moved to the persistent header (#5857)
   ['Elements', 18], // includes selected mesh hover outline (#5748) and Presentation layers (#7619)
@@ -16,7 +16,7 @@ const TAB_BUTTON_COUNTS = [
   ['Author', 8], // includes Change sets (#6232 D4); every create kind is a Model workspace command, not a button (#6232 B1)
 ] as const;
 
-test('authored IFC keeps all 90 ribbon commands and panel browser reachable at 1280px (#5874, #5778)', async ({ page }, testInfo) => {
+test('authored IFC keeps all 91 ribbon commands and panel browser reachable at 1280px (#5874, #5778)', async ({ page }, testInfo) => {
   await page.addInitScript(() => {
     localStorage.setItem('ifclite.extensions.privacy-disclosure.v2', 'e2e acknowledged');
   });
@@ -87,7 +87,7 @@ test('authored IFC keeps all 90 ribbon commands and panel browser reachable at 1
   const browserCount = visited.Analyze.filter((name) => name === 'Browse panels').length;
   expect(visited.View, 'View includes the selected-source centreline command (#5778)').toContain('Centreline');
   expect(browserCount, 'Analyze has one panel-browser content trigger').toBe(1);
-  expect(Object.values(visited).reduce((total, names) => total + names.length, 0) - browserCount).toBe(90);
+  expect(Object.values(visited).reduce((total, names) => total + names.length, 0) - browserCount).toBe(91);
   // #7619: the added hierarchy command is unique and opens its actual sidebar
   // grouping, after the inventory above checks its accessible pointer target.
   const presentationLayerCommandName = 'Presentation layers';

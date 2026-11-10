@@ -7,7 +7,6 @@
  */
 
 import { moveWithGeneratedRooms, notifySkippedRoomRotation, rotateWithGeneratedRooms } from './mutation-placement-rooms.js';
-import { mirrorNewRoofDefinition } from './mutation-roof.js';
 import { createRoofIn } from './mutation-roof-create.js';
 import { type StateCreator } from 'zustand';
 import type { ViewerState } from '../index.js';

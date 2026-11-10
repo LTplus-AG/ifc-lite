@@ -951,10 +951,10 @@ function flushPending(session: ProcessingSession): void {
 
 function collectMeshes(
   session: ProcessingSession,
-  collection: ReturnType<IfcAPI['processGeometryBatch']>,
+  collection: ReturnType<IfcAPI['processGeometryBatch']>, wasmSpan?: number,
 ): void {
-  traceGeometryWorkerMessage.endNamed('worker.batch.wasm');
-  const collectSpan = traceGeometryWorkerMessage.begin('worker.batch.collect');
+  if (wasmSpan !== undefined) traceGeometryWorkerMessage.end(wasmSpan); // absent: nested in consumePartitioned, which owns the collect span
+  const collectSpan = wasmSpan === undefined ? -1 : traceGeometryWorkerMessage.begin('worker.batch.collect');
   try {
   try {
     // Per-entity geometry fingerprints — hash (#924) plus the absolute world box (#1891) and the proved enclosed volume (#1993) — empty unless hashing was enabled via
@@ -1113,8 +1113,8 @@ type IfcAPIWithSourceBatch = IfcAPI & {
  * call sites so the lever-1c FromSource path is byte-for-byte the legacy path
  * minus the per-call file copy.
  */
-function consumePartitioned(session: ProcessingSession, partitioned: PartitionedBatchResult): void {
-  traceGeometryWorkerMessage.endNamed('worker.batch.wasm');
+function consumePartitioned(session: ProcessingSession, partitioned: PartitionedBatchResult, wasmSpan: number): void {
+  traceGeometryWorkerMessage.end(wasmSpan);
   const collectSpan = traceGeometryWorkerMessage.begin('worker.batch.collect');
   try {
   try {
@@ -1203,7 +1203,7 @@ async function processBatch(session: ProcessingSession, jobs: Uint32Array): Prom
         session.voidKeys, session.voidCounts, session.voidValues,
         session.styleIds, session.styleColors, session.planeAngleToRadians,
         session.materialElementIds, session.materialColorCounts, session.materialColors,
-      ));
+      ), wasmSpan);
     } else if (typeof batchFromSourceFn === 'function') {
       collectMeshes(session, batchFromSourceFn.call(
         ifcApi, jobs, session.unitScale,
@@ -1211,7 +1211,7 @@ async function processBatch(session: ProcessingSession, jobs: Uint32Array): Prom
         session.voidKeys, session.voidCounts, session.voidValues,
         session.styleIds, session.styleColors, session.planeAngleToRadians,
         session.materialElementIds, session.materialColorCounts, session.materialColors,
-      ));
+      ), wasmSpan);
     } else if (typeof partitionedFn === 'function' && instancingEnabled) {
       consumePartitioned(session, partitionedFn.call(
         ifcApi, session.localBytes, jobs, session.unitScale,
@@ -1219,7 +1219,7 @@ async function processBatch(session: ProcessingSession, jobs: Uint32Array): Prom
         session.voidKeys, session.voidCounts, session.voidValues,
         session.styleIds, session.styleColors, session.planeAngleToRadians,
         session.materialElementIds, session.materialColorCounts, session.materialColors,
-      ));
+      ), wasmSpan);
     } else {
       const collection = ifcApi.processGeometryBatch(
         session.localBytes, jobs, session.unitScale,
@@ -1229,7 +1229,7 @@ async function processBatch(session: ProcessingSession, jobs: Uint32Array): Prom
         session.planeAngleToRadians,
         session.materialElementIds, session.materialColorCounts, session.materialColors,
       );
-      collectMeshes(session, collection);
+      collectMeshes(session, collection, wasmSpan);
     }
     } finally { traceGeometryWorkerMessage.end(wasmSpan); }
   } catch (err) {

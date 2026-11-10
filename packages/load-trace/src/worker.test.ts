@@ -149,9 +149,10 @@ it('records synchronous worker sub-stages only after enable', async () => {
   expect(posted).toEqual([]);
   await host({ type: 'load-trace:enable', thread: 'geom-0' }, async () => {});
   await host({ type: 'batch' }, async () => {
-    host.begin('worker.batch.wasm');
+    const wasm = host.begin('worker.batch.wasm');
     now = 3;
-    host.endNamed('worker.batch.wasm');
+    host.end(wasm);
+    host.end(wasm); // a second end (the caller's finally) records nothing
     const collect = host.begin('worker.batch.collect');
     now = 5;
     host.end(collect);

@@ -2,7 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { useSingleFlight } from '@/hooks/useSingleFlight';
 import { useAsyncRun } from '@/hooks/useAsyncRun';
 import { completeReport, forgetReport, rememberReport } from '@/lib/error-reports/pending';
 import { useEffect, useRef, useState } from 'react';
@@ -168,9 +167,9 @@ export function ErrorReportDialog({ context, onClose, client: injectedClient }: 
     await inFlight.current;
     onClose();
   }
-  const cancellation = useSingleFlight();
+  const cancellation = useAsyncRun({ label: 'report cancellation' });
   async function cancel() {
-    await cancellation.run(async isCurrent => {
+    await cancellation.start(async ({ isCurrent }) => {
       if (deleting.current) return;
       if (receipt) { onClose(); return; }
       abort.current?.abort();

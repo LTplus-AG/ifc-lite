@@ -583,6 +583,10 @@
     "value": "PDF",
     "reason": "Preserved technical syntax/identifier or proper name: PDF. Required for exact control, schema, format, shortcut or product recognition."
   },
+  "exportCommands.rhino.label": {
+    "value": "Rhino (.3dm)",
+    "reason": "Preserved technical syntax/identifier or proper name: Rhino, .3dm. Required for exact control, schema, format, shortcut or product recognition."
+  },
   "exportCommands.usd.label": {
     "value": "USD",
     "reason": "Preserved technical syntax/identifier or proper name: USD. Required for exact control, schema, format, shortcut or product recognition."
@@ -1438,6 +1442,14 @@
   "reviewWorkspace.runIncomplete": {
     "value": "{run}: {reasons}",
     "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
+  "rhinoExport.version.7": {
+    "value": "Rhino 7",
+    "reason": "Preserved product name and version number: Rhino 7. Required for exact product recognition when choosing the archive version."
+  },
+  "rhinoExport.version.8": {
+    "value": "Rhino 8",
+    "reason": "Preserved product name and version number: Rhino 8. Required for exact product recognition when choosing the archive version."
   },
   "ribbon.analyze.appsGroup": {
     "value": "Apps",

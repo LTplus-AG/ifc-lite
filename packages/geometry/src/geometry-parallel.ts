@@ -495,7 +495,6 @@ export async function* processParallel(
     };
   };
 
-
   // Await the ONE shared compile (started up-front) so every worker instantiates
   // the SAME module via `initSync` instead of recompiling the binary N+1 times.
   // `null` (URL unresolved / compile failed) keeps the legacy per-worker `init`.

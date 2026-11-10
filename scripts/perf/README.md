@@ -6107,3 +6107,31 @@ strictly less than 2× from 1K to 50K, and a passing F5 exercise result whose
 lane, not a substitute tower here. Missing sizes or F5 evidence fail the check.
 The baseline is a description of current main, not an accepted round-1 result
 or a speedup claim.
+
+## Whole-tab memory worker budget (huge-file stage 1)
+
+The tab, not the worker, is the unit of memory. All dedicated workers share the page's renderer process, and every wasm
+instance (the pre-pass worker and each geometry worker) holds a full copy of the source plus its own index. The old
+per-worker cap (`1.5·F` per worker, `2.5·F` for the main thread, no pre-pass term) under-counted: a 1.03 GB replica
+peaked at ~9 × F of summed Chrome PSS at 4 workers, ~97 % of it in one renderer process. `worker-count.ts` now
+lowers the cores tier to the largest N whose `estimateTabPeakMiB` (`tab-memory-budget.ts`:
+`300 MiB + 3.4·F + (N+1)·(50 MiB + 1.12·F)`) fits 75 % of `deviceMemory`. That model reproduces four measured peaks
+(343 MB at 8 workers, 1.03 / 1.74 / 2.09 GB at 4) within -1 % to +3 %. When one worker cannot fit the most RAM
+`deviceMemory` proves the device can have, the load is refused before the file is read.
+
+Lessons:
+- **Counts that already fit do not move.** Against main's policy over 179,456 (file size × cores × deviceMemory)
+  cases the count never rises, and it changes only where main's count exceeds the new budget. The 10-core
+  "clamped 8 means ≥ 16" lift stays on the cores tiers. Capping it by the device ceiling there changed the tiers
+  on small devices, so only the budget is capped.
+- **Never refuse on a value that can be clamped.** Chrome reports the nearest power of two, clamped to 32 on
+  desktop and 8 on Android and older builds; Firefox and Safari report nothing. Only values below the clamp (2, 4,
+  16) bound the device, at 1.5 × the value. 8, 32 and absent values budget the load but never refuse it.
+- **The model is BWK-density (~78 B/record).** Denser files cost more per instance, so it under-estimates them.
+  That is lenient for the refusal by construction, and the reason the recorded 1.6–1.8 GB dense traps
+  (4 GiB per instance) are not addressed here. Re-fit `TAB_MEMORY_MODEL` from measured peaks whenever what a worker
+  holds changes (e.g. stage 3's range reads).
+- **The flat/instanced split is not an identity check across worker counts**: see the `mesh_count` entry above.
+  The stage-1 evidence compares per-entity geometry hashes (flat meshes plus `instancedGeometryHashes`) instead.
+- `?perf.geomMemoryGB=N` reproduces an exact N-GiB device on a large host. `?geomWorkers=N` now wins over the
+  budget.

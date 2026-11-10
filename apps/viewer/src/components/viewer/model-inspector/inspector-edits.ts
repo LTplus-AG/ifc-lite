@@ -27,8 +27,9 @@ import { commitElementSize } from '@/lib/element-size-commit';
 import { fixWallTop } from '@/lib/commands/modeling/wall-top-fix';
 import type { ElementSizePatch } from '@/store/slices/mutation-element-size';
 import type { WallSection } from '@/store/slices/mutation-wall-section';
-import { writeMaterialLayersInDraft, type ApplyLayersSpec } from '@/lib/authoring/material-layers';
-export type { LayerInput, ApplyLayersSpec } from '@/lib/authoring/material-layers';
+import { takeLayerFollow, writeMaterialLayersInDraft, type ApplyLayersSpec, type LayerFollow } from '@/lib/authoring/material-layers';
+export type { LayerInput, ApplyLayersSpec, LayerFollow } from '@/lib/authoring/material-layers';
+import { reportLayerFollow } from '@/lib/authoring/layer-follow-report';
 import { editHostedFillIn, moveHostedFillIn, type HostedFillPosition } from '@/store/slices/mutation-hosted-fill';
 import { setElementProfile } from '@/store/slices/mutation-element-profile';
 import { editStairDimensionsInStore, type HostedElementSize, type ProfileSection, type StairDimensionEdit } from '@ifc-lite/create';
@@ -65,15 +66,21 @@ export function renameElement(modelId: string, expressId: number, name: string, 
 
 /** Type the element with `typeId` (IfcRelDefinesByType), or take it out of its type (null). */
 export function setElementType(modelId: string, elementId: number, typeId: number | null): boolean {
-  return runInspectorEdit(modelId, (tx) => {
+  let follow: LayerFollow | null = null;
+  const ok = runInspectorEdit(modelId, (tx) => {
     const dataStore = tx.store.models.get(tx.modelId)?.ifcDataStore;
     if (!dataStore) throw new Error(`No model loaded for id "${tx.modelId}"`);
-    recordModellingEdit(useViewerStore, tx.modelId, (methods, draft) => {
+    return recordModellingEdit(useViewerStore, tx.modelId, (methods, draft) => {
       if (typeId === null) detachFromType(draft, dataStore, [elementId]);
+      // A layered type sizes the element it types; what that re-shapes is re-meshed with it.
       else methods.assignType(tx.modelId, typeId, [elementId]);
+      const sized = takeLayerFollow(draft, [elementId]);
+      follow = sized.follow;
+      return sized.remesh;
     });
-    return [elementId];
   });
+  if (ok && follow) reportLayerFollow(useViewerStore.getState(), modelId, follow);
+  return ok;
 }
 
 /** A new type object of the kind's class, typing `elementId` when given. The new type's id, or null when refused. */
@@ -163,16 +170,19 @@ export function setStairDimensions(modelId: string, expressId: number, patch: St
  * a slab; or on the type). A wall layered this way takes the layers' total
  * thickness in the same step. The new set's id, or null when refused.
  */
-export function applyMaterialLayers(modelId: string, spec: ApplyLayersSpec): number | null {
+export function applyMaterialLayers(modelId: string, spec: ApplyLayersSpec, onFollow?: (follow: LayerFollow) => void): number | null {
   let layerSetId: number | null = null;
+  let follow: LayerFollow | null = null;
   const ok = runInspectorEdit(modelId, tx => {
     const dataStore = tx.store.models.get(tx.modelId)?.ifcDataStore;
     if (!dataStore) throw new Error(`No model loaded for id "${tx.modelId}"`);
     return recordModellingEdit(useViewerStore, tx.modelId, (methods, draft) => {
       const result = writeMaterialLayersInDraft({ modelId: tx.modelId, dataStore, view: draft.getMutationView(), editor: draft }, draft, methods, spec);
       layerSetId = result.layerSetId;
+      follow = result.follow;
       return result.remesh;
     }, tx.batchId);
   });
+  if (ok && follow) { reportLayerFollow(useViewerStore.getState(), modelId, follow); onFollow?.(follow); }
   return ok ? layerSetId : null;
 }

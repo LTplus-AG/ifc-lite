@@ -5,7 +5,7 @@
 /**
  * Model workspace entry / exit (charter #6232, WP2): edit mode is the
  * workspace — E, the ribbon's Model button and the status-bar chip all go
- * through `setEditEnabled`, which enters / leaves it. Entry honours the
+ * through explicit workspace entry / exit. Entry honours the
  * collab gate and picks the storey (selection → first);
  * exit cancels the gesture in progress and drops authoring state.
  */
@@ -39,10 +39,10 @@ afterEach(() => {
 });
 
 describe('Model workspace entry / exit (#6232 WP2)', () => {
-  it('edit mode on = the Model workspace on the selection\'s storey; off leaves it', () => {
+  it('explicit entry opens Model on the selection\'s storey; exit leaves it', () => {
     const s = useViewerStore.getState();
     s.setSelectedEntityId(toGlobalIdFromModels(s.models, MODEL_ID, UPPER_STOREY));
-    s.setEditEnabled(true);
+    s.enterModelWorkspace();
     let now = useViewerStore.getState();
     assert.equal(now.workspaceMode, 'model');
     assert.equal(now.editEnabled, true);
@@ -57,19 +57,19 @@ describe('Model workspace entry / exit (#6232 WP2)', () => {
 
   it('a viewer in a shared session cannot enter', () => {
     useViewerStore.setState({ collabRole: 'viewer', canCollabEdit: () => false });
-    useViewerStore.getState().setEditEnabled(true);
+    useViewerStore.getState().enterModelWorkspace();
     assert.equal(useViewerStore.getState().workspaceMode, 'view');
     assert.equal(useViewerStore.getState().editEnabled, false);
     useViewerStore.setState({ collabRole: null, canCollabEdit: () => true });
   });
 
   it('edit mode never outlives the workspace: no editable model, or its model removed', () => {
-    useViewerStore.getState().setEditEnabled(true);
+    useViewerStore.getState().enterModelWorkspace();
     useViewerStore.getState().removeModel(MODEL_ID);
     let s = useViewerStore.getState();
     assert.equal(s.workspaceMode, 'view');
     assert.equal(s.editEnabled, false, 'removing the session model ends edit mode too');
-    s.setEditEnabled(true);
+    s.enterModelWorkspace();
     s = useViewerStore.getState();
     assert.equal(s.editEnabled, false, 'no editable model: no workspace, no edit mode');
     s.setActiveTool('command');
@@ -93,6 +93,14 @@ describe('Model workspace entry / exit (#6232 WP2)', () => {
     assert.equal(s.activeTool, 'select');
     assert.equal(getCommandRuntime().command, null);
     assert.equal(wallCount(), 0);
+  });
+
+  // #9296 review: Flow preflight and the change reviews turn edit mode on for
+  // authoring; a bare flag in View would expose the move gizmo outside Model.
+  it('turning edit mode on enters Model, so geometry tools never run in View (#9296)', () => {
+    useViewerStore.getState().setEditEnabled(true);
+    assert.equal(useViewerStore.getState().workspaceMode, 'model');
+    assert.equal(useViewerStore.getState().editEnabled, true);
   });
 
   it('E toggles the workspace; the status-bar chip names the storey and toggles it too', () => {

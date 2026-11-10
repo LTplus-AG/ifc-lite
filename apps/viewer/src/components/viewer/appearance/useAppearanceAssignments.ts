@@ -59,7 +59,7 @@ export function useAppearanceAssignments(base: AppearancePanelViewProps, enabled
     setOriginal(false);
   }, []);
   function cancel() {
-    applyRun.reset(); worker.current?.cancel(); releasePreview();
+    applyRun.reset(); releasePreview();
     setStatus('idle'); setNotice(translatedMessage('appearance.assignments.status.cancelled'));
   }
   useEffect(() => {
@@ -96,7 +96,7 @@ export function useAppearanceAssignments(base: AppearancePanelViewProps, enabled
   useEffect(() => {
     if (!rows.length || status === 'applying') return;
     if (room) {
-      applyRun.reset(); worker.current?.cancel();
+      applyRun.reset();
       roomBlocked.current = true; releasePreview(); setStatus('stale');
       setNotice(translatedMessage('appearance.assignments.status.leaveRoom'));
       return;
@@ -124,7 +124,6 @@ export function useAppearanceAssignments(base: AppearancePanelViewProps, enabled
   }
   async function run(operation: (signal: AbortSignal) => Promise<void>) {
     await applyRun.restart(async ({ signal }) => {
-      worker.current?.cancel();
       setStatus('preparing');
       await operation(signal);
     });

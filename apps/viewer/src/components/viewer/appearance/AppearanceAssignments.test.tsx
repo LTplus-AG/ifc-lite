@@ -115,6 +115,7 @@ for (const scenario of ['apply', 'cancel', 'stale', 'room', 'query', 'room-pendi
     if (scenario === 'room-pending') {
       await until(() => worker.waiting() === 1);
       act(() => useViewerStore.setState({ collabRoomId: 'joined-while-preparing' }));
+      assert.equal(worker.active(), 0, 'room entry aborts the actual pending planner transport');
       worker.release(); await advance(50);
       assert.equal(ui.querySelector('[data-operation-status]')?.getAttribute('data-operation-status'), 'stale');
       assert.equal(button(ui, 'Apply assignments').disabled, true);

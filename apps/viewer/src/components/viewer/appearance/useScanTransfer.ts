@@ -53,7 +53,7 @@ export function useScanTransfer(work: ScanTransferWorkbench) {
     return () => { worker.dispose(); release(); planner.current = null; };
   }, []);
   useEffect(() => {
-    previewRun.reset(); planner.current?.cancel(); release(); setReady(false); setOriginal(false); setCoverage(null);
+    previewRun.reset(); release(); setReady(false); setOriginal(false); setCoverage(null);
   }, [work.session, work.result, work.stale, settings, productIds, previewRun.reset]);
   useEffect(() => { setProductIds([]); }, [work.targetId]);
   useEffect(() => { setSettings(value => value.reviewed ? { ...value, reviewed: false } : value); }, [work.result]);
@@ -108,6 +108,6 @@ export function useScanTransfer(work: ScanTransferWorkbench) {
   return { productIds, setProductIds, targets, selectedCount, settings, setSettings, coverage, busy, ready, original, status, error, preview, compare, apply,
     pointSource: work.session?.source.kind === 'points',
     chooseSelection() { setProductIds(appearanceOwners(useViewerStore.getState(), work.targetId).selectedProductIds); setStatus(translated('appearance.scanTransfer.status.targetsPinned')); },
-    discard() { previewRun.reset(); planner.current?.cancel(); release(); setReady(false); setOriginal(false); setCoverage(null); setStatus(translated('appearance.scanTransfer.status.discarded')); },
+    discard() { previewRun.reset(); release(); setReady(false); setOriginal(false); setCoverage(null); setStatus(translated('appearance.scanTransfer.status.discarded')); },
   };
 }

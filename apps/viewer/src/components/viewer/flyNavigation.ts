@@ -12,6 +12,8 @@
  * World is Y-up (the viewer converts IFC Z-up during mesh parsing).
  */
 
+import { WHEEL_NOTCH_MIN_PX, wheelDeltaPx } from '@/lib/navigation/wheel-input.js';
+
 export interface Vec3 { x: number; y: number; z: number }
 /**
  * `up` is the camera's up vector. It only matters when the camera looks
@@ -69,10 +71,6 @@ export const FLY_PRECISION_FACTOR = 1 / 3;
  * deltas that add up to the same.
  */
 const WHEEL_STEP_PX = 100;
-/** A single event at least this large is one discrete notch: exactly one step. */
-const WHEEL_NOTCH_MIN_PX = 40;
-/** Pixels per line for `deltaMode === 1` (Firefox reports line deltas for a wheel). */
-const WHEEL_LINE_PX = 33;
 
 const isFiniteVec = (v: Vec3): boolean =>
   Number.isFinite(v.x) && Number.isFinite(v.y) && Number.isFinite(v.z);
@@ -175,7 +173,8 @@ export function createWheelStepper(): (deltaY: number, deltaMode: number) => num
   let acc = 0;
   return (deltaY, deltaMode) => {
     if (!Number.isFinite(deltaY) || deltaY === 0) return 0;
-    const px = deltaMode === 0 ? deltaY : deltaY * WHEEL_LINE_PX;
+    // A single notch-sized event is exactly one step (#9507 shares the unit and the notch size).
+    const px = wheelDeltaPx(deltaY, deltaMode);
     if (Math.abs(px) >= WHEEL_NOTCH_MIN_PX) {
       acc = 0;
       return px < 0 ? 1 : -1;

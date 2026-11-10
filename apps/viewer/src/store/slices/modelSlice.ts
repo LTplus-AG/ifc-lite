@@ -17,11 +17,11 @@ import { federationRegistry, type GlobalIdLookup } from '@ifc-lite/renderer';
 import type { ViewerState } from '../index.js';
 import { localIdInParseRange, localIdInOverlay } from '../globalId.js';
 import { viewerTeardown } from '../teardown-registry.js';
-import { modelAppearanceAssets } from '../../lib/appearance/model-assets.js';
+import { releaseAllModelSessions, releaseRemovedModelSession } from './modelSlice.sessionRelease.js';
 import { modelRemovedScope } from '../teardown-scope.js';
 import { endIdsRowFocusPresentation, type IDSRowFocusPresentation } from '../../lib/ids/visibility-ownership.js';
 import { endClashScenePresentation, type ClashSceneTeardown } from '@/lib/clash/visibility-ownership';
-import { forgetLiveMarkup, markupTransitionPatch } from './drawing2DSlice.markupTransition.js';
+import { markupTransitionPatch } from './drawing2DSlice.markupTransition.js';
 import { isolateModelsPatch, modelFieldPatch, modelsVisibilityPatch } from './modelSlice.visibility.js';
 import { upsertModelPatch } from './modelSlice.upsert.js';
 import { clearModelLayouts } from '@/lib/rooms/room-layout';
@@ -381,9 +381,7 @@ export const createModelSlice: StateCreator<ViewerState, [], [], ModelSlice> = (
     // through `withVisibilityOwnershipInvalidation`.
     const state = get();
     set(viewerTeardown(modelRemovedScope(state, modelId), state));
-    modelAppearanceAssets.remove(modelId);
-    // After the set: the markup transition above snapshots the removed model when it was active.
-    forgetLiveMarkup(modelId);
+    releaseRemovedModelSession(modelId);
   },
 
   clearAllModels: () => {
@@ -520,8 +518,7 @@ export const createModelSlice: StateCreator<ViewerState, [], [], ModelSlice> = (
     // stored global id is stale by definition AND the very next model loaded
     // can be handed those exact numbers back.
     set(viewerTeardown({ kind: 'all-models-cleared' }, get()));
-    modelAppearanceAssets.clear();
-    forgetLiveMarkup();
+    releaseAllModelSessions();
   },
 
   setActiveModel: (modelId) => set((state) => {

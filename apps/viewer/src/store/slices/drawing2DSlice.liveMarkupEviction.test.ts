@@ -40,6 +40,19 @@ it('a removed model\'s markup is not handed to the next model with its id', () =
   assert.deepEqual(markupIds(), [], 'the rejoined room starts without the old session\'s markup');
 });
 
+// Ordering (`modelSlice.sessionRelease.ts`): removing the ACTIVE model runs
+// the markup transition inside `removeModel`'s set, which snapshots that
+// model's markup. A release before the set would be undone by that snapshot.
+it('removing the active model does not leave its markup for the next model with its id', () => {
+  useViewerStore.setState({ ...fixtureModels(fixtureModel('room:1'), fixtureModel('other')), measure2DResults: [measure('old')] });
+  assert.equal(s().activeModelId, 'room:1');
+  s().removeModel('room:1');
+  assert.equal(s().activeModelId, 'other');
+  useViewerStore.setState({ models: new Map([...s().models, ['room:1', fixtureModel('room:1')]]) });
+  s().setActiveModel('room:1');
+  assert.deepEqual(markupIds(), [], 'the active model\'s snapshot left with it');
+});
+
 it('clearing every model forgets every snapshot', () => {
   leaveRoomWithMarkup();
   s().clearAllModels();

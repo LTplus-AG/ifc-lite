@@ -32,9 +32,10 @@
  */
 
 import { EntityExtractor } from './entity-extractor.js';
-import { iterateEffectiveEntities, type EffectiveEntityOverlay } from '@ifc-lite/data';
+import { exactTypeName, iterateEffectiveEntities, type EffectiveEntityOverlay } from '@ifc-lite/data';
 import type { IfcDataStore } from './columnar-parser.js';
 import { normalizeIfcTypeName } from './ifc-schema.js';
+import { getEntityRefFromStore } from './columnar-parser-root-attributes.js';
 import {
   extractBoundaryCondition,
   extractStructuralLoad,
@@ -56,16 +57,15 @@ import {
   readAttr as readSchemaAttr,
   type RawEntity,
 } from './structural-step-values.js';
-import {
-  MEMBER_RELATION_TYPES, PHYSICAL_LINK_TYPES, STRUCTURAL_RELATION_TYPES as RELATION_TYPES,
-  readMemberRelation, readPhysicalLinks, type StructuralMemberRelation, type StructuralRelationContext,
-} from './structural-relations.js';
+import { MEMBER_RELATION_TYPES, PHYSICAL_LINK_TYPES, STRUCTURAL_RELATION_TYPES as RELATION_TYPES,
+  readMemberRelation, readPhysicalLinks, type StructuralRelationContext } from './structural-relations.js';
 import type {
   StructuralActivityInfo,
   StructuralAnalysisModelInfo,
   StructuralConnectionInfo,
   StructuralExtraction,
   StructuralLoadGroupInfo,
+  StructuralMemberConnectionInfo,
   StructuralMemberInfo,
   StructuralResultGroupInfo,
 } from './structural-types.js';
@@ -176,10 +176,11 @@ export function extractStructuralOnDemand(
   const readRows = (ids: readonly number[]): RawEntity[] =>
     ids.map((id) => readRaw(id, effectiveTypeById.get(id)!)).filter((row): row is RawEntity => !!row);
   const read = (role: StructuralRole): RawEntity[] => readRows(activeByRole.get(role) ?? []);
-  // @raw-entity-enumeration-ok resolve a bounded referenced resource's source type when it has no effective row
-  const typeOf = (id: number): string => effectiveTypeById.get(id) ?? store.entityIndex.byId.get(id)?.type ?? store.deferredEntityIndex?.get(id)?.type ?? store.entities.getTypeName(id);
+  const typeOf = (id: number): string =>
+    effectiveTypeById.get(id) ?? getEntityRefFromStore(store, id)?.type ?? exactTypeName(store.entities, id);
+  const readResolved = (id: number) => readRaw(id, typeOf(id));
   /** Load and condition reads go through the session view only when one exists. */
-  const readResource = view ? (id: number) => readRaw(id, typeOf(id)) : undefined;
+  const readResource = view ? readResolved : undefined;
 
   const memberRaw = read('member');
   const connectionRaw = read('connection');
@@ -203,18 +204,13 @@ export function extractStructuralOnDemand(
 
   // ── Relationship passes ────────────────────────────────────────────────
   const boundaryCondition = (id: number) => extractBoundaryCondition(extractor, store, id, readResource);
-  const relationContext: StructuralRelationContext = {
-    schema: store.schemaVersion,
-    readResource: (id) => readRaw(id, typeOf(id)),
-    typeOf,
-    boundaryCondition,
-  };
+  const relationContext: StructuralRelationContext = { schema: store.schemaVersion, readResource: readResolved, typeOf, boundaryCondition };
   const { physicalOfItem, itemsOfPhysical } = readPhysicalLinks(
     readRows(relPhysicalIds),
     new Set([...memberRaw, ...connectionRaw].map((e) => e.expressId)),
     relationContext,
   );
-  const memberRelations = new Map<number, StructuralMemberRelation[]>();
+  const memberRelations = new Map<number, StructuralMemberConnectionInfo[]>();
   const connectionsOfMember = new Map<number, string[]>();
   const membersOfConnection = new Map<number, string[]>();
   for (const rel of readRows(relMemberIds)) {
@@ -233,7 +229,7 @@ export function extractStructuralOnDemand(
   const activitiesOfItem = new Map<number, string[]>();
   /** activity expressId → the item globalId it applies to. */
   const itemOfActivity = new Map<number, string>();
-  for (const rel of relActivityIds.map((id) => readRaw(id, 'IFCRELCONNECTSSTRUCTURALACTIVITY')).filter((row): row is RawEntity => !!row)) {
+  for (const rel of readRows(relActivityIds)) {
     const itemId = asRef(readAttr(rel.type, rel.attrs, 'RelatingElement'));
     const activityId = asRef(readAttr(rel.type, rel.attrs, 'RelatedStructuralActivity'));
     if (itemId === undefined || activityId === undefined) continue;
@@ -247,7 +243,7 @@ export function extractStructuralOnDemand(
   // only the rows whose RelatingGroup is a structural group are read.
   const groupsOfObject = new Map<number, string[]>();
   const objectsOfGroup = new Map<number, string[]>();
-  for (const rel of relGroupIds.map((id) => readRaw(id, 'IFCRELASSIGNSTOGROUP')).filter((row): row is RawEntity => !!row)) {
+  for (const rel of readRows(relGroupIds)) {
     const groupId = asRef(readAttr(rel.type, rel.attrs, 'RelatingGroup'));
     if (groupId === undefined) continue;
     const groupGid = globalIdById.get(groupId);

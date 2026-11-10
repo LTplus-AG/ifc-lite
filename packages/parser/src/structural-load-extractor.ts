@@ -17,8 +17,8 @@
 
 import type { EntityExtractor } from './entity-extractor.js';
 import type { IfcDataStore } from './columnar-parser.js';
-import { getAttributeNamesForSchema, getInheritanceChain, normalizeIfcTypeName } from './ifc-schema.js';
-import { asBoolean, asNumber, asRef, asString } from './structural-step-values.js';
+import { getInheritanceChain, normalizeIfcTypeName } from './ifc-schema.js';
+import { asBoolean, asNumber, asRef, asString, attributeNamesFor } from './structural-step-values.js';
 
 /** Attributes that every load/condition carries from its supertype, not a component. */
 const NAME_ATTR = 'Name';
@@ -283,9 +283,9 @@ function readLoad(
  * Every attribute the registry names for `type`, except the inherited `Name`,
  * that the record carries a finite number for.
  */
-function readNumericComponents(type: string, attrs: unknown[], schema: string | undefined): Record<string, number> {
+export function readNumericComponents(type: string, attrs: unknown[], schema: string | undefined): Record<string, number> {
   const components: Record<string, number> = {};
-  const names = getAttributeNamesForSchema(type, schema);
+  const names = attributeNamesFor(type, schema);
   for (let i = 0; i < names.length; i++) {
     const attrName = names[i];
     if (attrName === NAME_ATTR) continue;
@@ -316,7 +316,7 @@ export function extractBoundaryCondition(
   if (type !== 'IfcBoundaryCondition' && !getInheritanceChain(type).includes('IfcBoundaryCondition')) return undefined;
   const attrs = entity.attrs;
   const components: Record<string, number | boolean> = {};
-  const names = getAttributeNamesForSchema(type, store.schemaVersion);
+  const names = attributeNamesFor(type, store.schemaVersion);
   for (let i = 0; i < names.length; i++) {
     const attrName = names[i];
     if (attrName === NAME_ATTR) continue;

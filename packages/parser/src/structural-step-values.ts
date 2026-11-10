@@ -90,7 +90,22 @@ export function asNumberList(value: unknown): number[] | undefined {
  * whatever sits at a guessed offset.
  */
 export function attrIndex(type: string, attrName: string, schema: string | undefined): number {
-  return getAttributeNamesForSchema(type, schema).indexOf(attrName);
+  return attributeNamesFor(type, schema).indexOf(attrName);
+}
+
+// `getAttributeNamesForSchema` scans the registry per call (~15 µs); a 4,000
+// relation model reads ~50k attributes, so memoise per (schema, type).
+const attributeNamesCache = new Map<string, readonly string[]>();
+
+/** {@link getAttributeNamesForSchema}, memoised. The registries are static. */
+export function attributeNamesFor(type: string, schema: string | undefined): readonly string[] {
+  const key = `${schema ?? ''}|${type}`;
+  let names = attributeNamesCache.get(key);
+  if (!names) {
+    names = getAttributeNamesForSchema(type, schema);
+    attributeNamesCache.set(key, names);
+  }
+  return names;
 }
 
 export function readAttr(type: string, attrs: unknown[], attrName: string, schema: string | undefined): unknown {
@@ -99,7 +114,7 @@ export function readAttr(type: string, attrs: unknown[], attrName: string, schem
 }
 
 /** Push `value` onto `key`'s list without duplicating it. */
-export function addUnique(map: Map<number, string[]>, key: number, value: string): void {
+export function addUnique<T>(map: Map<number, T[]>, key: number, value: T): void {
   let list = map.get(key);
   if (!list) {
     list = [];

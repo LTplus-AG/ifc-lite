@@ -16,6 +16,34 @@
 import type { BoundaryConditionInfo, StructuralLoadInfo } from './structural-load-extractor.js';
 
 /** An `IfcStructuralMember` subtype occurrence. */
+/** An `IfcStructuralConnectionCondition` subtype, numeric attributes keyed by EXPRESS name. */
+export interface StructuralConnectionConditionInfo {
+  expressId: number;
+  type: string;
+  name?: string;
+  components: Record<string, number>;
+}
+
+/** One `IfcRelConnectsStructuralMember` (or `IfcRelConnectsWithEccentricity`); ids are model-local. */
+export interface StructuralMemberConnectionInfo {
+  expressId: number;
+  RelatedStructuralConnection: number;
+  /** Member-end release or fixity at this connection, resolved. */
+  AppliedCondition?: BoundaryConditionInfo;
+  AdditionalConditions?: StructuralConnectionConditionInfo;
+  SupportedLength?: number;
+  ConditionCoordinateSystem?: number;
+  /** `IfcConnectionPointEccentricity`, the only constraint subtype read. */
+  ConnectionConstraint?: {
+    expressId: number;
+    EccentricityInX?: number;
+    EccentricityInY?: number;
+    EccentricityInZ?: number;
+    PointOnRelatingElement?: number;
+    PointOnRelatedElement?: number;
+  };
+}
+
 export interface StructuralMemberInfo {
   expressId: number;
   globalId: string;
@@ -32,23 +60,7 @@ export interface StructuralMemberInfo {
   /** Physical products linked by assignment or IFC2X3 structural-element relations. */
   physicalElementIds?: number[];
   /** Relationship attributes, preserving each member/connection pair. */
-  IfcRelConnectsStructuralMember?: {
-    expressId: number;
-    RelatedStructuralConnection: number;
-    /** Member-end release or fixity at this connection, resolved. */
-    AppliedCondition?: BoundaryConditionInfo;
-    AdditionalConditions?: { expressId: number; type: string; name?: string; components: Record<string, number> };
-    SupportedLength?: number;
-    ConditionCoordinateSystem?: number;
-    ConnectionConstraint?: {
-      expressId: number;
-      EccentricityInX?: number;
-      EccentricityInY?: number;
-      EccentricityInZ?: number;
-      PointOnRelatingElement?: number;
-      PointOnRelatedElement?: number;
-    };
-  }[];
+  IfcRelConnectsStructuralMember?: StructuralMemberConnectionInfo[];
   /** Connections this member is joined to, via IfcRelConnectsStructuralMember. */
   connectionGlobalIds: string[];
   /** Activities applied to it, via IfcRelConnectsStructuralActivity. */

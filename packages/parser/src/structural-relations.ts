@@ -9,12 +9,11 @@
  * subtype) beyond the member/connection pair.
  */
 
-import type { BoundaryConditionInfo } from './structural-load-extractor.js';
-import { getAttributeNamesForSchema, getInheritanceChain } from './ifc-schema.js';
-import { asNumber, asRef, asRefList, asString, readAttr, type RawEntity } from './structural-step-values.js';
-import type { StructuralMemberInfo } from './structural-types.js';
-
-export type StructuralMemberRelation = NonNullable<StructuralMemberInfo['IfcRelConnectsStructuralMember']>[number];
+import { readNumericComponents, type BoundaryConditionInfo } from './structural-load-extractor.js';
+import { getInheritanceChain } from './ifc-schema.js';
+import { structuralRoleOf } from './structural-extractor-values.js';
+import { addUnique, asNumber, asRef, asRefList, asString, readAttr, type RawEntity } from './structural-step-values.js';
+import type { StructuralConnectionConditionInfo, StructuralMemberConnectionInfo } from './structural-types.js';
 
 export interface StructuralRelationContext {
   schema: string | undefined;
@@ -45,7 +44,7 @@ export function readPhysicalLinks(
   ctx: StructuralRelationContext,
 ): { physicalOfItem: Map<number, number[]>; itemsOfPhysical: Record<number, number[]> } {
   const physicalOfItem = new Map<number, number[]>();
-  const itemsOfPhysical: Record<number, number[]> = {};
+  const itemsOfPhysical = new Map<number, number[]>();
   const attr = (rel: RawEntity, name: string) => readAttr(rel.type, rel.attrs, name, ctx.schema);
   for (const rel of rels) {
     const assigns = rel.type === 'IfcRelAssignsToProduct';
@@ -56,20 +55,17 @@ export function readPhysicalLinks(
       if (object === undefined) continue;
       const [item, physical] = itemIds.has(product) ? [product, object] : [object, product];
       if (!itemIds.has(item)) continue;
-      const chain = getInheritanceChain(ctx.typeOf(physical));
-      if (!chain.includes('IfcProduct') || chain.includes('IfcStructuralItem') || chain.includes('IfcStructuralActivity')) continue;
-      const physicals = physicalOfItem.get(item) ?? [];
-      if (!physicals.includes(physical)) physicals.push(physical);
-      physicalOfItem.set(item, physicals);
-      const items = (itemsOfPhysical[physical] ??= []);
-      if (!items.includes(item)) items.push(item);
+      const physicalType = ctx.typeOf(physical);
+      if (!getInheritanceChain(physicalType).includes('IfcProduct') || structuralRoleOf(physicalType)) continue;
+      addUnique(physicalOfItem, item, physical);
+      addUnique(itemsOfPhysical, physical, item);
     }
   }
-  return { physicalOfItem, itemsOfPhysical };
+  return { physicalOfItem, itemsOfPhysical: Object.fromEntries(itemsOfPhysical) };
 }
 
 /** Every attribute of one member/connection relation past the pair itself. */
-export function readMemberRelation(rel: RawEntity, connectionId: number, ctx: StructuralRelationContext): StructuralMemberRelation {
+export function readMemberRelation(rel: RawEntity, connectionId: number, ctx: StructuralRelationContext): StructuralMemberConnectionInfo {
   const attr = (e: RawEntity, name: string) => readAttr(e.type, e.attrs, name, ctx.schema);
   const conditionId = asRef(attr(rel, 'AppliedCondition'));
   const constraintId = asRef(attr(rel, 'ConnectionConstraint'));
@@ -93,13 +89,13 @@ export function readMemberRelation(rel: RawEntity, connectionId: number, ctx: St
 }
 
 /** An `IfcStructuralConnectionCondition` subtype, its numeric attributes keyed by EXPRESS name. */
-function additionalCondition(id: number | undefined, ctx: StructuralRelationContext): StructuralMemberRelation['AdditionalConditions'] {
+function additionalCondition(id: number | undefined, ctx: StructuralRelationContext): StructuralConnectionConditionInfo | undefined {
   const e = id === undefined ? undefined : ctx.readResource(id);
   if (!e || !getInheritanceChain(e.type).includes('IfcStructuralConnectionCondition')) return undefined;
-  const components: Record<string, number> = {};
-  getAttributeNamesForSchema(e.type, ctx.schema).forEach((name, i) => {
-    const n = asNumber(e.attrs[i]);
-    if (n !== undefined) components[name] = n;
-  });
-  return { expressId: e.expressId, type: e.type, name: asString(readAttr(e.type, e.attrs, 'Name', ctx.schema)), components };
+  return {
+    expressId: e.expressId,
+    type: e.type,
+    name: asString(readAttr(e.type, e.attrs, 'Name', ctx.schema)),
+    components: readNumericComponents(e.type, e.attrs, ctx.schema),
+  };
 }

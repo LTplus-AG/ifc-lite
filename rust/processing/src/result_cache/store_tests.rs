@@ -248,6 +248,18 @@ fn eviction_never_replaces_a_lock_a_writer_may_hold() {
     let _ = fs::remove_dir_all(&root);
 }
 
+/// `mkfifo(3)` in-process. Spawning the `mkfifo` tool forked this binary, and a
+/// forked child briefly holds every lock another test thread had open (they
+/// belong to the open file description), which made sibling lock tests fail
+/// intermittently on the fleet.
+#[cfg(unix)]
+fn make_fifo(path: &Path) {
+    use std::os::unix::ffi::OsStrExt;
+    let c = std::ffi::CString::new(path.as_os_str().as_bytes()).unwrap();
+    // SAFETY: `c` is a valid NUL-terminated path that outlives the call.
+    assert_eq!(unsafe { libc::mkfifo(c.as_ptr(), 0o600) }, 0, "mkfifo {}", path.display());
+}
+
 /// Run `f` on a thread and fail (not hang) if it does not return in time.
 #[cfg(unix)]
 fn within_deadline<T: Send + 'static>(what: &str, f: impl FnOnce() -> T + Send + 'static) -> T {
@@ -267,8 +279,7 @@ fn non_regular_files_at_entry_and_lock_paths_never_block() {
     let root = temp_root("fifo");
     let s = store(&root);
     let entry = s.dir().join(format!("{KEY_A}.ifcr"));
-    let made = std::process::Command::new("mkfifo").arg(&entry).status().expect("mkfifo runs");
-    assert!(made.success());
+    make_fifo(&entry);
     let reader_root = root.clone();
     let read = within_deadline("reading a FIFO entry", move || matches!(store(&reader_root).read(KEY_A), Err(ReadError::Io(_))));
     assert!(read, "a FIFO entry is refused");
@@ -292,7 +303,7 @@ fn non_regular_files_at_entry_and_lock_paths_never_block() {
 
     // A FIFO at the key's lock stripe: publication fails fast instead of hanging.
     let lock = s.lock_path(KEY_B);
-    assert!(std::process::Command::new("mkfifo").arg(&lock).status().unwrap().success());
+    make_fifo(&lock);
     let writer_root = root.clone();
     let outcome = within_deadline("locking a FIFO lock", move || store(&writer_root).publish(KEY_B, b"b"));
     assert!(matches!(outcome, PublishOutcome::Failed(_)), "{outcome:?}");

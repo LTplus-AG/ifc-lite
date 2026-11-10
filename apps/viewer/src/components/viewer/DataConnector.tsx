@@ -52,7 +52,7 @@ import { Separator } from '@/components/ui/separator';
 import { ACTIVE_STATE_CLASS } from '@/components/ui/active-state';
 import { useViewerStore } from '@/store';
 import { useTranslation, localeCount } from '@/i18n';
-import { canMutate, mutationDenialKey, mutationPermission } from '@/store/mutation-permission';
+import { canMutateData, dataMutationPermission, mutationDenialKey } from '@/store/mutation-permission';
 import { configureMutationView } from '@/utils/configureMutationView';
 import { defaultAuthoringModelId } from '@/lib/model-placement/history';
 import { PropertyValueType } from '@ifc-lite/data';
@@ -96,7 +96,6 @@ export function DataConnector(props: ToolDialogProps) {
   const getMutationView = useViewerStore((s) => s.getMutationView);
   const mutationViews = useViewerStore(s => s.mutationViews);
   const registerMutationView = useViewerStore((s) => s.registerMutationView);
-  const editEnabled = useViewerStore((s) => s.editEnabled);
   const collabEditRole = useViewerStore((s) => s.collabRole);
   // Also get legacy single-model state for backward compatibility
   const legacyIfcDataStore = useViewerStore((s) => s.ifcDataStore);
@@ -109,8 +108,9 @@ export function DataConnector(props: ToolDialogProps) {
   const { trigger } = props;
   const [open, setOpen] = useToolDialog(props);
   const [selectedModelId, setSelectedModelId] = useState<string>('');
-  const editPermission = useMemo(() => mutationPermission(useViewerStore.getState(), selectedModelId),
-    [editEnabled, collabEditRole, selectedModelId, models]);
+  // Importing data edits properties in place, like the Properties panel (#9296).
+  const editPermission = useMemo(() => dataMutationPermission(useViewerStore.getState(), selectedModelId),
+    [collabEditRole, selectedModelId, models]);
   const canEditInSession = editPermission.allowed;
 
   // Raw CSV content
@@ -222,7 +222,7 @@ export function DataConnector(props: ToolDialogProps) {
       dataStore.entities,
       mutationView,
       dataStore.strings || null,
-      () => isDraftCurrent() && canMutate(useViewerStore.getState(), selectedModelId)
+      () => isDraftCurrent() && canMutateData(useViewerStore.getState(), selectedModelId)
     );
   }, [isDraftCurrent, selectedModel, selectedModelId, getMutationView, mutationViews]);
 

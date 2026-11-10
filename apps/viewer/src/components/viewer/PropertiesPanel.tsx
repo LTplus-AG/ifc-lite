@@ -146,6 +146,8 @@ export function PropertiesPanel() {
     [collabRole, selectedEntity?.modelId, models],
   );
   const editMode = editPermission.allowed;
+  // Geometry and georeference placement stay in the Model workspace.
+  const geometryEditMode = useViewerStore((s) => s.editEnabled) && editMode;
   const propertiesActiveTab = useViewerStore((s) => s.propertiesActiveTab);
   const setPropertiesActiveTab = useViewerStore((s) => s.setPropertiesActiveTab);
   const pendingPropertyFocus = useViewerStore((s) => s.pendingPropertyFocus);
@@ -1164,14 +1166,14 @@ export function PropertiesPanel() {
         {/* Part of Assembly (#3620) */}
         <AssemblyBadge assembly={assemblyParent} onSelect={handleSelectAssembly} />
         {/* World coordinates + Georeferencing: one Position row with a disclosure */}
-        {(entityCoordinates || renderedGeoref || editMode) && (
+        {(entityCoordinates || renderedGeoref || geometryEditMode) && (
           <EntityPositionSection
             coordinates={entityCoordinates}
             crsName={renderedGeoref?.projectedCRS?.name}
             georefPanel={{
               georef: renderedGeoref,
               modelId: selectedEntity?.modelId === 'legacy' ? '__legacy__' : (model?.id ?? selectedEntity?.modelId),
-              enableEditing: editMode,
+              enableEditing: geometryEditMode,
               schemaVersion: activeDataStore?.schemaVersion,
               coordinateInfo: (model?.geometryResult ?? geometryResult)?.coordinateInfo,
               geometryResult: model?.geometryResult ?? geometryResult,
@@ -1341,11 +1343,11 @@ export function PropertiesPanel() {
             {/* Edit toolbar - only shown when edit mode is active */}
             {editMode && selectedEntity && (
               <div className="space-y-2 border-b border-border p-2">
-                <GeometryEditCard
+                {geometryEditMode && <GeometryEditCard
                   modelId={selectedEntity.modelId}
                   entityId={selectedEntity.expressId}
                   entityLabel={entityType ? `${entityType} #${selectedEntity.expressId}` : `#${selectedEntity.expressId}`}
-                />
+                />}
                 <EditToolbar
                   modelId={selectedEntity.modelId}
                   entityId={selectedEntity.expressId}

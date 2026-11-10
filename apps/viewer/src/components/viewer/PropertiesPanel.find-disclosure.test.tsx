@@ -111,6 +111,17 @@ describe('Properties find and section disclosure (#5899)', () => {
     assert.equal(useViewerStore.getState().mutationViews.get('m')?.getPropertyValue(72, 'Custom_A', 'FireRating'), 'REI60');
   });
 
+  it('keeps geometry editing in Model while data edits stay in View (#9296)', async () => {
+    await seed();
+    useViewerStore.setState({ editEnabled: false, workspaceMode: 'view', session: null });
+    const panel = render(<PropertiesPanel />);
+    const geometryCard = () => [...panel.querySelectorAll('button[aria-expanded]')].some((b) => b.textContent === 'Geometry');
+    assert.ok(panel.querySelector('button[aria-label="FireRating: REI60"]'), 'data stays editable in View');
+    assert.equal(geometryCard(), false, 'no geometry editor outside Model');
+    act(() => useViewerStore.setState({ editEnabled: true }));
+    assert.equal(geometryCard(), true, 'the geometry editor returns in Model');
+  });
+
   it('filters property names and values across sets, highlights hits, and explains no match', async () => {
     await seed();
     const panel = render(<PropertiesPanel />);

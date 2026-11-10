@@ -339,7 +339,7 @@ test('PR #9581: file preview exposes busy state on Import and the drop zone', as
   const host = hostFixture(), preview = host.previewBundle.bind(host);
   let release!: () => void, started = false;
   const held = new Promise<void>(resolve => { release = resolve; });
-  t.mock.method(host, 'previewBundle', async bytes => { started = true; await held; return preview(bytes); });
+  t.mock.method(host, 'previewBundle', async (bytes: Uint8Array) => { started = true; await held; return preview(bytes); });
   const ui = render(<ExtensionHostContext.Provider value={host}><ExtensionsPanel /></ExtensionHostContext.Provider>);
   try {
     choose(ui, bundle('busypreview'), 'busypreview'); await until(() => started);

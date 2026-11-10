@@ -117,7 +117,9 @@ test('refuses a bundle that emits no wide ops', () => {
 
 test('build-wasm.sh routes BUILD_WIDE=1 through build_wide_bundle', () => {
   const src = readFileSync(buildWasm, 'utf8');
-  const block = src.slice(src.indexOf('if [ "${BUILD_WIDE:-}" = "1" ]'));
+  const start = src.search(/^if \[ "\$\{BUILD_WIDE:-\}" = "1" \]; then$/m);
+  assert.ok(start >= 0, 'build-wasm.sh has a BUILD_WIDE=1 block');
+  const block = src.slice(start);
   assert.match(block, /^\s*\. "\$SCRIPT_DIR\/lib\/build-wasm-wide\.sh"$/m);
   assert.match(block, /^\s*build_wide_bundle \|\| exit 1$/m);
   assert.doesNotMatch(src, /wide-arithmetic"? *\\\n\s*rustup run nightly-2025-11-15/,

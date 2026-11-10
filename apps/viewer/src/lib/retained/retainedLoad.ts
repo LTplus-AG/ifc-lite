@@ -52,7 +52,7 @@ function reportRefusal(message: string, retry: (() => void) | null): void {
 function refusedLoad(message: string, retry: (() => void) | null): GeometryKernelLoad {
   reportRefusal(message, retry);
   settleUnownedLoadUi();
-  return { ...RETAINED_POLICY, refused: Promise.resolve() };
+  return { ...RETAINED_POLICY, refused: Promise.resolve(message) };
 }
 
 function phaseText(phase: RetainedPhase): { phase: string; percent: number } {
@@ -106,8 +106,6 @@ export function beginRetainedLoad(
       const text = activity.fail(message(key, byteLength));
       const state = useViewerStore.getState();
       state.updateModel(modelId, { loadState: 'error', loadError: text });
-      state.setProgress(null);
-      state.setLoading(false);
       reportRefusal(text, exactRetry);
       return true;
     },

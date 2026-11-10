@@ -5,6 +5,15 @@
 import type { Catalogue } from '../../registry';
 
 export const modelingCommandIt = {
+  "modelingCommand.roof.shape": "Forma",
+  "modelingCommand.roof.hip": "Padiglione",
+  "modelingCommand.roof.gable": "Due falde",
+  "modelingCommand.roof.mono": "Una falda",
+  "modelingCommand.roof.flat": "Piano",
+  "modelingCommand.roof.pitch": "Pendenza",
+  "modelingCommand.roof.overhang": "Sporto",
+  "modelingCommand.roof.edge": "Bordo",
+  "modelingCommand.roof.edgeSlope": "Pendenza del bordo",
   "modelingCommand.wall.top": "Sommità muro",
   "modelingCommand.wall.topStoreyAbove": "Fino al piano superiore",
   "modelingCommand.wall.topFixed": "Altezza fissa",

@@ -468,9 +468,19 @@ only downloads on a 3dm export.
 
 ```ts
 export interface EncodedRhinoScene { manifest: string; blob: Uint8Array }
-export interface Write3dmOptions { version?: 7 | 8; onProgress?: (done: number, total: number) => void }
-export function writeRhino3dm(scene: EncodedRhinoScene, opts?: Write3dmOptions): Promise<Uint8Array>;
+export const RHINO_3DM_VERSIONS = [8, 7] as const;
+export type Rhino3dmVersion = (typeof RHINO_3DM_VERSIONS)[number];
+export interface Write3dmOptions {
+  version?: Rhino3dmVersion; // default 8
+  onProgress?: (done: number, total: number) => void;
+  locateFile?: (path: string, prefix: string) => string; // first initialization only
+}
+export interface Write3dmResult { bytes: Uint8Array; warnings: string[]; objectCount: number }
+export function writeRhino3dm(scene: EncodedRhinoScene, opts?: Write3dmOptions): Promise<Write3dmResult>;
 ```
+
+The encoded scene comes from the Rust producer: `build_rhino_scene(content, &opts)`
+then `RhinoScene::encode()`, which returns the `(manifest, blob)` pair.
 
 Contract:
 
@@ -487,9 +497,14 @@ Contract:
 
 ### Wasm binding
 
-`GeometryProcessor.exportRhinoScene(content: Uint8Array, optionsJson: string): { manifest: string; blob: Uint8Array }`,
-next to `exportUsd` in `rust/wasm-bindings/src/api/export_data.rs` and the
-`ifc-lite-bridge.ts` wrapper, with the same `NO_RENDER_GEOMETRY` refusal mapping.
+`exportRhinoScene(content: Uint8Array, optionsJson: string): RhinoSceneJs` lives in
+its own crate, `rust/rhino-wasm`, built to the separate `@ifc-lite/wasm/rhino`
+payload (`packages/wasm/pkg-rhino`) like `@ifc-lite/wasm/diff`. The default
+engine never carries the scene builder, so the .3dm exporter does not grow the
+download every viewer load pays for. `@ifc-lite/geometry`'s
+`exportRhinoScene(content, options): Promise<{ manifest: string; blob: Uint8Array }>`
+imports and initializes that payload on first use (reading the bytes from the
+installed package under Node) and keeps the `NO_RENDER_GEOMETRY` refusal.
 
 ### Python (phase 4)
 
@@ -504,7 +519,7 @@ and sets object ids. This is also the route for models too big for wasm.
 | Surface | Change |
 |---|---|
 | Rust | `ifc_lite_export::rhino::{build_rhino_scene, RhinoSceneOptions, RhinoScene}`; shared `scene_input` lifted from `usd/` |
-| Wasm | `exportRhinoScene` |
+| Wasm | `exportRhinoScene` in the separate `@ifc-lite/wasm/rhino` payload (`rust/rhino-wasm`) |
 | CLI | `ifc-lite export model.ifc --format 3dm --out model.3dm [flags above]` in `export-rust-formats.ts`, count check via read-back object count |
 | MCP | `export_3dm` tool, same options |
 | Viewer | Export menu and command palette `export:3dm`; dialog with units, layer scheme, instancing, properties, visible-only; source resolution reuses `step-export-source.ts` (`isStepSourceModel`, `resolveStepExportBytes`) so pending edits are exported; the write runs in a Web Worker |

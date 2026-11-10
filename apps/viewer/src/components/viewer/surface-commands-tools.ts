@@ -52,7 +52,7 @@ export const TOOL_SURFACE_COMMANDS = [
   },
   {
     id: 'tool:section', labelKey: 'commandPalette.tool.section.label', ribbonLabelKey: 'ribbon.home.section',
-    searchLabel: 'Section', keywords: 'clip cut plane', category: 'Tools', icon: Scissors,
+    searchLabel: 'Section', keywords: 'clip cut plane', keywordsKey: 'commandPalette.paths.section', detailKey: 'commandPalette.paths.section', category: 'Tools', icon: Scissors,
     surfaces: paletteMobileRibbon, enabled: alwaysEnabled, shortcut: 'tool.section',
     mobileLabelKey: () => 'shellChrome.mobileToolbar.sectionTool',
     run: () => { useViewerStore.getState().setActiveTool('section'); },

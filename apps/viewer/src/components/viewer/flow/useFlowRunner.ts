@@ -25,6 +25,7 @@ import { createViewerOpenModel } from '@/lib/flow/open-model';
 import { createAutomationHost } from '@/lib/flow/automation-host';
 import { preflightWorkflow, isAutomationGraph } from '@/lib/flow/preflight';
 import { startWorkflowRun, cancelWorkflowRun } from '@/lib/flow/run-session';
+import { guardAnalysisRun } from '@/hooks/analysisRunGuard';
 import { writingNodes } from '@/lib/flow/publish-provenance';
 import { claimReview, finishReview, pauseForReview, useFlowReview } from '@/lib/flow/review-session';
 
@@ -71,6 +72,10 @@ export function useFlowRunner(): { run: (inputs?: Record<string, unknown>, optio
     }
     const doc = structuredClone(flowDoc);
     const initialDoc = flowDoc;
+    // "Open file" keeps the graph (workspace state), so nothing below sees it:
+    // the run generation does (A2). Cancelling only starts the drain — the
+    // lease, and with it `flowRunning`, is held until the run settles.
+    const guard = guardAnalysisRun(useViewerStore, () => session.cancel());
     const unsubscribe = useViewerStore.subscribe((state, previous) => {
       if (state.flowDoc !== initialDoc) session.cancel();
       if (automationGraph && !session.phase.startsWith('Loading models')
@@ -118,6 +123,9 @@ export function useFlowRunner(): { run: (inputs?: Record<string, unknown>, optio
     // Another graph opened while this one ran: its panel must not show, or
     // publish, this run (#5380 review). `openFlow` already cleared the result.
     const stillOpen = (): boolean => useViewerStore.getState().flowDoc === initialDoc;
+    // ...and the session it started in is still the one on screen: a drained
+    // run must not land its result or its AbortError in the next session (A2).
+    const owned = (): boolean => stillOpen() && guard.isCurrent();
     const { resume } = options;
     let claimed: FlowCheckpoint | null = null;
     try {
@@ -136,11 +144,11 @@ export function useFlowRunner(): { run: (inputs?: Record<string, unknown>, optio
       const automation = createAutomationHost(session, doc, ownedAddModel, (artifact) => {
         session.check();
         const state = useViewerStore.getState();
-        if (stillOpen()) state.setFlowArtifacts([...state.flowArtifacts, artifact]);
+        if (owned()) state.setFlowArtifacts([...state.flowArtifacts, artifact]);
       });
       const result = await runFlowInViewer({
         doc, bim, pin, cache, inputs: preparedInputs, signal: session.controller.signal, automation, tables: viewerTableAccess(useViewerStore),
-        openModel: createViewerOpenModel(ownedAddModel, (id) => useViewerStore.getState().models.has(id)),
+        openModel: createViewerOpenModel(ownedAddModel),
         ...(ai ? { ai: ai.service } : {}),
         ...(claimed ? { resume: resumeOutputs(claimed) } : {}),
       });
@@ -149,15 +157,16 @@ export function useFlowRunner(): { run: (inputs?: Record<string, unknown>, optio
       // A proposal awaits review: nothing downstream ran. Save it before showing the run.
       if (result.ok && result.review.length > 0) await pauseForReview({ doc, result, inputs: preparedInputs, values: inputs ?? {}, budget: ai ? { ...ai.budget } : resume?.budget });
       session.check();
-      if (stillOpen()) setFlowLastRun(result, undefined, record(result));
+      if (owned()) setFlowLastRun(result, undefined, record(result));
       else setFlowRunning(false);
     } catch (err) {
       if (claimed) await finishReview(null, err instanceof Error ? err.message : String(err));
-      if (stillOpen()) setFlowLastRun(null, err instanceof Error ? err.message : String(err), record());
+      if (owned()) setFlowLastRun(null, err instanceof Error ? err.message : String(err), record());
       else setFlowRunning(false);
     } finally {
       unsubscribe();
-      if (stillOpen()) useViewerStore.setState({ flowProgress: null, flowRunWarnings: [...session.warnings] });
+      if (owned()) useViewerStore.setState({ flowProgress: null, flowRunWarnings: [...session.warnings] });
+      guard.dispose();
       if (session.controller.signal.aborted) invalidateForExternalChange(bim, cache);
       session.release();
       capture.close();

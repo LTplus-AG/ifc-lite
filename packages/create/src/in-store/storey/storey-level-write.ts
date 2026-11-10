@@ -10,6 +10,8 @@
  * here means nothing is published.
  */
 
+import { ROOF_ATTACHMENT } from '../edit/wall-base-solid.js';
+import { refreshTopAttachmentsInStore } from '../top-attachment-refresh.js';
 import type { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import { extractProjectUnits, extractQuantitiesOnDemand, quantitySiScale, type IfcDataStore, type ProjectUnits } from '@ifc-lite/parser';
 import type { QuantityType } from '@ifc-lite/data';
@@ -74,6 +76,7 @@ export function writeStoreyLevelPlan(store: IfcDataStore, draft: StoreEditor, pl
     }
     reshaped.push(stair.stairId, stair.flightId);
   }
+  reshaped.push(...refreshTopAttachmentsInStore(target, plan.moved, plan.walls.map(wall => wall.wallId)));
   return [...new Set(reshaped)];
 }
 
@@ -91,6 +94,7 @@ export function writeStoreyLevelPlan(store: IfcDataStore, draft: StoreEditor, pl
 export function scaleWallQuantities(
   store: IfcDataStore, view: MutablePropertyView, wallId: number, k: number, geometry?: WallGeometry,
 ): void {
+  if (view.getPropertyValue(wallId, ROOF_ATTACHMENT, 'Clipped') === true) return;
   const base = view.hasQuantityBase() ? undefined : (id: number) => extractQuantitiesOnDemand(store, id);
   const qto = view.getQuantitiesForEntity(wallId, base).find((set) => set.name === WALL_QTO);
   if (!qto || !Number.isFinite(k)) return;

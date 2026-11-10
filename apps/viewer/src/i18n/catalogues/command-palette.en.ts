@@ -24,6 +24,34 @@ import type { TranslationValue } from '../types';
  *    so the palette, rail, and ribbon display the same name.
  */
 export const commandPaletteEn = {
+  "commandPalette.paths.panels.bcf": "BCF → server connect review topics viewpoints comments import export",
+  "commandPalette.paths.panels.ids": "Validation → IDS requirements results; IDS Studio → author specifications facets",
+  "commandPalette.paths.panels.clash": "Clash → rules matrix clearance run saved reports results",
+  "commandPalette.paths.panels.compare": "Compare → models revisions matching tolerances results saved reports",
+  "commandPalette.paths.panels.quantify": "Lists → columns filter CSV; Schedule → tasks playback; Cost → rates quantities estimate",
+  "commandPalette.paths.panels.drawing": "Drawings → Overrides Sheet Underlays Scan; title block PDF DXF registration",
+  "commandPalette.paths.panels.appearance": "Appearance → textures image PDF crop scale calibration UV projection",
+  "commandPalette.paths.panels.clouds": "Point clouds → scan registration alignment classification deviation outline",
+
+  "commandPalette.paths.section": "Section toolbar → Cap → fill hatch; distance → step zoom; Views → save restore clear cuts; plane menu → rename duplicate reverse remove resume",
+  "commandPalette.paths.modelPlan": "Model workspace → plan beside 3D → Plan Split 3D layout storey fit grid",
+  "commandPalette.paths.retainedReport": "Retained geometry chip → report → refused products engine details reload with exact kernel",
+  "commandPalette.availability.retainedReport": "Load a model with a retained geometry report in a supported build.",
+
+  "commandPalette.paths.settings.general": "Settings General → theme, hover helpers, IFC federation, LandXML georeferencing",
+  "commandPalette.paths.settings.display": "Settings Display → navigation preset Default Navisworks Trackpad, SpaceMouse, performance statistics",
+  "commandPalette.paths.settings.performance": "Settings Performance → worker overrides, workers tier, reset overrides; kernel only in supported builds",
+  "commandPalette.paths.settings.collaboration": "Settings Collaboration → display name, save name",
+  "commandPalette.paths.settings.privacy": "Settings Privacy → analytics consent, local action log export and clear, personal prompt overlay",
+  "commandPalette.paths.measure": "Measure toolbar → Distance Polyline Angle Radius Point; Angle → points edges faces; Geo XYZ → geographic reference",
+  "commandPalette.paths.measurePanel": "Measurements panel → List Point Qty Centreline; List → clear all confirmation; Point → coordinates reference offset; Qty → selection quantities area volume weight",
+  "commandPalette.paths.sectionAdd": "Section toolbar → Add Down Front Side Face Box Alignment; face pick; alignment chooser",
+  "commandPalette.paths.search.filter": "Advanced search → Filter → rules groups properties operators select isolate hide results",
+  "commandPalette.paths.search.libraries": "Advanced search → Libraries → native libraries saved filters lenses IDS BCF reports profiles",
+  "commandPalette.paths.basepoints": "Show model basepoints origin coordinates IFC zero",
+  "commandPalette.availability.sectionLimit": "Remove a cutting plane to make room for another.",
+  "commandPalette.availability.sectionBounds": "Load geometry with bounds, or select geometry with bounds, to fit a section box.",
+
   "commandPalette.elements.entityActions": "Selected entity actions…",
   "commandPalette.aliases.entityActions": "Copy GlobalId select same type storey duplicate X Y Z positive negative delete anonymized selection export",
   "commandPalette.model.array": "Array selected elements…",
@@ -40,6 +68,7 @@ export const commandPaletteEn = {
   "commandPalette.availability.textSelection": "Clear the selected page text before copying elements",
   "commandPalette.availability.rendererEntity": "Select a resolvable element in the model; a property-only reference cannot open entity actions",
   "commandPalette.availability.world": "Enable the available 3D world context first",
+  'commandPalette.extension.conditions': 'This tool’s conditions are not met. Check the model or selection requirement shown beside its owner.',
   'commandPalette.extension.busy': 'Wait for the current extension export to finish',
   'commandPalette.availability.undo': 'No workspace edits to undo (IDS and schedule history are separate)',
   'commandPalette.availability.redo': 'No workspace edits to redo (IDS and schedule history are separate)',

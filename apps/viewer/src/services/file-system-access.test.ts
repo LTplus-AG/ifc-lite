@@ -15,7 +15,6 @@ import {
 } from './file-system-access.js';
 import {
   MODEL_FILE_EXTENSIONS,
-  isSupportedMobileModelFile,
   isSupportedModelFile,
 } from './supported-model-files.js';
 
@@ -63,8 +62,8 @@ describe('file-system-access', () => {
     });
   });
 
-  it('accepts mixed-case LandXML names from the mobile picker (#4937)', () => {
-    assert.equal(isSupportedMobileModelFile(fakeFile('Survey.XML')), true);
+  it('accepts mixed-case LandXML names through the shared picker guard (#4937, #8947)', () => {
+    assert.equal(isSupportedModelFile(fakeFile('Survey.XML')), true);
   });
 
   describe('openIfcFilesWithHandles', () => {

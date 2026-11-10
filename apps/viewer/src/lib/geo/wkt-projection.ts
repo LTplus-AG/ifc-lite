@@ -6,7 +6,7 @@
  * Projection definitions from an `IfcWellKnownText` CRS definition (IFC4X3).
  *
  * The WKT itself is read by proj4's own parser (`wkt-parser`, patched in
- * patches/wkt-parser@1.5.6.patch for WKT1-style parameter names inside WKT2)
+ * patches/wkt-parser@1.6.0.patch for WKT1-style parameter names inside WKT2)
  * — this module only selects the horizontal CRS of a compound one, prefers a
  * registered EPSG identifier when the WKT names one, and registers the parsed
  * definition with proj4 under a content-addressed name. Every proj4 call in

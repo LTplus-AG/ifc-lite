@@ -24,7 +24,7 @@ import { SANDBOX_ABORT_MESSAGE, SANDBOX_MODULE_RETIRED_MESSAGE } from '../../lib
 import { BimSandboxHandle } from './sandbox-factory.js';
 
 function fakeSandbox(
-  evalImpl: () => Promise<unknown>,
+  evalImpl: (source: string) => Promise<unknown>,
   extra: { moduleRetired?: boolean; dispose?: () => void } = {},
 ): Sandbox {
   return {

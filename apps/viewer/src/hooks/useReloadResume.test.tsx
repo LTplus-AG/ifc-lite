@@ -20,6 +20,7 @@ import {
 import { useViewerStore } from '@/store';
 import type { FederatedModel } from '@/store/types';
 import { useReloadResume, type ReloadResumeDeps } from './useReloadResume';
+import { installModelLoadCanceller } from './modelLoadCanceller.js';
 
 const realCapture = posthog.capture;
 let captured: Array<{ event: string; properties: Record<string, unknown> }> = [];
@@ -247,6 +248,33 @@ describe('useReloadResume', () => {
     assert.match(notices[0], /"f\.ifc", "g\.ifc"/);
     const event = captured.find((c) => c.event === 'stale_reload_resumed');
     assert.deepEqual(event?.properties, { reopened_count: 5, prompted_count: 2, auto_reopen: true });
+  });
+
+  it('opens nothing over a load the user started while the cache was read, and names the files instead (L9)', async () => {
+    previousPageReloaded(['tower.ifc']);
+    let resolveRead!: (file: File) => void;
+    let readStarted = false;
+    const routed: string[][] = [];
+    const notices: string[] = [];
+    const deps: ReloadResumeDeps = {
+      readCached: (name) => { readStarted = true; return new Promise((resolve) => { resolveRead = () => resolve(new File(['x'], name)); }); },
+      notify: (text) => notices.push(text),
+    };
+    render(<Host ready route={(files) => routed.push(files.map((f) => f.name))} deps={deps} />);
+    await flush();
+    assert.equal(readStarted, true);
+
+    const release = installModelLoadCanceller('primary', () => {}); // the user opens another file
+    try {
+      resolveRead(new File(['x'], 'tower.ifc'));
+      await flush();
+    } finally {
+      release();
+    }
+
+    assert.deepEqual(routed, [], 'the resume does not replace the user\'s load');
+    assert.equal(notices.length, 1);
+    assert.match(notices[0], /"tower\.ifc"/, 'the file is still named, so the user can reopen it');
   });
 
   it('does nothing on an ordinary boot', async () => {

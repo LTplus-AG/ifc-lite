@@ -80,6 +80,11 @@ export async function handOffToRetry(
   await retry();
 }
 
+type LoadProgress = ReturnType<typeof selectActiveLoadProgress>;
+
+/** The terminal progress of a load that ran to its end (#1570: picking reads `percent < 100`). */
+export const LOAD_COMPLETE: NonNullable<LoadProgress> = { phase: 'Complete', percent: 100 };
+
 /**
  * End the shared load UI for a path that holds no canceller of its own: a
  * raster drape or a retained refusal (both return before a canceller is
@@ -89,20 +94,48 @@ export async function handOffToRetry(
  * end. `error` and its Retry are never cleared here: none of these paths
  * reported one, so whatever is shown belongs to another load.
  */
-export function settleUnownedLoadUi(): void {
+export function settleUnownedLoadUi(progress: LoadProgress = null): void {
   const state = getViewerStoreApi().getState();
   if (selectLoadCanceller(state) !== null) return;
   state.setLoading(false);
   state.setGeometryStreamingActive(false);
-  state.setProgress(null);
+  state.setProgress(progress);
   state.setGeometryProgress(null);
   state.setMetadataProgress(null);
   state.setLoadingFileName(null);
 }
 
+/**
+ * End one load's share of the shared load UI (L2). Every load end, completed
+ * or failed, releases its Cancel first; the spinner, streaming flag and
+ * progress then end only once no other load or stream still holds the Cancel,
+ * so a load that finishes first never ends the UI of one still running.
+ */
+export function settleOwnedLoadUi(release: () => void, progress: LoadProgress = null): void {
+  release();
+  settleUnownedLoadUi(progress);
+}
+
 // Hook instances are independent; a replacement primary invalidates every
 // unfinished load, while concurrent federated additions remain independent.
 const pendingLoads = new Map<() => void, () => void>();
+
+/** Work waiting to start a load, keyed to the newer load starts that supersede it. */
+const supersessionWatches = new Map<AbortController, 'primary' | 'any'>();
+
+/**
+ * A signal that aborts when a newer load starts (L6, L9): with `'primary'`
+ * only a load that replaces the scene, with `'any'` every load the user
+ * starts. Work that waits before its own load begins (a queued federated add,
+ * a URL autoload's fetch, a reload resume, a cache revalidation) checks it
+ * before loading. `stop` ends the watch; call it before starting that load,
+ * or once the work ends.
+ */
+export function watchLoadSupersession(scope: 'primary' | 'any'): { signal: AbortSignal; stop(): void } {
+  const controller = new AbortController();
+  supersessionWatches.set(controller, scope);
+  return { signal: controller.signal, stop: () => { supersessionWatches.delete(controller); } };
+}
 
 /**
  * Publish a canceller for the load that `supersede` belongs to. Returns the
@@ -116,6 +149,11 @@ export function installModelLoadCanceller(
   activity?: LoadActivity,
 ): () => void {
   const store = getViewerStoreApi();
+  for (const [watch, scope] of [...supersessionWatches]) {
+    if (scope === 'primary' && kind !== 'primary') continue;
+    supersessionWatches.delete(watch);
+    watch.abort();
+  }
   if (kind === 'primary') {
     for (const abandon of [...pendingLoads.keys()]) abandon();
   }
@@ -157,10 +195,13 @@ export function installModelLoadCanceller(
     cancelRequested = true;
     // A retained run keeps its published products; its stream then completes the load.
     if (activity?.interrupt) { activity.interrupt(); return; }
-    const ownsUi = store.getState().activeLoadCanceller === cancel;
     // Keep the native cancellation counter for other load observers.
     store.getState().noteLoadCancelled();
-    abandon();
+    // A primary's scene is the one every pending federated add is joining
+    // (installing the primary abandoned all earlier loads), so its Cancel
+    // ends them too; a federated Cancel ends only its own load (L5).
+    if (kind === 'primary') for (const pending of [...pendingLoads.keys()]) pending();
+    else abandon();
     const state = store.getState();
     // Stop this load's point-cloud stream too. A federated add may overlap
     // another load, so only cancel its own stream handle in that case.
@@ -169,15 +210,15 @@ export function installModelLoadCanceller(
       cancelStream();
       state.setActiveStreamCanceller(null);
     }
-    if (!ownsUi || pendingLoads.size > 0) return;
     if (kind === 'primary') {
       // The same reset a primary load starts with (useIfcLoader.loadFile).
       state.resetViewerState();
       state.clearAllModels();
       state.clearLayerStack();
     } else {
-      // A federated add has not registered its model yet. Clear only load UI;
-      // the prior scene, selection and model map belong to the user.
+      // A federated add has not registered its model yet. Clear only load UI
+      // (once no other load holds it); the prior scene, selection and model
+      // map belong to the user.
       settleUnownedLoadUi();
     }
   };

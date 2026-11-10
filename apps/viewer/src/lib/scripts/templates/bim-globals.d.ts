@@ -746,6 +746,9 @@ declare namespace BimClash {
      */
     matchedKeysA?: readonly string[];
     matchedKeysB?: readonly string[] | null;
+    /** Model-qualified union of both matched sides, for object-based quality gates (#9259).
+     * The per-load ref distinguishes objects even when GlobalIds are repeated. */
+    matchedElements?: readonly { model: string; key: string; ref: number }[];
     /**
      * Broad-phase candidate pairs the geometry kernel actually narrow-phase
      * tested for THIS rule (`RuleDetection.candidatesProcessed` in
@@ -795,6 +798,9 @@ declare namespace BimClash {
   export interface ClashElementRef {
     key: string;
     ref: number;
+    /** This run found distinct source objects with this key in the same model.
+     * Review/exclusion identity must include ref rather than trust the repeated key. */
+    keyAmbiguous?: true;
     model: string;
     tag: string;
     name?: string;

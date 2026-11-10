@@ -11,6 +11,14 @@ import type { ClashElement, Vec3 } from './types.js';
 
 let nextRef = 1;
 
+it('keeps all duplicate pairs when literal keys resemble reference suffixes (#9430)', () => {
+  const first = { ...box('K', [0, 0, 0], 1, 12), ref: 101 };
+  const result = findDuplicates([first, { ...first, ref: 102 },
+    { ...first, key: 'K#101', ref: 103 }, { ...first, key: '@["m","K",101]', ref: 104 }]);
+  expect(result.clashes).toHaveLength(6);
+  expect(new Set(result.clashes.map(clash => clash.id)).size).toBe(6);
+});
+
 interface Geom {
   positions: Float32Array;
   indices: Uint32Array;

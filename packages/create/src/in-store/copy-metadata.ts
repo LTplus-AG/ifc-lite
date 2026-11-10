@@ -9,7 +9,7 @@ import { resolveDuplicateSource } from './resolve-source.js';
 /** Keep distinct definitions, including same-named ones. A separate copied
  * relationship per definition lets export replace only the edited definition. */
 export function resolveCopySource(ctx: CopyContext, sourceId: number): SourceAttributes {
-  const source = resolveDuplicateSource(ctx.store, sourceId, ctx.editor);
+  const source = resolveDuplicateSource(ctx.store, sourceId, ctx.editor, ctx.sourceScope);
   return { ...source, associations: source.associations?.flatMap(association => {
     if (association.relType.toUpperCase() !== 'IFCRELDEFINESBYPROPERTIES') return [association];
     return (association.relatingExpressIds ?? [association.relatingExpressId]).map(id => ({

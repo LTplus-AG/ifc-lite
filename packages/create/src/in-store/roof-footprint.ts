@@ -19,6 +19,7 @@
  * slope or the overhang and rebuild the planes as one atomic edit.
  */
 
+import { refreshTopAttachmentsInStore } from './top-attachment-refresh.js';
 import { PropertyValueType } from '@ifc-lite/data';
 import { effectiveReferencers } from '@ifc-lite/export';
 import type { IfcDataStore } from '@ifc-lite/parser';
@@ -319,6 +320,7 @@ export function editFootprintRoofInStore(store: IfcDataStore, editor: StoreEdito
     if (roof.attributes.length > 8) draft.setPositionalAttribute(roofId, 8, `.${body.plan.shapeType}.`);
     const definition = { ...next, PredefinedType: body.plan.shapeType };
     writeFootprintDefinition(view, roofId, definition);
+    refreshTopAttachmentsInStore({ dataStore: store, view, editor: draft }, [roofId]);
     return definition;
   });
 }

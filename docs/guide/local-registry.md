@@ -14,15 +14,15 @@ artifact format; it is not an existing OCI or IETF standard.
 
 Use the matching [Subsoil checkout](https://github.com/zahmadsaleem/subsoil).
 Its root `compose.yaml` includes the demo services and an optional IFC Lite
-viewer built from this checkout:
+viewer. The build fetches pinned production source and applies the handoff patch
+included in Subsoil; it requires no separate IFC Lite checkout:
 
 ```sh
-# From the Subsoil repository; IFC Lite is at ../../lt-plus/ifc-lite by default.
+# From the Subsoil repository.
 docker compose --profile viewer up --build -d
 ```
 
-Set `IFC_LITE_CHECKOUT` to this checkout's absolute path when the repositories
-have another layout. Open `http://localhost:5080/explore`, sign in as `writer`
+Open `http://localhost:5080/explore`, sign in as `writer`
 with `writer-demo-password`, select `project/model:issued`, and choose
 **Open with…** or **Edit with… → IFC Lite**. Approve the application's read
 access on Keycloak. The Compose viewer on port 3001 opens the pinned version received from Zot.

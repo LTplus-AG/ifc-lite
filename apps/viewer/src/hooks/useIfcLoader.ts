@@ -1206,9 +1206,8 @@ export function useIfcLoader() {
             }
           }
         }
+        trace.milestone('cache.miss'); // Looked up, not served. Gap to geometry.pool includes server, init and source copy.
       }
-
-      trace.milestone('cache.miss'); // Gap to geometry.pool includes server, init and source copy.
 
       // Try server parsing first (enabled by default for multi-core performance)
       // Only for IFC4 STEP files (server doesn't support IFCX). Native

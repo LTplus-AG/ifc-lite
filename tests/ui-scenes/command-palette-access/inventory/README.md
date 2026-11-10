@@ -13,7 +13,10 @@ partial family tracing from focused reviews. A focused review can still contain
 an unresolved control; inspect its qualifications. A parent panel alone earns no
 child-action coverage.
 
-Every runtime verdict remains **UNRUN**. The general UX hillclimb's accepted
+The source inventory itself makes no runtime claim. Executed-route bindings and
+`historical-child-bindings.jsonl` carry separately attributed evidence;
+`remaining-access.md` retains missing parent/body and child joins. Historical
+composition is not a current end-to-end pass. The general UX hillclimb's accepted
 screenshots and keyboard tests do not certify these feature routes. Model-loaded,
 unloaded, selected, unselected, read-only, provider and extension contexts must be
 bound to actual scenario receipts before acceptance. Opening a complex tool is

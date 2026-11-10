@@ -29,14 +29,14 @@ for (const mobile of [false, true]) {
       const Cold = lazy(() => pending);
       let closed = 0;
       const ui = render(<DeferredPanel id={id} onClose={() => { closed++; }}><Cold /></DeferredPanel>);
-      assert.ok(ui.querySelector('[role="status"]'));
+      assert.ok(ui.querySelector('output'));
       assert.ok(ui.textContent?.includes(translate(panelTitleKey(id))), 'pending shell retains its title on every layout');
       const close = ui.querySelector('button[aria-label="Close"]');
       assert.ok(close);
       click(close);
       assert.equal(closed, 1);
       await act(async () => { complete({ default: Feature }); await pending; });
-      assert.equal(ui.querySelector('[role="status"]'), null);
+      assert.equal(ui.querySelector('output') === null, true);
       click(ui.querySelector('button')!);
       assert.match(ui.textContent ?? '', /Used feature/);
     });
@@ -63,7 +63,7 @@ for (const mobile of [false, true]) {
       click(ui.querySelector('button[aria-label="Close"]')!);
       assert.equal(closed, 1);
       click(ui.querySelector('button')!);
-      assert.equal(ui.querySelector('[role="alert"]'), null);
+      assert.equal(ui.querySelector('[role="alert"]') === null, true);
       assert.match(ui.textContent ?? '', /Healthy feature/);
     });
   }

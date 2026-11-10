@@ -5,8 +5,9 @@
 import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
 import { afterEach, it } from 'node:test';
-import { act } from 'react';
-import { cleanup, click, render } from '@/test/render.js';
+import { readFileSync } from 'node:fs';
+import { IfcParser } from '@ifc-lite/parser';
+import { cleanup, click, render, waitFor } from '@/test/render.js';
 import { useViewerStore } from '@/store';
 import { resolve as translate } from '@/i18n/registry';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
@@ -21,14 +22,19 @@ for (const [id, load] of [
   ['validation', () => import('@/components/viewer/validation/ValidationPanel')],
   ['lens', () => import('@/components/viewer/LensPanel')],
 ] as const) {
-  it(`eager-JS diet: the real ${id} panel arrives on demand with a working close`, async () => {
-    useViewerStore.setState({ ...fixtureModels(fixtureModel('m')), isMobile: false, loading: false });
+  it(`eager-JS diet: the real ${id} panel arrives on demand with a working close`, { timeout: 30_000 }, async () => {
+    // Mount the feature against a real store, not a partial structural stub.
+    const bytes = readFileSync(new URL('../../../public/samples/building-architecture.ifc', import.meta.url));
+    const ifcDataStore = await new IfcParser().parseColumnar(new Uint8Array(bytes).buffer);
+    useViewerStore.setState({ ...fixtureModels({ ...fixtureModel('m'), ifcDataStore }), isMobile: false, loading: false });
     let closed = 0;
     const ui = render(renderPanelBody(id, () => { closed++; }));
-    assert.ok(ui.querySelector('[role="status"]'), 'cold routing paints a loading shell');
-    await act(async () => { await load(); });
-    assert.equal(ui.querySelector('[role="status"]'), null, 'the feature replaced the shell');
-    assert.equal(ui.querySelector('[role="alert"]'), null, 'the actual feature mounted');
+    assert.ok(ui.querySelector('output'), 'cold routing paints a loading shell');
+    // Do not hold act() open across a dynamic import; bound the observable
+    // transition so a missing feature fails instead of pinning a fleet slot.
+    await load();
+    await waitFor(() => ui.querySelector('output') === null, 'the feature replaced the shell');
+    assert.equal(ui.querySelector('[role="alert"]') === null, true, 'the actual feature mounted');
     // Lens owns a custom header; select the accessible control, not a
     // PanelHeader implementation detail (review of #9634).
     const closeLabel = translate(id === 'lens' ? 'lensPanel.closeAriaLabel' : 'panelHeader.close');

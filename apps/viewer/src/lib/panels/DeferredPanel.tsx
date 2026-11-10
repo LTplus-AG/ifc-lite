@@ -22,8 +22,8 @@ export function DeferredPanel({ id, onClose, children }: {
     <div className="min-h-0 flex-1 p-4">{content}</div>
   </div>;
   return <ChunkErrorBoundary key={id} label={labels[id]} renderFallback={shell}>
-    <Suspense fallback={shell(<div role="status" className="flex items-center gap-2 text-sm text-muted-foreground">
+    <Suspense fallback={shell(<output className="flex items-center gap-2 text-sm text-muted-foreground">
       <Spinner className="h-4 w-4" />{t('shellChrome.statusBar.loadingFallback')}
-    </div>)}>{children}</Suspense>
+    </output>)}>{children}</Suspense>
   </ChunkErrorBoundary>;
 }

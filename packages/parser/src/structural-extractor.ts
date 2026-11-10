@@ -154,9 +154,8 @@ export function extractStructuralOnDemand(
       globalId: asString(created.attributes?.[0]) ?? '',
     } : undefined;
     const viewed = view?.readEntity?.(id, effectiveType, source);
-    if (!viewed || viewed === source) return viewed ?? source;
-    // A view may hand back STEP casing; RawEntity.type is canonical PascalCase.
-    const type = normalizeIfcTypeName(viewed.type);
+    if (!viewed) return source;
+    const type = normalizeIfcTypeName(viewed.type); // a view may hand back STEP casing
     return type === viewed.type ? viewed : { ...viewed, type };
   };
   const activeByRole = new Map<StructuralRole, number[]>();
@@ -179,8 +178,9 @@ export function extractStructuralOnDemand(
   const readRows = (ids: readonly number[]): RawEntity[] =>
     ids.map((id) => readRaw(id, effectiveTypeById.get(id)!)).filter((row): row is RawEntity => !!row);
   const read = (role: StructuralRole): RawEntity[] => readRows(activeByRole.get(role) ?? []);
-  const typeOf = (id: number): string =>
-    effectiveTypeById.get(id) ?? getEntityRefFromStore(store, id)?.type ?? exactTypeName(store.entities, id);
+  const typeMutations = view?.getTypeMutations?.();
+  const typeOf = (id: number): string => effectiveTypeById.get(id) ?? typeMutations?.get(id)?.newType
+    ?? view?.getNewEntity?.(id)?.type ?? getEntityRefFromStore(store, id)?.type ?? exactTypeName(store.entities, id);
   const isDeleted = (id: number): boolean => view?.isDeleted(id) ?? false;
   const readResolved = (id: number) => (isDeleted(id) ? undefined : readRaw(id, typeOf(id)));
   /** Deleted resources read as absent; loads and conditions use the view only when one exists. */

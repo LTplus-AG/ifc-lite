@@ -23,7 +23,7 @@ for (const schema of ['IFC2X3', 'IFC4', 'IFC4X3']) {
   const member = `#10=IFCSTRUCTURALCURVEMEMBER('m',$,'Member',$,$,$,$,.RIGID_JOINED_MEMBER.${old ? '' : ',#90'});`;
   const point = `#20=IFCSTRUCTURALPOINTCONNECTION('c',$,'Support',$,$,$,$,$${old ? '' : ',#91'});`;
   describe(`structural READ completeness ${schema}`, () => {
-    it('links physical products in either assignment direction and deduplicates both sources', async () => {
+    it('links physical elements in either assignment direction and deduplicates both sources', async () => {
       const out = await extract(schema, [member, point,
         "#30=IFCBEAM('b',$,$,$,$,$,$,$);",
         "#31=IFCCOLUMN('p',$,$,$,$,$,$,$);",

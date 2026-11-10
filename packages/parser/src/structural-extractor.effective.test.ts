@@ -92,6 +92,24 @@ describe('extractStructuralOnDemand effective membership (#5236)', () => {
     expect(result.members[0]?.physicalElementIds).toEqual([8]);
   });
 
+  it('classifies a physical end by its session type, not its source type', async () => {
+    const step = STEP.replace(
+      "#1=IFCSTRUCTURALMEMBER('MemberGuid00000000001',$,'Source member',$,$);",
+      "#1=IFCSTRUCTURALCURVEMEMBER('MemberGuid00000000001',$,'Source member',$,$,$,$,.RIGID_JOINED_MEMBER.,$);\n" +
+        "#8=IFCBEAM('BeamGuid0000000000001',$,$,$,$,$,$,$,$);\n" +
+        "#9=IFCANNOTATION('NoteGuid0000000000001',$,$,$,$,$,$);\n" +
+        "#10=IFCRELASSIGNSTOPRODUCT('AssignGuid000000000001',$,$,$,(#1),.PRODUCT.,#8);\n" +
+        "#11=IFCRELASSIGNSTOPRODUCT('AssignGuid000000000002',$,$,$,(#1),.PRODUCT.,#9);\n" +
+        "#12=IFCRELASSIGNSTOPRODUCT('AssignGuid000000000003',$,$,$,(#1),.PRODUCT.,#99);",
+    );
+    const result = extractStructuralOnDemand(await parse(step), view({
+      getTypeMutations: () => new Map([[8, { newType: 'IFCBUILDINGSTOREY' }], [9, { newType: 'IFCCOLUMN' }]]),
+      getNewEntities: () => [{ expressId: 99, type: 'IFCBEAM' }],
+      getNewEntity: (id) => (id === 99 ? { type: 'IFCBEAM', attributes: ['CreatedBeam00000000001'] } : null),
+    }));
+    expect(result.members[0]?.physicalElementIds).toEqual([9, 99]);
+  });
+
   it('does not resurrect session-deleted physical products, relation resources or connections', async () => {
     const step = STEP.replace(
       "#1=IFCSTRUCTURALMEMBER('MemberGuid00000000001',$,'Source member',$,$);",

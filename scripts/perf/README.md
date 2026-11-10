@@ -3033,6 +3033,21 @@ Preserve failed loads alongside successful samples. Listen for renderer crashes
 as well as JavaScript errors, and stop memory sampling on every exit path.
 
 ### Shipped wins
+- **Incircle stages C/D without per-call zeroing (native instruction
+  hillclimb, 2026-11-10):** #9016 kept stage-B scratch right-sized but handed
+  stage C to `geometry_predicates::incircle`, assuming it was rare. On
+  ISSUE_129 43k calls reached it, and `incircleadapt` zeroes about 20 KB per
+  call (two 1152-entry `fin` expansions), which was about 78% of their
+  instructions. `cdt::incircle` now continues from its own stage-B state into
+  a port of the crate's stages C and D (same public expansion routines, same
+  operands, same order: bit-identical `f64`) that reuses this thread's `fin`
+  scratch; every other buffer is still zeroed per call because the crate reads
+  past a written prefix in two places (`bct`-style length-1 defaults, and the
+  shadowed `cxtablen` read as 8). Cold single-thread Callgrind, pipeline
+  instructions: FZK -4.3%, ISSUE_129 -3.3%, Holter -0.4%, the others flat;
+  ordered `perf_probe` mesh fingerprints identical on all five. **Lesson:**
+  re-check a "rare fallback" assumption against call counts on the fixture
+  that motivated it. Not a wall-time or browser claim.
 - **Review startup bundle (#7015):** load the Script panel on demand and keep
   CodeMirror's shared state module in its own chunk. Assistant text-edit planning
   still uses `ChangeSet`, while the editor UI stays outside the eager import

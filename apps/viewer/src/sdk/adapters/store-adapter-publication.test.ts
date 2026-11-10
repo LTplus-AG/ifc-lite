@@ -112,6 +112,10 @@ async function roofRoom() {
       const path = pathForEntity(data, id); assert.ok(path);
       session.transact(() => setAttribute(session.doc, path, name, value));
     },
+    mirrorEntityRemove: (_model, id) => {
+      const path = pathForEntity(data, id);
+      if (path) session.transact(() => deleteEntity(session.doc, path));
+    },
     mirrorPropertyEdit: (_model, id, pset, prop, value) => {
       const path = pathForEntity(data, id); assert.ok(path);
       assert.ok(typeof value === 'string' || typeof value === 'number');
@@ -136,6 +140,63 @@ it('a peer receives a new SDK roof footprint definition with its body (#9356 rev
     assert.equal(view.getPropertyValue(id, 'IfcLite_RoofFootprint', 'Overhang'), .5);
   } finally { session.dispose(); }
 });
+
+for (const surface of ['SDK', 'UI'] as const) for (const failAt of [1, 3]) {
+  it(`${surface} roof create refuses atomically after ${failAt} real property writes (#9356 review r4509522892)`, async t => {
+    const { data, view, adapter, session } = await roofRoom();
+    t.after(() => session.dispose());
+    const params = { Position: [0, 0, 4] as [number, number, number], Width: 10, Depth: 8, Thickness: .25, EdgeSlopes: Array(4).fill(Math.PI / 6) };
+    const snapshot = () => {
+      const state = useViewerStore.getState();
+      return structuredClone({ records: view.getNewEntities(), journal: view.getMutations(), changes: view.getEffectiveChanges(),
+        next: view.peekNextExpressId(), undo: state.undoStacks, redo: state.redoStacks, tags: state.mutationBatchTags,
+        stash: state.removedNewEntities, dirty: state.dirtyModels, version: state.mutationVersion,
+        tree: data.spatialHierarchy?.project, storeys: data.spatialHierarchy?.byStorey,
+        containment: data.spatialHierarchy?.elementToStorey });
+    };
+    const before = snapshot(), peerBefore = session.snapshot().data;
+    const observations: unknown[] = [], committedDuringPublication: boolean[] = [];
+    session.doc.on('afterTransaction', () => observations.push(session.snapshot().data));
+    const original = useViewerStore.getState().mirrorPropertyEdit;
+    const record = useViewerStore.getState().recordAuthoredElement;
+    let writes = 0, completions = 0, attemptedId = 0;
+    useViewerStore.setState({
+      mirrorPropertyEdit: (...args) => {
+        attemptedId = args[1];
+        committedDuringPublication.push(Boolean(view.getNewEntity(attemptedId)));
+        original(...args);
+        if (++writes === failAt) throw new Error('Injected roof property publication failure');
+      },
+      recordAuthoredElement: (...args) => { completions++; record(...args); },
+    });
+    const create = () => surface === 'SDK' ? adapter.addRoof(MODEL, 42, params) : useViewerStore.getState().addRoof(MODEL, 42, params);
+    try {
+      if (surface === 'SDK') assert.throws(create, /could not be published|Injected roof property publication failure/);
+      else {
+        const result = create();
+        assert.ok('error' in result, 'UI reports a refused creation');
+        assert.match(result.error, /could not be published/);
+      }
+      assert.equal(writes, failAt, 'the injected failure follows real Yjs property writes');
+      assert.deepEqual(snapshot(), before, 'refusal preserves the complete local graph, allocator, history and spatial tree');
+      assert.deepEqual(session.snapshot().data, peerBefore, 'the peer retains no new roof or partial footprint properties');
+      assert.ok(observations.length > 0, 'real room publication was attempted');
+      assert.ok(observations.every(graph => JSON.stringify(graph) === JSON.stringify(peerBefore)), 'no observer sees a partially published roof');
+      assert.ok(committedDuringPublication.every(value => !value), 'publication runs while the roof is still a draft');
+      assert.equal(pathForEntity(data, attemptedId), null, 'the refused roof releases its room identity');
+      assert.equal(completions, 0, 'refused creation never starts tree/mesh completion');
+      useViewerStore.setState({ mirrorPropertyEdit: original });
+      const retry = create();
+      assert.ok('expressId' in retry, 'the same creation can be retried');
+      assert.equal(retry.expressId, attemptedId, 'refusal did not consume express IDs');
+      assert.equal(completions, 1, 'successful retry reaches normal mesh/tree completion');
+      const path = pathForEntity(data, retry.expressId); assert.ok(path);
+      assert.deepEqual(getPropertyValue(session.doc, path, 'IfcLite_RoofFootprint', 'EdgeSlopes')?.value, JSON.stringify(params.EdgeSlopes));
+    } finally {
+      useViewerStore.setState({ mirrorPropertyEdit: original, recordAuthoredElement: record });
+    }
+  });
+}
 
 for (const failAt of [1, 3]) it(`roof edit property publication failure after ${failAt} real writes preserves local and peer state (#9356 review)`, async () => {
   const { view, adapter, session } = await roofRoom();

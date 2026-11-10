@@ -138,10 +138,11 @@ export async function rendererColorFrame(page: Page): Promise<Buffer> {
   // #7655: retry completed null captures while lazy visibility shaders compile.
   // Await each in-flight GPU readback under the enclosing test's deadline:
   // expect.poll's 5s callback deadline interrupted in-flight Revit captures.
-  // A null that no submitted frame preceded is a frame discarded before submit,
-  // and on SwiftShader the frame itself can come seconds late (rAF stalls while
-  // the GPU process compiles), so it restarts the 5 s window instead of using
-  // it up; STALL_LIMIT_MS still bounds a viewport that never submits.
+  // A null with no frame completed since the request means the frame has not
+  // run yet, and on SwiftShader it can come seconds late (rAF stalls while the
+  // GPU process compiles), so it restarts the 5 s window instead of using it
+  // up; STALL_LIMIT_MS still bounds a viewport that never submits. Without the
+  // frame-stats hook nothing can be told, so the plain 5 s window applies.
   const STALL_LIMIT_MS = 60_000;
   const stallDeadline = Date.now() + STALL_LIMIT_MS;
   let retryDeadline = Date.now() + 5_000;
@@ -149,7 +150,8 @@ export async function rendererColorFrame(page: Page): Promise<Buffer> {
     const requested = performance.now();
     const dataUrl = await globalThis.__ifc_lite_capture_color_frame__?.() ?? null;
     // Read in the settling task: no later frame can have run yet.
-    return { dataUrl, submitted: (globalThis.__ifc_lite_render_frame__?.()?.timestamp ?? -Infinity) > requested };
+    const frameStats = globalThis.__ifc_lite_render_frame__;
+    return { dataUrl, submitted: frameStats === undefined || (frameStats()?.timestamp ?? -Infinity) > requested };
   });
   let { dataUrl, submitted } = await capture();
   while (dataUrl === null) {

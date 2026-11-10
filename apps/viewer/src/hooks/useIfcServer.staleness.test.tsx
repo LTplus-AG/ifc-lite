@@ -236,6 +236,34 @@ describe('loadFromServer — a superseded stream must not paint into the active 
     );
   });
 
+  for (const cause of ['signal', 'stale'] as const) {
+    it(`refuses optional-property completion for independently driven ${cause} (#9538)`, async () => {
+      const controller = new AbortController();
+      let stale = false;
+      let started!: () => void;
+      let finish!: () => void;
+      const entered = new Promise<void>(resolve => { started = resolve; });
+      let receivedSignal: AbortSignal | undefined;
+      IfcServerClient.prototype.fetchDataModel = async (_key, options) => {
+        receivedSignal = typeof options === 'object' ? options.signal : undefined;
+        started();
+        return new Promise<ArrayBuffer | null>((resolve, reject) => {
+          finish = () => resolve(null);
+          receivedSignal?.addEventListener('abort', () => reject(receivedSignal?.reason), { once: true });
+        });
+      };
+      releaseBatch2();
+      const pending = loadFromServer!(new File(['x'], 'model.ifc'), HUGE_BUFFER, () => stale, controller.signal);
+      await entered;
+      if (cause === 'signal') controller.abort();
+      else { stale = true; finish(); }
+      assert.equal(await pending, false);
+      assert.equal(receivedSignal === controller.signal, true);
+      assert.equal(controller.signal.aborted, cause === 'signal');
+      assert.notEqual(snapshot().progressPhase, 'Complete');
+    });
+  }
+
   it('control: a NON-stale load still paints both batches', async () => {
     // No staleness to wait on here — release batch 2 immediately so the
     // mocked stream completes like an ordinary uninterrupted load.

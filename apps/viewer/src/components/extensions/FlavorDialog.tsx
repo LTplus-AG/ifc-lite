@@ -50,7 +50,7 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
   const host = useExtensionHost();
   const { flavors, activeId, phase, refresh } = useFlavorDialogLibrary(host, open);
   const [actionBusy, setBusy] = useState(false);
-  const { preview, clearPreview, handleFiles, busy: previewBusy } = useFlavorImportReview(host, open);
+  const { preview, clearPreview, handleFiles, busy: previewBusy, startImport } = useFlavorImportReview(host, open);
   const busy = actionBusy || previewBusy;
   const [mergeTarget, setMergeTarget] = useState<Flavor | null>(null);
   const liveLensCount = useViewerStore((s) => s.savedLenses.length);
@@ -276,20 +276,21 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
 
   const handleConfirmImport = async (strategy: 'replace' | 'save-as-new') => {
     if (!preview) return;
-    setBusy(true);
-    try {
-      const flavor = await host.flavors.importFlavor(preview.unpacked, { strategy });
-      toast.success(t('extensionsFlavors.flavorDialog.toast.imported', { name: localizedFlavorName(flavor, t) }));
-      clearPreview();
-    } catch (err) {
-      if (err && (err as { name?: string }).name === 'ExtensionStorageQuotaError') {
-        toast.error(t('extensionsFlavors.flavorDialog.toast.storageFull'));
-      } else {
-        toast.error(failure(t('extensionsFlavors.flavorDialog.operation.import'), err));
+    await startImport(async ({ isCurrent }) => {
+      try {
+        const flavor = await host.flavors.importFlavor(preview.unpacked, { strategy });
+        if (!isCurrent()) return;
+        toast.success(t('extensionsFlavors.flavorDialog.toast.imported', { name: localizedFlavorName(flavor, t) }));
+        clearPreview();
+      } catch (err) {
+        if (!isCurrent()) return;
+        if (err && (err as { name?: string }).name === 'ExtensionStorageQuotaError') {
+          toast.error(t('extensionsFlavors.flavorDialog.toast.storageFull'));
+        } else {
+          toast.error(failure(t('extensionsFlavors.flavorDialog.operation.import'), err));
+        }
       }
-    } finally {
-      setBusy(false);
-    }
+    });
   };
 
   return (

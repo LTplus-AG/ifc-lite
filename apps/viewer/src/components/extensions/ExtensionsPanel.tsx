@@ -19,7 +19,7 @@
  */
 
 import { useBundleReview } from './useBundleReview';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Beaker, FilePlus, FileText, GitFork, Lightbulb, Puzzle, Sparkles, Trash2, Upload, Wrench, X } from 'lucide-react';
 import { toast } from '@/components/ui/toast';
 import { useDialogs } from '@/components/ui/confirm-dialog';
@@ -35,8 +35,6 @@ import { CapabilityReview } from './CapabilityReview';
 import { AuditLogPanel } from './AuditLogPanel';
 import { IdeasPanel } from './IdeasPanel';
 import { RepairQueuePanel } from './RepairQueuePanel';
-import { ExtensionInstallError } from '@/services/extensions/host';
-import { ExtensionStorageQuotaError } from '@/services/extensions/idb-storage';
 import { useViewerStore } from '@/store';
 import { HelpHint } from './HelpHint';
 import { useTranslation } from '@/i18n';
@@ -64,8 +62,7 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
   const activeFlavor = useActiveFlavor(host);
   const activeFlavorName = activeFlavor ? localizedFlavorName(activeFlavor, t) : undefined;
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const { pending, setPending, handleFiles } = useBundleReview(host);
-  const [busy, setBusy] = useState(false);
+  const { pending, setPending, handleFiles, handleApprove, busy } = useBundleReview(host);
   const [dragOver, setDragOver] = useState(false);
   const [view, setView] = useState<'installed' | 'ideas' | 'audit' | 'repair'>('installed');
   /** Deep-link entry point (Command Palette "Author an extension…"). */
@@ -79,35 +76,6 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
     }
   }, [extensionsRequestedView, setExtensionsRequestedView]);
 
-  const handleApprove = useCallback(
-    async (grants: string[]) => {
-      // Two guards: pending may have been cleared by a parallel cancel,
-      // and busy stops a double-click from kicking off two installs of
-      // the same bytes.
-      if (!pending || busy) return;
-      setBusy(true);
-      try {
-        const status = await host.installFromBytes(pending.bytes, grants);
-        toast.success(t('extensionsFlavors.extensionsPanel.toast.installed', { id: status.id, version: status.version }));
-        setPending(null);
-      } catch (err) {
-        if (err instanceof ExtensionStorageQuotaError) {
-          toast.error(t('extensionsFlavors.extensionsPanel.toast.storageFull'));
-        } else if (err instanceof ExtensionInstallError) {
-          toast.error(t('extensionsFlavors.extensionsPanel.toast.installRejected', {
-            error: err.validationErrors[0]?.message ?? err.message,
-          }));
-        } else {
-          toast.error(t('extensionsFlavors.extensionsPanel.toast.installFailed', {
-            error: err instanceof Error ? err.message : String(err),
-          }));
-        }
-      } finally {
-        setBusy(false);
-      }
-    },
-    [host, pending, busy, t],
-  );
 
   return (
     <Tabs value={view} onValueChange={(value) => setView(value as typeof view)} className="flex flex-col h-full">
@@ -164,6 +132,7 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
           ref={fileInputRef}
           type="file"
           accept=".iflx"
+          disabled={busy}
           className="hidden"
           onChange={(e) => {
             void handleFiles(e.target.files);
@@ -214,12 +183,13 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
         className={`flex-1 min-h-0 overflow-y-auto overflow-x-hidden transition-colors ${
           dragOver ? 'bg-primary/5' : ''
         }`}
-        onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+        aria-disabled={busy}
+        onDragOver={(e) => { e.preventDefault(); if (!busy) setDragOver(true); }}
         onDragLeave={() => setDragOver(false)}
         onDrop={(e) => {
           e.preventDefault();
           setDragOver(false);
-          void handleFiles(e.dataTransfer.files);
+          if (!busy) void handleFiles(e.dataTransfer.files);
         }}
       >
         <UnavailablePlacements />
@@ -370,7 +340,8 @@ export function ExtensionsPanel({ onClose }: ExtensionsPanelProps) {
           summary={pending.summary}
           previousGrants={pending.previousGrants}
           previousVersion={pending.previousVersion}
-          onApprove={handleApprove}
+          busy={busy}
+        onApprove={handleApprove}
           onCancel={() => setPending(null)}
         />
       )}

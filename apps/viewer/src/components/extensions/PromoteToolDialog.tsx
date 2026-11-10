@@ -69,20 +69,20 @@ export function PromoteToolDialog({ open, source, initialName, onClose }: Promot
   const [hotkey, setHotkey] = useState('');
   const [icon, setIcon] = useState<string>('sparkles');
   const [pending, setPending] = useState<{ bytes: Uint8Array; summary: ExtensionInstallSummary } | null>(null);
-  const { busy, start, reset } = useAsyncRun();
+  const { busy, start } = useAsyncRun({ key: open });
 
   const inference = useMemo(() => inferCapabilities(source), [source]);
 
   useEffect(() => {
     if (!open) {
-      reset(); setPending(null);
+      setPending(null);
       nameEditedRef.current = false;
       return;
     }
     if (!nameEditedRef.current) {
       setName(initialName ?? defaultName);
     }
-  }, [defaultName, initialName, open, reset]);
+  }, [defaultName, initialName, open]);
 
   const handlePromote = () => start(async ({ isCurrent }) => {
     try {
@@ -106,7 +106,6 @@ export function PromoteToolDialog({ open, source, initialName, onClose }: Promot
     await start(async ({ isCurrent }) => {
       try {
         const status = await host.installFromBytes(pending.bytes, grants);
-        if (!isCurrent()) return;
         // Point the user at the payoff — the actual button. The
         // synthesised manifest puts the command on `toolbar.right`,
         // so it shows up as an icon button at the top-right of the
@@ -114,7 +113,9 @@ export function PromoteToolDialog({ open, source, initialName, onClose }: Promot
         const message = hotkey.trim()
           ? t('extensionsPanels.promoteToolDialog.installedWithHotkey', { name, hotkey: hotkey.trim() })
           : t('extensionsPanels.promoteToolDialog.installedNoHotkey', { name });
+        // Installation commits globally even when this dialog was externally closed.
         toast.success(message);
+        if (!isCurrent()) return;
         setPending(null);
         onClose();
         void status;
@@ -139,6 +140,7 @@ export function PromoteToolDialog({ open, source, initialName, onClose }: Promot
       <CapabilityReview
         open
         summary={pending.summary}
+        busy={busy}
         onApprove={handleApprove}
         onCancel={() => setPending(null)}
       />

@@ -6,7 +6,8 @@ import { useAsyncRun } from '@/hooks/useAsyncRun';
 import { useViewerStore } from '@/store';
 import { toast } from '@/components/ui/toast';
 import { useTranslation } from '@/i18n';
-import type { ExtensionHostService, ExtensionInstallSummary } from '@/services/extensions/host';
+import { ExtensionInstallError, type ExtensionHostService, type ExtensionInstallSummary } from '@/services/extensions/host';
+import { ExtensionStorageQuotaError } from '@/services/extensions/idb-storage';
 
 class BundleRejectedError extends Error {}
 type Review = { bytes: Uint8Array; summary: ExtensionInstallSummary; previousGrants?: readonly string[]; previousVersion?: string };
@@ -16,9 +17,12 @@ export function useBundleReview(host: ExtensionHostService) {
   const authored = useViewerStore(state => state.pendingAuthoredBundle);
   const [pending, updatePending] = useState<Review | null>(null);
   const pendingRef = useRef<Review | null>(null);
-  const origin = useRef<'file' | 'authored' | null>(null);
-  const { start, reset, busy } = useAsyncRun();
-  const setPending = useCallback((review: Review | null) => { pendingRef.current = review; updatePending(review); }, []);
+  const fileRun = useAsyncRun();
+  const authoredRun = useAsyncRun({ key: authored });
+  const setPending = useCallback((review: Review | null) => {
+    pendingRef.current = review;
+    updatePending(review);
+  }, []);
   const preview = useCallback(async (bytes: Uint8Array, isCurrent: () => boolean) => {
     const result = await host.previewBundle(bytes);
     if (!isCurrent()) return;
@@ -33,11 +37,11 @@ export function useBundleReview(host: ExtensionHostService) {
     if (!files?.length || pendingRef.current) return;
     const file = files[0];
     if (!file.name.toLowerCase().endsWith('.iflx')) {
-      toast.error(t('extensionsFlavors.extensionsPanel.toast.expectedBundle', { filename: file.name })); return;
+      toast.error(t('extensionsFlavors.extensionsPanel.toast.expectedBundle', { filename: file.name }));
+      return;
     }
-    if (origin.current === 'authored') reset();
-    await start(async ({ isCurrent }) => {
-      origin.current = 'file';
+    authoredRun.reset();
+    await fileRun.start(async ({ isCurrent }) => {
       try {
         const bytes = new Uint8Array(await file.arrayBuffer());
         if (!isCurrent()) return;
@@ -46,26 +50,50 @@ export function useBundleReview(host: ExtensionHostService) {
         if (isCurrent()) toast.error(t(error instanceof BundleRejectedError
           ? 'extensionsFlavors.extensionsPanel.toast.bundleUnpackFailed' : 'extensionsFlavors.extensionsPanel.toast.readFileFailed',
         { error: error instanceof Error ? error.message : String(error) }));
-      } finally { if (isCurrent()) origin.current = null; }
+      }
     });
-  }, [preview, reset, start, t]);
-  useEffect(() => {
-    if (!authored || pending || busy) return;
-    void start(async ({ isCurrent }) => {
-      origin.current = 'authored';
-      const owns = () => isCurrent() && useViewerStore.getState().pendingAuthoredBundle === authored;
+  }, [preview, authoredRun.reset, fileRun.start, t]);
+  const handleApprove = useCallback(async (grants: string[]) => {
+    const review = pendingRef.current;
+    if (!review) return;
+    await fileRun.start(async ({ isCurrent }) => {
       try {
-        await preview(authored, owns);
-        if (owns()) useViewerStore.getState().setPendingAuthoredBundle(null);
+        const status = await host.installFromBytes(review.bytes, grants);
+        if (!isCurrent()) return;
+        toast.success(t('extensionsFlavors.extensionsPanel.toast.installed', { id: status.id, version: status.version }));
+        if (pendingRef.current === review) setPending(null);
       } catch (error) {
-        if (owns()) {
+        if (!isCurrent()) return;
+        if (error instanceof ExtensionStorageQuotaError) {
+          toast.error(t('extensionsFlavors.extensionsPanel.toast.storageFull'));
+        } else if (error instanceof ExtensionInstallError) {
+          toast.error(t('extensionsFlavors.extensionsPanel.toast.installRejected', {
+            error: error.validationErrors[0]?.message ?? error.message,
+          }));
+        } else {
+          toast.error(t('extensionsFlavors.extensionsPanel.toast.installFailed', {
+            error: error instanceof Error ? error.message : String(error),
+          }));
+        }
+      }
+    });
+  }, [host, fileRun.start, setPending, t]);
+  useEffect(() => {
+    if (!authored || pending || fileRun.busy || authoredRun.busy) return;
+    void authoredRun.start(async ({ isCurrent }) => {
+      try {
+        await preview(authored, isCurrent);
+        if (isCurrent()) useViewerStore.getState().setPendingAuthoredBundle(null);
+      } catch (error) {
+        if (isCurrent()) {
           toast.error(t(error instanceof BundleRejectedError
             ? 'extensionsFlavors.extensionsPanel.toast.authoredBundleUnpackFailed' : 'extensionsFlavors.extensionsPanel.toast.authoredBundlePreviewFailed',
           { error: error instanceof Error ? error.message : String(error) }));
           useViewerStore.getState().setPendingAuthoredBundle(null);
         }
-      } finally { if (isCurrent()) origin.current = null; }
+      }
     });
-  }, [authored, pending, busy, preview, start, t]);
-  return { pending, setPending, handleFiles };
+  }, [authored, pending, fileRun.busy, authoredRun.busy, preview, authoredRun.start, t]);
+  // Authored previews remain interruptible by a file; file preview/install owns the controls.
+  return { pending, setPending, handleFiles, handleApprove, busy: fileRun.busy };
 }

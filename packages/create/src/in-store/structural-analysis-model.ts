@@ -24,8 +24,8 @@
  * straight through here.
  *
  * Schema targeted: IFC4 (IFC4_ADD2_TC1.exp) — `IfcStructuralAnalysisModel`
- * is unchanged from IFC4 to IFC4X3, so this builder is schema-neutral within
- * ifc-lite's supported IFC4+ range. IFC2X3 omits SharedPlacement.
+ * is unchanged from IFC4 to IFC4X3. IFC2X3 has the same attributes minus the
+ * trailing `SharedPlacement`, which is left out there.
  *
  * Pure: no I/O, no parser access — operates entirely through the editor.
  */

@@ -109,7 +109,7 @@ describe('IFC2X3 structural builder STEP round trips', () => {
       : addStructuralLinearActionToStore(editor, anchor, { Name: 'Load', LinearForceZ: -12, LinearMomentX: 3, GlobalOrLocal: 'LOCAL_COORDS' });
     const { data, attrs } = await roundTrip();
     expect(data.activities[0]).toMatchObject({ name: 'Load', globalOrLocal: 'LOCAL_COORDS', destabilizingLoad: false, appliedLoad: { components: kind === 'point' ? { ForceZ: -12, MomentX: 3 } : { LinearForceZ: -12, LinearMomentX: 3 } } });
-    expect(attrs(activityId)?.slice(9)).toEqual(kind === 'point' ? ['.F.', null] : ['.F.', null, '.TRUE_LENGTH.']);
+    expect(attrs(activityId).slice(9)).toEqual(kind === 'point' ? ['.F.', null] : ['.F.', null, '.TRUE_LENGTH.']);
   });
 
   it.each(['IFC2X3', 'IFC4', 'IFC4X3'])('%s connected model preserves all three relationship builders', async (schema) => {
@@ -133,6 +133,7 @@ describe('IFC2X3 structural builder STEP round trips', () => {
     expect(data.analysisModels[0].itemGlobalIds).toEqual([data.members[0].globalId, data.connections[0].globalId]);
     expect(data.loadGroups[0].activityGlobalIds).toEqual(data.activities.map(a => a.globalId));
     expect(data.analysisModels[0].loadGroupGlobalIds).toEqual([data.loadGroups[0].globalId]);
+    // Set STRUCTURAL_EXPORT_DIR to keep the files for an IfcOpenShell validation run.
     if (process.env.STRUCTURAL_EXPORT_DIR) writeFileSync(`${process.env.STRUCTURAL_EXPORT_DIR}/${schema}.ifc`, text);
   });
 });

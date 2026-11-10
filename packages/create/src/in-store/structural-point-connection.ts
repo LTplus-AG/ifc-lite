@@ -19,6 +19,9 @@
  *   each a 2-branch SELECT of `IfcBoolean` or a stiffness measure; this
  *   builder only writes the `IfcBoolean` branch — `true` = fixed/rigid,
  *   `false` = free — a numeric spring-stiffness value is out of scope here.)
+ *   IFC2X3 has no `ConditionCoordinateSystem`, and its node condition slots
+ *   (`LinearStiffnessX`…) are plain measures, so `true`/`false` are written
+ *   as `-1.`/`0.`, the IFC2X3 rigid/free convention.
  *
  * REPRESENTATION OWNERSHIP:
  *
@@ -90,9 +93,11 @@ export function addStructuralPointConnectionToStore(
   anchor: SpatialAnchor,
   params: StructuralPointConnectionInStoreParams,
 ): StructuralPointConnectionBuildResult {
-  // IFC2X3 uses plain measures: -1 = rigid, 0 = free. The real marker
-  // bypasses the exporter's IFC4 SELECT qualification for these slots.
-  const stiffness = (value: boolean | undefined) => anchor.schema === 'IFC2X3'
+  const is2x3 = anchor.schema === 'IFC2X3';
+  // IFC2X3 uses plain measures: -1 = rigid, 0 = free. The `{ real }` marker is
+  // required: the exporter's SELECT qualification reads the IFC4 registry for
+  // every target schema and would wrap a bare number as an IFC4 select member.
+  const stiffness = (value: boolean | undefined) => is2x3
     ? (value === undefined ? null : { real: value ? -1 : 0 })
     : boolAttr(value);
   const position = toNativePoint3(anchor, params.Position);
@@ -121,7 +126,7 @@ export function addStructuralPointConnectionToStore(
     `#${placementId}`,
     null, // Representation — see module doc
     boundaryConditionId === undefined ? null : `#${boundaryConditionId}`,
-    ...(anchor.schema === 'IFC2X3' ? [] : [null]), // ConditionCoordinateSystem (IFC4+)
+    ...(is2x3 ? [] : [null]), // ConditionCoordinateSystem (IFC4+)
   ]).expressId;
 
   return { connectionId, placementId, ...(boundaryConditionId !== undefined ? { boundaryConditionId } : {}) };

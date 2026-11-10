@@ -20,6 +20,11 @@
  *   `IfcStructuralLinearAction`'s `ConstPredefinedType` WHERE rule forces
  *   `PredefinedType = CONST` — this builder hardcodes it; there is no
  *   parameter for it, because any other value is an EXPRESS violation.
+ *   IFC2X3 layout: the point action adds `CausedBy?` after
+ *   `DestabilizingLoad`; the linear action is `..., DestabilizingLoad,
+ *   CausedBy?, ProjectedOrTrue` with no `PredefinedType`. `DestabilizingLoad`
+ *   and `ProjectedOrTrue` are mandatory there, so they default to `.F.` and
+ *   `.TRUE_LENGTH.`.
  *   Each action's `AppliedLoad` is narrowed to the load types the
  *   `SuitableLoadType` WHERE rule accepts for that subtype:
  *   `IfcStructuralLoadSingleForce` for the point action,
@@ -115,8 +120,9 @@ export function addStructuralPointActionToStore(
     null, // Representation
     `#${loadId}`,
     `.${params.GlobalOrLocal ?? 'GLOBAL_COORDS'}.`,
-    boolAttr(params.DestabilizingLoad ?? (anchor.schema === 'IFC2X3' ? false : undefined)),
-    ...(anchor.schema === 'IFC2X3' ? [null] : []), // CausedBy (IFC2X3)
+    ...(anchor.schema === 'IFC2X3'
+      ? [boolAttr(params.DestabilizingLoad ?? false), null] // DestabilizingLoad (mandatory), CausedBy?
+      : [boolAttr(params.DestabilizingLoad)]),
   ]).expressId;
 
   return { activityId, loadId };
@@ -176,10 +182,9 @@ export function addStructuralLinearActionToStore(
     null, // Representation
     `#${loadId}`,
     `.${params.GlobalOrLocal ?? 'GLOBAL_COORDS'}.`,
-    boolAttr(params.DestabilizingLoad ?? (anchor.schema === 'IFC2X3' ? false : undefined)),
     ...(anchor.schema === 'IFC2X3'
-      ? [null, '.TRUE_LENGTH.'] // CausedBy?, ProjectedOrTrue (mandatory)
-      : [null, '.CONST.']), // ProjectedOrTrue?, PredefinedType = CONST (IFC4+)
+      ? [boolAttr(params.DestabilizingLoad ?? false), null, '.TRUE_LENGTH.'] // DestabilizingLoad, CausedBy?, ProjectedOrTrue
+      : [boolAttr(params.DestabilizingLoad), null, '.CONST.']), // DestabilizingLoad?, ProjectedOrTrue?, PredefinedType = CONST
   ]).expressId;
 
   return { activityId, loadId };

@@ -13,7 +13,8 @@
  *    ObjectPlacement?, Representation?, PredefinedType, Axis`
  * `PredefinedType` (`IfcStructuralCurveMemberTypeEnum`) and `Axis`
  * (`IfcDirection`, mandatory — NOT an inline list) are both own attributes
- * of this entity, not inherited.
+ * of this entity, not inherited. IFC2X3 has no `Axis`, so it is left out
+ * there (the `IfcDirection` is still written and returned).
  *
  * REPRESENTATION OWNERSHIP (the part the task brief calls out explicitly):
  *

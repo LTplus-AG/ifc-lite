@@ -69,11 +69,11 @@ describe('ModelWorkspaceSplit (#6232 M2.1)', () => {
     await act(frame);
     assert.equal(useViewerStore.getState().sidebarMode, 'collapsed');
     // #9296 review: entry with the saved layout falls back quietly; only an explicit pick explains.
-    assert.equal(ui.querySelector('[data-model-layout-notice]'), null, 'no notice on entry');
+    assert.equal(ui.querySelector('[data-model-layout-notice]') === null, true, 'no notice on entry');
     act(() => { useViewerStore.getState().setModelLayout('split'); });
     assert.ok(ui.querySelector('[data-model-layout-notice]'), 'the fallback explains why the picked Split cannot fit');
     act(() => { useViewerStore.getState().setModelLayout('3d'); });
-    assert.equal(ui.querySelector('[data-model-layout-notice]'), null, 'picking 3D clears the notice');
+    assert.equal(ui.querySelector('[data-model-layout-notice]') === null, true, 'picking 3D clears the notice');
     act(() => { useViewerStore.getState().exitModelWorkspace(); });
     assert.equal(useViewerStore.getState().sidebarMode, 'expanded');
   });

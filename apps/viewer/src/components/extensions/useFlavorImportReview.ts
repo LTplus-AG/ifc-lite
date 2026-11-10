@@ -21,10 +21,7 @@ export function useFlavorImportReview(host: ExtensionHostService, open: boolean)
     previewRef.current = null;
     setPreview(null);
   }, []);
-  useEffect(() => {
-    if (!open) { release(); clearPreview(); }
-    return () => { release(); clearPreview(); };
-  }, [open, release, clearPreview]);
+  useEffect(() => () => { release(); clearPreview(); }, [open, release, clearPreview]);
   async function handleFiles(files: FileList | null) {
     if (!files?.length || previewRef.current) return;
     const file = files[0];

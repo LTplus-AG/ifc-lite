@@ -288,3 +288,25 @@ for (const origin of ['file', 'authored'] as const) test(`rejected ${origin} bun
   await until(() => errors.length > 0);
   assert.equal(errors[0].startsWith(origin === 'file' ? 'Bundle did not unpack:' : "Authored bundle didn't unpack:"), true);
 });
+
+test('a file read failure keeps its read-failure message (PR #9581)', async t => {
+  const host = hostFixture(), errors: string[] = [];
+  t.mock.method(toast, 'error', (message: string) => { errors.push(message); });
+  class BrokenFile extends File { override async arrayBuffer(): Promise<ArrayBuffer> { throw new Error('read denied'); } }
+  const ui = render(<ExtensionHostContext.Provider value={host}><ExtensionsPanel /></ExtensionHostContext.Provider>);
+  const input = ui.querySelector<HTMLInputElement>('input[type=file]')!;
+  const transfer = new DataTransfer(); transfer.items.add(new BrokenFile([], 'broken.iflx'));
+  Object.defineProperty(input, 'files', { configurable: true, value: transfer.files });
+  act(() => input.dispatchEvent(new Event('change', { bubbles: true })));
+  await until(() => errors.length > 0);
+  assert.equal(errors[0], 'Failed to read file: read denied');
+});
+test('an authored preview exception keeps its preview-failure message (PR #9581)', async t => {
+  const host = hostFixture(), errors: string[] = [];
+  t.mock.method(toast, 'error', (message: string) => { errors.push(message); });
+  t.mock.method(host, 'previewBundle', async () => { throw new Error('preview engine failed'); });
+  useViewerStore.getState().setPendingAuthoredBundle(bundle('failed'));
+  render(<ExtensionHostContext.Provider value={host}><ExtensionsPanel /></ExtensionHostContext.Provider>);
+  await until(() => errors.length > 0);
+  assert.equal(errors[0], 'Authored bundle preview failed: preview engine failed');
+});

@@ -114,6 +114,7 @@ describe('worker message accounting (#6957)', () => {
     expect(sent).toHaveLength(2); // the native post still runs for both
     expect(counters.read()).toEqual({
       'msg.geometry.out.count': 1,
+      'msg.geometry.out.transferObjects': 1,
       'msg.geometry.out.cloneBytes': 4, // the key "jobs"
       'msg.geometry.out.transferBytes': 16,
       'msg.geometry.out.sharedBytes': 0,

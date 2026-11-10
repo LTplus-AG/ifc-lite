@@ -11,6 +11,7 @@ import { perfCounters, type PerfCounterRegistry } from './counters.js';
  *
  *   msg.<label>.<dir>.count          messages
  *   msg.<label>.<dir>.cloneBytes     estimated structured-clone payload
+ *   msg.<label>.out.transferObjects  entries in the transfer list
  *   msg.<label>.out.transferBytes    ArrayBuffers in the transfer list (moved, not copied)
  *   msg.<label>.in.bufferBytes       ArrayBuffers received: the receiver cannot
  *                                    tell a transferred buffer from a cloned one

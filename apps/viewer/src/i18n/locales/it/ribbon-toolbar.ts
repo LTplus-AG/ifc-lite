@@ -133,6 +133,7 @@ export const ribbonToolbarIt = {
   'ribbon.analyze.appsGroup': 'App',
   'ribbon.author.editGroup': 'Modifica',
   'ribbon.author.editMode': 'Modello',
+  'ribbon.author.editLockedTooltip': 'In questa sessione condivisa la modifica richiede l’accesso come editor',
   'ribbon.author.undo': 'Annulla',
   'ribbon.author.redo': 'Ripeti',
   'ribbon.author.createGroup': 'Crea',

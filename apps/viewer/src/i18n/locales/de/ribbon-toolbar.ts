@@ -133,6 +133,7 @@ export const ribbonToolbarDe = {
   'ribbon.analyze.appsGroup': 'Apps',
   'ribbon.author.editGroup': 'Bearbeiten',
   'ribbon.author.editMode': 'Modell',
+  'ribbon.author.editLockedTooltip': 'Zum Bearbeiten ist in dieser geteilten Sitzung Bearbeiterzugriff erforderlich',
   'ribbon.author.undo': 'Rückgängig',
   'ribbon.author.redo': 'Wiederholen',
   'ribbon.author.createGroup': 'Erstellen',

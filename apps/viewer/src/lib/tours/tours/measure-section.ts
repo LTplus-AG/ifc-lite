@@ -48,7 +48,7 @@ export const MEASURE_SECTION_TOUR: TourDefinition = {
       kind: 'action',
       anchor: toolAnchor('measure'),
       title: 'Open the Measure tool',
-      body: 'Click the ruler in the toolbar, or press Shift+M.',
+      body: 'Click the ruler in the toolbar, or press L.',
       prepare: prepareHomeTools,
       gate: { predicate: (s) => s.activeTool === 'measure' },
     },

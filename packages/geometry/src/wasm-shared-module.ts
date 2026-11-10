@@ -26,6 +26,8 @@
  * same URL), on exactly the slow connections the prewarm exists to help.
  */
 
+import { ENGINE_BINARY_URL } from '@ifc-lite/wasm';
+
 // Keyed by the RESOLVED wasm URL, not a single global slot: federation / version
 // skew can load a DIFFERENT binary in the same session, and returning the first
 // compiled module for a later, incompatible URL would initialize the consumer's
@@ -34,6 +36,11 @@ const sharedWasmModulePromises = new Map<string, Promise<WebAssembly.Module>>();
 
 function resolveWasmUrl(explicitUrl?: string): string | URL | null {
   if (explicitUrl) return explicitUrl;
+  // The geometry-core engine (`@ifc-lite/wasm/core`, swapped in for
+  // `@ifc-lite/wasm` by a consumer's bundler alias) names its own binary: its
+  // glue does not link against the full binary the sibling path below points
+  // at. The full engine exports null, so its resolution is unchanged.
+  if (ENGINE_BINARY_URL) return ENGINE_BINARY_URL;
   try {
     // Source-aliased (Vite) build: the sibling `@ifc-lite/wasm` package's
     // binary, resolved relative to THIS module. Vite statically rewrites this

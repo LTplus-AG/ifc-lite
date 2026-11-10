@@ -13,6 +13,7 @@ import {
   ClaGateError,
   addSignature,
   claFingerprint,
+  coAuthors,
   commentBody,
   decideEvent,
   evaluate,
@@ -27,7 +28,7 @@ const REPO = 'LTplus-AG/ifc-lite';
 const alice = { id: 101, login: 'alice', type: 'User' };
 const bob = { id: 202, login: 'bob', type: 'User' };
 const louis = { id: 78563314, login: 'louistrue', type: 'User' };
-const commit = (author, email = `${author?.login ?? 'x'}@example.com`) => ({ author, commit: { author: { email } } });
+const commit = (author, email = `${author?.login ?? 'x'}@example.com`, message = 'change') => ({ author, commit: { author: { email }, message } });
 const signedBy = (...users) => ({
   cla_version: CLA_VERSION,
   signatures: users.map((u) => ({ github_id: u.id, login: u.login })),
@@ -362,4 +363,44 @@ test('a manual run gives every open pull request a status', () => {
   const out = run({ eventName: 'workflow_dispatch', payload: {}, repo: REPO, claText, claCommit: '1'.repeat(40), spawn });
   assert.deepEqual(out.alsoChecked, [4, 5, 6]);
   assert.equal(state.statuses.length, 3);
+});
+
+// ---- co-author trailers ------------------------------------------------------
+
+test('a co-author named by a GitHub noreply address must sign, even on a maintainer commit', () => {
+  const msg = 'feat: x\n\nCo-authored-by: Alice A <101+alice@users.noreply.github.com>';
+  const r = evaluate({ user: louis }, [commit(louis, 'l@x', msg)], signedBy());
+  assert.equal(r.state, 'failure');
+  assert.deepEqual(r.missing.map((u) => u.id), [101]);
+  assert.equal(evaluate({ user: louis }, [commit(louis, 'l@x', msg)], signedBy(alice)).state, 'success');
+});
+
+test('AI assistants, LTplus addresses and named bots as co-authors need no signature', () => {
+  const msg = [
+    'Co-authored-by: Claude <noreply@anthropic.com>',
+    'co-authored-by: Codex <noreply@openai.com>',
+    'Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>',
+    'Co-authored-by: L <78563314+louistrue@users.noreply.github.com>',
+    'Co-authored-by: L <louistrue@users.noreply.github.com>',
+    'Co-authored-by: L <Louis@LT.plus>',
+    'Co-authored-by: gha <41898282+github-actions[bot]@users.noreply.github.com>',
+  ].join('\n');
+  assert.equal(evaluate({ user: louis }, [commit(louis, 'l@x', `x\n\n${msg}`)], signedBy()).state, 'success');
+});
+
+test('a co-author with another email blocks until an offline signature covers that email', () => {
+  const c = commit(louis, 'l@x', 'x\n\nCo-authored-by: Someone <Someone@Corp.com>');
+  const r = evaluate({ user: louis }, [c], signedBy());
+  assert.equal(r.state, 'failure');
+  assert.deepEqual(r.coauthorEmails, ['someone@corp.com']);
+  assert.match(commentBody(r, 'c', 'f'), /Co-authored-by/);
+  assert.equal(evaluate({ user: louis }, [c], { ...signedBy(), offline: [{ email: 'someone@corp.com' }] }).state, 'success');
+});
+
+test('co-author parsing reads trailer lines only and an id-less noreply address by login', () => {
+  assert.deepEqual(coAuthors('mention Co-authored-by: X <x@y.z> inline\nCo-authored-by: Bob <bob@users.noreply.github.com>'),
+    [{ user: { id: undefined, login: 'bob', type: 'User' } }]);
+  assert.deepEqual(coAuthors('Co-authored-by: C <noreply@anthropic.com>'), [], 'exempt addresses are dropped while parsing');
+  const r = evaluate({ user: louis }, [commit(louis, 'l@x', 'x\n\nCo-authored-by: Bob <bob@users.noreply.github.com>')], signedBy(bob));
+  assert.equal(r.state, 'success', 'an id-less co-author matches the signature by login');
 });

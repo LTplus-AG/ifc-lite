@@ -159,4 +159,5 @@ export const commandPaletteIt = {
   "commandPalette.paths.basepoints": "Mostra i punti base dei modelli origine coordinate zero IFC",
   "commandPalette.availability.sectionLimit": "Elimina un piano di sezione per poterne aggiungere un altro.",
   "commandPalette.availability.sectionBounds": "Carica o seleziona geometria con limiti definiti per adattare un riquadro di sezione.",
+  "commandPalette.extension.conditions": "Le condizioni di utilizzo di questo strumento non sono soddisfatte. Controlla i requisiti del modello o della selezione indicati accanto all’estensione che lo fornisce.",
 } satisfies Catalogue;

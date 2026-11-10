@@ -76,7 +76,7 @@ export function useExportRunner(surface: ExportSurface = 'palette') {
 
   const runExport = useCallback((request: ExportRequest) => {
     if (request.id === 'extension') {
-      if (extensionExportRunning) toast.info(t('commandPalette.export.unavailable'));
+      if (extensionExportRunning) toast.info(t('commandPalette.extension.busy'));
       else void runExtensionExporter(request.key);
       return;
     }

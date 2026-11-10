@@ -1131,6 +1131,10 @@
     "value": "{ifcClass} #{id} · {storey}",
     "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
   },
+  "modelInspector.layers.keptBody": {
+    "value": "{name}: {reason}",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
   "modelInspector.name.label": {
     "value": "Name",
     "reason": "Same-spelling German label or established UI term (Name); placeholders retain runtime content."

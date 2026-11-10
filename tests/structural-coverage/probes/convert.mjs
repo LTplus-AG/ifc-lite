@@ -13,14 +13,10 @@
  * GlobalId, or by its type when it has none, since a re-export may renumber.
  * A record that comes back as another entity is partial evidence; one that is
  * gone is a failure. The converter throwing is the product failing, not the probe.
- * Every record of the entity in the intermediate file must exist in the
- * intermediate schema with that schema's attribute count, and each attribute
- * value must fit its slot by the STEP rule the schema's typed registry decides:
- * a typed value (`IFCBOOLEAN(.T.)`) only in a SELECT slot, a bare value only in
- * a defined-type, enum or primitive slot. A record copied through unconverted
- * makes the file schema-invalid, so that file earns no credit for the row even
- * when the record comes back. The check does not test which select member a
- * typed value is, nor enum values.
+ * Every record of the entity in the intermediate file must conform to the
+ * intermediate schema's typed registry (see `slotMismatch`). A record copied
+ * through unconverted makes the file schema-invalid, so that file earns no
+ * credit for the row even when the record comes back.
  */
 
 import { CONVERT_HOP as OTHER } from '../catalogue.mjs';
@@ -39,14 +35,48 @@ function roundTrip(ctx, file, schema) {
   })().catch((error) => ({ error })));
 }
 
-/** Why `value` cannot fill a slot of `type`, or null. Lists are checked element by element. */
-function slotMismatch(value, type, registry) {
-  if (value === null || value === '*' || (value && typeof value === 'object' && 'ref' in value)) return null;
-  if (Array.isArray(value)) return value.map((v) => slotMismatch(v, type, registry)).find(Boolean) ?? null;
-  const select = type in registry.selects;
-  const typed = value && typeof value === 'object' && 'type' in value;
-  if (typed && !select) return `typed ${value.type} in ${type}`;
-  if (!typed && select) return `bare value in SELECT ${type}`;
+const own = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
+const names = new WeakMap();
+/** STEP keyword -> registry entity name, built once per registry. */
+function entityName(registry, keyword) {
+  if (!names.has(registry)) names.set(registry, new Map(Object.keys(registry.entities).map((n) => [n.toUpperCase(), n])));
+  return names.get(registry).get(keyword);
+}
+
+/** Whether a slot of `type` accepts a reference to an entity named `target`. */
+function acceptsRef(registry, type, target, depth = 0) {
+  if (own(registry.entities, type)) return registry.entities[target]?.inheritanceChain.includes(type) ?? false;
+  return depth < 8 && own(registry.selects, type) && registry.selects[type].some((m) => acceptsRef(registry, m, target, depth + 1));
+}
+
+/** Whether a SELECT of `type` has a non-entity member, so a typed value can fill it. */
+function acceptsValue(registry, type, depth = 0) {
+  return depth < 8 && registry.selects[type].some((m) => !own(registry.entities, m) && (!own(registry.selects, m) || acceptsValue(registry, m, depth + 1)));
+}
+
+/**
+ * Why `value` cannot fill a slot of `type` in `registry`, or null. A reference
+ * must resolve in `step` to an entity the slot admits; a typed value fits only
+ * a SELECT with value members; a bare value fits only a defined-type, enum or
+ * primitive slot; `$` only an optional slot. Lists are checked element by element.
+ */
+function slotMismatch(value, type, optional, registry, step) {
+  const t = type.replace(/(\[\])+$/, '');
+  if (value === '*') return null;
+  if (value === null) return optional ? null : 'required value empty';
+  if (Array.isArray(value)) return value.map((v) => slotMismatch(v, t, false, registry, step)).find(Boolean) ?? null;
+  if (typeof value === 'object' && 'ref' in value) {
+    const target = step.get(value);
+    if (!target) return 'reference to a missing record';
+    const name = entityName(registry, target.type);
+    if (!name) return `reference to ${target.type}, which the schema lacks`;
+    return acceptsRef(registry, t, name) ? null : `reference to ${name} in ${t}`;
+  }
+  if (own(registry.entities, t)) return `bare value in entity slot ${t}`;
+  const select = own(registry.selects, t);
+  const typed = typeof value === 'object' && 'type' in value;
+  if (typed && !(select && acceptsValue(registry, t))) return `typed ${value.type} in ${t}`;
+  if (!typed && select) return `bare value in SELECT ${t}`;
   return null;
 }
 
@@ -62,7 +92,7 @@ export function nonConforming(intermediate, entity, registry) {
     if (!slots) return [{ id: rec.id, why: 'no such entity' }];
     if (rec.args.length !== slots.length) return [{ id: rec.id, why: `${rec.args.length} attributes, ${slots.length} expected` }];
     for (const [i, slot] of slots.entries()) {
-      const why = slotMismatch(rec.args[i], slot.type, registry);
+      const why = slotMismatch(rec.args[i], slot.type, slot.optional, registry, intermediate);
       if (why) return [{ id: rec.id, why: `${slot.name}: ${why}` }];
     }
     return [];

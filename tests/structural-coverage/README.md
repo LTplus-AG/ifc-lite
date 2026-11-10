@@ -45,10 +45,14 @@ IFC4 <-> IFC2X3), and each kind of row uses its own levels. An entity the other
 schema lacks keeps its convert level, so the cell shows what the converter does
 with it: maps it, refuses the file, or copies it through unconverted. The probe
 checks every record of the row's entity in the intermediate file against that
-schema: the entity exists, the attribute count matches, and each value fits its
-slot (a typed value only in a SELECT slot, a bare value only elsewhere, decided
-by the parser's typed schema registry). A file that fails gets no credit for the
-row. Which select member a typed value is, and enum values, are not checked.
+schema's typed registry (the parser's generated `SchemaRegistry`): the entity
+exists, the attribute count matches, a required slot is not `$`, a reference
+resolves to an entity the slot admits, a typed value sits only in a SELECT with
+value members, and a bare value only in a defined-type, enum or primitive slot.
+A file that fails gets no credit for the row. Not checked: which select member a
+typed value is, enum values, and records of other entities. The registry is
+generated from the same EXPRESS as the product uses, so a codegen error there
+would be shared by the oracle and the converter.
 
 ## Scoring and the ratchet
 

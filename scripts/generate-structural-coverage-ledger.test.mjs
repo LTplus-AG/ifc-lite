@@ -139,9 +139,19 @@ test('convert (#9668): a record copied into a schema that lacks the entity, with
 ENDSEC;END-ISO-10303-21;`);
   // A registry in the parser's SchemaRegistry shape. IfcStructuralLoadGroup takes IFC4's attribute
   // count with untyped slots; on IfcBoundaryNodeCondition, X is a SELECT slot and the rest are not.
-  const loadGroupSlots = tables.IFC4.table.get('IfcStructuralLoadGroup').attributes.map((name) => ({ name, type: 'IfcLabel' }));
+  const loadGroupSlots = tables.IFC4.table.get('IfcStructuralLoadGroup').attributes.map((name) => ({ name, type: 'IfcLabel', optional: true }));
+  const opt = (name, type) => ({ name, type, optional: true });
   const registry = {
-    entities: { IfcStructuralLoadGroup: { allAttributes: loadGroupSlots }, IfcBoundaryNodeCondition: { allAttributes: [{ name: 'Name', type: 'IfcLabel' }, { name: 'X', type: 'IfcSel' }, { name: 'Y', type: 'IfcMeasure' }, { name: 'A', type: 'IfcMeasure' }, { name: 'B', type: 'IfcMeasure' }, { name: 'C', type: 'IfcMeasure' }, { name: 'D', type: 'IfcMeasure' }] } },
+    entities: {
+      IfcStructuralLoadGroup: { allAttributes: loadGroupSlots, inheritanceChain: ['IfcStructuralLoadGroup'] },
+      IfcBoundaryNodeCondition: {
+        allAttributes: [opt('Name', 'IfcLabel'), opt('X', 'IfcSel'), opt('Y', 'IfcMeasure'), opt('A', 'IfcMeasure'), opt('B', 'IfcMeasure'), opt('C', 'IfcMeasure'), opt('D', 'IfcMeasure')],
+        inheritanceChain: ['IfcBoundaryNodeCondition'],
+      },
+      // Required Reaction slot of entity type IfcReaction.
+      IfcAction: { allAttributes: [{ name: 'Reaction', type: 'IfcReaction', optional: false }], inheritanceChain: ['IfcAction'] },
+      IfcReaction: { allAttributes: [], inheritanceChain: ['IfcReaction'] },
+    },
     selects: { IfcSel: ['IfcBoolean', 'IfcMeasure'] }, types: { IfcMeasure: 'REAL', IfcLabel: 'STRING' }, enums: {},
   };
   const bc = readStep(`ISO-10303-21;HEADER;FILE_SCHEMA(('IFC4'));ENDSEC;DATA;
@@ -155,6 +165,21 @@ ENDSEC;END-ISO-10303-21;`);
   assert.deepEqual(found.map((r) => r.id), [2, 3]);
   assert.match(found[0].why, /bare value in SELECT IfcSel/);
   assert.match(found[1].why, /typed IFCBOOLEAN in IfcMeasure/);
+  const refs = readStep(`ISO-10303-21;HEADER;FILE_SCHEMA(('IFC4'));ENDSEC;DATA;
+#1=IFCREACTION();
+#2=IFCACTION(#1);
+#3=IFCACTION($);
+#4=IFCACTION(.TRUE_LENGTH.);
+#5=IFCACTION(#6);
+#6=IFCNOTINSCHEMA();
+#7=IFCACTION(#2);
+ENDSEC;END-ISO-10303-21;`);
+  const why = Object.fromEntries(nonConforming(refs, 'IfcAction', registry).map((r) => [r.id, r.why]));
+  assert.deepEqual(Object.keys(why).map(Number), [3, 4, 5, 7], 'only #2 references what the slot admits');
+  assert.match(why[3], /required value empty/);
+  assert.match(why[4], /bare value in entity slot IfcReaction/);
+  assert.match(why[5], /reference to IFCNOTINSCHEMA, which the schema lacks/);
+  assert.match(why[7], /reference to IfcAction in IfcReaction/);
 });
 
 function tree() {

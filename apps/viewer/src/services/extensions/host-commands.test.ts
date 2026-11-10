@@ -27,6 +27,8 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
+import { createContext, runInContext } from 'node:vm';
+import { BimSandboxHandle } from './sandbox-factory.js';
 
 import type {
   ActivationRecord,
@@ -101,6 +103,8 @@ function fakeSandbox(recordRanSource: (source: string) => void) {
       g.__ifclite_ctx__ = ctx;
       g.bim = (ctx as { bim?: unknown } | undefined)?.bim;
       try {
+        // Trusted fixture wrapper, executed to assert actual handler behavior.
+        // eslint-disable-next-line no-eval
         // Execute only this trusted fixture through the real command wrapper.
         // eslint-disable-next-line no-eval
         const value = await (0, eval)(source);
@@ -117,7 +121,7 @@ function fakeSandbox(recordRanSource: (source: string) => void) {
 
 function activationRecord(
   extensionId: string,
-  sandbox: ReturnType<typeof fakeSandbox>,
+  sandbox: ActivationRecord['sandbox'],
 ): ActivationRecord {
   return {
     extensionId,
@@ -152,6 +156,36 @@ function fixture(options: { handlerSource?: string; enabled?: boolean } = {}) {
 
   return { deps, fired };
 }
+
+it('#8947 overlapping commands keep their own arguments in one cached BimSandboxHandle', async () => {
+  const f = fixture({ handlerSource: 'async function run(ctx) { await Promise.resolve(); return ctx.args?.target ?? "none"; }' });
+  const realm = createContext({ bim: f.deps.sdk });
+  const sources: string[] = [];
+  let release: () => void = () => { throw new Error('evaluation gate not installed'); };
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  const handle = new BimSandboxHandle({
+    moduleRetired: false,
+    dispose() {},
+    async eval(source) {
+      sources.push(source);
+      if (sources.length === 3) release();
+      await gate;
+      // Trusted fixture code at the evaluator boundary; the handle and wrapper
+      // are production code. All invocations share the same activation/realm.
+      const value: unknown = await runInContext(source, realm);
+      return { value, logs: [], durationMs: 0 };
+    },
+  });
+  f.deps.runtime.activate = async () => activationRecord('demo', handle);
+  const results = await Promise.all([
+    runExtensionCommand(f.deps, COMMAND_ID, 'demo', { target: 'A' }),
+    runExtensionCommand(f.deps, COMMAND_ID, 'demo', { target: 'B' }),
+    runExtensionCommand(f.deps, COMMAND_ID, 'demo'),
+  ]);
+  assert.deepStrictEqual(results.map(result => result?.value), ['A', 'B', 'none']);
+  assert.equal(sources.length, 3, 'each invocation executes once');
+  assert.equal((await runExtensionCommand(f.deps, COMMAND_ID, 'demo'))?.value, 'none');
+});
 
 /**
  * Two enabled extensions, `ext-a` and `ext-b`, BOTH declaring `COMMAND_ID`,

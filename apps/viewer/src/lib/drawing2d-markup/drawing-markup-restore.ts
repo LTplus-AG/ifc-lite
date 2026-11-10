@@ -21,6 +21,7 @@
 import { EntityExtractor, extractLengthUnitScale, getAttributeNames, type IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import {
+  DRAWING_MARKUP_OBJECTTYPE,
   DRAWING_MARKUP_PSET_NAME,
   DRAWING_MARKUP_QSET_NAME,
 } from '@ifc-lite/create';
@@ -60,6 +61,20 @@ function readBaseObjectType(dataStore: IfcDataStore, expressId: number): string 
   const idx = names.indexOf('ObjectType');
   const value = entity.attributes?.[idx >= 0 ? idx : 4];
   return typeof value === 'string' && value.length > 0 ? value : null;
+}
+
+const embeddedMarkup = new WeakMap<IfcDataStore, boolean>();
+const markupObjectTypes = new Set<string>(Object.values(DRAWING_MARKUP_OBJECTTYPE));
+
+/** Source-only, once-per-store preflight; no symbolic geometry or spatial key. */
+export function hasEmbeddedDrawingMarkup(dataStore: IfcDataStore): boolean {
+  const cached = embeddedMarkup.get(dataStore);
+  if (cached !== undefined) return cached;
+  // @raw-entity-enumeration-ok restore-on-load examines immutable embedded annotation tags only
+  const ids = dataStore.entityIndex?.byType.get('IFCANNOTATION') ?? [];
+  const found = ids.some((id) => markupObjectTypes.has(readBaseObjectType(dataStore, id) ?? ''));
+  embeddedMarkup.set(dataStore, found);
+  return found;
 }
 
 /**

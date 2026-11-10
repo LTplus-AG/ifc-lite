@@ -60,7 +60,7 @@
 import { useEffect } from 'react';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store';
-import { restoreDrawingMarkupFromModel } from '@/lib/drawing2d-markup/drawing-markup-restore';
+import { hasEmbeddedDrawingMarkup, restoreDrawingMarkupFromModel } from '@/lib/drawing2d-markup/drawing-markup-restore';
 import { ensureParseFor, subscribeToParseCache } from './symbolic-parse-cache.js';
 import { hasPersistedMarkupEntryFor, onLocalStorageDecidedFor } from './useDrawing2DPersistence.js';
 
@@ -164,8 +164,18 @@ export function tryRestoreDrawingMarkup(modelId: string): void {
     return;
   }
 
+  const state = useViewerStore.getState();
+  const store = state.models.get(modelId)?.ifcDataStore ?? (modelId === 'legacy' ? state.ifcDataStore : null);
+  if (!store) return;
+  if (!hasEmbeddedDrawingMarkup(store)) {
+    markRestored(modelId);
+    return;
+  }
   const result = restoreDrawingMarkupFromModel(modelId);
-  if (!result) return; // not parsed yet — retry on the next parse-cache notification
+  if (!result) {
+    ensureParseFor([store]);
+    return; // retry on parse publication or RTC readiness
+  }
 
   markRestored(modelId);
   const total =
@@ -206,10 +216,12 @@ export function useDrawingMarkupRestoreOnLoad(): void {
     if (!s.activeModelId) return undefined;
     return s.models.get(s.activeModelId)?.ifcDataStore ?? (s.activeModelId === 'legacy' ? s.ifcDataStore ?? undefined : undefined);
   });
+  const needsRestoreParse = !!dataStore && hasEmbeddedDrawingMarkup(dataStore);
   // `ensureParseFor` deliberately does nothing while mesh RTC provenance is
   // pending. Subscribe to its publication so this effect retries instead of
   // waiting forever for a parse-cache notification that cannot yet exist.
   const rtcPublication = useViewerStore((s) => {
+    if (!needsRestoreParse) return null;
     if (!s.activeModelId) return null;
     const model = s.models.get(s.activeModelId);
     if (model) {
@@ -224,7 +236,6 @@ export function useDrawingMarkupRestoreOnLoad(): void {
   useEffect(() => {
     if (!activeModelId || !dataStore) return;
     tryRestoreDrawingMarkup(activeModelId);
-    ensureParseFor([dataStore]);
     const unsubscribeParseCache = subscribeToParseCache(() => tryRestoreDrawingMarkup(activeModelId));
     return () => {
       unsubscribeParseCache();

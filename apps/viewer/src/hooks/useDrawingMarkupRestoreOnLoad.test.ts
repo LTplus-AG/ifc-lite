@@ -260,3 +260,23 @@ describe('tryRestoreDrawingMarkup: populates from a model with tagged annotation
     }
   });
 });
+
+it('NEW-3: blank IFC restore never computes a spatial key or starts a worker', async () => {
+  const store = await seedStore('blank-new3');
+  // Remove the sole annotation from the real parsed fixture's type index.
+  store.entityIndex.byType.set('IFCANNOTATION', []);
+  const hierarchy = store.spatialHierarchy;
+  Object.defineProperty(store, 'spatialHierarchy', { configurable: true, get() { throw new Error('blank restore requested spatial buckets'); } });
+  try {
+    tryRestoreDrawingMarkup('blank-new3');
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    function Restore() { useDrawingMarkupRestoreOnLoad(); return null; }
+    await act(async () => root.render(createElement(Restore)));
+    await act(async () => root.unmount());
+    host.remove();
+  } finally {
+    Object.defineProperty(store, 'spatialHierarchy', { configurable: true, value: hierarchy });
+  }
+});

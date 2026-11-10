@@ -5,6 +5,10 @@
 import type { Catalogue } from '../../registry';
 
 export const commandPaletteDe = {
+  "commandPalette.vis.resetFilters.label": "Sichtbarkeitsfilter zurücksetzen",
+  "commandPalette.vis.resetFilters.detail": "Auswahl und Sammlung behalten",
+  "commandPalette.vis.resetFilters.aliases": "Sichtbarkeitsfilter zurücksetzen Sichtbarkeit wiederherstellen ohne Auswahl zu löschen",
+  "commandPalette.availability.noVisibilityFilters": "Keine Sichtbarkeitsfilter zum Zurücksetzen",
   "commandPalette.aliases.bulk": "Eigenschaften gesammelt bearbeiten Abfrage Attribut Bauphase",
   "commandPalette.aliases.import": "CSV Tabelle Daten Zuordnung importieren",
   "commandPalette.aliases.classes": "Klassen Sichtbarkeit Räume Öffnungen Anmerkungen Raster Ebenen zusammenführen schnelle exakte Geometrie",

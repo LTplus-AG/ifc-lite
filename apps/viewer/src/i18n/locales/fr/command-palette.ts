@@ -222,4 +222,8 @@ export const commandPaletteFr = {
   "commandPalette.paths.tree": "Hiérarchie → étiquettes de modèle ; plusieurs modèles en mode Spatial → regroupement par étiquettes, isoler les modèles étiquetés ; tri des étages, écart en vue éclatée, synchronisation avec la source et suppression des modèles modifiés",
   "commandPalette.paths.search.filterHint": "Recherche avancée → Filtre · règles et groupes",
   "commandPalette.availability.loadErrorReplaced": "L’erreur de chargement a changé ; choisissez l’action de récupération actuelle",
+  "commandPalette.vis.resetFilters.label": "Réinitialiser les filtres de visibilité",
+  "commandPalette.vis.resetFilters.detail": "Conserver la sélection et la collection",
+  "commandPalette.vis.resetFilters.aliases": "réinitialiser filtres de visibilité rétablir visibilité sans effacer la sélection",
+  "commandPalette.availability.noVisibilityFilters": "Aucun filtre de visibilité à réinitialiser",
 } satisfies Catalogue;

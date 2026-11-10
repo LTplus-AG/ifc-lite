@@ -211,4 +211,8 @@ export const commandPaletteIt = {
   "commandPalette.paths.tree": "Gerarchia → etichette del modello; più modelli in modalità Spaziale → raggruppamento per etichette, isola modelli etichettati; ordinamento piani, distanza della vista esplosa, sincronizzazione con la fonte ed eliminazione dei modelli modificati",
   "commandPalette.paths.search.filterHint": "Ricerca avanzata → Filtro · regole e gruppi",
   "commandPalette.availability.loadErrorReplaced": "L’errore di caricamento è cambiato; scegli l’azione di recupero corrente",
+  "commandPalette.vis.resetFilters.label": "Ripristina i filtri di visibilità",
+  "commandPalette.vis.resetFilters.detail": "Mantieni selezione e raccolta",
+  "commandPalette.vis.resetFilters.aliases": "ripristina filtri di visibilità ripristina visibilità senza cancellare la selezione",
+  "commandPalette.availability.noVisibilityFilters": "Nessun filtro di visibilità da ripristinare",
 } satisfies Catalogue;

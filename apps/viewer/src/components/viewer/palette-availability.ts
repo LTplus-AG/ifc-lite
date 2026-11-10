@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /** Palette-only prerequisites. Shared ribbon/context enabled predicates stay intact (#8947). */
+import { activeVisibilityReasons } from '@/lib/visibility/visibility-reasons';
 import { errorReportDestinationBlock } from '@/lib/error-reports/destination';
 import { hasInlineSearchHost } from './inline-search-focus';
 import { blankModelUnavailable } from '@/hooks/startBlankModel';
@@ -172,6 +173,9 @@ export function paletteAvailability(command: SurfaceCommandDefinition, context: 
     || ['view:stacked', 'view:exploded', 'view:solo'].includes(id)) {
     if (!loaded) return blocked('commandPalette.availability.model');
   }
+  if (id === 'vis:reset-filters' && !activeVisibilityReasons(s).some(reason => reason.resetPolicy === 'cleared')) {
+    return blocked('commandPalette.availability.noVisibilityFilters');
+  }
   if (id.startsWith('view:orientation:')) {
     if (!loaded) return blocked('commandPalette.availability.model');
     if (!s.cameraCallbacks.setPresetDirection) return blocked('commandPalette.availability.camera');
@@ -226,7 +230,8 @@ export function canRunPaletteCommand(command: Command, onRefused?: (reason: Tran
 
 /** Narrow snapshot: unrelated viewport/store updates do not rebuild the table. */
 export function palettePrerequisites(s: ViewerState) {
-  return { loadError: s.error, loadRetry: s.lastLoadRetry, loadErrorSeq: s.loadErrorSeq,
+  return { hasResettableVisibilityFilters: activeVisibilityReasons(s).some(reason => reason.resetPolicy === 'cleared'),
+    loadError: s.error, loadRetry: s.lastLoadRetry, loadErrorSeq: s.loadErrorSeq,
     loadCanceller: s.activeLoadCanceller, streamCanceller: s.activeStreamCanceller,
     workspaceMode: s.workspaceMode, canCollabEdit: s.canCollabEdit,
     centreline: s.centrelineOverlayEnabled, followWork: s.ribbonContextualTabs,

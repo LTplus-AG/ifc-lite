@@ -168,14 +168,14 @@ are observed access gaps, not failures of the already accepted general UX scope.
 Raw observation `theme: null` means the light theme's absent HTML class; the
 manifest explicitly identifies light/dark for every capture.
 
-![Unloaded selection action lacks a reason](https://github.com/LTplus-AG/ifc-lite/blob/c169392df979d45e159dd1db9883af6fa2cf963b/tests/ui-scenes/command-palette-access/evidence/baseline-access-unloaded-hide.light.png)
-![Real selected wall and Hide command](https://github.com/LTplus-AG/ifc-lite/blob/c169392df979d45e159dd1db9883af6fa2cf963b/tests/ui-scenes/command-palette-access/evidence/baseline-access-selected-hide.dark.png)
-![After canonical Hide execution](https://github.com/LTplus-AG/ifc-lite/blob/c169392df979d45e159dd1db9883af6fa2cf963b/tests/ui-scenes/command-palette-access/evidence/baseline-access-selected-hide-run.dark.png)
-![Undo query has no Undo action](https://github.com/LTplus-AG/ifc-lite/blob/c169392df979d45e159dd1db9883af6fa2cf963b/tests/ui-scenes/command-palette-access/evidence/baseline-access-history.light.png)
-![Privacy query misses Settings](https://github.com/LTplus-AG/ifc-lite/blob/c169392df979d45e159dd1db9883af6fa2cf963b/tests/ui-scenes/command-palette-access/evidence/baseline-access-settings-privacy.light.png)
+![Unloaded selection action lacks a reason](https://github.com/LTplus-AG/ifc-lite/blob/138924156bfcee16f6107c7bf0b9b7bca54007ff/tests/ui-scenes/command-palette-access/evidence/baseline-access-unloaded-hide.light.png)
+![Real selected wall and Hide command](https://github.com/LTplus-AG/ifc-lite/blob/138924156bfcee16f6107c7bf0b9b7bca54007ff/tests/ui-scenes/command-palette-access/evidence/baseline-access-selected-hide.dark.png)
+![After canonical Hide execution](https://github.com/LTplus-AG/ifc-lite/blob/138924156bfcee16f6107c7bf0b9b7bca54007ff/tests/ui-scenes/command-palette-access/evidence/baseline-access-selected-hide-run.dark.png)
+![Undo query has no Undo action](https://github.com/LTplus-AG/ifc-lite/blob/138924156bfcee16f6107c7bf0b9b7bca54007ff/tests/ui-scenes/command-palette-access/evidence/baseline-access-history.light.png)
+![Privacy query misses Settings](https://github.com/LTplus-AG/ifc-lite/blob/138924156bfcee16f6107c7bf0b9b7bca54007ff/tests/ui-scenes/command-palette-access/evidence/baseline-access-settings-privacy.light.png)
 
-[Recorded contexts and outcomes](https://github.com/LTplus-AG/ifc-lite/blob/c169392df979d45e159dd1db9883af6fa2cf963b/tests/ui-scenes/command-palette-access/evidence/baseline-context-observations.json) and
-[exact-artifact capture manifest](https://github.com/LTplus-AG/ifc-lite/blob/c169392df979d45e159dd1db9883af6fa2cf963b/tests/ui-scenes/command-palette-access/evidence/baseline-manifest.json) retain the facts.
+[Recorded contexts and outcomes](https://github.com/LTplus-AG/ifc-lite/blob/138924156bfcee16f6107c7bf0b9b7bca54007ff/tests/ui-scenes/command-palette-access/evidence/baseline-context-observations.json) and
+[exact-artifact capture manifest](https://github.com/LTplus-AG/ifc-lite/blob/138924156bfcee16f6107c7bf0b9b7bca54007ff/tests/ui-scenes/command-palette-access/evidence/baseline-manifest.json) retain the facts.
 No candidate access verdict has been issued yet.
 
 ## Round 1 foundation checkpoint
@@ -764,14 +764,14 @@ The extension installed and reached its real widget, but its independent model-a
 
 ### Round 2 visual verdict and Round 3 corrections
 
-[Opus R2 review](https://github.com/LTplus-AG/ifc-lite/blob/c169392df979d45e159dd1db9883af6fa2cf963b/tests/ui-scenes/command-palette-access/evidence/opus-access-r2.md) marks observed UX **REVISE**.
-[Qualified capture evidence](https://github.com/LTplus-AG/ifc-lite/blob/c169392df979d45e159dd1db9883af6fa2cf963b/tests/ui-scenes/command-palette-access/evidence/r2-qualification.json) pins all 36 successful
+[Opus R2 review](https://github.com/LTplus-AG/ifc-lite/blob/138924156bfcee16f6107c7bf0b9b7bca54007ff/tests/ui-scenes/command-palette-access/evidence/opus-access-r2.md) marks observed UX **REVISE**.
+[Qualified capture evidence](https://github.com/LTplus-AG/ifc-lite/blob/138924156bfcee16f6107c7bf0b9b7bca54007ff/tests/ui-scenes/command-palette-access/evidence/r2-qualification.json) pins all 36 successful
 captures to `f8ca13e`; it also records the 21/22 browser result and missing full
 acceptance. Immediate flow images are identified separately because the common
 protocol re-homed the camera before its manifest screenshot.
 
-![R2 inactive recovery rows crowd File browsing](https://github.com/LTplus-AG/ifc-lite/blob/c169392df979d45e159dd1db9883af6fa2cf963b/tests/ui-scenes/command-palette-access/evidence/r2-palette-browse.dark.png)
-![R2 visible labels and explicit unavailable reasons](https://github.com/LTplus-AG/ifc-lite/blob/c169392df979d45e159dd1db9883af6fa2cf963b/tests/ui-scenes/command-palette-access/evidence/r2-access-unloaded-hide.light.png)
+![R2 inactive recovery rows crowd File browsing](https://github.com/LTplus-AG/ifc-lite/blob/138924156bfcee16f6107c7bf0b9b7bca54007ff/tests/ui-scenes/command-palette-access/evidence/r2-palette-browse.dark.png)
+![R2 visible labels and explicit unavailable reasons](https://github.com/LTplus-AG/ifc-lite/blob/138924156bfcee16f6107c7bf0b9b7bca54007ff/tests/ui-scenes/command-palette-access/evidence/r2-access-unloaded-hide.light.png)
 
 R3 makes selected stripes purely decorative without displacing unselected labels;
 keeps inactive load recovery searchable while omitting it from browse and recents;
@@ -793,7 +793,7 @@ no skips. Initial installed-extension hide/show passed every raster assertion;
 reactivation exposed a test setup error: repeating the canonical isolation toggle
 revealed the surrounding building. The corrected setup preserves isolation and
 asserts it before both cycles, without changing camera or pixel thresholds.
-See [evidence/a333-extension-reactivation.json](https://github.com/LTplus-AG/ifc-lite/blob/c169392df979d45e159dd1db9883af6fa2cf963b/tests/ui-scenes/command-palette-access/evidence/a333-extension-reactivation.json); corrected execution is pending.
+See [evidence/a333-extension-reactivation.json](https://github.com/LTplus-AG/ifc-lite/blob/138924156bfcee16f6107c7bf0b9b7bca54007ff/tests/ui-scenes/command-palette-access/evidence/a333-extension-reactivation.json); corrected execution is pending.
 The registry regression now checks inactive recovery commands are omitted from
 browse yet remain uniquely searchable and unavailable, matching the R3 contract.
 
@@ -809,14 +809,14 @@ cycles, disable and uninstall. All 36 matrix/context/flow captures passed; their
 PNG hashes were verified. The adapter was physical NVIDIA Lovelace, with a
 completed visible-canvas readback and no cleanup error. Root typecheck and build
 passed before capture; the focused/full-shard job was still running, so this is
-not a full-suite result. See [evidence/r3-browser-qualification.json](https://github.com/LTplus-AG/ifc-lite/blob/c169392df979d45e159dd1db9883af6fa2cf963b/tests/ui-scenes/command-palette-access/evidence/r3-browser-qualification.json).
+not a full-suite result. See [evidence/r3-browser-qualification.json](https://github.com/LTplus-AG/ifc-lite/blob/138924156bfcee16f6107c7bf0b9b7bca54007ff/tests/ui-scenes/command-palette-access/evidence/r3-browser-qualification.json).
 
 After general UX #8950 merged, main `6b944859` was integrated through all 18
 access stack layers using serial parent merges, preserving original heads. Four
 foundation conflicts duplicated the already incorporated accepted UX; its palette
 files matched the prior UX baseline. All access-owned files and all 153 upstream
 changes were verified unchanged in every layer; no unexpected edits occurred.
-See [evidence/main-6b944-integration.json](https://github.com/LTplus-AG/ifc-lite/blob/c169392df979d45e159dd1db9883af6fa2cf963b/tests/ui-scenes/command-palette-access/evidence/main-6b944-integration.json). The new integrated candidate needs
+See [evidence/main-6b944-integration.json](https://github.com/LTplus-AG/ifc-lite/blob/138924156bfcee16f6107c7bf0b9b7bca54007ff/tests/ui-scenes/command-palette-access/evidence/main-6b944-integration.json). The new integrated candidate needs
 matching validation and captures; the 15bd evidence remains attributed to 15bd.
 Three new mounted workflow files add Assistant, Semantic and Script child-flow
 witnesses. Their execution is pending; they do not yet close the access verdict.
@@ -827,7 +827,7 @@ After main integration, the foundation German catalogue lacked thirteen entries
 already present in the final candidate. They are now placed in their owning
 foundation layer; four file-host and five authoring translations are placed only
 where their English keys are introduced. The serial propagation preserves the
-combined leaf tree exactly. See [evidence/foundation-de-backport.json](https://github.com/LTplus-AG/ifc-lite/blob/c169392df979d45e159dd1db9883af6fa2cf963b/tests/ui-scenes/command-palette-access/evidence/foundation-de-backport.json). Actual
+combined leaf tree exactly. See [evidence/foundation-de-backport.json](https://github.com/LTplus-AG/ifc-lite/blob/138924156bfcee16f6107c7bf0b9b7bca54007ff/tests/ui-scenes/command-palette-access/evidence/foundation-de-backport.json). Actual
 foundation root typecheck plus palette and `de-catalogue-data-1` tests are queued
 on `723039da70d87e830482fd6b944525ec797cfac1`; source key accounting is not a test pass.
 
@@ -890,7 +890,7 @@ not replayed. This qualifies that foundation, not its descendants.
 
 The original integrated `6f40f204` job completed 440 focused tests with zero
 failures, cancellations or skips after root typecheck and build. Its full four
-shards were still running at this observation. See [evidence/integrated-6f40-focused.json](https://github.com/LTplus-AG/ifc-lite/blob/c169392df979d45e159dd1db9883af6fa2cf963b/tests/ui-scenes/command-palette-access/evidence/integrated-6f40-focused.json).
+shards were still running at this observation. See [evidence/integrated-6f40-focused.json](https://github.com/LTplus-AG/ifc-lite/blob/138924156bfcee16f6107c7bf0b9b7bca54007ff/tests/ui-scenes/command-palette-access/evidence/integrated-6f40-focused.json).
 The Assistant and Script witnesses have unchanged source hashes here; the later
 stronger Semantic success assertion still requires its own execution.
 
@@ -909,7 +909,7 @@ typecheck 134/134, test-program census 4,522 and 55/55 selected palette cases,
 zero failures/cancellations/skips, unchanged source. It did not select the German
 catalogue test. The verified original log is retained, publication succeeded and
 the owning Pop storage task was released; physical reclaimed bytes are unreported.
-See [evidence/foundation-b792-original.json](https://github.com/LTplus-AG/ifc-lite/blob/c169392df979d45e159dd1db9883af6fa2cf963b/tests/ui-scenes/command-palette-access/evidence/foundation-b792-original.json). Exact 723 full CI remains separate.
+See [evidence/foundation-b792-original.json](https://github.com/LTplus-AG/ifc-lite/blob/138924156bfcee16f6107c7bf0b9b7bca54007ff/tests/ui-scenes/command-palette-access/evidence/foundation-b792-original.json). Exact 723 full CI remains separate.
 
 Fresh review of the fourteen new cases found two cancellation-oracle gaps. Clash
 now cancels a valid named two-selector draft and compares copied live and durable
@@ -941,7 +941,7 @@ A new real-GPU case downloads and decodes its PNG and rejects blank output.
 Browser discovery now requires 24 cases (11 original UX, 12 access, 1 extension),
 including both actual federation pickers and their matched-source review.
 All these new runtime assertions remain UNRUN; historical reused cases are
-qualified separately in [evidence/export-child-evidence.json](https://github.com/LTplus-AG/ifc-lite/blob/c169392df979d45e159dd1db9883af6fa2cf963b/tests/ui-scenes/command-palette-access/evidence/export-child-evidence.json).
+qualified separately in [evidence/export-child-evidence.json](https://github.com/LTplus-AG/ifc-lite/blob/138924156bfcee16f6107c7bf0b9b7bca54007ff/tests/ui-scenes/command-palette-access/evidence/export-child-evidence.json).
 
 ### Final-flow review corrections and remaining child configurations
 
@@ -961,7 +961,7 @@ Save/Play, Flavors create/import-review/cancel, and Plan Grid/Fit/Retry/layout.
 They use real consumers and parsed/authored fixtures, with explicit limits for
 renderer-free thumbnails and measured DOM geometry. All ten remain UNRUN.
 Historical witnesses are identified separately in
-[evidence/configuration-workspace-proposals.json](https://github.com/LTplus-AG/ifc-lite/blob/c169392df979d45e159dd1db9883af6fa2cf963b/tests/ui-scenes/command-palette-access/evidence/configuration-workspace-proposals.json); no child case inherits a
+[evidence/configuration-workspace-proposals.json](https://github.com/LTplus-AG/ifc-lite/blob/138924156bfcee16f6107c7bf0b9b7bca54007ff/tests/ui-scenes/command-palette-access/evidence/configuration-workspace-proposals.json); no child case inherits a
 pass merely because its parent destination was previously opened. The 24-case
 real-GPU protocol and required four-shard suite remain mandatory. Complete
 access acceptance is unchanged: UNACCEPTED.
@@ -979,3 +979,186 @@ widths. Their strict runner requires 26 cases (11 UX + 14 access + 1 extension),
 zero skips. The 9672 built production can be used only with both build-source
 and newer harness-source identities explicitly recorded; no previous
 22/24-case receipt proves these cases. Complete access remains UNACCEPTED.
+
+
+### Access round 4 preparation: exact contextual reset and census correction
+
+R3 observed UX remains accepted on 15bd; complete access remains UNACCEPTED.
+The normalized source overlay preserves all 813 IDs and 3,994 anchors, including
+original report references, ordered paths and explicit evidence qualifications.
+Read the lossless [evidence/normalized-route-overlay.json.gz](https://github.com/LTplus-AG/ifc-lite/blob/138924156bfcee16f6107c7bf0b9b7bca54007ff/tests/ui-scenes/command-palette-access/evidence/normalized-route-overlay.json.gz) using the command
+in its adjacent manifest. Source counts are not behavior passes. That manifest
+also records dormant candidates and the manifest-command palette projection.
+
+C1242/N1269 exposed one genuine route omission: Show all additionally clears
+selection, collection and clash focus, so it cannot stand in for the contextual
+Reset everything action. `vis:reset-filters` now calls the same canonical reset
+as those controls, advertises preservation, and stays searchable with a reason
+when inactive. Seven authored mounted cases cover 1/N models, live refusal,
+stale activation and localized discovery. All remain UNRUN.
+
+Independent original-15bd triage counted 19,788 pass, 110 fail, 150 cancelled,
+338 skipped. Of the failures, 102 and all cancellations came from unavailable
+Chrome; six cold initialization failures and one ion census have later source
+repairs awaiting qualification. The remaining census incorrectly expected three
+inactive load-recovery commands in browse. It now asserts the explicit idle set,
+then searches every contextual action and checks labels, refusal explanations,
+and the complete registry union. The focused selector now includes all
+surface-commands tests, while retaining all four full shards.
+
+The original publication recovery failed at remote PC manifest-put; original
+workspace, receipt and locks remain protected. No rerun or cleanup bypass.
+The 26 real-GPU cases and matching new reset behavior still require execution;
+older source/build receipts cannot qualify this production addition.
+
+R4 also authors one browser reset-preservation case; the strict protocol now
+requires 27/27 (11 UX + 15 access + 1 extension). It explicitly distinguishes
+renderer visibility inputs from the extension journey's actual raster witness.
+The owning final-flow TS2339 failure is corrected by removing an unreachable
+error branch after the successful parse assertion; the assertion is retained.
+All corrected/new runtime results are pending.
+
+
+### Original receipt reconciliation and R4 oracle corrections
+
+Foundation 723039d completed its original fleet request with root typecheck
+134/134 plus 4,522 test-source census, and focused 96/96, zero skips, including
+the German command-palette catalogue. Workflow source 701972e completed root
+typecheck and all seven Assistant/Semantic/Script child cases; their test files
+are byte-identical at ef72c5c. Exact log lines/hashes are retained in evidence.
+Neither result qualifies complete access or later new tests.
+
+Original ac6ce05 focused execution passed 480/482, zero skips/cancellations;
+full shards did not run. Its two failures were native-export witnesses querying
+the static identity attribute for a runtime-owned exporter. The owning #9012
+correction uses runtime source and owner-qualified runtime command ID, retaining
+all actual QuickJS/query/publication assertions. This propagates to descendants.
+The raw receipt reports sourceUnchanged=false: post-run inspection found only
+the protocol's generated .palette-access-validation logs, with unchanged commit,
+tree, toolchain and no tracked diff. Preserve that qualification explicitly;
+new runs ignore only this generated log directory and retain compact evidence.
+
+Fresh R4 Astra review found the new browser setup must reselect after Set
+collection consumes selection. The corrected test asserts that contract and
+reselects the same parsed wall before Hide. It still reselects after Hide and
+checks exact preservation after reset. No production defect was identified.
+Corrected runtime and 27/27 GPU acceptance remain pending. Original ef72c5c
+has reached passing root typecheck (4,563 test sources) and build 58/58; its
+focused/full outcome is still pending and cannot certify the corrected tests.
+
+
+### Round 4 executed evidence: observed UX accepted, regression gate open
+
+Exact source `98d3ec5fb866e6098e05b7806469447e7223d01f` passed all 27
+physical-GPU browser cases (zero skips/retries), all 36 captures, and recorded
+zero page errors. The visible-canvas adapter is NVIDIA Lovelace, not a fallback.
+The root typecheck passed 134/134 with 4,563 test sources and build passed 58/58.
+[Source/build identity and image hashes](https://github.com/LTplus-AG/ifc-lite/blob/138924156bfcee16f6107c7bf0b9b7bca54007ff/tests/ui-scenes/command-palette-access/evidence/round4/qualification.json)
+pin these results independently of the final root-job outcome.
+
+Fresh [Opus R4 review](https://github.com/LTplus-AG/ifc-lite/blob/138924156bfcee16f6107c7bf0b9b7bca54007ff/tests/ui-scenes/command-palette-access/evidence/round4/palette-access-opus-round4-visual-fd0b1714.md)
+accepts observed UX on rubric axes 2–6. No production changes are proposed for
+its optional wording nits. The [bounded source closure review](https://github.com/LTplus-AG/ifc-lite/blob/138924156bfcee16f6107c7bf0b9b7bca54007ff/tests/ui-scenes/command-palette-access/evidence/round4/palette-access-r4-closure-disposition-fd0b1714.md)
+finds no remaining route omission in the resolved families, preserves all
+813 IDs / 3,994 anchors, and explicitly retains dormant and unqualified branches.
+Neither review accepts complete access or production readiness.
+
+Representative actual behavior, preserved without editing the screenshots:
+
+![Reset keeps the selected wall and collection](https://github.com/LTplus-AG/ifc-lite/blob/138924156bfcee16f6107c7bf0b9b7bca54007ff/tests/ui-scenes/command-palette-access/evidence/round4/02-reset-preservation-command.png)
+
+![Inactive Reset stays searchable with an explanation](https://github.com/LTplus-AG/ifc-lite/blob/138924156bfcee16f6107c7bf0b9b7bca54007ff/tests/ui-scenes/command-palette-access/evidence/round4/02-reset-inactive-reason.png)
+
+![Presentation replays the saved camera](https://github.com/LTplus-AG/ifc-lite/blob/138924156bfcee16f6107c7bf0b9b7bca54007ff/tests/ui-scenes/command-palette-access/evidence/round4/04-presentation-playback.png)
+
+The exact same 98d3 root request subsequently completed focused execution with
+535/543 passing, eight failures, zero skips/cancellations. Both native-export
+owner-selector corrections now pass. Remaining failures: four Document/List
+witness contracts, one Sources Configure label, two screenshot tests that had
+not registered their locale catalogues, and the second static-registry census
+that still expected inactive Reset in browse. Their corrections retain actual
+consumer/configuration/cancel/persistence assertions; corrected execution is
+pending. Full four-shard execution did not start after the focused failure.
+The passing GPU result remains separate and is not used to waive this gate.
+
+Original ac6ce05 completion remains 480/482 focused with its generated-log
+source qualification. Its evidence publication is now verified and the owning
+storage task is released. Original ef72 completion is 533/543 with ten failures;
+two are the native-export selectors already fixed in 98d3. No historical failure
+is relabelled as a pass, and no uncertain request has been resubmitted.
+
+
+### Round 4 final regression verdict — original request recovered after restart
+
+The original job `9455f53a-9d60-452f-a0a4-50197f0c96d4` completed normally
+at exact source `930beb9b7e1c56e84258553ba2f509d6558f34fb`, exit 0, unchanged
+clean source, in 10,209.58 seconds (2h 50m). No project command was replayed.
+
+| Gate | Result |
+| --- | --- |
+| Root typecheck | 134/134; 4,563 test sources |
+| Viewer prerequisite/build graph | 58/58 |
+| Repaired consumer contracts | 32/32, zero skips |
+| Expanded palette suite | 543/543, zero skips |
+| All four full viewer shards | 20,212 passed; 0 failed; 0 cancelled; 338 skipped |
+
+[Final original receipt and phase hashes](https://github.com/LTplus-AG/ifc-lite/blob/138924156bfcee16f6107c7bf0b9b7bca54007ff/tests/ui-scenes/command-palette-access/evidence/round4/final-regression/summary.json)
+and [qualified family joins](https://github.com/LTplus-AG/ifc-lite/blob/138924156bfcee16f6107c7bf0b9b7bca54007ff/tests/ui-scenes/command-palette-access/evidence/round4/final-regression/route-bindings.json)
+close the pending execution gates from the bounded source review.
+The 338 full-suite skips remain unqualified: primarily absent external IFC
+fixtures, plus opt-in service/environment and optional reference-tool checks.
+The [exact skipped output](https://github.com/LTplus-AG/ifc-lite/blob/138924156bfcee16f6107c7bf0b9b7bca54007ff/tests/ui-scenes/command-palette-access/evidence/round4/final-regression/skipped-cases.json.gz)
+retains reasons (340 output rows include skipped suite headings). These are
+not passed assertions and do not replace fixture-enabled main/queue CI.
+
+The app production source is unchanged from the 98d3 physical-GPU qualification
+(27/27, 36 captures) and fresh Opus observed-UX acceptance. Later differences
+are test repairs, runner and evidence only. Both hillclimbs end at their existing
+bounded rounds: general UX R3; feature-access R4. No further scope expansion.
+The implementation is ready for serial release review; production is **not**
+claimed ready or deployed until applicable main-base CI, reviews and queue gates
+pass. Platform-native OS chooser/permission UI and arbitrary extension behavior
+remain explicit limits, not fabricated observations.
+
+Serial dependency order (retarget only after the predecessor merges):
+#8956 → #8961 → #8962 → #8963 → #8964 → #8965 → #8967 → #8969 → #8972 → #8973 → #8974 → #8975 → #8978 → #8982 → #8983 → #8986 → #8988 → #9005 → #9012 → #9015 → #9024
+
+Start with independently qualified foundation #8956. For each following layer,
+retarget to main, preserve its unique changes, require applicable CI and resolved
+reviews, then use Mergify. Parent owns watches, queueing and deployment; do not
+queue all stacked branches or treat leaf validation as each intermediate head's
+CI. Deploy only the fully merged main descendant after those gates.
+
+The original job's execution is complete, but worker evidence publication reports
+`pending`; generated storage remains protected until supported publication and
+closure succeed. Compact final receipts and compressed logs are retained locally
+and on Pop. No cleanup bypass or physical space-reclamation claim.
+
+
+### Foundation release-blocker correction (R4, no scope expansion)
+
+The recovered Claude finding on foundation `723039d` was valid: runtime rows
+without a live extension host, or during an extension export, could record
+usage before refusing. The qualified leaf already contained the correction.
+The owning foundation now supplies live host/contribution eligibility, rechecks
+provider identity after deferred activation, and shares the export host's busy
+lock across surfaces. Static local commands retain their existing availability
+default; runtime providers supply the missing checks.
+
+Exact corrected foundation `646d2e40c2599dfa988ef42fe76f8d4cd45cf9c4` passed
+root typecheck 134/134 (4,523 test sources) and all 231 focused tests with zero
+failures, cancellations or skips in 265.84 seconds. Four new mounted cases
+prove removed/replaced providers and a pending ribbon export refuse before
+recents/telemetry; fresh activation and the accepted first export still work.
+Existing exporter and localized-catalogue contracts were backported with the
+implementation. [Original receipt and passed cases](https://github.com/LTplus-AG/ifc-lite/blob/138924156bfcee16f6107c7bf0b9b7bca54007ff/tests/ui-scenes/command-palette-access/evidence/round4/foundation-runtime-refusal/646d-summary.json)
+qualify this owning layer independently from the earlier full `930beb9` run.
+
+[Serial propagation proof](https://github.com/LTplus-AG/ifc-lite/blob/138924156bfcee16f6107c7bf0b9b7bca54007ff/tests/ui-scenes/command-palette-access/evidence/round4/foundation-runtime-refusal/propagation-proof.json)
+shows the integrated leaf differs from the prior final leaf only by the new
+regression file, byte-identical to the qualified foundation test. All production
+code and all earlier tests remain unchanged. No later feature or correction was
+lost. The 930 full-suite and 98d3 GPU/Opus evidence retain their exact identities;
+the new regression was executed on the foundation, not falsely attributed to
+the old full-suite run. Applicable main-base CI/reviews and Mergify remain the
+release gate; no production deployment is claimed here.

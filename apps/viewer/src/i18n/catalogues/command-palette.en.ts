@@ -24,6 +24,10 @@ import type { TranslationValue } from '../types';
  *    so the palette, rail, and ribbon display the same name.
  */
 export const commandPaletteEn = {
+  "commandPalette.vis.resetFilters.label": "Reset visibility filters",
+  "commandPalette.vis.resetFilters.detail": "Keep selection and collection",
+  "commandPalette.vis.resetFilters.aliases": "reset visibility filters restore visibility without clearing selection",
+  "commandPalette.availability.noVisibilityFilters": "No visibility filters to reset",
 
   "commandPalette.errorReport.label": "Review error report…",
   "commandPalette.errorReport.aliases": "report error bug failed load report help improve resume recent report pending report",

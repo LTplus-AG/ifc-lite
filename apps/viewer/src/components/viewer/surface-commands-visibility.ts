@@ -7,6 +7,7 @@ import { Box, Building2, Equal, Eye, EyeOff, Layout, Minus, Palette, Pencil, Plu
 import { ACTION_NAME_KEYS } from '@/lib/commands/action-names';
 import { panelTitleKey } from '@/lib/panels/registry';
 import { useViewerStore } from '@/store';
+import { resetVisibilityReasons } from '@/lib/visibility/visibility-reasons';
 import { showAllFromStore } from '@/store/homeView';
 import { hideSelectionFromStore } from '@/store/hideSelection';
 import {
@@ -34,6 +35,14 @@ export const VISIBILITY_SURFACE_COMMANDS = [
     keywords: 'unhide reset visible', category: 'Visibility', icon: Eye,
     surfaces: ['palette', 'mobile', 'context', 'ribbon'], enabled: alwaysEnabled, shortcut: 'visibility.showAll',
     run: (context: SurfaceCommandContext) => runContextOr(context, () => { showAllFromStore('show_all'); }),
+  },
+  {
+    id: 'vis:reset-filters', labelKey: 'commandPalette.vis.resetFilters.label',
+    detailKey: 'commandPalette.vis.resetFilters.detail',
+    keywords: 'reset visibility filters restore visibility without clearing selection',
+    keywordsKey: 'commandPalette.vis.resetFilters.aliases',
+    category: 'Visibility', icon: RotateCcw, surfaces: paletteOnly, enabled: alwaysEnabled,
+    run: () => { resetVisibilityReasons(useViewerStore); },
   },
   {
     id: 'vis:set-iso', labelKey: 'commandPalette.vis.setBasket.label',

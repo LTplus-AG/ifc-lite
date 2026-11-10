@@ -98,13 +98,15 @@ const CATEGORY_POSITION = {
 export const CATEGORY_ORDER = (Object.keys(CATEGORY_POSITION) as Category[])
   .sort((a, b) => CATEGORY_POSITION[a] - CATEGORY_POSITION[b]);
 
-// Recovery is useful in browse only while it can act. Search keeps the full catalogue.
-const LOAD_RECOVERY_IDS = new Set(['file:cancel-load', 'file:retry-load', 'file:dismiss-load-error']);
+// Contextual actions belong in browse only while they can act. Search keeps the full catalogue.
+const ACTIVE_ONLY_BROWSE_IDS = new Set([
+  'file:cancel-load', 'file:retry-load', 'file:dismiss-load-error', 'vis:reset-filters',
+]);
 
 /** Group browse rows, including extension and Learn commands, in one place. */
 export function browseCommands(commands: readonly Command[], recentIds: readonly string[]) {
   const browseRows = commands.filter(command =>
-    !LOAD_RECOVERY_IDS.has(command.id) || command.availability?.status === 'available');
+    !ACTIVE_ONLY_BROWSE_IDS.has(command.id) || command.availability?.status === 'available');
   const grouped: { category: Category; items: FlatItem[] }[] = [];
   const flatItems: FlatItem[] = [];
   const addGroup = (category: Category, rows: readonly Command[]) => {

@@ -143,7 +143,8 @@ pub struct WorstHost {
 ///   just a rename, hence the bump.
 /// - 3: added `total_unsupported_items` / `unsupported_items_by_type` (previously uncounted drops).
 /// - 4: total_unsupported_items / unsupported_items_by_type also count openings whose id does not decode or whose body fails/meshes empty (ROUTER-37, #8385).
-pub const GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION: u32 = 4;
+/// - 5: work-budget refusals carry budget, demand and product/source identity separately from unsupported items.
+pub const GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION: u32 = 5;
 
 /// Aggregate CSG / opening diagnostics for one geometry pass — the public
 /// diagnostics contract. Built by [`aggregate_diagnostics`] from drained router
@@ -200,6 +201,11 @@ pub struct GeometryDiagnostics {
     /// [`Self::total_unsupported_items`] broken down by IFC type, count-desc.
     #[serde(default)]
     pub unsupported_items_by_type: Vec<ReasonCount>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub budget_refusals: Vec<BudgetRefusal>,
+    /// Complete count; budget_refusals contains at most sixteen details.
+    #[serde(default)]
+    pub total_budget_refusals: u64,
 }
 
 impl Default for GeometryDiagnostics {
@@ -217,6 +223,8 @@ impl Default for GeometryDiagnostics {
             oversized_ref_drops: 0,
             total_unsupported_items: 0,
             unsupported_items_by_type: Vec::new(),
+            budget_refusals: Vec::new(),
+            total_budget_refusals: 0,
         }
     }
 }
@@ -224,7 +232,7 @@ impl Default for GeometryDiagnostics {
 impl GeometryDiagnostics {
     /// Whether any CSG failure, silent no-op, or dropped item was recorded.
     pub fn has_issues(&self) -> bool {
-        self.total_csg_failures > 0 || self.silent_no_ops > 0 || self.total_unsupported_items > 0
+        self.total_budget_refusals > 0 || !self.budget_refusals.is_empty() || self.total_csg_failures > 0 || self.silent_no_ops > 0 || self.total_unsupported_items > 0
     }
 
     /// Whether nothing diagnostic-worthy happened this pass — no openings
@@ -232,7 +240,8 @@ impl GeometryDiagnostics {
     /// skip attaching an all-zero object so a consumer can gate on presence
     /// (`if event.diagnostics`) as well as on counts.
     pub fn is_empty(&self) -> bool {
-        self.total_csg_failures == 0
+        self.total_budget_refusals == 0 && self.budget_refusals.is_empty()
+            && self.total_csg_failures == 0
             && self.hosts_with_openings == 0
             && self.classification.total == 0
             && self.silent_no_ops == 0
@@ -344,9 +353,14 @@ pub fn aggregate_diagnostics(
         oversized_ref_drops,
         total_unsupported_items,
         unsupported_items_by_type,
+        budget_refusals: Vec::new(),
+            total_budget_refusals: 0,
     }
 }
 
+mod budget;
+pub use budget::BudgetRefusal;
+pub(crate) use budget::BudgetProductIdentity;
 mod attribution;
 mod processor_failures;
 mod unsupported_items;

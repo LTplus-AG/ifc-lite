@@ -38,6 +38,54 @@ not only the byte total, and measure boot with each build in both A/B positions:
 shared host, position alone moved the result by about 15 ms. A group that claimed every
 QuickJS module also failed, because the one eager module in it made the whole group eager.
 
+## Work-budget refusal diagnostics (#9268)
+
+**Retained: detailed refusals behind cold error carriers.** Adding demand and
+budget identity enlarged the errors returned by per-attempt admission helpers.
+An owned four-byte slot token keeps logical detail in a synchronized registry
+accessed only on refusal; drop reclaims the slot, including across threads.
+The walk's demand payload stays boxed. Allocation occurs only on refusal. The walk
+keeps its existing Result types, with a compile-time bound against the decoder
+error carrier on both native and wasm32. Empty routers hold only a nullable
+pointer to the refusal log; the buffer, identity strings and refusal constructors
+are cold work. The public diagnostics remain complete and the work allowances
+stay unchanged. RTC geometry probing is outlined so its refusal handling cannot
+enlarge the loop that filters every model record. The native instruction comparison and output counts are recorded in
+PR #9386; this is cost containment, not an end-to-end worker-pool speedup claim.
+
+Verdict: **accepted performance exception, user-approved 2026-11-10**. The
+matched native instruction comparison retains a small fixed regression for the
+correct diagnostic, with identical output counts and a passing full functional
+suite (official job `29f590e6`, PR #9386). Four levers were tried: vector
+pre-sizing, the retained four-byte logical-refusal token, lazy aggregate
+diagnostic storage, and a diagnostic handle in existing padding. Restoring
+the logical Result and diagnostic/stat aggregates to main's sizes left equal
+growth-call counts and the same growth-helper self-cost increase. The attribution verdict is a fixed
+code-placement/compiler effect, rather than new refusal recording work on
+accepted items. The latter two aggregate experiments were rejected and
+reverted. Detailed numbers and attribution stay in the PR; this is an approved
+correctness trade-off, not an end-to-end speedup or a wall-clock claim.
+
+Lesson: refusal-only reporting can still affect successful work through error
+layout. Shrinking an entire Result can also change its optimized callers;
+contain the cold payload while preserving the common carrier, then check the
+compiled pipeline. A boxed logical error kept the unit Result pointer-sized but
+widened the intermediate Result carrying a u32; assertions now cover the token,
+the value Result and the unit Result against main's layouts. No registry access
+or identity construction occurs for accepted work.
+Type-product attribution fits inside the existing owned type-map root slot,
+with size/alignment assertions, rather than adding an owner field to every
+mapping controller. A persistent dedup set and capped details run only on
+refusal; retained transactions return their refusal without a second unread log.
+Occurrence attribution attaches the owning product only from the existing
+execution error arm. A second acceptance dispatcher, even with a lazy owner
+callback, regressed successful work; restore the original monomorphic acceptance
+path. A boxed execution error carries the refused transaction back to the
+product without changing the controller or successful Result sizes; only that
+cold error arm attaches identity. Instruction attribution also needs the
+allocation call graph: identical growth-call counts can still cost more when
+compiler inlining changes, outside the mapping controller itself.
+
 ## Presentation-layer membership follows the selected shape (#9273)
 
 **Selection query verdict: remove the model-wide ownership scan.** The hierarchy's

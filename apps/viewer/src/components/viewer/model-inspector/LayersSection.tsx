@@ -139,7 +139,7 @@ export function LayersSection({ modelId, live, kind, initial, inheritedFromType,
             size="sm"
             label={t('modelInspector.layers.applyTo')}
             value={target}
-            onValueChange={setTarget}
+            onValueChange={(next) => { setFollow(null); setTarget(next); }}
             options={[
               { value: 'element', label: t('modelInspector.layers.targetElement') },
               { value: 'type', label: t('modelInspector.layers.targetType'), disabled: typeId === null },

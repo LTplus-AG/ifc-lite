@@ -1182,3 +1182,15 @@ mutation methods for writes. `StoreEditor.readNewEntity` provides the same
 read-only borrow. `readNewEntityKinds(type?)`, `hasNewEntity(id)` and
 `getNewEntityCount()` answer enumeration and membership without reading any
 payload.
+
+`planFootprintRoof(footprint, edgeSlopes, overhang)` exposes the same pure planner
+used by the roof builder for previews. Coordinates and overhang share a length
+unit; edge slopes are radians. `roofPlaneHeightAt(plane, point)` reads a planned
+plane's underside height above the roof placement. Invalid footprints throw with
+a reason before any entities are written.
+
+In a shared viewer session, roof creation publishes its body and footprint
+definition together before committing the local draft. If publication fails,
+creation leaves no roof, undo entry or partial definition on peers; the same
+creation can be retried. Mesh and spatial-tree registration follow a successful
+commit.

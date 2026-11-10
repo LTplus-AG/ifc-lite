@@ -42,6 +42,14 @@ function literalOk(base: string | undefined, value: string): boolean {
   return true;
 }
 
+/**
+ * Bases a restriction may be moved onto: those `literalOk` checks, plus
+ * `xs:string`, under which every literal holds. Under the rest (temporal,
+ * URI) `literalOk` accepts anything, so it cannot vouch for the move.
+ * Extend this when `literalOk` learns a base.
+ */
+const REBASE_TARGETS = new Set([...NUMERIC_BASES, 'xs:boolean', 'xs:string']);
+
 export function checkPattern(pattern: string): ValueProblem[] {
   if (pattern === '') return [{ code: 'GATE-VAL-003', message: 'pattern is empty' }];
   try {
@@ -132,9 +140,6 @@ export function checkConstraint(c: IDSConstraint, base?: string): ValueProblem[]
 function siblings(and: readonly IDSConstraint[] | undefined, base: string | undefined): ValueProblem[] {
   return (and ?? []).flatMap((s) => checkConstraint(s, base));
 }
-
-/** Bases whose literals `literalOk` actually checks (it accepts anything under the rest). */
-const REBASE_TARGETS = new Set([...NUMERIC_BASES, 'xs:boolean', 'xs:string']);
 
 /**
  * `c` moved onto restriction base `base` (the XSD type behind a newly chosen

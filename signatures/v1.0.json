@@ -1,0 +1,17 @@
+{
+  "cla_version": "1.0",
+  "signatures": [
+    {
+      "github_id": 201577730,
+      "login": "jaimeingram",
+      "cla_version": "1.0",
+      "cla_sha256": "4588846418581ca944a6e1d092631146a93a56d8b4968c7b939f7d7817c72586",
+      "cla_commit": "004934fa88572335b3d6762dad89158bd0c34b52",
+      "signed_at": "2026-11-10T10:18:39Z",
+      "pull_request": 9426,
+      "comment_id": 6764797875,
+      "comment_url": "https://github.com/LTplus-AG/ifc-lite/pull/9426#issuecomment-6764797875"
+    }
+  ],
+  "offline": []
+}

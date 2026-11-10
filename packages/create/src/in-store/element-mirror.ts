@@ -23,7 +23,8 @@ export interface MirrorElementsParams {
 
 /** Reflect placements and each product's local geometry. A proper upright
  * placement retains +Z; the local mapped representation carries the negative
- * determinant. Hosted cuts and fillings retain their original relationships. */
+ * determinant. Hosted cuts and fillings retain their original relationships.
+ * Grids are refused atomically because their axes need a separate reflection. */
 export function mirrorElementsInStore(store: IfcDataStore, editor: StoreEditor, ids: readonly number[], params: MirrorElementsParams): number[] {
   const [a, b] = params.axis;
   const length = Math.hypot(b[0] - a[0], b[1] - a[1]);

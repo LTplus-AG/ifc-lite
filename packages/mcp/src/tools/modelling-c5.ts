@@ -16,7 +16,7 @@ function invoke(input: Record<string, unknown>, ctx: Parameters<Tool['handler']>
 export const modellingC5Tools: Tool[] = [
   {
     name: 'mirror_elements', scope: 'mutate',
-    description: 'Mirror upright products about a storey-local XY axis line in metres, in place or as copies. Hosted openings stay hosted; door handedness flips.',
+    description: 'Mirror upright products about a storey-local XY axis line in metres, in place or as copies. Hosted openings stay hosted; door handedness flips. Grids are refused atomically.',
     inputSchema: { type: 'object', properties: { model_id: modelId, express_ids: ids, axis: { type: 'array', items: point, minItems: 2, maxItems: 2 }, copy: { type: 'boolean' } }, required: ['express_ids', 'axis'], additionalProperties: false },
     handler: (input, ctx) => invoke(input, ctx, model => model.bim.store.mirrorElements(model.id, input.express_ids as number[], { axis: input.axis as MirrorElementsParams['axis'], copy: input.copy as boolean | undefined })),
   },

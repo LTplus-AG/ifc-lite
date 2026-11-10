@@ -362,6 +362,7 @@
     "bareIfcGuid: function",
     "buildTriageSystemPrompt: function",
     "buildTriageUserMessage: function",
+    "clashElementIdentity: function",
     "clashMemberKey: function",
     "clashMemberSet: function",
     "clashReviewKey: function",

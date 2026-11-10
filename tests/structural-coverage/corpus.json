@@ -1,0 +1,31 @@
+{
+  "description": "The structural fixture corpus: manifest paths under tests/models/. Fetch with node scripts/fixtures/fetch-fixtures.mjs <path...>; score.mjs refuses to run when one is absent unless --offline is given.",
+  "files": [
+    "ara3d/ISSUE_171_IfcSurfaceCurveSweptAreaSolid.ifc",
+    "ifcopenshell/generated_structural_coverage_ifc2x3.ifc",
+    "ifcopenshell/generated_structural_coverage_ifc4.ifc",
+    "ifcopenshell/generated_structural_coverage_ifc4x3.ifc",
+    "ifcopenshell/generated_structural_edge_curve.ifc",
+    "ifcopenshell/generated_structural_surface_member.ifc",
+    "ifcopenshell/structural_analysis_curve.ifc",
+    "structural/analysis-models/beam_01.ifc",
+    "structural/analysis-models/building_01.ifc",
+    "structural/analysis-models/building_02.ifc",
+    "structural/analysis-models/cantilever_01.ifc",
+    "structural/analysis-models/grid_of_beams.ifc",
+    "structural/analysis-models/portal_01.ifc",
+    "structural/analysis-models/slab_01.ifc",
+    "structural/analysis-models/structure_01.ifc",
+    "structural/geometrygym/shellandbeam.ifc",
+    "structural/geometrygymifcexamples/surfaceMember.ifc",
+    "structural/ifc_structuralanalysisview/E1--1-Allplan-Arch-Export.ifc",
+    "structural/ifc_structuralanalysisview/E1--3-Axis-Struc-Export.ifc",
+    "structural/ifc_structuralanalysisview/house_basement_floor--Axis-Struc.ifc",
+    "structural/ifc_structuralanalysisview/little_steel_frame-3D--Axis-Struc.ifc",
+    "structural/ifc_structuralanalysisview/roof_truss--Axis-Struc.ifc",
+    "structural/ifc_structuralanalysisview/simple_bottom_slab--Axis-Struc.ifc",
+    "structural/ifc_structuralanalysisview/steel-joint-modelled-with-shellelements--Axis-Struc.ifc",
+    "structural/ifctruss/tutorial-with-resutls.ifc",
+    "structural/puntal-alfa/portal-demo.ifc"
+  ]
+}

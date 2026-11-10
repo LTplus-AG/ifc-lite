@@ -94,6 +94,42 @@ export byte-reproducible with that exact IfcOpenShell version. Other exporter
 builds may serialize different bytes; use 0.8.3.post2 when reproducing the
 catalogued SHA-256, or intentionally regenerate and upload a new fixture hash.
 
+### Structural coverage corpus (checked 2026-11-10)
+
+`tests/structural-coverage/corpus.json` lists the files the structural coverage
+scorer reads. The 19 files below come from public repositories. Each manifest
+entry pins the exact upstream commit (`upstream_file`) and the SHA-256 of the
+bytes; `pnpm fixtures` fetches them from that commit and `fixtures:upload`
+never publishes them. Only two declare a license, so none is redistributed by
+this project. Treat them as untrusted input.
+
+| Path under `tests/models/structural/` | Source repository (commit) | Schema | Producer | License |
+| --- | --- | --- | --- | --- |
+| `ifc_structuralanalysisview/E1--1-Allplan-Arch-Export.ifc` | [Ifc_StructuralAnalysisView](https://github.com/berndhahnebach/Ifc_StructuralAnalysisView/tree/ce2f40abd666280413fadad72162db9935336154) (`ce2f40ab`) | IFC2X3 | Allplan 2014.1 (physical model) | none declared |
+| `ifc_structuralanalysisview/E1--3-Axis-Struc-Export.ifc` | same (`ce2f40ab`) | IFC2X3 | AxisVM 12.2 | none declared |
+| `ifc_structuralanalysisview/{house_basement_floor,roof_truss,simple_bottom_slab}--Axis-Struc.ifc` | same (`ce2f40ab`) | IFC2X3 | AxisVM 11/12 | none declared |
+| `ifc_structuralanalysisview/{little_steel_frame-3D,steel-joint-modelled-with-shellelements}--Axis-Struc.ifc` | same (`ab9168a3`) | IFC2X3 | AxisVM | none declared |
+| `analysis-models/{beam_01,building_01,building_02}.ifc` | [IfcOpenShell/analysis-models](https://github.com/IfcOpenShell/analysis-models) (`76895218`, `6af8a541`) | IFC4 | ETABS 2015 / 17 | none declared |
+| `analysis-models/{grid_of_beams,slab_01,structure_01}.ifc` | same (`1e51add7`) | IFC4 | IFC2CA | none declared |
+| `analysis-models/cantilever_01.ifc` | same (`c4d1a39e`) | IFC4 | BlenderBIM | none declared |
+| `analysis-models/portal_01.ifc` | same (`76895218`) | IFC4 | Constructivity 0.8; same model as `ifcopenshell/structural_analysis_curve.ifc` with another header | none declared |
+| `ifctruss/tutorial-with-resutls.ifc` | [IfcTruss/IfcTruss](https://github.com/IfcTruss/IfcTruss) (`dbf2aad6`) | IFC4X3_ADD2 | IfcTruss 0.1.4 on IfcOpenShell 0.7 | LGPL-3.0 |
+| `puntal-alfa/portal-demo.ifc` | [puntal-alfa](https://github.com/andrenon/puntal-alfa) (`688fec48`) | IFC4X3_ADD2 | IfcOpenShell 0.8.5 | none declared |
+| `geometrygym/shellandbeam.ifc` | [GeometryGym](https://github.com/jmirtsch/GeometryGym) (`9ffe44a9`) | IFC4 | ggRhinoIFC (Karamba to IFC) | none declared |
+| `geometrygymifcexamples/surfaceMember.ifc` | [GeometryGymIFCExamples](https://github.com/GeometryGym/GeometryGymIFCExamples) (`704df17a`) | IFC4X2 (scored under no schema) | GeometryGym console example | MIT |
+
+The 19th corpus file, `ara3d/ISSUE_171_IfcSurfaceCurveSweptAreaSolid.ifc`, was
+already catalogued; it carries 26 `IfcRelAssignsToProduct` links between its
+physical and analytical models.
+
+`ifcopenshell/generated_structural_coverage_{ifc2x3,ifc4,ifc4x3}.ifc` are
+independently authored by the ifc-lite contributors under MPL-2.0 and written by
+`scripts/fixtures/generate-structural-edge-curve.py --coverage <schema>` with
+IfcOpenShell 0.8.3.post2: one record of every structural-analysis entity the
+schema defines, with known values, so the types no real file carries have a
+fixture. The output is byte-reproducible with that version and passes
+`python -m ifcopenshell.validate`.
+
 ## For maintainers: adding a new fixture
 
 1. Drop the file under `tests/models/<group>/<name>` locally.

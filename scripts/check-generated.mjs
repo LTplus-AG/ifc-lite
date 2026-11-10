@@ -58,6 +58,7 @@
  *   8. plato clash-math freshness (plato-check job)          -- INFO only, see below
  *   9. committed wasm .d.ts vs Rust source (build job)        -- INFO only, see below
  *   10. generate-coverage-ledger.mjs --check (node-tests, alongside gate 4; #4207)
+ *   11. generate-structural-coverage-ledger.mjs --check (node-tests, after gate 10)
  *
  * Steps deliberately NOT treated as a generated-artifact gate here, and why:
  *   - `pnpm fixtures:check` (build job) compares downloaded test-fixture
@@ -498,6 +499,11 @@ if (FULL) {
 runGate('check:coverage-ledger', 'node', ['scripts/generate-coverage-ledger.mjs', '--check'],
   'if the output says "is stale": node scripts/generate-coverage-ledger.mjs   (then commit docs/architecture/coverage-ledger.md); ' +
     'if it names a missing source file or an extractor that found ZERO entries, fix that file/extractor first — regenerating cannot');
+
+// 11. Structural coverage ledger: rendered from the newest tests/structural-coverage/baseline summary.
+runGate('check:structural-coverage-ledger', 'node', ['scripts/generate-structural-coverage-ledger.mjs', '--check'],
+  'if the output says "is stale": node scripts/generate-structural-coverage-ledger.mjs   (then commit docs/architecture/structural-coverage-ledger.md); ' +
+    'if it says the summary does not match the catalogue, re-run tests/structural-coverage/score.mjs and re-baseline deliberately');
 hr();
 const failed = results.filter((r) => r.status === 'fail');
 const skipped = results.filter((r) => r.status === 'skip');

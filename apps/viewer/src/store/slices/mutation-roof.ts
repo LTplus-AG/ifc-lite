@@ -9,7 +9,7 @@
  * shared room the recorded definition is published with the body.
  */
 
-import { editFootprintRoofInStore, footprintDefinitionProperties, ROOF_FOOTPRINT_PSET, type RoofFootprintEdit, type FootprintRoofDefinition } from '@ifc-lite/create';
+import { refreshTopAttachmentsInStore, editFootprintRoofInStore, footprintDefinitionProperties, ROOF_FOOTPRINT_PSET, type RoofFootprintEdit, type FootprintRoofDefinition } from '@ifc-lite/create';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { PropertyValue } from '@ifc-lite/collab';
 import { roomPropertyApi } from '@/lib/collab/room-property-api.js';
@@ -18,7 +18,7 @@ import { roomSlotFor } from '@/lib/collab/room-model-target.js';
 import { mutationDenial } from '../mutation-permission.js';
 import { modelEditTarget, recordModellingEdit, type ModelEditTarget, type ModellingStore } from './mutation-modelling-records.js';
 
-export type RoofEditOutcome = { readonly ok: true } | { readonly ok: false; readonly reason: string };
+export type RoofEditOutcome = { readonly ok: true; readonly remesh: number[] } | { readonly ok: false; readonly reason: string };
 type RoofDefinition = FootprintRoofDefinition | ReturnType<MutablePropertyView['getForEntity']>[number]['properties'];
 
 export function editRoofIn(store: ModellingStore, modelId: string, expressId: number, patch: RoofFootprintEdit): RoofEditOutcome {
@@ -27,13 +27,13 @@ export function editRoofIn(store: ModellingStore, modelId: string, expressId: nu
   const target = modelEditTarget(store.getState(), modelId);
   if (!target) return { ok: false, reason: `No model loaded for id "${modelId}"` };
   try {
-    withRoofDefinitionRollback(store, target, expressId, publish => recordModellingEdit(store, modelId, (_methods, draft) => {
+    const remesh = withRoofDefinitionRollback(store, target, expressId, publish => recordModellingEdit(store, modelId, (_methods, draft) => {
       const definition = editFootprintRoofInStore(target.dataStore, draft, expressId, patch);
-      // Publish while the local edit is still a draft. A publication failure
-      // must not commit the planes or record an undo step.
+      const attached = refreshTopAttachmentsInStore({ ...target, editor: draft, view: draft.getMutationView() }, [expressId]);
       publish(definition);
+      return [expressId, ...attached];
     }));
-    return { ok: true };
+    return { ok: true, remesh };
   } catch (error) {
     return { ok: false, reason: error instanceof Error ? error.message : String(error) };
   }

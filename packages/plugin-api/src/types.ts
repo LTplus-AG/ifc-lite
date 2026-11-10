@@ -426,10 +426,7 @@ export interface FileSourceProvider {
     options?: ListOptions,
   ): Promise<Page<SourceContainer>>;
 
-  /**
-   * List files in a container. Whether descendants are included is governed by
-   * `capabilities.listFilesIsRecursive`.
-   */
+  /** List container files; descendants follow `capabilities.listFilesIsRecursive`. */
   listFiles(
     ctx: PluginContext,
     projectId: string,

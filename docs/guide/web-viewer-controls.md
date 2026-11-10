@@ -373,3 +373,10 @@ Backgrounds are resampled to at most 2048 pixels on the longest side. The
 existing raster reader accepts images up to 64 megapixels and 8-bit TIFF
 imagery. A change to the workspace coordinate system hides an old registration
 rather than silently moving it; load the image again after realignment.
+
+The Roof HUD offers Hip, Gable, Mono-pitch and Flat; a preset's pitched edges start
+at 30°. Numbered edges in the preview match the Edge selector. Set Edge slope to 0
+for a gable end, or enter an angle up to 85°. Each edge can have its own slope.
+Changing the preset, switching the outline mode, or finishing a roof clears
+individual edge slopes; the next roof keeps the preset. The preview uses the same
+planes as the IFC builder.

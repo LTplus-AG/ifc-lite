@@ -56,9 +56,9 @@ patchedDependencies:
   vite-plugin-top-level-await@1.6.0:
     hash: 623974a52d27420c80972a0c5b93427d3208cc4bc31d93b1505d3fc59fb430ce
     path: patches/vite-plugin-top-level-await@1.6.0.patch
-  wkt-parser@1.5.6:
-    hash: d19ab625f1f64aa19ea8e4fc5cbaa5209dba5c080326ecd75db30e0c5dacfd7b
-    path: patches/wkt-parser@1.5.6.patch
+  wkt-parser@1.6.0:
+    hash: c6fdc42d91fb9b2256b429cf0a863e744b3ab9903fbe099a51a06143c9af9d3e
+    path: patches/wkt-parser@1.6.0.patch
 
 importers:
 
@@ -531,8 +531,8 @@ importers:
         specifier: ^0.186.1
         version: 0.186.1
       wkt-parser:
-        specifier: 1.5.6
-        version: 1.5.6(patch_hash=d19ab625f1f64aa19ea8e4fc5cbaa5209dba5c080326ecd75db30e0c5dacfd7b)
+        specifier: 1.6.0
+        version: 1.6.0(patch_hash=c6fdc42d91fb9b2256b429cf0a863e744b3ab9903fbe099a51a06143c9af9d3e)
       zustand:
         specifier: ^5.0.16
         version: 5.0.16(@types/react@19.3.0)(react@19.3.1)(use-sync-external-store@1.7.0(react@19.3.1))
@@ -7565,8 +7565,8 @@ packages:
     engines: {node: '>=20.11'}
     hasBin: true
 
-  wkt-parser@1.5.6:
-    resolution: {integrity: sha512-cqHU3lzGt/gt2OqIORP0uVy5yeOX43WABmgFkmJsmcqH3HhQo9PiJG6ftytwGKmpQUbegeX7+pQc2BuNCRfcrw==}
+  wkt-parser@1.6.0:
+    resolution: {integrity: sha512-O2WMUagkdOKkgcfqZBUauysHVeifCwcs+zUd2QG7UIzVljLwK9g5xHUfL/TkQFwmQ3eF7oHFKGnMcb/kZdvbaw==}
 
   wordwrapjs@5.1.1:
     resolution: {integrity: sha512-0yweIbkINJodk27gX9LBGMzyQdBDan3s/dEAiwBOj+Mf0PPyWL6/rikalkv8EeD0E8jm4o5RXEOrFTP3NXbhJg==}
@@ -11921,7 +11921,7 @@ snapshots:
   proj4@2.22.0(geotiff@3.0.5):
     dependencies:
       mgrs: 1.0.0
-      wkt-parser: 1.5.6(patch_hash=d19ab625f1f64aa19ea8e4fc5cbaa5209dba5c080326ecd75db30e0c5dacfd7b)
+      wkt-parser: 1.6.0(patch_hash=c6fdc42d91fb9b2256b429cf0a863e744b3ab9903fbe099a51a06143c9af9d3e)
     optionalDependencies:
       geotiff: 3.0.5
 
@@ -12723,7 +12723,7 @@ snapshots:
 
   why-is-node-running@3.2.1: {}
 
-  wkt-parser@1.5.6(patch_hash=d19ab625f1f64aa19ea8e4fc5cbaa5209dba5c080326ecd75db30e0c5dacfd7b): {}
+  wkt-parser@1.6.0(patch_hash=c6fdc42d91fb9b2256b429cf0a863e744b3ab9903fbe099a51a06143c9af9d3e): {}
 
   wordwrapjs@5.1.1: {}
 

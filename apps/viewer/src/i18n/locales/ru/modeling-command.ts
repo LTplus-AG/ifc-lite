@@ -5,6 +5,15 @@
 import type { Catalogue } from '../../registry';
 
 export const modelingCommandRu = {
+  "modelingCommand.roof.shape": "Форма",
+  "modelingCommand.roof.hip": "Вальмовая",
+  "modelingCommand.roof.gable": "Двускатная",
+  "modelingCommand.roof.mono": "Односкатная",
+  "modelingCommand.roof.flat": "Плоская",
+  "modelingCommand.roof.pitch": "Уклон",
+  "modelingCommand.roof.overhang": "Свес",
+  "modelingCommand.roof.edge": "Ребро",
+  "modelingCommand.roof.edgeSlope": "Уклон ребра",
   "modelingCommand.closeAria": "Выйти из команды",
   "modelingCommand.aim.tag": "На рабочей плоскости",
   "modelingCommand.snap.increment": "Шаг {step} · Alt для отключения",

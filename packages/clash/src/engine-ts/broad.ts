@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { sameClashObject } from '../object-identity.js';
 import { BVH, type MeshWithBounds } from '@ifc-lite/spatial';
 import type { ClashElement } from '../types.js';
 import { inflate } from '../math/aabb.js';
@@ -34,15 +35,15 @@ export function candidatePairs(
     // (#5194). Every candidate the broad phase finds is now tested; entity
     // identity is deduped once, downstream, AFTER the narrow phase has
     // decided each submesh's verdict, keeping the more severe one — see
-    // `mostSevere` in `orchestrator.ts`, which already deduped by the same
-    // (model, key) identity via `clashId` for an unrelated reason and is the
-    // single place both kernels' records converge.
+    // `mostSevere` in `orchestrator.ts`, where both kernels' records converge.
+    // Its pair identity preserves durable keys and disambiguates repeated
+    // GlobalIds by object reference (#9259).
     for (let j = 0; j < groupB.length; j += 1) {
       const b = groupB[j];
       const hits = bvh.queryAABB(inflate(b.bounds, margin));
       for (const i of hits) {
         const a = groupA[i];
-        if (isSameEntity(a, b)) continue;
+        if (sameClashObject(a, b)) continue;
         pairs.push([i, j]);
       }
     }
@@ -55,30 +56,12 @@ export function candidatePairs(
         const other = groupA[j];
         // Skip same-entity pairs: an element split across several geometry
         // sub-prims (common in IFC5/USD) produces multiple elements with the
-        // same durable key — that is one entity, not a self-clash.
-        if (isSameEntity(a, other)) continue;
+        // same model/ref — that is one entity, not a self-clash.
+        if (sameClashObject(a, other)) continue;
         pairs.push([i, j]);
       }
     }
   }
 
   return pairs;
-}
-
-/**
- * Two `ClashElement`s are the same physical entity — not a self-clash — if
- * they share EITHER identity within the same model:
- *
- * - the durable `key` (element split across several geometry sub-prims,
- *   common in IFC5/USD: same key, same `ref`).
- * - the runtime `ref` (expressId/globalId): a GPU-instanced entity now mints
- *   one `ClashElement` per `MeshData` (`elementsFromStep`), and an entity
- *   with a mix of a flat submesh and an instanced occurrence gets DIFFERENT
- *   `key`s (the instanced one has `occurrenceKey` folded in) but the SAME
- *   `ref` — the key-only check let that pair through as a false-positive
- *   self-clash.
- */
-function isSameEntity(a: Pick<ClashElement, 'key' | 'ref' | 'model'>, b: Pick<ClashElement, 'key' | 'ref' | 'model'>): boolean {
-  if (a.model !== b.model) return false;
-  return a.key === b.key || a.ref === b.ref;
 }

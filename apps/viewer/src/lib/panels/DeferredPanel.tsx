@@ -7,7 +7,6 @@ import { ChunkErrorBoundary } from '@/components/ChunkErrorBoundary';
 import { PanelHeader } from '@/components/ui/panel-header';
 import { Spinner } from '@/components/ui/spinner';
 import { useTranslation } from '@/i18n';
-import { useViewerStore } from '@/store';
 import { panelTitleKey } from './registry';
 
 type DeferredPanelId = 'bcf' | 'validation' | 'lens';
@@ -18,9 +17,8 @@ export function DeferredPanel({ id, onClose, children }: {
   id: DeferredPanelId; onClose: () => void; children: ReactNode;
 }) {
   const { t } = useTranslation();
-  const mobile = useViewerStore(s => s.isMobile);
   const shell = (content: ReactNode) => <div className="flex h-full flex-col">
-    {!mobile && <PanelHeader title={t(panelTitleKey(id))} onClose={onClose} />}
+    <PanelHeader title={t(panelTitleKey(id))} onClose={onClose} />
     <div className="min-h-0 flex-1 p-4">{content}</div>
   </div>;
   return <ChunkErrorBoundary key={id} label={labels[id]} renderFallback={shell}>

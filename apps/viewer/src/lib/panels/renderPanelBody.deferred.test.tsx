@@ -8,6 +8,7 @@ import { afterEach, it } from 'node:test';
 import { act } from 'react';
 import { cleanup, click, render } from '@/test/render.js';
 import { useViewerStore } from '@/store';
+import { resolve as translate } from '@/i18n/registry';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { renderPanelBody } from './renderPanelBody';
 
@@ -28,7 +29,10 @@ for (const [id, load] of [
     await act(async () => { await load(); });
     assert.equal(ui.querySelector('[role="status"]'), null, 'the feature replaced the shell');
     assert.equal(ui.querySelector('[role="alert"]'), null, 'the actual feature mounted');
-    const close = ui.querySelector('button[data-panel-close]');
+    // Lens owns a custom header; select the accessible control, not a
+    // PanelHeader implementation detail (review of #9634).
+    const closeLabel = translate(id === 'lens' ? 'lensPanel.closeAriaLabel' : 'panelHeader.close');
+    const close = [...ui.querySelectorAll('button')].find(button => button.getAttribute('aria-label') === closeLabel);
     assert.ok(close, 'loaded panel has its own close control');
     click(close);
     assert.equal(closed, 1);

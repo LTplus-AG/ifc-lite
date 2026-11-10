@@ -4,9 +4,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { FileSourceProvider, PluginContext, SourceContainer, SourceFile } from '@ifc-lite/plugin-api';
+import { useAsyncRun } from '@/hooks/useAsyncRun';
+import { useCatalogPages } from './useCatalogPages';
 import { toast } from '@/components/ui/toast';
 import { isCatalogCacheable, persistCompleteCatalog, readCachedCatalog } from './sourceCatalogCache';
-import { appendPage, fetchAllFilePages, fetchContainerPage, fetchFilePage, type PagedItems } from './sourceCatalogPaging';
+import { appendPage, fetchAllFilePages, fetchContainerPage, fetchFilePage } from './sourceCatalogPaging';
 import {
   collectUniqueById,
   isCatalogComplete,
@@ -65,17 +67,21 @@ export function useSourceCatalogSync({ provider, ctx, setError, onSynced }: UseS
   // Container ids with an on-demand fetch already running (direct-children /
   // per-folder files), so rapid re-selection cannot double-fetch.
   const openingContainersRef = useRef(new Set<string>());
+  // Keep completed opens as well as pending ones until this sync generation ends.
+  const openedParentsRef = useRef(new Set<string>());
+  const [loadingContainers, setLoadingContainers] = useState<ReadonlySet<string>>(new Set());
 
   // flat-subtree: single entry keyed by the file-area id.
   // direct-children: one entry per browsed parent container.
-  const [containersByParent, setContainersByParent] = useState(new Map<string, PagedItems<SourceContainer>>());
+  const { pages: containersByParent, current: containersRef, replace: setContainersByParent, setPage: setContainerPage } = useCatalogPages<SourceContainer>();
   // recursive files: single entry keyed by the file-area id.
   // per-folder files: one entry per browsed container.
-  const [filesByContainer, setFilesByContainer] = useState(new Map<string, PagedItems<SourceFile>>());
+  const { pages: filesByContainer, current: filesRef, replace: setFilesByContainer, setPage: setFilePage } = useCatalogPages<SourceFile>();
 
   const [loadingFolders, setLoadingFolders] = useState(false);
   const [loadingFiles, setLoadingFiles] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
+  const paging = useAsyncRun({ label: 'source catalog pagination' });
+  const loadingMore = paging.busy;
   const [syncing, setSyncing] = useState(false);
   const [catalogUpdatedAt, setCatalogUpdatedAt] = useState<number | null>(null);
 
@@ -88,10 +94,14 @@ export function useSourceCatalogSync({ provider, ctx, setError, onSynced }: UseS
 
   const beginGeneration = useCallback((): { gen: number; signal: AbortSignal } => {
     abortRef.current?.abort();
+    openingContainersRef.current.clear();
+    openedParentsRef.current.clear();
+    setLoadingContainers(new Set());
+    paging.reset();
     const controller = new AbortController();
     abortRef.current = controller;
     return { gen: ++requestGenRef.current, signal: controller.signal };
-  }, []);
+  }, [paging.reset]);
 
   useEffect(() => () => {
     abortRef.current?.abort();
@@ -113,17 +123,12 @@ export function useSourceCatalogSync({ provider, ctx, setError, onSynced }: UseS
   );
 
   const maybePersist = useCallback(
-    (
-      projectId: string,
-      fileAreaId: string,
-      containers: ReadonlyMap<string, PagedItems<SourceContainer>>,
-      files: ReadonlyMap<string, PagedItems<SourceFile>>,
-    ) => {
+    (projectId: string, fileAreaId: string) => {
       if (!cacheable) return;
-      const updatedAt = persistCompleteCatalog({ providerName, projectId, fileAreaId }, containers, files);
+      const updatedAt = persistCompleteCatalog({ providerName, projectId, fileAreaId }, containersRef.current, filesRef.current);
       if (updatedAt !== null) setCatalogUpdatedAt(updatedAt);
     },
-    [cacheable, providerName],
+    [cacheable, containersRef, filesRef, providerName],
   );
 
   const applyCachedCatalog = useCallback(
@@ -137,13 +142,14 @@ export function useSourceCatalogSync({ provider, ctx, setError, onSynced }: UseS
       setCatalogUpdatedAt(cached.updatedAt);
       return true;
     },
-    [cacheable, providerName],
+    [cacheable, providerName, setContainersByParent, setFilesByContainer],
   );
 
   const syncFileArea = useCallback(
     async (projectId: string, fileAreaId: string, options: { announce?: boolean } = {}) => {
       const { gen, signal } = beginGeneration();
       areaRef.current = { projectId, fileAreaId };
+      setFilesByContainer(new Map());
       setSyncing(true);
       setLoadingFolders(true);
       setLoadingFiles(true);
@@ -153,16 +159,20 @@ export function useSourceCatalogSync({ provider, ctx, setError, onSynced }: UseS
         // Fetch sequentially to avoid bursting provider-side rate limits.
         const containerPage = await fetchContainers(projectId, fileAreaId, undefined, signal);
         if (requestGenRef.current !== gen) return;
-        setContainersByParent(new Map([[fileAreaId, containerPage]]));
+        const next = new Map([[fileAreaId, containerPage]]);
+        // Retire the old catalog, preserving parent pages opened by this sync.
+        for (const parentId of openedParentsRef.current) {
+          const page = containersRef.current.get(parentId);
+          if (page) next.set(parentId, page);
+        }
+        setContainersByParent(next);
         setLoadingFolders(false);
 
         const filePage = await fetchFiles(projectId, fileAreaId, signal);
         if (requestGenRef.current !== gen) return;
-        const nextContainers = new Map([[fileAreaId, containerPage]]);
-        const nextFiles = new Map([[fileAreaId, filePage]]);
-        setFilesByContainer(nextFiles);
+        setFilePage(fileAreaId, filePage);
         setCatalogUpdatedAt(null);
-        maybePersist(projectId, fileAreaId, nextContainers, nextFiles);
+        maybePersist(projectId, fileAreaId);
         onSynced?.();
         if (options.announce) {
           const folderCount = containerPage.items.length;
@@ -184,41 +194,33 @@ export function useSourceCatalogSync({ provider, ctx, setError, onSynced }: UseS
         }
       }
     },
-    [beginGeneration, fetchContainers, fetchFiles, maybePersist, onSynced, setError],
+    [beginGeneration, containersRef, fetchContainers, fetchFiles, maybePersist, onSynced, setError, setContainersByParent, setFilesByContainer, setFilePage],
   );
 
   /** Resolves a newly-entered file area's catalog: localStorage cache (complete
    *  flat catalogs only), else a fresh first-page sync. */
   const openFileArea = useCallback(
     (projectId: string, fileAreaId: string) => {
-      // Invalidate any in-flight request; its finally block can no longer
-      // clear these flags once invalidated, so reset them here.
-      //
-      // Null the ref as well as aborting it. `beginGeneration()` replaces the
-      // controller, but the cached-catalog path below returns early WITHOUT
-      // calling it — so a stale, already-aborted controller would stay in the
-      // ref, and every later `abortRef.current?.signal` read (openContainer,
-      // loadMore) would hand out a pre-aborted signal. Opening a cached file
-      // area and then expanding a folder would silently do nothing. Clearing it
-      // makes those reads fall through to their `?? new AbortController()`
-      // default, which is live.
       abortRef.current?.abort();
+      // See resetCatalog: cached activation must not retain an aborted signal.
       abortRef.current = null;
       requestGenRef.current += 1;
       areaRef.current = { projectId, fileAreaId };
       openingContainersRef.current.clear();
+      setLoadingContainers(new Set());
       setContainersByParent(new Map());
       setFilesByContainer(new Map());
       setCatalogUpdatedAt(null);
+      // Retired finally blocks can no longer clear these flags.
       setLoadingFolders(false);
       setLoadingFiles(false);
-      setLoadingMore(false);
+      paging.reset();
       setSyncing(false);
 
       if (applyCachedCatalog(projectId, fileAreaId)) return;
       void syncFileArea(projectId, fileAreaId);
     },
-    [applyCachedCatalog, syncFileArea],
+    [applyCachedCatalog, syncFileArea, paging.reset, setContainersByParent, setFilesByContainer],
   );
 
   /**
@@ -229,7 +231,7 @@ export function useSourceCatalogSync({ provider, ctx, setError, onSynced }: UseS
   const openContainer = useCallback(
     (container: SourceContainer) => {
       const area = areaRef.current;
-      if (!area) return;
+      if (!area || container.id === area.fileAreaId) return;
       const gen = requestGenRef.current;
       const signal = abortRef.current?.signal ?? new AbortController().signal;
 
@@ -239,38 +241,35 @@ export function useSourceCatalogSync({ provider, ctx, setError, onSynced }: UseS
       if (!needChildren && !needFiles) return;
       if (openingContainersRef.current.has(container.id)) return;
       openingContainersRef.current.add(container.id);
+      openedParentsRef.current.add(container.id);
+      setLoadingContainers(new Set(openingContainersRef.current));
 
       setError(null);
       void (async () => {
         try {
           if (needChildren) {
-            setLoadingFolders(true);
             const page = await fetchContainers(area.projectId, container.id, undefined, signal);
             if (requestGenRef.current !== gen) return;
-            setContainersByParent((previous) => new Map(previous).set(container.id, page));
-            setLoadingFolders(false);
+            setContainerPage(container.id, page);
           }
           if (needFiles) {
-            setLoadingFiles(true);
             const page = await fetchFiles(area.projectId, container.id, signal);
             if (requestGenRef.current !== gen) return;
-            setFilesByContainer((previous) => new Map(previous).set(container.id, page));
-            setLoadingFiles(false);
+            setFilePage(container.id, page);
           }
         } catch (err) {
           if (requestGenRef.current === gen && !(err instanceof DOMException && err.name === 'AbortError')) {
             setError(err instanceof Error ? err.message : String(err));
           }
         } finally {
-          openingContainersRef.current.delete(container.id);
           if (requestGenRef.current === gen) {
-            setLoadingFolders(false);
-            setLoadingFiles(false);
+            openingContainersRef.current.delete(container.id);
+            setLoadingContainers(new Set(openingContainersRef.current));
           }
         }
       })();
     },
-    [containersByParent, fetchContainers, fetchFiles, filesByContainer, flatSubtree, listFilesIsRecursive, setError],
+    [containersByParent, fetchContainers, fetchFiles, filesByContainer, flatSubtree, listFilesIsRecursive, setError, setContainerPage, setFilePage],
   );
 
   /** The map key holding folders for the current selection. */
@@ -294,25 +293,21 @@ export function useSourceCatalogSync({ provider, ctx, setError, onSynced }: UseS
       if (current?.cursor === undefined) return;
 
       const gen = requestGenRef.current;
-      const signal = abortRef.current?.signal ?? new AbortController().signal;
-      setLoadingMore(true);
-      void (async () => {
+      void paging.start(async ({ signal }) => {
         try {
           const page = await fetchContainers(area.projectId, key, current.cursor, signal);
           if (requestGenRef.current !== gen) return;
-          const next = new Map(containersByParent).set(key, appendPage(current, page));
-          setContainersByParent(next);
-          maybePersist(area.projectId, area.fileAreaId, next, filesByContainer);
+          const merged = appendPage(current, page);
+          setContainerPage(key, merged);
+          maybePersist(area.projectId, area.fileAreaId);
         } catch (err) {
           if (requestGenRef.current === gen && !(err instanceof DOMException && err.name === 'AbortError')) {
             setError(err instanceof Error ? err.message : String(err));
           }
-        } finally {
-          if (requestGenRef.current === gen) setLoadingMore(false);
         }
-      })();
+      });
     },
-    [containersByParent, fetchContainers, filesByContainer, folderKeyFor, loadingMore, maybePersist, setError],
+    [containersByParent, fetchContainers, folderKeyFor, loadingMore, maybePersist, paging.start, setError, setContainerPage],
   );
 
   /** The map key holding files for the current selection. */
@@ -336,44 +331,41 @@ export function useSourceCatalogSync({ provider, ctx, setError, onSynced }: UseS
       if (current?.cursor === undefined) return;
 
       const gen = requestGenRef.current;
-      const signal = abortRef.current?.signal ?? new AbortController().signal;
-      setLoadingMore(true);
-      void (async () => {
+      void paging.start(async ({ signal }) => {
         try {
           const page = await fetchFilePage(provider, ctx, area.projectId, key, current.cursor, signal);
           if (requestGenRef.current !== gen) return;
-          const next = new Map(filesByContainer).set(key, appendPage(current, page));
-          setFilesByContainer(next);
-          maybePersist(area.projectId, area.fileAreaId, containersByParent, next);
+          const merged = appendPage(current, page);
+          setFilePage(key, merged);
+          maybePersist(area.projectId, area.fileAreaId);
         } catch (err) {
           if (requestGenRef.current === gen && !(err instanceof DOMException && err.name === 'AbortError')) {
             setError(err instanceof Error ? err.message : String(err));
           }
-        } finally {
-          if (requestGenRef.current === gen) setLoadingMore(false);
         }
-      })();
+      });
     },
-    [containersByParent, ctx, fileKeyFor, filesByContainer, loadingMore, maybePersist, provider, setError],
+    [ctx, fileKeyFor, filesByContainer, loadingMore, maybePersist, paging.start, provider, setError, setFilePage],
   );
 
   const resetCatalog = useCallback(() => {
-    // Same gap as openFileArea above: null the ref after aborting so a later
-    // on-demand fetch (openContainer, loadMore*) does not inherit an
-    // already-aborted signal.
+    // Null the aborted controller: a cached-area activation may return without
+    // beginGeneration replacing it. Otherwise a later on-demand consumer could
+    // inherit an aborted signal and silently stop before fetching.
     abortRef.current?.abort();
     abortRef.current = null;
     requestGenRef.current += 1;
     areaRef.current = null;
     openingContainersRef.current.clear();
+    setLoadingContainers(new Set());
     setContainersByParent(new Map());
     setFilesByContainer(new Map());
     setCatalogUpdatedAt(null);
     setLoadingFolders(false);
     setLoadingFiles(false);
-    setLoadingMore(false);
+    paging.reset();
     setSyncing(false);
-  }, []);
+  }, [paging.reset, setContainersByParent, setFilesByContainer]);
 
   return {
     folders,
@@ -383,6 +375,7 @@ export function useSourceCatalogSync({ provider, ctx, setError, onSynced }: UseS
     loadingFolders,
     loadingFiles,
     loadingMore,
+    loadingContainers,
     syncing,
     catalogUpdatedAt,
     openFileArea,

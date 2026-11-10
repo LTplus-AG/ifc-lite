@@ -14,6 +14,9 @@ import { deriveBaseQuantitySet } from './base-quantities.js';
 import { setTopConstraintInStore } from './storey/storey-top-constraint.js';
 import { translateProduct } from './edit/placement-core.js';
 import { transformElementsInStore } from './element-transform-edit.js';
+import { resizeWallInStore } from './wall-size-edit.js';
+import { resizeRectangleWall } from './edit/wall-edit.js';
+import { ROOF_ATTACHMENT } from './edit/wall-base-solid.js';
 import { exportText, newStorey, meshWalls, insideMesh } from './wall-join-mesh.oracle.js';
 const wasm = new URL('../../../wasm/pkg/ifc-lite_bg.wasm', import.meta.url);
 describe.skipIf(!existsSync(wasm))('roof attachments through the mesh kernel (build WASM to run)', () => {
@@ -119,4 +122,48 @@ it('roof-cut quantity sets keep a numeric count and never use prism scaling (#92
   const before = structuredClone(s.view.getQuantitiesForEntity(wall));
   scaleWallQuantities(s.store, s.view, wall, 2);
   expect.soft(s.view.getQuantitiesForEntity(wall)).toEqual(before);
+});
+
+const GABLE = { Position: [0, 0, 4] as [number, number, number], Width: 10, Depth: 8, Thickness: .25, EdgeSlopes: [Math.PI / 6, 0, Math.PI / 6, 0], Overhang: .5 };
+
+it('retargeting a roof-cut wall to a roof without a footprint restores its planar top (#9296)', async () => {
+  const s = await newStorey();
+  const pitched = addRoofToStore(s.editor, s.anchor, GABLE).roofId;
+  const flat = addRoofToStore(s.editor, s.anchor, { Position: [0, 0, 5], Width: 10, Depth: 8, Thickness: .25 }).roofId;
+  const wall = addWallToStore(s.editor, s.anchor, { Start: [5, 0, 0], End: [5, 8, 0], Height: 3, Thickness: .2 }).wallId;
+  setTopConstraintInStore(s.store, s.editor, wall, { kind: 'roof', roofId: pitched });
+  expect(s.view.getPropertyValue(wall, ROOF_ATTACHMENT, 'Clipped')).toBe(true);
+  setTopConstraintInStore(s.store, s.editor, wall, { kind: 'roof', roofId: flat });
+  expect(s.view.getPropertyValue(wall, ROOF_ATTACHMENT, 'Clipped'), 'the first roof\'s cut is gone').toBe(false);
+  expect(deriveBaseQuantitySet(s.store, s.view, wall)?.quantities.some(q => q.name === 'NetVolume'), 'prism quantities apply again').toBe(true);
+});
+
+it('resizing a roof-cut wall refits its cut in the same edit (#9296)', async () => {
+  const s = await newStorey();
+  const roof = addRoofToStore(s.editor, s.anchor, GABLE).roofId;
+  const wall = addWallToStore(s.editor, s.anchor, { Start: [5, 0, 0], End: [5, 8, 0], Height: 3, Thickness: .2 }).wallId;
+  setTopConstraintInStore(s.store, s.editor, wall, { kind: 'roof', roofId: roof });
+  const signature = () => s.view.getPropertyValue(wall, ROOF_ATTACHMENT, 'Signature');
+  const before = signature();
+  const result = s.editor.runAtomic(draft => resizeWallInStore({ dataStore: s.store, view: draft.getMutationView(), editor: draft }, wall, [3, 0, 0], [3, 8, 0]));
+  expect(result.ok).toBe(true);
+  expect(result.ok ? result.walls : []).toContain(wall);
+  const resized = signature();
+  expect(resized, 'the cut was rebuilt for the moved wall').not.toBe(before);
+  setTopConstraintInStore(s.store, s.editor, wall, { kind: 'roof', roofId: roof });
+  expect(signature(), 'a fresh fit finds the stored cut already current').toBe(resized);
+});
+
+it('a resize the roof cannot cover is refused without writing, and the four-write resize refuses a cut wall (#9296)', async () => {
+  const s = await newStorey();
+  const roof = addRoofToStore(s.editor, s.anchor, GABLE).roofId;
+  const wall = addWallToStore(s.editor, s.anchor, { Start: [5, 0, 0], End: [5, 8, 0], Height: 3, Thickness: .2 }).wallId;
+  setTopConstraintInStore(s.store, s.editor, wall, { kind: 'roof', roofId: roof });
+  const before = s.view.getPropertyValue(wall, ROOF_ATTACHMENT, 'Signature');
+  const count = s.view.getMutationCount();
+  expect(() => s.editor.runAtomic(draft => resizeWallInStore({ dataStore: s.store, view: draft.getMutationView(), editor: draft }, wall, [5, 0, 0], [5, 20, 0]))).toThrow(/does not cover/);
+  expect(s.view.getMutationCount()).toBe(count);
+  expect(s.view.getPropertyValue(wall, ROOF_ATTACHMENT, 'Signature')).toBe(before);
+  expect(resizeRectangleWall(s.store, s.view, s.editor, wall, [3, 0, 0], [3, 8, 0])).toMatchObject({ ok: false });
+  expect(s.view.getMutationCount()).toBe(count);
 });

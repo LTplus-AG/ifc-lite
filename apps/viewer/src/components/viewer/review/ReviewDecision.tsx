@@ -9,7 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/components/ui/toast';
 import { useTranslation } from '@/i18n';
 import { HUMAN_STATUSES, REVIEW_LIMITS, DEFAULT_REVIEW_WORKSPACE, useReviewWorkspaces, saveCardDecision, type CardDecision, type HumanStatus } from '@/lib/review/workspace';
-import { useSingleFlight } from '@/hooks/useSingleFlight';
+import { useAsyncRun } from '@/hooks/useAsyncRun';
 import { HUMAN_STATUS_KEY } from './review-labels';
 
 /** The person's own status and comment for one card; never an analysis result. */
@@ -27,8 +27,8 @@ export function ReviewDecision({ cardKey, decision }: { cardKey: string; decisio
   }, [decision, saved]);
   // C-11: one write at a time; the draft is locked while it is in flight so a
   // late Clear cannot wipe text typed after the press.
-  const flight = useSingleFlight();
-  const save = (next: { status: HumanStatus; comment: string } | null) => flight.run(async () => {
+  const flight = useAsyncRun();
+  const save = (next: { status: HumanStatus; comment: string } | null) => flight.start(async () => {
     let ok = false;
     try { ok = await saveCardDecision(cardKey, next); }
     catch (error) { console.warn('[Review decision] Save failed', error); }

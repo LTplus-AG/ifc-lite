@@ -44,11 +44,13 @@ test('catalogue: derived per schema from the generated tables, schema difference
   assert.deepEqual(byId.get('IFC2X3/IfcStructuralLoadTemperature').own, ['Name', 'DeltaT_Constant', 'DeltaT_Y', 'DeltaT_Z']);
 });
 
-test('create scene: every expected value names an attribute of that entity in every schema the step runs in', () => {
+test('create scene: in every schema, each need runs and each expected value names an attribute of that entity', () => {
   const { tables } = deriveCatalogue(ROOT);
   const bad = [];
   for (const schema of Object.keys(tables)) {
+    const ids = new Set(stepsFor(schema).map((s) => s.id));
     for (const step of stepsFor(schema)) {
+      for (const need of step.needs ?? []) if (!ids.has(need)) bad.push(`${step.id}: needs ${need}, which does not run in ${schema}`);
       for (const [entity, expect] of Object.entries(step.emits)) {
         const attrs = tables[schema].table.get(entity)?.attributes;
         if (!attrs) { bad.push(`${step.id}: ${schema} has no ${entity}`); continue; }
@@ -67,8 +69,7 @@ test('not-applicable rules are by family and schema, never per row', () => {
   assert.equal(na('IFC4/IfcRelConnectsStructuralMember', 'card'), true);
   assert.equal(na('IFC4X3/IfcStructuralCurveMember', 'convert'), true);
   assert.equal(na('IFC2X3/IfcStructuralCurveMember', 'convert'), false);
-  assert.equal(na('IFC4/IfcStructuralCurveAction', 'convert'), true, 'IFC2X3 has no curve action to round-trip through');
-  assert.equal(na('IFC2X3/IfcRelConnectsStructuralElement', 'convert'), true, 'IFC4 has no such relationship');
+  assert.equal(na('IFC4/IfcStructuralCurveAction', 'convert'), false, 'kept: the converter may map and restore it');
   assert.equal(na('cap/docs-page', 'read'), true);
   assert.equal(na('cap/docs-page', 'capability'), false);
 });

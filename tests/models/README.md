@@ -131,7 +131,8 @@ IfcOpenShell 0.8.3.post2: one record of every structural-analysis entity the
 schema defines, with known values, so the types no real file carries have a
 fixture. In IFC4, IfcSurfaceReinforcementArea sits in its own file because the
 converter refuses any IFC4 file that holds it when converting to IFC2X3. The output is byte-reproducible with that
-version and passes `python -m ifcopenshell.validate --rules`.
+version, and passed `python -m ifcopenshell.validate --rules` (IfcOpenShell
+0.8.3.post2) when generated; no CI lane re-runs that check.
 
 ## For maintainers: adding a new fixture
 

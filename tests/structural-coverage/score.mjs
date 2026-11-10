@@ -196,7 +196,7 @@ async function main(argv) {
       return 2;
     }
   }
-  if (baseline && baseline.schema !== SUMMARY_SCHEMA) { console.error(`score: ${rel(check)} is not an ${SUMMARY_SCHEMA} summary`); return 2; }
+  if (check && baseline?.schema !== SUMMARY_SCHEMA) { console.error(`score: ${rel(check)} is not an ${SUMMARY_SCHEMA} summary`); return 2; }
   let summary;
   try {
     const { rows, tables } = deriveCatalogue(ROOT);
@@ -216,7 +216,7 @@ async function main(argv) {
   writeFileSync(out, serialize(summary));
   if (!values.quiet) print(summary);
   console.log(`Summary written to ${rel(out)}`);
-  if (baseline) {
+  if (check) {
     const problems = ratchet(baseline, summary);
     if (problems.length) {
       console.error(`\nRatchet FAILED against ${rel(check)}:\n  ${problems.join('\n  ')}`);

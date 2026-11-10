@@ -156,7 +156,8 @@ def coverage(schema: str, output: Path, reinforcement: bool = False) -> None:
     e = model.create_entity
 
     def guid(name: str) -> str:
-        return stable_guid(f"structural-coverage:{schema}:{name}")
+        # The reinforcement file is a separate model, so its project needs its own GlobalId.
+        return stable_guid(f"structural-coverage:{schema}:{'reinforcement:' if reinforcement else ''}{name}")
 
     def stiffness(kind: str, value: float):
         # IFC2X3 types stiffness as a plain measure, IFC4 as a select with an IfcBoolean branch.
@@ -177,16 +178,8 @@ def coverage(schema: str, output: Path, reinforcement: bool = False) -> None:
     ))
     project = e("IfcProject", guid("project"), owner, "Structural coverage", None, None, None, None, (context,), units)
 
-    def place():
-        # IFC2X3 allows one product per placement (PlacesObject SET [1:1]).
-        return e("IfcLocalPlacement", None, world)
-
-    direction = e("IfcDirection", (0.0, 0.0, 1.0))
-
-    def root(name: str, *rest, tag: str = ""):
-        return e(name, guid(name + tag), owner, f"Coverage {name}{tag}", None, None, *rest)
-
     def save():
+        output.parent.mkdir(parents=True, exist_ok=True)
         write(model, output, "for the structural coverage harness", "2026-11-10T00:00:00", "ifc-lite structural coverage fixture generator")
 
     def reinforcement_area():
@@ -198,6 +191,15 @@ def coverage(schema: str, output: Path, reinforcement: bool = False) -> None:
         return
     if schema == "IFC4X3":
         reinforcement_area()
+
+    def place():
+        # IFC2X3 allows one product per placement (PlacesObject SET [1:1]).
+        return e("IfcLocalPlacement", None, world)
+
+    direction = e("IfcDirection", (0.0, 0.0, 1.0))
+
+    def root(name: str, *rest, tag: str = ""):
+        return e(name, guid(name + tag), owner, f"Coverage {name}{tag}", None, None, *rest)
 
     def rep():
         return e("IfcShapeRepresentation", context, "Reference", "Point", (origin,))
@@ -306,7 +308,6 @@ def coverage(schema: str, output: Path, reinforcement: bool = False) -> None:
     if has("IfcRelDeclares"):
         rel("IfcRelDeclares", project, (analysis,))
 
-    output.parent.mkdir(parents=True, exist_ok=True)
     save()
 
 

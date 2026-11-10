@@ -41,13 +41,9 @@ model, four checks, the CLI command, the docs page).
 Not-applicable cells come only from `notApplicable()` in `catalogue.mjs`, by
 family or schema: only items and activities render, relationships have no card
 of their own, IFC4X3 rows have no convert level (the hop under test is
-IFC4 <-> IFC2X3), neither does an entity the other schema of the hop lacks
-(a round trip cannot preserve it), and each kind of row uses its own levels.
-
-Known gap: for those partner-less entities nothing measures the one-way
-conversion yet. The R0 run showed the converter refuses any IFC4 file holding
-an `IfcSurfaceReinforcementArea` when converting to IFC2X3, and no cell records
-that today; a one-way convert criterion belongs to a later round.
+IFC4 <-> IFC2X3), and each kind of row uses its own levels. An entity the other
+schema lacks keeps its convert level: the converter may map it and restore it,
+and the R0 run measured some that do.
 
 ## Scoring and the ratchet
 

@@ -1649,13 +1649,13 @@
     },
     {
       "path": "ifcopenshell/generated_structural_coverage_ifc4x3.ifc",
-      "sha256": "d5bd6540938915377e6f46b844d6ab67f92672a5b258d1de7ca2f421f2080158",
+      "sha256": "a0bcf13a2d8a2c4be20dab0cc3f1af2f48abd771259046bf757a5489f12d19f4",
       "size": 8177
     },
     {
       "path": "ifcopenshell/generated_structural_coverage_ifc4_reinforcement.ifc",
-      "sha256": "4626897dc0afbbd11553239e62c22c63e36034ac01b370f457df945b03d27b79",
-      "size": 1311
+      "sha256": "ff8860d43998ca921bae44e3e7710e97dde8eb3f656b5bb68cdb11be67f9ce47",
+      "size": 1281
     }
   ]
 }

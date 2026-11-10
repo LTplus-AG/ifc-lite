@@ -8,8 +8,9 @@
  * Each step calls one in-store builder and lists, per entity it emits, the
  * attribute values (EXPRESS names, STEP-normalised: references to rooted
  * entities as their GlobalId, booleans as true/false) the exported record must
- * carry. `needs` names earlier steps whose results it uses; `schemas` limits a
- * step to the schemas that have its entities (omit it to run everywhere).
+ * carry, or a function of the schema returning that. `needs` names earlier steps
+ * whose results it uses; `schemas` limits a step to the schemas that have its
+ * entities (omit it to run everywhere).
  *
  * To register a new builder: append a step. Nothing else changes.
  */
@@ -44,13 +45,14 @@ export const SCENE = [
   {
     id: 'point-connection',
     builder: 'addStructuralPointConnectionToStore',
-    // IFC2X3 names the stiffness attributes Linear* and has no boolean branch; an IFC2X3 step
-    // with its own expectations lands with the IFC2X3 builder.
-    schemas: ['IFC4', 'IFC4X3'],
-    emits: {
+    // IFC2X3 names the stiffness attributes Linear* and has no boolean branch: there only the name is
+    // expected until the IFC2X3 builder lands and its real output sets the rest.
+    emits: (schema) => ({
       IfcStructuralPointConnection: { GlobalId: G.connection, Name: 'Probe support' },
-      IfcBoundaryNodeCondition: { Name: 'Probe fixed', TranslationalStiffnessX: true, TranslationalStiffnessZ: true, RotationalStiffnessY: false },
-    },
+      IfcBoundaryNodeCondition: schema === 'IFC2X3'
+        ? { Name: 'Probe fixed' }
+        : { Name: 'Probe fixed', TranslationalStiffnessX: true, TranslationalStiffnessZ: true, RotationalStiffnessY: false },
+    }),
     build: ({ create, editor, anchor }) => create.addStructuralPointConnectionToStore(editor, anchor, {
       Position: [0, 0, 0], Name: 'Probe support', GlobalId: G.connection,
       BoundaryCondition: { Name: 'Probe fixed', TranslationalStiffnessX: true, TranslationalStiffnessY: true, TranslationalStiffnessZ: true, RotationalStiffnessX: false, RotationalStiffnessY: false, RotationalStiffnessZ: false },
@@ -113,7 +115,9 @@ export const SCENE = [
   analysisModel('analysis-model', ['IFC4', 'IFC4X3'], ['load-group', 'load-case'], [G.group, G.loadCase]),
 ];
 
-export const stepsFor = (schema) => SCENE.filter((s) => !s.schemas || s.schemas.includes(schema));
+/** The steps that run in `schema`, with `emits` resolved for it. */
+export const stepsFor = (schema) => SCENE.filter((s) => !s.schemas || s.schemas.includes(schema))
+  .map((s) => (typeof s.emits === 'function' ? { ...s, emits: s.emits(schema) } : s));
 
 /** A blank one-storey model in `schema`, with the owner history IFC2X3 requires. */
 export function blankModel(schema) {

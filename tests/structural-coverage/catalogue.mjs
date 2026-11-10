@@ -84,9 +84,6 @@ export function notApplicable(row, level) {
   if (level === 'convert' && !CONVERT_HOP[row.schema]) {
     return 'the converter hop under test is IFC4 <-> IFC2X3';
   }
-  if (level === 'convert' && !row.inHopPartner) {
-    return 'the other schema of the hop has no such entity, so a round trip cannot preserve it';
-  }
   return null;
 }
 
@@ -135,7 +132,6 @@ export function deriveCatalogue(root) {
         rooted: c.includes('IfcRoot'),
         attributes: e.attributes,
         own: ownAttributes(tables, schema, e.name, d.family),
-        inHopPartner: Boolean(tables[CONVERT_HOP[schema]]?.table.has(e.name)),
       });
     }
   }

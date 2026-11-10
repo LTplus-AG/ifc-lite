@@ -8,7 +8,7 @@ import { expect, test } from '@playwright/test';
 test.use({ viewport: { width: 1280, height: 900 } });
 
 const TAB_BUTTON_COUNTS = [
-  ['File', 20], // includes the Cesium ion upload command (#6587) and LandXML (terrain) (#7600)
+  ['File', 21], // includes the Cesium ion upload command (#6587), LandXML (terrain) (#7600) and Rhino .3dm
   ['Home', 7],
   ['View', 19], // Settings moved to the persistent header (#5857)
   ['Elements', 18], // includes selected mesh hover outline (#5748) and Presentation layers (#7619)

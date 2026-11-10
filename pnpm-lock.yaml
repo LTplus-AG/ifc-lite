@@ -726,6 +726,9 @@ importers:
       '@ifc-lite/report-contract':
         specifier: workspace:^
         version: link:../../packages/report-contract
+      '@ifc-lite/rhino3dm':
+        specifier: workspace:^
+        version: link:../../packages/rhino3dm
       '@ifc-lite/rules':
         specifier: workspace:^
         version: link:../../packages/rules

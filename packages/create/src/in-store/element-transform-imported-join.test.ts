@@ -114,6 +114,6 @@ for (const fullGraph of [false, true]) for (const dy of [0, 1]) {
     // The asserted geometry must survive a real STEP export and independent reparse.
     const exported = new StepExporter(dataStore, view).export({ schema: 'IFC4', applyMutations: true }).content;
     const reopened = await new IfcParser().parseColumnar(exported.slice().buffer as ArrayBuffer, { disableWorkerScan: true });
-    check(new AnchorEntityReader(reopened));
+    check(new AnchorEntityReader(reopened, null));
   });
 }

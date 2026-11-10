@@ -103,7 +103,8 @@ export function tally(rows) {
       levelTotals[level][cell.status]++;
     }
     // Only a pass earns a full point, so every applicable cell passes exactly when points === max.
-    return { ...row, status: points === max ? 'met' : points > 0 ? 'partial' : 'missing', points, max };
+    const { levels, ...head } = row;
+    return { ...head, status: points === max ? 'met' : points > 0 ? 'partial' : 'missing', points, max, levels };
   });
   const counts = { met: 0, partial: 0, missing: 0 };
   for (const r of out) counts[r.status]++;
@@ -151,18 +152,7 @@ export function score(rows, cells, meta = {}) {
       : { id: row.id, kind: row.kind, title: row.title, round: row.round };
     return { ...head, levels };
   });
-  const { total, cells: cellTotals, levels, rows: out } = tally(withCells);
-  return {
-    schema: SUMMARY_SCHEMA,
-    offline: meta.offline === true,
-    absent: meta.absent ?? [],
-    corpus: meta.corpus ?? [],
-    total,
-    cells: cellTotals,
-    levels,
-    // Key order as before: head, status, points, max, levels.
-    rows: out.map(({ levels: l, status, points, max, ...head }) => ({ ...head, status, points, max, levels: l })),
-  };
+  return { schema: SUMMARY_SCHEMA, offline: meta.offline === true, absent: meta.absent ?? [], corpus: meta.corpus ?? [], ...tally(withCells) };
 }
 
 /** Every way `current` is worse than `baseline`; empty means the check passes. */

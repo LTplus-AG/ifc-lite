@@ -240,12 +240,12 @@ test('create (#9668): typed values are compared typed, and a non-conforming expo
     selects: { IfcTranslationalStiffnessSelect: ['IfcBoolean', 'IfcLinearStiffnessMeasure'] }, types: {}, enums: {},
   };
   const expect = { Name: 'Probe pinned', TranslationalStiffnessX: typedTrue };
-  const bare = readStep("ISO-10303-21;HEADER;FILE_SCHEMA(('IFC4'));ENDSEC;DATA;\n#5=IFCBOUNDARYNODECONDITION('Probe pinned',.T.,.T.,.T.,.F.,.F.,.F.);\nENDSEC;END-ISO-10303-21;");
+  const bare = stepFile('bare.ifc', '', "#5=IFCBOUNDARYNODECONDITION('Probe pinned',.T.,.T.,.T.,.F.,.F.,.F.);").step;
   const got = checkExport(row, bare, expect, ifc4.types, registry);
   assert.equal(got.status, 'fail', 'the product export today: bare booleans in SELECT slots');
   assert.match(got.reason, /bare value in SELECT IfcTranslationalStiffnessSelect/);
   assert.match(got.reason, /TranslationalStiffnessX true, expected \{"type":"IFCBOOLEAN","value":true\}/);
-  const typed = readStep("ISO-10303-21;HEADER;FILE_SCHEMA(('IFC4'));ENDSEC;DATA;\n#5=IFCBOUNDARYNODECONDITION('Probe pinned',IFCBOOLEAN(.T.),$,$,$,$,$);\nENDSEC;END-ISO-10303-21;");
+  const typed = stepFile('typed.ifc', '', "#5=IFCBOUNDARYNODECONDITION('Probe pinned',IFCBOOLEAN(.T.),$,$,$,$,$);").step;
   assert.equal(checkExport(row, typed, expect, ifc4.types, registry).status, 'pass');
   // A required attribute the scene does not name still fails the cell when the export leaves it empty.
   const required = { ...registry, entities: { IfcBoundaryNodeCondition: { ...registry.entities.IfcBoundaryNodeCondition, allAttributes: registry.entities.IfcBoundaryNodeCondition.allAttributes.map((a, i) => (i === 6 ? { ...a, optional: false } : a)) } } };

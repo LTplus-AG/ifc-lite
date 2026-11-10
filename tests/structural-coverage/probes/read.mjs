@@ -16,7 +16,7 @@
  */
 
 import { cached, storeOf } from '../lib/packages.mjs';
-import { equal, normalize, show } from '../lib/values.mjs';
+import { equal, normalize, show, verdict } from '../lib/values.mjs';
 
 const NO_FIELD = Symbol('no field');
 
@@ -105,34 +105,24 @@ export async function extractionOrProblem(ctx, file, problems) {
 export function readRow(row, entries, types, problems = []) {
   const ordered = [...entries].sort((a, b) => a.file.sha256.localeCompare(b.file.sha256) || a.file.path.localeCompare(b.file.path));
   const records = ordered.flatMap(({ file, ix }) => file.step.of(row.entity).map((rec) => ({ file, ix, rec, where: `${file.path}#${rec.id}` })));
-  if (!records.length) return { status: 'fail', reason: problems.join('; ') || 'no record was checked' };
   const value = (r, attr) => normalize(r.rec.args[row.attributes.indexOf(attr)], r.file.step, types);
   const out = [...problems];
   const link = LINKS[row.root];
-  let found;
-  let attrs;
-  if (link) {
-    const [from, to, held] = link;
-    found = records.filter((r) => r.ix && held(r.ix, value(r, from), value(r, to)));
-    if (found.length < records.length) {
-      const lost = records.filter((r) => !found.includes(r));
-      out.push(`link ${from} -> ${to} not in the read model for ${lost.length} of ${records.length} record(s), e.g. ${lost[0].where}`);
-    }
-    attrs = row.own.filter((a) => a !== from && a !== to && a !== 'Name');
-  } else {
-    found = records.filter((r) => r.ix?.byId.get(r.rec.id)?.type === row.entity);
-    if (found.length < records.length) {
-      const lost = records.filter((r) => !found.includes(r));
-      const hit = lost[0].ix?.byId.get(lost[0].rec.id);
-      out.push(`${lost.length} of ${records.length} record(s) not in the read model, e.g. ${lost[0].where}${hit ? ` (read as ${hit.type})` : ''}`);
-    }
-    attrs = row.rooted ? ['GlobalId', ...row.own] : row.own;
+  const [from, to, held] = link ?? [];
+  const found = new Set(records.filter((r) => (link ? r.ix && held(r.ix, value(r, from), value(r, to)) : r.ix?.byId.get(r.rec.id)?.type === row.entity)));
+  const lost = records.filter((r) => !found.has(r));
+  if (lost.length) {
+    const hit = lost[0].ix?.byId.get(lost[0].rec.id);
+    out.push(link
+      ? `link ${from} -> ${to} not in the read model for ${lost.length} of ${records.length} record(s), e.g. ${lost[0].where}`
+      : `${lost.length} of ${records.length} record(s) not in the read model, e.g. ${lost[0].where}${hit ? ` (read as ${hit.type})` : ''}`);
   }
+  const attrs = link ? row.own.filter((a) => a !== from && a !== to && a !== 'Name') : row.rooted ? ['GlobalId', ...row.own] : row.own;
   for (const attr of attrs) {
     const setters = records.filter((r) => value(r, attr) !== null);
     if (!setters.length) { out.push(`${attr}: no fixture sets it, so reading it is unproven`); continue; }
     if (link) { out.push(`${attr} unexposed (set in ${setters.length} record(s))`); continue; }
-    const read = setters.filter((r) => found.includes(r));
+    const read = setters.filter((r) => found.has(r));
     if (!read.length) continue; // its records are already reported as not in the read model
     const field = (r) => {
       const hit = r.ix.byId.get(r.rec.id);
@@ -145,9 +135,7 @@ export function readRow(row, entries, types, problems = []) {
       out.push(`${attr} wrong in ${wrong.length} of ${read.length} record(s), e.g. ${wrong[0].where}: ${got === NO_FIELD ? 'unexposed' : show(got ?? null)}, file ${show(value(wrong[0], attr))}`);
     }
   }
-  if (!out.length) return { status: 'pass' };
-  const reason = `${out.length} problem(s) over ${records.length} record(s): ${out.slice(0, 6).join('; ')}${out.length > 6 ? '; ...' : ''}`;
-  return { status: found.length ? 'partial' : 'fail', reason };
+  return verdict(records.length, out, { anyHeld: found.size > 0 });
 }
 
 export default {

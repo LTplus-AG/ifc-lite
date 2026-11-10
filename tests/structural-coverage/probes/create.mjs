@@ -70,14 +70,15 @@ function matchRecord(row, exported, values, types) {
 export function checkExport(row, exported, expect, types, registry) {
   const { unchecked = [], ...values } = expect;
   const m = matchRecord(row, exported, values, types);
-  if (!m) return { status: 'fail', reason: `no ${row.entity} record in the export` };
+  if (!m) return { status: 'fail', reason: `no ${row.entity} record in the export`, exported: false, invalid: false };
   const problems = [...m.diffs];
   // An expectation that leaves attributes unchecked can never earn a full pass.
   if (unchecked.length) problems.push(`no expected value yet for ${unchecked.join(', ')}`);
   const bad = nonConforming(exported, row.entity, registry);
   if (bad.length) problems.push(`${bad.length} of ${exported.count(row.entity)} exported record(s) do not conform to ${row.schema}, e.g. #${bad[0].id} ${bad[0].why}`);
-  if (!problems.length) return { status: 'pass' };
-  return { status: bad.length ? 'fail' : 'partial', reason: problems.join(', '), invalid: bad.length > 0 };
+  const invalid = bad.length > 0;
+  if (!problems.length) return { status: 'pass', exported: true, invalid };
+  return { status: invalid ? 'fail' : 'partial', reason: problems.join(', '), exported: true, invalid };
 }
 
 export default {
@@ -107,13 +108,13 @@ export default {
         const error = scene.errors.get(step.id);
         if (error) { problems.push(`${step.id}: ${error}`); continue; }
         const r = checkExport(row, scene.exported, step.emits[row.entity], types, registry);
-        if (r.status !== 'fail' || r.invalid) exportedAny = true;
-        invalid ||= r.invalid === true;
+        exportedAny ||= r.exported;
+        invalid ||= r.invalid;
         if (r.reason) problems.push(`${step.id}: ${r.reason}`);
       }
       const evidence = steps.map((s) => s.builder);
       out.set(row.id, problems.length
-        ? { status: exportedAny && !invalid ? 'partial' : 'fail', reason: problems.join('; '), evidence }
+        ? { status: invalid || !exportedAny ? 'fail' : 'partial', reason: problems.join('; '), evidence }
         : { status: 'pass', evidence });
     }
     return out;

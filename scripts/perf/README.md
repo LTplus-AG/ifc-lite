@@ -3089,6 +3089,22 @@ as well as JavaScript errors, and stop memory sampling on every exit path.
   working set, not just time attributed to the scanner. Bounded parallel typed
   scan windows passed scanner parity but added too little end-to-end benefit
   to retain; the compact-index change produced the material gain.
+- **Surface-model points read once per lowering (native instruction
+  hillclimb, 2026-11-10):** a face-based surface model's faces share their
+  CartesianPoints, and each lowering read every point once per face using it
+  through `point3` (about 1.78M point reads for advanced_model's 13 models,
+  lowered 839 times). `surface_model_plan::lower` now keeps a `PointMemo` for
+  the duration of the call, filled only by `EntityDecoder::point3_fast`, the
+  pure byte fast path of `point3`. Any point that path cannot read still goes
+  through `point3` on every use, so values, refusals and their counts are
+  unchanged. The memo is local to one lowering over one decoder and dropped
+  with it: no cross-job cache, no retained memory. Measured alone against main,
+  cold single-thread Callgrind pipeline instructions: advanced_model -14.1%,
+  Holter -2.4%, schependomlaan -1.2%, ISSUE_129 -0.1%, FZK flat; ordered
+  `perf_probe` mesh fingerprints identical on all five. Stacked on the plain
+  IfcFace decode skip (both change `surface_model_plan.rs`). The repeated
+  lowering itself (styled mapped occurrences) is still left. Not a wall-time
+  or browser claim.
 - **CSG topology diagnostic (#3442): no measurable pipeline regression.** The
   record-not-gate closure audit adds a strict directed-edge hash sweep and only
   runs the hairline sweep when strict closure fails. On `140a6d854` versus the

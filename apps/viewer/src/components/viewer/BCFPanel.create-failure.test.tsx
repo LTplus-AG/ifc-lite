@@ -25,6 +25,7 @@ installLayout();
 
 let capture: HeldCapture;
 const initialAddTopic = useViewerStore.getState().addTopic;
+const initialAddViewpoint = useViewerStore.getState().addViewpoint;
 
 beforeEach(() => {
   capture = installHeldCapture();
@@ -37,7 +38,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup(); capture.dispose(); mock.restoreAll(); document.body.innerHTML = '';
-  useViewerStore.setState({ addTopic: initialAddTopic });
+  useViewerStore.setState({ addTopic: initialAddTopic, addViewpoint: initialAddViewpoint });
 });
 
 const q = <T extends Element>(selector: string) => document.body.querySelector<T>(selector);
@@ -60,4 +61,24 @@ test('a create that throws shows an error toast, adds nothing, and leaves the fo
   assert.equal(useViewerStore.getState().bcfProject?.topics.size, 0, 'no topic was added');
   assert.equal(q('#title') !== null, true, 'the form stays open with the user\'s input');
   await waitFor(() => buttonNamed('Create Topic')?.disabled === false, 'Create Topic is usable again');
+});
+
+test('a topic whose viewpoint cannot be added is still created once: the form closes and only the viewpoint failure is shown', async () => {
+  const errors: string[] = [];
+  mock.method(toast, 'error', (message: unknown) => { errors.push(String(message)); return ''; });
+  mock.method(console, 'error', () => undefined);
+  useViewerStore.setState({ addViewpoint: () => { throw new Error('The viewpoint store is full.'); } });
+  render(<BCFPanel onClose={() => {}} />);
+  const open = q<HTMLButtonElement>('[aria-label="New topic"]'); assert.ok(open, 'New topic button');
+  click(open);
+  await waitFor(() => q('img[alt="Viewpoint snapshot"]') !== null, 'the form captured its viewpoint');
+  const title = q<HTMLInputElement>('#title'); assert.ok(title, 'title input');
+  type(title, 'Clash at grid C4');
+  const form = q('form'); assert.ok(form, 'form');
+  act(() => { form.dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })); });
+  await waitFor(() => errors.length > 0, 'the viewpoint failure is reported');
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 50)); });
+  assert.equal(useViewerStore.getState().bcfProject?.topics.size, 1, 'the topic exists exactly once');
+  assert.deepEqual([...errors], ['Could not add the viewpoint to the topic. The viewpoint store is full.'], 'no "could not create" for a topic that was created');
+  assert.equal(q('#title') === null, true, 'the create is done, so the form closes and cannot create it twice');
 });

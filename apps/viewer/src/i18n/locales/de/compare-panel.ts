@@ -22,6 +22,7 @@ export const comparePanelDe = {
   "comparePanel.saved.dependencies.sourceChanged": "Dieser Bericht wurde geändert oder ersetzt. Brechen Sie ab und öffnen Sie den Löschdialog erneut.",
   "comparePanel.saved.dependencies.changed": "Diagrammverweise wurden geändert. Prüfen Sie die aktualisierte Liste, bevor Sie das Löschen bestätigen.",
   "comparePanel.saved.dependencies.finishFailed": "Der Bericht wurde entfernt, aber diese Ansicht konnte nicht aktualisiert werden. Schließen und öffnen Sie sie erneut.",
+  "comparePanel.saved.dependencies.removeFailed": "Der Bericht konnte nicht entfernt werden. Schließen und öffnen Sie diese Ansicht erneut und versuchen Sie es dann noch einmal.",
   "comparePanel.saved.dependencies.review": "Aktualisierte Verweise prüfen",
   "comparePanel.saved.title": "Gespeicherte Vergleiche",
   "comparePanel.saved.name": "Vergleichsname",

@@ -109,9 +109,10 @@ export function ReportDeletionPreview({ source, report, onCancel, onDeleted, sto
       if (!ok && !guardRejected) storageFailed();
       if (ok && active.current === owner && owner.alive) onDeleted?.();
     } catch (error) {
-      // The host's callbacks threw; useAsyncRun does not rethrow, so say it here.
+      // The host's callbacks threw; useAsyncRun does not rethrow, so say it
+      // here, by what actually happened to the report.
       console.error('[Report deletion] Finishing the removal failed', error);
-      toast.error(t('comparePanel.saved.dependencies.finishFailed'));
+      toast.error(t(ok ? 'comparePanel.saved.dependencies.finishFailed' : 'comparePanel.saved.dependencies.removeFailed'));
     }
   });
   const cancel = () => {

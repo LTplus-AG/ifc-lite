@@ -43,6 +43,7 @@ import { useBcfServerActions } from './bcf/BCFServerControl';
 import { AnalysisPanel } from './analysis/AnalysisPanel';
 import { useBcfArchiveActions } from './bcf/useBcfArchiveActions';
 import { useTopicViewpointCapture } from './bcf/useTopicViewpointCapture';
+import { finishCreatedTopic } from './bcf/created-topic-followups';
 import { useSectionViewpointCapture } from '@/hooks/bcf/useSectionViewpointCapture';
 import { useAsyncRun } from '@/hooks/useAsyncRun';
 import { captureViewpointForCreate } from '@/hooks/bcf/capture-viewpoint-for-create';
@@ -230,14 +231,10 @@ export function BCFPanel({ onClose }: BCFPanelProps) {
         const header = headerFilesForViewpoints(viewpoint ? [viewpoint] : [], topic.creationDate);
         if (header.length > 0) topic.header = header;
         addTopic(topic);
-        if (viewpoint) addViewpoint(topic.guid, viewpoint);
-        posthog.capture('bcf_topic_created', {
-          topic_type: topic.topicType,
-          priority: topic.priority,
-          has_description: Boolean(topic.description),
-          has_viewpoint: Boolean(viewpoint),
-        });
+        // The topic exists now: the create is done, and the form closes so a
+        // second press cannot create it again, whatever follows.
         setShowCreateForm(false);
+        finishCreatedTopic(topic, viewpoint, { addViewpoint, isCurrent, viewpointFailed: message => t('bcf.panel.addViewpointFailed', { message }) });
       } catch (error) {
         // useAsyncRun does not rethrow: without this the failure would only reach the console.
         console.error('[BCFPanel] Creating the topic failed', error);

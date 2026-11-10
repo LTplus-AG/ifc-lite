@@ -32,6 +32,17 @@ change between them); ordering puts numbered revisions first (highest number fir
 sweep position and ID. `lastModified` is date-only, so same-day revisions
 would otherwise tie.
 
+The current file revision is always included, even if no version set pins it.
+Dates stay blank when unavailable, and raw author IDs are not displayed as names.
+The project history is cached for five minutes; rebuilding reads fresh pins.
+A failed or undecodable set makes history unavailable with an explicit error and
+short retry window. Projects above 250 version sets are refused rather than
+silently showing an arbitrary older subset: the listing has no documented date
+or recency order from which to choose the newest sets safely.
+
+Revision history supports model files. Requests for document history report that it is unavailable rather than presenting a current-only list as complete.
+
+
 ## CORS
 
 The Dalux API does not send CORS headers, so direct browser fetches to it
@@ -64,13 +75,3 @@ are not cached. `BIMCOLLAB_RELAY_ALLOWED_ORIGINS` overrides the comma-separated
 origin allowlist; defaults include `APP_URL` and registered BIMcollab callback
 origins. Configure a Vercel WAF rate-limit rule on `/api/bimcollab`: holders of
 valid tokens can otherwise consume deployment bandwidth through our egress IPs.
-
-The current file revision is always included, even if no version set pins it.
-Dates stay blank when unavailable, and raw author IDs are not displayed as names.
-The project history is cached for five minutes; rebuilding reads fresh pins.
-A failed or undecodable set makes history unavailable with an explicit error and
-short retry window. Projects above 250 version sets are refused rather than
-silently showing an arbitrary older subset: the listing has no documented date
-or recency order from which to choose the newest sets safely.
-
-Revision history supports model files. Requests for document history report that it is unavailable rather than presenting a current-only list as complete.

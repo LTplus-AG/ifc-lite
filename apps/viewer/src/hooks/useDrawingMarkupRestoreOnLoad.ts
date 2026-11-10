@@ -61,7 +61,6 @@ import { useEffect } from 'react';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store';
 import { hasEmbeddedDrawingMarkup, restoreDrawingMarkupFromModel } from '@/lib/drawing2d-markup/drawing-markup-restore';
-import { getDrawingMarkupReadContext } from '@/lib/drawing2d-markup/drawing-markup-context';
 import { ensureParseFor, subscribeToParseCache } from './symbolic-parse-cache.js';
 import { hasPersistedMarkupEntryFor, onLocalStorageDecidedFor } from './useDrawing2DPersistence.js';
 
@@ -155,8 +154,7 @@ export function tryRestoreDrawingMarkup(modelId: string, requestParse = false): 
     const state = useViewerStore.getState();
     const store = state.models.get(modelId)?.ifcDataStore ?? (modelId === 'legacy' ? state.ifcDataStore : null);
     if (requestParse && store && hasEmbeddedDrawingMarkup(store, state.getMutationView(modelId) ?? undefined)) {
-      const context = getDrawingMarkupReadContext(modelId);
-      if (context) ensureParseFor([{ store: context.dataStore, mutationView: context.view }]);
+      ensureParseFor([{ store, mutationView: state.getMutationView(modelId) ?? undefined }]);
     }
     if (!awaitingLocalStorageDecision.has(modelId)) {
       const unsubscribe = onLocalStorageDecidedFor(modelId, () => {

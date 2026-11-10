@@ -299,6 +299,8 @@ describe('localStorage (#4159) vs IFC-embedded (#4170) markup restore precedence
     // must still request a tagged model's parse while its hash is pending;
     // only publishing restored markup waits for the localStorage decision.
     assert.equal(hasPersistedMarkupEntryFor(model.id), 'pending');
+    assert.equal(useViewerStore.getState().getMutationView(model.id), null,
+      '#9621: hashing must not register a restore view before a decision, matching main');
 
     // Let the IFC-embedded restore's WASM parse land FIRST — the hash's
     // `arrayBuffer()` is still gated by `held`, so `hasPersistedMarkupEntryFor`

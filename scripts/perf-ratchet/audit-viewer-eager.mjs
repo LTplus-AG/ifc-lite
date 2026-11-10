@@ -2,7 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-// Informational attribution, not a ceiling gate. Build with VITE_BUNDLE_ANALYSIS=1.
+// Attribution report; --expect-lazy is a structural CI gate, not a byte ceiling.
+// Build with VITE_BUNDLE_ANALYSIS=1.
 import { readFileSync } from 'node:fs';
 import { resolve, relative } from 'node:path';
 import { eagerJsFiles, brotliSize } from './measure-bundle.mjs';

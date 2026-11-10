@@ -6147,3 +6147,14 @@ three loading shells for a ceiling that no longer needs them. This round
 cleared that test on the exact main containing #9590: keep the three boundaries
 subject to feature/typecheck acceptance and rechecking the main that includes
 #9616. Do not attribute #9590's own reduction to this change.
+
+Review follow-up for the same round: imperative panel tests must wait for an
+actual feature control, and absence assertions must first prove that the real
+panel mounted. The Assistant evidence adapters capture eager store state and
+never drive panel DOM; only their test harnesses had assumed synchronous panel
+mounting. Tours now await the shared deferred-module factories before spending
+the anchor deadline. Offline chunk failures surface in the existing boundary
+without automatic navigation, and CI now enables attribution and invokes the
+emitted lazy-module assertion. Acceptance for these changes requires the full
+four-shard viewer helper, not just selected boundary tests. Retry of a rejected
+React.lazy import and the loading flash/focus polish remain app-wide follow-ups.

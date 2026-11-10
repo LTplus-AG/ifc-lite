@@ -11,6 +11,7 @@
  * hosts stay in lock-step.
  */
 
+import { loadBcfPanel, loadValidationPanel, loadLensPanel } from './deferred-panel-modules';
 import { DeferredPanel } from './DeferredPanel';
 import { AssistantSourceContext } from '@/components/viewer/assistant/AssistantAction';
 import { lazy, Suspense, type ReactNode } from 'react';
@@ -22,9 +23,9 @@ const InfluxPanel = lazy(() => import('@/components/viewer/influx/InfluxPanel').
 
 const ComparePanel = lazy(() => import('@/components/viewer/ComparePanel').then(module => ({ default: module.ComparePanel })));
 const ClashPanel = lazy(() => import('@/components/viewer/ClashPanel').then(module => ({ default: module.ClashPanel })));
-const BCFPanel = lazy(() => import('@/components/viewer/BCFPanel').then(module => ({ default: module.BCFPanel })));
-const ValidationPanel = lazy(() => import('@/components/viewer/validation/ValidationPanel').then(module => ({ default: module.ValidationPanel })));
-const LensPanel = lazy(() => import('@/components/viewer/LensPanel').then(module => ({ default: module.LensPanel })));
+const BCFPanel = lazy(loadBcfPanel);
+const ValidationPanel = lazy(loadValidationPanel);
+const LensPanel = lazy(loadLensPanel);
 import { ExtensionsPanel } from '@/components/extensions/ExtensionsPanel';
 import { GanttPanel } from '@/components/viewer/schedule/GanttPanel';
 import { ListPanel } from '@/components/viewer/lists/ListPanel';

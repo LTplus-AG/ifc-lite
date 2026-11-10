@@ -46,14 +46,14 @@ export const SCENE = [
   {
     id: 'point-connection',
     builder: 'addStructuralPointConnectionToStore',
-    // IFC2X3 names the stiffness attributes Linear* and has no boolean branch. Their expected values
-    // are set from the IFC2X3 builder's real output when it lands; until then `unchecked` caps the
-    // cell at partial, so it cannot pass with the stiffness unverified.
+    // IFC2X3 names the stiffness attributes Linear* and has no boolean branch. The expected IFC2X3
+    // values follow from the decided mapping of a fixed or free support, written down with the
+    // IFC2X3 builder, not copied from its output; until then `unchecked` caps the cell at partial.
     emits: (schema) => ({
       IfcStructuralPointConnection: { GlobalId: G.connection, Name: 'Probe support' },
       IfcBoundaryNodeCondition: schema === 'IFC2X3'
-        ? { Name: 'Probe fixed', unchecked: ['LinearStiffnessX', 'LinearStiffnessZ', 'RotationalStiffnessY'] }
-        : { Name: 'Probe fixed', TranslationalStiffnessX: true, TranslationalStiffnessZ: true, RotationalStiffnessY: false },
+        ? { Name: 'Probe fixed', unchecked: ['LinearStiffnessX', 'LinearStiffnessY', 'LinearStiffnessZ', 'RotationalStiffnessX', 'RotationalStiffnessY', 'RotationalStiffnessZ'] }
+        : { Name: 'Probe fixed', TranslationalStiffnessX: true, TranslationalStiffnessY: true, TranslationalStiffnessZ: true, RotationalStiffnessX: false, RotationalStiffnessY: false, RotationalStiffnessZ: false },
     }),
     build: ({ create, editor, anchor }) => create.addStructuralPointConnectionToStore(editor, anchor, {
       Position: [0, 0, 0], Name: 'Probe support', GlobalId: G.connection,

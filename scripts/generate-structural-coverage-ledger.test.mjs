@@ -44,13 +44,17 @@ test('catalogue: derived per schema from the generated tables, schema difference
   assert.deepEqual(byId.get('IFC2X3/IfcStructuralLoadTemperature').own, ['Name', 'DeltaT_Constant', 'DeltaT_Y', 'DeltaT_Z']);
 });
 
-test('create scene: in every schema, each need runs and each expected value names an attribute of that entity', () => {
+test('create scene: in every schema, each need runs earlier and each expected value names an attribute of that entity', () => {
   const { tables } = deriveCatalogue(ROOT);
   const bad = [];
   for (const schema of Object.keys(tables)) {
-    const ids = new Set(stepsFor(schema).map((s) => s.id));
-    for (const step of stepsFor(schema)) {
-      for (const need of step.needs ?? []) if (!ids.has(need)) bad.push(`${step.id}: needs ${need}, which does not run in ${schema}`);
+    const order = stepsFor(schema).map((s) => s.id);
+    for (const [at, step] of stepsFor(schema).entries()) {
+      // buildScene fills its results in order, so a need must run, and run earlier.
+      for (const need of step.needs ?? []) {
+        const i = order.indexOf(need);
+        if (i === -1 || i > at) bad.push(`${step.id}: needs ${need}, which does not run before it in ${schema}`);
+      }
       for (const [entity, expect] of Object.entries(step.emits)) {
         const attrs = tables[schema].table.get(entity)?.attributes;
         if (!attrs) { bad.push(`${step.id}: ${schema} has no ${entity}`); continue; }

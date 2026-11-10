@@ -42,8 +42,9 @@ Not-applicable cells come only from `notApplicable()` in `catalogue.mjs`, by
 family or schema: only items and activities render, relationships have no card
 of their own, IFC4X3 rows have no convert level (the hop under test is
 IFC4 <-> IFC2X3), and each kind of row uses its own levels. An entity the other
-schema lacks keeps its convert level: the converter may map it and restore it,
-and the R0 run measured some that do.
+schema lacks keeps its convert level, so the cell shows what the converter does
+with it: maps it, refuses the file, or copies it through unconverted (which the
+probe reports and does not credit).
 
 ## Scoring and the ratchet
 

@@ -13,6 +13,9 @@
  * GlobalId, or by its type when it has none, since a re-export may renumber.
  * A record that comes back as another entity is partial evidence; one that is
  * gone is a failure. The converter throwing is the product failing, not the probe.
+ * An entity the intermediate schema lacks must not appear in the intermediate
+ * file at all: copying it through unconverted writes a schema-invalid file, so
+ * that file earns no credit for the row even when the record comes back.
  */
 
 import { CONVERT_HOP as OTHER } from '../catalogue.mjs';
@@ -27,8 +30,8 @@ function roundTrip(ctx, file, schema) {
   return cached(ctx, `convert:${file.path}`, () => (async () => {
     const { exportToStep } = ctx.pkgs.exporter;
     const there = exportToStep(await storeOf(ctx, file), { schema: OTHER[schema] });
-    return readStep(exportToStep(await parseStore(ctx.pkgs, there), { schema }));
-  })().then((step) => ({ step }), (error) => ({ error })));
+    return { there: readStep(there), step: readStep(exportToStep(await parseStore(ctx.pkgs, there), { schema })) };
+  })().then((r) => r, (error) => ({ error })));
 }
 
 function tuple(row, record, step, types) {
@@ -79,6 +82,11 @@ export default {
       for (const file of carriers) {
         const rt = await roundTrip(ctx, file, row.schema);
         if (rt.error) { problems.push(`${file.path}: ${row.schema} -> ${OTHER[row.schema]} -> ${row.schema} threw: ${rt.error.message.split('\n')[0]}`); checked++; continue; }
+        if (!ctx.tables[OTHER[row.schema]].types.has(row.entity.toUpperCase()) && rt.there.count(row.entity) > 0) {
+          problems.push(`${file.path}: ${row.entity} passed through unconverted into a file declaring ${OTHER[row.schema]}, which has no such entity`);
+          checked++;
+          continue;
+        }
         const r = compareFile(row, file, rt.step, types);
         problems.push(...r.problems);
         checked += r.checked;

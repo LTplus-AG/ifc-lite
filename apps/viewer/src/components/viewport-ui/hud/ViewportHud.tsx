@@ -47,17 +47,17 @@ import { HUD_REGIONS, setHudLaneRulerNode, setHudRegionNode, type HudRegionName 
  */
 const REGION_CLASSNAME: Record<HudRegionName, string> = {
   'top-left':
-    'top-0 left-0 items-start pt-[max(1rem,env(safe-area-inset-top))] pl-[max(1rem,env(safe-area-inset-left))]',
+    'top-0 left-0 items-start pt-safe-4 pl-safe-4',
   'top-center':
-    'top-0 -translate-x-1/2 items-center pt-[max(1rem,env(safe-area-inset-top))]',
+    'top-0 -translate-x-1/2 items-center pt-safe-4',
   'top-right':
-    'top-0 right-0 items-end pr-[max(1.5rem,env(safe-area-inset-right))]',
+    'top-0 right-0 items-end pr-safe-6',
   'bottom-left':
-    'bottom-0 left-0 items-start pb-[max(1rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))]',
+    'bottom-0 left-0 items-start pb-safe-4 pl-safe-4',
   'bottom-center':
-    'bottom-0 left-1/2 -translate-x-1/2 items-center pb-[max(1rem,env(safe-area-inset-bottom))]',
+    'bottom-0 left-1/2 -translate-x-1/2 items-center pb-safe-4',
   'bottom-right':
-    'bottom-0 right-0 items-end pb-[max(1rem,env(safe-area-inset-bottom))] pr-[max(1rem,env(safe-area-inset-right))]',
+    'bottom-0 right-0 items-end pb-safe-4 pr-safe-4',
 };
 
 /** The top-center lane's reserves (see above). */

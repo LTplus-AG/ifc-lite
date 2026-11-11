@@ -53,8 +53,8 @@ const PHONE_TARGET = 'relative h-9 w-9 flex-shrink-0 after:absolute after:-inset
  * rotations, and its ends by the top and bottom insets.
  */
 const BAR_CLASS: Record<MobileCommandPlacement, string> = {
-  'bottom-bar': 'flex items-center box-content h-11 border-t overflow-x-auto pb-[env(safe-area-inset-bottom)] pl-[max(0.25rem,env(safe-area-inset-left))] pr-[max(0.25rem,env(safe-area-inset-right))]',
-  'side-rail': 'flex flex-col items-center box-content w-11 border-l overflow-y-auto pr-[env(safe-area-inset-right)] pt-[max(0.25rem,env(safe-area-inset-top))] pb-[max(0.25rem,env(safe-area-inset-bottom))]',
+  'bottom-bar': 'flex items-center box-content h-11 border-t overflow-x-auto pb-safe-0 pl-safe-1 pr-safe-1',
+  'side-rail': 'flex flex-col items-center box-content w-11 border-l overflow-y-auto pr-safe-0 pt-safe-1 pb-safe-1',
 };
 
 export function MobileToolbar({ placement = 'bottom-bar' }: { placement?: MobileCommandPlacement }) {

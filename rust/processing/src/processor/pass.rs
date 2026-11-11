@@ -73,6 +73,10 @@ pub(super) struct PassContext<'c> {
     /// One slot per rayon worker, indexed by thread index (see `jobs.rs`).
     pub(super) worker_point_caches: WorkerPointCaches,
     pub(super) worker_placement_caches: WorkerPlacementCaches,
+    /// Some job of this pass started on a thread inside a resource scope
+    /// (account, source stop, terminal domain) it did not install: its output
+    /// may be refused or degraded by that scope (`jobs::run_job`).
+    pub(super) foreign_resource_scope: std::sync::atomic::AtomicBool,
 }
 
 /// What the geometry pass leaves for the finalise step.
@@ -193,6 +197,7 @@ impl<'c> PassContext<'c> {
             // Sized identically to `worker_point_caches`: memoizes each worker's
             // resolved placement world transforms across the whole model.
             worker_placement_caches: new_worker_placement_caches(),
+            foreign_resource_scope: std::sync::atomic::AtomicBool::new(false),
         }
     }
 }

@@ -21,6 +21,9 @@ export function assertActivitySchema(anchor: ActivityAnchor, builder: string, mo
   if ((anchor.schema && !['IFC2X3', 'IFC4', 'IFC4X3'].includes(anchor.schema)) || (modernOnly && anchor.schema === 'IFC2X3')) {
     throw new Error(`${builder}: unsupported schema ${anchor.schema}`);
   }
+  if (anchor.schema === 'IFC2X3' && (anchor.ownerHistoryId === null || anchor.ownerHistoryId === undefined)) {
+    throw new Error(`${builder}: IFC2X3 requires ownerHistoryId (IfcRoot.OwnerHistory)`);
+  }
 }
 
 /** Validate untyped SDK input before authoring any owned entity. */
@@ -43,6 +46,10 @@ export function assertAppliedLoad(builder: string, load: unknown): asserts load 
 /** Validate before writing either the owned load or its activity. Zero is a component. */
 export function validateLoad(builder: string, load: unknown, fields: readonly string[]): void {
   assertAppliedLoad(builder, load);
+  const name: unknown = Reflect.get(load, 'Name');
+  if (name !== undefined && name !== null && typeof name !== 'string') {
+    throw new Error(`${builder}: AppliedLoad.Name must be a string`);
+  }
   const values = fields.map(field => Reflect.get(load, field));
   if (!values.some(value => value !== undefined)) throw new Error(`${builder}: supply at least one load component`);
   for (let i = 0; i < values.length; i++) {

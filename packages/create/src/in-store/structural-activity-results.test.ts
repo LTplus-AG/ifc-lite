@@ -161,6 +161,45 @@ describe.each(['IFC2X3', 'IFC4', 'IFC4X3'])('%s runtime activity validation (#97
     ] as const),
   ] as const;
 
+  if (schema === 'IFC2X3') {
+    it('requires OwnerHistory even when a direct caller bypasses resolveSpatialAnchor (#9764)', async () => {
+      const { editor, anchor } = await fresh(schema);
+      for (const [builder, params] of [...builders, [addStructuralResultGroupToStore, {
+        TheoryType: 'FIRST_ORDER_THEORY', IsLinear: true, ResultForLoadGroup: 1, ReactionIds: [30],
+      }]] as const) {
+        for (const ownerHistoryId of [null, undefined]) {
+          expect(() => Reflect.apply(builder, undefined, [editor, { ...anchor, ownerHistoryId }, params]))
+            .toThrow(`${builder.name}: IFC2X3 requires ownerHistoryId (IfcRoot.OwnerHistory)`);
+          expect(editor.getMutationView().getNewEntities()).toHaveLength(0);
+        }
+      }
+    });
+  } else {
+    it('keeps optional OwnerHistory and absent load names valid on IFC4+ (#9764)', async () => {
+      const { editor, anchor, roundTrip } = await fresh(schema);
+      const ids = builders.map(([builder, params]) => Reflect.apply(builder, undefined, [
+        editor, { ...anchor, ownerHistoryId: null }, { ...params, AppliedLoad: { ...params.AppliedLoad, Name: null } },
+      ]));
+      const { attrs } = await roundTrip();
+      for (const { activityId, loadId } of ids) {
+        expect(attrs(activityId)[1]).toBeNull();
+        expect(attrs(loadId)[0]).toBeNull();
+      }
+    });
+  }
+
+  it('rejects non-text AppliedLoad.Name before writing (#9764)', async () => {
+    const { editor, anchor } = await fresh(schema);
+    for (const [builder, params] of builders) {
+      for (const Name of [42, true, [], {}]) {
+        expect(() => Reflect.apply(builder, undefined, [editor, anchor, {
+          ...params, AppliedLoad: { ...params.AppliedLoad, Name },
+        }])).toThrow(`${builder.name}: AppliedLoad.Name must be a string`);
+        expect(editor.getMutationView().getNewEntities()).toHaveLength(0);
+      }
+    }
+  });
+
   it('rejects invalid GlobalOrLocal with the method and allowed values before writing', async () => {
     const { editor, anchor } = await fresh(schema);
     for (const [builder, params] of builders) {
@@ -225,4 +264,14 @@ describe.each(['IFC2X3', 'IFC4', 'IFC4X3'])('%s runtime activity validation (#97
       ? ['Planar Action', 'Point Reaction']
       : ['Planar Action', 'Point Reaction', 'Surface Action', 'Curve Reaction', 'Surface Reaction']);
   });
+});
+
+it('omitted anchor schema uses the documented IFC4 default (#9764)', async () => {
+  const { editor, anchor, roundTrip } = await fresh('IFC4');
+  const defaultAnchor = { ...anchor, schema: undefined, ownerHistoryId: null };
+  addStructuralSurfaceActionToStore(editor, defaultAnchor, { AppliedLoad: { Type: 'IfcStructuralLoadPlanarForce', PlanarForceZ: 1 } });
+  addStructuralCurveReactionToStore(editor, defaultAnchor, { AppliedLoad: { LinearForceZ: 2 } });
+  addStructuralSurfaceReactionToStore(editor, defaultAnchor, { AppliedLoad: { PlanarForceZ: 3 } });
+  const { data } = await roundTrip();
+  expect(data.activities.map(a => a.type)).toEqual(['IfcStructuralSurfaceAction', 'IfcStructuralCurveReaction', 'IfcStructuralSurfaceReaction']);
 });

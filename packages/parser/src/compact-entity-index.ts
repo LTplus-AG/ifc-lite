@@ -9,6 +9,7 @@ import { checkByteSpan } from './checked-byte-span.js';
 import { checkedExpressId } from './express-id.js';
 import type { EntityRef } from './types.js';
 import { internType, lastEqualIndex, type CompactEntityIndexColumns } from './compact-entity-index-columns.js';
+import { LazyMembership } from './compact-entity-index-membership.js';
 import { yieldToEventLoop } from './yield-to-event-loop.js';
 
 /**
@@ -27,6 +28,7 @@ export class CompactEntityIndex {
   private readonly typeStringMap: Map<string, number>;
   readonly size: number;
 
+  private membership: LazyMembership | undefined;
   /** LRU cache for recently accessed EntityRefs */
   private lruCache: Map<number, EntityRef>;
   private lruKeys: MapIterator<number> | undefined;
@@ -123,11 +125,9 @@ export class CompactEntityIndex {
     return ref;
   }
 
-  /**
-   * Check if an expressId exists (Map-compatible interface).
-   */
+  /** Check if an expressId exists (Map-compatible); a bitset answers once warm (LazyMembership). */
   has(expressId: number): boolean {
-    return this.binarySearch(expressId) >= 0;
+    return (this.membership ??= new LazyMembership(this.expressIds)).has(expressId) ?? this.binarySearch(expressId) >= 0;
   }
 
   /**

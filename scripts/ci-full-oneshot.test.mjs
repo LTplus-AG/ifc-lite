@@ -112,9 +112,11 @@ test('the API is read only once the cheap checks pass', () => {
   assert.equal(decide({ pr: () => openPr({ labels: [] }), jobs: boom }).action, 'keep', 'no jobs call without the label');
 });
 
-test('ranFullLane counts a fast-skipped lane that ran, whatever its verdict, and nothing else', () => {
+test('ranFullLane counts only a fast-skipped lane that ran to success', () => {
   assert.equal(ranFullLane([{ name: 'Node tests (shard 2/4)', conclusion: 'success' }]), true);
-  assert.equal(ranFullLane([{ name: 'Viewer E2E smoke (3/8)', conclusion: 'cancelled' }]), true);
+  for (const conclusion of ['cancelled', 'failure', 'skipped']) {
+    assert.equal(ranFullLane([{ name: 'Viewer E2E smoke (3/8)', conclusion }]), false, conclusion);
+  }
   assert.equal(ranFullLane([{ name: 'Rust tests', conclusion: 'success' }, { name: 'Lint', conclusion: 'success' }]), false, 'lanes the fast lane also runs prove nothing');
   assert.equal(ranFullLane([{ name: 'Provenance tests', conclusion: null }]), false, 'still queued');
   assert.equal(ranFullLane(null), false);
@@ -145,11 +147,11 @@ function fakeGh(routes) {
   return { gh, calls };
 }
 const ok = (v) => v;
-const prJson = (over = {}) => ({ number: 7, state: 'open', head: { sha: SHA, repo: { full_name: 'o/r' } }, labels: [{ name: FULL_LABEL }], ...over });
+const prJson = (over = {}) => ({ number: 7, state: 'open', head: { sha: SHA, repo: { id: 1, full_name: 'o/r' } }, labels: [{ name: FULL_LABEL }], ...over });
 
 function cli(env, routes, payload = {}) {
   const event = join(TMP, `event-${Math.random().toString(36).slice(2)}.json`);
-  writeFileSync(event, JSON.stringify({ workflow_run: { id: 99, event: 'pull_request', conclusion: 'success', head_sha: SHA, head_branch: 'feat', created_at: '2026-11-10T10:00:00Z', head_repository: { full_name: 'o/r', owner: { login: 'o' } }, pull_requests: [{ number: 7, head: { sha: SHA }, base: { repo: { url: 'https://api.github.com/repos/o/r' } } }], ...payload } }));
+  writeFileSync(event, JSON.stringify({ workflow_run: { id: 99, event: 'pull_request', conclusion: 'success', head_sha: SHA, head_branch: 'feat', created_at: '2026-11-10T10:00:00Z', head_repository: { id: 1, full_name: 'o/r', owner: { login: 'o' } }, pull_requests: [{ number: 7, head: { sha: SHA, repo: { id: 1 } }, base: { repo: { url: 'https://api.github.com/repos/o/r' } } }], ...payload } }));
   const summary = join(TMP, `summary-${Math.random().toString(36).slice(2)}`);
   writeFileSync(summary, '');
   const { gh, calls } = fakeGh(routes);
@@ -184,28 +186,51 @@ test('CLI `off`: no API call at all', () => {
 });
 
 test('CLI: a fork PR (no linked number) is found by head branch and sha', () => {
-  const fork = { full_name: 'f/r', owner: { login: 'f' } };
-  const forkPr = (sha) => prJson({ head: { sha, repo: { full_name: 'f/r' } } });
+  const fork = { id: 2, full_name: 'f/r', owner: { login: 'f' } };
+  const forkPr = (sha) => prJson({ head: { sha, repo: { id: 2, full_name: 'f/r' } } });
   const r = cli({}, [['repos/o/r/pulls -f state=open -f head=f:feat', ok([forkPr('c'.repeat(40)), forkPr(SHA)])], ...ROUTES.slice(1)], { pull_requests: [], head_repository: fork });
   assert.equal(r.d.action, 'remove');
 });
 
-test('CLI: a PR whose head repository is not the run\'s is ignored, so another fork cannot steer the decision (#9787 review)', () => {
-  // Same head SHA pushed from a different repository.
-  const linked = cli({}, [['repos/o/r/pulls/7', ok(prJson({ head: { sha: SHA, repo: { full_name: 'evil/r' } } }))], ...ROUTES.slice(1)]);
-  assert.equal(linked.d.action, 'keep');
-  assert.match(linked.d.reason, /no open PR has this head/); // @source-text-assertion-ok subject is the decision's returned reason
-  const listed = cli({}, [['repos/o/r/pulls -f state=open -f head=o:feat', ok([prJson({ head: { sha: SHA, repo: { full_name: 'evil/r' } } })])], ...ROUTES.slice(1)], { pull_requests: [] });
-  assert.equal(listed.d.action, 'keep');
-  assert.ok(![...linked.calls, ...listed.calls].some((c) => c.includes('DELETE'))); // @source-text-assertion-ok subject is the API calls the CLI made
-  // A spoofed PR listed FIRST must not hide the real one listed after it.
-  const both = cli({}, [['repos/o/r/pulls -f state=open -f head=o:feat', ok([prJson({ number: 8, head: { sha: SHA, repo: { full_name: 'evil/r' } } }), prJson()])], ...ROUTES.slice(1)], { pull_requests: [] });
-  assert.equal(both.d.action, 'remove');
-  assert.equal(both.d.number, 7);
+test('CLI: a PR whose head repository is not the run\'s is ignored, on both lookup paths (#9787 review)', () => {
+  // Same head SHA pushed from another repository (id 9), alone: nothing matches.
+  const evil = { head: { sha: SHA, repo: { id: 9, full_name: 'evil/r' } } };
+  // No linked entry matches, so the lookup falls through to the branch listing, which holds only the foreign PR.
+  const linked = cli({}, [['repos/o/r/pulls -f state=open -f head=o:feat', ok([prJson({ number: 8, ...evil })])], ...ROUTES], { pull_requests: [{ number: 8, ...evil, base: { repo: { url: 'https://api.github.com/repos/o/r' } } }] });
+  const listed = cli({}, [['repos/o/r/pulls -f state=open -f head=o:feat', ok([prJson({ number: 8, ...evil })])], ...ROUTES.slice(1)], { pull_requests: [] });
+  for (const r of [linked, listed]) {
+    assert.equal(r.d.action, 'keep');
+    assert.match(r.d.reason, /from this run's head repository/); // @source-text-assertion-ok subject is the decision's returned reason
+    assert.ok(!r.calls.some((c) => c.includes('DELETE'))); // @source-text-assertion-ok subject is the API calls the CLI made
+  }
+  assert.ok(!linked.calls.includes('api repos/o/r/pulls/8'), 'the foreign linked PR is never read'); // @source-text-assertion-ok subject is the API calls the CLI made
+});
+
+test('CLI: a foreign PR listed FIRST does not hide the real one, on both lookup paths', () => {
+  const evil = { number: 8, head: { sha: SHA, repo: { id: 9, full_name: 'evil/r' } } };
+  const real = { number: 7, head: { sha: SHA, repo: { id: 1 } }, base: { repo: { url: 'https://api.github.com/repos/o/r' } } };
+  const linked = cli({}, ROUTES, { pull_requests: [{ ...evil, base: real.base }, real] });
+  const listed = cli({}, [['repos/o/r/pulls -f state=open -f head=o:feat', ok([prJson(evil), prJson()])], ...ROUTES.slice(1)], { pull_requests: [] });
+  for (const r of [linked, listed]) {
+    assert.equal(r.d.action, 'remove');
+    assert.equal(r.d.number, 7);
+  }
+});
+
+test('CLI: a renamed head repository still matches by id, on both lookup paths', () => {
+  const renamed = prJson({ head: { sha: SHA, repo: { id: 1, full_name: 'o/renamed' } } });
+  assert.equal(cli({}, [['repos/o/r/pulls/7', ok(renamed)], ...ROUTES.slice(1)]).d.action, 'remove');
+  assert.equal(cli({}, [['repos/o/r/pulls -f state=open -f head=o:feat', ok([renamed])], ...ROUTES.slice(1)], { pull_requests: [] }).d.action, 'remove');
+});
+
+test('CLI: the live linked PR must come from the run\'s head repository too, not only the webhook entry', () => {
+  const r = cli({}, [['repos/o/r/pulls/7', ok(prJson({ head: { sha: SHA, repo: { id: 9, full_name: 'evil/r' } } }))], ['repos/o/r/pulls -f state=open', ok([])], ...ROUTES.slice(1)]);
+  assert.equal(r.d.action, 'keep');
+  assert.ok(!r.calls.some((c) => c.includes('DELETE'))); // @source-text-assertion-ok subject is the API calls the CLI made
 });
 
 test('CLI: a PR of another repository listed for the same head is not this run\'s PR', () => {
-  const other = { number: 3, head: { sha: SHA }, base: { repo: { url: 'https://api.github.com/repos/fork/r' } } };
+  const other = { number: 3, head: { sha: SHA, repo: { id: 1 } }, base: { repo: { url: 'https://api.github.com/repos/fork/r' } } };
   const r = cli({}, [['repos/o/r/pulls -f state=open -f head=o:feat', ok([prJson()])], ...ROUTES.slice(1)], { pull_requests: [other] });
   assert.ok(!r.calls.includes('api repos/o/r/pulls/3'), 'never reads #3 of this repo'); // @source-text-assertion-ok subject is the API calls the CLI made
   assert.equal(r.d.action, 'remove');
@@ -236,7 +261,7 @@ test('WORKFLOW: workflow_run on Test, never runs PR code, least privilege, per-P
   assert.equal(job.if, "github.event.workflow_run.event == 'pull_request' && (vars.CI_FULL_ONESHOT == 'shadow' || vars.CI_FULL_ONESHOT == 'on')");
   // The literal workflow expression this test pins, not a template string.
   // eslint-disable-next-line no-template-curly-in-string
-  assert.equal(job.concurrency.group, 'ci-full-oneshot-${{ github.event.workflow_run.head_repository.full_name }}-${{ github.event.workflow_run.head_branch }}');
+  assert.equal(job.concurrency.group, 'ci-full-oneshot-${{ github.event.workflow_run.head_repository.id }}-${{ github.event.workflow_run.head_branch }}');
   // The sparse checkout must hold the script's whole import closure, or the
   // job dies on a missing module only once the switch is on.
   const closure = new Set();

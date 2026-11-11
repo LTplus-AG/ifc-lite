@@ -38,9 +38,10 @@
  * viewer, node and provenance lanes skip while `rust-retained` (which needs
  * only `changes`) still runs, so "a fast-skipped lane ran" would hold. A job
  * list cannot tell a dependency skip from a path-filter skip, so the run's own
- * verdict is the test: `success` means no lane failed or was cancelled, and
- * every skip was the path filter's. After a red full run the label stays, so
- * the author's next push gets the full lanes again.
+ * verdict is the test: `success` means no lane failed or was cancelled. It
+ * does NOT mean the lanes ran: a fast-lane or replay run is green with them
+ * skipped, which is why the fast-skipped-lane proof is still required. After
+ * a red full run the label stays, so the next push gets the full lanes again.
  *
  *   node scripts/ci-full-oneshot.mjs --run   reads GITHUB_EVENT_PATH (workflow_run)
  */
@@ -64,11 +65,11 @@ export const FAST_SKIPPED_JOB_NAMES = {
   'rust-retained': 'Rust tests (retained)',
 };
 
-/** Did any fast-skipped job really run (not skipped, not absent) in this run? */
+/** Did any fast-skipped job run to `success` in this run? */
 export function ranFullLane(jobs) {
   if (!Array.isArray(jobs)) return false;
   const prefixes = FAST_SKIPPED_JOBS.map((k) => FAST_SKIPPED_JOB_NAMES[k]);
-  return jobs.some((j) => typeof j?.name === 'string' && prefixes.some((p) => j.name.startsWith(p)) && j.conclusion && j.conclusion !== 'skipped');
+  return jobs.some((j) => typeof j?.name === 'string' && prefixes.some((p) => j.name.startsWith(p)) && j.conclusion === 'success');
 }
 
 /**
@@ -95,7 +96,7 @@ export function decideOneshot({ mode, prLane, run, pr, jobs, labeledAt }) {
   } catch (err) {
     return keep(`could not read the PR (${err.message})`, { warning: `could not read the PR: ${err.message}` });
   }
-  if (!p) return keep('no open PR has this head');
+  if (!p) return keep('no open PR from this run\'s head repository has this head');
   const at = { number: p.number };
   if (p.state !== 'open') return keep(`#${p.number} is ${p.state}`, at);
   if (!run.headSha || p.headSha !== run.headSha) return keep(`#${p.number} has moved to a newer head; that head's run decides`, at);
@@ -106,7 +107,7 @@ export function decideOneshot({ mode, prLane, run, pr, jobs, labeledAt }) {
   } catch (err) {
     return keep(`could not read the run's jobs (${err.message})`, { ...at, warning: `could not read the run's jobs: ${err.message}` });
   }
-  if (!ranFullLane(list)) return keep(`no fast-skipped lane ran in this run, so it was not a full-lane run (the label may have arrived after it started)`, at);
+  if (!ranFullLane(list)) return keep(`no fast-skipped lane ran to success in this run, so it was not a full-lane run (the label may have arrived after it started)`, at);
   let applied;
   try {
     applied = Date.parse(labeledAt(p.number) ?? '');
@@ -123,18 +124,25 @@ export function decideOneshot({ mode, prLane, run, pr, jobs, labeledAt }) {
 /** The open PR this run's head belongs to, or null. */
 function findPr(gh, repo, wr) {
   // The PR must come from the run's own head repository: a fork pushing
-  // another PR's head SHA must not steer this decision.
-  const headRepo = wr.head_repository?.full_name;
-  const fromRunHead = (p) => Boolean(headRepo) && p?.head?.repo?.full_name === headRepo;
-  const shape = (p) => (fromRunHead(p) ? { number: p.number, state: p.state, headSha: p.head?.sha, labels: (p.labels ?? []).map((l) => l.name) } : null);
-  // `pull_requests` can list PRs of other repos sharing the head branch.
-  const linked = (wr.pull_requests ?? []).find((p) => p.head?.sha === wr.head_sha && String(p.base?.repo?.url ?? '').endsWith(`/repos/${repo}`))?.number;
-  if (linked) return shape(gh(['api', `repos/${repo}/pulls/${linked}`], `PR #${linked}`));
+  // another PR's head SHA must not steer this decision. Compared by id, not
+  // name. A fork whose owner renames between the run and this decision is
+  // still missed by the listing (it queries by owner login), so the label
+  // stays: the safe direction.
+  const headRepoId = wr.head_repository?.id;
+  const fromRunHead = (p) => headRepoId != null && p?.head?.sha === wr.head_sha && p.head?.repo?.id === headRepoId;
+  const shape = (p) => ({ number: p.number, state: p.state, headSha: p.head?.sha, labels: (p.labels ?? []).map((l) => l.name) });
+  // `pull_requests` can list PRs of other repos sharing the head branch, in any order.
+  const linked = (wr.pull_requests ?? []).find((p) => fromRunHead(p) && String(p.base?.repo?.url ?? '').endsWith(`/repos/${repo}`))?.number;
+  if (linked) {
+    // The live PR, not just the webhook's entry, must come from the run's head repository.
+    const live = gh(['api', `repos/${repo}/pulls/${linked}`], `PR #${linked}`);
+    return live?.head?.repo?.id === headRepoId ? shape(live) : null;
+  }
   // A fork PR's run carries no `pull_requests`; find it by head branch.
   const owner = wr.head_repository?.owner?.login;
   if (!owner || !wr.head_branch) return null;
   const open = gh(['api', '-X', 'GET', `repos/${repo}/pulls`, '-f', 'state=open', '-f', `head=${owner}:${wr.head_branch}`], 'open PRs for the head branch');
-  const hit = open.find((p) => p.head?.sha === wr.head_sha && fromRunHead(p));
+  const hit = open.find(fromRunHead);
   return hit ? shape(hit) : null;
 }
 

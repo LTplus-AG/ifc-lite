@@ -9,19 +9,13 @@ import { checkByteSpan } from './checked-byte-span.js';
 import { checkedExpressId } from './express-id.js';
 import type { EntityRef } from './types.js';
 import { internType, lastEqualIndex, type CompactEntityIndexColumns } from './compact-entity-index-columns.js';
+import { LazyMembership } from './compact-entity-index-membership.js';
 import { yieldToEventLoop } from './yield-to-event-loop.js';
 
 /**
  * Compact read-only entity index backed by sorted typed arrays.
  * Implements the same interface as Map<number, EntityRef> for lookups.
  */
-/** `has` calls answered by binary search before the membership bitset is built. */
-const MEMBERSHIP_AFTER_LOOKUPS = 256;
-/** Largest express id a membership bitset covers (32 MiB of bits). */
-const MEMBERSHIP_MAX_ID = 256 * 1024 * 1024;
-/** Id range per indexed entity above which the bitset would be mostly empty. */
-const MEMBERSHIP_MAX_SPARSITY = 64;
-
 export class CompactEntityIndex {
   /** Sorted array of expressIds for binary search */
   private readonly expressIds: Uint32Array;
@@ -34,11 +28,7 @@ export class CompactEntityIndex {
   private readonly typeStringMap: Map<string, number>;
   readonly size: number;
 
-  /** `has` bitset: undefined until built or refused, null when refused (see `membership`). */
-  private present: Uint32Array | null | undefined;
-  private membershipLookups = 0;
-  private maxMemberId = 0;
-
+  private membership: LazyMembership | undefined;
   /** LRU cache for recently accessed EntityRefs */
   private lruCache: Map<number, EntityRef>;
   private lruKeys: MapIterator<number> | undefined;
@@ -135,37 +125,9 @@ export class CompactEntityIndex {
     return ref;
   }
 
-  /**
-   * Check if an expressId exists (Map-compatible interface).
-   */
+  /** Check if an expressId exists (Map-compatible); a bitset answers once warm (LazyMembership). */
   has(expressId: number): boolean {
-    const present = this.membership();
-    if (present === null) return this.binarySearch(expressId) >= 0;
-    // `>>> 0` keeps exactly the uint32 ids the column can hold (no fractions, negatives or > 2^32-1).
-    return (expressId >>> 0) === expressId && expressId <= this.maxMemberId && (present[expressId >>> 5] & (1 << (expressId & 31))) !== 0;
-  }
-
-  /**
-   * Membership as a bitset over the id range, built on the
-   * `MEMBERSHIP_AFTER_LOOKUPS`-th `has` call: relationship queries filter every
-   * related id through `has` (millions of calls while a hierarchy renders), and
-   * a binary search per call was ~0.1 s of a large model's reopen. Null (binary
-   * search) until then, for an id range too sparse for a bitset, and once the
-   * columns have been detached (transport), which answers false as before.
-   */
-  private membership(): Uint32Array | null {
-    if (this.expressIds.length !== this.size) return null;
-    if (this.present !== undefined) return this.present;
-    if (++this.membershipLookups < MEMBERSHIP_AFTER_LOOKUPS) return null;
-    const max = this.size > 0 ? this.expressIds[this.size - 1] : 0;
-    if (this.size === 0 || max > MEMBERSHIP_MAX_ID || max > this.size * MEMBERSHIP_MAX_SPARSITY) return (this.present = null);
-    const present = new Uint32Array((max >>> 5) + 1);
-    for (let i = 0; i < this.size; i++) {
-      const id = this.expressIds[i];
-      present[id >>> 5] |= 1 << (id & 31);
-    }
-    this.maxMemberId = max;
-    return (this.present = present);
+    return (this.membership ??= new LazyMembership(this.expressIds)).has(expressId) ?? this.binarySearch(expressId) >= 0;
   }
 
   /**

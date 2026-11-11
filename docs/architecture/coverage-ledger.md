@@ -594,7 +594,7 @@ Columns:
 | IfcStructuralPointConnection | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC4:✅ | — |
 | IfcStructuralPointReaction | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcStructuralProfileProperties | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
-| IfcStructuralResultGroup | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
+| IfcStructuralResultGroup | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC4:✅ | — |
 | IfcStructuralSteelProfileProperties | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcStructuralSurfaceConnection | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcStructuralSurfaceMember | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
@@ -1376,7 +1376,7 @@ Columns:
 | IfcStructuralPointAction | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcStructuralPointConnection | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcStructuralPointReaction | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
-| IfcStructuralResultGroup | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
+| IfcStructuralResultGroup | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcStructuralSurfaceAction | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcStructuralSurfaceConnection | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcStructuralSurfaceMember | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
@@ -2249,7 +2249,7 @@ Columns:
 | IfcStructuralPointAction | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC4:✅ | — |
 | IfcStructuralPointConnection | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC4:✅ | — |
 | IfcStructuralPointReaction | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcStructuralResultGroup | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
+| IfcStructuralResultGroup | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC4:✅ | — |
 | IfcStructuralSurfaceAction | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcStructuralSurfaceConnection | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcStructuralSurfaceMember | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |

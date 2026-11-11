@@ -1524,6 +1524,91 @@ jobs:
           test_step_outcome: ${{ steps.viewer_retry.outcome }}
           job_name: viewer-tests (shard ${{ matrix.shard }})
 
+  # SELECTED VIEWER TESTS on a fast-lane PR (scripts/ci-viewer-select.mjs).
+  # The fast lane skips the shards above, so a viewer failure otherwise first
+  # shows in the merge queue. This runs the viewer test files the PR's changes
+  # reach through the static import graph, nearest first, within a time budget.
+  # Switch: repo variable CI_PR_VIEWER_SELECT = off (default: this job is
+  # skipped) | shadow (record the selection, run nothing) | on (run it).
+  # ADVISORY: deliberately NOT in the aggregate's `needs` (see
+  # UNJUDGED_BY_DESIGN in scripts/check-ci-aggregate-coverage.mjs). A red
+  # result is visible on the PR; the merge queue's full run is the gate.
+  viewer-tests-selected:
+    name: Viewer tests (selected for this PR)
+    needs: [changes, build]
+    if: >-
+      github.event_name == 'pull_request' &&
+      (vars.CI_PR_VIEWER_SELECT == 'shadow' || vars.CI_PR_VIEWER_SELECT == 'on') &&
+      needs.changes.outputs.lane == 'fast' &&
+      needs.changes.outputs.batch != 'true' &&
+      needs.changes.outputs.noop != 'true' &&
+      (needs.changes.outputs.frontend == 'true' || needs.changes.outputs.rust == 'true')
+    runs-on: ${{ ((vars.SELF_HOSTED_QUEUE == 'true' && github.event_name == 'merge_group') || (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted'))))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: false
+          persist-credentials: false
+          # HEAD is the PR merge commit; HEAD^1 is the base tip the diff is taken against.
+          fetch-depth: 2
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      # Re-derives the switch from the same inputs as the `if:` above, so a
+      # job that runs when it should not still selects nothing.
+      - name: Select viewer tests
+        id: select
+        env:
+          CI_PR_VIEWER_SELECT: ${{ vars.CI_PR_VIEWER_SELECT }}
+          LANE: ${{ needs.changes.outputs.lane }}
+          NOOP: ${{ needs.changes.outputs.noop }}
+          HEAD_REF: ${{ github.head_ref }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: node scripts/ci-viewer-select.mjs --select --out "$RUNNER_TEMP/viewer-selection"
+      # Kept per PR run so a queue failure in a viewer test can be checked
+      # against what this PR's selection covered (recall).
+      - name: Upload the selection
+        if: steps.select.outputs.artifact == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: viewer-test-selection
+          path: ${{ runner.temp }}/viewer-selection/
+          retention-days: 30
+          if-no-files-found: error
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+        if: steps.select.outputs.run == 'true'
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: steps.select.outputs.run == 'true'
+        with:
+          node-version: 22
+          cache: pnpm
+      - if: steps.select.outputs.run == 'true'
+        run: pnpm install --frozen-lockfile
+      - name: Download build artifacts
+        if: steps.select.outputs.run == 'true'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: build-output
+          path: packages
+      - name: Cache test fixtures
+        if: steps.select.outputs.run == 'true'
+        id: fixtures-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: tests/models
+          key: ci-fixtures-source-v2-${{ runner.os }}-${{ hashFiles('tests/models/manifest.json', 'tests/models/README.md', 'tests/models/.manifest-ignore') }}
+      - name: Fetch fixtures
+        if: steps.select.outputs.run == 'true' && steps.fixtures-cache.outputs.cache-hit != 'true'
+        run: pnpm fixtures
+      - name: Verify fixtures
+        if: steps.select.outputs.run == 'true'
+        run: pnpm fixtures:check
+      - name: Run the selected viewer tests
+        if: steps.select.outputs.run == 'true'
+        run: node scripts/ci-viewer-select.mjs --run "$RUNNER_TEMP/viewer-selection"
+
   node-guards:
     name: Node guards
     needs: [changes, build]

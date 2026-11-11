@@ -10,9 +10,10 @@
 
 import { iterateEffectiveEntityIds, type MutablePropertyView, type StoreEditor } from '@ifc-lite/mutations';
 import {
-  effectiveStructuralView, expandTypes, extractStructuralOnDemand, extractTypePropertiesOnDemand, normalizeIfcTypeName,
+  effectiveStoreyId, effectiveStructuralView, expandTypes, extractStructuralOnDemand, extractTypePropertiesOnDemand, normalizeIfcTypeName,
   structuralCounterparts, type IfcDataStore, type StructuralExtraction,
 } from '@ifc-lite/parser';
+import { effectiveContextType, effectiveMutationRelationships } from './edit/effective-mutation-view.js';
 import { listStoreys } from './generate-spaces-all.js';
 import { placementInAncestor, refId, transformBounds } from './host-geometry-frame.js';
 import { safeLengthUnitScale } from './length-unit-scale.js';
@@ -69,17 +70,10 @@ export function readStructuralDerivationFacts(store: IfcDataStore, editor: Store
   const reader = { entity: read };
   const metres = store.source.byteLength > 0 ? safeLengthUnitScale(store.source, store.entityIndex, 'readStructuralDerivationFacts') ?? 1 : 1;
   const structural = liveStructuralExtraction(store, view);
-  // Containment as the session has it: elements created or moved this session too.
-  const storeyOf = new Map<number, number>();
-  for (const { expressId: relId } of iterateEffectiveEntityIds(store, view, ['IFCRELCONTAINEDINSPATIALSTRUCTURE'])) {
-    const rel = read(relId);
-    const storey = refId(rel?.attributes[5]);
-    if (storey === null || read(storey)?.type.toUpperCase() !== 'IFCBUILDINGSTOREY') continue;
-    for (const related of Array.isArray(rel?.attributes[4]) ? rel.attributes[4] : []) {
-      const id = refId(related);
-      if (id !== null) storeyOf.set(id, storey);
-    }
-  }
+  // Containment as the session has it (created, moved and deleted elements), built once for every element.
+  const spatial = view.hasPendingChanges()
+    ? { relationships: effectiveMutationRelationships(store, view), isDeleted: (id: number) => view.isDeleted(id), typeName: (id: number) => effectiveContextType(store, view, id) }
+    : null;
   const elements: PhysicalElementFact[] = [];
   for (const { expressId, type: stepType } of iterateEffectiveEntityIds(store, view, expandTypes([...DERIVATION_CLASSES], store.schemaVersion))) {
     const type = normalizeIfcTypeName(stepType);
@@ -88,8 +82,7 @@ export function readStructuralDerivationFacts(store: IfcDataStore, editor: Store
       expressId,
       type,
       name: typeof name === 'string' ? name : null,
-      // Elements contained in a space or zone reach their storey through the parsed hierarchy.
-      storeyId: storeyOf.get(expressId) ?? store.spatialHierarchy?.elementToStorey.get(expressId) ?? null,
+      storeyId: effectiveStoreyId(store, expressId, spatial) ?? null,
       loadBearing: null,
       idealised: false,
     };

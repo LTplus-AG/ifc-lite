@@ -1,7 +1,7 @@
 diff --git a/packages/create/src/in-store/structural-derive-facts.ts b/packages/create/src/in-store/structural-derive-facts.ts
 --- a/packages/create/src/in-store/structural-derive-facts.ts
 +++ b/packages/create/src/in-store/structural-derive-facts.ts
-@@ -52,7 +52,7 @@ function loadBearingIn(sets: Sets): boolean | null {
+@@ -53,7 +53,7 @@ function loadBearingIn(sets: Sets): boolean | null {
  
  /** Occurrence `Pset_*Common.LoadBearing`, then the type's. */
  function readLoadBearing(store: IfcDataStore, view: MutablePropertyView, id: number): boolean | null {

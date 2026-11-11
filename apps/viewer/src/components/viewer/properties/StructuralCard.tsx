@@ -22,14 +22,13 @@ import { Boxes, Anchor, ArrowDownToLine, TriangleAlert, ChevronDown } from 'luci
 import { formatLocaleNumber, localeCount, useTranslation, type TranslationKey } from '@/i18n';
 import { formatLocaleList } from '@/i18n/intlFormat';
 import { EXPRESS_PREDEFINED_TYPE_ATTRIBUTE, EXPRESS_THICKNESS_ATTRIBUTE } from './express-labels';
-import {
-  structuralCounterparts,
-  type StructuralExtraction,
-  type StructuralConnectionInfo,
-  type StructuralActivityInfo,
-  type StructuralLoadInfo,
+import type {
+  StructuralExtraction,
+  StructuralConnectionInfo,
+  StructuralActivityInfo,
+  StructuralLoadInfo,
 } from '@ifc-lite/parser';
-import { selectedStructuralMember, structuralRelatedRows } from './selectedStructuralMember';
+import { structuralCardSubject, structuralRelatedRows } from './selectedStructuralMember';
 import { PersistentCollapsible } from './PersistentCollapsible';
 import { RelItem } from './RelationshipsCard';
 import { INSPECTOR_SECTION, INSPECTOR_TRIGGER, INSPECTOR_TITLE, INSPECTOR_COUNT, INSPECTOR_CHEVRON, INSPECTOR_SUBHEADING } from './inspector-ui';
@@ -54,10 +53,12 @@ export function StructuralCard({
   selectedGlobalId, sourceUnavailable = false, describeEntity, onSelectEntity,
 }: StructuralCardProps) {
   const { t, locale } = useTranslation();
-  const member = useMemo(
-    () => selectedStructuralMember(structuralData, selectedExpressId, selectedGlobalId),
+  const subject = useMemo(
+    () => structuralCardSubject(structuralData, selectedExpressId, selectedGlobalId),
     [structuralData, selectedExpressId, selectedGlobalId],
   );
+  const member = subject?.member ?? null;
+  const counterparts = subject?.counterparts ?? null;
 
   const related = useMemo(() => ({
     connections: structuralRelatedRows(structuralData?.connections ?? [], member?.connectionGlobalIds ?? []),
@@ -68,10 +69,7 @@ export function StructuralCard({
     () => member?.type ?? structuralData?.connections.find(c => c.expressId === selectedExpressId)?.type,
     [member, structuralData, selectedExpressId],
   );
-  // The physical-to-analytical link, from either end (#9668).
-  const counterparts = structuralData && selectedExpressId !== null && selectedExpressId > 0
-    ? structuralCounterparts(structuralData, selectedExpressId) : null;
-  if (!structuralData || (!member && !counterparts)) return null;
+  if (!structuralData || !subject) return null;
   const connections = related.connections.rows;
   const activities = related.activities.rows;
   const modelLabels = related.models.rows.flatMap(model => model.name ? [model.name] : []);

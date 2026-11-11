@@ -6,9 +6,9 @@
  * The physical-to-analytical link, asked from either end. The read model
  * stores one direction (each structural member and connection names its
  * `physicalElementIds`); this module answers "what are the counterparts of
- * entity X" for a physical element and for a structural item alike, so the
- * properties card, the consistency checks and the CLI ask the same question
- * the same way.
+ * entity X" for a physical element and for a structural item alike. The
+ * viewer's properties card asks it here; consistency checks and a CLI command
+ * should ask it the same way rather than reading `physicalElementIds`.
  */
 
 import { addUnique } from './structural-step-values.js';
@@ -20,10 +20,11 @@ export interface StructuralCounterparts {
    * `analytical`: the entity is a physical element and these are the
    * structural members and connections assigned to it (members first, then
    * connections, in read-model order). `physical`: the entity is a structural
-   * item and these are the elements it idealises, in file order.
+   * item and these are the elements it idealises, in its `physicalElementIds`
+   * order.
    */
   side: 'analytical' | 'physical';
-  /** Model-local express ids; never empty. */
+  /** Model-local express ids; never empty, frozen (shared by every lookup). */
   expressIds: readonly number[];
 }
 
@@ -42,10 +43,10 @@ export function structuralCounterparts(data: StructuralExtraction, expressId: nu
     for (const item of [...data.members, ...data.connections]) {
       const physical = item.physicalElementIds;
       if (!physical?.length) continue;
-      index.set(item.expressId, { side: 'physical', expressIds: physical });
+      index.set(item.expressId, { side: 'physical', expressIds: Object.freeze([...physical]) });
       for (const elementId of physical) addUnique(analytical, elementId, item.expressId);
     }
-    for (const [elementId, items] of analytical) index.set(elementId, { side: 'analytical', expressIds: items });
+    for (const [elementId, items] of analytical) index.set(elementId, { side: 'analytical', expressIds: Object.freeze(items) });
     indexes.set(data, index);
   }
   return index.get(expressId) ?? null;

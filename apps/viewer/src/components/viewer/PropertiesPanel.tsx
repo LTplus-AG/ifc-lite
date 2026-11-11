@@ -22,7 +22,7 @@ import { toGlobalIdFromModels } from '@/store/globalId';
 import { useIfc } from '@/hooks/useIfc';
 import { getOrCreateMutationView } from '@/sdk/adapters/mutation-view';
 import { IfcQuery } from '@ifc-lite/query';
-import { extractClassificationsOnDemand, extractTypeEntityOwnProperties, extractGeoreferencingOnDemand, extractLengthUnitScale, ProjectUnits, structuralCounterparts, taskProductExpressIds, taskProductGlobalIds, type IfcDataStore, type MaterialPsetGroup } from '@ifc-lite/parser';
+import { extractClassificationsOnDemand, extractTypeEntityOwnProperties, extractGeoreferencingOnDemand, extractLengthUnitScale, ProjectUnits, taskProductExpressIds, taskProductGlobalIds, type IfcDataStore, type MaterialPsetGroup } from '@ifc-lite/parser';
 import { RelationshipType, isSpatialStructureTypeName, isStoreyLikeSpatialTypeName } from '@ifc-lite/data';
 import type { EntityRef, FederatedModel } from '@/store/types';
 import { ZoneVolumeBreakdown } from './ZoneVolumeBreakdown';
@@ -47,7 +47,7 @@ import { MaterialCard } from './properties/MaterialCard';
 import { MaterialTotalsPanel } from './properties/MaterialTotalsPanel';
 import { ScheduleCard } from './properties/ScheduleCard';
 import { StructuralCard } from './properties/StructuralCard';
-import { selectedStructuralMember } from './properties/selectedStructuralMember';
+import { structuralCardSubject } from './properties/selectedStructuralMember';
 import { TaskEditCard } from './properties/TaskEditCard';
 import { DocumentCard } from './properties/DocumentCard';
 import { effectiveDocuments } from './properties/effectiveDocuments';
@@ -763,16 +763,13 @@ export function PropertiesPanel() {
     const out = effectiveStructuralData(dataStore as IfcDataStore, mutationView);
     return out.hasStructural ? out : null;
   }, [model, ifcDataStore, selectedEntity?.modelId, mutationViews, mutationVersion]);
-  /** True when StructuralCard renders for the selection (a structural member,
-   *  or either end of a physical-to-analytical link): asks the card's own two
-   *  questions, like `hasScheduleForSelection`, so the separator above it never
+  /** True when StructuralCard renders for the selection: asks the card's own
+   *  question, like `hasScheduleForSelection`, so the separator above it never
    *  renders on its own. */
-  const hasStructuralForSelection = useMemo(() => {
-    if (!selectedEntity || !structuralData) return false;
-    const expressId = selectedEntity.expressId;
-    return !!selectedStructuralMember(structuralData, expressId, selectedEntityGlobalId)
-      || (expressId > 0 && !!structuralCounterparts(structuralData, expressId));
-  }, [selectedEntity, structuralData, selectedEntityGlobalId]);
+  const hasStructuralForSelection = useMemo(
+    () => !!selectedEntity && !!structuralCardSubject(structuralData, selectedEntity.expressId, selectedEntityGlobalId),
+    [selectedEntity, structuralData, selectedEntityGlobalId],
+  );
 
   // Extract georeferencing info for the model (used in coordinates section)
   const georef = useMemo(() => {

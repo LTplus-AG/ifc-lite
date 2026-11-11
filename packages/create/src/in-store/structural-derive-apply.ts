@@ -18,14 +18,11 @@ import { createStyleEntityReader } from './style-entity-reader.js';
 import { addStructuralAnalysisModelToStore } from './structural-analysis-model.js';
 import { addStructuralCurveMemberToStore } from './structural-curve-member.js';
 import { liveStructuralExtraction } from './structural-derive-facts.js';
-import type { StructuralDerivationApplied, StructuralDerivationPlan, SupportType, Vec3 } from './structural-derive-types.js';
+import { DERIVED_ANALYSIS_MODEL_DESCRIPTION, type StructuralDerivationApplied, type StructuralDerivationPlan, type SupportType, type Vec3 } from './structural-derive-types.js';
 import { linkStructuralItemsToPhysicalInStore } from './structural-physical-link.js';
 import { addStructuralPointConnectionToStore, type StructuralBoundaryConditionParams } from './structural-point-connection.js';
 import { assignToStructuralGroupInStore, connectStructuralMemberToConnectionInStore } from './structural-relationships.js';
 import { addStructuralSurfaceMemberToStore } from './structural-surface-member.js';
-
-/** Written on the analysis model so a reader can tell a derived model from an authored one. */
-const DERIVED_ANALYSIS_MODEL_DESCRIPTION = 'Derived from the physical model by ifc-lite';
 
 function boundaryCondition(type: SupportType): StructuralBoundaryConditionParams {
   const rotation = type === 'fixed';
@@ -49,6 +46,14 @@ export function applyStructuralDerivation(
   }
   const view = editor.getMutationView();
   const structural = liveStructuralExtraction(store, view);
+  // Read live, not from the plan: a derived model may have been written since it was made.
+  const derived = structural.analysisModels.find((model) => model.description === DERIVED_ANALYSIS_MODEL_DESCRIPTION);
+  if (derived) {
+    throw new Error(`Structural derivation: the model already has a derived analysis model (#${derived.expressId}); a second one would not connect to it`);
+  }
+  for (const footingId of plan.nodes.flatMap((node) => node.support?.footingId ?? [])) {
+    if (!editor.hasEntity(footingId)) throw new Error(`Structural derivation: footing #${footingId} no longer exists; plan again`);
+  }
   for (const { elementId } of [...plan.curveMembers, ...plan.surfaceMembers]) {
     if (!editor.hasEntity(elementId)) throw new Error(`Structural derivation: element #${elementId} no longer exists; plan again`);
     if (structuralCounterparts(structural, elementId)?.side === 'analytical') {
@@ -75,9 +80,7 @@ export function applyStructuralDerivation(
     return placed;
   };
   // Resolve every anchor before the first write, so a refusal writes nothing.
-  for (const item of [...plan.curveMembers, ...plan.surfaceMembers, ...plan.nodes]) placementOf(item.storeyId);
-
-  const first = placementOf(plan.curveMembers[0]?.storeyId ?? plan.surfaceMembers[0].storeyId).anchor;
+  const [first] = [...plan.curveMembers, ...plan.surfaceMembers, ...plan.nodes].map((item) => placementOf(item.storeyId).anchor);
   const ownerHistoryId = first.ownerHistoryId;
   const { analysisModelId } = addStructuralAnalysisModelToStore(editor, first, {
     Name: 'Derived analysis model', Description: DERIVED_ANALYSIS_MODEL_DESCRIPTION, PredefinedType: 'LOADING_3D',

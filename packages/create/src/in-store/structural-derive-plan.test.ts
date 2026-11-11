@@ -25,7 +25,7 @@ const column = (x: number, y: number, z0: number, z1: number, more: Partial<Phys
 /** A beam along X at height z, from x0 to x1, given by its Axis representation. */
 const beam = (x0: number, x1: number, y: number, z: number, more: Partial<PhysicalElementFact> = {}) =>
   element('IfcBeam', { axis: [[x0, y, z], [x1, y, z]] }, more);
-const facts = (...elements: PhysicalElementFact[]): StructuralDerivationFacts => ({ elements, defaultStoreyId: 1 });
+const facts = (...elements: PhysicalElementFact[]): StructuralDerivationFacts => ({ elements, defaultStoreyId: 1, derivedModelId: null });
 
 describe('structural derivation plan (#9668)', () => {
   it('uses the Axis representation of a beam when present', () => {

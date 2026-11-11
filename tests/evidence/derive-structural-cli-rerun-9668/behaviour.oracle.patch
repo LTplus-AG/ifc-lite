@@ -4,9 +4,9 @@ diff --git a/packages/cli/src/commands/derive-structural.ts b/packages/cli/src/c
 @@ -58,7 +58,7 @@ export async function deriveStructuralCommand(args: string[]): Promise<void> {
      fatal(error instanceof Error ? error.message : String(error));
    }
-   const { report } = plan;
+   let { report } = plan;
 -  const writes = !dryRun;
 +  const writes = !dryRun && report.counts.curveMembers + report.counts.surfaceMembers > 0;
    if (writes) {
-     bim.store.deriveStructuralAnalysisModel(modelId, options);
-     const schema = (store.schemaVersion ?? 'IFC4') as 'IFC2X3' | 'IFC4' | 'IFC4X3';
+     try {
+       // Report what was written: derive plans again from the same state.

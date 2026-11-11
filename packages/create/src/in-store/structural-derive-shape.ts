@@ -73,7 +73,8 @@ function extrusionOf(reader: GeometryEntityReader, itemId: number): { solid: Ent
   for (let depth = 0; depth < MAX_ITEM_DEPTH; depth++) {
     const type = upper(item);
     if (type === 'IFCEXTRUDEDAREASOLID') return { solid: item!, frame };
-    if (type === 'IFCBOOLEANCLIPPINGRESULT' || type === 'IFCBOOLEANRESULT') {
+    // A difference only removes material, so its first operand carries the axis; a union or intersection does not.
+    if (type === 'IFCBOOLEANCLIPPINGRESULT' || (type === 'IFCBOOLEANRESULT' && item!.attributes[0] === '.DIFFERENCE.')) {
       item = reader.entity(refId(item!.attributes[1]) ?? 0);
       continue;
     }
@@ -193,7 +194,8 @@ export function readElementShape(reader: GeometryEntityReader, productId: number
   const out: ElementShape = {};
   const axis = withAxis ? readAxis(reader, reps.get('AXIS')) : null;
   if (axis) out.axis = axis.map((p) => scale(applyFrame(placement, p), metres)) as [Vec3, Vec3];
-  const prism = readPrism(reader, reps.get('BODY'), placement, metres);
+  // RepresentationIdentifier is optional; an unnamed representation counts as Body, as in resolve-host's bodyBounds.
+  const prism = readPrism(reader, reps.get('BODY') ?? reps.get(''), placement, metres);
   if (typeof prism === 'string') out.shapeIssue = prism;
   else out.prism = prism;
   return out;

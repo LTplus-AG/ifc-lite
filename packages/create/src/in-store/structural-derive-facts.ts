@@ -21,7 +21,7 @@ import { createStyleEntityReader, type StyleEntity } from './style-entity-reader
 import { scale } from './structural-derive-idealise.js';
 import { DERIVATION_CLASSES } from './structural-derive-plan.js';
 import { readElementShape } from './structural-derive-shape.js';
-import type { PhysicalElementFact, StructuralDerivationFacts } from './structural-derive-types.js';
+import { DERIVED_ANALYSIS_MODEL_DESCRIPTION, type PhysicalElementFact, type StructuralDerivationFacts } from './structural-derive-types.js';
 
 const FOOTINGS = new Set(['IfcFooting', 'IfcPile']);
 
@@ -69,6 +69,17 @@ export function readStructuralDerivationFacts(store: IfcDataStore, editor: Store
   const reader = { entity: read };
   const metres = store.source.byteLength > 0 ? safeLengthUnitScale(store.source, store.entityIndex, 'readStructuralDerivationFacts') ?? 1 : 1;
   const structural = liveStructuralExtraction(store, view);
+  // Containment as the session has it: elements created or moved this session too.
+  const storeyOf = new Map<number, number>();
+  for (const { expressId: relId } of iterateEffectiveEntityIds(store, view, ['IFCRELCONTAINEDINSPATIALSTRUCTURE'])) {
+    const rel = read(relId);
+    const storey = refId(rel?.attributes[5]);
+    if (storey === null || read(storey)?.type.toUpperCase() !== 'IFCBUILDINGSTOREY') continue;
+    for (const related of Array.isArray(rel?.attributes[4]) ? rel.attributes[4] : []) {
+      const id = refId(related);
+      if (id !== null) storeyOf.set(id, storey);
+    }
+  }
   const elements: PhysicalElementFact[] = [];
   for (const { expressId, type: stepType } of iterateEffectiveEntityIds(store, view, expandTypes([...DERIVATION_CLASSES], store.schemaVersion))) {
     const type = normalizeIfcTypeName(stepType);
@@ -77,7 +88,8 @@ export function readStructuralDerivationFacts(store: IfcDataStore, editor: Store
       expressId,
       type,
       name: typeof name === 'string' ? name : null,
-      storeyId: store.spatialHierarchy?.elementToStorey.get(expressId) ?? null,
+      // Elements contained in a space or zone reach their storey through the parsed hierarchy.
+      storeyId: storeyOf.get(expressId) ?? store.spatialHierarchy?.elementToStorey.get(expressId) ?? null,
       loadBearing: null,
       idealised: false,
     };
@@ -96,6 +108,7 @@ export function readStructuralDerivationFacts(store: IfcDataStore, editor: Store
     }
     elements.push(fact);
   }
+  const derived = structural.analysisModels.find((model) => model.description === DERIVED_ANALYSIS_MODEL_DESCRIPTION);
   // listStoreys sorts by elevation, lowest first.
-  return { elements, defaultStoreyId: listStoreys(store)[0]?.id ?? null };
+  return { elements, defaultStoreyId: listStoreys(store, view)[0]?.id ?? null, derivedModelId: derived?.expressId ?? null };
 }

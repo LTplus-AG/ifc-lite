@@ -204,6 +204,7 @@ export function planStructuralDerivation(facts: StructuralDerivationFacts, optio
   return {
     options: resolved,
     defaultStoreyId: facts.defaultStoreyId,
+    derivedModelId: facts.derivedModelId,
     curveMembers,
     surfaceMembers,
     nodes,

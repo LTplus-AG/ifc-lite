@@ -483,7 +483,7 @@ Columns:
 | IfcRelAssignsToControl | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | IFC4:✅ | — |
 | IfcRelAssignsToGroup | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | IFC4:✅ | — |
 | IfcRelAssignsToProcess | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | IFC4:✅ | — |
-| IfcRelAssignsToProduct | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
+| IfcRelAssignsToProduct | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | IFC4:✅ | — |
 | IfcRelAssignsToProjectOrder | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcRelAssignsToResource | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelAssociates | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | IFC4:✅ | — |
@@ -1255,7 +1255,7 @@ Columns:
 | IfcRelAssignsToGroup | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | IFC2X3:✅ IFC4X3:✅ | apps/viewer/public/samples/building-architecture-rev-b.ifc |
 | IfcRelAssignsToGroupByFactor | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC2X3:❌ IFC4X3:✅ | — |
 | IfcRelAssignsToProcess | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | IFC2X3:✅ IFC4X3:✅ | — |
-| IfcRelAssignsToProduct | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
+| IfcRelAssignsToProduct | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcRelAssignsToResource | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcRelAssociatesApproval | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | — |
 | IfcRelAssociatesClassification | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC2X3:✅ IFC4X3:✅ | apps/viewer/public/samples/building-architecture-rev-b.ifc |
@@ -2115,7 +2115,7 @@ Columns:
 | IfcRelAssignsToGroup | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | IFC4:✅ | — |
 | IfcRelAssignsToGroupByFactor | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelAssignsToProcess | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | IFC4:✅ | — |
-| IfcRelAssignsToProduct | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
+| IfcRelAssignsToProduct | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | IFC4:✅ | — |
 | IfcRelAssignsToResource | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelAssociatesApproval | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcRelAssociatesClassification | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | IFC4:✅ | — |

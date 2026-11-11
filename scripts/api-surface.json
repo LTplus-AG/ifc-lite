@@ -9167,6 +9167,7 @@
     "effectiveRelationshipEdges: function",
     "effectiveSpatialMemberIds: function",
     "effectiveStoreyId: function",
+    "effectiveStructuralView: function",
     "enumVal: function",
     "evaluateCostItem: function",
     "evaluateCostValue: function",

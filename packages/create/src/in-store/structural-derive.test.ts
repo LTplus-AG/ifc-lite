@@ -12,7 +12,7 @@ import { generateIfcGuid } from '@ifc-lite/encoding';
 import { IfcParser, extractPropertiesOnDemand, extractStructuralOnDemand, structuralCounterparts, type IfcDataStore } from '@ifc-lite/parser';
 import { StepExporter } from '@ifc-lite/export';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
-import { applyStructuralDerivation, planStructuralDerivation, readStructuralDerivationFacts } from '../index.js';
+import { addColumnToStore, applyStructuralDerivation, planStructuralDerivation, readStructuralDerivationFacts, resolveSpatialAnchor } from '../index.js';
 
 type Schema = 'IFC2X3' | 'IFC4' | 'IFC4X3';
 
@@ -148,9 +148,39 @@ describe('derive structural analysis model: session idempotence (#9668)', () => 
     const store = await parse(model('IFC4'));
     const editor = session(store);
     const plan = planStructuralDerivation(readStructuralDerivationFacts(store, editor));
-    applyStructuralDerivation(editor, store, plan);
-    expect(planStructuralDerivation(readStructuralDerivationFacts(store, editor)).report.counts.curveMembers).toBe(0);
-    expect(() => applyStructuralDerivation(editor, store, plan)).toThrow(/idealised after this plan/);
+    const { analysisModelId } = applyStructuralDerivation(editor, store, plan);
+    const second = planStructuralDerivation(readStructuralDerivationFacts(store, editor));
+    expect(second.report.counts.curveMembers).toBe(0);
+    expect(second.derivedModelId).toBe(analysisModelId);
+    expect(() => applyStructuralDerivation(editor, store, plan)).toThrow(/already has a derived analysis model/);
+  });
+
+  it('refuses a second model when an element was added after the first derivation', async () => {
+    const store = await parse(model('IFC4'));
+    const editor = session(store);
+    applyStructuralDerivation(editor, store, planStructuralDerivation(readStructuralDerivationFacts(store, editor)));
+    addColumnToStore(editor, resolveSpatialAnchor(store, 30, editor.getMutationView()), { Position: [12, 0, 0], Width: 0.3, Depth: 0.3, Height: 3 });
+    const later = planStructuralDerivation(readStructuralDerivationFacts(store, editor));
+    expect(later.report.counts.curveMembers).toBe(1);
+    const before = editor.getNewEntities().length;
+    expect(() => applyStructuralDerivation(editor, store, later)).toThrow(/already has a derived analysis model/);
+    expect(editor.getNewEntities().length).toBe(before);
+  });
+
+  it('refuses a plan whose footing was deleted after planning', async () => {
+    const store = await parse(model('IFC4'));
+    const editor = session(store);
+    const plan = planStructuralDerivation(readStructuralDerivationFacts(store, editor));
+    editor.removeEntity(byName(store, 'F1'));
+    expect(() => applyStructuralDerivation(editor, store, plan)).toThrow(/footing #\d+ no longer exists/);
+  });
+
+  it('places a plan of curve members only whose first member has no storey', async () => {
+    const store = await parse(model('IFC4'));
+    const editor = session(store);
+    const plan = planStructuralDerivation(readStructuralDerivationFacts(store, editor));
+    const curvesOnly = { ...plan, surfaceMembers: [], curveMembers: plan.curveMembers.map((m, i) => (i === 0 ? { ...m, storeyId: null } : m)) };
+    expect(applyStructuralDerivation(editor, store, curvesOnly).analysisModelId).toBeGreaterThan(0);
   });
 
   it('refuses before writing when the model has no storey', async () => {
@@ -161,5 +191,59 @@ describe('derive structural analysis model: session idempotence (#9668)', () => 
     const before = editor.getNewEntities().length;
     expect(() => applyStructuralDerivation(editor, store, orphan)).toThrow(/no storey/);
     expect(editor.getNewEntities().length).toBe(before);
+  });
+});
+
+/** Three 6 m beams in metres: an unnamed Body, a union and a difference. Two storeys. */
+const SHAPES = `ISO-10303-21;
+HEADER;FILE_DESCRIPTION((''),'2;1');FILE_NAME('s.ifc','',(''),(''),'','','');FILE_SCHEMA(('IFC4'));ENDSEC;
+DATA;
+#1=IFCPROJECT('0proj00000000000000000',$,'P',$,$,$,$,(#7),#9);
+#5=IFCCARTESIANPOINT((0.,0.,0.));
+#6=IFCAXIS2PLACEMENT3D(#5,$,$);
+#7=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,#6,$);
+#9=IFCUNITASSIGNMENT((#91));
+#91=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#20=IFCLOCALPLACEMENT($,#6);
+#30=IFCBUILDINGSTOREY('0storey000000000000000',$,'Level 0',$,$,#20,$,$,.ELEMENT.,0.);
+#31=IFCLOCALPLACEMENT($,#33);
+#33=IFCAXIS2PLACEMENT3D(#34,$,$);
+#34=IFCCARTESIANPOINT((0.,0.,3.));
+#32=IFCBUILDINGSTOREY('0storey100000000000000',$,'Level 1',$,$,#31,$,$,.ELEMENT.,3.);
+#35=IFCRELAGGREGATES('0aggr00000000000000000',$,$,$,#1,(#30,#32));
+#40=IFCRECTANGLEPROFILEDEF(.AREA.,$,$,0.2,0.3);
+#41=IFCDIRECTION((1.,0.,0.));
+#42=IFCDIRECTION((0.,1.,0.));
+#43=IFCAXIS2PLACEMENT3D(#5,#41,#42);
+#44=IFCDIRECTION((0.,0.,1.));
+#45=IFCEXTRUDEDAREASOLID(#40,#43,#44,6.);
+#46=IFCEXTRUDEDAREASOLID(#40,#43,#44,6.);
+#50=IFCSHAPEREPRESENTATION(#7,$,'SweptSolid',(#45));
+#51=IFCPRODUCTDEFINITIONSHAPE($,$,(#50));
+#52=IFCBEAM('0beamUnnamed0000000000',$,'Unnamed',$,$,#20,#51,$,$);
+#60=IFCBOOLEANRESULT(.UNION.,#45,#46);
+#61=IFCSHAPEREPRESENTATION(#7,'Body','CSG',(#60));
+#62=IFCPRODUCTDEFINITIONSHAPE($,$,(#61));
+#63=IFCBEAM('0beamUnion000000000000',$,'Union',$,$,#20,#62,$,$);
+#70=IFCBOOLEANRESULT(.DIFFERENCE.,#45,#46);
+#71=IFCSHAPEREPRESENTATION(#7,'Body','CSG',(#70));
+#72=IFCPRODUCTDEFINITIONSHAPE($,$,(#71));
+#73=IFCBEAM('0beamDifference0000000',$,'Difference',$,$,#20,#72,$,$);
+#80=IFCRELCONTAINEDINSPATIALSTRUCTURE('0contain00000000000000',$,$,$,(#52,#63,#73),#30);
+ENDSEC;
+END-ISO-10303-21;`;
+
+describe('derive structural analysis model: reading shapes and containment (#9668)', () => {
+  it('reads an unnamed Body and a difference, refuses a union, and places a session column on its storey', async () => {
+    const store = await parse(SHAPES);
+    const editor = session(store);
+    const { columnId } = addColumnToStore(editor, resolveSpatialAnchor(store, 32, editor.getMutationView()), { Position: [0, 0, 0], Width: 0.3, Depth: 0.3, Height: 3 });
+    const facts = readStructuralDerivationFacts(store, editor);
+    const fact = (id: number) => facts.elements.find((e) => e.expressId === id)!;
+    expect(fact(52).prism).toBeDefined();
+    expect(fact(73).prism).toBeDefined();
+    expect(fact(63).shapeIssue).toMatch(/IFCBOOLEANRESULT/);
+    expect(fact(columnId).storeyId).toBe(32);
+    expect(facts.defaultStoreyId).toBe(30);
   });
 });

@@ -57,10 +57,15 @@ export async function deriveStructuralCommand(args: string[]): Promise<void> {
   } catch (error) {
     fatal(error instanceof Error ? error.message : String(error));
   }
-  const { report } = plan;
+  let { report } = plan;
   const writes = !dryRun && report.counts.curveMembers + report.counts.surfaceMembers > 0;
   if (writes) {
-    bim.store.deriveStructuralAnalysisModel(modelId, options);
+    try {
+      // Report what was written: derive plans again from the same state.
+      ({ report } = bim.store.deriveStructuralAnalysisModel(modelId, options));
+    } catch (error) {
+      fatal(error instanceof Error ? error.message : String(error));
+    }
     const schema = (store.schemaVersion ?? 'IFC4') as 'IFC2X3' | 'IFC4' | 'IFC4X3';
     await writeOutput(new StepExporter(store, backend.getMutationView() ?? undefined).export({ schema, applyMutations: true }).content, out);
   }

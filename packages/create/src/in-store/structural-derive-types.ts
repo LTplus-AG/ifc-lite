@@ -44,11 +44,13 @@
  * the thinnest side (slabs), or the profile's centre line swept along the
  * extrusion when the profile is a near-rectangle thinner than the depth
  * (walls). Thickness is that thinnest side. Oblique extrusions and profiles
- * read only as bounds (I-shapes, circles) are skipped.
+ * read only as bounds (I-shapes, circles) are skipped. Openings and profile
+ * voids are not carried: the surface member covers the outer outline.
  *
  * Nodes. Every curve member end is a node. Ends within `tolerance` (metres,
  * default 0.05) of each other merge into one node at their mean, and member
- * ends move onto it. A member whose two ends merge is skipped. An end that
+ * ends move onto it. The merge is transitive: a chain of ends, each within
+ * the tolerance of the next, becomes one node. A member whose two ends merge is skipped. An end that
  * lands on another member's interior, or on a surface member, is NOT
  * connected (that would need meshing); it is listed in the report. Surface
  * members get no connections.
@@ -65,12 +67,17 @@
  * footing.
  *
  * Idempotence. An element that already has a structural counterpart is
- * skipped ('already-idealised'), so a second run plans nothing, and apply
- * refuses a plan with nothing to write or one whose elements were idealised
- * since it was planned. Nothing is replaced or removed.
+ * skipped ('already-idealised'), so a second run plans nothing. Apply refuses
+ * a plan with nothing to write, a plan whose elements changed since it was
+ * made, and any plan for a model that already has a derived analysis model
+ * (`derivedModelId`): a later run would otherwise write a second model that
+ * does not connect to the first. Nothing is replaced or removed.
  */
 
 export type { Vec3 } from './host-geometry-frame.js';
+
+/** Written on the analysis model, so a later run can tell a derived model from an authored one. */
+export const DERIVED_ANALYSIS_MODEL_DESCRIPTION = 'Derived from the physical model by ifc-lite';
 import type { Vec3 } from './host-geometry-frame.js';
 
 /** An extruded prism in world metres: `outline` at its base, swept by `extrusion`. */
@@ -107,6 +114,8 @@ export interface StructuralDerivationFacts {
   elements: PhysicalElementFact[];
   /** Storey used for items whose elements have none: the lowest one. */
   defaultStoreyId: number | null;
+  /** An analysis model an earlier derivation wrote, if any. */
+  derivedModelId: number | null;
 }
 
 export type SupportType = 'pinned' | 'fixed';
@@ -210,6 +219,8 @@ export interface StructuralDerivationReport {
 export interface StructuralDerivationPlan {
   options: Required<StructuralDerivationOptions>;
   defaultStoreyId: number | null;
+  /** Set when the model already has a derived analysis model; apply then refuses. */
+  derivedModelId: number | null;
   curveMembers: PlannedCurveMember[];
   surfaceMembers: PlannedSurfaceMember[];
   nodes: PlannedNode[];

@@ -1,0 +1,12 @@
+diff --git b/scripts/ci-full-oneshot.mjs a/scripts/ci-full-oneshot.mjs
+--- b/scripts/ci-full-oneshot.mjs
++++ a/scripts/ci-full-oneshot.mjs
+@@ -108,7 +108,7 @@ export function decideOneshot({ mode, prLane, run, pr, jobs, labeledAt }) {
+     return keep(`could not read when \`${FULL_LABEL}\` was applied (${err.message})`, { ...at, warning: `could not read the label history: ${err.message}` });
+   }
+   const created = Date.parse(run.createdAt ?? '');
+-  if (false) return keep(`\`${FULL_LABEL}\` was applied after this run was created (or the times are unreadable), so it did not make this run full`, at);
++  if (!(applied <= created)) return keep(`\`${FULL_LABEL}\` was applied after this run was created (or the times are unreadable), so it did not make this run full`, at);
+   const why = `a full-lane run ${run.conclusion === 'success' ? 'passed' : 'failed'} on the head of #${p.number}`;
+   if (m === 'shadow') return { action: 'would-remove', mode: m, reason: why, ...at };
+   return { action: 'remove', mode: m, reason: why, ...at };

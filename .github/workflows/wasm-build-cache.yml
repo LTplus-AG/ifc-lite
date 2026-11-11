@@ -1,0 +1,134 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+# The WASM build cache's writer on main and its permanent check
+# (scripts/ci-wasm-cache.mjs; switch: repository variable CI_WASM_CACHE).
+#
+# WHY A WORKFLOW OF ITS OWN. A pull_request run can restore cache entries
+# saved on the base branch or on its own ref, nothing else. Entries saved by
+# other PRs, by Mergify batch PRs or by merge_group runs are invisible to it.
+# So the only entry most PRs can hit is one saved by a run on main, and
+# test.yml's `build` job is skipped on most pushes to main (the push replay
+# reuses the verdict of the run that already tested that tree). This job runs
+# on every push regardless.
+#
+# ON EVERY PUSH, with the switch `shadow` or `on`, it builds from source,
+# compares the result byte for byte with the entry for the same key when one
+# exists, and saves one when none does. Under `on` two things fail this job:
+# a mismatch (the key is missing an input, or the build stopped being
+# reproducible, and PRs have been testing that entry instead of a fresh build)
+# and an entry that fails its own manifest (every PR on that key rebuilds
+# until it is deleted). With the switch `off` every step after the plan is
+# skipped.
+name: WASM build cache
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  # One run per commit, never cancelled: each merge gets its comparison.
+  group: ${{ github.workflow }}-${{ github.sha }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  main:
+    name: Build, compare and save the WASM build cache
+    # Hosted like the PR runs it serves: the key covers HOME and the workspace
+    # path, so a different runner shape would key (and miss) separately.
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: false
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+
+      - name: Plan the WASM build cache
+        id: plan
+        env:
+          CI_WASM_CACHE: ${{ vars.CI_WASM_CACHE }}
+        run: node scripts/ci-wasm-cache.mjs plan >> "$GITHUB_OUTPUT"
+
+      - name: Restore the WASM build cache
+        id: restore
+        if: steps.plan.outputs.active == 'true'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.plan.outputs.paths }}
+          key: ${{ steps.plan.outputs.key }}
+
+      - name: Resolve the WASM build
+        id: resolve
+        if: steps.plan.outputs.active == 'true'
+        env:
+          WASM_CACHE_MODE: ${{ steps.plan.outputs.mode }}
+          WASM_CACHE_VERIFY: ${{ steps.plan.outputs.verify }}
+          WASM_CACHE_STORE: ${{ steps.plan.outputs.store }}
+          WASM_CACHE_KEY: ${{ steps.plan.outputs.key }}
+          WASM_CACHE_HIT: ${{ steps.restore.outputs.cache-hit }}
+        run: node scripts/ci-wasm-cache.mjs resolve >> "$GITHUB_OUTPUT"
+
+      # Same cargo cache as test.yml's build job (prefix ci-build).
+      - name: Setup WASM build toolchain
+        if: steps.plan.outputs.active == 'true'
+        uses: ./.github/actions/setup-wasm-build
+        with:
+          cache-prefix: ci-build
+
+      # The same commands, in the same order, as test.yml's `Build WASM` with
+      # the cache active. Build env belongs at job or workflow level, never on
+      # this step: the key reads the env of the Plan step.
+      - name: Build WASM
+        if: steps.plan.outputs.active == 'true'
+        run: |
+          node scripts/ci-wasm-cache.mjs clean
+          bash scripts/test-diff-decode-leaks.sh --build-only
+          bash scripts/build-wasm.sh
+
+      # Under `shadow` a refusal (an unlisted output dir, a missing required
+      # file) only skips the save, as in test.yml; under `on` it fails.
+      - name: Record the WASM build output
+        id: record
+        if: steps.plan.outputs.active == 'true'
+        continue-on-error: ${{ steps.plan.outputs.mode != 'on' }}
+        env:
+          WASM_CACHE_KEY: ${{ steps.plan.outputs.key }}
+        run: node scripts/ci-wasm-cache.mjs record
+
+      - name: Compare the WASM build cache with the fresh build
+        if: steps.resolve.outputs.compare == 'true' && steps.record.outcome == 'success'
+        env:
+          WASM_CACHE_MODE: ${{ steps.plan.outputs.mode }}
+        run: node scripts/ci-wasm-cache.mjs compare --strict
+
+      # A restored entry that fails its own manifest is never used and cannot
+      # be overwritten (the key exists), so every PR on this key rebuilds.
+      # Under `on` that is a failure to look at, not a warning to scroll past.
+      - name: Fail on a rejected cache entry
+        if: steps.resolve.outputs.rejected == 'true' && steps.plan.outputs.mode == 'on'
+        env:
+          WASM_CACHE_KEY: ${{ steps.plan.outputs.key }}
+        run: |
+          echo "::error title=WASM build cache entry rejected::The entry for this key failed verification (see Resolve). Delete it so the next push to main re-seeds it: gh cache delete $WASM_CACHE_KEY"
+          exit 1
+
+      - name: Save the WASM build cache
+        if: steps.resolve.outputs.save == 'true' && steps.record.outcome == 'success'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.plan.outputs.paths }}
+          key: ${{ steps.plan.outputs.key }}

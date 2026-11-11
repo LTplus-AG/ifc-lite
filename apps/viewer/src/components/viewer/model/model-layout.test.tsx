@@ -89,11 +89,24 @@ describe('ModelWorkspaceSplit applies the rule (#6232 M2.4)', () => {
 
   it('never picked, too narrow: 3D alone, the plan one click away once there is room', () => {
     restore = splitWidth(NEED - 1);
+    // #9296: with the sidebar already folded nothing can make room.
+    act(() => useViewerStore.getState().setSidebarMode('collapsed'));
     const ui = render(<><ModelToolRail /><ModelWorkspaceSplit><div data-probe-3d /></ModelWorkspaceSplit></>);
     assert.equal(ui.querySelector('[data-plan-view]'), null);
     const strip = ui.querySelector<HTMLButtonElement>('[data-rail-tool="plan"]')!;
     assert.ok(strip.disabled, 'no room: the rail toggle is off and its tooltip says why');
     assert.equal(useViewerStore.getState().modelLayout, 'auto', 'nothing was persisted');
+  });
+
+  it('too narrow beside an expanded sidebar: the rail toggle folds it to make room (#9296)', () => {
+    restore = splitWidth(NEED - 1);
+    act(() => useViewerStore.getState().setSidebarMode('expanded'));
+    const ui = render(<><ModelToolRail /><ModelWorkspaceSplit><div data-probe-3d /></ModelWorkspaceSplit></>);
+    const strip = ui.querySelector<HTMLButtonElement>('[data-rail-tool="plan"]')!;
+    assert.equal(strip.disabled, false, 'folding the sidebar can make room');
+    act(() => strip.click());
+    assert.equal(useViewerStore.getState().sidebarMode, 'collapsed');
+    assert.equal(useViewerStore.getState().modelLayout, 'split');
   });
 
   it('an explicit 3D pick is kept where Split would fit', () => {

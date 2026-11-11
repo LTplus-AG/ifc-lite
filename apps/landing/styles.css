@@ -53,6 +53,10 @@ html, body { margin: 0; padding: 0; }
   --plankopf-h: 42px;
 }
 
+/* Native UI follows the page's theme, not the system's (#9718). */
+html { color-scheme: light; }
+html[data-theme="dusk"] { color-scheme: dark; }
+
 html[data-theme="dusk"] {
   --bg: #0e0e0c;
   --bg-2: #161613;

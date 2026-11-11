@@ -22,6 +22,7 @@ import { activate, cleanup, render } from '@/test/render.js';
 import { seedModelingSession } from '@/test/modeling-session-fixture';
 import { RibbonToolbar } from '../ribbon/RibbonToolbar';
 import { ModelWorkspaceSplit } from './ModelWorkspaceSplit';
+import { MODEL_EDIT_SURFACE_COMMANDS } from '../surface-commands-model-edit';
 
 function mount(): HTMLElement {
   return render(<ModelWorkspaceSplit><div data-viewport-stub /></ModelWorkspaceSplit>);
@@ -91,6 +92,20 @@ describe('ModelWorkspaceSplit (#6232 M2.1)', () => {
       assert.equal(ui.querySelectorAll('[data-workspace-leave]').length, 1);
     });
   }
+
+  // #9296 review: the palette's Leave is the same exit, so focus lands on Model too.
+  it('the palette Leave command also hands focus back to the Model button (#9296)', async () => {
+    useViewerStore.getState().setModelLayout('3d');
+    const ui = render(<><RibbonToolbar /><ModelWorkspaceSplit><div data-viewport-stub /></ModelWorkspaceSplit></>);
+    const model = ui.querySelector<HTMLButtonElement>('[data-command-id="tool:edit-mode"]')!;
+    activate(model, 'Enter');
+    await act(frame);
+    ui.querySelector<HTMLButtonElement>('[data-workspace-leave]')!.focus();
+    const exit = MODEL_EDIT_SURFACE_COMMANDS.find((c) => c.id === 'model:exit')!;
+    act(() => { exit.run({} as Parameters<typeof exit.run>[0]); });
+    assert.equal(useViewerStore.getState().workspaceMode, 'view');
+    assert.equal(document.activeElement === model, true, 'focus is back on the Model button');
+  });
 
   // #9296 review: Leave unmounts with the bar, which dropped focus to <body>.
   it('Leave names its key and hands focus back to the Model button (#9296)', async () => {

@@ -21,6 +21,8 @@ import { Scene } from './scene.js';
 import type { RenderPipeline } from './pipeline.js';
 import type { BatchedMesh } from './types.js';
 import type { SceneSnapshot } from './scene-snapshot.js';
+import { cellLatticePin } from './scene-stream-assembly.js';
+import { encodeMeshRecords } from '@ifc-lite/geometry/gpu-records';
 
 Object.assign(globalThis, { GPUBufferUsage: { MAP_READ: 1, MAP_WRITE: 2, COPY_SRC: 4, COPY_DST: 8, INDEX: 16, VERTEX: 32, UNIFORM: 64, STORAGE: 128, INDIRECT: 256, QUERY_RESOLVE: 512 } });
 
@@ -282,6 +284,43 @@ describe('cold finalize work after the last batch arrived', () => {
       const step = batch.quantized.step;
       assert.ok(batch.quantized.min.every((v) => Number.isInteger(v / step)), `${batch.colorKey}: lattice-aligned`);
     }
+  });
+
+  it('fragments built from per-mesh GPU records (a worker\'s, M2) draw and finalize exactly as merged ones', async () => {
+    const load = async (records: boolean) => {
+      const { device, work } = recordingDevice();
+      const scene = new Scene();
+      scene.setSpatialChunking({ cellSize: 32 }); scene.setLodBuildsEnabled(true); scene.setQuantizedBatches(true);
+      perfCounters.enable();
+      const before = perfCounters.read();
+      const batches = arrivals();
+      for (const [index, batch] of batches.entries()) {
+        // The first arrival fixes the model frame; a worker learns it and encodes every later mesh against it.
+        const frame = (scene as unknown as { sharedFrameOrigins: Map<number, [number, number, number]> }).sharedFrameOrigins.get(0);
+        if (records && index > 0 && frame) {
+          for (const mesh of batch) {
+            const pin = cellLatticePin(mesh, 32, [0, 0, 0], frame);
+            const encoded = pin && encodeMeshRecords(mesh, frame, pin);
+            if (encoded) mesh.gpuRecords = encoded;
+          }
+        }
+        scene.queueMeshes(batch);
+        drain(scene, device);
+      }
+      const streamed = diffCounters(perfCounters.read(), before);
+      await scene.finalizeStreamingAsync(device, pipeline, 1e9);
+      return { scene, streamed, uploads: work.vertexWriteBytes };
+    };
+    const merged = await load(false);
+    const recorded = await load(true);
+    const fromRecords = recorded.streamed['render.stream.records.vertices'] ?? 0;
+    assert.ok(fromRecords > 0, 'fragments are built from records');
+    const mergedStreaming = merged.streamed['render.mergeGeometry.vertices'] ?? 0;
+    const recordedStreaming = recorded.streamed['render.mergeGeometry.vertices'] ?? 0;
+    assert.ok(recordedStreaming + fromRecords === mergedStreaming, `streamed vertices merged on the CPU: ${recordedStreaming} (+${fromRecords} from records) vs ${mergedStreaming}`);
+    assert.ok(recorded.uploads === merged.uploads, `the same vertex bytes upload: ${recorded.uploads} vs ${merged.uploads}`);
+    assertSameBatches(recorded.scene, merged.scene);
+    assertSameBatches(recorded.scene, (await streamedLoad({ rebuildReference: true })).scene);
   });
 
   it('a recolour that keeps the bucket key but changes the entity-lane salt rebuilds that bucket', async () => {

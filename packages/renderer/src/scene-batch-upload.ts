@@ -6,7 +6,9 @@ import type { BatchedMesh } from './types.js';
 import type { RenderPipeline } from './pipeline.js';
 import { mergeGeometry } from './scene-geometry.js';
 import { BATCH_CONSTANTS } from './constants.js';
-import { latticeCollapsesGeometry, quantizeInterleaved, type LatticeFrame } from './quantize.js';
+import { latticeCollapsesGeometry, quantizeInterleaved, QUANT_BYTES_PER_VERTEX, QUANT_STEP, type LatticeFrame } from './quantize.js';
+import { batchCollapseVerdict, type MeshRecords } from '@ifc-lite/geometry/gpu-records';
+import { perfTally } from '@ifc-lite/load-trace';
 import { createStaticGpuBuffer } from './gpu-static-upload.js';
 import type { MergedBatchBytes } from './scene-snapshot-batches.js';
 import { meshUniformArena, type MeshUniformSlot } from './mesh-uniform-arena.js';
@@ -46,7 +48,9 @@ export function createSceneBatch(
   // coords → seam/end-cap z-fighting. A shared origin makes every coincident
   // world point relativize identically → no seam z-fight, and the model
   // sits at most ±(model extent) from it (f32-precise at building scale).
-  const merged = mergeGeometry(meshDataArray, options.origin);
+  const recorded = bucketKey === undefined && options.quantized === 'auto' && options.lattice?.min
+    ? fromRecords(meshDataArray, options.origin, options.lattice.min) : null;
+  const merged = recorded?.merged ?? mergeGeometry(meshDataArray, options.origin);
   const expressIds = meshDataArray.map((m) => m.expressId);
   // Parallel to `expressIds` (same index = same source piece) so picking
   // can scope each batch ENTRY to its own model — batches group by colour,
@@ -82,7 +86,7 @@ export function createSceneBatch(
     let vertexBuffer: GPUBuffer;
     // `auto` also stays f32 when the ~1 mm lattice would collapse an entity's
     // shape (#9068); `required` keeps its source batch's decision (#4832).
-    const quantizedData = options.quantized === 'required' || (options.quantized === 'auto'
+    const quantizedData = recorded ? recorded.quantized : options.quantized === 'required' || (options.quantized === 'auto'
       && !latticeCollapsesGeometry(merged.vertexData, BATCH_CONSTANTS.BYTES_PER_VERTEX / 4, merged.indices))
       ? quantizeInterleaved(
           merged.vertexData,
@@ -179,6 +183,54 @@ export function createSceneBatch(
     }
     throw error;
   }
+}
+
+const NO_F32_VERTICES = new Float32Array(0);
+
+/**
+ * A streamed fragment straight from its meshes' GPU records, when every mesh
+ * carries records for exactly this frame and lattice origin and the batch
+ * provably quantizes: their concatenation is what `mergeGeometry` +
+ * `quantizeInterleaved` would write (gpu-records-parity.test.ts). Only the
+ * indices are rebased. `null` sends the fragment through the merge.
+ */
+function fromRecords(meshes: readonly MeshData[], origin: readonly [number, number, number], pin: readonly [number, number, number]): {
+  merged: { vertexData: Float32Array; indices: Uint32Array; bounds: { min: [number, number, number]; max: [number, number, number] }; origin: [number, number, number] };
+  quantized: { vertexData: ArrayBuffer; quantMin: [number, number, number]; step: number };
+} | null {
+  const records: MeshRecords[] = [];
+  let bytes = 0, indexCount = 0;
+  for (const mesh of meshes) {
+    const r = mesh.gpuRecords;
+    if (!r || r.frame[0] !== origin[0] || r.frame[1] !== origin[1] || r.frame[2] !== origin[2]
+      || r.pin[0] !== pin[0] || r.pin[1] !== pin[1] || r.pin[2] !== pin[2]) return null;
+    records.push(r);
+    bytes += r.records.byteLength;
+    indexCount += mesh.indices.length;
+  }
+  if (records.length === 0 || batchCollapseVerdict(records) !== 'quantize') return null;
+  const vertexData = new Uint8Array(bytes);
+  const indices = new Uint32Array(indexCount);
+  const min: [number, number, number] = [Infinity, Infinity, Infinity];
+  const max: [number, number, number] = [-Infinity, -Infinity, -Infinity];
+  let at = 0, base = 0, written = 0;
+  for (let m = 0; m < meshes.length; m++) {
+    const r = records[m], source = meshes[m].indices;
+    vertexData.set(new Uint8Array(r.records), at);
+    at += r.records.byteLength;
+    for (let i = 0; i < source.length; i++) indices[written + i] = source[i] + base;
+    written += source.length;
+    base += r.records.byteLength / QUANT_BYTES_PER_VERTEX;
+    for (let axis = 0; axis < 3; axis++) {
+      if (r.worldMin[axis] < min[axis]) min[axis] = r.worldMin[axis];
+      if (r.worldMax[axis] > max[axis]) max[axis] = r.worldMax[axis];
+    }
+  }
+  perfTally('render.stream.records', base, 'vertices');
+  return {
+    merged: { vertexData: NO_F32_VERTICES, indices, bounds: { min, max }, origin: [origin[0], origin[1], origin[2]] },
+    quantized: { vertexData: vertexData.buffer, quantMin: [pin[0], pin[1], pin[2]], step: QUANT_STEP },
+  };
 }
 
 /**

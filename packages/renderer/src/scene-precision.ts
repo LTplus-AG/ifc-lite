@@ -59,6 +59,11 @@ export class TopologyMemo {
         return perMesh[i + 3] === 1;
       }
     }
+    const records = mesh.gpuRecords; // encoded only after this same check passed in this frame
+    if (records && records.frame[0] === origin[0] && records.frame[1] === origin[1] && records.frame[2] === origin[2]) {
+      this.hits++;
+      return true;
+    }
     this.scans++;
     const verdict = originPreservesTriangleTopology([mesh], origin);
     perMesh.push(origin[0], origin[1], origin[2], verdict ? 1 : 0);

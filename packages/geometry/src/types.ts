@@ -68,6 +68,12 @@ export interface MeshData {
    *  for every vertex, so picking/selection resolves to the correct individual
    *  entity even though many entities share a single GPU batch. */
   entityIds?: Uint32Array;
+  /**
+   * The mesh's quantized GPU records for one model frame and lattice origin,
+   * encoded where it was meshed (`encodeMeshRecords`). A streamed fragment in
+   * exactly that frame and against that origin is their concatenation.
+   */
+  gpuRecords?: import('./gpu-records.js').MeshRecords;
   /** The `IfcRepresentationItem` this mesh came from, so a host can drill from
    *  a rendered piece to its entity (#2985). ALWAYS a representation item;
    *  `materialId` carries the other case and the two are NEVER both set.

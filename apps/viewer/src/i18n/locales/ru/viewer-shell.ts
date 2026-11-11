@@ -20,7 +20,6 @@ export const viewerShellRu = {
   "viewerShell.chunkLabel.documentPanel": "Панель документа",
   "viewerShell.chunkLabel.presentationPanel": "Панель презентаций",
   "viewerShell.chunkLabel.layersPanel": "Панель слоёв",
-  "viewerShell.chunkLabel.mobileLayout": "Мобильные элементы управления",
   "viewerShell.chunkLabel.mcpPage": "Страница MCP",
   "viewerShell.chunkLabel.mcpPlayground": "Тестовая среда MCP",
   "viewerShell.chunkLabel.rteGpuWitness": "Контрольный тест RTE на GPU",

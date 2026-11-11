@@ -24,7 +24,6 @@ export const viewerShellDe = {
   "viewerShell.chunkLabel.documentPanel": "Dokumentbereich",
   "viewerShell.chunkLabel.presentationPanel": "Präsentationsbereich",
   "viewerShell.chunkLabel.layersPanel": "Ebenenbereich",
-  "viewerShell.chunkLabel.mobileLayout": "Mobile Bedienelemente",
   "viewerShell.chunkLabel.mcpPage": "MCP-Seite",
   "viewerShell.chunkLabel.mcpPlayground": "MCP-Testumgebung",
   "viewerShell.chunkLabel.rteGpuWitness": "RTE-GPU-Nachweis",

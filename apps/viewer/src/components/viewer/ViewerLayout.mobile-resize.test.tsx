@@ -18,7 +18,7 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { activate, cleanup } from '@/test/render.js';
-import { mobileLayoutMounted, renderMobileViewerLayout, renderViewerLayout } from '@/test/viewer-layout-harness.js';
+import { renderViewerLayout } from '@/test/viewer-layout-harness.js';
 import { useViewerStore } from '@/store';
 import { resetLayout } from '@/store/layoutReset';
 import { clearRetiredToolbarStylePreference, TOOLBAR_STYLE_STORAGE_KEY } from '@/store/constants';
@@ -167,9 +167,9 @@ describe('ViewerLayout mobile panel collapse (#5837)', () => {
     assert.ok(ui.querySelector('[data-tour="ribbon-tabs"]'), 'the desktop renders ribbon tabs');
   });
 
-  it('#5823 closes an open mobile sheet when its backdrop is keyboard-activated', async () => {
+  it('#5823 closes an open mobile sheet when its backdrop is keyboard-activated', () => {
     setViewport(390, 844);
-    const ui = await renderMobileViewerLayout();
+    const ui = renderViewerLayout();
     openSheet();
     const backdrop = ui.querySelector<HTMLButtonElement>('button[aria-label="Close panels"]');
     assert.ok(backdrop, 'mobile backdrop must be a named button');
@@ -177,18 +177,18 @@ describe('ViewerLayout mobile panel collapse (#5837)', () => {
     assert.equal(sheetOpen(), false);
   });
 
-  it('collapses the panels when it mounts in mobile mode', async () => {
+  it('collapses the panels when it mounts in mobile mode', () => {
     useViewerStore.setState({ leftPanelCollapsed: false, rightPanelCollapsed: false });
     setViewport(390, 844);
-    await renderMobileViewerLayout();
+    renderViewerLayout();
     assert.equal(isMobile(), true);
     assert.equal(sheetOpen(), false);
     assert.equal(useViewerStore.getState().leftPanelCollapsed, true);
   });
 
-  it('keeps an open sheet open while resizes stay mobile (keyboard, URL bar, rotation)', async () => {
+  it('keeps an open sheet open while resizes stay mobile (keyboard, URL bar, rotation)', () => {
     setViewport(390, 844);
-    await renderMobileViewerLayout();
+    renderViewerLayout();
     openSheet();
     resizeTo(390, 500); // on-screen keyboard opens
     assert.equal(sheetOpen(), true, 'the keyboard resize closed the sheet');
@@ -198,7 +198,7 @@ describe('ViewerLayout mobile panel collapse (#5837)', () => {
     assert.equal(sheetOpen(), true, 'a resize inside mobile mode closed the sheet');
   });
 
-  it('collapses once on a real desktop -> mobile switch, and not again', async () => {
+  it('collapses once on a real desktop -> mobile switch, and not again', () => {
     setViewport(1440, 900);
     renderViewerLayout();
     assert.equal(isMobile(), false);
@@ -208,8 +208,6 @@ describe('ViewerLayout mobile panel collapse (#5837)', () => {
     resizeTo(600, 900); // desktop -> mobile
     assert.equal(isMobile(), true);
     assert.equal(sheetOpen(), false);
-    await mobileLayoutMounted();
-    assert.equal(sheetOpen(), false, 'mounting the mobile layout reopened a sheet');
     openSheet();
     resizeTo(600, 500);
     assert.equal(sheetOpen(), true, 'a second mobile resize closed the sheet');

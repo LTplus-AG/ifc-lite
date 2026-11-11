@@ -21,7 +21,7 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { cleanup, click, render, waitFor } from '@/test/render.js';
-import { renderMobileViewerLayout, renderViewerLayout } from '@/test/viewer-layout-harness.js';
+import { renderViewerLayout } from '@/test/viewer-layout-harness.js';
 import { useViewerStore } from '@/store';
 import type { FederatedModel } from '@/store/types';
 import { getPanelDef, type WorkspacePanelId } from '@/lib/panels/registry';
@@ -93,7 +93,7 @@ describe('mobile Panels sheet (#5853)', () => {
   it('lists every panel the rail offers and opens each in its mobile home', async () => {
     // This assertion must run before loading the new launcher: when production
     // is reverted, the mounted viewer should fail for the missing entry point.
-    const viewer = await renderMobileViewerLayout();
+    const viewer = renderViewerLayout();
     assert.ok(button(viewer, 'Panels'), 'mobile has no panel-list entry point');
     cleanup();
     const { MobilePanelLauncher } = await import('./MobilePanelLauncher.js');
@@ -129,8 +129,8 @@ describe('mobile Panels sheet (#5853)', () => {
     }
   });
 
-  it('a tap opens a side panel in the mobile sheet', async () => {
-    const container = await renderMobileViewerLayout();
+  it('a tap opens a side panel in the mobile sheet', () => {
+    const container = renderViewerLayout();
     openList(container);
     click(listItem(container, 'clash')!);
     const s = useViewerStore.getState();
@@ -139,8 +139,8 @@ describe('mobile Panels sheet (#5853)', () => {
     assert.equal(activeBottomPanel(s), null);
   });
 
-  it('a tap opens a bottom-strip panel, and a later side panel closes it', async () => {
-    const container = await renderMobileViewerLayout();
+  it('a tap opens a bottom-strip panel, and a later side panel closes it', () => {
+    const container = renderViewerLayout();
     openList(container);
     click(listItem(container, 'lists')!);
     assert.equal(activeBottomPanel(useViewerStore.getState()), 'lists');
@@ -153,8 +153,8 @@ describe('mobile Panels sheet (#5853)', () => {
     assert.equal(useViewerStore.getState().sidebarActivePanel, 'bcf');
   });
 
-  it('Properties from the list clears a dismissed bottom panel before reopening the sheet', async () => {
-    const container = await renderMobileViewerLayout();
+  it('Properties from the list clears a dismissed bottom panel before reopening the sheet', () => {
+    const container = renderViewerLayout();
     openList(container);
     click(listItem(container, 'lists')!);
     assert.equal(activeBottomPanel(useViewerStore.getState()), 'lists');
@@ -172,8 +172,8 @@ describe('mobile Panels sheet (#5853)', () => {
     assert.equal(activeBottomPanel(s), null, 'the stale Lists flag would hide Properties');
   });
 
-  it('one labelled Panels button replaces the three floating tiles (#8802 R6)', async () => {
-    const container = await renderMobileViewerLayout();
+  it('one labelled Panels button replaces the three floating tiles (#8802 R6)', () => {
+    const container = renderViewerLayout();
     const panels = button(container, 'Panels');
     assert.ok(panels);
     // Named by what it shows, so the spoken name contains the visible one (WCAG 2.5.3).
@@ -185,8 +185,8 @@ describe('mobile Panels sheet (#5853)', () => {
     }
   });
 
-  it('a tap on Hierarchy opens the left sheet', async () => {
-    const container = await renderMobileViewerLayout();
+  it('a tap on Hierarchy opens the left sheet', () => {
+    const container = renderViewerLayout();
     openList(container);
     click(listItem(container, 'hierarchy')!);
     assert.equal(useViewerStore.getState().leftPanelCollapsed, false);

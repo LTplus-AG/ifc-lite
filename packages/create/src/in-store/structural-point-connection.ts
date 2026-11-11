@@ -16,9 +16,8 @@
  *    TranslationalStiffnessY?, TranslationalStiffnessZ?,
  *    RotationalStiffnessX?, RotationalStiffnessY?, RotationalStiffnessZ?`
  *   (`IfcTranslationalStiffnessSelect`/`IfcRotationalStiffnessSelect` are
- *   each a 2-branch SELECT of `IfcBoolean` or a stiffness measure; this
- *   builder only writes the `IfcBoolean` branch — `true` = fixed/rigid,
- *   `false` = free — a numeric spring-stiffness value is out of scope here.)
+ *   each a 2-branch SELECT of `IfcBoolean` or a stiffness measure;
+ *   `true` = fixed/rigid, `false` = free, a number = spring stiffness.)
  *   IFC2X3 has no `ConditionCoordinateSystem`, and its node condition slots
  *   (`LinearStiffnessX`…) are plain measures, so `true`/`false` are written
  *   as `-1.`/`0.`, the IFC2X3 rigid/free convention.
@@ -56,18 +55,19 @@ import { toNativePoint3, type SpatialAnchor } from './anchor.js';
 import { emitLocalPlacement, ownerHistoryRef, productGuid } from './_emit-helpers.js';
 
 /**
- * `true` = fixed, `false` = free. IFC4+ writes the `IfcBoolean` branch of
+ * `true` = fixed, `false` = free; a number supplies spring stiffness.
+ * IFC4+ writes the corresponding boolean or measure branch of
  * `IfcTranslationalStiffnessSelect`/`IfcRotationalStiffnessSelect`; IFC2X3
- * writes the plain measures `-1.`/`0.`, which read back as numbers.
+ * writes plain measures, mapping fixed/free to `-1.`/`0.`.
  */
 export interface StructuralBoundaryConditionParams {
   Name?: string;
-  TranslationalStiffnessX?: boolean;
-  TranslationalStiffnessY?: boolean;
-  TranslationalStiffnessZ?: boolean;
-  RotationalStiffnessX?: boolean;
-  RotationalStiffnessY?: boolean;
-  RotationalStiffnessZ?: boolean;
+  TranslationalStiffnessX?: boolean | number;
+  TranslationalStiffnessY?: boolean | number;
+  TranslationalStiffnessZ?: boolean | number;
+  RotationalStiffnessX?: boolean | number;
+  RotationalStiffnessY?: boolean | number;
+  RotationalStiffnessZ?: boolean | number;
 }
 
 export interface StructuralPointConnectionInStoreParams {
@@ -88,10 +88,6 @@ export interface StructuralPointConnectionBuildResult {
   boundaryConditionId?: number;
 }
 
-function boolAttr(v: boolean | undefined): '.T.' | '.F.' | null {
-  return v === undefined ? null : v ? '.T.' : '.F.';
-}
-
 export function addStructuralPointConnectionToStore(
   editor: StoreEditor,
   anchor: SpatialAnchor,
@@ -101,9 +97,9 @@ export function addStructuralPointConnectionToStore(
   // IFC2X3 uses plain measures: -1 = rigid, 0 = free. The `{ real }` marker is
   // required: the exporter's SELECT qualification reads the IFC4 registry for
   // every target schema and would wrap a bare number as an IFC4 select member.
-  const stiffness = (value: boolean | undefined) => is2x3
-    ? (value === undefined ? null : { real: value ? -1 : 0 })
-    : boolAttr(value);
+  const stiffness = (value: boolean | number | undefined) => is2x3
+    ? (value === undefined ? null : { real: typeof value === 'number' ? value : value ? -1 : 0 })
+    : value ?? null;
   const position = toNativePoint3(anchor, params.Position);
   const placementId = emitLocalPlacement(editor, anchor.storeyPlacementId, position);
 

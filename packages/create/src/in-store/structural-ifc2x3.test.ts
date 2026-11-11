@@ -145,3 +145,22 @@ describe('IFC2X3 structural builder STEP round trips', () => {
     if (process.env.STRUCTURAL_EXPORT_DIR) writeFileSync(`${process.env.STRUCTURAL_EXPORT_DIR}/${schema}.ifc`, text);
   });
 });
+
+// #9668: SELECT stiffness members must retain their type through STEP export.
+describe('point connection stiffness SELECT round trips', () => {
+  it.each(['IFC4', 'IFC4X3'])('%s qualifies boolean and numeric stiffness', async (schema) => {
+    const { editor, anchor, roundTrip } = await fresh(schema);
+    const BoundaryCondition = {
+      Name: 'Mixed', TranslationalStiffnessX: true, TranslationalStiffnessY: false,
+      TranslationalStiffnessZ: 1000, RotationalStiffnessX: 2000,
+      RotationalStiffnessY: true, RotationalStiffnessZ: false,
+    };
+    const { boundaryConditionId } = addStructuralPointConnectionToStore(editor, anchor, {
+      Position: [4, 0, 0], BoundaryCondition,
+    });
+    const { text, data } = await roundTrip();
+    expect(text).toContain(`#${boundaryConditionId}=IFCBOUNDARYNODECONDITION('Mixed',IFCBOOLEAN(.T.),IFCBOOLEAN(.F.),IFCLINEARSTIFFNESSMEASURE(1000.),IFCROTATIONALSTIFFNESSMEASURE(2000.),IFCBOOLEAN(.T.),IFCBOOLEAN(.F.));`);
+    const { Name, ...components } = BoundaryCondition;
+    expect(data.connections[0].appliedCondition).toMatchObject({ name: Name, components });
+  });
+});

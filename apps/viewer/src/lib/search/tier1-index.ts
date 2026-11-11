@@ -25,6 +25,7 @@
 
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { SearchResult, MatchField } from './tier0-scan.js';
+import { tokenizeSearchText } from './search-tokens.js';
 
 export interface Tier1IndexEntry {
   /** Row index in the original EntityTable. */
@@ -84,22 +85,7 @@ const SCORE = {
   TOKEN_MATCH: 70,
 } as const;
 
-const TOKEN_SPLIT = /[\s\-_./:]+/;
-
-function tokenize(value: string): string[] {
-  if (!value) return [];
-  const out: string[] = [];
-  const parts = value.toLowerCase().split(TOKEN_SPLIT);
-  for (const p of parts) {
-    // Skip empty fragments and one-char tokens that aren't digits. One-char
-    // letters produce ~O(entities) postings with essentially no selectivity,
-    // inflating the index for no query benefit.
-    if (p.length === 0) continue;
-    if (p.length === 1 && !/\d/.test(p)) continue;
-    out.push(p);
-  }
-  return out;
-}
+const tokenize = tokenizeSearchText;
 
 /** Yield control back to the event loop between chunks.
  *

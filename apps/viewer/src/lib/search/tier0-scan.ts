@@ -18,6 +18,7 @@
  */
 
 import type { IfcDataStore } from '@ifc-lite/parser';
+import { tokenizeSearchText, tokensCover } from './search-tokens.js';
 
 /** A federated model carries its IFC store + an offset into the global ID space. */
 export interface ScanModel {
@@ -60,6 +61,7 @@ const SCORE = {
   NAME_SUBSTR: 40,
   OBJECTTYPE_SUBSTR: 20,
   DESCRIPTION_SUBSTR: 10,
+  TOKEN_MATCH: 70,
 } as const;
 
 /**
@@ -79,6 +81,11 @@ export function runTier0Scan(
 
   const limit = options.limit ?? DEFAULT_LIMIT;
   const needle = trimmed.toLowerCase();
+  // Tier-1's TOKEN_MATCH fallback (every query token a prefix of an entry token), so a
+  // multi-word query matches the same rows before and after the tier-1 index exists.
+  // A single token equal to the needle adds nothing a substring match does not find.
+  const queryTokens = tokenizeSearchText(trimmed);
+  const fallbackTokens = queryTokens.length > 0 && !(queryTokens.length === 1 && queryTokens[0] === needle) ? queryTokens : null;
 
   // GUID exact-match fast path — IFC GlobalIds are 22-char base64-like strings.
   // We test the trimmed (case-sensitive) form because GUIDs are case-sensitive.
@@ -112,7 +119,7 @@ export function runTier0Scan(
       }
     }
 
-    scanModel(model.id, store, needle, options.maxScanPerModel, collected);
+    scanModel(model.id, store, needle, options.maxScanPerModel, collected, fallbackTokens);
   }
 
   // Stable sort: score desc, then modelId asc, then expressId asc.
@@ -142,6 +149,7 @@ function scanModel(
   needle: string,
   maxScan: number | undefined,
   out: SearchResult[],
+  fallbackTokens: readonly string[] | null = null,
 ): void {
   const table = store.entities;
   const strings = store.strings;
@@ -223,6 +231,10 @@ function scanModel(
       }
     }
 
+    if (score === 0 && fallbackTokens && tokensCover(fallbackTokens, name.toLowerCase(), (table.getTypeName(expressId[i]) ?? '').toLowerCase(),
+      (description || (dIdx !== 0 ? strings.get(dIdx) : '')).toLowerCase(), (objectType || (oIdx !== 0 ? strings.get(oIdx) : '')).toLowerCase())) {
+      bump(SCORE.TOKEN_MATCH, 'name');
+    }
     if (score === 0) continue;
 
     // Resolve remaining display fields lazily so non-matches stay cheap.

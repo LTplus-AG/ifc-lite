@@ -23,9 +23,6 @@ const InfluxPanel = lazy(() => import('@/components/viewer/influx/InfluxPanel').
 
 const ComparePanel = lazy(() => import('@/components/viewer/ComparePanel').then(module => ({ default: module.ComparePanel })));
 const ClashPanel = lazy(() => import('@/components/viewer/ClashPanel').then(module => ({ default: module.ClashPanel })));
-const BCFPanel = lazy(loadBcfPanel);
-const ValidationPanel = lazy(loadValidationPanel);
-const LensPanel = lazy(loadLensPanel);
 import { RoomPanel } from '@/components/viewer/RoomPanel';
 import { ZonesPanel } from '@/components/viewer/ZonesPanel';
 // Opened on demand; kept off the boot path (eager-bundle ratchet, #8341).
@@ -186,9 +183,9 @@ function panelBody(id: WorkspacePanelId, onClose: () => void): ReactNode {
     // whenever the panel showed one of the branches that lacked it.
     case 'properties': return <div {...tourAnchor(TOUR_ANCHORS.propertiesPanel)} className="h-full"><PropertiesPanel /></div>;
     case 'compare': return <ChunkErrorBoundary key="compare" label="Compare models"><Suspense fallback={null}><ComparePanel onClose={onClose} /></Suspense></ChunkErrorBoundary>;
-    case 'bcf': return <DeferredPanel id="bcf" onClose={onClose}><BCFPanel onClose={onClose} /></DeferredPanel>;
-    case 'validation': return <DeferredPanel id="validation" onClose={onClose}><ValidationPanel onClose={onClose} /></DeferredPanel>;
-    case 'lens': return <DeferredPanel id="lens" onClose={onClose}><LensPanel onClose={onClose} /></DeferredPanel>;
+    case 'bcf': return <DeferredPanel id="bcf" onClose={onClose} load={loadBcfPanel} />;
+    case 'validation': return <DeferredPanel id="validation" onClose={onClose} load={loadValidationPanel} />;
+    case 'lens': return <DeferredPanel id="lens" onClose={onClose} load={loadLensPanel} />;
     case 'clash': return <ChunkErrorBoundary key="clash" label="Clash panel"><Suspense fallback={null}><ClashPanel onClose={onClose} /></Suspense></ChunkErrorBoundary>;
     case 'extensions': return <DeferredPanel id="extensions" onClose={onClose} load={loadExtensionsPanel} />;
     case 'script': return <ChunkErrorBoundary label="Script panel"><Suspense fallback={null}><ScriptPanel /></Suspense></ChunkErrorBoundary>;

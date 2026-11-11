@@ -4010,8 +4010,6 @@ jobs:
         run: node scripts/check-changesets.mjs
       - name: Check changeset bump levels against the API surface
         run: node scripts/check-changeset-bump.mjs
-      - name: Check Rust crate version matches the declared major offset
-        run: node scripts/check-rust-major-offset.mjs
       - name: Check package READMEs
         run: node scripts/docs/check-package-readmes.mjs
 

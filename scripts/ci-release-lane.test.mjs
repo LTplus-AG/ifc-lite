@@ -195,39 +195,31 @@ function fakeGit(files) {
       if (v === undefined) throw new Error(`no ${rev}:${path}`);
       return v;
     },
-    diff: (path) => files[path].diff,
   };
 }
-/** A Cargo file pair as the rule reads it: `git diff -U0` plus the new text. Lines are replaced, never added. */
-function cargo(before, after) {
-  const b = before.split('\n');
-  const a = after.split('\n');
-  assert.equal(a.length, b.length, 'fixture replaces lines only');
-  const diff = a.map((l, i) => (l === b[i] ? '' : `@@ -${i + 1} +${i + 1} @@\n-${b[i]}\n+${l}\n`)).join('');
-  return { diff, after };
-}
-const crate = (v, dep = 'ifc-lite-core = { version = "=2.0.0", path = "../core" }') => `[package]\nname = "ifc-lite-x"\nversion = "${v}"\nrust-version = "1.75"\n\n[dependencies]\n${dep}\nserde = { version = "1.0.1", features = ["derive"] }\n\n[dependencies.ifc-lite-geom]\npath = "../geom"\nversion = "=2.0.0"\n\n[dependencies.external]\nversion = "1.0.0"\n`;
-const lock = (internal, external = '1.0.0') => `[[package]]\nname = "ifc-lite-core"\nversion = "${internal}"\ndependencies = [\n "serde",\n]\n\n[[package]]\nname = "external"\nversion = "${external}"\nsource = "git+https://example.com/x?rev=abc#abc"\n`;
 const pkg = (version, extra = {}) => JSON.stringify({ name: '@ifc-lite/x', version, dependencies: { '@ifc-lite/core': 'workspace:*', lodash: '^4.0.0' }, ...extra });
 
-test('DIFF: a real release shape passes', () => {
+test('DIFF: a real release shape without a Rust bump passes', () => {
   const files = {
     'packages/x/package.json': { before: pkg('1.0.0'), after: pkg('1.1.0') },
     'packages/new/package.json': { after: pkg('0.1.0') },
-    // Package version, an inline path dependency and a `[dependencies.<n>]`
-    // table with a path: every internal shape changesets/sync-versions writes.
-    'rust/core/Cargo.toml': cargo(crate('2.0.0'), crate('2.1.0', 'ifc-lite-core = { version = "=2.1.0", path = "../core" }').replace('path = "../geom"\nversion = "=2.0.0"', 'path = "../geom"\nversion = "=2.1.0"')),
-    'Cargo.lock': cargo(lock('2.0.0'), lock('2.1.0')),
   };
   const entries = [
     { status: 'D', path: '.changeset/brave-owls-sing.md' },
     { status: 'M', path: 'packages/x/CHANGELOG.md' },
     { status: 'A', path: 'packages/new/CHANGELOG.md' },
     { status: 'M', path: 'packages/x/package.json' },
-    { status: 'M', path: 'rust/core/Cargo.toml' },
-    { status: 'M', path: 'Cargo.lock' },
   ];
   assert.deepEqual(diffProblems(entries, fakeGit(files)), []);
+});
+
+test('DIFF: any Cargo.toml or Cargo.lock change runs the full lanes, even a pure version bump (#9783 review)', () => {
+  // Four review rounds each found a TOML spelling a version-only rule
+  // misread, every one fail-open. The lean lane no longer judges Cargo edits.
+  for (const path of ['Cargo.toml', 'Cargo.lock', 'rust/core/Cargo.toml', 'rust/core/fuzz/Cargo.lock']) {
+    const problems = diffProblems([{ status: 'M', path }], fakeGit({}));
+    assert.deepEqual(problems, [`${path}: a Rust version bump; the lean lane does not judge Cargo edits`], path);
+  }
 });
 
 test('DIFF: everything that is not a version bump is named', () => {
@@ -236,19 +228,6 @@ test('DIFF: everything that is not a version bump is named', () => {
     'b/package.json': { before: pkg('1.0.0'), after: JSON.stringify({ ...JSON.parse(pkg('1.0.0')), dependencies: { '@ifc-lite/core': 'workspace:*', lodash: '^4.1.0' } }) },
     'c/package.json': { before: pkg('1.0.0'), after: JSON.stringify({ ...JSON.parse(pkg('1.0.0')), dependencies: { '@ifc-lite/core': 'file:../x', lodash: '^4.0.0' } }) },
     'd/package.json': { before: '{', after: '{}' },
-    'Cargo.toml': cargo(crate('2.0.0', 'serde_json = "1.0.1"'), crate('2.0.0', 'serde_json = "1.0.2"')),
-    // An external crate in Cargo.lock: it has a `source`, so its version is not ours.
-    'Cargo.lock': cargo(lock('2.0.0'), lock('2.0.0', '1.0.1')),
-    'rust/x/Cargo.toml': { diff: '@@ -9,0 +10 @@\n+features = ["x"]\n', after: crate('2.0.0') },
-    'rust/y/Cargo.toml': cargo(crate('2.0.0'), crate('2.0.0').replace('rust-version = "1.75"', 'rust-version = "1.85"')),
-    'rust/z/Cargo.toml': cargo(crate('2.0.0'), crate('2.0.0').replace('serde = { version = "1.0.1"', 'serde = { version = "2.0.0"')),
-    // #9783 review: an external dependency in TABLE form, bare `version =` line.
-    'rust/t/Cargo.toml': cargo(crate('2.0.0'), crate('2.0.0').replace('[dependencies.external]\nversion = "1.0.0"', '[dependencies.external]\nversion = "1.1.0"')),
-    'rust/w/Cargo.toml': cargo('[workspace.dependencies.external]\nversion = "1.0.0"\n', '[workspace.dependencies.external]\nversion = "1.1.0"\n'),
-    // #9783 review: a `path =` inside a trailing comment is not a path dependency.
-    'rust/c/Cargo.toml': cargo('[dependencies]\nserde = { version = "1.0.1" } # was path = "../serde"\n', '[dependencies]\nserde = { version = "2.0.0" } # was path = "../serde"\n'),
-    // ...nor does an array element line like `["a"]` open a [package] table.
-    'rust/a/Cargo.toml': cargo('[dependencies.external]\nfeatures = [\n["package"]\n]\nversion = "1.0.0"\n', '[dependencies.external]\nfeatures = [\n["package"]\n]\nversion = "1.1.0"\n'),
   };
   const entries = [
     { status: 'A', path: '.changeset/new.md' },
@@ -257,23 +236,12 @@ test('DIFF: everything that is not a version bump is named', () => {
     { status: 'D', path: 'packages/x/CHANGELOG.md' },
     { status: 'A', path: 'packages/y/package.json' },
     ...['a', 'b', 'c', 'd'].map((p) => ({ status: 'M', path: `${p}/package.json` })),
-    { status: 'M', path: 'Cargo.toml' },
-    { status: 'M', path: 'Cargo.lock' },
-    { status: 'M', path: 'rust/x/Cargo.toml' },
-    { status: 'M', path: 'rust/y/Cargo.toml' },
-    { status: 'M', path: 'rust/z/Cargo.toml' },
-    { status: 'M', path: 'rust/t/Cargo.toml' },
-    { status: 'M', path: 'rust/w/Cargo.toml' },
-    { status: 'M', path: 'rust/c/Cargo.toml' },
-    { status: 'M', path: 'rust/a/Cargo.toml' },
     { status: 'A', path: 'docs/CHANGELOG.md' },
   ];
   const problems = diffProblems(entries, fakeGit(files));
   assert.equal(problems.length, entries.length, problems.join('\n'));
   assert.deepEqual(diffProblems([], fakeGit({})), ['the diff is empty or unreadable']);
 });
-
-// ---------------------------------------------------------------- the aggregate's check
 
 const verify = (over = {}) => verifyReleaseLane({ ...BASE, lane: 'lean', needs: needsJson('skipped', Object.fromEntries(LEAN_KEPT_JOBS.map((j) => [j, 'success']))), ...over });
 
@@ -427,7 +395,7 @@ test('WIRING: release-pr runs the release checks and is judged by the aggregate'
   assert.equal(job.if, "needs.changes.outputs.release_lane == 'lean' && needs.changes.outputs.noop != 'true'");
   assert.equal(job.name, 'Release PR checks');
   const runs = job.steps.map((s) => s.run).filter(Boolean);
-  for (const s of ['check-changesets.mjs', 'check-changeset-bump.mjs', 'check-rust-major-offset.mjs', 'check-package-readmes.mjs']) {
+  for (const s of ['check-changesets.mjs', 'check-changeset-bump.mjs', 'check-package-readmes.mjs']) {
     assert.ok(runs.some((r) => r.includes(s)), s); // @source-text-assertion-ok workflow wiring pin: the subject IS the YAML
   }
   assert.ok(jobs.test.needs.includes('release-pr')); // @source-text-assertion-ok workflow wiring pin: the subject IS the YAML

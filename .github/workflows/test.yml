@@ -1384,7 +1384,7 @@ jobs:
         with:
           name: shard-retry-viewer-${{ matrix.shard }}
           path: ${{ runner.temp }}/shard-retry/viewer-retry.json
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 30
       # Fail-closed backstop for `on`: the first attempt failed and was allowed
       # to, so unless the retry step itself succeeded, fail here.
@@ -2297,7 +2297,7 @@ jobs:
         with:
           name: shard-retry-e2e-${{ matrix.shard }}
           path: ${{ runner.temp }}/shard-retry/e2e-retry.json
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 30
       - name: Fail unless the retry passed
         if: (success() || failure()) && steps.e2e.outcome == 'failure' && vars.CI_SHARD_RETRY == 'on' && steps.e2e_retry.outcome != 'success'

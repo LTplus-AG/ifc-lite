@@ -1925,7 +1925,7 @@ export class Scene {
     } finally {
       this.finalizeInProgress = false;
       this.streamingFragmentIndexBudget = Number.POSITIVE_INFINITY;
-      this.streamWork.endFinalize();
+      this.streamWork.endFinalize(); // the latest begun: finalizeStreamingInner's, as nothing else begins within this call
     }
   }
 
@@ -2041,7 +2041,7 @@ export class Scene {
     const scene = this;
     const oldFragments = this.streamingFragments;
     perfTally('render.finalize', oldFragments.length, 'fragments'); // #6957 fragment rebuilds
-    this.streamWork.beginFinalize(oldFragments);
+    const assembling = this.streamWork.beginFinalize(oldFragments); // retired by this finalize's own end
     const oldBatches = this.batchedMeshes;
     const fragmentSet = new Set(oldFragments);
     const oldBatchSet = new Set(oldBatches);
@@ -2091,7 +2091,7 @@ export class Scene {
         scene.streamingFragments = [...oldFragments, ...scene.streamingFragments]; // + any streamed in meanwhile
         scene.batchedMeshes = oldBatches;
         scene.finalizeInProgress = false;
-        scene.streamWork.endFinalize();
+        scene.streamWork.endFinalize(assembling);
       }
 
       function processChunk(): void {
@@ -2143,7 +2143,7 @@ export class Scene {
           perfCount('render.finalize.batches', createdOwned.length);
           scene.finalizeInProgress = false;
           scene.streamingFragmentIndexBudget = Number.POSITIVE_INFINITY;
-          scene.streamWork.endFinalize();
+          scene.streamWork.endFinalize(assembling);
           scene.snapshots.completeCapture();
           trace?.end(span, { batches: createdOwned.length, chunks });
           resolve();

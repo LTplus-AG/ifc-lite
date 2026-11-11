@@ -80,6 +80,8 @@ export function regroupStreamedBuckets<Bucket extends RegroupBucket>(host: Regro
   // batch draw order) ends exactly as a full re-route leaves it.
   const order: Array<MeshData | Bucket> = [];
   const vertexBytesBefore = new Map<Bucket, number>();
+  /** A kept bucket's count once re-grouped: anything above it at a rollback streamed in since. */
+  const vertexBytesRegrouped = new Map<Bucket, number>();
 
   for (const key of host.streamedBucketKeys) {
     const bucket = host.buckets.get(key);
@@ -136,7 +138,8 @@ export function regroupStreamedBuckets<Bucket extends RegroupBucket>(host: Regro
       host.buckets.set(key, bucket);
       for (const md of bucket.meshData) host.meshDataBucket.set(md, bucket);
       const bytes = vertexBytesBefore.get(bucket);
-      if (bytes !== undefined) bucket.vertexBytes = bytes;
+      const regrouped = vertexBytesRegrouped.get(bucket);
+      if (bytes !== undefined) bucket.vertexBytes = bytes + (regrouped === undefined ? 0 : Math.max(0, bucket.vertexBytes - regrouped));
     }
     for (const [base, change] of activeChanges) {
       if (host.activeBucketKey.get(base) !== change.after) continue;
@@ -156,6 +159,7 @@ export function regroupStreamedBuckets<Bucket extends RegroupBucket>(host: Regro
         let bytes = 0;
         for (const md of bucket.meshData) bytes += (md.positions.length / 3) * BATCH_CONSTANTS.BYTES_PER_VERTEX;
         bucket.vertexBytes = bytes;
+        vertexBytesRegrouped.set(bucket, bytes);
         host.buckets.set(bucket.key, bucket);
         if (!host.pendingBatchKeys.has(bucket.key)) addedPending.add(bucket.key);
         host.pendingBatchKeys.add(bucket.key);

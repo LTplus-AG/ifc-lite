@@ -368,6 +368,22 @@ describe('cold finalize work after the last batch arrived', () => {
     assertSameBatches(assembled.scene, (await run(true)).scene);
   });
 
+  it('a synchronous finalize during a pending async one: each retires its own fragment records', async () => {
+    // Review finding on #9759: the synchronous finalize replaced the pending one's
+    // fragment set, which could then never retire its records (and their arrays).
+    const { device } = recordingDevice();
+    const scene = new Scene();
+    scene.setSpatialChunking({ cellSize: 32 }); scene.setLodBuildsEnabled(true); scene.setQuantizedBatches(true);
+    const all = arrivals();
+    for (const batch of all.slice(0, 6)) { scene.queueMeshes(batch); drain(scene, device); }
+    const pending = scene.finalizeStreamingAsync(device, pipeline, 0); // yields between chunks
+    for (const batch of all.slice(6)) { scene.queueMeshes(batch); drain(scene, device); }
+    scene.finalizeStreaming(device, pipeline);
+    await pending;
+    const retained = retainedRuns(scene);
+    assert.ok(retained.records === 0 && retained.bytes === 0, `after both finalizes: ${retained.records} records, ${retained.bytes} bytes retained`);
+  });
+
   it('a mesh re-keyed while streaming: its buckets rebuild, the rest assemble, the result still matches', async () => {
     const assembled = await streamedLoad({ recolor: 3 });
     const reference = await streamedLoad({ recolor: 3, rebuildReference: true });

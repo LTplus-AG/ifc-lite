@@ -79,7 +79,8 @@ export class StreamAssembly {
   private readonly lattices = new Map<string, LatticeFrame>();
   /** Keyed by the run's first mesh. */
   private readonly runs = new Map<MeshData, FragmentRun>();
-  private live: ReadonlySet<BatchedMesh> | null = null;
+  /** The fragments each pending finalize retires, oldest first: a synchronous finalize can run inside an async one's window. */
+  private readonly finalizing: ReadonlySet<BatchedMesh>[] = [];
   /** A fragment's uploaded vertex bytes while a capture is armed, until `record` takes them. */
   private readonly kept = new WeakMap<BatchedMesh, ArrayBuffer | Float32Array>();
 
@@ -110,22 +111,26 @@ export class StreamAssembly {
   }
 
   /** Fragments a finalize may assemble from: the ones it is about to retire. */
-  beginFinalize(fragments: readonly BatchedMesh[]): void {
-    this.live = new Set(fragments);
+  beginFinalize(fragments: readonly BatchedMesh[]): ReadonlySet<BatchedMesh> {
+    const retiring = new Set(fragments);
+    this.finalizing.push(retiring);
+    return retiring;
   }
 
   /** At the finalize swap: forget the retired fragments and the stream's verdicts. */
-  endFinalize(): void {
-    const live = this.live;
-    if (live) for (const [mesh, run] of this.runs) if (live.has(run.fragment)) this.runs.delete(mesh);
-    this.live = null;
+  endFinalize(retiring: ReadonlySet<BatchedMesh> | undefined = this.finalizing[this.finalizing.length - 1]): void {
+    const at = retiring ? this.finalizing.indexOf(retiring) : -1;
+    if (at < 0) return;
+    this.finalizing.splice(at, 1);
+    for (const [mesh, run] of this.runs) if (retiring!.has(run.fragment)) this.runs.delete(mesh);
+    if (this.finalizing.length > 0) return; // the stream's verdicts serve the pending one
     this.topology = null;
   }
 
   clear(): void {
     this.runs.clear();
     this.lattices.clear();
-    this.live = null;
+    this.finalizing.length = 0;
     this.topology = null;
   }
 
@@ -137,7 +142,7 @@ export class StreamAssembly {
     meshes: readonly MeshData[], color: [number, number, number, number],
     device: GPUDevice, pipeline: RenderPipeline, options: AssembleOptions,
   ): BatchedMesh | null {
-    if (!this.live) return null; // only a finalize assembles, from the fragments it retires
+    if (this.finalizing.length === 0) return null; // only a finalize assembles, from the fragments it retires
     const runs = this.cover(meshes);
     const miss = !runs ? 'uncovered' : encodingMiss(runs, options) ?? (options.onMerged && runs.some((run) => !run.bytes) ? 'capture' : null);
     if (miss || !runs) {
@@ -235,13 +240,13 @@ export class StreamAssembly {
 
   /** The live fragment runs that concatenate to exactly `meshes`, or `null`. */
   private cover(meshes: readonly MeshData[]): FragmentRun[] | null {
-    const live = this.live;
-    if (!live || meshes.length === 0) return null;
+    if (this.finalizing.length === 0 || meshes.length === 0) return null;
+    const live = (fragment: BatchedMesh) => this.finalizing.some((retiring) => retiring.has(fragment));
     const out: FragmentRun[] = [];
     let i = 0;
     while (i < meshes.length) {
       const run = this.runs.get(meshes[i]);
-      if (!run || !live.has(run.fragment) || run.fragment.gpuResident === false || !run.fragment.bounds
+      if (!run || !live(run.fragment) || run.fragment.gpuResident === false || !run.fragment.bounds
         || i + run.meshes.length > meshes.length) return null;
       for (let k = 0; k < run.meshes.length; k++) {
         if (run.meshes[k] !== meshes[i + k] || run.salts[k] !== colorSaltByte(meshes[i + k].color)) return null;

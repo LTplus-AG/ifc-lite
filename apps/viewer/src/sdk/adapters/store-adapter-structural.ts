@@ -3,47 +3,96 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Collab gate + shared-room mirroring for `bim.store.addStructural*` (#5167).
+ * `bim.store`'s structural methods (#5167), with the structural write path
+ * kept off the boot path (#9668) the way the storey methods are (#9200,
+ * `store-adapter-storey.ts`). Every structural builder sits behind
+ * `store-adapter-structural-impl.ts`, loaded in its own chunk; nothing else in
+ * the viewer may import that module or `createStructuralStoreBackend`
+ * statically. `apps/viewer/scripts/check-structural-writes-lazy.mjs` fails the
+ * build if one does.
  *
- * The structural surface is spread in from a shared SDK factory, exactly like
- * cost. Spreading it raw would reach the `@ifc-lite/create` builders and mutate
- * the local overlay even when `canCollabEdit()` is false, and in a shared room
- * the authored entities and their `IfcRel*` rows would never be published — so
- * they would be discarded the next time reconstruction replaced the overlay.
+ * The SDK host is built at boot and `bim.store` is synchronous, so building
+ * the host starts the load; it is ready long before a script runs. A script
+ * call that still comes first is refused with a message naming the method,
+ * never answered from a partial implementation. A viewer flow that can wait
+ * (the assistant's structural graph review) awaits `loadStructuralWrites()`
+ * before its synchronous write.
  *
- * The gate and the mirror are the same ones cost uses; only the undo entity
- * types and the failure label differ.
+ * Collab gate + shared-room mirroring: spreading the SDK factory raw would
+ * mutate the local overlay even when `canCollabEdit()` is false, and in a
+ * shared room the authored entities and their `IfcRel*` rows would never be
+ * published, so reconstruction would discard them. The gate and the mirror are
+ * the ones cost uses; only the undo entity types and the failure label differ.
  */
 
 import type { StoreEditor } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
-import type { createStructuralStoreBackend } from '@ifc-lite/sdk';
+import type { StructuralStoreBackendMethods, StructuralStoreModelResolver } from '@ifc-lite/sdk';
 import { createStoreMutationTracker } from './store-adapter-cost.js';
 import type { StoreApi } from './types.js';
 
-type StructuralMethods = ReturnType<typeof createStructuralStoreBackend>;
+type Impl = typeof import('./store-adapter-structural-impl.js');
 
-export function withStructuralMutationTracking(
-  methods: StructuralMethods,
+let impl: Impl | null = null;
+let failure: unknown = null;
+let loading: Promise<Impl> | null = null;
+
+/** Load the structural write path; resolves once structural writes can run. */
+export function loadStructuralWrites(): Promise<Impl> {
+  if (loading) return loading;
+  failure = null; // a retry reports "still loading", not the previous failure
+  loading = import('./store-adapter-structural-impl.js').then(
+    (loaded) => { impl = loaded; return loaded; },
+    (error: unknown) => { failure = error; loading = null; throw error; },
+  );
+  return loading;
+}
+
+/**
+ * The loaded structural write path, for a synchronous caller. `label` prefixes
+ * the refusal when it has not loaded yet (or failed to).
+ */
+export function loadedStructuralWrites(label: string): Impl {
+  if (impl) return impl;
+  const cause = failure instanceof Error ? failure.message : failure === null ? null : String(failure);
+  // Start another attempt after a failure, so "try again" has something to wait for.
+  if (cause !== null) loadStructuralWrites().catch((error: unknown) => console.warn('[bim.store] structural authoring failed to load again', error));
+  throw new Error(cause === null
+    ? `${label}: structural authoring is still loading; try again in a moment`
+    : `${label}: structural authoring failed to load (${cause})`);
+}
+
+/** `Required` so a structural method added to the SDK interface, optional ones included, fails typecheck here until it is listed. */
+type StructuralMethods = Required<StructuralStoreBackendMethods>;
+
+export function structuralMutationTracking(
   store: StoreApi,
+  resolveModel: StructuralStoreModelResolver,
   resolve: (modelId: string) => { editor: StoreEditor; dataStore: IfcDataStore } | null,
 ): StructuralMethods {
+  loadStructuralWrites().catch((error: unknown) => {
+    // Reported again, with the cause, by the first structural call that needs it.
+    console.warn('[bim.store] structural authoring failed to load', error);
+  });
+  type Backend = ReturnType<Impl['createStructuralStoreBackend']>;
+  let backend: Backend | null = null;
+  const live = (name: keyof StructuralMethods): Backend =>
+    backend ??= loadedStructuralWrites(`bim.store.${name}`).createStructuralStoreBackend(resolveModel);
   const { create } = createStoreMutationTracker(store, resolve, 'structural');
   return {
-    ...methods,
-    addStructuralAnalysisModel: create('IFCSTRUCTURALANALYSISMODEL', methods.addStructuralAnalysisModel),
-    addStructuralCurveMember: create('IFCSTRUCTURALCURVEMEMBER', methods.addStructuralCurveMember),
-    addStructuralPointConnection: create('IFCSTRUCTURALPOINTCONNECTION', methods.addStructuralPointConnection),
-    addStructuralLoadGroup: create('IFCSTRUCTURALLOADGROUP', methods.addStructuralLoadGroup),
-    addStructuralPointAction: create('IFCSTRUCTURALPOINTACTION', methods.addStructuralPointAction),
-    addStructuralLinearAction: create('IFCSTRUCTURALLINEARACTION', methods.addStructuralLinearAction),
-    // These are creates, not rewrites. Unlike the cost relationship methods —
+    addStructuralAnalysisModel: create('IFCSTRUCTURALANALYSISMODEL', (...args) => live('addStructuralAnalysisModel').addStructuralAnalysisModel(...args)),
+    addStructuralCurveMember: create('IFCSTRUCTURALCURVEMEMBER', (...args) => live('addStructuralCurveMember').addStructuralCurveMember(...args)),
+    addStructuralPointConnection: create('IFCSTRUCTURALPOINTCONNECTION', (...args) => live('addStructuralPointConnection').addStructuralPointConnection(...args)),
+    addStructuralLoadGroup: create('IFCSTRUCTURALLOADGROUP', (...args) => live('addStructuralLoadGroup').addStructuralLoadGroup(...args)),
+    addStructuralPointAction: create('IFCSTRUCTURALPOINTACTION', (...args) => live('addStructuralPointAction').addStructuralPointAction(...args)),
+    addStructuralLinearAction: create('IFCSTRUCTURALLINEARACTION', (...args) => live('addStructuralLinearAction').addStructuralLinearAction(...args)),
+    // These are creates, not rewrites. Unlike the cost relationship methods,
     // which edit existing rows and clear unsafe undo history via
-    // `markCostRelationshipMutation` — each of these authors a NEW `IfcRel*`
+    // `markCostRelationshipMutation`, each of these authors a NEW `IfcRel*`
     // entity and returns its ref, so it needs its own CREATE_ENTITY undo entry
     // or the row is left unreachable by undo (#5167 review).
-    connectStructuralMemberToConnection: create('IFCRELCONNECTSSTRUCTURALMEMBER', methods.connectStructuralMemberToConnection),
-    connectStructuralActivityToItem: create('IFCRELCONNECTSSTRUCTURALACTIVITY', methods.connectStructuralActivityToItem),
-    assignToStructuralGroup: create('IFCRELASSIGNSTOGROUP', methods.assignToStructuralGroup),
+    connectStructuralMemberToConnection: create('IFCRELCONNECTSSTRUCTURALMEMBER', (...args) => live('connectStructuralMemberToConnection').connectStructuralMemberToConnection(...args)),
+    connectStructuralActivityToItem: create('IFCRELCONNECTSSTRUCTURALACTIVITY', (...args) => live('connectStructuralActivityToItem').connectStructuralActivityToItem(...args)),
+    assignToStructuralGroup: create('IFCRELASSIGNSTOGROUP', (...args) => live('assignToStructuralGroup').assignToStructuralGroup(...args)),
   };
 }

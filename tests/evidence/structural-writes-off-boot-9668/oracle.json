@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "why": "The store adapter must take bim.store structural methods from the lazy write path; spread the SDK factory at boot again and a call before the chunk loads writes instead of being refused by name.",
+  "key": "apps/viewer/src/sdk/adapters/store-adapter-structural-impl.ts",
+  "mutation": "tests/evidence/structural-writes-off-boot-9668/behaviour.oracle.patch",
+  "test": "apps/viewer/src/sdk/adapters/store-adapter-structural.test.ts"
+}

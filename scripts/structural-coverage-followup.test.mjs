@@ -76,7 +76,7 @@ test('#9668 CI: ratchet runs in built fixture job even in fast PR lane', () => {
   assert.ok(!build.if.includes("lane != 'fast'")); // @source-text-assertion-ok parsed workflow configuration or probe verdict, not source text
   const filter = wf.jobs.changes.steps.find((s) => s.uses?.startsWith('dorny/paths-filter')); // @source-text-assertion-ok parsed workflow configuration or probe verdict, not source text
   const paths = parse(filter.with.filters).frontend;
-  for (const path of ['packages/parser/src/a.ts', 'packages/create/src/a.ts', 'packages/export/src/a.ts', 'tests/structural-coverage/score.mjs', 'tests/models/manifest.json', 'docs/guide/structural-analysis.md', 'scripts/lib/bounded-process.mjs']) {
+  for (const path of ['packages/parser/src/a.ts', 'packages/create/src/a.ts', 'packages/export/src/a.ts', 'tests/structural-coverage/score.mjs', 'tests/models/manifest.json', 'docs/guide/structural-analysis.md', 'scripts/lib/bounded-process.mjs', 'scripts/lib/entity-table.mjs', 'scripts/lib/rust-schema-names.mjs']) {
     assert.ok(matchesAny(path, paths), path);
   }
 });

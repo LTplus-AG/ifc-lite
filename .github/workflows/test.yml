@@ -436,7 +436,9 @@ jobs:
               - 'tests/models/manifest.json'
               - 'docs/guide/*structural*.md'
               - 'scripts/lib/bounded-process.mjs'
+              - 'scripts/lib/entity-table.mjs'
               - 'scripts/lib/is-main-entry.mjs'
+              - 'scripts/lib/rust-schema-names.mjs'
               - 'tests/e2e/**'
               # Perf tools consume benchmark helpers; the CI path-coverage mirror
               # reads every tracked benchmark input, so all must trigger Node tests.

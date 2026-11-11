@@ -142,6 +142,8 @@ function hydrateCacheStore(
     spatialHierarchy: cacheStore.spatialHierarchy,
   };
   if (extras.onDemandMaps) defineLazyOnDemandMaps(storeData, extras.onDemandMaps);
+  // Without a source there are no maps; keep the keys as own undefined fields, as before.
+  else for (const key of ON_DEMAND_KEYS) storeData[key] = undefined;
   return attachDataStoreAccessors(storeData);
 }
 

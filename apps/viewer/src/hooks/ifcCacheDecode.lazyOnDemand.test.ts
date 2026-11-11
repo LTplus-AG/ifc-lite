@@ -85,4 +85,15 @@ describe('cache hit on-demand maps', () => {
     assert.ok((dataStore.onDemandQuantityMap?.size ?? 0) > 0, 'the others keep their built values');
     assert.ok(Object.keys(dataStore).includes('onDemandMaterialMap'), 'still enumerable (store transport and spreads see it)');
   });
+
+  it('a hit without a source keeps the three keys as own, undefined fields', async () => {
+    const { trace, builds } = counting();
+    const { buffer } = await entry();
+    const { dataStore } = await decodeCachedMetadata({ buffer }, undefined, trace);
+    for (const key of ['onDemandPropertyMap', 'onDemandQuantityMap', 'onDemandMaterialMap'] as const) {
+      assert.ok(Object.prototype.hasOwnProperty.call(dataStore, key), `${key} is an own field`);
+      assert.equal(dataStore[key], undefined);
+    }
+    assert.equal(builds(), 0);
+  });
 });

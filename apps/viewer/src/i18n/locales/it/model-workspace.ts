@@ -51,5 +51,5 @@ export const modelWorkspaceIt = {
   "modelWorkspace.layout.plan": "Pianta",
   "modelWorkspace.layout.split": "Affiancata",
   "modelWorkspace.layout.3d": "3D",
-  "modelWorkspace.hint.onboarding": "W muro · Shift+S solaio · fai clic su un elemento per modificarlo · E per uscire"
+  "modelWorkspace.hint.onboarding": "W muro · Shift+S solaio · fai clic su un elemento per modificarlo · M per uscire"
 } satisfies Catalogue;

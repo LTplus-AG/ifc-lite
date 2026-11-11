@@ -197,11 +197,11 @@ test('CLI: a PR whose head repository is not the run\'s is ignored, so another f
   assert.match(linked.d.reason, /no open PR has this head/); // @source-text-assertion-ok subject is the decision's returned reason
   const listed = cli({}, [['repos/o/r/pulls -f state=open -f head=o:feat', ok([prJson({ head: { sha: SHA, repo: { full_name: 'evil/r' } } })])], ...ROUTES.slice(1)], { pull_requests: [] });
   assert.equal(listed.d.action, 'keep');
-  assert.ok(![...linked.calls, ...listed.calls].some((c) => c.includes('DELETE')));
+  assert.ok(![...linked.calls, ...listed.calls].some((c) => c.includes('DELETE'))); // @source-text-assertion-ok subject is the API calls the CLI made
   // A spoofed PR listed FIRST must not hide the real one listed after it.
   const both = cli({}, [['repos/o/r/pulls -f state=open -f head=o:feat', ok([prJson({ number: 8, head: { sha: SHA, repo: { full_name: 'evil/r' } } }), prJson()])], ...ROUTES.slice(1)], { pull_requests: [] });
   assert.equal(both.d.action, 'remove');
-  assert.equal(both.d.number, 7); // @source-text-assertion-ok subject is the API calls the CLI made
+  assert.equal(both.d.number, 7);
 });
 
 test('CLI: a PR of another repository listed for the same head is not this run\'s PR', () => {

@@ -34,7 +34,7 @@ TypeScript source. The first cut put the collab gate and undo tracking in the la
 too. Its import of an eager module made the bundler carve the shared code out of two eager
 chunks into two new ones, still eager: +2 files and only 3.3 KB saved. Keeping the
 tracking in the eager facade and leaving the lazy module nothing but the factory saved
-6.3 KB with the file count unchanged. A lazy module should import only what eager code
+about 6.2 KB with the file count unchanged. A lazy module should import only what eager code
 does not already share with it, and the eager file count is the tell.
 
 ## Storey planners and the QuickJS runtime leave the boot path (#9200)

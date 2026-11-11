@@ -42,6 +42,7 @@ import { undoPendingMutations } from './mutation-undo.js';
 import { hostedPlaceTools } from './hosted-place.js';
 import { joinWallsTool } from './wall-join.js';
 import { hostedEditTool } from './hosted-edit.js';
+import { modellingC5Tools } from './modelling-c5.js';
 import { copyElementsTools } from './copy-elements.js';
 import { physicalEditTool } from './physical-edit.js';
 import { roomCommandTool } from './room-command.js';
@@ -363,6 +364,7 @@ export const mutationTools: Tool[] = [
   ...storeyTools,
   hostedEditTool,
   ...copyElementsTools,
+  ...modellingC5Tools,
   physicalEditTool,
   roomCommandTool,
   joinWallsTool,

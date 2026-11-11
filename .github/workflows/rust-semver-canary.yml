@@ -2,20 +2,9 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-# The full Rust crate semver path, weekly.
-#
-# test.yml's `rust-semver` job installs stable Rust and cargo-semver-checks only
-# when a crate version is ahead of crates.io, which is release PRs and little
-# else. Before that change every PR proved the install still worked; now a
-# broken toolchain or install action would first show on the release PR, the
-# worst moment to find it. This runs the job's full path on a schedule: the
-# same pinned actions, then the full gate, whose first act is
-# `cargo +stable semver-checks --version` (TOOL_MISSING, exit 2, if the install
-# did not take). Between releases every crate is already published, so the gate
-# then decides from crates.io without comparing an API, exactly as a PR used to.
-#
-# Failure reporting is review-lane-canary.yml's pattern: one open issue under a
-# label, commented on by each failing run, closed by the next green one.
+# Weekly proof that test.yml's rust-semver install still works, since PRs only
+# install it when a crate version moved. Same composite action, then the full
+# gate, whose first act is the `cargo +stable semver-checks` probe.
 
 name: Rust semver canary
 
@@ -27,7 +16,6 @@ on:
 
 permissions:
   contents: read
-  issues: write
 
 concurrency:
   group: rust-semver-canary
@@ -43,73 +31,19 @@ jobs:
         with:
           lfs: false
           persist-credentials: false
-
-      # The same three steps, at the same pins, as test.yml's `rust-semver`.
-      - name: Install stable Rust
-        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master 2026-05
-        with:
-          toolchain: stable
-
-      - name: Install cargo-semver-checks
-        uses: taiki-e/install-action@4f5ee4a4759116abc6b10af05f20374e179d8ca3 # cargo-semver-checks (snapshot pinned 2026-08)
-
-      # Restore only. The canary compiles nothing, so a save here could park a
-      # near-empty cache under the key a release run on main would then be
-      # unable to overwrite.
-      - name: Cargo cache
-        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
-        with:
-          prefix-key: ci-rust-semver
-          shared-key: main
-          save-if: false
-
+      - uses: ./.github/actions/setup-rust-semver
       - name: Check crate semver against crates.io
-        id: gate
-        if: always()
-        run: |
-          set +e
-          node scripts/check-rust-semver.mjs > "$RUNNER_TEMP/semver.log" 2>&1
-          rc=$?
-          set -e
-          cat "$RUNNER_TEMP/semver.log"
-          echo "rc=$rc" >> "$GITHUB_OUTPUT"
+        run: node scripts/check-rust-semver.mjs
 
-      - name: Raise or update the ops issue
-        if: always() && steps.gate.outputs.rc != '0' && github.ref == 'refs/heads/main'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          log=""
-          [ -f "$RUNNER_TEMP/semver.log" ] && log="$(tail -40 "$RUNNER_TEMP/semver.log")"
-          body="$(printf 'The weekly Rust semver canary failed at %s (run %s).\n\n```\n%s\n```\n\nPR runs of test.yml install the semver toolchain only when a crate version moved, so this canary is the only regular proof that the install still works. Check the pinned `dtolnay/rust-toolchain` and `taiki-e/install-action` steps and the stable toolchain before the next release PR needs them.\n\nThis issue is updated in place by each failing run, and the next green run closes it.\n' "$(date -u +%FT%TZ)" "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" "$log")"
-          existing="$(gh issue list --repo "${{ github.repository }}" --state open \
-            --label rust-semver-canary-down --limit 1 --json number --jq '.[0].number // empty')"
-          if [ -n "$existing" ]; then
-            gh issue comment "$existing" --repo "${{ github.repository }}" --body "$body"
-          else
-            gh label create rust-semver-canary-down --repo "${{ github.repository }}" \
-              --color b60205 --description "The weekly Rust semver canary failed." 2>/dev/null || true
-            gh issue create --repo "${{ github.repository }}" \
-              --title "Rust semver toolchain path is broken (canary failed)" \
-              --label rust-semver-canary-down --body "$body"
-          fi
-
-      - name: All clear
-        if: steps.gate.outputs.rc == '0' && github.ref == 'refs/heads/main'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          existing="$(gh issue list --repo "${{ github.repository }}" --state open \
-            --label rust-semver-canary-down --limit 1 --json number --jq '.[0].number // empty')"
-          if [ -n "$existing" ]; then
-            gh issue close "$existing" --repo "${{ github.repository }}" \
-              --comment "Rust semver canary passed at $(date -u +%FT%TZ)."
-          fi
-
-      - name: Fail the run if the gate did not pass
-        if: always() && steps.gate.outputs.rc != '0'
-        run: |
-          echo "The full semver path failed; see the rust-semver-canary-down issue."
-          exit 1
+  report-scheduled-failure:
+    needs: [canary]
+    if: always() && github.event_name == 'schedule' && needs.canary.result != 'success'
+    uses: ./.github/workflows/report-scheduled-failure.yml
+    with:
+      workflow_name: Rust semver canary
+      jobs: canary
+      result: canary=${{ needs.canary.result }}
+    permissions:
+      actions: read
+      contents: read
+      issues: write

@@ -17,7 +17,7 @@ import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { checkRustSemver } from './check-rust-semver.mjs';
-import { FINAL_VERDICT_MARKER, NEEDS_TOOL_EXIT, registryOnlyVerdict } from './check-rust-semver-registry.mjs';
+import { NEEDS_TOOL_EXIT, registryOnlyVerdict } from './check-rust-semver-registry.mjs';
 
 const SCRIPTS = dirname(fileURLToPath(import.meta.url));
 const NINE = Array.from({ length: 9 }, (_, i) => `crate-${i}`);
@@ -67,8 +67,6 @@ test('registry-only CLI never needs cargo and never claims a compatibility resul
   const out = `${res.stdout || ''}${res.stderr || ''}`;
   assert.doesNotMatch(out, /TOOL_MISSING/);
   assert.doesNotMatch(out, /every Rust API change fits/);
-  const marked = out.split('\n').includes(FINAL_VERDICT_MARKER);
-  assert.equal(marked, res.status === 0, 'the final-verdict line appears exactly when the exit is 0');
   if (res.status === 0) return assert.match(out, /nothing to gate/);
   if (res.status === 1) return assert.match(out, /Rust crate semver gate failed/);
   if (res.status === 2) return assert.match(out, /REGISTRY_LOOKUP_FAILED/);

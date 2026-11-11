@@ -6,32 +6,18 @@
 /**
  * The crates.io half of scripts/check-rust-semver.mjs, with no cargo at all.
  *
- * WHY. The semver gate only calls cargo-semver-checks for a crate whose
- * workspace version is ahead of its latest crates.io release. On an ordinary
- * PR every crate is already published at the workspace version, so the gate
- * decides from registry lookups alone, yet the `rust-semver` job still
- * installed a toolchain and restored a cargo cache first (p90 6.5 min).
- *
- * WHAT. This runs the gate's own `checkRustSemver` with runners that only
- * record that they were asked. Every refusal (BAD_VERSION, NO_CRATES,
- * CRATE_FLOOR, NO_BASELINE, BAD_BASELINE, VERSION_NOT_ADVANCED) and every
- * "already published" decision is made before a runner is called. So:
- *
- *   - no runner asked: the result IS the full gate's result, printed by the
- *     gate's own `report`. Exit 0 or 1, the same output; exit 0 then prints
- *     FINAL_VERDICT_MARKER, which test.yml requires before skipping cargo.
- *   - a runner asked:  exit NEEDS_TOOL_EXIT (3). The stub's answer is thrown
- *     away and the caller must install the tool and run the full gate.
- *   - registry lookup failed: exit 2 with REGISTRY_LOOKUP_FAILED, as the full
- *     gate does.
- *
- * One decision path, so this cannot drift from the gate. It never prints a
- * compatibility result: one needs a comparison, and a comparison exits 3.
+ * The gate calls cargo-semver-checks only for a crate whose workspace version
+ * is ahead of crates.io; every other verdict comes from registry lookups. This
+ * runs the gate's own `checkRustSemver` with runners that only record being
+ * asked. Nobody asked: the result is the full gate's, printed by its `report`,
+ * and on exit 0 this writes `needs_cargo=false` to GITHUB_OUTPUT, the only
+ * thing that lets test.yml skip the toolchain and the full gate. Somebody
+ * asked: exit NEEDS_TOOL_EXIT and the full gate runs.
  *
  * Run: `node scripts/check-rust-semver-registry.mjs` (test.yml `rust-semver`)
- * Tests: scripts/check-rust-semver-registry.test.mjs
  */
 
+import { appendFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CRATES } from './lib/crates-io.mjs';
@@ -42,14 +28,6 @@ const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 /** Exit status meaning "this verdict needs cargo-semver-checks; run the full gate". */
 export const NEEDS_TOOL_EXIT = 3;
-
-/**
- * Printed as its own line only after a final exit-0 verdict has been reported.
- * test.yml skips the cargo steps on exit 0 AND this line, so a run whose main
- * never executed (an import-only entry, an early return) exits 0 without it
- * and the full gate still runs.
- */
-export const FINAL_VERDICT_MARKER = 'RUST_SEMVER_REGISTRY_VERDICT=final';
 
 /**
  * The gate's verdict from the registry alone, or `{ needsTool: true }`.
@@ -85,8 +63,8 @@ async function main() {
     process.exit(NEEDS_TOOL_EXIT);
   }
   report(verdict.result);
-  // `report` exits 1 on a refusal, so this line is reached only on exit 0.
-  console.log(FINAL_VERDICT_MARKER);
+  // `report` exits 1 on a refusal, so only a final exit-0 verdict gets here.
+  if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, 'needs_cargo=false\n');
 }
 
 if (isMainEntry(import.meta.url)) {

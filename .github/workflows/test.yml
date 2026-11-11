@@ -3222,44 +3222,24 @@ jobs:
 
       # The gate calls cargo-semver-checks only for a crate whose workspace
       # version is ahead of crates.io. This step decides everything else from
-      # registry lookups with the gate's own logic: exit 1/2 is the gate's
-      # refusal, exit 3 means a crate must be compared. `needs_cargo=false`
-      # needs BOTH exit 0 and the script's own final-verdict line, so a run
-      # that exits 0 without reaching its verdict still runs the full gate.
+      # registry lookups with the gate's own logic, and writes
+      # `needs_cargo=false` itself only after reporting a final verdict. Exit
+      # 1/2 is the gate's refusal; exit 3 (a crate must be compared) and any
+      # run that never wrote the output fall through to the full gate below.
       # rust-semver-canary.yml runs the full path weekly, since PRs rarely do.
       - name: Check crate semver against crates.io (registry only)
         id: registry
         run: |
           set +e
-          node scripts/check-rust-semver-registry.mjs > "$RUNNER_TEMP/semver-registry.log" 2>&1
+          node scripts/check-rust-semver-registry.mjs
           status=$?
           set -e
-          cat "$RUNNER_TEMP/semver-registry.log"
-          if [ "$status" -eq 0 ] && grep -qx 'RUST_SEMVER_REGISTRY_VERDICT=final' "$RUNNER_TEMP/semver-registry.log"; then
-            echo "needs_cargo=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          if [ "$status" -eq 0 ] || [ "$status" -eq 3 ]; then
-            echo "needs_cargo=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
+          if [ "$status" -eq 3 ]; then exit 0; fi
           exit "$status"
 
-      # A stable toolchain, not the dated nightly in rust-toolchain.toml:
-      # cargo-semver-checks refuses a nightly outright ("rustc version is not
-      # high enough: >=1.93.0 needed, got 1.93.0-nightly"). The gate invokes it
-      # as `cargo +stable semver-checks`, so this only has to exist.
-      - name: Install stable Rust
+      - name: Install stable Rust and cargo-semver-checks
         if: steps.registry.outputs.needs_cargo != 'false'
-        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master 2026-05
-        with:
-          toolchain: stable
-
-      # Prebuilt binary. `cargo install cargo-semver-checks --locked` compiles
-      # it from source (~5 min).
-      - name: Install cargo-semver-checks
-        if: steps.registry.outputs.needs_cargo != 'false'
-        uses: taiki-e/install-action@4f5ee4a4759116abc6b10af05f20374e179d8ca3 # cargo-semver-checks (snapshot pinned 2026-08)
+        uses: ./.github/actions/setup-rust-semver
 
       - name: Cargo cache
         if: steps.registry.outputs.needs_cargo != 'false'

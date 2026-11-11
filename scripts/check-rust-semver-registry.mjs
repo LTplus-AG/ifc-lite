@@ -68,7 +68,6 @@ async function main() {
   try {
     appendFileSync(process.env.GITHUB_OUTPUT, 'needs_cargo=false\n');
   } catch (err) {
-    // Unwritten means unset, and unset runs the full gate: same verdict, slower.
     console.warn(`⚠️ could not write needs_cargo=false (${err.message}); the full gate will run.`);
   }
 }

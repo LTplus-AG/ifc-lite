@@ -22,14 +22,16 @@ import { parse } from 'yaml';
 const SCRIPTS = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(SCRIPTS, 'check-rust-semver-registry.mjs');
 const STEPS = parse(readFileSync(join(SCRIPTS, '..', '.github', 'workflows', 'test.yml'), 'utf8')).jobs['rust-semver'].steps;
-const STEP_RUN = STEPS.find((s) => s.id === 'registry')?.run;
+const REGISTRY = STEPS.findIndex((s) => s.id === 'registry');
+const STEP_RUN = STEPS[REGISTRY]?.run;
 const GUARD = "steps.registry.outputs.needs_cargo != 'false'";
 
 test('every step after the registry check runs unless it wrote needs_cargo=false', () => {
   // These guards are what make "unset" mean "run the full gate"; a guard
   // flipped to `== 'true'`, or dropped from one step, would skip the gate on
   // a release PR with every other test green.
-  const after = STEPS.slice(STEPS.findIndex((s) => s.id === 'registry') + 1);
+  assert.ok(REGISTRY >= 0, 'test.yml rust-semver has no step with id `registry`');
+  const after = STEPS.slice(REGISTRY + 1);
   assert.deepEqual(
     after.map((s) => [s.name, s.if]),
     [

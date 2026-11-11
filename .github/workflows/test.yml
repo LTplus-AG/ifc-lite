@@ -528,6 +528,10 @@ jobs:
               # reads its catalogue and baseline summary plus the ledger it renders.
               - 'tests/modelling-parity/**'
               - 'docs/architecture/modelling-parity-ledger.md'
+              # The structural coverage scorecard: scripts/generate-structural-coverage-ledger.mjs
+              # and its test read its catalogue, baseline summary and the ledger it renders.
+              - 'tests/structural-coverage/**'
+              - 'docs/architecture/structural-coverage-ledger.md'
               # The AI evaluation gates (scripts/ai-eval) read the corpus,
               # recordings, label sheets and study records: an edit to any of
               # them must run the gates that validate them.
@@ -1854,6 +1858,8 @@ jobs:
         run: node scripts/docs/generate-docs-sections.mjs --check
       - name: Check generated coverage ledger
         run: node scripts/generate-coverage-ledger.mjs --check
+      - name: Check generated structural coverage ledger
+        run: node scripts/generate-structural-coverage-ledger.mjs --check
 
   node-tests:
     name: Node tests (shard ${{ matrix.shard }}/4)

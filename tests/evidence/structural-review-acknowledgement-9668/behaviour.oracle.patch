@@ -1,0 +1,12 @@
+diff --git a/apps/viewer/src/components/viewer/assistant/StructuralReviewFlow.tsx b/apps/viewer/src/components/viewer/assistant/StructuralReviewFlow.tsx
+--- a/apps/viewer/src/components/viewer/assistant/StructuralReviewFlow.tsx
++++ b/apps/viewer/src/components/viewer/assistant/StructuralReviewFlow.tsx
+@@ -94,7 +94,7 @@ export function StructuralReviewControls({ flow, acknowledgement, prepareLabel,
+     {!receipt && <Button size="sm" variant="outline" disabled={!canPrepare || writes === 'loading'} onClick={() => writes === 'ready' ? onPrepare() : loadWrites()}>{prepareLabel}</Button>}
+     {review && <>
+       {details}
+-      {!receipt && <Button size="sm" disabled={stale || !canApply} onClick={onApply}>{t('modelChanges.apply', { count: applyCount })}</Button>}
++      {!receipt && <Button size="sm" disabled={stale || !canApply || !acknowledged} onClick={onApply}>{t('modelChanges.apply', { count: applyCount })}</Button>}
+     </>}
+     {stale && !receipt && <p role="alert">{t('modelChanges.refused.stale')}</p>}
+     {problem && <p role="alert">{problem}</p>}

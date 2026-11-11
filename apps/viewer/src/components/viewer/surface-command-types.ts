@@ -42,6 +42,8 @@ export interface SurfaceCommandContext {
   openBulkProperties?: (launcher?: HTMLElement | null) => void;
   openImportData?: (launcher?: HTMLElement | null) => void;
   openClassFilter?: (launcher?: HTMLElement | null) => void;
+  /** The structural derivation's review dialog (#9668). */
+  openStructuralDerivation?: () => void;
 }
 
 export interface SurfaceCommandState {

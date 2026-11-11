@@ -1,0 +1,11 @@
+diff --git a/apps/viewer/src/components/viewer/assistant/StructuralDerivationReview.tsx b/apps/viewer/src/components/viewer/assistant/StructuralDerivationReview.tsx
+--- a/apps/viewer/src/components/viewer/assistant/StructuralDerivationReview.tsx
++++ b/apps/viewer/src/components/viewer/assistant/StructuralDerivationReview.tsx
+@@ -48,6 +48,6 @@ export function StructuralDerivationReview({ origin }: { origin: string }) {
+       canPrepare={modelId !== null} onPrepare={() => { if (modelId !== null) flow.prepare(() => prepareStructuralDerivationReview(useViewerStore, modelId)); }}
+       applyCount={members} canApply={review !== null && review.created > 0}
+       onApply={() => flow.apply((current) => commitStructuralDerivation(useViewerStore, current, origin))}
+-      details={null} />
++      details={review && <DerivationSummary review={review} />} />
+   </section>;
+ }

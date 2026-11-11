@@ -104,10 +104,11 @@ export function paletteAvailability(command: SurfaceCommandDefinition, context: 
   }
 
   const hasData = s.ifcDataStore !== null || [...s.models.values()].some(m => m.ifcDataStore != null);
-  if (id === 'author:bulk-properties' || id === 'author:import-data') {
+  if (id === 'author:bulk-properties' || id === 'author:import-data' || id === 'model:derive-structural') {
     if (s.loading) return blocked('commandPalette.availability.loading');
     if (!hasData) return blocked('commandPalette.availability.ifc');
-    const callback = id === 'author:bulk-properties' ? context.openBulkProperties : context.openImportData;
+    const callback = id === 'author:bulk-properties' ? context.openBulkProperties
+      : id === 'author:import-data' ? context.openImportData : context.openStructuralDerivation;
     if (!callback || context.toolHostIsCurrent?.() === false) return blocked('commandPalette.availability.host');
   }
   if (id === 'elements:class-filter' && (!context.openClassFilter || context.toolHostIsCurrent?.() === false)) {

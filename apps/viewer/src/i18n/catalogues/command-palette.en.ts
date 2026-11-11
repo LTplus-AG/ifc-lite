@@ -241,4 +241,5 @@ export const commandPaletteEn = {
   'commandPalette.category.preferences': 'Preferences',
   'commandPalette.category.extensions': 'Extensions',
   'commandPalette.category.learn': 'Learn',
+  "commandPalette.tool.deriveStructural.label": "Derive structural analysis model",
 } as const satisfies Record<string, TranslationValue>;

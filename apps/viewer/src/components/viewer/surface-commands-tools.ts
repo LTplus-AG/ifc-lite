@@ -4,7 +4,7 @@
 
 /** Static Tools palette family. The key-command table remains the chord source. */
 import {
-  AlignHorizontalJustifyStart, ArrowRightToLine, ArrowUpFromLine, Crosshair, MousePointer2, PenLine, PersonStanding, Ruler, Scissors, ScissorsLineDashed,
+  AlignHorizontalJustifyStart, ArrowRightToLine, ArrowUpFromLine, Crosshair, GitFork, MousePointer2, PenLine, PersonStanding, Ruler, Scissors, ScissorsLineDashed,
   Slice, StickyNote,
 } from 'lucide-react';
 import { openRepositionModels } from '@/lib/model-placement/commands';
@@ -125,6 +125,13 @@ export const TOOL_SURFACE_COMMANDS = [
     category: 'Tools', icon: GridIcon, surfaces: paletteOnly, enabled: editable,
     shortcut: 'model.grid',
     run: () => { launchModelCommand('grid.place'); },
+  },
+  {
+    // Derive the analytical model from the physical one, through the structural review (#9668).
+    id: 'model:derive-structural', labelKey: 'commandPalette.tool.deriveStructural.label',
+    searchLabel: 'Derive structural analysis model', keywords: 'structural analytical analysis model members nodes supports derive idealise beams columns slabs walls footings',
+    category: 'Tools', icon: GitFork, surfaces: paletteOnly, enabled: editable,
+    run: (context) => { context.openStructuralDerivation?.(); },
   },
   {
     id: 'tool:opening', labelKey: 'commandPalette.tool.opening.label',

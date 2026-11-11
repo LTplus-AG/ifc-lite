@@ -34,8 +34,9 @@ export function StructuralGraphReview({ proposal, origin }: { proposal: Structur
       </li>)}
     </ul>
     <StructuralReviewControls flow={flow} acknowledgement={t('structuralReview.acknowledgement')} prepareLabel={t('structuralReview.prepare')}
-      canPrepare={approved.size > 0} onPrepare={() => prepare()} applyCount={approved.size} canApply={approved.size > 0}
-      onApply={() => flow.apply(current => commitReviewedStructural(useViewerStore, current, origin))}
+      build={approved.size > 0 ? () => prepareStructuralReview(useViewerStore, proposal, approved) : undefined}
+      applyCount={approved.size} canApply={approved.size > 0}
+      commit={current => commitReviewedStructural(useViewerStore, current, origin)}
       details={review && <>
         <output className="block">{t('structuralReview.population', { records: review.snapshot.records.length,
           created: delta.filter(row => !row.before).length, modified: delta.filter(row => row.before && row.after).length, deleted: delta.filter(row => !row.after).length })}</output>

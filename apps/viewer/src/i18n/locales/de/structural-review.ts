@@ -38,4 +38,5 @@ export const structuralReviewDe = {
   "structuralReview.derive.noModel": "Laden Sie ein Modell, um sein statisches Analysemodell abzuleiten.",
   "structuralReview.derive.nodeAt": "Knoten {node}: {position} m",
   "structuralReview.derive.endAt": "Knoten {node}: {position} m, {landsOn} #{element}",
+  "structuralReview.derive.more": "{count} weitere nicht abgebildet",
 } satisfies Catalogue;

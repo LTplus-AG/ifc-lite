@@ -38,4 +38,5 @@ export const structuralReviewFr = {
   "structuralReview.derive.noModel": "Chargez un modèle pour dériver son modèle d’analyse structurelle.",
   "structuralReview.derive.nodeAt": "Nœud {node} : {position} m",
   "structuralReview.derive.endAt": "Nœud {node} : {position} m, {landsOn} #{element}",
+  "structuralReview.derive.more": "{count} autres non affichés",
 } satisfies Catalogue;

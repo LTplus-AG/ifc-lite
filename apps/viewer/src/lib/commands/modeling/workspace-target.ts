@@ -7,7 +7,8 @@ import type { ViewerState } from '@/store';
 import { fromGlobalIdFromModels } from '@/store/globalId';
 import { selectEffectiveStoreyId } from './effective-storeys';
 
-function resolveModelId(s: ViewerState, preferred: string | undefined): string | null {
+/** `preferred`, else the active model, else the first loaded: the edit target among models with a parsed store. */
+export function resolveModelId(s: Pick<ViewerState, 'models' | 'activeModelId'>, preferred: string | undefined): string | null {
   const candidates = [preferred, s.activeModelId ?? undefined, s.models.keys().next().value];
   return candidates.find((id): id is string => id !== undefined && s.models.get(id)?.ifcDataStore != null) ?? null;
 }

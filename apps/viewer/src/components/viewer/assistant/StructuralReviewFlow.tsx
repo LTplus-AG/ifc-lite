@@ -79,22 +79,23 @@ export function useStructuralReview<R extends { validate(): void }>(label: strin
   return { acknowledged, setAcknowledged, review, problem, stale, receipt, receiptProblem, writes, loadWrites, prepare, apply };
 }
 
-/** What the controls read; `prepare` and `apply` stay with the caller, which knows the review type. */
-type Flow = Omit<ReturnType<typeof useStructuralReview>, 'review' | 'prepare' | 'apply'> & { review: unknown };
-
-/** Acknowledgement, Prepare, the prepared review's details, Apply, and the outcome. */
-export function StructuralReviewControls({ flow, acknowledgement, prepareLabel, canPrepare, onPrepare, details, applyCount, canApply, onApply }: {
-  flow: Flow; acknowledgement: string; prepareLabel: string; canPrepare: boolean; onPrepare: () => void;
-  details: ReactNode; applyCount: number; canApply: boolean; onApply: () => void;
+/**
+ * Acknowledgement, Prepare, the prepared review's details, Apply, and the
+ * outcome. `build` prepares a review (absent: nothing to prepare); `commit`
+ * applies it and returns the receipt.
+ */
+export function StructuralReviewControls<R extends { validate(): void }>({ flow, acknowledgement, prepareLabel, build, details, applyCount, canApply, commit }: {
+  flow: ReturnType<typeof useStructuralReview<R>>; acknowledgement: string; prepareLabel: string; build: (() => R) | undefined;
+  details: ReactNode; applyCount: number; canApply: boolean; commit: (review: R) => ModelChangeReceipt;
 }) {
   const { t } = useTranslation();
   const { acknowledged, setAcknowledged, review, problem, stale, receipt, receiptProblem, writes, loadWrites } = flow;
   return <>
     {!receipt && <label className="flex items-center gap-2"><input type="checkbox" checked={acknowledged} onChange={event => setAcknowledged(event.target.checked)} />{acknowledgement}</label>}
-    {!receipt && <Button size="sm" variant="outline" disabled={!canPrepare || writes === 'loading'} onClick={() => writes === 'ready' ? onPrepare() : loadWrites()}>{prepareLabel}</Button>}
+    {!receipt && <Button size="sm" variant="outline" disabled={!build || writes === 'loading'} onClick={() => writes === 'ready' ? build && flow.prepare(build) : loadWrites()}>{prepareLabel}</Button>}
     {review && <>
       {details}
-      {!receipt && <Button size="sm" disabled={stale || !canApply || !acknowledged} onClick={onApply}>{t('modelChanges.apply', { count: applyCount })}</Button>}
+      {!receipt && <Button size="sm" disabled={stale || !canApply || !acknowledged} onClick={() => flow.apply(commit)}>{t('modelChanges.apply', { count: applyCount })}</Button>}
     </>}
     {stale && !receipt && <p role="alert">{t('modelChanges.refused.stale')}</p>}
     {problem && <p role="alert">{problem}</p>}

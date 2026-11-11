@@ -15,11 +15,12 @@
 import type { StoreApi } from 'zustand';
 import { StoreEditor } from '@ifc-lite/mutations';
 import { effectiveMetadataRecord } from '@ifc-lite/parser';
-import type { StructuralDerivationOptions, StructuralDerivationPlan } from '@ifc-lite/create';
+import type { StructuralDerivationPlan } from '@ifc-lite/create';
 import type { ViewerState } from '@/store';
 import { recordModellingEdit } from '@/store/slices/mutation-modelling-records';
 import { mutationDenial } from '@/store/mutation-permission';
 import { loadedStructuralWrites } from '@/sdk/adapters/store-adapter-structural';
+import { resolveModelId } from '@/lib/commands/modeling/workspace-target';
 import { readOnlyModelEditLease } from './model-authoring-read-target';
 import { batchDigest } from './model-change-preview';
 import type { ModelChangeReceipt } from './model-change-commit';
@@ -29,22 +30,17 @@ export interface StructuralDerivationReview {
   plan: StructuralDerivationPlan;
   /** Records the dry run wrote: what Apply will create. */
   created: number;
-  digest: string;
+  /** The cheap staleness check, run on store updates; Apply also checks the held lease. */
   validate(): void;
   commit(): { batchId: string; analysisModelId: number };
 }
 
-/** The model a derivation runs on: the active one, else the first loaded, as the modelling workspace picks. */
+/** The model a derivation runs on: the active one, else the first loaded. */
 export function derivationModelId(state: Pick<ViewerState, 'models' | 'activeModelId'>): string | null {
-  const candidates = [state.activeModelId ?? undefined, state.models.keys().next().value];
-  return candidates.find((id): id is string => id !== undefined && state.models.get(id)?.ifcDataStore != null) ?? null;
+  return resolveModelId(state, undefined);
 }
 
-export function prepareStructuralDerivationReview(
-  store: StoreApi<ViewerState>,
-  modelId: string,
-  options: StructuralDerivationOptions = {},
-): StructuralDerivationReview {
+export function prepareStructuralDerivationReview(store: StoreApi<ViewerState>, modelId: string): StructuralDerivationReview {
   const state = store.getState();
   const denial = mutationDenial(state, modelId);
   if (denial) throw new Error(denial);
@@ -52,7 +48,7 @@ export function prepareStructuralDerivationReview(
   if (!lease) throw new Error('The loaded model is unavailable');
   const derive = loadedStructuralWrites('Structural derivation');
   const { dataStore } = lease.target;
-  const plan = derive.planStructuralDerivation(derive.readStructuralDerivationFacts(dataStore, lease.target.editor), options);
+  const plan = derive.planStructuralDerivation(derive.readStructuralDerivationFacts(dataStore, lease.target.editor));
   // Nothing to write, or a derived model already there: no dry run; the review shows why and offers no Apply.
   const blocked = plan.curveMembers.length + plan.surfaceMembers.length === 0 || plan.derivedModelId !== null;
   const created = blocked ? 0 : lease.target.view.prepareAtomic((view) => {
@@ -66,17 +62,18 @@ export function prepareStructuralDerivationReview(
     if (current.models.get(modelId) !== model || current.mutationViews.get(modelId) !== view || view?.getMutationRevision() !== revision) {
       throw new Error('The model changed after this derivation was reviewed; review it again');
     }
-    lease.validate();
     const refusal = mutationDenial(current, modelId);
     if (refusal) throw new Error(refusal);
   };
   let used = false;
   return {
-    modelId, plan, created, digest: batchDigest({ modelId, plan }), validate,
+    modelId, plan, created, validate,
     commit() {
       if (used) throw new Error('This derivation has already been applied');
       if (blocked) throw new Error('Structural derivation: this plan has nothing it may write');
       validate();
+      // The deep overlay comparison, only at Apply: store updates run the cheap check above.
+      lease.validate();
       const batchId = crypto.randomUUID();
       // Apply re-checks the live store (deleted elements, an existing derived model) before its first write.
       const { analysisModelId } = recordModellingEdit(store, modelId, (_methods, draft) => derive.applyStructuralDerivation(draft, dataStore, plan), batchId);
@@ -93,7 +90,7 @@ export function commitStructuralDerivation(store: StoreApi<ViewerState>, review:
   const record = effectiveMetadataRecord(store.getState().models.get(modelId)!.ifcDataStore!, analysisModelId, store.getState().mutationViews.get(modelId));
   const globalId = record?.attributes[0];
   return {
-    version: 1, kind: 'structural.graph', id: crypto.randomUUID(), title: 'Derived analysis model', digest: review.digest,
+    version: 1, kind: 'structural.graph', id: crypto.randomUUID(), title: 'Derived analysis model', digest: batchDigest({ modelId, plan }),
     createdAt: new Date().toISOString(), origin, status: 'applied', batches: [{ modelId, batchId }],
     applied: [{ index: 0, op: 'structural.analysis.create', expressId: analysisModelId, modelId, globalId: typeof globalId === 'string' ? globalId : '',
       field: 'structural.derive', before: null, after: JSON.stringify(plan.report.counts) }],

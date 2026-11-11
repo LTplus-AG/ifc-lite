@@ -38,4 +38,5 @@ export const structuralReviewRu = {
   "structuralReview.derive.noModel": "Загрузите модель, чтобы построить её расчётную модель.",
   "structuralReview.derive.nodeAt": "Узел {node}: {position} м",
   "structuralReview.derive.endAt": "Узел {node}: {position} м, {landsOn} #{element}",
+  "structuralReview.derive.more": "Не показано ещё {count}",
 } satisfies Catalogue;

@@ -28,6 +28,10 @@ export type PaletteAvailability = { status: 'available' } | {
   status: 'disabled'; reasonKey: TranslationKey;
 };
 const available: PaletteAvailability = { status: 'available' };
+/** Commands that open a persistent tool host dialog over a loaded model, and the host method each needs. */
+const HOST_OPENERS = new Map<string, 'openBulkProperties' | 'openImportData' | 'openStructuralDerivation'>([
+  ['author:bulk-properties', 'openBulkProperties'], ['author:import-data', 'openImportData'], ['model:derive-structural', 'openStructuralDerivation'],
+]);
 const blocked = (reasonKey: TranslationKey): PaletteAvailability => ({ status: 'disabled', reasonKey });
 const cameraActions = {
   'view:zoom-in': 'zoomIn', 'view:zoom-out': 'zoomOut',
@@ -104,11 +108,11 @@ export function paletteAvailability(command: SurfaceCommandDefinition, context: 
   }
 
   const hasData = s.ifcDataStore !== null || [...s.models.values()].some(m => m.ifcDataStore != null);
-  if (id === 'author:bulk-properties' || id === 'author:import-data' || id === 'model:derive-structural') {
+  const opener = HOST_OPENERS.get(id);
+  if (opener) {
     if (s.loading) return blocked('commandPalette.availability.loading');
     if (!hasData) return blocked('commandPalette.availability.ifc');
-    const callback = id === 'author:bulk-properties' ? context.openBulkProperties
-      : id === 'author:import-data' ? context.openImportData : context.openStructuralDerivation;
+    const callback = context[opener];
     if (!callback || context.toolHostIsCurrent?.() === false) return blocked('commandPalette.availability.host');
   }
   if (id === 'elements:class-filter' && (!context.openClassFilter || context.toolHostIsCurrent?.() === false)) {

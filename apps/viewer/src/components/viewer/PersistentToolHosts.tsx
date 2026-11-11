@@ -14,7 +14,7 @@ import type { SurfaceCommandContext } from './surface-command-types';
 const BulkPropertyEditor = lazy(() => import('./BulkPropertyEditor').then(module => ({ default: module.BulkPropertyEditor })));
 const DataConnector = lazy(() => import('./DataConnector').then(module => ({ default: module.DataConnector })));
 // The derivation and its structural write path load only when the command is used (#9668).
-const StructuralDerivationReview = lazy(() => import('./assistant/StructuralDerivationReview').then(module => ({ default: module.StructuralDerivationReview })));
+const StructuralDerivationDialog = lazy(() => import('./assistant/StructuralDerivationReview').then(module => ({ default: module.StructuralDerivationDialog })));
 
 type ToolContext = Pick<SurfaceCommandContext, 'openBulkProperties' | 'openImportData' | 'openClassFilter' | 'openStructuralDerivation' | 'toolHostIsCurrent' | 'addSectionPlane' | 'sectionAddUnavailable'>;
 const ToolHosts = createContext<ToolContext>({});
@@ -29,8 +29,11 @@ export function PersistentToolHosts({ children }: { children: ReactNode }) {
   const [bulkRequested, setBulkRequested] = useState(false);
   const [dataRequested, setDataRequested] = useState(false);
   const [classes, setClasses] = useState(false);
-  // Each opening derives afresh: the key starts a new review.
+  // Each opening derives afresh: the session keys a new review.
   const [derivation, setDerivation] = useState<{ open: boolean; session: number }>({ open: false, session: 0 });
+  const derivationLauncher = useRef<HTMLElement | null>(null);
+  const setDerivationOpen = (open: boolean) => setDerivation(current => ({ ...current, open }));
+  const restoreDerivation = (event: Event) => { event.preventDefault(); if (derivationLauncher.current?.isConnected) derivationLauncher.current.focus(); };
   const alive = useRef(true);
   const bulkLauncher = useRef<HTMLElement | null>(null);
   const dataLauncher = useRef<HTMLElement | null>(null);
@@ -48,7 +51,10 @@ export function PersistentToolHosts({ children }: { children: ReactNode }) {
       toolHostIsCurrent: () => alive.current,
       openBulkProperties: (launcher) => { if (canOpenAuthor()) { bulkLauncher.current = launcher ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null); setBulkRequested(true); setBulk(true); } },
       openImportData: (launcher) => { if (canOpenAuthor()) { dataLauncher.current = launcher ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null); setDataRequested(true); setData(true); } },
-      openStructuralDerivation: () => { if (canOpenAuthor()) setDerivation(current => ({ open: true, session: current.session + 1 })); },
+      openStructuralDerivation: (launcher) => { if (canOpenAuthor()) {
+        derivationLauncher.current = launcher ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
+        setDerivation(current => ({ open: true, session: current.session + 1 }));
+      } },
       openClassFilter: (launcher) => { if (alive.current) {
         classLauncher.current = launcher ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
         setClasses(true);
@@ -76,16 +82,15 @@ export function PersistentToolHosts({ children }: { children: ReactNode }) {
         <DataConnector open={data} onOpenChange={setData} onCloseAutoFocus={restoreData} />
       </Suspense>
     </ChunkErrorBoundary>}
-    {derivation.session > 0 && <Dialog open={derivation.open} onOpenChange={open => setDerivation(current => ({ ...current, open }))}>
-      <DialogContent viewportBounds="height" className="max-w-xl overflow-y-auto" aria-describedby={undefined}>
-        <DialogTitle>{t('structuralReview.derive.title')}</DialogTitle>
-        <ChunkErrorBoundary label="Structural derivation">
-          <Suspense fallback={<output>{t('shellChrome.statusBar.loadingFallback')}</output>}>
-            <StructuralDerivationReview key={derivation.session} origin={`palette:derive-structural:${derivation.session}`} />
-          </Suspense>
-        </ChunkErrorBoundary>
-      </DialogContent>
-    </Dialog>}
+    {derivation.session > 0 && <ChunkErrorBoundary label="Structural derivation" renderFallback={fallback => (
+      <AuthorLoadDialog open={derivation.open} onOpenChange={setDerivationOpen} onCloseAutoFocus={restoreDerivation} title={t('structuralReview.derive.title')}>{fallback}</AuthorLoadDialog>
+    )}>
+      <Suspense fallback={<AuthorLoadDialog open={derivation.open} onOpenChange={setDerivationOpen} onCloseAutoFocus={restoreDerivation} title={t('structuralReview.derive.title')}>
+        <output>{t('shellChrome.statusBar.loadingFallback')}</output>
+      </AuthorLoadDialog>}>
+        <StructuralDerivationDialog open={derivation.open} onOpenChange={setDerivationOpen} onCloseAutoFocus={restoreDerivation} session={derivation.session} />
+      </Suspense>
+    </ChunkErrorBoundary>}
     <Dialog open={classes} onOpenChange={setClasses}>
       <DialogContent viewportBounds="height" className="max-w-sm overflow-y-auto" aria-describedby={undefined}
         onCloseAutoFocus={event => { event.preventDefault(); if (classLauncher.current?.isConnected) classLauncher.current.focus(); }}>

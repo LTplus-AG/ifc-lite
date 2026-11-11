@@ -29,7 +29,7 @@ import { fileURLToPath } from 'node:url';
 import { roundOrder, seededRand } from './ab-order.mjs';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
 import { nativeSample } from './load-scoreboard-native.mjs';
-import { BOOT_FIXTURE, BROWSER_LANES, LANES, renderMarkdown, summarize } from './load-scoreboard-report.mjs';
+import { BOOT_FIXTURE, BROWSER_LANES, LANES, elementsFileFor, renderMarkdown, summarize } from './load-scoreboard-report.mjs';
 import { browserShares, diffElements, uiQuietValue } from './load-scoreboard-stats.mjs';
 
 const ROOT = resolve(fileURLToPath(new URL('../..', import.meta.url)));
@@ -250,8 +250,7 @@ async function startBrowserLane(plan, out) {
 
 /** Per-element maps saved by the browser lane (`<fixture>-<side>-r<round>-<open>.elements.json`). */
 function readElements(out, row) {
-  const open = { 'browser-cold': 'cold', 'browser-warm1': 'warm1' }[row.lane] ?? `warm${row.warmOpens?.length ?? 2}`;
-  const path = join(out, 'traces', `${row.fixture}-${row.side}-r${row.round}-${open}.elements.json`);
+  const path = join(out, 'traces', elementsFileFor(row));
   return existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')).reduce((a, m) => Object.assign(a, m), {}) : null;
 }
 

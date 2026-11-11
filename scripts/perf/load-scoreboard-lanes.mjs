@@ -71,14 +71,33 @@ export function bootTimeToInteractive(tasks, shellReadyMs, quietMs = 1000) {
 }
 
 /**
- * Combine per-realm WebAssembly memory sums: memory each realm owns adds up; a
+ * Combine per-realm WebAssembly memory sums. Memory a realm owns adds up. A
  * shared (SharedArrayBuffer-backed) memory appears in every realm that imports
- * it, so it counts once, at its largest size.
+ * it, and realms cannot tell whether two shared buffers are the same one, so
+ * shared memories are counted once per distinct exact size (`sharedBytes`, the
+ * estimate in the total). `sharedBytesUpperBound` counts every occurrence, and
+ * `sharedAmbiguous` says when the two differ, i.e. when the dedupe assumption
+ * (one size, one memory) decided the number.
  */
 export function combineWasmRealms(realms) {
   const own = realms.reduce((a, r) => a + (r.own ?? 0), 0);
-  const shared = realms.reduce((a, r) => Math.max(a, r.shared ?? 0), 0);
-  return { totalBytes: own + shared, ownBytes: own, sharedBytes: shared, memories: realms.reduce((a, r) => a + (r.count ?? 0), 0), realms: realms.length };
+  const occurrences = realms.flatMap((r) => (Array.isArray(r.shared) ? r.shared : r.shared ? [r.shared] : []));
+  const shared = [...new Set(occurrences)].reduce((a, n) => a + n, 0);
+  const upper = occurrences.reduce((a, n) => a + n, 0);
+  return { totalBytes: own + shared, ownBytes: own, sharedBytes: shared, sharedBytesUpperBound: upper, sharedAmbiguous: upper !== shared,
+    memories: realms.reduce((a, r) => a + (r.count ?? 0), 0), realms: realms.length };
+}
+
+/**
+ * Why the first reopen cannot be prepared, or null. The cache entry must have
+ * been readable and must have stopped changing; otherwise a snapshot written at
+ * the end of the cold load may still race the reopen.
+ */
+export function entryStabilityFailure(entry) {
+  if (!entry) return null;
+  if (entry.error) return `cache entry unreadable before the first reopen (${entry.error})`;
+  if (!entry.stable) return `cache entry still changing ${entry.waitedMs} ms after the cold load, so a snapshot write may race the first reopen`;
+  return null;
 }
 
 // ---------------------------------------------------------------- page helpers
@@ -93,12 +112,12 @@ export async function waitFirstPaint(page) {
 function cacheEntrySignature() {
   return new Promise((done) => {
     const open = indexedDB.open('ifc-lite-cache');
-    open.onerror = () => done({ sig: 'unavailable', snapshot: false });
+    open.onerror = () => done({ error: `indexedDB.open failed: ${open.error?.name ?? 'unknown'}` });
     open.onsuccess = () => {
       const db = open.result;
-      if (!db.objectStoreNames.contains('models')) { db.close(); done({ sig: 'no-store', snapshot: false }); return; }
+      if (!db.objectStoreNames.contains('models')) { db.close(); done({ sig: 'no-store', snapshot: false }); return; } // nothing cached yet: a real state
       const all = db.transaction('models').objectStore('models').getAll();
-      all.onerror = () => { db.close(); done({ sig: 'unreadable', snapshot: false }); };
+      all.onerror = () => { db.close(); done({ error: `models.getAll failed: ${all.error?.name ?? 'unknown'}` }); };
       all.onsuccess = () => {
         db.close();
         const rows = all.result;
@@ -115,6 +134,7 @@ export async function waitCacheEntryStable(page, { stableMs = 3000, timeoutMs = 
   let last = null;
   for (;;) {
     last = await page.evaluate(cacheEntrySignature);
+    if (last.error) return { stable: false, snapshotPresent: null, waitedMs: Date.now() - started, error: last.error };
     observations.push({ at: Date.now() - started, sig: last.sig });
     const since = stableSince(observations, stableMs);
     if (since !== null || Date.now() - started >= timeoutMs) {
@@ -124,8 +144,8 @@ export async function waitCacheEntryStable(page, { stableMs = 3000, timeoutMs = 
   }
 }
 
-const SUM_WASM_MEMORIES = `function () { let own = 0, shared = 0; for (const m of this) { const n = m.buffer.byteLength;
-  if (typeof SharedArrayBuffer !== 'undefined' && m.buffer instanceof SharedArrayBuffer) shared = Math.max(shared, n); else own += n; }
+const SUM_WASM_MEMORIES = `function () { let own = 0; const shared = []; for (const m of this) { const n = m.buffer.byteLength;
+  if (typeof SharedArrayBuffer !== 'undefined' && m.buffer instanceof SharedArrayBuffer) shared.push(n); else own += n; }
   return { own, shared, count: this.length }; }`;
 
 async function realmWasm(send) {

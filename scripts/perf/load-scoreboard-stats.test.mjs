@@ -350,13 +350,37 @@ test('the report summarizes the boot lane under its pseudo-fixture and counts sn
   assert.equal(warm1.snapshotPresentBeforeOpenCount, 3);
 });
 
-test('idle wasm heaps add up per realm, and a shared memory imported by several realms counts once', async () => {
+test('idle wasm heaps add up per realm; a shared memory imported by several realms counts once, distinct ones all count (review #9740)', async () => {
   const { combineWasmRealms } = await lanesModule();
   const MiB = 2 ** 20;
-  const c = combineWasmRealms([{ own: 64 * MiB, shared: 0, count: 1 }, { own: 32 * MiB, shared: 128 * MiB, count: 2 }, { own: 0, shared: 128 * MiB, count: 1 }]);
+  // One 128 MiB shared memory imported by two realms: counted once, upper bound shows both occurrences.
+  const c = combineWasmRealms([{ own: 64 * MiB, shared: [], count: 1 }, { own: 32 * MiB, shared: [128 * MiB], count: 2 }, { own: 0, shared: [128 * MiB], count: 1 }]);
   assert.equal(c.ownBytes, 96 * MiB);
   assert.equal(c.sharedBytes, 128 * MiB);
   assert.equal(c.totalBytes, 224 * MiB);
+  assert.equal(c.sharedBytesUpperBound, 256 * MiB);
+  assert.equal(c.sharedAmbiguous, true);
   assert.equal(c.memories, 4);
+  // Two distinct shared memories (page 64 MiB, worker 16 MiB) both count; the smaller one does not vanish.
+  const d = combineWasmRealms([{ own: 0, shared: [64 * MiB], count: 1 }, { own: 0, shared: [16 * MiB], count: 1 }]);
+  assert.equal(d.totalBytes, 80 * MiB);
+  assert.equal(d.sharedAmbiguous, false);
   assert.equal(combineWasmRealms([]).totalBytes, 0);
+});
+
+test('a cache entry that was unreadable or never stopped changing fails the first reopen instead of passing as stable (review #9740)', async () => {
+  const { entryStabilityFailure } = await lanesModule();
+  assert.equal(entryStabilityFailure({ stable: true, snapshotPresent: false, waitedMs: 3100 }), null);
+  assert.equal(entryStabilityFailure({ stable: true, snapshotPresent: true, waitedMs: 4200 }), null);
+  assert.match(entryStabilityFailure({ stable: false, snapshotPresent: null, waitedMs: 40, error: 'indexedDB.open failed: UnknownError' }), /unreadable/);
+  assert.match(entryStabilityFailure({ stable: false, snapshotPresent: true, waitedMs: 30000 }), /still changing/);
+  assert.equal(entryStabilityFailure(undefined), null); // uncached tiers never wait
+});
+
+test('the early lane is per-element checked: its rows name the elements file its sample wrote (review #9740)', async () => {
+  const { elementsFileFor } = await report();
+  assert.equal(elementsFileFor({ lane: 'browser-cold-early', fixture: 'FZK', side: 'base', round: 3 }), 'FZK-base-r3-early-cold.elements.json');
+  assert.equal(elementsFileFor({ lane: 'browser-cold', fixture: 'FZK', side: 'base', round: 3 }), 'FZK-base-r3-cold.elements.json');
+  assert.equal(elementsFileFor({ lane: 'browser-warm1', fixture: 'FZK', side: 'branch', round: 0 }), 'FZK-branch-r0-warm1.elements.json');
+  assert.equal(elementsFileFor({ lane: 'browser-warm', fixture: 'FZK', side: 'branch', round: 0, warmOpens: [{}, {}] }), 'FZK-branch-r0-warm2.elements.json');
 });

@@ -29,7 +29,7 @@ import { chromePids, memoryOf, vramOf } from './scenoptic-bench-sampling.mjs';
 import { COUNT_FRAMES, openAndWaitInteractive, openViewerPage, readOutputFingerprint, replacePage, waitCacheWrites, waitSceneSnapshots } from './viewer-load-probe.mjs';
 import { browserShares, browserStages, expectedCacheTier, failedOpenIndex, gpuUnhealthy, stageShares, uiQuietValue } from './load-scoreboard-stats.mjs';
 import { BOOT_OBSERVERS, waitShellQuiet, waitUiQuiet } from './viewer-load-boot.mjs';
-import { rebaseToArm, waitCacheEntryStable, waitFirstPaint } from './load-scoreboard-lanes.mjs';
+import { entryStabilityFailure, rebaseToArm, waitCacheEntryStable, waitFirstPaint } from './load-scoreboard-lanes.mjs';
 import { expectSceneSnapshot, prepareWarmOpen } from './viewer-scene-snapshot.mjs';
 import { readGpuHealth } from '../../tests/benchmark/gpu-health.ts';
 
@@ -181,7 +181,11 @@ export async function browserSample({ chromium, executablePath, baseUrl, setRoot
       meta.cacheWriteSettled = await waitCacheWrites(page);
       // A snapshot captured at the end of the cold load must be there or not before the first
       // reopen, never racing it: wait for the stored entry to stop changing (cached tiers only).
-      if (!uncached) meta.entryBeforeWarm1 = await waitCacheEntryStable(page);
+      if (!uncached) {
+        meta.entryBeforeWarm1 = await waitCacheEntryStable(page);
+        const unstable = entryStabilityFailure(meta.entryBeforeWarm1);
+        if (unstable) throw new Error(unstable);
+      }
       for (let i = 1; i <= warmOpens; i++) {
         phase = `warm${i}-prep`;
         // Uncached tiers never write a snapshot: waiting for one cost 60 s per sample (H6).

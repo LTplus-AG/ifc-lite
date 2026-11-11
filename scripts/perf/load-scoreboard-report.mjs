@@ -28,6 +28,15 @@ export const METRICS = [
 ];
 export const BROWSER_LANES = ['browser-cold', 'browser-cold-early', 'browser-warm1', 'browser-warm'];
 
+/**
+ * The per-element output file a browser row wrote: `<fixture>-<side>-r<round>[-early]-<open>.elements.json`
+ * (`<open>` is cold, warm1 or warm<warmOpens>; the early lane's sample tag carries `-early`).
+ */
+export function elementsFileFor(row) {
+  const open = { 'browser-cold': 'cold', 'browser-cold-early': 'early-cold', 'browser-warm1': 'warm1' }[row.lane] ?? `warm${row.warmOpens?.length ?? 2}`;
+  return `${row.fixture}-${row.side}-r${row.round}-${open}.elements.json`;
+}
+
 const shareOf = (row) => row.stageShares ?? (row.stageMs && row.interactiveMs
   ? Object.fromEntries(Object.entries(row.stageMs).map(([k, v]) => [k, v / row.interactiveMs])) : null);
 

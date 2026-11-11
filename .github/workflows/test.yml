@@ -430,6 +430,10 @@ jobs:
               # the same trap the comment above describes for `apps/`.
               - 'examples/**'
               - 'packages/**'
+              # The structural ratchet (build job) reads the guide page through its
+              # cap/docs-page probe; its other inputs are packages/**, scripts/**,
+              # tests/structural-coverage/** and tests/models/manifest.json here.
+              - 'docs/guide/*structural*.md'
               - 'tests/e2e/**'
               # Perf tools consume benchmark helpers; the CI path-coverage mirror
               # reads every tracked benchmark input, so all must trigger Node tests.
@@ -533,7 +537,8 @@ jobs:
               - 'tests/modelling-parity/**'
               - 'docs/architecture/modelling-parity-ledger.md'
               # The structural coverage scorecard: scripts/generate-structural-coverage-ledger.mjs
-              # and its test read its catalogue, baseline summary and the ledger it renders.
+              # and its test read its catalogue, baseline summary and the ledger it renders,
+              # and the build job's score ratchet (score.mjs --check) runs its probes.
               - 'tests/structural-coverage/**'
               - 'docs/architecture/structural-coverage-ledger.md'
               # The AI evaluation gates (scripts/ai-eval) read the corpus,
@@ -787,6 +792,15 @@ jobs:
         env:
           VITE_BUNDLE_ANALYSIS: "1"
         run: pnpm build
+
+      # Keep the score ratchet in build, not node-tests (skipped by fast PRs).
+      # This job has verified manifest fixtures and current workspace packages.
+      - name: Check structural coverage score ratchet
+        # Same env as "Build packages": VITE_BUNDLE_ANALYSIS is in turbo's build
+        # hash, so without it the scorer's turbo build misses that cache.
+        env:
+          VITE_BUNDLE_ANALYSIS: "1"
+        run: node tests/structural-coverage/score.mjs --check tests/structural-coverage/baseline/r1.json
 
       # A separate feature bundle exposes only the test ownership probe.
       # Do not overwrite pkg-diff or its committed production declarations.
@@ -2291,9 +2305,19 @@ jobs:
         # .cargo/config.toml, so local builds and the wasm target are
         # untouched. Hosted images ship clang but not lld.
         run: |
-          command -v ld.lld >/dev/null 2>&1 || sudo apt-get install -y --no-install-recommends lld
-          echo "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=clang" >> "$GITHUB_ENV"
-          echo "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS=-C link-arg=-fuse-ld=lld" >> "$GITHUB_ENV"
+          # lld only speeds linking up, so a package mirror outage must not fail
+          # the job: retry, then fall back to the default linker.
+          for attempt in 1 2 3; do
+            command -v ld.lld >/dev/null 2>&1 && break
+            sudo apt-get install -y --no-install-recommends lld && break
+            sleep $((attempt * 15)); sudo apt-get update || true
+          done
+          if command -v ld.lld >/dev/null 2>&1; then
+            echo "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=clang" >> "$GITHUB_ENV"
+            echo "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS=-C link-arg=-fuse-ld=lld" >> "$GITHUB_ENV"
+          else
+            echo "::warning::lld could not be installed; linking with the default linker"
+          fi
       - name: Cargo cache
         # Skipped only where the warm target dir above was set.
         if: env.CARGO_TARGET_DIR == ''
@@ -2505,9 +2529,19 @@ jobs:
         run: rustup show
       - name: Use lld for host links
         run: |
-          command -v ld.lld >/dev/null 2>&1 || sudo apt-get install -y --no-install-recommends lld
-          echo "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=clang" >> "$GITHUB_ENV"
-          echo "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS=-C link-arg=-fuse-ld=lld" >> "$GITHUB_ENV"
+          # lld only speeds linking up, so a package mirror outage must not fail
+          # the job: retry, then fall back to the default linker.
+          for attempt in 1 2 3; do
+            command -v ld.lld >/dev/null 2>&1 && break
+            sudo apt-get install -y --no-install-recommends lld && break
+            sleep $((attempt * 15)); sudo apt-get update || true
+          done
+          if command -v ld.lld >/dev/null 2>&1; then
+            echo "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=clang" >> "$GITHUB_ENV"
+            echo "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS=-C link-arg=-fuse-ld=lld" >> "$GITHUB_ENV"
+          else
+            echo "::warning::lld could not be installed; linking with the default linker"
+          fi
       - name: Cargo cache
         # Skipped only where the warm target dir above was set.
         if: env.CARGO_TARGET_DIR == ''
@@ -2815,9 +2849,19 @@ jobs:
         # .cargo/config.toml, so local builds and the wasm target are
         # untouched. Hosted images ship clang but not lld.
         run: |
-          command -v ld.lld >/dev/null 2>&1 || sudo apt-get install -y --no-install-recommends lld
-          echo "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=clang" >> "$GITHUB_ENV"
-          echo "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS=-C link-arg=-fuse-ld=lld" >> "$GITHUB_ENV"
+          # lld only speeds linking up, so a package mirror outage must not fail
+          # the job: retry, then fall back to the default linker.
+          for attempt in 1 2 3; do
+            command -v ld.lld >/dev/null 2>&1 && break
+            sudo apt-get install -y --no-install-recommends lld && break
+            sleep $((attempt * 15)); sudo apt-get update || true
+          done
+          if command -v ld.lld >/dev/null 2>&1; then
+            echo "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=clang" >> "$GITHUB_ENV"
+            echo "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS=-C link-arg=-fuse-ld=lld" >> "$GITHUB_ENV"
+          else
+            echo "::warning::lld could not be installed; linking with the default linker"
+          fi
       - name: Cargo cache
         uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
@@ -2940,9 +2984,19 @@ jobs:
         # .cargo/config.toml, so local builds and the wasm target are
         # untouched. Hosted images ship clang but not lld.
         run: |
-          command -v ld.lld >/dev/null 2>&1 || sudo apt-get install -y --no-install-recommends lld
-          echo "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=clang" >> "$GITHUB_ENV"
-          echo "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS=-C link-arg=-fuse-ld=lld" >> "$GITHUB_ENV"
+          # lld only speeds linking up, so a package mirror outage must not fail
+          # the job: retry, then fall back to the default linker.
+          for attempt in 1 2 3; do
+            command -v ld.lld >/dev/null 2>&1 && break
+            sudo apt-get install -y --no-install-recommends lld && break
+            sleep $((attempt * 15)); sudo apt-get update || true
+          done
+          if command -v ld.lld >/dev/null 2>&1; then
+            echo "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=clang" >> "$GITHUB_ENV"
+            echo "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS=-C link-arg=-fuse-ld=lld" >> "$GITHUB_ENV"
+          else
+            echo "::warning::lld could not be installed; linking with the default linker"
+          fi
       - name: Cargo cache
         uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
@@ -3419,7 +3473,13 @@ jobs:
           workspaces: ". -> target/phase-markers"
           save-if: ${{ github.ref == 'refs/heads/main' || github.event_name == 'merge_group' }}
       - name: Install valgrind
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends valgrind
+        # Retried: a package mirror outage is not a verdict on the change.
+        run: |
+          for attempt in 1 2 3; do
+            sudo apt-get update && sudo apt-get install -y --no-install-recommends valgrind && exit 0
+            sleep $((attempt * 15))
+          done
+          exit 1
       - name: Fetch the FZK-Haus fixture
         run: node scripts/fixtures/fetch-fixtures.mjs ara3d/AC20-FZK-Haus.ifc
       - name: Measure perf-ratchet native-instructions family

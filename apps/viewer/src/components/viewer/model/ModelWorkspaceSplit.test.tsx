@@ -56,6 +56,28 @@ describe('ModelWorkspaceSplit (#6232 M2.1)', () => {
     });
   }
 
+  it('collapses only for a narrow Split and restores the sidebar on leave (#9296)', async (t) => {
+    const original = HTMLElement.prototype.getBoundingClientRect;
+    t.mock.method(HTMLElement.prototype, 'getBoundingClientRect', function(this: HTMLElement) {
+      const box = original.call(this);
+      return this.hasAttribute('data-model-split-width') ? { ...box, width: 700 } : box;
+    });
+    useViewerStore.getState().setSidebarMode('expanded');
+    useViewerStore.getState().setModelLayout('split');
+    const ui = mount();
+    act(() => { useViewerStore.getState().enterModelWorkspace(); });
+    await act(frame);
+    assert.equal(useViewerStore.getState().sidebarMode, 'collapsed');
+    // #9296 review: entry with the saved layout falls back quietly; only an explicit pick explains.
+    assert.equal(ui.querySelector('[data-model-layout-notice]') === null, true, 'no notice on entry');
+    act(() => { useViewerStore.getState().setModelLayout('split'); });
+    assert.ok(ui.querySelector('[data-model-layout-notice]'), 'the fallback explains why the picked Split cannot fit');
+    act(() => { useViewerStore.getState().setModelLayout('3d'); });
+    assert.equal(ui.querySelector('[data-model-layout-notice]') === null, true, 'picking 3D clears the notice');
+    act(() => { useViewerStore.getState().exitModelWorkspace(); });
+    assert.equal(useViewerStore.getState().sidebarMode, 'expanded');
+  });
+
   it('enters the workspace with a saved Split layout without throwing', async () => {
     useViewerStore.getState().setModelLayout('split');
     const ui = mount();

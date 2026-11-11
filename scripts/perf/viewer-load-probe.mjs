@@ -194,13 +194,16 @@ export async function openAndWaitInteractive(page, files, { timeoutMs = 45 * 60 
  * Identity = per element, the Rust element geometry hash (#924: quantized,
  * RTC-invariant, computed on the whole element before flat/instanced routing),
  * read from flat `MeshData.geometryHash` plus `geometryResult.instancedGeometryHashes`.
- * `sig` is an order-independent aggregate over (expressId, hash); `elements`
- * maps each id to its hash for a per-element diff. Flat counts are kept as
- * information only.
+ * Flat meshes the Rust pass left unhashed are covered by an exact-bytes hash
+ * (`d<hex>`), so a complete identity covers every element; `conflicts` counts
+ * elements seen with two different hashes. `sig` is an order-independent
+ * aggregate over (expressId, hash); `elements` maps each id to its hash for a
+ * per-element diff. Flat counts are kept as information only.
  *
  * Cache hits (warm opens) carry no element hashes: the cache persists geometry,
- * not the hash pass. A warm open is identified through the cold load it was
- * cached from (see load-scoreboard-browser.mjs).
+ * not the hash pass, and their instanced output is not readable here. Their
+ * identity is unverifiable; only their flat output is checked against the cold
+ * load (see openIdentity in load-scoreboard-stats.mjs).
  */
 export async function readOutputFingerprint(page) {
   return page.evaluate(() => {
@@ -231,6 +234,29 @@ export async function readOutputFingerprint(page) {
       }
       for (const [id, hash] of g?.instancedGeometryHashes ?? []) put(id, hash);
       for (const id of Object.keys(elements)) unhashed.delete(Number(id));
+      // Flat meshes the Rust pass left without a hash are covered by their exact bytes (positions +
+      // indices; order-independent per element), so the identity covers every element, not only the
+      // hashed ones. Only when the hash pass ran (a cold open): a cache hit has no instanced hashes,
+      // so its identity cannot be complete whatever its flat bytes say.
+      let dataHashed = 0;
+      if (Object.keys(elements).length > 0 && unhashed.size > 0) {
+        const bytesHash = (arr, seed) => {
+          if (!arr) return seed;
+          if (!ArrayBuffer.isView(arr)) return fnv(Array.prototype.join.call(arr, ','), seed);
+          const b = new Uint8Array(arr.buffer, arr.byteOffset, arr.byteLength);
+          let h = seed >>> 0;
+          for (let i = 0; i < b.length; i++) { h ^= b[i]; h = Math.imul(h, 0x01000193); }
+          return h >>> 0;
+        };
+        const data = new Map();
+        for (const mesh of meshes) {
+          if (!unhashed.has(mesh.expressId)) continue;
+          const h = bytesHash(mesh.indices, bytesHash(mesh.positions, 0x811c9dc5));
+          data.set(mesh.expressId, ((data.get(mesh.expressId) ?? 0) + h) >>> 0);
+        }
+        for (const [id, h] of data) { elements[id] = `d${h.toString(16)}`; dataHashed++; }
+        unhashed.clear();
+      }
       let sumA = 0, sumB = 0;
       for (const [id, hex] of Object.entries(elements)) {
         const key = `${id}:${hex}`;
@@ -240,9 +266,9 @@ export async function readOutputFingerprint(page) {
       const hashed = Object.keys(elements).length;
       return {
         name: m.name,
-        identity: `elements=${hashed + unhashed.size} hashed=${hashed} unhashed=${unhashed.size} conflicts=${conflicts} sig=${sumA.toString(16).padStart(8, '0')}${sumB.toString(16).padStart(8, '0')}`,
+        identity: `elements=${hashed + unhashed.size} hashed=${hashed - dataHashed} bytes-hashed=${dataHashed} unhashed=${unhashed.size} conflicts=${conflicts} sig=${sumA.toString(16).padStart(8, '0')}${sumB.toString(16).padStart(8, '0')}`,
         elements, unhashedIds: [...unhashed].slice(0, 200),
-        hashed,
+        hashed: hashed - dataHashed, dataHashed, unhashed: unhashed.size, conflicts,
         // Flat split only: partition-dependent across loads, but a cache hit must restore it exactly.
         flat: { meshes: meshes.length, triangles: flatTriangles, instancedElements: g?.instancedGeometryHashes?.size ?? 0, signature: flatSig.toString(16) },
         entities: m.ifcDataStore?.entityCount ?? null,

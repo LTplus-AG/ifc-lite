@@ -75,6 +75,7 @@ const CHUNK_LABEL_KEYS = {
   'Saved runs': 'compareAnalysis.reconcile.savedTitle',
   'Material layers': 'modelInspector.layers.title',
   'Storey manager': 'storeyManager.title',
+  'Structural Analysis card': 'properties.structural.heading',
   "What's New tab": 'keyboardShortcuts.tabs.whatsNew',
 } as const satisfies Record<string, TranslationKey>;
 

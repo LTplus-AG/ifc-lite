@@ -31,6 +31,19 @@ export function BOOT_OBSERVERS({ countersOff }) {
       for (const e of list.getEntries()) globalThis.__benchLongTasks.push([e.startTime, e.duration]);
     }).observe({ type: 'longtask', buffered: true });
   } catch { /* no longtask support: quiescence then waits on the renderer only */ }
+  // App-shell ready: the moment the store and the file input both exist, stamped in page (not when a poll notices).
+  const stampShell = () => {
+    if (globalThis.__benchShellAt === undefined && globalThis.__ifc_lite_viewer_store__ && document.getElementById('file-input-open')) {
+      globalThis.__benchShellAt = performance.now();
+    }
+    return globalThis.__benchShellAt !== undefined;
+  };
+  const watchShell = () => {
+    if (stampShell()) return;
+    const mo = new MutationObserver(() => { if (stampShell()) mo.disconnect(); });
+    mo.observe(document.documentElement, { childList: true, subtree: true });
+  };
+  if (document.documentElement) watchShell(); else document.addEventListener('DOMContentLoaded', watchShell, { once: true });
   if (countersOff) {
     const key = Symbol.for('ifc-lite.perf-counters');
     globalThis[key] = { get enabled() { return false; }, enable() {}, add() {}, read: () => ({}), drain: () => null };

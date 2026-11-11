@@ -21,7 +21,7 @@ import { equal, normalize, show, verdict } from '../lib/values.mjs';
 const NO_FIELD = Symbol('no field');
 
 /**
- * The read model names a field after its EXPRESS attribute in camelCase
+ * The read model may use the exact EXPRESS attribute or camelCase
  * (`GlobalOrLocal` -> `globalOrLocal`). These three resolve to GlobalIds and
  * are named for that instead.
  */
@@ -30,7 +30,7 @@ const ref = (x) => (x ? `#${x.expressId}` : null);
 
 /** A rooted object's field for `attr`, NO_FIELD when no read-model object of its type has that field. */
 function rootedField(ix, type, info, attr) {
-  const key = RENAMED[attr] ?? attr[0].toLowerCase() + attr.slice(1);
+  const key = ix.fields.get(type)?.has(attr) ? attr : RENAMED[attr] ?? attr[0].toLowerCase() + attr.slice(1);
   if (!ix.fields.get(type)?.has(key)) return NO_FIELD;
   const v = info[key];
   return v && typeof v === 'object' && !Array.isArray(v) && 'expressId' in v ? ref(v) : v;
@@ -137,9 +137,16 @@ export function readRow(row, entries, types) {
     if (link) { out.push(`${attr} unexposed (set in ${setters.length} record(s))`); continue; }
     const read = setters.filter((r) => found.has(r));
     if (!read.length) continue; // its records are already reported as not in the read model
+    const slot = row.attributes.indexOf(attr);
     const field = (r) => {
       const hit = r.ix.byId.get(r.rec.id);
-      return row.family === 'resource' ? resourceField(hit.info, attr) : rootedField(r.ix, hit.type, hit.info, attr);
+      const got = row.family === 'resource' ? resourceField(hit.info, attr) : rootedField(r.ix, hit.type, hit.info, attr);
+      // Exact EXPRESS reference fields hold model-local express ids. Only
+      // reinterpret numbers when the fixture slot is a reference, never a
+      // numeric measure that happens to equal an entity id.
+      const raw = r.rec.args[slot];
+      return typeof got === 'number' && raw && typeof raw === 'object' && 'ref' in raw
+        ? normalize({ ref: got }, r.file.step, types) : got;
     };
     if (read.every((r) => field(r) === NO_FIELD)) { out.push(`${attr} unexposed (set in ${setters.length} record(s))`); continue; }
     const wrong = read.filter((r) => { const got = field(r); return got === NO_FIELD || !equal(value(r, attr), got ?? null); });

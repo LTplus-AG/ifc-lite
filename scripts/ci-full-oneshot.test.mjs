@@ -45,10 +45,24 @@ const decide = (over = {}) => decideOneshot({ ...BASE, ...over });
 
 // ---------------------------------------------------------------- the decision
 
-test('`on` removes the label after a full-lane run that passed or failed', () => {
+test('`on` removes the label after a full-lane run that passed', () => {
   assert.equal(decide().action, 'remove');
-  assert.equal(decide({ run: { ...BASE.run, conclusion: 'failure' } }).action, 'remove');
   assert.equal(decide().number, 7);
+});
+
+test('KEEP after a red run, even when a fast-skipped lane ran (#9787 review)', () => {
+  // `build` failed: the viewer, node and provenance lanes skipped on their
+  // dependency while rust-retained (needs only `changes`) ran. Not a full pass.
+  const buildFailed = [
+    { name: 'Build packages + WASM', conclusion: 'failure' },
+    { name: 'Viewer tests (shard 0)', conclusion: 'skipped' },
+    { name: 'Node tests (shard 1/4)', conclusion: 'skipped' },
+    { name: 'Rust tests (retained)', conclusion: 'success' },
+  ];
+  for (const conclusion of ['failure', 'cancelled', 'timed_out', 'neutral', 'action_required', undefined]) {
+    assert.equal(decide({ run: { ...BASE.run, conclusion }, jobs: () => buildFailed }).action, 'keep', String(conclusion));
+    assert.equal(decide({ mode: 'shadow', run: { ...BASE.run, conclusion } }).action, 'keep', `shadow ${conclusion}`);
+  }
 });
 
 test('`shadow` only records; unset, `off` and typos leave labels alone', () => {
@@ -99,7 +113,7 @@ test('the API is read only once the cheap checks pass', () => {
 });
 
 test('ranFullLane counts a fast-skipped lane that ran, whatever its verdict, and nothing else', () => {
-  assert.equal(ranFullLane([{ name: 'Node tests (shard 2/4)', conclusion: 'failure' }]), true);
+  assert.equal(ranFullLane([{ name: 'Node tests (shard 2/4)', conclusion: 'success' }]), true);
   assert.equal(ranFullLane([{ name: 'Viewer E2E smoke (3/8)', conclusion: 'cancelled' }]), true);
   assert.equal(ranFullLane([{ name: 'Rust tests', conclusion: 'success' }, { name: 'Lint', conclusion: 'success' }]), false, 'lanes the fast lane also runs prove nothing');
   assert.equal(ranFullLane([{ name: 'Provenance tests', conclusion: null }]), false, 'still queued');
@@ -131,11 +145,11 @@ function fakeGh(routes) {
   return { gh, calls };
 }
 const ok = (v) => v;
-const prJson = (over = {}) => ({ number: 7, state: 'open', head: { sha: SHA }, labels: [{ name: FULL_LABEL }], ...over });
+const prJson = (over = {}) => ({ number: 7, state: 'open', head: { sha: SHA, repo: { full_name: 'o/r' } }, labels: [{ name: FULL_LABEL }], ...over });
 
 function cli(env, routes, payload = {}) {
   const event = join(TMP, `event-${Math.random().toString(36).slice(2)}.json`);
-  writeFileSync(event, JSON.stringify({ workflow_run: { id: 99, event: 'pull_request', conclusion: 'success', head_sha: SHA, head_branch: 'feat', created_at: '2026-11-10T10:00:00Z', head_repository: { owner: { login: 'o' } }, pull_requests: [{ number: 7, head: { sha: SHA }, base: { repo: { url: 'https://api.github.com/repos/o/r' } } }], ...payload } }));
+  writeFileSync(event, JSON.stringify({ workflow_run: { id: 99, event: 'pull_request', conclusion: 'success', head_sha: SHA, head_branch: 'feat', created_at: '2026-11-10T10:00:00Z', head_repository: { full_name: 'o/r', owner: { login: 'o' } }, pull_requests: [{ number: 7, head: { sha: SHA }, base: { repo: { url: 'https://api.github.com/repos/o/r' } } }], ...payload } }));
   const summary = join(TMP, `summary-${Math.random().toString(36).slice(2)}`);
   writeFileSync(summary, '');
   const { gh, calls } = fakeGh(routes);
@@ -170,8 +184,24 @@ test('CLI `off`: no API call at all', () => {
 });
 
 test('CLI: a fork PR (no linked number) is found by head branch and sha', () => {
-  const r = cli({}, [['repos/o/r/pulls -f state=open -f head=o:feat', ok([prJson({ head: { sha: 'c'.repeat(40) } }), prJson()])], ...ROUTES.slice(1)], { pull_requests: [] });
+  const fork = { full_name: 'f/r', owner: { login: 'f' } };
+  const forkPr = (sha) => prJson({ head: { sha, repo: { full_name: 'f/r' } } });
+  const r = cli({}, [['repos/o/r/pulls -f state=open -f head=f:feat', ok([forkPr('c'.repeat(40)), forkPr(SHA)])], ...ROUTES.slice(1)], { pull_requests: [], head_repository: fork });
   assert.equal(r.d.action, 'remove');
+});
+
+test('CLI: a PR whose head repository is not the run\'s is ignored, so another fork cannot steer the decision (#9787 review)', () => {
+  // Same head SHA pushed from a different repository.
+  const linked = cli({}, [['repos/o/r/pulls/7', ok(prJson({ head: { sha: SHA, repo: { full_name: 'evil/r' } } }))], ...ROUTES.slice(1)]);
+  assert.equal(linked.d.action, 'keep');
+  assert.match(linked.d.reason, /no open PR has this head/); // @source-text-assertion-ok subject is the decision's returned reason
+  const listed = cli({}, [['repos/o/r/pulls -f state=open -f head=o:feat', ok([prJson({ head: { sha: SHA, repo: { full_name: 'evil/r' } } })])], ...ROUTES.slice(1)], { pull_requests: [] });
+  assert.equal(listed.d.action, 'keep');
+  assert.ok(![...linked.calls, ...listed.calls].some((c) => c.includes('DELETE')));
+  // A spoofed PR listed FIRST must not hide the real one listed after it.
+  const both = cli({}, [['repos/o/r/pulls -f state=open -f head=o:feat', ok([prJson({ number: 8, head: { sha: SHA, repo: { full_name: 'evil/r' } } }), prJson()])], ...ROUTES.slice(1)], { pull_requests: [] });
+  assert.equal(both.d.action, 'remove');
+  assert.equal(both.d.number, 7); // @source-text-assertion-ok subject is the API calls the CLI made
 });
 
 test('CLI: a PR of another repository listed for the same head is not this run\'s PR', () => {

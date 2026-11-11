@@ -24,15 +24,23 @@
  *
  * FAIL CLOSED: only the exact decision `remove` touches the PR, and it needs
  * every one of: mode `on`; CI_PR_LANE `fast` (otherwise the label changes
- * nothing); a `pull_request` run that concluded `success` or `failure` (not
- * cancelled, not skipped); an open PR whose head is still that run's head (a
- * newer head's own run decides); `ci:full` on the PR, applied before the run
+ * nothing); a `pull_request` run that concluded `success`; an open PR from
+ * the run's head repository whose head is still that run's head (a newer
+ * head's own run decides); `ci:full` on the PR, applied before the run
  * was created; and a job from the fast lane's skip list that actually ran in
  * that run. The last two prove the label made the run full: a label added
  * while a run is going did not reach it, and taking it off then would cancel
  * the full pass the author just asked for. A docs-only PR whose path filter
  * skipped those jobs keeps its label, which is today's behaviour. Any
  * unreadable input keeps it too.
+ *
+ * WHY `success` ONLY. A failed run is not a full pass: when `build` fails, the
+ * viewer, node and provenance lanes skip while `rust-retained` (which needs
+ * only `changes`) still runs, so "a fast-skipped lane ran" would hold. A job
+ * list cannot tell a dependency skip from a path-filter skip, so the run's own
+ * verdict is the test: `success` means no lane failed or was cancelled, and
+ * every skip was the path filter's. After a red full run the label stays, so
+ * the author's next push gets the full lanes again.
  *
  *   node scripts/ci-full-oneshot.mjs --run   reads GITHUB_EVENT_PATH (workflow_run)
  */
@@ -56,7 +64,6 @@ export const FAST_SKIPPED_JOB_NAMES = {
   'rust-retained': 'Rust tests (retained)',
 };
 
-const FINISHED = ['success', 'failure'];
 
 /** Did any fast-skipped job really run (not skipped, not absent) in this run? */
 export function ranFullLane(jobs) {
@@ -82,7 +89,7 @@ export function decideOneshot({ mode, prLane, run, pr, jobs, labeledAt }) {
   if (m === 'off') return keep('CI_FULL_ONESHOT is unset or off');
   if (String(prLane ?? '').toLowerCase() !== 'fast') return keep(`CI_PR_LANE is not fast, so \`${FULL_LABEL}\` changes nothing`);
   if (run?.event !== 'pull_request') return keep(`the run was a ${run?.event || 'unknown'} run`);
-  if (!FINISHED.includes(run?.conclusion)) return keep(`the run concluded ${run?.conclusion || 'unknown'}`);
+  if (run?.conclusion !== 'success') return keep(`the run concluded ${run?.conclusion || 'unknown'}, not success, so it was not a full pass`);
   let p;
   try {
     p = pr();
@@ -109,14 +116,19 @@ export function decideOneshot({ mode, prLane, run, pr, jobs, labeledAt }) {
   }
   const created = Date.parse(run.createdAt ?? '');
   if (!(applied <= created)) return keep(`\`${FULL_LABEL}\` was applied after this run was created (or the times are unreadable), so it did not make this run full`, at);
-  const why = `a full-lane run ${run.conclusion === 'success' ? 'passed' : 'failed'} on the head of #${p.number}`;
+  const why = `a full-lane run passed on the head of #${p.number}`;
   if (m === 'shadow') return { action: 'would-remove', mode: m, reason: why, ...at };
   return { action: 'remove', mode: m, reason: why, ...at };
 }
 
 /** The open PR this run's head belongs to, or null. */
 function findPr(gh, repo, wr) {
-  const shape = (p) => ({ number: p.number, state: p.state, headSha: p.head?.sha, labels: (p.labels ?? []).map((l) => l.name) });
+  // The PR must come from the run's own head repository: a fork pushing
+  // another PR's head SHA must not steer this decision.
+  const headRepo = wr.head_repository?.full_name;
+  const shape = (p) => (headRepo && p.head?.repo?.full_name === headRepo
+    ? { number: p.number, state: p.state, headSha: p.head?.sha, labels: (p.labels ?? []).map((l) => l.name) }
+    : null);
   // `pull_requests` can list PRs of other repos sharing the head branch.
   const linked = (wr.pull_requests ?? []).find((p) => p.head?.sha === wr.head_sha && String(p.base?.repo?.url ?? '').endsWith(`/repos/${repo}`))?.number;
   if (linked) return shape(gh(['api', `repos/${repo}/pulls/${linked}`], `PR #${linked}`));
@@ -124,7 +136,7 @@ function findPr(gh, repo, wr) {
   const owner = wr.head_repository?.owner?.login;
   if (!owner || !wr.head_branch) return null;
   const open = gh(['api', '-X', 'GET', `repos/${repo}/pulls`, '-f', 'state=open', '-f', `head=${owner}:${wr.head_branch}`], 'open PRs for the head branch');
-  const hit = open.find((p) => p.head?.sha === wr.head_sha);
+  const hit = open.find((p) => p.head?.sha === wr.head_sha && p.head?.repo?.full_name === headRepo);
   return hit ? shape(hit) : null;
 }
 

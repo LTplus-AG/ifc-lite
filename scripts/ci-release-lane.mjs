@@ -119,9 +119,11 @@ export function parseQueueRules(text) {
  * Does .mergify.yml route THIS release PR through a queue that runs the full
  * gate? Three parts:
  *  - the rule takes the release head and the PR meets its other entry
- *    conditions now (`label=`, `-draft`). `status-success=`/`check-success=`
- *    entry conditions only delay queueing, so they are not judged here; any
- *    other condition is unknown and refuses.
+ *    conditions now (`label=`, `-draft`); any condition it cannot read
+ *    refuses. `status-success=`/`check-success=` conditions are NOT judged:
+ *    their result is not known when this runs, and one that never passes
+ *    keeps the PR out of the queue, leaving its own run as the last gate
+ *    before a direct merge. That is the risk OWNER_ALLOWS_LEAN holds back.
  *  - its merge conditions require the full-lane checks.
  *  - its CI is two-step (merge conditions present and not the queue
  *    conditions). Mergify checks a PR in place, or merges it without a draft,

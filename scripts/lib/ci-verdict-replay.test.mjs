@@ -129,9 +129,9 @@ function cli(args, files, extraEnv = {}) {
     const output = join(dir, 'output.txt');
     writeFileSync(output, '');
     argv.push('--output', output);
-    const env = { ...process.env, ...extraEnv };
-    delete env.REFUSE_REPLAY_AFTER;
-    if (extraEnv.REFUSE_REPLAY_AFTER !== undefined) env.REFUSE_REPLAY_AFTER = extraEnv.REFUSE_REPLAY_AFTER;
+    // An inherited REFUSE_REPLAY_AFTER must not leak in; only an explicit one counts.
+    const { REFUSE_REPLAY_AFTER: _inherited, ...inherited } = process.env;
+    const env = { ...inherited, ...extraEnv };
     delete env.GITHUB_EVENT_PATH;
     delete env.GITHUB_EVENT_NAME;
     delete env.GITHUB_OUTPUT;

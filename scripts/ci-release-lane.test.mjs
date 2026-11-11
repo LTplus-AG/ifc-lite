@@ -245,6 +245,10 @@ test('DIFF: everything that is not a version bump is named', () => {
     // #9783 review: an external dependency in TABLE form, bare `version =` line.
     'rust/t/Cargo.toml': cargo(crate('2.0.0'), crate('2.0.0').replace('[dependencies.external]\nversion = "1.0.0"', '[dependencies.external]\nversion = "1.1.0"')),
     'rust/w/Cargo.toml': cargo('[workspace.dependencies.external]\nversion = "1.0.0"\n', '[workspace.dependencies.external]\nversion = "1.1.0"\n'),
+    // #9783 review: a `path =` inside a trailing comment is not a path dependency.
+    'rust/c/Cargo.toml': cargo('[dependencies]\nserde = { version = "1.0.1" } # was path = "../serde"\n', '[dependencies]\nserde = { version = "2.0.0" } # was path = "../serde"\n'),
+    // ...nor does an array element line like `["a"]` open a [package] table.
+    'rust/a/Cargo.toml': cargo('[dependencies.external]\nfeatures = [\n["package"]\n]\nversion = "1.0.0"\n', '[dependencies.external]\nfeatures = [\n["package"]\n]\nversion = "1.1.0"\n'),
   };
   const entries = [
     { status: 'A', path: '.changeset/new.md' },
@@ -260,6 +264,8 @@ test('DIFF: everything that is not a version bump is named', () => {
     { status: 'M', path: 'rust/z/Cargo.toml' },
     { status: 'M', path: 'rust/t/Cargo.toml' },
     { status: 'M', path: 'rust/w/Cargo.toml' },
+    { status: 'M', path: 'rust/c/Cargo.toml' },
+    { status: 'M', path: 'rust/a/Cargo.toml' },
     { status: 'A', path: 'docs/CHANGELOG.md' },
   ];
   const problems = diffProblems(entries, fakeGit(files));

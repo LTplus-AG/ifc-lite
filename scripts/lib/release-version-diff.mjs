@@ -26,16 +26,45 @@ function onlyVersionsMoved(before, after) {
   return moved ? `\`${moved}\` changed` : null;
 }
 
-const TABLE_HEADER = /^\s*\[\[?\s*([^\]]+?)\s*\]\]?\s*(#.*)?$/;
+const TABLE_HEADER = /^\s*\[\[?\s*([^\]]+?)\s*\]\]?\s*$/;
 const DEP_TABLE = /^(workspace\.)?(target\..+\.)?(dev-|build-)?dependencies\.[^.]+$/;
 
+/** A TOML line without its `#` comment (a `#` inside a "string" is kept). */
+function stripComment(line) {
+  let inString = false;
+  for (let i = 0; i < line.length; i++) {
+    if (line[i] === '"' && line[i - 1] !== '\\') inString = !inString;
+    else if (line[i] === '#' && !inString) return line.slice(0, i);
+  }
+  return line;
+}
+
+/**
+ * The file's lines without comments, and the table name each header line
+ * opens (null elsewhere). A line is a header only outside a multi-line
+ * array, so an element line like `["a"]` is not mistaken for one.
+ */
+function parseToml(text) {
+  const lines = String(text).split('\n').map(stripComment);
+  const headers = [];
+  let depth = 0;
+  for (const line of lines) {
+    const header = depth === 0 ? TABLE_HEADER.exec(line) : null;
+    headers.push(header ? header[1].replace(/\s+/g, '').replace(/"/g, '') : null);
+    if (header) continue;
+    for (const c of line.replace(/"(?:[^"\\]|\\.)*"/g, '')) depth += c === '[' ? 1 : c === ']' ? -1 : 0;
+    if (depth < 0) depth = 0;
+  }
+  return { lines, headers };
+}
+
 /** The lines of the TOML table that holds line `idx`, and that table's name. */
-function tableAt(lines, idx) {
+function tableAt({ lines, headers }, idx) {
   let start = idx;
-  while (start >= 0 && !TABLE_HEADER.test(lines[start])) start--;
+  while (start >= 0 && headers[start] === null) start--;
   let end = idx + 1;
-  while (end < lines.length && !TABLE_HEADER.test(lines[end])) end++;
-  return { name: start >= 0 ? TABLE_HEADER.exec(lines[start])[1].replace(/\s+/g, '').replace(/"/g, '') : '', body: lines.slice(start + 1, end) };
+  while (end < lines.length && headers[end] === null) end++;
+  return { name: start >= 0 ? headers[start] : '', body: lines.slice(start + 1, end) };
 }
 
 /**
@@ -46,10 +75,10 @@ function tableAt(lines, idx) {
  * inline dependency counts only with a `path`. Anything else, an external
  * crate in table form included, is not a release bump.
  */
-function internalVersionLine(lines, idx, isLock) {
-  const line = lines[idx] ?? '';
+function internalVersionLine(toml, idx, isLock) {
+  const line = toml.lines[idx] ?? '';
   if (!/^\s*version\s*=/.test(line)) return /^\s*[\w-]+\s*=\s*\{.*\bpath\s*=/.test(line);
-  const { name, body } = tableAt(lines, idx);
+  const { name, body } = tableAt(toml, idx);
   if (isLock) return name === 'package' && !body.some((l) => /^\s*source\s*=/.test(l));
   if (name === 'package' || name === 'workspace.package') return true;
   return DEP_TABLE.test(name) && body.some((l) => /^\s*path\s*=/.test(l));
@@ -65,7 +94,7 @@ function internalVersionLine(lines, idx, isLock) {
  * @param {string} after        the file at HEAD, for the tables the lines sit in
  */
 function onlyCargoVersionsMoved(unifiedDiff, after, isLock) {
-  const lines = String(after).split('\n');
+  const toml = parseToml(after);
   for (const hunk of String(unifiedDiff).split(/^(?=@@ )/m).filter((h) => h.startsWith('@@ '))) {
     const at = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(hunk);
     if (!at) return 'unreadable hunk header';
@@ -74,7 +103,7 @@ function onlyCargoVersionsMoved(unifiedDiff, after, isLock) {
     const plus = body.filter((l) => l.startsWith('+')).map((l) => l.slice(1));
     if (minus.length !== plus.length) return 'lines were added or removed';
     for (let i = 0; i < minus.length; i++) {
-      const internal = internalVersionLine(lines, Number(at[1]) - 1 + i, isLock);
+      const internal = internalVersionLine(toml, Number(at[1]) - 1 + i, isLock);
       if (!internal || minus[i].replace(VERSION_VALUE, 'version=""') !== plus[i].replace(VERSION_VALUE, 'version=""')) return `\`${plus[i].trim()}\` is not an internal version change`;
     }
   }

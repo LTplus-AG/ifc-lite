@@ -28,10 +28,11 @@ test('#9668 links: resolve every express id, require IfcElement and fixture Glob
   const legacy = { ...file, path: 'legacy.ifc', schema: 'IFC2X3', step: step(`#1=IFCWALL('wall');${members.map((m) => `#${m}=IFCSTRUCTURALCURVEMEMBER('m${m}');#${m + 100}=IFCRELCONNECTSSTRUCTURALELEMENT('rel${m}',$,$,$,#1,#${m});`).join('')}#300=IFCRELCONNECTSSTRUCTURALELEMENT('dup',$,$,$,#1,#100);`) };
   const reverse = { ...file, path: 'reverse.ifc', step: step("#1=IFCWALL('wall');#2=IFCSTRUCTURALCURVEMEMBER('member');#3=IFCRELASSIGNSTOPRODUCT('rel',$,$,$,(#1),$,#2);") };
   const row = { id: 'cap/physical-analytical-link-read', kind: 'capability' };
-  async function run(ids, type = 'IfcWall', guid = 'wall') {
+  async function run(ids, type = 'IfcWall', guid = 'wall', exact = true) {
     const item = { family: 'item', info: { physicalElementIds: ids } };
-    // The probe must ask for the declared class; the coalesced family answers wrongly here.
-    const store = { entities: { getExactTypeName: (id) => id === 1 ? type : id === 4 ? 'IFCWALL' : '', getTypeName: () => 'IfcProject', getGlobalId: (id) => id === 4 ? 'unlinked' : guid } };
+    // The probe reads the declared class; a store without that accessor fails closed.
+    const store = { entities: { getGlobalId: (id) => id === 4 ? 'unlinked' : guid, getTypeName: () => 'IfcWall' } };
+    if (exact) store.entities.getExactTypeName = (id) => id === 1 ? type : id === 4 ? 'IFCWALL' : '';
     const read = { byId: new Map([[2, item]]) };
     const cache = new Map([['read:links.ifc', read], ['read:reverse.ifc', read], ['read:legacy.ifc', { byId: new Map(members.map((m) => [m, item])) }]]);
     for (const f of [file, legacy, reverse]) cache.set(`store:${f.path}`, store);
@@ -41,7 +42,7 @@ test('#9668 links: resolve every express id, require IfcElement and fixture Glob
   assert.equal(good.status, 'pass', good.reason);
   assert.equal((await run([1], 'IFCWALL')).status, 'pass', 'either spelling of a type name resolves');
   assert.deepEqual(good.counts, [{ path: 'links.ifc', checked: 1, held: 1 }, { path: 'legacy.ifc', checked: 30, held: 30 }, { path: 'reverse.ifc', checked: 1, held: 1 }]);
-  for (const bad of [await run([999]), await run([1], 'IfcProject'), await run([1], 'IfcWall', 'other'), await run([]), await run([1, 999]), await run([1, 4])]) {
+  for (const bad of [await run([999]), await run([1], 'IfcProject'), await run([1], 'IfcWall', 'other'), await run([]), await run([1, 999]), await run([1, 4]), await run([1], 'IfcWall', 'wall', false)]) {
     assert.equal(bad.status, 'fail');
   }
 });

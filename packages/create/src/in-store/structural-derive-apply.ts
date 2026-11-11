@@ -19,6 +19,7 @@ import { createStyleEntityReader } from './style-entity-reader.js';
 import { addStructuralAnalysisModelToStore } from './structural-analysis-model.js';
 import { addStructuralCurveMemberToStore } from './structural-curve-member.js';
 import { liveStructuralExtraction } from './structural-derive-facts.js';
+import { analysisModelRefusal } from './structural-derive-plan.js';
 import { DERIVED_ANALYSIS_MODEL_DESCRIPTION, type StructuralDerivationApplied, type StructuralDerivationPlan, type SupportType, type Vec3 } from './structural-derive-types.js';
 import { linkStructuralItemsToPhysicalInStore } from './structural-physical-link.js';
 import { addStructuralPointConnectionToStore, type StructuralBoundaryConditionParams } from './structural-point-connection.js';
@@ -36,16 +37,6 @@ function boundaryCondition(type: SupportType): StructuralBoundaryConditionParams
 
 interface StoreyPlacement { anchor: SpatialAnchor; toLocal(p: Vec3): Vec3 }
 
-/** Why apply refuses to write beside these analysis models, or null when it would write. */
-export function existingAnalysisModelRefusal(
-  models: ReadonlyArray<{ expressId: number }>,
-  options: Pick<StructuralDerivationPlan['options'], 'whenAnalysisModelExists'>,
-): string | null {
-  if (models.length === 0 || options.whenAnalysisModelExists === 'add') return null;
-  return `Structural derivation: the model already has an analysis model (#${models[0].expressId}); `
-    + "set whenAnalysisModelExists to 'add' to derive the missing members into a new one";
-}
-
 export function applyStructuralDerivation(
   editor: StoreEditor,
   store: IfcDataStore,
@@ -58,7 +49,7 @@ export function applyStructuralDerivation(
   const view = editor.getMutationView();
   const structural = liveStructuralExtraction(store, view);
   // Read live, not from the plan: a model may have been written since it was made.
-  const refusal = existingAnalysisModelRefusal(structural.analysisModels, plan.options);
+  const refusal = analysisModelRefusal(structural.analysisModels, plan.options);
   if (refusal) throw new Error(refusal);
   for (const footingId of plan.nodes.flatMap((node) => node.support?.footingId ?? [])) {
     if (!editor.hasEntity(footingId)) throw new Error(`Structural derivation: footing #${footingId} no longer exists; plan again`);

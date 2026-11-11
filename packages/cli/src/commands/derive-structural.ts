@@ -11,7 +11,7 @@
  */
 
 import { StepExporter } from '@ifc-lite/export';
-import { existingAnalysisModelRefusal, type StructuralDerivationOptions, type StructuralDerivationReport } from '@ifc-lite/create';
+import type { StructuralDerivationOptions, StructuralDerivationReport } from '@ifc-lite/create';
 import { createHeadlessContext } from '../loader.js';
 import { getFlag, hasFlag, fatal, printJson, writeOutput } from '../output.js';
 
@@ -73,14 +73,12 @@ export async function deriveStructuralCommand(args: string[]): Promise<void> {
   }
   let { report } = plan;
   const existing = plan.existingAnalysisModels;
-  // The rule apply refuses by, known at plan time: report it as an outcome, not as an apply error.
-  const refusal = existingAnalysisModelRefusal(existing, plan.options);
   if (existing.length > 0) {
-    process.stderr.write(`The file already has ${existing.length} analysis model(s): ${existing.map((m) => `#${m.expressId}${m.derived ? ' (derived)' : ''}`).join(', ')}. `
-      + (refusal ? 'Nothing is written unless --analysis-model-exists add.\n' : 'The missing members go into a new one.\n'));
+    process.stderr.write(`The file already has ${existing.length} analysis model(s): ${existing.map((m) => `#${m.expressId}${m.derived ? ' (derived)' : ''}`).join(', ')}\n`);
   }
   const derivable = report.counts.curveMembers + report.counts.surfaceMembers > 0;
-  const refused = derivable && refusal !== null;
+  // Known at plan time, so it is reported as an outcome rather than as an apply error.
+  const refused = plan.refusal !== null && !dryRun;
   const writes = !dryRun && derivable && !refused;
   if (writes) {
     try {
@@ -96,14 +94,10 @@ export async function deriveStructuralCommand(args: string[]): Promise<void> {
   if (json) {
     printJson({ input: filePath, output: writes ? out : null, dryRun, refused, options: plan.options, existingAnalysisModels: existing, ...report });
   } else {
-    // A refusal names itself below.
-    printReport(report, writes || (refused && !dryRun) ? null : dryRun ? 'Dry run: nothing written' : 'Nothing to derive: nothing written');
+    printReport(report, dryRun ? 'Dry run: nothing written' : derivable ? null : 'Nothing to derive: nothing written');
   }
-  // A refusal exits non-zero after the report, so scripts see it.
-  if (refused && !dryRun) {
-    // The notice above names the models; this line makes the refusal the exit status.
-    fatal('Refused: nothing written (--analysis-model-exists add derives the missing members into a new model)');
-  }
+  // After the report, so scripts get both the report and a non-zero exit.
+  if (refused) fatal('Refused: nothing written (--analysis-model-exists add derives the missing members into a new model)');
 }
 
 function printReport(report: StructuralDerivationReport, nothingWritten: string | null): void {

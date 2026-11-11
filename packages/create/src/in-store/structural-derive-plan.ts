@@ -45,6 +45,13 @@ function roleOf(type: string): (typeof ROLE_CLASSES)[number][0] | null {
   return ROLE_CLASSES.find(([, classes]) => classes.some((c) => chain.includes(c)))?.[0] ?? null;
 }
 
+/** Why apply refuses to write beside these analysis models, or null when it would write. Plan and apply share it. */
+export function analysisModelRefusal(models: ReadonlyArray<{ expressId: number }>, options: Pick<StructuralDerivationOptions, 'whenAnalysisModelExists'>): string | null {
+  if (models.length === 0 || options.whenAnalysisModelExists === 'add') return null;
+  return `Structural derivation: the model already has an analysis model (#${models[0].expressId}); `
+    + "set whenAnalysisModelExists to 'add' to derive the missing members into a new one";
+}
+
 function resolveDerivationOptions(options: StructuralDerivationOptions = {}): Required<StructuralDerivationOptions> {
   const resolved = { ...DEFAULT_DERIVATION_OPTIONS };
   for (const [key, value] of Object.entries(options)) if (value !== undefined) Object.assign(resolved, { [key]: value });
@@ -96,6 +103,7 @@ function lineOf(element: PhysicalElementFact): Omit<Line, 'element' | 'loadBeari
 export function planStructuralDerivation(facts: StructuralDerivationFacts, options: StructuralDerivationOptions = {}): StructuralDerivationPlan {
   const resolved = resolveDerivationOptions(options);
   const { tolerance } = resolved;
+  const isLong = (line: { start: Vec3; end: Vec3 }) => length(sub(line.end, line.start)) > tolerance;
   const skipped: SkippedElement[] = [];
   const skip = (element: PhysicalElementFact, reason: SkippedElement['reason'], detail: string) => {
     skipped.push({ elementId: element.expressId, type: element.type, name: element.name, reason, detail });
@@ -115,7 +123,7 @@ export function planStructuralDerivation(facts: StructuralDerivationFacts, optio
       continue;
     }
     const line = role === 'curve' ? lineOf(element) : null;
-    if (element.idealised && element.loadBearing !== false && line && !('issue' in line) && length(sub(line.end, line.start)) > tolerance) {
+    if (element.idealised && element.loadBearing !== false && line && !('issue' in line) && isLong(line)) {
       idealisedLowest = Math.min(idealisedLowest, line.start[2], line.end[2]);
     }
     if (element.idealised) { skip(element, 'already-idealised', 'a structural item is already linked to this element'); continue; }
@@ -149,22 +157,25 @@ export function planStructuralDerivation(facts: StructuralDerivationFacts, optio
     return first === undefined ? undefined : footings[first];
   };
   const long = lines.filter((line) => {
-    if (length(sub(line.end, line.start)) > tolerance) return true;
+    if (isLong(line)) return true;
     skip(line.element, 'shorter-than-tolerance', `shorter than the ${tolerance} m tolerance`);
     return false;
   });
   // Joints: free ends meet other members' axes; members met inside are split into pieces.
   const joined = joinEnds(long.map((line) => ({ elementId: line.element.expressId, start: line.start, end: line.end, section: line.section })),
     tolerance, resolved.jointReach, (p) => inFooting(p) !== undefined);
-  const all = joined.pieces.map((piece) => ({ ...long[piece.source], start: piece.start, end: piece.end }));
-  const allRoots = clusterEnds(all.flatMap((piece) => [piece.start, piece.end]), tolerance);
+  const allRoots = clusterEnds(joined.pieces.flatMap((piece) => [piece.start, piece.end]), tolerance);
   // A piece whose two ends merge is dropped; the clusters stay as they are, so its neighbours stay joined.
-  const kept = all.map((_, i) => i).filter((i) => allRoots[2 * i] !== allRoots[2 * i + 1]);
-  const pieces = kept.map((i) => all[i]);
-  const roots = kept.flatMap((i) => [allRoots[2 * i], allRoots[2 * i + 1]]);
+  const pieces: Array<Line & { start: Vec3; end: Vec3 }> = [];
+  const roots: number[] = [];
+  joined.pieces.forEach((piece, i) => {
+    if (allRoots[2 * i] === allRoots[2 * i + 1]) return;
+    pieces.push({ ...long[piece.source], start: piece.start, end: piece.end });
+    roots.push(allRoots[2 * i], allRoots[2 * i + 1]);
+  });
   const remaining = new Set(pieces.map((piece) => piece.element));
-  for (const element of new Set(all.map((piece) => piece.element))) {
-    if (!remaining.has(element)) skip(element, 'shorter-than-tolerance', 'both ends merge into one node');
+  for (const source of new Set(joined.pieces.map((piece) => piece.source))) {
+    if (!remaining.has(long[source].element)) skip(long[source].element, 'shorter-than-tolerance', 'both ends merge into one node');
   }
   // Gather each cluster's ends, then build its node once, at their mean.
   const clusters = new Map<number, { ends: Vec3[]; first: PhysicalElementFact; elementIds: Set<number> }>();
@@ -221,6 +232,7 @@ export function planStructuralDerivation(facts: StructuralDerivationFacts, optio
     options: resolved,
     defaultStoreyId: facts.defaultStoreyId,
     existingAnalysisModels: facts.existingAnalysisModels,
+    refusal: members.length > 0 ? analysisModelRefusal(facts.existingAnalysisModels, resolved) : null,
     curveMembers,
     surfaceMembers,
     nodes,

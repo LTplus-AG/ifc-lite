@@ -288,6 +288,8 @@ export interface StructuralDerivationPlan {
   defaultStoreyId: number | null;
   /** Analysis models already in the file; apply refuses unless `whenAnalysisModelExists` is 'add'. */
   existingAnalysisModels: ExistingAnalysisModel[];
+  /** Why apply would refuse this plan because of `existingAnalysisModels`; null when it would write. */
+  refusal: string | null;
   curveMembers: PlannedCurveMember[];
   surfaceMembers: PlannedSurfaceMember[];
   nodes: PlannedNode[];

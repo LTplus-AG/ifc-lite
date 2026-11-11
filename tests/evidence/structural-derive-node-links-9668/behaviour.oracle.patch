@@ -1,7 +1,7 @@
 diff --git a/packages/create/src/in-store/structural-derive-apply.ts b/packages/create/src/in-store/structural-derive-apply.ts
 --- a/packages/create/src/in-store/structural-derive-apply.ts
 +++ b/packages/create/src/in-store/structural-derive-apply.ts
-@@ -142,6 +142,7 @@ function writePlan(
+@@ -133,6 +133,7 @@ function writePlan(
        Name: `${node.support ? 'Support' : 'Node'} ${node.index + 1}`,
        ...node.support ? { BoundaryCondition: boundaryCondition(node.support.type) } : {},
      });

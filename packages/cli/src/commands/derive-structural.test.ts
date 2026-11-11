@@ -60,7 +60,7 @@ describe.skipIf(!existsSync(SAMPLE))('ifc-lite derive-structural (#9668)', () =>
       output: null, counts: { surfaceMembers: 0 }, skipped: [{ reason: 'already-idealised' }],
       existingAnalysisModels: [{ expressId: data.analysisModels[0].expressId, derived: true }],
     });
-    expect(stderr).toMatch(/already has 1 analysis model\(s\): #\d+ \(derived\)\. Nothing is written unless --analysis-model-exists add/);
+    expect(stderr).toMatch(/already has 1 analysis model\(s\): #\d+ \(derived\)/);
     expect(existsSync(again)).toBe(false);
   });
 
@@ -76,7 +76,7 @@ describe.skipIf(!existsSync(SAMPLE))('ifc-lite derive-structural (#9668)', () =>
     const refused = join(dir, 'refused.ifc');
     await expect(run([authored, '--out', refused, '--json'])).rejects.toThrow('exit 1');
     expect(JSON.parse(stdout)).toMatchObject({ output: null, refused: true, existingAnalysisModels: [{ expressId: 99990, derived: false }], counts: { surfaceMembers: 1 } });
-    expect(stderr).toMatch(/already has 1 analysis model\(s\): #99990\. Nothing is written unless --analysis-model-exists add/);
+    expect(stderr).toMatch(/already has 1 analysis model\(s\): #99990\n/);
     expect(stderr).toMatch(/Refused: nothing written \(--analysis-model-exists add/);
     expect(existsSync(refused)).toBe(false);
 

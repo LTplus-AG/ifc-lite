@@ -293,7 +293,10 @@ describe('structural derivation plan (#9668)', () => {
     const existing = [{ expressId: 7, name: 'Authored', derived: false }];
     const plan = planStructuralDerivation({ ...facts(beam(0, 6, 0, 3)), existingAnalysisModels: existing });
     expect(plan.existingAnalysisModels).toEqual(existing);
-    expect(plan.options.whenAnalysisModelExists).toBe('refuse');
+    expect(plan.refusal).toMatch(/already has an analysis model \(#7\)/);
+    expect(planStructuralDerivation({ ...facts(beam(0, 6, 0, 3)), existingAnalysisModels: existing }, { whenAnalysisModelExists: 'add' }).refusal).toBeNull();
+    // Nothing to derive: nothing to refuse.
+    expect(planStructuralDerivation({ ...facts(), existingAnalysisModels: existing }).refusal).toBeNull();
   });
 
   it('skips an element that already has a structural counterpart, so a re-run plans nothing', () => {

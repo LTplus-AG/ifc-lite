@@ -37,7 +37,7 @@ import { recordFirstVisible } from '../lib/perf/loadTrace.js';
 import { rebuildSpatialHierarchy, rebuildOnDemandMaps } from '../utils/spatialHierarchy.js';
 import { calculateStoreyHeights } from '../utils/localParsingUtils.js';
 
-function buildEntityIndexFromCachedColumns(columns: CachedEntityIndexColumns): IfcDataStore['entityIndex'] {
+export function buildEntityIndexFromCachedColumns(columns: CachedEntityIndexColumns): IfcDataStore['entityIndex'] {
   const byId = new CompactEntityIndex(
     columns.ids,
     columns.byteOffsets,
@@ -45,17 +45,46 @@ function buildEntityIndexFromCachedColumns(columns: CachedEntityIndexColumns): I
     columns.typeIndices,
     columns.typeNames,
   );
-  const byType = new Map<string, number[]>();
-  for (let i = 0; i < columns.ids.length; i++) {
-    const type = columns.typeNames[columns.typeIndices[i]];
-    let ids = byType.get(type);
-    if (!ids) {
-      ids = [];
-      byType.set(type, ids);
+  return { byId, byType: groupIdsByType(columns) };
+}
+
+/**
+ * `byType` from the columns: every id under its type name, in column order, types in order of
+ * first appearance. Grouped by type index (one array slot per type) rather than one string-keyed
+ * Map lookup per entity, which was most of the ~44 ms this took on a large model's reopen.
+ */
+function groupIdsByType({ ids, typeIndices, typeNames }: CachedEntityIndexColumns): Map<string, number[]> {
+  const groups: number[][] = new Array(typeNames.length);
+  const firstSeen: number[] = [];
+  for (let i = 0; i < ids.length; i++) {
+    const t = typeIndices[i];
+    let group = groups[t];
+    if (group === undefined) {
+      group = groups[t] = [];
+      firstSeen.push(t);
     }
-    ids.push(columns.ids[i]);
+    group.push(ids[i]);
   }
-  return { byId, byType };
+  const byType = new Map<string, number[]>();
+  for (const t of firstSeen) {
+    const name = typeNames[t];
+    const existing = byType.get(name);
+    if (existing === undefined) byType.set(name, groups[t]);
+    // Two type indices with one name (not written today) must interleave in column order, as before.
+    else return groupIdsByTypeName(ids, typeIndices, typeNames);
+  }
+  return byType;
+}
+
+function groupIdsByTypeName(ids: Uint32Array, typeIndices: Uint16Array, typeNames: string[]): Map<string, number[]> {
+  const byType = new Map<string, number[]>();
+  for (let i = 0; i < ids.length; i++) {
+    const type = typeNames[typeIndices[i]];
+    let list = byType.get(type);
+    if (!list) byType.set(type, (list = []));
+    list.push(ids[i]);
+  }
+  return byType;
 }
 
 /**

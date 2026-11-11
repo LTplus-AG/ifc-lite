@@ -4,9 +4,9 @@
 
 The scorecard of the structural domain hill climb ([#9668](https://github.com/LTplus-AG/ifc-lite/issues/9668)): one row per concrete entity of the IFC structural analysis domain per schema, derived from the generated schema tables, plus capability rows. Every status below comes from a probe that ran (`tests/structural-coverage/`), never from a typed opinion.
 
-**Most of this ledger is red, by design.** It measures the whole domain, including the levels the product does not do yet: 502.5 of 774 cell points are still owed. A red cell is a measured gap, a `·` is a probe not written yet; both score 0.
+**Most of this ledger is red, by design.** It measures the whole domain, including the levels the product does not do yet: 476.5 of 774 cell points are still owed. A red cell is a measured gap, a `·` is a probe not written yet; both score 0.
 
-**Total: 56 / 119 rows** (met 1, partial 110, missing 8). **Cells: 271.5 / 774.** A met row counts 1, a partial row 0.5; a passing cell 1, a partial cell 0.5. The score may only go up: `node tests/structural-coverage/score.mjs --check tests/structural-coverage/baseline/r1.json` fails when the total, the cell score, any row or any cell drops.
+**Total: 56 / 119 rows** (met 1, partial 110, missing 8). **Cells: 297.5 / 774.** A met row counts 1, a partial row 0.5; a passing cell 1, a partial cell 0.5. The score may only go up: `node tests/structural-coverage/score.mjs --check tests/structural-coverage/baseline/r2.json` fails when the total, the cell score, any row or any cell drops.
 
 | Level | Score | Pass | Partial | Fail | Skip | Not written |
 |---|---|---|---|---|---|---|
@@ -14,13 +14,13 @@ The scorecard of the structural domain hill climb ([#9668](https://github.com/LT
 | read | 84.5 / 110 | 71 | 27 | 12 | 0 | 0 |
 | card | 0 / 100 | 0 | 0 | 0 | 0 | 100 |
 | render | 0 / 43 | 0 | 0 | 0 | 0 | 43 |
-| create | 32.5 / 110 | 32 | 1 | 77 | 0 | 0 |
+| create | 58.5 / 110 | 58 | 1 | 51 | 0 | 0 |
 | edit | 0 / 110 | 0 | 0 | 0 | 0 | 110 |
 | remove | 0 / 110 | 0 | 0 | 0 | 0 | 110 |
 | convert | 43.5 / 72 | 37 | 13 | 22 | 0 | 0 |
 | capability | 1 / 9 | 1 | 0 | 1 | 0 | 7 |
 
-Summary: `tests/structural-coverage/baseline/r1.json`, scored over 27 corpus files (`tests/structural-coverage/corpus.json`).
+Summary: `tests/structural-coverage/baseline/r2.json`, scored over 27 corpus files (`tests/structural-coverage/corpus.json`).
 
 ✅ pass · ◐ partial · ❌ fail · ⏸ skip · `·` probe not written yet · – not applicable (the rule is in `notApplicable()` of `tests/structural-coverage/catalogue.mjs`).
 
@@ -47,18 +47,18 @@ Summary: `tests/structural-coverage/baseline/r1.json`, scored over 27 corpus fil
 | `IfcStructuralLinearActionVarying` | activity | ✅ | ◐ | · | · | ❌ | · | · | ❌ | ◐ partial | **read** partial: 3 problem(s) over 132 record(s): CausedBy: no fixture sets it, so reading it is unproven; VaryingAppliedLoadLocation unexposed (set in 132 record(s)); SubsequentAppliedLoads unexposed (set in 132 rec…<br>**create** fail: no in-store builder emits IfcStructuralLinearActionVarying<br>**convert** fail: 2 problem(s) over 2 record(s): ifcopenshell/generated_structural_coverage_ifc2x3.ifc: 1 of 1 IfcStructuralLinearActionVarying record(s) in the IFC4 file do not conform to IFC4 (e.g. no such entity); … |
 | `IfcStructuralLoadGroup` | group | ✅ | ✅ | · | – | ✅ | · | · | ✅ | ◐ partial |  |
 | `IfcStructuralLoadLinearForce` | resource | ✅ | ◐ | · | – | ✅ | · | · | ✅ | ◐ partial | **read** partial: 1 problem(s) over 263 record(s): 131 of 263 record(s) not in the read model, e.g. structural/ifc_structuralanalysisview/steel-joint-modelled-with-shellelements--Axis-Struc.ifc#7359 |
-| `IfcStructuralLoadPlanarForce` | resource | ✅ | ✅ | · | – | ❌ | · | · | ✅ | ◐ partial | **create** fail: no in-store builder emits IfcStructuralLoadPlanarForce |
-| `IfcStructuralLoadSingleDisplacement` | resource | ✅ | ✅ | · | – | ❌ | · | · | ✅ | ◐ partial | **create** fail: no in-store builder emits IfcStructuralLoadSingleDisplacement |
+| `IfcStructuralLoadPlanarForce` | resource | ✅ | ✅ | · | – | ✅ | · | · | ✅ | ◐ partial |  |
+| `IfcStructuralLoadSingleDisplacement` | resource | ✅ | ✅ | · | – | ✅ | · | · | ✅ | ◐ partial |  |
 | `IfcStructuralLoadSingleDisplacementDistortion` | resource | ✅ | ✅ | · | – | ❌ | · | · | ✅ | ◐ partial | **create** fail: no in-store builder emits IfcStructuralLoadSingleDisplacementDistortion |
 | `IfcStructuralLoadSingleForce` | resource | ✅ | ✅ | · | – | ✅ | · | · | ✅ | ◐ partial |  |
 | `IfcStructuralLoadSingleForceWarping` | resource | ✅ | ✅ | · | – | ❌ | · | · | ✅ | ◐ partial | **create** fail: no in-store builder emits IfcStructuralLoadSingleForceWarping |
-| `IfcStructuralLoadTemperature` | resource | ✅ | ◐ | · | – | ❌ | · | · | ✅ | ◐ partial | **read** partial: 1 problem(s) over 103 record(s): 1 of 103 record(s) not in the read model, e.g. ifcopenshell/generated_structural_coverage_ifc2x3.ifc#22<br>**create** fail: no in-store builder emits IfcStructuralLoadTemperature |
-| `IfcStructuralPlanarAction` | activity | ✅ | ◐ | · | · | ❌ | · | · | ◐ | ◐ partial | **read** partial: 1 problem(s) over 2 record(s): CausedBy: no fixture sets it, so reading it is unproven<br>**create** fail: no in-store builder emits IfcStructuralPlanarAction<br>**convert** partial: 2 problem(s) over 2 record(s): ifcopenshell/generated_structural_coverage_ifc2x3.ifc#52: ProjectedOrTrue "USERDEFINED", was "TRUE_LENGTH"; structural/ifc_structuralanalysisview/simple_bottom_slab--Ax… |
+| `IfcStructuralLoadTemperature` | resource | ✅ | ◐ | · | – | ✅ | · | · | ✅ | ◐ partial | **read** partial: 1 problem(s) over 103 record(s): 1 of 103 record(s) not in the read model, e.g. ifcopenshell/generated_structural_coverage_ifc2x3.ifc#22 |
+| `IfcStructuralPlanarAction` | activity | ✅ | ◐ | · | · | ✅ | · | · | ◐ | ◐ partial | **read** partial: 1 problem(s) over 2 record(s): CausedBy: no fixture sets it, so reading it is unproven<br>**convert** partial: 2 problem(s) over 2 record(s): ifcopenshell/generated_structural_coverage_ifc2x3.ifc#52: ProjectedOrTrue "USERDEFINED", was "TRUE_LENGTH"; structural/ifc_structuralanalysisview/simple_bottom_slab--Ax… |
 | `IfcStructuralPlanarActionVarying` | activity | ✅ | ◐ | · | · | ❌ | · | · | ❌ | ◐ partial | **read** partial: 3 problem(s) over 1 record(s): CausedBy: no fixture sets it, so reading it is unproven; VaryingAppliedLoadLocation unexposed (set in 1 record(s)); SubsequentAppliedLoads unexposed (set in 1 record(s))<br>**create** fail: no in-store builder emits IfcStructuralPlanarActionVarying<br>**convert** fail: 1 problem(s) over 1 record(s): ifcopenshell/generated_structural_coverage_ifc2x3.ifc: 1 of 1 IfcStructuralPlanarActionVarying record(s) in the IFC4 file do not conform to IFC4 (e.g. no such entity) |
 | `IfcStructuralPointAction` | activity | ✅ | ◐ | · | · | ✅ | · | · | ✅ | ◐ partial | **read** partial: 1 problem(s) over 31 record(s): CausedBy: no fixture sets it, so reading it is unproven |
 | `IfcStructuralPointConnection` | item | ✅ | ✅ | · | · | ✅ | · | · | ✅ | ◐ partial |  |
-| `IfcStructuralPointReaction` | activity | ✅ | ✅ | · | · | ❌ | · | · | ✅ | ◐ partial | **create** fail: no in-store builder emits IfcStructuralPointReaction |
-| `IfcStructuralResultGroup` | group | ✅ | ✅ | · | – | ❌ | · | · | ✅ | ◐ partial | **create** fail: no in-store builder emits IfcStructuralResultGroup |
+| `IfcStructuralPointReaction` | activity | ✅ | ✅ | · | · | ✅ | · | · | ✅ | ◐ partial |  |
+| `IfcStructuralResultGroup` | group | ✅ | ✅ | · | – | ✅ | · | · | ✅ | ◐ partial |  |
 | `IfcStructuralSurfaceConnection` | item | ✅ | ✅ | · | · | ❌ | · | · | ✅ | ◐ partial | **create** fail: no in-store builder emits IfcStructuralSurfaceConnection |
 | `IfcStructuralSurfaceMember` | item | ✅ | ✅ | · | · | ❌ | · | · | ✅ | ◐ partial | **create** fail: no in-store builder emits IfcStructuralSurfaceMember |
 | `IfcStructuralSurfaceMemberVarying` | item | ✅ | ◐ | · | · | ❌ | · | · | ◐ | ◐ partial | **read** partial: 2 problem(s) over 1 record(s): SubsequentThickness unexposed (set in 1 record(s)); VaryingThicknessLocation unexposed (set in 1 record(s))<br>**create** fail: no in-store builder emits IfcStructuralSurfaceMemberVarying<br>**convert** partial: 2 problem(s) over 1 record(s): ifcopenshell/generated_structural_coverage_ifc2x3.ifc#40: SubsequentThickness null, was [0.25,0.3]; ifcopenshell/generated_structural_coverage_ifc2x3.ifc#40: VaryingThi… |
@@ -69,7 +69,7 @@ Summary: `tests/structural-coverage/baseline/r1.json`, scored over 27 corpus fil
 |---|---|---|---|---|---|---|---|---|---|---|---|
 | `IfcBoundaryEdgeCondition` | resource | ✅ | ◐ | · | – | ❌ | · | · | ❌ | ◐ partial | **read** partial: 1 problem(s) over 13 record(s): 3 of 13 record(s) not in the read model, e.g. structural/analysis-models/slab_01.ifc#74<br>**create** fail: no in-store builder emits IfcBoundaryEdgeCondition<br>**convert** fail: 2 problem(s) over 5 record(s): structural/analysis-models/slab_01.ifc: 4 of 4 IfcBoundaryEdgeCondition record(s) in the IFC2X3 file do not conform to IFC2X3 (e.g. LinearStiffnessByLengthX: typed IFCB… |
 | `IfcBoundaryFaceCondition` | resource | ✅ | ✅ | · | – | ❌ | · | · | ❌ | ◐ partial | **create** fail: no in-store builder emits IfcBoundaryFaceCondition<br>**convert** fail: 1 problem(s) over 1 record(s): ifcopenshell/generated_structural_coverage_ifc4.ifc: 1 of 1 IfcBoundaryFaceCondition record(s) in the IFC2X3 file do not conform to IFC2X3 (e.g. LinearStiffnessByAreaX:… |
-| `IfcBoundaryNodeCondition` | resource | ✅ | ◐ | · | – | ❌ | · | · | ❌ | ◐ partial | **read** partial: 1 problem(s) over 33 record(s): 13 of 33 record(s) not in the read model, e.g. ifcopenshell/generated_structural_coverage_ifc4.ifc#24<br>**create** fail: point-connection: 1 of 1 exported record(s) do not conform to IFC4, e.g. #70 TranslationalStiffnessX: bare value in SELECT IfcTranslationalStiffnessSelect, TranslationalStiffnessX true, expected {"ty…<br>**convert** fail: 2 problem(s) over 2 record(s): ifcopenshell/generated_structural_coverage_ifc4.ifc: 1 of 1 IfcBoundaryNodeCondition record(s) in the IFC2X3 file do not conform to IFC2X3 (e.g. LinearStiffnessX: typed… |
+| `IfcBoundaryNodeCondition` | resource | ✅ | ◐ | · | – | ✅ | · | · | ❌ | ◐ partial | **read** partial: 1 problem(s) over 33 record(s): 13 of 33 record(s) not in the read model, e.g. ifcopenshell/generated_structural_coverage_ifc4.ifc#24<br>**convert** fail: 2 problem(s) over 2 record(s): ifcopenshell/generated_structural_coverage_ifc4.ifc: 1 of 1 IfcBoundaryNodeCondition record(s) in the IFC2X3 file do not conform to IFC2X3 (e.g. LinearStiffnessX: typed… |
 | `IfcBoundaryNodeConditionWarping` | resource | ✅ | ✅ | · | – | ❌ | · | · | ❌ | ◐ partial | **create** fail: no in-store builder emits IfcBoundaryNodeConditionWarping<br>**convert** fail: 1 problem(s) over 1 record(s): ifcopenshell/generated_structural_coverage_ifc4.ifc: 1 of 1 IfcBoundaryNodeConditionWarping record(s) in the IFC2X3 file do not conform to IFC2X3 (e.g. LinearStiffnessX… |
 | `IfcConnectionPointEccentricity` | resource | ✅ | ❌ | · | – | ❌ | · | · | ✅ | ◐ partial | **read** fail: 2 problem(s) over 178 record(s): 178 of 178 record(s) not in the read model, e.g. ifcopenshell/generated_structural_coverage_ifc4.ifc#67; PointOnRelatedElement: no fixture sets it, so reading it is u…<br>**create** fail: no in-store builder emits IfcConnectionPointEccentricity |
 | `IfcFailureConnectionCondition` | resource | ✅ | ❌ | · | – | ❌ | · | · | ✅ | ◐ partial | **read** fail: 1 problem(s) over 1 record(s): 1 of 1 record(s) not in the read model, e.g. ifcopenshell/generated_structural_coverage_ifc4.ifc#28<br>**create** fail: no in-store builder emits IfcFailureConnectionCondition |
@@ -82,28 +82,28 @@ Summary: `tests/structural-coverage/baseline/r1.json`, scored over 27 corpus fil
 | `IfcStructuralCurveConnection` | item | ✅ | ✅ | · | · | ❌ | · | · | ◐ | ◐ partial | **create** fail: no in-store builder emits IfcStructuralCurveConnection<br>**convert** partial: 3 problem(s) over 3 record(s): structural/analysis-models/slab_01.ifc#62: Axis null, was "#IFCDIRECTION"; structural/analysis-models/slab_01.ifc#72: Axis null, was "#IFCDIRECTION"; ifcopenshell/gener… |
 | `IfcStructuralCurveMember` | item | ✅ | ✅ | · | · | ✅ | · | · | ◐ | ◐ partial | **convert** partial: 2 problem(s) over 3 record(s): ifcopenshell/generated_structural_edge_curve.ifc: 2 of 2 IfcStructuralCurveMember record(s) in the IFC2X3 file do not conform to IFC2X3 (e.g. OwnerHistory: required val… |
 | `IfcStructuralCurveMemberVarying` | item | ✅ | ✅ | · | · | ❌ | · | · | ◐ | ◐ partial | **create** fail: no in-store builder emits IfcStructuralCurveMemberVarying<br>**convert** partial: 1 problem(s) over 1 record(s): ifcopenshell/generated_structural_coverage_ifc4.ifc#33: Axis null, was "#IFCDIRECTION" |
-| `IfcStructuralCurveReaction` | activity | ✅ | ✅ | · | · | ❌ | · | · | ❌ | ◐ partial | **create** fail: no in-store builder emits IfcStructuralCurveReaction<br>**convert** fail: 4 problem(s) over 4 record(s): ifcopenshell/generated_structural_coverage_ifc4.ifc#57: lost; ifcopenshell/structural_analysis_curve.ifc#2773: lost; ifcopenshell/structural_analysis_curve.ifc#2781: lo… |
+| `IfcStructuralCurveReaction` | activity | ✅ | ✅ | · | · | ✅ | · | · | ❌ | ◐ partial | **convert** fail: 4 problem(s) over 4 record(s): ifcopenshell/generated_structural_coverage_ifc4.ifc#57: lost; ifcopenshell/structural_analysis_curve.ifc#2773: lost; ifcopenshell/structural_analysis_curve.ifc#2781: lo… |
 | `IfcStructuralLinearAction` | activity | ✅ | ✅ | · | · | ✅ | · | · | ❌ | ◐ partial | **convert** fail: 2 problem(s) over 26 record(s): ifcopenshell/generated_structural_coverage_ifc4.ifc: 1 of 1 IfcStructuralLinearAction record(s) in the IFC2X3 file do not conform to IFC2X3 (e.g. CausedBy: bare value … |
 | `IfcStructuralLoadCase` | group | ✅ | ◐ | · | – | ✅ | · | · | ◐ | ◐ partial | **read** partial: 1 problem(s) over 17 record(s): Purpose: no fixture sets it, so reading it is unproven<br>**convert** partial: 4 problem(s) over 4 record(s): ifcopenshell/generated_structural_coverage_ifc4.ifc#80: came back as IFCSTRUCTURALLOADGROUP; structural/analysis-models/beam_01.ifc#65: came back as IFCSTRUCTURALLOADGR… |
 | `IfcStructuralLoadConfiguration` | resource | ✅ | ✅ | · | – | ❌ | · | · | ❌ | ◐ partial | **create** fail: no in-store builder emits IfcStructuralLoadConfiguration<br>**convert** fail: 5 problem(s) over 5 record(s): ifcopenshell/generated_structural_coverage_ifc4.ifc#23: no IfcStructuralLoadConfiguration with its values came back; ifcopenshell/structural_analysis_curve.ifc#326: no … |
 | `IfcStructuralLoadGroup` | group | ✅ | ◐ | · | – | ✅ | · | · | ✅ | ◐ partial | **read** partial: 1 problem(s) over 33 record(s): Purpose: no fixture sets it, so reading it is unproven |
 | `IfcStructuralLoadLinearForce` | resource | ✅ | ✅ | · | – | ✅ | · | · | ✅ | ◐ partial |  |
-| `IfcStructuralLoadPlanarForce` | resource | ✅ | ✅ | · | – | ❌ | · | · | ✅ | ◐ partial | **create** fail: no in-store builder emits IfcStructuralLoadPlanarForce |
-| `IfcStructuralLoadSingleDisplacement` | resource | ✅ | ✅ | · | – | ❌ | · | · | ✅ | ◐ partial | **create** fail: no in-store builder emits IfcStructuralLoadSingleDisplacement |
+| `IfcStructuralLoadPlanarForce` | resource | ✅ | ✅ | · | – | ✅ | · | · | ✅ | ◐ partial |  |
+| `IfcStructuralLoadSingleDisplacement` | resource | ✅ | ✅ | · | – | ✅ | · | · | ✅ | ◐ partial |  |
 | `IfcStructuralLoadSingleDisplacementDistortion` | resource | ✅ | ✅ | · | – | ❌ | · | · | ✅ | ◐ partial | **create** fail: no in-store builder emits IfcStructuralLoadSingleDisplacementDistortion |
 | `IfcStructuralLoadSingleForce` | resource | ✅ | ✅ | · | – | ✅ | · | · | ✅ | ◐ partial |  |
 | `IfcStructuralLoadSingleForceWarping` | resource | ✅ | ✅ | · | – | ❌ | · | · | ✅ | ◐ partial | **create** fail: no in-store builder emits IfcStructuralLoadSingleForceWarping |
-| `IfcStructuralLoadTemperature` | resource | ✅ | ✅ | · | – | ❌ | · | · | ✅ | ◐ partial | **create** fail: no in-store builder emits IfcStructuralLoadTemperature |
-| `IfcStructuralPlanarAction` | activity | ✅ | ✅ | · | · | ❌ | · | · | ❌ | ◐ partial | **create** fail: no in-store builder emits IfcStructuralPlanarAction<br>**convert** fail: 2 problem(s) over 15 record(s): ifcopenshell/generated_structural_coverage_ifc4.ifc: 1 of 2 IfcStructuralPlanarAction record(s) in the IFC2X3 file do not conform to IFC2X3 (e.g. CausedBy: bare value … |
+| `IfcStructuralLoadTemperature` | resource | ✅ | ✅ | · | – | ✅ | · | · | ✅ | ◐ partial |  |
+| `IfcStructuralPlanarAction` | activity | ✅ | ✅ | · | · | ✅ | · | · | ❌ | ◐ partial | **convert** fail: 2 problem(s) over 15 record(s): ifcopenshell/generated_structural_coverage_ifc4.ifc: 1 of 2 IfcStructuralPlanarAction record(s) in the IFC2X3 file do not conform to IFC2X3 (e.g. CausedBy: bare value … |
 | `IfcStructuralPointAction` | activity | ✅ | ✅ | · | · | ✅ | · | · | ◐ | ◐ partial | **convert** partial: 1 problem(s) over 4 record(s): structural/analysis-models/beam_01.ifc#102: DestabilizingLoad false, was null |
 | `IfcStructuralPointConnection` | item | ✅ | ✅ | · | · | ✅ | · | · | ✅ | ◐ partial |  |
-| `IfcStructuralPointReaction` | activity | ✅ | ✅ | · | · | ❌ | · | · | ✅ | ◐ partial | **create** fail: no in-store builder emits IfcStructuralPointReaction |
-| `IfcStructuralResultGroup` | group | ✅ | ✅ | · | – | ❌ | · | · | ✅ | ◐ partial | **create** fail: no in-store builder emits IfcStructuralResultGroup |
-| `IfcStructuralSurfaceAction` | activity | ✅ | ✅ | · | · | ❌ | · | · | ◐ | ◐ partial | **create** fail: no in-store builder emits IfcStructuralSurfaceAction<br>**convert** partial: 1 problem(s) over 1 record(s): ifcopenshell/generated_structural_coverage_ifc4.ifc#53: came back as IFCSTRUCTURALPLANARACTION |
+| `IfcStructuralPointReaction` | activity | ✅ | ✅ | · | · | ✅ | · | · | ✅ | ◐ partial |  |
+| `IfcStructuralResultGroup` | group | ✅ | ✅ | · | – | ✅ | · | · | ✅ | ◐ partial |  |
+| `IfcStructuralSurfaceAction` | activity | ✅ | ✅ | · | · | ✅ | · | · | ◐ | ◐ partial | **convert** partial: 1 problem(s) over 1 record(s): ifcopenshell/generated_structural_coverage_ifc4.ifc#53: came back as IFCSTRUCTURALPLANARACTION |
 | `IfcStructuralSurfaceConnection` | item | ✅ | ✅ | · | · | ❌ | · | · | ✅ | ◐ partial | **create** fail: no in-store builder emits IfcStructuralSurfaceConnection |
 | `IfcStructuralSurfaceMember` | item | ✅ | ✅ | · | · | ❌ | · | · | ◐ | ◐ partial | **create** fail: no in-store builder emits IfcStructuralSurfaceMember<br>**convert** partial: 1 problem(s) over 2 record(s): ifcopenshell/generated_structural_surface_member.ifc: 1 of 1 IfcStructuralSurfaceMember record(s) in the IFC2X3 file do not conform to IFC2X3 (e.g. OwnerHistory: requir… |
 | `IfcStructuralSurfaceMemberVarying` | item | ✅ | ✅ | · | · | ❌ | · | · | ❌ | ◐ partial | **create** fail: no in-store builder emits IfcStructuralSurfaceMemberVarying<br>**convert** fail: 1 problem(s) over 1 record(s): ifcopenshell/generated_structural_coverage_ifc4.ifc: 1 of 1 IfcStructuralSurfaceMemberVarying record(s) in the IFC2X3 file do not conform to IFC2X3 (e.g. SubsequentThic… |
-| `IfcStructuralSurfaceReaction` | activity | ✅ | ✅ | · | · | ❌ | · | · | ❌ | ◐ partial | **create** fail: no in-store builder emits IfcStructuralSurfaceReaction<br>**convert** fail: 1 problem(s) over 1 record(s): ifcopenshell/generated_structural_coverage_ifc4.ifc#59: lost |
+| `IfcStructuralSurfaceReaction` | activity | ✅ | ✅ | · | · | ✅ | · | · | ❌ | ◐ partial | **convert** fail: 1 problem(s) over 1 record(s): ifcopenshell/generated_structural_coverage_ifc4.ifc#59: lost |
 | `IfcSurfaceReinforcementArea` | resource | ✅ | ❌ | · | – | ❌ | · | · | ❌ | ◐ partial | **read** fail: 1 problem(s) over 1 record(s): 1 of 1 record(s) not in the read model, e.g. ifcopenshell/generated_structural_coverage_ifc4_reinforcement.ifc#15<br>**create** fail: no in-store builder emits IfcSurfaceReinforcementArea<br>**convert** fail: 1 problem(s) over 1 record(s): ifcopenshell/generated_structural_coverage_ifc4_reinforcement.ifc: IFC4 -> IFC2X3 -> IFC4 threw: Cannot convert #15=IFCSURFACEREINFORCEMENTAREA('Coverage reinforcement'… |
 
 ## IFC4X3
@@ -112,7 +112,7 @@ Summary: `tests/structural-coverage/baseline/r1.json`, scored over 27 corpus fil
 |---|---|---|---|---|---|---|---|---|---|---|---|
 | `IfcBoundaryEdgeCondition` | resource | ✅ | ✅ | · | – | ❌ | · | · | – | ◐ partial | **create** fail: no in-store builder emits IfcBoundaryEdgeCondition |
 | `IfcBoundaryFaceCondition` | resource | ✅ | ✅ | · | – | ❌ | · | · | – | ◐ partial | **create** fail: no in-store builder emits IfcBoundaryFaceCondition |
-| `IfcBoundaryNodeCondition` | resource | ✅ | ◐ | · | – | ❌ | · | · | – | ◐ partial | **read** partial: 1 problem(s) over 10 record(s): 2 of 10 record(s) not in the read model, e.g. structural/ifctruss/tutorial-with-resutls.ifc#12<br>**create** fail: point-connection: 1 of 1 exported record(s) do not conform to IFC4X3, e.g. #70 TranslationalStiffnessX: bare value in SELECT IfcTranslationalStiffnessSelect, TranslationalStiffnessX true, expected {"… |
+| `IfcBoundaryNodeCondition` | resource | ✅ | ◐ | · | – | ✅ | · | · | – | ◐ partial | **read** partial: 1 problem(s) over 10 record(s): 2 of 10 record(s) not in the read model, e.g. structural/ifctruss/tutorial-with-resutls.ifc#12 |
 | `IfcBoundaryNodeConditionWarping` | resource | ✅ | ✅ | · | – | ❌ | · | · | – | ◐ partial | **create** fail: no in-store builder emits IfcBoundaryNodeConditionWarping |
 | `IfcConnectionPointEccentricity` | resource | ✅ | ❌ | · | – | ❌ | · | · | – | ◐ partial | **read** fail: 2 problem(s) over 1 record(s): 1 of 1 record(s) not in the read model, e.g. ifcopenshell/generated_structural_coverage_ifc4x3.ifc#68; PointOnRelatedElement: no fixture sets it, so reading it is unpro…<br>**create** fail: no in-store builder emits IfcConnectionPointEccentricity |
 | `IfcFailureConnectionCondition` | resource | ✅ | ❌ | · | – | ❌ | · | · | – | ◐ partial | **read** fail: 1 problem(s) over 1 record(s): 1 of 1 record(s) not in the read model, e.g. ifcopenshell/generated_structural_coverage_ifc4x3.ifc#29<br>**create** fail: no in-store builder emits IfcFailureConnectionCondition |
@@ -125,28 +125,28 @@ Summary: `tests/structural-coverage/baseline/r1.json`, scored over 27 corpus fil
 | `IfcStructuralCurveConnection` | item | ✅ | ✅ | · | · | ❌ | · | · | – | ◐ partial | **create** fail: no in-store builder emits IfcStructuralCurveConnection |
 | `IfcStructuralCurveMember` | item | ✅ | ✅ | · | · | ✅ | · | · | – | ◐ partial |  |
 | `IfcStructuralCurveMemberVarying` | item | ✅ | ✅ | · | · | ❌ | · | · | – | ◐ partial | **create** fail: no in-store builder emits IfcStructuralCurveMemberVarying |
-| `IfcStructuralCurveReaction` | activity | ✅ | ✅ | · | · | ❌ | · | · | – | ◐ partial | **create** fail: no in-store builder emits IfcStructuralCurveReaction |
+| `IfcStructuralCurveReaction` | activity | ✅ | ✅ | · | · | ✅ | · | · | – | ◐ partial |  |
 | `IfcStructuralLinearAction` | activity | ✅ | ✅ | · | · | ✅ | · | · | – | ◐ partial |  |
 | `IfcStructuralLoadCase` | group | ✅ | ◐ | · | – | ✅ | · | · | – | ◐ partial | **read** partial: 1 problem(s) over 1 record(s): Purpose: no fixture sets it, so reading it is unproven |
 | `IfcStructuralLoadConfiguration` | resource | ✅ | ✅ | · | – | ❌ | · | · | – | ◐ partial | **create** fail: no in-store builder emits IfcStructuralLoadConfiguration |
 | `IfcStructuralLoadGroup` | group | ✅ | ◐ | · | – | ✅ | · | · | – | ◐ partial | **read** partial: 1 problem(s) over 3 record(s): Purpose: no fixture sets it, so reading it is unproven |
 | `IfcStructuralLoadLinearForce` | resource | ✅ | ✅ | · | – | ✅ | · | · | – | ◐ partial |  |
-| `IfcStructuralLoadPlanarForce` | resource | ✅ | ✅ | · | – | ❌ | · | · | – | ◐ partial | **create** fail: no in-store builder emits IfcStructuralLoadPlanarForce |
-| `IfcStructuralLoadSingleDisplacement` | resource | ✅ | ✅ | · | – | ❌ | · | · | – | ◐ partial | **create** fail: no in-store builder emits IfcStructuralLoadSingleDisplacement |
+| `IfcStructuralLoadPlanarForce` | resource | ✅ | ✅ | · | – | ✅ | · | · | – | ◐ partial |  |
+| `IfcStructuralLoadSingleDisplacement` | resource | ✅ | ✅ | · | – | ✅ | · | · | – | ◐ partial |  |
 | `IfcStructuralLoadSingleDisplacementDistortion` | resource | ✅ | ✅ | · | – | ❌ | · | · | – | ◐ partial | **create** fail: no in-store builder emits IfcStructuralLoadSingleDisplacementDistortion |
 | `IfcStructuralLoadSingleForce` | resource | ✅ | ✅ | · | – | ✅ | · | · | – | ◐ partial |  |
 | `IfcStructuralLoadSingleForceWarping` | resource | ✅ | ✅ | · | – | ❌ | · | · | – | ◐ partial | **create** fail: no in-store builder emits IfcStructuralLoadSingleForceWarping |
-| `IfcStructuralLoadTemperature` | resource | ✅ | ✅ | · | – | ❌ | · | · | – | ◐ partial | **create** fail: no in-store builder emits IfcStructuralLoadTemperature |
-| `IfcStructuralPlanarAction` | activity | ✅ | ✅ | · | · | ❌ | · | · | – | ◐ partial | **create** fail: no in-store builder emits IfcStructuralPlanarAction |
+| `IfcStructuralLoadTemperature` | resource | ✅ | ✅ | · | – | ✅ | · | · | – | ◐ partial |  |
+| `IfcStructuralPlanarAction` | activity | ✅ | ✅ | · | · | ✅ | · | · | – | ◐ partial |  |
 | `IfcStructuralPointAction` | activity | ✅ | ✅ | · | · | ✅ | · | · | – | ◐ partial |  |
 | `IfcStructuralPointConnection` | item | ✅ | ◐ | · | · | ✅ | · | · | – | ◐ partial | **read** partial: 1 problem(s) over 9 record(s): ConditionCoordinateSystem: no fixture sets it, so reading it is unproven |
-| `IfcStructuralPointReaction` | activity | ✅ | ✅ | · | · | ❌ | · | · | – | ◐ partial | **create** fail: no in-store builder emits IfcStructuralPointReaction |
-| `IfcStructuralResultGroup` | group | ✅ | ✅ | · | – | ❌ | · | · | – | ◐ partial | **create** fail: no in-store builder emits IfcStructuralResultGroup |
-| `IfcStructuralSurfaceAction` | activity | ✅ | ✅ | · | · | ❌ | · | · | – | ◐ partial | **create** fail: no in-store builder emits IfcStructuralSurfaceAction |
+| `IfcStructuralPointReaction` | activity | ✅ | ✅ | · | · | ✅ | · | · | – | ◐ partial |  |
+| `IfcStructuralResultGroup` | group | ✅ | ✅ | · | – | ✅ | · | · | – | ◐ partial |  |
+| `IfcStructuralSurfaceAction` | activity | ✅ | ✅ | · | · | ✅ | · | · | – | ◐ partial |  |
 | `IfcStructuralSurfaceConnection` | item | ✅ | ✅ | · | · | ❌ | · | · | – | ◐ partial | **create** fail: no in-store builder emits IfcStructuralSurfaceConnection |
 | `IfcStructuralSurfaceMember` | item | ✅ | ✅ | · | · | ❌ | · | · | – | ◐ partial | **create** fail: no in-store builder emits IfcStructuralSurfaceMember |
 | `IfcStructuralSurfaceMemberVarying` | item | ✅ | ✅ | · | · | ❌ | · | · | – | ◐ partial | **create** fail: no in-store builder emits IfcStructuralSurfaceMemberVarying |
-| `IfcStructuralSurfaceReaction` | activity | ✅ | ✅ | · | · | ❌ | · | · | – | ◐ partial | **create** fail: no in-store builder emits IfcStructuralSurfaceReaction |
+| `IfcStructuralSurfaceReaction` | activity | ✅ | ✅ | · | · | ✅ | · | · | – | ◐ partial |  |
 | `IfcSurfaceReinforcementArea` | resource | ✅ | ❌ | · | – | ❌ | · | · | – | ◐ partial | **read** fail: 1 problem(s) over 1 record(s): 1 of 1 record(s) not in the read model, e.g. ifcopenshell/generated_structural_coverage_ifc4x3.ifc#15<br>**create** fail: no in-store builder emits IfcSurfaceReinforcementArea |
 
 ## Capabilities
@@ -167,7 +167,7 @@ Summary: `tests/structural-coverage/baseline/r1.json`, scored over 27 corpus fil
 
 ```bash
 node tests/structural-coverage/score.mjs   # names the fetch command for any absent corpus file, then exits 2
-node tests/structural-coverage/score.mjs --out tests/structural-coverage/.out/summary.json --check tests/structural-coverage/baseline/r1.json
+node tests/structural-coverage/score.mjs --out tests/structural-coverage/.out/summary.json --check tests/structural-coverage/baseline/r2.json
 cp tests/structural-coverage/.out/summary.json tests/structural-coverage/baseline/r<N>.json   # only when a round is accepted
 node scripts/generate-structural-coverage-ledger.mjs
 ```

@@ -1,0 +1,11 @@
+--- a/packages/create/src/in-store/_structural-activity.ts
++++ b/packages/create/src/in-store/_structural-activity.ts
+@@ -41,7 +41,7 @@
+     ...fields.map(field => {
+       const value: number | undefined = Reflect.get(load, field);
+       // All supported load components are REAL, including renamed IFC2X3 temperature slots.
+-      return value === undefined ? null : { real: 0 };
++      return value === undefined ? null : { real: value };
+     })]).expressId;
+   const activityId = editor.addEntity(type, [globalId, ownerHistoryRef(anchor.ownerHistoryId),
+     params.Name ?? type.slice(3), params.Description ?? null, params.ObjectType ?? null, null, null,

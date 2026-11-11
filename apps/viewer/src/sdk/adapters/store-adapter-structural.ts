@@ -79,20 +79,31 @@ export function structuralMutationTracking(
   const live = (name: keyof StructuralMethods): Backend =>
     backend ??= loadedStructuralWrites(`bim.store.${name}`).createStructuralStoreBackend(resolveModel);
   const { create } = createStoreMutationTracker(store, resolve, 'structural');
-  return {
-    addStructuralAnalysisModel: create('IFCSTRUCTURALANALYSISMODEL', (...args) => live('addStructuralAnalysisModel').addStructuralAnalysisModel(...args)),
-    addStructuralCurveMember: create('IFCSTRUCTURALCURVEMEMBER', (...args) => live('addStructuralCurveMember').addStructuralCurveMember(...args)),
-    addStructuralPointConnection: create('IFCSTRUCTURALPOINTCONNECTION', (...args) => live('addStructuralPointConnection').addStructuralPointConnection(...args)),
-    addStructuralLoadGroup: create('IFCSTRUCTURALLOADGROUP', (...args) => live('addStructuralLoadGroup').addStructuralLoadGroup(...args)),
-    addStructuralPointAction: create('IFCSTRUCTURALPOINTACTION', (...args) => live('addStructuralPointAction').addStructuralPointAction(...args)),
-    addStructuralLinearAction: create('IFCSTRUCTURALLINEARACTION', (...args) => live('addStructuralLinearAction').addStructuralLinearAction(...args)),
-    // These are creates, not rewrites. Unlike the cost relationship methods,
-    // which edit existing rows and clear unsafe undo history via
-    // `markCostRelationshipMutation`, each of these authors a NEW `IfcRel*`
-    // entity and returns its ref, so it needs its own CREATE_ENTITY undo entry
-    // or the row is left unreachable by undo (#5167 review).
-    connectStructuralMemberToConnection: create('IFCRELCONNECTSSTRUCTURALMEMBER', (...args) => live('connectStructuralMemberToConnection').connectStructuralMemberToConnection(...args)),
-    connectStructuralActivityToItem: create('IFCRELCONNECTSSTRUCTURALACTIVITY', (...args) => live('connectStructuralActivityToItem').connectStructuralActivityToItem(...args)),
-    assignToStructuralGroup: create('IFCRELASSIGNSTOGROUP', (...args) => live('assignToStructuralGroup').assignToStructuralGroup(...args)),
-  };
+  // One forwarding loop keeps the synchronous facade small as lazy builders grow.
+  const types = {
+    addStructuralPlanarAction: 'IFCSTRUCTURALPLANARACTION',
+    addStructuralSurfaceAction: 'IFCSTRUCTURALSURFACEACTION',
+    addStructuralPointReaction: 'IFCSTRUCTURALPOINTREACTION',
+    addStructuralCurveReaction: 'IFCSTRUCTURALCURVEREACTION',
+    addStructuralSurfaceReaction: 'IFCSTRUCTURALSURFACEREACTION',
+    addStructuralResultGroup: 'IFCSTRUCTURALRESULTGROUP',
+    addStructuralAnalysisModel: 'IFCSTRUCTURALANALYSISMODEL',
+    addStructuralCurveMember: 'IFCSTRUCTURALCURVEMEMBER',
+    addStructuralPointConnection: 'IFCSTRUCTURALPOINTCONNECTION',
+    addStructuralLoadGroup: 'IFCSTRUCTURALLOADGROUP',
+    addStructuralPointAction: 'IFCSTRUCTURALPOINTACTION',
+    addStructuralLinearAction: 'IFCSTRUCTURALLINEARACTION',
+    connectStructuralMemberToConnection: 'IFCRELCONNECTSSTRUCTURALMEMBER',
+    connectStructuralActivityToItem: 'IFCRELCONNECTSSTRUCTURALACTIVITY',
+    assignToStructuralGroup: 'IFCRELASSIGNSTOGROUP',
+  } satisfies Record<keyof StructuralMethods, string>;
+  const methods = Object.entries(types).map(([key, type]) => {
+    const name = key as keyof StructuralMethods;
+    return [name, create(type, (...args: [string, ...unknown[]]) => {
+      const backend = live(name);
+      return Reflect.apply(backend[name], backend, args);
+    })];
+  });
+  // Every key is required by `types`; each wrapper preserves the backend's arguments and return.
+  return Object.fromEntries(methods) as StructuralMethods;
 }

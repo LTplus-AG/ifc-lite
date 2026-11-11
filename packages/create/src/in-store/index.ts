@@ -261,3 +261,7 @@ export { readGroupEvidenceInStore, readGroupCreateEvidenceInStore, type GroupNat
 export { refreshTopAttachmentsInStore } from './top-attachment-refresh.js';
 export { addClassificationInStore, assignClassificationInStore, type ClassificationInStoreParams } from './classification.js';
 export { mirrorElementsInStore, type MirrorElementsParams } from './element-mirror.js';
+
+export { addStructuralPlanarActionToStore, addStructuralSurfaceActionToStore, type StructuralSurfaceActionInStoreParams, type StructuralSurfaceActionBuildResult } from './structural-surface-action.js';
+export { addStructuralPointReactionToStore, addStructuralCurveReactionToStore, addStructuralSurfaceReactionToStore, type StructuralPointReactionInStoreParams, type StructuralCurveReactionInStoreParams, type StructuralSurfaceReactionInStoreParams, type StructuralReactionBuildResult } from './structural-reaction.js';
+export { addStructuralResultGroupToStore, type StructuralResultGroupInStoreParams, type StructuralResultGroupBuildResult } from './structural-result-group.js';

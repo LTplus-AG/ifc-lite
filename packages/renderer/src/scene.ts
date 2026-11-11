@@ -412,7 +412,7 @@ export class Scene {
   private ephemeralStreamingMode: boolean = false;
 
   prepareDeviceRecovery(): SceneDeviceRecoveryPreparation { this.snapshots.onDeviceLost(); return prepareSceneDeviceRecovery(this as unknown as SceneRecoveryHost); }
-  discardGpuResourcesForRecovery(): void { discardSceneGpuResourcesForRecovery(this as unknown as SceneRecoveryHost); this.pickGeometryRevision++; this.fragmentPieces.retainOnly(this.streamingFragments); }
+  discardGpuResourcesForRecovery(): void { discardSceneGpuResourcesForRecovery(this as unknown as SceneRecoveryHost); this.pickGeometryRevision++; this.fragmentPieces.retainOnly(this.streamingFragments); this.streamWork.clear(); /* its fragments are gone */ }
   restoreGpuResourcesAfterRecovery(device: GPUDevice, pipeline: RenderPipeline): void { restoreSceneGpuResourcesAfterRecovery(this as unknown as SceneRecoveryHost, device, pipeline); this.pickGeometryRevision++; }
 
   /**
@@ -2246,7 +2246,7 @@ export class Scene {
       );
       return;
     }
-    this.authoredGeneration++; this.authoredPreparations.invalidate();
+    this.authoredGeneration++; this.authoredPreparations.invalidate(); this.streamWork.clear();
 
     this.appearanceController?.forget();
 

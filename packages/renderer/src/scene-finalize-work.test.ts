@@ -194,6 +194,14 @@ function assertSameBatches(actual: Scene, expected: Scene): void {
   }
 }
 
+/** Fragment records the stream assembly still holds, and the CPU bytes they keep alive (counts only, never the meshes). */
+function retainedRuns(scene: Scene): { records: number; bytes: number } {
+  const runs = (scene as unknown as { streamWork: { runs: Map<MeshData, { meshes: readonly MeshData[] }> } }).streamWork.runs;
+  let bytes = 0;
+  for (const run of runs.values()) for (const mesh of run.meshes) bytes += mesh.positions.byteLength + mesh.normals.byteLength + mesh.indices.byteLength;
+  return { records: runs.size, bytes };
+}
+
 describe('cold finalize work after the last batch arrived', () => {
   afterEach(() => mock.restoreAll());
 
@@ -261,6 +269,53 @@ describe('cold finalize work after the last batch arrived', () => {
     // A boolean, never the memo itself: a failing assertion would render every mesh it holds.
     assert.ok((scene as unknown as { streamWork: { topology: unknown } }).streamWork.topology === null,
       'no memo holds the streamed meshes (and their arrays) until the stream ends');
+  });
+
+  it('device recovery mid-stream: no fragment record outlives its fragment, and finalize still matches the rebuild', async () => {
+    const recovered = async (rebuildReference: boolean) => {
+      const { device } = recordingDevice();
+      const scene = new Scene();
+      scene.setSpatialChunking({ cellSize: 32 }); scene.setLodBuildsEnabled(true); scene.setQuantizedBatches(true);
+      if (rebuildReference) scene.captureNextFinalize(() => {});
+      const batches = arrivals();
+      batches.forEach((batch, index) => {
+        scene.queueMeshes(batch);
+        drain(scene, device);
+        // Two losses while streaming: each drops every fragment this stream drew so far.
+        if (index === 3 || index === 7) {
+          scene.discardGpuResourcesForRecovery();
+          scene.restoreGpuResourcesAfterRecovery(device, pipeline);
+        }
+      });
+      perfCounters.enable();
+      const before = perfCounters.read();
+      await scene.finalizeStreamingAsync(device, pipeline, 1e9);
+      return { scene, counters: diffCounters(perfCounters.read(), before) };
+    };
+    const assembled = await recovered(false);
+    // Only fragments drawn after the last loss can be assembled from; nothing older is copied.
+    assert.ok(retainedRuns(assembled.scene).records === 0, 'the finalize swap forgets every fragment record');
+    const reference = await recovered(true);
+    assertSameBatches(assembled.scene, reference.scene);
+    assembled.scene.releaseGeometryData();
+    const retained = retainedRuns(assembled.scene);
+    assert.ok(retained.records === 0 && retained.bytes === 0, `released geometry is not retained: ${retained.records} records, ${retained.bytes} bytes`);
+  });
+
+  it('device recovery right after a stream, before its finalize: the records go with the fragments', () => {
+    const { device } = recordingDevice();
+    const scene = new Scene();
+    for (const batch of arrivals().slice(0, 4)) { scene.queueMeshes(batch); drain(scene, device); }
+    assert.ok(retainedRuns(scene).records > 0, 'the stream recorded its fragments');
+    scene.discardGpuResourcesForRecovery();
+    const retained = retainedRuns(scene);
+    assert.ok(retained.records === 0 && retained.bytes === 0, `discarded fragments keep no CPU geometry: ${retained.records} records, ${retained.bytes} bytes`);
+    // The same for a reset (a new load, or a federated rebuild) mid-stream.
+    scene.restoreGpuResourcesAfterRecovery(device, pipeline);
+    for (const batch of arrivals().slice(4, 6)) { scene.queueMeshes(batch); drain(scene, device); }
+    assert.ok(retainedRuns(scene).records > 0);
+    scene.clearFlatGeometry();
+    assert.ok(retainedRuns(scene).records === 0, 'a reset drops the stream records');
   });
 
   it('a mesh re-keyed while streaming: its buckets rebuild, the rest assemble, the result still matches', async () => {

@@ -253,7 +253,7 @@ jobs:
           # A lean verdict replays only while the lean lane still holds:
           # `Release PR checks` runs only in a lean run, so its success on this
           # head means the verdict being replayed may have skipped lanes.
-          REFUSE_REPLAY_AFTER: ${{ steps.release.outputs.lane != 'lean' && 'Release PR checks' || '' }}
+          REFUSE_REPLAY_AFTER: ${{ github.head_ref == 'changeset-release/main' && steps.release.outputs.lane != 'lean' && 'Release PR checks' || '' }}
         run: node scripts/ci-verdict-replay.mjs --probe
       # THE PUSH REPLAY, both halves (scripts/ci-push-replay.mjs). A PR run
       # records the exact tree it tests -- GitHub records neither the merge

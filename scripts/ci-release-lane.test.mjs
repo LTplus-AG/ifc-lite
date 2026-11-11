@@ -394,7 +394,7 @@ test('WIRING: `changes` decides with continue-on-error and withholds only on the
   assert.ok(at < probe, 'the decision precedes the no-op probe');
   // The literal workflow expression this test pins, not a template string.
   // eslint-disable-next-line no-template-curly-in-string
-  assert.equal(steps[probe].env.REFUSE_REPLAY_AFTER, "${{ steps.release.outputs.lane != 'lean' && 'Release PR checks' || '' }}");
+  assert.equal(steps[probe].env.REFUSE_REPLAY_AFTER, "${{ github.head_ref == 'changeset-release/main' && steps.release.outputs.lane != 'lean' && 'Release PR checks' || '' }}");
   for (const k of ['PR_LABELS', 'PR_DRAFT']) assert.ok(step.env[k], `the decision reads ${k}`);
   for (const [key, job] of Object.entries(jobs)) {
     assert.ok(!/release_lane\s*==\s*'full'/.test(String(job.if ?? '')), `${key} must never gate on release_lane == 'full'`); // @source-text-assertion-ok workflow wiring pin: the subject IS the YAML

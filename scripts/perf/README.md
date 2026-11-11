@@ -201,6 +201,51 @@ shared with `scenoptic-bench.mjs`):
   stays busy or build processes run. Each browser sample records the WebGPU
   adapter, GPU health (`tests/benchmark/gpu-health.ts`), crashes and page
   errors. Failed samples stay in the data.
+- **WebGL backend (host-specific boot cost).** `CHROME_ARGS` force WebGL
+  onto ANGLE's Vulkan backend (`--use-angle=vulkan`, `DefaultANGLEVulkan`).
+  On this host the start screen's 3D mark then costs **2-3 s of main-thread
+  time right after first paint**, and default macOS Chrome does not pay it
+  (#9766). A traced FZK boot on main d45ace6b65 splits it into two parts.
+  The first is a 1,258 ms context-creation task, with 1,144 ms in synchronous
+  GL waits while the GPU process main thread was busy for 1,194 ms. The second
+  is a 790 ms first draw, with 761 ms in shader and program status waits.
+  The same boot elsewhere, n = 5, measured as the main-thread block a file
+  picked at first paint queues behind:
+
+  | host | WebGL backend | pick at first paint -> load start |
+  |---|---|---|
+  | Pop, scoreboard flags (FZK / Holter / advanced) | ANGLE-Vulkan, NVIDIA | 3,293 / 2,704 / 2,827 ms |
+  | Pop, `--use-angle=gl` | Mesa llvmpipe (Xvfb has no NVIDIA GL) | 2,171 ms |
+  | macOS, Chrome default flags, Apple M5 Pro | ANGLE-Metal | 0 (all GL waits in the boot: 41 ms) |
+  | Windows, Chrome default flags, RTX 5070 Ti | ANGLE-D3D11 | 119-155 ms |
+
+  The default (quiet) arm waits this block out, so open lanes are
+  unaffected. It inflates the `boot` lane and sits inside every first-paint
+  lane (`*-early`, `browser-cold-early`). A first-paint or boot gain that
+  comes from the welcome mark is mostly host-specific: label it so, or
+  confirm it off this host. On Pop the default WebGL backend cannot be
+  measured: `--use-angle=gl` on Xvfb falls back to software GL.
+- **Same-process GPU warm-up confound.** On this host the welcome mark's
+  ANGLE-Vulkan context loads and initialises the NVIDIA Vulkan driver in the
+  GPU process before any WebGPU device exists. Dawn's WebGPU device lives in
+  the same process, so on Pop the first WebGPU device of an open or of a boot
+  warm-up likely starts with that driver already warm. On ANGLE-Metal/D3D11
+  hosts WebGL and WebGPU do not share a backend. Two consequences for changes
+  that move device creation, such as the warm viewer shell (#9750):
+  - **Open lanes (default arm) are probably pessimistic.** Main's in-open
+    device creation is cheaper here than where nothing warmed the driver, so
+    the gain from taking it out of the open is understated.
+  - **The `boot` lane is probably optimistic.** The warm-up's own device and
+    pipeline creation is cheaper here, so the boot cost is understated. The
+    welcome context's GPU memory is also on both sides, which shrinks the
+    relative idle-memory overhead.
+
+  For a cleaner boot read, run the `boot` lane on both sides with the welcome
+  mark disabled by an init script that returns `null` for `webgl`/`webgl2`
+  contexts. The mark renders nothing on a WebGL-less browser by design, and
+  the viewer's renderer stays on WebGPU (check the recorded adapter). Report
+  it as a separately named control beside the default lanes, never instead of
+  them.
 
 Verdict: `gain = 1 - median(branch)/median(base)`. The noise floor of a
 comparison is the larger of the recorded A/A floor for that fixture, lane and

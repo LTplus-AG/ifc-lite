@@ -28,6 +28,7 @@ import { getPanelDef, type WorkspacePanelId } from '@/lib/panels/registry';
 import { englishMessage } from '@/i18n/registry';
 import { activeBottomPanel } from '@/lib/panels/bottom-panels';
 import { resolveMobileSheet } from '@/lib/panels/mobileSheet';
+import { DESKTOP_FORM_FACTOR } from '@/lib/layout/form-factor';
 import { isCollabEnabled } from '@/lib/collab/config';
 
 const model: FederatedModel = {
@@ -74,7 +75,9 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   Object.defineProperty(window, 'innerWidth', { configurable: true, value: ORIGINAL_WIDTH });
-  useViewerStore.setState({ models: new Map(), isMobile: false, leftPanelCollapsed: true, rightPanelCollapsed: true });
+  // Through `setFormFactor`, so `isMobile` and `formFactor` are reset together (#9718).
+  useViewerStore.getState().setFormFactor(DESKTOP_FORM_FACTOR);
+  useViewerStore.setState({ models: new Map(), leftPanelCollapsed: true, rightPanelCollapsed: true });
 });
 
 describe('mobile Panels sheet (#5853)', () => {

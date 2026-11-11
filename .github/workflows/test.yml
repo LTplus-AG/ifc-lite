@@ -1800,8 +1800,9 @@ jobs:
   # 470 of that job's 750 seconds and made it the last lane to finish in most
   # green PR runs. Same trigger, same setup (full history, build artifact,
   # verified fixtures, Python 3.12), same file list. Node's own --test-shard
-  # keeps file i of that list on shard (i mod 2) + 1, so the two shards
-  # partition it: no file runs twice and none is dropped.
+  # keeps file i of that list on shard (i mod N) + 1, with N taken from
+  # strategy.job-total, so the shards partition it: no file runs twice and
+  # none is dropped.
   scripts-tests:
     name: Node scripts tests (shard ${{ matrix.shard }}/2)
     needs: [changes, build]
@@ -1856,9 +1857,14 @@ jobs:
       # any tests, and --test-shard then takes this shard's half of that list.
       - name: Run every scripts/ test file (glob catch-all)
         id: scripts_tests
+        # The shard comes from the matrix the runner actually expanded, not from a
+        # second hand-kept count: trim the matrix and the remaining shards widen
+        # to cover every file, instead of one shard silently running half.
         env:
-          SHARD: ${{ matrix.shard }}/2
+          SHARD_INDEX: ${{ strategy.job-index }}
+          SHARD_TOTAL: ${{ strategy.job-total }}
         run: |
+          SHARD="$((SHARD_INDEX + 1))/${SHARD_TOTAL}"
           node --test --test-shard="$SHARD" --test-reporter=tap --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=mergify-junit.xml $(printf '%s\n' \
             scripts/check-asset-usage.test.mjs \
             scripts/check-changeset-bump.test.mjs \

@@ -215,6 +215,8 @@ export function browserStages(trace) {
  * waiting). Milestone times are returned beside them.
  */
 export function browserShares(trace, interactiveMs) {
+  // No trace is no attribution: not "100% untraced".
+  if (!Array.isArray(trace) || trace.length === 0 || !Number.isFinite(interactiveMs) || interactiveMs <= 0) return { shares: null, milestones: {} };
   const { byName } = browserStages(trace);
   const shares = stageShares(byName, interactiveMs);
   const covered = stageShares({ all: Object.values(byName).flat() }, interactiveMs).all ?? 0;
@@ -267,15 +269,43 @@ export function diffElements(base, branch, limit = 10) {
 }
 
 /**
+ * Output identity of one browser open from its readOutputFingerprint() models. Comparable only when
+ * complete: every model had the Rust hash pass (flat + instanced-only hashes), every element is covered
+ * (flat meshes the pass left unhashed by their exact bytes) and no element has two hashes. Anything less
+ * is UNVERIFIABLE. A reopen from the cache has no element hashes and its instanced output is not readable,
+ * so its identity is UNVERIFIABLE too: only its flat output is checked against the cold load, and a
+ * different flat output is a RESTORE MISMATCH. A copied cold identity is never reported for a reopen.
+ */
+export function openIdentity({ label, fingerprint, coldFingerprint }) {
+  const models = Array.isArray(fingerprint) ? fingerprint : [];
+  const none = (why) => ({ identity: `UNVERIFIABLE (${why})`, elements: [], identitySource: 'none' });
+  if (models.length === 0) return none('no model in the store');
+  const complete = (m) => m.hashed > 0 && m.unhashed === 0 && m.conflicts === 0;
+  if (models.every(complete)) return { identity: models.map((m) => m.identity).join(' | '), elements: models.map((m) => m.elements), identitySource: 'element hashes' };
+  if (models.some((m) => m.hashed > 0 || label === 'cold')) {
+    const why = models.some((m) => m.conflicts > 0) ? 'an element has two different hashes'
+      : models.some((m) => !(m.unhashed === 0)) ? 'element hashes do not cover every element'
+        : 'no element geometry hashes';
+    return none(why);
+  }
+  const cold = Array.isArray(coldFingerprint) ? coldFingerprint : [];
+  if (cold.length === 0) return none('cache hit without a cold load to compare its flat output with');
+  const sameFlat = cold.length === models.length
+    && models.every((m, i) => m.flat?.signature === cold[i].flat?.signature && m.flat?.meshes === cold[i].flat?.meshes);
+  return sameFlat ? none('cache hit: no element hashes, instanced output not readable; flat output restored exactly')
+    : { identity: `RESTORE MISMATCH vs cold: flat ${models.map((m) => `${m.flat?.meshes}/${m.flat?.signature}`).join(',')}`, elements: [], identitySource: 'none' };
+}
+
+/**
  * Which open a browser-sample failure belongs to: 0 = the cold open (launch, boot, its
  * shell wait or the open itself), i = warm open i, including the steps that prepare it
  * (`warm<i>-prep`: cache-write or snapshot wait, page replacement). That open and every
  * later one fail; earlier clean opens keep their result.
  */
 export function failedOpenIndex(phase) {
-  if (['launch', 'boot', 'cold', 'cold-shell'].includes(phase)) return 0;
   const warm = /^warm(\d+)/.exec(phase ?? '');
-  return warm ? Number(warm[1]) : 1;
+  // Anything not attributable to a reopen (launch, boot, cold, or an unknown phase) taints every open.
+  return warm ? Number(warm[1]) : 0;
 }
 
 /**
@@ -285,8 +315,27 @@ export function failedOpenIndex(phase) {
  * measuring the streamed hit instead of the snapshot adoption.
  */
 export function warmPrepFailure({ open, cacheWriteSettled, snapshotExpected, snapshotWritten }) {
-  if (cacheWriteSettled === false) return 'cache write did not settle within 10 min, so the reopen would not measure a cache hit';
-  if (open > 1 && snapshotExpected && snapshotWritten === false) return 'expected scene snapshot was not written within 60 s, so the reopen would not measure snapshot adoption';
+  // Only a confirmed state prepares a reopen: unknown is a failure, never a pass.
+  if (cacheWriteSettled !== true) return cacheWriteSettled === false
+    ? 'cache write did not settle within 10 min, so the reopen would not measure a cache hit'
+    : 'cache write was not checked before the reopen';
+  if (open > 1 && snapshotExpected !== false && snapshotWritten !== true) return snapshotExpected === undefined || snapshotExpected === null
+    ? 'whether a scene snapshot is expected was not decided before the reopen'
+    : 'expected scene snapshot was not written within 60 s, so the reopen would not measure snapshot adoption';
+  return null;
+}
+
+/**
+ * Why the first reopen cannot be prepared, or null. The cache entry must have
+ * been checked, readable and must have stopped changing; otherwise a snapshot
+ * written at the end of the cold load may still race the reopen. Uncached
+ * tiers pass `{ skipped: <reason> }`; an absent result is a failure.
+ */
+export function entryStabilityFailure(entry) {
+  if (!entry) return 'cache entry was not checked before the first reopen';
+  if (entry.skipped) return null;
+  if (entry.error) return `cache entry unreadable before the first reopen (${entry.error})`;
+  if (entry.stable !== true) return `cache entry still changing ${entry.waitedMs} ms after the cold load, so a snapshot write may race the first reopen`;
   return null;
 }
 
@@ -311,6 +360,11 @@ export function uiQuietValue(row) {
 export function gpuUnhealthy(health) {
   if (!health || typeof health.contaminated !== 'boolean') return `GPU health unreadable (${health?.error ?? 'no result'})`;
   return health.contaminated ? `GPU device lost during sample (${health.reasons.join('; ')})` : null;
+}
+
+/** Whether any file of a set is cached: the viewer decides the tier per file, never on the set's total size. */
+export function anyFileCached(fileBytes) {
+  return Array.isArray(fileBytes) && fileBytes.some((bytes) => Number.isFinite(bytes) && !expectedCacheTier(bytes).startsWith('none'));
 }
 
 /** Viewer cache tier a source of `bytes` qualifies for (apps/viewer/src/utils/ifcConfig.ts, hooks/cacheTier.ts). */

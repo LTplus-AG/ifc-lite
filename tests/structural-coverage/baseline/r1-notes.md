@@ -65,4 +65,4 @@ This table includes reason-only changes with unchanged points. To distinguish fr
 | structural/ifc_structuralanalysisview/simple_bottom_slab--Axis-Struc.ifc | 1 / 1 |
 | structural/ifc_structuralanalysisview/steel-joint-modelled-with-shellelements--Axis-Struc.ifc | 6 / 6 |
 
-Counts measure relationships, not all structural items: ISSUE_171 has 26 linked items out of 66 items; E1--3 has 5 linked items out of 17. Every declared link is checked, including 176 in little_steel_frame.
+Counts are distinct item/element links (a link declared by two relationships counts once), not all structural items: ISSUE_171 has 26 linked items out of 66 items; E1--3 has 5 linked items out of 17. Every declared link is checked, including 176 in little_steel_frame.

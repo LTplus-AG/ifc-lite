@@ -57,8 +57,9 @@ function linkedElement(info, guid, declared, store, table) {
   const guids = [];
   for (const id of ids) {
     if (!Number.isSafeInteger(id)) return false;
+    // getTypeName falls back to the stored UPPERCASE name for a class outside IfcTypeEnum.
     const type = store.entities.getTypeName(id);
-    if (!isElement(table, type)) return false;
+    if (!isElement(table, table.types.get(String(type).toUpperCase())?.name)) return false;
     const value = store.entities.getGlobalId(id);
     if (!value) return false;
     guids.push(value);

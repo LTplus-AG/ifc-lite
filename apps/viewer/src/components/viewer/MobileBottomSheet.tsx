@@ -85,8 +85,11 @@ export function MobileBottomSheet({
   // includes the bar, so a window share left the model under half the view
   // and let the expanded sheet push its handle out of the area (#9718).
   const getSnapPoints = useCallback(() => {
+    // Only a sheet with no area yet (not mounted) falls back to the window. A
+    // zero-height area mid-transition is a real size: the observer below
+    // re-applies the snap once the area has its new height.
     const area = sheetRef.current?.parentElement;
-    const h = area?.clientHeight || (window.visualViewport?.height ?? window.innerHeight);
+    const h = area ? area.clientHeight : (window.visualViewport?.height ?? window.innerHeight);
     return {
       collapsed: 0,
       defaultH: Math.round(h * defaultFraction),

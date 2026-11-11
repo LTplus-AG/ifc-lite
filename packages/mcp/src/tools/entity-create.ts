@@ -102,8 +102,7 @@ export const entityCreate: Tool = {
     let attrs = (input.attributes as unknown[] | undefined) ?? [];
     const globalId = input.global_id as string | undefined;
     if (globalId !== undefined) attrs = withGlobalId(m, type, attrs, globalId);
-    const editor = m.backend.ensureEditor();
-    const ref = editor.addEntity(type, attrs as Parameters<typeof editor.addEntity>[1]);
+    const ref = m.backend.store.addEntity(m.id, { type, attributes: attrs });
     return okResult(`Created ${type} as #${ref.expressId}.`, {
       expressId: ref.expressId,
       type,

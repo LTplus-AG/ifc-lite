@@ -13,6 +13,7 @@ import type { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import type { TableAccess } from '@ifc-lite/flow-nodes';
 import { addDoorToStore, addWindowToStore, resolveSpatialAnchor, generateSpaces, listStoreys,
   type DoorInStoreParams, type WindowInStoreParams, type GenerateSpacesAllOptions } from '@ifc-lite/create';
+import { provideCliAlignGeometry } from './headless-align-geometry.js';
 import { createStoreAuthoring } from './headless-backend-store-authoring.js';
 import { createStructuralAdapter } from './headless-backend-structural.js';
 import { createScheduleAdapter } from './headless-backend-schedule.js';
@@ -58,7 +59,7 @@ export class HeadlessBackend implements BimBackend {
   private readonly shared: SharedHeadlessBackend;
 
   constructor(private readonly dataStore: IfcDataStore, modelName: string) {
-    this.shared = new SharedHeadlessBackend(dataStore, modelName, MODEL_ID, {}, modelName === MODEL_ID ? [] : [modelName]);
+    this.shared = new SharedHeadlessBackend(dataStore, modelName, MODEL_ID, { alignGeometry: provideCliAlignGeometry }, modelName === MODEL_ID ? [] : [modelName]);
     this.model = this.shared.model;
     this.selection = this.shared.selection;
     this.mutate = this.shared.mutate;
@@ -131,11 +132,9 @@ export class HeadlessBackend implements BimBackend {
     // disagreeing: no ref is handed back that the next call rejects.
     const assertModel = (modelId: string) => this.assertKnownModelId(modelId);
     return {
-      addEntity(modelId: string, def: { type: string; attributes: unknown[] }): EntityRef {
-        assertModel(modelId);
-        const ref = get().addEntity(def.type, def.attributes as Parameters<StoreEditor['addEntity']>[1]);
-        return { modelId, expressId: ref.expressId };
-      },
+      alignElements: (...args) => this.shared.store.alignElements!(...args),
+      // Share raw-append maintenance with the SDK, including wall endpoints.
+      addEntity: (modelId, def) => this.shared.store.addEntity(modelId, def),
       removeEntity(ref: EntityRef): boolean {
         return get().removeEntity(ref.expressId);
       },

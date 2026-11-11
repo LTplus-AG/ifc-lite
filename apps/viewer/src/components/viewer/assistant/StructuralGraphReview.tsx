@@ -37,18 +37,16 @@ export function StructuralGraphReview({ proposal, origin }: { proposal: Structur
     });
     return () => { current.mounted = false; current.review = null; unsubscribe(); };
   }, [proposal]);
-  const refuse = (error: unknown) => {
-    console.warn('[Assistant] Native Structural review refused', error);
-    owner.current.review = null; setReview(null); setProblem(error instanceof Error ? error.message : String(error));
-  };
   // The structural builders load in their own chunk (#9668): wait for it, never refuse while it loads.
   const prepare = (selection = approved) => void loadStructuralWrites().then(() => {
     if (!owner.current.mounted) return;
-    try {
-      const next = prepareStructuralReview(useViewerStore, proposal, selection);
-      owner.current.review = next; setReview(next); setProblem(null); setStale(false);
-    } catch (error) { refuse(error); }
-  }, (error: unknown) => { if (owner.current.mounted) refuse(error); });
+    const next = prepareStructuralReview(useViewerStore, proposal, selection);
+    owner.current.review = next; setReview(next); setProblem(null); setStale(false);
+  }).catch((error: unknown) => {
+    if (!owner.current.mounted) return;
+    console.warn('[Assistant] Native Structural review refused', error);
+    owner.current.review = null; setReview(null); setProblem(error instanceof Error ? error.message : String(error));
+  });
   const apply = () => {
     if (!owner.current.mounted || owner.current.review !== review || !review || stale || receipt || !acknowledged) return;
     try {

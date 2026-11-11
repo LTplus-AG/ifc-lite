@@ -19,7 +19,7 @@ import { commitReviewedStructural } from './structural-graph-receipt';
 import { decodeModelChangeReceipt } from './receipts';
 import { undoModelChanges } from './model-change-commit';
 // The viewer's structural write path is its own chunk (#9668); its UI awaits it before preparing.
-before(async () => { await loadStructuralWrites(); });
+before(() => loadStructuralWrites());
 const initial = useViewerStore.getState();
 afterEach(() => useViewerStore.setState(initial, true));
 async function setup() {

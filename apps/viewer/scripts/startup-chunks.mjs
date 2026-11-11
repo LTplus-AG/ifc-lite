@@ -42,16 +42,38 @@ export async function startupChunks(directory) {
   return eager;
 }
 
-/** Absolute paths of every built JS file outside `startup`, with their code. */
-export async function lazyChunks(directory, startup) {
-  const lazy = new Map();
-  async function walk(dir) {
-    for (const entry of await readdir(dir, { withFileTypes: true })) {
-      const file = join(dir, entry.name);
-      if (entry.isDirectory()) { await walk(file); continue; }
-      if (/\.m?js$/.test(entry.name) && !startup.has(file)) lazy.set(file, await readFile(file, 'utf8'));
+/** Every built JS file outside `startup`, with its code, read one at a time. */
+async function* lazyChunks(directory, startup) {
+  for (const entry of await readdir(directory, { withFileTypes: true, recursive: true })) {
+    const file = join(entry.parentPath, entry.name);
+    if (entry.isFile() && /\.m?js$/.test(entry.name) && !startup.has(file)) yield [file, await readFile(file, 'utf8')];
+  }
+}
+
+/**
+ * The body both gates share: no startup chunk may carry any group's
+ * signatures, and some lazy chunk must carry each group, or the check would
+ * pass vacuously. `missingHint` says what a vacuous build probably means.
+ */
+export async function checkLazyOnly(directory, groups, remedy, missingHint) {
+  const eager = await startupChunks(directory);
+  for (const [file, code] of eager) {
+    for (const { signatures } of groups) {
+      for (const signature of signatures) {
+        if (code.includes(signature)) throw new Error(`Startup chunk ${relative(directory, file)} contains ${signature}. ${remedy}`);
+      }
     }
   }
-  await walk(directory);
-  return lazy;
+  const lazy = [];
+  const found = new Set();
+  for await (const [file, code] of lazyChunks(directory, eager)) {
+    const hits = groups.filter((group) => group.signatures.some((signature) => code.includes(signature)));
+    for (const group of hits) found.add(group.name);
+    if (hits.length) lazy.push(relative(directory, file));
+  }
+  const missing = groups.filter((group) => !found.has(group.name)).map((group) => group.name);
+  if (missing.length) {
+    throw new Error(`No chunk in ${directory} carries ${missing.join(', ')} code, so this check proves nothing. ${missingHint}`);
+  }
+  return { eager: [...eager.keys()].map((file) => relative(directory, file)).sort(), lazy: lazy.sort() };
 }

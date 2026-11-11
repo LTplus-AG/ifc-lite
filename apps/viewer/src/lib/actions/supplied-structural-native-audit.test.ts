@@ -21,7 +21,7 @@ import { readOnlyModelEditTarget } from './model-authoring-read-target';
 // Campaign6812 finite audit: supplied analytical geometry, restraint booleans
 // and literal load components are test inputs, never inferred engineering design.
 // The viewer's structural write path is its own chunk (#9668); its UI awaits it before preparing.
-before(async () => { await loadStructuralWrites(); });
+before(() => loadStructuralWrites());
 const initial = useViewerStore.getState();
 afterEach(() => useViewerStore.setState(initial));
 async function nativeGraph() {

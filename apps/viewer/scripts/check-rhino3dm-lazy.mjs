@@ -18,10 +18,10 @@
  * Runs at the tail of the viewer's `build` script, like check-tla-chunk-await.
  */
 
-import { dirname, join, relative, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isMainEntry } from '../../../scripts/lib/is-main-entry.mjs';
-import { lazyChunks, readIndexHtml, startupChunks } from './startup-chunks.mjs';
+import { checkLazyOnly, readIndexHtml } from './startup-chunks.mjs';
 
 /** Strings only rhino3dm code carries: the emscripten loader's wasm name and
  *  the adapter's embind calls. Not `@ifc-lite/rhino3dm`, which the startup
@@ -36,7 +36,6 @@ const GROUPS = [
   { name: 'the rhino3dm wasm', signatures: RHINO3DM_SIGNATURES, wasm: /rhino3dm[^"'\s]*\.wasm/ },
   { name: 'the Rhino scene wasm', signatures: RHINO_SCENE_SIGNATURES, wasm: /ifc-lite-rhino_bg[^"'\s]*\.wasm/ },
 ];
-const ALL_SIGNATURES = GROUPS.flatMap((group) => group.signatures);
 
 const REMEDY = 'Keep rhino3dm and the Rhino scene wasm behind the Rhino export worker (src/workers/rhinoExport.worker.ts): '
   + 'find the static import that pulls @ifc-lite/rhino3dm, rhino3dm or @ifc-lite/wasm/rhino into the startup graph.';
@@ -46,26 +45,7 @@ export async function checkRhino3dmLazy(directory) {
   for (const { name, wasm } of GROUPS) {
     if (wasm.test(html)) throw new Error(`index.html preloads ${name}. ${REMEDY}`);
   }
-  const eager = await startupChunks(directory);
-  for (const [file, code] of eager) {
-    for (const signature of ALL_SIGNATURES) {
-      if (code.includes(signature)) throw new Error(`Startup chunk ${relative(directory, file)} contains ${signature}. ${REMEDY}`);
-    }
-  }
-  const lazy = [];
-  const found = new Set();
-  for (const [file, code] of await lazyChunks(directory, eager)) {
-    const groups = GROUPS.filter((group) => group.signatures.some((signature) => code.includes(signature)));
-    for (const group of groups) found.add(group.name);
-    if (groups.length) lazy.push(relative(directory, file));
-  }
-  for (const { name } of GROUPS) {
-    if (!found.has(name)) {
-      throw new Error(`No chunk in ${directory} carries ${name} code, so this check proves nothing. `
-        + 'Was the Rhino export removed, or did the signatures change with an upgrade?');
-    }
-  }
-  return { eager: [...eager.keys()].map((file) => relative(directory, file)).sort(), lazy: lazy.sort() };
+  return checkLazyOnly(directory, GROUPS, REMEDY, 'Was the Rhino export removed, or did the signatures change with an upgrade?');
 }
 
 if (isMainEntry(import.meta.url)) {

@@ -137,13 +137,14 @@ export function readRow(row, entries, types) {
     if (link) { out.push(`${attr} unexposed (set in ${setters.length} record(s))`); continue; }
     const read = setters.filter((r) => found.has(r));
     if (!read.length) continue; // its records are already reported as not in the read model
+    const slot = row.attributes.indexOf(attr);
     const field = (r) => {
       const hit = r.ix.byId.get(r.rec.id);
       const got = row.family === 'resource' ? resourceField(hit.info, attr) : rootedField(r.ix, hit.type, hit.info, attr);
       // Exact EXPRESS reference fields hold model-local express ids. Only
       // reinterpret numbers when the fixture slot is a reference, never a
       // numeric measure that happens to equal an entity id.
-      const raw = r.rec.args[row.attributes.indexOf(attr)];
+      const raw = r.rec.args[slot];
       return typeof got === 'number' && raw && typeof raw === 'object' && 'ref' in raw
         ? normalize({ ref: got }, r.file.step, types) : got;
     };

@@ -14,6 +14,7 @@ import { readRow } from '../tests/structural-coverage/probes/read.mjs';
 import { readStep } from '../tests/structural-coverage/lib/step.mjs';
 import { deriveCatalogue } from '../tests/structural-coverage/catalogue.mjs';
 import { loadPackages } from '../tests/structural-coverage/lib/packages.mjs';
+import { matchesAny } from './lib/ci-path-coverage.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const { tables } = deriveCatalogue(root);
@@ -72,7 +73,7 @@ test('#9668 CI: ratchet runs in built fixture job even in fast PR lane', () => {
   const filter = wf.jobs.changes.steps.find((s) => s.uses?.startsWith('dorny/paths-filter')); // @source-text-assertion-ok parsed workflow configuration or probe verdict, not source text
   const paths = parse(filter.with.filters).frontend;
   for (const path of ['packages/parser/src/a.ts', 'packages/create/src/a.ts', 'packages/export/src/a.ts', 'tests/structural-coverage/score.mjs', 'tests/models/manifest.json']) {
-    assert.ok(paths.some((p) => p.endsWith('/**') ? path.startsWith(p.slice(0, -2)) : p === path), path); // @source-text-assertion-ok parsed workflow configuration or probe verdict, not source text
+    assert.ok(matchesAny(path, paths), path);
   }
 });
 

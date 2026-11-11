@@ -794,6 +794,10 @@ jobs:
       # Keep the score ratchet in build, not node-tests (skipped by fast PRs).
       # This job has verified manifest fixtures and current workspace packages.
       - name: Check structural coverage score ratchet
+        # Same env as "Build packages": VITE_BUNDLE_ANALYSIS is in turbo's build
+        # hash, so without it the scorer's turbo build misses that cache.
+        env:
+          VITE_BUNDLE_ANALYSIS: "1"
         run: node tests/structural-coverage/score.mjs --check tests/structural-coverage/baseline/r1.json
 
       # A separate feature bundle exposes only the test ownership probe.

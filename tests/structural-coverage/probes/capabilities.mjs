@@ -66,22 +66,19 @@ const linkRead = {
     if (!linked.length) return new Map(rows.map((r) => [r.id, ctx.corpus.nothingFound('carries a physical-to-structural link')]));
     const problems = [];
     const counts = [];
-    let checked = 0;
-    let anyHeld = false;
     for (const [file, links] of linked) {
       const ix = await extractionOrProblem(ctx, file, problems);
       const count = { path: file.path, checked: links.length, held: 0 };
       counts.push(count);
-      if (!ix) { checked += links.length; continue; }
+      if (!ix) continue;
       const store = await storeOf(ctx, file);
+      const guided = links.map(([itemId, productId]) => [itemId, file.step.get(productId)]);
       const declared = new Map();
-      for (const [itemId, productId] of links) {
+      for (const [itemId, product] of guided) {
         if (!declared.has(itemId)) declared.set(itemId, new Set());
-        declared.get(itemId).add(file.step.get(productId)?.args[0]);
+        declared.get(itemId).add(product?.args[0]);
       }
-      for (const [itemId, productId] of links) {
-        checked++;
-        const product = file.step.get(productId);
+      for (const [itemId, product] of guided) {
         const guid = product?.args[0];
         const hit = ix.byId.get(itemId);
         const info = hit?.family === 'item' ? hit.info : undefined;
@@ -89,10 +86,11 @@ const linkRead = {
         else if (typeof guid !== 'string') problems.push(`${file.path}#${itemId}: the physical element has no GlobalId`);
         else if (!info) problems.push(`${file.path}#${itemId}: item not in the read model`);
         else if (!linkedElement(info, guid, declared.get(itemId), store, ctx.tables[file.schema])) problems.push(`${file.path}#${itemId}: physicalElementIds does not resolve to physical ${guid} and only the file's links`);
-        else { anyHeld = true; count.held++; }
+        else count.held++;
       }
     }
-    const result = { ...verdict(checked, problems, { anyHeld }), counts, evidence: linked.map(([f]) => f.path) };
+    const checked = counts.reduce((n, c) => n + c.checked, 0);
+    const result = { ...verdict(checked, problems, { anyHeld: counts.some((c) => c.held) }), counts, evidence: linked.map(([f]) => f.path) };
     return new Map(rows.map((r) => [r.id, result]));
   },
 };

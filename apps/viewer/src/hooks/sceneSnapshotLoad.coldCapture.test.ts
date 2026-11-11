@@ -58,7 +58,7 @@ const refs = () => ({ lastGeometryLengthRef: { current: 0 }, lastGeometryRef: { 
 
 /** The viewport's first sync of the load's geometry (useGeometryStreaming's new-file branch), then its stream and finalize. */
 async function streamCold(scene: Scene, meshes: MeshData[]): Promise<void> {
-  takeSceneSnapshotGeometry(meshes, 0, rendererFor(scene), refs() as never);
+  takeSceneSnapshotGeometry(meshes, 0, rendererFor(scene), refs() as never, true);
   scene.clearFlatGeometry(); // that branch's reshape, before the first piece
   scene.queueMeshes(meshes);
   scene.flushPending(device, pipeline, 1000);
@@ -170,11 +170,51 @@ describe('armColdSceneCapture (W2)', () => {
     let onCaptured: ((s: SceneSnapshot, sources: readonly MeshData[], unchanged: () => boolean) => void) | null = null;
     const big = { getScene: () => ({ captureNextFinalize: (cb: typeof onCaptured) => { onCaptured = cb; }, sceneSnapshotPolicy: () => 'p' }),
       getCamera: () => ({ getSceneBounds: () => BOUNDS, getOrbitAnchorBounds: () => null }) } as unknown as Renderer;
-    takeSceneSnapshotGeometry([], 0, big, refs() as never);
+    takeSceneSnapshotGeometry([], 0, big, refs() as never, true);
     const huge = { byteLength: SNAPSHOT_CAPTURE_MAX_BYTES + 1 } as Uint8Array;
     onCaptured!({ policy: 'p', pieceCount: 1, nextSplitId: 1, sharedFrameOrigins: [], activeBuckets: [], batches: [{ key: 'k', color: RED, vertexBytes: 0,
       expressIds: new Uint32Array(1), ordinals: new Uint32Array(1), vertexData: huge, indices: new Uint32Array(3) }] }, [], () => true);
     assert.deepEqual(outcomes(), ['not-captured:over-cap']);
+  });
+
+  // #9728 second review: a renderer that finished starting after the stream ended (#7032) makes the
+  // load's first sync upload directly. Nothing is queued, so no finalize could complete a capture.
+  it('ends a load whose first sync uploads directly with one outcome, and leaves nothing armed', async () => {
+    const scene = realScene();
+    const first = snapshotTrace();
+    const capture = armColdSceneCapture(() => false, first.trace, 'm1');
+    const meshes = arrival();
+    takeSceneSnapshotGeometry(meshes, 0, rendererFor(scene), refs() as never, false);
+    scene.clearFlatGeometry();
+    scene.appendToBatches(meshes, device, pipeline, false); // the non-streaming upload
+    await scene.finalizeStreamingAsync(device, pipeline); // the stream-end finalize: no fragments
+    capture.entryWritten(await entryOf('direct'));
+    assert.deepEqual(first.outcomes(), ['not-armed:not-streamed']);
+
+    // Nothing was left armed in the scene: the next load's capture replaces nothing.
+    const next = snapshotTrace();
+    const nextCapture = armColdSceneCapture(() => false, next.trace, 'm2');
+    await streamCold(scene, arrival());
+    nextCapture.entryWritten(await entryOf('next'));
+    useViewerStore.setState({ loading: false });
+    await until(() => next.outcomes().length > 0, 'the next load\'s write');
+    assert.deepEqual(next.outcomes(), ['written']);
+    assert.deepEqual(first.outcomes(), ['not-armed:not-streamed'], 'still exactly one outcome for the first load');
+  });
+
+  // #9728 second review: a load that fails before its geometry reaches the viewport.
+  it('ends a load that fails before its geometry arrives with one outcome', async () => {
+    const { trace, outcomes } = snapshotTrace();
+    const capture = armColdSceneCapture(() => false, trace, 'm1');
+    try {
+      useViewerStore.setState({ models: new Map([['m1', { loadState: 'error' }]]) as never });
+      assert.deepEqual(outcomes(), ['not-armed:load-failed']);
+      capture.entryWritten(null);
+      takeSceneSnapshotGeometry(arrival(), 0, rendererFor(realScene()), refs() as never, true); // nothing left to arm
+      assert.deepEqual(outcomes(), ['not-armed:load-failed']);
+    } finally {
+      useViewerStore.setState({ models: new Map() as never });
+    }
   });
 
   it('names why an eligible cold load leaves no snapshot', async () => {
@@ -199,7 +239,7 @@ describe('armColdSceneCapture (W2)', () => {
     const cleared = snapshotTrace();
     const scene = realScene();
     armColdSceneCapture(() => false, cleared.trace, 'm1');
-    takeSceneSnapshotGeometry(arrival(), 0, rendererFor(scene), refs() as never);
+    takeSceneSnapshotGeometry(arrival(), 0, rendererFor(scene), refs() as never, true);
     scene.queueMeshes(arrival());
     scene.clearFlatGeometry(); // a reshape after the first piece
     assert.deepEqual(cleared.outcomes(), ['not-captured:cleared']);

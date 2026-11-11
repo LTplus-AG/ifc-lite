@@ -120,6 +120,12 @@ interface PendingColdCapture {
   arm(renderer: Renderer): void;
   /** Another load registered before this one's geometry arrived. */
   replaced(): void;
+  /**
+   * The load's first sync uploads directly instead of streaming (a renderer that
+   * finished starting after the stream ended, #7032): nothing is queued, so no
+   * finalize could complete a capture, and none is armed.
+   */
+  notStreamed(): void;
 }
 
 let pendingColdCapture: PendingColdCapture | null = null;
@@ -145,11 +151,12 @@ export function withdrawPendingColdCapture(owner: PendingColdCapture): boolean {
 }
 
 /** True when `geometry` hydrated the pending snapshot; the refs then describe it as already streamed and fitted. */
-export function takeSceneSnapshotGeometry(geometry: MeshData[], modelCount: number, renderer: Renderer, refs: OwnershipRefs): boolean {
+export function takeSceneSnapshotGeometry(geometry: MeshData[], modelCount: number, renderer: Renderer, refs: OwnershipRefs, streaming: boolean): boolean {
   if (!pending && pendingColdCapture) {
     const cold = pendingColdCapture;
     pendingColdCapture = null;
-    cold.arm(renderer);
+    if (streaming) cold.arm(renderer);
+    else cold.notStreamed();
   }
   const settling = pending;
   if (!settlePendingSnapshot(renderer.getScene(), geometry)) {

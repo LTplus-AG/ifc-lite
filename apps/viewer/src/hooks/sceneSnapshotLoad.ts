@@ -22,7 +22,7 @@ import { clearSceneSnapshot, type CacheResult } from '../services/cacheService.j
 import { isQuantizedEnabled } from '../utils/quantizedConfig.js';
 import { getGlobalRenderer } from './useBCF.js';
 import type { DecodedCacheMetadata } from './ifcCacheDecode.js';
-import { writeCapturedScene, type CapturedScene, type SnapshotEntry } from './sceneSnapshotWrite.js';
+import type { CapturedScene, SnapshotEntry } from './sceneSnapshotWrite.js';
 
 /** What the viewer stores beside the batches (sceneSnapshotWrite.ts): the fit they were finalized under, and where the shards are. */
 interface SnapshotHostData extends SnapshotCameraFit {
@@ -196,7 +196,9 @@ function armSceneCapture(renderer: Renderer, isStale: () => boolean, trace: Load
  * `cache.writeSceneSnapshot` span, so every eligible load ends with that span
  * and an outcome. `not-armed` reasons: snapshots-off, level-offsets,
  * superseded (another load registered first), no-geometry (the load wrote its
- * entry without its geometry ever reaching the viewport). `not-captured`
+ * entry without its geometry ever reaching the viewport), not-streamed (its
+ * first sync uploaded directly: the renderer started after the stream ended),
+ * load-failed (it failed before its geometry reached the viewport). `not-captured`
  * reasons: a renderer drop (cleared, ephemeral, replaced, not-exact, failed)
  * or a swap-time guard (superseded, load-failed, over-cap, no-scene-bounds,
  * no-fit-bounds, level-offsets).
@@ -206,10 +208,17 @@ function noteSnapshotSkip(trace: LoadTrace, outcome: 'not-armed' | 'not-captured
   trace.record('cache.writeSceneSnapshot', now, now, { outcome, reason });
 }
 
-/** Begin the pending write's span at the swap and hand the capture to the deferred writer. */
+/**
+ * Begin the pending write's span at the swap and hand the capture to the deferred
+ * writer. The writer runs only after the load is interactive, so it is loaded
+ * then, outside the eager bundle.
+ */
 function writeWhenSettled(captured: CapturedScene, entry: Promise<SnapshotEntry | null>, isStale: () => boolean, trace: LoadTrace): void {
   const span = trace.begin('cache.writeSceneSnapshot', { batches: captured.snapshot.batches.length });
-  void writeCapturedScene(captured, entry, isStale, trace, span);
+  import('./sceneSnapshotWrite.js').then(({ writeCapturedScene }) => writeCapturedScene(captured, entry, isStale, trace, span), (err: unknown) => {
+    console.warn('[useIfcCache] Scene snapshot writer did not load:', err);
+    trace.end(span, { outcome: 'failed', reason: 'writer-load' });
+  });
 }
 
 /** Store the scene this hit is about to finalize, once it has. Resolves true when the load was superseded while it waited. */
@@ -260,17 +269,26 @@ export function armColdSceneCapture(isStale: () => boolean, trace: LoadTrace, mo
     return { entryWritten: (written) => settleEntry(written) };
   }
   const loadFailed = () => useViewerStore.getState().models.get(modelId)?.loadState === 'error';
+  let stopWatching = () => {};
+  // Every way the registration ends records exactly one outcome and stops the failure watch.
+  const end = (outcome: 'not-armed', reason: string) => { stopWatching(); noteSnapshotSkip(trace, outcome, reason); };
   const pending = {
     arm: (renderer: Renderer) => {
+      stopWatching();
       if (isStale()) return noteSnapshotSkip(trace, 'not-armed', 'superseded');
       armSceneCapture(renderer, isStale, trace, (captured) => writeWhenSettled(captured, entry, isStale, trace), loadFailed);
     },
-    replaced: () => noteSnapshotSkip(trace, 'not-armed', 'superseded'),
+    replaced: () => end('not-armed', 'superseded'),
+    notStreamed: () => end('not-armed', 'not-streamed'),
   };
   setPendingColdCapture(pending);
+  // A load that fails before its geometry reaches the viewport would otherwise wait for the next load.
+  stopWatching = useViewerStore.subscribe(() => {
+    if (loadFailed() && withdrawPendingColdCapture(pending)) end('not-armed', 'load-failed');
+  });
   return {
     entryWritten: (written) => {
-      if (withdrawPendingColdCapture(pending)) noteSnapshotSkip(trace, 'not-armed', 'no-geometry');
+      if (withdrawPendingColdCapture(pending)) end('not-armed', 'no-geometry');
       settleEntry(written);
     },
   };

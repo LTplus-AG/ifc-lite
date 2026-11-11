@@ -5,15 +5,19 @@
 # A closed PR's unfinished runs report to nobody, and they keep queueing for the
 # runners open work needs. Mergify closes every batch PR after merging or
 # splitting it, and rewrites its body first, so each batch left about seven runs
-# behind (2026-11-01). It rewrites the body just after closing too, so an edit of
-# a closed PR runs this again and catches what that started. Finished runs stay untouched: the push replay reads a
-# batch's green run (scripts/ci-push-replay.mjs). A fork PR gets a read-only
-# token, so it is skipped. Checks out no code.
+# behind (2026-11-01). It rewrites the body just after closing too, which starts
+# more runs after the first listing (#8596: closed 22:57:06, cleanup 22:57:09,
+# new Test run 22:57:11). This job used to run again on `edited` to catch those,
+# but every title or body edit of an OPEN PR then started a run that only
+# skipped. Instead the one run sweeps three times, 20 s apart, which covers an
+# edit that lands seconds after the close. Finished runs stay untouched: the push
+# replay reads a batch's green run (scripts/ci-push-replay.mjs). A fork PR gets a
+# read-only token, so it is skipped. Checks out no code.
 name: Cancel closed PR runs
 
 on:
   pull_request:
-    types: [closed, edited]
+    types: [closed]
 
 permissions:
   actions: write
@@ -21,7 +25,7 @@ permissions:
 
 jobs:
   cancel:
-    if: github.event.pull_request.state == 'closed' && github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -30,7 +34,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           BRANCH: ${{ github.event.pull_request.head.ref }}
-          # Not only this run: a closed and an edited event overlap, and must not cancel each other.
+          # Not only this run: two closed events (close, reopen, close) can overlap,
+          # and must not cancel each other.
           WORKFLOW: ${{ github.workflow }}
         run: |
           set -euo pipefail
@@ -40,15 +45,35 @@ jobs:
             echo "$BRANCH still has an open PR; leaving its runs alone"
             exit 0
           fi
-          ids=$(gh api -X GET --paginate "repos/$REPO/actions/runs" -f branch="$BRANCH" -f event=pull_request -f per_page=100 \
-            --jq ".workflow_runs[] | select(.status != \"completed\" and .head_repository.full_name == \"$REPO\" and .name != \"$WORKFLOW\") | .id")
+          # A cancelled run stays `in_progress` while it winds down; later passes
+          # skip it rather than ask again.
+          cancelled=" "
+          stuck=""
+          for pass in 1 2 3; do
+            if [ "$pass" -gt 1 ]; then sleep 20; fi
+            stuck=""
+            ids=$(gh api -X GET --paginate "repos/$REPO/actions/runs" -f branch="$BRANCH" -f event=pull_request -f per_page=100 \
+              --jq ".workflow_runs[] | select(.status != \"completed\" and .head_repository.full_name == \"$REPO\" and .name != \"$WORKFLOW\") | .id")
+            for id in $ids; do
+              case "$cancelled" in *" $id "*) continue ;; esac
+              gh run cancel "$id" --repo "$REPO" && { echo "cancelled $id"; cancelled="$cancelled$id "; continue; }
+              # A run can finish between the listing and here. A `pending` run waits
+              # in a concurrency group and GitHub refuses to cancel it (run
+              # 42921918644); the next pass tries again.
+              status=$(gh api "repos/$REPO/actions/runs/$id" --jq .status || echo unknown)
+              if [ "$status" != "completed" ]; then
+                stuck="$stuck $id:$status"
+              fi
+            done
+          done
           failed=0
-          for id in $ids; do
-            gh run cancel "$id" --repo "$REPO" && { echo "cancelled $id"; continue; }
-            # A run can finish between the listing and here; only one still going is a failure.
-            status=$(gh api "repos/$REPO/actions/runs/$id" --jq .status || echo unknown)
-            if [ "$status" != "completed" ]; then
-              echo "::warning::could not cancel run $id (status $status)"
+          for entry in $stuck; do
+            if [ "${entry#*:}" = pending ]; then
+              # Still waiting for its group after three passes. It reports to nobody;
+              # leaving it costs a runner slot later, not a verdict.
+              echo "::notice::run ${entry%%:*} is still pending and cannot be cancelled; leaving it"
+            else
+              echo "::warning::could not cancel run ${entry%%:*} (status ${entry#*:})"
               failed=1
             fi
           done

@@ -7,14 +7,19 @@
 # auto-merge waits without saying why. Agents watching a PR wake on new comments,
 # so post one naming the open threads. It posts again only when that set changes,
 # and never when there are none, so a clean review or a summary comment stays quiet.
-# `workflow_run` covers reviewers that run here, whose token raises no review
-# event; `pull_request_review` covers external apps such as CodeRabbit and Bugbot.
+# `workflow_run` covers the one reviewer that runs here and opens threads, Claude
+# review, whose token raises no review event; `pull_request_review` covers people
+# and external apps such as CodeRabbit and Bugbot. Test and PR-Agent review are
+# not triggers: neither opens a review thread (PR-Agent posts one conversation
+# comment per lane, scripts/review/pr-agent-publish.mjs), so their completions,
+# most of this workflow's runs, could not change what it posts. A thread
+# someone unresolves by hand raises neither event and waits for the next review.
 # Checks out no code.
 name: PR unresolved threads
 
 on:
   workflow_run:
-    workflows: [Test, Claude review, PR-Agent review]
+    workflows: [Claude review]
     types: [completed]
   pull_request_review:
     types: [submitted]
@@ -22,14 +27,21 @@ on:
 permissions:
   pull-requests: write
 
+# One run per PR at a time, and a burst of reviews collapses to the newest
+# pending run, which reads the threads as they are when it starts. A fork PR's
+# `workflow_run` carries no PR number, so it falls back to the head SHA.
+concurrency:
+  group: pr-unresolved-threads-${{ github.event.pull_request.number || github.event.workflow_run.pull_requests[0].number || github.event.workflow_run.head_sha }}
+
 jobs:
   notify:
-    if: github.event_name == 'pull_request_review' || contains(fromJSON('["pull_request","pull_request_target"]'), github.event.workflow_run.event)
+    # A Mergify batch PR is closed within minutes and carries no review threads.
+    if: >-
+      github.event_name == 'pull_request_review' ||
+      (contains(fromJSON('["pull_request","pull_request_target"]'), github.event.workflow_run.event) &&
+      !startsWith(github.event.workflow_run.head_branch, 'mergify/merge-queue/'))
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    # One notice per PR at a time, so two finishing runs cannot post it twice.
-    concurrency:
-      group: pr-unresolved-threads-${{ github.event.pull_request.number || github.event.workflow_run.head_sha }}
     steps:
       - name: Post the open threads
         env:
@@ -41,15 +53,34 @@ jobs:
           set -euo pipefail
           owner=${REPO%/*}
           name=${REPO#*/}
+          # GitHub now and then answers a read with an empty body, which gh reports
+          # as "unexpected end of JSON input" and which failed this step (run
+          # 42883172181). The same reads for the same PR succeed on other runs,
+          # so retry them; three failures in a row still fail the step. The
+          # comment below is a write and is not retried, so it cannot post twice.
+          read_api() {
+            local attempt out
+            for attempt in 1 2 3; do
+              # Captured per attempt: gh prints an error body to stdout, and a
+              # failed attempt's output must not reach the caller.
+              if out=$(gh api "$@"); then
+                printf '%s\n' "$out"
+                return 0
+              fi
+              echo "::warning::gh api $1 failed (attempt $attempt of 3)" >&2
+              if [ "$attempt" -lt 3 ]; then sleep $((attempt * 5)); fi
+            done
+            return 1
+          }
           pr=$REVIEWED_PR
           if [ -z "$pr" ]; then
-            pr=$(gh api "repos/$REPO/commits/$SHA/pulls" --jq '[.[] | select(.state == "open")][0].number // empty')
+            pr=$(read_api "repos/$REPO/commits/$SHA/pulls" --jq '[.[] | select(.state == "open")][0].number // empty')
           fi
           if [ -z "$pr" ]; then
             echo "no open PR for $SHA"
             exit 0
           fi
-          data=$(gh api graphql -F owner="$owner" -F name="$name" -F pr="$pr" -f query='
+          data=$(read_api graphql -F owner="$owner" -F name="$name" -F pr="$pr" -f query='
             query($owner: String!, $name: String!, $pr: Int!) {
               repository(owner: $owner, name: $name) {
                 pullRequest(number: $pr) {

@@ -90,6 +90,16 @@ test('#8947 model plan destination mounts the real rail layout flow and refuses 
   act(() => publishSplitWidth(400)); searchDestination('plan layout');
   assert.equal(destinationOption('model:plan').getAttribute('aria-disabled'), 'true');
 });
+test('#9296 model plan destination makes room like the rail when the sidebar is expanded', async () => {
+  hosts.push(mountDestinations(<ModelWorkspaceSplit><div data-viewport-stub /></ModelWorkspaceSplit>));
+  act(() => { useViewerStore.getState().enterModelWorkspace(); useViewerStore.getState().setModelLayout('3d');
+    useViewerStore.getState().setSidebarMode('expanded'); publishSplitWidth(400); });
+  searchDestination('plan layout');
+  assert.equal(destinationOption('model:plan').getAttribute('aria-disabled'), 'false');
+  await launchDestination('model:plan', 'plan layout');
+  assert.equal(useViewerStore.getState().sidebarMode, 'collapsed', 'the sidebar folds to make room, as from the rail');
+  assert.equal(useViewerStore.getState().modelLayout, 'split');
+});
 test('#8947 conditional retained report opens the existing chip report and disables after owner loss', async () => {
   const s = useViewerStore.getState(), model = [...s.models.values()][0]; assert.ok(model);
   useViewerStore.setState({ models: new Map([[model.id, { ...model, retainedGeometry: {

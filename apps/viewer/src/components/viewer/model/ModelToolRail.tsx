@@ -25,7 +25,7 @@ import { tourAnchor, toolAnchor } from '@/lib/tours/anchors';
 import { sessionWorkplaneBlock } from '@/lib/commands/modeling/workspace-storeys';
 import { GitBranch, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { LEAVE_TOOL, RAIL_TOOLS, type RailTool } from './rail-tools';
-import { effectiveModelLayout, splitFits, useSplitWidth } from './model-layout';
+import { effectiveModelLayout, useSplitWidth } from './model-layout';
 import { CompactRailGroup } from './CompactRailGroup';
 
 const TOOL_GROUPS = [...new Set(RAIL_TOOLS.map((tool) => tool.group))];
@@ -151,7 +151,6 @@ export function ModelToolRail() {
 
 /** Show / hide the plan beside 3D (M2.4); off, with the reason, while the split has no room for it. */
 function PlanToggle() {
-  const { t } = useTranslation();
   const pick = useViewerStore((s) => s.modelLayout);
   const setModelLayout = useViewerStore((s) => s.setModelLayout);
   const width = useSplitWidth();
@@ -162,7 +161,7 @@ function PlanToggle() {
       labelKey={shown ? 'modelWorkspace.plan.hide' : 'modelWorkspace.plan.show'}
       Icon={shown ? PanelLeftClose : PanelLeftOpen}
       active={shown}
-      disabledReason={shown || splitFits(width) ? null : t('modelWorkspace.plan.noRoom')}
+      disabledReason={null}
       onClick={() => setModelLayout(shown ? '3d' : 'split')}
     />
   );

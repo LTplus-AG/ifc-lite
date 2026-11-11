@@ -5,13 +5,22 @@ analysis domain ifc-lite reads, shows, authors and converts. The generated
 ledger is `docs/architecture/structural-coverage-ledger.md`.
 
 ```bash
-node tests/structural-coverage/score.mjs --check tests/structural-coverage/baseline/r0.json
+node tests/structural-coverage/score.mjs --check tests/structural-coverage/baseline/r1.json
 ```
 
 This writes `tests/structural-coverage/.out/summary.json` and exits 1 if
-anything dropped below the baseline. It needs built packages
-(`pnpm turbo build --filter=@ifc-lite/parser... --filter=@ifc-lite/create... --filter=@ifc-lite/export...`)
-and the corpus on disk. It runs in about two seconds.
+anything dropped below the baseline. It needs the corpus on disk. Before
+importing packages, the scorer runs
+`pnpm turbo build --filter=@ifc-lite/parser... --filter=@ifc-lite/create... --filter=@ifc-lite/export...`
+so Turbo rebuilds or restores outputs that match the source. A failed build is
+a harness error, never a product score. Without wasm-pack, `build-wasm.sh`
+keeps the wasm runtime already on disk, so scoring a Rust change needs the
+wasm toolchain. The probes run in about two seconds after building.
+
+CI runs the ratchet against the newest frozen `r<N>.json` (now `r1.json`) in the shared **Build packages +
+WASM** job, after fixture verification and the package build. This job runs in
+both fast and full PR lanes for package, harness and manifest changes, and in
+merge-queue batches. The ledger check alone does not run the product probes.
 
 ## Rows
 
@@ -75,6 +84,23 @@ never passes quietly: the scorer exits 2 and prints the
 `node scripts/fixtures/fetch-fixtures.mjs <paths>` command. `--offline` scores
 the affected cells as skip instead and marks the summary offline, which
 `--check` and the ledger both refuse.
+
+## Harness correction baseline
+
+`r0.json` is retained as the original measurement. [R1 measurement notes](baseline/r1-notes.md) list every changed cell and the per-fixture link counts. `r1.json` corrects two
+under-credits without changing product code: an item's `physicalElementIds`
+must be exactly the express ids the file links to it, without duplicates, each
+an IfcElement subtype in the parsed store with the fixture's GlobalId, and an
+item the file links to nothing must name no element (checked in every
+catalogue-schema file the product extracts);
+rooted fields try the exact EXPRESS name before camelCase and renamed fields,
+with the same fixture-value comparison. Link evidence records checked/held
+counts for every fixture, without the former 25-link sampling limit.
+
+To freeze a reviewed correction, run the scorer against the previous baseline,
+review every changed cell, copy `.out/summary.json` to `baseline/r<N>.json`,
+update the frozen CI/README baseline path, and regenerate the ledger. Keep old
+baseline files. `r1` here is a measurement revision, not a product climb round.
 
 ## Registering a probe
 

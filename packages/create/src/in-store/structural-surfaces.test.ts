@@ -190,19 +190,16 @@ describe('C2 structural surface and connection builders', () => {
     ['missing boundary', (e: StoreEditor, a: SpatialAnchor) => addStructuralSurfaceMemberToStore(e, a, { Boundary: undefined as never }), /at least three finite boundary points/],
     ['string stiffness', (e: StoreEditor, a: SpatialAnchor) => addStructuralSurfaceConnectionToStore(e, a, { Boundary: tri, BoundaryCondition: { TranslationalStiffnessByAreaZ: '5' as never } }), /not negative/],
     ['axis almost along the edge', (e: StoreEditor, a: SpatialAnchor) => addStructuralCurveConnectionToStore(e, a, { Start: [0, 0, 0], End: [2, 0, 0], Axis: [1, 1e-8, 0] }), /parallel to the edge/],
+    ['two-element axis', (e: StoreEditor, a: SpatialAnchor) => addStructuralCurveConnectionToStore(e, a, { Start: [0, 0, 0], End: [2, 0, 0], Axis: [0, 1] as never }), /Axis must be nonzero/],
   ] as const)('writes nothing when refused: %s', async (_label, build, message) => {
     const { editor, anchor } = await fresh('IFC4');
     expect(() => build(editor, anchor)).toThrow(message);
     expect(editor.getMutationView().getNewEntities()).toHaveLength(0);
   });
-  it('treats a null stiffness as unset on every schema', async () => {
-    for (const schema of ['IFC2X3', 'IFC4']) {
-      const { editor, anchor, roundTrip } = await fresh(schema);
-      const r = addStructuralSurfaceConnectionToStore(editor, anchor, { Boundary: tri, BoundaryCondition: { TranslationalStiffnessByAreaX: null as never, TranslationalStiffnessByAreaZ: true } });
-      const m = addStructuralSurfaceMemberToStore(editor, anchor, { Boundary: tri });
-      connectStructuralMemberToConnectionInStore(editor, anchor.ownerHistoryId, m.memberId, r.connectionId, anchor.guidRandom);
-      expect((await roundTrip()).attrs(r.boundaryConditionId!)[1]).toBeNull();
-    }
+  it.each(['IFC2X3', 'IFC4'])('treats a null stiffness as unset: %s', async schema => {
+    const { editor, anchor, roundTrip } = await fresh(schema);
+    const r = addStructuralSurfaceConnectionToStore(editor, anchor, { Boundary: tri, BoundaryCondition: { TranslationalStiffnessByAreaX: null as never, TranslationalStiffnessByAreaZ: true } });
+    expect((await roundTrip()).attrs(r.boundaryConditionId!)[1]).toBeNull();
   });
   it('refuses unsupported schema-specific axis attributes', async () => {
     const { editor, anchor } = await fresh();

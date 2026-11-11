@@ -13,7 +13,8 @@
  *    ObjectPlacement?, Representation?, PredefinedType, Axis`
  * `PredefinedType` (`IfcStructuralCurveMemberTypeEnum`) and `Axis`
  * (`IfcDirection`, mandatory — NOT an inline list) are both own attributes
- * of this entity, not inherited.
+ * of this entity, not inherited. IFC2X3 has no `Axis`, so it is left out
+ * there (the `IfcDirection` is still written and returned).
  *
  * REPRESENTATION OWNERSHIP (the part the task brief calls out explicitly):
  *
@@ -110,9 +111,6 @@ export function addStructuralCurveMemberToStore(
   anchor: SpatialAnchor,
   params: StructuralCurveMemberInStoreParams,
 ): StructuralCurveMemberBuildResult {
-  if ((anchor.schema ?? 'IFC4') === 'IFC2X3') {
-    throw new Error('addStructuralCurveMemberToStore: IFC2X3 has no IfcStructuralCurveMember — target IFC4 or later');
-  }
   const predefinedType = params.PredefinedType ?? 'NOTDEFINED';
   if (predefinedType === 'USERDEFINED' && !params.ObjectType) {
     throw new Error('addStructuralCurveMemberToStore: ObjectType is required when PredefinedType is USERDEFINED');
@@ -171,7 +169,7 @@ export function addStructuralCurveMemberToStore(
     `#${placementId}`,
     `#${productShapeId}`,
     `.${predefinedType}.`,
-    `#${axisDirectionId}`,
+    ...(anchor.schema === 'IFC2X3' ? [] : [`#${axisDirectionId}`]), // Axis (IFC4+)
   ]).expressId;
 
   return {

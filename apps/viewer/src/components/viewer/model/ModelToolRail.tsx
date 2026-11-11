@@ -161,6 +161,7 @@ function PlanToggle() {
       labelKey={shown ? 'modelWorkspace.plan.hide' : 'modelWorkspace.plan.show'}
       Icon={shown ? PanelLeftClose : PanelLeftOpen}
       active={shown}
+      disabledReason={null}
       onClick={() => setModelLayout(shown ? '3d' : 'split')}
     />
   );

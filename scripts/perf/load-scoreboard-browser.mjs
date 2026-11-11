@@ -28,10 +28,13 @@ import { join } from 'node:path';
 import { chromePids, memoryOf, vramOf } from './scenoptic-bench-sampling.mjs';
 import { COUNT_FRAMES, openAndWaitInteractive, openViewerPage, readOutputFingerprint, replacePage, waitCacheWrites, waitSceneSnapshots } from './viewer-load-probe.mjs';
 import { browserShares, browserStages, expectedCacheTier, failedOpenIndex, gpuUnhealthy, openIdentity, stageShares, uiQuietValue } from './load-scoreboard-stats.mjs';
-import { BOOT_OBSERVERS, waitShellQuiet, waitUiQuiet } from './viewer-load-boot.mjs';
+import { BOOT_OBSERVERS, waitBootSettled, waitShellQuiet, waitUiQuiet } from './viewer-load-boot.mjs';
 import { rebaseToArm, waitCacheEntryStable, waitFirstPaint } from './load-scoreboard-lanes.mjs';
 import { expectSceneSnapshot, prepareWarmOpen } from './viewer-scene-snapshot.mjs';
 import { readGpuHealth } from '../../tests/benchmark/gpu-health.ts';
+
+/** Lane-name suffix of each arm; the default arm keeps the default lane names. */
+export const ARM_LANE_SUFFIX = { quiet: '', 'first-paint': '-early', 'boot-settled': '-settled' };
 
 export const CHROME_ARGS = ['--enable-gpu', '--enable-unsafe-webgpu', '--enable-features=Vulkan,VulkanFromANGLE,DefaultANGLEVulkan',
   '--use-angle=vulkan', '--ignore-gpu-blocklist', '--use-webgpu-power-preference=default-high-performance',
@@ -103,14 +106,17 @@ function summarizeOpen(open, memory) {
  * 12% on Holter); `pass: 'memory'` repeats the sample with the sampler on and
  * is used for peak memory only. Both arm each open on a quiet shell with the
  * main-thread perf counters off (viewer-load-boot.mjs).
- * `arm: 'first-paint'` is the `browser-cold-early` lane (load-scoreboard-lanes.mjs): a cold open
- * picked at the first paint, timed from the pick, with no reopens.
- * Returns { lanes: { 'browser-cold' | 'browser-cold-early', 'browser-warm1', 'browser-warm' }, warmOpens, meta }.
+ * `arm` names the lanes it produces (`ARM_LANE_SUFFIX`): `'quiet'` is the default lanes.
+ * `'first-paint'` is the `-early` lanes (load-scoreboard-lanes.mjs): every open picked at the
+ * first paint, timed from the pick. `'boot-settled'` is the `-settled` lanes: every open armed
+ * once the viewer reports its idle boot work settled (`waitBootSettled`), then on a quiet shell.
+ * Returns { lanes: { 'browser-cold<suffix>', 'browser-warm1<suffix>', 'browser-warm<suffix>' }, warmOpens, meta }.
  */
 export async function browserSample({ chromium, executablePath, baseUrl, setRoot, side, fixture, warmOpens, outDir, tag, log, pass = 'timing', arm = 'quiet' }) {
+  const suffix = ARM_LANE_SUFFIX[arm];
+  if (suffix === undefined) throw new Error(`unknown arm ${arm}`);
   const early = arm === 'first-paint';
-  if (early) warmOpens = 0;
-  const coldLane = early ? 'browser-cold-early' : 'browser-cold';
+  const coldLane = `browser-cold${suffix}`, warm1Lane = `browser-warm1${suffix}`, warmLane = `browser-warm${suffix}`;
   setRoot(side.dist);
   const profileDir = mkdtempSync(join(tmpdir(), 'load-scoreboard-'));
   const env = { ...process.env, VK_ICD_FILENAMES: NVIDIA_ICD, VK_DRIVER_FILES: NVIDIA_ICD };
@@ -121,8 +127,8 @@ export async function browserSample({ chromium, executablePath, baseUrl, setRoot
   const consoleLogs = [];
   const meta = { pass, query, executablePath, chromeArgs: CHROME_ARGS, pageErrors: [], crashed: false };
   const lanes = { [coldLane]: { lane: coldLane, ok: false } };
-  if (warmOpens > 1) lanes['browser-warm1'] = { lane: 'browser-warm1', ok: false };
-  if (warmOpens > 0) lanes['browser-warm'] = { lane: 'browser-warm', ok: false };
+  if (warmOpens > 1) lanes[warm1Lane] = { lane: warm1Lane, ok: false };
+  if (warmOpens > 0) lanes[warmLane] = { lane: warmLane, ok: false };
   const result = { lanes, warmOpens: [], meta };
   let context = null, page = null, phase = 'launch', coldFingerprint = null;
   const watch = (p) => {
@@ -132,7 +138,8 @@ export async function browserSample({ chromium, executablePath, baseUrl, setRoot
   };
   const measuredOpen = async (label) => {
     phase = `${label}-shell`;
-    const shell = early ? await waitFirstPaint(page) : await waitShellQuiet(page);
+    const settled = arm === 'boot-settled' ? await waitBootSettled(page, { expectSignal: side.bootSignal !== false }) : null;
+    const shell = early ? await waitFirstPaint(page) : settled ? { ...settled, ...(await waitShellQuiet(page)) } : await waitShellQuiet(page);
     phase = label;
     const sampler = pass === 'memory' ? startMemorySampler(profileDir) : null;
     let open;
@@ -194,8 +201,8 @@ export async function browserSample({ chromium, executablePath, baseUrl, setRoot
           snapshotAdopted: warm.snapshotAdopted, peakMemoryMiB: warm.peakMemoryMiB });
         // The lane keeps its name whatever path the reopen took; the snapshot state is recorded beside it.
         if (i === 1) Object.assign(warm, { snapshotPresentBeforeOpen: meta.entryBeforeWarm1?.snapshotPresent ?? null, cacheEntryStable: meta.entryBeforeWarm1?.stable ?? null });
-        if (i === 1 && warmOpens > 1) lanes['browser-warm1'] = { lane: 'browser-warm1', ok: true, ...warm };
-        if (i === warmOpens) lanes['browser-warm'] = { lane: 'browser-warm', ok: true, ...warm };
+        if (i === 1 && warmOpens > 1) lanes[warm1Lane] = { lane: warm1Lane, ok: true, ...warm };
+        if (i === warmOpens) lanes[warmLane] = { lane: warmLane, ok: true, ...warm };
       }
     }
     // A loss seen only at the end cannot be placed in one reopen: it taints every warm open.
@@ -212,7 +219,7 @@ export async function browserSample({ chromium, executablePath, baseUrl, setRoot
     // A failure taints every lane of this sample that had not already finished cleanly before it.
     // A failure taints the open it happened in and every later one; earlier clean opens keep their result.
     const failedOpen = failedOpenIndex(phase);
-    const index = { 'browser-cold': 0, 'browser-cold-early': 0, 'browser-warm1': 1, 'browser-warm': warmOpens };
+    const index = { [coldLane]: 0, [warm1Lane]: 1, [warmLane]: warmOpens };
     for (const [name, lane] of Object.entries(lanes)) if (index[name] >= failedOpen) lanes[name] = { ...lane, ok: false, error };
   } finally {
     await context?.close().catch(() => {});

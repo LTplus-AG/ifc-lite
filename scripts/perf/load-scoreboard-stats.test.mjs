@@ -445,6 +445,10 @@ test('the early lane is per-element checked: its rows name the elements file its
   assert.equal(elementsFileFor({ lane: 'browser-cold', fixture: 'FZK', side: 'base', round: 3 }), 'FZK-base-r3-cold.elements.json');
   assert.equal(elementsFileFor({ lane: 'browser-warm1', fixture: 'FZK', side: 'branch', round: 0 }), 'FZK-branch-r0-warm1.elements.json');
   assert.equal(elementsFileFor({ lane: 'browser-warm', fixture: 'FZK', side: 'branch', round: 0, warmOpens: [{}, {}] }), 'FZK-branch-r0-warm2.elements.json');
+  // Opt-in arms write under their sample tag's suffix; the default lanes' names above are unchanged.
+  assert.equal(elementsFileFor({ lane: 'browser-cold-settled', fixture: 'FZK', side: 'base', round: 3 }), 'FZK-base-r3-settled-cold.elements.json');
+  assert.equal(elementsFileFor({ lane: 'browser-warm1-early', fixture: 'FZK', side: 'base', round: 3 }), 'FZK-base-r3-early-warm1.elements.json');
+  assert.equal(elementsFileFor({ lane: 'browser-warm-settled', fixture: 'FZK', side: 'branch', round: 0, warmOpens: [{}, {}] }), 'FZK-branch-r0-settled-warm2.elements.json');
 });
 
 test('an output identity is comparable only when complete; a cache hit never borrows the cold identity (review #9740)', async () => {
@@ -516,7 +520,8 @@ test('the report: output and per-element verdicts never read missing identity as
 test('META: absent, empty or unreadable input never passes any verdict, identity or stability check', async () => {
   const S = await stats(), R = await report(), L = await lanesModule(), Snap = await snapshotRule(), Run = await runner();
   const lanes = R.LANES;
-  assert.deepEqual([...lanes].sort(), ['boot', 'browser-cold', 'browser-cold-early', 'browser-warm', 'browser-warm1', 'native-cold']);
+  assert.deepEqual([...lanes].sort(), ['boot', 'browser-cold', 'browser-cold-early', 'browser-cold-settled', 'browser-warm', 'browser-warm-early',
+    'browser-warm-settled', 'browser-warm1', 'browser-warm1-early', 'browser-warm1-settled', 'native-cold']);
   const passing = /^(identical|stable|ok|match|no significant difference|gain|regression|null)$/;
   const cases = [];
   const add = (name, outcome, ok) => cases.push({ name, outcome, ok });
@@ -550,6 +555,11 @@ test('META: absent, empty or unreadable input never passes any verdict, identity
       add(`${lane}: per-element verdict against an empty sample`, emptyOther.identical, emptyOther.identical === false && emptyOther.unverifiable === true);
     }
   }
+  // The boot-settled arm (-settled lanes): a page without the viewer's boot signal fails the sample.
+  const { waitBootSettled } = await import('./viewer-load-boot.mjs');
+  const noHook = { evaluate: async () => null, waitForTimeout: async () => {} };
+  const armed = await waitBootSettled(noHook).then(() => 'armed', (e) => `failed: ${e.message}`);
+  add('boot-settled arm on a page without __ifc_lite_boot_settled__', armed, armed.startsWith('failed'));
   add('verdictFor([])', S.verdictFor([]).verdict, /^inconclusive/.test(S.verdictFor([]).verdict));
   add('verdictFor(all null)', S.verdictFor([[null, null], [null, null], [null, null], [null, null], [null, null]]).verdict,
     /^inconclusive/.test(S.verdictFor([[null, null], [null, null], [null, null], [null, null], [null, null]]).verdict));

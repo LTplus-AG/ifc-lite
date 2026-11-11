@@ -76,6 +76,33 @@ export async function waitShellQuiet(page, { quietMs = 1000, timeoutMs = 15000 }
 }
 
 /**
+ * `boot-settled` arm (the `-settled` lanes): wait until the viewer reports its idle
+ * boot work finished (`__ifc_lite_boot_settled__()`, e.g. a warm-up before the
+ * first file), bounded by `timeoutMs`. A missing input never reads as success:
+ * a page without the hook fails the sample unless its side declares
+ * `bootSignal: false` (a build with no idle boot work), a declared-absent side
+ * that does expose it fails too, and a wait that never settles is unverifiable.
+ * The default arm never calls this.
+ */
+export async function waitBootSettled(page, { expectSignal = true, timeoutMs = 20000 } = {}) {
+  const started = Date.now();
+  for (;;) {
+    const settled = await page.evaluate(() => {
+      const f = globalThis.__ifc_lite_boot_settled__;
+      return typeof f === 'function' ? Boolean(f()) : null;
+    });
+    if (settled === null) {
+      if (expectSignal) throw new Error('boot-settled arm: the page exposes no __ifc_lite_boot_settled__(); declare `bootSignal: false` on a side whose build has no idle boot work');
+      return { bootSettled: 'no signal (declared)', bootSettledWaitMs: 0 };
+    }
+    if (!expectSignal) throw new Error('boot-settled arm: the side declares `bootSignal: false`, but the page exposes __ifc_lite_boot_settled__()');
+    if (settled) return { bootSettled: true, bootSettledWaitMs: Date.now() - started };
+    if (Date.now() - started >= timeoutMs) throw new Error(`boot-settled arm: idle boot work did not settle within ${timeoutMs} ms (unverifiable)`);
+    await page.waitForTimeout(100);
+  }
+}
+
+/**
  * After readiness: the end of the last long task before the main thread first
  * stays quiet for `quietMs`, as ms after `originAbs` (page clock). Capped by `timeoutMs`.
  */

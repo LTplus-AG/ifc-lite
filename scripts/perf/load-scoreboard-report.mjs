@@ -10,7 +10,10 @@
 
 import { aaNoiseFloor, expectedCacheTier, median, rankShares, relativeSpread, verdictFor } from './load-scoreboard-stats.mjs';
 
-export const LANES = ['native-cold', 'browser-cold', 'browser-cold-early', 'browser-warm1', 'browser-warm', 'boot'];
+export const LANES = ['native-cold', 'browser-cold', 'browser-cold-early', 'browser-warm1', 'browser-warm', 'boot',
+  // Opt-in arms beside the default lanes (load-scoreboard-browser.mjs): reopens picked at first paint, and
+  // every open armed after the viewer reports its idle boot work settled.
+  'browser-warm1-early', 'browser-warm-early', 'browser-cold-settled', 'browser-warm1-settled', 'browser-warm-settled'];
 /** The `boot` lane opens no file; its rows carry this pseudo-fixture. */
 export const BOOT_FIXTURE = '(app shell)';
 export const METRICS = [
@@ -27,15 +30,17 @@ export const METRICS = [
   ['idleWasmMiB', 'idle wasm MiB', 1],
   ['idleVramMiB', 'idle GPU MiB', 1],
 ];
-export const BROWSER_LANES = ['browser-cold', 'browser-cold-early', 'browser-warm1', 'browser-warm'];
+export const BROWSER_LANES = ['browser-cold', 'browser-cold-early', 'browser-warm1', 'browser-warm',
+  'browser-warm1-early', 'browser-warm-early', 'browser-cold-settled', 'browser-warm1-settled', 'browser-warm-settled'];
 
 /**
- * The per-element output file a browser row wrote: `<fixture>-<side>-r<round>[-early]-<open>.elements.json`
- * (`<open>` is cold, warm1 or warm<warmOpens>; the early lane's sample tag carries `-early`).
+ * The per-element output file a browser row wrote: `<fixture>-<side>-r<round>[-early|-settled]-<open>.elements.json`
+ * (`<open>` is cold, warm1 or warm<warmOpens>; an arm's sample tag carries its suffix).
  */
 export function elementsFileFor(row) {
-  const open = { 'browser-cold': 'cold', 'browser-cold-early': 'early-cold', 'browser-warm1': 'warm1' }[row.lane] ?? `warm${row.warmOpens?.length ?? 2}`;
-  return `${row.fixture}-${row.side}-r${row.round}-${open}.elements.json`;
+  const [, open, arm] = /^browser-(cold|warm1|warm)(?:-(early|settled))?$/.exec(row.lane) ?? [];
+  const name = open === 'cold' || open === 'warm1' ? open : `warm${row.warmOpens?.length ?? 2}`;
+  return `${row.fixture}-${row.side}-r${row.round}-${arm ? `${arm}-` : ''}${name}.elements.json`;
 }
 
 /**

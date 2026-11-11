@@ -53,7 +53,7 @@ export function loadPlan(path) {
   for (const lane of plan.lanes) if (!LANES.includes(lane)) throw new Error(`unknown lane ${lane}`);
   if (!Number.isInteger(plan.rounds) || plan.rounds < 1) throw new Error('plan.rounds must be a positive integer');
   plan.seed ??= Date.now() % 2 ** 31;
-  plan.warmOpens ??= plan.lanes.includes('browser-warm') ? 2 : 0;
+  plan.warmOpens ??= plan.lanes.some((l) => l === 'browser-warm' || l.startsWith('browser-warm-')) ? 2 : 0;
   for (const side of ['base', 'branch']) {
     const s = plan.sides?.[side];
     if (!s?.label) throw new Error(`plan.sides.${side}.label is required`);
@@ -191,6 +191,8 @@ async function run(opt) {
     const only = opt.fixtures ? new Set(opt.fixtures.split(',')) : null;
     for (const name of only ?? []) if (!plan.fixtures.some((f) => f.name === name)) throw new Error(`--fixtures: ${name} is not in the plan`);
     const DEFAULT_BROWSER = ['browser-cold', 'browser-warm1', 'browser-warm'];
+    // Opt-in arms beside the default lanes; each is its own sample (load-scoreboard-browser.mjs ARM_LANE_SUFFIX).
+    const ARM_SAMPLES = [['first-paint', '-early'], ['boot-settled', '-settled']];
     for (let round = 0; round < plan.rounds; round++) {
       // Boot runs in every segment, --fixtures or not; the per-lane completion set keeps it from repeating.
       for (const side of order.boot?.[BOOT_FIXTURE][round] ?? []) {
@@ -218,12 +220,20 @@ async function run(opt) {
               record({ ...common, ...row, probe }, null);
               log(`  ${tag} native: ${s.ok ? `${s.interactiveMs.toFixed(0)} ms, ${s.peakMemoryMiB?.toFixed(0)} MiB` : `FAILED ${s.error}`}`);
             } else {
-              // browser-cold-early: its own fresh browser, file picked at first paint, timing only (load-scoreboard-lanes.mjs).
-              if (missing.includes('browser-cold-early')) {
-                const e = await browser.sample({ side: plan.sides[side], fixture, tag: `${tag}-early`, warmOpens: 0, pass: 'timing', arm: 'first-paint' });
-                const { trace, ...row } = e.lanes['browser-cold-early'];
-                record({ ...common, ...row, lane: 'browser-cold-early', adapter: e.meta.adapter ? JSON.stringify(e.meta.adapter) : null,
-                  browserVersion: e.meta.browserVersion ?? null, pageErrors: e.meta.pageErrors.length, gpuHealth: e.meta.gpuHealthCold ?? null }, trace ?? null);
+              // Opt-in arms (-early: picked at first paint; -settled: armed after the viewer's idle boot work),
+              // each its own fresh browser, timing only. Reopens run only when the plan lists that arm's warm lanes.
+              for (const [arm, suffix] of ARM_SAMPLES) {
+                const armLanes = missing.filter((l) => l.endsWith(suffix));
+                if (armLanes.length === 0) continue;
+                const reopens = groupLanes.some((l) => l.endsWith(suffix) && l.startsWith('browser-warm')) ? plan.warmOpens : 0;
+                const e = await browser.sample({ side: plan.sides[side], fixture, tag: `${tag}${suffix}`, warmOpens: reopens, pass: 'timing', arm });
+                for (const lane of armLanes) {
+                  const { trace, ...row } = e.lanes[lane];
+                  record({ ...common, ...row, lane, adapter: e.meta.adapter ? JSON.stringify(e.meta.adapter) : null,
+                    browserVersion: e.meta.browserVersion ?? null, pageErrors: e.meta.pageErrors.length,
+                    gpuHealth: lane.startsWith('browser-cold') ? e.meta.gpuHealthCold ?? null : e.meta.gpuHealth ?? null,
+                    warmOpens: lane === `browser-warm${suffix}` ? e.warmOpens : undefined }, trace ?? null);
+                }
               }
               const missingDefault = missing.filter((l) => DEFAULT_BROWSER.includes(l));
               if (missingDefault.length === 0) continue;

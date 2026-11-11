@@ -260,6 +260,18 @@ describe('corrupt geometry chunk directory', () => {
     expect(() => openGeometryChunksV13(section, 0, FORMAT_VERSION)).toThrow(/not contiguous/);
   });
 
+  it('reports the stored order, which is the order a hit decodes and differs from the input order (W2)', async () => {
+    // Interleaved cells: the spatial chunks pull mesh 3 ahead of mesh 2.
+    const meshes = [mesh(1, [0, 0, 0]), mesh(2, [5000, 5000, 5000]), mesh(3, [1, 1, 1])];
+    let reported: readonly MeshData[] = [];
+    const section = await buildGeometrySectionV13(meshes, coordInfo(), { compress: false, onOrder: (ordered) => { reported = ordered; } });
+    const open = openGeometryChunksV13(section, 0, FORMAT_VERSION);
+    const decoded = (await Promise.all(open.chunks.map((_, i) => open.readChunk(i)))).flat();
+    expect(reported.map((m) => m.expressId)).toEqual(decoded.map((m) => m.expressId));
+    expect(reported.map((m) => m.expressId)).not.toEqual([1, 2, 3]);
+    expect(new Set(reported)).toEqual(new Set(meshes));
+  });
+
   it('bounding control: a valid multi-chunk directory (ranges reaching exactly to the next chunk) still decodes', async () => {
     const meshes = [mesh(1, [0, 0, 0]), mesh(2, [5000, 5000, 5000])];
     const section = await buildGeometrySectionV13(meshes, coordInfo(), { compress: false });

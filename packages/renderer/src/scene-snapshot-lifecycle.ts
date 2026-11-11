@@ -9,12 +9,13 @@
  */
 
 import type { MeshData } from '@ifc-lite/geometry';
+import { perfTally, type LoadTrace } from '@ifc-lite/load-trace';
 import type { RenderPipeline } from './pipeline.js';
 import type { BatchedMesh, Mesh } from './types.js';
 import type { SpatialChunkingConfig } from './chunk-grid.js';
 import type { ModelTranslations } from './model-translation.js';
 import { assignSnapshotPieces, FinishedBatchCapture, stageSnapshotBatches, type MergedBatchBytes } from './scene-snapshot-batches.js';
-import { sceneSnapshotPolicy, type SceneSnapshot } from './scene-snapshot.js';
+import { sceneSnapshotPolicy, type SceneCaptureCallback, type SceneCaptureDrop, type SceneSnapshot } from './scene-snapshot.js';
 
 interface SnapshotBucket {
   key: string;
@@ -62,11 +63,32 @@ export class SceneSnapshotLifecycle {
     return sceneSnapshotPolicy(quantizedBatchesEnabled, lodBuildsEnabled, spatialChunking);
   }
 
-  captureNextFinalize(onCaptured: (snapshot: SceneSnapshot) => void): void {
-    this.capture = new FinishedBatchCapture(onCaptured);
+  captureNextFinalize(onCaptured: SceneCaptureCallback, onDropped?: (reason: SceneCaptureDrop) => void): void {
+    this.drop('replaced');
+    this.capture = new FinishedBatchCapture(onCaptured, onDropped);
   }
 
-  notePiece(piece: MeshData): void { this.capture?.notePiece(piece); }
+  /** End the pending capture without a snapshot, telling its owner why. */
+  private drop(reason: SceneCaptureDrop, capture = this.capture): void {
+    if (capture === this.capture) this.capture = null;
+    try {
+      capture?.onDropped?.(reason);
+    } catch (err) {
+      console.warn('[Scene] capture drop handler failed', err);
+    }
+  }
+
+  /**
+   * A finalize is starting: tally its fragments (#6957) and return the capture
+   * armed before it, the only one it may complete. A capture armed while it
+   * runs (a retry's or the next file's) belongs to a later finalize.
+   */
+  beginFinalize(fragments: number): object | null {
+    perfTally('render.finalize', fragments, 'fragments');
+    return this.capture;
+  }
+
+  notePiece(piece: MeshData, source: MeshData): void { this.capture?.notePiece(piece, source); }
 
   /** The upload's callback for a bucket batch while capturing; fragments and derived batches have no key. */
   mergedSink(bucketKey: string | undefined, batchId: number): ((bytes: MergedBatchBytes) => void) | undefined {
@@ -74,27 +96,52 @@ export class SceneSnapshotLifecycle {
     return capture && bucketKey !== undefined ? (bytes) => capture.noteMerged(bucketKey, batchId, bytes) : undefined;
   }
 
-  dropCapture(): void { this.capture = null; }
+  dropCapture(): void { this.drop('ephemeral'); }
 
-  /** After the finalize swap: report the scene if it is exactly what was queued. */
-  completeCapture(): void {
+  /**
+   * After the finalize swap: report the scene if it is exactly what was queued;
+   * `scene.finalize.capture` times it. `claimed` is what `beginFinalize`
+   * returned. The capture is optional, so nothing in it can fail the finalize
+   * whose swap already happened: a throw drops it with reason `failed`.
+   */
+  completeCapture(claimed: object | null, trace?: LoadTrace, parent?: number): void {
     const capture = this.capture;
+    if (!capture || capture !== claimed) return;
     this.capture = null;
-    if (!capture) return;
+    const start = performance.now();
+    let outcome: 'captured' | SceneCaptureDrop = 'not-exact';
+    try {
+      const scene = this.scene;
+      const [x, y, z] = scene.modelTranslations.get(0);
+      const snapshot = capture.build({
+        policy: this.policy(),
+        nextSplitId: scene.nextSplitId,
+        sourceOf: (piece) => scene.modelTranslations.sourceMesh(piece),
+        pristine: scene.dirtyBuckets.size === 0 && scene.coldBuckets.size === 0 && scene.texturedMeshes.length === 0
+          && scene.meshes.length === 0 && x === 0 && y === 0 && z === 0,
+        sharedFrameOrigins: scene.sharedFrameOrigins,
+        activeBuckets: scene.activeBucketKey,
+        buckets: scene.buckets.values(),
+      });
+      if (snapshot) {
+        capture.onCaptured(snapshot, capture.sources, this.sceneUnchangedSince(snapshot));
+        outcome = 'captured';
+      } else {
+        console.warn('[Scene] finished scene not captured: it is not exactly the pieces queued');
+      }
+    } catch (err) {
+      console.warn('[Scene] finished scene not captured: the capture failed', err);
+      outcome = 'failed';
+    }
+    if (outcome !== 'captured') this.drop(outcome, capture);
+    if (trace?.enabled) trace.record('scene.finalize.capture', start, performance.now(), { captured: outcome === 'captured', outcome }, parent);
+  }
+
+  /** Whether the flat scene still draws the batches `snapshot` was built from; see {@link SceneCaptureCallback}. */
+  private sceneUnchangedSince(snapshot: SceneSnapshot): () => boolean {
     const scene = this.scene;
-    const [x, y, z] = scene.modelTranslations.get(0);
-    const snapshot = capture.build({
-      policy: this.policy(),
-      nextSplitId: scene.nextSplitId,
-      sourceOf: (piece) => scene.modelTranslations.sourceMesh(piece),
-      pristine: scene.dirtyBuckets.size === 0 && scene.coldBuckets.size === 0 && scene.texturedMeshes.length === 0
-        && scene.meshes.length === 0 && x === 0 && y === 0 && z === 0,
-      sharedFrameOrigins: scene.sharedFrameOrigins,
-      activeBuckets: scene.activeBucketKey,
-      buckets: scene.buckets.values(),
-    });
-    if (snapshot) capture.onCaptured(snapshot);
-    else console.warn('[Scene] finished scene not captured: it is not exactly the pieces queued');
+    const batchIds = snapshot.batches.map((b) => [b.key, scene.buckets.get(b.key)?.batchedMesh?.id] as const);
+    return () => scene.dirtyBuckets.size === 0 && batchIds.every(([key, id]) => scene.buckets.get(key)?.batchedMesh?.id === id);
   }
 
   /**
@@ -106,7 +153,7 @@ export class SceneSnapshotLifecycle {
   onFlatCleared(): void {
     if (this.hydration) this.scene.removeInstancedTemplatesForModel(0);
     this.hydration = null;
-    if (this.capture?.hasPieces) this.capture = null;
+    if (this.capture?.hasPieces) this.drop('cleared');
   }
 
   /** Recovery rebuilds batches from pieces; pieceless ones cannot follow, so hydration reports failure. */

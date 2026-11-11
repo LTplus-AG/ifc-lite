@@ -3833,21 +3833,11 @@ SHIPPED (landed with a PR), or RE-REFUTED / NOT SHIPPABLE. Do not read the secti
   the **single-threaded parse/prepass/decode/extrude path** (advanced_model 96% non-CSG),
   which gates time-to-first-geometry and hits every model — that, not CSG threading, is
   where the next real speedup lives.
-- **Wide-arithmetic exact-CSG bundle** (~1.7x on a real void cut — NOT SHIPPABLE TODAY):
-  built by `BUILD_WIDE=1 scripts/build-wasm.sh`, but **V8 does not run it**. Measured
-  2026-07-31 on V8 (Node 22 / V8 12.4 and Node 26.5.1 / V8 14.6): a module using
-  every wide op the bundle emits fails `WebAssembly.validate`, compiling it throws
-  `invalid numeric opcode: 0xfc13`, and `node --v8-options` lists **no**
-  wide-arithmetic flag under any name. An earlier
-  entry here claimed V8 had it behind a default-off
-  `--experimental-wasm-wide-arithmetic`; that flag has never existed, so do NOT wait
-  for it to be "staged" — there is nothing to stage. Firefox (SpiderMonkey) and Safari
-  (JavaScriptCore) were not measured; treat them as unverified, not as rejecting.
-  Track-and-adopt only; the runtime feature-probe
-  (`packages/geometry/src/wasm-features.ts`, not yet created) would auto-upgrade per engine
-  as each ships. The CI tripwire (`.github/workflows/wide-arithmetic.yml`) probes the
-  engine every week and turns red when this changes. See
-  `docs/architecture/wasm-wide-arithmetic.md` (delivery status verified 2026-07-31).
+- **Wide-arithmetic exact-CSG bundle** (re-measured 2026-11-11 on the FixedInt kernel: a SMALL lever).
+  The old ~1.7x measured bnum on LLVM 21 and no longer describes the kernel. See "Exact
+  arithmetic in wasm (2026-11-11)" below and `docs/architecture/wasm-wide-arithmetic.md`.
+  V8 runs it only behind `--wasm-wide-arithmetic` or `--wasm-staging` (Chrome 156, Node 27
+  alpha); Firefox 155+ runs it by default.
 
 - **Content-dedup signature walk on large single BREPs** (~2.00x traversal, SHIPPED #1909):
   `item_dedup_key` walked every face/bound/loop/point of an `IfcFacetedBrep` to build a
@@ -6615,3 +6605,38 @@ Lessons:
   otherwise plan ~26 GiB for a 2 GB file. `?perf.geomMemoryGB=N` only lowers the planning memory.
 - **The flat/instanced split is not an identity check across worker counts**: see the `mesh_count` entry above.
   The stage-1 evidence compares per-entity geometry hashes (flat meshes plus `instancedGeometryHashes`) instead.
+
+## Exact arithmetic in wasm: wide arithmetic, small operands, interner identity (2026-11-11)
+- **Count the exact path before tuning it.** An instrumented native run over the ara3d corpus
+  (29 models) found:
+  - BigRational is never reached.
+  - 12 models do no implicit-point exact work at all.
+  - On CSG-heavy models, 25-50% of implicit predicates fall past the interval filter, and
+    76-95% of those are exact zeros: degenerate by construction, which no float filter can
+    resolve.
+  - Exact integer arithmetic is therefore only about 5-10% of wasm geometry time. That caps
+    every arithmetic lever, wide arithmetic included.
+- **A target-feature build does not change `cfg(target_arch)` code.** The wide bundle kept
+  the u32-digit multiply, so `checked_mul_limbs` contained no `i64.mul_wide_u`. Count wide
+  ops in the hot function, not in the whole module. Gating on
+  `not(target_feature = "wide-arithmetic")` (#9720) fixed it; the default bundle stayed
+  byte-identical.
+- **Wide arithmetic: +2-6% geometry on CSG-heavy models, 0 elsewhere, and about half of that
+  is the compiler.**
+  - The same code on the wide toolchain (LLVM 23) without the feature gives about half the
+    gain, and is 2.7% slower on ISSUE_098.
+  - End to end in Chrome with the flag: no significant difference.
+  - Not worth a second engine bundle until it is default-on in V8. Separate the toolchain
+    from the feature before crediting either.
+- **Operand size decides the multiply strategy.** 94-100% of fitting products have both
+  operands at or below 128 bits, and 36-53% of calls have a zero operand.
+  - The u32-digit core's fixed cost (zeroed 64-digit scratch arrays, K-limb pack/unpack)
+    dominated.
+  - A scratch-free two-limb path (#9719) is 1.3-2.3x on the kernel and +1-2% on geometry, in
+    every engine.
+  - Karatsuba, SIMD i64x2 and FMA filters have nothing to work on at one or two limbs.
+- **Dead end: interner identical-construction shortcut.** A third to over half of the
+  interner's interval misses compare a point with a bit-identical construction of itself.
+  Answering those with `Zero` before the I512 compare kept output identical on 29 models,
+  but geometry time moved 0.0%: the compares were cheap. A high miss count is not a high
+  cost; time it before building on it.

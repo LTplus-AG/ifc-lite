@@ -19,8 +19,6 @@ import {
   normalizeMode,
   planDecision,
   resolveDecision,
-  parseInputEntries,
-  readInputList,
   inputManifest,
   cacheKey,
   recordOutputs,
@@ -30,12 +28,11 @@ import {
   cleanOutputs,
   OUTPUT_DIRS,
   REQUIRED_OUTPUTS,
-  INPUTS_FILE,
 } from './ci-wasm-cache.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const SCRIPT = join(HERE, 'ci-wasm-cache.mjs');
-const BASE_ENV = { RUNNER_OS: 'Linux', RUNNER_ARCH: 'X64', HOME: '/home/runner' };
+import { INPUTS_FILE, parseInputEntries, readInputList } from './lib/wasm-build-inputs.mjs';
+import { BASE_ENV, REPO_ENV, KEYABLE_WORKFLOW, git, makeRepo, commit, makeScriptRepo } from './lib/ci-wasm-cache-fixture.mjs';
 
 test('only the exact strings `shadow` and `on` leave the cache off', () => {
   for (const raw of ['shadow', 'on']) assert.equal(normalizeMode(raw), raw);
@@ -44,7 +41,7 @@ test('only the exact strings `shadow` and `on` leave the cache off', () => {
   }
 });
 
-test('plan: only an `on` ordinary PR run may skip the build; only refs a later run reads may save', () => {
+test('plan: only an `on` ordinary PR run may skip the build; only main saves', () => {
   const main = 'refs/heads/main';
   const pr = 'refs/pull/7/merge';
   const queue = 'refs/heads/gh-readonly-queue/main/pr-7-abc';
@@ -52,9 +49,9 @@ test('plan: only an `on` ordinary PR run may skip the build; only refs a later r
     // mode, event, batch, ref -> active, verify, store
     ['off', 'pull_request', 'false', pr, false, false, false],
     ['off', 'push', 'false', main, false, false, false],
-    ['shadow', 'pull_request', 'false', pr, true, true, true],
+    ['shadow', 'pull_request', 'false', pr, true, true, false],
     ['shadow', 'push', 'false', main, true, true, true],
-    ['on', 'pull_request', 'false', pr, true, false, true],
+    ['on', 'pull_request', 'false', pr, true, false, false],
     ['on', 'pull_request', 'true', pr, true, true, false],
     ['on', 'push', 'false', main, true, true, true],
     ['on', 'merge_group', 'false', queue, true, true, false],
@@ -125,31 +122,6 @@ test('published-paths leaves out cache-only entries, and names a bad entry inste
   }
 });
 
-function git(cwd, ...args) {
-  return execFileSync('git', args, { cwd, encoding: 'utf-8', stdio: 'pipe' });
-}
-
-function makeRepo() {
-  const root = mkdtempSync(join(tmpdir(), 'wasm-cache-'));
-  mkdirSync(join(root, 'rust', 'core'), { recursive: true });
-  mkdirSync(join(root, 'packages', 'wasm', 'pkg'), { recursive: true });
-  writeFileSync(join(root, 'rust', 'core', 'lib.rs'), 'pub fn f() {}\n');
-  writeFileSync(join(root, 'Cargo.lock'), 'lock v1\n');
-  writeFileSync(join(root, 'packages', 'wasm', 'pkg', 'ifc-lite.d.ts'), 'committed\n');
-  git(root, 'init', '-q', '.');
-  git(root, 'config', 'user.email', 'harness@example.invalid');
-  git(root, 'config', 'user.name', 'harness');
-  git(root, 'add', '-A');
-  git(root, 'commit', '-q', '-m', 'base');
-  return root;
-}
-
-function commit(root, file, content) {
-  writeFileSync(join(root, file), content);
-  git(root, 'add', '-A');
-  git(root, 'commit', '-q', '-m', `edit ${file}`);
-}
-
 const keyOf = (root, env = BASE_ENV) => cacheKey(inputManifest({ cwd: root, paths: ['rust', 'Cargo.lock'], env }), env);
 
 test('the key moves with every listed input and with build env, and not with other files', () => {
@@ -176,6 +148,12 @@ test('the key moves with every listed input and with build env, and not with oth
       assert.notEqual(keyOf(root, env), now, JSON.stringify(env));
     }
     assert.equal(keyOf(root, { ...BASE_ENV, PATH: '/elsewhere', GITHUB_SHA: 'abc' }), now, 'unrelated env must not change the key');
+    // A file newly committed under an output dir is part of every fresh build
+    // (clean restores it), so it must start a new entry rather than make the
+    // old one fail verification on every restore.
+    mkdirSync(join(root, 'packages/wasm/pkg-diff'), { recursive: true });
+    commit(root, 'packages/wasm/pkg-diff/extra.d.ts', 'committed\n');
+    assert.notEqual(keyOf(root), now, 'a newly tracked output file must change the key');
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -253,6 +231,10 @@ test('record refuses a build that lacks a required output, and refuses an empty 
     fakeBuild(root);
     rmSync(join(root, 'packages/wasm/pkg-diff-decode-test/ifc-lite-diff_bg.wasm'));
     assert.throws(() => recordOutputs(root, 'k'), /missing packages\/wasm\/pkg-diff-decode-test/);
+    // #9793 review: the JS entrypoint the decode-leak test imports.
+    fakeBuild(root);
+    rmSync(join(root, 'packages/wasm/pkg-diff-decode-test/ifc-lite-diff.js'));
+    assert.throws(() => recordOutputs(root, 'k'), /missing packages\/wasm\/pkg-diff-decode-test\/ifc-lite-diff\.js/);
     fakeBuild(root);
     assert.throws(() => recordOutputs(root, ''), /no cache key/);
   } finally {
@@ -284,23 +266,25 @@ test('clean returns the output dirs to the checkout, tracked files included', ()
   }
 });
 
-/** A temp repo carrying its own copy of the script, so the CLI keys on it. */
-function makeScriptRepo() {
-  const root = makeRepo();
-  mkdirSync(join(root, 'scripts', 'lib'), { recursive: true });
-  copyFileSync(SCRIPT, join(root, 'scripts', 'ci-wasm-cache.mjs'));
-  copyFileSync(join(HERE, 'lib', 'is-main-entry.mjs'), join(root, 'scripts', 'lib', 'is-main-entry.mjs'));
-  writeFileSync(join(root, INPUTS_FILE), '# test list\nrust\nCargo.lock\n');
-  git(root, 'add', '-A');
-  git(root, 'commit', '-q', '-m', 'script');
-  return root;
-}
-
+/**
+ * Run the CLI with no $GITHUB_OUTPUT (local mode): outputs and annotations
+ * both on stdout. The file-based wiring is ci-wasm-cache.wiring.test.mjs.
+ */
 function cli(root, args, env) {
   return spawnSync(process.execPath, [join(root, 'scripts', 'ci-wasm-cache.mjs'), ...args], {
     encoding: 'utf-8',
-    env: { PATH: process.env.PATH, ...env },
+    env: { PATH: process.env.PATH, ...REPO_ENV, ...env },
   });
+}
+
+/** `name=value` lines of a local-mode run, with `::` annotation lines left out. */
+function outputsOf(stdout) {
+  const out = {};
+  for (const line of stdout.split('\n')) {
+    const pair = line.match(/^(\w+)=(.*)$/);
+    if (pair) out[pair[1]] = pair[2];
+  }
+  return out;
 }
 
 test('CLI end to end: plan, record, then a hit is used by an `on` PR run and refused once tampered', () => {
@@ -316,25 +300,21 @@ test('CLI end to end: plan, record, then a hit is used by an `on` PR run and ref
     assert.equal(plan.status, 0, plan.stderr);
     const key = plan.stdout.match(/^key=(wasm-build-v1-Linux-X64-[0-9a-f]{64})$/m)?.[1];
     assert.ok(key, plan.stdout);
-    assert.match(plan.stdout, /^mode=on\nactive=true\nverify=false\n/);
+    assert.match(plan.stdout, /^mode=on\nactive=true\nverify=false\nstore=false\n/);
     assert.match(plan.stdout, /paths<<__WASM_CACHE_EOF__\npackages\/wasm\/pkg\n[\s\S]*\.ci-wasm-cache\n__WASM_CACHE_EOF__\n$/);
 
     fakeBuild(root);
-    const record = cli(root, ['record'], { WASM_CACHE_KEY: key });
-    assert.equal(record.status, 0, record.stderr);
+    const record = cli(root, ['record'], { ...env, WASM_CACHE_KEY: key });
+    assert.equal(record.status, 0, record.stdout + record.stderr);
 
-    assert.match(plan.stdout, /^store=true$/m, 'an ordinary PR saves to its own ref');
     const resolveEnv = { WASM_CACHE_MODE: 'on', WASM_CACHE_VERIFY: 'false', WASM_CACHE_STORE: 'true', WASM_CACHE_HIT: 'true', WASM_CACHE_KEY: key, RUNNER_TEMP: temp };
     const hit = cli(root, ['resolve'], resolveEnv);
     assert.equal(hit.stdout, 'build=false\ncompare=false\nsave=false\nrejected=false\n', hit.stderr);
 
     writeFileSync(join(root, 'packages/wasm/pkg/ifc-lite.js'), 'tampered');
     const tampered = cli(root, ['resolve'], resolveEnv);
-    assert.equal(
-      tampered.stdout.split('\n').filter((l) => /^(build|compare|save|rejected)=/.test(l)).join(' '),
-      'build=true compare=false save=false rejected=true',
-    );
-    assert.match(tampered.stdout, /::warning title=WASM build cache entry rejected::/);
+    assert.deepEqual(outputsOf(tampered.stdout), { build: 'true', compare: 'false', save: 'false', rejected: 'true' });
+    assert.match(tampered.stdout, /^::warning title=WASM build cache entry rejected::/m);
   } finally {
     rmSync(root, { recursive: true, force: true });
     rmSync(temp, { recursive: true, force: true });
@@ -348,7 +328,70 @@ test('plan CLI turns the cache off, with a warning, when the input list has a ty
     const res = cli(root, ['plan'], { ...BASE_ENV, CI_WASM_CACHE: 'on', GITHUB_EVENT_NAME: 'pull_request' });
     assert.equal(res.status, 0, res.stderr);
     assert.match(res.stdout, /::warning title=WASM build cache off for this run::input 'rustXX' does not exist at HEAD/);
-    assert.match(res.stdout, /mode=on\nactive=false\nverify=false\n$/);
+    assert.deepEqual(outputsOf(res.stdout), { mode: 'on', active: 'false', verify: 'false' });
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('record refuses a build whose env moved after Plan keyed it, except rust-cache\'s CARGO_INCREMENTAL=0', () => {
+  const root = makeScriptRepo();
+  const temp = mkdtempSync(join(tmpdir(), 'wasm-cache-temp-'));
+  try {
+    const env = { ...BASE_ENV, CI_WASM_CACHE: 'on', GITHUB_EVENT_NAME: 'pull_request', RUNNER_TEMP: temp };
+    const key = outputsOf(cli(root, ['plan'], env).stdout).key;
+    assert.ok(key);
+    fakeBuild(root);
+    // What Swatinem/rust-cache exports after Plan: tolerated.
+    const tolerated = cli(root, ['record'], { ...env, CARGO_INCREMENTAL: '0', WASM_CACHE_KEY: key });
+    assert.equal(tolerated.status, 0, tolerated.stdout + tolerated.stderr);
+    // A $GITHUB_ENV write between Plan and the build: refused.
+    const drifted = cli(root, ['record'], { ...env, RUSTFLAGS: '-C opt-level=1', WASM_CACHE_KEY: key });
+    assert.equal(drifted.status, 1);
+    assert.match(drifted.stdout, /::warning title=WASM build cache entry not recorded::build env differs from what Plan keyed: env RUSTFLAGS unset -> env RUSTFLAGS="-C opt-level=1"/);
+    // A multi-line value stays one line in the snapshot and reads as drift,
+    // not as a parse crash.
+    const multiline = cli(root, ['record'], { ...env, RUSTFLAGS: 'a\nb', WASM_CACHE_KEY: key });
+    assert.equal(multiline.status, 1);
+    assert.match(multiline.stdout, /env RUSTFLAGS unset -> env RUSTFLAGS="a\\nb"/);
+    const { HOME: _home, ...withoutHome } = env;
+    const removed = cli(root, ['record'], { ...withoutHome, WASM_CACHE_KEY: key });
+    assert.equal(removed.status, 1, 'a var Plan saw that is gone is drift too');
+    // No Plan snapshot at all: refused rather than recorded unchecked.
+    const noPlan = cli(root, ['record'], { ...env, RUNNER_TEMP: mkdtempSync(join(tmpdir(), 'wasm-cache-empty-')), WASM_CACHE_KEY: key });
+    assert.equal(noPlan.status, 1);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+    rmSync(temp, { recursive: true, force: true });
+  }
+});
+
+test('plan turns the cache off when the build step adds env, an inline assignment or another command', () => {
+  const root = makeScriptRepo();
+  const env = { ...BASE_ENV, CI_WASM_CACHE: 'on', GITHUB_EVENT_NAME: 'pull_request' };
+  try {
+    assert.equal(outputsOf(cli(root, ['plan'], env).stdout).active, 'true', 'the stub workflow is keyable');
+    const variants = {
+      'sets `env:`': KEYABLE_WORKFLOW.replace('        run: bash', "        env:\n          DEBUG_GEOMETRY: '1'\n        run: bash"),
+      'runs `DEBUG_GEOMETRY=1 bash': KEYABLE_WORKFLOW.replace('run: bash', 'run: DEBUG_GEOMETRY=1 bash'),
+      'runs `|`': KEYABLE_WORKFLOW.replace('run: bash scripts/ci-wasm-build.sh', 'run: |\n          export RUSTFLAGS=-Cx\n          bash scripts/ci-wasm-build.sh'),
+      'runs `bash scripts/ci-wasm-build.sh && bash scripts/build-wasm.sh`': KEYABLE_WORKFLOW.replace('ci-wasm-build.sh', 'ci-wasm-build.sh && bash scripts/build-wasm.sh'),
+      'no step runs': KEYABLE_WORKFLOW.replace('scripts/ci-wasm-build.sh', 'scripts/build-wasm.sh'),
+      'sets `"env": {RUSTFLAGS': KEYABLE_WORKFLOW.replace('        run: bash', '        "env": {RUSTFLAGS: "-C opt-level=1"}\n        run: bash'),
+    };
+    for (const [problem, workflow] of Object.entries(variants)) {
+      commit(root, '.github/workflows/test.yml', workflow);
+      const res = cli(root, ['plan'], env);
+      assert.equal(outputsOf(res.stdout).active, 'false', problem);
+      assert.match(res.stdout, /::warning title=WASM build cache off for this run::the WASM build step is not keyable/);
+      assert.ok(res.stdout.includes(problem), `${problem} not named in: ${res.stdout}`);
+    }
+    // A branch name may contain `@`; the workflow path is cut at the first one.
+    commit(root, '.github/workflows/test.yml', KEYABLE_WORKFLOW);
+    const atBranch = cli(root, ['plan'], { ...env, GITHUB_WORKFLOW_REF: 'o/r/.github/workflows/test.yml@refs/heads/fix@cache' });
+    assert.equal(outputsOf(atBranch.stdout).active, 'true', atBranch.stdout);
+    const missing = cli(root, ['plan'], { ...env, GITHUB_WORKFLOW_REF: '' });
+    assert.equal(outputsOf(missing.stdout).active, 'false', 'no workflow ref: cannot check, so off');
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -369,7 +412,7 @@ test('compare CLI: identical passes; drift fails only with --strict in mode on',
     recordOutputs(root, 'k');
     const shadow = cli(root, ['compare', '--strict'], { WASM_CACHE_MODE: 'shadow', RUNNER_TEMP: temp });
     assert.equal(shadow.status, 0);
-    assert.match(shadow.stdout, /::warning title=WASM build cache drift::8 file\(s\)/);
+    assert.match(shadow.stdout, /::warning title=WASM build cache drift::11 file\(s\)/);
     const lenient = cli(root, ['compare'], { WASM_CACHE_MODE: 'on', RUNNER_TEMP: temp });
     assert.equal(lenient.status, 0);
     assert.match(lenient.stdout, /::error title=WASM build cache drift::/);

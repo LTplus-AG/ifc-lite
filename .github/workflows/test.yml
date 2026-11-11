@@ -708,7 +708,9 @@ jobs:
         env:
           CI_WASM_CACHE: ${{ vars.CI_WASM_CACHE }}
           PR_BATCH: ${{ needs.changes.outputs.batch }}
-        run: node scripts/ci-wasm-cache.mjs plan >> "$GITHUB_OUTPUT"
+        # The script appends to $GITHUB_OUTPUT itself; its stdout carries
+        # annotations and must not be redirected there.
+        run: node scripts/ci-wasm-cache.mjs plan
 
       # Exact key only: a prefix match would restore another tree's build.
       - name: Restore the WASM build cache
@@ -729,7 +731,7 @@ jobs:
           WASM_CACHE_STORE: ${{ steps.wasmplan.outputs.store }}
           WASM_CACHE_KEY: ${{ steps.wasmplan.outputs.key }}
           WASM_CACHE_HIT: ${{ steps.wasmrestore.outputs.cache-hit }}
-        run: node scripts/ci-wasm-cache.mjs resolve >> "$GITHUB_OUTPUT"
+        run: node scripts/ci-wasm-cache.mjs resolve
 
       # Rust + wasm-pack for the wasm32 build (pure-Rust CSG kernel — no
       # C++ toolchain needed since M9). Single-sourced in
@@ -796,28 +798,27 @@ jobs:
       # Skipped on the prebuilt fast path (the bundle was just fetched above);
       # the type-sync gate below is skipped there too, since a frontend-only PR
       # can't have changed the committed .d.ts.
-      # With the cache active the probe bundle for the fingerprint step is
-      # built here too, so one cache entry holds every output, and the output
-      # dirs are reset to the checkout first so a restored entry never mixes
-      # into a fresh build. Build env belongs at job or workflow level, never on
-      # this step: the cache key reads the env of the Plan step, so a flag set
-      # only here would not reach the key.
       - name: Build WASM
-        if: needs.changes.outputs.wasm_prebuilt != 'true' && steps.wasm.outputs.build != 'false'
-        env:
-          WASM_CACHE_ACTIVE: ${{ steps.wasmplan.outputs.active }}
-        run: |
-          if [ "$WASM_CACHE_ACTIVE" = true ]; then
-            node scripts/ci-wasm-cache.mjs clean
-            bash scripts/test-diff-decode-leaks.sh --build-only
-          fi
-          bash scripts/build-wasm.sh
+        if: needs.changes.outputs.wasm_prebuilt != 'true' && steps.wasmplan.outputs.active != 'true'
+        run: bash scripts/build-wasm.sh
+
+      # With the cache active the build is scripts/ci-wasm-build.sh (reset the
+      # output dirs, build the probe bundle, build the engine), the same file
+      # wasm-build-cache.yml runs and a key input. This step must stay exactly
+      # this: no `env:`, nothing else in `run:`. Build env goes at job or
+      # workflow level, where the Plan step (and so the key) sees it; Plan
+      # turns the cache off for a run whose step differs.
+      - name: Build WASM (cache active)
+        if: steps.wasmplan.outputs.active == 'true' && steps.wasm.outputs.build != 'false'
+        run: bash scripts/ci-wasm-build.sh
 
       # Hashes of the fresh build, stored with the entry and checked on every
       # restore. Before `Build packages`, so the entry is exactly this build.
+      # Only when something reads the manifest: a comparison, or a save
+      # (main only). A PR miss records nothing.
       - name: Record the WASM build output
         id: wasmrecord
-        if: steps.wasmplan.outputs.active == 'true' && steps.wasm.outputs.build == 'true'
+        if: steps.wasmplan.outputs.active == 'true' && steps.wasm.outputs.build == 'true' && (steps.wasm.outputs.compare == 'true' || steps.wasm.outputs.save == 'true')
         continue-on-error: true
         env:
           WASM_CACHE_KEY: ${{ steps.wasmplan.outputs.key }}
@@ -846,8 +847,9 @@ jobs:
       # fail the PR. Scoped to the .d.ts only; pkg/README.md and pkg/package.json
       # churn on every wasm-pack run (see AGENTS.md) and are intentionally
       # excluded. On a used WASM cache hit the declarations are the restored
-      # build of the same inputs; the committed copies are not a key input, so
-      # a hand edit to them still shows here.
+      # build of the same inputs. The committed copies are part of the key
+      # (tracked files under the output dirs), so a hand edit to them misses
+      # the cache, builds from source and still shows here.
       - name: Verify committed wasm types are in sync
         if: needs.changes.outputs.wasm_prebuilt != 'true'
         run: |

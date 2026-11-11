@@ -61,7 +61,8 @@ jobs:
         id: plan
         env:
           CI_WASM_CACHE: ${{ vars.CI_WASM_CACHE }}
-        run: node scripts/ci-wasm-cache.mjs plan >> "$GITHUB_OUTPUT"
+        # Appends to $GITHUB_OUTPUT itself; stdout carries annotations.
+        run: node scripts/ci-wasm-cache.mjs plan
 
       - name: Restore the WASM build cache
         id: restore
@@ -80,24 +81,23 @@ jobs:
           WASM_CACHE_STORE: ${{ steps.plan.outputs.store }}
           WASM_CACHE_KEY: ${{ steps.plan.outputs.key }}
           WASM_CACHE_HIT: ${{ steps.restore.outputs.cache-hit }}
-        run: node scripts/ci-wasm-cache.mjs resolve >> "$GITHUB_OUTPUT"
+        run: node scripts/ci-wasm-cache.mjs resolve
 
-      # Same cargo cache as test.yml's build job (prefix ci-build).
+      # Restores test.yml's build cargo cache (prefix ci-build) and never
+      # saves it: this job builds wasm32 only, and saving first would leave
+      # test.yml's entry without its host artifacts.
       - name: Setup WASM build toolchain
         if: steps.plan.outputs.active == 'true'
         uses: ./.github/actions/setup-wasm-build
         with:
           cache-prefix: ci-build
+          save-if: 'false'
 
-      # The same commands, in the same order, as test.yml's `Build WASM` with
-      # the cache active. Build env belongs at job or workflow level, never on
-      # this step: the key reads the env of the Plan step.
-      - name: Build WASM
+      # The same file test.yml runs with the cache active, and a key input.
+      # Exactly this, no `env:`: Plan turns the cache off otherwise.
+      - name: Build WASM (cache active)
         if: steps.plan.outputs.active == 'true'
-        run: |
-          node scripts/ci-wasm-cache.mjs clean
-          bash scripts/test-diff-decode-leaks.sh --build-only
-          bash scripts/build-wasm.sh
+        run: bash scripts/ci-wasm-build.sh
 
       # Under `shadow` a refusal (an unlisted output dir, a missing required
       # file) only skips the save, as in test.yml; under `on` it fails.

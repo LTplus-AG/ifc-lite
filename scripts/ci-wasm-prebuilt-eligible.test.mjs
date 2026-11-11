@@ -26,6 +26,7 @@ import { copyFileSync, mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSy
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { CACHE_SCRIPT_LIBS } from './lib/ci-wasm-cache-fixture.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const GATE = join(HERE, 'ci-wasm-prebuilt-eligible.sh');
@@ -77,7 +78,9 @@ function installGate(root, { typo = false, list } = {}) {
   // The gate reads its list through this script's `published-paths` subcommand.
   mkdirSync(join(root, 'scripts', 'lib'), { recursive: true });
   copyFileSync(join(HERE, 'ci-wasm-cache.mjs'), join(root, 'scripts', 'ci-wasm-cache.mjs'));
-  copyFileSync(join(HERE, 'lib', 'is-main-entry.mjs'), join(root, 'scripts', 'lib', 'is-main-entry.mjs'));
+  for (const lib of CACHE_SCRIPT_LIBS) {
+    copyFileSync(join(HERE, 'lib', lib), join(root, 'scripts', 'lib', lib));
+  }
   if (typo) writeFileSync(join(root, LIST), `rustXX\n${PATHS.slice(1).join('\n')}\n`);
   if (list !== undefined) writeFileSync(join(root, LIST), list);
 }

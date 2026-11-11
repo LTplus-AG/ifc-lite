@@ -8,29 +8,37 @@
  * made for the same inputs, and checks that reuse when it is cheap to.
  *
  * The switch is the repository variable CI_WASM_CACHE:
- *   off     (unset, or any value but the two below) exactly the old flow:
+ *   off     (unset, or any value but the two below) the old build steps:
  *           build from source, no restore, no save.
  *   shadow  restore AND build from source, compare the two byte for byte,
- *           annotate a mismatch, use the fresh build. Saves on a miss.
+ *           annotate a mismatch, use the fresh build.
  *   on      a pull_request run uses the restored output on a hit and builds
- *           (and saves) on a miss. Every other run (push, merge_group,
- *           workflow_dispatch, a Mergify batch PR) still builds from source
- *           and compares, so drift shows at one build per merge.
+ *           on a miss. Every other run (push, merge_group, workflow_dispatch,
+ *           a Mergify batch PR) still builds from source and compares, so
+ *           drift shows at one build per merge.
+ * In either mode only runs on main save (planDecision says why).
  *
  * The key is a digest of the git object id of every path in
  * scripts/wasm-build-inputs.txt (the list the prebuilt-eligibility probe and
- * vercel-install.sh read too), the env vars the build reads (KEY_ENV_*), and
- * the runner OS/arch. Fails closed: any error while planning turns the cache
- * off for that run; a restored entry is used only when every file matches the
- * manifest stored with it.
+ * vercel-install.sh read too), the files committed under the output dirs,
+ * the env vars the build reads (KEY_ENV_*), and the runner OS/arch. The build
+ * commands live in scripts/ci-wasm-build.sh, which is on that list. Fails
+ * closed: any error while planning turns the cache off for that run; a
+ * restored entry is used only when every file matches the manifest stored
+ * with it.
  *
- * Subcommands (stdout is `name=value` lines for $GITHUB_OUTPUT):
- *   plan     env CI_WASM_CACHE, GITHUB_EVENT_NAME, GITHUB_REF, PR_BATCH
+ * Subcommands (plan and resolve append `name=value` lines to $GITHUB_OUTPUT
+ * themselves; stdout is for annotations):
+ *   plan     env CI_WASM_CACHE, GITHUB_EVENT_NAME, GITHUB_REF, PR_BATCH,
+ *            GITHUB_WORKFLOW_REF, GITHUB_REPOSITORY
  *            -> mode, active, verify, store, key, paths
+ *            Off for the run when the calling workflow's build step is not
+ *            exactly `bash scripts/ci-wasm-build.sh` (lib/ci-wasm-build-step.mjs)
  *   resolve  env WASM_CACHE_VERIFY, WASM_CACHE_STORE, WASM_CACHE_KEY,
  *            WASM_CACHE_HIT -> build, compare, save, rejected
  *   clean    reset the output dirs to the checkout before a fresh build
- *   record   env WASM_CACHE_KEY: write the manifest of the fresh build
+ *   record   env WASM_CACHE_KEY: write the manifest of the fresh build;
+ *            refuses when the env differs from what Plan keyed
  *   compare  env WASM_CACHE_MODE [--strict]: restored vs fresh; with
  *            --strict a mismatch fails when the mode is `on`
  *   published-paths  the listed paths the npm bundle depends on, one per
@@ -44,12 +52,14 @@ import { tmpdir } from 'node:os';
 import { join, dirname, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isMainEntry } from './lib/is-main-entry.mjs';
+import { buildStepProblems, workflowPath } from './lib/ci-wasm-build-step.mjs';
+import { readInputList } from './lib/wasm-build-inputs.mjs';
+import { envLines, envDrift } from './lib/ci-wasm-key-env.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 /** Bump to orphan every existing entry (e.g. after a drift report). */
 export const KEY_VERSION = 'v1';
-export const INPUTS_FILE = 'scripts/wasm-build-inputs.txt';
 export const OUTPUT_DIRS = [
   'packages/wasm/pkg',
   'packages/wasm/pkg-diff',
@@ -65,28 +75,14 @@ export const REQUIRED_OUTPUTS = [
   'packages/wasm/pkg/ifc-lite.js',
   'packages/wasm/pkg/ifc-lite.d.ts',
   'packages/wasm/pkg-diff/ifc-lite-diff_bg.wasm',
+  'packages/wasm/pkg-diff/ifc-lite-diff.js',
   'packages/wasm/pkg-diff/ifc-lite-diff.d.ts',
   'packages/wasm/pkg-rhino/ifc-lite-rhino_bg.wasm',
+  'packages/wasm/pkg-rhino/ifc-lite-rhino.js',
   'packages/wasm/pkg-rhino/ifc-lite-rhino.d.ts',
   'packages/wasm/pkg-diff-decode-test/ifc-lite-diff_bg.wasm',
+  'packages/wasm/pkg-diff-decode-test/ifc-lite-diff.js',
 ];
-
-/**
- * Env the build reads. build-wasm.sh switches bundles and features on the
- * first five; cargo and rustc read the rest. HOME, CARGO_HOME, RUSTUP_HOME,
- * GITHUB_WORKSPACE and the target-dir vars are here because rustc embeds
- * source and OUT_DIR paths under them in panic locations, so they change the
- * bytes even when nothing else does.
- */
-export const KEY_ENV_NAMES = [
-  'DEBUG_GEOMETRY', 'BUILD_CORE', 'BUILD_THREADED', 'BUILD_WIDE', 'BUILD_RETAINED',
-  'RUSTFLAGS', 'CARGO_ENCODED_RUSTFLAGS', 'CARGO_BUILD_RUSTFLAGS', 'CARGO_BUILD_TARGET',
-  'RUSTC', 'RUSTC_BOOTSTRAP', 'RUSTUP_TOOLCHAIN', 'RUSTC_WRAPPER', 'RUSTC_WORKSPACE_WRAPPER',
-  'CARGO_INCREMENTAL', 'CARGO_TARGET_DIR', 'CARGO_BUILD_TARGET_DIR',
-  'HOME', 'CARGO_HOME', 'RUSTUP_HOME', 'GITHUB_WORKSPACE',
-  'RUNNER_OS', 'RUNNER_ARCH', 'ImageOS',
-];
-export const KEY_ENV_PREFIXES = ['CARGO_PROFILE_', 'CARGO_UNSTABLE_', 'CARGO_TARGET_WASM32_', 'WASM_BINDGEN_', 'WASM_PACK_'];
 
 export function normalizeMode(raw) {
   return raw === 'shadow' || raw === 'on' ? raw : 'off';
@@ -94,15 +90,16 @@ export function normalizeMode(raw) {
 
 /**
  * Before the restore. `verify` runs always build from source; only an `on`
- * pull_request run (not a Mergify batch) may skip the build. `store` says
- * whether a miss may save: only where a later run can read the entry, i.e.
- * main (every PR reads it) or an ordinary PR's own ref (its next push reads
- * it). merge_group and batch-PR refs are read by nothing.
+ * pull_request run (not a Mergify batch) may skip the build. `store`: only
+ * main saves. Every PR reads main's entries; nothing reads merge_group or
+ * batch-PR entries; and a PR's own entry would only serve a later push with
+ * the same inputs, which for a PR that changed them also trips the `rust`
+ * filter, whose toolchain setup makes turbo rebuild the WASM anyway.
  */
 export function planDecision({ mode, event, batch, ref }) {
   const active = mode !== 'off';
   const verify = active && (mode === 'shadow' || event !== 'pull_request' || batch === 'true');
-  const store = active && (ref === 'refs/heads/main' || (event === 'pull_request' && batch !== 'true'));
+  const store = active && ref === 'refs/heads/main';
   return { active, verify, store };
 }
 
@@ -118,37 +115,6 @@ export function resolveDecision({ verify, store, hit, valid }) {
   const save = !hit && store;
   if (verify) return { build: true, compare: usable, save, rejected };
   return { build: !usable, compare: false, save, rejected };
-}
-
-const CACHE_ONLY = 'cache-only:';
-
-/**
- * Entries of the input list. A `cache-only:` entry feeds only outputs the
- * published npm bundle does not contain (the probe bundle, opt-in bundles),
- * so it keys the cache but not the prebuilt-eligibility probes.
- */
-export function parseInputEntries(text) {
-  const entries = [];
-  for (const raw of text.split('\n')) {
-    let line = raw.replace(/#.*/, '').trim();
-    if (!line) continue;
-    const cacheOnly = line.startsWith(CACHE_ONLY);
-    if (cacheOnly) line = line.slice(CACHE_ONLY.length);
-    if (!line || /\s/.test(line) || line.startsWith('/') || line.split('/').includes('..')) {
-      throw new Error(`${INPUTS_FILE}: '${raw.trim()}' is not a repo-relative path`);
-    }
-    entries.push({ path: line, cacheOnly });
-  }
-  if (entries.length === 0) throw new Error(`${INPUTS_FILE} lists no paths`);
-  return entries;
-}
-
-/** Every listed path, or with `published` only those the npm bundle depends on. */
-export function readInputList(cwd, { published = false } = {}) {
-  const entries = parseInputEntries(readFileSync(join(cwd, INPUTS_FILE), 'utf-8'));
-  const paths = entries.filter((entry) => !(published && entry.cacheOnly)).map((entry) => entry.path);
-  if (paths.length === 0) throw new Error(`${INPUTS_FILE} lists no path the published bundle depends on`);
-  return paths;
 }
 
 function git(cwd, args) {
@@ -173,13 +139,14 @@ export function inputManifest({ cwd, paths, env }) {
   }
   const dirty = git(cwd, ['status', '--porcelain', '--', ...paths]);
   if (dirty) throw new Error(`inputs differ from HEAD in the working tree:\n${dirty}`);
-  const names = new Set(KEY_ENV_NAMES);
-  for (const name of Object.keys(env)) {
-    if (KEY_ENV_PREFIXES.some((prefix) => name.startsWith(prefix))) names.add(name);
+  // Committed files under the output dirs come back with every fresh build
+  // (clean restores them), so they are part of what an entry must hold. Keyed
+  // here, a newly tracked file starts a new entry instead of making every
+  // restore of the old one fail verification.
+  for (const line of git(cwd, ['ls-files', '-s', '--', ...OUTPUT_DIRS]).split('\n').filter(Boolean)) {
+    lines.push(`tracked ${line}`);
   }
-  for (const name of [...names].sort()) {
-    lines.push(name in env ? `env ${name}=${env[name]}` : `env ${name} unset`);
-  }
+  lines.push(...envLines(env));
   return `${lines.join('\n')}\n`;
 }
 
@@ -290,16 +257,29 @@ export function cleanOutputs(cwd) {
   if (tracked.length > 0) git(cwd, ['checkout', '--', ...tracked]);
 }
 
+/**
+ * Step outputs go straight to the $GITHUB_OUTPUT file (stdout when it is not
+ * set, for local use). Never redirect this script's stdout into that file:
+ * stdout carries the `::warning` annotations, and redirected they turn into
+ * bogus outputs and never show.
+ */
 function emit(outputs) {
+  let text = '';
   for (const [name, value] of Object.entries(outputs)) {
-    const text = String(value);
-    if (text.includes('\n')) process.stdout.write(`${name}<<__WASM_CACHE_EOF__\n${text}\n__WASM_CACHE_EOF__\n`);
-    else process.stdout.write(`${name}=${text}\n`);
+    const v = String(value);
+    text += v.includes('\n') ? `${name}<<__WASM_CACHE_EOF__\n${v}\n__WASM_CACHE_EOF__\n` : `${name}=${v}\n`;
   }
+  if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, text);
+  else process.stdout.write(text);
 }
 
 function summary(line) {
   if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${line}\n`);
+}
+
+/** The env Plan keyed on, for `record` to compare with the env the build ran in. */
+function planEnvFile(env) {
+  return join(env.RUNNER_TEMP ?? tmpdir(), 'wasm-cache-plan-env.txt');
 }
 
 function restoredCopy(env) {
@@ -311,8 +291,11 @@ function plan(env) {
   try {
     const { active, verify, store } = planDecision({ mode, event: env.GITHUB_EVENT_NAME, batch: env.PR_BATCH, ref: env.GITHUB_REF });
     if (!active) return emit({ mode, active: false, verify: false });
+    const problems = buildStepProblems(readFileSync(join(ROOT, workflowPath(env)), 'utf-8'));
+    if (problems.length > 0) throw new Error(`the WASM build step is not keyable: ${problems.join('; ')}`);
     const manifest = inputManifest({ cwd: ROOT, paths: readInputList(ROOT), env });
     const key = cacheKey(manifest, env);
+    writeFileSync(planEnvFile(env), `${envLines(env).join('\n')}\n`);
     console.error(`WASM build cache key ${key}, digest of:\n${manifest}`);
     emit({ mode, active: true, verify, store, key, paths: CACHE_PATHS.join('\n') });
   } catch (error) {
@@ -382,8 +365,17 @@ if (isMainEntry(import.meta.url)) {
   }
   else if (command === 'clean') cleanOutputs(ROOT);
   else if (command === 'record') {
-    const files = recordOutputs(ROOT, env.WASM_CACHE_KEY ?? '');
-    console.log(`Recorded ${Object.keys(files).length} WASM output files for ${env.WASM_CACHE_KEY}`);
+    // A step between Plan and the build can change the build's env through
+    // $GITHUB_ENV, which the key never saw; such a build is not recorded.
+    try {
+      const drift = envDrift(readFileSync(planEnvFile(env), 'utf-8'), env);
+      if (drift.length > 0) throw new Error(`build env differs from what Plan keyed: ${drift.join('; ')}`);
+      const files = recordOutputs(ROOT, env.WASM_CACHE_KEY ?? '');
+      console.log(`Recorded ${Object.keys(files).length} WASM output files for ${env.WASM_CACHE_KEY}`);
+    } catch (error) {
+      console.log(`::warning title=WASM build cache entry not recorded::${error.message}`);
+      process.exitCode = 1;
+    }
   } else if (command === 'compare') process.exitCode = compare(env, flag === '--strict');
   else {
     console.error('usage: ci-wasm-cache.mjs plan|resolve|clean|record|compare [--strict]|published-paths');

@@ -38,8 +38,13 @@ scripts/build-wasm.sh
 cache-only:scripts/lib/build-wasm-wide.sh
 # Builds the decode-leak probe bundle (pkg-diff-decode-test).
 cache-only:scripts/test-diff-decode-leaks.sh
-# Pinned wasm-pack version and checksum.
-.github/actions/setup-wasm-build
+# The cached build's commands, run by both workflows (the build step itself
+# may carry nothing else; scripts/lib/ci-wasm-build-step.mjs checks).
+cache-only:scripts/ci-wasm-build.sh
+# Pinned wasm-pack version and checksum. cache-only: the action also carries
+# CI-only settings (cache SHAs bumped by Dependabot), and Vercel installs its
+# own wasm-pack, so it does not gate the prebuilt npm bundle.
+cache-only:.github/actions/setup-wasm-build
 # What the cache stores and requires (OUTPUT_DIRS, REQUIRED_OUTPUTS): a change
 # there must move the key, or every existing entry is rejected on restore and
 # cannot be overwritten.

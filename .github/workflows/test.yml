@@ -430,15 +430,10 @@ jobs:
               # the same trap the comment above describes for `apps/`.
               - 'examples/**'
               - 'packages/**'
-              # The build job runs the structural ratchet in fast and full lanes;
-              # these are its inputs outside packages/.
-              - 'tests/structural-coverage/**'
-              - 'tests/models/manifest.json'
+              # The structural ratchet (build job) reads the guide page through its
+              # cap/docs-page probe; its other inputs are packages/**, scripts/**,
+              # tests/structural-coverage/** and tests/models/manifest.json here.
               - 'docs/guide/*structural*.md'
-              - 'scripts/lib/bounded-process.mjs'
-              - 'scripts/lib/entity-table.mjs'
-              - 'scripts/lib/is-main-entry.mjs'
-              - 'scripts/lib/rust-schema-names.mjs'
               - 'tests/e2e/**'
               # Perf tools consume benchmark helpers; the CI path-coverage mirror
               # reads every tracked benchmark input, so all must trigger Node tests.
@@ -542,7 +537,8 @@ jobs:
               - 'tests/modelling-parity/**'
               - 'docs/architecture/modelling-parity-ledger.md'
               # The structural coverage scorecard: scripts/generate-structural-coverage-ledger.mjs
-              # and its test read its catalogue, baseline summary and the ledger it renders.
+              # and its test read its catalogue, baseline summary and the ledger it renders,
+              # and the build job's score ratchet (score.mjs --check) runs its probes.
               - 'tests/structural-coverage/**'
               - 'docs/architecture/structural-coverage-ledger.md'
               # The AI evaluation gates (scripts/ai-eval) read the corpus,

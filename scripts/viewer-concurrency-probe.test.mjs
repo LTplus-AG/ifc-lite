@@ -22,7 +22,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse } from 'yaml';
 
-import { GATE_SHARDS, parseTap, report, reportedFiles, selectFiles, selectionCommand } from './viewer-concurrency-probe.mjs';
+import { GATE_SHARDS, parseTap, readRecords, report, reportedFiles, selectFiles, selectionCommand } from './viewer-concurrency-probe.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..');
@@ -99,9 +99,19 @@ test('#9791 review: the probe counts every file that reported a result, whether 
 
 test('#9791 review: a runner that wrote no file list (killed mid-shard) reported nothing, and the report fails on it', () => {
   assert.deepEqual(reportedFiles(null, '/x'), []);
-  assert.deepEqual(reportedFiles('not json', '/x'), []);
+  assert.throws(() => reportedFiles('not json', '/x'), 'garbled output is an error the caller logs, not silently no files');
+  assert.throws(() => reportedFiles('{"a":1}', '/x'));
   const selected = ['src/a.test.ts', 'src/b.test.ts'];
   assert.equal(report([rec(0, selected, { reported: [] })], selected, 2, 1).complete, false);
+});
+
+test('#9791 CodeRabbit: no record directory (every shard failed before uploading) is no records, so the report still names the missing shards', () => {
+  const records = readRecords(join(TMP, 'never-downloaded'));
+  assert.deepEqual(records, []);
+  const out = report(records, ['a'], 1, 8);
+  assert.equal(out.complete, false);
+  assert.ok(out.lines.some((l) => l.includes('8 shard record(s) missing'))); // @source-text-assertion-ok subject is the generated report
+  assert.throws(() => readRecords(join(VIEWER, 'package.json')), 'a path that is not a directory is not "no records"');
 });
 
 // --------------------------------------- coverage against the real tree

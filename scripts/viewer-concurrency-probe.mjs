@@ -57,26 +57,55 @@ export function selectFiles(env) {
   return r.stdout.split('\n').filter(Boolean);
 }
 
-function readOrNull(path) {
+/**
+ * The files test-file-reporter.mjs saw report, relative to apps/viewer.
+ * `null` text (no output: a killed runner writes none) is no files. Output
+ * that is not a JSON array of paths throws, so the caller reports why.
+ */
+export function reportedFiles(text, viewerRoot) {
+  if (text === null) return [];
+  const abs = JSON.parse(text);
+  if (!Array.isArray(abs) || abs.some((f) => typeof f !== 'string')) throw new Error('file list is not a JSON array of paths');
+  return abs.map((f) => relative(viewerRoot, f).split('\\').join('/'));
+}
+
+/**
+ * Read the reporter's output. A missing file is the expected "runner did not
+ * finish" case; anything else, and unparseable output, is logged by name.
+ * Either way the shard counts no files, which the report shows as a shortfall.
+ */
+function readReportedFiles(path, viewerRoot) {
+  let text = null;
   try {
-    return readFileSync(path, 'utf8');
-  } catch {
-    return null;
+    text = readFileSync(path, 'utf8');
+  } catch (err) {
+    if (err.code === 'ENOENT') console.log(`::warning title=Viewer concurrency probe::no file list at ${path}: the test runner did not finish`);
+    else console.log(`::warning title=Viewer concurrency probe::could not read the file list ${path}: ${err.message}`);
+    return [];
+  }
+  try {
+    return reportedFiles(text, viewerRoot);
+  } catch (err) {
+    console.log(`::warning title=Viewer concurrency probe::unreadable file list ${path}: ${err.message}`);
+    return [];
   }
 }
 
 /**
- * The files test-file-reporter.mjs saw report, relative to apps/viewer.
- * Missing or unreadable output (a killed runner writes none) is no files.
+ * The shard records in `dir`. No directory means the download matched no
+ * artifact (every shard failed before uploading): no records, which the
+ * report names as missing shards. Any other read error propagates.
  */
-export function reportedFiles(text, viewerRoot) {
-  if (!text) return [];
+export function readRecords(dir) {
+  let names;
   try {
-    const abs = JSON.parse(text);
-    return Array.isArray(abs) ? abs.map((f) => relative(viewerRoot, f).split('\\').join('/')) : [];
-  } catch {
+    names = readdirSync(dir);
+  } catch (err) {
+    if (err.code !== 'ENOENT') throw err;
+    console.log(`::warning title=Viewer concurrency probe::no shard records at ${dir}`);
     return [];
   }
+  return names.filter((f) => f.endsWith('.json')).map((f) => JSON.parse(readFileSync(join(dir, f), 'utf8')));
 }
 
 const SUMMARY = /^# (tests|pass|fail|cancelled|skipped|todo|duration_ms) ([\d.]+)$/;
@@ -116,7 +145,7 @@ function shard(env) {
     console.log(`::warning title=Viewer concurrency probe::no TAP file (${err.message})`);
   }
   const { counts, failures } = parseTap(tap);
-  const reported = reportedFiles(readOrNull(filesFile), realpathSync(VIEWER));
+  const reported = readReportedFiles(filesFile, realpathSync(VIEWER));
   const jobStarted = Number(env.JOB_STARTED_AT) * 1000;
   return {
     shard: Number(env.TEST_SHARD),
@@ -192,8 +221,7 @@ export function run(argv, env = process.env) {
     return 0;
   }
   if (argv[0] === '--report') {
-    const dir = env.RECORDS;
-    const records = readdirSync(dir).filter((f) => f.endsWith('.json')).map((f) => JSON.parse(readFileSync(join(dir, f), 'utf8')));
+    const records = readRecords(env.RECORDS);
     const allFiles = selectFiles({ ...env, TEST_SHARDS: '', TEST_SHARD: '', TEST_PATTERN: '' });
     let gateCount = 0;
     for (let s = 0; s < GATE_SHARDS; s++) gateCount += selectFiles({ ...env, TEST_SHARDS: String(GATE_SHARDS), TEST_SHARD: String(s), TEST_PATTERN: '' }).length;

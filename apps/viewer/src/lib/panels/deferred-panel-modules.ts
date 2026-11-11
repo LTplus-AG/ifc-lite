@@ -5,7 +5,7 @@
 import type { WorkspacePanelId } from './registry';
 import type { ComponentType } from 'react';
 
-export type PanelModule = { default: ComponentType<{ onClose?: () => void }> };
+export type PanelModule = { default: ComponentType<{ onClose: () => void }> };
 export type DeferredPanelLoader = (() => Promise<PanelModule>) & { peek?: () => PanelModule | undefined };
 
 function cachedPanel(importModule: () => Promise<PanelModule>): DeferredPanelLoader {

@@ -147,6 +147,7 @@ export const commandPaletteEn = {
   'commandPalette.vis.site.label': 'Site',
   'commandPalette.vis.ifcAnnotations.label': 'Annotations',
   'commandPalette.vis.ifcGrid.label': 'Grids',
+  'commandPalette.vis.structuralGlyphs.label': 'Supports & loads',
   'commandPalette.vis.resetColors.label': 'Reset Colors',
 
   // ── Panels ──

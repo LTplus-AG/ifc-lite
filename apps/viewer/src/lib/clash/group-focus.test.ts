@@ -40,6 +40,7 @@ describe('manual clash group focus (#4921)', () => {
       typeVisibility: {
         spaces: true, spatialZones: true, openings: true, virtualElements: true,
         site: true, ifcAnnotations: true, ifcGrid: true,
+        structuralGlyphs: true,
       },
       typeViewMode: 'model',
     });
@@ -656,6 +657,7 @@ describe('manual clash group focus (#4921)', () => {
       typeVisibility: {
         spaces: false, spatialZones: false, openings: false, virtualElements: false,
         site: true, ifcAnnotations: true, ifcGrid: true,
+        structuralGlyphs: true,
       },
       typeViewMode: 'types',
     });

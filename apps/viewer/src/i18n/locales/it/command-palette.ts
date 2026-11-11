@@ -66,6 +66,7 @@ export const commandPaletteIt = {
   'commandPalette.vis.site.label': 'Sito',
   'commandPalette.vis.ifcAnnotations.label': 'Annotazioni',
   'commandPalette.vis.ifcGrid.label': 'Griglie',
+  "commandPalette.vis.structuralGlyphs.label": "Vincoli e carichi",
   'commandPalette.vis.resetColors.label': 'Ripristina i colori',
   'commandPalette.panel.chat.label': 'Chat IA',
   'commandPalette.panel.flavors.label': 'Gestisci i profili…',

@@ -32,7 +32,7 @@ function seedModels(count: number): number {
     ...fixtureModels(...models),
     hiddenEntities: new Set(), isolatedEntities: null, ghostExceptEntities: null, classFilter: null,
     selectedStoreys: new Set(), activeLensId: null, lensHiddenIds: new Set(), lensAppliedHiddenIds: [],
-    typeVisibility: { spaces: false, spatialZones: false, openings: false, virtualElements: false, site: true, ifcAnnotations: true, ifcGrid: true },
+    typeVisibility: { spaces: false, spatialZones: false, openings: false, virtualElements: false, site: true, ifcAnnotations: true, ifcGrid: true, structuralGlyphs: true },
     typeViewMode: 'model', hasTypeGeometry: false, hostHiddenIfcTypes: null,
     levelDisplayMode: 'stacked',
   });

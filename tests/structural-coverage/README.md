@@ -5,7 +5,7 @@ analysis domain ifc-lite reads, shows, authors and converts. The generated
 ledger is `docs/architecture/structural-coverage-ledger.md`.
 
 ```bash
-node tests/structural-coverage/score.mjs --check tests/structural-coverage/baseline/r3.json
+node tests/structural-coverage/score.mjs --check tests/structural-coverage/baseline/r4.json
 ```
 
 This writes `tests/structural-coverage/.out/summary.json` and exits 1 if
@@ -17,7 +17,7 @@ a harness error, never a product score. Without wasm-pack, `build-wasm.sh`
 keeps the wasm runtime already on disk, so scoring a Rust change needs the
 wasm toolchain. The probes run in about two seconds after building.
 
-CI runs the ratchet against the newest frozen `r<N>.json` (now `r3.json`) in the shared **Build packages +
+CI runs the ratchet against the newest frozen `r<N>.json` (now `r4.json`) in the shared **Build packages +
 WASM** job, after fixture verification and the package build. This job runs in
 both fast and full PR lanes for package, harness and manifest changes, and in
 merge-queue batches. The ledger check alone does not run the product probes.
@@ -41,7 +41,7 @@ model, four checks, the CLI command, the docs page).
 | fixture | `probes/fixture.mjs` | a corpus file declaring the row's schema carries the entity |
 | read | `probes/read.mjs` | `extractStructuralOnDemand` returns every sampled record with each own attribute's value equal to the file's; a value the read model has no field for makes the row partial |
 | card | not written yet | the viewer properties card shows it |
-| render | not written yet | a mesh or glyph is drawn |
+| render | `probes/render.mjs` (connections, actions); members and reactions not written yet | the support or load glyph list holds a glyph for every record with a restraint or a non-zero load |
 | create | `probes/create.mjs` + `create-scene.mjs` | an in-store builder authors it in a blank model of the row's schema, and the STEP export declares that schema, re-parses and carries the given values |
 | edit, remove | not written yet | in-store update and removal with sub-graph ownership |
 | convert | `probes/convert.mjs` | it survives IFC4 -> IFC2X3 -> IFC4 (or IFC2X3 -> IFC4 -> IFC2X3) with the same values |
@@ -114,3 +114,5 @@ A new in-store builder needs no new probe: add a step to `SCENE` in
 [R2 activity/result notes](baseline/r2-notes.md): 24 new create cells, 297.5/774 cells total; rows remain 56/119.
 
 [R3 combined measurement](baseline/r3-notes.md): main after #9737 and #9763 is 288.5/774 cells; the combined branch is 312.5/774, with the same 24 new create passes. R1 and R2 remain retained.
+
+[R4 support and load glyphs](baseline/r4-notes.md): 24 render cells measured (5 pass, 9 partial, 10 fail), 322/774 cells; rows remain 56/119.

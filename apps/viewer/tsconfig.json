@@ -10,6 +10,7 @@
       "@ifc-lite/viewer-retained": ["./src/lib/retained/index.ts"],
       "@ifc-lite/parser": ["../../packages/parser/src"],
       "@ifc-lite/parser/browser": ["../../packages/parser/src/browser"],
+      "@ifc-lite/parser/structural-glyphs": ["../../packages/parser/src/structural-glyphs"],
       "@ifc-lite/geometry": ["../../packages/geometry/src"],
       "@ifc-lite/geometry/geometry-class": ["../../packages/geometry/src/geometry-class"],
       "@ifc-lite/geometry/rhino-export": ["../../packages/geometry/src/rhino-export"],

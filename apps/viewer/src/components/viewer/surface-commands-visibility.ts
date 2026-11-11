@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /** Selection, basket and IFC class visibility commands. */
-import { Box, Building2, Equal, Eye, EyeOff, Layout, Minus, Palette, Pencil, Plus, RotateCcw, Save, SquareX } from 'lucide-react';
+import { Anchor, Box, Building2, Equal, Eye, EyeOff, Layout, Minus, Palette, Pencil, Plus, RotateCcw, Save, SquareX } from 'lucide-react';
 import { ACTION_NAME_KEYS } from '@/lib/commands/action-names';
 import { panelTitleKey } from '@/lib/panels/registry';
 import { useViewerStore } from '@/store';
@@ -131,6 +131,12 @@ export const VISIBILITY_SURFACE_COMMANDS = [
     keywords: 'IfcGrid IfcGridAxis grid axis bubble tag show hide section clip',
     category: 'Visibility', icon: Pencil, surfaces: paletteOnly, enabled: alwaysEnabled,
     run: () => { useViewerStore.getState().toggleTypeVisibility('ifcGrid'); },
+  },
+  {
+    id: 'vis:structuralGlyphs', labelKey: 'commandPalette.vis.structuralGlyphs.label',
+    keywords: 'structural analysis support load force moment IfcStructuralPointConnection IfcStructuralAction show hide',
+    category: 'Visibility', icon: Anchor, surfaces: paletteOnly, enabled: alwaysEnabled,
+    run: () => { useViewerStore.getState().toggleTypeVisibility('structuralGlyphs'); },
   },
   {
     id: 'vis:reset-colors', labelKey: 'commandPalette.vis.resetColors.label',

@@ -34,7 +34,9 @@ export async function loadPackages(root) {
   }
   const load = (p) => import(pathToFileURL(join(root, `packages/${p}/dist/index.js`)).href);
   const [parser, mutations, create, exporter] = await Promise.all(PACKAGES.map(load));
-  return { parser, mutations, create, exporter };
+  // The glyph builder is a subpath of its own, kept off the parser index so it loads lazily in the viewer.
+  const structuralGlyphs = await import(pathToFileURL(join(root, 'packages/parser/dist/structural-glyphs.js')).href);
+  return { parser, mutations, create, exporter, structuralGlyphs };
 }
 
 /** Memoise `make()` in the run's cache under `key`. */

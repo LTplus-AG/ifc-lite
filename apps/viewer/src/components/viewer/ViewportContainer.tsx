@@ -31,6 +31,7 @@ import { AnnotationLayer } from './annotations/AnnotationLayer';
 import { CollabPresenceLayer } from './CollabPresenceLayer';
 import { MeasurementSceneLayer } from './scene/MeasurementSceneLayer';
 import { BasepointOverlay } from './BasepointOverlay';
+import { StructuralGlyphLayer } from './structural/StructuralGlyphLayer';
 import { SceneOverlayRoot } from '@/components/viewport-ui/scene';
 import { DrawingRuntimeHost } from './drawing/DrawingRuntimeHost';
 import { BCFOverlay } from './bcf/BCFOverlay';
@@ -809,6 +810,7 @@ export function ViewportContainer() {
         <CollabPresenceLayer />
         {bcfOverlayVisible && <BCFOverlay />}
         <BasepointOverlay />
+        <StructuralGlyphLayer />
         <ZoneOverlay />
         <MeasurementSceneLayer />
         <ToolOverlays />

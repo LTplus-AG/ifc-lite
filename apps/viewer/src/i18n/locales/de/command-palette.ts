@@ -120,6 +120,7 @@ export const commandPaletteDe = {
   'commandPalette.vis.site.label': 'Grundstück',
   'commandPalette.vis.ifcAnnotations.label': 'Beschriftungen',
   'commandPalette.vis.ifcGrid.label': 'Raster',
+  "commandPalette.vis.structuralGlyphs.label": "Lager & Lasten",
   'commandPalette.vis.resetColors.label': 'Farben zurücksetzen',
   'commandPalette.panel.chat.label': 'KI-Chat',
   'commandPalette.panel.flavors.label': 'Profile verwalten …',

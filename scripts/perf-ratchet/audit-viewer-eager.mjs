@@ -57,6 +57,13 @@ if (args.includes('--expect-lazy')) {
     '/components/viewer/schedule/GanttPanel.tsx',
     '/components/viewer/lists/ListPanel.tsx',
     '/components/extensions/ExtensionsPanel.tsx',
+    // Pin panel-only subtrees too: a root can stay lazy while an inner UI leaks.
+    '/components/viewer/lists/ListBuilder.tsx',
+    '/components/viewer/lists/ListResultsTable.tsx',
+    '/components/viewer/schedule/GanttTimeline.tsx',
+    '/components/viewer/schedule/GenerateScheduleDialog.tsx',
+    '/components/extensions/IdeasPanel.tsx',
+    '/components/extensions/AuditLogPanel.tsx',
   ]) {
     if (![...chunks].some(chunk => chunk.modules.some(module => module.id.endsWith(suffix)))) {
       throw new Error(`Expected lazy feature missing from output: ${suffix}`);

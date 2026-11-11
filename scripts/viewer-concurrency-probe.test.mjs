@@ -45,7 +45,7 @@ function concurrencyArgs(extraEnv) {
   const r = spawnSync('sh', ['-c', viewerTestScript()], {
     cwd: VIEWER,
     encoding: 'utf8',
-    env: { ...env, PATH: `${TMP}:${env.PATH}`, TEST_SHARDS: '', TEST_SHARD: '', TEST_PATTERN: 'useSandbox[.]runSupersession[.]test[.]tsx$', ...extraEnv },
+    env: { ...env, PATH: `${TMP}:${env.PATH}`, TEST_SHARDS: '', TEST_SHARD: '', TEST_PATTERN: '', ...extraEnv },
   });
   assert.equal(r.status, 0, r.stderr);
   return r.stdout.split('\n').filter((a) => a.startsWith('--test-concurrency=')); // @source-text-assertion-ok filters the argv a stub tsx received, not a source file

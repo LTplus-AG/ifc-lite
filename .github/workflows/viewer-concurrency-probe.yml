@@ -36,15 +36,14 @@ permissions:
   actions: read
   contents: read
 
-concurrency:
-  group: viewer-concurrency-probe
-  cancel-in-progress: false
+# No concurrency group: a group keeps one pending run, and a later push whose
+# Test run had nothing to measure would evict a pending run that had.
 
 jobs:
-  # The probe needs the Test run's `build-output` artifact (packages/*/dist and
-  # the wasm runtime). `build` runs only when frontend or Rust code changed and
-  # the push did not replay a tested tree, which is also exactly when the
-  # viewer suite is worth measuring, so no artifact means nothing to probe.
+  # Probe only a Test run whose own viewer tests ran (frontend or Rust code
+  # changed, not a replay): `build` also runs for perf-ratchet-only changes,
+  # so the artifact alone is not enough. The probe needs that run's
+  # `build-output` artifact (packages/*/dist and the wasm runtime).
   plan:
     if: vars.VIEWER_CONCURRENCY_PROBE == 'on' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.head_repository.full_name == github.repository && github.event.workflow_run.conclusion != 'cancelled'
     runs-on: ubuntu-latest
@@ -52,7 +51,7 @@ jobs:
     outputs:
       has_build: ${{ steps.artifact.outputs.has_build }}
     steps:
-      - name: Does the Test run have a build artifact
+      - name: Did the Test run test the viewer, and keep its build
         id: artifact
         env:
           GH_TOKEN: ${{ github.token }}
@@ -61,8 +60,10 @@ jobs:
         run: |
           set -euo pipefail
           n=$(gh api "repos/$REPO/actions/runs/$RUN_ID/artifacts?name=build-output" --jq '.total_count')
-          echo "build-output artifacts on run $RUN_ID: $n"
-          echo "has_build=$([ "$n" -gt 0 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          ran=$(gh api --paginate "repos/$REPO/actions/runs/$RUN_ID/jobs?per_page=100" \
+            --jq '.jobs[] | select(.name == "Viewer tests (shard 0)" and .conclusion != "skipped") | .name' | wc -l)
+          echo "run $RUN_ID: build-output artifacts $n, viewer test shard 0 ran $ran"
+          echo "has_build=$([ "$n" -gt 0 ] && [ "$ran" -gt 0 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
 
   probe:
     name: Viewer tests at concurrency 2 (shard ${{ matrix.shard }}/8)

@@ -1361,7 +1361,7 @@ jobs:
           NODE_OPTIONS: --test-reporter=tap --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=mergify-junit.xml
           TEST_SHARDS: '16'
           TEST_SHARD: ${{ matrix.shard }}
-          # Bounded by apps/viewer's test script (only 2, 3 or 4; else 1).
+          # Bounded by apps/viewer's test script, the one place the rule lives.
           # Above 1, refresh test-durations.json only from runs at 1:
           # scripts/lib/viewer-test-durations.mjs assumes serial files.
           VIEWER_TEST_CONCURRENCY: ${{ vars.VIEWER_TEST_CONCURRENCY }}

@@ -126,6 +126,8 @@ export function parseTap(text) {
 }
 
 function shard(env) {
+  // Read before the run: a failure here must not discard a finished shard.
+  const concurrency = scriptConcurrency(env);
   const started = Date.now();
   const tapFile = `${env.OUT}.tap`;
   const filesFile = `${env.OUT}.files`;
@@ -149,7 +151,7 @@ function shard(env) {
   const jobStarted = Number(env.JOB_STARTED_AT) * 1000;
   return {
     shard: Number(env.TEST_SHARD),
-    concurrency: scriptConcurrency(env),
+    concurrency,
     reported,
     testStepSeconds: (ended - started) / 1000,
     jobStartedAt: Number.isFinite(jobStarted) && jobStarted > 0 ? jobStarted : started,
@@ -188,7 +190,7 @@ export function report(records, allFiles, expectedShards) {
   const failed = records.filter((r) => r.exitCode !== 0 || !r.counts || r.counts.fail > 0 || r.counts.cancelled > 0);
   const testStepMinutes = records.reduce((a, r) => a + r.testStepSeconds / 60, 0);
   const complete = missingShards.length === 0 && notRun.length === 0 && duplicates === 0 && extra.length === 0;
-  const conc = [...new Set(records.map((r) => r.concurrency))].join(', ');
+  const conc = [...new Set(records.map((r) => r.concurrency))].join(', ') || '?';
   const lines = [
     `## Viewer tests at concurrency ${conc} over ${expectedShards} shards (advisory)`,
     '',

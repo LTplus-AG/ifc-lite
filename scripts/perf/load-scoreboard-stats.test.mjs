@@ -504,6 +504,39 @@ test('a resumed rerun never overwrites the element files of lanes already record
   assert.deepEqual(elementFileMoves([{ ...cell, lane: 'browser-cold' }], 'FZK-base-r2', 'FZK-base-r2'), []);
 });
 
+test('an opt-in arm resumes like the default lanes: its rerun claims only the files of the lanes it records (review #9744)', async () => {
+  const { sampleTagFor, elementFileMoves } = await runner();
+  const armPlan = ['browser-cold-early', 'browser-warm1-early', 'browser-warm-early'];
+  const cell = { fixture: 'FZK', side: 'base', round: 2 };
+  // A fresh cell writes canonical files (`<tag>-early-<open>`), exactly as browser-cold-early always has.
+  assert.equal(sampleTagFor('FZK-base-r2', armPlan, armPlan, 'k1'), 'FZK-base-r2');
+  // Cold recorded, reopens missing: the rerun writes under its own tag; the recorded early-cold file is not a target.
+  const tag = sampleTagFor('FZK-base-r2', ['browser-warm1-early', 'browser-warm-early'], armPlan, 'k1');
+  assert.deepEqual(elementFileMoves([{ ...cell, lane: 'browser-warm1-early' }, { ...cell, lane: 'browser-warm-early', warmOpens: [{}, {}] }], tag, 'FZK-base-r2'),
+    [['FZK-base-r2-resumek1-early-warm1.elements.json', 'FZK-base-r2-early-warm1.elements.json'],
+      ['FZK-base-r2-resumek1-early-warm2.elements.json', 'FZK-base-r2-early-warm2.elements.json']]);
+});
+
+test('a plan listing an opt-in first-reopen lane needs two reopens (review #9744)', async () => {
+  const { loadPlan } = await runner();
+  const { mkdtempSync, writeFileSync, rmSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const dir = mkdtempSync(join(tmpdir(), 'arm-plan-'));
+  try {
+    writeFileSync(join(dir, 'index.html'), '');
+    const plan = (lanes, warmOpens) => {
+      const p = join(dir, `plan-${lanes.join('_')}-${warmOpens}.json`);
+      writeFileSync(p, JSON.stringify({ lanes, rounds: 1, warmOpens, fixtures: [{ name: 'f', path: process.execPath }],
+        sides: { base: { label: 'a', dist: dir }, branch: { label: 'b', dist: dir } } }));
+      return p;
+    };
+    assert.throws(() => loadPlan(plan(['browser-warm1-settled', 'browser-warm-settled'], 1)), /browser-warm1-settled needs warmOpens >= 2/);
+    assert.equal(loadPlan(plan(['browser-warm1-settled', 'browser-warm-settled'], 2)).warmOpens, 2);
+    assert.equal(loadPlan(plan(['browser-warm-settled'], 1)).warmOpens, 1);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
 test('the report: output and per-element verdicts never read missing identity as a match (review #9740)', async () => {
   const { outputVerdict, elementDiffVerdict, withAaFloor } = await report();
   assert.equal(outputVerdict(['m=1'], ['m=1']), 'match');

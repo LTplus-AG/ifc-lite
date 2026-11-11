@@ -54,6 +54,8 @@ export function loadPlan(path) {
   if (!Number.isInteger(plan.rounds) || plan.rounds < 1) throw new Error('plan.rounds must be a positive integer');
   plan.seed ??= Date.now() % 2 ** 31;
   plan.warmOpens ??= plan.lanes.some((l) => l === 'browser-warm' || l.startsWith('browser-warm-')) ? 2 : 0;
+  // An opt-in arm's first-reopen lane exists only when there are two reopens (the last one is its -warm lane).
+  for (const lane of plan.lanes) if (/^browser-warm1-(early|settled)$/.test(lane) && plan.warmOpens < 2) throw new Error(`${lane} needs warmOpens >= 2 (got ${plan.warmOpens})`);
   for (const side of ['base', 'branch']) {
     const s = plan.sides?.[side];
     if (!s?.label) throw new Error(`plan.sides.${side}.label is required`);
@@ -225,14 +227,21 @@ async function run(opt) {
               for (const [arm, suffix] of ARM_SAMPLES) {
                 const armLanes = missing.filter((l) => l.endsWith(suffix));
                 if (armLanes.length === 0) continue;
-                const reopens = groupLanes.some((l) => l.endsWith(suffix) && l.startsWith('browser-warm')) ? plan.warmOpens : 0;
-                const e = await browser.sample({ side: plan.sides[side], fixture, tag: `${tag}${suffix}`, warmOpens: reopens, pass: 'timing', arm });
+                const armPlan = groupLanes.filter((l) => l.endsWith(suffix));
+                const reopens = armPlan.some((l) => l.startsWith('browser-warm')) ? plan.warmOpens : 0;
+                // As for the default lanes: a resumed cell reruns under its own tag and moves only the files it records.
+                const armTag = sampleTagFor(tag, armLanes, armPlan, Date.now().toString(36));
+                const e = await browser.sample({ side: plan.sides[side], fixture, tag: `${armTag}${suffix}`, warmOpens: reopens, pass: 'timing', arm });
                 for (const lane of armLanes) {
-                  const { trace, ...row } = e.lanes[lane];
+                  const { trace, ...row } = e.lanes[lane] ?? { ok: false, error: `${lane}: not produced by the ${arm} sample` };
+                  const warmOpens = lane === `browser-warm${suffix}` ? e.warmOpens : undefined;
+                  for (const [from, to] of elementFileMoves([{ ...cell, lane, warmOpens }], armTag, tag)) {
+                    if (existsSync(join(out, 'traces', from))) renameSync(join(out, 'traces', from), join(out, 'traces', to));
+                  }
                   record({ ...common, ...row, lane, adapter: e.meta.adapter ? JSON.stringify(e.meta.adapter) : null,
                     browserVersion: e.meta.browserVersion ?? null, pageErrors: e.meta.pageErrors.length,
                     gpuHealth: lane.startsWith('browser-cold') ? e.meta.gpuHealthCold ?? null : e.meta.gpuHealth ?? null,
-                    warmOpens: lane === `browser-warm${suffix}` ? e.warmOpens : undefined }, trace ?? null);
+                    warmOpens }, trace ?? null);
                 }
               }
               const missingDefault = missing.filter((l) => DEFAULT_BROWSER.includes(l));

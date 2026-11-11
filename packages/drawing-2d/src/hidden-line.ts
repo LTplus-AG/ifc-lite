@@ -62,6 +62,14 @@ const DEFAULT_OPTIONS: HiddenLineOptions = {
 };
 
 /**
+ * Halvings used to locate where a line's visibility flips between two
+ * neighbouring samples. 7 narrows the gap to 2^-7 of a sample spacing, under
+ * a millimetre on a 3 m edge at the default 10 samples, for 7 extra depth
+ * lookups per flip.
+ */
+const TRANSITION_BISECTION_STEPS = 7;
+
+/**
  * View depth along a line as an affine function of the line parameter t
  * (0 = start, 1 = end). An absent `depthEnd` means constant depth - `??`,
  * never `||`: `depthEnd: 0` is a real value, an endpoint exactly ON the cut
@@ -225,8 +233,21 @@ export class HiddenLineClassifier {
       // 'partial' while the emitted segments were one uniform run; now the
       // two derive from the same transitions and cannot disagree.
       if (isVisible !== currentVisible) {
-        // Find transition point (approximate)
-        const transitionT = (i - 0.5) / numSamples;
+        // Bisect between the two disagreeing samples so the split lands on
+        // the occluder's edge, not half a sample spacing away from it.
+        let lo = (i - 1) / numSamples;
+        let hi = t;
+        for (let step = 0; step < TRANSITION_BISECTION_STEPS; step++) {
+          const mid = (lo + hi) / 2;
+          const midVisible = this.sampleVisibility(
+            point2DLerp(line.line.start, line.line.end, mid),
+            depthAt(mid),
+            depthBias
+          );
+          if (midVisible === currentVisible) lo = mid;
+          else hi = mid;
+        }
+        const transitionT = (lo + hi) / 2;
         const transitionPoint = point2DLerp(line.line.start, line.line.end, transitionT);
 
         segments.push({

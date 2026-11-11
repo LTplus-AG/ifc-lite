@@ -780,6 +780,8 @@ jobs:
       # Build all workspace packages so their dist/ artifacts exist for
       # downstream consumers — turbo handles the dep graph.
       - name: Build packages
+        env:
+          VITE_BUNDLE_ANALYSIS: "1"
         run: pnpm build
 
       # A separate feature bundle exposes only the test ownership probe.
@@ -804,6 +806,11 @@ jobs:
       # contain retained/SMLib code or assets.
       - name: Verify default viewer is retained-free
         run: node scripts/check-viewer-retained-free.mjs
+
+      # Fail the build if shared modules or a later static import pull these
+      # on-demand features back into the HTML/static-import startup closure.
+      - name: Verify viewer deferred panels remain lazy
+        run: node scripts/perf-ratchet/audit-viewer-eager.mjs --expect-lazy > "$RUNNER_TEMP/viewer-eager-breakdown.md"
 
       # Perf ratchet, `bundle` family (#6959). `pnpm build` above already
       # built the engine wasm and the viewer's dist/ (turbo builds apps/*

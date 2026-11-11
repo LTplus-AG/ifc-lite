@@ -5,6 +5,7 @@
 import type { Catalogue } from '../../registry';
 
 export const viewportLightingIt = {
+  "viewportLighting.container.loadErrorCard.sourceTooLarge": "Questo file IFC supera la dimensione caricabile dal motore nel browser. Ogni sorgente deve essere inferiore a {limit}. Esporta file più piccoli oppure usa la CLI nativa o il server.",
   "viewportLighting.container.emptyState.dropOverlay.title": "Rilascia il file per caricarlo",
   "viewportLighting.container.emptyState.webgpuBanner.heading": "WebGPU non disponibile",
   "viewportLighting.container.emptyState.webgpuBanner.checkBrowserSupport": "Verifica il supporto del browser",

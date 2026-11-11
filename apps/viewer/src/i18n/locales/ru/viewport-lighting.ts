@@ -5,6 +5,7 @@
 import type { Catalogue } from '../../registry';
 
 export const viewportLightingRu = {
+  "viewportLighting.container.loadErrorCard.sourceTooLarge": "Размер этого IFC-файла превышает предел загрузки движка в браузере. Каждый исходный файл должен быть меньше {limit}. Экспортируйте файлы меньшего размера или используйте нативную CLI либо сервер.",
   "viewportLighting.container.emptyState.dropOverlay.title": "Перетащите файл для загрузки",
   "viewportLighting.container.emptyState.webgpuBanner.heading": "WebGPU недоступен",
   "viewportLighting.container.emptyState.webgpuBanner.checkBrowserSupport": "Проверить поддержку браузера",

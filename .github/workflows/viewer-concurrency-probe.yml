@@ -41,34 +41,32 @@ permissions:
 
 jobs:
   # Probe only a Test run whose own viewer tests ran (frontend or Rust code
-  # changed, not a replay): `build` also runs for perf-ratchet-only changes,
-  # so the artifact alone is not enough. The probe needs that run's
-  # `build-output` artifact (packages/*/dist and the wasm runtime).
+  # changed, not a replay). Those need `build`, so the run also holds the
+  # `build-output` artifact the probe downloads (packages/*/dist and wasm).
   plan:
     if: vars.VIEWER_CONCURRENCY_PROBE == 'on' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.head_repository.full_name == github.repository && github.event.workflow_run.conclusion != 'cancelled'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
-      has_build: ${{ steps.artifact.outputs.has_build }}
+      viewer_tested: ${{ steps.check.outputs.viewer_tested }}
     steps:
-      - name: Did the Test run test the viewer, and keep its build
-        id: artifact
+      - name: Did the Test run test the viewer
+        id: check
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           RUN_ID: ${{ github.event.workflow_run.id }}
         run: |
           set -euo pipefail
-          n=$(gh api "repos/$REPO/actions/runs/$RUN_ID/artifacts?name=build-output" --jq '.total_count')
           ran=$(gh api --paginate "repos/$REPO/actions/runs/$RUN_ID/jobs?per_page=100" \
             --jq '.jobs[] | select(.name == "Viewer tests (shard 0)" and .conclusion != "skipped") | .name' | wc -l)
-          echo "run $RUN_ID: build-output artifacts $n, viewer test shard 0 ran $ran"
-          echo "has_build=$([ "$n" -gt 0 ] && [ "$ran" -gt 0 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "run $RUN_ID: viewer test shard 0 ran $ran"
+          echo "viewer_tested=$([ "$ran" -gt 0 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
 
   probe:
     name: Viewer tests at concurrency 2 (shard ${{ matrix.shard }}/8)
     needs: plan
-    if: needs.plan.outputs.has_build == 'true'
+    if: needs.plan.outputs.viewer_tested == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 35
     strategy:
@@ -128,7 +126,7 @@ jobs:
   report:
     name: Viewer concurrency probe report
     needs: [plan, probe]
-    if: ${{ !cancelled() && needs.plan.outputs.has_build == 'true' }}
+    if: ${{ !cancelled() && needs.plan.outputs.viewer_tested == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

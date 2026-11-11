@@ -189,7 +189,7 @@ test('#9791 review: the probe is its own workflow, after a main push Test run, a
   for (const [name, job] of Object.entries(rest)) {
     assert.ok([job.needs].flat().includes('plan'), `${name} needs plan`);
     const own = job.if.replace(/^\$\{\{\s*|\s*\}\}$/g, '').split(' && ');
-    assert.ok(own.includes("needs.plan.outputs.has_build == 'true'"), `${name} requires plan's output`);
+    assert.ok(own.includes("needs.plan.outputs.viewer_tested == 'true'"), `${name} requires plan's output`);
   }
 });
 

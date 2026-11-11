@@ -57,6 +57,12 @@ impl Interner {
             // gives the SAME exact order; the interval just carries the
             // distinct-coordinate majority off the wasm-emulated I512 path.
             let s = interval::cmp_lex_from_lam_iv(&self.lambdas_iv[vid as usize], &new_lam_iv)
+                // The interval cannot separate a point from itself. Re-interning
+                // the SAME construction (bit-identical defining coordinates) is
+                // the common case there (a third to over half of the interval
+                // misses on CSG-heavy models): it is the same point, so `Zero`
+                // is the exact answer without the I512 compare.
+                .or_else(|| same_construction(&self.points[vid as usize], &p).then_some(Sign::Zero))
                 .or_else(|| match (&self.lambdas[vid as usize], &new_lam) {
                     (Some(le), Some(ln)) => fixed::cmp_lex_from_lam(le, ln),
                     _ => None,
@@ -107,6 +113,28 @@ impl Interner {
     }
 }
 
+/// True when `a` and `b` are the same construction with bit-identical
+/// coordinates, hence the same exact point. Bitwise, so `-0.0` vs `0.0` or a
+/// re-ordered construction answer false and fall through to exact arithmetic.
+fn same_construction(a: &ImplicitPoint, b: &ImplicitPoint) -> bool {
+    fn eq<const N: usize>(x: &[[f64; 3]; N], y: &[[f64; 3]; N]) -> bool {
+        x.iter().flatten().zip(y.iter().flatten()).all(|(u, v)| u.to_bits() == v.to_bits())
+    }
+    match (a, b) {
+        (ImplicitPoint::Explicit(x), ImplicitPoint::Explicit(y)) => eq(&[*x], &[*y]),
+        (ImplicitPoint::Lpi(x), ImplicitPoint::Lpi(y)) => {
+            eq(&[x.p, x.q, x.r, x.s, x.t], &[y.p, y.q, y.r, y.s, y.t])
+        }
+        (ImplicitPoint::Tpi(x), ImplicitPoint::Tpi(y)) => {
+            eq(&[x.planes[0][0], x.planes[0][1], x.planes[0][2], x.planes[1][0], x.planes[1][1],
+                 x.planes[1][2], x.planes[2][0], x.planes[2][1], x.planes[2][2]],
+               &[y.planes[0][0], y.planes[0][1], y.planes[0][2], y.planes[1][0], y.planes[1][1],
+                 y.planes[1][2], y.planes[2][0], y.planes[2][1], y.planes[2][2]])
+        }
+        _ => false,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::{Lpi, Tpi};
@@ -142,5 +170,40 @@ mod tests {
         let c = it.intern(lpi_at(0.5, 0.4)); // distinct
         assert_ne!(a, c);
         assert_eq!(it.len(), 2);
+    }
+
+    #[test]
+    fn same_construction_is_bitwise_and_exact() {
+        let swapped = |p: ImplicitPoint| match p {
+            ImplicitPoint::Lpi(l) => ImplicitPoint::Lpi(Lpi { p: l.q, q: l.p, ..l }),
+            other => other,
+        };
+        assert!(same_construction(&lpi_at(0.3, 0.4), &lpi_at(0.3, 0.4)));
+        assert!(same_construction(&tpi_at(0.3, 0.4), &tpi_at(0.3, 0.4)));
+        assert!(same_construction(&ImplicitPoint::Explicit([1., 2., 3.]), &ImplicitPoint::Explicit([1., 2., 3.])));
+        // Same point, different construction or signed zero: not claimed, exact path decides.
+        assert!(!same_construction(&lpi_at(0.3, 0.4), &swapped(lpi_at(0.3, 0.4))));
+        assert!(!same_construction(&lpi_at(0.3, 0.4), &tpi_at(0.3, 0.4)));
+        assert!(!same_construction(&ImplicitPoint::Explicit([0., 2., 3.]), &ImplicitPoint::Explicit([-0., 2., 3.])));
+        assert!(!same_construction(&lpi_at(0.3, 0.4), &lpi_at(0.3, 0.5)));
+    }
+
+    #[test]
+    fn re_interning_weld_is_unchanged_by_the_identity_shortcut() {
+        // Re-interned identical constructions take the shortcut; a reordered
+        // construction of the same point still welds through exact arithmetic,
+        // and a distinct point never does.
+        let mut it = Interner::new();
+        let pts = [lpi_at(0.3, 0.4), lpi_at(0.5, 0.4), tpi_at(0.7, 0.1), lpi_at(0.3, 0.4 + 1e-12)];
+        let first: Vec<Vid> = pts.iter().map(|p| it.intern(p.clone())).collect();
+        let again: Vec<Vid> = pts.iter().map(|p| it.intern(p.clone())).collect();
+        assert_eq!(first, again);
+        let reordered = match pts[0].clone() {
+            ImplicitPoint::Lpi(l) => ImplicitPoint::Lpi(Lpi { p: l.q, q: l.p, ..l }),
+            _ => unreachable!(),
+        };
+        assert_eq!(it.intern(reordered), first[0]);
+        assert_ne!(first[0], first[3], "points 1e-12 apart must stay distinct");
+        assert_eq!(it.len(), 4);
     }
 }

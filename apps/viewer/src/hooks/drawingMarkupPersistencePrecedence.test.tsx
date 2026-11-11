@@ -72,8 +72,8 @@ END-ISO-10303-21;
 `;
 }
 
-async function parseFixture(): Promise<IfcDataStore> {
-  const bytes = new TextEncoder().encode(fixture());
+async function parseFixture(source = fixture()): Promise<IfcDataStore> {
+  const bytes = new TextEncoder().encode(source);
   return new IfcParser().parseColumnar(
     bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
   );
@@ -295,6 +295,13 @@ describe('localStorage (#4159) vs IFC-embedded (#4170) markup restore precedence
     await mount();
     await act(async () => { useViewerStore.getState().setActiveModel('model-precedence-2'); });
 
+    // #9621: this probe mounts no viewport overlay producer. The restore hook
+    // must still request a tagged model's parse while its hash is pending;
+    // only publishing restored markup waits for the localStorage decision.
+    assert.equal(hasPersistedMarkupEntryFor(model.id), 'pending');
+    assert.equal(useViewerStore.getState().getMutationView(model.id), null,
+      '#9621: hashing must not register a restore view before a decision, matching main');
+
     // Let the IFC-embedded restore's WASM parse land FIRST — the hash's
     // `arrayBuffer()` is still gated by `held`, so `hasPersistedMarkupEntryFor`
     // must still be reporting `'pending'` at this point.
@@ -318,5 +325,30 @@ describe('localStorage (#4159) vs IFC-embedded (#4170) markup restore precedence
       'once localStorage resolves to "no saved entry", the deferred IFC-embedded restore must finally run',
     );
     assert.equal(state.measure2DResults[0].distance, 5);
+  });
+
+  it('#9621: a blank source does not request a worker or mutation view while its hash is pending', async () => {
+    const held = fileWithHeldHash(31, 'blank-pending.ifc');
+    const store = await parseFixture(fixture().replace('IfcLite:Markup:Measure', 'ordinary annotation'));
+    const model: FederatedModel = {
+      id: 'blank-pending', name: held.file.name, ifcDataStore: store, geometryResult: null,
+      visible: true, collapsed: false, schemaVersion: 'IFC4', loadedAt: 0, fileSize: held.file.size,
+      sourceFile: held.file, idOffset: 0, maxExpressId: 0,
+    };
+    let posts = 0;
+    __setOverlayWorkerFactoryForTest(() => ({
+      postMessage() { posts++; }, terminate() {}, onmessage: null,
+    }) as unknown as Worker);
+    useViewerStore.setState({ models: new Map([[model.id, model]]) });
+    await mount();
+    await act(async () => { useViewerStore.getState().setActiveModel(model.id); });
+    assert.equal(hasPersistedMarkupEntryFor(model.id), 'pending');
+    assert.equal(posts, 0);
+    assert.equal(useViewerStore.getState().getMutationView(model.id), null);
+    await act(async () => { held.release(); });
+    await waitFor(() => hasPersistedMarkupEntryFor(model.id) !== 'pending', 'blank hash settles');
+    assert.equal(posts, 0, 'blank-source preflight still skips the worker after the decision');
+    assert.equal(useViewerStore.getState().getMutationView(model.id), null);
+    assert.deepEqual(useViewerStore.getState().measure2DResults, []);
   });
 });

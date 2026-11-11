@@ -51,5 +51,5 @@ export const modelWorkspaceRu = {
   "modelWorkspace.layout.plan": "План",
   "modelWorkspace.layout.split": "Разделить",
   "modelWorkspace.layout.3d": "3D",
-  "modelWorkspace.hint.onboarding": "W стена · Shift+S плита · нажмите элемент для редактирования · E выход",
+  "modelWorkspace.hint.onboarding": "W стена · Shift+S плита · нажмите элемент для редактирования · M выход",
 } satisfies Catalogue;

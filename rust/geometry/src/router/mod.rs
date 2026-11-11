@@ -42,7 +42,7 @@ pub(crate) use diagnostics::ClassificationKind;
 pub use diagnostics::{
     aggregate_diagnostics, count_attributed_products, format_unsupported_breakdown, ClassificationStats,
     ClassificationSummary, GeometryDiagnostics, HostOpeningDiagnostic, OpeningDiagnostic, OpeningKindDiag, ReasonCount,
-    RectFastSummary, WorstHost, GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION, UNATTRIBUTED_PRODUCT_ID,
+    HostBbox, RectFastSummary, WorstHost, GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION, UNATTRIBUTED_PRODUCT_ID,
 };
 pub use item_dedup_cache::{ItemDedupCache, ItemDedupCacheState};
 pub use mapped_cache_ownership::AccountedMappedItemCache;
@@ -357,7 +357,7 @@ impl GeometryRouter {
     /// `IFC_LITE_DEDUP_EXTRA=1` or [`Self::set_build_dedup_extra_override`].
     /// Default OFF keeps native==wasm identical.
     pub fn build_dedup_extra_enabled() -> bool {
-        match DEDUP_EXTRA_OVERRIDE.load(std::sync::atomic::Ordering::Relaxed) {
+        match DEDUP_EXTRA_OVERRIDE.load(std::sync::atomic::Ordering::Acquire) {
             0 => return false,
             1 => return true,
             _ => {}
@@ -368,14 +368,8 @@ impl GeometryRouter {
 
     /// Test-only: force [`Self::build_dedup_extra_enabled`] on/off (`None` = env).
     pub fn set_build_dedup_extra_override(v: Option<bool>) {
-        DEDUP_EXTRA_OVERRIDE.store(
-            match v {
-                None => -1,
-                Some(false) => 0,
-                Some(true) => 1,
-            },
-            std::sync::atomic::Ordering::Relaxed,
-        );
+        let raw = match v { None => -1, Some(false) => 0, Some(true) => 1 };
+        crate::output_policy::mutate(|| DEDUP_EXTRA_OVERRIDE.store(raw, std::sync::atomic::Ordering::Release));
     }
 
     /// Inject a shared item-dedup cache (see [`Self::new_dedup_cache`]) into this

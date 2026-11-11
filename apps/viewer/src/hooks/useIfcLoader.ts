@@ -22,7 +22,7 @@ import { planCacheWrite, decideCacheHit, decideCacheLoadOutcome } from './cacheT
 import { createStreamWatchdogState, geometryFailureCaptureProps, pullWithStallWatchdog } from './ingest/geometryStreamWatchdog.js';
 import { buildModelLoadReportPatch, type ModelLoadReportFields } from '../lib/loadReport';
 import { identifyLoadedPlacementSource, startLoadSourceIdentity } from '@/lib/model-placement/loaded-source-identity';
-import { IfcParser, detectFormat, unwrapIfcZipWithResources, type IfcDataStore } from '@ifc-lite/parser';
+import { assertWasmSourceSize, IfcParser, detectFormat, unwrapIfcZipWithResources, type IfcDataStore } from '@ifc-lite/parser';
 import { attachTextureBitmaps, type TextureBitmapStore } from '../utils/textureResources.js';
 import { modelAppearanceAssets } from '../lib/appearance/model-assets.js';
 import { WorkerParser } from '@ifc-lite/parser/browser';
@@ -665,7 +665,7 @@ export function useIfcLoader() {
         activity.published = true;
         modelCompletion?.settleModel();
       };
-      // Point clouds stream from Blob; only their head is needed for detection.
+      if (!USE_SERVER && /\.ifc$/i.test(file.name)) assertWasmSourceSize(file.size);
       const headBuf = await file.slice(0, 4096).arrayBuffer();
       if (isStale()) return;
       const gaussianAdmission = await inspectGaussianAdmission(file, headBuf);
@@ -703,7 +703,7 @@ export function useIfcLoader() {
         return;
       }
 
-      // Point clouds retain the head buffer; other formats acquire source bytes.
+      if (!pointCloudFormat && !USE_SERVER && detectFormat(headBuf) === 'ifc') assertWasmSourceSize(file.size);
       const fileReadStart = performance.now();
       const acquired: AcquiredBuffer = pointCloudFormat
         ? { buffer: headBuf, view: new Uint8Array(headBuf), isShared: false }
@@ -722,7 +722,6 @@ export function useIfcLoader() {
             : `, read in ${fileReadMs.toFixed(0)}ms${acquired.isShared ? ' (streamed→SAB)' : ''}`),
       );
 
-      // Transparent .ifcZIP unwrap; point clouds retain Blob streaming.
       let textureBitmaps: TextureBitmapStore | null = null;
       if (!pointCloudFormat) {
         // Only an archive pays the ArrayBuffer copy; the magic check reads `headBuf`.
@@ -740,6 +739,7 @@ export function useIfcLoader() {
       // A SAB here is the un-unwrapped file, so `headBuf` is its head.
       format = pointCloudFormat ?? detectFormat(buffer instanceof ArrayBuffer ? buffer : headBuf);
 
+      if (!USE_SERVER && format === 'ifc') assertWasmSourceSize(buffer.byteLength);
       if (geometryKernel.refuseSource(format, buffer.byteLength, { modelId, activity })) { settleLoadUi(); return; }
 
       // LAS / LAZ point clouds: stream chunks straight to the renderer.

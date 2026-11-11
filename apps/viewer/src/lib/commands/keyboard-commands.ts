@@ -93,14 +93,14 @@ export const KEY_COMMANDS = [
   // ── Editing ───────────────────────────────────────────────────────────
   { id: 'edit.undo', labelKey: 'commands.edit.undo', category: 'editing', when: 'global', keys: [k('z', { mod: true })] },
   { id: 'edit.redo', labelKey: 'commands.edit.redo', category: 'editing', when: 'global', keys: [k('z', { mod: true, shift: true }), k('y', { mod: true, only: 'other' })] },
-  { id: 'edit.toggleEditMode', labelKey: 'commands.edit.toggleEditMode', category: 'editing', when: 'global', keys: [k('e')] },
+  { id: 'edit.toggleEditMode', labelKey: 'commands.edit.toggleEditMode', category: 'editing', when: 'global', keys: [k('m')] },
   { id: 'edit.rotate', labelKey: 'commands.edit.rotate', category: 'editing', when: 'global', keys: [k('r'), k('r', { shift: true })] },
   { id: 'edit.duplicate', labelKey: 'commands.edit.duplicate', category: 'editing', when: 'global', keys: [k('d', { mod: true }), k('d', { mod: true, shift: true }), k('d', { mod: true, alt: true })] },
 
   // ── Tools ─────────────────────────────────────────────────────────────
   { id: 'tool.select', labelKey: 'commands.tool.select', category: 'tools', when: 'global', keys: [k('v')] },
   { id: 'tool.walk', labelKey: 'commands.tool.walk', category: 'tools', when: 'global', keys: [k('c')] },
-  { id: 'tool.measure', labelKey: 'commands.tool.measure', category: 'tools', when: 'global', keys: [k('m')] },
+  { id: 'tool.measure', labelKey: 'commands.tool.measure', category: 'tools', when: 'global', keys: [k('l')] },
   { id: 'tool.annotate', labelKey: 'commands.tool.annotate', category: 'tools', when: 'global', keys: [k('p')] },
   { id: 'tool.section', labelKey: 'commands.tool.section', category: 'tools', when: 'global', keys: [k('x')] },
   { id: 'tool.split', labelKey: 'commands.tool.split', category: 'tools', when: 'global', keys: [k('k')] },

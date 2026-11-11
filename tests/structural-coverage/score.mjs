@@ -184,7 +184,7 @@ export function score(rows, cells, meta = {}) {
 /** Every way `current` is worse than `baseline`; empty means the check passes. */
 export function ratchet(baseline, current) {
   const problems = [];
-  if (current.offline && !baseline.offline) problems.push(`current run is offline (${current.absent.length} corpus file(s) absent); fetch them and re-run`);
+  if (current.offline) problems.push(`current run is offline (${current.absent.length} corpus file(s) absent); fetch them and re-run`);
   if (current.total.score < baseline.total.score) problems.push(`total dropped from ${baseline.total.score} to ${current.total.score}`);
   if (current.cells.score < baseline.cells.score) problems.push(`cell score dropped from ${baseline.cells.score} to ${current.cells.score}`);
   const now = new Map(current.rows.map((r) => [r.id, r]));
@@ -262,6 +262,8 @@ async function main(argv) {
     if (baseline?.schema !== SUMMARY_SCHEMA) { console.error(`score: ${rel(check)} is not an ${SUMMARY_SCHEMA} summary`); return 2; }
     const forged = verifySummary(baseline, catalogue.rows);
     if (forged.length) { console.error(`score: ${rel(check)}: its stored totals or applicability disagree with its rows and the catalogue:\n  ${forged.slice(0, 5).join('\n  ')}`); return 2; }
+    // Same refusal and remedy as the ledger gate (scripts/check-generated.mjs).
+    if (baseline.offline) { console.error(`score: ${rel(check)} was scored offline (${baseline.absent?.length ?? 0} corpus file(s) absent); fetch the missing corpus fixtures and re-score without --offline, then re-baseline`); return 2; }
   }
   let summary;
   try {

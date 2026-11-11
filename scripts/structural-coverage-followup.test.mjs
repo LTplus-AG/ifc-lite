@@ -69,7 +69,7 @@ test('#9668 CI: ratchet runs in built fixture job even in fast PR lane', () => {
   const commands = build.steps.map((s) => s.run ?? '');
   const i = commands.findIndex((s) => s.includes('tests/structural-coverage/score.mjs --check tests/structural-coverage/baseline/')); // @source-text-assertion-ok parsed workflow configuration or probe verdict, not source text
   // CI ratchets against the newest frozen baseline, the one the ledger renders.
-  const newest = Math.max(...readdirSync(join(root, 'tests/structural-coverage/baseline')).map((f) => /^r(\d+)\.json$/.exec(f)?.[1]).filter(Boolean).map(Number));
+  const newest = Math.max(...readdirSync(join(root, 'tests/structural-coverage/baseline')).map((f) => /^r(\d+)\.json$/.exec(f)?.[1]).filter(Boolean).map(Number)); // @source-text-assertion-ok parsed workflow configuration or probe verdict, not source text
   assert.ok(commands[i].trim().endsWith(`baseline/r${newest}.json`), commands[i]); // @source-text-assertion-ok parsed workflow configuration or probe verdict, not source text
   for (const before of ['pnpm build', 'pnpm fixtures:check']) {
     const j = commands.indexOf(before); // @source-text-assertion-ok parsed workflow configuration or probe verdict, not source text
@@ -128,4 +128,68 @@ test('#9668 gate remedy: each generator failure class has an actionable remedy',
     assert.ok(remedy.includes('cp tests/structural-coverage/.out/summary.json tests/structural-coverage/baseline/r<N>.json'));
     assert.ok(remedy.includes('.github/workflows/test.yml'));
   } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+// Link fixture: wall #1 linked to member #2; wall #7 and member #8 unlinked;
+// wall #9 shares #1's GlobalId but is not the record the relation references.
+async function linkRun(byId, extra = []) {
+  const file = { path: 'l.ifc', schema: 'IFC4', step: step("#1=IFCWALL('wall');#2=IFCSTRUCTURALCURVEMEMBER('m');#3=IFCRELASSIGNSTOPRODUCT('r',$,$,$,(#2),$,#1);#7=IFCWALL('w2');#8=IFCSTRUCTURALCURVEMEMBER('m8');#9=IFCWALL('wall');") };
+  const guidOf = { 1: 'wall', 7: 'w2', 9: 'wall' };
+  const store = { entities: { getGlobalId: (id) => guidOf[id], getTypeName: () => 'IfcWall', getExactTypeName: (id) => (guidOf[id] ? 'IfcWall' : '') } };
+  const cache = new Map([['read:l.ifc', { byId: new Map(byId) }], ['store:l.ifc', store]]);
+  for (const [f, ids] of extra) { cache.set(`read:${f.path}`, { byId: new Map(ids) }); cache.set(`store:${f.path}`, store); }
+  const row = { id: 'cap/physical-analytical-link-read', kind: 'capability' };
+  return (await runProbes([row], { corpus: { files: [file, ...extra.map(([f]) => f)] }, tables, cache }, [capabilities[0]])).get(row.id).capability;
+}
+const item = (ids) => ({ family: 'item', info: { physicalElementIds: ids } });
+
+test('#9668 links: an item the file links to nothing must read no physical element', async () => {
+  assert.equal((await linkRun([[2, item([1])], [8, item([])]])).status, 'pass');
+  const spurious = await linkRun([[2, item([1])], [8, item([7])]]);
+  assert.notEqual(spurious.status, 'pass');
+  assert.match(spurious.reason, /l\.ifc#8/); // @source-text-assertion-ok parsed workflow configuration or probe verdict, not source text
+  // Also in a file that declares no link at all.
+  const none = { path: 'none.ifc', schema: 'IFC4', step: step("#7=IFCWALL('w2');#8=IFCSTRUCTURALCURVEMEMBER('m8');") };
+  assert.notEqual((await linkRun([[2, item([1])]], [[none, [[8, item([7])]]]])).status, 'pass');
+});
+
+test('#9668 links: a duplicated physical element id fails', async () => {
+  assert.equal((await linkRun([[2, item([1, 1])]])).status, 'fail');
+  // Two declared links, so only the duplicate check can tell [1, 1] from [1, 7].
+  const two = { path: 'two.ifc', schema: 'IFC4', step: step("#1=IFCWALL('wall');#2=IFCSTRUCTURALCURVEMEMBER('m');#3=IFCRELASSIGNSTOPRODUCT('r',$,$,$,(#2),$,#1);#7=IFCWALL('w2');#4=IFCRELASSIGNSTOPRODUCT('r2',$,$,$,(#2),$,#7);") };
+  assert.equal((await linkRun([[2, item([1])]], [[two, [[2, item([1, 7])]]]])).status, 'pass');
+  assert.notEqual((await linkRun([[2, item([1])]], [[two, [[2, item([1, 1])]]]])).status, 'pass');
+});
+
+test('#9668 links: an element sharing the GlobalId but not the referenced record fails', async () => {
+  assert.equal((await linkRun([[2, item([9])]])).status, 'fail');
+});
+
+test('#9668 ratchet: --check refuses a baseline scored offline, with the ledger gate remedy', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'structural-offline-'));
+  try {
+    const r1 = JSON.parse(readFileSync(join(root, 'tests/structural-coverage/baseline/r1.json'), 'utf8'));
+    const baseline = join(dir, 'offline.json');
+    writeFileSync(baseline, JSON.stringify({ ...r1, offline: true, absent: ['x.ifc'] }));
+    const r = spawnSync(process.execPath, [join(root, 'tests/structural-coverage/score.mjs'), '--check', baseline, '--out', join(dir, 'out.json'), '--quiet'], { encoding: 'utf8', cwd: root });
+    assert.equal(r.status, 2, r.stdout + r.stderr);
+    assert.match(r.stderr, /was scored offline/);
+    assert.match(r.stderr, /fetch the missing corpus fixtures and re-score without --offline, then re-baseline/);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('#9668 docs page: the probe and the CI path filter pick the same page names', async () => {
+  const { rows } = deriveCatalogue(root);
+  const filter = parse(parse(readFileSync(join(root, '.github/workflows/test.yml'), 'utf8')).jobs.changes.steps.find((s) => s.uses?.startsWith('dorny/paths-filter')).with.filters).frontend; // @source-text-assertion-ok parsed workflow configuration or probe verdict, not source text
+  const text = rows.filter((r) => r.kind === 'entity' && r.schema === 'IFC4').map((r) => r.entity).join('\n');
+  const row = rows.find((r) => r.id === 'cap/docs-page');
+  for (const name of ['structural-analysis.md', 'Structural.md', 'STRUCTURAL-analysis.md', 'steel-structural.md']) {
+    const dir = mkdtempSync(join(tmpdir(), 'structural-docs-'));
+    try {
+      mkdirSync(join(dir, 'docs/guide'), { recursive: true });
+      writeFileSync(join(dir, 'docs/guide', name), text);
+      const cell = (await runProbes([row], { root: dir, rows }, [capabilities[1]])).get(row.id).capability;
+      assert.equal(cell.status === 'pass', matchesAny(`docs/guide/${name}`, filter), `${name}: probe ${cell.status}`);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  }
 });

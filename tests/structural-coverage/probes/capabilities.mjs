@@ -8,11 +8,13 @@
  * `cap/physical-analytical-link-read`: for each link in the corpus from a
  * physical product to a structural item (IfcRelAssignsToProduct, or the IFC2X3
  * IfcRelConnectsStructuralElement), the item's read-model object must name the
- * physical product via physicalElementIds. Each express id must resolve to
- * an IfcElement subtype in the parsed store whose GlobalId the file links to
- * that item, and the linked product's GlobalId must be among them.
+ * physical product via physicalElementIds: exactly the express ids the file
+ * links to that item, no duplicate, each an IfcElement by its declared class
+ * with the fixture's GlobalId. Every other structural member and connection
+ * the product reads, in any file, must name no physical element.
  *
- * `cap/docs-page`: a `docs/guide/*structural*.md` page names every IFC4 entity
+ * `cap/docs-page`: a `docs/guide/*structural*.md` page (lowercase `structural`,
+ * case-sensitive, the same rule as the CI path filter) names every IFC4 entity
  * of the catalogue.
  */
 
@@ -20,7 +22,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { verdict } from '../lib/values.mjs';
 import { storeOf } from '../lib/packages.mjs';
-import { extractionOrProblem } from './read.mjs';
+import { extractionEntry, extractionOrProblem } from './read.mjs';
 
 /** Whether a type name, in STEP UPPERCASE or PascalCase, is an IfcElement subtype in `table`. */
 const isElement = (table, type) => table.chain(table.types.get(String(type ?? '').toUpperCase())?.name ?? '').includes('IfcElement');
@@ -51,22 +53,23 @@ function physicalLinks(step, table) {
   return [...pairs.values()];
 }
 
-/** Each id resolves to an IfcElement whose GlobalId the file links to this item, and `guid` is among them. */
-function linkedElement(info, guid, declared, store, table) {
+/**
+ * Whether the read model's `physicalElementIds` are exactly the elements the
+ * file links to the item: no duplicate, each the referenced record (express
+ * id), an IfcElement by its declared class, with the fixture's GlobalId.
+ */
+function linkedElements(info, declared, store, table, step) {
   const ids = info.physicalElementIds;
-  if (!Array.isArray(ids) || !ids.length) return false;
-  const guids = [];
-  for (const id of ids) {
-    if (!Number.isSafeInteger(id)) return false;
+  if (!Array.isArray(ids) || new Set(ids).size !== ids.length || ids.length !== declared.size) return false;
+  return ids.every((id) => declared.has(id)
     // The declared class (getTypeName may answer with a coalesced IfcTypeEnum
     // family); a store without the exact accessor fails the link.
-    if (!isElement(table, store.entities.getExactTypeName?.(id))) return false;
-    const value = store.entities.getGlobalId(id);
-    if (!value) return false;
-    guids.push(value);
-  }
-  return guids.includes(guid) && guids.every((g) => declared.has(g));
+    && isElement(table, store.entities.getExactTypeName?.(id))
+    && store.entities.getGlobalId(id) === step.get(id)?.args[0]);
 }
+
+/** An item the file links to nothing must name no physical element. */
+const noElements = (info) => info.physicalElementIds === undefined || (Array.isArray(info.physicalElementIds) && !info.physicalElementIds.length);
 
 const linkRead = {
   name: 'capability:physical-analytical-link-read',
@@ -74,31 +77,36 @@ const linkRead = {
   covers: (row) => row.id === 'cap/physical-analytical-link-read',
   async run(rows, ctx) {
     // A file whose schema has no catalogue section (IFC4X2) has no type table to judge it by.
-    const linked = ctx.corpus.files.filter((f) => ctx.tables[f.schema])
-      .map((f) => [f, physicalLinks(f.step, ctx.tables[f.schema]), ctx.tables[f.schema]]).filter(([, links]) => links.length);
+    const files = ctx.corpus.files.filter((f) => ctx.tables[f.schema]).map((f) => [f, physicalLinks(f.step, ctx.tables[f.schema]), ctx.tables[f.schema]]);
+    const linked = files.filter(([, links]) => links.length);
     if (!linked.length) return new Map(rows.map((r) => [r.id, ctx.corpus.nothingFound('carries a physical-to-structural link')]));
     const problems = [];
     const counts = [];
-    for (const [file, links, table] of linked) {
-      const ix = await extractionOrProblem(ctx, file, problems);
+    for (const [file, links, table] of files) {
+      // A file the product cannot extract proves nothing; with links it is a problem of its own.
+      const ix = links.length ? await extractionOrProblem(ctx, file, problems) : (await extractionEntry(ctx, file)).ix;
       const count = { path: file.path, checked: links.length, held: 0 };
-      counts.push(count);
+      if (links.length) counts.push(count);
       if (!ix) continue;
-      const store = await storeOf(ctx, file);
-      const guided = links.map(([itemId, productId]) => [itemId, file.step.get(productId)]);
       const declared = new Map();
-      for (const [itemId, product] of guided) {
+      for (const [itemId, productId] of links) {
         if (!declared.has(itemId)) declared.set(itemId, new Set());
-        declared.get(itemId).add(product?.args[0]);
+        declared.get(itemId).add(productId);
       }
-      for (const [itemId, product] of guided) {
+      for (const [id, hit] of ix.byId) {
+        if (hit.family === 'item' && !declared.has(id) && !noElements(hit.info)) problems.push(`${file.path}#${id}: the file links no physical element to this item, but physicalElementIds names ${JSON.stringify(hit.info.physicalElementIds)}`);
+      }
+      if (!links.length) continue;
+      const store = await storeOf(ctx, file);
+      for (const [itemId, productId] of links) {
+        const product = file.step.get(productId);
         const guid = product?.args[0];
         const hit = ix.byId.get(itemId);
         const info = hit?.family === 'item' ? hit.info : undefined;
         if (!product) problems.push(`${file.path}#${itemId}: the link names no physical element the file holds`);
         else if (typeof guid !== 'string') problems.push(`${file.path}#${itemId}: the physical element has no GlobalId`);
         else if (!info) problems.push(`${file.path}#${itemId}: item not in the read model`);
-        else if (!linkedElement(info, guid, declared.get(itemId), store, table)) problems.push(`${file.path}#${itemId}: physicalElementIds does not resolve to physical ${guid} and only the file's links`);
+        else if (!linkedElements(info, declared.get(itemId), store, table, file.step)) problems.push(`${file.path}#${itemId}: physicalElementIds ${JSON.stringify(info.physicalElementIds)} is not exactly the file's links ${JSON.stringify([...declared.get(itemId)])}`);
         else count.held++;
       }
     }
@@ -114,7 +122,7 @@ const docsPage = {
   covers: (row) => row.id === 'cap/docs-page',
   async run(rows, ctx) {
     const dir = join(ctx.root, 'docs/guide');
-    const pages = existsSync(dir) ? readdirSync(dir).filter((f) => /structural/i.test(f) && f.endsWith('.md')).sort() : [];
+    const pages = existsSync(dir) ? readdirSync(dir).filter((f) => f.includes('structural') && f.endsWith('.md')).sort() : [];
     let result;
     if (!pages.length) result = { status: 'fail', reason: 'no docs/guide/*structural*.md page' };
     else {

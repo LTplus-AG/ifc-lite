@@ -182,40 +182,42 @@ export async function decodeCachedMetadata(
   if (sourceBuffer) {
     source = new Uint8Array(sourceBuffer);
 
-    if (result.entityIndex) {
-      entityIndex = buildEntityIndexFromCachedColumns(result.entityIndex);
-    } else {
-      // Backward compatibility for v3 caches: rebuild byte offsets from the
-      // source once, then future v4 writes persist this section.
-      // Key `byType` in upper case, as a fresh parse and a v4 load do: not
-      // every scan path canonicalises type names (#4712).
-      const tokenizer = new StepTokenizer(source);
-      // @raw-entity-enumeration-ok cache hydration sizes a source-index builder from the cached parsed table
-      const estimatedCount = cacheStore.entities?.count ?? 100_000;
-      const indexBuilder = new CompactEntityIndexBuilder(estimatedCount);
-      const byType = new Map<string, number[]>();
+    trace.span('cache.entityIndex', () => {
+      if (result.entityIndex) {
+        entityIndex = buildEntityIndexFromCachedColumns(result.entityIndex);
+      } else {
+        // Backward compatibility for v3 caches: rebuild byte offsets from the
+        // source once, then future v4 writes persist this section.
+        // Key `byType` in upper case, as a fresh parse and a v4 load do: not
+        // every scan path canonicalises type names (#4712).
+        const tokenizer = new StepTokenizer(source);
+        // @raw-entity-enumeration-ok cache hydration sizes a source-index builder from the cached parsed table
+        const estimatedCount = cacheStore.entities?.count ?? 100_000;
+        const indexBuilder = new CompactEntityIndexBuilder(estimatedCount);
+        const byType = new Map<string, number[]>();
 
-      for (const ref of tokenizer.scanEntitiesFast()) {
-        indexBuilder.add(ref.expressId, ref.type, ref.offset, ref.length);
-        const typeKey = ref.type.toUpperCase();
-        let typeList = byType.get(typeKey);
-        if (!typeList) {
-          typeList = [];
-          byType.set(typeKey, typeList);
+        for (const ref of tokenizer.scanEntitiesFast()) {
+          indexBuilder.add(ref.expressId, ref.type, ref.offset, ref.length);
+          const typeKey = ref.type.toUpperCase();
+          let typeList = byType.get(typeKey);
+          if (!typeList) {
+            typeList = [];
+            byType.set(typeKey, typeList);
+          }
+          typeList.push(ref.expressId);
         }
-        typeList.push(ref.expressId);
+        entityIndex = { byId: indexBuilder.build(), byType };
       }
-      entityIndex = { byId: indexBuilder.build(), byType };
-    }
+    });
 
     // Rebuild on-demand maps from relationships.
     // Pass entityIndex which contains ALL entity types including IfcPropertySet/IfcElementQuantity
     // (the entity table may not include these since they're filtered during fresh parse).
-    ({ onDemandPropertyMap, onDemandQuantityMap, onDemandMaterialMap } = rebuildOnDemandMaps(
+    ({ onDemandPropertyMap, onDemandQuantityMap, onDemandMaterialMap } = trace.span('cache.onDemandMaps', () => rebuildOnDemandMaps(
       cacheStore.entities,
       cacheStore.relationships,
       entityIndex
-    ));
+    )));
   } else {
     console.warn('[useIfcCache] No source buffer in cache - on-demand property extraction disabled');
   }
@@ -235,37 +237,38 @@ export async function decodeCachedMetadata(
 
   // Rebuild spatial hierarchy from cache data (cache doesn't serialize it)
   // Use SpatialHierarchyBuilder to extract elevations from source buffer
-  if (!dataStore.spatialHierarchy && dataStore.entities && dataStore.relationships) {
-    // Ensure we have source buffer and entityIndex for elevation extraction
-    if (dataStore.source && dataStore.source.length > 0 && dataStore.entityIndex && dataStore.strings) {
-      const lengthUnitScale = extractLengthUnitScale(dataStore.source, dataStore.entityIndex);
-      const builder = new SpatialHierarchyBuilder();
-      dataStore.spatialHierarchy = builder.build(
-        dataStore.entities,
-        dataStore.relationships,
-        dataStore.strings,
-        dataStore.source,
-        dataStore.entityIndex,
-        lengthUnitScale
-      );
+  trace.span('cache.spatial', () => {
+    if (!dataStore.spatialHierarchy && dataStore.entities && dataStore.relationships) {
+      // Ensure we have source buffer and entityIndex for elevation extraction
+      if (dataStore.source && dataStore.source.length > 0 && dataStore.entityIndex && dataStore.strings) {
+        const lengthUnitScale = extractLengthUnitScale(dataStore.source, dataStore.entityIndex);
+        const builder = new SpatialHierarchyBuilder();
+        dataStore.spatialHierarchy = builder.build(
+          dataStore.entities,
+          dataStore.relationships,
+          dataStore.strings,
+          dataStore.source,
+          dataStore.entityIndex,
+          lengthUnitScale
+        );
 
-      // Calculate storey heights from elevation differences (fallback if no property data)
-      if (dataStore.spatialHierarchy.storeyHeights.size === 0 && dataStore.spatialHierarchy.storeyElevations.size > 1) {
-        const calculatedHeights = calculateStoreyHeights(dataStore.spatialHierarchy.storeyElevations);
-        for (const [storeyId, height] of calculatedHeights) {
-          dataStore.spatialHierarchy.storeyHeights.set(storeyId, height);
+        // Calculate storey heights from elevation differences (fallback if no property data)
+        if (dataStore.spatialHierarchy.storeyHeights.size === 0 && dataStore.spatialHierarchy.storeyElevations.size > 1) {
+          const calculatedHeights = calculateStoreyHeights(dataStore.spatialHierarchy.storeyElevations);
+          for (const [storeyId, height] of calculatedHeights) {
+            dataStore.spatialHierarchy.storeyHeights.set(storeyId, height);
+          }
         }
+      } else {
+        console.warn('[useIfcCache] Missing data for elevation extraction:', { hasSource: !!dataStore.source, sourceLength: dataStore.source?.length ?? 0, hasEntityIndex: !!dataStore.entityIndex, hasStrings: !!dataStore.strings });
+        // Fallback: use simplified rebuild if source data not available
+        dataStore.spatialHierarchy = rebuildSpatialHierarchy(
+          dataStore.entities,
+          dataStore.relationships
+        );
       }
-    } else {
-      console.warn('[useIfcCache] Missing data for elevation extraction:', { hasSource: !!dataStore.source, sourceLength: dataStore.source?.length ?? 0, hasEntityIndex: !!dataStore.entityIndex, hasStrings: !!dataStore.strings });
-      // Fallback: use simplified rebuild if source data not available
-      dataStore.spatialHierarchy = rebuildSpatialHierarchy(
-        dataStore.entities,
-        dataStore.relationships
-      );
     }
-  }
-
+  });
   return { dataStore, cacheBuffer, cacheBlob, headerInfo, geometrySection };
 }
 
@@ -303,7 +306,7 @@ export async function decodeCachedModel(
   const meshes: MeshData[] = [];
   await trace.span('cache.geometry', async () => {
     // Chunks decompress independently; overlap them instead of one at a time.
-    const chunks = await Promise.all(open.chunks.map((_, i) => open.readChunk(i)));
+    const chunks = await Promise.all(open.chunks.map((_, i) => trace.span('cache.chunkDecode', () => open.readChunk(i), { chunk: i })));
     for (const chunk of chunks) for (const mesh of chunk) meshes.push(mesh);
   });
   if (isStale()) return null;

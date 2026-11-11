@@ -23,10 +23,10 @@ export function paletteExportAvailability(command: RegisteredExportCommand,
     || activationContext.ifcDataStore !== s.ifcDataStore || activationContext.models !== s.models)) {
     return disabled('commandPalette.export.unavailable');
   }
-  if (hasRetainedShapeOnlyModel(s.models) && ['glb', 'kmz', 'ion', 'usd'].includes(command.id)) {
+  if (hasRetainedShapeOnlyModel(s.models) && ['glb', 'kmz', 'ion', 'usd', '3dm'].includes(command.id)) {
     return disabled(RETAINED_SHAPE_ONLY_REASON);
   }
-  if (hasRetainedGeometryModel(s.models) && ['usd', 'energy', 'ion'].includes(command.id)) {
+  if (hasRetainedGeometryModel(s.models) && ['usd', '3dm', 'energy', 'ion'].includes(command.id)) {
     return disabled(RETAINED_EXACT_ONLY_REASON);
   }
   if (command.requires === 'dataStore' && !s.ifcDataStore) return disabled('commandPalette.availability.ifc');

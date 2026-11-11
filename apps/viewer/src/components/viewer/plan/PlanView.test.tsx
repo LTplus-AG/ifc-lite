@@ -15,7 +15,7 @@ import { installLayout } from '@/test/dom-layout.js';
 installLayout();
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { act } from 'react';
+import { act, useState } from 'react';
 import { useViewerStore } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { cleanup, click, render } from '@/test/render.js';
@@ -128,6 +128,27 @@ describe('PlanView (#6232 M2.4)', () => {
     assert.equal(undoDepth(), before, 'three vertices, nothing committed yet');
     planClick(svg, [3, 2]); // the second press of a double-click on the last vertex
     assert.equal(undoDepth(), before + 1, 'the double-click committed the slab as one undo step');
+  });
+
+  it('a hidden plan requests no cut, and showing it cuts the current storey (#9296 review)', async () => {
+    const real = Drawing2DGenerator.prototype.generate;
+    let cuts = 0;
+    Drawing2DGenerator.prototype.generate = function (...args: Parameters<typeof real>) { cuts += 1; return real.apply(this, args); };
+    try {
+      let show = () => {};
+      function Pane() { const [hidden, setHidden] = useState(true); show = () => setHidden(false); return <PlanView layout="split" hidden={hidden} />; }
+      // The first cut also loads the cutter, so give each phase time to start one.
+      const within = async (ms: number) => { for (let t = 0; t < ms && cuts === 0; t += 100) await wait(100); };
+      act(() => setWallMeshes(BOX));
+      render(<Pane />);
+      await settle(); await within(5000);
+      assert.equal(cuts, 0, 'no cut while the plan is hidden');
+      act(() => show());
+      await settle(); await within(5000);
+      assert.ok(cuts > 0, 'showing the plan cuts it');
+    } finally {
+      Drawing2DGenerator.prototype.generate = real;
+    }
   });
 
   it('a cut that throws says "Cut failed" instead of reading as an empty storey, and Retry re-runs it (#6394 review)', async () => {

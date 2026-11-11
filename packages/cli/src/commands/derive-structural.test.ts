@@ -76,7 +76,7 @@ describe.skipIf(!existsSync(SAMPLE))('ifc-lite derive-structural (#9668)', () =>
     const refused = join(dir, 'refused.ifc');
     await expect(run([authored, '--out', refused, '--json'])).rejects.toThrow('exit 1');
     expect(JSON.parse(stdout)).toMatchObject({ output: null, refused: true, existingAnalysisModels: [{ expressId: 99990, derived: false }], counts: { surfaceMembers: 1 } });
-    expect(stderr).toMatch(/Nothing written\. Structural derivation: the model already has an analysis model \(#99990\).*\(--analysis-model-exists add\)/);
+    expect(stderr).toMatch(/Nothing written: the file already has an analysis model \(#99990\)\. Use --analysis-model-exists add/);
     expect(existsSync(refused)).toBe(false);
 
     stdout = '';

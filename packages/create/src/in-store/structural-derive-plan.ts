@@ -104,8 +104,8 @@ export function planStructuralDerivation(facts: StructuralDerivationFacts, optio
   const lines: Line[] = [];
   const surfaces: Array<{ member: PlannedSurfaceMember; normal: Vec3 }> = [];
   const footings: Array<{ element: PhysicalElementFact; min: Vec3; max: Vec3 }> = [];
-  // The lowest drawn end of the load-bearing curve structure: what this run plans, and what was idealised before.
-  let structureLowest = Infinity;
+  // The lowest drawn end of the load-bearing curve members idealised before: part of the structure, not of this plan.
+  let idealisedLowest = Infinity;
   for (const element of facts.elements) {
     const role = roleOf(element.type);
     if (role === null) continue;
@@ -115,9 +115,8 @@ export function planStructuralDerivation(facts: StructuralDerivationFacts, optio
       continue;
     }
     const line = role === 'curve' ? lineOf(element) : null;
-    const counts = element.loadBearing === true || (element.loadBearing === null && (element.idealised || resolved.whenLoadBearingUnknown === 'include'));
-    if (line && !('issue' in line) && counts && length(sub(line.end, line.start)) > tolerance) {
-      structureLowest = Math.min(structureLowest, line.start[2], line.end[2]);
+    if (element.idealised && element.loadBearing !== false && line && !('issue' in line)) {
+      idealisedLowest = Math.min(idealisedLowest, line.start[2], line.end[2]);
     }
     if (element.idealised) { skip(element, 'already-idealised', 'a structural item is already linked to this element'); continue; }
     if (element.loadBearing === false) { skip(element, 'not-load-bearing', 'LoadBearing is false'); continue; }
@@ -157,13 +156,7 @@ export function planStructuralDerivation(facts: StructuralDerivationFacts, optio
   // Joints: free ends meet other members' axes; members met inside are split into pieces.
   const joined = joinEnds(long.map((line) => ({ elementId: line.element.expressId, start: line.start, end: line.end, section: line.section })),
     tolerance, resolved.jointReach, (p) => inFooting(p) !== undefined);
-  // Each piece end with its height before the joints moved it: a cut point never moves, a line end may have.
-  const all = joined.pieces.map((piece, k, list) => {
-    const line = long[piece.source];
-    const first = k === 0 || list[k - 1].source !== piece.source;
-    const last = k === list.length - 1 || list[k + 1].source !== piece.source;
-    return { ...line, start: piece.start, end: piece.end, rawZ: [first ? line.start[2] : piece.start[2], last ? line.end[2] : piece.end[2]] };
-  });
+  const all = joined.pieces.map((piece) => ({ ...long[piece.source], start: piece.start, end: piece.end }));
   const allRoots = clusterEnds(all.flatMap((piece) => [piece.start, piece.end]), tolerance);
   // A piece whose two ends merge is dropped; the clusters stay as they are, so its neighbours stay joined.
   const kept = all.map((_, i) => i).filter((i) => allRoots[2 * i] !== allRoots[2 * i + 1]);
@@ -174,17 +167,16 @@ export function planStructuralDerivation(facts: StructuralDerivationFacts, optio
     if (!remaining.has(element)) skip(element, 'shorter-than-tolerance', 'both ends merge into one node');
   }
   // Gather each cluster's ends, then build its node once, at their mean.
-  const clusters = new Map<number, { ends: Vec3[]; rawLow: number; first: PhysicalElementFact; elementIds: Set<number> }>();
+  const clusters = new Map<number, { ends: Vec3[]; first: PhysicalElementFact; elementIds: Set<number> }>();
   roots.forEach((root, endIndex) => {
     const piece = pieces[endIndex >> 1];
-    const cluster = clusters.get(root) ?? { ends: [], rawLow: Infinity, first: piece.element, elementIds: new Set<number>() };
+    const cluster = clusters.get(root) ?? { ends: [], first: piece.element, elementIds: new Set<number>() };
     cluster.ends.push(endIndex % 2 === 0 ? piece.start : piece.end);
-    cluster.rawLow = Math.min(cluster.rawLow, piece.rawZ[endIndex % 2]);
     cluster.elementIds.add(piece.element.expressId);
     clusters.set(root, cluster);
   });
   const nodeOfRoot = new Map<number, number>();
-  const nodes: PlannedNode[] = [...clusters.entries()].map(([root, { ends, first, elementIds }], index) => {
+  const nodes: PlannedNode[] = [...clusters].map(([root, { ends, first, elementIds }], index) => {
     nodeOfRoot.set(root, index);
     return { index, position: scale(ends.reduce(add), 1 / ends.length), storeyId: first.storeyId, elementIds: [...elementIds] };
   });
@@ -211,14 +203,11 @@ export function planStructuralDerivation(facts: StructuralDerivationFacts, optio
     if (!usedFootings.has(element.expressId)) skip(element, 'footing-without-member-end', 'no member end lies within its bounds');
   }
   if (usedFootings.size === 0) {
-    const atLevel = (z: number) => z <= structureLowest + tolerance;
-    const level = nodes.filter((node) => atLevel(node.position[2]));
-    // A node the joints moved up from the level (a column foot onto a grade beam axis) stands there too,
-    // unless an element meeting at it already stands on the level (a brace foot moved onto a column).
-    const standing = new Set(level.flatMap((node) => node.elementIds));
-    const raised = [...clusters.values()].flatMap(({ rawLow, elementIds }, index) =>
-      !atLevel(nodes[index].position[2]) && atLevel(rawLow) && [...elementIds].every((id) => !standing.has(id)) ? [nodes[index]] : []);
-    for (const node of [...level, ...raised]) node.support = { type: supportType, basis: 'lowest-level', guessed: true };
+    // The lowest node after the joints, or a lower member idealised before.
+    const structureLowest = nodes.reduce((low, node) => Math.min(low, node.position[2]), idealisedLowest);
+    for (const node of nodes) {
+      if (node.position[2] <= structureLowest + tolerance) node.support = { type: supportType, basis: 'lowest-level', guessed: true };
+    }
   }
 
   const degree = new Array<number>(nodes.length).fill(0);

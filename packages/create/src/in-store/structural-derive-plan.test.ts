@@ -225,11 +225,7 @@ describe('structural derivation plan (#9668)', () => {
       expect(supports.every((n) => Math.abs(n.position[2] - 0.15) < 1e-9 && n.support?.guessed)).toBe(true);
     });
 
-    it('judges the lowest level on the ends as drawn, with members already idealised or skipped by policy', () => {
-      // One column was derived before; the other's foot moves up to the grade beam axis and is still the base.
-      const grade = element('IfcBeam', { prism: box([0.15, -0.15, 0], 5.7, 0.3, [0, 0, 0.3]) });
-      const done = planStructuralDerivation(facts(column(0, 0, 0, 3, { idealised: true }), column(6, 0, 0, 3), grade, beam(0, 6, 0, 3)));
-      expect(done.nodes.filter((n) => n.support).map((n) => n.position.map((v) => +v.toFixed(6) + 0))).toContainEqual([6, 0, 0.15]);
+    it('sets the level from members derived before, not from elements this run skips', () => {
       // A ground column derived before sets the level even with no LoadBearing value and the skip policy.
       const upper = planStructuralDerivation(facts(column(0, 0, 0, 3, { loadBearing: null, idealised: true }), beam(0, 6, 0, 3)), { whenLoadBearingUnknown: 'skip' });
       expect(upper.report.guessedSupports).toEqual([]);

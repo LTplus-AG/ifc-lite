@@ -33,6 +33,7 @@ import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { cleanup, render } from '@/test/render';
 import { closeContrastBrowser, warmContrastBrowser, withThemedPage } from '@/test/contrast/render-harness.js';
 import { MobileToolbar } from './MobileToolbar';
+import { classifyFormFactor, mobileCommandPlacement, type MobileCommandPlacement } from '@/lib/layout/form-factor';
 
 const TARGET_PX = 44;
 const PHONE_WIDTHS = [390, 320] as const;
@@ -52,6 +53,7 @@ interface ToolbarLayout {
   buttons: number;
   disabled: string[];
   rows: number;
+  columns: number;
   scrolls: boolean;
   moreInside: boolean;
   moreSpan: string;
@@ -59,9 +61,13 @@ interface ToolbarLayout {
   targets: TargetProbe[];
 }
 
-async function layoutAt(html: string, width: number): Promise<ToolbarLayout> {
-  return withThemedPage('light', `<div style="width:${width}px">${html}</div>`, async (page) => {
-    await page.setViewportSize({ width, height: 844 });
+/** Lays the bar out as the shell does: a row under the viewport, or a rail on the right of a short screen. */
+async function layoutAt(html: string, width: number, height = 844, placement: MobileCommandPlacement = 'bottom-bar'): Promise<ToolbarLayout> {
+  const shell = placement === 'side-rail'
+    ? `<div style="width:${width}px;height:${height}px;display:flex"><div style="flex:1"></div>${html}</div>`
+    : `<div style="width:${width}px">${html}</div>`;
+  return withThemedPage('light', shell, async (page) => {
+    await page.setViewportSize({ width, height });
     await page.evaluate('globalThis.__name = (fn) => fn;');
     return page.evaluate(({ target, phone }) => {
       const bar = document.querySelector('[data-command-surface="mobile"]') as HTMLElement;
@@ -77,9 +83,11 @@ async function layoutAt(html: string, width: number): Promise<ToolbarLayout> {
         buttons: buttons.length,
         disabled: buttons.filter((button) => button.disabled).map((button) => button.getAttribute('aria-label') ?? ''),
         rows: new Set(buttons.map((button) => Math.round(button.getBoundingClientRect().top))).size,
-        scrolls: bar.scrollWidth > bar.clientWidth,
+        columns: new Set(buttons.map((button) => Math.round(button.getBoundingClientRect().left))).size,
+        scrolls: bar.scrollWidth > bar.clientWidth || bar.scrollHeight > bar.clientHeight,
         // The whole of More, not part of it, inside the phone's viewport.
-        moreInside: !!more && more.left >= 0 && more.right <= Math.min(phone, document.documentElement.clientWidth) && more.width > 0,
+        moreInside: !!more && more.left >= 0 && more.right <= Math.min(phone, document.documentElement.clientWidth) && more.width > 0
+          && more.top >= 0 && more.bottom <= document.documentElement.clientHeight,
         moreSpan: more ? `${Math.round(more.left)}-${Math.round(more.right)}px` : 'missing',
         progress: {
           present: !!progress,
@@ -125,10 +133,10 @@ async function layoutAt(html: string, width: number): Promise<ToolbarLayout> {
   });
 }
 
-function toolbarHtml(): string {
+function toolbarHtml(placement?: MobileCommandPlacement): string {
   const ui = render(
     <BimReactContext.Provider value={{} as BimContext}>
-      <MobileToolbar />
+      <MobileToolbar placement={placement} />
     </BimReactContext.Provider>,
   );
   const html = ui.innerHTML;
@@ -136,9 +144,9 @@ function toolbarHtml(): string {
   return html;
 }
 
-function assertTargetsFit(layout: ToolbarLayout, width: number): void {
-  assert.equal(layout.buttons, EXPECTED_BUTTONS, `${width}px: the bar holds Open, Select, Measure, Section, Home, Fit and More`);
-  assert.equal(layout.rows, 1, `${width}px: one row`);
+function assertTargetsFit(layout: ToolbarLayout, width: number, expected = EXPECTED_BUTTONS, line: 'rows' | 'columns' = 'rows'): void {
+  assert.equal(layout.buttons, expected, `${width}px: the bar holds ${expected === EXPECTED_BUTTONS ? 'Open, Select, Measure, Section, Home, Fit and More' : `${expected} buttons`}`);
+  assert.equal(layout[line], 1, `${width}px: one ${line === 'rows' ? 'row' : 'column'}`);
   assert.equal(layout.scrolls, false, `${width}px: the bar does not scroll`);
   assert.equal(layout.moreInside, true, `${width}px: More actions (${layout.moreSpan}) is inside the phone`);
   const short = layout.targets.filter((probe) => probe.missed > 0).map((probe) => `${probe.label} (${probe.missed}/${probe.probes} probes missed)`);
@@ -180,4 +188,32 @@ describe('phone toolbar targets (#8802)', () => {
       assert.ok(layout.progress.height > 0, `${width}px: progress is visible (${layout.progress.height}px tall)`);
     });
   }
+});
+
+describe('phone toolbar placements (#9718)', () => {
+  it('on a phone on its side (960x412) the commands are one 44px column on the right, with nothing scrolling', async () => {
+    const formFactor = classifyFormFactor({ width: 960, height: 412, coarsePointer: true });
+    useViewerStore.setState({ ...fixtureModels(fixtureModel('model', { idOffset: 0 })), loading: false, activeTool: 'select', isMobile: true, formFactor });
+    const placement = mobileCommandPlacement(formFactor);
+    assert.equal(placement, 'side-rail');
+    const layout = await layoutAt(toolbarHtml(placement), 960, 412, placement);
+    assertTargetsFit(layout, 960, EXPECTED_BUTTONS, 'columns');
+  });
+
+  it('on a 352px cover screen Home and Fit move into More, and the bar does not scroll', async () => {
+    const formFactor = classifyFormFactor({ width: 352, height: 400, coarsePointer: true });
+    assert.equal(formFactor.compactCommands, true);
+    useViewerStore.setState({ ...fixtureModels(fixtureModel('model', { idOffset: 0 })), loading: false, activeTool: 'select', isMobile: true, formFactor });
+    const html = toolbarHtml();
+    assert.doesNotMatch(html, /data-command-id="view:home"/, 'Home is not in the bar');
+    const layout = await layoutAt(html, 352, 400);
+    // Open, Select, Measure, Section, More.
+    assertTargetsFit(layout, 352, EXPECTED_BUTTONS - 2);
+  });
+
+  it('a 360x400 cover screen keeps all seven targets in the row', async () => {
+    const formFactor = classifyFormFactor({ width: 360, height: 400, coarsePointer: true });
+    useViewerStore.setState({ ...fixtureModels(fixtureModel('model', { idOffset: 0 })), loading: false, activeTool: 'select', isMobile: true, formFactor });
+    assertTargetsFit(await layoutAt(toolbarHtml(), 360, 400), 360);
+  });
 });

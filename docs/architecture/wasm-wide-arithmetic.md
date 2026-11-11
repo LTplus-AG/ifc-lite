@@ -1,9 +1,54 @@
 # WASM wide-arithmetic: measured win + delivery plan
 
-Status: measurement + design (2026-06-27)
+Status: measurement + design (2026-06-27); re-measured on the current kernel 2026-11-11 (below)
 Goal: close the in-browser WASM-vs-native gap on exact-CSG/brep-heavy models
 **without an install or an upload** (the hard client-side constraint), by building
 the geometry kernel with the WASM wide-arithmetic proposal.
+
+## Re-measured on the current kernel (2026-11-11): a small lever
+
+The 1.7x below predates `FixedInt` (it measured bnum on LLVM 21). On today's
+kernel the numbers are much smaller:
+
+- **Before this change, the wide build did not speed up the hot multiply.**
+  `fixed_int/mul.rs` chose u32 digits for every `wasm32` build. The wide bundle
+  therefore still ran the u32 schoolbook in `checked_mul_limbs`, with zero
+  `i64.mul_wide_u` in it; the 1,300 or so wide ops it emitted came from bnum,
+  i128 and std. The digit choice is now gated on
+  `not(target_feature = "wide-arithmetic")`, so the wide build takes the u64-limb
+  path (17-25 `i64.mul_wide_u` per width instance). The default bundle is
+  byte-identical.
+- **Kernel speed-up (V8 15.6 with `--wasm-wide-arithmetic`, SpiderMonkey 157):**
+  - 2.2-2.7x on `checked_mul`;
+  - 1.4-1.6x on an exact LPI `orient3d`;
+  - 2.0x on the cached-lambda `orient2d`;
+  - none on Shewchuk's explicit predicates, which are f64-only.
+- **Geometry time (`processGeometryBatch`, exclusive benchmark):**
+  - +2-6% on CSG-heavy models: S_Office 1.045-1.057x, Mini Project 1.055x,
+    ISSUE_129 1.021-1.025x.
+  - 0 on models without openings.
+  - About half of that is the newer compiler: the same code built on the wide
+    toolchain *without* `+wide-arithmetic` gives S_Office 1.023x and Mini
+    Project 1.019x, and is 2.7% slower on ISSUE_098.
+- **Why it is small:** exact integer arithmetic is only about 5-10% of wasm
+  geometry time even on the heaviest CSG models.
+  - BigRational was never reached on the 29-model ara3d corpus.
+  - 76-95% of the predicates that fall past the interval filter are exact zeros
+    (degenerate by construction), so a better float filter cannot remove them.
+- **End to end:** Chrome 156 with the flag, browser-cold interactive, 5 paired
+  rounds:
+  - no significant difference (ISSUE_129 +2.5%, S_Office +7.3%, against floors
+    of 10-14%);
+  - element output identical in all 40 samples.
+
+Output is byte-identical to the default bundle:
+- all 29 ara3d+BWK models under Node 27 + flag;
+- 10 CSG-heavy fixtures in Firefox 157;
+- `mesh_determinism` under Node 27 + flag.
+
+Shipping a second engine bundle for this gain is hard to justify until it is
+default-on in Chrome. A scratch-free small-operand multiply for the *default*
+bundle (#9719) recovers about half of the gain in every engine.
 
 ## Why this exists
 

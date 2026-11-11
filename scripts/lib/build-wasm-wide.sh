@@ -8,9 +8,11 @@
 # stub `rustup` / `wasm-pack` / `wasm-tools` instead of a real wasm build.
 #
 # Same single-thread bundle as `pkg`, plus the wasm wide-arithmetic proposal
-# (+wide-arithmetic), which maps the exact-CSG kernel's bnum 64x64->128 limb
-# products to i64.mul_wide / i64.add128 instead of __multi3 libcalls. Measured
-# ~1.7x on a real void cut (docs/architecture/wasm-wide-arithmetic.md). Selected
+# (+wide-arithmetic), under which FixedInt multiplies with u64 limbs
+# (i64.mul_wide_u / i64.add128) instead of the baseline u32-digit schoolbook.
+# Re-measured 2026-11-11 on the current kernel: +2-6% geometry time on
+# CSG-heavy models, about half of it from the newer toolchain
+# (docs/architecture/wasm-wide-arithmetic.md). Selected
 # at runtime via a WebAssembly.validate() probe (packages/geometry/src/wasm-features.ts,
 # NOT yet created — see docs/architecture/wasm-wide-arithmetic.md delivery plan);
 # engines without the proposal load the `pkg` bundle and are unaffected.

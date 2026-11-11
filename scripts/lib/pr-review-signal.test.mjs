@@ -133,10 +133,14 @@ test('the REAL test.yml derives the lane names the REAL rollup publishes', () =>
     'Perf ratchet ceilings',
     // #6982: the callgrind measurement the perf-ratchet gate judges.
     'Native instruction counts',
+    // The advisory concurrency-2 probe of the viewer suite (push to main only;
+    // on a PR its check runs are `skipped`), and its report.
+    ...Array.from({ length: 8 }, (_, index) => `Viewer tests at concurrency 2 (advisory, shard ${index}/8)`),
+    'Viewer concurrency probe report (advisory)',
   ]) {
     assert.ok(names.includes(observed), `derived set is missing the observed lane "${observed}"`);
   }
-  assert.equal(names.length, 50);
+  assert.equal(names.length, 59);
 });
 
 test('FAIL CLOSED: an empty workflow file is NO_WORKFLOW_TEXT, not an empty lane set', () => {

@@ -6409,7 +6409,7 @@ from the existing `cache.lookup` end to `geometry.pool` start measures the full
 miss preparation gap (server attempt, engine initialization and source copy).
 No pool means a different load path, not a missing duration.
 
-### Viewer eager panel boundaries (#9634; 2026-11-10; post-profiles revalidation pending)
+### Viewer eager panel boundaries (#9634; 2026-11-11; measured, full-suite acceptance pending)
 
 BCF, Data validation and Lens load through dynamic imports at the shared
 workspace-panel router. The welcome screen and first-model loader do not need
@@ -6418,13 +6418,16 @@ panel deep links retain the same router. Model gates and eager Lens evaluation
 stay in place; a translated loading/error shell keeps title and Close usable
 on every layout and contains failures to the affected panel.
 
-The earlier controlled main/branch pair established a substantial raw and
-Brotli eager-JS reduction. This remains useful independently of #9590 relieving
-the ceiling pressure. The final combined head after #9616 is being remeasured
-against exact current main; full four-shard viewer coverage, typecheck and the
-retained-free check are required before treating that head as validated. The
-PR carries source-qualified numeric evidence, separately from shared-base
-drift. There is no cold-boot timing claim.
+The final controlled pair after #9616 confirms a substantial raw and Brotli
+eager-JS reduction against the exact main base, with comfortable absolute
+headroom. This remains useful independently of #9590 relieving the ceiling
+pressure, at a small increase in total emitted JavaScript from extra chunks.
+The PR carries source-qualified numeric evidence, separately from shared-base
+drift. Exact-head build, emitted-graph assertion, retained-free, typecheck,
+lint, review regression tests and pre-handoff passed. Full four-shard viewer
+coverage remains unverified: a host reboot orphaned the original request with
+an unknown outcome, which fleet policy forbids replaying. Recommend landing
+after full-suite acceptance. There is no cold-boot timing claim.
 
 The opt-in VITE_BUNDLE_ANALYSIS build and audit-viewer-eager tool inspect the
 complete HTML preload plus recursive static-import closure. Emitted chunk

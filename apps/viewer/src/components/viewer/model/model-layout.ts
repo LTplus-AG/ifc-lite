@@ -37,6 +37,7 @@
  * - 'plan' is the plan as large as it can be: the 3D pane at its minimum.
  */
 
+import { useSyncExternalStore } from 'react';
 import type { ModelLayout, ModelLayoutPick } from '@/store/slices/authoringSessionSidebar';
 
 /** The retained 3D width floor; the viewport-HUD matrix guards it as controls move to the workspace bar. */
@@ -66,9 +67,21 @@ export function planPaneWidth(layout: 'plan' | 'split', groupWidth: number): num
 
 /** The measured pane-group width, shared with explicit layout picks when they try to make room. */
 let splitWidth = 0;
+const listeners = new Set<() => void>();
 
 export function publishSplitWidth(width: number): void {
+  if (width === splitWidth) return;
   splitWidth = width;
+  for (const listener of listeners) listener();
+}
+
+/** The command palette re-evaluates the plan destination as the width changes. */
+export function useSplitWidth(): number {
+  return useSyncExternalStore(
+    (listener) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
+    () => splitWidth,
+    () => splitWidth,
+  );
 }
 
 /** Current measured split width for command eligibility; same publisher as the rail. */

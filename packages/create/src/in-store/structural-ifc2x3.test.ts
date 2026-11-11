@@ -83,7 +83,7 @@ describe('IFC2X3 structural builder STEP round trips', () => {
     const { editor, anchor, roundTrip } = await fresh();
     const { connectionId, boundaryConditionId } = addStructuralPointConnectionToStore(editor, anchor, { Position: [4, 0, 0], Name: 'Support', BoundaryCondition: { Name: 'Pinned', TranslationalStiffnessX: true, TranslationalStiffnessY: false, RotationalStiffnessZ: true } });
     const { data, attrs } = await roundTrip();
-    expect(data.connections[0]).toMatchObject({ name: 'Support', appliedCondition: { name: 'Pinned', components: { TranslationalStiffnessX: -1, TranslationalStiffnessY: 0, RotationalStiffnessZ: -1 } } });
+    expect(data.connections[0]).toMatchObject({ name: 'Support', appliedCondition: { name: 'Pinned', components: { LinearStiffnessX: -1, LinearStiffnessY: 0, RotationalStiffnessZ: -1 } } });
     expect(attrs(connectionId)).toHaveLength(8);
     expect(attrs(boundaryConditionId!)).toEqual(['Pinned', -1, 0, null, null, null, -1]);
   });
@@ -110,6 +110,8 @@ describe('IFC2X3 structural builder STEP round trips', () => {
     const { data, attrs } = await roundTrip();
     expect(data.activities[0]).toMatchObject({ name: 'Load', globalOrLocal: 'LOCAL_COORDS', destabilizingLoad: false, appliedLoad: { components: kind === 'point' ? { ForceZ: -12, MomentX: 3 } : { LinearForceZ: -12, LinearMomentX: 3 } } });
     expect(attrs(activityId).slice(9)).toEqual(kind === 'point' ? ['.F.', null] : ['.F.', null, '.TRUE_LENGTH.']);
+    // IFC2X3 slot 11 of a linear action is ProjectedOrTrue, not PredefinedType (IFC4's slot 11).
+    if (kind === 'linear') expect(data.activities[0]).toMatchObject({ ProjectedOrTrue: 'TRUE_LENGTH', predefinedType: undefined });
   });
 
   it.each(['IFC2X3', 'IFC4', 'IFC4X3'])('%s connected model preserves all three relationship builders', async (schema) => {

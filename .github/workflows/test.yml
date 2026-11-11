@@ -159,6 +159,12 @@ jobs:
       # `true` on a Mergify batch PR, which is the queue's full gate: it arrives as
       # `pull_request`, so the queue-only lanes below test this output as well.
       batch: ${{ steps.lane.outputs.batch || 'false' }}
+      # `lean` only on the release PR with CI_RELEASE_LANE=on
+      # (scripts/ci-release-lane.mjs): the path filter is then withheld, so
+      # every path-gated lane skips. Missing or garbled runs the filter.
+      release_lane: ${{ steps.release.outputs.lane || 'full' }}
+      # `true` when `release-pr` runs: a lean run, or a shadow run that would be.
+      release_checks: ${{ steps.release.outputs.checks || 'false' }}
       # `true` when the WASM source is byte-identical to the published release
       # tag, so `build` can fetch the prebuilt bundle instead of compiling
       # wasm32. See the `build` job and scripts/ci-wasm-prebuilt-eligible.sh.
@@ -257,11 +263,23 @@ jobs:
           PR_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
           HEAD_REF: ${{ github.head_ref }}
         run: node scripts/ci-pr-lane.mjs --decide
-      # A fast run records no tree: the push replay would otherwise skip, on
+      # THE RELEASE PR LEAN LANE (scripts/ci-release-lane.mjs). Same polarity
+      # as the fast lane: only the exact output `lean` withholds the filter.
+      - name: Decide the release PR lane
+        id: release
+        continue-on-error: true
+        env:
+          CI_RELEASE_LANE: ${{ vars.CI_RELEASE_LANE }}
+          HEAD_REF: ${{ github.head_ref }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          REPO: ${{ github.repository }}
+          BASE_REF: ${{ github.base_ref }}
+        run: node scripts/ci-release-lane.mjs --decide
+      # A fast or lean run records no tree: the push replay would otherwise skip, on
       # main, the lanes this run never executed.
       - name: Record the tree this PR run tests
         id: tree
-        if: github.event_name == 'pull_request' && steps.noop.outputs.noop != 'true' && steps.lane.outputs.lane != 'fast'
+        if: github.event_name == 'pull_request' && steps.noop.outputs.noop != 'true' && steps.lane.outputs.lane != 'fast' && steps.release.outputs.lane != 'lean'
         run: |
           tree=$(git rev-parse 'HEAD^{tree}')
           mkdir -p "$RUNNER_TEMP/tested-tree"
@@ -293,7 +311,7 @@ jobs:
         id: all
         run: for k in rust frontend geometry python plato docs agents_md license_headers perf_ratchet; do echo "$k=true" >> "$GITHUB_OUTPUT"; done
       - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
-        if: github.event_name != 'merge_group' && steps.lane.outputs.batch != 'true' && steps.noop.outputs.noop != 'true'
+        if: github.event_name != 'merge_group' && steps.lane.outputs.batch != 'true' && steps.noop.outputs.noop != 'true' && steps.release.outputs.lane != 'lean'
         id: filter
         with:
           filters: |
@@ -3954,9 +3972,45 @@ jobs:
             gh api --method POST "repos/${{ github.repository }}/issues/${PR_NUMBER}/comments" -F body=@"$body_file"
           fi
 
+  # The release PR's own checks, for the lean lane (scripts/ci-release-lane.mjs).
+  # Runs only when `changes` chose it (or shadow would have), so it is skipped
+  # on every other run. In lean mode the jobs that normally carry these steps
+  # (lint, node-guards, docs-checks) are skipped with the path filter; the
+  # lean decision already refused any diff that moves more than versions, so
+  # the API-surface and build-dependent checks have nothing to compare.
+  release-pr:
+    name: Release PR checks
+    needs: changes
+    if: needs.changes.outputs.release_checks == 'true' && needs.changes.outputs.noop != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: false
+          persist-credentials: false
+          # check-changeset-bump.mjs anchors on the last `chore: version
+          # packages` commit and refuses a shallow clone.
+          fetch-depth: 0
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: pnpm
+      # For @changesets/parse; no build.
+      - run: pnpm install --frozen-lockfile
+      - name: Check changesets name real packages
+        run: node scripts/check-changesets.mjs
+      - name: Check changeset bump levels against the API surface
+        run: node scripts/check-changeset-bump.mjs
+      - name: Check Rust crate version matches the declared major offset
+        run: node scripts/check-rust-major-offset.mjs
+      - name: Check package READMEs
+        run: node scripts/docs/check-package-readmes.mjs
+
   test:
     name: Build + WASM + Rust + Node
-    needs: [changes, build, revert-oracle, typecheck, lint, node-guards, scripts-tests, node-tests, provenance-tests, viewer-tests, viewer-e2e, rust-tests, rust-retained, rust-full, rust-semver, geometry-census, csg-accept-gates, plato-check, docs-checks, docs-site, agents-md, license-headers, silent-revert, native-instructions, perf-ratchet]
+    needs: [changes, build, revert-oracle, typecheck, lint, node-guards, scripts-tests, node-tests, provenance-tests, viewer-tests, viewer-e2e, rust-tests, rust-retained, rust-full, rust-semver, geometry-census, csg-accept-gates, plato-check, docs-checks, docs-site, agents-md, license-headers, silent-revert, native-instructions, perf-ratchet, release-pr]
     # Preserve failed/skipped dependency judgement, but retire cancelled workflows (#7247).
     if: ${{ !cancelled() }}
     # Free runner — the gate just inspects upstream job results.
@@ -4027,6 +4081,26 @@ jobs:
           LANE: ${{ needs.changes.outputs.lane }}
           NEEDS: ${{ toJSON(needs) }}
         run: node scripts/ci-pr-lane.mjs --verify
+      # RELEASE PR LEAN LANE: same proof for `release_lane == 'lean'`
+      # (scripts/ci-release-lane.mjs --verify). It re-reads the PR's diff, so
+      # it checks out the same merge commit with its base parent.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: needs.changes.outputs.noop != 'true' && (needs.changes.outputs.release_lane == 'lean' || vars.CI_RELEASE_LANE == 'shadow' || vars.CI_RELEASE_LANE == 'on')
+        with:
+          lfs: false
+          persist-credentials: false
+          fetch-depth: 2
+      - name: Verify the release PR lane decision
+        if: needs.changes.outputs.noop != 'true' && (needs.changes.outputs.release_lane == 'lean' || vars.CI_RELEASE_LANE == 'shadow' || vars.CI_RELEASE_LANE == 'on')
+        env:
+          CI_RELEASE_LANE: ${{ vars.CI_RELEASE_LANE }}
+          HEAD_REF: ${{ github.head_ref }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          REPO: ${{ github.repository }}
+          BASE_REF: ${{ github.base_ref }}
+          LANE: ${{ needs.changes.outputs.release_lane }}
+          NEEDS: ${{ toJSON(needs) }}
+        run: node scripts/ci-release-lane.mjs --verify
       - name: Gate on dependencies
         if: needs.changes.outputs.noop != 'true'
         run: |
@@ -4061,6 +4135,7 @@ jobs:
             [silent-revert]="${{ needs.silent-revert.result }}"
             [native-instructions]="${{ needs.native-instructions.result }}"
             [perf-ratchet]="${{ needs.perf-ratchet.result }}"
+            [release-pr]="${{ needs.release-pr.result }}"
           )
           fail=0
           for j in "${!results[@]}"; do

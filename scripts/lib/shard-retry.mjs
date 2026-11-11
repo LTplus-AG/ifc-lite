@@ -119,6 +119,25 @@ export function attributeViewerFailures(failures, root) {
   return { files: [...files].sort(), tests, unattributed };
 }
 
+/**
+ * Refuse a retry when the first attempt's TAP is not a COMPLETE record of the
+ * shard. node prints the closing `# tests`/`# fail` counts only when every
+ * file it was given has finished; a runner killed mid-shard leaves the `not
+ * ok` lines it had already printed and no counts (reproduced with SIGTERM,
+ * SIGINT and SIGKILL), and retrying those files would pass a shard whose
+ * other files never ran. node counts a timed-out test as `cancelled`, so the
+ * failures listed must equal `fail + cancelled`.
+ *
+ * @returns {string|null} the refusal, or null when the record is complete
+ */
+export function incompleteViewerAttempt({ failures, summary }) {
+  if (!summary) return "the first attempt's TAP has no closing summary, so the runner did not finish the shard";
+  const listed = failures.filter((f) => f.failureType !== 'subtestsFailed').length;
+  const counted = summary.fail + summary.cancelled;
+  if (listed !== counted) return `the first attempt lists ${listed} failure(s) but its summary counts ${counted}`;
+  return null;
+}
+
 const SAFE_PATH = /^[A-Za-z0-9_./-]+$/;
 
 /**
@@ -187,7 +206,14 @@ export function indexPlaywrightReport(report) {
     const here = suite.title ? [...path, suite.title] : path;
     for (const spec of suite.specs ?? []) {
       for (const t of spec.tests ?? []) {
-        out.set(spec.id, { title: [...here.slice(1), spec.title].join(' › '), file: spec.file, line: spec.line, status: t.status });
+        out.set(spec.id, {
+          title: [...here.slice(1), spec.title].join(' › '),
+          file: spec.file,
+          line: spec.line,
+          status: t.status,
+          expectedStatus: t.expectedStatus,
+          annotations: (t.annotations ?? []).map((a) => a.type),
+        });
       }
     }
     for (const child of suite.suites ?? []) walk(child, here);
@@ -196,7 +222,45 @@ export function indexPlaywrightReport(report) {
   return out;
 }
 
-/** An e2e retry passed: exit 0 and every retried id ran and came out `expected`. */
+/**
+ * Tests the first attempt skipped WITHOUT asking to: a failing `beforeAll` or
+ * an earlier failure in a serial group skips the rest, and those tests keep
+ * `expectedStatus: 'passed'` and carry no `skip`/`fixme` annotation. A
+ * deliberate skip (`test.skip`, `test.fixme`, at declaration or at runtime)
+ * has `expectedStatus: 'skipped'` and the annotation. Both shapes reproduced
+ * on the locked Playwright 1.64.1.
+ */
+export function unintendedSkips(index) {
+  const out = [];
+  for (const [id, t] of index) {
+    if (t.status !== 'skipped') continue;
+    const asked = t.expectedStatus === 'skipped' && t.annotations.some((a) => a === 'skip' || a === 'fixme');
+    if (!asked) out.push(id);
+  }
+  return out;
+}
+
+/**
+ * Refuse an E2E retry unless the first attempt's JSON report is readable and
+ * every test it skipped without asking is among the ids being retried.
+ * Playwright 1.64.1 already lists such tests in `.last-run.json`
+ * (`didNotRun`); this holds the retry to that independently of the version.
+ *
+ * @returns {string|null}
+ */
+export function incompleteE2eAttempt({ ids, report }) {
+  if (!report) return "the first attempt's JSON report is missing or unreadable";
+  const retried = new Set(ids);
+  const unlisted = unintendedSkips(indexPlaywrightReport(report)).filter((id) => !retried.has(id));
+  if (unlisted.length > 0) return `${unlisted.length} test(s) the first attempt skipped without asking are not in its failed list`;
+  return null;
+}
+
+/**
+ * An e2e retry passed: exit 0, and every retried id ran again with outcome
+ * `expected`, which for anything but a `test.fail()` test means it passed. A
+ * skip, deliberate or not, is `skipped` and does not count.
+ */
 export function judgeE2eRetry({ exitCode, ids, report }) {
   if (exitCode !== 0) return { passed: false, reason: `the retry exited ${exitCode ?? 'by signal or timeout'}` };
   if (!report) return { passed: false, reason: 'the retry left no readable JSON report' };

@@ -14,7 +14,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -25,11 +25,15 @@ import {
   MAX_RETRY_FILES,
   attributeViewerFailures,
   decideMode,
+  incompleteE2eAttempt,
+  incompleteViewerAttempt,
+  indexPlaywrightReport,
   judgeE2eRetry,
   judgeViewerRetry,
   parseNodeTap,
   planRetry,
   readLastRun,
+  unintendedSkips,
   viewerPattern,
 } from './lib/shard-retry.mjs';
 import { MANIFEST_PATH, assignShards, parseManifest } from './viewer-test-shards.mjs';
@@ -86,14 +90,16 @@ test('real node:test TAP: a nested assertion, an import crash and a non-zero exi
     'src/b.test.ts': "import test from 'node:test';\ntest('b ok', () => {});\n",
     'src/c.test.ts': "import './missing-module.js';\n",
     'src/d/e.test.tsx': "import test from 'node:test';\ntest('passes, then the file exits 1', () => { process.exitCode = 1; });\n",
+    'src/f.test.ts': "import test from 'node:test';\ntest('times out', { timeout: 50 }, () => new Promise(() => {}));\n",
   });
   assert.equal(status, 1);
   const { failures, summary } = parseNodeTap(tap);
+  assert.equal(incompleteViewerAttempt({ failures, summary }), null, 'a complete run: listed failures equal fail + cancelled');
   assert.ok(summary, 'the closing counts are parsed');
   assert.equal(summary.pass, 3);
   const a = attributeViewerFailures(failures, root);
   assert.deepEqual(a.unattributed, []);
-  assert.deepEqual(a.files, ['src/a.test.ts', 'src/c.test.ts', 'src/d/e.test.tsx']);
+  assert.deepEqual(a.files, ['src/a.test.ts', 'src/c.test.ts', 'src/d/e.test.tsx', 'src/f.test.ts']);
   assert.ok(a.tests.some((t) => t.file === 'src/a.test.ts' && t.title === 'nested fails'));
   assert.ok(!a.tests.some((t) => t.title === 'group'), 'a parent suite that failed only through its child is not a test of its own');
 });
@@ -103,6 +109,26 @@ test('real node:test TAP of a green run has no failures and a complete summary',
   const { failures, summary } = parseNodeTap(tap);
   assert.deepEqual(failures, []);
   assert.equal(judgeViewerRetry({ exitCode: 0, summary }).passed, true);
+});
+
+test('#9788 review: a first attempt cut off before its summary (runner killed) is not retried', () => {
+  const { tap } = realTap('killed', {
+    'src/a.test.ts': "import test from 'node:test'; import assert from 'node:assert';\ntest('fails', () => assert.equal(1, 2));\n",
+    'src/b.test.ts': "import test from 'node:test';\ntest('never reached when killed', () => {});\n",
+  });
+  // A killed runner leaves exactly what it had printed so far: the first
+  // file's `not ok` and none of the closing counts (reproduced with SIGTERM,
+  // SIGINT and SIGKILL against tsx --test). Cut the real stream there.
+  const killed = tap.slice(0, tap.indexOf('# Subtest: never reached when killed')); // @source-text-assertion-ok cuts real runner output, not a source file
+  const parsed = parseNodeTap(killed);
+  assert.equal(parsed.failures.length, 1);
+  assert.match(incompleteViewerAttempt(parsed) ?? '', /no closing summary/); // @source-text-assertion-ok subject is the returned refusal
+  assert.equal(incompleteViewerAttempt(parseNodeTap(tap)), null, 'the same run, uncut, is complete');
+});
+
+test('#9788 review: a summary that counts more failures than were listed is not retried', () => {
+  const tap = 'not ok 1 - src/a.test.ts\n# tests 3\n# pass 1\n# fail 2\n# cancelled 0\n';
+  assert.match(incompleteViewerAttempt(parseNodeTap(tap)) ?? '', /lists 1 failure\(s\) but its summary counts 2/); // @source-text-assertion-ok subject is the returned refusal
 });
 
 test('a failure outside a viewer test file, or with no location, is unattributed', () => {
@@ -193,24 +219,62 @@ test('only a `failed` Playwright run is retried; a hang or a timeout is not', ()
   assert.ok(readLastRun('not json').refusal);
 });
 
-/** The JSON reporter's shape: root suite per file, nested describes, specs keyed by test id. */
-function report(statuses) {
-  return {
-    suites: [{
-      title: 'e2e/a.e2e.spec.ts',
-      specs: [],
-      suites: [{ title: 'group', specs: Object.entries(statuses).map(([id, status]) => ({ id, title: `t-${id}`, file: 'e2e/a.e2e.spec.ts', line: 1, tests: [{ status }] })) }],
-    }],
-  };
+const PLAYWRIGHT = join(REPO_ROOT, 'node_modules/.bin/playwright');
+const SPEC = `import { test } from '@playwright/test';
+test.beforeAll(async () => { if (!process.env.BEFORE_ALL_PASSES) throw new Error('flaky beforeAll'); });
+test('t1', () => {});
+test('t2', () => {});
+test('t3', () => {});
+test.skip('declared skip', () => {});
+test('runtime skip', () => { test.skip(true, 'not on this runner'); });
+`;
+
+/** Run a real Playwright over SPEC (no browser: no test uses `page`); return its JSON report and .last-run.json. */
+function realPlaywright(name, env = {}) {
+  const dir = join(TMP, name);
+  mkdirSync(join(dir, 'tests'), { recursive: true });
+  writeFileSync(join(dir, 'playwright.config.mjs'), "export default { testDir: './tests', workers: 1, reporter: 'json' };\n");
+  writeFileSync(join(dir, 'tests/a.spec.mjs'), SPEC);
+  writeFileSync(join(dir, 'tests/b.spec.mjs'), "import { test } from '@playwright/test';\ntest('b1', () => {});\n");
+  symlinkSync(join(REPO_ROOT, 'node_modules'), join(dir, 'node_modules'));
+  const json = join(dir, 'report.json');
+  const { NODE_TEST_CONTEXT: _ignored, ...base } = process.env;
+  const r = spawnSync(PLAYWRIGHT, ['test', '-c', 'playwright.config.mjs'], { cwd: dir, encoding: 'utf8', env: { ...base, PLAYWRIGHT_JSON_OUTPUT_FILE: json, ...env } });
+  return { status: r.status, report: JSON.parse(readFileSync(json, 'utf8')), lastRun: readFileSync(join(dir, 'test-results/.last-run.json'), 'utf8') };
 }
 
-test('an E2E retry passes only when every failed id ran again and came out expected', () => {
-  assert.equal(judgeE2eRetry({ exitCode: 0, ids: ['x', 'y'], report: report({ x: 'expected', y: 'expected' }) }).passed, true);
-  assert.equal(judgeE2eRetry({ exitCode: 0, ids: ['x', 'y'], report: report({ x: 'expected' }) }).passed, false, 'y never ran: --shard turns "No tests found" into exit 0');
-  assert.equal(judgeE2eRetry({ exitCode: 0, ids: ['x'], report: report({ x: 'flaky' }) }).passed, false);
-  assert.equal(judgeE2eRetry({ exitCode: 0, ids: ['x'], report: report({ x: 'skipped' }) }).passed, false);
-  assert.equal(judgeE2eRetry({ exitCode: 1, ids: ['x'], report: report({ x: 'expected' }) }).passed, false);
-  assert.equal(judgeE2eRetry({ exitCode: 0, ids: ['x'], report: null }).passed, false);
+const byTitle = (report) => new Map([...indexPlaywrightReport(report)].map(([id, t]) => [t.title, id]));
+
+test('#9788 review: a failing beforeAll — the mass-skipped tests are in the failed list, and a retry plan that drops them is refused', () => {
+  const first = realPlaywright('before-all-fails');
+  assert.equal(first.status, 1);
+  const ids = byTitle(first.report);
+  const { ids: failed, refusal } = readLastRun(first.lastRun);
+  assert.equal(refusal, undefined);
+  // On the locked Playwright 1.64.1 `.last-run.json` already lists the tests
+  // the hook failure skipped (`didNotRun`), runtime-skip test included.
+  assert.deepEqual(new Set(failed), new Set(['t1', 't2', 't3', 'runtime skip'].map((t) => ids.get(t))));
+  assert.deepEqual(new Set(unintendedSkips(indexPlaywrightReport(first.report))), new Set(['t2', 't3', 'runtime skip'].map((t) => ids.get(t))));
+  assert.equal(incompleteE2eAttempt({ ids: failed, report: first.report }), null);
+  // The reviewer's case: only the test that failed is listed. Refused.
+  assert.match(incompleteE2eAttempt({ ids: [ids.get('t1')], report: first.report }) ?? '', /skipped without asking/); // @source-text-assertion-ok subject is the returned refusal
+  assert.match(incompleteE2eAttempt({ ids: failed, report: null }) ?? '', /missing or unreadable/); // @source-text-assertion-ok subject is the returned refusal
+});
+
+test('#9788 review: a retry passes only when every retried test really passed; a deliberate skip is neither unintended nor a pass', () => {
+  const first = realPlaywright('before-all-first');
+  const { ids: failed } = readLastRun(first.lastRun);
+  const retry = realPlaywright('before-all-retry', { BEFORE_ALL_PASSES: '1' });
+  assert.equal(retry.status, 0);
+  assert.deepEqual(unintendedSkips(indexPlaywrightReport(retry.report)), [], 'declared and runtime skips are asked for');
+  const ids = byTitle(retry.report);
+  // `runtime skip` was in the failed list and now skips on purpose: not a pass, so the retry is red.
+  assert.equal(judgeE2eRetry({ exitCode: 0, ids: failed, report: retry.report }).passed, false);
+  const ran = ['t1', 't2', 't3'].map((t) => ids.get(t));
+  assert.equal(judgeE2eRetry({ exitCode: 0, ids: ran, report: retry.report }).passed, true);
+  assert.equal(judgeE2eRetry({ exitCode: 1, ids: ran, report: retry.report }).passed, false);
+  assert.equal(judgeE2eRetry({ exitCode: 0, ids: [...ran, 'not-a-test-id'], report: retry.report }).passed, false, '--shard turns "No tests found" into exit 0');
+  assert.equal(judgeE2eRetry({ exitCode: 0, ids: ran, report: null }).passed, false);
 });
 
 // --------------------------------------------------- the CLI's refusals
@@ -230,16 +294,24 @@ test('the CLI exits 1 without retrying when the first attempt cannot be read or 
   assert.equal(missing.record.passed, false);
   assert.ok(missing.summary.length > 0);
 
+  const cut = join(TMP, 'cut.tap');
+  writeFileSync(cut, 'TAP version 13\nnot ok 1 - src/a.test.ts\n');
+  const cutOff = cli('viewer', { CI_SHARD_RETRY: 'on', TAP_FILE: cut });
+  assert.equal(cutOff.code, 1);
+  assert.equal(cutOff.record.plan.retry, false, 'no closing summary: not retried');
+
   const tap = join(TMP, 'unattributed.tap');
   writeFileSync(tap, 'TAP version 13\nnot ok 1 - something global\n# tests 1\n# pass 0\n# fail 1\n# cancelled 0\n');
   assert.equal(cli('viewer', { CI_SHARD_RETRY: 'on', TAP_FILE: tap }).code, 1);
 
   const many = join(TMP, 'many.tap');
-  writeFileSync(many, Array.from({ length: MAX_RETRY_FILES + 1 }, (_, i) => `not ok ${i + 1} - src/f${i}.test.ts`).join('\n'));
+  const n = MAX_RETRY_FILES + 1;
+  writeFileSync(many, `${Array.from({ length: n }, (_, i) => `not ok ${i + 1} - src/f${i}.test.ts`).join('\n')}\n# tests ${n}\n# pass 0\n# fail ${n}\n# cancelled 0\n`);
   const tooMany = cli('viewer', { CI_SHARD_RETRY: 'on', TAP_FILE: many });
   assert.equal(tooMany.code, 1);
   assert.equal(tooMany.record.files.length, MAX_RETRY_FILES + 1);
   assert.equal(tooMany.record.plan.retry, false);
+  assert.match(tooMany.record.plan.reason, /more than/); // @source-text-assertion-ok subject is the plan's reason
 });
 
 test('the CLI never retries with the switch off, even when asked directly', () => {

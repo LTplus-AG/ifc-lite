@@ -53,6 +53,8 @@ import {
   MAX_RETRY_TESTS,
   attributeViewerFailures,
   decideMode,
+  incompleteE2eAttempt,
+  incompleteViewerAttempt,
   indexPlaywrightReport,
   judgeE2eRetry,
   judgeViewerRetry,
@@ -65,6 +67,8 @@ import {
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const VIEWER_ROOT = join(REPO_ROOT, 'apps/viewer');
+/** Inside the workspace, where test.yml's `hashFiles` can see it. */
+export const RETRY_JUNIT = join(VIEWER_ROOT, 'mergify-junit-retry.xml');
 
 /** Leaves room in the 25-minute viewer job and the 20-minute E2E job. */
 const VIEWER_RETRY_TIMEOUT_MS = 8 * 60_000;
@@ -94,7 +98,7 @@ function retryViewer(env, mode, reportDir) {
     count: attributed.files.length,
     cap: MAX_RETRY_FILES,
     unattributed: attributed.unattributed,
-    refusal: tap === null ? 'the first attempt left no TAP file' : undefined,
+    refusal: tap === null ? 'the first attempt left no TAP file' : incompleteViewerAttempt(first) ?? undefined,
   });
   const record = { kind: 'viewer', shard: env.TEST_SHARD ?? '?', mode, plan, files: attributed.files, tests: attributed.tests };
   if (!plan.retry) return record;
@@ -108,7 +112,9 @@ function retryViewer(env, mode, reportDir) {
     env: {
       ...env,
       TEST_PATTERN: viewerPattern(attributed.files),
-      NODE_OPTIONS: `--test-reporter=tap --test-reporter-destination=stdout --test-reporter=tap --test-reporter-destination=${retryTap}`,
+      // The JUnit goes to Mergify like the first attempt's, so a test that
+      // failed then passed on one SHA reads there as flaky, not broken.
+      NODE_OPTIONS: `--test-reporter=tap --test-reporter-destination=stdout --test-reporter=tap --test-reporter-destination=${retryTap} --test-reporter=junit --test-reporter-destination=${RETRY_JUNIT}`,
     },
   });
   const retried = readOptional(retryTap);
@@ -119,18 +125,19 @@ function retryViewer(env, mode, reportDir) {
 function retryE2e(env, mode, reportDir) {
   const last = readOptional(required(env, 'LAST_RUN'));
   const { ids, refusal } = last === null ? { ids: [], refusal: 'the first attempt left no .last-run.json' } : readLastRun(last);
-  const firstReport = readOptional(required(env, 'REPORT_JSON'));
-  let index = new Map();
+  let firstReport = null;
   try {
-    if (firstReport !== null) index = indexPlaywrightReport(JSON.parse(firstReport));
+    const text = readOptional(required(env, 'REPORT_JSON'));
+    firstReport = text === null ? null : JSON.parse(text);
   } catch (err) {
-    console.log(`::warning::first attempt's JSON report is unreadable (${err.message}); tests are named by id`);
+    console.log(`::warning::first attempt's JSON report is unreadable (${err.message})`);
   }
+  const index = firstReport ? indexPlaywrightReport(firstReport) : new Map();
   const tests = ids.map((id) => {
     const t = index.get(id);
     return t ? { file: `${t.file}:${t.line}`, title: t.title } : { file: '?', title: `test id ${id}` };
   });
-  const plan = planRetry({ mode, count: ids.length, cap: MAX_RETRY_TESTS, refusal });
+  const plan = planRetry({ mode, count: ids.length, cap: MAX_RETRY_TESTS, refusal: refusal ?? incompleteE2eAttempt({ ids, report: firstReport }) ?? undefined });
   const shard = required(env, 'E2E_SHARD');
   const record = { kind: 'e2e', shard, mode, plan, ids, tests };
   if (!plan.retry) return record;

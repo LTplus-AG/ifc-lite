@@ -1402,6 +1402,18 @@ jobs:
           report_path: apps/viewer/mergify-junit.xml
           test_step_outcome: ${{ steps.viewer_tests.outcome }}
           job_name: viewer-tests (shard ${{ matrix.shard }})
+      # The retry's own results, under the same job name: Mergify classifies a
+      # test that failed and passed on one commit as flaky, so it must see both
+      # attempts. Without this a retry that passed is recorded as a failure.
+      - name: Mergify CI Upload (retry)
+        if: (success() || failure()) && env.HAS_MERGIFY_TOKEN == 'true' && (steps.viewer_retry.outcome == 'success' || steps.viewer_retry.outcome == 'failure') && hashFiles('apps/viewer/mergify-junit-retry.xml') != ''
+        continue-on-error: true
+        uses: ./.github/actions/mergify-upload
+        with:
+          token: ${{ secrets.MERGIFY_TOKEN }}
+          report_path: apps/viewer/mergify-junit-retry.xml
+          test_step_outcome: ${{ steps.viewer_retry.outcome }}
+          job_name: viewer-tests (shard ${{ matrix.shard }})
 
   node-guards:
     name: Node guards

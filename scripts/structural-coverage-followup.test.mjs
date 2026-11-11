@@ -18,6 +18,7 @@ import { matchesAny } from './lib/ci-path-coverage.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const { tables } = deriveCatalogue(root);
+const OFFLINE_REMEDY = 'fetch the missing corpus fixtures and re-score without --offline, then re-baseline';
 const step = (body) => readStep(`ISO-10303-21;HEADER;FILE_SCHEMA(('IFC4'));ENDSEC;DATA;${body}ENDSEC;END-ISO-10303-21;`);
 
 test('#9668 links: resolve every express id, require IfcElement and fixture GlobalId, count each fixture', async () => {
@@ -127,6 +128,8 @@ test('#9668 gate remedy: each generator failure class has an actionable remedy',
     }
     assert.ok(remedy.includes('cp tests/structural-coverage/.out/summary.json tests/structural-coverage/baseline/r<N>.json'));
     assert.ok(remedy.includes('.github/workflows/test.yml'));
+    // score.mjs --check prints this same remedy for an offline baseline (see the offline test).
+    assert.ok(remedy.includes(OFFLINE_REMEDY));
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
@@ -174,7 +177,7 @@ test('#9668 ratchet: --check refuses a baseline scored offline, with the ledger 
     const r = spawnSync(process.execPath, [join(root, 'tests/structural-coverage/score.mjs'), '--check', baseline, '--out', join(dir, 'out.json'), '--quiet'], { encoding: 'utf8', cwd: root });
     assert.equal(r.status, 2, r.stdout + r.stderr);
     assert.match(r.stderr, /was scored offline/);
-    assert.match(r.stderr, /fetch the missing corpus fixtures and re-score without --offline, then re-baseline/);
+    assert.ok(r.stderr.includes(OFFLINE_REMEDY), r.stderr);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 

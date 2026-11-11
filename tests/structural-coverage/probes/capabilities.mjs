@@ -22,7 +22,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { verdict } from '../lib/values.mjs';
 import { storeOf } from '../lib/packages.mjs';
-import { extractionEntry, extractionOrProblem } from './read.mjs';
+import { extractionEntry } from './read.mjs';
 
 /** Whether a type name, in STEP UPPERCASE or PascalCase, is an IfcElement subtype in `table`. */
 const isElement = (table, type) => table.chain(table.types.get(String(type ?? '').toUpperCase())?.name ?? '').includes('IfcElement');
@@ -84,7 +84,8 @@ const linkRead = {
     const counts = [];
     for (const [file, links, table] of files) {
       // A file the product cannot extract proves nothing; with links it is a problem of its own.
-      const ix = links.length ? await extractionOrProblem(ctx, file, problems) : (await extractionEntry(ctx, file)).ix;
+      const { ix, error } = await extractionEntry(ctx, file);
+      if (error && links.length) problems.push(`${file.path}: ${error}`);
       const count = { path: file.path, checked: links.length, held: 0 };
       if (links.length) counts.push(count);
       if (!ix) continue;
@@ -99,12 +100,11 @@ const linkRead = {
       if (!links.length) continue;
       const store = await storeOf(ctx, file);
       for (const [itemId, productId] of links) {
-        const product = file.step.get(productId);
-        const guid = product?.args[0];
+        const guid = file.step.get(productId).args[0];
         const hit = ix.byId.get(itemId);
         const info = hit?.family === 'item' ? hit.info : undefined;
-        if (!product) problems.push(`${file.path}#${itemId}: the link names no physical element the file holds`);
-        else if (typeof guid !== 'string') problems.push(`${file.path}#${itemId}: the physical element has no GlobalId`);
+        // physicalLinks only pairs records the file holds, so product is always present.
+        if (typeof guid !== 'string') problems.push(`${file.path}#${itemId}: the physical element has no GlobalId`);
         else if (!info) problems.push(`${file.path}#${itemId}: item not in the read model`);
         else if (!linkedElements(info, declared.get(itemId), store, table, file.step)) problems.push(`${file.path}#${itemId}: physicalElementIds ${JSON.stringify(info.physicalElementIds)} is not exactly the file's links ${JSON.stringify([...declared.get(itemId)])}`);
         else count.held++;

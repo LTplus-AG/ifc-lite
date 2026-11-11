@@ -116,12 +116,40 @@ export function originPreservesTriangleTopology(
 }
 
 /**
+ * The lattice origin of a streamed bucket, from its chunk cell alone: the cell's
+ * minimum corner less half a cell, on the 2^-10 lattice, in `origin`'s frame.
+ * The u16 range (~64 m) then spans [cell − 16 m, cell + 48 m) for a 32 m cell.
+ * Every fragment of the bucket, whichever arrives first and wherever it is
+ * built, encodes against the same origin. `anchor` is the cell's anchor point
+ * in source terms (`chunkCellKey`'s), `offset` the model translation.
+ */
+export function cellLatticePin(anchor: Pick<MeshData, 'origin' | 'positions'>, cellSize: number, offset: readonly number[], origin: readonly number[]): [number, number, number] | undefined {
+  const o = anchor.origin, p = anchor.positions, has = p.length >= 3;
+  const pin: number[] = [];
+  for (let axis = 0; axis < 3; axis++) {
+    const cellMin = Math.floor(((o ? o[axis] : 0) + (has ? p[axis] : 0)) / cellSize) * cellSize;
+    const value = Math.floor((cellMin + offset[axis] - origin[axis] - cellSize / 2) / QUANT_STEP) * QUANT_STEP;
+    if (!Number.isFinite(value)) return undefined;
+    pin.push(value);
+  }
+  return pin as [number, number, number];
+}
+
+/**
  * One mesh's GPU records in a model frame against a bucket's lattice origin,
  * with what a batch built from it needs besides the bytes.
  */
 export interface MeshRecords {
   frame: readonly [number, number, number];
   pin: readonly [number, number, number];
+  /**
+   * What was encoded: the mesh's positions array (by identity), its origin and
+   * its colour salt. A copy with other positions (a split piece, a lifted
+   * placement), a moved origin or another colour must not use these records.
+   */
+  positions: Float32Array;
+  origin: readonly [number, number, number];
+  salt: number;
   /** One 12-byte record per vertex. */
   records: ArrayBuffer;
   /** World bounds (`origin + position`, f64): what the batch merge reports. */
@@ -182,7 +210,7 @@ export function encodeMeshRecords(
     u16[w16 + 3] = (ex << 8) | ey;
     u32[v * 3 + 2] = lanes[v] = packEntityLane(ids ? ids[v] : id, salt);
   }
-  return { frame, pin, records, worldMin, worldMax, collapseRuns: collapseRunsOf(rel, lanes, mesh.indices) };
+  return { frame, pin, positions: p, origin: [ox, oy, oz], salt, records, worldMin, worldMax, collapseRuns: collapseRunsOf(rel, lanes, mesh.indices) };
 }
 
 /** `latticeCollapsesGeometry`'s per-triangle arithmetic over one mesh's frame-relative f32 positions, as runs. */
@@ -209,6 +237,13 @@ function collapseRunsOf(rel: Float32Array, lanes: Uint32Array, indices: Uint32Ar
   }
   if (runId >= 0) runs.push(runId, runArea, runCollapsed);
   return Float64Array.from(runs);
+}
+
+/** Whether `records` still describe `mesh`: the same positions array, origin and colour salt. */
+export function recordsDescribe(records: MeshRecords, mesh: MeshData): boolean {
+  const o = mesh.origin;
+  return records.positions === mesh.positions && records.salt === colorSaltByte(mesh.color)
+    && records.origin[0] === (o ? o[0] : 0) && records.origin[1] === (o ? o[1] : 0) && records.origin[2] === (o ? o[2] : 0);
 }
 
 /**

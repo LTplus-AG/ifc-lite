@@ -4,7 +4,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { MeshData } from '@ifc-lite/geometry';
-import { batchCollapseVerdict, encodeMeshRecords, type MeshRecords } from '@ifc-lite/geometry/gpu-records';
+import { batchCollapseVerdict, encodeMeshRecords, recordsDescribe, type MeshRecords } from '@ifc-lite/geometry/gpu-records';
 import { mergeGeometry } from './scene-geometry.js';
 import { latticeCollapsesGeometry, quantizeInterleaved } from './quantize.js';
 import { originPreservesTriangleTopology } from './scene-precision.js';
@@ -81,6 +81,16 @@ describe('per-mesh GPU records equal the batch merge and quantizer', () => {
       assert.ok(verdict === 'unsure' || verdict === exact, `${name}: collapse verdict ${verdict} vs exact ${exact}`);
     });
   }
+
+  it('records describe only the mesh they were encoded from', () => {
+    const m = mesh(600, [1, 1, 1], 2);
+    const r = encodeMeshRecords(m, [0, 0, 0], [-1, -1, -1])!;
+    assert.ok(recordsDescribe(r, m), 'the encoded mesh');
+    assert.ok(recordsDescribe(r, { ...m }), 'a copy sharing its positions, origin and colour (a placed primary-model mesh)');
+    assert.ok(!recordsDescribe(r, { ...m, positions: new Float32Array(m.positions) }), 'other positions (a split piece, a lifted placement)');
+    assert.ok(!recordsDescribe(r, { ...m, origin: [0, 0, 5] }), 'a moved origin (a translated model)');
+    assert.ok(!recordsDescribe(r, { ...m, color: [0.1, 0.9, 0.2, 1] }), 'another colour salt');
+  });
 
   it('refuses a vertex outside the u16 range above the pin, and a non-finite one', () => {
     const m = mesh(500, [0, 0, 0], 2);

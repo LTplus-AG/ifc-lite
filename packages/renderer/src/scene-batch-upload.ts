@@ -7,7 +7,7 @@ import type { RenderPipeline } from './pipeline.js';
 import { mergeGeometry } from './scene-geometry.js';
 import { BATCH_CONSTANTS } from './constants.js';
 import { latticeCollapsesGeometry, quantizeInterleaved, QUANT_BYTES_PER_VERTEX, QUANT_STEP, type LatticeFrame } from './quantize.js';
-import { batchCollapseVerdict, type MeshRecords } from '@ifc-lite/geometry/gpu-records';
+import { batchCollapseVerdict, recordsDescribe, type MeshRecords } from '@ifc-lite/geometry/gpu-records';
 import { perfTally } from '@ifc-lite/load-trace';
 import { createStaticGpuBuffer } from './gpu-static-upload.js';
 import type { MergedBatchBytes } from './scene-snapshot-batches.js';
@@ -202,7 +202,7 @@ function fromRecords(meshes: readonly MeshData[], origin: readonly [number, numb
   let bytes = 0, indexCount = 0;
   for (const mesh of meshes) {
     const r = mesh.gpuRecords;
-    if (!r || r.frame[0] !== origin[0] || r.frame[1] !== origin[1] || r.frame[2] !== origin[2]
+    if (!r || !recordsDescribe(r, mesh) || r.frame[0] !== origin[0] || r.frame[1] !== origin[1] || r.frame[2] !== origin[2]
       || r.pin[0] !== pin[0] || r.pin[1] !== pin[1] || r.pin[2] !== pin[2]) return null;
     records.push(r);
     bytes += r.records.byteLength;

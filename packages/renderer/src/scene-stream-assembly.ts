@@ -34,7 +34,9 @@ import { perfCount, perfTally } from '@ifc-lite/load-trace';
 import type { BatchedMesh } from './types.js';
 import type { RenderPipeline } from './pipeline.js';
 import type { LatticeFrame } from './quantize.js';
-import { QUANT_BYTES_PER_VERTEX, QUANT_STEP } from './quantize.js';
+import { QUANT_BYTES_PER_VERTEX } from './quantize.js';
+import { cellLatticePin } from '@ifc-lite/geometry/gpu-records';
+export { cellLatticePin };
 import { BATCH_CONSTANTS } from './constants.js';
 import { TopologyMemo } from './scene-precision.js';
 import { colorSaltByte, entityLaneOf, packEntityLane } from './scene-geometry.js';
@@ -282,25 +284,6 @@ function encodingMiss(runs: readonly FragmentRun[], options: AssembleOptions): s
   return null;
 }
 
-/**
- * The lattice origin of a streamed bucket, from its chunk cell alone: the cell's
- * minimum corner less half a cell, on the 2^-10 lattice, in `origin`'s frame.
- * The u16 range (~64 m) then spans [cell − 16 m, cell + 48 m) for a 32 m cell.
- * Every fragment of the bucket, whichever arrives first and wherever it is
- * built, encodes against the same origin. `anchor` is the cell's anchor point
- * in source terms (`chunkCellKey`'s), `offset` the model translation.
- */
-export function cellLatticePin(anchor: MeshData, cellSize: number, offset: readonly number[], origin: readonly number[]): [number, number, number] | undefined {
-  const o = anchor.origin, p = anchor.positions, has = p.length >= 3;
-  const pin: number[] = [];
-  for (let axis = 0; axis < 3; axis++) {
-    const cellMin = Math.floor(((o ? o[axis] : 0) + (has ? p[axis] : 0)) / cellSize) * cellSize;
-    const value = Math.floor((cellMin + offset[axis] - origin[axis] - cellSize / 2) / QUANT_STEP) * QUANT_STEP;
-    if (!Number.isFinite(value)) return undefined;
-    pin.push(value);
-  }
-  return pin as [number, number, number];
-}
 
 /** Each run's kept vertex bytes, in run order: what `assemble` copies on the GPU. */
 function concatBytes(runs: readonly FragmentRun[], vertexBytes: number, stride: number, quantized: boolean): ArrayBuffer | Float32Array {

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { originPreservesTriangleTopology } from '@ifc-lite/geometry/gpu-records';
+import { originPreservesTriangleTopology, recordsDescribe } from '@ifc-lite/geometry/gpu-records';
 export { originPreservesTriangleTopology }; // one definition, shared with the geometry workers
 import type { MeshData } from '@ifc-lite/geometry';
 
@@ -60,7 +60,7 @@ export class TopologyMemo {
       }
     }
     const records = mesh.gpuRecords; // encoded only after this same check passed in this frame
-    if (records && records.frame[0] === origin[0] && records.frame[1] === origin[1] && records.frame[2] === origin[2]) {
+    if (records && recordsDescribe(records, mesh) && records.frame[0] === origin[0] && records.frame[1] === origin[1] && records.frame[2] === origin[2]) {
       this.hits++;
       return true;
     }

@@ -48,6 +48,11 @@ export function zoneSplitWorkerSupported(): boolean {
  */
 export const ZONE_SPLIT_TIMEOUT_MS = 600_000;
 
+/** A job whose piece arrays own exactly their bytes (see the postMessage note below). */
+function ownedJob(job: ZoneSplitJob): ZoneSplitJob {
+  return { ...job, pieces: job.pieces.map((piece) => ({ ...piece, positions: piece.positions.slice(), indices: piece.indices.slice() })) };
+}
+
 export const splitZonesInWorker: ZoneSplitBatchFn = (request, onProgress) =>
   new Promise((resolve, reject) => {
     let worker: Worker;
@@ -95,13 +100,15 @@ export const splitZonesInWorker: ZoneSplitBatchFn = (request, onProgress) =>
       id,
       zones: request.zones as Zone[],
       zoneIndex: request.zoneIndex,
-      jobs: request.jobs,
+      jobs: request.jobs.map(ownedJob),
       tolerance: request.tolerance,
     };
-    // No transfer list, on purpose: the positions and indices belong to the
-    // renderer's live scene, and transferring them would detach the buffers the
-    // model is drawn from. The clone's copy IS the price of not blanking the
-    // viewport.
+    // No transfer of the scene's arrays, on purpose: the positions and indices
+    // belong to the renderer's live scene, and transferring them would detach the
+    // buffers the model is drawn from. Each piece is sent as its own copy: a
+    // structured clone of a view copies its WHOLE buffer, and a cache hit's mesh
+    // arrays share ~1 MiB arena blocks (ArrayArena), so cloning the views would
+    // copy every block a job touches.
     try {
       worker.postMessage(payload);
     } catch (error) {

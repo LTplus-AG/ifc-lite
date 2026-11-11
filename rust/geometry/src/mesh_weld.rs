@@ -125,6 +125,9 @@ type VKey = (u32, u32, u32, i32, i32, i32, i32, i32);
 
 #[inline]
 fn vkey(p: &[f32], n: &[f32], uv: [f32; 2]) -> VKey {
+    // Test builds count the components quantised without libm (five per key).
+    #[cfg(test)]
+    tests::note_inline_rounds(5);
     (
         p[0].to_bits(),
         p[1].to_bits(),

@@ -203,7 +203,12 @@ pub fn orient_mesh_outward_verdict(mesh: &mut Mesh) -> OrientVerdict {
     let indexed = vertex_count < mesh.indices.len();
     if indexed { corner.resize(vertex_count, u32::MAX); }
     // `round_i64` is `.round() as i64` bit for bit, without a libm call.
-    let q = |v: f32| crate::grid::round_i64(v as f64 * WELD_SCALE);
+    let q = |v: f32| {
+        // Test builds count the coordinates quantised without libm.
+        #[cfg(test)]
+        tests::note_inline_round();
+        crate::grid::round_i64(v as f64 * WELD_SCALE)
+    };
     for &idx in &mesh.indices {
         if indexed && corner[idx as usize] != u32::MAX { continue; }
         let b = idx as usize * 3;

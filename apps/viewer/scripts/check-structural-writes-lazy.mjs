@@ -20,12 +20,13 @@ import { fileURLToPath } from 'node:url';
 import { isMainEntry } from '../../../scripts/lib/is-main-entry.mjs';
 import { checkLazyOnly } from './startup-chunks.mjs';
 
-/** Error-message text only the structural write path carries: one per
- *  `@ifc-lite/create` structural builder module (the action builders share
- *  their load-component refusal; the relationship builders share a module
- *  with `assignToStructuralGroupInStore`) and the SDK factory's schema
- *  refusal. The read side (`extractStructuralOnDemand`, the properties card)
- *  has none. */
+/** Text only the structural write path carries, at least one string per
+ *  exported `@ifc-lite/create` structural builder (the bundler drops unused
+ *  exports, so a shared module is no cover) and the SDK factory's schema
+ *  refusal. Mostly error-message prefixes; the two connect builders have none,
+ *  so their `addEntity` call is matched as the minifier writes it. If its
+ *  quoting changes, the "proves nothing" check fails rather than passing. The
+ *  read side (`extractStructuralOnDemand`, the properties card) has none. */
 export const STRUCTURAL_WRITE_SIGNATURES = [
   'addStructuralAnalysisModelToStore:',
   'addStructuralCurveMemberToStore:',
@@ -33,6 +34,8 @@ export const STRUCTURAL_WRITE_SIGNATURES = [
   'addStructuralLoadGroupToStore:',
   'assignToStructuralGroupInStore:',
   ': supply at least one force or moment component',
+  'addEntity(`IfcRelConnectsStructuralMember`',
+  'addEntity(`IfcRelConnectsStructuralActivity`',
   'bim.store structural authoring:',
 ];
 

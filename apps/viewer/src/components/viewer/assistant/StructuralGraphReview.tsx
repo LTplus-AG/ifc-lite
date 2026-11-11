@@ -23,10 +23,10 @@ export function StructuralGraphReview({ proposal, origin }: { proposal: Structur
   const [stale, setStale] = useState(false);
   const [receipt, setReceipt] = useState<ModelChangeReceipt | null>(null);
   const [receiptProblem, setReceiptProblem] = useState(false);
-  const owner = useRef({ review: null as StructuralReview | null, committing: false, mounted: true, selection: approved });
+  const owner = useRef({ review: null as StructuralReview | null, committing: false, mounted: true, selection: approved, proposal });
   useEffect(() => {
     const current = owner.current;
-    current.mounted = true;
+    current.mounted = true; current.proposal = proposal;
     const unsubscribe = useViewerStore.subscribe(() => {
       if (!current.review || current.committing) return;
       try { current.review.validate(); }
@@ -40,12 +40,13 @@ export function StructuralGraphReview({ proposal, origin }: { proposal: Structur
   // The structural builders load in their own chunk (#9668): wait for it, never refuse while it loads.
   // The selection is read when the chunk has loaded, so a box changed while it loads is not lost.
   const prepare = () => void loadStructuralWrites().then(() => {
-    if (!owner.current.mounted) return;
+    // Dropped if the panel unmounted or now shows another proposal.
+    if (!owner.current.mounted || owner.current.proposal !== proposal) return;
     const next = prepareStructuralReview(useViewerStore, proposal, owner.current.selection);
     owner.current.review = next; setReview(next); setProblem(null); setStale(false);
   }).catch((error: unknown) => {
-    if (!owner.current.mounted) return;
     console.warn('[Assistant] Native Structural review refused', error);
+    if (!owner.current.mounted || owner.current.proposal !== proposal) return;
     owner.current.review = null; setReview(null); setProblem(error instanceof Error ? error.message : String(error));
   });
   const apply = () => {

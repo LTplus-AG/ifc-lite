@@ -39,8 +39,10 @@ let loading: Promise<Impl> | null = null;
 
 /** Load the structural write path; resolves once structural writes can run. */
 export function loadStructuralWrites(): Promise<Impl> {
-  loading ??= import('./store-adapter-structural-impl.js').then(
-    (loaded) => { impl = loaded; failure = null; return loaded; },
+  if (loading) return loading;
+  failure = null; // a retry reports "still loading", not the previous failure
+  loading = import('./store-adapter-structural-impl.js').then(
+    (loaded) => { impl = loaded; return loaded; },
     (error: unknown) => { failure = error; loading = null; throw error; },
   );
   return loading;
@@ -53,7 +55,7 @@ export function loadStructuralWrites(): Promise<Impl> {
 export function loadedStructuralWrites(label: string): Impl {
   if (impl) return impl;
   const cause = failure instanceof Error ? failure.message : failure === null ? null : String(failure);
-  // A failed load is retried, so "try again" can succeed once the chunk is reachable.
+  // Start another attempt after a failure, so "try again" has something to wait for.
   if (cause !== null) loadStructuralWrites().catch((error: unknown) => console.warn('[bim.store] structural authoring failed to load again', error));
   throw new Error(cause === null
     ? `${label}: structural authoring is still loading; try again in a moment`

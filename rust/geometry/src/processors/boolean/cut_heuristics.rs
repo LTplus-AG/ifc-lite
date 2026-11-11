@@ -53,7 +53,7 @@ pub(super) fn quality_skips_small_cuts(quality: TessellationQuality) -> bool {
 /// fraction of host max-dimension. Default 0.10 (≈ Manifold-era load times on
 /// the steel corpus with no visible change to members). Native callers can tune
 /// it via `IFC_LITE_FAST_CUT_RATIO`; in wasm (no env) the default applies.
-pub(super) fn fast_cut_skip_ratio() -> f64 {
+pub(crate) fn fast_cut_skip_ratio() -> f64 {
     use std::sync::OnceLock;
     static R: OnceLock<f64> = OnceLock::new();
     *R.get_or_init(|| {

@@ -11,6 +11,7 @@
  */
 
 import type { MethodSchema } from './bridge-schema.js';
+import { buildStoreMirrorClassificationMethods } from './bridge-store-mirror-classification.js';
 
 const ENTITY_REF = '{ modelId: string; expressId: number }';
 const COMMON = 'Name?: string; Description?: string; ObjectType?: string; Tag?: string; GlobalId?: string';
@@ -91,6 +92,7 @@ const LAYER = '{ Material?: number; LayerThickness: number; IsVentilated?: boole
 /** Openings, wall-hosted doors/windows, type objects and materials. */
 export function buildStoreModellingMethods(): MethodSchema[] {
   return [
+    ...buildStoreMirrorClassificationMethods(),
     {
       name: 'alignElements',
       doc: 'Align real native mesh edges or centres in one storey workplane. Fresh geometry and an atomic transaction preserve hosted cuts, joined neighbours and one Undo.',

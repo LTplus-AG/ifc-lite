@@ -10,15 +10,84 @@
 
 import { aaNoiseFloor, expectedCacheTier, median, rankShares, relativeSpread, verdictFor } from './load-scoreboard-stats.mjs';
 
-export const LANES = ['native-cold', 'browser-cold', 'browser-warm1', 'browser-warm'];
+export const LANES = ['native-cold', 'browser-cold', 'browser-cold-early', 'browser-warm1', 'browser-warm', 'boot'];
+/** The `boot` lane opens no file; its rows carry this pseudo-fixture. */
+export const BOOT_FIXTURE = '(app shell)';
 export const METRICS = [
   // [key, label, smallest countable absolute difference]
   ['firstGeometryMs', 'first geometry ms', 1],
   ['interactiveMs', 'interactive ms', 1],
   ['peakMemoryMiB', 'peak memory MiB', 1],
   ['uiQuietMs', 'UI quiet ms', 1],
+  // `boot` lane only (absent elsewhere, so no verdict there).
+  ['shellReadyMs', 'app-shell ready ms', 1],
+  ['bootLongTaskMs', 'boot long-task ms', 1],
+  ['idleJsHeapMiB', 'idle JS heap MiB', 1],
+  ['idleAgentMiB', 'idle agent memory MiB (JS+DOM+other, no wasm)', 1],
+  ['idleWasmMiB', 'idle wasm MiB', 1],
+  ['idleVramMiB', 'idle GPU MiB', 1],
 ];
-export const BROWSER_LANES = ['browser-cold', 'browser-warm1', 'browser-warm'];
+export const BROWSER_LANES = ['browser-cold', 'browser-cold-early', 'browser-warm1', 'browser-warm'];
+
+/**
+ * The per-element output file a browser row wrote: `<fixture>-<side>-r<round>[-early]-<open>.elements.json`
+ * (`<open>` is cold, warm1 or warm<warmOpens>; the early lane's sample tag carries `-early`).
+ */
+export function elementsFileFor(row) {
+  const open = { 'browser-cold': 'cold', 'browser-cold-early': 'early-cold', 'browser-warm1': 'warm1' }[row.lane] ?? `warm${row.warmOpens?.length ?? 2}`;
+  return `${row.fixture}-${row.side}-r${row.round}-${open}.elements.json`;
+}
+
+/**
+ * Output identity of one lane from each side's distinct fingerprints. 'match' needs one real identity on
+ * each side and equal: a side without a successful sample, or with a missing or UNVERIFIABLE identity, is
+ * not a match.
+ */
+export function outputVerdict(fpBase, fpBranch) {
+  if (!fpBase?.length || !fpBranch?.length) return 'unknown (no successful sample on a side)';
+  const real = (fp) => typeof fp === 'string' && fp.length > 0 && !fp.startsWith('UNVERIFIABLE');
+  if ([...fpBase, ...fpBranch].some((fp) => typeof fp === 'string' && fp.startsWith('RESTORE MISMATCH'))) return 'RESTORE MISMATCH (a reopen did not restore its cold output)';
+  if (![...fpBase, ...fpBranch].every(real)) return 'unverifiable (a sample has no output identity)';
+  if (fpBase.length > 1 || fpBranch.length > 1) return 'VARIED within a side';
+  return fpBase[0] === fpBranch[0] ? 'match' : 'CHANGED';
+}
+
+/**
+ * Per-element verdict of a lane: `refElements` from the first base sample (null when its file is missing),
+ * `diffs` from diffElements() of every other sample. IDENTICAL needs a reference and at least one compared
+ * sample, all identical; anything missing is unverifiable.
+ */
+export function elementDiffVerdict(refElements, diffs, reference, samples) {
+  const base = { reference, samples, identical: false, unverifiable: true, diffs: refElements ? diffs : [] };
+  if (!reference) return { ...base, reason: 'no successful base sample' };
+  if (!refElements) return { ...base, reason: 'reference sample has no per-element file' };
+  if (!diffs.length) return { ...base, reason: 'no other sample to compare' };
+  const unverifiable = diffs.some((d) => d.unverifiable);
+  return { ...base, identical: !unverifiable && diffs.every((d) => d.identical), unverifiable, reason: unverifiable ? 'a sample has no element hashes' : null };
+}
+
+/** Metrics a lane must report: when every sample lacks one, it gets an inconclusive verdict rather than none. */
+export const EXPECTED_METRICS = { boot: ['interactiveMs', 'peakMemoryMiB', 'idleJsHeapMiB', 'idleAgentMiB', 'idleWasmMiB'] };
+
+/** Why a successful row is missing a measurement: boot memory reads and the boot quiet window. */
+export function measureErrorsOf(row) {
+  const out = [];
+  if (row.idleAgentError) out.push(`agent memory: ${row.idleAgentError}`);
+  if (row.idleWasm?.error) out.push(`wasm: ${row.idleWasm.error}`);
+  if (row.bootInteractiveSettled === false) out.push('boot never went quiet for 1 s within the cap');
+  return out;
+}
+
+/**
+ * A comparison judged against an A/A run needs that run's floor for the cell: without it the own floor
+ * alone would decide, which cannot see a systematic lean between identical builds. Such a verdict is
+ * inconclusive (what the own floor alone said is kept in the label); more failed loads stays a regression.
+ * An A/A run itself (`floors` null) is judged on its own floor by design.
+ */
+export function withAaFloor(v, floors) {
+  if (!floors || Number.isFinite(v.aaFloor) || v.verdict === 'regression: more failed loads' || v.verdict.startsWith('inconclusive')) return v;
+  return { ...v, verdict: `inconclusive: no A/A floor for this cell (own floor alone: ${v.verdict})`, pass: false, regression: false };
+}
 
 const shareOf = (row) => row.stageShares ?? (row.stageMs && row.interactiveMs
   ? Object.fromEntries(Object.entries(row.stageMs).map(([k, v]) => [k, v / row.interactiveMs])) : null);
@@ -49,7 +118,8 @@ function pairsFor(rows, metric) {
 /** Summarize all samples. `floors`: an A/A report's `floors` (omit for an A/A run). */
 export function summarize(plan, samples, { floors = null } = {}) {
   const fixtures = [];
-  for (const fx of plan.fixtures) {
+  const planFixtures = [...plan.fixtures, ...(plan.lanes.includes('boot') ? [{ name: BOOT_FIXTURE, set: 'boot' }] : [])];
+  for (const fx of planFixtures) {
     const lanes = {};
     for (const lane of plan.lanes) {
       const rows = samples.filter((s) => s.fixture === fx.name && s.lane === lane);
@@ -66,6 +136,12 @@ export function summarize(plan, samples, { floors = null } = {}) {
           loadPaths: [...new Set(ok.flatMap((r) => r.loadPaths ?? []))],
           cacheTiers: [...new Set(ok.flatMap((r) => r.cacheTiers ?? []).filter(Boolean))],
           snapshotAdopted: ok.some((r) => (r.snapshotAdopted ?? []).some(Boolean)),
+          // A reopen keeps its lane whatever path it took: count how many adopted a scene snapshot,
+          // and (first reopen) how many found one stored before opening.
+          snapshotAdoptedCount: ok.filter((r) => (r.snapshotAdopted ?? []).some(Boolean)).length,
+          snapshotPresentBeforeOpenCount: ok.filter((r) => r.snapshotPresentBeforeOpen === true).length,
+          // Successful samples whose measurement step failed (null value): named, never silent.
+          measureErrors: ok.flatMap((r) => measureErrorsOf(r).map((e) => `r${r.round}: ${e}`)),
           settleQuantized: ok.filter((r) => r.settleQuantized).length,
           // H9: taken while the host was busy (pre-sample check), and H2: input event dispatched >100 ms late.
           underLoad: mine.filter((r) => r.host?.underLoad).length,
@@ -82,14 +158,15 @@ export function summarize(plan, samples, { floors = null } = {}) {
       const verdicts = {}, laneFloors = {};
       for (const [key, , minAbs] of METRICS) {
         const pairs = pairsFor(rows, key);
-        if (pairs.every(([a, b]) => a === null && b === null)) continue;
-        verdicts[key] = verdictFor(pairs, { failures, aaFloor: floors?.[fx.name]?.[lane]?.[key] ?? null, minAbs, seed: 0x5eed });
+        // A metric this lane never records has no verdict; interactive time always gets one, so a lane
+        // whose every sample lacks it reads as inconclusive instead of dropping out of the summary.
+        const unmeasured = pairs.every(([a, b]) => a === null && b === null);
+        if (unmeasured && key !== 'interactiveMs' && !(EXPECTED_METRICS[lane] ?? []).includes(key)) continue;
+        const v = withAaFloor(verdictFor(pairs, { failures, aaFloor: floors?.[fx.name]?.[lane]?.[key] ?? null, minAbs, seed: 0x5eed }), floors);
+        verdicts[key] = unmeasured && !v.regression ? { ...v, verdict: 'inconclusive: not measured on any sample (see measurement errors)' } : v;
         laneFloors[key] = aaNoiseFloor(pairs, { seed: 0x5eed });
       }
-      const fpBase = sides.base.fingerprints, fpBranch = sides.branch.fingerprints;
-      const output = fpBase.length === 0 || fpBranch.length === 0 ? 'unknown (no successful sample on a side)'
-        : fpBase.length > 1 || fpBranch.length > 1 ? 'VARIED within a side'
-          : fpBase[0] === fpBranch[0] ? 'match' : 'CHANGED';
+      const output = outputVerdict(sides.base.fingerprints, sides.branch.fingerprints);
       lanes[lane] = { sides, verdicts, floors: laneFloors, output, primary: verdicts.interactiveMs ?? null };
     }
     fixtures.push({ name: fx.name, set: fx.set ?? 'tuning', bytes: fx.bytes, expectedTier: Number.isFinite(fx.bytes) ? expectedCacheTier(fx.bytes) : null, lanes });
@@ -126,9 +203,11 @@ function cell(m) {
 
 function tierCell(f, lane) {
   const l = f.lanes[lane];
-  if (lane === 'native-cold') return 'n/a';
+  if (lane === 'native-cold' || lane === 'boot') return 'n/a';
   const s = l?.sides.base;
-  const observed = s ? `${s.cacheTiers.join('/') || 'none'}; path ${s.loadPaths.join('/') || '?'}${s.snapshotAdopted ? '; snapshot' : ''}` : '—';
+  const adopted = s?.snapshotAdoptedCount ? `; snapshot ${s.snapshotAdoptedCount}/${s.ok}` : '';
+  const stored = lane === 'browser-warm1' && s?.snapshotPresentBeforeOpenCount ? ` (stored before open ${s.snapshotPresentBeforeOpenCount}/${s.ok})` : '';
+  const observed = s ? `${s.cacheTiers.join('/') || 'none'}; path ${s.loadPaths.join('/') || '?'}${adopted}${stored}` : '—';
   return observed;
 }
 
@@ -152,6 +231,25 @@ function baselineTable(summary, set, lanes) {
       lines.push(`| ${f.name} | ${f.bytes ? (f.bytes / 2 ** 20).toFixed(1) : '—'} | ${f.expectedTier ?? '—'} | ${lane}${warmNote} | ${lane === 'native-cold' ? 'n/a (batch)' : cell(pooled('firstGeometryMs'))} | ${cell(pooled('interactiveMs'))} | ${lane === 'native-cold' ? 'n/a' : cell(pooled('uiQuietMs'))} | ${cell(pooled('peakMemoryMiB'))} | ${okFailed} | ${flagged} | ${tierCell(f, lane)} | ${l.output === 'match' ? (l.sides.base.fingerprints[0] ?? '').slice(0, 60) : l.output} |`);
     }
   }
+  return lines.join('\n');
+}
+
+const BOOT_COLUMNS = [['shellReadyMs', 'app-shell ready ms'], ['interactiveMs', 'boot interactive ms'], ['bootLongTasks', 'long tasks'],
+  ['bootLongTaskMs', 'long-task ms'], ['peakMemoryMiB', 'idle PSS MiB'], ['idleJsHeapMiB', 'idle JS heap MiB'], ['idleAgentMiB', 'idle agent MiB (no wasm)'], ['idleWasmMiB', 'idle wasm MiB'], ['idleVramMiB', 'idle GPU MiB']];
+
+/** The boot lane per side (no file opened); values from the rows, so columns without a verdict metric still show. */
+function bootTable(summary, samples) {
+  const rows = samples.filter((r) => r.lane === 'boot');
+  if (rows.length === 0) return null;
+  const lines = [`| side | ${BOOT_COLUMNS.map(([, l]) => l).join(' | ')} | ok/failed |`, `|---|${BOOT_COLUMNS.map(() => '---:|').join('')}---|`];
+  for (const side of ['base', 'branch']) {
+    const mine = rows.filter((r) => r.side === side);
+    const ok = mine.filter((r) => r.ok);
+    lines.push(`| ${side} | ${BOOT_COLUMNS.map(([k]) => cell({ values: ok.map((r) => r[k]) })).join(' | ')} | ${ok.length}/${mine.length - ok.length} |`);
+  }
+  const errors = ['base', 'branch'].flatMap((side) => rows.filter((r) => r.side === side && r.ok)
+    .flatMap((r) => measureErrorsOf(r).map((e) => `${side} r${r.round}: ${e}`)));
+  if (errors.length) lines.push('', `Measurement errors (value recorded as missing): ${errors.join('; ')}`);
   return lines.join('\n');
 }
 
@@ -180,26 +278,30 @@ export function laneStageRanking(summary, lane, set = 'tuning') {
   return rankShares(perFixture);
 }
 
-export function renderMarkdown(summary, plan, host) {
+export function renderMarkdown(summary, plan, host, samples = []) {
   const out = [`# Load scoreboard: ${summary.name}`, ''];
   out.push(`Kind: ${summary.kind}. Timed evidence: ${host?.timedEvidence ? 'yes (exclusive benchmark admission)' : 'NO (not exclusive; dry run)'}.`);
   for (const seg of host?.segments ?? []) {
     out.push(`- Segment (${seg.fixtures}): host ${seg.start?.hostname}; ${seg.workerKind ?? 'no'} admission, job ${seg.workerJobId ?? 'none'}; power ${seg.start?.powerProfile ?? '?'} -> ${seg.end?.powerProfile ?? '?'}; max freq ${seg.start?.scalingMaxFreqKHz ?? '?'} -> ${seg.end?.scalingMaxFreqKHz ?? '?'} kHz; ${seg.start?.at} .. ${seg.end?.at ?? 'unfinished'}`);
   }
   out.push(`Sides: base = ${plan.sides.base.label}; branch = ${plan.sides.branch.label}. Rounds ${plan.rounds}, warm opens ${plan.warmOpens ?? 0}, order seed ${plan.seed}.`, '');
-  out.push('Interactive = geometry streamed, drained and finalized, metadata ready, and the first frame after the store settled (README cold-load notes). UI quiet = end of the last main-thread long task before 500 ms without one. Native has no first-geometry event (batch call); native interactive = file read + full `process_geometry`. Times are ms from the file input change event. Cells: median [min-max] n; fewer than 3 values are listed, never summarized.', '');
-  for (const set of ['tuning', 'holdout']) {
+  out.push('Interactive = geometry streamed, drained and finalized, metadata ready, and the first frame after the store settled (README cold-load notes). UI quiet = end of the last main-thread long task before 500 ms without one. Native has no first-geometry event (batch call); native interactive = file read + full `process_geometry`. Clock origins differ by lane: browser-cold, browser-warm1 and browser-warm time from the file input change event (arming after a quiet shell); browser-cold-early times from the first paint the file was picked at, so boot work that delays the pick and its dispatch is included; boot times from navigation start. Cells: median [min-max] n; fewer than 3 values are listed, never summarized.', '');
+  for (const set of ['tuning', 'holdout', 'boot']) {
     if (!summary.fixtures.some((f) => f.set === set)) continue;
     out.push(`## Baseline (${set})`, '', baselineTable(summary, set, plan.lanes), '');
   }
-  for (const set of ['tuning', 'holdout']) {
+  const boot = bootTable(summary, samples);
+  if (boot) {
+    out.push('## Boot, no file opened (fresh browser; idle memory 5 s after navigation; wasm summed over page and workers via CDP)', '', boot, '');
+  }
+  for (const set of ['tuning', 'holdout', 'boot']) {
     if (!summary.fixtures.some((f) => f.set === set)) continue;
     out.push(`## Verdicts (${set}): gain >= 2x noise floor`, '', verdictTable(summary, set, plan.lanes), '');
   }
   const diffRows = summary.fixtures.flatMap((f) => BROWSER_LANES.filter((lane) => f.lanes[lane]?.elementDiff).map((lane) => {
     const d = f.lanes[lane].elementDiff, worst = d.diffs.find((x) => !x.identical);
-    if (d.diffs.some((x) => x.unverifiable)) return `| ${f.name} | ${lane} | ${d.diffs.length + 1} | UNVERIFIABLE (no element hashes on a sample) |`;
-    return `| ${f.name} | ${lane} | ${d.diffs.length + 1} | ${d.identical ? 'IDENTICAL' : `DIFFERS (${worst.side} r${worst.round}: ${worst.onlyBase} missing, ${worst.onlyBranch} extra, ${worst.changed} changed of ${worst.compared}; e.g. ${[...worst.examples.changed, ...worst.examples.onlyBase, ...worst.examples.onlyBranch].slice(0, 5).join(', ')})`} |`;
+    if (d.unverifiable) return `| ${f.name} | ${lane} | ${d.samples} | UNVERIFIABLE (${d.reason}) |`;
+    return `| ${f.name} | ${lane} | ${d.samples} | ${d.identical ? 'IDENTICAL' : `DIFFERS (${worst.side} r${worst.round}: ${worst.onlyBase} missing, ${worst.onlyBranch} extra, ${worst.changed} changed of ${worst.compared}; e.g. ${[...worst.examples.changed, ...worst.examples.onlyBase, ...worst.examples.onlyBranch].slice(0, 5).join(', ')})`} |`;
   }));
   if (diffRows.length) {
     out.push('## Per-element output (element geometry hashes, flat + instanced; every sample vs the first base sample)', '',
@@ -213,7 +315,7 @@ export function renderMarkdown(summary, plan, host) {
     .map((lane) => { const r = f.lanes[lane].sides.base.readiness; const label = Object.fromEntries(READINESS);
       return `| ${f.name} | ${f.set} | ${lane} | ${READINESS.map(([k]) => n0(r.medians[k])).join(' | ')} | ${label[r.binding] ?? '—'} (${Object.entries(r.bindingCounts).map(([k, c]) => `${label[k]} ${c}`).join(', ')}) |`; }));
   if (readinessRows.length) {
-    out.push('', '## Readiness components (base side medians, n>=3, ms from the input change event; interactive = the last of geometry finalized, metadata ready, settled + frame)', '',
+    out.push('', '## Readiness components (base side medians, n>=3; ms from the change event, or from the first paint for browser-cold-early; interactive = the last of geometry finalized, metadata ready, settled + frame)', '',
       `| fixture | set | lane | ${READINESS.map(([, l]) => l).join(' | ')} | binding (count) |`, `|---|---|---|${READINESS.map(() => '---:|').join('')}---|`, ...readinessRows);
   }
   out.push('', '## Stage shares, ranked (tuning set, base side; concurrent stages overlap, so shares need not sum to 100%)', '');

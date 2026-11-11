@@ -84,7 +84,7 @@ static PARAM_OVERRIDE: std::sync::atomic::AtomicI8 = std::sync::atomic::AtomicI8
 /// wasm-side `setRectParamFastPath` override remains the programmatic escape hatch
 /// (and, being an explicit per-process call, takes precedence over both env flags).
 pub fn param_enabled() -> bool {
-    match PARAM_OVERRIDE.load(std::sync::atomic::Ordering::Relaxed) {
+    match PARAM_OVERRIDE.load(std::sync::atomic::Ordering::Acquire) {
         0 => return false,
         1 => return true,
         _ => {}
@@ -108,14 +108,16 @@ fn param_env_default(rect_fast_on: bool, rect_param: Option<&str>) -> bool {
 
 /// Test-only: force `param_enabled()` on/off (or `None` for the env default).
 pub fn param_set_enabled_override(v: Option<bool>) {
-    PARAM_OVERRIDE.store(
-        match v {
-            None => -1,
-            Some(false) => 0,
-            Some(true) => 1,
-        },
-        std::sync::atomic::Ordering::Relaxed,
-    );
+    crate::output_policy::mutate(|| {
+        PARAM_OVERRIDE.store(
+            match v {
+                None => -1,
+                Some(false) => 0,
+                Some(true) => 1,
+            },
+            std::sync::atomic::Ordering::Release,
+        )
+    });
 }
 
 #[path = "rect_fast/param_stats.rs"]

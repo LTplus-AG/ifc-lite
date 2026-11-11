@@ -16,6 +16,7 @@ export const BIM_DERIVED_TYPE_GROUPS = [
       'packages/create/src/in-store/wall-join.ts', 'packages/create/src/in-store/wall-join-apply.ts',
       'packages/create/src/in-store/column.ts', 'packages/create/src/in-store/beam.ts',
       'packages/create/src/in-store/align-boxes.ts',
+      'packages/create/src/in-store/element-mirror.ts', 'packages/create/src/in-store/classification.ts',
       'packages/create/src/in-store/member.ts', 'packages/create/src/in-store/profile.ts',
       'packages/create/src/in-store/storey/storey-model.ts', 'packages/create/src/in-store/storey/storey-add.ts',
       'packages/create/src/in-store/storey/storey-level-plan.ts', 'packages/create/src/in-store/storey/storey-placement.ts',
@@ -25,7 +26,7 @@ export const BIM_DERIVED_TYPE_GROUPS = [
       'packages/create/src/in-store/storey/storey-attached.ts', 'packages/create/src/in-store/railing-stair-refit.ts',
     ],
     roots: [
-      'AlignMode', 'WallJoinApplyOptions', 'WallJoinOptions',
+      'AlignMode', 'WallJoinApplyOptions', 'WallJoinOptions', 'MirrorElementsParams', 'ClassificationInStoreParams',
       'ColumnInStoreParams', 'ProfiledColumnInStoreParams',
       'BeamInStoreParams', 'ProfiledBeamInStoreParams',
       'MemberInStoreParams', 'ProfiledMemberInStoreParams',

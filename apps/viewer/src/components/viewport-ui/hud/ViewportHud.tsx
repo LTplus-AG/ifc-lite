@@ -5,7 +5,10 @@
 import { useCallback } from 'react';
 import type { CSSProperties } from 'react';
 import { cn } from '@/lib/utils';
-import { VIEW_CUBE_REACH_PX, VIEW_CUBE_REACH_X_PX } from '@/components/viewer/viewcube-box';
+import { VIEW_CUBE_REACH, VIEW_CUBE_REACH_X_PX } from '@/components/viewer/viewcube-box';
+import { mobileNavRowClearance } from '@/components/viewer/mobile-overlay-layout';
+import { mobileCommandPlacement } from '@/lib/layout/form-factor';
+import { useViewerStore } from '@/store';
 import { HUD_REGIONS, setHudLaneRulerNode, setHudRegionNode, type HudRegionName } from './hud-regions';
 
 /**
@@ -69,7 +72,7 @@ const REGION_STYLE: Partial<Record<HudRegionName, CSSProperties>> = {
     left: `calc(50% + clamp(0px, (100% - ${LEFT_RESERVE} - ${RIGHT_RESERVE}) / 2, (${LEFT_RESERVE} - ${RIGHT_RESERVE}) / 2))`,
     maxWidth: `calc(100% - ${LEFT_RESERVE} - ${RIGHT_RESERVE})`,
   },
-  'top-right': { paddingTop: VIEW_CUBE_REACH_PX },
+  'top-right': { paddingTop: VIEW_CUBE_REACH },
 };
 
 /**
@@ -117,12 +120,16 @@ function HudRegionSlot({ name }: { name: HudRegionName }) {
   // component's lifetime, so React calls this ref exactly once with the
   // node (mount) and once with `null` (unmount) — never spuriously.
   const ref = useCallback((node: HTMLDivElement | null) => setHudRegionNode(name, node), [name]);
+  // On a phone the Home/zoom pill and the Panels button share the viewport's
+  // bottom row (#9718); the bottom-centre stack (hints, readouts) starts above it.
+  const mobileRowClearance = useViewerStore((s) =>
+    name === 'bottom-center' && s.isMobile ? mobileNavRowClearance(mobileCommandPlacement(s.formFactor)) : null);
   return (
     <div
       ref={ref}
       data-hud-region={name}
       className={cn('pointer-events-none absolute flex flex-col gap-2', REGION_CLASSNAME[name])}
-      style={REGION_STYLE[name]}
+      style={mobileRowClearance ? { ...REGION_STYLE[name], paddingBottom: mobileRowClearance } : REGION_STYLE[name]}
     />
   );
 }

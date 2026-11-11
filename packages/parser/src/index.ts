@@ -137,11 +137,10 @@ export {
   type TaskDurationType,
 } from './schedule-extractor.js';
 
-// Structural analysis extractor — IfcStructuralAnalysisModel, the
-// IfcStructuralMember / IfcStructuralConnection / IfcStructuralActivity
-// branches, IfcStructuralLoadGroup / IfcStructuralLoadCase,
-// IfcStructuralResultGroup, IfcBoundaryCondition, the structural
-// connects-relationships and the physical-to-analytical links.
+// Structural analysis extractor: IfcStructuralAnalysisModel, the member,
+// connection and activity branches, load and result groups,
+// IfcBoundaryCondition, the structural connects-relationships and the
+// physical-to-analytical links, with their counterpart lookup.
 export {
   extractStructuralOnDemand,
   type StructuralExtraction,

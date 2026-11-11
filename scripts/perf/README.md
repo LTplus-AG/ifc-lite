@@ -6409,7 +6409,7 @@ from the existing `cache.lookup` end to `geometry.pool` start measures the full
 miss preparation gap (server attempt, engine initialization and source copy).
 No pool means a different load path, not a missing duration.
 
-### Viewer eager panel boundaries (#9634; 2026-11-11; measured, full-suite acceptance pending)
+### Viewer eager panel boundaries (#9634; 2026-11-11; measured and validated)
 
 BCF, Data validation and Lens load through dynamic imports at the shared
 workspace-panel router. The welcome screen and first-model loader do not need
@@ -6424,10 +6424,11 @@ headroom. This remains useful independently of #9590 relieving the ceiling
 pressure, at a small increase in total emitted JavaScript from extra chunks.
 The PR carries source-qualified numeric evidence, separately from shared-base
 drift. Exact-head build, emitted-graph assertion, retained-free, typecheck,
-lint, review regression tests and pre-handoff passed. Full four-shard viewer
-coverage remains unverified: a host reboot orphaned the original request with
-an unknown outcome, which fleet policy forbids replaying. Recommend landing
-after full-suite acceptance. There is no cold-boot timing claim.
+lint, review regression tests and pre-handoff passed. A new owner-decided
+validation passed the full four-shard viewer suite, with explicit skips for
+optional external services, credentials and opt-in fixtures. The older
+reboot-orphaned request remains unknown and is not acceptance evidence.
+Recommend landing the shared boundary. There is no cold-boot timing claim.
 
 The opt-in VITE_BUNDLE_ANALYSIS build and audit-viewer-eager tool inspect the
 complete HTML preload plus recursive static-import closure. Emitted chunk

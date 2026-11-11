@@ -53,8 +53,10 @@ jobs:
               # A run can finish between the listing and here; only one still going is a failure.
               status=$(gh api "repos/$REPO/actions/runs/$id" --jq .status || echo unknown)
               # GitHub refuses to cancel a run that is `pending` in a concurrency
-              # group (run 42921918644). Give it a few seconds to start or go.
-              if [ "$status" != pending ] || [ "$attempt" -eq 3 ]; then break; fi
+              # group (run 42921918644). Give it a few seconds to start or go. Retry
+              # for any unfinished status: the group's holder can finish between the
+              # refusal and the read, so the run reads `queued` but is cancellable.
+              if [ "$status" = completed ] || [ "$attempt" -eq 3 ]; then break; fi
               sleep 10
             done
             case "$status" in

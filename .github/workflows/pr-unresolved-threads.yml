@@ -9,17 +9,25 @@
 # and never when there are none, so a clean review or a summary comment stays quiet.
 # `workflow_run` covers the one reviewer that runs here and opens threads, Claude
 # review, whose token raises no review event; `pull_request_review` covers people
-# and external apps such as CodeRabbit and Bugbot. Test and PR-Agent review are
-# not triggers: neither opens a review thread (PR-Agent posts one conversation
-# comment per lane, scripts/review/pr-agent-publish.mjs), so their completions,
-# most of this workflow's runs, could not change what it posts. A thread
-# someone unresolves by hand raises neither event and waits for the next review.
-# Checks out no code.
+# and external apps such as CodeRabbit and Bugbot.
+#
+# FORK AND DEPENDABOT PRs. There, `pull_request_review` gets a read-only token
+# and cannot comment, and Claude review skips forks. Test's completion is what
+# posts for them: `workflow_run` gets a write token, and Test finishes late
+# enough that the reviews exist. For every other PR the job skips Test
+# completions. That run takes no runner, and its `notify` check lands on the
+# default branch's head commit, not on the PR, and is no required context, so
+# it cannot turn anything green.
+#
+# PR-Agent review is not a trigger: it opens no review threads (one
+# conversation comment per lane, scripts/review/pr-agent-publish.mjs). A thread
+# someone unresolves by hand raises no event a workflow can subscribe to, so it
+# waits for the next review. Checks out no code.
 name: PR unresolved threads
 
 on:
   workflow_run:
-    workflows: [Claude review]
+    workflows: [Test, Claude review]
     types: [completed]
   pull_request_review:
     types: [submitted]
@@ -30,10 +38,14 @@ permissions:
 jobs:
   notify:
     # A Mergify batch PR is closed within minutes and carries no review threads.
+    # Test counts only for fork and Dependabot PRs; see the header.
     if: >-
       github.event_name == 'pull_request_review' ||
-      (contains(fromJSON('["pull_request","pull_request_target"]'), github.event.workflow_run.event) &&
-      !startsWith(github.event.workflow_run.head_branch, 'mergify/merge-queue/'))
+      (github.event.workflow_run.event == 'pull_request' &&
+      !startsWith(github.event.workflow_run.head_branch, 'mergify/merge-queue/') &&
+      (github.event.workflow_run.name == 'Claude review' ||
+      github.event.workflow_run.head_repository.full_name != github.repository ||
+      startsWith(github.event.workflow_run.head_branch, 'dependabot/')))
     runs-on: ubuntu-latest
     timeout-minutes: 5
     # One notice per PR at a time, so two finishing runs cannot post it twice, and

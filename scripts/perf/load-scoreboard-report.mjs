@@ -66,6 +66,18 @@ export function elementDiffVerdict(refElements, diffs, reference, samples) {
   return { ...base, identical: !unverifiable && diffs.every((d) => d.identical), unverifiable, reason: unverifiable ? 'a sample has no element hashes' : null };
 }
 
+/** Metrics a lane must report: when every sample lacks one, it gets an inconclusive verdict rather than none. */
+export const EXPECTED_METRICS = { boot: ['interactiveMs', 'peakMemoryMiB', 'idleJsHeapMiB', 'idleAgentMiB', 'idleWasmMiB'] };
+
+/** Why a successful row is missing a measurement: boot memory reads and the boot quiet window. */
+export function measureErrorsOf(row) {
+  const out = [];
+  if (row.idleAgentError) out.push(`agent memory: ${row.idleAgentError}`);
+  if (row.idleWasm?.error) out.push(`wasm: ${row.idleWasm.error}`);
+  if (row.bootInteractiveSettled === false) out.push('boot never went quiet for 1 s within the cap');
+  return out;
+}
+
 /**
  * A comparison judged against an A/A run needs that run's floor for the cell: without it the own floor
  * alone would decide, which cannot see a systematic lean between identical builds. Such a verdict is
@@ -128,6 +140,8 @@ export function summarize(plan, samples, { floors = null } = {}) {
           // and (first reopen) how many found one stored before opening.
           snapshotAdoptedCount: ok.filter((r) => (r.snapshotAdopted ?? []).some(Boolean)).length,
           snapshotPresentBeforeOpenCount: ok.filter((r) => r.snapshotPresentBeforeOpen === true).length,
+          // Successful samples whose measurement step failed (null value): named, never silent.
+          measureErrors: ok.flatMap((r) => measureErrorsOf(r).map((e) => `r${r.round}: ${e}`)),
           settleQuantized: ok.filter((r) => r.settleQuantized).length,
           // H9: taken while the host was busy (pre-sample check), and H2: input event dispatched >100 ms late.
           underLoad: mine.filter((r) => r.host?.underLoad).length,
@@ -146,8 +160,10 @@ export function summarize(plan, samples, { floors = null } = {}) {
         const pairs = pairsFor(rows, key);
         // A metric this lane never records has no verdict; interactive time always gets one, so a lane
         // whose every sample lacks it reads as inconclusive instead of dropping out of the summary.
-        if (key !== 'interactiveMs' && pairs.every(([a, b]) => a === null && b === null)) continue;
-        verdicts[key] = withAaFloor(verdictFor(pairs, { failures, aaFloor: floors?.[fx.name]?.[lane]?.[key] ?? null, minAbs, seed: 0x5eed }), floors);
+        const unmeasured = pairs.every(([a, b]) => a === null && b === null);
+        if (unmeasured && key !== 'interactiveMs' && !(EXPECTED_METRICS[lane] ?? []).includes(key)) continue;
+        const v = withAaFloor(verdictFor(pairs, { failures, aaFloor: floors?.[fx.name]?.[lane]?.[key] ?? null, minAbs, seed: 0x5eed }), floors);
+        verdicts[key] = unmeasured && !v.regression ? { ...v, verdict: 'inconclusive: not measured on any sample (see measurement errors)' } : v;
         laneFloors[key] = aaNoiseFloor(pairs, { seed: 0x5eed });
       }
       const output = outputVerdict(sides.base.fingerprints, sides.branch.fingerprints);
@@ -231,6 +247,9 @@ function bootTable(summary, samples) {
     const ok = mine.filter((r) => r.ok);
     lines.push(`| ${side} | ${BOOT_COLUMNS.map(([k]) => cell({ values: ok.map((r) => r[k]) })).join(' | ')} | ${ok.length}/${mine.length - ok.length} |`);
   }
+  const errors = ['base', 'branch'].flatMap((side) => rows.filter((r) => r.side === side && r.ok)
+    .flatMap((r) => measureErrorsOf(r).map((e) => `${side} r${r.round}: ${e}`)));
+  if (errors.length) lines.push('', `Measurement errors (value recorded as missing): ${errors.join('; ')}`);
   return lines.join('\n');
 }
 

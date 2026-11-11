@@ -269,25 +269,30 @@ export function diffElements(base, branch, limit = 10) {
 }
 
 /**
- * Output identity of one browser open from its readOutputFingerprint() models. A cold open needs
- * element hashes; without a model or hashes it is UNVERIFIABLE. A reopen without hashes (a cache hit)
- * inherits the cold identity only when that cold load had hashes and the reopen restored its flat
- * output exactly; a restore of an unverifiable cold load is itself unverifiable, and a different flat
- * output is a RESTORE MISMATCH. Neither is ever a comparable identity.
+ * Output identity of one browser open from its readOutputFingerprint() models. Comparable only when
+ * complete: every model had the Rust hash pass (flat + instanced-only hashes), every element is covered
+ * (flat meshes the pass left unhashed by their exact bytes) and no element has two hashes. Anything less
+ * is UNVERIFIABLE. A reopen from the cache has no element hashes and its instanced output is not readable,
+ * so its identity is UNVERIFIABLE too: only its flat output is checked against the cold load, and a
+ * different flat output is a RESTORE MISMATCH. A copied cold identity is never reported for a reopen.
  */
 export function openIdentity({ label, fingerprint, coldFingerprint }) {
   const models = Array.isArray(fingerprint) ? fingerprint : [];
-  const hashed = (ms) => ms.length > 0 && ms.every((m) => m.hashed > 0);
-  if (hashed(models)) return { identity: models.map((m) => m.identity).join(' | '), elements: models.map((m) => m.elements), identitySource: 'element hashes' };
   const none = (why) => ({ identity: `UNVERIFIABLE (${why})`, elements: [], identitySource: 'none' });
   if (models.length === 0) return none('no model in the store');
-  if (label === 'cold') return none(models.some((m) => m.hashed > 0) ? 'a model has no element geometry hashes' : 'no element geometry hashes');
+  const complete = (m) => m.hashed > 0 && m.unhashed === 0 && m.conflicts === 0;
+  if (models.every(complete)) return { identity: models.map((m) => m.identity).join(' | '), elements: models.map((m) => m.elements), identitySource: 'element hashes' };
+  if (models.some((m) => m.hashed > 0 || label === 'cold')) {
+    const why = models.some((m) => m.conflicts > 0) ? 'an element has two different hashes'
+      : models.some((m) => !(m.unhashed === 0)) ? 'element hashes do not cover every element'
+        : 'no element geometry hashes';
+    return none(why);
+  }
   const cold = Array.isArray(coldFingerprint) ? coldFingerprint : [];
-  if (!hashed(cold)) return none('the cold load it restores had no element hashes');
-  const restored = cold.length === models.length
-    && models.every((m, i) => m.hashed === 0 && m.flat?.signature === cold[i].flat?.signature && m.flat?.meshes === cold[i].flat?.meshes);
-  return restored
-    ? { identity: `restored cold: ${cold.map((m) => m.identity).join(' | ')}`, elements: cold.map((m) => m.elements), identitySource: 'cold load (warm restored its flat output exactly; instanced shards not compared)' }
+  if (cold.length === 0) return none('cache hit without a cold load to compare its flat output with');
+  const sameFlat = cold.length === models.length
+    && models.every((m, i) => m.flat?.signature === cold[i].flat?.signature && m.flat?.meshes === cold[i].flat?.meshes);
+  return sameFlat ? none('cache hit: no element hashes, instanced output not readable; flat output restored exactly')
     : { identity: `RESTORE MISMATCH vs cold: flat ${models.map((m) => `${m.flat?.meshes}/${m.flat?.signature}`).join(',')}`, elements: [], identitySource: 'none' };
 }
 

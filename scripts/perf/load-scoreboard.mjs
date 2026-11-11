@@ -21,7 +21,7 @@
  * Not a CI gate.
  */
 
-import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { hostname, loadavg } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -125,6 +125,25 @@ export function pendingLanes(done, cell, lanes) {
 }
 
 /** Balanced, randomized first-side order per lane group and fixture (ab-order.mjs), reproducible from the seed. */
+/**
+ * Tag a default browser sample writes its files under. A cell with none of its default lanes recorded
+ * uses the canonical tag; a resumed cell that already has some keeps their files and writes the rerun
+ * under its own tag (`<tag>-resume<attempt>`), so nothing a recorded row points to is overwritten.
+ */
+export function sampleTagFor(tag, missingDefault, planDefault, attempt) {
+  return missingDefault.length === planDefault.length ? tag : `${tag}-resume${attempt}`;
+}
+
+/** [from, to] for the per-element files of rows about to be recorded from a sample written under `sampleTag`. */
+export function elementFileMoves(rows, sampleTag, canonicalTag) {
+  if (sampleTag === canonicalTag) return [];
+  return rows.map((row) => {
+    const to = elementsFileFor(row);
+    if (!to.startsWith(`${canonicalTag}-`)) throw new Error(`${to} is not under ${canonicalTag}`);
+    return [`${sampleTag}${to.slice(canonicalTag.length)}`, to];
+  });
+}
+
 export function buildOrder(plan) {
   const rand = seededRand(plan.seed);
   const groups = [];
@@ -208,14 +227,19 @@ async function run(opt) {
               }
               const missingDefault = missing.filter((l) => DEFAULT_BROWSER.includes(l));
               if (missingDefault.length === 0) continue;
-              const s = await browser.sample({ side: plan.sides[side], fixture, tag, warmOpens: plan.warmOpens, pass: 'timing' });
+              const sampleTag = sampleTagFor(tag, missingDefault, groupLanes.filter((l) => DEFAULT_BROWSER.includes(l)), Date.now().toString(36));
+              const s = await browser.sample({ side: plan.sides[side], fixture, tag: sampleTag, warmOpens: plan.warmOpens, pass: 'timing' });
               // H3: peak memory comes from a separate pass with the sampler on, never from the timed opens.
-              const m = plan.memoryPass === false ? null : await browser.sample({ side: plan.sides[side], fixture, tag: `${tag}-mem`, warmOpens: plan.warmOpens, pass: 'memory' });
+              const m = plan.memoryPass === false ? null : await browser.sample({ side: plan.sides[side], fixture, tag: `${sampleTag}-mem`, warmOpens: plan.warmOpens, pass: 'memory' });
               const adapter = s.meta.adapter ? JSON.stringify(s.meta.adapter) : null;
               for (const [lane, r] of Object.entries(s.lanes)) {
                 // Only lanes still missing: a resumed cell must not get a second row for a lane it already has.
                 if (!missingDefault.includes(lane)) continue;
                 const { trace, ...row } = r;
+                // A rerun's file becomes this lane's only when its row is recorded.
+                for (const [from, to] of elementFileMoves([{ ...cell, lane, warmOpens: lane === 'browser-warm' ? s.warmOpens : undefined }], sampleTag, tag)) {
+                  if (existsSync(join(out, 'traces', from))) renameSync(join(out, 'traces', from), join(out, 'traces', to));
+                }
                 const mem = m?.lanes[lane];
                 record({ ...common, ...row, lane, adapter, browserVersion: s.meta.browserVersion ?? null, pageErrors: s.meta.pageErrors.length,
                   peakMemoryMiB: mem?.ok ? mem.peakMemoryMiB : null, memoryPass: mem ? { ok: mem.ok, error: mem.error, memory: mem.memory,

@@ -420,16 +420,57 @@ test('the early lane is per-element checked: its rows name the elements file its
   assert.equal(elementsFileFor({ lane: 'browser-warm', fixture: 'FZK', side: 'branch', round: 0, warmOpens: [{}, {}] }), 'FZK-branch-r0-warm2.elements.json');
 });
 
-test('a reopen inherits the cold identity only from a cold load that had element hashes (review #9740)', async () => {
+test('an output identity is comparable only when complete; a cache hit never borrows the cold identity (review #9740)', async () => {
   const { openIdentity } = await stats();
-  const hashedCold = [{ identity: 'elements=3 hashed=3', hashed: 3, elements: { 1: 'a' }, flat: { signature: 's', meshes: 3 } }];
-  const warm = [{ identity: 'elements=0 hashed=0', hashed: 0, elements: {}, flat: { signature: 's', meshes: 3 } }];
-  assert.equal(openIdentity({ label: 'cold', fingerprint: hashedCold }).identity, 'elements=3 hashed=3');
-  assert.match(openIdentity({ label: 'warm1', fingerprint: warm, coldFingerprint: hashedCold }).identity, /^restored cold: elements=3/);
-  assert.match(openIdentity({ label: 'warm1', fingerprint: [{ ...warm[0], flat: { signature: 'x', meshes: 3 } }], coldFingerprint: hashedCold }).identity, /^RESTORE MISMATCH/);
-  // The gap: a cold load without hashes, then a reopen restoring it exactly, used to read as a comparable identity.
-  const unhashedCold = [{ ...hashedCold[0], hashed: 0, elements: {} }];
-  assert.match(openIdentity({ label: 'warm1', fingerprint: warm, coldFingerprint: unhashedCold }).identity, /^UNVERIFIABLE/);
+  const model = (o) => ({ identity: 'elements=3 hashed=2 bytes-hashed=1 unhashed=0 conflicts=0 sig=ab', hashed: 2, dataHashed: 1, unhashed: 0, conflicts: 0,
+    elements: { 1: 'a', 2: 'b', 3: 'dff' }, flat: { signature: 's', meshes: 3 }, ...o });
+  // Rust hashes plus exact-bytes hashes for the flat meshes the pass left unhashed: complete.
+  assert.equal(openIdentity({ label: 'cold', fingerprint: [model()] }).identity, 'elements=3 hashed=2 bytes-hashed=1 unhashed=0 conflicts=0 sig=ab');
+  // Partial or conflicting hashes compare only part of the output (FZK had 12 of 119 elements unhashed).
+  assert.match(openIdentity({ label: 'cold', fingerprint: [model({ unhashed: 12 })] }).identity, /^UNVERIFIABLE \(element hashes do not cover/);
+  assert.match(openIdentity({ label: 'cold', fingerprint: [model({ conflicts: 1 })] }).identity, /^UNVERIFIABLE \(an element has two/);
+  assert.match(openIdentity({ label: 'cold', fingerprint: [model({ unhashed: undefined })] }).identity, /^UNVERIFIABLE/, 'a probe that does not report coverage is not complete');
+  // A cache hit: no hashes, instanced output not readable. Flat restore is checked, the cold identity is never copied.
+  const hit = [{ identity: 'elements=0', hashed: 0, unhashed: 3, conflicts: 0, elements: {}, flat: { signature: 's', meshes: 3 } }];
+  const restored = openIdentity({ label: 'warm1', fingerprint: hit, coldFingerprint: [model()] });
+  assert.match(restored.identity, /^UNVERIFIABLE \(cache hit/);
+  assert.deepEqual(restored.elements, []);
+  assert.match(openIdentity({ label: 'warm1', fingerprint: [{ ...hit[0], flat: { signature: 'x', meshes: 3 } }], coldFingerprint: [model()] }).identity, /^RESTORE MISMATCH/);
+  // An uncached reopen parses again and has complete hashes: comparable.
+  assert.equal(openIdentity({ label: 'warm2', fingerprint: [model()] }).elements[0][3], 'dff');
+});
+
+test('boot memory a lane must report keeps an inconclusive verdict and names the failed read (review #9740)', async () => {
+  const { summarize, renderMarkdown, BOOT_FIXTURE, measureErrorsOf } = await report();
+  const plan = { name: 't', kind: 'aa', lanes: ['boot'], rounds: 5, seed: 1, fixtures: [], sides: { base: { label: 'a' }, branch: { label: 'b' } } };
+  const rows = [0, 1, 2, 3, 4].flatMap((round) => ['base', 'branch'].map((side) => ({ lane: 'boot', fixture: BOOT_FIXTURE, round, side, ok: true,
+    interactiveMs: 2900 + round, peakMemoryMiB: 700, idleJsHeapMiB: 60, idleAgentMiB: 77, idleWasmMiB: null,
+    idleWasm: { totalBytes: null, error: 'Runtime.queryObjects gave no answer within 15000 ms' }, fingerprint: 'no model' })));
+  const s = summarize(plan, rows);
+  const boot = s.fixtures.find((f) => f.name === BOOT_FIXTURE).lanes.boot;
+  assert.match(boot.verdicts.idleWasmMiB?.verdict ?? 'dropped', /^inconclusive: not measured/);
+  assert.equal(boot.sides.base.measureErrors.length, 5);
+  assert.match(renderMarkdown(s, plan, null, rows), /Measurement errors .*wasm: Runtime\.queryObjects gave no answer/);
+  assert.deepEqual(measureErrorsOf({ bootInteractiveSettled: false }), ['boot never went quiet for 1 s within the cap']);
+});
+
+test('a CDP request that never answers is bounded (review #9740)', async () => {
+  const { bounded } = await lanesModule();
+  await assert.rejects(bounded(new Promise(() => {}), 20, 'Runtime.queryObjects'), /Runtime\.queryObjects gave no answer within 20 ms/);
+  assert.equal(await bounded(Promise.resolve(7), 20, 'x'), 7);
+});
+
+test('a resumed rerun never overwrites the element files of lanes already recorded (review #9740)', async () => {
+  const { sampleTagFor, elementFileMoves } = await runner();
+  const lanes = ['browser-cold', 'browser-warm1', 'browser-warm'];
+  assert.equal(sampleTagFor('FZK-base-r2', lanes, lanes, 'k1'), 'FZK-base-r2', 'a fresh cell writes canonical files');
+  const tag = sampleTagFor('FZK-base-r2', ['browser-warm1', 'browser-warm'], lanes, 'k1');
+  assert.equal(tag, 'FZK-base-r2-resumek1');
+  const cell = { fixture: 'FZK', side: 'base', round: 2 };
+  // Only the lanes being recorded claim their files; the recorded cold row keeps FZK-base-r2-cold.elements.json.
+  assert.deepEqual(elementFileMoves([{ ...cell, lane: 'browser-warm1' }, { ...cell, lane: 'browser-warm', warmOpens: [{}, {}] }], tag, 'FZK-base-r2'),
+    [['FZK-base-r2-resumek1-warm1.elements.json', 'FZK-base-r2-warm1.elements.json'], ['FZK-base-r2-resumek1-warm2.elements.json', 'FZK-base-r2-warm2.elements.json']]);
+  assert.deepEqual(elementFileMoves([{ ...cell, lane: 'browser-cold' }], 'FZK-base-r2', 'FZK-base-r2'), []);
 });
 
 test('the report: output and per-element verdicts never read missing identity as a match (review #9740)', async () => {
@@ -467,6 +508,10 @@ test('META: absent, empty or unreadable input never passes any verdict, identity
     const timed = R.summarize(plan, rows.map((r, i) => ({ ...r, interactiveMs: 1000 + (i % 3), fingerprint: 'm=1' })), { floors: {} })
       .fixtures.find((f) => f.name === fixture).lanes[lane];
     add(`${lane}: verdict when the A/A floors lack this cell`, timed.primary.verdict, /^inconclusive: no A\/A floor/.test(timed.primary.verdict));
+    for (const key of (R.EXPECTED_METRICS[lane] ?? []).filter((k) => k !== 'interactiveMs')) {
+      const v = R.summarize(plan, rows.map((r, i) => ({ ...r, interactiveMs: 1000 + (i % 3) })), {}).fixtures.find((f) => f.name === fixture).lanes[lane].verdicts[key];
+      add(`${lane}: verdict for expected metric ${key} when no sample has it`, v?.verdict, /^inconclusive/.test(v?.verdict ?? ''));
+    }
     if (lane !== 'native-cold' && lane !== 'boot') {
       const none = R.elementDiffVerdict(null, [], null, 0);
       add(`${lane}: per-element verdict without a base sample`, none.identical, none.identical === false && none.unverifiable === true);
@@ -490,6 +535,12 @@ test('META: absent, empty or unreadable input never passes any verdict, identity
       add(`openIdentity(${label}, ${JSON.stringify(fp)})`, id.identity, /^UNVERIFIABLE/.test(id.identity));
     }
   }
+  for (const partial of [{ unhashed: 1 }, { conflicts: 2 }, { unhashed: undefined }, { conflicts: undefined }]) {
+    const m = { identity: 'x', hashed: 5, unhashed: 0, conflicts: 0, elements: { 1: 'a' }, flat: {}, ...partial };
+    for (const label of ['cold', 'warm1']) add(`openIdentity(${label}, ${JSON.stringify(partial)})`, S.openIdentity({ label, fingerprint: [m] }).identity, /^UNVERIFIABLE/.test(S.openIdentity({ label, fingerprint: [m] }).identity));
+  }
+  const hitId = S.openIdentity({ label: 'warm2', fingerprint: [{ hashed: 0, flat: { signature: 's', meshes: 1 } }], coldFingerprint: [{ identity: 'c', hashed: 1, unhashed: 0, conflicts: 0, elements: { 1: 'a' }, flat: { signature: 's', meshes: 1 } }] });
+  add('openIdentity(cache hit restoring a complete cold load)', hitId.identity, /^UNVERIFIABLE/.test(hitId.identity) && hitId.elements.length === 0);
   add('openIdentity(warm, cold missing)', S.openIdentity({ label: 'warm1', fingerprint: [{ hashed: 0, flat: {} }] }).identity,
     /^UNVERIFIABLE/.test(S.openIdentity({ label: 'warm1', fingerprint: [{ hashed: 0, flat: {} }] }).identity));
   for (const [a, b] of [[[], []], [undefined, ['m=1']], [[null], [null]], [[''], ['']], [['UNVERIFIABLE (x)'], ['UNVERIFIABLE (x)']]]) {

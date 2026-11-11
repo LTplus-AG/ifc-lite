@@ -125,6 +125,13 @@ export function entryStabilityFailure(entry) {
   return null;
 }
 
+/** `promise`, or a rejection naming `what` after `ms`: a CDP request that never answers must not hang a sample. */
+export function bounded(promise, ms, what) {
+  let timer;
+  const timeout = new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`${what} gave no answer within ${ms} ms`)), ms); });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
 /** Idle agent memory split from a measureUserAgentSpecificMemory() result: JS heap (entries typed JavaScript) and the total. */
 export function agentMemoryParts(result) {
   if (!result || !Array.isArray(result.breakdown) || !Number.isFinite(result.bytes)) return { totalBytes: null, jsBytes: null };
@@ -188,10 +195,12 @@ async function realmWasm(send) {
 
 /** Every live WebAssembly.Memory in the page and its (shared) workers, through CDP; see the header. */
 export async function wasmHeaps(context, page, { requestTimeoutMs = 15000 } = {}) {
-  const cdp = await context.newCDPSession(page);
+  const cdp = await bounded(context.newCDPSession(page), requestTimeoutMs, 'CDP session');
+  // Every page-side request is bounded too, not only the ones relayed to workers.
+  const pageSend = (method, params) => bounded(cdp.send(method, params), requestTimeoutMs, method);
   try {
-    const realms = [{ realm: 'page', ...(await realmWasm((m, p) => cdp.send(m, p))) }];
-    const { targetInfos } = await cdp.send('Target.getTargets');
+    const realms = [{ realm: 'page', ...(await realmWasm(pageSend)) }];
+    const { targetInfos } = await pageSend('Target.getTargets');
     let id = 0;
     const pending = new Map(); // id -> { sessionId, settle(msg) }
     cdp.on('Target.receivedMessageFromTarget', ({ message }) => { const msg = JSON.parse(message); pending.get(msg.id)?.settle(msg); });
@@ -200,7 +209,7 @@ export async function wasmHeaps(context, page, { requestTimeoutMs = 15000 } = {}
       for (const p of [...pending.values()]) if (p.sessionId === sessionId) p.settle({ error: { message: 'worker detached during measurement' } });
     });
     for (const t of targetInfos.filter((x) => x.type === 'worker' || x.type === 'shared_worker')) {
-      const { sessionId } = await cdp.send('Target.attachToTarget', { targetId: t.targetId, flatten: false });
+      const { sessionId } = await pageSend('Target.attachToTarget', { targetId: t.targetId, flatten: false });
       const send = (method, params) => new Promise((resolve, reject) => {
         const mid = ++id;
         const timer = setTimeout(() => settle({ error: { message: `${method} gave no answer within ${requestTimeoutMs} ms` } }), requestTimeoutMs);
@@ -213,11 +222,11 @@ export async function wasmHeaps(context, page, { requestTimeoutMs = 15000 } = {}
         cdp.send('Target.sendMessageToTarget', { sessionId, message: JSON.stringify({ id: mid, method, params }) }).catch((e) => settle({ error: { message: String(e) } }));
       });
       realms.push({ realm: t.type, ...(await realmWasm(send)) });
-      await cdp.send('Target.detachFromTarget', { sessionId }).catch(() => {});
+      await pageSend('Target.detachFromTarget', { sessionId }).catch(() => {});
     }
     return combineWasmRealms(realms);
   } finally {
-    await cdp.detach().catch(() => {});
+    await bounded(cdp.detach(), requestTimeoutMs, 'CDP detach').catch(() => {});
   }
 }
 

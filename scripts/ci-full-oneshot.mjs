@@ -64,7 +64,6 @@ export const FAST_SKIPPED_JOB_NAMES = {
   'rust-retained': 'Rust tests (retained)',
 };
 
-
 /** Did any fast-skipped job really run (not skipped, not absent) in this run? */
 export function ranFullLane(jobs) {
   if (!Array.isArray(jobs)) return false;
@@ -126,9 +125,8 @@ function findPr(gh, repo, wr) {
   // The PR must come from the run's own head repository: a fork pushing
   // another PR's head SHA must not steer this decision.
   const headRepo = wr.head_repository?.full_name;
-  const shape = (p) => (headRepo && p.head?.repo?.full_name === headRepo
-    ? { number: p.number, state: p.state, headSha: p.head?.sha, labels: (p.labels ?? []).map((l) => l.name) }
-    : null);
+  const fromRunHead = (p) => Boolean(headRepo) && p?.head?.repo?.full_name === headRepo;
+  const shape = (p) => (fromRunHead(p) ? { number: p.number, state: p.state, headSha: p.head?.sha, labels: (p.labels ?? []).map((l) => l.name) } : null);
   // `pull_requests` can list PRs of other repos sharing the head branch.
   const linked = (wr.pull_requests ?? []).find((p) => p.head?.sha === wr.head_sha && String(p.base?.repo?.url ?? '').endsWith(`/repos/${repo}`))?.number;
   if (linked) return shape(gh(['api', `repos/${repo}/pulls/${linked}`], `PR #${linked}`));
@@ -136,7 +134,7 @@ function findPr(gh, repo, wr) {
   const owner = wr.head_repository?.owner?.login;
   if (!owner || !wr.head_branch) return null;
   const open = gh(['api', '-X', 'GET', `repos/${repo}/pulls`, '-f', 'state=open', '-f', `head=${owner}:${wr.head_branch}`], 'open PRs for the head branch');
-  const hit = open.find((p) => p.head?.sha === wr.head_sha && p.head?.repo?.full_name === headRepo);
+  const hit = open.find((p) => p.head?.sha === wr.head_sha && fromRunHead(p));
   return hit ? shape(hit) : null;
 }
 

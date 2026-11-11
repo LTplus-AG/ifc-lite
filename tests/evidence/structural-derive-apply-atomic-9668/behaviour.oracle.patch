@@ -9,4 +9,4 @@ diff --git a/packages/create/src/in-store/structural-derive-apply.ts b/packages/
 +  return editor.runAtomic((draft) => writePlan(draft, plan, first, placementOf, random));
  }
  
- /** The builders' refusals, run on the whole plan in storey-local coordinates. */
+ /**

@@ -1,7 +1,7 @@
 diff --git a/packages/cli/src/commands/derive-structural.ts b/packages/cli/src/commands/derive-structural.ts
 --- a/packages/cli/src/commands/derive-structural.ts
 +++ b/packages/cli/src/commands/derive-structural.ts
-@@ -75,7 +75,7 @@ export async function deriveStructuralCommand(args: string[]): Promise<void> {
+@@ -76,7 +76,7 @@ export async function deriveStructuralCommand(args: string[]): Promise<void> {
      process.stderr.write(`The file already has ${existing.length} analysis model(s): ${existing.map((m) => `#${m.expressId}${m.derived ? ' (derived)' : ''}`).join(', ')}. `
        + (plan.options.whenAnalysisModelExists === 'add' ? 'The missing members go into a new one.\n' : 'Nothing is written unless --analysis-model-exists add.\n'));
    }

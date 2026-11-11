@@ -34,6 +34,13 @@ function triangle(expressId: number, x: number, color = RED): MeshData {
 const model = () => [triangle(1, 0), triangle(2, 2, BLUE), triangle(3, 4)];
 
 let written: { bytes: number[]; usage: number; buffer: object }[];
+/** What each buffer holds, whether written or copied into (the fragments' writes predate `written`'s reset). */
+const contents = new WeakMap<object, number[]>();
+function store(buffer: object, offset: number, bytes: ArrayLike<number>): void {
+  const held = contents.get(buffer) ?? [];
+  for (let i = 0; i < bytes.length; i++) held[offset + i] = bytes[i];
+  contents.set(buffer, held);
+}
 let destroyed: number;
 let failCreateAfter: number;
 
@@ -46,12 +53,19 @@ function stubDevice(): GPUDevice {
     },
     createBindGroup: () => ({}),
     // Finalize assembles a streamed bucket's batch from its fragments on the GPU.
-    createCommandEncoder: () => ({ copyBufferToBuffer() {}, finish: () => ({}) }),
+    createCommandEncoder: () => ({
+      copyBufferToBuffer: (from: object, fromOffset: number, to: object, toOffset: number, size: number) => {
+        store(to, toOffset, (contents.get(from) ?? []).slice(fromOffset, fromOffset + size));
+      },
+      finish: () => ({}),
+    }),
     queue: {
       submit() {},
-      writeBuffer: (buffer: { usage: number }, _offset: number, data: ArrayBuffer | ArrayBufferView, dataOffset = 0, size?: number) => {
+      writeBuffer: (buffer: { usage: number }, offset: number, data: ArrayBuffer | ArrayBufferView, dataOffset = 0, size?: number) => {
         const view = data instanceof ArrayBuffer ? new Uint8Array(data) : new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
-        written.push({ bytes: [...view.subarray(dataOffset, size === undefined ? undefined : dataOffset + size)], usage: buffer.usage, buffer });
+        const bytes = [...view.subarray(dataOffset, size === undefined ? undefined : dataOffset + size)];
+        written.push({ bytes, usage: buffer.usage, buffer });
+        store(buffer, offset, bytes);
       },
     },
   } as unknown as GPUDevice;
@@ -61,9 +75,9 @@ const pipeline = { getUniformBufferSize: () => 256, getBindGroupLayout: () => ({
 
 let lastFinalized: Scene;
 
-/** Each batch's uploaded vertex and index bytes, by bucket key. */
+/** What each batch's vertex and index buffers hold, by bucket key: written, or assembled by GPU copies. */
 function uploadedByBatch(scene: Scene): Record<string, string[]> {
-  const bytes = (buffer: GPUBuffer) => written.find((w) => w.buffer === buffer)?.bytes.join();
+  const bytes = (buffer: GPUBuffer) => contents.get(buffer)?.join();
   return Object.fromEntries(scene.getBatchedMeshes().map((b) => [b.colorKey, [bytes(b.vertexBuffer)!, bytes(b.indexBuffer)!]]));
 }
 

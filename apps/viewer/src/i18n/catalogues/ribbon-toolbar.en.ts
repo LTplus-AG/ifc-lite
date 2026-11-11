@@ -147,8 +147,6 @@ export const ribbonToolbarEn = {
 
   'ribbon.author.editGroup': 'Edit',
   'ribbon.author.editMode': 'Model',
-  'ribbon.author.enterEditTooltip': 'Enter the Model workspace: draw and edit on a storey',
-  'ribbon.author.exitEditTooltip': 'Leave the Model workspace',
   'ribbon.author.editLockedTooltip': 'Editing requires editor access in this shared session',
   'ribbon.author.undo': 'Undo',
   'ribbon.author.redo': 'Redo',

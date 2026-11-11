@@ -18,6 +18,7 @@ import { resetLayout } from '@/store/layoutReset';
 import { ASSISTANT_PLACEMENT_STORAGE_KEY } from '@/store/layout-preset-reset';
 import { MobilePanelSheet } from '../MobilePanelSheet';
 import { TransientSurface } from './TransientSurface';
+import { formFactorState } from '@/test/form-factor-state';
 
 const initial = useViewerStore.getState();
 const placement = useAssistantPlacement.getState();
@@ -64,7 +65,7 @@ test('#6926 transient cleanup never pulls focus back after the user moves elsewh
 });
 
 test('#6926 the narrow Assistant sheet returns to its source and preserves evidence, selection and unsent draft', async () => {
-  useViewerStore.setState({ isMobile: true, sidebarActivePanel: 'properties', rightPanelCollapsed: false,
+  useViewerStore.setState({ ...formFactorState(true), sidebarActivePanel: 'properties', rightPanelCollapsed: false,
     selectedEntityId: 42, selectedEntityIds: new Set([42]) });
   replaceEvidence(captureEvidence('clash'));
   const snapshot = useAssistant.getState().snapshot;
@@ -86,7 +87,7 @@ test('#6926 the narrow Assistant sheet returns to its source and preserves evide
 
 for (const placement of ['floating', 'split'] as const) {
 test(`#7053 Reset after Coordinator and ${placement} restores the default unsplit layout`, () => {
-  useViewerStore.setState({ isMobile: false, sidebarActivePanel: 'properties', sidebarSecondaryPanel: null, floatingPanels: [] });
+  useViewerStore.setState({ ...formFactorState(false), sidebarActivePanel: 'properties', sidebarSecondaryPanel: null, floatingPanels: [] });
   applyLayoutPreset('coordinator');
   setAssistantPlacement(placement);
   openAssistant('clash');

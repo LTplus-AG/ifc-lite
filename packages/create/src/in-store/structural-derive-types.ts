@@ -68,10 +68,13 @@
  *
  * Idempotence. An element that already has a structural counterpart is
  * skipped ('already-idealised'), so a second run plans nothing. Apply refuses
- * a plan with nothing to write, a plan whose elements changed since it was
- * made, and any plan for a model that already has a derived analysis model
- * (`derivedModelId`): a later run would otherwise write a second model that
- * does not connect to the first. Nothing is replaced or removed.
+ * a plan with nothing to write, a plan whose elements or footings were deleted
+ * or idealised since it was made, and any plan for a model that already has a
+ * derived analysis model (`derivedModelId`): a later run would otherwise write
+ * a second model that does not connect to the first. Apply does not compare
+ * geometry with the plan: a caller that holds a plan across edits plans again
+ * (the SDK and CLI plan and apply in one call; the viewer review refuses after
+ * any edit). Nothing is replaced or removed.
  */
 
 export type { Vec3 } from './host-geometry-frame.js';

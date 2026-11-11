@@ -236,8 +236,9 @@ function findUnconnectedEnds(
   for (const member of curveMembers) { degree[member.startNode]++; degree[member.endNode]++; }
   const found: UnconnectedEnd[] = [];
   for (const node of nodes) {
-    if (degree[node.index] !== 1 || node.support) continue;
+    if (node.support) continue;
     const p = node.position;
+    // Any free node can land on another member's interior; only a single end can rest on a surface it does not reach.
     const onMember = curveMembers.find((member) => {
       if (member.startNode === node.index || member.endNode === node.index) return false;
       const axis = sub(member.end, member.start);
@@ -245,6 +246,7 @@ function findUnconnectedEnds(
       return t > 0 && t < 1 && length(sub(p, add(member.start, scale(axis, t)))) <= tolerance;
     });
     if (onMember) { found.push({ node: node.index, landsOnElementId: onMember.elementId, landsOn: 'member-interior' }); continue; }
+    if (degree[node.index] !== 1) continue;
     const onSurface = surfaces.find(({ member, normal }) =>
       Math.abs(dot(sub(p, member.boundary[0]), normal)) <= tolerance + member.thickness / 2 && insidePolygon(p, member.boundary, normal));
     if (onSurface) found.push({ node: node.index, landsOnElementId: onSurface.member.elementId, landsOn: 'surface-member' });

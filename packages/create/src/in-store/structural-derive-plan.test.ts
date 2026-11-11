@@ -157,6 +157,13 @@ describe('structural derivation plan (#9668)', () => {
     expect(plan.nodes).toHaveLength(8);
   });
 
+  it('reports a junction of two member ends that lands on a third member interior', () => {
+    // Two secondary beams meet at (3, 0, 3), on the main beam's span; the column keeps supports elsewhere.
+    const main = beam(0, 6, 0, 3);
+    const plan = planStructuralDerivation(facts(main, beam(3, 3, -4, 3, { axis: [[3, -4, 3], [3, 0, 3]] }), beam(3, 3, 4, 3, { axis: [[3, 4, 3], [3, 0, 3]] }), column(20, 20, 0, 3)));
+    expect(plan.report.unconnectedEnds).toContainEqual(expect.objectContaining({ landsOn: 'member-interior', landsOnElementId: main.expressId }));
+  });
+
   it('skips an element that already has a structural counterpart, so a re-run plans nothing', () => {
     const plan = planStructuralDerivation(facts(beam(0, 6, 0, 3, { idealised: true })));
     expect(plan.curveMembers).toHaveLength(0);

@@ -70,6 +70,13 @@ describe.skipIf(!existsSync(SAMPLE))('ifc-lite derive-structural (#9668)', () =>
     expect(existsSync(out)).toBe(false);
   });
 
+  it('refuses a value flag with no value instead of reading the next flag as it', async () => {
+    const run = await derive();
+    await expect(run([SAMPLE, '--out', '--json'])).rejects.toThrow('exit 1');
+    expect(stderr).toMatch(/--out needs a value/);
+    expect(existsSync('--json')).toBe(false);
+  });
+
   it('refuses a tolerance that is not a positive number of metres', async () => {
     const run = await derive();
     await expect(run([SAMPLE, '--dry-run', '--tolerance', 'abc'])).rejects.toThrow('exit 1');

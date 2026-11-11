@@ -36,6 +36,10 @@ const VALUE_FLAGS = new Set(['--out', '--tolerance', '--load-bearing-unknown', '
 export async function deriveStructuralCommand(args: string[]): Promise<void> {
   const filePath = args.find((a, i) => !a.startsWith('-') && !VALUE_FLAGS.has(args[i - 1]));
   if (!filePath) fatal(USAGE);
+  for (const flag of VALUE_FLAGS) {
+    const at = args.indexOf(flag);
+    if (at !== -1 && (at + 1 >= args.length || args[at + 1].startsWith('--'))) fatal(`${flag} needs a value`);
+  }
   const out = getFlag(args, '--out');
   const dryRun = hasFlag(args, '--dry-run');
   const json = hasFlag(args, '--json');

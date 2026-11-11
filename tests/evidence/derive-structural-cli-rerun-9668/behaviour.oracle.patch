@@ -1,7 +1,7 @@
 diff --git a/packages/cli/src/commands/derive-structural.ts b/packages/cli/src/commands/derive-structural.ts
 --- a/packages/cli/src/commands/derive-structural.ts
 +++ b/packages/cli/src/commands/derive-structural.ts
-@@ -58,7 +58,7 @@ export async function deriveStructuralCommand(args: string[]): Promise<void> {
+@@ -62,7 +62,7 @@ export async function deriveStructuralCommand(args: string[]): Promise<void> {
      fatal(error instanceof Error ? error.message : String(error));
    }
    let { report } = plan;

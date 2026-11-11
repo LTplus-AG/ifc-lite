@@ -229,12 +229,26 @@ DATA;
 #71=IFCSHAPEREPRESENTATION(#7,'Body','CSG',(#70));
 #72=IFCPRODUCTDEFINITIONSHAPE($,$,(#71));
 #73=IFCBEAM('0beamDifference0000000',$,'Difference',$,$,#20,#72,$,$);
-#80=IFCRELCONTAINEDINSPATIALSTRUCTURE('0contain00000000000000',$,$,$,(#52,#63,#73),#30);
+#81=IFCCARTESIANPOINT((0.,0.,0.));
+#82=IFCCARTESIANPOINT((10.,0.,0.));
+#83=IFCCARTESIANPOINT((5.,0.,0.));
+#84=IFCPOLYLINE((#81,#82,#83));
+#85=IFCSHAPEREPRESENTATION(#7,'Axis','Curve3D',(#84));
+#86=IFCPRODUCTDEFINITIONSHAPE($,$,(#85));
+#87=IFCBEAM('0beamBacktrack00000000',$,'Backtracking axis',$,$,#20,#86,$,$);
+#90=IFCCARTESIANPOINTLIST2D(((0.,0.),(4.,4.),(4.,0.),(0.,4.)));
+#91=IFCINDEXEDPOLYCURVE(#90,(IFCLINEINDEX((1,3,2,4,1))),.F.);
+#92=IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,$,#91);
+#93=IFCEXTRUDEDAREASOLID(#92,#43,#44,0.2);
+#94=IFCSHAPEREPRESENTATION(#7,'Body','SweptSolid',(#93));
+#95=IFCPRODUCTDEFINITIONSHAPE($,$,(#94));
+#96=IFCSLAB('0slabSegments000000000',$,'Indexed segments',$,$,#20,#95,$,.FLOOR.);
+#80=IFCRELCONTAINEDINSPATIALSTRUCTURE('0contain00000000000000',$,$,$,(#52,#63,#73,#87,#96),#30);
 ENDSEC;
 END-ISO-10303-21;`;
 
 describe('derive structural analysis model: reading shapes and containment (#9668)', () => {
-  it('reads an unnamed Body and a difference, refuses a union, and places a session column on its storey', async () => {
+  it('reads an unnamed Body and a difference; refuses a union, a backtracking Axis and indexed segments; places a session column on its storey', async () => {
     const store = await parse(SHAPES);
     const editor = session(store);
     const { columnId } = addColumnToStore(editor, resolveSpatialAnchor(store, 32, editor.getMutationView()), { Position: [0, 0, 0], Width: 0.3, Depth: 0.3, Height: 3 });
@@ -243,6 +257,10 @@ describe('derive structural analysis model: reading shapes and containment (#966
     expect(fact(52).prism).toBeDefined();
     expect(fact(73).prism).toBeDefined();
     expect(fact(63).shapeIssue).toMatch(/IFCBOOLEANRESULT/);
+    // An Axis polyline that turns back past its end is not a straight axis.
+    expect(fact(87).axis).toBeUndefined();
+    // Explicit IfcLineIndex segments set the outline order; they are refused, not read in point-list order.
+    expect(fact(96).shapeIssue).toMatch(/explicit segments/);
     expect(fact(columnId).storeyId).toBe(32);
     expect(facts.defaultStoreyId).toBe(30);
   });

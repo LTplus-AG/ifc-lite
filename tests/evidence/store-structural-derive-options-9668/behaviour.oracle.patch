@@ -7,6 +7,6 @@ diff --git a/packages/sdk/src/store-structural-derive.ts b/packages/sdk/src/stor
      deriveStructuralAnalysisModel(modelId, options) {
 -      const { model, plan: derived } = plan(modelId);
 +      const { model, plan: derived } = plan(modelId, options);
-       const { analysisModelId } = applyStructuralDerivation(model.editor, model.store, derived);
+       // One atomic edit: a refusal part-way through leaves nothing behind.
+       const { analysisModelId } = model.editor.runAtomic((draft) => applyStructuralDerivation(draft, model.store, derived));
        return { analysisModel: { modelId: model.modelId, expressId: analysisModelId }, report: derived.report };
-     },

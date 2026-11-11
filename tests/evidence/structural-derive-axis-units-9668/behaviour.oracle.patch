@@ -1,7 +1,7 @@
 diff --git a/packages/create/src/in-store/structural-derive-shape.ts b/packages/create/src/in-store/structural-derive-shape.ts
 --- a/packages/create/src/in-store/structural-derive-shape.ts
 +++ b/packages/create/src/in-store/structural-derive-shape.ts
-@@ -193,7 +193,7 @@ export function readElementShape(reader: GeometryEntityReader, productId: number
+@@ -197,7 +197,7 @@ export function readElementShape(reader: GeometryEntityReader, productId: number
    const reps = representations(reader, product);
    const out: ElementShape = {};
    const axis = withAxis ? readAxis(reader, reps.get('AXIS')) : null;

@@ -59,9 +59,12 @@ function readAxis(reader: GeometryEntityReader, rep: Entity | undefined): [Vec3,
   const span = vecLen(sub(b, a));
   if (!(span > 0)) return null;
   const d = scale(sub(b, a), 1 / span);
+  // Every point on the segment between the ends: no bend, no backtracking past either end.
+  const eps = span * 1e-6;
   for (const p of points) {
     const r = sub(p!, a);
-    if (vecLen(sub(r, scale(d, dot(r, d)))) > span * 1e-6) return null;
+    const along = dot(r, d);
+    if (vecLen(sub(r, scale(d, along))) > eps || along < -eps || along > span + eps) return null;
   }
   return [a, b];
 }
@@ -139,7 +142,8 @@ function profileOutline(reader: GeometryEntityReader, profile: Entity | null): {
     } else if (upper(curve) === 'IFCCOMPOSITECURVE') {
       points = compositePoints(reader, curve!);
     } else if (upper(curve) === 'IFCINDEXEDPOLYCURVE') {
-      if (curve!.attributes[1] != null && JSON.stringify(curve!.attributes[1]).toUpperCase().includes('ARCINDEX')) return 'profile has arc segments';
+      // Explicit Segments set the curve's point order; reading them is not supported, so refuse rather than guess.
+      if (curve!.attributes[1] != null) return 'profile curve IFCINDEXEDPOLYCURVE has explicit segments';
       const list = reader.entity(refId(curve!.attributes[0]) ?? 0);
       const coords = upper(list) === 'IFCCARTESIANPOINTLIST2D' && Array.isArray(list!.attributes[0]) ? list!.attributes[0] as unknown[] : [];
       points = coords.every((c) => Array.isArray(c) && num(c[0]) !== null && num(c[1]) !== null) ? coords.map((c) => [(c as number[])[0], (c as number[])[1]]) : null;

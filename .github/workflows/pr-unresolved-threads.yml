@@ -49,8 +49,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           SHA: ${{ github.event.workflow_run.head_sha }}
-          # A same-repo `workflow_run` names its PR; a fork's is looked up below.
-          REVIEWED_PR: ${{ github.event.pull_request.number || github.event.workflow_run.pull_requests[0].number }}
+          REVIEWED_PR: ${{ github.event.pull_request.number }}
         run: |
           set -euo pipefail
           owner=${REPO%/*}

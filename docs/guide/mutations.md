@@ -1300,3 +1300,19 @@ including hosted cuts, rather than uncut parametric bounding boxes.
 The wall endpoint index also follows public raw `addEntity` creation. Incomplete
 forward-reference graphs and intervening geometry edits invalidate it; ordinary
 wall creation then reads the completed effective graph.
+Mirror upright local products with `bim.store.mirrorElements(modelId, ids,
+{ axis: [[0, 0], [0, 10]], copy: true })`. The axis uses storey-local IFC XY
+metres; omit `copy` to edit in place. Hosted openings and fillings travel with
+their host. The reflected representation retains its handedness and door
+operation names swap left and right. Shared door styles (IFC2X3) and types
+are cloned for the mirrored doors, preserving unselected users. Grids are
+refused atomically. In-place selections must include both
+sides of any wall join; shared placements, shape aspects and additional
+representation owners (such as presentation layers) are refused before writing.
+
+`bim.store.addClassification(modelId, { System: 'Uniclass 2015',
+Identification: 'EF_25_10', Name: 'Walls', objects: ids })` returns a classification
+reference, reusing a system of the same name and edition. An omitted edition
+only matches a system without an edition. Assign more objects
+with `bim.store.assignClassification(modelId, reference.expressId, ids)`.
+An object can retain several classifications.

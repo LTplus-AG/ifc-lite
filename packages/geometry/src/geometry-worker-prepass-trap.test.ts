@@ -17,6 +17,7 @@ function prepass(bytes: Uint8Array): void {
   if (bytes.buffer instanceof SharedArrayBuffer) throw new TypeError('shared view refused');
 }
 vi.mock('@ifc-lite/wasm', () => ({
+  ENGINE_BINARY_URL: null,
   default: async () => undefined,
   initSync: () => undefined,
   setGeometryProgressCallback: () => undefined,

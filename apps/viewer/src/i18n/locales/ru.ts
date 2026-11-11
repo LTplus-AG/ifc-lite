@@ -121,6 +121,7 @@ import { roomLayoutRu } from './ru/room-layout';
 import { roomReviewRu } from './ru/room-review';
 import { roomToolRu } from './ru/room-tool';
 import { scanToBimRu } from './ru/scan-to-bim';
+import { rhinoExportRu } from './ru/rhino-export';
 import { sceneActionsRu } from './ru/scene-actions';
 import { scheduleRu } from './ru/schedule';
 import { scriptPanelRu } from './ru/script-panel';
@@ -279,6 +280,7 @@ export default {
   ...roomReviewRu,
   ...roomToolRu,
   ...scanToBimRu,
+  ...rhinoExportRu,
   ...sceneActionsRu,
   ...scheduleRu,
   ...scriptPanelRu,

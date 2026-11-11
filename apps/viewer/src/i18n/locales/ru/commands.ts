@@ -15,7 +15,7 @@ export const commandsRu = {
   "commands.category.help": "Справка",
   "commands.edit.undo": "Отменить последнее перемещение модели или изменение активной модели",
   "commands.edit.redo": "Повторить последнее отменённое изменение",
-  "commands.edit.toggleEditMode": "Войти в рабочую область модели или выйти из неё (разблокирует редактирование свойств и геометрии)",
+  "commands.edit.toggleEditMode": "Войти в рабочую область модели или выйти из неё (рисование и редактирование геометрии)",
   "commands.edit.rotate": "Повернуть выбранный объект на +15° / −15° вокруг оси Z (требуется режим редактирования)",
   "commands.edit.duplicate": "Дублировать выбранный объект (+X; добавить Shift для +Z, Alt для +Y)",
   "commands.edit.copyGlobalId": "Скопировать GlobalId",

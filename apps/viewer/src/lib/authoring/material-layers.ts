@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { StoreEditor } from '@ifc-lite/mutations';
-import { liveEntityConforms } from '@ifc-lite/create';
+import { liveEntityConforms, retargetInheritingLayerUsagesInStore, takeLayerThicknessOutcome, type LayerThicknessOutcome } from '@ifc-lite/create';
 import { getModelLengthUnitScale } from '@/lib/length-unit-scale';
 import { resolveSlabEditChain } from '@/lib/slab-edit';
 import { setWallSectionInStore } from '../../../../../packages/create/src/in-store/wall-section-edit.js';
@@ -31,9 +31,23 @@ export function layerSenseOf(target: Pick<ModelEditTarget, 'dataStore' | 'view' 
   return chain && chain.baseElevation !== null && !chain.extrusionUp ? 'NEGATIVE' : 'POSITIVE';
 }
 
+/** What a layer edit left each dependent with: who could not follow, and why (#9296 lane U3). */
+export type LayerFollow = Pick<LayerThicknessOutcome, 'refused' | 'notices'>;
+
+/**
+ * Collect the resizes the modelling backend made inside a typing or layer
+ * edit on `draft`: every element whose body changed is re-meshed (the joined
+ * walls a resize re-trims, the generated rooms that follow), and every
+ * occurrence that could not follow is reported, never left silently stale.
+ */
+export function takeLayerFollow(draft: StoreEditor, remesh: readonly number[]): { remesh: number[]; follow: LayerFollow } {
+  const outcome = takeLayerThicknessOutcome(draft);
+  return { remesh: [...new Set([...remesh, ...outcome.remesh])], follow: { refused: outcome.refused, notices: outcome.notices } };
+}
+
 /** The inspector's native layer constructor and coupled wall edit, on the caller's unpublished atomic draft (#7275). */
 export function writeMaterialLayersInDraft(target: ModelEditTarget, draft: StoreEditor, methods: ModellingMethods, spec: ApplyLayersSpec): {
-  layerSetId: number; remesh: readonly number[];
+  layerSetId: number; remesh: readonly number[]; follow: LayerFollow;
 } {
   const { kind, layers, elementId, typeId } = spec;
   const direction = AUTHORED_KINDS[kind].layers;
@@ -57,17 +71,22 @@ export function writeMaterialLayersInDraft(target: ModelEditTarget, draft: Store
   const layerSetId = methods.addMaterialLayerSet(target.modelId, { MaterialLayers }).expressId;
   if (spec.target === 'type') {
     if (typeId === null) throw new Error('This element has no type to layer');
+    // Elements drawn with the type place its set through their own usage: they follow it to the new one.
+    retargetInheritingLayerUsagesInStore(live, typeId, layerSetId);
+    // The backend sizes every occurrence the type types (one whose layers differ keeps its body).
     methods.assignMaterial(target.modelId, layerSetId, [typeId]);
-    return { layerSetId, remesh: occurrencesOf(live, typeId) };
+    return { layerSetId, ...takeLayerFollow(draft, occurrencesOf(live, typeId)) };
   }
-  if (elementId === undefined) return { layerSetId, remesh: [] };
+  if (elementId === undefined) return { layerSetId, remesh: [], follow: { refused: [], notices: [] } };
   const usage = methods.addMaterialLayerSetUsage(target.modelId, {
     ForLayerSet: layerSetId, LayerSetDirection: direction, OffsetFromReferenceLine: direction === 'AXIS2' ? -total / 2 : 0,
     ...(direction === 'AXIS3' ? { DirectionSense: layerSenseOf(live, elementId) } : {}),
   });
   methods.assignMaterial(target.modelId, usage.expressId, [elementId]);
-  if (kind !== 'wall') return { layerSetId, remesh: [elementId] };
+  const sized = takeLayerFollow(draft, [elementId]);
+  if (kind !== 'wall') return { layerSetId, ...sized };
+  // An occurrence's own layers are all-or-nothing: a wall that cannot take their total refuses the edit.
   const section = setWallSectionInStore(live, elementId, { thickness: total });
   if (!section.ok) throw new Error(section.reason);
-  return { layerSetId, remesh: section.remesh };
+  return { layerSetId, remesh: [...new Set([...sized.remesh, ...section.remesh])], follow: sized.follow };
 }

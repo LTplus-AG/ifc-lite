@@ -591,6 +591,18 @@ export interface ProjectParams {
   Author?: string;
   Organization?: string;
   /**
+   * STEP header `FILE_NAME.name`, e.g. `'tiny-house.ifc'`. Defaults to
+   * `'created.ifc'`. At most 256 characters (ISO 10303-21 `STRING (256)`).
+   */
+  FileName?: string;
+  /**
+   * STEP header `FILE_DESCRIPTION.description`: one string, or several for
+   * several list entries (e.g. a `ViewDefinition [...]` entry plus free text).
+   * Defaults to `'Created by ifc-lite'`. Each entry at most 256 characters; an
+   * empty array is rejected, because the attribute is `LIST [1:?]`.
+   */
+  FileDescription?: string | string[];
+  /**
    * Fixed creation instant (epoch milliseconds or Date) used for the FILE_NAME
    * header timestamp, IfcOwnerHistory.CreationDate, and the default
    * work-schedule/work-plan CreationDate. Defaults to the wall clock; set it

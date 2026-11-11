@@ -156,6 +156,7 @@ pub(crate) mod mesh_check;
 pub mod progress;
 pub mod representation;
 pub(crate) mod mesh_orient;
+pub(crate) mod scratch_map;
 pub mod placement;
 pub(crate) mod processors;
 pub(crate) mod profile;

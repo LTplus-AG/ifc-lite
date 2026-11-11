@@ -7,10 +7,11 @@
 import { createModellingStoreBackend, createOrdinaryStoreBackend, resolveLiveOwnerHistoryId, type ModellingStoreModelResolver } from '../index.js';
 import { recordCompoundMutation, StoreEditor } from '@ifc-lite/mutations';
 import { createStoreyStoreBackend } from '../store-storey-backend.js';
+import { withWallAutojoinIndex, type WallAutojoinIndex } from '@ifc-lite/create';
 
 export function createRecordedModellingBackend(resolve: ModellingStoreModelResolver) {
   type Methods = ReturnType<typeof createModellingStoreBackend> & ReturnType<typeof createOrdinaryStoreBackend>;
-  function record<T>(modelId: string, edit: (methods: Methods) => T, authoring = false): T {
+  function record<T>(modelId: string, edit: (methods: Methods) => T, authoring = false, wallIndex?: WallAutojoinIndex): T {
     const model = resolve(modelId);
     return recordCompoundMutation(model.mutationView, draft => {
       const resolveDraft = () => {
@@ -21,7 +22,7 @@ export function createRecordedModellingBackend(resolve: ModellingStoreModelResol
           ownerHistoryId: authoring ? resolveLiveOwnerHistoryId(model.store, editor, draft) : model.ownerHistoryId,
         };
       };
-      return edit({ ...createModellingStoreBackend(resolveDraft), ...createOrdinaryStoreBackend(resolveDraft) });
+      return edit({ ...createModellingStoreBackend(resolveDraft), ...createOrdinaryStoreBackend(resolveDraft, wallIndex) });
     });
   }
   // Storey dry runs read the live view; storey writes are one compound record each (#9013).
@@ -125,7 +126,10 @@ export function createRecordedModellingBackend(resolve: ModellingStoreModelResol
     addHostedDoor: (...args: Parameters<Methods['addHostedDoor']>) => record(args[0], methods => methods.addHostedDoor(...args)),
     addHostedWindow: (...args: Parameters<Methods['addHostedWindow']>) => record(args[0], methods => methods.addHostedWindow(...args)),
     joinWalls: (...args: Parameters<Methods['joinWalls']>) => record(args[0], methods => methods.joinWalls(...args)),
-    addWall: (...args: Parameters<Methods['addWall']>) => record(args[0], methods => methods.addWall(...args)),
+    addWall: (...args: Parameters<Methods['addWall']>) => {
+      const model = resolve(args[0]);
+      return withWallAutojoinIndex(model.store, model.mutationView, index => record(args[0], methods => methods.addWall(...args), false, index));
+    },
     addColumn: (...args: Parameters<Methods['addColumn']>) => record(args[0], methods => methods.addColumn(...args)),
     addSlab: (...args: Parameters<Methods['addSlab']>) => record(args[0], methods => methods.addSlab(...args)),
     addBeam: (...args: Parameters<Methods['addBeam']>) => record(args[0], methods => methods.addBeam(...args)),

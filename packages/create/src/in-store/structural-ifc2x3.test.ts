@@ -79,13 +79,13 @@ describe('IFC2X3 structural builder STEP round trips', () => {
     expect(attrs(memberId)).toHaveLength(8);
   });
 
-  it('point connection writes plain fixed/free stiffness measures and omits ConditionCoordinateSystem', async () => {
+  it('point connection writes plain fixed/free and numeric stiffness measures and omits ConditionCoordinateSystem', async () => {
     const { editor, anchor, roundTrip } = await fresh();
-    const { connectionId, boundaryConditionId } = addStructuralPointConnectionToStore(editor, anchor, { Position: [4, 0, 0], Name: 'Support', BoundaryCondition: { Name: 'Pinned', TranslationalStiffnessX: true, TranslationalStiffnessY: false, RotationalStiffnessZ: true } });
+    const { connectionId, boundaryConditionId } = addStructuralPointConnectionToStore(editor, anchor, { Position: [4, 0, 0], Name: 'Support', BoundaryCondition: { Name: 'Pinned', TranslationalStiffnessX: true, TranslationalStiffnessY: false, TranslationalStiffnessZ: 1000, RotationalStiffnessX: 2000, RotationalStiffnessZ: true } });
     const { data, attrs } = await roundTrip();
-    expect(data.connections[0]).toMatchObject({ name: 'Support', appliedCondition: { name: 'Pinned', components: { LinearStiffnessX: -1, LinearStiffnessY: 0, RotationalStiffnessZ: -1 } } });
+    expect(data.connections[0]).toMatchObject({ name: 'Support', appliedCondition: { name: 'Pinned', components: { LinearStiffnessX: -1, LinearStiffnessY: 0, LinearStiffnessZ: 1000, RotationalStiffnessX: 2000, RotationalStiffnessZ: -1 } } });
     expect(attrs(connectionId)).toHaveLength(8);
-    expect(attrs(boundaryConditionId!)).toEqual(['Pinned', -1, 0, null, null, null, -1]);
+    expect(attrs(boundaryConditionId!)).toEqual(['Pinned', -1, 0, 1000, 2000, null, -1]);
   });
 
   it.each(['LOAD_GROUP', 'LOAD_CASE'] as const)('%s uses IfcStructuralLoadGroup and preserves values', async (PredefinedType) => {
@@ -162,16 +162,6 @@ describe('point connection stiffness SELECT round trips', () => {
     expect(text).toContain(`#${boundaryConditionId}=IFCBOUNDARYNODECONDITION('Mixed',IFCBOOLEAN(.T.),IFCBOOLEAN(.F.),IFCLINEARSTIFFNESSMEASURE(1000.),IFCROTATIONALSTIFFNESSMEASURE(2000.),IFCBOOLEAN(.T.),IFCBOOLEAN(.F.));`);
     const { Name, ...components } = BoundaryCondition;
     expect(data.connections[0].appliedCondition).toMatchObject({ name: Name, components });
-  });
-
-  it('IFC2X3 writes numeric stiffness verbatim as plain measures', async () => {
-    const { editor, anchor, roundTrip } = await fresh();
-    const { boundaryConditionId } = addStructuralPointConnectionToStore(editor, anchor, {
-      Position: [4, 0, 0],
-      BoundaryCondition: { Name: 'Mixed', TranslationalStiffnessX: true, TranslationalStiffnessY: false, TranslationalStiffnessZ: 1000, RotationalStiffnessX: 2000 },
-    });
-    const { text } = await roundTrip();
-    expect(text).toContain(`#${boundaryConditionId}=IFCBOUNDARYNODECONDITION('Mixed',-1.,0.,1000.,2000.,$,$);`);
   });
 
   it('a null BoundaryCondition from an untyped caller writes no condition', async () => {

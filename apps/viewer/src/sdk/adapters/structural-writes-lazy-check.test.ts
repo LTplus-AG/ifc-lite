@@ -35,9 +35,10 @@ function dist(files: Record<string, string>): string {
  * minified impl chunk of a real viewer build (shortened, with the quoting and
  * `throw Error` form the minifier emits), NOT derived from the gate's
  * signature list: if a signature were dropped from the gate, this fixture
- * keeps the builder, and its "missing" case below fails (#9753 review). Text
- * that several builders share in the real chunk is kept in each of them, so
- * a signature that is not unique to one builder cannot pass.
+ * keeps the builder, and its "missing" case below fails (#9753 review). The
+ * USERDEFINED refusal that the analysis-model and curve-member builders share
+ * is kept in both, so a signature drawn from it fails; other shared text is
+ * not modelled.
  */
 const BUILDER_CODE: Record<string, string> = {
   addStructuralAnalysisModelToStore: 'throw Error(`addStructuralAnalysisModelToStore: ObjectType is required when PredefinedType is USERDEFINED`)',

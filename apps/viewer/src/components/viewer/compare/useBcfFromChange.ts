@@ -14,7 +14,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useViewerStore } from '@/store';
 import { useBCF } from '@/hooks/useBCF';
-import { useSingleFlight } from '@/hooks/useSingleFlight';
+import { useAsyncRun } from '@/hooks/useAsyncRun';
 import { captureViewpointForCreate } from '@/hooks/bcf/capture-viewpoint-for-create';
 import { useTranslation } from '@/i18n';
 import { posthog } from '@/lib/analytics';
@@ -52,8 +52,8 @@ export function useBcfFromChange(
   // Each opening of the form owns its capture and its submit (C-2): the
   // non-idempotent create refuses a double-submit (#1208 review), and closing
   // the form discards a capture or create still in flight.
-  const captureFlight = useSingleFlight();
-  const submitFlight = useSingleFlight();
+  const captureFlight = useAsyncRun();
+  const submitFlight = useAsyncRun();
 
   // Reset the affordance whenever the focused change changes.
   useEffect(() => {
@@ -62,9 +62,9 @@ export function useBcfFromChange(
   }, [selectedKey]);
 
   // Capture the framed element's viewpoint for the form's preview / attachment.
-  const runCapture = captureFlight.run;
+  const runCapture = captureFlight.start;
   const captureViewpoint = useCallback(async () => {
-    await runCapture(async (isCurrent) => {
+    await runCapture(async ({ isCurrent }) => {
       try {
         const vp = await createViewpointFromState({
           includeSnapshot: true,
@@ -84,8 +84,8 @@ export function useBcfFromChange(
     if (formOpen) {
       void captureViewpoint();
     } else {
-      captureFlight.release();
-      submitFlight.release();
+      captureFlight.reset();
+      submitFlight.reset();
       setViewpoint(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -93,10 +93,10 @@ export function useBcfFromChange(
 
   // Create a topic in the BCF project (pre-filled from the change), attach the
   // previewed viewpoint, and stay in the compare view.
-  const runSubmit = submitFlight.run;
+  const runSubmit = submitFlight.start;
   const submit = useCallback(
     async (data: Partial<BCFTopic>, options?: { includeSnapshot: boolean }) => {
-      await runSubmit(async (isCurrent) => {
+      await runSubmit(async ({ isCurrent }) => {
         try {
           // Resolve the viewpoint first so the topic's source-file Header can be
           // derived from the models its selection references before it is stored.

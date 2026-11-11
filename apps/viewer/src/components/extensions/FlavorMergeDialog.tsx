@@ -130,7 +130,7 @@ export function FlavorMergeDialog({ open, theirs, onClose, onMerged }: FlavorMer
   if (!theirs) return null;
 
   return (
-    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+    <Dialog open={open} onOpenChange={(o) => { if (!o && !busy) onClose(); }}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">

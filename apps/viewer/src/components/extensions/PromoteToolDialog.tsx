@@ -14,6 +14,7 @@
  * `09-implementation-plan.md` P1.T11 / T12.
  */
 
+import { useAsyncRun } from '@/hooks/useAsyncRun';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronRight, Sparkles, X } from 'lucide-react';
 import {
@@ -68,12 +69,13 @@ export function PromoteToolDialog({ open, source, initialName, onClose }: Promot
   const [hotkey, setHotkey] = useState('');
   const [icon, setIcon] = useState<string>('sparkles');
   const [pending, setPending] = useState<{ bytes: Uint8Array; summary: ExtensionInstallSummary } | null>(null);
-  const [busy, setBusy] = useState(false);
+  const { busy, start } = useAsyncRun({ key: open });
 
   const inference = useMemo(() => inferCapabilities(source), [source]);
 
   useEffect(() => {
     if (!open) {
+      setPending(null);
       nameEditedRef.current = false;
       return;
     }
@@ -82,9 +84,7 @@ export function PromoteToolDialog({ open, source, initialName, onClose }: Promot
     }
   }, [defaultName, initialName, open]);
 
-  const handlePromote = async () => {
-    if (busy) return;
-    setBusy(true);
+  const handlePromote = () => start(async ({ isCurrent }) => {
     try {
       const { bytes, summary } = await synthesiseBundle({
         name,
@@ -93,52 +93,54 @@ export function PromoteToolDialog({ open, source, initialName, onClose }: Promot
         icon,
         capabilities: inference.capabilities,
       });
-      setPending({ bytes, summary });
+      if (isCurrent()) setPending({ bytes, summary });
     } catch (err) {
-      toast.error(t('extensionsPanels.promoteToolDialog.packageFailedToast', {
+      if (isCurrent()) toast.error(t('extensionsPanels.promoteToolDialog.packageFailedToast', {
         error: err instanceof Error ? err.message : String(err),
       }));
-    } finally {
-      setBusy(false);
     }
-  };
+  });
 
   const handleApprove = async (grants: string[]) => {
     if (!pending || busy) return;
-    setBusy(true);
-    try {
-      const status = await host.installFromBytes(pending.bytes, grants);
-      // Point the user at the payoff — the actual button. The
-      // synthesised manifest puts the command on `toolbar.right`,
-      // so it shows up as an icon button at the top-right of the
-      // toolbar. Mention the hotkey too if they set one.
-      const message = hotkey.trim()
-        ? t('extensionsPanels.promoteToolDialog.installedWithHotkey', { name, hotkey: hotkey.trim() })
-        : t('extensionsPanels.promoteToolDialog.installedNoHotkey', { name });
-      toast.success(message);
-      setPending(null);
-      onClose();
-      void status;
-    } catch (err) {
-      if (err instanceof ExtensionInstallError) {
-        toast.error(t('extensionsPanels.promoteToolDialog.installRejectedToast', {
-          message: err.validationErrors[0]?.message ?? err.message,
-        }));
-      } else {
-        toast.error(t('extensionsPanels.promoteToolDialog.installFailedToast', {
-          error: err instanceof Error ? err.message : String(err),
-        }));
+    await start(async ({ isCurrent }) => {
+      try {
+        const status = await host.installFromBytes(pending.bytes, grants);
+        // Point the user at the payoff — the actual button. The
+        // synthesised manifest puts the command on `toolbar.right`,
+        // so it shows up as an icon button at the top-right of the
+        // toolbar. Mention the hotkey too if they set one.
+        const message = hotkey.trim()
+          ? t('extensionsPanels.promoteToolDialog.installedWithHotkey', { name, hotkey: hotkey.trim() })
+          : t('extensionsPanels.promoteToolDialog.installedNoHotkey', { name });
+        // Installation commits globally even when this dialog was externally closed.
+        toast.success(message);
+        if (!isCurrent()) return;
+        setPending(null);
+        onClose();
+        void status;
+      } catch (err) {
+        if (!isCurrent()) return;
+        if (err instanceof ExtensionInstallError) {
+          toast.error(t('extensionsPanels.promoteToolDialog.installRejectedToast', {
+            message: err.validationErrors[0]?.message ?? err.message,
+          }));
+        } else {
+          toast.error(t('extensionsPanels.promoteToolDialog.installFailedToast', {
+            error: err instanceof Error ? err.message : String(err),
+          }));
+        }
       }
-    } finally {
-      setBusy(false);
-    }
+    });
   };
 
+  if (!open) return null;
   if (pending) {
     return (
       <CapabilityReview
         open
         summary={pending.summary}
+        busy={busy}
         onApprove={handleApprove}
         onCancel={() => setPending(null)}
       />
@@ -146,7 +148,7 @@ export function PromoteToolDialog({ open, source, initialName, onClose }: Promot
   }
 
   return (
-    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
+    <Dialog open={open} onOpenChange={(o) => { if (!o && !busy) onClose(); }}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <div className="flex items-center gap-2">
@@ -245,7 +247,7 @@ export function PromoteToolDialog({ open, source, initialName, onClose }: Promot
         </div>
 
         <DialogFooter>
-          <Button variant="ghost" onClick={onClose}>
+          <Button variant="ghost" disabled={busy} onClick={onClose}>
             <X className="mr-1 h-4 w-4" />
             {t('extensionsPanels.promoteToolDialog.cancelButton')}
           </Button>

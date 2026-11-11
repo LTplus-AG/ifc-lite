@@ -8,6 +8,19 @@ Citations to `evidence/`, `tests/evidence/` and `docs/architecture/evidence/` pa
 at commit [`f98785c722`](https://github.com/LTplus-AG/ifc-lite/tree/f98785c722); the retained
 bundles left the tree in #9054.
 
+## Raycast keeps one index across visibility changes (#9504)
+
+**Shipped.** `collectVisibleMeshData` rebuilt its list on every ray, and the BVH was
+keyed on the visible list, so each hide or isolate change rebuilt the tree. The flat
+pieces are now collected once per pick-geometry revision, one BVH covers all of them,
+and visibility filters each ray's candidates. Instanced occurrences stay per-ray.
+
+Lesson: the freshness key is `getPickGeometryRevision()` plus draw-list identity.
+`meshDataMap.size` is not enough, because fragments can be replaced under the same ids
+(#4556). The renderer's `BVH` is separate from `@ifc-lite/spatial`'s (#5252), so a win
+in one does not carry to the other. The tree's typed-array layout is a heap win; the
+per-ray and post-hide wins come from the cache.
+
 ## Storey planners and the QuickJS runtime leave the boot path (#9200)
 
 **Shipped: an eager-bytes cut, no boot-time change.** Three changes, each one
@@ -3033,24 +3046,6 @@ Preserve failed loads alongside successful samples. Listen for renderer crashes
 as well as JavaScript errors, and stop memory sampling on every exit path.
 
 ### Shipped wins
-- **Surface-model faces skip their type-only decode (native instruction
-  hillclimb, 2026-11-10):** `surface_model_plan::lower` fully decoded every
-  face (`decode_by_id`, about 3.5k instructions each) only to learn whether it
-  is an `IfcAdvancedFace`, then re-read its bounds from the raw bytes anyway.
-  `EntityDecoder::is_plain_face` proves from the bytes that a record is exactly
-  `#n=IFCFACE((#a,...));` (STEP whitespace only, upper-case keyword, `u32`
-  ids, not already in the entity memo), which the tokenizer always reads as an
-  `IfcFace` and cannot refuse, so that decode is skipped; every other record
-  decodes as before. Cold single-thread Callgrind, pipeline instructions:
-  advanced_model -12.2% (its 13 face-based surface models are lowered 839
-  times through styled mapped occurrences, 555k face reads), Holter -3.0%,
-  schependomlaan -0.6%, ISSUE_129 -0.1%, FZK flat; ordered `perf_probe`
-  mesh fingerprints identical on all five. **Lesson:** the expensive part was
-  not the surface model but a decode whose only consumer was a type check;
-  look at what a decode's result is used for before making the decode faster.
-  The repeated lowering itself (styled occurrences never hit the mapped-source
-  cache) and the per-point `point3` re-reads remain; caching either adds
-  per-worker memory and was not attempted. Not a wall-time or browser claim.
 - **Review startup bundle (#7015):** load the Script panel on demand and keep
   CodeMirror's shared state module in its own chunk. Assistant text-edit planning
   still uses `ChangeSet`, while the editor UI stays outside the eager import
@@ -3058,6 +3053,21 @@ as well as JavaScript errors, and stop memory sampling on every exit path.
   byte-size verdict, not a measured load-time improvement. **Lesson:** inspect
   the complete HTML preload closure, and isolate shared state before assuming a
   dynamic panel import makes its dependencies lazy.
+- **STEP reals valued in the grammar walk (native instruction hillclimb,
+  2026-11-10):** `read_step_number` walked every literal once to admit it
+  (#7779) and then gave it to `fast_float2`, which walked it again. The walk
+  now folds digits and exponent as it goes; when the mantissa is at most 2^53
+  and the power of ten at most 22 in magnitude, one IEEE multiply or divide
+  is correctly rounded and therefore gives `fast_float2`'s bits (Clinger's
+  fast path; it also subsumes #7880's `N.` case). Everything else still
+  goes to `fast_float2`; integers of up to 18 digits take the walk's
+  mantissa. About 99.5% of the REAL literals in the tuning fixtures take the
+  exact path. Cold single-thread Callgrind, pipeline instructions:
+  advanced_model -5.4%, Holter -1.4%, schependomlaan -0.8%, FZK -0.2%,
+  ISSUE_129 -0.2%; ordered `perf_probe` mesh fingerprints identical on all
+  five, and a 200k-literal bit-for-bit test against `fast_float2`.
+  `parse_step_numeric` (generic, also `f32`) is unchanged: valuing in `f64`
+  then narrowing would round twice. Not a wall-time or browser claim.
 - **Firefox spatial-publication stall (#3983):** Chrome-only cold-load timing
   missed an engine-dependent entity-cache eviction cost. Georeference discovery
   runs through the property-set index during React rendering. Restarting a Map
@@ -3070,6 +3080,21 @@ as well as JavaScript errors, and stop memory sampling on every exit path.
   event-loop gaps and visible hierarchy readiness, and keep profiling runs apart
   from uninstrumented timing. A worker-complete event alone cannot establish that
   publishing its result leaves the UI responsive.
+- **Pooled orient/weld maps reset in O(mesh) (native instruction hillclimb,
+  2026-11-10):** the mesh orienter's vertex and edge maps and the weld's key
+  map are per-worker scratch (#3988), `clear()`ed before every mesh. A
+  non-empty `HashMap::clear` rewrites every bucket's control byte, so after one
+  large mesh every later mesh paid to wipe the large table: on Holter (109k
+  meshes) that memset was about 5% of pipeline instructions.
+  `scratch_map::reset_for` keeps a pooled table only while it is within 4x of
+  the pass's need and otherwise replaces it with one sized for the pass; the
+  maps are only probed and inserted into, never iterated, so capacity cannot
+  reach the output. Cold single-thread Callgrind, pipeline instructions:
+  Holter -4.7%, schependomlaan -2.4%, FZK -1.5%, advanced_model -1.0%,
+  ISSUE_129 -0.7%; ordered `perf_probe` mesh fingerprints identical on all
+  five. **Lesson:** pooling scratch turns `clear()` into a cost proportional to
+  the worst mesh a worker ever saw; check a pooled map's clear cost, not just
+  its allocation count. Not a wall-time or browser claim.
 - **Native cold-load working set (#3967):** immutable schema classification replaces
   contended global caches; completed BREP signatures are shared within one
   immutable source; the geometry scan supplies ordered georeferencing candidates
@@ -3089,22 +3114,6 @@ as well as JavaScript errors, and stop memory sampling on every exit path.
   working set, not just time attributed to the scanner. Bounded parallel typed
   scan windows passed scanner parity but added too little end-to-end benefit
   to retain; the compact-index change produced the material gain.
-- **Surface-model points read once per lowering (native instruction
-  hillclimb, 2026-11-10):** a face-based surface model's faces share their
-  CartesianPoints, and each lowering read every point once per face using it
-  through `point3` (about 1.78M point reads for advanced_model's 13 models,
-  lowered 839 times). `surface_model_plan::lower` now keeps a `PointMemo` for
-  the duration of the call, filled only by `EntityDecoder::point3_fast`, the
-  pure byte fast path of `point3`. Any point that path cannot read still goes
-  through `point3` on every use, so values, refusals and their counts are
-  unchanged. The memo is local to one lowering over one decoder and dropped
-  with it: no cross-job cache, no retained memory. Measured alone against main,
-  cold single-thread Callgrind pipeline instructions: advanced_model -14.1%,
-  Holter -2.4%, schependomlaan -1.2%, ISSUE_129 -0.1%, FZK flat; ordered
-  `perf_probe` mesh fingerprints identical on all five. Stacked on the plain
-  IfcFace decode skip (both change `surface_model_plan.rs`). The repeated
-  lowering itself (styled mapped occurrences) is still left. Not a wall-time
-  or browser claim.
 - **CSG topology diagnostic (#3442): no measurable pipeline regression.** The
   record-not-gate closure audit adds a strict directed-edge hash sweep and only
   runs the hairline sweep when strict closure fails. On `140a6d854` versus the
@@ -3243,6 +3252,21 @@ as well as JavaScript errors, and stop memory sampling on every exit path.
 Orientation reuses deterministic edge adjacency, triangle filters compact their existing index buffer, and welding/content hashing avoid duplicate map probes. Geometry policy, tolerances and traversal/output order remain unchanged. Own-layer native subset comparisons did not establish a meaningful full-load improvement; sampled leaf CPU and the cumulative result cannot establish a layer-specific gain. Preserve exact output and diagnostic oracles, including invalid/degenerate triangles and reused-buffer capacity. No isolated browser gain is established here; invalid Firefox cohorts and unrun follow-ups remain excluded. Owned-weld, sliver-incidence and alternate meshing experiments are not included.
 
 ### Dead ends (do NOT re-spike without a new mechanism)
+- **Forced inlining of entity-index dispatch (native instruction hillclimb,
+  2026-11-10):** forcing `EntityIndexStore::lookup` inline did not reduce pipeline
+  instructions on any of four tuning fixtures and exceeded the campaign's
+  regression ceiling on the structural fixture. Reverted. A large attributed
+  self-instruction share does not imply removable call overhead; let the compiler
+  choose unless a different mechanism is demonstrated. This was a cold,
+  single-thread Callgrind screen, not a wall-time or browser result.
+- **Early-exit columnar binary search (native instruction hillclimb,
+  2026-11-10):** replacing the standard library's fixed-iteration search with an
+  exact-match early return increased pipeline instructions on the structural and
+  architectural tuning fixtures. Reverted independently of the inlining trial.
+  Keep the standard search; fewer iterations are not necessarily fewer executed
+  instructions. Both trials failed the tuning gate, so the holdout and subsequent
+  identity/test/clippy/WASM acceptance gates were deliberately not run. No runtime
+  change survived and no browser speedup is claimed.
 - **Frame-invariant routing for plan-rotated voided walls** (#5739, PR #6035):
   the two routing fixes were NOT SHIPPED; both were measured on ISSUE_098 against the merge-base. With
   per-element local frames (the viewer default), the analytic prism cut's route
@@ -3301,25 +3325,6 @@ Orientation reuses deterministic edge adjacency, triangle filters compact their 
     cheaply.
   - Judge perf by the multi-threaded critical path as well as by CPU: moving
     work onto a few heavy hosts can lower total CPU and still lengthen the load.
-- **Incircle stages C/D without per-call zeroing: measured, WITHDRAWN on
-  provenance (native instruction hillclimb, 2026-11-10, PR #9637 closed).** The
-  mechanism is real. #9016 hands what stage B cannot decide to
-  `geometry_predicates::incircle`, assuming that is rare, but on ISSUE_129
-  43,331 calls take that path, and `incircleadapt` zeroes about 20 KB per call
-  (two 1152-entry `fin` expansions only ever read below their written length):
-  806M of their 1.03G instructions. Continuing from #9016's own stage-B state
-  into stages C/D with reused thread-local `fin` scratch measured, alone against
-  main: FZK -4.3%, ISSUE_129 -3.3%, Holter -0.4% pipeline instructions, the
-  others flat, `perf_probe` fingerprints identical, and the existing bit-identity
-  test passed. It was not landed because that port followed the MIT-licensed
-  crate's `incircleadapt` operation for operation, and CLA.md §4(a) admits only
-  original work in an ordinary contribution. Note the crate reads past a
-  written prefix in two places (length-1 `bct`/`cat`/`abt` defaults; `cxtab`,
-  whose shadowed length is read as 8), so only the `fin` buffers can safely be
-  reused. **To pursue it: upstream the zeroing fix to `geometry-predicates`, or
-  write an original exact-sign stage C/D (the CDT reads only the sign) that
-  keeps the crate's results in the underflow and overflow ranges the #9016 test
-  covers.** Not a wall-time or browser claim.
 - **More geometry workers** -> zero CSG speedup: memory-bandwidth bound, not CPU.
 - **Shared entity-index for the VIEWER huge-file path** (#1445): CLOSED, branch
   deleted, REFUTED by an end-to-end 722MB re-measure. The retained-size spike looked
@@ -6160,3 +6165,31 @@ strictly less than 2× from 1K to 50K, and a passing F5 exercise result whose
 lane, not a substitute tower here. Missing sizes or F5 evidence fail the check.
 The baseline is a description of current main, not an accepted round-1 result
 or a speedup claim.
+
+## Implicit wall joins use maintained endpoint membership (#9406)
+
+Candidate discovery uses rounded endpoints partitioned by parent placement and
+elevation. Ordinary additions stage index entries until their owning publication
+and history transaction succeeds. Other edits invalidate the cache.
+
+Public raw creation also maintains the index when each complete wall record
+arrives. Otherwise the first ordinary addition after a raw-authored session
+would rebuild all wall endpoints. Incomplete forward-reference graphs discard
+the cache, so later creation reads the completed graph. Raw appends never mask
+an intervening placement edit. The regression checks unrelated payload reads
+at two session sizes and then joins against a moved raw-created wall.
+
+Earlier measurements, before session-scale publication (#9411), grew with the
+whole overlay on both main and branch. Those results do not qualify the rebased
+code. Finite schema-name snapshots separately bound registry-key work to one
+signature per operation while keeping definitions live. The paired public SDK
+cohort reports cold and warm calls independently, verifies that the walls do
+not join, and compares reopened geometry. The timing verdict is reported on
+#9406; an operation counter alone is not timing qualification.
+
+The final exclusive paired cohort on the session-scale base passed both the
+non-joining cold/warm overhead gate and the session-growth gate, with identical
+reopened geometry. Incremental raw creation removed the cold rebuild; skipping
+candidate-key work for an empty staged index brought the warm path within the
+same acceptance gate. Keep both checks: fixing cold scaling alone had left a
+warm-call regression.

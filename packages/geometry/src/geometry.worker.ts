@@ -383,8 +383,7 @@ export interface GeometryWorkerBatchMessage {
     // #961: optional surface texture + per-vertex UVs (transferables).
     uvs?: MeshData['uvs'];
     texture?: MeshData['texture'];
-    // #1781: external image texture reference (`IfcImageTexture`) — the main
-    // thread resolves it against the `.ifcZIP` sibling images by `textureId`.
+    // #1781: external image texture reference (`IfcImageTexture`) — the main thread resolves it against the `.ifcZIP` sibling images by `textureId`.
     textureRef?: MeshData['textureRef'];
     /** RTC-invariant per-entity geometry fingerprint, present only when
      *  geometry hashing was enabled via `set-compute-geometry-hashes`.
@@ -504,8 +503,7 @@ async function ensureInit(): Promise<IfcAPI> {
 /** Build a fresh IfcAPI on the instantiated engine and replay every cached setting onto it. */
 function installFreshApi(): IfcAPI {
   installInCallHeartbeat(wasmBindings, inCallHeartbeat);
-  // A prewarmed worker (#7036) is sent `init` again by the load that leases it:
-  // free the previous handle rather than leak it in the wasm heap.
+  // A prewarmed worker (#7036) is sent `init` again by the load that leases it: free the previous handle rather than leak it in the wasm heap.
   freeWasmInstanceQuietly(api);
   api = meterTypedArrayArgs(new IfcAPI(), 'wasm'); // #6957: bytes copied into wasm (identity unless traced)
   mergeLayersApplied = false;
@@ -521,8 +519,7 @@ function installFreshApi(): IfcAPI {
   applyEntityIndexToApi();
   prepassColumnsApplied = false;
   applyPrepassColumnsToApi();
-  // Re-install the session source on a recovery re-init (api = null) so the
-  // *FromSource batch path isn't silently reading an empty file — same replay
+  // Re-install the session source on a recovery re-init (api = null) so the *FromSource batch path isn't silently reading an empty file — same replay
   // contract as the entity index. No-op before a session sets cachedSourceBytes.
   sourceBytesApplied = false;
   applySourceBytesToApi();
@@ -693,8 +690,7 @@ function applyPrepassColumnsToApi(): void {
   if (typeof ifcApi.setInstantiatedTypeIds === 'function') {
     ifcApi.setInstantiatedTypeIds(c.instantiatedTypeIds);
   }
-  // #1623 Phase 3: install the don't-bake plan so the partitioned batch can arm
-  // batch-local instancing. Empty/absent ⇒ the setter no-ops (nothing repeated).
+  // #1623 Phase 3: install the don't-bake plan so the partitioned batch can arm batch-local instancing. Empty/absent ⇒ the setter no-ops (nothing repeated).
   if (typeof ifcApi.setMappedInstancePlan === 'function' && c.mappedInstancePlan) {
     ifcApi.setMappedInstancePlan(c.mappedInstancePlan);
   }
@@ -726,7 +722,8 @@ function applySourceBytesToApi(): void {
   const ifcApi = api as IfcAPIWithMerge | null;
   if (!ifcApi || sourceBytesApplied || !cachedSourceBytes) return;
   if (typeof ifcApi.setSourceBytes !== 'function') return;
-  ifcApi.setSourceBytes(cachedSourceBytes);
+  const sourceSpan = traceGeometryWorkerMessage.begin('worker.sourceInstall');
+  try { ifcApi.setSourceBytes(cachedSourceBytes); } finally { traceGeometryWorkerMessage.end(sourceSpan); }
   sourceBytesApplied = true;
 }
 
@@ -876,9 +873,7 @@ function flushPending(session: ProcessingSession): void {
   session.pendingInstancedShards = [];
   const instancedOccurrences = session.pendingInstancedOccurrences;
   session.pendingInstancedOccurrences = 0;
-  // Drain the instanced-only geometry-fingerprint side-channel into transferable
-  // arrays (#924 / #1891 compare parity). Cleared every flush so it can't leak
-  // across batches.
+  // Drain the instanced-only geometry-fingerprint side-channel into transferable arrays (#924 / #1891 compare parity). Cleared every flush so it can't leak across batches.
   const fingerprintEntries = session.pendingInstancedGeometry;
   session.pendingInstancedGeometry = new Map();
   if (
@@ -899,10 +894,8 @@ function flushPending(session: ProcessingSession): void {
   if (fingerprintEntries.size > 0) {
     instancedGeometryHashIds = new Uint32Array(fingerprintEntries.size);
     instancedGeometryHashValues = new BigUint64Array(fingerprintEntries.size);
-    // Six values per id, mirroring `MeshCollection.geometryAabbValues`: an entry
-    // with no box reserves its span as NaN rather than shortening the array,
-    // because the receiver reads purely by index and a gap would mis-attribute
-    // every later box. Allocated only once a box is actually seen — an older
+    // Six values per id, mirroring `MeshCollection.geometryAabbValues`: an entry with no box reserves its span as NaN rather than shortening the array,
+    // because the receiver reads purely by index and a gap would mis-attribute every later box. Allocated only once a box is actually seen — an older
     // wasm build (or an all-boxless batch) ships nothing at all.
     let k = 0;
     for (const [id, fingerprint] of fingerprintEntries) {
@@ -914,10 +907,8 @@ function flushPending(session: ProcessingSession): void {
         }
         writeGeometryAabbAt(instancedGeometryAabbValues, k, fingerprint.aabb);
       }
-      // One value per id, mirroring `MeshCollection.geometryVolumeValues`, with
-      // `NaN` reserving the slot of an entity whose volume was not proved — the
-      // index-parallel invariant is the same one the boxes have, and so is the
-      // allocate-on-first-sighting rule.
+      // One value per id, mirroring `MeshCollection.geometryVolumeValues`, with `NaN` reserving the slot of an entity whose volume was not proved — the
+      // index-parallel invariant is the same one the boxes have, and so is the allocate-on-first-sighting rule.
       if (fingerprint.volume !== undefined) {
         if (!instancedGeometryVolumeValues) {
           instancedGeometryVolumeValues = new Float64Array(fingerprintEntries.size).fill(NaN);
@@ -926,8 +917,7 @@ function flushPending(session: ProcessingSession): void {
       }
       k += 1;
     }
-    // Freshly allocated above, so `.buffer` is a real ArrayBuffer (TS widens it
-    // to ArrayBufferLike); safe to transfer.
+    // Freshly allocated above, so `.buffer` is a real ArrayBuffer (TS widens it to ArrayBufferLike); safe to transfer.
     transfers.push(
       instancedGeometryHashIds.buffer as ArrayBuffer,
       instancedGeometryHashValues.buffer as ArrayBuffer,
@@ -939,9 +929,10 @@ function flushPending(session: ProcessingSession): void {
       transfers.push(instancedGeometryVolumeValues.buffer as ArrayBuffer);
     }
   }
-  // Total counts both routes: flat meshes + instanced occurrences (the latter
-  // left the flat array but are still rendered geometry).
+  // Total counts both routes: flat meshes + instanced occurrences (the latter left the flat array but are still rendered geometry).
   session.totalMeshesEmitted += meshes.length + instancedOccurrences;
+  const postSpan = traceGeometryWorkerMessage.begin('worker.batch.post');
+  try {
   (self as unknown as Worker).postMessage(
     {
       type: 'batch',
@@ -955,16 +946,18 @@ function flushPending(session: ProcessingSession): void {
     } as GeometryWorkerBatchMessage,
     [...transfers, ...instancedShards],
   );
+  } finally { traceGeometryWorkerMessage.end(postSpan); }
 }
 
 function collectMeshes(
   session: ProcessingSession,
-  collection: ReturnType<IfcAPI['processGeometryBatch']>,
+  collection: ReturnType<IfcAPI['processGeometryBatch']>, wasmSpan?: number,
 ): void {
+  if (wasmSpan !== undefined) traceGeometryWorkerMessage.end(wasmSpan); // absent: nested in consumePartitioned, which owns the collect span
+  const collectSpan = wasmSpan === undefined ? -1 : traceGeometryWorkerMessage.begin('worker.batch.collect');
   try {
-    // Per-entity geometry fingerprints — hash (#924) plus the absolute world
-    // box (#1891) and the proved enclosed volume (#1993) — empty unless
-    // hashing was enabled via
+  try {
+    // Per-entity geometry fingerprints — hash (#924) plus the absolute world box (#1891) and the proved enclosed volume (#1993) — empty unless hashing was enabled via
     // `set-compute-geometry-hashes`. Read inside the try so
     // `collection.free()` in finally still runs if extraction throws.
     const geometryFingerprints = extractGeometryFingerprints(
@@ -1092,6 +1085,7 @@ function collectMeshes(
   } finally {
     collection.free();
   }
+  } finally { traceGeometryWorkerMessage.end(collectSpan); }
 }
 
 /** Shape of a PartitionedBatch result (legacy or `*FromSource`). */
@@ -1119,7 +1113,10 @@ type IfcAPIWithSourceBatch = IfcAPI & {
  * call sites so the lever-1c FromSource path is byte-for-byte the legacy path
  * minus the per-call file copy.
  */
-function consumePartitioned(session: ProcessingSession, partitioned: PartitionedBatchResult): void {
+function consumePartitioned(session: ProcessingSession, partitioned: PartitionedBatchResult, wasmSpan: number): void {
+  traceGeometryWorkerMessage.end(wasmSpan);
+  const collectSpan = traceGeometryWorkerMessage.begin('worker.batch.collect');
+  try {
   try {
     // takeMeshes() MOVES the flat MeshCollection out (take-once); collectMeshes
     // frees it. None only on a second take — we call it once.
@@ -1145,6 +1142,7 @@ function consumePartitioned(session: ProcessingSession, partitioned: Partitioned
     // Free the now-empty PartitionedBatch wrapper (its contents were moved out).
     partitioned.free?.();
   }
+  } finally { traceGeometryWorkerMessage.end(collectSpan); }
 }
 
 /**
@@ -1196,6 +1194,8 @@ async function processBatch(session: ProcessingSession, jobs: Uint32Array): Prom
       processGeometryBatchPartitioned?: (...args: unknown[]) => PartitionedBatchResult;
     }).processGeometryBatchPartitioned;
 
+    const wasmSpan = traceGeometryWorkerMessage.begin('worker.batch.wasm');
+    try {
     if (typeof partitionedFromSourceFn === 'function' && instancingEnabled) {
       consumePartitioned(session, partitionedFromSourceFn.call(
         ifcApi, jobs, session.unitScale,
@@ -1203,7 +1203,7 @@ async function processBatch(session: ProcessingSession, jobs: Uint32Array): Prom
         session.voidKeys, session.voidCounts, session.voidValues,
         session.styleIds, session.styleColors, session.planeAngleToRadians,
         session.materialElementIds, session.materialColorCounts, session.materialColors,
-      ));
+      ), wasmSpan);
     } else if (typeof batchFromSourceFn === 'function') {
       collectMeshes(session, batchFromSourceFn.call(
         ifcApi, jobs, session.unitScale,
@@ -1211,7 +1211,7 @@ async function processBatch(session: ProcessingSession, jobs: Uint32Array): Prom
         session.voidKeys, session.voidCounts, session.voidValues,
         session.styleIds, session.styleColors, session.planeAngleToRadians,
         session.materialElementIds, session.materialColorCounts, session.materialColors,
-      ));
+      ), wasmSpan);
     } else if (typeof partitionedFn === 'function' && instancingEnabled) {
       consumePartitioned(session, partitionedFn.call(
         ifcApi, session.localBytes, jobs, session.unitScale,
@@ -1219,7 +1219,7 @@ async function processBatch(session: ProcessingSession, jobs: Uint32Array): Prom
         session.voidKeys, session.voidCounts, session.voidValues,
         session.styleIds, session.styleColors, session.planeAngleToRadians,
         session.materialElementIds, session.materialColorCounts, session.materialColors,
-      ));
+      ), wasmSpan);
     } else {
       const collection = ifcApi.processGeometryBatch(
         session.localBytes, jobs, session.unitScale,
@@ -1229,8 +1229,9 @@ async function processBatch(session: ProcessingSession, jobs: Uint32Array): Prom
         session.planeAngleToRadians,
         session.materialElementIds, session.materialColorCounts, session.materialColors,
       );
-      collectMeshes(session, collection);
+      collectMeshes(session, collection, wasmSpan);
     }
+    } finally { traceGeometryWorkerMessage.end(wasmSpan); }
   } catch (err) {
     const msg = (err as Error).message;
     // The recovery below issues more synchronous WASM work — a SAB-fallback

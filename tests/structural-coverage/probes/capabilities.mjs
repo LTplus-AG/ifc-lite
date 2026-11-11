@@ -22,23 +22,30 @@ import { verdict } from '../lib/values.mjs';
 import { storeOf } from '../lib/packages.mjs';
 import { extractionOrProblem } from './read.mjs';
 
-/** [structural item id, physical product id] pairs the file declares. */
-function physicalLinks(step) {
+/**
+ * Distinct [structural item id, physical product id] pairs the file declares.
+ * In IfcRelAssignsToProduct the physical end must be an IfcElement (what IFC2X3
+ * IfcRelConnectsStructuralElement.RelatingElement declares), so an item
+ * assigned to a storey or an action assigned to a member is not a link.
+ */
+function physicalLinks(step, table) {
   const structural = (e) => e && /^IFCSTRUCTURAL(CURVE|SURFACE|POINT)(MEMBER|CONNECTION)/.test(e.type);
-  const pairs = [];
+  const element = (e) => e && table.chain(table.types.get(e.type)?.name ?? '').includes('IfcElement');
+  const pairs = new Map();
+  const add = (item, product) => pairs.set(`${item},${product}`, [item, product]);
   for (const rel of step.of('IFCRELASSIGNSTOPRODUCT')) {
     const product = step.get(rel.args[6]);
     if (!product) continue;
     for (const r of rel.args[4] ?? []) {
       const related = step.get(r);
-      if (structural(related) && !structural(product)) pairs.push([r.ref, product.id]);
-      else if (structural(product) && related && !structural(related)) pairs.push([product.id, related.id]);
+      if (structural(related) && element(product)) add(r.ref, product.id);
+      else if (structural(product) && element(related)) add(product.id, related.id);
     }
   }
   for (const rel of step.of('IFCRELCONNECTSSTRUCTURALELEMENT')) {
-    if (structural(step.get(rel.args[5]))) pairs.push([rel.args[5].ref, rel.args[4]?.ref]);
+    if (structural(step.get(rel.args[5]))) add(rel.args[5].ref, rel.args[4]?.ref);
   }
-  return pairs;
+  return [...pairs.values()];
 }
 
 /** Each id resolves to an IfcElement whose GlobalId the file links to this item, and `guid` is among them. */
@@ -62,7 +69,8 @@ const linkRead = {
   level: 'capability',
   covers: (row) => row.id === 'cap/physical-analytical-link-read',
   async run(rows, ctx) {
-    const linked = ctx.corpus.files.map((f) => [f, physicalLinks(f.step)]).filter(([, links]) => links.length);
+    // A file whose schema has no catalogue section (IFC4X2) has no type table to judge it by.
+    const linked = ctx.corpus.files.filter((f) => ctx.tables[f.schema]).map((f) => [f, physicalLinks(f.step, ctx.tables[f.schema])]).filter(([, links]) => links.length);
     if (!linked.length) return new Map(rows.map((r) => [r.id, ctx.corpus.nothingFound('carries a physical-to-structural link')]));
     const problems = [];
     const counts = [];

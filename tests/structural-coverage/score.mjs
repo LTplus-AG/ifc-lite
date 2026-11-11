@@ -19,8 +19,9 @@
  *                or the set of rows or applicable cells differs from it
  *     --offline  score absent corpus files as skip instead of exiting 2 (the result is marked offline)
  *
- * Needs built packages (parser, mutations, create, export) and the corpus
- * fetched (`node scripts/fixtures/fetch-fixtures.mjs <paths>`); either missing exits 2.
+ * Builds the packages it imports (parser, mutations, create, export) with Turbo
+ * and needs the corpus fetched (`node scripts/fixtures/fetch-fixtures.mjs <paths>`);
+ * a failed build or a missing fixture exits 2.
  */
 
 import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';

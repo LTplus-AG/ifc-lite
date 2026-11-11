@@ -19,12 +19,14 @@ const BUILD = ['turbo', 'build', '--filter=@ifc-lite/parser...', '--filter=@ifc-
 
 export async function loadPackages(root) {
   // Let turbo validate source/dependency hashes and rebuild or restore current
-  // output. Merely finding dist/ can silently score an earlier checkout.
+  // output. Merely finding dist/ can silently score an earlier checkout. The
+  // wasm runtime is the exception: build-wasm.sh keeps the pkg/ on disk when
+  // wasm-pack is absent, so a Rust edit needs a wasm toolchain to be scored.
   const build = boundedSpawnSync('pnpm', BUILD, {
     cwd: root, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024, timeout: 20 * 60 * 1000,
   });
   if (build.status !== 0 || build.error) {
-    throw new Error(`structural coverage package build failed: ${build.error?.message ?? `${build.stdout ?? ''}\n${build.stderr ?? ''}`}`);
+    throw new Error(`structural coverage package build failed${build.error ? ` (${build.error.message})` : ''}:\n${build.stdout ?? ''}\n${build.stderr ?? ''}`);
   }
   const missing = PACKAGES.filter((p) => !existsSync(join(root, `packages/${p}/dist/index.js`)));
   if (missing.length) {

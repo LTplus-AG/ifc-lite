@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cpSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -21,21 +21,20 @@ const { tables } = deriveCatalogue(root);
 const step = (body) => readStep(`ISO-10303-21;HEADER;FILE_SCHEMA(('IFC4'));ENDSEC;DATA;${body}ENDSEC;END-ISO-10303-21;`);
 
 test('#9668 links: resolve every express id, require IfcElement and fixture GlobalId, count each fixture', async () => {
-  const file = { path: 'links.ifc', schema: 'IFC4', step: step(`#1=IFCWALL('wall');#2=IFCSTRUCTURALCURVEMEMBER('member');#3=IFCRELASSIGNSTOPRODUCT('rel',$,$,$,(#2),$,#1);`) };
+  // A storey assignment is not a physical link, so it is not counted.
+  const file = { path: 'links.ifc', schema: 'IFC4', step: step(`#1=IFCWALL('wall');#2=IFCSTRUCTURALCURVEMEMBER('member');#3=IFCRELASSIGNSTOPRODUCT('rel',$,$,$,(#2),$,#1);#5=IFCBUILDINGSTOREY('storey');#6=IFCRELASSIGNSTOPRODUCT('rel2',$,$,$,(#2),$,#5);`) };
+  // 30 distinct links (past the old 25-link sample) plus one duplicate relationship, counted once.
+  const members = Array.from({ length: 30 }, (_, i) => 100 + i);
+  const legacy = { ...file, path: 'legacy.ifc', schema: 'IFC2X3', step: step(`#1=IFCWALL('wall');${members.map((m) => `#${m}=IFCSTRUCTURALCURVEMEMBER('m${m}');#${m + 100}=IFCRELCONNECTSSTRUCTURALELEMENT('rel${m}',$,$,$,#1,#${m});`).join('')}#300=IFCRELCONNECTSSTRUCTURALELEMENT('dup',$,$,$,#1,#100);`) };
+  const reverse = { ...file, path: 'reverse.ifc', step: step("#1=IFCWALL('wall');#2=IFCSTRUCTURALCURVEMEMBER('member');#3=IFCRELASSIGNSTOPRODUCT('rel',$,$,$,(#1),$,#2);") };
   const row = { id: 'cap/physical-analytical-link-read', kind: 'capability' };
   async function run(ids, type = 'IfcWall', guid = 'wall') {
-    const info = { physicalElementIds: ids };
-    const other = { ...file, path: 'legacy.ifc', schema: 'IFC2X3', step: step(`#1=IFCWALL('wall');#2=IFCSTRUCTURALCURVEMEMBER('member');` + Array.from({ length: 30 }, (_, i) => `#${i + 3}=IFCRELCONNECTSSTRUCTURALELEMENT('rel${i}',$,$,$,#1,#2);`).join('')) };
-    const cache = new Map([
-      ['read:links.ifc', { byId: new Map([[2, { family: 'item', info }]]) }],
-      ['store:links.ifc', { entities: { getTypeName: (id) => id === 1 ? type : id === 4 ? 'IfcWall' : '', getGlobalId: (id) => id === 4 ? 'unlinked' : guid } }],
-    ]);
-    const reverse = { ...file, path: 'reverse.ifc', step: step("#1=IFCWALL('wall');#2=IFCSTRUCTURALCURVEMEMBER('member');#3=IFCRELASSIGNSTOPRODUCT('rel',$,$,$,(#1),$,#2);") };
-    cache.set('read:reverse.ifc', cache.get('read:links.ifc'));
-    cache.set('store:reverse.ifc', cache.get('store:links.ifc'));
-    cache.set('read:legacy.ifc', cache.get('read:links.ifc'));
-    cache.set('store:legacy.ifc', cache.get('store:links.ifc'));
-    return (await runProbes([row], { corpus: { files: [file, other, reverse] }, tables, cache }, [capabilities[0]])).get(row.id).capability;
+    const item = { family: 'item', info: { physicalElementIds: ids } };
+    const store = { entities: { getTypeName: (id) => id === 1 ? type : id === 4 ? 'IfcWall' : '', getGlobalId: (id) => id === 4 ? 'unlinked' : guid } };
+    const read = { byId: new Map([[2, item]]) };
+    const cache = new Map([['read:links.ifc', read], ['read:reverse.ifc', read], ['read:legacy.ifc', { byId: new Map(members.map((m) => [m, item])) }]]);
+    for (const f of [file, legacy, reverse]) cache.set(`store:${f.path}`, store);
+    return (await runProbes([row], { corpus: { files: [file, legacy, reverse] }, tables, cache }, [capabilities[0]])).get(row.id).capability;
   }
   const good = await run([1]);
   assert.equal(good.status, 'pass', good.reason);
@@ -66,8 +65,13 @@ test('#9668 CI: ratchet runs in built fixture job even in fast PR lane', () => {
   const build = wf.jobs.build;
   const commands = build.steps.map((s) => s.run ?? '');
   const i = commands.findIndex((s) => s.includes('tests/structural-coverage/score.mjs --check tests/structural-coverage/baseline/')); // @source-text-assertion-ok parsed workflow configuration or probe verdict, not source text
-  assert.ok(i > commands.indexOf('pnpm build')); // @source-text-assertion-ok parsed workflow configuration or probe verdict, not source text
-  assert.ok(i > commands.indexOf('pnpm fixtures')); // @source-text-assertion-ok parsed workflow configuration or probe verdict, not source text
+  // CI ratchets against the newest frozen baseline, the one the ledger renders.
+  const newest = Math.max(...readdirSync(join(root, 'tests/structural-coverage/baseline')).map((f) => /^r(\d+)\.json$/.exec(f)?.[1]).filter(Boolean).map(Number));
+  assert.ok(commands[i].trim().endsWith(`baseline/r${newest}.json`), commands[i]); // @source-text-assertion-ok parsed workflow configuration or probe verdict, not source text
+  for (const before of ['pnpm build', 'pnpm fixtures']) {
+    const j = commands.indexOf(before); // @source-text-assertion-ok parsed workflow configuration or probe verdict, not source text
+    assert.ok(j >= 0 && i > j, before);
+  }
   assert.equal(build.steps[i].if, undefined);
   assert.ok(!build.if.includes("lane != 'fast'")); // @source-text-assertion-ok parsed workflow configuration or probe verdict, not source text
   const filter = wf.jobs.changes.steps.find((s) => s.uses?.startsWith('dorny/paths-filter')); // @source-text-assertion-ok parsed workflow configuration or probe verdict, not source text
@@ -98,6 +102,12 @@ test('#9668 gate remedy: each generator failure class has an actionable remedy',
     });
     assert.equal(r.status, 1);
     const output = r.stdout + r.stderr;
-    for (const phrase of ['is stale', 'does not match the derived catalogue', 'stored totals or applicability disagree', 'was scored offline', 'no r<N>.json summary', 'cp tests/structural-coverage/.out/summary.json tests/structural-coverage/baseline/r<N>.json']) assert.ok(output.includes(phrase), phrase);
+    // Each quoted phrase is one the generator prints, so a reworded failure loses its remedy here.
+    const generator = readFileSync(join(root, 'scripts/generate-structural-coverage-ledger.mjs'), 'utf8');
+    for (const phrase of ['is stale', 'does not match the derived catalogue', 'stored totals or applicability disagree', 'was scored offline', 'no r<N>.json summary', 'missing', 'is not JSON', 'is not an', 'has no rows']) {
+      assert.ok(output.includes(`"${phrase}"`), phrase);
+      assert.ok(generator.includes(phrase), phrase); // @source-text-assertion-ok the remedy must quote the generator's own failure text
+    }
+    assert.ok(output.includes('cp tests/structural-coverage/.out/summary.json tests/structural-coverage/baseline/r<N>.json'));
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });

@@ -507,6 +507,7 @@ runGate('check:structural-coverage-ledger', 'node', ['scripts/generate-structura
     'if it says "stored totals or applicability disagree": re-score to recompute totals and applicability, then re-baseline; ' +
     'if it says "was scored offline": fetch the missing corpus fixtures and re-score without --offline, then re-baseline; ' +
     'if it says "no r<N>.json summary": restore the committed baseline or create one from a complete score; ' +
+    'if it says "missing", "is not JSON", "is not an" (ifclite-structural-coverage/1 summary) or "has no rows": restore the damaged file with git checkout, or re-score and re-baseline; ' +
     'to re-score: node tests/structural-coverage/score.mjs; ' +
     'to re-baseline after reviewing every changed cell: cp tests/structural-coverage/.out/summary.json tests/structural-coverage/baseline/r<N>.json, ' +
     'then node scripts/generate-structural-coverage-ledger.mjs and commit the new baseline and ledger');

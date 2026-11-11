@@ -1,13 +1,13 @@
 diff --git a/apps/viewer/src/components/viewer/assistant/StructuralGraphReview.tsx b/apps/viewer/src/components/viewer/assistant/StructuralGraphReview.tsx
-index f9a39fea9c..820d435f3e 100644
+index 9f1fe972e0..e7f9ce8459 100644
 --- a/apps/viewer/src/components/viewer/assistant/StructuralGraphReview.tsx
 +++ b/apps/viewer/src/components/viewer/assistant/StructuralGraphReview.tsx
-@@ -38,7 +38,7 @@ export function StructuralGraphReview({ proposal, origin }: { proposal: Structur
-     return () => { current.mounted = false; current.review = null; unsubscribe(); };
+@@ -39,7 +39,7 @@ export function StructuralGraphReview({ proposal, origin }: { proposal: Structur
    }, [proposal]);
    // The structural builders load in their own chunk (#9668): wait for it, never refuse while it loads.
--  const prepare = (selection = approved) => void Promise.resolve().then(() => {
-+  const prepare = (selection = approved) => void loadStructuralWrites().then(() => {
+   // The selection is read when the chunk has loaded, so a box changed while it loads is not lost.
+-  const prepare = () => void Promise.resolve().then(() => {
++  const prepare = () => void loadStructuralWrites().then(() => {
      if (!owner.current.mounted) return;
-     const next = prepareStructuralReview(useViewerStore, proposal, selection);
+     const next = prepareStructuralReview(useViewerStore, proposal, owner.current.selection);
      owner.current.review = next; setReview(next); setProblem(null); setStale(false);

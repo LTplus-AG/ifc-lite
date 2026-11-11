@@ -1,5 +1,5 @@
 diff --git a/apps/viewer/src/components/viewer/assistant/StructuralGraphReview.tsx b/apps/viewer/src/components/viewer/assistant/StructuralGraphReview.tsx
-index 9f1fe972e0..e7f9ce8459 100644
+index 3e2449fc11..f8411da84e 100644
 --- a/apps/viewer/src/components/viewer/assistant/StructuralGraphReview.tsx
 +++ b/apps/viewer/src/components/viewer/assistant/StructuralGraphReview.tsx
 @@ -39,7 +39,7 @@ export function StructuralGraphReview({ proposal, origin }: { proposal: Structur
@@ -8,6 +8,6 @@ index 9f1fe972e0..e7f9ce8459 100644
    // The selection is read when the chunk has loaded, so a box changed while it loads is not lost.
 -  const prepare = () => void Promise.resolve().then(() => {
 +  const prepare = () => void loadStructuralWrites().then(() => {
-     if (!owner.current.mounted) return;
+     // Dropped if the panel unmounted or now shows another proposal.
+     if (!owner.current.mounted || owner.current.proposal !== proposal) return;
      const next = prepareStructuralReview(useViewerStore, proposal, owner.current.selection);
-     owner.current.review = next; setReview(next); setProblem(null); setStale(false);

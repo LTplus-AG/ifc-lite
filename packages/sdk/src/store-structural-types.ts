@@ -30,7 +30,7 @@ import type {
 import type { EntityRef } from './types.js';
 
 export interface StructuralStoreBackendMethods {
-  // Optional capabilities, so a custom backend written before them still type-checks.
+  // These three are optional, so a custom backend written before them still type-checks.
   /** `IfcStructuralSurfaceMember` with planar Face topology, anchored to a storey. */
   addStructuralSurfaceMember?(modelId: string, storeyExpressId: number, params: StructuralSurfaceMemberInStoreParams): EntityRef;
   /** `IfcStructuralCurveConnection` with Edge topology, anchored to a storey. */

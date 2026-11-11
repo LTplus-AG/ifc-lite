@@ -22,6 +22,7 @@ import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { EVENT_LOAD_FILE } from '@/lib/tours/events';
 import { anchorSelector, TOUR_ANCHORS } from '@/lib/tours/anchors';
 import { renderPanelBody } from './renderPanelBody.js';
+import { formFactorState } from '@/test/form-factor-state';
 
 const originalState = useViewerStore.getState();
 after(() => { useViewerStore.setState(originalState, true); });
@@ -94,7 +95,7 @@ describe('renderPanelBody on an empty viewer (#6720)', () => {
     assert.equal(bottom.querySelector('button[aria-label="Close panel"]'), null);
     cleanup();
     // The mobile sheet draws the panel title and close itself: one header, not two.
-    useViewerStore.setState({ isMobile: true });
+    useViewerStore.setState({ ...formFactorState(true) });
     const sheet = render(renderPanelBody('environment', () => {}));
     assert.equal(sheet.querySelector('button[aria-label="Close panel"]'), null);
     assert.match(sheet.textContent ?? '', new RegExp(NO_MODEL));

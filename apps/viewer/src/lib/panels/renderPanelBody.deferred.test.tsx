@@ -13,6 +13,7 @@ import { useViewerStore } from '@/store';
 import { resolve as translate } from '@/i18n/registry';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { renderPanelBody } from './renderPanelBody';
+import { formFactorState } from '@/test/form-factor-state';
 
 const initial = useViewerStore.getState();
 afterEach(() => { cleanup(); useViewerStore.setState(initial, true); });
@@ -27,7 +28,7 @@ for (const [id, load] of [
     // Mount the feature against a real store, not a partial structural stub.
     const bytes = readFileSync(new URL('../../../public/samples/building-architecture.ifc', import.meta.url));
     const ifcDataStore = await new IfcParser().parseColumnar(new Uint8Array(bytes).buffer);
-    useViewerStore.setState({ ...fixtureModels({ ...fixtureModel('m'), ifcDataStore }), isMobile: false, loading: false });
+    useViewerStore.setState({ ...fixtureModels({ ...fixtureModel('m'), ifcDataStore }), ...formFactorState(false), loading: false });
     let closed = 0;
     const ui = render(renderPanelBody(id, () => { closed++; }));
     assert.ok(ui.querySelector('output'), 'cold routing paints a loading shell');

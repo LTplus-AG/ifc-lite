@@ -12,7 +12,7 @@
  */
 
 import type { CSSProperties } from 'react';
-import { VIEW_CUBE_REACH_PX, VIEW_CUBE_REACH_X_PX } from './viewcube-box';
+import { VIEW_CUBE_REACH, VIEW_CUBE_REACH_X_PX } from './viewcube-box';
 import { X } from 'lucide-react';
 import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
@@ -42,7 +42,7 @@ export function ViewportLoadingCard() {
       // Landscape keeps centering and the max-w-sm cap, reserving the corner
       // controls' lane plus one gutter on each side (#8802 review).
       style={{
-        '--phone-loading-top': `${VIEW_CUBE_REACH_PX + 32}px`,
+        '--phone-loading-top': `calc(${VIEW_CUBE_REACH} + 32px)`,
         '--phone-loading-side': `${VIEW_CUBE_REACH_X_PX + 16}px`,
       } as CSSProperties}
     >

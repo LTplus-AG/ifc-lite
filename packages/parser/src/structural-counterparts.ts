@@ -14,7 +14,7 @@
 import { addUnique } from './structural-step-values.js';
 import type { StructuralExtraction } from './structural-types.js';
 
-/** The counterparts of one entity, all on the other side of the link. */
+/** The counterparts of one entity, all on the other side of the link. Frozen: every lookup shares the cached index. */
 export interface StructuralCounterparts {
   /**
    * `analytical`: the entity is a physical element and these are the
@@ -23,9 +23,9 @@ export interface StructuralCounterparts {
    * item and these are the elements it idealises, in its `physicalElementIds`
    * order.
    */
-  side: 'analytical' | 'physical';
-  /** Model-local express ids; never empty. Frozen: every lookup shares the cached index. */
-  expressIds: readonly number[];
+  readonly side: 'analytical' | 'physical';
+  /** Model-local express ids; never empty. */
+  readonly expressIds: readonly number[];
 }
 
 const indexes = new WeakMap<StructuralExtraction, Map<number, StructuralCounterparts>>();
@@ -45,11 +45,11 @@ export function structuralCounterparts(data: StructuralExtraction, expressId: nu
         const physical = item.physicalElementIds;
         if (!physical?.length) continue;
         // A copy: the read model's array is mutable and reaches SDK scripts.
-        index.set(item.expressId, { side: 'physical', expressIds: Object.freeze([...physical]) });
+        index.set(item.expressId, Object.freeze({ side: 'physical', expressIds: Object.freeze([...physical]) }));
         for (const elementId of physical) addUnique(analytical, elementId, item.expressId);
       }
     }
-    for (const [elementId, items] of analytical) index.set(elementId, { side: 'analytical', expressIds: Object.freeze(items) });
+    for (const [elementId, items] of analytical) index.set(elementId, Object.freeze({ side: 'analytical', expressIds: Object.freeze(items) }));
     indexes.set(data, index);
   }
   return index.get(expressId) ?? null;

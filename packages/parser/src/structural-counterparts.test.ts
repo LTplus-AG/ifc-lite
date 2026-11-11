@@ -86,4 +86,14 @@ describe('structuralCounterparts on an IFC4X3 file', () => {
     expect(structuralCounterparts(data, 4)).toEqual({ side: 'physical', expressIds: [1] });
     expect(structuralCounterparts(data, 5)).toBeNull();
   });
+
+  it('hands out a frozen copy, so editing the read model cannot split the cached link', async () => {
+    const data = extractStructuralOnDemand(await parse(new TextEncoder().encode(IFC4X3)));
+    const member = structuralCounterparts(data, 3)!;
+    expect(Object.isFrozen(member) && Object.isFrozen(member.expressIds)).toBe(true);
+    expect(Object.isFrozen(structuralCounterparts(data, 1)!.expressIds)).toBe(true);
+    data.members.find((m) => m.expressId === 3)!.physicalElementIds!.push(99);
+    expect(structuralCounterparts(data, 3)).toEqual({ side: 'physical', expressIds: [1, 2] });
+    expect(structuralCounterparts(data, 99)).toBeNull();
+  });
 });

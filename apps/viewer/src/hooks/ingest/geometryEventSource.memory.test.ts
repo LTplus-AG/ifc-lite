@@ -66,9 +66,12 @@ describe('exact kernel memory refusal', () => {
   });
 
   it('the memory simulation flag cannot refuse a load', () => {
+    // A 1 GiB source: its 2–3 GiB copy floor would exceed any ceiling derived
+    // from a 0.001 GiB simulation (≤ 1.5 MiB), so this fails if the simulation
+    // ever feeds the refusal (review on #9659).
     reportMemory(32);
     (globalThis as Record<string, unknown>)[SIMULATED] = 0.001;
-    const kernel = beginGeometryKernel(stepFile('small.ifc', 1024), { kind: 'primary' }, () => {});
+    const kernel = beginGeometryKernel(stepFile('big.ifc', 1024 ** 3), { kind: 'primary' }, () => {});
     assert.equal(kernel.refused, undefined);
   });
 

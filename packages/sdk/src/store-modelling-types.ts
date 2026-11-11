@@ -10,7 +10,7 @@
  */
 
 import type {
-  CopyTransform, CopyArrayParams,
+  CopyTransform, CopyArrayParams, MirrorElementsParams, ClassificationInStoreParams,
   HostedElementEdit,
   CurtainWallInStoreParams,
   GridInStoreParams,
@@ -38,6 +38,9 @@ import type { TopConstraintParams } from './store-top-types.js';
 import type { RoofStoreBackendMethods } from './store-roof-types.js';
 
 export interface ModellingStoreBackendMethods extends PhysicalStoreBackendMethods, StoreyStoreBackendMethods, RoofStoreBackendMethods {
+  mirrorElements?(modelId: string, ids: readonly number[], params: MirrorElementsParams): EntityRef[];
+  addClassification?(modelId: string, params: ClassificationInStoreParams): EntityRef;
+  assignClassification?(modelId: string, classificationId: number, objects: readonly number[]): EntityRef;
   /** Native mesh/DCEL Room operations with atomic history-aware layout edits. */
   roomCommand?(modelId: string, storeyId: number, command: RoomCommand): Promise<RoomCommandResult>;
   /**

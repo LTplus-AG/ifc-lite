@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { createHash } from 'node:crypto';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -217,7 +218,11 @@ test('the first signature creates the orphan signatures branch, then the PR goes
   assert.deepEqual(commitCall[1].parents, [], 'the signatures branch shares no history with main');
   assert.equal(state.record.signatures[0].github_id, 101);
   assert.equal(state.record.signatures[0].cla_commit, 'a'.repeat(40));
-  assert.match(state.record.signatures[0].comment_sha256, /^[0-9a-f]{64}$/, 'the signed words are pinned against a later edit');
+  assert.equal(
+    state.record.signatures[0].comment_sha256,
+    createHash('sha256').update(SIGN_PHRASE).digest('hex'),
+    'the signed words are pinned against a later edit',
+  );
   assert.equal(state.status.state, 'success');
 });
 

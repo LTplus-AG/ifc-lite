@@ -22,7 +22,25 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse } from 'yaml';
 
-import { parseTap, readRecords, report, reportedFiles, scriptConcurrency, selectFiles, selectionCommand, viewerTestScript } from './viewer-concurrency-probe.mjs';
+import { existsSync } from 'node:fs';
+
+// The module under test and the new workflow are loaded when a test asks for
+// them, not at the top: when the revert oracle reverses this PR's production
+// files, every test must still run and fail on its own assertion, rather than
+// the whole file dying at load with nothing asserted.
+const probe = await import('./viewer-concurrency-probe.mjs').catch(() => null);
+function api() {
+  assert.ok(probe, 'scripts/viewer-concurrency-probe.mjs did not load');
+  return probe;
+}
+const parseTap = (...a) => api().parseTap(...a);
+const readRecords = (...a) => api().readRecords(...a);
+const report = (...a) => api().report(...a);
+const reportedFiles = (...a) => api().reportedFiles(...a);
+const scriptConcurrency = (...a) => api().scriptConcurrency(...a);
+const selectFiles = (...a) => api().selectFiles(...a);
+const selectionCommand = (...a) => api().selectionCommand(...a);
+const viewerTestScript = (...a) => api().viewerTestScript(...a);
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..');
@@ -30,7 +48,11 @@ const VIEWER = join(REPO_ROOT, 'apps/viewer');
 const TSX = join(REPO_ROOT, 'node_modules/.bin/tsx');
 const FILE_REPORTER = join(HERE, 'lib/test-file-reporter.mjs');
 const TEST_YML = parse(readFileSync(join(REPO_ROOT, '.github/workflows/test.yml'), 'utf8'));
-const PROBE_YML = parse(readFileSync(join(REPO_ROOT, '.github/workflows/viewer-concurrency-probe.yml'), 'utf8'));
+const PROBE_YML_PATH = join(REPO_ROOT, '.github/workflows/viewer-concurrency-probe.yml');
+function probeWorkflow() {
+  assert.ok(existsSync(PROBE_YML_PATH), '.github/workflows/viewer-concurrency-probe.yml is missing');
+  return parse(readFileSync(PROBE_YML_PATH, 'utf8'));
+}
 const TMP = mkdtempSync(join(tmpdir(), 'viewer-concurrency-probe-'));
 test.after(() => rmSync(TMP, { recursive: true, force: true }));
 
@@ -174,6 +196,7 @@ test('selectionCommand refuses a test script it cannot cut', () => {
 
 test('#9791 review: the probe is its own workflow, after a main push Test run, and OFF unless the switch is exactly `on`', () => {
   assert.deepEqual(Object.keys(TEST_YML.jobs).filter((j) => j.includes('probe')), [], 'nothing of the probe left in the Test run'); // @source-text-assertion-ok filters parsed job keys
+  const PROBE_YML = probeWorkflow();
   assert.deepEqual(PROBE_YML.on.workflow_run, { workflows: ['Test'], types: ['completed'], branches: ['main'] });
   const { plan, ...rest } = PROBE_YML.jobs;
   const conjuncts = plan.if.split(' && ');
@@ -194,6 +217,7 @@ test('#9791 review: the probe is its own workflow, after a main push Test run, a
 });
 
 test('#9791 review: the probe runs only on GitHub-hosted runners, read-only, with no stored credentials', () => {
+  const PROBE_YML = probeWorkflow();
   for (const [name, job] of Object.entries(PROBE_YML.jobs)) {
     assert.equal(job['runs-on'], 'ubuntu-latest', name);
     for (const step of job.steps.filter((s) => s.uses?.startsWith('actions/checkout@'))) { // @source-text-assertion-ok selects checkout steps from the parsed workflow

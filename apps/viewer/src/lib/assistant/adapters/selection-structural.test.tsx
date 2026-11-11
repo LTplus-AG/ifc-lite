@@ -12,7 +12,7 @@ import { getOrCreateMutationView } from '@/sdk/adapters/mutation-view';
 import { createStructuralAdapter } from '@/sdk/adapters/structural-adapter';
 import { effectiveStructuralView } from '@/components/viewer/properties/effectiveStructuralView';
 import { renderPanelBody } from '@/lib/panels/renderPanelBody';
-import { render, advance, cleanup } from '@/test/render';
+import { render, cleanup, waitFor } from '@/test/render';
 import { useViewerStore } from '@/store';
 import { captureEvidence } from '../evidence';
 
@@ -25,8 +25,9 @@ const force = (data: StructuralExtraction) => data.activities[0]?.appliedLoad?.c
 
 test('#7195 selected structural load matches native exported Properties metadata', async () => {
   const { file } = await fixture(); assert.equal(force(extractStructuralOnDemand(file)), 1234);
-  const ui = render(renderPanelBody('properties', () => undefined)); await advance(0);
-  assert.match(ui.textContent ?? '', /Structural Analysis/); assert.match(ui.textContent ?? '', /1[,.’'\u202f\s]?234/);
+  const ui = render(renderPanelBody('properties', () => undefined));
+  // StructuralCard is a lazy chunk (#9668): wait for it rather than one tick.
+  await waitFor(() => /Structural Analysis/.test(ui.textContent ?? ''), `structural card in: ${ui.textContent}`); assert.match(ui.textContent ?? '', /1[,.’'\u202f\s]?234/);
   const selected = row(); assert.equal(selected.structuralStatus, 'available');
   assert.equal(selected.structural?.member.Thickness, 0.25);
   assert.equal(selected.structural?.activities[0].AppliedLoad?.components.ForceX, 1234);

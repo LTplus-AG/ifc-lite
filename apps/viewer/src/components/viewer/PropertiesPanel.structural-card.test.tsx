@@ -13,7 +13,7 @@ import '@/test/setup-dom.js';
 
 import { after, afterEach, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { activate, cleanup, click, render } from '@/test/render.js';
+import { activate, cleanup, click, render, waitFor } from '@/test/render.js';
 import { useViewerStore } from '@/store';
 import { fixtureModel } from '@/test/store-fixture.js';
 import { IfcParser } from '@ifc-lite/parser';
@@ -53,6 +53,13 @@ async function loadModel(source: string, expressId: number) {
     selectedEntityId: ID_OFFSET + expressId,
     selectedEntityIds: new Set([ID_OFFSET + expressId]),
   });
+}
+
+/** Render the panel and wait for the lazily loaded structural card. */
+async function renderPanel(): Promise<HTMLElement> {
+  const ui = render(<PropertiesPanel />);
+  await waitFor(() => ui.textContent?.includes('Structural Analysis') ?? false, `structural card in: ${ui.textContent}`);
+  return ui;
 }
 
 /** The counterpart row for `#id`, found by what the user sees. */
@@ -97,7 +104,7 @@ describe('PropertiesPanel structural-only selection', () => {
       editEnabled: true,
     });
 
-    const ui = render(<PropertiesPanel />);
+    const ui = await renderPanel();
     const text = ui.textContent ?? '';
     assert.ok(text.includes('Structural Analysis'), `structural card in: ${text}`);
     assert.ok(!text.includes('No property sets'), `empty state must not hide the card: ${text}`);
@@ -109,7 +116,7 @@ describe('PropertiesPanel structural-only selection', () => {
 
   it('lists analytical items for a wall and jumps there and back (#9668)', async () => {
     await loadModel(LINKED_SOURCE, 20);
-    const ui = render(<PropertiesPanel />);
+    const ui = await renderPanel();
     assert.ok(ui.textContent?.includes('Analytical items (2)'), `wall card in: ${ui.textContent}`);
     assert.ok(counterpartRow(ui, 11).textContent?.includes('Edge'));
 
@@ -125,17 +132,18 @@ describe('PropertiesPanel structural-only selection', () => {
 
   it('shows the physical element of a connection (#9668)', async () => {
     await loadModel(LINKED_SOURCE, 11);
-    const ui = render(<PropertiesPanel />);
+    const ui = await renderPanel();
     assert.ok(ui.textContent?.includes('Physical elements (1)'), `connection card in: ${ui.textContent}`);
     assert.ok(counterpartRow(ui, 20).textContent?.includes('Wall A'));
   });
 
   it('shows no counterpart section without a link (#9668)', async () => {
     await loadModel(LINKED_SOURCE, 12);
-    const member = render(<PropertiesPanel />).textContent ?? '';
+    const member = (await renderPanel()).textContent ?? '';
     assert.ok(member.includes('Structural Analysis') && !member.includes('Physical elements'), member);
     cleanup();
     await loadModel(LINKED_SOURCE, 21);
+    // The card module is loaded by now, so an absent card is the gate's answer, not a pending import.
     const wall = render(<PropertiesPanel />).textContent ?? '';
     assert.ok(!wall.includes('Structural Analysis') && !wall.includes('Analytical items'), wall);
   });

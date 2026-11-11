@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { effectiveTypeProperties } from './properties/effectiveTypeProperties';
-import { useMemo, useState, useCallback, useEffect } from 'react';
+import { lazy, Suspense, useMemo, useState, useCallback, useEffect } from 'react';
 import { useTranslation } from '@/i18n';
 import { Building2, Layers, FileText, Calculator, Tag, MousePointer2, PenLine, ChevronDown } from 'lucide-react';
 import { EditToolbar } from './PropertyEditor';
@@ -46,7 +46,6 @@ import { ClassificationCard } from './properties/ClassificationCard';
 import { MaterialCard } from './properties/MaterialCard';
 import { MaterialTotalsPanel } from './properties/MaterialTotalsPanel';
 import { ScheduleCard } from './properties/ScheduleCard';
-import { StructuralCard } from './properties/StructuralCard';
 import { structuralCardSubject } from './properties/selectedStructuralMember';
 import { TaskEditCard } from './properties/TaskEditCard';
 import { DocumentCard } from './properties/DocumentCard';
@@ -81,6 +80,9 @@ import { AttributeEditorField } from './properties/AttributeEditorField';
 import { CopyValueButton } from './properties/CopyValueButton';
 import { SelectionSummaryPanel } from './properties/SelectionSummaryPanel';
 import { AssistantAction } from './assistant/AssistantAction';
+
+// Loaded on the first structural selection: it is not entry-chunk weight (#9668).
+const StructuralCard = lazy(() => import('./properties/StructuralCard').then((m) => ({ default: m.StructuralCard })));
 
 export function PropertiesPanel() {
   const { t, locale } = useTranslation();
@@ -1493,7 +1495,7 @@ export function PropertiesPanel() {
                     `hasStructuralForSelection` for the same reason as the
                     schedule separator above. */}
                 {!findQuery && selectedEntity && structuralData && hasStructuralForSelection && (
-                  <>
+                  <Suspense fallback={null}>
                     <StructuralCard
                       structuralData={structuralData}
                       sourceUnavailable={!activeDataStore?.source?.length}
@@ -1502,7 +1504,7 @@ export function PropertiesPanel() {
                       describeEntity={(expressId) => overlayAwareQuery.entityData({ modelId: selectedEntity.modelId, expressId })}
                       onSelectEntity={handleSelectRelatedEntity}
                     />
-                  </>
+                  </Suspense>
                 )}
               </div>
             )}

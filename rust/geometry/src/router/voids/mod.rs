@@ -45,7 +45,7 @@ pub use context::RectParam;
 pub(crate) use context::{ParamRectCut, VoidContext};
 mod batch_cutter;
 pub(crate) mod bool2d_path;
-mod coaxial_union;
+pub(crate) mod coaxial_union;
 mod cutter;
 pub(crate) mod geom;
 mod malformed_opening_repair;

@@ -1,0 +1,12 @@
+diff --git a/packages/create/src/in-store/_structural-face.ts b/packages/create/src/in-store/_structural-face.ts
+--- a/packages/create/src/in-store/_structural-face.ts
++++ b/packages/create/src/in-store/_structural-face.ts
+@@ -51,7 +51,7 @@ export function prepareStructuralFace(points: readonly Point3D[]) {
+     return sum.map((v, j) => v + cross[j]) as Point3D;
+   }, [0, 0, 0]);
+   if (vecLen(areaVector) <= tolerance * scale) throw new Error('Structural Face: degenerate boundary (collinear points or zero area)');
+-  const axis = vecNorm(vecCross(relative[1], relative[2]));
++  const axis = vecNorm(areaVector);
+   const offsets = relative.map(p => vecDot(p, axis));
+   if (offsets.some(d => Math.abs(d) > tolerance)) throw new Error('Structural Face: boundary points must be coplanar');
+   // Snap onto the plane, so the written loop lies exactly on the IfcPlane.

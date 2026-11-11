@@ -468,3 +468,27 @@ Non-IDS saved report kinds retain their original records but expose `unsupported
 Headless SDK sessions (including CLI and MCP) derive wall, slab, roof, column and beam base quantities from live session-authored geometry. Read them with `bim.quantities(ref)`; `bim.export.ifc` includes the same values in IFC4, IFC2X3 and IFC4X3. Existing loaded quantity sets retain precedence and are not refreshed.
 
 Custom mutation-view hosts can call `configureAuthoredQuantityReader(dataStore, mutationView)` from `@ifc-lite/create` to install the same source-first reader. An optional third argument supplies the host's source quantity reader. User quantity edits and deletions apply above these derived values.
+
+### Structural surfaces and connections
+
+The in-store create API provides `addStructuralSurfaceMemberToStore`,
+`addStructuralCurveConnectionToStore`, and `addStructuralSurfaceConnectionToStore`.
+The SDK exposes them as `bim.store.addStructuralSurfaceMember`,
+`bim.store.addStructuralCurveConnection`, and `bim.store.addStructuralSurfaceConnection`,
+each taking `(modelId, storeyExpressId, params)`, like the existing curve member builder.
+The SDK backend supports IFC4 and IFC4X3; the direct builders also support IFC2X3.
+
+Surface builders take `Boundary`, an ordered list of at least three distinct,
+coplanar points in storey-local metres. They write planar `Face` topology.
+The member also accepts `PredefinedType` and optional positive `Thickness` in metres.
+Curve connections take `Start` and `End` and write `Edge` topology, with optional
+`Axis` for IFC4 or `AxisDirection` for IFC4X3 (directions in the connection's local
+frame). IFC2X3 has neither axis attribute and refuses either parameter.
+
+Connections accept `BoundaryCondition`: edge conditions use
+`TranslationalStiffnessByLengthX/Y/Z` and `RotationalStiffnessByLengthX/Y/Z`;
+face conditions use `TranslationalStiffnessByAreaX/Y/Z`. Components accept numbers
+in the model's stiffness units or booleans (`true` fixed, `false` free).
+IFC2X3 emits plain measures under its `LinearStiffness*` attribute names,
+using -1 and 0 for fixed and free. IFC4 and IFC4X3 emit typed SELECT members.
+Use the existing structural relationship builders to connect and group the items.

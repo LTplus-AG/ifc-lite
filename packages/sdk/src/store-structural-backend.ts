@@ -19,6 +19,10 @@
 import {
   addStructuralAnalysisModelToStore,
   addStructuralCurveMemberToStore,
+  addStructuralSurfaceMemberToStore,
+  addStructuralCurveConnectionToStore,
+  addStructuralSurfaceConnectionToStore,
+
   addStructuralLinearActionToStore,
   addStructuralLoadGroupToStore,
   addStructuralPointActionToStore,
@@ -29,6 +33,10 @@ import {
   resolveSpatialAnchor,
   type StructuralAnalysisModelInStoreParams,
   type StructuralCurveMemberInStoreParams,
+  type StructuralSurfaceMemberInStoreParams,
+  type StructuralCurveConnectionInStoreParams,
+  type StructuralSurfaceConnectionInStoreParams,
+
   type StructuralLinearActionInStoreParams,
   type StructuralLoadGroupInStoreParams,
   type StructuralPointActionInStoreParams,
@@ -89,6 +97,21 @@ export function createStructuralStoreBackend(
   };
 
   return {
+    addStructuralSurfaceMember(modelId: string, storeyExpressId: number, params: StructuralSurfaceMemberInStoreParams): EntityRef {
+      const model = resolved(modelId);
+      const result = addStructuralSurfaceMemberToStore(model.editor, resolveSpatialAnchor(model.store, storeyExpressId), params);
+      return ref(model.modelId, result.memberId);
+    },
+    addStructuralCurveConnection(modelId: string, storeyExpressId: number, params: StructuralCurveConnectionInStoreParams): EntityRef {
+      const model = resolved(modelId);
+      const result = addStructuralCurveConnectionToStore(model.editor, resolveSpatialAnchor(model.store, storeyExpressId), params);
+      return ref(model.modelId, result.connectionId);
+    },
+    addStructuralSurfaceConnection(modelId: string, storeyExpressId: number, params: StructuralSurfaceConnectionInStoreParams): EntityRef {
+      const model = resolved(modelId);
+      const result = addStructuralSurfaceConnectionToStore(model.editor, resolveSpatialAnchor(model.store, storeyExpressId), params);
+      return ref(model.modelId, result.connectionId);
+    },
     addStructuralAnalysisModel(modelId: string, params: StructuralAnalysisModelInStoreParams): EntityRef {
       const model = resolved(modelId);
       const result = addStructuralAnalysisModelToStore(model.editor, groupAnchor(model), params);

@@ -39,6 +39,22 @@ const analysisModel = (id, schemas, needs, loadedBy) => ({
 
 export const SCENE = [
   {
+    id: 'surface-member', builder: 'addStructuralSurfaceMemberToStore',
+    emits: { IfcStructuralSurfaceMember: { Name: 'Probe plate', PredefinedType: 'SHELL', Thickness: 0.2 } },
+    build: ({ create, editor, anchor }) => create.addStructuralSurfaceMemberToStore(editor, anchor, { Boundary: [[0,0,0],[4,0,0],[4,3,0],[0,3,0]], Name: 'Probe plate', PredefinedType: 'SHELL', Thickness: 0.2 }).memberId,
+  },
+  {
+    id: 'curve-connection', builder: 'addStructuralCurveConnectionToStore',
+    emits: schema => ({ IfcStructuralCurveConnection: { Name: 'Probe edge support' }, IfcBoundaryEdgeCondition: { Name: 'Probe edge condition', [schema === 'IFC2X3' ? 'LinearStiffnessByLengthX' : 'TranslationalStiffnessByLengthX']: schema === 'IFC2X3' ? -1 : FIXED } }),
+    build: ({ create, editor, anchor }) => create.addStructuralCurveConnectionToStore(editor, anchor, { Start: [0,0,0], End: [4,0,0], Name: 'Probe edge support', BoundaryCondition: { Name: 'Probe edge condition', TranslationalStiffnessByLengthX: true } }).connectionId,
+  },
+  {
+    id: 'surface-connection', builder: 'addStructuralSurfaceConnectionToStore',
+    emits: schema => ({ IfcStructuralSurfaceConnection: { Name: 'Probe face support' }, IfcBoundaryFaceCondition: { Name: 'Probe face condition', [schema === 'IFC2X3' ? 'LinearStiffnessByAreaZ' : 'TranslationalStiffnessByAreaZ']: schema === 'IFC2X3' ? -1 : FIXED } }),
+    build: ({ create, editor, anchor }) => create.addStructuralSurfaceConnectionToStore(editor, anchor, { Boundary: [[0,0,0],[4,0,0],[4,3,0],[0,3,0]], Name: 'Probe face support', BoundaryCondition: { Name: 'Probe face condition', TranslationalStiffnessByAreaZ: true } }).connectionId,
+  },
+
+  {
     id: 'curve-member',
     builder: 'addStructuralCurveMemberToStore',
     emits: { IfcStructuralCurveMember: { GlobalId: G.member, Name: 'Probe member', PredefinedType: 'RIGID_JOINED_MEMBER' } },

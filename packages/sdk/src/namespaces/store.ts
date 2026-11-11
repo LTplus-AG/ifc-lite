@@ -7,6 +7,10 @@ import type {
   CostItemParams, CostQuantityParams, CostScheduleParams, CostValueParams,
   StructuralAnalysisModelInStoreParams,
   StructuralCurveMemberInStoreParams,
+  StructuralSurfaceMemberInStoreParams,
+  StructuralCurveConnectionInStoreParams,
+  StructuralSurfaceConnectionInStoreParams,
+
   StructuralLinearActionInStoreParams,
   StructuralLoadGroupInStoreParams,
   StructuralPointActionInStoreParams,
@@ -288,6 +292,21 @@ export class StoreNamespace extends StoreGroupNamespace {
    */
   removeCostEntity(modelId: string, expressId: number, options?: { detach?: boolean }): void {
     this.backend.store.removeCostEntity(modelId, expressId, options);
+  }
+
+  /** Add an IfcStructuralSurfaceMember anchored to a storey. */
+  addStructuralSurfaceMember(modelId: string, storeyExpressId: number, params: StructuralSurfaceMemberInStoreParams): EntityRef {
+    return this.backend.store.addStructuralSurfaceMember(modelId, storeyExpressId, params);
+  }
+
+  /** Add an IfcStructuralCurveConnection anchored to a storey. */
+  addStructuralCurveConnection(modelId: string, storeyExpressId: number, params: StructuralCurveConnectionInStoreParams): EntityRef {
+    return this.backend.store.addStructuralCurveConnection(modelId, storeyExpressId, params);
+  }
+
+  /** Add an IfcStructuralSurfaceConnection anchored to a storey. */
+  addStructuralSurfaceConnection(modelId: string, storeyExpressId: number, params: StructuralSurfaceConnectionInStoreParams): EntityRef {
+    return this.backend.store.addStructuralSurfaceConnection(modelId, storeyExpressId, params);
   }
 
   // -- Structural analysis authoring on a loaded model (#5167 task S.1) ------

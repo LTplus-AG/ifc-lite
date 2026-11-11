@@ -19,6 +19,10 @@
 import type {
   StructuralAnalysisModelInStoreParams,
   StructuralCurveMemberInStoreParams,
+  StructuralSurfaceMemberInStoreParams,
+  StructuralCurveConnectionInStoreParams,
+  StructuralSurfaceConnectionInStoreParams,
+
   StructuralLinearActionInStoreParams,
   StructuralLoadGroupInStoreParams,
   StructuralPointActionInStoreParams,
@@ -27,6 +31,10 @@ import type {
 import type { EntityRef } from './types.js';
 
 export interface StructuralStoreBackendMethods {
+  addStructuralSurfaceMember(modelId: string, storeyExpressId: number, params: StructuralSurfaceMemberInStoreParams): EntityRef;
+  addStructuralCurveConnection(modelId: string, storeyExpressId: number, params: StructuralCurveConnectionInStoreParams): EntityRef;
+  addStructuralSurfaceConnection(modelId: string, storeyExpressId: number, params: StructuralSurfaceConnectionInStoreParams): EntityRef;
+
   /** `IfcStructuralAnalysisModel` — no storey anchor (`IfcGroup`, not `IfcProduct`). */
   addStructuralAnalysisModel(modelId: string, params: StructuralAnalysisModelInStoreParams): EntityRef;
   /** `IfcStructuralCurveMember`, anchored to a storey for its `ObjectPlacement`. */

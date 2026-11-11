@@ -106,6 +106,14 @@ function countFround<T>(run: () => T): { result: T; calls: number } {
   try { return { result: run(), calls }; } finally { Math.fround = original; }
 }
 
+/** Flush until the queue is empty, failing fast (not spinning) if a flush stops making progress. */
+function drain(scene: Scene, device: GPUDevice): void {
+  for (let flushes = 0; scene.hasQueuedMeshes(); flushes++) {
+    assert.ok(flushes < 64, 'flushPending drains the queue');
+    scene.flushPending(device, pipeline, 1e9);
+  }
+}
+
 interface Load { scene: Scene; finalize: ReturnType<typeof recordingDevice>['work']; streamFround: number; finalizeFround: number; counters: Record<string, number> }
 
 /** Stream like the viewer (one flush per arrival), then the time-sliced finalize. */
@@ -121,7 +129,7 @@ async function streamedLoad(options: { rebuildReference?: boolean; recolor?: num
   const streamFround = countFround(() => {
     for (const batch of batches) {
       scene.queueMeshes(batch);
-      while (scene.hasQueuedMeshes()) scene.flushPending(device, pipeline, 1e9);
+      drain(scene, device);
     }
   }).calls;
   // A style colour resolved while streaming re-keys its mesh in place (#5358).
@@ -169,6 +177,23 @@ function decoded(batch: BatchedMesh): string {
     quantized: !!batch.quantized, indices: Array.from(ib), lod, records });
 }
 
+/**
+ * Batch-by-batch identity with a bounded failure message. `assert.deepEqual`
+ * over the decoded batches would, on a mismatch, render and diff every vertex
+ * of every batch: megabytes of strings per batch, enough to exhaust the host.
+ */
+function assertSameBatches(actual: Scene, expected: Scene): void {
+  const a = actual.getBatchedMeshes(), b = expected.getBatchedMeshes();
+  assert.ok(a.length === b.length, `batch count ${a.length} vs ${b.length}`);
+  for (let i = 0; i < a.length; i++) {
+    const x = decoded(a[i]), y = decoded(b[i]);
+    if (x === y) continue;
+    let at = 0;
+    while (at < x.length && x[at] === y[at]) at++;
+    assert.fail(`batch ${i} (${a[i].colorKey}) differs from the rebuild at char ${at}: …${x.slice(Math.max(0, at - 40), at + 40)}… vs …${y.slice(Math.max(0, at - 40), at + 40)}…`);
+  }
+}
+
 describe('cold finalize work after the last batch arrived', () => {
   afterEach(() => mock.restoreAll());
 
@@ -198,7 +223,7 @@ describe('cold finalize work after the last batch arrived', () => {
     const reference = await streamedLoad({ rebuildReference: true });
     assert.equal(reference.counters['render.finalize.assembled.count'] ?? 0, 0, 'the reference took the full rebuild');
     assert.ok(reference.finalize.vertexWriteBytes > 0);
-    assert.deepEqual(assembled.scene.getBatchedMeshes().map(decoded), reference.scene.getBatchedMeshes().map(decoded));
+    assertSameBatches(assembled.scene, reference.scene);
   });
 
   it('a recolour that keeps the bucket key but changes the entity-lane salt rebuilds that bucket', async () => {
@@ -213,7 +238,7 @@ describe('cold finalize work after the last batch arrived', () => {
     const assembled = await seed(() => streamedLoad({ mutate: recolour }));
     const reference = await seed(() => streamedLoad({ mutate: recolour, rebuildReference: true }));
     assert.ok((assembled.counters['render.finalize.rebuilt.uncovered'] ?? 0) > 0, 'the stale fragment is not assembled from');
-    assert.deepEqual(assembled.scene.getBatchedMeshes().map(decoded), reference.scene.getBatchedMeshes().map(decoded));
+    assertSameBatches(assembled.scene, reference.scene);
   });
 
   it('positions moved in place while streaming: nothing is assembled from the stale fragments', async () => {
@@ -221,7 +246,21 @@ describe('cold finalize work after the last batch arrived', () => {
     const assembled = await streamedLoad({ mutate: move });
     const reference = await streamedLoad({ mutate: move, rebuildReference: true });
     assert.equal(assembled.counters['render.finalize.assembled.count'] ?? 0, 0);
-    assert.deepEqual(assembled.scene.getBatchedMeshes().map(decoded), reference.scene.getBatchedMeshes().map(decoded));
+    assertSameBatches(assembled.scene, reference.scene);
+  });
+
+  it('an ephemeral (huge-file) stream keeps no stream-long topology memo alive', () => {
+    const { device } = recordingDevice();
+    const scene = new Scene();
+    scene.setEphemeralStreamingMode(true);
+    for (const batch of arrivals().slice(0, 3)) {
+      scene.queueMeshes(batch);
+      drain(scene, device);
+    }
+    assert.ok(scene.getBatchedMeshes().length > 0, 'the fragments draw');
+    // A boolean, never the memo itself: a failing assertion would render every mesh it holds.
+    assert.ok((scene as unknown as { streamWork: { topology: unknown } }).streamWork.topology === null,
+      'no memo holds the streamed meshes (and their arrays) until the stream ends');
   });
 
   it('a mesh re-keyed while streaming: its buckets rebuild, the rest assemble, the result still matches', async () => {
@@ -229,6 +268,6 @@ describe('cold finalize work after the last batch arrived', () => {
     const reference = await streamedLoad({ recolor: 3, rebuildReference: true });
     assert.ok((assembled.counters['render.finalize.rebuilt.uncovered'] ?? 0) > 0, 'the buckets the mesh left and joined rebuild');
     assert.ok((assembled.counters['render.finalize.assembled.count'] ?? 0) > 0, 'every other bucket still assembles');
-    assert.deepEqual(assembled.scene.getBatchedMeshes().map(decoded), reference.scene.getBatchedMeshes().map(decoded));
+    assertSameBatches(assembled.scene, reference.scene);
   });
 });

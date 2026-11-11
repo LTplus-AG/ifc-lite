@@ -1147,7 +1147,7 @@ export class Scene {
     meshDataArray = meshDataArray.map((mesh) => this.modelTranslations.placeMesh(mesh));
     // One verdict per (mesh, frame) for the whole append: the validation below
     // and bucket routing ask the same question about the same placed mesh.
-    const topology = isStreaming ? this.streamWork.streamTopology() : new TopologyMemo();
+    const topology = isStreaming && !this.ephemeralStreamingMode ? this.streamWork.streamTopology() : new TopologyMemo(); // ephemeral keeps no geometry alive
     // Validate every input before cancelling appearance work, publishing a
     // bucket, or touching GPU state. A single impossible f32 frame must leave
     // an already-valid scene usable and allow the next safe append.
@@ -2431,7 +2431,7 @@ export class Scene {
       frameOrigin ?? this.meshDataBucket.get(meshes[0])?.batchedMesh?.origin,
       this.modelTranslations.frameOrigin(this.sharedFrameOrigins.get(modelIndex) ?? null, modelIndex),
       this.meshDataBucket.get(meshes[0])?.frameOrigin,
-      this.streamWork.topology ?? undefined,
+      this.ephemeralStreamingMode ? undefined : this.streamWork.topology ?? undefined,
     );
     if (!origin) throw new Error('Unable to resolve a topology-safe GPU frame for mesh geometry.');
     const onMerged = this.snapshots.mergedSink(bucketKey, this.nextBatchId);

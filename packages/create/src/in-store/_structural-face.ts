@@ -17,25 +17,27 @@ export function prepareStructuralFace(points: readonly Point3D[]) {
   const relative = points.map(p => p.map((v, i) => v - origin[i]) as Point3D);
   const scale = Math.max(...relative.map(vecLen));
   const tolerance = Math.max(1, scale) * 1e-9;
-  const normal = relative.slice(1).map((p, i) => vecCross(p, relative[i + 2] ?? relative[1]))
-    .find(n => vecLen(n) > tolerance * scale);
-  if (!normal) throw new Error('Structural Face: degenerate boundary (collinear points)');
-  const unit = vecNorm(normal);
-  if (relative.some(p => Math.abs(p.reduce((s, v, i) => s + v * unit[i], 0)) > tolerance)) {
-    throw new Error('Structural Face: boundary points must be coplanar');
+  for (let i = 0; i < relative.length; i++) {
+    for (let j = i + 1; j < relative.length; j++) {
+      const [p, q] = [relative[i], relative[j]];
+      if ((p[0] - q[0]) ** 2 + (p[1] - q[1]) ** 2 + (p[2] - q[2]) ** 2 <= tolerance ** 2) {
+        throw new Error('Structural Face: degenerate boundary (duplicate points)');
+      }
+    }
   }
-  if (relative.some((p, i) => relative.slice(i + 1).some(q => vecLen(p.map((v, j) => v - q[j]) as Point3D) <= tolerance))) {
-    throw new Error('Structural Face: degenerate boundary (duplicate points)');
-  }
+  // The plane normal is the loop's area vector, so the outer bound (Orientation
+  // .T.) runs counter-clockwise about it. A single vertex triple points the
+  // other way when its middle corner is reflex.
   const areaVector = relative.reduce<Point3D>((sum, p, i) => {
     const cross = vecCross(p, relative[(i + 1) % relative.length]);
     return sum.map((v, j) => v + cross[j]) as Point3D;
   }, [0, 0, 0]);
-  if (vecLen(areaVector) <= tolerance * scale) throw new Error('Structural Face: degenerate boundary (zero area)');
-  // The plane normal is the loop's area vector, so the outer bound (Orientation
-  // .T.) runs counter-clockwise about it. A single vertex triple points the
-  // other way when its middle corner is reflex.
-  return { origin, relative, axis: vecNorm(areaVector) };
+  if (vecLen(areaVector) <= tolerance * scale) throw new Error('Structural Face: degenerate boundary (collinear points or zero area)');
+  const axis = vecNorm(areaVector);
+  if (relative.some(p => Math.abs(p[0] * axis[0] + p[1] * axis[1] + p[2] * axis[2]) > tolerance)) {
+    throw new Error('Structural Face: boundary points must be coplanar');
+  }
+  return { origin, relative, axis };
 }
 
 /** A fresh, exclusively owned topology subgraph for each surface product. */

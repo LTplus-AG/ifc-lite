@@ -12,6 +12,7 @@ export function structuralStiffness(anchor: SpatialAnchor, value: boolean | numb
     ? { real: typeof value === 'boolean' ? (value ? -1 : 0) : value }
     : { typed: { type: typeof value === 'boolean' ? 'IfcBoolean' : measure, value } };
 }
+
 export function assertStructuralBuilderSchema(anchor: SpatialAnchor) {
   if (anchor.schema === 'IFC5') throw new Error('Structural builders: IFC5 is not supported; use IFC2X3, IFC4 or IFC4X3');
 }

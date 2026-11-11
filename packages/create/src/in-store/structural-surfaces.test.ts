@@ -94,6 +94,7 @@ describe('C2 structural surface and connection builders', () => {
     } } });
     if (schema !== 'IFC2X3') expect(text).toContain('IFCBOOLEAN(.T.)');
     expect(attrs(r.edgeId)).toEqual([r.vertex1Id, r.vertex2Id]);
+    expect(text.match(/IFCDIRECTION\(/g)?.length).toBe(schema === 'IFC2X3' ? 2 : 3); // IFC2X3: the placement's two axes, no unused connection axis
   });
 
   it.each(['IFC2X3', 'IFC4', 'IFC4X3'])('%s connected surfaces preserve membership and face stiffness', async schema => {
@@ -145,7 +146,7 @@ describe('C2 structural surface and connection builders', () => {
   it('defaults the curve connection axis off the edge and refuses one along it', async () => {
     const { editor, anchor, roundTrip } = await fresh('IFC4');
     const r = addStructuralCurveConnectionToStore(editor, anchor, { Start: [0, 0, 0], End: [0, 0, 3] });
-    expect((await roundTrip()).attrs(r.axisDirectionId)).toEqual([[0, 1, 0]]);
+    expect((await roundTrip()).attrs(r.axisDirectionId!)).toEqual([[0, 1, 0]]);
     expect(() => addStructuralCurveConnectionToStore(editor, anchor, { Start: [0, 0, 0], End: [4, 0, 0], Axis: [0, 0, 2] })).toThrow(/parallel to the edge/);
   });
   it('refuses unsupported schema-specific axis attributes', async () => {

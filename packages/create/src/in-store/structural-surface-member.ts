@@ -5,7 +5,7 @@
 import type { StoreEditor } from '@ifc-lite/mutations';
 import type { Point3D } from '../types.js';
 import { toNativeLength, type SpatialAnchor } from './anchor.js';
-import { ownerHistoryRef, productGuid } from './_emit-helpers.js';
+import { assertPositiveFinite, ownerHistoryRef, productGuid } from './_emit-helpers.js';
 import { prepareStructuralFace, emitStructuralFace } from './_structural-face.js';
 import { assertStructuralBuilderSchema } from './_structural-stiffness.js';
 
@@ -26,7 +26,7 @@ export function addStructuralSurfaceMemberToStore(editor: StoreEditor, anchor: S
   assertStructuralBuilderSchema(anchor);
   const type = params.PredefinedType ?? 'NOTDEFINED';
   if (type === 'USERDEFINED' && !params.ObjectType) throw new Error('addStructuralSurfaceMemberToStore: ObjectType is required when PredefinedType is USERDEFINED');
-  if (params.Thickness !== undefined && (!Number.isFinite(params.Thickness) || params.Thickness <= 0)) throw new Error('addStructuralSurfaceMemberToStore: Thickness must be finite and positive');
+  if (params.Thickness !== undefined) assertPositiveFinite([params.Thickness], 'addStructuralSurfaceMemberToStore: Thickness must be finite and positive');
   const face = prepareStructuralFace(params.Boundary);
   const thickness = params.Thickness === undefined ? null : toNativeLength(anchor, params.Thickness);
   const result = emitStructuralFace(editor, anchor, face);

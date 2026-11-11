@@ -9,6 +9,7 @@ import { StepExporter } from '@ifc-lite/export';
 import { createStructuralStoreBackend } from './store-structural-backend.js';
 import { StoreNamespace } from './namespaces/store.js';
 import type { BimBackend } from './types.js';
+
 const MODEL = `ISO-10303-21;
 HEADER;
 FILE_DESCRIPTION((''),'2;1');
@@ -32,7 +33,6 @@ DATA;
 #31=IFCRELAGGREGATES('0aggr00000000000000000',#4,$,$,#1,(#30));
 ENDSEC;
 END-ISO-10303-21;`;
-
 
 describe('C2 SDK structural store authoring', () => {
   it.each(['IFC4', 'IFC4X3'])('%s forwards surface and connection builders into exported structural data', async schema => {

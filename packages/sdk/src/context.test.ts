@@ -122,8 +122,8 @@ function createMockBackend() {
     // (vitest does not typecheck, so the package's own suite stays green).
     addStructuralAnalysisModel: vi.fn((modelId: string) => ({ modelId, expressId: 300 })),
     addStructuralSurfaceMember: vi.fn((modelId: string) => ({ modelId, expressId: 310 })),
-    addStructuralCurveConnection: vi.fn((modelId: string) => ({ modelId, expressId: 310 })),
-    addStructuralSurfaceConnection: vi.fn((modelId: string) => ({ modelId, expressId: 310 })),
+    addStructuralCurveConnection: vi.fn((modelId: string) => ({ modelId, expressId: 311 })),
+    addStructuralSurfaceConnection: vi.fn((modelId: string) => ({ modelId, expressId: 312 })),
     addStructuralCurveMember: vi.fn((modelId: string) => ({ modelId, expressId: 301 })),
     addStructuralPointConnection: vi.fn((modelId: string) => ({ modelId, expressId: 302 })),
     addStructuralLoadGroup: vi.fn((modelId: string) => ({ modelId, expressId: 303 })),

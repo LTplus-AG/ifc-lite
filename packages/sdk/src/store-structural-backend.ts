@@ -22,7 +22,6 @@ import {
   addStructuralSurfaceMemberToStore,
   addStructuralCurveConnectionToStore,
   addStructuralSurfaceConnectionToStore,
-
   addStructuralLinearActionToStore,
   addStructuralLoadGroupToStore,
   addStructuralPointActionToStore,
@@ -36,7 +35,6 @@ import {
   type StructuralSurfaceMemberInStoreParams,
   type StructuralCurveConnectionInStoreParams,
   type StructuralSurfaceConnectionInStoreParams,
-
   type StructuralLinearActionInStoreParams,
   type StructuralLoadGroupInStoreParams,
   type StructuralPointActionInStoreParams,

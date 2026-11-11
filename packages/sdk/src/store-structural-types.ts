@@ -22,7 +22,6 @@ import type {
   StructuralSurfaceMemberInStoreParams,
   StructuralCurveConnectionInStoreParams,
   StructuralSurfaceConnectionInStoreParams,
-
   StructuralLinearActionInStoreParams,
   StructuralLoadGroupInStoreParams,
   StructuralPointActionInStoreParams,
@@ -31,10 +30,12 @@ import type {
 import type { EntityRef } from './types.js';
 
 export interface StructuralStoreBackendMethods {
+  /** `IfcStructuralSurfaceMember` with planar Face topology, anchored to a storey. */
   addStructuralSurfaceMember(modelId: string, storeyExpressId: number, params: StructuralSurfaceMemberInStoreParams): EntityRef;
+  /** `IfcStructuralCurveConnection` with Edge topology, anchored to a storey. */
   addStructuralCurveConnection(modelId: string, storeyExpressId: number, params: StructuralCurveConnectionInStoreParams): EntityRef;
+  /** `IfcStructuralSurfaceConnection` with planar Face topology, anchored to a storey. */
   addStructuralSurfaceConnection(modelId: string, storeyExpressId: number, params: StructuralSurfaceConnectionInStoreParams): EntityRef;
-
   /** `IfcStructuralAnalysisModel` — no storey anchor (`IfcGroup`, not `IfcProduct`). */
   addStructuralAnalysisModel(modelId: string, params: StructuralAnalysisModelInStoreParams): EntityRef;
   /** `IfcStructuralCurveMember`, anchored to a storey for its `ObjectPlacement`. */

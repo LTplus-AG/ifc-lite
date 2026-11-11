@@ -10,7 +10,6 @@ import type {
   StructuralSurfaceMemberInStoreParams,
   StructuralCurveConnectionInStoreParams,
   StructuralSurfaceConnectionInStoreParams,
-
   StructuralLinearActionInStoreParams,
   StructuralLoadGroupInStoreParams,
   StructuralPointActionInStoreParams,
@@ -294,6 +293,15 @@ export class StoreNamespace extends StoreGroupNamespace {
     this.backend.store.removeCostEntity(modelId, expressId, options);
   }
 
+  // -- Structural analysis authoring on a loaded model (#5167 task S.1) ------
+  // `bim.structural.*` is read-only; these methods are the write side, for
+  // scripts (SDK / CLI / MCP / sandbox) that author an analytical model.
+
+  /** Add an IfcStructuralAnalysisModel. Not storey-anchored (IfcGroup, no geometry). */
+  addStructuralAnalysisModel(modelId: string, params: StructuralAnalysisModelInStoreParams): EntityRef {
+    return this.backend.store.addStructuralAnalysisModel(modelId, params);
+  }
+
   /** Add an IfcStructuralSurfaceMember anchored to a storey. */
   addStructuralSurfaceMember(modelId: string, storeyExpressId: number, params: StructuralSurfaceMemberInStoreParams): EntityRef {
     return this.backend.store.addStructuralSurfaceMember(modelId, storeyExpressId, params);
@@ -307,15 +315,6 @@ export class StoreNamespace extends StoreGroupNamespace {
   /** Add an IfcStructuralSurfaceConnection anchored to a storey. */
   addStructuralSurfaceConnection(modelId: string, storeyExpressId: number, params: StructuralSurfaceConnectionInStoreParams): EntityRef {
     return this.backend.store.addStructuralSurfaceConnection(modelId, storeyExpressId, params);
-  }
-
-  // -- Structural analysis authoring on a loaded model (#5167 task S.1) ------
-  // `bim.structural.*` is read-only; these methods are the write side, for
-  // scripts (SDK / CLI / MCP / sandbox) that author an analytical model.
-
-  /** Add an IfcStructuralAnalysisModel. Not storey-anchored (IfcGroup, no geometry). */
-  addStructuralAnalysisModel(modelId: string, params: StructuralAnalysisModelInStoreParams): EntityRef {
-    return this.backend.store.addStructuralAnalysisModel(modelId, params);
   }
 
   /**

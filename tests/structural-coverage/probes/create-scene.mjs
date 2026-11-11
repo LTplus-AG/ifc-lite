@@ -53,7 +53,6 @@ export const SCENE = [
     emits: schema => ({ IfcStructuralSurfaceConnection: { Name: 'Probe face support' }, IfcBoundaryFaceCondition: { Name: 'Probe face condition', [schema === 'IFC2X3' ? 'LinearStiffnessByAreaZ' : 'TranslationalStiffnessByAreaZ']: schema === 'IFC2X3' ? -1 : FIXED } }),
     build: ({ create, editor, anchor }) => create.addStructuralSurfaceConnectionToStore(editor, anchor, { Boundary: [[0,0,0],[4,0,0],[4,3,0],[0,3,0]], Name: 'Probe face support', BoundaryCondition: { Name: 'Probe face condition', TranslationalStiffnessByAreaZ: true } }).connectionId,
   },
-
   {
     id: 'curve-member',
     builder: 'addStructuralCurveMemberToStore',

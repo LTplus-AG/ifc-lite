@@ -47,6 +47,7 @@ import { MaterialCard } from './properties/MaterialCard';
 import { MaterialTotalsPanel } from './properties/MaterialTotalsPanel';
 import { ScheduleCard } from './properties/ScheduleCard';
 import { StructuralCard } from './properties/StructuralCard';
+import { selectedStructuralMember } from './properties/selectedStructuralMember';
 import { TaskEditCard } from './properties/TaskEditCard';
 import { DocumentCard } from './properties/DocumentCard';
 import { effectiveDocuments } from './properties/effectiveDocuments';
@@ -762,18 +763,15 @@ export function PropertiesPanel() {
     const out = effectiveStructuralData(dataStore as IfcDataStore, mutationView);
     return out.hasStructural ? out : null;
   }, [model, ifcDataStore, selectedEntity?.modelId, mutationViews, mutationVersion]);
-  /** True when the selection is itself a structural member the extraction
-   *  knows about — used, like `hasScheduleForSelection`, to keep the
-   *  separator above StructuralCard from rendering on its own. */
+  /** True when StructuralCard renders for the selection (a structural member,
+   *  or either end of a physical-to-analytical link): asks the card's own two
+   *  questions, like `hasScheduleForSelection`, so the separator above it never
+   *  renders on its own. */
   const hasStructuralForSelection = useMemo(() => {
     if (!selectedEntity || !structuralData) return false;
-    const gid = selectedEntityGlobalId;
     const expressId = selectedEntity.expressId;
-    if (expressId > 0 && structuralCounterparts(structuralData, expressId)) return true;
-    return structuralData.members.some((m) => {
-      if (gid && m.globalId === gid) return true;
-      return expressId > 0 && m.expressId === expressId;
-    });
+    return !!selectedStructuralMember(structuralData, expressId, selectedEntityGlobalId)
+      || (expressId > 0 && !!structuralCounterparts(structuralData, expressId));
   }, [selectedEntity, structuralData, selectedEntityGlobalId]);
 
   // Extract georeferencing info for the model (used in coordinates section)
@@ -1503,7 +1501,7 @@ export function PropertiesPanel() {
                       sourceUnavailable={!activeDataStore?.source?.length}
                       selectedExpressId={selectedEntity.expressId}
                       selectedGlobalId={selectedEntityGlobalId}
-                      describeEntity={(expressId) => overlayAwareQuery.entityData({ modelId: selectedEntity.modelId, expressId }) ?? { type: '' }}
+                      describeEntity={(expressId) => overlayAwareQuery.entityData({ modelId: selectedEntity.modelId, expressId })}
                       onSelectEntity={handleSelectRelatedEntity}
                     />
                   </>

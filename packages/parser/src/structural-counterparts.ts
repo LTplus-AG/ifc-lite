@@ -11,6 +11,7 @@
  * the same way.
  */
 
+import { addUnique } from './structural-step-values.js';
 import type { StructuralExtraction } from './structural-types.js';
 
 /** The counterparts of one entity, all on the other side of the link. */
@@ -39,14 +40,10 @@ export function structuralCounterparts(data: StructuralExtraction, expressId: nu
     index = new Map();
     const analytical = new Map<number, number[]>();
     for (const item of [...data.members, ...data.connections]) {
-      const physical = item.physicalElementIds ?? [];
-      if (physical.length === 0) continue;
+      const physical = item.physicalElementIds;
+      if (!physical?.length) continue;
       index.set(item.expressId, { side: 'physical', expressIds: physical });
-      for (const elementId of physical) {
-        const items = analytical.get(elementId);
-        if (items) items.push(item.expressId);
-        else analytical.set(elementId, [item.expressId]);
-      }
+      for (const elementId of physical) addUnique(analytical, elementId, item.expressId);
     }
     for (const [elementId, items] of analytical) index.set(elementId, { side: 'analytical', expressIds: items });
     indexes.set(data, index);

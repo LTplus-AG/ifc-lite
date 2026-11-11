@@ -22,13 +22,13 @@ import { Boxes, Anchor, ArrowDownToLine, TriangleAlert, ChevronDown } from 'luci
 import { formatLocaleNumber, localeCount, useTranslation, type TranslationKey } from '@/i18n';
 import { formatLocaleList } from '@/i18n/intlFormat';
 import { EXPRESS_PREDEFINED_TYPE_ATTRIBUTE, EXPRESS_THICKNESS_ATTRIBUTE } from './express-labels';
-import type {
-  StructuralExtraction,
-  StructuralConnectionInfo,
-  StructuralActivityInfo,
-  StructuralLoadInfo,
+import {
+  structuralCounterparts,
+  type StructuralExtraction,
+  type StructuralConnectionInfo,
+  type StructuralActivityInfo,
+  type StructuralLoadInfo,
 } from '@ifc-lite/parser';
-import { structuralCounterparts } from '@ifc-lite/parser';
 import { selectedStructuralMember, structuralRelatedRows } from './selectedStructuralMember';
 import { PersistentCollapsible } from './PersistentCollapsible';
 import { RelItem } from './RelationshipsCard';
@@ -43,7 +43,7 @@ interface StructuralCardProps {
   selectedGlobalId?: string | null;
   sourceUnavailable?: boolean;
   /** Name and IFC class of a model-local entity, for the counterpart rows. */
-  describeEntity?: (expressId: number) => { name?: string; type: string };
+  describeEntity?: (expressId: number) => { name?: string; type: string } | null;
   /** Select a model-local entity: the jump to a counterpart. */
   onSelectEntity?: (expressId: number) => void;
 }
@@ -59,23 +59,23 @@ export function StructuralCard({
     [structuralData, selectedExpressId, selectedGlobalId],
   );
 
-  const related = useMemo(() => {
-    if (!member || !structuralData) return null;
-    return {
-      connections: structuralRelatedRows(structuralData.connections, member.connectionGlobalIds),
-      activities: structuralRelatedRows(structuralData.activities, member.activityGlobalIds),
-      models: structuralRelatedRows(structuralData.analysisModels, member.analysisModelGlobalIds),
-    };
-  }, [member, structuralData]);
+  const related = useMemo(() => ({
+    connections: structuralRelatedRows(structuralData?.connections ?? [], member?.connectionGlobalIds ?? []),
+    activities: structuralRelatedRows(structuralData?.activities ?? [], member?.activityGlobalIds ?? []),
+    models: structuralRelatedRows(structuralData?.analysisModels ?? [], member?.analysisModelGlobalIds ?? []),
+  }), [member, structuralData]);
+  const itemType = useMemo(
+    () => member?.type ?? structuralData?.connections.find(c => c.expressId === selectedExpressId)?.type,
+    [member, structuralData, selectedExpressId],
+  );
   // The physical-to-analytical link, from either end (#9668).
   const counterparts = structuralData && selectedExpressId !== null && selectedExpressId > 0
     ? structuralCounterparts(structuralData, selectedExpressId) : null;
-  if (!structuralData || (!related && !counterparts)) return null;
-  const connections = related?.connections.rows ?? [];
-  const activities = related?.activities.rows ?? [];
-  const modelLabels = related?.models.rows.flatMap(model => model.name ? [model.name] : []) ?? [];
-  const relatedUnavailable = related ? related.connections.unavailable || related.activities.unavailable || related.models.unavailable : false;
-  const itemType = member?.type ?? structuralData.connections.find(c => c.expressId === selectedExpressId)?.type;
+  if (!structuralData || (!member && !counterparts)) return null;
+  const connections = related.connections.rows;
+  const activities = related.activities.rows;
+  const modelLabels = related.models.rows.flatMap(model => model.name ? [model.name] : []);
+  const relatedUnavailable = related.connections.unavailable || related.activities.unavailable || related.models.unavailable;
 
   return (
     <PersistentCollapsible

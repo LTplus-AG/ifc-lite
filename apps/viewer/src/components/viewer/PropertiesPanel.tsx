@@ -1496,16 +1496,18 @@ export function PropertiesPanel() {
                     `hasStructuralForSelection` for the same reason as the
                     schedule separator above. */}
                 {!findQuery && selectedEntity && structuralData && hasStructuralForSelection && (
-                  <ChunkErrorBoundary label="Structural Analysis card"><Suspense fallback={null}>
-                    <StructuralCard
-                      structuralData={structuralData}
-                      sourceUnavailable={!activeDataStore?.source?.length}
-                      selectedExpressId={selectedEntity.expressId}
-                      selectedGlobalId={selectedEntityGlobalId}
-                      describeEntity={(expressId) => overlayAwareQuery.entityData({ modelId: selectedEntity.modelId, expressId })}
-                      onSelectEntity={handleSelectRelatedEntity}
-                    />
-                  </Suspense></ChunkErrorBoundary>
+                  <ChunkErrorBoundary key={`${selectedEntity.modelId}:${selectedEntity.expressId}`} label="Structural Analysis card">
+                    <Suspense fallback={null}>
+                      <StructuralCard
+                        structuralData={structuralData}
+                        sourceUnavailable={!activeDataStore?.source?.length}
+                        selectedExpressId={selectedEntity.expressId}
+                        selectedGlobalId={selectedEntityGlobalId}
+                        describeEntity={(expressId) => overlayAwareQuery.entityData({ modelId: selectedEntity.modelId, expressId })}
+                        onSelectEntity={handleSelectRelatedEntity}
+                      />
+                    </Suspense>
+                  </ChunkErrorBoundary>
                 )}
               </div>
             )}

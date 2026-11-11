@@ -59,6 +59,8 @@ async function loadModel(source: string, expressId: number) {
 async function renderPanel(): Promise<HTMLElement> {
   const ui = render(<PropertiesPanel />);
   await waitFor(() => ui.textContent?.includes('Structural Analysis') ?? false, 'the lazy structural card never rendered');
+  // The chunk boundary's fallback also names the card; it must not be what rendered.
+  assert.equal(ui.querySelector('[role="alert"]'), null, `card failed: ${ui.textContent}`);
   return ui;
 }
 

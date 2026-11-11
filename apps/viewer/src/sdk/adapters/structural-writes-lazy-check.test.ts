@@ -31,14 +31,17 @@ function dist(files: Record<string, string>): string {
 }
 
 /**
- * One line per structural write function, written by hand from the minified
- * impl chunk of a real viewer build, NOT derived from the gate's signature
- * list: if a signature were dropped from the gate, this fixture keeps the
- * builder, and the "each builder missing" case below fails (#9753 review).
+ * One excerpt per structural write function, written by hand after the
+ * minified impl chunk of a real viewer build (shortened, with the quoting and
+ * `throw Error` form the minifier emits), NOT derived from the gate's
+ * signature list: if a signature were dropped from the gate, this fixture
+ * keeps the builder, and its "missing" case below fails (#9753 review). Text
+ * that several builders share in the real chunk is kept in each of them, so
+ * a signature that is not unique to one builder cannot pass.
  */
 const BUILDER_CODE: Record<string, string> = {
   addStructuralAnalysisModelToStore: 'throw Error(`addStructuralAnalysisModelToStore: ObjectType is required when PredefinedType is USERDEFINED`)',
-  addStructuralCurveMemberToStore: 'throw Error(`addStructuralCurveMemberToStore: Start and End must be distinct points`)',
+  addStructuralCurveMemberToStore: 'throw Error(`addStructuralCurveMemberToStore: ObjectType is required when PredefinedType is USERDEFINED`);throw Error(`addStructuralCurveMemberToStore: Start and End must be distinct points`)',
   addStructuralPointConnectionToStore: 'throw Error(`addStructuralPointConnectionToStore: ${k} must be a finite spring stiffness`)',
   addStructuralLoadGroupToStore: 'throw Error(`addStructuralLoadGroupToStore: IFC2X3 IfcStructuralLoadGroup has no SelfWeightCoefficients`)',
   addStructuralPointActionToStore: 'L(`addStructuralPointActionToStore`,[r.ForceX,r.ForceY])',
@@ -78,16 +81,16 @@ describe('checkStructuralWritesLazy', () => {
     await assert.rejects(checkStructuralWritesLazy(dir), /Startup chunk assets\/ui\.js contains bim\.store structural authoring:/);
   });
 
-  it('refuses a build whose lazy chunk lacks any one structural write function', async () => {
-    for (const name of Object.keys(BUILDER_CODE)) {
+  for (const name of Object.keys(BUILDER_CODE)) {
+    it(`refuses a build whose lazy chunk lacks ${name}`, async () => {
       const dir = dist({ 'main.js': 'import("./structural.js");', 'ui.js': 'export {}', 'structural.js': buildersWithout(name) });
       // The refusal names what is missing; each named signature must come from the omitted function's own code.
       await assert.rejects(checkStructuralWritesLazy(dir), (error: Error) => {
         const missing = /carries (.+) code, so this check proves nothing/.exec(error.message)?.[1].split(', ') ?? [];
         return missing.length > 0 && missing.every((signature) => BUILDER_CODE[name].includes(signature));
       }, `${name} missing from the lazy chunk must be noticed`);
-    }
-  });
+    });
+  }
 
   it('refuses a build with no structural write code at all, so it cannot pass vacuously', async () => {
     const dir = dist({ 'main.js': 'import("./other.js");', 'ui.js': 'export {}', 'other.js': 'export const y=2;' });

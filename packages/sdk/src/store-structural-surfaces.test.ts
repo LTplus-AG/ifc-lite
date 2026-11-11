@@ -9,6 +9,7 @@ import { StepExporter } from '@ifc-lite/export';
 import { createStructuralStoreBackend } from './store-structural-backend.js';
 import { StoreNamespace } from './namespaces/store.js';
 import type { BimBackend } from './types.js';
+import type { StructuralStoreBackendMethods } from './store-structural-types.js';
 
 const MODEL = `ISO-10303-21;
 HEADER;
@@ -55,5 +56,15 @@ describe('C2 SDK structural store authoring', () => {
     expect(data.members[0].connectionGlobalIds).toEqual(data.connections.map(c => c.globalId));
     expect(data.connections.map(c => c.name)).toEqual(['SDK edge', 'SDK foundation']);
     expect(data.connections[1].appliedCondition?.components.TranslationalStiffnessByAreaZ).toBe(true);
+  });
+
+  it('keeps a backend written before these methods valid, and names the missing one', () => {
+    type New = 'addStructuralSurfaceMember' | 'addStructuralCurveConnection' | 'addStructuralSurfaceConnection';
+    // Type-level: fails the typecheck lane if any of the three becomes required again.
+    const legacy: StructuralStoreBackendMethods = {} as Omit<StructuralStoreBackendMethods, New>;
+    const ns = new StoreNamespace({ store: legacy } as unknown as BimBackend);
+    expect(() => ns.addStructuralSurfaceMember('m', 30, { Boundary: [[0, 0, 0], [1, 0, 0], [0, 1, 0]] })).toThrow(/addStructuralSurfaceMember: not available/);
+    expect(() => ns.addStructuralCurveConnection('m', 30, { Start: [0, 0, 0], End: [1, 0, 0] })).toThrow(/addStructuralCurveConnection: not available/);
+    expect(() => ns.addStructuralSurfaceConnection('m', 30, { Boundary: [[0, 0, 0], [1, 0, 0], [0, 1, 0]] })).toThrow(/addStructuralSurfaceConnection: not available/);
   });
 });

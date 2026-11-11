@@ -87,7 +87,7 @@ function groupAnchor(resolved: CostStoreModelResolution) {
 
 export function createStructuralStoreBackend(
   resolve: StructuralStoreModelResolver,
-): StructuralStoreBackendMethods {
+): Required<StructuralStoreBackendMethods> {
   const resolved = (modelId: string): CostStoreModelResolution => {
     const model = resolve(modelId);
     assertStructuralSchema(model);

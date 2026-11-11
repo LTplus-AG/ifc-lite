@@ -3288,6 +3288,23 @@ as well as JavaScript errors, and stop memory sampling on every exit path.
   The repeated lowering itself (styled occurrences never hit the mapped-source
   cache) and the per-point `point3` re-reads remain; caching either adds
   per-worker memory and was not attempted. Not a wall-time or browser claim.
+- **Surface-model points read once per lowering (#9643, native instruction
+  hillclimb, 2026-11-11):** a face-based surface model's faces share their
+  CartesianPoints, and each lowering read every point once per face using it
+  through `point3` (about 1.74M point reads for advanced_model's 13 models,
+  lowered 839 times). `surface_model_plan::lower` now keeps a `PointMemo` for
+  the duration of the call, filled only by `EntityDecoder::point3_fast`, the
+  pure byte fast path of `point3`; any point that path cannot read still goes
+  through `point3` on every use, so values, refusals and their counts are
+  unchanged. Independent review bounded it: a loop that a later point rejects
+  takes its new entries back out, and insertion stops at 65,536 distinct points
+  per lowering (past it, points are read uncached, never refused); the memo is
+  dropped with the lowering. Measured against main with #9632/#9635/#9636 in:
+  advanced_model -12.0%, Holter -1.8%, schependomlaan -0.8%, ISSUE_129 -0.1%,
+  FZK flat; `perf_probe` fingerprints identical on all five. **Lesson:** a
+  call-scoped memo with a hard cap removes the repeated work without the
+  per-worker cache the round rules forbid; review it for rejected-path
+  retention, not only for value identity. Not a wall-time or browser claim.
 - **Review startup bundle (#7015):** load the Script panel on demand and keep
   CodeMirror's shared state module in its own chunk. Assistant text-edit planning
   still uses `ChangeSet`, while the editor UI stays outside the eager import
@@ -3337,6 +3354,17 @@ as well as JavaScript errors, and stop memory sampling on every exit path.
   five. **Lesson:** pooling scratch turns `clear()` into a cost proportional to
   the worst mesh a worker ever saw; check a pooled map's clear cost, not just
   its allocation count. Not a wall-time or browser claim.
+- **Weld and orient keys quantised without libm (native instruction
+  hillclimb, 2026-11-11):** the weld's vertex key rounds five `f32` components
+  per vertex (two of them the constant zero UV of an untextured mesh) and the
+  orienter's weld grid three `f64` coordinates per unique vertex; on x86_64's
+  baseline and on wasm32 every `.round()` is a libm call. `grid::round_i32` /
+  `round_i64` give the same half-away-from-zero saturating result inline: below
+  2^23 (2^52) `x - trunc(x)` is exact and decides the rounding, above it every
+  value is already an integer (sweep tests against libm, bit for bit).
+  Measured against main with #9632/#9635/#9636 in: advanced_model -2.2%, Holter
+  -2.0%, schependomlaan -1.3%, FZK -1.0%, ISSUE_129 -0.1%; `perf_probe`
+  fingerprints identical on all five. Not a wall-time or browser claim.
 - **Native cold-load working set (#3967):** immutable schema classification replaces
   contended global caches; completed BREP signatures are shared within one
   immutable source; the geometry scan supplies ordered georeferencing candidates

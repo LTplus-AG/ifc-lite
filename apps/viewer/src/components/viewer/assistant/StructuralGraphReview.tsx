@@ -23,7 +23,7 @@ export function StructuralGraphReview({ proposal, origin }: { proposal: Structur
   const [stale, setStale] = useState(false);
   const [receipt, setReceipt] = useState<ModelChangeReceipt | null>(null);
   const [receiptProblem, setReceiptProblem] = useState(false);
-  const owner = useRef({ review: null as StructuralReview | null, committing: false, mounted: true });
+  const owner = useRef({ review: null as StructuralReview | null, committing: false, mounted: true, selection: approved });
   useEffect(() => {
     const current = owner.current;
     current.mounted = true;
@@ -38,9 +38,10 @@ export function StructuralGraphReview({ proposal, origin }: { proposal: Structur
     return () => { current.mounted = false; current.review = null; unsubscribe(); };
   }, [proposal]);
   // The structural builders load in their own chunk (#9668): wait for it, never refuse while it loads.
-  const prepare = (selection = approved) => void loadStructuralWrites().then(() => {
+  // The selection is read when the chunk has loaded, so a box changed while it loads is not lost.
+  const prepare = () => void loadStructuralWrites().then(() => {
     if (!owner.current.mounted) return;
-    const next = prepareStructuralReview(useViewerStore, proposal, selection);
+    const next = prepareStructuralReview(useViewerStore, proposal, owner.current.selection);
     owner.current.review = next; setReview(next); setProblem(null); setStale(false);
   }).catch((error: unknown) => {
     if (!owner.current.mounted) return;
@@ -75,7 +76,7 @@ export function StructuralGraphReview({ proposal, origin }: { proposal: Structur
           onChange={event => {
             const next = new Set(approved);
             if (event.target.checked) next.add(index); else next.delete(index);
-            setApproved(next); if (review) prepare(next);
+            setApproved(next); owner.current.selection = next; if (review) prepare();
           }} />{t(`structuralReview.op.${operation.op}`)}</label>
         {operation.params && <pre className="whitespace-pre-wrap break-words text-muted-foreground">{JSON.stringify(operation.params, null, 2)}</pre>}
         {operation.target !== undefined && <p className="text-muted-foreground">{t('structuralReview.references', { target: JSON.stringify(operation.target), related: JSON.stringify(operation.related ?? []) })}</p>}

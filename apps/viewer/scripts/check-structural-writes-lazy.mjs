@@ -20,14 +20,19 @@ import { fileURLToPath } from 'node:url';
 import { isMainEntry } from '../../../scripts/lib/is-main-entry.mjs';
 import { checkLazyOnly } from './startup-chunks.mjs';
 
-/** Error-message prefixes only the structural write path carries: four
- *  `@ifc-lite/create` builders and the SDK factory's schema refusal. The
- *  read side (`extractStructuralOnDemand`, the properties card) has none. */
+/** Error-message text only the structural write path carries: one per
+ *  `@ifc-lite/create` structural builder module (the action builders share
+ *  their load-component refusal; the relationship builders share a module
+ *  with `assignToStructuralGroupInStore`) and the SDK factory's schema
+ *  refusal. The read side (`extractStructuralOnDemand`, the properties card)
+ *  has none. */
 export const STRUCTURAL_WRITE_SIGNATURES = [
+  'addStructuralAnalysisModelToStore:',
   'addStructuralCurveMemberToStore:',
   'addStructuralPointConnectionToStore:',
   'addStructuralLoadGroupToStore:',
   'assignToStructuralGroupInStore:',
+  ': supply at least one force or moment component',
   'bim.store structural authoring:',
 ];
 

@@ -53,12 +53,14 @@ export function loadStructuralWrites(): Promise<Impl> {
 export function loadedStructuralWrites(label: string): Impl {
   if (impl) return impl;
   const cause = failure instanceof Error ? failure.message : failure === null ? null : String(failure);
+  // A failed load is retried, so "try again" can succeed once the chunk is reachable.
+  if (cause !== null) loadStructuralWrites().catch((error: unknown) => console.warn('[bim.store] structural authoring failed to load again', error));
   throw new Error(cause === null
     ? `${label}: structural authoring is still loading; try again in a moment`
     : `${label}: structural authoring failed to load (${cause})`);
 }
 
-/** `Required` so a structural method added to the SDK interface fails typecheck here until it is listed. */
+/** `Required` so a structural method added to the SDK interface, optional ones included, fails typecheck here until it is listed. */
 type StructuralMethods = Required<StructuralStoreBackendMethods>;
 
 export function structuralMutationTracking(

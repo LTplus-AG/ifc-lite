@@ -51,7 +51,7 @@ describe('checkStructuralWritesLazy', () => {
       'ui.js': 'export const x=1;',
       'shared.js': `export const s=1;${BUILDERS}`,
     });
-    await assert.rejects(checkStructuralWritesLazy(dir), /Startup chunk assets\/shared\.js contains addStructuralCurveMemberToStore:/);
+    await assert.rejects(checkStructuralWritesLazy(dir), /Startup chunk assets\/shared\.js contains addStructural/);
   });
 
   it('refuses builder code in a modulepreloaded chunk', async () => {

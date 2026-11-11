@@ -75,11 +75,12 @@ test('#7318 actual provider answer reaches mounted native selective approval, IF
   assert.equal(await sendAssistant('Review these two supplied analytical models', 'openai/gpt-free', '/api/chat'), true);
   const ui = render(<ModelChangeProposal />), boxes = [...ui.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')];
   assert.equal(boxes.length, 3, 'native graph proposal must reach actual review controls');
-  act(() => boxes[1].click());
   const prepare = [...ui.querySelectorAll('button')].find(button => button.textContent === 'Review selected structural operations');
-  // #9668: the structural builders load in their own chunk. The review waits for it instead of refusing.
+  // #9668: the structural builders load in their own chunk. The review waits for it instead of refusing,
+  // and an operation unticked while it loads stays unticked in the review that arrives.
   assert.throws(() => loadedStructuralWrites('probe'), /still loading/, 'the Prepare click must arrive before the write path has loaded');
   assert.ok(prepare, ui.textContent ?? ''); click(prepare);
+  act(() => boxes[1].click());
   const applyButton = () => [...ui.querySelectorAll('button')].find(button => button.textContent === 'Apply 1 change');
   await waitFor(() => !!applyButton() || ui.querySelector('[role="alert"]') !== null, 'the review is prepared or refused');
   assert.equal(ui.querySelector('[role="alert"]')?.textContent ?? null, null, 'no refusal while the write path loads');

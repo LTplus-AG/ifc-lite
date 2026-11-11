@@ -55,7 +55,9 @@ async function* lazyChunks(directory, startup) {
  * signatures, and some lazy chunk must carry each group, or the check would
  * pass vacuously. `missingHint` says what a vacuous build probably means.
  */
-export async function checkLazyOnly(directory, groups, remedy, missingHint) {
+export async function checkLazyOnly(dist, groups, remedy, missingHint) {
+  // Absolute, so lazy paths compare equal to the startup set's resolved ones.
+  const directory = resolve(dist);
   const eager = await startupChunks(directory);
   for (const [file, code] of eager) {
     for (const { signatures } of groups) {

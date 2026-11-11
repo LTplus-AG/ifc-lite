@@ -7,6 +7,6 @@ diff --git a/packages/create/src/in-store/_structural-face.ts b/packages/create/
    if (vecLen(areaVector) <= tolerance * scale) throw new Error('Structural Face: degenerate boundary (collinear points or zero area)');
 -  const axis = vecNorm(vecCross(relative[1], relative[2]));
 +  const axis = vecNorm(areaVector);
-   const offsets = relative.map(p => vecDot(p, axis));
+   const offsets = relative.map(p => p[0] * axis[0] + p[1] * axis[1] + p[2] * axis[2]);
    if (offsets.some(d => Math.abs(d) > tolerance)) throw new Error('Structural Face: boundary points must be coplanar');
    // Snap onto the plane, so the written loop lies exactly on the IfcPlane.

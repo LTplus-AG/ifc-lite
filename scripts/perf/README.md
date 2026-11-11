@@ -3354,7 +3354,7 @@ as well as JavaScript errors, and stop memory sampling on every exit path.
   five. **Lesson:** pooling scratch turns `clear()` into a cost proportional to
   the worst mesh a worker ever saw; check a pooled map's clear cost, not just
   its allocation count. Not a wall-time or browser claim.
-- **Weld and orient keys quantised without libm (native instruction
+- **Weld and orient keys quantised without libm (#9717, native instruction
   hillclimb, 2026-11-11):** the weld's vertex key rounds five `f32` components
   per vertex (two of them the constant zero UV of an untextured mesh) and the
   orienter's weld grid three `f64` coordinates per unique vertex; on x86_64's
@@ -3365,6 +3365,32 @@ as well as JavaScript errors, and stop memory sampling on every exit path.
   Measured against main with #9632/#9635/#9636 in: advanced_model -2.2%, Holter
   -2.0%, schependomlaan -1.3%, FZK -1.0%, ISSUE_129 -0.1%; `perf_probe`
   fingerprints identical on all five. Not a wall-time or browser claim.
+  An independent review found zero differences against libm over all 2^32
+  `f32` inputs through both scaling paths. `facet_weld.rs` still rounds its
+  normal key through libm (`.round()`, line 126 at #9717); the same helper
+  applies there and is left as a follow-up.
+- **Native instruction hillclimb, campaign 2: combined result and what was
+  parked (2026-11-11).** Current main plus #9643 and #9717 against main
+  `004934fa88`, cold single-thread pipeline instructions: advanced_model
+  -29.81%, Holter -12.49%, schependomlaan -6.04%, FZK -2.64%, ISSUE_129 -0.89%
+  (#9632, #9635 and #9636 alone account for -18.1%, -9.0%, -4.0%, -1.7% and
+  -0.6%; main also carries other lanes' changes since `004934fa88`).
+  `perf_probe` fingerprints are identical to `004934fa88` on all five. This is
+  an instruction-count result: whether it moves wall-clock load time is decided
+  by the campaign's native-cold and browser-cold comparison, not here. Parked
+  candidates, with upper bounds measured on main `27ce7fc010` before #9643:
+  (a) repeated surface-model lowering (styled mapped occurrences re-lower the
+  same model; advanced_model lowers 13 models 839 times) could remove at most
+  35.2% of advanced_model's pipeline, about 1% on Holter and schependomlaan,
+  and 0 elsewhere. It needs a bounded per-worker plan cache; in the browser
+  each of 8 workers would lower each model once, keeping about 88% of the
+  bound. (b) `orient_mesh_outward_verdict` re-hashing positions and edges
+  that `mesh_weld` just hashed has a hard ceiling of the whole function:
+  advanced_model 14.2%, Holter 15.5%, schependomlaan 10.5%, FZK 6.7%,
+  ISSUE_129 0.9%. Sharing the hashing would remove only part of that. Both sit
+  inside the per-element geometry pass (parallel natively, a per-worker serial
+  batch in the browser), not in serial parsing. Not started under the
+  diminishing-returns stop rule.
 - **Native cold-load working set (#3967):** immutable schema classification replaces
   contended global caches; completed BREP signatures are shared within one
   immutable source; the geometry scan supplies ordered georeferencing candidates

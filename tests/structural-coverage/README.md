@@ -89,7 +89,8 @@ the affected cells as skip instead and marks the summary offline, which
 `r0.json` is retained as the original measurement. [R1 measurement notes](baseline/r1-notes.md) list every changed cell and the per-fixture link counts. `r1.json` corrects two
 under-credits without changing product code: physical links are verified by
 resolving every `physicalElementIds` express id in the parsed store to an
-IfcElement subtype and comparing its GlobalId to the fixture relationship;
+IfcElement subtype and comparing its GlobalId to the fixture relationship
+(an id the file does not link to that item fails the link);
 rooted fields try the exact EXPRESS name before camelCase and renamed fields,
 with the same fixture-value comparison. Link evidence records checked/held
 counts for every fixture, without the former 25-link sampling limit.

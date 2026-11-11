@@ -9,7 +9,8 @@
  * physical product to a structural item (IfcRelAssignsToProduct, or the IFC2X3
  * IfcRelConnectsStructuralElement), the item's read-model object must name the
  * physical product via physicalElementIds. Each express id must resolve to
- * an IfcElement subtype in the parsed store with the fixture GlobalId.
+ * an IfcElement subtype in the parsed store whose GlobalId the file links to
+ * that item, and the linked product's GlobalId must be among them.
  *
  * `cap/docs-page`: a `docs/guide/*structural*.md` page names every IFC4 entity
  * of the catalogue.
@@ -40,7 +41,8 @@ function physicalLinks(step) {
   return pairs;
 }
 
-function linkedElement(info, guid, store, table) {
+/** Each id resolves to an IfcElement whose GlobalId the file links to this item, and `guid` is among them. */
+function linkedElement(info, guid, declared, store, table) {
   const ids = info.physicalElementIds;
   if (!Array.isArray(ids) || !ids.length) return false;
   const guids = [];
@@ -52,7 +54,7 @@ function linkedElement(info, guid, store, table) {
     if (!value) return false;
     guids.push(value);
   }
-  return guids.includes(guid);
+  return guids.includes(guid) && guids.every((g) => declared.has(g));
 }
 
 const linkRead = {
@@ -72,6 +74,11 @@ const linkRead = {
       counts.push(count);
       if (!ix) { checked += links.length; continue; }
       const store = await storeOf(ctx, file);
+      const declared = new Map();
+      for (const [itemId, productId] of links) {
+        if (!declared.has(itemId)) declared.set(itemId, new Set());
+        declared.get(itemId).add(file.step.get(productId)?.args[0]);
+      }
       for (const [itemId, productId] of links) {
         checked++;
         const product = file.step.get(productId);
@@ -81,7 +88,7 @@ const linkRead = {
         if (!product) problems.push(`${file.path}#${itemId}: the link names no physical element the file holds`);
         else if (typeof guid !== 'string') problems.push(`${file.path}#${itemId}: the physical element has no GlobalId`);
         else if (!info) problems.push(`${file.path}#${itemId}: item not in the read model`);
-        else if (!linkedElement(info, guid, store, ctx.tables[file.schema])) problems.push(`${file.path}#${itemId}: physicalElementIds does not resolve to physical ${guid}`);
+        else if (!linkedElement(info, guid, declared.get(itemId), store, ctx.tables[file.schema])) problems.push(`${file.path}#${itemId}: physicalElementIds does not resolve to physical ${guid} and only the file's links`);
         else { anyHeld = true; count.held++; }
       }
     }

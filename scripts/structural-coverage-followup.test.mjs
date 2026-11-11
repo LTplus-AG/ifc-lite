@@ -27,7 +27,7 @@ test('#9668 links: resolve every express id, require IfcElement and fixture Glob
     const other = { ...file, path: 'legacy.ifc', schema: 'IFC2X3', step: step(`#1=IFCWALL('wall');#2=IFCSTRUCTURALCURVEMEMBER('member');` + Array.from({ length: 30 }, (_, i) => `#${i + 3}=IFCRELCONNECTSSTRUCTURALELEMENT('rel${i}',$,$,$,#1,#2);`).join('')) };
     const cache = new Map([
       ['read:links.ifc', { byId: new Map([[2, { family: 'item', info }]]) }],
-      ['store:links.ifc', { entities: { getTypeName: (id) => id === 1 ? type : '', getGlobalId: () => guid } }],
+      ['store:links.ifc', { entities: { getTypeName: (id) => id === 1 ? type : id === 4 ? 'IfcWall' : '', getGlobalId: (id) => id === 4 ? 'unlinked' : guid } }],
     ]);
     const reverse = { ...file, path: 'reverse.ifc', step: step("#1=IFCWALL('wall');#2=IFCSTRUCTURALCURVEMEMBER('member');#3=IFCRELASSIGNSTOPRODUCT('rel',$,$,$,(#1),$,#2);") };
     cache.set('read:reverse.ifc', cache.get('read:links.ifc'));
@@ -39,7 +39,7 @@ test('#9668 links: resolve every express id, require IfcElement and fixture Glob
   const good = await run([1]);
   assert.equal(good.status, 'pass', good.reason);
   assert.deepEqual(good.counts, [{ path: 'links.ifc', checked: 1, held: 1 }, { path: 'legacy.ifc', checked: 30, held: 30 }, { path: 'reverse.ifc', checked: 1, held: 1 }]);
-  for (const bad of [await run([999]), await run([1], 'IfcProject'), await run([1], 'IfcWall', 'other'), await run([]), await run([1, 999])]) {
+  for (const bad of [await run([999]), await run([1], 'IfcProject'), await run([1], 'IfcWall', 'other'), await run([]), await run([1, 999]), await run([1, 4])]) {
     assert.equal(bad.status, 'fail');
   }
 });

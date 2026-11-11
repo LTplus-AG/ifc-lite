@@ -173,7 +173,7 @@ function decoded(batch: BatchedMesh): string {
     }
   }
   const lod = batch.lod1IndexBuffer ? Array.from(new Uint32Array((batch.lod1IndexBuffer as unknown as StubBuffer).bytes.buffer, 0, batch.lod1IndexCount)) : null;
-  return JSON.stringify({ key: batch.colorKey, ids: batch.expressIds, models: batch.modelIndices, origin: batch.origin, bounds: batch.bounds,
+  return JSON.stringify({ key: batch.colorKey, color: batch.color, finish: batch.finish ?? null, ids: batch.expressIds, models: batch.modelIndices, origin: batch.origin, bounds: batch.bounds,
     quantized: !!batch.quantized, indices: Array.from(ib), lod, records });
 }
 
@@ -316,6 +316,27 @@ describe('cold finalize work after the last batch arrived', () => {
     assert.ok(retainedRuns(scene).records > 0);
     scene.clearFlatGeometry();
     assert.ok(retainedRuns(scene).records === 0, 'a reset drops the stream records');
+  });
+
+  it('a synchronous finalize ends its assembly window: the next stream copies only from its own live fragments', async () => {
+    const run = async (rebuildReference: boolean) => {
+      const { device, work } = recordingDevice();
+      const scene = new Scene();
+      scene.setSpatialChunking({ cellSize: 32 }); scene.setLodBuildsEnabled(true); scene.setQuantizedBatches(true);
+      const all = arrivals();
+      for (const batch of all.slice(0, 6)) { scene.queueMeshes(batch); drain(scene, device); }
+      scene.finalizeStreaming(device, pipeline); // the synchronous path
+      assert.ok(retainedRuns(scene).records === 0, 'the synchronous finalize forgets its fragment records');
+      if (rebuildReference) scene.captureNextFinalize(() => {});
+      const copiedBefore = work.copyBytes;
+      // A second stream into the same buckets: the stub refuses copies from destroyed (retired) fragments.
+      for (const batch of all.slice(6)) { scene.queueMeshes(batch); drain(scene, device); }
+      await scene.finalizeStreamingAsync(device, pipeline, 1e9);
+      return { scene, copies: work.copyBytes - copiedBefore };
+    };
+    const assembled = await run(false);
+    assert.ok(assembled.copies > 0, 'the second finalize still assembles from its own fragments');
+    assertSameBatches(assembled.scene, (await run(true)).scene);
   });
 
   it('a mesh re-keyed while streaming: its buckets rebuild, the rest assemble, the result still matches', async () => {

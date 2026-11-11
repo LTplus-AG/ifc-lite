@@ -94,7 +94,7 @@ export function ModelWorkspaceSplit({ children }: { children: ReactNode }) {
         {inWorkspace && (
           <Panel id="model-plan-panel" collapsible collapsedSize="0px" panelRef={planRef} defaultSize={showPlan ? `${planPaneWidth(layout as 'plan' | 'split', width)}px` : '0px'} minSize={`${PLAN_MIN_PX}px`}>
             <div data-model-plan-pane aria-hidden={!showPlan} inert={!showPlan} className="h-full w-full">
-              <PlanView layout={layout} headerHost={headerHost} />
+              <PlanView layout={layout} headerHost={headerHost} hidden={!showPlan} />
             </div>
           </Panel>
         )}

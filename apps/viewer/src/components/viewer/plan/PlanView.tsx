@@ -94,7 +94,8 @@ function usePlanFrame(): { plane: Workplane | null; axes: WallAxis[] } {
   return { plane, axes };
 }
 
-export function PlanView({ layout, headerHost }: { layout: ModelLayout; headerHost?: HTMLElement | null }) {
+/** `hidden`: kept mounted behind 3D, so no cut is requested until it shows (#9296). */
+export function PlanView({ layout, headerHost, hidden = false }: { layout: ModelLayout; headerHost?: HTMLElement | null; hidden?: boolean }) {
   const { t } = useTranslation();
   const session = useViewerStore((s) => s.session);
   const selectedIds = useViewerStore((s) => s.selectedEntityIds);
@@ -104,7 +105,7 @@ export function PlanView({ layout, headerHost }: { layout: ModelLayout; headerHo
   const runtime = useCommandRuntime();
   const { plane, axes } = usePlanFrame();
   const designGrids = usePlanGridAxes();
-  const cut = usePlanCut(session?.modelId ?? null, session?.storeyId ?? null, plane);
+  const cut = usePlanCut(hidden ? null : session?.modelId ?? null, session?.storeyId ?? null, plane);
   const handles = usePlanHandles(plane, cut.polygons);
   const [grid, setGrid] = useState(true);
   const [hovered, setHovered] = useState<number | null>(null);

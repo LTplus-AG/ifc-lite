@@ -38,12 +38,77 @@ pub(super) fn mul_low_magnitude<const K: usize>(
     debug_assert!(a_bits > 0 && b_bits > 0 && a_bits + b_bits < K * 64);
     #[cfg(target_arch = "wasm32")]
     {
-        mul_low_u32_bounded(a, b, a_bits.div_ceil(32), b_bits.div_ceil(32))
+        if a_bits <= 128 && b_bits <= 128 {
+            // Most fit-branch operands are one or two limbs wide: on the
+            // CSG-heavy ara3d fixtures 94-100% of fitting products have both
+            // operands <= 128 bits. The u32-digit core pays fixed costs for its full-width
+            // scratch (three zeroed 64-digit arrays plus K-limb pack/unpack)
+            // that dwarf a 1x1 or 2x2 limb product; this scratch-free u64-limb
+            // core uses the same i64.mul count without them.
+            mul_low_u64_soft_bounded(a, b, a_bits.div_ceil(64), b_bits.div_ceil(64))
+        } else {
+            mul_low_u32_bounded(a, b, a_bits.div_ceil(32), b_bits.div_ceil(32))
+        }
     }
     #[cfg(not(target_arch = "wasm32"))]
     {
         mul_low_u64_bounded(a, b, a_bits.div_ceil(64), b_bits.div_ceil(64))
     }
+}
+
+/// `a * b` as `(low, high)` u64 words from four u32xu32->u64 products: the
+/// 64x64->128 multiply without a `__multi3` libcall on baseline wasm32.
+/// Exact: `mid < 3 * 2^32` and `high` cannot overflow because the true
+/// product is below `2^128`.
+#[inline]
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+pub(super) fn mul_64x64_soft(a: u64, b: u64) -> (u64, u64) {
+    const M: u64 = 0xffff_ffff;
+    let (a0, a1) = (a & M, a >> 32);
+    let (b0, b1) = (b & M, b >> 32);
+    let p00 = a0 * b0;
+    let p01 = a0 * b1;
+    let p10 = a1 * b0;
+    let p11 = a1 * b1;
+    let mid = (p00 >> 32) + (p01 & M) + (p10 & M);
+    let low = (p00 & M) | (mid << 32);
+    let high = p11 + (p01 >> 32) + (p10 >> 32) + (mid >> 32);
+    (low, high)
+}
+
+/// [`mul_low_u64_bounded`] with the 64x64->128 partial product computed by
+/// [`mul_64x64_soft`] and explicit carry words instead of u128 arithmetic, so
+/// baseline wasm32 needs no scratch digit arrays and no libcalls. Same fresh
+/// row-end carry slot proof as the u64 core.
+#[inline]
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+pub(super) fn mul_low_u64_soft_bounded<const K: usize>(
+    a: &[u64; K], b: &[u64; K], active_a: usize, active_b: usize,
+) -> [u64; K] {
+    debug_assert!(active_a <= K && active_b <= K);
+    debug_assert!(a[active_a..].iter().all(|&v| v == 0));
+    debug_assert!(b[active_b..].iter().all(|&v| v == 0));
+    let mut out = [0u64; K];
+    for i in 0..active_a {
+        let mut carry = 0u64;
+        let mut j = 0;
+        while j < active_b && i + j < K {
+            let idx = i + j;
+            let (lo, hi) = mul_64x64_soft(a[i], b[j]);
+            let (s1, c1) = lo.overflowing_add(out[idx]);
+            let (s2, c2) = s1.overflowing_add(carry);
+            out[idx] = s2;
+            // hi <= 2^64 - 2 (the product is below 2^128 - 2^65 + 2), so
+            // adding the two carry bits cannot wrap.
+            carry = hi + c1 as u64 + c2 as u64;
+            j += 1;
+        }
+        if i + j < K {
+            debug_assert_eq!(out[i + j], 0, "row-end carry slot must be fresh");
+            out[i + j] = carry;
+        }
+    }
+    out
 }
 
 /// u64-limb schoolbook low product.

@@ -5,7 +5,7 @@
 //! #6537 independent bnum oracle for active-bound products. Exercises native
 //! AND wasm32 digit cores on the host, not just the platform-selected branch.
 
-use super::{mul_low_magnitude, mul_low_u32_bounded, mul_low_u64_bounded};
+use super::{mul_64x64_soft, mul_low_magnitude, mul_low_u32_bounded, mul_low_u64_bounded, mul_low_u64_soft_bounded};
 use super::super::FixedInt;
 use num_traits::CheckedMul;
 
@@ -54,6 +54,8 @@ macro_rules! magnitude_oracle {
                     "native bounded product a={a:?} b={b:?}");
                 assert_eq!(mul_low_u32_bounded(a, b, la.div_ceil(32), lb.div_ceil(32)), expected,
                     "wasm-digit bounded product a={a:?} b={b:?}");
+                assert_eq!(mul_low_u64_soft_bounded(a, b, la.div_ceil(64), lb.div_ceil(64)), expected,
+                    "wasm soft-limb bounded product a={a:?} b={b:?}");
                 if la > 0 && lb > 0 && la + lb < W {
                     assert_eq!(mul_low_magnitude(a, b, la, lb), expected,
                         "fitting magnitude dispatch a={a:?} b={b:?}");
@@ -152,3 +154,26 @@ magnitude_oracle!(issue_6537_magnitude_products_i256, 4, bnum::types::I256);
 magnitude_oracle!(issue_6537_magnitude_products_i512, 8, bnum::types::I512);
 magnitude_oracle!(issue_6537_magnitude_products_i1024, 16, bnum::types::I1024);
 magnitude_oracle!(issue_6537_magnitude_products_i2048, 32, bnum::types::I2048);
+
+/// The scratch-free wasm32 small-operand core's 64x64->128 helper against the
+/// native u128 product: boundaries (every carry into `mid` and `high`) plus a
+/// fixed-seed stream.
+#[test]
+fn soft_64x64_matches_u128() {
+    let edges = [0u64, 1, 2, 0xffff_ffff, 0x1_0000_0000, 0x1_0000_0001, u64::MAX >> 1,
+        1u64 << 63, u64::MAX - 1, u64::MAX, 0xffff_ffff_0000_0000, 0x0000_0000_ffff_ffff];
+    let check = |a: u64, b: u64| {
+        let p = (a as u128) * (b as u128);
+        assert_eq!(mul_64x64_soft(a, b), (p as u64, (p >> 64) as u64), "a={a:#x} b={b:#x}");
+    };
+    for &a in &edges { for &b in &edges { check(a, b); } }
+    let mut x = 0x9e37_79b9_7f4a_7c15u64;
+    for _ in 0..200_000 {
+        x = x.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        let a = x ^ (x >> 29);
+        x = x.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        let b = (x ^ (x >> 31)) >> (x & 63);
+        check(a, b);
+        check(a | 0xffff_ffff, b | (0xffff_ffff << 32));
+    }
+}

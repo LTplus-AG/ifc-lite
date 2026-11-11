@@ -35,9 +35,12 @@ jobs:
     if: github.event.workflow_run.event == 'pull_request' && (vars.CI_FULL_ONESHOT == 'shadow' || vars.CI_FULL_ONESHOT == 'on')
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    # One decision per PR at a time, keyed on the PR's head (repository and
-    # branch): a fork PR's run carries no PR number, and `pull_requests` can
-    # list another repository's PR first.
+    # Decisions for one PR run one at a time, keyed on the PR's head
+    # (repository and branch): a fork PR's run carries no PR number, and
+    # `pull_requests` can list another repository's PR first. GitHub keeps
+    # only ONE pending run per group, so a third completion while one runs
+    # replaces the queued second and that decision is dropped. That fails
+    # safe: the label stays, and the next full pass removes it.
     concurrency:
       group: ci-full-oneshot-${{ github.event.workflow_run.head_repository.full_name }}-${{ github.event.workflow_run.head_branch }}
       cancel-in-progress: false

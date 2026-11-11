@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -11,20 +12,21 @@ import { audit, corpusJobProblems, crateClosure, eventPaths, jobBlock, pathDeps,
 
 const REPO = join(import.meta.dirname, '..');
 const WORKFLOW = '.github/workflows/geometry-platform.yml';
+const TEST_WORKFLOW = '.github/workflows/test.yml';
 
 /** A tree with the real workflow and every crate manifest the closure reads. */
 function copyTree(context) {
   const root = mkdtempSync(join(tmpdir(), 'native-adapter-triggers-'));
   context.after(() => rmSync(root, { recursive: true, force: true }));
-  const files = ['Cargo.toml', WORKFLOW, 'scripts/check-native-adapter-triggers.mjs', 'scripts/lib/ci-path-coverage.mjs', 'scripts/lib/is-main-entry.mjs', ...crateClosure(REPO).map((dir) => `${dir}/Cargo.toml`)];
+  const files = ['Cargo.toml', WORKFLOW, TEST_WORKFLOW, 'scripts/check-native-adapter-triggers.mjs', 'scripts/lib/ci-path-coverage.mjs', 'scripts/lib/is-main-entry.mjs', ...crateClosure(REPO).map((dir) => `${dir}/Cargo.toml`)];
   for (const f of files) {
     mkdirSync(join(root, dirname(f)), { recursive: true });
     cpSync(join(REPO, f), join(root, f));
   }
   return root;
 }
-const mutate = (root, fn) => {
-  const path = join(root, WORKFLOW);
+const mutate = (root, fn, file = WORKFLOW) => {
+  const path = join(root, file);
   writeFileSync(path, fn(readFileSync(path, 'utf8')));
 };
 
@@ -89,8 +91,12 @@ test('a lost per-PR group, a cancelling nightly or a workflow-level group are re
   mutate(noGroup, (t) => t.replace(/    concurrency:\n(?: {6}.*\n)+/, ''));
   assert.ok(audit(noGroup).some((f) => f.includes('concurrency must be per-PR')));
   const cancelsNightly = copyTree(context);
-  mutate(cancelsNightly, (t) => t.replace(`cancel-in-progress: \${{ github.event_name == 'pull_request' }}`, 'cancel-in-progress: true'));
+  mutate(cancelsNightly, (t) => t.replace(`cancel-in-progress: \${{ github.event_name == 'pull_request' && !inputs.batch }}`, 'cancel-in-progress: true'));
   assert.ok(audit(cancelsNightly).some((f) => f.includes('concurrency must be per-PR')));
+  // A batch keyed on its PR number could be cancelled by, or cancel, a labelled run of the batch PR.
+  const batchByNumber = copyTree(context);
+  mutate(batchByNumber, (t) => t.replace('geometry-platform-${{ !inputs.batch && github.event.pull_request.number || github.run_id }}', 'geometry-platform-${{ github.event.pull_request.number || github.run_id }}'));
+  assert.ok(audit(batchByNumber).some((f) => f.includes('concurrency must be per-PR')));
   const workflowLevel = copyTree(context);
   mutate(workflowLevel, (t) => t.replace('permissions:\n  contents: read\n', 'permissions:\n  contents: read\n\nconcurrency:\n  group: x\n'));
   assert.ok(audit(workflowLevel).some((f) => f.includes('not the workflow')));
@@ -244,4 +250,135 @@ test('an unreadable matrix reports the real cause once, without a size-0 remedy'
   const failures = audit(root);
   assert.ok(failures.some((f) => f.includes('matrix shard must list 0..N-1')));
   assert.ok(!failures.some((f) => f.includes('(0)') || f.includes('exactly the matrix\'s 0')), failures.join('\n'));
+});
+
+// ------------------------------------------------------------ merge-queue batches
+
+test('the copied tree audits clean, so each mutation below is the only failure source', (context) => {
+  assert.deepEqual(audit(copyTree(context)), []);
+});
+
+test('a batch call that loses its input, its gate or its corpus exclusion is reported', (context) => {
+  const noInput = copyTree(context);
+  mutate(noInput, (t) => t.replace(/  workflow_call:\n(?: {4,}.*\n)+/, ''));
+  assert.ok(audit(noInput).some((f) => f.includes('on.workflow_call must declare a boolean `batch` input')));
+  const corpus = copyTree(context);
+  mutate(corpus, (t) => t.replace('  workflow_call:\n    inputs:\n', '  workflow_call:\n    inputs:\n      corpus:\n        type: boolean\n'));
+  assert.ok(audit(corpus).some((f) => f.includes('must not accept `corpus`')));
+  const ungated = copyTree(context);
+  mutate(ungated, (t) => t.replace('      inputs.batch == true ||\n', ''));
+  assert.ok(audit(ungated).some((f) => f.includes('must keep its opt-in gate')));
+});
+
+test('test.yml must call, decide and judge the batch run', (context) => {
+  const cases = [
+    [(t) => t.replace(/\n  native-adapter:\n(?: {4}.*\n|\s*\n)+?(?=  test:)/, '\n'), 'no native-adapter job'],
+    [(t) => t.replace('    with:\n      batch: true\n', ''), 'with batch: true'],
+    // Polarity: `== 'true'` would skip the lane whenever the decision step crashed.
+    [(t) => t.replace("needs.changes.outputs.native_adapter != 'false'", "needs.changes.outputs.native_adapter == 'true'"), 'only an explicit `false` skips'],
+    [(t) => t.replace("needs.changes.outputs.batch == 'true' && needs.changes.outputs.noop", "needs.changes.outputs.noop"), 'gated on exactly'],
+    [(t) => t.replace(/      native_adapter: \$\{\{ steps\.nativeadapter\.outputs\.native_adapter \}\}\n/, ''), 'must publish native_adapter'],
+    [(t) => t.replace(/(        id: nativeadapter\n(?: {8}.*\n)*?) {8}continue-on-error: true\n/, '$1'), 'continue-on-error step with id nativeadapter'],
+    [(t) => t.replace(', perf-ratchet, native-adapter]', ', perf-ratchet]'), 'aggregate must need native-adapter'],
+  ];
+  for (const [fn, expected] of cases) {
+    const root = copyTree(context);
+    mutate(root, fn, TEST_WORKFLOW);
+    const failures = audit(root);
+    assert.ok(failures.some((f) => f.includes(expected)), `${expected}:\n${failures.join('\n')}`);
+  }
+});
+
+const CLI = join(REPO, 'scripts/check-native-adapter-triggers.mjs');
+// A hook's GIT_DIR or GIT_INDEX_FILE would point git -C at the real repository.
+const cleanEnv = () => Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('GIT_')));
+
+/** A repository whose HEAD is the PR merge commit of a branch changing `files` (old -> new rename pairs allowed). */
+function batchRepo(context, { add = [], move = [], merge = true, workflow = readFileSync(join(REPO, WORKFLOW), 'utf8') } = {}) {
+  const root = mkdtempSync(join(tmpdir(), 'native-adapter-batch-'));
+  context.after(() => rmSync(root, { recursive: true, force: true }));
+  const git = (...args) => {
+    const r = spawnSync('git', ['-C', root, '-c', 'user.name=t', '-c', 'user.email=t@example.invalid', '-c', 'commit.gpgsign=false', ...args], { encoding: 'utf8', env: cleanEnv() });
+    assert.equal(r.status, 0, `git ${args.join(' ')}: ${r.stderr}`);
+  };
+  const write = (rel, body) => {
+    mkdirSync(join(root, dirname(rel)), { recursive: true });
+    writeFileSync(join(root, rel), body);
+  };
+  git('init', '-q', '-b', 'main');
+  write(WORKFLOW, workflow);
+  write('README.md', 'base\n');
+  for (const [from] of move) write(from, 'moved\n');
+  git('add', '-A');
+  git('commit', '-q', '-m', 'base');
+  git('checkout', '-q', '-b', 'mergify/merge-queue/batch');
+  for (const f of add) write(f, 'changed\n');
+  for (const [from, to] of move) {
+    mkdirSync(join(root, dirname(to)), { recursive: true });
+    git('mv', from, to);
+  }
+  git('add', '-A');
+  git('commit', '-q', '-m', 'batch');
+  git('checkout', '-q', 'main');
+  // main moves on, as it does under a batch, so the merge is a real two-parent commit.
+  write('README.md', 'main moved\n');
+  git('commit', '-q', '-am', 'main');
+  if (merge) git('merge', '-q', '--no-ff', '--no-edit', 'mergify/merge-queue/batch');
+  else git('merge', '-q', '--squash', 'mergify/merge-queue/batch'), git('commit', '-q', '-m', 'squash');
+  return root;
+}
+
+function decide(root, { output = true } = {}) {
+  const out = join(root, '.gh-output');
+  const env = cleanEnv();
+  if (output) env.GITHUB_OUTPUT = out;
+  else delete env.GITHUB_OUTPUT;
+  const r = spawnSync(process.execPath, [CLI, '--batch-decide', '--root', root], { encoding: 'utf8', env });
+  let written = '';
+  try {
+    written = readFileSync(out, 'utf8');
+  } catch {
+    written = '';
+  }
+  return { status: r.status, log: r.stdout + r.stderr, written };
+}
+
+test('a batch touching a path the lane observes runs it; docs, ceilings and changesets do not', (context) => {
+  for (const file of ['rust/core/src/lib.rs', 'native/smlib-adapter/x.cpp', 'Cargo.lock', 'packages/geometry/src/x.ts', WORKFLOW]) {
+    const d = decide(batchRepo(context, { add: [file, 'docs/guide/x.md'] }));
+    assert.equal(d.status, 0, d.log);
+    assert.equal(d.written, 'native_adapter=true\n', `${file}: ${d.log}`);
+  }
+  const quiet = decide(batchRepo(context, { add: ['docs/guide/x.md', 'tests/perf-ratchets/viewer.json', '.changeset/a.md', 'AGENTS.md', 'scripts/ci-pr-lane.mjs'] }));
+  assert.equal(quiet.status, 0, quiet.log);
+  assert.equal(quiet.written, 'native_adapter=false\n', quiet.log);
+});
+
+test('a file moved out of a watched directory counts by its old path', (context) => {
+  const d = decide(batchRepo(context, { move: [['rust/core/src/old.rs', 'docs/old.rs']] }));
+  assert.equal(d.written, 'native_adapter=true\n', d.log);
+});
+
+test('every doubt runs the lane: no merge commit, an unreadable or missing paths list', (context) => {
+  const squash = decide(batchRepo(context, { add: ['docs/guide/x.md'], merge: false }));
+  assert.equal(squash.written, 'native_adapter=true\n', squash.log);
+  const inline = decide(batchRepo(context, { add: ['docs/guide/x.md'], workflow: "on:\n  pull_request:\n    paths:\n      - docs/**\n" }));
+  assert.equal(inline.written, 'native_adapter=true\n', inline.log);
+  const none = decide(batchRepo(context, { add: ['docs/guide/x.md'], workflow: 'on:\n  schedule:\n    - cron: x\n' }));
+  assert.equal(none.written, 'native_adapter=true\n', none.log);
+});
+
+test('a checkout git cannot diff runs the lane', (context) => {
+  const notGit = mkdtempSync(join(tmpdir(), 'native-adapter-nogit-'));
+  context.after(() => rmSync(notGit, { recursive: true, force: true }));
+  mkdirSync(join(notGit, dirname(WORKFLOW)), { recursive: true });
+  cpSync(join(REPO, WORKFLOW), join(notGit, WORKFLOW));
+  const d = decide(notGit);
+  assert.equal(d.written, 'native_adapter=true\n', d.log);
+});
+
+test('no GITHUB_OUTPUT fails the step, so test.yml reads an absent answer and runs the lane', (context) => {
+  const d = decide(batchRepo(context, { add: ['docs/guide/x.md'] }), { output: false });
+  assert.equal(d.status, 1, d.log);
+  assert.equal(d.written, '');
 });

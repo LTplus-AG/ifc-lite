@@ -53,12 +53,15 @@ jobs:
       - name: Install cargo-semver-checks
         uses: taiki-e/install-action@4f5ee4a4759116abc6b10af05f20374e179d8ca3 # cargo-semver-checks (snapshot pinned 2026-08)
 
+      # Restore only. The canary compiles nothing, so a save here could park a
+      # near-empty cache under the key a release run on main would then be
+      # unable to overwrite.
       - name: Cargo cache
         uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           prefix-key: ci-rust-semver
           shared-key: main
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+          save-if: false
 
       - name: Check crate semver against crates.io
         id: gate

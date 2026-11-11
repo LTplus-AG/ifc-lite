@@ -124,15 +124,16 @@ export async function publishAdoptedSceneMeshes(
   cacheResult: CacheResult,
   cacheKey: string | undefined,
   isStale: (() => boolean) | undefined,
+  trace: LoadTrace,
   append: (modelId: string, meshes: MeshData[], coordinateInfo?: CoordinateInfo) => void,
 ): Promise<MeshData[]> {
-  const chunks = await Promise.all(open.chunks.map((_, i) => open.readChunk(i)));
+  const chunks = await Promise.all(open.chunks.map((_, i) => trace.span('cache.chunkDecode', () => open.readChunk(i), { chunk: i })));
   if (isStale?.()) return [];
   const meshes = chunks.flat();
   setPendingSceneSnapshot(adopted.adoption, () => {
     useViewerStore.getState().appendInstancedShards(modelId, adopted.shards);
     forgetRefusedSnapshot(cacheResult, cacheKey);
-  }, adopted.fit);
+  }, adopted.fit, trace);
   append(modelId, meshes, open.coordinateInfo);
   return meshes;
 }

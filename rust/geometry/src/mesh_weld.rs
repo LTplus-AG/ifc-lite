@@ -209,8 +209,9 @@ pub fn weld_indexed(
     // detector — same length as `nverts` ⇒ nothing collided, the remap is identity.
     // Clear (retain capacity) before use so no stale data leaks in; `remap` is resized
     // to all-zero (every slot is overwritten by `remap[v] = id` below).
-    map.clear();
-    map.reserve(nverts);
+    // O(this mesh), not O(the largest mesh this worker welded): `map` is never
+    // iterated, so replacing an outsized table cannot reach the output.
+    crate::scratch_map::reset_for(map, nverts);
     remap.clear();
     remap.resize(nverts, 0u32);
     first_vert.clear();

@@ -7,12 +7,11 @@ import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 
 import { findClampAnchorY } from './clamp-anchor';
 import { computeModelCenterInIfcMeters } from './reproject';
-import { effectiveMapConversionForGeometry } from './map-absolute';
+import { effectiveMapConversionForGeometry, viewerFrameCenter } from './map-absolute';
 import { getEffectiveAxisScales, resolveMapUnitToMetreScale } from './geo-scale';
 import { divideByAxisScale, viewerUpScaleForGeometry } from './viewer-up-scale';
 import { ifcToViewerAxes } from './coordinate-frame';
 import { refusedAxisDelta, resolveMapAxisDirection } from './map-axis-direction';
-import { viewerFrameCenter } from './cesium-viewer-frame';
 
 export function getMapUnitScale(
   projectedCRS: Pick<ProjectedCRS, 'mapUnitScale'> | undefined,

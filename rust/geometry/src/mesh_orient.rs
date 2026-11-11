@@ -189,10 +189,10 @@ pub fn orient_mesh_outward_verdict(mesh: &mut Mesh) -> OrientVerdict {
     // is mutated.
     let mut scratch = ORIENT_SCRATCH.with(|c| c.borrow_mut().take()).unwrap_or_default();
     let OrientScratch { vid_of, vpos, corner, edge_tris, flip, visited, comp, stack, closed_tris, closed_spans } = &mut scratch;
-    // Clear (retain capacity) before use so no stale data leaks in; the reserves
-    // restore the original `with_capacity` sizing.
-    vid_of.clear();
-    vid_of.reserve(vertex_count);
+    // Empty before use so no stale data leaks in; the reserves restore the
+    // original `with_capacity` sizing. `reset_for` keeps the reset O(this mesh)
+    // after an outsized one (the map is never iterated, so its size is unseen).
+    crate::scratch_map::reset_for(vid_of, vertex_count);
     vpos.clear();
     corner.clear();
     corner.reserve(mesh.indices.len());

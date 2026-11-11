@@ -254,7 +254,7 @@ export const createCesiumSlice: StateCreator<CesiumSlice & CesiumCrossSliceState
   cesiumPlacementDraftModelId: null,
   cesiumPlacementDraft: null,
 
-  setCesiumAvailable: (available) => set({ cesiumAvailable: available }),
+  setCesiumAvailable: (available) => set((s) => s.cesiumAvailable === available ? s : { cesiumAvailable: available }),
   setCesiumEnabled: (enabled) => set({ cesiumEnabled: enabled }),
   toggleCesium: () => set((s) => ({
     cesiumEnabled: !s.cesiumEnabled,

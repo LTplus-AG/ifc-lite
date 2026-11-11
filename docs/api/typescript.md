@@ -852,6 +852,8 @@ interface ProjectParams {
   LengthUnit?: string;  // 'METRE' (default), 'MILLIMETRE', 'FOOT'
   Author?: string;
   Organization?: string;
+  FileName?: string;                    // STEP header FILE_NAME.name; default: 'created.ifc'
+  FileDescription?: string | string[];  // STEP header FILE_DESCRIPTION entries; default: 'Created by ifc-lite'
   Timestamp?: number | Date;   // fixed creation instant (header + owner history); default: wall clock
   GuidSource?: () => string;   // deterministic GlobalId source; default: platform CSPRNG
 }

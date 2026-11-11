@@ -5,7 +5,7 @@
 import { useTranslation } from '@/i18n';
 import type { LayerGrouping } from './presentationLayerGroups';
 
-import { useMemo, useState, useCallback, useEffect } from 'react';
+import { useMemo, useState, useCallback, useEffect, useReducer } from 'react';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { GeometryResult } from '@ifc-lite/geometry';
 import { useViewerStore, type FederatedModel } from '@/store';
@@ -28,7 +28,7 @@ import {
   collectGeometryReadyModelIds,
 } from './hierarchyGeometry';
 import { flattenVisibleHierarchy, indexHierarchyTree } from './treeProjection';
-import { lazyStructure, scheduleIdle, type LazyStructure } from './lazyStructure';
+import { lazyStructure, scheduleIdle } from './lazyStructure';
 import { collectAuthoredProducts } from './authoredProducts';
 import { effectiveSpatialMembers } from '@/lib/effective-spatial-members';
 
@@ -247,12 +247,15 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
   // every storey starts collapsed, and the structure follows at idle once the
   // load has settled, or at once if search or reveal needs it first (NEW-4).
   const structure = useMemo(() => lazyStructure(() => buildFor(EXPAND_ALL)), [buildFor]);
-  const [projectable, setProjectable] = useState<LazyStructure | null>(null);
   // Once built (idle, search or reveal), expansion projects it: identical rows, no builder call.
-  const projecting = projectable === structure || structure.built;
+  // The idle build only bumps a counter to re-render: keeping the structure itself in
+  // state would keep the model it was built from (stores, geometry) alive through the
+  // whole next load, whose own idle build cannot run before it settles (#9629 review).
+  const [, structureBuilt] = useReducer((n: number) => n + 1, 0);
+  const projecting = structure.built;
   useEffect(() => {
     if (projecting || !builderReady || loading) return;
-    return scheduleIdle(() => { structure.get(); setProjectable(structure); });
+    return scheduleIdle(() => { structure.get(); structureBuilt(); });
   }, [structure, projecting, builderReady, loading]);
   const treeIndex = useMemo(() => projecting ? indexHierarchyTree(structure.get()) : null, [projecting, structure]);
   const getExpandedTreeForReveal = useCallback(() => structure.get(), [structure]);

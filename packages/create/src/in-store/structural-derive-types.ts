@@ -77,10 +77,11 @@
  * is a support linked to that footing. When no footing supports any node, the
  * nodes at the lowest level become supports and are flagged `guessed`. The
  * lowest level is the lowest node of this plan, after the joints, within
- * `tolerance`, unless a curve member already idealised (not LoadBearing false)
- * is drawn lower: then the level is that member's lowest end, so a partial run
- * (lower floors derived before) never guesses a support under an upper floor.
- * Elements this run skips do not set the level. The level is one height: it
+ * `tolerance`, unless a curve member already idealised (longer than
+ * `tolerance`, not LoadBearing false) is drawn lower: then the level is that
+ * member's lowest end, so a partial run (lower floors derived before) never
+ * guesses a support under an upper floor. No other element this run leaves
+ * out sets the level. The level is one height: it
  * does not follow a sloping site, and a stray member drawn below everything
  * else takes the guessed supports to itself. `supportType` is
  * 'pinned' (translations fixed, rotations free; the default) or 'fixed'.

@@ -225,13 +225,16 @@ describe('structural derivation plan (#9668)', () => {
       expect(supports.every((n) => Math.abs(n.position[2] - 0.15) < 1e-9 && n.support?.guessed)).toBe(true);
     });
 
-    it('sets the level from members derived before, not from elements this run skips', () => {
+    it('sets the level from members derived before, not from other elements this run leaves out', () => {
       // A ground column derived before sets the level even with no LoadBearing value and the skip policy.
       const upper = planStructuralDerivation(facts(column(0, 0, 0, 3, { loadBearing: null, idealised: true }), beam(0, 6, 0, 3)), { whenLoadBearingUnknown: 'skip' });
       expect(upper.report.guessedSupports).toEqual([]);
       // Under the skip policy an unknown element is not load-bearing: it does not set the level.
       const skipped = planStructuralDerivation(facts(column(0, 0, 0, 3, { loadBearing: null }), beam(0, 6, 0, 3)), { whenLoadBearingUnknown: 'skip' });
       expect(skipped.report.counts.guessedSupports).toBe(2);
+      // A stub shorter than the tolerance, derived before, does not set it either.
+      const stub = element('IfcMember', { axis: [[20, 0, -1], [20, 0, -0.97]] }, { idealised: true });
+      expect(planStructuralDerivation(facts(column(0, 0, 0, 3), column(6, 0, 0, 3), beam(0, 6, 0, 3), stub)).report.counts.guessedSupports).toBe(2);
     });
 
     it('puts no support up a column where a brace foot was moved onto it, and ignores stubs shorter than the tolerance', () => {

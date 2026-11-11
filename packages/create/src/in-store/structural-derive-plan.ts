@@ -115,7 +115,7 @@ export function planStructuralDerivation(facts: StructuralDerivationFacts, optio
       continue;
     }
     const line = role === 'curve' ? lineOf(element) : null;
-    if (element.idealised && element.loadBearing !== false && line && !('issue' in line)) {
+    if (element.idealised && element.loadBearing !== false && line && !('issue' in line) && length(sub(line.end, line.start)) > tolerance) {
       idealisedLowest = Math.min(idealisedLowest, line.start[2], line.end[2]);
     }
     if (element.idealised) { skip(element, 'already-idealised', 'a structural item is already linked to this element'); continue; }

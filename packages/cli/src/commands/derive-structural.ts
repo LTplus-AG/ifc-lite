@@ -101,8 +101,8 @@ export async function deriveStructuralCommand(args: string[]): Promise<void> {
   }
   // A refusal exits non-zero after the report, so scripts see it.
   if (refused && !dryRun) {
-    fatal(`Nothing written: the file already has an analysis model (${existing.map((m) => `#${m.expressId}`).join(', ')}). `
-      + 'Use --analysis-model-exists add to derive the missing members into a new one.');
+    // The notice above names the models; this line makes the refusal the exit status.
+    fatal('Refused: nothing written (--analysis-model-exists add derives the missing members into a new model)');
   }
 }
 

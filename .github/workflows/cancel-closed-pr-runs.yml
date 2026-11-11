@@ -48,7 +48,6 @@ jobs:
           # A cancelled run stays `in_progress` while it winds down; later passes
           # skip it rather than ask again.
           cancelled=" "
-          stuck=""
           for pass in 1 2 3; do
             if [ "$pass" -gt 1 ]; then sleep 20; fi
             stuck=""

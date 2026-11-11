@@ -164,12 +164,13 @@ describe('applyVisibility split-segment depths (PR #2644 review)', () => {
   // The reviewer's end-to-end reproduction: a flat occluder at view depth 5
   // over x,y in [0, 10]; L1 runs (0,5)->(6,5) with depth 7 -> 2 and L2
   // continues (6,5)->(10,5) at constant depth 2. L1's depth crosses the
-  // occluder at t = 0.4 (x = 2.4); sampled at 100, the transition lands at
-  // t = 0.395 (x = 2.37), where the lerped view depth is 5.025. Before the
+  // occluder at t = 0.4 (x = 2.4); the transition is bisected onto that
+  // crossing (to within a raster pixel, about x = 2.4), where the lerped view
+  // depth is about 5.0. Before the
   // fix, applyVisibility spread L1's ORIGINAL depth pair (7, 2) onto both
   // split halves, and mergeDrawingLines then faithfully propagated the stale
-  // 7 onto a merged VISIBLE line spanning [2.37, 10] - self-contradictory
-  // output, since the occluder covering x = 2.37 sits at depth 5.
+  // 7 onto a merged VISIBLE line spanning [2.4, 10] - self-contradictory
+  // output, since the occluder covering x = 2.4 sits at depth 5.
   function reviewerLines(): [DrawingLine, DrawingLine] {
     const base = {
       category: 'projection' as const,
@@ -195,13 +196,13 @@ describe('applyVisibility split-segment depths (PR #2644 review)', () => {
     const [hiddenHalf, visibleHalf] = applied;
     expect(hiddenHalf.visibility).toBe('hidden');
     expect(visibleHalf.visibility).toBe('visible');
-    expect(visibleHalf.line.start.x).toBeCloseTo(2.37, 6);
+    expect(visibleHalf.line.start.x).toBeCloseTo(2.4, 1);
 
     // Each split segment's endpoint depths must describe ITS OWN endpoints:
     // the shared split point carries the same lerped depth on both sides.
     expect(hiddenHalf.depth).toBe(7);
-    expect(hiddenHalf.depthEnd).toBeCloseTo(5.025, 9);
-    expect(visibleHalf.depth).toBeCloseTo(5.025, 9);
+    expect(hiddenHalf.depthEnd).toBeCloseTo(5, 1);
+    expect(visibleHalf.depth).toBeCloseTo(5, 1);
     expect(visibleHalf.depthEnd).toBeCloseTo(2, 9);
   });
 
@@ -214,11 +215,11 @@ describe('applyVisibility split-segment depths (PR #2644 review)', () => {
 
     const visible = merged.filter((l) => l.visibility === 'visible');
     expect(visible).toHaveLength(1);
-    expect(visible[0].line.start.x).toBeCloseTo(2.37, 6);
+    expect(visible[0].line.start.x).toBeCloseTo(2.4, 1);
     expect(visible[0].line.end.x).toBeCloseTo(10, 9);
     // The depth at the merged start must describe that point (about 5, the
     // occluder's own depth there), never L1's original start depth 7.
-    expect(visible[0].depth).toBeCloseTo(5.025, 6);
+    expect(visible[0].depth).toBeCloseTo(5, 1);
     expect(visible[0].depthEnd).toBeCloseTo(2, 9);
   });
 });
@@ -368,7 +369,8 @@ describe('HiddenLineClassifier endpoint sampling and raster-bounds edges (PR #26
     expect(result.segments).toHaveLength(2);
     expect(result.segments[0].visible).toBe(true);
     expect(result.segments[1].visible).toBe(false);
-    expect(result.segments[1].start.x).toBeCloseTo(9.5, 9);
+    // The occluder's left edge is x = 9.3; the old half-sample guess said 9.5.
+    expect(result.segments[1].start.x).toBeCloseTo(9.3, 1);
   });
 });
 
@@ -477,5 +479,44 @@ describe('HiddenLineClassifier with a non-zero MeshData.origin (PR #2621)', () =
 
     const [result] = classifier.classifyLines([line]);
     expect(result.overallVisibility).toBe('hidden');
+  });
+});
+
+describe('HiddenLineClassifier transition point (bisected, not half a sample)', () => {
+  it('ends the hidden stretch at the occluder edge, not half a sample past it', () => {
+    // A slab at view depth 5 covers y in [-1, 1.2] of a 10-high vertical edge
+    // at view depth 7 behind it. With 10 samples (spacing 1) the flip is
+    // seen between y = 1 (hidden) and y = 2 (visible); the old midpoint
+    // guess put the visible part's start at 1.5, 0.3 above the slab edge.
+    const slab: MeshData = {
+      expressId: 1,
+      positions: new Float32Array([
+        0, -1, -5,
+        10, -1, -5,
+        10, 1.2, -5,
+        0, 1.2, -5,
+      ]),
+      normals: new Float32Array(12),
+      indices: new Uint32Array([0, 1, 2, 0, 2, 3]),
+      color: [1, 1, 1, 1],
+    };
+    const classifier = new HiddenLineClassifier({ samplesPerLine: 10 });
+    classifier.buildDepthBuffer([slab], { axis: 'z', position: 0, flipped: false }, 10);
+
+    const edge: DrawingLine = {
+      line: { start: { x: 5, y: 0 }, end: { x: 5, y: 10 } },
+      category: 'projection',
+      visibility: 'visible',
+      entityId: 1,
+      ifcType: 'IfcWall',
+      modelIndex: 0,
+      depth: 7,
+    };
+
+    const [result] = classifier.classifyLines([edge]);
+    expect(result.segments).toHaveLength(2);
+    expect(result.segments[0].visible).toBe(false);
+    expect(result.segments[1].visible).toBe(true);
+    expect(result.segments[1].start.y).toBeCloseTo(1.2, 1);
   });
 });

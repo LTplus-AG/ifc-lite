@@ -136,7 +136,7 @@ describe('PlanView (#6232 M2.4)', () => {
     Drawing2DGenerator.prototype.generate = function (...args: Parameters<typeof real>) { cuts += 1; return real.apply(this, args); };
     try {
       let show = () => {};
-      function Pane() { const [hidden, setHidden] = useState(true); show = () => setHidden(false); return <PlanView layout="split" hidden={hidden} />; }
+      const Pane = () => { const [hidden, setHidden] = useState(true); show = () => setHidden(false); return <PlanView layout="split" hidden={hidden} />; };
       // The first cut also loads the cutter, so give each phase time to start one.
       const within = async (ms: number) => { for (let t = 0; t < ms && cuts === 0; t += 100) await wait(100); };
       act(() => setWallMeshes(BOX));

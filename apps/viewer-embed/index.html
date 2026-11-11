@@ -15,6 +15,9 @@
     /* Light is the default for embeds; dark is opt-in via ?theme=dark. */
     html.light body, html:not(.dark) body { background: #ffffff; color: #1a1b26; }
     html.dark body { background: #1a1b26; color: #a9b1d6; }
+    /* Native UI follows the embed's theme class, not the system's (#9718). */
+    html { color-scheme: light; }
+    html.dark { color-scheme: dark; }
     /* Ensure the 3D canvas fills the viewport (Tailwind utilities may not be generated for embed build) */
     #root canvas { width: 100% !important; height: 100% !important; display: block !important; }
 

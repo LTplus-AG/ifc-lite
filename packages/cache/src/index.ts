@@ -67,7 +67,8 @@ export {
   buildGeometrySectionV13,
 } from './sections/geometry-chunks.js';
 export { readInstancedShards } from './sections/instanced-shards.js';
-export type { GeometryHead } from './sections/geometry-chunks.js';
+export type { GeometryHead, ChunkInflate } from './sections/geometry-chunks.js';
+export { ChunkInflatePool } from './workers/chunk-inflate-pool.js';
 export type { GeometryChunkInfo } from './types.js';
 
 export type {

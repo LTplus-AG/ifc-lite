@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import type { CompressionRequest, CompressionResponse } from './geometry-compression-protocol.js';
+import type { CompressionRequest, CompressionResponse, InflateRequest } from './geometry-compression-protocol.js';
 import { accountWorkerMessages } from '@ifc-lite/load-trace';
 
 type StoredChunk = { bytes: Uint8Array<ArrayBuffer>; compressed: boolean };
@@ -10,7 +10,7 @@ export interface CompressionWorkerPort {
   onmessage: ((event: MessageEvent<unknown>) => void) | null;
   onerror: ((event: ErrorEvent) => void) | null;
   onmessageerror: ((event: MessageEvent<unknown>) => void) | null;
-  postMessage(message: CompressionRequest, transfers: ArrayBuffer[]): void;
+  postMessage(message: CompressionRequest | InflateRequest, transfers: ArrayBuffer[]): void;
   terminate(): void;
 }
 
@@ -20,35 +20,55 @@ export class GeometryCompressionSession {
   private nextId = 0;
   private failure?: Error;
   private readonly pending = new Map<number, {
-    length: number; resolve: (value: StoredChunk) => void; reject: (error: Error) => void;
+    /** Compress: the raw length. Inflate: the raw length the chunk directory declares. */
+    length: number; inflate: boolean; resolve: (value: StoredChunk) => void; reject: (error: Error) => void;
   }>();
 
   constructor(private readonly createWorker: () => CompressionWorkerPort = () =>
     new Worker(new URL('./geometry-compression.worker.js', import.meta.url), { type: 'module' })) {}
 
   compress(raw: Uint8Array<ArrayBuffer>): Promise<StoredChunk> {
-    if (this.failure) return Promise.reject(this.failure);
     if (raw.byteOffset !== 0 || raw.byteLength !== raw.buffer.byteLength) {
       return Promise.reject(new Error('Geometry compression requires an owned whole buffer'));
     }
+    return this.request(raw.buffer, false, raw.byteLength);
+  }
+
+  /**
+   * Inflate one stored deflate-raw chunk off the calling thread. `stored` is
+   * copied (a view into the cache entry cannot be transferred); the result must
+   * be exactly `rawLength` bytes, the chunk directory's uncompressed length.
+   */
+  inflate(stored: Uint8Array, rawLength: number): Promise<Uint8Array<ArrayBuffer>> {
+    return this.request(stored.slice().buffer, true, rawLength).then((chunk) => chunk.bytes);
+  }
+
+  private request(buffer: ArrayBuffer, inflate: boolean, length: number): Promise<StoredChunk> {
+    if (this.failure) return Promise.reject(this.failure);
     return new Promise((resolve, reject) => {
       const id = ++this.nextId;
-      this.pending.set(id, { length: raw.byteLength, resolve, reject });
+      this.pending.set(id, { length, inflate, resolve, reject });
       try {
-        if (!this.worker) {
-          this.worker = accountWorkerMessages(this.createWorker(), 'cacheCompression'); // #6957
-          this.worker.onmessage = event => this.receive(event.data);
-          this.worker.onerror = event => {
-            event.preventDefault();
-            this.fail(new Error(`Geometry compression worker failed: ${event.message}`));
-          };
-          this.worker.onmessageerror = () => this.fail(new Error('Geometry compression response could not be decoded'));
-        }
-        this.worker.postMessage({ id, buffer: raw.buffer }, [raw.buffer]);
+        this.start().postMessage(inflate ? { id, op: 'inflate', buffer } : { id, buffer }, [buffer]);
       } catch (error) {
         this.fail(error instanceof Error ? error : new Error(String(error)));
       }
     });
+  }
+
+  /** Start the worker now (it boots while other work runs); requests start it otherwise. */
+  start(): CompressionWorkerPort {
+    if (this.failure) throw this.failure;
+    if (!this.worker) {
+      this.worker = accountWorkerMessages(this.createWorker(), 'cacheCompression'); // #6957
+      this.worker.onmessage = event => this.receive(event.data);
+      this.worker.onerror = event => {
+        event.preventDefault();
+        this.fail(new Error(`Geometry compression worker failed: ${event.message}`));
+      };
+      this.worker.onmessageerror = () => this.fail(new Error('Geometry compression response could not be decoded'));
+    }
+    return this.worker;
   }
 
   close(): void {
@@ -72,9 +92,10 @@ export class GeometryCompressionSession {
     }
     if (!('buffer' in response) || !(response.buffer instanceof ArrayBuffer)
       || typeof response.compressed !== 'boolean'
-      || (response.compressed && response.buffer.byteLength === 0)
-      || (response.compressed ? response.buffer.byteLength >= pending.length
-        : response.buffer.byteLength !== pending.length)) {
+      || (pending.inflate && (response.compressed || response.buffer.byteLength !== pending.length))
+      || (!pending.inflate && response.compressed && response.buffer.byteLength === 0)
+      || (!pending.inflate && (response.compressed ? response.buffer.byteLength >= pending.length
+        : response.buffer.byteLength !== pending.length))) {
       this.fail(new Error('Invalid geometry compression result length or flags'));
       return;
     }

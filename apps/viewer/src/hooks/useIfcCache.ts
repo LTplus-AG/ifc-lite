@@ -13,6 +13,7 @@ import { useCallback } from 'react';
 import {
   BinaryCacheReader,
   BinaryCacheWriter,
+  ChunkInflatePool,
   openGeometryChunksV13,
   SectionType,
   toCacheDataStore,
@@ -44,6 +45,12 @@ const CACHE_FIRST_PAINT_INDICES = 500_000 * 3;
 export type { CacheResult } from '../services/cacheService.js';
 export type { CacheLoadResult } from './ifcCacheDecode.js';
 export { getCached, setCached, deleteCached } from '../services/cacheService.js';
+
+/** Workers inflating a hit's chunks: a few, leaving cores for the main thread and the GPU process. */
+function chunkInflateWorkers(): number {
+  const cores = typeof navigator !== 'undefined' && navigator.hardwareConcurrency ? navigator.hardwareConcurrency : 4;
+  return Math.max(1, Math.min(4, cores - 2));
+}
 
 // ============================================================================
 // Types
@@ -125,6 +132,8 @@ export function useIfcCache() {
     trace: LoadTrace = NOOP_LOAD_TRACE, // #6956: the J2 (warm open) spans land on the caller's load trace
   ): Promise<CacheLoadResult> => {
     let adopted: AdoptedSceneSnapshot | null = null;
+    // Compressed geometry chunks inflate on workers, which boot while the snapshot adopts and the metadata decodes.
+    const inflater = new ChunkInflatePool(chunkInflateWorkers()).start();
     try {
       const cacheLoadStart = performance.now();
 
@@ -160,7 +169,8 @@ export function useIfcCache() {
         const open = openGeometryChunksV13(
           cacheBuffer,
           geometrySection.offset,
-          headerInfo.version
+          headerInfo.version,
+          { inflate: inflater.inflate },
         );
         loadedTotalVertices = open.totalVertices;
         loadedTotalTriangles = open.totalTriangles;
@@ -303,6 +313,7 @@ export function useIfcCache() {
         totalTriangles: 0,
       };
     } finally {
+      inflater.close();
       abandonAdoptedSceneSnapshot(adopted);
     }
   }, [setProgress, setIfcDataStore, setGeometryResult]);

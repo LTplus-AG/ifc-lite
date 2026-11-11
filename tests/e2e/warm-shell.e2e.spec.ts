@@ -18,7 +18,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import { join } from 'node:path';
 import { checkAxeBaseline } from './axe-baseline';
-import { GPU_STRICT, skipForGpuDeviceLoss } from './gpu-device-loss';
+import { DEVICE_LOST_SIGNAL, GPU_STRICT, skipForGpuDeviceLoss } from './gpu-device-loss';
 
 const SAMPLE = join(process.cwd(), 'apps/viewer/public/samples/hello-wall.ifc');
 const STORE_KEY = '__ifc_lite_viewer_store__';
@@ -131,6 +131,8 @@ test.describe('warm viewer shell', () => {
   test('a device lost before the first open does not break that open', async ({ page }) => {
     const errors: string[] = [];
     page.on('pageerror', (e) => errors.push(String(e).slice(0, 300)));
+    let lossSeen = false;
+    page.on('console', (m) => { if (DEVICE_LOST_SIGNAL.test(m.text())) lossSeen = true; });
     // The warm shell's first device is destroyed shortly after creation; later devices (recovery) are left alone.
     await page.addInitScript(() => {
       const adapter = (globalThis as { GPUAdapter?: { prototype: { requestDevice(...a: unknown[]): Promise<{ destroy(): void }> } } }).GPUAdapter;
@@ -145,7 +147,8 @@ test.describe('warm viewer shell', () => {
     });
     await page.goto('/');
     await expect(page.locator('[data-viewer-shell="warm"]')).toHaveCount(1, { timeout: 30_000 });
-    await page.waitForTimeout(2000);
+    // The loss must really have happened to the warm shell's device before the open.
+    await expect.poll(() => lossSeen, { timeout: 15_000 }).toBe(true);
     try {
       await openSample(page);
     } catch (err) {

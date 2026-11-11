@@ -46,14 +46,14 @@ function dist(files: Record<string, string>): string {
 const BUILDER_CODE: Record<string, string> = {
   addStructuralAnalysisModelToStore: 'throw Error(`addStructuralAnalysisModelToStore: ObjectType is required when PredefinedType is USERDEFINED`)',
   addStructuralCurveMemberToStore: 'throw Error(`addStructuralCurveMemberToStore: ObjectType is required when PredefinedType is USERDEFINED`);throw Error(`addStructuralCurveMemberToStore: Start and End must be distinct points`)',
-  addStructuralPointConnectionToStore: 'throw Error(`addStructuralPointConnectionToStore: `+k+` must be a finite spring stiffness`)',
+  addStructuralPointConnectionToStore: `throw Error(\`addStructuralPointConnectionToStore: \${k} must be a finite spring stiffness\`)`,
   addStructuralLoadGroupToStore: 'throw Error(`addStructuralLoadGroupToStore: IFC2X3 IfcStructuralLoadGroup has no SelfWeightCoefficients`)',
   addStructuralPointActionToStore: 'L(`addStructuralPointActionToStore`,[r.ForceX,r.ForceY])',
   addStructuralLinearActionToStore: 'L(`addStructuralLinearActionToStore`,[r.LinearForceX])',
-  connectStructuralMemberToConnectionInStore: 'return e.addEntity(`IfcRelConnectsStructuralMember`,[c,i,null,null,`#`+m,`#`+n])',
-  connectStructuralActivityToItemInStore: 'return e.addEntity(`IfcRelConnectsStructuralActivity`,[c,i,null,null,`#`+m,`#`+n])',
+  connectStructuralMemberToConnectionInStore: `return e.addEntity(\`IfcRelConnectsStructuralMember\`,[c,i,null,null,\`#\${m}\`,\`#\${n}\`])`,
+  connectStructuralActivityToItemInStore: `return e.addEntity(\`IfcRelConnectsStructuralActivity\`,[c,i,null,null,\`#\${m}\`,\`#\${n}\`])`,
   assignToStructuralGroupInStore: 'throw Error(`assignToStructuralGroupInStore: objectIds must be non-empty`)',
-  createStructuralStoreBackend: 'throw Error(`bim.store structural authoring: schema \'`+t+`\' is not supported; use IFC4 or IFC4X3.`)',
+  createStructuralStoreBackend: `throw Error(\`bim.store structural authoring: schema '\${t}' is not supported; use IFC4 or IFC4X3.\`)`,
 };
 const buildersWithout = (omit?: string) =>
   Object.entries(BUILDER_CODE).filter(([name]) => name !== omit).map(([, code], i) => `function f${i}(){${code}}`).join(';');

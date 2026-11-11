@@ -180,7 +180,7 @@ test('#9668 ratchet: --check refuses a baseline scored offline, with the ledger 
     assert.match(r.stderr, /was scored offline/);
     assert.ok(r.stderr.includes(OFFLINE_REMEDY), r.stderr);
     // The comparison itself refuses it too, for callers that skip the CLI.
-    assert.ok(ratchet({ ...r1, offline: true }, r1).some((p) => p.includes(OFFLINE_REMEDY)));
+    assert.ok(ratchet({ ...r1, offline: true }, r1).some((p) => p.includes(OFFLINE_REMEDY))); // @source-text-assertion-ok parsed workflow configuration or probe verdict, not source text
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 

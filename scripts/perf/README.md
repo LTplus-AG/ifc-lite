@@ -21,6 +21,22 @@ Lesson: the freshness key is `getPickGeometryRevision()` plus draw-list identity
 in one does not carry to the other. The tree's typed-array layout is a heap win; the
 per-ray and post-hide wins come from the cache.
 
+## Structural builders leave the boot path (#9668)
+
+**Shipped: a small eager-bytes cut, no boot-time change.** The viewer's store adapter called
+`createStructuralStoreBackend` at boot, which linked every `@ifc-lite/create` structural
+builder into an eager chunk. That factory now loads in its own chunk behind
+`store-adapter-structural.ts`, the same shape as the storey methods (#9200); a build-tail
+gate (`check-structural-writes-lazy.mjs`) fails if a builder reaches the startup graph.
+
+Lessons. The builders minify to about 7.6 KB; the ~38 KB first estimated was their
+TypeScript source. The first cut put the collab gate and undo tracking in the lazy module
+too. Its import of an eager module made the bundler carve the shared code out of two eager
+chunks into two new ones, still eager: +2 files and only 3.3 KB saved. Keeping the
+tracking in the eager facade and leaving the lazy module nothing but the factory saved
+6.3 KB with the file count unchanged. A lazy module should import only what eager code
+does not already share with it, and the eager file count is the tell.
+
 ## Storey planners and the QuickJS runtime leave the boot path (#9200)
 
 **Shipped: an eager-bytes cut, no boot-time change.** Three changes, each one

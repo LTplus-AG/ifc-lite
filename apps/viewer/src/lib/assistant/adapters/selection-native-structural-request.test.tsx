@@ -14,7 +14,8 @@ import { ModelChangeProposal } from '@/components/viewer/assistant/ModelChangePr
 import { editedModelBytes } from '@/lib/export/edited-model-bytes';
 import { extractStructuralOnDemand } from '@ifc-lite/parser';
 import { modelChangeLibrary } from '@/lib/actions/receipts';
-import { render, click, cleanup } from '@/test/render';
+import { render, click, cleanup, waitFor } from '@/test/render';
+import { loadedStructuralWrites } from '@/sdk/adapters/store-adapter-structural';
 import { captureEvidence } from '../evidence';
 import { cancelAssistant, replaceEvidence, useAssistant } from '../conversation';
 import { sendAssistant } from '../request';
@@ -76,8 +77,13 @@ test('#7318 actual provider answer reaches mounted native selective approval, IF
   assert.equal(boxes.length, 3, 'native graph proposal must reach actual review controls');
   act(() => boxes[1].click());
   const prepare = [...ui.querySelectorAll('button')].find(button => button.textContent === 'Review selected structural operations');
+  // #9668: the structural builders load in their own chunk. The review waits for it instead of refusing.
+  assert.throws(() => loadedStructuralWrites('probe'), /still loading/, 'the Prepare click must arrive before the write path has loaded');
   assert.ok(prepare, ui.textContent ?? ''); click(prepare);
-  const apply = [...ui.querySelectorAll('button')].find(button => button.textContent === 'Apply 1 change');
+  const applyButton = () => [...ui.querySelectorAll('button')].find(button => button.textContent === 'Apply 1 change');
+  await waitFor(() => !!applyButton() || ui.querySelector('[role="alert"]') !== null, 'the review is prepared or refused');
+  assert.equal(ui.querySelector('[role="alert"]')?.textContent ?? null, null, 'no refusal while the write path loads');
+  const apply = applyButton();
   assert.ok(apply, ui.textContent ?? '');
   assert.equal(apply.disabled, true, 'native-model acknowledgement is required at the real Apply control');
   act(() => boxes[2].click());

@@ -18,12 +18,13 @@
  */
 
 import '@/test/setup-dom.js';
-import { describe, it, beforeEach } from 'node:test';
+import { describe, it, beforeEach, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { act, createElement } from 'react';
 import { createRoot } from 'react-dom/client';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store/index.js';
+import { collectChangedModels } from '@/lib/export/model-changes.js';
 import { __setOverlayWorkerFactoryForTest } from '@/lib/overlay-parse/index.js';
 import { createEmptyFlatSymbolic } from '@/lib/overlay-parse/symbolic-flat.js';
 import { __resetSymbolicAnnotationsCacheForTests, ensureParseFor, getParseFor } from './symbolic-parse-cache.js';
@@ -56,15 +57,15 @@ END-ISO-10303-21;
 `;
 }
 
-async function parse(): Promise<IfcDataStore> {
-  const bytes = new TextEncoder().encode(fixture());
+async function parse(ifc = fixture()): Promise<IfcDataStore> {
+  const bytes = new TextEncoder().encode(ifc);
   return new IfcParser().parseColumnar(
     bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
   );
 }
 
-async function seedStore(modelId: string): Promise<IfcDataStore> {
-  const store = await parse();
+async function seedStore(modelId: string, ifc = fixture()): Promise<IfcDataStore> {
+  const store = await parse(ifc);
   const state = useViewerStore.getState();
   useViewerStore.setState({
     activeModelId: modelId,
@@ -161,14 +162,10 @@ describe('tryRestoreDrawingMarkup: populates from a model with tagged annotation
   it('restores the tagged Measure2DResult once the parse lands, and does not duplicate on a second call', async () => {
     const store = await seedStore('populate-1');
 
-    // First call: nothing parsed yet — `tryRestoreDrawingMarkup` itself never
-    // triggers a parse (only `useDrawingMarkupRestoreOnLoad`'s effect does,
-    // via `ensureParseFor`), so it must return without writing or marking
-    // the model as attempted, leaving it free to retry once the parse lands.
+    // A bare restore remains read-only until its parse arrives. Only the
+    // mounted hook opts into requesting work after its metadata preflight.
     tryRestoreDrawingMarkup('populate-1');
     assert.deepEqual(useViewerStore.getState().measure2DResults, []);
-
-    // Simulate what the mounted hook's effect does: kick off the parse.
     const release = fakeWasmReplyWith(oneMeasureFlat());
     ensureParseFor([store]);
     // ensureParseFor's request-dispatch is itself async (a microtask), so
@@ -259,4 +256,37 @@ describe('tryRestoreDrawingMarkup: populates from a model with tagged annotation
       __setOverlayWorkerFactoryForTest(previous);
     }
   });
+});
+
+it('NEW-3: blank IFC restore never computes a spatial key or starts a worker', async () => {
+  const store = await seedStore('blank-new3', fixture().replaceAll('IfcLite:Markup:Measure', 'OrdinaryAnnotation'));
+  const mutationCountBefore = useViewerStore.getState().getModifiedEntityCount();
+  let rendering = false;
+  const sourceSlice = store.source.slice.bind(store.source);
+  const reads = mock.method(store.source, 'slice', (start: number, end: number) => {
+    assert.equal(rendering, false, 'source preflight must run outside React render');
+    return sourceSlice(start, end);
+  });
+  const hierarchy = store.spatialHierarchy;
+  Object.defineProperty(store, 'spatialHierarchy', { configurable: true, get() { throw new Error('blank restore requested spatial buckets'); } });
+  try {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    const Restore = () => {
+      rendering = true;
+      try { useDrawingMarkupRestoreOnLoad(); } finally { rendering = false; }
+      return null;
+    };
+    await act(async () => root.render(createElement(Restore)));
+    await act(async () => root.unmount());
+    host.remove();
+    const state = useViewerStore.getState();
+    assert.equal(state.getMutationView('blank-new3'), null, 'blank restore does not register an inspection view');
+    assert.equal(state.getModifiedEntityCount(), mutationCountBefore, 'the mutation badge count is unchanged');
+    assert.equal(collectChangedModels(state).models.some(model => model.id === 'blank-new3'), false, 'blank model has nothing to export');
+  } finally {
+    reads.mock.restore();
+    Object.defineProperty(store, 'spatialHierarchy', { configurable: true, value: hierarchy });
+  }
 });

@@ -11,6 +11,7 @@
  * the payload start. Decoding returns views into the caller's buffer.
  */
 
+import type { MeshData } from '@ifc-lite/geometry';
 import type { MeshFinish } from './types.js';
 import type { SpatialChunkingConfig } from './chunk-grid.js';
 import { BATCH_CONSTANTS } from './constants.js';
@@ -60,6 +61,21 @@ export interface SceneSnapshot {
   hostData?: unknown;
 }
 
+/**
+ * Why an armed capture produced no snapshot: the flat scene was cleared after
+ * its first piece, the stream went ephemeral, another capture replaced it, or
+ * the finished scene was not exactly the queued pieces merged once.
+ */
+export type SceneCaptureDrop = 'cleared' | 'ephemeral' | 'replaced' | 'not-exact' | 'failed';
+
+/**
+ * The finished scene at the finalize swap, the mesh each piece was queued
+ * from (by ordinal), and a check that the flat scene is still that scene: no
+ * bucket dirty and every captured bucket still drawing the batch it was
+ * captured from. An edit that moves, removes or re-buckets a piece fails it.
+ */
+export type SceneCaptureCallback = (snapshot: SceneSnapshot, sources: readonly MeshData[], sceneUnchanged: () => boolean) => void;
+
 /** Everything outside the source geometry that decides a batch's bytes. */
 export function sceneSnapshotPolicy(quantized: boolean, lod: boolean, chunking: SpatialChunkingConfig | null): string {
   return [SCENE_SNAPSHOT_REVISION, BATCH_CONSTANTS.BYTES_PER_VERTEX, quantized ? 'q' : 'f',
@@ -97,7 +113,8 @@ interface SnapshotTable extends Omit<SceneSnapshot, 'batches'> {
   batches: BatchTableRow[];
 }
 
-export function encodeSceneSnapshot(snapshot: SceneSnapshot): Blob {
+/** The encoded snapshot as its head (header, table, padding) and its 16-byte-aligned payload parts. */
+function snapshotParts(snapshot: SceneSnapshot): { head: BlobPart[]; payloads: Uint8Array[] } {
   const payloads: Uint8Array[] = [];
   let payloadBytes = 0;
   const place = (view: ArrayBufferView): PayloadRef => {
@@ -126,7 +143,35 @@ export function encodeSceneSnapshot(snapshot: SceneSnapshot): Blob {
   header.setUint32(8, tableBytes.byteLength, true);
   header.setUint32(12, crc32(tableBytes), true);
   const tablePadding = new Uint8Array(-(HEADER_BYTES + tableBytes.byteLength) & (PAYLOAD_ALIGN - 1));
-  return new Blob([header.buffer, tableBytes, tablePadding, ...payloads] as BlobPart[]);
+  return { head: [header.buffer, tableBytes, tablePadding] as BlobPart[], payloads };
+}
+
+export function encodeSceneSnapshot(snapshot: SceneSnapshot): Blob {
+  const { head, payloads } = snapshotParts(snapshot);
+  return new Blob([...head, ...payloads] as BlobPart[]);
+}
+
+/**
+ * The same bytes as {@link encodeSceneSnapshot}, copied into the Blob a slice
+ * at a time with `yieldToHost` between slices, so a large scene is never one
+ * long task. A Blob made of Blobs references them; nothing is copied twice.
+ */
+export async function encodeSceneSnapshotInSlices(snapshot: SceneSnapshot, yieldToHost: () => Promise<void>, sliceBytes = 4 << 20): Promise<Blob> {
+  const { head, payloads } = snapshotParts(snapshot);
+  const slices: Blob[] = [];
+  let pending: Uint8Array[] = [];
+  let pendingBytes = 0;
+  for (const part of payloads) {
+    pending.push(part);
+    pendingBytes += part.byteLength;
+    if (pendingBytes < sliceBytes) continue;
+    slices.push(new Blob(pending as BlobPart[]));
+    pending = [];
+    pendingBytes = 0;
+    await yieldToHost();
+  }
+  if (pending.length > 0) slices.push(new Blob(pending as BlobPart[]));
+  return new Blob([...head, ...slices]);
 }
 
 const isVec3 = (v: unknown): v is Vec3 => Array.isArray(v) && v.length === 3 && v.every(Number.isFinite);

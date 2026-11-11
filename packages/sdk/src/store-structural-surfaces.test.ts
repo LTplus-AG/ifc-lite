@@ -59,7 +59,9 @@ describe('C2 SDK structural store authoring', () => {
   });
 
   it('keeps a backend written before these methods valid, and names the missing one', () => {
-    type New = 'addStructuralSurfaceMember' | 'addStructuralCurveConnection' | 'addStructuralSurfaceConnection';
+    // `satisfies` makes a rename fail here instead of turning the Omit below into a no-op.
+    const added = ['addStructuralSurfaceMember', 'addStructuralCurveConnection', 'addStructuralSurfaceConnection'] as const satisfies readonly (keyof StructuralStoreBackendMethods)[];
+    type New = (typeof added)[number];
     // Type-level: fails the typecheck lane if any of the three becomes required again.
     const legacy: StructuralStoreBackendMethods = {} as Omit<StructuralStoreBackendMethods, New>;
     const ns = new StoreNamespace({ store: legacy } as unknown as BimBackend);

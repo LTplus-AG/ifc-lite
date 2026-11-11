@@ -25,7 +25,7 @@ import type { StructuralStoreBackendMethods } from '../index.js';
 
 import { unsupportedOperation } from './capabilities.js';
 
-export function structuralStoreStubs(): StructuralStoreBackendMethods {
+export function structuralStoreStubs(): Required<StructuralStoreBackendMethods> {
   return {
     addStructuralSurfaceMember: unsupportedOperation('store.addStructuralSurfaceMember', 'addStructuralSurfaceMember not supported in MCP v0.1; use entity_create'),
     addStructuralCurveConnection: unsupportedOperation('store.addStructuralCurveConnection', 'addStructuralCurveConnection not supported in MCP v0.1; use entity_create'),

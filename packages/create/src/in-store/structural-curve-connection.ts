@@ -23,9 +23,10 @@ export interface StructuralCurveConnectionInStoreParams {
   Start: [number, number, number];
   End: [number, number, number];
   BoundaryCondition?: StructuralBoundaryEdgeConditionParams;
-  /** IFC4 only, direction in the connection's local frame. */
+  /** IFC4 only, direction in the connection's local frame, whose Z runs along
+   *  the edge; must not be parallel to it. Defaults to local Y. */
   Axis?: Point3D;
-  /** IFC4X3 only, direction in the connection's local frame. */
+  /** IFC4X3 only; same frame and default as `Axis`. */
   AxisDirection?: Point3D;
   Name?: string;
   Description?: string;
@@ -62,9 +63,12 @@ export function addStructuralCurveConnectionToStore(
   assertStructuralBuilderSchema(anchor);
   if (params.Axis && anchor.schema !== undefined && anchor.schema !== 'IFC4') throw new Error('Axis exists only in IFC4; IFC4X3 uses AxisDirection and IFC2X3 has neither');
   if (params.AxisDirection && anchor.schema !== 'IFC4X3') throw new Error('AxisDirection exists only in IFC4X3');
-  const axis = params.Axis ?? params.AxisDirection ?? [0, 0, 1];
+  // The placement's local Z runs along the edge, and the axis defines the
+  // connection's local z, so it must not be parallel to the edge. The default,
+  // local Y, is perpendicular to the edge and points up for non-vertical edges.
+  const axis = params.Axis ?? params.AxisDirection ?? [0, 1, 0];
   assertFinitePoint3({ Axis: axis }, 'addStructuralCurveConnectionToStore');
-  if (Math.hypot(...axis) === 0) throw new Error('Axis direction must be nonzero');
+  if (Math.hypot(axis[0], axis[1]) <= 1e-9 * Math.hypot(...axis)) throw new Error('Axis direction must be nonzero and not parallel to the edge (local Z)');
   const bc = params.BoundaryCondition;
   const stiffness = [bc?.TranslationalStiffnessByLengthX, bc?.TranslationalStiffnessByLengthY, bc?.TranslationalStiffnessByLengthZ,
     bc?.RotationalStiffnessByLengthX, bc?.RotationalStiffnessByLengthY, bc?.RotationalStiffnessByLengthZ]

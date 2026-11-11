@@ -133,6 +133,21 @@ describe('C2 structural surface and connection builders', () => {
       expect(editor.getMutationView().getNewEntities()).toHaveLength(0);
     }
   });
+  it.each([
+    ['counter-clockwise, reflex first corner', [[0, 0, 0], [2, 1, 0], [4, 0, 0], [4, 3, 0], [0, 3, 0]], [0, 0, 1]],
+    ['clockwise rectangle', [[0, 0, 0], [0, 3, 0], [4, 3, 0], [4, 0, 0]], [0, 0, -1]],
+  ] satisfies [string, [number, number, number][], number[]][])('plane normal follows the loop winding: %s', async (_label, points, normal) => {
+    const { editor, anchor, roundTrip } = await fresh('IFC4');
+    const r = addStructuralSurfaceMemberToStore(editor, anchor, { Boundary: points });
+    const { attrs } = await roundTrip();
+    expect((attrs(r.normalId)[0] as number[]).map(v => v + 0)).toEqual(normal);
+  });
+  it('defaults the curve connection axis off the edge and refuses one along it', async () => {
+    const { editor, anchor, roundTrip } = await fresh('IFC4');
+    const r = addStructuralCurveConnectionToStore(editor, anchor, { Start: [0, 0, 0], End: [0, 0, 3] });
+    expect((await roundTrip()).attrs(r.axisDirectionId)).toEqual([[0, 1, 0]]);
+    expect(() => addStructuralCurveConnectionToStore(editor, anchor, { Start: [0, 0, 0], End: [4, 0, 0], Axis: [0, 0, 2] })).toThrow(/parallel to the edge/);
+  });
   it('refuses unsupported schema-specific axis attributes', async () => {
     const { editor, anchor } = await fresh();
     expect(() => addStructuralCurveConnectionToStore(editor, anchor, { Start: [0, 0, 0], End: [1, 0, 0], Axis: [0, 0, 1] })).toThrow(/IFC2X3/);

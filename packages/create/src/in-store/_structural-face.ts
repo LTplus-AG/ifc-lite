@@ -20,8 +20,8 @@ export function prepareStructuralFace(points: readonly Point3D[]) {
   const normal = relative.slice(1).map((p, i) => vecCross(p, relative[i + 2] ?? relative[1]))
     .find(n => vecLen(n) > tolerance * scale);
   if (!normal) throw new Error('Structural Face: degenerate boundary (collinear points)');
-  const axis = vecNorm(normal);
-  if (relative.some(p => Math.abs(p.reduce((s, v, i) => s + v * axis[i], 0)) > tolerance)) {
+  const unit = vecNorm(normal);
+  if (relative.some(p => Math.abs(p.reduce((s, v, i) => s + v * unit[i], 0)) > tolerance)) {
     throw new Error('Structural Face: boundary points must be coplanar');
   }
   if (relative.some((p, i) => relative.slice(i + 1).some(q => vecLen(p.map((v, j) => v - q[j]) as Point3D) <= tolerance))) {
@@ -32,7 +32,10 @@ export function prepareStructuralFace(points: readonly Point3D[]) {
     return sum.map((v, j) => v + cross[j]) as Point3D;
   }, [0, 0, 0]);
   if (vecLen(areaVector) <= tolerance * scale) throw new Error('Structural Face: degenerate boundary (zero area)');
-  return { origin, relative, axis };
+  // The plane normal is the loop's area vector, so the outer bound (Orientation
+  // .T.) runs counter-clockwise about it. A single vertex triple points the
+  // other way when its middle corner is reflex.
+  return { origin, relative, axis: vecNorm(areaVector) };
 }
 
 /** A fresh, exclusively owned topology subgraph for each surface product. */

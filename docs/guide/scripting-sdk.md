@@ -482,8 +482,9 @@ Surface builders take `Boundary`, an ordered list of at least three distinct,
 coplanar points in storey-local metres. They write planar `Face` topology.
 The member also accepts `PredefinedType` and optional positive `Thickness` in metres.
 Curve connections take `Start` and `End` and write `Edge` topology, with optional
-`Axis` for IFC4 or `AxisDirection` for IFC4X3 (directions in the connection's local
-frame). IFC2X3 has neither axis attribute and refuses either parameter.
+`Axis` for IFC4 or `AxisDirection` for IFC4X3: a direction in the connection's local
+frame, whose Z runs along the edge, so it must not be parallel to Z. It defaults to
+local Y. IFC2X3 has neither axis attribute and refuses either parameter.
 
 Connections accept `BoundaryCondition`: edge conditions use
 `TranslationalStiffnessByLengthX/Y/Z` and `RotationalStiffnessByLengthX/Y/Z`;

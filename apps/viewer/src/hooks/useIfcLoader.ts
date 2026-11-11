@@ -106,6 +106,7 @@ import { classifyLoadError, errorCaptureProps, type LoadErrorKind } from '../lib
 import { formatLoadError } from '../lib/load-error-message.js';
 import { beginResumableLoad, noteStaleDeploymentLoadFailure } from '@/lib/reload-resume';
 import { surfaceStaleDeployment } from '../lib/stale-deployment.js';
+import { whenSceneSettled } from '@/lib/scene-settled';
 /**
  * The skip-tiny-cuts flag is no longer a hard constant: it is derived per-load
  * from the user's geometry-fidelity mode (`fast` vs `exact`, see
@@ -1928,7 +1929,7 @@ export function useIfcLoader() {
                     loadState: 'complete', loadPath: 'wasm', tessellationTier: loadTessellationTier, skipSmallCuts: skipSmallCutsAtLoad,
                   }, allInstancedShards));
                   // Background, like the primary write; compaction waits so the write keeps the raw length.
-                  if (cacheMeshes && !isStale()) void Promise.resolve(writeCache(cacheMeshes)).finally(() => compactSourceAfterLoad(dataStore));
+                  if (cacheMeshes && !isStale()) void whenSceneSettled(isCurrent).then((settled) => settled ? writeCache(cacheMeshes) : undefined).finally(() => compactSourceAfterLoad(dataStore));
                   else compactSourceAfterLoad(dataStore);
                   return;
                 }
@@ -1947,9 +1948,9 @@ export function useIfcLoader() {
                 // tables + geometry WITHOUT the source; re-open rehydrates from the fresh buffer, validated
                 // by the mtime guard + off-thread full hash (cacheTier.ts) — the key only keys the lookup.
                 // Files above 400MB (or with the mesh-only kill switch set) are not cached.
-                if (cacheable) {
-                  // Final safety pass so cache always contains post-style colors.
-                  applyColorUpdatesToMeshes(allMeshes, cumulativeColorUpdates);
+                // Not a load step: encode once the scene settles (a superseding load drops it).
+                if (cacheable && await whenSceneSettled(isCurrent)) {
+                  applyColorUpdatesToMeshes(allMeshes, cumulativeColorUpdates); // so the cache holds post-style colours
                   await writeCache(allMeshes);
                 }
 

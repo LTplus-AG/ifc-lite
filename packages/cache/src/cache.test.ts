@@ -263,6 +263,28 @@ describe('BinaryCacheWriter and BinaryCacheReader', () => {
     expect(result.geometry!.totalTriangles).toBe(1);
   });
 
+  it('yieldBetweenSections returns to the event loop between sections and writes the same bytes', async () => {
+    const geometry = {
+      meshes: [{ expressId: 7, positions: new Float32Array([0, 0, 0, 1, 0, 0, 1, 1, 0]), normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]),
+        indices: new Uint32Array([0, 1, 2]), color: [0.5, 0.5, 0.5, 1.0] as [number, number, number, number] }],
+      totalVertices: 3, totalTriangles: 1,
+      coordinateInfo: { originShift: { x: 0, y: 0, z: 0 }, originalBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 0 } },
+        shiftedBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 0 } }, hasLargeCoordinates: false } as CoordinateInfo,
+      instancedShards: [new Uint8Array([1, 2, 3, 4]).buffer as ArrayBuffer],
+    };
+    const options = { omitSourceHash: true, compressGeometryChunks: false };
+    const whole = await new BinaryCacheWriter().write(dataStore, geometry, sourceBuffer, options);
+    // Count macrotasks that run while the yielding write is in flight.
+    let turns = 0;
+    let writing = true;
+    const tick = (): void => { if (writing) { turns++; setTimeout(tick, 0); } };
+    setTimeout(tick, 0);
+    const sliced = await new BinaryCacheWriter().write(dataStore, geometry, sourceBuffer, { ...options, yieldBetweenSections: true });
+    writing = false;
+    expect(turns).toBeGreaterThanOrEqual(6);
+    expect(new Uint8Array(sliced)).toEqual(new Uint8Array(whole));
+  });
+
   it('should preserve GPU-instancing shards through round-trip', async () => {
     // Opaque repeated occurrences are partitioned into IFNS shards that are NOT in
     // the flat meshes; without persisting them, a cache reload silently drops all

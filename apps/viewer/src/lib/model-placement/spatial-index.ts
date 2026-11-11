@@ -9,6 +9,7 @@ import { modelIndices } from './model-indices';
 import { displayedTranslation } from './state';
 import { equalTranslation } from './translation';
 import { modelLoadTrace, tracePhaseOnce } from '@/lib/perf/activeLoadTrace';
+import { isSceneSettled } from '@/lib/scene-settled';
 
 /** Build (or rebuild) `modelId`'s spatial index from its PLACED geometry — flat
  * meshes plus GPU-instanced occurrences materialized at their current heading
@@ -71,7 +72,12 @@ export function createPlacementIndexSync() {
     }
     timer = setTimeout(() => {
       const latest = useViewerStore.getState();
-      pending.clear(); timer = undefined;
+      timer = undefined;
+      // A query index is not a load step: building it (instanced
+      // materialisation plus the BVH) during the drain and finalize delays
+      // the load. Keep the models pending and look again until it settles.
+      if (!isSceneSettled(latest)) { schedule(); return; }
+      pending.clear();
       for (const [id] of latest.models) {
         if (!ready(latest, id)) continue;
         const next = signature(latest, id);

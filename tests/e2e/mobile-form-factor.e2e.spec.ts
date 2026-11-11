@@ -210,12 +210,29 @@ async function withStore<T>(page: Page, fn: (store: ViewerStore) => T): Promise<
   return page.evaluate(`(${fn.toString()})(globalThis.__ifc_lite_viewer_store__)`) as Promise<T>;
 }
 
-/** Every visible interactive control's box. */
+/**
+ * Every interactive control's visible box: its rect clipped by every ancestor
+ * that clips overflow, so a control scrolled out of its container (the empty
+ * state's links below the viewport segment's edge) counts only where a finger
+ * can actually reach it. Fully clipped controls drop out.
+ */
 async function controlBoxes(page: Page) {
   return page.evaluate(() => [...document.querySelectorAll<HTMLElement>('button, a[href], input, select, textarea, [role="button"], [role="tab"]')]
-    .map((el) => ({ el, r: el.getBoundingClientRect(), style: getComputedStyle(el) }))
-    .filter(({ r, style }) => r.width > 0 && r.height > 0 && style.visibility !== 'hidden' && style.display !== 'none')
-    .map(({ el, r }) => ({ label: el.getAttribute('aria-label') ?? el.textContent?.trim().slice(0, 40) ?? el.tagName, left: r.left, right: r.right, top: r.top, bottom: r.bottom })));
+    .flatMap((el) => {
+      const style = getComputedStyle(el);
+      if (style.visibility === 'hidden' || style.display === 'none') return [];
+      const r = el.getBoundingClientRect();
+      let { left, right, top, bottom } = r;
+      for (let a = el.parentElement; a; a = a.parentElement) {
+        const o = getComputedStyle(a);
+        if (o.overflowX === 'visible' && o.overflowY === 'visible') continue;
+        const c = a.getBoundingClientRect();
+        left = Math.max(left, c.left); right = Math.min(right, c.right);
+        top = Math.max(top, c.top); bottom = Math.min(bottom, c.bottom);
+      }
+      if (right - left <= 0 || bottom - top <= 0) return [];
+      return [{ label: el.getAttribute('aria-label') ?? el.textContent?.trim().slice(0, 40) ?? el.tagName, left, right, top, bottom }];
+    }));
 }
 
 /** The model area still takes input: what sits at its centre is the canvas, and a tap there reaches it. */

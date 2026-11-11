@@ -171,9 +171,7 @@ describe('ViewerLayout panel placement per form factor (#9718 DoD 3-5)', () => {
     const ui = renderViewerLayout();
     act(() => useViewerStore.getState().setLeftPanelCollapsed(false));
     assert.deepEqual(panels(ui), { host: 'side-pane', sheet: false, pane: 'side-pane', paneTitle: 'Hierarchy', scrim: false, order: 'view pane bar' });
-    const slot = ui.querySelector<HTMLElement>('[data-mobile-pane-slot]')!;
-    assert.equal(slot.style.width, 'clamp(280px, 40vw, 380px)');
-    assert.equal(slot.style.paddingBottom, 'env(safe-area-inset-bottom)', 'the pane reaches the screen bottom, so it clears the home indicator');
+    // The pane's width and insets (clamp(), env()) are `mobile-shell-layout.test.ts`'s: happy-dom drops both from inline styles.
   });
 
   it('a near-tablet (Z Fold inner 830x750) docks the pane right of the viewport, the bar under both', () => {
@@ -183,7 +181,6 @@ describe('ViewerLayout panel placement per form factor (#9718 DoD 3-5)', () => {
     const shell = ui.querySelector<HTMLElement>('[data-mobile-shell]')!;
     assert.equal(shell.style.gridTemplateAreas, '"view pane" "bar bar"');
     assert.deepEqual({ ...panels(ui), paneTitle: null }, { host: 'side-pane', sheet: false, pane: 'side-pane', paneTitle: null, scrim: false, order: 'view pane bar' });
-    assert.equal(ui.querySelector<HTMLElement>('[data-mobile-pane-slot]')!.style.width, 'calc(360px + env(safe-area-inset-right))');
   });
 
   it('Flex Mode puts the viewport on the top segment and the Panels list inline in the bottom one, with no floating button', () => {

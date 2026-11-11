@@ -58,7 +58,7 @@ function linkedElement(info, guid, declared, store, table) {
   const guids = [];
   for (const id of ids) {
     if (!Number.isSafeInteger(id)) return false;
-    // The declared class, not getTypeName's coalesced IfcTypeEnum family.
+    // The declared class; getTypeName may answer with a coalesced IfcTypeEnum family.
     if (!isElement(table, store.entities.getExactTypeName?.(id) ?? store.entities.getTypeName(id))) return false;
     const value = store.entities.getGlobalId(id);
     if (!value) return false;

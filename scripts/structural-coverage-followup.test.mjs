@@ -30,7 +30,8 @@ test('#9668 links: resolve every express id, require IfcElement and fixture Glob
   const row = { id: 'cap/physical-analytical-link-read', kind: 'capability' };
   async function run(ids, type = 'IfcWall', guid = 'wall') {
     const item = { family: 'item', info: { physicalElementIds: ids } };
-    const store = { entities: { getTypeName: (id) => id === 1 ? type : id === 4 ? 'IfcWall' : '', getGlobalId: (id) => id === 4 ? 'unlinked' : guid } };
+    // The probe must ask for the declared class; the coalesced family answers wrongly here.
+    const store = { entities: { getExactTypeName: (id) => id === 1 ? type : id === 4 ? 'IFCWALL' : '', getTypeName: () => 'IfcProject', getGlobalId: (id) => id === 4 ? 'unlinked' : guid } };
     const read = { byId: new Map([[2, item]]) };
     const cache = new Map([['read:links.ifc', read], ['read:reverse.ifc', read], ['read:legacy.ifc', { byId: new Map(members.map((m) => [m, item])) }]]);
     for (const f of [file, legacy, reverse]) cache.set(`store:${f.path}`, store);

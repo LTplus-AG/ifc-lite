@@ -73,12 +73,13 @@ export async function deriveStructuralCommand(args: string[]): Promise<void> {
   }
   let { report } = plan;
   const existing = plan.existingAnalysisModels;
-  if (existing.length > 0) {
-    process.stderr.write(`The file already has ${existing.length} analysis model(s): ${existing.map((m) => `#${m.expressId}${m.derived ? ' (derived)' : ''}`).join(', ')}\n`);
-  }
   const derivable = report.counts.curveMembers + report.counts.surfaceMembers > 0;
-  // Known at plan time, so it is reported as an outcome rather than as an apply error.
-  const refused = plan.refusal !== null && !dryRun;
+  // Known at plan time, so it is reported as an outcome (a dry run included) rather than as an apply error.
+  const refused = plan.refusal !== null;
+  if (existing.length > 0) {
+    process.stderr.write(`The file already has ${existing.length} analysis model(s): ${existing.map((m) => `#${m.expressId}${m.derived ? ' (derived)' : ''}`).join(', ')}. `
+      + (refused ? 'Nothing is written unless --analysis-model-exists add.\n' : derivable ? 'The missing members go into a new one.\n' : '\n'));
+  }
   const writes = !dryRun && derivable && !refused;
   if (writes) {
     try {
@@ -92,12 +93,12 @@ export async function deriveStructuralCommand(args: string[]): Promise<void> {
   }
 
   if (json) {
-    printJson({ input: filePath, output: writes ? out : null, dryRun, refused, options: plan.options, existingAnalysisModels: existing, ...report });
+    printJson({ input: filePath, output: writes ? out : null, dryRun, refused, refusal: plan.refusal, options: plan.options, existingAnalysisModels: existing, ...report });
   } else {
     printReport(report, dryRun ? 'Dry run: nothing written' : derivable ? null : 'Nothing to derive: nothing written');
   }
   // After the report, so scripts get both the report and a non-zero exit.
-  if (refused) fatal('Refused: nothing written (--analysis-model-exists add derives the missing members into a new model)');
+  if (refused && !dryRun) fatal('Refused: nothing written (--analysis-model-exists add derives the missing members into a new model)');
 }
 
 function printReport(report: StructuralDerivationReport, nothingWritten: string | null): void {

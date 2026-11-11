@@ -76,9 +76,14 @@ describe.skipIf(!existsSync(SAMPLE))('ifc-lite derive-structural (#9668)', () =>
     const refused = join(dir, 'refused.ifc');
     await expect(run([authored, '--out', refused, '--json'])).rejects.toThrow('exit 1');
     expect(JSON.parse(stdout)).toMatchObject({ output: null, refused: true, existingAnalysisModels: [{ expressId: 99990, derived: false }], counts: { surfaceMembers: 1 } });
-    expect(stderr).toMatch(/already has 1 analysis model\(s\): #99990\n/);
+    expect(stderr).toMatch(/already has 1 analysis model\(s\): #99990\. Nothing is written unless --analysis-model-exists add/);
     expect(stderr).toMatch(/Refused: nothing written \(--analysis-model-exists add/);
     expect(existsSync(refused)).toBe(false);
+
+    // A dry run reports the same refusal, and exits 0.
+    stdout = '';
+    await run([authored, '--dry-run', '--json']);
+    expect(JSON.parse(stdout)).toMatchObject({ output: null, dryRun: true, refused: true, refusal: expect.stringMatching(/#99990/) });
 
     stdout = '';
     const added = join(dir, 'added.ifc');

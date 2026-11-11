@@ -166,7 +166,7 @@ export function planStructuralDerivation(facts: StructuralDerivationFacts, optio
     tolerance, resolved.jointReach, (p) => inFooting(p) !== undefined);
   const allRoots = clusterEnds(joined.pieces.flatMap((piece) => [piece.start, piece.end]), tolerance);
   // A piece whose two ends merge is dropped; the clusters stay as they are, so its neighbours stay joined.
-  const pieces: Array<Line & { start: Vec3; end: Vec3 }> = [];
+  const pieces: Line[] = [];
   const roots: number[] = [];
   joined.pieces.forEach((piece, i) => {
     if (allRoots[2 * i] === allRoots[2 * i + 1]) return;

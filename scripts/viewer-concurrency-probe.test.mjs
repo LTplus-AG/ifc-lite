@@ -22,7 +22,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse } from 'yaml';
 
-import { GATE_SHARDS, gateFileCount, parseTap, readRecords, report, reportedFiles, selectFiles, selectionCommand } from './viewer-concurrency-probe.mjs';
+import { effectiveConcurrency, parseTap, readRecords, report, reportedFiles, selectFiles, selectionCommand } from './viewer-concurrency-probe.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..');
@@ -56,11 +56,14 @@ test("apps/viewer's script bounds VIEWER_TEST_CONCURRENCY: only 2, 3 or 4 change
   for (const [v, want] of [[undefined, '1'], ['', '1'], ['1', '1'], ['2', '2'], ['3', '3'], ['4', '4'], ['5', '1'], ['8', '1'], [' 2', '1'], ['2 ', '1'], ['two', '1'], ['0', '1'], ['-1', '1'], ['2;rm', '1']]) {
     const env = v === undefined ? {} : { VIEWER_TEST_CONCURRENCY: v };
     assert.deepEqual(concurrencyArgs(env), [`--test-concurrency=${want}`], JSON.stringify(v));
+    assert.equal(effectiveConcurrency(v), want, `the probe records what the script ran, ${JSON.stringify(v)}`);
   }
 });
 
 test('the gate step hands the repo variable to that script, which is the one place it is bounded', () => {
   const env = TEST_YML.jobs['viewer-tests'].steps.find((s) => s.id === 'viewer_tests').env;
+  // A GitHub Actions expression, compared as written.
+  // eslint-disable-next-line no-template-curly-in-string
   assert.equal(env.VIEWER_TEST_CONCURRENCY, '${{ vars.VIEWER_TEST_CONCURRENCY }}');
   assert.equal(TEST_YML.jobs['viewer-tests'].strategy.matrix.shard.length, 16, 'the gate keeps sixteen shards');
 });
@@ -76,7 +79,8 @@ function reporterRun(name, files) {
   }
   const out = join(root, 'files.json');
   const { NODE_TEST_CONTEXT: _ignored, ...env } = process.env;
-  spawnSync(TSX, ['--test', '--test-concurrency=2', ...Object.keys(files).sort()], {
+  const entries = Object.keys(files).filter((f) => /\.test\.tsx?$/.test(f)).sort(); // @source-text-assertion-ok picks test entrypoints from the fixture's own file names
+  spawnSync(TSX, ['--test', '--test-concurrency=2', ...entries], {
     cwd: root,
     encoding: 'utf8',
     env: { ...env, NODE_OPTIONS: `--test-reporter=tap --test-reporter-destination=/dev/null --test-reporter=${FILE_REPORTER} --test-reporter-destination=${out}` },
@@ -84,26 +88,30 @@ function reporterRun(name, files) {
   return { root: realpathSync(root), text: readFileSync(out, 'utf8') };
 }
 
-test('#9791 review: the probe counts every file that reported a result, whether passing, crashing on import, or only skipped', () => {
+test('#9791 review: the probe counts every file whose run completed: passing, crashing on import, only skipped, or with its tests declared in a helper', () => {
   const { root, text } = reporterRun('reported', {
     'src/a.test.ts': "import test from 'node:test';\ntest('a', () => {});\ntest.describe('g', () => { test('n', () => {}); });\n",
     'src/b.test.ts': "import './missing-module.js';\n",
     'src/d/c.test.tsx': "import test from 'node:test';\ntest.skip('s', () => {});\n",
+    // The shape of apps/viewer's i18n catalogue tests: `test()` is called in
+    // a helper, so the TESTS' file is the helper. /code-review on #9791.
+    'src/e.test.ts': "import { contract } from './helpers/contract.ts';\ncontract();\n",
+    'src/helpers/contract.ts': "import test from 'node:test';\nexport function contract() { test('h', () => {}); }\n",
   });
-  assert.deepEqual(reportedFiles(text, root), ['src/a.test.ts', 'src/b.test.ts', 'src/d/c.test.tsx']);
+  assert.deepEqual(reportedFiles(text, root), ['src/a.test.ts', 'src/b.test.ts', 'src/d/c.test.tsx', 'src/e.test.ts']);
 });
 
 test('#9791 review: a runner that wrote no file list (killed mid-shard) reported nothing, and the report fails on it', () => {
   assert.throws(() => reportedFiles('not json', '/x'), 'garbled output is an error the caller logs, not silently no files');
   assert.throws(() => reportedFiles('{"a":1}', '/x'));
   const selected = ['src/a.test.ts', 'src/b.test.ts'];
-  assert.equal(report([rec(0, selected, { reported: [] })], selected, 2, 1).complete, false);
+  assert.equal(report([rec(0, selected, { reported: [] })], selected, 1).complete, false);
 });
 
 test('#9791 CodeRabbit: no record directory (every shard failed before uploading) is no records, so the report still names the missing shards', () => {
   const records = readRecords(join(TMP, 'never-downloaded'));
   assert.deepEqual(records, []);
-  const out = report(records, ['a'], 1, 8);
+  const out = report(records, ['a'], 8);
   assert.equal(out.complete, false);
   assert.ok(out.lines.some((l) => l.includes('8 shard record(s) missing'))); // @source-text-assertion-ok subject is the generated report
   assert.throws(() => readRecords(join(VIEWER, 'package.json')), 'a path that is not a directory is not "no records"');
@@ -111,18 +119,12 @@ test('#9791 CodeRabbit: no record directory (every shard failed before uploading
 
 // --------------------------------------- coverage against the real tree
 
-test('on the real tree, the 8-way and 16-way selections are the same files, so a full report matches the gate', () => {
+test('on the real tree, the probe\'s 8 shards select every viewer test file exactly once', () => {
+  // Selection only: what RAN is counted by the reporter (tested above).
   const base = { ...process.env, TEST_PATTERN: '' };
   const all = selectFiles({ ...base, TEST_SHARDS: '', TEST_SHARD: '' });
-  // The gate's count two ways: its 16 shards selected through the real
-  // pipeline, and in-process by the same selector (what the report uses).
-  let viaPipeline = 0;
-  for (let s = 0; s < GATE_SHARDS; s++) viaPipeline += selectFiles({ ...base, TEST_SHARDS: String(GATE_SHARDS), TEST_SHARD: String(s) }).length;
-  const gateCount = gateFileCount(all);
-  assert.equal(gateCount, viaPipeline);
-  assert.equal(gateCount, all.length);
   const records = Array.from({ length: 8 }, (_, s) => rec(s, selectFiles({ ...base, TEST_SHARDS: '8', TEST_SHARD: String(s) })));
-  const out = report(records, all, gateCount, 8);
+  const out = report(records, all, 8);
   assert.equal(out.complete, true, out.lines.join('\n'));
 });
 
@@ -136,22 +138,22 @@ function rec(shard, files, extra = {}) {
 }
 
 test('the report computes wall time and job-minutes from the shard records', () => {
-  const out = report([rec(0, ['a']), rec(1, ['b'], { jobStartedAt: 31_000, endedAt: 241_000 })], ['a', 'b'], 2, 2);
+  const out = report([rec(0, ['a']), rec(1, ['b'], { jobStartedAt: 31_000, endedAt: 241_000 })], ['a', 'b'], 2);
   assert.equal(out.complete, true);
   assert.ok(out.lines.some((l) => l.includes('| 4.0 min |')), 'wall: 1 s to 241 s'); // @source-text-assertion-ok subject is the generated report
   assert.ok(out.lines.some((l) => l.includes('| 5.5 |')), 'job-minutes: 2.0 + 3.5'); // @source-text-assertion-ok subject is the generated report
 });
 
-test('the report fails on a missing shard, a file that never reported, a duplicate, a count that differs from the gate, and no records', () => {
-  assert.equal(report([rec(0, ['a'])], ['a', 'b'], 2, 2).complete, false, 'shard 1 missing');
-  assert.equal(report([rec(0, ['a']), rec(1, ['b'], { reported: [] })], ['a', 'b'], 2, 2).complete, false, 'b selected, never reported');
-  assert.equal(report([rec(0, ['a', 'b']), rec(1, ['b'])], ['a', 'b'], 2, 2).complete, false, 'b reported twice');
-  assert.equal(report([rec(0, ['a']), rec(1, ['b'])], ['a', 'b'], 3, 2).complete, false, 'gate selects 3');
-  assert.equal(report([], ['a'], 1, 2).complete, false, 'no records at all');
+test('the report fails on a missing shard, a file that never reported, a duplicate, a file the gate does not run, and no records', () => {
+  assert.equal(report([rec(0, ['a'])], ['a', 'b'], 2).complete, false, 'shard 1 missing');
+  assert.equal(report([rec(0, ['a']), rec(1, ['b'], { reported: [] })], ['a', 'b'], 2).complete, false, 'b selected, never reported');
+  assert.equal(report([rec(0, ['a', 'b']), rec(1, ['b'])], ['a', 'b'], 2).complete, false, 'b reported twice');
+  assert.equal(report([rec(0, ['a']), rec(1, ['b', 'helper.ts'])], ['a', 'b'], 2).complete, false, 'a path the gate does not run');
+  assert.equal(report([], ['a'], 2).complete, false, 'no records at all');
 });
 
 test('the report names failing shards and their failed tests, and a crashed shard with no TAP counts', () => {
-  const out = report([rec(0, ['a'], { exitCode: 1, counts: { tests: 1, pass: 0, fail: 1, cancelled: 0 }, failures: ['src/a.test.ts'] }), rec(1, ['b'], { counts: null })], ['a', 'b'], 2, 2);
+  const out = report([rec(0, ['a'], { exitCode: 1, counts: { tests: 1, pass: 0, fail: 1, cancelled: 0 }, failures: ['src/a.test.ts'] }), rec(1, ['b'], { counts: null })], ['a', 'b'], 2);
   assert.equal(out.failed, 2);
   assert.ok(out.lines.some((l) => l.includes('`src/a.test.ts`'))); // @source-text-assertion-ok subject is the generated report
 });

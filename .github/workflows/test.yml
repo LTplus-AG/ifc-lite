@@ -1365,6 +1365,9 @@ jobs:
           # test script: only "2", "3" or "4" change anything; unset or any
           # other value is 1, today's setting (see the `--test-concurrency=1`
           # note above this job). viewer-concurrency-probe.yml measures 2.
+          # Above 1, files interleave in the TAP log, so refresh
+          # test-durations.json only from runs at 1: the attribution in
+          # scripts/lib/viewer-test-durations.mjs assumes serial files.
           VIEWER_TEST_CONCURRENCY: ${{ vars.VIEWER_TEST_CONCURRENCY }}
       - name: Mergify CI Upload
         if: (success() || failure()) && env.HAS_MERGIFY_TOKEN == 'true' && hashFiles('apps/viewer/mergify-junit.xml') != ''

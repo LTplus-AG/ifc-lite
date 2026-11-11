@@ -83,6 +83,41 @@ These are cross-layer scheduling and serializer contracts, beyond a small
 write-site timing change. Preserve byte-format compatibility and measure the
 whole load plus first interaction before accepting a replacement.
 
+## Cold-load scene snapshot (W2, reopen lane, #9728)
+
+**Shipped (pending merge): the first reopen adopts the stored scene.** Until
+W2 only a streamed cache hit captured the finished-scene snapshot. The first
+reopen after a cold load therefore streamed the hit, rebuilt every batch in
+finalize and wrote the snapshot, so only the second reopen drew from it. Now
+the primary cold load arms the same finalize capture. The capture is frozen at
+the swap: no batch keeps the merged arrays it holds, so nothing is cloned and
+later edits cannot change it. Its encode and IndexedDB write are deferred until
+the store reports the load interactive and the page is idle, run in 4 MiB
+slices, and are dropped on a new file. Timed A/B (exclusive, 7 fixtures, 5
+rounds): first-reopen interactive gains of 18-39% on all six cached fixtures
+(Holter 3.67 -> 2.44 s, BWK 2.93 -> 1.94 s). The first reopen is now as fast
+as the snapshot reopen. Cold, native and snapshot-reopen lanes show no
+significant difference, and per-element output is identical. The capture costs
+about 9 ms at the swap on Holter.
+
+Lessons:
+- **Hydration matches pieces by ordinal, and the cache does not keep arrival
+  order.** `groupMeshesIntoChunks` stores meshes in spatial chunks, and a
+  reopen decodes and hydrates them in that order. A snapshot captured from a
+  cold stream (arrival order) was refused on every reopen, which re-uploaded
+  every batch and cleared the snapshot. It still looked like a win in untimed
+  runs, because adoption itself happened. W2 remaps the ordinals at write time
+  (`captureNextFinalize` reports each piece's source mesh;
+  `CacheWriteOptions.onGeometryOrder`; `reorderSnapshotPieces`). Check that
+  the snapshot is still in the entry after a reopen, not just that the reopen
+  adopted it.
+- A cold-written snapshot is not byte-identical to one a first reopen writes,
+  because the merge order differs. Accept it on per-element output identity
+  and on hydration succeeding, not on a byte comparison.
+- What made deferral work here, unlike #9622: a real readiness signal (store
+  not loading or streaming) followed by idle, a sliced encode of data frozen
+  at the swap rather than a later deep clone, and cancellation on supersession.
+
 ## Load scoreboard (`load-scoreboard.mjs`) (#9607)
 
 One table for IFC load time, used to accept or reject load optimisations.
@@ -95,7 +130,7 @@ tools and compiles nothing:
 |---|---|---|---|
 | `native-cold` | fresh `perf_probe --cold --iters 1 --fingerprint` process | file read + whole `process_geometry` (incl. trailing metadata) | process max RSS (`/usr/bin/time`) |
 | `browser-cold` | fresh Chrome, empty profile, first open | see below | separate memory pass: peak sampled PSS sum of the profile's Chrome processes |
-| `browser-warm1` | same browser, first reopen: streams the cache hit and writes the scene snapshot | see below | as cold |
+| `browser-warm1` | same browser, first reopen: adopts the snapshot the cold load wrote (W2, #9728; before it, streamed the hit and wrote the snapshot) | see below | as cold |
 | `browser-warm` | same browser, last of `warmOpens` (default 2) reopens: adopts the scene snapshot | see below | as cold |
 | `browser-cold-early` (#9740) | fresh Chrome, file picked at the first paint after the file input exists (no quiet arming) | as cold, but timed from the pick: the boot-delayed input dispatch counts | not sampled |
 | `boot` (#9740) | fresh Chrome, no file, once per round and side | boot time-to-interactive: end of the last long task before 1 s without one | idle 5 s after navigation: PSS, JS heaps, WebAssembly heaps, GPU |

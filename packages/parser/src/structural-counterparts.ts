@@ -24,7 +24,7 @@ export interface StructuralCounterparts {
    * order.
    */
   side: 'analytical' | 'physical';
-  /** Model-local express ids; never empty. Shared with the read model: do not mutate. */
+  /** Model-local express ids; never empty. Frozen: every lookup shares the cached index. */
   expressIds: readonly number[];
 }
 
@@ -40,13 +40,16 @@ export function structuralCounterparts(data: StructuralExtraction, expressId: nu
   if (!index) {
     index = new Map();
     const analytical = new Map<number, number[]>();
-    for (const item of [...data.members, ...data.connections]) {
-      const physical = item.physicalElementIds;
-      if (!physical?.length) continue;
-      index.set(item.expressId, { side: 'physical', expressIds: physical });
-      for (const elementId of physical) addUnique(analytical, elementId, item.expressId);
+    for (const items of [data.members, data.connections]) {
+      for (const item of items) {
+        const physical = item.physicalElementIds;
+        if (!physical?.length) continue;
+        // A copy: the read model's array is mutable and reaches SDK scripts.
+        index.set(item.expressId, { side: 'physical', expressIds: Object.freeze([...physical]) });
+        for (const elementId of physical) addUnique(analytical, elementId, item.expressId);
+      }
     }
-    for (const [elementId, items] of analytical) index.set(elementId, { side: 'analytical', expressIds: items });
+    for (const [elementId, items] of analytical) index.set(elementId, { side: 'analytical', expressIds: Object.freeze(items) });
     indexes.set(data, index);
   }
   return index.get(expressId) ?? null;

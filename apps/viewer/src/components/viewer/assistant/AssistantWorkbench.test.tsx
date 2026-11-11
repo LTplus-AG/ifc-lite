@@ -69,7 +69,7 @@ test('#6926 the narrow Assistant sheet returns to its source and preserves evide
   replaceEvidence(captureEvidence('clash'));
   const snapshot = useAssistant.getState().snapshot;
   openAssistant('properties');
-  const ui = render(<MobilePanelSheet bottomInset={0} analysisExtension={null} />);
+  const ui = render(<MobilePanelSheet analysisExtension={null} />);
   await waitFor(() => !!ui.querySelector('textarea'), 'Assistant lazy body mounted');
   type(ui.querySelector('textarea')!, 'Explain the captured conflicts');
   const back = [...ui.querySelectorAll('button')].find(button => /Back to Properties/.test(button.textContent ?? ''));

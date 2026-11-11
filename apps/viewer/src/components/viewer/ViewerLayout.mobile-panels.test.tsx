@@ -81,7 +81,7 @@ describe('mobile Panels sheet (#5853)', () => {
   it('#5873 keeps Point Cloud reachable before any scan is loaded', async () => {
     act(() => useViewerStore.getState().setPointCloudAssetCount(0));
     const { MobilePanelLauncher } = await import('./MobilePanelLauncher.js');
-    const container = render(<MobilePanelLauncher bottomInset={0} />);
+    const container = render(<MobilePanelLauncher />);
     openList(container);
     const item = listItem(container, 'pointclouds');
     assert.ok(item, 'the empty Point Cloud panel must remain reachable');
@@ -100,7 +100,7 @@ describe('mobile Panels sheet (#5853)', () => {
     // Mount the real launcher without heavyweight panel bodies: a few panels
     // start remote data requests when their body mounts, which this routing
     // assertion does not need. The tests below mount the full layout.
-    const container = render(<MobilePanelLauncher bottomInset={0} />);
+    const container = render(<MobilePanelLauncher />);
     const expected = expectedRailIds();
     assert.ok(expected.length > 10, `the rail should offer many panels, got ${expected.length}`);
     openList(container);

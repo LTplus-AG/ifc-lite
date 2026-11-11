@@ -97,10 +97,11 @@ const TEST_WORKFLOW_PATH = `.github/workflows/${TEST_WORKFLOW_FILE}`;
  * null when they cannot be listed.
  *
  * @param {(path: string) => string | null} readText the file at the push commit, or null
+ * @param {string} repo `owner/name` of this repository
  * @returns {string[] | null}
  */
-export function testWorkflowFiles(readText) {
-  return workflowFileClosure(TEST_WORKFLOW_PATH, readText);
+export function testWorkflowFiles(readText, repo) {
+  return workflowFileClosure(TEST_WORKFLOW_PATH, repo, readText);
 }
 
 /** Whether a changed path keys a cache that only a push to main writes. */
@@ -210,7 +211,8 @@ function emit(output, key, value) {
 }
 
 function readInputs(repo, pushSha, pushTree, parentSha, before) {
-  const changedFiles = git('diff', '--name-only', `${parentSha}`, pushSha).split('\n').filter(Boolean);
+  // --no-renames: a file moved out of a blocking directory must count on both sides.
+  const changedFiles = git('diff', '--no-renames', '--name-only', `${parentSha}`, pushSha).split('\n').filter(Boolean);
   const pulls = gh(['api', `repos/${repo}/commits/${pushSha}/pulls`, '--method', 'GET'], `the PRs of ${pushSha.slice(0, 9)}`);
   if (!Array.isArray(pulls)) throw new GhError('GH_BAD_SHAPE', 'commits/{sha}/pulls did not return an array');
   const merged = pulls.filter((p) => p?.merge_commit_sha === pushSha);
@@ -238,7 +240,7 @@ function readInputs(repo, pushSha, pushTree, parentSha, before) {
   let workflowFiles = null;
   if (changedFiles.some((f) => ANY_WORKFLOW_FILE.test(f))) {
     // The push commit's side suffices: dropping a reference edits a file still on the list.
-    workflowFiles = testWorkflowFiles((path) => gitShow(pushSha, path));
+    workflowFiles = testWorkflowFiles((path) => gitShow(pushSha, path), repo);
     if (!workflowFiles) console.warn(`[push-replay] the files ${TEST_WORKFLOW_FILE} reads could not be listed at ${pushSha.slice(0, 9)}; every workflow and action file blocks`);
   }
   return { pushSha, pushTree, parentSha, before, changedFiles, pulls, runs, artifactNamesByRun, repo, queueEvidence, laterChangedFiles, workflowFiles };

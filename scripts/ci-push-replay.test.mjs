@@ -178,6 +178,8 @@ test('testWorkflowFiles follows every local reference transitively, however it i
       '      - run: node $GITHUB_WORKSPACE/.github/actions/workspace/x.mjs',
       '      - run: node "${{ github.workspace }}/.github/actions/workspace-expr/x.mjs"',
       '      - run: cp -r some/dir/.github/actions/copied out/',
+      '      - uses: Self-Org/self-repo/.github/workflows/own-remote.yml@main',
+      '      # .github/workflows/retired.yml.disabled is not retired.yml',
     ].join('\n'),
     '.github/workflows/reusable.yml': 'steps:\n  - uses: ./.github/actions/nested',
     '.github/actions/setup-wasm-build/action.yml': 'runs:\n  steps:\n    - uses: ./.github/actions/nested',
@@ -189,8 +191,9 @@ test('testWorkflowFiles follows every local reference transitively, however it i
     '.github/actions/workspace/action.yml': 'runs: {}',
     '.github/actions/workspace-expr/action.yml': 'runs: {}',
     '.github/actions/copied/action.yml': 'runs: {}',
+    '.github/workflows/own-remote.yml': 'jobs: {}',
   };
-  assert.deepEqual(testWorkflowFiles((p) => files[p] ?? null), [
+  assert.deepEqual(testWorkflowFiles((p) => files[p] ?? null, 'self-org/self-repo'), [
     '.github/actions/copied/',
     '.github/actions/flow/',
     '.github/actions/nested/',
@@ -200,6 +203,7 @@ test('testWorkflowFiles follows every local reference transitively, however it i
     '.github/actions/setup-wasm-build/',
     '.github/actions/workspace-expr/',
     '.github/actions/workspace/',
+    '.github/workflows/own-remote.yml',
     '.github/workflows/reusable.yml',
     '.github/workflows/test.yml',
   ]);
@@ -209,6 +213,12 @@ test('testWorkflowFiles returns null on a reference the scan cannot follow', () 
   for (const [where, text] of [
     ['test.yml', '- uses: ./.github/actions/${{ matrix.action }}'],
     ['test.yml', '- run: node .github/workflows/$NAME.mjs'],
+    ['test.yml', '- run: node ".github/actions/"$NAME/x.mjs'],
+    ['test.yml', '- run: cd .github/actions && node a/x.mjs'],
+    ['test.yml', '  working-directory: .github/actions'],
+    ['test.yml', '- run: for f in .github/actions/*/action.yml; do echo $f; done'],
+    ['test.yml', "  key: x-${{ hashFiles('.github/workflows/*.yml') }}"],
+    ['test.yml', "  key: x-${{ hashFiles('.github/ci-config.json') }}"],
     ['action', 'runs:\n  steps:\n    - run: node "$GITHUB_ACTION_PATH/../shared/x.mjs"'],
     ['action', 'runs:\n  steps:\n    - run: node ${{ github.action_path }}/../shared/x.mjs'],
   ]) {
@@ -216,7 +226,7 @@ test('testWorkflowFiles returns null on a reference the scan cannot follow', () 
       '.github/workflows/test.yml': where === 'test.yml' ? text : '- uses: ./.github/actions/a',
       '.github/actions/a/action.yml': where === 'action' ? text : 'runs: {}',
     };
-    assert.equal(testWorkflowFiles((p) => files[p] ?? null), null, text);
+    assert.equal(testWorkflowFiles((p) => files[p] ?? null, 'self-org/self-repo'), null, text);
   }
 });
 
@@ -232,13 +242,13 @@ test('testWorkflowFiles resolves this repository\'s own test.yml', () => {
       throw err;
     }
   };
-  assert.equal(Array.isArray(testWorkflowFiles(read)), true, 'a reference in test.yml or a file it names does not resolve');
+  assert.equal(Array.isArray(testWorkflowFiles(read, 'self-org/self-repo')), true, 'a reference in test.yml or a file it names does not resolve');
 });
 
 test('testWorkflowFiles returns null when test.yml or a file it uses cannot be read', () => {
-  assert.equal(testWorkflowFiles(() => null), null);
+  assert.equal(testWorkflowFiles(() => null, 'self-org/self-repo'), null);
   const files = { '.github/workflows/test.yml': '- uses: ./.github/actions/gone' };
-  assert.equal(testWorkflowFiles((p) => files[p] ?? null), null);
+  assert.equal(testWorkflowFiles((p) => files[p] ?? null, 'self-org/self-repo'), null);
 });
 
 test('the last commit of a batch replays on the batch run that tested its tree', () => {
@@ -428,6 +438,7 @@ test('the probe reads the Test workflow files at the push commit', {
   git('init', '-q');
   write('.github/workflows/test.yml', 'jobs:\n  a:\n    steps:\n      - uses: ./.github/actions/setup\n');
   write('.github/actions/setup/action.yml', 'runs: {}\n');
+  write('.github/actions/setup/helper.sh', 'echo helper\n');
   write('.github/workflows/cla.yml', 'on: push\n');
   git('add', '.');
   git('commit', '-qm', 'base');
@@ -437,8 +448,10 @@ test('the probe reads the Test workflow files at the push commit', {
 
   const replayFor = (changed) => {
     const before = git('rev-parse', 'HEAD');
-    write(changed, `changed ${Math.random()}\n`);
-    git('commit', '-qam', `change ${changed}`);
+    if (typeof changed === 'function') changed();
+    else write(changed, `changed ${Math.random()}\n`);
+    git('add', '-A');
+    git('commit', '-qm', 'change');
     const head = git('rev-parse', 'HEAD');
     const tree = git('rev-parse', 'HEAD^{tree}');
     const merged = { ...base().pulls[0], merge_commit_sha: head };
@@ -464,5 +477,12 @@ test('the probe reads the Test workflow files at the push commit', {
   const full = 'replay=false\nreplay_run=\nreplay_queue=false\n';
   assert.equal(replayFor('.github/workflows/cla.yml'), 'replay=true\nreplay_run=1\nreplay_queue=false\n', 'a workflow test.yml does not read');
   assert.equal(replayFor('.github/actions/setup/action.yml'), full, 'an action test.yml uses');
+  // Rename detection would list only the new path, outside every blocking directory.
+  const moveOut = () => {
+    mkdirSync(join(root, '.github/actions/elsewhere'), { recursive: true });
+    git('mv', '.github/actions/setup/helper.sh', '.github/actions/elsewhere/helper.sh');
+  };
+  assert.equal(replayFor(moveOut), full, 'a file moved out of an action test.yml uses');
+  // Last: it overwrites test.yml, so nothing after it would reach the fixture's action.
   assert.equal(replayFor('.github/workflows/test.yml'), full, 'test.yml itself');
 });

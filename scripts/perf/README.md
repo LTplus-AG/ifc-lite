@@ -6193,3 +6193,30 @@ reopened geometry. Incremental raw creation removed the cold rebuild; skipping
 candidate-key work for an empty staged index brought the warm path within the
 same acceptance gate. Keep both checks: fixing cold scaling alone had left a
 warm-call regression.
+
+## Symbolic spatial keys share the mutation-view binding (#9621)
+
+**Untimed attribution; final scheduling qualification pending.** Historical
+cold and cached diagnostics identified repeated spatial-key work caused by
+different mutation-view bindings in markup restore and viewport overlays. This
+change makes those readers share the binding.
+The default annotation/grid parse still runs. Candidate parsing must start
+while the localStorage hash is pending, as on main; only the restore writes wait
+for its precedence decision. Serialising those operations broke the parse-first
+consumer and is not an acceptable optimisation. This model also still publishes a
+mutation view: the conservative source preflight admits uncertain encoded input,
+so no registration reduction is claimed for it. Provably blank sources avoid the
+restore registration in a separate functional invariant.
+
+The spatial snapshot cache held one binding per store. Restore registered a view
+then read without it, alternating that slot with the viewport's view-bound reads
+and repeatedly copying, sorting and digesting the same maps. Passing the same
+binding removes those alternations; numeric FNV preserves the old digest while
+removing per-character BigInt arithmetic. The source preflight runs outside
+render and never rejects pending overlay edits or uncertain STEP escapes.
+
+Lesson: verify which consumer invalidates a cache, and measure repeated work on
+the actual default path. A conditional restore does not imply that another
+visible overlay stops parsing. Operation-count attribution and digest-equivalence
+tests establish this mechanism; the exclusive load scoreboard remains the
+acceptance source for end-to-end timing.

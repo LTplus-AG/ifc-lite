@@ -8,6 +8,42 @@ Citations to `evidence/`, `tests/evidence/` and `docs/architecture/evidence/` pa
 at commit [`f98785c722`](https://github.com/LTplus-AG/ifc-lite/tree/f98785c722); the retained
 bundles left the tree in #9054.
 
+## Cold finalize assembles streamed batches from their fragments (#9684, #9685)
+
+**Shipped: browser-cold gain on the finalize-bound models.** Every streamed flat mesh was merged,
+lattice-checked (#9068), quantized and uploaded twice: once as a streaming fragment and again when
+`finalizeStreaming` rebuilt its bucket. Yet the fragments of one bucket hold exactly that bucket's meshes, in
+the same order and frame. Finalize now copies the fragments' vertex buffers into the final batch on the GPU
+(`copyBufferToBuffer`) and rebases only the indices. Fragments share one lattice origin per bucket, which
+decodes to the same exact 2^-10 positions. The stream keeps one f32 topology verdict per (mesh, frame); each
+mesh had been scanned four times per load. The regroup keeps buckets no colour change touched. LOD1 clustering
+keys its cells in a typed table instead of a Map of boxed doubles (#9685). Buckets that cannot be proven
+identical take the old rebuild, and the `render.finalize.rebuilt.*` counters name the reason.
+
+Timed A/B (exclusive, 5 rounds, A/A floors): browser-cold Holter +6.8% and BWK +8.6% PASS. `scene.finalize`
+went from 651 to 433 ms on Holter and from 1,584 to 1,239 ms on BWK. No regression in any lane or metric, peak
+memory included. Output was identical in every sample, the settled frames stayed within main's own run-to-run
+pixel spread, and the GPU e2e specs gave the same result on both sides.
+
+Lessons:
+
+- **Diagnose the main thread from the real mesh stream, not a loaded-host trace.** Browser traces at host load
+  23-37 were 8× inflated. A dump of the real meshes, replayed through the real `Scene` with a counting GPU stub,
+  gives load-independent attribution per function, plus a decoded-batch identity oracle against a verbatim
+  copy of main's renderer.
+- **A frame chosen before the shared frame exists makes its fragments useless.** Buckets created in a stream's
+  first append took their first mesh's centre as frame, while finalize rebuilt them in the model's shared
+  frame anyway. Fragments now draw in the shared frame once it exists.
+- **Any in-place edit can stale a fragment's bytes.** A same-key recolour still changes the colour salt in the
+  entity lane, and translate/rotate move positions in place. Two tests failed on the first head before runs
+  recorded salts and dropped on position edits.
+- **First reopen does not move.** A cache hit caps fragments at first paint, so its buckets have nothing to
+  assemble from; W2 (snapshot at the end of the cold load) is that lane's lever. UI quiet is still bound by
+  the post-stream drain (fragment building for the backlog), which this does not remove. Next lever: C5, the
+  workers emitting final-layout quantized records.
+- **What still falls back.** Buckets whose fragments are f32, mostly thin members that fail the #9068 collapse
+  check (skolebygg: 105 of 426). They would need a per-entity collapse verdict carried with each fragment.
+
 ## Deferred viewer cache encoding (NEW-5, #9622)
 
 **Rejected: a short idle timeout does not establish scene readiness.** The

@@ -39,7 +39,7 @@ test('#9668 links: resolve every express id, require IfcElement and fixture Glob
   }
   const good = await run([1]);
   assert.equal(good.status, 'pass', good.reason);
-  assert.equal((await run([1], 'IFCWALL')).status, 'pass', 'a STEP UPPERCASE type name still resolves');
+  assert.equal((await run([1], 'IFCWALL')).status, 'pass', 'either spelling of a type name resolves');
   assert.deepEqual(good.counts, [{ path: 'links.ifc', checked: 1, held: 1 }, { path: 'legacy.ifc', checked: 30, held: 30 }, { path: 'reverse.ifc', checked: 1, held: 1 }]);
   for (const bad of [await run([999]), await run([1], 'IfcProject'), await run([1], 'IfcWall', 'other'), await run([]), await run([1, 999]), await run([1, 4])]) {
     assert.equal(bad.status, 'fail');

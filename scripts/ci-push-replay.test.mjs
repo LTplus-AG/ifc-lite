@@ -124,7 +124,7 @@ test('with the Test workflow\'s files known, those and Cargo still get a full ru
 });
 
 test('a workflow or action the Test workflow does not read does not block a replay', () => {
-  for (const f of ['.github/workflows/cla.yml', '.github/workflows/test.yml.bak', '.github/actions/setup-oci-registries/action.yml', '.github/actions/setup-wasm-buildx/action.yml']) {
+  for (const f of ['.github/workflows/cla.yml', '.github/actions/setup-oci-registries/action.yml', '.github/actions/setup-wasm-buildx/action.yml']) {
     assert.deepEqual(decidePushReplay(base({ changedFiles: [f], workflowFiles: TEST_READS })), { replay: true, runId: 1, pr: 7 }, f);
   }
   const evidence = [{ tree: TREE, runs: [] }, { tree: h('e'), runs: [batchRun()] }];
@@ -136,10 +136,19 @@ test('a workflow or action the Test workflow does not read does not block a repl
 });
 
 test('unknown Test workflow files block every workflow and action file', () => {
-  for (const workflowFiles of [undefined, null]) {
+  // An empty list, or one without test.yml, is not a resolved list.
+  for (const workflowFiles of [undefined, null, [], ['.github/actions/setup-wasm-build/']]) {
     for (const f of ['.github/workflows/cla.yml', '.github/actions/setup-oci-registries/action.yml']) {
       assert.equal(decidePushReplay(base({ changedFiles: [f], workflowFiles })).replay, false, `${f} with ${workflowFiles}`);
     }
+  }
+});
+
+test('a non-YAML file under workflows/ blocks even with the Test workflow files known', () => {
+  for (const f of ['.github/workflows/scripts/key.mjs', '.github/workflows/README.md', '.github/workflows/sub/x.yml', '.github/workflows/test.yml.bak']) {
+    const d = decidePushReplay(base({ changedFiles: [f], workflowFiles: TEST_READS }));
+    assert.equal(d.replay, false, f);
+    assert.ok(d.reason.includes(f), d.reason);
   }
 });
 
@@ -166,6 +175,9 @@ test('testWorkflowFiles follows every local reference transitively, however it i
       "      # filters: '.github/workflows/**' and '.github/actions/**' name no single file",
       '      # a sentence ending in .github/actions/flow. keeps its name',
       '      - uses: some-org/some-repo/.github/workflows/remote.yml@v1',
+      '      - run: node $GITHUB_WORKSPACE/.github/actions/workspace/x.mjs',
+      '      - run: node "${{ github.workspace }}/.github/actions/workspace-expr/x.mjs"',
+      '      - run: cp -r some/dir/.github/actions/copied out/',
     ].join('\n'),
     '.github/workflows/reusable.yml': 'steps:\n  - uses: ./.github/actions/nested',
     '.github/actions/setup-wasm-build/action.yml': 'runs:\n  steps:\n    - uses: ./.github/actions/nested',
@@ -174,20 +186,43 @@ test('testWorkflowFiles follows every local reference transitively, however it i
     '.github/actions/quoted-key/action.yml': 'runs: {}',
     '.github/actions/script-only/action.yml': 'runs: {}',
     '.github/actions/nested/action.yaml': 'runs: {}',
+    '.github/actions/workspace/action.yml': 'runs: {}',
+    '.github/actions/workspace-expr/action.yml': 'runs: {}',
+    '.github/actions/copied/action.yml': 'runs: {}',
   };
   assert.deepEqual(testWorkflowFiles((p) => files[p] ?? null), [
+    '.github/actions/copied/',
     '.github/actions/flow/',
     '.github/actions/nested/',
     '.github/actions/quoted-key/',
     '.github/actions/quoted/',
     '.github/actions/script-only/',
     '.github/actions/setup-wasm-build/',
+    '.github/actions/workspace-expr/',
+    '.github/actions/workspace/',
     '.github/workflows/reusable.yml',
     '.github/workflows/test.yml',
   ]);
 });
 
-// The rule degrades to blocking every workflow file if this ever returns null.
+test('testWorkflowFiles returns null on a reference the scan cannot follow', () => {
+  for (const [where, text] of [
+    ['test.yml', '- uses: ./.github/actions/${{ matrix.action }}'],
+    ['test.yml', '- run: node .github/workflows/$NAME.mjs'],
+    ['action', 'runs:\n  steps:\n    - run: node "$GITHUB_ACTION_PATH/../shared/x.mjs"'],
+    ['action', 'runs:\n  steps:\n    - run: node ${{ github.action_path }}/../shared/x.mjs'],
+  ]) {
+    const files = {
+      '.github/workflows/test.yml': where === 'test.yml' ? text : '- uses: ./.github/actions/a',
+      '.github/actions/a/action.yml': where === 'action' ? text : 'runs: {}',
+    };
+    assert.equal(testWorkflowFiles((p) => files[p] ?? null), null, text);
+  }
+});
+
+// The rule degrades to blocking every workflow file if this ever returns null:
+// it fails when test.yml or a file it reaches gains a reference the scan cannot
+// follow (UNFOLLOWABLE) or names a file that does not exist.
 test('testWorkflowFiles resolves this repository\'s own test.yml', () => {
   const read = (p) => {
     try {

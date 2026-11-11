@@ -68,6 +68,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { gh, GhError } from './lib/gh.mjs';
 import { isBatchBranch } from './ci-pr-lane.mjs';
 import { isMainEntry } from './lib/is-main-entry.mjs';
+import { workflowFileClosure } from './lib/workflow-file-closure.mjs';
 
 export const TREE_ARTIFACT_PREFIX = 'tested-tree-';
 export const TEST_WORKFLOW_FILE = 'test.yml';
@@ -86,47 +87,28 @@ const NO_REPLAY = [
 /** Used when the Test workflow's own files could not be listed: every workflow or action file blocks. */
 const ANY_WORKFLOW_FILE = /^\.github\/(workflows|actions)\//;
 
-// Any mention, not only a block-style `uses:` line: a flow mapping, a quoted
-// key, a `run: node .github/actions/x/y.mjs` and a comment all count. Naming a
-// file Test does not run over-blocks (a path filter names docs.yml); that only
-// costs a full run.
-// Not after `owner/repo/` (a remote `uses:`), and a sentence's full stop is not part of a name.
-const GITHUB_REF = /(?<![\w-]\/)\.github\/(?:actions\/[\w-]+(?:\.[\w-]+)*|workflows\/[\w.-]+\.ya?ml)/g;
+// GitHub runs only top-level workflow YAML. Anything else under workflows/ is a file a
+// step may read, which the scan does not list, so it always blocks.
+const WORKFLOW_YAML = /^\.github\/workflows\/[^/]+\.ya?ml$/;
+const TEST_WORKFLOW_PATH = `.github/workflows/${TEST_WORKFLOW_FILE}`;
 
 /**
- * The `.github/` paths a Test run reads: test.yml and every local action or
- * workflow file it names, transitively. An action is returned as its directory
- * with a trailing `/`, since its scripts ship with it. `readText(path)` returns
- * the file at the push commit, or null when it does not exist. Returns null
- * when test.yml or any file it reaches cannot be read, so the caller blocks
- * every workflow and action file rather than guess.
+ * The `.github/` paths a Test run reads (see lib/workflow-file-closure.mjs), or
+ * null when they cannot be listed.
  *
- * @param {(path: string) => string | null} readText
+ * @param {(path: string) => string | null} readText the file at the push commit, or null
  * @returns {string[] | null}
  */
 export function testWorkflowFiles(readText) {
-  const root = `.github/workflows/${TEST_WORKFLOW_FILE}`;
-  const seen = new Set([root]);
-  const queue = [root];
-  while (queue.length > 0) {
-    const path = queue.shift();
-    const text = path.endsWith('/') ? readText(`${path}action.yml`) ?? readText(`${path}action.yaml`) : readText(path);
-    if (typeof text !== 'string') return null;
-    for (const [ref] of text.matchAll(GITHUB_REF)) {
-      const next = ref.startsWith('.github/actions/') ? `${ref}/` : ref;
-      if (!seen.has(next)) {
-        seen.add(next);
-        queue.push(next);
-      }
-    }
-  }
-  return [...seen].sort();
+  return workflowFileClosure(TEST_WORKFLOW_PATH, readText);
 }
 
 /** Whether a changed path keys a cache that only a push to main writes. */
 function keysMainCaches(file, workflowFiles) {
   if (NO_REPLAY.some((re) => re.test(file))) return true;
-  if (!Array.isArray(workflowFiles)) return ANY_WORKFLOW_FILE.test(file);
+  if (file.startsWith('.github/workflows/') && !WORKFLOW_YAML.test(file)) return true;
+  // A list without test.yml is not a result testWorkflowFiles gives; trust none of it.
+  if (!Array.isArray(workflowFiles) || !workflowFiles.includes(TEST_WORKFLOW_PATH)) return ANY_WORKFLOW_FILE.test(file);
   return workflowFiles.some((p) => (p.endsWith('/') ? file.startsWith(p) : file === p));
 }
 

@@ -56,5 +56,5 @@ export const modelWorkspaceEn = {
   'modelWorkspace.layout.plan': 'Plan',
   'modelWorkspace.layout.split': 'Split',
   'modelWorkspace.layout.3d': '3D',
-  'modelWorkspace.hint.onboarding': 'W wall · Shift+S slab · click an element to edit it · E leaves',
+  'modelWorkspace.hint.onboarding': 'W wall · Shift+S slab · click an element to edit it · M leaves',
 } as const satisfies Record<string, TranslationValue>;

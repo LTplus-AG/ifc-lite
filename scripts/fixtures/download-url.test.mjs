@@ -75,3 +75,12 @@ test('URL policy rejects noncanonical aliases before selecting either source (#8
     assert.throws(() => fixtureDownloadUrl(BASE_URL, entry), /canonical relative POSIX path/);
   }
 });
+
+test('an upstream IFC file fetches its commit-pinned blob, never the release', () => {
+  const entry = {
+    path: 'structural/models/frame.ifc',
+    sha256: SHA256,
+    upstream_file: { blob_url: `https://github.com/example/models/blob/${COMMIT}/ifc/frame.ifc`, commit: COMMIT },
+  };
+  assert.equal(fixtureDownloadUrl(BASE_URL, entry), `https://raw.githubusercontent.com/example/models/${COMMIT}/ifc/frame.ifc`);
+});

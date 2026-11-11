@@ -1,7 +1,6 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-
 /**
  * @ifc-lite/parser - Main parser interface
  * Supports both IFC4 (STEP) and IFC5 (IFCX/JSON) formats
@@ -398,3 +397,4 @@ export async function parseAuto(
 }
 
 export { findSourceProjectLengthUnit, normalizeMapUnitName } from './source-project-length-unit.js';
+export { WASM_SOURCE_BYTE_LIMIT, WasmSourceSizeError, assertWasmSourceSize } from './wasm-source-limit.js';

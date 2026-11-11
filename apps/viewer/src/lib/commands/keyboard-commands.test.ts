@@ -75,6 +75,19 @@ describe('keyboard command table (#5836)', () => {
     }
   });
 
+  // #9296: the workspace's tool layer wins over `global`, so a global chord it
+  // also claims stops working inside Model (Measure on Shift+M did).
+  it('no global command is shadowed inside the Model workspace (#9296)', () => {
+    const model = new Map(KEY_COMMANDS.filter((c) => c.when === 'workspace.model')
+      .flatMap((c) => c.keys.map((chord) => [chordIdentity(chord), c.id] as const)));
+    const shadowed = KEY_COMMANDS.filter((c) => c.when === 'global')
+      .flatMap((c) => c.keys.flatMap((chord) => {
+        const owner = model.get(chordIdentity(chord));
+        return owner ? [`${formatChord(chord, false)}: ${c.id} under ${owner}`] : [];
+      }));
+    assert.deepEqual(shadowed, []);
+  });
+
   it('command ids are unique', () => {
     const ids = KEY_COMMANDS.map((c) => c.id);
     assert.equal(new Set(ids).size, ids.length);

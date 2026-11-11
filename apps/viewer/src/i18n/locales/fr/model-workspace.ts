@@ -51,5 +51,5 @@ export const modelWorkspaceFr = {
   "modelWorkspace.layout.plan": "Plan",
   "modelWorkspace.layout.split": "Vue partagée",
   "modelWorkspace.layout.3d": "3D",
-  "modelWorkspace.hint.onboarding": "W mur · Maj+S dalle · cliquer sur un élément pour le modifier · E pour quitter",
+  "modelWorkspace.hint.onboarding": "W mur · Maj+S dalle · cliquer sur un élément pour le modifier · M pour quitter",
 } satisfies Catalogue;

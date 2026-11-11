@@ -805,7 +805,7 @@ The viewer surfaces store-level edits through the following controls — see [Vi
   - **Raw STEP tab** in the properties panel — inline pen-icon editor on every positional argument. Edited rows show a purple dot; the editor parses the same STEP literal conventions as `setPositionalAttribute`. The tab also opens for overlay-only entities (freshly added or duplicated) so newly-created walls / columns / spaces are immediately inspectable, even before export.
   - **Right-click → Delete entity** — calls `removeEntity`, surfaces a toast with undo support.
   - **Right-click on a storey → Add Column here…** — opens the Add Column dialog, calls `addColumn` on submit, and selects the new column in the 3D scene.
-  - **Model workspace** (Author ribbon → Model, or `E`). A tool rail with one command per kind: Wall, Slab (also roof and plate), Column, Beam (also member), Room, Opening, Door, Window, Stair, Railing, Curtain wall, Grid; plus Split, Move, Rotate, Copy / Array and the inspector's type, material and size fields. Storey-workplane placement tools use snapping, a live ghost and typed bar values. Hosted Door/Window tools are wall-relative. Split, Move, Rotate, Copy / Array and inspector edits use their own interaction flows. The **Room** command's **Auto** runs the wall-graph face finder on the storey (or every storey), and its Edit, Footprint and leak-check modes reshape the rooms.
+  - **Model workspace** (ribbon tab row → Model, or `M`). A tool rail with one command per kind: Wall, Slab (also roof and plate), Column, Beam (also member), Room, Opening, Door, Window, Stair, Railing, Curtain wall, Grid; plus Split, Move, Rotate, Copy / Array and the inspector's type, material and size fields. Storey-workplane placement tools use snapping, a live ghost and typed bar values. Hosted Door/Window tools are wall-relative. Split, Move, Rotate, Copy / Array and inspector edits use their own interaction flows. The **Room** command's **Auto** runs the wall-graph face finder on the storey (or every storey), and its Edit, Footprint and leak-check modes reshape the rooms.
 
 All paths route through the same `mutationSlice` actions that wrap `StoreEditor`, so undo/redo (`Ctrl+Z` / `Ctrl+Shift+Z`) covers store-level edits identically to property edits. Each commit also injects a renderer-frame mesh into the geometry pipeline so the new element appears in 3D the moment the action fires — no export+reparse round-trip required.
 
@@ -1300,3 +1300,19 @@ including hosted cuts, rather than uncut parametric bounding boxes.
 The wall endpoint index also follows public raw `addEntity` creation. Incomplete
 forward-reference graphs and intervening geometry edits invalidate it; ordinary
 wall creation then reads the completed effective graph.
+Mirror upright local products with `bim.store.mirrorElements(modelId, ids,
+{ axis: [[0, 0], [0, 10]], copy: true })`. The axis uses storey-local IFC XY
+metres; omit `copy` to edit in place. Hosted openings and fillings travel with
+their host. The reflected representation retains its handedness and door
+operation names swap left and right. Shared door styles (IFC2X3) and types
+are cloned for the mirrored doors, preserving unselected users. Grids are
+refused atomically. In-place selections must include both
+sides of any wall join; shared placements, shape aspects and additional
+representation owners (such as presentation layers) are refused before writing.
+
+`bim.store.addClassification(modelId, { System: 'Uniclass 2015',
+Identification: 'EF_25_10', Name: 'Walls', objects: ids })` returns a classification
+reference, reusing a system of the same name and edition. An omitted edition
+only matches a system without an edition. Assign more objects
+with `bim.store.assignClassification(modelId, reference.expressId, ids)`.
+An object can retain several classifications.

@@ -44,6 +44,13 @@ function dist(files: Record<string, string>): string {
  * That is why the gate uses builder names, or text only one builder writes.
  */
 const BUILDER_CODE: Record<string, string> = {
+  addStructuralPlanarActionToStore: 'return S(t,`addStructuralPlanarActionToStore`),D(e,t,n,`IfcStructuralPlanarAction`)',
+  addStructuralSurfaceActionToStore: 'return S(t,`addStructuralSurfaceActionToStore`,!0),D(e,t,n,`IfcStructuralSurfaceAction`)',
+  addStructuralPointReactionToStore: 'let r=`addStructuralPointReactionToStore`;S(t,r)',
+  addStructuralCurveReactionToStore: 'let r=`addStructuralCurveReactionToStore`;S(t,r,!0)',
+  addStructuralSurfaceReactionToStore: 'let r=`addStructuralSurfaceReactionToStore`;S(t,r,!0)',
+  addStructuralResultGroupToStore: 'let a=`addStructuralResultGroupToStore`;S(n,a)',
+
   addStructuralAnalysisModelToStore: 'throw Error(`addStructuralAnalysisModelToStore: ObjectType is required when PredefinedType is USERDEFINED`)',
   addStructuralCurveMemberToStore: 'throw Error(`addStructuralCurveMemberToStore: ObjectType is required when PredefinedType is USERDEFINED`);throw Error(`addStructuralCurveMemberToStore: Start and End must be distinct points`)',
   addStructuralPointConnectionToStore: `throw Error(\`addStructuralPointConnectionToStore: \${k} must be a finite spring stiffness\`)`,

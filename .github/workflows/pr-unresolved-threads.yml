@@ -27,12 +27,6 @@ on:
 permissions:
   pull-requests: write
 
-# One run per PR at a time, and a burst of reviews collapses to the newest
-# pending run, which reads the threads as they are when it starts. A fork PR's
-# `workflow_run` carries no PR number, so it falls back to the head SHA.
-concurrency:
-  group: pr-unresolved-threads-${{ github.event.pull_request.number || github.event.workflow_run.pull_requests[0].number || github.event.workflow_run.head_sha }}
-
 jobs:
   notify:
     # A Mergify batch PR is closed within minutes and carries no review threads.
@@ -42,6 +36,12 @@ jobs:
       !startsWith(github.event.workflow_run.head_branch, 'mergify/merge-queue/'))
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    # One notice per PR at a time, so two finishing runs cannot post it twice, and
+    # a burst of reviews collapses to the newest pending job, which reads the
+    # threads as they are when it starts. Keyed on the PR number where the event
+    # carries one; a fork PR's `workflow_run` does not, so it falls back to the SHA.
+    concurrency:
+      group: pr-unresolved-threads-${{ github.event.pull_request.number || github.event.workflow_run.pull_requests[0].number || github.event.workflow_run.head_sha }}
     steps:
       - name: Post the open threads
         env:

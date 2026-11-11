@@ -11,7 +11,7 @@
  *
  * And where an open panel sits (PR B): a non-modal pane beside the model on a
  * phone on its side and on a near-tablet, with the model still taking input;
- * in a fold (Viewport Segments emulated over CDP) the viewport fills one
+ * in a fold (a CDP device-metrics display feature) the viewport fills one
  * segment exactly and nothing interactive sits on the hinge.
  */
 
@@ -301,7 +301,10 @@ for (const fold of [
 
     test(`#9718 the viewport fills one segment, controls and panels the other, nothing on the hinge (${fold.name})`, async ({ page }, testInfo) => {
       const cdp = await page.context().newCDPSession(page);
-      await cdp.send('Emulation.setDisplayFeaturesOverride', { features: [fold.feature] });
+      // The hinge goes through the device metrics override, as in the Flex Mode test above
+      // (setDisplayFeaturesOverride alone leaves one segment in Chrome 153 and Chromium 156).
+      const metrics = { width: fold.width, height: fold.height, deviceScaleFactor: 2.625, mobile: true };
+      await cdp.send('Emulation.setDeviceMetricsOverride', { ...metrics, displayFeature: fold.feature });
       // Device Posture (Chrome 132+): the classifier keys on the segments, but a folded posture is what a device reports with them.
       const posture = await cdp.send('Emulation.setDevicePostureOverride', { posture: { type: 'folded' } }).then(() => 'set', (e: Error) => `unsupported: ${e.message}`);
       testInfo.annotations.push({ type: 'device-posture', description: posture });
@@ -332,7 +335,7 @@ for (const fold of [
       await attachShot(page, testInfo, `fold-${fold.feature.orientation}-${fold.width}x${fold.height}-panel`);
 
       // Unfold live: the panel stays open, now in the unfolded host.
-      await cdp.send('Emulation.clearDisplayFeaturesOverride');
+      await cdp.send('Emulation.setDeviceMetricsOverride', metrics);
       await page.evaluate(() => window.dispatchEvent(new Event('resize')));
       await expect(page.locator('[data-mobile-shell]')).not.toHaveAttribute('data-mobile-panel-host', 'segment');
       expect(await withStore(page, (store) => store.getState().leftPanelCollapsed), 'unfolding kept the panel open').toBe(false);

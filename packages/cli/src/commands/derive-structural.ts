@@ -84,7 +84,7 @@ export async function deriveStructuralCommand(args: string[]): Promise<void> {
     `${c.supports} support(s) (${c.guessedSupports} guessed)\n`,
   );
   if (c.assumedLoadBearing) process.stderr.write(`${c.assumedLoadBearing} element(s) had no LoadBearing value and were assumed load-bearing\n`);
-  if (report.unconnectedEnds.length) process.stderr.write(`${report.unconnectedEnds.length} member end(s) touch a member or surface they are not connected to\n`);
+  if (report.unconnectedEnds.length) process.stderr.write(`${report.unconnectedEnds.length} node(s) touch a member or surface they are not connected to\n`);
   for (const s of report.skipped) process.stderr.write(`skipped #${s.elementId} ${s.type}${s.name ? ` "${s.name}"` : ''}: ${s.reason} (${s.detail})\n`);
   if (!writes) process.stderr.write(dryRun ? 'Dry run: nothing written\n' : 'Nothing to derive: nothing written\n');
 }

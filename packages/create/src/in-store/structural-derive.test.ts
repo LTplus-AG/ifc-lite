@@ -230,25 +230,32 @@ DATA;
 #72=IFCPRODUCTDEFINITIONSHAPE($,$,(#71));
 #73=IFCBEAM('0beamDifference0000000',$,'Difference',$,$,#20,#72,$,$);
 #81=IFCCARTESIANPOINT((0.,0.,0.));
-#82=IFCCARTESIANPOINT((10.,0.,0.));
-#83=IFCCARTESIANPOINT((5.,0.,0.));
-#84=IFCPOLYLINE((#81,#82,#83));
+#82=IFCCARTESIANPOINT((8.,0.,0.));
+#83=IFCCARTESIANPOINT((2.,0.,0.));
+#88=IFCCARTESIANPOINT((10.,0.,0.));
+#84=IFCPOLYLINE((#81,#82,#83,#88));
 #85=IFCSHAPEREPRESENTATION(#7,'Axis','Curve3D',(#84));
 #86=IFCPRODUCTDEFINITIONSHAPE($,$,(#85));
 #87=IFCBEAM('0beamBacktrack00000000',$,'Backtracking axis',$,$,#20,#86,$,$);
 #90=IFCCARTESIANPOINTLIST2D(((0.,0.),(4.,4.),(4.,0.),(0.,4.)));
 #91=IFCINDEXEDPOLYCURVE(#90,(IFCLINEINDEX((1,3,2,4,1))),.F.);
+#97=IFCINDEXEDPOLYCURVE(#90,(IFCLINEINDEX((1,3)),IFCARCINDEX((3,2,4))),.F.);
+#98=IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,$,#97);
+#99=IFCEXTRUDEDAREASOLID(#98,#43,#44,0.2);
+#100=IFCSHAPEREPRESENTATION(#7,'Body','SweptSolid',(#99));
+#101=IFCPRODUCTDEFINITIONSHAPE($,$,(#100));
+#102=IFCSLAB('0slabArcSegments000000',$,'Arc segments',$,$,#20,#101,$,.FLOOR.);
 #92=IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,$,#91);
 #93=IFCEXTRUDEDAREASOLID(#92,#43,#44,0.2);
 #94=IFCSHAPEREPRESENTATION(#7,'Body','SweptSolid',(#93));
 #95=IFCPRODUCTDEFINITIONSHAPE($,$,(#94));
 #96=IFCSLAB('0slabSegments000000000',$,'Indexed segments',$,$,#20,#95,$,.FLOOR.);
-#80=IFCRELCONTAINEDINSPATIALSTRUCTURE('0contain00000000000000',$,$,$,(#52,#63,#73,#87,#96),#30);
+#80=IFCRELCONTAINEDINSPATIALSTRUCTURE('0contain00000000000000',$,$,$,(#52,#63,#73,#87,#96,#102),#30);
 ENDSEC;
 END-ISO-10303-21;`;
 
 describe('derive structural analysis model: reading shapes and containment (#9668)', () => {
-  it('reads an unnamed Body and a difference; refuses a union, a backtracking Axis and indexed segments; places a session column on its storey', async () => {
+  it('reads an unnamed Body and a difference; refuses a union, a backtracking Axis and arc segments; follows line-index segments; places a session column on its storey', async () => {
     const store = await parse(SHAPES);
     const editor = session(store);
     const { columnId } = addColumnToStore(editor, resolveSpatialAnchor(store, 32, editor.getMutationView()), { Position: [0, 0, 0], Width: 0.3, Depth: 0.3, Height: 3 });
@@ -257,10 +264,13 @@ describe('derive structural analysis model: reading shapes and containment (#966
     expect(fact(52).prism).toBeDefined();
     expect(fact(73).prism).toBeDefined();
     expect(fact(63).shapeIssue).toMatch(/IFCBOOLEANRESULT/);
-    // An Axis polyline that turns back past its end is not a straight axis.
+    // An Axis polyline that turns back, even inside its span, is not a straight axis.
     expect(fact(87).axis).toBeUndefined();
-    // Explicit IfcLineIndex segments set the outline order; they are refused, not read in point-list order.
-    expect(fact(96).shapeIssue).toMatch(/explicit segments/);
+    // Explicit IfcLineIndex segments set the outline order: a square, where the point list alone is a bowtie
+    // that the surface builder's checks refuse.
+    expect(fact(96).prism?.outline).toHaveLength(4);
+    expect(planStructuralDerivation(facts).surfaceMembers.map((m) => m.elementId)).toContain(96);
+    expect(fact(102).shapeIssue).toMatch(/arc segments/);
     expect(fact(columnId).storeyId).toBe(32);
     expect(facts.defaultStoreyId).toBe(30);
   });

@@ -59,12 +59,14 @@ function readAxis(reader: GeometryEntityReader, rep: Entity | undefined): [Vec3,
   const span = vecLen(sub(b, a));
   if (!(span > 0)) return null;
   const d = scale(sub(b, a), 1 / span);
-  // Every point on the segment between the ends: no bend, no backtracking past either end.
+  // Every point on the line, moving forward from start to end: no bend and no backtracking.
   const eps = span * 1e-6;
+  let previous = -eps;
   for (const p of points) {
     const r = sub(p!, a);
     const along = dot(r, d);
-    if (vecLen(sub(r, scale(d, along))) > eps || along < -eps || along > span + eps) return null;
+    if (vecLen(sub(r, scale(d, along))) > eps || along < previous - eps || along > span + eps) return null;
+    previous = along;
   }
   return [a, b];
 }
@@ -115,6 +117,26 @@ function compositePoints(reader: GeometryEntityReader, composite: Entity): Flat[
   return points.length > 0 ? points : null;
 }
 
+/**
+ * The point order explicit `IfcIndexedPolyCurve.Segments` set: `IfcLineIndex`
+ * runs joined end to start (1-based indices), or null when Segments is absent
+ * and the point list is the order. Arc segments are refused.
+ */
+function segmentOrder(segments: unknown, count: number): number[] | null | string {
+  if (segments === null || segments === undefined) return null;
+  const order: number[] = [];
+  for (const segment of Array.isArray(segments) ? segments : []) {
+    // Source records carry [TYPE, value]; session-authored ones { typed: { type, value } }.
+    const typed = Array.isArray(segment) ? { type: segment[0], value: segment[1] }
+      : (segment as { typed?: { type?: unknown; value?: unknown } } | null)?.typed;
+    if (typeof typed?.type !== 'string' || typed.type.toUpperCase() !== 'IFCLINEINDEX') return 'profile has arc segments';
+    const indices = Array.isArray(typed.value) ? typed.value : [];
+    if (indices.length < 2 || indices.some((i) => !Number.isInteger(i) || i < 1 || i > count)) return 'profile segment indices are unreadable';
+    for (const i of indices as number[]) if (order[order.length - 1] !== i - 1) order.push(i - 1);
+  }
+  return order.length > 0 ? order : 'profile segment indices are unreadable';
+}
+
 /** Parameterised profiles: their [width, depth] bounds, and whether those bounds are the outline. */
 const PARAMETERISED: Record<string, (a: readonly unknown[]) => { size: [unknown, unknown]; exact: boolean }> = {
   IFCRECTANGLEPROFILEDEF: (a) => ({ size: [a[3], a[4]], exact: true }),
@@ -142,11 +164,12 @@ function profileOutline(reader: GeometryEntityReader, profile: Entity | null): {
     } else if (upper(curve) === 'IFCCOMPOSITECURVE') {
       points = compositePoints(reader, curve!);
     } else if (upper(curve) === 'IFCINDEXEDPOLYCURVE') {
-      // Explicit Segments set the curve's point order; reading them is not supported, so refuse rather than guess.
-      if (curve!.attributes[1] != null) return 'profile curve IFCINDEXEDPOLYCURVE has explicit segments';
       const list = reader.entity(refId(curve!.attributes[0]) ?? 0);
       const coords = upper(list) === 'IFCCARTESIANPOINTLIST2D' && Array.isArray(list!.attributes[0]) ? list!.attributes[0] as unknown[] : [];
-      points = coords.every((c) => Array.isArray(c) && num(c[0]) !== null && num(c[1]) !== null) ? coords.map((c) => [(c as number[])[0], (c as number[])[1]]) : null;
+      const all = coords.every((c) => Array.isArray(c) && num(c[0]) !== null && num(c[1]) !== null) ? coords.map((c): Flat => [(c as number[])[0], (c as number[])[1]]) : null;
+      const order = segmentOrder(curve!.attributes[1], all?.length ?? 0);
+      if (typeof order === 'string') return order;
+      points = all && (order ? order.map((i) => all[i]) : all);
     }
     if (!points || points.length < 3) return `profile curve ${curve?.type ?? 'unreadable'} is not a polyline`;
     const [first, last] = [points[0], points[points.length - 1]];

@@ -50,9 +50,11 @@
  * Nodes. Every curve member end is a node. Ends within `tolerance` (metres,
  * default 0.05) of each other merge into one node at their mean, and member
  * ends move onto it. The merge is transitive: a chain of ends, each within
- * the tolerance of the next, becomes one node. A member whose two ends merge is skipped. An end that
- * lands on another member's interior, or on a surface member, is NOT
- * connected (that would need meshing); it is listed in the report. Surface
+ * the tolerance of the next, becomes one node. A member whose two ends merge
+ * is skipped. A node on another member's interior is NOT connected to it
+ * (that would need meshing); it is listed in the report, whether one end or a
+ * junction of several lands there. A single free end resting on a surface
+ * member is listed the same way; a junction inside a slab is not. Surface
  * members get no connections.
  *
  * Supports. A node inside a footing or pile's body bounds (grown by `tolerance`)
@@ -68,13 +70,14 @@
  *
  * Idempotence. An element that already has a structural counterpart is
  * skipped ('already-idealised'), so a second run plans nothing. Apply refuses
- * a plan with nothing to write, a plan whose elements or footings were deleted
- * or idealised since it was made, and any plan for a model that already has a
- * derived analysis model (`derivedModelId`): a later run would otherwise write
- * a second model that does not connect to the first. Apply does not compare
- * geometry with the plan: a caller that holds a plan across edits plans again
- * (the SDK and CLI plan and apply in one call; the viewer review refuses after
- * any edit). Nothing is replaced or removed.
+ * a plan with nothing to write, a plan whose members' elements were deleted or
+ * idealised or whose footings were deleted since it was made, and any plan for
+ * a model that already has a derived analysis model (`derivedModelId`): a later
+ * run would otherwise write a second model that does not connect to the first.
+ * Apply does not compare geometry with the plan, so a caller that holds a plan
+ * across edits plans again (the SDK and CLI plan and apply in one call). Apply
+ * is not atomic by itself: callers run it inside their own transaction
+ * (`StoreEditor.runAtomic`). Nothing is replaced or removed.
  */
 
 export type { Vec3 } from './host-geometry-frame.js';

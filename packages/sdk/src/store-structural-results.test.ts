@@ -62,24 +62,24 @@ describe('SDK structural activities and results (#9668)', () => {
     expect(data.resultGroups[0]).toMatchObject({ resultForLoadGroupGlobalId: data.loadGroups[0].globalId, activityGlobalIds: data.activities.slice(2).map(a => a.globalId) });
     expect(reactions.every(r => r.modelId === 'model')).toBe(true);
   });
-  it.each(['IFC2X3', 'IFC4', 'IFC4X3'])('refuses an unknown store schema even when its source is %s (#9764, discussion_r4542889436)', async schema => {
-    const store = await new IfcParser().parseColumnar(new TextEncoder().encode(MODEL.replace('IFC2X3', schema)).buffer, { disableWorkerScan: true });
-    expect(store.schemaVersion).toBe(schema);
-    // Valid parsed stores always have this required field. Model an untyped host losing that metadata.
+  it('preserves the IFC4 fallback for undefined store schema (#9764, discussion_r4543272228)', async () => {
+    const parser = new IfcParser();
+    const store = await parser.parseColumnar(new TextEncoder().encode(MODEL.replace('IFC2X3', 'IFC4')).buffer, { disableWorkerScan: true });
     Reflect.deleteProperty(store, 'schemaVersion');
     const mutationView = new MutablePropertyView(null, 'model');
     const editor = new StoreEditor(store, mutationView);
     const api = createStructuralStoreBackend(() => ({ modelId: 'model', store, editor, mutationView, ownerHistoryId: 4 }));
-    const calls = [
-      () => api.addStructuralPointAction('model', { ForceZ: 1 }),
-      () => api.addStructuralSurfaceAction('model', { AppliedLoad: { Type: 'IfcStructuralLoadPlanarForce', PlanarForceZ: 1 } }),
-      () => api.addStructuralCurveReaction('model', { AppliedLoad: { LinearForceZ: 1 } }),
-      () => api.addStructuralSurfaceReaction('model', { AppliedLoad: { PlanarForceZ: 1 } }),
-    ];
-    for (const call of calls) {
-      expect(call).toThrow("store has no schemaVersion");
-      expect(mutationView.getNewEntities()).toHaveLength(0);
-    }
+    api.addStructuralPointAction('model', { ForceZ: 1 });
+    api.addStructuralSurfaceAction('model', { AppliedLoad: { Type: 'IfcStructuralLoadPlanarForce', PlanarForceZ: 1 } });
+    api.addStructuralCurveReaction('model', { AppliedLoad: { LinearForceZ: 1 } });
+    api.addStructuralSurfaceReaction('model', { AppliedLoad: { PlanarForceZ: 1 } });
+    const exported = new StepExporter(store, mutationView).export({ schema: 'IFC4', applyMutations: true });
+    const bytes = exported.content instanceof Uint8Array ? exported.content.buffer as ArrayBuffer : new TextEncoder().encode(exported.content).buffer;
+    const parsed = await parser.parseColumnar(bytes, { disableWorkerScan: true });
+    expect(parsed.schemaVersion).toBe('IFC4');
+    expect(extractStructuralOnDemand(parsed).activities.map(a => a.type)).toEqual([
+      'IfcStructuralPointAction', 'IfcStructuralSurfaceAction', 'IfcStructuralCurveReaction', 'IfcStructuralSurfaceReaction',
+    ]);
   });
 
   it('names each absent optional backend method', () => {

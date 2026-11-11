@@ -259,3 +259,11 @@ export {
 export { readGroupEvidenceInStore, readGroupCreateEvidenceInStore, type GroupNativeEvidence, type GroupCreateEvidence } from './group-evidence.js';
 
 export { refreshTopAttachmentsInStore } from './top-attachment-refresh.js';
+export { addClassificationInStore, assignClassificationInStore, type ClassificationInStoreParams } from './classification.js';
+export { mirrorElementsInStore, type MirrorElementsParams } from './element-mirror.js';
+
+export { addStructuralSurfaceMemberToStore, type StructuralSurfaceMemberInStoreParams, type StructuralSurfaceMemberBuildResult, type StructuralSurfaceMemberType } from './structural-surface-member.js';
+
+export { addStructuralCurveConnectionToStore, type StructuralCurveConnectionInStoreParams, type StructuralCurveConnectionBuildResult, type StructuralBoundaryEdgeConditionParams } from './structural-curve-connection.js';
+
+export { addStructuralSurfaceConnectionToStore, type StructuralSurfaceConnectionInStoreParams, type StructuralSurfaceConnectionBuildResult, type StructuralBoundaryFaceConditionParams } from './structural-surface-connection.js';

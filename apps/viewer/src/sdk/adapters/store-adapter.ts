@@ -32,12 +32,12 @@ import type {
   EntityRef,
   StoreBackendMethods,
 } from '@ifc-lite/sdk';
-import { createCostStoreBackend, createModellingStoreBackendWithoutStoreys, createOrdinaryStoreBackend, createStructuralStoreBackend, resolveLiveOwnerHistoryId } from '@ifc-lite/sdk';
+import { createCostStoreBackend, createModellingStoreBackendWithoutStoreys, createOrdinaryStoreBackend, resolveLiveOwnerHistoryId } from '@ifc-lite/sdk';
 import type { StoreApi } from './types.js';
 import { getModelForRef, LEGACY_MODEL_ID } from './model-compat.js';
 import { createCostAdapter } from './cost-adapter.js';
 import { withCostMutationTracking } from './store-adapter-cost.js';
-import { withStructuralMutationTracking } from './store-adapter-structural.js';
+import { structuralMutationTracking } from './store-adapter-structural.js';
 import { withModellingMutationTracking } from './store-adapter-modelling.js';
 import { roofMutationTracking } from './store-adapter-roof.js';
 import { createTrackedGroupBackend } from './store-adapter-group.js';
@@ -368,8 +368,9 @@ export function createStoreAdapter(store: StoreApi): StoreBackendMethods {
     // entity authored through either surface is visible to the other, and the
     // same collab gate + room mirroring — spreading the factory raw would let
     // a read-only participant mutate the local overlay and would leave the
-    // authored entities unpublished in a shared room.
-    ...withStructuralMutationTracking(createStructuralStoreBackend(resolveStoreModel), store, resolveEditorAndStore),
+    // authored entities unpublished in a shared room. The builders load in
+    // their own chunk, started here (#9668).
+    ...structuralMutationTracking(store, resolveStoreModel, resolveEditorAndStore),
     // Openings and hosted doors/windows (#6232): same resolver, gate and room
     // mirroring; see `store-adapter-modelling.ts` for the undo policy.
     // Storey methods come from `storeyMutationTracking`, loaded on first use (#9200).

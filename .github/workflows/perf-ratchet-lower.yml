@@ -129,7 +129,13 @@ jobs:
           workspaces: ". -> target/phase-markers"
 
       - name: Install valgrind
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends valgrind
+        # Retried: a package mirror outage is not a verdict on the change.
+        run: |
+          for attempt in 1 2 3; do
+            sudo apt-get update && sudo apt-get install -y --no-install-recommends valgrind && exit 0
+            sleep $((attempt * 15))
+          done
+          exit 1
 
       # Restore-only: test.yml on main saves this exact tree. The fetch below
       # then re-hashes every file and downloads only what is missing, so a

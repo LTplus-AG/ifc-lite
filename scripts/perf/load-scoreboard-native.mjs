@@ -75,7 +75,9 @@ export async function nativeSample({ side, fixture, timeoutMs = 60 * 60 * 1000 }
     firstGeometryMs: null,
     interactiveMs: row.fullLoadWallMs,
     stageMs: stages,
-    fingerprint: `meshes=${row.meshes} vertices=${row.vertices} triangles=${row.triangles} fnv=${(row.meshFingerprintsFnv1a64 ?? []).join(',')}`,
+    // Counts alone do not identify output: without the probe's mesh hash there is no identity (null = unverifiable).
+    fingerprint: (row.meshFingerprintsFnv1a64 ?? []).length
+      ? `meshes=${row.meshes} vertices=${row.vertices} triangles=${row.triangles} fnv=${row.meshFingerprintsFnv1a64.join(',')}` : null,
     probe: row,
   };
 }

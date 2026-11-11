@@ -16,7 +16,7 @@
  */
 
 import { parsePerfFlagUrlValue } from '../../packages/data/src/perf-flag-reader.ts';
-import { warmPrepFailure } from './load-scoreboard-stats.mjs';
+import { entryStabilityFailure, warmPrepFailure } from './load-scoreboard-stats.mjs';
 
 /** The viewer's `snapshotsEnabled()` for a page URL query (with or without the leading `?`). */
 export function sceneSnapshotsEnabled(query = '') {
@@ -37,8 +37,16 @@ export function expectSceneSnapshot({ query, files, cached }) {
  * snapshot-reopen sample: a snapshot wait that rejects (60 s timeout) returns
  * `failure`, and the caller records the open as failed instead of measuring it.
  * `waitSnapshot` is only called when a snapshot is expected and `open > 1`.
+ * Before the first reopen the stored cache entry must have stopped changing,
+ * so a scene snapshot written at the end of the cold load is there or not,
+ * never racing the reopen: `waitEntryStable` (load-scoreboard-lanes.mjs
+ * waitCacheEntryStable, or `{ skipped }` for an uncached tier) is required for
+ * open 1, and a missing, unreadable or unsettled result fails that open.
  */
-export async function prepareWarmOpen({ open, cacheWriteSettled, snapshotExpected, waitSnapshot }) {
+export async function prepareWarmOpen({ open, cacheWriteSettled, snapshotExpected, waitSnapshot, waitEntryStable }) {
   const snapshotWritten = open > 1 && snapshotExpected ? await waitSnapshot().then(() => true, () => false) : undefined;
-  return { snapshotWritten, failure: warmPrepFailure({ open, cacheWriteSettled, snapshotExpected, snapshotWritten }) };
+  const failure = warmPrepFailure({ open, cacheWriteSettled, snapshotExpected, snapshotWritten });
+  if (failure || open !== 1) return { snapshotWritten, failure };
+  const entry = typeof waitEntryStable === 'function' ? await waitEntryStable().catch((e) => ({ error: String(e?.message ?? e) })) : undefined;
+  return { snapshotWritten, entry, failure: entryStabilityFailure(entry) };
 }

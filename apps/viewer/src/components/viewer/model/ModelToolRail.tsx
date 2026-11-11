@@ -149,10 +149,14 @@ export function ModelToolRail() {
   );
 }
 
-/** Show / hide the plan beside 3D (M2.4); off, with the reason, while the split has no room for it. */
+/**
+ * Show / hide the plan beside 3D (M2.4). An expanded sidebar folds to make
+ * room (#9296); off, with the reason, only when even that cannot help.
+ */
 function PlanToggle() {
   const { t } = useTranslation();
   const pick = useViewerStore((s) => s.modelLayout);
+  const sidebarExpanded = useViewerStore((s) => s.sidebarMode === 'expanded');
   const setModelLayout = useViewerStore((s) => s.setModelLayout);
   const width = useSplitWidth();
   const shown = effectiveModelLayout(pick, width) !== '3d';
@@ -162,7 +166,7 @@ function PlanToggle() {
       labelKey={shown ? 'modelWorkspace.plan.hide' : 'modelWorkspace.plan.show'}
       Icon={shown ? PanelLeftClose : PanelLeftOpen}
       active={shown}
-      disabledReason={shown || splitFits(width) ? null : t('modelWorkspace.plan.noRoom')}
+      disabledReason={shown || splitFits(width) || sidebarExpanded ? null : t('modelWorkspace.plan.noRoom')}
       onClick={() => setModelLayout(shown ? '3d' : 'split')}
     />
   );

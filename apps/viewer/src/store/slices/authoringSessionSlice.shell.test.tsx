@@ -49,6 +49,22 @@ describe('Model workspace sidebar hand-over (#6232 M2.1)', () => {
     assert.equal(useViewerStore.getState().sidebarActivePanel, 'changes');
   });
 
+  it('restores sidebar mode after Split makes room beside a different panel (#9296)', async () => {
+    const { publishSplitWidth } = await import('@/components/viewer/model/model-layout');
+    const state = () => useViewerStore.getState();
+    state().setSidebarMode('expanded');
+    state().enterModelWorkspace();
+    state().showWorkspacePanel('bcf');
+    publishSplitWidth(700);
+    try {
+      state().setModelLayout('split');
+      assert.equal(state().sidebarMode, 'collapsed');
+      state().exitModelWorkspace();
+      assert.equal(state().sidebarActivePanel, 'bcf', 'the chosen panel stays');
+      assert.equal(state().sidebarMode, 'expanded', 'the pre-workspace mode returns');
+    } finally { publishSplitWidth(0); }
+  });
+
   it("a panel the user opened meanwhile stays: their choice wins", () => {
     useViewerStore.getState().enterModelWorkspace();
     useViewerStore.getState().showWorkspacePanel('bcf');

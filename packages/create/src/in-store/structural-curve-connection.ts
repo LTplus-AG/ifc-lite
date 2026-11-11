@@ -3,11 +3,10 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { StoreEditor } from '@ifc-lite/mutations';
-import { assertFinitePoint3, vecCross, vecDot, vecLen, vecNorm } from '../ifc-creator-math.js';
+import { assertFinitePoint3, vecCross, vecLen, vecNorm } from '../ifc-creator-math.js';
 import type { Point3D } from '../types.js';
 import { toNativePoint3, type SpatialAnchor } from './anchor.js';
 import { emitLocalPlacement, ownerHistoryRef, productGuid } from './_emit-helpers.js';
-import { linearProfileFrame } from './linear-profile-frame.js';
 import { assertStructuralBuilderSchema, structuralStiffness } from './_structural-stiffness.js';
 
 export interface StructuralBoundaryEdgeConditionParams {
@@ -69,7 +68,17 @@ export function addStructuralCurveConnectionToStore(
   const stiffness = [bc?.TranslationalStiffnessByLengthX, bc?.TranslationalStiffnessByLengthY, bc?.TranslationalStiffnessByLengthZ,
     bc?.RotationalStiffnessByLengthX, bc?.RotationalStiffnessByLengthY, bc?.RotationalStiffnessByLengthZ]
     .map((v, i) => structuralStiffness(anchor, v, i < 3 ? 'IfcModulusOfLinearSubgradeReactionMeasure' : 'IfcModulusOfRotationalSubgradeReactionMeasure'));
-  const frame = linearProfileFrame(toNativePoint3(anchor, params.Start), toNativePoint3(anchor, params.End));
+  // The frame rule is linearProfileFrame's, kept local: this builder loads lazily
+  // (#9668), and sharing that module with the eager beam builders would carve it
+  // into its own startup chunk.
+  const start = toNativePoint3(anchor, params.Start), end = toNativePoint3(anchor, params.End);
+  const delta: Point3D = [end[0] - start[0], end[1] - start[1], end[2] - start[2]];
+  const length = Math.hypot(...delta);
+  if (!(length > 0)) throw new Error('addStructuralCurveConnectionToStore: Start and End must be distinct points');
+  const along = vecNorm(delta);
+  const u = vecNorm(vecCross(Math.abs(along[2]) < 0.9 ? [0, 0, 1] : [1, 0, 0], along));
+  const frame = { origin: start, u, v: vecCross(along, u), along, length };
+  const dot = (a: Point3D, b: Point3D) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
   // The axis defines the connection's local z, so it must not run along the
   // edge. IFC reads it in the placement frame (Z along the edge, X = frame.u).
   const world: Point3D = given ?? (Math.abs(frame.along[2]) > 0.999 ? [1, 0, 0] : [0, 0, 1]);
@@ -78,7 +87,7 @@ export function addStructuralCurveConnectionToStore(
   if (!(world.length === 3 && vecLen(vecCross(world, frame.along)) > 1e-3 * vecLen(world))) {
     throw new Error('addStructuralCurveConnectionToStore: Axis must be nonzero and not parallel to the edge');
   }
-  const axis = vecNorm([vecDot(frame.u, world), vecDot(frame.v, world), vecDot(frame.along, world)]);
+  const axis = vecNorm([dot(frame.u, world), dot(frame.v, world), dot(frame.along, world)]);
   const globalId = productGuid(params, anchor.guidRandom); // validated before anything is written
 
   const placementId = emitLocalPlacement(editor, anchor.storeyPlacementId, frame.origin, frame.along, frame.u);

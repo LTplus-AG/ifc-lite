@@ -304,23 +304,24 @@ export class StoreNamespace extends StoreGroupNamespace {
 
   /** Add an IfcStructuralSurfaceMember anchored to a storey. Throws when the backend does not implement it. */
   addStructuralSurfaceMember(modelId: string, storeyExpressId: number, params: StructuralSurfaceMemberInStoreParams): EntityRef {
-    const method = this.backend.store.addStructuralSurfaceMember;
-    if (!method) throw new Error('bim.store.addStructuralSurfaceMember: not available on this backend');
-    return method.call(this.backend.store, modelId, storeyExpressId, params);
+    return this.optionalStructuralWrite('addStructuralSurfaceMember')(modelId, storeyExpressId, params);
   }
 
   /** Add an IfcStructuralCurveConnection anchored to a storey. Throws when the backend does not implement it. */
   addStructuralCurveConnection(modelId: string, storeyExpressId: number, params: StructuralCurveConnectionInStoreParams): EntityRef {
-    const method = this.backend.store.addStructuralCurveConnection;
-    if (!method) throw new Error('bim.store.addStructuralCurveConnection: not available on this backend');
-    return method.call(this.backend.store, modelId, storeyExpressId, params);
+    return this.optionalStructuralWrite('addStructuralCurveConnection')(modelId, storeyExpressId, params);
   }
 
   /** Add an IfcStructuralSurfaceConnection anchored to a storey. Throws when the backend does not implement it. */
   addStructuralSurfaceConnection(modelId: string, storeyExpressId: number, params: StructuralSurfaceConnectionInStoreParams): EntityRef {
-    const method = this.backend.store.addStructuralSurfaceConnection;
-    if (!method) throw new Error('bim.store.addStructuralSurfaceConnection: not available on this backend');
-    return method.call(this.backend.store, modelId, storeyExpressId, params);
+    return this.optionalStructuralWrite('addStructuralSurfaceConnection')(modelId, storeyExpressId, params);
+  }
+
+  /** One lookup and refusal for the three optional structural writes; the namespace ships in the viewer's startup bundle. */
+  private optionalStructuralWrite<K extends 'addStructuralSurfaceMember' | 'addStructuralCurveConnection' | 'addStructuralSurfaceConnection'>(name: K): NonNullable<StoreBackendMethods[K]> {
+    const method = this.backend.store[name];
+    if (!method) throw new Error(`bim.store.${name}: not available on this backend`);
+    return method.bind(this.backend.store) as NonNullable<StoreBackendMethods[K]>;
   }
 
   /**

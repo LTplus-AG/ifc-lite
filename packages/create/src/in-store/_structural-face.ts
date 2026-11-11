@@ -4,7 +4,7 @@
 
 import type { StoreEditor } from '@ifc-lite/mutations';
 import type { Point3D } from '../types.js';
-import { vecCross, vecDot, vecLen, vecNorm } from '../ifc-creator-math.js';
+import { vecCross, vecLen, vecNorm } from '../ifc-creator-math.js';
 import { toNativePoint3, type SpatialAnchor } from './anchor.js';
 import { emitLocalPlacement } from './_emit-helpers.js';
 
@@ -52,7 +52,7 @@ export function prepareStructuralFace(points: readonly Point3D[]) {
   }, [0, 0, 0]);
   if (vecLen(areaVector) <= tolerance * scale) throw new Error('Structural Face: degenerate boundary (collinear points or zero area)');
   const axis = vecNorm(areaVector);
-  const offsets = relative.map(p => vecDot(p, axis));
+  const offsets = relative.map(p => p[0] * axis[0] + p[1] * axis[1] + p[2] * axis[2]);
   if (offsets.some(d => Math.abs(d) > tolerance)) throw new Error('Structural Face: boundary points must be coplanar');
   // Snap onto the plane, so the written loop lies exactly on the IfcPlane.
   const planar = relative.map((p, i) => p.map((v, k) => v - offsets[i] * axis[k]) as Point3D);

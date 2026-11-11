@@ -59,19 +59,23 @@ export function validateLoad(builder: string, load: unknown, fields: readonly st
   }
 }
 
-export function emitActivity(editor: StoreEditor, anchor: ActivityAnchor, params: ActivityParams,
-  type: string, loadType: string, load: object, fields: readonly string[], tail: (string | boolean | null)[]): ActivityResult {
+type ActivityWriter = (attributes: Parameters<StoreEditor['addEntity']>[1]) => number;
+
+/** Share validation and attribute layout; builders keep literal entity writes for schema tooling. */
+export function emitActivity(anchor: ActivityAnchor, params: ActivityParams,
+  type: string, load: object, fields: readonly string[], tail: (string | boolean | null)[],
+  write: { load: ActivityWriter; activity: ActivityWriter }): ActivityResult {
   const builder = `add${type.slice(3)}ToStore`;
   assertEnum(builder, 'GlobalOrLocal', params.GlobalOrLocal, ['GLOBAL_COORDS', 'LOCAL_COORDS']);
   const globalId = productGuid(params, anchor.guidRandom);
-  const loadId = editor.addEntity(loadType, [Reflect.get(load, 'Name') ?? null,
+  const loadId = write.load([Reflect.get(load, 'Name') ?? null,
     ...fields.map(field => {
       const value: number | undefined = Reflect.get(load, field);
       // All supported load components are REAL, including renamed IFC2X3 temperature slots.
       return value === undefined ? null : { real: value };
-    })]).expressId;
-  const activityId = editor.addEntity(type, [globalId, ownerHistoryRef(anchor.ownerHistoryId),
+    })]);
+  const activityId = write.activity([globalId, ownerHistoryRef(anchor.ownerHistoryId),
     params.Name ?? type.slice('IfcStructural'.length).replace(/([a-z])([A-Z])/g, '$1 $2'), params.Description ?? null, params.ObjectType ?? null, null, null,
-    `#${loadId}`, `.${params.GlobalOrLocal ?? 'GLOBAL_COORDS'}.`, ...tail]).expressId;
+    `#${loadId}`, `.${params.GlobalOrLocal ?? 'GLOBAL_COORDS'}.`, ...tail]);
   return { activityId, loadId };
 }

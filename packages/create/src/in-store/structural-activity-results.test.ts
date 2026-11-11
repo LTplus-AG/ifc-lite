@@ -238,6 +238,16 @@ describe.each(['IFC2X3', 'IFC4', 'IFC4X3'])('%s runtime activity validation (#97
     }
   });
 
+  it('names missing or non-array ReactionIds before writing (#9764 delta review)', async () => {
+    const { editor, anchor } = await fresh(schema);
+    for (const ReactionIds of [undefined, null, {}, 1, 'reactions']) {
+      expect(() => Reflect.apply(addStructuralResultGroupToStore, undefined, [editor, anchor, {
+        TheoryType: 'FIRST_ORDER_THEORY', IsLinear: true, ResultForLoadGroup: 1, ReactionIds,
+      }])).toThrow('addStructuralResultGroupToStore: supply a positive ResultForLoadGroup and non-empty distinct ReactionIds');
+      expect(editor.getMutationView().getNewEntities()).toHaveLength(0);
+    }
+  });
+
   it('rejects invalid result group TheoryType and IsLinear before writing', async () => {
     const { editor, anchor } = await fresh(schema);
     for (const [field, value, allowed] of [

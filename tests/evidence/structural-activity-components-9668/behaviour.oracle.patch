@@ -1,11 +1,11 @@
 --- a/packages/create/src/in-store/_structural-activity.ts
 +++ b/packages/create/src/in-store/_structural-activity.ts
-@@ -61,7 +61,7 @@
+@@ -72,7 +72,7 @@
      ...fields.map(field => {
        const value: number | undefined = Reflect.get(load, field);
        // All supported load components are REAL, including renamed IFC2X3 temperature slots.
 -      return value === undefined ? null : { real: 0 };
 +      return value === undefined ? null : { real: value };
-     })]).expressId;
-   const activityId = editor.addEntity(type, [globalId, ownerHistoryRef(anchor.ownerHistoryId),
+     })]);
+   const activityId = write.activity([globalId, ownerHistoryRef(anchor.ownerHistoryId),
      params.Name ?? type.slice('IfcStructural'.length).replace(/([a-z])([A-Z])/g, '$1 $2'), params.Description ?? null, params.ObjectType ?? null, null, null,

@@ -47,7 +47,14 @@ function surfaceAction(editor: StoreEditor, anchor: ActivityAnchor, params: Stru
     throw new Error(`${builder}: PROJECTED_LENGTH requires GLOBAL_COORDS`);
   }
   const projected = `.${params.ProjectedOrTrue ?? 'TRUE_LENGTH'}.`;
-  return emitActivity(editor, anchor, params, type, params.AppliedLoad.Type, params.AppliedLoad, fields,
+  return emitActivity(anchor, params, type, params.AppliedLoad, fields,
     anchor.schema === 'IFC2X3' ? [params.DestabilizingLoad ?? false, null, projected]
-      : [params.DestabilizingLoad ?? null, projected, '.CONST.']);
+      : [params.DestabilizingLoad ?? null, projected, '.CONST.'], {
+      load: attrs => params.AppliedLoad.Type === 'IfcStructuralLoadPlanarForce'
+        ? editor.addEntity('IfcStructuralLoadPlanarForce', attrs).expressId
+        : editor.addEntity('IfcStructuralLoadTemperature', attrs).expressId,
+      activity: attrs => type === 'IfcStructuralPlanarAction'
+        ? editor.addEntity('IfcStructuralPlanarAction', attrs).expressId
+        : editor.addEntity('IfcStructuralSurfaceAction', attrs).expressId,
+    });
 }

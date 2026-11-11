@@ -32,19 +32,30 @@ export function addStructuralPointReactionToStore(editor: StoreEditor, anchor: A
     : params.AppliedLoad.Type === 'IfcStructuralLoadSingleDisplacement' ? ['DisplacementX', 'DisplacementY', 'DisplacementZ', 'RotationalDisplacementRX', 'RotationalDisplacementRY', 'RotationalDisplacementRZ'] : null;
   if (!fields) throw new Error(`${builder}: unsupported AppliedLoad.Type`);
   validateLoad(builder, params.AppliedLoad, fields);
-  return emitActivity(editor, anchor, params, 'IfcStructuralPointReaction', params.AppliedLoad.Type, params.AppliedLoad, fields, []);
+  return emitActivity(anchor, params, 'IfcStructuralPointReaction', params.AppliedLoad, fields, [], {
+    load: attrs => params.AppliedLoad.Type === 'IfcStructuralLoadSingleForce'
+      ? editor.addEntity('IfcStructuralLoadSingleForce', attrs).expressId
+      : editor.addEntity('IfcStructuralLoadSingleDisplacement', attrs).expressId,
+    activity: attrs => editor.addEntity('IfcStructuralPointReaction', attrs).expressId,
+  });
 }
 export function addStructuralCurveReactionToStore(editor: StoreEditor, anchor: ActivityAnchor, params: StructuralCurveReactionInStoreParams): StructuralReactionBuildResult {
   const builder = 'addStructuralCurveReactionToStore';
   assertActivitySchema(anchor, builder, true);
   const fields = ['LinearForceX', 'LinearForceY', 'LinearForceZ', 'LinearMomentX', 'LinearMomentY', 'LinearMomentZ'];
   validateLoad(builder, params.AppliedLoad, fields);
-  return emitActivity(editor, anchor, params, 'IfcStructuralCurveReaction', 'IfcStructuralLoadLinearForce', params.AppliedLoad, fields, ['.CONST.']);
+  return emitActivity(anchor, params, 'IfcStructuralCurveReaction', params.AppliedLoad, fields, ['.CONST.'], {
+    load: attrs => editor.addEntity('IfcStructuralLoadLinearForce', attrs).expressId,
+    activity: attrs => editor.addEntity('IfcStructuralCurveReaction', attrs).expressId,
+  });
 }
 export function addStructuralSurfaceReactionToStore(editor: StoreEditor, anchor: ActivityAnchor, params: StructuralSurfaceReactionInStoreParams): StructuralReactionBuildResult {
   const builder = 'addStructuralSurfaceReactionToStore';
   assertActivitySchema(anchor, builder, true);
   const fields = ['PlanarForceX', 'PlanarForceY', 'PlanarForceZ'];
   validateLoad(builder, params.AppliedLoad, fields);
-  return emitActivity(editor, anchor, params, 'IfcStructuralSurfaceReaction', 'IfcStructuralLoadPlanarForce', params.AppliedLoad, fields, ['.CONST.']);
+  return emitActivity(anchor, params, 'IfcStructuralSurfaceReaction', params.AppliedLoad, fields, ['.CONST.'], {
+    load: attrs => editor.addEntity('IfcStructuralLoadPlanarForce', attrs).expressId,
+    activity: attrs => editor.addEntity('IfcStructuralSurfaceReaction', attrs).expressId,
+  });
 }

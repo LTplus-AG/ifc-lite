@@ -3,6 +3,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { IfcParser, extractStructuralOnDemand } from '@ifc-lite/parser';
 import { StepExporter } from '@ifc-lite/export';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
@@ -59,6 +62,25 @@ describe('SDK structural activities and results (#9668)', () => {
     expect(data.resultGroups[0]).toMatchObject({ resultForLoadGroupGlobalId: data.loadGroups[0].globalId, activityGlobalIds: data.activities.slice(2).map(a => a.globalId) });
     expect(reactions.every(r => r.modelId === 'model')).toBe(true);
   });
+  it.each(['IFC2X3', 'IFC4', 'IFC4X3'])('refuses an unknown store schema even when its source is %s (#9764, discussion_r4542889436)', async schema => {
+    const store = await new IfcParser().parseColumnar(new TextEncoder().encode(MODEL.replace('IFC2X3', schema)).buffer, { disableWorkerScan: true });
+    expect(store.schemaVersion).toBe(schema);
+    // Valid parsed stores always have this required field. Model an untyped host losing that metadata.
+    Reflect.deleteProperty(store, 'schemaVersion');
+    const mutationView = new MutablePropertyView(null, 'model');
+    const editor = new StoreEditor(store, mutationView);
+    const api = createStructuralStoreBackend(() => ({ modelId: 'model', store, editor, mutationView, ownerHistoryId: 4 }));
+    const calls = [
+      () => api.addStructuralSurfaceAction('model', { AppliedLoad: { Type: 'IfcStructuralLoadPlanarForce', PlanarForceZ: 1 } }),
+      () => api.addStructuralCurveReaction('model', { AppliedLoad: { LinearForceZ: 1 } }),
+      () => api.addStructuralSurfaceReaction('model', { AppliedLoad: { PlanarForceZ: 1 } }),
+    ];
+    for (const call of calls) {
+      expect(call).toThrow("schema 'undefined' is not supported; use IFC4 or IFC4X3");
+      expect(mutationView.getNewEntities()).toHaveLength(0);
+    }
+  });
+
   it('names each absent optional backend method', () => {
     const api = new StoreNamespace({ store: {} } as unknown as BimBackend);
     const load = { Type: 'IfcStructuralLoadPlanarForce' as const, PlanarForceZ: 1 };
@@ -69,4 +91,24 @@ describe('SDK structural activities and results (#9668)', () => {
     expect(() => api.addStructuralSurfaceReaction('m', { AppliedLoad: {} })).toThrow('bim.store.addStructuralSurfaceReaction: not available on this backend');
     expect(() => api.addStructuralResultGroup('m', { TheoryType: 'FIRST_ORDER_THEORY', ResultForLoadGroup: 1, IsLinear: true, ReactionIds: [2] })).toThrow('bim.store.addStructuralResultGroup: not available on this backend');
   });
+});
+
+// The generated Markdown is the output contract under review, not a source-code assertion.
+it('general coverage ledger credits the structural builders (#9764, discussion_r4542889559)', () => {
+  const root = new URL('../../../', import.meta.url);
+  expect(() => execFileSync(process.execPath, [fileURLToPath(new URL('scripts/generate-coverage-ledger.mjs', root)), '--check'], {
+    cwd: fileURLToPath(root), stdio: 'pipe',
+  })).not.toThrow();
+  const ledger = readFileSync(new URL('docs/architecture/coverage-ledger.md', root), 'utf8');
+  for (const schema of ['IFC2X3', 'IFC4', 'IFC4X3']) {
+    const section = ledger.split(`## ${schema}\n`)[1]?.split('\n## ')[0] ?? '';
+    const types = ['IfcStructuralPlanarAction', 'IfcStructuralPointReaction', 'IfcStructuralResultGroup',
+      'IfcStructuralLoadPlanarForce', 'IfcStructuralLoadSingleDisplacement', 'IfcStructuralLoadTemperature',
+      ...(schema === 'IFC2X3' ? [] : ['IfcStructuralSurfaceAction', 'IfcStructuralCurveReaction', 'IfcStructuralSurfaceReaction'])];
+    for (const type of types) {
+      // @source-text-assertion-ok generated Markdown output contract, not implementation source
+      const row = section.split('\n').find(line => line.startsWith(`| ${type} |`));
+      expect(row?.split('|')[6].trim(), `${schema}/${type} Creatable`).toBe('✅');
+    }
+  }
 });

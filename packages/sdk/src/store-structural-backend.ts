@@ -76,7 +76,7 @@ const SUPPORTED_STRUCTURAL_SCHEMAS: ReadonlySet<string> = new Set(['IFC4', 'IFC4
 
 function assertStructuralSchema(resolved: CostStoreModelResolution): void {
   const raw = resolved.store.schemaVersion;
-  if (raw !== undefined && !SUPPORTED_STRUCTURAL_SCHEMAS.has(raw)) {
+  if (!SUPPORTED_STRUCTURAL_SCHEMAS.has(raw)) {
     throw new Error(
       `bim.store structural authoring: schema '${raw}' is not supported; use IFC4 or IFC4X3.`,
     );
@@ -92,7 +92,7 @@ function groupAnchor(resolved: CostStoreModelResolution) {
   return {
     ownerHistoryId: resolved.ownerHistoryId,
     guidRandom: undefined,
-    schema: resolved.store.schemaVersion as 'IFC4' | 'IFC4X3' | undefined,
+    schema: resolved.store.schemaVersion as 'IFC4' | 'IFC4X3',
   };
 }
 

@@ -27,7 +27,7 @@ export function addStructuralResultGroupToStore(editor: StoreEditor, anchor: Act
   assertBoolean(builder, 'IsLinear', params.IsLinear, false);
   if (params.TheoryType === 'USERDEFINED' && !params.ObjectType) throw new Error(`${builder}: USERDEFINED requires ObjectType`);
   if (!Number.isSafeInteger(params.ResultForLoadGroup) || params.ResultForLoadGroup <= 0
-    || params.ReactionIds.length === 0 || params.ReactionIds.some(id => !Number.isSafeInteger(id) || id <= 0)
+    || !Array.isArray(params.ReactionIds) || params.ReactionIds.length === 0 || params.ReactionIds.some(id => !Number.isSafeInteger(id) || id <= 0)
     || new Set(params.ReactionIds).size !== params.ReactionIds.length) {
     throw new Error(`${builder}: supply a positive ResultForLoadGroup and non-empty distinct ReactionIds`);
   }

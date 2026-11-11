@@ -96,7 +96,8 @@ test.describe('Flip main on its side 960x412', () => {
     const insets = { top: 0, left: 59, right: 59, bottom: 21 };
     const cdp = await page.context().newCDPSession(page);
     await cdp.send('Emulation.setSafeAreaInsetsOverride', { insets });
-    await openViewer(page);
+    // With a model: the Home/zoom pill mounts with the 3D viewport, not on the empty start screen.
+    await openViewer(page, true);
     expect(await page.evaluate(() => {
       const probe = document.createElement('div');
       probe.style.paddingRight = 'env(safe-area-inset-right)';
@@ -106,6 +107,7 @@ test.describe('Flip main on its side 960x412', () => {
       return value;
     }), 'the inset override reaches CSS').toBe(`${insets.right}px`);
     await expect(page.locator('[data-command-placement="side-rail"]')).toBeVisible({ timeout: 60_000 });
+    await expect(page.locator('[data-mobile-nav-pill]')).toBeVisible({ timeout: 180_000 });
     const layout = await commandLayout(page);
     expect(new Set(layout.buttons.map((b) => Math.round(b.left))).size, 'one column').toBe(1);
     expect(layout.barScrollsY).toBe(false);
@@ -168,8 +170,12 @@ test.describe('Flip in Flex Mode (half folded, tabletop) 412x960', () => {
   test('#9718 two viewport segments classify as a tabletop fold, and unfolding restores the phone layout', async ({ page }, testInfo) => {
     const cdp = await page.context().newCDPSession(page);
     // A horizontal hinge across the middle: the Viewport Segments API then reports two stacked segments.
-    await cdp.send('Emulation.setDisplayFeaturesOverride', { features: [{ orientation: 'horizontal', offset: 470, maskLength: 20 }] });
+    // Chrome applies a display feature through the device metrics override (setDisplayFeaturesOverride
+    // alone leaves one segment), so the metrics Playwright set are restated here with the hinge.
+    const metrics = { width: 412, height: 960, deviceScaleFactor: 2.625, mobile: true };
+    await cdp.send('Emulation.setDeviceMetricsOverride', { ...metrics, displayFeature: { orientation: 'horizontal', offset: 470, maskLength: 20 } });
     await openViewer(page);
+    expect(await page.evaluate(() => (window as Window & { viewport?: { segments: unknown[] | null } }).viewport?.segments?.length ?? 0), 'the browser reports two segments').toBe(2);
     await expect(page.locator('[data-command-surface="mobile"]')).toBeVisible({ timeout: 60_000 });
     const formFactor = () => page.evaluate(() => {
       const store = (globalThis as unknown as { __ifc_lite_viewer_store__: { getState(): { formFactor: { mode: string; fold?: { orientation: string } } } } }).__ifc_lite_viewer_store__;
@@ -178,7 +184,7 @@ test.describe('Flip in Flex Mode (half folded, tabletop) 412x960', () => {
     });
     await expect.poll(formFactor).toEqual({ mode: 'folded', fold: 'tabletop' });
     await attachShot(page, testInfo, 'flip-flex-mode-412x960');
-    await cdp.send('Emulation.clearDisplayFeaturesOverride');
+    await cdp.send('Emulation.setDeviceMetricsOverride', metrics);
     // Unfolding fires resize in a real browser; the override alone may not.
     await page.evaluate(() => window.dispatchEvent(new Event('resize')));
     await expect.poll(formFactor).toEqual({ mode: 'phone-portrait', fold: null });

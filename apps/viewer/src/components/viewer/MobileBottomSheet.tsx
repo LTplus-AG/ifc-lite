@@ -74,8 +74,19 @@ export function MobileBottomSheet({
 
   const SPRING = 'height 220ms cubic-bezier(0.2, 0, 0, 1)';
 
+  // The snap the sheet rests at. A resize (keyboard, URL bar, a fold, a
+  // form-factor change) re-applies THIS snap at the new size rather than
+  // resetting to the default, so an expanded sheet stays expanded while typing.
+  const snapRef = useRef<'default' | 'expanded'>('default');
+
+  // Snap heights are shares of the area the sheet lives in (the mobile
+  // viewport, which already stops above the command bar and the iOS URL bar
+  // overlay), not of the window: on a 360x400 cover screen the window
+  // includes the bar, so a window share left the model under half the view
+  // and let the expanded sheet push its handle out of the area (#9718).
   const getSnapPoints = useCallback(() => {
-    const h = window.visualViewport?.height ?? window.innerHeight;
+    const area = sheetRef.current?.parentElement;
+    const h = area?.clientHeight || (window.visualViewport?.height ?? window.innerHeight);
     return {
       collapsed: 0,
       defaultH: Math.round(h * defaultFraction),
@@ -120,12 +131,14 @@ export function MobileBottomSheet({
 
     // Velocity-driven decisions take precedence over position.
     if (upwardVelocity > 0.5) {
+      snapRef.current = 'expanded';
       snapTo(expanded);
       return;
     }
     if (upwardVelocity < -0.5) {
       // Downward flick: from expanded → default, from default → dismiss.
       if (dragRef.current.startHeight >= expanded - 8) {
+        snapRef.current = 'default';
         snapTo(defaultH);
       } else {
         snapTo(collapsed);
@@ -146,14 +159,25 @@ export function MobileBottomSheet({
     }
     snapTo(closest.h);
     if (closest.state === 'collapsed') window.setTimeout(onClose, 200);
+    else snapRef.current = closest.state;
   }, [getSnapPoints, onClose]);
 
-  // Initial height = default snap. Recompute when viewport changes (URL bar collapses).
+  // Opens at the default snap; afterwards every resize of the area re-applies
+  // the snap it rests at, at the area's new size, so it never outgrows it.
   useEffect(() => {
     const sheet = sheetRef.current;
     if (!sheet) return;
-    const { defaultH } = getSnapPoints();
-    sheet.style.height = `${defaultH}px`;
+    const apply = () => {
+      if (dragRef.current.active) return;
+      const { defaultH, expanded } = getSnapPoints();
+      sheet.style.height = `${snapRef.current === 'expanded' ? expanded : defaultH}px`;
+    };
+    apply();
+    const area = sheet.parentElement;
+    if (!area || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(apply);
+    observer.observe(area);
+    return () => observer.disconnect();
   }, [getSnapPoints]);
 
   return (

@@ -1,13 +1,13 @@
 diff --git a/apps/viewer/src/components/viewer/assistant/StructuralGraphReview.tsx b/apps/viewer/src/components/viewer/assistant/StructuralGraphReview.tsx
-index 3e2449fc11..f8411da84e 100644
+index 6207f4f4e8..0d892e9f8e 100644
 --- a/apps/viewer/src/components/viewer/assistant/StructuralGraphReview.tsx
 +++ b/apps/viewer/src/components/viewer/assistant/StructuralGraphReview.tsx
-@@ -39,7 +39,7 @@ export function StructuralGraphReview({ proposal, origin }: { proposal: Structur
-   }, [proposal]);
-   // The structural builders load in their own chunk (#9668): wait for it, never refuse while it loads.
-   // The selection is read when the chunk has loaded, so a box changed while it loads is not lost.
--  const prepare = () => void Promise.resolve().then(() => {
-+  const prepare = () => void loadStructuralWrites().then(() => {
-     // Dropped if the panel unmounted or now shows another proposal.
-     if (!owner.current.mounted || owner.current.proposal !== proposal) return;
-     const next = prepareStructuralReview(useViewerStore, proposal, owner.current.selection);
+@@ -95,7 +95,7 @@ export function StructuralGraphReview({ proposal, origin }: { proposal: Structur
+       </li>)}
+     </ul>
+     {!receipt && <label className="flex items-center gap-2"><input type="checkbox" checked={acknowledged} onChange={event => setAcknowledged(event.target.checked)} />{t('structuralReview.acknowledgement')}</label>}
+-    {!receipt && <Button size="sm" variant="outline" disabled={!approved.size} onClick={() => prepare()}>{t('structuralReview.prepare')}</Button>}
++    {!receipt && <Button size="sm" variant="outline" disabled={!approved.size || writes === 'loading'} onClick={() => writes === 'ready' ? prepare() : loadWrites()}>{t('structuralReview.prepare')}</Button>}
+     {review && <>
+       <output className="block">{t('structuralReview.population', { records: review.snapshot.records.length,
+         created: delta.filter(row => !row.before).length, modified: delta.filter(row => row.before && row.after).length, deleted: delta.filter(row => !row.after).length })}</output>

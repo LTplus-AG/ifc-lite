@@ -10,15 +10,29 @@
  *
  * Everything read back from the page is a count, a name or a size: never a
  * mesh array, a store map or an IndexedDB value.
+ *
+ * Two readiness conditions keep this deterministic on a software GPU (CI's
+ * SwiftShader), where the product is slow but correct:
+ * - The viewport, and with it quantized-batch admission, starts with the first
+ *   file. On a slow GPU admission can land after the cold load's finalize; the
+ *   batches are then f32 while the policy says quantized, and the writer refuses
+ *   the capture (`policy-changed`, correct). The cold page therefore opens a
+ *   small uncached fixture first and waits for the viewer's admission line.
+ * - Frame stats describe the LAST rendered frame. Adoption uploads every batch
+ *   at once, and on a software GPU the frame pacer holds the next frame (#5865)
+ *   until the queue drains: the frame on record at "interactive" can predate
+ *   the adoption. Output is read from a frame rendered after the load ended.
  */
 
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type BrowserContext, type Page } from '@playwright/test';
 
 // The two smallest cached ("source" tier, >= 10 MiB) fixtures: C20-Institute 10.3 MiB, ISSUE_129 11.5 MiB.
 const FIXTURES = ['tests/models/ara3d/C20-Institute-Var-2.ifc', 'tests/models/ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc'];
 const LOAD_TIMEOUT_MS = 180_000;
+// Below the 10 MiB cache tier, so it leaves no entry: it only starts the viewport.
+const WARM_UP_FIXTURE = 'tests/models/ara3d/AC20-FZK-Haus.ifc';
 
 interface LoadSummary {
   spans: string[];
@@ -31,21 +45,38 @@ interface LoadSummary {
 
 /** Open the fixture in a fresh page and wait until the load is complete and the store settled. */
 async function openFixture(page: Page, fixture: string): Promise<void> {
-  await page.goto('/?perfTrace=1');
+  if (page.url() === 'about:blank') await page.goto('/?perfTrace=1');
   await page.waitForFunction(() => Boolean((globalThis as Record<string, unknown>).__ifc_lite_viewer_store__));
+  // A page that already loaded a file still holds that load's (finished) trace: wait for this one.
+  const previous = await page.evaluate(() => (globalThis as Record<string, any>).__IFC_LITE_LOAD_TRACE__?.latest()?.loadId ?? null);
   await page.locator('#file-input-open').setInputFiles(join(process.cwd(), fixture));
-  await page.waitForFunction(() => {
+  await page.waitForFunction((previous) => {
     const g = globalThis as Record<string, any>;
     const load = g.__IFC_LITE_LOAD_TRACE__?.latest();
     const state = g.__ifc_lite_viewer_store__.getState();
-    return Boolean(load && load.end !== null && !state.loading && !state.geometryStreamingActive && (state.geometryResult?.meshes?.length ?? 0) > 0);
-  }, null, { timeout: LOAD_TIMEOUT_MS, polling: 250 });
+    return Boolean(load && load.loadId !== previous && load.end !== null && !state.loading && !state.geometryStreamingActive && (state.geometryResult?.meshes?.length ?? 0) > 0);
+  }, previous, { timeout: LOAD_TIMEOUT_MS, polling: 250 });
+}
+
+/** Open a fixture in a fresh page whose renderer has already settled quantized admission. */
+async function admittedPage(context: BrowserContext): Promise<Page> {
+  const page = await context.newPage();
+  const admitted = page.waitForEvent('console', { predicate: (msg) => msg.text().startsWith('[Viewport] quantized vertices'), timeout: LOAD_TIMEOUT_MS });
+  await openFixture(page, WARM_UP_FIXTURE);
+  await admitted;
+  return page;
 }
 
 async function summary(page: Page): Promise<LoadSummary> {
+  // A frame rendered after the load ended (both on the page's performance clock).
+  await page.waitForFunction(() => {
+    const g = globalThis as Record<string, any>;
+    const load = g.__IFC_LITE_LOAD_TRACE__?.latest();
+    const frame = g.__ifc_lite_render_frame__?.();
+    return Boolean(load && load.end !== null && frame && frame.timestamp > load.end);
+  }, null, { timeout: LOAD_TIMEOUT_MS, polling: 100 });
   return page.evaluate(async () => {
     const g = globalThis as Record<string, any>;
-    for (let i = 0; i < 3; i++) await new Promise((r) => requestAnimationFrame(() => r(null)));
     const load = g.__IFC_LITE_LOAD_TRACE__.latest();
     const write = load.spans.find((s: { name: string }) => s.name === 'cache.writeSceneSnapshot');
     const meshes = g.__ifc_lite_viewer_store__.getState().geometryResult?.meshes ?? [];
@@ -97,7 +128,8 @@ for (const FIXTURE of FIXTURES) test.describe(`cold load scene snapshot (W2): ${
   test.skip(!existsSync(join(process.cwd(), FIXTURE)), `${FIXTURE} missing — run \`pnpm fixtures\``);
 
   test('a cold load leaves a snapshot on its entry, and the first reopen adopts it with identical output', async ({ context }) => {
-    const cold = await context.newPage();
+    test.skip(!existsSync(join(process.cwd(), WARM_UP_FIXTURE)), `${WARM_UP_FIXTURE} missing — run \`pnpm fixtures\``);
+    const cold = await admittedPage(context);
     await openFixture(cold, FIXTURE);
     // The deferred write is an open `cache.writeSceneSnapshot` span until it lands.
     await cold.waitForFunction(() => {

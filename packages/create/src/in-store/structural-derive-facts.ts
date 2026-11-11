@@ -91,7 +91,8 @@ export function readStructuralDerivationFacts(store: IfcDataStore, editor: Store
       if (local && frame) {
         const world = transformBounds(local, frame);
         fact.bounds = { min: scale(world.min, metres), max: scale(world.max, metres) };
-      } else fact.shapeIssue = 'the body or placement is unreadable';
+      } else if (refId(read(expressId)?.attributes[6]) === null) fact.shapeIssue = 'no body (it has no Representation)';
+      else fact.shapeIssue = local ? 'the placement is unreadable' : 'the body is unreadable';
     } else {
       fact.loadBearing = readLoadBearing(store, view, expressId);
       fact.idealised = structuralCounterparts(structural, expressId)?.side === 'analytical';
@@ -99,7 +100,9 @@ export function readStructuralDerivationFacts(store: IfcDataStore, editor: Store
     }
     elements.push(fact);
   }
-  const derived = structural.analysisModels.find((model) => model.description === DERIVED_ANALYSIS_MODEL_DESCRIPTION);
+  const existingAnalysisModels = structural.analysisModels.map((model) => ({
+    expressId: model.expressId, name: model.name ?? null, derived: model.description === DERIVED_ANALYSIS_MODEL_DESCRIPTION,
+  }));
   // listStoreys sorts by elevation, lowest first.
-  return { elements, defaultStoreyId: listStoreys(store, view)[0]?.id ?? null, derivedModelId: derived?.expressId ?? null };
+  return { elements, defaultStoreyId: listStoreys(store, view)[0]?.id ?? null, existingAnalysisModels };
 }

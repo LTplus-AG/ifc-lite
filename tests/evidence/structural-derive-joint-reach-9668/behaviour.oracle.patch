@@ -1,0 +1,12 @@
+diff --git a/packages/create/src/in-store/structural-derive-joints.ts b/packages/create/src/in-store/structural-derive-joints.ts
+--- a/packages/create/src/in-store/structural-derive-joints.ts
++++ b/packages/create/src/in-store/structural-derive-joints.ts
+@@ -91,7 +91,7 @@ export function joinEnds(
+   jointReach: number | null,
+   supported: (p: Vec3) => boolean,
+ ): { pieces: Array<{ source: number; start: Vec3; end: Vec3 }>; extended: ExtendedEnd[] } {
+-  const reachOf = (section: number | null) => jointReach ?? tolerance;
++  const reachOf = (section: number | null) => jointReach ?? (section === null ? tolerance : section / 2 + tolerance);
+   const maxReach = lines.reduce((m, line) => Math.max(m, reachOf(line.section)), tolerance);
+   const ends = lines.flatMap((line): Vec3[] => [[...line.start], [...line.end]]);
+   const roots = clusterEnds(ends, tolerance);

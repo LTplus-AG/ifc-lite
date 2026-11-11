@@ -11,7 +11,8 @@ import { getInheritanceChainAcrossSchemas } from '@ifc-lite/parser';
 import { vecLen as length } from '../ifc-creator-math.js';
 import { prepareStructuralFace } from './_structural-face.js';
 import { pointInPolygon } from './room-footprint-offset.js';
-import { idealiseLine, idealisePlate, add, sub, scale, dot } from './structural-derive-idealise.js';
+import { idealiseLine, idealisePlate, prismSection, add, sub, scale, dot } from './structural-derive-idealise.js';
+import { clusterEnds, joinEnds, SegmentGrid } from './structural-derive-joints.js';
 import {
   DEFAULT_DERIVATION_OPTIONS,
   type MemberLoadBearing,
@@ -27,13 +28,17 @@ import {
   type Vec3,
 } from './structural-derive-types.js';
 
-/** Tolerance bounds, metres. Both ends: NaN and absurd values must not fall through. */
+/** Tolerance and reach bounds, metres. Both ends: NaN and absurd values must not fall through. */
 const MAX_TOLERANCE = 1;
+const MAX_JOINT_REACH = 2;
 
-/** The class each role is read from; subtypes count as their parent. */
-const ROLE_CLASSES = [['curve', ['IfcBeam', 'IfcColumn', 'IfcMember']], ['surface', ['IfcSlab', 'IfcWall']], ['support', ['IfcFooting', 'IfcPile']]] as const;
+/** The classes each role is read from; subtypes count as their parent. Literals: this module has no load-time work. */
+const CURVE = ['IfcBeam', 'IfcColumn', 'IfcMember'] as const;
+const SURFACE = ['IfcSlab', 'IfcWall'] as const;
+const SUPPORT = ['IfcFooting', 'IfcPile'] as const;
+const ROLE_CLASSES = [['curve', CURVE], ['surface', SURFACE], ['support', SUPPORT]] as const;
 /** Every class the derivation reads, for the facts reader. */
-export const DERIVATION_CLASSES: readonly string[] = ROLE_CLASSES.flatMap(([, classes]) => classes);
+export const DERIVATION_CLASSES: readonly string[] = [...CURVE, ...SURFACE, ...SUPPORT];
 
 function roleOf(type: string): (typeof ROLE_CLASSES)[number][0] | null {
   const chain = getInheritanceChainAcrossSchemas(type);
@@ -43,9 +48,12 @@ function roleOf(type: string): (typeof ROLE_CLASSES)[number][0] | null {
 function resolveDerivationOptions(options: StructuralDerivationOptions = {}): Required<StructuralDerivationOptions> {
   const resolved = { ...DEFAULT_DERIVATION_OPTIONS };
   for (const [key, value] of Object.entries(options)) if (value !== undefined) Object.assign(resolved, { [key]: value });
-  const { tolerance, whenLoadBearingUnknown, supportType } = resolved;
+  const { tolerance, whenLoadBearingUnknown, supportType, jointReach, whenAnalysisModelExists } = resolved;
   if (typeof tolerance !== 'number' || !(tolerance > 0 && tolerance <= MAX_TOLERANCE)) {
     throw new Error(`Structural derivation: tolerance must be a number of metres in (0, ${MAX_TOLERANCE}]`);
+  }
+  if (jointReach !== null && (typeof jointReach !== 'number' || !(jointReach >= 0 && jointReach <= MAX_JOINT_REACH))) {
+    throw new Error(`Structural derivation: jointReach must be null or a number of metres in [0, ${MAX_JOINT_REACH}]`);
   }
   if (whenLoadBearingUnknown !== 'include' && whenLoadBearingUnknown !== 'skip') {
     throw new Error("Structural derivation: whenLoadBearingUnknown must be 'include' or 'skip'");
@@ -53,34 +61,13 @@ function resolveDerivationOptions(options: StructuralDerivationOptions = {}): Re
   if (supportType !== 'pinned' && supportType !== 'fixed') {
     throw new Error("Structural derivation: supportType must be 'pinned' or 'fixed'");
   }
+  if (whenAnalysisModelExists !== 'refuse' && whenAnalysisModelExists !== 'add') {
+    throw new Error("Structural derivation: whenAnalysisModelExists must be 'refuse' or 'add'");
+  }
   return resolved;
 }
 
-interface Line { element: PhysicalElementFact; start: Vec3; end: Vec3; source: PlannedCurveMember['axisSource']; loadBearing: MemberLoadBearing }
-
-/** Union-find over member ends, bucketed on a `tolerance` grid. */
-function clusterEnds(points: Vec3[], tolerance: number): number[] {
-  const parent = points.map((_, i) => i);
-  const find = (i: number): number => {
-    while (parent[i] !== i) i = parent[i] = parent[parent[i]];
-    return i;
-  };
-  const cell = (p: Vec3) => p.map((v) => Math.floor(v / tolerance));
-  const grid = new Map<string, number[]>();
-  points.forEach((p, i) => {
-    const [x, y, z] = cell(p);
-    for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) for (let dz = -1; dz <= 1; dz++) {
-      for (const j of grid.get(`${x + dx},${y + dy},${z + dz}`) ?? []) {
-        if (length(sub(p, points[j])) <= tolerance) parent[find(i)] = find(j);
-      }
-    }
-    const key = `${x},${y},${z}`;
-    const bucket = grid.get(key);
-    if (bucket) bucket.push(i);
-    else grid.set(key, [i]);
-  });
-  return points.map((_, i) => find(i));
-}
+interface Line { element: PhysicalElementFact; start: Vec3; end: Vec3; section: number | null; source: PlannedCurveMember['axisSource']; loadBearing: MemberLoadBearing }
 
 /** Point inside a planar polygon, in the plane's dominant projection. */
 function insidePolygon(p: Vec3, polygon: Vec3[], normal: Vec3): boolean {
@@ -98,6 +85,14 @@ function checkFace(boundary: Vec3[]): { normal: Vec3 } | { issue: string } {
   }
 }
 
+/** A curve element's axis line, or why it has none. */
+function lineOf(element: PhysicalElementFact): Omit<Line, 'element' | 'loadBearing'> | { issue: string } {
+  const section = element.prism ? prismSection(element.prism) : null;
+  if (element.axis) return { start: element.axis[0], end: element.axis[1], section, source: 'axis' };
+  const line = element.prism ? idealiseLine(element.prism) : { issue: element.shapeIssue ?? 'no extruded shape' };
+  return 'issue' in line ? line : { start: line.start, end: line.end, section, source: line.source };
+}
+
 export function planStructuralDerivation(facts: StructuralDerivationFacts, options: StructuralDerivationOptions = {}): StructuralDerivationPlan {
   const resolved = resolveDerivationOptions(options);
   const { tolerance } = resolved;
@@ -109,6 +104,8 @@ export function planStructuralDerivation(facts: StructuralDerivationFacts, optio
   const lines: Line[] = [];
   const surfaces: Array<{ member: PlannedSurfaceMember; normal: Vec3 }> = [];
   const footings: Array<{ element: PhysicalElementFact; min: Vec3; max: Vec3 }> = [];
+  // The lowest curve member end of the whole load-bearing structure, already idealised elements included.
+  let structureLowest = Infinity;
   for (const element of facts.elements) {
     const role = roleOf(element.type);
     if (role === null) continue;
@@ -117,6 +114,8 @@ export function planStructuralDerivation(facts: StructuralDerivationFacts, optio
       else skip(element, 'no-idealisable-shape', element.shapeIssue ?? 'no readable body');
       continue;
     }
+    const line = role === 'curve' ? lineOf(element) : null;
+    if (line && !('issue' in line) && element.loadBearing !== false) structureLowest = Math.min(structureLowest, line.start[2], line.end[2]);
     if (element.idealised) { skip(element, 'already-idealised', 'a structural item is already linked to this element'); continue; }
     if (element.loadBearing === false) { skip(element, 'not-load-bearing', 'LoadBearing is false'); continue; }
     if (element.loadBearing === null && resolved.whenLoadBearingUnknown === 'skip') {
@@ -124,14 +123,9 @@ export function planStructuralDerivation(facts: StructuralDerivationFacts, optio
       continue;
     }
     const loadBearing: MemberLoadBearing = element.loadBearing === true ? true : 'assumed';
-    if (role === 'curve') {
-      if (element.axis) {
-        lines.push({ element, start: element.axis[0], end: element.axis[1], source: 'axis', loadBearing });
-        continue;
-      }
-      const line = element.prism ? idealiseLine(element.prism) : { issue: element.shapeIssue ?? 'no extruded shape' };
+    if (line) {
       if ('issue' in line) skip(element, 'no-idealisable-shape', line.issue);
-      else lines.push({ element, start: line.start, end: line.end, source: line.source, loadBearing });
+      else lines.push({ element, ...line, loadBearing });
       continue;
     }
     const plate = element.prism ? idealisePlate(element.prism) : { issue: element.shapeIssue ?? 'no extruded shape' };
@@ -141,26 +135,30 @@ export function planStructuralDerivation(facts: StructuralDerivationFacts, optio
     else surfaces.push({ member: { elementId: element.expressId, storeyId: element.storeyId, ...plate, loadBearing }, normal: face.normal });
   }
 
-  // Nodes: a member whose ends would merge is skipped before and after clustering.
-  let kept = lines.filter((line) => {
+  const inFooting = (p: Vec3) => footings.find(({ min, max }) => p.every((v, k) => v >= min[k] - tolerance && v <= max[k] + tolerance));
+  const long = lines.filter((line) => {
     if (length(sub(line.end, line.start)) > tolerance) return true;
     skip(line.element, 'shorter-than-tolerance', `shorter than the ${tolerance} m tolerance`);
     return false;
   });
-  let roots = clusterEnds(kept.flatMap((line) => [line.start, line.end]), tolerance);
-  const collapsed = new Set(kept.map((_, i) => i).filter((i) => roots[2 * i] === roots[2 * i + 1]));
+  // Joints: free ends meet other members' axes; members met inside are split into pieces.
+  const joined = joinEnds(long.map((line) => ({ elementId: line.element.expressId, start: line.start, end: line.end, section: line.section })),
+    tolerance, resolved.jointReach, (p) => inFooting(p) !== undefined);
+  let pieces = joined.pieces.map((piece) => ({ ...long[piece.source], start: piece.start, end: piece.end }));
+  let roots = clusterEnds(pieces.flatMap((piece) => [piece.start, piece.end]), tolerance);
+  const collapsed = new Set(pieces.map((_, i) => i).filter((i) => roots[2 * i] === roots[2 * i + 1]));
   if (collapsed.size > 0) {
-    for (const i of collapsed) skip(kept[i].element, 'shorter-than-tolerance', 'both ends merge into one node');
-    kept = kept.filter((_, i) => !collapsed.has(i));
-    roots = clusterEnds(kept.flatMap((line) => [line.start, line.end]), tolerance);
+    for (const i of collapsed) skip(pieces[i].element, 'shorter-than-tolerance', 'both ends merge into one node');
+    pieces = pieces.filter((_, i) => !collapsed.has(i));
+    roots = clusterEnds(pieces.flatMap((piece) => [piece.start, piece.end]), tolerance);
   }
   // Gather each cluster's ends, then build its node once, at their mean.
   const clusters = new Map<number, { ends: Vec3[]; first: PhysicalElementFact; elementIds: Set<number> }>();
   roots.forEach((root, endIndex) => {
-    const line = kept[endIndex >> 1];
-    const cluster = clusters.get(root) ?? { ends: [], first: line.element, elementIds: new Set<number>() };
-    cluster.ends.push(endIndex % 2 === 0 ? line.start : line.end);
-    cluster.elementIds.add(line.element.expressId);
+    const piece = pieces[endIndex >> 1];
+    const cluster = clusters.get(root) ?? { ends: [], first: piece.element, elementIds: new Set<number>() };
+    cluster.ends.push(endIndex % 2 === 0 ? piece.start : piece.end);
+    cluster.elementIds.add(piece.element.expressId);
     clusters.set(root, cluster);
   });
   const nodeOfRoot = new Map<number, number>();
@@ -168,13 +166,13 @@ export function planStructuralDerivation(facts: StructuralDerivationFacts, optio
     nodeOfRoot.set(root, index);
     return { index, position: scale(ends.reduce(add), 1 / ends.length), storeyId: first.storeyId, elementIds: [...elementIds] };
   });
-  const curveMembers: PlannedCurveMember[] = kept.map((line, i) => {
+  const curveMembers: PlannedCurveMember[] = pieces.map((piece, i) => {
     const startNode = nodeOfRoot.get(roots[2 * i])!;
     const endNode = nodeOfRoot.get(roots[2 * i + 1])!;
     return {
-      elementId: line.element.expressId, storeyId: line.element.storeyId,
+      elementId: piece.element.expressId, storeyId: piece.element.storeyId,
       start: [...nodes[startNode].position], end: [...nodes[endNode].position],
-      axisSource: line.source, startNode, endNode, loadBearing: line.loadBearing,
+      axisSource: piece.source, startNode, endNode, loadBearing: piece.loadBearing,
     };
   });
 
@@ -182,7 +180,7 @@ export function planStructuralDerivation(facts: StructuralDerivationFacts, optio
   const supportType = resolved.supportType;
   const usedFootings = new Set<number>();
   for (const node of nodes) {
-    const footing = footings.find(({ min, max }) => node.position.every((v, k) => v >= min[k] - tolerance && v <= max[k] + tolerance));
+    const footing = inFooting(node.position);
     if (!footing) continue;
     usedFootings.add(footing.element.expressId);
     node.support = { type: supportType, basis: 'footing', footingId: footing.element.expressId, guessed: false };
@@ -190,21 +188,23 @@ export function planStructuralDerivation(facts: StructuralDerivationFacts, optio
   for (const { element } of footings) {
     if (!usedFootings.has(element.expressId)) skip(element, 'footing-without-member-end', 'no member end lies within its bounds');
   }
-  if (usedFootings.size === 0 && nodes.length > 0) {
-    const lowest = Math.min(...nodes.map((node) => node.position[2]));
+  if (usedFootings.size === 0) {
     for (const node of nodes) {
-      if (node.position[2] <= lowest + tolerance) node.support = { type: supportType, basis: 'lowest-level', guessed: true };
+      if (node.position[2] <= structureLowest + tolerance) node.support = { type: supportType, basis: 'lowest-level', guessed: true };
     }
   }
 
+  const degree = new Array<number>(nodes.length).fill(0);
+  for (const member of curveMembers) { degree[member.startNode]++; degree[member.endNode]++; }
+  const freeEnds = nodes.filter((node) => degree[node.index] === 1 && !node.support).map((node) => node.index);
   const surfaceMembers = surfaces.map(({ member }) => member);
-  const unconnectedEnds = findUnconnectedEnds(nodes, curveMembers, surfaces, tolerance);
+  const unconnectedEnds = findUnconnectedEnds(nodes, degree, curveMembers, surfaces, tolerance);
   const guessedSupports = nodes.filter((node) => node.support?.guessed).map((node) => node.index);
   const members = [...curveMembers, ...surfaceMembers];
   return {
     options: resolved,
     defaultStoreyId: facts.defaultStoreyId,
-    derivedModelId: facts.derivedModelId,
+    existingAnalysisModels: facts.existingAnalysisModels,
     curveMembers,
     surfaceMembers,
     nodes,
@@ -217,29 +217,33 @@ export function planStructuralDerivation(facts: StructuralDerivationFacts, optio
         guessedSupports: guessedSupports.length,
         assumedLoadBearing: members.filter((member) => member.loadBearing === 'assumed').length,
         skipped: skipped.length,
+        extendedEnds: joined.extended.length,
+        freeEnds: freeEnds.length,
       },
       skipped,
       guessedSupports,
+      extendedEnds: joined.extended,
+      freeEnds,
       unconnectedEnds,
     },
   };
 }
 
-/** Free member ends that touch another member's interior or a surface member: reported, not connected. */
+/** Nodes that touch a member they are not connected to or, for a single free end, rest on a surface member. */
 function findUnconnectedEnds(
   nodes: PlannedNode[],
+  degree: readonly number[],
   curveMembers: PlannedCurveMember[],
   surfaces: Array<{ member: PlannedSurfaceMember; normal: Vec3 }>,
   tolerance: number,
 ): UnconnectedEnd[] {
-  const degree = new Array<number>(nodes.length).fill(0);
-  for (const member of curveMembers) { degree[member.startNode]++; degree[member.endNode]++; }
+  const grid = new SegmentGrid(2);
+  curveMembers.forEach((member, i) => grid.insert(i, member.start, member.end, tolerance));
   const found: UnconnectedEnd[] = [];
   for (const node of nodes) {
     if (node.support) continue;
     const p = node.position;
-    // Any free node can land on another member's interior; only a single end can rest on a surface it does not reach.
-    const onMember = curveMembers.find((member) => {
+    const onMember = grid.near(p).map((i) => curveMembers[i]).find((member) => {
       if (member.startNode === node.index || member.endNode === node.index) return false;
       const axis = sub(member.end, member.start);
       const t = dot(sub(p, member.start), axis) / dot(axis, axis);

@@ -113,3 +113,13 @@ export function idealisePlate(prism: PrismFact): PlateIdealisation {
   const b = add(f.centre, half);
   return { boundary: [a, b, add(b, prism.extrusion), add(a, prism.extrusion)], thickness: f.short };
 }
+
+/**
+ * A curve member's larger cross-section dimension: the prism's second-largest
+ * extent, the largest being along the member. Null for an unreadable prism.
+ */
+export function prismSection(prism: PrismFact): number | null {
+  const f = prismFrame(prism);
+  if (typeof f === 'string') return null;
+  return [f.long, f.short, f.depth].sort((a, b) => b - a)[1];
+}

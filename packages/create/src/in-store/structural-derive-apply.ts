@@ -3,15 +3,16 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * The apply step: write a derivation plan with the structural builders. All
- * refusals happen before the first write; the builders' own checks already
- * ran on every boundary in the plan step.
+ * The apply step: write a derivation plan with the structural builders. The
+ * whole plan is checked before the first write, and the writes run in one
+ * discardable transaction, so a refused plan writes nothing.
  */
 
 import type { RandomSource } from '@ifc-lite/encoding';
 import type { StoreEditor } from '@ifc-lite/mutations';
 import { structuralCounterparts, type IfcDataStore } from '@ifc-lite/parser';
 import type { SpatialAnchor } from './anchor.js';
+import { prepareStructuralFace } from './_structural-face.js';
 import { applyFrame, inverseFrame, placementInAncestor } from './host-geometry-frame.js';
 import { resolveSpatialAnchor } from './resolve-anchor.js';
 import { createStyleEntityReader } from './style-entity-reader.js';
@@ -46,10 +47,11 @@ export function applyStructuralDerivation(
   }
   const view = editor.getMutationView();
   const structural = liveStructuralExtraction(store, view);
-  // Read live, not from the plan: a derived model may have been written since it was made.
-  const derived = structural.analysisModels.find((model) => model.description === DERIVED_ANALYSIS_MODEL_DESCRIPTION);
-  if (derived) {
-    throw new Error(`Structural derivation: the model already has a derived analysis model (#${derived.expressId}); a second one would not connect to it`);
+  // Read live, not from the plan: a model may have been written since it was made.
+  const [existing] = structural.analysisModels;
+  if (existing && plan.options.whenAnalysisModelExists !== 'add') {
+    throw new Error(`Structural derivation: the model already has an analysis model (#${existing.expressId}); `
+      + "set whenAnalysisModelExists to 'add' to derive the missing members into a new one");
   }
   for (const footingId of plan.nodes.flatMap((node) => node.support?.footingId ?? [])) {
     if (!editor.hasEntity(footingId)) throw new Error(`Structural derivation: footing #${footingId} no longer exists; plan again`);
@@ -79,8 +81,43 @@ export function applyStructuralDerivation(
     }
     return placed;
   };
-  // Resolve every anchor before the first write, so a refusal writes nothing.
+  // Resolve every anchor and run every builder check before the first write.
   const [first] = [...plan.curveMembers, ...plan.surfaceMembers, ...plan.nodes].map((item) => placementOf(item.storeyId).anchor);
+  checkPlan(plan, (storeyId, p) => placementOf(storeyId).toLocal(p));
+  return editor.runAtomic((draft) => writePlan(draft, plan, first, placementOf, random));
+}
+
+/** The builders' refusals, run on the whole plan in storey-local coordinates. */
+function checkPlan(plan: StructuralDerivationPlan, toLocal: (storeyId: number | null, p: Vec3) => Vec3): void {
+  const refuse = (what: string, why: string) => { throw new Error(`Structural derivation: ${what} ${why}; plan again`); };
+  const finite = (p: Vec3) => p.every(Number.isFinite);
+  for (const node of plan.nodes) {
+    if (!finite(toLocal(node.storeyId, node.position))) refuse(`node ${node.index + 1}`, 'has no finite position');
+  }
+  for (const member of plan.curveMembers) {
+    const what = `the curve member of element #${member.elementId}`;
+    if (!plan.nodes[member.startNode] || !plan.nodes[member.endNode]) refuse(what, 'names a node the plan does not have');
+    const [a, b] = [member.start, member.end].map((p) => toLocal(member.storeyId, p));
+    if (!finite(a) || !finite(b) || a.every((v, k) => v === b[k])) refuse(what, 'has no length');
+  }
+  for (const member of plan.surfaceMembers) {
+    const what = `the surface member of element #${member.elementId}`;
+    if (!(Number.isFinite(member.thickness) && member.thickness > 0)) refuse(what, 'has no positive thickness');
+    try {
+      prepareStructuralFace(member.boundary.map((p) => toLocal(member.storeyId, p)));
+    } catch (error) {
+      refuse(what, `has a bad boundary (${error instanceof Error ? error.message : String(error)})`);
+    }
+  }
+}
+
+function writePlan(
+  editor: StoreEditor,
+  plan: StructuralDerivationPlan,
+  first: SpatialAnchor,
+  placementOf: (storeyId: number | null) => StoreyPlacement,
+  random?: RandomSource,
+): StructuralDerivationApplied {
   const ownerHistoryId = first.ownerHistoryId;
   const { analysisModelId } = addStructuralAnalysisModelToStore(editor, first, {
     Name: 'Derived analysis model', Description: DERIVED_ANALYSIS_MODEL_DESCRIPTION, PredefinedType: 'LOADING_3D',

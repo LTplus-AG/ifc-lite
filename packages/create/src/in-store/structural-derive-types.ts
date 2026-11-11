@@ -47,37 +47,60 @@
  * read only as bounds (I-shapes, circles) are skipped. Openings and profile
  * voids are not carried: the surface member covers the outer outline.
  *
+ * Joints. Axes run through section centres, so a column top stops below the
+ * beam axis and a beam end stops at the column face. Before nodes are formed,
+ * a member end that meets nothing (a free end) is moved along its OWN axis,
+ * never sideways, to where that axis meets another curve member's axis, if
+ * the move is within the reach: `jointReach` metres when set, otherwise half
+ * the other member's larger section dimension plus `tolerance` (just
+ * `tolerance` when the other member has no readable section). When the meeting
+ * point lies past the other member's free end, that end moves along its own
+ * axis to it as well, by the same reach rule. When it lies inside the other
+ * member, that member is split there into two curve members, both linked to
+ * its element, so the joint is a real node. An end already shared with other
+ * members only connects to an interior it already touches (within
+ * `tolerance`); it is not moved. Every moved end is in the report
+ * (`extendedEnds`) with the distance moved (negative when trimmed).
+ *
  * Nodes. Every curve member end is a node. Ends within `tolerance` (metres,
  * default 0.05) of each other merge into one node at their mean, and member
  * ends move onto it. The merge is transitive: a chain of ends, each within
  * the tolerance of the next, becomes one node. A member whose two ends merge
- * is skipped. A node on another member's interior is NOT connected to it
- * (that would need meshing); it is listed in the report, whether one end or a
- * junction of several lands there. A single free end resting on a surface
- * member is listed the same way; a junction inside a slab is not. Surface
- * members get no connections.
+ * is skipped. The report lists every free end left (`freeEnds`: a node with one
+ * member end and no support, whatever its distance to anything; cantilever
+ * tips are among them), and separately every node that touches a member it is
+ * not connected to or, for a single free end, rests on a surface member
+ * (`unconnectedEnds`). Surface members get no connections.
  *
  * Supports. A node inside a footing or pile's body bounds (grown by `tolerance`)
  * is a support linked to that footing. When no footing supports any node, the
- * nodes at the lowest node elevation (within `tolerance`) become supports and
- * are flagged `guessed`. `supportType` is 'pinned' (translations fixed,
- * rotations free; the default) or 'fixed' (all fixed).
+ * nodes at the lowest level become supports and are flagged `guessed`. The
+ * lowest level is the lowest curve member end of the whole load-bearing
+ * structure, already idealised elements included, within `tolerance`; so a
+ * partial run never guesses a support under an upper floor. `supportType` is
+ * 'pinned' (translations fixed, rotations free; the default) or 'fixed'.
  *
  * Links. Every member and node is linked to the physical elements it
  * idealises with IfcRelAssignsToProduct (the item in RelatedObjects): a member
  * to its element, a node to the elements whose ends meet there and to its
  * footing.
  *
+ * Existing analysis models. When the file already has any
+ * IfcStructuralAnalysisModel (authored or derived), the plan lists them
+ * (`existingAnalysisModels`) and apply refuses, unless
+ * `whenAnalysisModelExists` is 'add': then the elements without a structural
+ * counterpart are derived into a new analysis model of their own, which does
+ * not connect to the existing one.
+ *
  * Idempotence. An element that already has a structural counterpart is
  * skipped ('already-idealised'), so a second run plans nothing. Apply refuses
  * a plan with nothing to write, a plan whose members' elements were deleted or
- * idealised or whose footings were deleted since it was made, and any plan for
- * a model that already has a derived analysis model (`derivedModelId`): a later
- * run would otherwise write a second model that does not connect to the first.
- * Apply does not compare geometry with the plan, so a caller that holds a plan
- * across edits plans again (the SDK and CLI plan and apply in one call). Apply
- * is not atomic by itself: callers run it inside their own transaction
- * (`StoreEditor.runAtomic`). Nothing is replaced or removed.
+ * idealised or whose footings were deleted since it was made, and a model with
+ * an analysis model (above). Apply does not compare geometry with the plan, so
+ * a caller that holds a plan across edits plans again (the SDK and CLI plan
+ * and apply in one call). Apply checks the whole plan before its first write
+ * and writes inside one discardable transaction, so a refused plan writes
+ * nothing. Nothing is replaced or removed.
  */
 
 export type { Vec3 } from './host-geometry-frame.js';
@@ -116,12 +139,19 @@ export interface PhysicalElementFact {
   bounds?: { min: Vec3; max: Vec3 };
 }
 
+/** An IfcStructuralAnalysisModel already in the file. */
+export interface ExistingAnalysisModel {
+  expressId: number;
+  name: string | null;
+  /** Written by an earlier derivation. */
+  derived: boolean;
+}
+
 export interface StructuralDerivationFacts {
   elements: PhysicalElementFact[];
   /** Storey used for items whose elements have none: the lowest one. */
   defaultStoreyId: number | null;
-  /** An analysis model an earlier derivation wrote, if any. */
-  derivedModelId: number | null;
+  existingAnalysisModels: ExistingAnalysisModel[];
 }
 
 export type SupportType = 'pinned' | 'fixed';
@@ -133,12 +163,18 @@ export interface StructuralDerivationOptions {
   whenLoadBearingUnknown?: 'include' | 'skip';
   /** Boundary condition of every support. Default 'pinned'. */
   supportType?: SupportType;
+  /** Metres a free end may move along its axis to meet another member; null (default) reads it from that member's section. */
+  jointReach?: number | null;
+  /** When the file already has an analysis model: 'refuse' (default) or 'add' the missing members to a new one. */
+  whenAnalysisModelExists?: 'refuse' | 'add';
 }
 
 export const DEFAULT_DERIVATION_OPTIONS: Required<StructuralDerivationOptions> = {
   tolerance: 0.05,
   whenLoadBearingUnknown: 'include',
   supportType: 'pinned',
+  jointReach: null,
+  whenAnalysisModelExists: 'refuse',
 };
 
 export type MemberLoadBearing = true | 'assumed';
@@ -198,6 +234,16 @@ export interface SkippedElement {
   detail: string;
 }
 
+/** A member end moved along its own axis to meet another member. */
+export interface ExtendedEnd {
+  elementId: number;
+  end: 'start' | 'end';
+  /** Metres moved along the member, positive outwards (extended), negative inwards (trimmed). */
+  distance: number;
+  /** The physical element of the member it now meets. */
+  toElementId: number;
+}
+
 /** A node that touches something it is not connected to. */
 export interface UnconnectedEnd {
   node: number;
@@ -215,18 +261,23 @@ export interface StructuralDerivationReport {
     guessedSupports: number;
     assumedLoadBearing: number;
     skipped: number;
+    extendedEnds: number;
+    freeEnds: number;
   };
   skipped: SkippedElement[];
   /** Node indices of every guessed support. */
   guessedSupports: number[];
+  extendedEnds: ExtendedEnd[];
+  /** Node indices of every member end that meets no other member or support. */
+  freeEnds: number[];
   unconnectedEnds: UnconnectedEnd[];
 }
 
 export interface StructuralDerivationPlan {
   options: Required<StructuralDerivationOptions>;
   defaultStoreyId: number | null;
-  /** Set when the model already has a derived analysis model; apply then refuses. */
-  derivedModelId: number | null;
+  /** Analysis models already in the file; apply refuses unless `whenAnalysisModelExists` is 'add'. */
+  existingAnalysisModels: ExistingAnalysisModel[];
   curveMembers: PlannedCurveMember[];
   surfaceMembers: PlannedSurfaceMember[];
   nodes: PlannedNode[];

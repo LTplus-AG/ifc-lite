@@ -25,7 +25,7 @@ const column = (x: number, y: number, z0: number, z1: number, more: Partial<Phys
 /** A beam along X at height z, from x0 to x1, given by its Axis representation. */
 const beam = (x0: number, x1: number, y: number, z: number, more: Partial<PhysicalElementFact> = {}) =>
   element('IfcBeam', { axis: [[x0, y, z], [x1, y, z]] }, more);
-const facts = (...elements: PhysicalElementFact[]): StructuralDerivationFacts => ({ elements, defaultStoreyId: 1, derivedModelId: null });
+const facts = (...elements: PhysicalElementFact[]): StructuralDerivationFacts => ({ elements, defaultStoreyId: 1, existingAnalysisModels: [] });
 
 describe('structural derivation plan (#9668)', () => {
   it('uses the Axis representation of a beam when present', () => {
@@ -147,21 +147,95 @@ describe('structural derivation plan (#9668)', () => {
     expect(plan.report.guessedSupports).toEqual(supported.map((n) => n.index));
   });
 
-  it('reports, without connecting, an end that lands on a member interior or a surface member', () => {
+  it('connects an end that lands on a member interior by splitting that member, and reports ends resting on a surface member', () => {
     const slab = element('IfcSlab', { prism: box([4, -2, 2.9], 4, 4, [0, 0, 0.2]) });
+    const main = beam(0, 6, 0, 3);
+    const secondary = beam(3, 3, -4, 3, { axis: [[3, -4, 3], [3, 0, 3]] });
     // The ground column keeps the guessed supports away from the ends under test.
-    const plan = planStructuralDerivation(facts(beam(0, 6, 0, 3), beam(3, 3, -4, 3, { axis: [[3, -4, 3], [3, 0, 3]] }), column(6, 1, 3, 6), slab, column(20, 20, 0, 3)));
-    const landed = plan.report.unconnectedEnds.map((u) => [u.landsOn, u.landsOnElementId]);
-    expect(landed).toContainEqual(['member-interior', plan.curveMembers[0].elementId]);
-    expect(landed).toContainEqual(['surface-member', slab.expressId]);
+    const plan = planStructuralDerivation(facts(main, secondary, column(6, 1, 3, 6), slab, column(20, 20, 0, 3)));
+    expect(plan.curveMembers.filter((m) => m.elementId === main.expressId).map((m) => [m.start[0], m.end[0]])).toEqual([[0, 3], [3, 6]]);
+    const joint = plan.nodes.find((n) => n.position.every((v, k) => Math.abs(v - [3, 0, 3][k]) < 1e-9))!;
+    expect(joint.elementIds.sort()).toEqual([main.expressId, secondary.expressId].sort());
+    // The main beam's end and the upper column's foot rest on the slab; surface members get no connections.
+    expect(plan.report.unconnectedEnds.map((u) => [u.landsOn, u.landsOnElementId])).toEqual([['surface-member', slab.expressId], ['surface-member', slab.expressId]]);
     expect(plan.nodes).toHaveLength(8);
   });
 
-  it('reports a junction of two member ends that lands on a third member interior', () => {
-    // Two secondary beams meet at (3, 0, 3), on the main beam's span; the column keeps supports elsewhere.
+  it('splits a third member where a junction of two member ends lands on its interior', () => {
     const main = beam(0, 6, 0, 3);
     const plan = planStructuralDerivation(facts(main, beam(3, 3, -4, 3, { axis: [[3, -4, 3], [3, 0, 3]] }), beam(3, 3, 4, 3, { axis: [[3, 4, 3], [3, 0, 3]] }), column(20, 20, 0, 3)));
-    expect(plan.report.unconnectedEnds).toContainEqual(expect.objectContaining({ landsOn: 'member-interior', landsOnElementId: main.expressId }));
+    expect(plan.curveMembers.filter((m) => m.elementId === main.expressId)).toHaveLength(2);
+    expect(plan.nodes.filter((n) => n.elementIds.length === 3)).toHaveLength(1);
+    expect(plan.report.unconnectedEnds).toEqual([]);
+    expect(plan.report.extendedEnds).toEqual([]);
+  });
+
+  describe('joints between centroid axes', () => {
+    /** Two 0.3 m columns, 0 to 3 m, at x = 0 and 6; a 0.3 x 0.4 m beam between their faces, top flush with theirs. */
+    const portal = (beamY = 0, beamFrom = 0.15) => {
+      const left = column(0, 0, 0, 3);
+      const right = column(6, 0, 0, 3);
+      const girder = element('IfcBeam', { prism: box([beamFrom, beamY - 0.15, 2.6], 5.85 - beamFrom, 0.3, [0, 0, 0.4]) });
+      return { left, right, girder, all: [left, right, girder] };
+    };
+    const at = (plan: ReturnType<typeof planStructuralDerivation>, p: Vec3) => plan.nodes.find((n) => n.position.every((v, k) => Math.abs(v - p[k]) < 1e-6));
+
+    it('moves the beam ends out and the column tops down, along their own axes, to one node per joint', () => {
+      const { left, right, girder, all } = portal();
+      const plan = planStructuralDerivation(facts(...all));
+      expect(plan.nodes).toHaveLength(4);
+      for (const [x, column] of [[0, left], [6, right]] as const) {
+        expect(at(plan, [x, 0, 2.8])?.elementIds.sort()).toEqual([column.expressId, girder.expressId].sort());
+      }
+      const moves = plan.report.extendedEnds.map((e) => [e.elementId, e.end, +e.distance.toFixed(6), e.toElementId]);
+      expect(moves).toEqual(expect.arrayContaining([
+        [left.expressId, 'end', -0.2, girder.expressId], [right.expressId, 'end', -0.2, girder.expressId],
+        [girder.expressId, 'start', 0.15, left.expressId], [girder.expressId, 'end', 0.15, right.expressId],
+      ]));
+      expect(plan.report.counts).toMatchObject({ extendedEnds: 4, freeEnds: 0, curveMembers: 3 });
+    });
+
+    it('never moves an end sideways: a beam axis 0.1 m beside the column axes meets nothing, and its ends are free', () => {
+      const { girder, all } = portal(0.1);
+      const plan = planStructuralDerivation(facts(...all));
+      expect(plan.report.extendedEnds).toEqual([]);
+      expect(plan.nodes.filter((n) => n.elementIds.length > 1)).toEqual([]);
+      const free = plan.report.freeEnds.map((n) => plan.nodes[n].elementIds[0]);
+      expect(free.filter((id) => id === girder.expressId)).toHaveLength(2);
+      expect(plan.report.freeEnds).toHaveLength(4); // the beam's two ends and both column tops
+    });
+
+    it('moves an end only within the reach: half the other section plus tolerance, or jointReach', () => {
+      // The beam stops 0.5 m short of the left column axis: beyond 0.15 + 0.05.
+      const { all } = portal(0, 0.5);
+      const plan = planStructuralDerivation(facts(...all));
+      expect(plan.report.extendedEnds.map((e) => e.distance.toFixed(2))).toEqual(expect.not.arrayContaining(['0.50']));
+      expect(at(plan, [0, 0, 2.8])).toBeUndefined();
+      const reached = planStructuralDerivation(facts(...all), { jointReach: 0.6 });
+      expect(at(reached, [0, 0, 2.8])?.elementIds).toHaveLength(2);
+      expect(Math.max(...reached.report.extendedEnds.map((e) => Math.abs(e.distance)))).toBeCloseTo(0.5, 9);
+    });
+
+    it('lists every member end that meets no other member or support as a free end, whatever its distance', () => {
+      const plan = planStructuralDerivation(facts(beam(0, 6, 0, 3), beam(0, 6, 40, 3), column(20, 20, 0, 3)));
+      // Both beams float: four free ends. The column's foot is a guessed support, its top is free.
+      expect(plan.report.counts.freeEnds).toBe(5);
+    });
+  });
+
+  it('guesses supports by the lowest level of the whole load-bearing structure, already idealised members included', () => {
+    // The ground floor column was derived before; only the upper floor column is new.
+    const plan = planStructuralDerivation(facts(column(0, 0, 0, 3, { idealised: true }), column(0, 0, 3, 6)));
+    expect(plan.curveMembers).toHaveLength(1);
+    expect(plan.report.guessedSupports).toEqual([]);
+    expect(plan.report.freeEnds).toHaveLength(2);
+  });
+
+  it('passes the analysis models already in the file through to the plan', () => {
+    const existing = [{ expressId: 7, name: 'Authored', derived: false }];
+    const plan = planStructuralDerivation({ ...facts(beam(0, 6, 0, 3)), existingAnalysisModels: existing });
+    expect(plan.existingAnalysisModels).toEqual(existing);
+    expect(plan.options.whenAnalysisModelExists).toBe('refuse');
   });
 
   it('skips an element that already has a structural counterpart, so a re-run plans nothing', () => {
@@ -177,5 +251,10 @@ describe('structural derivation plan (#9668)', () => {
   it('refuses unknown settings', () => {
     expect(() => planStructuralDerivation(facts(), { supportType: 'roller' as 'pinned' })).toThrow(/supportType/);
     expect(() => planStructuralDerivation(facts(), { whenLoadBearingUnknown: 'maybe' as 'skip' })).toThrow(/whenLoadBearingUnknown/);
+    expect(() => planStructuralDerivation(facts(), { whenAnalysisModelExists: 'replace' as 'add' })).toThrow(/whenAnalysisModelExists/);
+  });
+
+  it.each([NaN, -0.1, 3, Infinity, '0.2' as unknown as number])('refuses jointReach %s', (jointReach) => {
+    expect(() => planStructuralDerivation(facts(), { jointReach })).toThrow(/jointReach/);
   });
 });

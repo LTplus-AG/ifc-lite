@@ -28,10 +28,13 @@ Options:
   --tolerance <m>               Node merge tolerance in metres (default 0.05)
   --load-bearing-unknown <p>    Elements without LoadBearing: include | skip (default include)
   --support <type>              Support condition: pinned | fixed (default pinned)
+  --joint-reach <m>             How far a free member end may move along its axis to meet
+                                another member (default: half that member's section + tolerance)
+  --analysis-model-exists <p>   When the file has an analysis model: refuse | add (default refuse)
   --dry-run                     Plan and report only; write nothing
   --json                        Machine-readable report`;
 
-const VALUE_FLAGS = new Set(['--out', '--tolerance', '--load-bearing-unknown', '--support']);
+const VALUE_FLAGS = new Set(['--out', '--tolerance', '--load-bearing-unknown', '--support', '--joint-reach', '--analysis-model-exists']);
 
 export async function deriveStructuralCommand(args: string[]): Promise<void> {
   const filePath = args.find((a, i) => !a.startsWith('-') && !VALUE_FLAGS.has(args[i - 1]));
@@ -44,12 +47,17 @@ export async function deriveStructuralCommand(args: string[]): Promise<void> {
   const dryRun = hasFlag(args, '--dry-run');
   const json = hasFlag(args, '--json');
   if (!out && !dryRun) fatal('--out <file.ifc> is required (or use --dry-run to report only)');
-  const tolerance = getFlag(args, '--tolerance');
+  const metres = (flag: string) => {
+    const value = getFlag(args, flag);
+    return value === undefined ? undefined : Number(value);
+  };
   // Unset flags stay undefined, and the plan step fills in its defaults.
   const options: StructuralDerivationOptions = {
-    tolerance: tolerance === undefined ? undefined : Number(tolerance),
+    tolerance: metres('--tolerance'),
     whenLoadBearingUnknown: getFlag(args, '--load-bearing-unknown') as StructuralDerivationOptions['whenLoadBearingUnknown'],
     supportType: getFlag(args, '--support') as StructuralDerivationOptions['supportType'],
+    jointReach: metres('--joint-reach'),
+    whenAnalysisModelExists: getFlag(args, '--analysis-model-exists') as StructuralDerivationOptions['whenAnalysisModelExists'],
   };
 
   const { bim, store, backend } = await createHeadlessContext(filePath);
@@ -62,6 +70,11 @@ export async function deriveStructuralCommand(args: string[]): Promise<void> {
     fatal(error instanceof Error ? error.message : String(error));
   }
   let { report } = plan;
+  const existing = plan.existingAnalysisModels;
+  if (existing.length > 0) {
+    process.stderr.write(`The file already has ${existing.length} analysis model(s): ${existing.map((m) => `#${m.expressId}${m.derived ? ' (derived)' : ''}`).join(', ')}. `
+      + (plan.options.whenAnalysisModelExists === 'add' ? 'The missing members go into a new one.\n' : 'Nothing is written unless --analysis-model-exists add.\n'));
+  }
   const writes = !dryRun && report.counts.curveMembers + report.counts.surfaceMembers > 0;
   if (writes) {
     try {
@@ -75,7 +88,7 @@ export async function deriveStructuralCommand(args: string[]): Promise<void> {
   }
 
   if (json) {
-    printJson({ input: filePath, output: writes ? out : null, dryRun, options: plan.options, ...report });
+    printJson({ input: filePath, output: writes ? out : null, dryRun, options: plan.options, existingAnalysisModels: existing, ...report });
     return;
   }
   const c = report.counts;
@@ -84,6 +97,8 @@ export async function deriveStructuralCommand(args: string[]): Promise<void> {
     `${c.supports} support(s) (${c.guessedSupports} guessed)\n`,
   );
   if (c.assumedLoadBearing) process.stderr.write(`${c.assumedLoadBearing} element(s) had no LoadBearing value and were assumed load-bearing\n`);
+  if (c.extendedEnds) process.stderr.write(`${c.extendedEnds} member end(s) moved along their axis to meet another member (largest ${Math.max(...report.extendedEnds.map((e) => Math.abs(e.distance))).toFixed(3)} m)\n`);
+  if (c.freeEnds) process.stderr.write(`${c.freeEnds} free member end(s) meet no other member or support\n`);
   if (report.unconnectedEnds.length) process.stderr.write(`${report.unconnectedEnds.length} node(s) touch a member or surface they are not connected to\n`);
   for (const s of report.skipped) process.stderr.write(`skipped #${s.elementId} ${s.type}${s.name ? ` "${s.name}"` : ''}: ${s.reason} (${s.detail})\n`);
   if (!writes) process.stderr.write(dryRun ? 'Dry run: nothing written\n' : 'Nothing to derive: nothing written\n');

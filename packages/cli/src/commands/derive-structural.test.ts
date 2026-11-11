@@ -56,7 +56,11 @@ describe.skipIf(!existsSync(SAMPLE))('ifc-lite derive-structural (#9668)', () =>
     stdout = '';
     const again = join(dir, 'again.ifc');
     await run([out, '--out', again, '--json']);
-    expect(JSON.parse(stdout)).toMatchObject({ output: null, counts: { surfaceMembers: 0 }, skipped: [{ reason: 'already-idealised' }] });
+    expect(JSON.parse(stdout)).toMatchObject({
+      output: null, counts: { surfaceMembers: 0 }, skipped: [{ reason: 'already-idealised' }],
+      existingAnalysisModels: [{ expressId: data.analysisModels[0].expressId, derived: true }],
+    });
+    expect(stderr).toMatch(/already has 1 analysis model\(s\): #\d+ \(derived\)\. Nothing is written unless --analysis-model-exists add/);
     expect(existsSync(again)).toBe(false);
   });
 
@@ -75,6 +79,14 @@ describe.skipIf(!existsSync(SAMPLE))('ifc-lite derive-structural (#9668)', () =>
     await expect(run([SAMPLE, '--out', '--json'])).rejects.toThrow('exit 1');
     expect(stderr).toMatch(/--out needs a value/);
     expect(existsSync('--json')).toBe(false);
+  });
+
+  it('refuses a joint reach or an analysis-model policy it does not know', async () => {
+    const run = await derive();
+    await expect(run([SAMPLE, '--dry-run', '--joint-reach', '-1'])).rejects.toThrow('exit 1');
+    expect(stderr).toMatch(/jointReach must be null or a number of metres/);
+    await expect(run([SAMPLE, '--dry-run', '--analysis-model-exists', 'replace'])).rejects.toThrow('exit 1');
+    expect(stderr).toMatch(/whenAnalysisModelExists must be 'refuse' or 'add'/);
   });
 
   it('refuses a tolerance that is not a positive number of metres', async () => {

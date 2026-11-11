@@ -1,0 +1,12 @@
+diff --git a/packages/create/src/in-store/structural-derive-apply.ts b/packages/create/src/in-store/structural-derive-apply.ts
+--- a/packages/create/src/in-store/structural-derive-apply.ts
++++ b/packages/create/src/in-store/structural-derive-apply.ts
+@@ -84,7 +84,7 @@ export function applyStructuralDerivation(
+   // Resolve every anchor and run every builder check before the first write.
+   const [first] = [...plan.curveMembers, ...plan.surfaceMembers, ...plan.nodes].map((item) => placementOf(item.storeyId).anchor);
+   checkPlan(plan, (storeyId, p) => placementOf(storeyId).toLocal(p));
+-  return writePlan(editor, plan, first, placementOf, random);
++  return editor.runAtomic((draft) => writePlan(draft, plan, first, placementOf, random));
+ }
+ 
+ /** The builders' refusals, run on the whole plan in storey-local coordinates. */

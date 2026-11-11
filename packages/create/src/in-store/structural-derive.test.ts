@@ -7,12 +7,13 @@
 // Set STRUCTURAL_DERIVE_OUT=<dir> to keep the written files (ifcopenshell validation).
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { generateIfcGuid } from '@ifc-lite/encoding';
 import { IfcParser, extractPropertiesOnDemand, extractStructuralOnDemand, structuralCounterparts, type IfcDataStore } from '@ifc-lite/parser';
 import { StepExporter } from '@ifc-lite/export';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import { addColumnToStore, applyStructuralDerivation, planStructuralDerivation, readStructuralDerivationFacts, resolveSpatialAnchor } from '../index.js';
+import { liveStructuralExtraction } from './structural-derive-facts.js';
 
 type Schema = 'IFC2X3' | 'IFC4' | 'IFC4X3';
 
@@ -151,8 +152,8 @@ describe('derive structural analysis model: session idempotence (#9668)', () => 
     const { analysisModelId } = applyStructuralDerivation(editor, store, plan);
     const second = planStructuralDerivation(readStructuralDerivationFacts(store, editor));
     expect(second.report.counts.curveMembers).toBe(0);
-    expect(second.derivedModelId).toBe(analysisModelId);
-    expect(() => applyStructuralDerivation(editor, store, plan)).toThrow(/already has a derived analysis model/);
+    expect(second.existingAnalysisModels).toEqual([{ expressId: analysisModelId, name: 'Derived analysis model', derived: true }]);
+    expect(() => applyStructuralDerivation(editor, store, plan)).toThrow(/already has an analysis model/);
   });
 
   it('refuses a second model when an element was added after the first derivation', async () => {
@@ -163,8 +164,56 @@ describe('derive structural analysis model: session idempotence (#9668)', () => 
     const later = planStructuralDerivation(readStructuralDerivationFacts(store, editor));
     expect(later.report.counts.curveMembers).toBe(1);
     const before = editor.getNewEntities().length;
-    expect(() => applyStructuralDerivation(editor, store, later)).toThrow(/already has a derived analysis model/);
+    expect(() => applyStructuralDerivation(editor, store, later)).toThrow(/already has an analysis model/);
     expect(editor.getNewEntities().length).toBe(before);
+  });
+
+  it("adds the missing members to a new analysis model when whenAnalysisModelExists is 'add'", async () => {
+    const store = await parse(model('IFC4'));
+    const editor = session(store);
+    const { analysisModelId: first } = applyStructuralDerivation(editor, store, planStructuralDerivation(readStructuralDerivationFacts(store, editor)));
+    addColumnToStore(editor, resolveSpatialAnchor(store, 30, editor.getMutationView()), { Position: [12, 0, 0], Width: 0.3, Depth: 0.3, Height: 3 });
+    const later = planStructuralDerivation(readStructuralDerivationFacts(store, editor), { whenAnalysisModelExists: 'add' });
+    const { analysisModelId: second } = applyStructuralDerivation(editor, store, later);
+    expect(second).not.toBe(first);
+    const models = liveStructuralExtraction(store, editor.getMutationView()).analysisModels;
+    expect(models.map((m) => m.expressId).sort((a, b) => a - b)).toEqual([first, second].sort((a, b) => a - b));
+    expect(models.find((m) => m.expressId === second)!.itemGlobalIds).toHaveLength(3); // the new column and its two nodes
+  });
+
+  it('refuses a plan with a bad surface boundary before writing anything', async () => {
+    const store = await parse(model('IFC4'));
+    const editor = session(store);
+    const plan = planStructuralDerivation(readStructuralDerivationFacts(store, editor));
+    expect(plan.surfaceMembers.length).toBeGreaterThan(0);
+    const bad = structuredClone(plan);
+    const last = bad.surfaceMembers.length - 1;
+    bad.surfaceMembers[last].boundary = [[0, 0, 0], [1, 0, 0], [2, 0, 0]]; // collinear
+    const before = editor.getNewEntities().length;
+    expect(() => applyStructuralDerivation(editor, store, bad)).toThrow(/surface member of element #\d+ has a bad boundary/);
+    expect(editor.getNewEntities().length).toBe(before);
+  });
+
+  it('writes nothing when a write fails part-way through', async () => {
+    const store = await parse(model('IFC4'));
+    const editor = session(store);
+    const plan = planStructuralDerivation(readStructuralDerivationFacts(store, editor));
+    const before = editor.getNewEntities().length;
+    // Fail the 50th record: well after the analysis model and the first nodes are written.
+    const addEntity = StoreEditor.prototype.addEntity;
+    let calls = 0;
+    const spy = vi.spyOn(StoreEditor.prototype, 'addEntity').mockImplementation(function (this: StoreEditor, ...args) {
+      if (++calls === 50) throw new Error('disk full');
+      return addEntity.apply(this, args);
+    });
+    try {
+      expect(() => applyStructuralDerivation(editor, store, plan)).toThrow('disk full');
+    } finally {
+      spy.mockRestore();
+    }
+    expect(calls).toBe(50);
+    expect(editor.getNewEntities().length).toBe(before);
+    expect(liveStructuralExtraction(store, editor.getMutationView()).analysisModels).toHaveLength(0);
   });
 
   it('refuses a plan whose footing was deleted after planning', async () => {

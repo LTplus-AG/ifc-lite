@@ -98,10 +98,10 @@ export function addStructuralPointConnectionToStore(
   // required: the exporter's SELECT qualification reads the IFC4 registry for
   // every target schema and would wrap a bare number as an IFC4 select member.
   const stiffness = (value: boolean | number | undefined) => {
+    if (value === undefined) return null;
     if (typeof value === 'number' && !Number.isFinite(value)) throw new Error('Spring stiffness must be finite');
-    return is2x3
-      ? (value === undefined ? null : { real: typeof value === 'number' ? value : value ? -1 : 0 })
-      : value ?? null;
+    if (!is2x3) return value;
+    return { real: typeof value === 'number' ? value : value ? -1 : 0 };
   };
   // Resolved before any entity is emitted, so a refused value leaves the store untouched.
   const bc = params.BoundaryCondition;

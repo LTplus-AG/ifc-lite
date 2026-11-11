@@ -134,6 +134,7 @@ describe('C2 structural surface and connection builders', () => {
     [[0, 0, 0], [1, 0, 0], [1, 0, 0]],
     [[0, 0, 0], [4, 4, 0], [4, 0, 0], [0, 2, 0]], // bow-tie with non-zero net area
     [[0, 0, 0], [4, 0, 0], [4, 4, 0], [2, 0, 0], [0, 4, 0]], // vertex touching a non-adjacent edge
+    [[0, 0, 0], [4, 0, 0], [4, 4, 0], [2, 1e-12, 0], [0, 4, 0]], // vertex within rounding of a non-adjacent edge
   ] satisfies [number, number, number][][])('rejects invalid surface boundaries before emitting entities: %j', async (...points) => {
     const { editor, anchor } = await fresh('IFC4');
     for (const build of [addStructuralSurfaceMemberToStore, addStructuralSurfaceConnectionToStore]) {
@@ -177,6 +178,16 @@ describe('C2 structural surface and connection builders', () => {
       const world = [0, 1, 2].map(k => a * u[k] + b * v[k] + c * along[k]);
       world.forEach((w, k) => expect(w).toBeCloseTo([0, 0, 1][k], 9));
     });
+  });
+  it('writes nothing when the GlobalId, a stiffness or a closed ring is refused', async () => {
+    const { editor, anchor } = await fresh('IFC4');
+    const tri: [number, number, number][] = [[0, 0, 0], [1, 0, 0], [1, 1, 0]];
+    expect(() => addStructuralSurfaceMemberToStore(editor, anchor, { Boundary: tri, GlobalId: 'bad' })).toThrow(/GlobalId/);
+    expect(() => addStructuralSurfaceConnectionToStore(editor, anchor, { Boundary: tri, GlobalId: 'bad' })).toThrow(/GlobalId/);
+    expect(() => addStructuralCurveConnectionToStore(editor, anchor, { Start: [0, 0, 0], End: [1, 0, 0], GlobalId: 'bad' })).toThrow(/GlobalId/);
+    expect(() => addStructuralSurfaceConnectionToStore(editor, anchor, { Boundary: tri, BoundaryCondition: { TranslationalStiffnessByAreaZ: -1 } })).toThrow(/not negative/);
+    expect(() => addStructuralSurfaceMemberToStore(editor, anchor, { Boundary: [...tri, [0, 0, 0]] })).toThrow(/do not repeat the first point/);
+    expect(editor.getMutationView().getNewEntities()).toHaveLength(0);
   });
   it('refuses unsupported schema-specific axis attributes', async () => {
     const { editor, anchor } = await fresh();

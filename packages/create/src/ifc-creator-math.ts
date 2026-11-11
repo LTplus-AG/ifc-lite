@@ -111,11 +111,12 @@ export function assertFinitePoint3(points: Record<string, Point3D>, context: str
   }
 }
 
-/** Cross product */
+/** Dot product */
 export function vecDot(a: Point3D, b: Point3D): number {
   return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 }
 
+/** Cross product */
 export function vecCross(a: Point3D, b: Point3D): Point3D {
   return [
     a[1] * b[2] - a[2] * b[1],

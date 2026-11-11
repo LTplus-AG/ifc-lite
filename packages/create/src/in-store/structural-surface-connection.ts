@@ -34,10 +34,11 @@ export function addStructuralSurfaceConnectionToStore(editor: StoreEditor, ancho
   const bc = params.BoundaryCondition;
   const stiffness = [bc?.TranslationalStiffnessByAreaX, bc?.TranslationalStiffnessByAreaY, bc?.TranslationalStiffnessByAreaZ]
     .map(v => structuralStiffness(anchor, v, 'IfcModulusOfSubgradeReactionMeasure'));
+  const globalId = productGuid(params, anchor.guidRandom); // validated before anything is written
   const result = emitStructuralFace(editor, anchor, face);
   const boundaryConditionId = bc ? editor.addEntity('IfcBoundaryFaceCondition', [bc.Name ?? null, ...stiffness]).expressId : undefined;
   const connectionId = editor.addEntity('IfcStructuralSurfaceConnection', [
-    productGuid(params, anchor.guidRandom), ownerHistoryRef(anchor.ownerHistoryId), params.Name ?? 'Structural Surface Connection',
+    globalId, ownerHistoryRef(anchor.ownerHistoryId), params.Name ?? 'Structural Surface Connection',
     params.Description ?? null, params.ObjectType ?? null, `#${result.placementId}`, `#${result.productShapeId}`, boundaryConditionId === undefined ? null : `#${boundaryConditionId}`,
   ]).expressId;
   return { connectionId, boundaryConditionId, ...result };

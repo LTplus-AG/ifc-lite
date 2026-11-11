@@ -77,6 +77,7 @@ export function addStructuralCurveConnectionToStore(
     throw new Error('addStructuralCurveConnectionToStore: Axis must be nonzero and not parallel to the edge');
   }
   const axis = vecNorm([vecDot(frame.u, world), vecDot(frame.v, world), vecDot(frame.along, world)]);
+  const globalId = productGuid(params, anchor.guidRandom); // validated before anything is written
 
   const placementId = emitLocalPlacement(editor, anchor.storeyPlacementId, frame.origin, frame.along, frame.u);
   const axisDirectionId = schema === 'IFC2X3' ? undefined : editor.addEntity('IfcDirection', [axis]).expressId;
@@ -90,7 +91,7 @@ export function addStructuralCurveConnectionToStore(
 
   const boundaryConditionId = bc ? editor.addEntity('IfcBoundaryEdgeCondition', [bc.Name ?? null, ...stiffness]).expressId : undefined;
   const connectionId = editor.addEntity('IfcStructuralCurveConnection', [
-    productGuid(params, anchor.guidRandom),
+    globalId,
     ownerHistoryRef(anchor.ownerHistoryId),
     params.Name ?? 'Structural Curve Connection',
     params.Description ?? null,

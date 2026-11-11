@@ -10,18 +10,16 @@ import { emitLocalPlacement } from './_emit-helpers.js';
 
 type Flat = readonly [number, number];
 const orient = (p: Flat, q: Flat, r: Flat) => (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]);
-/** `r`, already collinear with segment p-q, lies within it. */
-const within = (p: Flat, q: Flat, r: Flat) =>
-  Math.min(p[0], q[0]) <= r[0] && r[0] <= Math.max(p[0], q[0])
-  && Math.min(p[1], q[1]) <= r[1] && r[1] <= Math.max(p[1], q[1]);
-/** Segments p and q cross or touch. */
-function segmentsMeet([p1, p2]: readonly [Flat, Flat], [q1, q2]: readonly [Flat, Flat]): boolean {
-  const d1 = orient(q1, q2, p1), d2 = orient(q1, q2, p2), d3 = orient(p1, p2, q1), d4 = orient(p1, p2, q2);
-  if (d1 * d2 < 0 && d3 * d4 < 0) return true;
-  return (d1 === 0 && within(q1, q2, p1))
-    || (d2 === 0 && within(q1, q2, p2))
-    || (d3 === 0 && within(p1, p2, q1))
-    || (d4 === 0 && within(p1, p2, q2));
+/** `r` lies within `tol` of segment p-q. */
+function touches(p: Flat, q: Flat, r: Flat, tol: number): boolean {
+  const [dx, dy] = [q[0] - p[0], q[1] - p[1]];
+  const t = Math.max(0, Math.min(1, ((r[0] - p[0]) * dx + (r[1] - p[1]) * dy) / (dx * dx + dy * dy)));
+  return Math.hypot(r[0] - p[0] - t * dx, r[1] - p[1] - t * dy) <= tol;
+}
+/** Segments p and q cross, or come within `tol` of each other. */
+function segmentsMeet([p1, p2]: readonly [Flat, Flat], [q1, q2]: readonly [Flat, Flat], tol: number): boolean {
+  if (orient(q1, q2, p1) * orient(q1, q2, p2) < 0 && orient(p1, p2, q1) * orient(p1, p2, q2) < 0) return true;
+  return touches(q1, q2, p1, tol) || touches(q1, q2, p2, tol) || touches(p1, p2, q1, tol) || touches(p1, p2, q2, tol);
 }
 
 /** Validate before emitting anything. Coordinates are storey-local metres. */
@@ -38,7 +36,9 @@ export function prepareStructuralFace(points: readonly Point3D[]) {
     for (let j = i + 1; j < relative.length; j++) {
       const p = relative[i], q = relative[j];
       if ((p[0] - q[0]) ** 2 + (p[1] - q[1]) ** 2 + (p[2] - q[2]) ** 2 <= tolerance ** 2) {
-        throw new Error('Structural Face: degenerate boundary (duplicate points)');
+        throw new Error(i === 0 && j === relative.length - 1
+          ? 'Structural Face: the boundary closes itself; do not repeat the first point at the end'
+          : 'Structural Face: degenerate boundary (duplicate points)');
       }
     }
   }
@@ -63,7 +63,7 @@ export function prepareStructuralFace(points: readonly Point3D[]) {
   for (let i = 0; i < n - 2; i++) {
     // Edges i and j are adjacent when j = i + 1, or when i = 0 and j = n - 1.
     for (let j = i + 2; j < (i === 0 ? n - 1 : n); j++) {
-      if (segmentsMeet(edges[i], edges[j])) throw new Error('Structural Face: boundary must not self-intersect');
+      if (segmentsMeet(edges[i], edges[j], tolerance)) throw new Error('Structural Face: boundary must not self-intersect');
     }
   }
   return { origin, relative: planar, axis };

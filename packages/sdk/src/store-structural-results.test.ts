@@ -71,12 +71,13 @@ describe('SDK structural activities and results (#9668)', () => {
     const editor = new StoreEditor(store, mutationView);
     const api = createStructuralStoreBackend(() => ({ modelId: 'model', store, editor, mutationView, ownerHistoryId: 4 }));
     const calls = [
+      () => api.addStructuralPointAction('model', { ForceZ: 1 }),
       () => api.addStructuralSurfaceAction('model', { AppliedLoad: { Type: 'IfcStructuralLoadPlanarForce', PlanarForceZ: 1 } }),
       () => api.addStructuralCurveReaction('model', { AppliedLoad: { LinearForceZ: 1 } }),
       () => api.addStructuralSurfaceReaction('model', { AppliedLoad: { PlanarForceZ: 1 } }),
     ];
     for (const call of calls) {
-      expect(call).toThrow("schema 'undefined' is not supported; use IFC4 or IFC4X3");
+      expect(call).toThrow("store has no schemaVersion");
       expect(mutationView.getNewEntities()).toHaveLength(0);
     }
   });

@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { structuralCounterparts, type StructuralExtraction, type StructuralMemberInfo } from '@ifc-lite/parser';
-/** Native StructuralCard selection contract, shared with evidence (#7195). */
+/** Native structural member selection contract, shared with evidence (#7195). */
 export function selectedStructuralMember(data: StructuralExtraction | null, expressId: number | null,
   globalId: string | null | undefined): StructuralMemberInfo | null {
   if (!data) return null;
@@ -16,14 +16,14 @@ export function selectedStructuralMember(data: StructuralExtraction | null, expr
 /**
  * What StructuralCard shows for a selection: the member it describes and the
  * physical-to-analytical counterparts (#9668), or null when the card renders
- * nothing. The panel's separator gate asks the same function.
+ * nothing. The panel's separator gate asks the same function. Counterparts are
+ * model-local express ids, so a GUID-only selection gets none.
  */
 export function structuralCardSubject(data: StructuralExtraction | null, expressId: number | null,
   globalId: string | null | undefined) {
   if (!data) return null;
   const member = selectedStructuralMember(data, expressId, globalId);
-  const id = member?.expressId ?? expressId;
-  const counterparts = id !== null && id > 0 ? structuralCounterparts(data, id) : null;
+  const counterparts = expressId !== null && expressId > 0 ? structuralCounterparts(data, expressId) : null;
   return member || counterparts ? { member, counterparts } : null;
 }
 

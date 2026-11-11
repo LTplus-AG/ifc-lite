@@ -24,7 +24,7 @@ export interface StructuralCounterparts {
    * order.
    */
   side: 'analytical' | 'physical';
-  /** Model-local express ids; never empty, frozen (shared by every lookup). */
+  /** Model-local express ids; never empty. Shared with the read model: do not mutate. */
   expressIds: readonly number[];
 }
 
@@ -43,10 +43,10 @@ export function structuralCounterparts(data: StructuralExtraction, expressId: nu
     for (const item of [...data.members, ...data.connections]) {
       const physical = item.physicalElementIds;
       if (!physical?.length) continue;
-      index.set(item.expressId, { side: 'physical', expressIds: Object.freeze([...physical]) });
+      index.set(item.expressId, { side: 'physical', expressIds: physical });
       for (const elementId of physical) addUnique(analytical, elementId, item.expressId);
     }
-    for (const [elementId, items] of analytical) index.set(elementId, { side: 'analytical', expressIds: Object.freeze(items) });
+    for (const [elementId, items] of analytical) index.set(elementId, { side: 'analytical', expressIds: items });
     indexes.set(data, index);
   }
   return index.get(expressId) ?? null;

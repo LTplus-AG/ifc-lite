@@ -1487,9 +1487,10 @@ export function PropertiesPanel() {
                   </>
                 )}
 
-                {/* Structural analysis — analysis model, connections and
-                    applied loads for a selected IfcStructuralMember. Gated
-                    on `hasStructuralForSelection` for the same reason as the
+                {/* Structural analysis: a selected IfcStructuralMember's
+                    model, connections and loads, and the physical-to-analytical
+                    counterparts of either end of the link (#9668). Gated on
+                    `hasStructuralForSelection` for the same reason as the
                     schedule separator above. */}
                 {!findQuery && selectedEntity && structuralData && hasStructuralForSelection && (
                   <>

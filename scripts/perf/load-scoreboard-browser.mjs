@@ -84,7 +84,7 @@ function summarizeOpen(open, memory) {
   return {
     firstGeometryMs: open.firstFrameMs, interactiveMs: open.interactiveMs, geometryMs: open.geometryMs, propsMs: open.propsMs,
     storeSettledMs: open.storeSettledMs, settleQuantized: open.settleQuantized, completeFrameMs: open.completeFrameMs,
-    publishPaintMs: open.publishPaintMs, settlePaintMs: open.settlePaintMs, inputDelayMs: open.inputDelayMs, clockFrom: open.clockFrom,
+    publishPaintMs: open.publishPaintMs, settlePaintMs: open.settlePaintMs, inputDelayMs: open.inputDelayMs, clockFrom: open.clockFrom, pickDelayMs: open.pickDelayMs, interactiveFromChangeMs: open.interactiveFromChangeMs,
     // A capped quiet wait is not a measurement: it is kept as null with the flag (uiQuietValue).
     uiQuietMs: uiQuietValue(open), uiQuietTimedOut: Boolean(open.uiQuietTimedOut), uiQuietRawMs: open.uiQuietMs ?? null,
     longTasksAfterReady: open.longTasksAfterReady ?? null, shell: open.shell ?? null,

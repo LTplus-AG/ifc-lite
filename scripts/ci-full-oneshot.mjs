@@ -106,7 +106,7 @@ export function decideOneshot({ mode, prLane, run, pr, jobs }) {
 }
 
 function ghCli(args) {
-  const r = spawnSync('gh', args, { encoding: 'utf8', env: process.env });
+  const r = spawnSync('gh', args, { encoding: 'utf8', env: process.env, maxBuffer: 32 * 1024 * 1024 });
   if (r.error) throw r.error;
   return { status: r.status, stdout: r.stdout, stderr: r.stderr };
 }

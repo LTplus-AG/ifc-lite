@@ -6732,3 +6732,9 @@ Lessons:
 - **Not recommended: a Node `worker_threads` wasm pool.** The browser pool is Web Worker-only
   and does not feed the GLB assembler. Staying byte-identical needs a new Rust shard/merge API,
   and that lands at ~4-6 s on Holter.
+
+## Review the entry dominators before deferring more UI (#9742)
+
+**Measured: entry and complete eager JavaScript both shrink; boot observations pending.** Lists authoring/results, the Gantt schedule UI and Extensions management were static imports of the shared panel router. The entry-specific module graph exposed those three exclusive import subtrees; reusing the existing deferred-panel boundary removes their UI from the entry and complete HTML preload closure while the eager extension host and shared feature state retain their lifecycle. Pending authoring/deep-link requests survive until mount, and tours share the same asynchronous module factories.
+
+Lesson: trace imports from the actual entry and verify emitted module ownership, rather than treating a large source file or separate manual chunk as guaranteed savings. Cold-feature tests should drive real controls after readiness; their pending-shell witness must also remain runnable when production code is reverted. The full emitted-graph lazy assertion is already a CI gate. Bundle measurements, total-JS cost and boot observations belong in the PR evidence.

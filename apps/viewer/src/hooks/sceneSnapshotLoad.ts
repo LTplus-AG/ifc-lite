@@ -165,7 +165,8 @@ function armSceneCapture(renderer: Renderer, isStale: () => boolean, onCaptured:
     const sceneBounds = camera.getSceneBounds();
     const fitBounds = lastFinalFitBounds();
     if (isStale() || !sceneBounds || !fitBounds || !sceneMatchesCachedGeometry()) return;
-    onCaptured({ snapshot, key: snapshotKey(renderer.getScene()), fit: { fitBounds, sceneBounds, orbitAnchorBounds: camera.getOrbitAnchorBounds() } });
+    onCaptured({ snapshot, key: snapshotKey(renderer.getScene()), fit: { fitBounds, sceneBounds, orbitAnchorBounds: camera.getOrbitAnchorBounds() },
+      policyNow: () => renderer.getScene().sceneSnapshotPolicy() });
   });
 }
 

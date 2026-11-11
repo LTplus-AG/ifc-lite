@@ -28,6 +28,11 @@ export interface CapturedScene {
   fit: SnapshotCameraFit;
   /** `sceneSnapshotKey` at the swap: the type visibility the batches were built under. */
   key: string;
+  /**
+   * The scene's batch policy when the write runs. A capture taken before quantized
+   * admission settled holds f32 batches that a reopen would refuse, so it is not stored.
+   */
+  policyNow: () => string;
 }
 
 /** The cache entry write a snapshot belongs to. */
@@ -38,7 +43,7 @@ export interface SnapshotEntry {
   shards: { offset: number; size: number } | null;
 }
 
-export type SnapshotWriteOutcome = 'written' | 'refused' | 'abandoned' | 'no-entry';
+export type SnapshotWriteOutcome = 'written' | 'refused' | 'abandoned' | 'no-entry' | 'policy-changed' | 'failed';
 
 const STALE_POLL_MS = 250;
 const IDLE_TIMEOUT_MS = 2000;
@@ -133,14 +138,16 @@ export async function writeCapturedScene(
     if (!target) return finish('no-entry');
     await idlePeriod();
     if (isStale()) return finish('abandoned');
+    if (captured.policyNow() !== captured.snapshot.policy) return finish('policy-changed');
     const encodeStart = performance.now();
     const blob = await encodeSceneSnapshotInSlices({ ...captured.snapshot, hostData: { ...captured.fit, shards: target.shards } }, sliceGap);
     const encodeMs = performance.now() - encodeStart;
     if (isStale()) return finish('abandoned');
+    // `refused`: the entry was replaced or purged, or quota is short (putSceneSnapshot's own guards).
     const stored = await putSceneSnapshot(target.cacheKey, target.write, blob, captured.key);
     return finish(stored ? 'written' : 'refused', { bytes: blob.size, encodeMs: Math.round(encodeMs) });
   } catch (err) {
     console.warn('[useIfcCache] Scene snapshot was not stored:', err);
-    return finish('refused');
+    return finish('failed');
   }
 }

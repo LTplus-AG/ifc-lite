@@ -28,7 +28,7 @@ function snapshot(): SceneSnapshot {
   };
 }
 
-const captured = (): CapturedScene => ({ snapshot: snapshot(), key: 'policy|types', fit: { fitBounds: BOUNDS, sceneBounds: BOUNDS, orbitAnchorBounds: null } as unknown as CapturedScene['fit'] });
+const captured = (policyNow = 'p'): CapturedScene => ({ snapshot: snapshot(), key: 'policy|types', policyNow: () => policyNow, fit: { fitBounds: BOUNDS, sceneBounds: BOUNDS, orbitAnchorBounds: null } as unknown as CapturedScene['fit'] });
 
 /** A real recording trace, and a promise for the outcome the writer ends its span with. */
 function tracedSpan(): { trace: LoadTrace; span: number; outcome: () => string | undefined } {
@@ -113,6 +113,14 @@ describe('writeCapturedScene', () => {
     assert.equal(outcome(), 'abandoned');
   });
 
+  it('does not store batches built under a policy the scene has since left (quantized admission landed late)', async () => {
+    const entry = await entryOf('q');
+    useViewerStore.setState({ loading: false });
+    const { trace, span } = tracedSpan();
+    assert.equal(await writeCapturedScene(captured('quantized-now'), Promise.resolve(entry), () => false, trace, span), 'policy-changed');
+    assert.equal((await getCached('q'))!.sceneSnapshot, undefined);
+  });
+
   it('writes nothing when the load stored no entry', async () => {
     useViewerStore.setState({ loading: false });
     const { trace, span } = tracedSpan();
@@ -140,7 +148,7 @@ function captureRenderer(queued = false) {
   let onCaptured: ((s: SceneSnapshot) => void) | null = null;
   const scene = {
     captureNextFinalize: (cb: (s: SceneSnapshot) => void) => { onCaptured = cb; },
-    sceneSnapshotPolicy: () => 'policy',
+    sceneSnapshotPolicy: () => 'p',
     hasQueuedMeshes: () => queued,
     getBatchedMeshes: () => [],
   };

@@ -1,5 +1,14 @@
 # Parsing IFC Files
 
+The browser geometry engine requires each IFC source to be smaller than 2 GiB
+(2,147,483,648 bytes). Smaller sources may still exhaust available memory.
+`assertWasmSourceSize(byteLength)` throws `WasmSourceSizeError` at or above
+`WASM_SOURCE_BYTE_LIMIT`; all three are exported by `@ifc-lite/parser`.
+The parser skips whole-source WASM scans at that same boundary. Compact entity
+indexes reject byte offsets or lengths outside the unsigned 32-bit range instead
+of wrapping them. These checks do not raise the browser engine's capacity.
+
+
 Complete guide to parsing IFC files with IFClite, covering both IFC4 (STEP) and IFC5 (IFCX) formats.
 
 ## Overview

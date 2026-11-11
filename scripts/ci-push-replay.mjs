@@ -62,7 +62,6 @@
  * still read an unnamed workflow file. A miss cannot change a verdict (replay
  * still needs a green run of the exact tree). Its cost is a main-side cache
  * keyed on that file staying cold until the next full push run.
- * No Test cache key reads a workflow file today.
  */
 
 import { appendFileSync } from 'node:fs';
@@ -201,8 +200,9 @@ function emit(output, key, value) {
 }
 
 function readInputs(repo, pushSha, pushTree, parentSha, before) {
-  // --no-renames: a file moved out of a blocking directory must count on both sides.
-  const changedFiles = git('diff', '--no-renames', '--name-only', `${parentSha}`, pushSha).split('\n').filter(Boolean);
+  // --no-renames: a moved file counts on both sides. -z: git quotes a non-ASCII path
+  // otherwise, and `".github/actions/\303\251/x"` would match no blocking rule.
+  const changedFiles = git('diff', '-z', '--no-renames', '--name-only', `${parentSha}`, pushSha).split('\0').filter(Boolean);
   const pulls = gh(['api', `repos/${repo}/commits/${pushSha}/pulls`, '--method', 'GET'], `the PRs of ${pushSha.slice(0, 9)}`);
   if (!Array.isArray(pulls)) throw new GhError('GH_BAD_SHAPE', 'commits/{sha}/pulls did not return an array');
   const merged = pulls.filter((p) => p?.merge_commit_sha === pushSha);

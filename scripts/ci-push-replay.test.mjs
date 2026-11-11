@@ -475,6 +475,8 @@ test('the probe reads the Test workflow files at the push commit', {
   // Rename detection would list only the new, unnamed path.
   assert.equal(replayFor(() => git('mv', '.github/workflows/named.yml', '.github/workflows/renamed.yml')), full, 'a renamed workflow an action names');
   assert.equal(replayFor('.github/actions/setup/action.yml'), full, 'an action file');
+  // git quotes a non-ASCII path in plain --name-only output, and no blocking rule matches a quote.
+  assert.equal(replayFor('.github/actions/é/run.sh'), full, 'a non-ASCII action path');
   // Last: it overwrites test.yml, so nothing after it would reach the fixture's action.
   assert.equal(replayFor('.github/workflows/test.yml'), full, 'test.yml itself');
 });

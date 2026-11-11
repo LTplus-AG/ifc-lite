@@ -8,7 +8,7 @@ Citations to `evidence/`, `tests/evidence/` and `docs/architecture/evidence/` pa
 at commit [`f98785c722`](https://github.com/LTplus-AG/ifc-lite/tree/f98785c722); the retained
 bundles left the tree in #9054.
 
-## Cold finalize assembles streamed batches from their fragments (#9684, #9685)
+## Cold finalize assembles streamed batches from their fragments (#9684)
 
 **Shipped: browser-cold gain on the finalize-bound models.** Every streamed flat mesh was merged,
 lattice-checked (#9068), quantized and uploaded twice: once as a streaming fragment and again when
@@ -16,11 +16,11 @@ lattice-checked (#9068), quantized and uploaded twice: once as a streaming fragm
 the same order and frame. Finalize now copies the fragments' vertex buffers into the final batch on the GPU
 (`copyBufferToBuffer`) and rebases only the indices. Fragments share one lattice origin per bucket, which
 decodes to the same exact 2^-10 positions. The stream keeps one f32 topology verdict per (mesh, frame); each
-mesh had been scanned four times per load. The regroup keeps buckets no colour change touched. LOD1 clustering
-keys its cells in a typed table instead of a Map of boxed doubles (#9685). Buckets that cannot be proven
+mesh had been scanned four times per load. The regroup keeps buckets no colour change touched. Buckets that cannot be proven
 identical take the old rebuild, and the `render.finalize.rebuilt.*` counters name the reason.
 
-Timed A/B (exclusive, 5 rounds, A/A floors): browser-cold Holter +6.8% and BWK +8.6% PASS. `scene.finalize`
+Timed A/B (exclusive, 5 rounds, A/A floors; the branch side also carried #9685, which measured as no
+change, below): browser-cold Holter +6.8% and BWK +8.6% PASS. `scene.finalize`
 went from 651 to 433 ms on Holter and from 1,584 to 1,239 ms on BWK. No regression in any lane or metric, peak
 memory included. Output was identical in every sample, the settled frames stayed within main's own run-to-run
 pixel spread, and the GPU e2e specs gave the same result on both sides.
@@ -41,8 +41,26 @@ Lessons:
   assemble from; W2 (snapshot at the end of the cold load) is that lane's lever. UI quiet is still bound by
   the post-stream drain (fragment building for the backlog), which this does not remove. Next lever: C5, the
   workers emitting final-layout quantized records.
+- **Device recovery must drop the stream's records too.** A loss discards the fragments; records kept for
+  assembly otherwise retain their CPU geometry past `releaseGeometryData` (adversarial review: 38 records,
+  1.79 MB on FZK). Recovery and release now clear them, and a finalize after a loss rebuilds from CPU.
 - **What still falls back.** Buckets whose fragments are f32, mostly thin members that fail the #9068 collapse
   check (skolebygg: 105 of 426). They would need a per-entity collapse verdict carried with each fragment.
+
+## LOD1 cell table on typed arrays (#9685)
+
+**Dead end: no gain over `Map`.** `simplifyIndicesByClustering` keys occupied cells by a 53-bit number
+(entity lane × 2^21 + packed cell). Replacing the `Map` with an open-addressing typed table looked like 60%
+less LOD time, but that came from whole-finalize CPU profiles taken under different host load. Isolated on
+the real merged bucket data of Holter, BWK and skolebygg (old vs new interleaved, 7 reps, identical
+outputs), the two are equal within spread (Holter 86 vs 81 ms, BWK 172 vs 176). The table also added a
+hash-flooding surface: its hash was invertible and its probing unbounded, so 16,386 crafted valid vertices
+cost 268.5 M probes (adversarial review). A bounded version, with a probe budget and an exact-Map fallback,
+was correct and identical but still no faster. Withdrawn.
+
+Lessons: compare a function against itself on identical inputs in one process before crediting it from
+profiles of different runs. V8's numeric-key `Map` is not the bottleneck it looks like in a sampling profile.
+Any hash table keyed by model data needs a work bound, not just a good hash.
 
 ## Deferred viewer cache encoding (NEW-5, #9622)
 

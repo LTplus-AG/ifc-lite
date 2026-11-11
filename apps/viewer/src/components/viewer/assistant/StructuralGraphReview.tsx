@@ -23,10 +23,11 @@ export function StructuralGraphReview({ proposal, origin }: { proposal: Structur
   const [stale, setStale] = useState(false);
   const [receipt, setReceipt] = useState<ModelChangeReceipt | null>(null);
   const [receiptProblem, setReceiptProblem] = useState(false);
-  const owner = useRef({ review: null as StructuralReview | null, committing: false, mounted: true, selection: approved, proposal });
+  const [writes, setWrites] = useState<'loading' | 'ready' | 'failed'>('loading');
+  const owner = useRef({ review: null as StructuralReview | null, committing: false, mounted: true });
   useEffect(() => {
     const current = owner.current;
-    current.mounted = true; current.proposal = proposal;
+    current.mounted = true;
     const unsubscribe = useViewerStore.subscribe(() => {
       if (!current.review || current.committing) return;
       try { current.review.validate(); }
@@ -37,18 +38,28 @@ export function StructuralGraphReview({ proposal, origin }: { proposal: Structur
     });
     return () => { current.mounted = false; current.review = null; unsubscribe(); };
   }, [proposal]);
-  // The structural builders load in their own chunk (#9668): wait for it, never refuse while it loads.
-  // The selection is read when the chunk has loaded, so a box changed while it loads is not lost.
-  const prepare = () => void loadStructuralWrites().then(() => {
-    // Dropped if the panel unmounted or now shows another proposal.
-    if (!owner.current.mounted || owner.current.proposal !== proposal) return;
-    const next = prepareStructuralReview(useViewerStore, proposal, owner.current.selection);
-    owner.current.review = next; setReview(next); setProblem(null); setStale(false);
-  }).catch((error: unknown) => {
-    console.warn('[Assistant] Native Structural review refused', error);
-    if (!owner.current.mounted || owner.current.proposal !== proposal) return;
+  const refuse = (error: unknown) => {
     owner.current.review = null; setReview(null); setProblem(error instanceof Error ? error.message : String(error));
-  });
+  };
+  // The structural builders load in their own chunk (#9668). Prepare stays disabled until it has
+  // loaded, so the review is never refused for loading; a failed load turns Prepare into a retry.
+  const loadWrites = () => {
+    setWrites('loading');
+    loadStructuralWrites().then(() => { if (owner.current.mounted) { setWrites('ready'); setProblem(null); } }, (error: unknown) => {
+      console.warn('[Assistant] Structural write path failed to load', error);
+      if (owner.current.mounted) { setWrites('failed'); refuse(error); }
+    });
+  };
+  useEffect(loadWrites, []);
+  const prepare = (selection = approved) => {
+    try {
+      const next = prepareStructuralReview(useViewerStore, proposal, selection);
+      owner.current.review = next; setReview(next); setProblem(null); setStale(false);
+    } catch (error) {
+      console.warn('[Assistant] Native Structural review refused', error);
+      refuse(error);
+    }
+  };
   const apply = () => {
     if (!owner.current.mounted || owner.current.review !== review || !review || stale || receipt || !acknowledged) return;
     try {
@@ -77,14 +88,14 @@ export function StructuralGraphReview({ proposal, origin }: { proposal: Structur
           onChange={event => {
             const next = new Set(approved);
             if (event.target.checked) next.add(index); else next.delete(index);
-            setApproved(next); owner.current.selection = next; if (review) prepare();
+            setApproved(next); if (review) prepare(next);
           }} />{t(`structuralReview.op.${operation.op}`)}</label>
         {operation.params && <pre className="whitespace-pre-wrap break-words text-muted-foreground">{JSON.stringify(operation.params, null, 2)}</pre>}
         {operation.target !== undefined && <p className="text-muted-foreground">{t('structuralReview.references', { target: JSON.stringify(operation.target), related: JSON.stringify(operation.related ?? []) })}</p>}
       </li>)}
     </ul>
     {!receipt && <label className="flex items-center gap-2"><input type="checkbox" checked={acknowledged} onChange={event => setAcknowledged(event.target.checked)} />{t('structuralReview.acknowledgement')}</label>}
-    {!receipt && <Button size="sm" variant="outline" disabled={!approved.size} onClick={() => prepare()}>{t('structuralReview.prepare')}</Button>}
+    {!receipt && <Button size="sm" variant="outline" disabled={!approved.size || writes === 'loading'} onClick={() => writes === 'ready' ? prepare() : loadWrites()}>{t('structuralReview.prepare')}</Button>}
     {review && <>
       <output className="block">{t('structuralReview.population', { records: review.snapshot.records.length,
         created: delta.filter(row => !row.before).length, modified: delta.filter(row => row.before && row.after).length, deleted: delta.filter(row => !row.after).length })}</output>

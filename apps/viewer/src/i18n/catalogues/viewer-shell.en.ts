@@ -30,6 +30,7 @@ export const viewerShellEn = {
   'viewerShell.chunkLabel.documentPanel': 'Document panel',
   'viewerShell.chunkLabel.presentationPanel': 'Presentation panel',
   'viewerShell.chunkLabel.layersPanel': 'Layers panel',
+  'viewerShell.chunkLabel.mobileLayout': 'Mobile controls',
   'viewerShell.chunkLabel.mcpPage': 'MCP page',
   'viewerShell.chunkLabel.mcpPlayground': 'MCP playground',
   'viewerShell.chunkLabel.rteGpuWitness': 'RTE GPU witness',

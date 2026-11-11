@@ -11,6 +11,10 @@
  * unconditionally), whatever their own open state. Those three seams used to
  * be copied into each layout test; this is them, once. The desktop layout's
  * `FlavorIndicator` reads IndexedDB on mount, which happy-dom lacks.
+ *
+ * The narrow layout is its own lazily loaded chunk (#9718): a test of the
+ * mobile shell awaits {@link mobileLayoutMounted} (or renders through
+ * {@link renderMobileViewerLayout}) instead of assuming a synchronous render.
  */
 
 import 'fake-indexeddb/auto';
@@ -21,7 +25,7 @@ import { ExtensionHostContext } from '@/sdk/ExtensionHostProvider.js';
 import { ExtensionHostService } from '@/services/extensions/host.js';
 import { SourceHostProvider } from '@/services/sources/SourceHostProvider.js';
 import { ViewerLayout } from '@/components/viewer/ViewerLayout.js';
-import { render } from './render.js';
+import { render, waitFor } from './render.js';
 
 class StubExtensionHost extends ExtensionHostService {
   constructor() {
@@ -47,4 +51,16 @@ export function renderViewerLayout(): HTMLElement {
       </ExtensionHostContext.Provider>
     </BimReactContext.Provider>,
   );
+}
+
+/** Wait until the lazily loaded mobile layout (`MobileLayout`, #9718) has mounted. */
+export async function mobileLayoutMounted(): Promise<void> {
+  await waitFor(() => document.querySelector('[data-mobile-shell]') !== null, 'the lazily loaded mobile layout mounts');
+}
+
+/** {@link renderViewerLayout} in a narrow window, returned once its mobile layout has mounted. */
+export async function renderMobileViewerLayout(): Promise<HTMLElement> {
+  const container = renderViewerLayout();
+  await mobileLayoutMounted();
+  return container;
 }

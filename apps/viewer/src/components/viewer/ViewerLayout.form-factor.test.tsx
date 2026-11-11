@@ -18,7 +18,7 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { cleanup } from '@/test/render.js';
-import { renderViewerLayout } from '@/test/viewer-layout-harness.js';
+import { renderMobileViewerLayout, renderViewerLayout } from '@/test/viewer-layout-harness.js';
 import { useViewerStore } from '@/store';
 import { DESKTOP_FORM_FACTOR, type SegmentRect } from '@/lib/layout/form-factor';
 
@@ -82,16 +82,16 @@ afterEach(() => {
 });
 
 describe('ViewerLayout command placement per form factor (#9718)', () => {
-  it('a portrait phone (Flip 412x960) has the bar under the viewport and no ribbon', () => {
+  it('a portrait phone (Flip 412x960) has the bar under the viewport and no ribbon', async () => {
     setViewport(412, 960);
-    const ui = renderViewerLayout();
+    const ui = await renderMobileViewerLayout();
     assert.equal(useViewerStore.getState().formFactor.mode, 'phone-portrait');
     assert.deepEqual(chrome(ui), { shell: 'bottom-bar', bar: 'bottom-bar', barAfterViewport: true, row: false, ribbon: false });
   });
 
-  it('rotating to landscape moves the commands to a rail on the right, and back, without closing the open sheet', () => {
+  it('rotating to landscape moves the commands to a rail on the right, and back, without closing the open sheet', async () => {
     setViewport(412, 960);
-    const ui = renderViewerLayout();
+    const ui = await renderMobileViewerLayout();
     act(() => useViewerStore.getState().setRightPanelCollapsed(false));
     resizeTo(960, 412);
     assert.equal(useViewerStore.getState().formFactor.mode, 'phone-landscape');
@@ -102,9 +102,9 @@ describe('ViewerLayout command placement per form factor (#9718)', () => {
     assert.equal(useViewerStore.getState().rightPanelCollapsed, false);
   });
 
-  it('folding into Flex Mode reports a tabletop fold, and unfolding restores the phone layout, the sheet still open', () => {
+  it('folding into Flex Mode reports a tabletop fold, and unfolding restores the phone layout, the sheet still open', async () => {
     setViewport(412, 960);
-    renderViewerLayout();
+    await renderMobileViewerLayout();
     act(() => useViewerStore.getState().setRightPanelCollapsed(false));
     setSegments([{ x: 0, y: 0, width: 412, height: 470 }, { x: 0, y: 490, width: 412, height: 470 }]);
     resizeTo(412, 960);
@@ -118,9 +118,9 @@ describe('ViewerLayout command placement per form factor (#9718)', () => {
     assert.equal(useViewerStore.getState().rightPanelCollapsed, false, 'folding or unfolding closed the sheet');
   });
 
-  it('a near-tablet touch screen re-classifies when a mouse takes over the pointer', () => {
+  it('a near-tablet touch screen re-classifies when a mouse takes over the pointer', async () => {
     setViewport(830, 750);
-    const ui = renderViewerLayout();
+    const ui = await renderMobileViewerLayout();
     assert.equal(useViewerStore.getState().formFactor.mode, 'tablet-touch');
     assert.equal(chrome(ui).bar, 'bottom-bar');
     coarse.flip(false);

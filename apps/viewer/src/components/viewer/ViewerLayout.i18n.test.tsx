@@ -21,7 +21,7 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { cleanup } from '@/test/render.js';
-import { renderViewerLayout } from '@/test/viewer-layout-harness.js';
+import { mobileLayoutMounted, renderViewerLayout } from '@/test/viewer-layout-harness.js';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
 import type { shellChromeEn as ShellChromeEnType } from '@/i18n/catalogues/shell-chrome.en';
 import { propertiesPanelEn } from '@/i18n/catalogues/properties-panel.en';
@@ -123,7 +123,7 @@ describe('ViewerLayout localization (#4918)', () => {
     );
   });
 
-  it('translates the mobile Panels button', () => {
+  it('translates the mobile Panels button', async () => {
     // ViewerLayout's own "Detect mobile viewport" effect recomputes
     // `isMobile` from `window.innerWidth`/touch capability on mount and would
     // otherwise overwrite a forced `isMobile: true` store value right back to
@@ -137,6 +137,7 @@ describe('ViewerLayout localization (#4918)', () => {
     });
     const container = renderViewerLayout();
     Object.defineProperty(window, 'innerWidth', { value: originalInnerWidth, configurable: true });
+    await mobileLayoutMounted();
     // Named by its visible label, which is the catalogue string.
     const panelsBtn = [...container.querySelectorAll('button')].find(
       (b) => b.textContent?.trim() === 'Panels',

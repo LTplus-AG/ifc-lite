@@ -66,6 +66,7 @@ const CHUNK_LABEL_KEYS = {
   'Presentation panel': 'viewerShell.chunkLabel.presentationPanel',
   'InfluxDB 2': 'influx.title',
   'Layers panel': 'viewerShell.chunkLabel.layersPanel',
+  'Mobile layout': 'viewerShell.chunkLabel.mobileLayout',
   'MCP page': 'viewerShell.chunkLabel.mcpPage',
   'MCP playground': 'viewerShell.chunkLabel.mcpPlayground',
   'RTE GPU witness': 'viewerShell.chunkLabel.rteGpuWitness',

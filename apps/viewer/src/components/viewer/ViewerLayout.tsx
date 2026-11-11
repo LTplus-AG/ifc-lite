@@ -2,13 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { PersistentToolHosts } from './PersistentToolHosts';
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels';
 import type { PanelImperativeHandle } from 'react-resizable-panels';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { useTranslation } from '@/i18n';
 import { styleInterpolatedValues } from '@/i18n/richInterpolate';
-import { MobileToolbar } from './MobileToolbar';
 import { RibbonToolbar } from './ribbon/RibbonToolbar';
 import { HierarchyPanel } from './HierarchyPanel';
 import { StatusBar } from './StatusBar';
@@ -21,14 +20,11 @@ import { SettingsDialogHost } from './settings/SettingsDialog';
 import { ConfirmDialogHost } from '@/components/ui/confirm-dialog';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { ShellStoreEffects } from './ShellStoreEffects';
-import { selectHasModelsLoaded } from '@/hooks/model-presence';
 import { useActionLogger } from '@/hooks/useActionLogger';
 import { usePrivacyDisclosure } from '@/hooks/usePrivacyDisclosure';
 import { isSafeMode } from '@/lib/safe-mode';
-import { MobileBottomSheet, useVisualViewportBottomInset } from './MobileBottomSheet';
-import { MobilePanelLauncher } from './MobilePanelLauncher';
-import { MobilePanelSheet } from './MobilePanelSheet';
 import { ShieldAlert } from 'lucide-react';
+import { ChunkErrorBoundary } from '@/components/ChunkErrorBoundary';
 import { ExtensionDockHost } from '@/components/extensions/ExtensionDockHost';
 import { ExtensionKeyboardBindings } from '@/components/extensions/ExtensionKeyboardBindings';
 import { useModelUrlAutoload } from '@/hooks/useModelUrlAutoload';
@@ -68,13 +64,15 @@ import { dockedBottomPanel as dockedBottomPanelOf } from '@/lib/panels/rendered-
 import { useBottomPanelFlags } from '@/hooks/useBottomPanelFlags';
 import { usePanelControls } from '@/hooks/usePanelControls';
 import { useMobileLayoutMode } from '@/hooks/useMobileLayoutMode';
-import { mobileCommandPlacement } from '@/lib/layout/form-factor';
 import { useThemeDocumentClass } from './useThemeDocumentClass';
 import { EVENT_OPEN_COMMAND_PALETTE } from '@/lib/tours/events';
 import { registerKeyboardCommand } from '@/lib/commands/dispatcher';
 
 /** Technical query flag rendered as code by the localized safe-mode notice. */
 const SAFE_MODE_QUERY_FLAG = '?safe=0';
+
+/** The narrow layout's chrome, loaded only when a window is narrow (#9718): desktop never renders it. */
+const MobileLayout = lazy(() => import('./MobileLayout').then((m) => ({ default: m.MobileLayout })));
 
 export function ViewerLayout() {
   const { t } = useTranslation();
@@ -161,11 +159,8 @@ export function ViewerLayout() {
   }, [shortcutsDialog]);
 
   const isMobile = useViewerStore((s) => s.isMobile);
-  const commandPlacement = useViewerStore((s) => mobileCommandPlacement(s.formFactor));
   const leftPanelCollapsed = useViewerStore((s) => s.leftPanelCollapsed);
-  const rightPanelCollapsed = useViewerStore((s) => s.rightPanelCollapsed);
   const setLeftPanelCollapsed = useViewerStore((s) => s.setLeftPanelCollapsed);
-  const setRightPanelCollapsed = useViewerStore((s) => s.setRightPanelCollapsed);
   // Which bottom panel the flags say is open (table precedence), and whether
   // it is actually docked here rather than floating / popped out.
   const bottomFlags = useBottomPanelFlags();
@@ -241,16 +236,6 @@ export function ViewerLayout() {
   const modeling = useModelHierarchyWidth(leftPanelRef, emptyFold, LEFT_PANEL_DEFAULT_SIZE);
 
   const containerRef = useRef<HTMLDivElement>(null);
-
-  // Keep the mobile shell inside the visible viewport. On iOS Safari with bottom URL bar, dvh/innerHeight INCLUDES
-  // the URL bar area, so `bottom: 0` lands behind it; visualViewport.height excludes it. Applied once, to the
-  // whole mobile shell (#9718): its command bar, sheets and floats all stop above the overlay.
-  const bottomViewportInset = useVisualViewportBottomInset();
-
-  // Hide mobile floating buttons when the empty-state "Load IFC" card shows.
-  // A boolean selector, not `useIfc()`: that hook subscribes to `models` and
-  // `geometryResult`, so every geometry update re-rendered the whole layout (#6232).
-  const hasModelsLoaded = useViewerStore(selectHasModelsLoaded);
 
   // Mobile/desktop mode; collapses the panels only when ENTERING mobile (#5837).
   useMobileLayoutMode();
@@ -390,50 +375,20 @@ export function ViewerLayout() {
           </div>
         )}
 
-        {/* Main Content Area - Mobile Layout: the viewport, then the command bar under it in thumb reach,
-            or as a rail beside it on a phone on its side (#9718). */}
+        {/* Main Content Area - Mobile Layout (`MobileLayout`, its own chunk). No Suspense fallback: a
+            second `ViewportContainer` there would create a canvas, then drop it for the loaded layout's.
+            If the chunk fails, the model stays in view under the reload notice. */}
         {isMobile && (
-          <div data-mobile-shell={commandPlacement} style={{ paddingBottom: bottomViewportInset }}
-            className={commandPlacement === 'side-rail' ? 'flex-1 min-h-0 flex flex-row' : 'flex-1 min-h-0 flex flex-col'}>
-          <div className="flex-1 min-h-0 min-w-0 relative overflow-hidden">
-            {/* Full-screen Viewport */}
-            <div className="h-full w-full">
-              <ViewportContainer />
+          <ChunkErrorBoundary label="Mobile layout" renderFallback={(fallback) => (
+            <div className="flex-1 min-h-0 flex flex-col">
+              <div className="flex-1 min-h-0 relative"><ViewportContainer /></div>
+              <div className="shrink-0">{fallback}</div>
             </div>
-
-            {/* Backdrop overlay when sheet is open */}
-            {(!leftPanelCollapsed || !rightPanelCollapsed) && (
-              <button type="button" aria-label={t('shellChrome.layout.closePanelsAriaLabel')}
-                className="absolute inset-0 z-30 border-0 bg-scrim/40 p-0 animate-in fade-in duration-200"
-                onClick={() => {
-                  setLeftPanelCollapsed(true);
-                  setRightPanelCollapsed(true);
-                }}
-              />
-            )}
-
-            {/* Mobile Bottom Sheet - Hierarchy */}
-            {!leftPanelCollapsed && (
-              <MobileBottomSheet
-                title={t('shellChrome.layout.hierarchyLabel')}
-                onClose={() => setLeftPanelCollapsed(true)}
-              >
-                <HierarchyPanel />
-              </MobileBottomSheet>
-            )}
-
-            {/* Mobile Bottom Sheet — whichever single panel is open (`MobilePanelSheet`). */}
-            <MobilePanelSheet analysisExtension={activeAnalysisExtension ?? null} />
-
-            {/* Mobile Panels button: one entry point to every panel, Hierarchy and
-                Properties included (#5853, #8802 R6). Hidden in the empty state so the
-                "Load IFC" card stays unobstructed. */}
-            {leftPanelCollapsed && rightPanelCollapsed && hasModelsLoaded && (
-              <MobilePanelLauncher />
-            )}
-          </div>
-          <MobileToolbar placement={commandPlacement} />
-          </div>
+          )}>
+            <Suspense fallback={null}>
+              <MobileLayout analysisExtension={activeAnalysisExtension ?? null} />
+            </Suspense>
+          </ChunkErrorBoundary>
         )}
 
         {/* Extension dock.bottom slot — collapses to nothing when no

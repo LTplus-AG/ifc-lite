@@ -24,6 +24,7 @@ export const viewerShellIt = {
   "viewerShell.chunkLabel.documentPanel": "Pannello Documento",
   "viewerShell.chunkLabel.presentationPanel": "Pannello Presentazione",
   "viewerShell.chunkLabel.layersPanel": "Pannello Layer",
+  "viewerShell.chunkLabel.mobileLayout": "Comandi mobili",
   "viewerShell.chunkLabel.mcpPage": "Pagina MCP",
   "viewerShell.chunkLabel.mcpPlayground": "Playground MCP",
   "viewerShell.chunkLabel.rteGpuWitness": "Testimone GPU RTE",

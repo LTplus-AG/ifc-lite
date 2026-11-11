@@ -12,7 +12,7 @@ import { materializeInstances } from './scene-instance-materialization.js';
 import { InstanceSuppression } from './scene-instance-suppression.js';
 import { createSceneBatch } from './scene-batch-upload.js';
 import { SceneSnapshotLifecycle, type SceneSnapshotHost } from './scene-snapshot-lifecycle.js';
-import type { SceneSnapshot } from './scene-snapshot.js';
+import type { SceneCaptureDrop, SceneSnapshot } from './scene-snapshot.js';
 import { flushQueuedMeshes } from './scene-flush.js';
 import { createStaticGpuBuffer } from './gpu-static-upload.js';
 import { createSceneAppearancePreview, rebindSceneAppearanceAccess, type SceneAppearanceAccess } from './scene-appearance-preview.js';
@@ -2695,7 +2695,7 @@ export class Scene {
   // Finished-scene snapshot (scene-snapshot-lifecycle.ts).
   sceneSnapshotPolicy(): string { return this.snapshots.policy(); }
   isSceneSnapshotHydrating(): boolean { return this.snapshots.hydrating; }
-  captureNextFinalize(onCaptured: (snapshot: SceneSnapshot, sources: readonly MeshData[]) => void): void { this.snapshots.captureNextFinalize(onCaptured); }
+  captureNextFinalize(onCaptured: (snapshot: SceneSnapshot, sources: readonly MeshData[]) => void, onDropped?: (reason: SceneCaptureDrop) => void): void { this.snapshots.captureNextFinalize(onCaptured, onDropped); }
   adoptSceneSnapshot(snapshot: SceneSnapshot, device: GPUDevice, pipeline: RenderPipeline): object | null { return this.snapshots.adopt(snapshot, device, pipeline); }
   hydrateSceneSnapshot(adoption: object, meshes: readonly MeshData[]): boolean { return this.snapshots.hydrate(adoption, meshes); }
   abandonSceneSnapshot(adoption: object): void { this.snapshots.abandon(adoption); }

@@ -161,15 +161,19 @@ describe('writeCapturedScene', () => {
 /** A renderer whose scene records the capture the loader arms, and fires it on demand like a finalize swap. */
 function captureRenderer(queued = false) {
   let onCaptured: ((s: SceneSnapshot) => void) | null = null;
+  let onDropped: ((reason: string) => void) | undefined;
   const scene = {
-    captureNextFinalize: (cb: (s: SceneSnapshot, sources: readonly MeshData[]) => void) => { onCaptured = (s) => cb(s, [SOURCE]); },
+    captureNextFinalize: (cb: (s: SceneSnapshot, sources: readonly MeshData[]) => void, dropped?: (reason: string) => void) => {
+      onCaptured = (s) => cb(s, [SOURCE]);
+      onDropped = dropped;
+    },
     sceneSnapshotPolicy: () => 'p',
     hasQueuedMeshes: () => queued,
     getBatchedMeshes: () => [],
   };
   const camera = { getSceneBounds: () => BOUNDS, getOrbitAnchorBounds: () => null };
   const renderer = { getGPUDevice: () => ({}), getPipeline: () => ({}), getScene: () => scene, getCamera: () => camera } as unknown as Renderer;
-  return { renderer, swap: () => onCaptured?.(snapshot()), armed: () => onCaptured !== null };
+  return { renderer, swap: () => onCaptured?.(snapshot()), drop: (reason: string) => onDropped?.(reason), armed: () => onCaptured !== null };
 }
 
 describe('armColdSceneCapture (W2)', () => {
@@ -202,6 +206,37 @@ describe('armColdSceneCapture (W2)', () => {
     assert.equal(tracer.latest()?.spans.find((s) => s.name === 'cache.writeSceneSnapshot')?.attrs?.outcome, 'no-entry');
   });
 
+  // ISSUE_129 (untimed check #1) wrote no snapshot and left no reason: every eligible load now ends with one.
+  it('names why an eligible cold load leaves no snapshot', async () => {
+    const skips = (tracer: ReturnType<typeof createLoadTracer>) => tracer.latest()!.spans
+      .filter((s) => s.name === 'cache.writeSceneSnapshot').map((s) => `${String(s.attrs?.outcome)}:${String(s.attrs?.reason)}`);
+    const g = globalThis as { __IFC_LITE_SCENE_SNAPSHOT?: unknown };
+    g.__IFC_LITE_SCENE_SNAPSHOT = 0;
+    const off = createLoadTracer({ enabled: true, sink: null });
+    try {
+      armColdSceneCapture(() => false, off.startLoad('cold'));
+    } finally {
+      delete g.__IFC_LITE_SCENE_SNAPSHOT;
+    }
+    assert.deepEqual(skips(off), ['not-armed:snapshots-off']);
+
+    const dropped = createLoadTracer({ enabled: true, sink: null });
+    const { renderer, drop } = captureRenderer();
+    setGlobalRendererRef({ current: renderer });
+    armColdSceneCapture(() => false, dropped.startLoad('cold'));
+    drop('cleared');
+    assert.deepEqual(skips(dropped), ['not-captured:cleared']);
+
+    const noBounds = createLoadTracer({ enabled: true, sink: null });
+    noteFinalFitBounds(null as never);
+    const second = captureRenderer();
+    setGlobalRendererRef({ current: second.renderer });
+    armColdSceneCapture(() => false, noBounds.startLoad('cold'));
+    second.swap();
+    assert.deepEqual(skips(noBounds), ['not-captured:no-fit-bounds']);
+    noteFinalFitBounds(BOUNDS as never);
+  });
+
   it('does not arm on a renderer that appears after pieces were already queued', async () => {
     const nav = navigator as { gpu?: unknown };
     const hadGpu = 'gpu' in nav;
@@ -209,10 +244,12 @@ describe('armColdSceneCapture (W2)', () => {
     try {
       setGlobalRendererRef({ current: null });
       const late = captureRenderer(true);
-      armColdSceneCapture(() => false, createLoadTracer({ enabled: true, sink: null }).startLoad('cold'));
+      const lateTracer = createLoadTracer({ enabled: true, sink: null });
+      armColdSceneCapture(() => false, lateTracer.startLoad('cold'));
       setGlobalRendererRef({ current: late.renderer });
       await new Promise((r) => setTimeout(r, 100));
       assert.equal(late.armed(), false, 'a capture armed after queued pieces could only fail at the swap');
+      assert.equal(lateTracer.latest()!.spans.find((s) => s.name === 'cache.writeSceneSnapshot')?.attrs?.reason, 'pieces-before-renderer');
 
       const fresh = captureRenderer(false);
       setGlobalRendererRef({ current: null });

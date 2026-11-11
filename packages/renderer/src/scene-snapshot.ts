@@ -60,6 +60,13 @@ export interface SceneSnapshot {
   hostData?: unknown;
 }
 
+/**
+ * Why an armed capture produced no snapshot: the flat scene was cleared after
+ * its first piece, the stream went ephemeral, another capture replaced it, or
+ * the finished scene was not exactly the queued pieces merged once.
+ */
+export type SceneCaptureDrop = 'cleared' | 'ephemeral' | 'replaced' | 'not-exact';
+
 /** Everything outside the source geometry that decides a batch's bytes. */
 export function sceneSnapshotPolicy(quantized: boolean, lod: boolean, chunking: SpatialChunkingConfig | null): string {
   return [SCENE_SNAPSHOT_REVISION, BATCH_CONSTANTS.BYTES_PER_VERTEX, quantized ? 'q' : 'f',

@@ -131,6 +131,26 @@ describe('finished-scene snapshot', () => {
     assert.ok(reorderSnapshotPieces(snapshot, lastSources, [triangle(9, 9), ...queued]), 'a mesh that was never queued is skipped');
   });
 
+  // W2 follow-up: an armed capture that ends without a snapshot names why.
+  it('tells the capture owner why it ended without a snapshot', async () => {
+    const device = stubDevice();
+    const drops: string[] = [];
+    const scene = freshScene();
+    const fail = () => assert.fail('no snapshot expected');
+    scene.captureNextFinalize(fail, (reason) => drops.push(reason));
+    scene.captureNextFinalize(fail, (reason) => drops.push(reason));
+    assert.deepStrictEqual(drops, ['replaced'], 'arming again ends the earlier capture');
+    scene.clearFlatGeometry();
+    assert.deepStrictEqual(drops, ['replaced'], 'the load\'s own clear before its first piece keeps the capture');
+    scene.queueMeshes(model());
+    scene.clearFlatGeometry();
+    assert.deepStrictEqual(drops, ['replaced', 'cleared']);
+    scene.captureNextFinalize(fail, (reason) => drops.push(reason));
+    scene.finishEphemeralStreaming();
+    assert.deepStrictEqual(drops, ['replaced', 'cleared', 'ephemeral']);
+    scene.flushPending(device, pipeline, 1000);
+  });
+
   it('hydrates pieces into the batches they were merged into, without uploading', async () => {
     const device = stubDevice();
     const snapshot = await captureScene(model(), device);

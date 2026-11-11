@@ -159,15 +159,29 @@ export function abandonAdoptedSceneSnapshot(adopted: AdoptedSceneSnapshot | null
  * fit and type-visibility key it was built under, or nothing when it is not
  * the cached geometry. Synchronous at the swap; all later work is deferred.
  */
-function armSceneCapture(renderer: Renderer, isStale: () => boolean, onCaptured: (captured: CapturedScene) => void): void {
+function armSceneCapture(renderer: Renderer, isStale: () => boolean, trace: LoadTrace, onCaptured: (captured: CapturedScene) => void): void {
   renderer.getScene().captureNextFinalize((snapshot: SceneSnapshot, sources: readonly MeshData[]) => {
     const camera = renderer.getCamera();
     const sceneBounds = camera.getSceneBounds();
     const fitBounds = lastFinalFitBounds();
-    if (isStale() || !sceneBounds || !fitBounds || !sceneMatchesCachedGeometry()) return;
+    const skipped = isStale() ? 'superseded' : !sceneBounds ? 'no-scene-bounds' : !fitBounds ? 'no-fit-bounds' : !sceneMatchesCachedGeometry() ? 'level-offsets' : null;
+    if (skipped || !sceneBounds || !fitBounds) return noteSnapshotSkip(trace, 'not-captured', skipped ?? 'no-bounds');
     onCaptured({ snapshot, sources, key: snapshotKey(renderer.getScene()), fit: { fitBounds, sceneBounds, orbitAnchorBounds: camera.getOrbitAnchorBounds() },
       policyNow: () => renderer.getScene().sceneSnapshotPolicy() });
-  });
+  }, (dropped) => noteSnapshotSkip(trace, 'not-captured', dropped));
+}
+
+/**
+ * A load that could have left a snapshot but will not, and why: one zero-length
+ * `cache.writeSceneSnapshot` span, so every eligible load ends with that span
+ * and an outcome. `not-armed` reasons: snapshots-off, level-offsets,
+ * no-renderer, pieces-before-renderer, superseded. `not-captured` reasons: a
+ * renderer drop (cleared, ephemeral, replaced, not-exact) or a swap-time guard
+ * (superseded, no-scene-bounds, no-fit-bounds, level-offsets).
+ */
+function noteSnapshotSkip(trace: LoadTrace, outcome: 'not-armed' | 'not-captured', reason: string): void {
+  const now = performance.now();
+  trace.record('cache.writeSceneSnapshot', now, now, { outcome, reason });
 }
 
 /** Begin the pending write's span at the swap and hand the capture to the deferred writer. */
@@ -194,7 +208,7 @@ export async function captureSceneSnapshotOfHit(
   const section = decoded.headerInfo.sections.find((s) => s.type === SectionType.InstancedShards);
   const target: SnapshotEntry = { cacheKey, write: { createdAt, fullSourceHash }, shards: section ? { offset: section.offset, size: section.size } : null };
   const stale = isStale ?? (() => false);
-  armSceneCapture(renderer, stale, (captured) => writeWhenSettled(captured, Promise.resolve(target), stale, trace));
+  armSceneCapture(renderer, stale, trace, (captured) => writeWhenSettled(captured, Promise.resolve(target), stale, trace));
   return false;
 }
 
@@ -215,8 +229,11 @@ export function armColdSceneCapture(isStale: () => boolean, trace: LoadTrace): C
   let settleEntry!: (entry: SnapshotEntry | null) => void;
   const entry = new Promise<SnapshotEntry | null>((resolve) => { settleEntry = resolve; });
   const capture: ColdSceneCapture = { entryWritten: (written) => settleEntry(written) };
-  if (!snapshotsEnabled() || !sceneMatchesCachedGeometry()) return capture;
-  const arm = (renderer: Renderer) => armSceneCapture(renderer, isStale, (captured) => writeWhenSettled(captured, entry, isStale, trace));
+  if (!snapshotsEnabled() || !sceneMatchesCachedGeometry()) {
+    noteSnapshotSkip(trace, 'not-armed', snapshotsEnabled() ? 'level-offsets' : 'snapshots-off');
+    return capture;
+  }
+  const arm = (renderer: Renderer) => armSceneCapture(renderer, isStale, trace, (captured) => writeWhenSettled(captured, entry, isStale, trace));
   const now = getGlobalRenderer();
   if (now?.getGPUDevice() && now.getPipeline()) {
     arm(now);
@@ -224,7 +241,10 @@ export function armColdSceneCapture(isStale: () => boolean, trace: LoadTrace): C
   }
   void rendererReady(isStale, 10_000).then((renderer) => {
     const scene = renderer?.getScene();
-    if (renderer && scene && !isStale() && !scene.hasQueuedMeshes() && scene.getBatchedMeshes().length === 0) arm(renderer);
+    if (isStale()) noteSnapshotSkip(trace, 'not-armed', 'superseded');
+    else if (!renderer || !scene) noteSnapshotSkip(trace, 'not-armed', 'no-renderer');
+    else if (scene.hasQueuedMeshes() || scene.getBatchedMeshes().length > 0) noteSnapshotSkip(trace, 'not-armed', 'pieces-before-renderer');
+    else arm(renderer);
   });
   return capture;
 }

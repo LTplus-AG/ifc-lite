@@ -45,7 +45,7 @@
 
 import type { Mesh, BatchedMesh } from './types.js';
 import type { MeshData, DecodedInstancedShard } from '@ifc-lite/geometry';
-import type { SceneSnapshot } from './scene-snapshot.js';
+import type { SceneCaptureDrop, SceneSnapshot } from './scene-snapshot.js';
 import type { RenderPipeline } from './pipeline.js';
 import type { BoundingBox } from './scene-raycaster.js';
 import type { ResidentGpuBytes } from './render-stats.js';
@@ -88,7 +88,7 @@ export interface SceneContents {
   isSceneSnapshotHydrating(): boolean;
   /** Report the next finalized scene as a snapshot, when it is exactly the pieces queued from now on. */
   /** `sources[ordinal]` is the mesh queued as that piece: a reopen that decodes the meshes in another order maps it with `reorderSnapshotPieces`. */
-  captureNextFinalize(onCaptured: (snapshot: SceneSnapshot, sources: readonly MeshData[]) => void): void;
+  captureNextFinalize(onCaptured: (snapshot: SceneSnapshot, sources: readonly MeshData[]) => void, onDropped?: (reason: SceneCaptureDrop) => void): void;
   /** Replace the flat scene with these batches; pass the handle to `hydrateSceneSnapshot`. Null: refused, scene untouched. */
   adoptSceneSnapshot(snapshot: SceneSnapshot, device: GPUDevice, pipeline: RenderPipeline): object | null;
   /** Attach the source meshes with no upload. False: the adoption is gone or they do not match, so nothing adopted remains. */

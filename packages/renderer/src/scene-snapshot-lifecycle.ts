@@ -15,7 +15,7 @@ import type { BatchedMesh, Mesh } from './types.js';
 import type { SpatialChunkingConfig } from './chunk-grid.js';
 import type { ModelTranslations } from './model-translation.js';
 import { assignSnapshotPieces, FinishedBatchCapture, stageSnapshotBatches, type MergedBatchBytes } from './scene-snapshot-batches.js';
-import { sceneSnapshotPolicy, type SceneSnapshot } from './scene-snapshot.js';
+import { sceneSnapshotPolicy, type SceneCaptureDrop, type SceneSnapshot } from './scene-snapshot.js';
 
 interface SnapshotBucket {
   key: string;
@@ -63,8 +63,16 @@ export class SceneSnapshotLifecycle {
     return sceneSnapshotPolicy(quantizedBatchesEnabled, lodBuildsEnabled, spatialChunking);
   }
 
-  captureNextFinalize(onCaptured: (snapshot: SceneSnapshot, sources: readonly MeshData[]) => void): void {
-    this.capture = new FinishedBatchCapture(onCaptured);
+  captureNextFinalize(onCaptured: (snapshot: SceneSnapshot, sources: readonly MeshData[]) => void, onDropped?: (reason: SceneCaptureDrop) => void): void {
+    this.drop('replaced');
+    this.capture = new FinishedBatchCapture(onCaptured, onDropped);
+  }
+
+  /** End the pending capture without a snapshot, telling its owner why. */
+  private drop(reason: SceneCaptureDrop): void {
+    const capture = this.capture;
+    this.capture = null;
+    capture?.onDropped?.(reason);
   }
 
   notePiece(piece: MeshData, source: MeshData): void { this.capture?.notePiece(piece, source); }
@@ -75,7 +83,7 @@ export class SceneSnapshotLifecycle {
     return capture && bucketKey !== undefined ? (bytes) => capture.noteMerged(bucketKey, batchId, bytes) : undefined;
   }
 
-  dropCapture(): void { this.capture = null; }
+  dropCapture(): void { this.drop('ephemeral'); }
 
   /** After the finalize swap: report the scene if it is exactly what was queued; `scene.finalize.capture` times it. */
   completeCapture(trace?: LoadTrace, parent?: number): void {
@@ -96,7 +104,10 @@ export class SceneSnapshotLifecycle {
       buckets: scene.buckets.values(),
     });
     if (snapshot) capture.onCaptured(snapshot, capture.sources);
-    else console.warn('[Scene] finished scene not captured: it is not exactly the pieces queued');
+    else {
+      console.warn('[Scene] finished scene not captured: it is not exactly the pieces queued');
+      capture.onDropped?.('not-exact');
+    }
     if (trace?.enabled) trace.record('scene.finalize.capture', start, performance.now(), { captured: snapshot !== null }, parent);
   }
 
@@ -109,7 +120,7 @@ export class SceneSnapshotLifecycle {
   onFlatCleared(): void {
     if (this.hydration) this.scene.removeInstancedTemplatesForModel(0);
     this.hydration = null;
-    if (this.capture?.hasPieces) this.capture = null;
+    if (this.capture?.hasPieces) this.drop('cleared');
   }
 
   /** Recovery rebuilds batches from pieces; pieceless ones cannot follow, so hydration reports failure. */

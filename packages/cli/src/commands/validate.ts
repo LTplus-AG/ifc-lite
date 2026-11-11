@@ -12,36 +12,30 @@
  * - Orphan entity detection
  * - GlobalId uniqueness
  * - Reference integrity (#N references that point at no entity)
+ * - Physical vs structural analysis model consistency (#9668)
  */
 
 import { loadIfcFile } from '../loader.js';
 import { hasFlag, fatal, printJson } from '../output.js';
 import { EntityNode } from '@ifc-lite/query';
-import { expandTypes, getInheritanceChainAcrossSchemas, asSourceBytes, type IfcDataStore, type EntityRef, type IfcSourceBytes } from '@ifc-lite/parser';
+import { expandTypes, getInheritanceChainAcrossSchemas, structuralConsistencyIssues, type IfcDataStore } from '@ifc-lite/parser';
 import { resolvedTypeName } from '@ifc-lite/data';
+import { collectDanglingReferences } from './validate-references.js';
 
 export interface ValidationIssue {
   severity: 'error' | 'warning' | 'info';
   rule: string;
   message: string;
-  /** Referencing entity's expressId (set by per-reference rules like reference-integrity). */
+  /** The entity the issue is about: the referencing entity for reference-integrity. */
   entityId?: number;
+  /** GlobalId of `entityId`, set by the structural-consistency rules. */
+  globalId?: string;
   /** Zero-based top-level attribute slot of the offending value within the referencing entity. */
   attributeIndex?: number;
-  /** The referenced expressId that does not exist in the file. */
+  /** The other entity: the missing referenced id for reference-integrity, the linked physical element for structural-class-mismatch. */
   target?: number;
-}
-
-/** One `#N` reference whose target expressId does not exist in the file. */
-interface DanglingReference {
-  /** expressId of the entity containing the reference. */
-  entityId: number;
-  /** STEP type name of the referencing entity (UPPERCASE, as scanned). */
-  entityType: string;
-  /** Zero-based top-level attribute slot the reference sits in (nested refs report their containing slot). */
-  attributeIndex: number;
-  /** The missing expressId being referenced. */
-  target: number;
+  /** GlobalId of `target`, when it exists. */
+  targetGlobalId?: string;
 }
 
 /**
@@ -84,134 +78,13 @@ export const namedElementTypes = (schemaVersion: string | undefined): readonly s
 export const quantifiableTypes = (schemaVersion: string | undefined): readonly string[] =>
   expandTypes([...QUANTIFIABLE_BASE_TYPES], schemaVersion);
 
-/** Cap on individually-reported dangling references; the remainder is rolled into one summary issue. */
-const DANGLING_REF_ISSUE_CAP = 50;
-
-const CH_QUOTE = 0x27; // '
-const CH_LPAREN = 0x28; // (
-const CH_RPAREN = 0x29; // )
-const CH_COMMA = 0x2c; // ,
-const CH_HASH = 0x23; // #
-const CH_SLASH = 0x2f; // /
-const CH_STAR = 0x2a; // *
-
-/**
- * Scan one entity record's source bytes for `#N` attribute references and
- * report the ones whose target expressId is not indexed. Operates directly on
- * the raw bytes the parser already indexed (`store.entityIndex.byId` spans),
- * so it is a single pass over each record with no string allocation. Quote
- * tracking (including STEP's doubled-quote escape) keeps `#N` sequences inside
- * string literals from being read as references; embedded STEP comments are
- * skipped.
- */
-function scanEntityForDanglingRefs(
-  src: Uint8Array | IfcSourceBytes,
-  ref: EntityRef,
-  exists: (id: number) => boolean,
-  out: DanglingReference[],
-): void {
-  // Narrow to this record before scanning. `slice` is a `subarray` on a
-  // contiguous source, so the byte walk below is unchanged and zero-copy.
-  const record = asSourceBytes(src).slice(ref.byteOffset, ref.byteOffset + ref.byteLength);
-  scanRecordForDanglingRefs(record, ref, exists, out);
-}
-
-/** The byte walk itself, over one already-narrowed entity record. */
-function scanRecordForDanglingRefs(
-  source: Uint8Array,
-  ref: EntityRef,
-  exists: (id: number) => boolean,
-  out: DanglingReference[],
-): void {
-  const end = source.length;
-  // References only occur inside the attribute list; skip the "#id = TYPE" prefix.
-  let i = 0;
-  while (i < end && source[i] !== CH_LPAREN) i++;
-  if (i >= end) return; // malformed record, nothing to scan
-
-  let depth = 1; // we are inside the outermost '(' now
-  let attrIndex = 0;
-  i++;
-
-  while (i < end) {
-    const c = source[i];
-    if (c === CH_QUOTE) {
-      // String literal: skip to the closing quote, honouring '' escapes.
-      i++;
-      while (i < end) {
-        if (source[i] === CH_QUOTE) {
-          // `\S\'` is a PAGE directive's operand, text rather than a close (#7589):
-          // the byte form of the lookback in `stepStringLiteralEnd` (@ifc-lite/encoding).
-          if (i >= 3 && source[i - 1] === 0x5c && source[i - 2] === 0x53 && source[i - 3] === 0x5c) { i++; continue; }
-          if (i + 1 < end && source[i + 1] === CH_QUOTE) {
-            i += 2; // escaped quote, still inside the string
-            continue;
-          }
-          break; // closing quote
-        }
-        i++;
-      }
-    } else if (c === CH_SLASH && i + 1 < end && source[i + 1] === CH_STAR) {
-      // STEP comment inside a record (rare but legal): skip to closing marker.
-      i += 2;
-      while (i + 1 < end && !(source[i] === CH_STAR && source[i + 1] === CH_SLASH)) i++;
-      i++; // lands on '/', loop increment moves past it
-    } else if (c === CH_LPAREN) {
-      depth++;
-    } else if (c === CH_RPAREN) {
-      depth--;
-      if (depth === 0) return; // end of attribute list
-    } else if (c === CH_COMMA && depth === 1) {
-      attrIndex++;
-    } else if (c === CH_HASH) {
-      let id = 0;
-      let digits = 0;
-      let j = i + 1;
-      while (j < end) {
-        const d = source[j] - 0x30;
-        if (d < 0 || d > 9) break;
-        id = id * 10 + d;
-        digits++;
-        j++;
-      }
-      if (digits > 0) {
-        if (!exists(id)) {
-          out.push({ entityId: ref.expressId, entityType: ref.type, attributeIndex: attrIndex, target: id });
-        }
-        i = j - 1; // loop increment moves past the last digit
-      }
-    }
-    i++;
-  }
-}
-
-/** Check source `#N` references against the parsed and deferred file indexes
- * (rule `reference-integrity`), scanning records in both indexes. */
-export function collectDanglingReferences(store: IfcDataStore): DanglingReference[] {
-  const source = store.source;
-  // @raw-entity-enumeration-ok reference-integrity checks the source bytes against their parsed source index
-  const byId = store.entityIndex.byId;
-  const deferred = store.deferredEntityIndex;
-  if (!source || source.byteLength === 0 || !byId) return [];
-
-  const exists = (id: number): boolean => byId.has(id) || deferred?.has(id) === true;
-
-  const out: DanglingReference[] = [];
-  for (const ref of byId.values()) {
-    scanEntityForDanglingRefs(source, ref, exists, out);
-  }
-  if (deferred) {
-    for (const ref of deferred.values()) {
-      if (byId.has(ref.expressId)) continue; // already scanned above
-      scanEntityForDanglingRefs(source, ref, exists, out);
-    }
-  }
-  return out;
-}
+/** Cap on individually-reported dangling references and unlinked load-bearing elements; the remainder is rolled into one summary issue. */
+const ISSUE_LIST_CAP = 50;
 
 /** Shared structural checks for a parsed store: required entities, storeys,
- * GlobalId uniqueness, naming, schema, quantities and reference integrity.
- * {@link validateCommand}, tests and harnesses all use these rules. */
+ * GlobalId uniqueness, naming, schema, quantities, reference integrity, and
+ * (as warnings) physical vs structural analysis model consistency (#9668).
+ * {@link validateCommand}, delivery, tests and harnesses all use these rules. */
 export function computeValidationIssues(store: IfcDataStore): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
 
@@ -336,7 +209,7 @@ export function computeValidationIssues(store: IfcDataStore): ValidationIssue[] 
   // broken data (consumers following it get nothing, or worse, garbage), so
   // it reports as an error like unique-globalid does.
   const dangling = collectDanglingReferences(store);
-  for (const d of dangling.slice(0, DANGLING_REF_ISSUE_CAP)) {
+  for (const d of dangling.slice(0, ISSUE_LIST_CAP)) {
     // Display names render in IFC PascalCase (IfcWall, not IFCWALL); the
     // collector carries the raw STEP token, so resolve through the table.
     const typeName = resolvedTypeName(store.entities, d.entityId) ?? d.entityType;
@@ -349,12 +222,30 @@ export function computeValidationIssues(store: IfcDataStore): ValidationIssue[] 
       target: d.target,
     });
   }
-  if (dangling.length > DANGLING_REF_ISSUE_CAP) {
+  if (dangling.length > ISSUE_LIST_CAP) {
     issues.push({
       severity: 'error',
       rule: 'reference-integrity',
-      message: `${dangling.length - DANGLING_REF_ISSUE_CAP} more dangling reference(s) not listed (${dangling.length} total)`,
+      message: `${dangling.length - ISSUE_LIST_CAP} more dangling reference(s) not listed (${dangling.length} total)`,
     });
+  }
+
+  // 8. Where the physical and the structural analysis model disagree (#9668).
+  // Unlinked elements are capped like dangling references; the other rules are listed in full.
+  try {
+    const structural = structuralConsistencyIssues(store);
+    const unlinked = structural.filter((issue) => issue.rule === 'structural-unlinked-element');
+    for (const issue of unlinked.slice(0, ISSUE_LIST_CAP)) issues.push(issue);
+    if (unlinked.length > ISSUE_LIST_CAP) {
+      issues.push({
+        severity: 'warning',
+        rule: 'structural-unlinked-element',
+        message: `${unlinked.length - ISSUE_LIST_CAP} more load-bearing element(s) with no structural item not listed (${unlinked.length} total)`,
+      });
+    }
+    for (const issue of structural) if (issue.rule !== 'structural-unlinked-element') issues.push(issue);
+  } catch (err) {
+    issues.push({ severity: 'warning', rule: 'structural-consistency', message: `Structural consistency checks could not run: ${err instanceof Error ? err.message : String(err)}` });
   }
 
   return issues;

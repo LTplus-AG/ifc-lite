@@ -588,11 +588,18 @@ test('META: absent, empty or unreadable input never passes any verdict, identity
       add(`${lane}: per-element verdict against an empty sample`, emptyOther.identical, emptyOther.identical === false && emptyOther.unverifiable === true);
     }
   }
-  // The boot-settled arm (-settled lanes): a page without the viewer's boot signal fails the sample.
-  const { waitBootSettled } = await import('./viewer-load-boot.mjs');
-  const noHook = { evaluate: async () => null, waitForTimeout: async () => {} };
-  const armed = await waitBootSettled(noHook).then(() => 'armed', (e) => `failed: ${e.message}`);
-  add('boot-settled arm on a page without __ifc_lite_boot_settled__', armed, armed.startsWith('failed'));
+  // Per browser lane, through browserSample's real wiring (fake browser): an absent boot signal must fail every
+  // -settled lane at its arm, and must never be what arms (or fails) a default or -early lane.
+  const { browserSample } = await import('./load-scoreboard-browser.mjs');
+  const { fakeBrowserSample } = await import('./load-scoreboard-fake-browser.mjs');
+  const absent = {};
+  for (const arm of ['quiet', 'first-paint', 'boot-settled']) absent[arm] = (await fakeBrowserSample(browserSample, { arm, warmOpens: 2 })).result.lanes;
+  for (const lane of lanes.filter((l) => l.startsWith('browser'))) {
+    const arm = lane.endsWith('-settled') ? 'boot-settled' : lane.endsWith('-early') ? 'first-paint' : 'quiet';
+    const r = absent[arm][lane];
+    const viaSignal = /boot-settled arm/.test(r?.error ?? '');
+    add(`${lane}: sample on a page without __ifc_lite_boot_settled__`, r?.ok ? 'ok' : r?.error, arm === 'boot-settled' ? r?.ok === false && viaSignal : !viaSignal);
+  }
   add('verdictFor([])', S.verdictFor([]).verdict, /^inconclusive/.test(S.verdictFor([]).verdict));
   add('verdictFor(all null)', S.verdictFor([[null, null], [null, null], [null, null], [null, null], [null, null]]).verdict,
     /^inconclusive/.test(S.verdictFor([[null, null], [null, null], [null, null], [null, null], [null, null]]).verdict));

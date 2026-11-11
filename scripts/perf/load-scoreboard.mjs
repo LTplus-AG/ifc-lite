@@ -29,7 +29,7 @@ import { fileURLToPath } from 'node:url';
 import { roundOrder, seededRand } from './ab-order.mjs';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
 import { nativeSample } from './load-scoreboard-native.mjs';
-import { BOOT_FIXTURE, BROWSER_LANES, LANES, elementDiffVerdict, elementsFileFor, renderMarkdown, summarize } from './load-scoreboard-report.mjs';
+import { BOOT_FIXTURE, BROWSER_LANES, DEFAULT_LANES, LANES, elementDiffVerdict, elementsFileFor, renderMarkdown, summarize } from './load-scoreboard-report.mjs';
 import { browserShares, diffElements, uiQuietValue } from './load-scoreboard-stats.mjs';
 
 const ROOT = resolve(fileURLToPath(new URL('../..', import.meta.url)));
@@ -49,7 +49,7 @@ function parseArgs(argv) {
 /** Validate and normalize a plan; throws on anything that would make the table ambiguous. */
 export function loadPlan(path) {
   const plan = JSON.parse(readFileSync(path, 'utf8'));
-  plan.lanes ??= LANES;
+  plan.lanes ??= DEFAULT_LANES;
   for (const lane of plan.lanes) if (!LANES.includes(lane)) throw new Error(`unknown lane ${lane}`);
   if (!Number.isInteger(plan.rounds) || plan.rounds < 1) throw new Error('plan.rounds must be a positive integer');
   plan.seed ??= Date.now() % 2 ** 31;
@@ -146,6 +146,37 @@ export function elementFileMoves(rows, sampleTag, canonicalTag) {
   });
 }
 
+/** Opt-in arms beside the default lanes; each is its own fresh-browser sample (load-scoreboard-browser.mjs ARM_LANE_SUFFIX). */
+const ARM_SAMPLES = [['first-paint', '-early'], ['boot-settled', '-settled']];
+
+/**
+ * Record the opt-in arm lanes of one browser cell. Each arm with a missing lane runs one sample (reopens
+ * only when the plan lists that arm's warm lanes); a resumed cell reruns under its own tag and claims only
+ * the files of the lanes it records, and only for successful rows (the files a report reads). A lane the
+ * sample did not produce is recorded as a failure.
+ */
+export async function recordArmLanes({ sample, plan, side, fixture, cell, missing, groupLanes, tag, common, record, traces }) {
+  for (const [arm, suffix] of ARM_SAMPLES) {
+    const armLanes = missing.filter((l) => l.endsWith(suffix));
+    if (armLanes.length === 0) continue;
+    const armPlan = groupLanes.filter((l) => l.endsWith(suffix));
+    const reopens = armPlan.some((l) => l.startsWith('browser-warm')) ? plan.warmOpens : 0;
+    const armTag = sampleTagFor(tag, armLanes, armPlan, Date.now().toString(36));
+    const e = await sample({ side: plan.sides[side], fixture, tag: `${armTag}${suffix}`, warmOpens: reopens, pass: 'timing', arm });
+    for (const lane of armLanes) {
+      const { trace, ...row } = e.lanes[lane] ?? { ok: false, error: `${lane}: not produced by the ${arm} sample` };
+      const warmOpens = lane === `browser-warm${suffix}` ? e.warmOpens : undefined;
+      for (const [from, to] of row.ok ? elementFileMoves([{ ...cell, lane, warmOpens }], armTag, tag) : []) {
+        if (existsSync(join(traces, from))) renameSync(join(traces, from), join(traces, to));
+      }
+      record({ ...common, ...row, lane, adapter: e.meta.adapter ? JSON.stringify(e.meta.adapter) : null,
+        browserVersion: e.meta.browserVersion ?? null, pageErrors: e.meta.pageErrors.length,
+        gpuHealth: lane.startsWith('browser-cold') ? e.meta.gpuHealthCold ?? null : e.meta.gpuHealth ?? null,
+        warmOpens }, trace ?? null);
+    }
+  }
+}
+
 export function buildOrder(plan) {
   const rand = seededRand(plan.seed);
   const groups = [];
@@ -193,8 +224,6 @@ async function run(opt) {
     const only = opt.fixtures ? new Set(opt.fixtures.split(',')) : null;
     for (const name of only ?? []) if (!plan.fixtures.some((f) => f.name === name)) throw new Error(`--fixtures: ${name} is not in the plan`);
     const DEFAULT_BROWSER = ['browser-cold', 'browser-warm1', 'browser-warm'];
-    // Opt-in arms beside the default lanes; each is its own sample (load-scoreboard-browser.mjs ARM_LANE_SUFFIX).
-    const ARM_SAMPLES = [['first-paint', '-early'], ['boot-settled', '-settled']];
     for (let round = 0; round < plan.rounds; round++) {
       // Boot runs in every segment, --fixtures or not; the per-lane completion set keeps it from repeating.
       for (const side of order.boot?.[BOOT_FIXTURE][round] ?? []) {
@@ -222,28 +251,8 @@ async function run(opt) {
               record({ ...common, ...row, probe }, null);
               log(`  ${tag} native: ${s.ok ? `${s.interactiveMs.toFixed(0)} ms, ${s.peakMemoryMiB?.toFixed(0)} MiB` : `FAILED ${s.error}`}`);
             } else {
-              // Opt-in arms (-early: picked at first paint; -settled: armed after the viewer's idle boot work),
-              // each its own fresh browser, timing only. Reopens run only when the plan lists that arm's warm lanes.
-              for (const [arm, suffix] of ARM_SAMPLES) {
-                const armLanes = missing.filter((l) => l.endsWith(suffix));
-                if (armLanes.length === 0) continue;
-                const armPlan = groupLanes.filter((l) => l.endsWith(suffix));
-                const reopens = armPlan.some((l) => l.startsWith('browser-warm')) ? plan.warmOpens : 0;
-                // As for the default lanes: a resumed cell reruns under its own tag and moves only the files it records.
-                const armTag = sampleTagFor(tag, armLanes, armPlan, Date.now().toString(36));
-                const e = await browser.sample({ side: plan.sides[side], fixture, tag: `${armTag}${suffix}`, warmOpens: reopens, pass: 'timing', arm });
-                for (const lane of armLanes) {
-                  const { trace, ...row } = e.lanes[lane] ?? { ok: false, error: `${lane}: not produced by the ${arm} sample` };
-                  const warmOpens = lane === `browser-warm${suffix}` ? e.warmOpens : undefined;
-                  for (const [from, to] of elementFileMoves([{ ...cell, lane, warmOpens }], armTag, tag)) {
-                    if (existsSync(join(out, 'traces', from))) renameSync(join(out, 'traces', from), join(out, 'traces', to));
-                  }
-                  record({ ...common, ...row, lane, adapter: e.meta.adapter ? JSON.stringify(e.meta.adapter) : null,
-                    browserVersion: e.meta.browserVersion ?? null, pageErrors: e.meta.pageErrors.length,
-                    gpuHealth: lane.startsWith('browser-cold') ? e.meta.gpuHealthCold ?? null : e.meta.gpuHealth ?? null,
-                    warmOpens }, trace ?? null);
-                }
-              }
+              // Opt-in arms (-early: picked at first paint; -settled: armed after the viewer's idle boot work).
+              await recordArmLanes({ sample: browser.sample, plan, side, fixture, cell, missing, groupLanes, tag, common, record, traces: join(out, 'traces') });
               const missingDefault = missing.filter((l) => DEFAULT_BROWSER.includes(l));
               if (missingDefault.length === 0) continue;
               const sampleTag = sampleTagFor(tag, missingDefault, groupLanes.filter((l) => DEFAULT_BROWSER.includes(l)), Date.now().toString(36));
@@ -256,7 +265,8 @@ async function run(opt) {
                 if (!missingDefault.includes(lane)) continue;
                 const { trace, ...row } = r;
                 // A rerun's file becomes this lane's only when its row is recorded.
-                for (const [from, to] of elementFileMoves([{ ...cell, lane, warmOpens: lane === 'browser-warm' ? s.warmOpens : undefined }], sampleTag, tag)) {
+                // Only a successful row's file is ever read: a failed rerun never claims (and may not overwrite) a recorded file.
+                for (const [from, to] of r.ok ? elementFileMoves([{ ...cell, lane, warmOpens: lane === 'browser-warm' ? s.warmOpens : undefined }], sampleTag, tag) : []) {
                   if (existsSync(join(out, 'traces', from))) renameSync(join(out, 'traces', from), join(out, 'traces', to));
                 }
                 const mem = m?.lanes[lane];

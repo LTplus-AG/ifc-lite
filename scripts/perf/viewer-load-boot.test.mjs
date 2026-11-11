@@ -16,7 +16,8 @@ import { waitBootSettled } from './viewer-load-boot.mjs';
 function scriptedPage(settledAt) {
   let now = 0;
   return {
-    evaluate: async () => (settledAt === null ? null : now >= settledAt),
+    // What `readBootSignal` reports in page: no hook, or the hook's boolean answer.
+    evaluate: async () => (settledAt === null ? { kind: 'absent' } : { kind: 'boolean', value: now >= settledAt }),
     waitForTimeout: async (ms) => { now += ms; },
   };
 }

@@ -10,10 +10,36 @@
 
 import { aaNoiseFloor, expectedCacheTier, median, rankShares, relativeSpread, verdictFor } from './load-scoreboard-stats.mjs';
 
-export const LANES = ['native-cold', 'browser-cold', 'browser-cold-early', 'browser-warm1', 'browser-warm', 'boot',
-  // Opt-in arms beside the default lanes (load-scoreboard-browser.mjs): reopens picked at first paint, and
-  // every open armed after the viewer reports its idle boot work settled.
+/** The lanes a plan without a `lanes` key runs: exactly the set main had before the opt-in arms. */
+export const DEFAULT_LANES = ['native-cold', 'browser-cold', 'browser-cold-early', 'browser-warm1', 'browser-warm', 'boot'];
+/**
+ * Every lane a plan may name. Beyond the defaults, opt-in arms run only when named
+ * (load-scoreboard-browser.mjs): reopens picked at first paint, and every open armed
+ * after the viewer reports its idle boot work settled.
+ */
+export const LANES = [...DEFAULT_LANES,
   'browser-warm1-early', 'browser-warm-early', 'browser-cold-settled', 'browser-warm1-settled', 'browser-warm-settled'];
+
+/** Clock origin of each lane family, for the report's caption. */
+export function clockOrigins(lanes) {
+  const has = (re) => lanes.some((l) => re.test(l));
+  const parts = [];
+  const def = lanes.filter((l) => /^browser-(cold|warm1|warm)$/.test(l));
+  if (def.length) parts.push(`${def.join(', ')} time from the file input change event (arming after a quiet shell)`);
+  const early = lanes.filter((l) => /^browser-(cold|warm1|warm)-early$/.test(l));
+  if (early.length) parts.push(`${early.join(', ')} time from the first paint of that open's page, the file picked at once, so boot work that delays the pick and its dispatch is included`);
+  const settled = lanes.filter((l) => /-settled$/.test(l));
+  if (settled.length) parts.push(`${settled.join(', ')} time from the change event after the viewer reported its idle boot work settled and the shell went quiet; the wait for that signal is not timed (see the arm-protocol table)`);
+  if (has(/^native-cold$/)) parts.push('native-cold is a batch call (file read + full `process_geometry`)');
+  if (has(/^boot$/)) parts.push('boot times from navigation start');
+  return `Clock origins differ by lane: ${parts.join('; ')}.`;
+}
+
+/** One side's arming protocol on a `-settled` lane: the distinct boot-signal outcomes and the median signal wait. */
+function armProtocolOf(ok) {
+  const signals = [...new Set(ok.map((r) => String(r.shell?.bootSettled ?? 'not recorded')))].sort();
+  return { signals, waitMedianMs: median(ok.map((r) => r.shell?.bootSettledWaitMs).filter(Number.isFinite)) };
+}
 /** The `boot` lane opens no file; its rows carry this pseudo-fixture. */
 export const BOOT_FIXTURE = '(app shell)';
 export const METRICS = [
@@ -172,7 +198,18 @@ export function summarize(plan, samples, { floors = null } = {}) {
         laneFloors[key] = aaNoiseFloor(pairs, { seed: 0x5eed });
       }
       const output = outputVerdict(sides.base.fingerprints, sides.branch.fingerprints);
-      lanes[lane] = { sides, verdicts, floors: laneFloors, output, primary: verdicts.interactiveMs ?? null };
+      // -settled lanes: both sides must have armed the same way, or the comparison says so.
+      let armProtocol = null;
+      if (lane.endsWith('-settled')) {
+        const base = armProtocolOf(rows.filter((r) => r.side === 'base' && r.ok)), branch = armProtocolOf(rows.filter((r) => r.side === 'branch' && r.ok));
+        const same = base.signals.length === 1 && branch.signals.length === 1 && base.signals[0] === branch.signals[0];
+        armProtocol = { base, branch, same, declaredAsymmetric: plan.asymmetricBootSignal === true };
+        if (!same && !armProtocol.declaredAsymmetric) {
+          const why = `inconclusive: arming protocols differ (base: ${base.signals.join('/')}, branch: ${branch.signals.join('/')}; declare plan.asymmetricBootSignal to compare them)`;
+          for (const key of Object.keys(verdicts)) verdicts[key] = { ...verdicts[key], verdict: why, pass: false, regression: false };
+        }
+      }
+      lanes[lane] = { sides, verdicts, floors: laneFloors, output, armProtocol, primary: verdicts.interactiveMs ?? null };
     }
     fixtures.push({ name: fx.name, set: fx.set ?? 'tuning', bytes: fx.bytes, expectedTier: Number.isFinite(fx.bytes) ? expectedCacheTier(fx.bytes) : null, lanes });
   }
@@ -211,7 +248,7 @@ function tierCell(f, lane) {
   if (lane === 'native-cold' || lane === 'boot') return 'n/a';
   const s = l?.sides.base;
   const adopted = s?.snapshotAdoptedCount ? `; snapshot ${s.snapshotAdoptedCount}/${s.ok}` : '';
-  const stored = lane === 'browser-warm1' && s?.snapshotPresentBeforeOpenCount ? ` (stored before open ${s.snapshotPresentBeforeOpenCount}/${s.ok})` : '';
+  const stored = lane.startsWith('browser-warm1') && s?.snapshotPresentBeforeOpenCount ? ` (stored before open ${s.snapshotPresentBeforeOpenCount}/${s.ok})` : '';
   const observed = s ? `${s.cacheTiers.join('/') || 'none'}; path ${s.loadPaths.join('/') || '?'}${adopted}${stored}` : '—';
   return observed;
 }
@@ -290,7 +327,7 @@ export function renderMarkdown(summary, plan, host, samples = []) {
     out.push(`- Segment (${seg.fixtures}): host ${seg.start?.hostname}; ${seg.workerKind ?? 'no'} admission, job ${seg.workerJobId ?? 'none'}; power ${seg.start?.powerProfile ?? '?'} -> ${seg.end?.powerProfile ?? '?'}; max freq ${seg.start?.scalingMaxFreqKHz ?? '?'} -> ${seg.end?.scalingMaxFreqKHz ?? '?'} kHz; ${seg.start?.at} .. ${seg.end?.at ?? 'unfinished'}`);
   }
   out.push(`Sides: base = ${plan.sides.base.label}; branch = ${plan.sides.branch.label}. Rounds ${plan.rounds}, warm opens ${plan.warmOpens ?? 0}, order seed ${plan.seed}.`, '');
-  out.push('Interactive = geometry streamed, drained and finalized, metadata ready, and the first frame after the store settled (README cold-load notes). UI quiet = end of the last main-thread long task before 500 ms without one. Native has no first-geometry event (batch call); native interactive = file read + full `process_geometry`. Clock origins differ by lane: browser-cold, browser-warm1 and browser-warm time from the file input change event (arming after a quiet shell); browser-cold-early times from the first paint the file was picked at, so boot work that delays the pick and its dispatch is included; boot times from navigation start. Cells: median [min-max] n; fewer than 3 values are listed, never summarized.', '');
+  out.push(`Interactive = geometry streamed, drained and finalized, metadata ready, and the first frame after the store settled (README cold-load notes). UI quiet = end of the last main-thread long task before 500 ms without one. Native has no first-geometry event (batch call); native interactive = file read + full \`process_geometry\`. ${clockOrigins(plan.lanes)} Cells: median [min-max] n; fewer than 3 values are listed, never summarized.`, '');
   for (const set of ['tuning', 'holdout', 'boot']) {
     if (!summary.fixtures.some((f) => f.set === set)) continue;
     out.push(`## Baseline (${set})`, '', baselineTable(summary, set, plan.lanes), '');
@@ -312,6 +349,14 @@ export function renderMarkdown(summary, plan, host, samples = []) {
     out.push('## Per-element output (element geometry hashes, flat + instanced; every sample vs the first base sample)', '',
       '| fixture | lane | samples | result |', '|---|---|---:|---|', ...diffRows, '');
   }
+  const protoRows = summary.fixtures.flatMap((f) => Object.entries(f.lanes).filter(([, l]) => l.armProtocol).map(([lane, l]) => {
+    const p = l.armProtocol, side = (x) => `${x.signals.join('/') || '—'}; signal wait ${n0(x.waitMedianMs)} ms`;
+    return `| ${f.name} | ${lane} | ${side(p.base)} | ${side(p.branch)} | ${p.same ? 'same' : p.declaredAsymmetric ? 'DIFFERENT (declared by the plan)' : 'DIFFERENT: verdict inconclusive'} |`;
+  }));
+  if (protoRows.length) {
+    out.push('## Arm protocol (-settled lanes; signal = `__ifc_lite_boot_settled__`, "no signal (declared)" = a side with bootSignal: false armed on the quiet shell alone; the signal wait is not timed)', '',
+      '| fixture | lane | base | branch | protocol |', '|---|---|---|---|---|', ...protoRows, '');
+  }
   out.push('## Lane summary (interactive time)', '');
   for (const [lane, s] of Object.entries(summary.laneSummary)) {
     out.push(`- **${lane}**: gains [${s.gains.join(', ')}]; regressions [${s.regressions.join(', ')}]; no significant difference [${s.noDifference.join(', ')}]; inconclusive [${s.inconclusive.join(', ')}]; output not matching [${s.outputChanged.join(', ')}]`);
@@ -320,7 +365,7 @@ export function renderMarkdown(summary, plan, host, samples = []) {
     .map((lane) => { const r = f.lanes[lane].sides.base.readiness; const label = Object.fromEntries(READINESS);
       return `| ${f.name} | ${f.set} | ${lane} | ${READINESS.map(([k]) => n0(r.medians[k])).join(' | ')} | ${label[r.binding] ?? '—'} (${Object.entries(r.bindingCounts).map(([k, c]) => `${label[k]} ${c}`).join(', ')}) |`; }));
   if (readinessRows.length) {
-    out.push('', '## Readiness components (base side medians, n>=3; ms from the change event, or from the first paint for browser-cold-early; interactive = the last of geometry finalized, metadata ready, settled + frame)', '',
+    out.push('', '## Readiness components (base side medians, n>=3; ms from the clock origin of each lane, as stated above; interactive = the last of geometry finalized, metadata ready, settled + frame)', '',
       `| fixture | set | lane | ${READINESS.map(([, l]) => l).join(' | ')} | binding (count) |`, `|---|---|---|${READINESS.map(() => '---:|').join('')}---|`, ...readinessRows);
   }
   out.push('', '## Stage shares, ranked (tuning set, base side; concurrent stages overlap, so shares need not sum to 100%)', '');

@@ -28,7 +28,7 @@ import { join } from 'node:path';
 import { chromePids, memoryOf, vramOf } from './scenoptic-bench-sampling.mjs';
 import { COUNT_FRAMES, openAndWaitInteractive, openViewerPage, readOutputFingerprint, replacePage, waitCacheWrites, waitSceneSnapshots } from './viewer-load-probe.mjs';
 import { browserShares, browserStages, expectedCacheTier, failedOpenIndex, gpuUnhealthy, openIdentity, stageShares, uiQuietValue } from './load-scoreboard-stats.mjs';
-import { BOOT_OBSERVERS, waitBootSettled, waitShellQuiet, waitUiQuiet } from './viewer-load-boot.mjs';
+import { BOOT_OBSERVERS, armAfterBootSettled, waitShellQuiet, waitUiQuiet } from './viewer-load-boot.mjs';
 import { rebaseToArm, waitCacheEntryStable, waitFirstPaint } from './load-scoreboard-lanes.mjs';
 import { expectSceneSnapshot, prepareWarmOpen } from './viewer-scene-snapshot.mjs';
 import { readGpuHealth } from '../../tests/benchmark/gpu-health.ts';
@@ -109,7 +109,9 @@ function summarizeOpen(open, memory) {
  * `arm` names the lanes it produces (`ARM_LANE_SUFFIX`): `'quiet'` is the default lanes.
  * `'first-paint'` is the `-early` lanes (load-scoreboard-lanes.mjs): every open picked at the
  * first paint, timed from the pick. `'boot-settled'` is the `-settled` lanes: every open armed
- * once the viewer reports its idle boot work settled (`waitBootSettled`), then on a quiet shell.
+ * once the viewer reports its idle boot work settled, then on a quiet shell, with the signal
+ * re-checked at the arm (`armAfterBootSettled`); a side declaring `bootSignal: false` arms on the
+ * quiet shell alone and is reported as a different protocol.
  * Returns { lanes: { 'browser-cold<suffix>', 'browser-warm1<suffix>', 'browser-warm<suffix>' }, warmOpens, meta }.
  */
 export async function browserSample({ chromium, executablePath, baseUrl, setRoot, side, fixture, warmOpens, outDir, tag, log, pass = 'timing', arm = 'quiet' }) {
@@ -138,8 +140,9 @@ export async function browserSample({ chromium, executablePath, baseUrl, setRoot
   };
   const measuredOpen = async (label) => {
     phase = `${label}-shell`;
-    const settled = arm === 'boot-settled' ? await waitBootSettled(page, { expectSignal: side.bootSignal !== false }) : null;
-    const shell = early ? await waitFirstPaint(page) : settled ? { ...settled, ...(await waitShellQuiet(page)) } : await waitShellQuiet(page);
+    const shell = early ? await waitFirstPaint(page)
+      : arm === 'boot-settled' ? await armAfterBootSettled(page, { expectSignal: side.bootSignal !== false })
+        : await waitShellQuiet(page);
     phase = label;
     const sampler = pass === 'memory' ? startMemorySampler(profileDir) : null;
     let open;

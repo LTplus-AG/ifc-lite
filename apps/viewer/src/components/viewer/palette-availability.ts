@@ -4,7 +4,7 @@
 
 /** Palette-only prerequisites. Shared ribbon/context enabled predicates stay intact (#8947). */
 import { hasRetainedReportHost } from './retained-report-destination';
-import { getSplitWidth, splitFits } from './model/model-layout';
+import { canOpenModelPlan } from './model/open-model-plan';
 import type { AddKind } from './tools/SectionAddMenu';
 import { selectedEntityActionTarget } from './selected-entity-actions';
 import { paletteModelBlock } from './palette-model-availability';
@@ -73,7 +73,7 @@ export function paletteAvailability(command: SurfaceCommandDefinition, context: 
   if (id === 'panel:retained-report' && !hasRetainedReportHost()) return blocked('commandPalette.availability.retainedReport');
   if (id === 'model:plan') {
     if (s.isMobile) return blocked('commandPalette.availability.feature');
-    if (!splitFits(getSplitWidth())) return blocked('modelWorkspace.plan.noRoom');
+    if (!canOpenModelPlan(s)) return blocked('modelWorkspace.plan.noRoom');
     if (s.workspaceMode !== 'model' && !modelWorkspaceTarget(s)) return blocked('commandPalette.availability.ifc');
     if (!canEditInSession || !s.canCollabEdit()) return blocked('commandPalette.availability.editor');
     if (s.loading) return blocked('commandPalette.availability.loading');

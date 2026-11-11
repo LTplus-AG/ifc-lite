@@ -15,8 +15,11 @@
    ═══════════════════════════════════════════════════════════════════════════ */
 
 /* Native UI (scrollbars, form controls) follows the viewer's own theme, not
-   the system's: the `dark` class, not `prefers-color-scheme` (#9718). */
-:root { color-scheme: light; }
+   the system's: the `dark` class, not `prefers-color-scheme` (#9718). The root
+   style overrides the meta's "light dark", and Chromium force-darkens a root
+   that is plain `light` (Samsung Internet dark mode, Chrome auto dark theme),
+   so the light theme says `only light`, the documented opt-out. */
+:root { color-scheme: only light; }
 :root.dark { color-scheme: dark; }
 
 /* Tokyo Night Color Palette */

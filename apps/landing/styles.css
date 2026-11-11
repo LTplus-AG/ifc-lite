@@ -54,7 +54,7 @@ html, body { margin: 0; padding: 0; }
 }
 
 /* Native UI follows the page's theme, not the system's (#9718). */
-html { color-scheme: light; }
+html { color-scheme: only light; }
 html[data-theme="dusk"] { color-scheme: dark; }
 
 html[data-theme="dusk"] {

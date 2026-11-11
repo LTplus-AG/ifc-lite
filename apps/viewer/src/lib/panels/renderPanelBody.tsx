@@ -26,9 +26,6 @@ const ClashPanel = lazy(() => import('@/components/viewer/ClashPanel').then(modu
 const BCFPanel = lazy(loadBcfPanel);
 const ValidationPanel = lazy(loadValidationPanel);
 const LensPanel = lazy(loadLensPanel);
-const ExtensionsPanel = lazy(loadExtensionsPanel);
-const GanttPanel = lazy(loadGanttPanel);
-const ListPanel = lazy(loadListPanel);
 import { RoomPanel } from '@/components/viewer/RoomPanel';
 import { ZonesPanel } from '@/components/viewer/ZonesPanel';
 // Opened on demand; kept off the boot path (eager-bundle ratchet, #8341).
@@ -193,10 +190,10 @@ function panelBody(id: WorkspacePanelId, onClose: () => void): ReactNode {
     case 'validation': return <DeferredPanel id="validation" onClose={onClose}><ValidationPanel onClose={onClose} /></DeferredPanel>;
     case 'lens': return <DeferredPanel id="lens" onClose={onClose}><LensPanel onClose={onClose} /></DeferredPanel>;
     case 'clash': return <ChunkErrorBoundary key="clash" label="Clash panel"><Suspense fallback={null}><ClashPanel onClose={onClose} /></Suspense></ChunkErrorBoundary>;
-    case 'extensions': return <DeferredPanel id="extensions" onClose={onClose}><ExtensionsPanel onClose={onClose} /></DeferredPanel>;
+    case 'extensions': return <DeferredPanel id="extensions" onClose={onClose} load={loadExtensionsPanel} />;
     case 'script': return <ChunkErrorBoundary label="Script panel"><Suspense fallback={null}><ScriptPanel /></Suspense></ChunkErrorBoundary>;
-    case 'gantt': return <DeferredPanel id="gantt" onClose={onClose}><GanttPanel /></DeferredPanel>;
-    case 'lists': return <DeferredPanel id="lists" onClose={onClose}><ListPanel /></DeferredPanel>;
+    case 'gantt': return <DeferredPanel id="gantt" onClose={onClose} load={loadGanttPanel} />;
+    case 'lists': return <DeferredPanel id="lists" onClose={onClose} load={loadListPanel} />;
     case 'collab': return <RoomPanel onClose={onClose} />;
     case 'zones': return <ZonesPanel onClose={onClose} />;
     case 'loadReport': return <LoadReportPanelBody onClose={onClose} />;

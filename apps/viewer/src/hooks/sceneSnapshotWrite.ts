@@ -36,6 +36,14 @@ export interface CapturedScene {
    * admission settled holds f32 batches that a reopen would refuse, so it is not stored.
    */
   policyNow: () => string;
+  /** The owning load failed for good: the capture is released instead of waiting for an entry. */
+  loadFailed: () => boolean;
+  /**
+   * Why the scene no longer matches the capture, checked right before the store
+   * (the entry is serialized from the live meshes after the swap): an edit since
+   * the swap (`scene-changed`), or level display moving pieces (`level-offsets`).
+   */
+  changedSince: () => string | null;
 }
 
 /** The cache entry write a snapshot belongs to. */
@@ -52,7 +60,7 @@ export interface SnapshotEntry {
   meshOrder?: readonly MeshData[];
 }
 
-export type SnapshotWriteOutcome = 'written' | 'refused' | 'abandoned' | 'no-entry' | 'policy-changed' | 'order-mismatch' | 'failed';
+export type SnapshotWriteOutcome = 'written' | 'refused' | 'abandoned' | 'no-entry' | 'policy-changed' | 'order-mismatch' | 'scene-changed' | 'failed';
 
 const STALE_POLL_MS = 250;
 const IDLE_TIMEOUT_MS = 2000;
@@ -125,6 +133,10 @@ async function sliceGap(): Promise<void> {
   return idlePeriod(500);
 }
 
+function abandonReason(isStale: () => boolean, captured: CapturedScene): string {
+  return isStale() ? 'superseded' : captured.loadFailed() ? 'load-failed' : 'entry-timeout';
+}
+
 /**
  * Encode and store `captured` beside `entry` once the load is interactive and
  * the page idle. Ends the trace span `span` (begun by the caller at the swap).
@@ -136,13 +148,13 @@ export async function writeCapturedScene(
   trace: LoadTrace,
   span: number,
 ): Promise<SnapshotWriteOutcome> {
-  const finish = (outcome: SnapshotWriteOutcome, attrs: Record<string, number> = {}) => {
+  const finish = (outcome: SnapshotWriteOutcome, attrs: Record<string, number | string> = {}) => {
     trace.end(span, { outcome, ...attrs });
     return outcome;
   };
   try {
     const ready = Promise.all([entry, whenLoadInteractive()]);
-    if (await supersession(isStale, ready)) return finish('abandoned');
+    if (await supersession(() => isStale() || captured.loadFailed(), ready)) return finish('abandoned', { reason: abandonReason(isStale, captured) });
     const [target] = await ready;
     if (!target) return finish('no-entry');
     await idlePeriod();
@@ -155,6 +167,8 @@ export async function writeCapturedScene(
     const blob = await encodeSceneSnapshotInSlices({ ...snapshot, hostData: { ...captured.fit, shards: target.shards } }, sliceGap);
     const encodeMs = performance.now() - encodeStart;
     if (isStale()) return finish('abandoned');
+    const changed = captured.changedSince();
+    if (changed) return finish('scene-changed', { reason: changed });
     // `refused`: the entry was replaced or purged, or quota is short (putSceneSnapshot's own guards).
     const stored = await putSceneSnapshot(target.cacheKey, target.write, blob, captured.key);
     return finish(stored ? 'written' : 'refused', { bytes: blob.size, encodeMs: Math.round(encodeMs) });

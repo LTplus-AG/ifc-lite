@@ -2,22 +2,19 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-// W2 (load hillclimb, reopen lane): a primary cold load stores its finished
-// scene beside its cache entry after the load, so the FIRST reopen adopts it.
+// W2 (load hillclimb, reopen lane, #9728): the deferred write of a captured
+// finished scene beside its cache entry, and every way it declines to store.
 import '@/test/setup-dom.js';
 import 'fake-indexeddb/auto';
 
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { createLoadTracer, type LoadTrace } from '@ifc-lite/load-trace';
-import { decodeSceneSnapshot, type Renderer, type SceneSnapshot } from '@ifc-lite/renderer';
+import type { SceneSnapshot } from '@ifc-lite/renderer';
 import type { MeshData } from '@ifc-lite/geometry';
 import { useViewerStore } from '../store/index.js';
-import { clearCache, getCached, setCached } from '../services/ifc-cache.js';
-import { noteFinalFitBounds } from '../components/viewer/sceneSnapshotOwnership.js';
-import { setGlobalRendererRef } from './useBCF.js';
-import { armColdSceneCapture } from './sceneSnapshotLoad.js';
-import { writeCapturedScene, type CapturedScene, type SnapshotEntry } from './sceneSnapshotWrite.js';
+import { clearCache, getCached } from '../services/ifc-cache.js';
+import { entryOf, immediateIdle, putSnapshots, restoreIdle, snapshotTrace, storedSnapshot } from '../test/scene-snapshot-fixture.js';
+import { writeCapturedScene, type CapturedScene } from './sceneSnapshotWrite.js';
 
 const BOUNDS = { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 2, z: 3 } };
 
@@ -30,234 +27,119 @@ function snapshot(): SceneSnapshot {
 }
 
 const SOURCE = { expressId: 7 } as MeshData;
-const captured = (policyNow = 'p'): CapturedScene => ({ snapshot: snapshot(), sources: [SOURCE], key: 'policy|types', policyNow: () => policyNow, fit: { fitBounds: BOUNDS, sceneBounds: BOUNDS, orbitAnchorBounds: null } as unknown as CapturedScene['fit'] });
+const captured = (over: Partial<CapturedScene> = {}): CapturedScene => ({
+  snapshot: snapshot(), sources: [SOURCE], key: 'policy|types', policyNow: () => 'p', loadFailed: () => false, changedSince: () => null,
+  fit: { fitBounds: BOUNDS, sceneBounds: BOUNDS, orbitAnchorBounds: null } as unknown as CapturedScene['fit'], ...over,
+});
 
-/** A real recording trace, and a promise for the outcome the writer ends its span with. */
-function tracedSpan(): { trace: LoadTrace; span: number; outcome: () => string | undefined } {
-  const tracer = createLoadTracer({ enabled: true, sink: null });
-  const trace = tracer.startLoad('w2');
-  const span = trace.begin('cache.writeSceneSnapshot');
-  return { trace, span, outcome: () => tracer.latest()?.spans.find((s) => s.name === 'cache.writeSceneSnapshot' && s.end !== null)?.attrs?.outcome as string | undefined };
+/** Run the writer for `c` with a span begun the way the capture begins it; resolves its outcome and the span's. */
+async function write(c: CapturedScene, entry: Parameters<typeof writeCapturedScene>[1], isStale = () => false) {
+  const { trace, outcomes } = snapshotTrace();
+  const outcome = await writeCapturedScene(c, entry, isStale, trace, trace.begin('cache.writeSceneSnapshot'));
+  return { outcome, span: outcomes()[0] };
 }
 
-async function entryOf(key: string): Promise<SnapshotEntry> {
-  const write = await setCached(key, new ArrayBuffer(64), `${key}.ifc`, 64, undefined, { fullSourceHash: 'h' });
-  assert.ok(write, 'the entry write committed');
-  return { cacheKey: key, write, shards: { offset: 16, size: 8 } };
-}
-
-async function until(check: () => boolean | Promise<boolean>, what: string, ms = 5000): Promise<void> {
-  const deadline = Date.now() + ms;
-  while (!(await check())) {
-    if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}`);
-    await new Promise((r) => setTimeout(r, 5));
-  }
-}
-
-/**
- * The snapshot Blob each put hands IndexedDB. fake-indexeddb returns a structured
- * clone of happy-dom's Blob, which has no `arrayBuffer`, so the bytes are read here.
- */
-const putSnapshots = new Map<string, Blob>();
-const storeProto = (globalThis as unknown as { IDBObjectStore: { prototype: { put: (value: unknown, key?: unknown) => unknown } } }).IDBObjectStore.prototype;
-const originalPut = storeProto.put;
-storeProto.put = function put(this: unknown, value: unknown, key?: unknown) {
-  const entry = value as { key?: string; sceneSnapshot?: Blob };
-  if (entry?.key && entry.sceneSnapshot) putSnapshots.set(entry.key, entry.sceneSnapshot);
-  return originalPut.call(this, value, key);
-};
-const storedSnapshot = async (key: string) => {
-  const blob = putSnapshots.get(key);
-  return blob ? decodeSceneSnapshot(await blob.arrayBuffer()) : null;
-};
-
-const originalIdle = window.requestIdleCallback;
 beforeEach(async () => {
   putSnapshots.clear();
   await clearCache();
   useViewerStore.setState({ loading: true, geometryStreamingActive: false });
-  window.requestIdleCallback = ((cb: IdleRequestCallback) => Number(setTimeout(() => cb({ didTimeout: false, timeRemaining: () => 50 }), 0))) as typeof window.requestIdleCallback;
+  immediateIdle();
 });
 afterEach(() => {
-  window.requestIdleCallback = originalIdle;
-  setGlobalRendererRef({ current: null });
+  restoreIdle();
   useViewerStore.setState({ loading: false, geometryStreamingActive: false });
 });
 
 describe('writeCapturedScene', () => {
   it('waits for the load to be interactive, then stores the frozen scene with its entry\'s shard location', async () => {
     const entry = await entryOf('a');
-    const { trace, span, outcome } = tracedSpan();
-    const written = writeCapturedScene(captured(), Promise.resolve(entry), () => false, trace, span);
+    const { trace, outcomes } = snapshotTrace();
+    const written = writeCapturedScene(captured(), Promise.resolve(entry), () => false, trace, trace.begin('cache.writeSceneSnapshot'));
     await new Promise((r) => setTimeout(r, 50));
     assert.equal((await getCached('a'))!.sceneSnapshot, undefined, 'nothing is written while the load is still running');
-    assert.equal(outcome(), undefined, 'the pending write keeps its span open');
+    assert.deepEqual(outcomes(), [], 'the pending write keeps its span open');
     useViewerStore.setState({ loading: false });
     assert.equal(await written, 'written');
-    const hit = (await getCached('a'))!;
-    assert.equal(hit.sceneSnapshotKey, 'policy|types');
-    assert.ok(hit.sceneSnapshot, 'the entry carries the snapshot');
+    assert.equal((await getCached('a'))!.sceneSnapshotKey, 'policy|types');
     const decoded = await storedSnapshot('a');
     assert.deepEqual(decoded?.hostData, { fitBounds: BOUNDS, sceneBounds: BOUNDS, orbitAnchorBounds: null, shards: { offset: 16, size: 8 } });
     assert.deepEqual([...decoded!.batches[0].vertexData], [...snapshot().batches[0].vertexData]);
-    assert.equal(outcome(), 'written');
+    assert.deepEqual(outcomes(), ['written']);
   });
 
   it('drops the capture when another file opens before the load settles', async () => {
     const entry = await entryOf('b');
     let stale = false;
-    const { trace, span, outcome } = tracedSpan();
-    const written = writeCapturedScene(captured(), Promise.resolve(entry), () => stale, trace, span);
+    const pending = write(captured(), Promise.resolve(entry), () => stale);
     stale = true;
-    assert.equal(await written, 'abandoned');
-    useViewerStore.setState({ loading: false });
+    assert.deepEqual(await pending, { outcome: 'abandoned', span: 'abandoned:superseded' });
     assert.equal((await getCached('b'))!.sceneSnapshot, undefined);
-    assert.equal(outcome(), 'abandoned');
+  });
+
+  // #9728 review: a load that failed for good never writes its entry; the capture must not wait 10 minutes for it.
+  it('releases the capture of a load that failed instead of waiting for its entry', async () => {
+    useViewerStore.setState({ loading: false });
+    let failed = false;
+    const started = Date.now();
+    const pending = write(captured({ loadFailed: () => failed }), new Promise(() => {}));
+    failed = true;
+    assert.deepEqual(await pending, { outcome: 'abandoned', span: 'abandoned:load-failed' });
+    assert.ok(Date.now() - started < 2000, 'released within a poll or two');
   });
 
   it('does not store batches built under a policy the scene has since left (quantized admission landed late)', async () => {
     const entry = await entryOf('q');
     useViewerStore.setState({ loading: false });
-    const { trace, span } = tracedSpan();
-    assert.equal(await writeCapturedScene(captured('quantized-now'), Promise.resolve(entry), () => false, trace, span), 'policy-changed');
+    assert.equal((await write(captured({ policyNow: () => 'quantized-now' }), Promise.resolve(entry))).outcome, 'policy-changed');
     assert.equal((await getCached('q'))!.sceneSnapshot, undefined);
+  });
+
+  // #9728 review: the entry is serialized from the live meshes after the swap, so an edit since then
+  // (gizmo move, edit card, exploded levels) would leave entry and snapshot disagreeing.
+  it('does not store a capture the scene has changed since, and says why', async () => {
+    useViewerStore.setState({ loading: false });
+    for (const reason of ['scene-changed', 'level-offsets']) {
+      const entry = await entryOf(`c-${reason}`);
+      assert.deepEqual(await write(captured({ changedSince: () => reason }), Promise.resolve(entry)), { outcome: 'scene-changed', span: `scene-changed:${reason}` });
+      assert.equal((await getCached(`c-${reason}`))!.sceneSnapshot, undefined);
+    }
   });
 
   it('moves a cold capture\'s ordinals to the order its entry stores the meshes in, and skips one hydration would refuse', async () => {
     useViewerStore.setState({ loading: false });
     const [a, b] = [{ expressId: 1 } as MeshData, { expressId: 2 } as MeshData];
-    const two: CapturedScene = { ...captured(), sources: [a, b], snapshot: { ...snapshot(), pieceCount: 2,
-      batches: [{ ...snapshot().batches[0], expressIds: new Uint32Array([1, 2]), ordinals: new Uint32Array([0, 1]) }] } };
+    const two = captured({ sources: [a, b], snapshot: { ...snapshot(), pieceCount: 2,
+      batches: [{ ...snapshot().batches[0], expressIds: new Uint32Array([1, 2]), ordinals: new Uint32Array([0, 1]) }] } });
     const entry = { ...(await entryOf('o')), meshOrder: [b, a] };
-    const { trace, span } = tracedSpan();
-    assert.equal(await writeCapturedScene(two, Promise.resolve(entry), () => false, trace, span), 'written');
+    assert.equal((await write(two, Promise.resolve(entry))).outcome, 'written');
     assert.deepEqual([...(await storedSnapshot('o'))!.batches[0].ordinals], [1, 0], 'a reopen decodes b first, so a is piece 1');
-    const missing = tracedSpan();
-    assert.equal(await writeCapturedScene(two, Promise.resolve({ ...entry, meshOrder: [b] }), () => false, missing.trace, missing.span), 'order-mismatch');
+    assert.equal((await write(two, Promise.resolve({ ...entry, meshOrder: [b] }))).outcome, 'order-mismatch');
   });
 
   it('writes nothing when the load stored no entry', async () => {
     useViewerStore.setState({ loading: false });
-    const { trace, span } = tracedSpan();
-    assert.equal(await writeCapturedScene(captured(), Promise.resolve(null), () => false, trace, span), 'no-entry');
+    assert.equal((await write(captured(), Promise.resolve(null))).outcome, 'no-entry');
+  });
+
+  // #9728 review: a throw while encoding or storing is a failure, not an intentional skip.
+  it('reports a write that throws as failed, distinct from a declined one', async () => {
+    useViewerStore.setState({ loading: false });
+    const broken = snapshot();
+    broken.batches[0].vertexData = Object.defineProperty({}, 'buffer', { get() { throw new TypeError('detached'); } }) as Uint8Array; // the encode throws
+    assert.deepEqual(await write(captured({ snapshot: broken }), Promise.resolve(await entryOf('f'))), { outcome: 'failed', span: 'failed' });
   });
 
   it('does not wait for an idle period in a hidden tab', async () => {
-    const entry = await entryOf('c');
+    const entry = await entryOf('h');
     useViewerStore.setState({ loading: false });
     window.requestIdleCallback = (() => 0) as typeof window.requestIdleCallback; // an idle period that never comes
     const visibility = Object.getOwnPropertyDescriptor(document, 'visibilityState');
     Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' });
     try {
-      const { trace, span } = tracedSpan();
-      assert.equal(await writeCapturedScene(captured(), Promise.resolve(entry), () => false, trace, span), 'written');
+      assert.equal((await write(captured(), Promise.resolve(entry))).outcome, 'written');
     } finally {
       if (visibility) Object.defineProperty(document, 'visibilityState', visibility);
       else delete (document as { visibilityState?: unknown }).visibilityState;
-    }
-  });
-});
-
-/** A renderer whose scene records the capture the loader arms, and fires it on demand like a finalize swap. */
-function captureRenderer(queued = false) {
-  let onCaptured: ((s: SceneSnapshot) => void) | null = null;
-  let onDropped: ((reason: string) => void) | undefined;
-  const scene = {
-    captureNextFinalize: (cb: (s: SceneSnapshot, sources: readonly MeshData[]) => void, dropped?: (reason: string) => void) => {
-      onCaptured = (s) => cb(s, [SOURCE]);
-      onDropped = dropped;
-    },
-    sceneSnapshotPolicy: () => 'p',
-    hasQueuedMeshes: () => queued,
-    getBatchedMeshes: () => [],
-  };
-  const camera = { getSceneBounds: () => BOUNDS, getOrbitAnchorBounds: () => null };
-  const renderer = { getGPUDevice: () => ({}), getPipeline: () => ({}), getScene: () => scene, getCamera: () => camera } as unknown as Renderer;
-  return { renderer, swap: () => onCaptured?.(snapshot()), drop: (reason: string) => onDropped?.(reason), armed: () => onCaptured !== null };
-}
-
-describe('armColdSceneCapture (W2)', () => {
-  it('a primary cold load leaves a snapshot on its own entry once it settles, so the first reopen can adopt it', async () => {
-    noteFinalFitBounds(BOUNDS as never);
-    const { renderer, swap, armed } = captureRenderer();
-    setGlobalRendererRef({ current: renderer });
-    const tracer = createLoadTracer({ enabled: true, sink: null });
-    const capture = armColdSceneCapture(() => false, tracer.startLoad('cold'));
-    assert.ok(armed(), 'armed before the stream, without awaiting anything');
-    swap();
-    const pending = () => tracer.latest()?.spans.find((s) => s.name === 'cache.writeSceneSnapshot');
-    assert.equal(pending()?.end, null, 'the pending write is an open cache.write* span from the swap on');
-    capture.entryWritten(await entryOf('cold'));
-    useViewerStore.setState({ loading: false });
-    await until(async () => Boolean((await getCached('cold'))?.sceneSnapshot), 'the snapshot write');
-    assert.equal(pending()?.attrs?.outcome, 'written');
-    assert.equal((await storedSnapshot('cold'))?.batches.length, 1);
-  });
-
-  it('a cold load whose cache write was skipped keeps nothing', async () => {
-    const { renderer, swap } = captureRenderer();
-    setGlobalRendererRef({ current: renderer });
-    const tracer = createLoadTracer({ enabled: true, sink: null });
-    const capture = armColdSceneCapture(() => false, tracer.startLoad('cold'));
-    swap();
-    capture.entryWritten(null);
-    useViewerStore.setState({ loading: false });
-    await until(() => tracer.latest()?.spans.some((s) => s.name === 'cache.writeSceneSnapshot' && s.end !== null) ?? false, 'the span to end');
-    assert.equal(tracer.latest()?.spans.find((s) => s.name === 'cache.writeSceneSnapshot')?.attrs?.outcome, 'no-entry');
-  });
-
-  // ISSUE_129 (untimed check #1) wrote no snapshot and left no reason: every eligible load now ends with one.
-  it('names why an eligible cold load leaves no snapshot', async () => {
-    const skips = (tracer: ReturnType<typeof createLoadTracer>) => tracer.latest()!.spans
-      .filter((s) => s.name === 'cache.writeSceneSnapshot').map((s) => `${String(s.attrs?.outcome)}:${String(s.attrs?.reason)}`);
-    const g = globalThis as { __IFC_LITE_SCENE_SNAPSHOT?: unknown };
-    g.__IFC_LITE_SCENE_SNAPSHOT = 0;
-    const off = createLoadTracer({ enabled: true, sink: null });
-    try {
-      armColdSceneCapture(() => false, off.startLoad('cold'));
-    } finally {
-      delete g.__IFC_LITE_SCENE_SNAPSHOT;
-    }
-    assert.deepEqual(skips(off), ['not-armed:snapshots-off']);
-
-    const dropped = createLoadTracer({ enabled: true, sink: null });
-    const { renderer, drop } = captureRenderer();
-    setGlobalRendererRef({ current: renderer });
-    armColdSceneCapture(() => false, dropped.startLoad('cold'));
-    drop('cleared');
-    assert.deepEqual(skips(dropped), ['not-captured:cleared']);
-
-    const noBounds = createLoadTracer({ enabled: true, sink: null });
-    noteFinalFitBounds(null as never);
-    const second = captureRenderer();
-    setGlobalRendererRef({ current: second.renderer });
-    armColdSceneCapture(() => false, noBounds.startLoad('cold'));
-    second.swap();
-    assert.deepEqual(skips(noBounds), ['not-captured:no-fit-bounds']);
-    noteFinalFitBounds(BOUNDS as never);
-  });
-
-  it('does not arm on a renderer that appears after pieces were already queued', async () => {
-    const nav = navigator as { gpu?: unknown };
-    const hadGpu = 'gpu' in nav;
-    nav.gpu ??= {}; // WebGPU present, renderer not yet mounted
-    try {
-      setGlobalRendererRef({ current: null });
-      const late = captureRenderer(true);
-      const lateTracer = createLoadTracer({ enabled: true, sink: null });
-      armColdSceneCapture(() => false, lateTracer.startLoad('cold'));
-      setGlobalRendererRef({ current: late.renderer });
-      await new Promise((r) => setTimeout(r, 100));
-      assert.equal(late.armed(), false, 'a capture armed after queued pieces could only fail at the swap');
-      assert.equal(lateTracer.latest()!.spans.find((s) => s.name === 'cache.writeSceneSnapshot')?.attrs?.reason, 'pieces-before-renderer');
-
-      const fresh = captureRenderer(false);
-      setGlobalRendererRef({ current: null });
-      armColdSceneCapture(() => false, createLoadTracer({ enabled: true, sink: null }).startLoad('cold'));
-      setGlobalRendererRef({ current: fresh.renderer });
-      await until(fresh.armed, 'a renderer mounted on an empty scene to be armed');
-    } finally {
-      if (!hadGpu) delete nav.gpu;
     }
   });
 });

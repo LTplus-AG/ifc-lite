@@ -11,7 +11,7 @@
 import type { MeshData } from '@ifc-lite/geometry';
 import type { BatchedMesh } from './types.js';
 import type { RenderPipeline } from './pipeline.js';
-import type { SceneCaptureDrop, SceneSnapshot, SceneSnapshotBatch } from './scene-snapshot.js';
+import type { SceneCaptureCallback, SceneCaptureDrop, SceneSnapshot, SceneSnapshotBatch } from './scene-snapshot.js';
 import { createStaticGpuBuffer } from './gpu-static-upload.js';
 import { meshUniformArena, type MeshUniformSlot } from './mesh-uniform-arena.js';
 import { destroyGpuResources } from './scene-geometry.js';
@@ -44,7 +44,7 @@ export class FinishedBatchCapture {
   /** The mesh each piece was split from, by ordinal; a mesh's pieces are consecutive. */
   readonly sources: MeshData[] = [];
 
-  constructor(readonly onCaptured: (snapshot: SceneSnapshot, sources: readonly MeshData[]) => void, readonly onDropped?: (reason: SceneCaptureDrop) => void) {}
+  constructor(readonly onCaptured: SceneCaptureCallback, readonly onDropped?: (reason: SceneCaptureDrop) => void) {}
 
   get hasPieces(): boolean { return this.ordinals.size > 0; }
 

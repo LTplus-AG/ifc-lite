@@ -11,6 +11,7 @@
  * the payload start. Decoding returns views into the caller's buffer.
  */
 
+import type { MeshData } from '@ifc-lite/geometry';
 import type { MeshFinish } from './types.js';
 import type { SpatialChunkingConfig } from './chunk-grid.js';
 import { BATCH_CONSTANTS } from './constants.js';
@@ -65,7 +66,15 @@ export interface SceneSnapshot {
  * its first piece, the stream went ephemeral, another capture replaced it, or
  * the finished scene was not exactly the queued pieces merged once.
  */
-export type SceneCaptureDrop = 'cleared' | 'ephemeral' | 'replaced' | 'not-exact';
+export type SceneCaptureDrop = 'cleared' | 'ephemeral' | 'replaced' | 'not-exact' | 'failed';
+
+/**
+ * The finished scene at the finalize swap, the mesh each piece was queued
+ * from (by ordinal), and a check that the flat scene is still that scene: no
+ * bucket dirty and every captured bucket still drawing the batch it was
+ * captured from. An edit that moves, removes or re-buckets a piece fails it.
+ */
+export type SceneCaptureCallback = (snapshot: SceneSnapshot, sources: readonly MeshData[], sceneUnchanged: () => boolean) => void;
 
 /** Everything outside the source geometry that decides a batch's bytes. */
 export function sceneSnapshotPolicy(quantized: boolean, lod: boolean, chunking: SpatialChunkingConfig | null): string {

@@ -16,20 +16,24 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 
-const FIXTURE = 'tests/models/ara3d/C20-Institute-Var-2.ifc'; // 10.3 MiB: the smallest cached ("source") tier fixture
+// The two smallest cached ("source" tier, >= 10 MiB) fixtures: C20-Institute 10.3 MiB, ISSUE_129 11.5 MiB.
+const FIXTURES = ['tests/models/ara3d/C20-Institute-Var-2.ifc', 'tests/models/ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc'];
 const LOAD_TIMEOUT_MS = 180_000;
 
 interface LoadSummary {
   spans: string[];
   meshes: number;
   snapshotWrite: { ended: boolean; outcome: unknown } | null;
+  /** Per element: one hash of its meshes' origin, positions, normals, indices and colour bytes, order-independent. */
+  elements: [number, string][];
+  instanced: { drawn: number | null; gpuBytes: number | null };
 }
 
 /** Open the fixture in a fresh page and wait until the load is complete and the store settled. */
-async function openFixture(page: Page): Promise<void> {
+async function openFixture(page: Page, fixture: string): Promise<void> {
   await page.goto('/?perfTrace=1');
   await page.waitForFunction(() => Boolean((globalThis as Record<string, unknown>).__ifc_lite_viewer_store__));
-  await page.locator('#file-input-open').setInputFiles(join(process.cwd(), FIXTURE));
+  await page.locator('#file-input-open').setInputFiles(join(process.cwd(), fixture));
   await page.waitForFunction(() => {
     const g = globalThis as Record<string, any>;
     const load = g.__IFC_LITE_LOAD_TRACE__?.latest();
@@ -39,16 +43,38 @@ async function openFixture(page: Page): Promise<void> {
 }
 
 async function summary(page: Page): Promise<LoadSummary> {
-  return page.evaluate(() => {
+  return page.evaluate(async () => {
     const g = globalThis as Record<string, any>;
+    for (let i = 0; i < 3; i++) await new Promise((r) => requestAnimationFrame(() => r(null)));
     const load = g.__IFC_LITE_LOAD_TRACE__.latest();
     const write = load.spans.find((s: { name: string }) => s.name === 'cache.writeSceneSnapshot');
+    const meshes = g.__ifc_lite_viewer_store__.getState().geometryResult?.meshes ?? [];
+    const fnv = (h: number, bytes: Uint8Array) => { for (let i = 0; i < bytes.length; i++) { h ^= bytes[i]; h = Math.imul(h, 0x01000193); } return h >>> 0; };
+    const view = (a: ArrayBufferView | undefined) => (a ? new Uint8Array(a.buffer, a.byteOffset, a.byteLength) : new Uint8Array(0));
+    const perElement = new Map<number, number[]>();
+    for (const m of meshes) {
+      let h = fnv(0x811c9dc5, view(new Float64Array(m.origin ?? [0, 0, 0])));
+      h = fnv(h, view(m.positions)); h = fnv(h, view(m.normals)); h = fnv(h, view(m.indices)); h = fnv(h, view(new Float32Array(m.color)));
+      (perElement.get(m.expressId) ?? perElement.set(m.expressId, []).get(m.expressId)!).push(h);
+    }
+    const stats = g.__ifc_lite_render_stats__?.();
     return {
       spans: [...new Set<string>(load.spans.map((s: { name: string }) => s.name))],
-      meshes: g.__ifc_lite_viewer_store__.getState().geometryResult?.meshes?.length ?? 0,
+      meshes: meshes.length,
       snapshotWrite: write ? { ended: write.end !== null, outcome: write.attrs?.outcome ?? null } : null,
+      elements: [...perElement].map(([id, hs]) => [id, hs.sort((a, b) => a - b).join('.')] as [number, string]),
+      instanced: { drawn: stats?.frame?.instancedDrawn ?? null, gpuBytes: stats?.gpu?.instanced ?? null },
     };
   });
+}
+
+/** Elements whose meshes differ between two loads (at most ten ids), and how many there are. */
+function differingElements(a: LoadSummary, b: LoadSummary): { count: number; first: number[] } {
+  const other = new Map(b.elements);
+  const ids = new Set([...a.elements.map(([id]) => id), ...other.keys()]);
+  const mine = new Map(a.elements);
+  const differing = [...ids].filter((id) => mine.get(id) !== other.get(id));
+  return { count: differing.length, first: differing.slice(0, 10) };
 }
 
 /** Per cache entry: whether it carries a scene snapshot, and its size. */
@@ -67,12 +93,12 @@ async function cachedEntries(page: Page): Promise<{ snapshotBytes: number | null
   }));
 }
 
-test.describe('cold load scene snapshot (W2)', () => {
+for (const FIXTURE of FIXTURES) test.describe(`cold load scene snapshot (W2): ${FIXTURE.split('/').pop()}`, () => {
   test.skip(!existsSync(join(process.cwd(), FIXTURE)), `${FIXTURE} missing — run \`pnpm fixtures\``);
 
-  test('a cold load leaves a snapshot on its entry, and the first reopen adopts it without streaming', async ({ context }) => {
+  test('a cold load leaves a snapshot on its entry, and the first reopen adopts it with identical output', async ({ context }) => {
     const cold = await context.newPage();
-    await openFixture(cold);
+    await openFixture(cold, FIXTURE);
     // The deferred write is an open `cache.writeSceneSnapshot` span until it lands.
     await cold.waitForFunction(() => {
       const load = (globalThis as Record<string, any>).__IFC_LITE_LOAD_TRACE__.latest();
@@ -87,12 +113,15 @@ test.describe('cold load scene snapshot (W2)', () => {
     await cold.close();
 
     const reopen = await context.newPage();
-    await openFixture(reopen);
+    await openFixture(reopen, FIXTURE);
     const warm = await summary(reopen);
     expect(warm.spans, 'the first reopen is a cache hit').toContain('cache.storeReady');
     expect(warm.spans, 'the first reopen drew the stored scene').toContain('scene.snapshotAdopted');
     expect(warm.spans, 'and did not stream and finalize the hit').not.toContain('scene.finalize');
     expect(warm.meshes, 'the reopen restored every mesh of the cold load').toBe(coldLoad.meshes);
+    expect(coldLoad.elements.length, 'elements compared').toBeGreaterThan(0);
+    expect(differingElements(coldLoad, warm), 'per-element output (origin, positions, normals, indices, colour) equals the cold load').toEqual({ count: 0, first: [] });
+    expect(warm.instanced, 'instanced output: templates drawn and their GPU bytes').toEqual(coldLoad.instanced);
     await reopen.close();
   });
 });

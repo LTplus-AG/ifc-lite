@@ -43,7 +43,7 @@ function stubDevice(): GPUDevice {
     limits: { maxBufferSize: 1 << 28 },
     createBuffer: ({ usage }: { usage: number }) => {
       if (failCreateAfter-- === 0) throw new Error('out of memory');
-      return { usage, destroy() { destroyed++; } };
+      return { usage, destroyed: false, destroy() { destroyed++; this.destroyed = true; } };
     },
     createBindGroup: () => ({}),
     queue: {
@@ -149,6 +149,63 @@ describe('finished-scene snapshot', () => {
     scene.finishEphemeralStreaming();
     assert.deepStrictEqual(drops, ['replaced', 'cleared', 'ephemeral']);
     scene.flushPending(device, pipeline, 1000);
+  });
+
+  // #9728 review: an optional capture must never fail the finalize whose swap already happened.
+  it('finalizes normally when the capture throws, and reports the capture as failed', async () => {
+    const device = stubDevice();
+    const scene = freshScene();
+    const drops: string[] = [];
+    scene.captureNextFinalize(() => { throw new RangeError('Array buffer allocation failed'); }, (reason) => drops.push(reason));
+    scene.clearFlatGeometry();
+    scene.queueMeshes(model());
+    scene.flushPending(device, pipeline, 1000);
+    await scene.finalizeStreamingAsync(device, pipeline);
+    assert.deepStrictEqual(drops, ['failed']);
+    const live = scene.getBatchedMeshes();
+    assert.ok(live.length > 0, 'the finalized batches are published');
+    assert.ok(live.every((b) => !(b.vertexBuffer as unknown as { destroyed: boolean }).destroyed), 'none of them is a destroyed buffer');
+    assert.strictEqual(scene.getMeshDataPieces(2)?.length, 1);
+  });
+
+  // #9728 review: a capture is frozen at the swap; a later edit must be detectable before it is stored.
+  it('tells the capture owner when the flat scene changes after the swap', async () => {
+    const device = stubDevice();
+    const scene = freshScene();
+    let unchanged: (() => boolean) | null = null;
+    scene.captureNextFinalize((_snapshot, _sources, sceneUnchanged) => { unchanged = sceneUnchanged; });
+    scene.clearFlatGeometry();
+    scene.queueMeshes(model());
+    scene.flushPending(device, pipeline, 1000);
+    await scene.finalizeStreamingAsync(device, pipeline);
+    assert.strictEqual(unchanged!(), true, 'nothing changed yet');
+    scene.translateMeshesForEntity(2, [1, 0, 0]);
+    assert.strictEqual(unchanged!(), false, 'a moved piece leaves its bucket dirty');
+    scene.rebuildPendingBatches(device, pipeline);
+    assert.strictEqual(unchanged!(), false, 'and its rebuilt batch is not the captured one');
+  });
+
+  // #9728 review: a resource retry finalizes the failed attempt's partial geometry while the
+  // replacement load arms its capture; that older finalize must not consume (and lose) it.
+  it('leaves a capture armed during an older in-flight finalize to the finalize after it', async () => {
+    const device = stubDevice();
+    const scene = freshScene();
+    scene.clearFlatGeometry();
+    scene.queueMeshes(model());
+    scene.flushPending(device, pipeline, 1000);
+    const failedAttempt = scene.finalizeStreamingAsync(device, pipeline, 0); // yields between buckets
+    const drops: string[] = [];
+    let captured: SceneSnapshot | null = null;
+    scene.captureNextFinalize((snapshot) => { captured = snapshot; }, (reason) => drops.push(reason));
+    await failedAttempt;
+    assert.deepStrictEqual(drops, [], 'the older finalize did not take the new capture');
+    assert.strictEqual(captured, null);
+    scene.clearFlatGeometry(); // the replacement load's reshape, before its first piece
+    scene.queueMeshes(model());
+    scene.flushPending(device, pipeline, 1000);
+    await scene.finalizeStreamingAsync(device, pipeline);
+    assert.ok(captured, 'the replacement load captured its own scene');
+    assert.strictEqual((captured as SceneSnapshot).pieceCount, 3);
   });
 
   it('hydrates pieces into the batches they were merged into, without uploading', async () => {

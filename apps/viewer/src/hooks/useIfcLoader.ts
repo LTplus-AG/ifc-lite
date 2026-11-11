@@ -51,7 +51,7 @@ import { notifyResourceRetry, resolveResourceRetryTier } from '../lib/resource-r
 import { publishLoadTrace } from '../lib/perf/activeLoadTrace.js';
 import { acquireFileBuffer, type AcquiredBuffer } from '../utils/acquireFileBuffer.js';
 import { buildGeometryCacheKey } from './geometryCacheKey.js';
-import { armColdSceneCapture } from './sceneSnapshotLoad.js';
+import { armColdSceneCapture, coldCaptureEligible } from './sceneSnapshotLoad.js';
 import { forwardEntityIndexTo, createSourceFingerprintCell, type EntityIndexSink } from './entityIndexHandoff.js';
 import { computeSourceFingerprint, computeSourceFingerprintFromBlob } from '@ifc-lite/cache';
 import { SERVER_URL, USE_SERVER, CACHE_SIZE_THRESHOLD, CACHE_MAX_SOURCE_SIZE, CACHE_MESH_ONLY_MAX_SIZE } from '../utils/ifcConfig.js';
@@ -1270,7 +1270,7 @@ export function useIfcLoader() {
       // Global streaming flag is a PRIMARY (active-model) concern; a federated
       // add must not toggle it (the former federated path never did).
       // W2: keep this stream's finished scene for its cache entry, so the first reopen draws it (sceneSnapshotLoad.ts).
-      const coldSceneCapture = target.kind === 'primary' && cachePlan.shouldCache && !textureBitmaps ? armColdSceneCapture(isStale, trace) : null;
+      const coldSceneCapture = coldCaptureEligible({ primary: target.kind === 'primary', shouldCache: cachePlan.shouldCache, textured: !!textureBitmaps }) ? armColdSceneCapture(isStale, trace, modelId) : null;
       if (target.kind === 'primary') setGeometryStreamingActive(true);
 
       // From here the WASM tessellation path runs, so a resource-limit failure

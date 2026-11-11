@@ -6,7 +6,7 @@ import type { StoreEditor } from '@ifc-lite/mutations';
 import type { Point3D } from '../types.js';
 import { toNativeLength, type SpatialAnchor } from './anchor.js';
 import { assertPositiveFinite, ownerHistoryRef, productGuid } from './_emit-helpers.js';
-import { prepareStructuralFace, emitStructuralFace } from './_structural-face.js';
+import { prepareStructuralFace, emitStructuralFace, type StructuralFaceIds } from './_structural-face.js';
 import { assertStructuralBuilderSchema } from './_structural-stiffness.js';
 
 export type StructuralSurfaceMemberType = 'BENDING_ELEMENT' | 'MEMBRANE_ELEMENT' | 'SHELL' | 'USERDEFINED' | 'NOTDEFINED';
@@ -19,7 +19,7 @@ export interface StructuralSurfaceMemberInStoreParams {
   ObjectType?: string;
   GlobalId?: string;
 }
-export interface StructuralSurfaceMemberBuildResult extends ReturnType<typeof emitStructuralFace> { memberId: number }
+export interface StructuralSurfaceMemberBuildResult extends StructuralFaceIds { memberId: number }
 
 /** Planar analytical surface, owned by this member, anchored to a storey. */
 export function addStructuralSurfaceMemberToStore(editor: StoreEditor, anchor: SpatialAnchor, params: StructuralSurfaceMemberInStoreParams): StructuralSurfaceMemberBuildResult {

@@ -6,7 +6,7 @@ import type { StoreEditor } from '@ifc-lite/mutations';
 import type { Point3D } from '../types.js';
 import type { SpatialAnchor } from './anchor.js';
 import { ownerHistoryRef, productGuid } from './_emit-helpers.js';
-import { prepareStructuralFace, emitStructuralFace } from './_structural-face.js';
+import { prepareStructuralFace, emitStructuralFace, type StructuralFaceIds } from './_structural-face.js';
 import { assertStructuralBuilderSchema, structuralStiffness } from './_structural-stiffness.js';
 
 export interface StructuralBoundaryFaceConditionParams {
@@ -23,7 +23,7 @@ export interface StructuralSurfaceConnectionInStoreParams {
   GlobalId?: string;
   BoundaryCondition?: StructuralBoundaryFaceConditionParams;
 }
-export interface StructuralSurfaceConnectionBuildResult extends ReturnType<typeof emitStructuralFace> {
+export interface StructuralSurfaceConnectionBuildResult extends StructuralFaceIds {
   connectionId: number;
   boundaryConditionId?: number;
 }

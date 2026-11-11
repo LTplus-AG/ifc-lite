@@ -8,6 +8,15 @@ import { vecCross, vecLen, vecNorm } from '../ifc-creator-math.js';
 import { toNativePoint3, type SpatialAnchor } from './anchor.js';
 import { emitLocalPlacement } from './_emit-helpers.js';
 
+type Flat = readonly [number, number];
+const orient = (p: Flat, q: Flat, r: Flat) => (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]);
+const within = (p: Flat, q: Flat, r: Flat) => Math.min(p[0], q[0]) <= r[0] && r[0] <= Math.max(p[0], q[0]) && Math.min(p[1], q[1]) <= r[1] && r[1] <= Math.max(p[1], q[1]);
+function segmentsMeet(p1: Flat, p2: Flat, q1: Flat, q2: Flat): boolean {
+  const [d1, d2, d3, d4] = [orient(q1, q2, p1), orient(q1, q2, p2), orient(p1, p2, q1), orient(p1, p2, q2)];
+  if (d1 * d2 < 0 && d3 * d4 < 0) return true;
+  return (d1 === 0 && within(q1, q2, p1)) || (d2 === 0 && within(q1, q2, p2)) || (d3 === 0 && within(p1, p2, q1)) || (d4 === 0 && within(p1, p2, q2));
+}
+
 /** Validate before emitting anything. Coordinates are storey-local metres. */
 export function prepareStructuralFace(points: readonly Point3D[]) {
   if (points.length < 3 || points.some(p => p.length !== 3 || p.some(v => !Number.isFinite(v)))) {
@@ -16,7 +25,8 @@ export function prepareStructuralFace(points: readonly Point3D[]) {
   const origin = points[0];
   const relative = points.map(p => p.map((v, i) => v - origin[i]) as Point3D);
   const scale = Math.max(...relative.map(vecLen));
-  const tolerance = Math.max(1, scale) * 1e-9;
+  // Loose enough for float32 picks (about 1e-7 relative), far below modelling precision.
+  const tolerance = Math.max(1, scale) * 1e-6;
   for (let i = 0; i < relative.length; i++) {
     for (let j = i + 1; j < relative.length; j++) {
       const [p, q] = [relative[i], relative[j]];
@@ -37,11 +47,46 @@ export function prepareStructuralFace(points: readonly Point3D[]) {
   if (relative.some(p => Math.abs(p[0] * axis[0] + p[1] * axis[1] + p[2] * axis[2]) > tolerance)) {
     throw new Error('Structural Face: boundary points must be coplanar');
   }
-  return { origin, relative, axis };
+  // Snap onto the plane, so the written loop lies exactly on the IfcPlane.
+  const planar = relative.map(p => {
+    const d = p[0] * axis[0] + p[1] * axis[1] + p[2] * axis[2];
+    return [p[0] - d * axis[0], p[1] - d * axis[1], p[2] - d * axis[2]] as Point3D;
+  });
+  const drop = [0, 1, 2].reduce((m, k) => (Math.abs(axis[k]) > Math.abs(axis[m]) ? k : m), 0);
+  const flat = planar.map(p => p.filter((_, k) => k !== drop) as unknown as Flat);
+  const n = flat.length;
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 2; j < n; j++) {
+      if (i === 0 && j === n - 1) continue; // adjacent through the closing edge
+      if (segmentsMeet(flat[i], flat[i + 1], flat[j], flat[(j + 1) % n])) {
+        throw new Error('Structural Face: boundary must not self-intersect');
+      }
+    }
+  }
+  return { origin, relative: planar, axis };
+}
+
+/** Every id in a surface product's exclusively owned face subgraph. */
+export interface StructuralFaceIds {
+  placementId: number;
+  pointIds: number[];
+  vertexIds: number[];
+  edgeIds: number[];
+  orientedEdgeIds: number[];
+  loopId: number;
+  boundId: number;
+  planePointId: number;
+  normalId: number;
+  refDirectionId: number;
+  planePlacementId: number;
+  planeId: number;
+  faceId: number;
+  topologyRepId: number;
+  productShapeId: number;
 }
 
 /** A fresh, exclusively owned topology subgraph for each surface product. */
-export function emitStructuralFace(editor: StoreEditor, anchor: SpatialAnchor, face: ReturnType<typeof prepareStructuralFace>) {
+export function emitStructuralFace(editor: StoreEditor, anchor: SpatialAnchor, face: ReturnType<typeof prepareStructuralFace>): StructuralFaceIds {
   const placementId = emitLocalPlacement(editor, anchor.storeyPlacementId, toNativePoint3(anchor, face.origin));
   const pointIds = face.relative.map(p => editor.addEntity('IfcCartesianPoint', [toNativePoint3(anchor, p)]).expressId);
   const vertexIds = pointIds.map(id => editor.addEntity('IfcVertexPoint', [`#${id}`]).expressId);

@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { StoreEditor } from '@ifc-lite/mutations';
-import { assertFinitePoint3 } from '../ifc-creator-math.js';
+import { assertFinitePoint3, vecCross, vecLen, vecNorm } from '../ifc-creator-math.js';
 import type { Point3D } from '../types.js';
 import { toNativePoint3, type SpatialAnchor } from './anchor.js';
 import { emitLocalPlacement, ownerHistoryRef, productGuid } from './_emit-helpers.js';
@@ -24,10 +24,11 @@ export interface StructuralCurveConnectionInStoreParams {
   Start: [number, number, number];
   End: [number, number, number];
   BoundaryCondition?: StructuralBoundaryEdgeConditionParams;
-  /** IFC4 only, direction in the connection's local frame, whose Z runs along
-   *  the edge; must not be parallel to it. Defaults to local Y. */
+  /** IFC4 only. The connection's local z direction, in storey coordinates like
+   *  `Start`/`End`; must not be parallel to the edge. Defaults to storey up
+   *  (+Z), or +X for an edge within about 2.5 degrees of vertical. */
   Axis?: Point3D;
-  /** IFC4X3 only; same frame and default as `Axis`. */
+  /** IFC4X3 only; same meaning and default as `Axis`. */
   AxisDirection?: Point3D;
   Name?: string;
   Description?: string;
@@ -61,17 +62,21 @@ export function addStructuralCurveConnectionToStore(
   const schema = anchor.schema ?? 'IFC4';
   if (params.Axis && schema !== 'IFC4') throw new Error('Axis exists only in IFC4; IFC4X3 uses AxisDirection and IFC2X3 has neither');
   if (params.AxisDirection && schema !== 'IFC4X3') throw new Error('AxisDirection exists only in IFC4X3');
-  // The placement's local Z runs along the edge, and the axis defines the
-  // connection's local z, so it must not be parallel to the edge. The default,
-  // local Y, is perpendicular to the edge and points up for non-vertical edges.
-  const axis = params.Axis ?? params.AxisDirection ?? [0, 1, 0];
-  assertFinitePoint3({ Start: params.Start, End: params.End, Axis: axis }, 'addStructuralCurveConnectionToStore');
-  if (Math.hypot(axis[0], axis[1]) <= 1e-9 * Math.hypot(...axis)) throw new Error('Axis direction must be nonzero and not parallel to the edge (local Z)');
+  const given = params.Axis ?? params.AxisDirection;
+  assertFinitePoint3({ Start: params.Start, End: params.End, ...(given ? { Axis: given } : {}) }, 'addStructuralCurveConnectionToStore');
   const bc = params.BoundaryCondition;
   const stiffness = [bc?.TranslationalStiffnessByLengthX, bc?.TranslationalStiffnessByLengthY, bc?.TranslationalStiffnessByLengthZ,
     bc?.RotationalStiffnessByLengthX, bc?.RotationalStiffnessByLengthY, bc?.RotationalStiffnessByLengthZ]
     .map((v, i) => structuralStiffness(anchor, v, i < 3 ? 'IfcModulusOfLinearSubgradeReactionMeasure' : 'IfcModulusOfRotationalSubgradeReactionMeasure'));
   const frame = linearProfileFrame(toNativePoint3(anchor, params.Start), toNativePoint3(anchor, params.End));
+  // The axis defines the connection's local z, so it must not run along the
+  // edge. IFC reads it in the placement frame (Z along the edge, X = frame.u).
+  const world: Point3D = given ?? (Math.abs(frame.along[2]) > 0.999 ? [1, 0, 0] : [0, 0, 1]);
+  if (vecLen(vecCross(world, frame.along)) <= 1e-9 * vecLen(world)) {
+    throw new Error('addStructuralCurveConnectionToStore: Axis must be nonzero and not parallel to the edge');
+  }
+  const local = [frame.u, frame.v, frame.along].map(e => e[0] * world[0] + e[1] * world[1] + e[2] * world[2]);
+  const axis = vecNorm(local as Point3D);
 
   const placementId = emitLocalPlacement(editor, anchor.storeyPlacementId, frame.origin, frame.along, frame.u);
   const axisDirectionId = schema === 'IFC2X3' ? undefined : editor.addEntity('IfcDirection', [axis]).expressId;

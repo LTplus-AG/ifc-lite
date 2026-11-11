@@ -479,12 +479,15 @@ each taking `(modelId, storeyExpressId, params)`, like the existing curve member
 The SDK backend supports IFC4 and IFC4X3; the direct builders also support IFC2X3.
 
 Surface builders take `Boundary`, an ordered list of at least three distinct,
-coplanar points in storey-local metres. They write planar `Face` topology.
+coplanar points in storey-local metres that does not cross itself. Points off the
+plane by up to a millionth of the face size are snapped onto it. They write planar
+`Face` topology whose normal follows the boundary's winding.
 The member also accepts `PredefinedType` and optional positive `Thickness` in metres.
 Curve connections take `Start` and `End` and write `Edge` topology, with optional
-`Axis` for IFC4 or `AxisDirection` for IFC4X3: a direction in the connection's local
-frame, whose Z runs along the edge, so it must not be parallel to Z. It defaults to
-local Y. IFC2X3 has neither axis attribute and refuses either parameter.
+`Axis` for IFC4 or `AxisDirection` for IFC4X3: the connection's local z direction in
+storey coordinates, not parallel to the edge. It defaults to storey up, or +X for an
+edge within about 2.5 degrees of vertical. IFC2X3 has neither axis attribute and
+refuses either parameter.
 
 Connections accept `BoundaryCondition`: edge conditions use
 `TranslationalStiffnessByLengthX/Y/Z` and `RotationalStiffnessByLengthX/Y/Z`;

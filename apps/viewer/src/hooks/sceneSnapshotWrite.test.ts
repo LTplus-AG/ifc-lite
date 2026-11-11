@@ -74,7 +74,7 @@ beforeEach(async () => {
   putSnapshots.clear();
   await clearCache();
   useViewerStore.setState({ loading: true, geometryStreamingActive: false });
-  window.requestIdleCallback = ((cb: IdleRequestCallback) => setTimeout(() => cb({ didTimeout: false, timeRemaining: () => 50 }), 0)) as typeof window.requestIdleCallback;
+  window.requestIdleCallback = ((cb: IdleRequestCallback) => Number(setTimeout(() => cb({ didTimeout: false, timeRemaining: () => 50 }), 0))) as typeof window.requestIdleCallback;
 });
 afterEach(() => {
   window.requestIdleCallback = originalIdle;

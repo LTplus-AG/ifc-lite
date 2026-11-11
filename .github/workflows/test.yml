@@ -1363,8 +1363,9 @@ jobs:
           TEST_SHARD: ${{ matrix.shard }}
           # The VIEWER_TEST_CONCURRENCY repo variable: only "2", "3" or "4"
           # change anything. Unset or any other value is 1, today's setting
-          # (see the `--test-concurrency=1` note above this job). The
-          # advisory `viewer-concurrency-probe` below measures 2 on CI.
+          # (see the `--test-concurrency=1` note above this job); apps/viewer's
+          # script applies the same bound. viewer-concurrency-probe.yml
+          # measures 2 on CI after a main push run, when switched on.
           VIEWER_TEST_CONCURRENCY: ${{ contains(fromJSON('["2","3","4"]'), vars.VIEWER_TEST_CONCURRENCY) && vars.VIEWER_TEST_CONCURRENCY || '1' }}
       - name: Mergify CI Upload
         if: (success() || failure()) && env.HAS_MERGIFY_TOKEN == 'true' && hashFiles('apps/viewer/mergify-junit.xml') != ''
@@ -1375,98 +1376,6 @@ jobs:
           report_path: apps/viewer/mergify-junit.xml
           test_step_outcome: ${{ steps.viewer_tests.outcome }}
           job_name: viewer-tests (shard ${{ matrix.shard }})
-
-  # ADVISORY: the whole viewer suite at VIEWER_TEST_CONCURRENCY=2 over EIGHT
-  # shards, on push to main only, to decide the gate's concurrency from CI
-  # numbers instead of the local 19 s vs 70 s in #3061. Not in the aggregate's
-  # `needs:`, and scripts/viewer-concurrency-probe.mjs exits 0 on a test
-  # failure, so it can neither turn a push run red nor touch the queue. The
-  # report job writes wall time, job-minutes, files executed (checked against
-  # the 16-shard gate's own selection) and failures to its summary.
-  # VIEWER_CONCURRENCY_PROBE=off turns it off. Skipped on a push replay, like
-  # `build`, whose artifact it needs.
-  viewer-concurrency-probe:
-    name: Viewer tests at concurrency 2 (advisory, shard ${{ matrix.shard }}/8)
-    needs: [changes, build]
-    if: github.event_name == 'push' && vars.VIEWER_CONCURRENCY_PROBE != 'off' && (needs.changes.outputs.frontend == 'true' || needs.changes.outputs.rust == 'true') && needs.changes.outputs.replay != 'true'
-    runs-on: ${{ ((vars.SELF_HOSTED_QUEUE == 'true' && github.event_name == 'merge_group') || (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted'))))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
-    # A setup failure here (install, fixtures) must not mark the push run red either.
-    continue-on-error: true
-    timeout-minutes: 35
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: [0, 1, 2, 3, 4, 5, 6, 7]
-    steps:
-      - name: Record the job start
-        run: echo "JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          lfs: false
-          persist-credentials: false
-      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: 22
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - name: Download build artifacts
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: build-output
-          path: packages
-      - name: Cache test fixtures
-        id: fixtures-cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: tests/models
-          key: ci-fixtures-source-v2-${{ runner.os }}-${{ hashFiles('tests/models/manifest.json', 'tests/models/README.md', 'tests/models/.manifest-ignore') }}
-      - name: Fetch fixtures
-        if: steps.fixtures-cache.outputs.cache-hit != 'true'
-        run: pnpm fixtures
-      - name: Verify fixtures
-        run: pnpm fixtures:check
-      - name: Viewer tests at concurrency 2
-        run: node scripts/viewer-concurrency-probe.mjs --shard
-        env:
-          TEST_SHARDS: '8'
-          TEST_SHARD: ${{ matrix.shard }}
-          VIEWER_TEST_CONCURRENCY: '2'
-          OUT: ${{ runner.temp }}/viewer-concurrency-probe-${{ matrix.shard }}.json
-      - name: Upload the shard record
-        if: always()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: viewer-concurrency-probe-${{ matrix.shard }}
-          path: ${{ runner.temp }}/viewer-concurrency-probe-${{ matrix.shard }}.json
-          if-no-files-found: warn
-          retention-days: 30
-
-  viewer-concurrency-probe-report:
-    name: Viewer concurrency probe report (advisory)
-    needs: [viewer-concurrency-probe]
-    if: ${{ !cancelled() && github.event_name == 'push' && needs.viewer-concurrency-probe.result != 'skipped' }}
-    runs-on: ubuntu-latest
-    continue-on-error: true
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          lfs: false
-          persist-credentials: false
-      # No records at all is reported by the next step, not failed here.
-      - name: Download the shard records
-        continue-on-error: true
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          pattern: viewer-concurrency-probe-*
-          path: ${{ runner.temp }}/probe
-          merge-multiple: true
-      - name: Report
-        run: node scripts/viewer-concurrency-probe.mjs --report
-        env:
-          RECORDS: ${{ runner.temp }}/probe
-          EXPECTED_SHARDS: '8'
 
   node-guards:
     name: Node guards

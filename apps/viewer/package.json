@@ -14,7 +14,7 @@
     "build": "vite build && node ../../scripts/check-tla-chunk-await.mjs && node scripts/check-rhino3dm-lazy.mjs && node scripts/check-structural-writes-lazy.mjs",
     "typecheck": "node --max-old-space-size=8192 node_modules/typescript/bin/tsc --noEmit",
     "preview": "vite preview",
-    "test": "files=$(find src -type f \\( -name '*.test.ts' -o -name '*.test.tsx' \\) | sort | awk -v p=\"${TEST_PATTERN:-.}\" '$0 ~ p' | node ../../scripts/viewer-test-shards.mjs) && tsx --import ./src/test/vite-module-hooks.mjs --test --test-timeout=120000 --test-concurrency=${VIEWER_TEST_CONCURRENCY:-1} $files",
+    "test": "c=1; case \"${VIEWER_TEST_CONCURRENCY:-}\" in 2|3|4) c=$VIEWER_TEST_CONCURRENCY;; esac; files=$(find src -type f \\( -name '*.test.ts' -o -name '*.test.tsx' \\) | sort | awk -v p=\"${TEST_PATTERN:-.}\" '$0 ~ p' | node ../../scripts/viewer-test-shards.mjs) && tsx --import ./src/test/vite-module-hooks.mjs --test --test-timeout=120000 --test-concurrency=$c $files",
     "ai-eval": "tsx --import ./src/test/vite-module-hooks.mjs scripts/ai-eval.ts",
     "check:templates": "tsc -p src/lib/scripts/templates/tsconfig.json --noEmit"
   },

@@ -1,0 +1,151 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+# The viewer suite at VIEWER_TEST_CONCURRENCY=2 over EIGHT shards, measured
+# after a main push's Test run finishes, to decide the gate's concurrency from
+# CI numbers instead of the local 19 s vs 70 s in #3061. The gate itself
+# (`viewer-tests` in test.yml) keeps concurrency 1 over sixteen shards.
+#
+# OFF unless the repo variable VIEWER_CONCURRENCY_PROBE is exactly `on`: with
+# it unset the `plan` job's `if` is false and every other job needs `plan`, so
+# no job runs and nothing is billed.
+#
+# A separate workflow on purpose. As jobs inside Test it held every main push
+# run open until its shards finished, which delayed test-red-on-main.yml (it
+# fires on Test's completion) by the probe's whole duration.
+#
+# SAFE `workflow_run` USE. It runs only for a `push` to `main` of THIS
+# repository, so the code it checks out (the run's head_sha) is code already
+# on main, never a fork's. It holds no secrets, its token is read-only
+# (`actions: read` for the artifact, `contents: read` for the checkout), and
+# the checkout keeps no credentials.
+#
+# GitHub-hosted runners only, so it never takes a slot a required lane needs
+# on the self-hosted fleet.
+
+name: Viewer concurrency probe
+
+on:
+  workflow_run:
+    workflows: [Test]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: viewer-concurrency-probe
+  cancel-in-progress: false
+
+jobs:
+  # The probe needs the Test run's `build-output` artifact (packages/*/dist and
+  # the wasm runtime). `build` runs only when frontend or Rust code changed and
+  # the push did not replay a tested tree, which is also exactly when the
+  # viewer suite is worth measuring, so no artifact means nothing to probe.
+  plan:
+    if: vars.VIEWER_CONCURRENCY_PROBE == 'on' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.head_repository.full_name == github.repository && github.event.workflow_run.conclusion != 'cancelled'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      has_build: ${{ steps.artifact.outputs.has_build }}
+    steps:
+      - name: Does the Test run have a build artifact
+        id: artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          set -euo pipefail
+          n=$(gh api "repos/$REPO/actions/runs/$RUN_ID/artifacts?name=build-output" --jq '.total_count')
+          echo "build-output artifacts on run $RUN_ID: $n"
+          echo "has_build=$([ "$n" -gt 0 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+  probe:
+    name: Viewer tests at concurrency 2 (shard ${{ matrix.shard }}/8)
+    needs: plan
+    if: needs.plan.outputs.has_build == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7]
+    steps:
+      - name: Record the job start
+        run: echo "JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          lfs: false
+          persist-credentials: false
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Download the Test run's build artifacts
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: build-output
+          path: packages
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+      - name: Cache test fixtures
+        id: fixtures-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: tests/models
+          key: ci-fixtures-source-v2-${{ runner.os }}-${{ hashFiles('tests/models/manifest.json', 'tests/models/README.md', 'tests/models/.manifest-ignore') }}
+      - name: Fetch fixtures
+        if: steps.fixtures-cache.outputs.cache-hit != 'true'
+        run: pnpm fixtures
+      - name: Verify fixtures
+        run: pnpm fixtures:check
+      - name: Viewer tests at concurrency 2
+        run: node scripts/viewer-concurrency-probe.mjs --shard
+        env:
+          TEST_SHARDS: '8'
+          TEST_SHARD: ${{ matrix.shard }}
+          VIEWER_TEST_CONCURRENCY: '2'
+          OUT: ${{ runner.temp }}/viewer-concurrency-probe-${{ matrix.shard }}.json
+      - name: Upload the shard record
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: viewer-concurrency-probe-${{ matrix.shard }}
+          path: ${{ runner.temp }}/viewer-concurrency-probe-${{ matrix.shard }}.json
+          if-no-files-found: error
+          retention-days: 30
+
+  # Fails when a test failed at concurrency 2 or when fewer files reported a
+  # result than the 16-shard gate selects (scripts/viewer-concurrency-probe.mjs).
+  report:
+    name: Viewer concurrency probe report
+    needs: [plan, probe]
+    if: ${{ !cancelled() && needs.plan.outputs.has_build == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          lfs: false
+          persist-credentials: false
+      # No records at all is reported (and failed) by the next step.
+      - name: Download the shard records
+        continue-on-error: true
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: viewer-concurrency-probe-*
+          path: ${{ runner.temp }}/probe
+          merge-multiple: true
+      - name: Report
+        run: node scripts/viewer-concurrency-probe.mjs --report
+        env:
+          RECORDS: ${{ runner.temp }}/probe
+          EXPECTED_SHARDS: '8'

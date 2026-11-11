@@ -27,6 +27,7 @@ import { ChunkErrorBoundary } from '@/components/ChunkErrorBoundary';
 import { PanelModelGate } from '@/components/viewer/PanelModelGate';
 import { AssistantSourceContext } from '@/components/viewer/assistant/AssistantAction';
 import { WORKSPACE_PANELS, getPanelDef } from './registry.js';
+import { DeferredPanel } from './DeferredPanel.js';
 import { renderPanelBody } from './renderPanelBody.js';
 
 describe('workspace panel registry coverage', () => {
@@ -59,8 +60,10 @@ describe('workspace panel registry coverage', () => {
       // Stopping at a host element would let `properties` report
       // 'div', unique by construction, so another id falling through to a
       // bare <PropertiesPanel /> would pass unnoticed.
+      // #9634: DeferredPanel is a shared host too; identity belongs to its
+      // actual lazy child, so falling through to another panel still fails.
       while (isValidElement<{ children?: ReactNode }>(body) &&
-        (typeof body.type === 'string' || body.type === ChunkErrorBoundary || body.type === Suspense || body.type === PanelModelGate || body.type === AssistantSourceContext)) {
+        (typeof body.type === 'string' || body.type === ChunkErrorBoundary || body.type === Suspense || body.type === PanelModelGate || body.type === AssistantSourceContext || body.type === DeferredPanel)) {
         body = body.props.children;
       }
       assert.ok(isValidElement(body), `${panel.id} must have panel content beneath its loading/error hosts`);

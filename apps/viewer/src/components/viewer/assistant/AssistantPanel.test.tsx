@@ -68,6 +68,8 @@ test('registered Clash and Data validation headers expose the actual contextual 
   cleanup();
   setValidationSourceChoice('ids');
   const validation = render(renderPanelBody('validation', () => undefined));
+  // #9634: prove the real panel mounted before asserting an action is absent.
+  await waitFor(() => validation.querySelector('[data-validation-panel]') !== null, 'Data validation feature mounted');
   // No report is attached yet, so the source mismatch hides discussion.
   assert.equal(await findPanelAction(validation, 'Discuss with AI'), undefined);
   // #6833: the manual side discusses the manual checklist (human verdicts), not the IDS report.

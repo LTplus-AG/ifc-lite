@@ -62,6 +62,27 @@ afterEach(() => {
 });
 
 describe('one search-index owner across viewer lifecycle (#3993)', () => {
+  it('builds a model published during a load only after the load settles and the page is idle', async () => {
+    const idle: IdleRequestCallback[] = [];
+    const originalIdle = window.requestIdleCallback;
+    window.requestIdleCallback = ((cb: IdleRequestCallback) => { idle.push(cb); return idle.length; }) as typeof window.requestIdleCallback;
+    try {
+      useViewerStore.setState({ loading: true });
+      const container = render(<Owner><SearchInline /></Owner>);
+      await settle();
+      assert.ok(container.textContent?.includes('Wall A'), 'Tier-0 answers while the build waits');
+      assert.deepEqual(completions, [], 'no tier-1 build while the load runs');
+      await act(async () => { useViewerStore.setState({ loading: false }); });
+      await settle();
+      assert.deepEqual(completions, [], 'settled: the build waits for an idle period');
+      await act(async () => { for (const cb of idle.splice(0)) cb({ didTimeout: false, timeRemaining: () => 50 }); });
+      await settle();
+      assert.deepEqual(completions, ['one']);
+    } finally {
+      window.requestIdleCallback = originalIdle;
+    }
+  });
+
   it('records the model\'s first tier-1 build as its load\'s search.tier1 span (#6979)', async () => {
     const tracer = createLoadTracer({ enabled: true, sink: null });
     publishLoadTrace('one', tracer.startLoad('one'));

@@ -12,6 +12,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { useViewerStore } from '@/store';
 import { buildTier1Index } from '@/lib/search/tier1-index';
 import { modelLoadTrace, tracePhaseOnce } from '@/lib/perf/activeLoadTrace';
+import { runAfterLoadIdle } from '@/lib/perf/afterLoadIdle';
 
 export function useSearchIndex(): void {
   const {
@@ -70,8 +71,11 @@ export function useSearchIndex(): void {
       // Fire-and-forget — the build is cancellable via the controller, and
       // the completion handlers update the store without needing a ref.
       // The first build after a load is its `search.tier1` span (#6979).
+      // It starts once a load in progress has settled and the page is idle:
+      // Tier-0 answers meanwhile, and the build stays out of the window
+      // before the viewer is interactive.
       const store = model.ifcDataStore;
-      void tracePhaseOnce(modelLoadTrace(modelId), 'search.tier1').span('search.tier1', () => buildTier1Index(modelId, store, {
+      const build = () => void tracePhaseOnce(modelLoadTrace(modelId), 'search.tier1').span('search.tier1', () => buildTier1Index(modelId, store, {
         signal: controller.signal,
         onProgress: (done, total) => {
           if (controller.signal.aborted) return;
@@ -93,6 +97,7 @@ export function useSearchIndex(): void {
           console.warn(`[useSearchIndex] build failed for ${modelId}:`, message);
           setSearchIndexRecord(modelId, { status: 'error', error: message });
         });
+      controller.signal.addEventListener('abort', runAfterLoadIdle(build), { once: true });
     }
 
   }, [models, searchIndexes, setSearchIndexRecord, removeSearchIndexRecord, searchFilterSchema, removeFilterSchema]);

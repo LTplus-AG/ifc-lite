@@ -24,8 +24,7 @@ import { renderPanelBody } from '@/lib/panels/renderPanelBody';
 import { closeActiveAnalysisExtension, type AnalysisExtensionDefinition } from '@/services/analysis-extensions';
 import { MobileBottomSheet } from './MobileBottomSheet';
 
-export function MobilePanelSheet({ bottomInset, analysisExtension }: {
-  bottomInset: number;
+export function MobilePanelSheet({ analysisExtension }: {
   /** The active analysis extension (either placement), which owns the sheet when present. */
   analysisExtension: AnalysisExtensionDefinition | null;
 }) {
@@ -44,7 +43,6 @@ export function MobilePanelSheet({ bottomInset, analysisExtension }: {
   return (
     <MobileBottomSheet
       title={sheet.kind === 'extension' ? (analysisExtension?.label ?? t('shellChrome.layout.analysisFallback')) : t(getPanelDef(sheet.id)?.titleKey ?? 'properties.panel.title')}
-      bottomInset={bottomInset}
       onClose={() => {
         setRightPanelCollapsed(true);
         // Close ONLY what the sheet is showing.

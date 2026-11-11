@@ -44,6 +44,13 @@ import { StoreGroupNamespace } from './store-group.js';
  * Changes accumulate in a per-model overlay and are flushed to the IFC
  * file on the next `bim.export.ifc({ applyMutations: true })`.
  */
+/** The backend's method, or a refusal naming it when the backend lacks that optional capability. */
+function requireStoreMethod<K extends keyof StoreBackendMethods>(store: StoreBackendMethods, name: K): NonNullable<StoreBackendMethods[K]> {
+  const method = store[name];
+  if (!method) throw new Error(`bim.store.${name}: not available on this backend`);
+  return method as NonNullable<StoreBackendMethods[K]>;
+}
+
 export class StoreNamespace extends StoreGroupNamespace {
   /**
    * Inject a new entity into the active model. Returns an `EntityRef`
@@ -304,24 +311,17 @@ export class StoreNamespace extends StoreGroupNamespace {
 
   /** Add an IfcStructuralSurfaceMember anchored to a storey. Throws when the backend does not implement it. */
   addStructuralSurfaceMember(modelId: string, storeyExpressId: number, params: StructuralSurfaceMemberInStoreParams): EntityRef {
-    return this.optionalStructuralWrite('addStructuralSurfaceMember')(modelId, storeyExpressId, params);
+    return requireStoreMethod(this.backend.store, 'addStructuralSurfaceMember').call(this.backend.store, modelId, storeyExpressId, params);
   }
 
   /** Add an IfcStructuralCurveConnection anchored to a storey. Throws when the backend does not implement it. */
   addStructuralCurveConnection(modelId: string, storeyExpressId: number, params: StructuralCurveConnectionInStoreParams): EntityRef {
-    return this.optionalStructuralWrite('addStructuralCurveConnection')(modelId, storeyExpressId, params);
+    return requireStoreMethod(this.backend.store, 'addStructuralCurveConnection').call(this.backend.store, modelId, storeyExpressId, params);
   }
 
   /** Add an IfcStructuralSurfaceConnection anchored to a storey. Throws when the backend does not implement it. */
   addStructuralSurfaceConnection(modelId: string, storeyExpressId: number, params: StructuralSurfaceConnectionInStoreParams): EntityRef {
-    return this.optionalStructuralWrite('addStructuralSurfaceConnection')(modelId, storeyExpressId, params);
-  }
-
-  /** One lookup and refusal for the three optional structural writes; the namespace ships in the viewer's startup bundle. */
-  private optionalStructuralWrite<K extends 'addStructuralSurfaceMember' | 'addStructuralCurveConnection' | 'addStructuralSurfaceConnection'>(name: K): NonNullable<StoreBackendMethods[K]> {
-    const method = this.backend.store[name];
-    if (!method) throw new Error(`bim.store.${name}: not available on this backend`);
-    return method.bind(this.backend.store) as NonNullable<StoreBackendMethods[K]>;
+    return requireStoreMethod(this.backend.store, 'addStructuralSurfaceConnection').call(this.backend.store, modelId, storeyExpressId, params);
   }
 
   /**

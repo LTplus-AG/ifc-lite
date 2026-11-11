@@ -77,23 +77,23 @@ export function addStructuralCurveConnectionToStore(
   if (!(length > 0)) throw new Error('addStructuralCurveConnectionToStore: Start and End must be distinct points');
   const along = vecNorm(delta);
   const u = vecNorm(vecCross(Math.abs(along[2]) < 0.9 ? [0, 0, 1] : [1, 0, 0], along));
-  const frame = { origin: start, u, v: vecCross(along, u), along, length };
+  const v = vecCross(along, u);
   const dot = (a: Point3D, b: Point3D) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
   // The axis defines the connection's local z, so it must not run along the
-  // edge. IFC reads it in the placement frame (Z along the edge, X = frame.u).
-  const world: Point3D = given ?? (Math.abs(frame.along[2]) > 0.999 ? [1, 0, 0] : [0, 0, 1]);
+  // edge. IFC reads it in the placement frame (Z along the edge, X = u).
+  const world: Point3D = given ?? (Math.abs(along[2]) > 0.999 ? [1, 0, 0] : [0, 0, 1]);
   // Within about 0.06 degrees of the edge, the local y = z x x is numerically meaningless.
   // Written so NaN (a malformed axis from an untyped caller) also fails.
-  if (!(world.length === 3 && vecLen(vecCross(world, frame.along)) > 1e-3 * vecLen(world))) {
+  if (!(world.length === 3 && vecLen(vecCross(world, along)) > 1e-3 * vecLen(world))) {
     throw new Error('addStructuralCurveConnectionToStore: Axis must be nonzero and not parallel to the edge');
   }
-  const axis = vecNorm([dot(frame.u, world), dot(frame.v, world), dot(frame.along, world)]);
+  const axis = vecNorm([dot(u, world), dot(v, world), dot(along, world)]);
   const globalId = productGuid(params, anchor.guidRandom); // validated before anything is written
 
-  const placementId = emitLocalPlacement(editor, anchor.storeyPlacementId, frame.origin, frame.along, frame.u);
+  const placementId = emitLocalPlacement(editor, anchor.storeyPlacementId, start, along, u);
   const axisDirectionId = schema === 'IFC2X3' ? undefined : editor.addEntity('IfcDirection', [axis]).expressId;
   const point1Id = editor.addEntity('IfcCartesianPoint', [[0, 0, 0]]).expressId;
-  const point2Id = editor.addEntity('IfcCartesianPoint', [[0, 0, frame.length]]).expressId;
+  const point2Id = editor.addEntity('IfcCartesianPoint', [[0, 0, length]]).expressId;
   const vertex1Id = editor.addEntity('IfcVertexPoint', [`#${point1Id}`]).expressId;
   const vertex2Id = editor.addEntity('IfcVertexPoint', [`#${point2Id}`]).expressId;
   const edgeId = editor.addEntity('IfcEdge', [`#${vertex1Id}`, `#${vertex2Id}`]).expressId;

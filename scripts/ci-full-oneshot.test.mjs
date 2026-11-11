@@ -36,9 +36,10 @@ const openPr = (over = {}) => ({ number: 7, state: 'open', headSha: SHA, labels:
 const BASE = {
   mode: 'on',
   prLane: 'fast',
-  run: { event: 'pull_request', conclusion: 'success', headSha: SHA },
+  run: { event: 'pull_request', conclusion: 'success', headSha: SHA, createdAt: '2026-11-10T10:00:00Z' },
   pr: () => openPr(),
   jobs: () => FULL_JOBS,
+  labeledAt: () => '2026-11-10T09:59:00Z',
 };
 const decide = (over = {}) => decideOneshot({ ...BASE, ...over });
 
@@ -56,7 +57,7 @@ test('`shadow` only records; unset, `off` and typos leave labels alone', () => {
   for (const mode of ['true', ' on', 'remove']) {
     const d = decide({ mode });
     assert.equal(d.action, 'keep', mode);
-    assert.match(d.warning ?? '', /not one of off, shadow, on/);
+    assert.match(d.warning ?? '', /not one of off, shadow, on/); // @source-text-assertion-ok subject is the decision's returned message
   }
 });
 
@@ -79,6 +80,10 @@ test('KEEP: every condition short of a proven full-lane run on the current head'
     'no jobs': { jobs: () => [] },
     'PR unreadable': { pr: () => { throw new Error('HTTP 502'); } },
     'jobs unreadable': { jobs: () => { throw new Error('HTTP 502'); } },
+    'label applied after the run was created': { labeledAt: () => '2026-11-10T10:00:01Z' },
+    'label history empty': { labeledAt: () => null },
+    'label history unreadable': { labeledAt: () => { throw new Error('HTTP 502'); } },
+    'run has no creation time': { run: { ...BASE.run, createdAt: undefined } },
   };
   for (const [name, over] of Object.entries(cases)) {
     for (const mode of ['on', 'shadow']) assert.equal(decide({ ...over, mode }).action, 'keep', `${name} / ${mode}`);
@@ -111,21 +116,26 @@ test('the job names match test.yml for every job the fast lane skips', () => {
 
 // ---------------------------------------------------------------- the CLI
 
+/** Stands in for scripts/lib/gh.mjs: returns parsed JSON or throws. */
 function fakeGh(routes) {
   const calls = [];
   const gh = (args) => {
     calls.push(args.join(' '));
-    for (const [match, reply] of routes) if (args.join(' ').includes(match)) return typeof reply === 'function' ? reply(args) : reply;
-    return { status: 1, stdout: '', stderr: 'unexpected call' };
+    for (const [match, reply] of routes) {
+      if (!args.join(' ').includes(match)) continue;
+      if (reply instanceof Error) throw reply;
+      return reply;
+    }
+    throw new Error('unexpected call');
   };
   return { gh, calls };
 }
-const ok = (v) => ({ status: 0, stdout: JSON.stringify(v), stderr: '' });
+const ok = (v) => v;
 const prJson = (over = {}) => ({ number: 7, state: 'open', head: { sha: SHA }, labels: [{ name: FULL_LABEL }], ...over });
 
 function cli(env, routes, payload = {}) {
   const event = join(TMP, `event-${Math.random().toString(36).slice(2)}.json`);
-  writeFileSync(event, JSON.stringify({ workflow_run: { id: 99, event: 'pull_request', conclusion: 'success', head_sha: SHA, head_branch: 'feat', head_repository: { owner: { login: 'o' } }, pull_requests: [{ number: 7 }], ...payload } }));
+  writeFileSync(event, JSON.stringify({ workflow_run: { id: 99, event: 'pull_request', conclusion: 'success', head_sha: SHA, head_branch: 'feat', created_at: '2026-11-10T10:00:00Z', head_repository: { owner: { login: 'o' } }, pull_requests: [{ number: 7, head: { sha: SHA }, base: { repo: { url: 'https://api.github.com/repos/o/r' } } }], ...payload } }));
   const summary = join(TMP, `summary-${Math.random().toString(36).slice(2)}`);
   writeFileSync(summary, '');
   const { gh, calls } = fakeGh(routes);
@@ -135,21 +145,22 @@ function cli(env, routes, payload = {}) {
 const ROUTES = [
   ['repos/o/r/pulls/7', ok(prJson())],
   ['actions/runs/99/jobs', ok([{ jobs: FULL_JOBS }])],
-  ['-X DELETE', ok({})],
+  ['issues/7/events', ok([[{ event: 'labeled', label: { name: FULL_LABEL }, created_at: '2026-11-10T09:00:00Z' }, { event: 'labeled', label: { name: 'bug' }, created_at: '2026-11-10T11:00:00Z' }]])],
+  ['-X DELETE', ok([])],
 ];
 
 test('CLI `on`: removes the label with one DELETE and says so in the summary', () => {
   const r = cli({}, ROUTES);
   assert.equal(r.d.action, 'remove');
-  assert.deepEqual(r.calls.filter((c) => c.includes('DELETE')), [`api -X DELETE repos/o/r/issues/7/labels/${encodeURIComponent(FULL_LABEL)}`]);
-  assert.match(r.summary, /Removed `ci:full` from #7/);
+  assert.deepEqual(r.calls.filter((c) => c.includes('DELETE')), [`api -X DELETE repos/o/r/issues/7/labels/${encodeURIComponent(FULL_LABEL)}`]); // @source-text-assertion-ok subject is the API calls the CLI made
+  assert.match(r.summary, /Removed `ci:full` from #7/); // @source-text-assertion-ok subject is the run summary the CLI wrote
 });
 
 test('CLI `shadow`: records in the summary and never writes to the PR', () => {
   const r = cli({ CI_FULL_ONESHOT: 'shadow' }, ROUTES);
   assert.equal(r.d.action, 'would-remove');
-  assert.ok(!r.calls.some((c) => c.includes('DELETE')));
-  assert.match(r.summary, /would remove `ci:full` from #7/);
+  assert.ok(!r.calls.some((c) => c.includes('DELETE'))); // @source-text-assertion-ok subject is the API calls the CLI made
+  assert.match(r.summary, /would remove `ci:full` from #7/); // @source-text-assertion-ok subject is the run summary the CLI wrote
 });
 
 test('CLI `off`: no API call at all', () => {
@@ -163,34 +174,62 @@ test('CLI: a fork PR (no linked number) is found by head branch and sha', () => 
   assert.equal(r.d.action, 'remove');
 });
 
+test('CLI: a PR of another repository listed for the same head is not this run\'s PR', () => {
+  const other = { number: 3, head: { sha: SHA }, base: { repo: { url: 'https://api.github.com/repos/fork/r' } } };
+  const r = cli({}, [['repos/o/r/pulls -f state=open -f head=o:feat', ok([prJson()])], ...ROUTES.slice(1)], { pull_requests: [other] });
+  assert.ok(!r.calls.includes('api repos/o/r/pulls/3'), 'never reads #3 of this repo'); // @source-text-assertion-ok subject is the API calls the CLI made
+  assert.equal(r.d.action, 'remove');
+});
+
+test('CLI: a label re-applied after the run started is kept', () => {
+  const late = [['issues/7/events', ok([[{ event: 'labeled', label: { name: FULL_LABEL }, created_at: '2026-11-10T10:05:00Z' }]])]];
+  const r = cli({}, [...late, ...ROUTES]);
+  assert.equal(r.d.action, 'keep');
+  assert.ok(!r.calls.some((c) => c.includes('DELETE'))); // @source-text-assertion-ok subject is the API calls the CLI made
+});
+
 test('CLI: an already-removed label is fine; any other DELETE failure is an error', () => {
-  const gone = cli({}, [...ROUTES.slice(0, 2), ['-X DELETE', { status: 1, stdout: '', stderr: 'gh: Label does not exist (HTTP 404)' }]]);
-  assert.equal(gone.d.action, 'remove');
-  assert.throws(() => cli({}, [...ROUTES.slice(0, 2), ['-X DELETE', { status: 1, stdout: '', stderr: 'HTTP 403' }]]), /could not remove/);
+  const routes = (err) => [...ROUTES.slice(0, 3), ['-X DELETE', err]];
+  assert.equal(cli({}, routes(new Error('gh: Label does not exist (HTTP 404)'))).d.action, 'remove');
+  assert.throws(() => cli({}, routes(new Error('HTTP 403'))), /could not remove/);
 });
 
 // ---------------------------------------------------------------- the workflow
+
+const checkoutFiles = (job) => job.steps.find((s) => String(s.uses).startsWith('actions/checkout@')).with['sparse-checkout'].trim().split('\n').map((l) => l.trim()); // @source-text-assertion-ok workflow wiring pin: the subject IS the YAML
 
 test('WORKFLOW: workflow_run on Test, never runs PR code, least privilege, per-PR concurrency', () => {
   assert.deepEqual(ONESHOT_YML.on, { workflow_run: { workflows: ['Test'], types: ['completed'] } });
   assert.deepEqual(ONESHOT_YML.permissions, { contents: 'read', 'pull-requests': 'write', actions: 'read' });
   const job = ONESHOT_YML.jobs.oneshot;
-  assert.match(job.if, /github\.event\.workflow_run\.event == 'pull_request'/);
-  assert.match(job.if, /vars\.CI_FULL_ONESHOT == 'shadow' \|\| vars\.CI_FULL_ONESHOT == 'on'/, 'off starts no job');
-  assert.match(job.concurrency.group, /workflow_run\.pull_requests\[0\]\.number/);
+  // Exact, so no added clause can start the job with the switch off.
+  assert.equal(job.if, "github.event.workflow_run.event == 'pull_request' && (vars.CI_FULL_ONESHOT == 'shadow' || vars.CI_FULL_ONESHOT == 'on')");
+  // The literal workflow expression this test pins, not a template string.
+  // eslint-disable-next-line no-template-curly-in-string
+  assert.equal(job.concurrency.group, 'ci-full-oneshot-${{ github.event.workflow_run.head_repository.full_name }}-${{ github.event.workflow_run.head_branch }}');
+  // The sparse checkout must hold the script's whole import closure, or the
+  // job dies on a missing module only once the switch is on.
+  const closure = new Set();
+  const walk = (rel) => {
+    if (closure.has(rel)) return;
+    closure.add(rel);
+    for (const [, spec] of readFileSync(join(REPO_ROOT, rel), 'utf8').matchAll(/^import .* from '(\.[^']+)';$/gm)) walk(join(dirname(rel), spec));
+  };
+  walk('scripts/ci-full-oneshot.mjs');
+  assert.deepEqual(checkoutFiles(job).sort(), [...closure].sort());
   assert.equal(job.concurrency['cancel-in-progress'], false);
-  const checkout = job.steps.find((s) => String(s.uses).startsWith('actions/checkout@'));
+  const checkout = job.steps.find((s) => String(s.uses).startsWith('actions/checkout@')); // @source-text-assertion-ok workflow wiring pin: the subject IS the YAML
   // The literal workflow expression this test pins, not a template string.
   // eslint-disable-next-line no-template-curly-in-string
   assert.equal(checkout.with.ref, '${{ github.event.repository.default_branch }}');
   assert.equal(checkout.with['persist-credentials'], false);
   for (const s of job.steps) {
-    assert.ok(!/workflow_run\.head_(sha|branch)/.test(JSON.stringify(s.with ?? {})), 'no step checks out the PR head');
+    assert.ok(!/workflow_run\.head_|pull_request\.head|refs\/pull\//.test(JSON.stringify(s)), `no step may reach the PR's code: ${JSON.stringify(s)}`); // @source-text-assertion-ok workflow wiring pin: the subject IS the YAML
   }
   assert.ok(job.steps.some((s) => s.run === 'node scripts/ci-full-oneshot.mjs --run'));
 });
 
 test('WORKFLOW: Test does not re-run on a label change, so removing the label starts nothing', () => {
   const types = TEST_YML.on.pull_request.types;
-  assert.ok(!types.includes('labeled') && !types.includes('unlabeled'), types.join(','));
+  assert.ok(!types.includes('labeled') && !types.includes('unlabeled'), types.join(',')); // @source-text-assertion-ok workflow wiring pin: the subject IS the YAML
 });

@@ -26,16 +26,16 @@ static INIT: Once = Once::new();
 /// Turn the oracle on or off for this process. Test-side driver.
 pub fn set_alt_triangulator(on: bool) {
     INIT.call_once(|| {});
-    ALT.store(on, Ordering::Relaxed);
+    crate::output_policy::mutate(|| ALT.store(on, Ordering::Release));
 }
 
-fn armed() -> bool {
+pub(crate) fn armed() -> bool {
     INIT.call_once(|| {
         if std::env::var_os("IFCLITE_TRIANGULATION_ALT").is_some() {
             ALT.store(true, Ordering::Relaxed);
         }
     });
-    ALT.load(Ordering::Relaxed)
+    ALT.load(Ordering::Acquire)
 }
 
 /// `Some(indices)` when the oracle is armed, `None` to use the production path.

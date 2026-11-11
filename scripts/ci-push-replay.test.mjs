@@ -9,7 +9,7 @@ import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync 
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { TREE_ARTIFACT_PREFIX, decidePushReplay } from './ci-push-replay.mjs';
+import { TREE_ARTIFACT_PREFIX, decidePushReplay, testWorkflowFiles } from './ci-push-replay.mjs';
 
 const h = (c) => c.repeat(40);
 const PUSH = h('a');
@@ -111,6 +111,100 @@ const batchRun = (over = {}) => ({
 });
 // A fast PR run: green, but it recorded no tree, so only the queue can prove the push.
 const queued = (queueEvidence, over = {}) => base({ artifactNamesByRun: { 1: ['build-output'] }, repo: REPO, queueEvidence, ...over });
+
+// A reduced testWorkflowFiles result: test.yml plus one local action it uses.
+const TEST_READS = ['.github/actions/setup-wasm-build/', '.github/workflows/test.yml'];
+
+test('with the Test workflow\'s files known, those and Cargo still get a full run', () => {
+  for (const f of ['Cargo.lock', 'rust/core/Cargo.toml', 'rust-toolchain.toml', '.github/workflows/test.yml', '.github/actions/setup-wasm-build/action.yml', '.github/actions/setup-wasm-build/helper.mjs']) {
+    const d = decidePushReplay(base({ changedFiles: ['README.md', f], workflowFiles: TEST_READS }));
+    assert.equal(d.replay, false, f);
+    assert.ok(d.reason.includes(f), d.reason);
+  }
+});
+
+test('a workflow or action the Test workflow does not read does not block a replay', () => {
+  for (const f of ['.github/workflows/cla.yml', '.github/workflows/test.yml.bak', '.github/actions/setup-oci-registries/action.yml', '.github/actions/setup-wasm-buildx/action.yml']) {
+    assert.deepEqual(decidePushReplay(base({ changedFiles: [f], workflowFiles: TEST_READS })), { replay: true, runId: 1, pr: 7 }, f);
+  }
+  const evidence = [{ tree: TREE, runs: [] }, { tree: h('e'), runs: [batchRun()] }];
+  assert.deepEqual(
+    decidePushReplay(queued(evidence, { changedFiles: ['.github/workflows/python-wheels.yml'], workflowFiles: TEST_READS })),
+    { replay: true, runId: 9, pr: 7, queue: true },
+    'an earlier batch commit',
+  );
+});
+
+test('unknown Test workflow files block every workflow and action file', () => {
+  for (const workflowFiles of [undefined, null]) {
+    for (const f of ['.github/workflows/cla.yml', '.github/actions/setup-oci-registries/action.yml']) {
+      assert.equal(decidePushReplay(base({ changedFiles: [f], workflowFiles })).replay, false, `${f} with ${workflowFiles}`);
+    }
+  }
+});
+
+test('evidence is still required when no file blocks', () => {
+  const d = decidePushReplay(base({ changedFiles: ['.github/workflows/cla.yml'], workflowFiles: TEST_READS, artifactNamesByRun: {} }));
+  assert.equal(d.replay, false);
+  assert.match(d.reason, /tested tree/);
+});
+
+test('testWorkflowFiles follows every local reference transitively, however it is written', () => {
+  const files = {
+    '.github/workflows/test.yml': [
+      'jobs:',
+      '  a:',
+      '    uses: ./.github/workflows/reusable.yml',
+      '  b:',
+      '    steps:',
+      '      - uses: actions/checkout@v4',
+      '      - uses: ./.github/actions/setup-wasm-build',
+      "      - uses: './.github/actions/quoted/' # trailing comment",
+      '      - { uses: ./.github/actions/flow }',
+      '      - "uses": ./.github/actions/quoted-key',
+      '      - run: node .github/actions/script-only/x.mjs',
+      "      # filters: '.github/workflows/**' and '.github/actions/**' name no single file",
+      '      # a sentence ending in .github/actions/flow. keeps its name',
+      '      - uses: some-org/some-repo/.github/workflows/remote.yml@v1',
+    ].join('\n'),
+    '.github/workflows/reusable.yml': 'steps:\n  - uses: ./.github/actions/nested',
+    '.github/actions/setup-wasm-build/action.yml': 'runs:\n  steps:\n    - uses: ./.github/actions/nested',
+    '.github/actions/quoted/action.yml': 'runs: {}',
+    '.github/actions/flow/action.yml': 'runs: {}',
+    '.github/actions/quoted-key/action.yml': 'runs: {}',
+    '.github/actions/script-only/action.yml': 'runs: {}',
+    '.github/actions/nested/action.yaml': 'runs: {}',
+  };
+  assert.deepEqual(testWorkflowFiles((p) => files[p] ?? null), [
+    '.github/actions/flow/',
+    '.github/actions/nested/',
+    '.github/actions/quoted-key/',
+    '.github/actions/quoted/',
+    '.github/actions/script-only/',
+    '.github/actions/setup-wasm-build/',
+    '.github/workflows/reusable.yml',
+    '.github/workflows/test.yml',
+  ]);
+});
+
+// The rule degrades to blocking every workflow file if this ever returns null.
+test('testWorkflowFiles resolves this repository\'s own test.yml', () => {
+  const read = (p) => {
+    try {
+      return readFileSync(fileURLToPath(new URL(`../${p}`, import.meta.url)), 'utf8');
+    } catch (err) {
+      if (err.code === 'ENOENT') return null;
+      throw err;
+    }
+  };
+  assert.equal(Array.isArray(testWorkflowFiles(read)), true, 'a reference in test.yml or a file it names does not resolve');
+});
+
+test('testWorkflowFiles returns null when test.yml or a file it uses cannot be read', () => {
+  assert.equal(testWorkflowFiles(() => null), null);
+  const files = { '.github/workflows/test.yml': '- uses: ./.github/actions/gone' };
+  assert.equal(testWorkflowFiles((p) => files[p] ?? null), null);
+});
 
 test('the last commit of a batch replays on the batch run that tested its tree', () => {
   assert.deepEqual(decidePushReplay(queued([{ tree: TREE, runs: [batchRun()] }])), { replay: true, runId: 9, pr: 7, queue: true });
@@ -279,4 +373,61 @@ test('unreadable replay evidence selects full validation only in probe mode', {
   });
   assert.equal(invalidSource.status, 1, 'invalid Git input must still fail');
   assert.equal(readFileSync(output, 'utf8'), '');
+});
+
+test('the probe reads the Test workflow files at the push commit', {
+  skip: process.platform === 'win32' ? 'POSIX gh executable fixture requires a Unix shell environment' : false,
+}, (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'push-replay-wf-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const bin = join(root, 'bin');
+  mkdirSync(bin);
+  const git = (...args) => execFileSync('git', [
+    '-c', 'user.name=Replay fixture', '-c', 'user.email=replay@example.invalid',
+    '-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=/dev/null', ...args,
+  ], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+  const write = (path, text) => {
+    mkdirSync(join(root, path, '..'), { recursive: true });
+    writeFileSync(join(root, path), text);
+  };
+  git('init', '-q');
+  write('.github/workflows/test.yml', 'jobs:\n  a:\n    steps:\n      - uses: ./.github/actions/setup\n');
+  write('.github/actions/setup/action.yml', 'runs: {}\n');
+  write('.github/workflows/cla.yml', 'on: push\n');
+  git('add', '.');
+  git('commit', '-qm', 'base');
+  const script = fileURLToPath(new URL('./ci-push-replay.mjs', import.meta.url));
+  const output = join(root, 'output');
+  const gh = join(bin, 'gh');
+
+  const replayFor = (changed) => {
+    const before = git('rev-parse', 'HEAD');
+    write(changed, `changed ${Math.random()}\n`);
+    git('commit', '-qam', `change ${changed}`);
+    const head = git('rev-parse', 'HEAD');
+    const tree = git('rev-parse', 'HEAD^{tree}');
+    const merged = { ...base().pulls[0], merge_commit_sha: head };
+    writeFileSync(gh, `#!/usr/bin/env node
+      const path = process.argv[3];
+      const response = path.includes('/commits/') ? ${JSON.stringify([merged])}
+        : path.includes('/compare/') ? { status: 'identical', commits: [], files: [] }
+        : path.includes('/runs/1/artifacts') ? { artifacts: [{ name: '${TREE_ARTIFACT_PREFIX}${tree}', expired: false }] }
+        : path.includes('/artifacts?') ? { artifacts: [] }
+        : { workflow_runs: ${JSON.stringify(base().runs)} };
+      process.stdout.write(JSON.stringify(response));
+    `);
+    chmodSync(gh, 0o755);
+    writeFileSync(output, '');
+    const env = {
+      ...process.env, PATH: `${bin}${delimiter}${process.env.PATH}`,
+      GITHUB_REPOSITORY: 'fixture/replay', GITHUB_SHA: head, PUSH_BEFORE: before, GITHUB_OUTPUT: output,
+    };
+    const run = spawnSync(process.execPath, [script, '--probe'], { cwd: root, env, encoding: 'utf8' });
+    assert.equal(run.status, 0, run.stderr);
+    return readFileSync(output, 'utf8');
+  };
+  const full = 'replay=false\nreplay_run=\nreplay_queue=false\n';
+  assert.equal(replayFor('.github/workflows/cla.yml'), 'replay=true\nreplay_run=1\nreplay_queue=false\n', 'a workflow test.yml does not read');
+  assert.equal(replayFor('.github/actions/setup/action.yml'), full, 'an action test.yml uses');
+  assert.equal(replayFor('.github/workflows/test.yml'), full, 'test.yml itself');
 });

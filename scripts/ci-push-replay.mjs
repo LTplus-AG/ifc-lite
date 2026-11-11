@@ -47,14 +47,23 @@
  * and runs in full. A batch ran the push-only lanes too, so `replay_queue=true`
  * lets test.yml skip those as well.
  *
- * A commit touching NO_REPLAY paths also replays this way when each of those
- * files changes again in a later commit on main. The same file means the same
- * caches, and path filters run the same lanes: a later workflow-only full run
- * would not re-key what a Cargo.lock change needs. Only the newest runs in full.
+ * A commit touching cache-keying paths (keysMainCaches) also replays this way
+ * when each of those files changes again in a later commit on main. The same
+ * file means the same caches, and path filters run the same lanes: a later
+ * workflow-only full run would not re-key what a Cargo.lock change needs. Only
+ * the newest runs in full.
+ *
+ * ONLY THE WORKFLOW FILES THIS WORKFLOW READS set its cache keys (prefix-key,
+ * shared-key, env and inputs): test.yml and every local action or workflow it
+ * names, followed transitively (testWorkflowFiles). Another workflow's file is
+ * not part of a Test run, so a full Test run could not re-key anything for it:
+ * a cache key is immutable, and a key that workflow shares with Test is written
+ * by whichever run misses it first. When those files cannot be read, every
+ * workflow and action file blocks.
  */
 
 import { appendFileSync } from 'node:fs';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 
 import { gh, GhError } from './lib/gh.mjs';
 import { isBatchBranch } from './ci-pr-lane.mjs';
@@ -73,9 +82,53 @@ const NO_REPLAY = [
   /^Cargo\.(lock|toml)$/,
   /(^|\/)Cargo\.toml$/,
   /^rust-toolchain\.toml$/,
-  /^\.github\/workflows\//,
-  /^\.github\/actions\//,
 ];
+/** Used when the Test workflow's own files could not be listed: every workflow or action file blocks. */
+const ANY_WORKFLOW_FILE = /^\.github\/(workflows|actions)\//;
+
+// Any mention, not only a block-style `uses:` line: a flow mapping, a quoted
+// key, a `run: node .github/actions/x/y.mjs` and a comment all count. Naming a
+// file Test does not run over-blocks (a path filter names docs.yml); that only
+// costs a full run.
+// Not after `owner/repo/` (a remote `uses:`), and a sentence's full stop is not part of a name.
+const GITHUB_REF = /(?<![\w-]\/)\.github\/(?:actions\/[\w-]+(?:\.[\w-]+)*|workflows\/[\w.-]+\.ya?ml)/g;
+
+/**
+ * The `.github/` paths a Test run reads: test.yml and every local action or
+ * workflow file it names, transitively. An action is returned as its directory
+ * with a trailing `/`, since its scripts ship with it. `readText(path)` returns
+ * the file at the push commit, or null when it does not exist. Returns null
+ * when test.yml or any file it reaches cannot be read, so the caller blocks
+ * every workflow and action file rather than guess.
+ *
+ * @param {(path: string) => string | null} readText
+ * @returns {string[] | null}
+ */
+export function testWorkflowFiles(readText) {
+  const root = `.github/workflows/${TEST_WORKFLOW_FILE}`;
+  const seen = new Set([root]);
+  const queue = [root];
+  while (queue.length > 0) {
+    const path = queue.shift();
+    const text = path.endsWith('/') ? readText(`${path}action.yml`) ?? readText(`${path}action.yaml`) : readText(path);
+    if (typeof text !== 'string') return null;
+    for (const [ref] of text.matchAll(GITHUB_REF)) {
+      const next = ref.startsWith('.github/actions/') ? `${ref}/` : ref;
+      if (!seen.has(next)) {
+        seen.add(next);
+        queue.push(next);
+      }
+    }
+  }
+  return [...seen].sort();
+}
+
+/** Whether a changed path keys a cache that only a push to main writes. */
+function keysMainCaches(file, workflowFiles) {
+  if (NO_REPLAY.some((re) => re.test(file))) return true;
+  if (!Array.isArray(workflowFiles)) return ANY_WORKFLOW_FILE.test(file);
+  return workflowFiles.some((p) => (p.endsWith('/') ? file.startsWith(p) : file === p));
+}
 
 const SHA = /^[0-9a-f]{40}$/;
 
@@ -115,18 +168,19 @@ const isGreenBatchRun = (r, repo) =>
  *   queueEvidence?: Array<{tree: string, runs: Array<object>}>,
  *   laterChangedFiles?: string[],
  *   rekeyAlreadyJudged?: boolean,
+ *   workflowFiles?: string[] | null,
  * }} input `queueEvidence` lists this commit's tree, then later commits' trees, each with the runs holding its artifact.
  * @returns {{replay: true, runId: number, pr: number, queue?: true} | {replay: false, reason: string}}
  */
 export function decidePushReplay(input) {
-  const { pushSha, pushTree, parentSha, before, changedFiles, pulls, runs, artifactNamesByRun, repo, queueEvidence = [], laterChangedFiles = [], rekeyAlreadyJudged = false } = input;
+  const { pushSha, pushTree, parentSha, before, changedFiles, pulls, runs, artifactNamesByRun, repo, queueEvidence = [], laterChangedFiles = [], rekeyAlreadyJudged = false, workflowFiles = null } = input;
   if (!SHA.test(pushSha ?? '') || !SHA.test(pushTree ?? '')) return { replay: false, reason: 'push SHA or tree is not a full hash' };
   // One squash commit on top of the previous tip. A multi-commit push (a
   // direct push, a rebase merge) is not the shape a single PR run tested.
   if (!SHA.test(before ?? '') || parentSha !== before) {
     return { replay: false, reason: `push is not a single commit on ${String(before).slice(0, 9)}` };
   }
-  const keysCaches = (f) => NO_REPLAY.some((re) => re.test(f));
+  const keysCaches = (f) => keysMainCaches(f, workflowFiles);
   const blocker = changedFiles.find(keysCaches);
   const blockerReason = `${blocker} changed; caches that only main writes must be re-keyed by a full run`;
   // A full page may be truncated, so it proves nothing: that only means a full run.
@@ -198,7 +252,20 @@ function readInputs(repo, pushSha, pushTree, parentSha, before) {
     }
   }
   const { queueEvidence, laterChangedFiles } = readQueueEvidence(repo, pushSha, pushTree);
-  return { pushSha, pushTree, parentSha, before, changedFiles, pulls, runs, artifactNamesByRun, repo, queueEvidence, laterChangedFiles };
+  // Only a changed workflow or action file needs the list; most pushes touch none.
+  let workflowFiles = null;
+  if (changedFiles.some((f) => ANY_WORKFLOW_FILE.test(f))) {
+    // The push commit's side suffices: dropping a reference edits a file still on the list.
+    workflowFiles = testWorkflowFiles((path) => gitShow(pushSha, path));
+    if (!workflowFiles) console.warn(`[push-replay] the files ${TEST_WORKFLOW_FILE} reads could not be listed at ${pushSha.slice(0, 9)}; every workflow and action file blocks`);
+  }
+  return { pushSha, pushTree, parentSha, before, changedFiles, pulls, runs, artifactNamesByRun, repo, queueEvidence, laterChangedFiles, workflowFiles };
+}
+
+/** A file's text at a commit, or null when it is absent or unreadable (readInputs then warns once). */
+function gitShow(sha, path) {
+  const r = spawnSync('git', ['show', `${sha}:${path}`], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 16 * 1024 * 1024 });
+  return r.status === 0 ? r.stdout : null;
 }
 
 /** This commit's tree, then those of the commits main has gained since, each with the runs that recorded it. */

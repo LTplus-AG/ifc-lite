@@ -82,8 +82,9 @@
  * member's lowest end, so a partial run (lower floors derived before) never
  * guesses a support under an upper floor. No other element this run leaves
  * out sets the level. The level is one height: it
- * does not follow a sloping site, and a stray member drawn below everything
- * else takes the guessed supports to itself. `supportType` is
+ * does not follow a sloping site. A stray member drawn below everything else
+ * takes the guessed supports to itself when this run derives it, and leaves
+ * this run with none when it was idealised before. `supportType` is
  * 'pinned' (translations fixed, rotations free; the default) or 'fixed'.
  *
  * Links. Every member and node is linked to the physical elements it

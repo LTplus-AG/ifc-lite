@@ -295,3 +295,57 @@ test('a scene-snapshot write that times out makes the snapshot reopen a failed s
   assert.equal(waited, 0);
   assert.match((await prepareWarmOpen({ open: 1, cacheWriteSettled: false, snapshotExpected: true, waitSnapshot: count })).failure ?? '', /cache write did not settle/);
 });
+
+const lanesModule = () => load('./load-scoreboard-lanes.mjs');
+
+test('browser-cold-early times from the pick: the boot-delayed input dispatch is inside its clock', async () => {
+  const { rebaseToArm } = await lanesModule();
+  const open = { inputDelayMs: 1900, firstFrameMs: 400, interactiveMs: 700, uiQuietMs: 900, geometryMs: 650, propsMs: 600,
+    storeSettledMs: 680, settlePaintMs: 700, publishPaintMs: 690 };
+  const early = rebaseToArm(open);
+  assert.equal(early.interactiveMs, 2600);
+  assert.equal(early.interactiveFromChangeMs, 700);
+  assert.equal(early.firstFrameMs, 2300);
+  assert.equal(early.uiQuietMs, 2800);
+  assert.match(early.clockFrom, /^arm/);
+  // A missing first frame stays missing rather than becoming the delay alone.
+  assert.equal(rebaseToArm({ ...open, firstFrameMs: null }).firstFrameMs, null);
+});
+
+test('the first reopen waits until the stored cache entry stops changing (a snapshot written at cold end cannot race it)', async () => {
+  const { stableSince } = await lanesModule();
+  const obs = (pairs) => pairs.map(([at, sig]) => ({ at, sig }));
+  // Snapshot lands at 1.2 s, then nothing changes: stable from 1.2 s once 3 s have passed.
+  assert.equal(stableSince(obs([[0, 'a:0'], [600, 'a:0'], [1200, 'a:812'], [3000, 'a:812'], [4300, 'a:812']]), 3000), 1200);
+  // Not yet 3 s since the last change.
+  assert.equal(stableSince(obs([[0, 'a:0'], [1200, 'a:812'], [3000, 'a:812']]), 3000), null);
+  assert.equal(stableSince([], 3000), null);
+});
+
+test('boot time-to-interactive ends at the last long task before the first 1 s quiet window', async () => {
+  const { bootTimeToInteractive } = await lanesModule();
+  // Shell ready at 900 ms; welcome scene 1,000-2,400 ms, probe 2,500-2,935 ms, then quiet; a late task at 5 s does not count.
+  assert.equal(bootTimeToInteractive([[1000, 1400], [2500, 435], [5000, 80]], 900), 2935);
+  assert.equal(bootTimeToInteractive([], 900), 900);
+  // Tasks wholly before the shell was ready do not extend it.
+  assert.equal(bootTimeToInteractive([[100, 300]], 900), 900);
+});
+
+test('the report summarizes the boot lane under its pseudo-fixture and counts snapshot adoption per reopen lane', async () => {
+  const { summarize, BOOT_FIXTURE } = await report();
+  const plan = { name: 't', kind: 'aa', lanes: ['boot', 'browser-warm1'], fixtures: [{ name: 'fx', set: 'tuning', bytes: 20 * 2 ** 20 }], sides: {} };
+  const rows = [];
+  for (let round = 0; round < 5; round++) for (const side of ['base', 'branch']) {
+    rows.push({ lane: 'boot', fixture: BOOT_FIXTURE, round, side, ok: true, interactiveMs: 2900 + round, peakMemoryMiB: 700, idleJsMiB: 40, fingerprint: 'no model' });
+    rows.push({ lane: 'browser-warm1', fixture: 'fx', round, side, ok: true, interactiveMs: 1000 + round, fingerprint: 'm=1',
+      snapshotAdopted: [round < 3], snapshotPresentBeforeOpen: round < 3, loadPaths: ['cache'], cacheTiers: ['source'] });
+  }
+  const s = summarize(plan, rows);
+  const boot = s.fixtures.find((f) => f.name === BOOT_FIXTURE);
+  assert.equal(boot?.set, 'boot');
+  assert.equal(boot.lanes.boot.verdicts.interactiveMs.verdict, 'no significant difference');
+  assert.ok(boot.lanes.boot.verdicts.idleJsMiB, 'boot memory metrics get verdicts');
+  const warm1 = s.fixtures.find((f) => f.name === 'fx').lanes['browser-warm1'].sides.base;
+  assert.equal(warm1.snapshotAdoptedCount, 3);
+  assert.equal(warm1.snapshotPresentBeforeOpenCount, 3);
+});

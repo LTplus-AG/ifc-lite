@@ -29,13 +29,14 @@ import { chromePids, memoryOf, vramOf } from './scenoptic-bench-sampling.mjs';
 import { COUNT_FRAMES, openAndWaitInteractive, openViewerPage, readOutputFingerprint, replacePage, waitCacheWrites, waitSceneSnapshots } from './viewer-load-probe.mjs';
 import { browserShares, browserStages, expectedCacheTier, failedOpenIndex, gpuUnhealthy, stageShares, uiQuietValue } from './load-scoreboard-stats.mjs';
 import { BOOT_OBSERVERS, waitShellQuiet, waitUiQuiet } from './viewer-load-boot.mjs';
+import { rebaseToArm, waitCacheEntryStable, waitFirstPaint } from './load-scoreboard-lanes.mjs';
 import { expectSceneSnapshot, prepareWarmOpen } from './viewer-scene-snapshot.mjs';
 import { readGpuHealth } from '../../tests/benchmark/gpu-health.ts';
 
 export const CHROME_ARGS = ['--enable-gpu', '--enable-unsafe-webgpu', '--enable-features=Vulkan,VulkanFromANGLE,DefaultANGLEVulkan',
   '--use-angle=vulkan', '--ignore-gpu-blocklist', '--use-webgpu-power-preference=default-high-performance',
   '--hide-scrollbars', '--no-first-run', '--window-size=1920,1080', '--window-position=0,0'];
-const NVIDIA_ICD = '/usr/share/vulkan/icd.d/nvidia_icd.json';
+export const NVIDIA_ICD = '/usr/share/vulkan/icd.d/nvidia_icd.json';
 
 export function loadPlaywright(root) {
   const require = createRequire(join(process.env.LOAD_SCOREBOARD_DEPS ?? root, 'package.json'));
@@ -99,9 +100,14 @@ function summarizeOpen(open, memory) {
  * 12% on Holter); `pass: 'memory'` repeats the sample with the sampler on and
  * is used for peak memory only. Both arm each open on a quiet shell with the
  * main-thread perf counters off (viewer-load-boot.mjs).
- * Returns { lanes: { 'browser-cold', 'browser-warm1', 'browser-warm' }, warmOpens, meta }.
+ * `arm: 'first-paint'` is the `browser-cold-early` lane (load-scoreboard-lanes.mjs): a cold open
+ * picked at the first paint, timed from the pick, with no reopens.
+ * Returns { lanes: { 'browser-cold' | 'browser-cold-early', 'browser-warm1', 'browser-warm' }, warmOpens, meta }.
  */
-export async function browserSample({ chromium, executablePath, baseUrl, setRoot, side, fixture, warmOpens, outDir, tag, log, pass = 'timing' }) {
+export async function browserSample({ chromium, executablePath, baseUrl, setRoot, side, fixture, warmOpens, outDir, tag, log, pass = 'timing', arm = 'quiet' }) {
+  const early = arm === 'first-paint';
+  if (early) warmOpens = 0;
+  const coldLane = early ? 'browser-cold-early' : 'browser-cold';
   setRoot(side.dist);
   const profileDir = mkdtempSync(join(tmpdir(), 'load-scoreboard-'));
   const env = { ...process.env, VK_ICD_FILENAMES: NVIDIA_ICD, VK_DRIVER_FILES: NVIDIA_ICD };
@@ -111,7 +117,7 @@ export async function browserSample({ chromium, executablePath, baseUrl, setRoot
   const timeoutMs = Math.max(15 * 60 * 1000, sizeMB * 12 * 1000);
   const consoleLogs = [];
   const meta = { pass, query, executablePath, chromeArgs: CHROME_ARGS, pageErrors: [], crashed: false };
-  const lanes = { 'browser-cold': { lane: 'browser-cold', ok: false } };
+  const lanes = { [coldLane]: { lane: coldLane, ok: false } };
   if (warmOpens > 1) lanes['browser-warm1'] = { lane: 'browser-warm1', ok: false };
   if (warmOpens > 0) lanes['browser-warm'] = { lane: 'browser-warm', ok: false };
   const result = { lanes, warmOpens: [], meta };
@@ -123,12 +129,13 @@ export async function browserSample({ chromium, executablePath, baseUrl, setRoot
   };
   const measuredOpen = async (label) => {
     phase = `${label}-shell`;
-    const shell = await waitShellQuiet(page);
+    const shell = early ? await waitFirstPaint(page) : await waitShellQuiet(page);
     phase = label;
     const sampler = pass === 'memory' ? startMemorySampler(profileDir) : null;
     let open;
     try { open = await openAndWaitInteractive(page, [fixture.path], { timeoutMs }); } finally { if (sampler) meta[`${label}Memory`] = sampler.stop(); }
     Object.assign(open, { shell }, await waitUiQuiet(page, open.originAbs + open.interactiveMs, open.originAbs));
+    if (early) open = rebaseToArm(open);
     const memory = meta[`${label}Memory`] ?? null;
     const fingerprint = await readOutputFingerprint(page);
     log?.(`  ${tag} ${pass} ${label}: first ${open.firstFrameMs?.toFixed(0)} ms, interactive ${open.interactiveMs.toFixed(0)} ms, ui quiet ${open.uiQuietTimedOut ? 'capped' : `${open.uiQuietMs.toFixed(0)} ms`}, input delay ${open.inputDelayMs?.toFixed(0)} ms${memory ? `, peak PSS ${memory.peakPssMiB.toFixed(0)} MiB` : ''}, path ${open.loadPaths.join(',')}`);
@@ -161,7 +168,7 @@ export async function browserSample({ chromium, executablePath, baseUrl, setRoot
     watch(page);
     phase = 'boot';
     page = await openViewerPage(context, `${baseUrl}/${query}`);
-    lanes['browser-cold'] = { lane: 'browser-cold', ok: true, ...(await measuredOpen('cold')) };
+    lanes[coldLane] = { lane: coldLane, ok: true, ...(await measuredOpen('cold')) };
     meta.adapter = await page.evaluate(() => globalThis.__ifc_lite_render_stats__?.()?.adapter ?? null);
     meta.gpuHealthCold = await readGpuHealth(page, consoleLogs).catch((e) => ({ error: String(e) }));
     if (gpuUnhealthy(meta.gpuHealthCold) || meta.crashed) {
@@ -172,6 +179,9 @@ export async function browserSample({ chromium, executablePath, baseUrl, setRoot
       // failure there taints that open and later ones, never an earlier clean open.
       phase = 'warm1-prep';
       meta.cacheWriteSettled = await waitCacheWrites(page);
+      // A snapshot captured at the end of the cold load must be there or not before the first
+      // reopen, never racing it: wait for the stored entry to stop changing (cached tiers only).
+      if (!uncached) meta.entryBeforeWarm1 = await waitCacheEntryStable(page);
       for (let i = 1; i <= warmOpens; i++) {
         phase = `warm${i}-prep`;
         // Uncached tiers never write a snapshot: waiting for one cost 60 s per sample (H6).
@@ -190,6 +200,8 @@ export async function browserSample({ chromium, executablePath, baseUrl, setRoot
         const warm = await measuredOpen(`warm${i}`);
         result.warmOpens.push({ open: i, interactiveMs: warm.interactiveMs, firstGeometryMs: warm.firstGeometryMs, loadPaths: warm.loadPaths,
           snapshotAdopted: warm.snapshotAdopted, peakMemoryMiB: warm.peakMemoryMiB });
+        // The lane keeps its name whatever path the reopen took; the snapshot state is recorded beside it.
+        if (i === 1) Object.assign(warm, { snapshotPresentBeforeOpen: meta.entryBeforeWarm1?.snapshotPresent ?? null, cacheEntryStable: meta.entryBeforeWarm1?.stable ?? null });
         if (i === 1 && warmOpens > 1) lanes['browser-warm1'] = { lane: 'browser-warm1', ok: true, ...warm };
         if (i === warmOpens) lanes['browser-warm'] = { lane: 'browser-warm', ok: true, ...warm };
       }
@@ -208,7 +220,7 @@ export async function browserSample({ chromium, executablePath, baseUrl, setRoot
     // A failure taints every lane of this sample that had not already finished cleanly before it.
     // A failure taints the open it happened in and every later one; earlier clean opens keep their result.
     const failedOpen = failedOpenIndex(phase);
-    const index = { 'browser-cold': 0, 'browser-warm1': 1, 'browser-warm': warmOpens };
+    const index = { 'browser-cold': 0, 'browser-cold-early': 0, 'browser-warm1': 1, 'browser-warm': warmOpens };
     for (const [name, lane] of Object.entries(lanes)) if (index[name] >= failedOpen) lanes[name] = { ...lane, ok: false, error };
   } finally {
     await context?.close().catch(() => {});

@@ -29,7 +29,7 @@ import { fileURLToPath } from 'node:url';
 import { roundOrder, seededRand } from './ab-order.mjs';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
 import { nativeSample } from './load-scoreboard-native.mjs';
-import { BROWSER_LANES, LANES, renderMarkdown, summarize } from './load-scoreboard-report.mjs';
+import { BOOT_FIXTURE, BROWSER_LANES, LANES, renderMarkdown, summarize } from './load-scoreboard-report.mjs';
 import { browserShares, diffElements, uiQuietValue } from './load-scoreboard-stats.mjs';
 
 const ROOT = resolve(fileURLToPath(new URL('../..', import.meta.url)));
@@ -58,7 +58,7 @@ export function loadPlan(path) {
     const s = plan.sides?.[side];
     if (!s?.label) throw new Error(`plan.sides.${side}.label is required`);
     if (plan.lanes.includes('native-cold') && !existsSync(s.perfProbe ?? '')) throw new Error(`plan.sides.${side}.perfProbe missing: ${s.perfProbe}`);
-    if (plan.lanes.some((l) => l.startsWith('browser')) && !existsSync(join(s.dist ?? '', 'index.html'))) throw new Error(`plan.sides.${side}.dist has no index.html: ${s.dist}`);
+    if (plan.lanes.some((l) => l.startsWith('browser') || l === 'boot') && !existsSync(join(s.dist ?? '', 'index.html'))) throw new Error(`plan.sides.${side}.dist has no index.html: ${s.dist}`);
   }
   if (plan.sides.base.label === plan.sides.branch.label) throw new Error('base and branch labels must differ (an A/A run labels its copies, e.g. main-A / main-B)');
   const names = new Set();
@@ -117,6 +117,8 @@ export function buildOrder(plan) {
   if (plan.lanes.some((l) => l.startsWith('browser'))) groups.push('browser');
   const order = {};
   for (const g of groups) for (const f of plan.fixtures) (order[g] ??= {})[f.name] = roundOrder(plan.rounds, rand);
+  // The boot lane opens no file: one pair per round, under its pseudo-fixture.
+  if (plan.lanes.includes('boot')) order.boot = { [BOOT_FIXTURE]: roundOrder(plan.rounds, rand) };
   return order;
 }
 
@@ -147,7 +149,7 @@ async function run(opt) {
   writeFileSync(hostPath, JSON.stringify(host, null, 2) + '\n');
 
   let browser = null;
-  if (order.browser) browser = await startBrowserLane(plan, out);
+  if (order.browser || order.boot) browser = await startBrowserLane(plan, out);
   const record = (row, trace) => {
     if (trace) { writeFileSync(join(out, 'traces', `${row.fixture}-${row.lane}-${row.side}-r${row.round}.json`), JSON.stringify(trace)); }
     appendFileSync(samplesPath, JSON.stringify(row) + '\n');
@@ -156,9 +158,17 @@ async function run(opt) {
     // --fixtures a,b runs a subset into the same result set (bounded exclusive jobs); --resume continues it.
     const only = opt.fixtures ? new Set(opt.fixtures.split(',')) : null;
     for (const name of only ?? []) if (!plan.fixtures.some((f) => f.name === name)) throw new Error(`--fixtures: ${name} is not in the plan`);
+    const DEFAULT_BROWSER = ['browser-cold', 'browser-warm1', 'browser-warm'];
     for (let round = 0; round < plan.rounds; round++) {
+      for (const side of order.boot?.[BOOT_FIXTURE][round] ?? []) {
+        if (only || done.has(`boot/${BOOT_FIXTURE}/${round}/${side}`)) continue;
+        const common = { group: 'boot', fixture: BOOT_FIXTURE, round, side, sideLabel: plan.sides[side].label, at: new Date().toISOString(),
+          loadavg1: loadavg()[0], host: await hostQuiet() };
+        log(`boot ${side}-r${round}`);
+        record({ ...common, ...(await browser.boot({ side: plan.sides[side], tag: `boot-${side}-r${round}` })) }, null);
+      }
       for (const fixture of plan.fixtures.filter((f) => !only || only.has(f.name))) {
-        for (const group of Object.keys(order)) {
+        for (const group of Object.keys(order).filter((g) => g !== 'boot')) {
           for (const side of order[group][fixture.name][round]) {
             if (done.has(`${group}/${fixture.name}/${round}/${side}`)) continue;
             const common = { group, fixture: fixture.name, round, side, sideLabel: plan.sides[side].label, at: new Date().toISOString(),
@@ -171,6 +181,14 @@ async function run(opt) {
               record({ ...common, ...row, probe }, null);
               log(`  ${tag} native: ${s.ok ? `${s.interactiveMs.toFixed(0)} ms, ${s.peakMemoryMiB?.toFixed(0)} MiB` : `FAILED ${s.error}`}`);
             } else {
+              // browser-cold-early: its own fresh browser, file picked at first paint, timing only (load-scoreboard-lanes.mjs).
+              if (plan.lanes.includes('browser-cold-early')) {
+                const e = await browser.sample({ side: plan.sides[side], fixture, tag: `${tag}-early`, warmOpens: 0, pass: 'timing', arm: 'first-paint' });
+                const { trace, ...row } = e.lanes['browser-cold-early'];
+                record({ ...common, ...row, lane: 'browser-cold-early', adapter: e.meta.adapter ? JSON.stringify(e.meta.adapter) : null,
+                  browserVersion: e.meta.browserVersion ?? null, pageErrors: e.meta.pageErrors.length, gpuHealth: e.meta.gpuHealthCold ?? null }, trace ?? null);
+              }
+              if (!plan.lanes.some((l) => DEFAULT_BROWSER.includes(l))) continue;
               const s = await browser.sample({ side: plan.sides[side], fixture, tag, warmOpens: plan.warmOpens, pass: 'timing' });
               // H3: peak memory comes from a separate pass with the sampler on, never from the timed opens.
               const m = plan.memoryPass === false ? null : await browser.sample({ side: plan.sides[side], fixture, tag: `${tag}-mem`, warmOpens: plan.warmOpens, pass: 'memory' });
@@ -207,14 +225,25 @@ async function run(opt) {
 async function startBrowserLane(plan, out) {
   const display = process.env.DISPLAY;
   if (!display || display === ':0' || display === ':1') throw new Error('browser lanes run headed: set DISPLAY to a private Xvfb (e.g. :97), never the desktop');
-  const { browserSample, loadPlaywright } = await import('./load-scoreboard-browser.mjs');
-  const { startViewerServer } = await import('./viewer-load-probe.mjs');
+  const { CHROME_ARGS, NVIDIA_ICD, browserSample, loadPlaywright } = await import('./load-scoreboard-browser.mjs');
+  const { COUNT_FRAMES, openViewerPage, startViewerServer } = await import('./viewer-load-probe.mjs');
+  const { BOOT_OBSERVERS } = await import('./viewer-load-boot.mjs');
+  const { bootSample } = await import('./load-scoreboard-lanes.mjs');
   const { chromium } = loadPlaywright(ROOT);
   const executablePath = process.env.CHROME ?? plan.chrome ?? chromium.executablePath();
   let root = plan.sides.base.dist;
   const { server, baseUrl } = await startViewerServer(() => root, log);
   return {
     sample: (args) => browserSample({ chromium, executablePath, baseUrl, setRoot: (r) => { root = resolve(r); }, outDir: join(out, 'traces'), log, ...args }),
+    // Same Chrome, flags, init scripts and shell readiness as the timed lanes; no file is opened.
+    boot: ({ side, tag }) => {
+      root = resolve(side.dist);
+      return bootSample({ chromium, tag, log,
+        launchOptions: { env: { ...process.env, VK_ICD_FILENAMES: NVIDIA_ICD, VK_DRIVER_FILES: NVIDIA_ICD }, executablePath, headless: false,
+          viewport: { width: 1920, height: 1080 }, deviceScaleFactor: 1, args: CHROME_ARGS },
+        initScripts: [[COUNT_FRAMES], [BOOT_OBSERVERS, { countersOff: true }]],
+        openShell: (context) => openViewerPage(context, `${baseUrl}/?perfTrace=1${side.query ? `&${side.query}` : ''}`) });
+    },
     close: () => new Promise((r) => server.close(r)),
   };
 }

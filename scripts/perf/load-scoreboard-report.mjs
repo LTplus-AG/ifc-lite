@@ -10,15 +10,22 @@
 
 import { aaNoiseFloor, expectedCacheTier, median, rankShares, relativeSpread, verdictFor } from './load-scoreboard-stats.mjs';
 
-export const LANES = ['native-cold', 'browser-cold', 'browser-warm1', 'browser-warm'];
+export const LANES = ['native-cold', 'browser-cold', 'browser-cold-early', 'browser-warm1', 'browser-warm', 'boot'];
+/** The `boot` lane opens no file; its rows carry this pseudo-fixture. */
+export const BOOT_FIXTURE = '(app shell)';
 export const METRICS = [
   // [key, label, smallest countable absolute difference]
   ['firstGeometryMs', 'first geometry ms', 1],
   ['interactiveMs', 'interactive ms', 1],
   ['peakMemoryMiB', 'peak memory MiB', 1],
   ['uiQuietMs', 'UI quiet ms', 1],
+  // `boot` lane only (absent elsewhere, so no verdict there).
+  ['shellReadyMs', 'app-shell ready ms', 1],
+  ['bootLongTaskMs', 'boot long-task ms', 1],
+  ['idleJsMiB', 'idle JS+wasm MiB', 1],
+  ['idleVramMiB', 'idle GPU MiB', 1],
 ];
-export const BROWSER_LANES = ['browser-cold', 'browser-warm1', 'browser-warm'];
+export const BROWSER_LANES = ['browser-cold', 'browser-cold-early', 'browser-warm1', 'browser-warm'];
 
 const shareOf = (row) => row.stageShares ?? (row.stageMs && row.interactiveMs
   ? Object.fromEntries(Object.entries(row.stageMs).map(([k, v]) => [k, v / row.interactiveMs])) : null);
@@ -49,7 +56,8 @@ function pairsFor(rows, metric) {
 /** Summarize all samples. `floors`: an A/A report's `floors` (omit for an A/A run). */
 export function summarize(plan, samples, { floors = null } = {}) {
   const fixtures = [];
-  for (const fx of plan.fixtures) {
+  const planFixtures = [...plan.fixtures, ...(plan.lanes.includes('boot') ? [{ name: BOOT_FIXTURE, set: 'boot' }] : [])];
+  for (const fx of planFixtures) {
     const lanes = {};
     for (const lane of plan.lanes) {
       const rows = samples.filter((s) => s.fixture === fx.name && s.lane === lane);
@@ -66,6 +74,10 @@ export function summarize(plan, samples, { floors = null } = {}) {
           loadPaths: [...new Set(ok.flatMap((r) => r.loadPaths ?? []))],
           cacheTiers: [...new Set(ok.flatMap((r) => r.cacheTiers ?? []).filter(Boolean))],
           snapshotAdopted: ok.some((r) => (r.snapshotAdopted ?? []).some(Boolean)),
+          // A reopen keeps its lane whatever path it took: count how many adopted a scene snapshot,
+          // and (first reopen) how many found one stored before opening.
+          snapshotAdoptedCount: ok.filter((r) => (r.snapshotAdopted ?? []).some(Boolean)).length,
+          snapshotPresentBeforeOpenCount: ok.filter((r) => r.snapshotPresentBeforeOpen === true).length,
           settleQuantized: ok.filter((r) => r.settleQuantized).length,
           // H9: taken while the host was busy (pre-sample check), and H2: input event dispatched >100 ms late.
           underLoad: mine.filter((r) => r.host?.underLoad).length,
@@ -128,7 +140,9 @@ function tierCell(f, lane) {
   const l = f.lanes[lane];
   if (lane === 'native-cold') return 'n/a';
   const s = l?.sides.base;
-  const observed = s ? `${s.cacheTiers.join('/') || 'none'}; path ${s.loadPaths.join('/') || '?'}${s.snapshotAdopted ? '; snapshot' : ''}` : '—';
+  const adopted = s?.snapshotAdoptedCount ? `; snapshot ${s.snapshotAdoptedCount}/${s.ok}` : '';
+  const stored = lane === 'browser-warm1' && s?.snapshotPresentBeforeOpenCount ? ` (stored before open ${s.snapshotPresentBeforeOpenCount}/${s.ok})` : '';
+  const observed = s ? `${s.cacheTiers.join('/') || 'none'}; path ${s.loadPaths.join('/') || '?'}${adopted}${stored}` : '—';
   return observed;
 }
 
@@ -188,11 +202,11 @@ export function renderMarkdown(summary, plan, host) {
   }
   out.push(`Sides: base = ${plan.sides.base.label}; branch = ${plan.sides.branch.label}. Rounds ${plan.rounds}, warm opens ${plan.warmOpens ?? 0}, order seed ${plan.seed}.`, '');
   out.push('Interactive = geometry streamed, drained and finalized, metadata ready, and the first frame after the store settled (README cold-load notes). UI quiet = end of the last main-thread long task before 500 ms without one. Native has no first-geometry event (batch call); native interactive = file read + full `process_geometry`. Times are ms from the file input change event. Cells: median [min-max] n; fewer than 3 values are listed, never summarized.', '');
-  for (const set of ['tuning', 'holdout']) {
+  for (const set of ['tuning', 'holdout', 'boot']) {
     if (!summary.fixtures.some((f) => f.set === set)) continue;
     out.push(`## Baseline (${set})`, '', baselineTable(summary, set, plan.lanes), '');
   }
-  for (const set of ['tuning', 'holdout']) {
+  for (const set of ['tuning', 'holdout', 'boot']) {
     if (!summary.fixtures.some((f) => f.set === set)) continue;
     out.push(`## Verdicts (${set}): gain >= 2x noise floor`, '', verdictTable(summary, set, plan.lanes), '');
   }

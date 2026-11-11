@@ -12,7 +12,7 @@
  * validator uses, so a pattern the gate accepts is one the checker can run.
  */
 
-import type { IDSBoundsConstraint, IDSConstraint } from '@ifc-lite/ids';
+import type { IDSBoundsConstraint, IDSConstraint, IDSEnumerationConstraint } from '@ifc-lite/ids';
 import { translateXsdRegex } from '@ifc-lite/ids';
 import { assertGuardedRegexPattern, UnsafeRegexPatternError } from '@ifc-lite/regex-guard';
 import type { GateCode } from './types.js';
@@ -41,6 +41,16 @@ function literalOk(base: string | undefined, value: string): boolean {
   if (base === 'xs:boolean') return ['true', 'false', '1', '0'].includes(value.trim());
   return true;
 }
+
+/**
+ * Bases a restriction may be moved onto: the numeric ones, which `literalOk`
+ * checks, and `xs:string`, under which every literal holds. Under temporal
+ * and URI bases `literalOk` accepts anything, so it cannot vouch for the
+ * move, and XSD allows no enumeration on `xs:boolean`.
+ */
+const REBASE_TARGETS = new Set([...NUMERIC_BASES, 'xs:string']);
+/** XSD allows totalDigits and fractionDigits on these only (decimal and its derivations). */
+const DIGITS_BASES = new Set(['xs:decimal', 'xs:integer']);
 
 export function checkPattern(pattern: string): ValueProblem[] {
   if (pattern === '') return [{ code: 'GATE-VAL-003', message: 'pattern is empty' }];
@@ -131,4 +141,36 @@ export function checkConstraint(c: IDSConstraint, base?: string): ValueProblem[]
 
 function siblings(and: readonly IDSConstraint[] | undefined, base: string | undefined): ValueProblem[] {
   return (and ?? []).flatMap((s) => checkConstraint(s, base));
+}
+
+/**
+ * `c` moved onto restriction base `base` (the XSD type behind a newly chosen
+ * property dataType), or `undefined` when `c` is already written with that
+ * base or might not be valid XSD under it. Only a single enumeration or
+ * bounds moves. A pattern keeps its base, so IDSL-VAL-002 still reports a
+ * pattern that does not fit the data type.
+ */
+export function rebaseRestriction(c: IDSConstraint, base: string): IDSConstraint | undefined {
+  if ((c.type !== 'enumeration' && c.type !== 'bounds') || c.and?.length) return undefined;
+  if (writtenBase(c) === base || !REBASE_TARGETS.has(base)) return undefined;
+  // An IDS 1.1 tolerance rule compares as real numbers; it is not carried to another base.
+  if (c.type === 'enumeration' && c.toleranceRule) return undefined;
+  if (c.type === 'bounds') {
+    if (!NUMERIC_BASES.has(base) || c.temporalBounds) return undefined;
+    if (c.length !== undefined || c.minLength !== undefined || c.maxLength !== undefined) return undefined;
+    if ((c.totalDigits !== undefined || c.fractionDigits !== undefined) && !DIGITS_BASES.has(base)) return undefined;
+    if (base === 'xs:integer' && (c.fractionDigits ?? 0) > 0) return undefined;
+    const limits = [c.minInclusive, c.minExclusive, c.maxInclusive, c.maxExclusive];
+    if (limits.some((v) => v !== undefined && !literalOk(base, String(v)))) return undefined;
+  }
+  const next = { ...c, base };
+  return checkConstraint(next).length === 0 ? next : undefined;
+}
+
+/** The base the IDS writer emits for `c` (mirrors its `defaultBase` when `c` carries none). */
+function writtenBase(c: IDSEnumerationConstraint | IDSBoundsConstraint): string {
+  if (c.base) return c.base;
+  if (c.type === 'enumeration') return 'xs:string';
+  const numeric = [c.minInclusive, c.minExclusive, c.maxInclusive, c.maxExclusive, c.totalDigits, c.fractionDigits];
+  return numeric.some((v) => v !== undefined) ? 'xs:double' : 'xs:string';
 }

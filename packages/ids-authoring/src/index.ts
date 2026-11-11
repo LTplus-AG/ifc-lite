@@ -74,6 +74,7 @@ export { apply, OpApplyError, type ApplyResult } from './reducer/apply.js';
 
 // Grounding gate (IDS-021, IDS-022, IDS-023)
 export { checkOps } from './gate/check.js';
+export { rebaseRestriction } from './gate/values.js';
 export { createGateContext, type GateContext, type VersionTables } from './gate/context.js';
 export type { GateCode, GateCandidate, GateIssue, GateResult } from './gate/types.js';
 

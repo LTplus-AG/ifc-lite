@@ -34,7 +34,7 @@ const VISIBILITY_IDS = [
   'vis:hide', 'vis:show', 'vis:set-iso', 'vis:add-iso', 'vis:remove-iso',
   'vis:toggle-iso', 'vis:save-view', 'vis:toggle-presentation', 'vis:clear-iso',
   'vis:spaces', 'vis:spatialZones', 'vis:openings', 'vis:site',
-  'vis:ifcAnnotations', 'vis:ifcGrid', 'vis:reset-colors',
+  'vis:ifcAnnotations', 'vis:ifcGrid', 'vis:structuralGlyphs', 'vis:reset-colors',
 ] as const;
 
 const FILE_COMMANDS: FileCommands = {

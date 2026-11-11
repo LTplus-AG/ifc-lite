@@ -102,6 +102,7 @@ const ALL_VISIBLE: TypeVisibility = {
   site: true,
   ifcAnnotations: true,
   ifcGrid: true,
+  structuralGlyphs: true,
 };
 
 const mounted: Array<{ root: Root; container: HTMLElement }> = [];

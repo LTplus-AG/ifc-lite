@@ -24,4 +24,13 @@ export const structuralPropertiesDe = {
   "properties.structural.componentValue": "{name}: {value}",
   "properties.structural.configurationDropped": "[weggelassen: {name}]",
   "properties.structural.configurationAt": "{components} @ {location}",
+  "structuralGlyphs.support.fixed": "Einspannung",
+  "structuralGlyphs.support.pinned": "Gelenkiges Lager",
+  "structuralGlyphs.support.roller": "Verschiebliches Lager",
+  "structuralGlyphs.support.spring": "Federlager",
+  "structuralGlyphs.load.force": "Kraft",
+  "structuralGlyphs.load.moment": "Moment",
+  "structuralGlyphs.load.temperature": "Temperaturlast",
+  "structuralGlyphs.load.displacement": "Auflagerverschiebung",
+  "structuralGlyphs.tooltip": "{kind} · {entity}",
 } satisfies Catalogue;

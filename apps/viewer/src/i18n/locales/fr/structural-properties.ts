@@ -25,4 +25,13 @@ export const structuralPropertiesFr = {
   'properties.structural.componentValue': '{name} : {value}',
   'properties.structural.configurationDropped': '[ignoré : {name}]',
   'properties.structural.configurationAt': '{components} @ {location}',
+  "structuralGlyphs.support.fixed": "Encastrement",
+  "structuralGlyphs.support.pinned": "Appui articulé",
+  "structuralGlyphs.support.roller": "Appui à rouleau",
+  "structuralGlyphs.support.spring": "Appui élastique",
+  "structuralGlyphs.load.force": "Force",
+  "structuralGlyphs.load.moment": "Moment",
+  "structuralGlyphs.load.temperature": "Charge thermique",
+  "structuralGlyphs.load.displacement": "Déplacement imposé",
+  "structuralGlyphs.tooltip": "{kind} · {entity}",
 } satisfies Catalogue;

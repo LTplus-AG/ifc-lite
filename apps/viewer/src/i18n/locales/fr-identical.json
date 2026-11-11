@@ -2007,6 +2007,18 @@
     "value": "{storey} ({elevation} m)",
     "reason": "Storey names and signed elevations are runtime data; the metre symbol and punctuation contain no English prose."
   },
+  "structuralGlyphs.load.force": {
+    "value": "Force",
+    "reason": "French uses the same spelling « Force » for a structural load; reviewed against its feature meaning."
+  },
+  "structuralGlyphs.load.moment": {
+    "value": "Moment",
+    "reason": "French uses the same spelling « Moment » for a bending or torsion moment; reviewed against its feature meaning."
+  },
+  "structuralGlyphs.tooltip": {
+    "value": "{kind} · {entity}",
+    "reason": "Composition of interpolated model values, symbols, units or shared French words; no English sentence is embedded."
+  },
   "tableChanges.matchTypeTag": {
     "value": "Tag",
     "reason": "French uses the same spelling « Tag » for this contextual label; reviewed against its feature meaning."

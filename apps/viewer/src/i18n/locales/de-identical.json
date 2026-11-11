@@ -1906,5 +1906,13 @@
   "settings.display.wheelZoomSpeed.normal": {
     "value": "Normal",
     "reason": "Same-spelling German label (Normal) for the default wheel-zoom speed."
+  },
+  "structuralGlyphs.load.moment": {
+    "value": "Moment",
+    "reason": "German uses the same spelling „Moment“ for a bending or torsion moment; reviewed against its feature meaning."
+  },
+  "structuralGlyphs.tooltip": {
+    "value": "{kind} · {entity}",
+    "reason": "Composition of interpolated model values, symbols, units or shared German words; no English sentence is embedded."
   }
 }

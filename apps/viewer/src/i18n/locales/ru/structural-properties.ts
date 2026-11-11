@@ -39,4 +39,13 @@ export const structuralPropertiesRu = {
   "properties.structural.componentValue": "{name}: {value}",
   "properties.structural.configurationDropped": "[исключено: {name}]",
   "properties.structural.configurationAt": "{components} @ {location}",
+  "structuralGlyphs.support.fixed": "Жёсткая заделка",
+  "structuralGlyphs.support.pinned": "Шарнирная опора",
+  "structuralGlyphs.support.roller": "Подвижная опора",
+  "structuralGlyphs.support.spring": "Упругая опора",
+  "structuralGlyphs.load.force": "Сила",
+  "structuralGlyphs.load.moment": "Момент",
+  "structuralGlyphs.load.temperature": "Температурная нагрузка",
+  "structuralGlyphs.load.displacement": "Заданное перемещение",
+  "structuralGlyphs.tooltip": "{kind} · {entity}",
 } satisfies Catalogue;

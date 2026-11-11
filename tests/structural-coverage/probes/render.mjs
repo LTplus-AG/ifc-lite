@@ -39,7 +39,7 @@ function holdsValue(step, rec, seen = new Set()) {
   return rec.args.slice(1).some(visit);
 }
 
-const isConnection = (row) => row.family === 'item' && /Connection$/.test(row.entity);
+const isConnection = (row) => row.family === 'item' && row.entity.endsWith('Connection');
 const isAction = (row) => row.family === 'activity' && /Action/.test(row.entity);
 
 /** Records of the row that must draw: the file's own statement of a support or a load. */

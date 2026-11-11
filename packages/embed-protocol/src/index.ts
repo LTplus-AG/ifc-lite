@@ -101,6 +101,8 @@ export type InboundCommandType =
  * - `ifcGrid` - `IfcGrid` axis lines and bubble tags. It has no mesh class of
  *   its own; it gates an overlay, and was split out of `ifcAnnotations` so a
  *   dense-grid model can lose grids without losing dimensions (#862).
+ * - `structuralGlyphs` - the support and load symbols of a structural analysis
+ *   model (#9668). Like `ifcGrid`, it gates an overlay, not a mesh class.
  */
 export const TYPE_VISIBILITY_FLAG_KEYS = [
   'spaces',
@@ -110,6 +112,7 @@ export const TYPE_VISIBILITY_FLAG_KEYS = [
   'site',
   'ifcAnnotations',
   'ifcGrid',
+  'structuralGlyphs',
 ] as const;
 
 /**

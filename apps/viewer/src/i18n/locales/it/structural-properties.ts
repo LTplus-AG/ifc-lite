@@ -37,4 +37,13 @@ export const structuralPropertiesIt = {
   'properties.structural.componentValue': '{name}: {value}',
   'properties.structural.configurationDropped': '[scartato: {name}]',
   'properties.structural.configurationAt': '{components} @ {location}',
+  "structuralGlyphs.support.fixed": "Incastro",
+  "structuralGlyphs.support.pinned": "Cerniera",
+  "structuralGlyphs.support.roller": "Carrello",
+  "structuralGlyphs.support.spring": "Vincolo elastico",
+  "structuralGlyphs.load.force": "Forza",
+  "structuralGlyphs.load.moment": "Momento",
+  "structuralGlyphs.load.temperature": "Carico termico",
+  "structuralGlyphs.load.displacement": "Spostamento imposto",
+  "structuralGlyphs.tooltip": "{kind} · {entity}",
 } satisfies Catalogue;

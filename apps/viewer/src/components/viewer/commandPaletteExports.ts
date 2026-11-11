@@ -24,7 +24,7 @@ import type { ExportRequest } from './useExportRunner';
 import type { Command } from './commandPaletteSearch';
 import {
   commandRowFromDefinition, type CommandSurface, type SurfaceCommandContext, type SurfaceCommandDefinition,
-} from './surface-commands';
+} from './surface-command-registry';
 import type { ExtensionExporter } from '@/components/extensions/useExtensionExporters';
 
 /** Node-loadable palette icons. The ribbon uses its own SVG set through Vite. */

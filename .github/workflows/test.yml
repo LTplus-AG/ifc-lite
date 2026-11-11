@@ -243,10 +243,10 @@ jobs:
       # are judged; the aggregate re-verifies the recorded run. A merge that
       # touches Cargo/toolchain files, a local action, or a workflow this file
       # or an action names never replays: those key caches only a push to main
-      # writes. Other workflows' files do not. A push also replays when a green
-      # Mergify batch run recorded its tree or a later main commit's tree, and then a
-      # commit touching those blocking files may replay too if the same files
-      # change again later.
+      # writes. Other workflows' files do not. A push also replays when a
+      # green Mergify batch run recorded its tree or a later main commit's
+      # tree, and then a commit touching those blocking files may replay too
+      # if the same files change again later.
       # THE FAST PR LANE SWITCH (scripts/ci-pr-lane.mjs). continue-on-error
       # because a crash here must not skip every lane via a failed `changes`:
       # with no output the lanes read `lane != 'fast'` and run in full.

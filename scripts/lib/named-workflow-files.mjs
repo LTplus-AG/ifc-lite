@@ -12,8 +12,10 @@
  * `.github/actions/` (action.yml and the scripts beside it), and each reusable
  * workflow the root calls with `uses:`. A mention in any of them counts, in any
  * syntax; a mention in a workflow Test does not execute (a path filter naming
- * docs.yml puts docs.yml on the list) is not scanned further. Every way the
- * scan can be wrong is meant to be wrong towards null: block everything.
+ * docs.yml puts docs.yml on the list) is not scanned further. The patterns
+ * below return null (block everything) for the dynamic references they
+ * recognise. It is a text match, not a proof: repo scripts are not scanned,
+ * and a reference built another way is missed (see ci-push-replay.mjs).
  */
 
 // A name ends at its extension or at a sentence's full stop: `x.yml.disabled` is not `x.yml`.

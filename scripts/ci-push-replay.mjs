@@ -55,11 +55,14 @@
  *
  * WORKFLOW FILES: a change to `.github/actions/` or to test.yml always blocks,
  * as does any file under `.github/workflows/` that is not top-level YAML. Another
- * top-level workflow file blocks only when something Test executes names it
- * (lib/named-workflow-files.mjs): a file nothing in a Test run names cannot set
- * Test's cache keys, and a full Test run could not re-key anything for it
- * anyway, since a cache key is immutable. When the named list cannot be built,
- * every workflow file blocks.
+ * top-level workflow file blocks only when test.yml, an action file or a
+ * reusable workflow test.yml calls names it (lib/named-workflow-files.mjs), or
+ * when the list cannot be built. That scan is a text match and NOT complete: a
+ * repo script Test runs, or a path built in a way it does not recognise, can
+ * still read an unnamed workflow file. A miss cannot change a verdict (replay
+ * still needs a green run of the exact tree). Its cost is a main-side cache
+ * keyed on that file staying cold until the next full push run.
+ * No Test cache key reads a workflow file today.
  */
 
 import { appendFileSync } from 'node:fs';
@@ -83,8 +86,8 @@ const NO_REPLAY = [
   /^Cargo\.(lock|toml)$/,
   /(^|\/)Cargo\.toml$/,
   /^rust-toolchain\.toml$/,
+  /^\.github\/actions\//,
 ];
-const ACTION_FILE = /^\.github\/actions\//;
 // GitHub runs only top-level workflow YAML. Anything else under workflows/ is a file a
 // step may read, which namedWorkflowFiles does not list, so it always blocks.
 const WORKFLOW_YAML = /^\.github\/workflows\/[^/]+\.ya?ml$/;
@@ -92,7 +95,7 @@ const TEST_WORKFLOW_PATH = `.github/workflows/${TEST_WORKFLOW_FILE}`;
 
 /** Whether a changed path keys a cache that only a push to main writes. */
 function keysMainCaches(file, workflowFiles) {
-  if (NO_REPLAY.some((re) => re.test(file)) || ACTION_FILE.test(file)) return true;
+  if (NO_REPLAY.some((re) => re.test(file))) return true;
   if (!file.startsWith('.github/workflows/')) return false;
   if (!WORKFLOW_YAML.test(file)) return true;
   // Unknown, or a list without test.yml (never a namedWorkflowFiles result): trust none of it.

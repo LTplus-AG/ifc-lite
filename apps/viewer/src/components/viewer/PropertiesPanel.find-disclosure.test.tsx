@@ -6,7 +6,7 @@ import '@/test/setup-dom.js';
 import { afterEach, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
-import { cleanup, click, render, type } from '@/test/render.js';
+import { cleanup, click, press, render, type } from '@/test/render.js';
 import { IfcParser } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store';
 import { WORKSPACE_PANELS } from '@/lib/panels/registry';
@@ -87,6 +87,41 @@ describe('Properties find and section disclosure (#5899)', () => {
     cleanup();
     localStorage.clear();
     useViewerStore.setState(initialState, true);
+  });
+
+  it('commits a pset value in View without changing the sidebar (#9296)', async () => {
+    await seed();
+    useViewerStore.setState({ editEnabled: false, workspaceMode: 'view', session: null });
+    const sidebar = useViewerStore.getState().sidebarActivePanel;
+    const panel = render(<PropertiesPanel />);
+    const value = panel.querySelector<HTMLButtonElement>('button[aria-label="FireRating: REI60"]');
+    assert.ok(value, 'a property is editable directly in View');
+    click(value);
+    const input = panel.querySelector<HTMLInputElement>('input[aria-label="FireRating"]');
+    assert.ok(input);
+    type(input, 'EI90');
+    press(input, 'Enter');
+    const state = useViewerStore.getState();
+    assert.equal(state.workspaceMode, 'view');
+    assert.equal(state.sidebarActivePanel, sidebar);
+    assert.equal(state.editEnabled, false);
+    assert.equal(state.mutationViews.get('m')?.getPropertyValue(72, 'Custom_A', 'FireRating'), 'EI90');
+    assert.equal(state.undoStacks.get('m')?.length, 1);
+    act(() => state.undo('m'));
+    assert.equal(useViewerStore.getState().mutationViews.get('m')?.getPropertyValue(72, 'Custom_A', 'FireRating'), 'REI60');
+  });
+
+  it('keeps geometry editing in Model while data edits stay in View (#9296)', async () => {
+    await seed();
+    useViewerStore.setState({ editEnabled: false, workspaceMode: 'view', session: null });
+    const panel = render(<PropertiesPanel />);
+    const geometryCard = () => [...panel.querySelectorAll('button[aria-expanded]')].some((b) => b.textContent === 'Geometry');
+    assert.ok(panel.querySelector('button[aria-label="FireRating: REI60"]'), 'data stays editable in View');
+    assert.equal(geometryCard(), false, 'no geometry editor outside Model');
+    act(() => useViewerStore.setState({ editEnabled: true }));
+    assert.equal(geometryCard(), false, 'the edit flag alone does not open geometry editing in View');
+    act(() => useViewerStore.setState({ workspaceMode: 'model' }));
+    assert.equal(geometryCard(), true, 'the geometry editor returns in Model');
   });
 
   it('filters property names and values across sets, highlights hits, and explains no match', async () => {

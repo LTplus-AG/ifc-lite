@@ -8,14 +8,14 @@
       "unit": "Ir",
       "fixture": "tests/models/ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
       "description": "parse: entity scan + lookup + preprocess + untimed glue phase, callgrind Ir, single thread",
-      "ceiling": 257253167,
+      "ceiling": 256060257,
       "tolerance": {
         "kind": "relative",
         "value": 0.0005
       },
       "provenance": {
-        "commit": "6e42aaf3fde16db640be8acb212d4ac6ace99e65",
-        "measuredAt": "2026-10-31T10:18:36.224Z"
+        "commit": "3e5b79659becb6e30c18c48825149468dd0aec29",
+        "measuredAt": "2026-11-11T07:23:26.683Z"
       }
     },
     {
@@ -24,14 +24,14 @@
       "unit": "Ir",
       "fixture": "tests/models/ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
       "description": "entity scan phase, callgrind Ir, single thread",
-      "ceiling": 251624995,
+      "ceiling": 250465573,
       "tolerance": {
         "kind": "relative",
         "value": 0.0005
       },
       "provenance": {
-        "commit": "6e42aaf3fde16db640be8acb212d4ac6ace99e65",
-        "measuredAt": "2026-10-31T10:18:36.224Z"
+        "commit": "3e5b79659becb6e30c18c48825149468dd0aec29",
+        "measuredAt": "2026-11-11T07:23:26.683Z"
       }
     },
     {
@@ -40,14 +40,14 @@
       "unit": "Ir",
       "fixture": "tests/models/ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
       "description": "preprocess phase, callgrind Ir, single thread",
-      "ceiling": 5475361,
+      "ceiling": 5448601,
       "tolerance": {
         "kind": "relative",
         "value": 0.0005
       },
       "provenance": {
-        "commit": "246956d03ddee644950e5d2520db5aae76f7cf1b",
-        "measuredAt": "2026-10-30T09:15:35.513Z"
+        "commit": "3e5b79659becb6e30c18c48825149468dd0aec29",
+        "measuredAt": "2026-11-11T07:23:26.683Z"
       }
     },
     {
@@ -56,14 +56,14 @@
       "unit": "Ir",
       "fixture": "tests/models/ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
       "description": "geometry phase, callgrind Ir, single thread",
-      "ceiling": 27786879131,
+      "ceiling": 25404393433,
       "tolerance": {
         "kind": "relative",
         "value": 0.0005
       },
       "provenance": {
-        "commit": "12f8c69c313a9ce7a33a591ec833bed181d86668",
-        "measuredAt": "2026-11-01T10:16:03.420Z"
+        "commit": "3e5b79659becb6e30c18c48825149468dd0aec29",
+        "measuredAt": "2026-11-11T07:23:26.683Z"
       }
     },
     {
@@ -72,14 +72,14 @@
       "unit": "Ir",
       "fixture": "tests/models/ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
       "description": "whole pipeline (like total_time_ms) phase, callgrind Ir, single thread",
-      "ceiling": 28044079128,
+      "ceiling": 25660490518,
       "tolerance": {
         "kind": "relative",
         "value": 0.0005
       },
       "provenance": {
-        "commit": "12f8c69c313a9ce7a33a591ec833bed181d86668",
-        "measuredAt": "2026-11-01T10:16:03.420Z"
+        "commit": "3e5b79659becb6e30c18c48825149468dd0aec29",
+        "measuredAt": "2026-11-11T07:23:26.683Z"
       }
     }
   ]

@@ -12,7 +12,7 @@ type Flat = readonly [number, number];
 const orient = (p: Flat, q: Flat, r: Flat) => (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]);
 /** `r` lies within `tol` of segment p-q. */
 function touches(p: Flat, q: Flat, r: Flat, tol: number): boolean {
-  const [dx, dy] = [q[0] - p[0], q[1] - p[1]];
+  const dx = q[0] - p[0], dy = q[1] - p[1];
   const t = Math.max(0, Math.min(1, ((r[0] - p[0]) * dx + (r[1] - p[1]) * dy) / (dx * dx + dy * dy)));
   return Math.hypot(r[0] - p[0] - t * dx, r[1] - p[1] - t * dy) <= tol;
 }

@@ -15,6 +15,7 @@ import {
   assignToStructuralGroupInStore,
 } from '../index.js';
 import { linearProfileFrame } from './linear-profile-frame.js';
+import type { SpatialAnchor } from './anchor.js';
 
 const MODEL = `ISO-10303-21;
 HEADER;
@@ -179,14 +180,16 @@ describe('C2 structural surface and connection builders', () => {
       world.forEach((w, k) => expect(w).toBeCloseTo([0, 0, 1][k], 9));
     });
   });
-  it('writes nothing when the GlobalId, a stiffness or a closed ring is refused', async () => {
+  const tri: [number, number, number][] = [[0, 0, 0], [1, 0, 0], [1, 1, 0]];
+  it.each([
+    ['surface member, bad GlobalId', (e: StoreEditor, a: SpatialAnchor) => addStructuralSurfaceMemberToStore(e, a, { Boundary: tri, GlobalId: 'bad' }), /GlobalId/],
+    ['surface connection, bad GlobalId', (e: StoreEditor, a: SpatialAnchor) => addStructuralSurfaceConnectionToStore(e, a, { Boundary: tri, GlobalId: 'bad' }), /GlobalId/],
+    ['curve connection, bad GlobalId', (e: StoreEditor, a: SpatialAnchor) => addStructuralCurveConnectionToStore(e, a, { Start: [0, 0, 0], End: [1, 0, 0], GlobalId: 'bad' }), /GlobalId/],
+    ['negative stiffness', (e: StoreEditor, a: SpatialAnchor) => addStructuralSurfaceConnectionToStore(e, a, { Boundary: tri, BoundaryCondition: { TranslationalStiffnessByAreaZ: -1 } }), /not negative/],
+    ['closed ring', (e: StoreEditor, a: SpatialAnchor) => addStructuralSurfaceMemberToStore(e, a, { Boundary: [...tri, [0, 0, 0]] }), /do not repeat the first point/],
+  ] as const)('writes nothing when refused: %s', async (_label, build, message) => {
     const { editor, anchor } = await fresh('IFC4');
-    const tri: [number, number, number][] = [[0, 0, 0], [1, 0, 0], [1, 1, 0]];
-    expect(() => addStructuralSurfaceMemberToStore(editor, anchor, { Boundary: tri, GlobalId: 'bad' })).toThrow(/GlobalId/);
-    expect(() => addStructuralSurfaceConnectionToStore(editor, anchor, { Boundary: tri, GlobalId: 'bad' })).toThrow(/GlobalId/);
-    expect(() => addStructuralCurveConnectionToStore(editor, anchor, { Start: [0, 0, 0], End: [1, 0, 0], GlobalId: 'bad' })).toThrow(/GlobalId/);
-    expect(() => addStructuralSurfaceConnectionToStore(editor, anchor, { Boundary: tri, BoundaryCondition: { TranslationalStiffnessByAreaZ: -1 } })).toThrow(/not negative/);
-    expect(() => addStructuralSurfaceMemberToStore(editor, anchor, { Boundary: [...tri, [0, 0, 0]] })).toThrow(/do not repeat the first point/);
+    expect(() => build(editor, anchor)).toThrow(message);
     expect(editor.getMutationView().getNewEntities()).toHaveLength(0);
   });
   it('refuses unsupported schema-specific axis attributes', async () => {

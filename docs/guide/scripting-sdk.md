@@ -480,7 +480,7 @@ The SDK backend supports IFC4 and IFC4X3; the direct builders also support IFC2X
 
 Surface builders take `Boundary`, an ordered list of at least three distinct,
 coplanar points in storey-local metres that does not cross itself. Points off the
-plane by up to a millionth of the face size, and at least 1 µm, are snapped onto it. They write planar
+plane by up to a millionth of the face size (never less than 1 µm) are snapped onto it. They write planar
 `Face` topology whose normal follows the boundary's winding.
 The member also accepts `PredefinedType` and optional positive `Thickness` in metres.
 Curve connections take `Start` and `End` and write `Edge` topology, with optional

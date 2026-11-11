@@ -1,0 +1,279 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/**
+ * The shard retry switch: the mode, the failure attribution (against TAP that
+ * node:test really emits), the retry selection (through the real awk and
+ * shard selector apps/viewer's test script uses), the pass/fail judgements,
+ * the CLI's refusals, and the test.yml wiring.
+ *
+ * Run: node --test scripts/ci-shard-retry.test.mjs
+ */
+
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { parse } from 'yaml';
+
+import { run } from './ci-shard-retry.mjs';
+import {
+  MAX_RETRY_FILES,
+  attributeViewerFailures,
+  decideMode,
+  judgeE2eRetry,
+  judgeViewerRetry,
+  parseNodeTap,
+  planRetry,
+  readLastRun,
+  viewerPattern,
+} from './lib/shard-retry.mjs';
+import { MANIFEST_PATH, assignShards, parseManifest } from './viewer-test-shards.mjs';
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = join(HERE, '..');
+const VIEWER = join(REPO_ROOT, 'apps/viewer');
+const TSX = join(REPO_ROOT, 'node_modules/.bin/tsx');
+const WORKFLOW = parse(readFileSync(join(REPO_ROOT, '.github/workflows/test.yml'), 'utf8'));
+
+const TMP = mkdtempSync(join(tmpdir(), 'ci-shard-retry-'));
+test.after(() => rmSync(TMP, { recursive: true, force: true }));
+
+// ---------------------------------------------------------------- the switch
+
+test('unset, empty and `off` mean no retry; `shadow` and `on` in any case are modes', () => {
+  for (const raw of [undefined, '', 'off', 'OFF']) assert.deepEqual(decideMode(raw), { mode: 'off' }, String(raw));
+  assert.equal(decideMode('shadow').mode, 'shadow');
+  assert.equal(decideMode('On').mode, 'on');
+});
+
+test('any other value is `off`, with a warning', () => {
+  for (const raw of ['true', '1', ' on', 'on ', 'enabled', 'shadwo']) {
+    const d = decideMode(raw);
+    assert.equal(d.mode, 'off', JSON.stringify(raw));
+    assert.ok(d.warning, JSON.stringify(raw));
+  }
+});
+
+// ------------------------------------------------- attribution, on real TAP
+
+/** Run node:test over `files` in a scratch tree the way apps/viewer does, return its TAP. */
+function realTap(name, files) {
+  const root = join(TMP, name);
+  for (const [path, body] of Object.entries(files)) {
+    mkdirSync(dirname(join(root, path)), { recursive: true });
+    writeFileSync(join(root, path), body);
+  }
+  // Without NODE_TEST_CONTEXT, which this runner sets and which would make the
+  // nested run report to it instead of printing TAP.
+  const { NODE_TEST_CONTEXT: _ignored, ...env } = process.env;
+  const r = spawnSync(TSX, ['--test', '--test-concurrency=1', ...Object.keys(files).filter((f) => f.includes('.test.')).sort()], {
+    cwd: root,
+    encoding: 'utf8',
+    env: { ...env, NODE_OPTIONS: '--test-reporter=tap' },
+  });
+  // node reports locations by real path (macOS tmpdir is a symlink); so does the CLI.
+  return { root: realpathSync(root), tap: r.stdout, status: r.status };
+}
+
+test('real node:test TAP: a nested assertion, an import crash and a non-zero exit are each tied to their file', () => {
+  const { root, tap, status } = realTap('mixed', {
+    'src/a.test.ts': "import test from 'node:test'; import assert from 'node:assert';\ntest('fine', () => {});\ntest.describe('group', () => { test('nested fails', () => { assert.equal(1, 2); }); });\n",
+    'src/b.test.ts': "import test from 'node:test';\ntest('b ok', () => {});\n",
+    'src/c.test.ts': "import './missing-module.js';\n",
+    'src/d/e.test.tsx': "import test from 'node:test';\ntest('passes, then the file exits 1', () => { process.exitCode = 1; });\n",
+  });
+  assert.equal(status, 1);
+  const { failures, summary } = parseNodeTap(tap);
+  assert.ok(summary, 'the closing counts are parsed');
+  assert.equal(summary.pass, 3);
+  const a = attributeViewerFailures(failures, root);
+  assert.deepEqual(a.unattributed, []);
+  assert.deepEqual(a.files, ['src/a.test.ts', 'src/c.test.ts', 'src/d/e.test.tsx']);
+  assert.ok(a.tests.some((t) => t.file === 'src/a.test.ts' && t.title === 'nested fails'));
+  assert.ok(!a.tests.some((t) => t.title === 'group'), 'a parent suite that failed only through its child is not a test of its own');
+});
+
+test('real node:test TAP of a green run has no failures and a complete summary', () => {
+  const { tap } = realTap('green', { 'src/ok.test.ts': "import test from 'node:test';\ntest('ok', () => {});\n" });
+  const { failures, summary } = parseNodeTap(tap);
+  assert.deepEqual(failures, []);
+  assert.equal(judgeViewerRetry({ exitCode: 0, summary }).passed, true);
+});
+
+test('a failure outside a viewer test file, or with no location, is unattributed', () => {
+  const tap = [
+    'TAP version 13',
+    'not ok 1 - helper failure',
+    '  ---',
+    "  location: '/repo/apps/viewer/src/test/helper.ts:3:1'",
+    '  ...',
+    '    not ok 1 - nested without location',
+    'not ok 2 - src/../../etc/x.test.ts',
+    'not ok 3 - todo # TODO later',
+    '# tests 3',
+  ].join('\n');
+  const a = attributeViewerFailures(parseNodeTap(tap).failures, '/repo/apps/viewer');
+  assert.deepEqual(a.files, []);
+  assert.deepEqual(a.unattributed, ['helper failure', 'nested without location', 'src/../../etc/x.test.ts']);
+});
+
+test('a truncated TAP stream has no summary, so a retry cannot be judged passed from it', () => {
+  const { summary } = parseNodeTap('TAP version 13\nok 1 - a\n# tests 1\n# pass 1\n');
+  assert.equal(summary, null);
+  assert.equal(judgeViewerRetry({ exitCode: 0, summary }).passed, false);
+});
+
+// --------------------------------------------- selection, through real awk
+
+const VIEWER_TEST_SCRIPT = JSON.parse(readFileSync(join(VIEWER, 'package.json'), 'utf8')).scripts.test;
+const TSX_AT = VIEWER_TEST_SCRIPT.indexOf(' && tsx '); // @source-text-assertion-ok anchor for cutting the real command before tsx; asserted below
+/** apps/viewer's own file-selection pipeline, stopped before tsx. */
+const SELECT = `${VIEWER_TEST_SCRIPT.slice(0, TSX_AT)} && printf '%s\\n' "$files"`;
+
+test('the pattern selects exactly the given paths through awk -v, and nothing that differs by one character', () => {
+  const want = ['src/a.test.ts', 'src/d/e-f_g.test.tsx'];
+  const near = ['src/a.test.tsx', 'src/aXtest.ts', 'src/a.test.ts.bak', 'xsrc/a.test.ts', 'src/d/e-f_g.test.ts', 'src/sub/a.test.ts'];
+  const r = spawnSync('awk', ['-v', `p=${viewerPattern(want)}`, '$0 ~ p'], { input: [...near, ...want].join('\n') + '\n', encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual(r.stdout.trim().split('\n'), want);
+});
+
+test('a path with other punctuation is refused, not escaped', () => {
+  for (const bad of ['src/a b.test.ts', 'src/a(1).test.ts', 'src/a\\.test.ts', 'src/[x].test.ts']) assert.throws(() => viewerPattern([bad]), JSON.stringify(bad));
+  assert.throws(() => viewerPattern([]));
+});
+
+test("through apps/viewer's real selection, the retry pattern runs exactly the failed file in its own shard, and nothing in another", () => {
+  assert.ok(TSX_AT > 0, "apps/viewer's test script no longer selects files before `&& tsx`");
+  const listed = spawnSync('sh', ['-c', SELECT], { cwd: VIEWER, encoding: 'utf8', env: { ...process.env, TEST_SHARDS: '', TEST_SHARD: '' } });
+  assert.equal(listed.status, 0, listed.stderr);
+  const all = listed.stdout.trim().split('\n');
+  const file = all[Math.floor(all.length / 2)];
+  const shard = assignShards(all, parseManifest(readFileSync(MANIFEST_PATH, 'utf8')), 16).get(file);
+  const select = (s) => spawnSync('sh', ['-c', SELECT], { cwd: VIEWER, encoding: 'utf8', env: { ...process.env, TEST_SHARDS: '16', TEST_SHARD: String(s), TEST_PATTERN: viewerPattern([file]) } });
+  const own = select(shard);
+  assert.equal(own.status, 0, own.stderr);
+  assert.deepEqual(own.stdout.trim().split('\n'), [file]);
+  const other = select((shard + 1) % 16);
+  assert.notEqual(other.status, 0, 'a pattern that selects nothing in this shard fails, never falls back to every file');
+});
+
+// ------------------------------------------------------------ the decisions
+
+test('planRetry retries only an attributed, bounded failure, and only in shadow or on', () => {
+  assert.equal(planRetry({ mode: 'off', count: 1, cap: 5 }).retry, false);
+  assert.equal(planRetry({ mode: 'on', count: 1, cap: 5, refusal: 'x' }).retry, false);
+  assert.equal(planRetry({ mode: 'on', count: 1, cap: 5, unattributed: ['t'] }).retry, false);
+  assert.equal(planRetry({ mode: 'on', count: 0, cap: 5 }).retry, false);
+  assert.equal(planRetry({ mode: 'on', count: MAX_RETRY_FILES + 1, cap: MAX_RETRY_FILES }).retry, false);
+  assert.equal(planRetry({ mode: 'on', count: MAX_RETRY_FILES, cap: MAX_RETRY_FILES }).retry, true);
+  assert.equal(planRetry({ mode: 'shadow', count: 1, cap: 5 }).retry, true);
+});
+
+test('a viewer retry passes only with exit 0, a full summary, a pass, and nothing failed or cancelled', () => {
+  const ok = { tests: 2, pass: 2, fail: 0, cancelled: 0 };
+  assert.equal(judgeViewerRetry({ exitCode: 0, summary: ok }).passed, true);
+  assert.equal(judgeViewerRetry({ exitCode: 1, summary: ok }).passed, false);
+  assert.equal(judgeViewerRetry({ exitCode: null, summary: ok }).passed, false, 'killed by the timeout');
+  assert.equal(judgeViewerRetry({ exitCode: 0, summary: { ...ok, fail: 1 } }).passed, false);
+  assert.equal(judgeViewerRetry({ exitCode: 0, summary: { ...ok, cancelled: 1 } }).passed, false);
+  assert.equal(judgeViewerRetry({ exitCode: 0, summary: { ...ok, pass: 0 } }).passed, false, 'ran nothing');
+});
+
+test('only a `failed` Playwright run is retried; a hang or a timeout is not', () => {
+  assert.deepEqual(readLastRun('{"status":"failed","failedTests":["a","a","b"]}'), { ids: ['a', 'b'] });
+  assert.ok(readLastRun('{"status":"interrupted","failedTests":["a"]}').refusal);
+  assert.ok(readLastRun('{"status":"timedout","failedTests":["a"]}').refusal);
+  assert.ok(readLastRun('{"status":"failed"}').refusal);
+  assert.ok(readLastRun('not json').refusal);
+});
+
+/** The JSON reporter's shape: root suite per file, nested describes, specs keyed by test id. */
+function report(statuses) {
+  return {
+    suites: [{
+      title: 'e2e/a.e2e.spec.ts',
+      specs: [],
+      suites: [{ title: 'group', specs: Object.entries(statuses).map(([id, status]) => ({ id, title: `t-${id}`, file: 'e2e/a.e2e.spec.ts', line: 1, tests: [{ status }] })) }],
+    }],
+  };
+}
+
+test('an E2E retry passes only when every failed id ran again and came out expected', () => {
+  assert.equal(judgeE2eRetry({ exitCode: 0, ids: ['x', 'y'], report: report({ x: 'expected', y: 'expected' }) }).passed, true);
+  assert.equal(judgeE2eRetry({ exitCode: 0, ids: ['x', 'y'], report: report({ x: 'expected' }) }).passed, false, 'y never ran: --shard turns "No tests found" into exit 0');
+  assert.equal(judgeE2eRetry({ exitCode: 0, ids: ['x'], report: report({ x: 'flaky' }) }).passed, false);
+  assert.equal(judgeE2eRetry({ exitCode: 0, ids: ['x'], report: report({ x: 'skipped' }) }).passed, false);
+  assert.equal(judgeE2eRetry({ exitCode: 1, ids: ['x'], report: report({ x: 'expected' }) }).passed, false);
+  assert.equal(judgeE2eRetry({ exitCode: 0, ids: ['x'], report: null }).passed, false);
+});
+
+// --------------------------------------------------- the CLI's refusals
+
+function cli(kind, env) {
+  const dir = mkdtempSync(join(TMP, 'cli-'));
+  const summary = join(dir, 'summary.md');
+  const code = run([kind], { REPORT_DIR: join(dir, 'out'), GITHUB_STEP_SUMMARY: summary, ...env });
+  const record = JSON.parse(readFileSync(join(dir, 'out', `${kind}-retry.json`), 'utf8'));
+  return { code, record, summary: readFileSync(summary, 'utf8') };
+}
+
+test('the CLI exits 1 without retrying when the first attempt cannot be read or attributed', () => {
+  const missing = cli('viewer', { CI_SHARD_RETRY: 'on', TEST_SHARD: '3', TAP_FILE: join(TMP, 'absent.tap') });
+  assert.equal(missing.code, 1);
+  assert.equal(missing.record.plan.retry, false);
+  assert.equal(missing.record.passed, false);
+  assert.ok(missing.summary.length > 0);
+
+  const tap = join(TMP, 'unattributed.tap');
+  writeFileSync(tap, 'TAP version 13\nnot ok 1 - something global\n# tests 1\n# pass 0\n# fail 1\n# cancelled 0\n');
+  assert.equal(cli('viewer', { CI_SHARD_RETRY: 'on', TAP_FILE: tap }).code, 1);
+
+  const many = join(TMP, 'many.tap');
+  writeFileSync(many, Array.from({ length: MAX_RETRY_FILES + 1 }, (_, i) => `not ok ${i + 1} - src/f${i}.test.ts`).join('\n'));
+  const tooMany = cli('viewer', { CI_SHARD_RETRY: 'on', TAP_FILE: many });
+  assert.equal(tooMany.code, 1);
+  assert.equal(tooMany.record.files.length, MAX_RETRY_FILES + 1);
+  assert.equal(tooMany.record.plan.retry, false);
+});
+
+test('the CLI never retries with the switch off, even when asked directly', () => {
+  const tap = join(TMP, 'one.tap');
+  writeFileSync(tap, 'not ok 1 - src/one.test.ts\n');
+  for (const mode of [undefined, 'off', 'yes']) assert.equal(cli('viewer', { CI_SHARD_RETRY: mode, TAP_FILE: tap }).record.plan.retry, false);
+});
+
+test('the E2E CLI refuses an interrupted first attempt', () => {
+  const last = join(TMP, 'last-run.json');
+  writeFileSync(last, '{"status":"interrupted","failedTests":["a"]}');
+  const r = cli('e2e', { CI_SHARD_RETRY: 'on', E2E_SHARD: '3/8', LAST_RUN: last, REPORT_JSON: join(TMP, 'absent.json') });
+  assert.equal(r.code, 1);
+  assert.equal(r.record.plan.retry, false);
+});
+
+// ------------------------------------------------------------ the wiring
+
+const SWITCH = /vars\.CI_SHARD_RETRY/;
+
+for (const [job, testStep, retryStep] of [['viewer-tests', 'viewer_tests', 'viewer_retry'], ['viewer-e2e', 'e2e', 'e2e_retry']]) {
+  test(`${job}: only \`on\` lets the test step fail, and a guard re-fails it unless the retry step succeeded`, () => {
+    const steps = WORKFLOW.jobs[job].steps;
+    const first = steps.find((s) => s.id === testStep);
+    assert.equal(first['continue-on-error'], "${{ vars.CI_SHARD_RETRY == 'on' }}");
+    const retry = steps.find((s) => s.id === retryStep);
+    assert.ok(retry, 'retry step exists');
+    assert.equal(retry.if, `(success() || failure()) && steps.${testStep}.outcome == 'failure' && (vars.CI_SHARD_RETRY == 'shadow' || vars.CI_SHARD_RETRY == 'on')`);
+    const guard = steps.slice(steps.indexOf(retry) + 1).find((s) => s.if?.includes(`steps.${retryStep}.outcome != 'success'`)); // @source-text-assertion-ok selects a step from the parsed workflow
+    assert.ok(guard, 'guard step follows the retry');
+    assert.equal(guard.if, `(success() || failure()) && steps.${testStep}.outcome == 'failure' && vars.CI_SHARD_RETRY == 'on' && steps.${retryStep}.outcome != 'success'`);
+    assert.match(guard.run, /exit 1/); // @source-text-assertion-ok the guard's command is the subject
+    // Every other step's behaviour is independent of the switch.
+    const touched = steps.filter((s) => SWITCH.test(JSON.stringify(s))).map((s) => s.id ?? s.name); // @source-text-assertion-ok enumerates steps that read the switch
+    assert.deepEqual(touched.sort(), [testStep, retryStep, guard.name].sort());
+  });
+}

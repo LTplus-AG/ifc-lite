@@ -1,0 +1,13 @@
+diff --git a/apps/viewer/src/components/viewer/assistant/StructuralGraphReview.tsx b/apps/viewer/src/components/viewer/assistant/StructuralGraphReview.tsx
+index 189d2106fa..f05421da88 100644
+--- a/apps/viewer/src/components/viewer/assistant/StructuralGraphReview.tsx
++++ b/apps/viewer/src/components/viewer/assistant/StructuralGraphReview.tsx
+@@ -42,7 +42,7 @@ export function StructuralGraphReview({ proposal, origin }: { proposal: Structur
+     owner.current.review = null; setReview(null); setProblem(error instanceof Error ? error.message : String(error));
+   };
+   // The structural builders load in their own chunk (#9668): wait for it, never refuse while it loads.
+-  const prepare = (selection = approved) => void Promise.resolve().then(() => {
++  const prepare = (selection = approved) => void loadStructuralWrites().then(() => {
+     if (!owner.current.mounted) return;
+     try {
+       const next = prepareStructuralReview(useViewerStore, proposal, selection);

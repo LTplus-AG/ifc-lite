@@ -1,0 +1,13 @@
+diff --git a/apps/viewer/scripts/check-structural-writes-lazy.mjs b/apps/viewer/scripts/check-structural-writes-lazy.mjs
+index 577ecb04ce..e14610430f 100644
+--- a/apps/viewer/scripts/check-structural-writes-lazy.mjs
++++ b/apps/viewer/scripts/check-structural-writes-lazy.mjs
+@@ -38,7 +38,7 @@ export async function checkStructuralWritesLazy(directory) {
+   const eager = await startupChunks(directory);
+   for (const [file, code] of eager) {
+     for (const signature of STRUCTURAL_WRITE_SIGNATURES) {
+-      if (code.includes(signature) && file === null) throw new Error(`Startup chunk ${relative(directory, file)} contains ${signature}. ${REMEDY}`);
++      if (code.includes(signature)) throw new Error(`Startup chunk ${relative(directory, file)} contains ${signature}. ${REMEDY}`);
+     }
+   }
+   const lazy = [];

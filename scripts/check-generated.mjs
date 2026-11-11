@@ -503,7 +503,13 @@ runGate('check:coverage-ledger', 'node', ['scripts/generate-coverage-ledger.mjs'
 // 11. Structural coverage ledger: rendered from the newest tests/structural-coverage/baseline summary.
 runGate('check:structural-coverage-ledger', 'node', ['scripts/generate-structural-coverage-ledger.mjs', '--check'],
   'if the output says "is stale": node scripts/generate-structural-coverage-ledger.mjs   (then commit docs/architecture/structural-coverage-ledger.md); ' +
-    'if it says the summary does not match the catalogue, re-run tests/structural-coverage/score.mjs and re-baseline deliberately');
+    'if it says "does not match the derived catalogue": verify the catalogue change, then re-score and re-baseline deliberately; ' +
+    'if it says "stored totals or applicability disagree": re-score to recompute totals and applicability, then re-baseline; ' +
+    'if it says "was scored offline": fetch the missing corpus fixtures and re-score without --offline, then re-baseline; ' +
+    'if it says "no r<N>.json summary": restore the committed baseline or create one from a complete score; ' +
+    'to re-score: node tests/structural-coverage/score.mjs; ' +
+    'to re-baseline after reviewing every changed cell: cp tests/structural-coverage/.out/summary.json tests/structural-coverage/baseline/r<N>.json, ' +
+    'then node scripts/generate-structural-coverage-ledger.mjs and commit the new baseline and ledger');
 hr();
 const failed = results.filter((r) => r.status === 'fail');
 const skipped = results.filter((r) => r.status === 'skip');

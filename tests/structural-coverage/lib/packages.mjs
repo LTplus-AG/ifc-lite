@@ -8,6 +8,7 @@
  * probe result: an unbuilt checkout must not read as "the product cannot do it".
  */
 
+import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -15,6 +16,14 @@ import { pathToFileURL } from 'node:url';
 const PACKAGES = ['parser', 'mutations', 'create', 'export'];
 
 export async function loadPackages(root) {
+  // Let turbo validate source/dependency hashes and rebuild or restore current
+  // output. Merely finding dist/ can silently score an earlier checkout.
+  const build = spawnSync('pnpm', ['turbo', 'build', '--filter=@ifc-lite/parser...', '--filter=@ifc-lite/create...', '--filter=@ifc-lite/export...'], {
+    cwd: root, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024,
+  });
+  if (build.status !== 0 || build.error) {
+    throw new Error(`structural coverage package build failed: ${build.error?.message ?? `${build.stdout ?? ''}\n${build.stderr ?? ''}`}`);
+  }
   const missing = PACKAGES.filter((p) => !existsSync(join(root, `packages/${p}/dist/index.js`)));
   if (missing.length) {
     throw new Error(

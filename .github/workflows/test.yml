@@ -430,6 +430,9 @@ jobs:
               # the same trap the comment above describes for `apps/`.
               - 'examples/**'
               - 'packages/**'
+              # The build job runs the structural ratchet in fast and full lanes.
+              - 'tests/structural-coverage/**'
+              - 'tests/models/manifest.json'
               - 'tests/e2e/**'
               # Perf tools consume benchmark helpers; the CI path-coverage mirror
               # reads every tracked benchmark input, so all must trigger Node tests.
@@ -787,6 +790,11 @@ jobs:
         env:
           VITE_BUNDLE_ANALYSIS: "1"
         run: pnpm build
+
+      # Keep the score ratchet in build, not node-tests (skipped by fast PRs).
+      # This job has verified manifest fixtures and current workspace packages.
+      - name: Check structural coverage score ratchet
+        run: node tests/structural-coverage/score.mjs --check tests/structural-coverage/baseline/r1.json
 
       # A separate feature bundle exposes only the test ownership probe.
       # Do not overwrite pkg-diff or its committed production declarations.

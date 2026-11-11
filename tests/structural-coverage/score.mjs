@@ -70,7 +70,7 @@ export async function runProbes(rows, ctx, probes = PROBES) {
     for (const row of mine) {
       const r = results.get(row.id) ?? { status: 'error', reason: `${probe.name} returned no result for this row` };
       const status = r.status in RANK ? r.status : 'error';
-      const cell = { status, probe: probe.name, ...(r.reason ? { reason: clip(r.reason) } : {}), ...(r.evidence?.length ? { evidence: [...r.evidence].sort().slice(0, 5) } : {}) };
+      const cell = { status, probe: probe.name, ...(r.reason ? { reason: clip(r.reason) } : {}), ...(r.counts ? { counts: r.counts } : {}), ...(r.evidence?.length ? { evidence: [...r.evidence].sort().slice(0, 5) } : {}) };
       const prev = cells.get(row.id)[probe.level];
       if (!prev || RANK[cell.status] > RANK[prev.status] || (RANK[cell.status] === RANK[prev.status] && cell.probe < prev.probe)) {
         cells.get(row.id)[probe.level] = cell;

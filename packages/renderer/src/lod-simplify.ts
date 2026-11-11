@@ -160,18 +160,35 @@ export function simplifyIndicesByClustering(
 }
 
 /** Cell size for a batch from its world AABB (diagonal * LOD_CELL_FRACTION). */
+/** Probes allowed per table operation (find, insert, re-insert on growth), plus a fixed allowance. */
+const PROBES_PER_OPERATION = 16;
+const PROBE_ALLOWANCE = 4096;
+
 /**
  * Open-addressing (u32 entity, 21-bit packed cell) -> representative table.
  * `find` returns the representative or -1, and remembers where the key
  * belongs, so an `insert` of the same key right after it lands there.
+ *
+ * Bounded work: entity ids and cells come from the model, and the hash is
+ * invertible, so valid keys can be chosen (or merely happen) to share one
+ * probe chain, which makes linear probing quadratic. Every probe, including
+ * those of a rehash, counts against a budget linear in the operations so far.
+ * Past it, the table moves its entries into an exact `Map` keyed as the
+ * original code was (`entity * 2^21 + cell`, exact below 2^53) and serves
+ * every later lookup from there. Entries are unique keys, so the first-wins
+ * representatives, and with them the output, are unchanged.
  */
-class PackedCellTable {
-  size = 0;
+export class PackedCellTable {
+  /** Probes so far, for tests. */
+  probes = 0;
+  private operations = 0;
+  private count = 0;
   private entities!: Uint32Array;
   private cells!: Uint32Array;
   private reps!: Int32Array;
   private mask = 0;
   private slot = 0;
+  private exact: Map<number, number> | null = null;
 
   constructor(expected: number) {
     let capacity = 16;
@@ -179,28 +196,59 @@ class PackedCellTable {
     this.allocate(capacity);
   }
 
-  find(entity: number, cell: number): number {
-    const { entities, cells, reps, mask } = this;
-    let slot = ((Math.imul(entity, 0x9e3779b1) ^ Math.imul(cell + 1, 0x85ebca6b)) >>> 0) & mask;
-    for (;;) {
-      const rep = reps[slot];
-      if (rep === -1 || (entities[slot] === entity && cells[slot] === cell)) {
-        this.slot = slot;
-        return rep;
-      }
-      slot = (slot + 1) & mask;
-    }
+  get size(): number {
+    return this.exact ? this.exact.size : this.count;
   }
 
+  /** True once collisions exhausted the probe budget and the exact Map took over. */
+  get overflowed(): boolean {
+    return this.exact !== null;
+  }
+
+  find(entity: number, cell: number): number {
+    if (this.exact) return this.exact.get(entity * 0x200000 + cell) ?? -1;
+    this.operations++;
+    const slot = this.probe(entity, cell);
+    if (slot < 0) return this.toExact(this.entities, this.cells, this.reps).get(entity * 0x200000 + cell) ?? -1;
+    this.slot = slot;
+    return this.reps[slot];
+  }
+
+  /** Call right after `find` returned -1 for the same key. */
   insert(entity: number, cell: number, rep: number): void {
-    if ((this.size + 1) * 2 > this.mask + 1) {
-      this.grow();
-      this.find(entity, cell);
+    let grew = false;
+    if (!this.exact && (this.count + 1) * 2 > this.mask + 1) {
+      grew = this.grow();
+      if (!grew) this.toExact(this.entities, this.cells, this.reps);
+    }
+    if (this.exact) {
+      this.exact.set(entity * 0x200000 + cell, rep);
+      return;
+    }
+    if (grew) { // the slot `find` remembered belongs to the old table
+      const slot = this.probe(entity, cell);
+      if (slot < 0) {
+        this.toExact(this.entities, this.cells, this.reps).set(entity * 0x200000 + cell, rep);
+        return;
+      }
+      this.slot = slot;
     }
     this.entities[this.slot] = entity;
     this.cells[this.slot] = cell;
     this.reps[this.slot] = rep;
-    this.size++;
+    this.count++;
+  }
+
+  /** The key's slot (holding it, or empty), or -1 when the probe budget runs out first. */
+  private probe(entity: number, cell: number): number {
+    const { entities, cells, reps, mask } = this;
+    let slot = hashCell(entity, cell) & mask;
+    const limit = this.operations * PROBES_PER_OPERATION + PROBE_ALLOWANCE;
+    for (;;) {
+      if (++this.probes > limit) return -1;
+      if (reps[slot] === -1 || (entities[slot] === entity && cells[slot] === cell)) return slot;
+      slot = (slot + 1) & mask;
+    }
   }
 
   private allocate(capacity: number): void {
@@ -210,17 +258,41 @@ class PackedCellTable {
     this.mask = capacity - 1;
   }
 
-  private grow(): void {
-    const { entities, cells, reps } = this;
+  /** Double the table; false (table unchanged) when re-insertion would exceed the probe budget. */
+  private grow(): boolean {
+    const { entities, cells, reps, mask } = this;
     this.allocate(reps.length * 2);
     for (let i = 0; i < reps.length; i++) {
       if (reps[i] === -1) continue;
-      this.find(entities[i], cells[i]);
-      this.entities[this.slot] = entities[i];
-      this.cells[this.slot] = cells[i];
-      this.reps[this.slot] = reps[i];
+      this.operations++;
+      const slot = this.probe(entities[i], cells[i]);
+      if (slot < 0) {
+        this.entities = entities; this.cells = cells; this.reps = reps; this.mask = mask;
+        return false;
+      }
+      this.entities[slot] = entities[i];
+      this.cells[slot] = cells[i];
+      this.reps[slot] = reps[i];
     }
+    return true;
   }
+
+  private toExact(entities: Uint32Array, cells: Uint32Array, reps: Int32Array): Map<number, number> {
+    const exact = new Map<number, number>();
+    for (let i = 0; i < reps.length; i++) if (reps[i] !== -1) exact.set(entities[i] * 0x200000 + cells[i], reps[i]);
+    this.exact = exact;
+    this.entities = this.cells = new Uint32Array(0);
+    this.reps = new Int32Array(0);
+    return exact;
+  }
+}
+
+/** A full-avalanche 32-bit mix of (entity, cell), so ordinary inputs spread over the table. */
+function hashCell(entity: number, cell: number): number {
+  let h = Math.imul(entity ^ Math.imul(cell + 1, 0x85ebca6b), 0x9e3779b1);
+  h ^= h >>> 16; h = Math.imul(h, 0x85ebca6b);
+  h ^= h >>> 13; h = Math.imul(h, 0xc2b2ae35);
+  return (h ^ (h >>> 16)) >>> 0;
 }
 
 export function lodCellSizeForBounds(

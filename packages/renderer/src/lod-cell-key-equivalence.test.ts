@@ -4,7 +4,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { simplifyIndicesByClustering, LOD_MIN_TRIANGLES } from './lod-simplify.js';
+import { simplifyIndicesByClustering, LOD_MIN_TRIANGLES, PackedCellTable } from './lod-simplify.js';
 
 /** Independent cell-equivalence oracle: first referenced vertex wins each
  * full string tuple, then discard triangles with repeated representatives.
@@ -28,6 +28,42 @@ function stringCellOracle(data: Float32Array, stride: number, indices: Uint32Arr
     if (a !== b && b !== c && a !== c) result.push(a, b, c);
   }
   return result.length === 0 || result.length >= indices.length * 0.75 ? null : Uint32Array.from(result);
+}
+
+/** The multiplicative inverse of an odd 32-bit constant (Newton iteration). */
+function inverseOf(odd: number): number {
+  let inverse = 1;
+  for (let i = 0; i < 5; i++) inverse = Math.imul(inverse, 2 - Math.imul(odd, inverse));
+  return inverse;
+}
+
+/** Undo `x ^ (x >>> shift)` on 32 bits. */
+function unshift(y: number, shift: number): number {
+  let x = y;
+  for (let i = 0; i < 32; i += shift) x = y ^ (x >>> shift);
+  return x >>> 0;
+}
+
+/**
+ * Valid keys whose table hash shares its low 24 bits, so every key starts the
+ * same probe chain. `original` targets #9685's first table hash (the review's
+ * reproducer); otherwise the shipped `hashCell` mix is inverted step by step.
+ * Cells lie on a 64×64×n grid at cellSize 1 from (0,0,0); entity lanes are
+ * arbitrary u32 values, as id + colour salt can be. Returns [entity, packed cell, x, y, z].
+ */
+function collidingKeys(n: number, original = false): Array<[number, number, number, number, number]> {
+  return Array.from({ length: n }, (_, i) => {
+    const x = i % 64, y = Math.floor(i / 64) % 64, z = Math.floor(i / 4096);
+    const packed = (x + 64) * 0x4000 + (y + 64) * 0x80 + z + 64;
+    const cellPart = Math.imul(packed + 1, 0x85ebca6b);
+    if (original) return [(Math.imul(inverseOf(0x9e3779b1), cellPart) & 0xffffff) >>> 0, packed, x, y, z];
+    // hashCell(entity, cell) = fmix(imul(entity ^ cellPart, φ)); aim every output at (i << 24) | 0x5a5a5a.
+    let h = ((i << 24) | 0x5a5a5a) >>> 0;
+    h = unshift(h, 16); h = Math.imul(h, inverseOf(0xc2b2ae35));
+    h = unshift(h, 13); h = Math.imul(h, inverseOf(0x85ebca6b));
+    h = unshift(h, 16);
+    return [(Math.imul(h, inverseOf(0x9e3779b1)) ^ cellPart) >>> 0, packed, x, y, z];
+  });
 }
 
 type Point = readonly [number, number, number];
@@ -123,6 +159,50 @@ describe('issue #3991 exact LOD cell keys', () => {
     const expected = stringCellOracle(data, 7, indices, 1);
     assert.ok(expected && expected.length < indices.length, 'a non-trivial LOD');
     assert.deepEqual(simplifyIndicesByClustering(data, 7, indices, 1), expected);
+  });
+
+  for (const original of [true, false]) {
+    it(`keeps probing linear when valid keys all collide (${original ? "the review's keys" : 'keys aimed at the shipped hash'}), with first-wins representatives`, () => {
+      const keys = collidingKeys(16_386, original);
+      const table = new PackedCellTable(Math.min(keys.length >> 1, 1 << 16));
+      let operations = 0;
+      keys.forEach(([entity, cell], rep) => {
+        operations += 2;
+        assert.ok(table.find(entity, cell) === -1, 'every key is new');
+        table.insert(entity, cell, rep);
+      });
+      keys.forEach(([entity, cell], rep) => { operations++; assert.ok(table.find(entity, cell) === rep, `representative of key ${rep}`); });
+      // The unbounded chain probed 268.5 million slots for the review's keys.
+      assert.ok(table.probes <= operations * 16 + 4096 + keys.length * 2, `${table.probes} probes for ${operations} operations`);
+      if (!original) assert.ok(table.overflowed, 'the colliding chain moved to the exact map');
+    });
+  }
+
+  it('matches the oracle through the collision fallback, null and non-null', () => {
+    const keys = collidingKeys(8_193);
+    // These keys are aimed at the shipped hash, so this exercises the exact-map fallback.
+    for (const duplicate of [false, true]) {
+      // Each key's vertex once (nothing collapses: null), or twice with every
+      // other triangle degenerate (a non-null LOD that drops half).
+      const per = duplicate ? 2 : 1;
+      const data = new Float32Array(keys.length * per * 7);
+      const lanes = new Uint32Array(data.buffer);
+      keys.forEach(([entity, , x, y, z], k) => {
+        for (let copy = 0; copy < per; copy++) {
+          const v = k * per + copy;
+          data[v * 7] = x; data[v * 7 + 1] = y; data[v * 7 + 2] = z; lanes[v * 7 + 6] = entity;
+        }
+      });
+      const indices: number[] = [];
+      for (let k = 0; k + 2 < keys.length; k++) {
+        if (duplicate) indices.push(k * 2, k * 2 + 1, (k + 1) * 2, k * 2, (k + 1) * 2, (k + 2) * 2);
+        else indices.push(k, k + 1, k + 2);
+      }
+      const index = Uint32Array.from(indices);
+      const expected = stringCellOracle(data, 7, index, 1);
+      assert.ok((expected === null) === !duplicate, 'one null and one non-null case');
+      assert.deepEqual(simplifyIndicesByClustering(data, 7, index, 1), expected);
+    }
   });
 
   it('keeps coincident cells from different full-u32 entity lanes isolated', () => {

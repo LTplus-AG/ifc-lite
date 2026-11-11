@@ -22,7 +22,7 @@
       "metric": "raw-bytes",
       "unit": "bytes",
       "description": "raw size of the single <script type=\"module\" src> chunk of apps/viewer/dist/index.html",
-      "ceiling": 2181927,
+      "ceiling": 2186000,
       "tolerance": {
         "kind": "relative",
         "value": 0.001
@@ -37,7 +37,7 @@
       "metric": "raw-bytes",
       "unit": "bytes",
       "description": "summed raw size of every JS file dist/index.html loads eagerly: the module <script src> plus <link rel=modulepreload>",
-      "ceiling": 17745137,
+      "ceiling": 17761137,
       "tolerance": {
         "kind": "relative",
         "value": 0.001

@@ -111,19 +111,8 @@ export function combineWasmRealms(realms) {
     memories: realms.reduce((a, r) => a + (r.count ?? 0), 0), realms: realms.length };
 }
 
-/**
- * Why the first reopen cannot be prepared, or null. The cache entry must have
- * been checked, readable and must have stopped changing; otherwise a snapshot
- * written at the end of the cold load may still race the reopen. Uncached
- * tiers pass `{ skipped: <reason> }`; an absent result is a failure.
- */
-export function entryStabilityFailure(entry) {
-  if (!entry) return 'cache entry was not checked before the first reopen';
-  if (entry.skipped) return null;
-  if (entry.error) return `cache entry unreadable before the first reopen (${entry.error})`;
-  if (entry.stable !== true) return `cache entry still changing ${entry.waitedMs} ms after the cold load, so a snapshot write may race the first reopen`;
-  return null;
-}
+// Pure; lives beside warmPrepFailure so prepareWarmOpen can apply it for every bench.
+export { entryStabilityFailure } from './load-scoreboard-stats.mjs';
 
 /** `promise`, or a rejection naming `what` after `ms`: a CDP request that never answers must not hang a sample. */
 export function bounded(promise, ms, what) {

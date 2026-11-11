@@ -293,10 +293,26 @@ test('a scene-snapshot write that times out makes the snapshot reopen a failed s
   // The first reopen and snapshot-less runs never wait (nothing to time out on); an unsettled cache write still fails them.
   let waited = 0;
   const count = () => { waited++; return Promise.resolve(); };
-  assert.equal((await prepareWarmOpen({ open: 1, cacheWriteSettled: true, snapshotExpected: true, waitSnapshot: count })).failure, null);
+  const stable = () => Promise.resolve({ stable: true, snapshotPresent: false, waitedMs: 3000 });
+  assert.equal((await prepareWarmOpen({ open: 1, cacheWriteSettled: true, snapshotExpected: true, waitSnapshot: count, waitEntryStable: stable })).failure, null);
   assert.equal((await prepareWarmOpen({ open: 2, cacheWriteSettled: true, snapshotExpected: false, waitSnapshot: count })).failure, null);
   assert.equal(waited, 0);
   assert.match((await prepareWarmOpen({ open: 1, cacheWriteSettled: false, snapshotExpected: true, waitSnapshot: count })).failure ?? '', /cache write did not settle/);
+});
+
+test('every bench\'s first reopen waits for a stable cache entry: scenoptic-bench and load-scoreboard share prepareWarmOpen (review #9740)', async () => {
+  const { prepareWarmOpen } = await snapshotRule();
+  const base = { open: 1, cacheWriteSettled: true, snapshotExpected: true, waitSnapshot: () => Promise.resolve() };
+  // A caller that does not check the entry (scenoptic-bench before this fix) fails instead of racing a cold-end snapshot.
+  assert.match((await prepareWarmOpen(base)).failure ?? '', /not checked/);
+  assert.match((await prepareWarmOpen({ ...base, waitEntryStable: () => Promise.resolve({ stable: false, waitedMs: 30000 }) })).failure ?? '', /still changing/);
+  assert.match((await prepareWarmOpen({ ...base, waitEntryStable: () => Promise.reject(new Error('Target closed')) })).failure ?? '', /unreadable.*Target closed/);
+  const ok = await prepareWarmOpen({ ...base, waitEntryStable: () => Promise.resolve({ stable: true, snapshotPresent: true, waitedMs: 3200 }) });
+  assert.equal(ok.failure, null);
+  assert.equal(ok.entry.snapshotPresent, true);
+  assert.equal((await prepareWarmOpen({ ...base, waitEntryStable: () => Promise.resolve({ skipped: 'uncached tier' }) })).failure, null);
+  // Later reopens are not re-checked (their snapshot wait covers them).
+  assert.equal((await prepareWarmOpen({ ...base, open: 2, snapshotWritten: true })).failure, null);
 });
 
 const lanesModule = () => load('./load-scoreboard-lanes.mjs');

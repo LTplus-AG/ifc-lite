@@ -325,6 +325,20 @@ export function warmPrepFailure({ open, cacheWriteSettled, snapshotExpected, sna
   return null;
 }
 
+/**
+ * Why the first reopen cannot be prepared, or null. The cache entry must have
+ * been checked, readable and must have stopped changing; otherwise a snapshot
+ * written at the end of the cold load may still race the reopen. Uncached
+ * tiers pass `{ skipped: <reason> }`; an absent result is a failure.
+ */
+export function entryStabilityFailure(entry) {
+  if (!entry) return 'cache entry was not checked before the first reopen';
+  if (entry.skipped) return null;
+  if (entry.error) return `cache entry unreadable before the first reopen (${entry.error})`;
+  if (entry.stable !== true) return `cache entry still changing ${entry.waitedMs} ms after the cold load, so a snapshot write may race the first reopen`;
+  return null;
+}
+
 /** The quiet wait's cap after readiness (viewer-load-boot.mjs `waitUiQuiet` timeoutMs). */
 export const UI_QUIET_CAP_MS = 20000;
 

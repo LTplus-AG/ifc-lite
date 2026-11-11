@@ -29,7 +29,7 @@ import { chromePids, memoryOf, vramOf } from './scenoptic-bench-sampling.mjs';
 import { COUNT_FRAMES, openAndWaitInteractive, openViewerPage, readOutputFingerprint, replacePage, waitCacheWrites, waitSceneSnapshots } from './viewer-load-probe.mjs';
 import { browserShares, browserStages, expectedCacheTier, failedOpenIndex, gpuUnhealthy, openIdentity, stageShares, uiQuietValue } from './load-scoreboard-stats.mjs';
 import { BOOT_OBSERVERS, waitShellQuiet, waitUiQuiet } from './viewer-load-boot.mjs';
-import { entryStabilityFailure, rebaseToArm, waitCacheEntryStable, waitFirstPaint } from './load-scoreboard-lanes.mjs';
+import { rebaseToArm, waitCacheEntryStable, waitFirstPaint } from './load-scoreboard-lanes.mjs';
 import { expectSceneSnapshot, prepareWarmOpen } from './viewer-scene-snapshot.mjs';
 import { readGpuHealth } from '../../tests/benchmark/gpu-health.ts';
 
@@ -171,11 +171,6 @@ export async function browserSample({ chromium, executablePath, baseUrl, setRoot
       // failure there taints that open and later ones, never an earlier clean open.
       phase = 'warm1-prep';
       meta.cacheWriteSettled = await waitCacheWrites(page);
-      // A snapshot captured at the end of the cold load must be there or not before the first
-      // reopen, never racing it: wait for the stored entry to stop changing (cached tiers only).
-      meta.entryBeforeWarm1 = uncached ? { skipped: 'uncached tier: no cache entry is written' } : await waitCacheEntryStable(page);
-      const unstable = entryStabilityFailure(meta.entryBeforeWarm1);
-      if (unstable) throw new Error(unstable);
       for (let i = 1; i <= warmOpens; i++) {
         phase = `warm${i}-prep`;
         // Uncached tiers never write a snapshot: waiting for one cost 60 s per sample (H6).
@@ -183,7 +178,10 @@ export async function browserSample({ chromium, executablePath, baseUrl, setRoot
         meta.snapshotExpected = expectSceneSnapshot({ query, files: 1, cached: !uncached });
         // A reopen whose cache write or expected snapshot is missing fails as that open (warm<i>-prep).
         const prep = await prepareWarmOpen({ open: i, cacheWriteSettled: meta.cacheWriteSettled, snapshotExpected: meta.snapshotExpected,
-          waitSnapshot: () => waitSceneSnapshots(page) });
+          waitSnapshot: () => waitSceneSnapshots(page),
+          // A snapshot captured at the end of the cold load is there or not before the first reopen, never racing it.
+          waitEntryStable: () => (uncached ? Promise.resolve({ skipped: 'uncached tier: no cache entry is written' }) : waitCacheEntryStable(page)) });
+        if (i === 1) meta.entryBeforeWarm1 = prep.entry ?? null;
         if (prep.snapshotWritten !== undefined) meta.snapshotWritten = prep.snapshotWritten;
         if (prep.failure) throw new Error(prep.failure);
         await replacePage(context, page);

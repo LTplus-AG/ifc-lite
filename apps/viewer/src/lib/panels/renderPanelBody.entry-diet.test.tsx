@@ -16,7 +16,6 @@ import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { useViewerStore } from '@/store';
 import { resolve as translate } from '@/i18n/registry';
 import { renderPanelBody } from './renderPanelBody';
-import { loadGanttPanel, loadListPanel, loadExtensionsPanel } from './deferred-panel-modules';
 
 const initial = useViewerStore.getState();
 const hosts: ExtensionHostService[] = [];
@@ -27,7 +26,11 @@ afterEach(async () => {
 });
 
 // Entry diet: exercise the shared router against actual cold feature modules.
-for (const [id, load] of [['gantt', loadGanttPanel], ['lists', loadListPanel], ['extensions', loadExtensionsPanel]] as const) {
+for (const [id, load] of [
+  ['gantt', () => import('@/components/viewer/schedule/GanttPanel')],
+  ['lists', () => import('@/components/viewer/lists/ListPanel')],
+  ['extensions', () => import('@/components/extensions/ExtensionsPanel')],
+] as const) {
   it(`entry diet: ${id} mounts from cold and retains the action requested before readiness`, { timeout: 30_000 }, async () => {
     const bytes = readFileSync(new URL('../../../public/samples/building-architecture.ifc', import.meta.url));
     const ifcDataStore = await new IfcParser().parseColumnar(new Uint8Array(bytes).buffer);

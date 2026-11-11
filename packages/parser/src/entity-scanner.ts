@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { WASM_SOURCE_BYTE_LIMIT } from './wasm-source-limit.js';
+
 import { safeUtf8Decode } from '@ifc-lite/data';
 import { buildEntityRefsFromIndex, buildEntityColumnsFromIndex, type ScannedEntityColumns } from './entity-refs-from-index.js';
 import { buildScanReport, isScanCount, reportScanDiagnostics, type EntityScanReport } from './scan-report.js';
@@ -263,12 +265,10 @@ async function scanEntities(
  * this ceiling the allocator aborts with a bare `unreachable executed` trap —
  * the scan can never succeed, so attempting it only burns seconds and logs a
  * frightening wasm panic before the JS tokeniser fallback runs anyway.
- * Mirrors the geometry prepass's 2.5GB huge-file heuristic (#1630): the file
- * copy plus the index for a 2.5GB source stays under the ceiling; beyond it
- * the copy alone leaves no headroom.
+ * The whole-source allocation must fit Rust wasm32 isize::MAX.
  */
 export function wasmBytesScanAllowed(byteLength: number): boolean {
-  return byteLength < 2_500_000_000;
+  return Number.isInteger(byteLength) && byteLength >= 0 && byteLength < WASM_SOURCE_BYTE_LIMIT;
 }
 
 function selectWasmScanFunction(api: WasmScanApi | undefined, uint8Buffer: Uint8Array): WasmScanFunction | null {

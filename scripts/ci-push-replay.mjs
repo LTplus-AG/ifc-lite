@@ -53,13 +53,13 @@
  * workflow-only full run would not re-key what a Cargo.lock change needs. Only
  * the newest runs in full.
  *
- * ONLY THE WORKFLOW FILES THIS WORKFLOW READS set its cache keys (prefix-key,
- * shared-key, env and inputs): test.yml and every local action or workflow it
- * names, followed transitively (testWorkflowFiles). Another workflow's file is
- * not part of a Test run, so a full Test run could not re-key anything for it:
- * a cache key is immutable, and a key that workflow shares with Test is written
- * by whichever run misses it first. When those files cannot be read, every
- * workflow and action file blocks.
+ * WORKFLOW FILES: a change to `.github/actions/` or to test.yml always blocks,
+ * as does any file under `.github/workflows/` that is not top-level YAML. Another
+ * top-level workflow file blocks only when something Test executes names it
+ * (lib/named-workflow-files.mjs): a file nothing in a Test run names cannot set
+ * Test's cache keys, and a full Test run could not re-key anything for it
+ * anyway, since a cache key is immutable. When the named list cannot be built,
+ * every workflow file blocks.
  */
 
 import { appendFileSync } from 'node:fs';
@@ -68,7 +68,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { gh, GhError } from './lib/gh.mjs';
 import { isBatchBranch } from './ci-pr-lane.mjs';
 import { isMainEntry } from './lib/is-main-entry.mjs';
-import { workflowFileClosure } from './lib/workflow-file-closure.mjs';
+import { namedWorkflowFiles } from './lib/named-workflow-files.mjs';
 
 export const TREE_ARTIFACT_PREFIX = 'tested-tree-';
 export const TEST_WORKFLOW_FILE = 'test.yml';
@@ -84,33 +84,20 @@ const NO_REPLAY = [
   /(^|\/)Cargo\.toml$/,
   /^rust-toolchain\.toml$/,
 ];
-/** Used when the Test workflow's own files could not be listed: every workflow or action file blocks. */
-const ANY_WORKFLOW_FILE = /^\.github\/(workflows|actions)\//;
-
+const ACTION_FILE = /^\.github\/actions\//;
 // GitHub runs only top-level workflow YAML. Anything else under workflows/ is a file a
-// step may read, which the scan does not list, so it always blocks.
+// step may read, which namedWorkflowFiles does not list, so it always blocks.
 const WORKFLOW_YAML = /^\.github\/workflows\/[^/]+\.ya?ml$/;
-const TEST_WORKFLOW_PATH = `.github/workflows/${TEST_WORKFLOW_FILE}`;
-
-/**
- * The `.github/` paths a Test run reads (see lib/workflow-file-closure.mjs), or
- * null when they cannot be listed.
- *
- * @param {(path: string) => string | null} readText the file at the push commit, or null
- * @param {string} repo `owner/name` of this repository
- * @returns {string[] | null}
- */
-export function testWorkflowFiles(readText, repo) {
-  return workflowFileClosure(TEST_WORKFLOW_PATH, repo, readText);
-}
+export const TEST_WORKFLOW_PATH = `.github/workflows/${TEST_WORKFLOW_FILE}`;
 
 /** Whether a changed path keys a cache that only a push to main writes. */
 function keysMainCaches(file, workflowFiles) {
-  if (NO_REPLAY.some((re) => re.test(file))) return true;
-  if (file.startsWith('.github/workflows/') && !WORKFLOW_YAML.test(file)) return true;
-  // A list without test.yml is not a result testWorkflowFiles gives; trust none of it.
-  if (!Array.isArray(workflowFiles) || !workflowFiles.includes(TEST_WORKFLOW_PATH)) return ANY_WORKFLOW_FILE.test(file);
-  return workflowFiles.some((p) => (p.endsWith('/') ? file.startsWith(p) : file === p));
+  if (NO_REPLAY.some((re) => re.test(file)) || ACTION_FILE.test(file)) return true;
+  if (!file.startsWith('.github/workflows/')) return false;
+  if (!WORKFLOW_YAML.test(file)) return true;
+  // Unknown, or a list without test.yml (never a namedWorkflowFiles result): trust none of it.
+  if (!Array.isArray(workflowFiles) || !workflowFiles.includes(TEST_WORKFLOW_PATH)) return true;
+  return workflowFiles.includes(file);
 }
 
 const SHA = /^[0-9a-f]{40}$/;
@@ -238,10 +225,11 @@ function readInputs(repo, pushSha, pushTree, parentSha, before) {
   const { queueEvidence, laterChangedFiles } = readQueueEvidence(repo, pushSha, pushTree);
   // Only a changed workflow or action file needs the list; most pushes touch none.
   let workflowFiles = null;
-  if (changedFiles.some((f) => ANY_WORKFLOW_FILE.test(f))) {
-    // The push commit's side suffices: dropping a reference edits a file still on the list.
-    workflowFiles = testWorkflowFiles((path) => gitShow(pushSha, path), repo);
-    if (!workflowFiles) console.warn(`[push-replay] the files ${TEST_WORKFLOW_FILE} reads could not be listed at ${pushSha.slice(0, 9)}; every workflow and action file blocks`);
+  if (changedFiles.some((f) => f.startsWith('.github/workflows/'))) {
+    // The push commit's side suffices: dropping a reference edits a file that blocks.
+    const actionFiles = gitLines(['ls-tree', '-r', '--name-only', pushSha, '--', '.github/actions/']);
+    workflowFiles = namedWorkflowFiles({ root: TEST_WORKFLOW_PATH, actionFiles, readText: (path) => gitShow(pushSha, path) });
+    if (!workflowFiles) console.warn(`[push-replay] the workflow files ${TEST_WORKFLOW_FILE} names could not be listed at ${pushSha.slice(0, 9)}; every workflow file blocks`);
   }
   return { pushSha, pushTree, parentSha, before, changedFiles, pulls, runs, artifactNamesByRun, repo, queueEvidence, laterChangedFiles, workflowFiles };
 }
@@ -250,6 +238,12 @@ function readInputs(repo, pushSha, pushTree, parentSha, before) {
 function gitShow(sha, path) {
   const r = spawnSync('git', ['show', `${sha}:${path}`], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 16 * 1024 * 1024 });
   return r.status === 0 ? r.stdout : null;
+}
+
+/** A git command's output lines, or null when it fails (the caller then blocks). */
+function gitLines(args) {
+  const r = spawnSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 16 * 1024 * 1024 });
+  return r.status === 0 ? r.stdout.split('\n').filter(Boolean) : null;
 }
 
 /** This commit's tree, then those of the commits main has gained since, each with the runs that recorded it. */

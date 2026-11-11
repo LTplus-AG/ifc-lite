@@ -477,7 +477,7 @@ The SDK exposes them as `bim.store.addStructuralSurfaceMember`,
 `bim.store.addStructuralCurveConnection`, and `bim.store.addStructuralSurfaceConnection`,
 each taking `(modelId, storeyExpressId, params)`, like the existing curve member builder.
 The SDK backend supports IFC4 and IFC4X3; the direct builders also support IFC2X3.
-Each throws on a backend that does not implement it.
+Each `bim.store` method throws on a backend that does not implement it.
 
 Surface builders take `Boundary`, an ordered list of at least three distinct,
 coplanar points in storey-local metres that does not cross itself. Points off the

@@ -120,6 +120,8 @@ function createMockBackend() {
     // #5167 S.1: `StoreBackendMethods` gained the structural authoring surface,
     // and this hand-built mock must satisfy it or the typecheck lane fails
     // (vitest does not typecheck, so the package's own suite stays green).
+    // The surface member and curve/surface connection are optional; they are
+    // mocked so a namespace call reaches the backend instead of throwing.
     addStructuralAnalysisModel: vi.fn((modelId: string) => ({ modelId, expressId: 300 })),
     addStructuralSurfaceMember: vi.fn((modelId: string) => ({ modelId, expressId: 310 })),
     addStructuralCurveConnection: vi.fn((modelId: string) => ({ modelId, expressId: 311 })),

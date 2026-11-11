@@ -20,6 +20,7 @@ import { diffCounters, perfCounters } from '@ifc-lite/load-trace';
 import { Scene } from './scene.js';
 import type { RenderPipeline } from './pipeline.js';
 import type { BatchedMesh } from './types.js';
+import type { SceneSnapshot } from './scene-snapshot.js';
 
 Object.assign(globalThis, { GPUBufferUsage: { MAP_READ: 1, MAP_WRITE: 2, COPY_SRC: 4, COPY_DST: 8, INDEX: 16, VERTEX: 32, UNIFORM: 64, STORAGE: 128, INDIRECT: 256, QUERY_RESOLVE: 512 } });
 
@@ -114,17 +115,22 @@ function drain(scene: Scene, device: GPUDevice): void {
   }
 }
 
+/** The reference: every final batch takes the full CPU rebuild (merge, quantize, upload). */
+function forceRebuild(scene: Scene): void {
+  (scene as unknown as { streamWork: { assemble: () => null } }).streamWork.assemble = () => null;
+}
+
 interface Load { scene: Scene; finalize: ReturnType<typeof recordingDevice>['work']; streamFround: number; finalizeFround: number; counters: Record<string, number> }
 
 /** Stream like the viewer (one flush per arrival), then the time-sliced finalize. */
-async function streamedLoad(options: { rebuildReference?: boolean; recolor?: number; mutate?: (scene: Scene, first: readonly MeshData[]) => void } = {}): Promise<Load> {
+async function streamedLoad(options: { rebuildReference?: boolean; capture?: (snapshot: SceneSnapshot) => void; recolor?: number; mutate?: (scene: Scene, first: readonly MeshData[]) => void } = {}): Promise<Load> {
   const { device, work } = recordingDevice();
   const scene = new Scene();
   scene.setSpatialChunking({ cellSize: 32 });
   scene.setLodBuildsEnabled(true);
   scene.setQuantizedBatches(true);
-  // A snapshot capture needs the merged bytes of every final batch, so it takes the full rebuild.
-  if (options.rebuildReference) scene.captureNextFinalize(() => {});
+  if (options.rebuildReference) forceRebuild(scene);
+  if (options.capture) scene.captureNextFinalize(options.capture);
   const batches = arrivals();
   const streamFround = countFround(() => {
     for (const batch of batches) {
@@ -234,6 +240,29 @@ describe('cold finalize work after the last batch arrived', () => {
     assertSameBatches(assembled.scene, reference.scene);
   });
 
+  it('a scene snapshot capture (the cold load\'s, #9728) still assembles, and stores exactly the bytes the GPU draws', async () => {
+    let snapshot: SceneSnapshot | null = null;
+    const captured = await streamedLoad({ capture: (taken) => { snapshot = taken; } });
+    const batches = captured.scene.getBatchedMeshes();
+    assert.equal(captured.counters['render.finalize.assembled.count'], batches.length, 'every streamed bucket is assembled while capturing');
+    assert.equal(captured.finalize.vertexWriteBytes, 0, 'no CPU merge and upload for the capture');
+    const taken = snapshot as SceneSnapshot | null;
+    assert.ok(taken, 'the capture produced a snapshot');
+    assert.ok(taken.batches.length === batches.length, `${taken.batches.length} snapshot batches for ${batches.length}`);
+    const gpu = (buffer: GPUBuffer | undefined, length: number) => (buffer as unknown as StubBuffer).bytes.subarray(0, length);
+    const same = (a: Uint8Array, b: Uint8Array) => a.length === b.length && a.every((v, i) => v === b[i]);
+    const asBytes = (view: ArrayBufferView) => new Uint8Array(view.buffer, view.byteOffset, view.byteLength);
+    for (const stored of taken.batches) {
+      const batch = batches.find((b) => b.colorKey === stored.key)!;
+      assert.ok(batch, `a drawn batch for ${stored.key}`);
+      assert.ok(same(stored.vertexData, gpu(batch.vertexBuffer, stored.vertexData.byteLength)), `${stored.key}: vertex bytes as drawn`);
+      assert.ok(stored.indices.length === batch.indexCount && same(asBytes(stored.indices), gpu(batch.indexBuffer, stored.indices.byteLength)), `${stored.key}: indices as drawn`);
+      assert.ok((stored.lod1Indices?.length ?? 0) === (batch.lod1IndexCount ?? 0), `${stored.key}: LOD1 presence`);
+      if (stored.lod1Indices) assert.ok(same(asBytes(stored.lod1Indices), gpu(batch.lod1IndexBuffer, stored.lod1Indices.byteLength)), `${stored.key}: LOD1 as drawn`);
+    }
+    assertSameBatches(captured.scene, (await streamedLoad({ rebuildReference: true })).scene);
+  });
+
   it('a recolour that keeps the bucket key but changes the entity-lane salt rebuilds that bucket', async () => {
     // colorKey rounds to 1/1000 and the salt to 1/255: both colours key `504|…`, but salt from 128 and 129.
     const before: [number, number, number, number] = [0.50388, 0.3, 0.3, 1];
@@ -276,7 +305,7 @@ describe('cold finalize work after the last batch arrived', () => {
       const { device } = recordingDevice();
       const scene = new Scene();
       scene.setSpatialChunking({ cellSize: 32 }); scene.setLodBuildsEnabled(true); scene.setQuantizedBatches(true);
-      if (rebuildReference) scene.captureNextFinalize(() => {});
+      if (rebuildReference) forceRebuild(scene);
       const batches = arrivals();
       batches.forEach((batch, index) => {
         scene.queueMeshes(batch);
@@ -327,7 +356,7 @@ describe('cold finalize work after the last batch arrived', () => {
       for (const batch of all.slice(0, 6)) { scene.queueMeshes(batch); drain(scene, device); }
       scene.finalizeStreaming(device, pipeline); // the synchronous path
       assert.ok(retainedRuns(scene).records === 0, 'the synchronous finalize forgets its fragment records');
-      if (rebuildReference) scene.captureNextFinalize(() => {});
+      if (rebuildReference) forceRebuild(scene);
       const copiedBefore = work.copyBytes;
       // A second stream into the same buckets: the stub refuses copies from destroyed (retired) fragments.
       for (const batch of all.slice(6)) { scene.queueMeshes(batch); drain(scene, device); }

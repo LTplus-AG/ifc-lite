@@ -2436,20 +2436,20 @@ export class Scene {
     if (!origin) throw new Error('Unable to resolve a topology-safe GPU frame for mesh geometry.');
     const onMerged = this.snapshots.mergedSink(bucketKey, this.nextBatchId);
     const fragmentOf = bucketKey === undefined && !this.ephemeralStreamingMode ? ownerKey : undefined;
-    const result = (bucketKey !== undefined && !onMerged && this.streamWork.assemble(meshes, color, device, pipeline,
-      { id: this.nextBatchId, colorKey: bucketKey, origin, quantized: quantization, lod: this.lodBuildsEnabled }))
+    let kept: ArrayBuffer | Float32Array | undefined; // a fragment's bytes, for a capture's assembled batch
+    const result = (bucketKey !== undefined && this.streamWork.assemble(meshes, color, device, pipeline,
+      { id: this.nextBatchId, colorKey: bucketKey, origin, quantized: quantization, lod: this.lodBuildsEnabled, onMerged }))
       || createSceneBatch(meshes, color, device, pipeline, {
       // A derived batch (no bucketKey) is a subset of ONE material-uniform
       // bucket, so its first piece's finish labels it like bucketBaseKey does (#5582).
       id: this.nextBatchId, colorKey: bucketKey ?? ownerKey ?? this.colorKey(color, meshes[0]?.material),
       origin,
       quantized: quantization, lod: this.lodBuildsEnabled,
-      onMerged, ...(fragmentOf !== undefined ? { lattice: this.streamWork.latticeFor(fragmentOf), copySource: true } : {}),
+      onMerged: onMerged ?? (fragmentOf !== undefined && this.snapshots.capturing ? (bytes) => { kept = bytes.vertexData; } : undefined),
+      ...(fragmentOf !== undefined ? { lattice: this.streamWork.latticeFor(fragmentOf), copySource: true } : {}),
     }, bucketKey);
-    this.nextBatchId++;
-    if (!this.sharedFrameOrigins.has(modelIndex) && result.origin) {
-      this.sharedFrameOrigins.set(modelIndex, [result.origin[0] - offset[0], result.origin[1] - offset[1], result.origin[2] - offset[2]]);
-    }
+    this.nextBatchId++; if (kept) this.streamWork.keepBytes(result, kept);
+    if (!this.sharedFrameOrigins.has(modelIndex) && result.origin) this.sharedFrameOrigins.set(modelIndex, [result.origin[0] - offset[0], result.origin[1] - offset[1], result.origin[2] - offset[2]]);
     return this.modelTranslations.registerDrawable(result, modelIndex);
   }
 

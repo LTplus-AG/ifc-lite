@@ -40,6 +40,7 @@ import { TopologyMemo } from './scene-precision.js';
 import { colorSaltByte, entityLaneOf, packEntityLane } from './scene-geometry.js';
 import { createBatchUniform } from './scene-batch-upload.js';
 import type { BatchQuantization } from './scene-derived-batches.js';
+import type { MergedBatchBytes } from './scene-snapshot-batches.js';
 import { createStaticGpuBuffer } from './gpu-static-upload.js';
 import type { MeshUniformSlot } from './mesh-uniform-arena.js';
 import { LOD_MIN_TRIANGLES, lodCellSizeForBounds, simplifyIndicesByClustering } from './lod-simplify.js';
@@ -50,6 +51,8 @@ interface FragmentRun {
   readonly meshes: readonly MeshData[];
   /** Each mesh's colour salt in the entity lane when uploaded: an in-place recolour that keeps its bucket still changes it. */
   readonly salts: Uint8Array;
+  /** The vertex bytes it uploaded, kept only while a snapshot capture needs every final batch's bytes. */
+  readonly bytes?: ArrayBuffer | Float32Array;
 }
 
 export interface AssembleOptions {
@@ -59,6 +62,8 @@ export interface AssembleOptions {
   origin: [number, number, number];
   quantized: BatchQuantization;
   lod: boolean;
+  /** A snapshot capture's sink: handed the assembled batch's bytes, which needs every run's kept bytes. */
+  onMerged?: (bytes: MergedBatchBytes) => void;
 }
 
 /** Per-stream bookkeeping, from a stream's first append to its finalize swap. */
@@ -75,6 +80,8 @@ export class StreamAssembly {
   /** Keyed by the run's first mesh. */
   private readonly runs = new Map<MeshData, FragmentRun>();
   private live: ReadonlySet<BatchedMesh> | null = null;
+  /** A fragment's uploaded vertex bytes while a capture is armed, until `record` takes them. */
+  private readonly kept = new WeakMap<BatchedMesh, ArrayBuffer | Float32Array>();
 
   streamTopology(): TopologyMemo {
     return (this.topology ??= new TopologyMemo());
@@ -87,10 +94,14 @@ export class StreamAssembly {
     return lattice;
   }
 
-  /** Record a fragment uploaded from these registered meshes, whole and in this order. */
+  /** Record a fragment uploaded from these registered meshes, whole and in this order (with its kept bytes, if any). */
   record(fragment: BatchedMesh, meshes: readonly MeshData[]): void {
-    if (meshes.length > 0) this.runs.set(meshes[0], { fragment, meshes, salts: Uint8Array.from(meshes, (mesh) => colorSaltByte(mesh.color)) });
+    const bytes = this.kept.get(fragment);
+    this.kept.delete(fragment);
+    if (meshes.length > 0) this.runs.set(meshes[0], { fragment, meshes, salts: Uint8Array.from(meshes, (mesh) => colorSaltByte(mesh.color)), bytes });
   }
+
+  keepBytes(fragment: BatchedMesh, bytes: ArrayBuffer | Float32Array): void { this.kept.set(fragment, bytes); }
 
   /** Positions changed in place: no fragment's bytes, nor any verdict, can be trusted. */
   invalidate(): void {
@@ -128,7 +139,7 @@ export class StreamAssembly {
   ): BatchedMesh | null {
     if (!this.live) return null; // only a finalize assembles, from the fragments it retires
     const runs = this.cover(meshes);
-    const miss = runs ? encodingMiss(runs, options) : 'uncovered';
+    const miss = !runs ? 'uncovered' : encodingMiss(runs, options) ?? (options.onMerged && runs.some((run) => !run.bytes) ? 'capture' : null);
     if (miss || !runs) {
       perfCount(`render.finalize.rebuilt.${miss}`);
       return null;
@@ -178,15 +189,19 @@ export class StreamAssembly {
 
       let lod1IndexBuffer: GPUBuffer | undefined;
       let lod1IndexCount: number | undefined;
+      let lodIndices: Uint32Array | null = null;
       if (options.lod && indices.length >= LOD_MIN_TRIANGLES * 3) {
         const cellSize = lodCellSizeForBounds(bounds.min, bounds.max);
-        const lodIndices = simplifyIndicesByClustering(positionsAndLanes(meshes, vertexCount, options.origin), 4, indices, cellSize, 3);
+        lodIndices = simplifyIndicesByClustering(positionsAndLanes(meshes, vertexCount, options.origin), 4, indices, cellSize, 3);
         if (lodIndices) {
           lod1IndexBuffer = track(createStaticGpuBuffer(device, lodIndices, GPUBufferUsage.INDEX));
           lod1IndexCount = lodIndices.length;
         }
       }
       perfTally('render.finalize.assembled', vertexCount, 'vertices');
+      // The capture stores what the GPU copy holds: the same bytes, concatenated on the CPU.
+      options.onMerged?.({ vertexData: concatBytes(runs, vertexBytes, stride, !!quantized), indices,
+        ...(lod1IndexBuffer ? { lod1Indices: lodIndices! } : {}) });
 
       return {
         id: options.id,
@@ -257,6 +272,20 @@ function encodingMiss(runs: readonly FragmentRun[], options: AssembleOptions): s
     } else if (q) return 'lattice';
   }
   return null;
+}
+
+/** Each run's kept vertex bytes, in run order: what `assemble` copies on the GPU. */
+function concatBytes(runs: readonly FragmentRun[], vertexBytes: number, stride: number, quantized: boolean): ArrayBuffer | Float32Array {
+  const out = new Uint8Array(vertexBytes);
+  let offset = 0;
+  for (const { meshes, bytes } of runs) {
+    let length = 0;
+    for (const mesh of meshes) length += (mesh.positions.length / 3) * stride;
+    const source = bytes instanceof ArrayBuffer ? new Uint8Array(bytes, 0, length) : new Uint8Array(bytes!.buffer, bytes!.byteOffset, length);
+    out.set(source, offset);
+    offset += length;
+  }
+  return quantized ? out.buffer : new Float32Array(out.buffer);
 }
 
 function unionBounds(runs: readonly FragmentRun[]): { min: [number, number, number]; max: [number, number, number] } {

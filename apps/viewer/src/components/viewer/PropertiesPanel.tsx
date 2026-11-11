@@ -80,6 +80,7 @@ import { AttributeEditorField } from './properties/AttributeEditorField';
 import { CopyValueButton } from './properties/CopyValueButton';
 import { SelectionSummaryPanel } from './properties/SelectionSummaryPanel';
 import { AssistantAction } from './assistant/AssistantAction';
+import { ChunkErrorBoundary } from '@/components/ChunkErrorBoundary';
 
 // Loaded on the first structural selection: it is not entry-chunk weight (#9668).
 const StructuralCard = lazy(() => import('./properties/StructuralCard').then((m) => ({ default: m.StructuralCard })));
@@ -1495,7 +1496,7 @@ export function PropertiesPanel() {
                     `hasStructuralForSelection` for the same reason as the
                     schedule separator above. */}
                 {!findQuery && selectedEntity && structuralData && hasStructuralForSelection && (
-                  <Suspense fallback={null}>
+                  <ChunkErrorBoundary label="Structural Analysis card"><Suspense fallback={null}>
                     <StructuralCard
                       structuralData={structuralData}
                       sourceUnavailable={!activeDataStore?.source?.length}
@@ -1504,7 +1505,7 @@ export function PropertiesPanel() {
                       describeEntity={(expressId) => overlayAwareQuery.entityData({ modelId: selectedEntity.modelId, expressId })}
                       onSelectEntity={handleSelectRelatedEntity}
                     />
-                  </Suspense>
+                  </Suspense></ChunkErrorBoundary>
                 )}
               </div>
             )}

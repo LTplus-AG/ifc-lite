@@ -27,7 +27,7 @@ test('#7195 selected structural load matches native exported Properties metadata
   const { file } = await fixture(); assert.equal(force(extractStructuralOnDemand(file)), 1234);
   const ui = render(renderPanelBody('properties', () => undefined));
   // StructuralCard is a lazy chunk (#9668): wait for it rather than one tick.
-  await waitFor(() => /Structural Analysis/.test(ui.textContent ?? ''), `structural card in: ${ui.textContent}`); assert.match(ui.textContent ?? '', /1[,.’'\u202f\s]?234/);
+  await waitFor(() => /Structural Analysis/.test(ui.textContent ?? ''), 'the lazy structural card never rendered'); assert.match(ui.textContent ?? '', /1[,.’'\u202f\s]?234/);
   const selected = row(); assert.equal(selected.structuralStatus, 'available');
   assert.equal(selected.structural?.member.Thickness, 0.25);
   assert.equal(selected.structural?.activities[0].AppliedLoad?.components.ForceX, 1234);

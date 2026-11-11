@@ -58,7 +58,7 @@ async function loadModel(source: string, expressId: number) {
 /** Render the panel and wait for the lazily loaded structural card. */
 async function renderPanel(): Promise<HTMLElement> {
   const ui = render(<PropertiesPanel />);
-  await waitFor(() => ui.textContent?.includes('Structural Analysis') ?? false, `structural card in: ${ui.textContent}`);
+  await waitFor(() => ui.textContent?.includes('Structural Analysis') ?? false, 'the lazy structural card never rendered');
   return ui;
 }
 

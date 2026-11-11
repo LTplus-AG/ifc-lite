@@ -248,17 +248,15 @@ export function verifyReleaseLane(input) {
   if (unknown.length > 0) return { ok: false, lines: [`❌ ci-release-lane.mjs names job(s) the aggregate does not need: ${unknown.join(', ')}. Update LEAN_KEPT_JOBS.`] };
   const resultOf = (j) => results[j]?.result ?? 'absent';
   const skippedByLean = Object.keys(results).filter((j) => !LEAN_KEPT_JOBS.includes(j));
+  const listed = skippedByLean.map((j) => `- \`${j}\`: ${resultOf(j)}`);
   if (input.lane === 'lean') {
     if (d.lane !== 'lean') return { ok: false, lines: [`❌ UNJUSTIFIED_RELEASE_LANE: \`changes\` chose the lean lane but this run re-derives \`${d.lane}\` (${d.reason}). Skipped lanes are not a pass here.`] };
     if (resultOf('release-pr') !== 'success') return { ok: false, lines: [`❌ RELEASE_CHECKS_DID_NOT_PASS: the lean lane needs \`release-pr\` to succeed; it was \`${resultOf('release-pr')}\`.`] };
-    const lines = ['## Release PR lean lane (`CI_RELEASE_LANE=on`)', '', d.reason, '', 'Skipped on purpose; the `release` merge queue runs them:', ''];
-    for (const j of skippedByLean) lines.push(`- \`${j}\`: ${resultOf(j)}`);
-    return { ok: true, lines };
+    return { ok: true, lines: ['## Release PR lean lane (`CI_RELEASE_LANE=on`)', '', d.reason, '', 'Skipped on purpose; the `release` merge queue runs them:', '', ...listed] };
   }
   if (d.mode === 'shadow' && d.wouldBeLean) {
     const failed = skippedByLean.filter((j) => resultOf(j) === 'failure');
-    const lines = ['## Release PR lean lane, shadow mode (`CI_RELEASE_LANE=shadow`)', '', 'Every lane ran. The lean lane would have skipped:', ''];
-    for (const j of skippedByLean) lines.push(`- \`${j}\`: ${resultOf(j)}`);
+    const lines = ['## Release PR lean lane, shadow mode (`CI_RELEASE_LANE=shadow`)', '', 'Every lane ran. The lean lane would have skipped:', '', ...listed];
     lines.push('', failed.length > 0 ? `⚠️ The lean lane would have deferred a failure to the merge queue: ${failed.join(', ')}.` : 'None of them failed; the lean lane would have reached the same verdict.');
     return { ok: true, lines };
   }

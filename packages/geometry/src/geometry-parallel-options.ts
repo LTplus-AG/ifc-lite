@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import type { GpuRecordFrame } from './gpu-record-frame.js';
+export { relayRecordFrame } from './gpu-record-frame.js';
 import type { TessellationQuality } from './types.js';
 import type { BatchSizingConfig } from './batch-sizing.js';
 import type { StallPhaseHandle } from './stall-phase.js';
@@ -136,4 +138,10 @@ export interface ProcessParallelOptions {
    * asks its workers to post their own spans back. Omitted ⇒ nothing recorded.
    */
   trace?: LoadTrace;
+  /**
+   * The renderer's frame for this load's streamed fragments once it has one
+   * (`gpu-record-frame.ts`): polled as batches arrive, then sent to every
+   * worker so they encode each mesh's GPU records. Omitted ⇒ no records.
+   */
+  gpuRecordFrame?: () => GpuRecordFrame | null;
 }

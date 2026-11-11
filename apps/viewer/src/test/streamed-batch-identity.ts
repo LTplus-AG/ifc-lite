@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import type { MeshData } from '@ifc-lite/geometry';
+import { acceptRecordFrame, attachGpuRecords } from '@ifc-lite/geometry/gpu-record-frame';
 import { Scene, type BatchedMesh, type RenderPipeline } from '@ifc-lite/renderer';
 
 /**
@@ -43,7 +44,7 @@ const pipeline = { getUniformBufferSize: () => 256, getBindGroupLayout: () => ({
 export interface StreamedScene { scene: Scene; batches: BatchedMesh[] }
 
 /** The viewer's settings: 32 m chunks, LOD1, quantized batches. `rebuild` forces every final batch through the CPU rebuild. */
-export async function streamIntoScene(meshes: readonly MeshData[], options: { arrival?: number; rebuild?: boolean; capture?: boolean } = {}): Promise<StreamedScene> {
+export async function streamIntoScene(meshes: readonly MeshData[], options: { arrival?: number; rebuild?: boolean; capture?: boolean; workerRecords?: boolean } = {}): Promise<StreamedScene> {
   const device = bytesDevice();
   const scene = new Scene();
   scene.setSpatialChunking({ cellSize: 32 });
@@ -52,9 +53,19 @@ export async function streamIntoScene(meshes: readonly MeshData[], options: { ar
   if (options.rebuild) (scene as unknown as { streamWork: { assemble: () => null } }).streamWork.assemble = () => null;
   if (options.capture) scene.captureNextFinalize(() => {});
   const arrival = options.arrival ?? 200;
+  // `workerRecords`: what the geometry workers do (M2). Once the scene has its
+  // frame, every later mesh arrives with its GPU records attached.
+  const session = {};
+  let framed = false;
   for (let at = 0; at < meshes.length; at += arrival) {
+    if (options.workerRecords && !framed) {
+      const frame = scene.gpuRecordFrame();
+      if (frame) framed = acceptRecordFrame(session, { type: 'record-frame', ...frame });
+    }
     // Fresh objects per side: the scene registers and may re-key the meshes it is given.
-    scene.queueMeshes(meshes.slice(at, at + arrival).map((mesh) => ({ ...mesh })));
+    const batch: MeshData[] = meshes.slice(at, at + arrival).map((mesh) => { const copy = { ...mesh }; delete copy.gpuRecords; return copy; });
+    if (framed) for (const mesh of batch) attachGpuRecords(session, mesh, []);
+    scene.queueMeshes(batch);
     for (let flushes = 0; scene.hasQueuedMeshes(); flushes++) {
       if (flushes > 10_000) throw new Error('flushPending made no progress');
       scene.flushPending(device, pipeline, 1e9);

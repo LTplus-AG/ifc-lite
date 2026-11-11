@@ -2656,6 +2656,8 @@ export class Scene {
   sceneSnapshotPolicy(): string { return this.snapshots.policy(); }
   isSceneSnapshotHydrating(): boolean { return this.snapshots.hydrating; }
   captureNextFinalize(onCaptured: (snapshot: SceneSnapshot) => void): void { this.snapshots.captureNextFinalize(onCaptured); }
+  /** The primary model's streamed-fragment frame once its first fragment drew, for GPU records built in the geometry workers (M2); null unless fragments quantize per chunk cell, untranslated. */
+  gpuRecordFrame(): { frame: [number, number, number]; cellSize: number } | null { const f = this.sharedFrameOrigins.get(0), t = this.modelTranslations.get(0); return f && this.quantizedBatchesEnabled && this.spatialChunking && !this.ephemeralStreamingMode && t[0] === 0 && t[1] === 0 && t[2] === 0 ? { frame: [f[0], f[1], f[2]], cellSize: this.spatialChunking.cellSize } : null; }
   adoptSceneSnapshot(snapshot: SceneSnapshot, device: GPUDevice, pipeline: RenderPipeline): object | null { return this.snapshots.adopt(snapshot, device, pipeline); }
   hydrateSceneSnapshot(adoption: object, meshes: readonly MeshData[]): boolean { return this.snapshots.hydrate(adoption, meshes); }
   abandonSceneSnapshot(adoption: object): void { this.snapshots.abandon(adoption); }
@@ -2705,14 +2707,12 @@ export class Scene {
     this.entityColorTable.clear();
     this.setInstancedColorOverrides(null);
   }
-
   /** Monotonic counter that changes whenever the colour-override set changes.
    *  The render loop folds it into the partial sub-batch cache epoch so the
    *  per-frame fast path stays correct across override changes. */
   getColorOverrideGeneration(): number {
     return this.colorOverrideGeneration;
   }
-
   /** Changes whenever what a CPU pick (raycast, snap) can hit may have changed: pieces added or dropped, their positions, the batch and textured lists the pick walks, instances. Selection highlight meshes, recolours and GPU or host residency demotion keep it (#8998). */
   getPickGeometryRevision(): number { return this.pickGeometryRevision; }
 

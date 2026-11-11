@@ -24,7 +24,7 @@
  * scans first 100 K bytes → meta → first chunk → first batch).
  */
 
-import type { ProcessParallelOptions } from './geometry-parallel-options.js';
+import { relayRecordFrame, type ProcessParallelOptions } from './geometry-parallel-options.js';
 import { postGeometryWorkerInit, spawnGeometryWorker } from './geometry-worker-init.js';
 import type { CoordinateHandler } from './coordinate-handler.js';
 import type { MeshData } from './types.js';
@@ -130,7 +130,7 @@ export async function* processParallel(
 ): AsyncGenerator<StreamingGeometryEvent> {
   const sourceSessionId = `geometry-source-${++nextSourceSessionId}`;
   // #6956: spans for this pool; worker spans hang under `geometry.pool`.
-  const trace = options?.trace ?? NOOP_LOAD_TRACE; let poolSpan = -1, tracedWorkers = 0;
+  const trace = options?.trace ?? NOOP_LOAD_TRACE; let poolSpan = -1, tracedWorkers = 0; const recordFrame = relayRecordFrame(options?.gpuRecordFrame);
   coordinator.reset();
   yield { type: 'start', totalEstimate: buffer.length / 1000 };
   yield { type: 'model-open', modelID: 0 };
@@ -368,7 +368,7 @@ export async function* processParallel(
         ledger.onSliceDone(workerIndex, msg.seq, performance.now());
         return;
       }
-      if (msg.type === 'batch') {
+      if (msg.type === 'batch') { recordFrame.offer(workers); // M2: the renderer's frame, once it has one
         if (firstBatchByWorker[workerIndex] === undefined) {
           firstBatchByWorker[workerIndex] = elapsed();
           trace.milestone('geometry.firstBatch');

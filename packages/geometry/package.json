@@ -31,6 +31,11 @@
       "import": "./dist/gpu-records.js",
       "default": "./dist/gpu-records.js"
     },
+    "./gpu-record-frame": {
+      "types": "./dist/gpu-record-frame.d.ts",
+      "import": "./dist/gpu-record-frame.js",
+      "default": "./dist/gpu-record-frame.js"
+    },
     "./rtc-rebase": {
       "types": "./dist/rtc-rebase.d.ts",
       "import": "./dist/rtc-rebase.js",

@@ -25,7 +25,7 @@ const FIXTURES = ['ara3d/AC20-FZK-Haus.ifc', 'ara3d/duplex.ifc', 'ara3d/C20-Inst
 for (const name of FIXTURES) {
   const fixture = new URL(`../../../../tests/models/${name}`, import.meta.url);
   const skip = !existsSync(fixture) ? `Run pnpm fixtures for ${name}.` : harness.skip;
-  it(`${name}: streamed final batches equal the full rebuild, with and without a snapshot capture`, { skip }, async (t) => {
+  it(`${name}: streamed final batches equal the full rebuild: with and without a snapshot capture, and from worker GPU records`, { skip }, async (t) => {
     const bytes = new Uint8Array(readFileSync(fixture));
     await harness.load(new File([bytes.buffer], name.split('/').pop()!, { lastModified: 1 }));
     const state = useViewerStore.getState();
@@ -47,5 +47,15 @@ for (const name of FIXTURES) {
     const captured = await streamIntoScene(meshes, { capture: true });
     const capturedDifference = firstBatchDifference(captured.batches, reference.batches);
     assert.ok(capturedDifference === null, `${name} with a capture armed: ${capturedDifference}`);
+
+    // M2: fragments from the geometry workers' GPU records, after the first arrival fixed the frame.
+    const beforeRecords = perfCounters.read();
+    const recorded = await streamIntoScene(meshes, { workerRecords: true });
+    const recordCounters = diffCounters(perfCounters.read(), beforeRecords);
+    const fromRecords = recordCounters['render.stream.records.vertices'] ?? 0;
+    t.diagnostic(`${name}: ${fromRecords} streamed vertices from worker records, ${recordCounters['render.mergeGeometry.vertices'] ?? 0} merged on the main thread`);
+    assert.ok(meshes.length <= 200 || fromRecords > 0, `${name}: fragments are built from worker records`);
+    const recordedDifference = firstBatchDifference(recorded.batches, reference.batches);
+    assert.ok(recordedDifference === null, `${name} from worker records: ${recordedDifference}`);
   });
 }

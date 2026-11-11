@@ -750,7 +750,7 @@ export class GeometryProcessor {
     /** Opt in to hung-call recovery; see `ProcessParallelOptions.hungJobTimeoutMs` (#4884). */
     hungJobTimeoutMs?: number,
     /** See `ProcessParallelOptions.stallPhaseHandle` (#4902). */
-    stallPhaseHandle?: StallPhaseHandle, trace?: ProcessParallelOptions['trace'], // #6956
+    stallPhaseHandle?: StallPhaseHandle, trace?: ProcessParallelOptions['trace'], gpuRecordFrame?: ProcessParallelOptions['gpuRecordFrame'], // #6956, M2
   ): AsyncGenerator<StreamingGeometryEvent> {
     // Initialize if needed
     if (!this.bridge?.isInitialized()) {
@@ -762,7 +762,7 @@ export class GeometryProcessor {
       sourceFingerprint,
       signal,
       hungJobTimeoutMs,
-      stallPhaseHandle, trace,
+      stallPhaseHandle, trace, gpuRecordFrame,
       // Issue #540: forward the merge-layers preference snapshotted
       // at construction time. processParallel posts `set-merge-layers`
       // to every spawned worker right after `init`.
@@ -837,7 +837,7 @@ export class GeometryProcessor {
       hungJobTimeoutMs?: number;
       /** See `ProcessParallelOptions.stallPhaseHandle` (#4902); parallel path only. */
       stallPhaseHandle?: StallPhaseHandle;
-      trace?: ProcessParallelOptions['trace']; // load trace, parallel path only (#6956)
+      trace?: ProcessParallelOptions['trace']; gpuRecordFrame?: ProcessParallelOptions['gpuRecordFrame']; // load trace; the renderer's GPU-record frame (M2). Parallel path only (#6956)
     } = {}
   ): AsyncGenerator<StreamingGeometryEvent> {
     const sizeThreshold = options.sizeThreshold ?? 2 * 1024 * 1024; // Default 2MB
@@ -910,7 +910,7 @@ export class GeometryProcessor {
           options.sourceFingerprint,
           options.signal,
           options.hungJobTimeoutMs,
-          options.stallPhaseHandle, options.trace,
+          options.stallPhaseHandle, options.trace, options.gpuRecordFrame,
         );
       } else {
         yield* this.processStreaming(buffer, options.entityIndex, batchConfig, options.sharedRtcOffset);

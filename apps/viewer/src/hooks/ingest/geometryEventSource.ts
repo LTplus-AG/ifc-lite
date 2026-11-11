@@ -18,6 +18,7 @@
 import { DEFAULT_HUNG_JOB_TIMEOUT_MS, type GeometryProcessor, type StallPhaseHandle, type StreamingGeometryEvent } from '@ifc-lite/geometry';
 import { retainedKernel } from '@ifc-lite/viewer-retained';
 import { getGeomWorkerOverride } from '../../store/constants.js';
+import { getGlobalRenderer } from '../useBCF.js';
 import { getDynamicBatchConfig } from '../../utils/ifcConfig.js';
 import type { CachePlan } from '../cacheTier.js';
 
@@ -108,5 +109,9 @@ export function openGeometryEvents(kernel: GeometryKernelLoad, request: Geometry
     // is unaffected by the count (disjoint deterministic element slices).
     workerCountOverride: getGeomWorkerOverride(),
     trace: request.trace,
+    // M2: once the renderer drew the primary model's first fragment, the
+    // workers encode every later mesh's GPU records in its frame, and the
+    // main thread uploads them instead of merging and quantizing.
+    ...(request.sharedRtcOffset ? {} : { gpuRecordFrame: () => getGlobalRenderer()?.getScene().gpuRecordFrame() ?? null }),
   });
 }

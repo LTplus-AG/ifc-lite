@@ -5,6 +5,7 @@
 import { applySkipVoids } from './skip-voids.js';
 import { attachCanonicalMeshMetadata } from './canonical-mesh-metadata.js';
 import { ownedWasmBuffer } from './wasm-owned-buffer.js';
+import { acceptRecordFrame, attachGpuRecords } from './gpu-record-frame.js';
 import { readSpecularMaterial } from './mesh-specular.js';
 import { publishPrepassFingerprint, runPrepassWithFingerprint } from './prepass-source-fingerprint.js';
 import { canReuseWorkerSource, type BytePrepassApi, type SourcePrepassApi, type FinalizeStyleArgs } from './worker-prepass-source.js';
@@ -1031,7 +1032,7 @@ function collectMeshes(
           ...(mesh.materialId !== undefined ? { materialId: mesh.materialId } : {}), // spreads as in convertMeshCollectionToBatch
           ...(specularMaterial ? { material: specularMaterial } : {}), // #5582
         };
-        session.pendingTransfers.push(ownedWasmBuffer(positions), ownedWasmBuffer(normals), ownedWasmBuffer(indices));
+        session.pendingTransfers.push(ownedWasmBuffer(positions), ownedWasmBuffer(normals), ownedWasmBuffer(indices)); attachGpuRecords(session, meshData, session.pendingTransfers); // M2
         session.cumulativeMeshBytes += positions.byteLength + normals.byteLength + indices.byteLength;
         // #961: surface texture + per-vertex UVs (decoded to RGBA8 in Rust). Carried
         // as transferables so there is no SAB→scratch copy (see SAB-streaming memo).
@@ -1639,7 +1640,7 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       await processSliceStreaming(activeSession, e.data.jobsFlat, e.data.seq, e.data.maxBatchJobs);
       return;
     }
-
+    if (acceptRecordFrame(activeSession, e.data)) return; // M2: the renderer's frame for GPU records
     if (e.data.type === 'set-styles') {
       // Update the active session in place. The streaming pre-pass posts
       // this AFTER its main scan completes, so workers may have already

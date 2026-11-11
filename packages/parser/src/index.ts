@@ -141,8 +141,8 @@ export {
 // Structural analysis extractor — IfcStructuralAnalysisModel, the
 // IfcStructuralMember / IfcStructuralConnection / IfcStructuralActivity
 // branches, IfcStructuralLoadGroup / IfcStructuralLoadCase,
-// IfcStructuralResultGroup, IfcBoundaryCondition, and the two structural
-// connects-relationships.
+// IfcStructuralResultGroup, IfcBoundaryCondition, the structural
+// connects-relationships and the physical-to-analytical links.
 export {
   extractStructuralOnDemand,
   type StructuralExtraction,

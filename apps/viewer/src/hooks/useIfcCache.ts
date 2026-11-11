@@ -176,7 +176,7 @@ export function useIfcCache() {
         let firstVisible: Promise<void> | undefined;
         if (adopted) {
           firstVisible = adopted.firstVisible;
-          allMeshes = await publishAdoptedSceneMeshes(adopted, open, modelId, cacheResult, cacheKey, isStale, appendGeometryBatch);
+          allMeshes = await publishAdoptedSceneMeshes(adopted, open, modelId, cacheResult, cacheKey, isStale, trace, appendGeometryBatch);
         } else {
           if (await captureSceneSnapshotOfHit(cacheResult, cacheKey, { headerInfo }, isStale)) {
             return { success: false, meshCount: 0, totalVertices: 0, totalTriangles: 0 };
@@ -185,7 +185,7 @@ export function useIfcCache() {
           setGeometryStreamingActive(true);
           try {
             for (let i = 0; i < open.chunks.length; i++) {
-              const chunkMeshes = await open.readChunk(i);
+              const chunkMeshes = await trace.span('cache.chunkDecode', () => open.readChunk(i), { chunk: i });
               // Per-chunk re-check: every iteration awaits `readChunk` AND yields
               // to the event loop at the end of the body, so supersession can
               // land BETWEEN chunks. Without this, the remaining chunks of the

@@ -18,7 +18,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { IfcParser, extractPropertiesOnDemand, type IfcDataStore } from '@ifc-lite/parser';
+import { IfcParser, extractPropertiesOnDemand, extractQuantitiesOnDemand, type IfcDataStore } from '@ifc-lite/parser';
 import { PropertyValueType, QuantityType } from '@ifc-lite/data';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { StepExporter } from './step-exporter.js';
@@ -399,4 +399,41 @@ describe('shared IfcPropertySet copy-on-write export (#5794)', () => {
     expect(customBSets(text, WALL_A)).toEqual([{ guid: expect.any(String), kinds: rest }]);
     expect(customBSets(text, WALL_B)).toEqual([{ guid: SHARED_GUID, kinds: SOURCE_KINDS }]);
   });
+});
+
+it('#9296 editing a copied owner retains a definition named by separate surviving relationships', async () => {
+  const source = SHARED_PSET_IFC.replace('(#20,#21,#22),#40', '(#20),#40')
+    .replace('ENDSEC;\nEND-ISO', `#42=IFCRELDEFINESBYPROPERTIES('0x8Q_7Can5hOwBoiPhy1M2',$,$,$,(#21),#40);
+#43=IFCRELDEFINESBYPROPERTIES('0x8Q_7Can5hOwBoiPhy1M3',$,$,$,(#22),#40);
+ENDSEC;\nEND-ISO`);
+  const { text, store } = await exportEdited(view => {
+    view.setProperty(WALL_B, 'Custom_B', 'B1', 'copy override', PropertyValueType.Label);
+  }, source);
+  expect(customBValues(store, WALL_A)).toMatchObject({ B1: 'b1' });
+  expect(customBValues(store, WALL_B)).toMatchObject({ B1: 'copy override' });
+  expect(customBValues(store, WALL_C)).toMatchObject({ B1: 'b1' });
+  for (const id of [WALL_A, WALL_C]) expect(customBSets(text, id)).toEqual([{ guid: SHARED_GUID, kinds: SOURCE_KINDS }]);
+});
+
+it('#9296 a quantity definition survives while another relationship still uses it', async () => {
+  const source = SHARED_PSET_IFC.replace('ENDSEC;\nEND-ISO', `
+#50=IFCQUANTITYLENGTH('Length',$,$,5.,$);
+#51=IFCELEMENTQUANTITY('1yqM3I0Wn6ah7BCQg6Cf_U',$,'Qto_WallBaseQuantities',$,$,(#50));
+#52=IFCRELDEFINESBYPROPERTIES('0x8Q_7Can5hOwBoiPhy1M2',$,$,$,(#20),#51);
+#53=IFCRELDEFINESBYPROPERTIES('0x8Q_7Can5hOwBoiPhy1M3',$,$,$,(#21),#51);
+#54=IFCRELDEFINESBYPROPERTIES('0x8Q_7Can5hOwBoiPhy1M4',$,$,$,(#22),#51);
+ENDSEC;\nEND-ISO`);
+  const data = await parse(source), view = liveView(data);
+  view.setQuantityExtractor(id => extractQuantitiesOnDemand(data, id));
+  view.setQuantity(WALL_B, 'Qto_WallBaseQuantities', 'Length', 6, QuantityType.Length);
+  const output = new StepExporter(data, view).export({ schema: 'IFC4', applyMutations: true }).content;
+  const text = new TextDecoder().decode(output), recs = records(text), reopened = await parse(text);
+  expect(recs.get(51)?.type, 'saved quantity definition remains available').toBe('IFCELEMENTQUANTITY');
+  for (const [id, length] of [[WALL_A, 5], [WALL_B, 6], [WALL_C, 5]]) {
+    expect(extractQuantitiesOnDemand(reopened, id).find(set => set.name === 'Qto_WallBaseQuantities')
+      ?.quantities.find(quantity => quantity.name === 'Length')?.value).toBe(length);
+  }
+  for (const record of recs.values()) if (record.type === 'IFCRELDEFINESBYPROPERTIES') {
+    expect(recs.has(refs(record.args).at(-1)!)).toBe(true);
+  }
 });

@@ -284,14 +284,11 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
     set({ activeTool });
   },
   setEditEnabled: (editEnabled) => {
-    // Edit mode is the Model workspace's (#6232): entering or leaving goes
-    // through the session slice, which keeps `editEnabled` in step (no
-    // editable model = no workspace = edit mode stays off). The bare flag is
-    // for a UISlice composed without the session slice.
+    // Data edits no longer need this flag (#9296). Turning edit mode on is
+    // for geometry and authoring, so it enters Model, which keeps the flag in
+    // step; the bare flag is for a UISlice composed without the session slice.
     const cross = get() as unknown as WorkspaceCrossSlice;
     if (editEnabled) {
-      // Collab role gate: only editor/admin (or single-user, role===null)
-      // may enter edit mode — the single chokepoint for every authoring surface.
       if (cross.canCollabEdit && !cross.canCollabEdit()) return;
       if (cross.enterModelWorkspace) cross.enterModelWorkspace();
       else set({ editEnabled: true });
@@ -313,7 +310,10 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
     }));
   },
   toggleEditEnabled: () => {
-    get().setEditEnabled(!get().editEnabled);
+    const cross = get() as unknown as WorkspaceCrossSlice;
+    if (cross.workspaceMode === 'model') cross.exitModelWorkspace?.();
+    else if (cross.enterModelWorkspace) cross.enterModelWorkspace();
+    else get().setEditEnabled(!get().editEnabled);
   },
 
   setPropertiesActiveTab: (propertiesActiveTab) => set({ propertiesActiveTab }),

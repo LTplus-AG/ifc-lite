@@ -54,8 +54,6 @@
 # removed. A hand-picked number fails; a shrink that landed in another PR
 # stays a note, and so does slack left on a row this change only lowered.
    524 apps/viewer-embed/src/bridge/handler.ts
-   454 apps/viewer/src/components/extensions/ExtensionsPanel.tsx
-   402 apps/viewer/src/components/extensions/FlavorDialog.tsx
    665 apps/viewer/src/components/mcp/data.ts
   1317 apps/viewer/src/components/mcp/McpLanding.tsx
    525 apps/viewer/src/components/mcp/McpPlayground.tsx
@@ -255,10 +253,9 @@
    952 packages/renderer/src/pipeline.ts
    465 packages/renderer/src/pointcloud/point-cloud-renderer.ts
    758 packages/renderer/src/pointcloud/point-cloud-spatial-index.ts
-   467 packages/renderer/src/raycast-engine.ts
-  3679 packages/renderer/src/renderer.ts
+  3677 packages/renderer/src/renderer.ts
    462 packages/renderer/src/scene-raycaster.ts
-  4106 packages/renderer/src/scene.ts
+  4104 packages/renderer/src/scene.ts
    589 packages/renderer/src/section-2d-overlay.ts
    564 packages/renderer/src/shaders/main.wgsl.ts
    417 packages/renderer/src/shadow-pass.ts

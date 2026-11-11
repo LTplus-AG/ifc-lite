@@ -125,16 +125,17 @@ export async function publishAdoptedSceneMeshes(
   cacheResult: CacheResult,
   cacheKey: string | undefined,
   isStale: (() => boolean) | undefined,
+  trace: LoadTrace,
   append: (modelId: string, meshes: MeshData[], coordinateInfo?: CoordinateInfo) => void,
 ): Promise<MeshData[]> {
   const shardGeneration = instancedShardGeneration(); // a later reset supersedes the requeue below
-  const chunks = await Promise.all(open.chunks.map((_, i) => open.readChunk(i)));
+  const chunks = await Promise.all(open.chunks.map((_, i) => trace.span('cache.chunkDecode', () => open.readChunk(i), { chunk: i })));
   if (isStale?.()) return [];
   const meshes = chunks.flat();
   setPendingSceneSnapshot(adopted.adoption, () => {
     enqueueInstancedShards(modelId, adopted.shards, shardGeneration);
     forgetRefusedSnapshot(cacheResult, cacheKey);
-  }, adopted.fit);
+  }, adopted.fit, trace);
   append(modelId, meshes, open.coordinateInfo);
   return meshes;
 }

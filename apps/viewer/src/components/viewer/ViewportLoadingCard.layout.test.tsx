@@ -37,7 +37,7 @@ for (const [width, height] of [[320, 640], [360, 740], [375, 553], [390, 844], [
             <div data-test-toolbar><MobileToolbar /></div>
             <div data-test-viewport style={{ position: 'relative', flex: 1 }}>
               <ViewportOverlays />
-              {phone && <MobilePanelLauncher bottomInset={0} />}
+              {phone && <MobilePanelLauncher />}
             </div>
           </div>
         </TooltipProvider>);

@@ -257,6 +257,24 @@
   background-image: linear-gradient(var(--color-active-surface), var(--color-active-surface));
 }
 
+/* Safe-area padding (#9718): `p{t,r,b,l}-safe-N` pads an edge the element
+   shares with the screen by the larger of spacing step N and that edge's
+   system inset (Dynamic Island, punch hole, home indicator, rounded corners).
+   `-0` is the bare inset. One home for the idiom the HUD and the mobile shell
+   share, instead of an arbitrary `max(…, env(…))` value per call site. */
+@utility pt-safe-* {
+  padding-top: max(calc(var(--spacing) * --value(number)), env(safe-area-inset-top));
+}
+@utility pr-safe-* {
+  padding-right: max(calc(var(--spacing) * --value(number)), env(safe-area-inset-right));
+}
+@utility pb-safe-* {
+  padding-bottom: max(calc(var(--spacing) * --value(number)), env(safe-area-inset-bottom));
+}
+@utility pl-safe-* {
+  padding-left: max(calc(var(--spacing) * --value(number)), env(safe-area-inset-left));
+}
+
 /* Custom theme configuration */
 @theme {
   /* #8802 status roles */

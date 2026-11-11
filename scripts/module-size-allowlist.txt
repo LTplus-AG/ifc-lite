@@ -99,7 +99,7 @@
    880 apps/viewer/src/components/viewer/useMouseControls.ts
    461 apps/viewer/src/components/viewer/ViewerLayout.tsx
   1507 apps/viewer/src/components/viewer/Viewport.tsx
-   846 apps/viewer/src/components/viewer/ViewportContainer.tsx
+   736 apps/viewer/src/components/viewer/ViewportContainer.tsx
    500 apps/viewer/src/components/viewer/ZonesPanel.tsx
    847 apps/viewer/src/hooks/ids/idsExportService.ts
    598 apps/viewer/src/hooks/ingest/federationAlign.ts

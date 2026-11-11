@@ -12,12 +12,11 @@ import { useLevelDisplayEffect } from '@/hooks/useLevelDisplayEffect';
 import { useAuthoredGridOverlay } from './useAuthoredGridOverlay';
 import { ingestDxfFiles, splitDxfFiles } from '@/hooks/ingest/dxfIngest';
 import { Viewport } from './Viewport';
+import { ViewportWelcomeLayer } from './welcome/ViewportWelcomeLayer';
+import { useWarmShell } from './welcome/warm-shell';
 import { useWindowFileDrop } from './useWindowFileDrop';
 import { ViewportOverlays } from './ViewportOverlays';
-import { WebGpuTroubleshootingDetails, webGpuBannerBlurb } from './WebGpuTroubleshooting';
-import { ViewportWelcome } from './welcome/ViewportWelcome';
 import { useReloadResume } from '@/hooks/useReloadResume';
-import { ViewportLoadErrorCard } from './ViewportLoadErrorCard';
 import { useTranslation } from '@/i18n';
 import { MergeLayersBanner } from './MergeLayersBanner';
 import { GeometryModeBanner } from './GeometryModeBanner';
@@ -52,7 +51,7 @@ import {
   openIfcFilesWithHandles,
   handlesFromDataTransfer,
 } from '@/services/file-system-access';
-import { FILE_ACCEPT, isModelSidecarFile, isSupportedModelFile } from '@/services/supported-model-files';
+import { isModelSidecarFile, isSupportedModelFile } from '@/services/supported-model-files';
 import { usePreparedModelFileRoute } from '@/hooks/ingest/usePreparedModelFileRoute';
 import {
   SOURCE_DOWNLOAD_EVENT,
@@ -65,7 +64,7 @@ import { sanitizeFilename } from '@/lib/export/download';
 import { enqueueSourceLoad } from '@/lib/sources/loadQueue';
 import { toast, Toaster } from '@/components/ui/toast';
 import { reportFileOpenRejected } from '@/hooks/ingest/fileOpenRejected';
-import { Upload, AlertTriangle, ChevronDown, ExternalLink, Plus } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import { createBlankIfcFile } from '@/utils/createBlankIfc';
 import { launchModelCommand } from '@/lib/commands/modeling/keys-workspace';
 import type { PointCloudAsset } from '@ifc-lite/geometry';
@@ -84,6 +83,9 @@ const ScanDetectionOverlay = lazy(() => import('./useScanDetectionOverlay')
     console.warn('[scan-to-bim] the detection overlay could not load', error);
     return { default: () => null };
   }));
+
+/** The warm shell's style while the welcome layer covers it: laid out (the canvas keeps its size), never painted. */
+const HIDDEN = { visibility: 'hidden' } as const;
 
 export function ViewportContainer() {
   // Drive Stacked / Solo / Exploded level display from the slice.
@@ -115,13 +117,8 @@ export function ViewportContainer() {
   // Subscribe to mutationVersion so Cesium reacts to georef edits
   const mutationVersion = useViewerStore((s) => s.mutationVersion);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [showTroubleshooting, setShowTroubleshooting] = useState(false);
   const [recentFiles, setRecentFiles] = useState<RecentFileEntry[]>(getRecentFiles); // seeded: a fresh visit lists past opens
   const { webgpu, guard: guardWebGpu } = useWebGpuOpenGuard();
-  // `webGpuBannerBlurb` is a plain function, not a component — pass this
-  // component's own `t` so the banner headline re-renders on a live locale
-  // switch instead of reading the registry's non-reactive `resolve` default
-  // (review on #5086).
   const { t } = useTranslation();
 
   const viewerStoreApi = getViewerStoreApi();
@@ -622,215 +619,117 @@ export function ViewportContainer() {
 
   // Empty state when no file is loaded at all (show starting UI)
   // But NOT when models are loaded but just hidden - in that case show empty 3D canvas
-  if (!hasLoadedModels && !loading) {
-    return (
-      <div
-        className="relative h-full w-full bg-zinc-50 dark:bg-[#111219] text-zinc-900 dark:text-zinc-50 overflow-hidden"
-        data-viewport
-      >
-
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept={FILE_ACCEPT}
-          multiple
-          onChange={handleFileSelect}
-          className="hidden"
-        />
-
-        {/* Drop overlay — full window, since the whole window is the drop target (#5845) */}
-        {isDragging && createPortal(
-          <div className="pointer-events-none fixed inset-0 z-50 bg-primary/10 backdrop-blur-[2px] flex items-center justify-center p-8">
-            <div className="border-4 border-dashed border-primary bg-popover/90 p-12 max-w-2xl w-full text-center shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] dark:shadow-[8px_8px_0px_0px_rgba(255,255,255,1)] transition-all">
-              <Upload className="h-20 w-20 mx-auto text-primary mb-6" />
-              <p className="text-3xl font-black uppercase tracking-tight text-primary">{t('viewportLighting.container.emptyState.dropOverlay.title')}</p>
-            </div>
-          </div>,
-          document.body,
-        )}
-
-        {/* WebGPU Not Supported Banner — compact on mobile; tokens, not the hard-coded Tokyo Night hex (#5504). */}
-        {!webgpu.checking && !webgpu.supported && (
-          <div className="absolute top-0 left-0 right-0 z-40 max-h-[40vh] overflow-auto">
-            {/* Hazard stripes background */}
-            <div
-              className="absolute inset-0 opacity-10"
-              style={{ backgroundImage: 'repeating-linear-gradient(-45deg, transparent, transparent 10px, var(--color-destructive) 10px, var(--color-destructive) 20px)' }}
-            />
-            <div className="relative border-b-4 border-destructive bg-background px-4 py-5">
-              <div className="max-w-3xl mx-auto flex items-start gap-4">
-                {/* Icon container with brutalist frame */}
-                <div className="flex-shrink-0 border-2 border-destructive p-2 bg-destructive/10">
-                  <AlertTriangle className="h-6 w-6 text-destructive" />
-                </div>
-
-                <div className="flex-1 min-w-0">
-                  <h3 className="font-black text-lg uppercase tracking-wider text-destructive mb-1">
-                    {t('viewportLighting.container.emptyState.webgpuBanner.heading')}
-                  </h3>
-                  <p className="font-mono text-sm text-foreground/80 leading-relaxed">
-                    {webGpuBannerBlurb(webgpu.category, t)}
-                    {webgpu.reason && (
-                      <span className="block mt-1 text-muted-foreground">
-                        {webgpu.reason}
-                      </span>
-                    )}
-                  </p>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <a
-                      href="https://caniuse.com/webgpu"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-mono uppercase tracking-wide border border-border text-primary hover:border-primary hover:bg-primary/10 transition-colors"
-                    >
-                      {t('viewportLighting.container.emptyState.webgpuBanner.checkBrowserSupport')}
-                      <ExternalLink className="h-3 w-3" />
-                    </a>
-                    <span className="inline-flex items-center px-3 py-1 text-xs font-mono text-muted-foreground border border-border">
-                      {t('viewportLighting.container.emptyState.webgpuBanner.supportedBrowsers')}
-                    </span>
-                  </div>
-
-                  {/* Troubleshooting Section */}
-                  <button
-                    onClick={() => setShowTroubleshooting(!showTroubleshooting)}
-                    className="mt-4 flex items-center gap-2 text-xs font-mono uppercase tracking-wide text-amber-600 hover:text-amber-500 dark:text-amber-400 dark:hover:text-amber-300 transition-colors"
-                  >
-                    <ChevronDown className={`h-4 w-4 transition-transform ${showTroubleshooting ? 'rotate-180' : ''}`} />
-                    {showTroubleshooting
-                      ? t('viewportLighting.container.emptyState.webgpuBanner.hideTroubleshooting')
-                      : t('viewportLighting.container.emptyState.webgpuBanner.showTroubleshooting')}
-                  </button>
-
-                  {showTroubleshooting && (
-                    <WebGpuTroubleshootingDetails category={webgpu.category} />
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* One load-error card for every failed open attempt (#5851) —
-            picker, drop, ?model= autoload — shown here too since a failure
-            with nothing loaded yet renders THIS branch, not ViewportOverlays'. */}
-        <ViewportLoadErrorCard />
-
-        {/* Empty state content — mobile-optimized padding and scrollable.
-            The scroll container must NOT center via justify-center: a flex
-            child taller than an overflow-auto parent gets its top clipped
-            beyond scroll reach (the logo used to vanish under the toolbar
-            on short viewports). Instead an inner min-h-full column centers
-            when there is room and grows scrollably from the top when not. */}
-        <div className={`absolute inset-0 z-10 overflow-auto p-4 md:p-8 ${!webgpu.checking && !webgpu.supported ? 'pt-[min(40vh,14rem)] md:pt-[min(40vh,14rem)]' : ''}`}>
-          <div className="min-h-full w-full flex flex-col items-center justify-center">
-
-          {/* The start screen — its own modules (#5119) so this file's
-              frozen size budget never has to grow for it. */}
-          <ViewportWelcome
-            webgpu={webgpu}
-            onOpenClick={() => { void handleOpenClick(); }}
-            onStartBlank={() => { void handleStartBlank(); }}
-            recentFiles={recentFiles}
-            loadFile={loadFile}
-          />
-
-          </div>
-        </div>
-        <Toaster variant="absolute" />
-      </div>
-    );
-  }
-
+  const welcome = !hasLoadedModels && !loading;
+  const warmShell = useWarmShell(webgpu.supported && !webgpu.checking, !webgpu.checking, welcome);
+  // The viewer shell (Viewport, so the WebGPU device and pipelines) mounts at idle
+  // under the welcome layer, so a first open neither remounts it nor waits for
+  // the renderer (warm-shell.ts). Kept at the same tree position in every state.
+  const shellMounted = !welcome || warmShell;
   return (
     <div
-      className="relative h-full w-full bg-zinc-50 overflow-hidden"
+      className={welcome ? 'relative h-full w-full bg-zinc-50 dark:bg-[#111219] text-zinc-900 dark:text-zinc-50 overflow-hidden' : 'relative h-full w-full bg-zinc-50 overflow-hidden'}
       data-viewport
     >
-      {scanRunActive && <Suspense fallback={null}><ScanDetectionOverlay /></Suspense>}
-      {/* Drop overlay for a loaded file - "Add Model"; `status-ok` (tokens, #5504) sets it apart from the plain overlay above. */}
-      {isDragging && createPortal(
-        <div className="pointer-events-none fixed inset-0 z-50 bg-status-ok/10 backdrop-blur-[2px] flex items-center justify-center">
-          <div className="bg-background border-4 border-dashed border-status-ok p-8 shadow-2xl">
-            <div className="text-center">
-              <Plus className="h-12 w-12 mx-auto text-status-ok mb-4" />
-              <p className="text-xl font-black uppercase text-status-ok">{t('viewportLighting.container.dropOverlay.addModelTitle')}</p>
-              <p className="text-sm font-mono text-muted-foreground mt-2">
-                {t('viewportLighting.container.dropOverlay.addModelSubtitle', { count: models.size })}
-              </p>
-            </div>
-          </div>
-        </div>,
-        document.body,
-      )}
+      {shellMounted && (
+        <div className="contents" inert={welcome} style={welcome ? HIDDEN : undefined} data-viewer-shell={welcome ? 'warm' : 'active'}>
+          {scanRunActive && <Suspense fallback={null}><ScanDetectionOverlay /></Suspense>}
+          {/* Drop overlay for a loaded file - "Add Model"; `status-ok` (tokens, #5504) sets it apart from the plain overlay above. */}
+          {isDragging && !welcome && createPortal(
+            <div className="pointer-events-none fixed inset-0 z-50 bg-status-ok/10 backdrop-blur-[2px] flex items-center justify-center">
+              <div className="bg-background border-4 border-dashed border-status-ok p-8 shadow-2xl">
+                <div className="text-center">
+                  <Plus className="h-12 w-12 mx-auto text-status-ok mb-4" />
+                  <p className="text-xl font-black uppercase text-status-ok">{t('viewportLighting.container.dropOverlay.addModelTitle')}</p>
+                  <p className="text-sm font-mono text-muted-foreground mt-2">
+                    {t('viewportLighting.container.dropOverlay.addModelSubtitle', { count: models.size })}
+                  </p>
+                </div>
+              </div>
+            </div>,
+            document.body,
+          )}
 
-      {/* Cesium 3D world context overlay — rendered behind the WebGPU canvas (web only) */}
-      {cesiumEnabled && georef && (
-        <CesiumOverlay
-          mapConversion={georef.mapConversion}
-          cameraMapConversion={georef.baseMapConversion}
-          projectedCRS={georef.projectedCRS}
-          coordinateInfo={georef.coordinateInfo}
-          geometryResult={cesiumGeometryResult}
-          computedIsolatedIds={computedIsolatedIds}
-          lengthUnitScale={georef.lengthUnitScale}
-          storeyElevations={georef.storeyElevations}
+          {/* Cesium 3D world context overlay — rendered behind the WebGPU canvas (web only) */}
+          {cesiumEnabled && georef && (
+            <CesiumOverlay
+              mapConversion={georef.mapConversion}
+              cameraMapConversion={georef.baseMapConversion}
+              projectedCRS={georef.projectedCRS}
+              coordinateInfo={georef.coordinateInfo}
+              geometryResult={cesiumGeometryResult}
+              computedIsolatedIds={computedIsolatedIds}
+              lengthUnitScale={georef.lengthUnitScale}
+              storeyElevations={georef.storeyElevations}
+            />
+          )}
+          {georef?.mapConversion && georef.baseMapConversion && (
+            <CesiumPlacementGizmo
+              modelId={georef.sourceModelId}
+              mapConversion={georef.mapConversion}
+              baseMapConversion={georef.baseMapConversion}
+              projectedCRS={georef.projectedCRS}
+              coordinateInfo={georef.coordinateInfo}
+              lengthUnitScale={georef.lengthUnitScale}
+              storeyElevations={georef.storeyElevations}
+            />
+          )}
+          <Viewport
+            geometry={filteredGeometry}
+            geometryVersion={geometryVersion}
+            geometryReplacementVersion={geometryReplacementVersion}
+            geometryContentVersion={geometryContentVersion}
+            pointClouds={mergedPointClouds}
+            coordinateInfo={mergedGeometryResult?.coordinateInfo}
+            sectionCoordinateInfo={placedCoordinateInfo}
+            computedIsolatedIds={computedIsolatedIds}
+            modelIdToIndex={modelIdToIndex}
+            cesiumActive={cesiumEnabled && georef !== null}
+            releaseGeometryAfterStream={false}
+            onGeometryReleased={releaseGeometryMemory}
+          />
+          {/* ONE scene-overlay kernel per viewport (#5486, #5511, #5512, was
+              two roots until `ToolOverlays` (#5502) consolidated here). */}
+          <SceneOverlayRoot>
+            <AnnotationLayer />
+            <CollabPresenceLayer />
+            {bcfOverlayVisible && <BCFOverlay />}
+            <BasepointOverlay />
+            <ZoneOverlay />
+            <MeasurementSceneLayer />
+            <ToolOverlays />
+          </SceneOverlayRoot>
+          <ViewportOverlays />
+          {/* Issue #540: non-modal "reload to apply" banner anchored to the
+              top of the canvas. Only renders when the user has flipped the
+              merge-layers toggle while a model is in scope. `onReload` re-loads the
+              model in place (full page reload would drop it — no boot auto-restore). */}
+          <MergeLayersBanner onReload={handleMergeLayersReload} />
+          <GeometryModeBanner onReload={handleGeometryModeReload} />
+          {/* #7955 M2: the retained chip + panel; `null` (nothing) in a default build. */}
+          {retainedKernel && <retainedKernel.Chip reload={loadFile} />}
+          {/* #5175: offers a retry with a user-chosen linear unit when a LandXML
+              load refuses because the source declares no <Units>. */}
+          <LandXmlUnitsRefusalPrompt />
+          {/* A federated LandXML that would align under an assumption the user can choose. */}
+          <LandXmlAssumptionRefusalPromptSlot />
+          <VisibilityChips />
+          <EmptyVisibilityNotice visible={visibleResultEmpty} />
+          <ZoneAssignmentSyncMount />
+          <DrawingRuntimeHost mergedGeometry={mergedGeometryResult} computedIsolatedIds={computedIsolatedIds} />
+        </div>
+      )}
+      {welcome && (
+        <ViewportWelcomeLayer
+          fileInputRef={fileInputRef}
+          onFileSelect={handleFileSelect}
+          isDragging={isDragging}
+          webgpu={webgpu}
+          onOpenClick={() => { void handleOpenClick(); }}
+          onStartBlank={() => { void handleStartBlank(); }}
+          recentFiles={recentFiles}
+          loadFile={loadFile}
         />
       )}
-      {georef?.mapConversion && georef.baseMapConversion && (
-        <CesiumPlacementGizmo
-          modelId={georef.sourceModelId}
-          mapConversion={georef.mapConversion}
-          baseMapConversion={georef.baseMapConversion}
-          projectedCRS={georef.projectedCRS}
-          coordinateInfo={georef.coordinateInfo}
-          lengthUnitScale={georef.lengthUnitScale}
-          storeyElevations={georef.storeyElevations}
-        />
-      )}
-      <Viewport
-        geometry={filteredGeometry}
-        geometryVersion={geometryVersion}
-        geometryReplacementVersion={geometryReplacementVersion}
-        geometryContentVersion={geometryContentVersion}
-        pointClouds={mergedPointClouds}
-        coordinateInfo={mergedGeometryResult?.coordinateInfo}
-        sectionCoordinateInfo={placedCoordinateInfo}
-        computedIsolatedIds={computedIsolatedIds}
-        modelIdToIndex={modelIdToIndex}
-        cesiumActive={cesiumEnabled && georef !== null}
-        releaseGeometryAfterStream={false}
-        onGeometryReleased={releaseGeometryMemory}
-      />
-      {/* ONE scene-overlay kernel per viewport (#5486, #5511, #5512, was
-          two roots until `ToolOverlays` (#5502) consolidated here). */}
-      <SceneOverlayRoot>
-        <AnnotationLayer />
-        <CollabPresenceLayer />
-        {bcfOverlayVisible && <BCFOverlay />}
-        <BasepointOverlay />
-        <ZoneOverlay />
-        <MeasurementSceneLayer />
-        <ToolOverlays />
-      </SceneOverlayRoot>
-      <ViewportOverlays />
-      {/* Issue #540: non-modal "reload to apply" banner anchored to the
-          top of the canvas. Only renders when the user has flipped the
-          merge-layers toggle while a model is in scope. `onReload` re-loads the
-          model in place (full page reload would drop it — no boot auto-restore). */}
-      <MergeLayersBanner onReload={handleMergeLayersReload} />
-      <GeometryModeBanner onReload={handleGeometryModeReload} />
-      {/* #7955 M2: the retained chip + panel; `null` (nothing) in a default build. */}
-      {retainedKernel && <retainedKernel.Chip reload={loadFile} />}
-      {/* #5175: offers a retry with a user-chosen linear unit when a LandXML
-          load refuses because the source declares no <Units>. */}
-      <LandXmlUnitsRefusalPrompt />
-      {/* A federated LandXML that would align under an assumption the user can choose. */}
-      <LandXmlAssumptionRefusalPromptSlot />
-      <VisibilityChips />
-      <EmptyVisibilityNotice visible={visibleResultEmpty} />
-      <ZoneAssignmentSyncMount />
-      <DrawingRuntimeHost mergedGeometry={mergedGeometryResult} computedIsolatedIds={computedIsolatedIds} />
       <Toaster variant="absolute" />
     </div>
   );

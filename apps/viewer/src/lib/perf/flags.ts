@@ -153,6 +153,15 @@ export const PERF_FLAGS = [
     bindings: { global: '__IFC_LITE_QUANTIZED', urlParam: 'perf.quantized', benchmarkEnv: 'VIEWER_BENCHMARK_QUANTIZED' },
   },
   {
+    id: 'warmShell',
+    kind: 'kill-switch',
+    owner: '@louistrue',
+    removalCondition: 'Delete the flag and the mount-on-first-open path once the idle-mounted viewer shell has shipped for two releases with no boot, memory or device-loss report.',
+    introducedAt: '2026-11-11',
+    default: true,
+    bindings: { urlParam: 'perf.warmShell' },
+  },
+  {
     id: 'sceneSnapshot',
     kind: 'kill-switch',
     owner: '@louistrue',

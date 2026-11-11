@@ -58,7 +58,7 @@ describe('C2 SDK structural store authoring', () => {
     expect(data.connections[1].appliedCondition?.components.TranslationalStiffnessByAreaZ).toBe(true);
   });
 
-  it('keeps a backend written before these methods valid, and names the missing one', () => {
+  it('keeps a backend without the three new methods valid, and names the missing one', () => {
     // `satisfies` makes a rename fail here instead of turning the Omit below into a no-op.
     const added = ['addStructuralSurfaceMember', 'addStructuralCurveConnection', 'addStructuralSurfaceConnection'] as const satisfies readonly (keyof StructuralStoreBackendMethods)[];
     type New = (typeof added)[number];

@@ -30,12 +30,11 @@ import type {
 import type { EntityRef } from './types.js';
 
 export interface StructuralStoreBackendMethods {
-  // These three are optional, so a custom backend written before them still type-checks.
-  /** `IfcStructuralSurfaceMember` with planar Face topology, anchored to a storey. */
+  /** `IfcStructuralSurfaceMember` with planar Face topology, anchored to a storey. Optional, so backends written before it still type-check; `bim.store` throws 'not available on this backend' without it. */
   addStructuralSurfaceMember?(modelId: string, storeyExpressId: number, params: StructuralSurfaceMemberInStoreParams): EntityRef;
-  /** `IfcStructuralCurveConnection` with Edge topology, anchored to a storey. */
+  /** `IfcStructuralCurveConnection` with Edge topology, anchored to a storey. Optional, so backends written before it still type-check; `bim.store` throws 'not available on this backend' without it. */
   addStructuralCurveConnection?(modelId: string, storeyExpressId: number, params: StructuralCurveConnectionInStoreParams): EntityRef;
-  /** `IfcStructuralSurfaceConnection` with planar Face topology, anchored to a storey. */
+  /** `IfcStructuralSurfaceConnection` with planar Face topology, anchored to a storey. Optional, so backends written before it still type-check; `bim.store` throws 'not available on this backend' without it. */
   addStructuralSurfaceConnection?(modelId: string, storeyExpressId: number, params: StructuralSurfaceConnectionInStoreParams): EntityRef;
   /** `IfcStructuralAnalysisModel` — no storey anchor (`IfcGroup`, not `IfcProduct`). */
   addStructuralAnalysisModel(modelId: string, params: StructuralAnalysisModelInStoreParams): EntityRef;

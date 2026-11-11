@@ -11,10 +11,10 @@
 # review, whose token raises no review event; `pull_request_review` covers people
 # and external apps such as CodeRabbit and Bugbot.
 #
-# FORK AND DEPENDABOT PRs. There, `pull_request_review` gets a read-only token
-# and cannot comment, and Claude review skips forks. Test's completion is what
-# posts for them: `workflow_run` gets a write token, and Test finishes late
-# enough that the reviews exist. For every other PR the job skips Test
+# FORK PRs. There, `pull_request_review` gets a read-only token and cannot
+# comment, so the job skips it, and Claude review skips forks. Test's completion
+# is what posts for them: `workflow_run` gets a write token, and Test finishes
+# late enough that the reviews exist. For a same-repo PR the job skips Test
 # completions. That run takes no runner, and its `notify` check lands on the
 # default branch's head commit, not on the PR, and is no required context, so
 # it cannot turn anything green.
@@ -38,14 +38,15 @@ permissions:
 jobs:
   notify:
     # A Mergify batch PR is closed within minutes and carries no review threads.
-    # Test counts only for fork and Dependabot PRs; see the header.
+    # A review on a fork PR cannot comment, and Test counts only for fork PRs;
+    # see the header.
     if: >-
-      github.event_name == 'pull_request_review' ||
+      (github.event_name == 'pull_request_review' &&
+      github.event.pull_request.head.repo.full_name == github.repository) ||
       (github.event.workflow_run.event == 'pull_request' &&
       !startsWith(github.event.workflow_run.head_branch, 'mergify/merge-queue/') &&
       (github.event.workflow_run.name == 'Claude review' ||
-      github.event.workflow_run.head_repository.full_name != github.repository ||
-      startsWith(github.event.workflow_run.head_branch, 'dependabot/')))
+      github.event.workflow_run.head_repository.full_name != github.repository))
     runs-on: ubuntu-latest
     timeout-minutes: 5
     # One notice per PR at a time, so two finishing runs cannot post it twice, and
@@ -60,7 +61,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
-          SHA: ${{ github.event.workflow_run.head_sha }}
+          HEAD_OWNER: ${{ github.event.workflow_run.head_repository.owner.login }}
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
           REVIEWED_PR: ${{ github.event.pull_request.number }}
         run: |
           set -euo pipefail
@@ -87,10 +89,12 @@ jobs:
           }
           pr=$REVIEWED_PR
           if [ -z "$pr" ]; then
-            pr=$(read_api "repos/$REPO/commits/$SHA/pulls" --jq '[.[] | select(.state == "open")][0].number // empty')
+            # By head branch, not commits/{sha}/pulls: that returns nothing for a
+            # commit that lives only on a fork (checked on #9680).
+            pr=$(read_api -X GET "repos/$REPO/pulls" -f state=open -f head="$HEAD_OWNER:$HEAD_BRANCH" --jq '.[0].number // empty')
           fi
           if [ -z "$pr" ]; then
-            echo "no open PR for $SHA"
+            echo "no open PR for $HEAD_OWNER:$HEAD_BRANCH"
             exit 0
           fi
           data=$(read_api graphql -F owner="$owner" -F name="$name" -F pr="$pr" -f query='

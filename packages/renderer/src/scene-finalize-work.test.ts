@@ -123,7 +123,7 @@ function forceRebuild(scene: Scene): void {
 interface Load { scene: Scene; finalize: ReturnType<typeof recordingDevice>['work']; streamFround: number; finalizeFround: number; counters: Record<string, number> }
 
 /** Stream like the viewer (one flush per arrival), then the time-sliced finalize. */
-async function streamedLoad(options: { rebuildReference?: boolean; capture?: (snapshot: SceneSnapshot) => void; recolor?: number; mutate?: (scene: Scene, first: readonly MeshData[]) => void } = {}): Promise<Load> {
+async function streamedLoad(options: { rebuildReference?: boolean; capture?: (snapshot: SceneSnapshot) => void; reversed?: boolean; recolor?: number; mutate?: (scene: Scene, first: readonly MeshData[]) => void } = {}): Promise<Load> {
   const { device, work } = recordingDevice();
   const scene = new Scene();
   scene.setSpatialChunking({ cellSize: 32 });
@@ -131,7 +131,7 @@ async function streamedLoad(options: { rebuildReference?: boolean; capture?: (sn
   scene.setQuantizedBatches(true);
   if (options.rebuildReference) forceRebuild(scene);
   if (options.capture) scene.captureNextFinalize(options.capture);
-  const batches = arrivals();
+  const batches = options.reversed ? arrivals().reverse().map((batch) => batch.reverse()) : arrivals();
   const streamFround = countFround(() => {
     for (const batch of batches) {
       scene.queueMeshes(batch);
@@ -261,6 +261,27 @@ describe('cold finalize work after the last batch arrived', () => {
       if (stored.lod1Indices) assert.ok(same(asBytes(stored.lod1Indices), gpu(batch.lod1IndexBuffer, stored.lod1Indices.byteLength)), `${stored.key}: LOD1 as drawn`);
     }
     assertSameBatches(captured.scene, (await streamedLoad({ rebuildReference: true })).scene);
+  });
+
+  it('a bucket\'s lattice origin depends on its cell, not on which fragment arrived first', async () => {
+    const forward = await streamedLoad();
+    const backward = await streamedLoad({ reversed: true });
+    // In world terms: the shared model frame is the first fragment's, so it moves with arrival order (by design).
+    const pins = (load: Load) => new Map(load.scene.getBatchedMeshes().map((b) => [b.colorKey,
+      b.quantized && b.origin ? b.quantized.min.map((v, axis) => v + b.origin![axis]) : null]));
+    const a = pins(forward), b = pins(backward);
+    assert.ok(a.size === b.size && a.size >= 10, `${a.size} vs ${b.size} batches`);
+    const moved = [...a].filter(([key, pin]) => {
+      const other = b.get(key);
+      return !pin || !other || pin.some((v, axis) => Math.abs(v - other[axis]) >= 1 / 1024);
+    }).map(([key]) => key);
+    assert.ok(moved.length === 0, `${moved.length} buckets changed their lattice origin with arrival order, e.g. ${moved[0]}`);
+    // Each origin sits 16 m below its 32 m cell, in the model frame, on the 2^-10 lattice.
+    for (const batch of forward.scene.getBatchedMeshes()) {
+      if (!batch.quantized) continue;
+      const step = batch.quantized.step;
+      assert.ok(batch.quantized.min.every((v) => Number.isInteger(v / step)), `${batch.colorKey}: lattice-aligned`);
+    }
   });
 
   it('a recolour that keeps the bucket key but changes the entity-lane salt rebuilds that bucket', async () => {

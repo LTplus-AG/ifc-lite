@@ -38,7 +38,7 @@ import {
 import { selectBoundingBoxesInRect, type RectangleRteFrame } from './scene-rect-select.js';
 import { splitMeshDataForBufferLimit, cachedWorldAabb, worldAabbFromPieces, destroyGpuResources, topologySafeBatchOrigin } from './scene-geometry.js';
 import { TopologyMemo } from './scene-precision.js';
-import { StreamAssembly } from './scene-stream-assembly.js';
+import { StreamAssembly, cellLatticePin } from './scene-stream-assembly.js';
 import { mergeSameColorPieces } from './scene-mesh-pieces.js';
 import { resolvePrecisionBucket } from './scene-bucket-routing.js';
 import { residentBatchBytes, sumResidentGpuBytes, type ResidentGpuBytes } from './render-stats.js';
@@ -2446,7 +2446,7 @@ export class Scene {
       origin,
       quantized: quantization, lod: this.lodBuildsEnabled,
       onMerged: onMerged ?? (fragmentOf !== undefined && this.snapshots.capturing ? (bytes) => { kept = bytes.vertexData; } : undefined),
-      ...(fragmentOf !== undefined ? { lattice: this.streamWork.latticeFor(fragmentOf), copySource: true } : {}),
+      ...(fragmentOf !== undefined ? { lattice: this.streamWork.latticeFor(fragmentOf, this.spatialChunking ? cellLatticePin(this.modelTranslations.sourceMesh(meshes[0]), this.spatialChunking.cellSize, offset, origin) : undefined), copySource: true } : {}),
     }, bucketKey);
     this.nextBatchId++; if (kept) this.streamWork.keepBytes(result, kept);
     if (!this.sharedFrameOrigins.has(modelIndex) && result.origin) this.sharedFrameOrigins.set(modelIndex, [result.origin[0] - offset[0], result.origin[1] - offset[1], result.origin[2] - offset[2]]);

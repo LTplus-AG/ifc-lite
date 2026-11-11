@@ -25,7 +25,7 @@ const FIXTURES = ['ara3d/AC20-FZK-Haus.ifc', 'ara3d/duplex.ifc', 'ara3d/C20-Inst
 for (const name of FIXTURES) {
   const fixture = new URL(`../../../../tests/models/${name}`, import.meta.url);
   const skip = !existsSync(fixture) ? `Run pnpm fixtures for ${name}.` : harness.skip;
-  it(`${name}: streamed final batches equal the full rebuild, with and without a snapshot capture`, { skip }, async () => {
+  it(`${name}: streamed final batches equal the full rebuild, with and without a snapshot capture`, { skip }, async (t) => {
     const bytes = new Uint8Array(readFileSync(fixture));
     await harness.load(new File([bytes.buffer], name.split('/').pop()!, { lastModified: 1 }));
     const state = useViewerStore.getState();
@@ -38,6 +38,8 @@ for (const name of FIXTURES) {
     const counters = diffCounters(perfCounters.read(), before);
     const reference = await streamIntoScene(meshes, { rebuild: true });
     const assembled = counters['render.finalize.assembled.count'] ?? 0;
+    const rebuilt = Object.entries(counters).filter(([key]) => key.startsWith('render.finalize.rebuilt.')).map(([key, n]) => `${key.slice(24)} ${n}`).join(', ');
+    t.diagnostic(`${name}: ${meshes.length} meshes, ${streamed.batches.length} batches, ${assembled} assembled; rebuilt: ${rebuilt || 'none'}`);
     assert.ok(assembled > 0, `${name}: some final batch is assembled (${assembled} of ${streamed.batches.length})`);
     const difference = firstBatchDifference(streamed.batches, reference.batches);
     assert.ok(difference === null, `${name}: ${difference}`);

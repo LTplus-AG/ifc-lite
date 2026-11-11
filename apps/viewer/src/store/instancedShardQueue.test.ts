@@ -83,3 +83,24 @@ it('refuses a producer whose generation a full discard superseded', () => {
   enqueueInstancedShards('a', [bytes(1)], captured);
   assert.equal(hasPendingInstancedShards(), false);
 });
+
+it('e2e observes each enqueue\'s bytes through the page global, and never a refused one', () => {
+  const tap = (globalThis as typeof globalThis & {
+    __ifc_lite_instanced_shards__?: { subscribe(listener: (event: InstancedShardQueueEvent) => void): () => void };
+  }).__ifc_lite_instanced_shards__;
+  assert.ok(tap, 'the queue publishes its observation point');
+  const seen: Array<[string, number]> = [];
+  const stop = tap.subscribe((event) => {
+    for (const shard of event.shards ?? []) seen.push([shard.modelId, value(shard)]);
+  });
+  try {
+    enqueueInstancedShards('a', [bytes(1), bytes(2)], instancedShardGeneration());
+    const stale = instancedShardGeneration();
+    discardInstancedShards();
+    enqueueInstancedShards('b', [bytes(3)], stale);
+    enqueueInstancedShards('b', [bytes(4)], instancedShardGeneration());
+  } finally {
+    stop();
+  }
+  assert.deepEqual(seen, [['a', 1], ['a', 2], ['b', 4]]);
+});

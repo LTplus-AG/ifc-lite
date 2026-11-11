@@ -32,6 +32,8 @@ export interface InstancedShardQueueEvent {
   /** `drained`: handed to the renderer (uploaded or skipped). `discarded`: dropped by a session reset. */
   readonly kind: 'enqueued' | 'drained' | 'discarded';
   readonly modelIds: ReadonlySet<string>;
+  /** `enqueued` only: the shards this call queued (their bytes are read, never detached). */
+  readonly shards?: readonly PendingInstancedShard[];
 }
 
 type Listener = (event: InstancedShardQueueEvent) => void;
@@ -89,8 +91,9 @@ export function enqueueInstancedShards(modelId: string, shards: readonly ArrayBu
     return;
   }
   noteInstancedShardModel(modelId);
-  for (const bytes of shards) pending.push({ modelId, bytes });
-  emit({ kind: 'enqueued', modelIds: new Set([modelId]) });
+  const added = shards.map((bytes) => ({ modelId, bytes }));
+  for (const shard of added) pending.push(shard);
+  emit({ kind: 'enqueued', modelIds: new Set([modelId]), shards: added });
 }
 
 /** What the consumer did with one shard: `waiting` keeps it queued. */
@@ -147,3 +150,9 @@ export function subscribeInstancedShards(listener: Listener): () => void {
   listeners.add(listener);
   return () => { listeners.delete(listener); };
 }
+
+// The supported observation point for e2e, as the store is for store state:
+// the shards are not store state, so a page subscribes here to see each
+// enqueue's wire bytes (`event.shards`).
+(globalThis as typeof globalThis & { __ifc_lite_instanced_shards__?: { subscribe: typeof subscribeInstancedShards } })
+  .__ifc_lite_instanced_shards__ = { subscribe: subscribeInstancedShards };

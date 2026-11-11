@@ -187,3 +187,35 @@ it('a renderer that throws after uploading does not get the same shards uploaded
   assert.deepEqual(uploads.map((u) => u.id), [31, 32], 'each shard uploads exactly once despite the throw');
   assert.equal(hasPendingInstancedShards(), false, 'settled shards are not left queued');
 });
+
+it('a hidden tab\'s throttled timers (1 s wake-ups) only delay the drain: every shard still uploads once, under its owner', async () => {
+  // Chrome aligns a hidden page's timers to 1 s; the drain's chain (one timer,
+  // at most three retries) never reaches the 5-deep nesting that intensive
+  // throttling needs, so 1 s is the worst case per drain.
+  const realSetTimeout = globalThis.setTimeout;
+  const throttled = ((callback: (...args: unknown[]) => void, ms?: number, ...args: unknown[]) =>
+    realSetTimeout(callback, Math.max(ms ?? 0, 1000), ...args)) as typeof setTimeout;
+  render(<Viewport />);
+  const offset = useViewerStore.getState().models.get('second')!.idOffset;
+  globalThis.setTimeout = throttled;
+  try {
+    act(() => {
+      enqueueInstancedShards('primary', [buildShardBytes(31)], instancedShardGeneration());
+      enqueueInstancedShards('second', [buildShardBytes(32)], instancedShardGeneration());
+    });
+    await act(async () => { await new Promise((resolve) => realSetTimeout(resolve, 300)); });
+    assert.deepEqual(uploads, [], 'nothing drains before the throttled wake-up');
+    assert.equal(hasPendingInstancedShards(), true, 'the shards wait in the queue, so readiness still reports them');
+    act(() => enqueueInstancedShards('second', [buildShardBytes(33)], instancedShardGeneration()));
+    await act(async () => { await new Promise((resolve) => realSetTimeout(resolve, 1200)); });
+  } finally {
+    globalThis.setTimeout = realSetTimeout;
+  }
+  const models = useViewerStore.getState().models;
+  assert.deepEqual(uploads, [
+    { id: 31, index: modelIndices(models).get('primary') },
+    { id: 32 + offset, index: modelIndices(models).get('second') },
+    { id: 33 + offset, index: modelIndices(models).get('second') },
+  ], 'one wake-up drains everything queued, in order');
+  assert.equal(hasPendingInstancedShards(), false);
+});

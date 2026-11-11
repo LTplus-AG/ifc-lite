@@ -19,6 +19,9 @@
  *   each a 2-branch SELECT of `IfcBoolean` or a stiffness measure; this
  *   builder only writes the `IfcBoolean` branch — `true` = fixed/rigid,
  *   `false` = free — a numeric spring-stiffness value is out of scope here.)
+ *   IFC2X3 has no `ConditionCoordinateSystem`, and its node condition slots
+ *   (`LinearStiffnessX`…) are plain measures, so `true`/`false` are written
+ *   as `-1.`/`0.`, the IFC2X3 rigid/free convention.
  *
  * REPRESENTATION OWNERSHIP:
  *
@@ -52,7 +55,11 @@ import type { StoreEditor } from '@ifc-lite/mutations';
 import { toNativePoint3, type SpatialAnchor } from './anchor.js';
 import { emitLocalPlacement, ownerHistoryRef, productGuid } from './_emit-helpers.js';
 
-/** The `IfcBoolean` branch of `IfcTranslationalStiffnessSelect`/`IfcRotationalStiffnessSelect`: `true` = fixed, `false` = free. */
+/**
+ * `true` = fixed, `false` = free. IFC4+ writes the `IfcBoolean` branch of
+ * `IfcTranslationalStiffnessSelect`/`IfcRotationalStiffnessSelect`; IFC2X3
+ * writes the plain measures `-1.`/`0.`, which read back as numbers.
+ */
 export interface StructuralBoundaryConditionParams {
   Name?: string;
   TranslationalStiffnessX?: boolean;
@@ -90,9 +97,13 @@ export function addStructuralPointConnectionToStore(
   anchor: SpatialAnchor,
   params: StructuralPointConnectionInStoreParams,
 ): StructuralPointConnectionBuildResult {
-  if ((anchor.schema ?? 'IFC4') === 'IFC2X3') {
-    throw new Error('addStructuralPointConnectionToStore: IFC2X3 has no IfcStructuralPointConnection — target IFC4 or later');
-  }
+  const is2x3 = anchor.schema === 'IFC2X3';
+  // IFC2X3 uses plain measures: -1 = rigid, 0 = free. The `{ real }` marker is
+  // required: the exporter's SELECT qualification reads the IFC4 registry for
+  // every target schema and would wrap a bare number as an IFC4 select member.
+  const stiffness = (value: boolean | undefined) => is2x3
+    ? (value === undefined ? null : { real: value ? -1 : 0 })
+    : boolAttr(value);
   const position = toNativePoint3(anchor, params.Position);
   const placementId = emitLocalPlacement(editor, anchor.storeyPlacementId, position);
 
@@ -101,12 +112,12 @@ export function addStructuralPointConnectionToStore(
   if (bc) {
     boundaryConditionId = editor.addEntity('IfcBoundaryNodeCondition', [
       bc.Name ?? null,
-      boolAttr(bc.TranslationalStiffnessX),
-      boolAttr(bc.TranslationalStiffnessY),
-      boolAttr(bc.TranslationalStiffnessZ),
-      boolAttr(bc.RotationalStiffnessX),
-      boolAttr(bc.RotationalStiffnessY),
-      boolAttr(bc.RotationalStiffnessZ),
+      stiffness(bc.TranslationalStiffnessX),
+      stiffness(bc.TranslationalStiffnessY),
+      stiffness(bc.TranslationalStiffnessZ),
+      stiffness(bc.RotationalStiffnessX),
+      stiffness(bc.RotationalStiffnessY),
+      stiffness(bc.RotationalStiffnessZ),
     ]).expressId;
   }
 
@@ -119,7 +130,7 @@ export function addStructuralPointConnectionToStore(
     `#${placementId}`,
     null, // Representation — see module doc
     boundaryConditionId === undefined ? null : `#${boundaryConditionId}`,
-    null, // ConditionCoordinateSystem
+    ...(is2x3 ? [] : [null]), // ConditionCoordinateSystem (IFC4+)
   ]).expressId;
 
   return { connectionId, placementId, ...(boundaryConditionId !== undefined ? { boundaryConditionId } : {}) };

@@ -87,7 +87,7 @@ describe.each(['IFC2X3', 'IFC4', 'IFC4X3'])('%s activity and result builders', s
     const connection = addStructuralPointConnectionToStore(editor, anchor, { Position: [0, 0, 0] });
     const member = addStructuralCurveMemberToStore(editor, anchor, { Start: [0, 0, 0], End: [1, 0, 0] });
     connectStructuralMemberToConnectionInStore(editor, anchor.ownerHistoryId, member.memberId, connection.connectionId);
-    const activities = editor.getMutationView().getNewEntities().filter(e => /Action$/.test(e.type));
+    const activities = editor.getMutationView().getNewEntities().filter(e => e.type.endsWith('Action'));
     for (const a of activities) connectStructuralActivityToItemInStore(editor, anchor.ownerHistoryId, connection.connectionId, a.expressId);
     const { data, attrs } = await roundTrip();
     expect(data.activities.find(a => a.expressId === force.activityId)).toMatchObject({

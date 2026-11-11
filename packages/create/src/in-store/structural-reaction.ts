@@ -24,7 +24,7 @@ export interface StructuralCurveReactionInStoreParams extends ActivityParams { A
 export interface StructuralSurfaceReactionInStoreParams extends ActivityParams { AppliedLoad: StructuralPlanarForceParams }
 export type StructuralReactionBuildResult = ActivityResult;
 
-export function addStructuralPointReactionToStore(editor: StoreEditor, anchor: ActivityAnchor, params: StructuralPointReactionInStoreParams): ActivityResult {
+export function addStructuralPointReactionToStore(editor: StoreEditor, anchor: ActivityAnchor, params: StructuralPointReactionInStoreParams): StructuralReactionBuildResult {
   const builder = 'addStructuralPointReactionToStore';
   assertActivitySchema(anchor, builder);
   const fields = params.AppliedLoad.Type === 'IfcStructuralLoadSingleForce' ? ['ForceX', 'ForceY', 'ForceZ', 'MomentX', 'MomentY', 'MomentZ']
@@ -33,14 +33,14 @@ export function addStructuralPointReactionToStore(editor: StoreEditor, anchor: A
   validateLoad(builder, params.AppliedLoad, fields);
   return emitActivity(editor, anchor, params, 'IfcStructuralPointReaction', params.AppliedLoad.Type, params.AppliedLoad, fields, []);
 }
-export function addStructuralCurveReactionToStore(editor: StoreEditor, anchor: ActivityAnchor, params: StructuralCurveReactionInStoreParams): ActivityResult {
+export function addStructuralCurveReactionToStore(editor: StoreEditor, anchor: ActivityAnchor, params: StructuralCurveReactionInStoreParams): StructuralReactionBuildResult {
   const builder = 'addStructuralCurveReactionToStore';
   assertActivitySchema(anchor, builder, true);
   const fields = ['LinearForceX', 'LinearForceY', 'LinearForceZ', 'LinearMomentX', 'LinearMomentY', 'LinearMomentZ'];
   validateLoad(builder, params.AppliedLoad, fields);
   return emitActivity(editor, anchor, params, 'IfcStructuralCurveReaction', 'IfcStructuralLoadLinearForce', params.AppliedLoad, fields, ['.CONST.']);
 }
-export function addStructuralSurfaceReactionToStore(editor: StoreEditor, anchor: ActivityAnchor, params: StructuralSurfaceReactionInStoreParams): ActivityResult {
+export function addStructuralSurfaceReactionToStore(editor: StoreEditor, anchor: ActivityAnchor, params: StructuralSurfaceReactionInStoreParams): StructuralReactionBuildResult {
   const builder = 'addStructuralSurfaceReactionToStore';
   assertActivitySchema(anchor, builder, true);
   const fields = ['PlanarForceX', 'PlanarForceY', 'PlanarForceZ'];

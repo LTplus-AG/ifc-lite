@@ -8,8 +8,23 @@ import type { StructuralStoreBackendMethods } from '../store-structural-types.js
 /** Synchronous structural forwarding stays small on the viewer boot path.
  * The host supplies the builders through its lazy structural write seam.
  */
-export interface StoreStructuralNamespace extends Required<StructuralStoreBackendMethods> {}
 export class StoreStructuralNamespace extends StoreGroupNamespace {
+  declare addStructuralPlanarAction: Required<StructuralStoreBackendMethods>['addStructuralPlanarAction'];
+  declare addStructuralSurfaceAction: Required<StructuralStoreBackendMethods>['addStructuralSurfaceAction'];
+  declare addStructuralPointReaction: Required<StructuralStoreBackendMethods>['addStructuralPointReaction'];
+  declare addStructuralCurveReaction: Required<StructuralStoreBackendMethods>['addStructuralCurveReaction'];
+  declare addStructuralSurfaceReaction: Required<StructuralStoreBackendMethods>['addStructuralSurfaceReaction'];
+  declare addStructuralResultGroup: Required<StructuralStoreBackendMethods>['addStructuralResultGroup'];
+  declare addStructuralAnalysisModel: Required<StructuralStoreBackendMethods>['addStructuralAnalysisModel'];
+  declare addStructuralCurveMember: Required<StructuralStoreBackendMethods>['addStructuralCurveMember'];
+  declare addStructuralPointConnection: Required<StructuralStoreBackendMethods>['addStructuralPointConnection'];
+  declare addStructuralLoadGroup: Required<StructuralStoreBackendMethods>['addStructuralLoadGroup'];
+  declare addStructuralPointAction: Required<StructuralStoreBackendMethods>['addStructuralPointAction'];
+  declare addStructuralLinearAction: Required<StructuralStoreBackendMethods>['addStructuralLinearAction'];
+  declare connectStructuralMemberToConnection: Required<StructuralStoreBackendMethods>['connectStructuralMemberToConnection'];
+  declare connectStructuralActivityToItem: Required<StructuralStoreBackendMethods>['connectStructuralActivityToItem'];
+  declare assignToStructuralGroup: Required<StructuralStoreBackendMethods>['assignToStructuralGroup'];
+
   static {
     const methods = [
       'addStructuralPlanarAction',

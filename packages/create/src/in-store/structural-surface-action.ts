@@ -21,11 +21,11 @@ export interface StructuralSurfaceActionInStoreParams extends ActivityParams {
 }
 export type StructuralSurfaceActionBuildResult = ActivityResult;
 
-export function addStructuralSurfaceActionToStore(editor: StoreEditor, anchor: ActivityAnchor, params: StructuralSurfaceActionInStoreParams): ActivityResult {
+export function addStructuralSurfaceActionToStore(editor: StoreEditor, anchor: ActivityAnchor, params: StructuralSurfaceActionInStoreParams): StructuralSurfaceActionBuildResult {
   assertActivitySchema(anchor, 'addStructuralSurfaceActionToStore', true);
   return surfaceAction(editor, anchor, params, 'IfcStructuralSurfaceAction');
 }
-export function addStructuralPlanarActionToStore(editor: StoreEditor, anchor: ActivityAnchor, params: StructuralSurfaceActionInStoreParams): ActivityResult {
+export function addStructuralPlanarActionToStore(editor: StoreEditor, anchor: ActivityAnchor, params: StructuralSurfaceActionInStoreParams): StructuralSurfaceActionBuildResult {
   assertActivitySchema(anchor, 'addStructuralPlanarActionToStore');
   return surfaceAction(editor, anchor, params, 'IfcStructuralPlanarAction');
 }

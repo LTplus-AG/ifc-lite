@@ -158,6 +158,7 @@ export {
   type StructuralExtractionView,
   type BoundaryConditionInfo,
 } from './structural-extractor.js';
+export { structuralCounterparts, type StructuralCounterparts } from './structural-counterparts.js';
 
 // IFC4 STEP serializer for schedule entities — produces ready-to-splice
 // `#N=IFC...(...)` lines from a `ScheduleExtraction`.

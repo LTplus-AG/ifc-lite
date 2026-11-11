@@ -5,13 +5,15 @@
 /**
  * #4736: a structural member with no ordinary property sets must still reach
  * the Structural Analysis card instead of the Properties tab's empty state.
+ * #9668: the card lists the physical-to-analytical counterparts from either
+ * end and selects one on click.
  */
 
 import '@/test/setup-dom.js';
 
 import { after, afterEach, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { activate, cleanup, render } from '@/test/render.js';
+import { activate, cleanup, click, render } from '@/test/render.js';
 import { useViewerStore } from '@/store';
 import { fixtureModel } from '@/test/store-fixture.js';
 import { IfcParser } from '@ifc-lite/parser';
@@ -31,6 +33,34 @@ DATA;
 ENDSEC;
 END-ISO-10303-21;
 `;
+
+const LINKED_SOURCE = SOURCE.replace('#10=', `#20=IFCWALL('wall-gid',$,'Wall A',$,$,$,$,$,$);
+#21=IFCWALL('wall-2-gid',$,'Wall B',$,$,$,$,$,$);
+#11=IFCSTRUCTURALCURVECONNECTION('connection-gid',$,'Edge',$,$,$,$,$,$);
+#12=IFCSTRUCTURALCURVEMEMBER('member-2-gid',$,'Rib',$,$,$,$,.RIGID_JOINED_MEMBER.,$);
+#30=IFCRELASSIGNSTOPRODUCT('rel-gid',$,$,$,(#10,#11),$,#20);
+#10=`);
+
+async function loadModel(source: string, expressId: number) {
+  const bytes = new TextEncoder().encode(source);
+  const store = await new IfcParser().parseColumnar(
+    bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
+  );
+  useViewerStore.setState({
+    models: new Map([[MODEL_ID, { ...fixtureModel(MODEL_ID, { idOffset: ID_OFFSET }), ifcDataStore: store, maxExpressId: 30 }]]),
+    activeModelId: MODEL_ID,
+    selectedEntity: { modelId: MODEL_ID, expressId },
+    selectedEntityId: ID_OFFSET + expressId,
+    selectedEntityIds: new Set([ID_OFFSET + expressId]),
+  });
+}
+
+/** The counterpart row for `#id`, found by what the user sees. */
+function counterpartRow(ui: HTMLElement, id: number): HTMLButtonElement {
+  const row = [...ui.querySelectorAll('button')].find((button) => button.textContent?.startsWith(`#${id}`));
+  assert.ok(row, `row #${id} in: ${ui.textContent}`);
+  return row;
+}
 
 let initialState: ReturnType<typeof useViewerStore.getState>;
 
@@ -75,5 +105,38 @@ describe('PropertiesPanel structural-only selection', () => {
     assert.ok(value, '#5823 inline attribute value must be a keyboard control');
     activate(value, 'Enter');
     assert.ok(ui.querySelector('input[value="Beam"]'), 'Enter opens editing for the selected IFC Name');
+  });
+
+  it('lists analytical items for a wall and jumps there and back (#9668)', async () => {
+    await loadModel(LINKED_SOURCE, 20);
+    const ui = render(<PropertiesPanel />);
+    assert.ok(ui.textContent?.includes('Analytical items (2)'), `wall card in: ${ui.textContent}`);
+    assert.ok(counterpartRow(ui, 11).textContent?.includes('Edge'));
+
+    click(counterpartRow(ui, 10));
+    assert.deepEqual(useViewerStore.getState().selectedEntity, { modelId: MODEL_ID, expressId: 10 });
+    assert.deepEqual([...useViewerStore.getState().selectedEntityIds], [ID_OFFSET + 10]);
+    assert.ok(ui.textContent?.includes('Physical elements (1)'), `member card in: ${ui.textContent}`);
+
+    click(counterpartRow(ui, 20));
+    assert.deepEqual(useViewerStore.getState().selectedEntity, { modelId: MODEL_ID, expressId: 20 });
+    assert.deepEqual([...useViewerStore.getState().selectedEntityIds], [ID_OFFSET + 20]);
+  });
+
+  it('shows the physical element of a connection (#9668)', async () => {
+    await loadModel(LINKED_SOURCE, 11);
+    const ui = render(<PropertiesPanel />);
+    assert.ok(ui.textContent?.includes('Physical elements (1)'), `connection card in: ${ui.textContent}`);
+    assert.ok(counterpartRow(ui, 20).textContent?.includes('Wall A'));
+  });
+
+  it('shows no counterpart section without a link (#9668)', async () => {
+    await loadModel(LINKED_SOURCE, 12);
+    const member = render(<PropertiesPanel />).textContent ?? '';
+    assert.ok(member.includes('Structural Analysis') && !member.includes('Physical elements'), member);
+    cleanup();
+    await loadModel(LINKED_SOURCE, 21);
+    const wall = render(<PropertiesPanel />).textContent ?? '';
+    assert.ok(!wall.includes('Structural Analysis') && !wall.includes('Analytical items'), wall);
   });
 });

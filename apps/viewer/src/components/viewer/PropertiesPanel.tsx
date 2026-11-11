@@ -22,7 +22,7 @@ import { toGlobalIdFromModels } from '@/store/globalId';
 import { useIfc } from '@/hooks/useIfc';
 import { getOrCreateMutationView } from '@/sdk/adapters/mutation-view';
 import { IfcQuery } from '@ifc-lite/query';
-import { extractClassificationsOnDemand, extractTypeEntityOwnProperties, extractGeoreferencingOnDemand, extractLengthUnitScale, ProjectUnits, taskProductExpressIds, taskProductGlobalIds, type IfcDataStore, type MaterialPsetGroup } from '@ifc-lite/parser';
+import { extractClassificationsOnDemand, extractTypeEntityOwnProperties, extractGeoreferencingOnDemand, extractLengthUnitScale, ProjectUnits, structuralCounterparts, taskProductExpressIds, taskProductGlobalIds, type IfcDataStore, type MaterialPsetGroup } from '@ifc-lite/parser';
 import { RelationshipType, isSpatialStructureTypeName, isStoreyLikeSpatialTypeName } from '@ifc-lite/data';
 import type { EntityRef, FederatedModel } from '@/store/types';
 import { ZoneVolumeBreakdown } from './ZoneVolumeBreakdown';
@@ -769,6 +769,7 @@ export function PropertiesPanel() {
     if (!selectedEntity || !structuralData) return false;
     const gid = selectedEntityGlobalId;
     const expressId = selectedEntity.expressId;
+    if (expressId > 0 && structuralCounterparts(structuralData, expressId)) return true;
     return structuralData.members.some((m) => {
       if (gid && m.globalId === gid) return true;
       return expressId > 0 && m.expressId === expressId;
@@ -1502,6 +1503,8 @@ export function PropertiesPanel() {
                       sourceUnavailable={!activeDataStore?.source?.length}
                       selectedExpressId={selectedEntity.expressId}
                       selectedGlobalId={selectedEntityGlobalId}
+                      describeEntity={(expressId) => overlayAwareQuery.entityData({ modelId: selectedEntity.modelId, expressId }) ?? { type: '' }}
+                      onSelectEntity={handleSelectRelatedEntity}
                     />
                   </>
                 )}

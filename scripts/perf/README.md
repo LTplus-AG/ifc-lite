@@ -97,6 +97,8 @@ tools and compiles nothing:
 | `browser-cold` | fresh Chrome, empty profile, first open | see below | separate memory pass: peak sampled PSS sum of the profile's Chrome processes |
 | `browser-warm1` | same browser, first reopen: streams the cache hit and writes the scene snapshot | see below | as cold |
 | `browser-warm` | same browser, last of `warmOpens` (default 2) reopens: adopts the scene snapshot | see below | as cold |
+| `browser-cold-early` (#9740) | fresh Chrome, file picked at the first paint after the file input exists (no quiet arming) | as cold, but timed from the pick: the boot-delayed input dispatch counts | not sampled |
+| `boot` (#9740) | fresh Chrome, no file, once per round and side | boot time-to-interactive: end of the last long task before 1 s without one | idle 5 s after navigation: PSS, JS heaps, WebAssembly heaps, GPU |
 
 Native warm has no cache outside `apps/server`, so there is no native warm
 lane. Native is a batch call with no streamed-geometry event, so it has no
@@ -107,6 +109,15 @@ cache write did not settle, or whose expected scene snapshot was not written
 within 60 s, would time a different path. It is recorded as a failed sample
 with that reason, kept in the data and left out of medians and verdicts;
 `scenoptic-bench.mjs` applies the same rule (`prepareWarmOpen`).
+Before the first reopen the harness waits until the stored cache entry stops
+changing, so a scene snapshot captured at the end of the cold load cannot race
+it. The reopen keeps its lane; the report counts how many samples adopted a
+snapshot and whether one was stored before the first reopen (#9740).
+`performance.measureUserAgentSpecificMemory()` does not count WebAssembly
+memory: a 64 MiB `WebAssembly.Memory` moved it by 0.3 MiB on Pop. The `boot`
+lane therefore sums every live `WebAssembly.Memory` in the page and each
+worker through CDP `Runtime.queryObjects` (+64.0 MiB measured for the same
+allocations), counting a shared memory once.
 
 Browser timing (`viewer-load-probe.mjs`, `viewer-load-boot.mjs`; readiness is
 shared with `scenoptic-bench.mjs`):

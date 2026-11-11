@@ -55,7 +55,8 @@ import { toNativePoint3, type SpatialAnchor } from './anchor.js';
 import { emitLocalPlacement, ownerHistoryRef, productGuid } from './_emit-helpers.js';
 
 /**
- * `true` = fixed, `false` = free; a number supplies spring stiffness.
+ * `true` = fixed, `false` = free; a number supplies spring stiffness, written
+ * verbatim in the model's native units (unlike `Position`, never converted).
  * IFC4+ writes the corresponding boolean or measure branch of
  * `IfcTranslationalStiffnessSelect`/`IfcRotationalStiffnessSelect`; IFC2X3
  * writes plain measures, mapping fixed/free to `-1.`/`0.`.

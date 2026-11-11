@@ -3222,23 +3222,26 @@ jobs:
 
       # The gate calls cargo-semver-checks only for a crate whose workspace
       # version is ahead of crates.io. This step decides everything else from
-      # registry lookups with the gate's own logic: exit 0/1/2 is the gate's
-      # verdict, exit 3 means a crate must be compared. Only an exit 0 writes
-      # `needs_cargo=false`; anything else (exit 3, a missing or garbled
-      # output) runs the toolchain steps and the full gate exactly as before.
+      # registry lookups with the gate's own logic: exit 1/2 is the gate's
+      # refusal, exit 3 means a crate must be compared. `needs_cargo=false`
+      # needs BOTH exit 0 and the script's own final-verdict line, so a run
+      # that exits 0 without reaching its verdict still runs the full gate.
+      # rust-semver-canary.yml runs the full path weekly, since PRs rarely do.
       - name: Check crate semver against crates.io (registry only)
         id: registry
         run: |
           set +e
-          node scripts/check-rust-semver-registry.mjs
+          node scripts/check-rust-semver-registry.mjs > "$RUNNER_TEMP/semver-registry.log" 2>&1
           status=$?
           set -e
-          if [ "$status" -eq 3 ]; then
-            echo "needs_cargo=true" >> "$GITHUB_OUTPUT"
+          cat "$RUNNER_TEMP/semver-registry.log"
+          if [ "$status" -eq 0 ] && grep -qx 'RUST_SEMVER_REGISTRY_VERDICT=final' "$RUNNER_TEMP/semver-registry.log"; then
+            echo "needs_cargo=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          if [ "$status" -eq 0 ]; then
-            echo "needs_cargo=false" >> "$GITHUB_OUTPUT"
+          if [ "$status" -eq 0 ] || [ "$status" -eq 3 ]; then
+            echo "needs_cargo=true" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
           exit "$status"
 

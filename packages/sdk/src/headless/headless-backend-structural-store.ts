@@ -27,6 +27,13 @@ import { unsupportedOperation } from './capabilities.js';
 
 export function structuralStoreStubs(): Required<StructuralStoreBackendMethods> {
   return {
+    addStructuralPlanarAction: unsupportedOperation('store.addStructuralPlanarAction', 'addStructuralPlanarAction not supported in MCP v0.1; use entity_create'),
+    addStructuralSurfaceAction: unsupportedOperation('store.addStructuralSurfaceAction', 'addStructuralSurfaceAction not supported in MCP v0.1; use entity_create'),
+    addStructuralPointReaction: unsupportedOperation('store.addStructuralPointReaction', 'addStructuralPointReaction not supported in MCP v0.1; use entity_create'),
+    addStructuralCurveReaction: unsupportedOperation('store.addStructuralCurveReaction', 'addStructuralCurveReaction not supported in MCP v0.1; use entity_create'),
+    addStructuralSurfaceReaction: unsupportedOperation('store.addStructuralSurfaceReaction', 'addStructuralSurfaceReaction not supported in MCP v0.1; use entity_create'),
+    addStructuralResultGroup: unsupportedOperation('store.addStructuralResultGroup', 'addStructuralResultGroup not supported in MCP v0.1; use entity_create'),
+
     addStructuralSurfaceMember: unsupportedOperation('store.addStructuralSurfaceMember', 'addStructuralSurfaceMember not supported in MCP v0.1; use entity_create'),
     addStructuralCurveConnection: unsupportedOperation('store.addStructuralCurveConnection', 'addStructuralCurveConnection not supported in MCP v0.1; use entity_create'),
     addStructuralSurfaceConnection: unsupportedOperation('store.addStructuralSurfaceConnection', 'addStructuralSurfaceConnection not supported in MCP v0.1; use entity_create'),

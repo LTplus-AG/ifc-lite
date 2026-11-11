@@ -5,7 +5,7 @@ analysis domain ifc-lite reads, shows, authors and converts. The generated
 ledger is `docs/architecture/structural-coverage-ledger.md`.
 
 ```bash
-node tests/structural-coverage/score.mjs --check tests/structural-coverage/baseline/r1.json
+node tests/structural-coverage/score.mjs --check tests/structural-coverage/baseline/r3.json
 ```
 
 This writes `tests/structural-coverage/.out/summary.json` and exits 1 if
@@ -17,7 +17,7 @@ a harness error, never a product score. Without wasm-pack, `build-wasm.sh`
 keeps the wasm runtime already on disk, so scoring a Rust change needs the
 wasm toolchain. The probes run in about two seconds after building.
 
-CI runs the ratchet against the newest frozen `r<N>.json` (now `r1.json`) in the shared **Build packages +
+CI runs the ratchet against the newest frozen `r<N>.json` (now `r3.json`) in the shared **Build packages +
 WASM** job, after fixture verification and the package build. This job runs in
 both fast and full PR lanes for package, harness and manifest changes, and in
 merge-queue batches. The ledger check alone does not run the product probes.
@@ -110,3 +110,7 @@ baseline files. `r1` here is a measurement revision, not a product climb round.
 
 A new in-store builder needs no new probe: add a step to `SCENE` in
 `probes/create-scene.mjs` naming the entities it emits and the values to expect.
+
+[R2 activity/result notes](baseline/r2-notes.md): 24 new create cells, 297.5/774 cells total; rows remain 56/119.
+
+[R3 combined measurement](baseline/r3-notes.md): main after #9737 and #9763 is 288.5/774 cells; the combined branch is 312.5/774, with the same 24 new create passes. R1 and R2 remain retained.

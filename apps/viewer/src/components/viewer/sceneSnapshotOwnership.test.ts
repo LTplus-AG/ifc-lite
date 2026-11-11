@@ -42,7 +42,7 @@ describe('sceneSnapshotKey', () => {
 describe('takeSceneSnapshotGeometry', () => {
   const adoption = {};
   beforeEach(() => { hydrates = true; hydrations = []; removedShards = []; fits = []; withdrawPendingSceneSnapshot(adoption); takeSnapshotModelArrival(); });
-  const take = (geometry: MeshData[], modelCount = 0, target = refs()) => takeSceneSnapshotGeometry(geometry, modelCount, renderer, target);
+  const take = (geometry: MeshData[], modelCount = 0, target = refs()) => takeSceneSnapshotGeometry(geometry, modelCount, renderer, target, true);
 
   it('hydrates with the synced geometry once, and records it as streamed and fitted', () => {
     const geometry = [mesh(), mesh()];

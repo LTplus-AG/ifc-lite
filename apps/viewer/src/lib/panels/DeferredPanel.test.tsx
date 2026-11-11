@@ -12,13 +12,13 @@ import { DeferredPanel } from './DeferredPanel';
 import { resolve as translate } from '@/i18n/registry';
 
 // Independent expectations: a swapped registry mapping must fail these cases.
-const titleKeys = { bcf: 'bcf.panel.title', validation: 'validationPanel.title', lens: 'lensPanel.title' } as const;
+const titleKeys = { bcf: 'bcf.panel.title', validation: 'validationPanel.title', lens: 'lensPanel.title', gantt: 'workspacePanels.bottom.gantt', lists: 'lists.panel.title', extensions: 'extensionsFlavors.extensionsPanel.heading' } as const;
 const initial = useViewerStore.getState();
 afterEach(() => { cleanup(); useViewerStore.setState(initial, true); });
 
 // Eager-JS diet: a delayed chunk must not leave a blank or undismissible panel.
 for (const mobile of [false, true]) {
-  for (const id of ['bcf', 'validation', 'lens'] as const) {
+  for (const id of ['bcf', 'validation', 'lens', 'gantt', 'lists', 'extensions'] as const) {
     it(`${mobile ? 'mobile' : 'desktop'} ${id} shows loading, remains closable, and mounts an interactive cold chunk`, async () => {
       useViewerStore.setState({ isMobile: mobile });
       let complete!: (module: { default: typeof Feature }) => void;
@@ -45,7 +45,7 @@ for (const mobile of [false, true]) {
 }
 
 for (const mobile of [false, true]) {
-  for (const id of ['bcf', 'validation', 'lens'] as const) {
+  for (const id of ['bcf', 'validation', 'lens', 'gantt', 'lists', 'extensions'] as const) {
     it(`${mobile ? 'mobile' : 'desktop'} ${id} chunk failure keeps a close control and does not poison a different deferred panel`, async () => {
       useViewerStore.setState({ isMobile: mobile });
       const Failed = lazy(async () => { throw new Error('Failed to fetch dynamically imported module: panel.js'); });

@@ -9,8 +9,8 @@ import { Spinner } from '@/components/ui/spinner';
 import { useTranslation } from '@/i18n';
 import { panelTitleKey } from './registry';
 
-type DeferredPanelId = 'bcf' | 'validation' | 'lens';
-const labels = { bcf: 'BCF panel', validation: 'Validation panel', lens: 'Lens panel' } as const;
+type DeferredPanelId = 'bcf' | 'validation' | 'lens' | 'gantt' | 'lists' | 'extensions';
+const labels = { bcf: 'BCF panel', validation: 'Validation panel', lens: 'Lens panel', gantt: 'Gantt panel', lists: 'Lists panel', extensions: 'Extensions panel' } as const;
 
 /** Keep a cold panel visible and dismissible while its module arrives. */
 export function DeferredPanel({ id, onClose, children }: {

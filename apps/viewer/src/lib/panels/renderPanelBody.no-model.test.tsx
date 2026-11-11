@@ -17,7 +17,7 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { useViewerStore, type FederatedModel } from '@/store';
 import { posthog } from '@/lib/analytics';
-import { cleanup, click, render } from '@/test/render.js';
+import { cleanup, click, render, waitFor } from '@/test/render.js';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { EVENT_LOAD_FILE } from '@/lib/tours/events';
 import { anchorSelector, TOUR_ANCHORS } from '@/lib/tours/anchors';
@@ -107,17 +107,19 @@ describe('renderPanelBody on an empty viewer (#6720)', () => {
     assert.doesNotMatch(lens.textContent ?? '', /works on a model/);
   });
 
-  it('a banner panel keeps its model-independent content under the offer', () => {
+  it('a banner panel keeps its model-independent content under the offer', async () => {
     empty();
     const root = render(renderPanelBody('lists', () => {}));
     assert.match(root.textContent ?? '', BANNER);
     assert.ok(button(root, SAMPLE));
+    await waitFor(() => button(root, 'New list') !== undefined, 'Lists authoring mounted');
     assert.match(root.textContent ?? '', /New list/, 'list authoring stays reachable');
   });
 
-  it('a banner panel is NOT remounted when a load starts or lands (#4243 class)', () => {
+  it('a banner panel is NOT remounted when a load starts or lands (#4243 class)', async () => {
     empty();
     const root = render(renderPanelBody('lists', () => {}));
+    await waitFor(() => button(root, 'New list') !== undefined, 'Lists authoring mounted');
     const authored = button(root, 'New list');
     assert.ok(authored);
     act(() => { useViewerStore.setState({ loading: true }); });
@@ -136,9 +138,10 @@ describe('renderPanelBody on an empty viewer (#6720)', () => {
     assert.ok(importButton.isConnected);
   });
 
-  it('Gantt and Zones keep their model-free imports under a banner', () => {
+  it('Gantt and Zones keep their model-free imports under a banner', async () => {
     empty();
     const gantt = render(renderPanelBody('gantt', () => {}));
+    await waitFor(() => /import a schedule from MS Project or CSV now/.test(gantt.textContent ?? ''), 'Gantt feature mounted');
     assert.match(gantt.textContent ?? '', /import a schedule from MS Project or CSV now/);
     assert.doesNotMatch(gantt.textContent ?? '', new RegExp(NO_MODEL));
     cleanup();

@@ -11,7 +11,7 @@
  * hosts stay in lock-step.
  */
 
-import { loadBcfPanel, loadValidationPanel, loadLensPanel } from './deferred-panel-modules';
+import { loadBcfPanel, loadValidationPanel, loadLensPanel, loadGanttPanel, loadListPanel, loadExtensionsPanel } from './deferred-panel-modules';
 import { DeferredPanel } from './DeferredPanel';
 import { AssistantSourceContext } from '@/components/viewer/assistant/AssistantAction';
 import { lazy, Suspense, type ReactNode } from 'react';
@@ -26,9 +26,9 @@ const ClashPanel = lazy(() => import('@/components/viewer/ClashPanel').then(modu
 const BCFPanel = lazy(loadBcfPanel);
 const ValidationPanel = lazy(loadValidationPanel);
 const LensPanel = lazy(loadLensPanel);
-import { ExtensionsPanel } from '@/components/extensions/ExtensionsPanel';
-import { GanttPanel } from '@/components/viewer/schedule/GanttPanel';
-import { ListPanel } from '@/components/viewer/lists/ListPanel';
+const ExtensionsPanel = lazy(loadExtensionsPanel);
+const GanttPanel = lazy(loadGanttPanel);
+const ListPanel = lazy(loadListPanel);
 import { RoomPanel } from '@/components/viewer/RoomPanel';
 import { ZonesPanel } from '@/components/viewer/ZonesPanel';
 // Opened on demand; kept off the boot path (eager-bundle ratchet, #8341).
@@ -193,10 +193,10 @@ function panelBody(id: WorkspacePanelId, onClose: () => void): ReactNode {
     case 'validation': return <DeferredPanel id="validation" onClose={onClose}><ValidationPanel onClose={onClose} /></DeferredPanel>;
     case 'lens': return <DeferredPanel id="lens" onClose={onClose}><LensPanel onClose={onClose} /></DeferredPanel>;
     case 'clash': return <ChunkErrorBoundary key="clash" label="Clash panel"><Suspense fallback={null}><ClashPanel onClose={onClose} /></Suspense></ChunkErrorBoundary>;
-    case 'extensions': return <ExtensionsPanel onClose={onClose} />;
+    case 'extensions': return <DeferredPanel id="extensions" onClose={onClose}><ExtensionsPanel onClose={onClose} /></DeferredPanel>;
     case 'script': return <ChunkErrorBoundary label="Script panel"><Suspense fallback={null}><ScriptPanel /></Suspense></ChunkErrorBoundary>;
-    case 'gantt': return <GanttPanel />;
-    case 'lists': return <ListPanel />;
+    case 'gantt': return <DeferredPanel id="gantt" onClose={onClose}><GanttPanel /></DeferredPanel>;
+    case 'lists': return <DeferredPanel id="lists" onClose={onClose}><ListPanel /></DeferredPanel>;
     case 'collab': return <RoomPanel onClose={onClose} />;
     case 'zones': return <ZonesPanel onClose={onClose} />;
     case 'loadReport': return <LoadReportPanelBody onClose={onClose} />;

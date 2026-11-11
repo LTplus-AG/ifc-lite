@@ -54,6 +54,9 @@ if (args.includes('--expect-lazy')) {
     '/components/viewer/validation/ValidationPanel.tsx',
     '/components/viewer/LensPanel.tsx',
     '/components/viewer/bcf/BCFDraftsDialog.tsx',
+    '/components/viewer/schedule/GanttPanel.tsx',
+    '/components/viewer/lists/ListPanel.tsx',
+    '/components/extensions/ExtensionsPanel.tsx',
   ]) {
     if (![...chunks].some(chunk => chunk.modules.some(module => module.id.endsWith(suffix)))) {
       throw new Error(`Expected lazy feature missing from output: ${suffix}`);

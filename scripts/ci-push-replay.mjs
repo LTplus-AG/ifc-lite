@@ -88,7 +88,7 @@ const ACTION_FILE = /^\.github\/actions\//;
 // GitHub runs only top-level workflow YAML. Anything else under workflows/ is a file a
 // step may read, which namedWorkflowFiles does not list, so it always blocks.
 const WORKFLOW_YAML = /^\.github\/workflows\/[^/]+\.ya?ml$/;
-export const TEST_WORKFLOW_PATH = `.github/workflows/${TEST_WORKFLOW_FILE}`;
+const TEST_WORKFLOW_PATH = `.github/workflows/${TEST_WORKFLOW_FILE}`;
 
 /** Whether a changed path keys a cache that only a push to main writes. */
 function keysMainCaches(file, workflowFiles) {
@@ -227,23 +227,17 @@ function readInputs(repo, pushSha, pushTree, parentSha, before) {
   let workflowFiles = null;
   if (changedFiles.some((f) => f.startsWith('.github/workflows/'))) {
     // The push commit's side suffices: dropping a reference edits a file that blocks.
-    const actionFiles = gitLines(['ls-tree', '-r', '--name-only', pushSha, '--', '.github/actions/']);
-    workflowFiles = namedWorkflowFiles({ root: TEST_WORKFLOW_PATH, actionFiles, readText: (path) => gitShow(pushSha, path) });
+    const actionFiles = gitOrNull('ls-tree', '-r', '--name-only', pushSha, '--', '.github/actions/')?.split('\n').filter(Boolean) ?? null;
+    workflowFiles = namedWorkflowFiles({ root: TEST_WORKFLOW_PATH, actionFiles, readText: (path) => gitOrNull('show', `${pushSha}:${path}`) });
     if (!workflowFiles) console.warn(`[push-replay] the workflow files ${TEST_WORKFLOW_FILE} names could not be listed at ${pushSha.slice(0, 9)}; every workflow file blocks`);
   }
   return { pushSha, pushTree, parentSha, before, changedFiles, pulls, runs, artifactNamesByRun, repo, queueEvidence, laterChangedFiles, workflowFiles };
 }
 
-/** A file's text at a commit, or null when it is absent or unreadable (readInputs then warns once). */
-function gitShow(sha, path) {
-  const r = spawnSync('git', ['show', `${sha}:${path}`], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 16 * 1024 * 1024 });
-  return r.status === 0 ? r.stdout : null;
-}
-
-/** A git command's output lines, or null when it fails (the caller then blocks). */
-function gitLines(args) {
+/** A git command's stdout, or null when it fails (absent file, bad ref); the caller then blocks. */
+function gitOrNull(...args) {
   const r = spawnSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 16 * 1024 * 1024 });
-  return r.status === 0 ? r.stdout.split('\n').filter(Boolean) : null;
+  return r.status === 0 ? r.stdout : null;
 }
 
 /** This commit's tree, then those of the commits main has gained since, each with the runs that recorded it. */

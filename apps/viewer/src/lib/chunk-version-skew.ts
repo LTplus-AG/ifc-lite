@@ -225,6 +225,10 @@ export function handlePreloadError(
   // resolves to, not about whether we reload.
   if (isCssPreloadFailure(event.payload)) event.preventDefault();
 
+  // An offline fetch cannot be repaired by navigating to another offline page.
+  // Preserve the rejected import so its feature boundary can surface the error.
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return 'surfaced';
+
   const now = deps.now();
   if (deps.hasRecentReload(now)) return 'surfaced'; // already tried; do not loop
   if (!deps.rememberReload(now)) return 'surfaced'; // could not bound the retry

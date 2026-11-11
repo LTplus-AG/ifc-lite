@@ -157,11 +157,12 @@ function fakeGit(files) {
     diff: (path) => files[path].diff,
   };
 }
-const pkg = (version, extra = {}) => JSON.stringify({ name: '@ifc-lite/x', version, dependencies: { '@ifc-lite/core': `^${version}`, lodash: '^4.0.0' }, ...extra });
+const pkg = (version, extra = {}) => JSON.stringify({ name: '@ifc-lite/x', version, dependencies: { '@ifc-lite/core': 'workspace:*', lodash: '^4.0.0' }, ...extra });
 
 test('DIFF: a real release shape passes', () => {
   const files = {
     'packages/x/package.json': { before: pkg('1.0.0'), after: pkg('1.1.0') },
+    'packages/new/package.json': { after: pkg('0.1.0') },
     'rust/core/Cargo.toml': { diff: '@@ -3 +3 @@\n-version = "2.0.0"\n+version = "2.1.0"\n' },
     'Cargo.lock': { diff: '@@ -10 +10 @@\n-version = "2.0.0"\n+version = "2.1.0"\n@@ -40 +40 @@\n- ifc-lite-core = { version = "=2.0.0", path = "x" }\n+ ifc-lite-core = { version = "=2.1.0", path = "x" }\n' },
   };
@@ -179,12 +180,14 @@ test('DIFF: a real release shape passes', () => {
 test('DIFF: everything that is not a version bump is named', () => {
   const files = {
     'a/package.json': { before: pkg('1.0.0'), after: pkg('1.0.0', { exports: { '.': './dist/index.js' } }) },
-    'b/package.json': { before: pkg('1.0.0'), after: JSON.stringify({ ...JSON.parse(pkg('1.0.0')), dependencies: { '@ifc-lite/core': '^1.0.0', lodash: '^4.1.0' } }) },
-    'c/package.json': { before: pkg('1.0.0'), after: JSON.stringify({ ...JSON.parse(pkg('1.0.0')), dependencies: { '@ifc-lite/core': '^1.0.0', lodash: '^4.0.0', left: '1' } }) },
+    'b/package.json': { before: pkg('1.0.0'), after: JSON.stringify({ ...JSON.parse(pkg('1.0.0')), dependencies: { '@ifc-lite/core': 'workspace:*', lodash: '^4.1.0' } }) },
+    'c/package.json': { before: pkg('1.0.0'), after: JSON.stringify({ ...JSON.parse(pkg('1.0.0')), dependencies: { '@ifc-lite/core': 'file:../x', lodash: '^4.0.0' } }) },
     'd/package.json': { before: '{', after: '{}' },
     'Cargo.toml': { diff: '@@ -9 +9 @@\n-serde = "1.0.1"\n+serde = "1.0.2"\n' },
     'Cargo.lock': { diff: '@@ -9,2 +9,2 @@\n-version = "1.0.1"\n-checksum = "aa"\n+version = "1.0.2"\n+checksum = "bb"\n' },
     'rust/x/Cargo.toml': { diff: '@@ -9,0 +10 @@\n+features = ["x"]\n' },
+    'rust/y/Cargo.toml': { diff: '@@ -4 +4 @@\n-rust-version = "1.75"\n+rust-version = "1.85"\n' },
+    'rust/z/Cargo.toml': { diff: '@@ -9 +9 @@\n-serde = { version = "1.0.1", features = ["derive"] }\n+serde = { version = "2.0.0", features = ["derive"] }\n' },
   };
   const entries = [
     { status: 'A', path: '.changeset/new.md' },
@@ -196,6 +199,9 @@ test('DIFF: everything that is not a version bump is named', () => {
     { status: 'M', path: 'Cargo.toml' },
     { status: 'M', path: 'Cargo.lock' },
     { status: 'M', path: 'rust/x/Cargo.toml' },
+    { status: 'M', path: 'rust/y/Cargo.toml' },
+    { status: 'M', path: 'rust/z/Cargo.toml' },
+    { status: 'A', path: 'docs/CHANGELOG.md' },
   ];
   const problems = diffProblems(entries, fakeGit(files));
   assert.equal(problems.length, entries.length, problems.join('\n'));
@@ -220,10 +226,10 @@ test('VERIFY: a lean run the inputs do not justify fails', () => {
   }
 });
 
-test('VERIFY: a lean run whose release checks did not succeed fails, since skipped passes the map', () => {
-  for (const r of ['skipped', 'failure', 'cancelled']) {
-    const v = verify({ needs: needsJson('skipped', { 'release-pr': r }) });
-    assert.equal(v.ok, false, r);
+test('VERIFY: a lean run whose kept jobs did not all succeed fails, since skipped passes the map', () => {
+  for (const [job, r] of [['release-pr', 'skipped'], ['release-pr', 'failure'], ['release-pr', 'cancelled'], ['rust-semver', 'skipped'], ['silent-revert', 'skipped']]) {
+    const v = verify({ needs: needsJson('skipped', { ...Object.fromEntries(LEAN_KEPT_JOBS.map((j) => [j, 'success'])), [job]: r }) });
+    assert.equal(v.ok, false, `${job}=${r}`);
     assert.match(v.lines.join('\n'), /RELEASE_CHECKS_DID_NOT_PASS/); // @source-text-assertion-ok subject is the returned verdict
   }
 });

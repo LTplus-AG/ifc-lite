@@ -68,8 +68,8 @@ export const QUEUE_FULL_CHECKS = [
   'check-success=Rust tests (feature builds)',
 ];
 
-const DEP_MAPS = ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies'];
-const VERSION_VALUE = /version\s*=\s*"[^"]*"/g;
+// `rust-version` (the MSRV) is not a version bump, hence the lookbehind.
+const VERSION_VALUE = /(?<![\w-])version\s*=\s*"[^"]*"/g;
 
 /**
  * Queue rules from .mergify.yml, read by indentation. Deliberately narrow:
@@ -123,28 +123,23 @@ export function releaseQueueRoute(text) {
   return { ok: true, reason: `Mergify queue \`${rule.name}\` gates the merge on the full lanes` };
 }
 
+/**
+ * Only `version` may move. Internal dependencies use `workspace:` specifiers
+ * and .changeset/config.json sets bumpVersionsWithWorkspaceProtocolOnly, so a
+ * release never rewrites a dependency map.
+ */
 function onlyVersionsMoved(before, after) {
-  const changed = (a, b) => JSON.stringify(a) !== JSON.stringify(b);
   const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
-  for (const k of keys) {
-    if (k === 'version') continue;
-    if (!DEP_MAPS.includes(k)) {
-      if (changed(before[k], after[k])) return `\`${k}\` changed`;
-      continue;
-    }
-    const b = before[k] ?? {};
-    const a = after[k] ?? {};
-    if (changed(Object.keys(b), Object.keys(a))) return `\`${k}\` gained or lost a key`;
-    const moved = Object.keys(a).find((d) => a[d] !== b[d] && !d.startsWith('@ifc-lite/'));
-    if (moved) return `\`${k}.${moved}\` is not a workspace package`;
-  }
-  return null;
+  const moved = [...keys].find((k) => k !== 'version' && JSON.stringify(before[k]) !== JSON.stringify(after[k]));
+  return moved ? `\`${moved}\` changed` : null;
 }
 
 /**
  * Pairs every removed line with an added line in each hunk; a pair may differ
- * only in a `version = "..."` value. A `checksum` change (an external crate
- * moved in Cargo.lock) or any other edit is a problem.
+ * only in a `version = "..."` value, on a bare `version =` line (a package's
+ * own version, or Cargo.lock's) or on a `path =` dependency (an internal
+ * crate). A `checksum` change (an external crate moved in Cargo.lock), an
+ * external requirement, `rust-version` or any other edit is a problem.
  */
 function onlyCargoVersionsMoved(unifiedDiff) {
   const hunks = String(unifiedDiff).split(/^@@.*$/m).slice(1);
@@ -154,7 +149,8 @@ function onlyCargoVersionsMoved(unifiedDiff) {
     const plus = lines.filter((l) => l.startsWith('+')).map((l) => l.slice(1));
     if (minus.length !== plus.length) return 'lines were added or removed';
     for (let i = 0; i < minus.length; i++) {
-      if (minus[i].replace(VERSION_VALUE, 'version=""') !== plus[i].replace(VERSION_VALUE, 'version=""')) return `\`${plus[i].trim()}\` is not a version change`;
+      const internal = /^\s*version\s*=/.test(plus[i]) || /\bpath\s*=/.test(plus[i]);
+      if (!internal || minus[i].replace(VERSION_VALUE, 'version=""') !== plus[i].replace(VERSION_VALUE, 'version=""')) return `\`${plus[i].trim()}\` is not a version change`;
     }
   }
   return null;
@@ -177,6 +173,13 @@ export function diffProblems(entries, git) {
       if (status !== 'D') problem = 'a changeset may only be consumed (deleted)';
     } else if (name === 'CHANGELOG.md') {
       if (status !== 'M' && status !== 'A') problem = `status ${status}`;
+      else {
+        try {
+          git.show('HEAD', path.replace(/CHANGELOG\.md$/, 'package.json'));
+        } catch {
+          problem = 'no package.json beside it, so changesets did not write it';
+        }
+      }
     } else if (name === 'package.json') {
       if (status !== 'M') problem = `status ${status}`;
       else {
@@ -233,8 +236,7 @@ export function decideReleaseLane({ event, mode, headRef, headRepo, repo, baseRe
 
 /**
  * The aggregate's check. A `lean` lane must re-derive as lean, the kept jobs
- * must exist, and `release-pr` must have succeeded: it is the lean run's only
- * changeset check, and a skipped one would pass the aggregate's map.
+ * must exist and have succeeded: a skipped one would pass the aggregate's map.
  */
 export function verifyReleaseLane(input) {
   const d = decideReleaseLane(input);
@@ -244,14 +246,17 @@ export function verifyReleaseLane(input) {
   } catch {
     return { ok: false, lines: ['❌ NEEDS is not readable JSON; cannot tell which lanes ran.'] };
   }
-  const unknown = LEAN_KEPT_JOBS.filter((j) => j !== 'changes' && !(j in results));
+  const unknown = LEAN_KEPT_JOBS.filter((j) => !(j in results));
   if (unknown.length > 0) return { ok: false, lines: [`❌ ci-release-lane.mjs names job(s) the aggregate does not need: ${unknown.join(', ')}. Update LEAN_KEPT_JOBS.`] };
   const resultOf = (j) => results[j]?.result ?? 'absent';
   const skippedByLean = Object.keys(results).filter((j) => !LEAN_KEPT_JOBS.includes(j));
   const listed = skippedByLean.map((j) => `- \`${j}\`: ${resultOf(j)}`);
   if (input.lane === 'lean') {
     if (d.lane !== 'lean') return { ok: false, lines: [`❌ UNJUSTIFIED_RELEASE_LANE: \`changes\` chose the lean lane but this run re-derives \`${d.lane}\` (${d.reason}). Skipped lanes are not a pass here.`] };
-    if (resultOf('release-pr') !== 'success') return { ok: false, lines: [`❌ RELEASE_CHECKS_DID_NOT_PASS: the lean lane needs \`release-pr\` to succeed; it was \`${resultOf('release-pr')}\`.`] };
+    // `skipped` passes the aggregate's map, so a kept job that did not run
+    // would leave the lean run with no gate at all.
+    const notRun = LEAN_KEPT_JOBS.filter((j) => resultOf(j) !== 'success');
+    if (notRun.length > 0) return { ok: false, lines: [`❌ RELEASE_CHECKS_DID_NOT_PASS: a lean run needs every kept job to succeed: ${notRun.map((j) => `\`${j}\` was ${resultOf(j)}`).join(', ')}.`] };
     return { ok: true, lines: ['## Release PR lean lane (`CI_RELEASE_LANE=on`)', '', d.reason, '', 'Skipped on purpose; the `release` merge queue runs them:', '', ...listed] };
   }
   if (d.mode === 'shadow' && d.wouldBeLean) {

@@ -4085,13 +4085,13 @@ jobs:
       # (scripts/ci-release-lane.mjs --verify). It re-reads the PR's diff, so
       # it checks out the same merge commit with its base parent.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        if: needs.changes.outputs.noop != 'true' && (needs.changes.outputs.release_lane == 'lean' || vars.CI_RELEASE_LANE == 'shadow' || vars.CI_RELEASE_LANE == 'on')
+        if: needs.changes.outputs.noop != 'true' && (needs.changes.outputs.release_lane == 'lean' || (github.event_name == 'pull_request' && github.head_ref == 'changeset-release/main' && (vars.CI_RELEASE_LANE == 'shadow' || vars.CI_RELEASE_LANE == 'on')))
         with:
           lfs: false
           persist-credentials: false
           fetch-depth: 2
       - name: Verify the release PR lane decision
-        if: needs.changes.outputs.noop != 'true' && (needs.changes.outputs.release_lane == 'lean' || vars.CI_RELEASE_LANE == 'shadow' || vars.CI_RELEASE_LANE == 'on')
+        if: needs.changes.outputs.noop != 'true' && (needs.changes.outputs.release_lane == 'lean' || (github.event_name == 'pull_request' && github.head_ref == 'changeset-release/main' && (vars.CI_RELEASE_LANE == 'shadow' || vars.CI_RELEASE_LANE == 'on')))
         env:
           CI_RELEASE_LANE: ${{ vars.CI_RELEASE_LANE }}
           HEAD_REF: ${{ github.head_ref }}

@@ -99,10 +99,14 @@ it('NEW-1: store notifications and consumer renders while streaming do not scale
   assert.equal(useViewerStore.getState().models.get(id)?.loadState, 'complete');
   assert.deepEqual(uploads, Array.from({ length: BATCHES }, (_, i) => 1000 + i), 'every streamed shard reaches the renderer exactly once, in order');
   // Before the queue: 2 notifications and 2 renders per batch (the shard
-  // hop's append + clear). Now only the time-throttled geometry/progress
-  // publishes remain (more on a slow runner, never per batch), and the wiring
-  // renders only for the load's own resets, counted until every drain settled.
+  // hop's append + clear): 109 and 99 here. Measured after: 7 and 5.
+  // What this locks in:
+  // - notifications: only the time-throttled geometry/progress publishes
+  //   remain, so their count grows with wall time on a slow runner but never
+  //   per batch. Bound: fewer than one per two batches.
+  // - renders: the wiring renders only for the load's own resets, which do not
+  //   depend on timing, counted until every drain settled. Bound: 8.
   console.log(`[NEW-1] batches=${BATCHES} streamingNotifications=${streamingNotifications} consumerRenders=${rendersAtEnd - rendersAtStart}`);
   assert.ok(streamingNotifications < BATCHES / 2, `store notified ${streamingNotifications} times while ${BATCHES} batches streamed`);
-  assert.ok(rendersAtEnd - rendersAtStart < BATCHES / 4, `Viewport wiring rendered ${rendersAtEnd - rendersAtStart} times during the load`);
+  assert.ok(rendersAtEnd - rendersAtStart <= 8, `Viewport wiring rendered ${rendersAtEnd - rendersAtStart} times during the load`);
 });

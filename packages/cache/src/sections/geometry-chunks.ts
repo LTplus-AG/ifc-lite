@@ -35,7 +35,7 @@
 import { FORMAT_VERSION } from '../types.js';
 import { collectSourcePool, writeSourcePool, readSourcePool, type AppearanceSourcePool } from './appearance-provenance.js';
 import type { MeshData, CoordinateInfo } from '@ifc-lite/geometry';
-import { BufferWriter, BufferReader } from '../utils/buffer-utils.js';
+import { ArrayArena, BufferWriter, BufferReader } from '../utils/buffer-utils.js';
 import {
   GEOMETRY_CHUNK_CELL_SIZE,
   GEOMETRY_CHUNK_SOFT_BYTES,
@@ -284,6 +284,8 @@ export async function decodeGeometryChunk(
     ? raw.buffer
     : raw.slice().buffer;
   const reader = new BufferReader(buffer as ArrayBuffer);
+  // Mesh arrays share arena blocks (one allocation per ~1 MiB, not three per mesh).
+  reader.arena = new ArrayArena();
   const meshes: MeshData[] = [];
   for (let i = 0; i < info.meshCount; i++) {
     meshes.push(readMeshRecord(reader, version, i, info.appearanceSources));

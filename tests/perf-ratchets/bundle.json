@@ -22,7 +22,7 @@
       "metric": "raw-bytes",
       "unit": "bytes",
       "description": "raw size of the single <script type=\"module\" src> chunk of apps/viewer/dist/index.html",
-      "ceiling": 2186000,
+      "ceiling": 2181927,
       "tolerance": {
         "kind": "relative",
         "value": 0.001

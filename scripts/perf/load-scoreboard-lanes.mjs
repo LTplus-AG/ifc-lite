@@ -13,10 +13,13 @@
  *   what that user waits through), unlike the default lanes.
  * - `boot`: a fresh browser that opens no file. App-shell ready, boot
  *   time-to-interactive (end of the last long task before 1 s without one),
- *   boot long tasks, and idle memory 5 s after navigation: Chrome PSS,
- *   `performance.measureUserAgentSpecificMemory()` (JS heaps of the page and
- *   its workers, with their ArrayBuffer and WebAssembly backing stores) and
- *   GPU memory from nvidia-smi.
+ *   boot long tasks, and idle memory 5 s after navigation: Chrome PSS; JS heaps
+ *   of the page and its workers (`performance.measureUserAgentSpecificMemory()`,
+ *   which does NOT count WebAssembly memory: a 64 MiB WebAssembly.Memory moved it
+ *   by 0.3 MiB on Pop); WebAssembly heaps summed explicitly over the page and
+ *   every worker through CDP `Runtime.queryObjects(WebAssembly.Memory.prototype)`
+ *   (measured exactly: +64.0 MiB for a 64 MiB memory in the page and in a
+ *   worker); and GPU memory from nvidia-smi.
  * - Before the first reopen the stored cache entry must stop changing, so a
  *   scene snapshot captured at the end of the cold load is either there or
  *   not, never racing the reopen. The reopen keeps its lane; whether a
@@ -67,6 +70,17 @@ export function bootTimeToInteractive(tasks, shellReadyMs, quietMs = 1000) {
   return busyUntil;
 }
 
+/**
+ * Combine per-realm WebAssembly memory sums: memory each realm owns adds up; a
+ * shared (SharedArrayBuffer-backed) memory appears in every realm that imports
+ * it, so it counts once, at its largest size.
+ */
+export function combineWasmRealms(realms) {
+  const own = realms.reduce((a, r) => a + (r.own ?? 0), 0);
+  const shared = realms.reduce((a, r) => Math.max(a, r.shared ?? 0), 0);
+  return { totalBytes: own + shared, ownBytes: own, sharedBytes: shared, memories: realms.reduce((a, r) => a + (r.count ?? 0), 0), realms: realms.length };
+}
+
 // ---------------------------------------------------------------- page helpers
 
 /** Arm at the first paint after the shell exists: one animation frame, no long-task quiet window. */
@@ -110,6 +124,41 @@ export async function waitCacheEntryStable(page, { stableMs = 3000, timeoutMs = 
   }
 }
 
+const SUM_WASM_MEMORIES = `function () { let own = 0, shared = 0; for (const m of this) { const n = m.buffer.byteLength;
+  if (typeof SharedArrayBuffer !== 'undefined' && m.buffer instanceof SharedArrayBuffer) shared = Math.max(shared, n); else own += n; }
+  return { own, shared, count: this.length }; }`;
+
+async function realmWasm(send) {
+  const proto = await send('Runtime.evaluate', { expression: 'WebAssembly.Memory.prototype' });
+  const objs = await send('Runtime.queryObjects', { prototypeObjectId: proto.result.objectId });
+  return (await send('Runtime.callFunctionOn', { objectId: objs.objects.objectId, functionDeclaration: SUM_WASM_MEMORIES, returnByValue: true })).result.value;
+}
+
+/** Every live WebAssembly.Memory in the page and its (shared) workers, through CDP; see the header. */
+export async function wasmHeaps(context, page) {
+  const cdp = await context.newCDPSession(page);
+  try {
+    const realms = [{ realm: 'page', ...(await realmWasm((m, p) => cdp.send(m, p))) }];
+    const { targetInfos } = await cdp.send('Target.getTargets');
+    let id = 0;
+    const pending = new Map();
+    cdp.on('Target.receivedMessageFromTarget', ({ message }) => { const msg = JSON.parse(message); pending.get(msg.id)?.(msg); });
+    for (const t of targetInfos.filter((x) => x.type === 'worker' || x.type === 'shared_worker')) {
+      const { sessionId } = await cdp.send('Target.attachToTarget', { targetId: t.targetId, flatten: false });
+      const send = (method, params) => new Promise((resolve, reject) => {
+        const mid = ++id;
+        pending.set(mid, (msg) => (msg.error ? reject(new Error(msg.error.message)) : resolve(msg.result)));
+        cdp.send('Target.sendMessageToTarget', { sessionId, message: JSON.stringify({ id: mid, method, params }) }).catch(reject);
+      });
+      realms.push({ realm: t.type, ...(await realmWasm(send)) });
+      await cdp.send('Target.detachFromTarget', { sessionId }).catch(() => {});
+    }
+    return combineWasmRealms(realms);
+  } finally {
+    await cdp.detach().catch(() => {});
+  }
+}
+
 /** In page: long tasks so far and the shell's own readiness. */
 function bootState() {
   return { now: performance.now(), tasks: globalThis.__benchLongTasks ?? [],
@@ -145,13 +194,14 @@ export async function bootSample({ chromium, launchOptions, initScripts, openShe
     context = await chromium.launchPersistentContext(profileDir, launchOptions);
     for (const [script, arg] of initScripts) await context.addInitScript(script, arg);
     const page = await openShell(context);
-    const shellReadyMs = await page.evaluate(() => performance.now());
+    const shellReadyMs = await page.evaluate(() => globalThis.__benchShellAt ?? performance.now());
     const now = await page.evaluate(() => performance.now());
     if (now < idleAfterMs) await page.waitForTimeout(idleAfterMs - now);
     const s = await page.evaluate(bootState);
     const pids = chromePids(profileDir);
     const pss = memoryOf(pids);
     const agent = await page.evaluate(measureAgentMemory, 30000).catch((e) => ({ error: String(e).slice(0, 200) }));
+    const wasm = await wasmHeaps(context, page).catch((e) => ({ error: String(e).slice(0, 200) }));
     const interactive = bootTimeToInteractive(s.tasks, shellReadyMs);
     Object.assign(row, {
       ok: true, shellReadyMs, interactiveMs: interactive, bootLongTasks: s.tasks.length,
@@ -159,9 +209,10 @@ export async function bootSample({ chromium, launchOptions, initScripts, openShe
       peakMemoryMiB: pss.pssMiB, peakMemoryMetric: `PSS sum of the profile's Chrome processes ${Math.round(s.now)} ms after navigation (idle)`,
       idleRssMiB: pss.rssMiB, idleJsMiB: agent.bytes === undefined ? null : agent.bytes / 2 ** 20, idleJsByScope: agent.byScope ?? null,
       idleJsError: agent.error ?? null, idleMainHeapMiB: s.jsHeap === null ? null : s.jsHeap / 2 ** 20, idleVramMiB: vramOf(pids),
+      idleWasmMiB: wasm.totalBytes === undefined ? null : wasm.totalBytes / 2 ** 20, idleWasm: wasm,
       firstGeometryMs: null, uiQuietMs: null, fingerprint: 'no model',
     });
-    log?.(`  ${tag} boot: shell ${shellReadyMs.toFixed(0)} ms, interactive ${interactive.toFixed(0)} ms, ${row.bootLongTasks} long tasks, idle PSS ${pss.pssMiB.toFixed(0)} MiB, JS ${row.idleJsMiB?.toFixed(1) ?? 'n/a'} MiB, GPU ${row.idleVramMiB ?? 'n/a'} MiB`);
+    log?.(`  ${tag} boot: shell ${shellReadyMs.toFixed(0)} ms, interactive ${interactive.toFixed(0)} ms, ${row.bootLongTasks} long tasks, idle PSS ${pss.pssMiB.toFixed(0)} MiB, JS ${row.idleJsMiB?.toFixed(1) ?? 'n/a'} MiB, wasm ${row.idleWasmMiB?.toFixed(1) ?? 'n/a'} MiB, GPU ${row.idleVramMiB ?? 'n/a'} MiB`);
   } catch (err) {
     row.error = `boot: ${String(err?.message ?? err).slice(0, 600)}`;
     log?.(`  ${tag} FAILED ${row.error}`);

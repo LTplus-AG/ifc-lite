@@ -293,7 +293,7 @@ function report(opt) {
   summary.aaReference = aaPath;
   summary.host = host;
   writeFileSync(join(out, 'report.json'), JSON.stringify(summary, null, 2) + '\n');
-  const md = renderMarkdown(summary, plan, host);
+  const md = renderMarkdown(summary, plan, host, samples);
   writeFileSync(join(out, 'report.md'), md);
   console.log(md);
   return summary;

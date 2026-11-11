@@ -349,3 +349,14 @@ test('the report summarizes the boot lane under its pseudo-fixture and counts sn
   assert.equal(warm1.snapshotAdoptedCount, 3);
   assert.equal(warm1.snapshotPresentBeforeOpenCount, 3);
 });
+
+test('idle wasm heaps add up per realm, and a shared memory imported by several realms counts once', async () => {
+  const { combineWasmRealms } = await lanesModule();
+  const MiB = 2 ** 20;
+  const c = combineWasmRealms([{ own: 64 * MiB, shared: 0, count: 1 }, { own: 32 * MiB, shared: 128 * MiB, count: 2 }, { own: 0, shared: 128 * MiB, count: 1 }]);
+  assert.equal(c.ownBytes, 96 * MiB);
+  assert.equal(c.sharedBytes, 128 * MiB);
+  assert.equal(c.totalBytes, 224 * MiB);
+  assert.equal(c.memories, 4);
+  assert.equal(combineWasmRealms([]).totalBytes, 0);
+});

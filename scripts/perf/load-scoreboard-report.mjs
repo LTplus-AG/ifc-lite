@@ -22,7 +22,8 @@ export const METRICS = [
   // `boot` lane only (absent elsewhere, so no verdict there).
   ['shellReadyMs', 'app-shell ready ms', 1],
   ['bootLongTaskMs', 'boot long-task ms', 1],
-  ['idleJsMiB', 'idle JS+wasm MiB', 1],
+  ['idleJsMiB', 'idle JS heap MiB', 1],
+  ['idleWasmMiB', 'idle wasm MiB', 1],
   ['idleVramMiB', 'idle GPU MiB', 1],
 ];
 export const BROWSER_LANES = ['browser-cold', 'browser-cold-early', 'browser-warm1', 'browser-warm'];
@@ -138,7 +139,7 @@ function cell(m) {
 
 function tierCell(f, lane) {
   const l = f.lanes[lane];
-  if (lane === 'native-cold') return 'n/a';
+  if (lane === 'native-cold' || lane === 'boot') return 'n/a';
   const s = l?.sides.base;
   const adopted = s?.snapshotAdoptedCount ? `; snapshot ${s.snapshotAdoptedCount}/${s.ok}` : '';
   const stored = lane === 'browser-warm1' && s?.snapshotPresentBeforeOpenCount ? ` (stored before open ${s.snapshotPresentBeforeOpenCount}/${s.ok})` : '';
@@ -169,6 +170,22 @@ function baselineTable(summary, set, lanes) {
   return lines.join('\n');
 }
 
+const BOOT_COLUMNS = [['shellReadyMs', 'app-shell ready ms'], ['interactiveMs', 'boot interactive ms'], ['bootLongTasks', 'long tasks'],
+  ['bootLongTaskMs', 'long-task ms'], ['peakMemoryMiB', 'idle PSS MiB'], ['idleJsMiB', 'idle JS heap MiB'], ['idleWasmMiB', 'idle wasm MiB'], ['idleVramMiB', 'idle GPU MiB']];
+
+/** The boot lane per side (no file opened); values from the rows, so columns without a verdict metric still show. */
+function bootTable(summary, samples) {
+  const rows = samples.filter((r) => r.lane === 'boot');
+  if (rows.length === 0) return null;
+  const lines = [`| side | ${BOOT_COLUMNS.map(([, l]) => l).join(' | ')} | ok/failed |`, `|---|${BOOT_COLUMNS.map(() => '---:|').join('')}---|`];
+  for (const side of ['base', 'branch']) {
+    const mine = rows.filter((r) => r.side === side);
+    const ok = mine.filter((r) => r.ok);
+    lines.push(`| ${side} | ${BOOT_COLUMNS.map(([k]) => cell({ values: ok.map((r) => r[k]) })).join(' | ')} | ${ok.length}/${mine.length - ok.length} |`);
+  }
+  return lines.join('\n');
+}
+
 function verdictTable(summary, set, lanes) {
   const lines = ['| fixture | lane | metric | base median | branch median | gain | own floor | A/A floor | 2x floor | verdict | output |',
     '|---|---|---|---:|---:|---:|---:|---:|---:|---|---|'];
@@ -194,7 +211,7 @@ export function laneStageRanking(summary, lane, set = 'tuning') {
   return rankShares(perFixture);
 }
 
-export function renderMarkdown(summary, plan, host) {
+export function renderMarkdown(summary, plan, host, samples = []) {
   const out = [`# Load scoreboard: ${summary.name}`, ''];
   out.push(`Kind: ${summary.kind}. Timed evidence: ${host?.timedEvidence ? 'yes (exclusive benchmark admission)' : 'NO (not exclusive; dry run)'}.`);
   for (const seg of host?.segments ?? []) {
@@ -205,6 +222,10 @@ export function renderMarkdown(summary, plan, host) {
   for (const set of ['tuning', 'holdout', 'boot']) {
     if (!summary.fixtures.some((f) => f.set === set)) continue;
     out.push(`## Baseline (${set})`, '', baselineTable(summary, set, plan.lanes), '');
+  }
+  const boot = bootTable(summary, samples);
+  if (boot) {
+    out.push('## Boot, no file opened (fresh browser; idle memory 5 s after navigation; wasm summed over page and workers via CDP)', '', boot, '');
   }
   for (const set of ['tuning', 'holdout', 'boot']) {
     if (!summary.fixtures.some((f) => f.set === set)) continue;

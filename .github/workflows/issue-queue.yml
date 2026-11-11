@@ -75,25 +75,14 @@ name: Issue queue
 # or relabels the PR. Subscribing to `issues: [labeled]` is the fix and is its
 # own change.
 #
-# `ready_for_review` IS NOT IN THE LIST, unlike pr-review-signal.yml. This job
-# runs on drafts too and scripts/check-issue-queue.mjs reads nothing about draft
-# state, so the draft->ready transition cannot change its answer. Leaving the
-# type out leaves the previous verdict in place, which is the same verdict.
-#
-# WHAT ELSE STILL RUNS WITHOUT CHANGING THE ANSWER, and why it stays: a label
-# other than `unqueued` (bots add several), a title-only edit, and every event on
-# a Mergify batch PR (the job below skips those, but the run is still created).
-# `on:` cannot filter by label name, edit content or head branch, and filtering
-# in a job `if:` would publish a SKIPPED `Issue queue` check -- this is a
-# required check, GitHub takes the latest run per name, and reads `skipped` as a
-# pass, so a label added by a bot would turn a red PR green. pr-review-signal.yml
-# documents the same trap for `edited`.
+# `ready_for_review` covers the draft->ready transition, same as
+# pr-review-signal.yml.
 on:
   merge_group:
     types: [checks_requested]
   pull_request:
     types:
-      [opened, synchronize, reopened, edited, labeled, unlabeled]
+      [opened, synchronize, reopened, edited, labeled, unlabeled, ready_for_review]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}

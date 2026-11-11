@@ -39,20 +39,28 @@ jobs:
           WORKFLOW: ${{ github.workflow }}
         run: |
           set -euo pipefail
-          # A second open PR can share this head branch, and its runs still matter.
-          open=$(gh api -X GET "repos/$REPO/pulls" -f state=open -f head="${REPO%%/*}:$BRANCH" --jq 'length')
-          if [ "$open" != "0" ]; then
-            echo "$BRANCH still has an open PR; leaving its runs alone"
-            exit 0
-          fi
           # A cancelled run stays `in_progress` while it winds down; later passes
           # skip it rather than ask again.
           cancelled=" "
+          stuck=""
           for pass in 1 2 3; do
             if [ "$pass" -gt 1 ]; then sleep 20; fi
+            # Checked every pass: a second open PR can share this head branch, or
+            # this one can be reopened during the sweep, and then its runs matter.
+            # Pass 1 must read; a later pass is a second look, and a failed read
+            # there ends the sweep with what the earlier passes found.
+            if ! open=$(gh api -X GET "repos/$REPO/pulls" -f state=open -f head="${REPO%%/*}:$BRANCH" --jq 'length') ||
+              ! ids=$(gh api -X GET --paginate "repos/$REPO/actions/runs" -f branch="$BRANCH" -f event=pull_request -f per_page=100 \
+                --jq ".workflow_runs[] | select(.status != \"completed\" and .head_repository.full_name == \"$REPO\" and .name != \"$WORKFLOW\") | .id"); then
+              if [ "$pass" -eq 1 ]; then exit 1; fi
+              echo "::warning::a read failed on pass $pass; stopping the sweep"
+              break
+            fi
+            if [ "$open" != "0" ]; then
+              echo "$BRANCH has an open PR; leaving its runs alone"
+              exit 0
+            fi
             stuck=""
-            ids=$(gh api -X GET --paginate "repos/$REPO/actions/runs" -f branch="$BRANCH" -f event=pull_request -f per_page=100 \
-              --jq ".workflow_runs[] | select(.status != \"completed\" and .head_repository.full_name == \"$REPO\" and .name != \"$WORKFLOW\") | .id")
             for id in $ids; do
               case "$cancelled" in *" $id "*) continue ;; esac
               gh run cancel "$id" --repo "$REPO" && { echo "cancelled $id"; cancelled="$cancelled$id "; continue; }

@@ -148,9 +148,7 @@ export function joinEnds(
       extended.push({ elementId: lines[best.j].elementId, end: endName(k), distance: length(sub(best.target, ends[k])), toElementId: lines[i].elementId });
       ends[k] = best.target;
       joined.add(k);
-    } else if (best.along > tolerance && best.along < length(sub(ends[2 * best.j + 1], ends[2 * best.j])) - tolerance) {
-      splits[best.j].push(best.target);
-    }
+    } else splits[best.j].push(best.target); // cuts at the member's ends are dropped below
   }
 
   const pieces: Array<{ source: number; start: Vec3; end: Vec3 }> = [];

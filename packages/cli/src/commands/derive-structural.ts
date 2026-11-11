@@ -49,7 +49,8 @@ export async function deriveStructuralCommand(args: string[]): Promise<void> {
   if (!out && !dryRun) fatal('--out <file.ifc> is required (or use --dry-run to report only)');
   const metres = (flag: string) => {
     const value = getFlag(args, flag);
-    return value === undefined ? undefined : Number(value);
+    // An empty value is not 0 metres.
+    return value === undefined ? undefined : value.trim() === '' ? NaN : Number(value);
   };
   // Unset flags stay undefined, and the plan step fills in its defaults.
   const options: StructuralDerivationOptions = {

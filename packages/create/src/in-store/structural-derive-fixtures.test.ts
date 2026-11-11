@@ -30,7 +30,7 @@ const E1_3 = 'structural/ifc_structuralanalysisview/E1--3-Axis-Struc-Export.ifc'
 const AC20 = 'ara3d/AC-20-Smiley-West-10-Bldg.ifc';
 const missing = [STR, TESSELLATED, STEEL_FRAME, BASEMENT, ROOF_TRUSS, E1_3].filter((p) => !existsSync(fixture(p)));
 if (missing.length) console.warn(`skip: structural derivation fixtures missing (${missing.join(', ')}); run \`pnpm fixtures\``);
-const has = (path: string) => !missing.includes(path) && existsSync(fixture(path));
+const has = (path: string) => existsSync(fixture(path));
 
 async function load(path: string) {
   const bytes = readFileSync(fixture(path));
@@ -41,15 +41,9 @@ async function load(path: string) {
 }
 const distance = (a: Vec3, b: Vec3) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
 
-/** Joints (nodes shared by two or more elements), free ends and the largest end move of a plan. */
-function joints(plan: StructuralDerivationPlan) {
-  return {
-    joints: plan.nodes.filter((node) => new Set(node.elementIds).size >= 2).length,
-    freeEnds: plan.report.freeEnds.length,
-    extendedEnds: plan.report.extendedEnds.length,
-    maxExtension: Math.max(0, ...plan.report.extendedEnds.map((e) => Math.abs(e.distance))),
-  };
-}
+/** Joints (nodes shared by two or more elements) of a plan. */
+const joints = (plan: StructuralDerivationPlan) => plan.nodes.filter((node) => new Set(node.elementIds).size >= 2).length;
+const maxExtension = (plan: StructuralDerivationPlan) => Math.max(0, ...plan.report.extendedEnds.map((e) => Math.abs(e.distance)));
 const WORLD: Frame3 = { o: [0, 0, 0], x: [1, 0, 0], y: [0, 1, 0], z: [0, 0, 1] };
 
 /** Read an authored item's placement frame and first topology item, in world metres. */
@@ -98,11 +92,12 @@ describe('structural derivation on real physical models (#9668)', () => {
     const { store, editor } = await load(STR);
     const plan = planStructuralDerivation(readStructuralDerivationFacts(store, editor));
     // 106 elements; members met in their interior are split (#9668 review: joints).
-    expect(plan.report.counts).toMatchObject({ curveMembers: 142, surfaceMembers: 118, supports: 26, guessedSupports: 0, assumedLoadBearing: 0 });
+    expect(plan.report.counts).toMatchObject({
+      curveMembers: 142, surfaceMembers: 118, supports: 26, guessedSupports: 0, assumedLoadBearing: 0, freeEnds: 97, extendedEnds: 51,
+    });
     expect(new Set(plan.curveMembers.map((m) => m.elementId)).size).toBe(106);
-    const j = joints(plan);
-    expect(j).toMatchObject({ joints: 56, freeEnds: 97, extendedEnds: 51 });
-    expect(j.maxExtension).toBeLessThan(0.21);
+    expect(joints(plan)).toBe(56);
+    expect(maxExtension(plan)).toBeLessThan(0.21);
     const reasons = plan.report.skipped.map((s) => `${s.type}:${s.reason}`);
     expect(reasons.filter((r) => r === 'IfcFooting:footing-without-member-end')).toHaveLength(9);
     expect(reasons.filter((r) => !r.startsWith('IfcFooting'))).toEqual(['IfcWallStandardCase:no-idealisable-shape']);
@@ -137,10 +132,9 @@ describe('structural derivation on real physical models (#9668)', () => {
     const plan = planStructuralDerivation(readStructuralDerivationFacts(store, editor));
     expect(plan.nodes).toHaveLength(60);
     // Before joints: 60 nodes, none shared, and no free end reported.
-    const j = joints(plan);
-    expect(j).toMatchObject({ joints: 20, freeEnds: 20, extendedEnds: 20 });
-    expect(j.maxExtension).toBeLessThan(0.1);
-    expect(plan.report.counts.freeEnds).toBe(20);
+    expect(joints(plan)).toBe(20);
+    expect(plan.report.counts).toMatchObject({ freeEnds: 20, extendedEnds: 20 });
+    expect(maxExtension(plan)).toBeLessThan(0.1);
   });
 });
 
@@ -170,7 +164,8 @@ describe('derived against authored analytical models (#9668)', () => {
     expect(errors[Math.floor(errors.length / 2)]).toBeLessThan(0.005);
     expect(errors[Math.floor(errors.length * 0.9)]).toBeLessThan(0.015);
     expect(plan.report.counts).toMatchObject({ nodes: 94, guessedSupports: 6 });
-    expect(joints(plan)).toMatchObject({ joints: 58, freeEnds: 34, extendedEnds: 0 });
+    expect(joints(plan)).toBe(58);
+    expect(plan.report.counts).toMatchObject({ freeEnds: 34, extendedEnds: 0 });
   });
 
   it.skipIf(!has(ROOF_TRUSS))('roof truss: every member matches its authored members within 1 mm once its joints are made', async () => {
@@ -179,7 +174,8 @@ describe('derived against authored analytical models (#9668)', () => {
     // 0.150 m before the joint rule: two diagonals stopped at a chord's face.
     expect(errors[errors.length - 1]).toBeLessThan(0.001);
     expect(plan.report.counts).toMatchObject({ curveMembers: 13, nodes: 10 });
-    expect(joints(plan)).toMatchObject({ joints: 7, freeEnds: 1, extendedEnds: 2 });
+    expect(joints(plan)).toBe(7);
+    expect(plan.report.counts).toMatchObject({ freeEnds: 1, extendedEnds: 2 });
   });
 
   it.skipIf(!has(E1_3))('E1--3: the four columns match their authored members, and the slab its plane', async () => {
@@ -189,7 +185,8 @@ describe('derived against authored analytical models (#9668)', () => {
     expect(plan.surfaceMembers).toHaveLength(1);
     expect(plan.report.counts).toMatchObject({ nodes: 8, supports: 4, guessedSupports: 4 });
     // The columns stop under the slab, and a surface member gets no connections: four free tops.
-    expect(joints(plan)).toMatchObject({ joints: 0, freeEnds: 4 });
+    expect(joints(plan)).toBe(0);
+    expect(plan.report.counts.freeEnds).toBe(4);
   });
 
   it.skipIf(!has(STEEL_FRAME))('steel frame with one top beam unlinked: no support guessed under it, and the authored model is refused, then added beside', async () => {

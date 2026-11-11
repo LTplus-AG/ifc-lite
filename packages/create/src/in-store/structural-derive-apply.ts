@@ -87,22 +87,20 @@ export function applyStructuralDerivation(
   return editor.runAtomic((draft) => writePlan(draft, plan, first, placementOf, random));
 }
 
-/** The builders' refusals, run on the whole plan in storey-local coordinates. */
+/**
+ * The plan is plain data a caller may hold or change, so its shape is checked
+ * here, before the first write; the builders' other refusals (finite points,
+ * thickness) throw inside the transaction and also leave nothing.
+ */
 function checkPlan(plan: StructuralDerivationPlan, toLocal: (storeyId: number | null, p: Vec3) => Vec3): void {
   const refuse = (what: string, why: string) => { throw new Error(`Structural derivation: ${what} ${why}; plan again`); };
-  const finite = (p: Vec3) => p.every(Number.isFinite);
-  for (const node of plan.nodes) {
-    if (!finite(toLocal(node.storeyId, node.position))) refuse(`node ${node.index + 1}`, 'has no finite position');
-  }
   for (const member of plan.curveMembers) {
     const what = `the curve member of element #${member.elementId}`;
     if (!plan.nodes[member.startNode] || !plan.nodes[member.endNode]) refuse(what, 'names a node the plan does not have');
-    const [a, b] = [member.start, member.end].map((p) => toLocal(member.storeyId, p));
-    if (!finite(a) || !finite(b) || a.every((v, k) => v === b[k])) refuse(what, 'has no length');
+    if (member.start.every((v, k) => v === member.end[k])) refuse(what, 'has no length');
   }
   for (const member of plan.surfaceMembers) {
     const what = `the surface member of element #${member.elementId}`;
-    if (!(Number.isFinite(member.thickness) && member.thickness > 0)) refuse(what, 'has no positive thickness');
     try {
       prepareStructuralFace(member.boundary.map((p) => toLocal(member.storeyId, p)));
     } catch (error) {

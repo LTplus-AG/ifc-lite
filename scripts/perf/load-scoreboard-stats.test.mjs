@@ -315,6 +315,17 @@ test('every bench\'s first reopen waits for a stable cache entry: scenoptic-benc
   assert.equal((await prepareWarmOpen({ ...base, open: 2, snapshotWritten: true })).failure, null);
 });
 
+test('a federated set is cached when any of its files is: the tier is per file, not the set total (review #9740)', async () => {
+  const { anyFileCached } = await stats();
+  const MiB = 2 ** 20;
+  assert.equal(anyFileCached([250 * MiB, 250 * MiB]), true, 'two 250 MiB files are mesh-only cached though their sum is over 400 MiB');
+  assert.equal(anyFileCached([2 * MiB, 30 * MiB]), true);
+  assert.equal(anyFileCached([2 * MiB, 3 * MiB]), false);
+  assert.equal(anyFileCached([500 * MiB]), false);
+  assert.equal(anyFileCached([]), false);
+  assert.equal(anyFileCached(undefined), false);
+});
+
 const lanesModule = () => load('./load-scoreboard-lanes.mjs');
 
 test('browser-cold-early times from the first paint the file was picked at, not from the change event (review #9740)', async () => {

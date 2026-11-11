@@ -38,7 +38,7 @@ import { fileURLToPath } from 'node:url';
 import { TICK, chromePids, cpuTicks, memoryOf, settleCpu, vramOf, withGpuClock } from './scenoptic-bench-sampling.mjs';
 import { COUNT_FRAMES, openAndWaitInteractive, openViewerPage, replacePage, startViewerServer, waitCacheWrites, waitSceneSnapshots } from './viewer-load-probe.mjs';
 import { expectSceneSnapshot, prepareWarmOpen } from './viewer-scene-snapshot.mjs';
-import { expectedCacheTier } from './load-scoreboard-stats.mjs';
+import { anyFileCached } from './load-scoreboard-stats.mjs';
 import { waitCacheEntryStable } from './load-scoreboard-lanes.mjs';
 
 const ROOT = resolve(fileURLToPath(new URL('../..', import.meta.url)));
@@ -236,7 +236,8 @@ async function runSample(build, set, round) {
     if (!opt['no-warm']) {
       const cacheWriteSettled = await waitCacheWrites(page);
       // The viewer's own default rule (on unless perf.sceneSnapshot says otherwise); only a cached single-file hit writes one.
-      const cached = !expectedCacheTier(set.bytes).startsWith('none');
+      // Per file, as the viewer decides it: two 250 MiB files are both cached though their 500 MiB sum is not.
+      const cached = anyFileCached(set.files.map((file) => statSync(file).size));
       const snapshotExpected = expectSceneSnapshot({ query: `${QUERY}${build.flags}`, files: set.files.length, cached });
       // A warm open may store a scene snapshot the next one reads (`--warm-opens 2`); the last is the sample.
       for (let open = 1; open <= WARM_OPENS; open++) {

@@ -362,6 +362,11 @@ export function gpuUnhealthy(health) {
   return health.contaminated ? `GPU device lost during sample (${health.reasons.join('; ')})` : null;
 }
 
+/** Whether any file of a set is cached: the viewer decides the tier per file, never on the set's total size. */
+export function anyFileCached(fileBytes) {
+  return Array.isArray(fileBytes) && fileBytes.some((bytes) => Number.isFinite(bytes) && !expectedCacheTier(bytes).startsWith('none'));
+}
+
 /** Viewer cache tier a source of `bytes` qualifies for (apps/viewer/src/utils/ifcConfig.ts, hooks/cacheTier.ts). */
 export function expectedCacheTier(bytes) {
   const MB = 1024 * 1024;

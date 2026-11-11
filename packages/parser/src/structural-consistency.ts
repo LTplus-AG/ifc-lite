@@ -10,9 +10,9 @@
  *
  * Three rules, all warnings:
  * - `structural-unlinked-element`: a load-bearing beam, column, member, slab,
- *   wall or footing with no structural item assigned. Runs only when the file
- *   has an analytical model (an IfcStructuralAnalysisModel or any structural
- *   member).
+ *   wall, footing or pile with no structural item assigned. Runs only when the
+ *   file has an analytical model (an IfcStructuralAnalysisModel or any
+ *   structural member).
  * - `structural-unlinked-item`: a structural member or connection with no
  *   physical element assigned. Each kind is checked only in a file that links
  *   at least one item of that kind: a file that links none treats the kind as
@@ -68,7 +68,7 @@ export interface StructuralConsistencyIssue {
 }
 
 /** The classes rule 1 treats as load-bearing candidates; subtypes included. */
-export const LOAD_BEARING_CLASSES: readonly string[] = ['IfcBeam', 'IfcColumn', 'IfcMember', 'IfcSlab', 'IfcWall', 'IfcFooting'];
+export const LOAD_BEARING_CLASSES: readonly string[] = ['IfcBeam', 'IfcColumn', 'IfcMember', 'IfcSlab', 'IfcWall', 'IfcFooting', 'IfcPile'];
 
 /** Physical classes a structural member kind cannot idealise. Kept small: only clear mismatches. */
 const MISMATCH: ReadonlyArray<{ member: string; noun: string; physical: readonly string[] }> = [

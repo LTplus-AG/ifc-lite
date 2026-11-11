@@ -78,8 +78,8 @@ export const namedElementTypes = (schemaVersion: string | undefined): readonly s
 export const quantifiableTypes = (schemaVersion: string | undefined): readonly string[] =>
   expandTypes([...QUANTIFIABLE_BASE_TYPES], schemaVersion);
 
-/** Cap on individually-reported dangling references; the remainder is rolled into one summary issue. */
-const DANGLING_REF_ISSUE_CAP = 50;
+/** Cap on individually-reported dangling references and unlinked load-bearing elements; the remainder is rolled into one summary issue. */
+const ISSUE_LIST_CAP = 50;
 
 /** Shared structural checks for a parsed store: required entities, storeys,
  * GlobalId uniqueness, naming, schema, quantities, reference integrity, and
@@ -209,7 +209,7 @@ export function computeValidationIssues(store: IfcDataStore): ValidationIssue[] 
   // broken data (consumers following it get nothing, or worse, garbage), so
   // it reports as an error like unique-globalid does.
   const dangling = collectDanglingReferences(store);
-  for (const d of dangling.slice(0, DANGLING_REF_ISSUE_CAP)) {
+  for (const d of dangling.slice(0, ISSUE_LIST_CAP)) {
     // Display names render in IFC PascalCase (IfcWall, not IFCWALL); the
     // collector carries the raw STEP token, so resolve through the table.
     const typeName = resolvedTypeName(store.entities, d.entityId) ?? d.entityType;
@@ -222,17 +222,28 @@ export function computeValidationIssues(store: IfcDataStore): ValidationIssue[] 
       target: d.target,
     });
   }
-  if (dangling.length > DANGLING_REF_ISSUE_CAP) {
+  if (dangling.length > ISSUE_LIST_CAP) {
     issues.push({
       severity: 'error',
       rule: 'reference-integrity',
-      message: `${dangling.length - DANGLING_REF_ISSUE_CAP} more dangling reference(s) not listed (${dangling.length} total)`,
+      message: `${dangling.length - ISSUE_LIST_CAP} more dangling reference(s) not listed (${dangling.length} total)`,
     });
   }
 
   // 8. Where the physical and the structural analysis model disagree (#9668).
+  // Unlinked elements are capped like dangling references; the other rules are listed in full.
   try {
-    for (const issue of structuralConsistencyIssues(store)) issues.push(issue);
+    const structural = structuralConsistencyIssues(store);
+    const unlinked = structural.filter((issue) => issue.rule === 'structural-unlinked-element');
+    for (const issue of unlinked.slice(0, ISSUE_LIST_CAP)) issues.push(issue);
+    if (unlinked.length > ISSUE_LIST_CAP) {
+      issues.push({
+        severity: 'warning',
+        rule: 'structural-unlinked-element',
+        message: `${unlinked.length - ISSUE_LIST_CAP} more load-bearing element(s) with no structural item not listed (${unlinked.length} total)`,
+      });
+    }
+    for (const issue of structural) if (issue.rule !== 'structural-unlinked-element') issues.push(issue);
   } catch (err) {
     issues.push({ severity: 'warning', rule: 'structural-consistency', message: `Structural consistency checks could not run: ${err instanceof Error ? err.message : String(err)}` });
   }

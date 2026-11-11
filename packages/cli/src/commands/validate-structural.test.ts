@@ -19,6 +19,31 @@ import { computeValidationIssues } from './validate.js';
 const FIXTURE = resolve(dirname(fileURLToPath(import.meta.url)), '../../../../tests/models/ara3d/ISSUE_171_IfcSurfaceCurveSweptAreaSolid.ifc');
 
 describe('validate: structural consistency', () => {
+  it('lists the first 50 unlinked load-bearing elements, then one summary, then the other rules in full', async () => {
+    const beams = Array.from({ length: 53 }, (_, i) => `#${100 + i}=IFCBEAM('2Beam${String(i).padStart(17, '0')}',$,'B',$,$,$,$,$,$);`);
+    const members = Array.from({ length: 52 }, (_, i) => `#${300 + i}=IFCSTRUCTURALCURVEMEMBER('2Curv${String(i).padStart(17, '0')}',$,'M',$,$,$,$,.RIGID_JOINED_MEMBER.,$);`);
+    const step = `ISO-10303-21;HEADER;FILE_DESCRIPTION((''),'2;1');FILE_NAME('x.ifc','',(''),(''),'','','');FILE_SCHEMA(('IFC4'));ENDSEC;DATA;
+#1=IFCPROJECT('0Project0000000000000a',$,'Project',$,$,$,$,$,$);
+#2=IFCSTRUCTURALCURVEMEMBER('2CurvOnSlab00000000001',$,'On slab',$,$,$,$,.RIGID_JOINED_MEMBER.,$);
+#3=IFCSLAB('2Slab000000000000000001',$,'S',$,$,$,$,$,$);
+#4=IFCRELASSIGNSTOPRODUCT('2Rel0000000000000000001',$,$,$,(#2),$,#3);
+${beams.join('\n')}
+${members.join('\n')}
+ENDSEC;END-ISO-10303-21;`;
+    const issues = computeValidationIssues(await new IfcParser().parseColumnar(new TextEncoder().encode(step).buffer as ArrayBuffer))
+      .filter((issue) => issue.rule.startsWith('structural-'));
+    expect(issues.slice(0, 50).map((issue) => [issue.rule, issue.entityId]))
+      .toEqual(Array.from({ length: 50 }, (_, i) => ['structural-unlinked-element', 100 + i]));
+    expect(issues[50]).toEqual({
+      severity: 'warning', rule: 'structural-unlinked-element',
+      message: '3 more load-bearing element(s) with no structural item not listed (53 total)',
+    });
+    expect(issues.slice(51).map((issue) => [issue.rule, issue.entityId])).toEqual([
+      ...Array.from({ length: 52 }, (_, i) => ['structural-unlinked-item', 300 + i]),
+      ['structural-class-mismatch', 2],
+    ]);
+  });
+
   it('IFC4: reports the six unlinked load-bearing elements of ISSUE_171 as warnings with their GlobalIds', async (ctx) => {
     if (!existsSync(FIXTURE)) ctx.skip('ISSUE_171 fixture missing — run `pnpm fixtures`');
     const bytes = readFileSync(FIXTURE);

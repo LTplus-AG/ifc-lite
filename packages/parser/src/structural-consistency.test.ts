@@ -55,6 +55,11 @@ describe('structural-unlinked-element', () => {
     expect(issues.find((issue) => issue.entityId === 3)!.message).toContain('LoadBearing is not stated as true or false');
   });
 
+  it('includes piles', () => {
+    const issues = checkStructuralConsistency(model([member(10, 'IfcStructuralCurveMember')]), [fact(1, 'IfcPile', true), fact(2, 'IfcPile', false)]);
+    expect(ids(issues, 'structural-unlinked-element')).toEqual([1]);
+  });
+
   it('leaves the GlobalId out of the message when the entity has none', () => {
     const issues = checkStructuralConsistency(model([member(10, 'IfcStructuralCurveMember')]), [{ expressId: 7, globalId: '', type: 'IfcBeam' }]);
     expect(issues[0].message).toMatch(/^#7 IfcBeam is load bearing/);
@@ -136,6 +141,9 @@ const IFC4X3 = `ISO-10303-21;HEADER;FILE_DESCRIPTION((''),'2;1');FILE_NAME('x.if
 #4=IFCSLAB('2Slab000000000000000001',$,'Slab',$,$,$,$,$,$);
 #5=IFCMEMBER('2Memb000000000000000001',$,'Brace',$,$,$,$,$,$);
 #6=IFCFOOTING('2Foot000000000000000001',$,'Footing',$,$,$,$,$,$);
+#8=IFCPILE('2Pile000000000000000001',$,'Pile',$,$,$,$,$,.BORED.,$);
+#40=IFCPROPERTYSET('2Pset000000000000000008',$,'Pset_PileCommon',$,(#20));
+#41=IFCRELDEFINESBYPROPERTIES('2Rel0000000000000000009',$,$,$,(#8),#40);
 #10=IFCSTRUCTURALCURVEMEMBER('2Curv000000000000000001',$,'On wall',$,$,$,$,.RIGID_JOINED_MEMBER.,$);
 #11=IFCSTRUCTURALCURVEMEMBER('2Curv000000000000000002',$,'Unlinked',$,$,$,$,.RIGID_JOINED_MEMBER.,$);
 #12=IFCSTRUCTURALPOINTCONNECTION('2Node000000000000000001',$,'Node',$,$,$,$,$,$);
@@ -170,12 +178,12 @@ describe('structuralConsistencyFacts on an IFC4X3 file', () => {
     const facts = structuralConsistencyFacts(store, structural);
     expect(facts.map((f) => [f.expressId, f.type, f.loadBearing])).toEqual([
       [1, 'IfcBeam', true], [2, 'IfcColumn', false], [3, 'IfcWall', undefined],
-      [4, 'IfcSlab', undefined], [5, 'IfcMember', true], [6, 'IfcFooting', true],
+      [4, 'IfcSlab', undefined], [5, 'IfcMember', true], [6, 'IfcFooting', true], [8, 'IfcPile', true],
     ]);
     expect(facts[0].globalId).toBe('2Beam000000000000000001');
 
     const issues = checkStructuralConsistency(structural, facts);
-    expect(ids(issues, 'structural-unlinked-element')).toEqual([1, 4, 5, 6]);
+    expect(ids(issues, 'structural-unlinked-element')).toEqual([1, 4, 5, 6, 8]);
     expect(ids(issues, 'structural-unlinked-item')).toEqual([11]);
     expect(ids(issues, 'structural-class-mismatch')).toEqual([[10, 3]]);
     expect(issues.find((issue) => issue.rule === 'structural-class-mismatch' && issue.entityId === 10))

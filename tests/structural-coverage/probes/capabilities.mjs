@@ -26,7 +26,7 @@ const isElement = (table, name) => table.chain(name ?? '').includes('IfcElement'
 
 /**
  * Distinct [structural item id, physical product id] pairs the file declares.
- * In IfcRelAssignsToProduct the physical end must be an IfcElement (what IFC2X3
+ * The physical end must be an IfcElement (what IFC2X3
  * IfcRelConnectsStructuralElement.RelatingElement declares), so an item
  * assigned to a storey or an action assigned to a member is not a link.
  */
@@ -45,7 +45,7 @@ function physicalLinks(step, table) {
     }
   }
   for (const rel of step.of('IFCRELCONNECTSSTRUCTURALELEMENT')) {
-    if (structural(step.get(rel.args[5]))) add(rel.args[5].ref, rel.args[4]?.ref);
+    if (structural(step.get(rel.args[5])) && element(step.get(rel.args[4]))) add(rel.args[5].ref, rel.args[4].ref);
   }
   return [...pairs.values()];
 }

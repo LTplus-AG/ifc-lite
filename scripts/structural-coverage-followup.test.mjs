@@ -68,7 +68,7 @@ test('#9668 CI: ratchet runs in built fixture job even in fast PR lane', () => {
   // CI ratchets against the newest frozen baseline, the one the ledger renders.
   const newest = Math.max(...readdirSync(join(root, 'tests/structural-coverage/baseline')).map((f) => /^r(\d+)\.json$/.exec(f)?.[1]).filter(Boolean).map(Number));
   assert.ok(commands[i].trim().endsWith(`baseline/r${newest}.json`), commands[i]); // @source-text-assertion-ok parsed workflow configuration or probe verdict, not source text
-  for (const before of ['pnpm build', 'pnpm fixtures']) {
+  for (const before of ['pnpm build', 'pnpm fixtures:check']) {
     const j = commands.indexOf(before); // @source-text-assertion-ok parsed workflow configuration or probe verdict, not source text
     assert.ok(j >= 0 && i > j, before);
   }
@@ -76,7 +76,7 @@ test('#9668 CI: ratchet runs in built fixture job even in fast PR lane', () => {
   assert.ok(!build.if.includes("lane != 'fast'")); // @source-text-assertion-ok parsed workflow configuration or probe verdict, not source text
   const filter = wf.jobs.changes.steps.find((s) => s.uses?.startsWith('dorny/paths-filter')); // @source-text-assertion-ok parsed workflow configuration or probe verdict, not source text
   const paths = parse(filter.with.filters).frontend;
-  for (const path of ['packages/parser/src/a.ts', 'packages/create/src/a.ts', 'packages/export/src/a.ts', 'tests/structural-coverage/score.mjs', 'tests/models/manifest.json']) {
+  for (const path of ['packages/parser/src/a.ts', 'packages/create/src/a.ts', 'packages/export/src/a.ts', 'tests/structural-coverage/score.mjs', 'tests/models/manifest.json', 'docs/guide/structural-analysis.md', 'scripts/lib/bounded-process.mjs']) {
     assert.ok(matchesAny(path, paths), path);
   }
 });
@@ -97,17 +97,32 @@ test('#9668 gate remedy: each generator failure class has an actionable remedy',
   try {
     mkdirSync(join(dir, 'scripts'));
     cpSync(join(root, 'scripts/check-generated.mjs'), join(dir, 'scripts/check-generated.mjs'));
-    const r = spawnSync(process.execPath, [join(dir, 'scripts/check-generated.mjs')], {
+    const gate = spawnSync(process.execPath, [join(dir, 'scripts/check-generated.mjs')], {
       encoding: 'utf8', env: { ...process.env, IFC_LITE_GENERATED_GATE: 'check:structural-coverage-ledger' },
     });
-    assert.equal(r.status, 1);
-    const output = r.stdout + r.stderr;
-    // Each quoted phrase is one the generator prints, so a reworded failure loses its remedy here.
-    const generator = readFileSync(join(root, 'scripts/generate-structural-coverage-ledger.mjs'), 'utf8');
-    for (const phrase of ['is stale', 'does not match the derived catalogue', 'stored totals or applicability disagree', 'was scored offline', 'no r<N>.json summary', 'missing', 'is not JSON', 'is not an', 'has no rows']) {
-      assert.ok(output.includes(`"${phrase}"`), phrase);
-      assert.match(generator, new RegExp(`(fail|console\\.error)\\(\`[^\`]*${phrase.replace(/[<>.]/g, '\\$&')}`), phrase); // @source-text-assertion-ok the remedy must quote the generator's own failure text
+    assert.equal(gate.status, 1);
+    const remedy = gate.stdout + gate.stderr;
+    // Break the generator's input each way it refuses, and require the remedy to quote what it printed.
+    const r1 = JSON.parse(readFileSync(join(root, 'tests/structural-coverage/baseline/r1.json'), 'utf8'));
+    const write = (name, content) => { const p = join(dir, name); writeFileSync(p, typeof content === 'string' ? content : JSON.stringify(content)); return p; };
+    const cases = [
+      ['is stale', ['--summary', 'tests/structural-coverage/baseline/r0.json']],
+      ['does not match the derived catalogue', ['--summary', write('rows.json', { ...r1, rows: r1.rows.slice(1) })]],
+      ['stored totals or applicability disagree', ['--summary', write('forged.json', { ...r1, cells: { ...r1.cells, score: 300 } })]],
+      ['was scored offline', ['--summary', write('offline.json', { ...r1, offline: true })]],
+      ['no r<N>.json summary', ['--root', dir]],
+      ['ledger: missing', ['--summary', join(dir, 'absent.json')]],
+      ['is not JSON', ['--summary', write('text.json', 'not json')]],
+      ['is not an', ['--summary', write('schema.json', { rows: r1.rows })]],
+      ['has no rows', ['--summary', write('empty.json', { ...r1, rows: [] })]],
+    ];
+    for (const [phrase, args] of cases) {
+      const r = spawnSync(process.execPath, [join(root, 'scripts/generate-structural-coverage-ledger.mjs'), '--check', ...args], { encoding: 'utf8', cwd: root });
+      assert.equal(r.status, 1, phrase);
+      assert.ok((r.stdout + r.stderr).includes(phrase), `${phrase}: ${r.stderr}`);
+      assert.ok(remedy.includes(`"${phrase}"`), phrase);
     }
-    assert.ok(output.includes('cp tests/structural-coverage/.out/summary.json tests/structural-coverage/baseline/r<N>.json'));
+    assert.ok(remedy.includes('cp tests/structural-coverage/.out/summary.json tests/structural-coverage/baseline/r<N>.json'));
+    assert.ok(remedy.includes('.github/workflows/test.yml'));
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });

@@ -3226,7 +3226,7 @@ jobs:
       # `needs_cargo=false` itself only after reporting a final verdict. Exit
       # 1/2 is the gate's refusal; exit 3 (a crate must be compared) and any
       # run that never wrote the output fall through to the full gate below.
-      # rust-semver-canary.yml runs the full path weekly, since PRs rarely do.
+      # rust-semver-canary.yml proves the install and the tool probe weekly.
       - name: Check crate semver against crates.io (registry only)
         id: registry
         run: |

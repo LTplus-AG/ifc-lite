@@ -4,7 +4,9 @@
 
 # Weekly proof that test.yml's rust-semver install still works, since PRs only
 # install it when a crate version moved. Same composite action, then the full
-# gate, whose first act is the `cargo +stable semver-checks` probe.
+# gate, whose first act is the `cargo +stable semver-checks` probe. Between
+# releases no crate is compared, exactly as on an ordinary PR before #9781, so
+# this proves the install and the probe, not a comparison.
 
 name: Rust semver canary
 

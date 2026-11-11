@@ -64,7 +64,13 @@ async function main() {
   }
   report(verdict.result);
   // `report` exits 1 on a refusal, so only a final exit-0 verdict gets here.
-  if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, 'needs_cargo=false\n');
+  if (!process.env.GITHUB_OUTPUT) return;
+  try {
+    appendFileSync(process.env.GITHUB_OUTPUT, 'needs_cargo=false\n');
+  } catch (err) {
+    // Unwritten means unset, and unset runs the full gate: same verdict, slower.
+    console.warn(`⚠️ could not write needs_cargo=false (${err.message}); the full gate will run.`);
+  }
 }
 
 if (isMainEntry(import.meta.url)) {

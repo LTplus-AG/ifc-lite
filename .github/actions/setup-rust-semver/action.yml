@@ -3,7 +3,7 @@
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 name: Setup Rust semver gate
-description: Install stable Rust and cargo-semver-checks for scripts/check-rust-semver.mjs. One home for both pins, used by test.yml's rust-semver job and by rust-semver-canary.yml, so the canary proves the install PRs run.
+description: Install stable Rust and cargo-semver-checks for scripts/check-rust-semver.mjs. Shared by test.yml's rust-semver job and rust-semver-canary.yml, so the canary proves the install PRs run. release.yml still carries its own copy of these pins.
 
 runs:
   using: composite

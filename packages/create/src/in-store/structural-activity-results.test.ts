@@ -161,6 +161,19 @@ describe.each(['IFC2X3', 'IFC4', 'IFC4X3'])('%s runtime activity validation (#97
     ] as const),
   ] as const;
 
+  it('rejects empty and unsupported anchor schemas before writing (#9764, discussion_r4543408900)', async () => {
+    const { editor, anchor } = await fresh(schema);
+    for (const [builder, params] of [...builders, [addStructuralResultGroupToStore, {
+      TheoryType: 'FIRST_ORDER_THEORY', IsLinear: true, ResultForLoadGroup: 1, ReactionIds: [30],
+    }]] as const) {
+      for (const invalidSchema of ['', 'IFC5']) {
+        expect(() => Reflect.apply(builder, undefined, [editor, { ...anchor, schema: invalidSchema }, params]))
+          .toThrow(`${builder.name}: unsupported schema ${invalidSchema}`);
+        expect(editor.getMutationView().getNewEntities()).toHaveLength(0);
+      }
+    }
+  });
+
   if (schema === 'IFC2X3') {
     it('requires OwnerHistory even when a direct caller bypasses resolveSpatialAnchor (#9764)', async () => {
       const { editor, anchor } = await fresh(schema);

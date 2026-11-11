@@ -18,7 +18,7 @@ export interface ActivityParams {
 export interface ActivityResult { activityId: number; loadId: number }
 
 export function assertActivitySchema(anchor: ActivityAnchor, builder: string, modernOnly = false): void {
-  if ((anchor.schema && !['IFC2X3', 'IFC4', 'IFC4X3'].includes(anchor.schema)) || (modernOnly && anchor.schema === 'IFC2X3')) {
+  if ((anchor.schema !== undefined && !['IFC2X3', 'IFC4', 'IFC4X3'].includes(anchor.schema)) || (modernOnly && anchor.schema === 'IFC2X3')) {
     throw new Error(`${builder}: unsupported schema ${anchor.schema}`);
   }
   if (anchor.schema === 'IFC2X3' && (anchor.ownerHistoryId === null || anchor.ownerHistoryId === undefined)) {

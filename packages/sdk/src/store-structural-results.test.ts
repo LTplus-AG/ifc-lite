@@ -10,8 +10,26 @@ import { IfcParser, extractStructuralOnDemand } from '@ifc-lite/parser';
 import { StepExporter } from '@ifc-lite/export';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import { createStructuralStoreBackend } from './store-structural-backend.js';
-import { StoreNamespace } from './namespaces/store.js';
+import { StoreNamespace } from './index.js';
 import type { BimBackend } from './types.js';
+
+// #9764: existing public methods must remain overridable as methods by SDK subclasses.
+class CustomStoreNamespace extends StoreNamespace {
+  override addStructuralAnalysisModel(...args: Parameters<StoreNamespace['addStructuralAnalysisModel']>) {
+    return super.addStructuralAnalysisModel(args[0], { ...args[1], Name: `Custom ${args[1].Name}` });
+  }
+  override addStructuralCurveMember(...args: Parameters<StoreNamespace['addStructuralCurveMember']>) { return super.addStructuralCurveMember(...args); }
+  override addStructuralPointConnection(...args: Parameters<StoreNamespace['addStructuralPointConnection']>) { return super.addStructuralPointConnection(...args); }
+  override addStructuralSurfaceMember(...args: Parameters<StoreNamespace['addStructuralSurfaceMember']>) { return super.addStructuralSurfaceMember(...args); }
+  override addStructuralCurveConnection(...args: Parameters<StoreNamespace['addStructuralCurveConnection']>) { return super.addStructuralCurveConnection(...args); }
+  override addStructuralSurfaceConnection(...args: Parameters<StoreNamespace['addStructuralSurfaceConnection']>) { return super.addStructuralSurfaceConnection(...args); }
+  override addStructuralLoadGroup(...args: Parameters<StoreNamespace['addStructuralLoadGroup']>) { return super.addStructuralLoadGroup(...args); }
+  override addStructuralPointAction(...args: Parameters<StoreNamespace['addStructuralPointAction']>) { return super.addStructuralPointAction(...args); }
+  override addStructuralLinearAction(...args: Parameters<StoreNamespace['addStructuralLinearAction']>) { return super.addStructuralLinearAction(...args); }
+  override connectStructuralMemberToConnection(...args: Parameters<StoreNamespace['connectStructuralMemberToConnection']>) { return super.connectStructuralMemberToConnection(...args); }
+  override connectStructuralActivityToItem(...args: Parameters<StoreNamespace['connectStructuralActivityToItem']>) { return super.connectStructuralActivityToItem(...args); }
+  override assignToStructuralGroup(...args: Parameters<StoreNamespace['assignToStructuralGroup']>) { return super.assignToStructuralGroup(...args); }
+}
 
 const MODEL = `ISO-10303-21;
 HEADER;
@@ -45,7 +63,8 @@ describe('SDK structural activities and results (#9668)', () => {
     const mutationView = new MutablePropertyView(null, 'model');
     const editor = new StoreEditor(store, mutationView);
     const backend = createStructuralStoreBackend(modelId => ({ modelId: modelId ?? 'model', store, editor, mutationView, ownerHistoryId: 4 }));
-    const api = new StoreNamespace({ store: backend } as unknown as BimBackend);
+    const api = new CustomStoreNamespace({ store: backend } as unknown as BimBackend);
+    api.addStructuralAnalysisModel('model', { Name: 'Frame' });
     api.addStructuralPlanarAction('model', { AppliedLoad: { Type: 'IfcStructuralLoadTemperature', DeltaTY: 2 } });
     api.addStructuralSurfaceAction('model', { AppliedLoad: { Type: 'IfcStructuralLoadPlanarForce', PlanarForceZ: -4 } });
     const reactions = [
@@ -58,6 +77,7 @@ describe('SDK structural activities and results (#9668)', () => {
     const exported = new StepExporter(store, mutationView).export({ schema: schema as 'IFC4' | 'IFC4X3', applyMutations: true });
     const parsed = await parser.parseColumnar(exported.content instanceof Uint8Array ? exported.content.buffer as ArrayBuffer : new TextEncoder().encode(exported.content).buffer, { disableWorkerScan: true });
     const data = extractStructuralOnDemand(parsed);
+    expect(data.analysisModels[0].name).toBe('Custom Frame');
     expect(data.activities.map(a => a.type)).toEqual(['IfcStructuralPlanarAction', 'IfcStructuralSurfaceAction', 'IfcStructuralPointReaction', 'IfcStructuralCurveReaction', 'IfcStructuralSurfaceReaction']);
     expect(data.resultGroups[0]).toMatchObject({ resultForLoadGroupGlobalId: data.loadGroups[0].globalId, activityGlobalIds: data.activities.slice(2).map(a => a.globalId) });
     expect(reactions.every(r => r.modelId === 'model')).toBe(true);

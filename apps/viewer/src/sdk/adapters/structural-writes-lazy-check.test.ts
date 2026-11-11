@@ -15,7 +15,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { checkStructuralWritesLazy, STRUCTURAL_WRITE_SIGNATURES } from '../../../scripts/check-structural-writes-lazy.mjs';
+import { checkStructuralWritesLazy } from '../../../scripts/check-structural-writes-lazy.mjs';
 
 const dirs: string[] = [];
 afterEach(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }); });
@@ -30,8 +30,27 @@ function dist(files: Record<string, string>): string {
   return dir;
 }
 
-/** Minified builder code: each signature as the error-message prefix it is in the real bundle. */
-const BUILDERS = STRUCTURAL_WRITE_SIGNATURES.map((signature, i) => `function b${i}(k){throw new Error(\`${signature} \`+k)}`).join(';');
+/**
+ * One line per structural write function, written by hand from the minified
+ * impl chunk of a real viewer build, NOT derived from the gate's signature
+ * list: if a signature were dropped from the gate, this fixture keeps the
+ * builder, and the "each builder missing" case below fails (#9753 review).
+ */
+const BUILDER_CODE: Record<string, string> = {
+  addStructuralAnalysisModelToStore: 'throw Error(`addStructuralAnalysisModelToStore: ObjectType is required when PredefinedType is USERDEFINED`)',
+  addStructuralCurveMemberToStore: 'throw Error(`addStructuralCurveMemberToStore: Start and End must be distinct points`)',
+  addStructuralPointConnectionToStore: 'throw Error(`addStructuralPointConnectionToStore: ${k} must be a finite spring stiffness`)',
+  addStructuralLoadGroupToStore: 'throw Error(`addStructuralLoadGroupToStore: IFC2X3 IfcStructuralLoadGroup has no SelfWeightCoefficients`)',
+  addStructuralPointActionToStore: 'L(`addStructuralPointActionToStore`,[r.ForceX,r.ForceY])',
+  addStructuralLinearActionToStore: 'L(`addStructuralLinearActionToStore`,[r.LinearForceX])',
+  connectStructuralMemberToConnectionInStore: 'return e.addEntity(`IfcRelConnectsStructuralMember`,[c,i,null,null,`#${m}`,`#${n}`])',
+  connectStructuralActivityToItemInStore: 'return e.addEntity(`IfcRelConnectsStructuralActivity`,[c,i,null,null,`#${m}`,`#${n}`])',
+  assignToStructuralGroupInStore: 'throw Error(`assignToStructuralGroupInStore: objectIds must be non-empty`)',
+  createStructuralStoreBackend: 'throw Error(`bim.store structural authoring: schema \'${t}\' is not supported; use IFC4 or IFC4X3.`)',
+};
+const buildersWithout = (omit?: string) =>
+  Object.entries(BUILDER_CODE).filter(([name]) => name !== omit).map(([name, code]) => `function ${name}(){${code}}`).join(';');
+const BUILDERS = buildersWithout();
 
 describe('checkStructuralWritesLazy', () => {
   it('passes when the builders are only reachable through a dynamic import', async () => {
@@ -57,6 +76,13 @@ describe('checkStructuralWritesLazy', () => {
   it('refuses builder code in a modulepreloaded chunk', async () => {
     const dir = dist({ 'main.js': 'export {}', 'ui.js': 'throw new Error(`bim.store structural authoring: schema`);', 'structural.js': BUILDERS });
     await assert.rejects(checkStructuralWritesLazy(dir), /Startup chunk assets\/ui\.js contains bim\.store structural authoring:/);
+  });
+
+  it('refuses a build whose lazy chunk lacks any one structural write function', async () => {
+    for (const name of Object.keys(BUILDER_CODE)) {
+      const dir = dist({ 'main.js': 'import("./structural.js");', 'ui.js': 'export {}', 'structural.js': buildersWithout(name) });
+      await assert.rejects(checkStructuralWritesLazy(dir), /proves nothing/, `${name} missing from the lazy chunk must be noticed`);
+    }
   });
 
   it('refuses a build with no structural write code at all, so it cannot pass vacuously', async () => {

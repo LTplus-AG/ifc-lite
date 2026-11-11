@@ -41,8 +41,17 @@ it('writes the cold load\'s cache entry only after the renderer finished finaliz
     state.mergeLayers, undefined, state.geometryMode === 'fast',
     resolveLoadTessellationTier(bytes.length / (1024 * 1024), state.geometryMode));
   let finalizing = true;
-  const renderer = { getScene: () => ({ hasQueuedMeshes: () => false, hasStreamingFragments: () => false,
-    isFinalizeInProgress: () => finalizing }) } as unknown as Renderer;
+  // The harness's geometry never reaches a renderer; the loader still calls a
+  // few scene methods at load start (cold-tier provider, …). Any method this
+  // stand-in does not model is a no-op (never `then`: it must not look awaitable);
+  // the settled-state queries are ours.
+  const scene = new Proxy({ hasQueuedMeshes: () => false, hasStreamingFragments: () => false,
+    isFinalizeInProgress: () => finalizing } as Record<string, unknown>, {
+    get: (target, key) => (key === 'then' ? undefined : typeof key === 'string' && key in target ? target[key] : () => undefined),
+  });
+  const renderer = new Proxy({ getScene: () => scene } as Record<string, unknown>, {
+    get: (target, key) => (key === 'then' ? undefined : typeof key === 'string' && key in target ? target[key] : () => undefined),
+  }) as unknown as Renderer;
   setGlobalRendererRef({ current: renderer } as RefObject<Renderer | null>);
   const transport = installRealCacheCompressionTransport();
   try {

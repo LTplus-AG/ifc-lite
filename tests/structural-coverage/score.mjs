@@ -19,8 +19,9 @@
  *                or the set of rows or applicable cells differs from it
  *     --offline  score absent corpus files as skip instead of exiting 2 (the result is marked offline)
  *
- * Needs built packages (parser, mutations, create, export) and the corpus
- * fetched (`node scripts/fixtures/fetch-fixtures.mjs <paths>`); either missing exits 2.
+ * Builds the packages it imports (parser, mutations, create, export) with Turbo
+ * and needs the corpus fetched (`node scripts/fixtures/fetch-fixtures.mjs <paths>`);
+ * a failed build or a missing fixture exits 2.
  */
 
 import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
@@ -35,6 +36,8 @@ import { PROBES } from './probes/index.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 export const SUMMARY_SCHEMA = 'ifclite-structural-coverage/1';
+/** What to do about a baseline scored offline; scripts/check-generated.mjs prints the same words. */
+export const OFFLINE_REMEDY = 'fetch the missing corpus fixtures and re-score without --offline, then re-baseline';
 const RANK = { pass: 5, partial: 4, fail: 3, error: 2, skip: 1, unwritten: 0 };
 const POINTS = { pass: 1, partial: 0.5 };
 const ROW_RANK = { met: 2, partial: 1, missing: 0 };
@@ -70,7 +73,7 @@ export async function runProbes(rows, ctx, probes = PROBES) {
     for (const row of mine) {
       const r = results.get(row.id) ?? { status: 'error', reason: `${probe.name} returned no result for this row` };
       const status = r.status in RANK ? r.status : 'error';
-      const cell = { status, probe: probe.name, ...(r.reason ? { reason: clip(r.reason) } : {}), ...(r.evidence?.length ? { evidence: [...r.evidence].sort().slice(0, 5) } : {}) };
+      const cell = { status, probe: probe.name, ...(r.reason ? { reason: clip(r.reason) } : {}), ...(r.counts ? { counts: r.counts } : {}), ...(r.evidence?.length ? { evidence: [...r.evidence].sort().slice(0, 5) } : {}) };
       const prev = cells.get(row.id)[probe.level];
       if (!prev || RANK[cell.status] > RANK[prev.status] || (RANK[cell.status] === RANK[prev.status] && cell.probe < prev.probe)) {
         cells.get(row.id)[probe.level] = cell;
@@ -183,7 +186,8 @@ export function score(rows, cells, meta = {}) {
 /** Every way `current` is worse than `baseline`; empty means the check passes. */
 export function ratchet(baseline, current) {
   const problems = [];
-  if (current.offline && !baseline.offline) problems.push(`current run is offline (${current.absent.length} corpus file(s) absent); fetch them and re-run`);
+  if (baseline.offline) problems.push(`baseline was scored offline; ${OFFLINE_REMEDY}`);
+  if (current.offline) problems.push(`current run is offline (${current.absent.length} corpus file(s) absent); fetch them and re-run`);
   if (current.total.score < baseline.total.score) problems.push(`total dropped from ${baseline.total.score} to ${current.total.score}`);
   if (current.cells.score < baseline.cells.score) problems.push(`cell score dropped from ${baseline.cells.score} to ${current.cells.score}`);
   const now = new Map(current.rows.map((r) => [r.id, r]));
@@ -261,6 +265,8 @@ async function main(argv) {
     if (baseline?.schema !== SUMMARY_SCHEMA) { console.error(`score: ${rel(check)} is not an ${SUMMARY_SCHEMA} summary`); return 2; }
     const forged = verifySummary(baseline, catalogue.rows);
     if (forged.length) { console.error(`score: ${rel(check)}: its stored totals or applicability disagree with its rows and the catalogue:\n  ${forged.slice(0, 5).join('\n  ')}`); return 2; }
+    // Same refusal and remedy as the ledger gate (scripts/check-generated.mjs).
+    if (baseline.offline) { console.error(`score: ${rel(check)} was scored offline (${baseline.absent?.length ?? 0} corpus file(s) absent); ${OFFLINE_REMEDY}`); return 2; }
   }
   let summary;
   try {

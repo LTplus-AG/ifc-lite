@@ -79,13 +79,13 @@ describe('IFC2X3 structural builder STEP round trips', () => {
     expect(attrs(memberId)).toHaveLength(8);
   });
 
-  it('point connection writes plain fixed/free stiffness measures and omits ConditionCoordinateSystem', async () => {
+  it('point connection writes plain fixed/free and numeric stiffness measures and omits ConditionCoordinateSystem', async () => {
     const { editor, anchor, roundTrip } = await fresh();
-    const { connectionId, boundaryConditionId } = addStructuralPointConnectionToStore(editor, anchor, { Position: [4, 0, 0], Name: 'Support', BoundaryCondition: { Name: 'Pinned', TranslationalStiffnessX: true, TranslationalStiffnessY: false, RotationalStiffnessZ: true } });
+    const { connectionId, boundaryConditionId } = addStructuralPointConnectionToStore(editor, anchor, { Position: [4, 0, 0], Name: 'Support', BoundaryCondition: { Name: 'Pinned', TranslationalStiffnessX: true, TranslationalStiffnessY: false, TranslationalStiffnessZ: 1000, RotationalStiffnessX: 2000, RotationalStiffnessZ: true } });
     const { data, attrs } = await roundTrip();
-    expect(data.connections[0]).toMatchObject({ name: 'Support', appliedCondition: { name: 'Pinned', components: { LinearStiffnessX: -1, LinearStiffnessY: 0, RotationalStiffnessZ: -1 } } });
+    expect(data.connections[0]).toMatchObject({ name: 'Support', appliedCondition: { name: 'Pinned', components: { LinearStiffnessX: -1, LinearStiffnessY: 0, LinearStiffnessZ: 1000, RotationalStiffnessX: 2000, RotationalStiffnessZ: -1 } } });
     expect(attrs(connectionId)).toHaveLength(8);
-    expect(attrs(boundaryConditionId!)).toEqual(['Pinned', -1, 0, null, null, null, -1]);
+    expect(attrs(boundaryConditionId!)).toEqual(['Pinned', -1, 0, 1000, 2000, null, -1]);
   });
 
   it.each(['LOAD_GROUP', 'LOAD_CASE'] as const)('%s uses IfcStructuralLoadGroup and preserves values', async (PredefinedType) => {
@@ -143,5 +143,44 @@ describe('IFC2X3 structural builder STEP round trips', () => {
     expect(data.analysisModels[0].loadGroupGlobalIds).toEqual([data.loadGroups[0].globalId]);
     // Set STRUCTURAL_EXPORT_DIR to keep the files for an IfcOpenShell validation run.
     if (process.env.STRUCTURAL_EXPORT_DIR) writeFileSync(`${process.env.STRUCTURAL_EXPORT_DIR}/${schema}.ifc`, text);
+  });
+});
+
+// #9668: SELECT stiffness members must retain their type through STEP export.
+describe('point connection stiffness SELECT round trips', () => {
+  it.each(['IFC4', 'IFC4X3'])('%s qualifies boolean and numeric stiffness', async (schema) => {
+    const { editor, anchor, roundTrip } = await fresh(schema);
+    const BoundaryCondition = {
+      Name: 'Mixed', TranslationalStiffnessX: true, TranslationalStiffnessY: false,
+      TranslationalStiffnessZ: 1000, RotationalStiffnessX: 2000,
+      RotationalStiffnessY: true, RotationalStiffnessZ: false,
+    };
+    const { boundaryConditionId } = addStructuralPointConnectionToStore(editor, anchor, {
+      Position: [4, 0, 0], BoundaryCondition,
+    });
+    const { text, data } = await roundTrip();
+    expect(text).toContain(`#${boundaryConditionId}=IFCBOUNDARYNODECONDITION('Mixed',IFCBOOLEAN(.T.),IFCBOOLEAN(.F.),IFCLINEARSTIFFNESSMEASURE(1000.),IFCROTATIONALSTIFFNESSMEASURE(2000.),IFCBOOLEAN(.T.),IFCBOOLEAN(.F.));`);
+    const { Name, ...components } = BoundaryCondition;
+    expect(data.connections[0].appliedCondition).toMatchObject({ name: Name, components });
+  });
+
+  it('a null BoundaryCondition from an untyped caller writes no condition', async () => {
+    const { editor, anchor, roundTrip } = await fresh('IFC4');
+    const BoundaryCondition = null as unknown as undefined;
+    const result = addStructuralPointConnectionToStore(editor, anchor, { Position: [4, 0, 0], BoundaryCondition });
+    expect(result).not.toHaveProperty('boundaryConditionId');
+    const { attrs } = await roundTrip();
+    expect(attrs(result.connectionId)[7]).toBeNull();
+  });
+
+  // A non-finite number is type-legal; IFC4 would export it as `$` and IFC2X3 would fail the whole export.
+  it.each(['IFC2X3', 'IFC4', 'IFC4X3'])('%s refuses non-finite stiffness before emitting entities', async (schema) => {
+    const { editor, anchor } = await fresh(schema);
+    for (const value of [Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(() => addStructuralPointConnectionToStore(editor, anchor, {
+        Position: [4, 0, 0], BoundaryCondition: { TranslationalStiffnessX: true, RotationalStiffnessZ: value },
+      })).toThrow(/RotationalStiffnessZ must be a finite/);
+    }
+    expect(editor.getMutationView().getNewEntities()).toHaveLength(0);
   });
 });

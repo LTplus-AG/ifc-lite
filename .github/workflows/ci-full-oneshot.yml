@@ -1,0 +1,61 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+# One-shot `ci:full` (scripts/ci-full-oneshot.mjs). After a full-lane Test run
+# finishes on a PR's head, remove the label so later pushes go back to the
+# fast lane; the author re-applies it for another full pass. Switched by the
+# repo variable CI_FULL_ONESHOT (`off` default, `shadow`, `on`); with it unset
+# the job does not start.
+#
+# `workflow_run` runs this file and the script from the DEFAULT branch with a
+# token that can write to the base repo, so it checks out only the default
+# branch's `scripts/`, never the PR's code, and runs nothing from the PR.
+# Removing a label does not start Test: Test has no `labeled`/`unlabeled`
+# trigger. label-authority.yml only acts on `labeled` and only on `ready` and
+# `unqueued`, so it neither blocks this removal nor reacts to it.
+name: CI full one-shot
+
+on:
+  workflow_run:
+    workflows: [Test]
+    types: [completed]
+
+permissions:
+  contents: read
+  # Removing a label from a PR. `issues: write` alone 403s on a pull request
+  # (see label-authority.yml).
+  pull-requests: write
+  # Listing the finished run's jobs, the proof it ran the full lanes.
+  actions: read
+
+jobs:
+  oneshot:
+    name: CI full one-shot
+    if: github.event.workflow_run.event == 'pull_request' && (vars.CI_FULL_ONESHOT == 'shadow' || vars.CI_FULL_ONESHOT == 'on')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # One decision per PR at a time. A fork PR's run carries no PR number, so
+    # its head repository and branch stand in for it.
+    concurrency:
+      group: ci-full-oneshot-${{ github.event.workflow_run.pull_requests[0].number || format('{0}-{1}', github.event.workflow_run.head_repository.full_name, github.event.workflow_run.head_branch) }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+          lfs: false
+          filter: blob:none
+          sparse-checkout: |
+            scripts
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - name: Remove ci:full after a full-lane run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          CI_FULL_ONESHOT: ${{ vars.CI_FULL_ONESHOT }}
+          CI_PR_LANE: ${{ vars.CI_PR_LANE }}
+        run: node scripts/ci-full-oneshot.mjs --run

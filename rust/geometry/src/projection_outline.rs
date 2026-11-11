@@ -85,8 +85,6 @@ fn axis_coord(p: [f64; 3], axis: ProjectionAxis) -> f64 {
 /// product, which is TWICE the triangle's area, so in drawing metres² it
 /// drops triangles under 0.5e-8 — generous enough to drop f32 slivers, small
 /// enough to keep real footprints.
-const DEGENERATE_AREA: f64 = 1.0e-8;
-
 /// Maximum number of triangles to feed into the i_overlay union. A mesh with
 /// more valid projected triangles is refused with [`NoOutline::OverBudget`]
 /// as soon as the projection loop crosses the cap, before the union runs, to
@@ -172,13 +170,6 @@ pub fn mesh_outline_2d(
         if area.abs() < DEGENERATE_AREA {
             continue;
         }
-        // Skip near-collinear triangles (high aspect ratio) that stress i_overlay.
-        let max_edge_sq = ((a1[0]-a0[0]).powi(2) + (a1[1]-a0[1]).powi(2))
-            .max((a2[0]-a1[0]).powi(2) + (a2[1]-a1[1]).powi(2))
-            .max((a0[0]-a2[0]).powi(2) + (a0[1]-a2[1]).powi(2));
-        if max_edge_sq > 0.0 && area.abs() / max_edge_sq.sqrt() < 1.0e-6 {
-            continue;
-        }
         let path: Vec<[f64; 2]> = if area >= 0.0 {
             vec![a0, a1, a2]
         } else {
@@ -199,9 +190,6 @@ pub fn mesh_outline_2d(
 
     if subject.is_empty() {
         return Err(NoOutline::Empty);
-    }
-
-    // Single triangle -> its own outline (skip the union round-trip).
     let shapes: Vec<Vec<Vec<[f64; 2]>>> = if clip.is_empty() {
         vec![subject.clone()]
     } else {

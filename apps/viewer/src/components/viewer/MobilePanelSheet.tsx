@@ -3,7 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * The narrow layout's panel sheet: whichever single panel is open, rendered
+ * The narrow layout's single panel (a sheet, a side pane or a fold segment, per
+ * `MobilePanelHost`): whichever panel is open, rendered
  * through the shared id → body map every other host uses. Moved out of
  * `ViewerLayout` (#6926) so the narrow-layout journeys (Assistant sheet with
  * its return target, drafts and selection surviving a switch) can be mounted
@@ -22,7 +23,7 @@ import { getPanelDef } from '@/lib/panels/registry';
 import { resolveMobileSheet } from '@/lib/panels/mobileSheet';
 import { renderPanelBody } from '@/lib/panels/renderPanelBody';
 import { closeActiveAnalysisExtension, type AnalysisExtensionDefinition } from '@/services/analysis-extensions';
-import { MobileBottomSheet } from './MobileBottomSheet';
+import { MobilePanelHost } from './MobilePanelHost';
 
 export function MobilePanelSheet({ analysisExtension }: {
   /** The active analysis extension (either placement), which owns the sheet when present. */
@@ -41,7 +42,7 @@ export function MobilePanelSheet({ analysisExtension }: {
   }), [analysisExtension, bottomPanel, sidebarActivePanel]);
   if (rightPanelCollapsed) return null;
   return (
-    <MobileBottomSheet
+    <MobilePanelHost
       title={sheet.kind === 'extension' ? (analysisExtension?.label ?? t('shellChrome.layout.analysisFallback')) : t(getPanelDef(sheet.id)?.titleKey ?? 'properties.panel.title')}
       onClose={() => {
         setRightPanelCollapsed(true);
@@ -55,6 +56,6 @@ export function MobilePanelSheet({ analysisExtension }: {
       {sheet.kind === 'extension'
         ? analysisExtension?.renderPanel({ onClose: closeActiveAnalysisExtension })
         : renderPanelBody(sheet.id, () => closePanel(sheet.id))}
-    </MobileBottomSheet>
+    </MobilePanelHost>
   );
 }

@@ -206,8 +206,25 @@ export function MobileBottomSheet({
       >
         <div className="w-10 h-1.5 rounded-full bg-muted-foreground/40" />
       </div>
-      <div className="flex items-center justify-between px-4 pb-2 shrink-0">
-        <span className="font-semibold text-sm">{title}</span>
+      <MobilePanelHeader title={title} onClose={onClose} />
+      <div className="flex-1 min-h-0 overflow-auto overscroll-contain border-t">
+        {children}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * A mobile panel's title row and close button, shared by the bottom sheet and
+ * the docked pane (`MobilePanelHost`). Without `onClose` (the Panels list shown
+ * inline in a fold's control segment) there is nothing to close.
+ */
+export function MobilePanelHeader({ title, onClose, className }: { title: ReactNode; onClose?: () => void; className?: string }) {
+  const { t } = useTranslation();
+  return (
+    <div className={`flex items-center justify-between px-4 pb-2 shrink-0 ${className ?? ''}`}>
+      <span className="font-semibold text-sm">{title}</span>
+      {onClose && (
         <button
           className="p-2 -mr-2 hover:bg-muted rounded-full active:bg-muted/80 touch-manipulation"
           onClick={onClose}
@@ -217,10 +234,7 @@ export function MobileBottomSheet({
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
           </svg>
         </button>
-      </div>
-      <div className="flex-1 min-h-0 overflow-auto overscroll-contain border-t">
-        {children}
-      </div>
+      )}
     </div>
   );
 }

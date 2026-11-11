@@ -59,9 +59,9 @@ function chrome(ui: HTMLElement) {
   return {
     shell: shell?.dataset.mobileShell ?? null,
     bar: bar?.dataset.commandPlacement ?? null,
-    // The bar follows the viewport area in the shell's flex flow: under it, or right of it.
+    // The bar follows the viewport area on the shell's grid: under it, or right of it.
     barAfterViewport: !!bar && !!shell && shell.lastElementChild === bar && shell.firstElementChild !== bar,
-    row: shell?.classList.contains('flex-row') ?? false,
+    areas: shell?.style.gridTemplateAreas ?? null,
     ribbon: !!ui.querySelector('[data-tour="ribbon-tabs"]'),
   };
 }
@@ -86,7 +86,7 @@ describe('ViewerLayout command placement per form factor (#9718)', () => {
     setViewport(412, 960);
     const ui = renderViewerLayout();
     assert.equal(useViewerStore.getState().formFactor.mode, 'phone-portrait');
-    assert.deepEqual(chrome(ui), { shell: 'bottom-bar', bar: 'bottom-bar', barAfterViewport: true, row: false, ribbon: false });
+    assert.deepEqual(chrome(ui), { shell: 'bottom-bar', bar: 'bottom-bar', barAfterViewport: true, areas: '"view" "bar"', ribbon: false });
   });
 
   it('rotating to landscape moves the commands to a rail on the right, and back, without closing the open sheet', () => {
@@ -95,7 +95,7 @@ describe('ViewerLayout command placement per form factor (#9718)', () => {
     act(() => useViewerStore.getState().setRightPanelCollapsed(false));
     resizeTo(960, 412);
     assert.equal(useViewerStore.getState().formFactor.mode, 'phone-landscape');
-    assert.deepEqual(chrome(ui), { shell: 'side-rail', bar: 'side-rail', barAfterViewport: true, row: true, ribbon: false });
+    assert.deepEqual(chrome(ui), { shell: 'side-rail', bar: 'side-rail', barAfterViewport: true, areas: '"view pane bar"', ribbon: false });
     assert.equal(useViewerStore.getState().rightPanelCollapsed, false, 'rotation closed the sheet');
     resizeTo(412, 960);
     assert.equal(chrome(ui).bar, 'bottom-bar');
@@ -133,6 +133,111 @@ describe('ViewerLayout command placement per form factor (#9718)', () => {
     coarse = new CoarsePointerQuery(false);
     setViewport(1600, 1000);
     const ui = renderViewerLayout();
-    assert.deepEqual(chrome(ui), { shell: null, bar: null, barAfterViewport: false, row: false, ribbon: true });
+    assert.deepEqual(chrome(ui), { shell: null, bar: null, barAfterViewport: false, areas: null, ribbon: true });
+  });
+});
+
+/** Where the open panel is, read off the rendered layout (strings and booleans only). */
+function panels(ui: HTMLElement) {
+  const shell = ui.querySelector<HTMLElement>('[data-mobile-shell]');
+  const slot = ui.querySelector<HTMLElement>('[data-mobile-pane-slot]');
+  const pane = slot?.querySelector<HTMLElement>('[data-mobile-pane]') ?? null;
+  const area = (el: Element) => el.hasAttribute('data-mobile-viewport') ? 'view'
+    : el.hasAttribute('data-mobile-pane-slot') ? 'pane'
+      : el.hasAttribute('data-command-surface') ? 'bar' : el.tagName;
+  return {
+    host: shell?.dataset.mobilePanelHost ?? null,
+    sheet: ui.querySelector('[data-mobile-sheet]') !== null,
+    pane: pane?.dataset.mobilePane ?? null,
+    paneTitle: pane?.querySelector('.font-semibold')?.textContent ?? null,
+    scrim: [...ui.ownerDocument.querySelectorAll('button')].some((b) => b.getAttribute('aria-label') === 'Close panels'),
+    order: shell ? [...shell.children].map(area).join(' ') : null,
+  };
+}
+
+const TABLETOP: SegmentRect[] = [{ x: 0, y: 0, width: 412, height: 470 }, { x: 0, y: 490, width: 412, height: 470 }];
+const BOOK: SegmentRect[] = [{ x: 0, y: 0, width: 405, height: 750 }, { x: 425, y: 0, width: 405, height: 750 }];
+
+describe('ViewerLayout panel placement per form factor (#9718 DoD 3-5)', () => {
+  it('a portrait phone keeps the modal bottom sheet with its scrim', () => {
+    setViewport(412, 960);
+    const ui = renderViewerLayout();
+    act(() => useViewerStore.getState().setRightPanelCollapsed(false));
+    assert.deepEqual(panels(ui), { host: 'sheet', sheet: true, pane: null, paneTitle: null, scrim: true, order: 'view pane bar' });
+  });
+
+  it('a phone on its side docks the panel between the model and the rail, non-modal', () => {
+    setViewport(960, 412);
+    const ui = renderViewerLayout();
+    act(() => useViewerStore.getState().setLeftPanelCollapsed(false));
+    assert.deepEqual(panels(ui), { host: 'side-pane', sheet: false, pane: 'side-pane', paneTitle: 'Hierarchy', scrim: false, order: 'view pane bar' });
+    const slot = ui.querySelector<HTMLElement>('[data-mobile-pane-slot]')!;
+    assert.equal(slot.style.width, 'clamp(280px, 40vw, 380px)');
+    assert.equal(slot.style.paddingBottom, 'env(safe-area-inset-bottom)', 'the pane reaches the screen bottom, so it clears the home indicator');
+  });
+
+  it('a near-tablet (Z Fold inner 830x750) docks the pane right of the viewport, the bar under both', () => {
+    setViewport(830, 750);
+    const ui = renderViewerLayout();
+    act(() => useViewerStore.getState().setRightPanelCollapsed(false));
+    const shell = ui.querySelector<HTMLElement>('[data-mobile-shell]')!;
+    assert.equal(shell.style.gridTemplateAreas, '"view pane" "bar bar"');
+    assert.deepEqual({ ...panels(ui), paneTitle: null }, { host: 'side-pane', sheet: false, pane: 'side-pane', paneTitle: null, scrim: false, order: 'view pane bar' });
+    assert.equal(ui.querySelector<HTMLElement>('[data-mobile-pane-slot]')!.style.width, 'calc(360px + env(safe-area-inset-right))');
+  });
+
+  it('Flex Mode puts the viewport on the top segment and the Panels list inline in the bottom one, with no floating button', () => {
+    setViewport(412, 960);
+    setSegments(TABLETOP);
+    const ui = renderViewerLayout();
+    const shell = ui.querySelector<HTMLElement>('[data-mobile-shell]')!;
+    assert.equal(shell.dataset.mobilePanelHost, 'segment');
+    assert.equal(shell.classList.contains('fixed'), true, 'segment rects are window coordinates');
+    assert.equal(shell.style.gridTemplateAreas, '"." "view" "." "pane" "bar"');
+    assert.equal(shell.style.gridTemplateRows, '0px 470px 20px minmax(0, 1fr) auto', 'viewport row = top segment, the hinge an empty track');
+    assert.equal(ui.querySelector('[data-mobile-pane-slot] [data-mobile-panel-list]') !== null, true, 'the list is inline in the bottom segment');
+    assert.equal(ui.querySelector('[data-mobile-panels-launcher]') !== null, false, 'no floating Panels button over the model');
+    const hierarchy = [...ui.querySelectorAll<HTMLButtonElement>('[data-mobile-panel-list] li > button')].find((b) => b.textContent?.trim() === 'Hierarchy');
+    assert.ok(hierarchy);
+    act(() => hierarchy.click());
+    assert.equal(useViewerStore.getState().leftPanelCollapsed, false);
+    assert.deepEqual(panels(ui), { host: 'segment', sheet: false, pane: 'segment', paneTitle: 'Hierarchy', scrim: false, order: 'view pane bar' });
+    assert.equal(ui.querySelector('[data-mobile-panel-list]') !== null, false, 'the open panel replaces the list');
+  });
+
+  it('a book fold (half-open Fold) puts the viewport in the left segment and the pane over the bar in the right one', () => {
+    setViewport(830, 750);
+    setSegments(BOOK);
+    const ui = renderViewerLayout();
+    const shell = ui.querySelector<HTMLElement>('[data-mobile-shell]')!;
+    assert.equal(shell.style.gridTemplateAreas, '". view . pane" ". view . bar"');
+    assert.equal(shell.style.gridTemplateColumns, '0px 405px 20px minmax(0, 1fr)');
+  });
+
+  it('folding and unfolding live keeps the open panel, the selection and the mounted viewport', () => {
+    setViewport(412, 960);
+    const ui = renderViewerLayout();
+    act(() => {
+      useViewerStore.getState().setRightPanelCollapsed(false);
+      useViewerStore.setState({ selectedEntityId: 4242 });
+    });
+    const viewport = ui.querySelector('[data-mobile-viewport] > div');
+    assert.equal(panels(ui).sheet, true);
+
+    setSegments(TABLETOP);
+    resizeTo(412, 960);
+    assert.equal(panels(ui).pane, 'segment', 'folding moved the panel into the bottom segment');
+    assert.equal(useViewerStore.getState().rightPanelCollapsed, false);
+    assert.equal(useViewerStore.getState().selectedEntityId, 4242);
+    assert.equal(ui.querySelector('[data-mobile-viewport] > div') === viewport, true, 'folding remounted the viewport');
+
+    setSegments(null);
+    resizeTo(960, 412);
+    assert.equal(panels(ui).pane, 'side-pane', 'rotating an unfolded phone docks the panel beside the model');
+    resizeTo(412, 960);
+    assert.deepEqual({ sheet: panels(ui).sheet, pane: panels(ui).pane }, { sheet: true, pane: null });
+    assert.equal(useViewerStore.getState().rightPanelCollapsed, false, 'unfolding closed the panel');
+    assert.equal(useViewerStore.getState().selectedEntityId, 4242);
+    assert.equal(ui.querySelector('[data-mobile-viewport] > div') === viewport, true, 'unfolding remounted the viewport');
   });
 });

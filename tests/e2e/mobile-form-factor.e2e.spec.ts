@@ -8,6 +8,11 @@
  * screen, with nothing scrolling sideways), a rail on the right of a phone on
  * its side, the ribbon on top of a desktop. The landscape case also emulates
  * the iPhone's landscape safe-area insets and checks no control sits under them.
+ *
+ * And where an open panel sits (PR B): a non-modal pane beside the model on a
+ * phone on its side and on a near-tablet, with the model still taking input;
+ * in a fold (Viewport Segments emulated over CDP) the viewport fills one
+ * segment exactly and nothing interactive sits on the hinge.
  */
 
 import { expect, test, type Page, type TestInfo } from '@playwright/test';
@@ -192,3 +197,146 @@ test.describe('Flip in Flex Mode (half folded, tabletop) 412x960', () => {
     await expect.poll(formFactor).toEqual({ mode: 'phone-portrait', fold: null });
   });
 });
+
+type ViewerStore = { getState(): Record<string, unknown> & {
+  setLeftPanelCollapsed(v: boolean): void;
+  setRightPanelCollapsed(v: boolean): void;
+  setSelectedEntityId(id: number | null): void;
+  models: Map<string, { geometryResult?: { meshes: Array<{ expressId: number }> } }>;
+} };
+
+/** Run against the viewer store in the page. */
+async function withStore<T>(page: Page, fn: (store: ViewerStore) => T): Promise<T> {
+  return page.evaluate(`(${fn.toString()})(globalThis.__ifc_lite_viewer_store__)`) as Promise<T>;
+}
+
+/** Every visible interactive control's box. */
+async function controlBoxes(page: Page) {
+  return page.evaluate(() => [...document.querySelectorAll<HTMLElement>('button, a[href], input, select, textarea, [role="button"], [role="tab"]')]
+    .map((el) => ({ el, r: el.getBoundingClientRect(), style: getComputedStyle(el) }))
+    .filter(({ r, style }) => r.width > 0 && r.height > 0 && style.visibility !== 'hidden' && style.display !== 'none')
+    .map(({ el, r }) => ({ label: el.getAttribute('aria-label') ?? el.textContent?.trim().slice(0, 40) ?? el.tagName, left: r.left, right: r.right, top: r.top, bottom: r.bottom })));
+}
+
+/** The model area still takes input: what sits at its centre is the canvas, and a tap there reaches it. */
+async function expectViewportInteractive(page: Page): Promise<void> {
+  const view = await boxOf(page, '[data-mobile-viewport]');
+  const cx = view.x + view.width / 2;
+  const cy = view.y + view.height / 2;
+  expect(await page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.tagName ?? null, [cx, cy]), 'nothing covers the model').toBe('CANVAS');
+  await page.evaluate(() => {
+    const canvas = document.querySelector('[data-mobile-viewport] canvas')!;
+    (window as unknown as { __tapped: boolean }).__tapped = false;
+    canvas.addEventListener('pointerdown', () => { (window as unknown as { __tapped: boolean }).__tapped = true; }, { once: true });
+  });
+  await page.touchscreen.tap(cx, cy);
+  expect(await page.evaluate(() => (window as unknown as { __tapped: boolean }).__tapped), 'a tap on the model reaches the canvas').toBe(true);
+}
+
+test.describe('Flip main on its side 960x412 with a panel open', () => {
+  test.use({ viewport: { width: 960, height: 412 }, isMobile: true, hasTouch: true });
+
+  test('#9718 Properties docks as a pane between the model and the rail; the model stays interactive and the pane follows the selection', async ({ page }, testInfo) => {
+    await openViewer(page, true);
+    await expect(page.locator('[data-mobile-panels-launcher]')).toBeVisible({ timeout: 180_000 });
+    await page.locator('[data-mobile-panels-launcher]').click();
+    const list = page.locator('[data-mobile-pane="side-pane"] [data-mobile-panel-list]');
+    await expect(list, 'the Panels list opens in the pane, not a sheet').toBeVisible();
+    await list.getByRole('button', { name: 'Properties', exact: true }).click();
+    const pane = page.locator('[data-mobile-pane="side-pane"]');
+    await expect(pane).toBeVisible();
+    await expect(page.locator('[data-mobile-sheet]')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Close panels', exact: true }), 'no scrim').toHaveCount(0);
+
+    const view = await boxOf(page, '[data-mobile-viewport]');
+    const paneBox = await boxOf(page, '[data-mobile-pane-slot]');
+    const rail = await boxOf(page, '[data-command-surface="mobile"]');
+    expect(paneBox.width, 'clamp(280px, 40%, 380px)').toBeCloseTo(380, 0);
+    expect(Math.abs(paneBox.x - (view.x + view.width)), 'the pane starts where the model ends').toBeLessThanOrEqual(1);
+    expect(Math.abs(rail.x - (paneBox.x + paneBox.width)), 'and the rail where the pane ends').toBeLessThanOrEqual(1);
+    expect(view.width, 'the model keeps the rest of the width').toBeGreaterThanOrEqual(960 - 380 - 44 - 1);
+    expect(view.height).toBe(412);
+    await expectViewportInteractive(page);
+
+    const before = await pane.innerText();
+    const selected = await withStore(page, (store) => {
+      const model = [...store.getState().models.values()][0];
+      const id = model?.geometryResult?.meshes[0]?.expressId ?? null;
+      if (id !== null) store.getState().setSelectedEntityId(id);
+      return id;
+    });
+    expect(selected, 'the sample has geometry to select').not.toBeNull();
+    await expect.poll(() => pane.innerText(), { message: 'Properties follows the selection live' }).not.toBe(before);
+    await attachShot(page, testInfo, 'flip-landscape-960x412-pane');
+  });
+});
+
+test.describe('Z Fold inner 830x750 (near-tablet) with a panel open', () => {
+  test.use({ viewport: { width: 830, height: 750 }, isMobile: true, hasTouch: true });
+
+  test('#9718 Hierarchy docks as a pane right of the model, the bar under both', async ({ page }, testInfo) => {
+    await openViewer(page);
+    await expect(page.locator('[data-command-placement="bottom-bar"]')).toBeVisible({ timeout: 60_000 });
+    await withStore(page, (store) => store.getState().setLeftPanelCollapsed(false));
+    await expect(page.locator('[data-mobile-pane="side-pane"]')).toBeVisible();
+    await expect(page.locator('[data-mobile-sheet]')).toHaveCount(0);
+    const view = await boxOf(page, '[data-mobile-viewport]');
+    const paneBox = await boxOf(page, '[data-mobile-pane-slot]');
+    const bar = await boxOf(page, '[data-command-surface="mobile"]');
+    expect(paneBox.width).toBeCloseTo(360, 0);
+    expect(Math.abs(paneBox.x + paneBox.width - 830), 'the pane is on the trailing edge').toBeLessThanOrEqual(1);
+    expect(Math.abs(paneBox.x - (view.x + view.width))).toBeLessThanOrEqual(1);
+    expect(paneBox.y + paneBox.height, 'above the bar').toBeLessThanOrEqual(bar.y + 1);
+    expect(bar.width, 'the bar spans both').toBeGreaterThanOrEqual(829);
+    await attachShot(page, testInfo, 'zfold-inner-830x750-pane');
+  });
+});
+
+for (const fold of [
+  { name: 'Flex Mode (tabletop)', width: 412, height: 960, feature: { orientation: 'horizontal', offset: 470, maskLength: 20 }, view: { x: 0, y: 0, width: 412, height: 470 }, hinge: { axis: 'y', from: 470, to: 490 } },
+  { name: 'half-open Fold (book)', width: 830, height: 750, feature: { orientation: 'vertical', offset: 405, maskLength: 20 }, view: { x: 0, y: 0, width: 405, height: 750 }, hinge: { axis: 'x', from: 405, to: 425 } },
+] as const) {
+  test.describe(`${fold.name} ${fold.width}x${fold.height}`, () => {
+    test.use({ viewport: { width: fold.width, height: fold.height }, isMobile: true, hasTouch: true });
+
+    test(`#9718 the viewport fills one segment, controls and panels the other, nothing on the hinge (${fold.name})`, async ({ page }, testInfo) => {
+      const cdp = await page.context().newCDPSession(page);
+      await cdp.send('Emulation.setDisplayFeaturesOverride', { features: [fold.feature] });
+      // Device Posture (Chrome 132+): the classifier keys on the segments, but a folded posture is what a device reports with them.
+      const posture = await cdp.send('Emulation.setDevicePostureOverride', { posture: { type: 'folded' } }).then(() => 'set', (e: Error) => `unsupported: ${e.message}`);
+      testInfo.annotations.push({ type: 'device-posture', description: posture });
+      await openViewer(page);
+      const segments = await page.evaluate(() => (window as unknown as { viewport?: { segments?: DOMRect[] } }).viewport?.segments?.length ?? 0);
+      expect(segments, 'CDP display features produce window.viewport.segments').toBe(2);
+      const viewport = page.locator('[data-mobile-viewport]');
+      await expect(page.locator('[data-mobile-shell][data-mobile-panel-host="segment"]')).toBeVisible({ timeout: 60_000 });
+      const view = await boxOf(page, '[data-mobile-viewport]');
+      expect(view, 'the viewport is exactly the first segment').toEqual(fold.view);
+
+      // No panel open: the Panels list inline in the control segment, no floating button.
+      await expect(page.locator('[data-mobile-pane="segment"] [data-mobile-panel-list]')).toBeVisible();
+      await expect(page.locator('[data-mobile-panels-launcher]')).toHaveCount(0);
+      const offHinge = async () => {
+        for (const c of await controlBoxes(page)) {
+          const [lo, hi] = fold.hinge.axis === 'y' ? [c.top, c.bottom] : [c.left, c.right];
+          expect(hi <= fold.hinge.from || lo >= fold.hinge.to, `${c.label} (${lo}-${hi}) is clear of the hinge`).toBe(true);
+        }
+      };
+      await offHinge();
+      await attachShot(page, testInfo, `fold-${fold.feature.orientation}-${fold.width}x${fold.height}-list`);
+
+      await page.locator('[data-mobile-panel-list]').getByRole('button', { name: 'Hierarchy', exact: true }).click();
+      await expect(page.locator('[data-mobile-pane="segment"]')).toContainText('Hierarchy');
+      expect(await boxOf(page, '[data-mobile-viewport]'), 'opening a panel leaves the viewport segment alone').toEqual(fold.view);
+      await offHinge();
+      await attachShot(page, testInfo, `fold-${fold.feature.orientation}-${fold.width}x${fold.height}-panel`);
+
+      // Unfold live: the panel stays open, now in the unfolded host.
+      await cdp.send('Emulation.clearDisplayFeaturesOverride');
+      await page.evaluate(() => window.dispatchEvent(new Event('resize')));
+      await expect(page.locator('[data-mobile-shell]')).not.toHaveAttribute('data-mobile-panel-host', 'segment');
+      expect(await withStore(page, (store) => store.getState().leftPanelCollapsed), 'unfolding kept the panel open').toBe(false);
+      await expect(viewport).toHaveCount(1);
+    });
+  });
+}

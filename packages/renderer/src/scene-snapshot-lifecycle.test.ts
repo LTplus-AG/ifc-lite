@@ -14,6 +14,7 @@ import type { MeshData } from '@ifc-lite/geometry';
 import { Scene } from './scene.js';
 import type { RenderPipeline } from './pipeline.js';
 import { decodeSceneSnapshot, encodeSceneSnapshot, type SceneSnapshot } from './scene-snapshot.js';
+import { reorderSnapshotPieces } from './scene-snapshot-batches.js';
 import { PartialBatchRequests } from './partial-batch-requests.js';
 import { XRayAlpha } from './xray-alpha.js';
 
@@ -64,11 +65,13 @@ function uploadedByBatch(scene: Scene): Record<string, string[]> {
   return Object.fromEntries(scene.getBatchedMeshes().map((b) => [b.colorKey, [bytes(b.vertexBuffer)!, bytes(b.indexBuffer)!]]));
 }
 
+let lastSources: readonly MeshData[] = [];
+
 async function captureScene(meshes: MeshData[], device: GPUDevice): Promise<SceneSnapshot | null> {
   const scene = lastFinalized = new Scene();
   scene.setQuantizedBatches(true);
   let captured: SceneSnapshot | null = null;
-  scene.captureNextFinalize((snapshot) => { captured = snapshot; });
+  scene.captureNextFinalize((snapshot, sources) => { captured = snapshot; lastSources = sources; });
   scene.clearFlatGeometry(); // the load's own reshape, before its first piece
   scene.queueMeshes(meshes);
   scene.flushPending(device, pipeline, 1000);
@@ -102,6 +105,30 @@ describe('finished-scene snapshot', () => {
     assert.strictEqual(written.filter((w) => w.usage & (32 | 16)).length, snapshot.batches.length * 2, 'each buffer once');
     assert.deepStrictEqual(uploadedByBatch(scene), finalized, 'each batch draws the bytes finalize gave it');
     assert.deepStrictEqual(scene.getBatchedMeshes().map((b) => b.colorKey).sort(), snapshot.batches.map((b) => b.key).sort());
+  });
+
+  // W2: a cold load queues meshes in arrival order; its cache entry stores them in
+  // spatial chunks, and a reopen hydrates in that order.
+  it('hydrates a reopen that decodes the meshes in another order once the ordinals are moved to it', async () => {
+    const device = stubDevice();
+    const queued = model();
+    const snapshot = (await captureScene(queued, device))!;
+    assert.deepStrictEqual(lastSources, queued, 'one source per piece, in queue order');
+    const decodedOrder = [2, 0, 1];
+    const reopen = () => decodedOrder.map((i) => ({ ...model()[i] }));
+
+    const stale = freshScene();
+    assert.strictEqual(stale.hydrateSceneSnapshot(stale.adoptSceneSnapshot(await roundTrip(snapshot), device, pipeline)!, reopen()), false,
+      'queue-order ordinals are refused for another decode order');
+
+    const moved = reorderSnapshotPieces(snapshot, lastSources, decodedOrder.map((i) => queued[i]))!;
+    assert.ok(moved);
+    const scene = freshScene();
+    written = [];
+    assert.strictEqual(scene.hydrateSceneSnapshot(scene.adoptSceneSnapshot(await roundTrip(moved), device, pipeline)!, reopen()), true);
+    assert.strictEqual(scene.getMeshDataPieces(2)?.length, 1);
+    assert.strictEqual(reorderSnapshotPieces(snapshot, lastSources, [queued[0], queued[2]]), null, 'a queued mesh the entry lacks');
+    assert.ok(reorderSnapshotPieces(snapshot, lastSources, [triangle(9, 9), ...queued]), 'a mesh that was never queued is skipped');
   });
 
   it('hydrates pieces into the batches they were merged into, without uploading', async () => {

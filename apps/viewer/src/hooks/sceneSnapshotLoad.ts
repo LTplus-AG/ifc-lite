@@ -160,12 +160,12 @@ export function abandonAdoptedSceneSnapshot(adopted: AdoptedSceneSnapshot | null
  * the cached geometry. Synchronous at the swap; all later work is deferred.
  */
 function armSceneCapture(renderer: Renderer, isStale: () => boolean, onCaptured: (captured: CapturedScene) => void): void {
-  renderer.getScene().captureNextFinalize((snapshot: SceneSnapshot) => {
+  renderer.getScene().captureNextFinalize((snapshot: SceneSnapshot, sources: readonly MeshData[]) => {
     const camera = renderer.getCamera();
     const sceneBounds = camera.getSceneBounds();
     const fitBounds = lastFinalFitBounds();
     if (isStale() || !sceneBounds || !fitBounds || !sceneMatchesCachedGeometry()) return;
-    onCaptured({ snapshot, key: snapshotKey(renderer.getScene()), fit: { fitBounds, sceneBounds, orbitAnchorBounds: camera.getOrbitAnchorBounds() },
+    onCaptured({ snapshot, sources, key: snapshotKey(renderer.getScene()), fit: { fitBounds, sceneBounds, orbitAnchorBounds: camera.getOrbitAnchorBounds() },
       policyNow: () => renderer.getScene().sceneSnapshotPolicy() });
   });
 }

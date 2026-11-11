@@ -16,7 +16,8 @@
  * so harnesses that wait for `cache.write*` spans wait for it too.
  */
 
-import { encodeSceneSnapshotInSlices, type SceneSnapshot } from '@ifc-lite/renderer';
+import { encodeSceneSnapshotInSlices, reorderSnapshotPieces, type SceneSnapshot } from '@ifc-lite/renderer';
+import type { MeshData } from '@ifc-lite/geometry';
 import type { LoadTrace } from '@ifc-lite/load-trace';
 import { useViewerStore } from '../store/index.js';
 import { putSceneSnapshot, type SceneSnapshotWrite } from '../services/cacheService.js';
@@ -25,6 +26,8 @@ import type { SnapshotCameraFit } from '../components/viewer/sceneSnapshotOwners
 /** A finished scene as the finalize swap left it, with what a reopen needs to draw it. */
 export interface CapturedScene {
   snapshot: SceneSnapshot;
+  /** The mesh each piece was queued from, by ordinal (the capture's own record). */
+  sources: readonly MeshData[];
   fit: SnapshotCameraFit;
   /** `sceneSnapshotKey` at the swap: the type visibility the batches were built under. */
   key: string;
@@ -41,9 +44,15 @@ export interface SnapshotEntry {
   write: SceneSnapshotWrite;
   /** Where the entry keeps its instanced shards, which a snapshot reopen reads directly. */
   shards: { offset: number; size: number } | null;
+  /**
+   * The order the entry stores the meshes in (spatial chunks), which is the order
+   * a reopen hydrates them in. A cold load queued them in arrival order, so its
+   * ordinals move to this order; a hit already queued them in it (absent).
+   */
+  meshOrder?: readonly MeshData[];
 }
 
-export type SnapshotWriteOutcome = 'written' | 'refused' | 'abandoned' | 'no-entry' | 'policy-changed' | 'failed';
+export type SnapshotWriteOutcome = 'written' | 'refused' | 'abandoned' | 'no-entry' | 'policy-changed' | 'order-mismatch' | 'failed';
 
 const STALE_POLL_MS = 250;
 const IDLE_TIMEOUT_MS = 2000;
@@ -140,7 +149,10 @@ export async function writeCapturedScene(
     if (isStale()) return finish('abandoned');
     if (captured.policyNow() !== captured.snapshot.policy) return finish('policy-changed');
     const encodeStart = performance.now();
-    const blob = await encodeSceneSnapshotInSlices({ ...captured.snapshot, hostData: { ...captured.fit, shards: target.shards } }, sliceGap);
+    // Hydration matches pieces by ordinal; one it would refuse is not worth storing.
+    const snapshot = target.meshOrder ? reorderSnapshotPieces(captured.snapshot, captured.sources, target.meshOrder) : captured.snapshot;
+    if (!snapshot) return finish('order-mismatch');
+    const blob = await encodeSceneSnapshotInSlices({ ...snapshot, hostData: { ...captured.fit, shards: target.shards } }, sliceGap);
     const encodeMs = performance.now() - encodeStart;
     if (isStale()) return finish('abandoned');
     // `refused`: the entry was replaced or purged, or quota is short (putSceneSnapshot's own guards).

@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { createLoadTracer, type LoadTrace } from '@ifc-lite/load-trace';
 import { decodeSceneSnapshot, type Renderer, type SceneSnapshot } from '@ifc-lite/renderer';
+import type { MeshData } from '@ifc-lite/geometry';
 import { useViewerStore } from '../store/index.js';
 import { clearCache, getCached, setCached } from '../services/ifc-cache.js';
 import { noteFinalFitBounds } from '../components/viewer/sceneSnapshotOwnership.js';
@@ -28,7 +29,8 @@ function snapshot(): SceneSnapshot {
   };
 }
 
-const captured = (policyNow = 'p'): CapturedScene => ({ snapshot: snapshot(), key: 'policy|types', policyNow: () => policyNow, fit: { fitBounds: BOUNDS, sceneBounds: BOUNDS, orbitAnchorBounds: null } as unknown as CapturedScene['fit'] });
+const SOURCE = { expressId: 7 } as MeshData;
+const captured = (policyNow = 'p'): CapturedScene => ({ snapshot: snapshot(), sources: [SOURCE], key: 'policy|types', policyNow: () => policyNow, fit: { fitBounds: BOUNDS, sceneBounds: BOUNDS, orbitAnchorBounds: null } as unknown as CapturedScene['fit'] });
 
 /** A real recording trace, and a promise for the outcome the writer ends its span with. */
 function tracedSpan(): { trace: LoadTrace; span: number; outcome: () => string | undefined } {
@@ -121,6 +123,19 @@ describe('writeCapturedScene', () => {
     assert.equal((await getCached('q'))!.sceneSnapshot, undefined);
   });
 
+  it('moves a cold capture\'s ordinals to the order its entry stores the meshes in, and skips one hydration would refuse', async () => {
+    useViewerStore.setState({ loading: false });
+    const [a, b] = [{ expressId: 1 } as MeshData, { expressId: 2 } as MeshData];
+    const two: CapturedScene = { ...captured(), sources: [a, b], snapshot: { ...snapshot(), pieceCount: 2,
+      batches: [{ ...snapshot().batches[0], expressIds: new Uint32Array([1, 2]), ordinals: new Uint32Array([0, 1]) }] } };
+    const entry = { ...(await entryOf('o')), meshOrder: [b, a] };
+    const { trace, span } = tracedSpan();
+    assert.equal(await writeCapturedScene(two, Promise.resolve(entry), () => false, trace, span), 'written');
+    assert.deepEqual([...(await storedSnapshot('o'))!.batches[0].ordinals], [1, 0], 'a reopen decodes b first, so a is piece 1');
+    const missing = tracedSpan();
+    assert.equal(await writeCapturedScene(two, Promise.resolve({ ...entry, meshOrder: [b] }), () => false, missing.trace, missing.span), 'order-mismatch');
+  });
+
   it('writes nothing when the load stored no entry', async () => {
     useViewerStore.setState({ loading: false });
     const { trace, span } = tracedSpan();
@@ -147,7 +162,7 @@ describe('writeCapturedScene', () => {
 function captureRenderer(queued = false) {
   let onCaptured: ((s: SceneSnapshot) => void) | null = null;
   const scene = {
-    captureNextFinalize: (cb: (s: SceneSnapshot) => void) => { onCaptured = cb; },
+    captureNextFinalize: (cb: (s: SceneSnapshot, sources: readonly MeshData[]) => void) => { onCaptured = (s) => cb(s, [SOURCE]); },
     sceneSnapshotPolicy: () => 'p',
     hasQueuedMeshes: () => queued,
     getBatchedMeshes: () => [],

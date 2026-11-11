@@ -1858,7 +1858,7 @@ export class Scene {
     for (let i = 0; i < meshes.length; i++) {
       const fragments = this.splitMeshForStreaming(meshes[i]);
       for (let j = 0; j < fragments.length; j++) {
-        this.snapshots.notePiece(fragments[j]);
+        this.snapshots.notePiece(fragments[j], meshes[i]);
         this.meshQueue.push(fragments[j]);
       }
     }
@@ -2695,7 +2695,7 @@ export class Scene {
   // Finished-scene snapshot (scene-snapshot-lifecycle.ts).
   sceneSnapshotPolicy(): string { return this.snapshots.policy(); }
   isSceneSnapshotHydrating(): boolean { return this.snapshots.hydrating; }
-  captureNextFinalize(onCaptured: (snapshot: SceneSnapshot) => void): void { this.snapshots.captureNextFinalize(onCaptured); }
+  captureNextFinalize(onCaptured: (snapshot: SceneSnapshot, sources: readonly MeshData[]) => void): void { this.snapshots.captureNextFinalize(onCaptured); }
   adoptSceneSnapshot(snapshot: SceneSnapshot, device: GPUDevice, pipeline: RenderPipeline): object | null { return this.snapshots.adopt(snapshot, device, pipeline); }
   hydrateSceneSnapshot(adoption: object, meshes: readonly MeshData[]): boolean { return this.snapshots.hydrate(adoption, meshes); }
   abandonSceneSnapshot(adoption: object): void { this.snapshots.abandon(adoption); }

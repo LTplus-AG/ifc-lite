@@ -41,12 +41,17 @@ export interface FinishedSceneView {
 export class FinishedBatchCapture {
   private readonly ordinals = new Map<MeshData, number>();
   private readonly merged = new Map<string, { batchId: number; bytes: MergedBatchBytes }>();
+  /** The mesh each piece was split from, by ordinal; a mesh's pieces are consecutive. */
+  readonly sources: MeshData[] = [];
 
-  constructor(readonly onCaptured: (snapshot: SceneSnapshot) => void) {}
+  constructor(readonly onCaptured: (snapshot: SceneSnapshot, sources: readonly MeshData[]) => void) {}
 
   get hasPieces(): boolean { return this.ordinals.size > 0; }
 
-  notePiece(piece: MeshData): void { this.ordinals.set(piece, this.ordinals.size); }
+  notePiece(piece: MeshData, source: MeshData): void {
+    this.ordinals.set(piece, this.ordinals.size);
+    this.sources.push(source);
+  }
 
   noteMerged(key: string, batchId: number, bytes: MergedBatchBytes): void { this.merged.set(key, { batchId, bytes }); }
 
@@ -156,4 +161,36 @@ export function assignSnapshotPieces(snapshot: SceneSnapshot, pieces: readonly M
     assigned.set(batch.key, parts);
   }
   return assigned;
+}
+
+/**
+ * The snapshot with its piece ordinals moved from the order the pieces were
+ * queued in to the order `target` lists their meshes, which is the order a
+ * reopen decodes and hydrates them in. `sources[ordinal]` is each piece's mesh,
+ * as the capture reported it. Meshes of `target` that were never queued (a
+ * hidden type) are skipped, as a hydrating reopen skips them. Null when
+ * `target` is missing a queued mesh, so hydration could only refuse the result.
+ */
+export function reorderSnapshotPieces(snapshot: SceneSnapshot, sources: readonly MeshData[], target: readonly MeshData[]): SceneSnapshot | null {
+  if (sources.length !== snapshot.pieceCount) return null;
+  const firstOrdinal = new Map<MeshData, number>();
+  for (let i = 0; i < sources.length; i++) {
+    const known = firstOrdinal.get(sources[i]);
+    if (known === undefined) firstOrdinal.set(sources[i], i);
+    else if (sources[i - 1] !== sources[i]) return null; // a mesh queued twice
+  }
+  const moved = new Map<MeshData, number>();
+  let next = 0;
+  for (const mesh of target) {
+    const first = firstOrdinal.get(mesh);
+    if (first === undefined || moved.has(mesh)) continue;
+    moved.set(mesh, next);
+    let end = first;
+    while (end < sources.length && sources[end] === mesh) end++;
+    next += end - first;
+  }
+  if (next !== sources.length) return null;
+  const remap = new Uint32Array(sources.length);
+  for (let i = 0; i < sources.length; i++) remap[i] = moved.get(sources[i])! + (i - firstOrdinal.get(sources[i])!);
+  return { ...snapshot, batches: snapshot.batches.map((batch) => ({ ...batch, ordinals: batch.ordinals.map((o) => remap[o]) })) };
 }

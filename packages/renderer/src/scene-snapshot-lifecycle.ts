@@ -63,11 +63,11 @@ export class SceneSnapshotLifecycle {
     return sceneSnapshotPolicy(quantizedBatchesEnabled, lodBuildsEnabled, spatialChunking);
   }
 
-  captureNextFinalize(onCaptured: (snapshot: SceneSnapshot) => void): void {
+  captureNextFinalize(onCaptured: (snapshot: SceneSnapshot, sources: readonly MeshData[]) => void): void {
     this.capture = new FinishedBatchCapture(onCaptured);
   }
 
-  notePiece(piece: MeshData): void { this.capture?.notePiece(piece); }
+  notePiece(piece: MeshData, source: MeshData): void { this.capture?.notePiece(piece, source); }
 
   /** The upload's callback for a bucket batch while capturing; fragments and derived batches have no key. */
   mergedSink(bucketKey: string | undefined, batchId: number): ((bytes: MergedBatchBytes) => void) | undefined {
@@ -95,7 +95,7 @@ export class SceneSnapshotLifecycle {
       activeBuckets: scene.activeBucketKey,
       buckets: scene.buckets.values(),
     });
-    if (snapshot) capture.onCaptured(snapshot);
+    if (snapshot) capture.onCaptured(snapshot, capture.sources);
     else console.warn('[Scene] finished scene not captured: it is not exactly the pieces queued');
     if (trace?.enabled) trace.record('scene.finalize.capture', start, performance.now(), { captured: snapshot !== null }, parent);
   }

@@ -87,7 +87,8 @@ export interface SceneContents {
   sceneSnapshotPolicy(): string;
   isSceneSnapshotHydrating(): boolean;
   /** Report the next finalized scene as a snapshot, when it is exactly the pieces queued from now on. */
-  captureNextFinalize(onCaptured: (snapshot: SceneSnapshot) => void): void;
+  /** `sources[ordinal]` is the mesh queued as that piece: a reopen that decodes the meshes in another order maps it with `reorderSnapshotPieces`. */
+  captureNextFinalize(onCaptured: (snapshot: SceneSnapshot, sources: readonly MeshData[]) => void): void;
   /** Replace the flat scene with these batches; pass the handle to `hydrateSceneSnapshot`. Null: refused, scene untouched. */
   adoptSceneSnapshot(snapshot: SceneSnapshot, device: GPUDevice, pipeline: RenderPipeline): object | null;
   /** Attach the source meshes with no upload. False: the adoption is gone or they do not match, so nothing adopted remains. */

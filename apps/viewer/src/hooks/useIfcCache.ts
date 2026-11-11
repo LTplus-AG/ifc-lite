@@ -344,9 +344,10 @@ export function useIfcCache() {
       const cacheDataStore: CacheDataStore = toCacheDataStore(dataStore);
 
       console.log('[useIfcCache] Writing cache buffer...');
+      let meshOrder: readonly MeshData[] | undefined;
       const cacheBuffer = await writer.write(cacheDataStore, geometry, new Uint8Array(sourceBuffer), {
         includeGeometry: true, compressGeometryChunksInWorker: true,
-        omitSourceHash: true,
+        omitSourceHash: true, onGeometryOrder: (ordered) => { meshOrder = ordered; },
       });
       console.log('[useIfcCache] Cache buffer written:', cacheBuffer.byteLength, 'bytes');
 
@@ -366,7 +367,7 @@ export function useIfcCache() {
       console.log(`[useIfcCache] ✓ Cache saved successfully (mtime=${lastModified ?? 'n/a'}, fullHash=${fullSourceHash ? 'yes' : 'no'})`);
       // A snapshot reopen reads the shards straight from the entry, at the offsets written here.
       const shards = new BinaryCacheReader().readHeader(cacheBuffer).sections.find((s) => s.type === SectionType.InstancedShards);
-      return { cacheKey, write, shards: shards ? { offset: shards.offset, size: shards.size } : null };
+      return { cacheKey, write, shards: shards ? { offset: shards.offset, size: shards.size } : null, meshOrder };
     } catch (err) {
       console.error('[useIfcCache] Failed to cache model:', err);
       console.error('[useIfcCache] Error stack:', err instanceof Error ? err.stack : 'No stack trace');

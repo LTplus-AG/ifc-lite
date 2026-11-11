@@ -43,7 +43,7 @@ export function MobilePanelHost({ title, onClose, children }: {
     return <MobileBottomSheet title={title} onClose={onClose ?? noop}>{children}</MobileBottomSheet>;
   }
   const pane = (
-    <section data-mobile-pane={host} className="flex min-h-0 flex-1 flex-col bg-background">
+    <section data-mobile-pane={host} aria-label={typeof title === 'string' ? title : undefined} className="flex min-h-0 flex-1 flex-col bg-background">
       <MobilePanelHeader title={title} onClose={onClose} className="pt-2 border-b" />
       <div className="flex-1 min-h-0 overflow-auto overscroll-contain">{children}</div>
     </section>

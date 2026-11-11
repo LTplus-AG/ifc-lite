@@ -197,6 +197,8 @@
     "CacheReadResult: interface",
     "CacheWriteOptions: interface",
     "CachedEntityIndexColumns: interface",
+    "ChunkInflate: type",
+    "ChunkInflatePool: class",
     "FORMAT_VERSION: const",
     "GEOMETRY_CHUNK_CELL_SIZE: const",
     "GEOMETRY_CHUNK_COMPRESS_MIN_BYTES: const",

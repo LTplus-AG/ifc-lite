@@ -268,7 +268,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
 
     // Adopted snapshot batches own the scene until their meshes arrive.
     if (isCleared && adoptedSceneOutlivesEmptyGeometry(scene)) return;
-    if (isNewFile && takeSceneSnapshotGeometry(geometry, modelCount, renderer, { lastGeometryLengthRef, lastGeometryRef, cameraFittedRef, finalBoundsRefittedRef, geometryBoundsRef, cameraSnapshotRef })) return;
+    if (isNewFile && takeSceneSnapshotGeometry(geometry, modelCount, renderer, { lastGeometryLengthRef, lastGeometryRef, cameraFittedRef, finalBoundsRefittedRef, geometryBoundsRef, cameraSnapshotRef }, isStreaming)) return;
 
     if (isCleared) {
       reshapeSceneKeepingPresentInstanced(scene, presentInstancedModelIndices, geometry, appearanceSourceGeometry);

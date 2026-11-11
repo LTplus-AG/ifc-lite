@@ -7,6 +7,17 @@
 //! module-size rule.
 
 use super::*;
+use std::cell::Cell;
+
+thread_local! {
+    /// Test-only probe: coordinates the orienter's weld grid quantised with the
+    /// inline rounding (bumped from the key closure under `cfg(test)` only).
+    static INLINE_ROUNDS: Cell<u64> = const { Cell::new(0) };
+}
+
+pub(super) fn note_inline_round() {
+    INLINE_ROUNDS.with(|rounds| rounds.set(rounds.get() + 1));
+}
 
 /// Build a unit cube as a flat-shaded mesh (positions not index-shared), with
 /// `bad` triangle indices given as flipped (inward) so the winding is mixed.
@@ -810,4 +821,20 @@ fn a_small_mesh_after_a_large_one_resets_a_small_vertex_table() {
     let small_capacity = ORIENT_SCRATCH.with(|slot| slot.borrow().as_ref().unwrap().vid_of.capacity());
     assert!(small_capacity <= 1_024, "a 4-vertex mesh kept a {small_capacity}-entry table");
     ORIENT_SCRATCH.with(|slot| *slot.borrow_mut() = Some(OrientScratch::default()));
+}
+
+/// The work, not the verdict: the orienter's weld-grid key quantises every
+/// coordinate with the inline half-away rounding, not a libm `round` call. A
+/// tetrahedron given as an indexed mesh of 4 vertices keys each vertex once,
+/// three coordinates each, and still orients to a single closed solid.
+#[test]
+fn orient_grid_keys_are_quantised_without_libm_round() {
+    let mut mesh = Mesh::new();
+    mesh.positions = vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
+    mesh.normals = vec![0.0; 12];
+    mesh.indices = vec![0, 2, 1, 0, 1, 3, 1, 2, 3, 2, 0, 3];
+    let before = INLINE_ROUNDS.with(Cell::get);
+    let verdict = orient_mesh_outward_verdict(&mut mesh);
+    assert_eq!(INLINE_ROUNDS.with(Cell::get) - before, 12, "three inline roundings per vertex");
+    assert!(verdict.is_single_closed_solid());
 }

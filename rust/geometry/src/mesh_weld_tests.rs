@@ -7,6 +7,17 @@
 //! `#[path]`.
 
 use super::*;
+use std::cell::Cell;
+
+thread_local! {
+    /// Test-only probe: key components `vkey` quantised with the inline
+    /// rounding (bumped from `vkey` under `cfg(test)` only).
+    static INLINE_ROUNDS: Cell<u64> = const { Cell::new(0) };
+}
+
+pub(super) fn note_inline_rounds(count: u64) {
+    INLINE_ROUNDS.with(|rounds| rounds.set(rounds.get() + count));
+}
 
 #[test]
 fn merges_coplanar_shared_vertices() {
@@ -333,4 +344,18 @@ fn a_small_weld_after_a_large_one_resets_a_small_key_table() {
     let small = WELD_SCRATCH.with(|slot| slot.borrow().as_ref().unwrap().map.capacity());
     assert!(small <= 1_024, "a 3-vertex weld kept a {small}-entry table");
     WELD_SCRATCH.with(|slot| *slot.borrow_mut() = Some(WeldScratch::default()));
+}
+
+/// The work, not the key: every component of a weld key (3 normal, 2 UV) is
+/// quantised by the inline half-away rounding, not by a libm `roundf` call per
+/// component. Four vertices make four keys, twenty inline roundings.
+#[test]
+fn weld_keys_are_quantised_without_libm_round() {
+    let positions = [0.0f32, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0];
+    let normals = [0.0f32, 0.0, 1.0].repeat(4);
+    let indices = [0u32, 1, 2, 3, 1, 2];
+    let before = INLINE_ROUNDS.with(Cell::get);
+    let welded = weld_indexed(&positions, &normals, None, &indices).expect("vertices 0 and 3 merge");
+    assert_eq!(INLINE_ROUNDS.with(Cell::get) - before, 20, "five inline roundings per key");
+    assert_eq!(welded.0.len(), 9, "the duplicate corner still merges");
 }

@@ -5,7 +5,7 @@
 /** `ifc-lite derive-structural` (#9668): writes a linked analytical model, and a re-run writes nothing. */
 
 import { existsSync } from 'node:fs';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -64,7 +64,31 @@ describe.skipIf(!existsSync(SAMPLE))('ifc-lite derive-structural (#9668)', () =>
     expect(existsSync(again)).toBe(false);
   });
 
-  it('applies the settings, and --dry-run writes nothing', async () => {
+  it('refuses, after its report, a file that already has an analysis model, and adds beside it with --analysis-model-exists add', async () => {
+    const run = await derive();
+    // hello-wall with an authored analysis model and nothing linked to the wall.
+    const text = (await readFile(SAMPLE, 'utf8')).replace(/ENDSEC;\s*END-ISO-10303-21;\s*$/,
+      "#99990=IFCSTRUCTURALANALYSISMODEL('0Ab1Cd2Ef3Gh4Ij5Kl6Mn7',$,'Authored',$,$,.LOADING_3D.,$,$,$,$);\nENDSEC;\nEND-ISO-10303-21;\n");
+    expect(text).toContain('#99990=');
+    const authored = join(dir, 'authored.ifc');
+    await writeFile(authored, text);
+
+    const refused = join(dir, 'refused.ifc');
+    await expect(run([authored, '--out', refused, '--json'])).rejects.toThrow('exit 1');
+    expect(JSON.parse(stdout)).toMatchObject({ output: null, refused: true, existingAnalysisModels: [{ expressId: 99990, derived: false }], counts: { surfaceMembers: 1 } });
+    expect(stderr).toMatch(/Refused: the file already has an analysis model; nothing written\. Use --analysis-model-exists add/);
+    expect(existsSync(refused)).toBe(false);
+
+    stdout = '';
+    const added = join(dir, 'added.ifc');
+    await run([authored, '--out', added, '--json', '--analysis-model-exists', 'add']);
+    expect(JSON.parse(stdout)).toMatchObject({ output: added, refused: false });
+    const bytes = await readFile(added);
+    const data = extractStructuralOnDemand(await new IfcParser().parseColumnar(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer, { disableWorkerScan: true }));
+    expect(data.analysisModels).toHaveLength(2);
+  });
+
+    it('applies the settings, and --dry-run writes nothing', async () => {
     const run = await derive();
     const out = join(dir, 'dry.ifc');
     await run([SAMPLE, '--dry-run', '--load-bearing-unknown', 'skip', '--tolerance', '0.1', '--support', 'fixed', '--out', out]);

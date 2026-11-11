@@ -53,7 +53,8 @@
  * never sideways, to where that axis meets another curve member's axis, if
  * the move is within the reach: `jointReach` metres when set, otherwise half
  * the other member's larger section dimension plus `tolerance` (just
- * `tolerance` when the other member has no readable section). When the meeting
+ * `tolerance` when the other member has no readable section); never less
+ * than `tolerance`. When the meeting
  * point lies past the other member's free end, that end moves along its own
  * axis to it as well, by the same reach rule. When it lies inside the other
  * member, that member is split there into two curve members, both linked to
@@ -75,9 +76,9 @@
  * Supports. A node inside a footing or pile's body bounds (grown by `tolerance`)
  * is a support linked to that footing. When no footing supports any node, the
  * nodes at the lowest level become supports and are flagged `guessed`. The
- * lowest level is the lowest curve member end of the whole load-bearing
- * structure, already idealised elements included, within `tolerance`; so a
- * partial run never guesses a support under an upper floor. `supportType` is
+ * lowest level is the lowest node after the joints, or the lowest end of a
+ * load-bearing curve member already idealised when that is lower, within
+ * `tolerance`; so a partial run never guesses a support under an upper floor. `supportType` is
  * 'pinned' (translations fixed, rotations free; the default) or 'fixed'.
  *
  * Links. Every member and node is linked to the physical elements it

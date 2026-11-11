@@ -216,6 +216,39 @@ describe('structural derivation plan (#9668)', () => {
       expect(Math.max(...reached.report.extendedEnds.map((e) => Math.abs(e.distance)))).toBeCloseTo(0.5, 9);
     });
 
+    it('guesses supports at the lowest nodes after the joints moved the ends', () => {
+      // A 0.3 m deep grade beam between the column faces: the column feet move up to its axis at 0.15 m.
+      const grade = element('IfcBeam', { prism: box([0.15, -0.15, 0], 5.7, 0.3, [0, 0, 0.3]) });
+      const plan = planStructuralDerivation(facts(column(0, 0, 0, 3), column(6, 0, 0, 3), grade, beam(0, 6, 0, 3)));
+      const supports = plan.nodes.filter((n) => n.support);
+      expect(supports).toHaveLength(2);
+      expect(supports.every((n) => Math.abs(n.position[2] - 0.15) < 1e-9 && n.support?.guessed)).toBe(true);
+    });
+
+    it('connects an end that already touches a member within the tolerance, even with jointReach 0', () => {
+      const plan = planStructuralDerivation(facts(column(0, 0, 0, 3), beam(0.02, 6, 0, 1.5)), { jointReach: 0 });
+      expect(plan.curveMembers).toHaveLength(3); // the column, split, and the beam
+      expect(plan.report.unconnectedEnds).toEqual([]);
+    });
+
+    it('counts a split element without LoadBearing once as assumed', () => {
+      const plan = planStructuralDerivation(facts(column(0, 0, 0, 6, { loadBearing: null }), beam(0, 6, 0, 2), beam(0, 6, 0, 4)));
+      expect(plan.curveMembers).toHaveLength(5);
+      expect(plan.report.counts.assumedLoadBearing).toBe(1);
+    });
+
+    it('does not report a split element as skipped when only one of its pieces collapses', () => {
+      // Two beams stop at the column face and move onto its axis: one cuts it 0.07 m below its top (held by the
+      // column above), the other lands between that cut and the top, chaining both into one node, so the short
+      // top piece collapses.
+      const col = column(0, 0, 0, 3);
+      const plan = planStructuralDerivation(facts(col, column(0, 0, 3, 6), beam(0.15, 6, 0, 2.93), beam(-6, -0.15, 0, 2.965)));
+      expect(plan.report.extendedEnds.map((e) => e.elementId)).not.toContain(col.expressId);
+      expect(plan.report.extendedEnds).toHaveLength(2);
+      expect(plan.curveMembers.filter((m) => m.elementId === col.expressId)).toHaveLength(1);
+      expect(plan.report.skipped.map((s) => s.elementId)).not.toContain(col.expressId);
+    });
+
     it('lists every member end that meets no other member or support as a free end, whatever its distance', () => {
       const plan = planStructuralDerivation(facts(beam(0, 6, 0, 3), beam(0, 6, 40, 3), column(20, 20, 0, 3)));
       // Both beams float: four free ends. The column's foot is a guessed support, its top is free.

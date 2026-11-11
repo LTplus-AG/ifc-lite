@@ -1,12 +1,12 @@
 diff --git a/packages/cli/src/commands/derive-structural.ts b/packages/cli/src/commands/derive-structural.ts
 --- a/packages/cli/src/commands/derive-structural.ts
 +++ b/packages/cli/src/commands/derive-structural.ts
-@@ -76,7 +76,7 @@ export async function deriveStructuralCommand(args: string[]): Promise<void> {
-     process.stderr.write(`The file already has ${existing.length} analysis model(s): ${existing.map((m) => `#${m.expressId}${m.derived ? ' (derived)' : ''}`).join(', ')}. `
-       + (plan.options.whenAnalysisModelExists === 'add' ? 'The missing members go into a new one.\n' : 'Nothing is written unless --analysis-model-exists add.\n'));
-   }
--  const writes = !dryRun;
-+  const writes = !dryRun && report.counts.curveMembers + report.counts.surfaceMembers > 0;
+@@ -79,7 +79,7 @@ export async function deriveStructuralCommand(args: string[]): Promise<void> {
+   const derivable = report.counts.curveMembers + report.counts.surfaceMembers > 0;
+   // Known at plan time: report it as an outcome, not as an apply error.
+   const refused = derivable && existing.length > 0 && plan.options.whenAnalysisModelExists !== 'add';
+-  const writes = !dryRun && !refused;
++  const writes = !dryRun && derivable && !refused;
    if (writes) {
      try {
        // Report what was written: derive plans again from the same state.

@@ -91,7 +91,8 @@ export function joinEnds(
   jointReach: number | null,
   supported: (p: Vec3) => boolean,
 ): { pieces: Array<{ source: number; start: Vec3; end: Vec3 }>; extended: ExtendedEnd[] } {
-  const reachOf = (section: number | null) => jointReach ?? (section === null ? tolerance : section / 2 + tolerance);
+  // Never below the tolerance: an end within it already touches, whatever the reach.
+  const reachOf = (section: number | null) => Math.max(tolerance, jointReach ?? (section === null ? tolerance : section / 2 + tolerance));
   const maxReach = lines.reduce((m, line) => Math.max(m, reachOf(line.section)), tolerance);
   const ends = lines.flatMap((line): Vec3[] => [[...line.start], [...line.end]]);
   const roots = clusterEnds(ends, tolerance);
@@ -99,7 +100,8 @@ export function joinEnds(
   for (const root of roots) clusterSize.set(root, (clusterSize.get(root) ?? 0) + 1);
   const free = ends.map((p, e) => clusterSize.get(roots[e]) === 1 && !supported(p));
   const grid = new SegmentGrid(Math.max(1, 2 * maxReach));
-  lines.forEach((line, i) => grid.insert(i, line.start, line.end, maxReach + tolerance));
+  // An end may sit a reach from the meeting point, which may sit a reach past the segment's end.
+  lines.forEach((line, i) => grid.insert(i, line.start, line.end, 2 * maxReach + tolerance));
   const splits: Vec3[][] = lines.map(() => []);
   const joined = new Set<number>();
   const extended: ExtendedEnd[] = [];

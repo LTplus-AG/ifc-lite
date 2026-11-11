@@ -11,7 +11,7 @@
  */
 
 import { StepExporter } from '@ifc-lite/export';
-import type { StructuralDerivationOptions } from '@ifc-lite/create';
+import type { StructuralDerivationOptions, StructuralDerivationReport } from '@ifc-lite/create';
 import { createHeadlessContext } from '../loader.js';
 import { getFlag, hasFlag, fatal, printJson, writeOutput } from '../output.js';
 
@@ -76,7 +76,10 @@ export async function deriveStructuralCommand(args: string[]): Promise<void> {
     process.stderr.write(`The file already has ${existing.length} analysis model(s): ${existing.map((m) => `#${m.expressId}${m.derived ? ' (derived)' : ''}`).join(', ')}. `
       + (plan.options.whenAnalysisModelExists === 'add' ? 'The missing members go into a new one.\n' : 'Nothing is written unless --analysis-model-exists add.\n'));
   }
-  const writes = !dryRun && report.counts.curveMembers + report.counts.surfaceMembers > 0;
+  const derivable = report.counts.curveMembers + report.counts.surfaceMembers > 0;
+  // Known at plan time: report it as an outcome, not as an apply error.
+  const refused = derivable && existing.length > 0 && plan.options.whenAnalysisModelExists !== 'add';
+  const writes = !dryRun && derivable && !refused;
   if (writes) {
     try {
       // Report what was written: derive plans again from the same state.
@@ -89,9 +92,16 @@ export async function deriveStructuralCommand(args: string[]): Promise<void> {
   }
 
   if (json) {
-    printJson({ input: filePath, output: writes ? out : null, dryRun, options: plan.options, existingAnalysisModels: existing, ...report });
-    return;
+    printJson({ input: filePath, output: writes ? out : null, dryRun, refused, options: plan.options, existingAnalysisModels: existing, ...report });
+  } else {
+    // A refusal names itself below.
+    printReport(report, writes || (refused && !dryRun) ? null : dryRun ? 'Dry run: nothing written' : 'Nothing to derive: nothing written');
   }
+  // A refusal exits non-zero after the report, so scripts see it.
+  if (refused && !dryRun) fatal('Refused: the file already has an analysis model; nothing written. Use --analysis-model-exists add to derive the missing members into a new one.');
+}
+
+function printReport(report: StructuralDerivationReport, nothingWritten: string | null): void {
   const c = report.counts;
   process.stderr.write(
     `${c.curveMembers} curve member(s), ${c.surfaceMembers} surface member(s), ${c.nodes} node(s), ` +
@@ -102,5 +112,5 @@ export async function deriveStructuralCommand(args: string[]): Promise<void> {
   if (c.freeEnds) process.stderr.write(`${c.freeEnds} free member end(s) meet no other member or support\n`);
   if (report.unconnectedEnds.length) process.stderr.write(`${report.unconnectedEnds.length} node(s) touch a member or surface they are not connected to\n`);
   for (const s of report.skipped) process.stderr.write(`skipped #${s.elementId} ${s.type}${s.name ? ` "${s.name}"` : ''}: ${s.reason} (${s.detail})\n`);
-  if (!writes) process.stderr.write(dryRun ? 'Dry run: nothing written\n' : 'Nothing to derive: nothing written\n');
+  if (nothingWritten) process.stderr.write(`${nothingWritten}\n`);
 }

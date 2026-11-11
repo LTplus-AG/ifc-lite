@@ -104,8 +104,8 @@ export function planStructuralDerivation(facts: StructuralDerivationFacts, optio
   const lines: Line[] = [];
   const surfaces: Array<{ member: PlannedSurfaceMember; normal: Vec3 }> = [];
   const footings: Array<{ element: PhysicalElementFact; min: Vec3; max: Vec3 }> = [];
-  // The lowest curve member end of the whole load-bearing structure, already idealised elements included.
-  let structureLowest = Infinity;
+  // The lowest end of the load-bearing curve members already idealised: part of the structure, not of this plan.
+  let idealisedLowest = Infinity;
   for (const element of facts.elements) {
     const role = roleOf(element.type);
     if (role === null) continue;
@@ -115,13 +115,17 @@ export function planStructuralDerivation(facts: StructuralDerivationFacts, optio
       continue;
     }
     const line = role === 'curve' ? lineOf(element) : null;
-    if (line && !('issue' in line) && element.loadBearing !== false) structureLowest = Math.min(structureLowest, line.start[2], line.end[2]);
-    if (element.idealised) { skip(element, 'already-idealised', 'a structural item is already linked to this element'); continue; }
-    if (element.loadBearing === false) { skip(element, 'not-load-bearing', 'LoadBearing is false'); continue; }
-    if (element.loadBearing === null && resolved.whenLoadBearingUnknown === 'skip') {
-      skip(element, 'load-bearing-unknown', 'no LoadBearing value, and whenLoadBearingUnknown is skip');
+    const notLoadBearing = element.loadBearing === false
+      ? ['not-load-bearing', 'LoadBearing is false'] as const
+      : element.loadBearing === null && resolved.whenLoadBearingUnknown === 'skip'
+        ? ['load-bearing-unknown', 'no LoadBearing value, and whenLoadBearingUnknown is skip'] as const
+        : null;
+    if (element.idealised) {
+      if (!notLoadBearing && line && !('issue' in line)) idealisedLowest = Math.min(idealisedLowest, line.start[2], line.end[2]);
+      skip(element, 'already-idealised', 'a structural item is already linked to this element');
       continue;
     }
+    if (notLoadBearing) { skip(element, notLoadBearing[0], notLoadBearing[1]); continue; }
     const loadBearing: MemberLoadBearing = element.loadBearing === true ? true : 'assumed';
     if (line) {
       if ('issue' in line) skip(element, 'no-idealisable-shape', line.issue);
@@ -135,7 +139,11 @@ export function planStructuralDerivation(facts: StructuralDerivationFacts, optio
     else surfaces.push({ member: { elementId: element.expressId, storeyId: element.storeyId, ...plate, loadBearing }, normal: face.normal });
   }
 
-  const inFooting = (p: Vec3) => footings.find(({ min, max }) => p.every((v, k) => v >= min[k] - tolerance && v <= max[k] + tolerance));
+  const footingGrid = new SegmentGrid(2);
+  footings.forEach(({ min, max }, i) => footingGrid.insert(i, min, max, tolerance));
+  // The first footing in facts order whose bounds, grown by the tolerance, hold the point.
+  const inFooting = (p: Vec3) => footings[Math.min(...footingGrid.near(p).filter((i) =>
+    p.every((v, k) => v >= footings[i].min[k] - tolerance && v <= footings[i].max[k] + tolerance)))];
   const long = lines.filter((line) => {
     if (length(sub(line.end, line.start)) > tolerance) return true;
     skip(line.element, 'shorter-than-tolerance', `shorter than the ${tolerance} m tolerance`);
@@ -148,8 +156,11 @@ export function planStructuralDerivation(facts: StructuralDerivationFacts, optio
   let roots = clusterEnds(pieces.flatMap((piece) => [piece.start, piece.end]), tolerance);
   const collapsed = new Set(pieces.map((_, i) => i).filter((i) => roots[2 * i] === roots[2 * i + 1]));
   if (collapsed.size > 0) {
-    for (const i of collapsed) skip(pieces[i].element, 'shorter-than-tolerance', 'both ends merge into one node');
+    const dropped = new Set([...collapsed].map((i) => pieces[i].element));
     pieces = pieces.filter((_, i) => !collapsed.has(i));
+    // An element is skipped only when none of its pieces is left.
+    for (const piece of pieces) dropped.delete(piece.element);
+    for (const element of dropped) skip(element, 'shorter-than-tolerance', 'both ends merge into one node');
     roots = clusterEnds(pieces.flatMap((piece) => [piece.start, piece.end]), tolerance);
   }
   // Gather each cluster's ends, then build its node once, at their mean.
@@ -189,6 +200,8 @@ export function planStructuralDerivation(facts: StructuralDerivationFacts, optio
     if (!usedFootings.has(element.expressId)) skip(element, 'footing-without-member-end', 'no member end lies within its bounds');
   }
   if (usedFootings.size === 0) {
+    // After the joints moved the ends: the lowest node, or a lower member derived before.
+    const structureLowest = nodes.reduce((low, node) => Math.min(low, node.position[2]), idealisedLowest);
     for (const node of nodes) {
       if (node.position[2] <= structureLowest + tolerance) node.support = { type: supportType, basis: 'lowest-level', guessed: true };
     }
@@ -215,7 +228,8 @@ export function planStructuralDerivation(facts: StructuralDerivationFacts, optio
         nodes: nodes.length,
         supports: nodes.filter((node) => node.support).length,
         guessedSupports: guessedSupports.length,
-        assumedLoadBearing: members.filter((member) => member.loadBearing === 'assumed').length,
+        // Elements, not pieces: a split member counts once.
+        assumedLoadBearing: new Set(members.filter((member) => member.loadBearing === 'assumed').map((member) => member.elementId)).size,
         skipped: skipped.length,
         extendedEnds: joined.extended.length,
         freeEnds: freeEnds.length,

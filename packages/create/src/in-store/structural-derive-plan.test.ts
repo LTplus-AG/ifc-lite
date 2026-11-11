@@ -230,11 +230,22 @@ describe('structural derivation plan (#9668)', () => {
       const grade = element('IfcBeam', { prism: box([0.15, -0.15, 0], 5.7, 0.3, [0, 0, 0.3]) });
       const done = planStructuralDerivation(facts(column(0, 0, 0, 3, { idealised: true }), column(6, 0, 0, 3), grade, beam(0, 6, 0, 3)));
       expect(done.nodes.filter((n) => n.support).map((n) => n.position.map((v) => +v.toFixed(6) + 0))).toContainEqual([6, 0, 0.15]);
-      // Ground columns with no LoadBearing value, skipped by policy or derived before, still set the level.
-      for (const more of [{}, { idealised: true }]) {
-        const upper = planStructuralDerivation(facts(column(0, 0, 0, 3, { loadBearing: null, ...more }), beam(0, 6, 0, 3)), { whenLoadBearingUnknown: 'skip' });
-        expect(upper.report.guessedSupports).toEqual([]);
-      }
+      // A ground column derived before sets the level even with no LoadBearing value and the skip policy.
+      const upper = planStructuralDerivation(facts(column(0, 0, 0, 3, { loadBearing: null, idealised: true }), beam(0, 6, 0, 3)), { whenLoadBearingUnknown: 'skip' });
+      expect(upper.report.guessedSupports).toEqual([]);
+      // Under the skip policy an unknown element is not load-bearing: it does not set the level.
+      const skipped = planStructuralDerivation(facts(column(0, 0, 0, 3, { loadBearing: null }), beam(0, 6, 0, 3)), { whenLoadBearingUnknown: 'skip' });
+      expect(skipped.report.counts.guessedSupports).toBe(2);
+    });
+
+    it('puts no support up a column where a brace foot was moved onto it, and ignores stubs shorter than the tolerance', () => {
+      const brace = element('IfcMember', { axis: [[-0.1, 0, 0], [2.9, 0, 3]] });
+      const stub = element('IfcMember', { axis: [[20, 0, -1], [20, 0, -0.97]] });
+      const plan = planStructuralDerivation(facts(column(0, 0, 0, 3), column(6, 0, 0, 3), beam(0, 6, 0, 3), brace, stub));
+      expect(plan.report.extendedEnds.map((e) => e.elementId)).toContain(brace.expressId);
+      const supports = plan.nodes.filter((n) => n.support).map((n) => n.position.map((v) => +v.toFixed(6) + 0));
+      expect(supports).toEqual(expect.arrayContaining([[0, 0, 0], [6, 0, 0]]));
+      expect(supports).toHaveLength(2);
     });
 
     it('connects an end that already touches a member within the tolerance, even with jointReach 0', () => {

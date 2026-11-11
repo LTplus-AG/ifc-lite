@@ -104,8 +104,7 @@ export function planStructuralDerivation(facts: StructuralDerivationFacts, optio
   const lines: Line[] = [];
   const surfaces: Array<{ member: PlannedSurfaceMember; normal: Vec3 }> = [];
   const footings: Array<{ element: PhysicalElementFact; min: Vec3; max: Vec3 }> = [];
-  // The lowest end of the load-bearing curve members already idealised: part of the structure, not of this plan.
-  // The lowest original end of every load-bearing curve candidate: planned, already idealised, or skipped by policy.
+  // The lowest drawn end of the load-bearing curve structure: what this run plans, and what was idealised before.
   let structureLowest = Infinity;
   for (const element of facts.elements) {
     const role = roleOf(element.type);
@@ -116,7 +115,10 @@ export function planStructuralDerivation(facts: StructuralDerivationFacts, optio
       continue;
     }
     const line = role === 'curve' ? lineOf(element) : null;
-    if (line && !('issue' in line) && element.loadBearing !== false) structureLowest = Math.min(structureLowest, line.start[2], line.end[2]);
+    const counts = element.loadBearing === true || (element.loadBearing === null && (element.idealised || resolved.whenLoadBearingUnknown === 'include'));
+    if (line && !('issue' in line) && counts && length(sub(line.end, line.start)) > tolerance) {
+      structureLowest = Math.min(structureLowest, line.start[2], line.end[2]);
+    }
     if (element.idealised) { skip(element, 'already-idealised', 'a structural item is already linked to this element'); continue; }
     if (element.loadBearing === false) { skip(element, 'not-load-bearing', 'LoadBearing is false'); continue; }
     if (element.loadBearing === null && resolved.whenLoadBearingUnknown === 'skip') {
@@ -182,9 +184,7 @@ export function planStructuralDerivation(facts: StructuralDerivationFacts, optio
     clusters.set(root, cluster);
   });
   const nodeOfRoot = new Map<number, number>();
-  const rawLow: number[] = [];
-  const nodes: PlannedNode[] = [...clusters].map(([root, { ends, first, elementIds, ...cluster }], index) => {
-    rawLow.push(cluster.rawLow);
+  const nodes: PlannedNode[] = [...clusters.entries()].map(([root, { ends, first, elementIds }], index) => {
     nodeOfRoot.set(root, index);
     return { index, position: scale(ends.reduce(add), 1 / ends.length), storeyId: first.storeyId, elementIds: [...elementIds] };
   });
@@ -211,12 +211,14 @@ export function planStructuralDerivation(facts: StructuralDerivationFacts, optio
     if (!usedFootings.has(element.expressId)) skip(element, 'footing-without-member-end', 'no member end lies within its bounds');
   }
   if (usedFootings.size === 0) {
-    // Judged on the ends as drawn: a column foot the joints moved up to a grade beam axis still stands at that level.
-    for (const node of nodes) {
-      if (Math.min(node.position[2], rawLow[node.index]) <= structureLowest + tolerance) {
-        node.support = { type: supportType, basis: 'lowest-level', guessed: true };
-      }
-    }
+    const atLevel = (z: number) => z <= structureLowest + tolerance;
+    const level = nodes.filter((node) => atLevel(node.position[2]));
+    // A node the joints moved up from the level (a column foot onto a grade beam axis) stands there too,
+    // unless an element meeting at it already stands on the level (a brace foot moved onto a column).
+    const standing = new Set(level.flatMap((node) => node.elementIds));
+    const raised = [...clusters.values()].flatMap(({ rawLow, elementIds }, index) =>
+      !atLevel(nodes[index].position[2]) && atLevel(rawLow) && [...elementIds].every((id) => !standing.has(id)) ? [nodes[index]] : []);
+    for (const node of [...level, ...raised]) node.support = { type: supportType, basis: 'lowest-level', guessed: true };
   }
 
   const degree = new Array<number>(nodes.length).fill(0);

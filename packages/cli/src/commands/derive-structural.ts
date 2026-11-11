@@ -73,13 +73,14 @@ export async function deriveStructuralCommand(args: string[]): Promise<void> {
   }
   let { report } = plan;
   const existing = plan.existingAnalysisModels;
+  // The rule apply refuses by, known at plan time: report it as an outcome, not as an apply error.
+  const refusal = existingAnalysisModelRefusal(existing, plan.options);
   if (existing.length > 0) {
     process.stderr.write(`The file already has ${existing.length} analysis model(s): ${existing.map((m) => `#${m.expressId}${m.derived ? ' (derived)' : ''}`).join(', ')}. `
-      + (plan.options.whenAnalysisModelExists === 'add' ? 'The missing members go into a new one.\n' : 'Nothing is written unless --analysis-model-exists add.\n'));
+      + (refusal ? 'Nothing is written unless --analysis-model-exists add.\n' : 'The missing members go into a new one.\n'));
   }
   const derivable = report.counts.curveMembers + report.counts.surfaceMembers > 0;
-  // Known at plan time: report it as an outcome, not as an apply error.
-  const refused = derivable && existingAnalysisModelRefusal(existing, plan.options) !== null;
+  const refused = derivable && refusal !== null;
   const writes = !dryRun && derivable && !refused;
   if (writes) {
     try {
@@ -99,7 +100,7 @@ export async function deriveStructuralCommand(args: string[]): Promise<void> {
     printReport(report, writes || (refused && !dryRun) ? null : dryRun ? 'Dry run: nothing written' : 'Nothing to derive: nothing written');
   }
   // A refusal exits non-zero after the report, so scripts see it.
-  if (refused && !dryRun) fatal('Refused: the file already has an analysis model; nothing written. Use --analysis-model-exists add to derive the missing members into a new one.');
+  if (refused && !dryRun) fatal(`Nothing written. ${refusal} (--analysis-model-exists add)`);
 }
 
 function printReport(report: StructuralDerivationReport, nothingWritten: string | null): void {

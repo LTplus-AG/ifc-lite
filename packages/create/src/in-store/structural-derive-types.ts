@@ -76,9 +76,13 @@
  * Supports. A node inside a footing or pile's body bounds (grown by `tolerance`)
  * is a support linked to that footing. When no footing supports any node, the
  * nodes at the lowest level become supports and are flagged `guessed`. The
- * lowest level is the lowest node after the joints, or the lowest end of a
- * load-bearing curve member already idealised when that is lower, within
- * `tolerance`; so a partial run never guesses a support under an upper floor. `supportType` is
+ * lowest level is the lowest drawn end of the load-bearing curve structure,
+ * within `tolerance`: the members this run derives and those already
+ * idealised (members longer than `tolerance`; an unknown LoadBearing counts
+ * under 'include', or when already idealised), so a partial run never
+ * guesses a support under an upper floor. A node the joints moved up from that
+ * level (a column foot onto a grade beam axis) is a support too, unless an
+ * element meeting at it already has a node on the level. `supportType` is
  * 'pinned' (translations fixed, rotations free; the default) or 'fixed'.
  *
  * Links. Every member and node is linked to the physical elements it

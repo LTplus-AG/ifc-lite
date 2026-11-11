@@ -30,6 +30,12 @@ import { checkLazyOnly } from './startup-chunks.mjs';
  *  nothing" check fails rather than passing. The read side
  *  (`extractStructuralOnDemand`, the properties card) has none. */
 export const STRUCTURAL_WRITE_SIGNATURES = [
+  'addStructuralPlanarActionToStore',
+  'addStructuralSurfaceActionToStore',
+  'addStructuralPointReactionToStore',
+  'addStructuralCurveReactionToStore',
+  'addStructuralSurfaceReactionToStore',
+  'addStructuralResultGroupToStore',
   'addStructuralAnalysisModelToStore:',
   'addStructuralCurveMemberToStore:',
   'addStructuralPointConnectionToStore:',

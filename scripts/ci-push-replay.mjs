@@ -53,15 +53,13 @@
  * workflow-only full run would not re-key what a Cargo.lock change needs. Only
  * the newest runs in full.
  *
- * WORKFLOW FILES: a change to `.github/actions/` or to test.yml always blocks,
- * as does any file under `.github/workflows/` that is not top-level YAML. Another
- * top-level workflow file blocks only when test.yml, an action file or a
- * reusable workflow test.yml calls names it (lib/named-workflow-files.mjs), or
- * when the list cannot be built. That scan is a text match and NOT complete: a
- * repo script Test runs, or a path built in a way it does not recognise, can
- * still read an unnamed workflow file. A miss cannot change a verdict (replay
- * still needs a green run of the exact tree). Its cost is a main-side cache
- * keyed on that file staying cold until the next full push run.
+ * WORKFLOW FILES: a change to `.github/actions/` always blocks, as does any
+ * file under `.github/workflows/` that is not top-level YAML. A top-level
+ * workflow file blocks when it can change a Test cache key
+ * (lib/workflows-keying-caches.mjs): test.yml, a reusable workflow it calls, or
+ * a file a `hashFiles` in them hashes. When that cannot be told, every
+ * workflow file blocks. A step that only reads another workflow is test
+ * behaviour, which the exact-tree evidence already covers.
  */
 
 import { appendFileSync } from 'node:fs';
@@ -70,7 +68,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { gh, GhError } from './lib/gh.mjs';
 import { isBatchBranch } from './ci-pr-lane.mjs';
 import { isMainEntry } from './lib/is-main-entry.mjs';
-import { namedWorkflowFiles } from './lib/named-workflow-files.mjs';
+import { workflowsKeyingCaches } from './lib/workflows-keying-caches.mjs';
 
 export const TREE_ARTIFACT_PREFIX = 'tested-tree-';
 export const TEST_WORKFLOW_FILE = 'test.yml';
@@ -88,7 +86,7 @@ const NO_REPLAY = [
   /^\.github\/actions\//,
 ];
 // GitHub runs only top-level workflow YAML. Anything else under workflows/ is a file a
-// step may read, which namedWorkflowFiles does not list, so it always blocks.
+// step may read or hash in ways workflowsKeyingCaches does not judge, so it always blocks.
 const WORKFLOW_YAML = /^\.github\/workflows\/[^/]+\.ya?ml$/;
 const TEST_WORKFLOW_PATH = `.github/workflows/${TEST_WORKFLOW_FILE}`;
 
@@ -97,7 +95,7 @@ function keysMainCaches(file, workflowFiles) {
   if (NO_REPLAY.some((re) => re.test(file))) return true;
   if (!file.startsWith('.github/workflows/')) return false;
   if (!WORKFLOW_YAML.test(file)) return true;
-  // Unknown, or a list without test.yml (never a namedWorkflowFiles result): trust none of it.
+  // Unknown, or a list without test.yml (never a workflowsKeyingCaches result): trust none of it.
   if (!Array.isArray(workflowFiles) || !workflowFiles.includes(TEST_WORKFLOW_PATH)) return true;
   return workflowFiles.includes(file);
 }
@@ -229,10 +227,12 @@ function readInputs(repo, pushSha, pushTree, parentSha, before) {
   // Only a changed workflow or action file needs the list; most pushes touch none.
   let workflowFiles = null;
   if (changedFiles.some((f) => f.startsWith('.github/workflows/'))) {
-    // The push commit's side suffices: dropping a reference edits a file that blocks.
-    const actionFiles = gitOrNull('ls-tree', '-r', '--name-only', pushSha, '--', '.github/actions/')?.split('\n').filter(Boolean) ?? null;
-    workflowFiles = namedWorkflowFiles({ root: TEST_WORKFLOW_PATH, actionFiles, readText: (path) => gitOrNull('show', `${pushSha}:${path}`) });
-    if (!workflowFiles) console.warn(`[push-replay] the workflow files ${TEST_WORKFLOW_FILE} names could not be listed at ${pushSha.slice(0, 9)}; every workflow file blocks`);
+    // The push commit's side suffices: dropping a `uses:` or hashFiles edits a file that blocks.
+    // -z: a non-ASCII path would come back quoted, and `git show` of the quoted name fails.
+    const actionFiles = gitOrNull('ls-tree', '-z', '-r', '--name-only', pushSha, '--', '.github/actions/')?.split('\0').filter(Boolean) ?? null;
+    const keyed = workflowsKeyingCaches({ root: TEST_WORKFLOW_PATH, actionFiles, readText: (path) => gitOrNull('show', `${pushSha}:${path}`) });
+    if (keyed.files) workflowFiles = keyed.files;
+    else console.warn(`[push-replay] cannot tell which workflow files key Test's caches at ${pushSha.slice(0, 9)} (${keyed.unknown}); every workflow file blocks`);
   }
   return { pushSha, pushTree, parentSha, before, changedFiles, pulls, runs, artifactNamesByRun, repo, queueEvidence, laterChangedFiles, workflowFiles };
 }

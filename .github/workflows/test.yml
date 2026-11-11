@@ -242,8 +242,9 @@ jobs:
       # CSG gates) and the always-on plato-check and rust-semver still run and
       # are judged; the aggregate re-verifies the recorded run. A merge that
       # touches a file that keys caches only a push to main writes never
-      # replays: Cargo/toolchain files, local actions, and the workflow files
-      # keysMainCaches in that script lists. A push also replays when a
+      # replays: Cargo/toolchain files, local actions, this file, and any
+      # workflow file that can change a Test cache key (keysMainCaches in that
+      # script decides). A push also replays when a
       # green Mergify batch run recorded its tree or a later main commit's
       # tree, and then a commit touching those blocking files may replay too
       # if the same files change again later.

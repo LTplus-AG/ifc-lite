@@ -17,7 +17,7 @@ import type { ModelLayout } from '@/store/slices/authoringSessionSidebar';
 import { HudSegmented } from '../../viewport-ui/hud';
 import { WorkspaceStoreyControl } from '../model/WorkspaceStoreyChip';
 import { PlanWorkplaneHeight } from '../model/WorkplaneHeightControl';
-import { leaveModelWorkspace } from '../model/rail-tools';
+import { leaveModelWorkspace } from '../model/leave-model-workspace';
 
 export interface PlanHeaderProps {
   grid: boolean;

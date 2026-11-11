@@ -102,7 +102,7 @@ describe('ModelWorkspaceSplit (#6232 M2.1)', () => {
     await act(frame);
     ui.querySelector<HTMLButtonElement>('[data-workspace-leave]')!.focus();
     const exit = MODEL_EDIT_SURFACE_COMMANDS.find((c) => c.id === 'model:exit')!;
-    act(() => { exit.run({} as Parameters<typeof exit.run>[0]); });
+    act(() => { exit.run(); });
     assert.equal(useViewerStore.getState().workspaceMode, 'view');
     assert.equal(document.activeElement === model, true, 'focus is back on the Model button');
   });

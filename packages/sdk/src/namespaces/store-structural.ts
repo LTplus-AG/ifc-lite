@@ -9,20 +9,45 @@ import type { StructuralStoreBackendMethods } from '../store-structural-types.js
  * The host supplies the builders through its lazy structural write seam.
  */
 export class StoreStructuralNamespace extends StoreGroupNamespace {
+  /** Add a constant IfcStructuralPlanarAction with its own planar-force or temperature load. Supports IFC2X3, IFC4 and IFC4X3 builders; backend schema support applies. */
   declare addStructuralPlanarAction: Required<StructuralStoreBackendMethods>['addStructuralPlanarAction'];
+  /** Add a constant IfcStructuralSurfaceAction with its own planar-force or temperature load (IFC4+). */
   declare addStructuralSurfaceAction: Required<StructuralStoreBackendMethods>['addStructuralSurfaceAction'];
+  /** Add an IfcStructuralPointReaction with its own single-force or single-displacement result. */
   declare addStructuralPointReaction: Required<StructuralStoreBackendMethods>['addStructuralPointReaction'];
+  /** Add a constant IfcStructuralCurveReaction with its own linear-force result (IFC4+). */
   declare addStructuralCurveReaction: Required<StructuralStoreBackendMethods>['addStructuralCurveReaction'];
+  /** Add a constant IfcStructuralSurfaceReaction with its own planar-force result (IFC4+). */
   declare addStructuralSurfaceReaction: Required<StructuralStoreBackendMethods>['addStructuralSurfaceReaction'];
+  /** Add an IfcStructuralResultGroup for ResultForLoadGroup and assign ReactionIds in one relationship. */
   declare addStructuralResultGroup: Required<StructuralStoreBackendMethods>['addStructuralResultGroup'];
+  /** Add an IfcStructuralAnalysisModel. Not storey-anchored (IfcGroup, no geometry). */
   declare addStructuralAnalysisModel: Required<StructuralStoreBackendMethods>['addStructuralAnalysisModel'];
+  /**
+   * Add an IfcStructuralCurveMember between `params.Start` and `params.End`,
+   * anchored to a storey for its ObjectPlacement. Emits an
+   * IfcTopologyRepresentation (IfcEdge between two IfcVertexPoints) as its
+   * analytical line geometry.
+   */
   declare addStructuralCurveMember: Required<StructuralStoreBackendMethods>['addStructuralCurveMember'];
+  /** Add an IfcStructuralPointConnection at `params.Position`, optionally with an IfcBoundaryNodeCondition. */
   declare addStructuralPointConnection: Required<StructuralStoreBackendMethods>['addStructuralPointConnection'];
+  /** Add an IfcStructuralLoadGroup, or an IfcStructuralLoadCase when `params.SelfWeightCoefficients` is given. */
   declare addStructuralLoadGroup: Required<StructuralStoreBackendMethods>['addStructuralLoadGroup'];
+  /** Add an IfcStructuralPointAction carrying an IfcStructuralLoadSingleForce. */
   declare addStructuralPointAction: Required<StructuralStoreBackendMethods>['addStructuralPointAction'];
+  /** Add an IfcStructuralLinearAction carrying an IfcStructuralLoadLinearForce. */
   declare addStructuralLinearAction: Required<StructuralStoreBackendMethods>['addStructuralLinearAction'];
+  /** Link a structural member to a structural connection via IfcRelConnectsStructuralMember. */
   declare connectStructuralMemberToConnection: Required<StructuralStoreBackendMethods>['connectStructuralMemberToConnection'];
+  /** Apply a structural action/reaction to the member or connection it acts on via IfcRelConnectsStructuralActivity. */
   declare connectStructuralActivityToItem: Required<StructuralStoreBackendMethods>['connectStructuralActivityToItem'];
+  /**
+   * Assign members/connections into an analysis model, or activities into a
+   * load group, via IfcRelAssignsToGroup — the relationship
+   * `bim.structural.analysisModels()[i].itemGlobalIds` and
+   * `bim.structural.loadGroups()[i].activityGlobalIds` read back.
+   */
   declare assignToStructuralGroup: Required<StructuralStoreBackendMethods>['assignToStructuralGroup'];
 
   static {

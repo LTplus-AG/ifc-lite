@@ -7,9 +7,13 @@
  * IFC4+ PlanarAction constrains SurfaceAction to CONST. Both forms are offered explicitly.
  */
 import type { StoreEditor } from '@ifc-lite/mutations';
-import { assertActivitySchema, emitActivity, validateLoad, type ActivityAnchor, type ActivityParams, type ActivityResult } from './_structural-activity.js';
+import { assertActivitySchema, assertAppliedLoad, assertEnum, assertBoolean, emitActivity, validateLoad, type ActivityAnchor, type ActivityParams, type ActivityResult } from './_structural-activity.js';
 
 export interface StructuralPlanarForceParams { Name?: string; PlanarForceX?: number; PlanarForceY?: number; PlanarForceZ?: number }
+/** Temperature parameters use IFC4 EXPRESS names on every target.
+ * On IFC2X3, DeltaTConstant, DeltaTY and DeltaTZ write the corresponding
+ * DeltaT_Constant, DeltaT_Y and DeltaT_Z slots without changing their values.
+ */
 export interface StructuralTemperatureParams { Name?: string; DeltaTConstant?: number; DeltaTY?: number; DeltaTZ?: number }
 export type StructuralSurfaceLoad =
   | ({ Type: 'IfcStructuralLoadPlanarForce' } & StructuralPlanarForceParams)
@@ -31,6 +35,9 @@ export function addStructuralPlanarActionToStore(editor: StoreEditor, anchor: Ac
 }
 function surfaceAction(editor: StoreEditor, anchor: ActivityAnchor, params: StructuralSurfaceActionInStoreParams, type: string): ActivityResult {
   const builder = `add${type.slice(3)}ToStore`;
+  assertAppliedLoad(builder, params.AppliedLoad);
+  assertBoolean(builder, 'DestabilizingLoad', params.DestabilizingLoad);
+  assertEnum(builder, 'ProjectedOrTrue', params.ProjectedOrTrue, ['PROJECTED_LENGTH', 'TRUE_LENGTH']);
   const fields = params.AppliedLoad.Type === 'IfcStructuralLoadPlanarForce'
     ? ['PlanarForceX', 'PlanarForceY', 'PlanarForceZ']
     : params.AppliedLoad.Type === 'IfcStructuralLoadTemperature' ? ['DeltaTConstant', 'DeltaTY', 'DeltaTZ'] : null;

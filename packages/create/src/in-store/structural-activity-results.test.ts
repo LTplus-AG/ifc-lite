@@ -148,3 +148,81 @@ describe.each(['IFC2X3', 'IFC4', 'IFC4X3'])('%s activity and result builders', s
     expect(editor.getMutationView().getNewEntities()).toHaveLength(0);
   });
 });
+
+// #9764 independent review: untyped SDK callers must not author invalid STEP.
+describe.each(['IFC2X3', 'IFC4', 'IFC4X3'])('%s runtime activity validation (#9764)', schema => {
+  const builders = [
+    [addStructuralPlanarActionToStore, { AppliedLoad: { Type: 'IfcStructuralLoadPlanarForce', PlanarForceZ: 1 } }],
+    [addStructuralPointReactionToStore, { AppliedLoad: { Type: 'IfcStructuralLoadSingleForce', ForceZ: 1 } }],
+    ...(schema === 'IFC2X3' ? [] : [
+      [addStructuralSurfaceActionToStore, { AppliedLoad: { Type: 'IfcStructuralLoadPlanarForce', PlanarForceZ: 1 } }],
+      [addStructuralCurveReactionToStore, { AppliedLoad: { LinearForceZ: 1 } }],
+      [addStructuralSurfaceReactionToStore, { AppliedLoad: { PlanarForceZ: 1 } }],
+    ] as const),
+  ] as const;
+
+  it('rejects invalid GlobalOrLocal with the method and allowed values before writing', async () => {
+    const { editor, anchor } = await fresh(schema);
+    for (const [builder, params] of builders) {
+      for (const GlobalOrLocal of ['FOO', null, true, 1]) {
+        expect(() => Reflect.apply(builder, undefined, [editor, anchor, { ...params, GlobalOrLocal }]))
+          .toThrow(`${builder.name}: GlobalOrLocal must be one of GLOBAL_COORDS, LOCAL_COORDS`);
+        expect(editor.getMutationView().getNewEntities()).toHaveLength(0);
+      }
+    }
+  });
+
+  it('rejects missing or non-object AppliedLoad with the method and field', async () => {
+    const { editor, anchor } = await fresh(schema);
+    for (const [builder] of builders) {
+      for (const AppliedLoad of [undefined, null, 'force', 1, []]) {
+        expect(() => Reflect.apply(builder, undefined, [editor, anchor, { AppliedLoad }]))
+          .toThrow(`${builder.name}: AppliedLoad must be a load object`);
+        expect(editor.getMutationView().getNewEntities()).toHaveLength(0);
+      }
+    }
+  });
+
+  it('rejects invalid surface action enums and booleans before writing', async () => {
+    const { editor, anchor } = await fresh(schema);
+    const actions = schema === 'IFC2X3' ? [addStructuralPlanarActionToStore] : [addStructuralPlanarActionToStore, addStructuralSurfaceActionToStore];
+    for (const builder of actions) {
+      for (const [field, value, allowed] of [
+        ['DestabilizingLoad', 'yes', 'true or false'], ['DestabilizingLoad', null, 'true or false'],
+        ['ProjectedOrTrue', 'BOGUS', 'one of PROJECTED_LENGTH, TRUE_LENGTH'], ['ProjectedOrTrue', true, 'one of PROJECTED_LENGTH, TRUE_LENGTH'],
+      ] as const) {
+        expect(() => Reflect.apply(builder, undefined, [editor, anchor, {
+          AppliedLoad: { Type: 'IfcStructuralLoadPlanarForce', PlanarForceZ: 1 }, [field]: value,
+        }])).toThrow(`${builder.name}: ${field} must be ${allowed}`);
+        expect(editor.getMutationView().getNewEntities()).toHaveLength(0);
+      }
+    }
+  });
+
+  it('rejects invalid result group TheoryType and IsLinear before writing', async () => {
+    const { editor, anchor } = await fresh(schema);
+    for (const [field, value, allowed] of [
+      ['TheoryType', 'NOPE', 'one of FIRST_ORDER_THEORY, SECOND_ORDER_THEORY, THIRD_ORDER_THEORY, FULL_NONLINEAR_THEORY, USERDEFINED, NOTDEFINED'],
+      ['TheoryType', undefined, 'one of FIRST_ORDER_THEORY, SECOND_ORDER_THEORY, THIRD_ORDER_THEORY, FULL_NONLINEAR_THEORY, USERDEFINED, NOTDEFINED'],
+      ['IsLinear', 'yes', 'true or false'], ['IsLinear', undefined, 'true or false'],
+    ] as const) {
+      expect(() => Reflect.apply(addStructuralResultGroupToStore, undefined, [editor, anchor, {
+        TheoryType: 'FIRST_ORDER_THEORY', IsLinear: true, ResultForLoadGroup: 1, ReactionIds: [30], [field]: value,
+      }])).toThrow(`addStructuralResultGroupToStore: ${field} must be ${allowed}`);
+      expect(editor.getMutationView().getNewEntities()).toHaveLength(0);
+    }
+  });
+
+  it('uses the established human-readable default activity names', async () => {
+    const { editor, anchor, roundTrip } = await fresh(schema);
+    for (const [builder, params] of builders) Reflect.apply(builder, undefined, [editor, anchor, params]);
+    const member = addStructuralCurveMemberToStore(editor, anchor, { Start: [0, 0, 0], End: [1, 0, 0] });
+    for (const activity of editor.getMutationView().getNewEntities().filter(e => e.type.endsWith('Action') || e.type.endsWith('Reaction'))) {
+      connectStructuralActivityToItemInStore(editor, anchor.ownerHistoryId, member.memberId, activity.expressId);
+    }
+    const { data } = await roundTrip();
+    expect(data.activities.map(a => a.name)).toEqual(schema === 'IFC2X3'
+      ? ['Planar Action', 'Point Reaction']
+      : ['Planar Action', 'Point Reaction', 'Surface Action', 'Curve Reaction', 'Surface Reaction']);
+  });
+});

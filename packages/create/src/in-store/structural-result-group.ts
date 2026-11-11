@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { StoreEditor } from '@ifc-lite/mutations';
-import { assertActivitySchema, type ActivityAnchor } from './_structural-activity.js';
+import { assertActivitySchema, assertEnum, assertBoolean, type ActivityAnchor } from './_structural-activity.js';
 import { ownerHistoryRef, productGuid } from './_emit-helpers.js';
 import { assignToStructuralGroupInStore } from './structural-relationships.js';
 
@@ -23,13 +23,14 @@ export interface StructuralResultGroupBuildResult { resultGroupId: number; assig
 export function addStructuralResultGroupToStore(editor: StoreEditor, anchor: ActivityAnchor, params: StructuralResultGroupInStoreParams): StructuralResultGroupBuildResult {
   const builder = 'addStructuralResultGroupToStore';
   assertActivitySchema(anchor, builder);
+  assertEnum(builder, 'TheoryType', params.TheoryType, ['FIRST_ORDER_THEORY', 'SECOND_ORDER_THEORY', 'THIRD_ORDER_THEORY', 'FULL_NONLINEAR_THEORY', 'USERDEFINED', 'NOTDEFINED'], false);
+  assertBoolean(builder, 'IsLinear', params.IsLinear, false);
   if (params.TheoryType === 'USERDEFINED' && !params.ObjectType) throw new Error(`${builder}: USERDEFINED requires ObjectType`);
   if (!Number.isSafeInteger(params.ResultForLoadGroup) || params.ResultForLoadGroup <= 0
     || params.ReactionIds.length === 0 || params.ReactionIds.some(id => !Number.isSafeInteger(id) || id <= 0)
     || new Set(params.ReactionIds).size !== params.ReactionIds.length) {
     throw new Error(`${builder}: supply a positive ResultForLoadGroup and non-empty distinct ReactionIds`);
   }
-  if (typeof params.IsLinear !== 'boolean') throw new Error(`${builder}: IsLinear must be a boolean`);
   if (!['IfcStructuralLoadGroup', 'IfcStructuralLoadCase'].includes(editor.getEntityType(params.ResultForLoadGroup) ?? '')) {
     throw new Error(`${builder}: ResultForLoadGroup must reference a structural load group`);
   }

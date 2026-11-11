@@ -4,7 +4,7 @@
 
 /** Reactions own a constant load/result. Connect them to an item with the existing relationship builder. */
 import type { StoreEditor } from '@ifc-lite/mutations';
-import { assertActivitySchema, emitActivity, validateLoad, type ActivityAnchor, type ActivityParams, type ActivityResult } from './_structural-activity.js';
+import { assertActivitySchema, assertAppliedLoad, emitActivity, validateLoad, type ActivityAnchor, type ActivityParams, type ActivityResult } from './_structural-activity.js';
 import type { StructuralPlanarForceParams } from './structural-surface-action.js';
 
 export interface StructuralSingleForceParams { Name?: string; ForceX?: number; ForceY?: number; ForceZ?: number; MomentX?: number; MomentY?: number; MomentZ?: number }
@@ -27,6 +27,7 @@ export type StructuralReactionBuildResult = ActivityResult;
 export function addStructuralPointReactionToStore(editor: StoreEditor, anchor: ActivityAnchor, params: StructuralPointReactionInStoreParams): StructuralReactionBuildResult {
   const builder = 'addStructuralPointReactionToStore';
   assertActivitySchema(anchor, builder);
+  assertAppliedLoad(builder, params.AppliedLoad);
   const fields = params.AppliedLoad.Type === 'IfcStructuralLoadSingleForce' ? ['ForceX', 'ForceY', 'ForceZ', 'MomentX', 'MomentY', 'MomentZ']
     : params.AppliedLoad.Type === 'IfcStructuralLoadSingleDisplacement' ? ['DisplacementX', 'DisplacementY', 'DisplacementZ', 'RotationalDisplacementRX', 'RotationalDisplacementRY', 'RotationalDisplacementRZ'] : null;
   if (!fields) throw new Error(`${builder}: unsupported AppliedLoad.Type`);

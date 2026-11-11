@@ -101,13 +101,13 @@ describe('ModelWorkspaceSplit applies the rule (#6232 M2.4)', () => {
     assert.ok(ui.querySelector('[data-model-layout-notice]'), 'an explicit Split pick explains the fallback');
   });
 
-  it('too narrow beside an expanded sidebar: the rail toggle folds it to make room (#9296)', () => {
+  it('too narrow beside an expanded sidebar: picking Split folds it to make room (#9296)', () => {
     restore = splitWidth(NEED - 1);
     act(() => useViewerStore.getState().setSidebarMode('expanded'));
     const ui = render(<><ModelToolRail /><ModelWorkspaceSplit><div data-probe-3d /></ModelWorkspaceSplit></>);
-    const strip = ui.querySelector<HTMLButtonElement>('[data-rail-tool="plan"]')!;
-    assert.equal(strip.disabled, false, 'folding the sidebar can make room');
-    act(() => strip.click());
+    const split = [...ui.querySelectorAll<HTMLButtonElement>('[role="radio"]')].find(button => button.textContent?.startsWith('Split'));
+    assert.ok(split && !split.disabled, 'folding the sidebar can make room');
+    click(split);
     assert.equal(useViewerStore.getState().sidebarMode, 'collapsed');
     assert.equal(useViewerStore.getState().modelLayout, 'split');
   });

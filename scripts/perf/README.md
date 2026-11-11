@@ -99,6 +99,17 @@ rounds): first-reopen interactive gains of 18-39% on all six cached fixtures
 as the snapshot reopen. Cold, native and snapshot-reopen lanes show no
 significant difference, and per-element output is identical. The capture costs
 about 9 ms at the swap on Holter.
+Confirmation A/B on the review-fix head (89611a3c45 vs main 5187254915, the
+#9740 scoreboard from main, exclusive, 5 rounds; job c1b26815): first-reopen
+interactive ISSUE_129 1.07 -> 0.87 s (+18.5%) and Holter 3.70 -> 2.40 s
+(+35.1%) PASS. BWK 2.84 -> 1.96 s (+31.1%) is inconclusive only by sample count:
+the A/B timeout cut its fifth round. Cold and snapshot-reopen lanes show no
+significant difference. First-reopen peak memory falls (Holter 2.78 -> 2.10
+GiB) because the reopen no longer merges the stream. The scoreboard reports
+cached reopens as UNVERIFIABLE (no element hashes). Output was checked
+separately on a real GPU: per-mesh identity is equal across cold and both
+reopens, and the reopen-vs-cold pixel difference is 0 on three fixtures. On
+Holter the difference is the IfcGrid overlay, which arrives after interactive.
 
 Lessons:
 - **Hydration matches pieces by ordinal, and the cache does not keep arrival

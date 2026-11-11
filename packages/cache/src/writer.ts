@@ -137,7 +137,7 @@ export class BinaryCacheWriter {
       const geometryBuffer = await buildGeometrySectionV13(
         geometry.meshes,
         geometry.coordinateInfo,
-        { compress: options.compressGeometryChunks ?? true, compressInWorker: options.compressGeometryChunksInWorker }
+        { compress: options.compressGeometryChunks ?? true, compressInWorker: options.compressGeometryChunksInWorker, onOrder: options.onGeometryOrder }
       );
       sectionBuffers.push({ type: SectionType.Geometry, buffer: geometryBuffer });
       if (pause) await pause();

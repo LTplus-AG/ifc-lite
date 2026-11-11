@@ -7,6 +7,9 @@ import type {
   CostItemParams, CostQuantityParams, CostScheduleParams, CostValueParams,
   StructuralAnalysisModelInStoreParams,
   StructuralCurveMemberInStoreParams,
+  StructuralSurfaceMemberInStoreParams,
+  StructuralCurveConnectionInStoreParams,
+  StructuralSurfaceConnectionInStoreParams,
   StructuralLinearActionInStoreParams,
   StructuralLoadGroupInStoreParams,
   StructuralPointActionInStoreParams,
@@ -25,6 +28,13 @@ import type {
 } from '../types.js';
 
 import { StoreGroupNamespace } from './store-group.js';
+
+/** The backend's method, or a refusal naming it when the backend lacks that optional capability. */
+function requireStoreMethod<K extends keyof StoreBackendMethods>(store: StoreBackendMethods, name: K): NonNullable<StoreBackendMethods[K]> {
+  const method = store[name];
+  if (!method) throw new Error(`bim.store.${name}: not available on this backend`);
+  return method as NonNullable<StoreBackendMethods[K]>;
+}
 
 /**
  * `bim.store` — document-level edits on a parsed model.
@@ -297,6 +307,21 @@ export class StoreNamespace extends StoreGroupNamespace {
   /** Add an IfcStructuralAnalysisModel. Not storey-anchored (IfcGroup, no geometry). */
   addStructuralAnalysisModel(modelId: string, params: StructuralAnalysisModelInStoreParams): EntityRef {
     return this.backend.store.addStructuralAnalysisModel(modelId, params);
+  }
+
+  /** Add an IfcStructuralSurfaceMember anchored to a storey. Throws when the backend does not implement it. */
+  addStructuralSurfaceMember(modelId: string, storeyExpressId: number, params: StructuralSurfaceMemberInStoreParams): EntityRef {
+    return requireStoreMethod(this.backend.store, 'addStructuralSurfaceMember').call(this.backend.store, modelId, storeyExpressId, params);
+  }
+
+  /** Add an IfcStructuralCurveConnection anchored to a storey. Throws when the backend does not implement it. */
+  addStructuralCurveConnection(modelId: string, storeyExpressId: number, params: StructuralCurveConnectionInStoreParams): EntityRef {
+    return requireStoreMethod(this.backend.store, 'addStructuralCurveConnection').call(this.backend.store, modelId, storeyExpressId, params);
+  }
+
+  /** Add an IfcStructuralSurfaceConnection anchored to a storey. Throws when the backend does not implement it. */
+  addStructuralSurfaceConnection(modelId: string, storeyExpressId: number, params: StructuralSurfaceConnectionInStoreParams): EntityRef {
+    return requireStoreMethod(this.backend.store, 'addStructuralSurfaceConnection').call(this.backend.store, modelId, storeyExpressId, params);
   }
 
   /**

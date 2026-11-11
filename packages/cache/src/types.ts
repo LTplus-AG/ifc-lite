@@ -285,9 +285,10 @@ export interface CacheWriteOptions {
    * `false` (the writer hashes the whole `sourceBuffer`, unchanged).
    */
   omitSourceHash?: boolean;
-  /** v13+: deflate-raw compress geometry chunk records above the size floor (default true).
-   * Disable for byte-inspection/debugging or when write latency matters more than entry size. */
+  /** v13+: deflate-raw compress geometry chunk records above the size floor (default true); off for byte inspection. */
   compressGeometryChunks?: boolean;
+  /** The meshes in the order the entry stores them (spatial chunks), which is the order a hit decodes them in. */
+  onGeometryOrder?: (meshes: readonly MeshData[]) => void;
   /** Use one lazy browser module worker for geometry compression (default false).
    * Requires Worker support and a bundled worker asset; failure rejects the write.
    * Has no effect when compression is disabled or all chunks are below its floor. */

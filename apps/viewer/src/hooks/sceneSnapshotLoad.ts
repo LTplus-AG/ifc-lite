@@ -10,20 +10,21 @@
  */
 
 import { BufferReader, readInstancedShards, SectionType, type openGeometryChunksV13 } from '@ifc-lite/cache';
-import { decodeSceneSnapshot, encodeSceneSnapshot, type Renderer, type SceneContents, type SceneSnapshot } from '@ifc-lite/renderer';
+import { decodeSceneSnapshot, type Renderer, type SceneContents, type SceneSnapshot } from '@ifc-lite/renderer';
 import { decodeInstancedShard, type CoordinateInfo, type MeshData } from '@ifc-lite/geometry';
 import type { LoadTrace } from '@ifc-lite/load-trace';
 import { useViewerStore } from '../store/index.js';
 import { noteInstancedShardModel } from '../store/instancedShardModels.js';
-import { fitCameraToSnapshot, lastFinalFitBounds, sceneSnapshotKey, type SnapshotCameraFit, setPendingSceneSnapshot, withdrawPendingSceneSnapshot } from '../components/viewer/sceneSnapshotOwnership.js';
+import { fitCameraToSnapshot, lastFinalFitBounds, sceneSnapshotKey, type SnapshotCameraFit, setPendingColdCapture, setPendingSceneSnapshot, withdrawPendingColdCapture, withdrawPendingSceneSnapshot } from '../components/viewer/sceneSnapshotOwnership.js';
 import { readPerfFlag } from '../lib/perf/flags.js';
 import { recordFirstVisible } from '../lib/perf/loadTrace.js';
-import { clearSceneSnapshot, putSceneSnapshot, type CacheResult } from '../services/cacheService.js';
+import { clearSceneSnapshot, type CacheResult } from '../services/cacheService.js';
 import { isQuantizedEnabled } from '../utils/quantizedConfig.js';
 import { getGlobalRenderer } from './useBCF.js';
 import type { DecodedCacheMetadata } from './ifcCacheDecode.js';
+import type { CapturedScene, SnapshotEntry } from './sceneSnapshotWrite.js';
 
-/** What the viewer stores beside the batches: the fit they were finalized under, and where the shards are. */
+/** What the viewer stores beside the batches (sceneSnapshotWrite.ts): the fit they were finalized under, and where the shards are. */
 interface SnapshotHostData extends SnapshotCameraFit {
   shards: { offset: number; size: number } | null;
 }
@@ -153,12 +154,80 @@ export function abandonAdoptedSceneSnapshot(adopted: AdoptedSceneSnapshot | null
   getGlobalRenderer()?.getScene().abandonSceneSnapshot(adopted.adoption);
 }
 
+/**
+ * Merged flat geometry a capture may keep from the swap until it is stored.
+ * Above it the capture is skipped (`over-cap`): a capture holds one more copy of
+ * the merged batches across the cache write. 64 MiB is twice the largest the
+ * load corpus produced (BWK, a 327 MB file: 31.8 MB), so every measured model
+ * keeps its first-reopen gain, and the extra copy stays at or below about 1.3%
+ * of the cold peaks measured on those models (Holter 3.7 GiB, BWK 5.0 GiB).
+ */
+export const SNAPSHOT_CAPTURE_MAX_BYTES = 64 * 1024 * 1024;
+
+function mergedBytes(snapshot: SceneSnapshot): number {
+  let bytes = 0;
+  for (const b of snapshot.batches) bytes += b.vertexData.byteLength + b.indices.byteLength + (b.lod1Indices?.byteLength ?? 0) + b.expressIds.byteLength + b.ordinals.byteLength;
+  return bytes;
+}
+
+/**
+ * Arm the capture of the next finalize. At the swap, keep the scene with the
+ * fit and type-visibility key it was built under, or nothing when it is not
+ * the cached geometry. Synchronous at the swap; all later work is deferred.
+ */
+function armSceneCapture(renderer: Renderer, isStale: () => boolean, trace: LoadTrace, onCaptured: (captured: CapturedScene) => void,
+  loadFailed: () => boolean = () => false): void {
+  renderer.getScene().captureNextFinalize((snapshot: SceneSnapshot, sources: readonly MeshData[], sceneUnchanged: () => boolean) => {
+    const camera = renderer.getCamera();
+    const sceneBounds = camera.getSceneBounds();
+    const fitBounds = lastFinalFitBounds();
+    const skipped = isStale() ? 'superseded' : loadFailed() ? 'load-failed' : mergedBytes(snapshot) > SNAPSHOT_CAPTURE_MAX_BYTES ? 'over-cap'
+      : !sceneBounds ? 'no-scene-bounds' : !fitBounds ? 'no-fit-bounds' : !sceneMatchesCachedGeometry() ? 'level-offsets' : null;
+    if (skipped || !sceneBounds || !fitBounds) return noteSnapshotSkip(trace, 'not-captured', skipped ?? 'no-bounds');
+    onCaptured({ snapshot, sources, key: snapshotKey(renderer.getScene()), fit: { fitBounds, sceneBounds, orbitAnchorBounds: camera.getOrbitAnchorBounds() },
+      policyNow: () => renderer.getScene().sceneSnapshotPolicy(), loadFailed,
+      // The entry is serialized from the live meshes after the swap: an edit since then would make it disagree.
+      changedSince: () => (!sceneUnchanged() ? 'scene-changed' : !sceneMatchesCachedGeometry() ? 'level-offsets' : null) });
+  }, (dropped) => noteSnapshotSkip(trace, 'not-captured', dropped));
+}
+
+/**
+ * A load that could have left a snapshot but will not, and why: one zero-length
+ * `cache.writeSceneSnapshot` span, so every eligible load ends with that span
+ * and an outcome. `not-armed` reasons: snapshots-off, level-offsets,
+ * superseded (another load registered first), no-geometry (the load wrote its
+ * entry without its geometry ever reaching the viewport), not-streamed (its
+ * first sync uploaded directly: the renderer started after the stream ended),
+ * load-failed (it failed before its geometry reached the viewport). `not-captured`
+ * reasons: a renderer drop (cleared, ephemeral, replaced, not-exact, failed)
+ * or a swap-time guard (superseded, load-failed, over-cap, no-scene-bounds,
+ * no-fit-bounds, level-offsets).
+ */
+function noteSnapshotSkip(trace: LoadTrace, outcome: 'not-armed' | 'not-captured', reason: string): void {
+  const now = performance.now();
+  trace.record('cache.writeSceneSnapshot', now, now, { outcome, reason });
+}
+
+/**
+ * Begin the pending write's span at the swap and hand the capture to the deferred
+ * writer. The writer runs only after the load is interactive, so it is loaded
+ * then, outside the eager bundle.
+ */
+function writeWhenSettled(captured: CapturedScene, entry: Promise<SnapshotEntry | null>, isStale: () => boolean, trace: LoadTrace): void {
+  const span = trace.begin('cache.writeSceneSnapshot', { batches: captured.snapshot.batches.length });
+  import('./sceneSnapshotWrite.js').then(({ writeCapturedScene }) => writeCapturedScene(captured, entry, isStale, trace, span), (err: unknown) => {
+    console.warn('[useIfcCache] Scene snapshot writer did not load:', err);
+    trace.end(span, { outcome: 'failed', reason: 'writer-load' });
+  });
+}
+
 /** Store the scene this hit is about to finalize, once it has. Resolves true when the load was superseded while it waited. */
 export async function captureSceneSnapshotOfHit(
   cacheResult: CacheResult,
   cacheKey: string | undefined,
   decoded: Pick<DecodedCacheMetadata, 'headerInfo'>,
   isStale: (() => boolean) | undefined,
+  trace: LoadTrace,
 ): Promise<boolean> {
   const { createdAt, fullSourceHash, buffer: entry } = cacheResult;
   if (!snapshotsEnabled() || !cacheKey || createdAt === undefined || !(entry instanceof Blob) || !sceneMatchesCachedGeometry()) return false;
@@ -167,21 +236,60 @@ export async function captureSceneSnapshotOfHit(
   // Batches built before admission stay f32, and a snapshot would keep them that way for good.
   if (isQuantizedEnabled()) await renderer.enableQuantizedBatches();
   if (isStale?.()) return true;
-  renderer.getScene().captureNextFinalize((snapshot: SceneSnapshot) => {
-    const camera = renderer.getCamera();
-    const sceneBounds = camera.getSceneBounds();
-    const fitBounds = lastFinalFitBounds();
-    const key = snapshotKey(renderer.getScene());
-    if (isStale?.() || !sceneBounds || !fitBounds || !sceneMatchesCachedGeometry()) return;
-    const section = decoded.headerInfo.sections.find((s) => s.type === SectionType.InstancedShards);
-    const hostData: SnapshotHostData = { fitBounds, sceneBounds, orbitAnchorBounds: camera.getOrbitAnchorBounds(),
-      shards: section ? { offset: section.offset, size: section.size } : null };
-    // Off the finalize's completion, which the first frame of the finished scene waits on.
-    setTimeout(() => {
-      void putSceneSnapshot(cacheKey, { createdAt, fullSourceHash }, encodeSceneSnapshot({ ...snapshot, hostData }), key).catch((err: unknown) => {
-        console.warn('[useIfcCache] Scene snapshot was not stored:', err);
-      });
-    }, 0);
-  });
+  const section = decoded.headerInfo.sections.find((s) => s.type === SectionType.InstancedShards);
+  const target: SnapshotEntry = { cacheKey, write: { createdAt, fullSourceHash }, shards: section ? { offset: section.offset, size: section.size } : null };
+  const stale = isStale ?? (() => false);
+  armSceneCapture(renderer, stale, trace, (captured) => writeWhenSettled(captured, Promise.resolve(target), stale, trace));
   return false;
+}
+
+/** A cold load's capture: the entry it belongs to is known only once the load's cache write committed. */
+export interface ColdSceneCapture {
+  /** The committed entry, or null when nothing was written; the first call wins. */
+  entryWritten(entry: SnapshotEntry | null): void;
+}
+
+/** Which loads keep their finished scene (W2): primary loads the cache plan writes, without textures the format cannot hold. */
+export function coldCaptureEligible(load: { primary: boolean; shouldCache: boolean; textured: boolean }): boolean {
+  return load.primary && load.shouldCache && !load.textured;
+}
+
+/**
+ * Capture the scene a primary cold load is about to stream, so the first reopen
+ * adopts it instead of streaming the hit (W2). Never awaits on the load's path.
+ * The capture is registered here and armed by the viewport's first sync of
+ * this load's geometry, before any piece is queued (sceneSnapshotOwnership.ts).
+ * A load that fails releases it: `modelId`'s `loadState` turning `error`.
+ */
+export function armColdSceneCapture(isStale: () => boolean, trace: LoadTrace, modelId: string): ColdSceneCapture {
+  let settleEntry!: (entry: SnapshotEntry | null) => void;
+  const entry = new Promise<SnapshotEntry | null>((resolve) => { settleEntry = resolve; });
+  if (!snapshotsEnabled() || !sceneMatchesCachedGeometry()) {
+    noteSnapshotSkip(trace, 'not-armed', snapshotsEnabled() ? 'level-offsets' : 'snapshots-off');
+    return { entryWritten: (written) => settleEntry(written) };
+  }
+  const loadFailed = () => useViewerStore.getState().models.get(modelId)?.loadState === 'error';
+  let stopWatching = () => {};
+  // Every way the registration ends records exactly one outcome and stops the failure watch.
+  const end = (outcome: 'not-armed', reason: string) => { stopWatching(); noteSnapshotSkip(trace, outcome, reason); };
+  const pending = {
+    arm: (renderer: Renderer) => {
+      stopWatching();
+      if (isStale()) return noteSnapshotSkip(trace, 'not-armed', 'superseded');
+      armSceneCapture(renderer, isStale, trace, (captured) => writeWhenSettled(captured, entry, isStale, trace), loadFailed);
+    },
+    replaced: () => end('not-armed', 'superseded'),
+    notStreamed: () => end('not-armed', 'not-streamed'),
+  };
+  setPendingColdCapture(pending);
+  // A load that fails before its geometry reaches the viewport would otherwise wait for the next load.
+  stopWatching = useViewerStore.subscribe(() => {
+    if (loadFailed() && withdrawPendingColdCapture(pending)) end('not-armed', 'load-failed');
+  });
+  return {
+    entryWritten: (written) => {
+      if (withdrawPendingColdCapture(pending)) end('not-armed', 'no-geometry');
+      settleEntry(written);
+    },
+  };
 }

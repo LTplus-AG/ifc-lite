@@ -225,6 +225,18 @@ describe('structural derivation plan (#9668)', () => {
       expect(supports.every((n) => Math.abs(n.position[2] - 0.15) < 1e-9 && n.support?.guessed)).toBe(true);
     });
 
+    it('judges the lowest level on the ends as drawn, with members already idealised or skipped by policy', () => {
+      // One column was derived before; the other's foot moves up to the grade beam axis and is still the base.
+      const grade = element('IfcBeam', { prism: box([0.15, -0.15, 0], 5.7, 0.3, [0, 0, 0.3]) });
+      const done = planStructuralDerivation(facts(column(0, 0, 0, 3, { idealised: true }), column(6, 0, 0, 3), grade, beam(0, 6, 0, 3)));
+      expect(done.nodes.filter((n) => n.support).map((n) => n.position.map((v) => +v.toFixed(6) + 0))).toContainEqual([6, 0, 0.15]);
+      // Ground columns with no LoadBearing value, skipped by policy or derived before, still set the level.
+      for (const more of [{}, { idealised: true }]) {
+        const upper = planStructuralDerivation(facts(column(0, 0, 0, 3, { loadBearing: null, ...more }), beam(0, 6, 0, 3)), { whenLoadBearingUnknown: 'skip' });
+        expect(upper.report.guessedSupports).toEqual([]);
+      }
+    });
+
     it('connects an end that already touches a member within the tolerance, even with jointReach 0', () => {
       const plan = planStructuralDerivation(facts(column(0, 0, 0, 3), beam(0.02, 6, 0, 1.5)), { jointReach: 0 });
       expect(plan.curveMembers).toHaveLength(3); // the column, split, and the beam
@@ -242,9 +254,12 @@ describe('structural derivation plan (#9668)', () => {
       // column above), the other lands between that cut and the top, chaining both into one node, so the short
       // top piece collapses.
       const col = column(0, 0, 0, 3);
-      const plan = planStructuralDerivation(facts(col, column(0, 0, 3, 6), beam(0.15, 6, 0, 2.93), beam(-6, -0.15, 0, 2.965)));
+      const above = column(0, 0, 3, 6);
+      const plan = planStructuralDerivation(facts(col, above, beam(0.15, 6, 0, 2.93), beam(-6, -0.15, 0, 2.965)));
       expect(plan.report.extendedEnds.map((e) => e.elementId)).not.toContain(col.expressId);
       expect(plan.report.extendedEnds).toHaveLength(2);
+      // The dropped piece's ends stay in their node: the column above still stands on the one below.
+      expect(plan.nodes.some((n) => n.elementIds.includes(col.expressId) && n.elementIds.includes(above.expressId))).toBe(true);
       expect(plan.curveMembers.filter((m) => m.elementId === col.expressId)).toHaveLength(1);
       expect(plan.report.skipped.map((s) => s.elementId)).not.toContain(col.expressId);
     });

@@ -11,7 +11,7 @@
  */
 
 import { StepExporter } from '@ifc-lite/export';
-import type { StructuralDerivationOptions, StructuralDerivationReport } from '@ifc-lite/create';
+import { existingAnalysisModelRefusal, type StructuralDerivationOptions, type StructuralDerivationReport } from '@ifc-lite/create';
 import { createHeadlessContext } from '../loader.js';
 import { getFlag, hasFlag, fatal, printJson, writeOutput } from '../output.js';
 
@@ -29,7 +29,8 @@ Options:
   --load-bearing-unknown <p>    Elements without LoadBearing: include | skip (default include)
   --support <type>              Support condition: pinned | fixed (default pinned)
   --joint-reach <m>             How far a free member end may move along its axis to meet
-                                another member (default: half that member's section + tolerance)
+                                another member (default: half that member's section + tolerance;
+                                never below the tolerance)
   --analysis-model-exists <p>   When the file has an analysis model: refuse | add (default refuse)
   --dry-run                     Plan and report only; write nothing
   --json                        Machine-readable report`;
@@ -78,7 +79,7 @@ export async function deriveStructuralCommand(args: string[]): Promise<void> {
   }
   const derivable = report.counts.curveMembers + report.counts.surfaceMembers > 0;
   // Known at plan time: report it as an outcome, not as an apply error.
-  const refused = derivable && existing.length > 0 && plan.options.whenAnalysisModelExists !== 'add';
+  const refused = derivable && existingAnalysisModelRefusal(existing, plan.options) !== null;
   const writes = !dryRun && derivable && !refused;
   if (writes) {
     try {

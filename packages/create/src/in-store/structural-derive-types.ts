@@ -164,7 +164,10 @@ export interface StructuralDerivationOptions {
   whenLoadBearingUnknown?: 'include' | 'skip';
   /** Boundary condition of every support. Default 'pinned'. */
   supportType?: SupportType;
-  /** Metres a free end may move along its axis to meet another member; null (default) reads it from that member's section. */
+  /**
+   * Metres a free end may move along its axis to meet another member; null (default) reads it from that
+   * member's section. Never below `tolerance`: an end that already touches a member joins it.
+   */
   jointReach?: number | null;
   /** When the file already has an analysis model: 'refuse' (default) or 'add' the missing members to a new one. */
   whenAnalysisModelExists?: 'refuse' | 'add';

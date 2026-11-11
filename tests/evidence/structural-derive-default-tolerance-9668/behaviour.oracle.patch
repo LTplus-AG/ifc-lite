@@ -1,7 +1,7 @@
 diff --git a/packages/create/src/in-store/structural-derive-types.ts b/packages/create/src/in-store/structural-derive-types.ts
 --- a/packages/create/src/in-store/structural-derive-types.ts
 +++ b/packages/create/src/in-store/structural-derive-types.ts
-@@ -171,7 +171,7 @@ export interface StructuralDerivationOptions {
+@@ -174,7 +174,7 @@ export interface StructuralDerivationOptions {
  }
  
  export const DEFAULT_DERIVATION_OPTIONS: Required<StructuralDerivationOptions> = {

@@ -88,7 +88,7 @@ describe.skipIf(!existsSync(SAMPLE))('ifc-lite derive-structural (#9668)', () =>
     expect(data.analysisModels).toHaveLength(2);
   });
 
-    it('applies the settings, and --dry-run writes nothing', async () => {
+  it('applies the settings, and --dry-run writes nothing', async () => {
     const run = await derive();
     const out = join(dir, 'dry.ifc');
     await run([SAMPLE, '--dry-run', '--load-bearing-unknown', 'skip', '--tolerance', '0.1', '--support', 'fixed', '--out', out]);

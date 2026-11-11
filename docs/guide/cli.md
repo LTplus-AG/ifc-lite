@@ -919,7 +919,7 @@ ifc-lite derive-structural model.ifc --tolerance 0.1 --support fixed --out analy
 | `--tolerance <m>` | Member ends closer than this share a node, in metres (default 0.05) |
 | `--load-bearing-unknown <p>` | Elements without `LoadBearing`: `include` (default, reported as assumed) or `skip` |
 | `--support <type>` | Support condition: `pinned` (default) or `fixed` |
-| `--joint-reach <m>` | How far a free member end may move along its axis to meet another member, in metres (default: half that member's larger section dimension plus the tolerance) |
+| `--joint-reach <m>` | How far a free member end may move along its axis to meet another member, in metres (default: half that member's larger section dimension plus the tolerance; never below the tolerance) |
 | `--analysis-model-exists <p>` | When the file already has an analysis model: `refuse` (default) or `add` the missing members to a new one |
 | `--dry-run` | Plan and report only; write nothing |
 | `--json` | Report as JSON: counts, existing analysis models, skipped elements with reasons, guessed supports, moved ends, free ends, unconnected member ends |

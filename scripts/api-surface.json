@@ -5128,6 +5128,7 @@
     "emitProfileSection: function",
     "emitWallAxisRepresentation: function",
     "emitWallBodyProfile: function",
+    "existingAnalysisModelRefusal: function",
     "existingSpaceFootprintEntriesByStorey: function",
     "existingSpaceFootprintsByStorey: function",
     "extractGridAxesForStorey: function",

@@ -274,5 +274,5 @@ export { addStructuralSurfaceConnectionToStore, type StructuralSurfaceConnection
 // Derive an analytical model from the physical one (#9668): facts, plan, apply.
 export { readStructuralDerivationFacts } from './structural-derive-facts.js';
 export { planStructuralDerivation } from './structural-derive-plan.js';
-export { applyStructuralDerivation } from './structural-derive-apply.js';
+export { applyStructuralDerivation, existingAnalysisModelRefusal } from './structural-derive-apply.js';
 export type { StructuralDerivationOptions, StructuralDerivationPlan, StructuralDerivationReport } from './structural-derive-types.js';

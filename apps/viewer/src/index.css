@@ -14,6 +14,11 @@
    TOKYO NIGHT THEME - Dark Stormy Cyberpunk Vibes
    ═══════════════════════════════════════════════════════════════════════════ */
 
+/* Native UI (scrollbars, form controls) follows the viewer's own theme, not
+   the system's: the `dark` class, not `prefers-color-scheme` (#9718). */
+:root { color-scheme: light; }
+:root.dark { color-scheme: dark; }
+
 /* Tokyo Night Color Palette */
 :root {
   /* Storm - Deep backgrounds */

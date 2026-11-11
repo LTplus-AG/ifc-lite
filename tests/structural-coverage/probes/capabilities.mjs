@@ -22,7 +22,8 @@ import { verdict } from '../lib/values.mjs';
 import { storeOf } from '../lib/packages.mjs';
 import { extractionOrProblem } from './read.mjs';
 
-const isElement = (table, name) => table.chain(name ?? '').includes('IfcElement');
+/** Whether a type name, in STEP UPPERCASE or PascalCase, is an IfcElement subtype in `table`. */
+const isElement = (table, type) => table.chain(table.types.get(String(type ?? '').toUpperCase())?.name ?? '').includes('IfcElement');
 
 /**
  * Distinct [structural item id, physical product id] pairs the file declares.
@@ -32,7 +33,7 @@ const isElement = (table, name) => table.chain(name ?? '').includes('IfcElement'
  */
 function physicalLinks(step, table) {
   const structural = (e) => e && /^IFCSTRUCTURAL(CURVE|SURFACE|POINT)(MEMBER|CONNECTION)/.test(e.type);
-  const element = (e) => e && isElement(table, table.types.get(e.type)?.name);
+  const element = (e) => e && isElement(table, e.type);
   const pairs = new Map();
   const add = (item, product) => pairs.set(`${item},${product}`, [item, product]);
   for (const rel of step.of('IFCRELASSIGNSTOPRODUCT')) {
@@ -57,9 +58,8 @@ function linkedElement(info, guid, declared, store, table) {
   const guids = [];
   for (const id of ids) {
     if (!Number.isSafeInteger(id)) return false;
-    // getTypeName falls back to the stored UPPERCASE name for a class outside IfcTypeEnum.
-    const type = store.entities.getTypeName(id);
-    if (!isElement(table, table.types.get(String(type).toUpperCase())?.name)) return false;
+    // The declared class, not getTypeName's coalesced IfcTypeEnum family.
+    if (!isElement(table, store.entities.getExactTypeName?.(id) ?? store.entities.getTypeName(id))) return false;
     const value = store.entities.getGlobalId(id);
     if (!value) return false;
     guids.push(value);

@@ -130,7 +130,8 @@ export function PlanView({ layout, headerHost, hidden = false }: { layout: Model
 
   const gridMargin = useMemo(() => designGrids.reduce((margin, axis) => Math.max(margin, gridLabelRadius(axis.AxisTag) + 2), 0), [designGrids]);
   const frame = useCallback((w: number, h: number) => fitPlan(cut.polygons, cut.lines, [...axes, ...designGrids], w, h, gridMargin), [cut.polygons, cut.lines, axes, designGrids, gridMargin]);
-  const { size, fit, refit, panBy } = usePlanViewport(hostRef, svgRef, frame, `${session?.modelId}:${session?.storeyId}`, cut.settled);
+  // A hidden plan's empty cut is not its content: frame only once it shows and its cut settles.
+  const { size, fit, refit, panBy } = usePlanViewport(hostRef, svgRef, frame, `${session?.modelId}:${session?.storeyId}`, !hidden && cut.settled);
   const gridLines = useMemo(() => (grid && fit ? planGrid(fit, size.width, size.height) : null), [grid, fit, size.width, size.height]);
 
   // Snap sources read the latest drawing through refs: no rebuild per render.

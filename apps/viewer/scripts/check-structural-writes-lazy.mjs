@@ -23,7 +23,8 @@ import { checkLazyOnly } from './startup-chunks.mjs';
 /** Text only the structural write path carries, at least one string per
  *  exported `@ifc-lite/create` structural builder (the bundler drops unused
  *  exports, so a shared module is no cover) and the SDK factory's schema
- *  refusal. Mostly error-message prefixes; the two connect builders have none,
+ *  refusal. Mostly error-message prefixes or the builder name each action
+ *  passes to its refusal; the two connect builders have neither,
  *  so their `addEntity` call is matched as the minifier writes it. If its
  *  quoting changes, the "proves nothing" check fails rather than passing. The
  *  read side (`extractStructuralOnDemand`, the properties card) has none. */
@@ -33,7 +34,8 @@ export const STRUCTURAL_WRITE_SIGNATURES = [
   'addStructuralPointConnectionToStore:',
   'addStructuralLoadGroupToStore:',
   'assignToStructuralGroupInStore:',
-  ': supply at least one force or moment component',
+  'addStructuralPointActionToStore',
+  'addStructuralLinearActionToStore',
   'addEntity(`IfcRelConnectsStructuralMember`',
   'addEntity(`IfcRelConnectsStructuralActivity`',
   'bim.store structural authoring:',

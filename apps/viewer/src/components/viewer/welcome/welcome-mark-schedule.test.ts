@@ -12,7 +12,18 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { LATE_MS, SAMPLE_MS, whenQuiet, type IdleHost } from './welcome-mark-schedule.js';
+import type { IdleHost } from './welcome-mark-schedule.js';
+
+// Loaded at runtime: the changed-test oracle removes new production files, and
+// a missing module must fail an assertion rather than the whole file's import.
+const modulePath = './welcome-mark-schedule.js';
+const mod: typeof import('./welcome-mark-schedule.js') | null = await import(modulePath).catch(() => null);
+function schedule() {
+  assert.ok(mod, 'the welcome mark waits for a quiet main thread (welcome-mark-schedule.ts)');
+  return mod;
+}
+const SAMPLE_MS = 50;
+const LATE_MS = 15;
 
 /** A clock with timers; each timer fires `lateBy()` ms after it is due (a task held the thread). */
 function clock(lateBy: () => number = () => 0) {
@@ -47,7 +58,7 @@ describe('when the welcome mark may start without requestIdleCallback', () => {
   it('a quiet page starts it after two on-time samples', () => {
     const c = clock();
     let started = -1;
-    whenQuiet(() => { started = c.host.now(); }, 2000, c.host);
+    schedule().whenQuiet(() => { started = c.host.now(); }, 2000, c.host);
     c.run(SAMPLE_MS);
     assert.equal(started, -1, 'one quiet sample is not enough');
     c.run(1000);
@@ -57,7 +68,7 @@ describe('when the welcome mark may start without requestIdleCallback', () => {
   it('a busy page holds it until the timeout, not a fixed wall-clock delay', () => {
     const c = clock(() => LATE_MS + 25); // every sample runs late: the thread is busy
     let started = -1;
-    whenQuiet(() => { started = c.host.now(); }, 2000, c.host);
+    schedule().whenQuiet(() => { started = c.host.now(); }, 2000, c.host);
     c.run(1999);
     assert.equal(started, -1, 'still busy before the timeout');
     c.run(5000);
@@ -67,7 +78,7 @@ describe('when the welcome mark may start without requestIdleCallback', () => {
   it('cancel clears the pending sample and it never starts', () => {
     const c = clock();
     let started = false;
-    const cancel = whenQuiet(() => { started = true; }, 2000, c.host);
+    const cancel = schedule().whenQuiet(() => { started = true; }, 2000, c.host);
     c.run(SAMPLE_MS); // one sample in
     cancel();
     assert.equal(c.pending(), 0);
@@ -88,7 +99,7 @@ describe('when the welcome mark may start with requestIdleCallback', () => {
       clearTimeout: () => {},
       now: () => 0,
     };
-    const cancel = whenQuiet(() => {}, 2000, host);
+    const cancel = schedule().whenQuiet(() => {}, 2000, host);
     assert.deepEqual(calls, [{ timeout: 2000 }]);
     cancel();
     assert.deepEqual(cancelled, [7]);

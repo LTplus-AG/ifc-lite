@@ -16,9 +16,13 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { cleanup, render, waitFor } from '@/test/render.js';
-import { markLoadIntent, resetLoadIntentForTests } from '@/lib/load-intent.js';
 import { ViewportWelcome } from './ViewportWelcome.js';
-import { SAMPLE_MS } from './welcome-mark-schedule.js';
+
+// Loaded at runtime: the changed-test oracle removes new production files, and
+// a missing module must fail an assertion rather than the whole file's import.
+const intentPath = '../../../lib/load-intent.js';
+const intent: typeof import('../../../lib/load-intent.js') | null = await import(intentPath).catch(() => null);
+const SAMPLE_MS = 50; // welcome-mark-schedule.ts
 
 type IdleCb = () => void;
 const pending = new Map<number, IdleCb>();
@@ -39,7 +43,7 @@ beforeEach(() => {
   pending.clear();
   requested.length = 0;
   cancelled.length = 0;
-  resetLoadIntentForTests();
+  intent?.resetLoadIntentForTests();
   for (const k of KEYS) saved[k] = (window as unknown as Record<string, unknown>)[k];
   // Every observed element reports a wide viewport, so the mark has room.
   Object.assign(window, {
@@ -54,7 +58,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   for (const k of KEYS) (window as unknown as Record<string, unknown>)[k] = saved[k];
-  resetLoadIntentForTests();
+  intent?.resetLoadIntentForTests();
 });
 
 function renderWelcome() {
@@ -96,7 +100,8 @@ describe('welcome 3D mark waits for a quiet moment', () => {
     const screen = renderWelcome();
     const [{ cb: raced }] = requested;
     const [handle] = [...pending.keys()];
-    act(() => markLoadIntent()); // the pick: before guardWebGpu / prepareAndRoute can await
+    assert.ok(intent, 'a model open announces itself before it awaits (lib/load-intent.ts)');
+    act(() => intent.markLoadIntent()); // the pick: before guardWebGpu / prepareAndRoute can await
     assert.ok(cancelled.includes(handle), 'the pending idle start is cancelled at the intent');
     act(() => raced()); // an idle callback already queued by the browser runs anyway
     assert.equal(markState(screen), 'deferred', 'the mark does not start while the open is on its way');

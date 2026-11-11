@@ -285,20 +285,14 @@ export interface CacheWriteOptions {
    * `false` (the writer hashes the whole `sourceBuffer`, unchanged).
    */
   omitSourceHash?: boolean;
-  /**
-   * v13+: deflate-raw compress geometry chunk records above the size floor
-   * (default true). Disable for byte-inspection/debugging or when write
-   * latency matters more than entry size.
-   */
+  /** v13+: deflate-raw compress geometry chunk records above the size floor (default true).
+   * Disable for byte-inspection/debugging or when write latency matters more than entry size. */
   compressGeometryChunks?: boolean;
   /** Use one lazy browser module worker for geometry compression (default false).
    * Requires Worker support and a bundled worker asset; failure rejects the write.
    * Has no effect when compression is disabled or all chunks are below its floor. */
   compressGeometryChunksInWorker?: boolean;
-  /**
-   * Return to the event loop after each section (default false), so a write
-   * made while the page is interactive runs as short tasks, not one long one.
-   */
+  /** Yield to the event loop after each section (default false): short tasks while the page is interactive. */
   yieldBetweenSections?: boolean;
 }
 

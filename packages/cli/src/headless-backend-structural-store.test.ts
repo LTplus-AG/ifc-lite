@@ -12,10 +12,11 @@
  * the required ones it breaks every host's typecheck. The three optional ones
  * (surface member, curve and surface connection) are guarded inside the SDK by
  * `createStructuralStoreBackend`'s `Required<>` return type, but a host that
- * never spreads that factory still compiles; this test catches that. That is exactly the state this package
- * was in before `createStructuralStoreBackend` was spread into the CLI
- * backend, and no round-trip test in `@ifc-lite/create` or `@ifc-lite/sdk`
- * would have noticed, because they reach the builders directly.
+ * never spreads that factory still compiles, and only this test catches it.
+ * That is the state this package was in before `createStructuralStoreBackend`
+ * was spread into the CLI backend, and no round-trip test in `@ifc-lite/create`
+ * or `@ifc-lite/sdk` would have noticed, because they reach the builders
+ * directly.
  *
  * These assertions read the resolved backend store surface as a VALUE rather
  * than invoking it. That is deliberate: it keeps the failure an ordinary

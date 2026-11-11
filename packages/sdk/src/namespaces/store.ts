@@ -302,21 +302,21 @@ export class StoreNamespace extends StoreGroupNamespace {
     return this.backend.store.addStructuralAnalysisModel(modelId, params);
   }
 
-  /** Add an IfcStructuralSurfaceMember anchored to a storey. */
+  /** Add an IfcStructuralSurfaceMember anchored to a storey. Throws when the backend does not implement it. */
   addStructuralSurfaceMember(modelId: string, storeyExpressId: number, params: StructuralSurfaceMemberInStoreParams): EntityRef {
     const method = this.backend.store.addStructuralSurfaceMember;
     if (!method) throw new Error('bim.store.addStructuralSurfaceMember: not available on this backend');
     return method.call(this.backend.store, modelId, storeyExpressId, params);
   }
 
-  /** Add an IfcStructuralCurveConnection anchored to a storey. */
+  /** Add an IfcStructuralCurveConnection anchored to a storey. Throws when the backend does not implement it. */
   addStructuralCurveConnection(modelId: string, storeyExpressId: number, params: StructuralCurveConnectionInStoreParams): EntityRef {
     const method = this.backend.store.addStructuralCurveConnection;
     if (!method) throw new Error('bim.store.addStructuralCurveConnection: not available on this backend');
     return method.call(this.backend.store, modelId, storeyExpressId, params);
   }
 
-  /** Add an IfcStructuralSurfaceConnection anchored to a storey. */
+  /** Add an IfcStructuralSurfaceConnection anchored to a storey. Throws when the backend does not implement it. */
   addStructuralSurfaceConnection(modelId: string, storeyExpressId: number, params: StructuralSurfaceConnectionInStoreParams): EntityRef {
     const method = this.backend.store.addStructuralSurfaceConnection;
     if (!method) throw new Error('bim.store.addStructuralSurfaceConnection: not available on this backend');

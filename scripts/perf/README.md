@@ -6619,8 +6619,8 @@ Lessons:
 - **A target-feature build does not change `cfg(target_arch)` code.** The wide bundle kept
   the u32-digit multiply, so `checked_mul_limbs` contained no `i64.mul_wide_u`. Count wide
   ops in the hot function, not in the whole module. Gating on
-  `not(target_feature = "wide-arithmetic")` (#9720) fixed it; the default bundle stayed
-  byte-identical.
+  `not(target_feature = "wide-arithmetic")` fixes it (branch `perf/wide-arithmetic-u64-digits`,
+  parked unmerged); the default bundle stays byte-identical.
 - **Wide arithmetic: +2-6% geometry on CSG-heavy models, 0 elsewhere, and about half of that
   is the compiler.**
   - The same code on the wide toolchain (LLVM 23) without the feature gives about half the
@@ -6632,10 +6632,10 @@ Lessons:
   operands at or below 128 bits, and 36-53% of calls have a zero operand.
   - The u32-digit core's fixed cost (zeroed 64-digit scratch arrays, K-limb pack/unpack)
     dominated.
-  - A scratch-free two-limb path (#9719) is 1.3-2.3x on the kernel and +1-2% on geometry, in
+  - A scratch-free two-limb path (branch `perf/fixedint-small-operand-mul`, parked) is 1.3-2.3x on the kernel and +1-2% on geometry, in
     every engine.
   - Karatsuba, SIMD i64x2 and FMA filters have nothing to work on at one or two limbs.
-- **Dead end: interner identical-construction shortcut.** A third to over half of the
+- **Dead end: interner identical-construction shortcut** (branch `perf/interner-identical-construction`). A third to over half of the
   interner's interval misses compare a point with a bit-identical construction of itself.
   Answering those with `Zero` before the I512 compare kept output identical on 29 models,
   but geometry time moved 0.0%: the compares were cheap. A high miss count is not a high

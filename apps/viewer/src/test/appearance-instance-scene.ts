@@ -10,17 +10,24 @@ import { Scene } from '../../../../packages/renderer/src/scene.js';
 export function appearanceInstanceScene(originals: readonly MeshData[],
   template: { positions: Float32Array; normals: Float32Array; indices: Uint32Array } = {
     positions: new Float32Array([0,0,0,1,0,0,0,1,0]), normals: new Float32Array([0,0,1,0,0,1,0,0,1]), indices: new Uint32Array([0,1,2]) }) {
-  Object.assign(globalThis, { GPUBufferUsage: { COPY_DST: 8, INDEX: 16, VERTEX: 32, UNIFORM: 64 },
+  Object.assign(globalThis, { GPUBufferUsage: { COPY_SRC: 4, COPY_DST: 8, INDEX: 16, VERTEX: 32, UNIFORM: 64 },
     GPUTextureUsage: { COPY_DST: 2, TEXTURE_BINDING: 4, RENDER_ATTACHMENT: 16 } });
   const device = {
     limits: { maxBufferSize: 1 << 30, maxStorageBufferBindingSize: 1 << 30 },
     createBuffer: ({ size }: GPUBufferDescriptor) => {
       const data = new ArrayBuffer(size);
-      return { size, getMappedRange: () => data, unmap() {}, destroy() {} };
+      return { size, data, getMappedRange: () => data, unmap() {}, destroy() {} };
     },
     createBindGroup: () => ({}), createSampler: () => ({}),
     createTexture: () => ({ createView: () => ({}), destroy() {} }),
-    queue: { writeBuffer() {}, writeTexture() {}, copyExternalImageToTexture() {} },
+    // A streaming finalize assembles a bucket's vertex buffer by copying its fragments' buffers.
+    createCommandEncoder: () => ({
+      copyBufferToBuffer(from: { data: ArrayBuffer }, fromOffset: number, to: { data: ArrayBuffer }, toOffset: number, size: number) {
+        new Uint8Array(to.data, toOffset, size).set(new Uint8Array(from.data, fromOffset, size));
+      },
+      finish: () => ({}),
+    }),
+    queue: { writeBuffer() {}, writeTexture() {}, copyExternalImageToTexture() {}, submit() {} },
   } as unknown as GPUDevice;
   const pipeline = { getUniformBufferSize: () => 256, getBindGroupLayout: () => ({}),
     createTexturedBindGroup: () => ({}) } as unknown as Parameters<Scene['appendToBatches']>[2];

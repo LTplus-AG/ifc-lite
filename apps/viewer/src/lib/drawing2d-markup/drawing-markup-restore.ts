@@ -62,6 +62,39 @@ function readBaseObjectType(dataStore: IfcDataStore, expressId: number): string 
   return typeof value === 'string' && value.length > 0 ? value : null;
 }
 
+const embeddedMarkup = new WeakMap<IfcDataStore['source'], boolean>();
+const markupPrefix = new TextEncoder().encode('IfcLite:Markup:');
+
+/**
+ * Conservative source preflight, independent of owner class. Any STEP escape
+ * or live overlay change must reach the reader, which resolves decoded tags
+ * and effective ObjectType edits. Only immutable source negatives are cached.
+ * Call outside render: compacted sources can inflate blocks on slice().
+ */
+export function hasEmbeddedDrawingMarkup(dataStore: IfcDataStore, view?: MutablePropertyView): boolean {
+  if (view?.hasPendingChanges()) return true;
+  const source = dataStore.source;
+  if (!source?.byteLength) return false;
+  const cached = embeddedMarkup.get(source);
+  if (cached !== undefined) return cached;
+  const chunkSize = 256 * 1024;
+  for (let offset = 0; offset < source.byteLength; offset += chunkSize) {
+    const bytes = source.slice(offset, Math.min(source.byteLength, offset + chunkSize + markupPrefix.length - 1));
+    // Encoded tags need the real STEP decoder; never reject them lexically.
+    if (bytes.indexOf(92) >= 0) { embeddedMarkup.set(source, true); return true; }
+    for (let i = bytes.indexOf(markupPrefix[0]); i >= 0; i = bytes.indexOf(markupPrefix[0], i + 1)) {
+      if (i + markupPrefix.length > bytes.length) break;
+      let match = true;
+      for (let j = 1; j < markupPrefix.length; j++) {
+        if (bytes[i + j] !== markupPrefix[j]) { match = false; break; }
+      }
+      if (match) { embeddedMarkup.set(source, true); return true; }
+    }
+  }
+  embeddedMarkup.set(source, false);
+  return false;
+}
+
 /**
  * Build the per-entity `ObjectType`/property-set/quantity-set lookup
  * `readDrawingMarkupFromParseResult` needs, off `view` (a `MutablePropertyView`
@@ -138,7 +171,7 @@ export function restoreDrawingMarkupFromModel(modelId: string): DrawingMarkupRea
     if (!context) return null;
     const { view, dataStore } = context;
 
-    const parseResult = getParseFor(dataStore);
+    const parseResult = getParseFor({ store: dataStore, mutationView: view });
     if (!parseResult) return null;
 
     const meta = buildDrawingMarkupMetaLookup(view, dataStore);

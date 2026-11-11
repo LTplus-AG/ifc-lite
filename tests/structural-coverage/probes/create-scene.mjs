@@ -53,14 +53,13 @@ export const SCENE = [
     emits: schema => ({ IfcStructuralSurfaceConnection: { Name: 'Probe face support' }, IfcBoundaryFaceCondition: { Name: 'Probe face condition', [schema === 'IFC2X3' ? 'LinearStiffnessByAreaZ' : 'TranslationalStiffnessByAreaZ']: schema === 'IFC2X3' ? -1 : FIXED } }),
     build: ({ create, editor, anchor }) => create.addStructuralSurfaceConnectionToStore(editor, anchor, { Boundary: [[0,0,0],[4,0,0],[4,3,0],[0,3,0]], Name: 'Probe face support', BoundaryCondition: { Name: 'Probe face condition', TranslationalStiffnessByAreaZ: true } }).connectionId,
   },
-  {
-    // IfcStructuralConnection.ConnectsStructuralMembers is INVERSE SET [1:?], so
-    // each connection above needs a member for the scene to be valid IFC.
-    id: 'surface-member-to-connections', builder: 'connectStructuralMemberToConnectionInStore',
-    needs: ['surface-member', 'curve-connection', 'surface-connection'], emits: {},
-    build: ({ create, editor, anchor, done }) => ['curve-connection', 'surface-connection']
-      .map((c) => create.connectStructuralMemberToConnectionInStore(editor, anchor.ownerHistoryId, done.get('surface-member'), done.get(c)))[1],
-  },
+  // IfcStructuralConnection.ConnectsStructuralMembers is INVERSE SET [1:?], so
+  // each connection above needs a member for the scene to be valid IFC.
+  ...['curve-connection', 'surface-connection'].map((c) => ({
+    id: `surface-member-to-${c}`, builder: 'connectStructuralMemberToConnectionInStore',
+    needs: ['surface-member', c], emits: {},
+    build: ({ create, editor, anchor, done }) => create.connectStructuralMemberToConnectionInStore(editor, anchor.ownerHistoryId, done.get('surface-member'), done.get(c)),
+  })),
   {
     id: 'curve-member',
     builder: 'addStructuralCurveMemberToStore',

@@ -4,17 +4,24 @@
 
 import type { StoreEditor } from '@ifc-lite/mutations';
 import type { Point3D } from '../types.js';
-import { vecCross, vecLen, vecNorm } from '../ifc-creator-math.js';
+import { vecCross, vecDot, vecLen, vecNorm } from '../ifc-creator-math.js';
 import { toNativePoint3, type SpatialAnchor } from './anchor.js';
 import { emitLocalPlacement } from './_emit-helpers.js';
 
 type Flat = readonly [number, number];
 const orient = (p: Flat, q: Flat, r: Flat) => (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]);
-const within = (p: Flat, q: Flat, r: Flat) => Math.min(p[0], q[0]) <= r[0] && r[0] <= Math.max(p[0], q[0]) && Math.min(p[1], q[1]) <= r[1] && r[1] <= Math.max(p[1], q[1]);
-function segmentsMeet(p1: Flat, p2: Flat, q1: Flat, q2: Flat): boolean {
-  const [d1, d2, d3, d4] = [orient(q1, q2, p1), orient(q1, q2, p2), orient(p1, p2, q1), orient(p1, p2, q2)];
+/** `r`, already collinear with segment p-q, lies within it. */
+const within = (p: Flat, q: Flat, r: Flat) =>
+  Math.min(p[0], q[0]) <= r[0] && r[0] <= Math.max(p[0], q[0])
+  && Math.min(p[1], q[1]) <= r[1] && r[1] <= Math.max(p[1], q[1]);
+/** Segments p and q cross or touch. */
+function segmentsMeet([p1, p2]: readonly [Flat, Flat], [q1, q2]: readonly [Flat, Flat]): boolean {
+  const d1 = orient(q1, q2, p1), d2 = orient(q1, q2, p2), d3 = orient(p1, p2, q1), d4 = orient(p1, p2, q2);
   if (d1 * d2 < 0 && d3 * d4 < 0) return true;
-  return (d1 === 0 && within(q1, q2, p1)) || (d2 === 0 && within(q1, q2, p2)) || (d3 === 0 && within(p1, p2, q1)) || (d4 === 0 && within(p1, p2, q2));
+  return (d1 === 0 && within(q1, q2, p1))
+    || (d2 === 0 && within(q1, q2, p2))
+    || (d3 === 0 && within(p1, p2, q1))
+    || (d4 === 0 && within(p1, p2, q2));
 }
 
 /** Validate before emitting anything. Coordinates are storey-local metres. */
@@ -29,7 +36,7 @@ export function prepareStructuralFace(points: readonly Point3D[]) {
   const tolerance = Math.max(1, scale) * 1e-6;
   for (let i = 0; i < relative.length; i++) {
     for (let j = i + 1; j < relative.length; j++) {
-      const [p, q] = [relative[i], relative[j]];
+      const p = relative[i], q = relative[j];
       if ((p[0] - q[0]) ** 2 + (p[1] - q[1]) ** 2 + (p[2] - q[2]) ** 2 <= tolerance ** 2) {
         throw new Error('Structural Face: degenerate boundary (duplicate points)');
       }
@@ -44,23 +51,19 @@ export function prepareStructuralFace(points: readonly Point3D[]) {
   }, [0, 0, 0]);
   if (vecLen(areaVector) <= tolerance * scale) throw new Error('Structural Face: degenerate boundary (collinear points or zero area)');
   const axis = vecNorm(areaVector);
-  if (relative.some(p => Math.abs(p[0] * axis[0] + p[1] * axis[1] + p[2] * axis[2]) > tolerance)) {
-    throw new Error('Structural Face: boundary points must be coplanar');
-  }
+  const offsets = relative.map(p => vecDot(p, axis));
+  if (offsets.some(d => Math.abs(d) > tolerance)) throw new Error('Structural Face: boundary points must be coplanar');
   // Snap onto the plane, so the written loop lies exactly on the IfcPlane.
-  const planar = relative.map(p => {
-    const d = p[0] * axis[0] + p[1] * axis[1] + p[2] * axis[2];
-    return [p[0] - d * axis[0], p[1] - d * axis[1], p[2] - d * axis[2]] as Point3D;
-  });
+  const planar = relative.map((p, i) => p.map((v, k) => v - offsets[i] * axis[k]) as Point3D);
+  // Self-intersection in 2D, dropping the axis the plane is most nearly facing.
   const drop = [0, 1, 2].reduce((m, k) => (Math.abs(axis[k]) > Math.abs(axis[m]) ? k : m), 0);
-  const flat = planar.map(p => p.filter((_, k) => k !== drop) as unknown as Flat);
-  const n = flat.length;
-  for (let i = 0; i < n; i++) {
-    for (let j = i + 2; j < n; j++) {
-      if (i === 0 && j === n - 1) continue; // adjacent through the closing edge
-      if (segmentsMeet(flat[i], flat[i + 1], flat[j], flat[(j + 1) % n])) {
-        throw new Error('Structural Face: boundary must not self-intersect');
-      }
+  const [a, b] = [0, 1, 2].filter(k => k !== drop);
+  const n = planar.length;
+  const edges = planar.map((p, k): [Flat, Flat] => [[p[a], p[b]], [planar[(k + 1) % n][a], planar[(k + 1) % n][b]]]);
+  for (let i = 0; i < n - 2; i++) {
+    // Edges i and j are adjacent when j = i + 1, or when i = 0 and j = n - 1.
+    for (let j = i + 2; j < (i === 0 ? n - 1 : n); j++) {
+      if (segmentsMeet(edges[i], edges[j])) throw new Error('Structural Face: boundary must not self-intersect');
     }
   }
   return { origin, relative: planar, axis };

@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { StoreEditor } from '@ifc-lite/mutations';
-import { assertFinitePoint3, vecCross, vecLen, vecNorm } from '../ifc-creator-math.js';
+import { assertFinitePoint3, vecCross, vecDot, vecLen, vecNorm } from '../ifc-creator-math.js';
 import type { Point3D } from '../types.js';
 import { toNativePoint3, type SpatialAnchor } from './anchor.js';
 import { emitLocalPlacement, ownerHistoryRef, productGuid } from './_emit-helpers.js';
@@ -63,7 +63,8 @@ export function addStructuralCurveConnectionToStore(
   if (params.Axis && schema !== 'IFC4') throw new Error('Axis exists only in IFC4; IFC4X3 uses AxisDirection and IFC2X3 has neither');
   if (params.AxisDirection && schema !== 'IFC4X3') throw new Error('AxisDirection exists only in IFC4X3');
   const given = params.Axis ?? params.AxisDirection;
-  assertFinitePoint3({ Start: params.Start, End: params.End, ...(given ? { Axis: given } : {}) }, 'addStructuralCurveConnectionToStore');
+  assertFinitePoint3({ Start: params.Start, End: params.End }, 'addStructuralCurveConnectionToStore');
+  if (given) assertFinitePoint3({ Axis: given }, 'addStructuralCurveConnectionToStore');
   const bc = params.BoundaryCondition;
   const stiffness = [bc?.TranslationalStiffnessByLengthX, bc?.TranslationalStiffnessByLengthY, bc?.TranslationalStiffnessByLengthZ,
     bc?.RotationalStiffnessByLengthX, bc?.RotationalStiffnessByLengthY, bc?.RotationalStiffnessByLengthZ]
@@ -75,8 +76,7 @@ export function addStructuralCurveConnectionToStore(
   if (vecLen(vecCross(world, frame.along)) <= 1e-9 * vecLen(world)) {
     throw new Error('addStructuralCurveConnectionToStore: Axis must be nonzero and not parallel to the edge');
   }
-  const local = [frame.u, frame.v, frame.along].map(e => e[0] * world[0] + e[1] * world[1] + e[2] * world[2]);
-  const axis = vecNorm(local as Point3D);
+  const axis = vecNorm([vecDot(frame.u, world), vecDot(frame.v, world), vecDot(frame.along, world)]);
 
   const placementId = emitLocalPlacement(editor, anchor.storeyPlacementId, frame.origin, frame.along, frame.u);
   const axisDirectionId = schema === 'IFC2X3' ? undefined : editor.addEntity('IfcDirection', [axis]).expressId;

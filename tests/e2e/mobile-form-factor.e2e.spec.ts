@@ -146,7 +146,9 @@ test.describe('Flip FlexWindow cover 360x400', () => {
     });
     const sheet = page.locator('[data-mobile-sheet]');
     await expect(sheet).toBeVisible();
-    await expect.poll(async () => Math.round((await sheet.boundingBox())?.height ?? 0)).toBe(200);
+    // The cover sheet opens at half of its own area (the viewport above the bar),
+    // not of the window, so the model keeps the other half in view.
+    await expect.poll(async () => Math.abs(((await sheet.boundingBox())?.height ?? 0) - area.height / 2)).toBeLessThanOrEqual(1);
     await attachShot(page, testInfo, 'cover-360x400-sheet');
   });
 });

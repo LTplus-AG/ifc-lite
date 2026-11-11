@@ -36,13 +36,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     # Decisions for one PR run one at a time, keyed on the PR's head
-    # (repository and branch): a fork PR's run carries no PR number, and
+    # (repository id, as findPr matches it, and branch): a fork PR's run carries no PR number, and
     # `pull_requests` can list another repository's PR first. GitHub keeps
     # only ONE pending run per group, so a third completion while one runs
     # replaces the queued second and that decision is dropped. That fails
-    # safe: the label stays, and the next full pass removes it.
+    # safe, never removing a label wrongly, but it can cost a full pass: if
+    # the dropped decision was the newest head's green run, the label stays
+    # and the next push runs full again before it comes off.
     concurrency:
-      group: ci-full-oneshot-${{ github.event.workflow_run.head_repository.full_name }}-${{ github.event.workflow_run.head_branch }}
+      group: ci-full-oneshot-${{ github.event.workflow_run.head_repository.id }}-${{ github.event.workflow_run.head_branch }}
       cancel-in-progress: false
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

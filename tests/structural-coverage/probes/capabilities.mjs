@@ -11,7 +11,8 @@
  * physical product via physicalElementIds: exactly the express ids the file
  * links to that item, no duplicate, each an IfcElement by its declared class
  * with the fixture's GlobalId. Every other structural member and connection
- * the product reads, in any file, must name no physical element.
+ * the product reads must name no physical element, in each catalogue-schema
+ * file it extracts (only once some corpus file declares a link).
  *
  * `cap/docs-page`: a `docs/guide/*structural*.md` page (lowercase `structural`,
  * case-sensitive, the same rule as the CI path filter) names every IFC4 entity
@@ -82,6 +83,7 @@ const linkRead = {
     if (!linked.length) return new Map(rows.map((r) => [r.id, ctx.corpus.nothingFound('carries a physical-to-structural link')]));
     const problems = [];
     const counts = [];
+    const spurious = new Set();
     for (const [file, links, table] of files) {
       // A file the product cannot extract proves nothing; with links it is a problem of its own.
       const { ix, error } = await extractionEntry(ctx, file);
@@ -95,23 +97,26 @@ const linkRead = {
         declared.get(itemId).add(productId);
       }
       for (const [id, hit] of ix.byId) {
-        if (hit.family === 'item' && !declared.has(id) && !noElements(hit.info)) problems.push(`${file.path}#${id}: the file links no physical element to this item, but physicalElementIds names ${JSON.stringify(hit.info.physicalElementIds)}`);
+        if (hit.family !== 'item' || declared.has(id) || noElements(hit.info)) continue;
+        problems.push(`${file.path}#${id}: the file links no physical element to this item, but physicalElementIds names ${JSON.stringify(hit.info.physicalElementIds)}`);
+        spurious.add(file.path);
       }
       if (!links.length) continue;
       const store = await storeOf(ctx, file);
-      for (const [itemId, productId] of links) {
-        const guid = file.step.get(productId).args[0];
+      // One verdict per item: its physicalElementIds are judged against all its links at once.
+      for (const [itemId, products] of declared) {
         const hit = ix.byId.get(itemId);
-        const info = hit?.family === 'item' ? hit.info : undefined;
-        // physicalLinks only pairs records the file holds, so product is always present.
-        if (typeof guid !== 'string') problems.push(`${file.path}#${itemId}: the physical element has no GlobalId`);
-        else if (!info) problems.push(`${file.path}#${itemId}: item not in the read model`);
-        else if (!linkedElements(info, declared.get(itemId), store, table, file.step)) problems.push(`${file.path}#${itemId}: physicalElementIds ${JSON.stringify(info.physicalElementIds)} is not exactly the file's links ${JSON.stringify([...declared.get(itemId)])}`);
-        else count.held++;
+        // physicalLinks only pairs records the file holds, so each product is present.
+        const noGuid = [...products].filter((p) => typeof file.step.get(p).args[0] !== 'string');
+        if (noGuid.length) problems.push(`${file.path}#${itemId}: physical element(s) ${noGuid.map((p) => `#${p}`).join(', ')} have no GlobalId`);
+        else if (hit?.family !== 'item') problems.push(`${file.path}#${itemId}: item not in the read model`);
+        else if (!linkedElements(hit.info, products, store, table, file.step)) problems.push(`${file.path}#${itemId}: physicalElementIds ${JSON.stringify(hit.info.physicalElementIds)} is not exactly the file's links ${JSON.stringify([...products])}`);
+        else count.held += products.size;
       }
     }
     const checked = counts.reduce((n, c) => n + c.checked, 0);
-    const result = { ...verdict(checked, problems, { anyHeld: counts.some((c) => c.held) }), counts, evidence: linked.map(([f]) => f.path) };
+    const evidence = [...new Set([...linked.map(([f]) => f.path), ...spurious])];
+    const result = { ...verdict(checked, problems, { anyHeld: counts.some((c) => c.held) }), counts, evidence };
     return new Map(rows.map((r) => [r.id, result]));
   },
 };

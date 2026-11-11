@@ -36,6 +36,8 @@ import { PROBES } from './probes/index.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 export const SUMMARY_SCHEMA = 'ifclite-structural-coverage/1';
+/** What to do about a baseline scored offline; scripts/check-generated.mjs prints the same words. */
+export const OFFLINE_REMEDY = 'fetch the missing corpus fixtures and re-score without --offline, then re-baseline';
 const RANK = { pass: 5, partial: 4, fail: 3, error: 2, skip: 1, unwritten: 0 };
 const POINTS = { pass: 1, partial: 0.5 };
 const ROW_RANK = { met: 2, partial: 1, missing: 0 };
@@ -184,6 +186,7 @@ export function score(rows, cells, meta = {}) {
 /** Every way `current` is worse than `baseline`; empty means the check passes. */
 export function ratchet(baseline, current) {
   const problems = [];
+  if (baseline.offline) problems.push(`baseline was scored offline; ${OFFLINE_REMEDY}`);
   if (current.offline) problems.push(`current run is offline (${current.absent.length} corpus file(s) absent); fetch them and re-run`);
   if (current.total.score < baseline.total.score) problems.push(`total dropped from ${baseline.total.score} to ${current.total.score}`);
   if (current.cells.score < baseline.cells.score) problems.push(`cell score dropped from ${baseline.cells.score} to ${current.cells.score}`);
@@ -263,7 +266,7 @@ async function main(argv) {
     const forged = verifySummary(baseline, catalogue.rows);
     if (forged.length) { console.error(`score: ${rel(check)}: its stored totals or applicability disagree with its rows and the catalogue:\n  ${forged.slice(0, 5).join('\n  ')}`); return 2; }
     // Same refusal and remedy as the ledger gate (scripts/check-generated.mjs).
-    if (baseline.offline) { console.error(`score: ${rel(check)} was scored offline (${baseline.absent?.length ?? 0} corpus file(s) absent); fetch the missing corpus fixtures and re-score without --offline, then re-baseline`); return 2; }
+    if (baseline.offline) { console.error(`score: ${rel(check)} was scored offline (${baseline.absent?.length ?? 0} corpus file(s) absent); ${OFFLINE_REMEDY}`); return 2; }
   }
   let summary;
   try {

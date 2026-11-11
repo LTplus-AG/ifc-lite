@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { parse } from 'yaml';
 import capabilities from '../tests/structural-coverage/probes/capabilities.mjs';
-import { runProbes } from '../tests/structural-coverage/score.mjs';
+import { OFFLINE_REMEDY, ratchet, runProbes } from '../tests/structural-coverage/score.mjs';
 import { readRow } from '../tests/structural-coverage/probes/read.mjs';
 import { readStep } from '../tests/structural-coverage/lib/step.mjs';
 import { deriveCatalogue } from '../tests/structural-coverage/catalogue.mjs';
@@ -18,7 +18,6 @@ import { matchesAny } from './lib/ci-path-coverage.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const { tables } = deriveCatalogue(root);
-const OFFLINE_REMEDY = 'fetch the missing corpus fixtures and re-score without --offline, then re-baseline';
 const step = (body) => readStep(`ISO-10303-21;HEADER;FILE_SCHEMA(('IFC4'));ENDSEC;DATA;${body}ENDSEC;END-ISO-10303-21;`);
 
 test('#9668 links: resolve every express id, require IfcElement and fixture GlobalId, count each fixture', async () => {
@@ -162,6 +161,8 @@ test('#9668 links: a duplicated physical element id fails', async () => {
   const two = { path: 'two.ifc', schema: 'IFC4', step: step("#1=IFCWALL('wall');#2=IFCSTRUCTURALCURVEMEMBER('m');#3=IFCRELASSIGNSTOPRODUCT('r',$,$,$,(#2),$,#1);#7=IFCWALL('w2');#4=IFCRELASSIGNSTOPRODUCT('r2',$,$,$,(#2),$,#7);") };
   assert.equal((await linkRun([[2, item([1])]], [[two, [[2, item([1, 7])]]]])).status, 'pass');
   assert.notEqual((await linkRun([[2, item([1])]], [[two, [[2, item([1, 1])]]]])).status, 'pass');
+  // One wrong item is one problem, not one per link it has.
+  assert.match((await linkRun([[2, item([1])]], [[two, [[2, item([1])]]]])).reason, /^1 problem\(s\)/); // @source-text-assertion-ok parsed workflow configuration or probe verdict, not source text
 });
 
 test('#9668 links: an element sharing the GlobalId but not the referenced record fails', async () => {
@@ -178,6 +179,8 @@ test('#9668 ratchet: --check refuses a baseline scored offline, with the ledger 
     assert.equal(r.status, 2, r.stdout + r.stderr);
     assert.match(r.stderr, /was scored offline/);
     assert.ok(r.stderr.includes(OFFLINE_REMEDY), r.stderr);
+    // The comparison itself refuses it too, for callers that skip the CLI.
+    assert.ok(ratchet({ ...r1, offline: true }, r1).some((p) => p.includes(OFFLINE_REMEDY)));
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 

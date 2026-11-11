@@ -91,7 +91,8 @@ the affected cells as skip instead and marks the summary offline, which
 under-credits without changing product code: an item's `physicalElementIds`
 must be exactly the express ids the file links to it, without duplicates, each
 an IfcElement subtype in the parsed store with the fixture's GlobalId, and an
-item the file links to nothing must name no element;
+item the file links to nothing must name no element (checked in every
+catalogue-schema file the product extracts);
 rooted fields try the exact EXPRESS name before camelCase and renamed fields,
 with the same fixture-value comparison. Link evidence records checked/held
 counts for every fixture, without the former 25-link sampling limit.

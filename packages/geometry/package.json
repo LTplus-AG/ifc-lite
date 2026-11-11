@@ -26,6 +26,11 @@
       "import": "./dist/world-frame.js",
       "default": "./dist/world-frame.js"
     },
+    "./gpu-records": {
+      "types": "./dist/gpu-records.d.ts",
+      "import": "./dist/gpu-records.js",
+      "default": "./dist/gpu-records.js"
+    },
     "./rtc-rebase": {
       "types": "./dist/rtc-rebase.d.ts",
       "import": "./dist/rtc-rebase.js",

@@ -9,6 +9,8 @@
  * No dependency on Scene internal state or GPU device.
  */
 
+import { colorSaltByte, packEntityLane } from '@ifc-lite/geometry/gpu-records';
+export { colorSaltByte, packEntityLane }; // one definition, shared with the geometry workers
 import type { MeshData } from '@ifc-lite/geometry';
 import { perfTally } from '@ifc-lite/load-trace';
 import { BATCH_CONSTANTS } from './constants.js';
@@ -86,39 +88,7 @@ export function worldAabbFromPieces(pieces: readonly AabbPiece[] | undefined): B
 const MAX_ENCODED_ENTITY_ID = 0xFFFFFF;
 let warnedEntityIdRange = false;
 
-/**
- * Per-vertex z-nudge salt.
- *
- * The anti-z-fight depth nudge in `main.wgsl.ts` must produce the SAME depth for
- * a given surface in every draw of it: its batch, a partial sub-batch drawn
- * instead of it, and the selection highlight (`greater-equal`) drawn over it.
- * (It was introduced for the equal-depth colour-overlay pass, retired in #6076.)
- *
- * Material-layer slices share their parent's expressId, so the nudge can't
- * separate their coincident coplanar caps from the id alone — it needs the
- * material colour. We bake an 8-bit hash of `MeshData.color` into the HIGH 8
- * bits of the per-vertex entityId lane (the low 24 bits stay the picking id;
- * `encodeId24` masks the salt off). Because the salt comes from the geometry's
- * OWN colour — not the per-draw `baseColor` uniform — every redraw computes an
- * identical nudge, while distinct layers still separate.
- *
- * Returns a byte in [0,255]. Stamp it as `(id & 0x00FFFFFF) | (salt << 24)`.
- */
-export function colorSaltByte(color?: readonly number[] | null): number {
-  if (!color) return 0;
-  const r = (Math.round((color[0] ?? 0) * 255) & 0xFF) >>> 0;
-  const g = (Math.round((color[1] ?? 0) * 255) & 0xFF) >>> 0;
-  const b = (Math.round((color[2] ?? 0) * 255) & 0xFF) >>> 0;
-  // Same Knuth-style mix #1160 used (folded to 8 bits — the zHash is `& 255`
-  // anyway, so a byte carries all the entropy that survives downstream).
-  const h = (Math.imul(r, 73856093) ^ Math.imul(g, 19349663) ^ Math.imul(b, 83492791)) >>> 0;
-  return h & 0xFF;
-}
 
-/** Stamp the colour salt into the high 8 bits, picking id into the low 24. */
-export function packEntityLane(rawId: number, saltByte: number): number {
-  return (((rawId >>> 0) & 0x00FFFFFF) | ((saltByte & 0xFF) << 24)) >>> 0;
-}
 
 /**
  * Release every GPU buffer a batch (or sub-batch clone) owns.

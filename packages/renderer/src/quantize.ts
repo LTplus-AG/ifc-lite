@@ -1,6 +1,8 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { QUANT_STEP, MAX_QUANT_EXTENT, QUANT_BYTES_PER_VERTEX, octEncode, MAX_COLLAPSED_AREA_FRACTION } from '@ifc-lite/geometry/gpu-records';
+export { QUANT_STEP, MAX_QUANT_EXTENT, QUANT_BYTES_PER_VERTEX, octEncode, MAX_COLLAPSED_AREA_FRACTION }; // one definition, shared with the geometry workers
 
 /**
  * 12-byte quantized vertices (issue #1682, phase 6).
@@ -27,14 +29,6 @@
  * `quantizeInterleaved`'s null return.
  */
 
-/** Lattice step: 2^-10 m. Power of two => exact f32 dequantization. */
-export const QUANT_STEP = 1 / 1024;
-
-/** Max quantizable extent per axis (u16 range × step). */
-export const MAX_QUANT_EXTENT = 65535 * QUANT_STEP;
-
-export const QUANT_BYTES_PER_VERTEX = 12;
-
 export interface QuantizedVertexData {
   /** Interleaved 12-byte records (uint16x4 + uint32). */
   vertexData: ArrayBuffer;
@@ -44,26 +38,6 @@ export interface QuantizedVertexData {
   step: number;
 }
 
-/** Octahedral-encode a unit normal into two bytes (0..255 each). */
-export function octEncode(nx: number, ny: number, nz: number): [number, number] {
-  const l1 = Math.abs(nx) + Math.abs(ny) + Math.abs(nz);
-  let ox: number, oy: number;
-  if (l1 < 1e-12) {
-    ox = 0; oy = 0;
-  } else {
-    ox = nx / l1;
-    oy = ny / l1;
-    if (nz < 0) {
-      const tx = (1 - Math.abs(oy)) * (ox >= 0 ? 1 : -1);
-      const ty = (1 - Math.abs(ox)) * (oy >= 0 ? 1 : -1);
-      ox = tx; oy = ty;
-    }
-  }
-  // [-1,1] -> [0,255]
-  const bx = Math.max(0, Math.min(255, Math.round((ox * 0.5 + 0.5) * 255)));
-  const by = Math.max(0, Math.min(255, Math.round((oy * 0.5 + 0.5) * 255)));
-  return [bx, by];
-}
 
 /** Decode (for tests/CPU parity with the WGSL decode). */
 export function octDecode(bx: number, by: number): [number, number, number] {
@@ -172,8 +146,6 @@ export function quantizeInterleaved(
   return { vertexData: out, quantMin: [qminX, qminY, qminZ], step: QUANT_STEP };
 }
 
-/** Share of one entity's surface that may collapse on the lattice before its batch stays f32 (#9068). */
-export const MAX_COLLAPSED_AREA_FRACTION = 0.01;
 
 /**
  * True when snapping a batch onto the lattice would visibly destroy shape:

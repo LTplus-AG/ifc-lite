@@ -13,12 +13,15 @@ export function effectiveStoreyId(
   expressId: number,
   context?: EffectiveSpatialContext | null,
 ): number | undefined {
+  // A deleted product has no storey; answer before building the edited parent maps.
+  if (context?.isDeleted(expressId)) return undefined;
   return effectiveStoreyResolver(store, context)(expressId);
 }
 
 /**
  * `effectiveStoreyId` for many products under one context: the edited parent
- * maps are built once, not per product.
+ * maps are built once, not per product. The resolver reads the context's
+ * relationships when it is made, so make a new one after further edits.
  */
 export function effectiveStoreyResolver(
   store: IfcDataStore,

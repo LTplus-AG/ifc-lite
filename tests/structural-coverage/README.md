@@ -17,7 +17,7 @@ a harness error, never a product score. Without wasm-pack, `build-wasm.sh`
 keeps the wasm runtime already on disk, so scoring a Rust change needs the
 wasm toolchain. The probes run in about two seconds after building.
 
-CI runs the ratchet against the frozen `r1.json` in the shared **Build packages +
+CI runs the ratchet against the newest frozen `r<N>.json` (now `r1.json`) in the shared **Build packages +
 WASM** job, after fixture verification and the package build. This job runs in
 both fast and full PR lanes for package, harness and manifest changes, and in
 merge-queue batches. The ledger check alone does not run the product probes.

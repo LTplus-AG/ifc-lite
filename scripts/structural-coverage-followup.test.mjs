@@ -106,7 +106,7 @@ test('#9668 gate remedy: each generator failure class has an actionable remedy',
     const generator = readFileSync(join(root, 'scripts/generate-structural-coverage-ledger.mjs'), 'utf8');
     for (const phrase of ['is stale', 'does not match the derived catalogue', 'stored totals or applicability disagree', 'was scored offline', 'no r<N>.json summary', 'missing', 'is not JSON', 'is not an', 'has no rows']) {
       assert.ok(output.includes(`"${phrase}"`), phrase);
-      assert.ok(generator.includes(phrase), phrase); // @source-text-assertion-ok the remedy must quote the generator's own failure text
+      assert.match(generator, new RegExp(`(fail|console\\.error)\\(\`[^\`]*${phrase.replace(/[<>.]/g, '\\$&')}`), phrase); // @source-text-assertion-ok the remedy must quote the generator's own failure text
     }
     assert.ok(output.includes('cp tests/structural-coverage/.out/summary.json tests/structural-coverage/baseline/r<N>.json'));
   } finally { rmSync(dir, { recursive: true, force: true }); }

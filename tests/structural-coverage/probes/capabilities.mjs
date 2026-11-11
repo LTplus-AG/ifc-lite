@@ -22,6 +22,8 @@ import { verdict } from '../lib/values.mjs';
 import { storeOf } from '../lib/packages.mjs';
 import { extractionOrProblem } from './read.mjs';
 
+const isElement = (table, name) => table.chain(name ?? '').includes('IfcElement');
+
 /**
  * Distinct [structural item id, physical product id] pairs the file declares.
  * In IfcRelAssignsToProduct the physical end must be an IfcElement (what IFC2X3
@@ -30,7 +32,7 @@ import { extractionOrProblem } from './read.mjs';
  */
 function physicalLinks(step, table) {
   const structural = (e) => e && /^IFCSTRUCTURAL(CURVE|SURFACE|POINT)(MEMBER|CONNECTION)/.test(e.type);
-  const element = (e) => e && table.chain(table.types.get(e.type)?.name ?? '').includes('IfcElement');
+  const element = (e) => e && isElement(table, table.types.get(e.type)?.name);
   const pairs = new Map();
   const add = (item, product) => pairs.set(`${item},${product}`, [item, product]);
   for (const rel of step.of('IFCRELASSIGNSTOPRODUCT')) {
@@ -56,7 +58,7 @@ function linkedElement(info, guid, declared, store, table) {
   for (const id of ids) {
     if (!Number.isSafeInteger(id)) return false;
     const type = store.entities.getTypeName(id);
-    if (!table.chain(type).includes('IfcElement')) return false;
+    if (!isElement(table, type)) return false;
     const value = store.entities.getGlobalId(id);
     if (!value) return false;
     guids.push(value);
@@ -70,11 +72,12 @@ const linkRead = {
   covers: (row) => row.id === 'cap/physical-analytical-link-read',
   async run(rows, ctx) {
     // A file whose schema has no catalogue section (IFC4X2) has no type table to judge it by.
-    const linked = ctx.corpus.files.filter((f) => ctx.tables[f.schema]).map((f) => [f, physicalLinks(f.step, ctx.tables[f.schema])]).filter(([, links]) => links.length);
+    const linked = ctx.corpus.files.filter((f) => ctx.tables[f.schema])
+      .map((f) => [f, physicalLinks(f.step, ctx.tables[f.schema]), ctx.tables[f.schema]]).filter(([, links]) => links.length);
     if (!linked.length) return new Map(rows.map((r) => [r.id, ctx.corpus.nothingFound('carries a physical-to-structural link')]));
     const problems = [];
     const counts = [];
-    for (const [file, links] of linked) {
+    for (const [file, links, table] of linked) {
       const ix = await extractionOrProblem(ctx, file, problems);
       const count = { path: file.path, checked: links.length, held: 0 };
       counts.push(count);
@@ -93,7 +96,7 @@ const linkRead = {
         if (!product) problems.push(`${file.path}#${itemId}: the link names no physical element the file holds`);
         else if (typeof guid !== 'string') problems.push(`${file.path}#${itemId}: the physical element has no GlobalId`);
         else if (!info) problems.push(`${file.path}#${itemId}: item not in the read model`);
-        else if (!linkedElement(info, guid, declared.get(itemId), store, ctx.tables[file.schema])) problems.push(`${file.path}#${itemId}: physicalElementIds does not resolve to physical ${guid} and only the file's links`);
+        else if (!linkedElement(info, guid, declared.get(itemId), store, table)) problems.push(`${file.path}#${itemId}: physicalElementIds does not resolve to physical ${guid} and only the file's links`);
         else count.held++;
       }
     }

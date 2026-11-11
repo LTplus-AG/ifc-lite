@@ -23,7 +23,8 @@ jobs:
   cancel:
     if: github.event.pull_request.state == 'closed' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    # Room for the short waits on `pending` runs below.
+    timeout-minutes: 10
     steps:
       - name: Cancel unfinished runs of the closed branch
         env:
@@ -43,6 +44,9 @@ jobs:
           ids=$(gh api -X GET --paginate "repos/$REPO/actions/runs" -f branch="$BRANCH" -f event=pull_request -f per_page=100 \
             --jq ".workflow_runs[] | select(.status != \"completed\" and .head_repository.full_name == \"$REPO\" and .name != \"$WORKFLOW\") | .id")
           failed=0
+          # Oldest first: a newer run can be `pending` behind an older one in the
+          # same concurrency group, and becomes cancellable once that one is.
+          ids=$(sort -n <<<"$ids")
           for id in $ids; do
             for attempt in 1 2 3; do
               gh run cancel "$id" --repo "$REPO" && { echo "cancelled $id"; status=cancelled; break; }

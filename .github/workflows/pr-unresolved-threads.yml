@@ -39,7 +39,8 @@ jobs:
     # One notice per PR at a time, so two finishing runs cannot post it twice, and
     # a burst of reviews collapses to the newest pending job, which reads the
     # threads as they are when it starts. Keyed on the PR number where the event
-    # carries one; a fork PR's `workflow_run` does not, so it falls back to the SHA.
+    # carries one. A fork PR's `workflow_run` does not, so it keys on the SHA and
+    # can run beside a review-triggered job for the same PR.
     concurrency:
       group: pr-unresolved-threads-${{ github.event.pull_request.number || github.event.workflow_run.pull_requests[0].number || github.event.workflow_run.head_sha }}
     steps:
@@ -48,7 +49,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           SHA: ${{ github.event.workflow_run.head_sha }}
-          REVIEWED_PR: ${{ github.event.pull_request.number }}
+          # A same-repo `workflow_run` names its PR; a fork's is looked up below.
+          REVIEWED_PR: ${{ github.event.pull_request.number || github.event.workflow_run.pull_requests[0].number }}
         run: |
           set -euo pipefail
           owner=${REPO%/*}

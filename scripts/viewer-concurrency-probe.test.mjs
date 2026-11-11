@@ -22,7 +22,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse } from 'yaml';
 
-import { effectiveConcurrency, parseTap, readRecords, report, reportedFiles, selectFiles, selectionCommand } from './viewer-concurrency-probe.mjs';
+import { parseTap, readRecords, report, reportedFiles, scriptConcurrency, selectFiles, selectionCommand, viewerTestScript } from './viewer-concurrency-probe.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..');
@@ -41,9 +41,8 @@ function concurrencyArgs(extraEnv) {
   const stub = join(TMP, 'tsx');
   writeFileSync(stub, '#!/bin/sh\nprintf "%s\\n" "$@"\n');
   chmodSync(stub, 0o755);
-  const script = JSON.parse(readFileSync(join(VIEWER, 'package.json'), 'utf8')).scripts.test;
   const { VIEWER_TEST_CONCURRENCY: _drop, ...env } = process.env;
-  const r = spawnSync('sh', ['-c', script], {
+  const r = spawnSync('sh', ['-c', viewerTestScript()], {
     cwd: VIEWER,
     encoding: 'utf8',
     env: { ...env, PATH: `${TMP}:${env.PATH}`, TEST_SHARDS: '', TEST_SHARD: '', TEST_PATTERN: 'useSandbox[.]runSupersession[.]test[.]tsx$', ...extraEnv },
@@ -56,7 +55,8 @@ test("apps/viewer's script bounds VIEWER_TEST_CONCURRENCY: only 2, 3 or 4 change
   for (const [v, want] of [[undefined, '1'], ['', '1'], ['1', '1'], ['2', '2'], ['3', '3'], ['4', '4'], ['5', '1'], ['8', '1'], [' 2', '1'], ['2 ', '1'], ['two', '1'], ['0', '1'], ['-1', '1'], ['2;rm', '1']]) {
     const env = v === undefined ? {} : { VIEWER_TEST_CONCURRENCY: v };
     assert.deepEqual(concurrencyArgs(env), [`--test-concurrency=${want}`], JSON.stringify(v));
-    assert.equal(effectiveConcurrency(v), want, `the probe records what the script ran, ${JSON.stringify(v)}`);
+    const { VIEWER_TEST_CONCURRENCY: _d, ...base } = process.env;
+    assert.equal(scriptConcurrency({ ...base, TEST_SHARDS: '', TEST_SHARD: '', ...env }), want, `the probe records what the script ran, ${JSON.stringify(v)}`);
   }
 });
 

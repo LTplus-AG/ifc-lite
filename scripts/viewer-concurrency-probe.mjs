@@ -30,31 +30,34 @@ const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const VIEWER = join(REPO_ROOT, 'apps/viewer');
 const FILE_REPORTER = join(REPO_ROOT, 'scripts/lib/test-file-reporter.mjs');
 /**
- * The concurrency apps/viewer's `test` script actually uses for `raw`: it
- * takes only 2, 3 or 4 and runs anything else at 1. Recorded instead of the
- * raw value so the report never names a concurrency that did not run; the
- * test checks this against the script itself.
+ * apps/viewer's `test` script cut before tsx, then printing `print`. The cut
+ * runs the script's own concurrency bound (`$c`) and file selection
+ * (`$files`), so the probe reads both from the script rather than copying them.
  */
-export function effectiveConcurrency(raw) {
-  return ['2', '3', '4'].includes(raw) ? raw : '1';
-}
-
-/** apps/viewer's `test` script, cut before tsx: prints the files it would run. */
-export function selectionCommand(testScript) {
+export function selectionCommand(testScript, print = '"$files"') {
   const at = testScript.indexOf(' && tsx ');
   if (at <= 0) throw new Error("apps/viewer's test script no longer selects files before `&& tsx`");
-  return `${testScript.slice(0, at)} && printf '%s\\n' "$files"`;
+  return `${testScript.slice(0, at)} && printf '%s\\n' ${print}`;
 }
 
-function viewerTestScript() {
+export function viewerTestScript() {
   return JSON.parse(readFileSync(join(VIEWER, 'package.json'), 'utf8')).scripts.test;
+}
+
+function runCut(env, print) {
+  const r = spawnSync('sh', ['-c', selectionCommand(viewerTestScript(), print)], { cwd: VIEWER, encoding: 'utf8', env });
+  if (r.status !== 0) throw new Error(`apps/viewer's test script failed before tsx: ${r.stderr.trim()}`);
+  return r.stdout.split('\n').filter(Boolean);
 }
 
 /** The files apps/viewer's script selects under `env`. */
 export function selectFiles(env) {
-  const r = spawnSync('sh', ['-c', selectionCommand(viewerTestScript())], { cwd: VIEWER, encoding: 'utf8', env });
-  if (r.status !== 0) throw new Error(`file selection failed: ${r.stderr.trim()}`);
-  return r.stdout.split('\n').filter(Boolean);
+  return runCut(env, '"$files"');
+}
+
+/** The `--test-concurrency` apps/viewer's script uses under `env`, as the script itself bounds it. */
+export function scriptConcurrency(env) {
+  return runCut(env, '"$c"')[0];
 }
 
 /**
@@ -146,7 +149,7 @@ function shard(env) {
   const jobStarted = Number(env.JOB_STARTED_AT) * 1000;
   return {
     shard: Number(env.TEST_SHARD),
-    concurrency: effectiveConcurrency(env.VIEWER_TEST_CONCURRENCY),
+    concurrency: scriptConcurrency(env),
     reported,
     testStepSeconds: (ended - started) / 1000,
     jobStartedAt: Number.isFinite(jobStarted) && jobStarted > 0 ? jobStarted : started,

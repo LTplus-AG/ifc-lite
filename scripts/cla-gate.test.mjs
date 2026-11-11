@@ -60,6 +60,12 @@ test('the sign phrase forgives case, outer whitespace and a final full stop, not
 test('pull request events evaluate; closed and labeled do not', () => {
   assert.deepEqual(decideEvent('pull_request_target', { action: 'synchronize', pull_request: { number: 7 } }), { action: 'evaluate', number: 7 });
   assert.equal(decideEvent('pull_request_target', { action: 'closed', pull_request: { number: 7 } }).action, 'ignore');
+  // Retargeting changes the commit list under an unchanged head.
+  assert.deepEqual(
+    decideEvent('pull_request_target', { action: 'edited', changes: { base: { ref: { from: 'stack' } } }, pull_request: { number: 7 } }),
+    { action: 'evaluate', number: 7 },
+  );
+  assert.equal(decideEvent('pull_request_target', { action: 'edited', changes: { title: { from: 'x' } }, pull_request: { number: 7 } }).action, 'ignore');
 });
 
 test('a sign comment on a pull request signs for its commenter only', () => {
@@ -211,6 +217,7 @@ test('the first signature creates the orphan signatures branch, then the PR goes
   assert.deepEqual(commitCall[1].parents, [], 'the signatures branch shares no history with main');
   assert.equal(state.record.signatures[0].github_id, 101);
   assert.equal(state.record.signatures[0].cla_commit, 'a'.repeat(40));
+  assert.match(state.record.signatures[0].comment_sha256, /^[0-9a-f]{64}$/, 'the signed words are pinned against a later edit');
   assert.equal(state.status.state, 'success');
 });
 

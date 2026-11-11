@@ -259,3 +259,5 @@ export {
 export { readGroupEvidenceInStore, readGroupCreateEvidenceInStore, type GroupNativeEvidence, type GroupCreateEvidence } from './group-evidence.js';
 
 export { refreshTopAttachmentsInStore } from './top-attachment-refresh.js';
+export { addClassificationInStore, assignClassificationInStore, type ClassificationInStoreParams } from './classification.js';
+export { mirrorElementsInStore, type MirrorElementsParams } from './element-mirror.js';

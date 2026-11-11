@@ -15,7 +15,7 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
-import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
+import { IfcParser, resolveEffectiveEntityRecord, type IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import { useViewerStore, type FederatedModel } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
@@ -148,6 +148,57 @@ describe('#6232 bim.store hosted openings, doors and windows', () => {
       /bim\.store\.addHostedDoor: .*openings are supported in IfcWall and IfcSlab hosts/);
     assert.equal(useViewerStore.getState().mutationViews.get(MODEL)!.getNewEntities().length, 0);
     assert.equal(useViewerStore.getState().canUndo(MODEL), false);
+  });
+
+  it('#9409 viewer classifications use the slim factory and undo the whole association graph', async () => {
+    await seed();
+    const adapter = createStoreAdapter(useViewerStore);
+    const wall = adapter.addWall(MODEL, 42, { Start: [0, 5, 0], End: [4, 5, 0], Thickness: .2, Height: 3 });
+    assert.ok(adapter.addClassification, 'viewer exposes classification creation');
+    assert.ok(adapter.assignClassification, 'viewer exposes classification assignment');
+    adapter.addClassification(MODEL, { System: 'Example', Identification: 'Walls', objects: [wall.expressId] });
+    const graph = ['IFCCLASSIFICATION', 'IFCCLASSIFICATIONREFERENCE', 'IFCRELASSOCIATESCLASSIFICATION'];
+    for (const cls of graph) assert.equal(live(cls), 1, cls);
+    for (const cls of graph) assert.ok(published.some(row => row.ifcType.toUpperCase() === cls), `${cls} reaches the room`);
+    useViewerStore.getState().undo(MODEL);
+    for (const cls of graph) assert.equal(live(cls), 0, `${cls} removed by one Undo`);
+    assert.equal(live('IFCWALL'), 1, 'earlier wall creation is preserved');
+    useViewerStore.getState().redo(MODEL);
+    for (const cls of graph) assert.equal(live(cls), 1, `${cls} restored by Redo`);
+    await settleRemesh();
+  });
+
+  for (const shared of [false, true]) it(`#9409 viewer mirror remeshes a hosted graph and supports Undo/Redo (shared=${shared})`, async () => {
+    await seed();
+    if (!shared) useViewerStore.setState({ collabRoomId: null, collabRoomModels: new Map() });
+    const adapter = createStoreAdapter(useViewerStore);
+    const wall = adapter.addWall(MODEL, 42, { Start: [2, 5, 0], End: [6, 5, 0], Thickness: .2, Height: 3 });
+    const door = adapter.addHostedDoor(MODEL, wall.expressId, { Offset: 1, Width: .9, Height: 2.1, OperationType: 'SINGLE_SWING_LEFT' });
+    await settleRemesh();
+    assert.ok(adapter.mirrorElements, 'viewer exposes mirror through its history adapter');
+    const from = mesher.requests.length;
+    const result = adapter.mirrorElements(MODEL, [wall.expressId], { axis: [[0, 0], [0, 10]] });
+    assert.deepEqual(result, [wall]);
+    await settleRemesh();
+    const targets = new Set(mesher.requests.slice(from).flatMap(request => [...request.targets]));
+    for (const id of [wall.expressId, door.expressId]) assert.ok(targets.has(id), `mirrored #${id} is remeshed`);
+    const view = useViewerStore.getState().mutationViews.get(MODEL)!;
+    const operation = () => {
+      const effective = resolveEffectiveEntityRecord(view.getNewEntity(door.expressId)!, {
+        retype: view.getEntityTypeMutation(door.expressId)?.newType,
+        named: view.getAttributeMutationsForEntity(door.expressId).map(({ name, value }) => [name, value] as const),
+        positional: view.getPositionalMutationsForEntity(door.expressId) ?? [],
+      }, 'IFC4');
+      return effective.attributes[effective.names.indexOf('OperationType')];
+    };
+    assert.equal(operation(), '.SINGLE_SWING_RIGHT.');
+    useViewerStore.getState().undo(MODEL);
+    assert.equal(operation(), '.SINGLE_SWING_LEFT.');
+    assert.equal(live('IFCMAPPEDITEM'), 0, 'one Undo restores original geometry');
+    useViewerStore.getState().redo(MODEL);
+    assert.equal(operation(), '.SINGLE_SWING_RIGHT.');
+    assert.ok(live('IFCMAPPEDITEM') > 0);
+    await settleRemesh();
   });
 
   it('#9406 returns and surfaces skipped implicit-join notices while preserving the added wall', async (t) => {

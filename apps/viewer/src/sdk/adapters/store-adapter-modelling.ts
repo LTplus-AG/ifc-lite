@@ -41,6 +41,7 @@ import { alignMutationTracking } from './store-adapter-align.js';
 import { roomMutationTracking } from './store-adapter-room.js';
 import { physicalMutationTracking } from './store-adapter-physical.js';
 import { storeyMutationTracking } from './store-adapter-storey.js';
+import { mirrorClassificationMutationTracking } from './store-adapter-mirror-classification.js';
 import { completeEntityRemoval } from '@/store/slices/mutation-mesh-stash';
 
 type ModellingMethods = ReturnType<typeof createModellingStoreBackendWithoutStoreys>;
@@ -87,6 +88,7 @@ export function withModellingMutationTracking(
   const addPlainMaterial = create('IFCMATERIAL', methods.addMaterial);
   const addStyledMaterial = compound(methods.addMaterial);
   return {
+    ...mirrorClassificationMutationTracking(store),
     ...physicalMutationTracking(store),
     ...storeyMutationTracking(store),
     ...roomMutationTracking(store),

@@ -10,7 +10,7 @@
  */
 
 import { BufferReader, readInstancedShards, SectionType, type openGeometryChunksV13 } from '@ifc-lite/cache';
-import { decodeSceneSnapshot, encodeSceneSnapshot, type Renderer, type SceneContents, type SceneSnapshot } from '@ifc-lite/renderer';
+import { decodeSceneSnapshot, type Renderer, type SceneContents, type SceneSnapshot } from '@ifc-lite/renderer';
 import { decodeInstancedShard, type CoordinateInfo, type MeshData } from '@ifc-lite/geometry';
 import type { LoadTrace } from '@ifc-lite/load-trace';
 import { useViewerStore } from '../store/index.js';
@@ -18,12 +18,13 @@ import { noteInstancedShardModel } from '../store/instancedShardModels.js';
 import { fitCameraToSnapshot, lastFinalFitBounds, sceneSnapshotKey, type SnapshotCameraFit, setPendingSceneSnapshot, withdrawPendingSceneSnapshot } from '../components/viewer/sceneSnapshotOwnership.js';
 import { readPerfFlag } from '../lib/perf/flags.js';
 import { recordFirstVisible } from '../lib/perf/loadTrace.js';
-import { clearSceneSnapshot, putSceneSnapshot, type CacheResult } from '../services/cacheService.js';
+import { clearSceneSnapshot, type CacheResult } from '../services/cacheService.js';
 import { isQuantizedEnabled } from '../utils/quantizedConfig.js';
 import { getGlobalRenderer } from './useBCF.js';
 import type { DecodedCacheMetadata } from './ifcCacheDecode.js';
+import { writeCapturedScene, type CapturedScene, type SnapshotEntry } from './sceneSnapshotWrite.js';
 
-/** What the viewer stores beside the batches: the fit they were finalized under, and where the shards are. */
+/** What the viewer stores beside the batches (sceneSnapshotWrite.ts): the fit they were finalized under, and where the shards are. */
 interface SnapshotHostData extends SnapshotCameraFit {
   shards: { offset: number; size: number } | null;
 }
@@ -153,12 +154,34 @@ export function abandonAdoptedSceneSnapshot(adopted: AdoptedSceneSnapshot | null
   getGlobalRenderer()?.getScene().abandonSceneSnapshot(adopted.adoption);
 }
 
+/**
+ * Arm the capture of the next finalize. At the swap, keep the scene with the
+ * fit and type-visibility key it was built under, or nothing when it is not
+ * the cached geometry. Synchronous at the swap; all later work is deferred.
+ */
+function armSceneCapture(renderer: Renderer, isStale: () => boolean, onCaptured: (captured: CapturedScene) => void): void {
+  renderer.getScene().captureNextFinalize((snapshot: SceneSnapshot) => {
+    const camera = renderer.getCamera();
+    const sceneBounds = camera.getSceneBounds();
+    const fitBounds = lastFinalFitBounds();
+    if (isStale() || !sceneBounds || !fitBounds || !sceneMatchesCachedGeometry()) return;
+    onCaptured({ snapshot, key: snapshotKey(renderer.getScene()), fit: { fitBounds, sceneBounds, orbitAnchorBounds: camera.getOrbitAnchorBounds() } });
+  });
+}
+
+/** Begin the pending write's span at the swap and hand the capture to the deferred writer. */
+function writeWhenSettled(captured: CapturedScene, entry: Promise<SnapshotEntry | null>, isStale: () => boolean, trace: LoadTrace): void {
+  const span = trace.begin('cache.writeSceneSnapshot', { batches: captured.snapshot.batches.length });
+  void writeCapturedScene(captured, entry, isStale, trace, span);
+}
+
 /** Store the scene this hit is about to finalize, once it has. Resolves true when the load was superseded while it waited. */
 export async function captureSceneSnapshotOfHit(
   cacheResult: CacheResult,
   cacheKey: string | undefined,
   decoded: Pick<DecodedCacheMetadata, 'headerInfo'>,
   isStale: (() => boolean) | undefined,
+  trace: LoadTrace,
 ): Promise<boolean> {
   const { createdAt, fullSourceHash, buffer: entry } = cacheResult;
   if (!snapshotsEnabled() || !cacheKey || createdAt === undefined || !(entry instanceof Blob) || !sceneMatchesCachedGeometry()) return false;
@@ -167,21 +190,40 @@ export async function captureSceneSnapshotOfHit(
   // Batches built before admission stay f32, and a snapshot would keep them that way for good.
   if (isQuantizedEnabled()) await renderer.enableQuantizedBatches();
   if (isStale?.()) return true;
-  renderer.getScene().captureNextFinalize((snapshot: SceneSnapshot) => {
-    const camera = renderer.getCamera();
-    const sceneBounds = camera.getSceneBounds();
-    const fitBounds = lastFinalFitBounds();
-    const key = snapshotKey(renderer.getScene());
-    if (isStale?.() || !sceneBounds || !fitBounds || !sceneMatchesCachedGeometry()) return;
-    const section = decoded.headerInfo.sections.find((s) => s.type === SectionType.InstancedShards);
-    const hostData: SnapshotHostData = { fitBounds, sceneBounds, orbitAnchorBounds: camera.getOrbitAnchorBounds(),
-      shards: section ? { offset: section.offset, size: section.size } : null };
-    // Off the finalize's completion, which the first frame of the finished scene waits on.
-    setTimeout(() => {
-      void putSceneSnapshot(cacheKey, { createdAt, fullSourceHash }, encodeSceneSnapshot({ ...snapshot, hostData }), key).catch((err: unknown) => {
-        console.warn('[useIfcCache] Scene snapshot was not stored:', err);
-      });
-    }, 0);
-  });
+  const section = decoded.headerInfo.sections.find((s) => s.type === SectionType.InstancedShards);
+  const target: SnapshotEntry = { cacheKey, write: { createdAt, fullSourceHash }, shards: section ? { offset: section.offset, size: section.size } : null };
+  const stale = isStale ?? (() => false);
+  armSceneCapture(renderer, stale, (captured) => writeWhenSettled(captured, Promise.resolve(target), stale, trace));
   return false;
+}
+
+/** A cold load's capture: the entry it belongs to is known only once the load's cache write committed. */
+export interface ColdSceneCapture {
+  /** The committed entry, or null when nothing was written; the first call wins. */
+  entryWritten(entry: SnapshotEntry | null): void;
+}
+
+/**
+ * Capture the scene a primary cold load is about to stream, so the first reopen
+ * adopts it instead of streaming the hit (W2). Never awaits on the load's path:
+ * with no renderer yet, the capture is armed when one appears, but only on an
+ * empty scene, because a piece queued before the capture would fail it.
+ * With snapshots off nothing is armed, and `entryWritten` does nothing.
+ */
+export function armColdSceneCapture(isStale: () => boolean, trace: LoadTrace): ColdSceneCapture {
+  let settleEntry!: (entry: SnapshotEntry | null) => void;
+  const entry = new Promise<SnapshotEntry | null>((resolve) => { settleEntry = resolve; });
+  const capture: ColdSceneCapture = { entryWritten: (written) => settleEntry(written) };
+  if (!snapshotsEnabled() || !sceneMatchesCachedGeometry()) return capture;
+  const arm = (renderer: Renderer) => armSceneCapture(renderer, isStale, (captured) => writeWhenSettled(captured, entry, isStale, trace));
+  const now = getGlobalRenderer();
+  if (now?.getGPUDevice() && now.getPipeline()) {
+    arm(now);
+    return capture;
+  }
+  void rendererReady(isStale, 10_000).then((renderer) => {
+    const scene = renderer?.getScene();
+    if (renderer && scene && !isStale() && !scene.hasQueuedMeshes() && scene.getBatchedMeshes().length === 0) arm(renderer);
+  });
+  return capture;
 }

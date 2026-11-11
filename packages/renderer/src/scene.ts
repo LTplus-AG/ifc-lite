@@ -2190,7 +2190,7 @@ export class Scene {
           perfCount('render.finalize.batches', createdOwned.length);
           scene.finalizeInProgress = false;
           scene.streamingFragmentIndexBudget = Number.POSITIVE_INFINITY;
-          scene.snapshots.completeCapture();
+          scene.snapshots.completeCapture(trace, span);
           trace?.end(span, { batches: createdOwned.length, chunks });
           resolve();
         } catch (err) {

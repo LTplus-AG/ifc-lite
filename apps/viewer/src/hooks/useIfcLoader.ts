@@ -51,6 +51,7 @@ import { notifyResourceRetry, resolveResourceRetryTier } from '../lib/resource-r
 import { publishLoadTrace } from '../lib/perf/activeLoadTrace.js';
 import { acquireFileBuffer, type AcquiredBuffer } from '../utils/acquireFileBuffer.js';
 import { buildGeometryCacheKey } from './geometryCacheKey.js';
+import { armColdSceneCapture } from './sceneSnapshotLoad.js';
 import { forwardEntityIndexTo, createSourceFingerprintCell, type EntityIndexSink } from './entityIndexHandoff.js';
 import { computeSourceFingerprint, computeSourceFingerprintFromBlob } from '@ifc-lite/cache';
 import { SERVER_URL, USE_SERVER, CACHE_SIZE_THRESHOLD, CACHE_MAX_SOURCE_SIZE, CACHE_MESH_ONLY_MAX_SIZE } from '../utils/ifcConfig.js';
@@ -1268,9 +1269,9 @@ export function useIfcLoader() {
       setProgress({ phase: 'Starting geometry streaming', percent: 10 });
       // Global streaming flag is a PRIMARY (active-model) concern; a federated
       // add must not toggle it (the former federated path never did).
-      if (target.kind === 'primary') {
-        setGeometryStreamingActive(true);
-      }
+      // W2: keep this stream's finished scene for its cache entry, so the first reopen draws it (sceneSnapshotLoad.ts).
+      const coldSceneCapture = target.kind === 'primary' && cachePlan.shouldCache && !textureBitmaps ? armColdSceneCapture(isStale, trace) : null;
+      if (target.kind === 'primary') setGeometryStreamingActive(true);
 
       // From here the WASM tessellation path runs, so a resource-limit failure
       // downstream (stall / worker crash / OOM) is one a lower tier can help —
@@ -1950,7 +1951,7 @@ export function useIfcLoader() {
                 if (cacheable) {
                   // Final safety pass so cache always contains post-style colors.
                   applyColorUpdatesToMeshes(allMeshes, cumulativeColorUpdates);
-                  await writeCache(allMeshes);
+                  coldSceneCapture?.entryWritten((await writeCache(allMeshes)) || null);
                 }
 
                 compactSourceAfterLoad(dataStore);
@@ -1983,7 +1984,7 @@ export function useIfcLoader() {
                     loadError: formatLoadError(err, file.name, 'geometry_processing'),
                   });
                 }
-              }).finally(() => modelCompletion?.settleModel());
+              }).finally(() => { coldSceneCapture?.entryWritten(null); modelCompletion?.settleModel(); }); // null: no-op after a committed write
               if (target.kind === 'federated') void appearanceLoad?.finishAfter(finalizePromise, () => useViewerStore.getState().models.get(modelId));
               break;
           }

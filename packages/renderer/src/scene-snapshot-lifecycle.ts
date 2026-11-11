@@ -9,6 +9,7 @@
  */
 
 import type { MeshData } from '@ifc-lite/geometry';
+import type { LoadTrace } from '@ifc-lite/load-trace';
 import type { RenderPipeline } from './pipeline.js';
 import type { BatchedMesh, Mesh } from './types.js';
 import type { SpatialChunkingConfig } from './chunk-grid.js';
@@ -76,11 +77,12 @@ export class SceneSnapshotLifecycle {
 
   dropCapture(): void { this.capture = null; }
 
-  /** After the finalize swap: report the scene if it is exactly what was queued. */
-  completeCapture(): void {
+  /** After the finalize swap: report the scene if it is exactly what was queued; `scene.finalize.capture` times it. */
+  completeCapture(trace?: LoadTrace, parent?: number): void {
     const capture = this.capture;
     this.capture = null;
     if (!capture) return;
+    const start = performance.now();
     const scene = this.scene;
     const [x, y, z] = scene.modelTranslations.get(0);
     const snapshot = capture.build({
@@ -95,6 +97,7 @@ export class SceneSnapshotLifecycle {
     });
     if (snapshot) capture.onCaptured(snapshot);
     else console.warn('[Scene] finished scene not captured: it is not exactly the pieces queued');
+    if (trace?.enabled) trace.record('scene.finalize.capture', start, performance.now(), { captured: snapshot !== null }, parent);
   }
 
   /**

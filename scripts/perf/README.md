@@ -6530,11 +6530,17 @@ instance (the pre-pass worker and each geometry worker) holds a full copy of the
 per-worker cap (`1.5·F` per worker, `2.5·F` for the main thread, no pre-pass term) under-counted: a 1.03 GB replica
 peaked at ~9 × F of summed Chrome PSS at 4 workers, ~97 % of it in one renderer process. `worker-count.ts` now lowers the
 cores tier to the largest N whose conservative estimate fits 75 % of `deviceMemory`. That estimate is
-`tab-memory-budget.ts`: `300 MiB + 4.36·F + (N+1)·(170 MiB + 0.86·F)`, an upper envelope of 13 measured
-geometry-dominated cold loads (synthetic 1.03–2.09 GB replicas at 1–4 workers; real 2–343 MB models at 8 workers).
-Refusal uses a separate strict lower bound: the full source copies of the path that will run.
+`tab-memory-budget.ts`: `300 MiB + 4.36·F + (N+1)·(170 MiB + 0.86·F)`, a fitted planning estimate with a
+measured margin, **not a guaranteed upper bound**. It sits at or above the 13 geometry-dominated cold loads it was
+calibrated on (synthetic 1.03–2.09 GB replicas at 1–4 workers; real 2–343 MB models at 8 workers). A later run on the
+frozen head measured 4.9 % above it (1.74 GB replica at 1 worker: 11,230 MiB vs 10,704), and a second identical run
+measured 10,413 MiB, an ≈ 8 % spread between identical runs on a loaded host. An under-estimate costs at most a
+worker count one too high near a boundary. Refusal uses a separate strict lower bound: the full source copies of the path that will run.
 
 Lessons:
+- **Calibrate against run-to-run spread, not one sample per cell.** The refit covered every calibration load, but
+  the next identical run of one cell came in 4.9 % above it. A margin chosen from single samples on a busy host is
+  not a margin. Repeat the worst cells on a quiet host and fit to their maximum (follow-up to #9659).
 - **Check a fitted slope at a second worker count, and against real files.** A first fit on synthetic replicas at
   4 and 8 workers only (`3.4·F`, `1.12·F` per instance) under-estimated the replica's 1-worker peak by 9 %. Refit on the
   synthetic points alone (±1.3 %), it then under-estimated a real 177 MB model at 8 workers by 15 %. That model is denser

@@ -67,7 +67,7 @@ export function addStructuralCurveConnectionToStore(
   const bc = params.BoundaryCondition;
   const stiffness = (['TranslationalStiffnessByLengthX', 'TranslationalStiffnessByLengthY', 'TranslationalStiffnessByLengthZ',
     'RotationalStiffnessByLengthX', 'RotationalStiffnessByLengthY', 'RotationalStiffnessByLengthZ'] as const)
-    .map((key, i) => structuralStiffness(anchor, bc?.[key], i < 3 ? 'IfcModulusOfLinearSubgradeReactionMeasure' : 'IfcModulusOfRotationalSubgradeReactionMeasure', `addStructuralCurveConnectionToStore: ${key}`));
+    .map((key) => structuralStiffness(anchor, bc?.[key], key.startsWith('Translational') ? 'IfcModulusOfLinearSubgradeReactionMeasure' : 'IfcModulusOfRotationalSubgradeReactionMeasure', `addStructuralCurveConnectionToStore: ${key}`));
   // The frame rule is linearProfileFrame's, kept local: this builder loads lazily
   // (#9668), and sharing that module with the eager beam builders would carve it
   // into its own startup chunk.

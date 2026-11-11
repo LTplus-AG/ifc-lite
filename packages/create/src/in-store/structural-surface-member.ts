@@ -26,10 +26,11 @@ export function addStructuralSurfaceMemberToStore(editor: StoreEditor, anchor: S
   assertStructuralBuilderSchema(anchor);
   const type = params.PredefinedType ?? 'NOTDEFINED';
   if (type === 'USERDEFINED' && !params.ObjectType) throw new Error('addStructuralSurfaceMemberToStore: ObjectType is required when PredefinedType is USERDEFINED');
+  // JSON callers send null for an unset Thickness.
   if (params.Thickness != null) assertPositiveFinite([params.Thickness], 'addStructuralSurfaceMemberToStore: Thickness must be finite and positive');
   const face = prepareStructuralFace(params.Boundary);
   const globalId = productGuid(params, anchor.guidRandom); // validated before anything is written
-  const thickness = params.Thickness == null ? null : toNativeLength(anchor, params.Thickness); // JSON callers send null for unset
+  const thickness = params.Thickness == null ? null : toNativeLength(anchor, params.Thickness);
   const result = emitStructuralFace(editor, anchor, face);
   const memberId = editor.addEntity('IfcStructuralSurfaceMember', [
     globalId, ownerHistoryRef(anchor.ownerHistoryId), params.Name ?? 'Structural Surface Member',

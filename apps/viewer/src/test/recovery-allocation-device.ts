@@ -51,7 +51,13 @@ export function recoveryAllocationDevice(options: { extraRecoveryAttempt?: boole
     };
     return {
       beginRenderPass: beginPass, beginComputePass: beginPass,
-      copyBufferToBuffer() {}, copyTextureToBuffer() {}, copyTextureToTexture() {},
+      // A finalize assembles a streamed bucket's vertex buffer from its
+      // fragments' buffers: carry the bytes like the queue write below does.
+      copyBufferToBuffer(source: GPUBuffer, sourceOffset: number, target: GPUBuffer, targetOffset: number, size: number) {
+        const from = contents.get(source), to = contents.get(target);
+        if (from && to) new Uint8Array(to, targetOffset, size).set(new Uint8Array(from, sourceOffset, size));
+      },
+      copyTextureToBuffer() {}, copyTextureToTexture() {},
       clearBuffer() {}, resolveQuerySet() {},
       finish() {
         if (finished || activePass) throw new Error('Allocation encoder finish lifetime violation');

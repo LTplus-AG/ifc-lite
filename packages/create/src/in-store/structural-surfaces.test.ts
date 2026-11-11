@@ -185,10 +185,10 @@ describe('C2 structural surface and connection builders', () => {
     ['surface member, bad GlobalId', (e: StoreEditor, a: SpatialAnchor) => addStructuralSurfaceMemberToStore(e, a, { Boundary: tri, GlobalId: 'bad' }), /GlobalId/],
     ['surface connection, bad GlobalId', (e: StoreEditor, a: SpatialAnchor) => addStructuralSurfaceConnectionToStore(e, a, { Boundary: tri, GlobalId: 'bad' }), /GlobalId/],
     ['curve connection, bad GlobalId', (e: StoreEditor, a: SpatialAnchor) => addStructuralCurveConnectionToStore(e, a, { Start: [0, 0, 0], End: [1, 0, 0], GlobalId: 'bad' }), /GlobalId/],
-    ['negative stiffness', (e: StoreEditor, a: SpatialAnchor) => addStructuralSurfaceConnectionToStore(e, a, { Boundary: tri, BoundaryCondition: { TranslationalStiffnessByAreaZ: -1 } }), /not negative/],
+    ['negative stiffness', (e: StoreEditor, a: SpatialAnchor) => addStructuralSurfaceConnectionToStore(e, a, { Boundary: tri, BoundaryCondition: { TranslationalStiffnessByAreaZ: -1 } }), /TranslationalStiffnessByAreaZ must be a finite, not negative stiffness/],
     ['closed ring', (e: StoreEditor, a: SpatialAnchor) => addStructuralSurfaceMemberToStore(e, a, { Boundary: [...tri, [0, 0, 0]] }), /do not repeat the first point/],
     ['missing boundary', (e: StoreEditor, a: SpatialAnchor) => addStructuralSurfaceMemberToStore(e, a, { Boundary: undefined as never }), /at least three finite boundary points/],
-    ['string stiffness', (e: StoreEditor, a: SpatialAnchor) => addStructuralSurfaceConnectionToStore(e, a, { Boundary: tri, BoundaryCondition: { TranslationalStiffnessByAreaZ: '5' as never } }), /not negative/],
+    ['string stiffness', (e: StoreEditor, a: SpatialAnchor) => addStructuralSurfaceConnectionToStore(e, a, { Boundary: tri, BoundaryCondition: { TranslationalStiffnessByAreaZ: '5' as never } }), /TranslationalStiffnessByAreaZ must be a finite, not negative stiffness/],
     ['axis almost along the edge', (e: StoreEditor, a: SpatialAnchor) => addStructuralCurveConnectionToStore(e, a, { Start: [0, 0, 0], End: [2, 0, 0], Axis: [1, 1e-8, 0] }), /parallel to the edge/],
     ['two-element axis', (e: StoreEditor, a: SpatialAnchor) => addStructuralCurveConnectionToStore(e, a, { Start: [0, 0, 0], End: [2, 0, 0], Axis: [0, 1] as never }), /Axis must be nonzero/],
   ] as const)('writes nothing when refused: %s', async (_label, build, message) => {
@@ -200,6 +200,11 @@ describe('C2 structural surface and connection builders', () => {
     const { editor, anchor, roundTrip } = await fresh(schema);
     const r = addStructuralSurfaceConnectionToStore(editor, anchor, { Boundary: tri, BoundaryCondition: { TranslationalStiffnessByAreaX: null as never, TranslationalStiffnessByAreaZ: true } });
     expect((await roundTrip()).attrs(r.boundaryConditionId!)[1]).toBeNull();
+  });
+  it('treats a null Thickness as unset', async () => {
+    const { editor, anchor, roundTrip } = await fresh('IFC4');
+    const r = addStructuralSurfaceMemberToStore(editor, anchor, { Boundary: tri, Thickness: null as never });
+    expect((await roundTrip()).attrs(r.memberId)[8]).toBeNull();
   });
   it('refuses unsupported schema-specific axis attributes', async () => {
     const { editor, anchor } = await fresh();

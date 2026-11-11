@@ -29,6 +29,13 @@ import type {
 
 import { StoreGroupNamespace } from './store-group.js';
 
+/** The backend's method, or a refusal naming it when the backend lacks that optional capability. */
+function requireStoreMethod<K extends keyof StoreBackendMethods>(store: StoreBackendMethods, name: K): NonNullable<StoreBackendMethods[K]> {
+  const method = store[name];
+  if (!method) throw new Error(`bim.store.${name}: not available on this backend`);
+  return method as NonNullable<StoreBackendMethods[K]>;
+}
+
 /**
  * `bim.store` — document-level edits on a parsed model.
  *
@@ -44,13 +51,6 @@ import { StoreGroupNamespace } from './store-group.js';
  * Changes accumulate in a per-model overlay and are flushed to the IFC
  * file on the next `bim.export.ifc({ applyMutations: true })`.
  */
-/** The backend's method, or a refusal naming it when the backend lacks that optional capability. */
-function requireStoreMethod<K extends keyof StoreBackendMethods>(store: StoreBackendMethods, name: K): NonNullable<StoreBackendMethods[K]> {
-  const method = store[name];
-  if (!method) throw new Error(`bim.store.${name}: not available on this backend`);
-  return method as NonNullable<StoreBackendMethods[K]>;
-}
-
 export class StoreNamespace extends StoreGroupNamespace {
   /**
    * Inject a new entity into the active model. Returns an `EntityRef`

@@ -25,6 +25,7 @@ afterEach(() => useViewerStore.setState(initial, true));
 
 const STRUCTURAL_METHODS = [
   'addStructuralAnalysisModel', 'addStructuralCurveMember', 'addStructuralPointConnection',
+  'addStructuralSurfaceMember', 'addStructuralCurveConnection', 'addStructuralSurfaceConnection',
   'addStructuralLoadGroup', 'addStructuralPointAction', 'addStructuralLinearAction',
   'connectStructuralMemberToConnection', 'connectStructuralActivityToItem', 'assignToStructuralGroup',
 ] as const;

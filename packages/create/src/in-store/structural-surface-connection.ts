@@ -32,8 +32,8 @@ export function addStructuralSurfaceConnectionToStore(editor: StoreEditor, ancho
   assertStructuralBuilderSchema(anchor);
   const face = prepareStructuralFace(params.Boundary);
   const bc = params.BoundaryCondition;
-  const stiffness = [bc?.TranslationalStiffnessByAreaX, bc?.TranslationalStiffnessByAreaY, bc?.TranslationalStiffnessByAreaZ]
-    .map(v => structuralStiffness(anchor, v, 'IfcModulusOfSubgradeReactionMeasure'));
+  const stiffness = (['TranslationalStiffnessByAreaX', 'TranslationalStiffnessByAreaY', 'TranslationalStiffnessByAreaZ'] as const)
+    .map(key => structuralStiffness(anchor, bc?.[key], 'IfcModulusOfSubgradeReactionMeasure', `addStructuralSurfaceConnectionToStore: ${key}`));
   const globalId = productGuid(params, anchor.guidRandom); // validated before anything is written
   const result = emitStructuralFace(editor, anchor, face);
   const boundaryConditionId = bc ? editor.addEntity('IfcBoundaryFaceCondition', [bc.Name ?? null, ...stiffness]).expressId : undefined;

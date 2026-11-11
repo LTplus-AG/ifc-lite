@@ -8,6 +8,7 @@ import { useViewerStore } from '@/store';
 import type { StructuralProposal } from '@/lib/actions/structural-graph-proposal';
 import { prepareStructuralReview, type StructuralReview } from '@/lib/actions/structural-graph-review';
 import { commitReviewedStructural } from '@/lib/actions/structural-graph-receipt';
+import { loadStructuralWrites } from '@/sdk/adapters/store-adapter-structural';
 import { modelChangeLibrary } from '@/lib/actions/receipts';
 import type { ModelChangeReceipt } from '@/lib/actions/model-change-commit';
 import { ReceiptSummary } from '../actions/ModelChangeReview';
@@ -22,6 +23,7 @@ export function StructuralGraphReview({ proposal, origin }: { proposal: Structur
   const [stale, setStale] = useState(false);
   const [receipt, setReceipt] = useState<ModelChangeReceipt | null>(null);
   const [receiptProblem, setReceiptProblem] = useState(false);
+  const [writes, setWrites] = useState<'loading' | 'ready' | 'failed'>('loading');
   const owner = useRef({ review: null as StructuralReview | null, committing: false, mounted: true });
   useEffect(() => {
     const current = owner.current;
@@ -36,13 +38,26 @@ export function StructuralGraphReview({ proposal, origin }: { proposal: Structur
     });
     return () => { current.mounted = false; current.review = null; unsubscribe(); };
   }, [proposal]);
+  const refuse = (error: unknown) => {
+    owner.current.review = null; setReview(null); setProblem(error instanceof Error ? error.message : String(error));
+  };
+  // The structural builders load in their own chunk (#9668). Prepare stays disabled until it has
+  // loaded, so the review is never refused for loading; a failed load turns Prepare into a retry.
+  const loadWrites = () => {
+    setWrites('loading');
+    loadStructuralWrites().then(() => { if (owner.current.mounted) { setWrites('ready'); setProblem(null); } }, (error: unknown) => {
+      console.warn('[Assistant] Structural write path failed to load', error);
+      if (owner.current.mounted) { setWrites('failed'); refuse(error); }
+    });
+  };
+  useEffect(loadWrites, []);
   const prepare = (selection = approved) => {
     try {
       const next = prepareStructuralReview(useViewerStore, proposal, selection);
       owner.current.review = next; setReview(next); setProblem(null); setStale(false);
     } catch (error) {
       console.warn('[Assistant] Native Structural review refused', error);
-      owner.current.review = null; setReview(null); setProblem(error instanceof Error ? error.message : String(error));
+      refuse(error);
     }
   };
   const apply = () => {
@@ -80,7 +95,7 @@ export function StructuralGraphReview({ proposal, origin }: { proposal: Structur
       </li>)}
     </ul>
     {!receipt && <label className="flex items-center gap-2"><input type="checkbox" checked={acknowledged} onChange={event => setAcknowledged(event.target.checked)} />{t('structuralReview.acknowledgement')}</label>}
-    {!receipt && <Button size="sm" variant="outline" disabled={!approved.size} onClick={() => prepare()}>{t('structuralReview.prepare')}</Button>}
+    {!receipt && <Button size="sm" variant="outline" disabled={!approved.size || writes === 'loading'} onClick={() => writes === 'ready' ? prepare() : loadWrites()}>{t('structuralReview.prepare')}</Button>}
     {review && <>
       <output className="block">{t('structuralReview.population', { records: review.snapshot.records.length,
         created: delta.filter(row => !row.before).length, modified: delta.filter(row => row.before && row.after).length, deleted: delta.filter(row => !row.after).length })}</output>

@@ -166,7 +166,12 @@ const UNIQUE_TEST_STEP = String.raw`      - run: |
             | sort -u)`;
 
 test('once-only printf/sort invocation still audits literal test inputs without expanding globs', () => {
-  for (const step of [UNIQUE_TEST_STEP, UNIQUE_TEST_STEP.replace('sort -u', 'LC_ALL=C sort -u')]) {
+  for (const step of [
+    UNIQUE_TEST_STEP,
+    UNIQUE_TEST_STEP.replace('sort -u', 'LC_ALL=C sort -u'),
+    // The scripts-tests shards: --test-shard picks part of the same list.
+    UNIQUE_TEST_STEP.replace('node --test ', 'node --test --test-shard="$SHARD" --test-reporter=tap '),
+  ]) {
     withTree({ steps: DEFAULT_STEPS + '\n' + step }, root => {
       mkdirSync(join(root, 'unfiltered'));
       writeFileSync(join(root, 'unfiltered/literal.json'), '{}');

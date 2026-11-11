@@ -163,4 +163,15 @@ describe('point connection stiffness SELECT round trips', () => {
     const { Name, ...components } = BoundaryCondition;
     expect(data.connections[0].appliedCondition).toMatchObject({ name: Name, components });
   });
+
+  // A non-finite number is type-legal; IFC4 would export it as `$` and IFC2X3 would fail the whole export.
+  it.each(['IFC2X3', 'IFC4', 'IFC4X3'])('%s refuses non-finite stiffness before emitting entities', async (schema) => {
+    const { editor, anchor } = await fresh(schema);
+    for (const value of [Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(() => addStructuralPointConnectionToStore(editor, anchor, {
+        Position: [4, 0, 0], BoundaryCondition: { TranslationalStiffnessX: true, RotationalStiffnessZ: value },
+      })).toThrow(/finite/);
+    }
+    expect(editor.getMutationView().getNewEntities()).toHaveLength(0);
+  });
 });

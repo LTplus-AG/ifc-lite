@@ -97,25 +97,26 @@ export function addStructuralPointConnectionToStore(
   // IFC2X3 uses plain measures: -1 = rigid, 0 = free. The `{ real }` marker is
   // required: the exporter's SELECT qualification reads the IFC4 registry for
   // every target schema and would wrap a bare number as an IFC4 select member.
-  const stiffness = (value: boolean | number | undefined) => is2x3
-    ? (value === undefined ? null : { real: typeof value === 'number' ? value : value ? -1 : 0 })
-    : value ?? null;
+  const stiffness = (value: boolean | number | undefined) => {
+    if (typeof value === 'number' && !Number.isFinite(value)) throw new Error('Spring stiffness must be finite');
+    return is2x3
+      ? (value === undefined ? null : { real: typeof value === 'number' ? value : value ? -1 : 0 })
+      : value ?? null;
+  };
+  // Resolved before any entity is emitted, so a refused value leaves the store untouched.
+  const bc = params.BoundaryCondition;
+  const conditionAttrs = bc && [
+    bc.Name ?? null,
+    stiffness(bc.TranslationalStiffnessX),
+    stiffness(bc.TranslationalStiffnessY),
+    stiffness(bc.TranslationalStiffnessZ),
+    stiffness(bc.RotationalStiffnessX),
+    stiffness(bc.RotationalStiffnessY),
+    stiffness(bc.RotationalStiffnessZ),
+  ];
   const position = toNativePoint3(anchor, params.Position);
   const placementId = emitLocalPlacement(editor, anchor.storeyPlacementId, position);
-
-  let boundaryConditionId: number | undefined;
-  const bc = params.BoundaryCondition;
-  if (bc) {
-    boundaryConditionId = editor.addEntity('IfcBoundaryNodeCondition', [
-      bc.Name ?? null,
-      stiffness(bc.TranslationalStiffnessX),
-      stiffness(bc.TranslationalStiffnessY),
-      stiffness(bc.TranslationalStiffnessZ),
-      stiffness(bc.RotationalStiffnessX),
-      stiffness(bc.RotationalStiffnessY),
-      stiffness(bc.RotationalStiffnessZ),
-    ]).expressId;
-  }
+  const boundaryConditionId = conditionAttrs && editor.addEntity('IfcBoundaryNodeCondition', conditionAttrs).expressId;
 
   const connectionId = editor.addEntity('IfcStructuralPointConnection', [
     productGuid(params, anchor.guidRandom),

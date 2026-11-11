@@ -268,6 +268,9 @@ test('a reopen without a settled cache write or its expected snapshot is a faile
   assert.match(warmPrepFailure({ open: 2, cacheWriteSettled: true, snapshotExpected: true, snapshotWritten: false }), /snapshot was not written/);
   // perf.sceneSnapshot=0 or an uncached tier: no snapshot is expected, so none missing is not a failure.
   assert.equal(warmPrepFailure({ open: 2, cacheWriteSettled: true, snapshotExpected: false, snapshotWritten: undefined }), null);
+  // Unknown is never a pass (review #9740).
+  assert.match(warmPrepFailure({ open: 1 }), /not checked/);
+  assert.match(warmPrepFailure({ open: 2, cacheWriteSettled: true }), /not decided/);
 });
 
 test('a bimodal metric in an A/A is no difference: the interquartile floor spans the mode split (timed baseline v2)', async () => {
@@ -298,16 +301,18 @@ test('a scene-snapshot write that times out makes the snapshot reopen a failed s
 
 const lanesModule = () => load('./load-scoreboard-lanes.mjs');
 
-test('browser-cold-early times from the pick: the boot-delayed input dispatch is inside its clock', async () => {
+test('browser-cold-early times from the first paint the file was picked at, not from the change event (review #9740)', async () => {
   const { rebaseToArm } = await lanesModule();
-  const open = { inputDelayMs: 1900, firstFrameMs: 400, interactiveMs: 700, uiQuietMs: 900, geometryMs: 650, propsMs: 600,
-    storeSettledMs: 680, settlePaintMs: 700, publishPaintMs: 690 };
+  // Picked at first paint 100 ms; boot work queued the change event until 2,200 ms (all page clock).
+  const open = { originAbs: 2200, shell: { armedAtMs: 100 }, inputDelayMs: 1900, firstFrameMs: 400, interactiveMs: 700, uiQuietMs: 900,
+    geometryMs: 650, propsMs: 600, storeSettledMs: 680, settlePaintMs: 700, publishPaintMs: 690 };
   const early = rebaseToArm(open);
-  assert.equal(early.interactiveMs, 2600);
+  assert.equal(early.pickDelayMs, 2100, 'the arm queuing behind boot counts, not only the dispatch delay');
+  assert.equal(early.interactiveMs, 2800);
   assert.equal(early.interactiveFromChangeMs, 700);
-  assert.equal(early.firstFrameMs, 2300);
-  assert.equal(early.uiQuietMs, 2800);
-  assert.match(early.clockFrom, /^arm/);
+  assert.equal(early.firstFrameMs, 2500);
+  assert.equal(early.uiQuietMs, 3000);
+  assert.match(early.clockFrom, /^first paint/);
   // A missing first frame stays missing rather than becoming the delay alone.
   assert.equal(rebaseToArm({ ...open, firstFrameMs: null }).firstFrameMs, null);
 });
@@ -322,13 +327,16 @@ test('the first reopen waits until the stored cache entry stops changing (a snap
   assert.equal(stableSince([], 3000), null);
 });
 
-test('boot time-to-interactive ends at the last long task before the first 1 s quiet window', async () => {
-  const { bootTimeToInteractive } = await lanesModule();
+test('boot time-to-interactive ends at the last long task before the first 1 s quiet window, and only once that window was seen (review #9740)', async () => {
+  const { bootTti } = await lanesModule();
   // Shell ready at 900 ms; welcome scene 1,000-2,400 ms, probe 2,500-2,935 ms, then quiet; a late task at 5 s does not count.
-  assert.equal(bootTimeToInteractive([[1000, 1400], [2500, 435], [5000, 80]], 900), 2935);
-  assert.equal(bootTimeToInteractive([], 900), 900);
+  assert.deepEqual(bootTti([[1000, 1400], [2500, 435], [5000, 80]], 900, 6000), { ms: 2935, settled: true });
+  assert.deepEqual(bootTti([], 900, 1900), { ms: 900, settled: true });
   // Tasks wholly before the shell was ready do not extend it.
-  assert.equal(bootTimeToInteractive([[100, 300]], 900), 900);
+  assert.deepEqual(bootTti([[100, 300]], 900, 2000), { ms: 900, settled: true });
+  // Observation stopped 400 ms after the last task (the old fixed 5 s idle read): not settled, not a measurement.
+  assert.deepEqual(bootTti([[1000, 1400], [2500, 4100]], 900, 7000), { ms: 6600, settled: false });
+  assert.equal(bootTti([[1000, 100]], null, 9000).ms, null, 'no app-shell time, no boot time');
 });
 
 test('the report summarizes the boot lane under its pseudo-fixture and counts snapshot adoption per reopen lane', async () => {
@@ -336,7 +344,7 @@ test('the report summarizes the boot lane under its pseudo-fixture and counts sn
   const plan = { name: 't', kind: 'aa', lanes: ['boot', 'browser-warm1'], fixtures: [{ name: 'fx', set: 'tuning', bytes: 20 * 2 ** 20 }], sides: {} };
   const rows = [];
   for (let round = 0; round < 5; round++) for (const side of ['base', 'branch']) {
-    rows.push({ lane: 'boot', fixture: BOOT_FIXTURE, round, side, ok: true, interactiveMs: 2900 + round, peakMemoryMiB: 700, idleJsMiB: 40, fingerprint: 'no model' });
+    rows.push({ lane: 'boot', fixture: BOOT_FIXTURE, round, side, ok: true, interactiveMs: 2900 + round, peakMemoryMiB: 700, idleJsHeapMiB: 40, idleAgentMiB: 55, fingerprint: 'no model' });
     rows.push({ lane: 'browser-warm1', fixture: 'fx', round, side, ok: true, interactiveMs: 1000 + round, fingerprint: 'm=1',
       snapshotAdopted: [round < 3], snapshotPresentBeforeOpen: round < 3, loadPaths: ['cache'], cacheTiers: ['source'] });
   }
@@ -344,7 +352,7 @@ test('the report summarizes the boot lane under its pseudo-fixture and counts sn
   const boot = s.fixtures.find((f) => f.name === BOOT_FIXTURE);
   assert.equal(boot?.set, 'boot');
   assert.equal(boot.lanes.boot.verdicts.interactiveMs.verdict, 'no significant difference');
-  assert.ok(boot.lanes.boot.verdicts.idleJsMiB, 'boot memory metrics get verdicts');
+  assert.ok(boot.lanes.boot.verdicts.idleJsHeapMiB && boot.lanes.boot.verdicts.idleAgentMiB, 'boot memory metrics get verdicts');
   const warm1 = s.fixtures.find((f) => f.name === 'fx').lanes['browser-warm1'].sides.base;
   assert.equal(warm1.snapshotAdoptedCount, 3);
   assert.equal(warm1.snapshotPresentBeforeOpenCount, 3);
@@ -365,7 +373,18 @@ test('idle wasm heaps add up per realm; a shared memory imported by several real
   const d = combineWasmRealms([{ own: 0, shared: [64 * MiB], count: 1 }, { own: 0, shared: [16 * MiB], count: 1 }]);
   assert.equal(d.totalBytes, 80 * MiB);
   assert.equal(d.sharedAmbiguous, false);
-  assert.equal(combineWasmRealms([]).totalBytes, 0);
+  // Two same-size memories inside one realm are two objects: both count (review #9740).
+  const same = combineWasmRealms([{ own: 0, shared: [16 * MiB, 16 * MiB], count: 2 }, { own: 0, shared: [16 * MiB], count: 1 }]);
+  assert.equal(same.sharedBytes, 32 * MiB);
+  assert.equal(same.sharedBytesUpperBound, 48 * MiB);
+  // No realm measured is unverifiable, not 0 MiB.
+  assert.equal(combineWasmRealms([]).totalBytes, null);
+});
+
+test('boot memory separates the JS heap from the whole agent total (review #9740)', async () => {
+  const { agentMemoryParts } = await lanesModule();
+  const parts = agentMemoryParts({ bytes: 100, breakdown: [{ bytes: 60, types: ['JavaScript'] }, { bytes: 30, types: ['DOM'] }, { bytes: 10, types: [] }] });
+  assert.deepEqual(parts, { totalBytes: 100, jsBytes: 60 });
 });
 
 test('a cache entry that was unreadable or never stopped changing fails the first reopen instead of passing as stable (review #9740)', async () => {
@@ -374,7 +393,23 @@ test('a cache entry that was unreadable or never stopped changing fails the firs
   assert.equal(entryStabilityFailure({ stable: true, snapshotPresent: true, waitedMs: 4200 }), null);
   assert.match(entryStabilityFailure({ stable: false, snapshotPresent: null, waitedMs: 40, error: 'indexedDB.open failed: UnknownError' }), /unreadable/);
   assert.match(entryStabilityFailure({ stable: false, snapshotPresent: true, waitedMs: 30000 }), /still changing/);
-  assert.equal(entryStabilityFailure(undefined), null); // uncached tiers never wait
+  // Uncached tiers say so explicitly; a result that is simply absent was never checked (review #9740).
+  assert.equal(entryStabilityFailure({ skipped: 'uncached tier: no cache entry is written' }), null);
+  assert.match(entryStabilityFailure(undefined), /not checked/);
+});
+
+const runner = () => load('./load-scoreboard.mjs');
+
+test('resume is per lane: a sample whose default lanes are stored but whose other lane is missing is rerun for that lane only (review #9740)', async () => {
+  const { doneLaneKeys, pendingLanes } = await runner();
+  const cell = { group: 'browser', fixture: 'FZK', round: 2, side: 'base' };
+  const lanes = ['browser-cold', 'browser-cold-early', 'browser-warm1', 'browser-warm'];
+  // A run interrupted after the default sample, before the early one (or with --fixtures selecting a subset).
+  const done = doneLaneKeys(['browser-cold', 'browser-warm1', 'browser-warm'].map((lane) => ({ ...cell, lane })));
+  assert.deepEqual(pendingLanes(done, cell, lanes), ['browser-cold-early']);
+  assert.deepEqual(pendingLanes(doneLaneKeys([]), cell, lanes), lanes, 'nothing stored: every lane is pending');
+  const boot = { group: 'boot', fixture: '(app shell)', round: 0, side: 'branch' };
+  assert.deepEqual(pendingLanes(done, boot, ['boot']), ['boot'], 'boot rounds are not taken as done by fixture rows');
 });
 
 test('the early lane is per-element checked: its rows name the elements file its sample wrote (review #9740)', async () => {
@@ -383,4 +418,118 @@ test('the early lane is per-element checked: its rows name the elements file its
   assert.equal(elementsFileFor({ lane: 'browser-cold', fixture: 'FZK', side: 'base', round: 3 }), 'FZK-base-r3-cold.elements.json');
   assert.equal(elementsFileFor({ lane: 'browser-warm1', fixture: 'FZK', side: 'branch', round: 0 }), 'FZK-branch-r0-warm1.elements.json');
   assert.equal(elementsFileFor({ lane: 'browser-warm', fixture: 'FZK', side: 'branch', round: 0, warmOpens: [{}, {}] }), 'FZK-branch-r0-warm2.elements.json');
+});
+
+test('a reopen inherits the cold identity only from a cold load that had element hashes (review #9740)', async () => {
+  const { openIdentity } = await stats();
+  const hashedCold = [{ identity: 'elements=3 hashed=3', hashed: 3, elements: { 1: 'a' }, flat: { signature: 's', meshes: 3 } }];
+  const warm = [{ identity: 'elements=0 hashed=0', hashed: 0, elements: {}, flat: { signature: 's', meshes: 3 } }];
+  assert.equal(openIdentity({ label: 'cold', fingerprint: hashedCold }).identity, 'elements=3 hashed=3');
+  assert.match(openIdentity({ label: 'warm1', fingerprint: warm, coldFingerprint: hashedCold }).identity, /^restored cold: elements=3/);
+  assert.match(openIdentity({ label: 'warm1', fingerprint: [{ ...warm[0], flat: { signature: 'x', meshes: 3 } }], coldFingerprint: hashedCold }).identity, /^RESTORE MISMATCH/);
+  // The gap: a cold load without hashes, then a reopen restoring it exactly, used to read as a comparable identity.
+  const unhashedCold = [{ ...hashedCold[0], hashed: 0, elements: {} }];
+  assert.match(openIdentity({ label: 'warm1', fingerprint: warm, coldFingerprint: unhashedCold }).identity, /^UNVERIFIABLE/);
+});
+
+test('the report: output and per-element verdicts never read missing identity as a match (review #9740)', async () => {
+  const { outputVerdict, elementDiffVerdict, withAaFloor } = await report();
+  assert.equal(outputVerdict(['m=1'], ['m=1']), 'match');
+  assert.equal(outputVerdict(['m=1'], ['m=2']), 'CHANGED');
+  assert.match(outputVerdict(['restored cold: m=1'], ['RESTORE MISMATCH vs cold: flat 3/x']), /^RESTORE MISMATCH/);
+  const diff = { identical: true, unverifiable: false };
+  assert.equal(elementDiffVerdict({ 1: 'a' }, [diff], 'base r0', 2).identical, true);
+  assert.equal(withAaFloor({ verdict: 'gain', pass: true, aaFloor: 0.02 }, { fx: {} }).verdict, 'gain');
+});
+
+// META-TEST (review #9740): every lane's verdict, identity and stability check, fed an absent, empty or
+// unreadable input, must come out unverifiable / failed / inconclusive, never identical / stable / ok /
+// match / no difference. One row per check; a new check belongs here.
+test('META: absent, empty or unreadable input never passes any verdict, identity or stability check', async () => {
+  const S = await stats(), R = await report(), L = await lanesModule(), Snap = await snapshotRule(), Run = await runner();
+  const lanes = R.LANES;
+  assert.deepEqual([...lanes].sort(), ['boot', 'browser-cold', 'browser-cold-early', 'browser-warm', 'browser-warm1', 'native-cold']);
+  const passing = /^(identical|stable|ok|match|no significant difference|gain|regression|null)$/;
+  const cases = [];
+  const add = (name, outcome, ok) => cases.push({ name, outcome, ok });
+
+  // Verdicts: no samples, or samples without the metric, on any lane.
+  for (const lane of lanes) {
+    const fixture = lane === 'boot' ? R.BOOT_FIXTURE : 'fx';
+    const plan = { name: 't', kind: 'compare', lanes: [lane], fixtures: lane === 'boot' ? [] : [{ name: 'fx', set: 'tuning', bytes: 1 }], sides: {} };
+    const rows = [0, 1, 2, 3, 4].flatMap((round) => ['base', 'branch'].map((side) => ({ lane, fixture, round, side, ok: true, fingerprint: null })));
+    const l = R.summarize(plan, rows, { floors: {} }).fixtures.find((f) => f.name === fixture).lanes[lane];
+    add(`${lane}: interactive verdict without values`, l.primary?.verdict, /^inconclusive/.test(l.primary?.verdict ?? ''));
+    add(`${lane}: output identity when every fingerprint is missing`, l.output, l.output !== 'match');
+    const unver = R.summarize(plan, rows.map((r) => ({ ...r, fingerprint: 'UNVERIFIABLE (no model in the store)' })), { floors: {} })
+      .fixtures.find((f) => f.name === fixture).lanes[lane];
+    add(`${lane}: output identity when every fingerprint is UNVERIFIABLE`, unver.output, unver.output !== 'match');
+    const timed = R.summarize(plan, rows.map((r, i) => ({ ...r, interactiveMs: 1000 + (i % 3), fingerprint: 'm=1' })), { floors: {} })
+      .fixtures.find((f) => f.name === fixture).lanes[lane];
+    add(`${lane}: verdict when the A/A floors lack this cell`, timed.primary.verdict, /^inconclusive: no A\/A floor/.test(timed.primary.verdict));
+    if (lane !== 'native-cold' && lane !== 'boot') {
+      const none = R.elementDiffVerdict(null, [], null, 0);
+      add(`${lane}: per-element verdict without a base sample`, none.identical, none.identical === false && none.unverifiable === true);
+      const noFile = R.elementDiffVerdict(null, [], 'base r0', 10);
+      add(`${lane}: per-element verdict without the reference file`, noFile.identical, noFile.identical === false && noFile.unverifiable === true);
+      const alone = R.elementDiffVerdict({ 1: 'a' }, [], 'base r0', 1);
+      add(`${lane}: per-element verdict with nothing to compare`, alone.identical, alone.identical === false && alone.unverifiable === true);
+      const emptyOther = R.elementDiffVerdict({ 1: 'a' }, [S.diffElements({ 1: 'a' }, {})], 'base r0', 2);
+      add(`${lane}: per-element verdict against an empty sample`, emptyOther.identical, emptyOther.identical === false && emptyOther.unverifiable === true);
+    }
+  }
+  add('verdictFor([])', S.verdictFor([]).verdict, /^inconclusive/.test(S.verdictFor([]).verdict));
+  add('verdictFor(all null)', S.verdictFor([[null, null], [null, null], [null, null], [null, null], [null, null]]).verdict,
+    /^inconclusive/.test(S.verdictFor([[null, null], [null, null], [null, null], [null, null], [null, null]]).verdict));
+  add('aaNoiseFloor([])', S.aaNoiseFloor([]), S.aaNoiseFloor([]) === null);
+  add('ownNoiseFloor([])', S.ownNoiseFloor([]), S.ownNoiseFloor([]) === null);
+  // Identity.
+  for (const fp of [undefined, null, []]) {
+    for (const label of ['cold', 'warm1', 'warm2']) {
+      const id = S.openIdentity({ label, fingerprint: fp, coldFingerprint: fp });
+      add(`openIdentity(${label}, ${JSON.stringify(fp)})`, id.identity, /^UNVERIFIABLE/.test(id.identity));
+    }
+  }
+  add('openIdentity(warm, cold missing)', S.openIdentity({ label: 'warm1', fingerprint: [{ hashed: 0, flat: {} }] }).identity,
+    /^UNVERIFIABLE/.test(S.openIdentity({ label: 'warm1', fingerprint: [{ hashed: 0, flat: {} }] }).identity));
+  for (const [a, b] of [[[], []], [undefined, ['m=1']], [[null], [null]], [[''], ['']], [['UNVERIFIABLE (x)'], ['UNVERIFIABLE (x)']]]) {
+    add(`outputVerdict(${JSON.stringify(a)}, ${JSON.stringify(b)})`, R.outputVerdict(a, b), R.outputVerdict(a, b) !== 'match');
+  }
+  for (const [a, b] of [[{}, {}], [{ 1: 'a' }, {}], [{}, { 1: 'a' }]]) {
+    const d = S.diffElements(a, b);
+    add(`diffElements(${JSON.stringify(a)}, ${JSON.stringify(b)})`, d.identical, d.identical === false);
+  }
+  // Stability and preparation.
+  for (const entry of [undefined, null, {}, { error: 'x' }, { stable: false }, { stable: null }]) {
+    const f = L.entryStabilityFailure(entry);
+    add(`entryStabilityFailure(${JSON.stringify(entry)})`, f, typeof f === 'string');
+  }
+  add('stableSince([])', L.stableSince([], 3000), L.stableSince([], 3000) === null);
+  for (const prep of [{}, { open: 1 }, { open: 2, cacheWriteSettled: true }, { open: 2, cacheWriteSettled: null, snapshotExpected: false }]) {
+    const f = S.warmPrepFailure(prep);
+    add(`warmPrepFailure(${JSON.stringify(prep)})`, f, typeof f === 'string');
+  }
+  const prepared = await Snap.prepareWarmOpen({ open: 1, cacheWriteSettled: undefined, snapshotExpected: true, waitSnapshot: () => Promise.resolve() });
+  add('prepareWarmOpen(unchecked cache write)', prepared.failure, typeof prepared.failure === 'string');
+  for (const h of [undefined, null, {}, { error: 'x' }]) add(`gpuUnhealthy(${JSON.stringify(h)})`, S.gpuUnhealthy(h), typeof S.gpuUnhealthy(h) === 'string');
+  add('failedOpenIndex(undefined)', S.failedOpenIndex(undefined), S.failedOpenIndex(undefined) === 0);
+  // Measurements that must stay missing, not become zero or settled.
+  const early = L.rebaseToArm({ interactiveMs: 700 });
+  add('rebaseToArm(no anchor)', early.interactiveMs, early.interactiveMs === null && /^unverifiable/.test(early.clockFrom));
+  const tti = L.bootTti([], undefined, 9000);
+  add('bootTti(no shell time)', tti, tti.ms === null && tti.settled === false);
+  const unsettled = L.bootTti([[1000, 500]], 900, 1600);
+  add('bootTti(observation ended inside the quiet window)', unsettled.settled, unsettled.settled === false);
+  add('combineWasmRealms([])', L.combineWasmRealms([]).totalBytes, L.combineWasmRealms([]).totalBytes === null);
+  for (const m of [undefined, null, {}, { bytes: 5 }]) add(`agentMemoryParts(${JSON.stringify(m)})`, L.agentMemoryParts(m).totalBytes, L.agentMemoryParts(m).totalBytes === null);
+  add('browserShares(no trace)', S.browserShares(undefined, 1000).shares, S.browserShares(undefined, 1000).shares === null);
+  add('browserShares([])', S.browserShares([], 1000).shares, S.browserShares([], 1000).shares === null);
+  add('uiQuietValue({})', S.uiQuietValue({}), S.uiQuietValue({}) === null);
+  // Resume: nothing stored means every lane is still pending.
+  add('pendingLanes(nothing stored)', Run.pendingLanes(Run.doneLaneKeys([]), { group: 'g', fixture: 'f', round: 0, side: 'base' }, lanes).length, Run.pendingLanes(Run.doneLaneKeys([]), { group: 'g', fixture: 'f', round: 0, side: 'base' }, lanes).length === lanes.length);
+
+  const bad = cases.filter((c) => !c.ok);
+  assert.deepEqual(bad.map((c) => `${c.name} -> ${JSON.stringify(c.outcome)}`), [], 'checks that passed on missing input');
+  assert.ok(cases.length >= 60, `${cases.length} cases`);
+  void passing;
 });

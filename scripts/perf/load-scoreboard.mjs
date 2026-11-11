@@ -29,7 +29,7 @@ import { fileURLToPath } from 'node:url';
 import { roundOrder, seededRand } from './ab-order.mjs';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
 import { nativeSample } from './load-scoreboard-native.mjs';
-import { BOOT_FIXTURE, BROWSER_LANES, LANES, elementsFileFor, renderMarkdown, summarize } from './load-scoreboard-report.mjs';
+import { BOOT_FIXTURE, BROWSER_LANES, LANES, elementDiffVerdict, elementsFileFor, renderMarkdown, summarize } from './load-scoreboard-report.mjs';
 import { browserShares, diffElements, uiQuietValue } from './load-scoreboard-stats.mjs';
 
 const ROOT = resolve(fileURLToPath(new URL('../..', import.meta.url)));
@@ -109,6 +109,21 @@ export async function hostQuiet({ limit = 5, maxWaitMs = 20000 } = {}) {
   return { cpuPressureAvg10: psi, waitedMs: Date.now() - started, builders, underLoad: !(psi < limit) || builders.length > 0 };
 }
 
+/** Resume key of one recorded lane sample. */
+export function laneKey(row) {
+  return `${row.group}/${row.fixture}/${row.round}/${row.side}/${row.lane}`;
+}
+
+/** Lanes recorded so far, one key per lane sample (rows of any outcome: a failed load is recorded data). */
+export function doneLaneKeys(rows) {
+  return new Set(rows.map(laneKey));
+}
+
+/** The lanes of `cell` ({group, fixture, round, side}) that have no recorded row yet. */
+export function pendingLanes(done, cell, lanes) {
+  return lanes.filter((lane) => !done.has(laneKey({ ...cell, lane })));
+}
+
 /** Balanced, randomized first-side order per lane group and fixture (ab-order.mjs), reproducible from the seed. */
 export function buildOrder(plan) {
   const rand = seededRand(plan.seed);
@@ -127,13 +142,10 @@ async function run(opt) {
   const out = resolve(opt.out);
   mkdirSync(join(out, 'traces'), { recursive: true });
   const samplesPath = join(out, 'samples.jsonl');
-  const done = new Set();
+  let done = new Set();
   if (existsSync(samplesPath)) {
     if (!opt.resume) throw new Error(`${samplesPath} exists; pass --resume to continue it, or choose a new --out`);
-    for (const line of readFileSync(samplesPath, 'utf8').split('\n').filter(Boolean)) {
-      const r = JSON.parse(line);
-      done.add(`${r.group}/${r.fixture}/${r.round}/${r.side}`);
-    }
+    done = doneLaneKeys(readFileSync(samplesPath, 'utf8').split('\n').filter(Boolean).map((line) => JSON.parse(line)));
   }
   const order = existsSync(join(out, 'order.json')) ? JSON.parse(readFileSync(join(out, 'order.json'), 'utf8')) : buildOrder(plan);
   writeFileSync(join(out, 'plan.json'), JSON.stringify(plan, null, 2) + '\n');
@@ -151,6 +163,7 @@ async function run(opt) {
   let browser = null;
   if (order.browser || order.boot) browser = await startBrowserLane(plan, out);
   const record = (row, trace) => {
+    done.add(laneKey(row));
     if (trace) { writeFileSync(join(out, 'traces', `${row.fixture}-${row.lane}-${row.side}-r${row.round}.json`), JSON.stringify(trace)); }
     appendFileSync(samplesPath, JSON.stringify(row) + '\n');
   };
@@ -160,8 +173,9 @@ async function run(opt) {
     for (const name of only ?? []) if (!plan.fixtures.some((f) => f.name === name)) throw new Error(`--fixtures: ${name} is not in the plan`);
     const DEFAULT_BROWSER = ['browser-cold', 'browser-warm1', 'browser-warm'];
     for (let round = 0; round < plan.rounds; round++) {
+      // Boot runs in every segment, --fixtures or not; the per-lane completion set keeps it from repeating.
       for (const side of order.boot?.[BOOT_FIXTURE][round] ?? []) {
-        if (only || done.has(`boot/${BOOT_FIXTURE}/${round}/${side}`)) continue;
+        if (pendingLanes(done, { group: 'boot', fixture: BOOT_FIXTURE, round, side }, ['boot']).length === 0) continue;
         const common = { group: 'boot', fixture: BOOT_FIXTURE, round, side, sideLabel: plan.sides[side].label, at: new Date().toISOString(),
           loadavg1: loadavg()[0], host: await hostQuiet() };
         log(`boot ${side}-r${round}`);
@@ -170,7 +184,11 @@ async function run(opt) {
       for (const fixture of plan.fixtures.filter((f) => !only || only.has(f.name))) {
         for (const group of Object.keys(order).filter((g) => g !== 'boot')) {
           for (const side of order[group][fixture.name][round]) {
-            if (done.has(`${group}/${fixture.name}/${round}/${side}`)) continue;
+            // Completion is per lane: a cell is skipped only when every lane it should produce is already recorded.
+            const cell = { group, fixture: fixture.name, round, side };
+            const groupLanes = group === 'native' ? ['native-cold'] : plan.lanes.filter((l) => l.startsWith('browser'));
+            const missing = pendingLanes(done, cell, groupLanes);
+            if (missing.length === 0) continue;
             const common = { group, fixture: fixture.name, round, side, sideLabel: plan.sides[side].label, at: new Date().toISOString(),
               loadavg1: loadavg()[0], host: await hostQuiet() };
             const tag = `${fixture.name}-${side}-r${round}`;
@@ -182,19 +200,21 @@ async function run(opt) {
               log(`  ${tag} native: ${s.ok ? `${s.interactiveMs.toFixed(0)} ms, ${s.peakMemoryMiB?.toFixed(0)} MiB` : `FAILED ${s.error}`}`);
             } else {
               // browser-cold-early: its own fresh browser, file picked at first paint, timing only (load-scoreboard-lanes.mjs).
-              if (plan.lanes.includes('browser-cold-early')) {
+              if (missing.includes('browser-cold-early')) {
                 const e = await browser.sample({ side: plan.sides[side], fixture, tag: `${tag}-early`, warmOpens: 0, pass: 'timing', arm: 'first-paint' });
                 const { trace, ...row } = e.lanes['browser-cold-early'];
                 record({ ...common, ...row, lane: 'browser-cold-early', adapter: e.meta.adapter ? JSON.stringify(e.meta.adapter) : null,
                   browserVersion: e.meta.browserVersion ?? null, pageErrors: e.meta.pageErrors.length, gpuHealth: e.meta.gpuHealthCold ?? null }, trace ?? null);
               }
-              if (!plan.lanes.some((l) => DEFAULT_BROWSER.includes(l))) continue;
+              const missingDefault = missing.filter((l) => DEFAULT_BROWSER.includes(l));
+              if (missingDefault.length === 0) continue;
               const s = await browser.sample({ side: plan.sides[side], fixture, tag, warmOpens: plan.warmOpens, pass: 'timing' });
               // H3: peak memory comes from a separate pass with the sampler on, never from the timed opens.
               const m = plan.memoryPass === false ? null : await browser.sample({ side: plan.sides[side], fixture, tag: `${tag}-mem`, warmOpens: plan.warmOpens, pass: 'memory' });
               const adapter = s.meta.adapter ? JSON.stringify(s.meta.adapter) : null;
               for (const [lane, r] of Object.entries(s.lanes)) {
-                if (!plan.lanes.includes(lane)) continue;
+                // Only lanes still missing: a resumed cell must not get a second row for a lane it already has.
+                if (!missingDefault.includes(lane)) continue;
                 const { trace, ...row } = r;
                 const mem = m?.lanes[lane];
                 record({ ...common, ...row, lane, adapter, browserVersion: s.meta.browserVersion ?? null, pageErrors: s.meta.pageErrors.length,
@@ -262,10 +282,10 @@ function attachElementDiffs(summary, samples, plan, out) {
       if (!l) continue;
       const rows = samples.filter((r) => r.fixture === f.name && r.lane === lane && r.ok);
       const ref = rows.find((r) => r.side === 'base');
-      const refElements = ref && readElements(out, ref);
-      if (!refElements) continue;
-      const diffs = rows.filter((r) => r !== ref).map((r) => ({ side: r.side, round: r.round, ...diffElements(refElements, readElements(out, r) ?? {}) }));
-      l.elementDiff = { reference: `base r${ref.round}`, identical: diffs.every((d) => d.identical), diffs };
+      const refElements = ref ? readElements(out, ref) : null;
+      const diffs = refElements ? rows.filter((r) => r !== ref).map((r) => ({ side: r.side, round: r.round, ...diffElements(refElements, readElements(out, r) ?? {}) })) : [];
+      // A lane with samples always gets a verdict; a missing reference or file is unverifiable, never skipped.
+      l.elementDiff = elementDiffVerdict(refElements, diffs, ref ? `base r${ref.round}` : null, rows.length);
     }
   }
 }

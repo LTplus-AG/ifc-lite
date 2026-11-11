@@ -33,14 +33,24 @@ import { chromePids, memoryOf, vramOf } from './scenoptic-bench-sampling.mjs';
 
 // ---------------------------------------------------------------- pure helpers
 
-/** Times of an early open, moved from the change event to the arm (the pick): the dispatch delay is the user's wait. */
+/**
+ * Times of an early open, moved onto the first paint the file was picked at:
+ * `delay` = the clock origin (change event, or arm when none was seen) minus
+ * the first paint. It covers both the arm queuing behind boot work and the
+ * input event's dispatch delay, which is what the user who opens at once waits
+ * through. Without either anchor the timings are unverifiable (null), never
+ * silently left on the later origin.
+ */
 export function rebaseToArm(open) {
-  const delay = Number.isFinite(open.inputDelayMs) ? open.inputDelayMs : 0;
+  const paint = open.shell?.armedAtMs, origin = open.originAbs;
+  const keys = ['firstFrameMs', 'interactiveMs', 'uiQuietMs', 'geometryMs', 'propsMs', 'storeSettledMs', 'settlePaintMs', 'publishPaintMs'];
+  if (!Number.isFinite(paint) || !Number.isFinite(origin) || origin < paint) {
+    return { ...open, clockFrom: 'unverifiable (no first-paint anchor)', interactiveFromChangeMs: open.interactiveMs, ...Object.fromEntries(keys.map((k) => [k, null])) };
+  }
+  const delay = origin - paint;
   const shift = (v) => (Number.isFinite(v) ? v + delay : v);
-  return { ...open, clockFrom: 'arm (file picked at first paint)', interactiveFromChangeMs: open.interactiveMs,
-    firstFrameMs: shift(open.firstFrameMs), interactiveMs: shift(open.interactiveMs), uiQuietMs: shift(open.uiQuietMs),
-    geometryMs: shift(open.geometryMs), propsMs: shift(open.propsMs), storeSettledMs: shift(open.storeSettledMs),
-    settlePaintMs: shift(open.settlePaintMs), publishPaintMs: shift(open.publishPaintMs) };
+  return { ...open, clockFrom: 'first paint (file picked at once)', pickDelayMs: delay, interactiveFromChangeMs: open.interactiveMs,
+    ...Object.fromEntries(keys.map((k) => [k, shift(open[k])])) };
 }
 
 /**
@@ -57,47 +67,69 @@ export function stableSince(observations, stableMs) {
 /**
  * Boot time-to-interactive (page clock, ms since navigation): the end of the
  * last long task before the first window of `quietMs` without one that starts
- * at or after `shellReadyMs`; `shellReadyMs` itself when no long task follows it.
+ * at or after `shellReadyMs`. `settled` is true only when that quiet window was
+ * actually observed: a later task starting at least `quietMs` after it, or
+ * `nowMs` at least `quietMs` past it. An unsettled value is not a measurement.
  */
-export function bootTimeToInteractive(tasks, shellReadyMs, quietMs = 1000) {
-  const sorted = tasks.map(([s, d]) => [s, s + d]).sort((a, b) => a[0] - b[0]);
-  let busyUntil = shellReadyMs;
+export function bootTti(tasks, shellReadyMs, nowMs, quietMs = 1000) {
+  if (!Number.isFinite(shellReadyMs)) return { ms: null, settled: false };
+  const sorted = tasks.map(([st, d]) => [st, st + d]).sort((a, b) => a[0] - b[0]);
+  let busyUntil = shellReadyMs, gapSeen = false;
   for (const [start, end] of sorted) {
     if (end <= busyUntil) continue;
-    if (start - busyUntil >= quietMs) break;
+    if (start - busyUntil >= quietMs) { gapSeen = true; break; }
     busyUntil = Math.max(busyUntil, end);
   }
-  return busyUntil;
+  return { ms: busyUntil, settled: gapSeen || (Number.isFinite(nowMs) && nowMs - busyUntil >= quietMs) };
 }
 
 /**
  * Combine per-realm WebAssembly memory sums. Memory a realm owns adds up. A
  * shared (SharedArrayBuffer-backed) memory appears in every realm that imports
- * it, and realms cannot tell whether two shared buffers are the same one, so
- * shared memories are counted once per distinct exact size (`sharedBytes`, the
- * estimate in the total). `sharedBytesUpperBound` counts every occurrence, and
- * `sharedAmbiguous` says when the two differ, i.e. when the dedupe assumption
- * (one size, one memory) decided the number.
+ * it, and realms cannot tell whether two shared buffers are the same one: per
+ * exact size, the estimate counts the largest number of such memories any one
+ * realm holds (distinct memories inside one realm are distinct objects, so they
+ * all count). `sharedBytesUpperBound` counts every occurrence, and
+ * `sharedAmbiguous` says when the two differ. No realm measured is not zero
+ * memory: the totals are then null (unverifiable).
  */
 export function combineWasmRealms(realms) {
+  if (!Array.isArray(realms) || realms.length === 0) {
+    return { totalBytes: null, ownBytes: null, sharedBytes: null, sharedBytesUpperBound: null, sharedAmbiguous: null, memories: 0, realms: 0, error: 'no realm measured' };
+  }
   const own = realms.reduce((a, r) => a + (r.own ?? 0), 0);
-  const occurrences = realms.flatMap((r) => (Array.isArray(r.shared) ? r.shared : r.shared ? [r.shared] : []));
-  const shared = [...new Set(occurrences)].reduce((a, n) => a + n, 0);
-  const upper = occurrences.reduce((a, n) => a + n, 0);
+  const listOf = (r) => (Array.isArray(r.shared) ? r.shared : r.shared ? [r.shared] : []);
+  const perSize = new Map();
+  for (const r of realms) {
+    const counts = new Map();
+    for (const n of listOf(r)) counts.set(n, (counts.get(n) ?? 0) + 1);
+    for (const [n, count] of counts) perSize.set(n, Math.max(perSize.get(n) ?? 0, count));
+  }
+  const shared = [...perSize].reduce((a, [n, count]) => a + n * count, 0);
+  const upper = realms.flatMap(listOf).reduce((a, n) => a + n, 0);
   return { totalBytes: own + shared, ownBytes: own, sharedBytes: shared, sharedBytesUpperBound: upper, sharedAmbiguous: upper !== shared,
     memories: realms.reduce((a, r) => a + (r.count ?? 0), 0), realms: realms.length };
 }
 
 /**
  * Why the first reopen cannot be prepared, or null. The cache entry must have
- * been readable and must have stopped changing; otherwise a snapshot written at
- * the end of the cold load may still race the reopen.
+ * been checked, readable and must have stopped changing; otherwise a snapshot
+ * written at the end of the cold load may still race the reopen. Uncached
+ * tiers pass `{ skipped: <reason> }`; an absent result is a failure.
  */
 export function entryStabilityFailure(entry) {
-  if (!entry) return null;
+  if (!entry) return 'cache entry was not checked before the first reopen';
+  if (entry.skipped) return null;
   if (entry.error) return `cache entry unreadable before the first reopen (${entry.error})`;
-  if (!entry.stable) return `cache entry still changing ${entry.waitedMs} ms after the cold load, so a snapshot write may race the first reopen`;
+  if (entry.stable !== true) return `cache entry still changing ${entry.waitedMs} ms after the cold load, so a snapshot write may race the first reopen`;
   return null;
+}
+
+/** Idle agent memory split from a measureUserAgentSpecificMemory() result: JS heap (entries typed JavaScript) and the total. */
+export function agentMemoryParts(result) {
+  if (!result || !Array.isArray(result.breakdown) || !Number.isFinite(result.bytes)) return { totalBytes: null, jsBytes: null };
+  const js = result.breakdown.filter((b) => (b.types ?? []).includes('JavaScript')).reduce((a, b) => a + b.bytes, 0);
+  return { totalBytes: result.bytes, jsBytes: js };
 }
 
 // ---------------------------------------------------------------- page helpers
@@ -155,20 +187,30 @@ async function realmWasm(send) {
 }
 
 /** Every live WebAssembly.Memory in the page and its (shared) workers, through CDP; see the header. */
-export async function wasmHeaps(context, page) {
+export async function wasmHeaps(context, page, { requestTimeoutMs = 15000 } = {}) {
   const cdp = await context.newCDPSession(page);
   try {
     const realms = [{ realm: 'page', ...(await realmWasm((m, p) => cdp.send(m, p))) }];
     const { targetInfos } = await cdp.send('Target.getTargets');
     let id = 0;
-    const pending = new Map();
-    cdp.on('Target.receivedMessageFromTarget', ({ message }) => { const msg = JSON.parse(message); pending.get(msg.id)?.(msg); });
+    const pending = new Map(); // id -> { sessionId, settle(msg) }
+    cdp.on('Target.receivedMessageFromTarget', ({ message }) => { const msg = JSON.parse(message); pending.get(msg.id)?.settle(msg); });
+    // A worker that goes away mid-request must fail the measurement, never leave it waiting.
+    cdp.on('Target.detachedFromTarget', ({ sessionId }) => {
+      for (const p of [...pending.values()]) if (p.sessionId === sessionId) p.settle({ error: { message: 'worker detached during measurement' } });
+    });
     for (const t of targetInfos.filter((x) => x.type === 'worker' || x.type === 'shared_worker')) {
       const { sessionId } = await cdp.send('Target.attachToTarget', { targetId: t.targetId, flatten: false });
       const send = (method, params) => new Promise((resolve, reject) => {
         const mid = ++id;
-        pending.set(mid, (msg) => (msg.error ? reject(new Error(msg.error.message)) : resolve(msg.result)));
-        cdp.send('Target.sendMessageToTarget', { sessionId, message: JSON.stringify({ id: mid, method, params }) }).catch(reject);
+        const timer = setTimeout(() => settle({ error: { message: `${method} gave no answer within ${requestTimeoutMs} ms` } }), requestTimeoutMs);
+        function settle(msg) {
+          clearTimeout(timer);
+          pending.delete(mid);
+          if (msg.error) reject(new Error(msg.error.message)); else resolve(msg.result);
+        }
+        pending.set(mid, { sessionId, settle });
+        cdp.send('Target.sendMessageToTarget', { sessionId, message: JSON.stringify({ id: mid, method, params }) }).catch((e) => settle({ error: { message: String(e) } }));
       });
       realms.push({ realm: t.type, ...(await realmWasm(send)) });
       await cdp.send('Target.detachFromTarget', { sessionId }).catch(() => {});
@@ -185,7 +227,7 @@ function bootState() {
     jsHeap: performance.memory ? performance.memory.usedJSHeapSize : null };
 }
 
-/** In page: JS + wasm memory of the page and its workers (cross-origin isolated pages only), bounded. */
+/** In page: agent memory of the page and its workers (cross-origin isolated pages only; no WebAssembly memory), bounded. */
 function measureAgentMemory(timeoutMs) {
   if (typeof performance.measureUserAgentSpecificMemory !== 'function') return Promise.resolve({ error: 'measureUserAgentSpecificMemory unavailable' });
   return Promise.race([
@@ -195,7 +237,7 @@ function measureAgentMemory(timeoutMs) {
         const scope = b.attribution?.[0]?.scope ?? (b.attribution?.length ? 'other' : 'unattributed');
         byScope[scope] = (byScope[scope] ?? 0) + b.bytes;
       }
-      return { bytes: m.bytes, byScope };
+      return { bytes: m.bytes, byScope, breakdown: m.breakdown.map((b) => ({ bytes: b.bytes, types: b.types })) };
     }),
     new Promise((done) => setTimeout(() => done({ error: `no result within ${timeoutMs} ms` }), timeoutMs)),
   ]);
@@ -206,7 +248,7 @@ function measureAgentMemory(timeoutMs) {
  * with `ok: false`. `openShell(context)` navigates and waits for the shell
  * (store + file input), as the timed lanes do.
  */
-export async function bootSample({ chromium, launchOptions, initScripts, openShell, idleAfterMs = 5000, log, tag }) {
+export async function bootSample({ chromium, launchOptions, initScripts, openShell, idleAfterMs = 5000, ttiCapMs = 30000, log, tag }) {
   const profileDir = mkdtempSync(join(tmpdir(), 'load-scoreboard-boot-'));
   const row = { lane: 'boot', ok: false };
   let context = null;
@@ -214,25 +256,38 @@ export async function bootSample({ chromium, launchOptions, initScripts, openShe
     context = await chromium.launchPersistentContext(profileDir, launchOptions);
     for (const [script, arg] of initScripts) await context.addInitScript(script, arg);
     const page = await openShell(context);
-    const shellReadyMs = await page.evaluate(() => globalThis.__benchShellAt ?? performance.now());
+    const shellReadyMs = await page.evaluate(() => globalThis.__benchShellAt ?? null);
+    if (!Number.isFinite(shellReadyMs)) throw new Error('app-shell readiness was not stamped (store or file input never appeared)');
+    // Boot interactivity first: observe until its 1 s quiet window has actually happened (capped). The
+    // memory reads below walk heaps on the main thread, so they come after, never inside, that window.
+    const started = Date.now();
+    let s = await page.evaluate(bootState), tti = bootTti(s.tasks, shellReadyMs, s.now);
+    while (!tti.settled && Date.now() - started < ttiCapMs) {
+      await page.waitForTimeout(200);
+      s = await page.evaluate(bootState);
+      tti = bootTti(s.tasks, shellReadyMs, s.now);
+    }
+    // Idle memory: at least `idleAfterMs` after navigation, and only once the shell has gone quiet.
     const now = await page.evaluate(() => performance.now());
     if (now < idleAfterMs) await page.waitForTimeout(idleAfterMs - now);
-    const s = await page.evaluate(bootState);
+    const idle = await page.evaluate(bootState);
     const pids = chromePids(profileDir);
-    const pss = memoryOf(pids);
-    const agent = await page.evaluate(measureAgentMemory, 30000).catch((e) => ({ error: String(e).slice(0, 200) }));
-    const wasm = await wasmHeaps(context, page).catch((e) => ({ error: String(e).slice(0, 200) }));
-    const interactive = bootTimeToInteractive(s.tasks, shellReadyMs);
+    const pss = pids.length ? memoryOf(pids) : { pssMiB: null, rssMiB: null };
+    const agentRaw = await page.evaluate(measureAgentMemory, 30000).catch((e) => ({ error: String(e).slice(0, 200) }));
+    const agent = agentMemoryParts(agentRaw);
+    const wasm = await wasmHeaps(context, page).catch((e) => ({ totalBytes: null, error: String(e).slice(0, 200) }));
+    const mib = (b) => (Number.isFinite(b) ? b / 2 ** 20 : null);
     Object.assign(row, {
-      ok: true, shellReadyMs, interactiveMs: interactive, bootLongTasks: s.tasks.length,
-      bootLongTaskMs: s.tasks.reduce((a, [, d]) => a + d, 0), idleAtMs: s.now,
-      peakMemoryMiB: pss.pssMiB, peakMemoryMetric: `PSS sum of the profile's Chrome processes ${Math.round(s.now)} ms after navigation (idle)`,
-      idleRssMiB: pss.rssMiB, idleJsMiB: agent.bytes === undefined ? null : agent.bytes / 2 ** 20, idleJsByScope: agent.byScope ?? null,
-      idleJsError: agent.error ?? null, idleMainHeapMiB: s.jsHeap === null ? null : s.jsHeap / 2 ** 20, idleVramMiB: vramOf(pids),
-      idleWasmMiB: wasm.totalBytes === undefined ? null : wasm.totalBytes / 2 ** 20, idleWasm: wasm,
+      ok: true, shellReadyMs, interactiveMs: tti.settled ? tti.ms : null, bootInteractiveSettled: tti.settled,
+      bootLongTasks: s.tasks.length, bootLongTaskMs: s.tasks.reduce((a, [, d]) => a + d, 0), idleAtMs: idle.now,
+      peakMemoryMiB: pss.pssMiB, peakMemoryMetric: `PSS sum of the profile's Chrome processes ${Math.round(idle.now)} ms after navigation (idle)`,
+      idleRssMiB: pss.rssMiB, idleJsHeapMiB: mib(agent.jsBytes), idleAgentMiB: mib(agent.totalBytes), idleAgentByScope: agentRaw.byScope ?? null,
+      idleAgentError: agentRaw.error ?? null, idleMainHeapMiB: mib(idle.jsHeap), idleVramMiB: pids.length ? vramOf(pids) : null,
+      idleWasmMiB: mib(wasm.totalBytes), idleWasm: wasm,
       firstGeometryMs: null, uiQuietMs: null, fingerprint: 'no model',
     });
-    log?.(`  ${tag} boot: shell ${shellReadyMs.toFixed(0)} ms, interactive ${interactive.toFixed(0)} ms, ${row.bootLongTasks} long tasks, idle PSS ${pss.pssMiB.toFixed(0)} MiB, JS ${row.idleJsMiB?.toFixed(1) ?? 'n/a'} MiB, wasm ${row.idleWasmMiB?.toFixed(1) ?? 'n/a'} MiB, GPU ${row.idleVramMiB ?? 'n/a'} MiB`);
+    const f = (v, d = 0) => (Number.isFinite(v) ? v.toFixed(d) : 'n/a');
+    log?.(`  ${tag} boot: shell ${f(shellReadyMs)} ms, interactive ${tti.settled ? `${f(tti.ms)} ms` : 'unsettled (quiet window not observed)'}, ${row.bootLongTasks} long tasks, idle PSS ${f(pss.pssMiB)} MiB, JS heap ${f(row.idleJsHeapMiB, 1)} MiB (agent ${f(row.idleAgentMiB, 1)}), wasm ${f(row.idleWasmMiB, 1)} MiB, GPU ${row.idleVramMiB ?? 'n/a'} MiB`);
   } catch (err) {
     row.error = `boot: ${String(err?.message ?? err).slice(0, 600)}`;
     log?.(`  ${tag} FAILED ${row.error}`);

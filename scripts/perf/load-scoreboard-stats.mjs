@@ -215,6 +215,8 @@ export function browserStages(trace) {
  * waiting). Milestone times are returned beside them.
  */
 export function browserShares(trace, interactiveMs) {
+  // No trace is no attribution: not "100% untraced".
+  if (!Array.isArray(trace) || trace.length === 0 || !Number.isFinite(interactiveMs) || interactiveMs <= 0) return { shares: null, milestones: {} };
   const { byName } = browserStages(trace);
   const shares = stageShares(byName, interactiveMs);
   const covered = stageShares({ all: Object.values(byName).flat() }, interactiveMs).all ?? 0;
@@ -267,15 +269,38 @@ export function diffElements(base, branch, limit = 10) {
 }
 
 /**
+ * Output identity of one browser open from its readOutputFingerprint() models. A cold open needs
+ * element hashes; without a model or hashes it is UNVERIFIABLE. A reopen without hashes (a cache hit)
+ * inherits the cold identity only when that cold load had hashes and the reopen restored its flat
+ * output exactly; a restore of an unverifiable cold load is itself unverifiable, and a different flat
+ * output is a RESTORE MISMATCH. Neither is ever a comparable identity.
+ */
+export function openIdentity({ label, fingerprint, coldFingerprint }) {
+  const models = Array.isArray(fingerprint) ? fingerprint : [];
+  const hashed = (ms) => ms.length > 0 && ms.every((m) => m.hashed > 0);
+  if (hashed(models)) return { identity: models.map((m) => m.identity).join(' | '), elements: models.map((m) => m.elements), identitySource: 'element hashes' };
+  const none = (why) => ({ identity: `UNVERIFIABLE (${why})`, elements: [], identitySource: 'none' });
+  if (models.length === 0) return none('no model in the store');
+  if (label === 'cold') return none(models.some((m) => m.hashed > 0) ? 'a model has no element geometry hashes' : 'no element geometry hashes');
+  const cold = Array.isArray(coldFingerprint) ? coldFingerprint : [];
+  if (!hashed(cold)) return none('the cold load it restores had no element hashes');
+  const restored = cold.length === models.length
+    && models.every((m, i) => m.hashed === 0 && m.flat?.signature === cold[i].flat?.signature && m.flat?.meshes === cold[i].flat?.meshes);
+  return restored
+    ? { identity: `restored cold: ${cold.map((m) => m.identity).join(' | ')}`, elements: cold.map((m) => m.elements), identitySource: 'cold load (warm restored its flat output exactly; instanced shards not compared)' }
+    : { identity: `RESTORE MISMATCH vs cold: flat ${models.map((m) => `${m.flat?.meshes}/${m.flat?.signature}`).join(',')}`, elements: [], identitySource: 'none' };
+}
+
+/**
  * Which open a browser-sample failure belongs to: 0 = the cold open (launch, boot, its
  * shell wait or the open itself), i = warm open i, including the steps that prepare it
  * (`warm<i>-prep`: cache-write or snapshot wait, page replacement). That open and every
  * later one fail; earlier clean opens keep their result.
  */
 export function failedOpenIndex(phase) {
-  if (['launch', 'boot', 'cold', 'cold-shell'].includes(phase)) return 0;
   const warm = /^warm(\d+)/.exec(phase ?? '');
-  return warm ? Number(warm[1]) : 1;
+  // Anything not attributable to a reopen (launch, boot, cold, or an unknown phase) taints every open.
+  return warm ? Number(warm[1]) : 0;
 }
 
 /**
@@ -285,8 +310,13 @@ export function failedOpenIndex(phase) {
  * measuring the streamed hit instead of the snapshot adoption.
  */
 export function warmPrepFailure({ open, cacheWriteSettled, snapshotExpected, snapshotWritten }) {
-  if (cacheWriteSettled === false) return 'cache write did not settle within 10 min, so the reopen would not measure a cache hit';
-  if (open > 1 && snapshotExpected && snapshotWritten === false) return 'expected scene snapshot was not written within 60 s, so the reopen would not measure snapshot adoption';
+  // Only a confirmed state prepares a reopen: unknown is a failure, never a pass.
+  if (cacheWriteSettled !== true) return cacheWriteSettled === false
+    ? 'cache write did not settle within 10 min, so the reopen would not measure a cache hit'
+    : 'cache write was not checked before the reopen';
+  if (open > 1 && snapshotExpected !== false && snapshotWritten !== true) return snapshotExpected === undefined || snapshotExpected === null
+    ? 'whether a scene snapshot is expected was not decided before the reopen'
+    : 'expected scene snapshot was not written within 60 s, so the reopen would not measure snapshot adoption';
   return null;
 }
 

@@ -27,7 +27,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { chromePids, memoryOf, vramOf } from './scenoptic-bench-sampling.mjs';
 import { COUNT_FRAMES, openAndWaitInteractive, openViewerPage, readOutputFingerprint, replacePage, waitCacheWrites, waitSceneSnapshots } from './viewer-load-probe.mjs';
-import { browserShares, browserStages, expectedCacheTier, failedOpenIndex, gpuUnhealthy, stageShares, uiQuietValue } from './load-scoreboard-stats.mjs';
+import { browserShares, browserStages, expectedCacheTier, failedOpenIndex, gpuUnhealthy, openIdentity, stageShares, uiQuietValue } from './load-scoreboard-stats.mjs';
 import { BOOT_OBSERVERS, waitShellQuiet, waitUiQuiet } from './viewer-load-boot.mjs';
 import { entryStabilityFailure, rebaseToArm, waitCacheEntryStable, waitFirstPaint } from './load-scoreboard-lanes.mjs';
 import { expectSceneSnapshot, prepareWarmOpen } from './viewer-scene-snapshot.mjs';
@@ -52,7 +52,7 @@ function vmHwmMiB(pid) {
 /** Sample PSS/RSS of the profile's Chrome processes until `stop()`. */
 export function startMemorySampler(profileDir, intervalMs = 250) {
   let pids = chromePids(profileDir), scannedAt = Date.now();
-  const peak = { pssMiB: 0, rssMiB: 0, samples: 0 };
+  const peak = { pssMiB: 0, rssMiB: 0, samples: 0, withProcesses: 0 };
   const hwm = new Map();
   const tick = () => {
     if (Date.now() - scannedAt > 1000) { pids = chromePids(profileDir); scannedAt = Date.now(); }
@@ -60,6 +60,7 @@ export function startMemorySampler(profileDir, intervalMs = 250) {
     peak.pssMiB = Math.max(peak.pssMiB, m.pssMiB);
     peak.rssMiB = Math.max(peak.rssMiB, m.rssMiB);
     peak.samples++;
+    if (pids.length > 0) peak.withProcesses++;
     for (const pid of pids) { const v = vmHwmMiB(pid); if (Number.isFinite(v)) hwm.set(pid, Math.max(hwm.get(pid) ?? 0, v)); }
   };
   tick();
@@ -69,7 +70,9 @@ export function startMemorySampler(profileDir, intervalMs = 250) {
       clearInterval(timer);
       tick();
       const values = [...hwm.values()];
-      return { peakPssMiB: peak.pssMiB, peakRssSumMiB: peak.rssMiB, samples: peak.samples, intervalMs,
+      // No Chrome process found in any tick is no measurement, not 0 MiB.
+      const seen = peak.withProcesses > 0;
+      return { peakPssMiB: seen ? peak.pssMiB : null, peakRssSumMiB: seen ? peak.rssMiB : null, samples: peak.samples, samplesWithProcesses: peak.withProcesses, intervalMs,
         maxProcessHwmMiB: values.length ? Math.max(...values) : null, processes: values.length };
     },
   };
@@ -138,20 +141,9 @@ export async function browserSample({ chromium, executablePath, baseUrl, setRoot
     if (early) open = rebaseToArm(open);
     const memory = meta[`${label}Memory`] ?? null;
     const fingerprint = await readOutputFingerprint(page);
-    log?.(`  ${tag} ${pass} ${label}: first ${open.firstFrameMs?.toFixed(0)} ms, interactive ${open.interactiveMs.toFixed(0)} ms, ui quiet ${open.uiQuietTimedOut ? 'capped' : `${open.uiQuietMs.toFixed(0)} ms`}, input delay ${open.inputDelayMs?.toFixed(0)} ms${memory ? `, peak PSS ${memory.peakPssMiB.toFixed(0)} MiB` : ''}, path ${open.loadPaths.join(',')}`);
-    let identity = fingerprint.map((m) => m.identity).join(' | ');
-    let elements = fingerprint.map((m) => m.elements);
-    let identitySource = 'element hashes';
-    if (label !== 'cold' && fingerprint.every((m) => m.hashed === 0)) {
-      // A cache hit has no element hashes. It is identified by its cold load when it
-      // restored that load's flat output exactly; otherwise it is a restore mismatch.
-      const restored = coldFingerprint && coldFingerprint.length === fingerprint.length
-        && fingerprint.every((m, i) => m.flat.signature === coldFingerprint[i].flat.signature && m.flat.meshes === coldFingerprint[i].flat.meshes);
-      identity = restored ? `restored cold: ${coldFingerprint.map((m) => m.identity).join(' | ')}`
-        : `RESTORE MISMATCH vs cold: flat ${fingerprint.map((m) => `${m.flat.meshes}/${m.flat.signature}`).join(',')}`;
-      elements = restored ? coldFingerprint.map((m) => m.elements) : fingerprint.map(() => ({}));
-      identitySource = restored ? 'cold load (warm restored its flat output exactly; instanced shards not compared)' : 'none';
-    }
+    const f0 = (v) => (Number.isFinite(v) ? v.toFixed(0) : 'n/a');
+    log?.(`  ${tag} ${pass} ${label}: first ${f0(open.firstFrameMs)} ms, interactive ${f0(open.interactiveMs)} ms, ui quiet ${open.uiQuietTimedOut ? 'capped' : `${f0(open.uiQuietMs)} ms`}, input delay ${f0(open.inputDelayMs)} ms${memory ? `, peak PSS ${f0(memory.peakPssMiB)} MiB` : ''}, path ${open.loadPaths.join(',')}`);
+    const { identity, elements, identitySource } = openIdentity({ label, fingerprint, coldFingerprint });
     if (label === 'cold') coldFingerprint = fingerprint;
     // Per-element hashes go to their own file (large); the row keeps the partition-independent identity.
     if (pass === 'timing') writeFileSync(join(outDir, `${tag}-${label}.elements.json`), JSON.stringify(elements));
@@ -181,11 +173,9 @@ export async function browserSample({ chromium, executablePath, baseUrl, setRoot
       meta.cacheWriteSettled = await waitCacheWrites(page);
       // A snapshot captured at the end of the cold load must be there or not before the first
       // reopen, never racing it: wait for the stored entry to stop changing (cached tiers only).
-      if (!uncached) {
-        meta.entryBeforeWarm1 = await waitCacheEntryStable(page);
-        const unstable = entryStabilityFailure(meta.entryBeforeWarm1);
-        if (unstable) throw new Error(unstable);
-      }
+      meta.entryBeforeWarm1 = uncached ? { skipped: 'uncached tier: no cache entry is written' } : await waitCacheEntryStable(page);
+      const unstable = entryStabilityFailure(meta.entryBeforeWarm1);
+      if (unstable) throw new Error(unstable);
       for (let i = 1; i <= warmOpens; i++) {
         phase = `warm${i}-prep`;
         // Uncached tiers never write a snapshot: waiting for one cost 60 s per sample (H6).

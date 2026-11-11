@@ -21,6 +21,8 @@
  *   `IfcStructuralLoadCase` requires `PredefinedType = LOAD_CASE`
  *   whenever `SelfWeightCoefficients` is present — enforced below rather
  *   than left for export/import to discover as a malformed file.
+ *   IFC2X3 has `IfcStructuralLoadGroup` with the same attributes but no
+ *   `IfcStructuralLoadCase`, so `SelfWeightCoefficients` is refused there.
  *
  * A load group's members (the activities assigned to it) are established
  * separately via `IfcRelAssignsToGroup`
@@ -76,10 +78,10 @@ export function addStructuralLoadGroupToStore(
   anchor: Pick<SpatialAnchor, 'ownerHistoryId' | 'guidRandom' | 'schema'>,
   params: StructuralLoadGroupInStoreParams,
 ): StructuralLoadGroupBuildResult {
-  if (anchor.schema === 'IFC2X3') {
-    throw new Error('addStructuralLoadGroupToStore: IFC2X3 has no IfcStructuralLoadGroup — target IFC4 or later');
-  }
   const isLoadCase = params.SelfWeightCoefficients !== undefined;
+  if (isLoadCase && anchor.schema === 'IFC2X3') {
+    throw new Error('addStructuralLoadGroupToStore: IFC2X3 IfcStructuralLoadGroup has no SelfWeightCoefficients; use PredefinedType LOAD_CASE without self-weight coefficients or target IFC4 or later');
+  }
   if (isLoadCase && params.PredefinedType !== undefined && params.PredefinedType !== 'LOAD_CASE') {
     throw new Error(
       `addStructuralLoadGroupToStore: SelfWeightCoefficients requires PredefinedType 'LOAD_CASE' `

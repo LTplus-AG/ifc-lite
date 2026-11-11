@@ -21,7 +21,7 @@ import { planCacheWrite, decideCacheHit, decideCacheLoadOutcome } from './cacheT
 import { createStreamWatchdogState, geometryFailureCaptureProps, pullWithStallWatchdog } from './ingest/geometryStreamWatchdog.js';
 import { buildModelLoadReportPatch, type ModelLoadReportFields } from '../lib/loadReport';
 import { identifyLoadedPlacementSource, startLoadSourceIdentity } from '@/lib/model-placement/loaded-source-identity';
-import { IfcParser, detectFormat, unwrapIfcZipWithResources, type IfcDataStore } from '@ifc-lite/parser';
+import { assertWasmSourceSize, IfcParser, detectFormat, unwrapIfcZipWithResources, type IfcDataStore } from '@ifc-lite/parser';
 import { attachTextureBitmaps, type TextureBitmapStore } from '../utils/textureResources.js';
 import { modelAppearanceAssets } from '../lib/appearance/model-assets.js';
 import { WorkerParser } from '@ifc-lite/parser/browser';
@@ -231,8 +231,7 @@ export function useIfcLoader() {
   // Server operations from extracted hook
   const { loadFromServer } = useIfcServer();
 
-  // Latest `loadFile`, so the background revalidation can reload without being a
-  // dependency of `loadFile` itself (avoids a definition cycle). Kept current by
+  // Latest `loadFile`, so the background revalidation can reload without being a dependency of `loadFile` itself (avoids a definition cycle). Kept current by
   // the effect below.
   const loadFileRef = useRef<
     | ((
@@ -257,8 +256,7 @@ export function useIfcLoader() {
     const draping = drapeIfGeoRaster(file); if (draping) return draping; // #5942: imagery, never a model
     const geometryKernel = beginGeometryKernel(file, target, () => void loadFileRef.current?.(file, target, options)); if (geometryKernel.refused) return settleKernelRefusal(geometryKernel.refused, options?.onLoadError); // #7955 M2: out-of-scope retained requests stop before any work
     const { resetViewerState, clearAllModels } = useViewerStore.getState();
-    // A primary supersedes every outstanding hook owner via the shared canceller.
-    // Federated additions capture this hook's session and remain independent.
+    // A primary supersedes every outstanding hook owner via the shared canceller. Federated additions capture this hook's session and remain independent.
     const currentSession = target.kind === 'primary'
       ? ++loadSessionRef.current
       : loadSessionRef.current;
@@ -669,7 +667,7 @@ export function useIfcLoader() {
         activity.published = true;
         modelCompletion?.settleModel();
       };
-      // Point clouds stream from Blob; only their head is needed for detection.
+      if (!USE_SERVER && /\.ifc$/i.test(file.name)) assertWasmSourceSize(file.size);
       const headBuf = await file.slice(0, 4096).arrayBuffer();
       if (isStale()) return;
       const gaussianAdmission = await inspectGaussianAdmission(file, headBuf);
@@ -707,7 +705,7 @@ export function useIfcLoader() {
         return;
       }
 
-      // Point clouds retain the head buffer; other formats acquire source bytes.
+      if (!pointCloudFormat && !USE_SERVER && detectFormat(headBuf) === 'ifc') assertWasmSourceSize(file.size);
       const fileReadStart = performance.now();
       const acquired: AcquiredBuffer = pointCloudFormat
         ? { buffer: headBuf, view: new Uint8Array(headBuf), isShared: false }
@@ -726,7 +724,6 @@ export function useIfcLoader() {
             : `, read in ${fileReadMs.toFixed(0)}ms${acquired.isShared ? ' (streamed→SAB)' : ''}`),
       );
 
-      // Transparent .ifcZIP unwrap; point clouds retain Blob streaming.
       let textureBitmaps: TextureBitmapStore | null = null;
       if (!pointCloudFormat) {
         // Only an archive pays the ArrayBuffer copy; the magic check reads `headBuf`.
@@ -744,6 +741,7 @@ export function useIfcLoader() {
       // A SAB here is the un-unwrapped file, so `headBuf` is its head.
       format = pointCloudFormat ?? detectFormat(buffer instanceof ArrayBuffer ? buffer : headBuf);
 
+      if (!USE_SERVER && format === 'ifc') assertWasmSourceSize(buffer.byteLength);
       if (geometryKernel.refuseSource(format, buffer.byteLength, { modelId, activity })) { settleLoadUi(); return; }
 
       // LAS / LAZ point clouds: stream chunks straight to the renderer.
@@ -1208,6 +1206,7 @@ export function useIfcLoader() {
             }
           }
         }
+        trace.milestone('cache.miss'); // Looked up, not served. Gap to geometry.pool includes server, init and source copy.
       }
 
       // Try server parsing first (enabled by default for multi-core performance)

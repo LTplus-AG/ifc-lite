@@ -38,7 +38,7 @@ async function enterModelWorkspace(page: Page): Promise<void> {
     return [...store.getState().models.values()].some((entry) => entry.ifcDataStore != null);
   }, STORE, { timeout: 180000 });
   await page.getByRole('tab', { name: 'Author', exact: true }).click();
-  const model = page.getByRole('tabpanel', { name: 'Author' }).getByRole('button', { name: 'Model', exact: true });
+  const model = page.locator('[data-command-id="tool:edit-mode"]');
   await model.click();
   await expect(model).toHaveAttribute('aria-pressed', 'true');
   await expect.poll(() => page.evaluate((key) => {

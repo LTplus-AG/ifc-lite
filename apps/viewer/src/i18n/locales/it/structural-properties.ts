@@ -15,6 +15,8 @@ export const structuralPropertiesIt = {
   'properties.structural.model': 'Modello',
   'properties.structural.connections': 'Connessioni ({countDisplay})',
   'properties.structural.appliedLoads': 'Carichi applicati ({countDisplay})',
+  'properties.structural.analyticalItems': 'Elementi analitici ({countDisplay})',
+  'properties.structural.physicalElements': 'Elementi fisici ({countDisplay})',
   'properties.structural.noDofs': '(nessun grado di libertà)',
   'properties.structural.fixedDofs': {
     one: '{countDisplay} grado di libertà vincolato',

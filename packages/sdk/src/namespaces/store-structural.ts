@@ -50,8 +50,20 @@ export class StoreStructuralNamespace extends StoreGroupNamespace {
    */
   declare assignToStructuralGroup: Required<StructuralStoreBackendMethods>['assignToStructuralGroup'];
 
+  /** Add an IfcStructuralSurfaceMember anchored to a storey. Throws when the backend does not implement it. */
+  declare addStructuralSurfaceMember: Required<StructuralStoreBackendMethods>['addStructuralSurfaceMember'];
+
+  /** Add an IfcStructuralCurveConnection anchored to a storey. Throws when the backend does not implement it. */
+  declare addStructuralCurveConnection: Required<StructuralStoreBackendMethods>['addStructuralCurveConnection'];
+
+  /** Add an IfcStructuralSurfaceConnection anchored to a storey. Throws when the backend does not implement it. */
+  declare addStructuralSurfaceConnection: Required<StructuralStoreBackendMethods>['addStructuralSurfaceConnection'];
+
   static {
     const methods = [
+      'addStructuralSurfaceConnection',
+      'addStructuralCurveConnection',
+      'addStructuralSurfaceMember',
       'addStructuralPlanarAction',
       'addStructuralSurfaceAction',
       'addStructuralPointReaction',

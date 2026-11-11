@@ -15,6 +15,8 @@ export const structuralPropertiesFr = {
   'properties.structural.model': 'Modèle',
   'properties.structural.connections': 'Connexions ({countDisplay})',
   'properties.structural.appliedLoads': 'Charges appliquées ({countDisplay})',
+  'properties.structural.analyticalItems': 'Éléments analytiques ({countDisplay})',
+  'properties.structural.physicalElements': 'Éléments physiques ({countDisplay})',
   'properties.structural.noDofs': '(aucun DDL)',
   'properties.structural.fixedDofs': { one: '{countDisplay} DDL bloqué', other: '{countDisplay} DDL bloqués' },
   'properties.structural.elasticDofs': { one: '{countDisplay} DDL élastique', other: '{countDisplay} DDL élastiques' },

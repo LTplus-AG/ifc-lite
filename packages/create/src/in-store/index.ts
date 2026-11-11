@@ -265,3 +265,8 @@ export { mirrorElementsInStore, type MirrorElementsParams } from './element-mirr
 export { addStructuralPlanarActionToStore, addStructuralSurfaceActionToStore, type StructuralSurfaceActionInStoreParams, type StructuralSurfaceActionBuildResult } from './structural-surface-action.js';
 export { addStructuralPointReactionToStore, addStructuralCurveReactionToStore, addStructuralSurfaceReactionToStore, type StructuralPointReactionInStoreParams, type StructuralCurveReactionInStoreParams, type StructuralSurfaceReactionInStoreParams, type StructuralReactionBuildResult } from './structural-reaction.js';
 export { addStructuralResultGroupToStore, type StructuralResultGroupInStoreParams, type StructuralResultGroupBuildResult } from './structural-result-group.js';
+export { addStructuralSurfaceMemberToStore, type StructuralSurfaceMemberInStoreParams, type StructuralSurfaceMemberBuildResult, type StructuralSurfaceMemberType } from './structural-surface-member.js';
+
+export { addStructuralCurveConnectionToStore, type StructuralCurveConnectionInStoreParams, type StructuralCurveConnectionBuildResult, type StructuralBoundaryEdgeConditionParams } from './structural-curve-connection.js';
+
+export { addStructuralSurfaceConnectionToStore, type StructuralSurfaceConnectionInStoreParams, type StructuralSurfaceConnectionBuildResult, type StructuralBoundaryFaceConditionParams } from './structural-surface-connection.js';

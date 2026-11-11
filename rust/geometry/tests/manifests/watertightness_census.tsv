@@ -1504,6 +1504,8 @@ issues/960_house_segmented_roof_clip.ifc	4148	Clipping	0	144	0	0	0	-	0	9474529
 issues/960_house_segmented_roof_clip.ifc	4374	Clipping	0	62	0	0	0	-	0	3266357
 issues/960_house_segmented_roof_clip.ifc	5904	Clipping	0	124	0	0	0	-	0	13960888
 issues/964_slab_arbitrary_profile_voids.ifc	6443	SweptSolid	0	454	0	0	0	-	0	1119619
+modelling/saved-building.ifc	64	SweptSolid	0	28	0	0	0	-	0	5742353
+modelling/saved-building.ifc	120	SweptSolid	0	32	0	0	0	-	0	5712346
 structural/ifc_structuralanalysisview/house_basement_floor--Axis-Struc.ifc	367	unknown	0	36	0	0	0	-	0	3187166
 structural/ifc_structuralanalysisview/house_basement_floor--Axis-Struc.ifc	555	unknown	0	68	0	0	0	-	0	3370312
 various/01_Snowdon_Towers_Sample_Structural(1).ifc	430	SweptSolid	0	280	0	0	0	-	0	18269443
